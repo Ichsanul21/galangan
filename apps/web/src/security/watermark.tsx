@@ -84,6 +84,7 @@ function paintLayer(el: HTMLElement, bg: string) {
   el.style.pointerEvents = "none";
   el.style.backgroundImage = bg;
   el.style.backgroundRepeat = "repeat";
+  el.style.animation = "isms-wm-drift 60s linear infinite";
 }
 
 function ensureDom(bg: string, printText: string) {

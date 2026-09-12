@@ -116,3 +116,13 @@
     margin: 48px;
   }
 }
+
+/* Animasi watermark bergerak kiri ke kanan (seamless per 1 tile = 1300px) */
+@keyframes isms-wm-drift {
+  from {
+    background-position: 0 0;
+  }
+  to {
+    background-position: 1300px 0;
+  }
+}

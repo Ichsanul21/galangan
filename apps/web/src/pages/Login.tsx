@@ -122,7 +122,7 @@ export default function Login() {
   };
 
   const quickLogin = (u: string) => {
-    const err = login(u, "demo123");
+    const err = login(u, "password@123");
     if (!err) {
       toast("Masuk sebagai akun demo");
       navigate(from, { replace: true });
