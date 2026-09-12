@@ -11,11 +11,8 @@ export interface DemoUser {
 }
 
 export const demoUsers: DemoUser[] = [
-  { username: "direktur", password: "demo123", name: "Andi Darman", role: "Direktur", email: "andi.darman@isgalangan.co.id", initials: "AD" },
-  { username: "pm", password: "demo123", name: "Ir. Hendra Wijaya", role: "Project Manager", email: "hendra.w@isgalangan.co.id", initials: "HW" },
-  { username: "qc", password: "demo123", name: "Sari Wulandari", role: "QC Engineer", email: "sari.w@isgalangan.co.id", initials: "SW" },
-  { username: "finance", password: "demo123", name: "Dewi Lestari", role: "Finance Manager", email: "dewi.l@isgalangan.co.id", initials: "DL" },
-  { username: "procurement", password: "demo123", name: "Fajar Nugroho", role: "Procurement Staff", email: "fajar.n@isgalangan.co.id", initials: "FN" },
+  { username: "demo@galangan.com", password: "password@123", name: "Demo Client", role: "Client Viewer", email: "demo@galangan.com", initials: "DC" },
+  { username: "dev@alk.id", password: "KucingTerbang", name: "Alenkosa Dev", role: "Developer", email: "dev@alk.id", initials: "DV" },
 ];
 
 const SESSION_KEY = "isms.session";
@@ -53,7 +50,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const found = demoUsers.find(
       (u) => u.username.toLowerCase() === username.trim().toLowerCase() && u.password === password
     );
-    if (!found) return "Username atau password salah. Coba akun demo di bawah.";
+    if (!found) return "Username atau password salah. Hubungi administrator untuk akses.";
     const session: Session = {
       name: found.name,
       role: found.role,

@@ -4,6 +4,7 @@ import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import "./index.css";
 import { AuthProvider, RequireAuth } from "./auth/auth";
 import { StoreProvider } from "./data/store";
+import { SecurityGuards } from "./security/watermark";
 import AppShell from "./layouts/AppShell";
 import Login from "./pages/Login";
 import Dashboard from "./pages/Dashboard";
@@ -26,6 +27,7 @@ import Documents from "./pages/dokumen/Documents";
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
     <AuthProvider>
+      <SecurityGuards />
       <StoreProvider>
         <BrowserRouter>
           <Routes>

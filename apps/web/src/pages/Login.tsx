@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { motion } from "framer-motion";
 import { Anchor, Lock, User, AlertCircle, ArrowRight, ArrowUpRight, Globe2, Container, ShipWheel } from "lucide-react";
-import { useAuth, demoUsers } from "../auth/auth";
+import { useAuth } from "../auth/auth";
 import { toast } from "../components/ui";
 
 /* Latar peta rute abstrak — garis lintang/bujur */
@@ -248,7 +248,7 @@ export default function Login() {
                 <User className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-steel-400" />
                 <input
                   className="input pl-9"
-                  placeholder="e.g. direktur"
+                  placeholder="e.g. demo@galangan.com"
                   value={username}
                   onChange={(e) => setUsername(e.target.value)}
                   autoComplete="username"
@@ -262,7 +262,7 @@ export default function Login() {
                 <input
                   type="password"
                   className="input pl-9"
-                  placeholder="e.g. demo123"
+                  placeholder="e.g. password@123"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   autoComplete="current-password"
@@ -275,28 +275,25 @@ export default function Login() {
           </motion.form>
 
           <div className="card mt-4 p-5">
-            <p className="text-xs font-semibold uppercase tracking-wider text-steel-500">Demo crew — one click sign in</p>
-            <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
-              {demoUsers.map((u) => (
-                <button
-                  key={u.username}
-                  onClick={() => quickLogin(u.username)}
-                  className="group flex items-center gap-2.5 rounded-xl border border-steel-200 px-3 py-2 text-left transition-all hover:-translate-y-0.5 hover:border-ocean-400 hover:shadow-soft"
-                >
-                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-gradient-hero text-xs font-bold text-white">
-                    {u.initials}
+            <p className="text-xs font-semibold uppercase tracking-wider text-steel-500">Demo access — one click sign in</p>
+            <div className="mt-3">
+              <button
+                onClick={() => quickLogin("demo@galangan.com")}
+                className="group flex w-full items-center gap-2.5 rounded-xl border border-steel-200 px-3 py-2.5 text-left transition-all hover:-translate-y-0.5 hover:border-ocean-400 hover:shadow-soft"
+              >
+                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-gradient-hero text-xs font-bold text-white">
+                  DC
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-[13px] font-semibold text-navy-900">Demo Client</span>
+                  <span className="block truncate text-[11px] text-steel-500">
+                    Client Viewer · <span className="font-mono">demo@galangan.com</span>
                   </span>
-                  <span className="min-w-0 flex-1">
-                    <span className="block truncate text-[13px] font-semibold text-navy-900">{u.name}</span>
-                    <span className="block truncate text-[11px] text-steel-500">
-                      {u.role} · <span className="font-mono">{u.username}</span>
-                    </span>
-                  </span>
-                  <ArrowUpRight className="h-4 w-4 shrink-0 text-steel-300 transition-colors group-hover:text-ocean-500" />
-                </button>
-              ))}
+                </span>
+                <ArrowUpRight className="h-4 w-4 shrink-0 text-steel-300 transition-colors group-hover:text-ocean-500" />
+              </button>
             </div>
-            <p className="mt-3 text-center font-mono text-[11px] text-steel-400">all demo passwords: demo123</p>
+            <p className="mt-3 text-center font-mono text-[11px] text-steel-400">demo password: password@123</p>
           </div>
         </motion.div>
       </div>
