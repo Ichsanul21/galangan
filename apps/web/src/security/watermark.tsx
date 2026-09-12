@@ -63,17 +63,15 @@ function escapeXml(s: string): string {
 }
 
 function tileUri(lines: string[]): string {
-  const W = 520;
-  const H = 210;
+  const W = 1300;
+  const H = 400;
   const texts = lines
     .map(
-      (t, i) =>
-        `<text x="24" y="${58 + i * 46}" font-family="Arial,Helvetica,sans-serif" font-size="${
-          i === 0 ? 27 : 19
-        }" font-weight="${i === 0 ? 800 : 600}" fill="rgba(11,58,99,0.14)" letter-spacing="1.5">${escapeXml(t)}</text>`
+      (t) =>
+        `<text x="${W / 2}" y="${H / 2 + 6}" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="16" font-weight="700" fill="rgba(11,58,99,0.07)" letter-spacing="0.5">${escapeXml(t)}</text>`
     )
     .join("");
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}"><g transform="rotate(-24 260 105)">${texts}</g></svg>`;
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}"><g transform="rotate(-18 ${W / 2} ${H / 2})">${texts}</g></svg>`;
   return `url("data:image/svg+xml,${encodeURIComponent(svg)}")`;
 }
 
@@ -156,11 +154,7 @@ export default function Watermark() {
   const loc = [geo.city, geo.country].filter(Boolean).join(", ");
   const timeLabel = fmtWita(now);
   const lines = useMemo(
-    () => [
-      "PROPERTY OF ALENKOSA",
-      `${who} · ${timeLabel}`,
-      `${geo.ip}${loc ? ` · ${loc}` : ""} · ${device}`,
-    ],
+    () => [`PROPERTY OF ALENKOSA · ${who} · ${timeLabel} · ${geo.ip}${loc ? ` · ${loc}` : ""} · ${device}`],
     [who, timeLabel, geo.ip, loc, device]
   );
   const bg = useMemo(() => tileUri(lines), [lines]);
