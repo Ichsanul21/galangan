@@ -1,0 +1,12 @@
+# Docs & artifacts (ignore semua konten docs)
+docs/
+docs.zip
+screenshots.zip
+screenshots_galangan.zip
+summary-fitur-alur.pdf
+*.pdf
+
+# Hanya apps/ yang ditrack; artifacts lokal
+*.local
+*.log
+.DS_Store

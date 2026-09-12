@@ -1,0 +1,409 @@
+import { useState } from "react";
+import { Link } from "react-router-dom";
+import {
+  Anchor,
+  Wallet,
+  TrendingUp,
+  ArrowRight,
+  Boxes,
+  Sparkles,
+  Cpu,
+  Plus,
+  Download,
+  Calendar,
+} from "lucide-react";
+import {
+  AreaChart,
+  Area,
+  Bar,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  ResponsiveContainer,
+  ComposedChart,
+  Line,
+  Tooltip,
+} from "recharts";
+import {
+  Card,
+  CardHeader,
+  KpiCard,
+  PageHeader,
+  RadialGauge,
+  Donut,
+  ChartTooltip,
+  Stagger,
+  StaggerItem,
+  GlowCard,
+  Badge,
+  ProgressBar,
+  Avatar,
+} from "../components/ui";
+import {
+  projects,
+  revenueSeries,
+  sparkRevenue,
+  sparkMargin,
+  sparkProjects,
+  sparkUtil,
+  utilSeries,
+  projectTypeDist,
+  drydockLoad,
+  insights,
+  activities,
+  drydocks,
+  fmtMiliar,
+  fmtRupiah,
+} from "../data";
+
+const RANGES = ["6B", "12B"] as const;
+
+export default function Dashboard() {
+  const [range, setRange] = useState<(typeof RANGES)[number]>("12B");
+  const totalActive = projects.filter((p) => p.status !== "Selesai").length;
+  const delayed = projects.filter((p) => p.status === "Terlambat").length;
+  const activeContracts = projects
+    .filter((p) => p.status !== "Selesai")
+    .reduce((s, p) => s + p.budget, 0);
+  const utilDrydock =
+    Math.round((drydocks.filter((d) => d.status === "Terpakai").length / drydocks.length) * 100);
+  const utilEquipment = Math.round(utilSeries[utilSeries.length - 1].equipment);
+
+  const chartData =
+    range === "12B" ? revenueSeries : revenueSeries.slice(-6);
+
+  const totalRevenue = revenueSeries.reduce((s, d) => s + d.revenue, 0);
+
+  return (
+    <Stagger className="space-y-5">
+      <StaggerItem>
+        <PageHeader
+          title="Dashboard Eksekutif"
+          subtitle="Pusat kendali operasional galangan — 2 cabang, real-time"
+          icon={<TrendingUp className="h-5 w-5" />}
+          actions={
+            <>
+              <button className="btn-secondary">
+                <Download className="h-4 w-4" /> Ekspor
+              </button>
+              <button className="btn-primary-gradient">
+                <Plus className="h-4 w-4" /> Proyek Baru
+              </button>
+            </>
+          }
+        />
+      </StaggerItem>
+
+      {/* HERO GLOW BANNER */}
+      <StaggerItem>
+        <GlowCard gradient="gradient-hero">
+          <div className="flex flex-wrap items-center justify-between gap-4">
+            <div className="flex items-center gap-4">
+              <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-white/15">
+                <Sparkles className="h-6 w-6" />
+              </div>
+              <div>
+                <p className="text-sm text-steel-300">Total Nilai Portofolio Berjalan</p>
+                <p className="text-3xl font-bold tracking-tight">{fmtMiliar(activeContracts)}</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <Badge tone="teal" className="bg-white/15 border-white/20">
+                <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" /> Sistem Operasional
+              </Badge>
+              <span className="px-3 py-1.5 rounded-lg bg-white/15 text-sm font-medium">
+                272 pekerja aktif
+              </span>
+            </div>
+          </div>
+        </GlowCard>
+      </StaggerItem>
+
+      {/* KPI ROW */}
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <StaggerItem>
+          <KpiCard
+            label="Proyek Aktif"
+            value={String(totalActive)}
+            delta={`${delayed} terlambat`}
+            deltaDirection="down"
+            icon={<Anchor className="h-5 w-5" />}
+            chip="navy"
+            spark={sparkProjects}
+          />
+        </StaggerItem>
+        <StaggerItem>
+          <KpiCard
+            label="Pendapatan 12 Bulan"
+            value={fmtMiliar(totalRevenue)}
+            delta="+14.2% vs periode lalu"
+            deltaDirection="up"
+            icon={<Wallet className="h-5 w-5" />}
+            chip="teal"
+            spark={sparkRevenue}
+          />
+        </StaggerItem>
+        <StaggerItem>
+          <KpiCard
+            label="Margin Bruto"
+            value="28.6%"
+            delta="+1.8 poin"
+            deltaDirection="up"
+            icon={<TrendingUp className="h-5 w-5" />}
+            chip="violet"
+            spark={sparkMargin}
+          />
+        </StaggerItem>
+        <StaggerItem>
+          <KpiCard
+            label="Utilitas Equipment"
+            value={`${utilEquipment}%`}
+            delta="+3 poin vs bulan lalu"
+            deltaDirection="up"
+            icon={<Cpu className="h-5 w-5" />}
+            chip="amber"
+            spark={sparkUtil}
+          />
+        </StaggerItem>
+      </div>
+
+      {/* MAIN CHARTS */}
+      <div className="grid grid-cols-1 gap-5 lg:grid-cols-3">
+        <StaggerItem className="lg:col-span-2">
+          <Card>
+            <CardHeader
+              title="Pendapatan & Volume Proyek"
+              subtitle="Tren 12 bulan terakhir (dalam miliar Rupiah)"
+              action={
+                <div className="flex items-center gap-1 rounded-lg border border-steel-200 bg-surface p-0.5">
+                  {RANGES.map((r) => (
+                    <button
+                      key={r}
+                      onClick={() => setRange(r)}
+                      className={`rounded-md px-3 py-1 text-xs font-semibold transition-colors ${
+                        range === r ? "bg-white text-navy-800 shadow-sm" : "text-steel-500 hover:text-navy-700"
+                      }`}
+                    >
+                      {r}
+                    </button>
+                  ))}
+                </div>
+              }
+            />
+            <div className="h-80 p-4 pt-0">
+              <ResponsiveContainer width="100%" height="100%">
+                <ComposedChart data={chartData} margin={{ top: 10, right: 10, left: -15, bottom: 0 }}>
+                  <defs>
+                    <linearGradient id="revGrad" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#0b3a63" stopOpacity={0.25} />
+                      <stop offset="95%" stopColor="#0b3a63" stopOpacity={0} />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#e9eff4" vertical={false} />
+                  <XAxis dataKey="month" tick={{ fontSize: 12 }} stroke="#8aa2b6" axisLine={false} tickLine={false} />
+                  <YAxis yAxisId="rev" tick={{ fontSize: 12 }} stroke="#8aa2b6" axisLine={false} tickLine={false} />
+                  <YAxis yAxisId="proj" orientation="right" tick={{ fontSize: 12 }} stroke="#8aa2b6" axisLine={false} tickLine={false} />
+                  <Tooltip content={<ChartTooltip formatter={(v) => (typeof v === "number" ? `Rp ${v} M` : v)} />} />
+                  <Area yAxisId="rev" type="monotone" dataKey="revenue" name="Pendapatan" stroke="#0b3a63" strokeWidth={2.5} fill="url(#revGrad)" />
+                  <Bar yAxisId="proj" dataKey="projects" name="Jumlah Proyek" fill="#8cc9e8" radius={[4, 4, 0, 0]} barSize={16} />
+                  <Line yAxisId="rev" type="monotone" dataKey="cost" name="Biaya" stroke="#e11d48" strokeWidth={2} strokeDasharray="6 3" dot={false} />
+                </ComposedChart>
+              </ResponsiveContainer>
+            </div>
+          </Card>
+        </StaggerItem>
+
+        <StaggerItem>
+          <Card className="h-full">
+            <CardHeader title="Komposisi Proyek" subtitle="Berdasarkan jenis pekerjaan" />
+            <div className="flex flex-col items-center gap-4 p-4">
+              <Donut
+                data={projectTypeDist}
+                colors={projectTypeDist.map((d) => d.color)}
+                size={170}
+                thickness={22}
+                centerValue={String(projectTypeDist.reduce((s, d) => s + d.value, 0))}
+                centerLabel="proyek"
+              />
+              <div className="grid w-full grid-cols-2 gap-2">
+                {projectTypeDist.map((d) => (
+                  <div key={d.name} className="flex items-center gap-2 text-sm">
+                    <span className="h-3 w-3 rounded-sm" style={{ background: d.color }} />
+                    <span className="text-steel-600">{d.name}</span>
+                    <span className="ml-auto font-semibold text-navy-900">{d.value}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </Card>
+        </StaggerItem>
+      </div>
+
+      {/* GAUGES + HEATMAP + INSIGHTS */}
+      <div className="grid grid-cols-1 gap-5 lg:grid-cols-4">
+        <StaggerItem className="lg:col-span-2">
+          <Card>
+            <CardHeader title="Utilisasi Kapasitas" subtitle="Drydock, slipway & berth" />
+            <div className="p-4">
+              <div className="mb-3 flex items-end gap-2">
+                <span className="text-3xl font-bold text-navy-900">{utilDrydock}%</span>
+                <span className="pb-1 text-xs text-steel-500">dari 4 fasilitas terpasang</span>
+              </div>
+              <div className="space-y-3">
+                {drydockLoad.map((d) => (
+                  <div key={d.dock}>
+                    <div className="mb-1 flex justify-between text-xs">
+                      <span className="font-medium text-steel-600">{d.dock}</span>
+                      <span className="font-semibold text-navy-800">{d.kapasitas}%</span>
+                    </div>
+                    <ProgressBar value={d.kapasitas} tone={d.kapasitas > 85 ? "red" : d.kapasitas > 70 ? "amber" : "navy"} />
+                  </div>
+                ))}
+              </div>
+            </div>
+          </Card>
+        </StaggerItem>
+
+        <StaggerItem>
+          <Card className="h-full">
+            <CardHeader title="Produksi & Utilisasi" subtitle="Tren drydock vs equipment" />
+            <div className="flex items-center justify-center gap-6 p-4">
+              <RadialGauge value={utilDrydock} label="Drydock" color="#0b3a63" />
+              <RadialGauge value={utilEquipment} label="Equipment" color="#2e9ad4" />
+            </div>
+            <div className="mt-2 -mb-1 h-16 px-4">
+              <ResponsiveContainer width="100%" height="100%">
+                <AreaChart data={utilSeries} margin={{ top: 0, right: 0, left: 0, bottom: 0 }}>
+                  <defs>
+                    <linearGradient id="utilGrad" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stopColor="#2e9ad4" stopOpacity={0.35} />
+                      <stop offset="100%" stopColor="#2e9ad4" stopOpacity={0} />
+                    </linearGradient>
+                  </defs>
+                  <Area type="monotone" dataKey="equipment" stroke="#2e9ad4" strokeWidth={2} fill="url(#utilGrad)" />
+                </AreaChart>
+              </ResponsiveContainer>
+            </div>
+          </Card>
+        </StaggerItem>
+
+        <StaggerItem>
+          <Card className="h-full">
+            <CardHeader title="Wawasan Cerdas" subtitle="Rekomendasi otomatis" />
+            <div className="space-y-2.5 p-4 pt-0">
+              {insights.map((i) => {
+                const dot =
+                  i.tone === "rose" ? "bg-rose-500" : i.tone === "teal" ? "bg-teal-500" : i.tone === "violet" ? "bg-violet-500" : "bg-ocean-500";
+                return (
+                  <div key={i.id} className="rounded-xl border border-steel-100 bg-surface p-3">
+                    <div className="flex items-center gap-2">
+                      <span className={`h-2 w-2 rounded-full ${dot}`} />
+                      <p className="text-sm font-semibold text-navy-900">{i.title}</p>
+                    </div>
+                    <p className="mt-1 text-xs text-steel-500 leading-relaxed">{i.desc}</p>
+                  </div>
+                );
+              })}
+            </div>
+          </Card>
+        </StaggerItem>
+      </div>
+
+      {/* STATUS + ACTIVITY */}
+      <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
+        <StaggerItem>
+          <Card>
+            <CardHeader
+              title="Status Proyek Aktif"
+              subtitle="Progres terbaru"
+              action={
+                <Link to="/proyek" className="inline-flex items-center gap-1 text-sm font-semibold text-ocean-600 hover:text-ocean-500">
+                  Lihat semua <ArrowRight className="h-3.5 w-3.5" />
+                </Link>
+              }
+            />
+            <div className="divide-y divide-steel-100">
+              {projects.slice(0, 5).map((p) => (
+                <Link
+                  key={p.id}
+                  to={`/proyek/${p.id}`}
+                  className="flex items-center justify-between gap-3 px-5 py-3 hover:bg-surface transition-colors"
+                >
+                  <div className="min-w-0">
+                    <p className="text-sm font-semibold text-navy-900 truncate">{p.vessel}</p>
+                    <p className="text-xs text-steel-500">{p.id} · {p.client}</p>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <div className="w-24">
+                      <ProgressBar value={p.progress} tone={p.status === "Terlambat" ? "red" : "navy"} />
+                      <p className="mt-1 text-right text-[11px] text-steel-500">{p.progress}%</p>
+                    </div>
+                    <Badge tone={p.status === "Terlambat" ? "red" : p.status === "Selesai" ? "green" : "blue"}>
+                      {p.status}
+                    </Badge>
+                  </div>
+                </Link>
+              ))}
+            </div>
+          </Card>
+        </StaggerItem>
+
+        <StaggerItem>
+          <Card className="h-full">
+            <CardHeader title="Aktivitas Terkini" subtitle="Log real-time di seluruh modul" />
+            <div className="space-y-1 p-3">
+              {activities.slice(0, 6).map((a) => (
+                <div key={a.id} className="flex items-center gap-3 rounded-xl px-2 py-2 hover:bg-surface">
+                  <Avatar name={a.actor} className="h-8 w-8 shrink-0" />
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm text-steel-700">
+                      <span className="font-semibold text-navy-900">{a.actor}</span> {a.action}{" "}
+                      <span className="font-medium text-navy-800">{a.target}</span>
+                    </p>
+                    <p className="text-[11px] text-steel-400">{a.module} · {a.time}</p>
+                  </div>
+                  <Badge tone={a.tone as never}>{a.module}</Badge>
+                </div>
+              ))}
+            </div>
+          </Card>
+        </StaggerItem>
+      </div>
+
+      {/* MINI STRIP */}
+      <StaggerItem>
+        <Card className="p-4">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+            <div className="flex items-center gap-3">
+              <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-ocean-50 text-ocean-600">
+                <Boxes className="h-5 w-5" />
+              </span>
+              <div>
+                <p className="text-sm font-semibold text-navy-900">Nilai Stok</p>
+                <p className="text-lg font-bold text-gradient-navy">Rp 185 M</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-3">
+              <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-50 text-emerald-600">
+                <Calendar className="h-5 w-5" />
+              </span>
+              <div>
+                <p className="text-sm font-semibold text-navy-900">Sea Trial Terjadwal</p>
+                <p className="text-lg font-bold text-gradient-navy">TB Samudra Jaya 07</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-3">
+              <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-violet-50 text-violet-600">
+                <Anchor className="h-5 w-5" />
+              </span>
+              <div>
+                <p className="text-sm font-semibold text-navy-900">Quotation Aktif</p>
+                <p className="text-lg font-bold text-gradient-navy">{fmtRupiah(48500000000).replace(",00", "")}</p>
+              </div>
+            </div>
+          </div>
+        </Card>
+      </StaggerItem>
+    </Stagger>
+  );
+}

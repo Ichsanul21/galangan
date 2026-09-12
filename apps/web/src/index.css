@@ -1,0 +1,86 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html {
+    @apply antialiased;
+  }
+  body {
+    @apply bg-surface text-steel-700;
+    font-family: "Inter", system-ui, sans-serif;
+  }
+  h1, h2, h3, h4 {
+    @apply text-navy-900 font-semibold;
+  }
+  ::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+  ::-webkit-scrollbar-thumb {
+    @apply bg-steel-300 rounded-full;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+}
+
+@layer components {
+  .card {
+    @apply bg-white rounded-2xl border border-steel-200 shadow-soft;
+  }
+  .btn {
+    @apply inline-flex items-center gap-2 px-3.5 py-2 rounded-xl font-medium text-sm
+           transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-offset-1;
+  }
+  .btn-primary {
+    @apply btn bg-navy-700 text-white shadow-soft hover:bg-navy-800 hover:-translate-y-0.5 hover:shadow-lift focus:ring-ocean-400;
+  }
+  .btn-primary-gradient {
+    @apply btn text-white bg-gradient-hero hover:shadow-glow hover:-translate-y-0.5 focus:ring-ocean-400;
+  }
+  .btn-secondary {
+    @apply btn bg-white border border-steel-300 text-steel-700 hover:bg-steel-100 hover:border-steel-400 focus:ring-steel-300;
+  }
+  .btn-danger {
+    @apply btn bg-rose-600 text-white hover:bg-rose-700 focus:ring-rose-300;
+  }
+  .input {
+    @apply w-full px-3 py-2 rounded-xl border border-steel-300 bg-white text-sm
+           focus:outline-none focus:ring-2 focus:ring-ocean-400 focus:border-ocean-400;
+  }
+  .label {
+    @apply block text-xs font-medium text-steel-600 mb-1;
+  }
+  .th {
+    @apply px-3 py-3 text-left text-[11px] font-semibold uppercase tracking-wider text-steel-500;
+  }
+  .td {
+    @apply px-3 py-3 text-sm text-steel-700 align-middle;
+  }
+  .tab-active {
+    @apply border-b-2 border-navy-700 text-navy-800 font-semibold;
+  }
+  .glass {
+    @apply bg-white/70 backdrop-blur-xl border border-white/60;
+  }
+  .gradient-hero {
+    @apply bg-gradient-hero text-white;
+  }
+  .text-gradient-navy {
+    background: linear-gradient(135deg, #0b3a63, #2e9ad4);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+  .shimmer-line {
+    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.6), transparent);
+    background-size: 200% 100%;
+  }
+}
+
+@layer utilities {
+  .shadow-soft { box-shadow: 0 1px 2px rgba(11,58,99,0.05), 0 8px 24px -8px rgba(11,58,99,0.12); }
+  .shadow-lift { box-shadow: 0 4px 8px rgba(11,58,99,0.06), 0 20px 40px -16px rgba(11,58,99,0.25); }
+  .card-hover { @apply transition-all duration-300 hover:-translate-y-1 hover:shadow-lift; }
+}
