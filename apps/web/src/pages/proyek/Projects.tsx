@@ -22,7 +22,7 @@ const emptyForm = {
   vessel: "",
   type: "New Build",
   client: "",
-  branch: "Batam",
+  branch: "Samarinda",
   start: "2026-08-01",
   end: "2026-12-31",
   budget: "10000000000",
@@ -229,8 +229,7 @@ export default function Projects() {
             </Field>
             <Field label="Cabang">
               <select className="input" value={form.branch} onChange={(e) => setF("branch", e.target.value)}>
-                <option>Batam</option>
-                <option>Surabaya</option>
+                <option>Samarinda</option>
               </select>
             </Field>
             <Field label="Project manager">

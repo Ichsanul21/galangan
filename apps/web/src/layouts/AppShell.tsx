@@ -204,7 +204,7 @@ export default function AppShell() {
             <div className="flex items-center gap-2 text-sm text-steel-500">
               <span className="font-medium text-navy-800">Galangan</span>
               <span>/</span>
-              <span>Cabang Utama — Batam</span>
+              <span>Cabang Utama — Samarinda</span>
             </div>
           </div>
 

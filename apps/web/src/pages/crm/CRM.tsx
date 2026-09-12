@@ -40,7 +40,7 @@ export default function CRM() {
     if (exists) { toast("Proyek untuk kapal ini sudah ada", "info"); return; }
     const created = add("projects", {
       vessel: q.vessel, type: q.type, client: q.client, status: "Dalam Proses",
-      branch: "Batam", start: new Date().toISOString().slice(0, 10), end: "-", progress: 0,
+      branch: "Samarinda", start: new Date().toISOString().slice(0, 10), end: "-", progress: 0,
       budget: Number(q.value) || 0, actual: 0, manager: "Belum ditentukan", scope: [q.type],
     }, { action: "mengkonversi quotation", target: `${q.id} → proyek`, module: "CRM" });
     toast(`${q.id} menjadi proyek ${created.id}`);

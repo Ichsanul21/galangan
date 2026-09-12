@@ -12,7 +12,7 @@ export default function EquipmentPage() {
   const [tab, setTab] = useState("Register");
 
   const [showAdd, setShowAdd] = useState(false);
-  const [form, setForm] = useState({ name: "", category: "Pengangkat", code: "", branch: "Batam", model: "", util: "50" });
+  const [form, setForm] = useState({ name: "", category: "Pengangkat", code: "", branch: "Samarinda", model: "", util: "50" });
   const [showService, setShowService] = useState(false);
   const [svcDate, setSvcDate] = useState("");
   const [svcTarget, setSvcTarget] = useState("");
@@ -36,7 +36,7 @@ export default function EquipmentPage() {
     }, { action: "mendaftarkan equipment", module: "Equipment" });
     toast(`Equipment ${created.id} ditambahkan`);
     setShowAdd(false);
-    setForm({ name: "", category: "Pengangkat", code: "", branch: "Batam", model: "", util: "50" });
+    setForm({ name: "", category: "Pengangkat", code: "", branch: "Samarinda", model: "", util: "50" });
   };
 
   const saveService = () => {
@@ -226,7 +226,7 @@ export default function EquipmentPage() {
             </Field>
             <Field label="Cabang">
               <select className="input" value={form.branch} onChange={(e) => setForm({ ...form, branch: e.target.value })}>
-                <option>Batam</option><option>Surabaya</option>
+                <option>Samarinda</option>
               </select>
             </Field>
             <Field label="Model"><input className="input" value={form.model} onChange={(e) => setForm({ ...form, model: e.target.value })} /></Field>

@@ -39,7 +39,7 @@ export const projects: Project[] = [
     type: "New Build",
     client: "PT Samudra Jaya Perkasa",
     status: "Sedang Berjalan",
-    branch: "Batam",
+    branch: "Samarinda",
     start: "2025-11-10",
     end: "2026-09-30",
     progress: 62,
@@ -54,7 +54,7 @@ export const projects: Project[] = [
     type: "New Build",
     client: "PT Pelayaran Nusantara Abadi",
     status: "Sedang Berjalan",
-    branch: "Batam",
+    branch: "Samarinda",
     start: "2026-01-15",
     end: "2026-12-20",
     progress: 41,
@@ -69,7 +69,7 @@ export const projects: Project[] = [
     type: "Repair",
     client: "PT Karya Bahari Sejahtera",
     status: "Dalam Proses",
-    branch: "Batam",
+    branch: "Samarinda",
     start: "2026-07-01",
     end: "2026-08-05",
     progress: 78,
@@ -84,7 +84,7 @@ export const projects: Project[] = [
     type: "Repair",
     client: "PT Samudra Jaya Perkasa",
     status: "Terlambat",
-    branch: "Surabaya",
+    branch: "Samarinda",
     start: "2026-06-20",
     end: "2026-07-25",
     progress: 55,
@@ -99,7 +99,7 @@ export const projects: Project[] = [
     type: "Retrofit",
     client: "PT Karya Bahari Sejahtera",
     status: "Sedang Berjalan",
-    branch: "Batam",
+    branch: "Samarinda",
     start: "2026-05-01",
     end: "2026-08-30",
     progress: 84,
@@ -114,7 +114,7 @@ export const projects: Project[] = [
     type: "New Build",
     client: "PT Laut Timur Mandiri",
     status: "Tertunda",
-    branch: "Surabaya",
+    branch: "Samarinda",
     start: "2026-02-01",
     end: "2027-01-15",
     progress: 23,
@@ -129,7 +129,7 @@ export const projects: Project[] = [
     type: "Repair",
     client: "PT Mitra Samudra Raya",
     status: "Selesai",
-    branch: "Batam",
+    branch: "Samarinda",
     start: "2026-06-01",
     end: "2026-06-28",
     progress: 100,
@@ -253,14 +253,14 @@ export const inventory: InventoryItem[] = [
 ];
 
 export const equipment = [
-  { id: "EQ-001", name: "Gantry Crane 50T", category: "Pengangkat", code: "CRN-50", branch: "Batam", status: "Tersedia", util: 68, nextService: "2026-09-15", lastHours: 12450, model: "DEMAG 50T" },
-  { id: "EQ-002", name: "Mobile Crane 100T", category: "Pengangkat", code: "MCR-100", branch: "Batam", status: "Terpakai", util: 82, nextService: "2026-08-05", lastHours: 18320, model: "Liebherr MK100" },
-  { id: "EQ-003", name: "Mesin Las MIG", category: "Pengelasan", code: "WLD-MIG-12", branch: "Batam", status: "Terpakai", util: 74, nextService: "2026-08-20", lastHours: 2500, model: "Fronius TPS 400i" },
-  { id: "EQ-004", name: "Mesin Las SMAW", category: "Pengelasan", code: "WLD-SMAW-05", branch: "Surabaya", status: "Maintenance", util: 45, nextService: "2026-07-30", lastHours: 4100, model: "Miller XMT" },
-  { id: "EQ-005", name: "Air Compressor", category: "Tenaga", code: "AIR-COMP-2", branch: "Batam", status: "Tersedia", util: 58, nextService: "2026-09-01", lastHours: 8900, model: "Atlas Copco" },
-  { id: "EQ-006", name: "Forklift 10T", category: "Transportasi", code: "FLT-10", branch: "Surabaya", status: "Terpakai", util: 71, nextService: "2026-08-12", lastHours: 7200, model: "Toyota 10FD" },
-  { id: "EQ-007", name: "Blast Machine", category: "Pengecatan", code: "BLST-01", branch: "Batam", status: "Tersedia", util: 63, nextService: "2026-09-10", lastHours: 3200, model: "Blastrac" },
-  { id: "EQ-008", name: "Generator Set 500kVA", category: "Tenaga", code: "GEN-500", branch: "Batam", status: "Tersedia", util: 52, nextService: "2026-10-01", lastHours: 15600, model: "Caterpillar" },
+  { id: "EQ-001", name: "Gantry Crane 50T", category: "Pengangkat", code: "CRN-50", branch: "Samarinda", status: "Tersedia", util: 68, nextService: "2026-09-15", lastHours: 12450, model: "DEMAG 50T" },
+  { id: "EQ-002", name: "Mobile Crane 100T", category: "Pengangkat", code: "MCR-100", branch: "Samarinda", status: "Terpakai", util: 82, nextService: "2026-08-05", lastHours: 18320, model: "Liebherr MK100" },
+  { id: "EQ-003", name: "Mesin Las MIG", category: "Pengelasan", code: "WLD-MIG-12", branch: "Samarinda", status: "Terpakai", util: 74, nextService: "2026-08-20", lastHours: 2500, model: "Fronius TPS 400i" },
+  { id: "EQ-004", name: "Mesin Las SMAW", category: "Pengelasan", code: "WLD-SMAW-05", branch: "Samarinda", status: "Maintenance", util: 45, nextService: "2026-07-30", lastHours: 4100, model: "Miller XMT" },
+  { id: "EQ-005", name: "Air Compressor", category: "Tenaga", code: "AIR-COMP-2", branch: "Samarinda", status: "Tersedia", util: 58, nextService: "2026-09-01", lastHours: 8900, model: "Atlas Copco" },
+  { id: "EQ-006", name: "Forklift 10T", category: "Transportasi", code: "FLT-10", branch: "Samarinda", status: "Terpakai", util: 71, nextService: "2026-08-12", lastHours: 7200, model: "Toyota 10FD" },
+  { id: "EQ-007", name: "Blast Machine", category: "Pengecatan", code: "BLST-01", branch: "Samarinda", status: "Tersedia", util: 63, nextService: "2026-09-10", lastHours: 3200, model: "Blastrac" },
+  { id: "EQ-008", name: "Generator Set 500kVA", category: "Tenaga", code: "GEN-500", branch: "Samarinda", status: "Tersedia", util: 52, nextService: "2026-10-01", lastHours: 15600, model: "Caterpillar" },
 ];
 
 export const subcontractors = [
@@ -272,14 +272,14 @@ export const subcontractors = [
 ];
 
 export const employees = [
-  { id: "EMP-001", name: "Andi Darman", role: "Direktur", dept: "Direksi", branch: "Batam", status: "Aktif", join: "2012-03-01", certs: [] },
-  { id: "EMP-002", name: "Ir. Hendra Wijaya", role: "Project Manager", dept: "Proyek", branch: "Batam", status: "Aktif", join: "2015-07-12", certs: ["PMP", "Welding Inspector"] },
-  { id: "EMP-003", name: "Budi Santoso", role: "Project Manager", dept: "Proyek", branch: "Surabaya", status: "Aktif", join: "2016-02-20", certs: ["PMP"] },
-  { id: "EMP-004", name: "Rudi Hartono", role: "Superintendent", dept: "Produksi", branch: "Batam", status: "Aktif", join: "2014-09-01", certs: ["Marine Surveyor"] },
-  { id: "EMP-005", name: "Agus Setiawan", role: "Foreman", dept: "Produksi", branch: "Surabaya", status: "Aktif", join: "2018-05-14", certs: [] },
-  { id: "EMP-006", name: "Sari Wulandari", role: "QC Engineer", dept: "Quality", branch: "Batam", status: "Aktif", join: "2017-11-03", certs: ["NDT Level II", "CWI"] },
-  { id: "EMP-007", name: "Dewi Lestari", role: "Finance Manager", dept: "Finance", branch: "Batam", status: "Aktif", join: "2013-08-25", certs: ["Brevet A/B"] },
-  { id: "EMP-008", name: "Fajar Nugroho", role: "Procurement", dept: "Procurement", branch: "Batam", status: "Aktif", join: "2019-01-10", certs: [] },
+  { id: "EMP-001", name: "Andi Darman", role: "Direktur", dept: "Direksi", branch: "Samarinda", status: "Aktif", join: "2012-03-01", certs: [] },
+  { id: "EMP-002", name: "Ir. Hendra Wijaya", role: "Project Manager", dept: "Proyek", branch: "Samarinda", status: "Aktif", join: "2015-07-12", certs: ["PMP", "Welding Inspector"] },
+  { id: "EMP-003", name: "Budi Santoso", role: "Project Manager", dept: "Proyek", branch: "Samarinda", status: "Aktif", join: "2016-02-20", certs: ["PMP"] },
+  { id: "EMP-004", name: "Rudi Hartono", role: "Superintendent", dept: "Produksi", branch: "Samarinda", status: "Aktif", join: "2014-09-01", certs: ["Marine Surveyor"] },
+  { id: "EMP-005", name: "Agus Setiawan", role: "Foreman", dept: "Produksi", branch: "Samarinda", status: "Aktif", join: "2018-05-14", certs: [] },
+  { id: "EMP-006", name: "Sari Wulandari", role: "QC Engineer", dept: "Quality", branch: "Samarinda", status: "Aktif", join: "2017-11-03", certs: ["NDT Level II", "CWI"] },
+  { id: "EMP-007", name: "Dewi Lestari", role: "Finance Manager", dept: "Finance", branch: "Samarinda", status: "Aktif", join: "2013-08-25", certs: ["Brevet A/B"] },
+  { id: "EMP-008", name: "Fajar Nugroho", role: "Procurement", dept: "Procurement", branch: "Samarinda", status: "Aktif", join: "2019-01-10", certs: [] },
 ];
 
 export interface Invoice {
@@ -415,8 +415,7 @@ export const projectTypeDist = [
 ];
 
 export const revenueByBranch = [
-  { name: "Batam", value: 68.4, color: "#0b3a63" },
-  { name: "Surabaya", value: 31.6, color: "#2e9ad4" },
+  { name: "Samarinda", value: 100, color: "#0b3a63" },
 ];
 
 export const projectPipeline = [

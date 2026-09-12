@@ -90,10 +90,7 @@ function ShipScene() {
       </svg>
       {/* label koordinat */}
       <div className="absolute left-4 top-3 flex items-center gap-1.5 text-[10px] font-medium tracking-wider text-[#9fd4ef]">
-        <Globe2 className="h-3.5 w-3.5" /> 1°15′N 103°49′E — BATAM
-      </div>
-      <div className="absolute right-4 top-3 rounded-full border border-emerald-300/30 bg-emerald-400/10 px-2.5 py-1 text-[10px] font-semibold text-emerald-200">
-        ● PORT OPERATIONAL
+        <Globe2 className="h-3.5 w-3.5" /> 0°30′S 117°09′E — SAMARINDA
       </div>
     </div>
   );
@@ -165,7 +162,7 @@ export default function Login() {
             </h1>
             <p className="mt-3 max-w-md text-sm leading-relaxed text-[#b8d4e8]">
               Integrated Shipbuilding Management System — 13 modules covering project, drydock, inventory,
-              QC, finance and vessel lifecycle. Trusted by yards in Batam & Surabaya.
+              QC, finance and vessel lifecycle. Trusted by shipyards across Indonesia.
             </p>
           </motion.div>
 
@@ -195,7 +192,7 @@ export default function Login() {
         </div>
 
         <div className="relative flex items-center justify-between text-[11px] text-[#7ba7c4]">
-          <p>© 2026 ISMS Galangan · Batam — Surabaya</p>
+          <p>© 2026 ISMS Galangan · Indonesia</p>
           <p className="flex items-center gap-3">
             <span>ISO 9001</span>
             <span className="h-3 w-px bg-white/20" />

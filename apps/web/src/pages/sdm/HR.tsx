@@ -37,7 +37,7 @@ export default function HR() {
   const [dept, setDept] = useState("Semua");
   const [q, setQ] = useState("");
   const [showAdd, setShowAdd] = useState(false);
-  const [form, setForm] = useState({ name: "", role: "", dept: "Produksi", branch: "Batam", certs: "" });
+  const [form, setForm] = useState({ name: "", role: "", dept: "Produksi", branch: "Samarinda", certs: "" });
   const [detail, setDetail] = useState<StoreItem | null>(null);
 
   const list = employees.filter((e) => {
@@ -55,7 +55,7 @@ export default function HR() {
     }, { action: "mendaftarkan karyawan", module: "SDM" });
     toast(`Karyawan ${created.id} ditambahkan`);
     setShowAdd(false);
-    setForm({ name: "", role: "", dept: "Produksi", branch: "Batam", certs: "" });
+    setForm({ name: "", role: "", dept: "Produksi", branch: "Samarinda", certs: "" });
   };
 
   return (
@@ -217,7 +217,7 @@ export default function HR() {
             </Field>
             <Field label="Cabang">
               <select className="input" value={form.branch} onChange={(e) => setForm({ ...form, branch: e.target.value })}>
-                <option>Batam</option><option>Surabaya</option>
+                <option>Samarinda</option>
               </select>
             </Field>
           </FormGrid>
