@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import {
   Anchor,
   Wallet,
@@ -38,33 +38,42 @@ import {
   Badge,
   ProgressBar,
   Avatar,
+  toast,
 } from "../components/ui";
+import { useStore } from "../data/store";
 import {
-  projects,
   revenueSeries,
   sparkRevenue,
   sparkMargin,
   sparkProjects,
   sparkUtil,
   utilSeries,
-  projectTypeDist,
   drydockLoad,
   insights,
-  activities,
-  drydocks,
   fmtMiliar,
-  fmtRupiah,
 } from "../data";
 
 const RANGES = ["6B", "12B"] as const;
 
 export default function Dashboard() {
+  const { data } = useStore();
+  const navigate = useNavigate();
+  const projects = data.projects;
+  const activities = data.activities;
   const [range, setRange] = useState<(typeof RANGES)[number]>("12B");
   const totalActive = projects.filter((p) => p.status !== "Selesai").length;
   const delayed = projects.filter((p) => p.status === "Terlambat").length;
   const activeContracts = projects
     .filter((p) => p.status !== "Selesai")
-    .reduce((s, p) => s + p.budget, 0);
+    .reduce((s, p) => s + Number(p.budget || 0), 0);
+  const drydocks = data.drydocks;
+  const openNcr = data.ncr.filter((n) => n.status !== "Tertutup").length;
+  const arOutstanding = data.invoices
+    .filter((i) => i.status !== "Lunas" && i.status !== "Draft")
+    .reduce((s, i) => s + Number(i.amount || 0), 0);
+  const lowStock = data.inventory.filter((i) => i.stock <= i.minStock);
+  const stockValue = data.inventory.reduce((s, i) => s + Number(i.stock || 0) * Number(i.cost || 0), 0);
+  const wonQuotes = data.quotations.filter((x) => x.stage === "Menang").reduce((s, x) => s + Number(x.value || 0), 0);
   const utilDrydock =
     Math.round((drydocks.filter((d) => d.status === "Terpakai").length / drydocks.length) * 100);
   const utilEquipment = Math.round(utilSeries[utilSeries.length - 1].equipment);
@@ -73,6 +82,15 @@ export default function Dashboard() {
     range === "12B" ? revenueSeries : revenueSeries.slice(-6);
 
   const totalRevenue = revenueSeries.reduce((s, d) => s + d.revenue, 0);
+  const totalRevenueLabel = `Rp ${totalRevenue.toLocaleString("id-ID", { maximumFractionDigits: 1 })} M`;
+  const typeDist = (["New Build", "Repair", "Retrofit"] as const).map((t, i) => ({
+    name: t,
+    value: projects.filter((p) => p.type === t).length,
+    color: ["#0b3a63", "#2e9ad4", "#22c55e"][i],
+  }));
+  const pipelineActive = data.quotations
+    .filter((x) => x.stage !== "Menang")
+    .reduce((s, x) => s + Number(x.value || 0), 0);
 
   return (
     <Stagger className="space-y-5">
@@ -83,10 +101,10 @@ export default function Dashboard() {
           icon={<TrendingUp className="h-5 w-5" />}
           actions={
             <>
-              <button className="btn-secondary">
+              <button className="btn-secondary" onClick={() => toast("Laporan eksekutif diekspor (demo)", "info")}>
                 <Download className="h-4 w-4" /> Ekspor
               </button>
-              <button className="btn-primary-gradient">
+              <button className="btn-primary-gradient" onClick={() => navigate("/proyek")}>
                 <Plus className="h-4 w-4" /> Proyek Baru
               </button>
             </>
@@ -135,7 +153,7 @@ export default function Dashboard() {
         <StaggerItem>
           <KpiCard
             label="Pendapatan 12 Bulan"
-            value={fmtMiliar(totalRevenue)}
+            value={totalRevenueLabel}
             delta="+14.2% vs periode lalu"
             deltaDirection="up"
             icon={<Wallet className="h-5 w-5" />}
@@ -218,15 +236,15 @@ export default function Dashboard() {
             <CardHeader title="Komposisi Proyek" subtitle="Berdasarkan jenis pekerjaan" />
             <div className="flex flex-col items-center gap-4 p-4">
               <Donut
-                data={projectTypeDist}
-                colors={projectTypeDist.map((d) => d.color)}
+                data={typeDist}
+                colors={typeDist.map((d) => d.color)}
                 size={170}
                 thickness={22}
-                centerValue={String(projectTypeDist.reduce((s, d) => s + d.value, 0))}
+                centerValue={String(typeDist.reduce((s, d) => s + d.value, 0))}
                 centerLabel="proyek"
               />
               <div className="grid w-full grid-cols-2 gap-2">
-                {projectTypeDist.map((d) => (
+                {typeDist.map((d) => (
                   <div key={d.name} className="flex items-center gap-2 text-sm">
                     <span className="h-3 w-3 rounded-sm" style={{ background: d.color }} />
                     <span className="text-steel-600">{d.name}</span>
@@ -379,8 +397,8 @@ export default function Dashboard() {
                 <Boxes className="h-5 w-5" />
               </span>
               <div>
-                <p className="text-sm font-semibold text-navy-900">Nilai Stok</p>
-                <p className="text-lg font-bold text-gradient-navy">Rp 185 M</p>
+                <p className="text-sm font-semibold text-navy-900">Nilai Stok {lowStock.length > 0 && <span className="ml-1 rounded-full bg-rose-100 px-1.5 py-0.5 text-[10px] font-bold text-rose-600">{lowStock.length} menipis</span>}</p>
+                <Link to="/inventori" className="text-lg font-bold text-gradient-navy hover:underline">{fmtMiliar(stockValue)}</Link>
               </div>
             </div>
             <div className="flex items-center gap-3">
@@ -398,8 +416,22 @@ export default function Dashboard() {
               </span>
               <div>
                 <p className="text-sm font-semibold text-navy-900">Quotation Aktif</p>
-                <p className="text-lg font-bold text-gradient-navy">{fmtRupiah(48500000000).replace(",00", "")}</p>
+                <Link to="/crm" className="text-lg font-bold text-gradient-navy hover:underline">{fmtMiliar(pipelineActive)}</Link>
               </div>
+            </div>
+          </div>
+          <div className="mt-3 grid grid-cols-1 gap-4 border-t border-steel-100 pt-3 sm:grid-cols-3">
+            <div className="flex items-center justify-between text-sm">
+              <span className="text-steel-500">NCR terbuka</span>
+              <Link to="/qc-safety" className="font-bold text-rose-600 hover:underline">{openNcr} kasus</Link>
+            </div>
+            <div className="flex items-center justify-between text-sm">
+              <span className="text-steel-500">Piutang tertagih</span>
+              <Link to="/keuangan" className="font-bold text-navy-900 hover:underline">{fmtMiliar(arOutstanding)}</Link>
+            </div>
+            <div className="flex items-center justify-between text-sm">
+              <span className="text-steel-500">Kontrak menang (CRM)</span>
+              <Link to="/crm" className="font-bold text-navy-900 hover:underline">{fmtMiliar(wonQuotes)}</Link>
             </div>
           </div>
         </Card>

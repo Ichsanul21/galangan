@@ -12,8 +12,13 @@ import {
   ChartTooltip,
   Donut,
   Avatar,
+  Modal,
+  Field,
+  FormGrid,
+  toast,
 } from "../../components/ui";
-import { employees, deptDistribution, attendanceSeries, employeeTrend, sparkUtil } from "../../data";
+import { useStore, type StoreItem } from "../../data/store";
+import { deptDistribution, attendanceSeries, employeeTrend, sparkUtil } from "../../data";
 
 const deptFilter = ["Semua", "Direksi", "Proyek", "Produksi", "Quality", "Finance", "Procurement"];
 
@@ -27,8 +32,13 @@ const skills = [
 ];
 
 export default function HR() {
+  const { data, add } = useStore();
+  const employees = data.employees;
   const [dept, setDept] = useState("Semua");
   const [q, setQ] = useState("");
+  const [showAdd, setShowAdd] = useState(false);
+  const [form, setForm] = useState({ name: "", role: "", dept: "Produksi", branch: "Batam", certs: "" });
+  const [detail, setDetail] = useState<StoreItem | null>(null);
 
   const list = employees.filter((e) => {
     const matchD = dept === "Semua" || e.dept === dept;
@@ -36,13 +46,25 @@ export default function HR() {
     return matchD && matchQ;
   });
 
+  const save = () => {
+    if (!form.name.trim() || !form.role.trim()) { toast("Nama & jabatan wajib diisi", "info"); return; }
+    const created = add("employees", {
+      name: form.name.trim(), role: form.role.trim(), dept: form.dept, branch: form.branch,
+      status: "Aktif", join: new Date().toISOString().slice(0, 10),
+      certs: form.certs.split(",").map((c) => c.trim()).filter(Boolean),
+    }, { action: "mendaftarkan karyawan", module: "SDM" });
+    toast(`Karyawan ${created.id} ditambahkan`);
+    setShowAdd(false);
+    setForm({ name: "", role: "", dept: "Produksi", branch: "Batam", certs: "" });
+  };
+
   return (
     <div>
       <PageHeader
         title="SDM & Karyawan"
         subtitle="Data karyawan, skill matrix, sertifikasi, dan payroll"
         icon={<Users className="h-5 w-5" />}
-        actions={<button className="btn-primary-gradient"><Plus className="h-4 w-4" /> Tambah Karyawan</button>}
+        actions={<button className="btn-primary-gradient" onClick={() => setShowAdd(true)}><Plus className="h-4 w-4" /> Tambah Karyawan</button>}
       />
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
@@ -77,7 +99,7 @@ export default function HR() {
                   </thead>
                   <tbody className="divide-y divide-steel-100">
                     {list.map((e) => (
-                      <tr key={e.id} className="hover:bg-surface">
+                      <tr key={e.id} className="hover:bg-surface cursor-pointer" onClick={() => setDetail(e)}>
                         <td className="td">
                           <div className="flex items-center gap-2.5">
                             <Avatar name={e.name} className="h-8 w-8 shrink-0" />
@@ -92,7 +114,7 @@ export default function HR() {
                         <td className="td text-steel-600">{e.branch}</td>
                         <td className="td">
                           <div className="flex flex-wrap gap-1">
-                            {e.certs.length ? e.certs.map((c) => <Badge key={c} tone="blue">{c}</Badge>) : <span className="text-steel-400 text-xs">—</span>}
+                            {(e.certs ?? []).length ? (e.certs as string[]).map((c: string) => <Badge key={c} tone="blue">{c}</Badge>) : <span className="text-steel-400 text-xs">—</span>}
                           </div>
                         </td>
                         <td className="td"><StatusBadge status={e.status} /></td>
@@ -100,6 +122,7 @@ export default function HR() {
                     ))}
                   </tbody>
                 </table>
+                {list.length === 0 && <p className="py-8 text-center text-sm text-steel-400">Tidak ada karyawan yang cocok.</p>}
               </div>
             </div>
           </Card>
@@ -179,6 +202,54 @@ export default function HR() {
           </Card>
         </div>
       </div>
+
+      {/* Modal tambah */}
+      <Modal open={showAdd} onClose={() => setShowAdd(false)} title="Tambah Karyawan"
+        wide footer={<><button className="btn-secondary" onClick={() => setShowAdd(false)}>Batal</button><button className="btn-primary" onClick={save}>Simpan</button></>}>
+        <div className="space-y-3">
+          <FormGrid>
+            <Field label="Nama lengkap"><input className="input" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="cth: Joko Prasetyo" /></Field>
+            <Field label="Jabatan"><input className="input" value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value })} placeholder="cth: Welder" /></Field>
+            <Field label="Departemen">
+              <select className="input" value={form.dept} onChange={(e) => setForm({ ...form, dept: e.target.value })}>
+                {["Direksi", "Proyek", "Produksi", "Quality", "Finance", "Procurement", "Support"].map((d) => <option key={d}>{d}</option>)}
+              </select>
+            </Field>
+            <Field label="Cabang">
+              <select className="input" value={form.branch} onChange={(e) => setForm({ ...form, branch: e.target.value })}>
+                <option>Batam</option><option>Surabaya</option>
+              </select>
+            </Field>
+          </FormGrid>
+          <Field label="Sertifikasi (pisahkan koma)" hint="cth: SMAW, NDT Level I">
+            <input className="input" value={form.certs} onChange={(e) => setForm({ ...form, certs: e.target.value })} />
+          </Field>
+        </div>
+      </Modal>
+
+      {/* Modal profil */}
+      <Modal open={detail !== null} onClose={() => setDetail(null)} title={detail?.name ?? ""} subtitle={detail ? `${detail.id} · ${detail.role}` : ""}>
+        {detail && (
+          <div>
+            <div className="flex items-center gap-3">
+              <Avatar name={detail.name} className="h-14 w-14" />
+              <div>
+                <p className="font-bold text-navy-900">{detail.name}</p>
+                <p className="text-sm text-steel-500">{detail.role} · {detail.dept} · {detail.branch}</p>
+              </div>
+            </div>
+            <dl className="mt-4 space-y-2.5 text-sm">
+              <div className="flex justify-between"><dt className="text-steel-500">Bergabung</dt><dd className="font-medium">{detail.join}</dd></div>
+              <div className="flex justify-between"><dt className="text-steel-500">Status</dt><dd><StatusBadge status={detail.status} /></dd></div>
+              <div className="flex justify-between"><dt className="text-steel-500">Proyek ditangani</dt><dd className="font-medium">{data.projects.filter((p) => p.manager === detail.name && p.status !== "Selesai").length} proyek</dd></div>
+            </dl>
+            <h4 className="mb-2 mt-4 text-sm font-semibold text-navy-900">Sertifikasi</h4>
+            <div className="flex flex-wrap gap-1.5">
+              {(detail.certs ?? []).length ? (detail.certs as string[]).map((c: string) => <Badge key={c} tone="blue">{c}</Badge>) : <span className="text-xs text-steel-400">Belum ada sertifikasi tercatat.</span>}
+            </div>
+          </div>
+        )}
+      </Modal>
     </div>
   );
 }

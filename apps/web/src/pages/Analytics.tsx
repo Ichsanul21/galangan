@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Link } from "react-router-dom";
 import {
   Eye,
   TrendingUp,
@@ -34,7 +35,9 @@ import {
   Badge,
   ChartTooltip,
   Donut,
+  toast,
 } from "../components/ui";
+import { useStore } from "../data/store";
 import {
   revenueSeries,
   sparkRevenue,
@@ -42,7 +45,6 @@ import {
   sparkProjects,
   sparkUtil,
   marginSeries,
-  projectTypeDist,
   inspectionTrend,
 } from "../data";
 
@@ -74,6 +76,23 @@ const variance = [
 
 export default function Analytics() {
   const [tab, setTab] = useState("Deskriptif");
+  const { data } = useStore();
+
+  const avgProgress = data.projects.length
+    ? Math.round(data.projects.reduce((s, p) => s + Number(p.progress || 0), 0) / data.projects.length)
+    : 0;
+  const openNcr = data.ncr.filter((n) => n.status !== "Tertutup").length;
+  const lowStock = data.inventory.filter((i) => i.stock <= i.minStock);
+  const atRisk = data.projects.filter((p) => p.status === "Terlambat" || Number(p.actual || 0) > Number(p.budget || 0)).length;
+  const dockConflict = (() => {
+    const slots = data.dockSlots;
+    return slots.filter((s) => slots.some((o) => o.dockId === s.dockId && o.id !== s.id && s.from < o.to && o.from < s.to)).length;
+  })();
+  const typeDist = (["New Build", "Repair", "Retrofit"] as const).map((t, i) => ({
+    name: t,
+    value: data.projects.filter((p) => p.type === t).length,
+    color: ["#0b3a63", "#2e9ad4", "#22c55e"][i],
+  }));
 
   return (
     <div>
@@ -83,10 +102,10 @@ export default function Analytics() {
         icon={<BarChart3 className="h-5 w-5" />}
         actions={
           <>
-            <button className="btn-secondary">
+            <button className="btn-secondary" onClick={() => toast("Mode jelajah data (demo)", "info")}>
               <Search className="h-4 w-4" /> Jelajah
             </button>
-            <button className="btn-primary-gradient">Export Laporan</button>
+            <button className="btn-primary-gradient" onClick={() => toast("Laporan analytics diekspor (demo)", "info")}>Export Laporan</button>
           </>
         }
       />
@@ -99,8 +118,8 @@ export default function Analytics() {
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
               <KpiCard label="Revenue YTD" value="Rp 84,2 M" delta="+16% vs tahun lalu" deltaDirection="up" icon={<TrendingUp className="h-5 w-5" />} chip="navy" spark={sparkRevenue} />
               <KpiCard label="Margin Rata-rata" value="26,4%" delta="+1,2pt" deltaDirection="up" icon={<Eye className="h-5 w-5" />} chip="teal" spark={sparkMargin} />
-              <KpiCard label="Rata-rata Progres" value="63%" delta="Sesuai jadwal" deltaDirection="flat" icon={<Clock className="h-5 w-5" />} chip="violet" spark={sparkProjects} />
-              <KpiCard label="NCR bulan ini" value="12" delta="+2 vs bulan lalu" deltaDirection="down" icon={<AlertTriangle className="h-5 w-5" />} chip="rose" spark={sparkUtil} />
+              <KpiCard label="Rata-rata Progres" value={`${avgProgress}%`} delta={`${data.projects.length} proyek aktif`} deltaDirection="flat" icon={<Clock className="h-5 w-5" />} chip="violet" spark={sparkProjects} />
+              <KpiCard label="NCR Terbuka" value={String(openNcr)} delta="Terhubung modul QC" deltaDirection="down" icon={<AlertTriangle className="h-5 w-5" />} chip="rose" spark={sparkUtil} />
             </div>
 
             <div className="grid grid-cols-1 gap-5 lg:grid-cols-3">
@@ -121,18 +140,18 @@ export default function Analytics() {
                 </div>
               </Card>
               <Card>
-                <CardHeader title="Komposisi Jenis Pekerjaan" subtitle="Distribusi portofolio" />
+                <CardHeader title="Komposisi Jenis Pekerjaan" subtitle="Distribusi portofolio (live)" />
                 <div className="flex flex-col items-center gap-3 p-4">
                   <Donut
-                    data={projectTypeDist}
-                    colors={projectTypeDist.map((d) => d.color)}
+                    data={typeDist}
+                    colors={typeDist.map((d) => d.color)}
                     size={150}
                     thickness={20}
-                    centerValue="20"
+                    centerValue={String(typeDist.reduce((s, d) => s + d.value, 0))}
                     centerLabel="total"
                   />
                   <div className="grid w-full grid-cols-1 gap-1.5">
-                    {projectTypeDist.map((d) => (
+                    {typeDist.map((d) => (
                       <div key={d.name} className="flex items-center gap-2 text-sm">
                         <span className="h-3 w-3 rounded-sm" style={{ background: d.color }} />
                         <span className="text-steel-600">{d.name}</span>
@@ -220,9 +239,9 @@ export default function Analytics() {
           <div className="space-y-5">
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
               <KpiCard label="Forecast Revenue 2026" value="Rp 112 M" delta="+9% target" deltaDirection="up" icon={<TrendingUp className="h-5 w-5" />} chip="navy" spark={sparkRevenue} />
-              <KpiCard label="Konflik Drydock" value="2 terjadwal" delta="Agu & Okt" deltaDirection="down" icon={<AlertTriangle className="h-5 w-5" />} chip="rose" />
-              <KpiCard label="Forecast Stok Kritis" value="3 item" delta="Sebelum Okt" deltaDirection="down" icon={<AlertTriangle className="h-5 w-5" />} chip="amber" />
-              <KpiCard label="Proyek Berisiko" value="2 proyek" delta="EAC di atas anggaran" deltaDirection="down" icon={<Clock className="h-5 w-5" />} chip="violet" />
+              <KpiCard label="Konflik Drydock" value={dockConflict ? `${dockConflict} slot` : "Aman"} delta={dockConflict ? "Perlu atasi" : "Tidak ada tumpang tindih"} deltaDirection={dockConflict ? "down" : "up"} icon={<AlertTriangle className="h-5 w-5" />} chip="rose" />
+              <KpiCard label="Stok Kritis" value={`${lowStock.length} item`} delta={lowStock.slice(0, 2).map((i) => i.name.split(" ").slice(0, 2).join(" ")).join(" · ") || "Semua aman"} deltaDirection={lowStock.length ? "down" : "up"} icon={<AlertTriangle className="h-5 w-5" />} chip="amber" />
+              <KpiCard label="Proyek Berisiko" value={`${atRisk} proyek`} delta="Terlambat / over-budget" deltaDirection={atRisk ? "down" : "up"} icon={<Clock className="h-5 w-5" />} chip="violet" />
             </div>
             <Card>
               <CardHeader title="Forecast Pendapatan" subtitle="Aktual + prediksi 5 bulan (milyar Rupiah) · ETO/EAC" action={<Badge tone="blue">AI Forecast</Badge>} />
@@ -247,17 +266,18 @@ export default function Analytics() {
           <div className="space-y-5">
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               {[
-                { icon: Lightbulb, tone: "bg-navy-50 text-navy-700", title: "Alokasi Drydock", desc: "Geser TB Laut Timur 01 ke Okt untuk hindari konflik slot dengan NB-014; gunakan berth 1 untuk assembly." },
-                { icon: CheckCircle2, tone: "bg-emerald-50 text-emerald-600", title: "Reorder Material", desc: "Pipa S40 6 inch & Baut M20 akan kritis sebelum Okt. Terbitkan PO sekarang dengan lead time 3 minggu." },
-                { icon: Lightbulb, tone: "bg-amber-50 text-amber-600", title: "Prioritas Proyek", desc: "Tingkatkan prioritas RP-2026-005 sebelum kehilangan 2% penalty/day. Alokasikan tim las tambahan." },
-                { icon: CheckCircle2, tone: "bg-violet-50 text-violet-700", title: "Efisiensi Vendor", desc: "PT Indo Diesel punya ketepatan kirim tertinggi (96%). Alokasikan 20% volume mesin tambahan ke vendor ini." },
+                { icon: Lightbulb, tone: "bg-navy-50 text-navy-700", title: "Alokasi Drydock", desc: "Geser slot yang bertabrakan ke minggu berikutnya; gunakan berth 1 untuk assembly.", to: "/drydock", cta: "Buka Drydock" },
+                { icon: CheckCircle2, tone: "bg-emerald-50 text-emerald-600", title: "Reorder Material", desc: `${lowStock.length} item di bawah minimum. Terbitkan PO sekarang dengan lead time 3 minggu.`, to: "/procurement", cta: "Buka Procurement" },
+                { icon: Lightbulb, tone: "bg-amber-50 text-amber-600", title: "Prioritas Proyek", desc: `${atRisk} proyek terlambat/over-budget. Alokasikan tim las tambahan & tinjau WBS.`, to: "/proyek", cta: "Buka Proyek" },
+                { icon: CheckCircle2, tone: "bg-violet-50 text-violet-700", title: "Tindak Lanjut NCR", desc: `${openNcr} NCR masih terbuka. Selesaikan temuan critical terlebih dahulu.`, to: "/qc-safety", cta: "Buka QC" },
               ].map((r) => (
                 <Card key={r.title} className="card-hover p-5">
                   <div className="flex items-start gap-3">
                     <div className={`rounded-lg p-2 ${r.tone}`}><r.icon className="h-5 w-5" /></div>
-                    <div>
+                    <div className="flex-1">
                       <h3 className="text-sm font-semibold text-navy-900">{r.title}</h3>
                       <p className="mt-1 text-sm text-steel-600">{r.desc}</p>
+                      <Link to={r.to} className="mt-2 inline-flex text-sm font-semibold text-ocean-600 hover:underline">{r.cta} →</Link>
                     </div>
                   </div>
                 </Card>

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { NavLink, Outlet } from "react-router-dom";
+import { NavLink, Outlet, Link, useNavigate } from "react-router-dom";
 import {
   LayoutDashboard,
   Anchor,
@@ -20,9 +20,14 @@ import {
   Search,
   ChevronsUpDown,
   CheckCircle2,
-  AlertTriangle,
   FileText,
+  LogOut,
+  User,
+  RotateCcw,
 } from "lucide-react";
+import { useAuth } from "../auth/auth";
+import { useStore } from "../data/store";
+import { Badge, Modal, Field, Toaster, toast } from "../components/ui";
 
 const navGroups = [
   {
@@ -62,9 +67,56 @@ const navGroups = [
 ];
 
 export default function AppShell() {
+  const { user, logout } = useAuth();
+  const { data, reset } = useStore();
+  const navigate = useNavigate();
   const [open, setOpen] = useState(false);
   const [userOpen, setUserOpen] = useState(false);
+  const [notifOpen, setNotifOpen] = useState(false);
+  const [profileOpen, setProfileOpen] = useState(false);
+  const [q, setQ] = useState("");
 
+  const doLogout = () => {
+    logout();
+    navigate("/login");
+  };
+
+  const doReset = () => {
+    reset();
+    setProfileOpen(false);
+    toast("Data demo dikembalikan ke awal", "info");
+  };
+
+  // Pencarian global terintegrasi: proyek, kapal, invoice, PO, penawaran, karyawan
+  const query = q.trim().toLowerCase();
+  const hits: { label: string; sub: string; to: string; kind: string }[] = query
+    ? [
+        ...data.projects
+          .filter((p) => `${p.vessel} ${p.id} ${p.client}`.toLowerCase().includes(query))
+          .slice(0, 3)
+          .map((p) => ({ label: p.vessel, sub: `${p.id} · ${p.client}`, to: `/proyek/${p.id}`, kind: "Proyek" })),
+        ...data.vessels
+          .filter((v) => `${v.name} ${v.imo}`.toLowerCase().includes(query))
+          .slice(0, 2)
+          .map((v) => ({ label: v.name, sub: `${v.imo}`, to: `/kapal/${v.id}`, kind: "Kapal" })),
+        ...data.invoices
+          .filter((i) => `${i.id} ${i.client}`.toLowerCase().includes(query))
+          .slice(0, 2)
+          .map((i) => ({ label: i.id, sub: `${i.client} · ${i.project}`, to: "/keuangan", kind: "Invoice" })),
+        ...data.purchaseOrders
+          .filter((p) => `${p.id} ${p.item} ${p.vendor}`.toLowerCase().includes(query))
+          .slice(0, 2)
+          .map((p) => ({ label: p.id, sub: `${p.item} · ${p.vendor}`, to: "/procurement", kind: "PO" })),
+        ...data.quotations
+          .filter((x) => `${x.id} ${x.vessel} ${x.client}`.toLowerCase().includes(query))
+          .slice(0, 2)
+          .map((x) => ({ label: x.id, sub: `${x.vessel} · ${x.client}`, to: "/crm", kind: "Quotation" })),
+        ...data.employees
+          .filter((e) => `${e.name} ${e.role}`.toLowerCase().includes(query))
+          .slice(0, 2)
+          .map((e) => ({ label: e.name, sub: `${e.role} · ${e.dept}`, to: "/sdm", kind: "Karyawan" })),
+      ]
+    : [];
 
   const sidebar = (
     <div className="flex h-full flex-col bg-navy-900 text-white">
@@ -111,6 +163,17 @@ export default function AppShell() {
           </div>
         ))}
       </nav>
+      <div className="border-t border-white/10 p-3">
+        <div className="flex items-center gap-2.5 rounded-lg bg-white/5 px-3 py-2">
+          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-gradient-hero text-xs font-bold text-white">
+            {user?.initials ?? "?"}
+          </div>
+          <div className="min-w-0">
+            <p className="truncate text-xs font-semibold">{user?.name ?? "-"}</p>
+            <p className="truncate text-[10px] text-steel-300">{user?.role ?? "-"}</p>
+          </div>
+        </div>
+      </div>
     </div>
   );
 
@@ -145,37 +208,88 @@ export default function AppShell() {
             </div>
           </div>
 
-          <div className="hidden max-w-md flex-1 md:block">
+          <div className="relative hidden max-w-md flex-1 md:block">
             <div className="relative">
               <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-steel-400" />
               <input
                 placeholder="Cari proyek, vessel, dokumen, vendor…"
                 className="input pl-9 py-2 text-sm"
+                value={q}
+                onChange={(e) => setQ(e.target.value)}
               />
               <kbd className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 rounded border border-steel-200 bg-steel-100 px-1.5 py-0.5 text-[10px] font-medium text-steel-400">
                 ⌘K
               </kbd>
             </div>
+            {query && (
+              <>
+                <div className="fixed inset-0 z-10" onClick={() => setQ("")} />
+                <div className="absolute left-0 right-0 z-20 mt-2 overflow-hidden rounded-xl border border-steel-200 bg-white shadow-lift">
+                  {hits.length === 0 && (
+                    <p className="px-4 py-3 text-sm text-steel-400">Tidak ada hasil untuk “{q}”.</p>
+                  )}
+                  {hits.map((h, i) => (
+                    <Link
+                      key={`${h.kind}-${i}`}
+                      to={h.to}
+                      onClick={() => setQ("")}
+                      className="flex items-center gap-3 px-4 py-2.5 hover:bg-surface"
+                    >
+                      <Badge tone="navy">{h.kind}</Badge>
+                      <span className="min-w-0">
+                        <span className="block truncate text-sm font-semibold text-navy-900">{h.label}</span>
+                        <span className="block truncate text-xs text-steel-500">{h.sub}</span>
+                      </span>
+                    </Link>
+                  ))}
+                </div>
+              </>
+            )}
           </div>
 
           <div className="flex items-center gap-2">
-            <button className="relative flex items-center gap-1.5 rounded-lg px-2 py-1.5 text-steel-500 hover:bg-steel-100">
-              <Bell className="h-5 w-5" />
-              <span className="absolute right-0.5 top-1 flex h-4 w-4 items-center justify-center rounded-full bg-rose-500 text-[9px] font-bold text-white">
-                6
-              </span>
-            </button>
+            <div className="relative">
+              <button
+                onClick={() => setNotifOpen((v) => !v)}
+                className="relative flex items-center gap-1.5 rounded-lg px-2 py-1.5 text-steel-500 hover:bg-steel-100"
+                aria-label="Notifikasi"
+              >
+                <Bell className="h-5 w-5" />
+                <span className="absolute right-0.5 top-1 flex h-4 w-4 items-center justify-center rounded-full bg-rose-500 text-[9px] font-bold text-white">
+                  {Math.min(data.activities.length, 9)}
+                </span>
+              </button>
+              {notifOpen && (
+                <>
+                  <div className="fixed inset-0 z-10" onClick={() => setNotifOpen(false)} />
+                  <div className="absolute right-0 z-20 mt-2 max-h-96 w-80 overflow-y-auto rounded-xl border border-steel-200 bg-white shadow-lift">
+                    <p className="border-b border-steel-100 px-4 py-2.5 text-sm font-semibold text-navy-900">
+                      Aktivitas Terkini
+                    </p>
+                    {data.activities.slice(0, 8).map((a) => (
+                      <div key={a.id} className="border-b border-steel-50 px-4 py-2.5 last:border-0">
+                        <p className="text-xs text-steel-700">
+                          <span className="font-semibold text-navy-900">{a.actor}</span> {a.action}{" "}
+                          <span className="font-medium">{a.target}</span>
+                        </p>
+                        <p className="mt-0.5 text-[10px] text-steel-400">{a.module} · {a.time}</p>
+                      </div>
+                    ))}
+                  </div>
+                </>
+              )}
+            </div>
             <div className="relative">
               <button
                 onClick={() => setUserOpen((v) => !v)}
                 className="flex items-center gap-2 rounded-lg p-1.5 hover:bg-steel-100"
               >
                 <div className="flex h-8 w-8 items-center justify-center rounded-full bg-gradient-hero text-xs font-bold text-white">
-                  AD
+                  {user?.initials ?? "?"}
                 </div>
                 <div className="hidden text-left leading-tight sm:block">
-                  <p className="text-xs font-semibold text-navy-900">Andi Darman</p>
-                  <p className="text-[10px] text-steel-500">Direktur</p>
+                  <p className="text-xs font-semibold text-navy-900">{user?.name ?? "-"}</p>
+                  <p className="text-[10px] text-steel-500">{user?.role ?? "-"}</p>
                 </div>
                 <ChevronsUpDown className="hidden h-3.5 w-3.5 text-steel-400 sm:block" />
               </button>
@@ -184,23 +298,35 @@ export default function AppShell() {
                   <div className="fixed inset-0 z-10" onClick={() => setUserOpen(false)} />
                   <div className="absolute right-0 z-20 mt-2 w-60 overflow-hidden rounded-xl border border-steel-200 bg-white shadow-lift">
                     <div className="border-b border-steel-100 px-4 py-3">
-                      <p className="text-sm font-semibold text-navy-900">Andi Darman</p>
-                      <p className="text-xs text-steel-500">andi.darman@isgalangan.co.id</p>
+                      <p className="text-sm font-semibold text-navy-900">{user?.name}</p>
+                      <p className="text-xs text-steel-500">{user?.email}</p>
                     </div>
                     <div className="p-1.5">
-                      <a href="#" className="flex items-center gap-2 rounded-lg px-3 py-2 text-sm text-steel-700 hover:bg-steel-100">
-                        <FileText className="h-4 w-4 text-steel-400" /> Profil & Tanda Tangan
-                      </a>
-                      <a href="#" className="flex items-center gap-2 rounded-lg px-3 py-2 text-sm text-steel-700 hover:bg-steel-100">
-                        <CheckCircle2 className="h-4 w-4 text-emerald-500" /> Persetujuan menunggu
-                      </a>
-                      <a href="#" className="flex items-center gap-2 rounded-lg px-3 py-2 text-sm text-steel-700 hover:bg-steel-100">
-                        <Bell className="h-4 w-4 text-steel-400" /> Notifikasi
-                      </a>
+                      <button
+                        onClick={() => { setUserOpen(false); setProfileOpen(true); }}
+                        className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm text-steel-700 hover:bg-steel-100"
+                      >
+                        <User className="h-4 w-4 text-steel-400" /> Profil Saya
+                      </button>
+                      <button
+                        onClick={() => { setUserOpen(false); setNotifOpen(true); }}
+                        className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm text-steel-700 hover:bg-steel-100"
+                      >
+                        <CheckCircle2 className="h-4 w-4 text-emerald-500" /> Aktivitas Saya
+                      </button>
+                      <button
+                        onClick={() => { setUserOpen(false); navigate("/dokumen"); }}
+                        className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm text-steel-700 hover:bg-steel-100"
+                      >
+                        <FileText className="h-4 w-4 text-steel-400" /> Dokumen Saya
+                      </button>
                       <div className="my-1.5 border-t border-steel-100" />
-                      <a href="#" className="flex items-center gap-2 rounded-lg px-3 py-2 text-sm text-rose-600 hover:bg-rose-50">
-                        <AlertTriangle className="h-4 w-4" /> Keluar
-                      </a>
+                      <button
+                        onClick={doLogout}
+                        className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm text-rose-600 hover:bg-rose-50"
+                      >
+                        <LogOut className="h-4 w-4" /> Keluar
+                      </button>
                     </div>
                   </div>
                 </>
@@ -213,6 +339,31 @@ export default function AppShell() {
           <Outlet />
         </main>
       </div>
+
+      {/* Modal profil */}
+      <Modal open={profileOpen} onClose={() => setProfileOpen(false)} title="Profil Saya" subtitle="Sesi demo — tersimpan di browser">
+        <div className="flex items-center gap-3">
+          <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-hero text-lg font-bold text-white">
+            {user?.initials}
+          </div>
+          <div>
+            <p className="font-bold text-navy-900">{user?.name}</p>
+            <p className="text-sm text-steel-500">{user?.role}</p>
+            <p className="text-xs text-steel-400">{user?.email}</p>
+          </div>
+        </div>
+        <div className="mt-4 rounded-xl bg-surface p-3 text-xs leading-relaxed text-steel-600">
+          Semua perubahan data yang Anda buat di semua modul tersimpan otomatis di sesi browser ini (sessionStorage).
+          Menutup tab akan menghapus sesi login; data demo dapat dikembalikan kapan saja.
+        </div>
+        <Field label="Reset data demo">
+          <button onClick={doReset} className="btn-secondary w-full justify-center">
+            <RotateCcw className="h-4 w-4" /> Kembalikan data ke awal
+          </button>
+        </Field>
+      </Modal>
+
+      <Toaster />
     </div>
   );
 }

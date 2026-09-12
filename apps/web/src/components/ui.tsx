@@ -1,10 +1,14 @@
 import type { ReactNode } from "react";
-import { motion } from "framer-motion";
+import { useEffect, useState } from "react";
+import { motion, AnimatePresence } from "framer-motion";
 import {
   ArrowDownRight,
   ArrowUpRight,
   Minus,
   ChevronRight,
+  X,
+  CheckCircle2,
+  Info,
 } from "lucide-react";
 import {
   Area,
@@ -597,3 +601,195 @@ export function SectionLink({ to, label }: { to: string; label: string }) {
 }
 
 export { Tooltip };
+
+/* ============ M O D A L / P O P U P ============ */
+
+export function Modal({
+  open,
+  onClose,
+  title,
+  subtitle,
+  children,
+  footer,
+  wide = false,
+}: {
+  open: boolean;
+  onClose: () => void;
+  title: string;
+  subtitle?: string;
+  children: ReactNode;
+  footer?: ReactNode;
+  wide?: boolean;
+}) {
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKey);
+    document.body.style.overflow = "hidden";
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      document.body.style.overflow = "";
+    };
+  }, [open, onClose]);
+
+  return (
+    <AnimatePresence>
+      {open && (
+        <div className="fixed inset-0 z-50 flex items-end justify-center p-0 sm:items-center sm:p-6">
+          <motion.div
+            className="absolute inset-0 bg-navy-900/50 backdrop-blur-[2px]"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            onClick={onClose}
+          />
+          <motion.div
+            className={`relative flex max-h-[92vh] w-full flex-col overflow-hidden rounded-t-2xl bg-white shadow-lift sm:rounded-2xl ${
+              wide ? "sm:max-w-3xl" : "sm:max-w-lg"
+            }`}
+            initial={{ opacity: 0, y: 32, scale: 0.98 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: 24, scale: 0.98 }}
+            transition={{ duration: 0.22, ease: "easeOut" }}
+          >
+            <div className="flex items-start justify-between gap-3 border-b border-steel-100 px-5 py-4">
+              <div>
+                <h3 className="text-base font-bold text-navy-900">{title}</h3>
+                {subtitle && <p className="mt-0.5 text-xs text-steel-500">{subtitle}</p>}
+              </div>
+              <button
+                onClick={onClose}
+                aria-label="Tutup"
+                className="rounded-lg p-1.5 text-steel-400 hover:bg-steel-100 hover:text-steel-700"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            <div className="overflow-y-auto px-5 py-4">{children}</div>
+            {footer && (
+              <div className="flex items-center justify-end gap-2 border-t border-steel-100 bg-surface px-5 py-3">
+                {footer}
+              </div>
+            )}
+          </motion.div>
+        </div>
+      )}
+    </AnimatePresence>
+  );
+}
+
+export function ConfirmModal({
+  open,
+  title,
+  desc,
+  confirmLabel = "Ya, lanjutkan",
+  danger = false,
+  onCancel,
+  onConfirm,
+}: {
+  open: boolean;
+  title: string;
+  desc: string;
+  confirmLabel?: string;
+  danger?: boolean;
+  onCancel: () => void;
+  onConfirm: () => void;
+}) {
+  return (
+    <Modal
+      open={open}
+      onClose={onCancel}
+      title={title}
+      footer={
+        <>
+          <button className="btn-secondary" onClick={onCancel}>
+            Batal
+          </button>
+          <button className={danger ? "btn-danger" : "btn-primary"} onClick={onConfirm}>
+            {confirmLabel}
+          </button>
+        </>
+      }
+    >
+      <p className="text-sm text-steel-600">{desc}</p>
+    </Modal>
+  );
+}
+
+export function Field({
+  label,
+  children,
+  hint,
+}: {
+  label: string;
+  children: ReactNode;
+  hint?: string;
+}) {
+  return (
+    <label className="block">
+      <span className="label">{label}</span>
+      {children}
+      {hint && <span className="mt-1 block text-[11px] text-steel-400">{hint}</span>}
+    </label>
+  );
+}
+
+export function FormGrid({ children }: { children: ReactNode }) {
+  return <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">{children}</div>;
+}
+
+/* ============ T O A S T ============ */
+
+export function toast(message: string, tone: "success" | "info" = "success") {
+  window.dispatchEvent(new CustomEvent("isms:toast", { detail: { message, tone } }));
+}
+
+interface ToastItem {
+  id: number;
+  message: string;
+  tone: "success" | "info";
+}
+
+let toastSeq = 0;
+
+export function Toaster() {
+  const [items, setItems] = useState<ToastItem[]>([]);
+
+  useEffect(() => {
+    const onToast = (e: Event) => {
+      const detail = (e as CustomEvent).detail as { message: string; tone: "success" | "info" };
+      const id = ++toastSeq;
+      setItems((prev) => [...prev.slice(-2), { id, message: detail.message, tone: detail.tone }]);
+      window.setTimeout(() => {
+        setItems((prev) => prev.filter((t) => t.id !== id));
+      }, 3000);
+    };
+    window.addEventListener("isms:toast", onToast);
+    return () => window.removeEventListener("isms:toast", onToast);
+  }, []);
+
+  return (
+    <div className="pointer-events-none fixed bottom-5 right-5 z-[60] flex w-80 flex-col gap-2">
+      <AnimatePresence>
+        {items.map((t) => (
+          <motion.div
+            key={t.id}
+            initial={{ opacity: 0, x: 40 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: 40 }}
+            className="pointer-events-auto flex items-start gap-2.5 rounded-xl border border-steel-200 bg-white px-4 py-3 shadow-lift"
+          >
+            {t.tone === "success" ? (
+              <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-emerald-500" />
+            ) : (
+              <Info className="mt-0.5 h-5 w-5 shrink-0 text-ocean-500" />
+            )}
+            <p className="text-sm font-medium text-navy-900">{t.message}</p>
+          </motion.div>
+        ))}
+      </AnimatePresence>
+    </div>
+  );
+}

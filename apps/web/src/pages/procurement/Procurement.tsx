@@ -1,22 +1,9 @@
 import { useState } from "react";
-import { Plus, Factory, ShoppingCart, ClipboardList } from "lucide-react";
+import { Plus, Factory, ShoppingCart, ClipboardList, Check } from "lucide-react";
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
-import { Card, CardHeader, PageHeader, Badge, KpiCard, Tabs, StatusBadge, Donut, ChartTooltip } from "../../components/ui";
-import { purchaseOrders, fmtRupiah, spendByCategory, procurementTrend, sparkRevenue } from "../../data";
-
-const vendors = [
-  { id: "V-001", name: "PT Bahana Baja", cat: "Baja & Struktur", onTime: 92, quality: 95, po: 12 },
-  { id: "V-002", name: "PT Indo Diesel", cat: "Mesin & Engine", onTime: 96, quality: 90, po: 5 },
-  { id: "V-003", name: "PT Jotun Indonesia", cat: "Cat & Coating", onTime: 88, quality: 93, po: 8 },
-  { id: "V-004", name: "PT Steel Rig", cat: "Rigging & Wire", onTime: 84, quality: 87, po: 6 },
-];
-
-const requisitions = [
-  { id: "PR-2026-201", item: "Aux Engine MAK", by: "Budi Santoso", amount: 1700000000, status: "Sudah PO" },
-  { id: "PR-2026-203", item: "Pelat Baja AH36", by: "Fajar N.", amount: 4120000000, status: "Sudah PO" },
-  { id: "PR-2026-207", item: "Cat Epoxy", by: "Rudi H.", amount: 480000000, status: "Menunggu Approval" },
-  { id: "PR-2026-209", item: "Wire Rope", by: "Sari W.", amount: 210000000, status: "RFQ" },
-];
+import { Card, CardHeader, PageHeader, Badge, KpiCard, Tabs, StatusBadge, Donut, ChartTooltip, Modal, Field, FormGrid, toast } from "../../components/ui";
+import { useStore, type StoreItem } from "../../data/store";
+import { fmtRupiah, spendByCategory, procurementTrend, sparkRevenue } from "../../data";
 
 const poStatus: Record<string, "green" | "amber" | "blue" | "gray"> = {
   Diterima: "green",
@@ -26,7 +13,57 @@ const poStatus: Record<string, "green" | "amber" | "blue" | "gray"> = {
 };
 
 export default function Procurement() {
+  const { data, add, update } = useStore();
+  const purchaseOrders = data.purchaseOrders;
+  const requisitions = data.requisitions;
+  const vendors = data.vendors;
+
   const [tab, setTab] = useState("Purchase Order");
+  const [showPo, setShowPo] = useState(false);
+  const [poForm, setPoForm] = useState({ item: "", vendor: "", req: "", amount: "" });
+  const [showPr, setShowPr] = useState(false);
+  const [prForm, setPrForm] = useState({ item: "", by: "", amount: "" });
+  const [showVendor, setShowVendor] = useState(false);
+  const [vForm, setVForm] = useState({ name: "", cat: "Baja & Struktur" });
+
+  const openPo = purchaseOrders.filter((p) => p.status !== "Diterima").reduce((s, p) => s + Number(p.amount || 0), 0);
+  const pendingPr = requisitions.filter((r) => r.status === "Menunggu Approval" || r.status === "RFQ").length;
+
+  const savePo = () => {
+    if (!poForm.item.trim() || !poForm.vendor) { toast("Item & vendor wajib diisi", "info"); return; }
+    const created = add("purchaseOrders", {
+      item: poForm.item.trim(), vendor: poForm.vendor, req: poForm.req.trim() || "-",
+      amount: Number(poForm.amount) || 0, status: "Menunggu Persetujuan", date: new Date().toISOString().slice(0, 10),
+    }, { action: "membuat PO", module: "Procurement" });
+    toast(`PO ${created.id} dibuat`);
+    setShowPo(false);
+    setPoForm({ item: "", vendor: "", req: "", amount: "" });
+  };
+
+  const approvePo = (po: StoreItem) => {
+    update("purchaseOrders", po.id, { status: "Dalam Pengiriman" });
+    toast(`${po.id} disetujui → dalam pengiriman`);
+  };
+
+  const receivePo = (po: StoreItem) => {
+    update("purchaseOrders", po.id, { status: "Diterima" });
+    // Integrasi: terima barang → catat GR + tambah stok item yang cocok
+    const match = data.inventory.find((i) => po.item.toLowerCase().includes(i.name.split(" ")[0].toLowerCase()) || i.name.toLowerCase().includes(po.item.split(" ")[0].toLowerCase()));
+    add("movements", {
+      item: po.item, type: "Penerimaan", qty: 1, by: po.id, date: new Date().toISOString().slice(0, 10), tone: "in",
+    }, { action: "menerima barang", target: `${po.item} (${po.id})`, module: "Procurement" });
+    if (match) update("inventory", match.id, { stock: Number(match.stock) + 1 });
+    toast(`${po.id} diterima — GR tercatat${match ? ` & stok ${match.name} +1` : ""}`);
+  };
+
+  const prToPo = (r: StoreItem) => {
+    update("requisitions", r.id, { status: "Sudah PO" });
+    add("purchaseOrders", {
+      item: r.item, vendor: vendors[0]?.name ?? "-", req: r.id,
+      amount: Number(r.amount) || 0, status: "Menunggu Persetujuan", date: new Date().toISOString().slice(0, 10),
+    }, { action: "mengkonversi PR ke PO", target: r.id, module: "Procurement" });
+    toast(`${r.id} dikonversi menjadi PO`);
+  };
 
   return (
     <div>
@@ -34,13 +71,13 @@ export default function Procurement() {
         title="Procurement & Purchasing"
         subtitle="Permintaan, penawaran, PO, dan manajemen vendor"
         icon={<ShoppingCart className="h-5 w-5" />}
-        actions={<button className="btn-primary-gradient"><Plus className="h-4 w-4" /> Buat PO</button>}
+        actions={<button className="btn-primary-gradient" onClick={() => setShowPo(true)}><Plus className="h-4 w-4" /> Buat PO</button>}
       />
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <KpiCard label="PO Aktif" value={String(purchaseOrders.length)} icon={<ShoppingCart className="h-5 w-5" />} chip="navy" spark={sparkRevenue} hint="Sedang berjalan" />
-        <KpiCard label="Nilai PO Terbuka" value="Rp 6,5 M" hint="Belum diterima penuh" icon={<ShoppingCart className="h-5 w-5" />} chip="teal" />
-        <KpiCard label="Permintaan Menunggu" value="2 PR" hint="Perlu approval" icon={<ClipboardList className="h-5 w-5" />} chip="amber" />
+        <KpiCard label="Nilai PO Terbuka" value={fmtRupiah(openPo)} hint="Belum diterima penuh" icon={<ShoppingCart className="h-5 w-5" />} chip="teal" />
+        <KpiCard label="Permintaan Menunggu" value={`${pendingPr} PR`} hint="Perlu approval" icon={<ClipboardList className="h-5 w-5" />} chip="amber" />
         <KpiCard label="Vendor Terdaftar" value={String(vendors.length)} icon={<Factory className="h-5 w-5" />} chip="violet" hint="Rating & evaluasi" />
       </div>
 
@@ -84,7 +121,7 @@ export default function Procurement() {
               <div className="overflow-x-auto">
                 <table className="w-full">
                   <thead className="bg-surface">
-                    <tr><th className="th">PO</th><th className="th">Item</th><th className="th">Vendor</th><th className="th">Nilai</th><th className="th">Tanggal</th><th className="th">Status</th></tr>
+                    <tr><th className="th">PO</th><th className="th">Item</th><th className="th">Vendor</th><th className="th">Nilai</th><th className="th">Tanggal</th><th className="th">Status</th><th className="th">Aksi</th></tr>
                   </thead>
                   <tbody className="divide-y divide-steel-100">
                     {purchaseOrders.map((po) => (
@@ -95,6 +132,16 @@ export default function Procurement() {
                         <td className="td font-semibold">{fmtRupiah(po.amount)}</td>
                         <td className="td text-steel-600">{po.date}</td>
                         <td className="td"><Badge tone={poStatus[po.status] ?? "gray"}>{po.status}</Badge></td>
+                        <td className="td">
+                          <div className="flex gap-1.5">
+                            {po.status === "Menunggu Persetujuan" && (
+                              <button className="btn-secondary text-xs" onClick={() => approvePo(po)}><Check className="h-3.5 w-3.5" /> Setujui</button>
+                            )}
+                            {(po.status === "Dalam Pengiriman" || po.status === "Dikirim") && (
+                              <button className="btn-primary text-xs" onClick={() => receivePo(po)}>Terima</button>
+                            )}
+                          </div>
+                        </td>
                       </tr>
                     ))}
                   </tbody>
@@ -104,23 +151,33 @@ export default function Procurement() {
           )}
 
           {tab === "Permintaan (PR)" && (
-            <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead className="bg-surface">
-                  <tr><th className="th">PR</th><th className="th">Item</th><th className="th">Oleh</th><th className="th">Nilai</th><th className="th">Status</th></tr>
-                </thead>
-                <tbody className="divide-y divide-steel-100">
-                  {requisitions.map((r) => (
-                    <tr key={r.id} className="hover:bg-surface">
-                      <td className="td font-mono font-medium text-navy-900">{r.id}</td>
-                      <td className="td text-steel-600">{r.item}</td>
-                      <td className="td text-steel-600">{r.by}</td>
-                      <td className="td font-semibold">{fmtRupiah(r.amount)}</td>
-                      <td className="td"><StatusBadge status={r.status} /></td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+            <div>
+              <div className="mb-3 flex justify-end">
+                <button className="btn-secondary text-xs" onClick={() => setShowPr(true)}><Plus className="h-3.5 w-3.5" /> Buat PR</button>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead className="bg-surface">
+                    <tr><th className="th">PR</th><th className="th">Item</th><th className="th">Oleh</th><th className="th">Nilai</th><th className="th">Status</th><th className="th">Aksi</th></tr>
+                  </thead>
+                  <tbody className="divide-y divide-steel-100">
+                    {requisitions.map((r) => (
+                      <tr key={r.id} className="hover:bg-surface">
+                        <td className="td font-mono font-medium text-navy-900">{r.id}</td>
+                        <td className="td text-steel-600">{r.item}</td>
+                        <td className="td text-steel-600">{r.by}</td>
+                        <td className="td font-semibold">{fmtRupiah(r.amount)}</td>
+                        <td className="td"><StatusBadge status={r.status} /></td>
+                        <td className="td">
+                          {r.status !== "Sudah PO" && (
+                            <button className="btn-secondary text-xs" onClick={() => prToPo(r)}>Jadikan PO</button>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             </div>
           )}
 
@@ -138,39 +195,97 @@ export default function Procurement() {
                     <tr><td className="td">PT Primabaja</td><td className="td">Rp 15.400 /kg</td><td className="td">5 minggu</td></tr>
                   </tbody>
                 </table>
-                <button className="btn-primary mt-4">Pilih & Konversi ke PO</button>
+                <button className="btn-primary mt-4" onClick={() => { setPoForm({ item: "Pelat Baja AH36", vendor: "PT Bahana Baja", req: "RFQ-2026-09", amount: "4120000000" }); setShowPo(true); }}>Pilih & Konversi ke PO</button>
               </Card>
             </div>
           )}
 
           {tab === "Vendor" && (
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
-              {vendors.map((v) => (
-                <Card key={v.id} className="p-5">
-                  <div className="flex items-start justify-between">
-                    <div>
-                      <p className="text-sm font-semibold text-navy-900">{v.name}</p>
-                      <p className="text-xs text-steel-500">{v.cat}</p>
+            <div>
+              <div className="mb-3 flex justify-end">
+                <button className="btn-secondary text-xs" onClick={() => setShowVendor(true)}><Plus className="h-3.5 w-3.5" /> Tambah Vendor</button>
+              </div>
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+                {vendors.map((v) => (
+                  <Card key={v.id} className="p-5">
+                    <div className="flex items-start justify-between">
+                      <div>
+                        <p className="text-sm font-semibold text-navy-900">{v.name}</p>
+                        <p className="text-xs text-steel-500">{v.cat}</p>
+                      </div>
+                      <Badge tone={v.status === "Aktif" ? "green" : "amber"}>{v.status ?? "Aktif"}</Badge>
                     </div>
-                    <Badge tone="green">Aktif</Badge>
-                  </div>
-                  <div className="mt-4 grid grid-cols-2 gap-3 text-sm">
-                    <div className="rounded-lg bg-surface p-2.5">
-                      <p className="text-xs text-steel-500">On-time</p>
-                      <p className="font-semibold text-navy-900">{v.onTime}%</p>
+                    <div className="mt-4 grid grid-cols-2 gap-3 text-sm">
+                      <div className="rounded-lg bg-surface p-2.5">
+                        <p className="text-xs text-steel-500">On-time</p>
+                        <p className="font-semibold text-navy-900">{v.onTime}%</p>
+                      </div>
+                      <div className="rounded-lg bg-surface p-2.5">
+                        <p className="text-xs text-steel-500">Kualitas</p>
+                        <p className="font-semibold text-navy-900">{v.quality}%</p>
+                      </div>
                     </div>
-                    <div className="rounded-lg bg-surface p-2.5">
-                      <p className="text-xs text-steel-500">Kualitas</p>
-                      <p className="font-semibold text-navy-900">{v.quality}%</p>
-                    </div>
-                  </div>
-                  <p className="mt-3 text-xs text-steel-500">{v.po} PO ditangani</p>
-                </Card>
-              ))}
+                    <p className="mt-3 text-xs text-steel-500">{v.po} PO ditangani</p>
+                  </Card>
+                ))}
+              </div>
             </div>
           )}
         </div>
       </div>
+
+      {/* Modal PO */}
+      <Modal open={showPo} onClose={() => setShowPo(false)} title="Buat Purchase Order" subtitle="Masuk status Menunggu Persetujuan"
+        footer={<><button className="btn-secondary" onClick={() => setShowPo(false)}>Batal</button><button className="btn-primary" onClick={savePo}>Simpan PO</button></>}>
+        <div className="space-y-3">
+          <Field label="Item"><input className="input" value={poForm.item} onChange={(e) => setPoForm({ ...poForm, item: e.target.value })} placeholder="cth: Anoda Zink" /></Field>
+          <FormGrid>
+            <Field label="Vendor">
+              <select className="input" value={poForm.vendor} onChange={(e) => setPoForm({ ...poForm, vendor: e.target.value })}>
+                <option value="">Pilih vendor…</option>
+                {vendors.map((v) => <option key={v.id} value={v.name}>{v.name}</option>)}
+              </select>
+            </Field>
+            <Field label="Referensi PR"><input className="input font-mono" value={poForm.req} onChange={(e) => setPoForm({ ...poForm, req: e.target.value })} placeholder="cth: PR-2026-211" /></Field>
+          </FormGrid>
+          <Field label="Nilai (Rp)"><input type="number" className="input" value={poForm.amount} onChange={(e) => setPoForm({ ...poForm, amount: e.target.value })} /></Field>
+        </div>
+      </Modal>
+
+      {/* Modal PR */}
+      <Modal open={showPr} onClose={() => setShowPr(false)} title="Buat Purchase Requisition"
+        footer={<><button className="btn-secondary" onClick={() => setShowPr(false)}>Batal</button><button className="btn-primary" onClick={() => {
+          if (!prForm.item.trim()) { toast("Item wajib diisi", "info"); return; }
+          const created = add("requisitions", { item: prForm.item.trim(), by: prForm.by.trim() || "Anda", amount: Number(prForm.amount) || 0, status: "Menunggu Approval" },
+            { action: "mengajukan PR", module: "Procurement" });
+          toast(`PR ${created.id} diajukan`); setShowPr(false); setPrForm({ item: "", by: "", amount: "" });
+        }}>Ajukan</button></>}>
+        <div className="space-y-3">
+          <Field label="Item dibutuhkan"><input className="input" value={prForm.item} onChange={(e) => setPrForm({ ...prForm, item: e.target.value })} /></Field>
+          <FormGrid>
+            <Field label="Pemohon"><input className="input" value={prForm.by} onChange={(e) => setPrForm({ ...prForm, by: e.target.value })} placeholder="cth: Rudi H." /></Field>
+            <Field label="Estimasi nilai (Rp)"><input type="number" className="input" value={prForm.amount} onChange={(e) => setPrForm({ ...prForm, amount: e.target.value })} /></Field>
+          </FormGrid>
+        </div>
+      </Modal>
+
+      {/* Modal vendor */}
+      <Modal open={showVendor} onClose={() => setShowVendor(false)} title="Tambah Vendor"
+        footer={<><button className="btn-secondary" onClick={() => setShowVendor(false)}>Batal</button><button className="btn-primary" onClick={() => {
+          if (!vForm.name.trim()) { toast("Nama vendor wajib diisi", "info"); return; }
+          const created = add("vendors", { name: vForm.name.trim(), cat: vForm.cat, onTime: 100, quality: 100, po: 0, status: "Kualifikasi" },
+            { action: "mendaftarkan vendor", module: "Procurement" });
+          toast(`Vendor ${created.id} ditambahkan`); setShowVendor(false); setVForm({ name: "", cat: "Baja & Struktur" });
+        }}>Simpan</button></>}>
+        <div className="space-y-3">
+          <Field label="Nama vendor"><input className="input" value={vForm.name} onChange={(e) => setVForm({ ...vForm, name: e.target.value })} /></Field>
+          <Field label="Kategori">
+            <select className="input" value={vForm.cat} onChange={(e) => setVForm({ ...vForm, cat: e.target.value })}>
+              {["Baja & Struktur", "Mesin & Engine", "Cat & Coating", "Rigging & Wire", "Listrik", "Jasa"].map((c) => <option key={c}>{c}</option>)}
+            </select>
+          </Field>
+        </div>
+      </Modal>
     </div>
   );
 }
