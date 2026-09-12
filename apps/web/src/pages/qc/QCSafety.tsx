@@ -19,7 +19,7 @@ export default function QCSafety() {
   const incidents = data.incidents;
   const inspections = data.inspections;
   const vessels = data.vessels;
-  const [tab, setTab] = useState("Inspeksi");
+  const [tab, setTab] = useState("Inspeksi (ITP)");
 
   const [showInsp, setShowInsp] = useState(false);
   const [inspForm, setInspForm] = useState({ project: "", point: "", itp: "", status: "Terjadwal", date: new Date().toISOString().slice(0, 10) });
