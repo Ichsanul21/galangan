@@ -67,8 +67,12 @@ function tileUri(lines: string[]): string {
   const H = 400;
   const texts = lines
     .map(
-      (t) =>
-        `<text x="${W / 2}" y="${H / 2 + 6}" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="16" font-weight="700" fill="rgba(11,58,99,0.07)" letter-spacing="0.5">${escapeXml(t)}</text>`
+      (t, i) => {
+        const yBase = i === 0 ? H / 2 - 14 : H / 2 + 14;
+        const fw = i === 0 ? "800" : "700";
+        const fs = i === 0 ? "18" : "14";
+        return `<text x="${W / 2}" y="${yBase}" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="${fs}" font-weight="${fw}" fill="rgba(11,58,99,0.07)" letter-spacing="0.5">${escapeXml(t)}</text>`;
+      }
     )
     .join("");
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}"><g transform="rotate(-18 ${W / 2} ${H / 2})">${texts}</g></svg>`;
@@ -155,11 +159,14 @@ export default function Watermark() {
   const loc = [geo.city, geo.country].filter(Boolean).join(", ");
   const timeLabel = fmtWita(now);
   const lines = useMemo(
-    () => [`PROPERTY OF ALENKOSA · ${who} · ${timeLabel} · ${geo.ip}${loc ? ` · ${loc}` : ""} · ${device}`],
+    () => [
+      `PROPERTY OF ALENKOSA`,
+      `${who} · ${timeLabel} · ${geo.ip}${loc ? ` · ${loc}` : ""} · ${device}`,
+    ],
     [who, timeLabel, geo.ip, loc, device]
   );
   const bg = useMemo(() => tileUri(lines), [lines]);
-  const printText = `PROPERTY OF ALENKOSA · ${who} · ${timeLabel} · ${geo.ip}`;
+  const printText = lines[1];
 
   latest.current = { bg, printText };
 
