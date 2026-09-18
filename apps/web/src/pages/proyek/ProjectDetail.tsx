@@ -334,9 +334,9 @@ export default function ProjectDetail() {
           )}
           {tab === "BoQ" && <BoQSection projectId={pid} />}
           {tab === "Laporan" && <ReportSection projectId={pid} />}
-          {tab === "3D Viewer" && <SparepartServiceSection projectId={pid} />}
-          {tab === "Service" && <SparepartServiceSection projectId={pid} />}
-          {tab === "Sparepart" && <SparepartServiceSection projectId={pid} />}
+          {tab === "3D Viewer" && <SparepartServiceSection projectId={pid} view="3d" />}
+          {tab === "Service" && <SparepartServiceSection projectId={pid} view="service" />}
+          {tab === "Sparepart" && <SparepartServiceSection projectId={pid} view="sparepart" />}
         </div>
       </div>
 

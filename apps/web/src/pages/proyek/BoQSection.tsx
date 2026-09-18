@@ -17,7 +17,7 @@ interface Props {
 
 export default function BoQSection({ projectId }: Props) {
   const { data, update, add, log } = useStore();
-  const items = (data.boq as BoQItem[]).filter((b) => b.projectId === projectId);
+  const items = ((data.boq ?? []) as BoQItem[]).filter((b) => b.projectId === projectId);
   const [showAdd, setShowAdd] = useState(false);
   const [form, setForm] = useState({ name: "", description: "", quantity: "", unit: "pcs", unitPrice: "", category: "Mechanical", status: "Draft" as BoQItem["status"] });
 

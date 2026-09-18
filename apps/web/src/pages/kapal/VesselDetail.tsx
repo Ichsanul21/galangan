@@ -165,9 +165,9 @@ export default function VesselDetail() {
             </Card>
           )}
 
-          {tab === "3D Viewer" && <SparepartServiceSection vesselId={v.id} />}
-          {tab === "Service" && <SparepartServiceSection vesselId={v.id} />}
-          {tab === "Sparepart" && <SparepartServiceSection vesselId={v.id} />}
+          {tab === "3D Viewer" && <SparepartServiceSection vesselId={v.id} view="3d" />}
+          {tab === "Service" && <SparepartServiceSection vesselId={v.id} view="service" />}
+          {tab === "Sparepart" && <SparepartServiceSection vesselId={v.id} view="sparepart" />}
         </div>
       </div>
 

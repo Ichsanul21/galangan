@@ -204,7 +204,8 @@ function buildSeeds(): StoreShape {
 
 /* ============ CONTEXT ============ */
 
-const STORE_KEY = "isms.store.v1";
+const STORE_KEY = "isms.store.v2";
+const LEGACY_KEYS = ["isms.store.v1"];
 const PREFIX: Record<string, string> = {
   projects: "PRJ",
   vessels: "V",
@@ -234,15 +235,40 @@ const PREFIX: Record<string, string> = {
    boq: "BQ",
  };
 
-function loadStore(): StoreShape {
-  try {
-    const raw = sessionStorage.getItem(STORE_KEY);
-    if (raw) {
-      const parsed = JSON.parse(raw) as StoreShape;
-      if (parsed && Array.isArray(parsed.projects)) return parsed;
+const ARRAY_KEYS: (keyof StoreShape)[] = [
+  "projects", "vessels", "drydocks", "dockSlots", "inventory", "movements",
+  "equipment", "bookings", "subcontractors", "workOrders", "termins",
+  "employees", "invoices", "payables", "ncr", "incidents", "inspections",
+  "purchaseOrders", "requisitions", "vendors", "quotations", "clients",
+  "documents", "surveys", "activities", "services", "spareparts", "boq",
+];
+
+function sanitizeStore(parsed: Partial<StoreShape>): StoreShape {
+  const seeds = buildSeeds();
+  const merged = { ...seeds, ...parsed } as StoreShape;
+  for (const k of ARRAY_KEYS) {
+    const rec = merged as unknown as Record<string, unknown>;
+    if (!Array.isArray(rec[k as string])) {
+      rec[k as string] = seeds[k];
     }
-  } catch {
-    /* abaikan, pakai seed */
+  }
+  if (!merged.wbsByProject || typeof merged.wbsByProject !== "object") merged.wbsByProject = {};
+  if (!merged.teamByProject || typeof merged.teamByProject !== "object") merged.teamByProject = seeds.teamByProject;
+  return merged;
+}
+
+function loadStore(): StoreShape {
+  const candidates = [STORE_KEY, ...LEGACY_KEYS];
+  for (const key of candidates) {
+    try {
+      const raw = sessionStorage.getItem(key);
+      if (raw) {
+        const parsed = JSON.parse(raw) as Partial<StoreShape>;
+        if (parsed && Array.isArray(parsed.projects)) return sanitizeStore(parsed);
+      }
+    } catch {
+      /* abaikan, coba key berikutnya */
+    }
   }
   return buildSeeds();
 }
@@ -294,6 +320,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     try {
       sessionStorage.setItem(STORE_KEY, JSON.stringify(data));
+      for (const k of LEGACY_KEYS) {
+        if (k !== STORE_KEY) sessionStorage.removeItem(k);
+      }
     } catch {
       /* storage penuh — abaikan */
     }
@@ -319,7 +348,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         const full: StoreItem = { ...item, id: item.id || newId(col) };
         setData((prev) => ({
           ...prev,
-          [col]: [full, ...(prev[col] as StoreItem[])],
+          [col]: [full, ...((prev[col] as StoreItem[] | undefined) ?? [])],
           activities: activity ? pushActivity(prev, activity.action, activity.target ?? full.id, activity.module) : prev.activities,
         }));
         return full;
@@ -327,13 +356,13 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       update: (col, id, patch) => {
         setData((prev) => ({
           ...prev,
-          [col]: (prev[col] as StoreItem[]).map((r) => (r.id === id ? { ...r, ...patch } : r)),
+          [col]: ((prev[col] as StoreItem[] | undefined) ?? []).map((r) => (r.id === id ? { ...r, ...patch } : r)),
         }));
       },
       remove: (col, id) => {
         setData((prev) => ({
           ...prev,
-          [col]: (prev[col] as StoreItem[]).filter((r) => r.id !== id),
+          [col]: ((prev[col] as StoreItem[] | undefined) ?? []).filter((r) => r.id !== id),
         }));
       },
       log: (action, target, module) => {
