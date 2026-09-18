@@ -16,6 +16,7 @@ import {
   toast,
   Avatar,
 } from "../../components/ui";
+import SparepartServiceSection from "./SparepartServiceSection";
 import { useStore } from "../../data/store";
 import { fmtMiliar } from "../../data";
 
@@ -112,7 +113,7 @@ export default function ProjectDetail() {
       </div>
 
       <div className="mt-5 card">
-        <Tabs tabs={["Overview", "WBS", "Anggaran", "Tim", "Dokumen", "Terkait"]} active={tab} onChange={setTab} />
+        <Tabs tabs={["Overview", "WBS", "Anggaran", "Tim", "Dokumen", "Terkait", "3D Viewer", "Service", "Sparepart"]} active={tab} onChange={setTab} />
         <div className="p-5">
           {tab === "Overview" && (
             <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
@@ -303,11 +304,14 @@ export default function ProjectDetail() {
                 {ncrs.length === 0 && <p className="text-xs text-steel-400">Tidak ada NCR. Catat dari modul QC.</p>}
               </Card>
             </div>
-          )}
-        </div>
-      </div>
+           )}
+           {tab === "3D Viewer" && <SparepartServiceSection projectId={pid} />}
+           {tab === "Service" && <SparepartServiceSection projectId={pid} />}
+           {tab === "Sparepart" && <SparepartServiceSection projectId={pid} />}
+         </div>
+       </div>
 
-      {/* Modal progres */}
+       {/* Modal progres */}
       <Modal open={showProgress} onClose={() => setShowProgress(false)} title="Update Progres" subtitle={`${pid} · ${project.vessel}`}
         footer={<><button className="btn-secondary" onClick={() => setShowProgress(false)}>Batal</button><button className="btn-primary" onClick={saveProgress}>Simpan</button></>}>
         <Field label={`Progres keseluruhan: ${progressVal}%`}>

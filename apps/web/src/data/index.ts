@@ -282,6 +282,54 @@ export const employees = [
   { id: "EMP-008", name: "Fajar Nugroho", role: "Procurement", dept: "Procurement", branch: "Samarinda", status: "Aktif", join: "2019-01-10", certs: [] },
 ];
 
+/* ====== SERVICE RECORD ====== */
+
+export interface ServiceRecord {
+  id: string;
+  projectId: string;
+  vesselId?: string;
+  date: string;
+  type: "Overhaul" | "Inspection" | "Repair" | "Drydock" | "Survey";
+  description: string;
+  status: "Done" | "In Progress" | "Scheduled";
+  technician: string;
+  cost: number;
+}
+
+export const services: ServiceRecord[] = [
+  { id: "SRV-001", projectId: "RP-2026-003", vesselId: "V-002", date: "2026-07-01", type: "Drydock", description: "Inspection & repair kickoff", status: "Done", technician: "Rudi Hartono", cost: 150000000 },
+  { id: "SRV-002", projectId: "RP-2026-003", vesselId: "V-002", date: "2026-07-15", type: "Repair", description: "Overhaul main engine", status: "In Progress", technician: "Agus Setiawan", cost: 480000000 },
+  { id: "SRV-003", projectId: "RP-2026-003", vesselId: "V-002", date: "2026-07-22", type: "Inspection", description: "Coating thickness check", status: "Scheduled", technician: "Sari Wulandari", cost: 75000000 },
+  { id: "SRV-004", projectId: "NB-2025-012", vesselId: "V-001", date: "2026-06-10", type: "Survey", description: "Pre-construction survey", status: "Done", technician: "Budi Santoso", cost: 50000000 },
+  { id: "SRV-005", projectId: "RP-2026-005", vesselId: "V-004", date: "2026-07-25", type: "Overhaul", description: "Bearing replacement", status: "In Progress", technician: "Fajar Nugroho", cost: 320000000 },
+];
+
+/* ====== SPAREPART ====== */
+
+export interface Sparepart {
+  id: string;
+  name: string;
+  partNumber: string;
+  category: string;
+  projectId: string;
+  vesselId?: string;
+  status: "Akan" | "Sedang" | "Selesai";
+  requestDate: string;
+  repairDate?: string;
+  technician?: string;
+  cost: number;
+  notes: string;
+}
+
+export const spareparts: Sparepart[] = [
+  { id: "SP-001", name: "Bearing Hub ASW-22", partNumber: "ASW-22-01", category: "Mechanical", projectId: "RP-2026-003", vesselId: "V-002", status: "Akan", requestDate: "2026-08-20", cost: 18500000, notes: "Order untuk overhaul engine" },
+  { id: "SP-002", name: "Seal Kit Hydraulic", partNumber: "HK-450", category: "Hydraulic", projectId: "RP-2026-003", vesselId: "V-002", status: "Sedang", requestDate: "2026-08-10", repairDate: "2026-08-15", technician: "Rudi Hartono", cost: 9200000, notes: "Sedang dipasang di cylinder" },
+  { id: "SP-003", name: "Gasket Head Cylinder", partNumber: "GH-120", category: "Mechanical", projectId: "RP-2026-003", vesselId: "V-002", status: "Selesai", requestDate: "2026-07-20", repairDate: "2026-07-28", technician: "Agus Setiawan", cost: 4500000, notes: "Terpasang, test run OK" },
+  { id: "SP-004", name: "Insulasi Thermal Blanket", partNumber: "ITB-300", category: "Insulation", projectId: "NB-2025-012", vesselId: "V-001", status: "Akan", requestDate: "2026-09-01", cost: 22000000, notes: "Daftar untuk pembangunan baru" },
+  { id: "SP-005", name: "Paint Primer Epoxy 5L", partNumber: "EPO-PRIM-5", category: "Paint", projectId: "RP-2026-005", vesselId: "V-004", status: "Sedang", requestDate: "2026-07-25", repairDate: "2026-07-26", technician: "Fajar Nugroho", cost: 475000, notes: "Sedang diapply di section 3" },
+  { id: "SP-006", name: "Wire Rope 12mm", partNumber: "WR-12-050", category: "Rigging", projectId: "NB-2025-014", vesselId: "V-003", status: "Selesai", requestDate: "2026-06-15", repairDate: "2026-06-20", technician: "Sari Wulandari", cost: 8500000, notes: "Terpasang di cargo system" },
+];
+
 export interface Invoice {
   id: string;
   client: string;

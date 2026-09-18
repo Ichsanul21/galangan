@@ -1,7 +1,18 @@
 import { useState } from "react";
 import { useParams, Link } from "react-router-dom";
 import { ArrowLeft, Ship, FileCheck2, History, Plus } from "lucide-react";
-import { Card, PageHeader, Badge, KpiCard, Modal, Field, FormGrid, toast } from "../../components/ui";
+import {
+  Card,
+  PageHeader,
+  Badge,
+  KpiCard,
+  Modal,
+  Field,
+  FormGrid,
+  Tabs,
+  toast,
+} from "../../components/ui";
+import SparepartServiceSection from "../proyek/SparepartServiceSection";
 import { useStore } from "../../data/store";
 
 export default function VesselDetail() {
@@ -13,6 +24,7 @@ export default function VesselDetail() {
   const [certForm, setCertForm] = useState({ name: "", expires: "" });
   const [showSurvey, setShowSurvey] = useState(false);
   const [surveyForm, setSurveyForm] = useState({ type: "Annual Survey", date: "", status: "Terjadwal" });
+  const [tab, setTab] = useState("Sertifikat");
 
   if (!v) return <p className="text-sm text-steel-500">Kapal tidak ditemukan.</p>;
 
@@ -76,75 +88,88 @@ export default function VesselDetail() {
         </Card>
       )}
 
-      <div className="mt-5 grid grid-cols-1 gap-5 lg:grid-cols-3">
-        <Card className="p-5 lg:col-span-1">
-          <div className="mb-3 flex items-center justify-between">
-            <h3 className="flex items-center gap-2 text-sm font-semibold text-navy-900"><FileCheck2 className="h-4 w-4" /> Sertifikat & Kepatuhan</h3>
-            <button className="btn-secondary text-xs" onClick={() => setShowCert(true)}><Plus className="h-3.5 w-3.5" /></button>
-          </div>
-          <div className="space-y-2.5">
-            {certs.map((c) => {
-              const tone = c.tone as "green" | "amber" | "red";
-              return (
-                <div key={c.name} className="rounded-lg border border-steel-100 p-3">
-                  <p className="text-sm font-medium text-navy-900">{c.name}</p>
-                  <p className="text-xs text-steel-500">Terbit {c.issued} · Berakhir {c.expires}</p>
-                  <Badge tone={tone} className="mt-1">
-                    {tone === "green" ? "Berlaku" : tone === "amber" ? "Hampir Expire" : "Kedaluwarsa"}
-                  </Badge>
+      <div className="mt-5 card">
+        <Tabs tabs={["Sertifikat & Timeline", "Spesifikasi", "3D Viewer", "Service", "Sparepart"]} active={tab} onChange={setTab} />
+        <div className="p-5">
+          {tab === "Sertifikat & Timeline" && (
+            <div className="grid grid-cols-1 gap-5 lg:grid-cols-3">
+              <Card className="p-5 lg:col-span-1">
+                <div className="mb-3 flex items-center justify-between">
+                  <h3 className="flex items-center gap-2 text-sm font-semibold text-navy-900"><FileCheck2 className="h-4 w-4" /> Sertifikat & Kepatuhan</h3>
+                  <button className="btn-secondary text-xs" onClick={() => setShowCert(true)}><Plus className="h-3.5 w-3.5" /></button>
                 </div>
-              );
-            })}
-            {certs.length === 0 && (
-              <p className="text-sm text-steel-400">Belum ada sertifikat — kapal masih dalam pembangunan.</p>
-            )}
-          </div>
-        </Card>
+                <div className="space-y-2.5">
+                  {certs.map((c) => {
+                    const tone = c.tone as "green" | "amber" | "red";
+                    return (
+                      <div key={c.name} className="rounded-lg border border-steel-100 p-3">
+                        <p className="text-sm font-medium text-navy-900">{c.name}</p>
+                        <p className="text-xs text-steel-500">Terbit {c.issued} · Berakhir {c.expires}</p>
+                        <Badge tone={tone} className="mt-1">
+                          {tone === "green" ? "Berlaku" : tone === "amber" ? "Hampir Expire" : "Kedaluwarsa"}
+                        </Badge>
+                      </div>
+                    );
+                  })}
+                  {certs.length === 0 && (
+                    <p className="text-sm text-steel-400">Belum ada sertifikat — kapal masih dalam pembangunan.</p>
+                  )}
+                </div>
+              </Card>
 
-        <Card className="p-5 lg:col-span-2">
-          <div className="mb-4 flex items-center justify-between">
-            <h3 className="flex items-center gap-2 text-sm font-semibold text-navy-900"><History className="h-4 w-4" /> Timeline Riwayat</h3>
-            <button className="btn-secondary text-xs" onClick={() => setShowSurvey(true)}><Plus className="h-3.5 w-3.5" /> Jadwalkan Survey</button>
-          </div>
-          <div className="space-y-0">
-            {(v.history ?? []).map((h: { event: string; date: string; type: string }, i: number, arr: unknown[]) => (
-              <div key={i} className="relative flex gap-4 pb-6 last:pb-0">
-                <div className="flex flex-col items-center">
-                  <span className={`h-3 w-3 rounded-full ${i === 0 ? "bg-ocean-500" : "bg-steel-300"}`} />
-                  {i < arr.length - 1 && <span className="w-px flex-1 bg-steel-200" />}
+              <Card className="p-5 lg:col-span-2">
+                <div className="mb-4 flex items-center justify-between">
+                  <h3 className="flex items-center gap-2 text-sm font-semibold text-navy-900"><History className="h-4 w-4" /> Timeline Riwayat</h3>
+                  <button className="btn-secondary text-xs" onClick={() => setShowSurvey(true)}><Plus className="h-3.5 w-3.5" /> Jadwalkan Survey</button>
                 </div>
-                <div className="pb-1">
-                  <p className="text-sm font-semibold text-navy-900">{h.event}</p>
-                  <p className="text-xs text-steel-500">{h.date} · {h.type}</p>
+                <div className="space-y-0">
+                  {(v.history ?? []).map((h: { event: string; date: string; type: string }, i: number, arr: unknown[]) => (
+                    <div key={i} className="relative flex gap-4 pb-6 last:pb-0">
+                      <div className="flex flex-col items-center">
+                        <span className={`h-3 w-3 rounded-full ${i === 0 ? "bg-ocean-500" : "bg-steel-300"}`} />
+                        {i < arr.length - 1 && <span className="w-px flex-1 bg-steel-200" />}
+                      </div>
+                      <div className="pb-1">
+                        <p className="text-sm font-semibold text-navy-900">{h.event}</p>
+                        <p className="text-xs text-steel-500">{h.date} · {h.type}</p>
+                      </div>
+                    </div>
+                  ))}
                 </div>
-              </div>
-            ))}
-          </div>
-          {surveys.length > 0 && (
-            <div className="mt-4 border-t border-steel-100 pt-3">
-              <p className="mb-2 text-xs font-semibold text-steel-500">SURVEY TERJADWAL</p>
-              {surveys.map((s) => (
-                <div key={s.id} className="flex items-center justify-between py-1 text-sm">
-                  <span className="text-steel-700">{s.type} · {s.date}</span>
-                  <Badge tone={s.status === "Selesai" ? "green" : s.status === "Dalam Proses" ? "blue" : "gray"}>{s.status}</Badge>
-                </div>
-              ))}
+                {surveys.length > 0 && (
+                  <div className="mt-4 border-t border-steel-100 pt-3">
+                    <p className="mb-2 text-xs font-semibold text-steel-500">SURVEY TERJADWAL</p>
+                    {surveys.map((s) => (
+                      <div key={s.id} className="flex items-center justify-between py-1 text-sm">
+                        <span className="text-steel-700">{s.type} · {s.date}</span>
+                        <Badge tone={s.status === "Selesai" ? "green" : s.status === "Dalam Proses" ? "blue" : "gray"}>{s.status}</Badge>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </Card>
             </div>
           )}
-        </Card>
-      </div>
 
-      <Card className="mt-5 p-5">
-        <h3 className="mb-3 text-sm font-semibold text-navy-900">Spesifikasi Teknis</h3>
-        <dl className="grid grid-cols-2 gap-4 sm:grid-cols-3">
-          <div className="rounded-lg bg-surface p-3"><dt className="text-xs text-steel-500">Tipe</dt><dd className="text-sm font-medium text-navy-900">{v.type}</dd></div>
-          <div className="rounded-lg bg-surface p-3"><dt className="text-xs text-steel-500">Pemilik</dt><dd className="text-sm font-medium text-navy-900">{v.owner}</dd></div>
-          <div className="rounded-lg bg-surface p-3"><dt className="text-xs text-steel-500">Class</dt><dd className="text-sm font-medium text-navy-900">{v.class}</dd></div>
-          <div className="rounded-lg bg-surface p-3"><dt className="text-xs text-steel-500">Bendera</dt><dd className="text-sm font-medium text-navy-900">{v.flag}</dd></div>
-          <div className="rounded-lg bg-surface p-3"><dt className="text-xs text-steel-500">LOA / Beam / Draft</dt><dd className="text-sm font-medium text-navy-900">{v.loa} / {v.beam} / {v.draft} m</dd></div>
-          <div className="rounded-lg bg-surface p-3"><dt className="text-xs text-steel-500">Bollard Pull</dt><dd className="text-sm font-medium text-navy-900">{v.bollard} T</dd></div>
-        </dl>
-      </Card>
+          {tab === "Spesifikasi" && (
+            <Card className="p-5">
+              <h3 className="mb-3 text-sm font-semibold text-navy-900">Spesifikasi Teknis</h3>
+              <dl className="grid grid-cols-2 gap-4 sm:grid-cols-3">
+                <div className="rounded-lg bg-surface p-3"><dt className="text-xs text-steel-500">Tipe</dt><dd className="text-sm font-medium text-navy-900">{v.type}</dd></div>
+                <div className="rounded-lg bg-surface p-3"><dt className="text-xs text-steel-500">Pemilik</dt><dd className="text-sm font-medium text-navy-900">{v.owner}</dd></div>
+                <div className="rounded-lg bg-surface p-3"><dt className="text-xs text-steel-500">Class</dt><dd className="text-sm font-medium text-navy-900">{v.class}</dd></div>
+                <div className="rounded-lg bg-surface p-3"><dt className="text-xs text-steel-500">Bendera</dt><dd className="text-sm font-medium text-navy-900">{v.flag}</dd></div>
+                <div className="rounded-lg bg-surface p-3"><dt className="text-xs text-steel-500">LOA / Beam / Draft</dt><dd className="text-sm font-medium text-navy-900">{v.loa} / {v.beam} / {v.draft} m</dd></div>
+                <div className="rounded-lg bg-surface p-3"><dt className="text-xs text-steel-500">Bollard Pull</dt><dd className="text-sm font-medium text-navy-900">{v.bollard} T</dd></div>
+              </dl>
+            </Card>
+          )}
+
+          {tab === "3D Viewer" && <SparepartServiceSection vesselId={v.id} />}
+          {tab === "Service" && <SparepartServiceSection vesselId={v.id} />}
+          {tab === "Sparepart" && <SparepartServiceSection vesselId={v.id} />}
+        </div>
+      </div>
 
       {/* Modal sertifikat */}
       <Modal open={showCert} onClose={() => setShowCert(false)} title={`Tambah Sertifikat — ${v.name}`}

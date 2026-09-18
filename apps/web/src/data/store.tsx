@@ -17,6 +17,8 @@ import {
   inventoryMovement as seedMovements,
   surveyTimeline as seedSurveys,
   activities as seedActivities,
+  services as seedServices,
+  spareparts as seedSpareparts,
 } from "./index";
 
 /* ============ TIPE ============ */
@@ -60,6 +62,8 @@ export interface StoreShape {
   documents: StoreItem[];
   surveys: StoreItem[];
   activities: StoreItem[];
+  services: StoreItem[];
+  spareparts: StoreItem[];
   wbsByProject: Record<string, WbsItem[]>;
   teamByProject: Record<string, string[]>;
 }
@@ -181,10 +185,12 @@ function buildSeeds(): StoreShape {
     quotations: clone(seedQuotations) as StoreItem[],
     clients: clone(seedClients) as StoreItem[],
     documents: clone(seedDocuments),
-    surveys: clone(seedSurveys) as StoreItem[],
-    activities: clone(seedActivities) as StoreItem[],
-    wbsByProject: {},
-    teamByProject: clone(seedTeamByProject),
+     surveys: clone(seedSurveys) as StoreItem[],
+     activities: clone(seedActivities) as StoreItem[],
+     services: clone(seedServices) as StoreItem[],
+     spareparts: clone(seedSpareparts) as StoreItem[],
+     wbsByProject: {},
+     teamByProject: clone(seedTeamByProject),
   };
 }
 
@@ -213,9 +219,11 @@ const PREFIX: Record<string, string> = {
   quotations: "QT",
   clients: "C",
   documents: "DOC",
-  surveys: "S",
-  activities: "A",
-};
+   surveys: "S",
+   activities: "A",
+   services: "SRV",
+   spareparts: "SP",
+ };
 
 function loadStore(): StoreShape {
   try {
@@ -266,6 +274,8 @@ const ACTOR_TONE: Record<string, "navy" | "teal" | "rose" | "violet" | "amber"> 
   Kapal: "teal",
   Dokumen: "navy",
   Subkontraktor: "amber",
+  Service: "teal",
+  Sparepart: "amber",
 };
 
 export function StoreProvider({ children }: { children: ReactNode }) {
