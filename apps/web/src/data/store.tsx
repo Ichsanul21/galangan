@@ -19,6 +19,7 @@ import {
   activities as seedActivities,
   services as seedServices,
   spareparts as seedSpareparts,
+  seedBoq as seedBoq,
 } from "./index";
 
 /* ============ TIPE ============ */
@@ -34,6 +35,11 @@ export interface WbsItem {
   end: string;
   progress: number;
   weight: number;
+  actualHours?: number;
+  materialUsed?: string;
+  completedBy?: string;
+  completionDate?: string;
+  status?: "Sedang" | "Selesai";
 }
 
 export interface StoreShape {
@@ -64,6 +70,7 @@ export interface StoreShape {
   activities: StoreItem[];
   services: StoreItem[];
   spareparts: StoreItem[];
+  boq: StoreItem[];
   wbsByProject: Record<string, WbsItem[]>;
   teamByProject: Record<string, string[]>;
 }
@@ -189,6 +196,7 @@ function buildSeeds(): StoreShape {
      activities: clone(seedActivities) as StoreItem[],
      services: clone(seedServices) as StoreItem[],
      spareparts: clone(seedSpareparts) as StoreItem[],
+     boq: clone(seedBoq) as StoreItem[],
      wbsByProject: {},
      teamByProject: clone(seedTeamByProject),
   };
@@ -223,6 +231,7 @@ const PREFIX: Record<string, string> = {
    activities: "A",
    services: "SRV",
    spareparts: "SP",
+   boq: "BQ",
  };
 
 function loadStore(): StoreShape {
@@ -273,10 +282,11 @@ const ACTOR_TONE: Record<string, "navy" | "teal" | "rose" | "violet" | "amber"> 
   SDM: "violet",
   Kapal: "teal",
   Dokumen: "navy",
-  Subkontraktor: "amber",
-  Service: "teal",
-  Sparepart: "amber",
-};
+   Subkontraktor: "amber",
+   Service: "teal",
+   Sparepart: "amber",
+   BoQ: "navy",
+ };
 
 export function StoreProvider({ children }: { children: ReactNode }) {
   const [data, setData] = useState<StoreShape>(() => loadStore());

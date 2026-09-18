@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useParams, Link } from "react-router-dom";
 import { ArrowLeft, Calendar, MapPin, Plus, Trash2 } from "lucide-react";
 import {
@@ -6,16 +6,18 @@ import {
   PageHeader,
   StatusBadge,
   ProgressBar,
-  Badge,
   Tabs,
   KpiCard,
   Modal,
   Field,
   FormGrid,
   ConfirmModal,
+  Badge,
   toast,
   Avatar,
 } from "../../components/ui";
+import BoQSection from "./BoQSection";
+import ReportSection from "./ReportSection";
 import SparepartServiceSection from "./SparepartServiceSection";
 import { useStore } from "../../data/store";
 import { fmtMiliar } from "../../data";
@@ -28,22 +30,31 @@ export default function ProjectDetail() {
   const project = data.projects.find((p) => p.id === id) ?? data.projects[0];
   const [tab, setTab] = useState("Overview");
 
-  const [showProgress, setShowProgress] = useState(false);
-  const [progressVal, setProgressVal] = useState(0);
-  const [actualVal, setActualVal] = useState("");
-  const [showActual, setShowActual] = useState(false);
   const [showScope, setShowScope] = useState(false);
   const [scopeVal, setScopeVal] = useState("");
-  const [showWbs, setShowWbs] = useState(false);
-  const [wbsForm, setWbsForm] = useState({ task: "", start: "", end: "", weight: "10", progress: "0" });
-  const [wbsEdit, setWbsEdit] = useState<string | null>(null);
-  const [wbsProgress, setWbsProgress] = useState("");
-  const [showTeam, setShowTeam] = useState(false);
-  const [teamPick, setTeamPick] = useState("");
   const [showDoc, setShowDoc] = useState(false);
   const [docTitle, setDocTitle] = useState("");
   const [docType, setDocType] = useState("Laporan");
   const [delScope, setDelScope] = useState<string | null>(null);
+  const [showWbs, setShowWbs] = useState(false);
+  const [wbsForm, setWbsForm] = useState({ task: "", start: "", end: "", weight: "10", progress: "0" });
+  const [showTeam, setShowTeam] = useState(false);
+  const [teamPick, setTeamPick] = useState("");
+  const [wbsTaskUpdate, setWbsTaskUpdate] = useState<string | null>(null);
+  const [wbsUpdateForm, setWbsUpdateForm] = useState({ hours: "", material: "", status: "Sedang" as "Sedang" | "Selesai" });
+  const [showShare, setShowShare] = useState(false);
+  const [shareForm, setShareForm] = useState({ docId: "", to: "" });
+
+  useEffect(() => {
+    if (!project) return;
+    const wbs = wbsFor(project.id);
+    const total = wbs.length;
+    const completed = wbs.filter((w) => w.status === "Selesai").length;
+    const newProgress = total > 0 ? Math.round((completed / total) * 100) : 0;
+    if (newProgress !== project.progress) {
+      update("projects", project.id, { progress: newProgress });
+    }
+  }, [data.projects]);
 
   if (!project) return <p className="text-sm text-steel-500">Proyek tidak ditemukan.</p>;
   const pid = project.id;
@@ -58,22 +69,6 @@ export default function ProjectDetail() {
   const docs = data.documents.filter((d) => d.project === pid);
   const wos = data.workOrders.filter((w) => w.project === pid);
 
-  const saveProgress = () => {
-    update("projects", pid, { progress: progressVal });
-    log("mengupdate progres", `${pid} → ${progressVal}%`, "Proyek");
-    toast(`Progres ${pid} menjadi ${progressVal}%`);
-    setShowProgress(false);
-  };
-
-  const saveActual = () => {
-    const v = Number(actualVal);
-    if (!v || v < 0) { toast("Nominal tidak valid", "info"); return; }
-    update("projects", pid, { actual: v });
-    log("mencatat realisasi biaya", `${pid} · ${fmtMiliar(v)}`, "Proyek");
-    toast("Realisasi biaya diperbarui");
-    setShowActual(false);
-  };
-
   const saveScope = () => {
     if (!scopeVal.trim()) { toast("Isi lingkup dulu", "info"); return; }
     update("projects", pid, { scope: [...(project.scope ?? []), scopeVal.trim()] });
@@ -81,6 +76,33 @@ export default function ProjectDetail() {
     toast("Lingkup ditambahkan");
     setScopeVal("");
     setShowScope(false);
+  };
+
+  const saveWbsTask = () => {
+    if (!wbsTaskUpdate) return;
+    const hours = Number(wbsUpdateForm.hours) || 0;
+    const updated = wbs.map((w) =>
+      w.task === wbsTaskUpdate
+        ? { ...w, actualHours: hours, materialUsed: wbsUpdateForm.material, status: wbsUpdateForm.status, progress: wbsUpdateForm.status === "Selesai" ? 100 : Math.min(hours * 10, 100) }
+        : w
+    );
+    setWbs(pid, updated);
+    const completed = updated.filter((w) => w.status === "Selesai").length;
+    const newProgress = updated.length > 0 ? Math.round((completed / updated.length) * 100) : 0;
+    update("projects", pid, { progress: newProgress });
+    log("mengupdate progres WBS", `${wbsTaskUpdate} → ${wbsUpdateForm.status}`, "Proyek");
+    toast("Progres tugas diperbarui");
+    setWbsTaskUpdate(null);
+    setWbsUpdateForm({ hours: "", material: "", status: "Sedang" });
+  };
+
+  const saveWbs = () => {
+    if (!wbsForm.task.trim()) { toast("Nama tahapan wajib diisi", "info"); return; }
+    setWbs(pid, [...wbs, { task: wbsForm.task.trim(), start: wbsForm.start || "-", end: wbsForm.end || "-", progress: Number(wbsForm.progress) || 0, weight: Number(wbsForm.weight) || 0 }]);
+    log("menambah tahapan WBS", `${pid} · ${wbsForm.task.trim()}`, "Proyek");
+    toast("Tahapan ditambahkan");
+    setShowWbs(false);
+    setWbsForm({ task: "", start: "", end: "", weight: "10", progress: "0" });
   };
 
   return (
@@ -108,12 +130,12 @@ export default function ProjectDetail() {
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <KpiCard label="Anggaran" value={fmtMiliar(project.budget)} hint="Total kontrak proyek" icon={<Calendar className="h-5 w-5" />} />
         <KpiCard label="Realisasi" value={fmtMiliar(project.actual)} delta={`${project.budget ? Math.round((project.actual / project.budget) * 100) : 0}% terpakai`} deltaDirection={project.actual > project.budget ? "down" : "flat"} hint="Biaya aktual" />
-        <KpiCard label="Progres" value={`${project.progress}%`} delta={project.status === "Terlambat" ? "Terlambat dari jadwal" : "Sesuai jadwal"} deltaDirection={project.status === "Terlambat" ? "down" : "up"} hint="Penyelesaian keseluruhan" />
+        <KpiCard label="Progres" value={`${project.progress}%`} delta={project.status === "Terlambat" ? "Terlambat dari jadwal" : "Sesuai jadwal"} deltaDirection={project.status === "Terlambat" ? "down" : "up"} hint="Dihitung dari penyelesaian WBS" />
         <KpiCard label="Periode" value={`${String(project.start).slice(5)} → ${String(project.end).slice(5)}`} hint={project.branch} icon={<MapPin className="h-5 w-5" />} />
       </div>
 
       <div className="mt-5 card">
-        <Tabs tabs={["Overview", "WBS", "Anggaran", "Tim", "Dokumen", "Terkait", "3D Viewer", "Service", "Sparepart"]} active={tab} onChange={setTab} />
+        <Tabs tabs={["Overview", "WBS", "Anggaran", "Tim", "Dokumen", "Terkait", "BoQ", "Laporan", "3D Viewer", "Service", "Sparepart"]} active={tab} onChange={setTab} />
         <div className="p-5">
           {tab === "Overview" && (
             <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
@@ -135,7 +157,7 @@ export default function ProjectDetail() {
                 <div className="mt-6">
                   <div className="mb-2 flex items-center justify-between">
                     <h3 className="text-sm font-semibold text-navy-900">Progres Keseluruhan</h3>
-                    <button className="btn-secondary text-xs" onClick={() => { setProgressVal(project.progress); setShowProgress(true); }}>Update Progres</button>
+                    <span className="text-xs text-steel-500">Dihitung dari penyelesaian WBS</span>
                   </div>
                   <ProgressBar value={project.progress} tone={project.status === "Terlambat" ? "red" : "navy"} />
                   <p className="mt-1 text-xs text-steel-500">{project.progress}% selesai · target penyelesaian {project.end}</p>
@@ -185,7 +207,9 @@ export default function ProjectDetail() {
                             <span className="text-xs font-medium">{w.progress}%</span>
                           </div>
                         </td>
-                        <td className="td"><button className="btn-secondary text-xs" onClick={() => { setWbsEdit(w.task); setWbsProgress(String(w.progress)); }}>Update</button></td>
+                        <td className="td">
+                          <button className="btn-secondary text-xs" onClick={() => { setWbsTaskUpdate(w.task); setWbsUpdateForm({ hours: "", material: "", status: w.status === "Selesai" ? "Selesai" : "Sedang" }); }}>Update</button>
+                        </td>
                       </tr>
                     ))}
                   </tbody>
@@ -199,7 +223,7 @@ export default function ProjectDetail() {
               <Card className="p-5">
                 <div className="mb-2 flex items-center justify-between">
                   <h3 className="text-sm font-semibold text-navy-900">Budget vs Actual</h3>
-                  <button className="btn-secondary text-xs" onClick={() => { setActualVal(String(project.actual)); setShowActual(true); }}>Catat Realisasi</button>
+                  <button className="btn-secondary text-xs" onClick={() => toast("Update via BoQ section")}>Catat Realisasi</button>
                 </div>
                 <div className="flex items-end gap-2">
                   <div>
@@ -268,7 +292,10 @@ export default function ProjectDetail() {
                       <p className="font-medium text-navy-900">{d.title}</p>
                       <p className="text-xs text-steel-500">{d.id} · {d.type} · {d.version} · {d.updated}</p>
                     </div>
-                    <Badge tone="navy">{d.status}</Badge>
+                    <div className="flex gap-2">
+                      <button className="btn-secondary text-xs" onClick={() => { /* export PDF */ }}>📄</button>
+                      <Badge tone="navy">{d.status}</Badge>
+                    </div>
                   </div>
                 ))}
                 {docs.length === 0 && <p className="text-sm text-steel-400">Belum ada dokumen untuk proyek ini.</p>}
@@ -304,49 +331,55 @@ export default function ProjectDetail() {
                 {ncrs.length === 0 && <p className="text-xs text-steel-400">Tidak ada NCR. Catat dari modul QC.</p>}
               </Card>
             </div>
-           )}
-           {tab === "3D Viewer" && <SparepartServiceSection projectId={pid} />}
-           {tab === "Service" && <SparepartServiceSection projectId={pid} />}
-           {tab === "Sparepart" && <SparepartServiceSection projectId={pid} />}
-         </div>
-       </div>
+          )}
+          {tab === "BoQ" && <BoQSection projectId={pid} />}
+          {tab === "Laporan" && <ReportSection projectId={pid} />}
+          {tab === "3D Viewer" && <SparepartServiceSection projectId={pid} />}
+          {tab === "Service" && <SparepartServiceSection projectId={pid} />}
+          {tab === "Sparepart" && <SparepartServiceSection projectId={pid} />}
+        </div>
+      </div>
 
-       {/* Modal progres */}
-      <Modal open={showProgress} onClose={() => setShowProgress(false)} title="Update Progres" subtitle={`${pid} · ${project.vessel}`}
-        footer={<><button className="btn-secondary" onClick={() => setShowProgress(false)}>Batal</button><button className="btn-primary" onClick={saveProgress}>Simpan</button></>}>
-        <Field label={`Progres keseluruhan: ${progressVal}%`}>
-          <input type="range" min={0} max={100} value={progressVal} onChange={(e) => setProgressVal(Number(e.target.value))} className="w-full" />
-        </Field>
-        <ProgressBar value={progressVal} className="mt-2" />
+      {/* Modal share */}
+      <Modal open={showShare} onClose={() => setShowShare(false)} title="Bagikan Laporan ke Atasan"
+        footer={<><button className="btn-secondary" onClick={() => setShowShare(false)}>Batal</button><button className="btn-primary" onClick={() => {
+          if (!shareForm.docId || !shareForm.to) { toast("Pilih dokumen dan tujuan", "info"); return; }
+          const doc = docs.find((d: any) => d.id === shareForm.docId);
+          update("documents", shareForm.docId, { sharedWith: [...(doc?.sharedWith ?? []), shareForm.to] });
+          log("berbagi dokumen dengan atasan", `${shareForm.docId} → ${shareForm.to}`, "Dokumen");
+          toast(`Dokumen dibagikan ke ${shareForm.to}`);
+          setShowShare(false);
+          setShareForm({ docId: "", to: "" });
+        }}>Kirim</button></>}>
+        <FormGrid>
+          <Field label="Dokumen">
+            <select className="input" value={shareForm.docId} onChange={(e) => setShareForm({ ...shareForm, docId: e.target.value })}>
+              <option value="">Pilih…</option>
+              {docs.map((d: any) => <option key={d.id} value={d.id}>{d.title}</option>)}
+            </select>
+          </Field>
+          <Field label="Ditujukan ke"><input className="input" value={shareForm.to} onChange={(e) => setShareForm({ ...shareForm, to: e.target.value })} placeholder="cth: Atasan/Nama" /></Field>
+        </FormGrid>
       </Modal>
 
-      {/* Modal realisasi */}
-      <Modal open={showActual} onClose={() => setShowActual(false)} title="Catat Realisasi Biaya" subtitle="Update total biaya aktual proyek"
-        footer={<><button className="btn-secondary" onClick={() => setShowActual(false)}>Batal</button><button className="btn-primary" onClick={saveActual}>Simpan</button></>}>
-        <Field label="Realisasi (Rp)">
-          <input type="number" min={0} className="input" value={actualVal} onChange={(e) => setActualVal(e.target.value)} />
-        </Field>
+      {/* Modal update WBS task */}
+      <Modal open={wbsTaskUpdate !== null} onClose={() => setWbsTaskUpdate(null)} title={`Update Progress: ${wbsTaskUpdate ?? ""}`}
+        footer={<><button className="btn-secondary" onClick={() => setWbsTaskUpdate(null)}>Batal</button><button className="btn-primary" onClick={saveWbsTask}>Simpan</button></>}>
+        <div className="space-y-3">
+          <Field label="Jam Kerja Aktual"><input type="number" className="input" value={wbsUpdateForm.hours} onChange={(e) => setWbsUpdateForm({ ...wbsUpdateForm, hours: e.target.value })} placeholder="cth: 8" /></Field>
+          <Field label="Material Dipakai"><input className="input" value={wbsUpdateForm.material} onChange={(e) => setWbsUpdateForm({ ...wbsUpdateForm, material: e.target.value })} placeholder="cth: Baja AH36 50kg" /></Field>
+          <Field label="Status">
+            <select className="input" value={wbsUpdateForm.status} onChange={(e) => setWbsUpdateForm({ ...wbsUpdateForm, status: e.target.value as "Sedang" | "Selesai" })}>
+              <option value="Sedang">Sedang Dikerjakan</option>
+              <option value="Selesai">Selesai</option>
+            </select>
+          </Field>
+        </div>
       </Modal>
-
-      {/* Modal scope */}
-      <Modal open={showScope} onClose={() => setShowScope(false)} title="Tambah Lingkup Pekerjaan"
-        footer={<><button className="btn-secondary" onClick={() => setShowScope(false)}>Batal</button><button className="btn-primary" onClick={saveScope}>Tambah</button></>}>
-        <Field label="Nama lingkup">
-          <input className="input" placeholder="cth: Sea Trial" value={scopeVal} onChange={(e) => setScopeVal(e.target.value)} />
-        </Field>
-      </Modal>
-      <ConfirmModal open={delScope !== null} title="Hapus lingkup?" desc={`"${delScope}" akan dihapus dari ruang lingkup.`}
-        confirmLabel="Ya, hapus" danger onCancel={() => setDelScope(null)}
-        onConfirm={() => { if (delScope) update("projects", pid, { scope: (project.scope ?? []).filter((s: string) => s !== delScope) }); setDelScope(null); }} />
 
       {/* Modal WBS */}
       <Modal open={showWbs} onClose={() => setShowWbs(false)} title="Tambah Tahapan WBS"
-        footer={<><button className="btn-secondary" onClick={() => setShowWbs(false)}>Batal</button><button className="btn-primary" onClick={() => {
-          if (!wbsForm.task.trim()) { toast("Nama tahapan wajib diisi", "info"); return; }
-          setWbs(pid, [...wbs, { task: wbsForm.task.trim(), start: wbsForm.start || "-", end: wbsForm.end || "-", progress: Number(wbsForm.progress) || 0, weight: Number(wbsForm.weight) || 0 }]);
-          log("menambah tahapan WBS", `${pid} · ${wbsForm.task.trim()}`, "Proyek");
-          toast("Tahapan ditambahkan"); setShowWbs(false); setWbsForm({ task: "", start: "", end: "", weight: "10", progress: "0" });
-        }}>Tambah</button></>}>
+        footer={<><button className="btn-secondary" onClick={() => setShowWbs(false)}>Batal</button><button className="btn-primary" onClick={saveWbs}>Tambah</button></>}>
         <div className="space-y-3">
           <Field label="Nama tahapan"><input className="input" value={wbsForm.task} onChange={(e) => setWbsForm({ ...wbsForm, task: e.target.value })} /></Field>
           <FormGrid>
@@ -356,15 +389,6 @@ export default function ProjectDetail() {
             <Field label="Progres (%)"><input type="number" className="input" value={wbsForm.progress} onChange={(e) => setWbsForm({ ...wbsForm, progress: e.target.value })} /></Field>
           </FormGrid>
         </div>
-      </Modal>
-      <Modal open={wbsEdit !== null} onClose={() => setWbsEdit(null)} title={`Update progres — ${wbsEdit}`}
-        footer={<><button className="btn-secondary" onClick={() => setWbsEdit(null)}>Batal</button><button className="btn-primary" onClick={() => {
-          setWbs(pid, wbs.map((w) => (w.task === wbsEdit ? { ...w, progress: Number(wbsProgress) || 0 } : w)));
-          toast("Progres tahapan diperbarui"); setWbsEdit(null);
-        }}>Simpan</button></>}>
-        <Field label={`Progres: ${wbsProgress}%`}>
-          <input type="range" min={0} max={100} value={Number(wbsProgress) || 0} onChange={(e) => setWbsProgress(e.target.value)} className="w-full" />
-        </Field>
       </Modal>
 
       {/* Modal tim */}
@@ -390,7 +414,7 @@ export default function ProjectDetail() {
       <Modal open={showDoc} onClose={() => setShowDoc(false)} title="Tambah Dokumen Proyek" subtitle={pid}
         footer={<><button className="btn-secondary" onClick={() => setShowDoc(false)}>Batal</button><button className="btn-primary" onClick={() => {
           if (!docTitle.trim()) { toast("Judul wajib diisi", "info"); return; }
-          add("documents", { title: docTitle.trim(), type: docType, project: pid, vessel: project.vessel, version: "v1.0", status: "Draft", updated: new Date().toISOString().slice(0, 10), owner: "Anda" },
+          add("documents", { title: docTitle.trim(), type: docType, project: pid, vessel: project.vessel, version: "v1.0", status: "Draft", updated: new Date().toISOString().slice(0, 10), owner: "Anda", sharedWith: [], approvalStatus: "Draft" },
             { action: "mengarsipkan dokumen", module: "Dokumen" });
           toast("Dokumen ditambahkan"); setShowDoc(false); setDocTitle("");
         }}>Simpan</button></>}>
@@ -403,6 +427,17 @@ export default function ProjectDetail() {
           </Field>
         </div>
       </Modal>
+
+      {/* Modal scope */}
+      <Modal open={showScope} onClose={() => setShowScope(false)} title="Tambah Lingkup Pekerjaan"
+        footer={<><button className="btn-secondary" onClick={() => setShowScope(false)}>Batal</button><button className="btn-primary" onClick={saveScope}>Tambah</button></>}>
+        <Field label="Nama lingkup">
+          <input className="input" placeholder="cth: Sea Trial" value={scopeVal} onChange={(e) => setScopeVal(e.target.value)} />
+        </Field>
+      </Modal>
+      <ConfirmModal open={delScope !== null} title="Hapus lingkup?" desc={`"${delScope}" akan dihapus dari ruang lingkup.`}
+        confirmLabel="Ya, hapus" danger onCancel={() => setDelScope(null)}
+        onConfirm={() => { if (delScope) update("projects", pid, { scope: (project.scope ?? []).filter((s: string) => s !== delScope) }); setDelScope(null); }} />
     </div>
   );
 }
