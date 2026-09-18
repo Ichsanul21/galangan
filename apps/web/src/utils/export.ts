@@ -20,10 +20,4 @@ export function exportPDF(elementId: string, filename: string): void {
   }).from(el).save();
 }
 
-export function fmtRupiah(n: number): string {
-  return "Rp " + n.toLocaleString("id-ID");
-}
-
-export function fmtJumlah(n: number): string {
-  return n.toLocaleString("id-ID");
-}
+export { fmtRupiah, fmtJumlah, fmtMiliar, fmtTanggal, fmtRentang } from "./format";

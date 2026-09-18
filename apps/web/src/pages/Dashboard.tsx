@@ -41,6 +41,7 @@ import {
   toast,
 } from "../components/ui";
 import { useStore } from "../data/store";
+import { exportExcel } from "../utils/export";
 import {
   revenueSeries,
   sparkRevenue,
@@ -48,6 +49,7 @@ import {
   sparkProjects,
   sparkUtil,
   utilSeries,
+  marginSeries,
   drydockLoad,
   insights,
   fmtMiliar,
@@ -81,6 +83,28 @@ export default function Dashboard() {
   const chartData =
     range === "12B" ? revenueSeries : revenueSeries.slice(-6);
 
+  const lastRev = revenueSeries[revenueSeries.length - 1];
+  const prevRev = revenueSeries[revenueSeries.length - 2];
+  const revGrowth = prevRev && prevRev.revenue ? ((lastRev.revenue - prevRev.revenue) / prevRev.revenue) * 100 : 0;
+  const lastMargin = marginSeries[marginSeries.length - 1];
+  const prevMargin = marginSeries[marginSeries.length - 2];
+  const marginDiff = lastMargin && prevMargin ? lastMargin.margin - prevMargin.margin : 0;
+  const lastUtil = utilSeries[utilSeries.length - 1];
+  const prevUtil = utilSeries[utilSeries.length - 2];
+  const utilDiff = lastUtil && prevUtil ? lastUtil.equipment - prevUtil.equipment : 0;
+  const activeEmployees = data.employees.filter((e) => e.status === "Aktif").length;
+  const seaTrialVessel =
+    projects.find((p) => p.status !== "Selesai" && (p.scope ?? []).includes("Sea Trial"))?.vessel ?? "—";
+
+  const exportSummary = () => {
+    const rows: (string | number)[][] = [
+      ["ID Proyek", "Kapal", "Progres (%)", "Anggaran (Rp)", "Realisasi (Rp)"],
+      ...projects.map((p) => [p.id, p.vessel, Number(p.progress || 0), Number(p.budget || 0), Number(p.actual || 0)]),
+    ];
+    exportExcel(rows, "Ringkasan Portofolio");
+    toast("Ringkasan portofolio diekspor ke Excel");
+  };
+
   const totalRevenue = revenueSeries.reduce((s, d) => s + d.revenue, 0);
   const totalRevenueLabel = `Rp ${totalRevenue.toLocaleString("id-ID", { maximumFractionDigits: 1 })} M`;
   const typeDist = (["New Build", "Repair", "Retrofit"] as const).map((t, i) => ({
@@ -101,7 +125,7 @@ export default function Dashboard() {
           icon={<TrendingUp className="h-5 w-5" />}
           actions={
             <>
-              <button className="btn-secondary" onClick={() => toast("Laporan eksekutif diekspor (demo)", "info")}>
+              <button className="btn-secondary" onClick={exportSummary}>
                 <Download className="h-4 w-4" /> Ekspor
               </button>
               <button className="btn-primary-gradient" onClick={() => navigate("/proyek")}>
@@ -130,7 +154,7 @@ export default function Dashboard() {
                 <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" /> Sistem Operasional
               </Badge>
               <span className="px-3 py-1.5 rounded-lg bg-white/15 text-sm font-medium">
-                272 pekerja aktif
+                {activeEmployees} pekerja aktif
               </span>
             </div>
           </div>
@@ -154,8 +178,8 @@ export default function Dashboard() {
           <KpiCard
             label="Pendapatan 12 Bulan"
             value={totalRevenueLabel}
-            delta="+14.2% vs periode lalu"
-            deltaDirection="up"
+            delta={`${revGrowth >= 0 ? "+" : ""}${revGrowth.toLocaleString("id-ID", { maximumFractionDigits: 1 })}% vs bulan lalu`}
+            deltaDirection={revGrowth > 0 ? "up" : revGrowth < 0 ? "down" : "flat"}
             icon={<Wallet className="h-5 w-5" />}
             chip="teal"
             spark={sparkRevenue}
@@ -164,9 +188,9 @@ export default function Dashboard() {
         <StaggerItem>
           <KpiCard
             label="Margin Bruto"
-            value="28.6%"
-            delta="+1.8 poin"
-            deltaDirection="up"
+            value={`${lastMargin.margin.toLocaleString("id-ID", { maximumFractionDigits: 1 })}%`}
+            delta={`${marginDiff >= 0 ? "+" : ""}${marginDiff.toLocaleString("id-ID", { maximumFractionDigits: 1 })} poin vs bulan lalu`}
+            deltaDirection={marginDiff > 0 ? "up" : marginDiff < 0 ? "down" : "flat"}
             icon={<TrendingUp className="h-5 w-5" />}
             chip="violet"
             spark={sparkMargin}
@@ -176,8 +200,8 @@ export default function Dashboard() {
           <KpiCard
             label="Utilitas Equipment"
             value={`${utilEquipment}%`}
-            delta="+3 poin vs bulan lalu"
-            deltaDirection="up"
+            delta={`${utilDiff >= 0 ? "+" : ""}${utilDiff.toLocaleString("id-ID", { maximumFractionDigits: 1 })} poin vs bulan lalu`}
+            deltaDirection={utilDiff > 0 ? "up" : utilDiff < 0 ? "down" : "flat"}
             icon={<Cpu className="h-5 w-5" />}
             chip="amber"
             spark={sparkUtil}
@@ -208,7 +232,7 @@ export default function Dashboard() {
                 </div>
               }
             />
-            <div className="h-80 p-4 pt-0">
+            <div className="h-64 p-4 pt-0 sm:h-80">
               <ResponsiveContainer width="100%" height="100%">
                 <ComposedChart data={chartData} margin={{ top: 10, right: 10, left: -15, bottom: 0 }}>
                   <defs>
@@ -265,7 +289,7 @@ export default function Dashboard() {
             <div className="p-4">
               <div className="mb-3 flex items-end gap-2">
                 <span className="text-3xl font-bold text-navy-900">{utilDrydock}%</span>
-                <span className="pb-1 text-xs text-steel-500">dari 4 fasilitas terpasang</span>
+                <span className="pb-1 text-xs text-steel-500">dari {drydocks.length} fasilitas terpasang</span>
               </div>
               <div className="space-y-3">
                 {drydockLoad.map((d) => (
@@ -348,7 +372,7 @@ export default function Dashboard() {
                   className="flex items-center justify-between gap-3 px-5 py-3 hover:bg-surface transition-colors"
                 >
                   <div className="min-w-0">
-                    <p className="text-sm font-semibold text-navy-900 truncate">{p.vessel}</p>
+                    <p className="text-sm font-semibold text-navy-900 truncate" title={p.vessel}>{p.vessel}</p>
                     <p className="text-xs text-steel-500">{p.id} · {p.client}</p>
                   </div>
                   <div className="flex items-center gap-3">
@@ -374,7 +398,7 @@ export default function Dashboard() {
                 <div key={a.id} className="flex items-center gap-3 rounded-xl px-2 py-2 hover:bg-surface">
                   <Avatar name={a.actor} className="h-8 w-8 shrink-0" />
                   <div className="min-w-0 flex-1">
-                    <p className="truncate text-sm text-steel-700">
+                    <p className="truncate text-sm text-steel-700" title={`${a.actor} ${a.action} ${a.target}`}>
                       <span className="font-semibold text-navy-900">{a.actor}</span> {a.action}{" "}
                       <span className="font-medium text-navy-800">{a.target}</span>
                     </p>
@@ -407,7 +431,7 @@ export default function Dashboard() {
               </span>
               <div>
                 <p className="text-sm font-semibold text-navy-900">Sea Trial Terjadwal</p>
-                <p className="text-lg font-bold text-gradient-navy">TB Samudra Jaya 07</p>
+                <p className="text-lg font-bold text-gradient-navy">{seaTrialVessel}</p>
               </div>
             </div>
             <div className="flex items-center gap-3">

@@ -77,7 +77,7 @@ export default function SparepartServiceSection({ projectId, vesselId, view = "a
     setModelLoading(true);
     if (typeof customElements !== "undefined" && !customElements.get("model-viewer")) {
       setModelLoading(false);
-      setModelError("Viewer 3D belum termuat (butuh koneksi CDN model-viewer). Periksa koneksi lalu muat ulang.");
+      setModelError("Komponen viewer 3D belum termuat. Muat ulang halaman lalu coba lagi.");
       return;
     }
     const mv = document.createElement("model-viewer") as any;
@@ -100,7 +100,7 @@ export default function SparepartServiceSection({ projectId, vesselId, view = "a
     const onLoad = () => setModelLoading(false);
     const onError = () => {
       setModelLoading(false);
-      setModelError("Gagal memuat model /models/tug_boat.glb. Pastikan file ada di public/models dan koneksi CDN model-viewer aktif.");
+      setModelError("Gagal memuat model /models/tug_boat.glb. Pastikan file ada di public/models lalu muat ulang.");
     };
     mv.addEventListener("load", onLoad);
     mv.addEventListener("error", onError);

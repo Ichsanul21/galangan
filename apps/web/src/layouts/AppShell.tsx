@@ -29,43 +29,6 @@ import { useAuth } from "../auth/auth";
 import { useStore } from "../data/store";
 import { Badge, Modal, Field, Toaster, toast } from "../components/ui";
 
-const navGroups = [
-  {
-    label: "Analisis",
-    items: [
-      { to: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
-      { to: "/analytics", label: "Analytics", icon: BarChart3 },
-    ],
-  },
-  {
-    label: "Operasional",
-    items: [
-      { to: "/proyek", label: "Manajemen Proyek", icon: Anchor },
-      { to: "/drydock", label: "Drydock & Kapasitas", icon: ShipWheel },
-      { to: "/inventori", label: "Inventori & Material", icon: Boxes, count: 4 },
-      { to: "/equipment", label: "Equipment", icon: Cpu },
-      { to: "/subkontraktor", label: "Subkontraktor", icon: HardHat },
-      { to: "/qc-safety", label: "QC & Safety", icon: ShieldCheck, count: 3 },
-    ],
-  },
-  {
-    label: "Komersial",
-    items: [
-      { to: "/crm", label: "CRM & Klien", icon: Handshake },
-      { to: "/procurement", label: "Procurement", icon: ShoppingCart, count: 2 },
-      { to: "/keuangan", label: "Keuangan & Billing", icon: Wallet, count: 4 },
-    ],
-  },
-  {
-    label: "SDM",
-    items: [
-      { to: "/sdm", label: "SDM & Karyawan", icon: Users },
-      { to: "/kapal", label: "Rekam Jejak Kapal", icon: Ship },
-      { to: "/dokumen", label: "Aset & Dokumen", icon: ScrollText },
-    ],
-  },
-];
-
 export default function AppShell() {
   const { user, logout } = useAuth();
   const { data, reset } = useStore();
@@ -75,6 +38,48 @@ export default function AppShell() {
   const [notifOpen, setNotifOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
   const [q, setQ] = useState("");
+
+  const lowStockCount = (data.inventory ?? []).filter((i) => Number(i.stock) <= Number(i.minStock)).length;
+  const qcCount = (data.ncr ?? []).filter((n) => n.status !== "Tertutup").length + (data.incidents ?? []).length;
+  const procCount = (data.requisitions ?? []).filter((r) => String(r.status).toLowerCase().includes("menunggu") || String(r.status).toUpperCase() === "RFQ").length;
+  const finCount = (data.invoices ?? []).filter((i) => i.status === "Terlambat" || i.status === "Belum Dibayar").length;
+
+  const navGroups = [
+    {
+      label: "Analisis",
+      items: [
+        { to: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
+        { to: "/analytics", label: "Analytics", icon: BarChart3 },
+      ],
+    },
+    {
+      label: "Operasional",
+      items: [
+        { to: "/proyek", label: "Manajemen Proyek", icon: Anchor },
+        { to: "/drydock", label: "Drydock & Kapasitas", icon: ShipWheel },
+        { to: "/inventori", label: "Inventori & Material", icon: Boxes, count: lowStockCount },
+        { to: "/equipment", label: "Equipment", icon: Cpu },
+        { to: "/subkontraktor", label: "Subkontraktor", icon: HardHat },
+        { to: "/qc-safety", label: "QC & Safety", icon: ShieldCheck, count: qcCount },
+      ],
+    },
+    {
+      label: "Komersial",
+      items: [
+        { to: "/crm", label: "CRM & Klien", icon: Handshake },
+        { to: "/procurement", label: "Procurement", icon: ShoppingCart, count: procCount },
+        { to: "/keuangan", label: "Keuangan & Billing", icon: Wallet, count: finCount },
+      ],
+    },
+    {
+      label: "SDM",
+      items: [
+        { to: "/sdm", label: "SDM & Karyawan", icon: Users },
+        { to: "/kapal", label: "Rekam Jejak Kapal", icon: Ship },
+        { to: "/dokumen", label: "Aset & Dokumen", icon: ScrollText },
+      ],
+    },
+  ];
 
   const doLogout = () => {
     logout();
@@ -150,10 +155,10 @@ export default function AppShell() {
                     }
                   >
                     <item.icon className="h-4 w-4 shrink-0" />
-                    <span className="truncate">{item.label}</span>
-                    {item.count ? (
+                    <span className="truncate" title={item.label}>{item.label}</span>
+                    {typeof item.count === "number" && item.count > 0 ? (
                       <span className="ml-auto rounded-full bg-rose-500/90 px-1.5 py-0.5 text-[10px] font-bold leading-none text-white">
-                        {item.count}
+                        {item.count > 9 ? "9+" : item.count}
                       </span>
                     ) : null}
                   </NavLink>

@@ -105,22 +105,57 @@ export default function Login() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [shake, setShake] = useState(0);
+  const [fails, setFails] = useState(0);
+  const [lockedUntil, setLockedUntil] = useState(0);
+
+  const fail = (message: string) => {
+    setError(message);
+    setShake((s) => s + 1);
+  };
+
+  const registerFail = (message: string) => {
+    const n = fails + 1;
+    setFails(n);
+    if (n >= 5) {
+      setLockedUntil(Date.now() + 30000);
+      fail("Terlalu banyak percobaan gagal. Tunggu 30 detik sebelum mencoba lagi.");
+    } else {
+      fail(message);
+    }
+  };
 
   const submit = (e: React.FormEvent) => {
     e.preventDefault();
-    const err = login(username, password);
-    if (err) {
-      setError(err);
-      setShake((s) => s + 1);
+    const now = Date.now();
+    if (now < lockedUntil) {
+      const s = Math.ceil((lockedUntil - now) / 1000);
+      fail(`Terlalu banyak percobaan gagal. Coba lagi dalam ${s} detik.`);
       return;
     }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(username.trim())) {
+      fail("Format email tidak valid. Gunakan alamat email yang benar.");
+      return;
+    }
+    const err = login(username, password);
+    if (err) {
+      registerFail(err);
+      return;
+    }
+    setFails(0);
+    setLockedUntil(0);
     toast("Selamat datang kembali!");
     navigate(from, { replace: true });
   };
 
   const quickLogin = (u: string) => {
+    if (Date.now() < lockedUntil) {
+      fail("Terlalu banyak percobaan gagal. Tunggu sebentar sebelum mencoba lagi.");
+      return;
+    }
     const err = login(u, "password@123");
     if (!err) {
+      setFails(0);
+      setLockedUntil(0);
       toast("Masuk sebagai akun demo");
       navigate(from, { replace: true });
     }
@@ -259,7 +294,7 @@ export default function Login() {
                 <input
                   type="password"
                   className="input pl-9"
-                  placeholder="e.g. password@123"
+                  placeholder="Masukkan password"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   autoComplete="current-password"
@@ -290,7 +325,6 @@ export default function Login() {
                 <ArrowUpRight className="h-4 w-4 shrink-0 text-steel-300 transition-colors group-hover:text-ocean-500" />
               </button>
             </div>
-            <p className="mt-3 text-center font-mono text-[11px] text-steel-400">demo password: password@123</p>
           </div>
         </motion.div>
       </div>

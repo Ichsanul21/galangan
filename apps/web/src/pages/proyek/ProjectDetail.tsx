@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useParams, Link } from "react-router-dom";
-import { ArrowLeft, Calendar, MapPin, Plus, Trash2 } from "lucide-react";
+import { ArrowLeft, Calendar, MapPin, Plus, Trash2, FileDown } from "lucide-react";
 import {
   Card,
   PageHeader,
@@ -20,7 +20,8 @@ import BoQSection from "./BoQSection";
 import ReportSection from "./ReportSection";
 import SparepartServiceSection from "./SparepartServiceSection";
 import { useStore } from "../../data/store";
-import { fmtMiliar } from "../../data";
+import { fmtMiliar, fmtTanggal, fmtRentang, fmtBulan } from "../../data";
+import { exportExcel } from "../../utils/export";
 
 const STATUS = ["Dalam Proses", "Sedang Berjalan", "Terlambat", "Tertunda", "Selesai"];
 
@@ -28,7 +29,7 @@ export default function ProjectDetail() {
   const { id } = useParams();
   const { data, update, add, wbsFor, setWbs, teamFor, setTeam, log } = useStore();
   const project = data.projects.find((p) => p.id === id) ?? data.projects[0];
-  const [tab, setTab] = useState("Overview");
+  const [tab, setTab] = useState("Ringkasan");
 
   const [showScope, setShowScope] = useState(false);
   const [scopeVal, setScopeVal] = useState("");
@@ -41,16 +42,20 @@ export default function ProjectDetail() {
   const [showTeam, setShowTeam] = useState(false);
   const [teamPick, setTeamPick] = useState("");
   const [wbsTaskUpdate, setWbsTaskUpdate] = useState<string | null>(null);
-  const [wbsUpdateForm, setWbsUpdateForm] = useState({ hours: "", material: "", status: "Sedang" as "Sedang" | "Selesai" });
+  const [wbsUpdateForm, setWbsUpdateForm] = useState({ hours: "", material: "", status: "Sedang" as "Sedang" | "Selesai", progress: "" });
   const [showShare, setShowShare] = useState(false);
   const [shareForm, setShareForm] = useState({ docId: "", to: "" });
+
+  const weightedProgress = (items: { progress: number; weight: number }[]): number => {
+    const totalW = items.reduce((s, w) => s + Number(w.weight || 0), 0);
+    if (totalW <= 0) return 0;
+    return Math.round(items.reduce((s, w) => s + (Number(w.progress || 0) * Number(w.weight || 0)), 0) / totalW);
+  };
 
   useEffect(() => {
     if (!project) return;
     const wbs = wbsFor(project.id);
-    const total = wbs.length;
-    const completed = wbs.filter((w) => w.status === "Selesai").length;
-    const newProgress = total > 0 ? Math.round((completed / total) * 100) : 0;
+    const newProgress = weightedProgress(wbs);
     if (newProgress !== project.progress) {
       update("projects", project.id, { progress: newProgress });
     }
@@ -81,24 +86,31 @@ export default function ProjectDetail() {
   const saveWbsTask = () => {
     if (!wbsTaskUpdate) return;
     const hours = Number(wbsUpdateForm.hours) || 0;
+    const prog = Math.max(0, Math.min(100, Number(wbsUpdateForm.progress)));
+    if (wbsUpdateForm.progress === "" || Number.isNaN(prog)) { toast("Isi progres 0–100", "info"); return; }
+    const status = prog >= 100 ? "Selesai" : wbsUpdateForm.status === "Selesai" && prog < 100 ? "Sedang" : wbsUpdateForm.status;
     const updated = wbs.map((w) =>
       w.task === wbsTaskUpdate
-        ? { ...w, actualHours: hours, materialUsed: wbsUpdateForm.material, status: wbsUpdateForm.status, progress: wbsUpdateForm.status === "Selesai" ? 100 : Math.min(hours * 10, 100) }
+        ? { ...w, actualHours: hours, materialUsed: wbsUpdateForm.material, status, progress: prog }
         : w
     );
     setWbs(pid, updated);
-    const completed = updated.filter((w) => w.status === "Selesai").length;
-    const newProgress = updated.length > 0 ? Math.round((completed / updated.length) * 100) : 0;
-    update("projects", pid, { progress: newProgress });
-    log("mengupdate progres WBS", `${wbsTaskUpdate} → ${wbsUpdateForm.status}`, "Proyek");
+    update("projects", pid, { progress: weightedProgress(updated) });
+    log("mengupdate progres WBS", `${wbsTaskUpdate} → ${prog}% (${status})`, "Proyek");
     toast("Progres tugas diperbarui");
     setWbsTaskUpdate(null);
-    setWbsUpdateForm({ hours: "", material: "", status: "Sedang" });
+    setWbsUpdateForm({ hours: "", material: "", status: "Sedang", progress: "" });
   };
 
   const saveWbs = () => {
     if (!wbsForm.task.trim()) { toast("Nama tahapan wajib diisi", "info"); return; }
-    setWbs(pid, [...wbs, { task: wbsForm.task.trim(), start: wbsForm.start || "-", end: wbsForm.end || "-", progress: Number(wbsForm.progress) || 0, weight: Number(wbsForm.weight) || 0 }]);
+    const weight = Number(wbsForm.weight) || 0;
+    if (weight <= 0) { toast("Bobot harus lebih dari 0", "info"); return; }
+    const next = [...wbs, { task: wbsForm.task.trim(), start: wbsForm.start || "-", end: wbsForm.end || "-", progress: Number(wbsForm.progress) || 0, weight }];
+    const totalW = next.reduce((s, w) => s + Number(w.weight || 0), 0);
+    if (totalW !== 100) { toast(`Total bobot menjadi ${totalW}% — harus tepat 100%`, "info"); return; }
+    setWbs(pid, next);
+    update("projects", pid, { progress: weightedProgress(next) });
     log("menambah tahapan WBS", `${pid} · ${wbsForm.task.trim()}`, "Proyek");
     toast("Tahapan ditambahkan");
     setShowWbs(false);
@@ -130,14 +142,14 @@ export default function ProjectDetail() {
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <KpiCard label="Anggaran" value={fmtMiliar(project.budget)} hint="Total kontrak proyek" icon={<Calendar className="h-5 w-5" />} />
         <KpiCard label="Realisasi" value={fmtMiliar(project.actual)} delta={`${project.budget ? Math.round((project.actual / project.budget) * 100) : 0}% terpakai`} deltaDirection={project.actual > project.budget ? "down" : "flat"} hint="Biaya aktual" />
-        <KpiCard label="Progres" value={`${project.progress}%`} delta={project.status === "Terlambat" ? "Terlambat dari jadwal" : "Sesuai jadwal"} deltaDirection={project.status === "Terlambat" ? "down" : "up"} hint="Dihitung dari penyelesaian WBS" />
-        <KpiCard label="Periode" value={`${String(project.start).slice(5)} → ${String(project.end).slice(5)}`} hint={project.branch} icon={<MapPin className="h-5 w-5" />} />
+        <KpiCard label="Progres" value={`${project.progress}%`} delta={project.status === "Terlambat" ? "Terlambat dari jadwal" : "Sesuai jadwal"} deltaDirection={project.status === "Terlambat" ? "down" : "up"} hint="Rata-rata berbobot WBS" />
+        <KpiCard label="Periode" value={fmtRentang(project.start, project.end)} hint={project.branch} icon={<MapPin className="h-5 w-5" />} />
       </div>
 
       <div className="mt-5 card">
-        <Tabs tabs={["Overview", "WBS", "Anggaran", "Tim", "Dokumen", "Terkait", "BoQ", "Laporan", "3D Viewer", "Service", "Sparepart"]} active={tab} onChange={setTab} />
+        <Tabs tabs={["Ringkasan", "WBS & Anggaran", "BoQ", "Dokumen & Laporan", "Terkait", "3D Viewer", "Service", "Sparepart", "Tim"]} active={tab} onChange={setTab} />
         <div className="p-5">
-          {tab === "Overview" && (
+          {tab === "Ringkasan" && (
             <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
               <div className="lg:col-span-2">
                 <div className="mb-2 flex items-center justify-between">
@@ -157,10 +169,10 @@ export default function ProjectDetail() {
                 <div className="mt-6">
                   <div className="mb-2 flex items-center justify-between">
                     <h3 className="text-sm font-semibold text-navy-900">Progres Keseluruhan</h3>
-                    <span className="text-xs text-steel-500">Dihitung dari penyelesaian WBS</span>
+                    <span className="text-xs text-steel-500">Rata-rata berbobot WBS</span>
                   </div>
                   <ProgressBar value={project.progress} tone={project.status === "Terlambat" ? "red" : "navy"} />
-                  <p className="mt-1 text-xs text-steel-500">{project.progress}% selesai · target penyelesaian {project.end}</p>
+                   <p className="mt-1 text-xs text-steel-500">{project.progress}% selesai · target penyelesaian {fmtTanggal(project.end)}</p>
                 </div>
                 {vessel && (
                   <div className="mt-6 rounded-xl border border-steel-100 bg-surface p-3 text-sm">
@@ -174,8 +186,8 @@ export default function ProjectDetail() {
                 <dl className="space-y-2.5 text-sm">
                   <div className="flex justify-between"><dt className="text-steel-500">Manajer</dt><dd className="font-medium">{project.manager}</dd></div>
                   <div className="flex justify-between"><dt className="text-steel-500">Cabang</dt><dd className="font-medium">{project.branch}</dd></div>
-                  <div className="flex justify-between"><dt className="text-steel-500">Mulai</dt><dd className="font-medium">{project.start}</dd></div>
-                  <div className="flex justify-between"><dt className="text-steel-500">Selesai</dt><dd className="font-medium">{project.end}</dd></div>
+                   <div className="flex justify-between"><dt className="text-steel-500">Mulai</dt><dd className="font-medium">{fmtTanggal(project.start)}</dd></div>
+                   <div className="flex justify-between"><dt className="text-steel-500">Selesai</dt><dd className="font-medium">{fmtTanggal(project.end)}</dd></div>
                   <div className="flex justify-between"><dt className="text-steel-500">Status</dt><dd><StatusBadge status={project.status} /></dd></div>
                   <div className="flex justify-between"><dt className="text-steel-500">Invoice</dt><dd className="font-medium">{invoices.length} dokumen</dd></div>
                   <div className="flex justify-between"><dt className="text-steel-500">NCR terbuka</dt><dd className="font-medium">{ncrs.filter((n) => n.status !== "Tertutup").length}</dd></div>
@@ -184,8 +196,9 @@ export default function ProjectDetail() {
             </div>
           )}
 
-          {tab === "WBS" && (
+          {tab === "WBS & Anggaran" && (
             <div>
+              <h3 className="mb-2 text-sm font-semibold text-navy-900">Work Breakdown Structure</h3>
               <div className="mb-3 flex justify-end">
                 <button className="btn-secondary text-xs" onClick={() => setShowWbs(true)}><Plus className="h-3.5 w-3.5" /> Tambah Tahapan</button>
               </div>
@@ -197,9 +210,9 @@ export default function ProjectDetail() {
                   <tbody className="divide-y divide-steel-100">
                     {wbs.map((w) => (
                       <tr key={w.task}>
-                        <td className="td font-medium text-navy-900">{w.task}</td>
-                        <td className="td font-mono text-xs text-steel-500">{w.start}</td>
-                        <td className="td font-mono text-xs text-steel-500">{w.end}</td>
+                         <td className="td font-medium text-navy-900">{w.task}</td>
+                         <td className="td font-mono text-xs text-steel-500">{fmtBulan(w.start)}</td>
+                         <td className="td font-mono text-xs text-steel-500">{fmtBulan(w.end)}</td>
                         <td className="td">{w.weight}%</td>
                         <td className="td">
                           <div className="flex items-center gap-3">
@@ -208,7 +221,7 @@ export default function ProjectDetail() {
                           </div>
                         </td>
                         <td className="td">
-                          <button className="btn-secondary text-xs" onClick={() => { setWbsTaskUpdate(w.task); setWbsUpdateForm({ hours: "", material: "", status: w.status === "Selesai" ? "Selesai" : "Sedang" }); }}>Update</button>
+                           <button className="btn-secondary text-xs" onClick={() => { setWbsTaskUpdate(w.task); setWbsUpdateForm({ hours: String(w.actualHours ?? ""), material: w.materialUsed ?? "", status: w.status === "Selesai" ? "Selesai" : "Sedang", progress: String(w.progress ?? 0) }); }}>Perbarui</button>
                         </td>
                       </tr>
                     ))}
@@ -218,7 +231,9 @@ export default function ProjectDetail() {
             </div>
           )}
 
-          {tab === "Anggaran" && (
+          {tab === "WBS & Anggaran" && (
+            <div className="mt-6">
+              <h3 className="mb-2 text-sm font-semibold text-navy-900">Anggaran & Nilai Hasil</h3>
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <Card className="p-5">
                 <div className="mb-2 flex items-center justify-between">
@@ -237,11 +252,29 @@ export default function ProjectDetail() {
                 <ProgressBar value={project.budget ? (project.actual / project.budget) * 100 : 0} tone="ocean" className="mt-3" />
               </Card>
               <Card className="p-5">
-                <h3 className="mb-2 text-sm font-semibold text-navy-900">Proyeksi (EAC)</h3>
-                <p className="text-sm text-steel-600">
-                  Estimasi biaya akhir diproyeksikan <span className="font-semibold text-amber-600">{fmtMiliar(Math.round(project.actual / 0.62))}</span> berdasarkan
-                  CPI saat ini {project.budget ? Math.round((project.actual / project.budget) * 100) : 0}% — perlu pengawasan agar tidak overrun.
-                </p>
+                <h3 className="mb-2 text-sm font-semibold text-navy-900">Nilai Hasil (EVM)</h3>
+                {(() => {
+                  const pv = project.budget;
+                  const ev = Math.round((project.budget * project.progress) / 100);
+                  const ac = project.actual;
+                  const spi = pv > 0 ? ev / pv : 0;
+                  const cpi = ac > 0 ? ev / ac : 0;
+                  const eac = cpi > 0 ? Math.round(ac / cpi) : ac;
+                  return (
+                    <>
+                      <dl className="space-y-1.5 text-sm">
+                        <div className="flex justify-between"><dt className="text-steel-500">PV (anggaran × 100%)</dt><dd className="font-medium">{fmtMiliar(pv)}</dd></div>
+                        <div className="flex justify-between"><dt className="text-steel-500">EV (anggaran × progres)</dt><dd className="font-medium">{fmtMiliar(ev)}</dd></div>
+                        <div className="flex justify-between"><dt className="text-steel-500">AC (realisasi)</dt><dd className="font-medium">{fmtMiliar(ac)}</dd></div>
+                        <div className="flex justify-between"><dt className="text-steel-500">SPI / CPI</dt><dd className="font-medium">{spi.toFixed(2)} / {cpi.toFixed(2)}</dd></div>
+                      </dl>
+                      <p className="mt-3 text-sm text-steel-600">
+                        Estimasi biaya akhir (EAC) <span className="font-semibold text-amber-600">{fmtMiliar(eac)}</span>{" "}
+                        {cpi < 1 && ac > 0 ? "— di atas anggaran, perlu pengendalian biaya." : cpi >= 1 ? "— dalam kendali anggaran." : "— belum ada realisasi tercatat."}
+                      </p>
+                    </>
+                  );
+                })()}
                 <h3 className="mb-2 mt-4 text-sm font-semibold text-navy-900">Invoice proyek ini ({invoices.length})</h3>
                 <div className="space-y-1.5">
                   {invoices.map((i) => (
@@ -254,6 +287,7 @@ export default function ProjectDetail() {
                   {invoices.length === 0 && <p className="text-xs text-steel-400">Belum ada invoice. Buat dari modul Keuangan.</p>}
                 </div>
               </Card>
+            </div>
             </div>
           )}
 
@@ -280,8 +314,9 @@ export default function ProjectDetail() {
             </div>
           )}
 
-          {tab === "Dokumen" && (
+          {tab === "Dokumen & Laporan" && (
             <div>
+              <h3 className="mb-2 text-sm font-semibold text-navy-900">Dokumen Proyek</h3>
               <div className="mb-3 flex justify-end">
                 <button className="btn-secondary text-xs" onClick={() => setShowDoc(true)}><Plus className="h-3.5 w-3.5" /> Tambah Dokumen</button>
               </div>
@@ -293,8 +328,11 @@ export default function ProjectDetail() {
                       <p className="text-xs text-steel-500">{d.id} · {d.type} · {d.version} · {d.updated}</p>
                     </div>
                     <div className="flex gap-2">
-                      <button className="btn-secondary text-xs" onClick={() => { /* export PDF */ }}>📄</button>
-                      <Badge tone="navy">{d.status}</Badge>
+                      <button className="btn-secondary text-xs" aria-label={`Ekspor ${d.title} ke Excel`} onClick={() => {
+                        exportExcel([["Field", "Value"], ["ID", d.id], ["Judul", d.title], ["Tipe", d.type], ["Proyek", pid], ["Versi", d.version], ["Status", d.status], ["Diperbarui", d.updated], ["Owner", d.owner]], `${d.id}-ringkasan`);
+                        toast(`${d.id} diekspor ke Excel`);
+                      }}><FileDown className="h-3.5 w-3.5" /> Excel</button>
+                      <StatusBadge status={d.status} />
                     </div>
                   </div>
                 ))}
@@ -333,7 +371,7 @@ export default function ProjectDetail() {
             </div>
           )}
           {tab === "BoQ" && <BoQSection projectId={pid} />}
-          {tab === "Laporan" && <ReportSection projectId={pid} />}
+          {tab === "Dokumen & Laporan" && <div className="mt-6"><ReportSection projectId={pid} /></div>}
           {tab === "3D Viewer" && <SparepartServiceSection projectId={pid} view="3d" />}
           {tab === "Service" && <SparepartServiceSection projectId={pid} view="service" />}
           {tab === "Sparepart" && <SparepartServiceSection projectId={pid} view="sparepart" />}
@@ -366,6 +404,7 @@ export default function ProjectDetail() {
       <Modal open={wbsTaskUpdate !== null} onClose={() => setWbsTaskUpdate(null)} title={`Update Progress: ${wbsTaskUpdate ?? ""}`}
         footer={<><button className="btn-secondary" onClick={() => setWbsTaskUpdate(null)}>Batal</button><button className="btn-primary" onClick={saveWbsTask}>Simpan</button></>}>
         <div className="space-y-3">
+          <Field label="Progres (%)" hint="0–100, diisi manual berdasarkan capaian nyata"><input type="number" min={0} max={100} className="input" value={wbsUpdateForm.progress} onChange={(e) => setWbsUpdateForm({ ...wbsUpdateForm, progress: e.target.value })} placeholder="cth: 70" /></Field>
           <Field label="Jam Kerja Aktual"><input type="number" className="input" value={wbsUpdateForm.hours} onChange={(e) => setWbsUpdateForm({ ...wbsUpdateForm, hours: e.target.value })} placeholder="cth: 8" /></Field>
           <Field label="Material Dipakai"><input className="input" value={wbsUpdateForm.material} onChange={(e) => setWbsUpdateForm({ ...wbsUpdateForm, material: e.target.value })} placeholder="cth: Baja AH36 50kg" /></Field>
           <Field label="Status">

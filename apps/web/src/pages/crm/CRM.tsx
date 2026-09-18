@@ -1,60 +1,130 @@
 import { useState } from "react";
 import { Plus, Send, Users2, Star, Handshake, ArrowRight } from "lucide-react";
-import { Card, CardHeader, PageHeader, Badge, KpiCard, Tabs, ProgressBar, Donut, Modal, Field, FormGrid, toast } from "../../components/ui";
+import { Card, CardHeader, PageHeader, Badge, KpiCard, Tabs, ProgressBar, Donut, Modal, Field, FormGrid, ConfirmModal, toast } from "../../components/ui";
 import { useStore, type StoreItem } from "../../data/store";
-import { fmtMiliar, fmtRupiah, sparkRevenue } from "../../data";
+import { fmtMiliar, fmtTanggal, todayISO } from "../../utils/format";
+import { clientTrend, pipelineTrend, winRateTrend, wonTrend } from "../../data";
 
-const stages = ["Lead", "Penawaran", "Negosiasi", "Menang"];
+const FLOW = ["Lead", "Penawaran", "Negosiasi", "Menang"];
+const TERMINAL = ["Terkonversi", "Batal", "Kalah"];
+const STAGES = [...FLOW, ...TERMINAL];
+
+const STAGE_COLORS: Record<string, string> = {
+  Lead: "#2e9ad4",
+  Penawaran: "#f59e0b",
+  Negosiasi: "#8b5cf6",
+  Menang: "#22c55e",
+  Terkonversi: "#0d9488",
+  Batal: "#94a3b8",
+  Kalah: "#f43f5e",
+};
+
+const STAGE_TONE: Record<string, "gray" | "amber" | "violet" | "green" | "teal" | "red"> = {
+  Lead: "gray",
+  Penawaran: "amber",
+  Negosiasi: "violet",
+  Menang: "green",
+  Terkonversi: "teal",
+  Batal: "gray",
+  Kalah: "red",
+};
+
+const isTerminal = (stage: string) => TERMINAL.includes(stage);
 
 export default function CRM() {
-  const { data, add, update } = useStore();
+  const { data, add, update, log } = useStore();
   const quotations = data.quotations;
   const clients = data.clients;
   const [tab, setTab] = useState("Pipeline");
 
   const [showQ, setShowQ] = useState(false);
-  const [qForm, setQForm] = useState({ client: "", vessel: "", type: "New Build", value: "", stage: "Lead" });
+  const [qForm, setQForm] = useState({ client: "", vessel: "", type: "New Build", value: "", stage: "Lead", date: todayISO() });
   const [showClient, setShowClient] = useState(false);
   const [cForm, setCForm] = useState({ name: "", fleet: "1", rating: "80" });
   const [showInvite, setShowInvite] = useState(false);
   const [inviteEmail, setInviteEmail] = useState("");
+  const [convertTarget, setConvertTarget] = useState<StoreItem | null>(null);
+  const [sendTarget, setSendTarget] = useState<StoreItem | null>(null);
+  const [sendEmail, setSendEmail] = useState("");
+  const [sendMsg, setSendMsg] = useState("");
 
-  const pipelineTotal = quotations.reduce((s, q) => s + Number(q.value || 0), 0);
-  const won = quotations.filter((q) => q.stage === "Menang").reduce((s, q) => s + Number(q.value || 0), 0);
-  const stageDist = stages.map((s, i) => ({
+  const activeQuotes = quotations.filter((q) => !isTerminal(q.stage));
+  const pipelineTotal = activeQuotes.reduce((s, q) => s + Number(q.value || 0), 0);
+  const wonQuotes = quotations.filter((q) => q.stage === "Menang" || q.stage === "Terkonversi");
+  const wonValue = wonQuotes.reduce((s, q) => s + Number(q.value || 0), 0);
+  const totalQuotes = quotations.length;
+  const winRate = totalQuotes > 0 ? Math.round((wonQuotes.length / totalQuotes) * 100) : 0;
+  const totalFleet = clients.reduce((s, c) => s + Number(c.fleet || 0), 0);
+  const stageDist = STAGES.map((s) => ({
     name: s,
     value: quotations.filter((q) => q.stage === s).length,
-    color: ["#2e9ad4", "#f59e0b", "#8b5cf6", "#22c55e"][i],
+    color: STAGE_COLORS[s] ?? "#94a3b8",
   }));
 
+  const portalProject = data.projects[0];
+  const portalInvoice = portalProject ? data.invoices.find((i) => i.project === portalProject.id) : undefined;
+
   const advance = (q: StoreItem) => {
-    const idx = stages.indexOf(q.stage);
-    if (idx < 0 || idx >= stages.length - 1) return;
-    const next = stages[idx + 1];
+    const idx = FLOW.indexOf(q.stage);
+    if (idx < 0 || idx >= FLOW.length - 1) return;
+    const next = FLOW[idx + 1];
     update("quotations", q.id, { stage: next });
+    log(`memajukan quotation ke ${next}`, q.id, "CRM");
     toast(`${q.id} naik ke tahap ${next}`);
   };
 
-  const convertToProject = (q: StoreItem) => {
-    const exists = data.projects.some((p) => p.vessel === q.vessel);
-    if (exists) { toast("Proyek untuk kapal ini sudah ada", "info"); return; }
+  const markTerminal = (q: StoreItem, stage: "Batal" | "Kalah") => {
+    if (isTerminal(q.stage)) return;
+    update("quotations", q.id, { stage });
+    log(`memindahkan quotation ke ${stage}`, q.id, "CRM");
+    toast(`${q.id} ditandai ${stage}`, "info");
+  };
+
+  const confirmConvert = () => {
+    const q = convertTarget;
+    if (!q) return;
+    if (q.stage === "Terkonversi" || data.projects.some((p) => p.vessel === q.vessel)) {
+      toast("Konversi ditolak: quotation sudah terkonversi atau proyek kapalnya sudah ada", "info");
+      setConvertTarget(null);
+      return;
+    }
     const created = add("projects", {
       vessel: q.vessel, type: q.type, client: q.client, status: "Dalam Proses",
-      branch: "Samarinda", start: new Date().toISOString().slice(0, 10), end: "-", progress: 0,
+      branch: "Samarinda", start: todayISO(), end: "-", progress: 0,
       budget: Number(q.value) || 0, actual: 0, manager: "Belum ditentukan", scope: [q.type],
     }, { action: "mengkonversi quotation", target: `${q.id} → proyek`, module: "CRM" });
+    update("quotations", q.id, { stage: "Terkonversi" });
+    log("mengunci quotation setelah konversi", q.id, "CRM");
     toast(`${q.id} menjadi proyek ${created.id}`);
+    setConvertTarget(null);
+  };
+
+  const openSend = (q: StoreItem) => {
+    setSendTarget(q);
+    setSendEmail("");
+    setSendMsg(`Yth. ${q.client},\n\nTerlampir penawaran ${q.id} untuk ${q.vessel} senilai ${fmtMiliar(Number(q.value) || 0)}. Mohon konfirmasi ketersediaan jadwal docking.\n\nHormat kami,\nTim Commercial`);
+  };
+
+  const confirmSend = () => {
+    if (!sendTarget) return;
+    if (!sendEmail.includes("@")) { toast("Email tujuan tidak valid", "info"); return; }
+    update("quotations", sendTarget.id, { statusKirim: "Terkirim", sentAt: todayISO(), sentTo: sendEmail.trim() });
+    log(`mengirim penawaran ke ${sendEmail.trim()}`, sendTarget.id, "CRM");
+    toast(`${sendTarget.id} terkirim ke ${sendEmail.trim()}`);
+    setSendTarget(null);
   };
 
   const saveQuotation = () => {
     if (!qForm.client || !qForm.vessel.trim()) { toast("Klien & kapal wajib diisi", "info"); return; }
+    if (!qForm.date) { toast("Tanggal penawaran wajib diisi", "info"); return; }
+    if (Number(qForm.value) <= 0) { toast("Nilai penawaran harus lebih dari 0", "info"); return; }
     const created = add("quotations", {
       client: qForm.client, vessel: qForm.vessel.trim(), type: qForm.type,
-      value: Number(qForm.value) || 0, stage: qForm.stage, date: new Date().toISOString().slice(0, 10),
+      value: Number(qForm.value), stage: qForm.stage, date: qForm.date,
     }, { action: "membuat penawaran", module: "CRM" });
     toast(`Penawaran ${created.id} dibuat`);
     setShowQ(false);
-    setQForm({ client: "", vessel: "", type: "New Build", value: "", stage: "Lead" });
+    setQForm({ client: "", vessel: "", type: "New Build", value: "", stage: "Lead", date: todayISO() });
   };
 
   const saveClient = () => {
@@ -78,10 +148,10 @@ export default function CRM() {
       />
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <KpiCard label="Total Klien Aktif" value={String(clients.length)} icon={<Users2 className="h-5 w-5" />} chip="navy" spark={sparkRevenue} hint="Rata-rata 10 kapal/fleet" />
-        <KpiCard label="Nilai Pipeline" value={fmtMiliar(pipelineTotal)} delta={`${quotations.length} penawaran aktif`} deltaDirection="up" chip="teal" hint="Lead → Menang" />
-        <KpiCard label="Win Rate" value="68%" delta="+5pt vs kuartal lalu" deltaDirection="up" icon={<Star className="h-5 w-5" />} chip="violet" />
-        <KpiCard label="Nilai Kontrak Menang" value={fmtMiliar(won)} delta="Siap dikonversi ke proyek" deltaDirection="up" chip="amber" hint="Bulan berjalan" />
+        <KpiCard label="Total Klien Aktif" value={String(clients.length)} icon={<Users2 className="h-5 w-5" />} chip="navy" spark={clientTrend} hint={`${String(totalFleet)} unit armada tercatat`} />
+        <KpiCard label="Nilai Pipeline" value={fmtMiliar(pipelineTotal)} delta={`${String(activeQuotes.length)} penawaran aktif`} deltaDirection="up" chip="teal" hint="Di luar Batal, Kalah, Terkonversi" spark={pipelineTrend} />
+        <KpiCard label="Win Rate" value={`${String(winRate)}%`} delta={`${String(wonQuotes.length)} menang dari ${String(totalQuotes)} penawaran`} deltaDirection={wonQuotes.length > 0 ? "up" : "flat"} icon={<Star className="h-5 w-5" />} chip="violet" spark={winRateTrend} />
+        <KpiCard label="Nilai Kontrak Menang" value={fmtMiliar(wonValue)} delta="Menang + Terkonversi" deltaDirection="up" chip="amber" hint="Bulan berjalan" spark={wonTrend} />
       </div>
 
       <div className="mt-4 card">
@@ -97,7 +167,7 @@ export default function CRM() {
                     {stageDist.map((d) => (
                       <div key={d.name} className="flex items-center gap-2 text-sm">
                         <span className="h-3 w-3 rounded-sm" style={{ background: d.color }} />
-                        <span className="text-steel-600">{d.name}</span>
+                        <span className="truncate text-steel-600" title={d.name}>{d.name}</span>
                         <span className="ml-auto font-semibold text-navy-900">{d.value}</span>
                       </div>
                     ))}
@@ -105,38 +175,44 @@ export default function CRM() {
                 </div>
               </Card>
               <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
-                {stages.map((stage) => {
+                {STAGES.map((stage) => {
                   const items = quotations.filter((q) => q.stage === stage);
                   return (
                     <div key={stage} className="rounded-xl bg-surface p-3">
                       <div className="mb-3 flex items-center justify-between">
-                        <h3 className="text-sm font-semibold text-navy-900">{stage}</h3>
+                        <h3 className="truncate text-sm font-semibold text-navy-900" title={stage}>{stage}</h3>
                         <Badge tone="gray">{items.length}</Badge>
                       </div>
                       <div className="space-y-2.5">
                         {items.map((q) => (
                           <Card key={q.id} className="card-hover p-3">
-                            <p className="text-sm font-semibold text-navy-900">{q.vessel}</p>
-                            <p className="text-xs text-steel-500">{q.client}</p>
-                            <p className="text-xs text-steel-500 mt-0.5">{q.type}</p>
+                            <p className="truncate text-sm font-semibold text-navy-900" title={String(q.vessel)}>{q.vessel}</p>
+                            <p className="truncate text-xs text-steel-500" title={String(q.client)}>{q.client}</p>
+                            <p className="mt-0.5 text-xs text-steel-500">{q.type} · {fmtTanggal(q.date)}</p>
                             <div className="mt-2 flex items-center justify-between">
-                              <span className="font-semibold text-navy-800">{fmtMiliar(q.value)}</span>
-                              <Badge tone={stage === "Menang" ? "green" : "gray"}>{q.id}</Badge>
+                              <span className="font-semibold text-navy-800">{fmtMiliar(Number(q.value) || 0)}</span>
+                              <Badge tone={STAGE_TONE[q.stage] ?? "gray"}>{q.id}</Badge>
                             </div>
-                            <div className="mt-2 flex gap-1.5">
-                              {stage !== "Menang" ? (
-                                <button className="btn-secondary flex-1 justify-center py-1 text-xs" onClick={() => advance(q)}>
-                                  Maju <ArrowRight className="h-3 w-3" />
-                                </button>
-                              ) : (
-                                <button className="btn-primary flex-1 justify-center py-1 text-xs" onClick={() => convertToProject(q)}>
-                                  Jadikan Proyek
-                                </button>
-                              )}
-                            </div>
+                            {!isTerminal(stage) && (
+                              <div className="mt-2 space-y-1.5">
+                                {stage !== "Menang" ? (
+                                  <button className="btn-secondary flex-1 justify-center py-1 text-xs w-full" onClick={() => advance(q)}>
+                                    Maju <ArrowRight className="h-3 w-3" />
+                                  </button>
+                                ) : (
+                                  <button className="btn-primary flex-1 justify-center py-1 text-xs w-full" onClick={() => setConvertTarget(q)}>
+                                    Jadikan Proyek
+                                  </button>
+                                )}
+                                <div className="flex gap-1.5">
+                                  <button className="btn-secondary flex-1 justify-center py-1 text-xs" onClick={() => markTerminal(q, "Batal")}>Batal</button>
+                                  <button className="btn-secondary flex-1 justify-center py-1 text-xs" onClick={() => markTerminal(q, "Kalah")}>Kalah</button>
+                                </div>
+                              </div>
+                            )}
                           </Card>
                         ))}
-                        {items.length === 0 && <p className="text-xs text-steel-400 text-center py-4">Kosong</p>}
+                        {items.length === 0 && <p className="py-4 text-center text-xs text-steel-400">Kosong</p>}
                       </div>
                     </div>
                   );
@@ -151,36 +227,44 @@ export default function CRM() {
                 <button className="btn-secondary text-xs" onClick={() => setShowClient(true)}><Plus className="h-3.5 w-3.5" /> Tambah Klien</button>
               </div>
               <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
-                {clients.map((c) => (
-                  <Card key={c.id} className="p-5">
-                    <div className="flex items-start justify-between">
-                      <div className="flex items-center gap-2.5">
-                        <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-navy-700 text-sm font-bold text-white">
-                          {String(c.name).replace("PT ", "").split(" ").map((n: string) => n[0]).slice(0, 2).join("")}
+                {clients.map((c) => {
+                  const cq = quotations.filter((x) => x.client === c.name);
+                  const cqVal = cq.reduce((s, x) => s + Number(x.value || 0), 0);
+                  return (
+                    <Card key={c.id} className="p-5">
+                      <div className="flex items-start justify-between">
+                        <div className="flex items-center gap-2.5">
+                          <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-navy-700 text-sm font-bold text-white">
+                            {String(c.name).replace("PT ", "").split(" ").map((n: string) => n[0]).slice(0, 2).join("")}
+                          </div>
+                          <div>
+                            <p className="truncate text-sm font-semibold text-navy-900" title={String(c.name)}>{c.name}</p>
+                            <p className="text-xs text-steel-500">{c.id} · sejak {c.since}</p>
+                          </div>
                         </div>
-                        <div>
-                          <p className="text-sm font-semibold text-navy-900">{c.name}</p>
-                          <p className="text-xs text-steel-500">{c.id} · sejak {c.since}</p>
+                        <Badge tone="green"><Star className="h-3 w-3 mr-0.5" /> {c.rating}%</Badge>
+                      </div>
+                      <div className="mt-4 border-t border-steel-100 pt-3">
+                        <div className="flex justify-between text-sm">
+                          <span className="text-steel-500">Armada kapal</span>
+                          <span className="font-semibold">{c.fleet} unit</span>
+                        </div>
+                        <div className="mt-1 flex justify-between text-sm">
+                          <span className="text-steel-500">Nilai penawaran</span>
+                          <span className="font-semibold">{fmtMiliar(cqVal)}</span>
+                        </div>
+                        <div className="mt-1 flex justify-between text-sm">
+                          <span className="text-steel-500">Proyek berjalan</span>
+                          <span className="font-semibold">{data.projects.filter((p) => p.client === c.name && p.status !== "Selesai").length} proyek</span>
+                        </div>
+                        <div className="mt-1 flex justify-between text-sm">
+                          <span className="text-steel-500">Penawaran tercatat</span>
+                          <span className="font-semibold">{cq.length} penawaran</span>
                         </div>
                       </div>
-                      <Badge tone="green"><Star className="h-3 w-3 mr-0.5" /> {c.rating}%</Badge>
-                    </div>
-                    <div className="mt-4 border-t border-steel-100 pt-3">
-                      <div className="flex justify-between text-sm">
-                        <span className="text-steel-500">Armada kapal</span>
-                        <span className="font-semibold">{c.fleet} unit</span>
-                      </div>
-                      <div className="mt-1 flex justify-between text-sm">
-                        <span className="text-steel-500">Nilai order</span>
-                        <span className="font-semibold">{fmtRupiah(Number(c.fleet) * 48000000000 / 100)}</span>
-                      </div>
-                      <div className="mt-1 flex justify-between text-sm">
-                        <span className="text-steel-500">Proyek berjalan</span>
-                        <span className="font-semibold">{data.projects.filter((p) => p.client === c.name && p.status !== "Selesai").length} proyek</span>
-                      </div>
-                    </div>
-                  </Card>
-                ))}
+                    </Card>
+                  );
+                })}
               </div>
             </div>
           )}
@@ -191,18 +275,28 @@ export default function CRM() {
                 <Card key={q.id} className="p-4">
                   <div className="flex justify-between">
                     <div>
-                      <p className="font-semibold text-navy-900">{q.vessel}</p>
-                      <p className="text-xs text-steel-500">{q.client} · {q.type}</p>
+                      <p className="truncate font-semibold text-navy-900" title={String(q.vessel)}>{q.vessel}</p>
+                      <p className="text-xs text-steel-500">{q.client} · {q.type} · {fmtTanggal(q.date)}</p>
+                      {q.statusKirim === "Terkirim" && (
+                        <p className="mt-0.5 text-xs text-teal-600">Terkirim {fmtTanggal(q.sentAt)} ke {q.sentTo}</p>
+                      )}
                     </div>
-                    <Badge tone={q.stage === "Menang" ? "green" : q.stage === "Negosiasi" ? "amber" : "gray"}>{q.stage}</Badge>
+                    <Badge tone={STAGE_TONE[q.stage] ?? "gray"}>{q.stage}</Badge>
                   </div>
                   <div className="mt-3 flex items-center justify-between">
-                    <span className="text-lg font-bold text-navy-900">{fmtMiliar(q.value)}</span>
+                    <span className="text-lg font-bold text-navy-900">{fmtMiliar(Number(q.value) || 0)}</span>
                     <div className="flex gap-1.5">
-                      <button className="btn-secondary text-xs" onClick={() => toast(`${q.id} dikirim ke ${q.client} (demo)`, "info")}><Send className="h-3.5 w-3.5" /> Kirim</button>
-                      {q.stage !== "Menang" && <button className="btn-secondary text-xs" onClick={() => advance(q)}>Maju</button>}
+                      <button className="btn-secondary text-xs" onClick={() => openSend(q)}><Send className="h-3.5 w-3.5" /> Kirim</button>
+                      {!isTerminal(q.stage) && q.stage !== "Menang" && <button className="btn-secondary text-xs" onClick={() => advance(q)}>Maju</button>}
+                      {!isTerminal(q.stage) && q.stage === "Menang" && <button className="btn-primary text-xs" onClick={() => setConvertTarget(q)}>Jadikan Proyek</button>}
                     </div>
                   </div>
+                  {!isTerminal(q.stage) && (
+                    <div className="mt-2 flex gap-1.5">
+                      <button className="btn-secondary flex-1 justify-center py-1 text-xs" onClick={() => markTerminal(q, "Batal")}>Tandai Batal</button>
+                      <button className="btn-secondary flex-1 justify-center py-1 text-xs" onClick={() => markTerminal(q, "Kalah")}>Tandai Kalah</button>
+                    </div>
+                  )}
                 </Card>
               ))}
             </div>
@@ -211,26 +305,30 @@ export default function CRM() {
           {tab === "Portal Klien" && (
             <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
               <div className="lg:col-span-2">
-                <p className="text-sm text-steel-600 mb-3">Portal klien adalah tampilan read-only di mana pemilik kapal bisa memantau progres proyek & invoice miliknya.</p>
-                <Card className="p-4">
-                  <p className="text-xs text-steel-500">PT Samudra Jaya Perkasa — TB Samudra Jaya 07</p>
-                  <div className="mt-2 flex items-center gap-4">
-                    <ProgressBar value={62} className="flex-1" />
-                    <span className="text-sm font-bold text-navy-900">62%</span>
-                  </div>
-                  <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
-                    {[
-                      { k: "Tahap", v: "Pengecatan" },
-                      { k: "Delivery", v: "30 Sep 2026" },
-                      { k: "Invoice", v: "INV-2607" },
-                    ].map((x) => (
-                      <div key={x.k} className="rounded-lg bg-surface p-3">
-                        <p className="text-xs text-steel-500">{x.k}</p>
-                        <p className="text-sm font-semibold text-navy-900">{x.v}</p>
-                      </div>
-                    ))}
-                  </div>
-                </Card>
+                <p className="mb-3 text-sm text-steel-600">Pratinjau portal — tampilan read-only berisi data proyek & invoice yang sudah tercatat. Tidak ada data contoh.</p>
+                {portalProject ? (
+                  <Card className="p-4">
+                    <p className="truncate text-xs text-steel-500" title={`${String(portalProject.client)} — ${String(portalProject.vessel)}`}>{portalProject.client} — {portalProject.vessel}</p>
+                    <div className="mt-2 flex items-center gap-4">
+                      <ProgressBar value={Number(portalProject.progress) || 0} className="flex-1" />
+                      <span className="text-sm font-bold text-navy-900">{portalProject.progress}%</span>
+                    </div>
+                    <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
+                      {[
+                        { k: "Status", v: String(portalProject.status) },
+                        { k: "Serah terima", v: fmtTanggal(portalProject.end) },
+                        { k: "Invoice", v: portalInvoice ? String(portalInvoice.id) : "—" },
+                      ].map((x) => (
+                        <div key={x.k} className="rounded-lg bg-surface p-3">
+                          <p className="text-xs text-steel-500">{x.k}</p>
+                          <p className="truncate text-sm font-semibold text-navy-900" title={x.v}>{x.v}</p>
+                        </div>
+                      ))}
+                    </div>
+                  </Card>
+                ) : (
+                  <Card className="p-4"><p className="text-sm text-steel-500">Belum ada proyek tercatat untuk pratinjau.</p></Card>
+                )}
               </div>
               <Card className="p-5">
                 <h3 className="mb-2 text-sm font-semibold text-navy-900">Akses Portal</h3>
@@ -261,11 +359,14 @@ export default function CRM() {
             </Field>
             <Field label="Tahap awal">
               <select className="input" value={qForm.stage} onChange={(e) => setQForm({ ...qForm, stage: e.target.value })}>
-                {stages.map((s) => <option key={s}>{s}</option>)}
+                {FLOW.map((s) => <option key={s}>{s}</option>)}
               </select>
             </Field>
           </FormGrid>
-          <Field label="Nilai penawaran (Rp)"><input type="number" className="input" value={qForm.value} onChange={(e) => setQForm({ ...qForm, value: e.target.value })} /></Field>
+          <FormGrid>
+            <Field label="Nilai penawaran (Rp)" hint="Harus lebih dari 0"><input type="number" min={1} className="input" value={qForm.value} onChange={(e) => setQForm({ ...qForm, value: e.target.value })} /></Field>
+            <Field label="Tanggal penawaran"><input type="date" className="input" value={qForm.date} onChange={(e) => setQForm({ ...qForm, date: e.target.value })} /></Field>
+          </FormGrid>
         </div>
       </Modal>
 
@@ -289,6 +390,37 @@ export default function CRM() {
         }}>Kirim</button></>}>
         <Field label="Email klien"><input type="email" className="input" value={inviteEmail} onChange={(e) => setInviteEmail(e.target.value)} placeholder="cth: ops@samudrajaya.co.id" /></Field>
       </Modal>
+
+      {/* Modal kirim penawaran */}
+      <Modal open={sendTarget !== null} onClose={() => setSendTarget(null)} title={`Kirim ${sendTarget?.id ?? ""}`} subtitle="Pratinjau penawaran sebelum dikirim"
+        wide footer={<><button className="btn-secondary" onClick={() => setSendTarget(null)}>Batal</button><button className="btn-primary" onClick={confirmSend}><Send className="h-4 w-4" /> Kirim Penawaran</button></>}>
+        {sendTarget && (
+          <div className="space-y-3">
+            <div className="rounded-xl bg-surface p-4 text-sm">
+              <p className="font-semibold text-navy-900">{sendTarget.vessel}</p>
+              <p className="text-xs text-steel-500">{sendTarget.client} · {sendTarget.type}</p>
+              <div className="mt-2 flex flex-wrap gap-x-6 gap-y-1">
+                <span className="text-steel-600">Nilai: <strong className="text-navy-900">{fmtMiliar(Number(sendTarget.value) || 0)}</strong></span>
+                <span className="text-steel-600">Tanggal: <strong className="text-navy-900">{fmtTanggal(sendTarget.date)}</strong></span>
+                <span className="text-steel-600">Tahap: <strong className="text-navy-900">{sendTarget.stage}</strong></span>
+              </div>
+            </div>
+            <Field label="Email tujuan"><input type="email" className="input" value={sendEmail} onChange={(e) => setSendEmail(e.target.value)} placeholder="cth: purchasing@klien.co.id" /></Field>
+            <Field label="Pesan pengantar"><textarea className="input" rows={5} value={sendMsg} onChange={(e) => setSendMsg(e.target.value)} /></Field>
+          </div>
+        )}
+      </Modal>
+
+      <ConfirmModal
+        open={convertTarget !== null}
+        title={`Konversi ${convertTarget?.id ?? ""} jadi proyek?`}
+        desc={convertTarget && (convertTarget.stage === "Terkonversi" || data.projects.some((p) => p.vessel === convertTarget.vessel))
+          ? "Quotation ini sudah terkonversi atau proyek untuk kapal ini sudah ada. Konversi ganda akan ditolak."
+          : "Quotation akan dikunci ke tahap Terkonversi dan dibuat satu proyek baru. Konversi ganda tidak diizinkan."}
+        confirmLabel="Ya, konversi"
+        onCancel={() => setConvertTarget(null)}
+        onConfirm={confirmConvert}
+      />
     </div>
   );
 }

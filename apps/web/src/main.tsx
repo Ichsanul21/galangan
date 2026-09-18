@@ -1,6 +1,7 @@
 import React from "react";
 import ReactDOM from "react-dom/client";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import "@google/model-viewer";
 import "./index.css";
 import { AuthProvider, RequireAuth } from "./auth/auth";
 import { StoreProvider } from "./data/store";
@@ -23,6 +24,7 @@ import Vessels from "./pages/kapal/Vessels";
 import VesselDetail from "./pages/kapal/VesselDetail";
 import EquipmentPage from "./pages/equipment/Equipment";
 import Documents from "./pages/dokumen/Documents";
+import { ErrorBoundary } from "./components/ui";
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
@@ -39,23 +41,23 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
                 </RequireAuth>
               }
             >
-              <Route path="/" element={<Dashboard />} />
-              <Route path="/dashboard" element={<Dashboard />} />
-              <Route path="/analytics" element={<Analytics />} />
-              <Route path="/proyek" element={<Projects />} />
-              <Route path="/proyek/:id" element={<ProjectDetail />} />
-              <Route path="/inventori" element={<Inventory />} />
-              <Route path="/keuangan" element={<Finance />} />
-              <Route path="/sdm" element={<HR />} />
-              <Route path="/crm" element={<CRM />} />
-              <Route path="/procurement" element={<Procurement />} />
-              <Route path="/qc-safety" element={<QCSafety />} />
-              <Route path="/drydock" element={<Drydock />} />
-              <Route path="/subkontraktor" element={<Subcontractor />} />
-              <Route path="/kapal" element={<Vessels />} />
-              <Route path="/kapal/:id" element={<VesselDetail />} />
-              <Route path="/equipment" element={<EquipmentPage />} />
-              <Route path="/dokumen" element={<Documents />} />
+              <Route path="/" element={<ErrorBoundary title="Dashboard gagal dimuat"><Dashboard /></ErrorBoundary>} />
+              <Route path="/dashboard" element={<ErrorBoundary title="Dashboard gagal dimuat"><Dashboard /></ErrorBoundary>} />
+              <Route path="/analytics" element={<ErrorBoundary title="Analytics gagal dimuat"><Analytics /></ErrorBoundary>} />
+              <Route path="/proyek" element={<ErrorBoundary title="Proyek gagal dimuat"><Projects /></ErrorBoundary>} />
+              <Route path="/proyek/:id" element={<ErrorBoundary title="Detail proyek gagal dimuat"><ProjectDetail /></ErrorBoundary>} />
+              <Route path="/inventori" element={<ErrorBoundary title="Inventori gagal dimuat"><Inventory /></ErrorBoundary>} />
+              <Route path="/keuangan" element={<ErrorBoundary title="Keuangan gagal dimuat"><Finance /></ErrorBoundary>} />
+              <Route path="/sdm" element={<ErrorBoundary title="SDM gagal dimuat"><HR /></ErrorBoundary>} />
+              <Route path="/crm" element={<ErrorBoundary title="CRM gagal dimuat"><CRM /></ErrorBoundary>} />
+              <Route path="/procurement" element={<ErrorBoundary title="Procurement gagal dimuat"><Procurement /></ErrorBoundary>} />
+              <Route path="/qc-safety" element={<ErrorBoundary title="QC & Safety gagal dimuat"><QCSafety /></ErrorBoundary>} />
+              <Route path="/drydock" element={<ErrorBoundary title="Drydock gagal dimuat"><Drydock /></ErrorBoundary>} />
+              <Route path="/subkontraktor" element={<ErrorBoundary title="Subkontraktor gagal dimuat"><Subcontractor /></ErrorBoundary>} />
+              <Route path="/kapal" element={<ErrorBoundary title="Kapal gagal dimuat"><Vessels /></ErrorBoundary>} />
+              <Route path="/kapal/:id" element={<ErrorBoundary title="Detail kapal gagal dimuat"><VesselDetail /></ErrorBoundary>} />
+              <Route path="/equipment" element={<ErrorBoundary title="Equipment gagal dimuat"><EquipmentPage /></ErrorBoundary>} />
+              <Route path="/dokumen" element={<ErrorBoundary title="Dokumen gagal dimuat"><Documents /></ErrorBoundary>} />
             </Route>
             <Route path="*" element={<Navigate to="/dashboard" replace />} />
           </Routes>

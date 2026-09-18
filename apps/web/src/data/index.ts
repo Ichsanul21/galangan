@@ -385,13 +385,7 @@ export const monthlyRevenue = [
   { month: "Jul", value: 9.1 },
 ];
 
-export function fmtRupiah(n: number): string {
-  return "Rp " + n.toLocaleString("id-ID");
-}
-
-export function fmtMiliar(n: number): string {
-  return "Rp " + (n / 1_000_000_000).toLocaleString("id-ID", { maximumFractionDigits: 1 }) + " M";
-}
+export { fmtRupiah, fmtMiliar, fmtJumlah, fmtPersen, fmtTanggal, fmtBulan, fmtRentang, todayISO, monthISO, SATUAN, STATUS_BOQ_ID, STATUS_SVC_ID } from "../utils/format";
 
 /* ====== EXTENDED 12-MONTH SERIES ====== */
 
@@ -775,6 +769,47 @@ export const seedBoq: BoQItem[] = [
   ...(boqByProject["RP-2026-005"] ?? []),
 ];
 
-export function fmtPersen(n: number): string {
-  return n.toLocaleString("id-ID", { maximumFractionDigits: 1 }) + "%";
-}
+/* ====== Deret tren per modul — 1 deret per kartu KPI (12 titik, Sep-Ags) ====== */
+
+const M12 = ["Sep", "Okt", "Nov", "Des", "Jan", "Feb", "Mar", "Apr", "Mei", "Jun", "Jul", "Ags"];
+const mk = (vs: number[]) => M12.map((name, i) => ({ name, v: vs[i] ?? vs[vs.length - 1] }));
+
+export const activeProjectTrend = mk([6, 7, 6, 8, 7, 8, 6, 9, 8, 10, 10, 11]);
+export const contractValueTrend = mk([98, 104, 101, 112, 108, 115, 110, 121, 118, 126, 131, 138]);
+export const avgProgressTrend = mk([38, 40, 41, 43, 44, 47, 49, 52, 55, 58, 61, 63]);
+export const apTrend = mk([9.4, 9.8, 9.1, 10.2, 9.9, 10.6, 10.1, 11.0, 10.8, 11.4, 11.9, 12.3]);
+export const cashInTrend = cashflowSeries.map((d) => ({ name: d.month, v: d.masuk }));
+export const ebitdaTrend = mk([3.1, 3.3, 3.0, 3.6, 3.4, 3.8, 3.6, 4.0, 4.1, 4.4, 4.7, 5.0]);
+export const poCountTrend = procurementTrend.map((d) => ({ name: d.month, v: d.pengadaan }));
+export const poValueTrend = procurementTrend.map((d) => ({ name: d.month, v: d.pengeluaran }));
+export const prPendingTrend = mk([9, 8, 10, 7, 8, 6, 7, 5, 6, 5, 4, 4]);
+export const vendorTrend = mk([18, 19, 19, 20, 21, 21, 22, 22, 23, 24, 24, 25]);
+export const itemTrend = mk([142, 145, 148, 152, 155, 159, 162, 166, 170, 174, 178, 182]);
+export const lowStockTrend = mk([9, 8, 8, 7, 7, 6, 6, 5, 5, 4, 4, 3]);
+export const warehouseTrend = mk([4, 4, 5, 5, 5, 6, 6, 6, 7, 7, 7, 8]);
+export const stockValueTrend = stockTrend.map((d) => ({ name: d.month, v: d.nilai }));
+export const subActiveTrend = mk([9, 10, 10, 11, 11, 12, 12, 13, 13, 14, 14, 15]);
+export const subContractTrend = mk([18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29]);
+export const woTrend = mk([3, 4, 3, 5, 4, 5, 6, 5, 6, 7, 6, 7]);
+export const ratingTrend = mk([82, 83, 83, 84, 84, 85, 85, 86, 86, 87, 87, 88]);
+export const equipTotalTrend = mk([22, 23, 23, 24, 24, 25, 25, 26, 26, 27, 27, 28]);
+export const maintTrend = mk([4, 3, 4, 3, 3, 2, 3, 2, 2, 2, 1, 2]);
+export const serviceDueTrend = mk([5, 4, 5, 4, 3, 4, 3, 3, 2, 3, 2, 2]);
+export const certExpireTrend = mk([12, 11, 11, 10, 10, 9, 9, 8, 8, 7, 7, 7]);
+export const certifiedTrend = mk([74, 75, 75, 76, 77, 78, 78, 79, 80, 81, 81, 82]);
+export const ncrTrend = mk([7, 6, 7, 6, 5, 5, 4, 4, 4, 3, 3, 3]);
+export const incidentTrend = mk([4, 3, 4, 3, 3, 2, 3, 2, 2, 2, 1, 2]);
+export const hseTrend = mk([86, 87, 87, 88, 88, 89, 89, 90, 90, 91, 91, 92]);
+export const dockUtilTrend = utilSeries.map((d) => ({ name: d.month, v: d.drydock }));
+export const slotTrend = mk([3, 3, 4, 4, 4, 5, 4, 5, 5, 6, 5, 5]);
+export const fleetTrend = mk([18, 19, 19, 20, 20, 21, 21, 22, 22, 23, 23, 24]);
+export const dockingTrend = mk([2, 2, 3, 2, 3, 3, 2, 3, 3, 4, 3, 3]);
+export const buildTrend = mk([4, 4, 5, 5, 5, 6, 6, 6, 7, 7, 7, 8]);
+export const certTrend = mk([6, 5, 6, 5, 5, 4, 4, 4, 3, 3, 3, 2]);
+export const clientTrend = mk([28, 29, 30, 31, 31, 32, 33, 33, 34, 35, 35, 36]);
+export const pipelineTrend = mk([42, 45, 44, 48, 47, 51, 49, 53, 55, 58, 60, 61]);
+export const winRateTrend = mk([58, 60, 59, 62, 61, 63, 64, 65, 64, 66, 67, 68]);
+export const wonTrend = mk([28, 30, 29, 33, 32, 36, 34, 38, 40, 43, 46, 49]);
+export const activeEmployeeTrend = mk([232, 238, 242, 238, 242, 246, 244, 250, 254, 258, 262, 266]);
+
+

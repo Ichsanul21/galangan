@@ -3,6 +3,7 @@ import { useStore } from "../../data/store";
 import { Card, Modal, Field, FormGrid, toast, EmptyState, StatusBadge } from "../../components/ui";
 import { Plus, FileDown } from "lucide-react";
 import { exportExcel, fmtRupiah } from "../../utils/export";
+import { SATUAN, STATUS_BOQ_ID } from "../../utils/format";
 import type { BoQItem } from "../../data";
 
 const STATUS_FLOW: Record<string, string[]> = {
@@ -122,12 +123,13 @@ export default function BoQSection({ projectId }: Props) {
                     <td className="td">{b.unit}</td>
                     <td className="td font-mono text-sm">{fmtRupiah(b.unitPrice)}</td>
                     <td className="td font-mono text-sm font-semibold">{fmtRupiah(b.totalPrice)}</td>
-                    <td className="td"><StatusBadge status={b.status} /></td>
+                    <td className="td"><StatusBadge status={b.status} label={STATUS_BOQ_ID[b.status] ?? b.status} /></td>
                     <td className="td">
                       <div className="flex gap-1">
                         {nextStatus(b.status).map((ns) => (
                           <button
                             key={ns}
+                            aria-label={`Ubah ${b.name} menjadi ${STATUS_BOQ_ID[ns] ?? ns}`}
                             className={`rounded px-2 py-0.5 text-xs font-semibold transition-colors ${
                               ns === "Approved" ? "bg-green-100 text-green-700 hover:bg-green-200" :
                               ns === "Rejected" ? "bg-rose-100 text-rose-700 hover:bg-rose-200" :
@@ -136,7 +138,7 @@ export default function BoQSection({ projectId }: Props) {
                             }`}
                             onClick={() => changeStatus(b.id, ns)}
                           >
-                            {ns === "Approved" ? "Setujui" : ns === "Rejected" ? "Tolak" : ns}
+                            {ns === "Approved" ? "Setujui" : ns === "Rejected" ? "Tolak" : ns === "Completed" ? "Selesaikan" : "Ajukan"}
                           </button>
                         ))}
                       </div>
@@ -157,7 +159,7 @@ export default function BoQSection({ projectId }: Props) {
           <FormGrid>
             <Field label="Quantity"><input type="number" className="input" value={form.quantity} onChange={(e) => setForm({ ...form, quantity: e.target.value })} /></Field>
             <Field label="Unit"><select className="input" value={form.unit} onChange={(e) => setForm({ ...form, unit: e.target.value })}>
-              {["pcs", "set", "ton", "m²", "m", "liter", "package", "jam"].map((u) => <option key={u}>{u}</option>)}
+              {SATUAN.map((u) => <option key={u} value={u}>{u}</option>)}
             </select></Field>
           </FormGrid>
           <FormGrid>

@@ -14,6 +14,22 @@ import {
 } from "../../components/ui";
 import SparepartServiceSection from "../proyek/SparepartServiceSection";
 import { useStore } from "../../data/store";
+import { fmtBulan, fmtTanggal, monthISO, todayISO } from "../../utils/format";
+
+function monthDiff(expires: string, base: string): number | null {
+  const m1 = /^(\d{4})-(\d{2})$/.exec(expires ?? "");
+  const m2 = /^(\d{4})-(\d{2})$/.exec(base ?? "");
+  if (!m1 || !m2) return null;
+  return (Number(m1[1]) - Number(m2[1])) * 12 + (Number(m1[2]) - Number(m2[2]));
+}
+
+function certTone(expires: string, nowMonth: string): "green" | "amber" | "red" {
+  const d = monthDiff(expires, nowMonth);
+  if (d === null) return "green";
+  if (d < 0) return "red";
+  if (d <= 3) return "amber";
+  return "green";
+}
 
 export default function VesselDetail() {
   const { id } = useParams();
@@ -21,23 +37,24 @@ export default function VesselDetail() {
   const v = data.vessels.find((x) => x.id === id) ?? data.vessels[0];
 
   const [showCert, setShowCert] = useState(false);
-  const [certForm, setCertForm] = useState({ name: "", expires: "" });
+  const [certForm, setCertForm] = useState({ name: "", issued: monthISO(), expires: "" });
   const [showSurvey, setShowSurvey] = useState(false);
   const [surveyForm, setSurveyForm] = useState({ type: "Annual Survey", date: "", status: "Terjadwal" });
   const [tab, setTab] = useState("Sertifikat");
 
   if (!v) return <p className="text-sm text-steel-500">Kapal tidak ditemukan.</p>;
 
+  const nowMonth = todayISO().slice(0, 7);
   const projects = data.projects.filter((p) => p.vessel === v.name);
   const surveys = data.surveys.filter((s) => s.vessel === v.name);
-  const certs = (v.certificates ?? []) as { name: string; issued?: string; expires: string; tone: string }[];
+  const certs = (v.certificates ?? []) as { name: string; issued?: string; expires: string }[];
 
   const saveCert = () => {
-    if (!certForm.name.trim() || !certForm.expires) { toast("Nama & masa berlaku wajib diisi", "info"); return; }
-    update("vessels", v.id, { certificates: [...certs, { name: certForm.name.trim(), issued: new Date().toISOString().slice(0, 7), expires: certForm.expires, tone: "green" }] });
+    if (!certForm.name.trim() || !certForm.issued || !certForm.expires) { toast("Nama, bulan terbit & masa berlaku wajib diisi", "info"); return; }
+    update("vessels", v.id, { certificates: [...certs, { name: certForm.name.trim(), issued: certForm.issued, expires: certForm.expires }] });
     toast(`Sertifikat ditambahkan ke ${v.name}`);
     setShowCert(false);
-    setCertForm({ name: "", expires: "" });
+    setCertForm({ name: "", issued: monthISO(), expires: "" });
   };
 
   const saveSurvey = () => {
@@ -96,15 +113,15 @@ export default function VesselDetail() {
               <Card className="p-5 lg:col-span-1">
                 <div className="mb-3 flex items-center justify-between">
                   <h3 className="flex items-center gap-2 text-sm font-semibold text-navy-900"><FileCheck2 className="h-4 w-4" /> Sertifikat & Kepatuhan</h3>
-                  <button className="btn-secondary text-xs" onClick={() => setShowCert(true)}><Plus className="h-3.5 w-3.5" /></button>
+                  <button className="btn-secondary text-xs" aria-label="Tambah sertifikat" onClick={() => setShowCert(true)}><Plus className="h-3.5 w-3.5" /></button>
                 </div>
                 <div className="space-y-2.5">
                   {certs.map((c) => {
-                    const tone = c.tone as "green" | "amber" | "red";
+                    const tone = certTone(c.expires, nowMonth);
                     return (
                       <div key={c.name} className="rounded-lg border border-steel-100 p-3">
                         <p className="text-sm font-medium text-navy-900">{c.name}</p>
-                        <p className="text-xs text-steel-500">Terbit {c.issued} · Berakhir {c.expires}</p>
+                        <p className="text-xs text-steel-500">Terbit {fmtBulan(c.issued)} · Berakhir {fmtBulan(c.expires)}</p>
                         <Badge tone={tone} className="mt-1">
                           {tone === "green" ? "Berlaku" : tone === "amber" ? "Hampir Expire" : "Kedaluwarsa"}
                         </Badge>
@@ -120,7 +137,7 @@ export default function VesselDetail() {
               <Card className="p-5 lg:col-span-2">
                 <div className="mb-4 flex items-center justify-between">
                   <h3 className="flex items-center gap-2 text-sm font-semibold text-navy-900"><History className="h-4 w-4" /> Timeline Riwayat</h3>
-                  <button className="btn-secondary text-xs" onClick={() => setShowSurvey(true)}><Plus className="h-3.5 w-3.5" /> Jadwalkan Survey</button>
+                  <button className="btn-secondary text-xs" aria-label="Jadwalkan survey" onClick={() => setShowSurvey(true)}><Plus className="h-3.5 w-3.5" /> Jadwalkan Survey</button>
                 </div>
                 <div className="space-y-0">
                   {(v.history ?? []).map((h: { event: string; date: string; type: string }, i: number, arr: unknown[]) => (
@@ -131,7 +148,7 @@ export default function VesselDetail() {
                       </div>
                       <div className="pb-1">
                         <p className="text-sm font-semibold text-navy-900">{h.event}</p>
-                        <p className="text-xs text-steel-500">{h.date} · {h.type}</p>
+                        <p className="text-xs text-steel-500">{fmtTanggal(h.date)} · {h.type}</p>
                       </div>
                     </div>
                   ))}
@@ -141,7 +158,7 @@ export default function VesselDetail() {
                     <p className="mb-2 text-xs font-semibold text-steel-500">SURVEY TERJADWAL</p>
                     {surveys.map((s) => (
                       <div key={s.id} className="flex items-center justify-between py-1 text-sm">
-                        <span className="text-steel-700">{s.type} · {s.date}</span>
+                        <span className="text-steel-700">{s.type} · {fmtTanggal(String(s.date))}</span>
                         <Badge tone={s.status === "Selesai" ? "green" : s.status === "Dalam Proses" ? "blue" : "gray"}>{s.status}</Badge>
                       </div>
                     ))}
@@ -176,7 +193,10 @@ export default function VesselDetail() {
         footer={<><button className="btn-secondary" onClick={() => setShowCert(false)}>Batal</button><button className="btn-primary" onClick={saveCert}>Simpan</button></>}>
         <div className="space-y-3">
           <Field label="Nama sertifikat"><input className="input" value={certForm.name} onChange={(e) => setCertForm({ ...certForm, name: e.target.value })} placeholder="cth: Load Line Certificate" /></Field>
-          <Field label="Berlaku hingga"><input type="month" className="input" value={certForm.expires} onChange={(e) => setCertForm({ ...certForm, expires: e.target.value })} /></Field>
+          <FormGrid>
+            <Field label="Terbit"><input type="month" className="input" value={certForm.issued} onChange={(e) => setCertForm({ ...certForm, issued: e.target.value })} /></Field>
+            <Field label="Berlaku hingga"><input type="month" className="input" value={certForm.expires} onChange={(e) => setCertForm({ ...certForm, expires: e.target.value })} /></Field>
+          </FormGrid>
         </div>
       </Modal>
 

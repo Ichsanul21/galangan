@@ -38,41 +38,25 @@ import {
   toast,
 } from "../components/ui";
 import { useStore } from "../data/store";
+import { exportExcel } from "../utils/export";
 import {
   revenueSeries,
   sparkRevenue,
   sparkMargin,
   sparkProjects,
-  sparkUtil,
+  ncrTrend,
+  lowStockTrend,
+  slotTrend,
+  activeProjectTrend,
   marginSeries,
   inspectionTrend,
 } from "../data";
 
-const drilldown = [
-  { factor: "Material terlambat datang", count: 6, impact: 31 },
-  { factor: "Rework / defect las", count: 4, impact: 22 },
-  { factor: "Kurang tenaga kerja", count: 3, impact: 18 },
-  { factor: "Cuaca buruk", count: 2, impact: 11 },
-  { factor: "Perubahan scope klien", count: 2, impact: 7 },
-];
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "Mei", "Jun", "Jul", "Ags", "Sep", "Okt", "Nov", "Des"];
 
-const forecast = [
-  { name: "Ags", actual: 9.8, forecast: 10.2 },
-  { name: "Sep", actual: null, forecast: 10.8 },
-  { name: "Okt", actual: null, forecast: 11.2 },
-  { name: "Nov", actual: null, forecast: 11.8 },
-  { name: "Des", actual: null, forecast: 12.6 },
-];
-
-const variance = [
-  { n: "Mar", v: 42 },
-  { n: "Apr", v: -12 },
-  { n: "Mei", v: 33 },
-  { n: "Jun", v: 21 },
-  { n: "Jul", v: 18 },
-  { n: "Ags", v: 26 },
-  { n: "Sep", v: -8 },
-];
+function round1(n: number): number {
+  return Math.round(n * 10) / 10;
+}
 
 export default function Analytics() {
   const [tab, setTab] = useState("Deskriptif");
@@ -94,6 +78,56 @@ export default function Analytics() {
     color: ["#0b3a63", "#2e9ad4", "#22c55e"][i],
   }));
 
+  const totalRevenue = revenueSeries.reduce((s, d) => s + d.revenue, 0);
+  const avgRevenue = revenueSeries.length ? totalRevenue / revenueSeries.length : 0;
+  const lastRevPoint = revenueSeries[revenueSeries.length - 1];
+  const prevRevPoint = revenueSeries[revenueSeries.length - 2];
+  const revGrowth = prevRevPoint && prevRevPoint.revenue ? ((lastRevPoint.revenue - prevRevPoint.revenue) / prevRevPoint.revenue) * 100 : 0;
+  const avgMargin = marginSeries.length ? marginSeries.reduce((s, d) => s + d.margin, 0) / marginSeries.length : 0;
+  const lastMarginPoint = marginSeries[marginSeries.length - 1];
+  const prevMarginPoint = marginSeries[marginSeries.length - 2];
+  const marginDiff = lastMarginPoint && prevMarginPoint ? lastMarginPoint.margin - prevMarginPoint.margin : 0;
+
+  const last3 = revenueSeries.slice(-3);
+  const ma3 = last3.length ? last3.reduce((s, d) => s + d.revenue, 0) / last3.length : 0;
+  const lastMonthIdx = MONTHS.indexOf(lastRevPoint.month);
+  const forecast = [
+    { name: lastRevPoint.month, actual: round1(lastRevPoint.revenue), forecast: round1(lastRevPoint.revenue) },
+    ...[1, 2, 3, 4].map((k) => ({
+      name: MONTHS[(lastMonthIdx + k + MONTHS.length) % MONTHS.length],
+      actual: null as number | null,
+      forecast: round1(ma3),
+    })),
+  ];
+  const forecastAnnual = Math.round(ma3 * 12);
+
+  const variance = revenueSeries.map((d) => ({ n: d.month, v: Math.round((d.revenue - avgRevenue) * 1000) }));
+
+  const ncrTotal = data.ncr.length || 1;
+  const ncrByType = new Map<string, number>();
+  for (const n of data.ncr) {
+    const key = String(n.type || "Lainnya");
+    ncrByType.set(key, (ncrByType.get(key) ?? 0) + 1);
+  }
+  const drilldown = [...ncrByType.entries()]
+    .map(([factor, count]) => ({ factor, count, impact: Math.round((count / ncrTotal) * 100) }))
+    .sort((a, b) => b.count - a.count);
+
+  const branchRevenue = data.projects.reduce<Record<string, number>>((acc, p) => {
+    acc[p.branch] = (acc[p.branch] ?? 0) + Number(p.budget || 0);
+    return acc;
+  }, {});
+  const branchRows = Object.entries(branchRevenue).sort((a, b) => b[1] - a[1]);
+
+  const exportReport = () => {
+    const rows: (string | number)[][] = [
+      ["Bulan", "Pendapatan (M Rp)", "Biaya (M Rp)"],
+      ...revenueSeries.map((d) => [d.month, d.revenue, d.cost]),
+    ];
+    exportExcel(rows, "Laporan Analytics");
+    toast("Laporan analytics diekspor ke Excel");
+  };
+
   return (
     <div>
       <PageHeader
@@ -105,7 +139,7 @@ export default function Analytics() {
             <button className="btn-secondary" onClick={() => toast("Mode jelajah data (demo)", "info")}>
               <Search className="h-4 w-4" /> Jelajah
             </button>
-            <button className="btn-primary-gradient" onClick={() => toast("Laporan analytics diekspor (demo)", "info")}>Export Laporan</button>
+            <button className="btn-primary-gradient" onClick={exportReport}>Export Laporan</button>
           </>
         }
       />
@@ -116,16 +150,16 @@ export default function Analytics() {
         {tab === "Deskriptif" && (
           <div className="space-y-5">
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-              <KpiCard label="Revenue YTD" value="Rp 84,2 M" delta="+16% vs tahun lalu" deltaDirection="up" icon={<TrendingUp className="h-5 w-5" />} chip="navy" spark={sparkRevenue} />
-              <KpiCard label="Margin Rata-rata" value="26,4%" delta="+1,2pt" deltaDirection="up" icon={<Eye className="h-5 w-5" />} chip="teal" spark={sparkMargin} />
+              <KpiCard label="Revenue YTD" value={`Rp ${totalRevenue.toLocaleString("id-ID", { maximumFractionDigits: 1 })} M`} delta={`${revGrowth >= 0 ? "+" : ""}${revGrowth.toLocaleString("id-ID", { maximumFractionDigits: 1 })}% vs bulan lalu`} deltaDirection={revGrowth > 0 ? "up" : revGrowth < 0 ? "down" : "flat"} icon={<TrendingUp className="h-5 w-5" />} chip="navy" spark={sparkRevenue} />
+              <KpiCard label="Margin Rata-rata" value={`${avgMargin.toLocaleString("id-ID", { maximumFractionDigits: 1 })}%`} delta={`${marginDiff >= 0 ? "+" : ""}${marginDiff.toLocaleString("id-ID", { maximumFractionDigits: 1 })}pt vs bulan lalu`} deltaDirection={marginDiff > 0 ? "up" : marginDiff < 0 ? "down" : "flat"} icon={<Eye className="h-5 w-5" />} chip="teal" spark={sparkMargin} />
               <KpiCard label="Rata-rata Progres" value={`${avgProgress}%`} delta={`${data.projects.length} proyek aktif`} deltaDirection="flat" icon={<Clock className="h-5 w-5" />} chip="violet" spark={sparkProjects} />
-              <KpiCard label="NCR Terbuka" value={String(openNcr)} delta="Terhubung modul QC" deltaDirection="down" icon={<AlertTriangle className="h-5 w-5" />} chip="rose" spark={sparkUtil} />
+              <KpiCard label="NCR Terbuka" value={String(openNcr)} delta="Terhubung modul QC" deltaDirection="down" icon={<AlertTriangle className="h-5 w-5" />} chip="rose" spark={ncrTrend} />
             </div>
 
             <div className="grid grid-cols-1 gap-5 lg:grid-cols-3">
               <Card className="lg:col-span-2">
                 <CardHeader title="Pendapatan vs Biaya" subtitle="12 bulan terakhir (milyar Rupiah)" />
-                <div className="h-72 p-4 pt-0">
+                <div className="h-60 p-4 pt-0 sm:h-72">
                   <ResponsiveContainer width="100%" height="100%">
                     <BarChart data={revenueSeries} margin={{ top: 10, right: 10, left: -15, bottom: 0 }}>
                       <CartesianGrid strokeDasharray="3 3" stroke="#e9eff4" vertical={false} />
@@ -199,7 +233,7 @@ export default function Analytics() {
           <div className="space-y-5">
             <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
               <Card>
-                <CardHeader title="Root Cause Keterlambatan" subtitle="Kontribusi terhadap total delay" action={<Badge tone="red">Top 5 faktor</Badge>} />
+                <CardHeader title="Temuan NCR per Kategori" subtitle="Terhubung modul QC — live" action={<Badge tone="red">{`${drilldown.length} kategori`}</Badge>} />
                 <div className="p-5 space-y-4 pt-2">
                   {drilldown.map((d, i) => (
                     <div key={d.factor} className="flex items-center gap-4">
@@ -217,7 +251,7 @@ export default function Analytics() {
                 </div>
               </Card>
               <Card>
-                <CardHeader title="Variance Anggaran Bulanan" subtitle="Deviasi biaya aktual vs rencana (juta Rupiah)" />
+                <CardHeader title="Variance Anggaran Bulanan" subtitle="Deviasi pendapatan vs rata-rata (juta Rupiah)" />
                 <div className="h-64 p-4 pt-0">
                   <ResponsiveContainer width="100%" height="100%">
                     <BarChart data={variance} margin={{ top: 10, right: 10, left: -15, bottom: 0 }}>
@@ -232,20 +266,38 @@ export default function Analytics() {
                 </div>
               </Card>
             </div>
+            <Card>
+              <CardHeader title="Pendapatan per Cabang" subtitle="Nilai kontrak proyek per cabang — live" />
+              <div className="space-y-3 p-5 pt-2">
+                {branchRows.map(([branch, value]) => {
+                  const maxBranch = branchRows.length ? branchRows[0][1] : 1;
+                  return (
+                    <div key={branch}>
+                      <div className="mb-1 flex justify-between text-sm">
+                        <span className="text-steel-700">{branch} ({data.projects.filter((p) => p.branch === branch).length} proyek)</span>
+                        <span className="font-semibold text-navy-900">Rp {(value / 1000000000).toLocaleString("id-ID", { maximumFractionDigits: 1 })} M</span>
+                      </div>
+                      <ProgressBar value={maxBranch ? (value / maxBranch) * 100 : 0} tone="navy" />
+                    </div>
+                  );
+                })}
+                {branchRows.length === 0 && <p className="text-sm text-steel-400">Belum ada data proyek.</p>}
+              </div>
+            </Card>
           </div>
         )}
 
         {tab === "Prediktif" && (
           <div className="space-y-5">
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-              <KpiCard label="Forecast Revenue 2026" value="Rp 112 M" delta="+9% target" deltaDirection="up" icon={<TrendingUp className="h-5 w-5" />} chip="navy" spark={sparkRevenue} />
-              <KpiCard label="Konflik Drydock" value={dockConflict ? `${dockConflict} slot` : "Aman"} delta={dockConflict ? "Perlu atasi" : "Tidak ada tumpang tindih"} deltaDirection={dockConflict ? "down" : "up"} icon={<AlertTriangle className="h-5 w-5" />} chip="rose" />
-              <KpiCard label="Stok Kritis" value={`${lowStock.length} item`} delta={lowStock.slice(0, 2).map((i) => i.name.split(" ").slice(0, 2).join(" ")).join(" · ") || "Semua aman"} deltaDirection={lowStock.length ? "down" : "up"} icon={<AlertTriangle className="h-5 w-5" />} chip="amber" />
-              <KpiCard label="Proyek Berisiko" value={`${atRisk} proyek`} delta="Terlambat / over-budget" deltaDirection={atRisk ? "down" : "up"} icon={<Clock className="h-5 w-5" />} chip="violet" />
+              <KpiCard label="Forecast Revenue 2026" value={`Rp ${forecastAnnual.toLocaleString("id-ID")} M`} hint="Rata-rata bergerak 3 bulan × 12" icon={<TrendingUp className="h-5 w-5" />} chip="navy" spark={forecast.map((f) => ({ name: f.name, v: f.forecast ?? 0 }))} />
+              <KpiCard label="Konflik Drydock" value={dockConflict ? `${dockConflict} slot` : "Aman"} delta={dockConflict ? "Perlu atasi" : "Tidak ada tumpang tindih"} deltaDirection={dockConflict ? "down" : "up"} icon={<AlertTriangle className="h-5 w-5" />} chip="rose" spark={slotTrend} />
+              <KpiCard label="Stok Kritis" value={`${lowStock.length} item`} delta={lowStock.slice(0, 2).map((i) => i.name.split(" ").slice(0, 2).join(" ")).join(" · ") || "Semua aman"} deltaDirection={lowStock.length ? "down" : "up"} icon={<AlertTriangle className="h-5 w-5" />} chip="amber" spark={lowStockTrend} />
+              <KpiCard label="Proyek Berisiko" value={`${atRisk} proyek`} delta="Terlambat / over-budget" deltaDirection={atRisk ? "down" : "up"} icon={<Clock className="h-5 w-5" />} chip="violet" spark={activeProjectTrend} />
             </div>
             <Card>
-              <CardHeader title="Forecast Pendapatan" subtitle="Aktual + prediksi 5 bulan (milyar Rupiah) · ETO/EAC" action={<Badge tone="blue">AI Forecast</Badge>} />
-              <div className="h-72 p-4 pt-0">
+              <CardHeader title="Forecast Pendapatan" subtitle="Aktual + rata-rata bergerak 3 bulan (milyar Rupiah)" action={<Badge tone="blue">AI Forecast</Badge>} />
+              <div className="h-60 p-4 pt-0 sm:h-72">
                 <ResponsiveContainer width="100%" height="100%">
                   <LineChart data={forecast} margin={{ top: 10, right: 10, left: -15, bottom: 0 }}>
                     <CartesianGrid strokeDasharray="3 3" stroke="#e9eff4" />

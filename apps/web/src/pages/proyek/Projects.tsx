@@ -13,36 +13,44 @@ import {
   FormGrid,
   toast,
 } from "../../components/ui";
-import { useStore, type StoreItem } from "../../data/store";
-import { fmtMiliar, sparkRevenue } from "../../data";
+import { useStore } from "../../data/store";
+import type { StoreItem } from "../../data/store";
+import { fmtMiliar, sparkProjects, activeProjectTrend, contractValueTrend, avgProgressTrend } from "../../data";
 
 const filters = ["Semua", "New Build", "Repair", "Retrofit"];
+const statusOptions = ["Semua", "Dalam Proses", "Sedang Berjalan", "Terlambat", "Selesai", "Tertunda"];
+const branchOptions = ["Samarinda", "Balikpapan", "Banjarmasin"];
 
 const emptyForm = {
   vessel: "",
   type: "New Build",
   client: "",
   branch: "Samarinda",
-  start: "2026-08-01",
-  end: "2026-12-31",
-  budget: "10000000000",
+  start: "",
+  end: "",
+  budget: "",
   manager: "",
   scope: "",
   status: "Dalam Proses",
+  vesselLoa: "",
+  vesselType: "",
 };
 
 export default function Projects() {
   const { data, add } = useStore();
   const projects = data.projects;
   const [filter, setFilter] = useState("Semua");
+  const [statusFilter, setStatusFilter] = useState("Semua");
+  const [showStatusMenu, setShowStatusMenu] = useState(false);
   const [q, setQ] = useState("");
   const [showAdd, setShowAdd] = useState(false);
   const [form, setForm] = useState(emptyForm);
 
   const list = projects.filter((p) => {
     const matchType = filter === "Semua" || p.type === filter;
+    const matchStatus = statusFilter === "Semua" || p.status === statusFilter;
     const matchQ = `${p.vessel} ${p.id} ${p.client}`.toLowerCase().includes(q.toLowerCase());
-    return matchType && matchQ;
+    return matchType && matchStatus && matchQ;
   });
 
   const totalBudget = projects.reduce((s, p) => s + Number(p.budget || 0), 0);
@@ -51,11 +59,20 @@ export default function Projects() {
   const avgProgress = projects.length ? Math.round(projects.reduce((s, p) => s + Number(p.progress || 0), 0) / projects.length) : 0;
 
   const setF = (k: string, v: string) => setForm((f) => ({ ...f, [k]: v }));
+  const vesselExists = data.vessels.some((v) => v.name.toLowerCase() === form.vessel.trim().toLowerCase());
 
   const save = () => {
     if (!form.vessel.trim() || !form.client.trim()) { toast("Nama kapal & klien wajib diisi", "info"); return; }
-    const budget = Number(form.budget) || 0;
-    const vesselExists = data.vessels.some((v) => v.name.toLowerCase() === form.vessel.trim().toLowerCase());
+    if (!form.start || !form.end) { toast("Tanggal mulai & selesai rencana wajib diisi", "info"); return; }
+    if (form.end < form.start) { toast("Tanggal selesai tidak boleh sebelum tanggal mulai", "info"); return; }
+    const budget = Number(form.budget);
+    if (!Number.isFinite(budget) || budget <= 0) { toast("Nilai kontrak harus lebih dari 0", "info"); return; }
+    if (!form.manager) { toast("Pilih project manager", "info"); return; }
+    if (!vesselExists) {
+      const loa = Number(form.vesselLoa);
+      if (!Number.isFinite(loa) || loa <= 0) { toast("Kapal belum terdaftar: LOA kapal baru wajib diisi (> 0)", "info"); return; }
+      if (!form.vesselType.trim()) { toast("Kapal belum terdaftar: tipe kapal wajib diisi", "info"); return; }
+    }
     const created: StoreItem = add(
       "projects",
       {
@@ -69,7 +86,7 @@ export default function Projects() {
         progress: 0,
         budget,
         actual: 0,
-        manager: form.manager || "Belum ditentukan",
+        manager: form.manager,
         scope: form.scope.split(",").map((s) => s.trim()).filter(Boolean),
       },
       { action: "membuat proyek", module: "Proyek" }
@@ -78,18 +95,20 @@ export default function Projects() {
       add("vessels", {
         name: form.vessel.trim(),
         imo: "IMO -",
-        type: "Tugboat",
+        type: form.vesselType.trim(),
         class: "BKI",
         flag: "Indonesia",
-        built: 2026,
+        built: new Date().getFullYear(),
         owner: form.client,
-        loa: 0, beam: 0, draft: 0, bollard: 0,
+        loa: Number(form.vesselLoa), beam: 0, draft: 0, bollard: 0,
         status: form.type === "New Build" ? "Dalam Pembangunan" : "Dalam Docking",
         certificates: [],
         history: [{ date: form.start, event: "Proyek dibuat", type: "Kontrak" }],
       }, { action: "mendaftarkan kapal", target: form.vessel.trim(), module: "Kapal" });
+      toast(`Proyek ${created.id} dibuat; kapal baru terdaftar (IMO menyusul, lengkapi data dimensi)`);
+    } else {
+      toast(`Proyek ${created.id} dibuat & terhubung ke kapal`);
     }
-    toast(`Proyek ${created.id} dibuat & terhubung ke kapal`);
     setForm(emptyForm);
     setShowAdd(false);
   };
@@ -104,18 +123,19 @@ export default function Projects() {
       />
 
       <div className="mb-4 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <KpiCard label="Total Proyek" value={String(projects.length)} hint="Seluruh portofolio" icon={<Anchor className="h-5 w-5" />} chip="navy" spark={sparkRevenue} />
-        <KpiCard label="Sedang Berjalan" value={String(inProgress)} delta={`${delayed} terlambat`} deltaDirection="down" icon={<Clock className="h-5 w-5" />} chip="amber" />
-        <KpiCard label="Nilai Kontrak" value={fmtMiliar(totalBudget)} delta="Portofolio total" deltaDirection="up" icon={<Wallet className="h-5 w-5" />} chip="teal" />
-        <KpiCard label="Rata-rata Progres" value={`${avgProgress}%`} delta="Penyelesaian umum" deltaDirection="flat" icon={<TrendingUp className="h-5 w-5" />} chip="violet" />
+        <KpiCard label="Total Proyek" value={String(projects.length)} hint="Seluruh portofolio" icon={<Anchor className="h-5 w-5" />} chip="navy" spark={sparkProjects} />
+        <KpiCard label="Sedang Berjalan" value={String(inProgress)} delta={`${delayed} terlambat`} deltaDirection="down" icon={<Clock className="h-5 w-5" />} chip="amber" spark={activeProjectTrend} />
+        <KpiCard label="Nilai Kontrak" value={fmtMiliar(totalBudget)} delta="Portofolio total" deltaDirection="up" icon={<Wallet className="h-5 w-5" />} chip="teal" spark={contractValueTrend} />
+        <KpiCard label="Rata-rata Progres" value={`${avgProgress}%`} delta="Penyelesaian umum" deltaDirection="flat" icon={<TrendingUp className="h-5 w-5" />} chip="violet" spark={avgProgressTrend} />
       </div>
 
       <div className="mb-4 flex flex-wrap items-center gap-3">
         <div className="relative">
           <Search className="absolute left-3 top-2.5 h-4 w-4 text-steel-400" />
           <input
-            className="input pl-9 w-64"
+            className="input pl-9 w-full sm:w-64"
             placeholder="Cari kapal / kode proyek..."
+            aria-label="Cari proyek"
             value={q}
             onChange={(e) => setQ(e.target.value)}
           />
@@ -133,15 +153,30 @@ export default function Projects() {
             </button>
           ))}
         </div>
-        <button className="btn-secondary ml-auto">
-          <Filter className="h-4 w-4" /> Filter
-        </button>
+        <div className="relative ml-auto">
+          <button className="btn-secondary" aria-label="Filter status proyek" aria-expanded={showStatusMenu} onClick={() => setShowStatusMenu((v) => !v)}>
+            <Filter className="h-4 w-4" /> Filter{statusFilter !== "Semua" ? `: ${statusFilter}` : ""}
+          </button>
+          {showStatusMenu && (
+            <div className="absolute right-0 z-20 mt-2 w-48 rounded-xl border border-steel-200 bg-white p-1.5 shadow-lift">
+              {statusOptions.map((s) => (
+                <button
+                  key={s}
+                  onClick={() => { setStatusFilter(s); setShowStatusMenu(false); }}
+                  className={`block w-full rounded-lg px-3 py-1.5 text-left text-sm transition-colors ${statusFilter === s ? "bg-navy-700 text-white" : "text-steel-600 hover:bg-surface"}`}
+                >
+                  {s}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
       </div>
 
       <Card>
         <div className="overflow-x-auto">
           <table className="w-full">
-            <thead className="bg-surface">
+            <thead className="sticky top-0 z-10 bg-surface">
               <tr>
                 <th className="th">Proyek</th>
                 <th className="th">Klien</th>
@@ -229,7 +264,7 @@ export default function Projects() {
             </Field>
             <Field label="Cabang">
               <select className="input" value={form.branch} onChange={(e) => setF("branch", e.target.value)}>
-                <option>Samarinda</option>
+                {branchOptions.map((b) => <option key={b}>{b}</option>)}
               </select>
             </Field>
             <Field label="Project manager">
@@ -243,8 +278,17 @@ export default function Projects() {
             <Field label="Mulai"><input type="date" className="input" value={form.start} onChange={(e) => setF("start", e.target.value)} /></Field>
             <Field label="Selesai (rencana)"><input type="date" className="input" value={form.end} onChange={(e) => setF("end", e.target.value)} /></Field>
           </FormGrid>
+          {!vesselExists && form.vessel.trim() && (
+            <div className="rounded-xl border border-amber-200 bg-amber-50 p-3">
+              <p className="mb-2 text-xs font-semibold text-amber-800">Kapal belum terdaftar — lengkapi data kapal baru:</p>
+              <FormGrid>
+                <Field label="LOA kapal baru (m)"><input type="number" min={0} step={0.1} className="input" value={form.vesselLoa} onChange={(e) => setF("vesselLoa", e.target.value)} placeholder="cth: 32" /></Field>
+                <Field label="Tipe kapal baru"><input className="input" value={form.vesselType} onChange={(e) => setF("vesselType", e.target.value)} placeholder="cth: Tugboat ASD 2x1600 HP" /></Field>
+              </FormGrid>
+            </div>
+          )}
           <Field label="Nilai kontrak (Rp)">
-            <input type="number" className="input" min={0} value={form.budget} onChange={(e) => setF("budget", e.target.value)} />
+            <input type="number" className="input" min={0} value={form.budget} onChange={(e) => setF("budget", e.target.value)} placeholder="cth: 10000000000" />
           </Field>
           <Field label="Ruang lingkup (pisahkan koma)" hint="cth: Desain, Fabrikasi Baja, Sea Trial">
             <input className="input" value={form.scope} onChange={(e) => setF("scope", e.target.value)} />

@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { useEffect, useState } from "react";
+import { useEffect, useId, useRef, useState, Component, type ErrorInfo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   ArrowDownRight,
@@ -171,20 +171,60 @@ const statusTone: Record<string, keyof typeof toneMap> = {
   "Sedang Berjalan": "blue",
   "Dalam Proses": "blue",
   Selesai: "green",
+  Disetujui: "green",
+  Lunas: "green",
+  Berlaku: "green",
+  Diterima: "green",
+  Terkirim: "green",
   Terkunci: "green",
   Ditutup: "gray",
   Lulus: "green",
   Terbuka: "amber",
   Telat: "red",
+  Terlambat: "red",
   Kritis: "red",
   Menipis: "amber",
   Aman: "green",
-  Terlambat: "red",
+  Draft: "gray",
+  Draf: "gray",
+  Diajukan: "amber",
+  "Menunggu Approval": "amber",
+  "Menunggu Persetujuan": "amber",
+  "Belum Dibayar": "amber",
+  Ditolak: "red",
+  Rejected: "red",
+  Pending: "amber",
+  Menunggu: "amber",
+  Approved: "green",
+  Completed: "green",
+  "Dalam Pengiriman": "blue",
+  Dikirim: "blue",
+  "Diterima Sebagian": "cyan",
+  Kualifikasi: "violet",
+  Blacklist: "red",
+  Batal: "gray",
+  Kalah: "gray",
+  Terkonversi: "teal",
+  Menang: "green",
+  Negosiasi: "violet",
+  Penawaran: "amber",
+  Lead: "cyan",
+  Maintenance: "amber",
+  Terpakai: "blue",
+  Tersedia: "green",
+  Terjadwal: "gray",
+  Dijadwalkan: "gray",
+  Sedang: "blue",
+  Tertunda: "amber",
+  Tertutup: "gray",
+  "Dalam Perbaikan": "blue",
+  Kedaluwarsa: "red",
+  Expired: "red",
 };
 
-export function StatusBadge({ status }: { status: string }) {
+export function StatusBadge({ status, label }: { status: string; label?: string }) {
   const tone = statusTone[status] ?? "gray";
-  return <Badge tone={tone}>{status}</Badge>;
+  return <Badge tone={tone}>{label ?? status}</Badge>;
 }
 
 /* ============ K P I   C A R D   ( P R E M I U M ) ============ */
@@ -196,6 +236,15 @@ const gradientChip: Record<string, string> = {
   violet: "bg-gradient-violet",
   amber: "bg-gradient-amber",
   ocean: "bg-gradient-hero",
+};
+
+const sparkChipColor: Record<string, string> = {
+  navy: "#0b3a63",
+  teal: "#0d9488",
+  rose: "#e11d48",
+  violet: "#8b5cf6",
+  amber: "#d97706",
+  ocean: "#2e9ad4",
 };
 
 export function KpiCard({
@@ -217,12 +266,15 @@ export function KpiCard({
   spark?: { name: string; v: number }[];
   chip?: keyof typeof gradientChip;
 }) {
+  const gid = useId().replace(/[^a-zA-Z0-9]/g, "");
+  const color = sparkChipColor[chip] ?? "#2e9ad4";
+  const showSpark = !!spark && spark.length > 1;
   return (
     <Card className="card-hover relative overflow-hidden p-4">
       <div className="flex items-start justify-between">
         <div className="min-w-0 flex-1">
-          <p className="text-xs font-medium text-steel-500 truncate">{label}</p>
-          <p className="mt-1 text-[26px] font-bold tracking-tight text-navy-900 truncate">{value}</p>
+          <p className="text-xs font-medium text-steel-500 truncate" title={label}>{label}</p>
+          <p className="mt-1 text-[26px] font-bold tracking-tight text-navy-900 break-words" title={value}>{value}</p>
           {delta ? (
             <p
               className={`mt-1 flex items-center gap-1 text-xs font-semibold ${
@@ -248,17 +300,17 @@ export function KpiCard({
           </div>
         )}
       </div>
-      {spark && spark.length > 0 && (
+      {showSpark && (
         <div className="mt-2 -mb-1 h-10">
           <ResponsiveContainer width="100%" height="100%">
             <AreaChart data={spark} margin={{ top: 0, right: 0, left: 0, bottom: 0 }}>
               <defs>
-                <linearGradient id={`spark-${label.replace(/\s/g, "")}`} x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stopColor="#2e9ad4" stopOpacity={0.4} />
-                  <stop offset="100%" stopColor="#2e9ad4" stopOpacity={0} />
+                <linearGradient id={`spark-${gid}`} x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor={color} stopOpacity={0.4} />
+                  <stop offset="100%" stopColor={color} stopOpacity={0} />
                 </linearGradient>
               </defs>
-              <Area type="monotone" dataKey="v" stroke="#2e9ad4" strokeWidth={2} fill={`url(#spark-${label.replace(/\s/g, "")})`} />
+              <Area type="monotone" dataKey="v" stroke={color} strokeWidth={2} fill={`url(#spark-${gid})`} />
             </AreaChart>
           </ResponsiveContainer>
         </div>
@@ -551,11 +603,19 @@ export function Tabs({
   active: string;
   onChange: (t: string) => void;
 }) {
+  const listRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const el = listRef.current?.querySelector<HTMLElement>(`[data-tab="${active}"]`);
+    el?.scrollIntoView({ block: "nearest", inline: "nearest", behavior: "smooth" });
+  }, [active]);
   return (
-    <div className="flex gap-1 border-b border-steel-200 overflow-x-auto">
+    <div ref={listRef} className="flex gap-1 border-b border-steel-200 overflow-x-auto" role="tablist" aria-label="Navigasi tab">
       {tabs.map((t) => (
         <button
           key={t}
+          data-tab={t}
+          role="tab"
+          aria-selected={active === t}
           onClick={() => onChange(t)}
           className={`relative whitespace-nowrap px-3 py-3 text-sm font-medium transition-colors ${
             active === t ? "text-navy-800" : "text-steel-500 hover:text-navy-700"
@@ -563,10 +623,7 @@ export function Tabs({
         >
           {t}
           {active === t && (
-            <motion.span
-              layoutId="tab-underline"
-              className="absolute inset-x-0 -bottom-px h-0.5 rounded-full bg-gradient-hero"
-            />
+            <span className="absolute inset-x-0 -bottom-px h-0.5 rounded-full bg-gradient-hero" />
           )}
         </button>
       ))}
@@ -590,6 +647,41 @@ export function EmptyState({
       {subtitle && <p className="mt-1 text-sm text-steel-400">{subtitle}</p>}
     </div>
   );
+}
+
+/* ============ E R R O R   B O U N D A R Y   &   S K E L E T O N ============ */
+
+interface ErrorBoundaryState {
+  error: Error | null;
+}
+
+export class ErrorBoundary extends Component<{ children: ReactNode; title?: string }, ErrorBoundaryState> {
+  state: ErrorBoundaryState = { error: null };
+
+  static getDerivedStateFromError(error: Error): ErrorBoundaryState {
+    return { error };
+  }
+
+  componentDidCatch(error: Error, info: ErrorInfo) {
+    console.error("ISMS ErrorBoundary:", error, info);
+  }
+
+  render() {
+    if (this.state.error) {
+      return (
+        <div className="flex flex-col items-center justify-center rounded-2xl border border-steel-200 bg-white p-10 text-center">
+          <p className="text-sm font-semibold text-navy-900">{this.props.title ?? "Bagian ini gagal dimuat"}</p>
+          <p className="mt-1 max-w-md text-xs text-steel-500">Terjadi galat saat merender. Coba muat ulang halaman atau kembali dan ulangi aksi terakhir.</p>
+          <button className="btn-secondary mt-4 text-xs" onClick={() => window.location.reload()}>Muat ulang halaman</button>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
+export function Skeleton({ className = "" }: { className?: string }) {
+  return <div className={`animate-pulse rounded-xl bg-steel-100 ${className}`} aria-hidden="true" />;
 }
 
 export function SectionLink({ to, label }: { to: string; label: string }) {
@@ -621,16 +713,36 @@ export function Modal({
   footer?: ReactNode;
   wide?: boolean;
 }) {
+  const dialogRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (!open) return;
+    const prevActive = document.activeElement as HTMLElement | null;
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
+      if (e.key === "Escape") { onClose(); return; }
+      if (e.key !== "Tab") return;
+      const root = dialogRef.current;
+      if (!root) return;
+      const focusables = Array.from(
+        root.querySelectorAll<HTMLElement>('button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])')
+      ).filter((el) => !el.hasAttribute("disabled") && el.offsetParent !== null);
+      if (focusables.length === 0) return;
+      const first = focusables[0];
+      const last = focusables[focusables.length - 1];
+      if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+      else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
     };
     window.addEventListener("keydown", onKey);
     document.body.style.overflow = "hidden";
+    const t = window.setTimeout(() => {
+      const root = dialogRef.current;
+      const target = root?.querySelector<HTMLElement>("input, select, textarea, button");
+      (target ?? root)?.focus();
+    }, 30);
     return () => {
       window.removeEventListener("keydown", onKey);
+      window.clearTimeout(t);
       document.body.style.overflow = "";
+      prevActive?.focus?.();
     };
   }, [open, onClose]);
 
@@ -646,6 +758,11 @@ export function Modal({
             onClick={onClose}
           />
           <motion.div
+            ref={dialogRef}
+            role="dialog"
+            aria-modal="true"
+            aria-label={title}
+            tabIndex={-1}
             className={`relative flex max-h-[92vh] w-full flex-col overflow-hidden rounded-t-2xl bg-white shadow-lift sm:rounded-2xl ${
               wide ? "sm:max-w-3xl" : "sm:max-w-lg"
             }`}

@@ -2,7 +2,8 @@ import { useState, useMemo } from "react";
 import { useStore } from "../../data/store";
 import { Card, StatusBadge, Modal, Field, toast, Badge, ProgressBar, KpiCard, EmptyState } from "../../components/ui";
 import { Send, CheckCircle2, XCircle, FileDown, FileText } from "lucide-react";
-import { exportPDF, exportExcel, fmtRupiah } from "../../utils/export";
+import { exportPDF, exportExcel, fmtRupiah, fmtRentang } from "../../utils/export";
+import { STATUS_BOQ_ID } from "../../utils/format";
 import { fmtMiliar } from "../../data";
 
 interface Props {
@@ -55,7 +56,7 @@ export default function ReportSection({ projectId }: Props) {
     const rows: any[][] = [
       ["REPORT SUMMARY", project?.vessel ?? projectId, projectId],
       ["Client", project?.client ?? "-", "Manager", project?.manager ?? "-"],
-      ["Periode", `${project?.start ?? "-"} → ${project?.end ?? "-"}`, "Status", project?.status ?? "-"],
+      ["Periode", fmtRentang(project?.start, project?.end), "Status", project?.status ?? "-"],
       [],
       ["KPI", "Nilai"],
       ["Anggaran", String(project?.budget ?? 0)],
@@ -95,10 +96,10 @@ export default function ReportSection({ projectId }: Props) {
           <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
             <div>
               <h3 className="flex items-center gap-2 text-sm font-semibold text-navy-900"><FileText className="h-4 w-4" /> Report Summary — {project?.vessel ?? projectId}</h3>
-              <p className="text-xs text-steel-500">{projectId} · {project?.type ?? "-"} · {project?.client ?? "-"} · {project?.manager ?? "-"} · {project?.start ?? "-"} → {project?.end ?? "-"}</p>
+              <p className="text-xs text-steel-500">{projectId} · {project?.type ?? "-"} · {project?.client ?? "-"} · {project?.manager ?? "-"} · {fmtRentang(project?.start, project?.end)}</p>
             </div>
             <div className="flex gap-2">
-              <button className="btn-secondary text-xs" onClick={handleExportPDF}>📄 PDF</button>
+              <button className="btn-secondary text-xs" onClick={handleExportPDF}><FileText className="h-3.5 w-3.5" /> PDF</button>
               <button className="btn-secondary text-xs" onClick={handleExportExcel}><FileDown className="h-3.5 w-3.5" /> Excel</button>
             </div>
           </div>
@@ -136,7 +137,7 @@ export default function ReportSection({ projectId }: Props) {
                 {boq.slice(0, 6).map((b) => (
                   <div key={b.id} className="flex items-center justify-between text-sm">
                     <span className="text-steel-700">{b.name} <span className="text-xs text-steel-400">× {b.quantity} {b.unit}</span></span>
-                    <span className="flex items-center gap-2"><span className="font-mono text-xs">{fmtRupiah(Number(b.totalPrice || 0))}</span><StatusBadge status={b.status} /></span>
+                    <span className="flex items-center gap-2"><span className="font-mono text-xs">{fmtRupiah(Number(b.totalPrice || 0))}</span><StatusBadge status={b.status} label={STATUS_BOQ_ID[b.status] ?? b.status} /></span>
                   </div>
                 ))}
                 <p className="pt-1 text-right text-xs font-semibold text-navy-900">Total {fmtRupiah(totalBoq)}</p>

@@ -1,12 +1,44 @@
 import { useState } from "react";
 import { Plus, Ship, CalendarRange, AlertTriangle, GripVertical, Trash2 } from "lucide-react";
 import { Card, CardHeader, PageHeader, Badge, KpiCard, ProgressBar, Modal, Field, FormGrid, ConfirmModal, toast } from "../../components/ui";
-import { useStore, type StoreItem } from "../../data/store";
-import { drydockLoad, sparkUtil } from "../../data";
+import { useStore } from "../../data/store";
+import type { StoreItem } from "../../data/store";
+import { dockUtilTrend, slotTrend } from "../../data";
+import { fmtTanggal, fmtRentang } from "../../utils/format";
 
 const DAYS = 90;
+const FREE_WINDOW = 7;
 const weeks = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13];
 const SLOT_COLORS = ["bg-ocean-500", "bg-navy-700", "bg-amber-500", "bg-teal-500", "bg-violet-500", "bg-steel-400"];
+
+function dayToISO(day: number): string {
+  const d = new Date();
+  d.setDate(d.getDate() + day);
+  return d.toISOString().slice(0, 10);
+}
+
+function dockLengthM(capacity: unknown): number | null {
+  const m = /(\d+(?:\.\d+)?)\s*m/i.exec(String(capacity ?? ""));
+  return m ? Number(m[1]) : null;
+}
+
+function vesselLoa(vesselName: string, vessels: StoreItem[]): number | null {
+  const v = vessels.find((x) => x.name === vesselName);
+  const loa = Number(v?.loa);
+  return v && Number.isFinite(loa) ? loa : null;
+}
+
+function coveredDays(dockId: string, slots: StoreItem[]): number {
+  const covered = new Set<number>();
+  for (const s of slots) {
+    if (s.dockId !== dockId) continue;
+    const from = Number(s.from);
+    const to = Number(s.to);
+    if (!Number.isFinite(from) || !Number.isFinite(to)) continue;
+    for (let d = Math.max(0, from); d < Math.min(DAYS, to); d++) covered.add(d);
+  }
+  return covered.size;
+}
 
 export default function Drydock() {
   const { data, add, remove, log } = useStore();
@@ -16,11 +48,19 @@ export default function Drydock() {
 
   const [showBook, setShowBook] = useState(false);
   const [bookForm, setBookForm] = useState({ dockId: "DD-1", project: "", from: "1", to: "30" });
+  const [bookError, setBookError] = useState<string | null>(null);
   const [deleting, setDeleting] = useState<StoreItem | null>(null);
+  const [wide, setWide] = useState(false);
 
   const sel = dockSlots.find((s) => s.id === selected) ?? null;
 
-  const util = drydocks.length ? Math.round((drydocks.filter((d) => d.status === "Terpakai").length / drydocks.length) * 100) : 0;
+  const coverageByDock = drydocks.map((d) => ({
+    dock: d,
+    pct: Math.round((coveredDays(d.id, dockSlots) / DAYS) * 100),
+  }));
+  const totalCovered = drydocks.reduce((s, d) => s + coveredDays(d.id, dockSlots), 0);
+  const util = drydocks.length ? Math.round((totalCovered / (drydocks.length * DAYS)) * 100) : 0;
+  const busiest = coverageByDock.length ? coverageByDock.reduce((a, b) => (b.pct > a.pct ? b : a)) : null;
 
   const overlap = (dockId: string, from: number, to: number, ignore?: string) =>
     dockSlots.some((o) => o.dockId === dockId && o.id !== ignore && from < o.to && o.from < to);
@@ -31,18 +71,67 @@ export default function Drydock() {
   });
   const hasConflict = conflict.length > 0;
 
+  const firstFree = (dockId: string): number | null => {
+    const segs = dockSlots
+      .filter((s) => s.dockId === dockId)
+      .map((s) => ({ from: Number(s.from), to: Number(s.to) }))
+      .sort((a, b) => a.from - b.from);
+    for (let s = 0; s + FREE_WINDOW <= DAYS; s++) {
+      if (!segs.some((o) => s < o.to && o.from < s + FREE_WINDOW)) return s;
+    }
+    return null;
+  };
+  const nextFree = drydocks
+    .map((d) => ({ dock: d, start: firstFree(d.id) }))
+    .filter((x): x is { dock: StoreItem; start: number } => x.start !== null)
+    .sort((a, b) => a.start - b.start)[0];
+
+  const selDock = drydocks.find((d) => d.id === bookForm.dockId);
+  const selProj = data.projects.find((p) => p.id === bookForm.project);
+  const selLoa = selProj ? vesselLoa(selProj.vessel, data.vessels) : null;
+  const selCap = selDock ? dockLengthM(selDock.capacity) : null;
+
   const saveBooking = () => {
     const proj = data.projects.find((p) => p.id === bookForm.project);
-    if (!proj) { toast("Pilih proyek dulu", "info"); return; }
-    const from = Number(bookForm.from), to = Number(bookForm.to);
-    if (!from || !to || to <= from || from < 0 || to > DAYS) { toast("Rentang hari tidak valid (1–90)", "info"); return; }
-    const clash = overlap(bookForm.dockId, from, to);
+    if (!proj) { setBookError("Pilih proyek dulu."); return; }
+    const from = Number(bookForm.from);
+    const to = Number(bookForm.to);
+    if (!from || !to || to <= from || from < 0 || to > DAYS) { setBookError(`Rentang hari tidak valid (1–${DAYS}).`); return; }
+    if (overlap(bookForm.dockId, from, to)) {
+      const msg = `Booking ditolak: rentang hari ${from}–${to} tumpang tindih dengan slot lain di ${selDock?.name ?? bookForm.dockId}.`;
+      setBookError(msg);
+      toast(msg, "info");
+      return;
+    }
+    const cap = selDock ? dockLengthM(selDock.capacity) : null;
+    const loa = vesselLoa(proj.vessel, data.vessels);
+    if (cap !== null && loa !== null && loa > cap) {
+      const msg = `Booking ditolak: LOA ${proj.vessel} (${loa} m) melebihi kapasitas ${selDock?.name} (${cap} m).`;
+      setBookError(msg);
+      toast(msg, "info");
+      return;
+    }
     const created = add("dockSlots", {
       dockId: bookForm.dockId, project: proj.id, vessel: proj.vessel, from, to,
       color: SLOT_COLORS[dockSlots.length % SLOT_COLORS.length],
     }, { action: "membooking slot", target: `${bookForm.dockId} · ${proj.vessel}`, module: "Drydock" });
-    toast(clash ? `Slot ${created.id} dibuat — PERINGATAN: tumpang tindih!` : `Slot ${created.id} dibooking`);
+    toast(`Slot ${created.id} dibooking`);
     setShowBook(false);
+    setBookError(null);
+  };
+
+  const confirmDelete = () => {
+    if (!deleting) return;
+    const proj = data.projects.find((p) => p.id === deleting.project);
+    if (proj && proj.status !== "Selesai") {
+      toast(`Slot ${deleting.id} tidak bisa dihapus: proyek ${proj.id} masih berstatus ${proj.status}.`, "info");
+      setDeleting(null);
+      return;
+    }
+    remove("dockSlots", deleting.id);
+    log("menghapus slot", `${deleting.id} · ${deleting.vessel}`, "Drydock");
+    toast("Slot dihapus", "info");
+    setDeleting(null);
   };
 
   return (
@@ -51,21 +140,28 @@ export default function Drydock() {
         title="Drydock & Kapasitas"
         subtitle="Penjadwalan slot docking, utilisasi, dan deteksi konflik"
         icon={<Ship className="h-5 w-5" />}
-        actions={<button className="btn-primary-gradient" onClick={() => setShowBook(true)}><Plus className="h-4 w-4" /> Booking Slot</button>}
+        actions={<button className="btn-primary-gradient" onClick={() => { setShowBook(true); setBookError(null); }}><Plus className="h-4 w-4" /> Booking Slot</button>}
       />
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <KpiCard label="Utilitas Docking" value={`${util}%`} delta={`${drydocks.length} fasilitas`} deltaDirection="flat" icon={<Ship className="h-5 w-5" />} chip="navy" spark={sparkUtil} />
-        <KpiCard label="Slot Terisi" value={`${drydocks.filter((d) => d.status === "Terpakai").length}/${drydocks.length}`} hint="Saat ini aktif" icon={<CalendarRange className="h-5 w-5" />} chip="teal" />
+        <KpiCard label="Utilitas Docking" value={`${util}%`} delta="Hari terisi per total hari dock" deltaDirection="flat" icon={<Ship className="h-5 w-5" />} chip="navy" spark={dockUtilTrend} />
+        <KpiCard label="Slot Terisi" value={`${dockSlots.length} slot`} hint="Jadwal aktif semua fasilitas" icon={<CalendarRange className="h-5 w-5" />} chip="teal" spark={slotTrend} />
         <KpiCard
           label="Konflik Slot"
           value={hasConflict ? String(conflict.length) : "0"}
           delta={hasConflict ? "Perlu atasi" : "Tidak ada"}
           deltaDirection={hasConflict ? "down" : "up"}
           icon={<AlertTriangle className="h-5 w-5" />}
-          chip={hasConflict ? "rose" : "green"}
+          chip={hasConflict ? "rose" : "teal"}
+          spark={slotTrend}
         />
-        <KpiCard label="Kapasitas Berikutnya" value="Okt 2026" hint="Slot kosong terdekat" chip="amber" />
+        <KpiCard
+          label="Kapasitas Berikutnya"
+          value={nextFree ? fmtTanggal(dayToISO(nextFree.start)) : "Penuh"}
+          hint={nextFree ? `${nextFree.dock.name} · slot seminggu bebas` : `${DAYS} hari ke depan`}
+          chip="amber"
+          spark={dockUtilTrend}
+        />
       </div>
 
       {hasConflict && (
@@ -82,17 +178,38 @@ export default function Drydock() {
         <CardHeader
           title="Gantt Penjadwalan Docking"
           subtitle="Klik slot untuk detail · 13 minggu ke depan"
-          action={<Badge tone="navy">90 hari</Badge>}
+          action={
+            <div className="flex items-center gap-2">
+              <Badge tone="navy">{DAYS} hari</Badge>
+              <div className="flex items-center gap-1 rounded-lg border border-steel-200 bg-surface p-0.5">
+                <button
+                  onClick={() => setWide(false)}
+                  aria-label="Tampilan gantt sempit"
+                  className={`rounded-md px-3 py-1 text-xs font-semibold transition-colors ${!wide ? "bg-white text-navy-800 shadow-sm" : "text-steel-500 hover:text-navy-700"}`}
+                >
+                  Sempit
+                </button>
+                <button
+                  onClick={() => setWide(true)}
+                  aria-label="Tampilan gantt lebar"
+                  className={`rounded-md px-3 py-1 text-xs font-semibold transition-colors ${wide ? "bg-white text-navy-800 shadow-sm" : "text-steel-500 hover:text-navy-700"}`}
+                >
+                  Lebar
+                </button>
+              </div>
+            </div>
+          }
         />
         <div className="overflow-x-auto p-4">
-          <div className="min-w-[900px]">
+          <div className={wide ? "min-w-[1400px]" : "min-w-[900px]"}>
             {/* Header weeks */}
             <div className="mb-2 flex items-center">
               <div className="w-52 shrink-0 pr-3" />
               <div className="flex flex-1 gap-px">
                 {weeks.map((w) => (
                   <div key={w} className="flex-1 border-l border-steel-200 pl-1 text-[10px] text-steel-400">
-                    W{w}
+                    <p className="font-semibold">W{w}</p>
+                    <p>{fmtTanggal(dayToISO((w - 1) * 7))}</p>
                   </div>
                 ))}
               </div>
@@ -108,7 +225,7 @@ export default function Drydock() {
                   </div>
                   <div className="flex items-center gap-px">
                     <div className="w-52 shrink-0 pr-3">
-                      <p className="text-xs text-steel-500">{dock.capacity}</p>
+                      <p className="truncate text-xs text-steel-500" title={String(dock.capacity)}>{dock.capacity}</p>
                     </div>
                     <div className="relative h-16 flex-1 rounded-lg bg-steel-50 border border-steel-100"
                       style={{
@@ -124,11 +241,11 @@ export default function Drydock() {
                           <div
                             key={s.id}
                             onClick={() => setSelected(isSel ? null : s.id)}
-                            className={`absolute top-1/2 -translate-y-1/2 flex h-10 items-center justify-between rounded-md ${s.color} px-2 text-xs font-medium text-white shadow cursor-pointer transition ${isSel ? "ring-2 ring-navy-900" : "hover:brightness-110"} ${isConf ? "ring-2 ring-rose-500" : ""}`}
+                            className={`absolute top-1/2 -translate-y-1/2 flex h-10 items-center justify-between rounded-md px-2 text-xs font-medium text-white shadow cursor-pointer transition ${isConf ? "bg-rose-500" : s.color} ${isSel ? "ring-2 ring-navy-900" : "hover:brightness-110"} ${isConf && !isSel ? "ring-2 ring-rose-700" : ""}`}
                             style={{ left: `${leftPct}%`, width: `${widthPct}%` }}
-                            title={`${s.vessel} · ${s.project}`}
+                            title={`${s.vessel} · ${s.project} · ${fmtRentang(dayToISO(s.from), dayToISO(s.to))}${isConf ? " · TUMPANG TINDIH" : ""}`}
                           >
-                            <span className="truncate min-w-0 flex-1 flex items-center gap-1">
+                            <span className="truncate min-w-0 flex-1 flex items-center gap-1" title={s.vessel}>
                               <GripVertical className="h-3 w-3 shrink-0 opacity-70" />
                               {s.vessel}
                             </span>
@@ -149,7 +266,7 @@ export default function Drydock() {
           <CardHeader title="Slot Docking Aktif" subtitle="Detail slot saat ini" />
           <div className="overflow-x-auto">
             <table className="w-full">
-              <thead className="bg-surface">
+              <thead className="sticky top-0 z-10 bg-surface">
                 <tr><th className="th">Fasilitas</th><th className="th">Proyek</th><th className="th">Durasi</th><th className="th">Aksi</th></tr>
               </thead>
               <tbody className="divide-y divide-steel-100">
@@ -160,11 +277,11 @@ export default function Drydock() {
                       <p className="font-medium text-navy-900">{s.vessel}</p>
                       <p className="text-xs font-mono text-steel-500">{s.project}</p>
                     </td>
-                    <td className="td text-steel-600">{s.from}–{s.to} hari</td>
+                    <td className="td text-steel-600">{fmtRentang(dayToISO(s.from), dayToISO(s.to))} ({s.to - s.from} hari)</td>
                     <td className="td">
                       <div className="flex gap-1.5">
                         <button className="btn-secondary text-xs" onClick={() => setSelected(s.id)}>Detail</button>
-                        <button className="rounded-lg p-1.5 text-rose-500 hover:bg-rose-50" title="Hapus slot" onClick={() => setDeleting(s)}><Trash2 className="h-4 w-4" /></button>
+                        <button className="rounded-lg p-1.5 text-rose-500 hover:bg-rose-50" title={`Hapus slot ${s.id}`} aria-label={`Hapus slot ${s.id}`} onClick={() => setDeleting(s)}><Trash2 className="h-4 w-4" /></button>
                       </div>
                     </td>
                   </tr>
@@ -176,19 +293,21 @@ export default function Drydock() {
         </Card>
 
         <Card className="p-5">
-          <h3 className="mb-3 text-sm font-semibold text-navy-900">Forecast Kapasitas</h3>
+          <h3 className="mb-3 text-sm font-semibold text-navy-900">Utilisasi per Fasilitas</h3>
           <div className="space-y-3">
-            {drydockLoad.map((d) => (
-              <div key={d.dock}>
+            {coverageByDock.map(({ dock, pct }) => (
+              <div key={dock.id}>
                 <div className="mb-1 flex justify-between text-sm">
-                  <span className="text-steel-600">{d.dock}</span>
-                  <span className="font-semibold text-navy-900">{d.kapasitas}%</span>
+                  <span className="text-steel-600">{dock.name}</span>
+                  <span className="font-semibold text-navy-900">{pct}%</span>
                 </div>
-                <ProgressBar value={d.kapasitas} tone={d.kapasitas > 80 ? "red" : d.kapasitas > 60 ? "amber" : "green"} />
+                <ProgressBar value={pct} tone={pct > 80 ? "red" : pct > 60 ? "amber" : "green"} />
               </div>
             ))}
           </div>
-          <p className="mt-3 text-xs text-steel-400">Prediksi utilisasi — Drydock 1 saat ini paling padat (92%).</p>
+          <p className="mt-3 text-xs text-steel-400">
+            {busiest ? `${busiest.dock.name} saat ini paling padat (${busiest.pct}%).` : "Belum ada data utilisasi."} Dihitung dari hari terisi slot per {DAYS} hari.
+          </p>
         </Card>
       </div>
 
@@ -197,7 +316,7 @@ export default function Drydock() {
         {sel && (
           <dl className="space-y-2.5 text-sm">
             <div className="flex justify-between"><dt className="text-steel-500">Fasilitas</dt><dd className="font-medium">{drydocks.find((d) => d.id === sel.dockId)?.name}</dd></div>
-            <div className="flex justify-between"><dt className="text-steel-500">Durasi</dt><dd className="font-medium">Hari {sel.from}–{sel.to} ({sel.to - sel.from} hari)</dd></div>
+            <div className="flex justify-between"><dt className="text-steel-500">Durasi</dt><dd className="font-medium">{fmtRentang(dayToISO(sel.from), dayToISO(sel.to))} ({sel.to - sel.from} hari)</dd></div>
             <div className="flex justify-between"><dt className="text-steel-500">Konflik</dt><dd>{conflict.some((c) => c.id === sel.id) ? <Badge tone="red">Tumpang tindih</Badge> : <Badge tone="green">Aman</Badge>}</dd></div>
             <button className="btn-danger mt-2 w-full justify-center" onClick={() => { setDeleting(sel); setSelected(null); }}><Trash2 className="h-4 w-4" /> Hapus Slot</button>
           </dl>
@@ -205,8 +324,8 @@ export default function Drydock() {
       </Modal>
 
       {/* Modal booking */}
-      <Modal open={showBook} onClose={() => setShowBook(false)} title="Booking Slot Docking" subtitle="Sistem otomatis mendeteksi tumpang tindih"
-        footer={<><button className="btn-secondary" onClick={() => setShowBook(false)}>Batal</button><button className="btn-primary" onClick={saveBooking}>Simpan Booking</button></>}>
+      <Modal open={showBook} onClose={() => { setShowBook(false); setBookError(null); }} title="Booking Slot Docking" subtitle="Booking yang tumpang tindih akan ditolak"
+        footer={<><button className="btn-secondary" onClick={() => { setShowBook(false); setBookError(null); }}>Batal</button><button className="btn-primary" onClick={saveBooking}>Simpan Booking</button></>}>
         <div className="space-y-3">
           <FormGrid>
             <Field label="Fasilitas">
@@ -223,15 +342,20 @@ export default function Drydock() {
             <Field label="Mulai (hari ke-)"><input type="number" min={0} max={90} className="input" value={bookForm.from} onChange={(e) => setBookForm({ ...bookForm, from: e.target.value })} /></Field>
             <Field label="Selesai (hari ke-)"><input type="number" min={1} max={90} className="input" value={bookForm.to} onChange={(e) => setBookForm({ ...bookForm, to: e.target.value })} /></Field>
           </FormGrid>
-          {bookForm.project && overlap(bookForm.dockId, Number(bookForm.from) || 0, Number(bookForm.to) || 0) && (
-            <p className="rounded-lg bg-rose-50 px-3 py-2 text-xs font-medium text-rose-700">Peringatan: rentang ini tumpang tindih dengan slot lain di fasilitas yang sama.</p>
+          <p className="rounded-lg bg-surface px-3 py-2 text-xs text-steel-600">
+            Info kapasitas: {selDock?.capacity ?? "—"}
+            {selProj ? (selLoa !== null ? ` · LOA ${selProj.vessel} ${selLoa} m` : ` · data LOA ${selProj.vessel} tidak tersedia`) : ""}
+            {selCap !== null && selLoa !== null ? (selLoa > selCap ? " · MELEBIHI KAPASITAS — booking akan ditolak." : " · muat di fasilitas ini.") : ""}
+          </p>
+          {bookError && (
+            <p className="rounded-lg bg-rose-50 px-3 py-2 text-xs font-medium text-rose-700">{bookError}</p>
           )}
         </div>
       </Modal>
 
       <ConfirmModal open={deleting !== null} title={`Hapus slot ${deleting?.id}?`} desc={`${deleting?.vessel} akan dikeluarkan dari jadwal docking.`}
         confirmLabel="Ya, hapus" danger onCancel={() => setDeleting(null)}
-        onConfirm={() => { if (deleting) { remove("dockSlots", deleting.id); log("menghapus slot", `${deleting.id} · ${deleting.vessel}`, "Drydock"); toast("Slot dihapus", "info"); } setDeleting(null); }} />
+        onConfirm={confirmDelete} />
     </div>
   );
 }

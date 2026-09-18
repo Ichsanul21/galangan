@@ -1,4 +1,5 @@
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
+import { newId as newPrefixedId } from "../services/ids";
 import {
   projects as seedProjects,
   vessels as seedVessels,
@@ -292,7 +293,7 @@ const Ctx = createContext<StoreCtx | null>(null);
 
 function newId(col: CollectionKey): string {
   const p = PREFIX[col] ?? "X";
-  return `${p}-${Date.now().toString(36).toUpperCase().slice(-6)}`;
+  return newPrefixedId(p);
 }
 
 const ACTOR_TONE: Record<string, "navy" | "teal" | "rose" | "violet" | "amber"> = {
