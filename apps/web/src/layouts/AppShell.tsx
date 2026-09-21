@@ -27,6 +27,9 @@ import {
   CalendarCheck,
   Banknote,
   Activity,
+  History,
+  KeyRound,
+  Settings as SettingsIcon,
 } from "lucide-react";
 import { useAuth } from "../auth/auth";
 import { useStore } from "../data/store";
@@ -57,6 +60,7 @@ export default function AppShell() {
         { to: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
         { to: "/analytics", label: "Analytics", icon: BarChart3 },
         { to: "/laporan", label: "Laporan", icon: FileText },
+        { to: "/notifikasi", label: "Notifikasi", icon: Bell },
       ],
     },
     {
@@ -87,6 +91,9 @@ export default function AppShell() {
         { to: "/payroll", label: "Payroll", icon: Banknote },
         { to: "/kapal", label: "Rekam Jejak Kapal", icon: Ship },
         { to: "/dokumen", label: "Aset & Dokumen", icon: ScrollText },
+        { to: "/pengaturan", label: "Pengaturan", icon: SettingsIcon },
+        { to: "/audit", label: "Audit Trail", icon: History },
+        { to: "/pengaturan/peran", label: "Peran & Akses", icon: KeyRound },
       ],
     },
   ];
@@ -320,6 +327,13 @@ export default function AppShell() {
                         <p className="mt-0.5 text-[10px] text-steel-400">{a.module} · {a.time}</p>
                       </div>
                     ))}
+                    <Link
+                      to="/notifikasi"
+                      onClick={() => setNotifOpen(false)}
+                      className="block px-4 py-2.5 text-center text-xs font-semibold text-ocean-600 hover:bg-surface"
+                    >
+                      Lihat semua →
+                    </Link>
                   </div>
                 </>
               )}

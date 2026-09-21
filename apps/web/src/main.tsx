@@ -31,6 +31,10 @@ import Monitoring from "./pages/proyek/Monitoring";
 import BomDetail from "./pages/inventori/BomDetail";
 import KaryawanDetail from "./pages/sdm/KaryawanDetail";
 import QuotationDetail from "./pages/crm/QuotationDetail";
+import Settings from "./pages/pengaturan/Settings";
+import Peran from "./pages/pengaturan/Peran";
+import Notifikasi from "./pages/notifikasi/Notifikasi";
+import Audit from "./pages/audit/Audit";
 import { ErrorBoundary } from "./components/ui";
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
@@ -64,6 +68,7 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
               <Route path="/sdm/karyawan/:id" element={<ErrorBoundary title="Karyawan gagal dimuat"><KaryawanDetail /></ErrorBoundary>} />
               <Route path="/crm" element={<ErrorBoundary title="CRM gagal dimuat"><CRM /></ErrorBoundary>} />
               <Route path="/crm/quotation/:id" element={<ErrorBoundary title="Penawaran gagal dimuat"><QuotationDetail /></ErrorBoundary>} />
+              <Route path="/pengaturan" element={<ErrorBoundary title="Pengaturan gagal dimuat"><Settings /></ErrorBoundary>} />
               <Route path="/procurement" element={<ErrorBoundary title="Procurement gagal dimuat"><Procurement /></ErrorBoundary>} />
               <Route path="/qc-safety" element={<ErrorBoundary title="QC & Safety gagal dimuat"><QCSafety /></ErrorBoundary>} />
               <Route path="/drydock" element={<ErrorBoundary title="Drydock gagal dimuat"><Drydock /></ErrorBoundary>} />
@@ -72,6 +77,9 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
               <Route path="/kapal/:id" element={<ErrorBoundary title="Detail kapal gagal dimuat"><VesselDetail /></ErrorBoundary>} />
               <Route path="/equipment" element={<ErrorBoundary title="Equipment gagal dimuat"><EquipmentPage /></ErrorBoundary>} />
               <Route path="/dokumen" element={<ErrorBoundary title="Dokumen gagal dimuat"><Documents /></ErrorBoundary>} />
+              <Route path="/notifikasi" element={<ErrorBoundary title="Notifikasi gagal dimuat"><Notifikasi /></ErrorBoundary>} />
+              <Route path="/audit" element={<ErrorBoundary title="Audit gagal dimuat"><Audit /></ErrorBoundary>} />
+              <Route path="/pengaturan/peran" element={<ErrorBoundary title="Peran gagal dimuat"><Peran /></ErrorBoundary>} />
             </Route>
             <Route path="*" element={<Navigate to="/dashboard" replace />} />
           </Routes>

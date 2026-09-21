@@ -116,8 +116,28 @@ const emptyForm = {
   vesselType: "",
 };
 
+const TPL_KEY = "isms.templates";
+
+const loadCustomTemplates = (): TemplateDef[] => {
+  try {
+    const raw = localStorage.getItem(TPL_KEY);
+    const parsed = raw ? JSON.parse(raw) : [];
+    return Array.isArray(parsed) ? (parsed as TemplateDef[]) : [];
+  } catch {
+    return [];
+  }
+};
+
+const persistCustomTemplates = (tpls: TemplateDef[]) => {
+  try {
+    localStorage.setItem(TPL_KEY, JSON.stringify(tpls));
+  } catch {
+    /* penyimpanan penuh/privat — abaikan */
+  }
+};
+
 export default function Projects() {
-  const { data, add, update, log, setWbs, inBranch } = useStore();
+  const { data, add, update, log, setWbs, wbsFor, inBranch } = useStore();
   const projects = data.projects;
   const [filter, setFilter] = useState("Semua");
   const [statusFilter, setStatusFilter] = useState("Semua");
@@ -131,6 +151,9 @@ export default function Projects() {
   const [pendingWbs, setPendingWbs] = useState<TemplateTask[] | null>(null);
   const [mundurFor, setMundurFor] = useState<StoreItem | null>(null);
   const [mundurReason, setMundurReason] = useState("");
+  const [customTpls, setCustomTpls] = useState<TemplateDef[]>(loadCustomTemplates);
+  const [tplName, setTplName] = useState("");
+  const [tplFromProject, setTplFromProject] = useState("");
 
   const list = inBranch(projects).filter((p) => {
     const matchType = filter === "Semua" || p.type === filter;
@@ -196,6 +219,55 @@ export default function Projects() {
     setShowTemplate(false);
     setShowAdd(true);
     toast(`Template "${t.label}" dimuat — lengkapi data & nilai kontrak`);
+  };
+
+  const storeCustomTemplate = (tpl: TemplateDef) => {
+    const next = [...customTpls, tpl];
+    setCustomTpls(next);
+    persistCustomTemplates(next);
+    log("menyimpan template proyek", tpl.label, "Proyek");
+    toast(`Template "${tpl.label}" tersimpan`);
+  };
+
+  const saveFormAsTemplate = () => {
+    if (!tplName.trim()) { toast("Isi nama template dulu", "info"); return; }
+    const scope = form.scope.split(",").map((s) => s.trim()).filter(Boolean);
+    if (scope.length === 0 && !pendingWbs) { toast("Isi lingkup atau muat template dulu", "info"); return; }
+    storeCustomTemplate({
+      key: `custom-${Date.now()}`,
+      label: tplName.trim(),
+      desc: "Template kustom dari form proyek",
+      type: form.type,
+      scope,
+      tasks: (pendingWbs ?? []).map((t) => ({ task: t.task, weight: t.weight })),
+    });
+    setTplName("");
+  };
+
+  const saveProjectAsTemplate = () => {
+    if (!tplName.trim()) { toast("Isi nama template dulu", "info"); return; }
+    const src = data.projects.find((p) => p.id === tplFromProject);
+    if (!src) { toast("Pilih proyek sumber dulu", "info"); return; }
+    const wbs = wbsFor(src.id).map((w) => ({ task: w.task, weight: Number(w.weight) || 0 })).filter((t) => t.task && t.weight > 0);
+    if (wbs.length === 0) { toast("Proyek sumber belum punya WBS", "info"); return; }
+    storeCustomTemplate({
+      key: `custom-${Date.now()}`,
+      label: tplName.trim(),
+      desc: `Template kustom dari ${src.id} · ${src.vessel}`,
+      type: String(src.type),
+      scope: [...(src.scope ?? [])],
+      tasks: wbs,
+    });
+    setTplName("");
+  };
+
+  const deleteCustomTemplate = (key: string) => {
+    const tpl = customTpls.find((t) => t.key === key);
+    const next = customTpls.filter((t) => t.key !== key);
+    setCustomTpls(next);
+    persistCustomTemplates(next);
+    log("menghapus template proyek", tpl?.label ?? key, "Proyek");
+    toast(`Template "${tpl?.label ?? key}" dihapus`, "info");
   };
 
   const save = () => {
@@ -435,6 +507,36 @@ export default function Projects() {
             </button>
           ))}
         </div>
+        <div className="mt-4 border-t border-steel-100 pt-3">
+          <p className="mb-2 text-xs font-semibold text-navy-900">Template tersimpan ({customTpls.length})</p>
+          {customTpls.length === 0 ? (
+            <p className="text-xs text-steel-400">Belum ada template kustom. Simpan dari form proyek atau dari proyek berjalan di bawah.</p>
+          ) : (
+            <div className="space-y-2">
+              {customTpls.map((t) => (
+                <div key={t.key} className="flex items-center gap-2 rounded-xl border border-dashed border-steel-200 p-3">
+                  <button onClick={() => pickTemplate(t)} className="min-w-0 flex-1 text-left">
+                    <p className="truncate text-sm font-semibold text-navy-900">{t.label} <Badge tone="teal">Kustom</Badge></p>
+                    <p className="mt-0.5 truncate text-xs text-steel-500">{t.tasks.length} tahapan WBS · {t.scope.join(" · ") || "tanpa lingkup"}</p>
+                  </button>
+                  <button className="btn-secondary shrink-0 text-xs" onClick={() => deleteCustomTemplate(t.key)}>Hapus</button>
+                </div>
+              ))}
+            </div>
+          )}
+          <div className="mt-3 rounded-xl bg-surface p-3">
+            <p className="mb-2 text-xs font-semibold text-navy-900">Simpan dari proyek berjalan</p>
+            <div className="flex flex-col gap-2 sm:flex-row">
+              <select className="input flex-1" value={tplFromProject} onChange={(e) => setTplFromProject(e.target.value)} aria-label="Proyek sumber template">
+                <option value="">Pilih proyek…</option>
+                {data.projects.map((p) => <option key={p.id} value={p.id}>{p.id} · {p.vessel}</option>)}
+              </select>
+              <input className="input flex-1" value={tplName} onChange={(e) => setTplName(e.target.value)} placeholder="Nama template…" aria-label="Nama template" />
+              <button className="btn-secondary shrink-0 text-xs" onClick={saveProjectAsTemplate}>Simpan sebagai Template</button>
+            </div>
+            <p className="mt-1 text-[11px] text-steel-500">Menyimpan nama template + lingkup + WBS proyek saat ini ke penyimpanan lokal.</p>
+          </div>
+        </div>
       </Modal>
 
       <Modal
@@ -523,6 +625,14 @@ export default function Projects() {
           <Field label="Ruang lingkup (pisahkan koma)" hint="cth: Desain, Fabrikasi Baja, Sea Trial">
             <input className="input" value={form.scope} onChange={(e) => setF("scope", e.target.value)} />
           </Field>
+          <div className="rounded-xl bg-surface p-3">
+            <p className="mb-2 text-xs font-semibold text-navy-900">Simpan form ini sebagai template</p>
+            <div className="flex flex-col gap-2 sm:flex-row">
+              <input className="input flex-1" value={tplName} onChange={(e) => setTplName(e.target.value)} placeholder="Nama template…" aria-label="Nama template" />
+              <button className="btn-secondary shrink-0 text-xs" onClick={saveFormAsTemplate}>Simpan sebagai Template</button>
+            </div>
+            <p className="mt-1 text-[11px] text-steel-500">Menyimpan tipe + lingkup + WBS template yang sedang dimuat{pendingWbs ? ` (${pendingWbs.length} tahapan)` : ""}.</p>
+          </div>
         </div>
       </Modal>
 

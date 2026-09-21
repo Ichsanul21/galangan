@@ -9,6 +9,7 @@ import { fmtTanggal, fmtJumlah, fmtRupiah, todayISO } from "../../utils/format";
 import { exportExcel } from "../../utils/export";
 
 const BOOK_PRIORITIES = ["Normal", "Tinggi", "Kritis"];
+const TARGET_HOURS = 176;
 
 function toMinutes(t: string): number | null {
   const m = /^(\d{1,2}):(\d{2})$/.exec(t.trim());
@@ -61,6 +62,14 @@ function isCalExpired(eqId: string, calibrations: StoreItem[], today: string): b
   return calibrations.some((c) => c.equipmentId === eqId && c.status !== "Selesai" && String(c.due ?? "") < today);
 }
 
+function depreciationOf(e: StoreItem): { annual: number; book: number } | null {
+  const cost = Number(e.acquisitionCost || 0);
+  const life = Number(e.usefulLife || 0);
+  if (!Number.isFinite(cost) || cost <= 0 || !Number.isFinite(life) || life <= 0) return null;
+  const annual = cost / life;
+  return { annual, book: Math.max(0, cost - annual) };
+}
+
 export default function EquipmentPage() {
   const { data, add, update, remove, log } = useStore();
   const equipment = data.equipment;
@@ -69,7 +78,7 @@ export default function EquipmentPage() {
   const [tab, setTab] = useState("Register");
 
   const [showAdd, setShowAdd] = useState(false);
-  const [form, setForm] = useState({ name: "", category: "Pengangkat", code: "", branch: "Samarinda", model: "", util: "50", rate: "" });
+  const [form, setForm] = useState({ name: "", category: "Pengangkat", code: "", branch: "Samarinda", model: "", util: "50", rate: "", fuelPrice: "0", acquisitionCost: "", usefulLife: "" });
   const [showService, setShowService] = useState(false);
   const [svcDate, setSvcDate] = useState("");
   const [svcTarget, setSvcTarget] = useState("");
@@ -82,6 +91,7 @@ export default function EquipmentPage() {
   const [finishing, setFinishing] = useState<StoreItem | null>(null);
   const [finishHours, setFinishHours] = useState("");
   const [finishDowntime, setFinishDowntime] = useState("0");
+  const [finishFuel, setFinishFuel] = useState("0");
 
   const [maintaining, setMaintaining] = useState<StoreItem | null>(null);
   const [maintNote, setMaintNote] = useState("");
@@ -128,6 +138,20 @@ export default function EquipmentPage() {
   const conflictList = activeBookings.filter((b) => conflictIds.has(b.id));
 
   const doneBookings = bookings.filter((b) => b.status === "Selesai");
+  const statsByEquip = (name: string): { hours: number; downtime: number; fuel: number } => ({
+    hours: doneBookings.filter((b) => b.equip === name).reduce((s, b) => s + Number(b.hours || 0), 0),
+    downtime: doneBookings.filter((b) => b.equip === name).reduce((s, b) => s + Number(b.downtime || 0), 0),
+    fuel: doneBookings.filter((b) => b.equip === name).reduce((s, b) => s + Number(b.fuelLiters || 0), 0),
+  });
+  const oeeOf = (name: string): { avail: number; perf: number; oee: number } | null => {
+    const st = statsByEquip(name);
+    if (st.hours <= 0) return null;
+    const avail = Math.min(1, Math.max(0, 1 - st.downtime / st.hours));
+    const perf = Math.min(1, st.hours / TARGET_HOURS);
+    return { avail, perf, oee: avail * perf };
+  };
+  const oeeValues = equipment.map((e) => oeeOf(e.name)).filter((v): v is { avail: number; perf: number; oee: number } => v !== null);
+  const avgOee = oeeValues.length ? oeeValues.reduce((s, v) => s + v.oee, 0) / oeeValues.length : null;
   const costByProject = new Map<string, { hours: number; downtime: number; cost: number }>();
   doneBookings.forEach((b) => {
     const key = String(b.proyek ?? "-");
@@ -142,14 +166,22 @@ export default function EquipmentPage() {
 
   const saveAdd = () => {
     if (!form.name.trim() || !form.code.trim()) { toast("Nama & kode wajib diisi", "info"); return; }
+    const fuelPrice = Number(form.fuelPrice || 0);
+    const acquisitionCost = Number(form.acquisitionCost || 0);
+    const usefulLife = Number(form.usefulLife || 0);
+    if (fuelPrice < 0 || !Number.isFinite(fuelPrice)) { toast("Harga BBM per liter harus 0 atau lebih", "info"); return; }
+    if ((form.acquisitionCost && (!Number.isFinite(acquisitionCost) || acquisitionCost < 0)) || (form.usefulLife && (!Number.isFinite(usefulLife) || usefulLife <= 0))) {
+      toast("Harga perolehan harus 0 atau lebih & umur ekonomis lebih dari 0", "info");
+      return;
+    }
     const created = add("equipment", {
       name: form.name.trim(), category: form.category, code: form.code.trim().toUpperCase(), branch: form.branch,
       status: "Tersedia", util: Number(form.util) || 0, nextService: "-", lastHours: 0, model: form.model.trim() || "-",
-      rate: Number(form.rate) || 0,
+      rate: Number(form.rate) || 0, fuelPrice, acquisitionCost, usefulLife,
     }, { action: "mendaftarkan equipment", module: "Equipment" });
     toast(`Equipment ${created.id} ditambahkan`);
     setShowAdd(false);
-    setForm({ name: "", category: "Pengangkat", code: "", branch: "Samarinda", model: "", util: "50", rate: "" });
+    setForm({ name: "", category: "Pengangkat", code: "", branch: "Samarinda", model: "", util: "50", rate: "", fuelPrice: "0", acquisitionCost: "", usefulLife: "" });
   };
 
   const saveService = () => {
@@ -276,6 +308,7 @@ export default function EquipmentPage() {
     setFinishing(b);
     setFinishHours(r ? String(durationHours(minutesToStr(r.mulai), minutesToStr(r.selesai))) : "");
     setFinishDowntime(String(b.downtime ?? 0));
+    setFinishFuel(String(b.fuelLiters ?? 0));
   };
 
   const confirmFinish = () => {
@@ -283,9 +316,11 @@ export default function EquipmentPage() {
     const hours = Number(finishHours);
     if (!Number.isFinite(hours) || hours <= 0) { toast("Jam pakai harus lebih dari 0", "info"); return; }
     const downtime = Math.max(0, Number(finishDowntime) || 0);
+    const fuelLiters = Math.max(0, Number(finishFuel) || 0);
+    if (!Number.isFinite(fuelLiters) || fuelLiters < 0) { toast("BBM liter harus 0 atau lebih", "info"); return; }
     const eq = equipment.find((e) => e.name === finishing.equip);
     const rate = Number(eq?.rate || 0);
-    update("bookings", finishing.id, { status: "Selesai", hours, downtime, cost: hours * rate });
+    update("bookings", finishing.id, { status: "Selesai", hours, downtime, fuelLiters, cost: hours * rate });
     if (eq) {
       const stillActive = bookings.some((o) => o.id !== finishing.id && o.equip === eq.name && o.status !== "Selesai");
       update("equipment", eq.id, {
@@ -298,6 +333,7 @@ export default function EquipmentPage() {
     setFinishing(null);
     setFinishHours("");
     setFinishDowntime("0");
+    setFinishFuel("0");
   };
 
   const saveCalibration = () => {
@@ -331,6 +367,21 @@ export default function EquipmentPage() {
     toast("Biaya per proyek diekspor");
   };
 
+  const exportRegister = () => {
+    void exportExcel(
+      [["Kode", "Nama", "Kategori", "Harga Perolehan (Rp)", "Umur Ekonomis (thn)", "Penyusutan/Tahun (Rp)", "Nilai Buku (Rp)", "Harga BBM/L (Rp)", "Total BBM (L)", "Biaya BBM (Rp)"],
+        ...equipment.map((e) => {
+          const dep = depreciationOf(e);
+          const st = statsByEquip(e.name);
+          const fuelCost = st.fuel * Number(e.fuelPrice || 0);
+          return [e.code, e.name, e.category, Number(e.acquisitionCost || 0), Number(e.usefulLife || 0), dep ? Math.round(dep.annual) : 0, dep ? Math.round(dep.book) : 0, Number(e.fuelPrice || 0), st.fuel, Math.round(fuelCost)];
+        })],
+      `Register-Aset-Equipment-${today}`,
+      "Register",
+    );
+    toast("Register aset diekspor");
+  };
+
   return (
     <div>
       <PageHeader
@@ -359,10 +410,15 @@ export default function EquipmentPage() {
         <Tabs tabs={["Register", "Alokasi / Booking", "Maintenance", "Kalibrasi", "Biaya", "Utilisasi"]} active={tab} onChange={setTab} />
         <div className="p-4">
           {tab === "Register" && (
+            <div>
+              <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                <p className="text-xs text-steel-500">Nilai buku garis lurus · asumsi penyusutan tahun berjalan (perolehan − penyusutan 1 tahun)</p>
+                <button className="btn-secondary text-xs" onClick={exportRegister}><Download className="h-3.5 w-3.5" /> Ekspor Register Aset</button>
+              </div>
             <div className="overflow-x-auto">
               <table className="w-full">
                 <thead className="sticky top-0 z-10 bg-surface">
-                  <tr><th className="th">Equipment</th><th className="th">Kategori</th><th className="th">Model</th><th className="th">Status</th><th className="th">Utilisasi</th><th className="th">Jam Pakai</th><th className="th">Tarif / Jam</th><th className="th">Aksi</th></tr>
+                  <tr><th className="th">Equipment</th><th className="th">Kategori</th><th className="th">Model</th><th className="th">Status</th><th className="th">Utilisasi</th><th className="th">Jam Pakai</th><th className="th">Tarif / Jam</th><th className="th">Nilai Buku</th><th className="th">Aksi</th></tr>
                 </thead>
                 <tbody className="divide-y divide-steel-100">
                   {equipment.map((e) => {
@@ -388,7 +444,22 @@ export default function EquipmentPage() {
                         </div>
                       </td>
                       <td className="td text-steel-600 font-mono text-xs">{fmtJumlah(Number(e.lastHours || 0))} jam</td>
-                      <td className="td text-steel-600 text-xs">{Number(e.rate || 0) > 0 ? fmtRupiah(Number(e.rate)) : "—"}</td>
+                      <td className="td text-steel-600 text-xs">
+                        {Number(e.rate || 0) > 0 ? fmtRupiah(Number(e.rate)) : "—"}
+                        <span className="block text-steel-400">BBM {fmtRupiah(Number(e.fuelPrice || 0))}/L</span>
+                      </td>
+                      <td className="td text-steel-600 text-xs">
+                        {(() => {
+                          const dep = depreciationOf(e);
+                          if (!dep) return <span className="text-steel-400">—</span>;
+                          return (
+                            <span>
+                              <span className="font-semibold text-navy-900">{fmtRupiah(Math.round(dep.book))}</span>
+                              <span className="block text-steel-400">susut {fmtRupiah(Math.round(dep.annual))}/thn</span>
+                            </span>
+                          );
+                        })()}
+                      </td>
                       <td className="td">
                         {e.status === "Tersedia" && (
                           <button className="btn-secondary text-xs" onClick={() => { setMaintaining(e); setMaintNote(""); setMaintEta(""); }}>
@@ -409,6 +480,7 @@ export default function EquipmentPage() {
                   })}
                 </tbody>
               </table>
+            </div>
             </div>
           )}
 
@@ -576,7 +648,7 @@ export default function EquipmentPage() {
                     <div key={b.id} className="flex flex-wrap items-center justify-between gap-2 border-b border-steel-100 py-2 text-sm">
                       <div>
                         <p className="font-medium text-navy-900">{b.equip} <span className="font-mono text-xs text-steel-500">· {b.id}</span></p>
-                        <p className="text-xs text-steel-500">{b.proyek} · {fmtTanggal(String(b.date))} · {b.hours ?? 0} jam · downtime {b.downtime ?? 0} jam</p>
+                        <p className="text-xs text-steel-500">{b.proyek} · {fmtTanggal(String(b.date))} · {b.hours ?? 0} jam · downtime {b.downtime ?? 0} jam · BBM {fmtJumlah(Number(b.fuelLiters || 0))} L</p>
                       </div>
                       <Badge tone="green">{fmtRupiah(Number(b.cost || 0))}</Badge>
                     </div>
@@ -584,11 +656,55 @@ export default function EquipmentPage() {
                   {doneBookings.length === 0 && <p className="text-xs text-steel-400">Belum ada booking Selesai.</p>}
                 </div>
               </Card>
+              <Card className="p-5">
+                <h3 className="mb-2 text-sm font-semibold text-navy-900">BBM per Equipment <span className="text-xs font-normal text-steel-500">(liter × harga/L di register)</span></h3>
+                <div className="space-y-2">
+                  {equipment.map((e) => {
+                    const st = statsByEquip(e.name);
+                    const fuelCost = st.fuel * Number(e.fuelPrice || 0);
+                    return (
+                      <div key={e.id} className="flex flex-wrap items-center justify-between gap-2 border-b border-steel-100 py-2 text-sm">
+                        <div>
+                          <p className="font-medium text-navy-900">{e.name}</p>
+                          <p className="text-xs text-steel-500">{fmtJumlah(st.fuel)} L × {fmtRupiah(Number(e.fuelPrice || 0))}/L</p>
+                        </div>
+                        <Badge tone="amber">{fmtRupiah(Math.round(fuelCost))}</Badge>
+                      </div>
+                    );
+                  })}
+                </div>
+              </Card>
             </div>
           )}
 
           {tab === "Utilisasi" && (
             <div className="space-y-4">
+              <Card className="p-5">
+                <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                  <h3 className="text-sm font-semibold text-navy-900">OEE per Equipment <span className="text-xs font-normal text-steel-500">(availability × performance · target {TARGET_HOURS} jam/bln)</span></h3>
+                  <Badge tone="navy">Rata-rata {avgOee !== null ? `${Math.round(avgOee * 100)}%` : "—"}</Badge>
+                </div>
+                <div className="space-y-2.5">
+                  {equipment.map((e) => {
+                    const v = oeeOf(e.name);
+                    if (!v) return (
+                      <div key={e.id} className="flex items-center justify-between gap-2 border-b border-steel-100 py-1.5 text-sm">
+                        <span className="text-steel-600">{e.name}</span>
+                        <span className="text-xs text-steel-400">Belum ada booking Selesai</span>
+                      </div>
+                    );
+                    return (
+                      <div key={e.id}>
+                        <div className="mb-1 flex justify-between text-sm">
+                          <span className="text-steel-600">{e.name} <span className="text-xs text-steel-400">(A {Math.round(v.avail * 100)}% × P {Math.round(v.perf * 100)}%)</span></span>
+                          <span className="font-semibold text-navy-900">{Math.round(v.oee * 100)}%</span>
+                        </div>
+                        <ProgressBar value={Math.round(v.oee * 100)} tone={v.oee < 0.4 ? "red" : v.oee < 0.7 ? "amber" : "green"} />
+                      </div>
+                    );
+                  })}
+                </div>
+              </Card>
               <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
                 <Card className="p-5">
                   <CardHeader title="Utilitas Keseluruhan" />
@@ -650,6 +766,9 @@ export default function EquipmentPage() {
             <Field label="Model"><input className="input" value={form.model} onChange={(e) => setForm({ ...form, model: e.target.value })} /></Field>
             <Field label="Utilisasi awal (%)"><input type="number" className="input" value={form.util} onChange={(e) => setForm({ ...form, util: e.target.value })} /></Field>
             <Field label="Tarif pakai (Rp/jam)"><input type="number" min={0} className="input" value={form.rate} onChange={(e) => setForm({ ...form, rate: e.target.value })} placeholder="cth: 350000" /></Field>
+            <Field label="Harga BBM (Rp/liter)"><input type="number" min={0} className="input" value={form.fuelPrice} onChange={(e) => setForm({ ...form, fuelPrice: e.target.value })} placeholder="cth: 13500" /></Field>
+            <Field label="Harga perolehan (Rp)"><input type="number" min={0} className="input" value={form.acquisitionCost} onChange={(e) => setForm({ ...form, acquisitionCost: e.target.value })} placeholder="cth: 2500000000" /></Field>
+            <Field label="Umur ekonomis (tahun)"><input type="number" min={0} className="input" value={form.usefulLife} onChange={(e) => setForm({ ...form, usefulLife: e.target.value })} placeholder="cth: 10" /></Field>
           </FormGrid>
         </div>
       </Modal>
@@ -742,6 +861,9 @@ export default function EquipmentPage() {
           </Field>
           <Field label="Downtime (jam)" hint="Waktu alat berhenti / tidak produktif selama booking">
             <input type="number" min={0} step={0.5} className="input" value={finishDowntime} onChange={(e) => setFinishDowntime(e.target.value)} />
+          </Field>
+          <Field label="BBM (liter)" hint="Konsumsi BBM booking ini · masuk total per equipment">
+            <input type="number" min={0} step={0.5} className="input" value={finishFuel} onChange={(e) => setFinishFuel(e.target.value)} />
           </Field>
         </div>
       </Modal>

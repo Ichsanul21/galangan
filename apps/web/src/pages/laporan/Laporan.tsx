@@ -28,12 +28,44 @@ function addDays(iso: string, n: number): string {
   return toISODate(d);
 }
 
+function shiftMonth(ym: string, delta: number): string {
+  const m = /^(\d{4})-(\d{2})$/.exec(ym);
+  if (!m) return ym;
+  const d = new Date(Number(m[1]), Number(m[2]) - 1 + delta, 1);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+}
+
+interface ReportTpl { name: string; mode: Mode; weekStart: string; month: string; projectId: string }
+interface ReportArc { name: string; at: string; mode: Mode; info: string }
+
+function loadTpls(): ReportTpl[] {
+  try {
+    const raw = localStorage.getItem("isms.reportTpl");
+    const arr = raw ? JSON.parse(raw) as ReportTpl[] : [];
+    return Array.isArray(arr) ? arr : [];
+  } catch { return []; }
+}
+
+function loadArc(): ReportArc[] {
+  try {
+    const raw = localStorage.getItem("isms.reportArc");
+    const arr = raw ? JSON.parse(raw) as ReportArc[] : [];
+    return Array.isArray(arr) ? arr : [];
+  } catch { return []; }
+}
+
 export default function Laporan() {
-  const { data, branch, inBranch, wbsFor } = useStore();
+  const { data, branch, inBranch, wbsFor, log } = useStore();
   const [mode, setMode] = useState<Mode>("Mingguan");
   const [weekStart, setWeekStart] = useState(() => mondayOf(todayISO()));
   const [month, setMonth] = useState(() => todayISO().slice(0, 7));
   const [projectId, setProjectId] = useState("");
+  const [tplName, setTplName] = useState("");
+  const [tpls, setTpls] = useState<ReportTpl[]>(() => loadTpls());
+  const [sigName, setSigName] = useState("");
+  const [sigRole, setSigRole] = useState("");
+  const [sigDate, setSigDate] = useState(() => todayISO());
+  const [arc, setArc] = useState<ReportArc[]>(() => loadArc());
 
   const projectById: Record<string, boolean> = useMemo(() => {
     const m: Record<string, boolean> = {};
@@ -101,6 +133,68 @@ export default function Laporan() {
   const projNcr = (data.ncr ?? []).filter((n) => String(n.project) === activeProjectId);
   const projActivities = (data.activities ?? []).filter((a) => String(a.target ?? "").includes(activeProjectId)).slice(0, 5);
 
+  const prevMonth = shiftMonth(month, -1);
+  const monthlyPrev = useMemo(() => {
+    const invLunas = (data.invoices ?? []).filter((i) => i.status === "Lunas" && String(i.paidAt ?? i.due ?? "").slice(0, 7) === prevMonth && matchProject(String(i.project ?? "")));
+    const apLunas = (data.payables ?? []).filter((a) => a.st === "Lunas" && String(a.paidAt ?? a.due ?? "").slice(0, 7) === prevMonth);
+    const payRows = (data.payroll ?? []).filter((p) => String(p.period ?? "") === prevMonth);
+    const revenue = invLunas.reduce((s, i) => s + num(i.amount), 0);
+    const cost = apLunas.reduce((s, a) => s + num(a.amt), 0) + payRows.reduce((s, p) => s + (num(p.net) || num(p.basic) + num(p.allowances) + num(p.overtimePay) - num(p.deductions)), 0);
+    return { revenue, cost, laba: revenue - cost };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [data, prevMonth, branch]);
+
+  const weekPrev0 = addDays(week0, -7);
+  const weekPrev1 = addDays(week0, -1);
+  const weeklyPrev = useMemo(() => {
+    const invLunas = (data.invoices ?? []).filter((i) => i.status === "Lunas" && inRange(String(i.paidAt ?? i.due ?? ""), weekPrev0, weekPrev1) && matchProject(String(i.project ?? "")));
+    const po = (data.purchaseOrders ?? []).filter((p) => inRange(String(p.date ?? ""), weekPrev0, weekPrev1));
+    const revenue = invLunas.reduce((s, i) => s + num(i.amount), 0);
+    const cost = po.reduce((s, p) => s + num(p.amount), 0);
+    return { revenue, cost, laba: revenue - cost };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [data, weekPrev0, weekPrev1, branch]);
+  const weeklyRev = weekly.invLunasVal;
+  const weeklyCost = weekly.poVal;
+  const weeklyLaba = weeklyRev - weeklyCost;
+
+  const sigRows = (): unknown[][] => (
+    sigName.trim() ? [[""], ["Disahkan oleh", `${sigName.trim()} · ${sigRole.trim() || "—"} · ${fmtTanggal(sigDate)}`]] : []
+  );
+
+  const pushArc = (name: string, info: string, m: Mode) => {
+    const entry: ReportArc = { name, at: todayISO(), mode: m, info };
+    const next = [entry, ...arc].slice(0, 10);
+    setArc(next);
+    try { localStorage.setItem("isms.reportArc", JSON.stringify(next)); } catch { /* abaikan */ }
+    log(`mengekspor laporan ${name}`, info, "Laporan");
+  };
+
+  const saveTpl = () => {
+    if (!tplName.trim()) { toast("Nama template wajib diisi", "info"); return; }
+    const tpl: ReportTpl = { name: tplName.trim(), mode, weekStart: week0, month, projectId: activeProjectId };
+    const next = [tpl, ...tpls.filter((t) => t.name !== tpl.name)].slice(0, 20);
+    setTpls(next);
+    try { localStorage.setItem("isms.reportTpl", JSON.stringify(next)); } catch { /* abaikan */ }
+    toast(`Template ${tpl.name} disimpan`);
+    setTplName("");
+  };
+
+  const applyTpl = (t: ReportTpl) => {
+    setMode(t.mode);
+    setWeekStart(t.weekStart);
+    setMonth(t.month);
+    setProjectId(t.projectId);
+    toast(`Template ${t.name} dipakai`);
+  };
+
+  const delTpl = (name: string) => {
+    const next = tpls.filter((t) => t.name !== name);
+    setTpls(next);
+    try { localStorage.setItem("isms.reportTpl", JSON.stringify(next)); } catch { /* abaikan */ }
+    toast(`Template ${name} dihapus`, "info");
+  };
+
   const exportWeek = () => {
     const rows: unknown[][] = [
       [`Laporan Mingguan ${fmtTanggal(week0)} - ${fmtTanggal(week1)}`],
@@ -113,8 +207,11 @@ export default function Laporan() {
       ["NCR baru", fmtJumlah(weekly.ncr.length)],
       ["Kehadiran", `${fmtJumlah(weekly.hadir)}/${fmtJumlah(weekly.att.length)} (${Math.round(weekly.hadirPct)}%)`],
       ["Insiden", fmtJumlah(weekly.incidents.length)],
+      ["Pembanding minggu lalu (lunas / PO / laba)", `${fmtRupiah(weeklyPrev.revenue)} / ${fmtRupiah(weeklyPrev.cost)} / ${fmtRupiah(weeklyPrev.laba)}`],
+      ...sigRows(),
     ];
     void exportExcel(rows, `Laporan-Mingguan-${week0}`);
+    pushArc(`Laporan-Mingguan-${week0}`, `${fmtTanggal(week0)} - ${fmtTanggal(week1)}`, "Mingguan");
     toast("Excel mingguan diunduh");
   };
 
@@ -131,8 +228,11 @@ export default function Laporan() {
       ["PPN Masukan 11%", monthly.ppnMasuk],
       ["PPh 23 2%", monthly.pph23],
       ["PPh 21", monthly.pph21],
+      ["Bulan lalu (revenue / cost / laba)", `${fmtRupiah(monthlyPrev.revenue)} / ${fmtRupiah(monthlyPrev.cost)} / ${fmtRupiah(monthlyPrev.laba)}`],
+      ...sigRows(),
     ];
     void exportExcel(rows, `Laporan-Bulanan-${month}`);
+    pushArc(`Laporan-Bulanan-${month}`, month, "Bulanan");
     toast("Excel bulanan diunduh");
   };
 
@@ -147,9 +247,18 @@ export default function Laporan() {
       ["BoQ total", boqTotal],
       ["Invoice", `${fmtJumlah(projInvoices.length)} · ${fmtRupiah(projInvTotal)}`],
       ["NCR", fmtJumlah(projNcr.length)],
+      ...sigRows(),
     ];
     void exportExcel(rows, `Laporan-${project.id}`);
+    pushArc(`Laporan-${project.id}`, String(project.vessel ?? ""), "Per Proyek");
     toast("Excel proyek diunduh");
+  };
+
+  const pdfName = mode === "Mingguan" ? `Laporan-Mingguan-${week0}` : mode === "Bulanan" ? `Laporan-Bulanan-${month}` : `Laporan-${activeProjectId}`;
+  const exportPDFLogged = () => {
+    exportPDF("laporan-konten", pdfName);
+    pushArc(pdfName, mode === "Per Proyek" ? String(project?.vessel ?? "") : mode === "Bulanan" ? month : `${fmtTanggal(week0)} - ${fmtTanggal(week1)}`, mode);
+    toast("PDF diunduh + diarsipkan");
   };
 
   return (
@@ -160,10 +269,10 @@ export default function Laporan() {
         icon={<FileText className="h-5 w-5" />}
         actions={
           mode === "Mingguan"
-            ? <><button className="btn-secondary" onClick={exportWeek}>Export Excel</button><button className="btn-primary" onClick={() => exportPDF("laporan-konten", `Laporan-Mingguan-${week0}`)}>Export PDF</button></>
+            ? <><button className="btn-secondary" onClick={exportWeek}>Export Excel</button><button className="btn-primary" onClick={exportPDFLogged}>Export PDF</button></>
             : mode === "Bulanan"
-              ? <><button className="btn-secondary" onClick={exportMonth}>Export Excel</button><button className="btn-primary" onClick={() => exportPDF("laporan-konten", `Laporan-Bulanan-${month}`)}>Export PDF</button></>
-              : <><button className="btn-secondary" onClick={exportProject}>Export Excel</button><button className="btn-primary" onClick={() => exportPDF("laporan-konten", `Laporan-${activeProjectId}`)}>Export PDF</button></>
+              ? <><button className="btn-secondary" onClick={exportMonth}>Export Excel</button><button className="btn-primary" onClick={exportPDFLogged}>Export PDF</button></>
+              : <><button className="btn-secondary" onClick={exportProject}>Export Excel</button><button className="btn-primary" onClick={exportPDFLogged}>Export PDF</button></>
         }
       />
 
@@ -201,6 +310,37 @@ export default function Laporan() {
         )}
       </div>
 
+      <div className="mb-4 grid grid-cols-1 gap-4 lg:grid-cols-2">
+        <Card className="p-4">
+          <CardHeader title="Template Tersimpan" subtitle="Simpan mode + parameter aktif" />
+          <div className="flex flex-wrap gap-2 px-5 pb-2">
+            <input className="input w-48" placeholder="Nama template…" value={tplName} onChange={(e) => setTplName(e.target.value)} />
+            <button className="btn-secondary text-xs" onClick={saveTpl}>Simpan Template</button>
+          </div>
+          <div className="space-y-1.5 px-5 pb-5 text-sm">
+            {tpls.map((t) => (
+              <div key={t.name} className="flex items-center gap-2 rounded-xl bg-surface px-3 py-2">
+                <span className="font-semibold text-navy-900">{t.name}</span>
+                <Badge tone="gray">{t.mode}</Badge>
+                <span className="ml-auto flex gap-1.5">
+                  <button className="btn-secondary px-2 py-1 text-xs" onClick={() => applyTpl(t)}>Pakai</button>
+                  <button className="btn-secondary px-2 py-1 text-xs" onClick={() => delTpl(t.name)}>Hapus</button>
+                </span>
+              </div>
+            ))}
+            {tpls.length === 0 && <p className="text-xs text-steel-400">Belum ada template.</p>}
+          </div>
+        </Card>
+        <Card className="p-4">
+          <CardHeader title="Tanda Tangan Pengesahan" subtitle="Tampil di area PDF + file export" />
+          <div className="grid grid-cols-1 gap-2 px-5 pb-5 sm:grid-cols-3">
+            <label className="text-xs text-steel-600">Nama<input className="input mt-1" value={sigName} onChange={(e) => setSigName(e.target.value)} placeholder="cth: H. Syukur" /></label>
+            <label className="text-xs text-steel-600">Jabatan<input className="input mt-1" value={sigRole} onChange={(e) => setSigRole(e.target.value)} placeholder="cth: Direktur" /></label>
+            <label className="text-xs text-steel-600">Tanggal<input type="date" className="input mt-1" value={sigDate} onChange={(e) => setSigDate(e.target.value)} /></label>
+          </div>
+        </Card>
+      </div>
+
       <div id="laporan-konten">
         {mode === "Mingguan" && (
           <div className="space-y-4">
@@ -211,6 +351,14 @@ export default function Laporan() {
               <KpiCard label="PO Terbit" value={fmtJumlah(weekly.po.length)} hint={fmtRupiah(weekly.poVal)} chip="amber" />
               <KpiCard label="Kehadiran" value={`${Math.round(weekly.hadirPct)}%`} hint={`${fmtJumlah(weekly.hadir)} dari ${fmtJumlah(weekly.att.length)} presensi`} chip="violet" />
             </div>
+            <Card className="p-4">
+              <CardHeader title="Komparasi Minggu Lalu" subtitle={`${fmtTanggal(weekPrev0)} → ${fmtTanggal(weekPrev1)}`} />
+              <div className="grid grid-cols-1 gap-2 px-5 pb-5 text-sm sm:grid-cols-3">
+                <div className="flex justify-between"><span className="text-steel-500">Lunas (delta)</span><span className="font-semibold">{fmtRupiah(weeklyRev - weeklyPrev.revenue)}</span></div>
+                <div className="flex justify-between"><span className="text-steel-500">PO (delta)</span><span className="font-semibold">{fmtRupiah(weeklyCost - weeklyPrev.cost)}</span></div>
+                <div className="flex justify-between"><span className="text-steel-500">Laba (delta)</span><span className="font-semibold">{fmtRupiah(weeklyLaba - weeklyPrev.laba)}</span></div>
+              </div>
+            </Card>
             <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
               <Card className="p-4">
                 <CardHeader title="Proyek + Progres" subtitle="Aktif minggu ini" />
@@ -277,6 +425,14 @@ export default function Laporan() {
               <KpiCard label="Laba Bersih" value={fmtMiliar(monthly.laba)} hint={monthly.laba >= 0 ? "Surplus" : "Defisit"} chip="violet" />
               <KpiCard label="PPh 21" value={fmtRupiah(monthly.pph21)} hint={monthly.taxRow ? `Periode ${String(monthly.taxRow.status)}` : "Belum ada periode"} chip="amber" />
             </div>
+            <Card className="p-4">
+              <CardHeader title={`Komparasi Bulan Lalu (${prevMonth})`} subtitle="Delta revenue / cost / laba" />
+              <div className="grid grid-cols-1 gap-2 px-5 pb-5 text-sm sm:grid-cols-3">
+                <div className="flex justify-between"><span className="text-steel-500">Revenue (delta)</span><span className="font-semibold">{fmtRupiah(monthly.revenue - monthlyPrev.revenue)}</span></div>
+                <div className="flex justify-between"><span className="text-steel-500">Cost (delta)</span><span className="font-semibold">{fmtRupiah(monthly.cost - monthlyPrev.cost)}</span></div>
+                <div className="flex justify-between"><span className="text-steel-500">Laba (delta)</span><span className="font-semibold">{fmtRupiah(monthly.laba - monthlyPrev.laba)}</span></div>
+              </div>
+            </Card>
             <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
               <Card className="p-4">
                 <CardHeader title="P&L Ringkas" subtitle="Pendapatan Lunas dikurangi AP Lunas + payroll" />
@@ -350,7 +506,30 @@ export default function Laporan() {
             </div>
           )
         )}
+        <div className="mt-4 rounded-xl border border-steel-100 bg-surface p-4 text-sm">
+          <p className="font-semibold text-navy-900">Pengesahan</p>
+          {sigName.trim() ? (
+            <p className="mt-1 text-steel-600">Disahkan oleh <strong className="text-navy-900">{sigName.trim()}</strong>{sigRole.trim() ? ` · ${sigRole.trim()}` : ""} · {fmtTanggal(sigDate)}</p>
+          ) : (
+            <p className="mt-1 text-xs text-steel-400">Isi tanda tangan pengesahan di panel atas untuk menampilkannya di sini dan di file export.</p>
+          )}
+        </div>
       </div>
+
+      <Card className="mt-4 p-4">
+        <CardHeader title="Arsip Laporan Terkirim" subtitle="10 terakhir — tiap export tercatat di aktivitas" />
+        <div className="space-y-1.5 px-5 pb-5 text-sm">
+          {arc.map((a, i) => (
+            <div key={`${a.name}-${i}`} className="flex items-center gap-2 rounded-xl bg-surface px-3 py-2">
+              <span className="font-mono font-semibold text-navy-900">{a.name}</span>
+              <Badge tone="gray">{a.mode}</Badge>
+              <span className="truncate text-xs text-steel-500">{a.info}</span>
+              <span className="ml-auto text-xs text-steel-500">{fmtTanggal(a.at)}</span>
+            </div>
+          ))}
+          {arc.length === 0 && <p className="text-xs text-steel-400">Belum ada laporan yang diekspor sesi ini.</p>}
+        </div>
+      </Card>
     </div>
   );
 }

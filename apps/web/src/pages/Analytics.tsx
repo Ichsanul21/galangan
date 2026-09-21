@@ -58,9 +58,67 @@ function round1(n: number): number {
   return Math.round(n * 10) / 10;
 }
 
+interface Scenario { name: string; growth: number; costAdj: number; progAdj: number }
+
+function loadScenarios(): Scenario[] {
+  try {
+    const raw = localStorage.getItem("isms.scenario");
+    const arr = raw ? JSON.parse(raw) as Scenario[] : [];
+    return Array.isArray(arr) ? arr : [];
+  } catch { return []; }
+}
+
+function loadNotes(): Record<string, string[]> {
+  try {
+    const raw = localStorage.getItem("isms.notes");
+    const obj = raw ? JSON.parse(raw) as Record<string, string[]> : {};
+    return typeof obj === "object" && obj !== null ? obj : {};
+  } catch { return {}; }
+}
+
+function exportChartPNG(chartId: string, filename: string): void {
+  try {
+    const wrap = document.getElementById(chartId);
+    const svg = wrap?.querySelector("svg");
+    if (!svg) { toast("Chart belum siap diekspor", "info"); return; }
+    const clone = svg.cloneNode(true) as SVGSVGElement;
+    clone.setAttribute("xmlns", "http://www.w3.org/2000/svg");
+    const xml = new XMLSerializer().serializeToString(clone);
+    const url = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(xml)}`;
+    const img = new Image();
+    img.onload = () => {
+      try {
+        const canvas = document.createElement("canvas");
+        canvas.width = svg.clientWidth * 2 || 1200;
+        canvas.height = svg.clientHeight * 2 || 600;
+        const ctx = canvas.getContext("2d");
+        if (!ctx) { toast("Canvas tidak didukung", "info"); return; }
+        ctx.fillStyle = "#ffffff";
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+        const a = document.createElement("a");
+        a.href = canvas.toDataURL("image/png");
+        a.download = `${filename}.png`;
+        a.click();
+        toast("Chart PNG diunduh");
+      } catch { toast("Gagal mengekspor chart", "info"); }
+    };
+    img.onerror = () => toast("Gagal mengekspor chart", "info");
+    img.src = url;
+  } catch { toast("Gagal mengekspor chart", "info"); }
+}
+
 export default function Analytics() {
   const [tab, setTab] = useState("Deskriptif");
   const [growth, setGrowth] = useState(0);
+  const [costAdj, setCostAdj] = useState(0);
+  const [progAdj, setProgAdj] = useState(0);
+  const [scName, setScName] = useState("");
+  const [scenarios, setScenarios] = useState<Scenario[]>(() => loadScenarios());
+  const [cmpA, setCmpA] = useState("");
+  const [cmpB, setCmpB] = useState("");
+  const [noteInput, setNoteInput] = useState("");
+  const [notes, setNotes] = useState<Record<string, string[]>>(() => loadNotes());
   const { data } = useStore();
 
   const avgProgress = data.projects.length
@@ -140,14 +198,60 @@ export default function Analytics() {
     { tulang: "Mesin", sebab: [`${maintEquip.length} equipment dalam maintenance (${maintEquip.slice(0, 2).map((e) => String(e.name)).join("; ") || "—"})`, `${data.calibrations.filter((c) => c.status !== "Selesai").length} kalibrasi belum selesai`] },
   ];
 
+  const revFactor = (1 + growth / 100) * (1 + progAdj / 100);
+  const marginAdjPts = -(costAdj * 0.3);
   const forecastAdj = forecast.map((f) => ({
     name: f.name,
     actual: f.actual,
-    forecast: f.forecast === null ? null : round1(f.forecast * (1 + growth / 100)),
-    low: f.forecast === null ? null : round1(f.forecast * (1 + growth / 100) * 0.85),
-    high: f.forecast === null ? null : round1(f.forecast * (1 + growth / 100) * 1.15),
+    forecast: f.forecast === null ? null : round1(f.forecast * revFactor),
+    low: f.forecast === null ? null : round1(f.forecast * revFactor * 0.85),
+    high: f.forecast === null ? null : round1(f.forecast * revFactor * 1.15),
   }));
-  const forecastAnnualAdj = Math.round(ma3 * (1 + growth / 100) * 12);
+  const forecastAnnualAdj = Math.round(ma3 * revFactor * 12);
+  const marginLive = avgMargin + marginAdjPts;
+
+  const annualFor = (s: Scenario): number => Math.round(ma3 * (1 + s.growth / 100) * (1 + s.progAdj / 100) * 12);
+
+  const saveScenario = () => {
+    if (!scName.trim()) { toast("Nama skenario wajib diisi", "info"); return; }
+    const sc: Scenario = { name: scName.trim(), growth, costAdj, progAdj };
+    const next = [sc, ...scenarios.filter((s) => s.name !== sc.name)].slice(0, 20);
+    setScenarios(next);
+    try { localStorage.setItem("isms.scenario", JSON.stringify(next)); } catch { /* abaikan */ }
+    toast(`Skenario ${sc.name} disimpan`);
+    setScName("");
+  };
+
+  const loadScenario = (name: string) => {
+    const sc = scenarios.find((s) => s.name === name);
+    if (!sc) return;
+    setGrowth(sc.growth);
+    setCostAdj(sc.costAdj);
+    setProgAdj(sc.progAdj);
+    toast(`Skenario ${name} dimuat`);
+  };
+
+  const delScenario = (name: string) => {
+    const next = scenarios.filter((s) => s.name !== name);
+    setScenarios(next);
+    try { localStorage.setItem("isms.scenario", JSON.stringify(next)); } catch { /* abaikan */ }
+    toast(`Skenario ${name} dihapus`, "info");
+  };
+
+  const saveNote = () => {
+    if (!noteInput.trim()) { toast("Catatan kosong", "info"); return; }
+    const next = { ...notes, [tab]: [...(notes[tab] ?? []), noteInput.trim()].slice(0, 20) };
+    setNotes(next);
+    try { localStorage.setItem("isms.notes", JSON.stringify(next)); } catch { /* abaikan */ }
+    setNoteInput("");
+    toast("Catatan insight disimpan");
+  };
+
+  const delNote = (idx: number) => {
+    const next = { ...notes, [tab]: (notes[tab] ?? []).filter((_, i) => i !== idx) };
+    setNotes(next);
+    try { localStorage.setItem("isms.notes", JSON.stringify(next)); } catch { /* abaikan */ }
+  };
 
   const profitByType = (["New Build", "Repair", "Retrofit"] as const).map((t) => {
     const rows = data.projects.filter((p) => p.type === t);
@@ -213,8 +317,8 @@ export default function Analytics() {
 
             <div className="grid grid-cols-1 gap-5 lg:grid-cols-3">
               <Card className="lg:col-span-2">
-                <CardHeader title="Pendapatan vs Biaya" subtitle="12 bulan terakhir (milyar Rupiah)" />
-                <div className="h-60 p-4 pt-0 sm:h-72">
+                <CardHeader title="Pendapatan vs Biaya" subtitle="12 bulan terakhir (milyar Rupiah)" action={<button className="btn-secondary px-2 py-1 text-xs" onClick={() => exportChartPNG("chart-rev", "pendapatan-vs-biaya")}>Export PNG</button>} />
+                <div id="chart-rev" className="h-60 p-4 pt-0 sm:h-72">
                   <ResponsiveContainer width="100%" height="100%">
                     <BarChart data={revenueSeries} margin={{ top: 10, right: 10, left: -15, bottom: 0 }}>
                       <CartesianGrid strokeDasharray="3 3" stroke="#e9eff4" vertical={false} />
@@ -404,24 +508,104 @@ export default function Analytics() {
             </div>
             <Card>
               <CardHeader title="What-if Pertumbuhan" subtitle={`Baseline Rp ${forecastAnnual.toLocaleString("id-ID")} M (MA3 × 12) — geser untuk simulasi`} action={<Badge tone="violet">{`${growth >= 0 ? "+" : ""}${growth}%`}</Badge>} />
-              <div className="flex flex-col gap-2 p-5 pt-2">
-                <input
-                  type="range"
-                  min={-20}
-                  max={50}
-                  step={1}
-                  value={growth}
-                  onChange={(e) => setGrowth(Number(e.target.value))}
-                  aria-label="Simulasi pertumbuhan"
-                  className="w-full"
-                />
+              <div className="flex flex-col gap-3 p-5 pt-2">
+                <div>
+                  <p className="mb-1 text-xs font-semibold text-navy-900">Pertumbuhan pasar: {growth}%</p>
+                  <input
+                    type="range"
+                    min={-20}
+                    max={50}
+                    step={1}
+                    value={growth}
+                    onChange={(e) => setGrowth(Number(e.target.value))}
+                    aria-label="Simulasi pertumbuhan"
+                    className="w-full"
+                  />
+                </div>
+                <div>
+                  <p className="mb-1 text-xs font-semibold text-navy-900">Biaya (±, menekan margin): {costAdj}%</p>
+                  <input
+                    type="range"
+                    min={-20}
+                    max={50}
+                    step={1}
+                    value={costAdj}
+                    onChange={(e) => setCostAdj(Number(e.target.value))}
+                    aria-label="Simulasi biaya"
+                    className="w-full"
+                  />
+                </div>
+                <div>
+                  <p className="mb-1 text-xs font-semibold text-navy-900">Progres (±, menggeser forecast): {progAdj}%</p>
+                  <input
+                    type="range"
+                    min={-20}
+                    max={50}
+                    step={1}
+                    value={progAdj}
+                    onChange={(e) => setProgAdj(Number(e.target.value))}
+                    aria-label="Simulasi progres"
+                    className="w-full"
+                  />
+                </div>
                 <div className="flex justify-between text-[11px] text-steel-500"><span>−20%</span><span>0%</span><span>+50%</span></div>
-                <p className="text-sm text-steel-600">Forecast tahunan tersimulasi: <span className="font-bold text-navy-900">Rp {forecastAnnualAdj.toLocaleString("id-ID")} M</span> per {fmtTanggal(todayISO())}</p>
+                <p className="text-sm text-steel-600">Forecast tahunan tersimulasi: <span className="font-bold text-navy-900">Rp {forecastAnnualAdj.toLocaleString("id-ID")} M</span> · margin live {marginLive.toLocaleString("id-ID", { maximumFractionDigits: 1 })}% per {fmtTanggal(todayISO())}</p>
+                <p className="text-xs text-steel-400">Asumsi: progres +/− menggeser revenue secara proporsional; biaya +1% menekan margin 0,3 poin; pita ±15%.</p>
               </div>
             </Card>
             <Card>
-              <CardHeader title="Forecast Pendapatan" subtitle="Aktual + forecast MA3 dengan pita kepercayaan ±15% (miliar Rupiah)" action={<Badge tone="blue">AI Forecast</Badge>} />
-              <div className="h-60 p-4 pt-0 sm:h-72">
+              <CardHeader title="Skenario Tersimpan" subtitle="Simpan set 3 slider + bandingkan 2 skenario" />
+              <div className="flex flex-wrap gap-2 p-5 pt-2">
+                <input className="input w-48" placeholder="Nama skenario…" value={scName} onChange={(e) => setScName(e.target.value)} />
+                <button className="btn-secondary text-xs" onClick={saveScenario}>Simpan Skenario</button>
+              </div>
+              <div className="space-y-1.5 px-5 pb-2 text-sm">
+                {scenarios.map((s) => (
+                  <div key={s.name} className="flex items-center gap-2 rounded-xl bg-surface px-3 py-2">
+                    <span className="font-semibold text-navy-900">{s.name}</span>
+                    <span className="text-xs text-steel-500">+{s.growth}% / biaya {s.costAdj}% / prog {s.progAdj}% · Rp {annualFor(s).toLocaleString("id-ID")} M</span>
+                    <span className="ml-auto flex gap-1.5">
+                      <button className="btn-secondary px-2 py-1 text-xs" onClick={() => loadScenario(s.name)}>Muat</button>
+                      <button className="btn-secondary px-2 py-1 text-xs" onClick={() => delScenario(s.name)}>Hapus</button>
+                    </span>
+                  </div>
+                ))}
+                {scenarios.length === 0 && <p className="text-xs text-steel-400">Belum ada skenario.</p>}
+              </div>
+              {scenarios.length >= 1 && (
+                <div className="space-y-2 px-5 pb-5 text-sm">
+                  <div className="flex flex-wrap gap-2">
+                    <select className="input w-44" value={cmpA} onChange={(e) => setCmpA(e.target.value)}>
+                      <option value="">Skenario A…</option>
+                      {scenarios.map((s) => <option key={s.name} value={s.name}>{s.name}</option>)}
+                    </select>
+                    <select className="input w-44" value={cmpB} onChange={(e) => setCmpB(e.target.value)}>
+                      <option value="">Skenario B…</option>
+                      {scenarios.map((s) => <option key={s.name} value={s.name}>{s.name}</option>)}
+                    </select>
+                  </div>
+                  {cmpA && cmpB && (() => {
+                    const a = scenarios.find((s) => s.name === cmpA);
+                    const b = scenarios.find((s) => s.name === cmpB);
+                    if (!a || !b) return null;
+                    return (
+                      <table className="w-full text-xs">
+                        <thead className="bg-surface"><tr><th className="th">Param</th><th className="th">{a.name}</th><th className="th">{b.name}</th></tr></thead>
+                        <tbody className="divide-y divide-steel-100">
+                          <tr><td className="td">Growth</td><td className="td">{a.growth}%</td><td className="td">{b.growth}%</td></tr>
+                          <tr><td className="td">Biaya</td><td className="td">{a.costAdj}%</td><td className="td">{b.costAdj}%</td></tr>
+                          <tr><td className="td">Progres</td><td className="td">{a.progAdj}%</td><td className="td">{b.progAdj}%</td></tr>
+                          <tr><td className="td font-semibold">Forecast/thn</td><td className="td font-semibold">Rp {annualFor(a).toLocaleString("id-ID")} M</td><td className="td font-semibold">Rp {annualFor(b).toLocaleString("id-ID")} M</td></tr>
+                        </tbody>
+                      </table>
+                    );
+                  })()}
+                </div>
+              )}
+            </Card>
+            <Card>
+              <CardHeader title="Forecast Pendapatan" subtitle="Aktual + forecast MA3 dengan pita kepercayaan ±15% (miliar Rupiah)" action={<span className="flex gap-1.5"><Badge tone="blue">AI Forecast</Badge><button className="btn-secondary px-2 py-1 text-xs" onClick={() => exportChartPNG("chart-forecast", "forecast-pendapatan")}>Export PNG</button></span>} />
+              <div id="chart-forecast" className="h-60 p-4 pt-0 sm:h-72">
                 <ResponsiveContainer width="100%" height="100%">
                   <ComposedChart data={forecastAdj} margin={{ top: 10, right: 10, left: -15, bottom: 0 }}>
                     <CartesianGrid strokeDasharray="3 3" stroke="#e9eff4" />
@@ -474,8 +658,8 @@ export default function Analytics() {
             </div>
             <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
               <Card>
-                <CardHeader title="Profit per Tipe Proyek" subtitle={`Budget − aktual per ${fmtTanggal(todayISO())} (miliar Rp)`} />
-                <div className="h-60 p-4 pt-0">
+                <CardHeader title="Profit per Tipe Proyek" subtitle={`Budget − aktual per ${fmtTanggal(todayISO())} (miliar Rp)`} action={<button className="btn-secondary px-2 py-1 text-xs" onClick={() => exportChartPNG("chart-profittype", "profit-tipe")}>Export PNG</button>} />
+                <div id="chart-profittype" className="h-60 p-4 pt-0">
                   <ResponsiveContainer width="100%" height="100%">
                     <BarChart data={profitByType} margin={{ top: 10, right: 10, left: -10, bottom: 0 }}>
                       <CartesianGrid strokeDasharray="3 3" stroke="#e9eff4" vertical={false} />
@@ -488,8 +672,8 @@ export default function Analytics() {
                 </div>
               </Card>
               <Card>
-                <CardHeader title="Profit per Cabang" subtitle={`Budget − aktual per ${fmtTanggal(todayISO())} (miliar Rp)`} />
-                <div className="h-60 p-4 pt-0">
+                <CardHeader title="Profit per Cabang" subtitle={`Budget − aktual per ${fmtTanggal(todayISO())} (miliar Rp)`} action={<button className="btn-secondary px-2 py-1 text-xs" onClick={() => exportChartPNG("chart-profitbranch", "profit-cabang")}>Export PNG</button>} />
+                <div id="chart-profitbranch" className="h-60 p-4 pt-0">
                   <ResponsiveContainer width="100%" height="100%">
                     <BarChart data={profitByBranch} margin={{ top: 10, right: 10, left: -10, bottom: 0 }}>
                       <CartesianGrid strokeDasharray="3 3" stroke="#e9eff4" vertical={false} />
@@ -521,6 +705,22 @@ export default function Analytics() {
             </div>
           </div>
         )}
+        <Card className="mt-5">
+          <CardHeader title={`Anotasi Insight · ${tab}`} subtitle="Catatan per tab — tersimpan per perangkat" />
+          <div className="flex flex-col gap-2 p-5 pt-2">
+            <textarea className="input" rows={2} value={noteInput} onChange={(e) => setNoteInput(e.target.value)} placeholder={`Tulis insight untuk tab ${tab}…`} />
+            <div><button className="btn-secondary text-xs" onClick={saveNote}>Simpan Catatan</button></div>
+            <div className="space-y-1.5">
+              {(notes[tab] ?? []).map((n, i) => (
+                <div key={i} className="flex items-start gap-2 rounded-xl bg-surface px-3 py-2 text-sm text-steel-700">
+                  <span className="flex-1">{n}</span>
+                  <button className="btn-secondary px-2 py-1 text-xs" onClick={() => delNote(i)}>Hapus</button>
+                </div>
+              ))}
+              {(notes[tab] ?? []).length === 0 && <p className="text-xs text-steel-400">Belum ada catatan untuk tab ini.</p>}
+            </div>
+          </div>
+        </Card>
       </div>
     </div>
   );

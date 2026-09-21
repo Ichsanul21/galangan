@@ -4,7 +4,7 @@ import { ComposedChart, Line, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Respons
 import { Card, CardHeader, PageHeader, Badge, KpiCard, Tabs, StatusBadge, Donut, ChartTooltip, Modal, Field, FormGrid, toast } from "../../components/ui";
 import { useStore, type StoreItem } from "../../data/store";
 import { inspectionTrend, ncrTrend, incidentTrend, hseTrend } from "../../data";
-import { fmtTanggal, todayISO } from "../../utils/format";
+import { fmtRupiah, fmtTanggal, todayISO } from "../../utils/format";
 import { exportExcel } from "../../utils/export";
 
 const CERT_WINDOW = 90;
@@ -118,7 +118,8 @@ export default function QCSafety() {
   const [tab, setTab] = useState("Inspeksi (ITP)");
 
   const [showInsp, setShowInsp] = useState(false);
-  const [inspForm, setInspForm] = useState({ project: "", point: "", status: "Terjadwal", date: todayISO(), holdType: "Witness", nde: "Tidak", ndeMethod: "UT", inspector: "" });
+  const [inspForm, setInspForm] = useState({ project: "", point: "", status: "Terjadwal", date: todayISO(), holdType: "Witness", nde: "Tidak", ndeMethod: "UT", inspector: "", sampleSize: "", defectsAllowed: "0", defectsFound: "0", calTool: "" });
+  const [inspDetail, setInspDetail] = useState<StoreItem | null>(null);
   const [ncrDetail, setNcrDetail] = useState<StoreItem | null>(null);
   const [dueDraft, setDueDraft] = useState("");
   const [showNcr, setShowNcr] = useState(false);
@@ -151,6 +152,19 @@ export default function QCSafety() {
   const [walkForm, setWalkForm] = useState({ date: todayISO(), area: "", findings: "0", pic: "" });
   const [auditChecked, setAuditChecked] = useState<boolean[]>(() => AUDIT_ITEMS.map(() => false));
 
+  // Audit internal (terpisah dari checklist Audit HSE di atas)
+  interface AuditPlan { id: string; date: string; area: string; auditor: string; findings: number; ncrId: string }
+  const [auditPlans, setAuditPlans] = useState<AuditPlan[]>([]);
+  const [showAuditPlan, setShowAuditPlan] = useState(false);
+  const [auditForm, setAuditForm] = useState({ date: todayISO(), area: "", auditor: "", findings: "0", ncrId: "" });
+
+  // Verifikasi lanjutan CAPA H+30
+  const [followUpNcr, setFollowUpNcr] = useState<StoreItem | null>(null);
+  const [followUpForm, setFollowUpForm] = useState({ date: todayISO(), note: "" });
+
+  // Biaya rework per NCR (draft per detail)
+  const [reworkDraft, setReworkDraft] = useState({ hours: "", rate: "", material: "" });
+
   const openNcr = ncrList.filter((n) => n.status !== "Tertutup").length;
   const criticalOpen = ncrList.filter((n) => n.severity === "Critical" && n.status !== "Tertutup").length;
 
@@ -173,6 +187,37 @@ export default function QCSafety() {
   const auditHistory = data.activities.filter((a) => String(a.action ?? "").toLowerCase().includes("audit hse")).slice(0, 5);
   const auditScore = Math.round((auditChecked.filter(Boolean).length / AUDIT_ITEMS.length) * 100);
 
+  // Kalibrasi valid untuk NDE: status Selesai & due belum lewat
+  const today = todayISO();
+  const validCals = data.calibrations.filter((c) => c.status === "Selesai" && String(c.due ?? "") >= today);
+  const calLabel = (id: string): string => {
+    const c = data.calibrations.find((x) => x.id === id);
+    if (!c) return id;
+    const eq = data.equipment.find((e) => e.id === c.equipmentId);
+    return `${c.id} · ${c.item}${eq ? ` (${eq.name})` : ""}`;
+  };
+
+  const certsOfInspector = (name: string): string[] => {
+    const emp = data.employees.find((e) => e.name === name);
+    return Array.isArray(emp?.certs) ? emp.certs as string[] : [];
+  };
+
+  const daysSince = (iso: string | null | undefined): number | null => {
+    const d = daysUntil(iso);
+    return d === null ? null : -d;
+  };
+
+  const needsFollowUp = (n: StoreItem): boolean => {
+    if (n.status !== "Tertutup" || !n.closedAt || n.followUpDate) return false;
+    const age = daysSince(String(n.closedAt));
+    return age !== null && age > 30;
+  };
+  const followUpCount = ncrList.filter(needsFollowUp).length;
+
+  const reworkCost = (n: StoreItem): number =>
+    Math.max(0, Number(n.reworkHours || 0)) * Math.max(0, Number(n.reworkRate || 0)) + Math.max(0, Number(n.reworkMaterial || 0));
+  const totalRework = ncrList.reduce((s, n) => s + reworkCost(n), 0);
+
   const dueBadge = (n: StoreItem) => {
     if (n.status === "Tertutup" || !n.due) return null;
     const left = daysUntil(n.due);
@@ -186,13 +231,25 @@ export default function QCSafety() {
     if (!inspForm.project || !inspForm.point.trim()) { toast("Proyek & titik inspeksi wajib diisi", "info"); return; }
     if (!inspForm.date) { toast("Tanggal inspeksi wajib diisi", "info"); return; }
     if (!inspForm.inspector) { toast("Pilih inspector berkualifikasi (dept Quality)", "info"); return; }
+    const sample = Number(inspForm.sampleSize);
+    const allowed = Number(inspForm.defectsAllowed);
+    const found = Number(inspForm.defectsFound);
+    if (!Number.isFinite(sample) || sample <= 0) { toast("Ukuran sampel (AQL) wajib lebih dari 0", "info"); return; }
+    if (!Number.isFinite(allowed) || allowed < 0 || !Number.isFinite(found) || found < 0) { toast("Defects allowed & temuan harus 0 atau lebih", "info"); return; }
+    if (inspForm.nde === "Ya") {
+      if (!inspForm.calTool) { toast("NDE=Ya wajib memilih alat ukur terkalibrasi", "info"); return; }
+      if (!validCals.some((c) => c.id === inspForm.calTool)) { toast("Alat ukur tidak valid (harus Selesai & due belum lewat)", "info"); return; }
+    }
+    if (inspForm.status === "Lulus" && found > allowed) { toast(`Hasil tidak bisa Lulus: temuan ${found} melebihi batas ${allowed}`, "info"); return; }
     const itp = nextItp(inspections);
     const created = add("inspections", {
       project: inspForm.project, point: inspForm.point.trim(), itp,
       status: inspForm.status, date: inspForm.date,
       holdType: inspForm.holdType, nde: inspForm.nde,
       ndeMethod: inspForm.nde === "Ya" ? inspForm.ndeMethod : "-",
+      calTool: inspForm.nde === "Ya" ? inspForm.calTool : "",
       inspector: inspForm.inspector,
+      sampleSize: sample, defectsAllowed: allowed, defectsFound: found,
     }, { action: "mencatat inspeksi", module: "QC" });
     if (inspForm.status === "NCR") {
       const proj = data.projects.find((p) => p.id === inspForm.project);
@@ -207,7 +264,7 @@ export default function QCSafety() {
       toast(`Inspeksi ${created.id} dijadwalkan`);
     }
     setShowInsp(false);
-    setInspForm({ project: "", point: "", status: "Terjadwal", date: todayISO(), holdType: "Witness", nde: "Tidak", ndeMethod: "UT", inspector: "" });
+    setInspForm({ project: "", point: "", status: "Terjadwal", date: todayISO(), holdType: "Witness", nde: "Tidak", ndeMethod: "UT", inspector: "", sampleSize: "", defectsAllowed: "0", defectsFound: "0", calTool: "" });
   };
 
   const saveNcr = () => {
@@ -273,6 +330,59 @@ export default function QCSafety() {
   const openDetail = (n: StoreItem) => {
     setNcrDetail(n);
     setDueDraft(String(n.due ?? ""));
+    setReworkDraft({ hours: String(n.reworkHours ?? ""), rate: String(n.reworkRate ?? ""), material: String(n.reworkMaterial ?? "") });
+  };
+
+  const saveRework = () => {
+    if (!ncrDetail) return;
+    const hours = Number(reworkDraft.hours || 0);
+    const rate = Number(reworkDraft.rate || 0);
+    const material = Number(reworkDraft.material || 0);
+    if (hours < 0 || rate < 0 || material < 0 || [hours, rate, material].some((v) => !Number.isFinite(v))) {
+      toast("Jam, rate & material harus angka 0 atau lebih", "info");
+      return;
+    }
+    update("ncr", ncrDetail.id, { reworkHours: hours, reworkRate: rate, reworkMaterial: material });
+    log("mencatat biaya rework", `${ncrDetail.id} · ${hours} jam × ${fmtRupiah(rate)} + material ${fmtRupiah(material)}`, "QC");
+    setNcrDetail({ ...ncrDetail, reworkHours: hours, reworkRate: rate, reworkMaterial: material });
+    toast(`Biaya rework ${ncrDetail.id} disimpan`);
+  };
+
+  const confirmFollowUp = () => {
+    if (!followUpNcr) return;
+    if (!followUpForm.date) { toast("Tanggal verifikasi lanjutan wajib diisi", "info"); return; }
+    if (!followUpForm.note.trim()) { toast("Catatan verifikasi lanjutan wajib diisi", "info"); return; }
+    update("ncr", followUpNcr.id, { followUpDate: followUpForm.date, followUpNote: followUpForm.note.trim() });
+    log("melakukan verifikasi lanjutan", `${followUpNcr.id} · ${fmtTanggal(followUpForm.date)} — ${followUpForm.note.trim()}`, "QC");
+    toast(`Verifikasi lanjutan ${followUpNcr.id} dicatat`);
+    setNcrDetail((d) => (d && d.id === followUpNcr.id ? { ...d, followUpDate: followUpForm.date, followUpNote: followUpForm.note.trim() } : d));
+    setFollowUpNcr(null);
+    setFollowUpForm({ date: todayISO(), note: "" });
+  };
+
+  const exportNcr = () => {
+    void exportExcel(
+      [["NCR", "Proyek", "Severity", "Status", "Tenggat", "Ditutup", "Jam Rework", "Rate (Rp/jam)", "Material (Rp)", "Biaya Rework (Rp)", "Verifikasi Lanjutan"],
+        ...ncrList.map((n) => [n.id, n.project, n.severity, n.status, fmtTanggal(String(n.due ?? "")), fmtTanggal(String(n.closedAt ?? "")), Number(n.reworkHours || 0), Number(n.reworkRate || 0), Number(n.reworkMaterial || 0), reworkCost(n), n.followUpDate ? `${fmtTanggal(String(n.followUpDate))} — ${n.followUpNote ?? ""}` : "—"])],
+      `NCR-Rework-${today}`,
+      "NCR",
+    );
+    toast("NCR & biaya rework diekspor");
+  };
+
+  const saveAuditPlan = () => {
+    if (!auditForm.date || !auditForm.area.trim() || !auditForm.auditor.trim()) { toast("Tanggal, area & auditor wajib diisi", "info"); return; }
+    const findings = Math.max(0, Math.floor(Number(auditForm.findings) || 0));
+    const item: AuditPlan = {
+      id: `AUD-${Date.now().toString(36).toUpperCase()}`,
+      date: auditForm.date, area: auditForm.area.trim(), auditor: auditForm.auditor.trim(),
+      findings, ncrId: auditForm.ncrId,
+    };
+    setAuditPlans((prev) => [item, ...prev]);
+    log("menjadwalkan audit internal", `${item.area} · ${fmtTanggal(item.date)} · auditor ${item.auditor}`, "QC");
+    toast(`Audit internal ${item.id} dijadwalkan`);
+    setShowAuditPlan(false);
+    setAuditForm({ date: todayISO(), area: "", auditor: "", findings: "0", ncrId: "" });
   };
 
   const saveDue = () => {
@@ -467,7 +577,7 @@ export default function QCSafety() {
               <div className="overflow-x-auto">
                 <table className="w-full">
                   <thead className="bg-surface sticky top-0 z-10">
-                    <tr><th className="th">Inspeksi</th><th className="th">Proyek</th><th className="th">Titik Inspeksi</th><th className="th">ITP</th><th className="th">Hold / Witness</th><th className="th">NDE</th><th className="th">Inspector</th><th className="th">Tanggal</th><th className="th">Hasil</th></tr>
+                    <tr><th className="th">Inspeksi</th><th className="th">Proyek</th><th className="th">Titik Inspeksi</th><th className="th">ITP</th><th className="th">Hold / Witness</th><th className="th">NDE</th><th className="th">Sampel (AQL)</th><th className="th">Inspector</th><th className="th">Tanggal</th><th className="th">Hasil</th><th className="th">Aksi</th></tr>
                   </thead>
                   <tbody className="divide-y divide-steel-100">
                     {inspections.map((i) => (
@@ -478,9 +588,13 @@ export default function QCSafety() {
                         <td className="td text-steel-600 font-mono text-xs">{i.itp}</td>
                         <td className="td"><Badge tone={i.holdType === "Hold" ? "red" : i.holdType === "Witness" ? "amber" : "blue"}>{i.holdType ?? "—"}</Badge></td>
                         <td className="td text-steel-600 text-xs">{i.nde === "Ya" ? `Ya · ${i.ndeMethod ?? "-"}` : "Tidak"}</td>
+                        <td className="td text-steel-600 text-xs">
+                          {i.sampleSize ? `n=${i.sampleSize} · temuan ${i.defectsFound ?? 0}/${i.defectsAllowed ?? 0}` : "—"}
+                        </td>
                         <td className="td text-steel-600 text-xs">{i.inspector ?? "—"}</td>
                         <td className="td text-steel-600">{fmtTanggal(i.date)}</td>
                         <td className="td"><StatusBadge status={i.status} /></td>
+                        <td className="td"><button className="btn-secondary text-xs" onClick={() => setInspDetail(i)}>Detail</button></td>
                       </tr>
                     ))}
                   </tbody>
@@ -491,6 +605,13 @@ export default function QCSafety() {
 
           {tab === "NCR" && (
             <div className="space-y-3">
+              <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-surface px-3 py-2 text-sm">
+                <p className="text-steel-600">
+                  Total biaya rework <span className="font-semibold text-navy-900">{fmtRupiah(totalRework)}</span>
+                  {followUpCount > 0 && <span className="ml-2 font-medium text-amber-700">· {followUpCount} butuh verifikasi lanjutan (H+30)</span>}
+                </p>
+                <button className="btn-secondary text-xs" onClick={exportNcr}>Ekspor NCR + Rework</button>
+              </div>
               {ncrList.map((n) => (
                 <Card key={n.id} className="p-4">
                   <div className="flex flex-wrap items-start justify-between gap-2">
@@ -499,6 +620,10 @@ export default function QCSafety() {
                         <p className="font-semibold text-navy-900 font-mono">{n.id}</p>
                         <Badge tone={n.severity === "Critical" ? "red" : n.severity === "Major" ? "amber" : "blue"}>{n.severity}</Badge>
                         {dueBadge(n)}
+                        {needsFollowUp(n) && <Badge tone="amber">Follow-up H+30</Badge>}
+                        {Number(n.reworkHours || 0) > 0 || Number(n.reworkMaterial || 0) > 0 ? (
+                          <span className="text-xs text-steel-500">Rework {fmtRupiah(reworkCost(n))}</span>
+                        ) : null}
                       </div>
                       <p className="mt-1 text-sm text-steel-700">{n.issue}</p>
                       <p className="text-xs text-steel-500 mt-0.5">{n.project} · {n.vessel} · {n.type} · dilaporkan {fmtTanggal(n.raised)}{n.due ? ` · tenggat ${fmtTanggal(n.due)}` : " · tanpa tenggat"}</p>
@@ -672,6 +797,25 @@ export default function QCSafety() {
                   </div>
                 </div>
               </Card>
+
+              <Card className="p-4">
+                <div className="mb-2 flex items-center justify-between">
+                  <h3 className="text-sm font-semibold text-navy-900">Audit Internal (terpisah dari Audit HSE)</h3>
+                  <button className="btn-secondary text-xs" onClick={() => setShowAuditPlan(true)}><Plus className="h-3.5 w-3.5" /> Jadwalkan Audit</button>
+                </div>
+                <div className="space-y-2">
+                  {auditPlans.map((a) => (
+                    <div key={a.id} className="rounded-lg border border-steel-100 p-3 text-sm">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <p className="font-medium text-navy-900">{a.area} <span className="font-mono text-xs text-steel-500">· {a.id}</span></p>
+                        <button className="btn-secondary text-xs" onClick={() => setAuditPlans((prev) => prev.filter((x) => x.id !== a.id))}>Hapus</button>
+                      </div>
+                      <p className="mt-1 text-xs text-steel-600">{fmtTanggal(a.date)} · auditor {a.auditor} · {a.findings} temuan{a.ncrId ? ` · terkait ${a.ncrId}` : ""}</p>
+                    </div>
+                  ))}
+                  {auditPlans.length === 0 && <p className="text-xs text-steel-400">Belum ada jadwal audit internal.</p>}
+                </div>
+              </Card>
             </div>
           )}
 
@@ -782,6 +926,23 @@ export default function QCSafety() {
                 </select>
               </Field>
             )}
+            <Field label="Ukuran sampel (AQL)" hint="Wajib lebih dari 0">
+              <input type="number" min={1} className="input" value={inspForm.sampleSize} onChange={(e) => setInspForm({ ...inspForm, sampleSize: e.target.value })} placeholder="cth: 50" />
+            </Field>
+            <Field label="Defects allowed" hint="Hasil Lulus bila temuan ≤ batas">
+              <input type="number" min={0} className="input" value={inspForm.defectsAllowed} onChange={(e) => setInspForm({ ...inspForm, defectsAllowed: e.target.value })} placeholder="cth: 1" />
+            </Field>
+            <Field label="Temuan defects">
+              <input type="number" min={0} className="input" value={inspForm.defectsFound} onChange={(e) => setInspForm({ ...inspForm, defectsFound: e.target.value })} placeholder="cth: 0" />
+            </Field>
+            {inspForm.nde === "Ya" && (
+              <Field label="Alat ukur terkalibrasi" hint="Wajib bila NDE=Ya · hanya Selesai & due belum lewat">
+                <select className="input" value={inspForm.calTool} onChange={(e) => setInspForm({ ...inspForm, calTool: e.target.value })}>
+                  <option value="">Pilih alat ukur…</option>
+                  {validCals.map((c) => <option key={c.id} value={c.id}>{calLabel(c.id)} · due {fmtTanggal(String(c.due))}</option>)}
+                </select>
+              </Field>
+            )}
           </FormGrid>
           <Field label="Titik inspeksi"><input className="input" value={inspForm.point} onChange={(e) => setInspForm({ ...inspForm, point: e.target.value })} placeholder="cth: Welding seam section 5" /></Field>
         </div>
@@ -845,8 +1006,75 @@ export default function QCSafety() {
                 <button className="btn-secondary text-xs whitespace-nowrap" onClick={saveDue}>Simpan Tenggat</button>
               </div>
             )}
+            <div className="mt-3 border-t border-steel-100 pt-3">
+              <p className="text-xs font-semibold text-steel-500">BIAYA REWORK (jam × rate + material)</p>
+              <div className="mt-2 grid grid-cols-3 gap-2">
+                <Field label="Jam"><input type="number" min={0} step={0.5} className="input" value={reworkDraft.hours} onChange={(e) => setReworkDraft({ ...reworkDraft, hours: e.target.value })} placeholder="cth: 12" /></Field>
+                <Field label="Rate (Rp/jam)"><input type="number" min={0} className="input" value={reworkDraft.rate} onChange={(e) => setReworkDraft({ ...reworkDraft, rate: e.target.value })} placeholder="cth: 75000" /></Field>
+                <Field label="Material (Rp)"><input type="number" min={0} className="input" value={reworkDraft.material} onChange={(e) => setReworkDraft({ ...reworkDraft, material: e.target.value })} placeholder="cth: 500000" /></Field>
+              </div>
+              <div className="mt-2 flex items-center justify-between gap-2">
+                <p className="text-sm text-steel-600">Total <span className="font-semibold text-navy-900">{fmtRupiah((Number(reworkDraft.hours) || 0) * (Number(reworkDraft.rate) || 0) + (Number(reworkDraft.material) || 0))}</span></p>
+                <button className="btn-secondary text-xs" onClick={saveRework}>Simpan Biaya Rework</button>
+              </div>
+            </div>
+            <div className="mt-3 border-t border-steel-100 pt-3">
+              <div className="flex items-center justify-between gap-2">
+                <p className="text-xs font-semibold text-steel-500">VERIFIKASI LANJUTAN (CAPA H+30)</p>
+                {needsFollowUp(ncrDetail) && <Badge tone="amber">Follow-up H+30</Badge>}
+              </div>
+              {ncrDetail.followUpDate ? (
+                <p className="mt-1 text-sm text-steel-600">Terverifikasi {fmtTanggal(String(ncrDetail.followUpDate))} — {String(ncrDetail.followUpNote ?? "")}</p>
+              ) : (
+                <p className="mt-1 text-xs text-steel-500">
+                  {ncrDetail.status === "Tertutup"
+                    ? `Ditutup ${fmtTanggal(String(ncrDetail.closedAt ?? ""))} · verifikasi lanjutan jatuh tempo H+30 bila belum ada tinjauan ulang.`
+                    : "Tersedia setelah NCR Tertutup lebih dari 30 hari tanpa verifikasi lanjutan."}
+                </p>
+              )}
+              {needsFollowUp(ncrDetail) && (
+                <button className="btn-primary mt-2 text-xs" onClick={() => { setFollowUpNcr(ncrDetail); setFollowUpForm({ date: todayISO(), note: "" }); }}>
+                  Verifikasi Lanjutan
+                </button>
+              )}
+            </div>
           </div>
         )}
+      </Modal>
+
+      {/* Modal detail inspeksi: sampling AQL + sertifikat inspector */}
+      <Modal open={inspDetail !== null} onClose={() => setInspDetail(null)} title={inspDetail ? String(inspDetail.id) : ""} subtitle="Detail sampling AQL, alat NDE & sertifikat inspector">
+        {inspDetail && (
+          <div>
+            <dl className="space-y-2.5 text-sm">
+              {[["Proyek", inspDetail.project], ["Titik", inspDetail.point], ["ITP", inspDetail.itp], ["Tanggal", fmtTanggal(inspDetail.date)], ["Hold / Witness", inspDetail.holdType ?? "—"], ["NDE", inspDetail.nde === "Ya" ? `Ya · ${inspDetail.ndeMethod ?? "-"} · ${inspDetail.calTool ? calLabel(String(inspDetail.calTool)) : "tanpa alat"}` : "Tidak"], ["Sampling AQL", inspDetail.sampleSize ? `n=${inspDetail.sampleSize} · temuan ${inspDetail.defectsFound ?? 0} / batas ${inspDetail.defectsAllowed ?? 0} · ${(Number(inspDetail.defectsFound ?? 0) <= Number(inspDetail.defectsAllowed ?? 0)) ? "Lulus AQL" : "Gagal AQL"}` : "—"], ["Inspector", inspDetail.inspector ?? "—"]].map(([k, v]) => (
+                <div key={k} className="flex justify-between gap-4"><dt className="shrink-0 text-steel-500">{k}</dt><dd className="text-right font-medium text-navy-900">{v}</dd></div>
+              ))}
+              <div className="flex justify-between gap-4"><dt className="text-steel-500">Hasil</dt><dd><StatusBadge status={inspDetail.status} /></dd></div>
+            </dl>
+            <div className="mt-3 border-t border-steel-100 pt-3">
+              <p className="text-xs font-semibold text-steel-500">SERTIFIKAT INSPECTOR</p>
+              {(() => {
+                const certs = certsOfInspector(String(inspDetail.inspector ?? ""));
+                if (certs.length === 0) return <p className="mt-1 rounded-lg bg-amber-50 px-3 py-2 text-xs font-medium text-amber-700">Peringatan: inspector belum memiliki sertifikat tercatat di data karyawan.</p>;
+                return (
+                  <div className="mt-1 flex flex-wrap gap-1.5">
+                    {certs.map((c) => <Badge key={c} tone="teal">{c}</Badge>)}
+                  </div>
+                );
+              })()}
+            </div>
+          </div>
+        )}
+      </Modal>
+
+      {/* Modal verifikasi lanjutan CAPA H+30 */}
+      <Modal open={followUpNcr !== null} onClose={() => setFollowUpNcr(null)} title={`Verifikasi Lanjutan ${followUpNcr ? String(followUpNcr.id) : ""}`} subtitle="Tinjauan ulang CAPA setelah Tertutup lebih dari 30 hari"
+        footer={<><button className="btn-secondary" onClick={() => setFollowUpNcr(null)}>Batal</button><button className="btn-primary" onClick={confirmFollowUp}>Simpan Verifikasi</button></>}>
+        <div className="space-y-3">
+          <Field label="Tanggal verifikasi"><input type="date" className="input" value={followUpForm.date} onChange={(e) => setFollowUpForm({ ...followUpForm, date: e.target.value })} /></Field>
+          <Field label="Catatan verifikasi"><textarea className="input" rows={3} value={followUpForm.note} onChange={(e) => setFollowUpForm({ ...followUpForm, note: e.target.value })} placeholder="cth: Dicek ulang H+35, perbaikan bertahan, tidak ada temuan berulang" /></Field>
+        </div>
       </Modal>
 
       {/* Modal tutup NCR */}
@@ -980,6 +1208,25 @@ export default function QCSafety() {
             <Field label="Area"><input className="input" value={walkForm.area} onChange={(e) => setWalkForm({ ...walkForm, area: e.target.value })} placeholder="cth: Drydock 1" /></Field>
             <Field label="Jumlah temuan"><input type="number" min={0} className="input" value={walkForm.findings} onChange={(e) => setWalkForm({ ...walkForm, findings: e.target.value })} /></Field>
           </FormGrid>
+        </div>
+      </Modal>
+
+      {/* Modal jadwal audit internal */}
+      <Modal open={showAuditPlan} onClose={() => setShowAuditPlan(false)} title="Jadwalkan Audit Internal" subtitle="Terpisah dari checklist Audit HSE"
+        footer={<><button className="btn-secondary" onClick={() => setShowAuditPlan(false)}>Batal</button><button className="btn-primary" onClick={saveAuditPlan}>Simpan Jadwal</button></>}>
+        <div className="space-y-3">
+          <FormGrid>
+            <Field label="Tanggal"><input type="date" className="input" value={auditForm.date} onChange={(e) => setAuditForm({ ...auditForm, date: e.target.value })} /></Field>
+            <Field label="Area"><input className="input" value={auditForm.area} onChange={(e) => setAuditForm({ ...auditForm, area: e.target.value })} placeholder="cth: Workshop Fabrikasi" /></Field>
+            <Field label="Auditor"><input className="input" value={auditForm.auditor} onChange={(e) => setAuditForm({ ...auditForm, auditor: e.target.value })} placeholder="cth: Sari Wulandari" /></Field>
+            <Field label="Jumlah temuan"><input type="number" min={0} className="input" value={auditForm.findings} onChange={(e) => setAuditForm({ ...auditForm, findings: e.target.value })} /></Field>
+          </FormGrid>
+          <Field label="Link NCR (manual, opsional)">
+            <select className="input" value={auditForm.ncrId} onChange={(e) => setAuditForm({ ...auditForm, ncrId: e.target.value })}>
+              <option value="">Tanpa link NCR…</option>
+              {ncrList.map((n) => <option key={n.id} value={n.id}>{n.id} · {n.status}</option>)}
+            </select>
+          </Field>
         </div>
       </Modal>
     </div>

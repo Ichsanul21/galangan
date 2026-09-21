@@ -87,6 +87,7 @@ export interface StoreShape {
   calibrations: StoreItem[];
   communications: StoreItem[];
   contracts: StoreItem[];
+  settings: StoreItem[];
   wbsByProject: Record<string, WbsItem[]>;
   teamByProject: Record<string, string[]>;
 }
@@ -243,6 +244,36 @@ const seedContracts: StoreItem[] = [
   { id: "KTR-2026-009", quotationId: "QT-2026-054", projectId: "RP-2026-002", client: "PT Mitra Samudra Raya", value: 3100000000, signedAt: "2026-07-12", status: "Aktif" },
 ];
 
+/* Konstanta bisnis terpusat — semua rumus baca dari sini via utils/settings.
+   Ubah lewat halaman Pengaturan; kalibrasi saat dokumen client datang. */
+const seedSettings: StoreItem[] = [
+  { id: "SET-PPN", key: "PPN_RATE", value: 11, label: "PPN Keluaran/Masukan (%)", group: "Pajak" },
+  { id: "SET-PPH23", key: "PPH23_RATE", value: 2, label: "PPh 23 jasa (%)", group: "Pajak" },
+  { id: "SET-PPH21-1", key: "PPH21_T1_RATE", value: 5, label: "PPh21 lapis 1 (%)", group: "Payroll" },
+  { id: "SET-PPH21-1B", key: "PPH21_T1_MAX", value: 60000000, label: "PPh21 batas lapis 1 (Rp/thn)", group: "Payroll" },
+  { id: "SET-PPH21-2", key: "PPH21_T2_RATE", value: 15, label: "PPh21 lapis 2 (%)", group: "Payroll" },
+  { id: "SET-PPH21-2B", key: "PPH21_T2_MAX", value: 250000000, label: "PPh21 batas lapis 2 (Rp/thn)", group: "Payroll" },
+  { id: "SET-PPH21-3", key: "PPH21_T3_RATE", value: 25, label: "PPh21 lapis 3 (%)", group: "Payroll" },
+  { id: "SET-PPH21-3B", key: "PPH21_T3_MAX", value: 500000000, label: "PPh21 batas lapis 3 (Rp/thn)", group: "Payroll" },
+  { id: "SET-PPH21-4", key: "PPH21_T4_RATE", value: 30, label: "PPh21 lapis 4 (%)", group: "Payroll" },
+  { id: "SET-PTKP0", key: "PTKP_TK0", value: 54000000, label: "PTKP TK/0 (Rp/thn)", group: "Payroll" },
+  { id: "SET-PTKP1", key: "PTKP_K0", value: 58500000, label: "PTKP K/0 (Rp/thn)", group: "Payroll" },
+  { id: "SET-PTKPT", key: "PTKP_TANGGUNGAN", value: 4500000, label: "PTKP per tanggungan (Rp/thn, maks 3)", group: "Payroll" },
+  { id: "SET-BPJSK", key: "BPJS_KES_KAR", value: 1, label: "BPJS Kes karyawan (%)", group: "Payroll" },
+  { id: "SET-BPJSP", key: "BPJS_KES_PER", value: 4, label: "BPJS Kes perusahaan (%)", group: "Payroll" },
+  { id: "SET-BPJSTK", key: "BPJS_TK_KAR", value: 2, label: "BPJS TK karyawan JHT (%)", group: "Payroll" },
+  { id: "SET-OT", key: "OVERTIME_DIV", value: 173, label: "Pembagi tarif lembur", group: "Payroll" },
+  { id: "SET-POKECIL", key: "PO_KECIL_LIMIT", value: 50000000, label: "Batas PO Kecil (Rp)", group: "Procurement" },
+  { id: "SET-APPINV", key: "APPROVE_INVOICE", value: 5000000, label: "Ambang Director invoice (Rp)", group: "Approval" },
+  { id: "SET-APPTERM", key: "APPROVE_TERMIN", value: 2000000, label: "Ambang Director termin (Rp)", group: "Approval" },
+  { id: "SET-APPPO", key: "APPROVE_PO", value: 1000000, label: "Ambang Director PO (Rp)", group: "Approval" },
+  { id: "SET-ALBUD", key: "ALERT_BUDGET_PCT", value: 80, label: "Alert serapan budget (%)", group: "Alert" },
+  { id: "SET-ALOVR", key: "ALERT_OVERRUN_PCT", value: 10, label: "Alert overrun di atas (%)", group: "Alert" },
+  { id: "SET-ALCERT", key: "ALERT_CERT_DAYS", value: 90, label: "Alert sertifikat H- (hari)", group: "Alert" },
+  { id: "SET-ALMS", key: "ALERT_MILESTONE_DAYS", value: 7, label: "Alert milestone H- (hari)", group: "Alert" },
+  { id: "SET-CUTI", key: "CUTI_JATAH", value: 12, label: "Jatah cuti tahunan (hari)", group: "HR" },
+];
+
 export const wbsTemplate: WbsItem[] = [
   { task: "Desain & Persetujuan Class", start: "2026-01", end: "2026-03", progress: 100, weight: 10 },
   { task: "Pengadaan Material", start: "2026-02", end: "2026-05", progress: 85, weight: 15 },
@@ -310,6 +341,7 @@ function buildSeeds(): StoreShape {
      calibrations: clone(seedCalibrations),
      communications: clone(seedCommunications),
      contracts: clone(seedContracts),
+     settings: clone(seedSettings),
      wbsByProject: {},
      teamByProject: clone(seedTeamByProject),
   };
@@ -362,6 +394,7 @@ const PREFIX: Record<string, string> = {
    calibrations: "CAL",
    communications: "COM",
    contracts: "KTR",
+   settings: "SET",
  };
 
 const ARRAY_KEYS: (keyof StoreShape)[] = [
@@ -372,7 +405,7 @@ const ARRAY_KEYS: (keyof StoreShape)[] = [
   "documents", "surveys", "activities", "services", "spareparts", "boq",
   "branches", "attendance", "payroll", "taxPeriods", "rfqs", "changeOrders",
   "risks", "leaves", "trainings", "timesheets", "drawings", "toolbox",
-  "calibrations", "communications", "contracts",
+  "calibrations", "communications", "contracts", "settings",
 ];
 
 function sanitizeStore(parsed: Partial<StoreShape>): StoreShape {

@@ -61,6 +61,28 @@ import {
 
 const RANGES = ["6B", "12B"] as const;
 
+interface BranchTarget { revenue: number; projects: number }
+interface DashVis { hero: boolean; kpi: boolean; perhatian: boolean; utama: boolean; utilisasi: boolean; status: boolean; strip: boolean }
+
+const DEFAULT_VIS: DashVis = { hero: true, kpi: true, perhatian: true, utama: true, utilisasi: true, status: true, strip: true };
+
+function loadTargets(): Record<string, BranchTarget> {
+  try {
+    const raw = localStorage.getItem("isms.targets");
+    const obj = raw ? JSON.parse(raw) as Record<string, BranchTarget> : {};
+    return typeof obj === "object" && obj !== null ? obj : {};
+  } catch { return {}; }
+}
+
+function loadVis(): DashVis {
+  try {
+    const raw = localStorage.getItem("isms.dashvis");
+    if (!raw) return DEFAULT_VIS;
+    const obj = JSON.parse(raw) as Partial<DashVis>;
+    return { ...DEFAULT_VIS, ...obj };
+  } catch { return DEFAULT_VIS; }
+}
+
 export default function Dashboard() {
   const { data, wbsFor, branch } = useStore();
   const navigate = useNavigate();
@@ -68,6 +90,10 @@ export default function Dashboard() {
   const branchProjects = data.projects.filter((p) => branch === "SEMUA" || !p.branch || p.branch === branch);
   const activities = data.activities;
   const [range, setRange] = useState<(typeof RANGES)[number]>("12B");
+  const [targets, setTargets] = useState<Record<string, BranchTarget>>(() => loadTargets());
+  const [vis, setVis] = useState<DashVis>(() => loadVis());
+  const [tgtRev, setTgtRev] = useState("");
+  const [tgtProj, setTgtProj] = useState("");
   const totalActive = projects.filter((p) => p.status !== "Selesai").length;
   const delayed = projects.filter((p) => p.status === "Terlambat").length;
   const activeContracts = projects
@@ -108,6 +134,33 @@ export default function Dashboard() {
     ];
     exportExcel(rows, "Ringkasan Portofolio");
     toast("Ringkasan portofolio diekspor ke Excel");
+  };
+
+  const tgt = targets[branch] ?? { revenue: 0, projects: 0 };
+  const aktualRev = branchProjects.reduce((s, p) => s + Number(p.budget || 0), 0);
+  const aktualProj = branchProjects.filter((p) => p.status !== "Selesai").length;
+
+  const saveTarget = () => {
+    const revenue = Number(tgtRev);
+    const nProj = Number(tgtProj);
+    if (!Number.isFinite(revenue) || revenue < 0 || !Number.isFinite(nProj) || nProj < 0) { toast("Target harus angka ≥ 0", "info"); return; }
+    const next = { ...targets, [branch]: { revenue, projects: Math.round(nProj) } };
+    setTargets(next);
+    try { localStorage.setItem("isms.targets", JSON.stringify(next)); } catch { /* abaikan */ }
+    toast(`Target ${branch} disimpan`);
+  };
+
+  const toggleVis = (k: keyof DashVis) => {
+    const next = { ...vis, [k]: !vis[k] };
+    setVis(next);
+    try { localStorage.setItem("isms.dashvis", JSON.stringify(next)); } catch { /* abaikan */ }
+  };
+
+  const togglePresent = () => {
+    try {
+      if (document.fullscreenElement) void document.exitFullscreen();
+      else void document.documentElement.requestFullscreen();
+    } catch { toast("Fullscreen tidak didukung browser ini", "info"); }
   };
 
   const totalRevenue = revenueSeries.reduce((s, d) => s + d.revenue, 0);
@@ -205,6 +258,9 @@ export default function Dashboard() {
           icon={<TrendingUp className="h-5 w-5" />}
           actions={
             <>
+              <button className="btn-secondary" onClick={togglePresent}>
+                <Sparkles className="h-4 w-4" /> Presentasi
+              </button>
               <button className="btn-secondary" onClick={exportSummary}>
                 <Download className="h-4 w-4" /> Ekspor
               </button>
@@ -216,7 +272,49 @@ export default function Dashboard() {
         />
       </StaggerItem>
 
+      {/* TARGET VS AKTUAL + VISIBILITAS */}
+      <StaggerItem>
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+          <Card className="p-4">
+            <div className="mb-2 flex items-center justify-between px-1">
+              <h3 className="text-sm font-semibold text-navy-900">Target vs Aktual · {branch}</h3>
+              <span className="text-xs text-steel-400">localStorage isms.targets</span>
+            </div>
+            <div className="space-y-3 px-1">
+              <div>
+                <div className="mb-1 flex justify-between text-xs"><span className="text-steel-500">Revenue aktual vs target</span><span className="font-semibold text-navy-900">{fmtMiliar(aktualRev)} / {fmtMiliar(tgt.revenue)}</span></div>
+                <ProgressBar value={tgt.revenue > 0 ? (aktualRev / tgt.revenue) * 100 : 0} tone="navy" />
+              </div>
+              <div>
+                <div className="mb-1 flex justify-between text-xs"><span className="text-steel-500">Proyek aktual vs target</span><span className="font-semibold text-navy-900">{aktualProj} / {tgt.projects}</span></div>
+                <ProgressBar value={tgt.projects > 0 ? (aktualProj / tgt.projects) * 100 : 0} tone="teal" />
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <input type="number" min={0} className="input w-40" placeholder="Target revenue (Rp)" value={tgtRev} onChange={(e) => setTgtRev(e.target.value)} />
+                <input type="number" min={0} className="input w-36" placeholder="Target proyek" value={tgtProj} onChange={(e) => setTgtProj(e.target.value)} />
+                <button className="btn-secondary text-xs" onClick={saveTarget}>Simpan Target</button>
+              </div>
+            </div>
+          </Card>
+          <Card className="p-4">
+            <div className="mb-2 px-1">
+              <h3 className="text-sm font-semibold text-navy-900">Tampil / Sembunyi Section</h3>
+              <p className="text-xs text-steel-400">Pin kartu dashboard — tersimpan per perangkat</p>
+            </div>
+            <div className="flex flex-wrap gap-2 px-1">
+              {(Object.keys(DEFAULT_VIS) as (keyof DashVis)[]).map((k) => (
+                <label key={k} className="flex items-center gap-1.5 rounded-lg border border-steel-200 px-2.5 py-1.5 text-xs text-steel-600">
+                  <input type="checkbox" className="h-3.5 w-3.5" checked={vis[k]} onChange={() => toggleVis(k)} />
+                  {k}
+                </label>
+              ))}
+            </div>
+          </Card>
+        </div>
+      </StaggerItem>
+
       {/* HERO GLOW BANNER */}
+      {vis.hero && (
       <StaggerItem>
         <GlowCard gradient="gradient-hero">
           <div className="flex flex-wrap items-center justify-between gap-4">
@@ -240,8 +338,10 @@ export default function Dashboard() {
           </div>
         </GlowCard>
       </StaggerItem>
+      )}
 
       {/* KPI ROW */}
+      {vis.kpi && (
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <StaggerItem>
           <KpiCard
@@ -288,8 +388,10 @@ export default function Dashboard() {
           />
         </StaggerItem>
       </div>
+      )}
 
       {/* PERLU PERHATIAN */}
+      {vis.perhatian && (
       <StaggerItem>
         <Card className="p-4">
           <div className="mb-3 flex items-center gap-2 px-1">
@@ -312,8 +414,10 @@ export default function Dashboard() {
           </div>
         </Card>
       </StaggerItem>
+      )}
 
       {/* MAIN CHARTS */}
+      {vis.utama && (
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-3">
         <StaggerItem className="lg:col-span-2">
           <Card>
@@ -384,8 +488,10 @@ export default function Dashboard() {
           </Card>
         </StaggerItem>
       </div>
+      )}
 
       {/* GAUGES + HEATMAP + INSIGHTS */}
+      {vis.utilisasi && (
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-4">
         <StaggerItem className="lg:col-span-2">
           <Card>
@@ -454,8 +560,10 @@ export default function Dashboard() {
           </Card>
         </StaggerItem>
       </div>
+      )}
 
       {/* STATUS + ACTIVITY */}
+      {vis.status && (
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
         <StaggerItem>
           <Card>
@@ -515,8 +623,10 @@ export default function Dashboard() {
           </Card>
         </StaggerItem>
       </div>
+      )}
 
       {/* MINI STRIP */}
+      {vis.strip && (
       <StaggerItem>
         <Card className="p-4">
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
@@ -564,6 +674,7 @@ export default function Dashboard() {
           </div>
         </Card>
       </StaggerItem>
+      )}
     </Stagger>
   );
 }

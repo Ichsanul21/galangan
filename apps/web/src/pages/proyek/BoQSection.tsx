@@ -1,9 +1,10 @@
 import { useState, useMemo } from "react";
 import { useStore } from "../../data/store";
-import { Card, Modal, Field, FormGrid, toast, EmptyState, StatusBadge } from "../../components/ui";
+import { Card, Modal, Field, FormGrid, toast, EmptyState, StatusBadge, Badge } from "../../components/ui";
 import { Plus, FileDown } from "lucide-react";
 import { exportExcel, fmtRupiah } from "../../utils/export";
 import { SATUAN, STATUS_BOQ_ID } from "../../utils/format";
+import { todayISO } from "../../utils/format";
 import type { BoQItem } from "../../data";
 
 const STATUS_FLOW: Record<string, string[]> = {
@@ -12,15 +13,80 @@ const STATUS_FLOW: Record<string, string[]> = {
   Approved: ["Completed"],
   Completed: [],
 };
+
+interface PriceHist { old: number; new: number; reason: string; date: string; by: string; }
+type BoQExt = BoQItem & { priceHistory?: PriceHist[] };
+
+const CATEGORIES = ["Mechanical", "Paint", "Survey", "Fabrikasi", "Electrical", "Piping", "Rigging"];
+
+const PRESET: Record<string, { name: string; unit: string; price: number }[]> = {
+  Mechanical: [
+    { name: "Overhaul Pompa Sentrifugal", unit: "unit", price: 120000000 },
+    { name: "Penggantian Bearing Set", unit: "set", price: 45000000 },
+    { name: "Alignment Poros Propulsi", unit: "service", price: 85000000 },
+  ],
+  Paint: [
+    { name: "Epoxy Primer", unit: "liter", price: 350000 },
+    { name: "Antifouling Topcoat", unit: "liter", price: 520000 },
+    { name: "Blasting Grit", unit: "kg", price: 18000 },
+  ],
+  Survey: [
+    { name: "Inspeksi Class Tahunan", unit: "service", price: 150000000 },
+    { name: "NDT Thickness Gauging", unit: "service", price: 95000000 },
+    { name: "Stability Test", unit: "service", price: 75000000 },
+  ],
+  Fabrikasi: [
+    { name: "Pelat Baja AH36", unit: "ton", price: 12000000 },
+    { name: "Profil L-Bar", unit: "batang", price: 850000 },
+    { name: "Elektroda Las", unit: "kg", price: 95000 },
+  ],
+  Electrical: [
+    { name: "Kabel Marine 3x95", unit: "m", price: 780000 },
+    { name: "Panel MCCB 3P", unit: "unit", price: 24000000 },
+    { name: "Lampu Navigasi LED", unit: "pcs", price: 3500000 },
+  ],
+  Piping: [
+    { name: "Pipa Galvanis 4in", unit: "batang", price: 1200000 },
+    { name: "Valve Gate 4in", unit: "pcs", price: 4500000 },
+    { name: "Fitting Elbow Set", unit: "set", price: 2800000 },
+  ],
+  Rigging: [
+    { name: "Wire Rope 12mm", unit: "m", price: 185000 },
+    { name: "Shackle 4.75T", unit: "pcs", price: 950000 },
+    { name: "Chain Block 5T", unit: "unit", price: 12500000 },
+  ],
+};
 interface Props {
   projectId: string;
 }
 
 export default function BoQSection({ projectId }: Props) {
   const { data, update, add, log } = useStore();
-  const items = ((data.boq ?? []) as BoQItem[]).filter((b) => b.projectId === projectId);
+  const items = ((data.boq ?? []) as BoQExt[]).filter((b) => b.projectId === projectId);
   const [showAdd, setShowAdd] = useState(false);
   const [form, setForm] = useState({ name: "", description: "", quantity: "", unit: "pcs", unitPrice: "", category: "Mechanical", status: "Draft" as BoQItem["status"] });
+  const [q, setQ] = useState("");
+  const [catF, setCatF] = useState("Semua");
+  const [stF, setStF] = useState("Semua");
+  const [sortDir, setSortDir] = useState<"none" | "asc" | "desc">("none");
+  const [revisiFor, setRevisiFor] = useState<BoQExt | null>(null);
+  const [revisiPrice, setRevisiPrice] = useState("");
+  const [revisiReason, setRevisiReason] = useState("");
+  const [histFor, setHistFor] = useState<BoQExt | null>(null);
+  const [presetCat, setPresetCat] = useState("Mechanical");
+  const [presetIdx, setPresetIdx] = useState("0");
+
+  const filtered = useMemo(() => {
+    const list = items.filter((b) => {
+      const matchQ = `${b.name} ${b.description}`.toLowerCase().includes(q.toLowerCase());
+      const matchCat = catF === "Semua" || b.category === catF;
+      const matchSt = stF === "Semua" || b.status === stF;
+      return matchQ && matchCat && matchSt;
+    });
+    if (sortDir === "asc") return [...list].sort((a, b) => a.totalPrice - b.totalPrice);
+    if (sortDir === "desc") return [...list].sort((a, b) => b.totalPrice - a.totalPrice);
+    return list;
+  }, [items, q, catF, stF, sortDir]);
 
   const totalBoq = useMemo(() => items.reduce((s, b) => s + b.totalPrice, 0), [items]);
   const totalApproved = useMemo(() => items.filter((b) => ["Approved", "Completed"].includes(b.status)).reduce((s, b) => s + b.totalPrice, 0), [items]);
@@ -57,6 +123,39 @@ export default function BoQSection({ projectId }: Props) {
     toast(`Status ${id} → ${newStatus}`);
   };
 
+  const saveRevisi = () => {
+    if (!revisiFor) return;
+    const next = Number(revisiPrice);
+    if (!Number.isFinite(next) || next <= 0) { toast("Harga satuan baru tidak valid", "info"); return; }
+    if (!revisiReason.trim()) { toast("Alasan revisi wajib diisi", "info"); return; }
+    const hist: PriceHist[] = [...(revisiFor.priceHistory ?? []), { old: revisiFor.unitPrice, new: next, reason: revisiReason.trim(), date: todayISO(), by: "Anda" }];
+    update("boq", revisiFor.id, { unitPrice: next, totalPrice: Number(revisiFor.quantity) * next, priceHistory: hist });
+    log("merevisi harga BoQ", `${revisiFor.id} · ${fmtRupiah(revisiFor.unitPrice)} → ${fmtRupiah(next)} (${revisiReason.trim()})`, "BoQ");
+    toast(`Harga ${revisiFor.id} direvisi`);
+    setRevisiFor(null);
+    setRevisiPrice("");
+    setRevisiReason("");
+  };
+
+  const importPreset = () => {
+    const list = PRESET[presetCat] ?? [];
+    const item = list[Number(presetIdx)];
+    if (!item) { toast("Pilih item preset dulu", "info"); return; }
+    add("boq", {
+      projectId,
+      name: item.name,
+      description: `Impor preset ${presetCat}`,
+      quantity: 1,
+      unit: item.unit,
+      unitPrice: item.price,
+      totalPrice: item.price,
+      category: presetCat,
+      status: "Draft",
+      requestedBy: "Anda",
+    }, { action: "mengimpor BoQ preset", module: "BoQ" });
+    toast(`${item.name} ditambahkan sebagai Draft`);
+  };
+
   const handleExport = () => {
     const rows = [["No", "Nama Item", "Deskripsi", "Qty", "Unit", "Harga Satuan", "Total", "Status"]];
     items.forEach((b, i) => rows.push([String(i + 1), b.name, b.description, String(b.quantity), b.unit, String(b.unitPrice), String(b.totalPrice), b.status]));
@@ -74,6 +173,41 @@ export default function BoQSection({ projectId }: Props) {
             <button className="btn-secondary text-xs" onClick={handleExport}><FileDown className="h-3.5 w-3.5" /> Export Excel</button>
             <button className="btn-primary text-xs" onClick={() => setShowAdd(true)}><Plus className="h-3.5 w-3.5" /> Tambah BoQ</button>
           </div>
+        </div>
+
+        <div className="mb-3 flex flex-wrap items-center gap-2">
+          <input
+            className="input w-full sm:w-52"
+            placeholder="Cari item / deskripsi..."
+            aria-label="Cari BoQ"
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+          />
+          <select className="input w-auto py-1.5 text-sm" aria-label="Filter kategori" value={catF} onChange={(e) => setCatF(e.target.value)}>
+            <option value="Semua">Semua kategori</option>
+            {CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
+          </select>
+          <select className="input w-auto py-1.5 text-sm" aria-label="Filter status" value={stF} onChange={(e) => setStF(e.target.value)}>
+            <option value="Semua">Semua status</option>
+            {["Draft", "Pending", "Approved", "Completed", "Rejected"].map((s) => <option key={s} value={s}>{STATUS_BOQ_ID[s] ?? s}</option>)}
+          </select>
+          <select className="input w-auto py-1.5 text-sm" aria-label="Urut total" value={sortDir} onChange={(e) => setSortDir(e.target.value as "none" | "asc" | "desc")}>
+            <option value="none">Tanpa urutan</option>
+            <option value="asc">Total terkecil</option>
+            <option value="desc">Total terbesar</option>
+          </select>
+          <span className="ml-auto text-xs text-steel-500">{filtered.length} dari {items.length} item</span>
+        </div>
+
+        <div className="mb-4 flex flex-wrap items-center gap-2 rounded-xl bg-surface p-2.5">
+          <span className="text-xs font-semibold text-navy-900">Impor dari preset:</span>
+          <select className="input w-auto py-1.5 text-sm" aria-label="Kategori preset" value={presetCat} onChange={(e) => { setPresetCat(e.target.value); setPresetIdx("0"); }}>
+            {CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
+          </select>
+          <select className="input w-auto max-w-64 py-1.5 text-sm" aria-label="Item preset" value={presetIdx} onChange={(e) => setPresetIdx(e.target.value)}>
+            {(PRESET[presetCat] ?? []).map((p, i) => <option key={p.name} value={String(i)}>{p.name} · {p.unit} · {fmtRupiah(p.price)}</option>)}
+          </select>
+          <button className="btn-secondary text-xs" onClick={importPreset}><Plus className="h-3.5 w-3.5" /> Tambah sebagai Draft</button>
         </div>
 
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
@@ -97,6 +231,8 @@ export default function BoQSection({ projectId }: Props) {
 
         {items.length === 0 ? (
           <EmptyState icon={<FileDown className="h-6 w-6" />} title="Belum ada BoQ" subtitle="Tambah item BoQ untuk memulai" />
+        ) : filtered.length === 0 ? (
+          <p className="py-6 text-center text-sm text-steel-400">Tidak ada item yang cocok dengan pencarian/filter.</p>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full">
@@ -110,11 +246,12 @@ export default function BoQSection({ projectId }: Props) {
                   <th className="th">Harga Satuan</th>
                   <th className="th">Total</th>
                   <th className="th">Status</th>
+                  <th className="th">Revisi</th>
                   <th className="th">Aksi</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-steel-100">
-                {items.map((b) => (
+                {filtered.map((b) => (
                   <tr key={b.id}>
                     <td className="td font-mono text-xs">{b.id}</td>
                     <td className="td font-medium text-navy-900">{b.name}</td>
@@ -125,7 +262,16 @@ export default function BoQSection({ projectId }: Props) {
                     <td className="td font-mono text-sm font-semibold">{fmtRupiah(b.totalPrice)}</td>
                     <td className="td"><StatusBadge status={b.status} label={STATUS_BOQ_ID[b.status] ?? b.status} /></td>
                     <td className="td">
-                      <div className="flex gap-1">
+                      {(b.priceHistory ?? []).length > 0 ? (
+                        <button className="btn-secondary text-xs" onClick={() => setHistFor(b)}>
+                          <Badge tone="amber">{(b.priceHistory ?? []).length}x</Badge> Riwayat
+                        </button>
+                      ) : (
+                        <span className="text-xs text-steel-400">—</span>
+                      )}
+                    </td>
+                    <td className="td">
+                      <div className="flex flex-wrap gap-1">
                         {nextStatus(b.status).map((ns) => (
                           <button
                             key={ns}
@@ -141,6 +287,13 @@ export default function BoQSection({ projectId }: Props) {
                             {ns === "Approved" ? "Setujui" : ns === "Rejected" ? "Tolak" : ns === "Completed" ? "Selesaikan" : "Ajukan"}
                           </button>
                         ))}
+                        <button
+                          aria-label={`Revisi harga ${b.name}`}
+                          className="rounded bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-700 transition-colors hover:bg-amber-200"
+                          onClick={() => { setRevisiFor(b); setRevisiPrice(String(b.unitPrice)); setRevisiReason(""); }}
+                        >
+                          Revisi Harga
+                        </button>
                       </div>
                     </td>
                   </tr>
@@ -165,9 +318,30 @@ export default function BoQSection({ projectId }: Props) {
           <FormGrid>
             <Field label="Harga Satuan"><input type="number" className="input" value={form.unitPrice} onChange={(e) => setForm({ ...form, unitPrice: e.target.value })} /></Field>
             <Field label="Kategori"><select className="input" value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })}>
-              {["Mechanical", "Paint", "Survey", "Fabrikasi", "Electrical", "Piping", "Rigging"].map((c) => <option key={c}>{c}</option>)}
+              {CATEGORIES.map((c) => <option key={c}>{c}</option>)}
             </select></Field>
           </FormGrid>
+        </div>
+      </Modal>
+
+      <Modal open={revisiFor !== null} onClose={() => setRevisiFor(null)} title={`Revisi Harga: ${revisiFor?.name ?? ""}`} subtitle={revisiFor?.id}
+        footer={<><button className="btn-secondary" onClick={() => setRevisiFor(null)}>Batal</button><button className="btn-primary" onClick={saveRevisi}>Simpan Revisi</button></>}>
+        <div className="space-y-3">
+          <p className="text-xs text-steel-500">Harga saat ini: <span className="font-semibold text-navy-900">{revisiFor ? fmtRupiah(revisiFor.unitPrice) : ""}</span> · total {revisiFor ? fmtRupiah(revisiFor.totalPrice) : ""} (qty {revisiFor?.quantity}). Riwayat tersimpan: {(revisiFor?.priceHistory ?? []).length}x.</p>
+          <Field label="Harga satuan baru (Rp)"><input type="number" min={0} className="input" value={revisiPrice} onChange={(e) => setRevisiPrice(e.target.value)} placeholder="cth: 500000000" /></Field>
+          <Field label="Alasan revisi" hint="Wajib diisi — tercatat di riwayat harga"><textarea className="input" rows={3} value={revisiReason} onChange={(e) => setRevisiReason(e.target.value)} placeholder="cth: Penyesuaian kurs vendor +10%" /></Field>
+        </div>
+      </Modal>
+
+      <Modal open={histFor !== null} onClose={() => setHistFor(null)} title={`Riwayat Harga: ${histFor?.name ?? ""}`} subtitle={histFor?.id}>
+        <div className="space-y-2">
+          {(histFor?.priceHistory ?? []).map((h, i) => (
+            <div key={i} className="rounded-xl border border-steel-100 p-2.5 text-sm">
+              <p className="font-medium text-navy-900">{fmtRupiah(h.old)} → {fmtRupiah(h.new)}</p>
+              <p className="text-xs text-steel-500">{h.date} · {h.by} · {h.reason}</p>
+            </div>
+          ))}
+          {(histFor?.priceHistory ?? []).length === 0 && <p className="text-sm text-steel-400">Belum ada riwayat revisi.</p>}
         </div>
       </Modal>
     </div>

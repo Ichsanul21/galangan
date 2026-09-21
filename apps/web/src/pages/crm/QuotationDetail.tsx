@@ -5,6 +5,7 @@ import { Card, CardHeader, PageHeader, StatusBadge, Badge, Modal, Field, FormGri
 import { useStore } from "../../data/store";
 import type { StoreItem } from "../../data/store";
 import { fmtRupiah, fmtTanggal, todayISO } from "../../utils/format";
+import { exportExcel } from "../../utils/export";
 
 const FLOW = ["Lead", "Penawaran", "Negosiasi", "Menang"];
 const num = (v: unknown): number => Number(v) || 0;
@@ -144,6 +145,25 @@ export default function QuotationDetail() {
     setCommForm({ channel: "Email", date: todayISO(), summary: "", by: "" });
   };
 
+  const cetakKop = () => {
+    const client = (data.clients ?? []).find((c) => String(c.name) === String(quotation.client));
+    const cabang = String(client?.branch ?? quotation.branch ?? "Samarinda");
+    const terms = String(client?.paymentTerms ?? quotation.paymentTerms ?? "NET 30");
+    const rows: unknown[][] = [
+      ["PT Syukur Bersaudara"],
+      [`Cabang ${cabang} · ${fmtTanggal(todayISO())}`],
+      [`Penawaran ${quotation.id} v${version} · ${String(quotation.client)} · ${String(quotation.vessel)}`],
+      [],
+      ["No", "Deskripsi", "Qty", "Harga (Rp)", "Jumlah (Rp)"],
+      ...activeLines.map((l, i) => [i + 1, l.desc || "-", num(l.qty), num(l.price), num(l.qty) * num(l.price)]),
+      ["", "", "", "Total", total],
+      [],
+      [`Syarat pembayaran: ${terms}`],
+    ];
+    void exportExcel(rows, `Kop-${quotation.id}-v${version}`, "Kop Penawaran");
+    toast(`Kop ${quotation.id} diekspor ke Excel`);
+  };
+
   return (
     <div>
       <PageHeader
@@ -152,6 +172,7 @@ export default function QuotationDetail() {
         actions={
           <>
             <button className="btn-secondary" onClick={() => navigate("/crm")}><ArrowLeft className="h-4 w-4" /> Kembali</button>
+            <button className="btn-secondary" onClick={cetakKop}>Cetak Kop</button>
             <button className="btn-primary" onClick={openSend}><Send className="h-4 w-4" /> Kirim</button>
           </>
         }

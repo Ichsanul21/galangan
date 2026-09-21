@@ -21,6 +21,40 @@ const FLOW_NEXT: Record<string, string[]> = {
   Kedaluwarsa: [],
 };
 
+const PREFIX: Record<string, string> = {
+  Kontrak: "CTR", Drawing: "DRW", Prosedur: "SOP", Sertifikat: "SRT",
+  Laporan: "LAP", Invoice: "INV", NCR: "NCR", Penawaran: "QTN",
+};
+
+const RETENSI: Record<string, number | null> = {
+  Kontrak: 10, Sertifikat: 5, Laporan: 5, Invoice: 10, NCR: 5,
+  Drawing: null, Prosedur: 5, Penawaran: 3,
+};
+
+function nextDocId(type: string, docs: StoreItem[]): string {
+  const prefix = PREFIX[type] ?? "DOC";
+  const year = todayISO().slice(0, 4);
+  const re = new RegExp(`^${prefix}-${year}-(\\d+)$`);
+  let max = 0;
+  for (const d of docs) {
+    const m = re.exec(String(d.id ?? ""));
+    if (m) max = Math.max(max, Number(m[1]) || 0);
+    const m2 = new RegExp(`^${prefix}-(\\d+)$`).exec(String(d.id ?? ""));
+    if (m2) max = Math.max(max, 0);
+  }
+  return `${prefix}-${year}-${String(max + 1).padStart(3, "0")}`;
+}
+
+function lewatRetensi(d: StoreItem): boolean {
+  const tahun = RETENSI[String(d.type)];
+  if (tahun === null || tahun === undefined) return false;
+  const upd = String(d.updated ?? "");
+  const t = new Date(`${upd.length === 7 ? `${upd}-01` : upd}T00:00:00`).getTime();
+  if (Number.isNaN(t)) return false;
+  const years = (Date.now() - t) / (365.25 * 86400000);
+  return years > tahun;
+}
+
 const LEGACY_MAP: Record<string, string> = {
   "Menunggu Approval": "Diajukan",
 };
@@ -60,6 +94,9 @@ export default function Documents() {
   const [archiving, setArchiving] = useState<StoreItem | null>(null);
   const [deleting, setDeleting] = useState<StoreItem | null>(null);
   const [form, setForm] = useState(emptyForm);
+  const [relSel, setRelSel] = useState<string[]>([]);
+
+  const docPreview = nextDocId(form.type, data.documents);
 
   const active = data.documents.filter((d) => !d.archived);
   const archived = data.documents.filter((d) => d.archived);
@@ -73,9 +110,10 @@ export default function Documents() {
     .filter((x) => x.days !== null && (x.days as number) <= EXPIRY_WINDOW)
     .sort((a, b) => (a.days as number) - (b.days as number));
 
-  const openAdd = () => { setForm(emptyForm); setShowAdd(true); };
+  const openAdd = () => { setForm(emptyForm); setRelSel([]); setShowAdd(true); };
   const openEdit = (d: StoreItem) => {
     setEditing(d);
+    setRelSel(Array.isArray(d.related) ? d.related.map(String) : []);
     setForm({ title: d.title, type: d.type, project: d.project, vessel: d.vessel ?? "", owner: d.owner, berlakuHingga: d.berlakuHingga ?? "", revNote: "" });
   };
 
@@ -97,7 +135,7 @@ export default function Documents() {
       update("documents", editing.id, {
         title: form.title.trim(), type: form.type, project: form.project, vessel: form.vessel,
         owner: form.owner.trim(), berlakuHingga: form.berlakuHingga || undefined,
-        version, revisions, updated: todayISO(),
+        version, revisions, updated: todayISO(), related: [...relSel],
       });
       log(`merevisi dokumen ke ${version}`, editing.id, "Dokumen");
       toast(`Dokumen ${editing.id} naik ke ${version}`);
@@ -105,15 +143,26 @@ export default function Documents() {
     } else {
       const dupe = data.documents.some((d) => d.type === form.type && String(d.title).toLowerCase() === form.title.trim().toLowerCase());
       if (dupe) { toast("Judul sudah dipakai untuk tipe dokumen ini", "info"); return; }
+      if (data.documents.some((d) => d.id === docPreview)) { toast("Nomor dokumen sudah dipakai, coba lagi", "info"); return; }
       const created = add("documents", {
+        id: docPreview,
         title: form.title.trim(), type: form.type, project: form.project, vessel: form.vessel,
         owner: form.owner.trim(), berlakuHingga: form.berlakuHingga || undefined,
-        version: "v1.0", status: "Draft", updated: todayISO(), archived: false,
+        version: "v1.0", status: "Draft", updated: todayISO(), archived: false, docCopy: "Terkendali",
+        related: [...relSel],
         revisions: [{ version: "v1.0", at: todayISO(), by: form.owner.trim(), note: "Dokumen dibuat" }],
       }, { action: "mengarsipkan dokumen", module: "Dokumen" });
       toast(`Dokumen ${created.id} ditambahkan`);
       setShowAdd(false);
     }
+  };
+
+  const toggleCopy = (d: StoreItem) => {
+    const next = String(d.docCopy ?? "Terkendali") === "Salinan" ? "Terkendali" : "Salinan";
+    update("documents", d.id, { docCopy: next, updated: todayISO() });
+    log(`menandai dokumen sebagai ${next}`, d.id, "Dokumen");
+    toast(`${d.id} ditandai ${next}`);
+    setDetail((cur) => (cur && cur.id === d.id ? { ...cur, docCopy: next, updated: todayISO() } : cur));
   };
 
   const flowTo = (d: StoreItem, next: string) => {
@@ -213,6 +262,10 @@ export default function Documents() {
                   <td className="td max-w-[260px]">
                     <p className="truncate font-medium text-navy-900" title={String(d.title)}>{d.title}</p>
                     <p className="font-mono text-xs text-steel-500">{d.id} · {d.owner}{d.berlakuHingga ? ` · hingga ${fmtTanggal(d.berlakuHingga)}` : ""}</p>
+                    <div className="mt-1 flex flex-wrap gap-1">
+                      <Badge tone={String(d.docCopy ?? "Terkendali") === "Salinan" ? "amber" : "teal"}>{String(d.docCopy ?? "Terkendali")}</Badge>
+                      {lewatRetensi(d) && <Badge tone="red">Melewati Retensi</Badge>}
+                    </div>
                   </td>
                   <td className="td"><Badge tone="navy">{d.type}</Badge></td>
                   <td className="td text-steel-600 text-xs font-mono max-w-[180px] truncate" title={`${String(d.project)} · ${String(d.vessel)}`}>{d.project} · {d.vessel}</td>
@@ -258,6 +311,12 @@ export default function Documents() {
         }
       >
         <div className="space-y-3">
+          {!editing && (
+            <p className="rounded-xl bg-surface p-3 text-sm text-steel-600">
+              Nomor otomatis (preview): <span className="font-mono font-bold text-navy-900">{docPreview}</span>
+              <span className="block text-xs text-steel-400">{PREFIX[form.type] ?? "DOC"} + tahun berjalan + urutan, disimpan sebagai ID.</span>
+            </p>
+          )}
           <Field label="Judul dokumen">
             <input className="input" placeholder="cth: Docking Report RP-2026-005" value={form.title} onChange={(e) => setF("title", e.target.value)} />
           </Field>
@@ -293,6 +352,18 @@ export default function Documents() {
               </Field>
             )}
           </FormGrid>
+          <Field label="Dokumen terkait (boleh banyak)" hint="Tahan Ctrl/Cmd untuk pilih lebih dari satu">
+            <select
+              multiple
+              className="input min-h-[96px]"
+              value={relSel}
+              onChange={(e) => setRelSel([...e.target.selectedOptions].map((o) => o.value))}
+            >
+              {data.documents.filter((d) => !editing || d.id !== editing.id).map((d) => (
+                <option key={d.id} value={d.id}>{d.id} · {String(d.title)}</option>
+              ))}
+            </select>
+          </Field>
         </div>
       </Modal>
 
@@ -312,7 +383,23 @@ export default function Documents() {
                 <div key={k} className="flex justify-between gap-4"><dt className="text-steel-500">{k}</dt><dd className="font-medium text-navy-900">{v}</dd></div>
               ))}
               <div className="flex justify-between gap-4"><dt className="text-steel-500">Status</dt><dd><StatusBadge status={detail.status} /></dd></div>
+              <div className="flex justify-between gap-4">
+                <dt className="text-steel-500">Retensi</dt>
+                <dd className="flex items-center gap-1.5">
+                  <span className="font-medium text-navy-900">{RETENSI[String(detail.type)] === null || RETENSI[String(detail.type)] === undefined ? "Permanen" : `${String(RETENSI[String(detail.type)])} tahun`}</span>
+                  {lewatRetensi(detail) && <Badge tone="red">Melewati Retensi</Badge>}
+                </dd>
+              </div>
+              <div className="flex justify-between gap-4">
+                <dt className="text-steel-500">Salinan</dt>
+                <dd><Badge tone={String(detail.docCopy ?? "Terkendali") === "Salinan" ? "amber" : "teal"}>{String(detail.docCopy ?? "Terkendali")}</Badge></dd>
+              </div>
             </dl>
+            <div className="mt-3 flex flex-wrap gap-2">
+              <button className="btn-secondary text-xs" onClick={() => toggleCopy(detail)}>
+                {String(detail.docCopy ?? "Terkendali") === "Salinan" ? "Jadikan Terkendali" : "Tandai Salinan"}
+              </button>
+            </div>
             {canonStatus(detail.status) && FLOW_NEXT[canonStatus(detail.status)].length > 0 ? (
               <div className="mt-3 flex flex-wrap gap-2">
                 {FLOW_NEXT[canonStatus(detail.status)].map((n) => (
@@ -322,6 +409,20 @@ export default function Documents() {
             ) : !canonStatus(detail.status) ? (
               <p className="mt-3 text-xs text-steel-400">Status warisan — read-only, tanpa aksi alur.</p>
             ) : null}
+            <h4 className="mb-2 mt-4 text-sm font-semibold text-navy-900">Dokumen terkait</h4>
+            <div className="space-y-1.5 text-sm">
+              {((Array.isArray(detail.related) ? detail.related : []) as unknown[]).map((rel, i) => {
+                const rid = String(rel);
+                const found = data.documents.find((d) => d.id === rid);
+                return (
+                  <div key={`${rid}-${i}`} className="flex items-center justify-between gap-2 rounded-lg bg-surface px-3 py-2">
+                    <span className="truncate font-mono text-xs font-semibold text-navy-900" title={found ? String(found.title) : rid}>{rid}{found ? ` · ${String(found.title)}` : ""}</span>
+                    {found && <button className="btn-secondary px-2 py-1 text-xs" onClick={() => setDetail(found)}>Buka</button>}
+                  </div>
+                );
+              })}
+              {(!Array.isArray(detail.related) || detail.related.length === 0) && <p className="text-xs text-steel-400">Belum ada dokumen terkait.</p>}
+            </div>
             <h4 className="mb-2 mt-4 text-sm font-semibold text-navy-900">Riwayat revisi</h4>
             <div className="space-y-1.5 text-sm">
               {((detail.revisions ?? []) as { version: string; at: string; by: string; note: string }[]).map((r) => (

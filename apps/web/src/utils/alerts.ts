@@ -2,6 +2,7 @@
 // Dipakai AppShell (bell) + Dashboard (strip Perlu Perhatian).
 
 import type { StoreShape } from "../data/store";
+import { getSetting } from "./settings";
 
 export interface Alert {
   id: string;
@@ -22,12 +23,15 @@ function daysUntil(iso: string | null | undefined): number | null {
 
 export function computeAlerts(data: StoreShape): Alert[] {
   const out: Alert[] = [];
+  const budgetPct = getSetting(data, "ALERT_BUDGET_PCT", 80);
+  const overPct = getSetting(data, "ALERT_OVERRUN_PCT", 10);
+  const certDays = getSetting(data, "ALERT_CERT_DAYS", 90);
 
-  // 1. Serapan anggaran > 80%
+  // 1. Serapan anggaran & overrun
   for (const p of data.projects ?? []) {
     const pct = Number(p.budget) > 0 ? (Number(p.actual || 0) / Number(p.budget)) * 100 : 0;
-    if (pct > 100) out.push({ id: `ov-${p.id}`, tone: "red", text: `${p.vessel} over-budget ${Math.round(pct)}%`, to: `/proyek/${p.id}` });
-    else if (pct > 80) out.push({ id: `bd-${p.id}`, tone: "amber", text: `${p.vessel} serapan ${Math.round(pct)}%`, to: `/proyek/${p.id}` });
+    if (pct > 100 + overPct) out.push({ id: `ov-${p.id}`, tone: "red", text: `${p.vessel} over-budget ${Math.round(pct)}%`, to: `/proyek/${p.id}` });
+    else if (pct > budgetPct) out.push({ id: `bd-${p.id}`, tone: "amber", text: `${p.vessel} serapan ${Math.round(pct)}%`, to: `/proyek/${p.id}` });
     if (p.status === "Terlambat") out.push({ id: `dl-${p.id}`, tone: "red", text: `${p.vessel} terlambat dari jadwal`, to: `/proyek/${p.id}` });
   }
 
@@ -35,15 +39,15 @@ export function computeAlerts(data: StoreShape): Alert[] {
   const low = (data.inventory ?? []).filter((i) => Number(i.stock) <= Number(i.minStock));
   if (low.length > 0) out.push({ id: "stock", tone: "amber", text: `${low.length} material di bawah minimum`, to: "/inventori" });
 
-  // 3. Sertifikat ≤ 90 hari
+  // 3. Sertifikat ≤ ambang hari
   let certN = 0;
   for (const v of data.vessels ?? []) {
     for (const c of (v.certificates ?? []) as { expires?: string }[]) {
       const d = daysUntil(c.expires);
-      if (d !== null && d <= 90) certN++;
+      if (d !== null && d <= certDays) certN++;
     }
   }
-  if (certN > 0) out.push({ id: "cert", tone: "amber", text: `${certN} sertifikat ≤ 90 hari`, to: "/kapal" });
+  if (certN > 0) out.push({ id: "cert", tone: "amber", text: `${certN} sertifikat ≤ ${certDays} hari`, to: "/kapal" });
 
   // 4. Invoice overdue 7/14/30 hari
   const overdue = (data.invoices ?? []).filter((i) => {

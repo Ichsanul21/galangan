@@ -21,10 +21,14 @@ import { useStore } from "../../data/store";
 import type { StoreItem } from "../../data/store";
 import { activeEmployeeTrend, certifiedTrend, certExpireTrend, employeeTrend } from "../../data";
 import { fmtTanggal, todayISO } from "../../utils/format";
+import { getSetting } from "../../utils/settings";
+import { exportExcel } from "../../utils/export";
 
 const CERT_WINDOW = 90;
-const JATAH_CUTI = 12;
 const TIPE_KARYAWAN = ["Tetap", "Harian", "Kontrak", "Outsourcing"];
+const PTKP_STATUS = ["TK/0", "K/0", "K/1", "K/2", "K/3"];
+const SURAT_JENIS = ["SP 1", "SP 2", "SP 3", "Mutasi"];
+const IMPORT_HEADERS = ["NIK", "Nama", "Jabatan", "Departemen", "Cabang", "Status", "Tanggal Gabung (YYYY-MM-DD)", "Tipe", "Gaji Pokok", "PTKP Status", "Tanggungan", "Kontrak Berakhir (YYYY-MM-DD)"];
 const DEPT_OPTIONS = ["Direksi", "Proyek", "Produksi", "Quality", "Finance", "Procurement", "Support"];
 const LEAVE_TYPES = ["Tahunan", "Sakit", "Melahirkan", "Unpaid"];
 
@@ -107,6 +111,38 @@ function calcDays(from: string, to: string): number {
   return Math.round((b - a) / 86400000) + 1;
 }
 
+/* Parse CSV sederhana: baris dipisah newline, kolom dipisah koma, petik ganda opsional. */
+function parseCSV(text: string): string[][] {
+  return String(text)
+    .replace(/^\uFEFF/, "")
+    .split(/\r?\n/)
+    .map((l) => l.trim())
+    .filter((l) => l.length > 0)
+    .map((line) => {
+      const cells: string[] = [];
+      let cur = "";
+      let quoted = false;
+      for (let i = 0; i < line.length; i += 1) {
+        const ch = line[i];
+        if (ch === '"') {
+          if (quoted && line[i + 1] === '"') {
+            cur += '"';
+            i += 1;
+          } else {
+            quoted = !quoted;
+          }
+        } else if (ch === "," && !quoted) {
+          cells.push(cur.trim());
+          cur = "";
+        } else {
+          cur += ch;
+        }
+      }
+      cells.push(cur.trim());
+      return cells;
+    });
+}
+
 const emptyEmpForm = () => ({
   nik: "",
   name: "",
@@ -118,6 +154,9 @@ const emptyEmpForm = () => ({
   tipe: "Tetap",
   basic: "",
   allowances: "",
+  contractEnd: "",
+  ptkpStatus: "TK/0",
+  dependents: "0",
 });
 
 export default function HR() {
@@ -132,6 +171,7 @@ export default function HR() {
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState(emptyEmpForm);
+  const [contractSoonOnly, setContractSoonOnly] = useState(false);
 
   /* ---------- cuti ---------- */
   const [showLeave, setShowLeave] = useState(false);
@@ -148,8 +188,17 @@ export default function HR() {
   const [certTarget, setCertTarget] = useState<StoreItem | null>(null);
   const [certForm, setCertForm] = useState({ name: "", expires: todayISO().slice(0, 7) });
 
+  /* ---------- surat ---------- */
+  const [showSurat, setShowSurat] = useState(false);
+  const [suratForm, setSuratForm] = useState({ employeeId: "", jenis: "SP 1", isi: "", tanggal: todayISO() });
+  const [arsipSurat, setArsipSurat] = useState<StoreItem[]>([]);
+
+  /* ---------- impor massal ---------- */
+  const [importReport, setImportReport] = useState<{ ok: number; gagal: string[] } | null>(null);
+
   const branchCities = useMemo(() => data.branches.map((b) => String(b.city)), [data.branches]);
   const scopedEmployees = useMemo(() => inBranch(data.employees as Branchable[]), [data.employees, inBranch]);
+  const jatahCuti = getSetting(data, "CUTI_JATAH", 12);
   const deptOptions = useMemo(
     () => ["Semua", ...Array.from(new Set(data.employees.map((e) => String(e.dept))))],
     [data.employees],
@@ -162,7 +211,9 @@ export default function HR() {
       .forEach((l) => m.set(String(l.employeeId), (m.get(String(l.employeeId)) ?? 0) + Number(l.days || 0)));
     return m;
   }, [data.leaves]);
-  const saldoCuti = (empId: string) => JATAH_CUTI - (leaveUsed.get(empId) ?? 0);
+  const saldoCuti = (empId: string) => jatahCuti - (leaveUsed.get(empId) ?? 0);
+
+  const contractDays = (e: StoreItem): number | null => daysUntil(String(e.contractEnd ?? "") || null);
 
   const list = useMemo(
     () =>
@@ -174,9 +225,11 @@ export default function HR() {
           String(e.name).toLowerCase().includes(needle) ||
           empNik(e).toLowerCase().includes(needle) ||
           String(e.role ?? "").toLowerCase().includes(needle);
-        return matchD && matchQ;
+        const cd = daysUntil(String(e.contractEnd ?? "") || null);
+        const matchC = !contractSoonOnly || (cd !== null && cd >= 0 && cd <= 30);
+        return matchD && matchQ && matchC;
       }),
-    [scopedEmployees, dept, q],
+    [scopedEmployees, dept, q, contractSoonOnly],
   );
 
   const deptCounts = useMemo(() => {
@@ -205,6 +258,22 @@ export default function HR() {
   const certifiedCount = data.employees.filter((e) => normCerts(e).length > 0).length;
   const certifiedPct = data.employees.length > 0 ? Math.round((certifiedCount / data.employees.length) * 100) : 0;
   const activeCount = data.employees.filter((e) => e.status === "Aktif").length;
+
+  /* ---------- KPI turnover & masa kerja ---------- */
+  const nonaktifCount = data.employees.filter((e) => e.status !== "Aktif").length;
+  const turnoverPct = data.employees.length > 0 ? (nonaktifCount / data.employees.length) * 100 : 0;
+  const avgTenure = useMemo(() => {
+    const now = new Date(todayISO() + "T00:00:00").getTime();
+    const years = data.employees
+      .map((e) => {
+        const t = new Date(`${String(e.join ?? "")}T00:00:00`).getTime();
+        if (Number.isNaN(t) || t > now) return null;
+        return (now - t) / 31557600000;
+      })
+      .filter((v): v is number => v !== null);
+    if (years.length === 0) return 0;
+    return years.reduce((s, v) => s + v, 0) / years.length;
+  }, [data.employees]);
 
   const topSkills = useMemo(() => {
     const freq = new Map<string, number>();
@@ -254,6 +323,9 @@ export default function HR() {
       tipe: String(e.tipe ?? "Tetap"),
       basic: String(e.basic ?? ""),
       allowances: String(e.allowances ?? ""),
+      contractEnd: String(e.contractEnd ?? ""),
+      ptkpStatus: String(e.ptkpStatus ?? "TK/0"),
+      dependents: String(e.dependents ?? 0),
     });
     setShowForm(true);
   };
@@ -290,19 +362,32 @@ export default function HR() {
       toast("Gaji pokok & tunjangan harus angka valid", "info");
       return;
     }
+    const dependents = Math.min(3, Math.max(0, Number(form.dependents || 0)));
+    if (!PTKP_STATUS.includes(form.ptkpStatus)) {
+      toast("Status PTKP tidak valid", "info");
+      return;
+    }
+    if (Number.isNaN(dependents)) {
+      toast("Tanggungan harus angka 0–3", "info");
+      return;
+    }
+    const empPatch = {
+      username: nik,
+      name,
+      role,
+      dept: form.dept,
+      branch: form.branch,
+      status: form.status,
+      join: form.join,
+      tipe: form.tipe,
+      basic,
+      allowances,
+      contractEnd: form.contractEnd || "",
+      ptkpStatus: form.ptkpStatus,
+      dependents,
+    };
     if (editingId) {
-      update("employees", editingId, {
-        username: nik,
-        name,
-        role,
-        dept: form.dept,
-        branch: form.branch,
-        status: form.status,
-        join: form.join,
-        tipe: form.tipe,
-        basic,
-        allowances,
-      });
+      update("employees", editingId, empPatch);
       log("memperbarui data karyawan", editingId, "SDM");
       toast(`Karyawan ${editingId} diperbarui`);
     } else {
@@ -319,6 +404,9 @@ export default function HR() {
           tipe: form.tipe,
           basic,
           allowances,
+          contractEnd: form.contractEnd || "",
+          ptkpStatus: form.ptkpStatus,
+          dependents,
           skills: defaultSkills(form.dept, role),
           certs: [],
         },
@@ -459,6 +547,146 @@ export default function HR() {
     setCertForm({ name: "", expires: todayISO().slice(0, 7) });
   };
 
+  /* ---------- surat peringatan / mutasi ---------- */
+  const suratEmp = data.employees.find((e) => e.id === suratForm.employeeId);
+  const suratPreview = suratEmp
+    ? [
+        `SURAT ${suratForm.jenis.toUpperCase()}`,
+        `PT Syukur Bersaudara`,
+        ``,
+        `Nomor: ___/HR/${suratForm.tanggal.slice(0, 4)}`,
+        `Tanggal: ${fmtTanggal(suratForm.tanggal)}`,
+        ``,
+        `Kepada Yth. ${suratEmp.name} (${empNik(suratEmp)})`,
+        `Jabatan: ${suratEmp.role} · Departemen: ${suratEmp.dept} · Cabang: ${suratEmp.branch}`,
+        ``,
+        suratForm.isi.trim() || "(Isi surat belum ditulis)",
+      ].join("\n")
+    : "";
+
+  const saveSurat = () => {
+    if (!suratEmp) {
+      toast("Pilih karyawan dulu", "info");
+      return;
+    }
+    if (!suratForm.isi.trim()) {
+      toast("Isi surat wajib diisi", "info");
+      return;
+    }
+    if (!suratForm.tanggal) {
+      toast("Tanggal surat wajib diisi", "info");
+      return;
+    }
+    const entry: StoreItem = {
+      id: `SRT-${suratForm.tanggal.replace(/-/g, "")}-${String(arsipSurat.length + 1).padStart(3, "0")}`,
+      employeeId: suratEmp.id,
+      nama: String(suratEmp.name),
+      jenis: suratForm.jenis,
+      tanggal: suratForm.tanggal,
+      isi: suratForm.isi.trim(),
+    };
+    setArsipSurat((prev) => [entry, ...prev]);
+    log("membuat surat", `${entry.id} · ${suratForm.jenis} → ${suratEmp.name}`, "SDM");
+    toast(`Surat ${entry.id} dicatat di arsip sesi ini`);
+    setShowSurat(false);
+    setSuratForm({ employeeId: "", jenis: "SP 1", isi: "", tanggal: todayISO() });
+  };
+
+  const exportArsipSurat = () => {
+    if (arsipSurat.length === 0) {
+      toast("Arsip sesi ini masih kosong", "info");
+      return;
+    }
+    const head = ["ID", "Karyawan", "Jenis", "Tanggal", "Isi"];
+    const body = arsipSurat.map((s) => [s.id, s.nama, s.jenis, fmtTanggal(String(s.tanggal)), s.isi]);
+    void exportExcel([head, ...body], "arsip-surat-sdm", "Arsip Surat");
+    toast("Arsip surat diunduh");
+  };
+
+  /* ---------- impor massal via CSV ---------- */
+  const downloadTemplate = () => {
+    void exportExcel([IMPORT_HEADERS], "template-impor-karyawan", "Template");
+    toast("Template diunduh — isi lalu simpan sebagai CSV");
+  };
+
+  const importCSV = (file: File) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const rows = parseCSV(String(reader.result ?? ""));
+      if (rows.length < 2) {
+        toast("File kosong — minimal ada 1 baris data", "info");
+        return;
+      }
+      const gagal: string[] = [];
+      const seenNik = new Set(data.employees.map((e) => empNik(e).toLowerCase()));
+      let ok = 0;
+      rows.slice(1).forEach((cells, idx) => {
+        const line = idx + 2;
+        const [nikRaw, nama, jabatan, deptRaw, branchRaw, statusRaw, joinRaw, tipeRaw, basicRaw, ptkpRaw, tangRaw, kontrakRaw] = [
+          ...cells,
+          ...Array(Math.max(0, 12 - cells.length)).fill(""),
+        ];
+        const nik = String(nikRaw ?? "").trim();
+        const name = String(nama ?? "").trim();
+        const role = String(jabatan ?? "").trim();
+        if (!nik || !name || !role) {
+          gagal.push(`Baris ${line}: NIK, Nama, dan Jabatan wajib diisi`);
+          return;
+        }
+        if (seenNik.has(nik.toLowerCase())) {
+          gagal.push(`Baris ${line}: NIK ${nik} sudah terdaftar`);
+          return;
+        }
+        if (!joinRaw || Number.isNaN(new Date(`${joinRaw}T00:00:00`).getTime())) {
+          gagal.push(`Baris ${line}: tanggal gabung tidak valid (pakai YYYY-MM-DD)`);
+          return;
+        }
+        const basic = Number(basicRaw || 0);
+        if (Number.isNaN(basic) || basic < 0) {
+          gagal.push(`Baris ${line}: gaji pokok harus angka valid`);
+          return;
+        }
+        const tang = Math.min(3, Math.max(0, Number(tangRaw || 0)));
+        if (Number.isNaN(tang)) {
+          gagal.push(`Baris ${line}: tanggungan harus angka 0–3`);
+          return;
+        }
+        const ptkp = String(ptkpRaw || "TK/0").trim();
+        if (!PTKP_STATUS.includes(ptkp)) {
+          gagal.push(`Baris ${line}: status PTKP harus salah satu ${PTKP_STATUS.join(", ")}`);
+          return;
+        }
+        seenNik.add(nik.toLowerCase());
+        add(
+          "employees",
+          {
+            username: nik,
+            name,
+            role,
+            dept: String(deptRaw || "Produksi").trim() || "Produksi",
+            branch: String(branchRaw || "Samarinda").trim() || "Samarinda",
+            status: String(statusRaw || "Aktif").trim() || "Aktif",
+            join: String(joinRaw).trim(),
+            tipe: String(tipeRaw || "Tetap").trim() || "Tetap",
+            basic,
+            allowances: 0,
+            contractEnd: String(kontrakRaw ?? "").trim(),
+            ptkpStatus: ptkp,
+            dependents: tang,
+            skills: defaultSkills(String(deptRaw || "Produksi"), role),
+            certs: [],
+          },
+          undefined,
+        );
+        ok += 1;
+      });
+      setImportReport({ ok, gagal });
+      log("impor karyawan", `${ok} berhasil · ${gagal.length} gagal`, "SDM");
+      toast(`Impor selesai — ${ok} berhasil, ${gagal.length} gagal`);
+    };
+    reader.readAsText(file);
+  };
+
   return (
     <div>
       <PageHeader
@@ -482,7 +710,11 @@ export default function HR() {
             <button className="btn-primary-gradient" onClick={() => setShowTraining(true)}>
               <Plus className="h-4 w-4" /> Jadwalkan Training
             </button>
-          ) : undefined
+          ) : (
+            <button className="btn-primary-gradient" onClick={() => setShowSurat(true)}>
+              <Plus className="h-4 w-4" /> Buat Surat
+            </button>
+          )
         }
       />
 
@@ -492,9 +724,13 @@ export default function HR() {
         <KpiCard label="Karyawan Aktif" value={String(activeCount)} delta={`Dari ${String(data.employees.length)} karyawan tercatat`} deltaDirection="up" icon={<BadgeCheck className="h-5 w-5" />} chip="teal" spark={activeEmployeeTrend} />
         <KpiCard label="Tenaga Bersertifikat" value={`${String(certifiedPct)}%`} icon={<BadgeCheck className="h-5 w-5" />} chip="violet" hint="Memiliki sertifikat tercatat" spark={certifiedTrend} />
       </div>
+      <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <KpiCard label="Turnover (Nonaktif)" value={`${turnoverPct.toLocaleString("id-ID", { maximumFractionDigits: 1 })}%`} hint={`${nonaktifCount} dari ${data.employees.length} karyawan`} chip="rose" />
+        <KpiCard label="Masa Kerja Rata-rata" value={`${avgTenure.toLocaleString("id-ID", { maximumFractionDigits: 1 })} thn`} hint="Dihitung dari tanggal bergabung" chip="navy" />
+      </div>
 
       <div className="mt-4 card">
-        <Tabs tabs={["Karyawan", "Cuti & Izin", "Mutasi", "Org Chart", "Training"]} active={tab} onChange={setTab} />
+        <Tabs tabs={["Karyawan", "Cuti & Izin", "Mutasi", "Org Chart", "Training", "Surat & Impor"]} active={tab} onChange={setTab} />
         <div className="p-4">
           {tab === "Karyawan" && (
             <div>
@@ -514,6 +750,10 @@ export default function HR() {
                     <option key={c} value={c}>{c}</option>
                   ))}
                 </select>
+                <label className="flex cursor-pointer items-center gap-2 text-sm text-steel-600">
+                  <input type="checkbox" checked={contractSoonOnly} onChange={(e) => setContractSoonOnly(e.target.checked)} />
+                  Kontrak ≤30 hari
+                </label>
               </div>
 
               <div className="grid grid-cols-1 gap-4 xl:grid-cols-3">
@@ -526,6 +766,7 @@ export default function HR() {
                           <th className="th">NIK</th>
                           <th className="th">Jabatan</th>
                           <th className="th">Cabang</th>
+                          <th className="th">Kontrak</th>
                           <th className="th">Saldo Cuti</th>
                           <th className="th">Status</th>
                           <th className="th">Aksi</th>
@@ -541,6 +782,22 @@ export default function HR() {
                             <td className="td font-mono text-steel-600">{empNik(e)}</td>
                             <td className="td text-steel-600 max-w-[160px] truncate" title={String(e.role)}>{e.role}</td>
                             <td className="td"><Badge tone="gray">{e.branch ?? "-"}</Badge></td>
+                            <td className="td">
+                              {e.contractEnd ? (
+                                <div className="flex items-center gap-1.5 whitespace-nowrap">
+                                  <span className="text-steel-600">{fmtTanggal(String(e.contractEnd))}</span>
+                                  {(() => {
+                                    const cd = contractDays(e);
+                                    if (cd === null) return null;
+                                    if (cd < 0) return <Badge tone="red">Lewat</Badge>;
+                                    if (cd <= 30) return <Badge tone="amber">H-{cd}</Badge>;
+                                    return null;
+                                  })()}
+                                </div>
+                              ) : (
+                                <span className="text-xs text-steel-400">—</span>
+                              )}
+                            </td>
                             <td className="td font-semibold text-navy-900">{saldoCuti(e.id)} hari</td>
                             <td className="td"><StatusBadge status={String(e.status)} /></td>
                             <td className="td">
@@ -745,6 +1002,61 @@ export default function HR() {
               {data.trainings.length === 0 && <EmptyState title="Belum ada training" subtitle="Klik Jadwalkan Training untuk menambah." />}
             </div>
           )}
+
+          {tab === "Surat & Impor" && (
+            <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+              <Card className="p-5">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-sm font-semibold text-navy-900">Arsip Surat (sesi ini)</h3>
+                  <div className="flex items-center gap-2">
+                    <button className="btn-secondary text-xs" onClick={exportArsipSurat}>Export Excel</button>
+                    <button className="btn-primary text-xs" onClick={() => setShowSurat(true)}>Buat Surat</button>
+                  </div>
+                </div>
+                <div className="mt-3 space-y-2.5">
+                  {arsipSurat.map((s) => (
+                    <div key={s.id} className="rounded-lg bg-surface p-2.5 text-sm">
+                      <p className="font-medium text-navy-900">{s.jenis} · {s.nama}</p>
+                      <p className="text-xs text-steel-500">{s.id} · {fmtTanggal(String(s.tanggal))}</p>
+                    </div>
+                  ))}
+                  {arsipSurat.length === 0 && <p className="text-xs text-steel-400">Belum ada surat dibuat sesi ini.</p>}
+                </div>
+              </Card>
+              <Card className="p-5">
+                <h3 className="text-sm font-semibold text-navy-900">Impor Karyawan Massal</h3>
+                <p className="mt-1 text-xs text-steel-500">
+                  Unduh template Excel, isi, lalu simpan sebagai CSV (koma) sebelum diimpor. NIK harus unik — baris gagal dilaporkan per baris.
+                </p>
+                <div className="mt-3 flex flex-wrap items-center gap-2">
+                  <button className="btn-secondary text-xs" onClick={downloadTemplate}>Unduh Template</button>
+                  <label className="btn-primary cursor-pointer text-xs">
+                    Impor CSV
+                    <input
+                      type="file"
+                      accept=".csv"
+                      className="hidden"
+                      onChange={(e) => {
+                        const f = e.target.files?.[0];
+                        if (f) importCSV(f);
+                        e.target.value = "";
+                      }}
+                    />
+                  </label>
+                </div>
+                {importReport && (
+                  <div className="mt-3 rounded-xl bg-surface p-3 text-sm">
+                    <p className="font-semibold text-navy-900">{importReport.ok} berhasil · {importReport.gagal.length} gagal</p>
+                    {importReport.gagal.length > 0 && (
+                      <ul className="mt-1.5 max-h-40 space-y-1 overflow-y-auto text-xs text-rose-600">
+                        {importReport.gagal.map((g) => <li key={g}>{g}</li>)}
+                      </ul>
+                    )}
+                  </div>
+                )}
+              </Card>
+            </div>
+          )}
         </div>
       </div>
 
@@ -792,6 +1104,17 @@ export default function HR() {
             </Field>
             <Field label="Gaji pokok (Rp)"><input type="number" min="0" className="input" value={form.basic} onChange={(e) => setForm({ ...form, basic: e.target.value })} placeholder="cth: 6500000" /></Field>
             <Field label="Tunjangan (Rp)"><input type="number" min="0" className="input" value={form.allowances} onChange={(e) => setForm({ ...form, allowances: e.target.value })} placeholder="cth: 1500000" /></Field>
+            <Field label="Kontrak berakhir"><input type="date" className="input" value={form.contractEnd} onChange={(e) => setForm({ ...form, contractEnd: e.target.value })} /></Field>
+            <Field label="Status PTKP">
+              <select className="input" value={form.ptkpStatus} onChange={(e) => setForm({ ...form, ptkpStatus: e.target.value })}>
+                {PTKP_STATUS.map((s) => <option key={s}>{s}</option>)}
+              </select>
+            </Field>
+            <Field label="Tanggungan (0–3)">
+              <select className="input" value={form.dependents} onChange={(e) => setForm({ ...form, dependents: e.target.value })}>
+                {["0", "1", "2", "3"].map((d) => <option key={d}>{d}</option>)}
+              </select>
+            </Field>
           </FormGrid>
         </div>
       </Modal>
@@ -801,7 +1124,7 @@ export default function HR() {
         open={showLeave}
         onClose={() => setShowLeave(false)}
         title="Ajukan Cuti & Izin"
-        subtitle={`Durasi dihitung otomatis · jatah tahunan ${JATAH_CUTI} hari`}
+        subtitle={`Durasi dihitung otomatis · jatah tahunan ${jatahCuti} hari`}
         footer={
           <>
             <button className="btn-secondary" onClick={() => setShowLeave(false)}>Batal</button>
@@ -937,6 +1260,47 @@ export default function HR() {
         <div className="space-y-3">
           <Field label="Nama sertifikat"><input className="input" value={certForm.name} onChange={(e) => setCertForm({ ...certForm, name: e.target.value })} placeholder="cth: Welding Inspector" /></Field>
           <Field label="Berlaku hingga"><input type="month" className="input" value={certForm.expires} onChange={(e) => setCertForm({ ...certForm, expires: e.target.value })} /></Field>
+        </div>
+      </Modal>
+
+      {/* ---------- modal surat ---------- */}
+      <Modal
+        open={showSurat}
+        onClose={() => setShowSurat(false)}
+        title="Generator Surat"
+        subtitle="Surat Peringatan / Mutasi + pratinjau + arsip Excel"
+        wide
+        footer={
+          <>
+            <button className="btn-secondary" onClick={() => setShowSurat(false)}>Batal</button>
+            <button className="btn-primary" onClick={saveSurat}>Simpan ke Arsip</button>
+          </>
+        }
+      >
+        <div className="space-y-3">
+          <FormGrid>
+            <Field label="Karyawan">
+              <select className="input" value={suratForm.employeeId} onChange={(e) => setSuratForm({ ...suratForm, employeeId: e.target.value })}>
+                <option value="">— Pilih —</option>
+                {data.employees.map((e) => (
+                  <option key={e.id} value={e.id}>{e.name} · {e.role}</option>
+                ))}
+              </select>
+            </Field>
+            <Field label="Jenis surat">
+              <select className="input" value={suratForm.jenis} onChange={(e) => setSuratForm({ ...suratForm, jenis: e.target.value })}>
+                {SURAT_JENIS.map((s) => <option key={s}>{s}</option>)}
+              </select>
+            </Field>
+            <Field label="Tanggal"><input type="date" className="input" value={suratForm.tanggal} onChange={(e) => setSuratForm({ ...suratForm, tanggal: e.target.value })} /></Field>
+          </FormGrid>
+          <Field label="Isi surat"><textarea className="input" rows={4} value={suratForm.isi} onChange={(e) => setSuratForm({ ...suratForm, isi: e.target.value })} placeholder="cth: ...diberikan peringatan pertama atas..." /></Field>
+          {suratPreview && (
+            <div>
+              <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-steel-500">Pratinjau</p>
+              <pre className="whitespace-pre-wrap rounded-xl bg-surface p-3 text-sm text-navy-900">{suratPreview}</pre>
+            </div>
+          )}
         </div>
       </Modal>
     </div>

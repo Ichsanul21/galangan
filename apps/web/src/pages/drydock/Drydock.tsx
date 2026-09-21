@@ -4,7 +4,8 @@ import { Card, CardHeader, PageHeader, Badge, KpiCard, ProgressBar, Modal, Field
 import { useStore } from "../../data/store";
 import type { StoreItem } from "../../data/store";
 import { dockUtilTrend, slotTrend } from "../../data";
-import { fmtTanggal, fmtRentang } from "../../utils/format";
+import { fmtJumlah, fmtRupiah, fmtTanggal, fmtRentang } from "../../utils/format";
+import { exportExcel } from "../../utils/export";
 
 const DAYS = 90;
 const FREE_WINDOW = 7;
@@ -12,6 +13,8 @@ const weeks = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13];
 const SLOT_COLORS = ["bg-ocean-500", "bg-navy-700", "bg-amber-500", "bg-teal-500", "bg-violet-500", "bg-steel-400"];
 const PRIORITIES = ["Normal", "Tinggi", "Kritis"];
 const STATUS_FILTERS = ["Semua", "Terjadwal", "Berjalan", "Selesai", "Maintenance"];
+const UNDOCK_ITEMS = ["Lambung bersih", "Katup laut tertutup", "Anoda terpasang", "Propeller terpasang", "Sea trial siap"];
+const MONTH_NAMES = ["Jan", "Feb", "Mar", "Apr", "Mei", "Jun", "Jul", "Agu", "Sep", "Okt", "Nov", "Des"];
 
 function dayToISO(day: number): string {
   const d = new Date();
@@ -50,6 +53,19 @@ function slotStatus(s: StoreItem, projects: StoreItem[]): string {
   return "Terjadwal";
 }
 
+function slotDays(s: StoreItem): number {
+  return Math.max(0, Number(s.to || 0) - Number(s.from || 0));
+}
+
+function slotCost(s: StoreItem): number {
+  return slotDays(s) * Math.max(0, Number(s.ratePerDay || 0));
+}
+
+function undockList(s: StoreItem): boolean[] {
+  const raw = Array.isArray(s.undock) ? s.undock as unknown[] : [];
+  return UNDOCK_ITEMS.map((_, i) => raw[i] === true);
+}
+
 export default function Drydock() {
   const { data, add, update, remove, log } = useStore();
   const drydocks = data.drydocks;
@@ -58,7 +74,7 @@ export default function Drydock() {
   const [selected, setSelected] = useState<string | null>(null);
 
   const [showBook, setShowBook] = useState(false);
-  const [bookForm, setBookForm] = useState({ dockId: "DD-1", project: "", from: "1", to: "30", priority: "Normal" });
+  const [bookForm, setBookForm] = useState({ dockId: "DD-1", project: "", from: "1", to: "30", priority: "Normal", ratePerDay: "0" });
   const [bookError, setBookError] = useState<string | null>(null);
   const [deleting, setDeleting] = useState<StoreItem | null>(null);
   const [wide, setWide] = useState(false);
@@ -69,6 +85,49 @@ export default function Drydock() {
   const [maintForm, setMaintForm] = useState({ dockId: "DD-1", from: "1", to: "7", reason: "" });
 
   const sel = dockSlots.find((s) => s.id === selected) ?? null;
+  const [utilDraft, setUtilDraft] = useState({ power: "", water: "" });
+
+  const openSlot = (s: StoreItem) => {
+    setSelected(s.id);
+    setUtilDraft({ power: String(s.powerKwh ?? ""), water: String(s.waterM3 ?? "") });
+  };
+
+  const saveUtility = () => {
+    if (!sel) return;
+    const power = Number(utilDraft.power || 0);
+    const water = Number(utilDraft.water || 0);
+    if (power < 0 || water < 0 || !Number.isFinite(power) || !Number.isFinite(water)) {
+      toast("Konsumsi listrik/air harus angka 0 atau lebih", "info");
+      return;
+    }
+    update("dockSlots", sel.id, { powerKwh: power, waterM3: water });
+    log("mencatat konsumsi slot", `${sel.id} · ${power} kWh · ${water} m³`, "Drydock");
+    toast(`Konsumsi slot ${sel.id} disimpan`);
+  };
+
+  const toggleUndock = (idx: number) => {
+    if (!sel) return;
+    const next = undockList(sel);
+    next[idx] = !next[idx];
+    update("dockSlots", sel.id, { undock: next });
+    if (next.every(Boolean)) {
+      log("menyelesaikan docking report", `${sel.id} · undocking checklist lengkap`, "Drydock");
+      toast(`Docking report ${sel.id} lengkap`);
+    }
+  };
+
+  const dockCostTotal = (dockId: string): number =>
+    dockSlots.filter((s) => s.dockId === dockId).reduce((sum, s) => sum + slotCost(s), 0);
+
+  const exportAnnualPlan = () => {
+    void exportExcel(
+      [["Slot", "Fasilitas", "Kapal", "Mulai", "Selesai", "Hari", "Tarif/Hari (Rp)", "Biaya Dock (Rp)", "Listrik (kWh)", "Air (m³)"],
+        ...dockSlots.map((s) => [s.id, drydocks.find((d) => d.id === s.dockId)?.name ?? s.dockId, s.vessel, fmtTanggal(dayToISO(Number(s.from))), fmtTanggal(dayToISO(Number(s.to))), slotDays(s), Number(s.ratePerDay || 0), slotCost(s), Number(s.powerKwh || 0), Number(s.waterM3 || 0)])],
+      "Rencana-Dock-Tahunan",
+      "Dock Plan",
+    );
+    toast("Rencana dock tahunan diekspor");
+  };
 
   const coverageByDock = drydocks.map((d) => ({
     dock: d,
@@ -137,9 +196,11 @@ export default function Drydock() {
       toast(msg, "info");
       return;
     }
+    const ratePerDay = Number(bookForm.ratePerDay || 0);
+    if (!Number.isFinite(ratePerDay) || ratePerDay < 0) { setBookError("Tarif dock per hari harus 0 atau lebih."); return; }
     const created = add("dockSlots", {
       dockId: bookForm.dockId, project: proj.id, vessel: proj.vessel, from, to,
-      priority: bookForm.priority,
+      priority: bookForm.priority, ratePerDay,
       color: SLOT_COLORS[dockSlots.length % SLOT_COLORS.length],
     }, { action: "membooking slot", target: `${bookForm.dockId} · ${proj.vessel} · ${bookForm.priority}`, module: "Drydock" });
     toast(`Slot ${created.id} dibooking (${bookForm.priority})`);
@@ -315,7 +376,7 @@ export default function Drydock() {
                         return (
                           <div
                             key={s.id}
-                            onClick={() => setSelected(isSel ? null : s.id)}
+                            onClick={() => { if (isSel) setSelected(null); else openSlot(s); }}
                             className={`absolute top-1/2 -translate-y-1/2 flex h-10 items-center justify-between rounded-md px-2 text-xs font-medium text-white shadow cursor-pointer transition ${isMaint ? "bg-steel-400" : isConf ? "bg-rose-500" : s.color} ${isSel ? "ring-2 ring-navy-900" : "hover:brightness-110"} ${isCrit && !isSel ? "ring-4 ring-rose-800" : isConf && !isSel ? "ring-2 ring-rose-700" : ""}`}
                             style={{ left: `${leftPct}%`, width: `${widthPct}%` }}
                             title={`${s.vessel} · ${s.project} · ${fmtRentang(dayToISO(s.from), dayToISO(s.to))}${s.priority ? ` · ${s.priority}` : ""}${isCrit ? " · KRITIS TUMPANG TINDIH" : isConf ? " · TUMPANG TINDIH" : ""}`}
@@ -368,7 +429,7 @@ export default function Drydock() {
                       <td className="td"><StatusBadge status={st} /></td>
                       <td className="td">
                         <div className="flex gap-1.5">
-                          <button className="btn-secondary text-xs" onClick={() => setSelected(s.id)}>Detail</button>
+                          <button className="btn-secondary text-xs" onClick={() => openSlot(s)}>Detail</button>
                           <button className="rounded-lg p-1.5 text-rose-500 hover:bg-rose-50" title={`Hapus slot ${s.id}`} aria-label={`Hapus slot ${s.id}`} onClick={() => setDeleting(s)}><Trash2 className="h-4 w-4" /></button>
                         </div>
                       </td>
@@ -391,6 +452,7 @@ export default function Drydock() {
                   <span className="font-semibold text-navy-900">{pct}%</span>
                 </div>
                 <ProgressBar value={pct} tone={pct > 80 ? "red" : pct > 60 ? "amber" : "green"} />
+                <p className="mt-1 text-xs text-steel-500">Biaya dock {fmtRupiah(dockCostTotal(dock.id))}</p>
               </div>
             ))}
           </div>
@@ -400,17 +462,75 @@ export default function Drydock() {
         </Card>
       </div>
 
+      <Card className="mt-5">
+        <CardHeader
+          title="Rencana Dock Tahunan (12 Bulan)"
+          subtitle="Read-only · slot existing per bulan"
+          action={<button className="btn-secondary text-xs" onClick={exportAnnualPlan}>Ekspor Excel</button>}
+        />
+        <div className="overflow-x-auto p-4 pt-0">
+          <div className="grid min-w-[1100px] grid-cols-12 gap-2">
+            {Array.from({ length: 12 }, (_, m) => {
+              const base = new Date();
+              const dt = new Date(base.getFullYear(), base.getMonth() + m, 1);
+              const key = `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, "0")}`;
+              const inMonth = dockSlots.filter((s) => dayToISO(Number(s.from)).slice(0, 7) === key || dayToISO(Number(s.to)).slice(0, 7) === key);
+              return (
+                <div key={key} className="rounded-lg border border-steel-100 bg-surface p-2">
+                  <p className="text-xs font-semibold text-navy-900">{MONTH_NAMES[dt.getMonth()]} {dt.getFullYear()}</p>
+                  <div className="mt-1.5 space-y-1">
+                    {inMonth.map((s) => (
+                      <button key={s.id} className="block w-full truncate rounded bg-white px-1.5 py-1 text-left text-[11px] text-steel-600 hover:text-navy-900" title={`${s.vessel} · ${fmtRentang(dayToISO(Number(s.from)), dayToISO(Number(s.to)))}`} onClick={() => openSlot(s)}>
+                        {s.vessel}
+                      </button>
+                    ))}
+                    {inMonth.length === 0 && <p className="text-[11px] text-steel-400">Kosong</p>}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </Card>
+
       {/* Modal detail slot */}
       <Modal open={sel !== null} onClose={() => setSelected(null)} title={`Slot ${sel?.id ?? ""}`} subtitle={sel ? `${sel.vessel} · ${sel.project}` : ""}>
         {sel && (
+          <div>
           <dl className="space-y-2.5 text-sm">
             <div className="flex justify-between"><dt className="text-steel-500">Fasilitas</dt><dd className="font-medium">{drydocks.find((d) => d.id === sel.dockId)?.name}</dd></div>
-            <div className="flex justify-between"><dt className="text-steel-500">Durasi</dt><dd className="font-medium">{fmtRentang(dayToISO(sel.from), dayToISO(sel.to))} ({sel.to - sel.from} hari)</dd></div>
+            <div className="flex justify-between"><dt className="text-steel-500">Durasi</dt><dd className="font-medium">{fmtRentang(dayToISO(sel.from), dayToISO(sel.to))} ({slotDays(sel)} hari)</dd></div>
             <div className="flex justify-between"><dt className="text-steel-500">Prioritas</dt><dd className="font-medium">{sel.priority ?? "Normal"}</dd></div>
+            <div className="flex justify-between"><dt className="text-steel-500">Tarif dock</dt><dd className="font-medium">{fmtRupiah(Number(sel.ratePerDay || 0))}/hari</dd></div>
+            <div className="flex justify-between"><dt className="text-steel-500">Biaya dock</dt><dd className="font-semibold text-navy-900">{slotDays(sel)} hari × {fmtRupiah(Number(sel.ratePerDay || 0))} = {fmtRupiah(slotCost(sel))}</dd></div>
             <div className="flex justify-between"><dt className="text-steel-500">Status</dt><dd><StatusBadge status={slotStatus(sel, data.projects)} /></dd></div>
             <div className="flex justify-between"><dt className="text-steel-500">Konflik</dt><dd>{conflict.some((c) => c.id === sel.id) ? <Badge tone="red">Tumpang tindih</Badge> : <Badge tone="green">Aman</Badge>}</dd></div>
-            <button className="btn-danger mt-2 w-full justify-center" onClick={() => { setDeleting(sel); setSelected(null); }}><Trash2 className="h-4 w-4" /> Hapus Slot</button>
+            <div className="flex justify-between"><dt className="text-steel-500">Konsumsi tercatat</dt><dd className="font-medium">{fmtJumlah(Number(sel.powerKwh || 0))} kWh · {fmtJumlah(Number(sel.waterM3 || 0))} m³</dd></div>
           </dl>
+          <div className="mt-3 border-t border-steel-100 pt-3">
+            <p className="text-xs font-semibold text-steel-500">KONSUMSI LISTRIK / AIR PER SLOT</p>
+            <div className="mt-2 grid grid-cols-2 gap-2">
+              <Field label="Listrik (kWh)"><input type="number" min={0} className="input" value={utilDraft.power} onChange={(e) => setUtilDraft({ ...utilDraft, power: e.target.value })} placeholder="cth: 1200" /></Field>
+              <Field label="Air (m³)"><input type="number" min={0} className="input" value={utilDraft.water} onChange={(e) => setUtilDraft({ ...utilDraft, water: e.target.value })} placeholder="cth: 85" /></Field>
+            </div>
+            <button className="btn-secondary mt-2 text-xs" onClick={saveUtility}>Simpan Konsumsi</button>
+          </div>
+          <div className="mt-3 border-t border-steel-100 pt-3">
+            <div className="flex items-center justify-between">
+              <p className="text-xs font-semibold text-steel-500">DOCKING REPORT — CHECKLIST UNDOCKING</p>
+              <Badge tone={undockList(sel).every(Boolean) ? "green" : "amber"}>{undockList(sel).every(Boolean) ? "Siap Undocking" : `${undockList(sel).filter(Boolean).length}/5`}</Badge>
+            </div>
+            <div className="mt-2 space-y-1.5">
+              {UNDOCK_ITEMS.map((item, idx) => (
+                <label key={item} className="flex items-center gap-2 rounded-lg border border-steel-100 px-3 py-2 text-sm text-steel-700">
+                  <input type="checkbox" checked={undockList(sel)[idx]} onChange={() => toggleUndock(idx)} />
+                  {item}
+                </label>
+              ))}
+            </div>
+          </div>
+            <button className="btn-danger mt-3 w-full justify-center" onClick={() => { setDeleting(sel); setSelected(null); }}><Trash2 className="h-4 w-4" /> Hapus Slot</button>
+          </div>
         )}
       </Modal>
 
@@ -437,7 +557,13 @@ export default function Drydock() {
                 {PRIORITIES.map((p) => <option key={p}>{p}</option>)}
               </select>
             </Field>
+            <Field label="Tarif dock per hari (Rp)" hint="Default 0 · biaya = hari × tarif">
+              <input type="number" min={0} className="input" value={bookForm.ratePerDay} onChange={(e) => setBookForm({ ...bookForm, ratePerDay: e.target.value })} placeholder="cth: 15000000" />
+            </Field>
           </FormGrid>
+          <p className="rounded-lg bg-surface px-3 py-2 text-xs text-steel-600">
+            Estimasi biaya dock: {Math.max(0, Number(bookForm.to || 0) - Number(bookForm.from || 0))} hari × {fmtRupiah(Number(bookForm.ratePerDay || 0))} = {fmtRupiah(Math.max(0, Number(bookForm.to || 0) - Number(bookForm.from || 0)) * Math.max(0, Number(bookForm.ratePerDay || 0)))}
+          </p>
           <p className="rounded-lg bg-surface px-3 py-2 text-xs text-steel-600">
             Info kapasitas: {selDock?.capacity ?? "—"}
             {selProj ? (selLoa !== null ? ` · LOA ${selProj.vessel} ${selLoa} m` : ` · data LOA ${selProj.vessel} tidak tersedia`) : ""}

@@ -1,14 +1,17 @@
 import { useState } from "react";
-import { Plus, Factory, ShoppingCart, ClipboardList, Check, X, Undo2, Printer, Pencil, Send } from "lucide-react";
+import { Plus, Factory, ShoppingCart, ClipboardList, Check, X, Undo2, Printer, Pencil, Send, Star, Wallet, Umbrella } from "lucide-react";
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 import { Card, CardHeader, PageHeader, Badge, KpiCard, Tabs, StatusBadge, Donut, ChartTooltip, Modal, Field, FormGrid, ConfirmModal, toast, EmptyState } from "../../components/ui";
 import { useStore, type StoreItem } from "../../data/store";
 import { fmtRupiah, fmtJumlah, fmtTanggal, todayISO } from "../../utils/format";
+import { getSetting } from "../../utils/settings";
 import { spendByCategory, procurementTrend, poCountTrend, poValueTrend, prPendingTrend, vendorTrend } from "../../data";
 import { exportExcel } from "../../utils/export";
 
 interface POLine { name: string; qty: number; unit: string; price: number }
 interface Quote { vendor: string; price: number; eta: string }
+interface Approval { level: string; by: string; date: string }
+interface VendorScore { po: string; q: number; d: number; p: number; score: number; date: string }
 
 /* Status kanonis PO Besar + pemetaan status seed lama. */
 const PO_NEXT: Record<string, string[]> = {
@@ -57,7 +60,6 @@ const RFQ_NEXT: Record<string, string[]> = {
 };
 
 const PR_PENDING = ["Menunggu Approval", "RFQ", "Diajukan"];
-const PO_KECIL_LIMIT = 50000000;
 
 const lineTotal = (lines: POLine[]): number =>
   lines.reduce((s, l) => s + Number(l.qty || 0) * Number(l.price || 0), 0);
@@ -67,6 +69,54 @@ const poLines = (po: StoreItem): POLine[] => (Array.isArray(po.lines) ? (po.line
 const isLate = (po: StoreItem): boolean =>
   Boolean(po.eta) && String(po.eta) < todayISO() && normPo(po.status) !== "Diterima";
 
+/* ---- Approval bertingkat nominal PO Besar ---- */
+function needLevels(amount: number): string[] {
+  if (amount > 500000000) return ["SPV", "Manager", "Director"];
+  if (amount > 50000000) return ["SPV", "Manager"];
+  return ["SPV"];
+}
+
+function levelOf(amount: number): string {
+  if (amount > 500000000) return "Director";
+  if (amount > 50000000) return "Manager";
+  return "SPV";
+}
+
+function apprOf(po: StoreItem): Approval[] {
+  return Array.isArray(po.approvals) ? (po.approvals as Approval[]) : [];
+}
+
+function nextLevel(po: StoreItem): string | null {
+  const need = needLevels(Number(po.amount || 0));
+  const done = apprOf(po).map((a) => a.level);
+  return need.find((l) => !done.includes(l)) ?? null;
+}
+
+/* ---- Skor vendor ---- */
+function scoresOf(v: StoreItem): VendorScore[] {
+  return Array.isArray(v.scores) ? (v.scores as VendorScore[]) : [];
+}
+
+function avgScore(v: StoreItem): number | null {
+  const s = scoresOf(v);
+  if (s.length === 0) return null;
+  return s.reduce((a, x) => a + Number(x.score || 0), 0) / s.length;
+}
+
+/* ---- Kontrak payung ---- */
+function payungOf(v: StoreItem): { periode: string; plafon: number } | null {
+  const p = v.payung as { periode?: string; plafon?: number } | undefined;
+  if (!p || !p.plafon || Number(p.plafon) <= 0) return null;
+  return { periode: String(p.periode ?? ""), plafon: Number(p.plafon) };
+}
+
+function lateDaysOf(po: StoreItem): number {
+  if (!po.eta) return 0;
+  const t = Date.parse(String(po.eta));
+  if (Number.isNaN(t)) return 0;
+  return Math.max(0, Math.floor((Date.parse(todayISO()) - t) / 86400000));
+}
+
 export default function Procurement() {
   const { data, add, update, log, inBranch } = useStore();
   const purchaseOrders = inBranch(data.purchaseOrders);
@@ -74,6 +124,8 @@ export default function Procurement() {
   const vendors = data.vendors;
   const rfqs = data.rfqs;
   const invList = inBranch(data.inventory);
+
+  const PO_KECIL_LIMIT = getSetting(data, "PO_KECIL_LIMIT", 50000000);
 
   const [tab, setTab] = useState("PO Besar (Kantor)");
 
@@ -85,6 +137,7 @@ export default function Procurement() {
   /* ---- PO Kecil ---- */
   const [showSmall, setShowSmall] = useState(false);
   const [smallForm, setSmallForm] = useState({ workshop: "", requester: "", item: "", qty: "1", price: "", eta: "", project: "", override: false, overrideReason: "" });
+  const [kasAwal, setKasAwal] = useState("");
 
   /* ---- RFQ ---- */
   const [rfqPr, setRfqPr] = useState<StoreItem | null>(null);
@@ -110,6 +163,9 @@ export default function Procurement() {
   const [recvPo, setRecvPo] = useState<StoreItem | null>(null);
   const [recvItem, setRecvItem] = useState("");
   const [recvQty, setRecvQty] = useState("");
+  const [recvNoFaktur, setRecvNoFaktur] = useState("");
+  const [recvTglFaktur, setRecvTglFaktur] = useState("");
+  const [recvDendaPct, setRecvDendaPct] = useState("0.1");
   const [retPo, setRetPo] = useState<StoreItem | null>(null);
   const [retQty, setRetQty] = useState("");
   const [retNote, setRetNote] = useState("");
@@ -117,12 +173,38 @@ export default function Procurement() {
   const [amendForm, setAmendForm] = useState({ name: "", qty: "1", unit: "pcs", price: "", note: "" });
   const [confirmAmend, setConfirmAmend] = useState(false);
 
+  /* ---- Skor vendor ---- */
+  const [evalPo, setEvalPo] = useState<StoreItem | null>(null);
+  const [evalQ, setEvalQ] = useState("");
+  const [evalD, setEvalD] = useState("");
+  const [evalP, setEvalP] = useState("");
+  const [unblockVendor, setUnblockVendor] = useState<StoreItem | null>(null);
+
+  /* ---- Kontrak payung ---- */
+  const [payungVendor, setPayungVendor] = useState<StoreItem | null>(null);
+  const [payungPeriode, setPayungPeriode] = useState("");
+  const [payungPlafon, setPayungPlafon] = useState("");
+
   const bigList = purchaseOrders.filter((p) => p.poType !== "Kecil");
   const smallList = purchaseOrders.filter((p) => p.poType === "Kecil");
   const approvedPRs = requisitions.filter((r) => r.status === "Disetujui");
 
   const openPo = purchaseOrders.filter((p) => normPo(p.status) !== "Diterima").reduce((s, p) => s + Number(p.amount || 0), 0);
   const pendingPr = requisitions.filter((r) => PR_PENDING.includes(r.status)).length;
+
+  const plafonPakai = (vendorName: string, excludeId?: string): number =>
+    purchaseOrders
+      .filter((o) => o.vendor === vendorName && !["Ditolak"].includes(normPo(o.status)) && o.id !== excludeId)
+      .reduce((s, o) => s + Number(o.amount || 0), 0);
+
+  /* Validasi plafon kontrak payung: null bila vendor tanpa payung. */
+  const cekPlafon = (vendorName: string, tambahan: number): { ok: boolean; pakai: number; plafon: number } | null => {
+    const v = vendors.find((x) => x.name === vendorName);
+    const pg = v ? payungOf(v) : null;
+    if (!pg) return null;
+    const pakai = plafonPakai(vendorName);
+    return { ok: pakai + tambahan <= pg.plafon, pakai, plafon: pg.plafon };
+  };
 
   const budgetInfo = (projectId: string, _amount: number, excludeId?: string): { sisa: number; aktif: number } | null => {
     if (!projectId) return null;
@@ -142,6 +224,28 @@ export default function Procurement() {
   const smallBudget = budgetInfo(smallForm.project, smallAmount);
   const smallOver = smallBudget !== null && smallBudget.aktif + smallAmount > smallBudget.sisa;
 
+  /* Kas kecil workshop: alat bantu sesi (state lokal), bukan ledger permanen. */
+  const bulanIni = todayISO().slice(0, 7);
+  const smallBulan = smallList.filter((p) => String(p.date ?? "").slice(0, 7) === bulanIni);
+  const smallBulanTotal = smallBulan.reduce((s, p) => s + Number(p.amount || 0), 0);
+  const kasSisa = (Number(kasAwal) || 0) - smallBulanTotal;
+  const exportKas = () => {
+    void exportExcel(
+      [
+        ["Realisasi PO Kecil vs Kasbon Workshop", bulanIni],
+        ["Saldo awal sesi (manual)", Number(kasAwal) || 0],
+        [],
+        ["PO", "Kebutuhan", "Nilai"],
+        ...smallBulan.map((p) => [p.id, String(p.item ?? ""), Number(p.amount || 0)]),
+        ["Realisasi bulan ini", "", smallBulanTotal],
+        ["Sisa", "", kasSisa],
+      ],
+      `Kas-Kecil-${bulanIni}`,
+      "Kas Kecil"
+    );
+    toast("Realisasi kas kecil diekspor");
+  };
+
   /* ============ PO BESAR ============ */
   const saveBig = () => {
     if (!bigForm.prId) { toast("PR wajib dipilih (dropdown PR Disetujui)", "info"); return; }
@@ -158,6 +262,8 @@ export default function Procurement() {
       toast("Melebihi sisa budget proyek — centang override dan isi alasan", "info");
       return;
     }
+    const plafon = cekPlafon(bigForm.vendor, bigTotal);
+    if (plafon && !plafon.ok) { toast(`Plafon kontrak payung terlampaui (pakai ${fmtRupiah(plafon.pakai)} / plafon ${fmtRupiah(plafon.plafon)})`, "info"); return; }
     const pr = requisitions.find((r) => r.id === bigForm.prId);
     const created = add("purchaseOrders", {
       poType: "Besar", item: invItem.name, itemId: invItem.id, vendor: bigForm.vendor,
@@ -165,7 +271,7 @@ export default function Procurement() {
       lines: bigLines.map((l) => ({ name: l.name.trim(), qty: Number(l.qty), unit: l.unit, price: Number(l.price) })),
       project: bigForm.project || "-", eta: bigForm.eta || "",
       receivedQty: 0, returnedQty: 0, status: "Draft", date: todayISO(), revisi: "",
-      amendments: [], overrideReason: bigOver ? bigForm.overrideReason.trim() : "",
+      amendments: [], approvals: [], overrideReason: bigOver ? bigForm.overrideReason.trim() : "",
     }, { action: "membuat PO Besar", module: "Procurement" });
     if (pr && pr.status === "Disetujui") update("requisitions", pr.id, { status: "Sudah PO" });
     toast(`PO Besar ${created.id} dibuat (Draft)`);
@@ -210,6 +316,18 @@ export default function Procurement() {
     toast(`${po.id} → ${next}`);
   };
 
+  /* Persetujuan berjenjang SPV → Manager → Director sesuai nominal. */
+  const doApproveLevel = (po: StoreItem) => {
+    const nx = nextLevel(po);
+    if (!nx) { toast(`${po.id} sudah disetujui penuh`, "info"); return; }
+    const done: Approval[] = [...apprOf(po), { level: nx, by: "Anda", date: todayISO() }];
+    const doneLevels = done.map((a) => a.level);
+    const still = needLevels(Number(po.amount || 0)).find((l) => !doneLevels.includes(l)) ?? null;
+    update("purchaseOrders", po.id, { approvals: done, status: still ? po.status : "Disetujui" });
+    log("persetujuan PO", `${po.id} level ${nx}${still ? `, lanjut ke ${still}` : " (penuh)"}`, "Procurement");
+    toast(still ? `${po.id} disetujui ${nx}, lanjut ke ${still}` : `${po.id} disetujui penuh`);
+  };
+
   /* ============ RFQ ============ */
   const saveRfq = () => {
     if (!rfqPr) return;
@@ -245,6 +363,8 @@ export default function Procurement() {
     const quotes = (Array.isArray(winRfq.quotes) ? winRfq.quotes : []) as Quote[];
     const win = quotes.find((x) => x.vendor === winVendor);
     if (!win) { toast("Pemenang belum memberi penawaran", "info"); return; }
+    const plafon = cekPlafon(winVendor, win.price);
+    if (plafon && !plafon.ok) { toast(`Plafon kontrak payung terlampaui (pakai ${fmtRupiah(plafon.pakai)} / plafon ${fmtRupiah(plafon.plafon)})`, "info"); return; }
     update("rfqs", winRfq.id, { winner: winVendor, status: "Diputuskan" });
     const match = invList.find((i) => i.name.toLowerCase().includes(String(winRfq.item).toLowerCase().split(" ")[0] ?? ""));
     const created = add("purchaseOrders", {
@@ -252,7 +372,7 @@ export default function Procurement() {
       req: winRfq.prId, amount: win.price, qty: 1,
       lines: [{ name: winRfq.item, qty: 1, unit: "pcs", price: win.price }],
       project: "-", eta: win.eta, receivedQty: 0, returnedQty: 0,
-      status: "Diajukan", date: todayISO(), revisi: "", amendments: [],
+      status: "Diajukan", date: todayISO(), revisi: "", amendments: [], approvals: [],
     }, { action: "memenangkan RFQ", target: `${winRfq.id} → ${winVendor}`, module: "Procurement" });
     const pr = requisitions.find((r) => r.id === winRfq.prId);
     if (pr) update("requisitions", pr.id, { status: "Sudah PO" });
@@ -273,11 +393,13 @@ export default function Procurement() {
       const info = budgetInfo(konsProject, total);
       if (info && info.aktif + total > info.sisa) { toast("Gabungan PR melebihi sisa budget proyek", "info"); return; }
     }
+    const plafon = cekPlafon(konsVendor, total);
+    if (plafon && !plafon.ok) { toast(`Plafon kontrak payung terlampaui (pakai ${fmtRupiah(plafon.pakai)} / plafon ${fmtRupiah(plafon.plafon)})`, "info"); return; }
     const created = add("purchaseOrders", {
       poType: "Besar", item: `Konsolidasi ${prs.length} PR`, itemId: "",
       vendor: konsVendor, req: prs.map((r) => r.id).join(", "), amount: total, qty: prs.length,
       lines, project: konsProject || "-", eta: konsEta || "",
-      receivedQty: 0, returnedQty: 0, status: "Draft", date: todayISO(), revisi: "", amendments: [],
+      receivedQty: 0, returnedQty: 0, status: "Draft", date: todayISO(), revisi: "", amendments: [], approvals: [],
     }, { action: "konsolidasi PR ke PO", target: prs.map((r) => r.id).join(", "), module: "Procurement" });
     prs.forEach((r) => update("requisitions", r.id, { status: "Sudah PO" }));
     toast(`Konsolidasi ${prs.length} PR → ${created.id}`);
@@ -285,6 +407,52 @@ export default function Procurement() {
     setKonsVendor("");
     setKonsProject("");
     setKonsEta("");
+  };
+
+  /* ============ SKOR VENDOR (Q30 + D30 + P40, skala 100) ============ */
+  const evalPreview = (() => {
+    const q = Number(evalQ), d = Number(evalD), p = Number(evalP);
+    if (![q, d, p].every((n) => n >= 1 && n <= 5)) return null;
+    return Math.round(q * 6 + d * 6 + p * 8);
+  })();
+
+  const saveEval = () => {
+    if (!evalPo) return;
+    const q = Number(evalQ), d = Number(evalD), p = Number(evalP);
+    if (![q, d, p].every((n) => n >= 1 && n <= 5)) { toast("Nilai kualitas, delivery, harga 1–5 wajib diisi", "info"); return; }
+    const score = Math.round(q * 6 + d * 6 + p * 8);
+    const v = vendors.find((x) => x.name === evalPo.vendor);
+    if (!v) { toast("Vendor tidak ditemukan di master", "info"); return; }
+    const next = [...scoresOf(v), { po: evalPo.id, q, d, p, score, date: todayISO() }];
+    const avg = next.reduce((s, x) => s + Number(x.score), 0) / next.length;
+    const patch: Record<string, unknown> = { scores: next };
+    if (avg < 60) patch.status = "Blacklist";
+    update("vendors", v.id, patch);
+    update("purchaseOrders", evalPo.id, { evaluated: true });
+    log("evaluasi vendor", `${v.name}: skor ${score} dari ${evalPo.id} (rata-rata ${Math.round(avg)})`, "Procurement");
+    toast(avg < 60 ? `${v.name} skor ${score} — rata-rata ${Math.round(avg)}, otomatis Blacklist` : `Skor ${v.name}: ${score} tersimpan`);
+    setEvalPo(null);
+    setEvalQ("");
+    setEvalD("");
+    setEvalP("");
+  };
+
+  const savePayung = () => {
+    if (!payungVendor) return;
+    const plafon = Number(payungPlafon);
+    if (payungPlafon.trim() !== "" && (!plafon || plafon <= 0)) { toast("Plafon harus lebih dari 0 bila diisi", "info"); return; }
+    if (payungPlafon.trim() === "") {
+      update("vendors", payungVendor.id, { payung: null });
+      log("hapus kontrak payung", payungVendor.name, "Procurement");
+      toast(`Kontrak payung ${payungVendor.name} dihapus`);
+    } else {
+      update("vendors", payungVendor.id, { payung: { periode: payungPeriode.trim() || "-", plafon } });
+      log("kontrak payung", `${payungVendor.name}: plafon ${fmtRupiah(plafon)} (${payungPeriode.trim() || "-"})`, "Procurement");
+      toast(`Kontrak payung ${payungVendor.name} tersimpan`);
+    }
+    setPayungVendor(null);
+    setPayungPeriode("");
+    setPayungPlafon("");
   };
 
   /* ============ AMANDEMEN ============ */
@@ -323,6 +491,11 @@ export default function Procurement() {
       ["Tanggal", fmtTanggal(po.date)],
       ["ETA", po.eta ? fmtTanggal(po.eta) : "-"],
       ["Status", normPo(po.status)],
+      ["Level approval", levelOf(Number(po.amount || 0))],
+      ["Persetujuan", apprOf(po).length > 0 ? apprOf(po).map((a) => `${a.level} oleh ${a.by} ${a.date}`).join("; ") : "-"],
+      ["No faktur pajak", po.noFaktur ?? "-"],
+      ["Tanggal faktur", po.tglFaktur ? fmtTanggal(po.tglFaktur) : "-"],
+      ["Denda keterlambatan (Rp)", Number(po.dendaRp || 0)],
       [],
       ["Baris", "Qty", "Satuan", "Harga", "Subtotal"],
       ...lines.map((l) => [l.name, l.qty, l.unit, l.price, Number(l.qty) * Number(l.price)]),
@@ -337,12 +510,25 @@ export default function Procurement() {
     setRecvPo(po);
     setRecvItem(po.itemId ?? "");
     setRecvQty(po.qty ? String(po.qty) : "");
+    setRecvNoFaktur(po.noFaktur ? String(po.noFaktur) : "");
+    setRecvTglFaktur(po.tglFaktur ? String(po.tglFaktur) : "");
+    setRecvDendaPct("0.1");
   };
+
+  const recvLate = recvPo ? lateDaysOf(recvPo) : 0;
+  const recvDendaPreview = (() => {
+    if (!recvPo || recvLate <= 0) return 0;
+    const pct = Math.min(5, Math.max(0, Number(recvDendaPct) || 0));
+    if (pct <= 0) return 0;
+    return Math.round(Math.min(Number(recvPo.amount || 0) * 0.05, Number(recvPo.amount || 0) * (pct / 100) * recvLate));
+  })();
 
   const confirmRecv = (mode: "penuh" | "sebagian") => {
     if (!recvPo) return;
     const qty = Number(recvQty);
     if (!qty || qty <= 0) { toast("Qty terima harus lebih dari 0", "info"); return; }
+    const isBig = recvPo.poType !== "Kecil";
+    if (isBig && (!recvNoFaktur.trim() || !recvTglFaktur)) { toast("No faktur & tanggal faktur wajib untuk PO Besar", "info"); return; }
     const invItem = invList.find((i) => i.id === recvItem);
     if (recvItem && !invItem) { toast("Pilih item inventori tujuan", "info"); return; }
     if (invItem) {
@@ -351,17 +537,31 @@ export default function Procurement() {
         item: invItem.name, itemId: invItem.id, type: "Penerimaan", qty, by: recvPo.id, date: todayISO(), tone: "in",
       }, { action: "menerima barang", target: `${invItem.name} × ${qty} (${recvPo.id})`, module: "Procurement" });
     }
+    /* Denda: hari telat × % per hari dari nilai PO, dibatasi 5%. */
+    let dendaRp = Number(recvPo.dendaRp || 0);
+    const late = lateDaysOf(recvPo);
+    const pct = Math.min(5, Math.max(0, Number(recvDendaPct) || 0));
+    if (late > 0 && pct > 0) {
+      dendaRp = Math.round(Math.min(Number(recvPo.amount || 0) * 0.05, Number(recvPo.amount || 0) * (pct / 100) * late));
+    }
     update("purchaseOrders", recvPo.id, {
       itemId: invItem ? invItem.id : recvPo.itemId,
       item: invItem ? invItem.name : recvPo.item,
       qty: recvPo.qty ?? qty,
       receivedQty: Number(recvPo.receivedQty || 0) + qty,
       status: mode === "penuh" ? "Diterima" : "Diterima Sebagian",
+      noFaktur: recvNoFaktur.trim(),
+      tglFaktur: recvTglFaktur,
+      dendaRp,
     });
-    toast(`${recvPo.id} ${mode === "penuh" ? "diterima" : "diterima sebagian"}${invItem ? ` — stok ${invItem.name} +${qty}` : ""}`);
+    if (late > 0 && dendaRp > 0) log("denda keterlambatan", `${recvPo.id}: telat ${late} hari → ${fmtRupiah(dendaRp)}`, "Procurement");
+    toast(`${recvPo.id} ${mode === "penuh" ? "diterima" : "diterima sebagian"}${invItem ? ` — stok ${invItem.name} +${qty}` : ""}${dendaRp > 0 ? ` · denda ${fmtRupiah(dendaRp)}` : ""}`);
     setRecvPo(null);
     setRecvItem("");
     setRecvQty("");
+    setRecvNoFaktur("");
+    setRecvTglFaktur("");
+    setRecvDendaPct("0.1");
   };
 
   const maxRet = (po: StoreItem): number =>
@@ -395,12 +595,21 @@ export default function Procurement() {
 
   const poAksi = (po: StoreItem) => {
     const st = normPo(po.status);
+    const nx = po.poType === "Kecil" ? null : nextLevel(po);
     return (
       <div className="flex flex-wrap gap-1.5">
         {st === "Draft" && <button className="btn-secondary text-xs" onClick={() => doPoStatus(po, "Diajukan")}>Ajukan</button>}
-        {st === "Diajukan" && (
+        {st === "Diajukan" && po.poType === "Kecil" && (
           <>
             <button className="btn-secondary text-xs" onClick={() => setConfirmApprove(po)}><Check className="h-3.5 w-3.5" /> Setujui</button>
+            <button className="btn-secondary text-xs text-rose-600" aria-label={`Tolak ${po.id}`} onClick={() => setConfirmRejectPo(po)}><X className="h-3.5 w-3.5" /> Tolak</button>
+          </>
+        )}
+        {st === "Diajukan" && po.poType !== "Kecil" && (
+          <>
+            {nx
+              ? <button className="btn-primary text-xs" onClick={() => doApproveLevel(po)}><Check className="h-3.5 w-3.5" /> Setujui ({nx})</button>
+              : <span className="text-xs text-steel-400">Menunggu tahap lain</span>}
             <button className="btn-secondary text-xs text-rose-600" aria-label={`Tolak ${po.id}`} onClick={() => setConfirmRejectPo(po)}><X className="h-3.5 w-3.5" /> Tolak</button>
           </>
         )}
@@ -416,6 +625,11 @@ export default function Procurement() {
         {(st === "Disetujui" || st === "Dikirim") && (
           <button className="btn-secondary text-xs" aria-label={`Amandemen ${po.id}`} onClick={() => { setAmendPo(po); setAmendForm({ name: "", qty: "1", unit: "pcs", price: "", note: "" }); }}>
             <Pencil className="h-3.5 w-3.5" /> Amandemen
+          </button>
+        )}
+        {st === "Diterima" && !po.evaluated && (
+          <button className="btn-secondary text-xs" aria-label={`Nilai vendor ${po.id}`} onClick={() => { setEvalPo(po); setEvalQ(""); setEvalD(""); setEvalP(""); }}>
+            <Star className="h-3.5 w-3.5" /> Nilai
           </button>
         )}
         {st === "Diterima" && (
@@ -488,14 +702,18 @@ export default function Procurement() {
                   </div>
                 </Card>
               </div>
+              <p className="rounded-lg bg-steel-50 px-3 py-2 text-xs text-steel-500">Approval bertingkat nominal: ≤50 jt cukup SPV · ≤500 jt sampai Manager · &gt;500 jt sampai Director. PO Besar wajib faktur pajak saat terima.</p>
               <div className="overflow-x-auto">
                 <table className="w-full">
                   <thead className="bg-surface sticky top-0 z-10">
-                    <tr><th className="th">PO</th><th className="th">Item</th><th className="th">Vendor</th><th className="th">Nilai</th><th className="th">ETA</th><th className="th">Revisi</th><th className="th">Status</th><th className="th">Aksi</th></tr>
+                    <tr><th className="th">PO</th><th className="th">Item</th><th className="th">Vendor</th><th className="th">Nilai</th><th className="th">Level</th><th className="th">ETA</th><th className="th">Revisi</th><th className="th">Status</th><th className="th">Aksi</th></tr>
                   </thead>
                   <tbody className="divide-y divide-steel-100">
                     {bigList.map((po) => {
                       const st = normPo(po.status);
+                      const need = needLevels(Number(po.amount || 0));
+                      const done = apprOf(po);
+                      const payung = vendors.some((v) => v.name === po.vendor && payungOf(v));
                       return (
                         <tr key={po.id} className="hover:bg-surface">
                           <td className="td font-mono font-medium text-navy-900">{po.id}</td>
@@ -510,9 +728,22 @@ export default function Procurement() {
                             {poLines(po).length > 0 && (
                               <p className="text-xs text-steel-400 truncate" title={poLines(po).map((l) => `${l.name} ×${l.qty}`).join("; ")}>{poLines(po).length} baris · PR {po.req}</p>
                             )}
+                            {po.noFaktur && (
+                              <p className="text-xs text-steel-400 truncate" title={`Faktur ${po.noFaktur}`}>Faktur {po.noFaktur}{po.tglFaktur ? ` · ${fmtTanggal(po.tglFaktur)}` : ""}</p>
+                            )}
                           </td>
-                          <td className="td text-steel-600 truncate" title={String(po.vendor)}>{po.vendor}</td>
-                          <td className="td font-semibold">{fmtRupiah(po.amount)}</td>
+                          <td className="td text-steel-600">
+                            <p className="truncate" title={String(po.vendor)}>{po.vendor}</p>
+                            {payung && <span className="mt-0.5 inline-block"><Badge tone="navy">Payung</Badge></span>}
+                          </td>
+                          <td className="td font-semibold">
+                            {fmtRupiah(po.amount)}
+                            {Number(po.dendaRp || 0) > 0 && <p className="text-xs font-normal text-rose-600">Denda {fmtRupiah(Number(po.dendaRp))}</p>}
+                          </td>
+                          <td className="td">
+                            <Badge tone="navy">{levelOf(Number(po.amount || 0))}</Badge>
+                            <p className="mt-0.5 text-xs text-steel-400">{done.length}/{need.length} tahap{done.length > 0 ? ` · ${done.map((a) => a.level).join(" → ")}` : ""}</p>
+                          </td>
                           <td className="td text-steel-600">
                             {po.eta ? fmtTanggal(po.eta) : "—"}
                             {isLate(po) && <span className="ml-1.5"><Badge tone="red">Terlambat</Badge></span>}
@@ -531,40 +762,63 @@ export default function Procurement() {
           )}
 
           {tab === "PO Kecil (Workshop)" && (
-            <div>
-              <div className="mb-3 flex justify-end">
-                <button className="btn-secondary text-xs" onClick={() => setShowSmall(true)}><Plus className="h-3.5 w-3.5" /> Buat PO Kecil</button>
-              </div>
-              <p className="mb-3 rounded-lg bg-steel-50 px-3 py-2 text-xs text-steel-500">PO Kecil: Diajukan → Disetujui → Diterima, tanpa RFQ. Batas {fmtRupiah(PO_KECIL_LIMIT)} — selebihnya gunakan PO Besar.</p>
-              <div className="overflow-x-auto">
-                <table className="w-full">
-                  <thead className="bg-surface sticky top-0 z-10">
-                    <tr><th className="th">PO</th><th className="th">Kebutuhan</th><th className="th">Workshop</th><th className="th">Nilai</th><th className="th">ETA</th><th className="th">Status</th><th className="th">Aksi</th></tr>
-                  </thead>
-                  <tbody className="divide-y divide-steel-100">
-                    {smallList.map((po) => {
-                      const st = normPo(po.status);
-                      return (
-                        <tr key={po.id} className="hover:bg-surface">
-                          <td className="td font-mono font-medium text-navy-900">{po.id}</td>
-                          <td className="td text-steel-600">
-                            <p className="truncate" title={String(po.item)}>{po.item}</p>
-                            <p className="text-xs text-steel-400">Qty {fmtJumlah(Number(po.qty || 0))} · {po.requester}</p>
-                          </td>
-                          <td className="td text-steel-600 truncate" title={String(po.workshop ?? "-")}>{po.workshop ?? "-"}</td>
-                          <td className="td font-semibold">{fmtRupiah(po.amount)}</td>
-                          <td className="td text-steel-600">
-                            {po.eta ? fmtTanggal(po.eta) : "—"}
-                            {isLate(po) && <span className="ml-1.5"><Badge tone="red">Terlambat</Badge></span>}
-                          </td>
-                          <td className="td"><Badge tone={poStatus[st] ?? "gray"}>{st}</Badge></td>
-                          <td className="td">{poAksi(po)}</td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-                {smallList.length === 0 && <EmptyState title="Belum ada PO Kecil" subtitle="PO workshop di bawah 50 juta dicatat di sini." />}
+            <div className="space-y-4">
+              <Card className="p-5">
+                <CardHeader title="Realisasi PO Kecil vs Kasbon Workshop" subtitle="Alat bantu sesi ini — bukan ledger permanen" />
+                <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-4">
+                  <Field label={`Saldo awal sesi (${bulanIni})`}>
+                    <input type="number" min={0} className="input" value={kasAwal} onChange={(e) => setKasAwal(e.target.value)} placeholder="cth: 25000000" />
+                  </Field>
+                  <div className="rounded-lg bg-surface p-2.5">
+                    <p className="flex items-center gap-1 text-xs text-steel-500"><Wallet className="h-3.5 w-3.5" /> Realisasi bulan ini</p>
+                    <p className="font-semibold text-navy-900">{fmtRupiah(smallBulanTotal)}</p>
+                    <p className="text-xs text-steel-400">{smallBulan.length} PO Kecil</p>
+                  </div>
+                  <div className="rounded-lg bg-surface p-2.5">
+                    <p className="text-xs text-steel-500">Sisa kasbon</p>
+                    <p className={`font-semibold ${kasSisa < 0 ? "text-rose-600" : "text-navy-900"}`}>{fmtRupiah(kasSisa)}</p>
+                    <p className="text-xs text-steel-400">Saldo awal − realisasi</p>
+                  </div>
+                  <div className="flex items-end">
+                    <button className="btn-secondary text-xs" onClick={exportKas}><Printer className="h-3.5 w-3.5" /> Export</button>
+                  </div>
+                </div>
+              </Card>
+              <div>
+                <div className="mb-3 flex justify-end">
+                  <button className="btn-secondary text-xs" onClick={() => setShowSmall(true)}><Plus className="h-3.5 w-3.5" /> Buat PO Kecil</button>
+                </div>
+                <p className="mb-3 rounded-lg bg-steel-50 px-3 py-2 text-xs text-steel-500">PO Kecil: Diajukan → Disetujui → Diterima, tanpa RFQ. Batas {fmtRupiah(PO_KECIL_LIMIT)} — selebihnya gunakan PO Besar.</p>
+                <div className="overflow-x-auto">
+                  <table className="w-full">
+                    <thead className="bg-surface sticky top-0 z-10">
+                      <tr><th className="th">PO</th><th className="th">Kebutuhan</th><th className="th">Workshop</th><th className="th">Nilai</th><th className="th">ETA</th><th className="th">Status</th><th className="th">Aksi</th></tr>
+                    </thead>
+                    <tbody className="divide-y divide-steel-100">
+                      {smallList.map((po) => {
+                        const st = normPo(po.status);
+                        return (
+                          <tr key={po.id} className="hover:bg-surface">
+                            <td className="td font-mono font-medium text-navy-900">{po.id}</td>
+                            <td className="td text-steel-600">
+                              <p className="truncate" title={String(po.item)}>{po.item}</p>
+                              <p className="text-xs text-steel-400">Qty {fmtJumlah(Number(po.qty || 0))} · {po.requester}</p>
+                            </td>
+                            <td className="td text-steel-600 truncate" title={String(po.workshop ?? "-")}>{po.workshop ?? "-"}</td>
+                            <td className="td font-semibold">{fmtRupiah(po.amount)}</td>
+                            <td className="td text-steel-600">
+                              {po.eta ? fmtTanggal(po.eta) : "—"}
+                              {isLate(po) && <span className="ml-1.5"><Badge tone="red">Terlambat</Badge></span>}
+                            </td>
+                            <td className="td"><Badge tone={poStatus[st] ?? "gray"}>{st}</Badge></td>
+                            <td className="td">{poAksi(po)}</td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                  {smallList.length === 0 && <EmptyState title="Belum ada PO Kecil" subtitle="PO workshop di bawah 50 juta dicatat di sini." />}
+                </div>
               </div>
             </div>
           )}
@@ -711,28 +965,55 @@ export default function Procurement() {
                 <button className="btn-secondary text-xs" onClick={() => setShowVendor(true)}><Plus className="h-3.5 w-3.5" /> Tambah Vendor</button>
               </div>
               <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
-                {vendors.map((v) => (
-                  <Card key={v.id} className="p-5">
-                    <div className="flex items-start justify-between">
-                      <div className="min-w-0">
-                        <p className="text-sm font-semibold text-navy-900 truncate" title={String(v.name)}>{v.name}</p>
-                        <p className="text-xs text-steel-500">{v.cat}</p>
+                {vendors.map((v) => {
+                  const avg = avgScore(v);
+                  const pg = payungOf(v);
+                  const isBlack = v.status === "Blacklist";
+                  return (
+                    <Card key={v.id} className="p-5">
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0">
+                          <p className="text-sm font-semibold text-navy-900 truncate" title={String(v.name)}>{v.name}</p>
+                          <p className="text-xs text-steel-500">{v.cat}</p>
+                        </div>
+                        <div className="flex shrink-0 items-center gap-1.5">
+                          {pg && <Badge tone="navy">Payung</Badge>}
+                          <Badge tone={isBlack ? "red" : v.status === "Aktif" ? "green" : "amber"}>{v.status ?? "Aktif"}</Badge>
+                        </div>
                       </div>
-                      <Badge tone={v.status === "Aktif" ? "green" : "amber"}>{v.status ?? "Aktif"}</Badge>
-                    </div>
-                    <div className="mt-4 grid grid-cols-2 gap-3 text-sm">
-                      <div className="rounded-lg bg-surface p-2.5">
-                        <p className="text-xs text-steel-500">On-time</p>
-                        <p className="font-semibold text-navy-900">{v.onTime}%</p>
+                      <div className="mt-4 grid grid-cols-2 gap-3 text-sm">
+                        <div className="rounded-lg bg-surface p-2.5">
+                          <p className="text-xs text-steel-500">On-time</p>
+                          <p className="font-semibold text-navy-900">{v.onTime}%</p>
+                        </div>
+                        <div className="rounded-lg bg-surface p-2.5">
+                          <p className="text-xs text-steel-500">Kualitas</p>
+                          <p className="font-semibold text-navy-900">{v.quality}%</p>
+                        </div>
                       </div>
-                      <div className="rounded-lg bg-surface p-2.5">
-                        <p className="text-xs text-steel-500">Kualitas</p>
-                        <p className="font-semibold text-navy-900">{v.quality}%</p>
+                      <p className="mt-3 text-xs text-steel-500">{v.po} PO ditangani</p>
+                      <div className="mt-2 flex items-center gap-1.5 text-sm">
+                        <Star className="h-4 w-4 text-amber-500" />
+                        {avg === null
+                          ? <span className="text-xs text-steel-400">Belum ada evaluasi</span>
+                          : <span className="font-semibold text-navy-900">Skor {Math.round(avg)} <span className="font-normal text-steel-400">({scoresOf(v).length} evaluasi)</span></span>}
                       </div>
-                    </div>
-                    <p className="mt-3 text-xs text-steel-500">{v.po} PO ditangani</p>
-                  </Card>
-                ))}
+                      {pg && (
+                        <p className="mt-1.5 text-xs text-steel-500">
+                          Payung {pg.periode} · plafon {fmtRupiah(pg.plafon)} · terpakai {fmtRupiah(plafonPakai(v.name))}
+                        </p>
+                      )}
+                      <div className="mt-3 flex flex-wrap gap-1.5">
+                        <button className="btn-secondary text-xs" onClick={() => { setPayungVendor(v); setPayungPeriode(pg?.periode === "-" ? "" : pg?.periode ?? ""); setPayungPlafon(pg ? String(pg.plafon) : ""); }}>
+                          <Umbrella className="h-3.5 w-3.5" /> {pg ? "Ubah Payung" : "Kontrak Payung"}
+                        </button>
+                        {isBlack && (
+                          <button className="btn-secondary text-xs text-rose-600" onClick={() => setUnblockVendor(v)}>Buka Blokir (Eskalasi)</button>
+                        )}
+                      </div>
+                    </Card>
+                  );
+                })}
               </div>
             </div>
           )}
@@ -761,7 +1042,7 @@ export default function Procurement() {
             <Field label="Vendor">
               <select className="input" value={bigForm.vendor} onChange={(e) => setBigForm({ ...bigForm, vendor: e.target.value })}>
                 <option value="">Pilih vendor…</option>
-                {vendors.map((v) => <option key={v.id} value={v.name}>{v.name}</option>)}
+                {vendors.map((v) => <option key={v.id} value={v.name}>{v.name}{payungOf(v) ? ` (Payung: ${fmtRupiah(payungOf(v)!.plafon)})` : ""}</option>)}
               </select>
             </Field>
             <Field label="Proyek (cek budget)">
@@ -788,7 +1069,7 @@ export default function Procurement() {
               ))}
             </div>
             <button className="btn-secondary mt-2 text-xs" onClick={() => setBigLines((s) => [...s, { name: "", qty: 1, unit: "pcs", price: 0 }])}><Plus className="h-3.5 w-3.5" /> Tambah baris</button>
-            <p className="mt-2 text-sm font-semibold text-navy-900">Total: {fmtRupiah(bigTotal)}</p>
+            <p className="mt-2 text-sm font-semibold text-navy-900">Total: {fmtRupiah(bigTotal)} · Level approval: {levelOf(bigTotal)}</p>
           </div>
           {bigOver && bigBudget && (
             <div className="rounded-lg bg-rose-50 px-3 py-2 text-xs text-rose-700">
@@ -868,7 +1149,7 @@ export default function Procurement() {
         </div>
       </Modal>
 
-      {/* Konfirmasi setujui / tolak PO */}
+      {/* Konfirmasi setujui / tolak PO (PO Kecil: setujui tunggal) */}
       <ConfirmModal
         open={confirmApprove !== null}
         title={`Setujui ${confirmApprove?.id ?? ""}?`}
@@ -901,6 +1182,24 @@ export default function Procurement() {
             </select>
           </Field>
           <Field label="Qty diterima"><input type="number" min={0} className="input" value={recvQty} onChange={(e) => setRecvQty(e.target.value)} /></Field>
+          <FormGrid>
+            <Field label="No faktur pajak" hint={recvPo?.poType === "Kecil" ? "Opsional untuk PO Kecil" : "Wajib untuk PO Besar"}>
+              <input className="input font-mono" value={recvNoFaktur} onChange={(e) => setRecvNoFaktur(e.target.value)} placeholder="cth: 010.000-26.00000001" />
+            </Field>
+            <Field label="Tanggal faktur" hint={recvPo?.poType === "Kecil" ? "Opsional untuk PO Kecil" : "Wajib untuk PO Besar"}>
+              <input type="date" className="input" value={recvTglFaktur} onChange={(e) => setRecvTglFaktur(e.target.value)} />
+            </Field>
+          </FormGrid>
+          {recvPo && recvLate > 0 && (
+            <div className="rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-700">
+              Terlambat {recvLate} hari dari ETA {fmtTanggal(recvPo.eta)} — usulan denda {fmtRupiah(recvDendaPreview)}.
+              <div className="mt-2">
+                <Field label="Denda per hari (%)" hint="Batas total 5% dari nilai PO">
+                  <input type="number" min={0} max={5} step={0.1} className="input" value={recvDendaPct} onChange={(e) => setRecvDendaPct(e.target.value)} />
+                </Field>
+              </div>
+            </div>
+          )}
         </div>
       </Modal>
 
@@ -943,6 +1242,63 @@ export default function Procurement() {
         onConfirm={confirmAmendNow}
       />
 
+      {/* Modal evaluasi vendor */}
+      <Modal open={evalPo !== null} onClose={() => setEvalPo(null)} title={`Evaluasi Vendor — ${evalPo?.id ?? ""}`} subtitle={`${evalPo?.vendor ?? ""} · kualitas 30 + delivery 30 + harga 40 (skala 100)`}
+        footer={<><button className="btn-secondary" onClick={() => setEvalPo(null)}>Batal</button><button className="btn-primary" onClick={saveEval}>Simpan Skor</button></>}>
+        <div className="space-y-3">
+          <FormGrid>
+            {(["Kualitas", "Delivery", "Harga"] as const).map((lbl) => {
+              const val = lbl === "Kualitas" ? evalQ : lbl === "Delivery" ? evalD : evalP;
+              const set = lbl === "Kualitas" ? setEvalQ : lbl === "Delivery" ? setEvalD : setEvalP;
+              return (
+                <Field key={lbl} label={`${lbl} (1–5)`}>
+                  <select className="input" value={val} onChange={(e) => set(e.target.value)} aria-label={`Nilai ${lbl}`}>
+                    <option value="">Pilih…</option>
+                    {[1, 2, 3, 4, 5].map((n) => <option key={n} value={n}>{n}</option>)}
+                  </select>
+                </Field>
+              );
+            })}
+          </FormGrid>
+          <p className="rounded-lg bg-steel-50 px-3 py-2 text-xs text-steel-600">
+            {evalPreview === null ? "Isi ketiga nilai untuk melihat skor." : `Skor usulan: ${evalPreview} (rata-rata vendor <60 otomatis Blacklist).`}
+          </p>
+        </div>
+      </Modal>
+      <ConfirmModal
+        open={unblockVendor !== null}
+        title={`Buka blokir ${unblockVendor?.name ?? ""}?`}
+        desc="Vendor Blacklist hanya dibuka lewat eskalasi — tercatat di log."
+        confirmLabel="Ya, buka (eskalasi)"
+        onCancel={() => setUnblockVendor(null)}
+        onConfirm={() => {
+          if (unblockVendor) {
+            update("vendors", unblockVendor.id, { status: "Aktif" });
+            log("buka blacklist (eskalasi)", unblockVendor.name, "Procurement");
+            toast(`${unblockVendor.name} dibuka kembali (Aktif)`);
+          }
+          setUnblockVendor(null);
+        }}
+      />
+
+      {/* Modal kontrak payung */}
+      <Modal open={payungVendor !== null} onClose={() => setPayungVendor(null)} title={`Kontrak Payung — ${payungVendor?.name ?? ""}`} subtitle="PO ke vendor ini divalidasi terhadap plafon kumulatif"
+        footer={<><button className="btn-secondary" onClick={() => setPayungVendor(null)}>Batal</button><button className="btn-primary" onClick={savePayung}>Simpan</button></>}>
+        <div className="space-y-3">
+          <Field label="Periode" hint="cth: 2026-01 s.d. 2026-12">
+            <input className="input" value={payungPeriode} onChange={(e) => setPayungPeriode(e.target.value)} placeholder="cth: 2026" />
+          </Field>
+          <Field label="Plafon (Rp)" hint="Kosongkan untuk menghapus kontrak payung">
+            <input type="number" min={0} className="input" value={payungPlafon} onChange={(e) => setPayungPlafon(e.target.value)} placeholder="cth: 5000000000" />
+          </Field>
+          {payungVendor && (
+            <p className="rounded-lg bg-steel-50 px-3 py-2 text-xs text-steel-600">
+              Terpakai saat ini {fmtRupiah(plafonPakai(payungVendor.name))} (PO aktif, di luar Ditolak).
+            </p>
+          )}
+        </div>
+      </Modal>
+
       {/* Modal PR */}
       <Modal open={showPr} onClose={() => setShowPr(false)} title="Buat Purchase Requisition"
         footer={<><button className="btn-secondary" onClick={() => setShowPr(false)}>Batal</button><button className="btn-primary" onClick={() => {
@@ -965,7 +1321,7 @@ export default function Procurement() {
       <Modal open={showVendor} onClose={() => setShowVendor(false)} title="Tambah Vendor"
         footer={<><button className="btn-secondary" onClick={() => setShowVendor(false)}>Batal</button><button className="btn-primary" onClick={() => {
           if (!vForm.name.trim()) { toast("Nama vendor wajib diisi", "info"); return; }
-          const created = add("vendors", { name: vForm.name.trim(), cat: vForm.cat, onTime: 100, quality: 100, po: 0, status: "Kualifikasi" },
+          const created = add("vendors", { name: vForm.name.trim(), cat: vForm.cat, onTime: 100, quality: 100, po: 0, status: "Kualifikasi", scores: [] },
             { action: "mendaftarkan vendor", module: "Procurement" });
           toast(`Vendor ${created.id} ditambahkan`); setShowVendor(false); setVForm({ name: "", cat: "Baja & Struktur" });
         }}>Simpan</button></>}>

@@ -5,7 +5,7 @@ import { Card, CardHeader, PageHeader, Badge, KpiCard, Modal, Field, FormGrid, t
 import { useStore } from "../../data/store";
 import type { StoreItem } from "../../data/store";
 import { fleetTrend, dockingTrend, buildTrend, certTrend } from "../../data";
-import { fmtTanggal, todayISO } from "../../utils/format";
+import { fmtRupiah, fmtTanggal, todayISO } from "../../utils/format";
 
 const statusTone: Record<string, "green" | "blue" | "amber" | "gray"> = {
   "Dalam Docking": "blue",
@@ -35,6 +35,15 @@ function monthDiff(expires: string, base: string): number | null {
 function certNeedsAttention(expires: string, nowMonth: string): boolean {
   const d = monthDiff(expires, nowMonth);
   return d !== null && d <= 3;
+}
+
+function daysUntil(iso: string | null | undefined): number | null {
+  if (!iso || iso === "-") return null;
+  const t = new Date(`${iso}T00:00:00`).getTime();
+  if (Number.isNaN(t)) return null;
+  const now = new Date();
+  const base = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+  return Math.round((t - base) / 86400000);
 }
 
 export function complianceOf(v: StoreItem): ComplianceRow[] {
@@ -261,7 +270,28 @@ export default function Vessels() {
                   <Badge tone={comp.state === "ok" ? "green" : comp.state === "issue" ? "red" : "gray"}>
                     {comp.state === "ok" ? "Patuh — semua berlaku" : comp.state === "issue" ? `Kepatuhan ${comp.valid}/${comp.total}` : "Kepatuhan belum dinilai"}
                   </Badge>
+                  {(() => {
+                    const ins = v.insurance as { polis?: string; premi?: number; expiry?: string } | undefined;
+                    if (!ins?.expiry) return <Badge tone="gray">Tanpa asuransi</Badge>;
+                    const left = daysUntil(ins.expiry);
+                    if (left === null) return <Badge tone="gray">Asuransi {ins.polis ?? ""}</Badge>;
+                    if (left < 0) return <Badge tone="red">Asuransi expired</Badge>;
+                    if (left <= 30) return <Badge tone="amber">Asuransi H-{left}</Badge>;
+                    return <Badge tone="green">Asuransi berlaku</Badge>;
+                  })()}
+                  {(Array.isArray(v.plan5) && v.plan5.length > 0) ? (
+                    <Badge tone="navy">Rencana 5 thn: {v.plan5.length}</Badge>
+                  ) : null}
                 </div>
+                {(() => {
+                  const ins = v.insurance as { polis?: string; premi?: number; expiry?: string } | undefined;
+                  if (!ins?.polis) return null;
+                  return (
+                    <p className="mt-1.5 text-xs text-steel-500">
+                      Polis {ins.polis}{Number(ins.premi || 0) > 0 ? ` · premi ${fmtRupiah(Number(ins.premi))}` : ""}{ins.expiry ? ` · exp ${fmtTanggal(ins.expiry)}` : ""}
+                    </p>
+                  );
+                })()}
                 <div className="mt-3 grid grid-cols-3 gap-2 border-t border-steel-100 pt-3 text-center">
                   <div><p className="text-sm font-bold text-navy-900">{v.loa}m</p><p className="text-[10px] text-steel-500">LOA</p></div>
                   <div><p className="text-sm font-bold text-navy-900">{v.bollard}T</p><p className="text-[10px] text-steel-500">Bollard</p></div>

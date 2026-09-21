@@ -1,10 +1,11 @@
 import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { Plus, Send, Users2, Star, Handshake, ArrowRight } from "lucide-react";
-import { Card, CardHeader, PageHeader, Badge, KpiCard, Tabs, Donut, Modal, Field, FormGrid, ConfirmModal, StatusBadge, EmptyState, toast } from "../../components/ui";
+import { Card, CardHeader, PageHeader, Badge, KpiCard, Tabs, Donut, Modal, Field, FormGrid, StatusBadge, EmptyState, toast } from "../../components/ui";
 import { useStore } from "../../data/store";
 import type { StoreItem } from "../../data/store";
 import { fmtMiliar, fmtRupiah, fmtTanggal, todayISO } from "../../utils/format";
+import { exportExcel } from "../../utils/export";
 import { clientTrend, pipelineTrend, winRateTrend, wonTrend } from "../../data";
 
 const FLOW = ["Lead", "Penawaran", "Negosiasi", "Menang"];
@@ -35,10 +36,25 @@ const STAGE_TONE: Record<string, "gray" | "amber" | "violet" | "green" | "teal" 
 const isTerminal = (stage: string) => TERMINAL.includes(stage);
 const num = (v: unknown): number => Number(v) || 0;
 
+const PROB: Record<string, number> = { Lead: 0.1, Penawaran: 0.3, Negosiasi: 0.6, Menang: 1 };
+const HO_ITEMS = ["Dokumen kontrak tersedia", "Scope pekerjaan jelas", "Jadwal disepakati", "PIC client ditetapkan"];
+
+function umurHari(dateStr: string | null | undefined): number | null {
+  if (!dateStr || dateStr === "-") return null;
+  const t = new Date(`${String(dateStr)}T00:00:00`).getTime();
+  if (Number.isNaN(t)) return null;
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+  return Math.max(0, Math.round((today - t) / 86400000));
+}
+
 export default function CRM() {
   const { data, add, update, log, branch, inBranch } = useStore();
   const [tab, setTab] = useState("Pipeline");
   const [klasFilter, setKlasFilter] = useState("Semua");
+  const [oldOnly, setOldOnly] = useState(false);
+  const [hoChecks, setHoChecks] = useState<boolean[]>([false, false, false, false]);
+  const [hoBy, setHoBy] = useState("Tim Commercial");
 
   const [showQ, setShowQ] = useState(false);
   const [qForm, setQForm] = useState({ client: "", vessel: "", type: "New Build", value: "", stage: "Lead", date: todayISO() });
@@ -124,13 +140,16 @@ export default function CRM() {
       setConvertTarget(null);
       return;
     }
+    if (hoChecks.some((c) => !c)) { toast("Lengkapi semua checklist serah terima ke PM", "info"); return; }
+    if (!hoBy.trim()) { toast("Nama penyerah wajib diisi", "info"); return; }
     const created = add("projects", {
       vessel: q.vessel, type: q.type, client: q.client, status: "Dalam Proses",
       branch: "Samarinda", start: todayISO(), end: "-", progress: 0,
       budget: num(q.value), actual: 0, manager: "Belum ditentukan", scope: [q.type],
+      handover: { date: todayISO(), by: hoBy.trim(), items: [...HO_ITEMS] },
     }, { action: "mengkonversi quotation", target: `${q.id} → proyek`, module: "CRM" });
     update("quotations", q.id, { stage: "Terkonversi" });
-    log("mengunci quotation setelah konversi", q.id, "CRM");
+    log(`serah terima ke PM oleh ${hoBy.trim()} (${HO_ITEMS.length} item)`, `${q.id} → ${created.id}`, "CRM");
     toast(`${q.id} menjadi proyek ${created.id}`);
     setConvertTarget(null);
   };
@@ -230,6 +249,35 @@ export default function CRM() {
 
   const eligibleQuotations = quotations.filter((q) => q.stage === "Menang" || q.stage === "Terkonversi");
 
+  const forecastRows = FLOW.map((s) => {
+    const rows = quotations.filter((q) => String(q.stage) === s);
+    const nilai = rows.reduce((sum, q) => sum + num(q.value), 0);
+    return { stage: s, prob: PROB[s] ?? 0, count: rows.length, nilai, weighted: Math.round(nilai * (PROB[s] ?? 0)) };
+  });
+  const forecastTotal = forecastRows.reduce((s, r) => s + r.weighted, 0);
+  const oldLeads = quotations.filter((q) => !isTerminal(String(q.stage)) && (umurHari(String(q.date ?? "")) ?? 0) > 30);
+
+  const penawaranList = quotations.filter((q) => {
+    if (!oldOnly) return true;
+    return (umurHari(String(q.date ?? "")) ?? 0) > 30;
+  });
+
+  const openConvert = (q: StoreItem) => {
+    setHoChecks([false, false, false, false]);
+    setHoBy("Tim Commercial");
+    setConvertTarget(q);
+  };
+
+  const exportForecast = () => {
+    const rows: unknown[][] = [
+      ["Tahap", "Probabilitas", "Jumlah", "Nilai (Rp)", "Weighted (Rp)"],
+      ...forecastRows.map((r) => [r.stage, `${Math.round(r.prob * 100)}%`, r.count, r.nilai, r.weighted]),
+      ["Total forecast weighted", "", "", "", forecastTotal],
+    ];
+    void exportExcel(rows, `forecast-weighted-${todayISO()}`, "Forecast");
+    toast(`Forecast ${fmtMiliar(forecastTotal)} diekspor ke Excel`);
+  };
+
   return (
     <div>
       <PageHeader
@@ -245,6 +293,21 @@ export default function CRM() {
         <KpiCard label="Win Rate" value={`${String(winRate)}%`} delta={`${String(wonQuotes.length)} menang dari ${String(totalQuotes)} penawaran`} deltaDirection={wonQuotes.length > 0 ? "up" : "flat"} icon={<Star className="h-5 w-5" />} chip="violet" spark={winRateTrend} />
         <KpiCard label="Nilai Kontrak Menang" value={fmtMiliar(wonValue)} delta="Menang + Terkonversi" deltaDirection="up" chip="amber" hint="Bulan berjalan" spark={wonTrend} />
       </div>
+
+      <Card className="mt-4 p-4">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div>
+            <h3 className="text-sm font-semibold text-navy-900">Forecast Weighted · {fmtMiliar(forecastTotal)}</h3>
+            <p className="text-xs text-steel-500">Lead 10% · Penawaran 30% · Negosiasi 60% · Menang 100% · {oldLeads.length} lead tua &gt;30 hari</p>
+          </div>
+          <button className="btn-secondary text-xs" onClick={exportForecast}>Export Forecast</button>
+        </div>
+        <div className="mt-2 flex flex-wrap gap-1.5">
+          {forecastRows.map((r) => (
+            <Badge key={r.stage} tone="gray">{r.stage} {Math.round(r.prob * 100)}% · {r.count} · {fmtMiliar(r.weighted)}</Badge>
+          ))}
+        </div>
+      </Card>
 
       <div className="mt-4 card">
         <Tabs tabs={["Pipeline", "Klien", "Penawaran", "Komunikasi", "Kontrak", "Kepuasan"]} active={tab} onChange={setTab} />
@@ -280,7 +343,7 @@ export default function CRM() {
                           <Card key={q.id} className="card-hover p-3">
                             <p className="truncate text-sm font-semibold text-navy-900" title={String(q.vessel)}>{String(q.vessel)}</p>
                             <p className="truncate text-xs text-steel-500" title={String(q.client)}>{String(q.client)}</p>
-                            <p className="mt-0.5 text-xs text-steel-500">{String(q.type)} · {fmtTanggal(String(q.date ?? ""))}</p>
+                            <p className="mt-0.5 text-xs text-steel-500">{String(q.type)} · {fmtTanggal(String(q.date ?? ""))} · umur {umurHari(String(q.date ?? "")) ?? "—"} hari{(umurHari(String(q.date ?? "")) ?? 0) > 30 && !isTerminal(String(q.stage)) ? " · tua" : ""}</p>
                             <div className="mt-2 flex items-center justify-between">
                               <span className="font-semibold text-navy-800">{fmtMiliar(num(q.value))}</span>
                               <Badge tone={STAGE_TONE[String(q.stage)] ?? "gray"}>{q.id}</Badge>
@@ -295,7 +358,7 @@ export default function CRM() {
                                     Maju <ArrowRight className="h-3 w-3" />
                                   </button>
                                 ) : (
-                                  <button className="btn-primary flex-1 justify-center py-1 text-xs w-full" onClick={() => setConvertTarget(q)}>
+                                  <button className="btn-primary flex-1 justify-center py-1 text-xs w-full" onClick={() => openConvert(q)}>
                                     Jadikan Proyek
                                   </button>
                                 )}
@@ -369,13 +432,18 @@ export default function CRM() {
           )}
 
           {tab === "Penawaran" && (
+            <div className="space-y-3">
+              <label className="flex items-center gap-2 text-sm text-steel-600">
+                <input type="checkbox" className="h-4 w-4" checked={oldOnly} onChange={(e) => setOldOnly(e.target.checked)} />
+                Hanya lead tua &gt;30 hari ({oldLeads.length})
+              </label>
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-              {quotations.map((q) => (
+              {penawaranList.map((q) => (
                 <Card key={q.id} className="p-4">
                   <div className="flex justify-between gap-2">
                     <div className="min-w-0">
                       <p className="truncate font-semibold text-navy-900" title={String(q.vessel)}>{String(q.vessel)}</p>
-                      <p className="text-xs text-steel-500">{String(q.client)} · {String(q.type)} · {fmtTanggal(String(q.date ?? ""))}</p>
+                      <p className="text-xs text-steel-500">{String(q.client)} · {String(q.type)} · {fmtTanggal(String(q.date ?? ""))} · umur {umurHari(String(q.date ?? "")) ?? "—"} hari</p>
                       {q.statusKirim === "Terkirim" && (
                         <p className="mt-0.5 text-xs text-teal-600">Terkirim {fmtTanggal(String(q.sentAt ?? ""))} ke {String(q.sentTo ?? "")}</p>
                       )}
@@ -388,7 +456,7 @@ export default function CRM() {
                       <Link to={`/crm/quotation/${q.id}`} className="btn-secondary text-xs">Detail</Link>
                       <button className="btn-secondary text-xs" onClick={() => openSend(q)}><Send className="h-3.5 w-3.5" /> Kirim</button>
                       {!isTerminal(String(q.stage)) && q.stage !== "Menang" && <button className="btn-secondary text-xs" onClick={() => advance(q)}>Maju</button>}
-                      {!isTerminal(String(q.stage)) && q.stage === "Menang" && <button className="btn-primary text-xs" onClick={() => setConvertTarget(q)}>Jadikan Proyek</button>}
+                      {!isTerminal(String(q.stage)) && q.stage === "Menang" && <button className="btn-primary text-xs" onClick={() => openConvert(q)}>Jadikan Proyek</button>}
                     </div>
                   </div>
                   {!isTerminal(String(q.stage)) && (
@@ -399,7 +467,8 @@ export default function CRM() {
                   )}
                 </Card>
               ))}
-              {quotations.length === 0 && <EmptyState title="Belum ada penawaran" subtitle="Buat penawaran baru untuk memulai pipeline." />}
+              {penawaranList.length === 0 && <EmptyState title="Belum ada penawaran" subtitle={oldOnly ? "Tidak ada lead tua >30 hari." : "Buat penawaran baru untuk memulai pipeline."} />}
+            </div>
             </div>
           )}
 
@@ -617,16 +686,26 @@ export default function CRM() {
         )}
       </Modal>
 
-      <ConfirmModal
+      <Modal
         open={convertTarget !== null}
+        onClose={() => setConvertTarget(null)}
         title={`Konversi ${convertTarget?.id ?? ""} jadi proyek?`}
-        desc={convertTarget && (convertTarget.stage === "Terkonversi" || data.projects.some((p) => p.vessel === convertTarget.vessel))
-          ? "Quotation ini sudah terkonversi atau proyek untuk kapal ini sudah ada. Konversi ganda akan ditolak."
-          : "Quotation akan dikunci ke tahap Terkonversi dan dibuat satu proyek baru. Konversi ganda tidak diizinkan."}
-        confirmLabel="Ya, konversi"
-        onCancel={() => setConvertTarget(null)}
-        onConfirm={confirmConvert}
-      />
+        subtitle="Serah terima ke PM — semua checklist wajib dicentang"
+        footer={<><button className="btn-secondary" onClick={() => setConvertTarget(null)}>Batal</button><button className="btn-primary" onClick={confirmConvert}>Ya, konversi + serah terima</button></>}
+      >
+        <div className="space-y-3">
+          <p className="text-sm text-steel-600">Quotation dikunci ke Terkonversi dan dibuat satu proyek baru beserta catatan handover.</p>
+          <Field label="Diserahkan oleh"><input className="input" value={hoBy} onChange={(e) => setHoBy(e.target.value)} placeholder="Nama penyerah" /></Field>
+          <div className="space-y-2">
+            {HO_ITEMS.map((item, i) => (
+              <label key={item} className="flex items-start gap-2 rounded-xl bg-surface p-3 text-sm text-steel-700">
+                <input type="checkbox" className="mt-1 h-4 w-4" checked={hoChecks[i] ?? false} onChange={(e) => setHoChecks((prev) => prev.map((c, idx) => (idx === i ? e.target.checked : c)))} />
+                {item}
+              </label>
+            ))}
+          </div>
+        </div>
+      </Modal>
     </div>
   );
 }

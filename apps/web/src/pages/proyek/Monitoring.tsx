@@ -44,6 +44,7 @@ export default function Monitoring() {
   const projects = data.projects;
   const [branchFilter, setBranchFilter] = useState("Semua");
   const [q, setQ] = useState("");
+  const [mode, setMode] = useState<"Semua" | "Perhatian">("Semua");
 
   const branchCities = data.branches.length > 0
     ? data.branches.map((b) => String(b.city))
@@ -83,6 +84,16 @@ export default function Monitoring() {
     }
   }
 
+  const attentionPids = new Set(attention.map((a) => a.pid));
+  const pipeline = mode === "Semua" ? filtered : filtered.filter((p) => attentionPids.has(p.id));
+
+  const delayDaysOf = (p: StoreItem): number | null => {
+    if (p.status !== "Terlambat") return null;
+    const d = endInDays(String(p.end ?? ""));
+    if (d === null) return null;
+    return Math.max(0, -d);
+  };
+
   const exportRekap = () => {
     const rows: unknown[][] = [
       ["Kode", "Kapal", "Tipe", "Cabang", "Tahap", "Prioritas", "Status", "Progres %", "Budget (Rp)", "Actual (Rp)", "NCR Terbuka", "CO Diajukan"],
@@ -119,7 +130,20 @@ export default function Monitoring() {
           <option value="Semua">Semua cabang</option>
           {branchCities.map((b) => <option key={b} value={b}>{b}</option>)}
         </select>
-        <p className="ml-auto text-xs text-steel-500">{filtered.length} proyek · {attention.length} perlu perhatian</p>
+        <div className="flex gap-1" role="group" aria-label="Mode tampilan pipeline">
+          {(["Semua", "Perhatian"] as const).map((m) => (
+            <button
+              key={m}
+              onClick={() => setMode(m)}
+              className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+                mode === m ? "bg-navy-700 text-white" : "bg-white border border-steel-200 text-steel-600 hover:bg-steel-100"
+              }`}
+            >
+              {m === "Semua" ? "Semua" : "Hanya Perhatian"}
+            </button>
+          ))}
+        </div>
+        <p className="ml-auto text-xs text-steel-500">{pipeline.length} proyek · {attention.length} perlu perhatian</p>
       </div>
 
       <Card className="mb-4 p-5">
@@ -146,7 +170,7 @@ export default function Monitoring() {
 
       <div className="flex gap-4 overflow-x-auto pb-2">
         {TAHAP.map((t) => {
-          const cols = filtered.filter((p) => tahapOf(p) === t);
+          const cols = pipeline.filter((p) => tahapOf(p) === t);
           return (
             <div key={t} className="w-64 shrink-0 rounded-2xl border border-steel-200 bg-surface p-3">
               <div className="mb-2 flex items-center justify-between">
@@ -156,6 +180,7 @@ export default function Monitoring() {
               <div className="space-y-2">
                 {cols.map((p) => {
                   const pct = Number(p.budget) > 0 ? (Number(p.actual) / Number(p.budget)) * 100 : 0;
+                  const delay = delayDaysOf(p);
                   return (
                     <Link
                       key={p.id}
@@ -168,6 +193,11 @@ export default function Monitoring() {
                         <Badge tone={prioritasTone[p.prioritas ?? "Sedang"] ?? "blue"}>{p.prioritas ?? "Sedang"}</Badge>
                         <StatusBadge status={p.status} />
                       </div>
+                      {delay !== null && (
+                        <p className={`mt-1.5 text-[11px] font-semibold ${delay > 0 ? "text-rose-600" : "text-amber-600"}`}>
+                          {delay > 0 ? `Terlambat ${delay} hari dari rencana selesai` : "Status Terlambat — cek jadwal"}
+                        </p>
+                      )}
                       <div className="mt-2 flex items-center gap-2">
                         <ProgressBar value={Number(p.progress || 0)} className="flex-1" tone={p.status === "Terlambat" ? "red" : "navy"} />
                         <span className="text-xs font-medium text-steel-600">{p.progress}%</span>

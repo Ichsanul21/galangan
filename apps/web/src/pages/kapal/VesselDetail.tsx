@@ -14,7 +14,7 @@ import {
 } from "../../components/ui";
 import SparepartServiceSection from "../proyek/SparepartServiceSection";
 import { useStore } from "../../data/store";
-import { fmtBulan, fmtTanggal, monthISO, todayISO } from "../../utils/format";
+import { fmtBulan, fmtJumlah, fmtRupiah, fmtTanggal, monthISO, todayISO } from "../../utils/format";
 import { COMPLIANCE_ITEMS, complianceSummary } from "./Vessels";
 
 function monthDiff(expires: string, base: string): number | null {
@@ -47,7 +47,27 @@ interface DockHistoryRow {
   nextDue: string;
 }
 
+interface PlanRow {
+  year: number;
+  type: string;
+  note: string;
+}
+
+interface BunkerRow {
+  date: string;
+  jenis: string;
+  qty: number;
+  satuan: string;
+}
+
+interface CrewRow {
+  name: string;
+  role: string;
+}
+
 const PSC_STATUS = ["Bersih", "Defisiensi Minor", "Defisiensi Major", "Ditahan"];
+const BUNKER_JENIS = ["Solar", "Minyak", "Lumas", "Air"];
+const PLAN_TYPES = ["Annual Survey", "Intermediate Survey", "Special Survey", "Docking", "Rencana Galangan"];
 
 export default function VesselDetail() {
   const { id } = useParams();
@@ -66,6 +86,11 @@ export default function VesselDetail() {
   const [showDock, setShowDock] = useState(false);
   const [dockForm, setDockForm] = useState({ date: todayISO(), dock: "", scope: "", result: "", nextDue: "" });
   const [editingDock, setEditingDock] = useState<number | null>(null);
+  const [planForm, setPlanForm] = useState({ year: String(new Date().getFullYear() + 1), type: "Docking", note: "" });
+  const [bunkerForm, setBunkerForm] = useState({ date: todayISO(), jenis: "Solar", qty: "", satuan: "liter" });
+  const [crewForm, setCrewForm] = useState({ name: "", role: "" });
+  const [insForm, setInsForm] = useState({ polis: "", premi: "", expiry: "" });
+  const [showIns, setShowIns] = useState(false);
 
   if (!v) return <p className="text-sm text-steel-500">Kapal tidak ditemukan.</p>;
 
@@ -76,6 +101,17 @@ export default function VesselDetail() {
   const slots = data.dockSlots.filter((s) => s.vessel === v.name);
   const pscRows = (v.psc ?? []) as PscRow[];
   const dockHistory = (v.dockHistory ?? []) as DockHistoryRow[];
+  const plan5 = (v.plan5 ?? []) as PlanRow[];
+  const bunkerRows = (v.bunker ?? []) as BunkerRow[];
+  const crewRows = (v.crew ?? []) as CrewRow[];
+  const insurance = (v.insurance ?? null) as { polis?: string; premi?: number; expiry?: string } | null;
+  const baseYear = new Date().getFullYear();
+  const planYears = [1, 2, 3, 4, 5].map((i) => baseYear + i);
+  const bunkerTotals = BUNKER_JENIS.map((j) => ({
+    jenis: j,
+    qty: bunkerRows.filter((b) => b.jenis === j).reduce((s, b) => s + Number(b.qty || 0), 0),
+    satuan: bunkerRows.find((b) => b.jenis === j)?.satuan ?? (j === "Air" ? "m³" : "liter"),
+  }));
   const comp = complianceSummary(v);
   const complianceRows = COMPLIANCE_ITEMS.map((name) => {
     const found = ((v.compliance ?? []) as { name: string; status: string; date: string }[]).find((r) => r.name === name);
@@ -183,6 +219,56 @@ export default function VesselDetail() {
     setEditingDock(null);
   };
 
+  const savePlan = () => {
+    const year = Number(planForm.year);
+    if (!Number.isFinite(year) || year <= baseYear || year > baseYear + 5) { toast(`Tahun rencana harus ${baseYear + 1}–${baseYear + 5}`, "info"); return; }
+    update("vessels", v.id, { plan5: [...plan5, { year, type: planForm.type, note: planForm.note.trim() }] });
+    toast(`Rencana ${year} ditambahkan`);
+    setPlanForm({ year: String(baseYear + 1), type: "Docking", note: "" });
+  };
+
+  const removePlan = (idx: number) => {
+    update("vessels", v.id, { plan5: plan5.filter((_, i) => i !== idx) });
+    toast("Rencana manual dihapus", "info");
+  };
+
+  const saveBunker = () => {
+    if (!bunkerForm.date) { toast("Tanggal wajib diisi", "info"); return; }
+    const qty = Number(bunkerForm.qty);
+    if (!Number.isFinite(qty) || qty <= 0) { toast("Qty harus lebih dari 0", "info"); return; }
+    if (!bunkerForm.satuan.trim()) { toast("Satuan wajib diisi", "info"); return; }
+    update("vessels", v.id, { bunker: [...bunkerRows, { date: bunkerForm.date, jenis: bunkerForm.jenis, qty, satuan: bunkerForm.satuan.trim() }] });
+    toast("Catatan bunker ditambahkan");
+    setBunkerForm({ date: todayISO(), jenis: "Solar", qty: "", satuan: "liter" });
+  };
+
+  const saveCrew = () => {
+    if (!crewForm.name.trim() || !crewForm.role.trim()) { toast("Nama & jabatan wajib diisi", "info"); return; }
+    update("vessels", v.id, { crew: [...crewRows, { name: crewForm.name.trim(), role: crewForm.role.trim() }] });
+    toast("Kru ditambahkan");
+    setCrewForm({ name: "", role: "" });
+  };
+
+  const removeCrew = (idx: number) => {
+    update("vessels", v.id, { crew: crewRows.filter((_, i) => i !== idx) });
+    toast("Kru dihapus", "info");
+  };
+
+  const openIns = () => {
+    setInsForm({ polis: String(insurance?.polis ?? ""), premi: insurance?.premi ? String(insurance.premi) : "", expiry: String(insurance?.expiry ?? "") });
+    setShowIns(true);
+  };
+
+  const saveIns = () => {
+    if (!insForm.polis.trim()) { toast("No. polis wajib diisi", "info"); return; }
+    const premi = Number(insForm.premi || 0);
+    if (!Number.isFinite(premi) || premi < 0) { toast("Premi harus 0 atau lebih", "info"); return; }
+    if (!insForm.expiry) { toast("Expiry polis wajib diisi", "info"); return; }
+    update("vessels", v.id, { insurance: { polis: insForm.polis.trim(), premi, expiry: insForm.expiry } });
+    toast("Asuransi kapal disimpan");
+    setShowIns(false);
+  };
+
   return (
     <div>
       <Link to="/kapal" className="mb-3 inline-flex items-center gap-1.5 text-sm font-medium text-ocean-600 hover:underline">
@@ -233,7 +319,7 @@ export default function VesselDetail() {
       )}
 
       <div className="mt-5 card">
-        <Tabs tabs={["Sertifikat & Timeline", "Spesifikasi", "Kepatuhan & PSC", "3D Viewer", "Service", "Sparepart"]} active={tab} onChange={setTab} />
+        <Tabs tabs={["Sertifikat & Timeline", "Spesifikasi", "Kepatuhan & PSC", "Rencana & Operasional", "3D Viewer", "Service", "Sparepart"]} active={tab} onChange={setTab} />
         <div className="p-5">
           {tab === "Sertifikat & Timeline" && (
             <div className="grid grid-cols-1 gap-5 lg:grid-cols-3">
@@ -411,6 +497,133 @@ export default function VesselDetail() {
             </div>
           )}
 
+          {tab === "Rencana & Operasional" && (
+            <div className="space-y-5">
+              <Card className="p-5">
+                <h3 className="text-sm font-semibold text-navy-900">Docking Plan 5 Tahun ({baseYear + 1}–{baseYear + 5})</h3>
+                <p className="mt-0.5 text-xs text-steel-500">Survey/docking terjadwal otomatis dari daftar survey & next due riwayat docking · tambah rencana manual di bawah</p>
+                <div className="mt-3 overflow-x-auto">
+                  <table className="w-full">
+                    <thead className="sticky top-0 z-10 bg-surface">
+                      <tr><th className="th">Tahun</th><th className="th">Terjadwal (survey / next due)</th><th className="th">Rencana Manual</th></tr>
+                    </thead>
+                    <tbody className="divide-y divide-steel-100">
+                      {planYears.map((y) => {
+                        const auto: string[] = [
+                          ...surveys.filter((s) => String(s.date ?? "").slice(0, 4) === String(y)).map((s) => `${s.type} · ${fmtTanggal(String(s.date))}`),
+                          ...dockHistory.filter((d) => String(d.nextDue ?? "").slice(0, 4) === String(y)).map((d) => `Next due docking · ${fmtTanggal(d.nextDue)} (${d.dock})`),
+                        ];
+                        const manual = plan5.map((p, i) => ({ ...p, idx: i })).filter((p) => Number(p.year) === y);
+                        return (
+                          <tr key={y} className="hover:bg-surface">
+                            <td className="td font-semibold text-navy-900">{y}</td>
+                            <td className="td text-xs text-steel-600">
+                              {auto.length === 0 && <span className="text-steel-400">—</span>}
+                              {auto.map((a, i) => <p key={i}>{a}</p>)}
+                            </td>
+                            <td className="td text-xs text-steel-600">
+                              {manual.length === 0 && <span className="text-steel-400">—</span>}
+                              {manual.map((m) => (
+                                <p key={m.idx} className="flex flex-wrap items-center justify-between gap-2">
+                                  <span>{m.type}{m.note ? ` — ${m.note}` : ""}</span>
+                                  <button className="btn-secondary text-xs" onClick={() => removePlan(m.idx)}>Hapus</button>
+                                </p>
+                              ))}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+                <div className="mt-3 grid grid-cols-1 gap-2 border-t border-steel-100 pt-3 sm:grid-cols-4">
+                  <Field label="Tahun">
+                    <select className="input" value={planForm.year} onChange={(e) => setPlanForm({ ...planForm, year: e.target.value })}>
+                      {planYears.map((y) => <option key={y} value={y}>{y}</option>)}
+                    </select>
+                  </Field>
+                  <Field label="Tipe">
+                    <select className="input" value={planForm.type} onChange={(e) => setPlanForm({ ...planForm, type: e.target.value })}>
+                      {PLAN_TYPES.map((t) => <option key={t}>{t}</option>)}
+                    </select>
+                  </Field>
+                  <Field label="Catatan"><input className="input" value={planForm.note} onChange={(e) => setPlanForm({ ...planForm, note: e.target.value })} placeholder="cth: Docking besar + coating" /></Field>
+                  <div className="flex items-end"><button className="btn-secondary text-xs" onClick={savePlan}><Plus className="h-3.5 w-3.5" /> Tambah Rencana</button></div>
+                </div>
+              </Card>
+
+              <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
+                <Card className="p-5">
+                  <h3 className="text-sm font-semibold text-navy-900">Bunker / Consumption Log</h3>
+                  <div className="mt-2 flex flex-wrap gap-1.5">
+                    {bunkerTotals.map((t) => (
+                      <Badge key={t.jenis} tone="navy">{t.jenis}: {fmtJumlah(t.qty)} {t.satuan}</Badge>
+                    ))}
+                  </div>
+                  <div className="mt-3 space-y-1.5">
+                    {bunkerRows.map((b, i) => (
+                      <div key={i} className="flex items-center justify-between gap-2 border-b border-steel-100 py-1.5 text-sm">
+                        <span className="text-steel-600">{fmtTanggal(b.date)} · {b.jenis}</span>
+                        <span className="font-medium text-navy-900">{fmtJumlah(Number(b.qty))} {b.satuan}</span>
+                      </div>
+                    ))}
+                    {bunkerRows.length === 0 && <p className="text-xs text-steel-400">Belum ada catatan bunker.</p>}
+                  </div>
+                  <div className="mt-3 grid grid-cols-2 gap-2 border-t border-steel-100 pt-3">
+                    <Field label="Tanggal"><input type="date" className="input" value={bunkerForm.date} onChange={(e) => setBunkerForm({ ...bunkerForm, date: e.target.value })} /></Field>
+                    <Field label="Jenis">
+                      <select className="input" value={bunkerForm.jenis} onChange={(e) => setBunkerForm({ ...bunkerForm, jenis: e.target.value })}>
+                        {BUNKER_JENIS.map((j) => <option key={j}>{j}</option>)}
+                      </select>
+                    </Field>
+                    <Field label="Qty"><input type="number" min={0} className="input" value={bunkerForm.qty} onChange={(e) => setBunkerForm({ ...bunkerForm, qty: e.target.value })} placeholder="cth: 5000" /></Field>
+                    <Field label="Satuan"><input className="input" value={bunkerForm.satuan} onChange={(e) => setBunkerForm({ ...bunkerForm, satuan: e.target.value })} placeholder="liter / m³" /></Field>
+                  </div>
+                  <button className="btn-secondary mt-2 text-xs" onClick={saveBunker}><Plus className="h-3.5 w-3.5" /> Tambah Bunker</button>
+                </Card>
+
+                <div className="space-y-5">
+                  <Card className="p-5">
+                    <h3 className="text-sm font-semibold text-navy-900">Crew List ({crewRows.length})</h3>
+                    <div className="mt-2 space-y-1.5">
+                      {crewRows.map((c, i) => (
+                        <div key={i} className="flex items-center justify-between gap-2 border-b border-steel-100 py-1.5 text-sm">
+                          <div>
+                            <p className="font-medium text-navy-900">{c.name}</p>
+                            <p className="text-xs text-steel-500">{c.role}</p>
+                          </div>
+                          <button className="btn-secondary text-xs" onClick={() => removeCrew(i)}>Hapus</button>
+                        </div>
+                      ))}
+                      {crewRows.length === 0 && <p className="text-xs text-steel-400">Belum ada kru tercatat.</p>}
+                    </div>
+                    <div className="mt-3 grid grid-cols-2 gap-2 border-t border-steel-100 pt-3">
+                      <Field label="Nama"><input className="input" value={crewForm.name} onChange={(e) => setCrewForm({ ...crewForm, name: e.target.value })} placeholder="cth: Capt. Bambang" /></Field>
+                      <Field label="Jabatan"><input className="input" value={crewForm.role} onChange={(e) => setCrewForm({ ...crewForm, role: e.target.value })} placeholder="cth: Nakhoda" /></Field>
+                    </div>
+                    <button className="btn-secondary mt-2 text-xs" onClick={saveCrew}><Plus className="h-3.5 w-3.5" /> Tambah Kru</button>
+                  </Card>
+
+                  <Card className="p-5">
+                    <div className="mb-2 flex items-center justify-between">
+                      <h3 className="text-sm font-semibold text-navy-900">Asuransi</h3>
+                      <button className="btn-secondary text-xs" onClick={openIns}><Pencil className="h-3 w-3" /> {insurance ? "Edit" : "Isi"}</button>
+                    </div>
+                    {insurance ? (
+                      <dl className="space-y-1.5 text-sm">
+                        <div className="flex justify-between"><dt className="text-steel-500">Polis</dt><dd className="font-medium font-mono">{insurance.polis}</dd></div>
+                        <div className="flex justify-between"><dt className="text-steel-500">Premi</dt><dd className="font-medium">{fmtRupiah(Number(insurance.premi || 0))}</dd></div>
+                        <div className="flex justify-between"><dt className="text-steel-500">Expiry</dt><dd className="font-medium">{fmtTanggal(insurance.expiry)}</dd></div>
+                      </dl>
+                    ) : (
+                      <p className="text-xs text-steel-400">Belum ada data asuransi.</p>
+                    )}
+                  </Card>
+                </div>
+              </div>
+            </div>
+          )}
+
           {tab === "3D Viewer" && <SparepartServiceSection vesselId={v.id} view="3d" />}
           {tab === "Service" && <SparepartServiceSection vesselId={v.id} view="service" />}
           {tab === "Sparepart" && <SparepartServiceSection vesselId={v.id} view="sparepart" />}
@@ -484,6 +697,17 @@ export default function VesselDetail() {
           <Field label="Dok / galangan"><input className="input" value={dockForm.dock} onChange={(e) => setDockForm({ ...dockForm, dock: e.target.value })} placeholder="cth: DD-1 Drydock Samarinda" /></Field>
           <Field label="Scope"><input className="input" value={dockForm.scope} onChange={(e) => setDockForm({ ...dockForm, scope: e.target.value })} placeholder="cth: Blasting + coating lambung" /></Field>
           <Field label="Hasil"><input className="input" value={dockForm.result} onChange={(e) => setDockForm({ ...dockForm, result: e.target.value })} placeholder="cth: Selesai, lulus inspeksi BKI" /></Field>
+        </div>
+      </Modal>
+
+      <Modal open={showIns} onClose={() => setShowIns(false)} title={`Asuransi — ${v.name}`} subtitle="Polis, premi & expiry · alert H-30 tampil di kartu kapal"
+        footer={<><button className="btn-secondary" onClick={() => setShowIns(false)}>Batal</button><button className="btn-primary" onClick={saveIns}>Simpan</button></>}>
+        <div className="space-y-3">
+          <Field label="No. polis"><input className="input font-mono" value={insForm.polis} onChange={(e) => setInsForm({ ...insForm, polis: e.target.value })} placeholder="cth: HULL-2026-014" /></Field>
+          <FormGrid>
+            <Field label="Premi (Rp)"><input type="number" min={0} className="input" value={insForm.premi} onChange={(e) => setInsForm({ ...insForm, premi: e.target.value })} placeholder="cth: 850000000" /></Field>
+            <Field label="Expiry"><input type="date" className="input" value={insForm.expiry} onChange={(e) => setInsForm({ ...insForm, expiry: e.target.value })} /></Field>
+          </FormGrid>
         </div>
       </Modal>
     </div>

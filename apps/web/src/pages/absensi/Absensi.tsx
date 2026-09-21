@@ -36,6 +36,13 @@ function isLate(checkIn: string): boolean {
   return !!checkIn && checkIn > "08:00";
 }
 
+/* Persetujuan lembur: baris lembur>0 default "Diajukan"; Payroll hanya menghitung yang "Disetujui". */
+function otStatusOf(a: StoreItem): string {
+  const raw = String(a.otStatus ?? "").trim();
+  if (raw) return raw;
+  return Number(a.overtime || 0) > 0 ? "Diajukan" : "—";
+}
+
 export default function Absensi() {
   const { data, add, update, log, branch, setBranch, inBranch } = useStore();
   const [tab, setTab] = useState("Catat");
@@ -103,11 +110,14 @@ export default function Absensi() {
       const existing = data.attendance.find((a) => a.employeeId === e.id && a.date === date && a.shift === shift);
       if (existing) {
         if (overwrite) {
-          update("attendance", existing.id, payload);
+          update("attendance", existing.id, {
+            ...payload,
+            otStatus: ot > 0 ? String(existing.otStatus ?? "") || "Diajukan" : "",
+          });
           updated += 1;
         }
       } else {
-        add("attendance", payload, undefined);
+        add("attendance", { ...payload, otStatus: ot > 0 ? "Diajukan" : "" }, undefined);
         created += 1;
       }
     });
@@ -181,6 +191,30 @@ export default function Absensi() {
 
   const empNameOf = (id: string): string => data.employees.find((e) => e.id === id)?.name ?? id;
 
+  /* ---------- persetujuan lembur ---------- */
+  const approveOT = (a: StoreItem) => {
+    update("attendance", a.id, { otStatus: "Disetujui" });
+    log("menyetujui lembur", `${a.id} · ${empNameOf(String(a.employeeId))} · ${Number(a.overtime || 0)} jam`, "Absensi");
+    toast(`${a.id} disetujui — masuk hitungan payroll`);
+  };
+
+  const rejectOT = (a: StoreItem) => {
+    update("attendance", a.id, { otStatus: "Ditolak" });
+    log("menolak lembur", `${a.id} · ${empNameOf(String(a.employeeId))}`, "Absensi");
+    toast(`${a.id} ditolak`);
+  };
+
+  const approveAllOT = () => {
+    const pending = detailRecords.filter((a) => otStatusOf(a) === "Diajukan");
+    if (pending.length === 0) {
+      toast("Tidak ada lembur yang menunggu persetujuan", "info");
+      return;
+    }
+    pending.forEach((a) => update("attendance", a.id, { otStatus: "Disetujui" }));
+    log("menyetujui lembur massal", `${month} · ${pending.length} baris`, "Absensi");
+    toast(`${pending.length} lembur disetujui`);
+  };
+
   const detailRecords = useMemo(
     () => [...monthRecords].sort((a, b) => String(b.date).localeCompare(String(a.date))),
     [monthRecords],
@@ -199,9 +233,12 @@ export default function Absensi() {
               <button className="btn-primary-gradient" onClick={saveAll}>Simpan Absensi</button>
             </>
           ) : (
-            <button className="btn-secondary" onClick={exportRekap}>
-              <Download className="h-4 w-4" /> Export Excel
-            </button>
+            <div className="flex items-center gap-2">
+              <button className="btn-secondary" onClick={approveAllOT}>Setujui Semua Lembur</button>
+              <button className="btn-secondary" onClick={exportRekap}>
+                <Download className="h-4 w-4" /> Export Excel
+              </button>
+            </div>
           )
         }
       />
@@ -288,7 +325,7 @@ export default function Absensi() {
                 <KpiCard label="Tingkat Kehadiran" value={`${kpiPct.toLocaleString("id-ID", { maximumFractionDigits: 1 })}%`} hint={`Bulan ${month}`} chip="teal" />
                 <KpiCard label="Total Hadir" value={fmtJumlah(kpiHadir)} hint={`${fmtJumlah(monthRecords.length)} catatan`} chip="navy" />
                 <KpiCard label="Keterlambatan" value={fmtJumlah(kpiTelat)} hint="Masuk setelah 08:00" chip="rose" />
-                <KpiCard label="Total Lembur" value={`${fmtJumlah(Math.round(kpiLembur * 10) / 10)} jam`} hint="Akumulasi bulan berjalan" chip="amber" />
+                <KpiCard label="Total Lembur" value={`${fmtJumlah(Math.round(kpiLembur * 10) / 10)} jam`} hint="Hanya yang Disetujui masuk payroll" chip="amber" />
               </div>
 
               <div className="mb-3 flex flex-wrap items-center gap-2">
@@ -349,6 +386,8 @@ export default function Absensi() {
                         <th className="th">Shift</th>
                         <th className="th">Status</th>
                         <th className="th">Jam</th>
+                        <th className="th">Lembur</th>
+                        <th className="th">Persetujuan</th>
                         <th className="th">Ket.</th>
                       </tr>
                     </thead>
@@ -360,6 +399,22 @@ export default function Absensi() {
                           <td className="td"><Badge tone="gray">{a.shift}</Badge></td>
                           <td className="td"><StatusBadge status={String(a.status)} /></td>
                           <td className="td text-steel-600">{a.checkIn && a.checkOut ? `${a.checkIn}–${a.checkOut}` : "—"}</td>
+                          <td className="td text-steel-600">{Number(a.overtime || 0) > 0 ? `${fmtJumlah(Number(a.overtime))} jam` : "—"}</td>
+                          <td className="td">
+                            {Number(a.overtime || 0) > 0 ? (
+                              <div className="flex items-center gap-2 whitespace-nowrap">
+                                <StatusBadge status={otStatusOf(a)} />
+                                {otStatusOf(a) === "Diajukan" && (
+                                  <>
+                                    <button className="text-sm font-semibold text-emerald-600 hover:underline" onClick={() => approveOT(a)}>Setujui</button>
+                                    <button className="text-sm font-semibold text-rose-600 hover:underline" onClick={() => rejectOT(a)}>Tolak</button>
+                                  </>
+                                )}
+                              </div>
+                            ) : (
+                              <span className="text-xs text-steel-400">—</span>
+                            )}
+                          </td>
                           <td className="td">
                             {a.status === "Hadir" && isLate(String(a.checkIn)) ? <Badge tone="red">Telat</Badge> : <span className="text-xs text-steel-400">—</span>}
                           </td>

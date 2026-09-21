@@ -16,6 +16,10 @@ import {
   BookmarkPlus,
   ListChecks,
   Printer,
+  Upload,
+  Download,
+  Camera,
+  History,
 } from "lucide-react";
 import {
   AreaChart,
@@ -29,9 +33,10 @@ import {
 import { Card, CardHeader, PageHeader, Badge, KpiCard, Tabs, ChartTooltip, Modal, Field, FormGrid, toast, EmptyState, ProgressBar } from "../../components/ui";
 import { useStore, type StoreItem } from "../../data/store";
 import { fmtJumlah, fmtRupiah, fmtMiliar, fmtTanggal, todayISO } from "../../utils/format";
+import { exportExcel } from "../../utils/export";
 import { stockTrend, itemTrend, lowStockTrend, stockValueTrend, warehouseTrend } from "../../data";
 
-const emptyForm = { name: "", category: "Baja", sku: "", warehouse: "Gudang Baja A", rack: "", stock: "0", minStock: "0", unit: "pcs", cost: "0", volume: "0", batch: "" };
+const emptyForm = { name: "", category: "Baja", sku: "", warehouse: "Gudang Baja A", rack: "", stock: "0", minStock: "0", unit: "pcs", cost: "0", volume: "0", batch: "", uom2: "", konversi: "", minWh: "", photoUrl: "" };
 
 /* Kebutuhan BOM TB Samudra Jaya 07 — dicocokkan ke data inventori aktual. */
 const BOM_NEEDS = [
@@ -93,6 +98,38 @@ function batchesOf(it: StoreItem): BatchRow[] {
   return Array.isArray(it.batches) ? (it.batches as BatchRow[]) : [];
 }
 
+/* Konversi multi-UOM: konversi = isi UOM2 per 1 satuan utama (cth: 1 batang = 6 meter → konversi 6). */
+function convOf(it: StoreItem): number {
+  const c = Number(it.konversi);
+  return c > 0 ? c : 0;
+}
+
+function uom2Of(it: StoreItem): string {
+  return String(it.uom2 ?? "").trim();
+}
+
+function hasUom2(it: StoreItem): boolean {
+  return uom2Of(it) !== "" && convOf(it) > 0;
+}
+
+function qtyInUom2(it: StoreItem): number {
+  return Number(it.stock || 0) * convOf(it);
+}
+
+/* Biaya rata-rata: avgCost bila ada, fallback ke cost master. */
+function effCost(it: StoreItem): number {
+  const a = Number(it.avgCost);
+  return a > 0 ? a : Number(it.cost || 0);
+}
+
+/* Minimum per gudang: minStockByWarehouse[gudang], fallback ke minStock global. */
+function minWhOf(it: StoreItem, wh?: string): number {
+  const w = wh ?? String(it.warehouse);
+  const m = it.minStockByWarehouse as Record<string, number> | undefined;
+  const v = m && typeof m === "object" ? Number(m[w]) : NaN;
+  return Number.isFinite(v) ? v : Number(it.minStock || 0);
+}
+
 function rackText(it: StoreItem): string {
   const rack = it.rack ?? it.location ?? "";
   if (!rack) return it.warehouse;
@@ -102,7 +139,7 @@ function rackText(it: StoreItem): string {
 
 function abcMap(items: StoreItem[]): Record<string, "A" | "B" | "C"> {
   const rows = items
-    .map((i) => ({ id: i.id, v: Number(i.stock || 0) * Number(i.cost || 0) }))
+    .map((i) => ({ id: i.id, v: Number(i.stock || 0) * effCost(i) }))
     .sort((a, b) => b.v - a.v);
   const total = rows.reduce((s, r) => s + r.v, 0);
   const map: Record<string, "A" | "B" | "C"> = {};
@@ -126,11 +163,21 @@ function daysSince(dateISO: string): number {
   return Math.floor((now - t) / 86400000);
 }
 
+function agingBucket(days: number): string {
+  if (days <= 30) return "0–30 hari";
+  if (days <= 90) return "31–90 hari";
+  if (days <= 180) return "91–180 hari";
+  return ">180 hari";
+}
+
+const AGING_BUCKETS = ["0–30 hari", "31–90 hari", "91–180 hari", ">180 hari", "Belum ada GR"];
+
 export default function Inventory() {
   const { data, add, update, log } = useStore();
   const inventory = data.inventory;
   const movements = data.movements;
   const projects = data.projects;
+  const requisitions = data.requisitions;
   const [tab, setTab] = useState("Katalog");
   const [q, setQ] = useState("");
   const [cat, setCat] = useState("Semua");
@@ -147,6 +194,9 @@ export default function Inventory() {
   const [moveQty, setMoveQty] = useState("");
   const [moveRef, setMoveRef] = useState("");
   const [moveBatch, setMoveBatch] = useState("");
+  const [moveUom, setMoveUom] = useState("base");
+  const [movePrice, setMovePrice] = useState("");
+  const [importReport, setImportReport] = useState<string[]>([]);
 
   const [showOpname, setShowOpname] = useState(false);
   const [opItem, setOpItem] = useState("");
@@ -175,7 +225,7 @@ export default function Inventory() {
 
   const lowStock = inventory.filter((i) => i.stock <= i.minStock);
   const categories = ["Semua", ...Array.from(new Set(inventory.map((i) => i.category)))];
-  const totalValue = inventory.reduce((s, i) => s + Number(i.stock || 0) * Number(i.cost || 0), 0);
+  const totalValue = inventory.reduce((s, i) => s + Number(i.stock || 0) * effCost(i), 0);
   const warehouses = Array.from(new Set(inventory.map((i) => i.warehouse)));
 
   const bomRows = BOM_NEEDS.map((b) => {
@@ -191,6 +241,19 @@ export default function Inventory() {
     return outs.length > 0 ? String(outs[0].date) : null;
   };
 
+  const lastInOf = (it: StoreItem): string | null => {
+    const ins = movements
+      .filter((m) => (m.itemId === it.id || m.item === it.name) && (m.type === "Penerimaan" || m.tone === "in"))
+      .sort((a, b) => String(b.date).localeCompare(String(a.date)));
+    return ins.length > 0 ? String(ins[0].date) : null;
+  };
+
+  const auditOf = (it: StoreItem) =>
+    movements
+      .filter((m) => m.itemId === it.id || m.item === it.name)
+      .sort((a, b) => String(b.date).localeCompare(String(a.date)))
+      .slice(0, 5);
+
   const slowItems = inventory.filter((i) => {
     const d = lastOutOf(i);
     if (!d) return false;
@@ -203,10 +266,31 @@ export default function Inventory() {
     return daysSince(d) > 180;
   });
 
+  const agingRows = inventory.map((i) => {
+    const lastIn = lastInOf(i);
+    const age = lastIn ? daysSince(lastIn) : 9999;
+    return { item: i, lastIn, age, bucket: lastIn ? agingBucket(age) : "Belum ada GR" };
+  });
+
+  const activeProjects = projects.filter((p) => String(p.status) !== "Selesai");
+  const forecastRows = activeProjects.flatMap((p) =>
+    BOM_NEEDS.map((b) => {
+      const item = inventory.find((i) => i.name.toLowerCase().includes(b.key.toLowerCase()));
+      const stock = item ? Number(item.stock) : 0;
+      const net = Math.max(0, b.need - stock);
+      return { project: p.id, vessel: String(p.vessel ?? ""), ...b, item, stock, net };
+    })
+  );
+
   const opTarget = inventory.find((i) => i.id === opItem) ?? null;
   const opSelisih = opTarget && opCount !== "" ? Number(opCount) - Number(opTarget.stock) : null;
   const trTarget = inventory.find((i) => i.id === trItem) ?? null;
   const moveBatches = moveTarget ? [...batchesOf(moveTarget)].sort((a, b) => String(a.date).localeCompare(String(b.date))) : [];
+  const moveFresh = moveTarget ? (inventory.find((i) => i.id === moveTarget.id) ?? moveTarget) : null;
+  const moveUseUom2 = moveFresh !== null && hasUom2(moveFresh) && moveUom === "uom2";
+  const moveRawQty = Number(moveQty) || 0;
+  const moveEffQty = moveUseUom2 && moveFresh ? moveRawQty / convOf(moveFresh) : moveRawQty;
+  const freshDetail = detail ? (inventory.find((i) => i.id === detail.id) ?? detail) : null;
 
   const pickItems = pickProject
     ? inventory.filter((i) => reservedOf(i).some((r) => r.project === pickProject))
@@ -214,12 +298,33 @@ export default function Inventory() {
 
   const setF = (k: string, v: string) => setForm((f) => ({ ...f, [k]: v }));
 
+  const openMove = (it: StoreItem, kind: "in" | "out") => {
+    setMoveTarget(it);
+    setMoveKind(kind);
+    setMoveQty("");
+    setMoveRef("");
+    setMoveBatch("");
+    setMoveUom("base");
+    setMovePrice("");
+  };
+
+  const closeMove = () => {
+    setMoveTarget(null);
+    setMoveQty("");
+    setMoveRef("");
+    setMoveBatch("");
+    setMoveUom("base");
+    setMovePrice("");
+  };
+
   const openEdit = (i: StoreItem) => {
     setEditing(i);
     setForm({
       name: i.name, category: i.category, sku: i.sku, warehouse: i.warehouse,
       rack: String(i.rack ?? i.location ?? ""), stock: String(i.stock), minStock: String(i.minStock),
       unit: i.unit, cost: String(i.cost), volume: String(i.volume ?? 0), batch: String(i.batch ?? ""),
+      uom2: uom2Of(i), konversi: convOf(i) > 0 ? String(i.konversi) : "",
+      minWh: String(minWhOf(i)), photoUrl: String(i.photoUrl ?? ""),
     });
   };
 
@@ -230,13 +335,22 @@ export default function Inventory() {
     if (!editing && form.category === "Mesin" && !form.batch.trim()) { toast("Kategori Mesin wajib isi serial/batch", "info"); return; }
     const volume = Number(form.volume);
     if (form.volume.trim() !== "" && (Number.isNaN(volume) || volume < 0)) { toast("Volume harus angka 0 atau lebih", "info"); return; }
+    const uom2 = form.uom2.trim();
+    const konv = form.konversi.trim() === "" ? 0 : Number(form.konversi);
+    if (Number.isNaN(konv) || konv < 0) { toast("Konversi harus angka 0 atau lebih", "info"); return; }
+    if (uom2 && konv <= 0) { toast("Satuan kedua butuh konversi lebih dari 0", "info"); return; }
+    if (!uom2 && konv > 0) { toast("Konversi butuh nama satuan kedua", "info"); return; }
     const rack = form.rack.trim();
+    const prevMap = (editing?.minStockByWarehouse as Record<string, number> | undefined) ?? {};
+    const minWhMap = { ...prevMap };
+    if (form.minWh.trim() !== "") minWhMap[form.warehouse] = Number(form.minWh) || 0;
     if (editing) {
       /* Stok read-only di form edit — hanya field non-stok yang disimpan. */
       update("inventory", editing.id, {
         name: form.name.trim(), category: form.category, sku: form.sku.trim(), warehouse: form.warehouse,
         rack, location: rack, minStock: Number(form.minStock) || 0, unit: form.unit,
         cost: Number(form.cost) || 0, volume: volume || 0, batch: form.batch.trim(),
+        uom2, konversi: konv, minStockByWarehouse: minWhMap, photoUrl: form.photoUrl.trim(),
       });
       toast(`${editing.id} diperbarui`);
       setEditing(null);
@@ -247,6 +361,7 @@ export default function Inventory() {
         name: form.name.trim(), category: form.category, sku: form.sku.trim(), warehouse: form.warehouse,
         rack, stock, minStock: Number(form.minStock) || 0, unit: form.unit,
         cost: Number(form.cost) || 0, location: rack, volume: volume || 0, batch,
+        uom2, konversi: konv, minStockByWarehouse: minWhMap, photoUrl: form.photoUrl.trim(), avgCost: 0,
         batches: batch ? [{ batch, qty: stock, date: todayISO() }] : [],
         reserved: [],
       }, { action: "mendaftarkan material", module: "Inventori" });
@@ -272,8 +387,11 @@ export default function Inventory() {
   const saveMove = () => {
     if (!moveTarget) return;
     const fresh = inventory.find((i) => i.id === moveTarget.id) ?? moveTarget;
-    const qty = Number(moveQty);
-    if (!qty || qty <= 0) { toast("Jumlah harus lebih dari 0", "info"); return; }
+    const raw = Number(moveQty);
+    if (!raw || raw <= 0) { toast("Jumlah harus lebih dari 0", "info"); return; }
+    const useUom2 = hasUom2(fresh) && moveUom === "uom2";
+    const qty = useUom2 ? raw / convOf(fresh) : raw;
+    if (!Number.isFinite(qty) || qty <= 0) { toast("Konversi menghasilkan qty tidak valid", "info"); return; }
     if (moveKind === "out" && qty > Number(fresh.stock)) { toast(`Stok tidak cukup (tersedia ${fmtJumlah(Number(fresh.stock))})`, "info"); return; }
     const next = moveKind === "in" ? Number(fresh.stock) + qty : Number(fresh.stock) - qty;
     const patch: Record<string, unknown> = { stock: next };
@@ -286,22 +404,87 @@ export default function Inventory() {
         ? [...batchesOf(fresh), { batch: b, qty, date: todayISO() }]
         : batchesOf(fresh);
       if (b && !fresh.batch) patch.batch = b;
+      /* Average cost: (nilai lama + qty × harga) / stok baru, hanya saat GR ber-harga. */
+      const price = Number(movePrice);
+      if (movePrice.trim() !== "" && (!price || price <= 0)) { toast("Harga GR harus lebih dari 0 bila diisi", "info"); return; }
+      if (price > 0) {
+        const oldStock = Number(fresh.stock);
+        const oldVal = oldStock * effCost(fresh);
+        patch.avgCost = Math.round(((oldVal + qty * price) / (oldStock + qty)) * 100) / 100;
+      }
     }
+    const refBase = moveRef.trim() || (moveKind === "in" ? "GR manual" : "GI manual");
+    const refNote = useUom2 ? `${refBase} · ${fmtJumlah(raw)} ${uom2Of(fresh)}` : refBase;
     update("inventory", fresh.id, patch);
     add("movements", {
       item: fresh.name, itemId: fresh.id,
       type: moveKind === "in" ? "Penerimaan" : "Pengeluaran",
       qty,
-      by: moveRef.trim() || (moveKind === "in" ? "GR manual" : "GI manual"),
+      by: refNote,
       batch: moveBatch.trim() || fresh.batch || "",
       date: todayISO(),
       tone: moveKind,
     }, { action: moveKind === "in" ? "menerima barang" : "mengeluarkan barang", target: `${fresh.name} × ${qty}`, module: "Inventori" });
-    toast(`${moveKind === "in" ? "GR" : "GI"} ${fresh.name} × ${qty} tersimpan`);
-    setMoveTarget(null);
-    setMoveQty("");
-    setMoveRef("");
-    setMoveBatch("");
+    toast(`${moveKind === "in" ? "GR" : "GI"} ${fresh.name} × ${fmtJumlah(qty)} tersimpan`);
+    closeMove();
+  };
+
+  /* BOM explode → PR Draft, cegah duplikat PR terbuka untuk item sama. */
+  const buatPRDraft = (itemName: string, qtyKurang: number, estAmount: number) => {
+    const open = requisitions.some(
+      (r) => String(r.item).toLowerCase() === itemName.toLowerCase()
+        && ["Draft", "Draf", "Menunggu Approval", "RFQ", "Diajukan"].includes(String(r.status))
+    );
+    if (open) { toast(`PR terbuka untuk ${itemName} sudah ada`, "info"); return; }
+    const created = add("requisitions", {
+      item: itemName, by: "System BOM", amount: Math.max(0, Math.round(estAmount)), status: "Draft",
+    }, { action: "membuat PR Draft (BOM)", target: `${itemName} × ${fmtJumlah(qtyKurang)}`, module: "Inventori" });
+    toast(`PR Draft ${created.id} dibuat (${itemName} × ${fmtJumlah(qtyKurang)})`);
+  };
+
+  const downloadTemplate = () => {
+    void exportExcel(
+      [
+        ["nama", "sku", "kategori", "gudang", "stok", "minStok", "satuan", "harga", "rak"],
+        ["Pelat Baja AH36 15mm", "AH36-15", "Baja", "Gudang Baja A", 100, 20, "kg", 150000, "A1-02"],
+      ],
+      "Template-Inventori",
+      "Template"
+    );
+    toast("Template Excel diunduh");
+  };
+
+  /* Impor CSV manual: parse koma, validasi SKU unik, laporan gagal per baris. */
+  const handleImportFile = (file: File) => {
+    void file.text().then((text) => {
+      const lines = text.split(/\r?\n/).map((l) => l.trim()).filter((l) => l !== "");
+      if (lines.length === 0) { setImportReport(["Berkas kosong."]); return; }
+      const start = /^nama\s*,/i.test(lines[0]) ? 1 : 0;
+      const skuSeen = new Set(inventory.map((i) => String(i.sku).toLowerCase()));
+      const fails: string[] = [];
+      let ok = 0;
+      lines.slice(start).forEach((line, idx) => {
+        const c = line.split(",").map((s) => s.trim());
+        const rowNo = idx + start + 1;
+        const nama = c[0] ?? "";
+        const sku = c[1] ?? "";
+        if (!nama || !sku) { fails.push(`Baris ${rowNo}: nama & SKU wajib.`); return; }
+        if (skuSeen.has(sku.toLowerCase())) { fails.push(`Baris ${rowNo}: SKU ${sku} duplikat.`); return; }
+        if ((c[4] ?? "") !== "" && Number.isNaN(Number(c[4]))) { fails.push(`Baris ${rowNo}: stok bukan angka.`); return; }
+        if ((c[7] ?? "") !== "" && Number.isNaN(Number(c[7]))) { fails.push(`Baris ${rowNo}: harga bukan angka.`); return; }
+        skuSeen.add(sku.toLowerCase());
+        add("inventory", {
+          name: nama, sku, category: c[2] || "Lainnya", warehouse: c[3] || "Gudang B",
+          stock: Number(c[4]) || 0, minStock: Number(c[5]) || 0, unit: c[6] || "pcs",
+          cost: Number(c[7]) || 0, rack: c[8] || "", location: c[8] || "",
+          volume: 0, batch: "", batches: [], reserved: [],
+          uom2: "", konversi: 0, minStockByWarehouse: {}, photoUrl: "", avgCost: 0,
+        }, { action: "mengimpor material", module: "Inventori" });
+        ok++;
+      });
+      setImportReport([`${ok} baris berhasil diimpor.`, ...fails]);
+      toast(`Impor selesai: ${ok} berhasil, ${fails.length} gagal`);
+    });
   };
 
   const saveOpname = () => {
@@ -413,7 +596,7 @@ export default function Inventory() {
       <div className="mb-4 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <KpiCard label="Total Item Aktif" value={String(inventory.length)} icon={<Package className="h-5 w-5" />} chip="navy" spark={itemTrend} hint="Katalog keseluruhan" />
         <KpiCard label="Item Stok Menipis" value={String(lowStock.length)} delta="Perlu reorder" deltaDirection="down" icon={<AlertTriangle className="h-5 w-5" />} chip="rose" spark={lowStockTrend} />
-        <KpiCard label="Nilai Stok" value={fmtMiliar(totalValue)} hint="Cost basis total" icon={<Package className="h-5 w-5" />} chip="teal" spark={stockValueTrend} />
+        <KpiCard label="Nilai Stok" value={fmtMiliar(totalValue)} hint="Basis average cost total" icon={<Package className="h-5 w-5" />} chip="teal" spark={stockValueTrend} />
         <KpiCard label="Gudang" value={`${warehouses.length} lokasi`} hint={warehouses.slice(0, 3).join(", ")} chip="violet" spark={warehouseTrend} />
       </div>
 
@@ -422,7 +605,7 @@ export default function Inventory() {
         <div className="p-4">
           {tab === "Katalog" && (
             <>
-              <p className="mb-3 rounded-lg bg-steel-50 px-3 py-2 text-xs text-steel-500">Metode persediaan: FIFO untuk batch/serial — batch tertua dipakai dulu saat GI. Tersedia = stok − reservasi.</p>
+              <p className="mb-3 rounded-lg bg-steel-50 px-3 py-2 text-xs text-steel-500">Metode persediaan: FIFO untuk batch/serial — batch tertua dipakai dulu saat GI. Tersedia = stok − reservasi. Nilai stok memakai harga rata-rata (average cost) bila ada.</p>
               <div className="mb-3 flex flex-wrap gap-3">
                 <div className="relative">
                   <Search className="absolute left-3 top-2.5 h-4 w-4 text-steel-400" />
@@ -443,6 +626,20 @@ export default function Inventory() {
                   ))}
                 </div>
               </div>
+              <div className="mb-3 flex flex-wrap items-center gap-2">
+                <button className="btn-secondary text-xs" onClick={downloadTemplate}><Download className="h-3.5 w-3.5" /> Template Excel</button>
+                <label className="btn-secondary cursor-pointer text-xs">
+                  <Upload className="h-3.5 w-3.5" /> Impor CSV
+                  <input type="file" accept=".csv" className="hidden" aria-label="Impor CSV master item"
+                    onChange={(e) => { const f = e.target.files?.[0]; if (f) handleImportFile(f); e.target.value = ""; }} />
+                </label>
+                <span className="text-xs text-steel-400">Kolom: nama, sku, kategori, gudang, stok, minStok, satuan, harga, rak</span>
+              </div>
+              {importReport.length > 0 && (
+                <div className="mb-3 rounded-lg bg-steel-50 px-3 py-2 text-xs text-steel-600">
+                  {importReport.map((r, idx) => <p key={idx} className={idx === 0 ? "font-semibold text-navy-900" : ""}>{r}</p>)}
+                </div>
+              )}
               <div className="overflow-x-auto">
                 <table className="w-full">
                   <thead className="bg-surface sticky top-0 z-10">
@@ -452,6 +649,8 @@ export default function Inventory() {
                     {list.map((i) => {
                       const low = i.stock <= i.minStock;
                       const reserved = reservedQty(i);
+                      const conv = convOf(i);
+                      const u2 = uom2Of(i);
                       return (
                         <tr key={i.id} className="hover:bg-surface">
                           <td className="td">
@@ -460,9 +659,12 @@ export default function Inventory() {
                             {reserved > 0 && <p className="text-xs text-amber-600">Reservasi {fmtJumlah(reserved)} {i.unit}</p>}
                           </td>
                           <td className="td"><Badge tone="gray">{i.category}</Badge></td>
-                          <td className="td font-semibold text-navy-900">{fmtJumlah(Number(i.stock))} <span className="font-normal text-steel-400">{i.unit}</span></td>
+                          <td className="td font-semibold text-navy-900">
+                            {fmtJumlah(Number(i.stock))} <span className="font-normal text-steel-400">{i.unit}</span>
+                            {hasUom2(i) && <p className="text-xs font-normal text-steel-400">≈ {fmtJumlah(qtyInUom2(i))} {u2} (1 {i.unit} = {fmtJumlah(conv)} {u2})</p>}
+                          </td>
                           <td className="td text-steel-600">{fmtJumlah(Number(i.volume ?? 0))}</td>
-                          <td className="td font-semibold text-navy-900">{fmtRupiah(Number(i.stock) * Number(i.cost))}</td>
+                          <td className="td font-semibold text-navy-900">{fmtRupiah(Number(i.stock) * effCost(i))}</td>
                           <td className="td"><Badge tone={abc[i.id] === "A" ? "red" : abc[i.id] === "B" ? "amber" : "gray"}>{abc[i.id]}</Badge></td>
                           <td className="td">
                             <Badge tone={low ? "red" : "green"}>{low ? "Menipis" : "Aman"}</Badge>
@@ -472,7 +674,7 @@ export default function Inventory() {
                             <div className="flex gap-1">
                               <button className="rounded-lg p-1.5 text-steel-500 hover:bg-steel-100" title="Detail" aria-label={`Detail ${i.name}`} onClick={() => setDetail(i)}><Eye className="h-4 w-4" /></button>
                               <button className="rounded-lg p-1.5 text-steel-500 hover:bg-steel-100" title="Ubah" aria-label={`Ubah ${i.name}`} onClick={() => openEdit(i)}><Pencil className="h-4 w-4" /></button>
-                              <button className="rounded-lg p-1.5 text-emerald-600 hover:bg-emerald-50" title="GR/GI" aria-label={`GR atau GI ${i.name}`} onClick={() => setMoveTarget(i)}><ArrowDownToLine className="h-4 w-4" /></button>
+                              <button className="rounded-lg p-1.5 text-emerald-600 hover:bg-emerald-50" title="GR/GI" aria-label={`GR atau GI ${i.name}`} onClick={() => openMove(i, moveKind)}><ArrowDownToLine className="h-4 w-4" /></button>
                               <button className="rounded-lg p-1.5 text-steel-500 hover:bg-steel-100" title="Label barcode" aria-label={`Label ${i.name}`} onClick={() => setLabelItem(i)}><Barcode className="h-4 w-4" /></button>
                               <button className="rounded-lg p-1.5 text-amber-600 hover:bg-amber-50" title="Reservasi" aria-label={`Reservasi ${i.name}`} onClick={() => { setReservTarget(i); setReservProject(""); setReservQtyInput(""); }}><BookmarkPlus className="h-4 w-4" /></button>
                               <Link to={`/inventori/bom/${i.id}`} className="rounded-lg p-1.5 text-ocean-600 hover:bg-steel-100" title="BOM" aria-label={`BOM ${i.name}`}>BOM</Link>
@@ -497,12 +699,19 @@ export default function Inventory() {
                     <h3 className="mb-2 text-sm font-semibold text-navy-900 truncate" title={w}>{w}</h3>
                     <p className="text-xs text-steel-500">{items.length} item · {fmtJumlah(items.reduce((s, i) => s + Number(i.stock || 0), 0))} unit</p>
                     <div className="mt-3 space-y-1.5">
-                      {items.map((i) => (
-                        <div key={i.id} className="flex justify-between gap-2 text-sm">
-                          <span className="text-steel-600 truncate" title={String(i.name)}>{i.name}</span>
-                          <span className="font-medium shrink-0">{fmtJumlah(Number(i.stock))}</span>
-                        </div>
-                      ))}
+                      {items.map((i) => {
+                        const whMin = minWhOf(i, w);
+                        const thin = Number(i.stock) <= whMin;
+                        return (
+                          <div key={i.id} className="flex items-center justify-between gap-2 text-sm">
+                            <span className="text-steel-600 truncate" title={`${String(i.name)} · min gudang ${fmtJumlah(whMin)}`}>{i.name}</span>
+                            <span className="flex shrink-0 items-center gap-1.5 font-medium">
+                              {thin && <Badge tone="red">Menipis</Badge>}
+                              {fmtJumlah(Number(i.stock))}
+                            </span>
+                          </div>
+                        );
+                      })}
                     </div>
                   </Card>
                 );
@@ -515,36 +724,70 @@ export default function Inventory() {
               <Card className="p-5 lg:col-span-2">
                 <CardHeader title="Bill of Materials — TB Samudra Jaya 07" subtitle="Kebutuhan vs stok aktual inventori" />
                 <div className="mt-3 space-y-2">
-                  {bomRows.map((b) => (
-                    <div key={b.key} className="flex items-center justify-between gap-3 border-b border-steel-100 py-2 text-sm">
-                      <div className="min-w-0">
-                        <p className="text-steel-700 truncate" title={b.item ? `${b.key} → ${b.item.name}` : b.key}>{b.key}</p>
-                        <p className="text-xs text-steel-400 truncate" title={b.item ? String(b.item.name) : "Belum ada item cocok"}>
-                          {b.item ? b.item.name : "Belum ada item cocok"}
-                        </p>
-                        {b.item && <Link to={`/inventori/bom/${b.item.id}`} className="text-xs font-semibold text-ocean-600 hover:underline">Buka BOM</Link>}
+                  {bomRows.map((b) => {
+                    const kurang = Math.max(0, b.need - b.stock);
+                    return (
+                      <div key={b.key} className="flex items-center justify-between gap-3 border-b border-steel-100 py-2 text-sm">
+                        <div className="min-w-0">
+                          <p className="text-steel-700 truncate" title={b.item ? `${b.key} → ${b.item.name}` : b.key}>{b.key}</p>
+                          <p className="text-xs text-steel-400 truncate" title={b.item ? String(b.item.name) : "Belum ada item cocok"}>
+                            {b.item ? b.item.name : "Belum ada item cocok"}
+                          </p>
+                          {b.item && <Link to={`/inventori/bom/${b.item.id}`} className="text-xs font-semibold text-ocean-600 hover:underline">Buka BOM</Link>}
+                          {!b.ok && b.item && (
+                            <button className="btn-secondary mt-1.5 text-xs" onClick={() => buatPRDraft(b.item!.name, kurang, kurang * Number(b.item!.cost || 0))}>
+                              Buat PR Draft (kurang {fmtJumlah(kurang)} {b.unit})
+                            </button>
+                          )}
+                        </div>
+                        <div className="text-right shrink-0">
+                          <p className="font-medium text-navy-900">Butuh {fmtJumlah(b.need)} {b.unit} · Stok {fmtJumlah(b.stock)}</p>
+                          <p className="mt-0.5 flex items-center justify-end gap-2 text-xs text-steel-500">
+                            {b.item ? fmtRupiah(b.need * Number(b.item.cost || 0)) : "—"}
+                            <Badge tone={b.ok ? "green" : "red"}>{b.ok ? "Cukup" : "Kurang"}</Badge>
+                          </p>
+                          {b.item && b.need > 0 && (
+                            <ProgressBar className="mt-1.5 w-40" value={(b.stock / b.need) * 100} tone={b.ok ? "green" : "amber"} />
+                          )}
+                        </div>
                       </div>
-                      <div className="text-right shrink-0">
-                        <p className="font-medium text-navy-900">Butuh {fmtJumlah(b.need)} {b.unit} · Stok {fmtJumlah(b.stock)}</p>
-                        <p className="mt-0.5 flex items-center justify-end gap-2 text-xs text-steel-500">
-                          {b.item ? fmtRupiah(b.need * Number(b.item.cost || 0)) : "—"}
-                          <Badge tone={b.ok ? "green" : "red"}>{b.ok ? "Cukup" : "Kurang"}</Badge>
-                        </p>
-                        {b.item && b.need > 0 && (
-                          <ProgressBar className="mt-1.5 w-40" value={(b.stock / b.need) * 100} tone={b.ok ? "green" : "amber"} />
-                        )}
-                      </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </Card>
               <Card className="p-5">
                 <CardHeader title="Aksi Material" subtitle="Goods Receipt / Issue" />
                 <div className="mt-4 space-y-3">
-                  <button className="btn-primary w-full justify-center" onClick={() => { const first = lowStock[0] ?? inventory[0]; if (first) { setMoveTarget(first); setMoveKind("in"); } }}><ArrowDownToLine className="h-4 w-4" /> Terima Barang (GR)</button>
-                  <button className="btn-secondary w-full justify-center" onClick={() => { const first = inventory[0]; if (first) { setMoveTarget(first); setMoveKind("out"); } }}><ArrowUpFromLine className="h-4 w-4" /> Keluar Barang (GI)</button>
+                  <button className="btn-primary w-full justify-center" onClick={() => { const first = lowStock[0] ?? inventory[0]; if (first) openMove(first, "in"); }}><ArrowDownToLine className="h-4 w-4" /> Terima Barang (GR)</button>
+                  <button className="btn-secondary w-full justify-center" onClick={() => { const first = inventory[0]; if (first) openMove(first, "out"); }}><ArrowUpFromLine className="h-4 w-4" /> Keluar Barang (GI)</button>
                   <button className="btn-secondary w-full justify-center" onClick={() => setShowTransfer(true)}><Repeat className="h-4 w-4" /> Transfer Antar Gudang</button>
                   <button className="btn-secondary w-full justify-center" onClick={() => setShowOpname(true)}><ClipboardCheck className="h-4 w-4" /> Stok Opname</button>
+                </div>
+              </Card>
+              <Card className="p-5 lg:col-span-3">
+                <CardHeader title="Forecast Kebutuhan Proyek Aktif" subtitle="Kebutuhan bersih = kebutuhan BOM − stok · tombol PR gabung dengan explode BOM" />
+                <div className="mt-3 overflow-x-auto">
+                  <table className="w-full">
+                    <thead className="bg-surface sticky top-0 z-10">
+                      <tr><th className="th">Proyek</th><th className="th">Kebutuhan BOM</th><th className="th">Stok</th><th className="th">Bersih</th><th className="th">Aksi</th></tr>
+                    </thead>
+                    <tbody className="divide-y divide-steel-100">
+                      {forecastRows.map((f) => (
+                        <tr key={`${f.project}-${f.key}`} className="hover:bg-surface">
+                          <td className="td font-medium text-navy-900 truncate" title={`${f.project} — ${f.vessel}`}>{f.project} · {f.vessel}</td>
+                          <td className="td text-steel-600 truncate" title={f.item ? String(f.item.name) : f.key}>{f.key} · butuh {fmtJumlah(f.need)} {f.unit}</td>
+                          <td className="td text-steel-600">{fmtJumlah(f.stock)}</td>
+                          <td className="td font-semibold text-navy-900">{fmtJumlah(f.net)} {f.unit}</td>
+                          <td className="td">
+                            {f.net > 0 && f.item
+                              ? <button className="btn-secondary text-xs" onClick={() => buatPRDraft(f.item!.name, f.net, f.net * Number(f.item!.cost || 0))}>Buat PR</button>
+                              : <span className="text-xs text-steel-400">—</span>}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                  {forecastRows.length === 0 && <EmptyState title="Tidak ada proyek aktif" subtitle="Semua proyek berstatus Selesai." />}
                 </div>
               </Card>
             </div>
@@ -594,33 +837,58 @@ export default function Inventory() {
           )}
 
           {tab === "Analisis" && (
-            <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-              <Card className="p-5">
-                <CardHeader title="Slow-moving" subtitle="Tidak ada pengeluaran lebih dari 60 hari" />
-                <div className="mt-2 space-y-2">
-                  {slowItems.length === 0 && <p className="py-4 text-center text-sm text-steel-400">Tidak ada item slow-moving.</p>}
-                  {slowItems.map((i) => (
-                    <div key={i.id} className="flex items-center justify-between gap-3 border-b border-steel-100 py-2 text-sm">
-                      <div className="min-w-0">
-                        <p className="truncate font-medium text-navy-900" title={String(i.name)}>{i.name}</p>
-                        <p className="text-xs text-steel-400">Terakhir keluar {fmtTanggal(lastOutOf(i))}</p>
+            <div className="space-y-4">
+              <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+                <Card className="p-5">
+                  <CardHeader title="Slow-moving" subtitle="Tidak ada pengeluaran lebih dari 60 hari" />
+                  <div className="mt-2 space-y-2">
+                    {slowItems.length === 0 && <p className="py-4 text-center text-sm text-steel-400">Tidak ada item slow-moving.</p>}
+                    {slowItems.map((i) => (
+                      <div key={i.id} className="flex items-center justify-between gap-3 border-b border-steel-100 py-2 text-sm">
+                        <div className="min-w-0">
+                          <p className="truncate font-medium text-navy-900" title={String(i.name)}>{i.name}</p>
+                          <p className="text-xs text-steel-400">Terakhir keluar {fmtTanggal(lastOutOf(i))}</p>
+                        </div>
+                        <Badge tone="amber">Slow</Badge>
                       </div>
-                      <Badge tone="amber">Slow</Badge>
-                    </div>
+                    ))}
+                  </div>
+                </Card>
+                <Card className="p-5">
+                  <CardHeader title="Dead stock" subtitle="Tidak ada pengeluaran lebih dari 180 hari" />
+                  <div className="mt-2 space-y-2">
+                    {deadItems.length === 0 && <p className="py-4 text-center text-sm text-steel-400">Tidak ada dead stock.</p>}
+                    {deadItems.map((i) => (
+                      <div key={i.id} className="flex items-center justify-between gap-3 border-b border-steel-100 py-2 text-sm">
+                        <div className="min-w-0">
+                          <p className="truncate font-medium text-navy-900" title={String(i.name)}>{i.name}</p>
+                          <p className="text-xs text-steel-400">Stok {fmtJumlah(Number(i.stock))} {i.unit} · {fmtRupiah(Number(i.stock) * effCost(i))}</p>
+                        </div>
+                        <Badge tone="red">Dead</Badge>
+                      </div>
+                    ))}
+                  </div>
+                </Card>
+              </div>
+              <Card className="p-5">
+                <CardHeader title="Stock Aging" subtitle="Umur stok dari movement masuk (GR) terakhir per item" />
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {AGING_BUCKETS.map((b) => (
+                    <span key={b} className="rounded-lg bg-steel-50 px-3 py-1.5 text-xs font-medium text-steel-600">
+                      {b}: <span className="font-bold text-navy-900">{agingRows.filter((r) => r.bucket === b).length}</span> item
+                    </span>
                   ))}
                 </div>
-              </Card>
-              <Card className="p-5">
-                <CardHeader title="Dead stock" subtitle="Tidak ada pengeluaran lebih dari 180 hari" />
-                <div className="mt-2 space-y-2">
-                  {deadItems.length === 0 && <p className="py-4 text-center text-sm text-steel-400">Tidak ada dead stock.</p>}
-                  {deadItems.map((i) => (
-                    <div key={i.id} className="flex items-center justify-between gap-3 border-b border-steel-100 py-2 text-sm">
+                <div className="mt-3 space-y-2">
+                  {agingRows.map((r) => (
+                    <div key={r.item.id} className="flex items-center justify-between gap-3 border-b border-steel-100 py-2 text-sm">
                       <div className="min-w-0">
-                        <p className="truncate font-medium text-navy-900" title={String(i.name)}>{i.name}</p>
-                        <p className="text-xs text-steel-400">Stok {fmtJumlah(Number(i.stock))} {i.unit} · {fmtRupiah(Number(i.stock) * Number(i.cost))}</p>
+                        <p className="truncate font-medium text-navy-900" title={String(r.item.name)}>{r.item.name}</p>
+                        <p className="text-xs text-steel-400">
+                          {r.lastIn ? `GR terakhir ${fmtTanggal(r.lastIn)} · ${r.age} hari lalu` : "Belum pernah ada GR"} · Stok {fmtJumlah(Number(r.item.stock))} {r.item.unit}
+                        </p>
                       </div>
-                      <Badge tone="red">Dead</Badge>
+                      <Badge tone={r.bucket === "0–30 hari" ? "green" : r.bucket === "31–90 hari" ? "blue" : r.bucket === "91–180 hari" ? "amber" : "red"}>{r.bucket}</Badge>
                     </div>
                   ))}
                 </div>
@@ -666,15 +934,30 @@ export default function Inventory() {
             <Field label="Batch / Serial" hint={form.category === "Mesin" ? "Wajib untuk kategori Mesin" : "Opsional"}>
               <input className="input font-mono" value={form.batch} onChange={(e) => setF("batch", e.target.value)} placeholder="cth: SN-2026-001" />
             </Field>
+            <Field label="Satuan kedua (UOM2)" hint="Opsional, cth: meter">
+              <input className="input" value={form.uom2} onChange={(e) => setF("uom2", e.target.value)} placeholder="cth: meter" />
+            </Field>
+            <Field label="Konversi ke UOM2" hint={`Isi UOM2 per 1 ${form.unit || "satuan"} — cth: 1 batang = 6 meter → isi 6`}>
+              <input type="number" min={0} className="input" value={form.konversi} onChange={(e) => setF("konversi", e.target.value)} placeholder="cth: 6" />
+            </Field>
+            <Field label="Min stok gudang ini" hint="Batas menipis khusus gudang terpilih, default ikut minimum global">
+              <input type="number" min={0} className="input" value={form.minWh} onChange={(e) => setF("minWh", e.target.value)} placeholder="cth: 10" />
+            </Field>
+            <Field label="Foto item (URL)" hint="Tempel URL gambar, siap diganti upload backend">
+              <div className="flex items-center gap-2">
+                <Camera className="h-4 w-4 shrink-0 text-steel-400" />
+                <input className="input font-mono" value={form.photoUrl} onChange={(e) => setF("photoUrl", e.target.value)} placeholder="https://…" />
+              </div>
+            </Field>
           </FormGrid>
           <Field label="Lokasi rak" hint='Format "Gudang Baja A · A1-01"'><input className="input font-mono" value={form.rack} onChange={(e) => setF("rack", e.target.value)} placeholder="cth: A1-02" /></Field>
         </div>
       </Modal>
 
       {/* Modal GR/GI */}
-      <Modal open={moveTarget !== null} onClose={() => setMoveTarget(null)} title={`${moveKind === "in" ? "Terima Barang (GR)" : "Keluar Barang (GI)"} — ${moveTarget?.name ?? ""}`}
-        subtitle={moveTarget ? `Stok: ${fmtJumlah(Number(moveTarget.stock))} · Tersedia: ${fmtJumlah(availOf(inventory.find((i) => i.id === moveTarget.id) ?? moveTarget))} ${moveTarget.unit}` : ""}
-        footer={<><button className="btn-secondary" onClick={() => setMoveTarget(null)}>Batal</button><button className="btn-primary" onClick={saveMove}>Simpan Transaksi</button></>}>
+      <Modal open={moveTarget !== null} onClose={closeMove} title={`${moveKind === "in" ? "Terima Barang (GR)" : "Keluar Barang (GI)"} — ${moveTarget?.name ?? ""}`}
+        subtitle={moveFresh ? `Stok: ${fmtJumlah(Number(moveFresh.stock))} · Tersedia: ${fmtJumlah(availOf(moveFresh))} ${moveFresh.unit}${hasUom2(moveFresh) ? ` (≈ ${fmtJumlah(qtyInUom2(moveFresh))} ${uom2Of(moveFresh)})` : ""}` : ""}
+        footer={<><button className="btn-secondary" onClick={closeMove}>Batal</button><button className="btn-primary" onClick={saveMove}>Simpan Transaksi</button></>}>
         <div className="space-y-3">
           <Field label="Jenis transaksi">
             <div className="flex gap-2">
@@ -694,10 +977,34 @@ export default function Inventory() {
           )}
           <FormGrid>
             <Field label="Jumlah"><input type="number" min={1} className="input" value={moveQty} onChange={(e) => setMoveQty(e.target.value)} /></Field>
+            {moveFresh && hasUom2(moveFresh) ? (
+              <Field label="Satuan input" hint={`1 ${moveFresh.unit} = ${fmtJumlah(convOf(moveFresh))} ${uom2Of(moveFresh)}`}>
+                <select className="input" value={moveUom} onChange={(e) => setMoveUom(e.target.value)} aria-label="Satuan input GR/GI">
+                  <option value="base">{moveFresh.unit} (utama)</option>
+                  <option value="uom2">{uom2Of(moveFresh)} (konversi otomatis)</option>
+                </select>
+              </Field>
+            ) : (
+              <Field label="Referensi (PO / Proyek)" hint="cth: PO-2026-120 atau NB-2025-012">
+                <input className="input font-mono" value={moveRef} onChange={(e) => setMoveRef(e.target.value)} />
+              </Field>
+            )}
+          </FormGrid>
+          {moveFresh && hasUom2(moveFresh) && (
             <Field label="Referensi (PO / Proyek)" hint="cth: PO-2026-120 atau NB-2025-012">
               <input className="input font-mono" value={moveRef} onChange={(e) => setMoveRef(e.target.value)} />
             </Field>
-          </FormGrid>
+          )}
+          {moveUseUom2 && moveFresh && moveRawQty > 0 && (
+            <p className="rounded-lg bg-blue-50 px-3 py-2 text-xs font-medium text-blue-700">
+              {fmtJumlah(moveRawQty)} {uom2Of(moveFresh)} ÷ {fmtJumlah(convOf(moveFresh))} = {fmtJumlah(moveEffQty)} {moveFresh.unit} (tercatat dalam satuan utama)
+            </p>
+          )}
+          {moveKind === "in" && (
+            <Field label="Harga satuan GR (Rp)" hint="Opsional — bila diisi, harga rata-rata (average cost) dihitung ulang">
+              <input type="number" min={0} className="input" value={movePrice} onChange={(e) => setMovePrice(e.target.value)} placeholder="cth: 150000" />
+            </Field>
+          )}
           <Field label="Batch / Serial" hint="Opsional — dicatat di movement & FIFO">
             <input className="input font-mono" value={moveBatch} onChange={(e) => setMoveBatch(e.target.value)} placeholder="cth: SN-2026-001" />
           </Field>
@@ -811,25 +1118,40 @@ export default function Inventory() {
       </Modal>
 
       {/* Modal detail */}
-      <Modal open={detail !== null} onClose={() => setDetail(null)} title={detail?.name ?? ""} subtitle={detail ? `${detail.id} · ${detail.sku}` : ""}>
-        {detail && (
+      <Modal open={detail !== null} onClose={() => setDetail(null)} title={freshDetail?.name ?? ""} subtitle={freshDetail ? `${freshDetail.id} · ${freshDetail.sku}` : ""}>
+        {freshDetail && (
           <dl className="space-y-2.5 text-sm">
+            {freshDetail.photoUrl ? (
+              <img src={String(freshDetail.photoUrl)} alt={String(freshDetail.name)} className="h-32 w-full rounded-xl border border-steel-200 object-cover" />
+            ) : null}
             {([
-              ["Kategori", detail.category],
-              ["Gudang / Rak", rackText(detail)],
-              ["Stok", `${fmtJumlah(Number(detail.stock))} ${detail.unit}`],
-              ["Tersedia", `${fmtJumlah(availOf(detail))} ${detail.unit}`],
-              ["Reservasi", reservedOf(detail).length > 0 ? reservedOf(detail).map((r) => `${r.project} × ${fmtJumlah(Number(r.qty))}`).join("; ") : "—"],
-              ["Volume per unit", fmtJumlah(Number(detail.volume ?? 0))],
-              ["Minimum", fmtJumlah(Number(detail.minStock))],
-              ["Batch / Serial", detail.batch ? String(detail.batch) : "—"],
-              ["Kelas ABC", abc[detail.id] ?? "—"],
-              ["Harga satuan", fmtRupiah(Number(detail.cost))],
-              ["Nilai total", fmtRupiah(Number(detail.stock) * Number(detail.cost))],
+              ["Kategori", freshDetail.category],
+              ["Gudang / Rak", rackText(freshDetail)],
+              ["Stok", `${fmtJumlah(Number(freshDetail.stock))} ${freshDetail.unit}${hasUom2(freshDetail) ? ` (≈ ${fmtJumlah(qtyInUom2(freshDetail))} ${uom2Of(freshDetail)})` : ""}`],
+              ["Tersedia", `${fmtJumlah(availOf(freshDetail))} ${freshDetail.unit}`],
+              ["Reservasi", reservedOf(freshDetail).length > 0 ? reservedOf(freshDetail).map((r) => `${r.project} × ${fmtJumlah(Number(r.qty))}`).join("; ") : "—"],
+              ["Volume per unit", fmtJumlah(Number(freshDetail.volume ?? 0))],
+              ["Minimum global", fmtJumlah(Number(freshDetail.minStock))],
+              [`Minimum ${freshDetail.warehouse}`, fmtJumlah(minWhOf(freshDetail))],
+              ["Batch / Serial", freshDetail.batch ? String(freshDetail.batch) : "—"],
+              ["Kelas ABC", abc[freshDetail.id] ?? "—"],
+              ["Harga satuan (master)", fmtRupiah(Number(freshDetail.cost))],
+              ["Harga rata-rata (avg)", Number(freshDetail.avgCost) > 0 ? fmtRupiah(Number(freshDetail.avgCost)) : "— (pakai harga master)"],
+              ["Nilai total", fmtRupiah(Number(freshDetail.stock) * effCost(freshDetail))],
             ] as [string, string][]).map(([k, v]) => (
               <div key={k} className="flex justify-between gap-4"><dt className="text-steel-500">{k}</dt><dd className="font-medium text-navy-900 text-right">{v}</dd></div>
             ))}
-            <Link to={`/inventori/bom/${detail.id}`} className="mt-2 inline-flex items-center gap-1 text-sm font-semibold text-ocean-600 hover:underline">Buka halaman BOM</Link>
+            <div className="rounded-xl bg-steel-50 px-3 py-2">
+              <p className="flex items-center gap-1.5 text-xs font-semibold text-navy-900"><History className="h-3.5 w-3.5" /> Riwayat item (5 terakhir)</p>
+              {auditOf(freshDetail).length === 0 && <p className="mt-1 text-xs text-steel-400">Belum ada movement untuk item ini.</p>}
+              {auditOf(freshDetail).map((m) => (
+                <p key={m.id} className="mt-1 flex items-center justify-between gap-2 text-xs text-steel-600">
+                  <span className="truncate">{fmtTanggal(m.date)} · <Badge tone={moveTone(m.type, m.tone)}>{moveLabel(m.type)}</Badge> {fmtJumlah(Number(m.qty))}</span>
+                  <span className="shrink-0 font-mono">{m.by}</span>
+                </p>
+              ))}
+            </div>
+            <Link to={`/inventori/bom/${freshDetail.id}`} className="mt-2 inline-flex items-center gap-1 text-sm font-semibold text-ocean-600 hover:underline">Buka halaman BOM</Link>
           </dl>
         )}
       </Modal>

@@ -61,6 +61,26 @@ function complianceOf(k3: unknown): { label: string; tone: "green" | "amber" | "
   return { label: "Perlu Bina", tone: "red" };
 }
 
+function daysUntil(iso: string | null | undefined): number | null {
+  if (!iso || iso === "-") return null;
+  const t = new Date(`${iso}T00:00:00`).getTime();
+  if (Number.isNaN(t)) return null;
+  const now = new Date();
+  const base = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+  return Math.round((t - base) / 86400000);
+}
+
+function daysLate(iso: string | null | undefined): number {
+  const d = daysUntil(iso);
+  return d !== null && d < 0 ? Math.abs(d) : 0;
+}
+
+interface Milestone { title: string; pct: number; due: string }
+
+function milestonesOf(s: StoreItem): Milestone[] {
+  return Array.isArray(s.milestones) ? s.milestones as Milestone[] : [];
+}
+
 export default function Subcontractor() {
   const { data, add, update, log } = useStore();
   const subcontractors = data.subcontractors;
@@ -73,16 +93,18 @@ export default function Subcontractor() {
   const [typeFilter, setTypeFilter] = useState("Semua");
 
   const [showSub, setShowSub] = useState(false);
-  const [subForm, setSubForm] = useState({ name: "", services: "", contract: "", k3: "A", contractType: "Borongan", payScheme: "unit" });
+  const [subForm, setSubForm] = useState({ name: "", services: "", contract: "", k3: "A", contractType: "Borongan", payScheme: "unit", noBG: "", bgExpiry: "", bgValue: "" });
   const [subConfirm, setSubConfirm] = useState<{ id: string; name: string; next: string } | null>(null);
+  const [msSub, setMsSub] = useState<StoreItem | null>(null);
+  const [msForm, setMsForm] = useState({ title: "", pct: "", due: "" });
   const [showWo, setShowWo] = useState(false);
-  const [woForm, setWoForm] = useState({ sub: "", project: "", scope: "" });
+  const [woForm, setWoForm] = useState({ sub: "", project: "", scope: "", targetDate: "", penaltyPct: "0.1" });
   const [woProg, setWoProg] = useState<StoreItem | null>(null);
   const [progVal, setProgVal] = useState("");
   const [progNote, setProgNote] = useState("");
   const [confirmFinish, setConfirmFinish] = useState<{ id: string; v: number; note: string } | null>(null);
   const [showTerm, setShowTerm] = useState(false);
-  const [termForm, setTermForm] = useState({ sub: "", wo: "", amount: "", pphPct: "2", retPct: "5" });
+  const [termForm, setTermForm] = useState({ sub: "", wo: "", milestone: "", amount: "", pphPct: "2", retPct: "5" });
   const [termPay, setTermPay] = useState<StoreItem | null>(null);
   const [proof, setProof] = useState({ date: todayISO(), method: "Transfer", ref: "" });
   const [rejectTerm, setRejectTerm] = useState<StoreItem | null>(null);
@@ -109,6 +131,12 @@ export default function Subcontractor() {
   const termTsRef = termWo && Number(termWo.rate || 0) > 0 && termTsHours > 0
     ? termTsHours * Number(termWo.rate || 0)
     : 0;
+  const termMsList = termSub ? milestonesOf(termSub) : [];
+  const termMs = termMsList.find((m) => m.title === termForm.milestone) ?? null;
+  const termMsCap = termMs && termSub ? Number(termSub.contract || 0) * Number(termMs.pct || 0) / 100 : 0;
+  const termMsUsed = termMs
+    ? payments.filter((t) => t.sub === termForm.sub && t.milestone === termMs.title && t.status !== "Ditolak").reduce((s, t) => s + Number(t.amount || 0), 0)
+    : 0;
 
   const hoursByWo = (woId: string): number =>
     timesheets.filter((t) => t.woId === woId).reduce((s, t) => s + Number(t.hours || 0), 0);
@@ -121,23 +149,65 @@ export default function Subcontractor() {
 
   const saveSub = () => {
     if (!subForm.name.trim()) { toast("Nama subkontraktor wajib diisi", "info"); return; }
+    const bgValue = Number(subForm.bgValue || 0);
+    if (subForm.bgValue && (!Number.isFinite(bgValue) || bgValue < 0)) { toast("Nilai bank garansi harus 0 atau lebih", "info"); return; }
     const created = add("subcontractors", {
       name: subForm.name.trim(), services: subForm.services.trim() || "Umum",
       rating: 80, active: 0, contract: Number(subForm.contract) || 0, status: "Kualifikasi", k3: subForm.k3,
       contractType: subForm.contractType, payScheme: subForm.payScheme,
+      noBG: subForm.noBG.trim(), bgExpiry: subForm.bgExpiry, bgValue,
+      milestones: [],
     }, { action: "meregistrasi subkontraktor", module: "Subkontraktor" });
     toast(`${created.id} teregistrasi (Kualifikasi)`);
     setShowSub(false);
-    setSubForm({ name: "", services: "", contract: "", k3: "A", contractType: "Borongan", payScheme: "unit" });
+    setSubForm({ name: "", services: "", contract: "", k3: "A", contractType: "Borongan", payScheme: "unit", noBG: "", bgExpiry: "", bgValue: "" });
+  };
+
+  const saveMilestone = () => {
+    if (!msSub) return;
+    if (!msForm.title.trim()) { toast("Judul milestone wajib diisi", "info"); return; }
+    const pct = Number(msForm.pct);
+    if (!Number.isFinite(pct) || pct <= 0 || pct > 100) { toast("Bobot milestone harus 0–100%", "info"); return; }
+    if (!msForm.due) { toast("Due date milestone wajib diisi", "info"); return; }
+    const next = [...milestonesOf(msSub), { title: msForm.title.trim(), pct, due: msForm.due }];
+    if (next.reduce((s, m) => s + Number(m.pct || 0), 0) > 100) { toast("Kumulatif bobot milestone melebihi 100%", "info"); return; }
+    update("subcontractors", msSub.id, { milestones: next });
+    log("menambah milestone SOW", `${msSub.name} · ${msForm.title.trim()} (${pct}%)`, "Subkontraktor");
+    toast(`Milestone ditambahkan ke ${msSub.name}`);
+    setMsSub({ ...msSub, milestones: next });
+    setMsForm({ title: "", pct: "", due: "" });
+  };
+
+  const removeMilestone = (idx: number) => {
+    if (!msSub) return;
+    const next = milestonesOf(msSub).filter((_, i) => i !== idx);
+    update("subcontractors", msSub.id, { milestones: next });
+    log("menghapus milestone SOW", `${msSub.name} · index ${idx + 1}`, "Subkontraktor");
+    setMsSub({ ...msSub, milestones: next });
   };
 
   const saveWo = () => {
     if (!woForm.sub || !woForm.project || !woForm.scope.trim()) { toast("Sub, proyek & lingkup wajib diisi", "info"); return; }
-    const created = add("workOrders", { sub: woForm.sub, project: woForm.project, scope: woForm.scope.trim(), progress: 0, status: "Dalam Proses", date: todayISO() },
+    if (!woForm.targetDate) { toast("Target selesai WO wajib diisi", "info"); return; }
+    const penaltyPct = Number(woForm.penaltyPct);
+    if (!Number.isFinite(penaltyPct) || penaltyPct < 0 || penaltyPct > 5) { toast("Denda per hari harus 0–5%", "info"); return; }
+    const created = add("workOrders", { sub: woForm.sub, project: woForm.project, scope: woForm.scope.trim(), progress: 0, status: "Dalam Proses", date: todayISO(), targetDate: woForm.targetDate, penaltyPct },
       { action: "menerbitkan WO", module: "Subkontraktor" });
     toast(`WO ${created.id} diterbitkan`);
     setShowWo(false);
-    setWoForm({ sub: "", project: "", scope: "" });
+    setWoForm({ sub: "", project: "", scope: "", targetDate: "", penaltyPct: "0.1" });
+  };
+
+  const recordPenalty = (w: StoreItem) => {
+    const sub = subcontractors.find((s) => s.name === w.sub);
+    const late = daysLate(String(w.targetDate ?? ""));
+    const perDay = Number(w.penaltyPct || 0);
+    const base = Number(sub?.contract || 0);
+    const raw = base * perDay / 100 * late;
+    const amount = Math.min(raw, base * 5 / 100);
+    update("workOrders", w.id, { penaltyDays: late, penaltyAmount: Math.round(amount), penaltyAt: todayISO() });
+    log("mencatat denda keterlambatan", `${w.id} · telat ${late} hari · ${fmtRupiah(Math.round(amount))}`, "Subkontraktor");
+    toast(`Denda ${w.id} dicatat: ${fmtRupiah(Math.round(amount))}`);
   };
 
   const applyWoProgress = (id: string, v: number, note: string) => {
@@ -181,13 +251,22 @@ export default function Subcontractor() {
       toast(`Termin melebihi batas WO: maks ${fmtRupiah(cap)} (kontrak ${fmtRupiah(Number(sub?.contract || 0))} × progres ${wo.progress}%), sudah diajukan ${fmtRupiah(used)}`, "info");
       return;
     }
+    const msList = sub ? milestonesOf(sub) : [];
+    const ms = msList.find((m) => m.title === termForm.milestone);
+    if (!ms) { toast("Termin wajib merujuk milestone SOW kontrak sub tersebut", "info"); return; }
+    const msCap = Number(sub?.contract || 0) * Number(ms.pct || 0) / 100;
+    const msUsed = payments.filter((t) => t.sub === termForm.sub && t.milestone === ms.title && t.status !== "Ditolak").reduce((s, t) => s + Number(t.amount || 0), 0);
+    if (msUsed + amount > msCap) {
+      toast(`Termin melebihi pagu milestone ${ms.title}: maks ${fmtRupiah(msCap)} (${ms.pct}% kontrak), sudah dipakai ${fmtRupiah(msUsed)}`, "info");
+      return;
+    }
     const created = add("termins", {
-      sub: termForm.sub, woId: wo.id, progress: `${wo.id} (${wo.progress}%)`, amount,
+      sub: termForm.sub, woId: wo.id, milestone: ms.title, progress: `${wo.id} (${wo.progress}%)`, amount,
       pphPct, retPct, status: "Draf", date: todayISO(),
     }, { action: "mengajukan termin", module: "Subkontraktor" });
     toast(`Termin ${created.id} diajukan (Draf)`);
     setShowTerm(false);
-    setTermForm({ sub: "", wo: "", amount: "", pphPct: "2", retPct: "5" });
+    setTermForm({ sub: "", wo: "", milestone: "", amount: "", pphPct: "2", retPct: "5" });
   };
 
   const stepTerm = (p: StoreItem, next: string) => {
@@ -311,7 +390,19 @@ export default function Subcontractor() {
                   <div className="mt-2 flex flex-wrap gap-1.5">
                     <Badge tone="navy">{s.contractType ?? "Borongan"}</Badge>
                     <Badge tone="gray">Skema: {s.payScheme ?? "unit"}</Badge>
+                    {(() => {
+                      const left = daysUntil(String(s.bgExpiry ?? ""));
+                      if (!s.bgExpiry) return <Badge tone="gray">Tanpa BG</Badge>;
+                      if (left === null) return null;
+                      if (left < 0) return <Badge tone="red">BG Expired</Badge>;
+                      if (left <= 30) return <Badge tone="amber">BG H-{left}</Badge>;
+                      return <Badge tone="green">BG Aman</Badge>;
+                    })()}
+                    <Badge tone="teal">{milestonesOf(s).length} milestone</Badge>
                   </div>
+                  {s.noBG ? (
+                    <p className="mt-1.5 text-xs text-steel-500">BG {s.noBG} · {fmtRupiah(Number(s.bgValue || 0))}{s.bgExpiry ? ` · exp ${fmtTanggal(String(s.bgExpiry))}` : ""}</p>
+                  ) : null}
                   <div className="mt-4 grid grid-cols-2 gap-3 text-sm">
                     <div className="rounded-lg bg-surface p-2.5">
                       <p className="text-xs text-steel-500">Rating</p>
@@ -327,6 +418,13 @@ export default function Subcontractor() {
                     <span>{workOrders.filter((w) => w.sub === s.name && w.status !== "Selesai").length} WO aktif</span>
                   </div>
                   <div className="mt-3 flex flex-wrap gap-1.5 border-t border-steel-100 pt-3">
+                    <button
+                      className="btn-secondary text-xs"
+                      aria-label={`Kelola milestone ${s.name}`}
+                      onClick={() => { setMsSub(s); setMsForm({ title: "", pct: "", due: "" }); }}
+                    >
+                      Milestone SOW
+                    </button>
                     {SUB_NEXT[normSub(s.status)].map((next) => (
                       <button
                         key={next}
@@ -359,7 +457,23 @@ export default function Subcontractor() {
                           <p className="truncate" title={`${w.sub} · ${w.project}`}>{w.sub} · {w.project}</p>
                           <p className="text-xs text-steel-500 truncate" title={String(w.scope)}>{w.scope}</p>
                           {w.date && <p className="text-xs text-steel-400">{fmtTanggal(w.date)}</p>}
+                          {w.targetDate && <p className="text-xs text-steel-500">Target {fmtTanggal(String(w.targetDate))} · denda {Number(w.penaltyPct || 0)}%/hari</p>}
                           {Number(w.rate || 0) > 0 && <p className="text-xs text-steel-500">Rate {fmtRupiah(Number(w.rate))}/jam</p>}
+                          {(() => {
+                            if (Number(w.progress || 0) >= 100 || !w.targetDate) return null;
+                            const late = daysLate(String(w.targetDate));
+                            if (late <= 0) return null;
+                            const sub = subcontractors.find((s) => s.name === w.sub);
+                            const base = Number(sub?.contract || 0);
+                            const perDay = Number(w.penaltyPct || 0);
+                            const usulan = Math.min(base * perDay / 100 * late, base * 5 / 100);
+                            return (
+                              <p className="text-xs font-medium text-rose-600">
+                                Telat {late} hari · usulan denda {fmtRupiah(Math.round(usulan))} (maks 5% kontrak)
+                                {w.penaltyAt ? ` · tercatat ${fmtTanggal(String(w.penaltyAt))}` : ""}
+                              </p>
+                            );
+                          })()}
                         </div>
                       </div>
                       <div className="flex items-center gap-4">
@@ -370,6 +484,9 @@ export default function Subcontractor() {
                         <Badge tone={toneMap[w.status] ?? "gray"}>{w.status}</Badge>
                         {w.status !== "Selesai" && (
                           <button className="btn-secondary text-xs" aria-label={`Update progres ${w.id}`} onClick={() => { setWoProg(w); setProgVal(String(w.progress)); setProgNote(""); }}>Update</button>
+                        )}
+                        {Number(w.progress || 0) < 100 && w.targetDate && daysLate(String(w.targetDate)) > 0 && !w.penaltyAt && (
+                          <button className="btn-secondary text-xs" aria-label={`Catat denda ${w.id}`} onClick={() => recordPenalty(w)}>Catat Denda</button>
                         )}
                       </div>
                     </div>
@@ -398,7 +515,7 @@ export default function Subcontractor() {
                       <tr key={p.id} className="hover:bg-surface">
                         <td className="td font-mono font-medium text-navy-900">{p.id}</td>
                         <td className="td text-steel-600 truncate" title={String(p.sub)}>{p.sub}</td>
-                        <td className="td font-mono text-xs text-steel-500">{p.progress}</td>
+                        <td className="td font-mono text-xs text-steel-500">{p.progress}{p.milestone ? <span className="block text-steel-400">MS: {p.milestone}</span> : null}</td>
                         <td className="td font-semibold">{fmtMiliar(p.amount)}</td>
                         <td className="td text-steel-600">{fmtRupiah(Number(p.amount || 0) * pphOf(p) / 100)} <span className="text-xs text-steel-400">({pphOf(p)}%)</span></td>
                         <td className="td text-steel-600">{fmtRupiah(Number(p.amount || 0) * retOf(p) / 100)} <span className="text-xs text-steel-400">({retOf(p)}%)</span></td>
@@ -550,7 +667,35 @@ export default function Subcontractor() {
                 {PAY_SCHEMES.map((t) => <option key={t}>{t}</option>)}
               </select>
             </Field>
+            <Field label="No. bank garansi"><input className="input font-mono" value={subForm.noBG} onChange={(e) => setSubForm({ ...subForm, noBG: e.target.value })} placeholder="cth: BG-2026-081" /></Field>
+            <Field label="Expiry BG"><input type="date" className="input" value={subForm.bgExpiry} onChange={(e) => setSubForm({ ...subForm, bgExpiry: e.target.value })} /></Field>
+            <Field label="Nilai BG (Rp)"><input type="number" min={0} className="input" value={subForm.bgValue} onChange={(e) => setSubForm({ ...subForm, bgValue: e.target.value })} placeholder="cth: 500000000" /></Field>
           </FormGrid>
+        </div>
+      </Modal>
+
+      {/* Modal kelola milestone SOW */}
+      <Modal open={msSub !== null} onClose={() => setMsSub(null)} title={`Milestone SOW — ${msSub?.name ?? ""}`} subtitle="Termin hanya bisa merujuk milestone di sini"
+        footer={<button className="btn-secondary" onClick={() => setMsSub(null)}>Tutup</button>}>
+        <div className="space-y-3">
+          <div className="space-y-2">
+            {msSub && milestonesOf(msSub).map((m, idx) => (
+              <div key={idx} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-steel-100 px-3 py-2 text-sm">
+                <div>
+                  <p className="font-medium text-navy-900">{m.title}</p>
+                  <p className="text-xs text-steel-500">{m.pct}% · due {fmtTanggal(m.due)} · pagu {fmtRupiah(Number(msSub.contract || 0) * Number(m.pct || 0) / 100)}</p>
+                </div>
+                <button className="btn-secondary text-xs" onClick={() => removeMilestone(idx)}>Hapus</button>
+              </div>
+            ))}
+            {(!msSub || milestonesOf(msSub).length === 0) && <p className="text-xs text-steel-400">Belum ada milestone.</p>}
+          </div>
+          <FormGrid>
+            <Field label="Judul milestone"><input className="input" value={msForm.title} onChange={(e) => setMsForm({ ...msForm, title: e.target.value })} placeholder="cth: Fabrikasi 50%" /></Field>
+            <Field label="Bobot (%)"><input type="number" min={0} max={100} className="input" value={msForm.pct} onChange={(e) => setMsForm({ ...msForm, pct: e.target.value })} placeholder="cth: 30" /></Field>
+            <Field label="Due date"><input type="date" className="input" value={msForm.due} onChange={(e) => setMsForm({ ...msForm, due: e.target.value })} /></Field>
+          </FormGrid>
+          <button className="btn-primary text-xs" onClick={saveMilestone}><Plus className="h-3.5 w-3.5" /> Tambah Milestone</button>
         </div>
       </Modal>
 
@@ -583,6 +728,10 @@ export default function Subcontractor() {
             </Field>
           </FormGrid>
           <Field label="Lingkup pekerjaan"><input className="input" value={woForm.scope} onChange={(e) => setWoForm({ ...woForm, scope: e.target.value })} placeholder="cth: Fabrikasi section 8-10" /></Field>
+          <FormGrid>
+            <Field label="Target selesai"><input type="date" className="input" value={woForm.targetDate} onChange={(e) => setWoForm({ ...woForm, targetDate: e.target.value })} /></Field>
+            <Field label="Denda per hari (%)" hint="Default 0,1% · maks 5%"><input type="number" min={0} max={5} step={0.1} className="input" value={woForm.penaltyPct} onChange={(e) => setWoForm({ ...woForm, penaltyPct: e.target.value })} /></Field>
+          </FormGrid>
         </div>
       </Modal>
 
@@ -615,7 +764,7 @@ export default function Subcontractor() {
         <div className="space-y-3">
           <FormGrid>
             <Field label="Subkontraktor">
-              <select className="input" value={termForm.sub} onChange={(e) => setTermForm({ ...termForm, sub: e.target.value, wo: "" })}>
+              <select className="input" value={termForm.sub} onChange={(e) => setTermForm({ ...termForm, sub: e.target.value, wo: "", milestone: "" })}>
                 <option value="">Pilih…</option>
                 {subcontractors.map((s) => <option key={s.id} value={s.name}>{s.name}</option>)}
               </select>
@@ -626,10 +775,17 @@ export default function Subcontractor() {
                 {termWoOptions.map((w) => <option key={w.id} value={w.id}>{w.id} ({w.progress}%)</option>)}
               </select>
             </Field>
+            <Field label="Milestone SOW" hint="Wajib · kumulatif per milestone divalidasi">
+              <select className="input" value={termForm.milestone} onChange={(e) => setTermForm({ ...termForm, milestone: e.target.value })} disabled={!termForm.sub}>
+                <option value="">{termForm.sub ? (termMsList.length ? "Pilih milestone…" : "Belum ada milestone — kelola dulu") : "Pilih sub dulu…"}</option>
+                {termMsList.map((m) => <option key={m.title} value={m.title}>{m.title} ({m.pct}% · due {fmtTanggal(m.due)})</option>)}
+              </select>
+            </Field>
           </FormGrid>
           {termSub && termWo && (
             <p className="rounded-lg bg-surface px-3 py-2 text-xs text-steel-600">
               Batas termin WO ini {fmtRupiah(termCap)} (kontrak {fmtRupiah(Number(termSub.contract || 0))} × progres {termWo.progress}%) · sudah diajukan {fmtRupiah(termUsed)}
+              {termMs ? ` · pagu ${termMs.title} ${fmtRupiah(termMsCap)} · terpakai ${fmtRupiah(termMsUsed)}` : ""}
               {termTsRef > 0 ? ` · referensi timesheet ${termTsHours} jam × ${fmtRupiah(Number(termWo.rate))} = ${fmtRupiah(termTsRef)}` : ""}
             </p>
           )}

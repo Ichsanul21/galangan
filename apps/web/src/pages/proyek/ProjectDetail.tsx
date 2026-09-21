@@ -20,15 +20,19 @@ import BoQSection from "./BoQSection";
 import ReportSection from "./ReportSection";
 import SparepartServiceSection from "./SparepartServiceSection";
 import { useStore } from "../../data/store";
-import type { StoreItem } from "../../data/store";
+import type { StoreItem, WbsItem } from "../../data/store";
 import { fmtMiliar, fmtTanggal, fmtRentang, fmtBulan } from "../../data";
 import { fmtRupiah, todayISO } from "../../utils/format";
+import { getSetting } from "../../utils/settings";
 import { exportExcel } from "../../utils/export";
 
 const STATUS = ["Dalam Proses", "Sedang Berjalan", "Terlambat", "Tertunda", "Selesai"];
 const CO_FLOW = ["Diajukan", "Disetujui", "Ditolak", "Diterapkan"];
 const RISK_LEVEL = ["Rendah", "Sedang", "Tinggi"];
 const RISK_STATUS = ["Aktif", "Dipantau", "Tertutup"];
+
+type WbsExt = WbsItem & { predecessor?: string };
+interface WbsBaseline { at: string; wbs: WbsExt[]; }
 
 export default function ProjectDetail() {
   const { id } = useParams();
@@ -43,11 +47,11 @@ export default function ProjectDetail() {
   const [docType, setDocType] = useState("Laporan");
   const [delScope, setDelScope] = useState<string | null>(null);
   const [showWbs, setShowWbs] = useState(false);
-  const [wbsForm, setWbsForm] = useState({ task: "", start: "", end: "", weight: "10", progress: "0" });
+  const [wbsForm, setWbsForm] = useState({ task: "", start: "", end: "", weight: "10", progress: "0", predecessor: "" });
   const [showTeam, setShowTeam] = useState(false);
   const [teamPick, setTeamPick] = useState("");
   const [wbsTaskUpdate, setWbsTaskUpdate] = useState<string | null>(null);
-  const [wbsUpdateForm, setWbsUpdateForm] = useState({ hours: "", material: "", status: "Sedang" as "Sedang" | "Selesai", progress: "" });
+  const [wbsUpdateForm, setWbsUpdateForm] = useState({ hours: "", material: "", status: "Sedang" as "Sedang" | "Selesai", progress: "", predecessor: "" });
   const [showShare, setShowShare] = useState(false);
   const [shareForm, setShareForm] = useState({ docId: "", to: "" });
   const [showCo, setShowCo] = useState(false);
@@ -55,11 +59,38 @@ export default function ProjectDetail() {
   const [showRisk, setShowRisk] = useState(false);
   const [riskEditId, setRiskEditId] = useState<string | null>(null);
   const [riskForm, setRiskForm] = useState({ title: "", likelihood: "Sedang", impact: "Sedang", mitigation: "", status: "Aktif" });
+  const [docFile, setDocFile] = useState("");
+  const [showDelBaseline, setShowDelBaseline] = useState(false);
 
   const weightedProgress = (items: { progress: number; weight: number }[]): number => {
     const totalW = items.reduce((s, w) => s + Number(w.weight || 0), 0);
     if (totalW <= 0) return 0;
     return Math.round(items.reduce((s, w) => s + (Number(w.progress || 0) * Number(w.weight || 0)), 0) / totalW);
+  };
+
+  const createsCycle = (items: WbsExt[], task: string, pred: string): boolean => {
+    const map = new Map(items.map((w) => [String(w.task), String(w.predecessor ?? "")]));
+    let cur = pred;
+    const seen = new Set<string>();
+    while (cur) {
+      if (cur === task) return true;
+      if (seen.has(cur)) return true;
+      seen.add(cur);
+      cur = map.get(cur) ?? "";
+    }
+    return false;
+  };
+
+  const parseYM = (v: string): { y: number; m: number } | null => {
+    const m = String(v ?? "").match(/^(\d{4})-(\d{2})/);
+    if (!m) return null;
+    return { y: Number(m[1]), m: Number(m[2]) };
+  };
+
+  const monthEndDate = (v: string): Date | null => {
+    const m = String(v ?? "").match(/^(\d{4})-(\d{2})(?:-(\d{2}))?$/);
+    if (!m) return null;
+    return m[3] ? new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3])) : new Date(Number(m[1]), Number(m[2]), 0);
   };
 
   useEffect(() => {
@@ -74,7 +105,7 @@ export default function ProjectDetail() {
   if (!project) return <p className="text-sm text-steel-500">Proyek tidak ditemukan.</p>;
   const pid = project.id;
 
-  const wbs = wbsFor(pid);
+  const wbs = wbsFor(pid) as WbsExt[];
   const teamIds = teamFor(pid);
   const team = data.employees.filter((e) => teamIds.includes(e.id));
   const vessel = data.vessels.find((v) => v.name === project.vessel);
@@ -91,6 +122,44 @@ export default function ProjectDetail() {
   const riskScore = (r: StoreItem): number =>
     (RISK_LEVEL.indexOf(String(r.likelihood ?? "")) + 1) * (RISK_LEVEL.indexOf(String(r.impact ?? "")) + 1);
   const riskTone = (score: number): "green" | "amber" | "red" => (score >= 6 ? "red" : score >= 3 ? "amber" : "green");
+
+  const ganttRange = (() => {
+    const pts = wbs.flatMap((w) => [parseYM(w.start), parseYM(w.end)]).filter((p): p is { y: number; m: number } => p !== null);
+    if (pts.length === 0) return null;
+    let min = pts[0];
+    let max = pts[0];
+    for (const p of pts) {
+      if (p.y * 12 + p.m < min.y * 12 + min.m) min = p;
+      if (p.y * 12 + p.m > max.y * 12 + max.m) max = p;
+    }
+    return { min, max, total: max.y * 12 + max.m - (min.y * 12 + min.m) + 1 };
+  })();
+
+  const ganttBar = (start: string, end: string): { left: number; width: number } | null => {
+    if (!ganttRange) return null;
+    const s = parseYM(start) ?? ganttRange.min;
+    const e = parseYM(end) ?? s;
+    const base = ganttRange.min.y * 12 + ganttRange.min.m;
+    const left = ((s.y * 12 + s.m - base) / ganttRange.total) * 100;
+    const width = Math.max(((e.y * 12 + e.m - (s.y * 12 + s.m) + 1) / ganttRange.total) * 100, 3);
+    return { left, width };
+  };
+
+  const milestoneDays = getSetting(data, "ALERT_MILESTONE_DAYS", 7);
+  const milestonesNear = wbs.filter((w) => {
+    const d = monthEndDate(w.end);
+    if (!d || Number(w.progress) >= 100) return false;
+    const diff = Math.round((d.getTime() - new Date(`${todayISO()}T00:00:00`).getTime()) / 86400000);
+    return diff >= 0 && diff <= milestoneDays;
+  });
+
+  const baseline = (project.wbsBaseline ?? null) as WbsBaseline | null;
+
+  const snapshotBaseline = () => {
+    update("projects", pid, { wbsBaseline: { at: todayISO(), wbs: JSON.parse(JSON.stringify(wbs)) as WbsExt[] } });
+    log("membuat baseline WBS", `${pid} · ${wbs.length} tahapan`, "Proyek");
+    toast("Baseline WBS tersimpan");
+  };
 
   const saveCo = () => {
     if (!coForm.title.trim()) { toast("Judul perubahan wajib diisi", "info"); return; }
@@ -154,10 +223,12 @@ export default function ProjectDetail() {
     const hours = Number(wbsUpdateForm.hours) || 0;
     const prog = Math.max(0, Math.min(100, Number(wbsUpdateForm.progress)));
     if (wbsUpdateForm.progress === "" || Number.isNaN(prog)) { toast("Isi progres 0–100", "info"); return; }
+    const pred = wbsUpdateForm.predecessor || "";
+    if (pred && pred !== wbsTaskUpdate && createsCycle(wbs, wbsTaskUpdate, pred)) { toast("Dependensi menciptakan siklus — ditolak", "info"); return; }
     const status = prog >= 100 ? "Selesai" : wbsUpdateForm.status === "Selesai" && prog < 100 ? "Sedang" : wbsUpdateForm.status;
     const updated = wbs.map((w) =>
       w.task === wbsTaskUpdate
-        ? { ...w, actualHours: hours, materialUsed: wbsUpdateForm.material, status, progress: prog }
+        ? { ...w, actualHours: hours, materialUsed: wbsUpdateForm.material, status, progress: prog, predecessor: pred || undefined }
         : w
     );
     setWbs(pid, updated);
@@ -165,14 +236,17 @@ export default function ProjectDetail() {
     log("mengupdate progres WBS", `${wbsTaskUpdate} → ${prog}% (${status})`, "Proyek");
     toast("Progres tugas diperbarui");
     setWbsTaskUpdate(null);
-    setWbsUpdateForm({ hours: "", material: "", status: "Sedang", progress: "" });
+    setWbsUpdateForm({ hours: "", material: "", status: "Sedang", progress: "", predecessor: "" });
   };
 
   const saveWbs = () => {
     if (!wbsForm.task.trim()) { toast("Nama tahapan wajib diisi", "info"); return; }
+    if (wbs.some((w) => w.task === wbsForm.task.trim())) { toast("Nama tahapan sudah ada", "info"); return; }
     const weight = Number(wbsForm.weight) || 0;
     if (weight <= 0) { toast("Bobot harus lebih dari 0", "info"); return; }
-    const next = [...wbs, { task: wbsForm.task.trim(), start: wbsForm.start || "-", end: wbsForm.end || "-", progress: Number(wbsForm.progress) || 0, weight }];
+    const pred = wbsForm.predecessor || "";
+    if (pred && !wbs.some((w) => w.task === pred)) { toast("Predecessor tidak dikenal", "info"); return; }
+    const next = [...wbs, { task: wbsForm.task.trim(), start: wbsForm.start || "-", end: wbsForm.end || "-", progress: Number(wbsForm.progress) || 0, weight, ...(pred ? { predecessor: pred } : {}) }];
     const totalW = next.reduce((s, w) => s + Number(w.weight || 0), 0);
     if (totalW !== 100) { toast(`Total bobot menjadi ${totalW}% — harus tepat 100%`, "info"); return; }
     setWbs(pid, next);
@@ -180,7 +254,7 @@ export default function ProjectDetail() {
     log("menambah tahapan WBS", `${pid} · ${wbsForm.task.trim()}`, "Proyek");
     toast("Tahapan ditambahkan");
     setShowWbs(false);
-    setWbsForm({ task: "", start: "", end: "", weight: "10", progress: "0" });
+    setWbsForm({ task: "", start: "", end: "", weight: "10", progress: "0", predecessor: "" });
   };
 
   return (
@@ -237,8 +311,26 @@ export default function ProjectDetail() {
                     <h3 className="text-sm font-semibold text-navy-900">Progres Keseluruhan</h3>
                     <span className="text-xs text-steel-500">Rata-rata berbobot WBS</span>
                   </div>
-                  <ProgressBar value={project.progress} tone={project.status === "Terlambat" ? "red" : "navy"} />
-                   <p className="mt-1 text-xs text-steel-500">{project.progress}% selesai · target penyelesaian {fmtTanggal(project.end)}</p>
+                   <ProgressBar value={project.progress} tone={project.status === "Terlambat" ? "red" : "navy"} />
+                    <p className="mt-1 text-xs text-steel-500">{project.progress}% selesai · target penyelesaian {fmtTanggal(project.end)}</p>
+                </div>
+                <div className="mt-6">
+                  <div className="mb-2 flex items-center justify-between">
+                    <h3 className="text-sm font-semibold text-navy-900">Milestone Dekat (H-{milestoneDays})</h3>
+                    <Link to="/proyek/monitoring" className="text-xs font-medium text-ocean-600 hover:underline">Monitoring</Link>
+                  </div>
+                  {milestonesNear.length === 0 ? (
+                    <p className="text-xs text-steel-400">Tidak ada milestone dalam {milestoneDays} hari ke depan.</p>
+                  ) : (
+                    <div className="space-y-1.5">
+                      {milestonesNear.map((w) => (
+                        <div key={w.task} className="flex items-center justify-between rounded-lg border border-amber-200 bg-amber-50 px-3 py-1.5 text-sm">
+                          <span className="font-medium text-navy-900">{w.task}</span>
+                          <span className="text-xs text-steel-500">{w.progress}% · berakhir {fmtBulan(w.end)}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
                 {vessel && (
                   <div className="mt-6 rounded-xl border border-steel-100 bg-surface p-3 text-sm">
@@ -271,7 +363,7 @@ export default function ProjectDetail() {
               <div className="overflow-x-auto">
                 <table className="w-full">
                   <thead className="bg-surface">
-                    <tr><th className="th">Tahapan</th><th className="th">Mulai</th><th className="th">Selesai</th><th className="th">Bobot</th><th className="th">Progres</th><th className="th">Aksi</th></tr>
+                    <tr><th className="th">Tahapan</th><th className="th">Mulai</th><th className="th">Selesai</th><th className="th">Bobot</th><th className="th">Pred</th><th className="th">Progres</th><th className="th">Aksi</th></tr>
                   </thead>
                   <tbody className="divide-y divide-steel-100">
                     {wbs.map((w) => (
@@ -280,6 +372,7 @@ export default function ProjectDetail() {
                          <td className="td font-mono text-xs text-steel-500">{fmtBulan(w.start)}</td>
                          <td className="td font-mono text-xs text-steel-500">{fmtBulan(w.end)}</td>
                         <td className="td">{w.weight}%</td>
+                        <td className="td text-xs text-steel-500">{w.predecessor || "—"}</td>
                         <td className="td">
                           <div className="flex items-center gap-3">
                             <ProgressBar value={w.progress} className="w-32" tone={w.progress >= 100 ? "green" : "navy"} />
@@ -287,12 +380,76 @@ export default function ProjectDetail() {
                           </div>
                         </td>
                         <td className="td">
-                           <button className="btn-secondary text-xs" onClick={() => { setWbsTaskUpdate(w.task); setWbsUpdateForm({ hours: String(w.actualHours ?? ""), material: w.materialUsed ?? "", status: w.status === "Selesai" ? "Selesai" : "Sedang", progress: String(w.progress ?? 0) }); }}>Perbarui</button>
+                           <button className="btn-secondary text-xs" onClick={() => { setWbsTaskUpdate(w.task); setWbsUpdateForm({ hours: String(w.actualHours ?? ""), material: w.materialUsed ?? "", status: w.status === "Selesai" ? "Selesai" : "Sedang", progress: String(w.progress ?? 0), predecessor: w.predecessor ?? "" }); }}>Perbarui</button>
                         </td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
+              </div>
+              {ganttRange && wbs.length > 0 && (
+                <div className="mt-4">
+                  <div className="mb-2 flex items-center justify-between">
+                    <h4 className="text-xs font-semibold text-navy-900">Gantt Mini</h4>
+                    <span className="text-[11px] text-steel-500">{fmtBulan(`${ganttRange.min.y}-${String(ganttRange.min.m).padStart(2, "0")}`)} → {fmtBulan(`${ganttRange.max.y}-${String(ganttRange.max.m).padStart(2, "0")}`)}</span>
+                  </div>
+                  <div className="space-y-1.5">
+                    {wbs.map((w) => {
+                      const bar = ganttBar(w.start, w.end);
+                      if (!bar) return null;
+                      return (
+                        <div key={`gantt-${w.task}`} className="flex items-center gap-2">
+                          <span className="w-40 truncate text-[11px] text-steel-600">{w.task}</span>
+                          <div className="relative h-3 flex-1 overflow-hidden rounded-full bg-steel-100">
+                            <div className="absolute top-0 h-full rounded-full bg-ocean-300" style={{ left: `${bar.left}%`, width: `${bar.width}%` }} />
+                            <div className="absolute top-0 h-full rounded-full bg-navy-700" style={{ left: `${bar.left}%`, width: `${(bar.width * Math.max(0, Math.min(100, Number(w.progress) || 0))) / 100}%` }} />
+                          </div>
+                          <span className="w-9 text-right text-[11px] font-medium text-steel-600">{w.progress}%</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+              <div className="mt-4 rounded-xl border border-steel-100 p-3">
+                <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+                  <h4 className="text-xs font-semibold text-navy-900">
+                    Baseline WBS{baseline ? ` · snapshot ${fmtTanggal(baseline.at)}` : " · belum ada snapshot"}
+                  </h4>
+                  <div className="flex gap-2">
+                    <button className="btn-secondary text-xs" onClick={snapshotBaseline}>Snapshot Baseline</button>
+                    {baseline && <button className="btn-secondary text-xs" onClick={() => setShowDelBaseline(true)}>Hapus Baseline</button>}
+                  </div>
+                </div>
+                {!baseline ? (
+                  <p className="text-xs text-steel-400">Belum ada baseline. Ambil snapshot untuk membandingkan rencana vs aktual.</p>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="w-full">
+                      <thead className="bg-surface">
+                        <tr><th className="th">Tahapan</th><th className="th">Rencana (baseline)</th><th className="th">Aktual</th><th className="th">Deviasi</th></tr>
+                      </thead>
+                      <tbody className="divide-y divide-steel-100">
+                        {wbs.map((w) => {
+                          const base = baseline.wbs.find((b) => b.task === w.task);
+                          const planned = base ? Number(base.progress) || 0 : 0;
+                          const actual = Number(w.progress) || 0;
+                          const dev = actual - planned;
+                          return (
+                            <tr key={`base-${w.task}`}>
+                              <td className="td font-medium text-navy-900">{w.task}</td>
+                              <td className="td text-xs text-steel-500">{base ? `${planned}% · ${fmtTanggal(baseline.at)}` : "baru (di luar baseline)"}</td>
+                              <td className="td text-xs font-medium">{actual}%</td>
+                              <td className={`td text-xs font-semibold ${dev < 0 ? "text-rose-600" : dev > 0 ? "text-emerald-600" : "text-steel-500"}`}>
+                                {dev > 0 ? `+${dev}%` : `${dev}%`}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
               </div>
             </div>
           )}
@@ -394,7 +551,7 @@ export default function ProjectDetail() {
                   <div key={d.id} className="flex items-center justify-between rounded-xl border border-steel-100 p-3 text-sm">
                     <div>
                       <p className="font-medium text-navy-900">{d.title}</p>
-                      <p className="text-xs text-steel-500">{d.id} · {d.type} · {d.version} · {d.updated}</p>
+                      <p className="text-xs text-steel-500">{d.id} · {d.type} · {d.version} · {d.updated}{d.fileName ? ` · lampiran: ${d.fileName}` : ""}</p>
                     </div>
                     <div className="flex gap-2">
                       <button className="btn-secondary text-xs" aria-label={`Ekspor ${d.title} ke Excel`} onClick={() => {
@@ -610,6 +767,12 @@ export default function ProjectDetail() {
               <option value="Selesai">Selesai</option>
             </select>
           </Field>
+          <Field label="Predecessor (opsional)" hint="Tugas pendahulu — ditolak bila membentuk siklus">
+            <select className="input" value={wbsUpdateForm.predecessor} onChange={(e) => setWbsUpdateForm({ ...wbsUpdateForm, predecessor: e.target.value })}>
+              <option value="">Tanpa predecessor</option>
+              {wbs.filter((w) => w.task !== wbsTaskUpdate).map((w) => <option key={w.task} value={w.task}>{w.task}</option>)}
+            </select>
+          </Field>
         </div>
       </Modal>
 
@@ -624,6 +787,12 @@ export default function ProjectDetail() {
             <Field label="Bobot (%)"><input type="number" className="input" value={wbsForm.weight} onChange={(e) => setWbsForm({ ...wbsForm, weight: e.target.value })} /></Field>
             <Field label="Progres (%)"><input type="number" className="input" value={wbsForm.progress} onChange={(e) => setWbsForm({ ...wbsForm, progress: e.target.value })} /></Field>
           </FormGrid>
+          <Field label="Predecessor (opsional)" hint="Tugas pendahulu — ditolak bila membentuk siklus">
+            <select className="input" value={wbsForm.predecessor} onChange={(e) => setWbsForm({ ...wbsForm, predecessor: e.target.value })}>
+              <option value="">Tanpa predecessor</option>
+              {wbs.map((w) => <option key={w.task} value={w.task}>{w.task}</option>)}
+            </select>
+          </Field>
         </div>
       </Modal>
 
@@ -650,16 +819,19 @@ export default function ProjectDetail() {
       <Modal open={showDoc} onClose={() => setShowDoc(false)} title="Tambah Dokumen Proyek" subtitle={pid}
         footer={<><button className="btn-secondary" onClick={() => setShowDoc(false)}>Batal</button><button className="btn-primary" onClick={() => {
           if (!docTitle.trim()) { toast("Judul wajib diisi", "info"); return; }
-          add("documents", { title: docTitle.trim(), type: docType, project: pid, vessel: project.vessel, version: "v1.0", status: "Draft", updated: new Date().toISOString().slice(0, 10), owner: "Anda", sharedWith: [], approvalStatus: "Draft" },
+          add("documents", { title: docTitle.trim(), type: docType, project: pid, vessel: project.vessel, version: "v1.0", status: "Draft", updated: new Date().toISOString().slice(0, 10), owner: "Anda", sharedWith: [], approvalStatus: "Draft", fileName: docFile.trim() || "-" },
             { action: "mengarsipkan dokumen", module: "Dokumen" });
-          toast("Dokumen ditambahkan"); setShowDoc(false); setDocTitle("");
+          toast("Dokumen ditambahkan"); setShowDoc(false); setDocTitle(""); setDocFile("");
         }}>Simpan</button></>}>
         <div className="space-y-3">
           <Field label="Judul dokumen"><input className="input" value={docTitle} onChange={(e) => setDocTitle(e.target.value)} /></Field>
           <Field label="Tipe">
             <select className="input" value={docType} onChange={(e) => setDocType(e.target.value)}>
-              {["Laporan", "Kontrak", "Drawing", "Prosedur", "Sertifikat", "Invoice", "NCR"].map((t) => <option key={t}>{t}</option>)}
+              {["Laporan", "Kontrak", "Kontrak Kerja", "Drawing", "Prosedur", "Sertifikat", "Invoice", "NCR"].map((t) => <option key={t}>{t}</option>)}
             </select>
+          </Field>
+          <Field label="Lampiran (nama file)" hint="Metadata nama file — upload fisik menyusul via backend">
+            <input className="input" value={docFile} onChange={(e) => setDocFile(e.target.value)} placeholder="cth: kontrak-kerja-NB-2025-012.pdf" />
           </Field>
         </div>
       </Modal>
@@ -674,6 +846,9 @@ export default function ProjectDetail() {
       <ConfirmModal open={delScope !== null} title="Hapus lingkup?" desc={`"${delScope}" akan dihapus dari ruang lingkup.`}
         confirmLabel="Ya, hapus" danger onCancel={() => setDelScope(null)}
         onConfirm={() => { if (delScope) update("projects", pid, { scope: (project.scope ?? []).filter((s: string) => s !== delScope) }); setDelScope(null); }} />
+      <ConfirmModal open={showDelBaseline} title="Hapus baseline?" desc="Snapshot baseline WBS proyek ini akan dihapus dan tabel perbandingan disembunyikan."
+        confirmLabel="Ya, hapus" danger onCancel={() => setShowDelBaseline(false)}
+        onConfirm={() => { update("projects", pid, { wbsBaseline: undefined }); log("menghapus baseline WBS", pid, "Proyek"); toast("Baseline dihapus", "info"); setShowDelBaseline(false); }} />
     </div>
   );
 }

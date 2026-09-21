@@ -1,11 +1,23 @@
 import { useState, useMemo, useRef, useEffect } from "react";
 import { useStore } from "../../data/store";
 import { Card, StatusBadge, Modal, Field, FormGrid, toast, EmptyState, Badge } from "../../components/ui";
-import { Plus, Wrench, Package, Box, RotateCcw } from "lucide-react";
-import { fmtRupiah } from "../../utils/export";
+import { Plus, Wrench, Package, Box, RotateCcw, FileDown } from "lucide-react";
+import { exportExcel, fmtRupiah } from "../../utils/export";
 import type { ServiceRecord, Sparepart } from "../../data";
 
 export type SparepartServiceView = "3d" | "service" | "sparepart" | "all";
+
+type SvcExt = Omit<ServiceRecord, "status"> & { status: ServiceRecord["status"] | "Batal"; cancelReason?: string };
+type SpExt = Sparepart & { usedDate?: string; warrantyUntil?: string };
+
+const SVC_FILTER = ["Semua", "Scheduled", "In Progress", "Done", "Batal"] as const;
+const SVC_LABEL: Record<string, string> = {
+  Semua: "Semua",
+  Scheduled: "Dijadwalkan",
+  "In Progress": "Sedang",
+  Done: "Selesai",
+  Batal: "Batal",
+};
 
 const STS = ["Semua", "Akan", "Sedang", "Selesai"];
 const ST_LABEL: Record<string, string> = {
@@ -22,20 +34,25 @@ interface Props {
 }
 
 export default function SparepartServiceSection({ projectId, vesselId, view = "all" }: Props) {
-  const { data, add } = useStore();
+  const { data, add, update, log } = useStore();
   const [spTab, setSpTab] = useState("Semua");
   const [showAdd, setShowAdd] = useState(false);
-  const [form, setForm] = useState({ name: "", partNumber: "", category: "Mechanical", status: "Akan" as "Akan" | "Sedang" | "Selesai", cost: "", notes: "" });
+  const [form, setForm] = useState({ name: "", partNumber: "", category: "Mechanical", status: "Akan" as "Akan" | "Sedang" | "Selesai", cost: "", notes: "", technician: "", usedDate: "", warrantyUntil: "" });
 
   const [showAddSvc, setShowAddSvc] = useState(false);
   const [svcForm, setSvcForm] = useState({ type: "Repair" as ServiceRecord["type"], description: "", date: new Date().toISOString().slice(0, 10), technician: "", cost: "", status: "Scheduled" as ServiceRecord["status"] });
+  const [svcStatus, setSvcStatus] = useState<string>("Semua");
+  const [svcQ, setSvcQ] = useState("");
+  const [cancelFor, setCancelFor] = useState<SvcExt | null>(null);
+  const [cancelReason, setCancelReason] = useState("");
+  const [modelPick, setModelPick] = useState("Tugboat");
 
   const show3d = view === "3d" || view === "all";
   const showSparepart = view === "sparepart" || view === "all";
   const showService = view === "service" || view === "all";
 
   const allSpareparts = useMemo(() => {
-    let list = ((data.spareparts ?? []) as Sparepart[]);
+    let list = ((data.spareparts ?? []) as SpExt[]);
     if (projectId) list = list.filter((s) => s.projectId === projectId);
     if (vesselId) list = list.filter((s) => s.vesselId === vesselId);
     return list;
@@ -47,11 +64,19 @@ export default function SparepartServiceSection({ projectId, vesselId, view = "a
   }, [allSpareparts, spTab]);
 
   const svcItems = useMemo(() => {
-    let list = ((data.services ?? []) as ServiceRecord[]);
+    let list = ((data.services ?? []) as SvcExt[]);
     if (projectId) list = list.filter((s) => s.projectId === projectId);
     if (vesselId) list = list.filter((s) => s.vesselId === vesselId);
     return list;
   }, [data.services, projectId, vesselId]);
+
+  const svcFiltered = useMemo(() => {
+    return svcItems.filter((s) => {
+      const matchSt = svcStatus === "Semua" || s.status === svcStatus;
+      const matchQ = `${s.description} ${s.type} ${s.technician}`.toLowerCase().includes(svcQ.toLowerCase());
+      return matchSt && matchQ;
+    });
+  }, [svcItems, svcStatus, svcQ]);
 
   const counts = useMemo(() => {
     return {
@@ -61,6 +86,30 @@ export default function SparepartServiceSection({ projectId, vesselId, view = "a
       Selesai: allSpareparts.filter((s) => s.status === "Selesai").length,
     };
   }, [allSpareparts]);
+
+  const advanceService = (s: SvcExt, next: SvcExt["status"]) => {
+    update("services", s.id, { status: next });
+    log("mengubah status service", `${s.id} → ${next}`, "Service");
+    toast(`Service ${next === "Done" ? "diselesaikan" : "dimulai"}`);
+  };
+
+  const confirmCancel = () => {
+    if (!cancelFor) return;
+    if (!cancelReason.trim()) { toast("Alasan pembatalan wajib diisi", "info"); return; }
+    update("services", cancelFor.id, { status: "Batal", cancelReason: cancelReason.trim() });
+    log("membatalkan service", `${cancelFor.id} (alasan: ${cancelReason.trim()})`, "Service");
+    toast("Service dibatalkan", "info");
+    setCancelFor(null);
+    setCancelReason("");
+  };
+
+  const exportSvc = () => {
+    const rows: unknown[][] = [
+      ["ID", "Tanggal", "Tipe", "Deskripsi", "Status", "Teknisi", "Biaya (Rp)"],
+      ...svcFiltered.map((s) => [s.id, s.date, s.type, s.description, SVC_LABEL[s.status] ?? s.status, s.technician, s.cost]),
+    ];
+    void exportExcel(rows, `service-${projectId ?? vesselId ?? "riwayat"}`, "Service").then(() => toast("Riwayat service diekspor ke Excel"));
+  };
 
   const modelSrc = "/models/tug_boat.glb";
   const wmRef = useRef<HTMLDivElement>(null);
@@ -127,10 +176,13 @@ export default function SparepartServiceSection({ projectId, vesselId, view = "a
       requestDate: new Date().toISOString().slice(0, 10),
       cost: Number(form.cost) || 0,
       notes: form.notes.trim(),
+      technician: form.technician.trim() || "-",
+      usedDate: form.usedDate || "-",
+      warrantyUntil: form.warrantyUntil || "-",
     }, { action: "menambahkan sparepart", module: "Sparepart" });
     toast("Sparepart ditambahkan");
     setShowAdd(false);
-    setForm({ name: "", partNumber: "", category: "Mechanical", status: "Akan", cost: "", notes: "" });
+    setForm({ name: "", partNumber: "", category: "Mechanical", status: "Akan", cost: "", notes: "", technician: "", usedDate: "", warrantyUntil: "" });
   };
 
   const saveService = () => {
@@ -153,12 +205,23 @@ export default function SparepartServiceSection({ projectId, vesselId, view = "a
 
   const modelCard = show3d ? (
     <Card className="p-4">
-      <div className="mb-3 flex items-center justify-between">
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
         <h3 className="text-sm font-semibold text-navy-900 flex items-center gap-2"><Box className="h-4 w-4" /> Model 3D Kapal</h3>
-        {modelError && (
-          <button className="btn-secondary text-xs" onClick={() => setModelKey((k) => k + 1)}><RotateCcw className="h-3.5 w-3.5" /> Muat ulang</button>
-        )}
+        <div className="flex items-center gap-2">
+          <select className="input w-auto py-1.5 text-xs" aria-label="Pilih model kapal" value={modelPick} onChange={(e) => setModelPick(e.target.value)}>
+            <option value="Tugboat">Tugboat</option>
+            <option value="Kapal Kecil">Kapal Kecil</option>
+          </select>
+          {modelError && (
+            <button className="btn-secondary text-xs" onClick={() => setModelKey((k) => k + 1)}><RotateCcw className="h-3.5 w-3.5" /> Muat ulang</button>
+          )}
+        </div>
       </div>
+      {modelPick !== "Tugboat" && (
+        <p className="mb-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-1.5 text-xs text-amber-800">
+          Model generik — tipe kapal ini memakai model tugboat sebagai representasi.
+        </p>
+      )}
       <div className="relative overflow-hidden rounded-xl border border-steel-100 bg-surface" style={{ minHeight: 340 }}>
         <div ref={wmRef} style={{ minHeight: 340 }} />
         {modelLoading && !modelError && (
@@ -199,6 +262,9 @@ export default function SparepartServiceSection({ projectId, vesselId, view = "a
               <div>
                 <p className="font-medium text-navy-900">{sp.name}</p>
                 <p className="text-xs text-steel-500">{sp.partNumber} · {sp.category} · req {sp.requestDate}</p>
+                <p className="text-xs text-steel-500">
+                  dipakai: {sp.usedDate && sp.usedDate !== "-" ? sp.usedDate : "—"} · teknisi: {sp.technician || "—"} · garansi s.d. {sp.warrantyUntil && sp.warrantyUntil !== "-" ? sp.warrantyUntil : "—"}
+                </p>
               </div>
               <div className="text-right">
                 <StatusBadge status={sp.status === "Akan" ? "Tertunda" : sp.status === "Sedang" ? "Dalam Proses" : "Selesai"} />
@@ -213,26 +279,59 @@ export default function SparepartServiceSection({ projectId, vesselId, view = "a
 
   const serviceCard = showService ? (
     <Card className="p-4">
-      <div className="mb-3 flex items-center justify-between">
-        <h3 className="text-sm font-semibold text-navy-900 flex items-center gap-2"><Wrench className="h-4 w-4" /> Riwayat Service ({svcItems.length})</h3>
-        <button className="btn-secondary text-xs" onClick={() => setShowAddSvc(true)}><Plus className="h-3.5 w-3.5" /> Tambah Service</button>
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+        <h3 className="text-sm font-semibold text-navy-900 flex items-center gap-2"><Wrench className="h-4 w-4" /> Riwayat Service ({svcFiltered.length}{svcFiltered.length !== svcItems.length ? ` / ${svcItems.length}` : ""})</h3>
+        <div className="flex gap-2">
+          <button className="btn-secondary text-xs" onClick={exportSvc}><FileDown className="h-3.5 w-3.5" /> Export Excel</button>
+          <button className="btn-secondary text-xs" onClick={() => setShowAddSvc(true)}><Plus className="h-3.5 w-3.5" /> Tambah Service</button>
+        </div>
       </div>
-      {svcItems.length === 0 ? (
-        <EmptyState icon={<Wrench className="h-6 w-6" />} title="Belum ada riwayat service" subtitle="Klik Tambah Service untuk mencatat pekerjaan pertama." />
+      <div className="mb-3 flex flex-wrap items-center gap-2">
+        <input
+          className="input w-full sm:w-52"
+          placeholder="Cari deskripsi / teknisi..."
+          aria-label="Cari service"
+          value={svcQ}
+          onChange={(e) => setSvcQ(e.target.value)}
+        />
+        <div className="flex flex-wrap gap-1">
+          {SVC_FILTER.map((s) => (
+            <button key={s} className={`rounded-full px-3 py-1 text-xs font-semibold transition-colors ${svcStatus === s ? "bg-navy-800 text-white" : "bg-steel-100 text-steel-600 hover:bg-steel-200"}`} onClick={() => setSvcStatus(s)}>
+              {SVC_LABEL[s]}
+            </button>
+          ))}
+        </div>
+      </div>
+      {svcFiltered.length === 0 ? (
+        <EmptyState icon={<Wrench className="h-6 w-6" />} title="Tidak ada service" subtitle={svcItems.length === 0 ? "Klik Tambah Service untuk mencatat pekerjaan pertama." : "Tidak cocok dengan filter/pencarian. Pilih Semua."} />
       ) : (
         <div className="relative space-y-0">
-          {svcItems.map((s, i, arr) => (
+          {svcFiltered.map((s, i, arr) => (
             <div key={s.id} className="relative flex gap-4 pb-6 last:pb-0">
               <div className="flex flex-col items-center">
-                <span className={`h-3 w-3 rounded-full ${s.status === "Done" ? "bg-teal-500" : s.status === "In Progress" ? "bg-ocean-500" : "bg-steel-300"}`} />
+                <span className={`h-3 w-3 rounded-full ${s.status === "Done" ? "bg-teal-500" : s.status === "In Progress" ? "bg-ocean-500" : s.status === "Batal" ? "bg-rose-500" : "bg-steel-300"}`} />
                 {i < arr.length - 1 && <span className="w-px flex-1 bg-steel-200" />}
               </div>
               <div className="pb-1 flex-1">
-                <div className="flex items-center justify-between">
+                <div className="flex flex-wrap items-center justify-between gap-2">
                   <p className="text-sm font-semibold text-navy-900">{s.type}: {s.description}</p>
-                  <Badge tone={s.status === "Done" ? "green" : s.status === "In Progress" ? "blue" : "gray"}>{s.status === "Done" ? "Selesai" : s.status === "In Progress" ? "Sedang" : "Dijadwalkan"}</Badge>
+                  <Badge tone={s.status === "Done" ? "green" : s.status === "In Progress" ? "blue" : s.status === "Batal" ? "red" : "gray"}>{SVC_LABEL[s.status] ?? s.status}</Badge>
                 </div>
                 <p className="text-xs text-steel-500">{s.date} · {s.technician} · {fmtRupiah(s.cost)}</p>
+                {s.status === "Batal" && s.cancelReason && (
+                  <p className="mt-1 text-xs text-rose-600">Alasan batal: {s.cancelReason}</p>
+                )}
+                {s.status !== "Done" && s.status !== "Batal" && (
+                  <div className="mt-2 flex flex-wrap gap-1.5">
+                    {s.status === "Scheduled" && (
+                      <button className="rounded bg-ocean-100 px-2 py-0.5 text-xs font-semibold text-ocean-700 hover:bg-ocean-200" onClick={() => advanceService(s, "In Progress")}>Mulai</button>
+                    )}
+                    {s.status === "In Progress" && (
+                      <button className="rounded bg-teal-100 px-2 py-0.5 text-xs font-semibold text-teal-700 hover:bg-teal-200" onClick={() => advanceService(s, "Done")}>Selesaikan</button>
+                    )}
+                    <button className="rounded bg-rose-100 px-2 py-0.5 text-xs font-semibold text-rose-700 hover:bg-rose-200" onClick={() => { setCancelFor(s); setCancelReason(""); }}>Batalkan</button>
+                  </div>
+                )}
               </div>
             </div>
           ))}
@@ -280,6 +379,11 @@ export default function SparepartServiceSection({ projectId, vesselId, view = "a
             <Field label="Harga (Rp)"><input type="number" className="input" value={form.cost} onChange={(e) => setForm({ ...form, cost: e.target.value })} /></Field>
             <Field label="Catatan"><input className="input" value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} placeholder="cth: Untuk section 3" /></Field>
           </FormGrid>
+          <FormGrid>
+            <Field label="Teknisi (opsional)"><input className="input" value={form.technician} onChange={(e) => setForm({ ...form, technician: e.target.value })} placeholder="cth: Agus Setiawan" /></Field>
+            <Field label="Tanggal pakai (opsional)"><input type="date" className="input" value={form.usedDate} onChange={(e) => setForm({ ...form, usedDate: e.target.value })} /></Field>
+          </FormGrid>
+          <Field label="Garansi s.d. (opsional)"><input type="date" className="input" value={form.warrantyUntil} onChange={(e) => setForm({ ...form, warrantyUntil: e.target.value })} /></Field>
         </div>
       </Modal>
 
@@ -307,6 +411,13 @@ export default function SparepartServiceSection({ projectId, vesselId, view = "a
           </FormGrid>
           <Field label="Biaya (Rp)"><input type="number" className="input" value={svcForm.cost} onChange={(e) => setSvcForm({ ...svcForm, cost: e.target.value })} /></Field>
         </div>
+      </Modal>
+
+      <Modal open={cancelFor !== null} onClose={() => setCancelFor(null)} title={`Batalkan service: ${cancelFor?.description ?? ""}`} subtitle={cancelFor?.id}
+        footer={<><button className="btn-secondary" onClick={() => setCancelFor(null)}>Kembali</button><button className="btn-primary" onClick={confirmCancel}>Batalkan Service</button></>}>
+        <Field label="Alasan pembatalan" hint="Wajib diisi — tercatat di riwayat service">
+          <textarea className="input" rows={3} value={cancelReason} onChange={(e) => setCancelReason(e.target.value)} placeholder="cth: Pekerjaan dialihkan ke subkontraktor" />
+        </Field>
       </Modal>
     </div>
   );
