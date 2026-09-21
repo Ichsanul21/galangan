@@ -18,15 +18,16 @@ const toneMap: Record<string, "green" | "blue" | "amber" | "red" | "gray" | "nav
   "Belum Dibayar": "amber",
   Draf: "gray",
   Ditolak: "red",
+  "Retensi Released": "green",
 };
 
-/* Alur termin + pemetaan status seed lama ("Belum Dibayar" → Diajukan). */
 const TERM_NEXT: Record<string, string[]> = {
   Draf: ["Diajukan"],
   Diajukan: ["Disetujui", "Ditolak"],
   Disetujui: ["Lunas"],
   Lunas: [],
   Ditolak: [],
+  "Retensi Released": [],
 };
 
 function normTerm(s: string): string {
@@ -35,7 +36,6 @@ function normTerm(s: string): string {
 
 const termNext = (s: string): string[] => TERM_NEXT[normTerm(s)] ?? [];
 
-/* Alur status subkontraktor. Status tak dikenal dinormalkan ke Kualifikasi. */
 const SUB_NEXT: Record<string, string[]> = {
   Aktif: ["Kualifikasi", "Blacklist"],
   Kualifikasi: ["Aktif", "Blacklist"],
@@ -46,20 +46,34 @@ function normSub(s: string): string {
   return SUB_NEXT[s] ? s : "Kualifikasi";
 }
 
+const CONTRACT_TYPES = ["Borongan", "Lump-sum", "Spesialis", "Support"];
+const PAY_SCHEMES = ["harian", "unit", "meter", "jam"];
+
 const pphOf = (p: StoreItem): number => Number(p.pphPct ?? 2);
 const retOf = (p: StoreItem): number => Number(p.retPct ?? 5);
 const potonganOf = (p: StoreItem): number => Number(p.amount || 0) * (pphOf(p) + retOf(p)) / 100;
 const netoOf = (p: StoreItem): number => Number(p.amount || 0) - potonganOf(p);
+
+function complianceOf(k3: unknown): { label: string; tone: "green" | "amber" | "red" } {
+  const v = String(k3 ?? "");
+  if (v === "A+" || v === "A") return { label: "Patuh", tone: "green" };
+  if (v === "B+" || v === "B") return { label: "Cukup", tone: "amber" };
+  return { label: "Perlu Bina", tone: "red" };
+}
 
 export default function Subcontractor() {
   const { data, add, update, log } = useStore();
   const subcontractors = data.subcontractors;
   const workOrders = data.workOrders;
   const payments = data.termins;
+  const timesheets = data.timesheets;
+  const projectOptions = data.projects;
+  const employeeOptions = data.employees;
   const [tab, setTab] = useState("Subkontraktor");
+  const [typeFilter, setTypeFilter] = useState("Semua");
 
   const [showSub, setShowSub] = useState(false);
-  const [subForm, setSubForm] = useState({ name: "", services: "", contract: "", k3: "A" });
+  const [subForm, setSubForm] = useState({ name: "", services: "", contract: "", k3: "A", contractType: "Borongan", payScheme: "unit" });
   const [subConfirm, setSubConfirm] = useState<{ id: string; name: string; next: string } | null>(null);
   const [showWo, setShowWo] = useState(false);
   const [woForm, setWoForm] = useState({ sub: "", project: "", scope: "" });
@@ -72,9 +86,15 @@ export default function Subcontractor() {
   const [termPay, setTermPay] = useState<StoreItem | null>(null);
   const [proof, setProof] = useState({ date: todayISO(), method: "Transfer", ref: "" });
   const [rejectTerm, setRejectTerm] = useState<StoreItem | null>(null);
+  const [releaseTerm, setReleaseTerm] = useState<StoreItem | null>(null);
+  const [releaseForm, setReleaseForm] = useState({ date: todayISO(), ba: "" });
+  const [showTs, setShowTs] = useState(false);
+  const [tsForm, setTsForm] = useState({ wo: "", employee: "", date: todayISO(), hours: "", note: "" });
+  const [rateForm, setRateForm] = useState({ wo: "", rate: "" });
 
   const runningWo = workOrders.filter((w) => w.status !== "Selesai").length;
   const avgRating = subcontractors.length ? Math.round(subcontractors.reduce((s, x) => s + Number(x.rating || 0), 0) / subcontractors.length) : 0;
+  const filteredSubs = typeFilter === "Semua" ? subcontractors : subcontractors.filter((s) => String(s.contractType ?? "Borongan") === typeFilter);
 
   const termWoOptions = workOrders.filter((w) => termForm.sub && w.sub === termForm.sub);
   const termWo = workOrders.find((w) => w.id === termForm.wo) ?? null;
@@ -83,16 +103,32 @@ export default function Subcontractor() {
   const termUsed = termForm.wo
     ? payments.filter((t) => t.woId === termForm.wo && t.status !== "Ditolak").reduce((s, t) => s + Number(t.amount || 0), 0)
     : 0;
+  const termTsHours = termForm.wo
+    ? timesheets.filter((t) => t.woId === termForm.wo).reduce((s, t) => s + Number(t.hours || 0), 0)
+    : 0;
+  const termTsRef = termWo && Number(termWo.rate || 0) > 0 && termTsHours > 0
+    ? termTsHours * Number(termWo.rate || 0)
+    : 0;
+
+  const hoursByWo = (woId: string): number =>
+    timesheets.filter((t) => t.woId === woId).reduce((s, t) => s + Number(t.hours || 0), 0);
+
+  const woOfSub = (subName: string): StoreItem[] => workOrders.filter((w) => w.sub === subName);
+  const incidentsOfSub = (subName: string): StoreItem[] => {
+    const projs = woOfSub(subName).map((w) => w.project);
+    return data.incidents.filter((i) => i.project && projs.includes(i.project));
+  };
 
   const saveSub = () => {
     if (!subForm.name.trim()) { toast("Nama subkontraktor wajib diisi", "info"); return; }
     const created = add("subcontractors", {
       name: subForm.name.trim(), services: subForm.services.trim() || "Umum",
       rating: 80, active: 0, contract: Number(subForm.contract) || 0, status: "Kualifikasi", k3: subForm.k3,
+      contractType: subForm.contractType, payScheme: subForm.payScheme,
     }, { action: "meregistrasi subkontraktor", module: "Subkontraktor" });
     toast(`${created.id} teregistrasi (Kualifikasi)`);
     setShowSub(false);
-    setSubForm({ name: "", services: "", contract: "", k3: "A" });
+    setSubForm({ name: "", services: "", contract: "", k3: "A", contractType: "Borongan", payScheme: "unit" });
   };
 
   const saveWo = () => {
@@ -180,6 +216,43 @@ export default function Subcontractor() {
     setTermPay(null);
   };
 
+  const confirmRelease = () => {
+    if (!releaseTerm) return;
+    const wo = workOrders.find((w) => w.id === releaseTerm.woId);
+    if (!wo || wo.status !== "Selesai") { toast("Retensi hanya bisa dirilis setelah WO Selesai", "info"); return; }
+    if (!releaseForm.date) { toast("Tanggal rilis wajib diisi", "info"); return; }
+    if (!releaseForm.ba.trim()) { toast("No. berita acara wajib diisi", "info"); return; }
+    update("termins", releaseTerm.id, {
+      status: "Retensi Released", releasedAt: releaseForm.date, releaseBA: releaseForm.ba.trim(),
+    });
+    log("merilis retensi", `${releaseTerm.id} · BA ${releaseForm.ba.trim()} · ${fmtTanggal(releaseForm.date)}`, "Subkontraktor");
+    toast(`${releaseTerm.id} — retensi dirilis`);
+    setReleaseTerm(null);
+    setReleaseForm({ date: todayISO(), ba: "" });
+  };
+
+  const saveTimesheet = () => {
+    if (!tsForm.wo || !tsForm.employee || !tsForm.date) { toast("WO, karyawan & tanggal wajib diisi", "info"); return; }
+    const hours = Number(tsForm.hours);
+    if (!Number.isFinite(hours) || hours <= 0) { toast("Jam kerja harus lebih dari 0", "info"); return; }
+    const created = add("timesheets", {
+      woId: tsForm.wo, employeeId: tsForm.employee, date: tsForm.date, hours, note: tsForm.note.trim(),
+    }, { action: "mencatat timesheet", module: "Subkontraktor" });
+    toast(`Timesheet ${created.id} dicatat (${hours} jam)`);
+    setShowTs(false);
+    setTsForm({ wo: "", employee: "", date: todayISO(), hours: "", note: "" });
+  };
+
+  const saveRate = () => {
+    if (!rateForm.wo) { toast("Pilih WO dulu", "info"); return; }
+    const rate = Number(rateForm.rate);
+    if (!Number.isFinite(rate) || rate < 0) { toast("Rate tidak valid", "info"); return; }
+    update("workOrders", rateForm.wo, { rate });
+    log("menetapkan rate WO", `${rateForm.wo} · ${fmtRupiah(rate)}/jam`, "Subkontraktor");
+    toast(`Rate ${rateForm.wo} disimpan`);
+    setRateForm({ wo: "", rate: "" });
+  };
+
   return (
     <div>
       <PageHeader
@@ -197,7 +270,7 @@ export default function Subcontractor() {
       </div>
 
       <div className="mt-4 card">
-        <Tabs tabs={["Subkontraktor", "Work Order", "Termin & Pembayaran"]} active={tab} onChange={setTab} />
+        <Tabs tabs={["Subkontraktor", "Work Order", "Termin & Pembayaran", "Timesheet", "Kepatuhan K3"]} active={tab} onChange={setTab} />
         <div className="p-4">
           {tab === "Subkontraktor" && (
             <div className="space-y-4">
@@ -219,8 +292,14 @@ export default function Subcontractor() {
                   </ResponsiveContainer>
                 </div>
               </Card>
+              <div className="flex justify-end">
+                <select className="input max-w-56 text-xs" value={typeFilter} onChange={(e) => setTypeFilter(e.target.value)} aria-label="Filter tipe kontrak">
+                  <option>Semua</option>
+                  {CONTRACT_TYPES.map((t) => <option key={t}>{t}</option>)}
+                </select>
+              </div>
               <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
-              {subcontractors.map((s) => (
+              {filteredSubs.map((s) => (
                 <Card key={s.id} className="p-5">
                   <div className="flex items-start justify-between gap-2">
                     <div className="min-w-0">
@@ -228,6 +307,10 @@ export default function Subcontractor() {
                       <p className="text-xs text-steel-500 truncate" title={String(s.services)}>{s.services}</p>
                     </div>
                     <Badge tone={toneMap[normSub(s.status)] ?? "gray"}>{normSub(s.status)}</Badge>
+                  </div>
+                  <div className="mt-2 flex flex-wrap gap-1.5">
+                    <Badge tone="navy">{s.contractType ?? "Borongan"}</Badge>
+                    <Badge tone="gray">Skema: {s.payScheme ?? "unit"}</Badge>
                   </div>
                   <div className="mt-4 grid grid-cols-2 gap-3 text-sm">
                     <div className="rounded-lg bg-surface p-2.5">
@@ -276,6 +359,7 @@ export default function Subcontractor() {
                           <p className="truncate" title={`${w.sub} · ${w.project}`}>{w.sub} · {w.project}</p>
                           <p className="text-xs text-steel-500 truncate" title={String(w.scope)}>{w.scope}</p>
                           {w.date && <p className="text-xs text-steel-400">{fmtTanggal(w.date)}</p>}
+                          {Number(w.rate || 0) > 0 && <p className="text-xs text-steel-500">Rate {fmtRupiah(Number(w.rate))}/jam</p>}
                         </div>
                       </div>
                       <div className="flex items-center gap-4">
@@ -307,7 +391,10 @@ export default function Subcontractor() {
                     <tr><th className="th">Termin</th><th className="th">Subkontraktor</th><th className="th">WO / Progres</th><th className="th">Nilai</th><th className="th">PPh 23</th><th className="th">Retensi</th><th className="th">Neto</th><th className="th">Tanggal</th><th className="th">Status</th><th className="th">Aksi</th></tr>
                   </thead>
                   <tbody className="divide-y divide-steel-100">
-                    {payments.map((p) => (
+                    {payments.map((p) => {
+                      const wo = workOrders.find((w) => w.id === p.woId);
+                      const canRelease = normTerm(p.status) === "Lunas" && retOf(p) > 0 && wo?.status === "Selesai";
+                      return (
                       <tr key={p.id} className="hover:bg-surface">
                         <td className="td font-mono font-medium text-navy-900">{p.id}</td>
                         <td className="td text-steel-600 truncate" title={String(p.sub)}>{p.sub}</td>
@@ -317,7 +404,10 @@ export default function Subcontractor() {
                         <td className="td text-steel-600">{fmtRupiah(Number(p.amount || 0) * retOf(p) / 100)} <span className="text-xs text-steel-400">({retOf(p)}%)</span></td>
                         <td className="td font-semibold text-emerald-600">{fmtRupiah(netoOf(p))}</td>
                         <td className="td text-steel-600">{fmtTanggal(p.date)}</td>
-                        <td className="td"><Badge tone={toneMap[normTerm(p.status)] ?? "gray"}>{normTerm(p.status)}</Badge></td>
+                        <td className="td">
+                          <Badge tone={toneMap[normTerm(p.status)] ?? "gray"}>{normTerm(p.status)}</Badge>
+                          {p.status === "Retensi Released" && p.releasedAt && <p className="mt-1 text-xs text-steel-500">BA {p.releaseBA} · {fmtTanggal(p.releasedAt)}</p>}
+                        </td>
                         <td className="td">
                           <div className="flex flex-wrap gap-1.5">
                             {termNext(p.status).map((next) => (
@@ -330,14 +420,108 @@ export default function Subcontractor() {
                                 {next === "Lunas" ? "Bayar" : next === "Diajukan" ? "Ajukan" : next}
                               </button>
                             ))}
-                            {termNext(p.status).length === 0 && <span className="text-xs text-steel-400">—</span>}
+                            {canRelease && (
+                              <button className="btn-primary text-xs" aria-label={`Release retensi ${p.id}`} onClick={() => { setReleaseTerm(p); setReleaseForm({ date: todayISO(), ba: "" }); }}>
+                                Release Retensi
+                              </button>
+                            )}
+                            {termNext(p.status).length === 0 && !canRelease && <span className="text-xs text-steel-400">—</span>}
                           </div>
                         </td>
                       </tr>
-                    ))}
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
+            </div>
+          )}
+
+          {tab === "Timesheet" && (
+            <div className="space-y-4">
+              <div className="flex flex-wrap justify-end gap-2">
+                <button className="btn-secondary text-xs" onClick={() => setShowTs(true)}><Plus className="h-3.5 w-3.5" /> Catat Timesheet</button>
+              </div>
+              <Card className="p-4">
+                <h3 className="text-sm font-semibold text-navy-900">Rekap Jam per WO</h3>
+                <div className="mt-2 space-y-2">
+                  {workOrders.map((w) => {
+                    const hours = hoursByWo(w.id);
+                    const sub = subcontractors.find((s) => s.name === w.sub);
+                    const scheme = String(sub?.payScheme ?? "unit");
+                    const rate = Number(w.rate || 0);
+                    const usulan = (scheme === "harian" || scheme === "jam") && rate > 0 ? hours * rate : 0;
+                    return (
+                      <div key={w.id} className="flex flex-wrap items-center justify-between gap-2 border-b border-steel-100 py-2 text-sm">
+                        <div>
+                          <p className="font-mono font-medium text-navy-900">{w.id} <span className="font-sans text-xs text-steel-500">· {w.sub}</span></p>
+                          <p className="text-xs text-steel-500">Total {hours} jam · skema {scheme}{rate > 0 ? ` · rate ${fmtRupiah(rate)}/jam` : ""}</p>
+                        </div>
+                        {usulan > 0 && <Badge tone="teal">Usulan termin {fmtRupiah(usulan)}</Badge>}
+                      </div>
+                    );
+                  })}
+                  {workOrders.length === 0 && <p className="text-xs text-steel-400">Belum ada WO.</p>}
+                </div>
+                <div className="mt-3 flex flex-wrap items-end gap-2 border-t border-steel-100 pt-3">
+                  <Field label="WO (rate per jam)">
+                    <select className="input" value={rateForm.wo} onChange={(e) => setRateForm({ ...rateForm, wo: e.target.value })}>
+                      <option value="">Pilih WO…</option>
+                      {workOrders.map((w) => <option key={w.id} value={w.id}>{w.id} ({w.sub})</option>)}
+                    </select>
+                  </Field>
+                  <Field label="Rate (Rp/jam)">
+                    <input type="number" min={0} className="input" value={rateForm.rate} onChange={(e) => setRateForm({ ...rateForm, rate: e.target.value })} placeholder="cth: 75000" />
+                  </Field>
+                  <button className="btn-secondary text-xs" onClick={saveRate}>Simpan Rate</button>
+                </div>
+              </Card>
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead className="bg-surface sticky top-0 z-10">
+                    <tr><th className="th">ID</th><th className="th">WO</th><th className="th">Karyawan</th><th className="th">Tanggal</th><th className="th">Jam</th><th className="th">Catatan</th></tr>
+                  </thead>
+                  <tbody className="divide-y divide-steel-100">
+                    {timesheets.map((t) => (
+                      <tr key={t.id} className="hover:bg-surface">
+                        <td className="td font-mono font-medium text-navy-900">{t.id}</td>
+                        <td className="td font-mono text-xs text-steel-600">{t.woId}</td>
+                        <td className="td text-steel-600 text-xs">{t.employeeId}</td>
+                        <td className="td text-steel-600">{fmtTanggal(t.date)}</td>
+                        <td className="td font-semibold">{t.hours} jam</td>
+                        <td className="td text-steel-600 text-xs">{t.note ?? "—"}</td>
+                      </tr>
+                    ))}
+                    {timesheets.length === 0 && <tr><td colSpan={6} className="td text-center text-steel-400">Belum ada timesheet.</td></tr>}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
+          {tab === "Kepatuhan K3" && (
+            <div className="space-y-3">
+              {subcontractors.map((s) => {
+                const list = incidentsOfSub(s.name);
+                const comp = complianceOf(s.k3);
+                return (
+                  <Card key={s.id} className="p-4">
+                    <div className="flex flex-wrap items-start justify-between gap-2">
+                      <div>
+                        <p className="font-semibold text-navy-900">{s.name}</p>
+                        <p className="text-xs text-steel-500 mt-0.5">{woOfSub(s.name).length} WO · rating K3 {s.k3}</p>
+                      </div>
+                      <Badge tone={comp.tone}>{comp.label} · {list.length} insiden</Badge>
+                    </div>
+                    <div className="mt-2 space-y-1">
+                      {list.map((i) => (
+                        <p key={i.id} className="text-xs text-steel-600">{i.id} · {i.type} · {fmtTanggal(i.date)} · {i.location} — {i.desc}</p>
+                      ))}
+                      {list.length === 0 && <p className="text-xs text-steel-400">Tidak ada insiden pada proyek yang dikerjakan sub ini.</p>}
+                    </div>
+                  </Card>
+                );
+              })}
             </div>
           )}
         </div>
@@ -354,6 +538,16 @@ export default function Subcontractor() {
             <Field label="Rating K3">
               <select className="input" value={subForm.k3} onChange={(e) => setSubForm({ ...subForm, k3: e.target.value })}>
                 {["A+", "A", "B+", "B", "C"].map((k) => <option key={k}>{k}</option>)}
+              </select>
+            </Field>
+            <Field label="Tipe kontrak">
+              <select className="input" value={subForm.contractType} onChange={(e) => setSubForm({ ...subForm, contractType: e.target.value })}>
+                {CONTRACT_TYPES.map((t) => <option key={t}>{t}</option>)}
+              </select>
+            </Field>
+            <Field label="Skema bayar">
+              <select className="input" value={subForm.payScheme} onChange={(e) => setSubForm({ ...subForm, payScheme: e.target.value })}>
+                {PAY_SCHEMES.map((t) => <option key={t}>{t}</option>)}
               </select>
             </Field>
           </FormGrid>
@@ -384,7 +578,7 @@ export default function Subcontractor() {
             <Field label="Proyek">
               <select className="input" value={woForm.project} onChange={(e) => setWoForm({ ...woForm, project: e.target.value })}>
                 <option value="">Pilih…</option>
-                {data.projects.filter((p) => p.status !== "Selesai").map((p) => <option key={p.id} value={p.id}>{p.id} · {p.vessel}</option>)}
+                {projectOptions.filter((p) => p.status !== "Selesai").map((p) => <option key={p.id} value={p.id}>{p.id} · {p.vessel}</option>)}
               </select>
             </Field>
           </FormGrid>
@@ -436,6 +630,7 @@ export default function Subcontractor() {
           {termSub && termWo && (
             <p className="rounded-lg bg-surface px-3 py-2 text-xs text-steel-600">
               Batas termin WO ini {fmtRupiah(termCap)} (kontrak {fmtRupiah(Number(termSub.contract || 0))} × progres {termWo.progress}%) · sudah diajukan {fmtRupiah(termUsed)}
+              {termTsRef > 0 ? ` · referensi timesheet ${termTsHours} jam × ${fmtRupiah(Number(termWo.rate))} = ${fmtRupiah(termTsRef)}` : ""}
             </p>
           )}
           <Field label="Nilai termin (Rp)"><input type="number" min={0} className="input" value={termForm.amount} onChange={(e) => setTermForm({ ...termForm, amount: e.target.value })} /></Field>
@@ -473,6 +668,41 @@ export default function Subcontractor() {
         onCancel={() => setRejectTerm(null)}
         onConfirm={() => { if (rejectTerm) { update("termins", rejectTerm.id, { status: "Ditolak" }); toast(`${rejectTerm.id} ditolak`); } setRejectTerm(null); }}
       />
+
+      {/* Modal release retensi */}
+      <Modal open={releaseTerm !== null} onClose={() => setReleaseTerm(null)} title={`Release Retensi ${releaseTerm?.id ?? ""}?`} subtitle="Hanya setelah WO Selesai · status menjadi Retensi Released"
+        footer={<><button className="btn-secondary" onClick={() => setReleaseTerm(null)}>Batal</button><button className="btn-primary" onClick={confirmRelease}>Rilis Retensi</button></>}>
+        <div className="space-y-3">
+          <FormGrid>
+            <Field label="Tanggal rilis"><input type="date" className="input" value={releaseForm.date} onChange={(e) => setReleaseForm({ ...releaseForm, date: e.target.value })} /></Field>
+            <Field label="No. berita acara"><input className="input font-mono" value={releaseForm.ba} onChange={(e) => setReleaseForm({ ...releaseForm, ba: e.target.value })} placeholder="cth: BA-2026-118" /></Field>
+          </FormGrid>
+        </div>
+      </Modal>
+
+      {/* Modal timesheet */}
+      <Modal open={showTs} onClose={() => setShowTs(false)} title="Catat Timesheet"
+        footer={<><button className="btn-secondary" onClick={() => setShowTs(false)}>Batal</button><button className="btn-primary" onClick={saveTimesheet}>Simpan</button></>}>
+        <div className="space-y-3">
+          <FormGrid>
+            <Field label="Work Order">
+              <select className="input" value={tsForm.wo} onChange={(e) => setTsForm({ ...tsForm, wo: e.target.value })}>
+                <option value="">Pilih WO…</option>
+                {workOrders.filter((w) => w.status !== "Selesai").map((w) => <option key={w.id} value={w.id}>{w.id} · {w.sub}</option>)}
+              </select>
+            </Field>
+            <Field label="Karyawan">
+              <select className="input" value={tsForm.employee} onChange={(e) => setTsForm({ ...tsForm, employee: e.target.value })}>
+                <option value="">Pilih…</option>
+                {employeeOptions.map((e) => <option key={e.id} value={e.id}>{e.name} · {e.role}</option>)}
+              </select>
+            </Field>
+            <Field label="Tanggal"><input type="date" className="input" value={tsForm.date} onChange={(e) => setTsForm({ ...tsForm, date: e.target.value })} /></Field>
+            <Field label="Jam kerja"><input type="number" min={0} step={0.5} className="input" value={tsForm.hours} onChange={(e) => setTsForm({ ...tsForm, hours: e.target.value })} /></Field>
+          </FormGrid>
+          <Field label="Catatan"><input className="input" value={tsForm.note} onChange={(e) => setTsForm({ ...tsForm, note: e.target.value })} placeholder="cth: Fabrikasi section 5" /></Field>
+        </div>
+      </Modal>
     </div>
   );
 }

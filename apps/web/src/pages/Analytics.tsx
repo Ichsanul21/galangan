@@ -39,6 +39,7 @@ import {
 } from "../components/ui";
 import { useStore } from "../data/store";
 import { exportExcel } from "../utils/export";
+import { fmtTanggal, fmtMiliar, fmtRupiah, todayISO } from "../utils/format";
 import {
   revenueSeries,
   sparkRevenue,
@@ -60,6 +61,7 @@ function round1(n: number): number {
 
 export default function Analytics() {
   const [tab, setTab] = useState("Deskriptif");
+  const [growth, setGrowth] = useState(0);
   const { data } = useStore();
 
   const avgProgress = data.projects.length
@@ -119,6 +121,65 @@ export default function Analytics() {
   }, {});
   const branchRows = Object.entries(branchRevenue).sort((a, b) => b[1] - a[1]);
 
+  let paretoCum = 0;
+  const pareto = drilldown.map((d) => {
+    paretoCum += d.count;
+    return { name: d.factor, count: d.count, kum: ncrTotal ? Math.round((paretoCum / ncrTotal) * 100) : 0 };
+  });
+
+  const incidentByType = new Map<string, number>();
+  for (const i of data.incidents) incidentByType.set(String(i.type || "Lainnya"), (incidentByType.get(String(i.type || "Lainnya")) ?? 0) + 1);
+  const topIncident = [...incidentByType.entries()].sort((a, b) => b[1] - a[1])[0];
+  const topNcrType = drilldown[0]?.factor ?? "—";
+  const failedInspections = data.inspections.filter((i) => i.status === "NCR");
+  const worstVendor = [...data.vendors].sort((a, b) => Number(a.onTime || 100) - Number(b.onTime || 100))[0];
+  const maintEquip = data.equipment.filter((e) => e.status === "Maintenance");
+  const fishbones: { tulang: string; sebab: string[] }[] = [
+    { tulang: "Manusia", sebab: [`Insiden terbanyak: ${topIncident ? `${topIncident[0]} (${topIncident[1]} kejadian)` : "nihil"}`, `NCR ${topNcrType} butuh welder/inspector bersertifikat`] },
+    { tulang: "Metode", sebab: [`${failedInspections.length} titik inspeksi berstatus NCR perlu ITP ulang`, `${openNcr} NCR terbuka menumpuk di ${drilldown.length} kategori`] },
+    { tulang: "Material", sebab: [`${lowStock.length} item di bawah minimum (${lowStock.slice(0, 2).map((i) => String(i.name)).join("; ") || "—"})`, `Vendor on-time terendah: ${worstVendor ? `${worstVendor.name} (${worstVendor.onTime}%)` : "—"}`] },
+    { tulang: "Mesin", sebab: [`${maintEquip.length} equipment dalam maintenance (${maintEquip.slice(0, 2).map((e) => String(e.name)).join("; ") || "—"})`, `${data.calibrations.filter((c) => c.status !== "Selesai").length} kalibrasi belum selesai`] },
+  ];
+
+  const forecastAdj = forecast.map((f) => ({
+    name: f.name,
+    actual: f.actual,
+    forecast: f.forecast === null ? null : round1(f.forecast * (1 + growth / 100)),
+    low: f.forecast === null ? null : round1(f.forecast * (1 + growth / 100) * 0.85),
+    high: f.forecast === null ? null : round1(f.forecast * (1 + growth / 100) * 1.15),
+  }));
+  const forecastAnnualAdj = Math.round(ma3 * (1 + growth / 100) * 12);
+
+  const profitByType = (["New Build", "Repair", "Retrofit"] as const).map((t) => {
+    const rows = data.projects.filter((p) => p.type === t);
+    const budget = rows.reduce((s, p) => s + Number(p.budget || 0), 0);
+    const actual = rows.reduce((s, p) => s + Number(p.actual || 0), 0);
+    return { name: t, profit: Math.round((budget - actual) / 1000000000), count: rows.length };
+  });
+  const profitBranchMap = new Map<string, { budget: number; actual: number; count: number }>();
+  for (const p of data.projects) {
+    const cur = profitBranchMap.get(p.branch) ?? { budget: 0, actual: 0, count: 0 };
+    cur.budget += Number(p.budget || 0);
+    cur.actual += Number(p.actual || 0);
+    cur.count += 1;
+    profitBranchMap.set(p.branch, cur);
+  }
+  const profitByBranch = [...profitBranchMap.entries()].map(([name, r]) => ({
+    name,
+    profit: Math.round((r.budget - r.actual) / 1000000000),
+    count: r.count,
+  }));
+  const negCo = data.changeOrders
+    .filter((c) => Number(c.impact || 0) < 0)
+    .reduce((s, c) => s + Math.abs(Number(c.impact || 0)), 0);
+  const openNcrProjects = new Set(data.ncr.filter((n) => n.status !== "Tertutup").map((n) => String(n.project)));
+  const ncrEstimate = data.projects
+    .filter((p) => openNcrProjects.has(p.id))
+    .reduce((s, p) => s + Number(p.budget || 0) * 0.02, 0);
+  const reworkCost = Math.round(negCo + ncrEstimate);
+  const lastUtil = data.projects.length ? avgProgress : 0;
+  const utilTarget = 85;
+
   const exportReport = () => {
     const rows: (string | number)[][] = [
       ["Bulan", "Pendapatan (M Rp)", "Biaya (M Rp)"],
@@ -144,7 +205,7 @@ export default function Analytics() {
         }
       />
 
-      <Tabs tabs={["Deskriptif", "Diagnostik", "Prediktif", "Preskriptif"]} active={tab} onChange={setTab} />
+      <Tabs tabs={["Deskriptif", "Diagnostik", "Prediktif", "Preskriptif", "Profitabilitas"]} active={tab} onChange={setTab} />
 
       <div className="mt-5">
         {tab === "Deskriptif" && (
@@ -266,6 +327,58 @@ export default function Analytics() {
                 </div>
               </Card>
             </div>
+            <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
+              <Card>
+                <CardHeader title="Pareto NCR per Kategori" subtitle="Bar jumlah + garis kumulatif % — live" action={<Badge tone="red">Pareto</Badge>} />
+                <div className="h-64 p-4 pt-0">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <ComposedChart data={pareto} margin={{ top: 10, right: 10, left: -15, bottom: 0 }}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#e9eff4" vertical={false} />
+                      <XAxis dataKey="name" tick={{ fontSize: 11 }} stroke="#8aa2b6" axisLine={false} tickLine={false} />
+                      <YAxis yAxisId="kiri" tick={{ fontSize: 12 }} stroke="#8aa2b6" axisLine={false} tickLine={false} />
+                      <YAxis yAxisId="kanan" orientation="right" domain={[0, 100]} tick={{ fontSize: 12 }} stroke="#8aa2b6" axisLine={false} tickLine={false} />
+                      <Tooltip content={<ChartTooltip formatter={(v, n) => (n === "kum" ? `${v}%` : `${v} kejadian`)} />} />
+                      <Legend wrapperStyle={{ fontSize: 12 }} />
+                      <Bar yAxisId="kiri" dataKey="count" name="Kejadian" fill="#0b3a63" radius={[4, 4, 0, 0]} />
+                      <Line yAxisId="kanan" type="monotone" dataKey="kum" name="Kumulatif" stroke="#e11d48" strokeWidth={2} dot={{ r: 3 }} />
+                    </ComposedChart>
+                  </ResponsiveContainer>
+                </div>
+              </Card>
+              <Card>
+                <CardHeader title="Fishbone Penyebab Keterlambatan" subtitle={`Top delay: NCR ${topNcrType} per ${fmtTanggal(todayISO())}`} action={<Badge tone="amber">4M</Badge>} />
+                <div className="grid grid-cols-1 gap-2.5 p-5 pt-2 sm:grid-cols-2">
+                  {fishbones.map((f) => (
+                    <div key={f.tulang} className="rounded-xl border border-steel-100 bg-surface p-3">
+                      <p className="text-sm font-semibold text-navy-900">{f.tulang}</p>
+                      <ul className="mt-1.5 list-disc space-y-1 pl-4 text-xs leading-relaxed text-steel-600">
+                        {f.sebab.map((s) => <li key={s}>{s}</li>)}
+                      </ul>
+                    </div>
+                  ))}
+                </div>
+              </Card>
+            </div>
+            <Card>
+              <CardHeader title="Drill-down NCR" subtitle={`Rincian per kategori per ${fmtTanggal(todayISO())}`} />
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead className="bg-surface">
+                    <tr><th className="th">Kategori</th><th className="th">Kejadian</th><th className="th">Dampak</th><th className="th">Tren</th></tr>
+                  </thead>
+                  <tbody className="divide-y divide-steel-100">
+                    {drilldown.map((d) => (
+                      <tr key={d.factor} className="hover:bg-surface">
+                        <td className="td font-medium text-navy-900">{d.factor}</td>
+                        <td className="td text-steel-600">{d.count}</td>
+                        <td className="td text-steel-600">{d.impact}%</td>
+                        <td className="td"><div className="w-32"><ProgressBar value={d.impact} tone="red" /></div></td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </Card>
             <Card>
               <CardHeader title="Pendapatan per Cabang" subtitle="Nilai kontrak proyek per cabang — live" />
               <div className="space-y-3 p-5 pt-2">
@@ -290,24 +403,43 @@ export default function Analytics() {
         {tab === "Prediktif" && (
           <div className="space-y-5">
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-              <KpiCard label="Forecast Revenue 2026" value={`Rp ${forecastAnnual.toLocaleString("id-ID")} M`} hint="Rata-rata bergerak 3 bulan × 12" icon={<TrendingUp className="h-5 w-5" />} chip="navy" spark={forecast.map((f) => ({ name: f.name, v: f.forecast ?? 0 }))} />
+              <KpiCard label="Forecast Revenue 2026" value={`Rp ${forecastAnnualAdj.toLocaleString("id-ID")} M`} delta={`What-if ${growth >= 0 ? "+" : ""}${growth}%`} deltaDirection={growth > 0 ? "up" : growth < 0 ? "down" : "flat"} icon={<TrendingUp className="h-5 w-5" />} chip="navy" spark={forecastAdj.map((f) => ({ name: f.name, v: f.forecast ?? 0 }))} />
               <KpiCard label="Konflik Drydock" value={dockConflict ? `${dockConflict} slot` : "Aman"} delta={dockConflict ? "Perlu atasi" : "Tidak ada tumpang tindih"} deltaDirection={dockConflict ? "down" : "up"} icon={<AlertTriangle className="h-5 w-5" />} chip="rose" spark={slotTrend} />
               <KpiCard label="Stok Kritis" value={`${lowStock.length} item`} delta={lowStock.slice(0, 2).map((i) => i.name.split(" ").slice(0, 2).join(" ")).join(" · ") || "Semua aman"} deltaDirection={lowStock.length ? "down" : "up"} icon={<AlertTriangle className="h-5 w-5" />} chip="amber" spark={lowStockTrend} />
               <KpiCard label="Proyek Berisiko" value={`${atRisk} proyek`} delta="Terlambat / over-budget" deltaDirection={atRisk ? "down" : "up"} icon={<Clock className="h-5 w-5" />} chip="violet" spark={activeProjectTrend} />
             </div>
             <Card>
-              <CardHeader title="Forecast Pendapatan" subtitle="Aktual + rata-rata bergerak 3 bulan (milyar Rupiah)" action={<Badge tone="blue">AI Forecast</Badge>} />
+              <CardHeader title="What-if Pertumbuhan" subtitle={`Baseline Rp ${forecastAnnual.toLocaleString("id-ID")} M (MA3 × 12) — geser untuk simulasi`} action={<Badge tone="violet">{`${growth >= 0 ? "+" : ""}${growth}%`}</Badge>} />
+              <div className="flex flex-col gap-2 p-5 pt-2">
+                <input
+                  type="range"
+                  min={-20}
+                  max={50}
+                  step={1}
+                  value={growth}
+                  onChange={(e) => setGrowth(Number(e.target.value))}
+                  aria-label="Simulasi pertumbuhan"
+                  className="w-full"
+                />
+                <div className="flex justify-between text-[11px] text-steel-500"><span>−20%</span><span>0%</span><span>+50%</span></div>
+                <p className="text-sm text-steel-600">Forecast tahunan tersimulasi: <span className="font-bold text-navy-900">Rp {forecastAnnualAdj.toLocaleString("id-ID")} M</span> per {fmtTanggal(todayISO())}</p>
+              </div>
+            </Card>
+            <Card>
+              <CardHeader title="Forecast Pendapatan" subtitle="Aktual + forecast MA3 dengan pita kepercayaan ±15% (miliar Rupiah)" action={<Badge tone="blue">AI Forecast</Badge>} />
               <div className="h-60 p-4 pt-0 sm:h-72">
                 <ResponsiveContainer width="100%" height="100%">
-                  <LineChart data={forecast} margin={{ top: 10, right: 10, left: -15, bottom: 0 }}>
+                  <ComposedChart data={forecastAdj} margin={{ top: 10, right: 10, left: -15, bottom: 0 }}>
                     <CartesianGrid strokeDasharray="3 3" stroke="#e9eff4" />
                     <XAxis dataKey="name" stroke="#8aa2b6" axisLine={false} tickLine={false} />
                     <YAxis stroke="#8aa2b6" axisLine={false} tickLine={false} />
                     <Tooltip content={<ChartTooltip formatter={(v) => `Rp ${v} M`} />} />
                     <Legend wrapperStyle={{ fontSize: 12 }} />
+                    <Area type="monotone" dataKey="high" name="Batas atas" stroke="none" fill="#8cc9e8" fillOpacity={0.35} connectNulls />
+                    <Area type="monotone" dataKey="low" name="Batas bawah" stroke="none" fill="#ffffff" fillOpacity={0.9} connectNulls />
                     <Line type="monotone" dataKey="actual" name="Aktual" stroke="#dc2626" strokeWidth={2} connectNulls dot={{ r: 4 }} />
                     <Line type="monotone" dataKey="forecast" name="Forecast" stroke="#2e9ad4" strokeDasharray="6 3" strokeWidth={2} dot={{ r: 4 }} />
-                  </LineChart>
+                  </ComposedChart>
                 </ResponsiveContainer>
               </div>
             </Card>
@@ -334,6 +466,64 @@ export default function Analytics() {
                   </div>
                 </Card>
               ))}
+            </div>
+          </div>
+        )}
+
+        {tab === "Profitabilitas" && (
+          <div className="space-y-5">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+              <KpiCard label="Total Profit Portofolio" value={fmtMiliar(profitByType.reduce((s, d) => s + d.profit * 1000000000, 0))} delta={`${data.projects.length} proyek`} deltaDirection="flat" icon={<TrendingUp className="h-5 w-5" />} chip="navy" spark={sparkRevenue} />
+              <KpiCard label="Biaya Rework" value={fmtRupiah(reworkCost)} delta="Estimasi berjalan" deltaDirection="down" icon={<AlertTriangle className="h-5 w-5" />} chip="rose" spark={ncrTrend} />
+              <KpiCard label="Utilisasi vs Target" value={`${lastUtil}% / ${utilTarget}%`} delta={lastUtil >= utilTarget ? "Target tercapai" : "Di bawah target"} deltaDirection={lastUtil >= utilTarget ? "up" : "down"} icon={<Clock className="h-5 w-5" />} chip="teal" spark={sparkProjects} />
+              <KpiCard label="Tipe Paling Profitabel" value={profitByType.length ? [...profitByType].sort((a, b) => b.profit - a.profit)[0].name : "—"} delta={profitByType.length ? fmtMiliar([...profitByType].sort((a, b) => b.profit - a.profit)[0].profit * 1000000000) : "—"} deltaDirection="flat" icon={<Eye className="h-5 w-5" />} chip="violet" spark={sparkMargin} />
+            </div>
+            <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
+              <Card>
+                <CardHeader title="Profit per Tipe Proyek" subtitle={`Budget − aktual per ${fmtTanggal(todayISO())} (miliar Rp)`} />
+                <div className="h-60 p-4 pt-0">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={profitByType} margin={{ top: 10, right: 10, left: -10, bottom: 0 }}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#e9eff4" vertical={false} />
+                      <XAxis dataKey="name" tick={{ fontSize: 12 }} stroke="#8aa2b6" axisLine={false} tickLine={false} />
+                      <YAxis tick={{ fontSize: 12 }} stroke="#8aa2b6" axisLine={false} tickLine={false} />
+                      <Tooltip content={<ChartTooltip formatter={(v) => `Rp ${v} M`} />} />
+                      <Bar dataKey="profit" name="Profit" fill="#0b3a63" radius={[4, 4, 0, 0]} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+              </Card>
+              <Card>
+                <CardHeader title="Profit per Cabang" subtitle={`Budget − aktual per ${fmtTanggal(todayISO())} (miliar Rp)`} />
+                <div className="h-60 p-4 pt-0">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={profitByBranch} margin={{ top: 10, right: 10, left: -10, bottom: 0 }}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#e9eff4" vertical={false} />
+                      <XAxis dataKey="name" tick={{ fontSize: 12 }} stroke="#8aa2b6" axisLine={false} tickLine={false} />
+                      <YAxis tick={{ fontSize: 12 }} stroke="#8aa2b6" axisLine={false} tickLine={false} />
+                      <Tooltip content={<ChartTooltip formatter={(v) => `Rp ${v} M`} />} />
+                      <Bar dataKey="profit" name="Profit" fill="#2e9ad4" radius={[4, 4, 0, 0]} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+              </Card>
+            </div>
+            <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
+              <Card>
+                <CardHeader title="Utilisasi vs Target" subtitle={`Rata-rata progres ${avgProgress}% terhadap target ${utilTarget}%`} />
+                <div className="space-y-3 p-5 pt-2">
+                  <ProgressBar value={utilTarget ? (lastUtil / utilTarget) * 100 : 0} tone={lastUtil >= utilTarget ? "green" : "amber"} />
+                  <p className="text-xs text-steel-500">{lastUtil}% dari target {utilTarget}% — dihitung dari rata-rata progres {data.projects.length} proyek.</p>
+                </div>
+              </Card>
+              <Card>
+                <CardHeader title="Biaya Rework" subtitle="Rumus: Σ change order dampak negatif + estimasi NCR 2% dari budget proyek ber-NCR terbuka" />
+                <div className="space-y-2 p-5 pt-2 text-sm">
+                  <div className="flex justify-between"><span className="text-steel-600">Change order negatif</span><span className="font-semibold text-navy-900">{fmtRupiah(negCo)}</span></div>
+                  <div className="flex justify-between"><span className="text-steel-600">Estimasi NCR ({openNcrProjects.size} proyek, 2%)</span><span className="font-semibold text-navy-900">{fmtRupiah(Math.round(ncrEstimate))}</span></div>
+                  <div className="flex justify-between border-t border-steel-100 pt-2"><span className="font-semibold text-navy-900">Total rework</span><span className="font-bold text-rose-600">{fmtRupiah(reworkCost)}</span></div>
+                </div>
+              </Card>
             </div>
           </div>
         )}

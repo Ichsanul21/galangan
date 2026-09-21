@@ -1,6 +1,6 @@
 import { useState } from "react";
-import { Plus, Ship, CalendarRange, AlertTriangle, GripVertical, Trash2 } from "lucide-react";
-import { Card, CardHeader, PageHeader, Badge, KpiCard, ProgressBar, Modal, Field, FormGrid, ConfirmModal, toast } from "../../components/ui";
+import { Plus, Ship, CalendarRange, AlertTriangle, GripVertical, Trash2, Wrench, User } from "lucide-react";
+import { Card, CardHeader, PageHeader, Badge, KpiCard, ProgressBar, Modal, Field, FormGrid, ConfirmModal, StatusBadge, toast } from "../../components/ui";
 import { useStore } from "../../data/store";
 import type { StoreItem } from "../../data/store";
 import { dockUtilTrend, slotTrend } from "../../data";
@@ -10,6 +10,8 @@ const DAYS = 90;
 const FREE_WINDOW = 7;
 const weeks = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13];
 const SLOT_COLORS = ["bg-ocean-500", "bg-navy-700", "bg-amber-500", "bg-teal-500", "bg-violet-500", "bg-steel-400"];
+const PRIORITIES = ["Normal", "Tinggi", "Kritis"];
+const STATUS_FILTERS = ["Semua", "Terjadwal", "Berjalan", "Selesai", "Maintenance"];
 
 function dayToISO(day: number): string {
   const d = new Date();
@@ -40,17 +42,31 @@ function coveredDays(dockId: string, slots: StoreItem[]): number {
   return covered.size;
 }
 
+function slotStatus(s: StoreItem, projects: StoreItem[]): string {
+  if (s.project === "MAINT") return "Maintenance";
+  const proj = projects.find((p) => p.id === s.project);
+  if (proj?.status === "Selesai" || Number(s.to) <= 0) return "Selesai";
+  if (Number(s.from) <= 0) return "Berjalan";
+  return "Terjadwal";
+}
+
 export default function Drydock() {
-  const { data, add, remove, log } = useStore();
+  const { data, add, update, remove, log } = useStore();
   const drydocks = data.drydocks;
   const dockSlots = data.dockSlots;
+  const projectOptions = data.projects;
   const [selected, setSelected] = useState<string | null>(null);
 
   const [showBook, setShowBook] = useState(false);
-  const [bookForm, setBookForm] = useState({ dockId: "DD-1", project: "", from: "1", to: "30" });
+  const [bookForm, setBookForm] = useState({ dockId: "DD-1", project: "", from: "1", to: "30", priority: "Normal" });
   const [bookError, setBookError] = useState<string | null>(null);
   const [deleting, setDeleting] = useState<StoreItem | null>(null);
   const [wide, setWide] = useState(false);
+  const [statusFilter, setStatusFilter] = useState("Semua");
+  const [picModal, setPicModal] = useState<StoreItem | null>(null);
+  const [picDraft, setPicDraft] = useState("");
+  const [showMaint, setShowMaint] = useState(false);
+  const [maintForm, setMaintForm] = useState({ dockId: "DD-1", from: "1", to: "7", reason: "" });
 
   const sel = dockSlots.find((s) => s.id === selected) ?? null;
 
@@ -71,6 +87,12 @@ export default function Drydock() {
   });
   const hasConflict = conflict.length > 0;
 
+  const overlapsKritis = (s: StoreItem): boolean => {
+    if (s.priority === "Kritis") return true;
+    return dockSlots.some((o) => o.id !== s.id && o.dockId === s.dockId && s.from < o.to && o.from < s.to && o.priority === "Kritis");
+  };
+  const criticalConflicts = conflict.filter(overlapsKritis);
+
   const firstFree = (dockId: string): number | null => {
     const segs = dockSlots
       .filter((s) => s.dockId === dockId)
@@ -90,6 +112,10 @@ export default function Drydock() {
   const selProj = data.projects.find((p) => p.id === bookForm.project);
   const selLoa = selProj ? vesselLoa(selProj.vessel, data.vessels) : null;
   const selCap = selDock ? dockLengthM(selDock.capacity) : null;
+
+  const filteredSlots = statusFilter === "Semua"
+    ? dockSlots
+    : dockSlots.filter((s) => slotStatus(s, data.projects) === statusFilter);
 
   const saveBooking = () => {
     const proj = data.projects.find((p) => p.id === bookForm.project);
@@ -113,11 +139,39 @@ export default function Drydock() {
     }
     const created = add("dockSlots", {
       dockId: bookForm.dockId, project: proj.id, vessel: proj.vessel, from, to,
+      priority: bookForm.priority,
       color: SLOT_COLORS[dockSlots.length % SLOT_COLORS.length],
-    }, { action: "membooking slot", target: `${bookForm.dockId} · ${proj.vessel}`, module: "Drydock" });
-    toast(`Slot ${created.id} dibooking`);
+    }, { action: "membooking slot", target: `${bookForm.dockId} · ${proj.vessel} · ${bookForm.priority}`, module: "Drydock" });
+    toast(`Slot ${created.id} dibooking (${bookForm.priority})`);
     setShowBook(false);
     setBookError(null);
+  };
+
+  const saveMaintBlock = () => {
+    const from = Number(maintForm.from);
+    const to = Number(maintForm.to);
+    if (!Number.isFinite(from) || !Number.isFinite(to) || to <= from || from < 0 || to > DAYS) {
+      toast(`Rentang hari tidak valid (1–${DAYS}).`, "info");
+      return;
+    }
+    if (!maintForm.reason.trim()) { toast("Alasan maintenance wajib diisi", "info"); return; }
+    const dock = drydocks.find((d) => d.id === maintForm.dockId);
+    const created = add("dockSlots", {
+      dockId: maintForm.dockId, project: "MAINT", vessel: `Maintenance — ${maintForm.reason.trim()}`,
+      from, to, priority: "Normal", reason: maintForm.reason.trim(), color: "bg-steel-400",
+    }, { action: "memblokir maintenance", target: `${maintForm.dockId} · ${fmtRentang(dayToISO(from), dayToISO(to))}`, module: "Drydock" });
+    toast(`Blok maintenance ${created.id} di ${dock?.name ?? maintForm.dockId}`);
+    setShowMaint(false);
+    setMaintForm({ dockId: "DD-1", from: "1", to: "7", reason: "" });
+  };
+
+  const savePic = () => {
+    if (!picModal) return;
+    update("drydocks", picModal.id, { pic: picDraft.trim() || "Belum ditentukan" });
+    log("menetapkan PIC dock", `${picModal.name} · ${picDraft.trim() || "Belum ditentukan"}`, "Drydock");
+    toast(`PIC ${picModal.name} diperbarui`);
+    setPicModal(null);
+    setPicDraft("");
   };
 
   const confirmDelete = () => {
@@ -140,7 +194,12 @@ export default function Drydock() {
         title="Drydock & Kapasitas"
         subtitle="Penjadwalan slot docking, utilisasi, dan deteksi konflik"
         icon={<Ship className="h-5 w-5" />}
-        actions={<button className="btn-primary-gradient" onClick={() => { setShowBook(true); setBookError(null); }}><Plus className="h-4 w-4" /> Booking Slot</button>}
+        actions={
+          <div className="flex gap-2">
+            <button className="btn-secondary" onClick={() => setShowMaint(true)}><Wrench className="h-4 w-4" /> Blokir Maintenance</button>
+            <button className="btn-primary-gradient" onClick={() => { setShowBook(true); setBookError(null); }}><Plus className="h-4 w-4" /> Booking Slot</button>
+          </div>
+        }
       />
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
@@ -174,6 +233,17 @@ export default function Drydock() {
         </div>
       )}
 
+      {criticalConflicts.length > 0 && (
+        <div className="mb-4 rounded-lg border-2 border-rose-600 bg-rose-50 p-3 text-sm text-rose-800">
+          <p className="font-bold">Panel perhatian — konflik melibatkan slot Kritis ({criticalConflicts.length})</p>
+          <ul className="mt-1 list-disc pl-5">
+            {criticalConflicts.map((c) => (
+              <li key={c.id} className="font-semibold">{c.vessel} · {c.project} · {drydocks.find((d) => d.id === c.dockId)?.name} · {fmtRentang(dayToISO(Number(c.from)), dayToISO(Number(c.to)))}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+
       <Card>
         <CardHeader
           title="Gantt Penjadwalan Docking"
@@ -202,7 +272,6 @@ export default function Drydock() {
         />
         <div className="overflow-x-auto p-4">
           <div className={wide ? "min-w-[1400px]" : "min-w-[900px]"}>
-            {/* Header weeks */}
             <div className="mb-2 flex items-center">
               <div className="w-52 shrink-0 pr-3" />
               <div className="flex flex-1 gap-px">
@@ -219,8 +288,12 @@ export default function Drydock() {
               const slots = dockSlots.filter((s) => s.dockId === dock.id);
               return (
                 <div key={dock.id} className="mb-5">
-                  <div className="mb-1 flex items-center justify-between">
-                    <p className="text-sm font-semibold text-navy-900">{dock.name}</p>
+                  <div className="mb-1 flex flex-wrap items-center justify-between gap-2">
+                    <div className="flex items-center gap-2">
+                      <p className="text-sm font-semibold text-navy-900">{dock.name}</p>
+                      <span className="inline-flex items-center gap-1 text-xs text-steel-500"><User className="h-3 w-3" /> PIC: {dock.pic ?? "Belum ditentukan"}</span>
+                      <button className="btn-secondary text-xs" onClick={() => { setPicModal(dock); setPicDraft(String(dock.pic ?? "")); }}>PIC</button>
+                    </div>
                     <Badge tone={dock.status === "Terpakai" ? "blue" : "green"}>{dock.status}</Badge>
                   </div>
                   <div className="flex items-center gap-px">
@@ -237,13 +310,15 @@ export default function Drydock() {
                         const widthPct = ((s.to - s.from) / DAYS) * 100;
                         const isSel = selected === s.id;
                         const isConf = conflict.some((c) => c.id === s.id);
+                        const isCrit = isConf && overlapsKritis(s);
+                        const isMaint = s.project === "MAINT";
                         return (
                           <div
                             key={s.id}
                             onClick={() => setSelected(isSel ? null : s.id)}
-                            className={`absolute top-1/2 -translate-y-1/2 flex h-10 items-center justify-between rounded-md px-2 text-xs font-medium text-white shadow cursor-pointer transition ${isConf ? "bg-rose-500" : s.color} ${isSel ? "ring-2 ring-navy-900" : "hover:brightness-110"} ${isConf && !isSel ? "ring-2 ring-rose-700" : ""}`}
+                            className={`absolute top-1/2 -translate-y-1/2 flex h-10 items-center justify-between rounded-md px-2 text-xs font-medium text-white shadow cursor-pointer transition ${isMaint ? "bg-steel-400" : isConf ? "bg-rose-500" : s.color} ${isSel ? "ring-2 ring-navy-900" : "hover:brightness-110"} ${isCrit && !isSel ? "ring-4 ring-rose-800" : isConf && !isSel ? "ring-2 ring-rose-700" : ""}`}
                             style={{ left: `${leftPct}%`, width: `${widthPct}%` }}
-                            title={`${s.vessel} · ${s.project} · ${fmtRentang(dayToISO(s.from), dayToISO(s.to))}${isConf ? " · TUMPANG TINDIH" : ""}`}
+                            title={`${s.vessel} · ${s.project} · ${fmtRentang(dayToISO(s.from), dayToISO(s.to))}${s.priority ? ` · ${s.priority}` : ""}${isCrit ? " · KRITIS TUMPANG TINDIH" : isConf ? " · TUMPANG TINDIH" : ""}`}
                           >
                             <span className="truncate min-w-0 flex-1 flex items-center gap-1" title={s.vessel}>
                               <GripVertical className="h-3 w-3 shrink-0 opacity-70" />
@@ -263,30 +338,44 @@ export default function Drydock() {
 
       <div className="mt-5 grid grid-cols-1 gap-5 lg:grid-cols-2">
         <Card>
-          <CardHeader title="Slot Docking Aktif" subtitle="Detail slot saat ini" />
+          <CardHeader title="Slot Docking Aktif" subtitle="Detail slot saat ini" action={
+            <select className="input text-xs" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} aria-label="Filter status slot">
+              {STATUS_FILTERS.map((s) => <option key={s}>{s}</option>)}
+            </select>
+          } />
           <div className="overflow-x-auto">
             <table className="w-full">
               <thead className="sticky top-0 z-10 bg-surface">
-                <tr><th className="th">Fasilitas</th><th className="th">Proyek</th><th className="th">Durasi</th><th className="th">Aksi</th></tr>
+                <tr><th className="th">Fasilitas</th><th className="th">Proyek</th><th className="th">Durasi</th><th className="th">Prioritas</th><th className="th">Status</th><th className="th">Aksi</th></tr>
               </thead>
               <tbody className="divide-y divide-steel-100">
-                {dockSlots.map((s) => (
-                  <tr key={s.id} className="hover:bg-surface">
-                    <td className="td text-steel-600">{drydocks.find((d) => d.id === s.dockId)?.name}</td>
-                    <td className="td">
-                      <p className="font-medium text-navy-900">{s.vessel}</p>
-                      <p className="text-xs font-mono text-steel-500">{s.project}</p>
-                    </td>
-                    <td className="td text-steel-600">{fmtRentang(dayToISO(s.from), dayToISO(s.to))} ({s.to - s.from} hari)</td>
-                    <td className="td">
-                      <div className="flex gap-1.5">
-                        <button className="btn-secondary text-xs" onClick={() => setSelected(s.id)}>Detail</button>
-                        <button className="rounded-lg p-1.5 text-rose-500 hover:bg-rose-50" title={`Hapus slot ${s.id}`} aria-label={`Hapus slot ${s.id}`} onClick={() => setDeleting(s)}><Trash2 className="h-4 w-4" /></button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-                {dockSlots.length === 0 && <tr><td colSpan={4} className="td text-center text-steel-400">Belum ada slot.</td></tr>}
+                {filteredSlots.map((s) => {
+                  const st = slotStatus(s, data.projects);
+                  const isCrit = conflict.some((c) => c.id === s.id) && overlapsKritis(s);
+                  return (
+                    <tr key={s.id} className={`hover:bg-surface ${isCrit ? "bg-rose-50" : ""}`}>
+                      <td className="td text-steel-600">{drydocks.find((d) => d.id === s.dockId)?.name}</td>
+                      <td className="td">
+                        <p className="font-medium text-navy-900">{s.vessel}</p>
+                        <p className="text-xs font-mono text-steel-500">{s.project}</p>
+                      </td>
+                      <td className="td text-steel-600">{fmtRentang(dayToISO(s.from), dayToISO(s.to))} ({s.to - s.from} hari)</td>
+                      <td className="td">
+                        {s.project === "MAINT"
+                          ? <Badge tone="gray">Blokir</Badge>
+                          : <Badge tone={s.priority === "Kritis" ? "red" : s.priority === "Tinggi" ? "amber" : "gray"}>{s.priority ?? "Normal"}</Badge>}
+                      </td>
+                      <td className="td"><StatusBadge status={st} /></td>
+                      <td className="td">
+                        <div className="flex gap-1.5">
+                          <button className="btn-secondary text-xs" onClick={() => setSelected(s.id)}>Detail</button>
+                          <button className="rounded-lg p-1.5 text-rose-500 hover:bg-rose-50" title={`Hapus slot ${s.id}`} aria-label={`Hapus slot ${s.id}`} onClick={() => setDeleting(s)}><Trash2 className="h-4 w-4" /></button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+                {filteredSlots.length === 0 && <tr><td colSpan={6} className="td text-center text-steel-400">Belum ada slot pada filter ini.</td></tr>}
               </tbody>
             </table>
           </div>
@@ -317,6 +406,8 @@ export default function Drydock() {
           <dl className="space-y-2.5 text-sm">
             <div className="flex justify-between"><dt className="text-steel-500">Fasilitas</dt><dd className="font-medium">{drydocks.find((d) => d.id === sel.dockId)?.name}</dd></div>
             <div className="flex justify-between"><dt className="text-steel-500">Durasi</dt><dd className="font-medium">{fmtRentang(dayToISO(sel.from), dayToISO(sel.to))} ({sel.to - sel.from} hari)</dd></div>
+            <div className="flex justify-between"><dt className="text-steel-500">Prioritas</dt><dd className="font-medium">{sel.priority ?? "Normal"}</dd></div>
+            <div className="flex justify-between"><dt className="text-steel-500">Status</dt><dd><StatusBadge status={slotStatus(sel, data.projects)} /></dd></div>
             <div className="flex justify-between"><dt className="text-steel-500">Konflik</dt><dd>{conflict.some((c) => c.id === sel.id) ? <Badge tone="red">Tumpang tindih</Badge> : <Badge tone="green">Aman</Badge>}</dd></div>
             <button className="btn-danger mt-2 w-full justify-center" onClick={() => { setDeleting(sel); setSelected(null); }}><Trash2 className="h-4 w-4" /> Hapus Slot</button>
           </dl>
@@ -336,11 +427,16 @@ export default function Drydock() {
             <Field label="Proyek">
               <select className="input" value={bookForm.project} onChange={(e) => setBookForm({ ...bookForm, project: e.target.value })}>
                 <option value="">Pilih proyek…</option>
-                {data.projects.filter((p) => p.status !== "Selesai").map((p) => <option key={p.id} value={p.id}>{p.id} · {p.vessel}</option>)}
+                {projectOptions.filter((p) => p.status !== "Selesai").map((p) => <option key={p.id} value={p.id}>{p.id} · {p.vessel}</option>)}
               </select>
             </Field>
             <Field label="Mulai (hari ke-)"><input type="number" min={0} max={90} className="input" value={bookForm.from} onChange={(e) => setBookForm({ ...bookForm, from: e.target.value })} /></Field>
             <Field label="Selesai (hari ke-)"><input type="number" min={1} max={90} className="input" value={bookForm.to} onChange={(e) => setBookForm({ ...bookForm, to: e.target.value })} /></Field>
+            <Field label="Prioritas">
+              <select className="input" value={bookForm.priority} onChange={(e) => setBookForm({ ...bookForm, priority: e.target.value })}>
+                {PRIORITIES.map((p) => <option key={p}>{p}</option>)}
+              </select>
+            </Field>
           </FormGrid>
           <p className="rounded-lg bg-surface px-3 py-2 text-xs text-steel-600">
             Info kapasitas: {selDock?.capacity ?? "—"}
@@ -351,6 +447,31 @@ export default function Drydock() {
             <p className="rounded-lg bg-rose-50 px-3 py-2 text-xs font-medium text-rose-700">{bookError}</p>
           )}
         </div>
+      </Modal>
+
+      {/* Modal blokir maintenance */}
+      <Modal open={showMaint} onClose={() => setShowMaint(false)} title="Blokir Maintenance Dock" subtitle="Blok ikut deteksi overlap seperti slot biasa"
+        footer={<><button className="btn-secondary" onClick={() => setShowMaint(false)}>Batal</button><button className="btn-primary" onClick={saveMaintBlock}>Simpan Blokir</button></>}>
+        <div className="space-y-3">
+          <FormGrid>
+            <Field label="Fasilitas">
+              <select className="input" value={maintForm.dockId} onChange={(e) => setMaintForm({ ...maintForm, dockId: e.target.value })}>
+                {drydocks.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
+              </select>
+            </Field>
+            <Field label="Alasan"><input className="input" value={maintForm.reason} onChange={(e) => setMaintForm({ ...maintForm, reason: e.target.value })} placeholder="cth: Perbaikan rail slipway" /></Field>
+            <Field label="Dari (hari ke-)"><input type="number" min={0} max={90} className="input" value={maintForm.from} onChange={(e) => setMaintForm({ ...maintForm, from: e.target.value })} /></Field>
+            <Field label="Sampai (hari ke-)"><input type="number" min={1} max={90} className="input" value={maintForm.to} onChange={(e) => setMaintForm({ ...maintForm, to: e.target.value })} /></Field>
+          </FormGrid>
+        </div>
+      </Modal>
+
+      {/* Modal PIC dock */}
+      <Modal open={picModal !== null} onClose={() => setPicModal(null)} title={`PIC — ${picModal?.name ?? ""}`}
+        footer={<><button className="btn-secondary" onClick={() => setPicModal(null)}>Batal</button><button className="btn-primary" onClick={savePic}>Simpan PIC</button></>}>
+        <Field label="Penanggung jawab dock" hint="Kosongkan untuk kembali ke Belum ditentukan">
+          <input className="input" value={picDraft} onChange={(e) => setPicDraft(e.target.value)} placeholder="cth: Rudi Hartono" />
+        </Field>
       </Modal>
 
       <ConfirmModal open={deleting !== null} title={`Hapus slot ${deleting?.id}?`} desc={`${deleting?.vessel} akan dikeluarkan dari jadwal docking.`}

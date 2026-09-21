@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { NavLink, Outlet, Link, useNavigate } from "react-router-dom";
 import {
   LayoutDashboard,
@@ -24,20 +24,26 @@ import {
   LogOut,
   User,
   RotateCcw,
+  CalendarCheck,
+  Banknote,
+  Activity,
 } from "lucide-react";
 import { useAuth } from "../auth/auth";
 import { useStore } from "../data/store";
 import { Badge, Modal, Field, Toaster, toast } from "../components/ui";
+import { computeAlerts } from "../utils/alerts";
 
 export default function AppShell() {
   const { user, logout } = useAuth();
-  const { data, reset } = useStore();
+  const { data, reset, branch, setBranch } = useStore();
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);
   const [userOpen, setUserOpen] = useState(false);
   const [notifOpen, setNotifOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
   const [q, setQ] = useState("");
+
+  const alerts = useMemo(() => computeAlerts(data), [data]);
 
   const lowStockCount = (data.inventory ?? []).filter((i) => Number(i.stock) <= Number(i.minStock)).length;
   const qcCount = (data.ncr ?? []).filter((n) => n.status !== "Tertutup").length + (data.incidents ?? []).length;
@@ -50,12 +56,14 @@ export default function AppShell() {
       items: [
         { to: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
         { to: "/analytics", label: "Analytics", icon: BarChart3 },
+        { to: "/laporan", label: "Laporan", icon: FileText },
       ],
     },
     {
       label: "Operasional",
       items: [
         { to: "/proyek", label: "Manajemen Proyek", icon: Anchor },
+        { to: "/proyek/monitoring", label: "Monitoring E2E", icon: Activity },
         { to: "/drydock", label: "Drydock & Kapasitas", icon: ShipWheel },
         { to: "/inventori", label: "Inventori & Material", icon: Boxes, count: lowStockCount },
         { to: "/equipment", label: "Equipment", icon: Cpu },
@@ -75,6 +83,8 @@ export default function AppShell() {
       label: "SDM",
       items: [
         { to: "/sdm", label: "SDM & Karyawan", icon: Users },
+        { to: "/absensi", label: "Absensi", icon: CalendarCheck },
+        { to: "/payroll", label: "Payroll", icon: Banknote },
         { to: "/kapal", label: "Rekam Jejak Kapal", icon: Ship },
         { to: "/dokumen", label: "Aset & Dokumen", icon: ScrollText },
       ],
@@ -209,7 +219,17 @@ export default function AppShell() {
             <div className="flex items-center gap-2 text-sm text-steel-500">
               <span className="font-medium text-navy-800">Galangan</span>
               <span>/</span>
-              <span>Cabang Utama — Samarinda</span>
+              <select
+                className="input w-auto border-0 bg-transparent py-1 text-sm font-medium text-navy-800 shadow-none"
+                value={branch}
+                aria-label="Pilih cabang"
+                onChange={(e) => setBranch(e.target.value)}
+              >
+                <option value="SEMUA">Semua Cabang</option>
+                {(data.branches ?? []).map((b) => (
+                  <option key={b.id} value={b.city}>{b.name}</option>
+                ))}
+              </select>
             </div>
           </div>
 
@@ -261,13 +281,33 @@ export default function AppShell() {
               >
                 <Bell className="h-5 w-5" />
                 <span className="absolute right-0.5 top-1 flex h-4 w-4 items-center justify-center rounded-full bg-rose-500 text-[9px] font-bold text-white">
-                  {Math.min(data.activities.length, 9)}
+                  {Math.min(alerts.length + data.activities.length, 9)}
                 </span>
               </button>
               {notifOpen && (
                 <>
                   <div className="fixed inset-0 z-10" onClick={() => setNotifOpen(false)} />
                   <div className="absolute right-0 z-20 mt-2 max-h-96 w-80 overflow-y-auto rounded-xl border border-steel-200 bg-white shadow-lift">
+                    {alerts.length > 0 && (
+                      <>
+                        <p className="border-b border-steel-100 px-4 py-2.5 text-sm font-semibold text-navy-900">
+                          Perlu Perhatian ({alerts.length})
+                        </p>
+                        {alerts.slice(0, 6).map((al) => (
+                          <Link
+                            key={al.id}
+                            to={al.to}
+                            onClick={() => setNotifOpen(false)}
+                            className={`flex items-center gap-2 border-b border-steel-50 px-4 py-2.5 text-xs font-medium last:border-0 hover:bg-surface ${
+                              al.tone === "red" ? "text-rose-700" : al.tone === "amber" ? "text-amber-700" : "text-ocean-600"
+                            }`}
+                          >
+                            <span className={`h-2 w-2 shrink-0 rounded-full ${al.tone === "red" ? "bg-rose-500" : al.tone === "amber" ? "bg-amber-500" : "bg-ocean-500"}`} />
+                            {al.text}
+                          </Link>
+                        ))}
+                      </>
+                    )}
                     <p className="border-b border-steel-100 px-4 py-2.5 text-sm font-semibold text-navy-900">
                       Aktivitas Terkini
                     </p>

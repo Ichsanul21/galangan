@@ -11,6 +11,9 @@ import {
   Plus,
   Download,
   Calendar,
+  AlertTriangle,
+  FileCheck2,
+  Clock,
 } from "lucide-react";
 import {
   AreaChart,
@@ -42,6 +45,7 @@ import {
 } from "../components/ui";
 import { useStore } from "../data/store";
 import { exportExcel } from "../utils/export";
+import { todayISO } from "../utils/format";
 import {
   revenueSeries,
   sparkRevenue,
@@ -58,9 +62,10 @@ import {
 const RANGES = ["6B", "12B"] as const;
 
 export default function Dashboard() {
-  const { data } = useStore();
+  const { data, wbsFor, branch } = useStore();
   const navigate = useNavigate();
   const projects = data.projects;
+  const branchProjects = data.projects.filter((p) => branch === "SEMUA" || !p.branch || p.branch === branch);
   const activities = data.activities;
   const [range, setRange] = useState<(typeof RANGES)[number]>("12B");
   const totalActive = projects.filter((p) => p.status !== "Selesai").length;
@@ -115,6 +120,81 @@ export default function Dashboard() {
   const pipelineActive = data.quotations
     .filter((x) => x.stage !== "Menang")
     .reduce((s, x) => s + Number(x.value || 0), 0);
+
+  const today = todayISO();
+  const todayMs = Date.parse(today);
+  const wbsEndMs = (end: string): number | null => {
+    const m = /^(\d{4})-(\d{2})/.exec(String(end ?? ""));
+    if (!m) {
+      const t = Date.parse(String(end ?? ""));
+      return Number.isNaN(t) ? null : t;
+    }
+    return new Date(Number(m[1]), Number(m[2]), 0).getTime();
+  };
+  const staleMilestones = branchProjects.flatMap((p) =>
+    wbsFor(p.id)
+      .filter((w) => Number(w.progress || 0) === 0)
+      .filter((w) => {
+        const t = wbsEndMs(w.end);
+        if (t === null) return false;
+        const diff = Math.ceil((t - todayMs) / 86400000);
+        return diff >= 0 && diff < 30;
+      })
+      .map((w) => ({ project: p.id, task: w.task }))
+  );
+  const budgetTight = branchProjects.filter((p) => {
+    const b = Number(p.budget || 0);
+    if (!b) return false;
+    const r = Number(p.actual || 0) / b;
+    return r > 0.8 && r <= 1;
+  });
+  const overrun = branchProjects.filter((p) => Number(p.actual || 0) > Number(p.budget || 0));
+  const overrun10 = overrun.filter((p) => Number(p.actual || 0) > Number(p.budget || 0) * 1.1);
+  const certMonth = today.slice(0, 7);
+  const certExpiring = data.vessels.filter((v) =>
+    (v.certificates ?? []).some((c: { expires: string }) => {
+      const m1 = /^(\d{4})-(\d{2})$/.exec(String(c.expires ?? ""));
+      const m2 = /^(\d{4})-(\d{2})$/.exec(certMonth);
+      if (!m1 || !m2) return false;
+      return (Number(m1[1]) - Number(m2[1])) * 12 + (Number(m1[2]) - Number(m2[2])) <= 3;
+    })
+  );
+  const overdueInvoices = data.invoices.filter(
+    (i) => i.status !== "Lunas" && i.status !== "Draft" && String(i.due) < today
+  );
+  const overdueDays = (due: string) => Math.floor((todayMs - Date.parse(String(due))) / 86400000);
+  const overdue730 = overdueInvoices.filter((i) => overdueDays(String(i.due)) >= 30);
+  const overdue14 = overdueInvoices.filter((i) => { const d = overdueDays(String(i.due)); return d >= 14 && d < 30; });
+  const overdue7 = overdueInvoices.filter((i) => { const d = overdueDays(String(i.due)); return d >= 7 && d < 14; });
+  const latestIncident = [...data.incidents].sort((a, b) => String(b.date).localeCompare(String(a.date)))[0];
+  const delayedProjects = branchProjects.filter((p) => p.status === "Terlambat");
+
+  const attention: { icon: typeof Boxes; text: string; to: string; tone: string }[] = [
+    ...(staleMilestones.length
+      ? [{ icon: AlertTriangle, text: `${staleMilestones.length} milestone 0% berakhir <30 hari (${staleMilestones[0].project})`, to: "/proyek", tone: "bg-rose-50 text-rose-600" }]
+      : []),
+    ...(budgetTight.length
+      ? [{ icon: Wallet, text: `${budgetTight.length} proyek serapan >80% (${budgetTight[0].id})`, to: "/proyek", tone: "bg-amber-50 text-amber-600" }]
+      : []),
+    ...(overrun.length
+      ? [{ icon: AlertTriangle, text: `${overrun.length} proyek overrun${overrun10.length ? ` (${overrun10.length} di antaranya >10%)` : ""}`, to: "/keuangan", tone: "bg-rose-50 text-rose-600" }]
+      : []),
+    ...(lowStock.length
+      ? [{ icon: Boxes, text: `${lowStock.length} item stok di bawah minimum`, to: "/inventori", tone: "bg-amber-50 text-amber-600" }]
+      : []),
+    ...(certExpiring.length
+      ? [{ icon: FileCheck2, text: `${certExpiring.length} kapal sertifikat kedaluwarsa ≤90 hari`, to: "/kapal", tone: "bg-rose-50 text-rose-600" }]
+      : []),
+    ...(overdueInvoices.length
+      ? [{ icon: Wallet, text: `${overdueInvoices.length} invoice overdue (7h: ${overdue7.length} · 14h: ${overdue14.length} · 30h+: ${overdue730.length})`, to: "/keuangan", tone: "bg-rose-50 text-rose-600" }]
+      : []),
+    ...(latestIncident
+      ? [{ icon: Clock, text: `Insiden terbaru: ${latestIncident.id} — ${latestIncident.desc}`, to: "/qc-safety", tone: "bg-violet-50 text-violet-600" }]
+      : []),
+    ...(delayedProjects.length
+      ? [{ icon: AlertTriangle, text: `${delayedProjects.length} proyek Terlambat (${delayedProjects[0].id})`, to: "/proyek", tone: "bg-rose-50 text-rose-600" }]
+      : []),
+  ];
 
   return (
     <Stagger className="space-y-5">
@@ -208,6 +288,30 @@ export default function Dashboard() {
           />
         </StaggerItem>
       </div>
+
+      {/* PERLU PERHATIAN */}
+      <StaggerItem>
+        <Card className="p-4">
+          <div className="mb-3 flex items-center gap-2 px-1">
+            <AlertTriangle className="h-4 w-4 text-rose-500" />
+            <h3 className="text-sm font-semibold text-navy-900">Perlu Perhatian ({attention.length})</h3>
+            <span className="text-xs text-steel-400">Ambang otomatis dari data berjalan</span>
+          </div>
+          {attention.length === 0 && (
+            <p className="px-1 text-sm text-steel-400">Semua ambang dalam batas aman.</p>
+          )}
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-4">
+            {attention.map((a, i) => (
+              <Link key={i} to={a.to} className="flex items-start gap-2.5 rounded-xl border border-steel-100 bg-surface p-3 hover:border-ocean-400">
+                <span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${a.tone}`}>
+                  <a.icon className="h-4 w-4" />
+                </span>
+                <span className="text-xs font-medium leading-relaxed text-navy-800">{a.text}</span>
+              </Link>
+            ))}
+          </div>
+        </Card>
+      </StaggerItem>
 
       {/* MAIN CHARTS */}
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-3">
@@ -365,7 +469,7 @@ export default function Dashboard() {
               }
             />
             <div className="divide-y divide-steel-100">
-              {projects.slice(0, 5).map((p) => (
+              {branchProjects.slice(0, 5).map((p) => (
                 <Link
                   key={p.id}
                   to={`/proyek/${p.id}`}

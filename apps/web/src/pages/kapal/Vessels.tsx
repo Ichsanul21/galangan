@@ -1,8 +1,9 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
-import { Plus, Search, Ship, Anchor, FileCheck2 } from "lucide-react";
+import { Plus, Search, Ship, Anchor, FileCheck2, Pencil } from "lucide-react";
 import { Card, CardHeader, PageHeader, Badge, KpiCard, Modal, Field, FormGrid, toast } from "../../components/ui";
 import { useStore } from "../../data/store";
+import type { StoreItem } from "../../data/store";
 import { fleetTrend, dockingTrend, buildTrend, certTrend } from "../../data";
 import { fmtTanggal, todayISO } from "../../utils/format";
 
@@ -16,6 +17,14 @@ const statusTone: Record<string, "green" | "blue" | "amber" | "gray"> = {
 const CLASS_OPTIONS = ["BKI", "ABS", "DNV", "LR", "NK"];
 const FLAG_OPTIONS = ["Indonesia", "Panama", "Singapura", "Malaysia"];
 
+export const COMPLIANCE_ITEMS = ["SOLAS", "MARPOL", "ISM Code", "Flag State", "PSC Readiness", "ISPS Code"];
+
+interface ComplianceRow {
+  name: string;
+  status: string;
+  date: string;
+}
+
 function monthDiff(expires: string, base: string): number | null {
   const m1 = /^(\d{4})-(\d{2})$/.exec(expires ?? "");
   const m2 = /^(\d{4})-(\d{2})$/.exec(base ?? "");
@@ -28,17 +37,99 @@ function certNeedsAttention(expires: string, nowMonth: string): boolean {
   return d !== null && d <= 3;
 }
 
+export function complianceOf(v: StoreItem): ComplianceRow[] {
+  const rows = (v.compliance ?? []) as ComplianceRow[];
+  return COMPLIANCE_ITEMS.map((name) => rows.find((r) => r.name === name) ?? { name, status: "", date: "" });
+}
+
+export function complianceSummary(v: StoreItem): { total: number; valid: number; state: "ok" | "issue" | "empty" } {
+  const rows = (v.compliance ?? []) as ComplianceRow[];
+  if (rows.length === 0) return { total: COMPLIANCE_ITEMS.length, valid: 0, state: "empty" };
+  const full = complianceOf(v);
+  const valid = full.filter((r) => r.status === "Berlaku").length;
+  return { total: full.length, valid, state: valid === full.length ? "ok" : "issue" };
+}
+
 const emptyForm = {
-  name: "", imo: "", type: "", owner: "", loa: "", beam: "", draft: "", bollard: "",
+  name: "", imo: "", mmsi: "", type: "", owner: "", loa: "", beam: "", draft: "", bollard: "",
+  gt: "", nt: "", bhp: "", engineType: "",
   status: "Dalam Operasi", class: "BKI", flag: "Indonesia",
 };
 
+type VesselForm = typeof emptyForm;
+
+function validateForm(form: VesselForm, vessels: StoreItem[], excludeId?: string): string | null {
+  if (!form.name.trim() || !form.owner.trim() || !form.imo.trim()) return "Nama kapal, IMO & pemilik wajib diisi";
+  const imo = form.imo.trim();
+  if (vessels.some((v) => v.id !== excludeId && String(v.imo).toLowerCase() === imo.toLowerCase())) {
+    return `IMO ${imo} sudah terdaftar — gunakan nomor IMO yang unik`;
+  }
+  if (!form.type.trim()) return "Tipe kapal wajib diisi";
+  const dims = { loa: Number(form.loa), beam: Number(form.beam), draft: Number(form.draft), bollard: Number(form.bollard) };
+  if (Object.values(dims).some((n) => !Number.isFinite(n))) return "LOA, beam, draft & bollard wajib diisi angka";
+  const hasZero = Object.values(dims).some((n) => n <= 0);
+  if (form.status !== "Dalam Pembangunan" && hasZero) return "LOA, beam, draft & bollard harus lebih dari 0";
+  const gt = Number(form.gt);
+  const bhp = Number(form.bhp);
+  if (!Number.isFinite(gt) || !Number.isFinite(bhp)) return "GT & BHP mesin utama wajib diisi angka";
+  if (form.status !== "Dalam Pembangunan" && (gt <= 0 || bhp <= 0)) return "GT & BHP harus lebih dari 0 (kecuali kapal dalam pembangunan)";
+  const nt = form.nt.trim() === "" ? 0 : Number(form.nt);
+  if (!Number.isFinite(nt) || nt < 0) return "NT harus angka 0 atau lebih";
+  if (!form.engineType.trim()) return "Tipe mesin utama wajib diisi";
+  if (form.mmsi.trim() !== "" && !/^\d{9}$/.test(form.mmsi.trim())) return "MMSI harus 9 digit angka (atau kosongkan)";
+  return null;
+}
+
+function formToPayload(form: VesselForm) {
+  return {
+    name: form.name.trim(),
+    imo: form.imo.trim(),
+    mmsi: form.mmsi.trim(),
+    type: form.type.trim(),
+    class: form.class,
+    flag: form.flag,
+    owner: form.owner.trim(),
+    loa: Number(form.loa),
+    beam: Number(form.beam),
+    draft: Number(form.draft),
+    bollard: Number(form.bollard),
+    gt: Number(form.gt),
+    nt: form.nt.trim() === "" ? 0 : Number(form.nt),
+    bhp: Number(form.bhp),
+    engineType: form.engineType.trim(),
+    status: form.status,
+  };
+}
+
+function vesselToForm(v: StoreItem): VesselForm {
+  return {
+    name: String(v.name ?? ""),
+    imo: String(v.imo ?? ""),
+    mmsi: String(v.mmsi ?? ""),
+    type: String(v.type ?? ""),
+    owner: String(v.owner ?? ""),
+    loa: String(v.loa ?? ""),
+    beam: String(v.beam ?? ""),
+    draft: String(v.draft ?? ""),
+    bollard: String(v.bollard ?? ""),
+    gt: v.gt === undefined || v.gt === null ? "" : String(v.gt),
+    nt: v.nt === undefined || v.nt === null ? "" : String(v.nt),
+    bhp: v.bhp === undefined || v.bhp === null ? "" : String(v.bhp),
+    engineType: String(v.engineType ?? ""),
+    status: String(v.status ?? "Dalam Operasi"),
+    class: String(v.class ?? "BKI"),
+    flag: String(v.flag ?? "Indonesia"),
+  };
+}
+
 export default function Vessels() {
-  const { data, add } = useStore();
+  const { data, add, update } = useStore();
   const vessels = data.vessels;
   const [q, setQ] = useState("");
   const [showAdd, setShowAdd] = useState(false);
   const [form, setForm] = useState(emptyForm);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editForm, setEditForm] = useState<VesselForm>(emptyForm);
 
   const nowMonth = todayISO().slice(0, 7);
   const list = vessels.filter((v) => `${v.name} ${v.imo}`.toLowerCase().includes(q.toLowerCase()));
@@ -46,33 +137,72 @@ export default function Vessels() {
     (v.certificates ?? []).some((c: { expires: string }) => certNeedsAttention(c.expires, nowMonth))
   ).length;
 
+  const slotCountFor = (name: string) => data.dockSlots.filter((s) => s.vessel === name).length;
+
   const save = () => {
-    if (!form.name.trim() || !form.owner.trim() || !form.imo.trim()) { toast("Nama kapal, IMO & pemilik wajib diisi", "info"); return; }
-    const imo = form.imo.trim();
-    if (vessels.some((v) => String(v.imo).toLowerCase() === imo.toLowerCase())) {
-      toast(`IMO ${imo} sudah terdaftar — gunakan nomor IMO yang unik`, "info");
-      return;
-    }
-    if (!form.type.trim()) { toast("Tipe kapal wajib diisi", "info"); return; }
-    const dims = { loa: Number(form.loa), beam: Number(form.beam), draft: Number(form.draft), bollard: Number(form.bollard) };
-    if (Object.values(dims).some((n) => !Number.isFinite(n))) { toast("LOA, beam, draft & bollard wajib diisi angka", "info"); return; }
-    const hasZero = Object.values(dims).some((n) => n <= 0);
-    if (form.status !== "Dalam Pembangunan" && hasZero) {
-      toast("LOA, beam, draft & bollard harus lebih dari 0", "info");
-      return;
-    }
-    const warnZero = form.status === "Dalam Pembangunan" && hasZero;
+    const err = validateForm(form, vessels);
+    if (err) { toast(err, "info"); return; }
+    const dimsZero = [form.loa, form.beam, form.draft, form.bollard].some((n) => Number(n) <= 0);
+    const warnZero = form.status === "Dalam Pembangunan" && dimsZero;
     const created = add("vessels", {
-      name: form.name.trim(), imo, type: form.type.trim(), class: form.class, flag: form.flag,
-      built: new Date().getFullYear(), owner: form.owner.trim(),
-      loa: dims.loa, beam: dims.beam, draft: dims.draft, bollard: dims.bollard,
-      status: form.status, certificates: [],
+      ...formToPayload(form),
+      built: new Date().getFullYear(),
+      certificates: [],
       history: [{ date: todayISO(), event: "Kapal didaftarkan", type: "Registrasi" }],
     }, { action: "mendaftarkan kapal", module: "Kapal" });
     toast(warnZero ? `Kapal ${created.id} terdaftar — dimensi 0 diizinkan karena masih dalam pembangunan` : `Kapal ${created.id} terdaftar`);
     setShowAdd(false);
     setForm(emptyForm);
   };
+
+  const openEdit = (v: StoreItem) => {
+    setEditingId(v.id);
+    setEditForm(vesselToForm(v));
+  };
+
+  const saveEdit = () => {
+    if (!editingId) return;
+    const err = validateForm(editForm, vessels, editingId);
+    if (err) { toast(err, "info"); return; }
+    update("vessels", editingId, formToPayload(editForm));
+    toast("Data kapal diperbarui");
+    setEditingId(null);
+  };
+
+  const renderFormFields = (f: VesselForm, setF: (v: VesselForm) => void) => (
+    <div className="space-y-3">
+      <FormGrid>
+        <Field label="Nama kapal"><input className="input" value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} placeholder="cth: TB Samudra Jaya 08" /></Field>
+        <Field label="Nomor IMO"><input className="input font-mono" value={f.imo} onChange={(e) => setF({ ...f, imo: e.target.value })} placeholder="cth: IMO 9934567" /></Field>
+        <Field label="MMSI (9 digit)"><input className="input font-mono" value={f.mmsi} onChange={(e) => setF({ ...f, mmsi: e.target.value })} placeholder="cth: 525003456" /></Field>
+        <Field label="Tipe"><input className="input" value={f.type} onChange={(e) => setF({ ...f, type: e.target.value })} placeholder="cth: Tugboat ASD 2x1600 HP" /></Field>
+        <Field label="Pemilik"><input className="input" value={f.owner} onChange={(e) => setF({ ...f, owner: e.target.value })} placeholder="cth: PT Samudra Jaya Perkasa" /></Field>
+        <Field label="Tipe mesin utama"><input className="input" value={f.engineType} onChange={(e) => setF({ ...f, engineType: e.target.value })} placeholder="cth: MAN 6L27/38" /></Field>
+        <Field label="LOA (m)"><input type="number" min={0} step={0.1} className="input" value={f.loa} onChange={(e) => setF({ ...f, loa: e.target.value })} placeholder="cth: 30" /></Field>
+        <Field label="Beam (m)"><input type="number" min={0} step={0.1} className="input" value={f.beam} onChange={(e) => setF({ ...f, beam: e.target.value })} placeholder="cth: 9,5" /></Field>
+        <Field label="Draft (m)"><input type="number" min={0} step={0.1} className="input" value={f.draft} onChange={(e) => setF({ ...f, draft: e.target.value })} placeholder="cth: 4" /></Field>
+        <Field label="Bollard (T)"><input type="number" min={0} step={0.1} className="input" value={f.bollard} onChange={(e) => setF({ ...f, bollard: e.target.value })} placeholder="cth: 40" /></Field>
+        <Field label="GT"><input type="number" min={0} step={1} className="input" value={f.gt} onChange={(e) => setF({ ...f, gt: e.target.value })} placeholder="cth: 495" /></Field>
+        <Field label="NT"><input type="number" min={0} step={1} className="input" value={f.nt} onChange={(e) => setF({ ...f, nt: e.target.value })} placeholder="cth: 148" /></Field>
+        <Field label="BHP mesin utama"><input type="number" min={0} step={1} className="input" value={f.bhp} onChange={(e) => setF({ ...f, bhp: e.target.value })} placeholder="cth: 3200" /></Field>
+        <Field label="Class">
+          <select className="input" value={f.class} onChange={(e) => setF({ ...f, class: e.target.value })}>
+            {CLASS_OPTIONS.map((c) => <option key={c}>{c}</option>)}
+          </select>
+        </Field>
+        <Field label="Bendera">
+          <select className="input" value={f.flag} onChange={(e) => setF({ ...f, flag: e.target.value })}>
+            {FLAG_OPTIONS.map((fl) => <option key={fl}>{fl}</option>)}
+          </select>
+        </Field>
+      </FormGrid>
+      <Field label="Status" hint="Dimensi/GT/BHP 0 hanya diizinkan untuk kapal dalam pembangunan">
+        <select className="input" value={f.status} onChange={(e) => setF({ ...f, status: e.target.value })}>
+          {["Dalam Operasi", "Dalam Docking", "Dalam Pembangunan", "Menganggur"].map((s) => <option key={s}>{s}</option>)}
+        </select>
+      </Field>
+    </div>
+  );
 
   return (
     <div>
@@ -96,22 +226,30 @@ export default function Vessels() {
           <input className="input pl-9 w-full sm:w-64" placeholder="Cari kapal / IMO..." aria-label="Cari kapal" value={q} onChange={(e) => setQ(e.target.value)} />
         </div>
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
-          {list.map((v) => (
-            <Link to={`/kapal/${v.id}`} key={v.id}>
-              <Card className="p-5 hover:shadow-md transition-shadow">
-                <div className="flex items-start justify-between">
-                  <div>
+          {list.map((v) => {
+            const comp = complianceSummary(v);
+            return (
+              <Card key={v.id} className="p-5 hover:shadow-md transition-shadow">
+                <Link to={`/kapal/${v.id}`}>
+                  <div className="flex items-start justify-between">
                     <div className="flex items-center gap-2">
                       <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-ocean-500/15 text-ocean-600">
                         <Ship className="h-5 w-5" />
                       </div>
                       <div>
                         <p className="text-sm font-semibold text-navy-900">{v.name}</p>
-                        <p className="text-xs text-steel-500 font-mono">{v.imo}</p>
+                        <p className="text-xs text-steel-500 font-mono">{v.imo}{v.mmsi ? ` · MMSI ${v.mmsi}` : ""}</p>
                       </div>
                     </div>
+                    <button
+                      className="rounded-lg border border-steel-200 p-1.5 text-steel-500 hover:border-ocean-400 hover:text-ocean-600"
+                      aria-label={`Edit ${v.name}`}
+                      onClick={(e) => { e.preventDefault(); openEdit(v); }}
+                    >
+                      <Pencil className="h-3.5 w-3.5" />
+                    </button>
                   </div>
-                </div>
+                </Link>
                 <div className="mt-3 flex items-center justify-between">
                   <div>
                     <p className="text-xs text-steel-500">{v.type}</p>
@@ -119,17 +257,27 @@ export default function Vessels() {
                   </div>
                   <Badge tone={statusTone[v.status] ?? "gray"}>{v.status}</Badge>
                 </div>
+                <div className="mt-2 flex flex-wrap gap-1.5">
+                  <Badge tone={comp.state === "ok" ? "green" : comp.state === "issue" ? "red" : "gray"}>
+                    {comp.state === "ok" ? "Patuh — semua berlaku" : comp.state === "issue" ? `Kepatuhan ${comp.valid}/${comp.total}` : "Kepatuhan belum dinilai"}
+                  </Badge>
+                </div>
                 <div className="mt-3 grid grid-cols-3 gap-2 border-t border-steel-100 pt-3 text-center">
                   <div><p className="text-sm font-bold text-navy-900">{v.loa}m</p><p className="text-[10px] text-steel-500">LOA</p></div>
                   <div><p className="text-sm font-bold text-navy-900">{v.bollard}T</p><p className="text-[10px] text-steel-500">Bollard</p></div>
                   <div><p className="text-sm font-bold text-navy-900">{v.built}</p><p className="text-[10px] text-steel-500">Tahun</p></div>
                 </div>
+                <div className="mt-2 grid grid-cols-3 gap-2 text-center">
+                  <div><p className="text-sm font-bold text-navy-900">{v.gt ?? "—"}</p><p className="text-[10px] text-steel-500">GT</p></div>
+                  <div><p className="text-sm font-bold text-navy-900">{v.bhp ? `${v.bhp}` : "—"}</p><p className="text-[10px] text-steel-500">BHP</p></div>
+                  <div><p className="text-sm font-bold text-navy-900">{slotCountFor(String(v.name))}</p><p className="text-[10px] text-steel-500">Slot Dock</p></div>
+                </div>
                 {(v.certificates ?? []).length > 0 && (
                   <p className="mt-2 text-[11px] text-steel-400">{(v.certificates ?? []).length} sertifikat · {data.surveys.filter((s) => s.vessel === v.name).length} survey terjadwal</p>
                 )}
               </Card>
-            </Link>
-          ))}
+            );
+          })}
         </div>
         {list.length === 0 && <p className="py-8 text-center text-sm text-steel-400">Tidak ada kapal yang cocok.</p>}
 
@@ -156,36 +304,14 @@ export default function Vessels() {
         </Card>
       </div>
 
-      {/* Modal daftar kapal */}
       <Modal open={showAdd} onClose={() => setShowAdd(false)} title="Daftarkan Kapal Baru"
         wide footer={<><button className="btn-secondary" onClick={() => setShowAdd(false)}>Batal</button><button className="btn-primary" onClick={save}>Daftarkan</button></>}>
-        <div className="space-y-3">
-          <FormGrid>
-            <Field label="Nama kapal"><input className="input" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="cth: TB Samudra Jaya 08" /></Field>
-            <Field label="Nomor IMO"><input className="input font-mono" value={form.imo} onChange={(e) => setForm({ ...form, imo: e.target.value })} placeholder="cth: IMO 9934567" /></Field>
-            <Field label="Tipe"><input className="input" value={form.type} onChange={(e) => setForm({ ...form, type: e.target.value })} placeholder="cth: Tugboat ASD 2x1600 HP" /></Field>
-            <Field label="Pemilik"><input className="input" value={form.owner} onChange={(e) => setForm({ ...form, owner: e.target.value })} placeholder="cth: PT Samudra Jaya Perkasa" /></Field>
-            <Field label="LOA (m)"><input type="number" min={0} step={0.1} className="input" value={form.loa} onChange={(e) => setForm({ ...form, loa: e.target.value })} placeholder="cth: 30" /></Field>
-            <Field label="Beam (m)"><input type="number" min={0} step={0.1} className="input" value={form.beam} onChange={(e) => setForm({ ...form, beam: e.target.value })} placeholder="cth: 9,5" /></Field>
-            <Field label="Draft (m)"><input type="number" min={0} step={0.1} className="input" value={form.draft} onChange={(e) => setForm({ ...form, draft: e.target.value })} placeholder="cth: 4" /></Field>
-            <Field label="Bollard (T)"><input type="number" min={0} step={0.1} className="input" value={form.bollard} onChange={(e) => setForm({ ...form, bollard: e.target.value })} placeholder="cth: 40" /></Field>
-            <Field label="Class">
-              <select className="input" value={form.class} onChange={(e) => setForm({ ...form, class: e.target.value })}>
-                {CLASS_OPTIONS.map((c) => <option key={c}>{c}</option>)}
-              </select>
-            </Field>
-            <Field label="Bendera">
-              <select className="input" value={form.flag} onChange={(e) => setForm({ ...form, flag: e.target.value })}>
-                {FLAG_OPTIONS.map((f) => <option key={f}>{f}</option>)}
-              </select>
-            </Field>
-          </FormGrid>
-          <Field label="Status" hint="Dimensi 0 hanya diizinkan untuk kapal dalam pembangunan">
-            <select className="input" value={form.status} onChange={(e) => setForm({ ...form, status: e.target.value })}>
-              {["Dalam Operasi", "Dalam Docking", "Dalam Pembangunan", "Menganggur"].map((s) => <option key={s}>{s}</option>)}
-            </select>
-          </Field>
-        </div>
+        {renderFormFields(form, setForm)}
+      </Modal>
+
+      <Modal open={editingId !== null} onClose={() => setEditingId(null)} title="Edit Data Kapal"
+        wide footer={<><button className="btn-secondary" onClick={() => setEditingId(null)}>Batal</button><button className="btn-primary" onClick={saveEdit}>Simpan</button></>}>
+        {renderFormFields(editForm, setEditForm)}
       </Modal>
     </div>
   );

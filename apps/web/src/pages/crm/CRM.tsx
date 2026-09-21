@@ -1,13 +1,16 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
+import { Link } from "react-router-dom";
 import { Plus, Send, Users2, Star, Handshake, ArrowRight } from "lucide-react";
-import { Card, CardHeader, PageHeader, Badge, KpiCard, Tabs, ProgressBar, Donut, Modal, Field, FormGrid, ConfirmModal, toast } from "../../components/ui";
-import { useStore, type StoreItem } from "../../data/store";
-import { fmtMiliar, fmtTanggal, todayISO } from "../../utils/format";
+import { Card, CardHeader, PageHeader, Badge, KpiCard, Tabs, Donut, Modal, Field, FormGrid, ConfirmModal, StatusBadge, EmptyState, toast } from "../../components/ui";
+import { useStore } from "../../data/store";
+import type { StoreItem } from "../../data/store";
+import { fmtMiliar, fmtRupiah, fmtTanggal, todayISO } from "../../utils/format";
 import { clientTrend, pipelineTrend, winRateTrend, wonTrend } from "../../data";
 
 const FLOW = ["Lead", "Penawaran", "Negosiasi", "Menang"];
 const TERMINAL = ["Terkonversi", "Batal", "Kalah"];
 const STAGES = [...FLOW, ...TERMINAL];
+const KLASIFIKASI = ["VIP", "Regular", "New", "Inactive"] as const;
 
 const STAGE_COLORS: Record<string, string> = {
   Lead: "#2e9ad4",
@@ -30,42 +33,75 @@ const STAGE_TONE: Record<string, "gray" | "amber" | "violet" | "green" | "teal" 
 };
 
 const isTerminal = (stage: string) => TERMINAL.includes(stage);
+const num = (v: unknown): number => Number(v) || 0;
 
 export default function CRM() {
-  const { data, add, update, log } = useStore();
-  const quotations = data.quotations;
-  const clients = data.clients;
+  const { data, add, update, log, branch, inBranch } = useStore();
   const [tab, setTab] = useState("Pipeline");
+  const [klasFilter, setKlasFilter] = useState("Semua");
 
   const [showQ, setShowQ] = useState(false);
   const [qForm, setQForm] = useState({ client: "", vessel: "", type: "New Build", value: "", stage: "Lead", date: todayISO() });
   const [showClient, setShowClient] = useState(false);
-  const [cForm, setCForm] = useState({ name: "", fleet: "1", rating: "80" });
-  const [showInvite, setShowInvite] = useState(false);
-  const [inviteEmail, setInviteEmail] = useState("");
+  const [cForm, setCForm] = useState({ name: "", fleet: "1", rating: "80", klasifikasi: "Regular", creditLimit: "", paymentTerms: "NET 30", branch: "" });
   const [convertTarget, setConvertTarget] = useState<StoreItem | null>(null);
   const [sendTarget, setSendTarget] = useState<StoreItem | null>(null);
   const [sendEmail, setSendEmail] = useState("");
   const [sendMsg, setSendMsg] = useState("");
+  const [commForm, setCommForm] = useState({ quotationId: "", channel: "Email", date: todayISO(), summary: "", by: "" });
+  const [contractForm, setContractForm] = useState({ quotationId: "", value: "", signedAt: todayISO(), projectId: "" });
+  const [surveyForm, setSurveyForm] = useState({ clientId: "", rating: "5" });
 
-  const activeQuotes = quotations.filter((q) => !isTerminal(q.stage));
-  const pipelineTotal = activeQuotes.reduce((s, q) => s + Number(q.value || 0), 0);
+  const clientByName = useMemo(() => {
+    const m: Record<string, StoreItem> = {};
+    for (const c of data.clients ?? []) m[String(c.name)] = c;
+    return m;
+  }, [data.clients]);
+
+  const visibleClients = useMemo(() => {
+    const base = inBranch(data.clients ?? []);
+    if (klasFilter === "Semua") return base;
+    return base.filter((c) => String(c.klasifikasi ?? "Regular") === klasFilter);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [data.clients, klasFilter, branch]);
+
+  const quotations = useMemo(() => {
+    const all = data.quotations ?? [];
+    if (branch === "SEMUA") return all;
+    return all.filter((q) => {
+      const c = clientByName[String(q.client ?? "")];
+      if (!c || !c.branch) return true;
+      return String(c.branch) === branch;
+    });
+  }, [data.quotations, branch, clientByName]);
+
+  const clients = data.clients ?? [];
+  const communications = data.communications ?? [];
+  const contracts = data.contracts ?? [];
+
+  const activeQuotes = quotations.filter((q) => !isTerminal(String(q.stage)));
+  const pipelineTotal = activeQuotes.reduce((s, q) => s + num(q.value), 0);
   const wonQuotes = quotations.filter((q) => q.stage === "Menang" || q.stage === "Terkonversi");
-  const wonValue = wonQuotes.reduce((s, q) => s + Number(q.value || 0), 0);
+  const wonValue = wonQuotes.reduce((s, q) => s + num(q.value), 0);
   const totalQuotes = quotations.length;
   const winRate = totalQuotes > 0 ? Math.round((wonQuotes.length / totalQuotes) * 100) : 0;
-  const totalFleet = clients.reduce((s, c) => s + Number(c.fleet || 0), 0);
+  const totalFleet = clients.reduce((s, c) => s + num(c.fleet), 0);
   const stageDist = STAGES.map((s) => ({
     name: s,
     value: quotations.filter((q) => q.stage === s).length,
     color: STAGE_COLORS[s] ?? "#94a3b8",
   }));
 
-  const portalProject = data.projects[0];
-  const portalInvoice = portalProject ? data.invoices.find((i) => i.project === portalProject.id) : undefined;
+  const surveyAvg = (c: StoreItem): number => {
+    const arr = Array.isArray(c.survei) ? c.survei.map(num) : [];
+    if (arr.length === 0) return 0;
+    return arr.reduce((s, v) => s + v, 0) / arr.length;
+  };
+  const allSurveys = clients.flatMap((c) => (Array.isArray(c.survei) ? c.survei.map(num) : []));
+  const globalSatisfaction = allSurveys.length > 0 ? allSurveys.reduce((s, v) => s + v, 0) / allSurveys.length : 0;
 
   const advance = (q: StoreItem) => {
-    const idx = FLOW.indexOf(q.stage);
+    const idx = FLOW.indexOf(String(q.stage));
     if (idx < 0 || idx >= FLOW.length - 1) return;
     const next = FLOW[idx + 1];
     update("quotations", q.id, { stage: next });
@@ -74,7 +110,7 @@ export default function CRM() {
   };
 
   const markTerminal = (q: StoreItem, stage: "Batal" | "Kalah") => {
-    if (isTerminal(q.stage)) return;
+    if (isTerminal(String(q.stage))) return;
     update("quotations", q.id, { stage });
     log(`memindahkan quotation ke ${stage}`, q.id, "CRM");
     toast(`${q.id} ditandai ${stage}`, "info");
@@ -91,7 +127,7 @@ export default function CRM() {
     const created = add("projects", {
       vessel: q.vessel, type: q.type, client: q.client, status: "Dalam Proses",
       branch: "Samarinda", start: todayISO(), end: "-", progress: 0,
-      budget: Number(q.value) || 0, actual: 0, manager: "Belum ditentukan", scope: [q.type],
+      budget: num(q.value), actual: 0, manager: "Belum ditentukan", scope: [q.type],
     }, { action: "mengkonversi quotation", target: `${q.id} → proyek`, module: "CRM" });
     update("quotations", q.id, { stage: "Terkonversi" });
     log("mengunci quotation setelah konversi", q.id, "CRM");
@@ -102,7 +138,7 @@ export default function CRM() {
   const openSend = (q: StoreItem) => {
     setSendTarget(q);
     setSendEmail("");
-    setSendMsg(`Yth. ${q.client},\n\nTerlampir penawaran ${q.id} untuk ${q.vessel} senilai ${fmtMiliar(Number(q.value) || 0)}. Mohon konfirmasi ketersediaan jadwal docking.\n\nHormat kami,\nTim Commercial`);
+    setSendMsg(`Yth. ${q.client},\n\nTerlampir penawaran ${q.id} untuk ${q.vessel} senilai ${fmtMiliar(num(q.value))}. Mohon konfirmasi ketersediaan jadwal docking.\n\nHormat kami,\nTim Commercial`);
   };
 
   const confirmSend = () => {
@@ -117,10 +153,10 @@ export default function CRM() {
   const saveQuotation = () => {
     if (!qForm.client || !qForm.vessel.trim()) { toast("Klien & kapal wajib diisi", "info"); return; }
     if (!qForm.date) { toast("Tanggal penawaran wajib diisi", "info"); return; }
-    if (Number(qForm.value) <= 0) { toast("Nilai penawaran harus lebih dari 0", "info"); return; }
+    if (num(qForm.value) <= 0) { toast("Nilai penawaran harus lebih dari 0", "info"); return; }
     const created = add("quotations", {
       client: qForm.client, vessel: qForm.vessel.trim(), type: qForm.type,
-      value: Number(qForm.value), stage: qForm.stage, date: qForm.date,
+      value: num(qForm.value), stage: qForm.stage, date: qForm.date, version: 1, riwayat: [],
     }, { action: "membuat penawaran", module: "CRM" });
     toast(`Penawaran ${created.id} dibuat`);
     setShowQ(false);
@@ -130,19 +166,75 @@ export default function CRM() {
   const saveClient = () => {
     if (!cForm.name.trim()) { toast("Nama klien wajib diisi", "info"); return; }
     const created = add("clients", {
-      name: cForm.name.trim(), fleet: Number(cForm.fleet) || 1, rating: Number(cForm.rating) || 80,
+      name: cForm.name.trim(),
+      fleet: num(cForm.fleet) || 1,
+      rating: num(cForm.rating) || 80,
       since: new Date().getFullYear(),
+      klasifikasi: cForm.klasifikasi,
+      creditLimit: num(cForm.creditLimit),
+      paymentTerms: cForm.paymentTerms,
+      currency: "IDR",
+      ...(cForm.branch ? { branch: cForm.branch } : {}),
+      survei: [],
     }, { action: "mendaftarkan klien", module: "CRM" });
     toast(`Klien ${created.id} ditambahkan`);
     setShowClient(false);
-    setCForm({ name: "", fleet: "1", rating: "80" });
+    setCForm({ name: "", fleet: "1", rating: "80", klasifikasi: "Regular", creditLimit: "", paymentTerms: "NET 30", branch: "" });
   };
+
+  const saveComm = () => {
+    if (!commForm.quotationId) { toast("Pilih quotation dulu", "info"); return; }
+    if (!commForm.date) { toast("Tanggal wajib diisi", "info"); return; }
+    if (!commForm.summary.trim()) { toast("Ringkasan wajib diisi", "info"); return; }
+    const created = add("communications", {
+      quotationId: commForm.quotationId,
+      channel: commForm.channel,
+      date: commForm.date,
+      summary: commForm.summary.trim(),
+      by: commForm.by.trim() || "Tim Commercial",
+    }, { action: "mencatat komunikasi", target: commForm.quotationId, module: "CRM" });
+    toast(`Komunikasi ${created.id} dicatat`);
+    setCommForm({ quotationId: "", channel: "Email", date: todayISO(), summary: "", by: "" });
+  };
+
+  const saveContract = () => {
+    const q = quotations.find((x) => x.id === contractForm.quotationId);
+    if (!q) { toast("Pilih quotation Menang / Terkonversi", "info"); return; }
+    if (q.stage !== "Menang" && q.stage !== "Terkonversi") { toast("Hanya quotation Menang / Terkonversi", "info"); return; }
+    if (contracts.some((c) => c.quotationId === q.id)) { toast("Quotation ini sudah punya kontrak", "info"); return; }
+    if (!contractForm.signedAt) { toast("Tanggal sign wajib diisi", "info"); return; }
+    const created = add("contracts", {
+      quotationId: q.id,
+      client: q.client,
+      value: num(contractForm.value) || num(q.value),
+      signedAt: contractForm.signedAt,
+      status: "Aktif",
+      ...(contractForm.projectId ? { projectId: contractForm.projectId } : {}),
+    }, { action: "membuat kontrak", target: q.id, module: "CRM" });
+    toast(`Kontrak ${created.id} dibuat`);
+    setContractForm({ quotationId: "", value: "", signedAt: todayISO(), projectId: "" });
+  };
+
+  const saveSurvey = () => {
+    if (!surveyForm.clientId) { toast("Pilih klien dulu", "info"); return; }
+    const r = num(surveyForm.rating);
+    if (r < 1 || r > 5) { toast("Rating 1–5", "info"); return; }
+    const c = clients.find((x) => x.id === surveyForm.clientId);
+    if (!c) return;
+    const next = [...(Array.isArray(c.survei) ? c.survei : []), r];
+    update("clients", c.id, { survei: next });
+    log("mencatat survei kepuasan", `${c.name} rating ${r}`, "CRM");
+    toast(`Survei ${c.name} tersimpan`);
+    setSurveyForm({ clientId: "", rating: "5" });
+  };
+
+  const eligibleQuotations = quotations.filter((q) => q.stage === "Menang" || q.stage === "Terkonversi");
 
   return (
     <div>
       <PageHeader
         title="CRM & Manajemen Klien"
-        subtitle="Penawaran, pipeline penjualan, dan armada klien"
+        subtitle="Penawaran, pipeline penjualan, komunikasi, kontrak, dan kepuasan"
         icon={<Handshake className="h-5 w-5" />}
         actions={<button className="btn-primary-gradient" onClick={() => setShowQ(true)}><Plus className="h-4 w-4" /> Penawaran Baru</button>}
       />
@@ -155,7 +247,7 @@ export default function CRM() {
       </div>
 
       <div className="mt-4 card">
-        <Tabs tabs={["Pipeline", "Klien", "Penawaran", "Portal Klien"]} active={tab} onChange={setTab} />
+        <Tabs tabs={["Pipeline", "Klien", "Penawaran", "Komunikasi", "Kontrak", "Kepuasan"]} active={tab} onChange={setTab} />
         <div className="p-4">
           {tab === "Pipeline" && (
             <div className="space-y-4">
@@ -186,13 +278,16 @@ export default function CRM() {
                       <div className="space-y-2.5">
                         {items.map((q) => (
                           <Card key={q.id} className="card-hover p-3">
-                            <p className="truncate text-sm font-semibold text-navy-900" title={String(q.vessel)}>{q.vessel}</p>
-                            <p className="truncate text-xs text-steel-500" title={String(q.client)}>{q.client}</p>
-                            <p className="mt-0.5 text-xs text-steel-500">{q.type} · {fmtTanggal(q.date)}</p>
+                            <p className="truncate text-sm font-semibold text-navy-900" title={String(q.vessel)}>{String(q.vessel)}</p>
+                            <p className="truncate text-xs text-steel-500" title={String(q.client)}>{String(q.client)}</p>
+                            <p className="mt-0.5 text-xs text-steel-500">{String(q.type)} · {fmtTanggal(String(q.date ?? ""))}</p>
                             <div className="mt-2 flex items-center justify-between">
-                              <span className="font-semibold text-navy-800">{fmtMiliar(Number(q.value) || 0)}</span>
-                              <Badge tone={STAGE_TONE[q.stage] ?? "gray"}>{q.id}</Badge>
+                              <span className="font-semibold text-navy-800">{fmtMiliar(num(q.value))}</span>
+                              <Badge tone={STAGE_TONE[String(q.stage)] ?? "gray"}>{q.id}</Badge>
                             </div>
+                            <Link to={`/crm/quotation/${q.id}`} className="mt-2 inline-flex items-center gap-1 text-xs font-semibold text-ocean-600 hover:text-ocean-500">
+                              Detail <ArrowRight className="h-3 w-3" />
+                            </Link>
                             {!isTerminal(stage) && (
                               <div className="mt-2 space-y-1.5">
                                 {stage !== "Menang" ? (
@@ -222,50 +317,54 @@ export default function CRM() {
           )}
 
           {tab === "Klien" && (
-            <div>
-              <div className="mb-3 flex justify-end">
+            <div className="space-y-3">
+              <div className="flex flex-wrap items-end justify-between gap-2">
+                <Field label="Filter klasifikasi">
+                  <select className="input" value={klasFilter} onChange={(e) => setKlasFilter(e.target.value)}>
+                    <option>Semua</option>
+                    {KLASIFIKASI.map((k) => <option key={k}>{k}</option>)}
+                  </select>
+                </Field>
                 <button className="btn-secondary text-xs" onClick={() => setShowClient(true)}><Plus className="h-3.5 w-3.5" /> Tambah Klien</button>
               </div>
-              <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
-                {clients.map((c) => {
-                  const cq = quotations.filter((x) => x.client === c.name);
-                  const cqVal = cq.reduce((s, x) => s + Number(x.value || 0), 0);
-                  return (
-                    <Card key={c.id} className="p-5">
-                      <div className="flex items-start justify-between">
-                        <div className="flex items-center gap-2.5">
-                          <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-navy-700 text-sm font-bold text-white">
-                            {String(c.name).replace("PT ", "").split(" ").map((n: string) => n[0]).slice(0, 2).join("")}
+              {visibleClients.length === 0 ? (
+                <EmptyState title="Tidak ada klien" subtitle="Ubah filter atau tambah klien baru." />
+              ) : (
+                <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+                  {visibleClients.map((c) => {
+                    const cq = quotations.filter((x) => x.client === c.name);
+                    const cqVal = cq.reduce((s, x) => s + num(x.value), 0);
+                    return (
+                      <Card key={c.id} className="p-5">
+                        <div className="flex items-start justify-between">
+                          <div className="flex items-center gap-2.5">
+                            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-navy-700 text-sm font-bold text-white">
+                              {String(c.name).replace("PT ", "").split(" ").map((n: string) => n[0]).slice(0, 2).join("")}
+                            </div>
+                            <div>
+                              <p className="truncate text-sm font-semibold text-navy-900" title={String(c.name)}>{String(c.name)}</p>
+                              <p className="text-xs text-steel-500">{String(c.id)} · sejak {String(c.since ?? "—")}</p>
+                            </div>
                           </div>
-                          <div>
-                            <p className="truncate text-sm font-semibold text-navy-900" title={String(c.name)}>{c.name}</p>
-                            <p className="text-xs text-steel-500">{c.id} · sejak {c.since}</p>
-                          </div>
+                          <Badge tone="green"><Star className="h-3 w-3 mr-0.5" /> {String(c.rating ?? 0)}%</Badge>
                         </div>
-                        <Badge tone="green"><Star className="h-3 w-3 mr-0.5" /> {c.rating}%</Badge>
-                      </div>
-                      <div className="mt-4 border-t border-steel-100 pt-3">
-                        <div className="flex justify-between text-sm">
-                          <span className="text-steel-500">Armada kapal</span>
-                          <span className="font-semibold">{c.fleet} unit</span>
+                        <div className="mt-3 flex flex-wrap gap-1.5">
+                          <Badge tone={String(c.klasifikasi ?? "Regular") === "VIP" ? "violet" : "gray"}>{String(c.klasifikasi ?? "Regular")}</Badge>
+                          <Badge tone="navy">{String(c.currency ?? "IDR")}</Badge>
+                          {c.branch ? <Badge tone="teal">{String(c.branch)}</Badge> : null}
                         </div>
-                        <div className="mt-1 flex justify-between text-sm">
-                          <span className="text-steel-500">Nilai penawaran</span>
-                          <span className="font-semibold">{fmtMiliar(cqVal)}</span>
+                        <div className="mt-3 border-t border-steel-100 pt-3 text-sm">
+                          <div className="flex justify-between"><span className="text-steel-500">Armada kapal</span><span className="font-semibold">{num(c.fleet)} unit</span></div>
+                          <div className="mt-1 flex justify-between"><span className="text-steel-500">Nilai penawaran</span><span className="font-semibold">{fmtMiliar(cqVal)}</span></div>
+                          <div className="mt-1 flex justify-between"><span className="text-steel-500">Credit limit</span><span className="font-semibold">{fmtRupiah(num(c.creditLimit))}</span></div>
+                          <div className="mt-1 flex justify-between"><span className="text-steel-500">Payment terms</span><span className="font-semibold">{String(c.paymentTerms ?? "NET 30")}</span></div>
+                          <div className="mt-1 flex justify-between"><span className="text-steel-500">Proyek berjalan</span><span className="font-semibold">{data.projects.filter((p) => p.client === c.name && p.status !== "Selesai").length} proyek</span></div>
                         </div>
-                        <div className="mt-1 flex justify-between text-sm">
-                          <span className="text-steel-500">Proyek berjalan</span>
-                          <span className="font-semibold">{data.projects.filter((p) => p.client === c.name && p.status !== "Selesai").length} proyek</span>
-                        </div>
-                        <div className="mt-1 flex justify-between text-sm">
-                          <span className="text-steel-500">Penawaran tercatat</span>
-                          <span className="font-semibold">{cq.length} penawaran</span>
-                        </div>
-                      </div>
-                    </Card>
-                  );
-                })}
-              </div>
+                      </Card>
+                    );
+                  })}
+                </div>
+              )}
             </div>
           )}
 
@@ -273,25 +372,26 @@ export default function CRM() {
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
               {quotations.map((q) => (
                 <Card key={q.id} className="p-4">
-                  <div className="flex justify-between">
-                    <div>
-                      <p className="truncate font-semibold text-navy-900" title={String(q.vessel)}>{q.vessel}</p>
-                      <p className="text-xs text-steel-500">{q.client} · {q.type} · {fmtTanggal(q.date)}</p>
+                  <div className="flex justify-between gap-2">
+                    <div className="min-w-0">
+                      <p className="truncate font-semibold text-navy-900" title={String(q.vessel)}>{String(q.vessel)}</p>
+                      <p className="text-xs text-steel-500">{String(q.client)} · {String(q.type)} · {fmtTanggal(String(q.date ?? ""))}</p>
                       {q.statusKirim === "Terkirim" && (
-                        <p className="mt-0.5 text-xs text-teal-600">Terkirim {fmtTanggal(q.sentAt)} ke {q.sentTo}</p>
+                        <p className="mt-0.5 text-xs text-teal-600">Terkirim {fmtTanggal(String(q.sentAt ?? ""))} ke {String(q.sentTo ?? "")}</p>
                       )}
                     </div>
-                    <Badge tone={STAGE_TONE[q.stage] ?? "gray"}>{q.stage}</Badge>
+                    <Badge tone={STAGE_TONE[String(q.stage)] ?? "gray"}>{String(q.stage)}</Badge>
                   </div>
                   <div className="mt-3 flex items-center justify-between">
-                    <span className="text-lg font-bold text-navy-900">{fmtMiliar(Number(q.value) || 0)}</span>
+                    <span className="text-lg font-bold text-navy-900">{fmtMiliar(num(q.value))}</span>
                     <div className="flex gap-1.5">
+                      <Link to={`/crm/quotation/${q.id}`} className="btn-secondary text-xs">Detail</Link>
                       <button className="btn-secondary text-xs" onClick={() => openSend(q)}><Send className="h-3.5 w-3.5" /> Kirim</button>
-                      {!isTerminal(q.stage) && q.stage !== "Menang" && <button className="btn-secondary text-xs" onClick={() => advance(q)}>Maju</button>}
-                      {!isTerminal(q.stage) && q.stage === "Menang" && <button className="btn-primary text-xs" onClick={() => setConvertTarget(q)}>Jadikan Proyek</button>}
+                      {!isTerminal(String(q.stage)) && q.stage !== "Menang" && <button className="btn-secondary text-xs" onClick={() => advance(q)}>Maju</button>}
+                      {!isTerminal(String(q.stage)) && q.stage === "Menang" && <button className="btn-primary text-xs" onClick={() => setConvertTarget(q)}>Jadikan Proyek</button>}
                     </div>
                   </div>
-                  {!isTerminal(q.stage) && (
+                  {!isTerminal(String(q.stage)) && (
                     <div className="mt-2 flex gap-1.5">
                       <button className="btn-secondary flex-1 justify-center py-1 text-xs" onClick={() => markTerminal(q, "Batal")}>Tandai Batal</button>
                       <button className="btn-secondary flex-1 justify-center py-1 text-xs" onClick={() => markTerminal(q, "Kalah")}>Tandai Kalah</button>
@@ -299,48 +399,153 @@ export default function CRM() {
                   )}
                 </Card>
               ))}
+              {quotations.length === 0 && <EmptyState title="Belum ada penawaran" subtitle="Buat penawaran baru untuk memulai pipeline." />}
             </div>
           )}
 
-          {tab === "Portal Klien" && (
+          {tab === "Komunikasi" && (
             <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
-              <div className="lg:col-span-2">
-                <p className="mb-3 text-sm text-steel-600">Pratinjau portal — tampilan read-only berisi data proyek & invoice yang sudah tercatat. Tidak ada data contoh.</p>
-                {portalProject ? (
-                  <Card className="p-4">
-                    <p className="truncate text-xs text-steel-500" title={`${String(portalProject.client)} — ${String(portalProject.vessel)}`}>{portalProject.client} — {portalProject.vessel}</p>
-                    <div className="mt-2 flex items-center gap-4">
-                      <ProgressBar value={Number(portalProject.progress) || 0} className="flex-1" />
-                      <span className="text-sm font-bold text-navy-900">{portalProject.progress}%</span>
-                    </div>
-                    <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
-                      {[
-                        { k: "Status", v: String(portalProject.status) },
-                        { k: "Serah terima", v: fmtTanggal(portalProject.end) },
-                        { k: "Invoice", v: portalInvoice ? String(portalInvoice.id) : "—" },
-                      ].map((x) => (
-                        <div key={x.k} className="rounded-lg bg-surface p-3">
-                          <p className="text-xs text-steel-500">{x.k}</p>
-                          <p className="truncate text-sm font-semibold text-navy-900" title={x.v}>{x.v}</p>
-                        </div>
-                      ))}
-                    </div>
-                  </Card>
+              <Card className="p-4 lg:col-span-2">
+                <CardHeader title="Log Komunikasi" subtitle="Channel, tanggal, dan ringkasan per quotation" />
+                {communications.length === 0 ? (
+                  <EmptyState title="Belum ada komunikasi" subtitle="Catat interaksi pertama dengan klien." />
                 ) : (
-                  <Card className="p-4"><p className="text-sm text-steel-500">Belum ada proyek tercatat untuk pratinjau.</p></Card>
+                  <div className="space-y-2">
+                    {communications.map((m) => (
+                      <div key={m.id} className="rounded-xl bg-surface p-3 text-sm">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <Link to={`/crm/quotation/${m.quotationId}`} className="font-mono text-xs font-bold text-ocean-600">{String(m.quotationId)}</Link>
+                          <Badge tone="navy">{String(m.channel)}</Badge>
+                          <span className="text-xs text-steel-500">{fmtTanggal(String(m.date ?? ""))} · {String(m.by ?? "")}</span>
+                        </div>
+                        <p className="mt-1 text-steel-700">{String(m.summary)}</p>
+                      </div>
+                    ))}
+                  </div>
                 )}
-              </div>
-              <Card className="p-5">
-                <h3 className="mb-2 text-sm font-semibold text-navy-900">Akses Portal</h3>
-                <p className="text-sm text-steel-600">Undang klien untuk melihat progres proyek secara real-time.</p>
-                <button className="btn-primary mt-4 w-full justify-center" onClick={() => setShowInvite(true)}><Send className="h-4 w-4" /> Kirim Undangan</button>
+              </Card>
+              <Card className="p-4">
+                <CardHeader title="Tambah Komunikasi" />
+                <div className="space-y-3 px-1 pb-1">
+                  <Field label="Quotation">
+                    <select className="input" value={commForm.quotationId} onChange={(e) => setCommForm({ ...commForm, quotationId: e.target.value })}>
+                      <option value="">Pilih…</option>
+                      {quotations.map((q) => <option key={q.id} value={q.id}>{q.id} · {String(q.vessel)}</option>)}
+                    </select>
+                  </Field>
+                  <FormGrid>
+                    <Field label="Channel">
+                      <select className="input" value={commForm.channel} onChange={(e) => setCommForm({ ...commForm, channel: e.target.value })}>
+                        {["Email", "Telepon", "Meeting", "WhatsApp", "Kunjungan"].map((c) => <option key={c}>{c}</option>)}
+                      </select>
+                    </Field>
+                    <Field label="Tanggal"><input type="date" className="input" value={commForm.date} onChange={(e) => setCommForm({ ...commForm, date: e.target.value })} /></Field>
+                  </FormGrid>
+                  <Field label="Ringkasan"><textarea className="input" rows={3} value={commForm.summary} onChange={(e) => setCommForm({ ...commForm, summary: e.target.value })} placeholder="Hasil diskusi, tindak lanjut…" /></Field>
+                  <Field label="Oleh"><input className="input" value={commForm.by} onChange={(e) => setCommForm({ ...commForm, by: e.target.value })} placeholder="Nama PIC" /></Field>
+                  <button className="btn-primary w-full justify-center" onClick={saveComm}>Simpan Log</button>
+                </div>
+              </Card>
+            </div>
+          )}
+
+          {tab === "Kontrak" && (
+            <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+              <Card className="p-4 lg:col-span-2">
+                <CardHeader title="Daftar Kontrak" subtitle="Dibuat dari quotation Menang / Terkonversi" />
+                {contracts.length === 0 ? (
+                  <EmptyState title="Belum ada kontrak" subtitle="Buat kontrak dari quotation yang menang." />
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="w-full">
+                      <thead className="bg-surface sticky top-0 z-10">
+                        <tr><th className="th">Kontrak</th><th className="th">Quotation</th><th className="th">Nilai</th><th className="th">Sign</th><th className="th">Status</th></tr>
+                      </thead>
+                      <tbody className="divide-y divide-steel-100">
+                        {contracts.map((k) => (
+                          <tr key={k.id} className="hover:bg-surface">
+                            <td className="td font-mono text-xs font-semibold text-navy-900">{k.id}<span className="block font-sans text-[11px] font-normal text-steel-500">{String(k.client ?? "")}</span></td>
+                            <td className="td font-mono text-xs"><Link to={`/crm/quotation/${k.quotationId}`} className="text-ocean-600">{String(k.quotationId)}</Link>{k.projectId ? <Link to={`/proyek/${k.projectId}`} className="block text-[11px] text-teal-600">{String(k.projectId)}</Link> : null}</td>
+                            <td className="td text-xs font-semibold">{fmtRupiah(num(k.value))}</td>
+                            <td className="td text-xs text-steel-600">{fmtTanggal(String(k.signedAt ?? ""))}</td>
+                            <td className="td"><StatusBadge status={String(k.status ?? "Aktif")} /></td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </Card>
+              <Card className="p-4">
+                <CardHeader title="Buat Kontrak" subtitle="Nilai default mengikuti quotation" />
+                <div className="space-y-3 px-1 pb-1">
+                  <Field label="Quotation (Menang / Terkonversi)">
+                    <select
+                      className="input"
+                      value={contractForm.quotationId}
+                      onChange={(e) => {
+                        const q = quotations.find((x) => x.id === e.target.value);
+                        setContractForm({ ...contractForm, quotationId: e.target.value, value: q ? String(q.value) : "" });
+                      }}
+                    >
+                      <option value="">Pilih…</option>
+                      {eligibleQuotations.map((q) => <option key={q.id} value={q.id}>{q.id} · {String(q.vessel)} · {fmtMiliar(num(q.value))}</option>)}
+                    </select>
+                  </Field>
+                  <Field label="Nilai kontrak (Rp)"><input type="number" min={0} className="input" value={contractForm.value} onChange={(e) => setContractForm({ ...contractForm, value: e.target.value })} /></Field>
+                  <Field label="Tanggal sign"><input type="date" className="input" value={contractForm.signedAt} onChange={(e) => setContractForm({ ...contractForm, signedAt: e.target.value })} /></Field>
+                  <Field label="Link project (opsional)">
+                    <select className="input" value={contractForm.projectId} onChange={(e) => setContractForm({ ...contractForm, projectId: e.target.value })}>
+                      <option value="">Tanpa link</option>
+                      {data.projects.map((p) => <option key={p.id} value={p.id}>{p.id} · {String(p.vessel)}</option>)}
+                    </select>
+                  </Field>
+                  <button className="btn-primary w-full justify-center" onClick={saveContract}>Simpan Kontrak</button>
+                </div>
+              </Card>
+            </div>
+          )}
+
+          {tab === "Kepuasan" && (
+            <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+              <Card className="p-4 lg:col-span-2">
+                <CardHeader title="Kepuasan Klien" subtitle={`Rata-rata global ${globalSatisfaction ? globalSatisfaction.toFixed(1) : "—"} / 5 dari ${allSurveys.length} survei`} />
+                <div className="space-y-2">
+                  {clients.map((c) => (
+                    <div key={c.id} className="flex items-center gap-3 rounded-xl bg-surface p-3 text-sm">
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate font-semibold text-navy-900" title={String(c.name)}>{String(c.name)}</p>
+                        <p className="text-xs text-steel-500">{Array.isArray(c.survei) ? c.survei.length : 0} survei · rata-rata {surveyAvg(c) ? surveyAvg(c).toFixed(1) : "—"} / 5</p>
+                      </div>
+                      <Badge tone={surveyAvg(c) >= 4 ? "green" : surveyAvg(c) >= 3 ? "amber" : "gray"}>
+                        <Star className="h-3 w-3 mr-0.5" /> {surveyAvg(c) ? surveyAvg(c).toFixed(1) : "—"}
+                      </Badge>
+                    </div>
+                  ))}
+                </div>
+              </Card>
+              <Card className="p-4">
+                <CardHeader title="Tambah Survei" subtitle="Rating 1–5 per klien" />
+                <div className="space-y-3 px-1 pb-1">
+                  <Field label="Klien">
+                    <select className="input" value={surveyForm.clientId} onChange={(e) => setSurveyForm({ ...surveyForm, clientId: e.target.value })}>
+                      <option value="">Pilih…</option>
+                      {clients.map((c) => <option key={c.id} value={c.id}>{String(c.name)}</option>)}
+                    </select>
+                  </Field>
+                  <Field label="Rating (1–5)">
+                    <select className="input" value={surveyForm.rating} onChange={(e) => setSurveyForm({ ...surveyForm, rating: e.target.value })}>
+                      {["1", "2", "3", "4", "5"].map((r) => <option key={r}>{r}</option>)}
+                    </select>
+                  </Field>
+                  <button className="btn-primary w-full justify-center" onClick={saveSurvey}>Simpan Survei</button>
+                </div>
               </Card>
             </div>
           )}
         </div>
       </div>
 
-      {/* Modal penawaran */}
       <Modal open={showQ} onClose={() => setShowQ(false)} title="Penawaran Baru" subtitle="Masuk ke tahap pipeline terpilih"
         wide footer={<><button className="btn-secondary" onClick={() => setShowQ(false)}>Batal</button><button className="btn-primary" onClick={saveQuotation}>Simpan Penawaran</button></>}>
         <div className="space-y-3">
@@ -348,7 +553,7 @@ export default function CRM() {
             <Field label="Klien">
               <select className="input" value={qForm.client} onChange={(e) => setQForm({ ...qForm, client: e.target.value })}>
                 <option value="">Pilih klien…</option>
-                {clients.map((c) => <option key={c.id} value={c.name}>{c.name}</option>)}
+                {clients.map((c) => <option key={c.id} value={c.name}>{String(c.name)}</option>)}
               </select>
             </Field>
             <Field label="Kapal / pekerjaan"><input className="input" value={qForm.vessel} onChange={(e) => setQForm({ ...qForm, vessel: e.target.value })} placeholder="cth: TB Baru RJ-04" /></Field>
@@ -370,39 +575,40 @@ export default function CRM() {
         </div>
       </Modal>
 
-      {/* Modal klien */}
-      <Modal open={showClient} onClose={() => setShowClient(false)} title="Tambah Klien"
+      <Modal open={showClient} onClose={() => setShowClient(false)} title="Tambah Klien" subtitle="Klasifikasi, credit limit IDR, dan payment terms"
         footer={<><button className="btn-secondary" onClick={() => setShowClient(false)}>Batal</button><button className="btn-primary" onClick={saveClient}>Simpan</button></>}>
         <div className="space-y-3">
           <Field label="Nama perusahaan"><input className="input" value={cForm.name} onChange={(e) => setCForm({ ...cForm, name: e.target.value })} placeholder="cth: PT Bahari Baru" /></Field>
           <FormGrid>
             <Field label="Jumlah armada"><input type="number" className="input" value={cForm.fleet} onChange={(e) => setCForm({ ...cForm, fleet: e.target.value })} /></Field>
             <Field label="Rating (%)"><input type="number" max={100} className="input" value={cForm.rating} onChange={(e) => setCForm({ ...cForm, rating: e.target.value })} /></Field>
+            <Field label="Klasifikasi">
+              <select className="input" value={cForm.klasifikasi} onChange={(e) => setCForm({ ...cForm, klasifikasi: e.target.value })}>
+                {KLASIFIKASI.map((k) => <option key={k}>{k}</option>)}
+              </select>
+            </Field>
+            <Field label="Cabang (opsional)"><input className="input" value={cForm.branch} onChange={(e) => setCForm({ ...cForm, branch: e.target.value })} placeholder="Samarinda" /></Field>
+            <Field label="Credit limit (Rp, IDR)"><input type="number" min={0} className="input" value={cForm.creditLimit} onChange={(e) => setCForm({ ...cForm, creditLimit: e.target.value })} /></Field>
+            <Field label="Payment terms">
+              <select className="input" value={cForm.paymentTerms} onChange={(e) => setCForm({ ...cForm, paymentTerms: e.target.value })}>
+                {["NET 14", "NET 30", "NET 45", "NET 60", "Termin"].map((t) => <option key={t}>{t}</option>)}
+              </select>
+            </Field>
           </FormGrid>
         </div>
       </Modal>
 
-      {/* Modal undangan portal */}
-      <Modal open={showInvite} onClose={() => setShowInvite(false)} title="Kirim Undangan Portal"
-        footer={<><button className="btn-secondary" onClick={() => setShowInvite(false)}>Batal</button><button className="btn-primary" onClick={() => {
-          if (!inviteEmail.includes("@")) { toast("Email tidak valid", "info"); return; }
-          toast(`Undangan terkirim ke ${inviteEmail}`); setShowInvite(false); setInviteEmail("");
-        }}>Kirim</button></>}>
-        <Field label="Email klien"><input type="email" className="input" value={inviteEmail} onChange={(e) => setInviteEmail(e.target.value)} placeholder="cth: ops@samudrajaya.co.id" /></Field>
-      </Modal>
-
-      {/* Modal kirim penawaran */}
       <Modal open={sendTarget !== null} onClose={() => setSendTarget(null)} title={`Kirim ${sendTarget?.id ?? ""}`} subtitle="Pratinjau penawaran sebelum dikirim"
         wide footer={<><button className="btn-secondary" onClick={() => setSendTarget(null)}>Batal</button><button className="btn-primary" onClick={confirmSend}><Send className="h-4 w-4" /> Kirim Penawaran</button></>}>
         {sendTarget && (
           <div className="space-y-3">
             <div className="rounded-xl bg-surface p-4 text-sm">
-              <p className="font-semibold text-navy-900">{sendTarget.vessel}</p>
-              <p className="text-xs text-steel-500">{sendTarget.client} · {sendTarget.type}</p>
+              <p className="font-semibold text-navy-900">{String(sendTarget.vessel)}</p>
+              <p className="text-xs text-steel-500">{String(sendTarget.client)} · {String(sendTarget.type)}</p>
               <div className="mt-2 flex flex-wrap gap-x-6 gap-y-1">
-                <span className="text-steel-600">Nilai: <strong className="text-navy-900">{fmtMiliar(Number(sendTarget.value) || 0)}</strong></span>
-                <span className="text-steel-600">Tanggal: <strong className="text-navy-900">{fmtTanggal(sendTarget.date)}</strong></span>
-                <span className="text-steel-600">Tahap: <strong className="text-navy-900">{sendTarget.stage}</strong></span>
+                <span className="text-steel-600">Nilai: <strong className="text-navy-900">{fmtMiliar(num(sendTarget.value))}</strong></span>
+                <span className="text-steel-600">Tanggal: <strong className="text-navy-900">{fmtTanggal(String(sendTarget.date ?? ""))}</strong></span>
+                <span className="text-steel-600">Tahap: <strong className="text-navy-900">{String(sendTarget.stage)}</strong></span>
               </div>
             </div>
             <Field label="Email tujuan"><input type="email" className="input" value={sendEmail} onChange={(e) => setSendEmail(e.target.value)} placeholder="cth: purchasing@klien.co.id" /></Field>

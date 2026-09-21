@@ -1,11 +1,14 @@
 import { useState } from "react";
-import { Plus, Cpu, Wrench, AlertTriangle, Gauge, CheckCircle2 } from "lucide-react";
+import { Plus, Cpu, Wrench, AlertTriangle, Gauge, CheckCircle2, Download } from "lucide-react";
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
-import { Card, CardHeader, PageHeader, Badge, KpiCard, Tabs, ProgressBar, ChartTooltip, RadialGauge, Modal, Field, FormGrid, EmptyState, toast } from "../../components/ui";
+import { Card, CardHeader, PageHeader, Badge, KpiCard, Tabs, ProgressBar, ChartTooltip, RadialGauge, Modal, Field, FormGrid, EmptyState, ConfirmModal, StatusBadge, toast } from "../../components/ui";
 import { useStore } from "../../data/store";
 import type { StoreItem } from "../../data/store";
 import { equipmentHours, sparkUtil, equipTotalTrend, maintTrend, serviceDueTrend } from "../../data";
-import { fmtTanggal, fmtJumlah, todayISO } from "../../utils/format";
+import { fmtTanggal, fmtJumlah, fmtRupiah, todayISO } from "../../utils/format";
+import { exportExcel } from "../../utils/export";
+
+const BOOK_PRIORITIES = ["Normal", "Tinggi", "Kritis"];
 
 function toMinutes(t: string): number | null {
   const m = /^(\d{1,2}):(\d{2})$/.exec(t.trim());
@@ -50,24 +53,35 @@ function daysUntil(dateISO: string, today: string): number | null {
   return Math.floor(ms / 86400000);
 }
 
+function isMeasuring(e: StoreItem): boolean {
+  return /las|ukur|load|meter/i.test(`${e.name ?? ""} ${e.category ?? ""} ${e.code ?? ""}`);
+}
+
+function isCalExpired(eqId: string, calibrations: StoreItem[], today: string): boolean {
+  return calibrations.some((c) => c.equipmentId === eqId && c.status !== "Selesai" && String(c.due ?? "") < today);
+}
+
 export default function EquipmentPage() {
-  const { data, add, update, log } = useStore();
+  const { data, add, update, remove, log } = useStore();
   const equipment = data.equipment;
   const bookings = data.bookings;
+  const calibrations = data.calibrations;
   const [tab, setTab] = useState("Register");
 
   const [showAdd, setShowAdd] = useState(false);
-  const [form, setForm] = useState({ name: "", category: "Pengangkat", code: "", branch: "Samarinda", model: "", util: "50" });
+  const [form, setForm] = useState({ name: "", category: "Pengangkat", code: "", branch: "Samarinda", model: "", util: "50", rate: "" });
   const [showService, setShowService] = useState(false);
   const [svcDate, setSvcDate] = useState("");
   const [svcTarget, setSvcTarget] = useState("");
 
   const [showBook, setShowBook] = useState(false);
-  const [bookForm, setBookForm] = useState({ equip: "", proyek: "", date: todayISO(), mulai: "", selesai: "" });
+  const [bookForm, setBookForm] = useState({ equip: "", proyek: "", date: todayISO(), mulai: "", selesai: "", priority: "Normal" });
   const [bookError, setBookError] = useState<string | null>(null);
+  const [gusur, setGusur] = useState<{ clash: StoreItem[] } | null>(null);
 
   const [finishing, setFinishing] = useState<StoreItem | null>(null);
   const [finishHours, setFinishHours] = useState("");
+  const [finishDowntime, setFinishDowntime] = useState("0");
 
   const [maintaining, setMaintaining] = useState<StoreItem | null>(null);
   const [maintNote, setMaintNote] = useState("");
@@ -75,6 +89,11 @@ export default function EquipmentPage() {
 
   const [recording, setRecording] = useState<StoreItem | null>(null);
   const [woForm, setWoForm] = useState({ tanggal: todayISO(), teknisi: "", catatan: "", hours: "", next: "" });
+
+  const [showCal, setShowCal] = useState(false);
+  const [calForm, setCalForm] = useState({ equipmentId: "", item: "", due: "" });
+  const [finishingCal, setFinishingCal] = useState<StoreItem | null>(null);
+  const [calCert, setCalCert] = useState("");
 
   const today = todayISO();
 
@@ -108,15 +127,29 @@ export default function EquipmentPage() {
   }
   const conflictList = activeBookings.filter((b) => conflictIds.has(b.id));
 
+  const doneBookings = bookings.filter((b) => b.status === "Selesai");
+  const costByProject = new Map<string, { hours: number; downtime: number; cost: number }>();
+  doneBookings.forEach((b) => {
+    const key = String(b.proyek ?? "-");
+    const cur = costByProject.get(key) ?? { hours: 0, downtime: 0, cost: 0 };
+    cur.hours += Number(b.hours || 0);
+    cur.downtime += Number(b.downtime || 0);
+    cur.cost += Number(b.cost || 0);
+    costByProject.set(key, cur);
+  });
+  const costRows = Array.from(costByProject.entries());
+  const totalCost = costRows.reduce((s, [, v]) => s + v.cost, 0);
+
   const saveAdd = () => {
     if (!form.name.trim() || !form.code.trim()) { toast("Nama & kode wajib diisi", "info"); return; }
     const created = add("equipment", {
       name: form.name.trim(), category: form.category, code: form.code.trim().toUpperCase(), branch: form.branch,
       status: "Tersedia", util: Number(form.util) || 0, nextService: "-", lastHours: 0, model: form.model.trim() || "-",
+      rate: Number(form.rate) || 0,
     }, { action: "mendaftarkan equipment", module: "Equipment" });
     toast(`Equipment ${created.id} ditambahkan`);
     setShowAdd(false);
-    setForm({ name: "", category: "Pengangkat", code: "", branch: "Samarinda", model: "", util: "50" });
+    setForm({ name: "", category: "Pengangkat", code: "", branch: "Samarinda", model: "", util: "50", rate: "" });
   };
 
   const saveService = () => {
@@ -167,8 +200,28 @@ export default function EquipmentPage() {
     toast(`${eq.name} kembali Tersedia`);
   };
 
-  const saveBooking = () => {
+  const clashOf = (equip: string, date: string, a: number, b: number): StoreItem[] =>
+    bookings.filter((o) => {
+      if (o.equip !== equip || o.date !== date || o.status === "Selesai") return false;
+      const r = bookingRange(o);
+      return r ? rangesOverlap(a, b, r.mulai, r.selesai) : false;
+    });
+
+  const persistBooking = (priority: string) => {
     const { equip, proyek, date, mulai, selesai } = bookForm;
+    const eq = equipment.find((e) => e.name === equip);
+    if (!eq) { setBookError("Equipment tidak ditemukan."); return; }
+    const created = add("bookings", { equip, proyek, jam: `${mulai}–${selesai}`, mulai, selesai, status: "Terjadwal", date, priority },
+      { action: "membooking equipment", target: `${equip} · ${priority}`, module: "Equipment" });
+    update("equipment", eq.id, { status: "Terpakai" });
+    toast(`Booking ${created.id} dibuat (${priority})`);
+    setShowBook(false);
+    setBookError(null);
+    setBookForm({ equip: "", proyek: "", date: todayISO(), mulai: "", selesai: "", priority: "Normal" });
+  };
+
+  const saveBooking = () => {
+    const { equip, proyek, date, mulai, selesai, priority } = bookForm;
     if (!equip || !proyek || !date || !mulai || !selesai) {
       setBookError("Lengkapi equipment, proyek, tanggal, jam mulai & jam selesai.");
       return;
@@ -187,38 +240,52 @@ export default function EquipmentPage() {
       toast(msg, "info");
       return;
     }
-    const clash = bookings.some((o) => {
-      if (o.equip !== equip || o.date !== date || o.status === "Selesai") return false;
-      const r = bookingRange(o);
-      return r ? rangesOverlap(a, b, r.mulai, r.selesai) : false;
-    });
-    if (clash) {
+    if (isMeasuring(eq) && isCalExpired(eq.id, calibrations, today)) {
+      const msg = `Booking ditolak: ${equip} kalibrasinya kedaluwarsa — jadwalkan ulang kalibrasi di tab Kalibrasi.`;
+      setBookError(msg);
+      toast(msg, "info");
+      return;
+    }
+    const clash = clashOf(equip, date, a, b);
+    if (clash.length > 0) {
+      const gusurEligible = priority === "Kritis" && clash.every((c) => String(c.priority ?? "Normal") !== "Kritis");
+      if (gusurEligible) {
+        setGusur({ clash });
+        return;
+      }
       const msg = `Booking ditolak: ${equip} sudah terbooking pada ${fmtTanggal(date)} di rentang jam tersebut.`;
       setBookError(msg);
       toast(msg, "info");
       return;
     }
-    const created = add("bookings", { equip, proyek, jam: `${mulai}–${selesai}`, mulai, selesai, status: "Terjadwal", date },
-      { action: "membooking equipment", target: `${equip}`, module: "Equipment" });
-    update("equipment", eq.id, { status: "Terpakai" });
-    toast(`Booking ${created.id} dibuat`);
-    setShowBook(false);
-    setBookError(null);
-    setBookForm({ equip: "", proyek: "", date: todayISO(), mulai: "", selesai: "" });
+    persistBooking(priority);
+  };
+
+  const confirmGusur = () => {
+    if (!gusur) return;
+    const names = gusur.clash.map((c) => `${c.id} (${c.proyek})`).join(", ");
+    gusur.clash.forEach((c) => remove("bookings", c.id));
+    log("menggusur booking", `${bookForm.equip} · ${fmtTanggal(bookForm.date)} menggusur ${names}`, "Equipment");
+    persistBooking("Kritis");
+    toast(`Booking Kritis menggusur: ${names}`);
+    setGusur(null);
   };
 
   const openFinish = (b: StoreItem) => {
     const r = bookingRange(b);
     setFinishing(b);
     setFinishHours(r ? String(durationHours(minutesToStr(r.mulai), minutesToStr(r.selesai))) : "");
+    setFinishDowntime(String(b.downtime ?? 0));
   };
 
   const confirmFinish = () => {
     if (!finishing) return;
     const hours = Number(finishHours);
     if (!Number.isFinite(hours) || hours <= 0) { toast("Jam pakai harus lebih dari 0", "info"); return; }
+    const downtime = Math.max(0, Number(finishDowntime) || 0);
     const eq = equipment.find((e) => e.name === finishing.equip);
-    update("bookings", finishing.id, { status: "Selesai" });
+    const rate = Number(eq?.rate || 0);
+    update("bookings", finishing.id, { status: "Selesai", hours, downtime, cost: hours * rate });
     if (eq) {
       const stillActive = bookings.some((o) => o.id !== finishing.id && o.equip === eq.name && o.status !== "Selesai");
       update("equipment", eq.id, {
@@ -226,10 +293,42 @@ export default function EquipmentPage() {
         status: stillActive ? eq.status : "Tersedia",
       });
     }
-    log("menyelesaikan booking", `${finishing.equip} · ${fmtTanggal(String(finishing.date))} · ${hours} jam`, "Equipment");
+    log("menyelesaikan booking", `${finishing.equip} · ${fmtTanggal(String(finishing.date))} · ${hours} jam · downtime ${downtime} jam`, "Equipment");
     toast(`Booking ${finishing.id} diselesaikan`);
     setFinishing(null);
     setFinishHours("");
+    setFinishDowntime("0");
+  };
+
+  const saveCalibration = () => {
+    if (!calForm.equipmentId || !calForm.item.trim() || !calForm.due) { toast("Equipment, item ukur & due date wajib diisi", "info"); return; }
+    const eq = equipment.find((e) => e.id === calForm.equipmentId);
+    const created = add("calibrations", {
+      equipmentId: calForm.equipmentId, item: calForm.item.trim(), due: calForm.due, status: "Terjadwal", cert: "",
+    }, { action: "menjadwalkan kalibrasi", target: `${eq?.name ?? calForm.equipmentId} · ${fmtTanggal(calForm.due)}`, module: "Equipment" });
+    toast(`Kalibrasi ${created.id} dijadwalkan`);
+    setShowCal(false);
+    setCalForm({ equipmentId: "", item: "", due: "" });
+  };
+
+  const confirmCalFinish = () => {
+    if (!finishingCal) return;
+    if (!calCert.trim()) { toast("No. sertifikat wajib diisi saat menyelesaikan kalibrasi", "info"); return; }
+    update("calibrations", finishingCal.id, { status: "Selesai", cert: calCert.trim() });
+    log("menyelesaikan kalibrasi", `${finishingCal.id} · sertifikat ${calCert.trim()}`, "Equipment");
+    toast(`Kalibrasi ${finishingCal.id} selesai`);
+    setFinishingCal(null);
+    setCalCert("");
+  };
+
+  const exportCost = () => {
+    void exportExcel(
+      [["Proyek", "Jam Pakai", "Downtime (jam)", "Biaya (Rp)"],
+        ...costRows.map(([proj, v]) => [proj, v.hours, v.downtime, v.cost])],
+      `Biaya-Equipment-${today}`,
+      "Biaya",
+    );
+    toast("Biaya per proyek diekspor");
   };
 
   return (
@@ -257,16 +356,18 @@ export default function EquipmentPage() {
       </div>
 
       <div className="mt-4 card">
-        <Tabs tabs={["Register", "Alokasi / Booking", "Maintenance", "Utilisasi"]} active={tab} onChange={setTab} />
+        <Tabs tabs={["Register", "Alokasi / Booking", "Maintenance", "Kalibrasi", "Biaya", "Utilisasi"]} active={tab} onChange={setTab} />
         <div className="p-4">
           {tab === "Register" && (
             <div className="overflow-x-auto">
               <table className="w-full">
                 <thead className="sticky top-0 z-10 bg-surface">
-                  <tr><th className="th">Equipment</th><th className="th">Kategori</th><th className="th">Model</th><th className="th">Status</th><th className="th">Utilisasi</th><th className="th">Jam Pakai</th><th className="th">Aksi</th></tr>
+                  <tr><th className="th">Equipment</th><th className="th">Kategori</th><th className="th">Model</th><th className="th">Status</th><th className="th">Utilisasi</th><th className="th">Jam Pakai</th><th className="th">Tarif / Jam</th><th className="th">Aksi</th></tr>
                 </thead>
                 <tbody className="divide-y divide-steel-100">
-                  {equipment.map((e) => (
+                  {equipment.map((e) => {
+                    const expired = isCalExpired(e.id, calibrations, today);
+                    return (
                     <tr key={e.id} className="hover:bg-surface">
                       <td className="td">
                         <p className="font-medium text-navy-900">{e.name}</p>
@@ -274,7 +375,12 @@ export default function EquipmentPage() {
                       </td>
                       <td className="td"><Badge tone="gray">{e.category}</Badge></td>
                       <td className="td text-steel-600">{e.model}</td>
-                      <td className="td"><Badge tone={statusTone[e.status] ?? "gray"}>{e.status}</Badge></td>
+                      <td className="td">
+                        <div className="flex flex-wrap gap-1">
+                          <Badge tone={statusTone[e.status] ?? "gray"}>{e.status}</Badge>
+                          {isMeasuring(e) && expired && <Badge tone="red">Kalibrasi Expired</Badge>}
+                        </div>
+                      </td>
                       <td className="td">
                         <div className="flex items-center gap-2">
                           <ProgressBar value={e.util} className="w-20" tone={e.util > 75 ? "amber" : "navy"} />
@@ -282,6 +388,7 @@ export default function EquipmentPage() {
                         </div>
                       </td>
                       <td className="td text-steel-600 font-mono text-xs">{fmtJumlah(Number(e.lastHours || 0))} jam</td>
+                      <td className="td text-steel-600 text-xs">{Number(e.rate || 0) > 0 ? fmtRupiah(Number(e.rate)) : "—"}</td>
                       <td className="td">
                         {e.status === "Tersedia" && (
                           <button className="btn-secondary text-xs" onClick={() => { setMaintaining(e); setMaintNote(""); setMaintEta(""); }}>
@@ -298,7 +405,8 @@ export default function EquipmentPage() {
                         )}
                       </td>
                     </tr>
-                  ))}
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
@@ -316,7 +424,7 @@ export default function EquipmentPage() {
                     <div key={b.id} className="flex items-center justify-between gap-2 border-b border-steel-100 py-2 text-sm">
                       <div className="min-w-0">
                         <p className="truncate font-medium text-navy-900" title={b.equip}>{b.equip}</p>
-                        <p className="text-xs text-steel-500">{b.proyek} · {b.jam} · {fmtTanggal(String(b.date))}</p>
+                        <p className="text-xs text-steel-500">{b.proyek} · {b.jam} · {fmtTanggal(String(b.date))} · {b.priority ?? "Normal"}</p>
                       </div>
                       <div className="flex shrink-0 items-center gap-2">
                         <Badge tone={b.status === "Terpakai" ? "blue" : "gray"}>{b.status}</Badge>
@@ -391,6 +499,94 @@ export default function EquipmentPage() {
             </div>
           )}
 
+          {tab === "Kalibrasi" && (
+            <div>
+              <div className="mb-3 flex justify-end">
+                <button className="btn-secondary text-xs" onClick={() => setShowCal(true)}><Plus className="h-3.5 w-3.5" /> Jadwalkan Kalibrasi</button>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead className="sticky top-0 z-10 bg-surface">
+                    <tr><th className="th">ID</th><th className="th">Equipment</th><th className="th">Item Ukur</th><th className="th">Due Date</th><th className="th">Sertifikat</th><th className="th">Status</th><th className="th">Aksi</th></tr>
+                  </thead>
+                  <tbody className="divide-y divide-steel-100">
+                    {calibrations.map((c) => {
+                      const eq = equipment.find((e) => e.id === c.equipmentId) ?? data.equipment.find((e) => e.id === c.equipmentId);
+                      const expired = c.status !== "Selesai" && String(c.due ?? "") < today;
+                      return (
+                        <tr key={c.id} className="hover:bg-surface">
+                          <td className="td font-mono font-medium text-navy-900">{c.id}</td>
+                          <td className="td text-steel-600">{eq?.name ?? c.equipmentId}</td>
+                          <td className="td text-steel-600">{c.item}</td>
+                          <td className="td text-steel-600">{fmtTanggal(String(c.due))}</td>
+                          <td className="td font-mono text-xs text-steel-600">{c.cert || "—"}</td>
+                          <td className="td">
+                            <div className="flex flex-wrap gap-1">
+                              <StatusBadge status={String(c.status)} />
+                              {expired && <Badge tone="red">Expired</Badge>}
+                            </div>
+                          </td>
+                          <td className="td">
+                            {c.status !== "Selesai" && (
+                              <button className="btn-secondary text-xs" onClick={() => { setFinishingCal(c); setCalCert(""); }}>Selesaikan</button>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                    {calibrations.length === 0 && <tr><td colSpan={7} className="td text-center text-steel-400">Belum ada jadwal kalibrasi.</td></tr>}
+                  </tbody>
+                </table>
+              </div>
+              <p className="mt-2 text-xs text-steel-500">Alat ukur terdeteksi dari nama mengandung Las / Ukur / Load / Meter. Kalibrasi kedaluwarsa memblokir booking baru alat tersebut.</p>
+            </div>
+          )}
+
+          {tab === "Biaya" && (
+            <div className="space-y-4">
+              <Card className="p-5">
+                <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                  <h3 className="text-sm font-semibold text-navy-900">Biaya per Proyek <span className="text-xs font-normal text-steel-500">(jam × tarif dari booking Selesai)</span></h3>
+                  <button className="btn-secondary text-xs" onClick={exportCost}><Download className="h-3.5 w-3.5" /> Ekspor Excel</button>
+                </div>
+                <div className="overflow-x-auto">
+                  <table className="w-full">
+                    <thead className="sticky top-0 z-10 bg-surface">
+                      <tr><th className="th">Proyek</th><th className="th">Jam Pakai</th><th className="th">Downtime</th><th className="th">Biaya</th></tr>
+                    </thead>
+                    <tbody className="divide-y divide-steel-100">
+                      {costRows.map(([proj, v]) => (
+                        <tr key={proj} className="hover:bg-surface">
+                          <td className="td font-mono font-medium text-navy-900">{proj}</td>
+                          <td className="td text-steel-600">{fmtJumlah(v.hours)} jam</td>
+                          <td className="td text-steel-600">{fmtJumlah(v.downtime)} jam</td>
+                          <td className="td font-semibold">{fmtRupiah(v.cost)}</td>
+                        </tr>
+                      ))}
+                      {costRows.length === 0 && <tr><td colSpan={4} className="td text-center text-steel-400">Belum ada booking Selesai.</td></tr>}
+                    </tbody>
+                  </table>
+                </div>
+                <p className="mt-2 text-right text-sm font-semibold text-navy-900">Total {fmtRupiah(totalCost)}</p>
+              </Card>
+              <Card className="p-5">
+                <h3 className="mb-2 text-sm font-semibold text-navy-900">Riwayat Booking Selesai</h3>
+                <div className="space-y-2">
+                  {doneBookings.map((b) => (
+                    <div key={b.id} className="flex flex-wrap items-center justify-between gap-2 border-b border-steel-100 py-2 text-sm">
+                      <div>
+                        <p className="font-medium text-navy-900">{b.equip} <span className="font-mono text-xs text-steel-500">· {b.id}</span></p>
+                        <p className="text-xs text-steel-500">{b.proyek} · {fmtTanggal(String(b.date))} · {b.hours ?? 0} jam · downtime {b.downtime ?? 0} jam</p>
+                      </div>
+                      <Badge tone="green">{fmtRupiah(Number(b.cost || 0))}</Badge>
+                    </div>
+                  ))}
+                  {doneBookings.length === 0 && <p className="text-xs text-steel-400">Belum ada booking Selesai.</p>}
+                </div>
+              </Card>
+            </div>
+          )}
+
           {tab === "Utilisasi" && (
             <div className="space-y-4">
               <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
@@ -453,6 +649,7 @@ export default function EquipmentPage() {
             </Field>
             <Field label="Model"><input className="input" value={form.model} onChange={(e) => setForm({ ...form, model: e.target.value })} /></Field>
             <Field label="Utilisasi awal (%)"><input type="number" className="input" value={form.util} onChange={(e) => setForm({ ...form, util: e.target.value })} /></Field>
+            <Field label="Tarif pakai (Rp/jam)"><input type="number" min={0} className="input" value={form.rate} onChange={(e) => setForm({ ...form, rate: e.target.value })} placeholder="cth: 350000" /></Field>
           </FormGrid>
         </div>
       </Modal>
@@ -514,12 +711,28 @@ export default function EquipmentPage() {
             <Field label="Tanggal"><input type="date" className="input" value={bookForm.date} onChange={(e) => setBookForm({ ...bookForm, date: e.target.value })} /></Field>
             <Field label="Jam mulai"><input type="time" className="input" value={bookForm.mulai} onChange={(e) => setBookForm({ ...bookForm, mulai: e.target.value })} /></Field>
             <Field label="Jam selesai"><input type="time" className="input" value={bookForm.selesai} onChange={(e) => setBookForm({ ...bookForm, selesai: e.target.value })} /></Field>
+            <Field label="Prioritas">
+              <select className="input" value={bookForm.priority} onChange={(e) => setBookForm({ ...bookForm, priority: e.target.value })}>
+                {BOOK_PRIORITIES.map((p) => <option key={p}>{p}</option>)}
+              </select>
+            </Field>
           </FormGrid>
           {bookError && (
             <p className="rounded-lg bg-rose-50 px-3 py-2 text-xs font-medium text-rose-700">{bookError}</p>
           )}
         </div>
       </Modal>
+
+      {/* Konfirmasi gusur booking Kritis */}
+      <ConfirmModal
+        open={gusur !== null}
+        title="Gusur booking Normal dengan Kritis?"
+        desc={`Booking Kritis akan menggusur ${gusur?.clash.map((c) => `${c.id} (${c.proyek})`).join(", ") ?? ""}. Aksi dicatat dan kedua pihak diberi tahu via toast.`}
+        confirmLabel="Ya, gusur"
+        danger
+        onCancel={() => setGusur(null)}
+        onConfirm={confirmGusur}
+      />
 
       {/* Modal selesaikan booking */}
       <Modal open={finishing !== null} onClose={() => setFinishing(null)} title={`Selesaikan Booking — ${finishing?.equip ?? ""}`} subtitle={finishing ? `${finishing.proyek} · ${finishing.jam} · ${fmtTanggal(String(finishing.date))}` : ""}
@@ -528,7 +741,33 @@ export default function EquipmentPage() {
           <Field label="Jam pakai aktual (jam)" hint="Default = durasi booking; menambah hour-meter equipment">
             <input type="number" min={0} step={0.5} className="input" value={finishHours} onChange={(e) => setFinishHours(e.target.value)} />
           </Field>
+          <Field label="Downtime (jam)" hint="Waktu alat berhenti / tidak produktif selama booking">
+            <input type="number" min={0} step={0.5} className="input" value={finishDowntime} onChange={(e) => setFinishDowntime(e.target.value)} />
+          </Field>
         </div>
+      </Modal>
+
+      {/* Modal jadwalkan kalibrasi */}
+      <Modal open={showCal} onClose={() => setShowCal(false)} title="Jadwalkan Kalibrasi"
+        footer={<><button className="btn-secondary" onClick={() => setShowCal(false)}>Batal</button><button className="btn-primary" onClick={saveCalibration}>Simpan</button></>}>
+        <div className="space-y-3">
+          <Field label="Equipment">
+            <select className="input" value={calForm.equipmentId} onChange={(e) => setCalForm({ ...calForm, equipmentId: e.target.value })}>
+              <option value="">Pilih…</option>
+              {equipment.map((e) => <option key={e.id} value={e.id}>{e.name} ({e.code}){isMeasuring(e) ? " · alat ukur" : ""}</option>)}
+            </select>
+          </Field>
+          <Field label="Item ukur"><input className="input" value={calForm.item} onChange={(e) => setCalForm({ ...calForm, item: e.target.value })} placeholder="cth: Load cell Mobile Crane" /></Field>
+          <Field label="Due date"><input type="date" className="input" value={calForm.due} onChange={(e) => setCalForm({ ...calForm, due: e.target.value })} /></Field>
+        </div>
+      </Modal>
+
+      {/* Modal selesaikan kalibrasi */}
+      <Modal open={finishingCal !== null} onClose={() => setFinishingCal(null)} title={`Selesaikan Kalibrasi ${finishingCal?.id ?? ""}`}
+        footer={<><button className="btn-secondary" onClick={() => setFinishingCal(null)}>Batal</button><button className="btn-primary" onClick={confirmCalFinish}>Selesaikan</button></>}>
+        <Field label="No. sertifikat" hint="Wajib diisi saat kalibrasi Selesai">
+          <input className="input font-mono" value={calCert} onChange={(e) => setCalCert(e.target.value)} placeholder="cth: CAL-0502" />
+        </Field>
       </Modal>
     </div>
   );

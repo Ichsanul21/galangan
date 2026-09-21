@@ -20,10 +20,15 @@ import BoQSection from "./BoQSection";
 import ReportSection from "./ReportSection";
 import SparepartServiceSection from "./SparepartServiceSection";
 import { useStore } from "../../data/store";
+import type { StoreItem } from "../../data/store";
 import { fmtMiliar, fmtTanggal, fmtRentang, fmtBulan } from "../../data";
+import { fmtRupiah, todayISO } from "../../utils/format";
 import { exportExcel } from "../../utils/export";
 
 const STATUS = ["Dalam Proses", "Sedang Berjalan", "Terlambat", "Tertunda", "Selesai"];
+const CO_FLOW = ["Diajukan", "Disetujui", "Ditolak", "Diterapkan"];
+const RISK_LEVEL = ["Rendah", "Sedang", "Tinggi"];
+const RISK_STATUS = ["Aktif", "Dipantau", "Tertutup"];
 
 export default function ProjectDetail() {
   const { id } = useParams();
@@ -45,6 +50,11 @@ export default function ProjectDetail() {
   const [wbsUpdateForm, setWbsUpdateForm] = useState({ hours: "", material: "", status: "Sedang" as "Sedang" | "Selesai", progress: "" });
   const [showShare, setShowShare] = useState(false);
   const [shareForm, setShareForm] = useState({ docId: "", to: "" });
+  const [showCo, setShowCo] = useState(false);
+  const [coForm, setCoForm] = useState({ title: "", impact: "", requestedBy: "", date: "" });
+  const [showRisk, setShowRisk] = useState(false);
+  const [riskEditId, setRiskEditId] = useState<string | null>(null);
+  const [riskForm, setRiskForm] = useState({ title: "", likelihood: "Sedang", impact: "Sedang", mitigation: "", status: "Aktif" });
 
   const weightedProgress = (items: { progress: number; weight: number }[]): number => {
     const totalW = items.reduce((s, w) => s + Number(w.weight || 0), 0);
@@ -73,6 +83,62 @@ export default function ProjectDetail() {
   const slots = data.dockSlots.filter((s) => s.project === pid);
   const docs = data.documents.filter((d) => d.project === pid);
   const wos = data.workOrders.filter((w) => w.project === pid);
+  const coList = data.changeOrders.filter((c) => c.project === pid);
+  const riskList = data.risks.filter((r) => r.project === pid);
+  const coApproved = coList.filter((c) => c.status === "Disetujui" || c.status === "Diterapkan");
+  const coApprovedImpact = coApproved.reduce((s, c) => s + Number(c.impact || 0), 0);
+
+  const riskScore = (r: StoreItem): number =>
+    (RISK_LEVEL.indexOf(String(r.likelihood ?? "")) + 1) * (RISK_LEVEL.indexOf(String(r.impact ?? "")) + 1);
+  const riskTone = (score: number): "green" | "amber" | "red" => (score >= 6 ? "red" : score >= 3 ? "amber" : "green");
+
+  const saveCo = () => {
+    if (!coForm.title.trim()) { toast("Judul perubahan wajib diisi", "info"); return; }
+    if (coForm.impact === "" || !Number.isFinite(Number(coForm.impact))) { toast("Dampak biaya wajib diisi (boleh negatif)", "info"); return; }
+    if (!coForm.requestedBy.trim()) { toast("Pemohon wajib diisi", "info"); return; }
+    add("changeOrders", {
+      project: pid, title: coForm.title.trim(), impact: Number(coForm.impact),
+      status: "Diajukan", requestedBy: coForm.requestedBy.trim(), date: coForm.date || todayISO(),
+    }, { action: "mengajukan change order", module: "Proyek" });
+    toast("Change order diajukan");
+    setCoForm({ title: "", impact: "", requestedBy: "", date: "" });
+    setShowCo(false);
+  };
+
+  const setCoStatus = (id: string, status: string) => {
+    update("changeOrders", id, { status });
+    log("mengubah change order", `${id} → ${status}`, "Proyek");
+    toast(`Change order ${status.toLowerCase()}`);
+  };
+
+  const openRiskNew = () => {
+    setRiskEditId(null);
+    setRiskForm({ title: "", likelihood: "Sedang", impact: "Sedang", mitigation: "", status: "Aktif" });
+    setShowRisk(true);
+  };
+
+  const openRiskEdit = (r: StoreItem) => {
+    setRiskEditId(String(r.id));
+    setRiskForm({ title: String(r.title ?? ""), likelihood: String(r.likelihood ?? "Sedang"), impact: String(r.impact ?? "Sedang"), mitigation: String(r.mitigation ?? ""), status: String(r.status ?? "Aktif") });
+    setShowRisk(true);
+  };
+
+  const saveRisk = () => {
+    if (!riskForm.title.trim()) { toast("Judul risiko wajib diisi", "info"); return; }
+    if (riskEditId) {
+      update("risks", riskEditId, { title: riskForm.title.trim(), likelihood: riskForm.likelihood, impact: riskForm.impact, mitigation: riskForm.mitigation.trim(), status: riskForm.status });
+      log("memperbarui risiko", `${riskEditId} · ${riskForm.title.trim()}`, "Proyek");
+      toast("Risiko diperbarui");
+    } else {
+      add("risks", {
+        project: pid, title: riskForm.title.trim(), likelihood: riskForm.likelihood,
+        impact: riskForm.impact, mitigation: riskForm.mitigation.trim(), status: riskForm.status,
+      }, { action: "mencatat risiko", module: "Proyek" });
+      toast("Risiko ditambahkan");
+    }
+    setShowRisk(false);
+    setRiskEditId(null);
+  };
 
   const saveScope = () => {
     if (!scopeVal.trim()) { toast("Isi lingkup dulu", "info"); return; }
@@ -147,7 +213,7 @@ export default function ProjectDetail() {
       </div>
 
       <div className="mt-5 card">
-        <Tabs tabs={["Ringkasan", "WBS & Anggaran", "BoQ", "Dokumen & Laporan", "Terkait", "3D Viewer", "Service", "Sparepart", "Tim"]} active={tab} onChange={setTab} />
+        <Tabs tabs={["Ringkasan", "WBS & Anggaran", "BoQ", "Dokumen & Laporan", "Perubahan & Risiko", "Terkait", "3D Viewer", "Service", "Sparepart", "Tim"]} active={tab} onChange={setTab} />
         <div className="p-5">
           {tab === "Ringkasan" && (
             <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
@@ -250,6 +316,9 @@ export default function ProjectDetail() {
                   </Badge>
                 </div>
                 <ProgressBar value={project.budget ? (project.actual / project.budget) * 100 : 0} tone="ocean" className="mt-3" />
+                <p className="mt-3 text-xs text-steel-500">
+                  Dampak CO disetujui/diterapkan: <span className="font-semibold text-navy-900">{fmtRupiah(coApprovedImpact)}</span> ({coApproved.length} CO) — kelola di tab Perubahan &amp; Risiko.
+                </p>
               </Card>
               <Card className="p-5">
                 <h3 className="mb-2 text-sm font-semibold text-navy-900">Nilai Hasil (EVM)</h3>
@@ -341,6 +410,94 @@ export default function ProjectDetail() {
             </div>
           )}
 
+          {tab === "Perubahan & Risiko" && (
+            <div className="space-y-6">
+              <div>
+                <div className="mb-2 flex items-center justify-between">
+                  <h3 className="text-sm font-semibold text-navy-900">Change Orders ({coList.length})</h3>
+                  <button className="btn-secondary text-xs" onClick={() => setShowCo(true)}><Plus className="h-3.5 w-3.5" /> Ajukan CO</button>
+                </div>
+                <div className="mb-3 rounded-xl border border-steel-100 bg-surface p-3 text-sm">
+                  <span className="text-steel-500">Total dampak disetujui/diterapkan: </span>
+                  <span className="font-semibold text-navy-900">{fmtRupiah(coApprovedImpact)}</span>
+                  <span className="text-steel-500"> dari {coApproved.length} CO</span>
+                </div>
+                <div className="space-y-2">
+                  {coList.map((c) => (
+                    <div key={c.id} className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-steel-100 p-3 text-sm">
+                      <div className="min-w-0">
+                        <p className="font-medium text-navy-900">{c.title}</p>
+                        <p className="text-xs text-steel-500">{c.id} · {fmtTanggal(c.date)} · pemohon: {c.requestedBy} · dampak: <span className={`font-semibold ${Number(c.impact) < 0 ? "text-emerald-600" : "text-navy-900"}`}>{fmtRupiah(Number(c.impact))}</span></p>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <StatusBadge status={c.status} />
+                        {c.status === "Diajukan" && (
+                          <>
+                            <button className="btn-secondary text-xs" onClick={() => setCoStatus(c.id, "Disetujui")}>Setujui</button>
+                            <button className="btn-secondary text-xs" onClick={() => setCoStatus(c.id, "Ditolak")}>Tolak</button>
+                          </>
+                        )}
+                        {c.status === "Disetujui" && (
+                          <button className="btn-secondary text-xs" onClick={() => setCoStatus(c.id, "Diterapkan")}>Terapkan</button>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                  {coList.length === 0 && <p className="text-sm text-steel-400">Belum ada change order.</p>}
+                </div>
+              </div>
+
+              <div>
+                <div className="mb-2 flex items-center justify-between">
+                  <h3 className="text-sm font-semibold text-navy-900">Risiko ({riskList.length})</h3>
+                  <button className="btn-secondary text-xs" onClick={openRiskNew}><Plus className="h-3.5 w-3.5" /> Tambah Risiko</button>
+                </div>
+                <div className="mb-3 overflow-x-auto">
+                  <table className="w-full text-center text-xs">
+                    <thead>
+                      <tr>
+                        <th className="th text-left">Kemungkinan \ Dampak</th>
+                        {RISK_LEVEL.map((l) => <th key={l} className="th">{l}</th>)}
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-steel-100">
+                      {RISK_LEVEL.map((lh) => (
+                        <tr key={lh}>
+                          <td className="td text-left font-medium text-navy-900">{lh}</td>
+                          {RISK_LEVEL.map((im) => {
+                            const n = riskList.filter((r) => r.likelihood === lh && r.impact === im && r.status !== "Tertutup").length;
+                            const score = (RISK_LEVEL.indexOf(lh) + 1) * (RISK_LEVEL.indexOf(im) + 1);
+                            return (
+                              <td key={im} className="td">
+                                <Badge tone={n > 0 ? riskTone(score) : "gray"}>{n} risiko</Badge>
+                              </td>
+                            );
+                          })}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                <div className="space-y-2">
+                  {riskList.map((r) => (
+                    <div key={r.id} className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-steel-100 p-3 text-sm">
+                      <div className="min-w-0">
+                        <p className="font-medium text-navy-900">{r.title}</p>
+                        <p className="text-xs text-steel-500">{r.id} · mitigasi: {r.mitigation || "—"}</p>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Badge tone={riskTone(riskScore(r))}>{r.likelihood} × {r.impact}</Badge>
+                        <StatusBadge status={r.status} />
+                        <button className="btn-secondary text-xs" onClick={() => openRiskEdit(r)}>Ubah</button>
+                      </div>
+                    </div>
+                  ))}
+                  {riskList.length === 0 && <p className="text-sm text-steel-400">Belum ada risiko tercatat.</p>}
+                </div>
+              </div>
+            </div>
+          )}
+
           {tab === "Terkait" && (
             <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
               <Card className="p-4">
@@ -377,6 +534,46 @@ export default function ProjectDetail() {
           {tab === "Sparepart" && <SparepartServiceSection projectId={pid} view="sparepart" />}
         </div>
       </div>
+
+      {/* Modal change order */}
+      <Modal open={showCo} onClose={() => setShowCo(false)} title="Ajukan Change Order" subtitle={pid}
+        footer={<><button className="btn-secondary" onClick={() => setShowCo(false)}>Batal</button><button className="btn-primary" onClick={saveCo}>Ajukan</button></>}>
+        <div className="space-y-3">
+          <Field label="Judul perubahan"><input className="input" value={coForm.title} onChange={(e) => setCoForm({ ...coForm, title: e.target.value })} placeholder="cth: Tambah Fi-Fi system deck" /></Field>
+          <FormGrid>
+            <Field label="Dampak biaya (Rp)" hint="Boleh negatif untuk pengurangan scope"><input type="number" className="input" value={coForm.impact} onChange={(e) => setCoForm({ ...coForm, impact: e.target.value })} placeholder="cth: 1850000000 atau -120000000" /></Field>
+            <Field label="Tanggal"><input type="date" className="input" value={coForm.date} onChange={(e) => setCoForm({ ...coForm, date: e.target.value })} /></Field>
+          </FormGrid>
+          <Field label="Pemohon"><input className="input" value={coForm.requestedBy} onChange={(e) => setCoForm({ ...coForm, requestedBy: e.target.value })} placeholder="cth: Budi Santoso" /></Field>
+          <p className="text-xs text-steel-500">Alur: {CO_FLOW.join(" → ")} — CO baru berstatus Diajukan.</p>
+        </div>
+      </Modal>
+
+      {/* Modal risiko */}
+      <Modal open={showRisk} onClose={() => setShowRisk(false)} title={riskEditId ? "Ubah Risiko" : "Tambah Risiko"} subtitle={pid}
+        footer={<><button className="btn-secondary" onClick={() => setShowRisk(false)}>Batal</button><button className="btn-primary" onClick={saveRisk}>Simpan</button></>}>
+        <div className="space-y-3">
+          <Field label="Judul risiko"><input className="input" value={riskForm.title} onChange={(e) => setRiskForm({ ...riskForm, title: e.target.value })} placeholder="cth: Keterlambatan baja AH36" /></Field>
+          <FormGrid>
+            <Field label="Kemungkinan">
+              <select className="input" value={riskForm.likelihood} onChange={(e) => setRiskForm({ ...riskForm, likelihood: e.target.value })}>
+                {RISK_LEVEL.map((l) => <option key={l}>{l}</option>)}
+              </select>
+            </Field>
+            <Field label="Dampak">
+              <select className="input" value={riskForm.impact} onChange={(e) => setRiskForm({ ...riskForm, impact: e.target.value })}>
+                {RISK_LEVEL.map((l) => <option key={l}>{l}</option>)}
+              </select>
+            </Field>
+          </FormGrid>
+          <Field label="Mitigasi"><input className="input" value={riskForm.mitigation} onChange={(e) => setRiskForm({ ...riskForm, mitigation: e.target.value })} placeholder="cth: Dual vendor + buffer 2 minggu" /></Field>
+          <Field label="Status">
+            <select className="input" value={riskForm.status} onChange={(e) => setRiskForm({ ...riskForm, status: e.target.value })}>
+              {RISK_STATUS.map((s) => <option key={s}>{s}</option>)}
+            </select>
+          </Field>
+        </div>
+      </Modal>
 
       {/* Modal share */}
       <Modal open={showShare} onClose={() => setShowShare(false)} title="Bagikan Laporan ke Atasan"

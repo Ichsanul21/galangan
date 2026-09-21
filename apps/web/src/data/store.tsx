@@ -72,6 +72,21 @@ export interface StoreShape {
   services: StoreItem[];
   spareparts: StoreItem[];
   boq: StoreItem[];
+  branches: StoreItem[];
+  attendance: StoreItem[];
+  payroll: StoreItem[];
+  taxPeriods: StoreItem[];
+  rfqs: StoreItem[];
+  changeOrders: StoreItem[];
+  risks: StoreItem[];
+  leaves: StoreItem[];
+  trainings: StoreItem[];
+  timesheets: StoreItem[];
+  drawings: StoreItem[];
+  toolbox: StoreItem[];
+  calibrations: StoreItem[];
+  communications: StoreItem[];
+  contracts: StoreItem[];
   wbsByProject: Record<string, WbsItem[]>;
   teamByProject: Record<string, string[]>;
 }
@@ -146,6 +161,88 @@ const seedDocuments: StoreItem[] = [
   { id: "DOC-012", title: "Quotation QT-2026-052", type: "Penawaran", project: "-", vessel: "TB Baru RJ-03", version: "v2.0", status: "Negosiasi", updated: "2026-07-20", owner: "Hendra Wijaya" },
 ];
 
+/* ============ SEED REMAKE: cabang, absensi, payroll, pajak, RFQ, CO, risiko,
+   cuti, training, timesheet, drawing, toolbox, kalibrasi, komunikasi, kontrak ============ */
+
+const seedBranches: StoreItem[] = [
+  { id: "BR-01", name: "Samarinda — Kantor Pusat", city: "Samarinda", isHQ: true },
+  { id: "BR-02", name: "Balikpapan — Galangan", city: "Balikpapan", isHQ: false },
+  { id: "BR-03", name: "Banjarmasin — Workshop", city: "Banjarmasin", isHQ: false },
+];
+
+const seedAttendance: StoreItem[] = [
+  { id: "ABS-20260801-001", employeeId: "EMP-002", date: "2026-08-01", shift: "Pagi", status: "Hadir", checkIn: "07:55", checkOut: "17:05", overtime: 1 },
+  { id: "ABS-20260801-002", employeeId: "EMP-004", date: "2026-08-01", shift: "Pagi", status: "Hadir", checkIn: "08:02", checkOut: "17:00", overtime: 0 },
+  { id: "ABS-20260801-003", employeeId: "EMP-005", date: "2026-08-01", shift: "Siang", status: "Sakit", checkIn: "", checkOut: "", overtime: 0 },
+  { id: "ABS-20260802-001", employeeId: "EMP-002", date: "2026-08-02", shift: "Pagi", status: "Hadir", checkIn: "07:50", checkOut: "19:30", overtime: 2.5 },
+  { id: "ABS-20260802-002", employeeId: "EMP-006", date: "2026-08-02", shift: "Pagi", status: "Izin", checkIn: "", checkOut: "", overtime: 0 },
+];
+
+const seedPayroll: StoreItem[] = [
+  { id: "PAY-202607-002", employeeId: "EMP-002", period: "2026-07", basic: 18000000, allowances: 4500000, overtimePay: 1200000, deductions: 500000, pph21: 1875000, bpjsKes: 540000, bpjsTk: 666000, net: 19569000, status: "Dibayar", paidAt: "2026-07-31" },
+  { id: "PAY-202607-004", employeeId: "EMP-004", period: "2026-07", basic: 12000000, allowances: 3000000, overtimePay: 800000, deductions: 200000, pph21: 950000, bpjsKes: 360000, bpjsTk: 444000, net: 13846000, status: "Dibayar", paidAt: "2026-07-31" },
+  { id: "PAY-202608-002", employeeId: "EMP-002", period: "2026-08", basic: 18000000, allowances: 4500000, overtimePay: 0, deductions: 0, pph21: 0, bpjsKes: 0, bpjsTk: 0, net: 0, status: "Draft", paidAt: "" },
+];
+
+const seedTaxPeriods: StoreItem[] = [
+  { id: "TAX-202607", period: "2026-07", ppnKeluar: 1056000000, ppnMasuk: 452000000, pph23: 124000000, pph21: 38500000, status: "Lapor" },
+  { id: "TAX-202608", period: "2026-08", ppnKeluar: 0, ppnMasuk: 0, pph23: 0, pph21: 0, status: "Draft" },
+];
+
+const seedRfqs: StoreItem[] = [
+  { id: "RFQ-2026-031", prId: "PR-2026-207", item: "Cat Epoxy", vendors: ["PT Jotun Indonesia", "PT Bahana Baja", "PT Steel Rig"], quotes: [{ vendor: "PT Jotun Indonesia", price: 480000000, eta: "2026-08-12" }, { vendor: "PT Bahana Baja", price: 495000000, eta: "2026-08-10" }], status: "Evaluasi", winner: "" },
+  { id: "RFQ-2026-032", prId: "PR-2026-209", item: "Wire Rope", vendors: ["PT Steel Rig", "PT Primabaja"], quotes: [], status: "Terkirim", winner: "" },
+];
+
+const seedChangeOrders: StoreItem[] = [
+  { id: "CO-2026-011", project: "NB-2025-012", title: "Tambah Fi-Fi system deck", impact: 1850000000, status: "Diajukan", requestedBy: "Budi Santoso", date: "2026-07-28" },
+  { id: "CO-2026-010", project: "RP-2026-003", title: "Ganti scope propeller polishing", impact: -120000000, status: "Disetujui", requestedBy: "Rudi Hartono", date: "2026-07-15" },
+];
+
+const seedRisks: StoreItem[] = [
+  { id: "RSK-001", project: "NB-2025-012", title: "Keterlambatan baja AH36", likelihood: "Sedang", impact: "Tinggi", mitigation: "Dual vendor + buffer 2 minggu", status: "Dipantau" },
+  { id: "RSK-002", project: "RP-2026-005", title: "Overrun overhaul bearing", likelihood: "Tinggi", impact: "Sedang", mitigation: "Inspeksi toleransi per shift", status: "Aktif" },
+];
+
+const seedLeaves: StoreItem[] = [
+  { id: "CUT-2026-018", employeeId: "EMP-006", type: "Tahunan", from: "2026-08-10", to: "2026-08-12", days: 3, status: "Disetujui", note: "Keperluan keluarga" },
+  { id: "CUT-2026-019", employeeId: "EMP-005", type: "Sakit", from: "2026-08-01", to: "2026-08-01", days: 1, status: "Diajukan", note: "Surat dokter terlampir" },
+];
+
+const seedTrainings: StoreItem[] = [
+  { id: "TRN-2026-006", title: "Welding Inspector Refresh", date: "2026-09-05", participants: ["EMP-002", "EMP-006"], provider: "B4T", status: "Terjadwal" },
+  { id: "TRN-2026-005", title: "Basic Safety & Fire Fighting", date: "2026-07-12", participants: ["EMP-004", "EMP-005"], provider: "Internal HSE", status: "Selesai" },
+];
+
+const seedTimesheets: StoreItem[] = [
+  { id: "TS-20260801-01", woId: "WO-2026-041", employeeId: "EMP-005", date: "2026-08-01", hours: 8, note: "Fabrikasi section 5" },
+  { id: "TS-20260801-02", woId: "WO-2026-043", employeeId: "EMP-004", date: "2026-08-01", hours: 6, note: "Overhaul cylinder 3" },
+];
+
+const seedDrawings: StoreItem[] = [
+  { id: "DRW-GA-012-C", project: "NB-2025-012", title: "General Arrangement", revision: "C", status: "Disetujui", updated: "2026-07-20", holder: "Hendra Wijaya" },
+  { id: "DRW-ST-004-B", project: "NB-2025-012", title: "Structural Section 4-7", revision: "B", status: "Diajukan", updated: "2026-08-01", holder: "Budi Santoso" },
+];
+
+const seedToolbox: StoreItem[] = [
+  { id: "TBM-20260801", project: "NB-2025-012", topic: "Lifting & rigging aman", date: "2026-08-01", attendees: 24, pic: "Agus Setiawan" },
+  { id: "TBM-20260802", project: "RP-2026-003", topic: "Confined space entry", date: "2026-08-02", attendees: 18, pic: "Rudi Hartono" },
+];
+
+const seedCalibrations: StoreItem[] = [
+  { id: "CAL-2026-021", equipmentId: "EQ-003", item: "Mesin Las MIG", due: "2026-08-20", status: "Terjadwal", cert: "" },
+  { id: "CAL-2026-020", equipmentId: "EQ-002", item: "Load cell Mobile Crane", due: "2026-08-05", status: "Selesai", cert: "CAL-0501" },
+];
+
+const seedCommunications: StoreItem[] = [
+  { id: "COM-2026-101", quotationId: "QT-2026-052", channel: "Email", date: "2026-07-22", summary: "Kirim revisi v2 + negosiasi termin", by: "Hendra Wijaya" },
+  { id: "COM-2026-102", quotationId: "QT-2026-053", channel: "Meeting", date: "2026-07-25", summary: "Presentasi teknis, minta penawaran final", by: "Budi Santoso" },
+];
+
+const seedContracts: StoreItem[] = [
+  { id: "KTR-2026-009", quotationId: "QT-2026-054", projectId: "RP-2026-002", client: "PT Mitra Samudra Raya", value: 3100000000, signedAt: "2026-07-12", status: "Aktif" },
+];
+
 export const wbsTemplate: WbsItem[] = [
   { task: "Desain & Persetujuan Class", start: "2026-01", end: "2026-03", progress: 100, weight: 10 },
   { task: "Pengadaan Material", start: "2026-02", end: "2026-05", progress: 85, weight: 15 },
@@ -198,6 +295,21 @@ function buildSeeds(): StoreShape {
      services: clone(seedServices) as StoreItem[],
      spareparts: clone(seedSpareparts) as StoreItem[],
      boq: clone(seedBoq) as StoreItem[],
+     branches: clone(seedBranches),
+     attendance: clone(seedAttendance),
+     payroll: clone(seedPayroll),
+     taxPeriods: clone(seedTaxPeriods),
+     rfqs: clone(seedRfqs),
+     changeOrders: clone(seedChangeOrders),
+     risks: clone(seedRisks),
+     leaves: clone(seedLeaves),
+     trainings: clone(seedTrainings),
+     timesheets: clone(seedTimesheets),
+     drawings: clone(seedDrawings),
+     toolbox: clone(seedToolbox),
+     calibrations: clone(seedCalibrations),
+     communications: clone(seedCommunications),
+     contracts: clone(seedContracts),
      wbsByProject: {},
      teamByProject: clone(seedTeamByProject),
   };
@@ -205,8 +317,9 @@ function buildSeeds(): StoreShape {
 
 /* ============ CONTEXT ============ */
 
-const STORE_KEY = "isms.store.v2";
-const LEGACY_KEYS = ["isms.store.v1"];
+const STORE_KEY = "isms.store.v3";
+const LEGACY_KEYS = ["isms.store.v2", "isms.store.v1"];
+const BRANCH_KEY = "isms.branch";
 const PREFIX: Record<string, string> = {
   projects: "PRJ",
   vessels: "V",
@@ -234,6 +347,21 @@ const PREFIX: Record<string, string> = {
    services: "SRV",
    spareparts: "SP",
    boq: "BQ",
+   branches: "BR",
+   attendance: "ABS",
+   payroll: "PAY",
+   taxPeriods: "TAX",
+   rfqs: "RFQ",
+   changeOrders: "CO",
+   risks: "RSK",
+   leaves: "CUT",
+   trainings: "TRN",
+   timesheets: "TS",
+   drawings: "DRW",
+   toolbox: "TBM",
+   calibrations: "CAL",
+   communications: "COM",
+   contracts: "KTR",
  };
 
 const ARRAY_KEYS: (keyof StoreShape)[] = [
@@ -242,6 +370,9 @@ const ARRAY_KEYS: (keyof StoreShape)[] = [
   "employees", "invoices", "payables", "ncr", "incidents", "inspections",
   "purchaseOrders", "requisitions", "vendors", "quotations", "clients",
   "documents", "surveys", "activities", "services", "spareparts", "boq",
+  "branches", "attendance", "payroll", "taxPeriods", "rfqs", "changeOrders",
+  "risks", "leaves", "trainings", "timesheets", "drawings", "toolbox",
+  "calibrations", "communications", "contracts",
 ];
 
 function sanitizeStore(parsed: Partial<StoreShape>): StoreShape {
@@ -287,6 +418,9 @@ interface StoreCtx {
   setWbs: (projectId: string, wbs: WbsItem[]) => void;
   teamFor: (projectId: string) => string[];
   setTeam: (projectId: string, ids: string[]) => void;
+  branch: string;
+  setBranch: (b: string) => void;
+  inBranch: (rows: StoreItem[]) => StoreItem[];
 }
 
 const Ctx = createContext<StoreCtx | null>(null);
@@ -313,10 +447,34 @@ const ACTOR_TONE: Record<string, "navy" | "teal" | "rose" | "violet" | "amber"> 
    Service: "teal",
    Sparepart: "amber",
    BoQ: "navy",
+   Absensi: "violet",
+   Payroll: "amber",
+   Pajak: "navy",
+   Laporan: "teal",
+   Monitoring: "violet",
  };
 
 export function StoreProvider({ children }: { children: ReactNode }) {
   const [data, setData] = useState<StoreShape>(() => loadStore());
+  const [branch, setBranchState] = useState<string>(() => {
+    try {
+      return sessionStorage.getItem(BRANCH_KEY) ?? "SEMUA";
+    } catch {
+      return "SEMUA";
+    }
+  });
+
+  const setBranch = (b: string) => {
+    setBranchState(b);
+    try {
+      sessionStorage.setItem(BRANCH_KEY, b);
+    } catch {
+      /* abaikan */
+    }
+  };
+
+  const inBranch = (rows: StoreItem[]): StoreItem[] =>
+    branch === "SEMUA" ? rows : rows.filter((r) => !r.branch || r.branch === branch);
 
   useEffect(() => {
     try {
@@ -380,8 +538,11 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       setTeam: (projectId, ids) => {
         setData((prev) => ({ ...prev, teamByProject: { ...prev.teamByProject, [projectId]: ids } }));
       },
+      branch,
+      setBranch,
+      inBranch,
     };
-  }, [data]);
+  }, [data, branch, inBranch]);
 
   return <Ctx.Provider value={api}>{children}</Ctx.Provider>;
 }

@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useParams, Link } from "react-router-dom";
-import { ArrowLeft, Ship, FileCheck2, History, Plus } from "lucide-react";
+import { ArrowLeft, Ship, FileCheck2, History, Plus, Pencil, ShieldCheck, ClipboardCheck, Anchor } from "lucide-react";
 import {
   Card,
   PageHeader,
@@ -15,6 +15,7 @@ import {
 import SparepartServiceSection from "../proyek/SparepartServiceSection";
 import { useStore } from "../../data/store";
 import { fmtBulan, fmtTanggal, monthISO, todayISO } from "../../utils/format";
+import { COMPLIANCE_ITEMS, complianceSummary } from "./Vessels";
 
 function monthDiff(expires: string, base: string): number | null {
   const m1 = /^(\d{4})-(\d{2})$/.exec(expires ?? "");
@@ -31,6 +32,23 @@ function certTone(expires: string, nowMonth: string): "green" | "amber" | "red" 
   return "green";
 }
 
+interface PscRow {
+  date: string;
+  port: string;
+  deficiencies: number;
+  status: string;
+}
+
+interface DockHistoryRow {
+  date: string;
+  dock: string;
+  scope: string;
+  result: string;
+  nextDue: string;
+}
+
+const PSC_STATUS = ["Bersih", "Defisiensi Minor", "Defisiensi Major", "Ditahan"];
+
 export default function VesselDetail() {
   const { id } = useParams();
   const { data, update, add } = useStore();
@@ -40,7 +58,14 @@ export default function VesselDetail() {
   const [certForm, setCertForm] = useState({ name: "", issued: monthISO(), expires: "" });
   const [showSurvey, setShowSurvey] = useState(false);
   const [surveyForm, setSurveyForm] = useState({ type: "Annual Survey", date: "", status: "Terjadwal" });
-  const [tab, setTab] = useState("Sertifikat");
+  const [tab, setTab] = useState("Sertifikat & Timeline");
+  const [showSpec, setShowSpec] = useState(false);
+  const [specForm, setSpecForm] = useState({ mmsi: "", gt: "", nt: "", bhp: "", engineType: "" });
+  const [showPsc, setShowPsc] = useState(false);
+  const [pscForm, setPscForm] = useState({ date: todayISO(), port: "", deficiencies: "0", status: "Bersih" });
+  const [showDock, setShowDock] = useState(false);
+  const [dockForm, setDockForm] = useState({ date: todayISO(), dock: "", scope: "", result: "", nextDue: "" });
+  const [editingDock, setEditingDock] = useState<number | null>(null);
 
   if (!v) return <p className="text-sm text-steel-500">Kapal tidak ditemukan.</p>;
 
@@ -48,6 +73,14 @@ export default function VesselDetail() {
   const projects = data.projects.filter((p) => p.vessel === v.name);
   const surveys = data.surveys.filter((s) => s.vessel === v.name);
   const certs = (v.certificates ?? []) as { name: string; issued?: string; expires: string }[];
+  const slots = data.dockSlots.filter((s) => s.vessel === v.name);
+  const pscRows = (v.psc ?? []) as PscRow[];
+  const dockHistory = (v.dockHistory ?? []) as DockHistoryRow[];
+  const comp = complianceSummary(v);
+  const complianceRows = COMPLIANCE_ITEMS.map((name) => {
+    const found = ((v.compliance ?? []) as { name: string; status: string; date: string }[]).find((r) => r.name === name);
+    return found ?? { name, status: "", date: "" };
+  });
 
   const saveCert = () => {
     if (!certForm.name.trim() || !certForm.issued || !certForm.expires) { toast("Nama, bulan terbit & masa berlaku wajib diisi", "info"); return; }
@@ -66,6 +99,90 @@ export default function VesselDetail() {
     setShowSurvey(false);
   };
 
+  const openSpec = () => {
+    setSpecForm({
+      mmsi: String(v.mmsi ?? ""),
+      gt: v.gt === undefined || v.gt === null ? "" : String(v.gt),
+      nt: v.nt === undefined || v.nt === null ? "" : String(v.nt),
+      bhp: v.bhp === undefined || v.bhp === null ? "" : String(v.bhp),
+      engineType: String(v.engineType ?? ""),
+    });
+    setShowSpec(true);
+  };
+
+  const saveSpec = () => {
+    const gt = Number(specForm.gt);
+    const bhp = Number(specForm.bhp);
+    const nt = specForm.nt.trim() === "" ? 0 : Number(specForm.nt);
+    if (!Number.isFinite(gt) || !Number.isFinite(bhp)) { toast("GT & BHP wajib diisi angka", "info"); return; }
+    if (String(v.status) !== "Dalam Pembangunan" && (gt <= 0 || bhp <= 0)) { toast("GT & BHP harus lebih dari 0 (kecuali dalam pembangunan)", "info"); return; }
+    if (!Number.isFinite(nt) || nt < 0) { toast("NT harus angka 0 atau lebih", "info"); return; }
+    if (!specForm.engineType.trim()) { toast("Tipe mesin utama wajib diisi", "info"); return; }
+    if (specForm.mmsi.trim() !== "" && !/^\d{9}$/.test(specForm.mmsi.trim())) { toast("MMSI harus 9 digit angka (atau kosongkan)", "info"); return; }
+    update("vessels", v.id, {
+      mmsi: specForm.mmsi.trim(),
+      gt, nt, bhp,
+      engineType: specForm.engineType.trim(),
+    });
+    toast("Spesifikasi kapal diperbarui");
+    setShowSpec(false);
+  };
+
+  const setCompliance = (name: string, patch: { status?: string; date?: string }) => {
+    const current = ((v.compliance ?? []) as { name: string; status: string; date: string }[]).slice();
+    const idx = current.findIndex((r) => r.name === name);
+    if (idx >= 0) {
+      current[idx] = { ...current[idx], ...patch };
+    } else {
+      current.push({ name, status: patch.status ?? "", date: patch.date ?? "" });
+    }
+    update("vessels", v.id, { compliance: current });
+  };
+
+  const savePsc = () => {
+    if (!pscForm.date || !pscForm.port.trim()) { toast("Tanggal & pelabuhan wajib diisi", "info"); return; }
+    const def = Number(pscForm.deficiencies);
+    if (!Number.isFinite(def) || def < 0) { toast("Jumlah defisiensi harus angka 0 atau lebih", "info"); return; }
+    update("vessels", v.id, {
+      psc: [...pscRows, { date: pscForm.date, port: pscForm.port.trim(), deficiencies: def, status: pscForm.status }],
+    });
+    toast("Catatan PSC ditambahkan");
+    setShowPsc(false);
+    setPscForm({ date: todayISO(), port: "", deficiencies: "0", status: "Bersih" });
+  };
+
+  const openDockAdd = () => {
+    setEditingDock(null);
+    setDockForm({ date: todayISO(), dock: "", scope: "", result: "", nextDue: "" });
+    setShowDock(true);
+  };
+
+  const openDockEdit = (i: number) => {
+    const r = dockHistory[i];
+    setEditingDock(i);
+    setDockForm({ date: r.date, dock: r.dock, scope: r.scope, result: r.result, nextDue: r.nextDue });
+    setShowDock(true);
+  };
+
+  const saveDock = () => {
+    if (!dockForm.date || !dockForm.dock.trim()) { toast("Tanggal & dok/galangan wajib diisi", "info"); return; }
+    if (!dockForm.nextDue) { toast("Next due wajib diisi", "info"); return; }
+    const row: DockHistoryRow = {
+      date: dockForm.date,
+      dock: dockForm.dock.trim(),
+      scope: dockForm.scope.trim(),
+      result: dockForm.result.trim(),
+      nextDue: dockForm.nextDue,
+    };
+    const next = dockHistory.slice();
+    if (editingDock === null) next.push(row);
+    else next[editingDock] = row;
+    update("vessels", v.id, { dockHistory: next });
+    toast(editingDock === null ? "Riwayat docking ditambahkan" : "Riwayat docking diperbarui");
+    setShowDock(false);
+    setEditingDock(null);
+  };
+
   return (
     <div>
       <Link to="/kapal" className="mb-3 inline-flex items-center gap-1.5 text-sm font-medium text-ocean-600 hover:underline">
@@ -73,9 +190,12 @@ export default function VesselDetail() {
       </Link>
       <PageHeader
         title={v.name}
-        subtitle={`${v.imo} · ${v.class} · ${v.flag} · Dibangun ${v.built}`}
+        subtitle={`${v.imo}${v.mmsi ? ` · MMSI ${v.mmsi}` : ""} · ${v.class} · ${v.flag} · Dibangun ${v.built}`}
         actions={
           <div className="flex items-center gap-2">
+            <Badge tone={comp.state === "ok" ? "green" : comp.state === "issue" ? "red" : "gray"}>
+              {comp.state === "ok" ? "Patuh" : comp.state === "issue" ? `Kepatuhan ${comp.valid}/${comp.total}` : "Belum dinilai"}
+            </Badge>
             <select className="input w-auto py-1.5 text-sm" value={v.status}
               onChange={(e) => { update("vessels", v.id, { status: e.target.value }); toast(`Status kapal → ${e.target.value}`); }}>
               {["Dalam Operasi", "Dalam Docking", "Dalam Pembangunan", "Menganggur"].map((s) => <option key={s}>{s}</option>)}
@@ -92,6 +212,13 @@ export default function VesselDetail() {
         <KpiCard label="Bollard Pull" value={`${v.bollard} T`} icon={<Ship className="h-5 w-5" />} />
       </div>
 
+      <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <KpiCard label="MMSI" value={v.mmsi ? String(v.mmsi) : "—"} icon={<Ship className="h-5 w-5" />} />
+        <KpiCard label="Tonase GT / NT" value={v.gt !== undefined ? `${v.gt} / ${v.nt ?? "—"}` : "—"} icon={<Ship className="h-5 w-5" />} />
+        <KpiCard label="BHP Mesin Utama" value={v.bhp !== undefined && v.bhp !== "" ? `${v.bhp} HP` : "—"} icon={<Ship className="h-5 w-5" />} />
+        <KpiCard label="Tipe Mesin" value={v.engineType ? String(v.engineType) : "—"} icon={<Ship className="h-5 w-5" />} />
+      </div>
+
       {projects.length > 0 && (
         <Card className="mt-5 p-4">
           <h3 className="mb-2 text-sm font-semibold text-navy-900">Proyek Terkait ({projects.length})</h3>
@@ -106,7 +233,7 @@ export default function VesselDetail() {
       )}
 
       <div className="mt-5 card">
-        <Tabs tabs={["Sertifikat & Timeline", "Spesifikasi", "3D Viewer", "Service", "Sparepart"]} active={tab} onChange={setTab} />
+        <Tabs tabs={["Sertifikat & Timeline", "Spesifikasi", "Kepatuhan & PSC", "3D Viewer", "Service", "Sparepart"]} active={tab} onChange={setTab} />
         <div className="p-5">
           {tab === "Sertifikat & Timeline" && (
             <div className="grid grid-cols-1 gap-5 lg:grid-cols-3">
@@ -170,7 +297,10 @@ export default function VesselDetail() {
 
           {tab === "Spesifikasi" && (
             <Card className="p-5">
-              <h3 className="mb-3 text-sm font-semibold text-navy-900">Spesifikasi Teknis</h3>
+              <div className="mb-3 flex items-center justify-between">
+                <h3 className="text-sm font-semibold text-navy-900">Spesifikasi Teknis</h3>
+                <button className="btn-secondary text-xs" onClick={openSpec}><Pencil className="h-3.5 w-3.5" /> Edit Spesifikasi</button>
+              </div>
               <dl className="grid grid-cols-2 gap-4 sm:grid-cols-3">
                 <div className="rounded-lg bg-surface p-3"><dt className="text-xs text-steel-500">Tipe</dt><dd className="text-sm font-medium text-navy-900">{v.type}</dd></div>
                 <div className="rounded-lg bg-surface p-3"><dt className="text-xs text-steel-500">Pemilik</dt><dd className="text-sm font-medium text-navy-900">{v.owner}</dd></div>
@@ -178,8 +308,107 @@ export default function VesselDetail() {
                 <div className="rounded-lg bg-surface p-3"><dt className="text-xs text-steel-500">Bendera</dt><dd className="text-sm font-medium text-navy-900">{v.flag}</dd></div>
                 <div className="rounded-lg bg-surface p-3"><dt className="text-xs text-steel-500">LOA / Beam / Draft</dt><dd className="text-sm font-medium text-navy-900">{v.loa} / {v.beam} / {v.draft} m</dd></div>
                 <div className="rounded-lg bg-surface p-3"><dt className="text-xs text-steel-500">Bollard Pull</dt><dd className="text-sm font-medium text-navy-900">{v.bollard} T</dd></div>
+                <div className="rounded-lg bg-surface p-3"><dt className="text-xs text-steel-500">MMSI</dt><dd className="text-sm font-medium text-navy-900">{v.mmsi ?? "—"}</dd></div>
+                <div className="rounded-lg bg-surface p-3"><dt className="text-xs text-steel-500">GT / NT</dt><dd className="text-sm font-medium text-navy-900">{v.gt ?? "—"} / {v.nt ?? "—"}</dd></div>
+                <div className="rounded-lg bg-surface p-3"><dt className="text-xs text-steel-500">Mesin Utama</dt><dd className="text-sm font-medium text-navy-900">{v.engineType ?? "—"} · {v.bhp ?? "—"} HP</dd></div>
               </dl>
             </Card>
+          )}
+
+          {tab === "Kepatuhan & PSC" && (
+            <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
+              <Card className="p-5">
+                <div className="mb-3 flex items-center justify-between">
+                  <h3 className="flex items-center gap-2 text-sm font-semibold text-navy-900"><ShieldCheck className="h-4 w-4" /> Kepatuhan (SOLAS / MARPOL / ISM / Flag / PSC)</h3>
+                  <Badge tone={comp.state === "ok" ? "green" : comp.state === "issue" ? "red" : "gray"}>
+                    {comp.state === "ok" ? "Semua berlaku" : comp.state === "issue" ? `${comp.valid}/${comp.total} berlaku` : "Belum dinilai"}
+                  </Badge>
+                </div>
+                <div className="space-y-2.5">
+                  {complianceRows.map((r) => (
+                    <div key={r.name} className="rounded-lg border border-steel-100 p-3">
+                      <div className="flex items-center justify-between gap-2">
+                        <p className="text-sm font-medium text-navy-900">{r.name}</p>
+                        <select
+                          className="input w-auto py-1 text-xs"
+                          value={r.status || ""}
+                          onChange={(e) => { setCompliance(r.name, { status: e.target.value }); toast(`Kepatuhan ${r.name} → ${e.target.value || "belum dinilai"}`); }}
+                        >
+                          <option value="">Belum dinilai</option>
+                          <option value="Berlaku">Berlaku</option>
+                          <option value="Kedaluwarsa">Kedaluwarsa</option>
+                        </select>
+                      </div>
+                      <div className="mt-2 flex items-center gap-2">
+                        <input
+                          type="date"
+                          className="input py-1 text-xs"
+                          value={r.date || ""}
+                          onChange={(e) => setCompliance(r.name, { date: e.target.value })}
+                          aria-label={`Tanggal ${r.name}`}
+                        />
+                        {r.status && (
+                          <Badge tone={r.status === "Berlaku" ? "green" : "red"}>{r.status}{r.date ? ` · ${fmtTanggal(r.date)}` : ""}</Badge>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </Card>
+
+              <div className="space-y-5">
+                <Card className="p-5">
+                  <div className="mb-3 flex items-center justify-between">
+                    <h3 className="flex items-center gap-2 text-sm font-semibold text-navy-900"><ClipboardCheck className="h-4 w-4" /> Inspeksi PSC ({pscRows.length})</h3>
+                    <button className="btn-secondary text-xs" onClick={() => setShowPsc(true)}><Plus className="h-3.5 w-3.5" /> Catat PSC</button>
+                  </div>
+                  {pscRows.length === 0 && <p className="text-sm text-steel-400">Belum ada catatan inspeksi PSC.</p>}
+                  <div className="space-y-2">
+                    {pscRows.map((p, i) => (
+                      <div key={i} className="flex items-center justify-between rounded-lg border border-steel-100 p-3 text-sm">
+                        <div>
+                          <p className="font-medium text-navy-900">{p.port} · {fmtTanggal(p.date)}</p>
+                          <p className="text-xs text-steel-500">{p.deficiencies} defisiensi</p>
+                        </div>
+                        <Badge tone={p.status === "Bersih" ? "green" : p.status === "Ditahan" ? "red" : "amber"}>{p.status}</Badge>
+                      </div>
+                    ))}
+                  </div>
+                </Card>
+
+                <Card className="p-5">
+                  <div className="mb-3 flex items-center justify-between">
+                    <h3 className="flex items-center gap-2 text-sm font-semibold text-navy-900"><Anchor className="h-4 w-4" /> Riwayat Docking</h3>
+                    <button className="btn-secondary text-xs" onClick={openDockAdd}><Plus className="h-3.5 w-3.5" /> Tambah Riwayat</button>
+                  </div>
+                  {slots.length > 0 && (
+                    <div className="mb-3">
+                      <p className="mb-1.5 text-xs font-semibold text-steel-500">SLOT AKTIF DI DRYDOCK</p>
+                      {slots.map((s) => (
+                        <div key={s.id} className="flex items-center justify-between py-1 text-sm">
+                          <span className="text-steel-700">{s.dockId} · {s.project}</span>
+                          <Badge tone="blue">Terjadwal</Badge>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  {dockHistory.length === 0 && <p className="text-sm text-steel-400">Belum ada riwayat docking manual.</p>}
+                  <div className="space-y-2">
+                    {dockHistory.map((d, i) => (
+                      <div key={i} className="rounded-lg border border-steel-100 p-3">
+                        <div className="flex items-center justify-between">
+                          <p className="text-sm font-medium text-navy-900">{d.dock} · {fmtTanggal(d.date)}</p>
+                          <button className="btn-secondary text-xs" onClick={() => openDockEdit(i)}><Pencil className="h-3 w-3" /> Edit</button>
+                        </div>
+                        {d.scope && <p className="mt-1 text-xs text-steel-600">Scope: {d.scope}</p>}
+                        {d.result && <p className="text-xs text-steel-600">Hasil: {d.result}</p>}
+                        <p className="mt-1 text-xs text-steel-500">Next due: {fmtTanggal(d.nextDue)}</p>
+                      </div>
+                    ))}
+                  </div>
+                </Card>
+              </div>
+            </div>
           )}
 
           {tab === "3D Viewer" && <SparepartServiceSection vesselId={v.id} view="3d" />}
@@ -188,7 +417,6 @@ export default function VesselDetail() {
         </div>
       </div>
 
-      {/* Modal sertifikat */}
       <Modal open={showCert} onClose={() => setShowCert(false)} title={`Tambah Sertifikat — ${v.name}`}
         footer={<><button className="btn-secondary" onClick={() => setShowCert(false)}>Batal</button><button className="btn-primary" onClick={saveCert}>Simpan</button></>}>
         <div className="space-y-3">
@@ -200,7 +428,6 @@ export default function VesselDetail() {
         </div>
       </Modal>
 
-      {/* Modal survey */}
       <Modal open={showSurvey} onClose={() => setShowSurvey(false)} title={`Jadwalkan Survey — ${v.name}`} subtitle="Masuk ke timeline & daftar survey"
         footer={<><button className="btn-secondary" onClick={() => setShowSurvey(false)}>Batal</button><button className="btn-primary" onClick={saveSurvey}>Jadwalkan</button></>}>
         <div className="space-y-3">
@@ -217,6 +444,46 @@ export default function VesselDetail() {
             </Field>
           </FormGrid>
           <Field label="Tanggal"><input type="date" className="input" value={surveyForm.date} onChange={(e) => setSurveyForm({ ...surveyForm, date: e.target.value })} /></Field>
+        </div>
+      </Modal>
+
+      <Modal open={showSpec} onClose={() => setShowSpec(false)} title={`Edit Spesifikasi — ${v.name}`}
+        footer={<><button className="btn-secondary" onClick={() => setShowSpec(false)}>Batal</button><button className="btn-primary" onClick={saveSpec}>Simpan</button></>}>
+        <FormGrid>
+          <Field label="MMSI (9 digit)"><input className="input font-mono" value={specForm.mmsi} onChange={(e) => setSpecForm({ ...specForm, mmsi: e.target.value })} placeholder="cth: 525003456" /></Field>
+          <Field label="Tipe mesin utama"><input className="input" value={specForm.engineType} onChange={(e) => setSpecForm({ ...specForm, engineType: e.target.value })} placeholder="cth: MAN 6L27/38" /></Field>
+          <Field label="GT"><input type="number" min={0} className="input" value={specForm.gt} onChange={(e) => setSpecForm({ ...specForm, gt: e.target.value })} /></Field>
+          <Field label="NT"><input type="number" min={0} className="input" value={specForm.nt} onChange={(e) => setSpecForm({ ...specForm, nt: e.target.value })} /></Field>
+          <Field label="BHP mesin utama"><input type="number" min={0} className="input" value={specForm.bhp} onChange={(e) => setSpecForm({ ...specForm, bhp: e.target.value })} /></Field>
+        </FormGrid>
+      </Modal>
+
+      <Modal open={showPsc} onClose={() => setShowPsc(false)} title={`Catat Inspeksi PSC — ${v.name}`}
+        footer={<><button className="btn-secondary" onClick={() => setShowPsc(false)}>Batal</button><button className="btn-primary" onClick={savePsc}>Simpan</button></>}>
+        <div className="space-y-3">
+          <FormGrid>
+            <Field label="Tanggal"><input type="date" className="input" value={pscForm.date} onChange={(e) => setPscForm({ ...pscForm, date: e.target.value })} /></Field>
+            <Field label="Pelabuhan"><input className="input" value={pscForm.port} onChange={(e) => setPscForm({ ...pscForm, port: e.target.value })} placeholder="cth: Balikpapan" /></Field>
+            <Field label="Jumlah defisiensi"><input type="number" min={0} className="input" value={pscForm.deficiencies} onChange={(e) => setPscForm({ ...pscForm, deficiencies: e.target.value })} /></Field>
+            <Field label="Status">
+              <select className="input" value={pscForm.status} onChange={(e) => setPscForm({ ...pscForm, status: e.target.value })}>
+                {PSC_STATUS.map((s) => <option key={s}>{s}</option>)}
+              </select>
+            </Field>
+          </FormGrid>
+        </div>
+      </Modal>
+
+      <Modal open={showDock} onClose={() => setShowDock(false)} title={`${editingDock === null ? "Tambah" : "Edit"} Riwayat Docking — ${v.name}`} subtitle="Scope, hasil & next due tersimpan di kapal"
+        footer={<><button className="btn-secondary" onClick={() => setShowDock(false)}>Batal</button><button className="btn-primary" onClick={saveDock}>Simpan</button></>}>
+        <div className="space-y-3">
+          <FormGrid>
+            <Field label="Tanggal"><input type="date" className="input" value={dockForm.date} onChange={(e) => setDockForm({ ...dockForm, date: e.target.value })} /></Field>
+            <Field label="Next due"><input type="date" className="input" value={dockForm.nextDue} onChange={(e) => setDockForm({ ...dockForm, nextDue: e.target.value })} /></Field>
+          </FormGrid>
+          <Field label="Dok / galangan"><input className="input" value={dockForm.dock} onChange={(e) => setDockForm({ ...dockForm, dock: e.target.value })} placeholder="cth: DD-1 Drydock Samarinda" /></Field>
+          <Field label="Scope"><input className="input" value={dockForm.scope} onChange={(e) => setDockForm({ ...dockForm, scope: e.target.value })} placeholder="cth: Blasting + coating lambung" /></Field>
+          <Field label="Hasil"><input className="input" value={dockForm.result} onChange={(e) => setDockForm({ ...dockForm, result: e.target.value })} placeholder="cth: Selesai, lulus inspeksi BKI" /></Field>
         </div>
       </Modal>
     </div>

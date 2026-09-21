@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
-import { Plus, Search, Filter, Anchor, Wallet, TrendingUp, Clock } from "lucide-react";
+import { Plus, Search, Filter, Anchor, Wallet, TrendingUp, Clock, LayoutTemplate, ChevronLeft, ChevronRight } from "lucide-react";
 import {
   Card,
   PageHeader,
@@ -14,12 +14,90 @@ import {
   toast,
 } from "../../components/ui";
 import { useStore } from "../../data/store";
-import type { StoreItem } from "../../data/store";
+import type { StoreItem, WbsItem } from "../../data/store";
 import { fmtMiliar, sparkProjects, activeProjectTrend, contractValueTrend, avgProgressTrend } from "../../data";
+import { todayISO } from "../../utils/format";
+
+export const TAHAP = ["Inquiry", "Quotation", "Kontrak", "Desain", "Produksi", "Trial", "Handover"];
+export const PRIORITAS = ["Rendah", "Sedang", "Tinggi", "Kritis"];
+
+export function tahapOf(p: StoreItem): string {
+  return TAHAP.includes(p.tahap) ? p.tahap : "Produksi";
+}
 
 const filters = ["Semua", "New Build", "Repair", "Retrofit"];
 const statusOptions = ["Semua", "Dalam Proses", "Sedang Berjalan", "Terlambat", "Selesai", "Tertunda"];
 const branchOptions = ["Samarinda", "Balikpapan", "Banjarmasin"];
+const PREFIX_TIPE: Record<string, string> = { "New Build": "NB", Repair: "RP", Retrofit: "RF" };
+const prioritasTone: Record<string, "gray" | "blue" | "amber" | "red"> = {
+  Rendah: "gray",
+  Sedang: "blue",
+  Tinggi: "amber",
+  Kritis: "red",
+};
+
+interface TemplateTask {
+  task: string;
+  weight: number;
+}
+
+interface TemplateDef {
+  key: string;
+  label: string;
+  desc: string;
+  type: string;
+  scope: string[];
+  tasks: TemplateTask[];
+}
+
+const TEMPLATES: TemplateDef[] = [
+  {
+    key: "tug",
+    label: "New Build Tug",
+    desc: "Pembangunan tugboat baru dari desain hingga serah terima",
+    type: "New Build",
+    scope: ["Desain & Class Approval", "Fabrikasi Baja", "Hull Assembly", "Mesin & Kelistrikan", "Outfitting & Pengecatan", "Sea Trial"],
+    tasks: [
+      { task: "Desain & Persetujuan Class", weight: 10 },
+      { task: "Pengadaan Material", weight: 15 },
+      { task: "Fabrikasi Baja", weight: 20 },
+      { task: "Hull Assembly", weight: 20 },
+      { task: "Mesin & Kelistrikan", weight: 20 },
+      { task: "Outfitting & Pengecatan", weight: 8 },
+      { task: "Sea Trial & Handover", weight: 7 },
+    ],
+  },
+  {
+    key: "docking",
+    label: "Repair Docking",
+    desc: "Perbaikan dan docking kapal yang sedang beroperasi",
+    type: "Repair",
+    scope: ["Survey & Docking Preparation", "Hull Cleaning & Blasting", "Perbaikan Pelat", "Overhaul Mesin", "Coating", "Undocking & Trial"],
+    tasks: [
+      { task: "Persiapan Docking & Survey", weight: 10 },
+      { task: "Pembersihan & Blasting Lambung", weight: 15 },
+      { task: "Perbaikan Pelat & Struktur", weight: 25 },
+      { task: "Overhaul Mesin & Pompa", weight: 20 },
+      { task: "Coating & Antifouling", weight: 20 },
+      { task: "Undocking & Trial", weight: 10 },
+    ],
+  },
+  {
+    key: "retrofit",
+    label: "Retrofit",
+    desc: "Modernisasi sistem dan peralatan kapal eksisting",
+    type: "Retrofit",
+    scope: ["Survey & Engineering", "Pengadaan Peralatan", "Demolition", "Instalasi Sistem Baru", "Commissioning", "Trial & Handover"],
+    tasks: [
+      { task: "Survey & Engineering", weight: 10 },
+      { task: "Pengadaan Peralatan", weight: 20 },
+      { task: "Demolition & Preparasi", weight: 15 },
+      { task: "Instalasi Sistem Baru", weight: 30 },
+      { task: "Commissioning", weight: 15 },
+      { task: "Trial & Handover", weight: 10 },
+    ],
+  },
+];
 
 const emptyForm = {
   vessel: "",
@@ -32,25 +110,35 @@ const emptyForm = {
   manager: "",
   scope: "",
   status: "Dalam Proses",
+  tahap: "Inquiry",
+  prioritas: "Sedang",
   vesselLoa: "",
   vesselType: "",
 };
 
 export default function Projects() {
-  const { data, add } = useStore();
+  const { data, add, update, log, setWbs, inBranch } = useStore();
   const projects = data.projects;
   const [filter, setFilter] = useState("Semua");
   const [statusFilter, setStatusFilter] = useState("Semua");
+  const [tahapFilter, setTahapFilter] = useState("Semua");
+  const [branchFilter, setBranchFilter] = useState("Semua");
   const [showStatusMenu, setShowStatusMenu] = useState(false);
   const [q, setQ] = useState("");
   const [showAdd, setShowAdd] = useState(false);
+  const [showTemplate, setShowTemplate] = useState(false);
   const [form, setForm] = useState(emptyForm);
+  const [pendingWbs, setPendingWbs] = useState<TemplateTask[] | null>(null);
+  const [mundurFor, setMundurFor] = useState<StoreItem | null>(null);
+  const [mundurReason, setMundurReason] = useState("");
 
-  const list = projects.filter((p) => {
+  const list = inBranch(projects).filter((p) => {
     const matchType = filter === "Semua" || p.type === filter;
     const matchStatus = statusFilter === "Semua" || p.status === statusFilter;
+    const matchTahap = tahapFilter === "Semua" || tahapOf(p) === tahapFilter;
+    const matchBranch = branchFilter === "Semua" || p.branch === branchFilter;
     const matchQ = `${p.vessel} ${p.id} ${p.client}`.toLowerCase().includes(q.toLowerCase());
-    return matchType && matchStatus && matchQ;
+    return matchType && matchStatus && matchTahap && matchBranch && matchQ;
   });
 
   const totalBudget = projects.reduce((s, p) => s + Number(p.budget || 0), 0);
@@ -60,6 +148,55 @@ export default function Projects() {
 
   const setF = (k: string, v: string) => setForm((f) => ({ ...f, [k]: v }));
   const vesselExists = data.vessels.some((v) => v.name.toLowerCase() === form.vessel.trim().toLowerCase());
+
+  const nextProjectCode = (type: string, start: string): string => {
+    const prefix = PREFIX_TIPE[type] ?? "PRJ";
+    const year = start.match(/^(\d{4})/)?.[1] ?? String(new Date().getFullYear());
+    let max = 0;
+    for (const p of projects) {
+      const m = String(p.id).match(new RegExp(`^${prefix}-(\\d{4})-(\\d+)$`));
+      if (m && m[1] === year) max = Math.max(max, Number(m[2]));
+    }
+    return `${prefix}-${year}-${String(max + 1).padStart(3, "0")}`;
+  };
+
+  const codePreview = nextProjectCode(form.type, form.start);
+
+  const majuTahap = (p: StoreItem) => {
+    const idx = TAHAP.indexOf(tahapOf(p));
+    if (idx < 0 || idx >= TAHAP.length - 1) return;
+    const to = TAHAP[idx + 1];
+    update("projects", p.id, {
+      tahap: to,
+      tahapLog: [...(p.tahapLog ?? []), { from: tahapOf(p), to, date: todayISO(), by: "Anda", reason: "" }],
+    });
+    log("memajukan tahap", `${p.id} → ${to}`, "Proyek");
+    toast(`Tahap ${p.id} menjadi ${to}`);
+  };
+
+  const confirmMundur = () => {
+    if (!mundurFor) return;
+    if (!mundurReason.trim()) { toast("Alasan penarikan tahap wajib diisi", "info"); return; }
+    const idx = TAHAP.indexOf(tahapOf(mundurFor));
+    if (idx <= 0) { setMundurFor(null); return; }
+    const to = TAHAP[idx - 1];
+    update("projects", mundurFor.id, {
+      tahap: to,
+      tahapLog: [...(mundurFor.tahapLog ?? []), { from: tahapOf(mundurFor), to, date: todayISO(), by: "Anda", reason: mundurReason.trim() }],
+    });
+    log("menurunkan tahap", `${mundurFor.id} → ${to} (alasan: ${mundurReason.trim()})`, "Proyek");
+    toast(`Tahap ${mundurFor.id} ditarik ke ${to}`);
+    setMundurFor(null);
+    setMundurReason("");
+  };
+
+  const pickTemplate = (t: TemplateDef) => {
+    setForm((f) => ({ ...f, type: t.type, scope: t.scope.join(", "), tahap: "Inquiry" }));
+    setPendingWbs(t.tasks);
+    setShowTemplate(false);
+    setShowAdd(true);
+    toast(`Template "${t.label}" dimuat — lengkapi data & nilai kontrak`);
+  };
 
   const save = () => {
     if (!form.vessel.trim() || !form.client.trim()) { toast("Nama kapal & klien wajib diisi", "info"); return; }
@@ -73,13 +210,18 @@ export default function Projects() {
       if (!Number.isFinite(loa) || loa <= 0) { toast("Kapal belum terdaftar: LOA kapal baru wajib diisi (> 0)", "info"); return; }
       if (!form.vesselType.trim()) { toast("Kapal belum terdaftar: tipe kapal wajib diisi", "info"); return; }
     }
+    const code = nextProjectCode(form.type, form.start);
     const created: StoreItem = add(
       "projects",
       {
+        id: code,
         vessel: form.vessel.trim(),
         type: form.type,
         client: form.client,
         status: form.status,
+        tahap: form.tahap,
+        prioritas: form.prioritas,
+        tahapLog: [{ from: "-", to: form.tahap, date: todayISO(), by: "Anda", reason: "Proyek dibuat" }],
         branch: form.branch,
         start: form.start,
         end: form.end,
@@ -91,6 +233,17 @@ export default function Projects() {
       },
       { action: "membuat proyek", module: "Proyek" }
     );
+    if (pendingWbs) {
+      const wbs: WbsItem[] = pendingWbs.map((t) => ({
+        task: t.task,
+        start: form.start.slice(0, 7) || "-",
+        end: form.end.slice(0, 7) || "-",
+        progress: 0,
+        weight: t.weight,
+      }));
+      setWbs(created.id, wbs);
+      setPendingWbs(null);
+    }
     if (!vesselExists) {
       add("vessels", {
         name: form.vessel.trim(),
@@ -119,7 +272,12 @@ export default function Projects() {
         title="Manajemen Proyek"
         subtitle="New Build, Repair & Maintenance, Retrofit"
         icon={<Anchor className="h-5 w-5" />}
-        actions={<button className="btn-primary-gradient" onClick={() => setShowAdd(true)}><Plus className="h-4 w-4" /> Proyek Baru</button>}
+        actions={
+          <>
+            <button className="btn-secondary" onClick={() => setShowTemplate(true)}><LayoutTemplate className="h-4 w-4" /> Dari Template</button>
+            <button className="btn-primary-gradient" onClick={() => { setPendingWbs(null); setShowAdd(true); }}><Plus className="h-4 w-4" /> Proyek Baru</button>
+          </>
+        }
       />
 
       <div className="mb-4 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
@@ -153,6 +311,14 @@ export default function Projects() {
             </button>
           ))}
         </div>
+        <select className="input w-auto py-1.5 text-sm" aria-label="Filter tahap" value={tahapFilter} onChange={(e) => setTahapFilter(e.target.value)}>
+          <option value="Semua">Semua tahap</option>
+          {TAHAP.map((t) => <option key={t} value={t}>{t}</option>)}
+        </select>
+        <select className="input w-auto py-1.5 text-sm" aria-label="Filter cabang" value={branchFilter} onChange={(e) => setBranchFilter(e.target.value)}>
+          <option value="Semua">Semua cabang</option>
+          {branchOptions.map((b) => <option key={b} value={b}>{b}</option>)}
+        </select>
         <div className="relative ml-auto">
           <button className="btn-secondary" aria-label="Filter status proyek" aria-expanded={showStatusMenu} onClick={() => setShowStatusMenu((v) => !v)}>
             <Filter className="h-4 w-4" /> Filter{statusFilter !== "Semua" ? `: ${statusFilter}` : ""}
@@ -181,6 +347,8 @@ export default function Projects() {
                 <th className="th">Proyek</th>
                 <th className="th">Klien</th>
                 <th className="th">Jenis</th>
+                <th className="th">Tahap</th>
+                <th className="th">Prioritas</th>
                 <th className="th">Status</th>
                 <th className="th">Progres</th>
                 <th className="th">Anggaran</th>
@@ -189,32 +357,59 @@ export default function Projects() {
               </tr>
             </thead>
             <tbody className="divide-y divide-steel-100">
-              {list.map((p) => (
-                <tr key={p.id} className="hover:bg-surface transition-colors">
-                  <td className="td">
-                    <Link to={`/proyek/${p.id}`} className="block hover:text-ocean-600">
-                      <p className="font-semibold text-navy-900">{p.vessel}</p>
-                      <p className="text-xs text-steel-500 font-mono">{p.id}</p>
-                    </Link>
-                  </td>
-                  <td className="td text-steel-600">{p.client}</td>
-                  <td className="td">
-                    <Badge tone={p.type === "New Build" ? "navy" : p.type === "Repair" ? "cyan" : "violet"}>
-                      {p.type}
-                    </Badge>
-                  </td>
-                  <td className="td"><StatusBadge status={p.status} /></td>
-                  <td className="td">
-                    <div className="flex items-center gap-2">
-                      <ProgressBar value={p.progress} className="w-20" tone={p.status === "Terlambat" ? "red" : "navy"} />
-                      <span className="text-xs font-medium text-steel-600">{p.progress}%</span>
-                    </div>
-                  </td>
-                  <td className="td font-medium text-navy-900">{fmtMiliar(p.budget)}</td>
-                  <td className="td text-steel-600">{fmtMiliar(p.actual)}</td>
-                  <td className="td text-steel-600">{p.manager}</td>
-                </tr>
-              ))}
+              {list.map((p) => {
+                const tahapIdx = TAHAP.indexOf(tahapOf(p));
+                return (
+                  <tr key={p.id} className="hover:bg-surface transition-colors">
+                    <td className="td">
+                      <Link to={`/proyek/${p.id}`} className="block hover:text-ocean-600">
+                        <p className="font-semibold text-navy-900">{p.vessel}</p>
+                        <p className="text-xs text-steel-500 font-mono">{p.id}</p>
+                      </Link>
+                    </td>
+                    <td className="td text-steel-600">{p.client}</td>
+                    <td className="td">
+                      <Badge tone={p.type === "New Build" ? "navy" : p.type === "Repair" ? "cyan" : "violet"}>
+                        {p.type}
+                      </Badge>
+                    </td>
+                    <td className="td">
+                      <div className="flex items-center gap-1">
+                        <Badge tone="navy">{tahapOf(p)}</Badge>
+                        <button
+                          className="rounded p-1 text-steel-400 hover:bg-steel-100 hover:text-navy-700 disabled:opacity-30 disabled:hover:bg-transparent"
+                          title="Mundur satu tahap (perlu alasan)"
+                          disabled={tahapIdx <= 0}
+                          onClick={() => setMundurFor(p)}
+                        >
+                          <ChevronLeft className="h-3.5 w-3.5" />
+                        </button>
+                        <button
+                          className="rounded p-1 text-steel-400 hover:bg-steel-100 hover:text-navy-700 disabled:opacity-30 disabled:hover:bg-transparent"
+                          title="Maju satu tahap"
+                          disabled={tahapIdx < 0 || tahapIdx >= TAHAP.length - 1}
+                          onClick={() => majuTahap(p)}
+                        >
+                          <ChevronRight className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
+                    </td>
+                    <td className="td">
+                      <Badge tone={prioritasTone[p.prioritas ?? "Sedang"] ?? "blue"}>{p.prioritas ?? "Sedang"}</Badge>
+                    </td>
+                    <td className="td"><StatusBadge status={p.status} /></td>
+                    <td className="td">
+                      <div className="flex items-center gap-2">
+                        <ProgressBar value={p.progress} className="w-20" tone={p.status === "Terlambat" ? "red" : "navy"} />
+                        <span className="text-xs font-medium text-steel-600">{p.progress}%</span>
+                      </div>
+                    </td>
+                    <td className="td font-medium text-navy-900">{fmtMiliar(p.budget)}</td>
+                    <td className="td text-steel-600">{fmtMiliar(p.actual)}</td>
+                    <td className="td text-steel-600">{p.manager}</td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
           {list.length === 0 && <p className="py-8 text-center text-sm text-steel-400">Tidak ada proyek yang cocok.</p>}
@@ -222,19 +417,44 @@ export default function Projects() {
       </Card>
 
       <Modal
+        open={showTemplate}
+        onClose={() => setShowTemplate(false)}
+        title="Buat dari Template"
+        subtitle="Preset ruang lingkup + WBS otomatis — nilai kontrak wajib diisi"
+      >
+        <div className="space-y-2">
+          {TEMPLATES.map((t) => (
+            <button
+              key={t.key}
+              onClick={() => pickTemplate(t)}
+              className="block w-full rounded-xl border border-steel-200 p-3 text-left transition-colors hover:border-ocean-400 hover:bg-surface"
+            >
+              <p className="text-sm font-semibold text-navy-900">{t.label} <Badge tone={t.type === "New Build" ? "navy" : t.type === "Repair" ? "cyan" : "violet"}>{t.type}</Badge></p>
+              <p className="mt-0.5 text-xs text-steel-500">{t.desc}</p>
+              <p className="mt-1 text-xs text-steel-500">{t.tasks.length} tahapan WBS · {t.scope.join(" · ")}</p>
+            </button>
+          ))}
+        </div>
+      </Modal>
+
+      <Modal
         open={showAdd}
-        onClose={() => setShowAdd(false)}
+        onClose={() => { setShowAdd(false); setPendingWbs(null); }}
         title="Proyek Baru"
         subtitle="Kapal baru otomatis terdaftar di Rekam Jejak Kapal"
         wide
         footer={
           <>
-            <button className="btn-secondary" onClick={() => setShowAdd(false)}>Batal</button>
+            <button className="btn-secondary" onClick={() => { setShowAdd(false); setPendingWbs(null); }}>Batal</button>
             <button className="btn-primary" onClick={save}>Simpan Proyek</button>
           </>
         }
       >
         <div className="space-y-3">
+          <p className="text-xs text-steel-500">
+            Kode proyek otomatis: <span className="font-mono font-semibold text-navy-900">{codePreview}</span>
+            {pendingWbs && <span className="ml-2">· WBS template {pendingWbs.length} tahapan akan dibuat</span>}
+          </p>
           <FormGrid>
             <Field label="Nama kapal">
               <input className="input" list="vessel-list" placeholder="cth: TB Samudra Jaya 08" value={form.vessel} onChange={(e) => setF("vessel", e.target.value)} />
@@ -260,6 +480,16 @@ export default function Projects() {
                 <option>Dalam Proses</option>
                 <option>Sedang Berjalan</option>
                 <option>Tertunda</option>
+              </select>
+            </Field>
+            <Field label="Tahap awal (E2E)">
+              <select className="input" value={form.tahap} onChange={(e) => setF("tahap", e.target.value)}>
+                {TAHAP.map((t) => <option key={t}>{t}</option>)}
+              </select>
+            </Field>
+            <Field label="Prioritas">
+              <select className="input" value={form.prioritas} onChange={(e) => setF("prioritas", e.target.value)}>
+                {PRIORITAS.map((r) => <option key={r}>{r}</option>)}
               </select>
             </Field>
             <Field label="Cabang">
@@ -294,6 +524,23 @@ export default function Projects() {
             <input className="input" value={form.scope} onChange={(e) => setF("scope", e.target.value)} />
           </Field>
         </div>
+      </Modal>
+
+      <Modal
+        open={mundurFor !== null}
+        onClose={() => { setMundurFor(null); setMundurReason(""); }}
+        title={`Tarik tahap: ${mundurFor?.vessel ?? ""}`}
+        subtitle={mundurFor ? `${mundurFor.id} · dari ${tahapOf(mundurFor)} ke ${TAHAP[TAHAP.indexOf(tahapOf(mundurFor)) - 1] ?? "-"}` : ""}
+        footer={
+          <>
+            <button className="btn-secondary" onClick={() => { setMundurFor(null); setMundurReason(""); }}>Batal</button>
+            <button className="btn-primary" onClick={confirmMundur}>Tarik Tahap</button>
+          </>
+        }
+      >
+        <Field label="Alasan penarikan tahap" hint="Wajib diisi — tercatat di log aktivitas proyek">
+          <textarea className="input" rows={3} value={mundurReason} onChange={(e) => setMundurReason(e.target.value)} placeholder="cth: Desain revisi class belum disetujui" />
+        </Field>
       </Modal>
     </div>
   );
