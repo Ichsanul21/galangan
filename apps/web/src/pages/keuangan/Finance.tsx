@@ -40,6 +40,16 @@ import {
   cashInTrend,
   ebitdaTrend,
 } from "../../data";
+import {
+  COA_EXCEL,
+  NL_EXCEL,
+  HUTANG_EXCEL,
+  PIUTANG_EXCEL,
+  KASBANK_EXCEL,
+  JU_PENYESUAIAN_EXCEL,
+  LAPORAN_EXCEL,
+  ASET_EXCEL,
+} from "../../data/financeExcel";
 
 const INV_NEXT: Record<string, string[]> = {
   Draft: ["Diajukan"],
@@ -55,11 +65,11 @@ const INV_NEXT: Record<string, string[]> = {
 const BILLING_TYPES = ["Milestone", "Progres", "Uang Muka", "Retensi", "T&M"] as const;
 
 const INV_PREFIX: Record<string, string> = {
-  Milestone: "INV-M",
-  Progres: "INV-P",
-  "Uang Muka": "INV-U",
-  Retensi: "INV-R",
-  "T&M": "INV-T",
+  Milestone: "INV/MS",
+  Progres: "INV/PR",
+  "Uang Muka": "INV/UM",
+  Retensi: "INV/RT",
+  "T&M": "INV/TM",
 };
 
 const DUNNING_NEXT: Record<string, string> = {
@@ -135,15 +145,29 @@ function downloadCsv(filename: string, header: string[], rows: (string | number)
   URL.revokeObjectURL(url);
 }
 
-const COA = [
-  { kode: "1100", akun: "Kas", tipe: "Aset" },
-  { kode: "1200", akun: "Piutang Usaha", tipe: "Aset" },
-  { kode: "2100", akun: "Hutang Usaha", tipe: "Liabilitas" },
-  { kode: "4100", akun: "Pendapatan Proyek", tipe: "Pendapatan" },
-  { kode: "5100", akun: "Beban Proyek", tipe: "Beban" },
-  { kode: "5200", akun: "Beban Gaji", tipe: "Beban" },
-  { kode: "6100", akun: "Pajak", tipe: "Beban" },
-];
+const COA = COA_EXCEL.map((c) => ({
+  kode: c.kode,
+  akun: c.nama,
+  tipe:
+    c.nrlr === "LR"
+      ? c.kode.startsWith("4") || c.kode.startsWith("7-1") || c.kode.startsWith("7-2")
+        ? "Pendapatan"
+        : "Beban"
+      : c.kode.startsWith("1")
+        ? "Aset"
+        : c.kode.startsWith("2")
+          ? "Liabilitas"
+          : c.kode.startsWith("3")
+            ? "Ekuitas"
+            : c.dk === "-"
+              ? "Header"
+              : "Aset",
+  dk: c.dk,
+  nrlr: c.nrlr,
+}));
+
+// Saldo pembanding Excel (Neraca Saldo Agustus 2026) untuk rekonsiliasi opening balance.
+const nlOf = (kode: string): { d: number; k: number } => NL_EXCEL[kode] ?? { d: 0, k: 0 };
 
 export default function Finance() {
   const { data, add, update, log, branch, inBranch } = useStore();
@@ -825,7 +849,7 @@ export default function Finance() {
       </div>
 
       <div className="mt-4 card">
-        <Tabs tabs={["Piutang (AR)", "Hutang (AP)", "Jadwal Bayar", "Invoice", "Project P&L", "Pajak", "Jurnal"]} active={tab} onChange={setTab} />
+        <Tabs tabs={["Piutang (AR)", "Hutang (AP)", "Kas & Bank", "Jadwal Bayar", "Invoice", "Buku Besar", "Project P&L", "Neraca", "Pajak", "Aset", "Jurnal"]} active={tab} onChange={setTab} />
         <div className="p-4">
           {tab === "Piutang (AR)" && (
             <div className="grid grid-cols-1 gap-5 lg:grid-cols-3">
@@ -1015,6 +1039,55 @@ export default function Finance() {
             </div>
           )}
 
+          {tab === "Kas & Bank" && (
+            <div className="space-y-4">
+              <CardHeader
+                title="Kas & Bank — Pembanding Excel Agustus 2026"
+                subtitle="Saldo awal + mutasi + saldo akhir per rekening (sheet JU,Kas,Bank + BB). No. dokumen 101/201/301/401, kode pembantu vendor/customer."
+              />
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead className="bg-surface sticky top-0 z-10">
+                    <tr><th className="th">Kode</th><th className="th">Rekening</th><th className="th">Saldo Awal</th><th className="th">Saldo Akhir Excel</th><th className="th">Selisih vs Aplikasi</th></tr>
+                  </thead>
+                  <tbody className="divide-y divide-steel-100">
+                    {KASBANK_EXCEL.map((r) => (
+                      <tr key={r.kode} className="hover:bg-surface">
+                        <td className="td font-mono text-xs font-semibold text-navy-900">{r.kode}</td>
+                        <td className="td text-xs text-steel-600">{r.nama}</td>
+                        <td className="td text-xs">{fmtRupiah(r.awal)}</td>
+                        <td className="td text-xs font-semibold">{fmtRupiah(r.akhir)}</td>
+                        <td className="td text-[11px] text-steel-400">Rekonsiliasi bulanan wajib sebelum tutup buku (toleransi tanggal ±3 hari)</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <Card className="p-4">
+                <CardHeader title="Jurnal Penyesuaian Agustus (template berimbang)" subtitle="PPN + penyusutan dari sheet JU — dipakai sebagai template posting ulang." />
+                <div className="overflow-x-auto px-1 pb-3">
+                  <table className="w-full">
+                    <thead className="bg-surface sticky top-0 z-10">
+                      <tr><th className="th">Tanggal</th><th className="th">Uraian</th><th className="th">Akun DB</th><th className="th">Debit</th><th className="th">Akun KR</th><th className="th">Kredit</th></tr>
+                    </thead>
+                    <tbody className="divide-y divide-steel-100">
+                      {JU_PENYESUAIAN_EXCEL.map((j, i) => (
+                        <tr key={i} className="hover:bg-surface">
+                          <td className="td font-mono text-xs text-steel-600">{j.tgl}</td>
+                          <td className="td text-xs text-steel-600">{j.uraian}</td>
+                          <td className="td font-mono text-xs">{j.db || "—"}</td>
+                          <td className="td text-xs">{j.dbAmt ? fmtRupiah(j.dbAmt) : "—"}</td>
+                          <td className="td font-mono text-xs">{j.kr}</td>
+                          <td className="td text-xs">{fmtRupiah(j.krAmt)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </Card>
+            </div>
+          )}
+
           {tab === "Jadwal Bayar" && (
             <div className="space-y-4">
               <CardHeader
@@ -1111,6 +1184,40 @@ export default function Finance() {
                   </tbody>
                 </table>
               </div>
+            </div>
+          )}
+
+          {tab === "Buku Besar" && (
+            <div className="space-y-4">
+              <CardHeader
+                title="Buku Besar & Neraca Lajur — Pembanding Excel"
+                subtitle={`Neraca Saldo seimbang Rp ${LAPORAN_EXCEL.nlSeimbang.toLocaleString("id-ID")} (sheet NL). Laba-Rugi D/K selisih = laba berjalan.`}
+              />
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+                <Card className="p-4"><p className="text-xs text-steel-500">Total Pendapatan (Excel)</p><p className="mt-1 text-lg font-bold text-navy-900">{fmtRupiah(LAPORAN_EXCEL.totalPendapatan)}</p><p className="mt-1 text-[11px] text-steel-400">4-101 Repair & Docking</p></Card>
+                <Card className="p-4"><p className="text-xs text-steel-500">Total Beban Pokok (Excel)</p><p className="mt-1 text-lg font-bold text-navy-900">{fmtRupiah(LAPORAN_EXCEL.totalBebanPokok)}</p><p className="mt-1 text-[11px] text-steel-400">5-101 + 5-200 + 5-500 + 5-600</p></Card>
+                <Card className="p-4"><p className="text-xs text-steel-500">Laba Bersih (Excel)</p><p className="mt-1 text-lg font-bold text-emerald-600">{fmtRupiah(LAPORAN_EXCEL.labaBersih)}</p><p className="mt-1 text-[11px] text-steel-400">Selisih NL Laba-Rugi</p></Card>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead className="bg-surface sticky top-0 z-10">
+                    <tr><th className="th">Kode</th><th className="th">Nama Akun</th><th className="th">D/K</th><th className="th">NR/LR</th><th className="th">Debit (NL)</th><th className="th">Kredit (NL)</th></tr>
+                  </thead>
+                  <tbody className="divide-y divide-steel-100">
+                    {COA_EXCEL.filter((c) => c.dk !== "-").map((c) => (
+                      <tr key={c.kode} className="hover:bg-surface">
+                        <td className="td font-mono text-xs font-semibold text-navy-900">{c.kode}</td>
+                        <td className="td text-xs text-steel-600">{c.nama}</td>
+                        <td className="td text-xs text-steel-500">{c.dk}</td>
+                        <td className="td text-xs text-steel-500">{c.nrlr}</td>
+                        <td className="td text-xs">{nlOf(c.kode).d ? fmtRupiah(nlOf(c.kode).d) : "—"}</td>
+                        <td className="td text-xs">{nlOf(c.kode).k ? fmtRupiah(nlOf(c.kode).k) : "—"}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <p className="text-xs text-steel-500">Sumber jurnal BB: Kas / Bank (BPD) / JPb / JPn / JM. Saldo akhir BB = pembanding kolom Debit/Kredit di atas.</p>
             </div>
           )}
 
@@ -1234,6 +1341,56 @@ export default function Finance() {
             </div>
           )}
 
+          {tab === "Neraca" && (
+            <div className="space-y-4">
+              <CardHeader title="Neraca + Laba Ditahan — Pembanding Excel Agustus 2026" subtitle={`Total neraca Rp ${LAPORAN_EXCEL.neracaTotal.toLocaleString("id-ID")} (Aktiva = Kewajiban + Ekuitas).`} />
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+                <Card className="p-4"><p className="text-xs text-steel-500">Aktiva Lancar</p><p className="mt-1 text-lg font-bold text-navy-900">{fmtRupiah(LAPORAN_EXCEL.aktivaLancar)}</p><p className="mt-1 text-[11px] text-steel-400">Dominan Piutang Direksi + Antar Perusahaan + Usaha</p></Card>
+                <Card className="p-4"><p className="text-xs text-steel-500">Nilai Buku Aktiva Tetap</p><p className="mt-1 text-lg font-bold text-navy-900">{fmtRupiah(LAPORAN_EXCEL.bukuAktivaTetap)}</p><p className="mt-1 text-[11px] text-steel-400">Perolehan 15,57T − Akum 9,65T</p></Card>
+                <Card className="p-4"><p className="text-xs text-steel-500">Laba Ditahan Awal</p><p className="mt-1 text-lg font-bold text-navy-900">{fmtRupiah(LAPORAN_EXCEL.labaDitahanAwal)}</p><p className="mt-1 text-[11px] text-steel-400">Sheet Laba Ditahan</p></Card>
+                <Card className="p-4"><p className="text-xs text-steel-500">Laba Ditahan Akhir</p><p className="mt-1 text-lg font-bold text-emerald-600">{fmtRupiah(LAPORAN_EXCEL.labaDitahanAkhir)}</p><p className="mt-1 text-[11px] text-steel-400">Awal + berjalan {fmtRupiah(LAPORAN_EXCEL.labaBerjalan)}</p></Card>
+              </div>
+              <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+                <Card className="p-4">
+                  <CardHeader title="Subledger Hutang Excel (53 vendor)" subtitle="Kuning = vendor Non-PPn. Saldo akhir = opening AP." />
+                  <div className="max-h-72 overflow-y-auto">
+                    <table className="w-full">
+                      <thead className="bg-surface sticky top-0 z-10"><tr><th className="th">Vendor</th><th className="th">Awal</th><th className="th">Akhir</th><th className="th">PPn</th></tr></thead>
+                      <tbody className="divide-y divide-steel-100">
+                        {HUTANG_EXCEL.map((h) => (
+                          <tr key={h.v} className="hover:bg-surface">
+                            <td className="td text-xs font-medium text-navy-900">{h.v}</td>
+                            <td className="td text-xs text-steel-600">{h.awal ? fmtRupiah(h.awal) : "—"}</td>
+                            <td className="td text-xs font-semibold">{h.akhir ? fmtRupiah(h.akhir) : "—"}</td>
+                            <td className="td text-xs">{h.nonPpn ? <Badge tone="amber">Non-PPn</Badge> : <span className="text-steel-400">PPn</span>}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </Card>
+                <Card className="p-4">
+                  <CardHeader title="Subledger Piutang Excel (63 customer)" subtitle="Kuning = Non-PPn / perorangan. Saldo akhir = opening AR." />
+                  <div className="max-h-72 overflow-y-auto">
+                    <table className="w-full">
+                      <thead className="bg-surface sticky top-0 z-10"><tr><th className="th">Customer</th><th className="th">Awal</th><th className="th">Akhir</th><th className="th">PPn</th></tr></thead>
+                      <tbody className="divide-y divide-steel-100">
+                        {PIUTANG_EXCEL.map((p) => (
+                          <tr key={p.c} className="hover:bg-surface">
+                            <td className="td text-xs font-medium text-navy-900">{p.c}</td>
+                            <td className="td text-xs text-steel-600">{p.awal ? fmtRupiah(p.awal) : "—"}</td>
+                            <td className="td text-xs font-semibold">{p.akhir ? fmtRupiah(p.akhir) : "—"}</td>
+                            <td className="td text-xs">{p.nonPpn ? <Badge tone="amber">Non-PPn</Badge> : <span className="text-steel-400">PPn</span>}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </Card>
+              </div>
+            </div>
+          )}
+
           {tab === "Pajak" && (
             <div className="space-y-4">
               <CardHeader
@@ -1296,6 +1453,34 @@ export default function Finance() {
                 </p>
                 <p className="mt-1 text-xs text-steel-500">e-Faktur periode {activePeriod || "—"}: {fmtJumlah(efakturRows.length)} invoice Lunas (kolom NSFP, NoFaktur, Tanggal, Client, DPP, PPN).</p>
               </Card>
+            </div>
+          )}
+
+          {tab === "Aset" && (
+            <div className="space-y-4">
+              <CardHeader
+                title="Aset Tetap — Penyusutan Fiskal 2025 (GL)"
+                subtitle="Perolehan 15,57T. Beban bulanan otomatis: 6-021→1-280 Kendaraan, 6-021A→1-281 Alat Berat, 6-021B→1-282 Mesin, 6-021C→1-270 Bangunan, 6-022→1-290 Inventaris."
+              />
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead className="bg-surface sticky top-0 z-10">
+                    <tr><th className="th">Golongan</th><th className="th">Perolehan</th><th className="th">Sisa Awal</th><th className="th">Susut Thn Berjalan</th><th className="th">Akun Beban</th><th className="th">Akun Akumulasi</th></tr>
+                  </thead>
+                  <tbody className="divide-y divide-steel-100">
+                    {ASET_EXCEL.map((a) => (
+                      <tr key={a.gol} className="hover:bg-surface">
+                        <td className="td text-xs font-medium text-navy-900">{a.gol}</td>
+                        <td className="td text-xs">{fmtRupiah(a.perolehan)}</td>
+                        <td className="td text-xs text-steel-600">{fmtRupiah(a.sisaAwal)}</td>
+                        <td className="td text-xs font-semibold">{fmtRupiah(a.susut)}</td>
+                        <td className="td font-mono text-[11px] text-steel-600">{a.gol === "Bangunan" ? "6-021 C" : a.gol === "Alat Berat" ? "6-021 A" : a.gol === "Kendaraan" ? "6-021" : a.gol.includes("Mesin") ? "6-021 B" : "6-022"}</td>
+                        <td className="td font-mono text-[11px] text-steel-600">{a.gol === "Bangunan" ? "1-270" : a.gol === "Alat Berat" ? "1-281" : a.gol === "Kendaraan" ? "1-280" : a.gol.includes("Mesin") ? "1-282" : "1-290"}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             </div>
           )}
 
