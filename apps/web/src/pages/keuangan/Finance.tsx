@@ -1071,7 +1071,7 @@ export default function Finance() {
             <div className="space-y-4">
               <CardHeader
                 title="Daftar Akun — Sheet Akun Excel"
-                subtitle="Kolom: NO AKUN · NAMA AKUN · AKUN D/K · AKUN NR/LR. Baris header (D/K = −) tidak bisa dihapus."
+                subtitle="Baris header (D/K = −) tidak bisa dihapus."
                 action={<button className="btn-primary text-xs" onClick={() => { setCoaTarget(null); setCoaForm({ kode: "", nama: "", dk: "D", nrlr: "NR" }); setShowCoa(true); }}>+ Tambah Akun</button>}
               />
               <div className="overflow-x-auto">
@@ -1112,7 +1112,7 @@ export default function Finance() {
           {tab === "Piutang (AR)" && (
             <div className="grid grid-cols-1 gap-5 lg:grid-cols-3">
               <div className="lg:col-span-2">
-                <CardHeader title="Daftar Invoice" subtitle="Kolom sheet Piutang: KODE PEMBANTU · SALDO AWAL · AKHIR. Umur = hari ini − jatuh tempo." />
+                <CardHeader title="Daftar Invoice" subtitle="Umur = hari ini − jatuh tempo." />
                 <div className="overflow-x-auto">
                   <table className="w-full">
                     <thead className="bg-surface sticky top-0 z-10">
@@ -1265,7 +1265,7 @@ export default function Finance() {
               <div className="flex justify-end">
                 <button className="btn-secondary text-xs" onClick={() => setShowAp(true)}>+ Catat Hutang</button>
               </div>
-              <p className="text-xs text-steel-500">Kolom sheet Hutang: KODE PEMBANTU · SALDO AWAL BULAN · AKHIR SALDO. Kuning di Excel = vendor Non-PPn.</p>
+              <p className="text-xs text-steel-500">Tanda kuning di Excel = vendor Non-PPn.</p>
               <div className="overflow-x-auto">
                 <table className="w-full">
                   <thead className="bg-surface sticky top-0 z-10">
@@ -1830,7 +1830,7 @@ export default function Finance() {
             <div className="space-y-4">
               <CardHeader
                 title="Aset Tetap — Sheet Aset Excel"
-                subtitle="Kolom: NO URUT · NAMA/JENIS HARTA · KEL. HARTA · PEROLEHAN (BULAN/TAHUN/NILAI) · METODE · SUSUT/THN · SUSUT/BLN. Beban bulanan: 6-021→1-280, 6-021A→1-281, 6-021B→1-282, 6-021C→1-270, 6-022→1-290."
+                subtitle="Beban bulanan: 6-021→1-280, 6-021A→1-281, 6-021B→1-282, 6-021C→1-270, 6-022→1-290."
                 action={<button className="btn-primary text-xs" onClick={() => setShowAst(true)}>+ Tambah Aset</button>}
               />
               <div className="overflow-x-auto">
@@ -1877,7 +1877,6 @@ export default function Finance() {
             <div className="space-y-4">
               <CardHeader
                 title="Jurnal Umum — Sheet JU Excel"
-                subtitle="Kolom: TANGGAL · KODE PEMBANTU · DOKUMEN · URAIAN · AKUN DB · AKUN KR · NOMINAL. Berimbang (debit = kredit)."
                 action={<button className="btn-primary text-xs" onClick={() => setShowJu(true)}>+ Catat Jurnal</button>}
               />
               <div className="overflow-x-auto">
@@ -2231,7 +2230,7 @@ export default function Finance() {
         </div>
       </Modal>
 
-      <Modal open={showCoa} onClose={() => { setShowCoa(false); setCoaTarget(null); }} title={coaTarget ? `Ubah akun ${coaTarget.kode}?` : "Tambah Akun"} subtitle="Kolom sheet Akun: NO AKUN · NAMA AKUN · D/K · NR/LR"
+      <Modal open={showCoa} onClose={() => { setShowCoa(false); setCoaTarget(null); }} title={coaTarget ? `Ubah akun ${coaTarget.kode}?` : "Tambah Akun"}
         footer={<><button className="btn-secondary" onClick={() => { setShowCoa(false); setCoaTarget(null); }}>Batal</button><button className="btn-primary" onClick={saveCoa}>Simpan</button></>}>
         <div className="space-y-3">
           <FormGrid>
@@ -2334,7 +2333,7 @@ export default function Finance() {
         </div>
       </Modal>
 
-      <Modal open={showAst} onClose={() => setShowAst(false)} title="Tambah Aset" subtitle="Kolom sheet Aset — tarif fiskal GL: BP 5%, Kel.1 25%, Kel.2 12,5%, Kel.3 6,25%"
+      <Modal open={showAst} onClose={() => setShowAst(false)} title="Tambah Aset" subtitle="Tarif fiskal GL: BP 5%, Kel.1 25%, Kel.2 12,5%, Kel.3 6,25%"
         footer={<><button className="btn-secondary" onClick={() => setShowAst(false)}>Batal</button><button className="btn-primary" onClick={saveAst}>Simpan</button></>}>
         <div className="space-y-3">
           <FormGrid>
