@@ -33,14 +33,6 @@ import { fmtRupiah, fmtMiliar, fmtTanggal, fmtJumlah, todayISO } from "../../uti
 import { getSetting } from "../../utils/settings";
 import { exportExcel } from "../../utils/export";
 import {
-  cashflowSeries,
-  agingBuckets,
-  sparkRevenue,
-  apTrend,
-  cashInTrend,
-  ebitdaTrend,
-} from "../../data";
-import {
   COA_EXCEL,
   NL_EXCEL,
   HUTANG_EXCEL,
@@ -48,7 +40,6 @@ import {
   KASBANK_EXCEL,
   JU_PENYESUAIAN_EXCEL,
   LAPORAN_EXCEL,
-  ASET_EXCEL,
 } from "../../data/financeExcel";
 
 const INV_NEXT: Record<string, string[]> = {
@@ -145,33 +136,34 @@ function downloadCsv(filename: string, header: string[], rows: (string | number)
   URL.revokeObjectURL(url);
 }
 
-const COA = COA_EXCEL.map((c) => ({
-  kode: c.kode,
-  akun: c.nama,
-  tipe:
-    c.nrlr === "LR"
-      ? c.kode.startsWith("4") || c.kode.startsWith("7-1") || c.kode.startsWith("7-2")
-        ? "Pendapatan"
-        : "Beban"
-      : c.kode.startsWith("1")
-        ? "Aset"
-        : c.kode.startsWith("2")
-          ? "Liabilitas"
-          : c.kode.startsWith("3")
-            ? "Ekuitas"
-            : c.dk === "-"
-              ? "Header"
-              : "Aset",
-  dk: c.dk,
-  nrlr: c.nrlr,
-}));
+const COA = (rows: StoreItem[]): { kode: string; akun: string; tipe: string; dk: string; nrlr: string }[] =>
+  rows.map((c) => ({
+    kode: String(c.kode),
+    akun: String(c.nama),
+    tipe:
+      String(c.nrlr) === "LR"
+        ? String(c.kode).startsWith("4") || String(c.kode).startsWith("7-1") || String(c.kode).startsWith("7-2")
+          ? "Pendapatan"
+          : "Beban"
+        : String(c.kode).startsWith("1")
+          ? "Aset"
+          : String(c.kode).startsWith("2")
+            ? "Liabilitas"
+            : String(c.kode).startsWith("3")
+              ? "Ekuitas"
+              : String(c.dk) === "-"
+                ? "Header"
+                : "Aset",
+    dk: String(c.dk),
+    nrlr: String(c.nrlr),
+  }));
 
 // Saldo pembanding Excel (Neraca Saldo Agustus 2026) untuk rekonsiliasi opening balance.
 const nlOf = (kode: string): { d: number; k: number } => NL_EXCEL[kode] ?? { d: 0, k: 0 };
 
 export default function Finance() {
-  const { data, add, update, log, branch, inBranch } = useStore();
-  const [tab, setTab] = useState("Piutang (AR)");
+  const { data, add, update, remove, log, branch, inBranch } = useStore();
+  const [tab, setTab] = useState("Akun");
   const today = todayISO();
 
   const projectById = useMemo(() => {
@@ -195,6 +187,19 @@ export default function Finance() {
   const payables = useMemo(() => inBranch(data.payables ?? []), [data.payables, branch]);
   const projectsVisible = useMemo(() => inBranch(data.projects ?? []), [data.projects, branch]);
 
+  // CoA live dari store (seed = sheet Akun Excel), fallback ke file Excel.
+  const coaRows: StoreItem[] = useMemo(
+    () =>
+      data.coa && data.coa.length > 0
+        ? data.coa
+        : COA_EXCEL.map((c) => ({ id: `COA-${c.kode}`, kode: c.kode, nama: c.nama, dk: c.dk, nrlr: c.nrlr })),
+    [data.coa]
+  );
+  const coaList = useMemo(() => COA(coaRows), [coaRows]);
+  const coaKode = useMemo(() => new Set(coaRows.map((c) => String(c.kode))), [coaRows]);
+  const manJournals = useMemo(() => data.journals ?? [], [data.journals]);
+  const assetRows = useMemo(() => data.assets ?? [], [data.assets]);
+
   const [showInv, setShowInv] = useState(false);
   const [invForm, setInvForm] = useState({
     project: "",
@@ -206,6 +211,7 @@ export default function Finance() {
     paymentTerm: "Termin 1",
     nsfp: "",
     noFaktur: "",
+    kodePembantu: "",
   });
   const [invLines, setInvLines] = useState<InvLine[]>([emptyLine()]);
   const [payTarget, setPayTarget] = useState<StoreItem | null>(null);
@@ -213,7 +219,9 @@ export default function Finance() {
   const [proof, setProof] = useState(emptyProof);
   const [rejectInv, setRejectInv] = useState<StoreItem | null>(null);
   const [showAp, setShowAp] = useState(false);
-  const [apForm, setApForm] = useState({ v: "", po: "", amt: "", due: "" });
+  const [apForm, setApForm] = useState({ v: "", kodePembantu: "", po: "", openAwal: "", amt: "", due: "", nonPpn: false });
+  const [apEdit, setApEdit] = useState<StoreItem | null>(null);
+  const [apEditForm, setApEditForm] = useState({ v: "", kodePembantu: "", openAwal: "", amt: "", due: "", nonPpn: false });
   const [releaseTarget, setReleaseTarget] = useState<StoreItem | null>(null);
   const [releaseForm, setReleaseForm] = useState({ date: todayISO(), ba: "" });
   const [taxId, setTaxId] = useState("");
@@ -239,6 +247,42 @@ export default function Finance() {
   const [dirTarget, setDirTarget] = useState<StoreItem | null>(null);
   const [dirCheck, setDirCheck] = useState(false);
   const [dirName, setDirName] = useState("");
+
+  // Akun (sheet Akun): tambah/ubah sesuai kolom NO AKUN, NAMA AKUN, D/K, NR/LR.
+  const [showCoa, setShowCoa] = useState(false);
+  const [coaForm, setCoaForm] = useState({ kode: "", nama: "", dk: "D", nrlr: "NR" });
+  const [coaTarget, setCoaTarget] = useState<StoreItem | null>(null);
+
+  // Jurnal (sheet JU): tambah jurnal manual berimbang.
+  const [showJu, setShowJu] = useState(false);
+  const [juForm, setJuForm] = useState({ date: todayISO(), kodePembantu: "", dokumen: "", uraian: "", db: "", kr: "", amount: "", sumber: "JU" });
+
+  // Kas & Bank: catat mutasi masuk/keluar per rekening.
+  const [showMut, setShowMut] = useState(false);
+  const [mutForm, setMutForm] = useState({ date: todayISO(), rekening: "1-111", arah: "Masuk", lawan: "", kodePembantu: "", dokumen: "", uraian: "", amount: "" });
+
+  // Piutang: ubah invoice yang belum lunas.
+  const [invEdit, setInvEdit] = useState<StoreItem | null>(null);
+  const [invEditForm, setInvEditForm] = useState({ client: "", kodePembantu: "", due: "", paymentTerm: "", milestoneRef: "", nsfp: "", noFaktur: "" });
+
+  // Aset (sheet Aset): tambah harta baru, susut GL otomatis.
+  const [showAst, setShowAst] = useState(false);
+  const [astForm, setAstForm] = useState({ nama: "", kelompok: "2", bulan: "", tahun: "", nilai: "", metode: "GL" });
+
+  const KAS_REKENING = coaRows.filter((c) => /^(1-11|1-12)/.test(String(c.kode)) && String(c.dk) !== "-");
+  const kasSaldo = useMemo(() => {
+    const m: Record<string, number> = {};
+    for (const r of KASBANK_EXCEL) m[r.kode] = r.awal;
+    for (const j of manJournals) {
+      if (j.status === "Void") continue;
+      if (j.sumber !== "Kas" && j.sumber !== "Bank") continue;
+      const amt = num(j.amount);
+      if (String(j.db) in m) m[String(j.db)] += amt;
+      if (String(j.kr) in m) m[String(j.kr)] -= amt;
+    }
+    return m;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [manJournals]);
 
   const isTMForm = invForm.billingType === "T&M";
   const invTotal = invLines.reduce((s, l) => s + lineAmount(l, isTMForm), 0);
@@ -272,9 +316,27 @@ export default function Finance() {
     [arOpen]
   );
 
-  const cfLast = cashflowSeries[cashflowSeries.length - 1];
-  const cfPrev = cashflowSeries[cashflowSeries.length - 2];
-  const cfDelta = cfPrev && cfPrev.masuk ? Math.round(((cfLast.masuk - cfPrev.masuk) / cfPrev.masuk) * 100) : 0;
+  const AR_DONUT_COLORS = ["#22c55e", "#f59e0b", "#f97316", "#ef4444", "#8b5cf6", "#0b3a63"];
+
+  const agingDonut = useMemo(
+    () =>
+      agingReal.map((b, i) => ({
+        name: b.name,
+        value: Math.round((b.total / 1000000000) * 10) / 10,
+        color: AR_DONUT_COLORS[i % AR_DONUT_COLORS.length],
+      })),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [agingReal]
+  );
+  const agingDonutTotal = agingDonut.reduce((s, d) => s + d.value, 0);
+
+  // Kas & Bank dari Excel (sheet JU,Kas,Bank + BB) — bukan dummy.
+  const kasAwal = KASBANK_EXCEL.reduce((s, r) => s + r.awal, 0);
+  const kasAkhir = KASBANK_EXCEL.reduce((s, r) => s + r.akhir, 0);
+  const kasDelta = kasAwal ? Math.round(((kasAkhir - kasAwal) / Math.abs(kasAwal)) * 100) : 0;
+
+  // Hutang Excel awal vs akhir untuk spark AP.
+  const apAwalExcel = HUTANG_EXCEL.reduce((s, h) => s + (h.awal || 0), 0);
 
   const retentionTotal = invoices
     .filter((i) => num(i.retentionAmt) > 0 && i.retentionStatus !== "Released")
@@ -530,9 +592,30 @@ export default function Finance() {
       .map((period) => ({ period, ...agg[period], laba: agg[period].revenue - agg[period].costProj - agg[period].salary - agg[period].writeoff }));
   }, [data.invoices, data.payables, data.payroll]);
 
-  const labaLast = plMonthly.length ? plMonthly[plMonthly.length - 1].laba : 0;
+  const labaLast = plMonthly.length ? plMonthly[plMonthly.length - 1].laba : LAPORAN_EXCEL.labaBersih;
   const labaPrev = plMonthly.length > 1 ? plMonthly[plMonthly.length - 2].laba : 0;
   const labaDelta = labaPrev ? Math.round(((labaLast - labaPrev) / Math.abs(labaPrev)) * 100) : 0;
+
+  // Arus kas live dari jurnal Lunas (masuk = invoice Lunas, keluar = payable + payroll).
+  // Kosong bila belum ada pelunasan — grafik menampilkan empty state, bukan kurva dummy.
+  const flowMonthly = plMonthly.map((p) => ({
+    month: p.period.slice(5),
+    masuk: Math.round(((p.revenue || 0) / 1000000000) * 10) / 10,
+    keluar: Math.round((((p.costProj || 0) + (p.salary || 0)) / 1000000000) * 10) / 10,
+  }));
+  const labaSpark =
+    plMonthly.length > 0
+      ? plMonthly.map((p) => ({ name: p.period.slice(5), v: Math.round((p.laba / 1000000000) * 10) / 10 }))
+      : [{ name: "Agu", v: Math.round((LAPORAN_EXCEL.labaBersih / 1000000000) * 10) / 10 }];
+  const arSpark = agingReal.map((b) => ({ name: b.name, v: Math.round((b.total / 1000000000) * 10) / 10 }));
+  const apSpark = [
+    { name: "Awal", v: Math.round((apAwalExcel / 1000000000) * 10) / 10 },
+    { name: "Akhir", v: Math.round((apTotal / 1000000000) * 10) / 10 },
+  ];
+  const kasSpark = [
+    { name: "Awal", v: Math.round((kasAwal / 1000000000) * 10) / 10 },
+    { name: "Akhir", v: Math.round((kasAkhir / 1000000000) * 10) / 10 },
+  ];
 
   const balance = useMemo(() => {
     const revTotal = (data.invoices ?? []).filter((i) => i.status === "Lunas").reduce((s, i) => s + num(i.amount), 0);
@@ -592,6 +675,7 @@ export default function Finance() {
     const created = add("invoices", {
       id: invId,
       client: proj.client,
+      kodePembantu: invForm.kodePembantu.trim() || proj.client,
       project: proj.id,
       amount: total,
       due: invForm.due,
@@ -614,7 +698,7 @@ export default function Finance() {
     }
     toast(`Invoice ${created.id} dibuat (Draft)`);
     setShowInv(false);
-    setInvForm({ project: "", billingType: "Milestone", milestoneRef: "", serviceRef: "", retentionPct: "5", due: "", paymentTerm: "Termin 1", nsfp: "", noFaktur: "" });
+    setInvForm({ project: "", billingType: "Milestone", milestoneRef: "", serviceRef: "", retentionPct: "5", due: "", paymentTerm: "Termin 1", nsfp: "", noFaktur: "", kodePembantu: "" });
     setInvLines([emptyLine()]);
   };
 
@@ -648,8 +732,140 @@ export default function Finance() {
     setConfirmWriteOff(false);
   };
 
-  const stepInvoice = (inv: StoreItem, next: string) => {
-    if (next === "Lunas") {
+  // --- Akun: tambah / ubah / hapus (kolom sheet Akun) ---
+  const saveCoa = () => {
+    const kode = coaForm.kode.trim();
+    if (!kode) { toast("No. akun wajib diisi", "info"); return; }
+    if (!coaForm.nama.trim()) { toast("Nama akun wajib diisi", "info"); return; }
+    if (coaTarget) {
+      update("coa", coaTarget.id, { nama: coaForm.nama.trim(), dk: coaForm.dk, nrlr: coaForm.nrlr });
+      log("mengubah akun", kode, "Keuangan");
+      toast(`Akun ${kode} diubah`);
+    } else {
+      if (coaKode.has(kode)) { toast("No. akun sudah ada", "info"); return; }
+      add("coa", { id: `COA-${kode}`, kode, nama: coaForm.nama.trim(), dk: coaForm.dk, nrlr: coaForm.nrlr }, { action: "menambah akun", module: "Keuangan" });
+      toast(`Akun ${kode} ditambah`);
+    }
+    setShowCoa(false);
+    setCoaTarget(null);
+    setCoaForm({ kode: "", nama: "", dk: "D", nrlr: "NR" });
+  };
+
+  // --- Jurnal: tambah manual berimbang (kolom sheet JU) ---
+  const saveJu = () => {
+    if (!juForm.date) { toast("Tanggal wajib diisi", "info"); return; }
+    if (!juForm.uraian.trim()) { toast("Uraian wajib diisi", "info"); return; }
+    if (!juForm.db || !juForm.kr) { toast("Akun DB dan KR wajib diisi", "info"); return; }
+    if (juForm.db === juForm.kr) { toast("Akun DB dan KR harus berbeda", "info"); return; }
+    if (!coaKode.has(juForm.db) || !coaKode.has(juForm.kr)) { toast("Akun harus terdaftar di CoA", "info"); return; }
+    if (!num(juForm.amount) || num(juForm.amount) <= 0) { toast("Nominal harus lebih dari 0", "info"); return; }
+    add("journals", {
+      date: juForm.date, kodePembantu: juForm.kodePembantu.trim(), dokumen: juForm.dokumen.trim() || "-",
+      uraian: juForm.uraian.trim(), db: juForm.db, kr: juForm.kr, amount: num(juForm.amount),
+      sumber: juForm.sumber, status: "Posted",
+    }, { action: "mencatat jurnal", module: "Keuangan" });
+    toast(`Jurnal ${juForm.db} → ${juForm.kr} tersimpan (Posted, berimbang)`);
+    setShowJu(false);
+    setJuForm({ date: todayISO(), kodePembantu: "", dokumen: "", uraian: "", db: "", kr: "", amount: "", sumber: "JU" });
+  };
+
+  // --- Kas & Bank: mutasi masuk/keluar per rekening ---
+  const saveMut = () => {
+    if (!mutForm.date) { toast("Tanggal wajib diisi", "info"); return; }
+    if (!mutForm.rekening) { toast("Pilih rekening kas/bank", "info"); return; }
+    if (!mutForm.lawan) { toast("Pilih akun lawan", "info"); return; }
+    if (mutForm.lawan === mutForm.rekening) { toast("Akun lawan harus berbeda", "info"); return; }
+    if (!mutForm.uraian.trim()) { toast("Uraian wajib diisi", "info"); return; }
+    if (!num(mutForm.amount) || num(mutForm.amount) <= 0) { toast("Nominal harus lebih dari 0", "info"); return; }
+    const db = mutForm.arah === "Masuk" ? mutForm.rekening : mutForm.lawan;
+    const kr = mutForm.arah === "Masuk" ? mutForm.lawan : mutForm.rekening;
+    add("journals", {
+      date: mutForm.date, kodePembantu: mutForm.kodePembantu.trim(), dokumen: mutForm.dokumen.trim() || "-",
+      uraian: mutForm.uraian.trim(), db, kr, amount: num(mutForm.amount), sumber: mutForm.rekening.startsWith("1-11") ? "Kas" : "Bank", status: "Posted",
+    }, { action: "mencatat mutasi kas/bank", module: "Keuangan" });
+    toast(`Mutasi ${mutForm.arah} ${mutForm.rekening} tersimpan`);
+    setShowMut(false);
+    setMutForm({ date: todayISO(), rekening: "1-111", arah: "Masuk", lawan: "", kodePembantu: "", dokumen: "", uraian: "", amount: "" });
+  };
+
+  // --- Hutang: simpan + ubah (kolom sheet Hutang) ---
+  const saveAp = () => {
+    if (!apForm.v.trim()) { toast("Vendor wajib diisi", "info"); return; }
+    if (!num(apForm.amt) || num(apForm.amt) <= 0) { toast("Saldo akhir harus lebih dari 0", "info"); return; }
+    if (!apForm.due) { toast("Jatuh tempo wajib diisi", "info"); return; }
+    const created = add("payables", {
+      v: apForm.v.trim(), kodePembantu: apForm.kodePembantu.trim() || apForm.v.trim(),
+      po: apForm.po.trim() || "OPEN-0826", openAwal: num(apForm.openAwal), amt: num(apForm.amt),
+      due: apForm.due, pph: apForm.nonPpn ? "Non-PPn" : "2%", st: "Belum Dibayar",
+    }, { action: "mencatat hutang", module: "Keuangan" });
+    toast(`Hutang ${created.id} dicatat`);
+    setShowAp(false);
+    setApForm({ v: "", kodePembantu: "", po: "", openAwal: "", amt: "", due: "", nonPpn: false });
+  };
+
+  const saveApEdit = () => {
+    if (!apEdit) return;
+    if (!apEditForm.v.trim()) { toast("Vendor wajib diisi", "info"); return; }
+    if (!num(apEditForm.amt) || num(apEditForm.amt) <= 0) { toast("Saldo akhir harus lebih dari 0", "info"); return; }
+    update("payables", apEdit.id, {
+      v: apEditForm.v.trim(), kodePembantu: apEditForm.kodePembantu.trim() || apEditForm.v.trim(),
+      openAwal: num(apEditForm.openAwal), amt: num(apEditForm.amt), due: apEditForm.due,
+      pph: apEditForm.nonPpn ? "Non-PPn" : "2%",
+    });
+    log("mengubah hutang", apEdit.id, "Keuangan");
+    toast(`Hutang ${apEdit.id} diubah`);
+    setApEdit(null);
+  };
+
+  // --- Piutang: ubah invoice belum lunas ---
+  const saveInvEdit = () => {
+    if (!invEdit) return;
+    if (!invEditForm.client.trim()) { toast("Customer wajib diisi", "info"); return; }
+    if (!invEditForm.due) { toast("Jatuh tempo wajib diisi", "info"); return; }
+    update("invoices", invEdit.id, {
+      client: invEditForm.client.trim(),
+      kodePembantu: invEditForm.kodePembantu.trim() || invEditForm.client.trim(),
+      due: invEditForm.due, paymentTerm: invEditForm.paymentTerm,
+      milestoneRef: invEditForm.milestoneRef.trim(), nsfp: invEditForm.nsfp.trim(), noFaktur: invEditForm.noFaktur.trim(),
+    });
+    log("mengubah invoice", invEdit.id, "Keuangan");
+    toast(`Invoice ${invEdit.id} diubah`);
+    setInvEdit(null);
+  };
+
+  // --- Aset: tambah harta (kolom sheet Aset), tarif fiskal GL ---
+  const AST_TARIF: Record<string, number> = { BP: 5, "1": 25, "2": 12.5, "3": 6.25 };
+  const saveAst = () => {
+    if (!astForm.nama.trim()) { toast("Nama/jenis harta wajib diisi", "info"); return; }
+    if (!num(astForm.nilai) || num(astForm.nilai) <= 0) { toast("Nilai perolehan harus lebih dari 0", "info"); return; }
+    const tarif = AST_TARIF[astForm.kelompok] ?? 12.5;
+    const susutTahun = Math.round((num(astForm.nilai) * tarif) / 100);
+    add("assets", {
+      nama: astForm.nama.trim(), kelompok: astForm.kelompok, bulan: astForm.bulan.trim() || "-",
+      tahun: astForm.tahun.trim() || today.slice(0, 4), nilai: num(astForm.nilai),
+      sisaAwal: num(astForm.nilai), susutTahun, metode: astForm.metode || "GL",
+    }, { action: "menambah aset", module: "Keuangan" });
+    toast(`Aset ${astForm.nama.trim()} ditambah (susut ${tarif}%/thn)`);
+    setShowAst(false);
+    setAstForm({ nama: "", kelompok: "2", bulan: "", tahun: "", nilai: "", metode: "GL" });
+  };
+
+  // --- Laba Rugi ala sheet LR: kelompok dari NL per kode akun ---
+  const lrRows = useMemo(() => {
+    const amtD = (kode: string): number => nlOf(kode).d;
+    const amtK = (kode: string): number => nlOf(kode).k;
+    const rows: { kode: string; pos: string; nilai: number }[] = [];
+    for (const c of coaRows) {
+      const k = String(c.kode);
+      if (/^4-/.test(k) && (amtD(k) || amtK(k))) rows.push({ kode: k, pos: String(c.nama), nilai: amtK(k) - amtD(k) });
+      else if (/^[567]-/.test(k) && String(c.dk) !== "-" && (amtD(k) || amtK(k)))
+        rows.push({ kode: k, pos: String(c.nama), nilai: String(c.dk) === "D" ? amtD(k) - amtK(k) : amtK(k) - amtD(k) });
+    }
+    const sum = (re: RegExp): number => rows.filter((r) => re.test(r.kode)).reduce((s, r) => s + r.nilai, 0);
+    return { rows, pend: sum(/^4-/), bebanPokok: sum(/^5-/), biayaUsaha: sum(/^6-/), lainMasuk: sum(/^7-[12]/), lainKeluar: sum(/^7-[34]/) };
+  }, [coaRows]);
+
+  const stepInvoice = (inv: StoreItem, next: string) => {    if (next === "Lunas") {
       setPayTarget(inv);
       setProof(emptyProof());
       return;
@@ -830,35 +1046,77 @@ export default function Finance() {
       />
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <KpiCard label="Total Piutang (AR)" value={fmtMiliar(arTotal)} delta={`${lateCount} telat`} deltaDirection="down" icon={<Wallet className="h-5 w-5" />} chip="rose" spark={sparkRevenue} />
-        <KpiCard label="Total Hutang (AP)" value={fmtMiliar(apTotal)} hint="Kepada vendor" icon={<Wallet className="h-5 w-5" />} chip="navy" spark={apTrend} />
+        <KpiCard label="Total Piutang (AR)" value={fmtMiliar(arTotal)} delta={`${lateCount} telat`} deltaDirection="down" icon={<Wallet className="h-5 w-5" />} chip="rose" spark={arSpark} />
+        <KpiCard label="Total Hutang (AP)" value={fmtMiliar(apTotal)} hint="Saldo akhir Excel Hutang" icon={<Wallet className="h-5 w-5" />} chip="navy" spark={apSpark} />
         <KpiCard
-          label={`Cashflow Masuk (${cfLast.month})`}
-          value={`Rp ${cfLast.masuk.toLocaleString("id-ID")} M`}
-          delta={`${cfDelta >= 0 ? "+" : ""}${cfDelta}% vs bulan lalu`}
-          deltaDirection={cfDelta >= 0 ? "up" : "down"}
-          icon={<ArrowDownToLine className="h-5 w-5" />} chip="teal" spark={cashInTrend}
+          label="Kas & Bank (Excel Agu-2026)"
+          value={fmtMiliar(kasAkhir)}
+          delta={`${kasDelta >= 0 ? "+" : ""}${kasDelta}% vs saldo awal`}
+          deltaDirection={kasDelta >= 0 ? "up" : "down"}
+          icon={<ArrowDownToLine className="h-5 w-5" />} chip="teal" spark={kasSpark}
         />
         <KpiCard
-          label="Laba Berjalan (derivasi jurnal)"
+          label={plMonthly.length ? "Laba Berjalan (derivasi jurnal)" : "Laba Bersih Excel Agu-2026"}
           value={fmtMiliar(labaLast)}
           delta={`${labaDelta >= 0 ? "+" : ""}${labaDelta}% vs bulan lalu`}
           deltaDirection={labaDelta >= 0 ? "up" : "down"}
-          icon={<TrendingUp className="h-5 w-5" />} chip="violet" spark={ebitdaTrend}
+          icon={<TrendingUp className="h-5 w-5" />} chip="violet" spark={labaSpark}
         />
       </div>
 
       <div className="mt-4 card">
-        <Tabs tabs={["Piutang (AR)", "Hutang (AP)", "Kas & Bank", "Jadwal Bayar", "Invoice", "Buku Besar", "Project P&L", "Neraca", "Pajak", "Aset", "Jurnal"]} active={tab} onChange={setTab} />
+        <Tabs tabs={["Akun", "Jurnal", "Kas & Bank", "Hutang (AP)", "Piutang (AR)", "Buku Besar", "Laba Rugi", "Neraca", "Aset", "Jadwal Bayar", "Invoice", "Project P&L", "Pajak"]} active={tab} onChange={setTab} />
         <div className="p-4">
+          {tab === "Akun" && (
+            <div className="space-y-4">
+              <CardHeader
+                title="Daftar Akun — Sheet Akun Excel"
+                subtitle="Kolom: NO AKUN · NAMA AKUN · AKUN D/K · AKUN NR/LR. Baris header (D/K = −) tidak bisa dihapus."
+                action={<button className="btn-primary text-xs" onClick={() => { setCoaTarget(null); setCoaForm({ kode: "", nama: "", dk: "D", nrlr: "NR" }); setShowCoa(true); }}>+ Tambah Akun</button>}
+              />
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead className="bg-surface sticky top-0 z-10">
+                    <tr><th className="th">No. Akun</th><th className="th">Nama Akun</th><th className="th">D/K</th><th className="th">NR/LR</th><th className="th">Aksi</th></tr>
+                  </thead>
+                  <tbody className="divide-y divide-steel-100">
+                    {coaRows.map((c) => {
+                      const header = String(c.dk) === "-";
+                      return (
+                        <tr key={String(c.id)} className={header ? "bg-surface font-semibold" : "hover:bg-surface"}>
+                          <td className="td font-mono text-xs font-semibold text-navy-900">{String(c.kode)}</td>
+                          <td className="td text-xs text-steel-600">{String(c.nama)}</td>
+                          <td className="td text-xs text-steel-500">{String(c.dk)}</td>
+                          <td className="td text-xs text-steel-500">{String(c.nrlr)}</td>
+                          <td className="td">
+                            <div className="flex gap-1.5">
+                              <button className="btn-secondary px-2 py-1 text-[11px]" onClick={() => { setCoaTarget(c); setCoaForm({ kode: String(c.kode), nama: String(c.nama), dk: String(c.dk) === "-" ? "D" : String(c.dk), nrlr: String(c.nrlr) === "-" ? "NR" : String(c.nrlr) }); setShowCoa(true); }}>
+                                Ubah
+                              </button>
+                              {!header && (
+                                <button className="btn-secondary px-2 py-1 text-[11px] text-rose-600" onClick={() => { remove("coa", String(c.id)); log("menghapus akun", String(c.kode), "Keuangan"); toast(`Akun ${c.kode} dihapus`); }}>
+                                  Hapus
+                                </button>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
           {tab === "Piutang (AR)" && (
             <div className="grid grid-cols-1 gap-5 lg:grid-cols-3">
               <div className="lg:col-span-2">
-                <CardHeader title="Daftar Invoice" subtitle="Hanya transisi status yang legal yang tampil. Umur = hari ini − jatuh tempo." />
+                <CardHeader title="Daftar Invoice" subtitle="Kolom sheet Piutang: KODE PEMBANTU · SALDO AWAL · AKHIR. Umur = hari ini − jatuh tempo." />
                 <div className="overflow-x-auto">
                   <table className="w-full">
                     <thead className="bg-surface sticky top-0 z-10">
-                      <tr><th className="th">Invoice</th><th className="th">Proyek</th><th className="th">Nilai</th><th className="th">Jatuh Tempo</th><th className="th">Umur</th><th className="th">Penagihan</th><th className="th">Status</th><th className="th">Aksi</th></tr>
+                      <tr><th className="th">Invoice</th><th className="th">Kode Pembantu</th><th className="th">Proyek</th><th className="th">Saldo Awal</th><th className="th">Nilai</th><th className="th">Jatuh Tempo</th><th className="th">Umur</th><th className="th">Penagihan</th><th className="th">Status</th><th className="th">Aksi</th></tr>
                     </thead>
                     <tbody className="divide-y divide-steel-100">
                       {invoices.map((inv) => {
@@ -875,6 +1133,9 @@ export default function Finance() {
                               {needsDirector(inv) && <span className="mt-1 inline-block"><Badge tone="amber">Butuh Director</Badge></span>}
                             </td>
                             <td className="td text-steel-600 font-mono text-xs truncate" title={String(inv.project)}>{inv.project}</td>
+                            <td className="td text-steel-600 font-mono text-xs truncate" title={String(inv.kodePembantu ?? inv.client ?? "")}>{String(inv.kodePembantu ?? inv.client ?? "")}{inv.nonPpn ? " · Non-PPn" : ""}</td>
+                            <td className="td text-steel-600 font-mono text-xs truncate" title={String(inv.project)}>{inv.project || "—"}</td>
+                            <td className="td text-xs text-steel-500">{num(inv.openAwal) ? fmtRupiah(num(inv.openAwal)) : "—"}</td>
                             <td className="td font-semibold text-navy-900">{fmtRupiah(num(inv.amount))}</td>
                             <td className="td text-steel-600">{fmtTanggal(String(inv.due ?? ""))}</td>
                             <td className="td text-xs text-steel-600">{open ? `${fmtJumlah(age)} hari` : "—"}</td>
@@ -900,7 +1161,22 @@ export default function Finance() {
                                     {next === "Lunas" ? "Tandai Lunas" : next}
                                   </button>
                                 ))}
-                                {invNext(String(inv.status)).length === 0 && <span className="text-xs text-steel-400">—</span>}
+                                {String(inv.status) !== "Lunas" && String(inv.status) !== "Dihapusbukukan" && (
+                                  <button
+                                    className="btn-secondary text-xs"
+                                    onClick={() => {
+                                      setInvEdit(inv);
+                                      setInvEditForm({
+                                        client: String(inv.client ?? ""), kodePembantu: String(inv.kodePembantu ?? inv.client ?? ""),
+                                        due: String(inv.due ?? ""), paymentTerm: String(inv.paymentTerm ?? ""),
+                                        milestoneRef: String(inv.milestoneRef ?? ""), nsfp: String(inv.nsfp ?? ""), noFaktur: String(inv.noFaktur ?? ""),
+                                      });
+                                    }}
+                                  >
+                                    Ubah
+                                  </button>
+                                )}
+                                {invNext(String(inv.status)).length === 0 && (String(inv.status) === "Lunas" || String(inv.status) === "Dihapusbukukan") && <span className="text-xs text-steel-400">—</span>}
                               </div>
                             </td>
                           </tr>
@@ -932,22 +1208,22 @@ export default function Finance() {
               </div>
               <div className="space-y-5">
                 <div>
-                  <CardHeader title="Aging Piutang" subtitle="Nilai dalam milyar Rupiah" />
+                  <CardHeader title="Aging Piutang" subtitle="Real dari jatuh tempo vs hari ini, milyar Rupiah" />
                   <div className="flex items-center gap-4 p-1">
                     <Donut
-                      data={agingBuckets}
-                      colors={agingBuckets.map((a) => a.color)}
+                      data={agingDonut}
+                      colors={agingDonut.map((a) => a.color)}
                       size={140}
                       thickness={18}
-                      centerValue="19.3"
+                      centerValue={String(Math.round(agingDonutTotal * 10) / 10)}
                       centerLabel="M"
                     />
                     <div className="flex-1 space-y-2">
-                      {agingBuckets.map((a) => (
-                        <div key={a.name} className="flex items-center gap-2 text-sm">
-                          <span className="h-3 w-3 rounded-sm" style={{ background: a.color }} />
-                          <span className="text-steel-600">{a.name}</span>
-                          <span className="ml-auto font-semibold text-navy-900">{a.value}</span>
+                      {agingReal.map((b, i) => (
+                        <div key={b.name} className="flex items-center gap-2 text-sm">
+                          <span className="h-3 w-3 rounded-sm" style={{ background: AR_DONUT_COLORS[i % AR_DONUT_COLORS.length] }} />
+                          <span className="text-steel-600">{b.name} ({fmtJumlah(b.count)})</span>
+                          <span className="ml-auto font-semibold text-navy-900">{fmtMiliar(b.total)}</span>
                         </div>
                       ))}
                     </div>
@@ -989,26 +1265,43 @@ export default function Finance() {
               <div className="flex justify-end">
                 <button className="btn-secondary text-xs" onClick={() => setShowAp(true)}>+ Catat Hutang</button>
               </div>
+              <p className="text-xs text-steel-500">Kolom sheet Hutang: KODE PEMBANTU · SALDO AWAL BULAN · AKHIR SALDO. Kuning di Excel = vendor Non-PPn.</p>
               <div className="overflow-x-auto">
                 <table className="w-full">
                   <thead className="bg-surface sticky top-0 z-10">
-                    <tr><th className="th">Vendor</th><th className="th">PO</th><th className="th">Nilai</th><th className="th">Jatuh Tempo</th><th className="th">PPh 23</th><th className="th">Status</th><th className="th">Aksi</th></tr>
+                    <tr><th className="th">Vendor</th><th className="th">Kode Pembantu</th><th className="th">PO</th><th className="th">Saldo Awal</th><th className="th">Saldo Akhir</th><th className="th">Jatuh Tempo</th><th className="th">PPh 23</th><th className="th">Status</th><th className="th">Aksi</th></tr>
                   </thead>
                   <tbody className="divide-y divide-steel-100">
                     {payables.map((a) => (
                       <tr key={a.id} className="hover:bg-surface">
                         <td className="td font-medium text-navy-900 truncate" title={String(a.v)}>{String(a.v)}</td>
+                        <td className="td font-mono text-xs text-steel-600 truncate" title={String(a.kodePembantu ?? a.v)}>{String(a.kodePembantu ?? a.v)}</td>
                         <td className="td font-mono text-xs text-steel-600">{String(a.po)}</td>
+                        <td className="td text-xs text-steel-500">{num(a.openAwal) ? fmtRupiah(num(a.openAwal)) : "—"}</td>
                         <td className="td font-semibold">{fmtRupiah(num(a.amt))}</td>
                         <td className="td text-steel-600">{fmtTanggal(String(a.due ?? ""))}</td>
                         <td className="td text-steel-600">{String(a.pph ?? "2%")}</td>
                         <td className="td"><StatusBadge status={String(a.st)} /></td>
                         <td className="td">
-                          {a.st !== "Lunas" && (
-                            <button className="btn-secondary text-xs" onClick={() => { setApTarget(a); setProof(emptyProof()); }}>
-                              Bayar
-                            </button>
-                          )}
+                          <div className="flex flex-wrap gap-1.5">
+                            {a.st !== "Lunas" && (
+                              <>
+                                <button className="btn-secondary text-xs" onClick={() => { setApTarget(a); setProof(emptyProof()); }}>
+                                  Bayar
+                                </button>
+                                <button className="btn-secondary text-xs" onClick={() => {
+                                  setApEdit(a);
+                                  setApEditForm({
+                                    v: String(a.v ?? ""), kodePembantu: String(a.kodePembantu ?? a.v ?? ""),
+                                    openAwal: String(a.openAwal ?? ""), amt: String(a.amt ?? ""),
+                                    due: String(a.due ?? ""), nonPpn: String(a.pph ?? "") === "Non-PPn",
+                                  });
+                                }}>
+                                  Ubah
+                                </button>
+                              </>
+                            )}
+                          </div>
                         </td>
                       </tr>
                     ))}
@@ -1016,10 +1309,13 @@ export default function Finance() {
                 </table>
               </div>
               <Card>
-                <CardHeader title="Arus Kas Bulanan" subtitle="Masuk vs keluar (milyar Rupiah)" />
+                <CardHeader title="Arus Kas Bulanan" subtitle="Live dari pelunasan (milyar Rupiah) — kosong hingga ada invoice/hutang dilunasi" />
+                {flowMonthly.length === 0 ? (
+                  <div className="p-4"><EmptyState title="Belum ada arus kas" subtitle="Lunasi invoice atau hutang agar arus kas terbentuk dari data nyata." /></div>
+                ) : (
                 <div className="h-56 p-4">
                   <ResponsiveContainer width="100%" height="100%">
-                    <AreaChart data={cashflowSeries} margin={{ top: 10, right: 10, left: -15, bottom: 0 }}>
+                    <AreaChart data={flowMonthly} margin={{ top: 10, right: 10, left: -15, bottom: 0 }}>
                       <defs>
                         <linearGradient id="cp" x1="0" y1="0" x2="0" y2="1">
                           <stop offset="5%" stopColor="#0d9488" stopOpacity={0.3} />
@@ -1035,6 +1331,7 @@ export default function Finance() {
                     </AreaChart>
                   </ResponsiveContainer>
                 </div>
+                )}
               </Card>
             </div>
           )}
@@ -1044,22 +1341,35 @@ export default function Finance() {
               <CardHeader
                 title="Kas & Bank — Pembanding Excel Agustus 2026"
                 subtitle="Saldo awal + mutasi + saldo akhir per rekening (sheet JU,Kas,Bank + BB). No. dokumen 101/201/301/401, kode pembantu vendor/customer."
+                action={<button className="btn-primary text-xs" onClick={() => setShowMut(true)}>+ Catat Mutasi</button>}
               />
               <div className="overflow-x-auto">
                 <table className="w-full">
                   <thead className="bg-surface sticky top-0 z-10">
-                    <tr><th className="th">Kode</th><th className="th">Rekening</th><th className="th">Saldo Awal</th><th className="th">Saldo Akhir Excel</th><th className="th">Selisih vs Aplikasi</th></tr>
+                    <tr><th className="th">Kode</th><th className="th">Rekening</th><th className="th">Saldo Awal</th><th className="th">Mutasi Masuk</th><th className="th">Mutasi Keluar</th><th className="th">Saldo Berjalan</th><th className="th">Saldo Akhir Excel</th></tr>
                   </thead>
                   <tbody className="divide-y divide-steel-100">
-                    {KASBANK_EXCEL.map((r) => (
+                    {KASBANK_EXCEL.map((r) => {
+                      let masuk = 0;
+                      let keluar = 0;
+                      for (const j of manJournals) {
+                        if (j.status === "Void") continue;
+                        if (j.sumber !== "Kas" && j.sumber !== "Bank") continue;
+                        if (String(j.db) === r.kode) masuk += num(j.amount);
+                        if (String(j.kr) === r.kode) keluar += num(j.amount);
+                      }
+                      return (
                       <tr key={r.kode} className="hover:bg-surface">
                         <td className="td font-mono text-xs font-semibold text-navy-900">{r.kode}</td>
                         <td className="td text-xs text-steel-600">{r.nama}</td>
                         <td className="td text-xs">{fmtRupiah(r.awal)}</td>
-                        <td className="td text-xs font-semibold">{fmtRupiah(r.akhir)}</td>
-                        <td className="td text-[11px] text-steel-400">Rekonsiliasi bulanan wajib sebelum tutup buku (toleransi tanggal ±3 hari)</td>
+                        <td className="td text-xs text-emerald-600">{masuk ? fmtRupiah(masuk) : "—"}</td>
+                        <td className="td text-xs text-rose-600">{keluar ? fmtRupiah(keluar) : "—"}</td>
+                        <td className="td text-xs font-semibold">{fmtRupiah((kasSaldo[r.kode] ?? r.awal))}</td>
+                        <td className="td text-xs text-steel-500">{fmtRupiah(r.akhir)}</td>
                       </tr>
-                    ))}
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
@@ -1136,10 +1446,13 @@ export default function Finance() {
             <div className="space-y-4">
               <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
                 <Card className="p-5 lg:col-span-2">
-                  <CardHeader title="Pergerakan Invoice" subtitle="Penerbitan & status koleksi" />
+                  <CardHeader title="Pergerakan Invoice" subtitle="Live dari penerbitan per bulan (milyar Rupiah)" />
+                  {flowMonthly.length === 0 ? (
+                    <div className="flex h-56 items-center justify-center"><EmptyState title="Belum ada pergerakan" subtitle="Invoice saldo awal belum lunas — grafik terbentuk dari pelunasan nyata." /></div>
+                  ) : (
                   <div className="h-56">
                     <ResponsiveContainer width="100%" height="100%">
-                      <AreaChart data={cashflowSeries} margin={{ top: 10, right: 10, left: -15, bottom: 0 }}>
+                      <AreaChart data={flowMonthly} margin={{ top: 10, right: 10, left: -15, bottom: 0 }}>
                         <CartesianGrid strokeDasharray="3 3" stroke="#e9eff4" />
                         <XAxis dataKey="month" stroke="#8aa2b6" axisLine={false} tickLine={false} />
                         <YAxis stroke="#8aa2b6" axisLine={false} tickLine={false} />
@@ -1148,6 +1461,7 @@ export default function Finance() {
                       </AreaChart>
                     </ResponsiveContainer>
                   </div>
+                  )}
                 </Card>
                 <Card className="p-5">
                   <CardHeader title="Dokumen Invoice" />
@@ -1201,23 +1515,64 @@ export default function Finance() {
               <div className="overflow-x-auto">
                 <table className="w-full">
                   <thead className="bg-surface sticky top-0 z-10">
-                    <tr><th className="th">Kode</th><th className="th">Nama Akun</th><th className="th">D/K</th><th className="th">NR/LR</th><th className="th">Debit (NL)</th><th className="th">Kredit (NL)</th></tr>
+                    <tr><th className="th" rowSpan={2}>Kode</th><th className="th" rowSpan={2}>Nama Akun</th><th className="th" rowSpan={2}>D/K</th><th className="th" colSpan={2}>Neraca Saldo</th><th className="th" colSpan={2}>Laba-Rugi</th><th className="th" colSpan={2}>Neraca</th></tr>
+                    <tr><th className="th">Debit</th><th className="th">Kredit</th><th className="th">Debit</th><th className="th">Kredit</th><th className="th">Debit</th><th className="th">Kredit</th></tr>
                   </thead>
                   <tbody className="divide-y divide-steel-100">
-                    {COA_EXCEL.filter((c) => c.dk !== "-").map((c) => (
-                      <tr key={c.kode} className="hover:bg-surface">
-                        <td className="td font-mono text-xs font-semibold text-navy-900">{c.kode}</td>
-                        <td className="td text-xs text-steel-600">{c.nama}</td>
-                        <td className="td text-xs text-steel-500">{c.dk}</td>
-                        <td className="td text-xs text-steel-500">{c.nrlr}</td>
-                        <td className="td text-xs">{nlOf(c.kode).d ? fmtRupiah(nlOf(c.kode).d) : "—"}</td>
-                        <td className="td text-xs">{nlOf(c.kode).k ? fmtRupiah(nlOf(c.kode).k) : "—"}</td>
+                    {coaRows.filter((c) => String(c.dk) !== "-").map((c) => {
+                      const kode = String(c.kode);
+                      const isLR = String(c.nrlr) === "LR";
+                      const d = nlOf(kode).d;
+                      const k = nlOf(kode).k;
+                      return (
+                      <tr key={kode} className="hover:bg-surface">
+                        <td className="td font-mono text-xs font-semibold text-navy-900">{kode}</td>
+                        <td className="td text-xs text-steel-600">{String(c.nama)}</td>
+                        <td className="td text-xs text-steel-500">{String(c.dk)}</td>
+                        <td className="td text-xs">{d ? fmtRupiah(d) : "—"}</td>
+                        <td className="td text-xs">{k ? fmtRupiah(k) : "—"}</td>
+                        <td className="td text-xs">{isLR && d ? fmtRupiah(d) : "—"}</td>
+                        <td className="td text-xs">{isLR && k ? fmtRupiah(k) : "—"}</td>
+                        <td className="td text-xs">{!isLR && d ? fmtRupiah(d) : "—"}</td>
+                        <td className="td text-xs">{!isLR && k ? fmtRupiah(k) : "—"}</td>
+                      </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+              <p className="text-xs text-steel-500">Sumber jurnal BB: Kas / Bank (BPD) / JPb / JPn / JM. Saldo akhir BB = pembanding kolom Debit/Kredit di atas.</p>
+            </div>
+          )}
+
+          {tab === "Laba Rugi" && (
+            <div className="space-y-4">
+              <CardHeader
+                title="Laporan Laba-Rugi — Sheet LR Excel"
+                subtitle="POS-POS per akun dari Neraca Saldo. Laba = Pendapatan − Beban Pokok − Biaya Usaha + Lain Masuk − Lain Keluar."
+              />
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+                <Card className="p-4"><p className="text-xs text-steel-500">Total Pendapatan</p><p className="mt-1 text-lg font-bold text-navy-900">{fmtRupiah(lrRows.pend)}</p><p className="mt-1 text-[11px] text-steel-400">Akun 4-xxx</p></Card>
+                <Card className="p-4"><p className="text-xs text-steel-500">Beban Pokok Pendapatan</p><p className="mt-1 text-lg font-bold text-navy-900">{fmtRupiah(lrRows.bebanPokok)}</p><p className="mt-1 text-[11px] text-steel-400">Akun 5-xxx</p></Card>
+                <Card className="p-4"><p className="text-xs text-steel-500">Biaya Usaha</p><p className="mt-1 text-lg font-bold text-navy-900">{fmtRupiah(lrRows.biayaUsaha)}</p><p className="mt-1 text-[11px] text-steel-400">Akun 6-xxx</p></Card>
+                <Card className="p-4"><p className="text-xs text-steel-500">Laba Bersih</p><p className="mt-1 text-lg font-bold text-emerald-600">{fmtRupiah(lrRows.pend - lrRows.bebanPokok - lrRows.biayaUsaha + lrRows.lainMasuk - lrRows.lainKeluar)}</p><p className="mt-1 text-[11px] text-steel-400">Lain-lain neto {fmtRupiah(lrRows.lainMasuk - lrRows.lainKeluar)}</p></Card>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead className="bg-surface sticky top-0 z-10">
+                    <tr><th className="th">No. Akun</th><th className="th">Pos-Pos</th><th className="th">Nilai</th></tr>
+                  </thead>
+                  <tbody className="divide-y divide-steel-100">
+                    {lrRows.rows.map((r) => (
+                      <tr key={r.kode} className="hover:bg-surface">
+                        <td className="td font-mono text-xs font-semibold text-navy-900">{r.kode}</td>
+                        <td className="td text-xs text-steel-600">{r.pos}</td>
+                        <td className="td text-xs font-semibold">{fmtRupiah(r.nilai)}</td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
               </div>
-              <p className="text-xs text-steel-500">Sumber jurnal BB: Kas / Bank (BPD) / JPb / JPn / JM. Saldo akhir BB = pembanding kolom Debit/Kredit di atas.</p>
             </div>
           )}
 
@@ -1350,6 +1705,21 @@ export default function Finance() {
                 <Card className="p-4"><p className="text-xs text-steel-500">Laba Ditahan Awal</p><p className="mt-1 text-lg font-bold text-navy-900">{fmtRupiah(LAPORAN_EXCEL.labaDitahanAwal)}</p><p className="mt-1 text-[11px] text-steel-400">Sheet Laba Ditahan</p></Card>
                 <Card className="p-4"><p className="text-xs text-steel-500">Laba Ditahan Akhir</p><p className="mt-1 text-lg font-bold text-emerald-600">{fmtRupiah(LAPORAN_EXCEL.labaDitahanAkhir)}</p><p className="mt-1 text-[11px] text-steel-400">Awal + berjalan {fmtRupiah(LAPORAN_EXCEL.labaBerjalan)}</p></Card>
               </div>
+              <Card className="p-4">
+                <CardHeader title="Laba Ditahan — Sheet Laba Ditahan Excel" subtitle="Jumlah Laba Ditahan = Laba Ditahan awal + Laba (Rugi) periode berjalan." />
+                <div className="overflow-x-auto px-1 pb-3">
+                  <table className="w-full">
+                    <thead className="bg-surface sticky top-0 z-10">
+                      <tr><th className="th">No. Akun</th><th className="th">Pos-Pos</th><th className="th">Nilai</th></tr>
+                    </thead>
+                    <tbody className="divide-y divide-steel-100">
+                      <tr className="hover:bg-surface"><td className="td font-mono text-xs font-semibold text-navy-900">3-200</td><td className="td text-xs text-steel-600">Laba Ditahan</td><td className="td text-xs font-semibold">{fmtRupiah(LAPORAN_EXCEL.labaDitahanAwal)}</td></tr>
+                      <tr className="hover:bg-surface"><td className="td font-mono text-xs text-steel-400">—</td><td className="td text-xs text-steel-600">Laba (Rugi) Periode Berjalan</td><td className="td text-xs font-semibold">{fmtRupiah(labaLast)}</td></tr>
+                      <tr className="hover:bg-surface"><td className="td font-mono text-xs text-steel-400">—</td><td className="td text-xs font-bold text-navy-900">Jumlah Laba Ditahan</td><td className="td text-xs font-bold text-navy-900">{fmtRupiah(LAPORAN_EXCEL.labaDitahanAwal + labaLast)}</td></tr>
+                    </tbody>
+                  </table>
+                </div>
+              </Card>
               <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
                 <Card className="p-4">
                   <CardHeader title="Subledger Hutang Excel (53 vendor)" subtitle="Kuning = vendor Non-PPn. Saldo akhir = opening AP." />
@@ -1459,25 +1829,44 @@ export default function Finance() {
           {tab === "Aset" && (
             <div className="space-y-4">
               <CardHeader
-                title="Aset Tetap — Penyusutan Fiskal 2025 (GL)"
-                subtitle="Perolehan 15,57T. Beban bulanan otomatis: 6-021→1-280 Kendaraan, 6-021A→1-281 Alat Berat, 6-021B→1-282 Mesin, 6-021C→1-270 Bangunan, 6-022→1-290 Inventaris."
+                title="Aset Tetap — Sheet Aset Excel"
+                subtitle="Kolom: NO URUT · NAMA/JENIS HARTA · KEL. HARTA · PEROLEHAN (BULAN/TAHUN/NILAI) · METODE · SUSUT/THN · SUSUT/BLN. Beban bulanan: 6-021→1-280, 6-021A→1-281, 6-021B→1-282, 6-021C→1-270, 6-022→1-290."
+                action={<button className="btn-primary text-xs" onClick={() => setShowAst(true)}>+ Tambah Aset</button>}
               />
               <div className="overflow-x-auto">
                 <table className="w-full">
                   <thead className="bg-surface sticky top-0 z-10">
-                    <tr><th className="th">Golongan</th><th className="th">Perolehan</th><th className="th">Sisa Awal</th><th className="th">Susut Thn Berjalan</th><th className="th">Akun Beban</th><th className="th">Akun Akumulasi</th></tr>
+                    <tr><th className="th">No.</th><th className="th">Nama / Jenis Harta</th><th className="th">Kel.</th><th className="th">Bulan</th><th className="th">Tahun</th><th className="th">Nilai Perolehan</th><th className="th">Metode</th><th className="th">Susut / Thn</th><th className="th">Susut / Bln</th><th className="th">Akun Beban</th><th className="th">Akun Akumulasi</th><th className="th">Aksi</th></tr>
                   </thead>
                   <tbody className="divide-y divide-steel-100">
-                    {ASET_EXCEL.map((a) => (
-                      <tr key={a.gol} className="hover:bg-surface">
-                        <td className="td text-xs font-medium text-navy-900">{a.gol}</td>
-                        <td className="td text-xs">{fmtRupiah(a.perolehan)}</td>
-                        <td className="td text-xs text-steel-600">{fmtRupiah(a.sisaAwal)}</td>
-                        <td className="td text-xs font-semibold">{fmtRupiah(a.susut)}</td>
-                        <td className="td font-mono text-[11px] text-steel-600">{a.gol === "Bangunan" ? "6-021 C" : a.gol === "Alat Berat" ? "6-021 A" : a.gol === "Kendaraan" ? "6-021" : a.gol.includes("Mesin") ? "6-021 B" : "6-022"}</td>
-                        <td className="td font-mono text-[11px] text-steel-600">{a.gol === "Bangunan" ? "1-270" : a.gol === "Alat Berat" ? "1-281" : a.gol === "Kendaraan" ? "1-280" : a.gol.includes("Mesin") ? "1-282" : "1-290"}</td>
+                    {assetRows.map((a, i) => {
+                      const gol = String(a.nama ?? "");
+                      const beban = gol === "Bangunan" ? "6-021 C" : gol === "Alat Berat" ? "6-021 A" : gol === "Kendaraan" ? "6-021" : gol.includes("Mesin") ? "6-021 B" : "6-022";
+                      const akum = gol === "Bangunan" ? "1-270" : gol === "Alat Berat" ? "1-281" : gol === "Kendaraan" ? "1-280" : gol.includes("Mesin") ? "1-282" : "1-290";
+                      const seed = String(a.id ?? "").startsWith("AST-EX-");
+                      return (
+                      <tr key={String(a.id ?? i)} className="hover:bg-surface">
+                        <td className="td font-mono text-xs text-steel-500">{i + 1}</td>
+                        <td className="td text-xs font-medium text-navy-900">{gol}</td>
+                        <td className="td font-mono text-xs text-steel-600">{String(a.kelompok ?? "-")}</td>
+                        <td className="td text-xs text-steel-600">{String(a.bulan ?? "-")}</td>
+                        <td className="td text-xs text-steel-600">{String(a.tahun ?? "-")}</td>
+                        <td className="td text-xs font-semibold">{fmtRupiah(num(a.nilai))}</td>
+                        <td className="td font-mono text-xs text-steel-600">{String(a.metode ?? "GL")}</td>
+                        <td className="td text-xs">{fmtRupiah(num(a.susutTahun))}</td>
+                        <td className="td text-xs text-steel-600">{fmtRupiah(Math.round(num(a.susutTahun) / 12))}</td>
+                        <td className="td font-mono text-[11px] text-steel-600">{beban}</td>
+                        <td className="td font-mono text-[11px] text-steel-600">{akum}</td>
+                        <td className="td">
+                          {!seed && (
+                            <button className="btn-secondary px-2 py-1 text-[11px] text-rose-600" onClick={() => { remove("assets", String(a.id)); log("menghapus aset", String(a.nama), "Keuangan"); toast(`Aset ${a.nama} dihapus`); }}>
+                              Hapus
+                            </button>
+                          )}
+                        </td>
                       </tr>
-                    ))}
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
@@ -1486,6 +1875,43 @@ export default function Finance() {
 
           {tab === "Jurnal" && (
             <div className="space-y-4">
+              <CardHeader
+                title="Jurnal Umum — Sheet JU Excel"
+                subtitle="Kolom: TANGGAL · KODE PEMBANTU · DOKUMEN · URAIAN · AKUN DB · AKUN KR · NOMINAL. Berimbang (debit = kredit)."
+                action={<button className="btn-primary text-xs" onClick={() => setShowJu(true)}>+ Catat Jurnal</button>}
+              />
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead className="bg-surface sticky top-0 z-10">
+                    <tr><th className="th">Tanggal</th><th className="th">Kode Pembantu</th><th className="th">Dokumen</th><th className="th">Uraian</th><th className="th">Akun DB</th><th className="th">Akun KR</th><th className="th">Nominal</th><th className="th">Sumber</th><th className="th">Status</th><th className="th">Aksi</th></tr>
+                  </thead>
+                  <tbody className="divide-y divide-steel-100">
+                    {manJournals.map((j) => (
+                      <tr key={String(j.id)} className="hover:bg-surface">
+                        <td className="td text-xs text-steel-600">{fmtTanggal(String(j.date ?? ""))}</td>
+                        <td className="td font-mono text-xs text-steel-600">{String(j.kodePembantu || "—")}</td>
+                        <td className="td font-mono text-xs text-steel-600">{String(j.dokumen ?? "-")}</td>
+                        <td className="td max-w-56 truncate text-xs text-steel-600" title={String(j.uraian ?? "")}>{String(j.uraian ?? "")}</td>
+                        <td className="td font-mono text-xs">{String(j.db || "—")}</td>
+                        <td className="td font-mono text-xs">{String(j.kr)}</td>
+                        <td className="td text-xs font-semibold">{fmtRupiah(num(j.amount))}</td>
+                        <td className="td text-xs text-steel-500">{String(j.sumber ?? "JU")}</td>
+                        <td className="td"><StatusBadge status={String(j.status ?? "Posted")} /></td>
+                        <td className="td">
+                          {String(j.status) !== "Void" && (
+                            <button className="btn-secondary px-2 py-1 text-[11px] text-rose-600" onClick={() => { update("journals", String(j.id), { status: "Void" }); log("mem-void jurnal", String(j.id), "Keuangan"); toast(`${j.id} di-void`); }}>
+                              Void
+                            </button>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                    {manJournals.length === 0 && (
+                      <tr><td className="td text-xs text-steel-400" colSpan={10}>Belum ada jurnal manual.</td></tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
               <CardHeader title="Jurnal Ringkas (Derivasi)" subtitle="Dihitung dari invoice Lunas, hapus buku, payable Lunas, dan payroll Dibayar. Total debit selalu sama dengan total kredit." />
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
                 <Card className="p-4">
@@ -1536,9 +1962,9 @@ export default function Finance() {
                   <p className="mt-2 text-xs text-steel-500">Total debit {fmtRupiah(journalTotal)} = Total kredit {fmtRupiah(journalTotal)} · Seimbang.</p>
                 </div>
                 <Card className="p-4">
-                  <CardHeader title="CoA Referensi" subtitle="Kode akun statis" />
-                  <div className="space-y-1.5 px-5 pb-5 text-xs">
-                    {COA.map((c) => (
+                  <CardHeader title="CoA Referensi" subtitle={`${coaList.length} akun (sheet Akun)`} />
+                  <div className="max-h-96 space-y-1.5 overflow-y-auto px-5 pb-5 text-xs">
+                    {coaList.map((c) => (
                       <div key={c.kode} className="flex gap-2">
                         <span className="w-12 font-mono font-semibold text-navy-900">{c.kode}</span>
                         <span className="text-steel-600">{c.akun}</span>
@@ -1604,9 +2030,14 @@ export default function Finance() {
             </Field>
           </FormGrid>
           <FormGrid>
+            <Field label="Kode pembantu" hint="Default = nama customer (kolom sheet Piutang)">
+              <input className="input font-mono" value={invForm.kodePembantu} onChange={(e) => setInv("kodePembantu", e.target.value)} placeholder="cth: PT Kartika Samudra" />
+            </Field>
             <Field label="NSFP (opsional, unik)" hint="cth: 0026.001-25.00000001">
               <input className="input font-mono" value={invForm.nsfp} onChange={(e) => setInv("nsfp", e.target.value)} placeholder="NSFP" />
             </Field>
+          </FormGrid>
+          <FormGrid>
             <Field label="No. faktur (opsional, unik)" hint="cth: 010.002-26.00000001">
               <input className="input font-mono" value={invForm.noFaktur} onChange={(e) => setInv("noFaktur", e.target.value)} placeholder="No. faktur" />
             </Field>
@@ -1711,21 +2142,37 @@ export default function Finance() {
       </Modal>
 
       <Modal open={showAp} onClose={() => setShowAp(false)} title="Catat Hutang Vendor"
-        footer={<><button className="btn-secondary" onClick={() => setShowAp(false)}>Batal</button><button className="btn-primary" onClick={() => {
-          if (!apForm.v.trim()) { toast("Vendor wajib diisi", "info"); return; }
-          if (!num(apForm.amt) || num(apForm.amt) <= 0) { toast("Nominal harus lebih dari 0", "info"); return; }
-          if (!apForm.due) { toast("Jatuh tempo wajib diisi", "info"); return; }
-          const created = add("payables", { v: apForm.v.trim(), po: apForm.po.trim() || "-", amt: num(apForm.amt), due: apForm.due, pph: "2%", st: "Belum Dibayar" },
-            { action: "mencatat hutang", module: "Keuangan" });
-          toast(`Hutang ${created.id} dicatat`); setShowAp(false); setApForm({ v: "", po: "", amt: "", due: "" });
-        }}>Simpan</button></>}>
+        footer={<><button className="btn-secondary" onClick={() => setShowAp(false)}>Batal</button><button className="btn-primary" onClick={saveAp}>Simpan</button></>}>
         <div className="space-y-3">
           <FormGrid>
             <Field label="Vendor"><input className="input" value={apForm.v} onChange={(e) => setApForm({ ...apForm, v: e.target.value })} /></Field>
+            <Field label="Kode pembantu" hint="Default = nama vendor"><input className="input font-mono" value={apForm.kodePembantu} onChange={(e) => setApForm({ ...apForm, kodePembantu: e.target.value })} /></Field>
             <Field label="Referensi PO"><input className="input font-mono" value={apForm.po} onChange={(e) => setApForm({ ...apForm, po: e.target.value })} /></Field>
-            <Field label="Nilai (Rp)"><input type="number" min={0} className="input" value={apForm.amt} onChange={(e) => setApForm({ ...apForm, amt: e.target.value })} /></Field>
+            <Field label="Saldo awal bulan (Rp)"><input type="number" min={0} className="input" value={apForm.openAwal} onChange={(e) => setApForm({ ...apForm, openAwal: e.target.value })} /></Field>
+            <Field label="Saldo akhir (Rp)"><input type="number" min={0} className="input" value={apForm.amt} onChange={(e) => setApForm({ ...apForm, amt: e.target.value })} /></Field>
             <Field label="Jatuh tempo"><input type="date" required className="input" value={apForm.due} onChange={(e) => setApForm({ ...apForm, due: e.target.value })} /></Field>
           </FormGrid>
+          <label className="flex items-center gap-2 text-sm text-steel-600">
+            <input type="checkbox" checked={apForm.nonPpn} onChange={(e) => setApForm({ ...apForm, nonPpn: e.target.checked })} />
+            Vendor Non-PPn (kuning di Excel — tanpa potong PPh 23)
+          </label>
+        </div>
+      </Modal>
+
+      <Modal open={apEdit !== null} onClose={() => setApEdit(null)} title={`Ubah hutang ${String(apEdit?.po ?? apEdit?.id ?? "")}?`} subtitle={String(apEdit?.v ?? "")}
+        footer={<><button className="btn-secondary" onClick={() => setApEdit(null)}>Batal</button><button className="btn-primary" onClick={saveApEdit}>Simpan Perubahan</button></>}>
+        <div className="space-y-3">
+          <FormGrid>
+            <Field label="Vendor"><input className="input" value={apEditForm.v} onChange={(e) => setApEditForm({ ...apEditForm, v: e.target.value })} /></Field>
+            <Field label="Kode pembantu"><input className="input font-mono" value={apEditForm.kodePembantu} onChange={(e) => setApEditForm({ ...apEditForm, kodePembantu: e.target.value })} /></Field>
+            <Field label="Saldo awal bulan (Rp)"><input type="number" min={0} className="input" value={apEditForm.openAwal} onChange={(e) => setApEditForm({ ...apEditForm, openAwal: e.target.value })} /></Field>
+            <Field label="Saldo akhir (Rp)"><input type="number" min={0} className="input" value={apEditForm.amt} onChange={(e) => setApEditForm({ ...apEditForm, amt: e.target.value })} /></Field>
+            <Field label="Jatuh tempo"><input type="date" required className="input" value={apEditForm.due} onChange={(e) => setApEditForm({ ...apEditForm, due: e.target.value })} /></Field>
+          </FormGrid>
+          <label className="flex items-center gap-2 text-sm text-steel-600">
+            <input type="checkbox" checked={apEditForm.nonPpn} onChange={(e) => setApEditForm({ ...apEditForm, nonPpn: e.target.checked })} />
+            Vendor Non-PPn (kuning di Excel — tanpa potong PPh 23)
+          </label>
         </div>
       </Modal>
 
@@ -1784,8 +2231,135 @@ export default function Finance() {
         </div>
       </Modal>
 
-      <Modal open={writeOff !== null} onClose={() => { setWriteOff(null); setWriteOffReason(""); }} title={`Hapus buku ${writeOff?.id ?? ""}?`} subtitle={`${fmtRupiah(num(writeOff?.amount))} keluar dari AR dan masuk beban. Wajib isi alasan.`}
-        footer={<><button className="btn-secondary" onClick={() => { setWriteOff(null); setWriteOffReason(""); }}>Batal</button><button className="btn-primary" disabled={!writeOffReason.trim()} onClick={() => setConfirmWriteOff(true)}>Lanjut Konfirmasi</button></>}>
+      <Modal open={showCoa} onClose={() => { setShowCoa(false); setCoaTarget(null); }} title={coaTarget ? `Ubah akun ${coaTarget.kode}?` : "Tambah Akun"} subtitle="Kolom sheet Akun: NO AKUN · NAMA AKUN · D/K · NR/LR"
+        footer={<><button className="btn-secondary" onClick={() => { setShowCoa(false); setCoaTarget(null); }}>Batal</button><button className="btn-primary" onClick={saveCoa}>Simpan</button></>}>
+        <div className="space-y-3">
+          <FormGrid>
+            <Field label="No. akun" hint="cth: 1-125">
+              <input className="input font-mono" value={coaForm.kode} disabled={coaTarget !== null} onChange={(e) => setCoaForm({ ...coaForm, kode: e.target.value })} placeholder="x-xxx" />
+            </Field>
+            <Field label="Nama akun"><input className="input" value={coaForm.nama} onChange={(e) => setCoaForm({ ...coaForm, nama: e.target.value })} placeholder="cth: Bank Kaltimtara Syariah" /></Field>
+            <Field label="Akun D/K">
+              <select className="input" value={coaForm.dk} onChange={(e) => setCoaForm({ ...coaForm, dk: e.target.value })}>
+                <option value="D">D — Debit</option>
+                <option value="K">K — Kredit</option>
+              </select>
+            </Field>
+            <Field label="Akun NR/LR">
+              <select className="input" value={coaForm.nrlr} onChange={(e) => setCoaForm({ ...coaForm, nrlr: e.target.value })}>
+                <option value="NR">NR — Neraca</option>
+                <option value="LR">LR — Laba-Rugi</option>
+              </select>
+            </Field>
+          </FormGrid>
+        </div>
+      </Modal>
+
+      <Modal open={showJu} onClose={() => setShowJu(false)} title="Catat Jurnal Umum" subtitle="Wajib berimbang: satu akun DB + satu akun KR dengan nominal sama"
+        footer={<><button className="btn-secondary" onClick={() => setShowJu(false)}>Batal</button><button className="btn-primary" onClick={saveJu}>Simpan (Posted)</button></>}>
+        <div className="space-y-3">
+          <FormGrid>
+            <Field label="Tanggal"><input type="date" required className="input" value={juForm.date} onChange={(e) => setJuForm({ ...juForm, date: e.target.value })} /></Field>
+            <Field label="Kode pembantu"><input className="input font-mono" value={juForm.kodePembantu} onChange={(e) => setJuForm({ ...juForm, kodePembantu: e.target.value })} placeholder="vendor / customer" /></Field>
+            <Field label="Dokumen" hint="cth: 101 / 201 / BKM-001"><input className="input font-mono" value={juForm.dokumen} onChange={(e) => setJuForm({ ...juForm, dokumen: e.target.value })} /></Field>
+            <Field label="Sumber">
+              <select className="input" value={juForm.sumber} onChange={(e) => setJuForm({ ...juForm, sumber: e.target.value })}>
+                {["JU", "Kas", "Bank", "JPb", "JPn", "JM"].map((x) => <option key={x}>{x}</option>)}
+              </select>
+            </Field>
+          </FormGrid>
+          <Field label="Uraian"><input className="input" value={juForm.uraian} onChange={(e) => setJuForm({ ...juForm, uraian: e.target.value })} placeholder="cth: Penyesuaian PPN September" /></Field>
+          <FormGrid>
+            <Field label="Akun DB">
+              <select className="input font-mono" value={juForm.db} onChange={(e) => setJuForm({ ...juForm, db: e.target.value })}>
+                <option value="">Pilih akun…</option>
+                {coaRows.filter((c) => String(c.dk) !== "-").map((c) => <option key={String(c.id)} value={String(c.kode)}>{String(c.kode)} · {String(c.nama)}</option>)}
+              </select>
+            </Field>
+            <Field label="Akun KR">
+              <select className="input font-mono" value={juForm.kr} onChange={(e) => setJuForm({ ...juForm, kr: e.target.value })}>
+                <option value="">Pilih akun…</option>
+                {coaRows.filter((c) => String(c.dk) !== "-").map((c) => <option key={String(c.id)} value={String(c.kode)}>{String(c.kode)} · {String(c.nama)}</option>)}
+              </select>
+            </Field>
+            <Field label="Nominal (Rp)"><input type="number" min={0} className="input" value={juForm.amount} onChange={(e) => setJuForm({ ...juForm, amount: e.target.value })} /></Field>
+          </FormGrid>
+        </div>
+      </Modal>
+
+      <Modal open={showMut} onClose={() => setShowMut(false)} title="Catat Mutasi Kas & Bank" subtitle="Masuk menambah saldo rekening, keluar mengurangi — otomatis jadi jurnal berimbang"
+        footer={<><button className="btn-secondary" onClick={() => setShowMut(false)}>Batal</button><button className="btn-primary" onClick={saveMut}>Simpan</button></>}>
+        <div className="space-y-3">
+          <FormGrid>
+            <Field label="Tanggal"><input type="date" required className="input" value={mutForm.date} onChange={(e) => setMutForm({ ...mutForm, date: e.target.value })} /></Field>
+            <Field label="Rekening">
+              <select className="input font-mono" value={mutForm.rekening} onChange={(e) => setMutForm({ ...mutForm, rekening: e.target.value })}>
+                {KAS_REKENING.map((c) => <option key={String(c.id)} value={String(c.kode)}>{String(c.kode)} · {String(c.nama)}</option>)}
+              </select>
+            </Field>
+            <Field label="Arah">
+              <select className="input" value={mutForm.arah} onChange={(e) => setMutForm({ ...mutForm, arah: e.target.value })}>
+                <option>Masuk</option>
+                <option>Keluar</option>
+              </select>
+            </Field>
+            <Field label="Akun lawan">
+              <select className="input font-mono" value={mutForm.lawan} onChange={(e) => setMutForm({ ...mutForm, lawan: e.target.value })}>
+                <option value="">Pilih akun…</option>
+                {coaRows.filter((c) => String(c.dk) !== "-").map((c) => <option key={String(c.id)} value={String(c.kode)}>{String(c.kode)} · {String(c.nama)}</option>)}
+              </select>
+            </Field>
+          </FormGrid>
+          <FormGrid>
+            <Field label="Kode pembantu"><input className="input font-mono" value={mutForm.kodePembantu} onChange={(e) => setMutForm({ ...mutForm, kodePembantu: e.target.value })} /></Field>
+            <Field label="No. dokumen" hint="cth: 101 / BKM-009"><input className="input font-mono" value={mutForm.dokumen} onChange={(e) => setMutForm({ ...mutForm, dokumen: e.target.value })} /></Field>
+          </FormGrid>
+          <Field label="Uraian"><input className="input" value={mutForm.uraian} onChange={(e) => setMutForm({ ...mutForm, uraian: e.target.value })} placeholder="cth: Terima pembayaran invoice" /></Field>
+          <Field label="Nominal (Rp)"><input type="number" min={0} className="input" value={mutForm.amount} onChange={(e) => setMutForm({ ...mutForm, amount: e.target.value })} /></Field>
+        </div>
+      </Modal>
+
+      <Modal open={invEdit !== null} onClose={() => setInvEdit(null)} title={`Ubah invoice ${invEdit?.id ?? ""}?`} subtitle="Hanya untuk invoice yang belum lunas/dihapusbukukan"
+        footer={<><button className="btn-secondary" onClick={() => setInvEdit(null)}>Batal</button><button className="btn-primary" onClick={saveInvEdit}>Simpan Perubahan</button></>}>
+        <div className="space-y-3">
+          <FormGrid>
+            <Field label="Customer"><input className="input" value={invEditForm.client} onChange={(e) => setInvEditForm({ ...invEditForm, client: e.target.value })} /></Field>
+            <Field label="Kode pembantu"><input className="input font-mono" value={invEditForm.kodePembantu} onChange={(e) => setInvEditForm({ ...invEditForm, kodePembantu: e.target.value })} /></Field>
+            <Field label="Jatuh tempo"><input type="date" required className="input" value={invEditForm.due} onChange={(e) => setInvEditForm({ ...invEditForm, due: e.target.value })} /></Field>
+            <Field label="Termin"><input className="input" value={invEditForm.paymentTerm} onChange={(e) => setInvEditForm({ ...invEditForm, paymentTerm: e.target.value })} /></Field>
+            <Field label="Milestone ref"><input className="input" value={invEditForm.milestoneRef} onChange={(e) => setInvEditForm({ ...invEditForm, milestoneRef: e.target.value })} /></Field>
+            <Field label="NSFP"><input className="input font-mono" value={invEditForm.nsfp} onChange={(e) => setInvEditForm({ ...invEditForm, nsfp: e.target.value })} /></Field>
+            <Field label="No. faktur"><input className="input font-mono" value={invEditForm.noFaktur} onChange={(e) => setInvEditForm({ ...invEditForm, noFaktur: e.target.value })} /></Field>
+          </FormGrid>
+        </div>
+      </Modal>
+
+      <Modal open={showAst} onClose={() => setShowAst(false)} title="Tambah Aset" subtitle="Kolom sheet Aset — tarif fiskal GL: BP 5%, Kel.1 25%, Kel.2 12,5%, Kel.3 6,25%"
+        footer={<><button className="btn-secondary" onClick={() => setShowAst(false)}>Batal</button><button className="btn-primary" onClick={saveAst}>Simpan</button></>}>
+        <div className="space-y-3">
+          <FormGrid>
+            <Field label="Nama / jenis harta"><input className="input" value={astForm.nama} onChange={(e) => setAstForm({ ...astForm, nama: e.target.value })} placeholder="cth: Excavator PC 200" /></Field>
+            <Field label="Kel. harta">
+              <select className="input" value={astForm.kelompok} onChange={(e) => setAstForm({ ...astForm, kelompok: e.target.value })}>
+                <option value="BP">BP — Bangunan Permanen (5%)</option>
+                <option value="1">1 — Kelompok 1 (25%)</option>
+                <option value="2">2 — Kelompok 2 (12,5%)</option>
+                <option value="3">3 — Kelompok 3 (6,25%)</option>
+              </select>
+            </Field>
+            <Field label="Bulan perolehan" hint="cth: Jan"><input className="input" value={astForm.bulan} onChange={(e) => setAstForm({ ...astForm, bulan: e.target.value })} /></Field>
+            <Field label="Tahun perolehan"><input className="input font-mono" value={astForm.tahun} onChange={(e) => setAstForm({ ...astForm, tahun: e.target.value })} placeholder="2026" /></Field>
+            <Field label="Nilai perolehan (Rp)"><input type="number" min={0} className="input" value={astForm.nilai} onChange={(e) => setAstForm({ ...astForm, nilai: e.target.value })} /></Field>
+            <Field label="Metode">
+              <select className="input" value={astForm.metode} onChange={(e) => setAstForm({ ...astForm, metode: e.target.value })}>
+                <option>GL</option>
+              </select>
+            </Field>
+          </FormGrid>
+        </div>
+      </Modal>
+
+      <Modal open={writeOff !== null} onClose={() => { setWriteOff(null); setWriteOffReason(""); }} title={`Hapus buku ${writeOff?.id ?? ""}?`} subtitle={`${fmtRupiah(num(writeOff?.amount))} keluar dari AR dan masuk beban. Wajib isi alasan.`}        footer={<><button className="btn-secondary" onClick={() => { setWriteOff(null); setWriteOffReason(""); }}>Batal</button><button className="btn-primary" disabled={!writeOffReason.trim()} onClick={() => setConfirmWriteOff(true)}>Lanjut Konfirmasi</button></>}>
         <Field label="Alasan hapus buku" hint="Wajib — cth: piutang tak tertagih 180 hari, debitur pailit">
           <input className="input" value={writeOffReason} onChange={(e) => setWriteOffReason(e.target.value)} placeholder="Tulis alasan…" />
         </Field>

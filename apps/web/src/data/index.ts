@@ -340,13 +340,8 @@ export interface Invoice {
   paymentTerm: string;
 }
 
-export const invoices: Invoice[] = [
-  { id: "INV-2607", client: "PT Samudra Jaya Perkasa", project: "NB-2025-012", amount: 9600000000, due: "2026-08-20", status: "Belum Dibayar", paymentTerm: "Milestone 3" },
-  { id: "INV-2608", client: "PT Karya Bahari Sejahtera", project: "RP-2026-003", amount: 1680000000, due: "2026-08-05", status: "Belum Dibayar", paymentTerm: "Termin 2" },
-  { id: "INV-2609", client: "PT Pelayaran Nusantara Abadi", project: "NB-2025-014", amount: 9300000000, due: "2026-07-28", status: "Terlambat", paymentTerm: "Milestone 2" },
-  { id: "INV-2610", client: "PT Karya Bahari Sejahtera", project: "RF-2026-001", amount: 3920000000, due: "2026-09-15", status: "Draft", paymentTerm: "Progress" },
-  { id: "INV-2598", client: "PT Mitra Samudra Raya", project: "RP-2026-002", amount: 3000000000, due: "2026-07-10", status: "Lunas", paymentTerm: "Final" },
-];
+// Seed invoice dihapus — sumber kebenaran adalah saldo awal Piutang Excel
+// (seedInvoices di store.tsx, dari sheet Piutang Agustus 2026).
 
 export const ncrList = [
   { id: "NCR-2026-031", project: "NB-2025-012", vessel: "TB Samudra Jaya 07", type: "Pengelasan", status: "Terbuka", severity: "Major", raised: "2026-07-18", issue: "Porosity pada seam weld section 4" },
@@ -490,7 +485,7 @@ export const activities: Activity[] = [
   { id: "A2", actor: "Fajar Nugroho", action: "mengajukan PO", target: "PO-2026-117", module: "Procurement", time: "18 menit lalu", tone: "navy" },
   { id: "A3", actor: "Budi Santoso", action: "mengupdate progres", target: "NB-2025-014 → 41%", module: "Proyek", time: "42 menit lalu", tone: "violet" },
   { id: "A4", actor: "Agus Setiawan", action: "mencatat incident", target: "INC-2026-010", module: "Safety", time: "1 jam lalu", tone: "rose" },
-  { id: "A5", actor: "Dewi Lestari", action: "menerbitkan invoice", target: "INV-2607", module: "Keuangan", time: "2 jam lalu", tone: "amber" },
+  { id: "A5", actor: "Dewi Lestari", action: "mengimpor saldo awal", target: "Piutang Excel Agu-2026 (37 customer)", module: "Keuangan", time: "2 jam lalu", tone: "amber" },
   { id: "A6", actor: "Rudi Hartono", action: "mengalokasikan dock", target: "DD-1 untuk RP-2026-003", module: "Drydock", time: "3 jam lalu", tone: "teal" },
   { id: "A7", actor: "Hendra Wijaya", action: "membuat quotation", target: "QT-2026-052", module: "CRM", time: "5 jam lalu", tone: "navy" },
   { id: "A8", actor: "System", action: "otomatis mengingatkan servis", target: "EQ-002 Mobile Crane", module: "Equipment", time: "6 jam lalu", tone: "amber" },
@@ -508,8 +503,8 @@ export const insights = [
   {
     id: "I2",
     tone: "rose" as const,
-    title: "4 Invoice Terlambat",
-    desc: "Total Rp 12,4 M belum tertagih. Proyek RP-2026-005 melewati tenggat termin — perlu follow-up segera.",
+    title: "37 Saldo Awal Belum Dibayar",
+    desc: "Total Rp 14,6 M dari sheet Piutang Excel Agustus 2026. Seluruhnya jatuh tempo 2026-08-31 — perlu penagihan bertingkat.",
   },
   {
     id: "I3",
