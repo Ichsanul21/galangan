@@ -639,7 +639,7 @@ export default function Finance() {
             <div className="space-y-4">
               <CardHeader
                 title="Ringkasan Pajak per Periode"
-                subtitle="Asumsi: PPN Keluaran 11% dari invoice Lunas periode (paidAt/due), PPN Masukan 11% dari payable Lunas, PPh23 2% dari payable Lunas jasa, PPh21 total payroll periode. Siap e-Faktur nanti (belum integrasi DJP)."
+                subtitle="PPN Keluaran 11% dari invoice Lunas periode (paidAt/due), PPN Masukan 11% dari payable Lunas, PPh23 2% dari payable Lunas jasa, PPh21 total payroll periode."
               />
               <div className="flex flex-wrap items-end gap-2">
                 <Field label="Periode">

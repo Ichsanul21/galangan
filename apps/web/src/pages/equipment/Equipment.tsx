@@ -668,8 +668,7 @@ export default function EquipmentPage() {
         </div>
       </Modal>
 
-      {/* Modal catat servis (WO sederhana) */}
-      <Modal open={recording !== null} onClose={() => setRecording(null)} title={`Catat Servis — ${recording?.name ?? ""}`} subtitle="Work order servis sederhana"
+      <Modal open={recording !== null} onClose={() => setRecording(null)} title={`Catat Servis — ${recording?.name ?? ""}`} subtitle="Pelaksanaan servis terjadwal"
         footer={<><button className="btn-secondary" onClick={() => setRecording(null)}>Batal</button><button className="btn-primary" onClick={saveRecord}>Simpan Servis</button></>}>
         <div className="space-y-3">
           <FormGrid>

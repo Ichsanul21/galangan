@@ -7,7 +7,6 @@ import {
   AlertTriangle,
   CheckCircle2,
   Clock,
-  Search,
   BarChart3,
 } from "lucide-react";
 import {
@@ -196,12 +195,7 @@ export default function Analytics() {
         subtitle="Analisis 4 level — dari 'apa yang terjadi' hingga 'harus berbuat apa'"
         icon={<BarChart3 className="h-5 w-5" />}
         actions={
-          <>
-            <button className="btn-secondary" onClick={() => toast("Mode jelajah data (demo)", "info")}>
-              <Search className="h-4 w-4" /> Jelajah
-            </button>
-            <button className="btn-primary-gradient" onClick={exportReport}>Export Laporan</button>
-          </>
+          <button className="btn-primary-gradient" onClick={exportReport}>Export Laporan</button>
         }
       />
 

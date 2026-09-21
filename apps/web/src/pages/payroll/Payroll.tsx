@@ -217,7 +217,7 @@ export default function Payroll() {
     <div>
       <PageHeader
         title="Payroll"
-        subtitle="Asumsi: PPh21 = 5% x (bruto - Rp 4.500.000), min 0, bruto s.d. Rp 60 jt/bln · BPJS Kes 1% + TK 2% dari gaji pokok"
+        subtitle="PPh21 = 5% x (bruto - Rp 4.500.000), min 0, bruto s.d. Rp 60 jt/bln · BPJS Kes 1% + TK 2% dari gaji pokok"
         icon={<Wallet className="h-5 w-5" />}
         actions={
           <>
@@ -232,7 +232,7 @@ export default function Payroll() {
       <div className="mb-4 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <KpiCard label="Total Bruto" value={fmtRupiah(totals.bruto)} hint={`Periode ${fmtBulan(period)}`} chip="navy" />
         <KpiCard label="Total Net" value={fmtRupiah(totals.net)} hint={`${rows.length} slip`} chip="teal" />
-        <KpiCard label="Total PPh21" value={fmtRupiah(totals.pph21)} hint="Progresif sederhana 5%" chip="amber" />
+        <KpiCard label="Total PPh21" value={fmtRupiah(totals.pph21)} hint="Tarif 5% di atas PTKP/bln" chip="amber" />
         <KpiCard label="Total BPJS" value={fmtRupiah(totals.bpjs)} hint="Kes 1% + TK 2%" chip="violet" />
       </div>
 
