@@ -1047,16 +1047,16 @@ export default function Finance() {
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <KpiCard label="Total Piutang (AR)" value={fmtMiliar(arTotal)} delta={`${lateCount} telat`} deltaDirection="down" icon={<Wallet className="h-5 w-5" />} chip="rose" spark={arSpark} />
-        <KpiCard label="Total Hutang (AP)" value={fmtMiliar(apTotal)} hint="Saldo akhir Excel Hutang" icon={<Wallet className="h-5 w-5" />} chip="navy" spark={apSpark} />
+        <KpiCard label="Total Hutang (AP)" value={fmtMiliar(apTotal)} hint="Sisa hutang berjalan" icon={<Wallet className="h-5 w-5" />} chip="navy" spark={apSpark} />
         <KpiCard
-          label="Kas & Bank (Excel Agu-2026)"
+          label="Kas & Bank"
           value={fmtMiliar(kasAkhir)}
           delta={`${kasDelta >= 0 ? "+" : ""}${kasDelta}% vs saldo awal`}
           deltaDirection={kasDelta >= 0 ? "up" : "down"}
           icon={<ArrowDownToLine className="h-5 w-5" />} chip="teal" spark={kasSpark}
         />
         <KpiCard
-          label={plMonthly.length ? "Laba Berjalan (derivasi jurnal)" : "Laba Bersih Excel Agu-2026"}
+          label={plMonthly.length ? "Laba Berjalan (derivasi jurnal)" : "Laba Bersih"}
           value={fmtMiliar(labaLast)}
           delta={`${labaDelta >= 0 ? "+" : ""}${labaDelta}% vs bulan lalu`}
           deltaDirection={labaDelta >= 0 ? "up" : "down"}
@@ -1070,8 +1070,8 @@ export default function Finance() {
           {tab === "Akun" && (
             <div className="space-y-4">
               <CardHeader
-                title="Daftar Akun — Sheet Akun Excel"
-                subtitle="Baris header (D/K = −) tidak bisa dihapus."
+                title="Daftar Akun"
+                subtitle="Kelola master akun: tambah, ubah, hapus. Baris header (D/K = −) tidak bisa dihapus."
                 action={<button className="btn-primary text-xs" onClick={() => { setCoaTarget(null); setCoaForm({ kode: "", nama: "", dk: "D", nrlr: "NR" }); setShowCoa(true); }}>+ Tambah Akun</button>}
               />
               <div className="overflow-x-auto">
@@ -1265,7 +1265,7 @@ export default function Finance() {
               <div className="flex justify-end">
                 <button className="btn-secondary text-xs" onClick={() => setShowAp(true)}>+ Catat Hutang</button>
               </div>
-              <p className="text-xs text-steel-500">Tanda kuning di Excel = vendor Non-PPn.</p>
+              <p className="text-xs text-steel-500">Tanda kuning = vendor Non-PPn (tanpa potong PPh 23).</p>
               <div className="overflow-x-auto">
                 <table className="w-full">
                   <thead className="bg-surface sticky top-0 z-10">
@@ -1339,14 +1339,14 @@ export default function Finance() {
           {tab === "Kas & Bank" && (
             <div className="space-y-4">
               <CardHeader
-                title="Kas & Bank — Pembanding Excel Agustus 2026"
-                subtitle="Saldo awal + mutasi + saldo akhir per rekening (sheet JU,Kas,Bank + BB). No. dokumen 101/201/301/401, kode pembantu vendor/customer."
+                title="Kas & Bank"
+                subtitle="Pantau saldo tiap rekening dan catat mutasi masuk/keluar. Bandingkan Saldo Berjalan dengan Saldo Akhir."
                 action={<button className="btn-primary text-xs" onClick={() => setShowMut(true)}>+ Catat Mutasi</button>}
               />
               <div className="overflow-x-auto">
                 <table className="w-full">
                   <thead className="bg-surface sticky top-0 z-10">
-                    <tr><th className="th">Kode</th><th className="th">Rekening</th><th className="th">Saldo Awal</th><th className="th">Mutasi Masuk</th><th className="th">Mutasi Keluar</th><th className="th">Saldo Berjalan</th><th className="th">Saldo Akhir Excel</th></tr>
+                    <tr><th className="th">Kode</th><th className="th">Rekening</th><th className="th">Saldo Awal</th><th className="th">Mutasi Masuk</th><th className="th">Mutasi Keluar</th><th className="th">Saldo Berjalan</th><th className="th">Saldo Akhir</th></tr>
                   </thead>
                   <tbody className="divide-y divide-steel-100">
                     {KASBANK_EXCEL.map((r) => {
@@ -1374,7 +1374,7 @@ export default function Finance() {
                 </table>
               </div>
               <Card className="p-4">
-                <CardHeader title="Jurnal Penyesuaian Agustus (template berimbang)" subtitle="PPN + penyusutan dari sheet JU — dipakai sebagai template posting ulang." />
+                <CardHeader title="Jurnal Penyesuaian Rutin" subtitle="Acuan penyesuaian PPN + penyusutan tiap akhir bulan." />
                 <div className="overflow-x-auto px-1 pb-3">
                   <table className="w-full">
                     <thead className="bg-surface sticky top-0 z-10">
@@ -1504,13 +1504,13 @@ export default function Finance() {
           {tab === "Buku Besar" && (
             <div className="space-y-4">
               <CardHeader
-                title="Buku Besar & Neraca Lajur — Pembanding Excel"
-                subtitle={`Neraca Saldo seimbang Rp ${LAPORAN_EXCEL.nlSeimbang.toLocaleString("id-ID")} (sheet NL). Laba-Rugi D/K selisih = laba berjalan.`}
+                title="Buku Besar & Neraca Lajur"
+                subtitle="Saldo tiap akun dikelompokkan ke Laba-Rugi atau Neraca. Selisih Laba-Rugi = laba berjalan."
               />
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-                <Card className="p-4"><p className="text-xs text-steel-500">Total Pendapatan (Excel)</p><p className="mt-1 text-lg font-bold text-navy-900">{fmtRupiah(LAPORAN_EXCEL.totalPendapatan)}</p><p className="mt-1 text-[11px] text-steel-400">4-101 Repair & Docking</p></Card>
-                <Card className="p-4"><p className="text-xs text-steel-500">Total Beban Pokok (Excel)</p><p className="mt-1 text-lg font-bold text-navy-900">{fmtRupiah(LAPORAN_EXCEL.totalBebanPokok)}</p><p className="mt-1 text-[11px] text-steel-400">5-101 + 5-200 + 5-500 + 5-600</p></Card>
-                <Card className="p-4"><p className="text-xs text-steel-500">Laba Bersih (Excel)</p><p className="mt-1 text-lg font-bold text-emerald-600">{fmtRupiah(LAPORAN_EXCEL.labaBersih)}</p><p className="mt-1 text-[11px] text-steel-400">Selisih NL Laba-Rugi</p></Card>
+                <Card className="p-4"><p className="text-xs text-steel-500">Total Pendapatan</p><p className="mt-1 text-lg font-bold text-navy-900">{fmtRupiah(LAPORAN_EXCEL.totalPendapatan)}</p><p className="mt-1 text-[11px] text-steel-400">4-101 Repair & Docking</p></Card>
+                <Card className="p-4"><p className="text-xs text-steel-500">Total Beban Pokok</p><p className="mt-1 text-lg font-bold text-navy-900">{fmtRupiah(LAPORAN_EXCEL.totalBebanPokok)}</p><p className="mt-1 text-[11px] text-steel-400">5-101 + 5-200 + 5-500 + 5-600</p></Card>
+                <Card className="p-4"><p className="text-xs text-steel-500">Laba Bersih</p><p className="mt-1 text-lg font-bold text-emerald-600">{fmtRupiah(LAPORAN_EXCEL.labaBersih)}</p><p className="mt-1 text-[11px] text-steel-400">Pendapatan − beban − biaya</p></Card>
               </div>
               <div className="overflow-x-auto">
                 <table className="w-full">
@@ -1548,7 +1548,7 @@ export default function Finance() {
           {tab === "Laba Rugi" && (
             <div className="space-y-4">
               <CardHeader
-                title="Laporan Laba-Rugi — Sheet LR Excel"
+                title="Laporan Laba-Rugi"
                 subtitle="POS-POS per akun dari Neraca Saldo. Laba = Pendapatan − Beban Pokok − Biaya Usaha + Lain Masuk − Lain Keluar."
               />
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
@@ -1698,15 +1698,15 @@ export default function Finance() {
 
           {tab === "Neraca" && (
             <div className="space-y-4">
-              <CardHeader title="Neraca + Laba Ditahan — Pembanding Excel Agustus 2026" subtitle={`Total neraca Rp ${LAPORAN_EXCEL.neracaTotal.toLocaleString("id-ID")} (Aktiva = Kewajiban + Ekuitas).`} />
+              <CardHeader title="Neraca + Laba Ditahan" subtitle={`Total neraca Rp ${LAPORAN_EXCEL.neracaTotal.toLocaleString("id-ID")} (Aktiva = Kewajiban + Ekuitas).`} />
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
                 <Card className="p-4"><p className="text-xs text-steel-500">Aktiva Lancar</p><p className="mt-1 text-lg font-bold text-navy-900">{fmtRupiah(LAPORAN_EXCEL.aktivaLancar)}</p><p className="mt-1 text-[11px] text-steel-400">Dominan Piutang Direksi + Antar Perusahaan + Usaha</p></Card>
                 <Card className="p-4"><p className="text-xs text-steel-500">Nilai Buku Aktiva Tetap</p><p className="mt-1 text-lg font-bold text-navy-900">{fmtRupiah(LAPORAN_EXCEL.bukuAktivaTetap)}</p><p className="mt-1 text-[11px] text-steel-400">Perolehan 15,57T − Akum 9,65T</p></Card>
-                <Card className="p-4"><p className="text-xs text-steel-500">Laba Ditahan Awal</p><p className="mt-1 text-lg font-bold text-navy-900">{fmtRupiah(LAPORAN_EXCEL.labaDitahanAwal)}</p><p className="mt-1 text-[11px] text-steel-400">Sheet Laba Ditahan</p></Card>
+                <Card className="p-4"><p className="text-xs text-steel-500">Laba Ditahan Awal</p><p className="mt-1 text-lg font-bold text-navy-900">{fmtRupiah(LAPORAN_EXCEL.labaDitahanAwal)}</p><p className="mt-1 text-[11px] text-steel-400">Saldo awal periode</p></Card>
                 <Card className="p-4"><p className="text-xs text-steel-500">Laba Ditahan Akhir</p><p className="mt-1 text-lg font-bold text-emerald-600">{fmtRupiah(LAPORAN_EXCEL.labaDitahanAkhir)}</p><p className="mt-1 text-[11px] text-steel-400">Awal + berjalan {fmtRupiah(LAPORAN_EXCEL.labaBerjalan)}</p></Card>
               </div>
               <Card className="p-4">
-                <CardHeader title="Laba Ditahan — Sheet Laba Ditahan Excel" subtitle="Jumlah Laba Ditahan = Laba Ditahan awal + Laba (Rugi) periode berjalan." />
+                <CardHeader title="Laba Ditahan" subtitle="Jumlah Laba Ditahan = Laba Ditahan awal + Laba (Rugi) periode berjalan." />
                 <div className="overflow-x-auto px-1 pb-3">
                   <table className="w-full">
                     <thead className="bg-surface sticky top-0 z-10">
@@ -1722,7 +1722,7 @@ export default function Finance() {
               </Card>
               <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
                 <Card className="p-4">
-                  <CardHeader title="Subledger Hutang Excel (53 vendor)" subtitle="Kuning = vendor Non-PPn. Saldo akhir = opening AP." />
+                  <CardHeader title="Subledger Hutang" subtitle="Kuning = vendor Non-PPn. Saldo akhir = sisa hutang berjalan." />
                   <div className="max-h-72 overflow-y-auto">
                     <table className="w-full">
                       <thead className="bg-surface sticky top-0 z-10"><tr><th className="th">Vendor</th><th className="th">Awal</th><th className="th">Akhir</th><th className="th">PPn</th></tr></thead>
@@ -1740,7 +1740,7 @@ export default function Finance() {
                   </div>
                 </Card>
                 <Card className="p-4">
-                  <CardHeader title="Subledger Piutang Excel (63 customer)" subtitle="Kuning = Non-PPn / perorangan. Saldo akhir = opening AR." />
+                  <CardHeader title="Subledger Piutang" subtitle="Kuning = Non-PPn / perorangan. Saldo akhir = sisa piutang berjalan." />
                   <div className="max-h-72 overflow-y-auto">
                     <table className="w-full">
                       <thead className="bg-surface sticky top-0 z-10"><tr><th className="th">Customer</th><th className="th">Awal</th><th className="th">Akhir</th><th className="th">PPn</th></tr></thead>
@@ -1829,7 +1829,7 @@ export default function Finance() {
           {tab === "Aset" && (
             <div className="space-y-4">
               <CardHeader
-                title="Aset Tetap — Sheet Aset Excel"
+                title="Aset Tetap"
                 subtitle="Beban bulanan: 6-021→1-280, 6-021A→1-281, 6-021B→1-282, 6-021C→1-270, 6-022→1-290."
                 action={<button className="btn-primary text-xs" onClick={() => setShowAst(true)}>+ Tambah Aset</button>}
               />
@@ -1876,7 +1876,8 @@ export default function Finance() {
           {tab === "Jurnal" && (
             <div className="space-y-4">
               <CardHeader
-                title="Jurnal Umum — Sheet JU Excel"
+                title="Jurnal Umum"
+                subtitle="Catat jurnal berimbang (debit = kredit): penyesuaian, koreksi, memorial. Void untuk membatalkan."
                 action={<button className="btn-primary text-xs" onClick={() => setShowJu(true)}>+ Catat Jurnal</button>}
               />
               <div className="overflow-x-auto">
@@ -1961,7 +1962,7 @@ export default function Finance() {
                   <p className="mt-2 text-xs text-steel-500">Total debit {fmtRupiah(journalTotal)} = Total kredit {fmtRupiah(journalTotal)} · Seimbang.</p>
                 </div>
                 <Card className="p-4">
-                  <CardHeader title="CoA Referensi" subtitle={`${coaList.length} akun (sheet Akun)`} />
+                  <CardHeader title="CoA Referensi" subtitle={`${coaList.length} akun`} />
                   <div className="max-h-96 space-y-1.5 overflow-y-auto px-5 pb-5 text-xs">
                     {coaList.map((c) => (
                       <div key={c.kode} className="flex gap-2">
@@ -2029,7 +2030,7 @@ export default function Finance() {
             </Field>
           </FormGrid>
           <FormGrid>
-            <Field label="Kode pembantu" hint="Default = nama customer (kolom sheet Piutang)">
+            <Field label="Kode pembantu" hint="Default = nama customer">
               <input className="input font-mono" value={invForm.kodePembantu} onChange={(e) => setInv("kodePembantu", e.target.value)} placeholder="cth: PT Kartika Samudra" />
             </Field>
             <Field label="NSFP (opsional, unik)" hint="cth: 0026.001-25.00000001">
@@ -2153,7 +2154,7 @@ export default function Finance() {
           </FormGrid>
           <label className="flex items-center gap-2 text-sm text-steel-600">
             <input type="checkbox" checked={apForm.nonPpn} onChange={(e) => setApForm({ ...apForm, nonPpn: e.target.checked })} />
-            Vendor Non-PPn (kuning di Excel — tanpa potong PPh 23)
+            Vendor Non-PPn (tanpa potong PPh 23)
           </label>
         </div>
       </Modal>
@@ -2170,7 +2171,7 @@ export default function Finance() {
           </FormGrid>
           <label className="flex items-center gap-2 text-sm text-steel-600">
             <input type="checkbox" checked={apEditForm.nonPpn} onChange={(e) => setApEditForm({ ...apEditForm, nonPpn: e.target.checked })} />
-            Vendor Non-PPn (kuning di Excel — tanpa potong PPh 23)
+            Vendor Non-PPn (tanpa potong PPh 23)
           </label>
         </div>
       </Modal>
@@ -2230,7 +2231,7 @@ export default function Finance() {
         </div>
       </Modal>
 
-      <Modal open={showCoa} onClose={() => { setShowCoa(false); setCoaTarget(null); }} title={coaTarget ? `Ubah akun ${coaTarget.kode}?` : "Tambah Akun"}
+      <Modal open={showCoa} onClose={() => { setShowCoa(false); setCoaTarget(null); }} title={coaTarget ? `Ubah akun ${coaTarget.kode}?` : "Tambah Akun"} subtitle="Isi nomor, nama, posisi debit/kredit, dan kelompok laporan"
         footer={<><button className="btn-secondary" onClick={() => { setShowCoa(false); setCoaTarget(null); }}>Batal</button><button className="btn-primary" onClick={saveCoa}>Simpan</button></>}>
         <div className="space-y-3">
           <FormGrid>
