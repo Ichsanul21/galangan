@@ -349,7 +349,10 @@ const seedAssets: StoreItem[] = ASET_EXCEL.map((a, i) => ({
 /* Konstanta bisnis terpusat — semua rumus baca dari sini via utils/settings.
    Ubah lewat halaman Pengaturan; kalibrasi saat dokumen client datang. */
 const seedSettings: StoreItem[] = [
-  { id: "SET-PPN", key: "PPN_RATE", value: 11, label: "PPN Keluaran/Masukan (%)", group: "Pajak" },
+  { id: "SET-PPN", key: "PPN_RATE", value: 11, label: "PPN Keluaran/Masukan hutang-belanja (%)", group: "Pajak" },
+  { id: "SET-PPNINV", key: "PPN_INVOICE_RATE", value: 12, label: "PPN invoice jasa+material, DPP=TOTAL×11/12 (%)", group: "Pajak" },
+  { id: "SET-PPHJASA", key: "PPH_JASA_RATE", value: 2, label: "PPh invoice (% dari jasa)", group: "Pajak" },
+  { id: "SET-PPHSUB", key: "PPH_SUBKON_DEFAULT", value: 0.5, label: "PPh subkontraktor default (0.5/2)", group: "Pajak" },
   { id: "SET-PPH23", key: "PPH23_RATE", value: 2, label: "PPh 23 jasa (%)", group: "Pajak" },
   { id: "SET-PPH21-1", key: "PPH21_T1_RATE", value: 5, label: "PPh21 lapis 1 (%)", group: "Payroll" },
   { id: "SET-PPH21-1B", key: "PPH21_T1_MAX", value: 60000000, label: "PPh21 batas lapis 1 (Rp/thn)", group: "Payroll" },

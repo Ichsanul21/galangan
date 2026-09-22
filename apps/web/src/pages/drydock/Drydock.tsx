@@ -5,6 +5,7 @@ import { useStore } from "../../data/store";
 import type { StoreItem } from "../../data/store";
 import { dockUtilTrend, slotTrend } from "../../data";
 import { fmtJumlah, fmtRupiah, fmtTanggal, fmtRentang } from "../../utils/format";
+import { sbDsNumber } from "../../utils/sb";
 import { exportExcel } from "../../utils/export";
 
 const DAYS = 90;
@@ -74,7 +75,7 @@ export default function Drydock() {
   const [selected, setSelected] = useState<string | null>(null);
 
   const [showBook, setShowBook] = useState(false);
-  const [bookForm, setBookForm] = useState({ dockId: "DD-1", project: "", from: "1", to: "30", priority: "Normal", ratePerDay: "0" });
+  const [bookForm, setBookForm] = useState({ dockId: "DD-1", project: "", from: "1", to: "30", priority: "Normal", ratePerDay: "0", dsRef: "", vessel2: "", startDate: "" });
   const [bookError, setBookError] = useState<string | null>(null);
   const [deleting, setDeleting] = useState<StoreItem | null>(null);
   const [wide, setWide] = useState(false);
@@ -198,12 +199,17 @@ export default function Drydock() {
     }
     const ratePerDay = Number(bookForm.ratePerDay || 0);
     if (!Number.isFinite(ratePerDay) || ratePerDay < 0) { setBookError("Tarif dock per hari harus 0 atau lebih."); return; }
+    // No. Dock Space SB: pakai input atau auto (format nnn/DS-SB/SMD/m/yyyy).
+    const dsRef = bookForm.dsRef.trim() || sbDsNumber(dockSlots.length + 1);
+    const vesselFull = bookForm.vessel2.trim() ? `${proj.vessel} + ${bookForm.vessel2.trim()}` : proj.vessel;
     const created = add("dockSlots", {
-      dockId: bookForm.dockId, project: proj.id, vessel: proj.vessel, from, to,
-      priority: bookForm.priority, ratePerDay,
+      dockId: bookForm.dockId, project: proj.id, vessel: vesselFull, from, to,
+      priority: bookForm.priority, ratePerDay, dsRef,
+      startDate: bookForm.startDate || undefined,
       color: SLOT_COLORS[dockSlots.length % SLOT_COLORS.length],
-    }, { action: "membooking slot", target: `${bookForm.dockId} · ${proj.vessel} · ${bookForm.priority}`, module: "Drydock" });
-    toast(`Slot ${created.id} dibooking (${bookForm.priority})`);
+    }, { action: "membooking slot", target: `${bookForm.dockId} · ${vesselFull} · ${bookForm.priority}`, module: "Drydock" });
+    toast(`Slot ${created.id} dibooking (${bookForm.priority}) · DS ${dsRef}`);
+    setBookForm({ dockId: "DD-1", project: "", from: "1", to: "30", priority: "Normal", ratePerDay: "0", dsRef: "", vessel2: "", startDate: "" });
     setShowBook(false);
     setBookError(null);
   };
@@ -419,6 +425,8 @@ export default function Drydock() {
                       <td className="td">
                         <p className="font-medium text-navy-900">{s.vessel}</p>
                         <p className="text-xs font-mono text-steel-500">{s.project}</p>
+                        {s.dsRef ? <p className="text-xs font-mono text-steel-400">DS {s.dsRef}</p> : null}
+                        {s.startDate ? <p className="text-xs text-steel-400">Mulai {fmtTanggal(s.startDate)}</p> : null}
                       </td>
                       <td className="td text-steel-600">{fmtRentang(dayToISO(s.from), dayToISO(s.to))} ({s.to - s.from} hari)</td>
                       <td className="td">
@@ -559,6 +567,15 @@ export default function Drydock() {
             </Field>
             <Field label="Tarif dock per hari (Rp)" hint="Default 0 · biaya = hari × tarif">
               <input type="number" min={0} className="input" value={bookForm.ratePerDay} onChange={(e) => setBookForm({ ...bookForm, ratePerDay: e.target.value })} placeholder="cth: 15000000" />
+            </Field>
+            <Field label="No. Dock Space (SB)" hint="Otomatis bila kosong: nnn/DS-SB/SMD/m/yyyy">
+              <input className="input font-mono" value={bookForm.dsRef} onChange={(e) => setBookForm({ ...bookForm, dsRef: e.target.value })} placeholder={sbDsNumber(dockSlots.length + 1)} />
+            </Field>
+            <Field label="Kapal pasangan (Barge)" hint="Opsional — cth surat TB/Barge">
+              <input className="input" value={bookForm.vessel2} onChange={(e) => setBookForm({ ...bookForm, vessel2: e.target.value })} placeholder="cth: BG RMN 3324" />
+            </Field>
+            <Field label="Tanggal mulai kalender" hint="Arsip/backdate — cth surat 00 Jan 2024">
+              <input type="date" className="input" value={bookForm.startDate} onChange={(e) => setBookForm({ ...bookForm, startDate: e.target.value })} />
             </Field>
           </FormGrid>
           <p className="rounded-lg bg-surface px-3 py-2 text-xs text-steel-600">

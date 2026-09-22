@@ -104,9 +104,10 @@ export default function Subcontractor() {
   const [progNote, setProgNote] = useState("");
   const [confirmFinish, setConfirmFinish] = useState<{ id: string; v: number; note: string } | null>(null);
   const [showTerm, setShowTerm] = useState(false);
-  const [termForm, setTermForm] = useState({ sub: "", wo: "", milestone: "", amount: "", pphPct: "2", retPct: "5" });
+  const [termForm, setTermForm] = useState({ sub: "", wo: "", milestone: "", amount: "", pphPct: "0.5", retPct: "5" });
   const [termPay, setTermPay] = useState<StoreItem | null>(null);
   const [proof, setProof] = useState({ date: todayISO(), method: "Transfer", ref: "" });
+  const [withholdingRef, setWithholdingRef] = useState("");
   const [rejectTerm, setRejectTerm] = useState<StoreItem | null>(null);
   const [releaseTerm, setReleaseTerm] = useState<StoreItem | null>(null);
   const [releaseForm, setReleaseForm] = useState({ date: todayISO(), ba: "" });
@@ -266,13 +267,14 @@ export default function Subcontractor() {
     }, { action: "mengajukan termin", module: "Subkontraktor" });
     toast(`Termin ${created.id} diajukan (Draf)`);
     setShowTerm(false);
-    setTermForm({ sub: "", wo: "", milestone: "", amount: "", pphPct: "2", retPct: "5" });
+    setTermForm({ sub: "", wo: "", milestone: "", amount: "", pphPct: "0.5", retPct: "5" });
   };
 
   const stepTerm = (p: StoreItem, next: string) => {
     if (next === "Lunas") {
       setTermPay(p);
       setProof({ date: todayISO(), method: "Transfer", ref: "" });
+      setWithholdingRef("");
       return;
     }
     if (next === "Ditolak") {
@@ -287,12 +289,16 @@ export default function Subcontractor() {
     if (!termPay) return;
     if (!proof.date) { toast("Tanggal bayar wajib diisi", "info"); return; }
     if (!proof.ref.trim()) { toast("No. referensi wajib diisi", "info"); return; }
+    // PPh variatif RawData (cth PAK YUSUF 0.5%): potong saat bayar + simpan bukti potong.
+    const pphAmt = Math.round(Number(termPay.amount || 0) * pphOf(termPay) / 100);
     update("termins", termPay.id, {
       status: "Lunas", paidAt: proof.date, paidMethod: proof.method, paidRef: proof.ref.trim(),
+      pphAmt, withholdingRef: withholdingRef.trim(),
     });
-    log("melunasi termin", `${termPay.id} via ${proof.method} ${proof.ref.trim()}`, "Subkontraktor");
-    toast(`${termPay.id} lunas — bukti tersimpan`);
+    log("melunasi termin", `${termPay.id} via ${proof.method} ${proof.ref.trim()} · PPh ${pphOf(termPay)}% = ${fmtRupiah(pphAmt)}`, "Subkontraktor");
+    toast(`${termPay.id} lunas — PPh ${fmtRupiah(pphAmt)} dipotong`);
     setTermPay(null);
+    setWithholdingRef("");
   };
 
   const confirmRelease = () => {
@@ -505,7 +511,7 @@ export default function Subcontractor() {
               <div className="overflow-x-auto">
                 <table className="w-full">
                   <thead className="bg-surface sticky top-0 z-10">
-                    <tr><th className="th">Termin</th><th className="th">Subkontraktor</th><th className="th">WO / Progres</th><th className="th">Nilai</th><th className="th">PPh 23</th><th className="th">Retensi</th><th className="th">Neto</th><th className="th">Tanggal</th><th className="th">Status</th><th className="th">Aksi</th></tr>
+                    <tr><th className="th">Termin</th><th className="th">Subkontraktor</th><th className="th">WO / Progres</th><th className="th">Nilai</th><th className="th">PPh</th><th className="th">Retensi</th><th className="th">Neto</th><th className="th">Tanggal</th><th className="th">Status</th><th className="th">Aksi</th></tr>
                   </thead>
                   <tbody className="divide-y divide-steel-100">
                     {payments.map((p) => {
@@ -791,7 +797,12 @@ export default function Subcontractor() {
           )}
           <Field label="Nilai termin (Rp)"><input type="number" min={0} className="input" value={termForm.amount} onChange={(e) => setTermForm({ ...termForm, amount: e.target.value })} /></Field>
           <FormGrid>
-            <Field label="PPh 23 (%)"><input type="number" min={0} max={100} className="input" value={termForm.pphPct} onChange={(e) => setTermForm({ ...termForm, pphPct: e.target.value })} /></Field>
+            <Field label="PPh — variatif RawData (0.5% final / 2%)">
+              <select className="input" value={termForm.pphPct} onChange={(e) => setTermForm({ ...termForm, pphPct: e.target.value })}>
+                <option value="0.5">0.5% Final (cth Pak Yusuf)</option>
+                <option value="2">2% PPh 23</option>
+              </select>
+            </Field>
             <Field label="Retensi (%)"><input type="number" min={0} max={100} className="input" value={termForm.retPct} onChange={(e) => setTermForm({ ...termForm, retPct: e.target.value })} /></Field>
           </FormGrid>
         </div>
@@ -811,6 +822,9 @@ export default function Subcontractor() {
           </FormGrid>
           <Field label="No. referensi" hint="Wajib — no. bukti transfer / kuitansi">
             <input className="input font-mono" value={proof.ref} onChange={(e) => setProof({ ...proof, ref: e.target.value })} placeholder="cth: TRF-2026-0914" />
+          </Field>
+          <Field label="No. bukti potong PPh (opsional)" hint={`PPh ${termPay ? pphOf(termPay) : ""}% = ${fmtRupiah(termPay ? Math.round(Number(termPay.amount || 0) * pphOf(termPay) / 100) : 0)} dipotong saat bayar`}>
+            <input className="input font-mono" value={withholdingRef} onChange={(e) => setWithholdingRef(e.target.value)} placeholder="cth: BUPOT-2026-001" />
           </Field>
         </div>
       </Modal>

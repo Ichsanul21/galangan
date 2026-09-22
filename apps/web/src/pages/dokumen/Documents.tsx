@@ -3,9 +3,10 @@ import { Plus, Search, ScrollText, FileText, Eye, Pencil, Trash2, Archive, Rotat
 import { Card, PageHeader, Badge, KpiCard, Modal, Field, FormGrid, ConfirmModal, toast, StatusBadge } from "../../components/ui";
 import { useStore, type StoreItem } from "../../data/store";
 import { fmtTanggal, todayISO } from "../../utils/format";
+import { sbDsNumber, sbSjNumber } from "../../utils/sb";
 import { exportExcel } from "../../utils/export";
 
-const TYPES = ["Kontrak", "Drawing", "Prosedur", "Sertifikat", "Laporan", "Invoice", "NCR", "Penawaran"];
+const TYPES = ["Kontrak", "Drawing", "Prosedur", "Sertifikat", "Laporan", "Invoice", "NCR", "Penawaran", "Dock Space", "Surat Jalan", "Tanda Terima"];
 const FILTERS = ["Semua", ...TYPES, "Arsip"];
 const EXPIRY_WINDOW = 30;
 
@@ -24,11 +25,13 @@ const FLOW_NEXT: Record<string, string[]> = {
 const PREFIX: Record<string, string> = {
   Kontrak: "CTR", Drawing: "DRW", Prosedur: "SOP", Sertifikat: "SRT",
   Laporan: "LAP", Invoice: "INV", NCR: "NCR", Penawaran: "QTN",
+  "Dock Space": "DS-SB", "Surat Jalan": "SJ-SMD", "Tanda Terima": "TT-SMD",
 };
 
 const RETENSI: Record<string, number | null> = {
   Kontrak: 10, Sertifikat: 5, Laporan: 5, Invoice: 10, NCR: 5,
   Drawing: null, Prosedur: 5, Penawaran: 3,
+  "Dock Space": 5, "Surat Jalan": 5, "Tanda Terima": 5,
 };
 
 function nextDocId(type: string, docs: StoreItem[]): string {
@@ -150,6 +153,10 @@ export default function Documents() {
         owner: form.owner.trim(), berlakuHingga: form.berlakuHingga || undefined,
         version: "v1.0", status: "Draft", updated: todayISO(), archived: false, docCopy: "Terkendali",
         related: [...relSel],
+        // Ref format SB untuk arsip operasional (cth DS: 001/DS-SB/SMD/I/2024).
+        sbRef: form.type === "Dock Space" ? sbDsNumber(data.documents.filter((d) => d.type === "Dock Space").length + 1)
+          : form.type === "Surat Jalan" ? sbSjNumber(data.documents.filter((d) => d.type === "Surat Jalan").length + 1)
+          : "",
         revisions: [{ version: "v1.0", at: todayISO(), by: form.owner.trim(), note: "Dokumen dibuat" }],
       }, { action: "mengarsipkan dokumen", module: "Dokumen" });
       toast(`Dokumen ${created.id} ditambahkan`);

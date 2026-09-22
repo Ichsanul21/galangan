@@ -34,6 +34,7 @@ import { Card, CardHeader, PageHeader, Badge, KpiCard, Tabs, ChartTooltip, Modal
 import { useStore, type StoreItem } from "../../data/store";
 import { fmtJumlah, fmtRupiah, fmtMiliar, fmtTanggal, todayISO } from "../../utils/format";
 import { exportExcel } from "../../utils/export";
+import { sbTonasePlat, sbSjNumber, SB_KOP } from "../../utils/sb";
 import { stockTrend, itemTrend, lowStockTrend, stockValueTrend, warehouseTrend } from "../../data";
 
 const emptyForm = { name: "", category: "Baja", sku: "", warehouse: "Gudang Baja A", rack: "", stock: "0", minStock: "0", unit: "pcs", cost: "0", volume: "0", batch: "", uom2: "", konversi: "", minWh: "", photoUrl: "" };
@@ -196,6 +197,11 @@ export default function Inventory() {
   const [moveBatch, setMoveBatch] = useState("");
   const [moveUom, setMoveUom] = useState("base");
   const [movePrice, setMovePrice] = useState("");
+  // Kolom RawData REPORT WAREHOUSE: supplier, pajak, purpose (U/TK kapal), PIC.
+  const [moveSupplier, setMoveSupplier] = useState("");
+  const [moveTax, setMoveTax] = useState("");
+  const [movePurpose, setMovePurpose] = useState("");
+  const [movePic, setMovePic] = useState("");
   const [importReport, setImportReport] = useState<string[]>([]);
 
   const [showOpname, setShowOpname] = useState(false);
@@ -209,6 +215,20 @@ export default function Inventory() {
   const [reservTarget, setReservTarget] = useState<StoreItem | null>(null);
   const [reservProject, setReservProject] = useState("");
   const [reservQtyInput, setReservQtyInput] = useState("");
+  // Kalkulator tonase plat (RawData PERHITUNGAN + TABLE TONASE): P×L×T×7850.
+  const [tonP, setTonP] = useState("6010");
+  const [tonL, setTonL] = useState("1810");
+  const [tonT, setTonT] = useState("12");
+  const [tonPcs, setTonPcs] = useState("1");
+  // Surat Jalan (form RawData SURAT JALAN 2024).
+  const [sjTo, setSjTo] = useState("");
+  const [sjVehicle, setSjVehicle] = useState("");
+  const [sjPlate, setSjPlate] = useState("");
+  const [sjDriver, setSjDriver] = useState("");
+  const [sjDate, setSjDate] = useState(todayISO());
+  const [sjItems, setSjItems] = useState<{ name: string; qty: string }[]>([{ name: "", qty: "" }]);
+  const [sjReceiver, setSjReceiver] = useState("");
+  const [sjGiver, setSjGiver] = useState("");
   const [showPick, setShowPick] = useState(false);
   const [pickProject, setPickProject] = useState("");
   const [pickSel, setPickSel] = useState<string[]>([]);
@@ -306,6 +326,10 @@ export default function Inventory() {
     setMoveBatch("");
     setMoveUom("base");
     setMovePrice("");
+    setMoveSupplier("");
+    setMoveTax("");
+    setMovePurpose("");
+    setMovePic("");
   };
 
   const closeMove = () => {
@@ -315,6 +339,10 @@ export default function Inventory() {
     setMoveBatch("");
     setMoveUom("base");
     setMovePrice("");
+    setMoveSupplier("");
+    setMoveTax("");
+    setMovePurpose("");
+    setMovePic("");
   };
 
   const openEdit = (i: StoreItem) => {
@@ -415,6 +443,8 @@ export default function Inventory() {
     }
     const refBase = moveRef.trim() || (moveKind === "in" ? "GR manual" : "GI manual");
     const refNote = useUom2 ? `${refBase} · ${fmtJumlah(raw)} ${uom2Of(fresh)}` : refBase;
+    const priceExcl = Number(movePrice) || 0;
+    const taxAmt = Number(moveTax) || 0;
     update("inventory", fresh.id, patch);
     add("movements", {
       item: fresh.name, itemId: fresh.id,
@@ -424,6 +454,12 @@ export default function Inventory() {
       batch: moveBatch.trim() || fresh.batch || "",
       date: todayISO(),
       tone: moveKind,
+      supplier: moveSupplier.trim(),
+      priceExcl,
+      tax: taxAmt,
+      total: priceExcl > 0 ? Math.round(qty * priceExcl) + taxAmt : 0,
+      purpose: movePurpose.trim(),
+      pic: movePic.trim(),
     }, { action: moveKind === "in" ? "menerima barang" : "mengeluarkan barang", target: `${fresh.name} × ${qty}`, module: "Inventori" });
     toast(`${moveKind === "in" ? "GR" : "GI"} ${fresh.name} × ${fmtJumlah(qty)} tersimpan`);
     closeMove();
@@ -601,7 +637,7 @@ export default function Inventory() {
       </div>
 
       <div className="card">
-        <Tabs tabs={["Katalog", "Stok per Gudang", "BOM", "Pergerakan", "Analisis"]} active={tab} onChange={setTab} />
+        <Tabs tabs={["Katalog", "Stok per Gudang", "BOM", "Pergerakan", "Tonase & Surat Jalan", "Analisis"]} active={tab} onChange={setTab} />
         <div className="p-4">
           {tab === "Katalog" && (
             <>
@@ -813,7 +849,7 @@ export default function Inventory() {
               <div className="overflow-x-auto">
                 <table className="w-full">
                   <thead className="bg-surface sticky top-0 z-10">
-                    <tr><th className="th">Transaksi</th><th className="th">Item</th><th className="th">Tipe</th><th className="th">Jumlah</th><th className="th">Referensi</th><th className="th">Tanggal</th></tr>
+                    <tr><th className="th">Transaksi</th><th className="th">Item</th><th className="th">Tipe</th><th className="th">Jumlah</th><th className="th">Referensi</th><th className="th">Supplier / Purpose / PIC</th><th className="th">Total</th><th className="th">Tanggal</th></tr>
                   </thead>
                   <tbody className="divide-y divide-steel-100">
                     {movements.map((m) => (
@@ -827,12 +863,101 @@ export default function Inventory() {
                         </td>
                         <td className="td font-semibold">{fmtJumlah(Number(m.qty))}</td>
                         <td className="td font-mono text-xs text-steel-600 truncate" title={String(m.by)}>{m.by}</td>
+                        <td className="td text-xs text-steel-600">
+                          {m.supplier ? <p className="truncate" title={String(m.supplier)}>{m.supplier}</p> : null}
+                          {m.purpose ? <p className="truncate" title={String(m.purpose)}>U: {m.purpose}</p> : null}
+                          {m.pic ? <p className="truncate" title={String(m.pic)}>PIC: {m.pic}</p> : null}
+                          {!m.supplier && !m.purpose && !m.pic ? "—" : null}
+                        </td>
+                        <td className="td text-xs font-semibold">{Number(m.total) ? fmtRupiah(Number(m.total)) : "—"}</td>
                         <td className="td text-steel-600">{fmtTanggal(m.date)}</td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
               </div>
+            </div>
+          )}
+
+          {tab === "Tonase & Surat Jalan" && (
+            <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+              <Card className="p-5">
+                <CardHeader title="Kalkulator Tonase Plat" subtitle="RawData: berat = P × L × T × 7850 (mm → kg)" />
+                <div className="mt-3 space-y-3">
+                  <FormGrid>
+                    <Field label="Panjang P (mm)" hint="cth 20' = 6010"><input type="number" min={0} className="input" value={tonP} onChange={(e) => setTonP(e.target.value)} /></Field>
+                    <Field label="Lebar L (mm)" hint="cth 6' = 1810, 5' = 1510"><input type="number" min={0} className="input" value={tonL} onChange={(e) => setTonL(e.target.value)} /></Field>
+                    <Field label="Tebal T (mm)"><input type="number" min={0} className="input" value={tonT} onChange={(e) => setTonT(e.target.value)} /></Field>
+                    <Field label="Lembar (pcs)"><input type="number" min={1} className="input" value={tonPcs} onChange={(e) => setTonPcs(e.target.value)} /></Field>
+                  </FormGrid>
+                  <p className="rounded-lg bg-surface px-3 py-2 text-sm font-semibold text-navy-900">
+                    Berat: {fmtJumlah(sbTonasePlat(Number(tonP) || 0, Number(tonL) || 0, Number(tonT) || 0, Number(tonPcs) || 0))} kg
+                  </p>
+                  <button className="btn-secondary w-full justify-center text-xs" onClick={() => {
+                    const kg = sbTonasePlat(Number(tonP) || 0, Number(tonL) || 0, Number(tonT) || 0, Number(tonPcs) || 0);
+                    if (kg <= 0) { toast("Isi dimensi dengan benar", "info"); return; }
+                    add("inventory", {
+                      name: `Plat ${tonT}mm ${tonP}x${tonL}`, category: "Baja", sku: `PLAT-${tonT}-${tonP}X${tonL}-${Date.now().toString(36).toUpperCase()}`,
+                      warehouse: "Gudang Baja A", rack: "", stock: Number(tonPcs) || 0, minStock: 0, unit: "lbr",
+                      cost: 0, location: "", volume: kg, batch: "", uom2: "kg", konversi: kg / Math.max(1, Number(tonPcs) || 1),
+                      minStockByWarehouse: {}, photoUrl: "", avgCost: 0, batches: [], reserved: [],
+                    }, { action: "mendaftarkan plat dari kalkulator tonase", module: "Inventori" });
+                    toast(`Plat ${tonT}mm (${kg} kg) masuk katalog`);
+                  }}>
+                    Masukkan ke Katalog (Q/V/Total BOM)
+                  </button>
+                </div>
+              </Card>
+              <Card className="p-5">
+                <CardHeader title="Surat Jalan" subtitle="Form RawData: kop SB + kendaraan + penerima/penyerah" />
+                <div className="mt-3 space-y-3">
+                  <FormGrid>
+                    <Field label="Tanggal"><input type="date" className="input" value={sjDate} onChange={(e) => setSjDate(e.target.value)} /></Field>
+                    <Field label="Tujuan"><input className="input" value={sjTo} onChange={(e) => setSjTo(e.target.value)} placeholder="cth: Galangan Balikpapan" /></Field>
+                    <Field label="Jenis kendaraan"><input className="input" value={sjVehicle} onChange={(e) => setSjVehicle(e.target.value)} /></Field>
+                    <Field label="No. polisi"><input className="input font-mono" value={sjPlate} onChange={(e) => setSjPlate(e.target.value)} /></Field>
+                    <Field label="Driver"><input className="input" value={sjDriver} onChange={(e) => setSjDriver(e.target.value)} /></Field>
+                    <Field label="No. Ref"><input className="input font-mono" value={sbSjNumber((data.documents ?? []).filter((d) => d.type === "Surat Jalan").length + 1)} readOnly /></Field>
+                  </FormGrid>
+                  {sjItems.map((it, idx) => (
+                    <div key={idx} className="grid grid-cols-12 gap-2">
+                      <input className="input col-span-8" placeholder={`Barang ${idx + 1}`} value={it.name} onChange={(e) => setSjItems((s) => s.map((x, i) => (i === idx ? { ...x, name: e.target.value } : x)))} />
+                      <input className="input col-span-3" placeholder="Jumlah" value={it.qty} onChange={(e) => setSjItems((s) => s.map((x, i) => (i === idx ? { ...x, qty: e.target.value } : x)))} />
+                      <button className="btn-secondary col-span-1 text-xs" aria-label={`Hapus baris SJ ${idx + 1}`} onClick={() => setSjItems((s) => s.filter((_, i) => i !== idx))}>×</button>
+                    </div>
+                  ))}
+                  <button className="btn-secondary text-xs" onClick={() => setSjItems((s) => [...s, { name: "", qty: "" }])}>+ Baris barang</button>
+                  <FormGrid>
+                    <Field label="Yang menerima"><input className="input" value={sjReceiver} onChange={(e) => setSjReceiver(e.target.value)} /></Field>
+                    <Field label="Yang menyerahkan"><input className="input" value={sjGiver} onChange={(e) => setSjGiver(e.target.value)} /></Field>
+                  </FormGrid>
+                  <button className="btn-primary w-full justify-center" onClick={() => {
+                    const items = sjItems.filter((x) => x.name.trim() && x.qty.trim());
+                    if (!sjTo.trim() || items.length === 0) { toast("Tujuan + minimal 1 barang wajib diisi", "info"); return; }
+                    const no = sbSjNumber((data.documents ?? []).filter((d) => d.type === "Surat Jalan").length + 1);
+                    add("documents", {
+                      id: `SJ-SMD-${sjDate.slice(0, 4)}-${String((data.documents ?? []).filter((d) => d.type === "Surat Jalan").length + 1).padStart(3, "0")}`,
+                      title: `Surat Jalan ke ${sjTo.trim()}`, type: "Surat Jalan", project: "-", vessel: sjTo.trim(),
+                      owner: sjGiver.trim() || "Anda", sbRef: no, sjDate, sjVehicle: sjVehicle.trim(), sjPlate: sjPlate.trim(),
+                      sjDriver: sjDriver.trim(), sjItems: items, sjReceiver: sjReceiver.trim(), sjGiver: sjGiver.trim(),
+                      version: "v1.0", status: "Berlaku", updated: todayISO(), archived: false, docCopy: "Terkendali",
+                      related: [], revisions: [{ version: "v1.0", at: todayISO(), by: sjGiver.trim() || "Anda", note: "Surat jalan diterbitkan" }],
+                    }, { action: "menerbitkan surat jalan", target: no, module: "Inventori" });
+                    void exportExcel([
+                      [SB_KOP.line1, SB_KOP.name], [SB_KOP.hq, `HP ${SB_KOP.hp}`], [],
+                      ["SURAT JALAN", `NO REF: ${no}`], ["Tanggal", sjDate], ["Tujuan", sjTo.trim()],
+                      ["Kendaraan", sjVehicle.trim()], ["No. Polisi", sjPlate.trim()], ["Driver", sjDriver.trim()], [],
+                      ["No", "Nama Barang", "Jumlah"], ...items.map((x, i) => [i + 1, x.name.trim(), x.qty.trim()]), [],
+                      ["Yang Menerima", "Yang Menyerahkan"], [sjReceiver.trim(), sjGiver.trim()],
+                    ], `SJ-${no.replaceAll("/", "-")}`, "Surat Jalan");
+                    toast(`Surat jalan ${no} diterbitkan + diekspor`);
+                    setSjTo(""); setSjVehicle(""); setSjPlate(""); setSjDriver("");
+                    setSjItems([{ name: "", qty: "" }]); setSjReceiver(""); setSjGiver("");
+                  }}>
+                    Terbitkan + Cetak (kop SB)
+                  </button>
+                </div>
+              </Card>
             </div>
           )}
 
@@ -1001,10 +1126,28 @@ export default function Inventory() {
             </p>
           )}
           {moveKind === "in" && (
-            <Field label="Harga satuan GR (Rp)" hint="Opsional — bila diisi, harga rata-rata (average cost) dihitung ulang">
-              <input type="number" min={0} className="input" value={movePrice} onChange={(e) => setMovePrice(e.target.value)} placeholder="cth: 150000" />
+            <FormGrid>
+              <Field label="Harga satuan non-PPN (Rp)" hint="Kolom HARGA REPORT WAREHOUSE — average cost dihitung ulang">
+                <input type="number" min={0} className="input" value={movePrice} onChange={(e) => setMovePrice(e.target.value)} placeholder="cth: 150000" />
+              </Field>
+              <Field label="Pajak (Rp)" hint="Kolom PAJAK bila ada">
+                <input type="number" min={0} className="input" value={moveTax} onChange={(e) => setMoveTax(e.target.value)} placeholder="0" />
+              </Field>
+            </FormGrid>
+          )}
+          {moveKind === "in" && (
+            <Field label="Supplier" hint="Kolom NAMA SUPPLIER">
+              <input className="input" value={moveSupplier} onChange={(e) => setMoveSupplier(e.target.value)} placeholder="cth: CV KALINDO MITRA BERSAMA" />
             </Field>
           )}
+          <FormGrid>
+            <Field label="Purpose / Untuk kapal" hint="cth: TB BANGUNAN BARU / U/TB. TRIALFA 01">
+              <input className="input" value={movePurpose} onChange={(e) => setMovePurpose(e.target.value)} placeholder="cth: TB BANGUNAN BARU" />
+            </Field>
+            <Field label="PIC" hint="Penanggung jawab pengambilan">
+              <input className="input" value={movePic} onChange={(e) => setMovePic(e.target.value)} placeholder="cth: ABK / nama subkon" />
+            </Field>
+          </FormGrid>
           <Field label="Batch / Serial" hint="Opsional — dicatat di movement & FIFO">
             <input className="input font-mono" value={moveBatch} onChange={(e) => setMoveBatch(e.target.value)} placeholder="cth: SN-2026-001" />
           </Field>

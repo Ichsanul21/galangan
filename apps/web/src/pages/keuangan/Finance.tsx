@@ -31,6 +31,7 @@ import { useStore } from "../../data/store";
 import type { StoreItem } from "../../data/store";
 import { fmtRupiah, fmtMiliar, fmtTanggal, fmtJumlah, todayISO } from "../../utils/format";
 import { getSetting } from "../../utils/settings";
+import { sbInvoiceMath, PPN_INVOICE_DEFAULT, PPH_JASA_DEFAULT } from "../../utils/sb";
 import { exportExcel } from "../../utils/export";
 import {
   COA_EXCEL,
@@ -56,11 +57,11 @@ const INV_NEXT: Record<string, string[]> = {
 const BILLING_TYPES = ["Milestone", "Progres", "Uang Muka", "Retensi", "T&M"] as const;
 
 const INV_PREFIX: Record<string, string> = {
-  Milestone: "INV/MS",
-  Progres: "INV/PR",
-  "Uang Muka": "INV/UM",
-  Retensi: "INV/RT",
-  "T&M": "INV/TM",
+  Milestone: "INV/MS-SMD",
+  Progres: "INV/PR-SMD",
+  "Uang Muka": "INV/UM-SMD",
+  Retensi: "INV/RT-SMD",
+  "T&M": "INV/TM-SMD",
 };
 
 const DUNNING_NEXT: Record<string, string> = {
@@ -90,11 +91,12 @@ interface InvLine {
   price: string;
   rate: string;
   hours: string;
+  kategori: string; // "Jasa" | "Material" — split RawData CONTOH INVOICE
 }
 
 const invNext = (s: string): string[] => INV_NEXT[s] ?? [];
 const emptyProof = () => ({ date: todayISO(), method: "Transfer", ref: "" });
-const emptyLine = (): InvLine => ({ desc: "", qty: "1", unit: "pcs", price: "", rate: "", hours: "" });
+const emptyLine = (): InvLine => ({ desc: "", qty: "1", unit: "pcs", price: "", rate: "", hours: "", kategori: "Jasa" });
 const num = (v: unknown): number => Number(v) || 0;
 
 function lineAmount(l: InvLine, isTM: boolean): number {
@@ -212,16 +214,19 @@ export default function Finance() {
     nsfp: "",
     noFaktur: "",
     kodePembantu: "",
+    skdt: false, // INV PAKAI SKDT: tanpa PPN (cth BG MHKL 35)
+    dpApplied: "", // amortisasi uang muka (cth V2 potong DP-1 Rp 1.098M)
   });
   const [invLines, setInvLines] = useState<InvLine[]>([emptyLine()]);
   const [payTarget, setPayTarget] = useState<StoreItem | null>(null);
   const [apTarget, setApTarget] = useState<StoreItem | null>(null);
+  const [apPayAmt, setApPayAmt] = useState("");
   const [proof, setProof] = useState(emptyProof);
   const [rejectInv, setRejectInv] = useState<StoreItem | null>(null);
   const [showAp, setShowAp] = useState(false);
-  const [apForm, setApForm] = useState({ v: "", kodePembantu: "", po: "", openAwal: "", amt: "", due: "", nonPpn: false });
+  const [apForm, setApForm] = useState({ v: "", kodePembantu: "", po: "", openAwal: "", amt: "", due: "", nonPpn: false, vessel: "", item: "" });
   const [apEdit, setApEdit] = useState<StoreItem | null>(null);
-  const [apEditForm, setApEditForm] = useState({ v: "", kodePembantu: "", openAwal: "", amt: "", due: "", nonPpn: false });
+  const [apEditForm, setApEditForm] = useState({ v: "", kodePembantu: "", openAwal: "", amt: "", due: "", nonPpn: false, vessel: "", item: "" });
   const [releaseTarget, setReleaseTarget] = useState<StoreItem | null>(null);
   const [releaseForm, setReleaseForm] = useState({ date: todayISO(), ba: "" });
   const [taxId, setTaxId] = useState("");
@@ -253,9 +258,10 @@ export default function Finance() {
   const [coaForm, setCoaForm] = useState({ kode: "", nama: "", dk: "D", nrlr: "NR" });
   const [coaTarget, setCoaTarget] = useState<StoreItem | null>(null);
 
-  // Jurnal (sheet JU): tambah jurnal manual berimbang.
+  // Jurnal (sheet JU): tambah jurnal manual berimbang, multi-baris per voucher.
   const [showJu, setShowJu] = useState(false);
-  const [juForm, setJuForm] = useState({ date: todayISO(), kodePembantu: "", dokumen: "", uraian: "", db: "", kr: "", amount: "", sumber: "JU" });
+  const [juForm, setJuForm] = useState({ date: todayISO(), kodePembantu: "", dokumen: "", uraian: "", sumber: "JU" });
+  const [juLines, setJuLines] = useState([{ db: "", kr: "", amount: "" }]);
 
   // Kas & Bank: catat mutasi masuk/keluar per rekening.
   const [showMut, setShowMut] = useState(false);
@@ -286,9 +292,23 @@ export default function Finance() {
 
   const isTMForm = invForm.billingType === "T&M";
   const invTotal = invLines.reduce((s, l) => s + lineAmount(l, isTMForm), 0);
-  const retentionAmtPreview = invForm.billingType === "Uang Muka" || invForm.billingType === "T&M"
-    ? 0
-    : Math.round(invTotal * (num(invForm.retentionPct) / 100));
+  // Rumus RawData CONTOH INVOICE: TOTAL=Jasa+Material, DPP=TOTAL×11/12,
+  // PPN=12%×DPP (0 bila SKDT), PPh=2%×Jasa, Grand=TOTAL+PPN−PPh−DP.
+  const sbPreview = useMemo(() => {
+    const jasa = invLines.filter((l) => (l.kategori || "Jasa") === "Jasa").reduce((s, l) => s + lineAmount(l, isTMForm), 0);
+    const material = invLines.filter((l) => l.kategori === "Material").reduce((s, l) => s + lineAmount(l, isTMForm), 0);
+    return sbInvoiceMath({
+      jasa,
+      material,
+      ppnRate: getSetting(data, "PPN_INVOICE_RATE", PPN_INVOICE_DEFAULT),
+      pphRate: getSetting(data, "PPH_JASA_RATE", PPH_JASA_DEFAULT),
+      skdt: invForm.skdt,
+      dpApplied: num(invForm.dpApplied),
+      retentionPct: invForm.billingType === "Uang Muka" || isTMForm ? 0 : num(invForm.retentionPct),
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [invLines, invForm.skdt, invForm.dpApplied, invForm.retentionPct, invForm.billingType, isTMForm, data.settings]);
+  const retentionAmtPreview = sbPreview.retentionAmt;
 
   const approveThreshold = getSetting(data, "APPROVE_INVOICE", 5000000);
   const needsDirector = (inv: StoreItem): boolean =>
@@ -299,7 +319,7 @@ export default function Finance() {
     [invoices]
   );
   const arTotal = arOpen.reduce((s, i) => s + num(i.amount), 0);
-  const apTotal = payables.filter((a) => a.st !== "Lunas").reduce((s, a) => s + num(a.amt), 0);
+  const apTotal = payables.filter((a) => a.st !== "Lunas").reduce((s, a) => s + Math.max(0, num(a.amt) - num(a.pay1) - num(a.pay2)), 0);
   const lateCount = invoices.filter((i) => i.status === "Terlambat").length;
   const writeOffTotal = invoices.filter((i) => i.status === "Dihapusbukukan").reduce((s, i) => s + num(i.amount), 0);
 
@@ -657,6 +677,17 @@ export default function Finance() {
     const total = validLines.reduce((s, l) => s + lineAmount(l, isTMForm), 0);
     const pct = invForm.billingType === "Uang Muka" || invForm.billingType === "T&M" ? 0 : num(invForm.retentionPct);
     const retentionAmt = Math.round(total * (pct / 100));
+    const jasaTotal = validLines.filter((l) => (l.kategori || "Jasa") === "Jasa").reduce((s, l) => s + lineAmount(l, isTMForm), 0);
+    const matTotal = validLines.filter((l) => l.kategori === "Material").reduce((s, l) => s + lineAmount(l, isTMForm), 0);
+    const sb = sbInvoiceMath({
+      jasa: jasaTotal,
+      material: matTotal,
+      ppnRate: getSetting(data, "PPN_INVOICE_RATE", PPN_INVOICE_DEFAULT),
+      pphRate: getSetting(data, "PPH_JASA_RATE", PPH_JASA_DEFAULT),
+      skdt: invForm.skdt,
+      dpApplied: num(invForm.dpApplied),
+      retentionPct: pct,
+    });
     const storedLines = validLines.map((l) => ({
       desc: l.desc.trim(),
       qty: num(l.qty),
@@ -664,6 +695,7 @@ export default function Finance() {
       price: num(l.price),
       rate: num(l.rate),
       hours: num(l.hours),
+      kategori: l.kategori || "Jasa",
       amount: lineAmount(l, isTMForm),
     }));
     let invId = invPreview;
@@ -688,6 +720,14 @@ export default function Finance() {
       retentionPct: pct,
       retentionAmt,
       retentionStatus: retentionAmt > 0 ? "Ditahan" : "-",
+      jasaTotal: sb.jasa,
+      matTotal: sb.material,
+      dpp: sb.dpp,
+      ppnAmt: sb.ppn,
+      pphAmt: sb.pph,
+      dpApplied: sb.dpApplied,
+      grandTotal: sb.grand,
+      skdt: invForm.skdt,
       nsfp: invForm.nsfp.trim(),
       noFaktur: invForm.noFaktur.trim(),
       dunning: "Belum Ditagih",
@@ -698,7 +738,7 @@ export default function Finance() {
     }
     toast(`Invoice ${created.id} dibuat (Draft)`);
     setShowInv(false);
-    setInvForm({ project: "", billingType: "Milestone", milestoneRef: "", serviceRef: "", retentionPct: "5", due: "", paymentTerm: "Termin 1", nsfp: "", noFaktur: "", kodePembantu: "" });
+    setInvForm({ project: "", billingType: "Milestone", milestoneRef: "", serviceRef: "", retentionPct: "5", due: "", paymentTerm: "Termin 1", nsfp: "", noFaktur: "", kodePembantu: "", skdt: false, dpApplied: "" });
     setInvLines([emptyLine()]);
   };
 
@@ -751,22 +791,33 @@ export default function Finance() {
     setCoaForm({ kode: "", nama: "", dk: "D", nrlr: "NR" });
   };
 
-  // --- Jurnal: tambah manual berimbang (kolom sheet JU) ---
+  // --- Jurnal: tambah manual berimbang multi-baris (kolom sheet JU: Kas/BPD/JPb/JPn/JM) ---
   const saveJu = () => {
     if (!juForm.date) { toast("Tanggal wajib diisi", "info"); return; }
     if (!juForm.uraian.trim()) { toast("Uraian wajib diisi", "info"); return; }
-    if (!juForm.db || !juForm.kr) { toast("Akun DB dan KR wajib diisi", "info"); return; }
-    if (juForm.db === juForm.kr) { toast("Akun DB dan KR harus berbeda", "info"); return; }
-    if (!coaKode.has(juForm.db) || !coaKode.has(juForm.kr)) { toast("Akun harus terdaftar di CoA", "info"); return; }
-    if (!num(juForm.amount) || num(juForm.amount) <= 0) { toast("Nominal harus lebih dari 0", "info"); return; }
-    add("journals", {
-      date: juForm.date, kodePembantu: juForm.kodePembantu.trim(), dokumen: juForm.dokumen.trim() || "-",
-      uraian: juForm.uraian.trim(), db: juForm.db, kr: juForm.kr, amount: num(juForm.amount),
-      sumber: juForm.sumber, status: "Posted",
-    }, { action: "mencatat jurnal", module: "Keuangan" });
-    toast(`Jurnal ${juForm.db} → ${juForm.kr} tersimpan (Posted, berimbang)`);
+    const lines = juLines.filter((l) => l.db || l.kr || l.amount);
+    if (lines.length === 0) { toast("Isi minimal satu baris jurnal", "info"); return; }
+    for (let i = 0; i < lines.length; i++) {
+      const l = lines[i];
+      if (!l.db || !l.kr) { toast(`Baris ${i + 1}: akun DB dan KR wajib diisi`, "info"); return; }
+      if (l.db === l.kr) { toast(`Baris ${i + 1}: akun DB dan KR harus berbeda`, "info"); return; }
+      if (!coaKode.has(l.db) || !coaKode.has(l.kr)) { toast(`Baris ${i + 1}: akun harus terdaftar di CoA`, "info"); return; }
+      if (!num(l.amount) || num(l.amount) <= 0) { toast(`Baris ${i + 1}: nominal harus lebih dari 0`, "info"); return; }
+    }
+    const voucher = juForm.dokumen.trim() || `JU-${todayISO().replaceAll("-", "")}-${String((manJournals.length ?? 0) + 1).padStart(3, "0")}`;
+    lines.forEach((l, i) => {
+      add("journals", {
+        date: juForm.date, kodePembantu: juForm.kodePembantu.trim(), dokumen: voucher,
+        uraian: lines.length > 1 ? `${juForm.uraian.trim()} (${i + 1}/${lines.length})` : juForm.uraian.trim(),
+        db: l.db, kr: l.kr, amount: num(l.amount),
+        sumber: juForm.sumber, status: "Posted",
+      }, { action: "mencatat jurnal", module: "Keuangan" });
+    });
+    const total = lines.reduce((s, l) => s + num(l.amount), 0);
+    toast(`Jurnal ${voucher} tersimpan (${lines.length} baris, total ${fmtRupiah(total)}, berimbang)`);
     setShowJu(false);
-    setJuForm({ date: todayISO(), kodePembantu: "", dokumen: "", uraian: "", db: "", kr: "", amount: "", sumber: "JU" });
+    setJuForm({ date: todayISO(), kodePembantu: "", dokumen: "", uraian: "", sumber: "JU" });
+    setJuLines([{ db: "", kr: "", amount: "" }]);
   };
 
   // --- Kas & Bank: mutasi masuk/keluar per rekening ---
@@ -797,10 +848,11 @@ export default function Finance() {
       v: apForm.v.trim(), kodePembantu: apForm.kodePembantu.trim() || apForm.v.trim(),
       po: apForm.po.trim() || "OPEN-0826", openAwal: num(apForm.openAwal), amt: num(apForm.amt),
       due: apForm.due, pph: apForm.nonPpn ? "Non-PPn" : "2%", st: "Belum Dibayar",
+      vessel: apForm.vessel.trim(), item: apForm.item.trim(), pay1: 0, pay2: 0,
     }, { action: "mencatat hutang", module: "Keuangan" });
     toast(`Hutang ${created.id} dicatat`);
     setShowAp(false);
-    setApForm({ v: "", kodePembantu: "", po: "", openAwal: "", amt: "", due: "", nonPpn: false });
+    setApForm({ v: "", kodePembantu: "", po: "", openAwal: "", amt: "", due: "", nonPpn: false, vessel: "", item: "" });
   };
 
   const saveApEdit = () => {
@@ -811,6 +863,7 @@ export default function Finance() {
       v: apEditForm.v.trim(), kodePembantu: apEditForm.kodePembantu.trim() || apEditForm.v.trim(),
       openAwal: num(apEditForm.openAwal), amt: num(apEditForm.amt), due: apEditForm.due,
       pph: apEditForm.nonPpn ? "Non-PPn" : "2%",
+      vessel: apEditForm.vessel.trim(), item: apEditForm.item.trim(),
     });
     log("mengubah hutang", apEdit.id, "Keuangan");
     toast(`Hutang ${apEdit.id} diubah`);
@@ -915,12 +968,34 @@ export default function Finance() {
     if (!apTarget) return;
     if (!proof.date) { toast("Tanggal bayar wajib diisi", "info"); return; }
     if (!proof.ref.trim()) { toast("No. referensi wajib diisi", "info"); return; }
-    update("payables", apTarget.id, {
-      st: "Lunas", paidAt: proof.date, paidMethod: proof.method, paidRef: proof.ref.trim(),
-    });
-    log("melunasi hutang", `${apTarget.po} via ${proof.method} ${proof.ref.trim()}`, "Keuangan");
-    toast(`${apTarget.po} dilunasi — bukti tersimpan`);
+    // Hutang 2 tahap ala CONTOH HUTANG.xlsx (Pembayaran I / II + sisa).
+    const amt = num(apTarget.amt);
+    const p1 = num(apTarget.pay1);
+    const bayar = num(apPayAmt);
+    if (!bayar || bayar <= 0) { toast("Nominal pembayaran tahap ini wajib diisi", "info"); return; }
+    if (bayar > amt - p1 - num(apTarget.pay2)) { toast("Nominal melebihi sisa hutang", "info"); return; }
+    if (!p1) {
+      const sisa = amt - bayar;
+      update("payables", apTarget.id, {
+        pay1: bayar, pay1date: proof.date, pay1ref: proof.ref.trim(), pay1method: proof.method,
+        st: sisa <= 0 ? "Lunas" : "Dibayar Sebagian",
+        ...(sisa <= 0 ? { paidAt: proof.date, paidMethod: proof.method, paidRef: proof.ref.trim() } : {}),
+      });
+      log("membayar hutang tahap I", `${apTarget.po} ${fmtRupiah(bayar)} via ${proof.ref.trim()}`, "Keuangan");
+      toast(`Tahap I ${fmtRupiah(bayar)} tercatat · sisa ${fmtRupiah(Math.max(0, sisa))}`);
+    } else {
+      const p2 = num(apTarget.pay2) + bayar;
+      const sisa = amt - p1 - p2;
+      update("payables", apTarget.id, {
+        pay2: p2, pay2date: proof.date, pay2ref: proof.ref.trim(), pay2method: proof.method,
+        st: sisa <= 0 ? "Lunas" : "Dibayar Sebagian",
+        ...(sisa <= 0 ? { paidAt: proof.date, paidMethod: proof.method, paidRef: proof.ref.trim() } : {}),
+      });
+      log("membayar hutang tahap II", `${apTarget.po} ${fmtRupiah(bayar)} via ${proof.ref.trim()}`, "Keuangan");
+      toast(`Tahap II ${fmtRupiah(bayar)} tercatat · sisa ${fmtRupiah(Math.max(0, sisa))}`);
+    }
     setApTarget(null);
+    setApPayAmt("");
   };
 
   const toggleSched = (key: string) =>
@@ -962,8 +1037,8 @@ export default function Finance() {
       String(i.noFaktur ?? ""),
       String(i.paidAt || i.due || ""),
       String(i.client ?? ""),
-      num(i.amount),
-      Math.round((num(i.amount) * taxCalc.ppnRate) / 100),
+      num(i.dpp) || num(i.amount),
+      num(i.ppnAmt) || Math.round((num(i.amount) * taxCalc.ppnRate) / 100),
     ]);
     downloadCsv(`EFAKTUR-${activePeriod}.csv`, ["NSFP", "NoFaktur", "Tanggal", "Client", "DPP", "PPN"], rows);
     toast(`CSV e-Faktur ${activePeriod} diunduh (${efakturRows.length} baris)`);
@@ -1269,7 +1344,7 @@ export default function Finance() {
               <div className="overflow-x-auto">
                 <table className="w-full">
                   <thead className="bg-surface sticky top-0 z-10">
-                    <tr><th className="th">Vendor</th><th className="th">Kode Pembantu</th><th className="th">PO</th><th className="th">Saldo Awal</th><th className="th">Saldo Akhir</th><th className="th">Jatuh Tempo</th><th className="th">PPh 23</th><th className="th">Status</th><th className="th">Aksi</th></tr>
+                    <tr><th className="th">Vendor</th><th className="th">Kode Pembantu</th><th className="th">PO</th><th className="th">U/TK Kapal</th><th className="th">Saldo Awal</th><th className="th">Saldo Akhir</th><th className="th">Bayar I</th><th className="th">Bayar II</th><th className="th">Sisa</th><th className="th">Jatuh Tempo</th><th className="th">PPh 23</th><th className="th">Status</th><th className="th">Aksi</th></tr>
                   </thead>
                   <tbody className="divide-y divide-steel-100">
                     {payables.map((a) => (
@@ -1277,8 +1352,12 @@ export default function Finance() {
                         <td className="td font-medium text-navy-900 truncate" title={String(a.v)}>{String(a.v)}</td>
                         <td className="td font-mono text-xs text-steel-600 truncate" title={String(a.kodePembantu ?? a.v)}>{String(a.kodePembantu ?? a.v)}</td>
                         <td className="td font-mono text-xs text-steel-600">{String(a.po)}</td>
+                        <td className="td text-xs text-steel-600 truncate" title={String(a.vessel ?? a.item ?? "")}>{String(a.vessel ?? "") || "—"}</td>
                         <td className="td text-xs text-steel-500">{num(a.openAwal) ? fmtRupiah(num(a.openAwal)) : "—"}</td>
                         <td className="td font-semibold">{fmtRupiah(num(a.amt))}</td>
+                        <td className="td text-xs text-steel-600">{num(a.pay1) ? `${fmtRupiah(num(a.pay1))}${a.pay1date ? ` · ${fmtTanggal(String(a.pay1date))}` : ""}` : "—"}</td>
+                        <td className="td text-xs text-steel-600">{num(a.pay2) ? `${fmtRupiah(num(a.pay2))}${a.pay2date ? ` · ${fmtTanggal(String(a.pay2date))}` : ""}` : "—"}</td>
+                        <td className="td font-semibold text-navy-900">{fmtRupiah(Math.max(0, num(a.amt) - num(a.pay1) - num(a.pay2)))}</td>
                         <td className="td text-steel-600">{fmtTanggal(String(a.due ?? ""))}</td>
                         <td className="td text-steel-600">{String(a.pph ?? "2%")}</td>
                         <td className="td"><StatusBadge status={String(a.st)} /></td>
@@ -1286,8 +1365,8 @@ export default function Finance() {
                           <div className="flex flex-wrap gap-1.5">
                             {a.st !== "Lunas" && (
                               <>
-                                <button className="btn-secondary text-xs" onClick={() => { setApTarget(a); setProof(emptyProof()); }}>
-                                  Bayar
+                                <button className="btn-secondary text-xs" onClick={() => { setApTarget(a); setProof(emptyProof()); setApPayAmt(String(Math.max(0, num(a.amt) - num(a.pay1) - num(a.pay2)))); }}>
+                                  Bayar{num(a.pay1) ? " II" : " I"}
                                 </button>
                                 <button className="btn-secondary text-xs" onClick={() => {
                                   setApEdit(a);
@@ -1295,6 +1374,7 @@ export default function Finance() {
                                     v: String(a.v ?? ""), kodePembantu: String(a.kodePembantu ?? a.v ?? ""),
                                     openAwal: String(a.openAwal ?? ""), amt: String(a.amt ?? ""),
                                     due: String(a.due ?? ""), nonPpn: String(a.pph ?? "") === "Non-PPn",
+                                    vessel: String(a.vessel ?? ""), item: String(a.item ?? ""),
                                   });
                                 }}>
                                   Ubah
@@ -2041,7 +2121,14 @@ export default function Finance() {
             <Field label="No. faktur (opsional, unik)" hint="cth: 010.002-26.00000001">
               <input className="input font-mono" value={invForm.noFaktur} onChange={(e) => setInv("noFaktur", e.target.value)} placeholder="No. faktur" />
             </Field>
+            <Field label="Amortisasi DP (Rp)" hint="cth V2 potong DP-1 1098000000">
+              <input type="number" min={0} className="input" value={invForm.dpApplied} onChange={(e) => setInv("dpApplied", e.target.value)} placeholder="0" />
+            </Field>
           </FormGrid>
+          <label className="flex items-center gap-2 text-sm text-steel-600">
+            <input type="checkbox" checked={invForm.skdt} onChange={(e) => setInvForm((f) => ({ ...f, skdt: e.target.checked }))} />
+            SKDT — tanpa PPN (cth INV PAKAI SKDT BG MHKL 35)
+          </label>
           {isTMForm && (
             <Field label="Referensi service / WO" hint="cth: SRV-002 / WO-2026-043">
               <input className="input font-mono" value={invForm.serviceRef} onChange={(e) => setInv("serviceRef", e.target.value)} placeholder="SRV-002" />
@@ -2061,17 +2148,32 @@ export default function Finance() {
           )}
           <div>
             <div className="mb-2 flex items-center justify-between">
-              <p className="label">Lines — total {fmtRupiah(invTotal)}{retentionAmtPreview > 0 ? ` · retensi ${fmtRupiah(retentionAmtPreview)}` : ""}</p>
-              <button className="btn-secondary px-2 py-1 text-xs" onClick={() => setInvLines((ls) => [...ls, emptyLine()])}>
+              <p className="label">Lines — total {fmtRupiah(invTotal)}{retentionAmtPreview > 0 ? ` · retensi ${fmtRupiah(retentionAmtPreview)}` : ""}</p>              <button className="btn-secondary px-2 py-1 text-xs" onClick={() => setInvLines((ls) => [...ls, emptyLine()])}>
                 <Plus className="h-3.5 w-3.5" /> Baris
               </button>
             </div>
+            <p className="mb-2 rounded-lg bg-surface px-3 py-2 text-xs text-steel-600">
+              Jasa {fmtRupiah(sbPreview.jasa)} + Material {fmtRupiah(sbPreview.material)} = {fmtRupiah(sbPreview.total)}
+              {" · "}DPP (×11/12) {fmtRupiah(sbPreview.dpp)} · PPN {fmtRupiah(sbPreview.ppn)}{invForm.skdt ? " (SKDT)" : ""}
+              {" · "}PPh jasa {fmtRupiah(sbPreview.pph)}{num(invForm.dpApplied) > 0 ? ` · DP −${fmtRupiah(sbPreview.dpApplied)}` : ""}
+              {" → "}<strong className="text-navy-900">Grand {fmtRupiah(sbPreview.grand)}</strong>
+            </p>
             <div className="space-y-2">
               {invLines.map((l, idx) => (
                 <div key={idx} className="grid grid-cols-12 items-end gap-2 rounded-xl bg-surface p-2">
-                  <div className="col-span-12 sm:col-span-4">
+                  <div className="col-span-6 sm:col-span-3">
                     <Field label="Deskripsi"><input className="input" value={l.desc} onChange={(e) => setLine(idx, "desc", e.target.value)} placeholder="cth: Hull assembly section 4" /></Field>
                   </div>
+                  {!isTMForm && (
+                    <div className="col-span-6 sm:col-span-2">
+                      <Field label="Kategori">
+                        <select className="input" value={l.kategori || "Jasa"} onChange={(e) => setLine(idx, "kategori", e.target.value)}>
+                          <option>Jasa</option>
+                          <option>Material</option>
+                        </select>
+                      </Field>
+                    </div>
+                  )}
                   {isTMForm ? (
                     <>
                       <div className="col-span-5 sm:col-span-3"><Field label="Rate (Rp)"><input type="number" min={0} className="input" value={l.rate} onChange={(e) => setLine(idx, "rate", e.target.value)} /></Field></div>
@@ -2124,9 +2226,12 @@ export default function Finance() {
         onConfirm={() => { if (rejectInv) { update("invoices", rejectInv.id, { status: "Ditolak" }); toast(`${rejectInv.id} ditolak → Draft menyusul`); } setRejectInv(null); }}
       />
 
-      <Modal open={apTarget !== null} onClose={() => setApTarget(null)} title={`Bayar ${String(apTarget?.po ?? "")}?`} subtitle={`${String(apTarget?.v ?? "")} · ${fmtRupiah(num(apTarget?.amt))}`}
+      <Modal open={apTarget !== null} onClose={() => setApTarget(null)} title={`Bayar ${!num(apTarget?.pay1) ? "I" : "II"} ${String(apTarget?.po ?? "")}?`} subtitle={`${String(apTarget?.v ?? "")} · sisa ${fmtRupiah(Math.max(0, num(apTarget?.amt) - num(apTarget?.pay1) - num(apTarget?.pay2)))}`}
         footer={<><button className="btn-secondary" onClick={() => setApTarget(null)}>Batal</button><button className="btn-primary" onClick={confirmBuktiAp}>Simpan Bukti Bayar</button></>}>
         <div className="space-y-3">
+          <Field label="Nominal tahap ini (Rp)" hint={!num(apTarget?.pay1) ? "Pembayaran I" : `Sudah bayar I ${fmtRupiah(num(apTarget?.pay1))} — ini tahap II`}>
+            <input type="number" min={0} className="input" value={apPayAmt} onChange={(e) => setApPayAmt(e.target.value)} placeholder="cth: 309906340" />
+          </Field>
           <FormGrid>
             <Field label="Tanggal bayar"><input type="date" required className="input" value={proof.date} onChange={(e) => setProofField("date", e.target.value)} /></Field>
             <Field label="Metode">
@@ -2147,7 +2252,9 @@ export default function Finance() {
           <FormGrid>
             <Field label="Vendor"><input className="input" value={apForm.v} onChange={(e) => setApForm({ ...apForm, v: e.target.value })} /></Field>
             <Field label="Kode pembantu" hint="Default = nama vendor"><input className="input font-mono" value={apForm.kodePembantu} onChange={(e) => setApForm({ ...apForm, kodePembantu: e.target.value })} /></Field>
-            <Field label="Referensi PO"><input className="input font-mono" value={apForm.po} onChange={(e) => setApForm({ ...apForm, po: e.target.value })} /></Field>
+            <Field label="Referensi PO" hint="Format SB: nn/PO-SB/SMD/m/yyyy"><input className="input font-mono" value={apForm.po} onChange={(e) => setApForm({ ...apForm, po: e.target.value })} placeholder="cth: 04/PO-SB/SMD/I/2026" /></Field>
+            <Field label="U/TK kapal" hint="cth: U/TK. RMN 3317"><input className="input" value={apForm.vessel} onChange={(e) => setApForm({ ...apForm, vessel: e.target.value })} /></Field>
+            <Field label="Jenis barang"><input className="input" value={apForm.item} onChange={(e) => setApForm({ ...apForm, item: e.target.value })} placeholder="cth: PLAT 14MM X 6' X 20'" /></Field>
             <Field label="Saldo awal bulan (Rp)"><input type="number" min={0} className="input" value={apForm.openAwal} onChange={(e) => setApForm({ ...apForm, openAwal: e.target.value })} /></Field>
             <Field label="Saldo akhir (Rp)"><input type="number" min={0} className="input" value={apForm.amt} onChange={(e) => setApForm({ ...apForm, amt: e.target.value })} /></Field>
             <Field label="Jatuh tempo"><input type="date" required className="input" value={apForm.due} onChange={(e) => setApForm({ ...apForm, due: e.target.value })} /></Field>
@@ -2165,6 +2272,8 @@ export default function Finance() {
           <FormGrid>
             <Field label="Vendor"><input className="input" value={apEditForm.v} onChange={(e) => setApEditForm({ ...apEditForm, v: e.target.value })} /></Field>
             <Field label="Kode pembantu"><input className="input font-mono" value={apEditForm.kodePembantu} onChange={(e) => setApEditForm({ ...apEditForm, kodePembantu: e.target.value })} /></Field>
+            <Field label="U/TK kapal"><input className="input" value={apEditForm.vessel} onChange={(e) => setApEditForm({ ...apEditForm, vessel: e.target.value })} /></Field>
+            <Field label="Jenis barang"><input className="input" value={apEditForm.item} onChange={(e) => setApEditForm({ ...apEditForm, item: e.target.value })} /></Field>
             <Field label="Saldo awal bulan (Rp)"><input type="number" min={0} className="input" value={apEditForm.openAwal} onChange={(e) => setApEditForm({ ...apEditForm, openAwal: e.target.value })} /></Field>
             <Field label="Saldo akhir (Rp)"><input type="number" min={0} className="input" value={apEditForm.amt} onChange={(e) => setApEditForm({ ...apEditForm, amt: e.target.value })} /></Field>
             <Field label="Jatuh tempo"><input type="date" required className="input" value={apEditForm.due} onChange={(e) => setApEditForm({ ...apEditForm, due: e.target.value })} /></Field>
@@ -2255,13 +2364,13 @@ export default function Finance() {
         </div>
       </Modal>
 
-      <Modal open={showJu} onClose={() => setShowJu(false)} title="Catat Jurnal Umum" subtitle="Wajib berimbang: satu akun DB + satu akun KR dengan nominal sama"
+      <Modal open={showJu} onClose={() => setShowJu(false)} title="Catat Jurnal Umum" subtitle="Multi-baris per voucher (cth sheet JU: Kas/BPD/JPb/JPn/JM) — tiap baris DB≠KR, total otomatis berimbang"
         footer={<><button className="btn-secondary" onClick={() => setShowJu(false)}>Batal</button><button className="btn-primary" onClick={saveJu}>Simpan (Posted)</button></>}>
         <div className="space-y-3">
           <FormGrid>
             <Field label="Tanggal"><input type="date" required className="input" value={juForm.date} onChange={(e) => setJuForm({ ...juForm, date: e.target.value })} /></Field>
             <Field label="Kode pembantu"><input className="input font-mono" value={juForm.kodePembantu} onChange={(e) => setJuForm({ ...juForm, kodePembantu: e.target.value })} placeholder="vendor / customer" /></Field>
-            <Field label="Dokumen" hint="cth: 101 / 201 / BKM-001"><input className="input font-mono" value={juForm.dokumen} onChange={(e) => setJuForm({ ...juForm, dokumen: e.target.value })} /></Field>
+            <Field label="Dokumen / Voucher" hint="cth: 101 / 201 / BKM-001 (otomatis bila kosong)"><input className="input font-mono" value={juForm.dokumen} onChange={(e) => setJuForm({ ...juForm, dokumen: e.target.value })} /></Field>
             <Field label="Sumber">
               <select className="input" value={juForm.sumber} onChange={(e) => setJuForm({ ...juForm, sumber: e.target.value })}>
                 {["JU", "Kas", "Bank", "JPb", "JPn", "JM"].map((x) => <option key={x}>{x}</option>)}
@@ -2269,21 +2378,42 @@ export default function Finance() {
             </Field>
           </FormGrid>
           <Field label="Uraian"><input className="input" value={juForm.uraian} onChange={(e) => setJuForm({ ...juForm, uraian: e.target.value })} placeholder="cth: Penyesuaian PPN September" /></Field>
-          <FormGrid>
-            <Field label="Akun DB">
-              <select className="input font-mono" value={juForm.db} onChange={(e) => setJuForm({ ...juForm, db: e.target.value })}>
-                <option value="">Pilih akun…</option>
-                {coaRows.filter((c) => String(c.dk) !== "-").map((c) => <option key={String(c.id)} value={String(c.kode)}>{String(c.kode)} · {String(c.nama)}</option>)}
-              </select>
-            </Field>
-            <Field label="Akun KR">
-              <select className="input font-mono" value={juForm.kr} onChange={(e) => setJuForm({ ...juForm, kr: e.target.value })}>
-                <option value="">Pilih akun…</option>
-                {coaRows.filter((c) => String(c.dk) !== "-").map((c) => <option key={String(c.id)} value={String(c.kode)}>{String(c.kode)} · {String(c.nama)}</option>)}
-              </select>
-            </Field>
-            <Field label="Nominal (Rp)"><input type="number" min={0} className="input" value={juForm.amount} onChange={(e) => setJuForm({ ...juForm, amount: e.target.value })} /></Field>
-          </FormGrid>
+          <div>
+            <div className="mb-2 flex items-center justify-between">
+              <p className="label">Baris jurnal — total {fmtRupiah(juLines.reduce((s, l) => s + num(l.amount), 0))}</p>
+              <button className="btn-secondary px-2 py-1 text-xs" onClick={() => setJuLines((ls) => [...ls, { db: "", kr: "", amount: "" }])}>
+                <Plus className="h-3.5 w-3.5" /> Baris
+              </button>
+            </div>
+            <div className="space-y-2">
+              {juLines.map((l, idx) => (
+                <div key={idx} className="grid grid-cols-12 items-end gap-2 rounded-xl bg-surface p-2">
+                  <div className="col-span-12 sm:col-span-4">
+                    <Field label={`DB #${idx + 1}`}>
+                      <select className="input font-mono" value={l.db} onChange={(e) => setJuLines((ls) => ls.map((x, i) => (i === idx ? { ...x, db: e.target.value } : x)))}>
+                        <option value="">Pilih akun…</option>
+                        {coaRows.filter((c) => String(c.dk) !== "-").map((c) => <option key={String(c.id)} value={String(c.kode)}>{String(c.kode)} · {String(c.nama)}</option>)}
+                      </select>
+                    </Field>
+                  </div>
+                  <div className="col-span-12 sm:col-span-4">
+                    <Field label={`KR #${idx + 1}`}>
+                      <select className="input font-mono" value={l.kr} onChange={(e) => setJuLines((ls) => ls.map((x, i) => (i === idx ? { ...x, kr: e.target.value } : x)))}>
+                        <option value="">Pilih akun…</option>
+                        {coaRows.filter((c) => String(c.dk) !== "-").map((c) => <option key={String(c.id)} value={String(c.kode)}>{String(c.kode)} · {String(c.nama)}</option>)}
+                      </select>
+                    </Field>
+                  </div>
+                  <div className="col-span-10 sm:col-span-3">
+                    <Field label="Nominal (Rp)"><input type="number" min={0} className="input" value={l.amount} onChange={(e) => setJuLines((ls) => ls.map((x, i) => (i === idx ? { ...x, amount: e.target.value } : x)))} /></Field>
+                  </div>
+                  <div className="col-span-2 sm:col-span-1">
+                    <button className="text-rose-600" aria-label={`Hapus baris jurnal ${idx + 1}`} onClick={() => setJuLines((ls) => (ls.length > 1 ? ls.filter((_, i) => i !== idx) : [{ db: "", kr: "", amount: "" }]))}><Trash2 className="h-4 w-4" /></button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
         </div>
       </Modal>
 
