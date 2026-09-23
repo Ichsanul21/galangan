@@ -41,9 +41,12 @@ import {
   Badge,
   ProgressBar,
   Avatar,
+  Modal,
+  Field,
   toast,
 } from "../components/ui";
 import { useStore } from "../data/store";
+import { useAuth, canSetTarget } from "../auth/auth";
 import { exportExcel } from "../utils/export";
 import { todayISO } from "../utils/format";
 import {
@@ -62,9 +65,6 @@ import {
 const RANGES = ["6B", "12B"] as const;
 
 interface BranchTarget { revenue: number; projects: number }
-interface DashVis { hero: boolean; kpi: boolean; perhatian: boolean; utama: boolean; utilisasi: boolean; status: boolean; strip: boolean }
-
-const DEFAULT_VIS: DashVis = { hero: true, kpi: true, perhatian: true, utama: true, utilisasi: true, status: true, strip: true };
 
 function loadTargets(): Record<string, BranchTarget> {
   try {
@@ -74,24 +74,17 @@ function loadTargets(): Record<string, BranchTarget> {
   } catch { return {}; }
 }
 
-function loadVis(): DashVis {
-  try {
-    const raw = localStorage.getItem("isms.dashvis");
-    if (!raw) return DEFAULT_VIS;
-    const obj = JSON.parse(raw) as Partial<DashVis>;
-    return { ...DEFAULT_VIS, ...obj };
-  } catch { return DEFAULT_VIS; }
-}
-
 export default function Dashboard() {
   const { data, wbsFor, branch } = useStore();
+  const { user } = useAuth();
+  const allowedTarget = canSetTarget(user?.role);
   const navigate = useNavigate();
   const projects = data.projects;
   const branchProjects = data.projects.filter((p) => branch === "SEMUA" || !p.branch || p.branch === branch);
   const activities = data.activities;
   const [range, setRange] = useState<(typeof RANGES)[number]>("12B");
   const [targets, setTargets] = useState<Record<string, BranchTarget>>(() => loadTargets());
-  const [vis, setVis] = useState<DashVis>(() => loadVis());
+  const [showTarget, setShowTarget] = useState(false);
   const [tgtRev, setTgtRev] = useState("");
   const [tgtProj, setTgtProj] = useState("");
   const totalActive = projects.filter((p) => p.status !== "Selesai").length;
@@ -141,6 +134,7 @@ export default function Dashboard() {
   const aktualProj = branchProjects.filter((p) => p.status !== "Selesai").length;
 
   const saveTarget = () => {
+    if (!allowedTarget) { toast("Hanya Direktur / Manager yang dapat mengatur target", "info"); return; }
     const revenue = Number(tgtRev);
     const nProj = Number(tgtProj);
     if (!Number.isFinite(revenue) || revenue < 0 || !Number.isFinite(nProj) || nProj < 0) { toast("Target harus angka ≥ 0", "info"); return; }
@@ -148,12 +142,16 @@ export default function Dashboard() {
     setTargets(next);
     try { localStorage.setItem("isms.targets", JSON.stringify(next)); } catch { /* abaikan */ }
     toast(`Target ${branch} disimpan`);
+    setShowTarget(false);
+    setTgtRev("");
+    setTgtProj("");
   };
 
-  const toggleVis = (k: keyof DashVis) => {
-    const next = { ...vis, [k]: !vis[k] };
-    setVis(next);
-    try { localStorage.setItem("isms.dashvis", JSON.stringify(next)); } catch { /* abaikan */ }
+  const openTargetModal = () => {
+    if (!allowedTarget) { toast("Hanya Direktur / Manager yang dapat mengatur target", "info"); return; }
+    setTgtRev(String(tgt.revenue || ""));
+    setTgtProj(String(tgt.projects || ""));
+    setShowTarget(true);
   };
 
   const togglePresent = () => {
@@ -272,49 +270,39 @@ export default function Dashboard() {
         />
       </StaggerItem>
 
-      {/* TARGET VS AKTUAL + VISIBILITAS */}
+      {/* TARGET VS AKTUAL — atur via tombol, hanya Direktur/Manager */}
       <StaggerItem>
-        <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-          <Card className="p-4">
-            <div className="mb-2 flex items-center justify-between px-1">
-              <h3 className="text-sm font-semibold text-navy-900">Target vs Aktual · {branch}</h3>
-              <span className="text-xs text-steel-400">localStorage isms.targets</span>
+        <Card className="p-4">
+          <div className="mb-2 flex items-center justify-between px-1">
+            <h3 className="text-sm font-semibold text-navy-900">Target vs Aktual · {branch}</h3>
+            {allowedTarget ? (
+              <button className="btn-secondary text-xs" onClick={openTargetModal}>Atur Target</button>
+            ) : (
+              <span className="text-xs text-steel-400">Hanya Direktur / Manager dapat mengatur</span>
+            )}
+          </div>
+          <div className="grid grid-cols-1 gap-3 px-1 sm:grid-cols-2">
+            <div>
+              <div className="mb-1 flex justify-between text-xs"><span className="text-steel-500">Revenue aktual vs target</span><span className="font-semibold text-navy-900">{fmtMiliar(aktualRev)} / {fmtMiliar(tgt.revenue)}</span></div>
+              <ProgressBar value={tgt.revenue > 0 ? (aktualRev / tgt.revenue) * 100 : 0} tone="navy" />
             </div>
-            <div className="space-y-3 px-1">
-              <div>
-                <div className="mb-1 flex justify-between text-xs"><span className="text-steel-500">Revenue aktual vs target</span><span className="font-semibold text-navy-900">{fmtMiliar(aktualRev)} / {fmtMiliar(tgt.revenue)}</span></div>
-                <ProgressBar value={tgt.revenue > 0 ? (aktualRev / tgt.revenue) * 100 : 0} tone="navy" />
-              </div>
-              <div>
-                <div className="mb-1 flex justify-between text-xs"><span className="text-steel-500">Proyek aktual vs target</span><span className="font-semibold text-navy-900">{aktualProj} / {tgt.projects}</span></div>
-                <ProgressBar value={tgt.projects > 0 ? (aktualProj / tgt.projects) * 100 : 0} tone="teal" />
-              </div>
-              <div className="flex flex-wrap gap-2">
-                <input type="number" min={0} className="input w-40" placeholder="Target revenue (Rp)" value={tgtRev} onChange={(e) => setTgtRev(e.target.value)} />
-                <input type="number" min={0} className="input w-36" placeholder="Target proyek" value={tgtProj} onChange={(e) => setTgtProj(e.target.value)} />
-                <button className="btn-secondary text-xs" onClick={saveTarget}>Simpan Target</button>
-              </div>
+            <div>
+              <div className="mb-1 flex justify-between text-xs"><span className="text-steel-500">Proyek aktual vs target</span><span className="font-semibold text-navy-900">{aktualProj} / {tgt.projects}</span></div>
+              <ProgressBar value={tgt.projects > 0 ? (aktualProj / tgt.projects) * 100 : 0} tone="teal" />
             </div>
-          </Card>
-          <Card className="p-4">
-            <div className="mb-2 px-1">
-              <h3 className="text-sm font-semibold text-navy-900">Tampil / Sembunyi Section</h3>
-              <p className="text-xs text-steel-400">Pin kartu dashboard — tersimpan per perangkat</p>
-            </div>
-            <div className="flex flex-wrap gap-2 px-1">
-              {(Object.keys(DEFAULT_VIS) as (keyof DashVis)[]).map((k) => (
-                <label key={k} className="flex items-center gap-1.5 rounded-lg border border-steel-200 px-2.5 py-1.5 text-xs text-steel-600">
-                  <input type="checkbox" className="h-3.5 w-3.5" checked={vis[k]} onChange={() => toggleVis(k)} />
-                  {k}
-                </label>
-              ))}
-            </div>
-          </Card>
-        </div>
+          </div>
+        </Card>
       </StaggerItem>
 
+      <Modal open={showTarget} onClose={() => setShowTarget(false)} title={`Atur Target · ${branch}`} subtitle="Hanya Direktur / Manager — tersimpan per cabang per perangkat"
+        footer={<><button className="btn-secondary" onClick={() => setShowTarget(false)}>Batal</button><button className="btn-primary" onClick={saveTarget}>Simpan Target</button></>}>
+        <div className="space-y-3">
+          <Field label="Target revenue (Rp)"><input type="number" min={0} className="input" placeholder="cth: 50000000000" value={tgtRev} onChange={(e) => setTgtRev(e.target.value)} /></Field>
+          <Field label="Target proyek aktif"><input type="number" min={0} className="input" placeholder="cth: 8" value={tgtProj} onChange={(e) => setTgtProj(e.target.value)} /></Field>
+        </div>
+      </Modal>
+
       {/* HERO GLOW BANNER */}
-      {vis.hero && (
       <StaggerItem>
         <GlowCard gradient="gradient-hero">
           <div className="flex flex-wrap items-center justify-between gap-4">
@@ -338,10 +326,8 @@ export default function Dashboard() {
           </div>
         </GlowCard>
       </StaggerItem>
-      )}
 
       {/* KPI ROW */}
-      {vis.kpi && (
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <StaggerItem>
           <KpiCard
@@ -388,10 +374,57 @@ export default function Dashboard() {
           />
         </StaggerItem>
       </div>
-      )}
+
+      {/* RINGKASAN OPERASIONAL — pindahan strip, tepat di bawah 4 kartu utama */}
+      <StaggerItem>
+        <Card className="p-4">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+            <div className="flex items-center gap-3">
+              <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-ocean-50 text-ocean-600">
+                <Boxes className="h-5 w-5" />
+              </span>
+              <div>
+                <p className="text-sm font-semibold text-navy-900">Nilai Stok {lowStock.length > 0 && <span className="ml-1 rounded-full bg-rose-100 px-1.5 py-0.5 text-[10px] font-bold text-rose-600">{lowStock.length} menipis</span>}</p>
+                <Link to="/inventori" className="text-lg font-bold text-gradient-navy hover:underline">{fmtMiliar(stockValue)}</Link>
+              </div>
+            </div>
+            <div className="flex items-center gap-3">
+              <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-50 text-emerald-600">
+                <Calendar className="h-5 w-5" />
+              </span>
+              <div>
+                <p className="text-sm font-semibold text-navy-900">Sea Trial Terjadwal</p>
+                <p className="text-lg font-bold text-gradient-navy">{seaTrialVessel}</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-3">
+              <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-violet-50 text-violet-600">
+                <Anchor className="h-5 w-5" />
+              </span>
+              <div>
+                <p className="text-sm font-semibold text-navy-900">Quotation Aktif</p>
+                <Link to="/crm" className="text-lg font-bold text-gradient-navy hover:underline">{fmtMiliar(pipelineActive)}</Link>
+              </div>
+            </div>
+          </div>
+          <div className="mt-3 grid grid-cols-1 gap-4 border-t border-steel-100 pt-3 sm:grid-cols-3">
+            <div className="flex items-center justify-between text-sm">
+              <span className="text-steel-500">NCR terbuka</span>
+              <Link to="/qc-safety" className="font-bold text-rose-600 hover:underline">{openNcr} kasus</Link>
+            </div>
+            <div className="flex items-center justify-between text-sm">
+              <span className="text-steel-500">Piutang tertagih</span>
+              <Link to="/keuangan" className="font-bold text-navy-900 hover:underline">{fmtMiliar(arOutstanding)}</Link>
+            </div>
+            <div className="flex items-center justify-between text-sm">
+              <span className="text-steel-500">Kontrak menang (CRM)</span>
+              <Link to="/crm" className="font-bold text-navy-900 hover:underline">{fmtMiliar(wonQuotes)}</Link>
+            </div>
+          </div>
+        </Card>
+      </StaggerItem>
 
       {/* PERLU PERHATIAN */}
-      {vis.perhatian && (
       <StaggerItem>
         <Card className="p-4">
           <div className="mb-3 flex items-center gap-2 px-1">
@@ -414,10 +447,8 @@ export default function Dashboard() {
           </div>
         </Card>
       </StaggerItem>
-      )}
 
       {/* MAIN CHARTS */}
-      {vis.utama && (
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-3">
         <StaggerItem className="lg:col-span-2">
           <Card>
@@ -488,10 +519,8 @@ export default function Dashboard() {
           </Card>
         </StaggerItem>
       </div>
-      )}
 
       {/* GAUGES + HEATMAP + INSIGHTS */}
-      {vis.utilisasi && (
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-4">
         <StaggerItem className="lg:col-span-2">
           <Card>
@@ -560,10 +589,8 @@ export default function Dashboard() {
           </Card>
         </StaggerItem>
       </div>
-      )}
 
       {/* STATUS + ACTIVITY */}
-      {vis.status && (
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
         <StaggerItem>
           <Card>
@@ -623,58 +650,7 @@ export default function Dashboard() {
           </Card>
         </StaggerItem>
       </div>
-      )}
 
-      {/* MINI STRIP */}
-      {vis.strip && (
-      <StaggerItem>
-        <Card className="p-4">
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-            <div className="flex items-center gap-3">
-              <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-ocean-50 text-ocean-600">
-                <Boxes className="h-5 w-5" />
-              </span>
-              <div>
-                <p className="text-sm font-semibold text-navy-900">Nilai Stok {lowStock.length > 0 && <span className="ml-1 rounded-full bg-rose-100 px-1.5 py-0.5 text-[10px] font-bold text-rose-600">{lowStock.length} menipis</span>}</p>
-                <Link to="/inventori" className="text-lg font-bold text-gradient-navy hover:underline">{fmtMiliar(stockValue)}</Link>
-              </div>
-            </div>
-            <div className="flex items-center gap-3">
-              <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-50 text-emerald-600">
-                <Calendar className="h-5 w-5" />
-              </span>
-              <div>
-                <p className="text-sm font-semibold text-navy-900">Sea Trial Terjadwal</p>
-                <p className="text-lg font-bold text-gradient-navy">{seaTrialVessel}</p>
-              </div>
-            </div>
-            <div className="flex items-center gap-3">
-              <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-violet-50 text-violet-600">
-                <Anchor className="h-5 w-5" />
-              </span>
-              <div>
-                <p className="text-sm font-semibold text-navy-900">Quotation Aktif</p>
-                <Link to="/crm" className="text-lg font-bold text-gradient-navy hover:underline">{fmtMiliar(pipelineActive)}</Link>
-              </div>
-            </div>
-          </div>
-          <div className="mt-3 grid grid-cols-1 gap-4 border-t border-steel-100 pt-3 sm:grid-cols-3">
-            <div className="flex items-center justify-between text-sm">
-              <span className="text-steel-500">NCR terbuka</span>
-              <Link to="/qc-safety" className="font-bold text-rose-600 hover:underline">{openNcr} kasus</Link>
-            </div>
-            <div className="flex items-center justify-between text-sm">
-              <span className="text-steel-500">Piutang tertagih</span>
-              <Link to="/keuangan" className="font-bold text-navy-900 hover:underline">{fmtMiliar(arOutstanding)}</Link>
-            </div>
-            <div className="flex items-center justify-between text-sm">
-              <span className="text-steel-500">Kontrak menang (CRM)</span>
-              <Link to="/crm" className="font-bold text-navy-900 hover:underline">{fmtMiliar(wonQuotes)}</Link>
-            </div>
-          </div>
-        </Card>
-      </StaggerItem>
-      )}
     </Stagger>
   );
 }

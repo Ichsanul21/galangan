@@ -1,6 +1,6 @@
 import { useState } from "react";
-import { Link } from "react-router-dom";
-import { Plus, Search, Filter, Anchor, Wallet, TrendingUp, Clock, LayoutTemplate, ChevronLeft, ChevronRight } from "lucide-react";
+import { useNavigate } from "react-router-dom";
+import { Plus, Search, Anchor, Wallet, TrendingUp, Clock, LayoutTemplate, ChevronLeft, ChevronRight } from "lucide-react";
 import {
   Card,
   PageHeader,
@@ -138,12 +138,14 @@ const persistCustomTemplates = (tpls: TemplateDef[]) => {
 
 export default function Projects() {
   const { data, add, update, log, setWbs, wbsFor, inBranch } = useStore();
+  const navigate = useNavigate();
   const projects = data.projects;
   const [filter, setFilter] = useState("Semua");
   const [statusFilter, setStatusFilter] = useState("Semua");
   const [tahapFilter, setTahapFilter] = useState("Semua");
   const [branchFilter, setBranchFilter] = useState("Semua");
-  const [showStatusMenu, setShowStatusMenu] = useState(false);
+  const [prioritasFilter, setPrioritasFilter] = useState("Semua");
+  const [pmFilter, setPmFilter] = useState("Semua");
   const [q, setQ] = useState("");
   const [showAdd, setShowAdd] = useState(false);
   const [showTemplate, setShowTemplate] = useState(false);
@@ -155,13 +157,19 @@ export default function Projects() {
   const [tplName, setTplName] = useState("");
   const [tplFromProject, setTplFromProject] = useState("");
 
+  const pmOptions = [...new Set(projects.map((p) => String(p.manager ?? "")).filter(Boolean))].sort();
+  const hasActiveFilter = filter !== "Semua" || statusFilter !== "Semua" || tahapFilter !== "Semua" || branchFilter !== "Semua" || prioritasFilter !== "Semua" || pmFilter !== "Semua" || q.trim() !== "";
+  const resetFilters = () => { setFilter("Semua"); setStatusFilter("Semua"); setTahapFilter("Semua"); setBranchFilter("Semua"); setPrioritasFilter("Semua"); setPmFilter("Semua"); setQ(""); };
+
   const list = inBranch(projects).filter((p) => {
     const matchType = filter === "Semua" || p.type === filter;
     const matchStatus = statusFilter === "Semua" || p.status === statusFilter;
     const matchTahap = tahapFilter === "Semua" || tahapOf(p) === tahapFilter;
     const matchBranch = branchFilter === "Semua" || p.branch === branchFilter;
-    const matchQ = `${p.vessel} ${p.id} ${p.client}`.toLowerCase().includes(q.toLowerCase());
-    return matchType && matchStatus && matchTahap && matchBranch && matchQ;
+    const matchPrioritas = prioritasFilter === "Semua" || String(p.prioritas ?? "Sedang") === prioritasFilter;
+    const matchPm = pmFilter === "Semua" || String(p.manager ?? "") === pmFilter;
+    const matchQ = `${p.vessel} ${p.id} ${p.client} ${p.manager ?? ""}`.toLowerCase().includes(q.toLowerCase());
+    return matchType && matchStatus && matchTahap && matchBranch && matchPrioritas && matchPm && matchQ;
   });
 
   const totalBudget = projects.reduce((s, p) => s + Number(p.budget || 0), 0);
@@ -391,24 +399,22 @@ export default function Projects() {
           <option value="Semua">Semua cabang</option>
           {branchOptions.map((b) => <option key={b} value={b}>{b}</option>)}
         </select>
-        <div className="relative ml-auto">
-          <button className="btn-secondary" aria-label="Filter status proyek" aria-expanded={showStatusMenu} onClick={() => setShowStatusMenu((v) => !v)}>
-            <Filter className="h-4 w-4" /> Filter{statusFilter !== "Semua" ? `: ${statusFilter}` : ""}
-          </button>
-          {showStatusMenu && (
-            <div className="absolute right-0 z-20 mt-2 w-48 rounded-xl border border-steel-200 bg-white p-1.5 shadow-lift">
-              {statusOptions.map((s) => (
-                <button
-                  key={s}
-                  onClick={() => { setStatusFilter(s); setShowStatusMenu(false); }}
-                  className={`block w-full rounded-lg px-3 py-1.5 text-left text-sm transition-colors ${statusFilter === s ? "bg-navy-700 text-white" : "text-steel-600 hover:bg-surface"}`}
-                >
-                  {s}
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
+        <select className="input w-auto py-1.5 text-sm" aria-label="Filter status" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
+          <option value="Semua">Semua status</option>
+          {statusOptions.filter((s) => s !== "Semua").map((s) => <option key={s} value={s}>{s}</option>)}
+        </select>
+        <select className="input w-auto py-1.5 text-sm" aria-label="Filter prioritas" value={prioritasFilter} onChange={(e) => setPrioritasFilter(e.target.value)}>
+          <option value="Semua">Semua prioritas</option>
+          {PRIORITAS.map((r) => <option key={r} value={r}>{r}</option>)}
+        </select>
+        <select className="input w-auto py-1.5 text-sm" aria-label="Filter PM" value={pmFilter} onChange={(e) => setPmFilter(e.target.value)}>
+          <option value="Semua">Semua PM</option>
+          {pmOptions.map((m) => <option key={m} value={m}>{m}</option>)}
+        </select>
+        {hasActiveFilter && (
+          <button className="btn-secondary py-1.5 text-xs" onClick={resetFilters}>Reset</button>
+        )}
+        <span className="ml-auto text-xs text-steel-400">{list.length} proyek</span>
       </div>
 
       <Card>
@@ -432,12 +438,19 @@ export default function Projects() {
               {list.map((p) => {
                 const tahapIdx = TAHAP.indexOf(tahapOf(p));
                 return (
-                  <tr key={p.id} className="hover:bg-surface transition-colors">
+                  <tr
+                    key={p.id}
+                    className="cursor-pointer transition-colors hover:bg-surface"
+                    onClick={() => navigate(`/proyek/${p.id}`)}
+                    onKeyDown={(e) => { if (e.key === "Enter") navigate(`/proyek/${p.id}`); }}
+                    tabIndex={0}
+                    title={`Buka ${p.id}`}
+                  >
                     <td className="td">
-                      <Link to={`/proyek/${p.id}`} className="block hover:text-ocean-600">
+                      <span className="block">
                         <p className="font-semibold text-navy-900">{p.vessel}</p>
-                        <p className="text-xs text-steel-500 font-mono">{p.id}</p>
-                      </Link>
+                        <p className="font-mono text-xs text-steel-500">{p.id}</p>
+                      </span>
                     </td>
                     <td className="td text-steel-600">{p.client}</td>
                     <td className="td">
@@ -452,7 +465,7 @@ export default function Projects() {
                           className="rounded p-1 text-steel-400 hover:bg-steel-100 hover:text-navy-700 disabled:opacity-30 disabled:hover:bg-transparent"
                           title="Mundur satu tahap (perlu alasan)"
                           disabled={tahapIdx <= 0}
-                          onClick={() => setMundurFor(p)}
+                          onClick={(e) => { e.stopPropagation(); setMundurFor(p); }}
                         >
                           <ChevronLeft className="h-3.5 w-3.5" />
                         </button>
@@ -460,7 +473,7 @@ export default function Projects() {
                           className="rounded p-1 text-steel-400 hover:bg-steel-100 hover:text-navy-700 disabled:opacity-30 disabled:hover:bg-transparent"
                           title="Maju satu tahap"
                           disabled={tahapIdx < 0 || tahapIdx >= TAHAP.length - 1}
-                          onClick={() => majuTahap(p)}
+                          onClick={(e) => { e.stopPropagation(); majuTahap(p); }}
                         >
                           <ChevronRight className="h-3.5 w-3.5" />
                         </button>

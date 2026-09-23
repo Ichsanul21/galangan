@@ -377,6 +377,9 @@ const seedSettings: StoreItem[] = [
   { id: "SET-ALCERT", key: "ALERT_CERT_DAYS", value: 90, label: "Alert sertifikat H- (hari)", group: "Alert" },
   { id: "SET-ALMS", key: "ALERT_MILESTONE_DAYS", value: 7, label: "Alert milestone H- (hari)", group: "Alert" },
   { id: "SET-CUTI", key: "CUTI_JATAH", value: 12, label: "Jatah cuti tahunan (hari)", group: "HR" },
+  { id: "SET-WHATIF-G", key: "WHATIF_GROWTH", value: 0, label: "What-if pertumbuhan pasar (%)", group: "Analytics" },
+  { id: "SET-WHATIF-C", key: "WHATIF_COST", value: 0, label: "What-if biaya, menekan margin (%)", group: "Analytics" },
+  { id: "SET-WHATIF-P", key: "WHATIF_PROG", value: 0, label: "What-if progres, menggeser forecast (%)", group: "Analytics" },
 ];
 
 export const wbsTemplate: WbsItem[] = [

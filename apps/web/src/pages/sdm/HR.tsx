@@ -26,11 +26,11 @@ import { exportExcel } from "../../utils/export";
 
 const CERT_WINDOW = 90;
 const TIPE_KARYAWAN = ["Tetap", "Harian", "Kontrak", "Outsourcing"];
-const PTKP_STATUS = ["TK/0", "K/0", "K/1", "K/2", "K/3"];
+const PTKP_STATUS = ["TK/0", "TK/1", "TK/2", "TK/3", "K/0", "K/1", "K/2", "K/3"];
 const SURAT_JENIS = ["SP 1", "SP 2", "SP 3", "Mutasi"];
 const IMPORT_HEADERS = ["NIK", "Nama", "Jabatan", "Departemen", "Cabang", "Status", "Tanggal Gabung (YYYY-MM-DD)", "Tipe", "Gaji Pokok", "PTKP Status", "Tanggungan", "Kontrak Berakhir (YYYY-MM-DD)"];
 const DEPT_OPTIONS = ["Direksi", "Proyek", "Produksi", "Quality", "Finance", "Procurement", "Support"];
-const LEAVE_TYPES = ["Tahunan", "Sakit", "Melahirkan", "Unpaid"];
+const LEAVE_TYPES = ["Tahunan", "Sakit", "Izin", "Melahirkan", "Cuti Besar", "Unpaid"];
 
 const SKILL_BY_DEPT: Record<string, string[]> = {
   Direksi: ["Kepemimpinan", "Strategi", "Keuangan"],
@@ -342,8 +342,32 @@ export default function HR() {
       toast("NIK wajib diisi", "info");
       return;
     }
+    if (!/^\d{16}$/.test(nik)) {
+      toast("NIK harus 16 digit angka", "info");
+      return;
+    }
     if (!form.join) {
       toast("Tanggal bergabung wajib diisi", "info");
+      return;
+    }
+    if (form.join > todayISO()) {
+      toast("Tanggal bergabung tidak boleh di masa depan", "info");
+      return;
+    }
+    if (!DEPT_OPTIONS.includes(form.dept)) {
+      toast("Departemen tidak valid", "info");
+      return;
+    }
+    if (!branchCities.includes(form.branch)) {
+      toast("Cabang tidak terdaftar di master cabang", "info");
+      return;
+    }
+    if ((form.tipe === "Kontrak" || form.tipe === "Outsourcing") && !form.contractEnd) {
+      toast("Karyawan Kontrak/Outsourcing wajib isi akhir kontrak", "info");
+      return;
+    }
+    if (form.contractEnd && form.contractEnd < form.join) {
+      toast("Akhir kontrak tidak boleh sebelum tanggal bergabung", "info");
       return;
     }
     const dupe = data.employees.some(
@@ -435,6 +459,21 @@ export default function HR() {
       toast("Saldo cuti tahunan tidak mencukupi", "info");
       return;
     }
+    const overlap = data.leaves.some(
+      (l) =>
+        String(l.employeeId) === leaveForm.employeeId &&
+        String(l.status) !== "Ditolak" &&
+        String(l.from) <= leaveForm.to &&
+        leaveForm.from <= String(l.to),
+    );
+    if (overlap) {
+      toast("Rentang cuti tumpang tindih dengan pengajuan lain", "info");
+      return;
+    }
+    if (!leaveForm.note.trim() && (leaveForm.type === "Sakit" || leaveForm.type === "Unpaid")) {
+      toast("Keterangan wajib diisi untuk Sakit/Unpaid", "info");
+      return;
+    }
     const created = add(
       "leaves",
       {
@@ -474,6 +513,14 @@ export default function HR() {
     }
     if (!mutasiForm.date) {
       toast("Tanggal mutasi wajib diisi", "info");
+      return;
+    }
+    if (!mutasiForm.reason.trim()) {
+      toast("Alasan mutasi wajib diisi", "info");
+      return;
+    }
+    if (!DEPT_OPTIONS.includes(mutasiForm.dept)) {
+      toast("Departemen tujuan tidak valid", "info");
       return;
     }
     const from = `${emp.dept}/${emp.branch}/${emp.role}`;

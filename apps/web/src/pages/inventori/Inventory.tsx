@@ -368,27 +368,35 @@ export default function Inventory() {
     if (Number.isNaN(konv) || konv < 0) { toast("Konversi harus angka 0 atau lebih", "info"); return; }
     if (uom2 && konv <= 0) { toast("Satuan kedua butuh konversi lebih dari 0", "info"); return; }
     if (!uom2 && konv > 0) { toast("Konversi butuh nama satuan kedua", "info"); return; }
+    const numStock = form.stock.trim() === "" ? 0 : Number(form.stock);
+    const numMin = form.minStock.trim() === "" ? 0 : Number(form.minStock);
+    const numCost = form.cost.trim() === "" ? 0 : Number(form.cost);
+    if (!Number.isFinite(numStock) || numStock < 0) { toast("Stok awal harus angka 0 atau lebih", "info"); return; }
+    if (!Number.isFinite(numMin) || numMin < 0) { toast("Stok minimum harus angka 0 atau lebih", "info"); return; }
+    if (!Number.isFinite(numCost) || numCost < 0) { toast("Harga satuan harus angka 0 atau lebih", "info"); return; }
+    if (form.minWh.trim() !== "" && (!Number.isFinite(Number(form.minWh)) || Number(form.minWh) < 0)) { toast("Min. stok gudang harus angka 0 atau lebih", "info"); return; }
     const rack = form.rack.trim();
     const prevMap = (editing?.minStockByWarehouse as Record<string, number> | undefined) ?? {};
     const minWhMap = { ...prevMap };
     if (form.minWh.trim() !== "") minWhMap[form.warehouse] = Number(form.minWh) || 0;
+    if (minWhMap[form.warehouse] !== undefined && minWhMap[form.warehouse] < 0) { toast("Min. stok gudang harus angka 0 atau lebih", "info"); return; }
     if (editing) {
       /* Stok read-only di form edit — hanya field non-stok yang disimpan. */
       update("inventory", editing.id, {
         name: form.name.trim(), category: form.category, sku: form.sku.trim(), warehouse: form.warehouse,
-        rack, location: rack, minStock: Number(form.minStock) || 0, unit: form.unit,
-        cost: Number(form.cost) || 0, volume: volume || 0, batch: form.batch.trim(),
+        rack, location: rack, minStock: numMin, unit: form.unit,
+        cost: numCost, volume: volume || 0, batch: form.batch.trim(),
         uom2, konversi: konv, minStockByWarehouse: minWhMap, photoUrl: form.photoUrl.trim(),
       });
       toast(`${editing.id} diperbarui`);
       setEditing(null);
     } else {
-      const stock = Number(form.stock) || 0;
+      const stock = numStock;
       const batch = form.batch.trim();
       const created = add("inventory", {
         name: form.name.trim(), category: form.category, sku: form.sku.trim(), warehouse: form.warehouse,
-        rack, stock, minStock: Number(form.minStock) || 0, unit: form.unit,
-        cost: Number(form.cost) || 0, location: rack, volume: volume || 0, batch,
+        rack, stock, minStock: numMin, unit: form.unit,
+        cost: numCost, location: rack, volume: volume || 0, batch,
         uom2, konversi: konv, minStockByWarehouse: minWhMap, photoUrl: form.photoUrl.trim(), avgCost: 0,
         batches: batch ? [{ batch, qty: stock, date: todayISO() }] : [],
         reserved: [],
@@ -421,10 +429,23 @@ export default function Inventory() {
     const qty = useUom2 ? raw / convOf(fresh) : raw;
     if (!Number.isFinite(qty) || qty <= 0) { toast("Konversi menghasilkan qty tidak valid", "info"); return; }
     if (moveKind === "out" && qty > Number(fresh.stock)) { toast(`Stok tidak cukup (tersedia ${fmtJumlah(Number(fresh.stock))})`, "info"); return; }
+    if (moveKind === "out" && !movePurpose.trim()) { toast("Keperluan (U/TK kapal) wajib diisi untuk pengeluaran", "info"); return; }
+    if (moveKind === "out" && !movePic.trim()) { toast("PIC wajib diisi untuk pengeluaran", "info"); return; }
     const next = moveKind === "in" ? Number(fresh.stock) + qty : Number(fresh.stock) - qty;
     const patch: Record<string, unknown> = { stock: next };
     if (moveKind === "out") {
       patch.reserved = consumeReserved(fresh, qty);
+      /* FIFO: kurangi batch tertua dulu. */
+      let sisa = qty;
+      const nextBatches: { batch: string; qty: number; date: string }[] = [];
+      for (const b of batchesOf(fresh)) {
+        if (sisa <= 0) { nextBatches.push(b); continue; }
+        const pakai = Math.min(Number(b.qty || 0), sisa);
+        sisa -= pakai;
+        const rest = Number(b.qty || 0) - pakai;
+        if (rest > 0) nextBatches.push({ ...b, qty: rest });
+      }
+      patch.batches = nextBatches;
     }
     if (moveKind === "in") {
       const b = moveBatch.trim();
@@ -446,6 +467,9 @@ export default function Inventory() {
     const priceExcl = Number(movePrice) || 0;
     const taxAmt = Number(moveTax) || 0;
     update("inventory", fresh.id, patch);
+    if (moveKind === "out" && next < Number(fresh.minStock || 0)) {
+      toast(`Peringatan: stok ${fresh.name} di bawah minimum (${fmtJumlah(Number(fresh.minStock || 0))} ${fresh.unit}) — segera buat PR`, "info");
+    }
     add("movements", {
       item: fresh.name, itemId: fresh.id,
       type: moveKind === "in" ? "Penerimaan" : "Pengeluaran",
@@ -506,11 +530,13 @@ export default function Inventory() {
         const sku = c[1] ?? "";
         if (!nama || !sku) { fails.push(`Baris ${rowNo}: nama & SKU wajib.`); return; }
         if (skuSeen.has(sku.toLowerCase())) { fails.push(`Baris ${rowNo}: SKU ${sku} duplikat.`); return; }
-        if ((c[4] ?? "") !== "" && Number.isNaN(Number(c[4]))) { fails.push(`Baris ${rowNo}: stok bukan angka.`); return; }
-        if ((c[7] ?? "") !== "" && Number.isNaN(Number(c[7]))) { fails.push(`Baris ${rowNo}: harga bukan angka.`); return; }
+        if ((c[4] ?? "") !== "" && (Number.isNaN(Number(c[4])) || Number(c[4]) < 0)) { fails.push(`Baris ${rowNo}: stok harus angka 0 atau lebih.`); return; }
+        if ((c[5] ?? "") !== "" && (Number.isNaN(Number(c[5])) || Number(c[5]) < 0)) { fails.push(`Baris ${rowNo}: minStok harus angka 0 atau lebih.`); return; }
+        if ((c[7] ?? "") !== "" && (Number.isNaN(Number(c[7])) || Number(c[7]) < 0)) { fails.push(`Baris ${rowNo}: harga harus angka 0 atau lebih.`); return; }
+        if (!c[3]) { fails.push(`Baris ${rowNo}: gudang wajib diisi.`); return; }
         skuSeen.add(sku.toLowerCase());
         add("inventory", {
-          name: nama, sku, category: c[2] || "Lainnya", warehouse: c[3] || "Gudang B",
+          name: nama, sku, category: c[2] || "Lainnya", warehouse: c[3],
           stock: Number(c[4]) || 0, minStock: Number(c[5]) || 0, unit: c[6] || "pcs",
           cost: Number(c[7]) || 0, rack: c[8] || "", location: c[8] || "",
           volume: 0, batch: "", batches: [], reserved: [],
@@ -528,6 +554,11 @@ export default function Inventory() {
     if (opCount === "" || Number.isNaN(Number(opCount)) || Number(opCount) < 0) { toast("Stok hasil hitung tidak valid", "info"); return; }
     const selisih = Number(opCount) - Number(opTarget.stock);
     if (selisih === 0) { toast("Tidak ada selisih — stok sudah sama", "info"); return; }
+    const base = Math.max(5, Math.abs(Number(opTarget.stock)) * 0.2);
+    if (Math.abs(selisih) > base) {
+      const ok = window.confirm(`Selisih besar (${selisih > 0 ? "+" : ""}${selisih} dari stok ${Number(opTarget.stock)}). Pastikan sudah Berita Acara. Lanjut simpan opname?`);
+      if (!ok) return;
+    }
     update("inventory", opTarget.id, { stock: Number(opCount) });
     add("movements", {
       item: opTarget.name, itemId: opTarget.id, type: "Selisih Opname", qty: selisih,
@@ -548,7 +579,21 @@ export default function Inventory() {
     if (!trDest) { toast("Gudang tujuan wajib dipilih", "info"); return; }
     if (trDest === trTarget.warehouse) { toast("Gudang tujuan sama dengan gudang asal", "info"); return; }
     const from = trTarget.warehouse;
-    update("inventory", trTarget.id, { warehouse: trDest });
+    const srcStock = Number(trTarget.stock);
+    if (qty < srcStock) {
+      /* Split: kurangi sumber, buat baris gudang tujuan dengan SKU sama + sufiks gudang. */
+      update("inventory", trTarget.id, { stock: srcStock - qty });
+      add("inventory", {
+        name: trTarget.name, sku: `${trTarget.sku}@${trDest}`, category: trTarget.category, warehouse: trDest,
+        rack: "", stock: qty, minStock: 0, unit: trTarget.unit,
+        cost: trTarget.cost, location: "", volume: Number(trTarget.volume) || 0, batch: String(trTarget.batch ?? ""),
+        uom2: String((trTarget as unknown as Record<string, unknown>).uom2 ?? ""), konversi: Number((trTarget as unknown as Record<string, unknown>).konversi) || 0,
+        minStockByWarehouse: {}, photoUrl: String(trTarget.photoUrl ?? ""), avgCost: Number((trTarget as unknown as Record<string, unknown>).avgCost) || 0,
+        batches: [], reserved: [],
+      }, { action: "transfer gudang (split)", target: `${trTarget.name} × ${qty}: ${from} → ${trDest}`, module: "Inventori" });
+    } else {
+      update("inventory", trTarget.id, { warehouse: trDest });
+    }
     add("movements", {
       item: trTarget.name, itemId: trTarget.id, type: "Transfer", qty,
       by: `${from} → ${trDest}`, date: todayISO(), tone: "in",

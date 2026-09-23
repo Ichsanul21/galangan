@@ -136,12 +136,12 @@ export default function Procurement() {
 
   /* ---- PO Besar ---- */
   const [showBig, setShowBig] = useState(false);
-  const [bigForm, setBigForm] = useState({ prId: "", itemId: "", vendor: "", project: "", vessel: "", eta: "", includePpn: true, override: false, overrideReason: "" });
+  const [bigForm, setBigForm] = useState({ tujuan: "kapal" as "kapal" | "stok", prId: "", itemId: "", vendor: "", project: "", vessel: "", eta: "", includePpn: true, override: false, overrideReason: "" });
   const [bigLines, setBigLines] = useState<POLine[]>([{ name: "", qty: 1, unit: "pcs", price: 0 }]);
 
   /* ---- PO Kecil ---- */
   const [showSmall, setShowSmall] = useState(false);
-  const [smallForm, setSmallForm] = useState({ workshop: "", requester: "", item: "", qty: "1", price: "", eta: "", project: "", override: false, overrideReason: "" });
+  const [smallForm, setSmallForm] = useState({ workshop: "", requester: "", item: "", qty: "1", unit: "pcs", price: "", eta: "", project: "", vessel: "", nota: "", override: false, overrideReason: "" });
   const [kasAwal, setKasAwal] = useState("");
 
   /* ---- RFQ ---- */
@@ -257,6 +257,11 @@ export default function Procurement() {
     const invItem = invList.find((i) => i.id === bigForm.itemId);
     if (!invItem) { toast("Pilih item inventori dari daftar", "info"); return; }
     if (!bigForm.vendor) { toast("Vendor wajib dipilih", "info"); return; }
+    if (bigForm.tujuan === "kapal") {
+      if (!bigForm.project) { toast("Untuk Kapal: proyek wajib dipilih", "info"); return; }
+      if (!bigForm.vessel.trim()) { toast("Untuk Kapal: U/TK kapal wajib diisi", "info"); return; }
+    }
+    if (!bigForm.eta) { toast("ETA wajib diisi", "info"); return; }
     if (bigLines.length === 0) { toast("Minimal 1 baris item", "info"); return; }
     for (const l of bigLines) {
       if (!l.name.trim()) { toast("Nama baris item wajib diisi", "info"); return; }
@@ -271,30 +276,35 @@ export default function Procurement() {
     if (plafon && !plafon.ok) { toast(`Plafon kontrak payung terlampaui (pakai ${fmtRupiah(plafon.pakai)} / plafon ${fmtRupiah(plafon.plafon)})`, "info"); return; }
     const pr = requisitions.find((r) => r.id === bigForm.prId);
     const docNo = sbPoNumber(purchaseOrders.length + 1);
+    const isStok = bigForm.tujuan === "stok";
     const created = add("purchaseOrders", {
       poType: "Besar", item: invItem.name, itemId: invItem.id, vendor: bigForm.vendor,
       req: bigForm.prId, amount: bigTotal, qty: bigLines.reduce((s, l) => s + Number(l.qty), 0),
       lines: bigLines.map((l) => ({ name: l.name.trim(), qty: Number(l.qty), unit: l.unit, price: Number(l.price) })),
-      project: bigForm.project || "-", vessel: bigForm.vessel.trim(), eta: bigForm.eta || "",
-      docNo, includePpn: bigForm.includePpn,
+      project: isStok ? "-" : (bigForm.project || "-"), vessel: isStok ? "" : bigForm.vessel.trim(), eta: bigForm.eta || "",
+      docNo, includePpn: bigForm.includePpn, tujuan: bigForm.tujuan,
       receivedQty: 0, returnedQty: 0, status: "Draft", date: todayISO(), revisi: "",
       amendments: [], approvals: [], overrideReason: bigOver ? bigForm.overrideReason.trim() : "",
     }, { action: "membuat PO Besar", module: "Procurement" });
     if (pr && pr.status === "Disetujui") update("requisitions", pr.id, { status: "Sudah PO" });
     toast(`PO Besar ${created.id} (${docNo}) dibuat (Draft)`);
     setShowBig(false);
-    setBigForm({ prId: "", itemId: "", vendor: "", project: "", vessel: "", eta: "", includePpn: true, override: false, overrideReason: "" });
+    setBigForm({ tujuan: "kapal", prId: "", itemId: "", vendor: "", project: "", vessel: "", eta: "", includePpn: true, override: false, overrideReason: "" });
     setBigLines([{ name: "", qty: 1, unit: "pcs", price: 0 }]);
   };
 
   /* ============ PO KECIL ============ */
   const saveSmall = () => {
     if (!smallForm.workshop.trim()) { toast("Workshop wajib diisi", "info"); return; }
+    if (!smallForm.requester.trim()) { toast("Peminta wajib diisi", "info"); return; }
     if (!smallForm.item.trim()) { toast("Item kebutuhan wajib diisi", "info"); return; }
     const qty = Number(smallForm.qty);
     const price = Number(smallForm.price);
     if (!qty || qty <= 0) { toast("Qty harus lebih dari 0", "info"); return; }
     if (!price || price <= 0) { toast("Estimasi harga harus lebih dari 0", "info"); return; }
+    if (!smallForm.unit.trim()) { toast("Satuan wajib dipilih", "info"); return; }
+    if (!smallForm.eta) { toast("ETA wajib diisi", "info"); return; }
+    if (smallForm.project && !smallForm.vessel.trim()) { toast("Jika proyek diisi, U/TK kapal wajib diisi", "info"); return; }
     const amount = qty * price;
     if (amount > PO_KECIL_LIMIT) { toast("melebihi batas PO Kecil, gunakan PO Besar", "info"); return; }
     if (smallOver && (!smallForm.override || !smallForm.overrideReason.trim())) {
@@ -303,15 +313,16 @@ export default function Procurement() {
     }
     add("purchaseOrders", {
       poType: "Kecil", item: smallForm.item.trim(), workshop: smallForm.workshop.trim(),
-      requester: smallForm.requester.trim() || "Anda", vendor: "Workshop Internal",
-      req: "-", amount, qty, receivedQty: 0, returnedQty: 0, status: "Diajukan",
+      requester: smallForm.requester.trim(), vendor: "Workshop Internal",
+      req: "-", amount, qty, unit: smallForm.unit.trim(), receivedQty: 0, returnedQty: 0, status: "Diajukan",
       date: todayISO(), eta: smallForm.eta || "", project: smallForm.project || "-",
-      lines: [{ name: smallForm.item.trim(), qty, unit: "pcs", price }],
+      vessel: smallForm.vessel.trim(), nota: smallForm.nota.trim(),
+      lines: [{ name: smallForm.item.trim(), qty, unit: smallForm.unit.trim(), price }],
       revisi: "", amendments: [], overrideReason: smallOver ? smallForm.overrideReason.trim() : "",
     }, { action: "membuat PO Kecil", module: "Procurement" });
     toast("PO Kecil dibuat (Diajukan)");
     setShowSmall(false);
-    setSmallForm({ workshop: "", requester: "", item: "", qty: "1", price: "", eta: "", project: "", override: false, overrideReason: "" });
+    setSmallForm({ workshop: "", requester: "", item: "", qty: "1", unit: "pcs", price: "", eta: "", project: "", vessel: "", nota: "", override: false, overrideReason: "" });
   };
 
   const doPoStatus = (po: StoreItem, next: string) => {
@@ -542,7 +553,9 @@ export default function Procurement() {
     if (!qty || qty <= 0) { toast("Qty terima harus lebih dari 0", "info"); return; }
     const isBig = recvPo.poType !== "Kecil";
     if (isBig && (!recvNoFaktur.trim() || !recvTglFaktur)) { toast("No faktur & tanggal faktur wajib untuk PO Besar", "info"); return; }
+    if (!isBig && !recvNoFaktur.trim()) { toast("No. nota/bukti wajib diisi untuk PO Kecil", "info"); return; }
     const invItem = invList.find((i) => i.id === recvItem);
+    if (!isBig && !invItem) { toast("PO Kecil: pilih item inventori tujuan (wajib)", "info"); return; }
     if (recvItem && !invItem) { toast("Pilih item inventori tujuan", "info"); return; }
     if (invItem) {
       update("inventory", invItem.id, { stock: Number(invItem.stock) + qty });
@@ -1056,9 +1069,17 @@ export default function Procurement() {
       </div>
 
       {/* Modal PO Besar */}
-      <Modal open={showBig} onClose={() => setShowBig(false)} title="Buat PO Besar" subtitle="Masuk status Draft · wajib link PR Disetujui"
+      <Modal open={showBig} onClose={() => setShowBig(false)} title="Buat PO Besar" subtitle="Masuk status Draft · wajib link PR Disetujui · pilih tujuan Kapal atau Stok"
         wide footer={<><button className="btn-secondary" onClick={() => setShowBig(false)}>Batal</button><button className="btn-primary" onClick={saveBig}>Simpan PO Besar</button></>}>
         <div className="space-y-3">
+          <div className="flex flex-wrap gap-2" role="radiogroup" aria-label="Tujuan PO">
+            {(["kapal", "stok"] as const).map((t) => (
+              <label key={t} className={`flex cursor-pointer items-center gap-2 rounded-lg border px-3 py-1.5 text-sm font-medium ${bigForm.tujuan === t ? "border-navy-700 bg-navy-50 text-navy-900" : "border-steel-200 text-steel-600"}`}>
+                <input type="radio" name="tujuan-po" checked={bigForm.tujuan === t} onChange={() => setBigForm({ ...bigForm, tujuan: t })} />
+                {t === "kapal" ? "Untuk Kapal (proyek + U/TK wajib)" : "Stok Gudang saja"}
+              </label>
+            ))}
+          </div>
           <FormGrid>
             <Field label="PR Disetujui" hint="Wajib — 1 PR per PO manual">
               <select className="input" value={bigForm.prId} onChange={(e) => setBigForm({ ...bigForm, prId: e.target.value })}>
@@ -1080,16 +1101,16 @@ export default function Procurement() {
                 {vendors.map((v) => <option key={v.id} value={v.name}>{v.name}{payungOf(v) ? ` (Payung: ${fmtRupiah(payungOf(v)!.plafon)})` : ""}</option>)}
               </select>
             </Field>
-            <Field label="Proyek (cek budget)">
-              <select className="input" value={bigForm.project} onChange={(e) => setBigForm({ ...bigForm, project: e.target.value })}>
+            <Field label="Proyek (cek budget)" hint={bigForm.tujuan === "kapal" ? "Wajib untuk PO kapal" : "Dikosongkan otomatis untuk stok"}>
+              <select className="input" value={bigForm.project} disabled={bigForm.tujuan === "stok"} onChange={(e) => setBigForm({ ...bigForm, project: e.target.value })}>
                 <option value="">Tanpa proyek…</option>
                 {data.projects.map((p) => <option key={p.id} value={p.id}>{p.id} — {p.vessel}</option>)}
               </select>
             </Field>
           </FormGrid>
-          <Field label="ETA"><input type="date" className="input" value={bigForm.eta} onChange={(e) => setBigForm({ ...bigForm, eta: e.target.value })} /></Field>
+          <Field label="ETA (wajib)"><input type="date" className="input" value={bigForm.eta} onChange={(e) => setBigForm({ ...bigForm, eta: e.target.value })} /></Field>
           <FormGrid>
-            <Field label="U/TK kapal" hint="cth: U/TB. TRIALFA 01"><input className="input" value={bigForm.vessel} onChange={(e) => setBigForm({ ...bigForm, vessel: e.target.value })} placeholder="U/…" /></Field>
+            <Field label="U/TK kapal" hint={bigForm.tujuan === "kapal" ? "Wajib — cth: U/TB. TRIALFA 01" : "Tidak dipakai untuk stok"}><input className="input" value={bigForm.vessel} disabled={bigForm.tujuan === "stok"} onChange={(e) => setBigForm({ ...bigForm, vessel: e.target.value })} placeholder="U/…" /></Field>
             <Field label="Harga" hint='RawData: "Harga Include Ppn11%"'>
               <select className="input" value={bigForm.includePpn ? "include" : "exclude"} onChange={(e) => setBigForm({ ...bigForm, includePpn: e.target.value === "include" })}>
                 <option value="include">Include PPN 11%</option>
@@ -1139,17 +1160,26 @@ export default function Procurement() {
           <Field label="Item bebas"><input className="input" value={smallForm.item} onChange={(e) => setSmallForm({ ...smallForm, item: e.target.value })} placeholder="cth: Oli hidrolik 20L" /></Field>
           <FormGrid>
             <Field label="Qty"><input type="number" min={1} className="input" value={smallForm.qty} onChange={(e) => setSmallForm({ ...smallForm, qty: e.target.value })} /></Field>
-            <Field label="Estimasi harga satuan (Rp)"><input type="number" min={0} className="input" value={smallForm.price} onChange={(e) => setSmallForm({ ...smallForm, price: e.target.value })} /></Field>
+            <Field label="Satuan">
+              <select className="input" value={smallForm.unit} onChange={(e) => setSmallForm({ ...smallForm, unit: e.target.value })}>
+                {["pcs", "kg", "liter", "meter", "batang", "unit", "roll", "set", "pak"].map((u) => <option key={u}>{u}</option>)}
+              </select>
+            </Field>
           </FormGrid>
           <FormGrid>
-            <Field label="ETA"><input type="date" className="input" value={smallForm.eta} onChange={(e) => setSmallForm({ ...smallForm, eta: e.target.value })} /></Field>
+            <Field label="Estimasi harga satuan (Rp)"><input type="number" min={0} className="input" value={smallForm.price} onChange={(e) => setSmallForm({ ...smallForm, price: e.target.value })} /></Field>
+            <Field label="No. nota/bukti (wajib saat terima)"><input className="input" value={smallForm.nota} onChange={(e) => setSmallForm({ ...smallForm, nota: e.target.value })} placeholder="cth: NT-2026-001" /></Field>
+          </FormGrid>
+          <FormGrid>
+            <Field label="ETA (wajib)"><input type="date" className="input" value={smallForm.eta} onChange={(e) => setSmallForm({ ...smallForm, eta: e.target.value })} /></Field>
             <Field label="Proyek (cek budget)">
               <select className="input" value={smallForm.project} onChange={(e) => setSmallForm({ ...smallForm, project: e.target.value })}>
-                <option value="">Tanpa proyek…</option>
+                <option value="">Stok workshop (tanpa proyek)…</option>
                 {data.projects.map((p) => <option key={p.id} value={p.id}>{p.id} — {p.vessel}</option>)}
               </select>
             </Field>
           </FormGrid>
+          <Field label="U/TK kapal" hint="Wajib bila proyek diisi"><input className="input" value={smallForm.vessel} onChange={(e) => setSmallForm({ ...smallForm, vessel: e.target.value })} placeholder="U/… atau kosongkan untuk stok" /></Field>
           <p className="text-sm font-semibold text-navy-900">Total: {fmtRupiah(smallAmount)} · Batas {fmtRupiah(PO_KECIL_LIMIT)}</p>
           {smallOver && smallBudget && (
             <div className="rounded-lg bg-rose-50 px-3 py-2 text-xs text-rose-700">

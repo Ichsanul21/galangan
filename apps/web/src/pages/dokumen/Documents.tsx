@@ -123,8 +123,14 @@ export default function Documents() {
   const validForm = (): boolean => {
     if (!form.title.trim()) { toast("Judul dokumen wajib diisi", "info"); return false; }
     if (!form.type) { toast("Tipe dokumen wajib diisi", "info"); return false; }
-    if (!form.project) { toast("Proyek terkait wajib diisi", "info"); return false; }
+    if (!form.project) { toast("Proyek terkait wajib diisi (pilih - untuk umum)", "info"); return false; }
     if (!form.owner.trim()) { toast("Penanggung jawab wajib diisi", "info"); return false; }
+    if (!data.employees.some((e) => String(e.name).toLowerCase() === form.owner.trim().toLowerCase())) {
+      toast("Penanggung jawab harus karyawan terdaftar", "info");
+      return false;
+    }
+    if (form.type === "Sertifikat" && !form.berlakuHingga) { toast("Sertifikat wajib isi berlaku hingga", "info"); return false; }
+    if (editing && !form.revNote.trim()) { toast("Catatan revisi wajib diisi", "info"); return false; }
     return true;
   };
 
@@ -134,7 +140,7 @@ export default function Documents() {
       const dupe = data.documents.some((d) => d.id !== editing.id && d.type === form.type && String(d.title).toLowerCase() === form.title.trim().toLowerCase());
       if (dupe) { toast("Judul sudah dipakai untuk tipe dokumen ini", "info"); return; }
       const version = nextVersion(String(editing.version ?? "v1.0"));
-      const revisions = [...(editing.revisions ?? []), { version, at: todayISO(), by: form.owner.trim(), note: form.revNote.trim() || "Revisi dokumen" }];
+      const revisions = [...(editing.revisions ?? []), { version, at: todayISO(), by: form.owner.trim(), note: form.revNote.trim() }];
       update("documents", editing.id, {
         title: form.title.trim(), type: form.type, project: form.project, vessel: form.vessel,
         owner: form.owner.trim(), berlakuHingga: form.berlakuHingga || undefined,
@@ -154,8 +160,8 @@ export default function Documents() {
         version: "v1.0", status: "Draft", updated: todayISO(), archived: false, docCopy: "Terkendali",
         related: [...relSel],
         // Ref format SB untuk arsip operasional (cth DS: 001/DS-SB/SMD/I/2024).
-        sbRef: form.type === "Dock Space" ? sbDsNumber(data.documents.filter((d) => d.type === "Dock Space").length + 1)
-          : form.type === "Surat Jalan" ? sbSjNumber(data.documents.filter((d) => d.type === "Surat Jalan").length + 1)
+        sbRef: form.type === "Dock Space" ? sbDsNumber(sbSeq("Dock Space"))
+          : form.type === "Surat Jalan" ? sbSjNumber(sbSeq("Surat Jalan"))
           : "",
         revisions: [{ version: "v1.0", at: todayISO(), by: form.owner.trim(), note: "Dokumen dibuat" }],
       }, { action: "mengarsipkan dokumen", module: "Dokumen" });
@@ -173,10 +179,13 @@ export default function Documents() {
   };
 
   const flowTo = (d: StoreItem, next: string) => {
-    update("documents", d.id, { status: next, updated: todayISO() });
+    const ok = window.confirm(`Ubah status ${d.id} ke ${next}? Tercatat di riwayat revisi.`);
+    if (!ok) return;
+    const revisions = [...(d.revisions ?? []), { version: String(d.version ?? "v1.0"), at: todayISO(), by: String(d.owner ?? ""), note: `Status → ${next}` }];
+    update("documents", d.id, { status: next, updated: todayISO(), revisions });
     log(`mengubah status dokumen ke ${next}`, d.id, "Dokumen");
     toast(`${d.id} → ${next}`);
-    setDetail((cur) => (cur && cur.id === d.id ? { ...cur, status: next, updated: todayISO() } : cur));
+    setDetail((cur) => (cur && cur.id === d.id ? { ...cur, status: next, updated: todayISO(), revisions } : cur));
   };
 
   const confirmArchive = () => {
@@ -196,9 +205,19 @@ export default function Documents() {
   };
 
   const doExport = () => {
-    const rows = list.map((d) => [d.id, d.title, d.type, d.project, d.version, d.status, d.owner, d.updated]);
-    exportExcel([["ID", "Judul", "Tipe", "Proyek", "Versi", "Status", "Owner", "Updated"], ...rows], `register-dokumen-${todayISO()}`);
+    const rows = list.map((d) => [d.id, d.title, d.type, d.project, d.version, d.status, d.owner, d.updated, d.berlakuHingga ?? "", Array.isArray(d.related) ? d.related.length : 0]);
+    exportExcel([["ID", "Judul", "Tipe", "Proyek", "Versi", "Status", "Owner", "Updated", "Berlaku Hingga", "Jml Terkait"], ...rows], `register-dokumen-${todayISO()}`);
     toast(`${String(rows.length)} baris diekspor ke Excel`);
+  };
+
+  const sbSeq = (tipe: string): number => {
+    const nums = data.documents
+      .filter((d) => d.type === tipe && typeof d.sbRef === "string")
+      .map((d) => {
+        const m = /^(\d+)\//.exec(String(d.sbRef));
+        return m ? Number(m[1]) : 0;
+      });
+    return Math.max(0, ...nums) + 1;
   };
 
   const setF = (k: string, v: string) => setForm((f) => ({ ...f, [k]: v }));

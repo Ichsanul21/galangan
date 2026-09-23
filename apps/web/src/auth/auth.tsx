@@ -13,7 +13,15 @@ export interface DemoUser {
 export const demoUsers: DemoUser[] = [
   { username: "demo@galangan.com", password: "password@123", name: "Demo Client", role: "Client Viewer", email: "demo@galangan.com", initials: "DC" },
   { username: "dev@alk.id", password: "KucingTerbang", name: "Alenkosa Dev", role: "Developer", email: "dev@alk.id", initials: "DV" },
+  { username: "direktur@galangan.com", password: "direktur123", name: "Direktur Utama", role: "Direktur", email: "direktur@galangan.com", initials: "DU" },
+  { username: "manager@galangan.com", password: "manager123", name: "Manager Proyek", role: "Manager", email: "manager@galangan.com", initials: "MP" },
 ];
+
+/* Hak atur target & konstanta sensitif: hanya Direktur / Manager / Developer. */
+export function canSetTarget(role: string | undefined | null): boolean {
+  const r = String(role ?? "").toLowerCase();
+  return r.includes("direktur") || r.includes("direksi") || r.includes("manager") || r.includes("developer");
+}
 
 const SESSION_KEY = "isms.session";
 

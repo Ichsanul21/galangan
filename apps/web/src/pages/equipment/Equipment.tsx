@@ -78,7 +78,7 @@ export default function EquipmentPage() {
   const [tab, setTab] = useState("Register");
 
   const [showAdd, setShowAdd] = useState(false);
-  const [form, setForm] = useState({ name: "", category: "Pengangkat", code: "", branch: "Samarinda", model: "", util: "50", rate: "", fuelPrice: "0", acquisitionCost: "", usefulLife: "" });
+  const [form, setForm] = useState({ name: "", category: "Pengangkat", code: "", serial: "", branch: "Samarinda", model: "", pic: "", util: "50", rate: "", fuelPrice: "0", acquisitionCost: "", usefulLife: "" });
   const [showService, setShowService] = useState(false);
   const [svcDate, setSvcDate] = useState("");
   const [svcTarget, setSvcTarget] = useState("");
@@ -166,6 +166,15 @@ export default function EquipmentPage() {
 
   const saveAdd = () => {
     if (!form.name.trim() || !form.code.trim()) { toast("Nama & kode wajib diisi", "info"); return; }
+    const code = form.code.trim().toUpperCase();
+    if (!/^[A-Z0-9-]{3,20}$/.test(code)) { toast("Kode aset harus 3–20 karakter (huruf/angka/-)", "info"); return; }
+    if (equipment.some((e) => String(e.code).toUpperCase() === code)) { toast(`Kode ${code} sudah dipakai equipment lain`, "info"); return; }
+    if (!form.serial.trim()) { toast("Nomor seri wajib diisi", "info"); return; }
+    if (!form.pic.trim()) { toast("PIC penanggung jawab wajib diisi", "info"); return; }
+    const util = Number(form.util);
+    if (!Number.isFinite(util) || util < 0 || util > 100) { toast("Utilisasi awal harus 0–100%", "info"); return; }
+    const rate = Number(form.rate || 0);
+    if (!Number.isFinite(rate) || rate < 0) { toast("Tarif pakai harus 0 atau lebih", "info"); return; }
     const fuelPrice = Number(form.fuelPrice || 0);
     const acquisitionCost = Number(form.acquisitionCost || 0);
     const usefulLife = Number(form.usefulLife || 0);
@@ -175,13 +184,13 @@ export default function EquipmentPage() {
       return;
     }
     const created = add("equipment", {
-      name: form.name.trim(), category: form.category, code: form.code.trim().toUpperCase(), branch: form.branch,
-      status: "Tersedia", util: Number(form.util) || 0, nextService: "-", lastHours: 0, model: form.model.trim() || "-",
-      rate: Number(form.rate) || 0, fuelPrice, acquisitionCost, usefulLife,
+      name: form.name.trim(), category: form.category, code, serial: form.serial.trim(), branch: form.branch,
+      status: "Tersedia", util, nextService: "-", lastHours: 0, model: form.model.trim() || "-",
+      pic: form.pic.trim(), rate, fuelPrice, acquisitionCost, usefulLife,
     }, { action: "mendaftarkan equipment", module: "Equipment" });
     toast(`Equipment ${created.id} ditambahkan`);
     setShowAdd(false);
-    setForm({ name: "", category: "Pengangkat", code: "", branch: "Samarinda", model: "", util: "50", rate: "", fuelPrice: "0", acquisitionCost: "", usefulLife: "" });
+    setForm({ name: "", category: "Pengangkat", code: "", serial: "", branch: "Samarinda", model: "", pic: "", util: "50", rate: "", fuelPrice: "0", acquisitionCost: "", usefulLife: "" });
   };
 
   const saveService = () => {
@@ -338,6 +347,9 @@ export default function EquipmentPage() {
 
   const saveCalibration = () => {
     if (!calForm.equipmentId || !calForm.item.trim() || !calForm.due) { toast("Equipment, item ukur & due date wajib diisi", "info"); return; }
+    if (calForm.due < today) { toast("Due date kalibrasi tidak boleh di masa lalu", "info"); return; }
+    const dupe = calibrations.some((c) => c.equipmentId === calForm.equipmentId && String(c.item).toLowerCase() === calForm.item.trim().toLowerCase() && c.status !== "Selesai");
+    if (dupe) { toast("Jadwal kalibrasi terbuka untuk item ini sudah ada", "info"); return; }
     const eq = equipment.find((e) => e.id === calForm.equipmentId);
     const created = add("calibrations", {
       equipmentId: calForm.equipmentId, item: calForm.item.trim(), due: calForm.due, status: "Terjadwal", cert: "",
@@ -760,9 +772,11 @@ export default function EquipmentPage() {
             </Field>
             <Field label="Cabang">
               <select className="input" value={form.branch} onChange={(e) => setForm({ ...form, branch: e.target.value })}>
-                <option>Samarinda</option>
+                {data.branches.map((b) => <option key={b.id} value={String(b.city)}>{String(b.city)}</option>)}
               </select>
             </Field>
+            <Field label="Nomor seri" hint="Wajib — unik per unit"><input className="input font-mono" value={form.serial} onChange={(e) => setForm({ ...form, serial: e.target.value })} placeholder="cth: SN-2024-001" /></Field>
+            <Field label="PIC" hint="Penanggung jawab unit"><input className="input" value={form.pic} onChange={(e) => setForm({ ...form, pic: e.target.value })} placeholder="cth: Budi Santoso" /></Field>
             <Field label="Model"><input className="input" value={form.model} onChange={(e) => setForm({ ...form, model: e.target.value })} /></Field>
             <Field label="Utilisasi awal (%)"><input type="number" className="input" value={form.util} onChange={(e) => setForm({ ...form, util: e.target.value })} /></Field>
             <Field label="Tarif pakai (Rp/jam)"><input type="number" min={0} className="input" value={form.rate} onChange={(e) => setForm({ ...form, rate: e.target.value })} placeholder="cth: 350000" /></Field>

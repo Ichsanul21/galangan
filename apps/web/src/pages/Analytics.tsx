@@ -37,6 +37,7 @@ import {
   toast,
 } from "../components/ui";
 import { useStore } from "../data/store";
+import { getSetting } from "../utils/settings";
 import { exportExcel } from "../utils/export";
 import { fmtTanggal, fmtMiliar, fmtRupiah, todayISO } from "../utils/format";
 import {
@@ -110,16 +111,17 @@ function exportChartPNG(chartId: string, filename: string): void {
 
 export default function Analytics() {
   const [tab, setTab] = useState("Deskriptif");
-  const [growth, setGrowth] = useState(0);
-  const [costAdj, setCostAdj] = useState(0);
-  const [progAdj, setProgAdj] = useState(0);
+  const { data, update } = useStore();
+  /* What-if dikendalikan dari Pengaturan (grup Analytics) — otomatis dipakai forecast. */
+  const growth = getSetting(data, "WHATIF_GROWTH", 0);
+  const costAdj = getSetting(data, "WHATIF_COST", 0);
+  const progAdj = getSetting(data, "WHATIF_PROG", 0);
   const [scName, setScName] = useState("");
   const [scenarios, setScenarios] = useState<Scenario[]>(() => loadScenarios());
   const [cmpA, setCmpA] = useState("");
   const [cmpB, setCmpB] = useState("");
   const [noteInput, setNoteInput] = useState("");
   const [notes, setNotes] = useState<Record<string, string[]>>(() => loadNotes());
-  const { data } = useStore();
 
   const avgProgress = data.projects.length
     ? Math.round(data.projects.reduce((s, p) => s + Number(p.progress || 0), 0) / data.projects.length)
@@ -225,10 +227,14 @@ export default function Analytics() {
   const loadScenario = (name: string) => {
     const sc = scenarios.find((s) => s.name === name);
     if (!sc) return;
-    setGrowth(sc.growth);
-    setCostAdj(sc.costAdj);
-    setProgAdj(sc.progAdj);
-    toast(`Skenario ${name} dimuat`);
+    const apply = (key: string, val: number) => {
+      const row = (data.settings ?? []).find((s) => String(s.key) === key);
+      if (row) update("settings", String(row.id), { value: val });
+    };
+    apply("WHATIF_GROWTH", sc.growth);
+    apply("WHATIF_COST", sc.costAdj);
+    apply("WHATIF_PROG", sc.progAdj);
+    toast(`Skenario ${name} diterapkan ke Pengaturan`);
   };
 
   const delScenario = (name: string) => {
@@ -507,54 +513,22 @@ export default function Analytics() {
               <KpiCard label="Proyek Berisiko" value={`${atRisk} proyek`} delta="Terlambat / over-budget" deltaDirection={atRisk ? "down" : "up"} icon={<Clock className="h-5 w-5" />} chip="violet" spark={activeProjectTrend} />
             </div>
             <Card>
-              <CardHeader title="What-if Pertumbuhan" subtitle={`Baseline Rp ${forecastAnnual.toLocaleString("id-ID")} M (MA3 × 12) — geser untuk simulasi`} action={<Badge tone="violet">{`${growth >= 0 ? "+" : ""}${growth}%`}</Badge>} />
+              <CardHeader title="What-if Pertumbuhan" subtitle={`Baseline Rp ${forecastAnnual.toLocaleString("id-ID")} M (MA3 × 12) — diatur di Pengaturan, otomatis dipakai`} action={<Badge tone="violet">{`${growth >= 0 ? "+" : ""}${growth}%`}</Badge>} />
               <div className="flex flex-col gap-3 p-5 pt-2">
-                <div>
-                  <p className="mb-1 text-xs font-semibold text-navy-900">Pertumbuhan pasar: {growth}%</p>
-                  <input
-                    type="range"
-                    min={-20}
-                    max={50}
-                    step={1}
-                    value={growth}
-                    onChange={(e) => setGrowth(Number(e.target.value))}
-                    aria-label="Simulasi pertumbuhan"
-                    className="w-full"
-                  />
+                <div className="grid grid-cols-1 gap-2 text-sm sm:grid-cols-3">
+                  <div className="rounded-xl bg-surface px-3 py-2"><p className="text-[11px] text-steel-400">Pertumbuhan pasar</p><p className="font-bold text-navy-900">{growth}%</p></div>
+                  <div className="rounded-xl bg-surface px-3 py-2"><p className="text-[11px] text-steel-400">Biaya (±, menekan margin)</p><p className="font-bold text-navy-900">{costAdj}%</p></div>
+                  <div className="rounded-xl bg-surface px-3 py-2"><p className="text-[11px] text-steel-400">Progres (±, menggeser forecast)</p><p className="font-bold text-navy-900">{progAdj}%</p></div>
                 </div>
-                <div>
-                  <p className="mb-1 text-xs font-semibold text-navy-900">Biaya (±, menekan margin): {costAdj}%</p>
-                  <input
-                    type="range"
-                    min={-20}
-                    max={50}
-                    step={1}
-                    value={costAdj}
-                    onChange={(e) => setCostAdj(Number(e.target.value))}
-                    aria-label="Simulasi biaya"
-                    className="w-full"
-                  />
+                <div className="flex flex-wrap gap-2">
+                  <Link to="/pengaturan" className="btn-secondary text-xs">Ubah di Pengaturan</Link>
                 </div>
-                <div>
-                  <p className="mb-1 text-xs font-semibold text-navy-900">Progres (±, menggeser forecast): {progAdj}%</p>
-                  <input
-                    type="range"
-                    min={-20}
-                    max={50}
-                    step={1}
-                    value={progAdj}
-                    onChange={(e) => setProgAdj(Number(e.target.value))}
-                    aria-label="Simulasi progres"
-                    className="w-full"
-                  />
-                </div>
-                <div className="flex justify-between text-[11px] text-steel-500"><span>−20%</span><span>0%</span><span>+50%</span></div>
                 <p className="text-sm text-steel-600">Forecast tahunan tersimulasi: <span className="font-bold text-navy-900">Rp {forecastAnnualAdj.toLocaleString("id-ID")} M</span> · margin live {marginLive.toLocaleString("id-ID", { maximumFractionDigits: 1 })}% per {fmtTanggal(todayISO())}</p>
                 <p className="text-xs text-steel-400">Asumsi: progres +/− menggeser revenue secara proporsional; biaya +1% menekan margin 0,3 poin; pita ±15%.</p>
               </div>
             </Card>
             <Card>
-              <CardHeader title="Skenario Tersimpan" subtitle="Simpan set 3 slider + bandingkan 2 skenario" />
+              <CardHeader title="Skenario Tersimpan" subtitle="Simpan set What-if Pengaturan + bandingkan 2 skenario" />
               <div className="flex flex-wrap gap-2 p-5 pt-2">
                 <input className="input w-48" placeholder="Nama skenario…" value={scName} onChange={(e) => setScName(e.target.value)} />
                 <button className="btn-secondary text-xs" onClick={saveScenario}>Simpan Skenario</button>
@@ -565,7 +539,7 @@ export default function Analytics() {
                     <span className="font-semibold text-navy-900">{s.name}</span>
                     <span className="text-xs text-steel-500">+{s.growth}% / biaya {s.costAdj}% / prog {s.progAdj}% · Rp {annualFor(s).toLocaleString("id-ID")} M</span>
                     <span className="ml-auto flex gap-1.5">
-                      <button className="btn-secondary px-2 py-1 text-xs" onClick={() => loadScenario(s.name)}>Muat</button>
+                      <button className="btn-secondary px-2 py-1 text-xs" onClick={() => loadScenario(s.name)}>Terapkan</button>
                       <button className="btn-secondary px-2 py-1 text-xs" onClick={() => delScenario(s.name)}>Hapus</button>
                     </span>
                   </div>

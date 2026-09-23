@@ -14,7 +14,10 @@ export default function Settings() {
     const raw = drafts[id];
     if (raw === undefined || raw.trim() === "") return;
     const v = Number(raw);
-    if (!Number.isFinite(v) || v < 0) { toast("Nilai harus angka 0 atau lebih", "info"); return; }
+    const isWhatif = key.startsWith("WHATIF_");
+    const min = isWhatif ? -20 : 0;
+    const max = isWhatif ? 50 : Number.POSITIVE_INFINITY;
+    if (!Number.isFinite(v) || v < min || v > max) { toast(isWhatif ? "Nilai What-if harus −20 s.d. 50" : "Nilai harus angka 0 atau lebih", "info"); return; }
     update("settings", id, { value: v });
     log("mengubah konstanta", `${key} → ${v}`, "Pengaturan");
     toast(`${key} disimpan`);

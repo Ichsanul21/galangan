@@ -257,6 +257,16 @@ export default function Finance() {
   const [showCoa, setShowCoa] = useState(false);
   const [coaForm, setCoaForm] = useState({ kode: "", nama: "", dk: "D", nrlr: "NR" });
   const [coaTarget, setCoaTarget] = useState<StoreItem | null>(null);
+  const [coaQ, setCoaQ] = useState("");
+  const [coaTipe, setCoaTipe] = useState("Semua");
+  const coaTipeOptions = ["Semua", "Aset", "Liabilitas", "Ekuitas", "Pendapatan", "Beban", "Header"];
+  const coaFiltered = coaRows.filter((c) => {
+    const tipe = coaList.find((x) => x.kode === String(c.kode))?.tipe ?? "";
+    const matchT = coaTipe === "Semua" || tipe === coaTipe;
+    const needle = coaQ.trim().toLowerCase();
+    const matchQ = !needle || `${c.kode} ${c.nama}`.toLowerCase().includes(needle);
+    return matchT && matchQ;
+  });
 
   // Jurnal (sheet JU): tambah jurnal manual berimbang, multi-baris per voucher.
   const [showJu, setShowJu] = useState(false);
@@ -776,9 +786,15 @@ export default function Finance() {
   const saveCoa = () => {
     const kode = coaForm.kode.trim();
     if (!kode) { toast("No. akun wajib diisi", "info"); return; }
+    if (!/^\d+-\d+$/.test(kode)) { toast("No. akun harus format angka-angka, cth: 1-125", "info"); return; }
     if (!coaForm.nama.trim()) { toast("Nama akun wajib diisi", "info"); return; }
     if (coaTarget) {
-      update("coa", coaTarget.id, { nama: coaForm.nama.trim(), dk: coaForm.dk, nrlr: coaForm.nrlr });
+      if (String(coaTarget.dk) === "-") {
+        /* Baris header: hanya nama yang boleh diubah, posisi D/K & NR/LR dikunci. */
+        update("coa", coaTarget.id, { nama: coaForm.nama.trim() });
+      } else {
+        update("coa", coaTarget.id, { nama: coaForm.nama.trim(), dk: coaForm.dk, nrlr: coaForm.nrlr });
+      }
       log("mengubah akun", kode, "Keuangan");
       toast(`Akun ${kode} diubah`);
     } else {
@@ -1146,21 +1162,30 @@ export default function Finance() {
             <div className="space-y-4">
               <CardHeader
                 title="Daftar Akun"
-                subtitle="Kelola master akun: tambah, ubah, hapus. Baris header (D/K = −) tidak bisa dihapus."
+                subtitle="Kelola master akun: tambah, ubah, hapus. Baris header (D/K = −) tidak bisa dihapus dan posisinya dikunci."
                 action={<button className="btn-primary text-xs" onClick={() => { setCoaTarget(null); setCoaForm({ kode: "", nama: "", dk: "D", nrlr: "NR" }); setShowCoa(true); }}>+ Tambah Akun</button>}
               />
+              <div className="flex flex-wrap items-center gap-2">
+                <input className="input w-56" placeholder="Cari no / nama akun…" value={coaQ} onChange={(e) => setCoaQ(e.target.value)} aria-label="Cari akun" />
+                <select className="input w-auto py-1.5 text-sm" value={coaTipe} onChange={(e) => setCoaTipe(e.target.value)} aria-label="Filter tipe akun">
+                  {coaTipeOptions.map((t) => <option key={t} value={t}>{t === "Semua" ? "Semua tipe" : t}</option>)}
+                </select>
+                <span className="ml-auto text-xs text-steel-400">{coaFiltered.length} akun</span>
+              </div>
               <div className="overflow-x-auto">
                 <table className="w-full">
                   <thead className="bg-surface sticky top-0 z-10">
-                    <tr><th className="th">No. Akun</th><th className="th">Nama Akun</th><th className="th">D/K</th><th className="th">NR/LR</th><th className="th">Aksi</th></tr>
+                    <tr><th className="th">No. Akun</th><th className="th">Nama Akun</th><th className="th">Tipe</th><th className="th">D/K</th><th className="th">NR/LR</th><th className="th">Aksi</th></tr>
                   </thead>
                   <tbody className="divide-y divide-steel-100">
-                    {coaRows.map((c) => {
+                    {coaFiltered.map((c) => {
                       const header = String(c.dk) === "-";
+                      const tipe = coaList.find((x) => x.kode === String(c.kode))?.tipe ?? "—";
                       return (
-                        <tr key={String(c.id)} className={header ? "bg-surface font-semibold" : "hover:bg-surface"}>
+                        <tr key={String(c.id)} className={header ? "bg-navy-50 font-semibold" : "hover:bg-surface"}>
                           <td className="td font-mono text-xs font-semibold text-navy-900">{String(c.kode)}</td>
-                          <td className="td text-xs text-steel-600">{String(c.nama)}</td>
+                          <td className="td text-xs text-steel-600">{String(c.nama)} {header && <span className="ml-1 rounded-full bg-navy-700 px-1.5 py-0.5 text-[10px] font-bold text-white">Header</span>}</td>
+                          <td className="td"><span className="rounded-full bg-surface border border-steel-200 px-2 py-0.5 text-[11px] font-medium text-navy-800">{tipe}</span></td>
                           <td className="td text-xs text-steel-500">{String(c.dk)}</td>
                           <td className="td text-xs text-steel-500">{String(c.nrlr)}</td>
                           <td className="td">
@@ -1256,10 +1281,11 @@ export default function Finance() {
                             </td>
                           </tr>
                         );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
+                    })}
+                  </tbody>
+                </table>
+                {coaFiltered.length === 0 && <p className="py-6 text-center text-sm text-steel-400">Tidak ada akun yang cocok.</p>}
+              </div>
                 {invoices.length === 0 && <EmptyState title="Belum ada invoice" subtitle="Buat invoice pertama untuk cabang ini." />}
                 <Card className="mt-4 p-4">
                   <CardHeader title="Aging Real per Bucket" subtitle="Dihitung dari jatuh tempo vs hari ini. Hanya invoice non-Lunas/Draft/Dihapusbukukan." />
@@ -1337,10 +1363,11 @@ export default function Finance() {
 
           {tab === "Hutang (AP)" && (
             <div className="space-y-5">
-              <div className="flex justify-end">
-                <button className="btn-secondary text-xs" onClick={() => setShowAp(true)}>+ Catat Hutang</button>
-              </div>
-              <p className="text-xs text-steel-500">Tanda kuning = vendor Non-PPn (tanpa potong PPh 23).</p>
+              <CardHeader
+                title="Hutang Usaha (AP)"
+                subtitle="Tagihan vendor, termin pembayaran, dan status pelunasan. Tanda kuning = vendor Non-PPn (tanpa potong PPh 23)."
+                action={<button className="btn-secondary text-xs" onClick={() => setShowAp(true)}>+ Catat Hutang</button>}
+              />
               <div className="overflow-x-auto">
                 <table className="w-full">
                   <thead className="bg-surface sticky top-0 z-10">
@@ -1552,6 +1579,7 @@ export default function Finance() {
                   <button className="btn-primary mt-4 w-full justify-center" onClick={() => setShowInv(true)}>Buat Invoice</button>
                 </Card>
               </div>
+              <CardHeader title="Daftar Invoice" subtitle="Rincian tipe, lines, retensi, e-Faktur, dan status tiap invoice." />
               <div className="overflow-x-auto">
                 <table className="w-full">
                   <thead className="bg-surface sticky top-0 z-10">
@@ -1658,13 +1686,16 @@ export default function Finance() {
 
           {tab === "Project P&L" && (
             <div className="space-y-5">
+              <CardHeader
+                title="Project P&L — Laba Rugi per Proyek"
+                subtitle="Pendapatan dari invoice Lunas. Payable dipetakan via PO ke proyek, termin Lunas via WO, gaji via alokasi manual. Sisanya masuk Tak teralokasi."
+              />
               <div className="flex flex-wrap items-end gap-2">
                 <Field label="Proyek analisis">
                   <select className="input" value={profitPid} onChange={(e) => { setProfitProjectId(e.target.value); const p = projectById[e.target.value]; setOverheadPct(String(p?.overheadPct ?? 5)); }}>
                     {projectsVisible.map((p) => <option key={p.id} value={p.id}>{p.id} · {p.vessel}</option>)}
                   </select>
                 </Field>
-                <p className="pb-2 text-xs text-steel-500">Pendapatan dari invoice Lunas. Payable dipetakan via PO ke proyek, termin Lunas via WO, gaji via alokasi manual. Sisanya masuk Tak teralokasi.</p>
               </div>
               {profitCalc && (
                 <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
@@ -2340,22 +2371,22 @@ export default function Finance() {
         </div>
       </Modal>
 
-      <Modal open={showCoa} onClose={() => { setShowCoa(false); setCoaTarget(null); }} title={coaTarget ? `Ubah akun ${coaTarget.kode}?` : "Tambah Akun"} subtitle="Isi nomor, nama, posisi debit/kredit, dan kelompok laporan"
+      <Modal open={showCoa} onClose={() => { setShowCoa(false); setCoaTarget(null); }} title={coaTarget ? `Ubah akun ${coaTarget.kode}?` : "Tambah Akun"} subtitle={coaTarget && String(coaTarget.dk) === "-" ? "Baris header: hanya nama yang dapat diubah" : "Isi nomor (format angka-angka), nama, posisi debit/kredit, dan kelompok laporan"}
         footer={<><button className="btn-secondary" onClick={() => { setShowCoa(false); setCoaTarget(null); }}>Batal</button><button className="btn-primary" onClick={saveCoa}>Simpan</button></>}>
         <div className="space-y-3">
           <FormGrid>
-            <Field label="No. akun" hint="cth: 1-125">
-              <input className="input font-mono" value={coaForm.kode} disabled={coaTarget !== null} onChange={(e) => setCoaForm({ ...coaForm, kode: e.target.value })} placeholder="x-xxx" />
+            <Field label="No. akun" hint="Format angka-angka, cth: 1-125">
+              <input className="input font-mono" value={coaForm.kode} disabled={coaTarget !== null} onChange={(e) => setCoaForm({ ...coaForm, kode: e.target.value })} placeholder="1-125" />
             </Field>
             <Field label="Nama akun"><input className="input" value={coaForm.nama} onChange={(e) => setCoaForm({ ...coaForm, nama: e.target.value })} placeholder="cth: Bank Kaltimtara Syariah" /></Field>
-            <Field label="Akun D/K">
-              <select className="input" value={coaForm.dk} onChange={(e) => setCoaForm({ ...coaForm, dk: e.target.value })}>
+            <Field label="Akun D/K" hint={coaTarget && String(coaTarget.dk) === "-" ? "Dikunci untuk baris header" : undefined}>
+              <select className="input" value={coaForm.dk} disabled={coaTarget !== null && String(coaTarget.dk) === "-"} onChange={(e) => setCoaForm({ ...coaForm, dk: e.target.value })}>
                 <option value="D">D — Debit</option>
                 <option value="K">K — Kredit</option>
               </select>
             </Field>
-            <Field label="Akun NR/LR">
-              <select className="input" value={coaForm.nrlr} onChange={(e) => setCoaForm({ ...coaForm, nrlr: e.target.value })}>
+            <Field label="Akun NR/LR" hint={coaTarget && String(coaTarget.dk) === "-" ? "Dikunci untuk baris header" : undefined}>
+              <select className="input" value={coaForm.nrlr} disabled={coaTarget !== null && String(coaTarget.dk) === "-"} onChange={(e) => setCoaForm({ ...coaForm, nrlr: e.target.value })}>
                 <option value="NR">NR — Neraca</option>
                 <option value="LR">LR — Laba-Rugi</option>
               </select>

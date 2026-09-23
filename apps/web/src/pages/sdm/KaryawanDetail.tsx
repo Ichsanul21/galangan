@@ -121,11 +121,27 @@ export default function KaryawanDetail() {
       toast("Isi minimal satu skill", "info");
       return;
     }
-    const merged = Array.from(new Set([...skills, ...extra]));
+    const lower = new Set(skills.map((s) => s.toLowerCase()));
+    const merged = [...skills];
+    for (const s of extra) {
+      if (!lower.has(s.toLowerCase())) { merged.push(s); lower.add(s.toLowerCase()); }
+    }
     update("employees", emp.id, { skills: merged });
     log("memperbarui skill karyawan", emp.id, "SDM");
     setSkillInput("");
     toast("Skill karyawan diperbarui");
+  };
+
+  const delSkill = (name: string) => {
+    update("employees", emp.id, { skills: skills.filter((s) => s !== name) });
+    log("menghapus skill karyawan", `${emp.id} · ${name}`, "SDM");
+    toast(`Skill ${name} dihapus`, "info");
+  };
+
+  const delCert = (name: string) => {
+    update("employees", emp.id, { certs: certs.filter((c) => c.name !== name) });
+    log("menghapus sertifikat karyawan", `${emp.id} · ${name}`, "SDM");
+    toast(`Sertifikat ${name} dihapus`, "info");
   };
 
   const saveCert = () => {
@@ -186,6 +202,8 @@ export default function KaryawanDetail() {
             <div className="flex justify-between"><dt className="text-steel-500">Cabang</dt><dd className="font-medium">{String(emp.branch ?? "-")}</dd></div>
             <div className="flex justify-between"><dt className="text-steel-500">Tipe</dt><dd><Badge tone="gray">{String(emp.tipe ?? "-")}</Badge></dd></div>
             <div className="flex justify-between"><dt className="text-steel-500">Bergabung</dt><dd className="font-medium">{fmtTanggal(String(emp.join))}</dd></div>
+            <div className="flex justify-between"><dt className="text-steel-500">Akhir kontrak</dt><dd className="font-medium">{emp.contractEnd ? fmtTanggal(String(emp.contractEnd)) : "—"}</dd></div>
+            <div className="flex justify-between"><dt className="text-steel-500">PTKP</dt><dd className="font-medium">{String(emp.ptkpStatus ?? "-")} · {Number(emp.dependents ?? 0)} tanggungan</dd></div>
             <div className="flex justify-between"><dt className="text-steel-500">Gaji pokok</dt><dd className="font-medium">{fmtRupiah(Number(emp.basic || 0))}</dd></div>
             <div className="flex justify-between"><dt className="text-steel-500">Tunjangan</dt><dd className="font-medium">{fmtRupiah(Number(emp.allowances || 0))}</dd></div>
           </dl>
@@ -194,7 +212,12 @@ export default function KaryawanDetail() {
         <Card className="p-5">
           <h3 className="text-sm font-semibold text-navy-900">Skill</h3>
           <div className="mt-3 flex flex-wrap gap-1.5">
-            {skills.map((s) => <Badge key={s} tone="navy">{s}</Badge>)}
+            {skills.map((s) => (
+              <span key={s} className="inline-flex items-center gap-1 rounded-full bg-navy-50 border border-navy-100 px-2.5 py-1 text-xs font-medium text-navy-800">
+                {s}
+                <button className="text-steel-400 hover:text-rose-600" aria-label={`Hapus skill ${s}`} onClick={() => delSkill(s)}>×</button>
+              </span>
+            ))}
             {skills.length === 0 && <span className="text-xs text-steel-400">Belum ada skill tercatat.</span>}
           </div>
           <div className="mt-3 flex gap-2">
@@ -217,11 +240,14 @@ export default function KaryawanDetail() {
                     <p className="font-medium text-navy-900">{c.name}</p>
                     <p className="text-xs text-steel-500">Berlaku hingga {fmtTanggal(c.expires)}</p>
                   </div>
-                  {left !== null && (
-                    <Badge tone={left < 0 ? "red" : left <= 30 ? "red" : left <= 90 ? "amber" : "green"}>
-                      {left < 0 ? `Lewat ${Math.abs(left)} hari` : `Sisa ${left} hari`}
-                    </Badge>
-                  )}
+                  <div className="flex items-center gap-2">
+                    {left !== null && (
+                      <Badge tone={left < 0 ? "red" : left <= 30 ? "red" : left <= 90 ? "amber" : "green"}>
+                        {left < 0 ? `Lewat ${Math.abs(left)} hari` : `Sisa ${left} hari`}
+                      </Badge>
+                    )}
+                    <button className="text-xs text-steel-400 hover:text-rose-600" aria-label={`Hapus sertifikat ${c.name}`} onClick={() => delCert(c.name)}>Hapus</button>
+                  </div>
                 </div>
               );
             })}
