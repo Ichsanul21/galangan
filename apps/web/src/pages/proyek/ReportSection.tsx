@@ -38,8 +38,8 @@ export default function ReportSection({ projectId }: Props) {
   const [showShare, setShowShare] = useState(false);
   const [shareForm, setShareForm] = useState({ docId: "", to: "" });
 
-  const submitReport = (docId: string, action: "approve" | "reject") => {
-    update("documents", docId, {
+  const submitReport = async (docId: string, action: "approve" | "reject") => {
+    await update("documents", docId, {
       approvalStatus: action === "approve" ? "Approved" : "Rejected",
       approvedBy: "Anda",
     });
@@ -79,10 +79,10 @@ export default function ReportSection({ projectId }: Props) {
     toast("Export Excel dimulai");
   };
 
-  const submitShare = () => {
+  const submitShare = async () => {
     if (!shareForm.docId || !shareForm.to) { toast("Pilih dokumen dan tujuan", "info"); return; }
     const doc = docs.find((d: any) => d.id === shareForm.docId);
-    update("documents", shareForm.docId, { sharedWith: [...(doc?.sharedWith ?? []), shareForm.to] });
+    await update("documents", shareForm.docId, { sharedWith: [...(doc?.sharedWith ?? []), shareForm.to] });
     log("berbagi dokumen dengan atasan", `${shareForm.docId} → ${shareForm.to}`, "Dokumen");
     toast(`Dokumen dibagikan ke ${shareForm.to}`);
     setShowShare(false);

@@ -80,12 +80,12 @@ export default function QuotationDetail() {
     setLines(base);
   };
 
-  const saveRevisi = () => {
+  const saveRevisi = async () => {
     const valid = activeLines.filter((l) => l.desc.trim() && num(l.qty) * num(l.price) > 0);
     if (valid.length === 0) { toast("Minimal satu baris valid", "info"); return; }
     const sum = valid.reduce((s, l) => s + num(l.qty) * num(l.price), 0);
     const nextVersion = version + 1;
-    update("quotations", quotation.id, {
+    await update("quotations", quotation.id, {
       lines: valid.map((l) => ({ desc: l.desc.trim(), qty: num(l.qty), price: num(l.price), amount: num(l.qty) * num(l.price) })),
       value: sum,
       version: nextVersion,
@@ -97,19 +97,19 @@ export default function QuotationDetail() {
     setNote("");
   };
 
-  const move = (dir: 1 | -1) => {
+  const move = async (dir: 1 | -1) => {
     const idx = FLOW.indexOf(String(quotation.stage));
     if (idx < 0) return;
     const next = FLOW[idx + dir];
     if (!next) return;
-    update("quotations", quotation.id, { stage: next });
+    await update("quotations", quotation.id, { stage: next });
     log(`memindahkan quotation ke ${next}`, quotation.id, "CRM");
     toast(`${quotation.id} → ${next}`);
   };
 
-  const markTerminal = (stage: "Batal" | "Kalah") => {
+  const markTerminal = async (stage: "Batal" | "Kalah") => {
     if (FLOW.indexOf(String(quotation.stage)) < 0 && quotation.stage !== "Menang") return;
-    update("quotations", quotation.id, { stage });
+    await update("quotations", quotation.id, { stage });
     log(`memindahkan quotation ke ${stage}`, quotation.id, "CRM");
     toast(`${quotation.id} ditandai ${stage}`, "info");
   };
@@ -134,7 +134,7 @@ export default function QuotationDetail() {
     setConvertOpen(true);
   };
 
-  const confirmConvert = () => {
+  const confirmConvert = async () => {
     if (quotation.stage !== "Menang") {
       toast("Konversi ditolak: hanya quotation Menang yang bisa dikonversi", "info");
       setConvertOpen(false);
@@ -154,7 +154,7 @@ export default function QuotationDetail() {
     const client = (data.clients ?? []).find((c) => String(c.name) === String(quotation.client));
     const branch = String(client?.branch ?? quotation.branch ?? "Samarinda");
     const code = nextProjectCode(String(quotation.type ?? "New Build"), convStart);
-    const created = add("projects", {
+    const created = await add("projects", {
       id: code,
       vessel: quotation.vessel, type: quotation.type, client: quotation.client, status: "Dalam Proses",
       tahap: "Kontrak",
@@ -164,7 +164,7 @@ export default function QuotationDetail() {
       quotationId: quotation.id,
       handover: { date: todayISO(), by: hoBy.trim(), items: [...HO_ITEMS] },
     }, { action: "mengkonversi quotation", target: `${quotation.id} → proyek`, module: "CRM" });
-    update("quotations", quotation.id, { stage: "Terkonversi" });
+    await update("quotations", quotation.id, { stage: "Terkonversi" });
     log(`serah terima ke PM oleh ${hoBy.trim()} (${HO_ITEMS.length} item)`, `${quotation.id} → ${created.id}`, "CRM");
     toast(`${quotation.id} menjadi proyek ${created.id}`);
     setConvertOpen(false);
@@ -176,18 +176,18 @@ export default function QuotationDetail() {
     setSendOpen(true);
   };
 
-  const confirmSend = () => {
+  const confirmSend = async () => {
     if (!sendEmail.includes("@")) { toast("Email tujuan tidak valid", "info"); return; }
-    update("quotations", quotation.id, { statusKirim: "Terkirim", sentAt: todayISO(), sentTo: sendEmail.trim() });
+    await update("quotations", quotation.id, { statusKirim: "Terkirim", sentAt: todayISO(), sentTo: sendEmail.trim() });
     log(`mengirim penawaran ke ${sendEmail.trim()}`, quotation.id, "CRM");
     toast(`${quotation.id} terkirim`);
     setSendOpen(false);
   };
 
-  const saveComm = () => {
+  const saveComm = async () => {
     if (!commForm.date) { toast("Tanggal wajib diisi", "info"); return; }
     if (!commForm.summary.trim()) { toast("Ringkasan wajib diisi", "info"); return; }
-    const created = add("communications", {
+    const created = await add("communications", {
       quotationId: quotation.id,
       channel: commForm.channel,
       date: commForm.date,

@@ -476,7 +476,7 @@ export default function Inventory() {
     });
   };
 
-  const save = () => {
+  const save = async () => {
     if (!form.name.trim() || !form.sku.trim()) { toast("Nama & SKU wajib diisi", "info"); return; }
     const dupe = inventory.some((i) => i.sku.toLowerCase() === form.sku.trim().toLowerCase() && i.id !== editing?.id);
     if (dupe) { toast("SKU sudah dipakai item lain", "info"); return; }
@@ -503,7 +503,7 @@ export default function Inventory() {
     if (minWhMap[form.warehouse] !== undefined && minWhMap[form.warehouse] < 0) { toast("Min. stok gudang harus angka 0 atau lebih", "info"); return; }
     if (editing) {
       /* Stok read-only di form edit — hanya field non-stok yang disimpan. */
-      update("inventory", editing.id, {
+      await update("inventory", editing.id, {
         name: form.name.trim(), category: form.category, sku: form.sku.trim(), warehouse: form.warehouse,
         rack, bin, location: rack, minStock: numMin, unit: form.unit,
         cost: numCost, volume: volume || 0, batch: form.batch.trim(),
@@ -514,7 +514,7 @@ export default function Inventory() {
     } else {
       const stock = numStock;
       const batch = form.batch.trim();
-      const created = add("inventory", {
+      const created = await add("inventory", {
         name: form.name.trim(), category: form.category, sku: form.sku.trim(), warehouse: form.warehouse,
         rack, bin, stock, minStock: numMin, unit: form.unit,
         cost: numCost, location: rack, volume: volume || 0, batch,
@@ -541,7 +541,7 @@ export default function Inventory() {
     return next;
   };
 
-  const saveMove = () => {
+  const saveMove = async () => {
     if (!moveTarget) return;
     const fresh = inventory.find((i) => i.id === moveTarget.id) ?? moveTarget;
     const raw = Number(moveQty);
@@ -587,11 +587,11 @@ export default function Inventory() {
     const refNote = useUom2 ? `${refBase} · ${fmtJumlah(raw)} ${uom2Of(fresh)}` : refBase;
     const priceExcl = Number(movePrice) || 0;
     const taxAmt = Number(moveTax) || 0;
-    update("inventory", fresh.id, patch);
+    await update("inventory", fresh.id, patch);
     if (moveKind === "out" && next < Number(fresh.minStock || 0)) {
       toast(`Peringatan: stok ${fresh.name} di bawah minimum (${fmtJumlah(Number(fresh.minStock || 0))} ${fresh.unit}) — segera buat PR`, "info");
     }
-    add("movements", {
+    await add("movements", {
       item: fresh.name, itemId: fresh.id,
       type: moveKind === "in" ? "Penerimaan" : "Pengeluaran",
       qty,
@@ -613,13 +613,13 @@ export default function Inventory() {
   };
 
   /* BOM explode → PR Draft, cegah duplikat PR terbuka untuk item sama. */
-  const buatPRDraft = (itemName: string, qtyKurang: number, estAmount: number) => {
+  const buatPRDraft = async (itemName: string, qtyKurang: number, estAmount: number) => {
     const open = requisitions.some(
       (r) => String(r.item).toLowerCase() === itemName.toLowerCase()
         && ["Draft", "Draf", "Menunggu Approval", "RFQ", "Diajukan"].includes(String(r.status))
     );
     if (open) { toast(`PR terbuka untuk ${itemName} sudah ada`, "info"); return; }
-    const created = add("requisitions", {
+    const created = await add("requisitions", {
       item: itemName, by: "System BOM", amount: Math.max(0, Math.round(estAmount)), status: "Draft",
     }, { action: "membuat PR Draft (BOM)", target: `${itemName} × ${fmtJumlah(qtyKurang)}`, module: "Inventori" });
     toast(`PR Draft ${created.id} dibuat (${itemName} × ${fmtJumlah(qtyKurang)})`);
@@ -692,7 +692,7 @@ export default function Inventory() {
   };
 
   const handleImportINFile = (file: File) => {
-    void file.text().then((text) => {
+    void file.text().then(async (text) => {
       const lines = text.split(/\r?\n/).map((l) => l.trim()).filter((l) => l !== "");
       if (lines.length === 0) { setImportReport(["Berkas kosong."]); return; }
       const firstCells = splitCsvLine(lines[0]);
@@ -713,24 +713,24 @@ export default function Inventory() {
       const avgMap: Record<string, number> = Object.fromEntries(inventory.map((i) => [i.id, Number(i.avgCost) || 0]));
       const fails: string[] = [];
       let ok = 0;
-      lines.slice(start).forEach((line, idx) => {
+      for (const [idx, line] of lines.slice(start).entries()) {
         const rowNo = idx + start + 1;
         const c = splitCsvLine(line);
         const kode = (c[idxKode] ?? "").trim();
         const item = kode ? findItemByKode(kode) : undefined;
-        if (!item) { fails.push(`Baris ${rowNo}: kode ${kode || "(kosong)"} tidak dikenal.`); return; }
+        if (!item) { fails.push(`Baris ${rowNo}: kode ${kode || "(kosong)"} tidak dikenal.`); continue; }
         const qty = Number(c[idxQty] ?? "");
-        if (!Number.isFinite(qty) || qty <= 0) { fails.push(`Baris ${rowNo}: qty harus lebih dari 0.`); return; }
+        if (!Number.isFinite(qty) || qty <= 0) { fails.push(`Baris ${rowNo}: qty harus lebih dari 0.`); continue; }
         const price = idxHarga >= 0 && (c[idxHarga] ?? "") !== "" ? Number(c[idxHarga]) : 0;
-        if (!Number.isFinite(price) || price < 0) { fails.push(`Baris ${rowNo}: harga harus angka 0 atau lebih.`); return; }
+        if (!Number.isFinite(price) || price < 0) { fails.push(`Baris ${rowNo}: harga harus angka 0 atau lebih.`); continue; }
         const tax = idxPajak >= 0 && (c[idxPajak] ?? "") !== "" ? Number(c[idxPajak]) : 0;
-        if (!Number.isFinite(tax) || tax < 0) { fails.push(`Baris ${rowNo}: pajak harus angka 0 atau lebih.`); return; }
+        if (!Number.isFinite(tax) || tax < 0) { fails.push(`Baris ${rowNo}: pajak harus angka 0 atau lebih.`); continue; }
         const date = validDateOrToday(idxTanggal >= 0 ? (c[idxTanggal] ?? "") : "");
-        if (!date) { fails.push(`Baris ${rowNo}: tanggal harus format YYYY-MM-DD.`); return; }
+        if (!date) { fails.push(`Baris ${rowNo}: tanggal harus format YYYY-MM-DD.`); continue; }
         const supplier = idxSupplier >= 0 ? (c[idxSupplier] ?? "").trim() : "";
         const rawTotal = idxTotal >= 0 ? (c[idxTotal] ?? "").trim() : "";
         const total = rawTotal !== "" ? Number(rawTotal) : Math.round(qty * price) + tax;
-        if (!Number.isFinite(total) || total < 0) { fails.push(`Baris ${rowNo}: total tidak valid.`); return; }
+        if (!Number.isFinite(total) || total < 0) { fails.push(`Baris ${rowNo}: total tidak valid.`); continue; }
         const purpose = idxPurpose >= 0 ? (c[idxPurpose] ?? "").trim() : "";
         const pic = idxPic >= 0 ? (c[idxPic] ?? "").trim() : "";
         const oldStock = stockMap[item.id] ?? Number(item.stock || 0);
@@ -743,8 +743,8 @@ export default function Inventory() {
           avgMap[item.id] = newAvg;
           patch.avgCost = newAvg;
         }
-        update("inventory", item.id, patch);
-        add("movements", {
+        await update("inventory", item.id, patch);
+        await add("movements", {
           item: item.name, itemId: item.id, type: "Penerimaan", qty,
           by: supplier ? `Impor IN ${date} · ${supplier}` : `Impor IN ${date}`,
           batch: String(item.batch ?? ""), date, tone: "in",
@@ -752,14 +752,14 @@ export default function Inventory() {
           branch: moveBranch(`${purpose} ${supplier}`),
         }, { action: "mengimpor GR", target: `${item.name} × ${qty}`, module: "Inventori" });
         ok++;
-      });
+      }
       setImportReport([`${ok} baris IN berhasil diimpor.`, ...fails]);
       toast(`Impor IN selesai: ${ok} berhasil, ${fails.length} gagal`);
     });
   };
 
   const handleImportOUTFile = (file: File) => {
-    void file.text().then((text) => {
+    void file.text().then(async (text) => {
       const lines = text.split(/\r?\n/).map((l) => l.trim()).filter((l) => l !== "");
       if (lines.length === 0) { setImportReport(["Berkas kosong."]); return; }
       const firstCells = splitCsvLine(lines[0]);
@@ -782,22 +782,22 @@ export default function Inventory() {
       );
       const fails: string[] = [];
       let ok = 0;
-      lines.slice(start).forEach((line, idx) => {
+      for (const [idx, line] of lines.slice(start).entries()) {
         const rowNo = idx + start + 1;
         const c = splitCsvLine(line);
         const kode = (c[idxKode] ?? "").trim();
         const item = kode ? findItemByKode(kode) : undefined;
-        if (!item) { fails.push(`Baris ${rowNo}: kode ${kode || "(kosong)"} tidak dikenal.`); return; }
+        if (!item) { fails.push(`Baris ${rowNo}: kode ${kode || "(kosong)"} tidak dikenal.`); continue; }
         const qty = Number(c[idxQty] ?? "");
-        if (!Number.isFinite(qty) || qty <= 0) { fails.push(`Baris ${rowNo}: qty harus lebih dari 0.`); return; }
+        if (!Number.isFinite(qty) || qty <= 0) { fails.push(`Baris ${rowNo}: qty harus lebih dari 0.`); continue; }
         const purpose = idxPurpose >= 0 ? (c[idxPurpose] ?? "").trim() : "";
         const pic = idxPic >= 0 ? (c[idxPic] ?? "").trim() : "";
-        if (!purpose) { fails.push(`Baris ${rowNo}: purpose wajib diisi untuk OUT.`); return; }
-        if (!pic) { fails.push(`Baris ${rowNo}: PIC wajib diisi untuk OUT.`); return; }
+        if (!purpose) { fails.push(`Baris ${rowNo}: purpose wajib diisi untuk OUT.`); continue; }
+        if (!pic) { fails.push(`Baris ${rowNo}: PIC wajib diisi untuk OUT.`); continue; }
         const avail = stockMap[item.id] ?? Number(item.stock || 0);
-        if (qty > avail) { fails.push(`Baris ${rowNo}: stok ${kode} tidak cukup (tersedia ${avail}).`); return; }
+        if (qty > avail) { fails.push(`Baris ${rowNo}: stok ${kode} tidak cukup (tersedia ${avail}).`); continue; }
         const date = validDateOrToday(idxTanggal >= 0 ? (c[idxTanggal] ?? "") : "");
-        if (!date) { fails.push(`Baris ${rowNo}: tanggal harus format YYYY-MM-DD.`); return; }
+        if (!date) { fails.push(`Baris ${rowNo}: tanggal harus format YYYY-MM-DD.`); continue; }
         const ket = idxKet >= 0 ? (c[idxKet] ?? "").trim() : "";
         const newStock = avail - qty;
         stockMap[item.id] = newStock;
@@ -821,18 +821,18 @@ export default function Inventory() {
           if (rest > 0) nextRes.push({ project: r.project, qty: rest });
         }
         reservedMap[item.id] = nextRes;
-        update("inventory", item.id, { stock: newStock, batches: nextBatches, reserved: nextRes });
+        await update("inventory", item.id, { stock: newStock, batches: nextBatches, reserved: nextRes });
         if (newStock < Number(item.minStock || 0)) {
           toast(`Peringatan: stok ${item.name} di bawah minimum — segera buat PR`, "info");
         }
-        add("movements", {
+        await add("movements", {
           item: item.name, itemId: item.id, type: "Pengeluaran", qty,
           by: ket || `${purpose} (Impor OUT)`, batch: String(item.batch ?? ""),
           date, tone: "out", supplier: "", priceExcl: 0, tax: 0, total: 0, purpose, pic,
           branch: moveBranch(`${purpose} ${ket}`),
         }, { action: "mengimpor GI", target: `${item.name} × ${qty}`, module: "Inventori" });
         ok++;
-      });
+      }
       setImportReport([`${ok} baris OUT berhasil diimpor.`, ...fails]);
       toast(`Impor OUT selesai: ${ok} berhasil, ${fails.length} gagal`);
     });
@@ -840,26 +840,26 @@ export default function Inventory() {
 
   /* Impor CSV manual: parse koma, validasi SKU unik, laporan gagal per baris. */
   const handleImportFile = (file: File) => {
-    void file.text().then((text) => {
+    void file.text().then(async (text) => {
       const lines = text.split(/\r?\n/).map((l) => l.trim()).filter((l) => l !== "");
       if (lines.length === 0) { setImportReport(["Berkas kosong."]); return; }
       const start = /^nama\s*,/i.test(lines[0]) ? 1 : 0;
       const skuSeen = new Set(inventory.map((i) => String(i.sku).toLowerCase()));
       const fails: string[] = [];
       let ok = 0;
-      lines.slice(start).forEach((line, idx) => {
+      for (const [idx, line] of lines.slice(start).entries()) {
         const c = line.split(",").map((s) => s.trim());
         const rowNo = idx + start + 1;
         const nama = c[0] ?? "";
         const sku = c[1] ?? "";
-        if (!nama || !sku) { fails.push(`Baris ${rowNo}: nama & SKU wajib.`); return; }
-        if (skuSeen.has(sku.toLowerCase())) { fails.push(`Baris ${rowNo}: SKU ${sku} duplikat.`); return; }
-        if ((c[4] ?? "") !== "" && (Number.isNaN(Number(c[4])) || Number(c[4]) < 0)) { fails.push(`Baris ${rowNo}: stok harus angka 0 atau lebih.`); return; }
-        if ((c[5] ?? "") !== "" && (Number.isNaN(Number(c[5])) || Number(c[5]) < 0)) { fails.push(`Baris ${rowNo}: minStok harus angka 0 atau lebih.`); return; }
-        if ((c[7] ?? "") !== "" && (Number.isNaN(Number(c[7])) || Number(c[7]) < 0)) { fails.push(`Baris ${rowNo}: harga harus angka 0 atau lebih.`); return; }
-        if (!c[3]) { fails.push(`Baris ${rowNo}: gudang wajib diisi.`); return; }
+        if (!nama || !sku) { fails.push(`Baris ${rowNo}: nama & SKU wajib.`); continue; }
+        if (skuSeen.has(sku.toLowerCase())) { fails.push(`Baris ${rowNo}: SKU ${sku} duplikat.`); continue; }
+        if ((c[4] ?? "") !== "" && (Number.isNaN(Number(c[4])) || Number(c[4]) < 0)) { fails.push(`Baris ${rowNo}: stok harus angka 0 atau lebih.`); continue; }
+        if ((c[5] ?? "") !== "" && (Number.isNaN(Number(c[5])) || Number(c[5]) < 0)) { fails.push(`Baris ${rowNo}: minStok harus angka 0 atau lebih.`); continue; }
+        if ((c[7] ?? "") !== "" && (Number.isNaN(Number(c[7])) || Number(c[7]) < 0)) { fails.push(`Baris ${rowNo}: harga harus angka 0 atau lebih.`); continue; }
+        if (!c[3]) { fails.push(`Baris ${rowNo}: gudang wajib diisi.`); continue; }
         skuSeen.add(sku.toLowerCase());
-        add("inventory", {
+        await add("inventory", {
           name: nama, sku, category: c[2] || "Lainnya", warehouse: c[3],
           stock: Number(c[4]) || 0, minStock: Number(c[5]) || 0, unit: c[6] || "pcs",
           cost: Number(c[7]) || 0, rack: c[8] || "", bin: (c[9] ?? "").trim(), location: c[8] || "",
@@ -867,13 +867,13 @@ export default function Inventory() {
           uom2: "", konversi: 0, minStockByWarehouse: {}, photoUrl: "", avgCost: 0,
         }, { action: "mengimpor material", module: "Inventori" });
         ok++;
-      });
+      }
       setImportReport([`${ok} baris berhasil diimpor.`, ...fails]);
       toast(`Impor selesai: ${ok} berhasil, ${fails.length} gagal`);
     });
   };
 
-  const saveOpname = () => {
+  const saveOpname = async () => {
     if (!opTarget) { toast("Pilih item dulu", "info"); return; }
     if (opCount === "" || Number.isNaN(Number(opCount)) || Number(opCount) < 0) { toast("Stok hasil hitung tidak valid", "info"); return; }
     const selisih = Number(opCount) - Number(opTarget.stock);
@@ -883,8 +883,8 @@ export default function Inventory() {
       const ok = window.confirm(`Selisih besar (${selisih > 0 ? "+" : ""}${selisih} dari stok ${Number(opTarget.stock)}). Pastikan sudah Berita Acara. Lanjut simpan opname?`);
       if (!ok) return;
     }
-    update("inventory", opTarget.id, { stock: Number(opCount) });
-    add("movements", {
+    await update("inventory", opTarget.id, { stock: Number(opCount) });
+    await add("movements", {
       item: opTarget.name, itemId: opTarget.id, type: "Selisih Opname", qty: selisih,
       by: `Opname ${todayISO()}`, date: todayISO(), tone: selisih > 0 ? "in" : "out",
     }, { action: "stok opname", target: `${opTarget.name}: selisih ${selisih > 0 ? "+" : ""}${selisih}`, module: "Inventori" });
@@ -895,7 +895,7 @@ export default function Inventory() {
     setOpCount("");
   };
 
-  const saveTransfer = () => {
+  const saveTransfer = async () => {
     if (!trTarget) { toast("Pilih item dulu", "info"); return; }
     const qty = Number(trQty);
     if (!qty || qty <= 0) { toast("Qty harus lebih dari 0", "info"); return; }
@@ -906,8 +906,8 @@ export default function Inventory() {
     const srcStock = Number(trTarget.stock);
     if (qty < srcStock) {
       /* Split: kurangi sumber, buat baris gudang tujuan dengan SKU sama + sufiks gudang. */
-      update("inventory", trTarget.id, { stock: srcStock - qty });
-      add("inventory", {
+      await update("inventory", trTarget.id, { stock: srcStock - qty });
+      await add("inventory", {
         name: trTarget.name, sku: `${trTarget.sku}@${trDest}`, category: trTarget.category, warehouse: trDest,
         rack: "", bin: "", stock: qty, minStock: 0, unit: trTarget.unit,
         cost: trTarget.cost, location: "", volume: Number(trTarget.volume) || 0, batch: String(trTarget.batch ?? ""),
@@ -916,9 +916,9 @@ export default function Inventory() {
         batches: [], reserved: [],
       }, { action: "transfer gudang (split)", target: `${trTarget.name} × ${qty}: ${from} → ${trDest}`, module: "Inventori" });
     } else {
-      update("inventory", trTarget.id, { warehouse: trDest });
+      await update("inventory", trTarget.id, { warehouse: trDest });
     }
-    add("movements", {
+    await add("movements", {
       item: trTarget.name, itemId: trTarget.id, type: "Transfer", qty,
       by: `${from} → ${trDest}`, date: todayISO(), tone: "in",
     }, { action: "transfer gudang", target: `${trTarget.name} × ${qty}: ${from} → ${trDest}`, module: "Inventori" });
@@ -930,7 +930,7 @@ export default function Inventory() {
     setTrDest("");
   };
 
-  const saveReservasi = () => {
+  const saveReservasi = async () => {
     if (!reservTarget) return;
     const fresh = inventory.find((i) => i.id === reservTarget.id) ?? reservTarget;
     if (!reservProject) { toast("Pilih proyek dulu", "info"); return; }
@@ -942,7 +942,7 @@ export default function Inventory() {
     const next = same
       ? cur.map((r) => (r.project === reservProject ? { project: r.project, qty: Number(r.qty) + qty } : r))
       : [...cur, { project: reservProject, qty }];
-    update("inventory", fresh.id, { reserved: next });
+    await update("inventory", fresh.id, { reserved: next });
     log("reservasi stok", `${fresh.name} × ${qty} untuk ${reservProject}`, "Inventori");
     toast(`Reservasi ${fresh.name} × ${qty} untuk ${reservProject}`);
     setReservTarget(null);
@@ -957,7 +957,7 @@ export default function Inventory() {
     setShowPick(true);
   };
 
-  const savePick = () => {
+  const savePick = async () => {
     if (!pickProject) { toast("Pilih proyek dulu", "info"); return; }
     if (pickSel.length === 0) { toast("Centang minimal 1 item pick list", "info"); return; }
     let ok = 0;
@@ -968,11 +968,11 @@ export default function Inventory() {
       if (!res || Number(res.qty) <= 0) continue;
       const qty = Number(res.qty);
       if (qty > Number(it.stock)) continue;
-      update("inventory", it.id, {
+      await update("inventory", it.id, {
         stock: Number(it.stock) - qty,
         reserved: reservedOf(it).filter((r) => r.project !== pickProject),
       });
-      add("movements", {
+      await add("movements", {
         item: it.name, itemId: it.id, type: "Pengeluaran", qty,
         by: `${pickProject} (Pick List)`, date: todayISO(), tone: "out",
         branch: moveBranch(String(pickProject)),
@@ -1309,10 +1309,10 @@ export default function Inventory() {
                   <p className="rounded-lg bg-surface px-3 py-2 text-sm font-semibold text-navy-900">
                     Berat: {fmtJumlah(sbTonasePlat(Number(tonP) || 0, Number(tonL) || 0, Number(tonT) || 0, Number(tonPcs) || 0))} kg
                   </p>
-                  <button className="btn-secondary w-full justify-center text-xs" onClick={() => {
+                  <button className="btn-secondary w-full justify-center text-xs" onClick={async () => {
                     const kg = sbTonasePlat(Number(tonP) || 0, Number(tonL) || 0, Number(tonT) || 0, Number(tonPcs) || 0);
                     if (kg <= 0) { toast("Isi dimensi dengan benar", "info"); return; }
-                    add("inventory", {
+                    await add("inventory", {
                       name: `Plat ${tonT}mm ${tonP}x${tonL}`, category: "Baja", sku: `PLAT-${tonT}-${tonP}X${tonL}-${Date.now().toString(36).toUpperCase()}`,
                       warehouse: "Gudang Baja A", rack: "", bin: "", stock: Number(tonPcs) || 0, minStock: 0, unit: "lbr",
                       cost: 0, location: "", volume: kg, batch: "", uom2: "kg", konversi: kg / Math.max(1, Number(tonPcs) || 1),
@@ -1347,12 +1347,12 @@ export default function Inventory() {
                     <Field label="Yang menerima"><input className="input" value={sjReceiver} onChange={(e) => setSjReceiver(e.target.value)} /></Field>
                     <Field label="Yang menyerahkan"><input className="input" value={sjGiver} onChange={(e) => setSjGiver(e.target.value)} /></Field>
                   </FormGrid>
-                  <button className="btn-primary w-full justify-center" onClick={() => {
+                  <button className="btn-primary w-full justify-center" onClick={async () => {
                     const items = sjItems.filter((x) => x.name.trim() && x.qty.trim());
                     if (!sjTo.trim() || items.length === 0) { toast("Tujuan + minimal 1 barang wajib diisi", "info"); return; }
                     const seq = nextSjSeq();
                     const no = sbSjNumber(seq, sjYearOf(sjDate));
-                    add("documents", {
+                    await add("documents", {
                       id: `SJ-SMD-${sjYearOf(sjDate)}-${String(seq).padStart(3, "0")}`,
                       title: `Surat Jalan ke ${sjTo.trim()}`, type: "Surat Jalan", project: "-", vessel: sjTo.trim(),
                       owner: sjGiver.trim() || "Anda", sbRef: no, sjDate, sjVehicle: sjVehicle.trim(), sjPlate: sjPlate.trim(),

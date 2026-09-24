@@ -136,14 +136,14 @@ export default function Documents() {
     return true;
   };
 
-  const save = () => {
+  const save = async () => {
     if (!validForm()) return;
     if (editing) {
       const dupe = data.documents.some((d) => d.id !== editing.id && d.type === form.type && String(d.title).toLowerCase() === form.title.trim().toLowerCase());
       if (dupe) { toast("Judul sudah dipakai untuk tipe dokumen ini", "info"); return; }
       const version = nextVersion(String(editing.version ?? "v1.0"));
       const revisions = [...(editing.revisions ?? []), { version, at: todayISO(), by: form.owner.trim(), note: form.revNote.trim() }];
-      update("documents", editing.id, {
+      await update("documents", editing.id, {
         title: form.title.trim(), type: form.type, project: form.project, vessel: form.vessel,
         owner: form.owner.trim(), berlakuHingga: form.berlakuHingga || undefined,
         version, revisions, updated: todayISO(), related: [...relSel],
@@ -155,7 +155,7 @@ export default function Documents() {
       const dupe = data.documents.some((d) => d.type === form.type && String(d.title).toLowerCase() === form.title.trim().toLowerCase());
       if (dupe) { toast("Judul sudah dipakai untuk tipe dokumen ini", "info"); return; }
       if (data.documents.some((d) => d.id === docPreview)) { toast("Nomor dokumen sudah dipakai, coba lagi", "info"); return; }
-      const created = add("documents", {
+      const created = await add("documents", {
         id: docPreview,
         title: form.title.trim(), type: form.type, project: form.project, vessel: form.vessel,
         owner: form.owner.trim(), berlakuHingga: form.berlakuHingga || undefined,
@@ -173,35 +173,35 @@ export default function Documents() {
     }
   };
 
-  const toggleCopy = (d: StoreItem) => {
+  const toggleCopy = async (d: StoreItem) => {
     const next = String(d.docCopy ?? "Terkendali") === "Salinan" ? "Terkendali" : "Salinan";
-    update("documents", d.id, { docCopy: next, updated: todayISO() });
+    await update("documents", d.id, { docCopy: next, updated: todayISO() });
     log(`menandai dokumen sebagai ${next}`, d.id, "Dokumen");
     toast(`${d.id} ditandai ${next}`);
     setDetail((cur) => (cur && cur.id === d.id ? { ...cur, docCopy: next, updated: todayISO() } : cur));
   };
 
-  const flowTo = (d: StoreItem, next: string) => {
+  const flowTo = async (d: StoreItem, next: string) => {
     const ok = window.confirm(`Ubah status ${d.id} ke ${next}? Tercatat di riwayat revisi.`);
     if (!ok) return;
     const revisions = [...(d.revisions ?? []), { version: String(d.version ?? "v1.0"), at: todayISO(), by: String(d.owner ?? ""), note: `Status → ${next}` }];
-    update("documents", d.id, { status: next, updated: todayISO(), revisions });
+    await update("documents", d.id, { status: next, updated: todayISO(), revisions });
     log(`mengubah status dokumen ke ${next}`, d.id, "Dokumen");
     toast(`${d.id} → ${next}`);
     setDetail((cur) => (cur && cur.id === d.id ? { ...cur, status: next, updated: todayISO(), revisions } : cur));
   };
 
-  const confirmArchive = () => {
+  const confirmArchive = async () => {
     if (!archiving) return;
-    update("documents", archiving.id, { archived: true });
+    await update("documents", archiving.id, { archived: true });
     log("mengarsipkan dokumen", archiving.id, "Dokumen");
     toast(`${archiving.id} diarsipkan`, "info");
     setArchiving(null);
   };
 
-  const confirmDelete = () => {
+  const confirmDelete = async () => {
     if (!deleting) return;
-    remove("documents", deleting.id);
+    await remove("documents", deleting.id);
     log("menghapus permanen dokumen", deleting.id, "Dokumen");
     toast(`${deleting.id} dihapus permanen`, "info");
     setDeleting(null);
@@ -311,7 +311,7 @@ export default function Documents() {
                       <button className="rounded-lg p-1.5 text-steel-500 hover:bg-steel-100" title="Detail" aria-label={`Detail ${d.id}`} onClick={() => setDetail(d)}><Eye className="h-4 w-4" /></button>
                       {type === "Arsip" ? (
                         <>
-                          <button className="rounded-lg p-1.5 text-teal-600 hover:bg-teal-50" title="Pulihkan" aria-label={`Pulihkan ${d.id}`} onClick={() => { update("documents", d.id, { archived: false }); log("memulihkan dokumen dari arsip", d.id, "Dokumen"); toast(`${d.id} dipulihkan`); }}><RotateCcw className="h-4 w-4" /></button>
+                          <button className="rounded-lg p-1.5 text-teal-600 hover:bg-teal-50" title="Pulihkan" aria-label={`Pulihkan ${d.id}`} onClick={async () => { await update("documents", d.id, { archived: false }); log("memulihkan dokumen dari arsip", d.id, "Dokumen"); toast(`${d.id} dipulihkan`); }}><RotateCcw className="h-4 w-4" /></button>
                           <button className="rounded-lg p-1.5 text-rose-500 hover:bg-rose-50" title="Hapus permanen" aria-label={`Hapus permanen ${d.id}`} onClick={() => setDeleting(d)}><Trash2 className="h-4 w-4" /></button>
                         </>
                       ) : (

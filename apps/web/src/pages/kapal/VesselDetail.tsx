@@ -105,13 +105,13 @@ export default function VesselDetail() {
   const vesselWarranties = (data.warranties ?? []).filter((w) => String(w.vessel ?? "") === v.name);
 
   // Klaim garansi/DLP: Aktif → Klaim (lanjut Selesai setelah perbaikan).
-  const claimWarranty = (w: { id: string }) => {
-    update("warranties", w.id, { status: "Klaim", claimedAt: todayISO() });
+  const claimWarranty = async (w: { id: string }) => {
+    await update("warranties", w.id, { status: "Klaim", claimedAt: todayISO() });
     log("mengklaim garansi", `${w.id} · ${v.name}`, "Kapal");
     toast(`Garansi ${w.id} diklaim`);
   };
-  const closeWarranty = (w: { id: string }) => {
-    update("warranties", w.id, { status: "Selesai" });
+  const closeWarranty = async (w: { id: string }) => {
+    await update("warranties", w.id, { status: "Selesai" });
     log("menyelesaikan garansi", `${w.id} · ${v.name}`, "Kapal");
     toast(`Garansi ${w.id} selesai`);
   };
@@ -138,19 +138,19 @@ export default function VesselDetail() {
     return found ?? { name, status: "", date: "" };
   });
 
-  const saveCert = () => {
+  const saveCert = async () => {
     if (!certForm.name.trim() || !certForm.issued || !certForm.expires) { toast("Nama, bulan terbit & masa berlaku wajib diisi", "info"); return; }
-    update("vessels", v.id, { certificates: [...certs, { name: certForm.name.trim(), issued: certForm.issued, expires: certForm.expires }] });
+    await update("vessels", v.id, { certificates: [...certs, { name: certForm.name.trim(), issued: certForm.issued, expires: certForm.expires }] });
     toast(`Sertifikat ditambahkan ke ${v.name}`);
     setShowCert(false);
     setCertForm({ name: "", issued: monthISO(), expires: "" });
   };
 
-  const saveSurvey = () => {
+  const saveSurvey = async () => {
     if (!surveyForm.date) { toast("Tanggal wajib diisi", "info"); return; }
-    add("surveys", { vessel: v.name, type: surveyForm.type, status: surveyForm.status, date: surveyForm.date, classSurveyor: "BKI", ...(surveyForm.linkedTrial ? { linkedTrial: surveyForm.linkedTrial } : {}) },
+    await add("surveys", { vessel: v.name, type: surveyForm.type, status: surveyForm.status, date: surveyForm.date, classSurveyor: "BKI", ...(surveyForm.linkedTrial ? { linkedTrial: surveyForm.linkedTrial } : {}) },
       { action: "menjadwalkan survey", target: `${v.name} · ${surveyForm.type}`, module: "Kapal" });
-    update("vessels", v.id, { history: [...(v.history ?? []), { date: surveyForm.date, event: `${surveyForm.type} (${surveyForm.status.toLowerCase()})`, type: "Survey" }] });
+    await update("vessels", v.id, { history: [...(v.history ?? []), { date: surveyForm.date, event: `${surveyForm.type} (${surveyForm.status.toLowerCase()})`, type: "Survey" }] });
     toast("Survey terjadwal & masuk timeline");
     setShowSurvey(false);
     setSurveyForm({ type: "Annual Survey", date: "", status: "Terjadwal", linkedTrial: "" });
@@ -167,7 +167,7 @@ export default function VesselDetail() {
     setShowSpec(true);
   };
 
-  const saveSpec = () => {
+  const saveSpec = async () => {
     const gt = Number(specForm.gt);
     const bhp = Number(specForm.bhp);
     const nt = specForm.nt.trim() === "" ? 0 : Number(specForm.nt);
@@ -176,7 +176,7 @@ export default function VesselDetail() {
     if (!Number.isFinite(nt) || nt < 0) { toast("NT harus angka 0 atau lebih", "info"); return; }
     if (!specForm.engineType.trim()) { toast("Tipe mesin utama wajib diisi", "info"); return; }
     if (specForm.mmsi.trim() !== "" && !/^\d{9}$/.test(specForm.mmsi.trim())) { toast("MMSI harus 9 digit angka (atau kosongkan)", "info"); return; }
-    update("vessels", v.id, {
+    await update("vessels", v.id, {
       mmsi: specForm.mmsi.trim(),
       gt, nt, bhp,
       engineType: specForm.engineType.trim(),
@@ -185,7 +185,7 @@ export default function VesselDetail() {
     setShowSpec(false);
   };
 
-  const setCompliance = (name: string, patch: { status?: string; date?: string }) => {
+  const setCompliance = async (name: string, patch: { status?: string; date?: string }) => {
     const current = ((v.compliance ?? []) as { name: string; status: string; date: string }[]).slice();
     const idx = current.findIndex((r) => r.name === name);
     if (idx >= 0) {
@@ -193,14 +193,14 @@ export default function VesselDetail() {
     } else {
       current.push({ name, status: patch.status ?? "", date: patch.date ?? "" });
     }
-    update("vessels", v.id, { compliance: current });
+    await update("vessels", v.id, { compliance: current });
   };
 
-  const savePsc = () => {
+  const savePsc = async () => {
     if (!pscForm.date || !pscForm.port.trim()) { toast("Tanggal & pelabuhan wajib diisi", "info"); return; }
     const def = Number(pscForm.deficiencies);
     if (!Number.isFinite(def) || def < 0) { toast("Jumlah defisiensi harus angka 0 atau lebih", "info"); return; }
-    update("vessels", v.id, {
+    await update("vessels", v.id, {
       psc: [...pscRows, { date: pscForm.date, port: pscForm.port.trim(), deficiencies: def, status: pscForm.status }],
     });
     toast("Catatan PSC ditambahkan");
@@ -221,7 +221,7 @@ export default function VesselDetail() {
     setShowDock(true);
   };
 
-  const saveDock = () => {
+  const saveDock = async () => {
     if (!dockForm.date || !dockForm.dock.trim()) { toast("Tanggal & dok/galangan wajib diisi", "info"); return; }
     if (!dockForm.nextDue) { toast("Next due wajib diisi", "info"); return; }
     const row: DockHistoryRow = {
@@ -234,44 +234,44 @@ export default function VesselDetail() {
     const next = dockHistory.slice();
     if (editingDock === null) next.push(row);
     else next[editingDock] = row;
-    update("vessels", v.id, { dockHistory: next });
+    await update("vessels", v.id, { dockHistory: next });
     toast(editingDock === null ? "Riwayat docking ditambahkan" : "Riwayat docking diperbarui");
     setShowDock(false);
     setEditingDock(null);
   };
 
-  const savePlan = () => {
+  const savePlan = async () => {
     const year = Number(planForm.year);
     if (!Number.isFinite(year) || year <= baseYear || year > baseYear + 5) { toast(`Tahun rencana harus ${baseYear + 1}–${baseYear + 5}`, "info"); return; }
-    update("vessels", v.id, { plan5: [...plan5, { year, type: planForm.type, note: planForm.note.trim() }] });
+    await update("vessels", v.id, { plan5: [...plan5, { year, type: planForm.type, note: planForm.note.trim() }] });
     toast(`Rencana ${year} ditambahkan`);
     setPlanForm({ year: String(baseYear + 1), type: "Docking", note: "" });
   };
 
-  const removePlan = (idx: number) => {
-    update("vessels", v.id, { plan5: plan5.filter((_, i) => i !== idx) });
+  const removePlan = async (idx: number) => {
+    await update("vessels", v.id, { plan5: plan5.filter((_, i) => i !== idx) });
     toast("Rencana manual dihapus", "info");
   };
 
-  const saveBunker = () => {
+  const saveBunker = async () => {
     if (!bunkerForm.date) { toast("Tanggal wajib diisi", "info"); return; }
     const qty = Number(bunkerForm.qty);
     if (!Number.isFinite(qty) || qty <= 0) { toast("Qty harus lebih dari 0", "info"); return; }
     if (!bunkerForm.satuan.trim()) { toast("Satuan wajib diisi", "info"); return; }
-    update("vessels", v.id, { bunker: [...bunkerRows, { date: bunkerForm.date, jenis: bunkerForm.jenis, qty, satuan: bunkerForm.satuan.trim() }] });
+    await update("vessels", v.id, { bunker: [...bunkerRows, { date: bunkerForm.date, jenis: bunkerForm.jenis, qty, satuan: bunkerForm.satuan.trim() }] });
     toast("Catatan bunker ditambahkan");
     setBunkerForm({ date: todayISO(), jenis: "Solar", qty: "", satuan: "liter" });
   };
 
-  const saveCrew = () => {
+  const saveCrew = async () => {
     if (!crewForm.name.trim() || !crewForm.role.trim()) { toast("Nama & jabatan wajib diisi", "info"); return; }
-    update("vessels", v.id, { crew: [...crewRows, { name: crewForm.name.trim(), role: crewForm.role.trim() }] });
+    await update("vessels", v.id, { crew: [...crewRows, { name: crewForm.name.trim(), role: crewForm.role.trim() }] });
     toast("Kru ditambahkan");
     setCrewForm({ name: "", role: "" });
   };
 
-  const removeCrew = (idx: number) => {
-    update("vessels", v.id, { crew: crewRows.filter((_, i) => i !== idx) });
+  const removeCrew = async (idx: number) => {
+    await update("vessels", v.id, { crew: crewRows.filter((_, i) => i !== idx) });
     toast("Kru dihapus", "info");
   };
 
@@ -280,12 +280,12 @@ export default function VesselDetail() {
     setShowIns(true);
   };
 
-  const saveIns = () => {
+  const saveIns = async () => {
     if (!insForm.polis.trim()) { toast("No. polis wajib diisi", "info"); return; }
     const premi = Number(insForm.premi || 0);
     if (!Number.isFinite(premi) || premi < 0) { toast("Premi harus 0 atau lebih", "info"); return; }
     if (!insForm.expiry) { toast("Expiry polis wajib diisi", "info"); return; }
-    update("vessels", v.id, { insurance: { polis: insForm.polis.trim(), premi, expiry: insForm.expiry } });
+    await update("vessels", v.id, { insurance: { polis: insForm.polis.trim(), premi, expiry: insForm.expiry } });
     toast("Asuransi kapal disimpan");
     setShowIns(false);
   };
@@ -304,7 +304,7 @@ export default function VesselDetail() {
               {comp.state === "ok" ? "Patuh" : comp.state === "issue" ? `Kepatuhan ${comp.valid}/${comp.total}` : "Belum dinilai"}
             </Badge>
             <select className="input w-auto py-1.5 text-sm" value={v.status}
-              onChange={(e) => { update("vessels", v.id, { status: e.target.value }); toast(`Status kapal → ${e.target.value}`); }}>
+              onChange={async (e) => { await update("vessels", v.id, { status: e.target.value }); toast(`Status kapal → ${e.target.value}`); }}>
               {["Dalam Operasi", "Dalam Docking", "Dalam Pembangunan", "Menganggur"].map((s) => <option key={s}>{s}</option>)}
             </select>
             <Badge tone="blue">{v.status}</Badge>

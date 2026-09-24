@@ -338,7 +338,7 @@ export default function HR() {
     setShowForm(true);
   };
 
-  const saveEmployee = () => {
+  const saveEmployee = async () => {
     const nik = form.nik.trim();
     const name = form.name.trim();
     const role = form.role.trim();
@@ -419,11 +419,11 @@ export default function HR() {
       dependents,
     };
     if (editingId) {
-      update("employees", editingId, empPatch);
+      await update("employees", editingId, empPatch);
       log("memperbarui data karyawan", editingId, "SDM");
       toast(`Karyawan ${editingId} diperbarui`);
     } else {
-      const created = add(
+      const created = await add(
         "employees",
         {
           username: nik,
@@ -454,7 +454,7 @@ export default function HR() {
   /* ---------- cuti ---------- */
   const leaveDays = calcDays(leaveForm.from, leaveForm.to);
 
-  const saveLeave = () => {
+  const saveLeave = async () => {
     if (!leaveForm.employeeId) {
       toast("Pilih karyawan dulu", "info");
       return;
@@ -482,7 +482,7 @@ export default function HR() {
       toast("Keterangan wajib diisi untuk Sakit/Unpaid", "info");
       return;
     }
-    const created = add(
+    const created = await add(
       "leaves",
       {
         employeeId: leaveForm.employeeId,
@@ -501,14 +501,14 @@ export default function HR() {
   };
 
   // Cuti 2 tingkat: Diajukan → Disetujui Atasan → Disetujui (final HRD).
-  const approveSupervisor = (l: StoreItem) => {
-    update("leaves", l.id, { status: "Disetujui Atasan" });
+  const approveSupervisor = async (l: StoreItem) => {
+    await update("leaves", l.id, { status: "Disetujui Atasan" });
     log("menyetujui cuti (atasan)", `${l.id} — ${empNameOf(l.employeeId)}`, "SDM");
     toast(`${l.id} disetujui atasan — menunggu HRD`);
   };
 
-  const approveHrd = (l: StoreItem) => {
-    update("leaves", l.id, { status: "Disetujui" });
+  const approveHrd = async (l: StoreItem) => {
+    await update("leaves", l.id, { status: "Disetujui" });
     log("menyetujui cuti final (HRD)", `${l.id} — ${empNameOf(l.employeeId)}`, "SDM");
     toast(`${l.id} disetujui final`);
   };
@@ -516,7 +516,7 @@ export default function HR() {
   const empNameOf = (id: string) => data.employees.find((e) => e.id === id)?.name ?? id;
 
   /* ---------- mutasi ---------- */
-  const saveMutasi = () => {
+  const saveMutasi = async () => {
     const emp = data.employees.find((e) => e.id === mutasiForm.employeeId);
     if (!emp) {
       toast("Pilih karyawan dulu", "info");
@@ -540,7 +540,7 @@ export default function HR() {
     }
     const from = `${emp.dept}/${emp.branch}/${emp.role}`;
     const to = `${mutasiForm.dept}/${mutasiForm.branch}/${mutasiForm.role.trim()}`;
-    update("employees", emp.id, { dept: mutasiForm.dept, branch: mutasiForm.branch, role: mutasiForm.role.trim() });
+    await update("employees", emp.id, { dept: mutasiForm.dept, branch: mutasiForm.branch, role: mutasiForm.role.trim() });
     log(`mutasi ${from} → ${to} per ${mutasiForm.date}${mutasiForm.reason.trim() ? ` · ${mutasiForm.reason.trim()}` : ""}`, emp.id, "SDM");
     toast(`Mutasi ${emp.id} dicatat`);
     setShowMutasi(false);
@@ -555,7 +555,7 @@ export default function HR() {
     }));
   };
 
-  const saveTraining = () => {
+  const saveTraining = async () => {
     if (!trainingForm.title.trim()) {
       toast("Judul training wajib diisi", "info");
       return;
@@ -568,7 +568,7 @@ export default function HR() {
       toast("Pilih minimal satu peserta", "info");
       return;
     }
-    const created = add(
+    const created = await add(
       "trainings",
       {
         title: trainingForm.title.trim(),
@@ -584,8 +584,8 @@ export default function HR() {
     setTrainingForm({ title: "", date: todayISO(), provider: "", participants: [] });
   };
 
-  const finishTraining = (t: StoreItem) => {
-    update("trainings", t.id, { status: "Selesai" });
+  const finishTraining = async (t: StoreItem) => {
+    await update("trainings", t.id, { status: "Selesai" });
     log("menyelesaikan training", `${t.id} · ${t.title}`, "SDM");
     toast(`${t.id} selesai — terapkan sertifikat bila perlu`);
   };
@@ -597,11 +597,11 @@ export default function HR() {
       return;
     }
     const ids = (certTarget.participants ?? []) as string[];
-    ids.forEach((empId) => {
+    ids.forEach(async (empId) => {
       const emp = data.employees.find((e) => e.id === empId);
       if (!emp) return;
       const next = [...normCerts(emp), { name: certForm.name.trim(), expires: certForm.expires }];
-      update("employees", empId, { certs: next });
+      await update("employees", empId, { certs: next });
     });
     log("menerapkan sertifikat training", `${certTarget.id} · ${certForm.name.trim()} → ${ids.length} peserta`, "SDM");
     toast(`Sertifikat diterapkan ke ${ids.length} peserta`);
@@ -682,7 +682,7 @@ export default function HR() {
       const gagal: string[] = [];
       const seenNik = new Set(data.employees.map((e) => empNik(e).toLowerCase()));
       let ok = 0;
-      rows.slice(1).forEach((cells, idx) => {
+      rows.slice(1).forEach(async (cells, idx) => {
         const line = idx + 2;
         const [nikRaw, nama, jabatan, deptRaw, branchRaw, statusRaw, joinRaw, tipeRaw, basicRaw, ptkpRaw, tangRaw, kontrakRaw] = [
           ...cells,
@@ -719,7 +719,7 @@ export default function HR() {
           return;
         }
         seenNik.add(nik.toLowerCase());
-        add(
+        await add(
           "employees",
           {
             username: nik,
@@ -1264,9 +1264,9 @@ export default function HR() {
         confirmLabel="Ya, tolak"
         danger
         onCancel={() => setRejectTarget(null)}
-        onConfirm={() => {
+        onConfirm={async () => {
           if (rejectTarget) {
-            update("leaves", rejectTarget.id, { status: "Ditolak" });
+            await update("leaves", rejectTarget.id, { status: "Ditolak" });
             log("menolak cuti", rejectTarget.id, "SDM");
             toast(`${rejectTarget.id} ditolak`);
           }

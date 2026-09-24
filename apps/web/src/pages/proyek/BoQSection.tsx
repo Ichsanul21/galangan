@@ -96,12 +96,12 @@ export default function BoQSection({ projectId }: Props) {
 
   const nextStatus = (current: string): string[] => STATUS_FLOW[current] ?? [];
 
-  const saveBoq = () => {
+  const saveBoq = async () => {
     if (!form.name.trim()) { toast("Nama item wajib diisi", "info"); return; }
     if (!form.quantity || Number(form.quantity) <= 0) { toast("Quantity tidak valid", "info"); return; }
     if (!form.unitPrice || Number(form.unitPrice) <= 0) { toast("Harga satuan tidak valid", "info"); return; }
     const total = Number(form.quantity) * Number(form.unitPrice);
-    add("boq", {
+    await add("boq", {
       projectId,
       name: form.name.trim(),
       description: form.description.trim(),
@@ -118,23 +118,23 @@ export default function BoQSection({ projectId }: Props) {
     setForm({ name: "", description: "", quantity: "", unit: "pcs", unitPrice: "", category: "Mechanical", status: "Draft" });
   };
 
-  const changeStatus = (id: string, newStatus: string) => {
+  const changeStatus = async (id: string, newStatus: string) => {
     if (newStatus === "Approved" && !canSetTarget(user?.role)) {
       toast("Hanya Direktur/Manager", "info");
       return;
     }
-    update("boq", id, { status: newStatus as BoQItem["status"] });
+    await update("boq", id, { status: newStatus as BoQItem["status"] });
     log(`mengubah status BoQ → ${newStatus}`, `${id}`, "BoQ");
     toast(`Status ${id} → ${newStatus}`);
   };
 
-  const saveRevisi = () => {
+  const saveRevisi = async () => {
     if (!revisiFor) return;
     const next = Number(revisiPrice);
     if (!Number.isFinite(next) || next <= 0) { toast("Harga satuan baru tidak valid", "info"); return; }
     if (!revisiReason.trim()) { toast("Alasan revisi wajib diisi", "info"); return; }
     const hist: PriceHist[] = [...(revisiFor.priceHistory ?? []), { old: revisiFor.unitPrice, new: next, reason: revisiReason.trim(), date: todayISO(), by: "Anda" }];
-    update("boq", revisiFor.id, { unitPrice: next, totalPrice: Number(revisiFor.quantity) * next, priceHistory: hist });
+    await update("boq", revisiFor.id, { unitPrice: next, totalPrice: Number(revisiFor.quantity) * next, priceHistory: hist });
     log("merevisi harga BoQ", `${revisiFor.id} · ${fmtRupiah(revisiFor.unitPrice)} → ${fmtRupiah(next)} (${revisiReason.trim()})`, "BoQ");
     toast(`Harga ${revisiFor.id} direvisi`);
     setRevisiFor(null);
@@ -142,11 +142,11 @@ export default function BoQSection({ projectId }: Props) {
     setRevisiReason("");
   };
 
-  const importPreset = () => {
+  const importPreset = async () => {
     const list = PRESET[presetCat] ?? [];
     const item = list[Number(presetIdx)];
     if (!item) { toast("Pilih item preset dulu", "info"); return; }
-    add("boq", {
+    await add("boq", {
       projectId,
       name: item.name,
       description: `Impor preset ${presetCat}`,

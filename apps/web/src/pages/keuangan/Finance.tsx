@@ -774,7 +774,7 @@ export default function Finance() {
   const setLine = (idx: number, k: keyof InvLine, v: string) =>
     setInvLines((ls) => ls.map((l, i) => (i === idx ? { ...l, [k]: v } : l)));
 
-  const saveInvoice = () => {
+  const saveInvoice = async () => {
     const proj = projectById[invForm.project];
     if (!proj) { toast("Pilih proyek dulu", "info"); return; }
     if (!invForm.due) { toast("Jatuh tempo wajib diisi", "info"); return; }
@@ -836,7 +836,7 @@ export default function Finance() {
       bump += 1;
       invId = `${invPreview}-${bump}`;
     }
-    const created = add("invoices", {
+    const created = await add("invoices", {
       id: invId,
       client: proj.client,
       kodePembantu: invForm.kodePembantu.trim() || proj.client,
@@ -868,7 +868,7 @@ export default function Finance() {
       dunning: "Belum Ditagih",
     }, { action: "menerbitkan invoice", module: "Keuangan" });
     if (invForm.billingType === "Uang Muka") {
-      update("projects", proj.id, { hasAdvance: true });
+      await update("projects", proj.id, { hasAdvance: true });
       log("menandai uang muka proyek", proj.id, "Keuangan");
     }
     toast(`Invoice ${created.id} dibuat (Draft)`);
@@ -905,7 +905,7 @@ export default function Finance() {
 
   const dunningOf = (inv: StoreItem): string => String(inv.dunning ?? "Belum Ditagih");
 
-  const advanceDunning = (inv: StoreItem) => {
+  const advanceDunning = async (inv: StoreItem) => {
     const cur = dunningOf(inv);
     const next = DUNNING_NEXT[cur] ?? "Ditagih";
     if (next === "Hapus Buku") {
@@ -915,7 +915,7 @@ export default function Finance() {
       setWoDirName("");
       return;
     }
-    update("invoices", inv.id, { dunning: next });
+    await update("invoices", inv.id, { dunning: next });
     log("mengupdate penagihan", `${inv.id} → ${next}`, "Keuangan");
     toast(`${inv.id} → ${next}`);
   };
@@ -923,7 +923,7 @@ export default function Finance() {
   const needsWriteOffDirector = (inv: StoreItem | null): boolean =>
     !!inv && invNeto(inv) > approveThreshold && !inv.directorApproved;
 
-  const doWriteOff = () => {
+  const doWriteOff = async () => {
     if (!writeOff) return;
     if (!writeOffReason.trim()) { toast("Alasan hapus buku wajib diisi", "info"); return; }
     // Hapus buku di atas ambang APPROVE_INVOICE wajib persetujuan Director (checkbox + nama).
@@ -931,7 +931,7 @@ export default function Finance() {
       toast(`Hapus buku di atas ${fmtRupiah(approveThreshold)} wajib dicentang + nama Director`, "info");
       return;
     }
-    update("invoices", writeOff.id, {
+    await update("invoices", writeOff.id, {
       status: "Dihapusbukukan",
       dunning: "Hapus Buku",
       writeOffReason: writeOffReason.trim(),
@@ -948,7 +948,7 @@ export default function Finance() {
   };
 
   // --- Akun: tambah / ubah / hapus (kolom sheet Akun) ---
-  const saveCoa = () => {
+  const saveCoa = async () => {
     const kode = coaForm.kode.trim();
     if (!kode) { toast("No. akun wajib diisi", "info"); return; }
     if (!/^\d+-\d+$/.test(kode)) { toast("No. akun harus format angka-angka, cth: 1-125", "info"); return; }
@@ -956,15 +956,15 @@ export default function Finance() {
     if (coaTarget) {
       if (String(coaTarget.dk) === "-") {
         /* Baris header: hanya nama yang boleh diubah, posisi D/K & NR/LR dikunci. */
-        update("coa", coaTarget.id, { nama: coaForm.nama.trim() });
+        await update("coa", coaTarget.id, { nama: coaForm.nama.trim() });
       } else {
-        update("coa", coaTarget.id, { nama: coaForm.nama.trim(), dk: coaForm.dk, nrlr: coaForm.nrlr });
+        await update("coa", coaTarget.id, { nama: coaForm.nama.trim(), dk: coaForm.dk, nrlr: coaForm.nrlr });
       }
       log("mengubah akun", kode, "Keuangan");
       toast(`Akun ${kode} diubah`);
     } else {
       if (coaKode.has(kode)) { toast("No. akun sudah ada", "info"); return; }
-      add("coa", { id: `COA-${kode}`, kode, nama: coaForm.nama.trim(), dk: coaForm.dk, nrlr: coaForm.nrlr }, { action: "menambah akun", module: "Keuangan" });
+      await add("coa", { id: `COA-${kode}`, kode, nama: coaForm.nama.trim(), dk: coaForm.dk, nrlr: coaForm.nrlr }, { action: "menambah akun", module: "Keuangan" });
       toast(`Akun ${kode} ditambah`);
     }
     setShowCoa(false);
@@ -989,8 +989,8 @@ export default function Finance() {
     const juPrefix = `JU-${compact}-`;
     const juNext = maxSeq(manJournals.map((j) => String((j as StoreItem).dokumen ?? "")), new RegExp(`^${juPrefix}(\\d+)$`)) + 1;
     const voucher = juForm.dokumen.trim() || `${juPrefix}${String(juNext).padStart(3, "0")}`;
-    lines.forEach((l, i) => {
-      add("journals", {
+    lines.forEach(async (l, i) => {
+      await add("journals", {
         date: juForm.date, kodePembantu: juForm.kodePembantu.trim(), dokumen: voucher,
         uraian: lines.length > 1 ? `${juForm.uraian.trim()} (${i + 1}/${lines.length})` : juForm.uraian.trim(),
         db: l.db, kr: l.kr, amount: num(l.amount),
@@ -1006,7 +1006,7 @@ export default function Finance() {
   };
 
   // --- Kas & Bank: mutasi masuk/keluar per rekening ---
-  const saveMut = () => {
+  const saveMut = async () => {
     if (!mutForm.date) { toast("Tanggal wajib diisi", "info"); return; }
     if (!mutForm.rekening) { toast("Pilih rekening kas/bank", "info"); return; }
     if (!mutForm.lawan) { toast("Pilih akun lawan", "info"); return; }
@@ -1015,7 +1015,7 @@ export default function Finance() {
     if (!num(mutForm.amount) || num(mutForm.amount) <= 0) { toast("Nominal harus lebih dari 0", "info"); return; }
     const db = mutForm.arah === "Masuk" ? mutForm.rekening : mutForm.lawan;
     const kr = mutForm.arah === "Masuk" ? mutForm.lawan : mutForm.rekening;
-    add("journals", {
+    await add("journals", {
       date: mutForm.date, kodePembantu: mutForm.kodePembantu.trim(), dokumen: mutForm.dokumen.trim() || "-",
       uraian: mutForm.uraian.trim(), db, kr, amount: num(mutForm.amount), sumber: mutForm.rekening.startsWith("1-11") ? "Kas" : "Bank", status: "Posted",
       branch: branch !== "SEMUA" ? branch : "",
@@ -1026,11 +1026,11 @@ export default function Finance() {
   };
 
   // --- Hutang: simpan + ubah (kolom sheet Hutang) ---
-  const saveAp = () => {
+  const saveAp = async () => {
     if (!apForm.v.trim()) { toast("Vendor wajib diisi", "info"); return; }
     if (!num(apForm.amt) || num(apForm.amt) <= 0) { toast("Saldo akhir harus lebih dari 0", "info"); return; }
     if (!apForm.due) { toast("Jatuh tempo wajib diisi", "info"); return; }
-    const created = add("payables", {
+    const created = await add("payables", {
       v: apForm.v.trim(), kodePembantu: apForm.kodePembantu.trim() || apForm.v.trim(),
       po: apForm.po.trim() || "OPEN-0826", openAwal: num(apForm.openAwal), amt: num(apForm.amt),
       due: apForm.due, pph: apForm.nonPpn ? "Non-PPn" : "2%", st: "Belum Dibayar",
@@ -1041,11 +1041,11 @@ export default function Finance() {
     setApForm({ v: "", kodePembantu: "", po: "", openAwal: "", amt: "", due: "", nonPpn: false, vessel: "", item: "" });
   };
 
-  const saveApEdit = () => {
+  const saveApEdit = async () => {
     if (!apEdit) return;
     if (!apEditForm.v.trim()) { toast("Vendor wajib diisi", "info"); return; }
     if (!num(apEditForm.amt) || num(apEditForm.amt) <= 0) { toast("Saldo akhir harus lebih dari 0", "info"); return; }
-    update("payables", apEdit.id, {
+    await update("payables", apEdit.id, {
       v: apEditForm.v.trim(), kodePembantu: apEditForm.kodePembantu.trim() || apEditForm.v.trim(),
       openAwal: num(apEditForm.openAwal), amt: num(apEditForm.amt), due: apEditForm.due,
       pph: apEditForm.nonPpn ? "Non-PPn" : "2%",
@@ -1057,11 +1057,11 @@ export default function Finance() {
   };
 
   // --- Piutang: ubah invoice belum lunas ---
-  const saveInvEdit = () => {
+  const saveInvEdit = async () => {
     if (!invEdit) return;
     if (!invEditForm.client.trim()) { toast("Customer wajib diisi", "info"); return; }
     if (!invEditForm.due) { toast("Jatuh tempo wajib diisi", "info"); return; }
-    update("invoices", invEdit.id, {
+    await update("invoices", invEdit.id, {
       client: invEditForm.client.trim(),
       kodePembantu: invEditForm.kodePembantu.trim() || invEditForm.client.trim(),
       due: invEditForm.due, paymentTerm: invEditForm.paymentTerm,
@@ -1074,12 +1074,12 @@ export default function Finance() {
 
   // --- Aset: tambah harta (kolom sheet Aset), tarif fiskal GL ---
   const AST_TARIF: Record<string, number> = { BP: 5, "1": 25, "2": 12.5, "3": 6.25 };
-  const saveAst = () => {
+  const saveAst = async () => {
     if (!astForm.nama.trim()) { toast("Nama/jenis harta wajib diisi", "info"); return; }
     if (!num(astForm.nilai) || num(astForm.nilai) <= 0) { toast("Nilai perolehan harus lebih dari 0", "info"); return; }
     const tarif = AST_TARIF[astForm.kelompok] ?? 12.5;
     const susutTahun = Math.round((num(astForm.nilai) * tarif) / 100);
-    add("assets", {
+    await add("assets", {
       nama: astForm.nama.trim(), kelompok: astForm.kelompok, bulan: astForm.bulan.trim() || "-",
       tahun: astForm.tahun.trim() || today.slice(0, 4), nilai: num(astForm.nilai),
       sisaAwal: num(astForm.nilai), susutTahun, metode: astForm.metode || "GL",
@@ -1104,7 +1104,7 @@ export default function Finance() {
     return { rows, pend: sum(/^4-/), bebanPokok: sum(/^5-/), biayaUsaha: sum(/^6-/), lainMasuk: sum(/^7-[12]/), lainKeluar: sum(/^7-[34]/) };
   }, [coaRows]);
 
-  const stepInvoice = (inv: StoreItem, next: string) => {    if (next === "Lunas") {
+  const stepInvoice = async (inv: StoreItem, next: string) => {    if (next === "Lunas") {
       setPayTarget(inv);
       setProof(emptyProof());
       return;
@@ -1119,15 +1119,15 @@ export default function Finance() {
       setDirName("");
       return;
     }
-    update("invoices", inv.id, { status: next });
+    await update("invoices", inv.id, { status: next });
     toast(`${inv.id} → ${next}`);
   };
 
-  const confirmDirector = () => {
+  const confirmDirector = async () => {
     if (!dirTarget) return;
     if (!dirCheck) { toast("Centang persetujuan Director dulu", "info"); return; }
     if (!dirName.trim()) { toast("Nama penyetuju wajib diisi", "info"); return; }
-    update("invoices", dirTarget.id, {
+    await update("invoices", dirTarget.id, {
       status: "Disetujui",
       directorApproved: true,
       directorName: dirName.trim(),
@@ -1138,11 +1138,11 @@ export default function Finance() {
     setDirTarget(null);
   };
 
-  const confirmBuktiInv = () => {
+  const confirmBuktiInv = async () => {
     if (!payTarget) return;
     if (!proof.date) { toast("Tanggal bayar wajib diisi", "info"); return; }
     if (!proof.ref.trim()) { toast("No. referensi wajib diisi", "info"); return; }
-    update("invoices", payTarget.id, {
+    await update("invoices", payTarget.id, {
       status: "Lunas", paidAt: proof.date, paidMethod: proof.method, paidRef: proof.ref.trim(),
     });
     log("melunasi invoice", `${payTarget.id} via ${proof.method} ${proof.ref.trim()}`, "Keuangan");
@@ -1150,7 +1150,7 @@ export default function Finance() {
     setPayTarget(null);
   };
 
-  const confirmBuktiAp = () => {
+  const confirmBuktiAp = async () => {
     if (!apTarget) return;
     if (!proof.date) { toast("Tanggal bayar wajib diisi", "info"); return; }
     if (!proof.ref.trim()) { toast("No. referensi wajib diisi", "info"); return; }
@@ -1162,7 +1162,7 @@ export default function Finance() {
     if (bayar > amt - p1 - num(apTarget.pay2)) { toast("Nominal melebihi sisa hutang", "info"); return; }
     if (!p1) {
       const sisa = amt - bayar;
-      update("payables", apTarget.id, {
+      await update("payables", apTarget.id, {
         pay1: bayar, pay1date: proof.date, pay1ref: proof.ref.trim(), pay1method: proof.method,
         st: sisa <= 0 ? "Lunas" : "Dibayar Sebagian",
         ...(sisa <= 0 ? { paidAt: proof.date, paidMethod: proof.method, paidRef: proof.ref.trim() } : {}),
@@ -1172,7 +1172,7 @@ export default function Finance() {
     } else {
       const p2 = num(apTarget.pay2) + bayar;
       const sisa = amt - p1 - p2;
-      update("payables", apTarget.id, {
+      await update("payables", apTarget.id, {
         pay2: p2, pay2date: proof.date, pay2ref: proof.ref.trim(), pay2method: proof.method,
         st: sisa <= 0 ? "Lunas" : "Dibayar Sebagian",
         ...(sisa <= 0 ? { paidAt: proof.date, paidMethod: proof.method, paidRef: proof.ref.trim() } : {}),
@@ -1187,17 +1187,17 @@ export default function Finance() {
   const toggleSched = (key: string) =>
     setSchedSel((prev) => (prev.includes(key) ? prev.filter((k) => k !== key) : [...prev, key]));
 
-  const confirmBatch = () => {
+  const confirmBatch = async () => {
     if (schedSel.length === 0) { toast("Pilih minimal satu jadwal", "info"); return; }
     if (!batchProof.date) { toast("Tanggal bayar wajib diisi", "info"); return; }
     if (!batchProof.ref.trim()) { toast("No. referensi wajib diisi", "info"); return; }
     const ordered = schedItems.filter((r) => schedSel.includes(r.key)).sort((a, b) => String(a.due).localeCompare(String(b.due)));
     for (const r of ordered) {
       if (r.kind === "AP") {
-        update("payables", r.id, { st: "Lunas", paidAt: batchProof.date, paidMethod: batchProof.method, paidRef: batchProof.ref.trim() });
+        await update("payables", r.id, { st: "Lunas", paidAt: batchProof.date, paidMethod: batchProof.method, paidRef: batchProof.ref.trim() });
         log("melunasi hutang massal", `${r.ref} via ${batchProof.method} ${batchProof.ref.trim()}`, "Keuangan");
       } else {
-        update("invoices", r.id, { status: "Lunas", paidAt: batchProof.date, paidMethod: batchProof.method, paidRef: batchProof.ref.trim() });
+        await update("invoices", r.id, { status: "Lunas", paidAt: batchProof.date, paidMethod: batchProof.method, paidRef: batchProof.ref.trim() });
         log("melunasi invoice massal", `${r.id} via ${batchProof.method} ${batchProof.ref.trim()}`, "Keuangan");
       }
     }
@@ -1230,32 +1230,32 @@ export default function Finance() {
     toast(`CSV e-Faktur ${activePeriod} diunduh (${efakturRows.length} baris)`);
   };
 
-  const saveAlloc = () => {
+  const saveAlloc = async () => {
     if (!allocTarget) return;
     if (!allocForm.project) { toast("Pilih proyek alokasi", "info"); return; }
     const pct = num(allocForm.pct);
     if (pct <= 0 || pct > 100) { toast("Persen alokasi 1–100", "info"); return; }
-    update("payroll", allocTarget.id, { allocProject: allocForm.project, allocPct: pct });
+    await update("payroll", allocTarget.id, { allocProject: allocForm.project, allocPct: pct });
     log("mengalokasikan gaji", `${allocTarget.id} → ${allocForm.project} ${pct}%`, "Keuangan");
     toast(`Gaji ${allocTarget.id} dialokasikan ${pct}% ke ${allocForm.project}`);
     setAllocTarget(null);
   };
 
-  const saveOverhead = () => {
+  const saveOverhead = async () => {
     if (!profitPid) return;
     const pct = num(overheadPct);
     if (pct < 0 || pct > 100) { toast("Overhead % harus 0–100", "info"); return; }
-    update("projects", profitPid, { overheadPct: pct });
+    await update("projects", profitPid, { overheadPct: pct });
     log("mengatur overhead proyek", `${profitPid} ${pct}%`, "Keuangan");
     toast(`Overhead ${profitPid} disimpan ${pct}%`);
   };
 
-  const confirmRelease = () => {
+  const confirmRelease = async () => {
     if (!releaseTarget) return;
     if (!releaseForm.date) { toast("Tanggal release wajib diisi", "info"); return; }
     if (!releaseForm.ba.trim()) { toast("No. berita acara wajib diisi", "info"); return; }
     const retAmt = num(releaseTarget.retentionAmt);
-    update("invoices", releaseTarget.id, {
+    await update("invoices", releaseTarget.id, {
       retentionStatus: "Released",
       retentionReleaseDate: releaseForm.date,
       retentionBaNo: releaseForm.ba.trim(),
@@ -1269,7 +1269,7 @@ export default function Finance() {
         bumpN += 1;
         topId = `${releaseTarget.id}-R${bumpN}`;
       }
-      add("invoices", {
+      await add("invoices", {
         id: topId,
         client: releaseTarget.client,
         kodePembantu: releaseTarget.kodePembantu ?? releaseTarget.client,
@@ -1294,10 +1294,10 @@ export default function Finance() {
     setReleaseForm({ date: todayISO(), ba: "", warrantyId: "" });
   };
 
-  const markTaxLapor = () => {
+  const markTaxLapor = async () => {
     if (!activeTax) { toast("Pilih periode dulu", "info"); return; }
     if (activeTax.status === "Lapor") { toast("Periode sudah dilapor dan dikunci", "info"); return; }
-    update("taxPeriods", activeTax.id, {
+    await update("taxPeriods", activeTax.id, {
       status: "Lapor",
       ppnKeluar: taxCalc.ppnKeluar,
       ppnMasuk: taxCalc.ppnMasuk,
@@ -1400,7 +1400,7 @@ export default function Finance() {
                                       Ubah
                                     </button>
                                     {!header && (
-                                      <button className="btn-secondary px-2 py-1 text-[11px] text-rose-600" onClick={() => { remove("coa", String(c.id)); log("menghapus akun", String(c.kode), "Keuangan"); toast(`Akun ${c.kode} dihapus`); }}>
+                                      <button className="btn-secondary px-2 py-1 text-[11px] text-rose-600" onClick={async () => { await remove("coa", String(c.id)); log("menghapus akun", String(c.kode), "Keuangan"); toast(`Akun ${c.kode} dihapus`); }}>
                                         Hapus
                                       </button>
                                     )}
@@ -2203,10 +2203,10 @@ export default function Finance() {
                 </Field>
                 <button
                   className="btn-secondary text-xs"
-                  onClick={() => {
+                  onClick={async () => {
                     if (!/^\d{4}-\d{2}$/.test(newPeriod.trim())) { toast("Format periode YYYY-MM", "info"); return; }
                     if (taxPeriods.some((t) => t.period === newPeriod.trim())) { toast("Periode sudah ada", "info"); return; }
-                    const created = add("taxPeriods", { period: newPeriod.trim(), ppnKeluar: 0, ppnMasuk: 0, pph23: 0, pph21: 0, status: "Draft" }, { action: "membuat periode pajak", module: "Pajak" });
+                    const created = await add("taxPeriods", { period: newPeriod.trim(), ppnKeluar: 0, ppnMasuk: 0, pph23: 0, pph21: 0, status: "Draft" }, { action: "membuat periode pajak", module: "Pajak" });
                     setTaxId(created.id);
                     setNewPeriod("");
                     toast(`Periode ${created.period} dibuat`);
@@ -2300,7 +2300,7 @@ export default function Finance() {
                         <td className="td font-mono text-[11px] text-steel-600">{akum}</td>
                         <td className="td">
                           {!seed && (
-                            <button className="btn-secondary px-2 py-1 text-[11px] text-rose-600" onClick={() => { remove("assets", String(a.id)); log("menghapus aset", String(a.nama), "Keuangan"); toast(`Aset ${a.nama} dihapus`); }}>
+                            <button className="btn-secondary px-2 py-1 text-[11px] text-rose-600" onClick={async () => { await remove("assets", String(a.id)); log("menghapus aset", String(a.nama), "Keuangan"); toast(`Aset ${a.nama} dihapus`); }}>
                               Hapus
                             </button>
                           )}
@@ -2354,7 +2354,7 @@ export default function Finance() {
                         <td className="td"><StatusBadge status={String(j.status ?? "Posted")} /></td>
                         <td className="td">
                           {String(j.status) !== "Void" && (
-                            <button className="btn-secondary px-2 py-1 text-[11px] text-rose-600" onClick={() => { update("journals", String(j.id), { status: "Void" }); log("mem-void jurnal", String(j.id), "Keuangan"); toast(`${j.id} di-void`); }}>
+                            <button className="btn-secondary px-2 py-1 text-[11px] text-rose-600" onClick={async () => { await update("journals", String(j.id), { status: "Void" }); log("mem-void jurnal", String(j.id), "Keuangan"); toast(`${j.id} di-void`); }}>
                               Void
                             </button>
                           )}
@@ -2633,7 +2633,7 @@ export default function Finance() {
         desc="Invoice yang ditolak kembali ke status Draft dan bisa diajukan ulang."
         confirmLabel="Ya, tolak"
         onCancel={() => setRejectInv(null)}
-        onConfirm={() => { if (rejectInv) { update("invoices", rejectInv.id, { status: "Ditolak" }); toast(`${rejectInv.id} ditolak → Draft menyusul`); } setRejectInv(null); }}
+        onConfirm={async () => { if (rejectInv) { await update("invoices", rejectInv.id, { status: "Ditolak" }); toast(`${rejectInv.id} ditolak → Draft menyusul`); } setRejectInv(null); }}
       />
 
       <Modal open={apTarget !== null} onClose={() => setApTarget(null)} title={`Bayar ${!num(apTarget?.pay1) ? "I" : "II"} ${String(apTarget?.po ?? "")}?`} subtitle={`${String(apTarget?.v ?? "")} · sisa ${fmtRupiah(Math.max(0, num(apTarget?.amt) - num(apTarget?.pay1) - num(apTarget?.pay2)))}`}

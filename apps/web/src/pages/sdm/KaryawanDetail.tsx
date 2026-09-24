@@ -123,7 +123,7 @@ export default function KaryawanDetail() {
   const certs = normCerts(emp);
   const skills = getSkills(emp);
 
-  const saveSkill = () => {
+  const saveSkill = async () => {
     const extra = skillInput.split(",").map((s) => s.trim()).filter(Boolean);
     if (extra.length === 0) {
       toast("Isi minimal satu skill", "info");
@@ -134,43 +134,43 @@ export default function KaryawanDetail() {
     for (const s of extra) {
       if (!lower.has(s.toLowerCase())) { merged.push(s); lower.add(s.toLowerCase()); }
     }
-    update("employees", emp.id, { skills: merged });
+    await update("employees", emp.id, { skills: merged });
     log("memperbarui skill karyawan", emp.id, "SDM");
     setSkillInput("");
     toast("Skill karyawan diperbarui");
   };
 
-  const delSkill = (name: string) => {
-    update("employees", emp.id, { skills: skills.filter((s) => s !== name) });
+  const delSkill = async (name: string) => {
+    await update("employees", emp.id, { skills: skills.filter((s) => s !== name) });
     log("menghapus skill karyawan", `${emp.id} · ${name}`, "SDM");
     toast(`Skill ${name} dihapus`, "info");
   };
 
-  const delCert = (name: string) => {
-    update("employees", emp.id, { certs: certs.filter((c) => c.name !== name) });
+  const delCert = async (name: string) => {
+    await update("employees", emp.id, { certs: certs.filter((c) => c.name !== name) });
     log("menghapus sertifikat karyawan", `${emp.id} · ${name}`, "SDM");
     toast(`Sertifikat ${name} dihapus`, "info");
   };
 
-  const saveCert = () => {
+  const saveCert = async () => {
     if (!certForm.name.trim() || !certForm.expires) {
       toast("Nama sertifikat & berlaku hingga wajib diisi", "info");
       return;
     }
     const next = [...certs, { name: certForm.name.trim(), expires: certForm.expires }];
-    update("employees", emp.id, { certs: next });
+    await update("employees", emp.id, { certs: next });
     log("menambah sertifikat karyawan", emp.id, "SDM");
     setCertForm({ name: "", expires: todayISO().slice(0, 7) });
     setShowCert(false);
     toast("Sertifikat ditambahkan");
   };
 
-  const saveDoc = () => {
+  const saveDoc = async () => {
     if (!docForm.title.trim()) {
       toast("Judul dokumen wajib diisi", "info");
       return;
     }
-    const created = add(
+    const created = await add(
       "documents",
       {
         title: docForm.title.trim(),

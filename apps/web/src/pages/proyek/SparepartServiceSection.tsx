@@ -87,16 +87,16 @@ export default function SparepartServiceSection({ projectId, vesselId, view = "a
     };
   }, [allSpareparts]);
 
-  const advanceService = (s: SvcExt, next: SvcExt["status"]) => {
-    update("services", s.id, { status: next });
+  const advanceService = async (s: SvcExt, next: SvcExt["status"]) => {
+    await update("services", s.id, { status: next });
     log("mengubah status service", `${s.id} → ${next}`, "Service");
     toast(`Service ${next === "Done" ? "diselesaikan" : "dimulai"}`);
   };
 
-  const confirmCancel = () => {
+  const confirmCancel = async () => {
     if (!cancelFor) return;
     if (!cancelReason.trim()) { toast("Alasan pembatalan wajib diisi", "info"); return; }
-    update("services", cancelFor.id, { status: "Batal", cancelReason: cancelReason.trim() });
+    await update("services", cancelFor.id, { status: "Batal", cancelReason: cancelReason.trim() });
     log("membatalkan service", `${cancelFor.id} (alasan: ${cancelReason.trim()})`, "Service");
     toast("Service dibatalkan", "info");
     setCancelFor(null);
@@ -174,10 +174,10 @@ export default function SparepartServiceSection({ projectId, vesselId, view = "a
     };
   }, [modelSrc, show3d, modelKey, vesselId]);
 
-  const saveSparepart = () => {
+  const saveSparepart = async () => {
     if (!form.name.trim()) { toast("Nama sparepart wajib diisi", "info"); return; }
     if (!projectId) { toast("Sparepart harus ditambah dari halaman proyek", "info"); return; }
-    add("spareparts", {
+    await add("spareparts", {
       name: form.name.trim(),
       partNumber: form.partNumber.trim() || "-",
       category: form.category,
@@ -196,10 +196,10 @@ export default function SparepartServiceSection({ projectId, vesselId, view = "a
     setForm({ name: "", partNumber: "", category: "Mechanical", status: "Akan", cost: "", notes: "", technician: "", usedDate: "", warrantyUntil: "" });
   };
 
-  const saveService = () => {
+  const saveService = async () => {
     if (!svcForm.description.trim()) { toast("Deskripsi service wajib diisi", "info"); return; }
     if (!projectId) { toast("Service harus ditambah dari halaman proyek", "info"); return; }
-    add("services", {
+    await add("services", {
       projectId,
       vesselId,
       date: svcForm.date,

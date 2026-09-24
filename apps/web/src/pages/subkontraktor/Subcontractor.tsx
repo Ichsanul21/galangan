@@ -165,11 +165,11 @@ export default function Subcontractor() {
     return data.incidents.filter((i) => i.project && projs.includes(i.project));
   };
 
-  const saveSub = () => {
+  const saveSub = async () => {
     if (!subForm.name.trim()) { toast("Nama subkontraktor wajib diisi", "info"); return; }
     const bgValue = Number(subForm.bgValue || 0);
     if (subForm.bgValue && (!Number.isFinite(bgValue) || bgValue < 0)) { toast("Nilai bank garansi harus 0 atau lebih", "info"); return; }
-    const created = add("subcontractors", {
+    const created = await add("subcontractors", {
       name: subForm.name.trim(), services: subForm.services.trim() || "Umum",
       rating: 80, active: 0, contract: Number(subForm.contract) || 0, status: "Kualifikasi", k3: subForm.k3,
       contractType: subForm.contractType, payScheme: subForm.payScheme,
@@ -181,7 +181,7 @@ export default function Subcontractor() {
     setSubForm({ name: "", services: "", contract: "", k3: "A", contractType: "Borongan", payScheme: "unit", noBG: "", bgExpiry: "", bgValue: "" });
   };
 
-  const saveMilestone = () => {
+  const saveMilestone = async () => {
     if (!msSub) return;
     if (!msForm.title.trim()) { toast("Judul milestone wajib diisi", "info"); return; }
     const pct = Number(msForm.pct);
@@ -189,47 +189,47 @@ export default function Subcontractor() {
     if (!msForm.due) { toast("Due date milestone wajib diisi", "info"); return; }
     const next = [...milestonesOf(msSub), { title: msForm.title.trim(), pct, due: msForm.due }];
     if (next.reduce((s, m) => s + Number(m.pct || 0), 0) > 100) { toast("Kumulatif bobot milestone melebihi 100%", "info"); return; }
-    update("subcontractors", msSub.id, { milestones: next });
+    await update("subcontractors", msSub.id, { milestones: next });
     log("menambah milestone SOW", `${msSub.name} · ${msForm.title.trim()} (${pct}%)`, "Subkontraktor");
     toast(`Milestone ditambahkan ke ${msSub.name}`);
     setMsSub({ ...msSub, milestones: next });
     setMsForm({ title: "", pct: "", due: "" });
   };
 
-  const removeMilestone = (idx: number) => {
+  const removeMilestone = async (idx: number) => {
     if (!msSub) return;
     const next = milestonesOf(msSub).filter((_, i) => i !== idx);
-    update("subcontractors", msSub.id, { milestones: next });
+    await update("subcontractors", msSub.id, { milestones: next });
     log("menghapus milestone SOW", `${msSub.name} · index ${idx + 1}`, "Subkontraktor");
     setMsSub({ ...msSub, milestones: next });
   };
 
-  const saveWo = () => {
+  const saveWo = async () => {
     if (!woForm.sub || !woForm.project || !woForm.scope.trim()) { toast("Sub, proyek & lingkup wajib diisi", "info"); return; }
     if (!woForm.targetDate) { toast("Target selesai WO wajib diisi", "info"); return; }
     const penaltyPct = Number(woForm.penaltyPct);
     if (!Number.isFinite(penaltyPct) || penaltyPct < 0 || penaltyPct > 5) { toast("Denda per hari harus 0–5%", "info"); return; }
-    const created = add("workOrders", { sub: woForm.sub, project: woForm.project, scope: woForm.scope.trim(), progress: 0, status: "Dalam Proses", date: todayISO(), targetDate: woForm.targetDate, penaltyPct, branch: branchOfProject(woForm.project) },
+    const created = await add("workOrders", { sub: woForm.sub, project: woForm.project, scope: woForm.scope.trim(), progress: 0, status: "Dalam Proses", date: todayISO(), targetDate: woForm.targetDate, penaltyPct, branch: branchOfProject(woForm.project) },
       { action: "menerbitkan WO", module: "Subkontraktor" });
     toast(`WO ${created.id} diterbitkan`);
     setShowWo(false);
     setWoForm({ sub: "", project: "", scope: "", targetDate: "", penaltyPct: "0.1" });
   };
 
-  const recordPenalty = (w: StoreItem) => {
+  const recordPenalty = async (w: StoreItem) => {
     const sub = subcontractors.find((s) => s.name === w.sub);
     const late = daysLate(String(w.targetDate ?? ""));
     const perDay = Number(w.penaltyPct || 0);
     const base = Number(sub?.contract || 0);
     const raw = base * perDay / 100 * late;
     const amount = Math.min(raw, base * 5 / 100);
-    update("workOrders", w.id, { penaltyDays: late, penaltyAmount: Math.round(amount), penaltyAt: todayISO() });
+    await update("workOrders", w.id, { penaltyDays: late, penaltyAmount: Math.round(amount), penaltyAt: todayISO() });
     log("mencatat denda keterlambatan", `${w.id} · telat ${late} hari · ${fmtRupiah(Math.round(amount))}`, "Subkontraktor");
     toast(`Denda ${w.id} dicatat: ${fmtRupiah(Math.round(amount))}`);
   };
 
-  const applyWoProgress = (id: string, v: number, note: string) => {
-    update("workOrders", id, { progress: v, status: v >= 100 ? "Selesai" : "Dalam Proses" });
+  const applyWoProgress = async (id: string, v: number, note: string) => {
+    await update("workOrders", id, { progress: v, status: v >= 100 ? "Selesai" : "Dalam Proses" });
     log("mengupdate progres", `${id} → ${v}%${note ? ` — ${note}` : ""}`, "Subkontraktor");
     toast(`${id} → ${v}%`);
   };
@@ -250,7 +250,7 @@ export default function Subcontractor() {
     setProgNote("");
   };
 
-  const saveTerm = () => {
+  const saveTerm = async () => {
     if (!termForm.sub) { toast("Subkontraktor wajib dipilih", "info"); return; }
     const wo = workOrders.find((w) => w.id === termForm.wo && w.sub === termForm.sub);
     if (!wo) { toast("Pilih WO milik subkontraktor tersebut", "info"); return; }
@@ -278,7 +278,7 @@ export default function Subcontractor() {
       toast(`Termin melebihi pagu milestone ${ms.title}: maks ${fmtRupiah(msCap)} (${ms.pct}% kontrak), sudah dipakai ${fmtRupiah(msUsed)}`, "info");
       return;
     }
-    const created = add("termins", {
+    const created = await add("termins", {
       sub: termForm.sub, woId: wo.id, milestone: ms.title, progress: `${wo.id} (${wo.progress}%)`, amount,
       pphPct, retPct, status: "Draf", date: todayISO(), branch: branchOfProject(String(wo.project ?? "")),
     }, { action: "mengajukan termin", module: "Subkontraktor" });
@@ -287,7 +287,7 @@ export default function Subcontractor() {
     setTermForm({ sub: "", wo: "", milestone: "", amount: "", pphPct: "0.5", retPct: "5" });
   };
 
-  const stepTerm = (p: StoreItem, next: string) => {
+  const stepTerm = async (p: StoreItem, next: string) => {
     if (next === "Lunas") {
       setTermPay(p);
       setProof({ date: todayISO(), method: "Transfer", ref: "" });
@@ -300,11 +300,11 @@ export default function Subcontractor() {
       setRejectTerm(p);
       return;
     }
-    update("termins", p.id, { status: next });
+    await update("termins", p.id, { status: next });
     toast(`${p.id} → ${next}`);
   };
 
-  const confirmBuktiTerm = () => {
+  const confirmBuktiTerm = async () => {
     if (!termPay) return;
     if (!proof.date) { toast("Tanggal bayar wajib diisi", "info"); return; }
     if (!proof.ref.trim()) { toast("No. referensi wajib diisi", "info"); return; }
@@ -319,7 +319,7 @@ export default function Subcontractor() {
     const wo = workOrders.find((w) => w.id === termPay.woId);
     const penalty = Math.max(0, Math.round(Number(wo?.penaltyAmount || 0)));
     const netoPayable = Math.max(0, Math.round(netoOf(termPay)) - penalty);
-    update("termins", termPay.id, {
+    await update("termins", termPay.id, {
       status: "Lunas", paidAt: proof.date, paidMethod: proof.method, paidRef: proof.ref.trim(),
       pphAmt, retAmt, penaltyApplied: penalty, withholdingRef: withholdingRef.trim(),
       ...(needsTermDirector(termPay) ? { directorApproved: termDirName.trim() } : {}),
@@ -331,7 +331,7 @@ export default function Subcontractor() {
     const existingPo = new Set((data.payables ?? []).map((a) => String(a.po ?? "")));
     const vesselProj = String(wo?.project ?? "");
     if (!existingPo.has(poNeto)) {
-      add("payables", {
+      await add("payables", {
         v: String(termPay.sub ?? ""), kodePembantu: String(termPay.sub ?? ""),
         po: poNeto, openAwal: 0, amt: netoPayable,
         due: proof.date, pph: `${pphOf(termPay)}%`, st: "Belum Dibayar",
@@ -343,7 +343,7 @@ export default function Subcontractor() {
       }, { action: "mencatat hutang termin", module: "Subkontraktor" });
     }
     if (retAmt > 0 && !existingPo.has(poRet)) {
-      add("payables", {
+      await add("payables", {
         v: String(termPay.sub ?? ""), kodePembantu: String(termPay.sub ?? ""),
         po: poRet, openAwal: 0, amt: retAmt,
         due: proof.date, pph: `${pphOf(termPay)}%`, st: "Ditahan",
@@ -362,20 +362,20 @@ export default function Subcontractor() {
     setTermDirName("");
   };
 
-  const confirmRelease = () => {
+  const confirmRelease = async () => {
     if (!releaseTerm) return;
     const wo = workOrders.find((w) => w.id === releaseTerm.woId);
     if (!wo || wo.status !== "Selesai") { toast("Retensi hanya bisa dirilis setelah WO Selesai", "info"); return; }
     if (!releaseForm.date) { toast("Tanggal rilis wajib diisi", "info"); return; }
     if (!releaseForm.ba.trim()) { toast("No. berita acara wajib diisi", "info"); return; }
-    update("termins", releaseTerm.id, {
+    await update("termins", releaseTerm.id, {
       status: "Retensi Released", releasedAt: releaseForm.date, releaseBA: releaseForm.ba.trim(),
     });
     // Baris retensi Ditahan → Belum Dibayar agar bisa dibayar via hutang usaha.
     const poRet = `TERM-${releaseTerm.id}-R`;
     const held = (data.payables ?? []).find((a) => String(a.po ?? "") === poRet && String(a.st ?? "") === "Ditahan");
     if (held) {
-      update("payables", held.id, { st: "Belum Dibayar" });
+      await update("payables", held.id, { st: "Belum Dibayar" });
       log("merilis retensi hutang", `${held.id} (${poRet}) → Belum Dibayar`, "Subkontraktor");
     }
     log("merilis retensi", `${releaseTerm.id} · BA ${releaseForm.ba.trim()} · ${fmtTanggal(releaseForm.date)}`, "Subkontraktor");
@@ -384,14 +384,14 @@ export default function Subcontractor() {
     setReleaseForm({ date: todayISO(), ba: "" });
   };
 
-  const saveTimesheet = () => {
+  const saveTimesheet = async () => {
     if (!tsForm.wo || !tsForm.employee || !tsForm.date) { toast("WO, karyawan & tanggal wajib diisi", "info"); return; }
     const hours = Number(tsForm.hours);
     if (!Number.isFinite(hours) || hours <= 0) { toast("Jam kerja harus lebih dari 0", "info"); return; }
     const wo = workOrders.find((w) => w.id === tsForm.wo);
     const projectId = String(wo?.project ?? "");
     const rate = Number(wo?.rate || 0);
-    const created = add("timesheets", {
+    const created = await add("timesheets", {
       woId: tsForm.wo, employeeId: tsForm.employee, date: tsForm.date, hours, note: tsForm.note.trim(),
       projectId, rate, cost: Math.round(hours * rate), status: "Diajukan",
       branch: branchOfEmployee(tsForm.employee),
@@ -401,17 +401,17 @@ export default function Subcontractor() {
     setTsForm({ wo: "", employee: "", date: todayISO(), hours: "", note: "" });
   };
 
-  const approveTimesheet = (t: StoreItem) => {
-    update("timesheets", t.id, { status: "Disetujui" });
+  const approveTimesheet = async (t: StoreItem) => {
+    await update("timesheets", t.id, { status: "Disetujui" });
     log("menyetujui timesheet", `${t.id} · ${t.hours} jam`, "Subkontraktor");
     toast(`${t.id} disetujui — siap ditarik ke invoice T&M`);
   };
 
-  const saveRate = () => {
+  const saveRate = async () => {
     if (!rateForm.wo) { toast("Pilih WO dulu", "info"); return; }
     const rate = Number(rateForm.rate);
     if (!Number.isFinite(rate) || rate < 0) { toast("Rate tidak valid", "info"); return; }
-    update("workOrders", rateForm.wo, { rate });
+    await update("workOrders", rateForm.wo, { rate });
     log("menetapkan rate WO", `${rateForm.wo} · ${fmtRupiah(rate)}/jam`, "Subkontraktor");
     toast(`Rate ${rateForm.wo} disimpan`);
     setRateForm({ wo: "", rate: "" });
@@ -803,7 +803,7 @@ export default function Subcontractor() {
         desc="Perubahan status subkontraktor memengaruhi kelayakan penugasan WO baru."
         confirmLabel="Ya, ubah"
         onCancel={() => setSubConfirm(null)}
-        onConfirm={() => { if (subConfirm) { update("subcontractors", subConfirm.id, { status: subConfirm.next }); toast(`${subConfirm.name} → ${subConfirm.next}`); } setSubConfirm(null); }}
+        onConfirm={async () => { if (subConfirm) { await update("subcontractors", subConfirm.id, { status: subConfirm.next }); toast(`${subConfirm.name} → ${subConfirm.next}`); } setSubConfirm(null); }}
       />
 
       {/* Modal WO */}
@@ -938,7 +938,7 @@ export default function Subcontractor() {
         desc="Termin yang ditolak tidak dihitung dalam kumulatif batas WO."
         confirmLabel="Ya, tolak"
         onCancel={() => setRejectTerm(null)}
-        onConfirm={() => { if (rejectTerm) { update("termins", rejectTerm.id, { status: "Ditolak" }); toast(`${rejectTerm.id} ditolak`); } setRejectTerm(null); }}
+        onConfirm={async () => { if (rejectTerm) { await update("termins", rejectTerm.id, { status: "Ditolak" }); toast(`${rejectTerm.id} ditolak`); } setRejectTerm(null); }}
       />
 
       {/* Modal release retensi */}

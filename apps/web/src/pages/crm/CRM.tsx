@@ -123,23 +123,23 @@ export default function CRM() {
   const allSurveys = clients.flatMap((c) => (Array.isArray(c.survei) ? c.survei.map(num) : []));
   const globalSatisfaction = allSurveys.length > 0 ? allSurveys.reduce((s, v) => s + v, 0) / allSurveys.length : 0;
 
-  const advance = (q: StoreItem) => {
+  const advance = async (q: StoreItem) => {
     const idx = FLOW.indexOf(String(q.stage));
     if (idx < 0 || idx >= FLOW.length - 1) return;
     const next = FLOW[idx + 1];
-    update("quotations", q.id, { stage: next });
+    await update("quotations", q.id, { stage: next });
     log(`memajukan quotation ke ${next}`, q.id, "CRM");
     toast(`${q.id} naik ke tahap ${next}`);
   };
 
-  const markTerminal = (q: StoreItem, stage: "Batal" | "Kalah") => {
+  const markTerminal = async (q: StoreItem, stage: "Batal" | "Kalah") => {
     if (isTerminal(String(q.stage))) return;
-    update("quotations", q.id, { stage });
+    await update("quotations", q.id, { stage });
     log(`memindahkan quotation ke ${stage}`, q.id, "CRM");
     toast(`${q.id} ditandai ${stage}`, "info");
   };
 
-  const confirmConvert = () => {
+  const confirmConvert = async () => {
     const q = convertTarget;
     if (!q) return;
     if (q.stage === "Terkonversi" || data.projects.some((p) => p.vessel === q.vessel)) {
@@ -149,14 +149,14 @@ export default function CRM() {
     }
     if (hoChecks.some((c) => !c)) { toast("Lengkapi semua checklist serah terima ke PM", "info"); return; }
     if (!hoBy.trim()) { toast("Nama penyerah wajib diisi", "info"); return; }
-    const created = add("projects", {
+    const created = await add("projects", {
       vessel: q.vessel, type: q.type, client: q.client, status: "Dalam Proses",
       branch: "Samarinda", start: todayISO(), end: "-", progress: 0,
       budget: num(q.value), actual: 0, manager: "Belum ditentukan", scope: [q.type],
       quotationId: q.id,
       handover: { date: todayISO(), by: hoBy.trim(), items: [...HO_ITEMS] },
     }, { action: "mengkonversi quotation", target: `${q.id} → proyek`, module: "CRM" });
-    update("quotations", q.id, { stage: "Terkonversi" });
+    await update("quotations", q.id, { stage: "Terkonversi" });
     log(`serah terima ke PM oleh ${hoBy.trim()} (${HO_ITEMS.length} item)`, `${q.id} → ${created.id}`, "CRM");
     toast(`${q.id} menjadi proyek ${created.id}`);
     setConvertTarget(null);
@@ -168,20 +168,20 @@ export default function CRM() {
     setSendMsg(`Yth. ${q.client},\n\nTerlampir penawaran ${q.id} untuk ${q.vessel} senilai ${fmtMiliar(num(q.value))}. Mohon konfirmasi ketersediaan jadwal docking.\n\nHormat kami,\nTim Commercial`);
   };
 
-  const confirmSend = () => {
+  const confirmSend = async () => {
     if (!sendTarget) return;
     if (!sendEmail.includes("@")) { toast("Email tujuan tidak valid", "info"); return; }
-    update("quotations", sendTarget.id, { statusKirim: "Terkirim", sentAt: todayISO(), sentTo: sendEmail.trim() });
+    await update("quotations", sendTarget.id, { statusKirim: "Terkirim", sentAt: todayISO(), sentTo: sendEmail.trim() });
     log(`mengirim penawaran ke ${sendEmail.trim()}`, sendTarget.id, "CRM");
     toast(`${sendTarget.id} terkirim ke ${sendEmail.trim()}`);
     setSendTarget(null);
   };
 
-  const saveQuotation = () => {
+  const saveQuotation = async () => {
     if (!qForm.client || !qForm.vessel.trim()) { toast("Klien & kapal wajib diisi", "info"); return; }
     if (!qForm.date) { toast("Tanggal penawaran wajib diisi", "info"); return; }
     if (num(qForm.value) <= 0) { toast("Nilai penawaran harus lebih dari 0", "info"); return; }
-    const created = add("quotations", {
+    const created = await add("quotations", {
       client: qForm.client, vessel: qForm.vessel.trim(), type: qForm.type,
       value: num(qForm.value), stage: qForm.stage, date: qForm.date, version: 1, riwayat: [],
     }, { action: "membuat penawaran", module: "CRM" });
@@ -190,9 +190,9 @@ export default function CRM() {
     setQForm({ client: "", vessel: "", type: "New Build", value: "", stage: "Lead", date: todayISO() });
   };
 
-  const saveClient = () => {
+  const saveClient = async () => {
     if (!cForm.name.trim()) { toast("Nama klien wajib diisi", "info"); return; }
-    const created = add("clients", {
+    const created = await add("clients", {
       name: cForm.name.trim(),
       fleet: num(cForm.fleet) || 1,
       rating: num(cForm.rating) || 80,
@@ -209,11 +209,11 @@ export default function CRM() {
     setCForm({ name: "", fleet: "1", rating: "80", klasifikasi: "Regular", creditLimit: "", paymentTerms: "NET 30", branch: "" });
   };
 
-  const saveComm = () => {
+  const saveComm = async () => {
     if (!commForm.quotationId) { toast("Pilih quotation dulu", "info"); return; }
     if (!commForm.date) { toast("Tanggal wajib diisi", "info"); return; }
     if (!commForm.summary.trim()) { toast("Ringkasan wajib diisi", "info"); return; }
-    const created = add("communications", {
+    const created = await add("communications", {
       quotationId: commForm.quotationId,
       channel: commForm.channel,
       date: commForm.date,
@@ -224,13 +224,13 @@ export default function CRM() {
     setCommForm({ quotationId: "", channel: "Email", date: todayISO(), summary: "", by: "" });
   };
 
-  const saveContract = () => {
+  const saveContract = async () => {
     const q = quotations.find((x) => x.id === contractForm.quotationId);
     if (!q) { toast("Pilih quotation Menang / Terkonversi", "info"); return; }
     if (q.stage !== "Menang" && q.stage !== "Terkonversi") { toast("Hanya quotation Menang / Terkonversi", "info"); return; }
     if (contracts.some((c) => c.quotationId === q.id)) { toast("Quotation ini sudah punya kontrak", "info"); return; }
     if (!contractForm.signedAt) { toast("Tanggal sign wajib diisi", "info"); return; }
-    const created = add("contracts", {
+    const created = await add("contracts", {
       quotationId: q.id,
       client: q.client,
       value: num(contractForm.value) || num(q.value),
@@ -242,14 +242,14 @@ export default function CRM() {
     setContractForm({ quotationId: "", value: "", signedAt: todayISO(), projectId: "" });
   };
 
-  const saveSurvey = () => {
+  const saveSurvey = async () => {
     if (!surveyForm.clientId) { toast("Pilih klien dulu", "info"); return; }
     const r = num(surveyForm.rating);
     if (r < 1 || r > 5) { toast("Rating 1–5", "info"); return; }
     const c = clients.find((x) => x.id === surveyForm.clientId);
     if (!c) return;
     const next = [...(Array.isArray(c.survei) ? c.survei : []), r];
-    update("clients", c.id, { survei: next });
+    await update("clients", c.id, { survei: next });
     log("mencatat survei kepuasan", `${c.name} rating ${r}`, "CRM");
     toast(`Survei ${c.name} tersimpan`);
     setSurveyForm({ clientId: "", rating: "5" });
@@ -272,12 +272,12 @@ export default function CRM() {
     return `${prefix}${String(max + 1).padStart(3, "0")}`;
   };
 
-  const saveRequest = () => {
+  const saveRequest = async () => {
     if (!reqForm.client) { toast("Klien wajib dipilih", "info"); return; }
     if (!reqForm.vessel.trim()) { toast("Nama kapal wajib diisi", "info"); return; }
     if (!reqForm.scope.trim()) { toast("Scope pekerjaan wajib diisi", "info"); return; }
     if (!reqForm.date) { toast("Tanggal wajib diisi", "info"); return; }
-    const created = add("requests", {
+    const created = await add("requests", {
       id: nextReqId(reqForm.date), vessel: reqForm.vessel.trim(), client: reqForm.client,
       kind: reqForm.kind, scope: reqForm.scope.trim(), value: num(reqForm.value) || 0,
       status: "Baru", date: reqForm.date,
@@ -287,29 +287,29 @@ export default function CRM() {
     setReqForm({ vessel: "", client: "", kind: "Repair Request", scope: "", value: "", date: todayISO() });
   };
 
-  const advanceRequest = (r: StoreItem, next: string) => {
-    update("requests", r.id, { status: next });
+  const advanceRequest = async (r: StoreItem, next: string) => {
+    await update("requests", r.id, { status: next });
     log(`mengubah request ke ${next}`, r.id, "CRM");
     toast(`${r.id} → ${next}`);
   };
 
-  const convertRequest = (r: StoreItem) => {
+  const convertRequest = async (r: StoreItem) => {
     if (String(r.status) !== "Disetujui") { toast("Hanya request Disetujui yang bisa jadi quotation", "info"); return; }
     if ((data.quotations ?? []).some((q) => String(q.requestId ?? "") === String(r.id))) { toast("Request ini sudah punya quotation", "info"); return; }
-    const created = add("quotations", {
+    const created = await add("quotations", {
       client: String(r.client ?? ""), vessel: String(r.vessel ?? ""), type: "Repair",
       value: num(r.value) || 0, stage: "Lead", date: todayISO(), requestId: String(r.id),
     }, { action: "mengkonversi request ke quotation", target: `${String(r.id)} → quotation`, module: "CRM" });
     toast(`Quotation draft ${created.id} dibuat dari ${String(r.id)}`);
   };
 
-  const saveClientPo = () => {
+  const saveClientPo = async () => {
     if (!poForm.contractId) { toast("Pilih kontrak dulu", "info"); return; }
     if (!poForm.no.trim()) { toast("No. PO klien wajib diisi", "info"); return; }
     if (clientPos.some((p) => String(p.no ?? "") === poForm.no.trim())) { toast("No. PO klien sudah dipakai", "info"); return; }
     if (num(poForm.amount) <= 0) { toast("Nilai PO harus lebih dari 0", "info"); return; }
     if (!poForm.date) { toast("Tanggal PO wajib diisi", "info"); return; }
-    const created = add("clientPos", {
+    const created = await add("clientPos", {
       contractId: poForm.contractId, ...(poForm.projectId ? { projectId: poForm.projectId } : {}),
       no: poForm.no.trim(), amount: num(poForm.amount), date: poForm.date,
     }, { action: "mencatat PO klien", target: poForm.no.trim(), module: "CRM" });

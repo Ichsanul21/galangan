@@ -84,7 +84,7 @@ export default function BomDetail() {
   const kelas = abcOf(data.inventory, item.id);
   const tersedia = Number(item.stock || 0) - reservedQty(item);
 
-  const saveReserv = () => {
+  const saveReserv = async () => {
     if (!reservProject) { toast("Pilih proyek dulu", "info"); return; }
     const qty = Number(reservQtyInput);
     if (!qty || qty <= 0) { toast("Qty reservasi harus lebih dari 0", "info"); return; }
@@ -94,7 +94,7 @@ export default function BomDetail() {
     const next = same
       ? cur.map((r) => (r.project === reservProject ? { project: r.project, qty: Number(r.qty) + qty } : r))
       : [...cur, { project: reservProject, qty }];
-    update("inventory", item.id, { reserved: next });
+    await update("inventory", item.id, { reserved: next });
     log("reservasi stok", `${item.name} × ${qty} untuk ${reservProject}`, "Inventori");
     toast(`Reservasi ${item.name} × ${qty} untuk ${reservProject}`);
     setShowReserv(false);
@@ -102,12 +102,12 @@ export default function BomDetail() {
     setReservQtyInput("");
   };
 
-  const saveOpname = () => {
+  const saveOpname = async () => {
     if (opCount === "" || Number.isNaN(Number(opCount)) || Number(opCount) < 0) { toast("Stok hasil hitung tidak valid", "info"); return; }
     const selisih = Number(opCount) - Number(item.stock);
     if (selisih === 0) { toast("Tidak ada selisih — stok sudah sama", "info"); return; }
-    update("inventory", item.id, { stock: Number(opCount) });
-    add("movements", {
+    await update("inventory", item.id, { stock: Number(opCount) });
+    await add("movements", {
       item: item.name, itemId: item.id, type: "Selisih Opname", qty: selisih,
       by: `Opname ${todayISO()}`, date: todayISO(), tone: selisih > 0 ? "in" : "out",
     }, { action: "stok opname", target: `${item.name}: selisih ${selisih > 0 ? "+" : ""}${selisih}`, module: "Inventori" });

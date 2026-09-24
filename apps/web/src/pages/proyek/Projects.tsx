@@ -207,7 +207,7 @@ export default function Projects() {
 
   const codePreview = nextProjectCode(form.type, form.start);
 
-  const majuTahap = (p: StoreItem) => {
+  const majuTahap = async (p: StoreItem) => {
     const idx = TAHAP.indexOf(tahapOf(p));
     if (idx < 0 || idx >= TAHAP.length - 1) return;
     const from = TAHAP[idx];
@@ -221,7 +221,7 @@ export default function Projects() {
         return;
       }
     }
-    update("projects", p.id, {
+    await update("projects", p.id, {
       tahap: to,
       tahapLog: [...(p.tahapLog ?? []), { from: tahapOf(p), to, date: todayISO(), by: "Anda", reason: "" }],
     });
@@ -229,13 +229,13 @@ export default function Projects() {
     toast(`Tahap ${p.id} menjadi ${to}`);
   };
 
-  const confirmMundur = () => {
+  const confirmMundur = async () => {
     if (!mundurFor) return;
     if (!mundurReason.trim()) { toast("Alasan penarikan tahap wajib diisi", "info"); return; }
     const idx = TAHAP.indexOf(tahapOf(mundurFor));
     if (idx <= 0) { setMundurFor(null); return; }
     const to = TAHAP[idx - 1];
-    update("projects", mundurFor.id, {
+    await update("projects", mundurFor.id, {
       tahap: to,
       tahapLog: [...(mundurFor.tahapLog ?? []), { from: tahapOf(mundurFor), to, date: todayISO(), by: "Anda", reason: mundurReason.trim() }],
     });
@@ -302,7 +302,7 @@ export default function Projects() {
     toast(`Template "${tpl?.label ?? key}" dihapus`, "info");
   };
 
-  const save = () => {
+  const save = async () => {
     if (!form.vessel.trim() || !form.client.trim()) { toast("Nama kapal & klien wajib diisi", "info"); return; }
     if (!form.branch.trim()) { toast("Cabang wajib dipilih", "info"); return; }
     if (!branchOptions.includes(form.branch)) { toast("Cabang tidak dikenal", "info"); return; }
@@ -328,7 +328,7 @@ export default function Projects() {
       }
     }
     const code = nextProjectCode(form.type, form.start);
-    const created: StoreItem = add(
+    const created: StoreItem = await add(
       "projects",
       {
         id: code,
@@ -358,11 +358,11 @@ export default function Projects() {
         progress: 0,
         weight: t.weight,
       }));
-      setWbs(created.id, wbs);
+      await setWbs(created.id, wbs);
       setPendingWbs(null);
     }
     if (!vesselExists) {
-      add("vessels", {
+      await add("vessels", {
         name: form.vessel.trim(),
         imo: form.vesselImo.trim(),
         type: form.vesselType.trim(),

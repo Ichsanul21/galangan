@@ -226,7 +226,7 @@ export default function QCSafety() {
     return <Badge tone="blue">Sisa {String(left)} hari</Badge>;
   };
 
-  const saveInspection = () => {
+  const saveInspection = async () => {
     if (!inspForm.project || !inspForm.point.trim()) { toast("Proyek & titik inspeksi wajib diisi", "info"); return; }
     if (!inspForm.date) { toast("Tanggal inspeksi wajib diisi", "info"); return; }
     if (!inspForm.inspector) { toast("Pilih inspector berkualifikasi (dept Quality)", "info"); return; }
@@ -241,7 +241,7 @@ export default function QCSafety() {
     }
     if (inspForm.status === "Lulus" && found > allowed) { toast(`Hasil tidak bisa Lulus: temuan ${found} melebihi batas ${allowed}`, "info"); return; }
     const itp = nextItp(inspections);
-    const created = add("inspections", {
+    const created = await add("inspections", {
       project: inspForm.project, point: inspForm.point.trim(), itp,
       status: inspForm.status, date: inspForm.date,
       holdType: inspForm.holdType, nde: inspForm.nde,
@@ -253,7 +253,7 @@ export default function QCSafety() {
     }, { action: "mencatat inspeksi", module: "QC" });
     if (inspForm.status === "NCR") {
       const proj = data.projects.find((p) => p.id === inspForm.project);
-      add("ncr", {
+      await add("ncr", {
         project: inspForm.project, vessel: proj?.vessel ?? "-", type: "Umum",
         status: "Terbuka", severity: "Major", raised: inspForm.date, due: addDaysISO(inspForm.date, 14),
         causeCat: "Metode", causeNote: `Temuan inspeksi ${created.id}`,
@@ -268,11 +268,11 @@ export default function QCSafety() {
     setInspForm({ project: "", point: "", status: "Terjadwal", date: todayISO(), holdType: "Witness", nde: "Tidak", ndeMethod: "UT", inspector: "", sampleSize: "", defectsAllowed: "0", defectsFound: "0", calTool: "", branch: "" });
   };
 
-  const saveNcr = () => {
+  const saveNcr = async () => {
     if (!ncrForm.project || !ncrForm.issue.trim()) { toast("Proyek & uraian wajib diisi", "info"); return; }
     if (!ncrForm.due) { toast("Tenggat CAPA wajib diisi", "info"); return; }
     const proj = data.projects.find((p) => p.id === ncrForm.project);
-    const created = add("ncr", {
+    const created = await add("ncr", {
       project: ncrForm.project, vessel: ncrForm.vessel || proj?.vessel || "-", type: ncrForm.type,
       status: "Terbuka", severity: ncrForm.severity, raised: todayISO(), due: ncrForm.due,
       causeCat: ncrForm.causeCat, causeNote: ncrForm.causeNote.trim(),
@@ -283,7 +283,7 @@ export default function QCSafety() {
     setNcrForm({ project: "", vessel: "", type: "Pengelasan", severity: "Minor", issue: "", due: "", causeCat: "Manusia", causeNote: "", branch: "" });
   };
 
-  const advanceNcr = (n: StoreItem) => {
+  const advanceNcr = async (n: StoreItem) => {
     const idx = NCR_FLOW.indexOf(n.status);
     if (idx < 0 || idx >= NCR_FLOW.length - 1) return;
     const next = NCR_FLOW[idx + 1];
@@ -294,12 +294,12 @@ export default function QCSafety() {
       setVerifyNote("");
       return;
     }
-    update("ncr", n.id, { status: next });
+    await update("ncr", n.id, { status: next });
     log(`memproses NCR ke ${next}`, n.id, "QC");
     toast(`${n.id} → ${next}`);
   };
 
-  const confirmClose = () => {
+  const confirmClose = async () => {
     if (!closingNcr) return;
     if (closingNcr.severity === "Critical" && !canSetTarget(user?.role)) {
       toast("Hanya Direktur/Manager", "info");
@@ -310,7 +310,7 @@ export default function QCSafety() {
       return;
     }
     const closedAt = todayISO();
-    update("ncr", closingNcr.id, {
+    await update("ncr", closingNcr.id, {
       status: "Tertutup",
       verifiedBy: verifier.trim(),
       verifyNote: verifyNote.trim(),
@@ -320,7 +320,7 @@ export default function QCSafety() {
     const cost = reworkCost(closingNcr);
     let journaled = false;
     if (cost > 0 && !(data.journals ?? []).some((j) => String(j.dokumen ?? "") === `NCR-${closingNcr.id}`)) {
-      add("journals", {
+      await add("journals", {
         date: closedAt,
         kodePembantu: "",
         dokumen: `NCR-${closingNcr.id}`,
@@ -340,10 +340,10 @@ export default function QCSafety() {
     setNcrDetail((d) => (d && d.id === closingNcr.id ? { ...d, status: "Tertutup" } : d));
   };
 
-  const confirmReopen = () => {
+  const confirmReopen = async () => {
     if (!reopenNcr) return;
     if (!reopenReason.trim()) { toast("Alasan pembukaan kembali wajib diisi", "info"); return; }
-    update("ncr", reopenNcr.id, { status: "Terbuka", reopenReason: reopenReason.trim() });
+    await update("ncr", reopenNcr.id, { status: "Terbuka", reopenReason: reopenReason.trim() });
     log("membuka kembali NCR", reopenNcr.id, "QC");
     toast(`${reopenNcr.id} dibuka kembali`);
     setReopenNcr(null);
@@ -357,7 +357,7 @@ export default function QCSafety() {
     setReworkDraft({ hours: String(n.reworkHours ?? ""), rate: String(n.reworkRate ?? ""), material: String(n.reworkMaterial ?? "") });
   };
 
-  const saveRework = () => {
+  const saveRework = async () => {
     if (!ncrDetail) return;
     const hours = Number(reworkDraft.hours || 0);
     const rate = Number(reworkDraft.rate || 0);
@@ -366,17 +366,17 @@ export default function QCSafety() {
       toast("Jam, rate & material harus angka 0 atau lebih", "info");
       return;
     }
-    update("ncr", ncrDetail.id, { reworkHours: hours, reworkRate: rate, reworkMaterial: material });
+    await update("ncr", ncrDetail.id, { reworkHours: hours, reworkRate: rate, reworkMaterial: material });
     log("mencatat biaya rework", `${ncrDetail.id} · ${hours} jam × ${fmtRupiah(rate)} + material ${fmtRupiah(material)}`, "QC");
     setNcrDetail({ ...ncrDetail, reworkHours: hours, reworkRate: rate, reworkMaterial: material });
     toast(`Biaya rework ${ncrDetail.id} disimpan`);
   };
 
-  const confirmFollowUp = () => {
+  const confirmFollowUp = async () => {
     if (!followUpNcr) return;
     if (!followUpForm.date) { toast("Tanggal verifikasi lanjutan wajib diisi", "info"); return; }
     if (!followUpForm.note.trim()) { toast("Catatan verifikasi lanjutan wajib diisi", "info"); return; }
-    update("ncr", followUpNcr.id, { followUpDate: followUpForm.date, followUpNote: followUpForm.note.trim() });
+    await update("ncr", followUpNcr.id, { followUpDate: followUpForm.date, followUpNote: followUpForm.note.trim() });
     log("melakukan verifikasi lanjutan", `${followUpNcr.id} · ${fmtTanggal(followUpForm.date)} — ${followUpForm.note.trim()}`, "QC");
     toast(`Verifikasi lanjutan ${followUpNcr.id} dicatat`);
     setNcrDetail((d) => (d && d.id === followUpNcr.id ? { ...d, followUpDate: followUpForm.date, followUpNote: followUpForm.note.trim() } : d));
@@ -409,18 +409,18 @@ export default function QCSafety() {
     setAuditForm({ date: todayISO(), area: "", auditor: "", findings: "0", ncrId: "" });
   };
 
-  const saveDue = () => {
+  const saveDue = async () => {
     if (!ncrDetail) return;
     if (!dueDraft) { toast("Tenggat CAPA wajib diisi", "info"); return; }
-    update("ncr", ncrDetail.id, { due: dueDraft });
+    await update("ncr", ncrDetail.id, { due: dueDraft });
     log("memperbarui tenggat CAPA", ncrDetail.id, "QC");
     setNcrDetail({ ...ncrDetail, due: dueDraft });
     toast("Tenggat CAPA diperbarui");
   };
 
-  const saveDrawing = () => {
+  const saveDrawing = async () => {
     if (!drwForm.project || !drwForm.title.trim() || !drwForm.holder.trim()) { toast("Proyek, judul & holder wajib diisi", "info"); return; }
-    const created = add("drawings", {
+    const created = await add("drawings", {
       project: drwForm.project, title: drwForm.title.trim(), revision: "A",
       status: "Diajukan", updated: todayISO(), holder: drwForm.holder.trim(),
       branch: branchOf(drwForm.branch),
@@ -431,21 +431,21 @@ export default function QCSafety() {
     setDrwForm({ project: "", title: "", holder: "", branch: "" });
   };
 
-  const reviseDrawing = (d: StoreItem) => {
+  const reviseDrawing = async (d: StoreItem) => {
     const rev = nextRev(String(d.revision ?? "A"));
     const history = [...(Array.isArray(d.history) ? d.history : []), { revision: rev, date: todayISO(), holder: String(d.holder ?? ""), status: String(d.status ?? "Diajukan") }];
-    update("drawings", d.id, { revision: rev, updated: todayISO(), history });
+    await update("drawings", d.id, { revision: rev, updated: todayISO(), history });
     log("merevisi drawing", `${d.id} → rev ${rev}`, "QC");
     toast(`${d.id} naik ke rev ${rev}`);
   };
 
-  const stepDrawing = (d: StoreItem, next: string) => {
+  const stepDrawing = async (d: StoreItem, next: string) => {
     if (next === "Disetujui" && !canSetTarget(user?.role)) {
       toast("Hanya Direktur/Manager", "info");
       return;
     }
     const history = [...(Array.isArray(d.history) ? d.history : []), { revision: String(d.revision ?? ""), date: todayISO(), holder: String(d.holder ?? ""), status: next }];
-    update("drawings", d.id, { status: next, updated: todayISO(), history });
+    await update("drawings", d.id, { status: next, updated: todayISO(), history });
     log("memproses drawing", `${d.id} → ${next}`, "QC");
     toast(`${d.id} → ${next}`);
   };
@@ -471,13 +471,13 @@ export default function QCSafety() {
     setTransmitForm({ to: "", date: todayISO(), ids: [] });
   };
 
-  const saveJsa = () => {
+  const saveJsa = async () => {
     if (!jsaForm.project || !jsaForm.job.trim() || !jsaForm.hazard.trim() || !jsaForm.control.trim() || !jsaForm.pic.trim() || !jsaForm.date) {
       toast("Proyek, pekerjaan, bahaya, kontrol, PIC & tanggal wajib diisi", "info");
       return;
     }
     // JSA menetap di koleksi toolbox bertipe "JSA" (pola add toolbox yang sama).
-    const created = add("toolbox", {
+    const created = await add("toolbox", {
       type: "JSA",
       project: jsaForm.project, topic: jsaForm.job.trim(), job: jsaForm.job.trim(),
       hazard: jsaForm.hazard.trim(), control: jsaForm.control.trim(),
@@ -489,9 +489,9 @@ export default function QCSafety() {
     setJsaForm({ project: "", job: "", hazard: "", control: "", pic: "", date: todayISO(), branch: "" });
   };
 
-  const saveToolbox = () => {
+  const saveToolbox = async () => {
     if (!tbmForm.project || !tbmForm.topic.trim() || !tbmForm.date || !tbmForm.pic.trim()) { toast("Proyek, topik, tanggal & PIC wajib diisi", "info"); return; }
-    const created = add("toolbox", {
+    const created = await add("toolbox", {
       project: tbmForm.project, topic: tbmForm.topic.trim(), date: tbmForm.date,
       attendees: Number(tbmForm.attendees) || 0, pic: tbmForm.pic.trim(),
       branch: branchOf(tbmForm.branch),
@@ -501,13 +501,13 @@ export default function QCSafety() {
     setTbmForm({ project: "", topic: "", date: todayISO(), attendees: "", pic: "", branch: "" });
   };
 
-  const savePpeCheck = () => {
+  const savePpeCheck = async () => {
     if (!ppeForm.project || !ppeForm.date) { toast("Proyek & tanggal PPE check wajib diisi", "info"); return; }
     if (!ppeForm.employeeId) { toast("Pilih karyawan penerima PPE", "info"); return; }
     const done = PPE_ITEMS.filter((item) => ppeChecked[item]);
     if (done.length < PPE_ITEMS.length) { toast(`Belum lengkap: ${done.length}/${PPE_ITEMS.length} item tercentang`, "info"); return; }
     const emp = data.employees.find((e) => e.id === ppeForm.employeeId);
-    const created = add("toolbox", {
+    const created = await add("toolbox", {
       type: "PPE Check",
       project: ppeForm.project, topic: `PPE Check — ${PPE_ITEMS.length} item lengkap`, date: ppeForm.date,
       attendees: 0, pic: "HSE", employeeId: ppeForm.employeeId,
@@ -532,8 +532,8 @@ export default function QCSafety() {
     setWalkForm({ date: todayISO(), area: "", findings: "0", pic: "" });
   };
 
-  const walkToNcr = (w: WalkItem) => {
-    const created = add("ncr", {
+  const walkToNcr = async (w: WalkItem) => {
+    const created = await add("ncr", {
       project: data.projects[0]?.id ?? "-", vessel: data.projects[0]?.vessel ?? "-",
       type: "Umum", status: "Terbuka", severity: "Minor", raised: w.date,
       due: addDaysISO(w.date, 7), causeCat: "Lingkungan",
@@ -1158,10 +1158,10 @@ export default function QCSafety() {
 
       {/* Modal insiden */}
       <Modal open={showInc} onClose={() => setShowInc(false)} title="Catat Insiden / Near Miss"
-        footer={<><button className="btn-secondary" onClick={() => setShowInc(false)}>Batal</button><button className="btn-primary" onClick={() => {
+        footer={<><button className="btn-secondary" onClick={() => setShowInc(false)}>Batal</button><button className="btn-primary" onClick={async () => {
           if (!incForm.desc.trim() || !incForm.location.trim()) { toast("Lokasi & uraian wajib diisi", "info"); return; }
           if (!incForm.project) { toast("Proyek wajib dipilih agar terbaca subkontraktor terkait", "info"); return; }
-          const created = add("incidents", { type: incForm.type, date: todayISO(), location: incForm.location.trim(), desc: incForm.desc.trim(), severity: incForm.severity, project: incForm.project, projectId: incForm.project, branch: branchOf(incForm.branch) },
+          const created = await add("incidents", { type: incForm.type, date: todayISO(), location: incForm.location.trim(), desc: incForm.desc.trim(), severity: incForm.severity, project: incForm.project, projectId: incForm.project, branch: branchOf(incForm.branch) },
             { action: "mencatat insiden", module: "Safety" });
           toast(`Insiden ${created.id} dicatat`); setShowInc(false); setIncForm({ type: "Near Miss", location: "", desc: "", severity: "Rendah", project: "", branch: "" });
         }}>Simpan</button></>}>

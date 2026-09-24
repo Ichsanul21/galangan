@@ -1,5 +1,7 @@
-import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { newId as newPrefixedId } from "../services/ids";
+import { apiFetch, getJwt, isBackendConfigured } from "../services/http";
+import { remoteRepository } from "../services/repositories";
 import {
   projects as seedProjects,
   vessels as seedVessels,
@@ -610,17 +612,22 @@ function loadStore(): StoreShape {
 
 export type CollectionKey = Exclude<keyof StoreShape, "wbsByProject" | "teamByProject">;
 
+export type BackendMode = "local" | "remote";
+
 interface StoreCtx {
   data: StoreShape;
-  add: (col: CollectionKey, item: Omit<StoreItem, "id"> & { id?: string }, activity?: { action: string; target?: string; module: string }) => StoreItem;
-  update: (col: CollectionKey, id: string, patch: Record<string, any>) => void;
-  remove: (col: CollectionKey, id: string) => void;
+  backendMode: BackendMode;
+  backendError: string | null;
+  add: (col: CollectionKey, item: Omit<StoreItem, "id"> & { id?: string }, activity?: { action: string; target?: string; module: string }) => Promise<StoreItem>;
+  update: (col: CollectionKey, id: string, patch: Record<string, any>) => Promise<void>;
+  remove: (col: CollectionKey, id: string) => Promise<void>;
   log: (action: string, target: string, module: string) => void;
   reset: () => void;
+  resync: () => Promise<void>;
   wbsFor: (projectId: string) => WbsItem[];
-  setWbs: (projectId: string, wbs: WbsItem[]) => void;
+  setWbs: (projectId: string, wbs: WbsItem[]) => Promise<void>;
   teamFor: (projectId: string) => string[];
-  setTeam: (projectId: string, ids: string[]) => void;
+  setTeam: (projectId: string, ids: string[]) => Promise<void>;
   branch: string;
   setBranch: (b: string) => void;
   inBranch: (rows: StoreItem[]) => StoreItem[];
@@ -657,8 +664,28 @@ const ACTOR_TONE: Record<string, "navy" | "teal" | "rose" | "violet" | "amber"> 
    Monitoring: "violet",
  };
 
+/* Toast tanpa mengimpor ui (hindari sirkular): <Toaster/> di ui.tsx mendengarkan event ini. */
+function notifyBackendFallback(): void {
+  try {
+    window.dispatchEvent(
+      new CustomEvent("isms:toast", { detail: { message: "Backend tak terjangkau — mode lokal", tone: "info" } }),
+    );
+  } catch {
+    /* abaikan */
+  }
+}
+
+/* Remote dipakai bila backend dikonfigurasi DAN ada JWT — seluruh CRUD BE wajib
+   auth. Tanpa JWT (belum login) operasi berjalan lokal senyap, tanpa semburan 401. */
+function remoteActive(): boolean {
+  return isBackendConfigured() && getJwt() !== null;
+}
+
 export function StoreProvider({ children }: { children: ReactNode }) {
   const [data, setData] = useState<StoreShape>(() => loadStore());
+  const [backendMode] = useState<BackendMode>(() => (isBackendConfigured() ? "remote" : "local"));
+  const [backendError, setBackendError] = useState<string | null>(null);
+  const fallbackToasted = useRef(false);
   const [branch, setBranchState] = useState<string>(() => {
     // Cabang global di localStorage (migrasi dari sessionStorage, kunci sama).
     try {
@@ -695,62 +722,198 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     }
   }, [data]);
 
+  /* Tarik ulang semua koleksi + WBS/team dari backend (dipakai saat boot dan
+     tepat setelah login berhasil, karena JWT baru tersedia saat itu). */
+  const resync = useCallback(async (): Promise<void> => {
+    if (!remoteActive()) return;
+    const pulled: Partial<Record<CollectionKey, StoreItem[]>> = {};
+    await Promise.all(
+      ARRAY_KEYS.map(async (key) => {
+        if (key === "wbsByProject" || key === "teamByProject") return;
+        try {
+          pulled[key] = await remoteRepository(key).list();
+        } catch {
+          /* koleksi ini tetap memakai seed lokal */
+        }
+      }),
+    );
+    setData((prev) => ({ ...prev, ...pulled }));
+    const projectIds = ((pulled.projects as StoreItem[] | undefined) ?? []).map((p) => p.id);
+    await Promise.all(
+      projectIds.map(async (projectId) => {
+        try {
+          const wbs = await apiFetch<{ projectId: string; wbs: WbsItem[] }>(
+            `/api/projects/${encodeURIComponent(projectId)}/wbs`,
+          );
+          if (Array.isArray(wbs.wbs)) {
+            const rows = wbs.wbs;
+            setData((prev) => ({ ...prev, wbsByProject: { ...prev.wbsByProject, [projectId]: rows } }));
+          }
+        } catch {
+          /* cache lokal/template tetap dipakai */
+        }
+        try {
+          const team = await apiFetch<{ projectId: string; memberIds: string[] }>(
+            `/api/projects/${encodeURIComponent(projectId)}/team`,
+          );
+          if (Array.isArray(team.memberIds)) {
+            const ids = team.memberIds;
+            setData((prev) => ({ ...prev, teamByProject: { ...prev.teamByProject, [projectId]: ids } }));
+          }
+        } catch {
+          /* cache lokal tetap dipakai */
+        }
+      }),
+    );
+  }, []);
+
+  /* Boot backend-first: bila backend dikonfigurasi dan sudah login (JWT),
+     tarik semua koleksi dari BE; tiap koleksi yang gagal → biarkan seed lokal. */
+  useEffect(() => {
+    void resync();
+  }, [resync]);
+
   const api = useMemo<StoreCtx>(() => {
-    const pushActivity = (prev: StoreShape, action: string, target: string, module: string): StoreItem[] => {
-      const entry: StoreItem = {
-        id: `A-${Date.now().toString(36).toUpperCase()}`,
-        actor: "Anda",
-        action,
-        target,
-        module,
-        time: "baru saja",
-        tone: ACTOR_TONE[module] ?? "navy",
-      };
-      return [entry, ...prev.activities].slice(0, 30);
+    const buildActivity = (action: string, target: string, module: string): StoreItem => ({
+      id: `A-${Date.now().toString(36).toUpperCase()}`,
+      actor: "Anda",
+      action,
+      target,
+      module,
+      time: "baru saja",
+      tone: ACTOR_TONE[module] ?? "navy",
+    });
+
+    const pushActivity = (prev: StoreShape, action: string, target: string, module: string): StoreItem[] =>
+      [buildActivity(action, target, module), ...prev.activities].slice(0, 30);
+
+    /* Gagal remote → fallback lokal + tandai error + toast sekali per sesi. */
+    const degrade = (err: unknown): void => {
+      setBackendError(err instanceof Error && err.message ? err.message : "Backend tak terjangkau — mode lokal");
+      if (!fallbackToasted.current) {
+        fallbackToasted.current = true;
+        notifyBackendFallback();
+      }
     };
 
     return {
       data,
-      add: (col, item, activity) => {
+      backendMode,
+      backendError,
+      add: async (col, item, activity) => {
         const full: StoreItem = { ...item, id: item.id || newId(col) };
+        if (remoteActive()) {
+          try {
+            const saved = await remoteRepository(col).create(full);
+            const finalItem = saved && saved.id ? saved : full;
+            setData((prev) => ({
+              ...prev,
+              [col]: [finalItem, ...((prev[col] as StoreItem[] | undefined) ?? [])],
+              activities: activity
+                ? pushActivity(prev, activity.action, activity.target ?? finalItem.id, activity.module)
+                : prev.activities,
+            }));
+            setBackendError(null);
+            return finalItem;
+          } catch (err) {
+            degrade(err);
+          }
+        }
         setData((prev) => ({
           ...prev,
           [col]: [full, ...((prev[col] as StoreItem[] | undefined) ?? [])],
-          activities: activity ? pushActivity(prev, activity.action, activity.target ?? full.id, activity.module) : prev.activities,
+          activities: activity
+            ? pushActivity(prev, activity.action, activity.target ?? full.id, activity.module)
+            : prev.activities,
         }));
         return full;
       },
-      update: (col, id, patch) => {
+      update: async (col, id, patch) => {
+        if (remoteActive()) {
+          try {
+            const saved = await remoteRepository(col).patch(id, patch);
+            setData((prev) => ({
+              ...prev,
+              [col]: ((prev[col] as StoreItem[] | undefined) ?? []).map((r) => (r.id === id ? saved : r)),
+            }));
+            setBackendError(null);
+            return;
+          } catch (err) {
+            degrade(err);
+          }
+        }
         setData((prev) => ({
           ...prev,
           [col]: ((prev[col] as StoreItem[] | undefined) ?? []).map((r) => (r.id === id ? { ...r, ...patch } : r)),
         }));
       },
-      remove: (col, id) => {
+      remove: async (col, id) => {
+        if (remoteActive()) {
+          try {
+            await remoteRepository(col).remove(id);
+            setData((prev) => ({
+              ...prev,
+              [col]: ((prev[col] as StoreItem[] | undefined) ?? []).filter((r) => r.id !== id),
+            }));
+            setBackendError(null);
+            return;
+          } catch (err) {
+            degrade(err);
+          }
+        }
         setData((prev) => ({
           ...prev,
           [col]: ((prev[col] as StoreItem[] | undefined) ?? []).filter((r) => r.id !== id),
         }));
       },
       log: (action, target, module) => {
-        setData((prev) => ({ ...prev, activities: pushActivity(prev, action, target, module) }));
+        const entry = buildActivity(action, target, module);
+        setData((prev) => ({ ...prev, activities: [entry, ...prev.activities].slice(0, 30) }));
+        if (remoteActive()) {
+          // Best-effort mirror tanpa await — langsung via HTTP (bukan add())
+          // agar tidak terjadi rekursi; kegagalan diabaikan senyap.
+          remoteRepository("activities").create(entry).catch(() => undefined);
+        }
       },
       reset: () => {
         setData(buildSeeds());
       },
+      resync,
       wbsFor: (projectId) => data.wbsByProject[projectId] ?? clone(wbsTemplate),
-      setWbs: (projectId, wbs) => {
+      setWbs: async (projectId, wbs) => {
         setData((prev) => ({ ...prev, wbsByProject: { ...prev.wbsByProject, [projectId]: wbs } }));
+        if (remoteActive()) {
+          try {
+            await apiFetch(`/api/projects/${encodeURIComponent(projectId)}/wbs`, {
+              method: "PUT",
+              body: JSON.stringify({ wbs }),
+            });
+            setBackendError(null);
+          } catch (err) {
+            degrade(err);
+          }
+        }
       },
       teamFor: (projectId) => data.teamByProject[projectId] ?? [],
-      setTeam: (projectId, ids) => {
+      setTeam: async (projectId, ids) => {
         setData((prev) => ({ ...prev, teamByProject: { ...prev.teamByProject, [projectId]: ids } }));
+        if (remoteActive()) {
+          try {
+            await apiFetch(`/api/projects/${encodeURIComponent(projectId)}/team`, {
+              method: "PUT",
+              body: JSON.stringify({ memberIds: ids }),
+            });
+            setBackendError(null);
+          } catch (err) {
+            degrade(err);
+          }
+        }
       },
       branch,
       setBranch,
       inBranch,
     };
-  }, [data, branch, inBranch]);
+  }, [data, branch, inBranch, backendMode, backendError, resync]);
 
   return <Ctx.Provider value={api}>{children}</Ctx.Provider>;
 }

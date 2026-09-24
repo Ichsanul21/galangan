@@ -268,7 +268,7 @@ export default function Procurement() {
   };
 
   /* ============ PO BESAR ============ */
-  const saveBig = () => {
+  const saveBig = async () => {
     if (!bigForm.prId) { toast("PR wajib dipilih (dropdown PR Disetujui)", "info"); return; }
     const invItem = invList.find((i) => i.id === bigForm.itemId);
     if (!invItem) { toast("Pilih item inventori dari daftar", "info"); return; }
@@ -293,7 +293,7 @@ export default function Procurement() {
     const pr = requisitions.find((r) => r.id === bigForm.prId);
     const docNo = sbPoNumber(nextPoSeq());
     const isStok = bigForm.tujuan === "stok";
-    const created = add("purchaseOrders", {
+    const created = await add("purchaseOrders", {
       poType: "Besar", item: invItem.name, itemId: invItem.id, vendor: bigForm.vendor,
       req: bigForm.prId, amount: bigTotal, qty: bigLines.reduce((s, l) => s + Number(l.qty), 0),
       lines: bigLines.map((l) => ({ name: l.name.trim(), qty: Number(l.qty), unit: l.unit, price: Number(l.price) })),
@@ -302,7 +302,7 @@ export default function Procurement() {
       receivedQty: 0, returnedQty: 0, status: "Draft", date: todayISO(), revisi: "",
       amendments: [], approvals: [], overrideReason: bigOver ? bigForm.overrideReason.trim() : "",
     }, { action: "membuat PO Besar", module: "Procurement" });
-    if (pr && pr.status === "Disetujui") update("requisitions", pr.id, { status: "Sudah PO" });
+    if (pr && pr.status === "Disetujui") await update("requisitions", pr.id, { status: "Sudah PO" });
     toast(`PO Besar ${created.id} (${docNo}) dibuat (Draft)`);
     setShowBig(false);
     setBigForm({ tujuan: "kapal", prId: "", itemId: "", vendor: "", project: "", vessel: "", eta: "", includePpn: true, override: false, overrideReason: "" });
@@ -310,7 +310,7 @@ export default function Procurement() {
   };
 
   /* ============ PO KECIL ============ */
-  const saveSmall = () => {
+  const saveSmall = async () => {
     if (!smallForm.workshop.trim()) { toast("Workshop wajib diisi", "info"); return; }
     if (!smallForm.requester.trim()) { toast("Peminta wajib diisi", "info"); return; }
     if (!smallForm.item.trim()) { toast("Item kebutuhan wajib diisi", "info"); return; }
@@ -327,7 +327,7 @@ export default function Procurement() {
       toast("Melebihi sisa budget proyek — centang override dan isi alasan", "info");
       return;
     }
-    add("purchaseOrders", {
+    await add("purchaseOrders", {
       poType: "Kecil", item: smallForm.item.trim(), workshop: smallForm.workshop.trim(),
       requester: smallForm.requester.trim(), vendor: "Workshop Internal",
       req: "-", amount, qty, unit: smallForm.unit.trim(), receivedQty: 0, returnedQty: 0, status: "Diajukan",
@@ -342,42 +342,42 @@ export default function Procurement() {
     setSmallForm({ workshop: "", requester: "", item: "", qty: "1", unit: "pcs", price: "", eta: "", project: "", vessel: "", nota: "", override: false, overrideReason: "" });
   };
 
-  const doPoStatus = (po: StoreItem, next: string) => {
+  const doPoStatus = async (po: StoreItem, next: string) => {
     if (po.poType === "Kecil") {
       const allowed = SMALL_NEXT[normPo(po.status)] ?? [];
       if (!allowed.includes(next)) { toast(`Transisi ${po.status} → ${next} tidak diizinkan untuk PO Kecil`, "info"); return; }
     }
-    update("purchaseOrders", po.id, { status: next });
+    await update("purchaseOrders", po.id, { status: next });
     toast(`${po.id} → ${next}`);
   };
 
   /* Persetujuan berjenjang SPV → Manager → Director sesuai nominal. */
-  const doApproveLevel = (po: StoreItem) => {
+  const doApproveLevel = async (po: StoreItem) => {
     const nx = nextLevel(po);
     if (!nx) { toast(`${po.id} sudah disetujui penuh`, "info"); return; }
     const done: Approval[] = [...apprOf(po), { level: nx, by: "Anda", date: todayISO() }];
     const doneLevels = done.map((a) => a.level);
     const still = needLevels(Number(po.amount || 0)).find((l) => !doneLevels.includes(l)) ?? null;
-    update("purchaseOrders", po.id, { approvals: done, status: still ? po.status : "Disetujui" });
+    await update("purchaseOrders", po.id, { approvals: done, status: still ? po.status : "Disetujui" });
     log("persetujuan PO", `${po.id} level ${nx}${still ? `, lanjut ke ${still}` : " (penuh)"}`, "Procurement");
     toast(still ? `${po.id} disetujui ${nx}, lanjut ke ${still}` : `${po.id} disetujui penuh`);
   };
 
   /* ============ RFQ ============ */
-  const saveRfq = () => {
+  const saveRfq = async () => {
     if (!rfqPr) return;
     if (rfqVendors.length < 3) { toast("Pilih minimal 3 vendor untuk RFQ (docs/11)", "info"); return; }
-    add("rfqs", {
+    await add("rfqs", {
       prId: rfqPr.id, item: rfqPr.item, vendors: rfqVendors, quotes: [],
       status: "Draf", winner: "",
     }, { action: "membuat RFQ", target: rfqPr.id, module: "Procurement" });
-    update("requisitions", rfqPr.id, { status: "RFQ" });
+    await update("requisitions", rfqPr.id, { status: "RFQ" });
     toast(`RFQ untuk ${rfqPr.id} dibuat (Draf)`);
     setRfqPr(null);
     setRfqVendors([]);
   };
 
-  const saveQuote = () => {
+  const saveQuote = async () => {
     if (!quoteRfq) return;
     if (!quoteForm.vendor) { toast("Pilih vendor dulu", "info"); return; }
     const price = Number(quoteForm.price);
@@ -386,13 +386,13 @@ export default function Procurement() {
     const cur = (Array.isArray(quoteRfq.quotes) ? quoteRfq.quotes : []) as Quote[];
     const next = [...cur.filter((x) => x.vendor !== quoteForm.vendor), { vendor: quoteForm.vendor, price, eta: quoteForm.eta }];
     const nextStatus = quoteRfq.status === "Terkirim" ? "Evaluasi" : quoteRfq.status;
-    update("rfqs", quoteRfq.id, { quotes: next, status: nextStatus });
+    await update("rfqs", quoteRfq.id, { quotes: next, status: nextStatus });
     toast(`Penawaran ${quoteForm.vendor} tersimpan`);
     setQuoteRfq(null);
     setQuoteForm({ vendor: "", price: "", eta: "" });
   };
 
-  const confirmWin = () => {
+  const confirmWin = async () => {
     if (!winRfq) return;
     if (!winVendor) { toast("Pilih pemenang dulu", "info"); return; }
     const quotes = (Array.isArray(winRfq.quotes) ? winRfq.quotes : []) as Quote[];
@@ -400,9 +400,9 @@ export default function Procurement() {
     if (!win) { toast("Pemenang belum memberi penawaran", "info"); return; }
     const plafon = cekPlafon(winVendor, win.price);
     if (plafon && !plafon.ok) { toast(`Plafon kontrak payung terlampaui (pakai ${fmtRupiah(plafon.pakai)} / plafon ${fmtRupiah(plafon.plafon)})`, "info"); return; }
-    update("rfqs", winRfq.id, { winner: winVendor, status: "Diputuskan" });
+    await update("rfqs", winRfq.id, { winner: winVendor, status: "Diputuskan" });
     const match = invList.find((i) => i.name.toLowerCase().includes(String(winRfq.item).toLowerCase().split(" ")[0] ?? ""));
-    const created = add("purchaseOrders", {
+    const created = await add("purchaseOrders", {
       poType: "Besar", item: winRfq.item, itemId: match?.id ?? "", vendor: winVendor,
       req: winRfq.prId, amount: win.price, qty: 1,
       lines: [{ name: winRfq.item, qty: 1, unit: "pcs", price: win.price }],
@@ -410,14 +410,14 @@ export default function Procurement() {
       status: "Diajukan", date: todayISO(), revisi: "", amendments: [], approvals: [],
     }, { action: "memenangkan RFQ", target: `${winRfq.id} → ${winVendor}`, module: "Procurement" });
     const pr = requisitions.find((r) => r.id === winRfq.prId);
-    if (pr) update("requisitions", pr.id, { status: "Sudah PO" });
+    if (pr) await update("requisitions", pr.id, { status: "Sudah PO" });
     toast(`${winRfq.id} dimenangkan ${winVendor} → ${created.id}`);
     setWinRfq(null);
     setWinVendor("");
   };
 
   /* ============ KONSOLIDASI ============ */
-  const saveKonsolidasi = () => {
+  const saveKonsolidasi = async () => {
     if (konsIds.length < 2) { toast("Pilih minimal 2 PR Disetujui untuk konsolidasi", "info"); return; }
     if (!konsVendor) { toast("Vendor wajib dipilih", "info"); return; }
     const prs = requisitions.filter((r) => konsIds.includes(r.id));
@@ -430,13 +430,13 @@ export default function Procurement() {
     }
     const plafon = cekPlafon(konsVendor, total);
     if (plafon && !plafon.ok) { toast(`Plafon kontrak payung terlampaui (pakai ${fmtRupiah(plafon.pakai)} / plafon ${fmtRupiah(plafon.plafon)})`, "info"); return; }
-    const created = add("purchaseOrders", {
+    const created = await add("purchaseOrders", {
       poType: "Besar", item: `Konsolidasi ${prs.length} PR`, itemId: "",
       vendor: konsVendor, req: prs.map((r) => r.id).join(", "), amount: total, qty: prs.length,
       lines, project: konsProject || "-", eta: konsEta || "",
       receivedQty: 0, returnedQty: 0, status: "Draft", date: todayISO(), revisi: "", amendments: [], approvals: [],
     }, { action: "konsolidasi PR ke PO", target: prs.map((r) => r.id).join(", "), module: "Procurement" });
-    prs.forEach((r) => update("requisitions", r.id, { status: "Sudah PO" }));
+    prs.forEach(async (r) => await update("requisitions", r.id, { status: "Sudah PO" }));
     toast(`Konsolidasi ${prs.length} PR → ${created.id}`);
     setKonsIds([]);
     setKonsVendor("");
@@ -451,7 +451,7 @@ export default function Procurement() {
     return Math.round(q * 8 + d * 6 + p * 6);
   })();
 
-  const saveEval = () => {
+  const saveEval = async () => {
     if (!evalPo) return;
     const q = Number(evalQ), d = Number(evalD), p = Number(evalP);
     if (![q, d, p].every((n) => n >= 1 && n <= 5)) { toast("Nilai kualitas, delivery, harga 1–5 wajib diisi", "info"); return; }
@@ -462,8 +462,8 @@ export default function Procurement() {
     const avg = next.reduce((s, x) => s + Number(x.score), 0) / next.length;
     const patch: Record<string, unknown> = { scores: next };
     if (avg < 60) patch.status = "Blacklist";
-    update("vendors", v.id, patch);
-    update("purchaseOrders", evalPo.id, { evaluated: true });
+    await update("vendors", v.id, patch);
+    await update("purchaseOrders", evalPo.id, { evaluated: true });
     log("evaluasi vendor", `${v.name}: skor ${score} dari ${evalPo.id} (rata-rata ${Math.round(avg)})`, "Procurement");
     toast(avg < 60 ? `${v.name} skor ${score} — rata-rata ${Math.round(avg)}, otomatis Blacklist` : `Skor ${v.name}: ${score} tersimpan`);
     setEvalPo(null);
@@ -472,16 +472,16 @@ export default function Procurement() {
     setEvalP("");
   };
 
-  const savePayung = () => {
+  const savePayung = async () => {
     if (!payungVendor) return;
     const plafon = Number(payungPlafon);
     if (payungPlafon.trim() !== "" && (!plafon || plafon <= 0)) { toast("Plafon harus lebih dari 0 bila diisi", "info"); return; }
     if (payungPlafon.trim() === "") {
-      update("vendors", payungVendor.id, { payung: null });
+      await update("vendors", payungVendor.id, { payung: null });
       log("hapus kontrak payung", payungVendor.name, "Procurement");
       toast(`Kontrak payung ${payungVendor.name} dihapus`);
     } else {
-      update("vendors", payungVendor.id, { payung: { periode: payungPeriode.trim() || "-", plafon } });
+      await update("vendors", payungVendor.id, { payung: { periode: payungPeriode.trim() || "-", plafon } });
       log("kontrak payung", `${payungVendor.name}: plafon ${fmtRupiah(plafon)} (${payungPeriode.trim() || "-"})`, "Procurement");
       toast(`Kontrak payung ${payungVendor.name} tersimpan`);
     }
@@ -491,7 +491,7 @@ export default function Procurement() {
   };
 
   /* ============ AMANDEMEN ============ */
-  const confirmAmendNow = () => {
+  const confirmAmendNow = async () => {
     if (!amendPo) return;
     const st = normPo(amendPo.status);
     if (st !== "Disetujui" && st !== "Dikirim") { toast("Amandemen hanya untuk PO Disetujui/Dikirim", "info"); return; }
@@ -506,7 +506,7 @@ export default function Procurement() {
     const newLine = { name: amendForm.name.trim(), qty, unit: amendForm.unit, price };
     const lines = [...poLines(amendPo), newLine];
     const amendments = [...(Array.isArray(amendPo.amendments) ? amendPo.amendments : []), { note: amendForm.note.trim(), date: todayISO(), revisi }];
-    update("purchaseOrders", amendPo.id, { lines, amendments, revisi, amount: lineTotal(lines) });
+    await update("purchaseOrders", amendPo.id, { lines, amendments, revisi, amount: lineTotal(lines) });
     log("amandemen PO", `${amendPo.id} ${revisi}: ${amendForm.note.trim()}`, "Procurement");
     toast(`${amendPo.id} diamandemen (${revisi})`);
     setAmendPo(null);
@@ -564,7 +564,7 @@ export default function Procurement() {
     return Math.round(Math.min(Number(recvPo.amount || 0) * 0.05, Number(recvPo.amount || 0) * (pct / 100) * recvLate));
   })();
 
-  const confirmRecv = (mode: "penuh" | "sebagian") => {
+  const confirmRecv = async (mode: "penuh" | "sebagian") => {
     if (!recvPo) return;
     const qty = Number(recvQty);
     if (!qty || qty <= 0) { toast("Qty terima harus lebih dari 0", "info"); return; }
@@ -577,8 +577,8 @@ export default function Procurement() {
     if (!isBig && !invItem) { toast("PO Kecil: pilih item inventori tujuan (wajib)", "info"); return; }
     if (recvItem && !invItem) { toast("Pilih item inventori tujuan", "info"); return; }
     if (invItem) {
-      update("inventory", invItem.id, { stock: Number(invItem.stock) + qty });
-      add("movements", {
+      await update("inventory", invItem.id, { stock: Number(invItem.stock) + qty });
+      await add("movements", {
         item: invItem.name, itemId: invItem.id, type: "Penerimaan", qty, by: recvPo.id, date: todayISO(), tone: "in",
       }, { action: "menerima barang", target: `${invItem.name} × ${qty} (${recvPo.id})`, module: "Procurement" });
     }
@@ -589,7 +589,7 @@ export default function Procurement() {
     if (late > 0 && pct > 0) {
       dendaRp = Math.round(Math.min(Number(recvPo.amount || 0) * 0.05, Number(recvPo.amount || 0) * (pct / 100) * late));
     }
-    update("purchaseOrders", recvPo.id, {
+    await update("purchaseOrders", recvPo.id, {
       itemId: invItem ? invItem.id : recvPo.itemId,
       item: invItem ? invItem.name : recvPo.item,
       qty: recvPo.qty ?? qty,
@@ -605,7 +605,7 @@ export default function Procurement() {
       const poAmount = Number(recvPo.amount || 0);
       const apAmt = orderedQty > 0 ? Math.round((poAmount * qty) / orderedQty) : poAmount;
       const apTotal = apAmt + dendaRp;
-      add("payables", {
+      await add("payables", {
         v: String(recvPo.vendor ?? ""), kodePembantu: String(recvPo.vendor ?? ""),
         po: recvPo.docNo ? `${recvPo.id} / ${recvPo.docNo}` : String(recvPo.id),
         openAwal: 0, amt: apTotal, due: recvPo.eta || todayISO(),
@@ -628,7 +628,7 @@ export default function Procurement() {
   const maxRet = (po: StoreItem): number =>
     Math.max(0, Number(po.receivedQty ?? po.qty ?? 0) - Number(po.returnedQty ?? 0));
 
-  const confirmRetur = () => {
+  const confirmRetur = async () => {
     if (!retPo) return;
     const qty = Number(retQty);
     if (!qty || qty <= 0) { toast("Qty retur harus lebih dari 0", "info"); return; }
@@ -637,11 +637,11 @@ export default function Procurement() {
     const invItem = invList.find((i) => i.id === retPo.itemId);
     if (!invItem) { toast("PO ini belum terlink ke item inventori", "info"); return; }
     if (Number(invItem.stock) < qty) { toast("Stok tidak cukup untuk retur", "info"); return; }
-    update("inventory", invItem.id, { stock: Number(invItem.stock) - qty });
-    add("movements", {
+    await update("inventory", invItem.id, { stock: Number(invItem.stock) - qty });
+    await add("movements", {
       item: invItem.name, itemId: invItem.id, type: "Retur", qty, by: `${retPo.id} — ${retNote.trim()}`, date: todayISO(), tone: "out",
     }, { action: "meretur barang", target: `${invItem.name} × ${qty} (${retPo.id})`, module: "Procurement" });
-    update("purchaseOrders", retPo.id, { returnedQty: Number(retPo.returnedQty || 0) + qty });
+    await update("purchaseOrders", retPo.id, { returnedQty: Number(retPo.returnedQty || 0) + qty });
     log("meretur barang", `${invItem.name} × ${qty} (${retPo.id}): ${retNote.trim()}`, "Procurement");
     toast(`Retur ${retPo.id} × ${qty} tersimpan`);
     setRetPo(null);
@@ -649,8 +649,8 @@ export default function Procurement() {
     setRetNote("");
   };
 
-  const approvePr = (r: StoreItem, ok: boolean) => {
-    update("requisitions", r.id, { status: ok ? "Disetujui" : "Ditolak" });
+  const approvePr = async (r: StoreItem, ok: boolean) => {
+    await update("requisitions", r.id, { status: ok ? "Disetujui" : "Ditolak" });
     toast(`${r.id} ${ok ? "disetujui" : "ditolak"}`);
   };
 
@@ -955,7 +955,7 @@ export default function Procurement() {
                       )}
                     <div className="mt-3 flex flex-wrap gap-1.5">
                       {(RFQ_NEXT[r.status] ?? []).map((n) => (
-                        <button key={n} className="btn-secondary text-xs" onClick={() => { update("rfqs", r.id, { status: n }); toast(`${r.id} → ${n}`); }}>{n}</button>
+                        <button key={n} className="btn-secondary text-xs" onClick={async () => { await update("rfqs", r.id, { status: n }); toast(`${r.id} → ${n}`); }}>{n}</button>
                       ))}
                       <button className="btn-secondary text-xs" onClick={() => { setQuoteRfq(r); setQuoteForm({ vendor: "", price: "", eta: "" }); }}>Input Penawaran</button>
                       {r.status === "Evaluasi" && quotes.length > 0 && (
@@ -1033,7 +1033,7 @@ export default function Procurement() {
                           <td className="td">
                             <div className="flex flex-wrap gap-1.5">
                               {(r.status === "Draft" || r.status === "Draf") && (
-                                <button className="btn-primary text-xs" onClick={() => { update("requisitions", r.id, { status: "Diajukan" }); log("mengajukan PR", r.id, "Procurement"); toast(`${r.id} diajukan`); }}>Ajukan</button>
+                                <button className="btn-primary text-xs" onClick={async () => { await update("requisitions", r.id, { status: "Diajukan" }); log("mengajukan PR", r.id, "Procurement"); toast(`${r.id} diajukan`); }}>Ajukan</button>
                               )}
                               {PR_PENDING.includes(r.status) && (
                                 <>
@@ -1045,7 +1045,7 @@ export default function Procurement() {
                                 <button className="btn-primary text-xs" onClick={() => { setRfqPr(r); setRfqVendors([]); }}>Buat RFQ</button>
                               )}
                               {r.status === "Ditolak" && (
-                                <button className="btn-secondary text-xs" onClick={() => update("requisitions", r.id, { status: "Menunggu Approval" })}>Ajukan Ulang</button>
+                                <button className="btn-secondary text-xs" onClick={async () => await update("requisitions", r.id, { status: "Menunggu Approval" })}>Ajukan Ulang</button>
                               )}
                               {(r.status === "Sudah PO" || r.status === "RFQ") && <span className="text-xs text-steel-400">—</span>}
                             </div>
@@ -1398,9 +1398,9 @@ export default function Procurement() {
         desc="Vendor Blacklist hanya dibuka lewat eskalasi — tercatat di log."
         confirmLabel="Ya, buka (eskalasi)"
         onCancel={() => setUnblockVendor(null)}
-        onConfirm={() => {
+        onConfirm={async () => {
           if (unblockVendor) {
-            update("vendors", unblockVendor.id, { status: "Aktif" });
+            await update("vendors", unblockVendor.id, { status: "Aktif" });
             log("buka blacklist (eskalasi)", unblockVendor.name, "Procurement");
             toast(`${unblockVendor.name} dibuka kembali (Aktif)`);
           }
@@ -1428,10 +1428,10 @@ export default function Procurement() {
 
       {/* Modal PR */}
       <Modal open={showPr} onClose={() => setShowPr(false)} title="Buat Purchase Requisition"
-        footer={<><button className="btn-secondary" onClick={() => setShowPr(false)}>Batal</button><button className="btn-primary" onClick={() => {
+        footer={<><button className="btn-secondary" onClick={() => setShowPr(false)}>Batal</button><button className="btn-primary" onClick={async () => {
           if (!prForm.item.trim()) { toast("Item wajib diisi", "info"); return; }
           if (!Number(prForm.amount) || Number(prForm.amount) <= 0) { toast("Estimasi nilai harus lebih dari 0", "info"); return; }
-          const created = add("requisitions", { item: prForm.item.trim(), by: prForm.by.trim() || "Anda", amount: Number(prForm.amount), status: "Menunggu Approval" },
+          const created = await add("requisitions", { item: prForm.item.trim(), by: prForm.by.trim() || "Anda", amount: Number(prForm.amount), status: "Menunggu Approval" },
             { action: "mengajukan PR", module: "Procurement" });
           toast(`PR ${created.id} diajukan`); setShowPr(false); setPrForm({ item: "", by: "", amount: "" });
         }}>Ajukan</button></>}>
@@ -1446,9 +1446,9 @@ export default function Procurement() {
 
       {/* Modal vendor */}
       <Modal open={showVendor} onClose={() => setShowVendor(false)} title="Tambah Vendor"
-        footer={<><button className="btn-secondary" onClick={() => setShowVendor(false)}>Batal</button><button className="btn-primary" onClick={() => {
+        footer={<><button className="btn-secondary" onClick={() => setShowVendor(false)}>Batal</button><button className="btn-primary" onClick={async () => {
           if (!vForm.name.trim()) { toast("Nama vendor wajib diisi", "info"); return; }
-          const created = add("vendors", { name: vForm.name.trim(), cat: vForm.cat, onTime: 100, quality: 100, po: 0, status: "Kualifikasi", scores: [] },
+          const created = await add("vendors", { name: vForm.name.trim(), cat: vForm.cat, onTime: 100, quality: 100, po: 0, status: "Kualifikasi", scores: [] },
             { action: "mendaftarkan vendor", module: "Procurement" });
           toast(`Vendor ${created.id} ditambahkan`); setShowVendor(false); setVForm({ name: "", cat: "Baja & Struktur" });
         }}>Simpan</button></>}>

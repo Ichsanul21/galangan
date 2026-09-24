@@ -169,7 +169,7 @@ export default function EquipmentPage() {
   const costRows = Array.from(costByProject.entries());
   const totalCost = costRows.reduce((s, [, v]) => s + v.cost, 0);
 
-  const saveAdd = () => {
+  const saveAdd = async () => {
     if (!form.name.trim() || !form.code.trim()) { toast("Nama & kode wajib diisi", "info"); return; }
     const code = form.code.trim().toUpperCase();
     if (!/^[A-Z0-9-]{3,20}$/.test(code)) { toast("Kode aset harus 3–20 karakter (huruf/angka/-)", "info"); return; }
@@ -188,7 +188,7 @@ export default function EquipmentPage() {
       toast("Harga perolehan harus 0 atau lebih & umur ekonomis lebih dari 0", "info");
       return;
     }
-    const created = add("equipment", {
+    const created = await add("equipment", {
       name: form.name.trim(), category: form.category, code, serial: form.serial.trim(), branch: form.branch,
       status: "Tersedia", util, nextService: "-", lastHours: 0, model: form.model.trim() || "-",
       pic: form.pic.trim(), rate, fuelPrice, acquisitionCost, usefulLife,
@@ -198,10 +198,10 @@ export default function EquipmentPage() {
     setForm({ name: "", category: "Pengangkat", code: "", serial: "", branch: "Samarinda", model: "", pic: "", util: "50", rate: "", fuelPrice: "0", acquisitionCost: "", usefulLife: "" });
   };
 
-  const saveService = () => {
+  const saveService = async () => {
     if (!svcTarget || !svcDate) { toast("Pilih equipment & tanggal servis (wajib diisi)", "info"); return; }
     const target = equipment.find((e) => e.id === svcTarget);
-    update("equipment", svcTarget, { nextService: svcDate });
+    await update("equipment", svcTarget, { nextService: svcDate });
     log("menjadwalkan servis", `${target?.name ?? svcTarget} · ${fmtTanggal(svcDate)}`, "Equipment");
     toast("Jadwal servis diperbarui");
     setShowService(false);
@@ -214,12 +214,12 @@ export default function EquipmentPage() {
     setWoForm({ tanggal: todayISO(), teknisi: "", catatan: "", hours: String(eq.lastHours ?? 0), next: typeof eq.nextService === "string" && eq.nextService !== "-" ? eq.nextService : "" });
   };
 
-  const saveRecord = () => {
+  const saveRecord = async () => {
     if (!recording) return;
     if (!woForm.tanggal || !woForm.teknisi.trim() || !woForm.hours) { toast("Tanggal, teknisi & hour-meter wajib diisi", "info"); return; }
     const hours = Number(woForm.hours);
     if (!Number.isFinite(hours) || hours < 0) { toast("Hour-meter tidak valid", "info"); return; }
-    update("equipment", recording.id, {
+    await update("equipment", recording.id, {
       lastHours: hours,
       nextService: woForm.next || recording.nextService,
       status: recording.status === "Maintenance" ? "Tersedia" : recording.status,
@@ -229,10 +229,10 @@ export default function EquipmentPage() {
     setRecording(null);
   };
 
-  const startMaintenance = () => {
+  const startMaintenance = async () => {
     if (!maintaining) return;
     if (!maintNote.trim() || !maintEta) { toast("Catatan & estimasi selesai wajib diisi", "info"); return; }
-    update("equipment", maintaining.id, { status: "Maintenance", maintenanceNote: maintNote.trim(), maintenanceEta: maintEta });
+    await update("equipment", maintaining.id, { status: "Maintenance", maintenanceNote: maintNote.trim(), maintenanceEta: maintEta });
     log("memasukkan maintenance", `${maintaining.name} · selesai ${fmtTanggal(maintEta)}`, "Equipment");
     toast(`${maintaining.name} masuk maintenance`);
     setMaintaining(null);
@@ -240,8 +240,8 @@ export default function EquipmentPage() {
     setMaintEta("");
   };
 
-  const endMaintenance = (eq: StoreItem) => {
-    update("equipment", eq.id, { status: "Tersedia", maintenanceNote: "", maintenanceEta: "" });
+  const endMaintenance = async (eq: StoreItem) => {
+    await update("equipment", eq.id, { status: "Tersedia", maintenanceNote: "", maintenanceEta: "" });
     log("menyelesaikan maintenance", eq.name, "Equipment");
     toast(`${eq.name} kembali Tersedia`);
   };
@@ -253,13 +253,13 @@ export default function EquipmentPage() {
       return r ? rangesOverlap(a, b, r.mulai, r.selesai) : false;
     });
 
-  const persistBooking = (priority: string) => {
+  const persistBooking = async (priority: string) => {
     const { equip, proyek, date, mulai, selesai } = bookForm;
     const eq = equipment.find((e) => e.name === equip);
     if (!eq) { setBookError("Equipment tidak ditemukan."); return; }
-    const created = add("bookings", { equip, proyek, jam: `${mulai}–${selesai}`, mulai, selesai, status: "Terjadwal", date, priority, branch: String((data.projects ?? []).find((p) => String(p.id) === String(proyek))?.branch ?? (branch !== "SEMUA" ? branch : "")) },
+    const created = await add("bookings", { equip, proyek, jam: `${mulai}–${selesai}`, mulai, selesai, status: "Terjadwal", date, priority, branch: String((data.projects ?? []).find((p) => String(p.id) === String(proyek))?.branch ?? (branch !== "SEMUA" ? branch : "")) },
       { action: "membooking equipment", target: `${equip} · ${priority}`, module: "Equipment" });
-    update("equipment", eq.id, { status: "Terpakai" });
+    await update("equipment", eq.id, { status: "Terpakai" });
     toast(`Booking ${created.id} dibuat (${priority})`);
     setShowBook(false);
     setBookError(null);
@@ -310,7 +310,7 @@ export default function EquipmentPage() {
   const confirmGusur = () => {
     if (!gusur) return;
     const names = gusur.clash.map((c) => `${c.id} (${c.proyek})`).join(", ");
-    gusur.clash.forEach((c) => remove("bookings", c.id));
+    gusur.clash.forEach(async (c) => await remove("bookings", c.id));
     log("menggusur booking", `${bookForm.equip} · ${fmtTanggal(bookForm.date)} menggusur ${names}`, "Equipment");
     persistBooking("Kritis");
     toast(`Booking Kritis menggusur: ${names}`);
@@ -325,7 +325,7 @@ export default function EquipmentPage() {
     setFinishFuel(String(b.fuelLiters ?? 0));
   };
 
-  const confirmFinish = () => {
+  const confirmFinish = async () => {
     if (!finishing) return;
     const hours = Number(finishHours);
     if (!Number.isFinite(hours) || hours <= 0) { toast("Jam pakai harus lebih dari 0", "info"); return; }
@@ -334,10 +334,10 @@ export default function EquipmentPage() {
     if (!Number.isFinite(fuelLiters) || fuelLiters < 0) { toast("BBM liter harus 0 atau lebih", "info"); return; }
     const eq = equipment.find((e) => e.name === finishing.equip);
     const rate = Number(eq?.rate || 0);
-    update("bookings", finishing.id, { status: "Selesai", hours, downtime, fuelLiters, cost: hours * rate });
+    await update("bookings", finishing.id, { status: "Selesai", hours, downtime, fuelLiters, cost: hours * rate });
     if (eq) {
       const stillActive = bookings.some((o) => o.id !== finishing.id && o.equip === eq.name && o.status !== "Selesai");
-      update("equipment", eq.id, {
+      await update("equipment", eq.id, {
         lastHours: Number(eq.lastHours || 0) + hours,
         status: stillActive ? eq.status : "Tersedia",
       });
@@ -350,13 +350,13 @@ export default function EquipmentPage() {
     setFinishFuel("0");
   };
 
-  const saveCalibration = () => {
+  const saveCalibration = async () => {
     if (!calForm.equipmentId || !calForm.item.trim() || !calForm.due) { toast("Equipment, item ukur & due date wajib diisi", "info"); return; }
     if (calForm.due < today) { toast("Due date kalibrasi tidak boleh di masa lalu", "info"); return; }
     const dupe = calibrations.some((c) => c.equipmentId === calForm.equipmentId && String(c.item).toLowerCase() === calForm.item.trim().toLowerCase() && c.status !== "Selesai");
     if (dupe) { toast("Jadwal kalibrasi terbuka untuk item ini sudah ada", "info"); return; }
     const eq = equipment.find((e) => e.id === calForm.equipmentId);
-    const created = add("calibrations", {
+    const created = await add("calibrations", {
       equipmentId: calForm.equipmentId, item: calForm.item.trim(), due: calForm.due, status: "Terjadwal", cert: "",
     }, { action: "menjadwalkan kalibrasi", target: `${eq?.name ?? calForm.equipmentId} · ${fmtTanggal(calForm.due)}`, module: "Equipment" });
     toast(`Kalibrasi ${created.id} dijadwalkan`);
@@ -364,10 +364,10 @@ export default function EquipmentPage() {
     setCalForm({ equipmentId: "", item: "", due: "" });
   };
 
-  const confirmCalFinish = () => {
+  const confirmCalFinish = async () => {
     if (!finishingCal) return;
     if (!calCert.trim()) { toast("No. sertifikat wajib diisi saat menyelesaikan kalibrasi", "info"); return; }
-    update("calibrations", finishingCal.id, { status: "Selesai", cert: calCert.trim() });
+    await update("calibrations", finishingCal.id, { status: "Selesai", cert: calCert.trim() });
     log("menyelesaikan kalibrasi", `${finishingCal.id} · sertifikat ${calCert.trim()}`, "Equipment");
     toast(`Kalibrasi ${finishingCal.id} selesai`);
     setFinishingCal(null);

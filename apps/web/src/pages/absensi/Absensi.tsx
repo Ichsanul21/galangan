@@ -102,7 +102,7 @@ export default function Absensi() {
   const persist = (overwrite: boolean) => {
     let created = 0;
     let updated = 0;
-    activeEmps.forEach((e) => {
+    activeEmps.forEach(async (e) => {
       const r = rowFor(e.id);
       const ot = r.status === "Hadir" ? Number(r.overtime || 0) : 0;
       const payload = {
@@ -118,14 +118,14 @@ export default function Absensi() {
       const existing = data.attendance.find((a) => a.employeeId === e.id && a.date === date && a.shift === shift);
       if (existing) {
         if (overwrite) {
-          update("attendance", existing.id, {
+          await update("attendance", existing.id, {
             ...payload,
             otStatus: ot > 0 ? String(existing.otStatus ?? "") || "Diajukan" : "",
           });
           updated += 1;
         }
       } else {
-        add("attendance", { ...payload, otStatus: ot > 0 ? "Diajukan" : "" }, undefined);
+        await add("attendance", { ...payload, otStatus: ot > 0 ? "Diajukan" : "" }, undefined);
         created += 1;
       }
     });
@@ -200,14 +200,14 @@ export default function Absensi() {
   const empNameOf = (id: string): string => data.employees.find((e) => e.id === id)?.name ?? id;
 
   /* ---------- persetujuan lembur ---------- */
-  const approveOT = (a: StoreItem) => {
-    update("attendance", a.id, { otStatus: "Disetujui" });
+  const approveOT = async (a: StoreItem) => {
+    await update("attendance", a.id, { otStatus: "Disetujui" });
     log("menyetujui lembur", `${a.id} · ${empNameOf(String(a.employeeId))} · ${Number(a.overtime || 0)} jam`, "Absensi");
     toast(`${a.id} disetujui — masuk hitungan payroll`);
   };
 
-  const rejectOT = (a: StoreItem) => {
-    update("attendance", a.id, { otStatus: "Ditolak" });
+  const rejectOT = async (a: StoreItem) => {
+    await update("attendance", a.id, { otStatus: "Ditolak" });
     log("menolak lembur", `${a.id} · ${empNameOf(String(a.employeeId))}`, "Absensi");
     toast(`${a.id} ditolak`);
   };
@@ -218,7 +218,7 @@ export default function Absensi() {
       toast("Tidak ada lembur yang menunggu persetujuan", "info");
       return;
     }
-    pending.forEach((a) => update("attendance", a.id, { otStatus: "Disetujui" }));
+    pending.forEach(async (a) => await update("attendance", a.id, { otStatus: "Disetujui" }));
     log("menyetujui lembur massal", `${month} · ${pending.length} baris`, "Absensi");
     toast(`${pending.length} lembur disetujui`);
   };

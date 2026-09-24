@@ -171,17 +171,17 @@ export default function ProjectDetail() {
 
   const baseline = (project.wbsBaseline ?? null) as WbsBaseline | null;
 
-  const snapshotBaseline = () => {
-    update("projects", pid, { wbsBaseline: { at: todayISO(), wbs: JSON.parse(JSON.stringify(wbs)) as WbsExt[] } });
+  const snapshotBaseline = async () => {
+    await update("projects", pid, { wbsBaseline: { at: todayISO(), wbs: JSON.parse(JSON.stringify(wbs)) as WbsExt[] } });
     log("membuat baseline WBS", `${pid} · ${wbs.length} tahapan`, "Proyek");
     toast("Baseline WBS tersimpan");
   };
 
-  const saveCo = () => {
+  const saveCo = async () => {
     if (!coForm.title.trim()) { toast("Judul perubahan wajib diisi", "info"); return; }
     if (coForm.impact === "" || !Number.isFinite(Number(coForm.impact))) { toast("Dampak biaya wajib diisi (boleh negatif)", "info"); return; }
     if (!coForm.requestedBy.trim()) { toast("Pemohon wajib diisi", "info"); return; }
-    add("changeOrders", {
+    await add("changeOrders", {
       project: pid, title: coForm.title.trim(), impact: Number(coForm.impact),
       status: "Diajukan", requestedBy: coForm.requestedBy.trim(), date: coForm.date || todayISO(),
     }, { action: "mengajukan change order", module: "Proyek" });
@@ -190,17 +190,17 @@ export default function ProjectDetail() {
     setShowCo(false);
   };
 
-  const setCoStatus = (id: string, status: string) => {
-    update("changeOrders", id, { status });
+  const setCoStatus = async (id: string, status: string) => {
+    await update("changeOrders", id, { status });
     log("mengubah change order", `${id} — ${status}`, "Proyek");
     toast(`Change order ${status.toLowerCase()}`);
   };
 
   // Garansi/DLP: dibuat sekali saat proyek Selesai (pintasan di tab Terkait).
-  const createWarranty = () => {
+  const createWarranty = async () => {
     const year = todayISO().slice(0, 4);
     const seq = (data.warranties ?? []).filter((w) => String(w.id ?? "").startsWith(`WRT-${year}-`)).length + 1;
-    const created = add("warranties", {
+    const created = await add("warranties", {
       id: `WRT-${year}-${String(seq).padStart(3, "0")}`,
       projectId: pid, vessel: project.vessel, start: todayISO(), months: 12,
       status: "Aktif", branch: String(project.branch ?? ""),
@@ -220,14 +220,14 @@ export default function ProjectDetail() {
     setShowRisk(true);
   };
 
-  const saveRisk = () => {
+  const saveRisk = async () => {
     if (!riskForm.title.trim()) { toast("Judul risiko wajib diisi", "info"); return; }
     if (riskEditId) {
-      update("risks", riskEditId, { title: riskForm.title.trim(), likelihood: riskForm.likelihood, impact: riskForm.impact, mitigation: riskForm.mitigation.trim(), status: riskForm.status });
+      await update("risks", riskEditId, { title: riskForm.title.trim(), likelihood: riskForm.likelihood, impact: riskForm.impact, mitigation: riskForm.mitigation.trim(), status: riskForm.status });
       log("memperbarui risiko", `${riskEditId} · ${riskForm.title.trim()}`, "Proyek");
       toast("Risiko diperbarui");
     } else {
-      add("risks", {
+      await add("risks", {
         project: pid, title: riskForm.title.trim(), likelihood: riskForm.likelihood,
         impact: riskForm.impact, mitigation: riskForm.mitigation.trim(), status: riskForm.status,
       }, { action: "mencatat risiko", module: "Proyek" });
@@ -256,14 +256,14 @@ export default function ProjectDetail() {
     return wbs.find((t) => t.task === ms || ms.startsWith(t.task) || ms.includes(t.task));
   };
 
-  const saveBast = () => {
+  const saveBast = async () => {
     if (!bastForm.milestone) { toast("Pilih milestone WBS dulu", "info"); return; }
     if (!bastForm.tanggal) { toast("Tanggal BAST wajib diisi", "info"); return; }
     if (!bastForm.signer.trim()) { toast("Penandatangan wajib diisi", "info"); return; }
     const amt = bastForm.amount === "" ? 0 : Number(bastForm.amount);
     if (bastForm.amount !== "" && (!Number.isFinite(amt) || amt < 0)) { toast("Nominal harus angka 0 atau lebih", "info"); return; }
     const id = nextBastId(bastForm.tanggal);
-    add("bast", {
+    await add("bast", {
       id, projectId: pid, milestone: bastForm.milestone, tanggal: bastForm.tanggal,
       penandatangan: bastForm.signer.trim(), lampiran: bastForm.lampiran.trim(),
       amount: amt > 0 ? amt : boqTotal, status: "Draft",
@@ -273,7 +273,7 @@ export default function ProjectDetail() {
     setShowBast(false);
   };
 
-  const advanceBast = (b: StoreItem, next: string) => {
+  const advanceBast = async (b: StoreItem, next: string) => {
     const order = ["Draft", "Diajukan", "Disetujui"];
     const curIdx = order.indexOf(String(b.status));
     const nextIdx = order.indexOf(next);
@@ -300,7 +300,7 @@ export default function ProjectDetail() {
       } else {
         due = todayISO();
       }
-      add("invoices", {
+      await add("invoices", {
         id: invId, client: project.client, project: pid, amount,
         due, status: "Draft", paymentTerm: `Termin ${String(b.milestone)}`,
         billingType: "Milestone", type: "Milestone", milestoneRef: `BAST ${String(b.id)}`,
@@ -312,20 +312,20 @@ export default function ProjectDetail() {
       log("mengajukan BAST", `${String(b.id)} → ${next}`, "Proyek");
       toast(`BAST ${next.toLowerCase()}`);
     }
-    update("bast", String(b.id), { status: next });
+    await update("bast", String(b.id), { status: next });
   };
 
   // E1: sub-stage desain + class approval, tersimpan di project.designStages.
   const designStages = (project.designStages ?? []) as { name: string; status: string; society: string; date: string; doc: string }[];
   const classApproval = designStages.find((s) => s.name === "Class Approval");
 
-  const saveDesignStage = (name: string, patch: Record<string, string>) => {
+  const saveDesignStage = async (name: string, patch: Record<string, string>) => {
     const current = DESIGN_STAGE_NAMES.map((n) => {
       const found = designStages.find((s) => s.name === n);
       return found ?? { name: n, status: "Belum", society: "BKI", date: "", doc: "" };
     });
     const next = current.map((s) => (s.name === name ? { ...s, ...patch } : s));
-    update("projects", pid, { designStages: next });
+    await update("projects", pid, { designStages: next });
     log("memperbarui sub-stage desain", `${pid} · ${name}`, "Proyek");
     toast(`${name} diperbarui`);
   };
@@ -343,11 +343,11 @@ export default function ProjectDetail() {
     return `${prefix}${String(max + 1).padStart(3, "0")}`;
   };
 
-  const saveTrial = () => {
+  const saveTrial = async () => {
     if (!trialForm.tanggal) { toast("Tanggal trial wajib diisi", "info"); return; }
     if (!trialForm.parameter.trim()) { toast("Parameter / catatan trial wajib diisi", "info"); return; }
     const id = nextTrialId(trialForm.tanggal);
-    add("trials", {
+    await add("trials", {
       id, projectId: pid, tanggal: trialForm.tanggal, parameter: trialForm.parameter.trim(),
       punchList: trialForm.punchList.trim(), hasil: "Berjalan", baRef: trialForm.baRef.trim(),
     }, { action: "membuat sea trial", target: `${id} · ${pid}`, module: "Proyek" });
@@ -356,14 +356,14 @@ export default function ProjectDetail() {
     setShowTrial(false);
   };
 
-  const advanceTrial = (t: StoreItem, hasil: string) => {
+  const advanceTrial = async (t: StoreItem, hasil: string) => {
     if (String(t.hasil) === hasil) return;
     if (hasil === "Lolos") {
       // E5: trial exit butuh Class Survey row yang ter-link ke trial ini.
       const linked = (data.surveys ?? []).some((s) => String(s.linkedTrial ?? "") === String(t.id));
       if (!linked) { toast("Butuh Class Survey ter-link sebelum trial Lolos (isi di modul Kapal)", "info"); return; }
       const bastId = nextBastId(String(t.tanggal ?? todayISO()));
-      add("bast", {
+      await add("bast", {
         id: bastId, projectId: pid, milestone: `Sea Trial — ${String(t.parameter ?? "")}`,
         tanggal: String(t.tanggal ?? todayISO()), penandatangan: "", lampiran: String(t.punchList ?? ""),
         amount: boqTotal, status: "Draft",
@@ -372,12 +372,12 @@ export default function ProjectDetail() {
     } else {
       toast(`Trial ${String(t.id)} ditandai ${hasil}`, "info");
     }
-    update("trials", String(t.id), { hasil });
+    await update("trials", String(t.id), { hasil });
     log("memperbarui hasil trial", `${String(t.id)} → ${hasil}`, "Proyek");
   };
 
   // E7: QA gate + history otomatis saat Selesai.
-  const changeStatus = (next: string) => {
+  const changeStatus = async (next: string) => {
     if (next === "Selesai" && project.status !== "Selesai") {
       const openNcr = (data.ncr ?? []).filter((n) => n.project === pid && n.status !== "Tertutup");
       if (openNcr.length > 0) { toast(`Masih ada ${openNcr.length} NCR terbuka — tutup dulu sebelum Selesai`, "info"); return; }
@@ -385,7 +385,7 @@ export default function ProjectDetail() {
       if (itpHold.length > 0) { toast(`Masih ada ${itpHold.length} ITP hold (status NCR) — selesaikan dulu`, "info"); return; }
       const vsl = data.vessels.find((x) => x.name === project.vessel);
       if (vsl) {
-        update("vessels", vsl.id, {
+        await update("vessels", vsl.id, {
           history: [...(vsl.history ?? []), { date: todayISO(), event: `Proyek ${pid} selesai — serah terima`, type: "Delivery" }],
           dockHistory: [...(vsl.dockHistory ?? []), { date: todayISO(), dock: "Galangan", scope: `Penyelesaian proyek ${pid}`, result: "Selesai", nextDue: todayISO() }],
         });
@@ -394,20 +394,20 @@ export default function ProjectDetail() {
     } else {
       log("mengubah status", `${pid} → ${next}`, "Proyek");
     }
-    update("projects", pid, { status: next });
+    await update("projects", pid, { status: next });
     toast(`Status menjadi ${next}`);
   };
 
-  const saveScope = () => {
+  const saveScope = async () => {
     if (!scopeVal.trim()) { toast("Isi lingkup dulu", "info"); return; }
-    update("projects", pid, { scope: [...(project.scope ?? []), scopeVal.trim()] });
+    await update("projects", pid, { scope: [...(project.scope ?? []), scopeVal.trim()] });
     log("menambah lingkup", `${pid} · ${scopeVal.trim()}`, "Proyek");
     toast("Lingkup ditambahkan");
     setScopeVal("");
     setShowScope(false);
   };
 
-  const saveWbsTask = () => {
+  const saveWbsTask = async () => {
     if (!wbsTaskUpdate) return;
     const hours = Number(wbsUpdateForm.hours) || 0;
     const prog = Math.max(0, Math.min(100, Number(wbsUpdateForm.progress)));
@@ -429,15 +429,15 @@ export default function ProjectDetail() {
           }
         : w
     );
-    setWbs(pid, updated);
-    update("projects", pid, { progress: weightedProgress(updated) });
+    await setWbs(pid, updated);
+    await update("projects", pid, { progress: weightedProgress(updated) });
     log("mengupdate progres WBS", `${wbsTaskUpdate} → ${prog}% (${status})`, "Proyek");
     toast("Progres tugas diperbarui");
     setWbsTaskUpdate(null);
     setWbsUpdateForm({ hours: "", material: "", status: "Sedang", progress: "", predecessor: "", station: "", photoNote: "", dft: "" });
   };
 
-  const saveWbs = () => {
+  const saveWbs = async () => {
     if (!wbsForm.task.trim()) { toast("Nama tahapan wajib diisi", "info"); return; }
     if (wbs.some((w) => w.task === wbsForm.task.trim())) { toast("Nama tahapan sudah ada", "info"); return; }
     const weight = Number(wbsForm.weight) || 0;
@@ -447,8 +447,8 @@ export default function ProjectDetail() {
     const next = [...wbs, { task: wbsForm.task.trim(), start: wbsForm.start || "-", end: wbsForm.end || "-", progress: Number(wbsForm.progress) || 0, weight, ...(pred ? { predecessor: pred } : {}) }];
     const totalW = next.reduce((s, w) => s + Number(w.weight || 0), 0);
     if (totalW !== 100) { toast(`Total bobot menjadi ${totalW}% — harus tepat 100%`, "info"); return; }
-    setWbs(pid, next);
-    update("projects", pid, { progress: weightedProgress(next) });
+    await setWbs(pid, next);
+    await update("projects", pid, { progress: weightedProgress(next) });
     log("menambah tahapan WBS", `${pid} · ${wbsForm.task.trim()}`, "Proyek");
     toast("Tahapan ditambahkan");
     setShowWbs(false);
@@ -758,7 +758,7 @@ export default function ProjectDetail() {
                       <p className="truncate text-sm font-semibold text-navy-900">{e.name}</p>
                       <p className="text-xs text-steel-500">{e.role} · {e.dept}</p>
                     </div>
-                    <button className="rounded p-1 text-rose-400 hover:bg-rose-50" title="Keluarkan" onClick={() => { setTeam(pid, teamIds.filter((t) => t !== e.id)); toast(`${e.name} dikeluarkan dari tim`, "info"); }}>
+                    <button className="rounded p-1 text-rose-400 hover:bg-rose-50" title="Keluarkan" onClick={async () => { await setTeam(pid, teamIds.filter((t) => t !== e.id)); toast(`${e.name} dikeluarkan dari tim`, "info"); }}>
                       <Trash2 className="h-4 w-4" />
                     </button>
                   </Card>
@@ -1076,10 +1076,10 @@ export default function ProjectDetail() {
 
       {/* Modal share */}
       <Modal open={showShare} onClose={() => setShowShare(false)} title="Bagikan Laporan ke Atasan"
-        footer={<><button className="btn-secondary" onClick={() => setShowShare(false)}>Batal</button><button className="btn-primary" onClick={() => {
+        footer={<><button className="btn-secondary" onClick={() => setShowShare(false)}>Batal</button><button className="btn-primary" onClick={async () => {
           if (!shareForm.docId || !shareForm.to) { toast("Pilih dokumen dan tujuan", "info"); return; }
           const doc = docs.find((d: any) => d.id === shareForm.docId);
-          update("documents", shareForm.docId, { sharedWith: [...(doc?.sharedWith ?? []), shareForm.to] });
+          await update("documents", shareForm.docId, { sharedWith: [...(doc?.sharedWith ?? []), shareForm.to] });
           log("berbagi dokumen dengan atasan", `${shareForm.docId} → ${shareForm.to}`, "Dokumen");
           toast(`Dokumen dibagikan ke ${shareForm.to}`);
           setShowShare(false);
@@ -1150,10 +1150,10 @@ export default function ProjectDetail() {
 
       {/* Modal tim */}
       <Modal open={showTeam} onClose={() => setShowTeam(false)} title="Tambah Anggota Tim"
-        footer={<><button className="btn-secondary" onClick={() => setShowTeam(false)}>Batal</button><button className="btn-primary" onClick={() => {
+        footer={<><button className="btn-secondary" onClick={() => setShowTeam(false)}>Batal</button><button className="btn-primary" onClick={async () => {
           if (!teamPick) { toast("Pilih karyawan dulu", "info"); return; }
           if (teamIds.includes(teamPick)) { toast("Sudah menjadi anggota", "info"); return; }
-          setTeam(pid, [...teamIds, teamPick]);
+          await setTeam(pid, [...teamIds, teamPick]);
           log("menambah anggota tim", `${pid} · ${data.employees.find((e) => e.id === teamPick)?.name}`, "Proyek");
           toast("Anggota ditambahkan"); setShowTeam(false); setTeamPick("");
         }}>Tambah</button></>}>
@@ -1169,9 +1169,9 @@ export default function ProjectDetail() {
 
       {/* Modal dokumen proyek */}
       <Modal open={showDoc} onClose={() => setShowDoc(false)} title="Tambah Dokumen Proyek" subtitle={pid}
-        footer={<><button className="btn-secondary" onClick={() => setShowDoc(false)}>Batal</button><button className="btn-primary" onClick={() => {
+        footer={<><button className="btn-secondary" onClick={() => setShowDoc(false)}>Batal</button><button className="btn-primary" onClick={async () => {
           if (!docTitle.trim()) { toast("Judul wajib diisi", "info"); return; }
-          add("documents", { title: docTitle.trim(), type: docType, project: pid, vessel: project.vessel, version: "v1.0", status: "Draft", updated: new Date().toISOString().slice(0, 10), owner: "Anda", sharedWith: [], approvalStatus: "Draft", fileName: docFile.trim() || "-" },
+          await add("documents", { title: docTitle.trim(), type: docType, project: pid, vessel: project.vessel, version: "v1.0", status: "Draft", updated: new Date().toISOString().slice(0, 10), owner: "Anda", sharedWith: [], approvalStatus: "Draft", fileName: docFile.trim() || "-" },
             { action: "mengarsipkan dokumen", module: "Dokumen" });
           toast("Dokumen ditambahkan"); setShowDoc(false); setDocTitle(""); setDocFile("");
         }}>Simpan</button></>}>
@@ -1197,10 +1197,10 @@ export default function ProjectDetail() {
       </Modal>
       <ConfirmModal open={delScope !== null} title="Hapus lingkup?" desc={`"${delScope}" akan dihapus dari ruang lingkup.`}
         confirmLabel="Ya, hapus" danger onCancel={() => setDelScope(null)}
-        onConfirm={() => { if (delScope) update("projects", pid, { scope: (project.scope ?? []).filter((s: string) => s !== delScope) }); setDelScope(null); }} />
+        onConfirm={async () => { if (delScope) await update("projects", pid, { scope: (project.scope ?? []).filter((s: string) => s !== delScope) }); setDelScope(null); }} />
       <ConfirmModal open={showDelBaseline} title="Hapus baseline?" desc="Snapshot baseline WBS proyek ini akan dihapus dan tabel perbandingan disembunyikan."
         confirmLabel="Ya, hapus" danger onCancel={() => setShowDelBaseline(false)}
-        onConfirm={() => { update("projects", pid, { wbsBaseline: undefined }); log("menghapus baseline WBS", pid, "Proyek"); toast("Baseline dihapus", "info"); setShowDelBaseline(false); }} />
+        onConfirm={async () => { await update("projects", pid, { wbsBaseline: undefined }); log("menghapus baseline WBS", pid, "Proyek"); toast("Baseline dihapus", "info"); setShowDelBaseline(false); }} />
     </div>
   );
 }

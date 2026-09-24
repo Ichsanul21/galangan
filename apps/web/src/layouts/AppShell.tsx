@@ -39,7 +39,7 @@ import { loadNotifRead, saveNotifRead } from "../utils/notifRead";
 
 export default function AppShell() {
   const { user, logout } = useAuth();
-  const { data, reset, branch, setBranch } = useStore();
+  const { data, reset, branch, setBranch, backendMode, backendError } = useStore();
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);
   const [userOpen, setUserOpen] = useState(false);
@@ -246,6 +246,12 @@ export default function AppShell() {
             <div className="flex items-center gap-2 text-sm text-steel-500">
               <span className="font-medium text-navy-800">Galangan</span>
               <span>/</span>
+              <span
+                title={backendError ?? (backendMode === "remote" ? "Tersambung ke backend" : "Berjalan lokal (VITE_API_URL kosong / belum login)")}
+                className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${backendMode === "remote" && !backendError ? "bg-emerald-100 text-emerald-700" : "bg-steel-100 text-steel-500"}`}
+              >
+                {backendMode === "remote" && !backendError ? "● Server" : "● Lokal"}
+              </span>
               <select
                 className="input w-auto border-0 bg-transparent py-1 text-sm font-medium text-navy-800 shadow-none"
                 value={branch}

@@ -1,6 +1,13 @@
 // Kontrak repository async — dipakai halaman hari ini via adapter lokal,
 // besok via adapter HTTP tanpa mengubah halaman.
 // Bentuk record longgar (StoreItem) agar kompatibel dengan store saat ini.
+//
+// Format baris backend (services/api, envelope sudah dibuka oleh apiFetch):
+// - GET /api/<table>      → BackendRow[]  ({ id, branch, data, updated_at })
+// - GET /api/<table>/:id  → BackendRow
+// - POST /api/<table>     ← { id?, branch?, data }  → BackendRow (201)
+// - PATCH /api/<table>/:id← { branch?, data? }      → BackendRow
+// - DELETE /api/<table>/:id → { id, deleted: true }
 
 import type { StoreItem } from "../data/store";
 import { apiFetch, isBackendConfigured } from "./http";
@@ -46,13 +53,67 @@ export function localRepository(prefix: string, snapshot: Snapshot, onWrite?: ()
   };
 }
 
+/* ============ PEMETAAN BARIS BACKEND ⇄ StoreItem ============ */
+
+interface BackendRow {
+  id: string;
+  branch: string;
+  data: Record<string, unknown>;
+  updated_at: string;
+}
+
+function rowToItem(row: BackendRow): StoreItem {
+  const item: StoreItem = { ...(row.data ?? {}), id: row.id };
+  if (row.branch) item.branch = row.branch;
+  return item;
+}
+
+function itemToCreateBody(item: Omit<StoreItem, "id"> & { id?: string }): {
+  id?: string;
+  branch: string;
+  data: Record<string, unknown>;
+} {
+  const { id, branch, ...rest } = item;
+  return {
+    ...(id ? { id } : {}),
+    branch: typeof branch === "string" ? branch : "",
+    data: rest as Record<string, unknown>,
+  };
+}
+
+function patchToUpdateBody(patch: Record<string, unknown>): {
+  branch?: string;
+  data?: Record<string, unknown>;
+} {
+  const { branch, ...rest } = patch;
+  return {
+    ...(typeof branch === "string" ? { branch } : {}),
+    data: rest as Record<string, unknown>,
+  };
+}
+
 /** Adapter HTTP: dipakai otomatis saat VITE_API_URL diisi. */
 export function remoteRepository(resource: string): Repository {
+  const base = `/api/${resource}`;
   return {
-    list: () => apiFetch<StoreItem[]>(`/api/${resource}`),
-    create: (item) => apiFetch<StoreItem>(`/api/${resource}`, { method: "POST", body: JSON.stringify(item) }),
-    patch: (id, patch) => apiFetch<StoreItem>(`/api/${resource}/${encodeURIComponent(id)}`, { method: "PATCH", body: JSON.stringify(patch) }),
-    remove: (id) => apiFetch<void>(`/api/${resource}/${encodeURIComponent(id)}`, { method: "DELETE" }),
+    async list() {
+      const rows = await apiFetch<BackendRow[]>(base);
+      return (Array.isArray(rows) ? rows : []).map(rowToItem);
+    },
+    async create(item) {
+      const row = await apiFetch<BackendRow>(base, { method: "POST", body: JSON.stringify(itemToCreateBody(item)) });
+      return rowToItem(row);
+    },
+    async patch(id, patch) {
+      const row = await apiFetch<BackendRow>(`${base}/${encodeURIComponent(id)}`, {
+        method: "PATCH",
+        body: JSON.stringify(patchToUpdateBody(patch)),
+      });
+      return rowToItem(row);
+    },
+    async remove(id) {
+      await apiFetch<unknown>(`${base}/${encodeURIComponent(id)}`, { method: "DELETE" });
+    },
   };
 }
 

@@ -150,12 +150,12 @@ export default function Vessels() {
 
   const slotCountFor = (name: string) => data.dockSlots.filter((s) => s.vessel === name).length;
 
-  const save = () => {
+  const save = async () => {
     const err = validateForm(form, vessels);
     if (err) { toast(err, "info"); return; }
     const dimsZero = [form.loa, form.beam, form.draft, form.bollard].some((n) => Number(n) <= 0);
     const warnZero = form.status === "Dalam Pembangunan" && dimsZero;
-    const created = add("vessels", {
+    const created = await add("vessels", {
       ...formToPayload(form),
       built: new Date().getFullYear(),
       certificates: [],
@@ -171,11 +171,11 @@ export default function Vessels() {
     setEditForm(vesselToForm(v));
   };
 
-  const saveEdit = () => {
+  const saveEdit = async () => {
     if (!editingId) return;
     const err = validateForm(editForm, vessels, editingId);
     if (err) { toast(err, "info"); return; }
-    update("vessels", editingId, formToPayload(editForm));
+    await update("vessels", editingId, formToPayload(editForm));
     toast("Data kapal diperbarui");
     setEditingId(null);
   };

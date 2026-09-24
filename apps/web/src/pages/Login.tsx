@@ -3,6 +3,7 @@ import { useNavigate, useLocation } from "react-router-dom";
 import { motion } from "framer-motion";
 import { Anchor, Lock, User, AlertCircle, ArrowRight, ArrowUpRight, Globe2, Container, ShipWheel } from "lucide-react";
 import { useAuth, demoUsers } from "../auth/auth";
+import { useStore } from "../data/store";
 import { toast } from "../components/ui";
 
 /* Latar peta rute abstrak — garis lintang/bujur */
@@ -98,6 +99,7 @@ function ShipScene() {
 
 export default function Login() {
   const { login } = useAuth();
+  const { resync } = useStore();
   const navigate = useNavigate();
   const location = useLocation();
   const from = (location.state as { from?: string } | null)?.from ?? "/dashboard";
@@ -124,7 +126,7 @@ export default function Login() {
     }
   };
 
-  const submit = (e: React.FormEvent) => {
+  const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     const now = Date.now();
     if (now < lockedUntil) {
@@ -136,7 +138,7 @@ export default function Login() {
       fail("Format email tidak valid. Gunakan alamat email yang benar.");
       return;
     }
-    const err = login(username, password);
+    const err = await login(username, password);
     if (err) {
       registerFail(err);
       return;
@@ -144,20 +146,22 @@ export default function Login() {
     setFails(0);
     setLockedUntil(0);
     toast("Selamat datang kembali!");
+    await resync().catch(() => undefined);
     navigate(from, { replace: true });
   };
 
-  const quickLogin = (u: string) => {
+  const quickLogin = async (u: string) => {
     if (Date.now() < lockedUntil) {
       fail("Terlalu banyak percobaan gagal. Tunggu sebentar sebelum mencoba lagi.");
       return;
     }
     const found = demoUsers.find((x) => x.username.toLowerCase() === u.toLowerCase());
-    const err = login(u, found?.password ?? "password@123");
+    const err = await login(u, found?.password ?? "password@123");
     if (!err) {
       setFails(0);
       setLockedUntil(0);
       toast(`Masuk sebagai ${found?.name ?? "akun demo"}`);
+      await resync().catch(() => undefined);
       navigate(from, { replace: true });
     }
   };

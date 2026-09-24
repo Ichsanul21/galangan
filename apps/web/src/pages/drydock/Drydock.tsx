@@ -99,7 +99,7 @@ export default function Drydock() {
     setUtilDraft({ power: String(s.powerKwh ?? ""), water: String(s.waterM3 ?? "") });
   };
 
-  const saveUtility = () => {
+  const saveUtility = async () => {
     if (!sel) return;
     const power = Number(utilDraft.power || 0);
     const water = Number(utilDraft.water || 0);
@@ -107,16 +107,16 @@ export default function Drydock() {
       toast("Konsumsi listrik/air harus angka 0 atau lebih", "info");
       return;
     }
-    update("dockSlots", sel.id, { powerKwh: power, waterM3: water });
+    await update("dockSlots", sel.id, { powerKwh: power, waterM3: water });
     log("mencatat konsumsi slot", `${sel.id} · ${power} kWh · ${water} m³`, "Drydock");
     toast(`Konsumsi slot ${sel.id} disimpan`);
   };
 
-  const toggleUndock = (idx: number) => {
+  const toggleUndock = async (idx: number) => {
     if (!sel) return;
     const next = undockList(sel);
     next[idx] = !next[idx];
-    update("dockSlots", sel.id, { undock: next });
+    await update("dockSlots", sel.id, { undock: next });
     if (next.every(Boolean)) {
       log("menyelesaikan docking report", `${sel.id} · undocking checklist lengkap`, "Drydock");
       // E7: undock lengkap → append vessel history.
@@ -124,7 +124,7 @@ export default function Drydock() {
       const vesselName = proj?.vessel ?? String(sel.vessel ?? "").split(" + ")[0];
       const vsl = data.vessels.find((x) => x.name === vesselName);
       if (vsl) {
-        update("vessels", vsl.id, {
+        await update("vessels", vsl.id, {
           history: [...(vsl.history ?? []), { date: new Date().toISOString().slice(0, 10), event: `Undocking selesai — slot ${sel.id} (${sel.dockId})`, type: "Docking" }],
         });
       }
@@ -192,7 +192,7 @@ export default function Drydock() {
     ? dockSlots
     : dockSlots.filter((s) => slotStatus(s, data.projects) === statusFilter);
 
-  const saveBooking = () => {
+  const saveBooking = async () => {
     const proj = data.projects.find((p) => p.id === bookForm.project);
     if (!proj) { setBookError("Pilih proyek dulu."); return; }
     const from = Number(bookForm.from);
@@ -217,7 +217,7 @@ export default function Drydock() {
     // No. Dock Space SB: pakai input atau auto (format nnn/DS-SB/SMD/m/yyyy).
     const dsRef = bookForm.dsRef.trim() || sbDsNumber(nextDsSeq());
     const vesselFull = bookForm.vessel2.trim() ? `${proj.vessel} + ${bookForm.vessel2.trim()}` : proj.vessel;
-    const created = add("dockSlots", {
+    const created = await add("dockSlots", {
       dockId: bookForm.dockId, project: proj.id, vessel: vesselFull, from, to,
       priority: bookForm.priority, ratePerDay, dsRef,
       startDate: bookForm.startDate || undefined,
@@ -229,7 +229,7 @@ export default function Drydock() {
     setBookError(null);
   };
 
-  const saveMaintBlock = () => {
+  const saveMaintBlock = async () => {
     const from = Number(maintForm.from);
     const to = Number(maintForm.to);
     if (!Number.isFinite(from) || !Number.isFinite(to) || to <= from || from < 0 || to > DAYS) {
@@ -238,7 +238,7 @@ export default function Drydock() {
     }
     if (!maintForm.reason.trim()) { toast("Alasan maintenance wajib diisi", "info"); return; }
     const dock = drydocks.find((d) => d.id === maintForm.dockId);
-    const created = add("dockSlots", {
+    const created = await add("dockSlots", {
       dockId: maintForm.dockId, project: "MAINT", vessel: `Maintenance — ${maintForm.reason.trim()}`,
       from, to, priority: "Normal", reason: maintForm.reason.trim(), color: "bg-steel-400",
     }, { action: "memblokir maintenance", target: `${maintForm.dockId} · ${fmtRentang(dayToISO(from), dayToISO(to))}`, module: "Drydock" });
@@ -247,16 +247,16 @@ export default function Drydock() {
     setMaintForm({ dockId: "DD-1", from: "1", to: "7", reason: "" });
   };
 
-  const savePic = () => {
+  const savePic = async () => {
     if (!picModal) return;
-    update("drydocks", picModal.id, { pic: picDraft.trim() || "Belum ditentukan" });
+    await update("drydocks", picModal.id, { pic: picDraft.trim() || "Belum ditentukan" });
     log("menetapkan PIC dock", `${picModal.name} · ${picDraft.trim() || "Belum ditentukan"}`, "Drydock");
     toast(`PIC ${picModal.name} diperbarui`);
     setPicModal(null);
     setPicDraft("");
   };
 
-  const confirmDelete = () => {
+  const confirmDelete = async () => {
     if (!deleting) return;
     const proj = data.projects.find((p) => p.id === deleting.project);
     if (proj && proj.status !== "Selesai") {
@@ -264,7 +264,7 @@ export default function Drydock() {
       setDeleting(null);
       return;
     }
-    remove("dockSlots", deleting.id);
+    await remove("dockSlots", deleting.id);
     log("menghapus slot", `${deleting.id} · ${deleting.vessel}`, "Drydock");
     toast("Slot dihapus", "info");
     setDeleting(null);

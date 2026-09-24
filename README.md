@@ -89,14 +89,19 @@ Assessment → Proposal → Class Approval → Contract → Procurement → Inst
 
 | Komponen | Teknologi |
 |----------|-----------|
-| Frontend | React + Next.js + TailwindCSS |
-| Mobile | React Native (Expo) |
-| Backend | Node.js + Fastify + TypeScript |
-| Database | PostgreSQL 16 |
-| Cache | Redis |
-| Search | Elasticsearch |
-| Container | Docker + Kubernetes |
-| Monitoring | Prometheus + Grafana |
+| Frontend | React + Vite + TailwindCSS (Next.js menyusul bila perlu SSR) |
+| Mobile | React Native (Expo, rencana) |
+| Backend | Node.js + Fastify + TypeScript (`services/api`, tersedia) |
+| Database | SQLite (lokal) / MySQL (server); PostgreSQL 16 (rencana produksi) |
+| Auth | JWT (bcrypt) + fallback demo lokal |
+
+## Backend & Frontend Wiring
+
+- Backend: `services/api` — Fastify, CRUD 52 koleksi + WBS/team, envelope `{ok,data}`, JWT 8 jam.
+- Tanpa Docker: `DB_DIALECT=sqlite` (file `./data/isms.db`) untuk lokal, `DB_DIALECT=mysql` + `MYSQL_URL` untuk server.
+- Jalankan: `cd services/api; npm install; npm run migrate; npm run seed; npm run dev` (port 3000).
+- Frontend: isi `VITE_API_URL=http://localhost:3000` (lihat `apps/web/.env.example`) agar tersambung; kosong = mode lokal. Login otomatis memakai backend bila tersedia, impor seed sekali pakai dari `/pengaturan`.
+- Akun seed: `direktur@galangan.com/direktur123`, `manager@galangan.com/manager123`, `demo@galangan.com/password@123`, `dev@alk.id/KucingTerbang`.
 
 ---
 
@@ -120,14 +125,11 @@ Estimasi biaya: **Rp 3.5 - 4 Miliar**
 
 ```
 galangan/
-├── docs/                      # Dokumentasi analisis sistem
+├── docs/                      # Dokumentasi analisis sistem (di-ignore git)
 ├── apps/
-│   ├── web/                  # Frontend web app (Next.js)
-│   └── mobile/               # Mobile app (React Native)
-├── packages/                  # Shared packages
-├── services/                  # Backend services
-├── infrastructure/           # IaC & deployment
-└── database/                 # Database scripts
+│   └── web/                  # Frontend web app (React + Vite)
+└── services/
+    └── api/                  # Backend Fastify (SQLite/MySQL, JWT)
 ```
 
 ---

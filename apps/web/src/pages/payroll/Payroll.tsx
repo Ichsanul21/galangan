@@ -281,7 +281,7 @@ export default function Payroll() {
       toast("Semua karyawan aktif sudah punya draft periode ini", "info");
       return;
     }
-    fresh.forEach((e) => {
+    fresh.forEach(async (e) => {
       const basic = Number(e.basic || 0);
       const lines = normAllowances(e.allowances);
       if (lines.length === 0) lines.push({ label: "Tunjangan", amount: 0 });
@@ -303,10 +303,10 @@ export default function Payroll() {
           kasbonPot += inst;
           return { ...k, sisa: Math.max(0, Number(k.sisa) - inst) };
         });
-        update("employees", e.id, { kasbon: next });
+        await update("employees", e.id, { kasbon: next });
       }
       const c = buildComponents(e, basic, lines, overtimePay, 0, kasbonPot, hadirDays);
-      add(
+      await add(
         "payroll",
         {
           employeeId: e.id,
@@ -334,7 +334,7 @@ export default function Payroll() {
     toast(`${fresh.length} draft payroll ${fmtBulan(period)} dibuat`);
   };
 
-  const advance = (p: StoreItem) => {
+  const advance = async (p: StoreItem) => {
     const next = NEXT_STATUS[String(p.status)];
     if (!next) return;
     if (next === "Dibayar") {
@@ -342,7 +342,7 @@ export default function Payroll() {
       setProof({ date: todayISO(), method: "Transfer", ref: "" });
       return;
     }
-    update("payroll", p.id, { status: next });
+    await update("payroll", p.id, { status: next });
     log("memproses payroll", `${p.id} → ${next}`, "Payroll");
     toast(`${p.id} → ${next}`);
   };
@@ -358,7 +358,7 @@ export default function Payroll() {
     setEditLines(lines.length > 0 ? lines : [{ label: "Tunjangan", amount: 0 }]);
   };
 
-  const saveEdit = () => {
+  const saveEdit = async () => {
     if (!editTarget) return;
     const emp = empOf(String(editTarget.employeeId));
     if (!emp) {
@@ -380,7 +380,7 @@ export default function Payroll() {
     const kasbonPot = Number(editTarget.kasbonPot || 0);
     const hadirDays = Number(editTarget.hadirDays ?? 0);
     const c = buildComponents(emp, basic, lines, overtimePay, manualDed, kasbonPot, hadirDays);
-    update("payroll", editTarget.id, {
+    await update("payroll", editTarget.id, {
       basic,
       allowances: lines,
       overtimePay,
@@ -395,7 +395,7 @@ export default function Payroll() {
     setEditTarget(null);
   };
 
-  const confirmPay = () => {
+  const confirmPay = async () => {
     if (!payTarget) return;
     if (!proof.date) {
       toast("Tanggal bayar wajib diisi", "info");
@@ -405,7 +405,7 @@ export default function Payroll() {
       toast("No. referensi wajib diisi", "info");
       return;
     }
-    update("payroll", payTarget.id, {
+    await update("payroll", payTarget.id, {
       status: "Dibayar",
       paidAt: proof.date,
       paidMethod: proof.method,
@@ -416,8 +416,8 @@ export default function Payroll() {
     setPayTarget(null);
   };
 
-  const removeRow = (p: StoreItem) => {
-    remove("payroll", p.id);
+  const removeRow = async (p: StoreItem) => {
+    await remove("payroll", p.id);
     log("menghapus payroll", `${p.id} · ${rowType(p)}`, "Payroll");
     toast(`${p.id} dihapus`);
   };
@@ -430,12 +430,12 @@ export default function Payroll() {
       toast("THR periode ini sudah dihitung untuk semua karyawan aktif", "info");
       return;
     }
-    fresh.forEach((e) => {
+    fresh.forEach(async (e) => {
       const basic = Number(e.basic || 0);
       const allowAvg = sumAllowances(e.allowances);
       const n = monthsWorked(String(e.join ?? ""), period);
       const thr = Math.round(((basic + allowAvg) * Math.min(n, 12)) / 12);
-      add(
+      await add(
         "payroll",
         {
           employeeId: e.id,
@@ -464,7 +464,7 @@ export default function Payroll() {
     toast(`${fresh.length} THR ${fmtBulan(period)} dihitung`);
   };
 
-  const saveBonus = () => {
+  const saveBonus = async () => {
     const emp = empOf(bonusForm.employeeId);
     if (!emp) {
       toast("Pilih karyawan dulu", "info");
@@ -475,7 +475,7 @@ export default function Payroll() {
       toast("Nominal bonus harus lebih dari 0", "info");
       return;
     }
-    add(
+    await add(
       "payroll",
       {
         employeeId: emp.id,
@@ -503,7 +503,7 @@ export default function Payroll() {
   };
 
   /* ---------- kasbon ---------- */
-  const saveKasbon = () => {
+  const saveKasbon = async () => {
     const emp = empOf(kasbonForm.employeeId);
     if (!emp) {
       toast("Pilih karyawan dulu", "info");
@@ -530,14 +530,14 @@ export default function Payroll() {
       cicilan: Math.round(cicilan),
       sisa: Math.round(jumlah),
     };
-    update("employees", emp.id, { kasbon: [...normKasbon(emp), entry] });
+    await update("employees", emp.id, { kasbon: [...normKasbon(emp), entry] });
     log("mencatat kasbon", `${entry.id} · ${emp.name} · ${fmtRupiah(entry.jumlah)}`, "Payroll");
     toast(`Kasbon ${fmtRupiah(entry.jumlah)} untuk ${emp.name} dicatat`);
     setKasbonForm({ employeeId: "", tanggal: todayISO(), jumlah: "", cicilan: "" });
   };
 
-  const removeKasbon = (emp: StoreItem, kasbonId: string) => {
-    update("employees", emp.id, { kasbon: normKasbon(emp).filter((k) => k.id !== kasbonId) });
+  const removeKasbon = async (emp: StoreItem, kasbonId: string) => {
+    await update("employees", emp.id, { kasbon: normKasbon(emp).filter((k) => k.id !== kasbonId) });
     log("menghapus kasbon", `${kasbonId} · ${emp.name}`, "Payroll");
     toast(`Kasbon ${kasbonId} dihapus`);
   };
@@ -589,13 +589,13 @@ export default function Payroll() {
     setSlipSign({ received: Boolean(sign.received), date: String(sign.date ?? todayISO()) });
   };
 
-  const saveSlipSign = () => {
+  const saveSlipSign = async () => {
     if (!slipTarget) return;
     if (slipSign.received && !slipSign.date) {
       toast("Tanggal terima wajib diisi", "info");
       return;
     }
-    update("payroll", slipTarget.id, { slipSign: { received: slipSign.received, date: slipSign.received ? slipSign.date : "" } });
+    await update("payroll", slipTarget.id, { slipSign: { received: slipSign.received, date: slipSign.received ? slipSign.date : "" } });
     log("tanda terima slip", `${slipTarget.id} · ${slipSign.received ? `diterima ${slipSign.date}` : "belum diterima"}`, "Payroll");
     toast(`Tanda terima ${slipTarget.id} disimpan`);
     setSlipTarget(null);
