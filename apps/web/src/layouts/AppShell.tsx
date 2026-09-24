@@ -255,7 +255,7 @@ export default function AppShell() {
         </div>
         <div>
           <p className="text-sm font-bold leading-tight">ISMS Galangan</p>
-          <p className="text-[10px] text-steel-300">Shipyard Management System</p>
+          <p className="text-[10px] text-steel-300">PT Syukur Bersaudara</p>
         </div>
       </div>
       <nav className="flex-1 overflow-y-auto px-3 py-4">

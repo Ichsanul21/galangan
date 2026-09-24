@@ -183,6 +183,7 @@ export default function Login() {
             <div>
               <p className="text-lg font-bold leading-tight tracking-tight">ISMS Galangan</p>
               <p className="text-[11px] uppercase tracking-[0.2em] text-[#9fd4ef]">Shipyard Management System</p>
+              <p className="mt-1 inline-flex items-center gap-1.5 rounded-full border border-white/15 bg-white/5 px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-[#cfe8f7]">PT Syukur Bersaudara</p>
             </div>
           </div>
           <div className="flex items-center gap-1.5 rounded-full border border-white/15 px-3 py-1.5 text-[11px] font-medium text-[#cfe8f7]">
@@ -232,7 +233,7 @@ export default function Login() {
         </div>
 
         <div className="relative flex items-center justify-between text-[11px] text-[#7ba7c4]">
-          <p>© 2026 ISMS Galangan · Indonesia</p>
+          <p>© 2026 ISMS Galangan · On Development by Alenkosa for PT Syukur Bersaudara</p>
           <p className="flex items-center gap-3">
             <span>ISO 9001</span>
             <span className="h-3 w-px bg-white/20" />

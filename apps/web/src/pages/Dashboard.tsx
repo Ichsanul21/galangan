@@ -287,7 +287,7 @@ export default function Dashboard() {
       <StaggerItem>
         <PageHeader
           title="Dashboard Eksekutif"
-          subtitle="Pusat kendali operasional galangan — Samarinda, real-time"
+          subtitle="PT Syukur Bersaudara — pusat kendali operasional galangan, Samarinda real-time"
           icon={<TrendingUp className="h-5 w-5" />}
           actions={
             <>

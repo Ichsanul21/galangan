@@ -1,60 +1,7 @@
-import { useEffect, useMemo, useRef, useState } from "react";
-import { useAuth } from "../auth/auth";
+import { useEffect, useMemo, useRef } from "react";
 
 const WM_IDS = ["isms-wm-1", "isms-wm-2"];
 const PRINT_ID = "isms-wm-print";
-
-/* ---------- info perangkat (tanpa izin khusus) ---------- */
-
-function parseDevice(): string {
-  const ua = navigator.userAgent;
-  let os = "Unknown OS";
-  if (/Windows NT/i.test(ua)) os = "Windows";
-  else if (/Mac OS X/i.test(ua)) os = "macOS";
-  else if (/Android/i.test(ua)) os = "Android";
-  else if (/iPhone|iPad/i.test(ua)) os = "iOS";
-  else if (/Linux/i.test(ua)) os = "Linux";
-  let br = "Browser";
-  if (/Edg\//i.test(ua)) br = "Edge";
-  else if (/Chrome\//i.test(ua)) br = "Chrome";
-  else if (/Firefox\//i.test(ua)) br = "Firefox";
-  else if (/Safari\//i.test(ua)) br = "Safari";
-  return `${os} · ${br}`;
-}
-
-/* ---------- format waktu GMT+8 (Asia/Makassar) ---------- */
-
-function fmtWita(d: Date): string {
-  const parts = new Intl.DateTimeFormat("en-GB", {
-    timeZone: "Asia/Makassar",
-    day: "2-digit",
-    month: "short",
-    year: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: false,
-  }).format(d);
-  return `${parts} WITA`;
-}
-
-/* ---------- Geo-IP (IP + kota + negara sekaligus) ---------- */
-
-interface Geo {
-  ip: string;
-  city: string;
-  country: string;
-}
-
-async function fetchGeo(signal: AbortSignal): Promise<Geo> {
-  const res = await fetch("https://ipapi.co/json/", { signal });
-  if (!res.ok) throw new Error("geo fail");
-  const j = (await res.json()) as Record<string, unknown>;
-  return {
-    ip: String(j.ip ?? "?"),
-    city: String(j.city ?? ""),
-    country: String(j.country_code ?? j.country_name ?? ""),
-  };
-}
 
 /* ---------- tile SVG watermark ---------- */
 
@@ -64,14 +11,11 @@ function escapeXml(s: string): string {
 
 function tileUri(lines: string[]): string {
   const W = 1300;
-  const H = 400;
+  const H = 300;
   const texts = lines
     .map(
-      (t, i) => {
-        const yBase = i === 0 ? H / 2 - 14 : H / 2 + 14;
-        const fw = i === 0 ? "800" : "700";
-        const fs = i === 0 ? "18" : "14";
-        return `<text x="${W / 2}" y="${yBase}" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="${fs}" font-weight="${fw}" fill="rgba(11,58,99,0.07)" letter-spacing="0.5">${escapeXml(t)}</text>`;
+      (t) => {
+        return `<text x="${W / 2}" y="${H / 2}" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="20" font-weight="800" fill="rgba(11,58,99,0.07)" letter-spacing="0.5">${escapeXml(t)}</text>`;
       }
     )
     .join("");
@@ -132,41 +76,14 @@ function guardBroken(): boolean {
 /* ---------- komponen React (hanya pemasok konten, return null) ---------- */
 
 export default function Watermark() {
-  const { user } = useAuth();
-  const [geo, setGeo] = useState<Geo>({ ip: "…", city: "", country: "" });
-  const [now, setNow] = useState(() => new Date());
   const latest = useRef({ bg: "", printText: "" });
 
-  useEffect(() => {
-    const c = new AbortController();
-    const t = window.setTimeout(() => c.abort(), 4000);
-    fetchGeo(c.signal)
-      .then((g) => setGeo(g))
-      .catch(() => setGeo({ ip: "unavailable", city: "", country: "" }));
-    return () => {
-      window.clearTimeout(t);
-      c.abort();
-    };
-  }, []);
-
-  useEffect(() => {
-    const id = window.setInterval(() => setNow(new Date()), 30000);
-    return () => window.clearInterval(id);
-  }, []);
-
-  const device = useMemo(() => parseDevice(), []);
-  const who = user?.username ?? "guest";
-  const loc = [geo.city, geo.country].filter(Boolean).join(", ");
-  const timeLabel = fmtWita(now);
   const lines = useMemo(
-    () => [
-      `PROPERTY OF ALENKOSA`,
-      `${who} · ${timeLabel} · ${geo.ip}${loc ? ` · ${loc}` : ""} · ${device}`,
-    ],
-    [who, timeLabel, geo.ip, loc, device]
+    () => ["On Development by Alenkosa for PT Syukur Bersaudara"],
+    []
   );
   const bg = useMemo(() => tileUri(lines), [lines]);
-  const printText = lines[1];
+  const printText = lines[0];
 
   latest.current = { bg, printText };
 
@@ -197,15 +114,10 @@ export default function Watermark() {
   return null;
 }
 
-/* ---------- penggentar: blokir klik kanan & shortcut DevTools ---------- */
+/* ---------- penggentar: shortcut DevTools saja (klik kanan & seleksi bebas) ---------- */
 
 export function useDeterrent() {
   useEffect(() => {
-    const onCtx = (e: MouseEvent) => {
-      const t = e.target as HTMLElement | null;
-      if (t && t.closest("input,textarea,select,[contenteditable]")) return;
-      e.preventDefault();
-    };
     const onKey = (e: KeyboardEvent) => {
       const k = e.key;
       const mod = e.ctrlKey || e.metaKey;
@@ -213,10 +125,8 @@ export function useDeterrent() {
       else if (mod && (k === "u" || k === "U")) e.preventDefault();
       else if (mod && e.shiftKey && ["i", "I", "j", "J", "c", "C"].includes(k)) e.preventDefault();
     };
-    window.addEventListener("contextmenu", onCtx);
     window.addEventListener("keydown", onKey);
     return () => {
-      window.removeEventListener("contextmenu", onCtx);
       window.removeEventListener("keydown", onKey);
     };
   }, []);

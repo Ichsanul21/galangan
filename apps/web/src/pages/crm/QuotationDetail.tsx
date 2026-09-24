@@ -6,6 +6,7 @@ import { useStore } from "../../data/store";
 import type { StoreItem } from "../../data/store";
 import { fmtRupiah, fmtTanggal, todayISO } from "../../utils/format";
 import { exportExcel } from "../../utils/export";
+import { SB_KOP } from "../../utils/sb";
 import { useDraftState } from "../../utils/draft";
 
 const FLOW = ["Lead", "Penawaran", "Negosiasi", "Menang"];
@@ -203,7 +204,10 @@ export default function QuotationDetail() {
     const cabang = String(client?.branch ?? quotation.branch ?? "Samarinda");
     const terms = String(client?.paymentTerms ?? quotation.paymentTerms ?? "NET 30");
     const rows: unknown[][] = [
-      ["PT Syukur Bersaudara"],
+      [SB_KOP.name],
+      [SB_KOP.line1],
+      [SB_KOP.hq],
+      [`${SB_KOP.addr1} · HP ${SB_KOP.hp}`],
       [`Cabang ${cabang} · ${fmtTanggal(todayISO())}`],
       [`Penawaran ${quotation.id} v${version} · ${String(quotation.client)} · ${String(quotation.vessel)}`],
       [],

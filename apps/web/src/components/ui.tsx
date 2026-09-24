@@ -714,11 +714,13 @@ export function Modal({
   wide?: boolean;
 }) {
   const dialogRef = useRef<HTMLDivElement>(null);
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
   useEffect(() => {
     if (!open) return;
     const prevActive = document.activeElement as HTMLElement | null;
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") { onClose(); return; }
+      if (e.key === "Escape") { onCloseRef.current(); return; }
       if (e.key !== "Tab") return;
       const root = dialogRef.current;
       if (!root) return;
@@ -735,7 +737,11 @@ export function Modal({
     document.body.style.overflow = "hidden";
     const t = window.setTimeout(() => {
       const root = dialogRef.current;
-      const target = root?.querySelector<HTMLElement>("input, select, textarea, button");
+      if (!root) return;
+      if (root.contains(document.activeElement) && document.activeElement !== root) return;
+      const target =
+        root.querySelector<HTMLElement>("input, select, textarea") ??
+        root.querySelector<HTMLElement>("button");
       (target ?? root)?.focus();
     }, 30);
     return () => {
@@ -744,7 +750,7 @@ export function Modal({
       document.body.style.overflow = "";
       prevActive?.focus?.();
     };
-  }, [open, onClose]);
+  }, [open]);
 
   return (
     <AnimatePresence>
