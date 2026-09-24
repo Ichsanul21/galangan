@@ -306,14 +306,32 @@ export default function QCSafety() {
       toast("NCR Critical wajib diverifikasi pihak kedua: isi nama verifikator", "info");
       return;
     }
+    const closedAt = todayISO();
     update("ncr", closingNcr.id, {
       status: "Tertutup",
       verifiedBy: verifier.trim(),
       verifyNote: verifyNote.trim(),
-      closedAt: todayISO(),
+      closedAt,
     });
-    log("menutup NCR", closingNcr.id, "QC");
-    toast(`${closingNcr.id} ditutup`);
+    // Biaya rework > 0 → jurnal beban otomatis (ringkas ala Finance: 5200/1100).
+    const cost = reworkCost(closingNcr);
+    let journaled = false;
+    if (cost > 0 && !(data.journals ?? []).some((j) => String(j.dokumen ?? "") === `NCR-${closingNcr.id}`)) {
+      add("journals", {
+        date: closedAt,
+        kodePembantu: "",
+        dokumen: `NCR-${closingNcr.id}`,
+        uraian: `Biaya rework ${closingNcr.id}`,
+        db: "5200",
+        kr: "1100",
+        amount: Math.round(cost),
+        sumber: "NCR",
+        status: "Posted",
+      }, { action: "mencatat biaya rework NCR", module: "QC" });
+      journaled = true;
+    }
+    log("menutup NCR", journaled ? `${closingNcr.id} · rework ${fmtRupiah(Math.round(cost))} dijurnal` : closingNcr.id, "QC");
+    toast(journaled ? `${closingNcr.id} ditutup — rework ${fmtRupiah(Math.round(cost))} masuk jurnal` : `${closingNcr.id} ditutup`);
     setClosingNcr(null);
     setNcrDetail((d) => (d && d.id === closingNcr.id ? { ...d, status: "Tertutup" } : d));
   };

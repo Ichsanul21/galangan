@@ -148,6 +148,7 @@ export default function CRM() {
       vessel: q.vessel, type: q.type, client: q.client, status: "Dalam Proses",
       branch: "Samarinda", start: todayISO(), end: "-", progress: 0,
       budget: num(q.value), actual: 0, manager: "Belum ditentukan", scope: [q.type],
+      quotationId: q.id,
       handover: { date: todayISO(), by: hoBy.trim(), items: [...HO_ITEMS] },
     }, { action: "mengkonversi quotation", target: `${q.id} → proyek`, module: "CRM" });
     update("quotations", q.id, { stage: "Terkonversi" });

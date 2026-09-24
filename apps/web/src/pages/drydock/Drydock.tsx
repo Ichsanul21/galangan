@@ -6,7 +6,7 @@ import { useStore } from "../../data/store";
 import type { StoreItem } from "../../data/store";
 import { dockUtilTrend, slotTrend } from "../../data";
 import { fmtJumlah, fmtRupiah, fmtTanggal, fmtRentang } from "../../utils/format";
-import { sbDsNumber } from "../../utils/sb";
+import { sbDsNumber, maxSeq } from "../../utils/sb";
 import { exportExcel } from "../../utils/export";
 
 const DAYS = 90;
@@ -86,6 +86,10 @@ export default function Drydock() {
   const [picDraft, setPicDraft] = useState("");
   const [showMaint, setShowMaint] = useState(false);
   const [maintForm, setMaintForm] = useState({ dockId: "DD-1", from: "1", to: "7", reason: "" });
+
+  /* No. DS SB max+1: scan dsRef DS-type saja, parse leading (\d+)/. */
+  const nextDsSeq = (): number =>
+    maxSeq(dockSlots.map((s) => String((s as StoreItem).dsRef ?? "")), /^(\d+)\//) + 1;
 
   const sel = dockSlots.find((s) => s.id === selected) ?? null;
   const [utilDraft, setUtilDraft] = useState({ power: "", water: "" });
@@ -202,7 +206,7 @@ export default function Drydock() {
     const ratePerDay = Number(bookForm.ratePerDay || 0);
     if (!Number.isFinite(ratePerDay) || ratePerDay < 0) { setBookError("Tarif dock per hari harus 0 atau lebih."); return; }
     // No. Dock Space SB: pakai input atau auto (format nnn/DS-SB/SMD/m/yyyy).
-    const dsRef = bookForm.dsRef.trim() || sbDsNumber(dockSlots.length + 1);
+    const dsRef = bookForm.dsRef.trim() || sbDsNumber(nextDsSeq());
     const vesselFull = bookForm.vessel2.trim() ? `${proj.vessel} + ${bookForm.vessel2.trim()}` : proj.vessel;
     const created = add("dockSlots", {
       dockId: bookForm.dockId, project: proj.id, vessel: vesselFull, from, to,
@@ -571,7 +575,7 @@ export default function Drydock() {
               <input type="number" min={0} className="input" value={bookForm.ratePerDay} onChange={(e) => setBookForm({ ...bookForm, ratePerDay: e.target.value })} placeholder="cth: 15000000" />
             </Field>
             <Field label="No. Dock Space (SB)" hint="Otomatis bila kosong: nnn/DS-SB/SMD/m/yyyy">
-              <input className="input font-mono" value={bookForm.dsRef} onChange={(e) => setBookForm({ ...bookForm, dsRef: e.target.value })} placeholder={sbDsNumber(dockSlots.length + 1)} />
+              <input className="input font-mono" value={bookForm.dsRef} onChange={(e) => setBookForm({ ...bookForm, dsRef: e.target.value })} placeholder={sbDsNumber(nextDsSeq())} />
             </Field>
             <Field label="Kapal pasangan (Barge)" hint="Opsional — cth surat TB/Barge">
               <input className="input" value={bookForm.vessel2} onChange={(e) => setBookForm({ ...bookForm, vessel2: e.target.value })} placeholder="cth: BG RMN 3324" />

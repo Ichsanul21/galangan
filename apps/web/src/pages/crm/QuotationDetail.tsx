@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { ArrowLeft, Send } from "lucide-react";
-import { Card, CardHeader, PageHeader, StatusBadge, Badge, Modal, Field, FormGrid, ConfirmModal, EmptyState, toast } from "../../components/ui";
+import { Card, CardHeader, PageHeader, StatusBadge, Badge, Modal, Field, FormGrid, EmptyState, toast } from "../../components/ui";
 import { useStore } from "../../data/store";
 import type { StoreItem } from "../../data/store";
 import { fmtRupiah, fmtTanggal, todayISO } from "../../utils/format";
@@ -9,6 +9,9 @@ import { exportExcel } from "../../utils/export";
 
 const FLOW = ["Lead", "Penawaran", "Negosiasi", "Menang"];
 const num = (v: unknown): number => Number(v) || 0;
+
+const HO_ITEMS = ["Dokumen kontrak tersedia", "Scope pekerjaan jelas", "Jadwal disepakati", "PIC client ditetapkan"];
+const PREFIX_TIPE: Record<string, string> = { "New Build": "NB", Repair: "RP", Retrofit: "RF" };
 
 interface QLine {
   desc: string;
@@ -40,6 +43,11 @@ export default function QuotationDetail() {
   const [sendEmail, setSendEmail] = useState("");
   const [sendMsg, setSendMsg] = useState("");
   const [convertOpen, setConvertOpen] = useState(false);
+  const [hoChecks, setHoChecks] = useState<boolean[]>([false, false, false, false]);
+  const [hoBy, setHoBy] = useState("Tim Commercial");
+  const [convManager, setConvManager] = useState("");
+  const [convStart, setConvStart] = useState(todayISO());
+  const [convEnd, setConvEnd] = useState("");
   const [commForm, setCommForm] = useState({ channel: "Email", date: todayISO(), summary: "", by: "" });
 
   const activeLines = lines ?? seedLines;
@@ -59,6 +67,11 @@ export default function QuotationDetail() {
   const version = num(quotation.version) || 1;
   const riwayat: StoreItem[] = Array.isArray(quotation.riwayat) ? quotation.riwayat : [];
   const locked = quotation.stage === "Terkonversi";
+  const pmCandidates = (data.employees ?? [])
+    .filter((e) => String(e.dept) === "Proyek" || String(e.role ?? "").includes("Manager"))
+    .map((e) => String(e.name));
+  const picName = String(quotation.pic ?? quotation.manager ?? "");
+  const pmNames = picName && !pmCandidates.includes(picName) ? [picName, ...pmCandidates] : pmCandidates;
 
   const setLine = (idx: number, k: keyof QLine, v: string) => {
     const base = [...activeLines];
@@ -100,19 +113,58 @@ export default function QuotationDetail() {
     toast(`${quotation.id} ditandai ${stage}`, "info");
   };
 
+  const nextProjectCode = (type: string, start: string): string => {
+    const prefix = PREFIX_TIPE[type] ?? "PRJ";
+    const year = start.match(/^(\d{4})/)?.[1] ?? String(new Date().getFullYear());
+    let max = 0;
+    for (const p of data.projects) {
+      const m = String(p.id).match(new RegExp(`^${prefix}-(\\d{4})-(\\d+)$`));
+      if (m && m[1] === year) max = Math.max(max, Number(m[2]));
+    }
+    return `${prefix}-${year}-${String(max + 1).padStart(3, "0")}`;
+  };
+
+  const openConvert = () => {
+    setHoChecks([false, false, false, false]);
+    setHoBy("Tim Commercial");
+    setConvManager(String(quotation.pic ?? quotation.manager ?? ""));
+    setConvStart(todayISO());
+    setConvEnd("");
+    setConvertOpen(true);
+  };
+
   const confirmConvert = () => {
+    if (quotation.stage !== "Menang") {
+      toast("Konversi ditolak: hanya quotation Menang yang bisa dikonversi", "info");
+      setConvertOpen(false);
+      return;
+    }
     if (quotation.stage === "Terkonversi" || data.projects.some((p) => p.vessel === quotation.vessel)) {
       toast("Konversi ditolak: sudah terkonversi atau proyek kapalnya sudah ada", "info");
       setConvertOpen(false);
       return;
     }
+    if (hoChecks.some((c) => !c)) { toast("Lengkapi semua checklist serah terima ke PM", "info"); return; }
+    if (!hoBy.trim()) { toast("Nama penyerah wajib diisi", "info"); return; }
+    if (num(quotation.value) <= 0) { toast("Nilai quotation harus lebih dari 0", "info"); return; }
+    if (!convManager.trim() || convManager.trim() === "Belum ditentukan") { toast("Pilih project manager", "info"); return; }
+    if (!convStart || !convEnd) { toast("Tanggal mulai & selesai rencana wajib diisi", "info"); return; }
+    if (convEnd < convStart) { toast("Tanggal selesai tidak boleh sebelum tanggal mulai", "info"); return; }
+    const client = (data.clients ?? []).find((c) => String(c.name) === String(quotation.client));
+    const branch = String(client?.branch ?? quotation.branch ?? "Samarinda");
+    const code = nextProjectCode(String(quotation.type ?? "New Build"), convStart);
     const created = add("projects", {
+      id: code,
       vessel: quotation.vessel, type: quotation.type, client: quotation.client, status: "Dalam Proses",
-      branch: "Samarinda", start: todayISO(), end: "-", progress: 0,
-      budget: num(quotation.value), actual: 0, manager: "Belum ditentukan", scope: [quotation.type],
+      tahap: "Kontrak",
+      tahapLog: [{ from: "-", to: "Kontrak", date: todayISO(), by: hoBy.trim(), reason: `Konversi ${quotation.id}` }],
+      branch, start: convStart, end: convEnd, progress: 0,
+      budget: num(quotation.value), actual: 0, manager: convManager.trim(), scope: [quotation.type],
+      quotationId: quotation.id,
+      handover: { date: todayISO(), by: hoBy.trim(), items: [...HO_ITEMS] },
     }, { action: "mengkonversi quotation", target: `${quotation.id} → proyek`, module: "CRM" });
     update("quotations", quotation.id, { stage: "Terkonversi" });
-    log("mengunci quotation setelah konversi", quotation.id, "CRM");
+    log(`serah terima ke PM oleh ${hoBy.trim()} (${HO_ITEMS.length} item)`, `${quotation.id} → ${created.id}`, "CRM");
     toast(`${quotation.id} menjadi proyek ${created.id}`);
     setConvertOpen(false);
   };
@@ -196,7 +248,7 @@ export default function QuotationDetail() {
             <button className="btn-secondary text-xs" disabled={locked || FLOW.indexOf(String(quotation.stage)) < 0 || FLOW.indexOf(String(quotation.stage)) >= FLOW.length - 1} onClick={() => move(1)}>Maju</button>
             <button className="btn-secondary text-xs" disabled={locked} onClick={() => markTerminal("Batal")}>Batal</button>
             <button className="btn-secondary text-xs" disabled={locked} onClick={() => markTerminal("Kalah")}>Kalah</button>
-            <button className="btn-primary text-xs" disabled={locked} onClick={() => setConvertOpen(true)}>Konversi</button>
+            <button className="btn-primary text-xs" disabled={locked || String(quotation.stage) !== "Menang"} onClick={openConvert}>Konversi</button>
           </div>
         </Card>
 
@@ -302,14 +354,36 @@ export default function QuotationDetail() {
         </div>
       </Modal>
 
-      <ConfirmModal
+      <Modal
         open={convertOpen}
+        onClose={() => setConvertOpen(false)}
         title={`Konversi ${quotation.id} jadi proyek?`}
-        desc="Quotation dikunci ke Terkonversi dan dibuat satu proyek baru. Konversi ganda ditolak bila kapal sudah ada."
-        confirmLabel="Ya, konversi"
-        onCancel={() => setConvertOpen(false)}
-        onConfirm={confirmConvert}
-      />
+        subtitle="Serah terima ke PM — checklist, PM, dan jadwal wajib diisi"
+        footer={<><button className="btn-secondary" onClick={() => setConvertOpen(false)}>Batal</button><button className="btn-primary" onClick={confirmConvert}>Ya, konversi</button></>}
+      >
+        <div className="space-y-3">
+          <p className="text-sm text-steel-600">Quotation dikunci ke Terkonversi dan dibuat satu proyek baru (kode NB/RP/RF otomatis) beserta catatan handover. Konversi ganda ditolak bila kapal sudah ada.</p>
+          <Field label="Diserahkan oleh"><input className="input" value={hoBy} onChange={(e) => setHoBy(e.target.value)} placeholder="Nama penyerah" /></Field>
+          <div className="space-y-2">
+            {HO_ITEMS.map((item, i) => (
+              <label key={item} className="flex items-start gap-2 rounded-xl bg-surface p-3 text-sm text-steel-700">
+                <input type="checkbox" className="mt-1 h-4 w-4" checked={hoChecks[i] ?? false} onChange={(e) => setHoChecks((prev) => prev.map((c, idx) => (idx === i ? e.target.checked : c)))} />
+                {item}
+              </label>
+            ))}
+          </div>
+          <FormGrid>
+            <Field label="Project manager (wajib)">
+              <select className="input" value={convManager} onChange={(e) => setConvManager(e.target.value)}>
+                <option value="">Pilih PM…</option>
+                {pmNames.map((n) => <option key={n} value={n}>{n}</option>)}
+              </select>
+            </Field>
+            <Field label="Mulai (rencana)"><input type="date" className="input" value={convStart} onChange={(e) => setConvStart(e.target.value)} /></Field>
+          </FormGrid>
+          <Field label="Selesai (rencana)"><input type="date" className="input" value={convEnd} onChange={(e) => setConvEnd(e.target.value)} /></Field>
+        </div>
+      </Modal>
     </div>
   );
 }

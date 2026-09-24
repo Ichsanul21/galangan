@@ -87,6 +87,7 @@ export interface StoreShape {
   calibrations: StoreItem[];
   communications: StoreItem[];
   contracts: StoreItem[];
+  bast: StoreItem[];
   settings: StoreItem[];
   coa: StoreItem[];
   journals: StoreItem[];
@@ -310,6 +311,11 @@ const seedContracts: StoreItem[] = [
   { id: "KTR-2026-009", quotationId: "QT-2026-054", projectId: "RP-2026-002", client: "PT Mitra Samudra Raya", value: 3100000000, signedAt: "2026-07-12", status: "Aktif" },
 ];
 
+const seedBast: StoreItem[] = [
+  { id: "BAST-SMD-2026-001", projectId: "NB-2025-012", milestone: "Hull Assembly — BG RMN 3324", tanggal: "2026-08-02", penandatangan: "Hendra Wijaya / Owner BG RMN 3324", lampiran: "Checklist hull + foto section 4-7", amount: 540000000, status: "Disetujui" },
+  { id: "BAST-SMD-2026-002", projectId: "RP-2026-003", milestone: "Docking Completion — V2 AWB SEA HAVEN 2", tanggal: "2026-08-04", penandatangan: "Rudi Hartono / Master V2 AWB SEA HAVEN 2", lampiran: "Docking report + thickness report", amount: 102000000, status: "Diajukan" },
+];
+
 /* Seed dari docs/RawData/DataPencatatanFinance.xlsx — sheet Akun (98 akun). */
 const seedCoa: StoreItem[] = COA_EXCEL.map((c) => ({
   id: `COA-${c.kode}`,
@@ -349,7 +355,7 @@ const seedAssets: StoreItem[] = ASET_EXCEL.map((a, i) => ({
 /* Konstanta bisnis terpusat — semua rumus baca dari sini via utils/settings.
    Ubah lewat halaman Pengaturan; kalibrasi saat dokumen client datang. */
 const seedSettings: StoreItem[] = [
-  { id: "SET-PPN", key: "PPN_RATE", value: 11, label: "PPN Keluaran/Masukan hutang-belanja (%)", group: "Pajak" },
+  { id: "SET-PPN", key: "PPN_RATE", value: 12, label: "PPN Keluaran/Masukan hutang-belanja (%)", group: "Pajak" },
   { id: "SET-PPNINV", key: "PPN_INVOICE_RATE", value: 12, label: "PPN invoice jasa+material, DPP=TOTAL×11/12 (%)", group: "Pajak" },
   { id: "SET-PPHJASA", key: "PPH_JASA_RATE", value: 2, label: "PPh invoice (% dari jasa)", group: "Pajak" },
   { id: "SET-PPHSUB", key: "PPH_SUBKON_DEFAULT", value: 0.5, label: "PPh subkontraktor default (0.5/2)", group: "Pajak" },
@@ -449,9 +455,10 @@ function buildSeeds(): StoreShape {
      drawings: clone(seedDrawings),
      toolbox: clone(seedToolbox),
      calibrations: clone(seedCalibrations),
-     communications: clone(seedCommunications),
-      contracts: clone(seedContracts),
-      settings: clone(seedSettings),
+      communications: clone(seedCommunications),
+       contracts: clone(seedContracts),
+       bast: clone(seedBast),
+       settings: clone(seedSettings),
       coa: clone(seedCoa),
       journals: clone(seedJournals),
       assets: clone(seedAssets),
@@ -505,8 +512,9 @@ const PREFIX: Record<string, string> = {
    drawings: "DRW",
    toolbox: "TBM",
    calibrations: "CAL",
-   communications: "COM",
-    contracts: "KTR",
+    communications: "COM",
+     contracts: "KTR",
+     bast: "BAST",
     settings: "SET",
     coa: "COA",
     journals: "JU",
@@ -521,7 +529,7 @@ const ARRAY_KEYS: (keyof StoreShape)[] = [
   "documents", "surveys", "activities", "services", "spareparts", "boq",
   "branches", "attendance", "payroll", "taxPeriods", "rfqs", "changeOrders",
   "risks", "leaves", "trainings", "timesheets", "drawings", "toolbox",
-  "calibrations", "communications", "contracts", "settings", "coa", "journals", "assets",
+  "calibrations", "communications", "contracts", "bast", "settings", "coa", "journals", "assets",
 ];
 
 function sanitizeStore(parsed: Partial<StoreShape>): StoreShape {

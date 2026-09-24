@@ -6,7 +6,7 @@ import type { SortState } from "../../components/ui";
 import { useStore, type StoreItem } from "../../data/store";
 import { fmtRupiah, fmtJumlah, fmtTanggal, todayISO } from "../../utils/format";
 import { getSetting } from "../../utils/settings";
-import { sbPoNumber, sbSplitIncludePpn, SB_KOP } from "../../utils/sb";
+import { sbPoNumber, sbSplitIncludePpn, maxSeq, SB_KOP } from "../../utils/sb";
 import { spendByCategory, procurementTrend, poCountTrend, poValueTrend, prPendingTrend, vendorTrend } from "../../data";
 import { exportExcel } from "../../utils/export";
 
@@ -61,7 +61,7 @@ const RFQ_NEXT: Record<string, string[]> = {
   Diputuskan: [],
 };
 
-const PR_PENDING = ["Menunggu Approval", "RFQ", "Diajukan"];
+const PR_PENDING = ["Draft", "Menunggu Approval", "RFQ", "Diajukan"];
 
 const lineTotal = (lines: POLine[]): number =>
   lines.reduce((s, l) => s + Number(l.qty || 0) * Number(l.price || 0), 0);
@@ -132,6 +132,16 @@ export default function Procurement() {
   const invList = inBranch(data.inventory);
 
   const PO_KECIL_LIMIT = getSetting(data, "PO_KECIL_LIMIT", 50000000);
+  const ppnRate = getSetting(data, "PPN_RATE", 12);
+
+  /* No. PO SB max+1: scan docNo tahun berjalan, parse leading (\d+)/. */
+  const nextPoSeq = (): number => {
+    const year = todayISO().slice(0, 4);
+    const nums = purchaseOrders
+      .map((p) => String((p as StoreItem).docNo ?? ""))
+      .filter((s) => s.endsWith(`/${year}`));
+    return maxSeq(nums, /^(\d+)\//) + 1;
+  };
 
   const [tab, setTab] = useState("PO Besar (Kantor)");
   const [sort, setSort] = useState<SortState>({ key: null, dir: "asc" });
@@ -280,7 +290,7 @@ export default function Procurement() {
     const plafon = cekPlafon(bigForm.vendor, bigTotal);
     if (plafon && !plafon.ok) { toast(`Plafon kontrak payung terlampaui (pakai ${fmtRupiah(plafon.pakai)} / plafon ${fmtRupiah(plafon.plafon)})`, "info"); return; }
     const pr = requisitions.find((r) => r.id === bigForm.prId);
-    const docNo = sbPoNumber(purchaseOrders.length + 1);
+    const docNo = sbPoNumber(nextPoSeq());
     const isStok = bigForm.tujuan === "stok";
     const created = add("purchaseOrders", {
       poType: "Besar", item: invItem.name, itemId: invItem.id, vendor: bigForm.vendor,
@@ -322,6 +332,7 @@ export default function Procurement() {
       req: "-", amount, qty, unit: smallForm.unit.trim(), receivedQty: 0, returnedQty: 0, status: "Diajukan",
       date: todayISO(), eta: smallForm.eta || "", project: smallForm.project || "-",
       vessel: smallForm.vessel.trim(), nota: smallForm.nota.trim(),
+      docNo: sbPoNumber(nextPoSeq()),
       lines: [{ name: smallForm.item.trim(), qty, unit: smallForm.unit.trim(), price }],
       revisi: "", amendments: [], overrideReason: smallOver ? smallForm.overrideReason.trim() : "",
     }, { action: "membuat PO Kecil", module: "Procurement" });
@@ -505,7 +516,7 @@ export default function Procurement() {
   /* ============ CETAK (kop SB + pecah DPP/PPN bila include) ============ */
   const cetakPo = (po: StoreItem) => {
     const lines = poLines(po);
-    const split = po.includePpn === false ? null : sbSplitIncludePpn(Number(po.amount || 0), 11);
+    const split = po.includePpn === false ? null : sbSplitIncludePpn(Number(po.amount || 0), getSetting(data, "PPN_RATE", 12));
     const rows: (string | number | null)[][] = [
       [SB_KOP.line1, SB_KOP.name],
       [SB_KOP.hq, `${SB_KOP.addr1} · HP ${SB_KOP.hp}`],
@@ -528,7 +539,7 @@ export default function Procurement() {
       ["Baris", "Qty", "Satuan", "Harga", "Subtotal"],
       ...lines.map((l) => [l.name, l.qty, l.unit, l.price, Number(l.qty) * Number(l.price)]),
       ["Total", "", "", "", Number(po.amount || lineTotal(lines))],
-      ...(split ? [["DPP (Total include PPN 11%)", "", "", "", split.dpp], ["PPN 11%", "", "", "", split.ppn]] : []),
+      ...(split ? [[`DPP (Total include PPN ${ppnRate}%)`, "", "", "", split.dpp], [`PPN ${ppnRate}%`, "", "", "", split.ppn]] : []),
     ];
     void exportExcel(rows, `PO-${po.id}`, "PO");
     toast(`PO ${po.id} diekspor ke Excel`);
@@ -556,6 +567,8 @@ export default function Procurement() {
     if (!recvPo) return;
     const qty = Number(recvQty);
     if (!qty || qty <= 0) { toast("Qty terima harus lebih dari 0", "info"); return; }
+    const orderedQty = Number(recvPo.qty || 0);
+    if (orderedQty > 0 && Number(recvPo.receivedQty || 0) + qty > orderedQty) { toast(`Qty terima melebihi qty PO (dipesan ${orderedQty}, sudah diterima ${Number(recvPo.receivedQty || 0)})`, "info"); return; }
     const isBig = recvPo.poType !== "Kecil";
     if (isBig && (!recvNoFaktur.trim() || !recvTglFaktur)) { toast("No faktur & tanggal faktur wajib untuk PO Besar", "info"); return; }
     if (!isBig && !recvNoFaktur.trim()) { toast("No. nota/bukti wajib diisi untuk PO Kecil", "info"); return; }
@@ -588,15 +601,18 @@ export default function Procurement() {
     /* Auto-AP dari GR (3-way match PO–GR–Invoice): hutang vendor terbentuk saat terima. */
     const apExists = (data.payables ?? []).some((a) => String(a.po ?? "") === String(recvPo.id));
     if (!apExists && Number(recvPo.amount || 0) > 0) {
+      const poAmount = Number(recvPo.amount || 0);
+      const apAmt = orderedQty > 0 ? Math.round((poAmount * qty) / orderedQty) : poAmount;
+      const apTotal = apAmt + dendaRp;
       add("payables", {
         v: String(recvPo.vendor ?? ""), kodePembantu: String(recvPo.vendor ?? ""),
         po: recvPo.docNo ? `${recvPo.id} / ${recvPo.docNo}` : String(recvPo.id),
-        openAwal: 0, amt: Number(recvPo.amount || 0), due: recvPo.eta || todayISO(),
+        openAwal: 0, amt: apTotal, due: recvPo.eta || todayISO(),
         pph: "2%", st: "Belum Dibayar", vessel: String(recvPo.vessel ?? ""),
         item: String(recvPo.item ?? ""), pay1: 0, pay2: 0,
         noFaktur: recvNoFaktur.trim(), tglFaktur: recvTglFaktur,
       }, { action: "auto-hutang dari GR", target: `${recvPo.id} (3-way match)`, module: "Procurement" });
-      log("auto-hutang GR", `${recvPo.id} → hutang ${recvPo.vendor} ${fmtRupiah(Number(recvPo.amount || 0))}`, "Procurement");
+      log("auto-hutang GR", `${recvPo.id} → hutang ${recvPo.vendor} ${fmtRupiah(apTotal)}`, "Procurement");
     }
     if (late > 0 && dendaRp > 0) log("denda keterlambatan", `${recvPo.id}: telat ${late} hari → ${fmtRupiah(dendaRp)}`, "Procurement");
     toast(`${recvPo.id} ${mode === "penuh" ? "diterima" : "diterima sebagian"}${invItem ? ` — stok ${invItem.name} +${qty}` : ""}${dendaRp > 0 ? ` · denda ${fmtRupiah(dendaRp)}` : ""}`);
@@ -1015,6 +1031,9 @@ export default function Procurement() {
                           <td className="td"><StatusBadge status={r.status} /></td>
                           <td className="td">
                             <div className="flex flex-wrap gap-1.5">
+                              {(r.status === "Draft" || r.status === "Draf") && (
+                                <button className="btn-primary text-xs" onClick={() => { update("requisitions", r.id, { status: "Diajukan" }); log("mengajukan PR", r.id, "Procurement"); toast(`${r.id} diajukan`); }}>Ajukan</button>
+                              )}
                               {PR_PENDING.includes(r.status) && (
                                 <>
                                   <button className="btn-secondary text-xs" onClick={() => approvePr(r, true)}><Check className="h-3.5 w-3.5" /> Setujui</button>
@@ -1143,14 +1162,14 @@ export default function Procurement() {
           <Field label="ETA (wajib)"><input type="date" className="input" value={bigForm.eta} onChange={(e) => setBigForm({ ...bigForm, eta: e.target.value })} /></Field>
           <FormGrid>
             <Field label="U/TK kapal" hint={bigForm.tujuan === "kapal" ? "Wajib — cth: U/TB. TRIALFA 01" : "Tidak dipakai untuk stok"}><input className="input" value={bigForm.vessel} disabled={bigForm.tujuan === "stok"} onChange={(e) => setBigForm({ ...bigForm, vessel: e.target.value })} placeholder="U/…" /></Field>
-            <Field label="Harga" hint='RawData: "Harga Include Ppn11%"'>
+            <Field label="Harga" hint={`RawData: "Harga Include PPN ${ppnRate}%"`}>
               <select className="input" value={bigForm.includePpn ? "include" : "exclude"} onChange={(e) => setBigForm({ ...bigForm, includePpn: e.target.value === "include" })}>
-                <option value="include">Include PPN 11%</option>
+                <option value="include">Include PPN {ppnRate}%</option>
                 <option value="exclude">Exclude PPN</option>
               </select>
             </Field>
           </FormGrid>
-          <p className="text-xs text-steel-500">No. dokumen SB otomatis: <span className="font-mono">{sbPoNumber(purchaseOrders.length + 1)}</span> (format nn/PO-SB/SMD/m/yyyy)</p>
+          <p className="text-xs text-steel-500">No. dokumen SB otomatis: <span className="font-mono">{sbPoNumber(nextPoSeq())}</span> (format nn/PO-SB/SMD/m/yyyy)</p>
           <div>
             <p className="label">Baris item (minimal 1)</p>
             <div className="space-y-2">
@@ -1226,7 +1245,7 @@ export default function Procurement() {
       </Modal>
 
       {/* Modal buat RFQ */}
-      <Modal open={rfqPr !== null} onClose={() => setRfqPr(null)} title={`Buat RFQ — ${rfqPr?.id ?? ""}`} subtitle={`${rfqPr?.item ?? ""} · pilih minimal 2 vendor`}
+      <Modal open={rfqPr !== null} onClose={() => setRfqPr(null)} title={`Buat RFQ — ${rfqPr?.id ?? ""}`} subtitle={`${rfqPr?.item ?? ""} · pilih minimal 3 vendor`}
         footer={<><button className="btn-secondary" onClick={() => setRfqPr(null)}>Batal</button><button className="btn-primary" onClick={saveRfq}>Buat RFQ (Draf)</button></>}>
         <div className="space-y-2">
           {vendors.map((v) => (

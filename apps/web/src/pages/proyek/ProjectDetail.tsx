@@ -65,6 +65,8 @@ export default function ProjectDetail() {
   const [riskForm, setRiskForm] = useState({ title: "", likelihood: "Sedang", impact: "Sedang", mitigation: "", status: "Aktif" });
   const [docFile, setDocFile] = useState("");
   const [showDelBaseline, setShowDelBaseline] = useState(false);
+  const [showBast, setShowBast] = useState(false);
+  const [bastForm, setBastForm] = useState({ milestone: "", tanggal: todayISO(), signer: "", lampiran: "", amount: "" });
   const [sort, setSort] = useState<SortState>({ key: null, dir: "asc" });
   const [sort2, setSort2] = useState<SortState>({ key: null, dir: "asc" });
   const [sort3, setSort3] = useState<SortState>({ key: null, dir: "asc" });
@@ -214,6 +216,84 @@ export default function ProjectDetail() {
     }
     setShowRisk(false);
     setRiskEditId(null);
+  };
+
+  const bastList = (data.bast ?? []).filter((b) => b.projectId === pid);
+  const boqTotal = (data.boq ?? []).filter((b) => b.projectId === pid).reduce((s, b) => s + Number(b.totalPrice || 0), 0);
+
+  const nextBastId = (tanggalISO: string): string => {
+    const year = (tanggalISO || todayISO()).slice(0, 4);
+    const prefix = `BAST-SMD-${year}-`;
+    let max = 0;
+    for (const b of (data.bast ?? [])) {
+      const m = String(b.id ?? "").match(new RegExp(`^BAST-SMD-${year}-(\\d+)$`));
+      if (m) max = Math.max(max, Number(m[1]) || 0);
+    }
+    return `${prefix}${String(max + 1).padStart(3, "0")}`;
+  };
+
+  const findLinkedWbs = (milestone: string): WbsExt | undefined => {
+    const ms = String(milestone ?? "");
+    return wbs.find((t) => t.task === ms || ms.startsWith(t.task) || ms.includes(t.task));
+  };
+
+  const saveBast = () => {
+    if (!bastForm.milestone) { toast("Pilih milestone WBS dulu", "info"); return; }
+    if (!bastForm.tanggal) { toast("Tanggal BAST wajib diisi", "info"); return; }
+    if (!bastForm.signer.trim()) { toast("Penandatangan wajib diisi", "info"); return; }
+    const amt = bastForm.amount === "" ? 0 : Number(bastForm.amount);
+    if (bastForm.amount !== "" && (!Number.isFinite(amt) || amt < 0)) { toast("Nominal harus angka 0 atau lebih", "info"); return; }
+    const id = nextBastId(bastForm.tanggal);
+    add("bast", {
+      id, projectId: pid, milestone: bastForm.milestone, tanggal: bastForm.tanggal,
+      penandatangan: bastForm.signer.trim(), lampiran: bastForm.lampiran.trim(),
+      amount: amt > 0 ? amt : boqTotal, status: "Draft",
+    }, { action: "membuat BAST", target: `${id} · ${bastForm.milestone}`, module: "Proyek" });
+    toast(`BAST ${id} dibuat (Draft)`);
+    setBastForm({ milestone: "", tanggal: todayISO(), signer: "", lampiran: "", amount: "" });
+    setShowBast(false);
+  };
+
+  const advanceBast = (b: StoreItem, next: string) => {
+    const order = ["Draft", "Diajukan", "Disetujui"];
+    const curIdx = order.indexOf(String(b.status));
+    const nextIdx = order.indexOf(next);
+    if (nextIdx !== curIdx + 1) { toast(`Alur BAST: ${order.join(" → ")}`, "info"); return; }
+    if (next === "Disetujui") {
+      const linked = findLinkedWbs(String(b.milestone ?? ""));
+      if (linked && Number(linked.progress) !== 100) {
+        toast(`Milestone "${linked.task}" baru ${linked.progress}% — BAST butuh progres 100%`, "info");
+        return;
+      }
+      const amount = Number(b.amount) > 0 ? Number(b.amount) : boqTotal;
+      const baseId = `INV/${String(b.id)}`;
+      let invId = baseId;
+      let bump = 1;
+      while ((data.invoices ?? []).some((i) => String(i.id) === invId)) {
+        bump += 1;
+        invId = `${baseId}-${bump}`;
+      }
+      let due = String(b.tanggal ?? todayISO());
+      const d = new Date(`${due}T00:00:00`);
+      if (!Number.isNaN(d.getTime())) {
+        d.setDate(d.getDate() + 30);
+        due = d.toISOString().slice(0, 10);
+      } else {
+        due = todayISO();
+      }
+      add("invoices", {
+        id: invId, client: project.client, project: pid, amount,
+        due, status: "Draft", paymentTerm: `Termin ${String(b.milestone)}`,
+        billingType: "Milestone", type: "Milestone", milestoneRef: `BAST ${String(b.id)}`,
+        dunning: "Belum Ditagih",
+      }, { action: "menerbitkan invoice milestone (BAST)", target: `${invId} ← ${String(b.id)}`, module: "Keuangan" });
+      log("menyetujui BAST + auto-invoice", `${String(b.id)} → ${invId}`, "Proyek");
+      toast(`BAST disetujui — invoice draft ${invId} dibuat`);
+    } else {
+      log("mengajukan BAST", `${String(b.id)} → ${next}`, "Proyek");
+      toast(`BAST ${next.toLowerCase()}`);
+    }
+    update("bast", String(b.id), { status: next });
   };
 
   const saveScope = () => {
@@ -571,6 +651,36 @@ export default function ProjectDetail() {
                 ))}
                 {docs.length === 0 && <p className="text-sm text-steel-400">Belum ada dokumen untuk proyek ini.</p>}
               </div>
+              <div className="mt-6">
+                <div className="mb-2 flex items-center justify-between">
+                  <h3 className="text-sm font-semibold text-navy-900">BAST — Berita Acara Serah Terima ({bastList.length})</h3>
+                  <button className="btn-secondary text-xs" onClick={() => { setBastForm({ milestone: "", tanggal: todayISO(), signer: "", lampiran: "", amount: "" }); setShowBast(true); }}><Plus className="h-3.5 w-3.5" /> Buat BAST</button>
+                </div>
+                <p className="mb-2 text-xs text-steel-500">Alur: Draft → Diajukan → Disetujui. Persetujuan butuh progres WBS 100% untuk milestone terkait; saat Disetujui otomatis dibuat invoice draft Milestone (milestoneRef = &quot;BAST &quot; + id).</p>
+                <div className="space-y-2">
+                  {bastList.map((b) => {
+                    const linked = findLinkedWbs(String(b.milestone ?? ""));
+                    return (
+                      <div key={String(b.id)} className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-steel-100 p-3 text-sm">
+                        <div className="min-w-0">
+                          <p className="font-medium text-navy-900">{String(b.id)} · {String(b.milestone)}</p>
+                          <p className="text-xs text-steel-500">{fmtTanggal(String(b.tanggal))} · penandatangan: {String(b.penandatangan ?? "—")}{b.lampiran ? ` · lampiran: ${String(b.lampiran)}` : ""} · {fmtRupiah(Number(b.amount || 0))}{linked ? ` · WBS "${linked.task}" ${linked.progress}%` : ""}</p>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <StatusBadge status={String(b.status)} />
+                          {String(b.status) === "Draft" && (
+                            <button className="btn-secondary text-xs" onClick={() => advanceBast(b, "Diajukan")}>Ajukan</button>
+                          )}
+                          {String(b.status) === "Diajukan" && (
+                            <button className="btn-secondary text-xs" onClick={() => advanceBast(b, "Disetujui")}>Setujui + Invoice</button>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                  {bastList.length === 0 && <p className="text-sm text-steel-400">Belum ada BAST untuk proyek ini.</p>}
+                </div>
+              </div>
             </div>
           )}
 
@@ -698,6 +808,27 @@ export default function ProjectDetail() {
           {tab === "Sparepart" && <SparepartServiceSection projectId={pid} view="sparepart" />}
         </div>
       </div>
+
+      {/* Modal BAST */}
+      <Modal open={showBast} onClose={() => setShowBast(false)} title="Buat BAST" subtitle={`${pid} · ${nextBastId(bastForm.tanggal || todayISO())}`}
+        footer={<><button className="btn-secondary" onClick={() => setShowBast(false)}>Batal</button><button className="btn-primary" onClick={saveBast}>Simpan Draft</button></>}>
+        <div className="space-y-3">
+          <Field label="Milestone / WBS ref" hint="Pilih tahapan WBS — persetujuan butuh progres 100%">
+            <select className="input" value={bastForm.milestone} onChange={(e) => setBastForm({ ...bastForm, milestone: e.target.value })}>
+              <option value="">Pilih milestone…</option>
+              {wbs.map((t) => <option key={t.task} value={t.task}>{t.task} · {t.progress}%</option>)}
+            </select>
+          </Field>
+          <FormGrid>
+            <Field label="Tanggal"><input type="date" className="input" value={bastForm.tanggal} onChange={(e) => setBastForm({ ...bastForm, tanggal: e.target.value })} /></Field>
+            <Field label="Nominal invoice (Rp)" hint={boqTotal > 0 ? `Default total BoQ ${fmtRupiah(boqTotal)} bila dikosongkan` : "Nominal draft invoice milestone"}>
+              <input type="number" min={0} className="input" value={bastForm.amount} onChange={(e) => setBastForm({ ...bastForm, amount: e.target.value })} placeholder={boqTotal > 0 ? String(boqTotal) : "cth: 540000000"} />
+            </Field>
+          </FormGrid>
+          <Field label="Penandatangan"><input className="input" value={bastForm.signer} onChange={(e) => setBastForm({ ...bastForm, signer: e.target.value })} placeholder="cth: Hendra Wijaya / Owner" /></Field>
+          <Field label="Lampiran / catatan"><input className="input" value={bastForm.lampiran} onChange={(e) => setBastForm({ ...bastForm, lampiran: e.target.value })} placeholder="cth: Checklist + foto section 4-7" /></Field>
+        </div>
+      </Modal>
 
       {/* Modal change order */}
       <Modal open={showCo} onClose={() => setShowCo(false)} title="Ajukan Change Order" subtitle={pid}

@@ -35,7 +35,7 @@ import type { SortState } from "../../components/ui";
 import { useStore, type StoreItem } from "../../data/store";
 import { fmtJumlah, fmtRupiah, fmtMiliar, fmtTanggal, todayISO } from "../../utils/format";
 import { exportExcel } from "../../utils/export";
-import { sbTonasePlat, sbSjNumber, SB_KOP } from "../../utils/sb";
+import { sbTonasePlat, sbSjNumber, maxSeq, parseSjSeq, SB_KOP } from "../../utils/sb";
 import { stockTrend, itemTrend, lowStockTrend, stockValueTrend, warehouseTrend } from "../../data";
 
 const emptyForm = { name: "", category: "Baja", sku: "", warehouse: "Gudang Baja A", rack: "", stock: "0", minStock: "0", unit: "pcs", cost: "0", volume: "0", batch: "", uom2: "", konversi: "", minWh: "", photoUrl: "" };
@@ -207,6 +207,7 @@ export default function Inventory() {
   const [movePurpose, setMovePurpose] = useState("");
   const [movePic, setMovePic] = useState("");
   const [importReport, setImportReport] = useState<string[]>([]);
+  const [importMode, setImportMode] = useState<"Katalog" | "IN" | "OUT">("Katalog");
 
   const [showOpname, setShowOpname] = useState(false);
   const [opItem, setOpItem] = useState("");
@@ -233,6 +234,13 @@ export default function Inventory() {
   const [sjItems, setSjItems] = useState<{ name: string; qty: string }[]>([{ name: "", qty: "" }]);
   const [sjReceiver, setSjReceiver] = useState("");
   const [sjGiver, setSjGiver] = useState("");
+  /* SJ max+1: scan dash ids + sbRef via trailing digits (RawData SJ-SMD-YYYY-nnn). */
+  const nextSjSeq = (): number => {
+    const docs = (data.documents ?? []).filter((d) => d.type === "Surat Jalan");
+    const nums = docs.flatMap((d) => [parseSjSeq(d.sbRef), parseSjSeq(d.id)]);
+    return maxSeq(nums.map(String), /(\d+)$/) + 1;
+  };
+  const sjYearOf = (iso: string): number => Number(String(iso ?? "").slice(0, 4)) || new Date().getFullYear();
   const [showPick, setShowPick] = useState(false);
   const [pickProject, setPickProject] = useState("");
   const [pickSel, setPickSel] = useState<string[]>([]);
@@ -518,6 +526,205 @@ export default function Inventory() {
     toast("Template Excel diunduh");
   };
 
+  const downloadCSV = (filename: string, headers: string[], example: (string | number)[]) => {
+    const esc = (v: string | number): string => {
+      const s = String(v);
+      return /[",\n]/.test(s) ? `"${s.replaceAll('"', '""')}"` : s;
+    };
+    const csv = [headers.map(esc).join(","), example.map(esc).join(",")].join("\n");
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${filename}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    toast(`Template ${filename} diunduh`);
+  };
+
+  const downloadTemplateIN = () => {
+    downloadCSV("Template-IN", ["Tanggal", "Kode", "Qty", "Supplier", "Harga-nonPPN", "Pajak", "Total", "Purpose", "PIC"],
+      ["2026-08-02", "AH36-12", 100, "PT Bahana Baja", 14500, 0, 1450000, "TB BANGUNAN BARU", "Budi"]);
+  };
+
+  const downloadTemplateOUT = () => {
+    downloadCSV("Template-OUT", ["Tanggal", "Purpose", "Kode", "Qty", "PIC", "Keterangan"],
+      ["2026-08-03", "U/TB. TRIALFA 01", "AH36-12", 50, "Agus", "Pemakaian fabrikasi"]);
+  };
+
+  const normHeader = (h: string): string =>
+    h.trim().toLowerCase().replaceAll("-", "").replaceAll("_", "").replaceAll(" ", "");
+
+  const colIndex = (headers: string[], names: string[]): number => {
+    const normed = headers.map(normHeader);
+    for (const n of names) {
+      const i = normed.indexOf(normHeader(n));
+      if (i >= 0) return i;
+    }
+    return -1;
+  };
+
+  const splitCsvLine = (line: string): string[] =>
+    line.split(",").map((s) => s.trim().replace(/^"|"$/g, "").trim());
+
+  const findItemByKode = (kode: string): StoreItem | undefined => {
+    const k = kode.trim().toLowerCase();
+    return inventory.find((i) => String(i.sku).toLowerCase() === k || String(i.id).toLowerCase() === k);
+  };
+
+  const validDateOrToday = (v: string): string | null => {
+    const t = v.trim();
+    if (!t) return todayISO();
+    return /^\d{4}-\d{2}-\d{2}$/.test(t) && !Number.isNaN(Date.parse(t)) ? t : null;
+  };
+
+  const handleImportINFile = (file: File) => {
+    void file.text().then((text) => {
+      const lines = text.split(/\r?\n/).map((l) => l.trim()).filter((l) => l !== "");
+      if (lines.length === 0) { setImportReport(["Berkas kosong."]); return; }
+      const firstCells = splitCsvLine(lines[0]);
+      const hasHeader = firstCells.some((c) => normHeader(c) === "kode" || normHeader(c) === "sku");
+      const headers = hasHeader ? firstCells : [];
+      const start = hasHeader ? 1 : 0;
+      const idxTanggal = hasHeader ? colIndex(headers, ["tanggal", "date"]) : 0;
+      const idxKode = hasHeader ? colIndex(headers, ["kode", "sku", "code"]) : 1;
+      const idxQty = hasHeader ? colIndex(headers, ["qty", "jumlah", "quantity"]) : 2;
+      const idxSupplier = hasHeader ? colIndex(headers, ["supplier", "vendor", "namasupplier"]) : 3;
+      const idxHarga = hasHeader ? colIndex(headers, ["harganett", "harganppn", "harga", "price", "priceexcl"]) : 4;
+      const idxPajak = hasHeader ? colIndex(headers, ["pajak", "tax", "ppn"]) : 5;
+      const idxTotal = hasHeader ? colIndex(headers, ["total"]) : 6;
+      const idxPurpose = hasHeader ? colIndex(headers, ["purpose", "untuk", "untukkapal", "keperluan", "u"]) : 7;
+      const idxPic = hasHeader ? colIndex(headers, ["pic"]) : 8;
+      if (idxKode < 0 || idxQty < 0) { setImportReport(["Header tidak valid — butuh kolom Kode & Qty. Unduh template IN."]); return; }
+      const stockMap: Record<string, number> = Object.fromEntries(inventory.map((i) => [i.id, Number(i.stock || 0)]));
+      const avgMap: Record<string, number> = Object.fromEntries(inventory.map((i) => [i.id, Number(i.avgCost) || 0]));
+      const fails: string[] = [];
+      let ok = 0;
+      lines.slice(start).forEach((line, idx) => {
+        const rowNo = idx + start + 1;
+        const c = splitCsvLine(line);
+        const kode = (c[idxKode] ?? "").trim();
+        const item = kode ? findItemByKode(kode) : undefined;
+        if (!item) { fails.push(`Baris ${rowNo}: kode ${kode || "(kosong)"} tidak dikenal.`); return; }
+        const qty = Number(c[idxQty] ?? "");
+        if (!Number.isFinite(qty) || qty <= 0) { fails.push(`Baris ${rowNo}: qty harus lebih dari 0.`); return; }
+        const price = idxHarga >= 0 && (c[idxHarga] ?? "") !== "" ? Number(c[idxHarga]) : 0;
+        if (!Number.isFinite(price) || price < 0) { fails.push(`Baris ${rowNo}: harga harus angka 0 atau lebih.`); return; }
+        const tax = idxPajak >= 0 && (c[idxPajak] ?? "") !== "" ? Number(c[idxPajak]) : 0;
+        if (!Number.isFinite(tax) || tax < 0) { fails.push(`Baris ${rowNo}: pajak harus angka 0 atau lebih.`); return; }
+        const date = validDateOrToday(idxTanggal >= 0 ? (c[idxTanggal] ?? "") : "");
+        if (!date) { fails.push(`Baris ${rowNo}: tanggal harus format YYYY-MM-DD.`); return; }
+        const supplier = idxSupplier >= 0 ? (c[idxSupplier] ?? "").trim() : "";
+        const rawTotal = idxTotal >= 0 ? (c[idxTotal] ?? "").trim() : "";
+        const total = rawTotal !== "" ? Number(rawTotal) : Math.round(qty * price) + tax;
+        if (!Number.isFinite(total) || total < 0) { fails.push(`Baris ${rowNo}: total tidak valid.`); return; }
+        const purpose = idxPurpose >= 0 ? (c[idxPurpose] ?? "").trim() : "";
+        const pic = idxPic >= 0 ? (c[idxPic] ?? "").trim() : "";
+        const oldStock = stockMap[item.id] ?? Number(item.stock || 0);
+        const newStock = oldStock + qty;
+        stockMap[item.id] = newStock;
+        const patch: Record<string, unknown> = { stock: newStock };
+        if (price > 0) {
+          const oldAvg = avgMap[item.id] > 0 ? avgMap[item.id] : Number(item.cost || 0);
+          const newAvg = Math.round(((oldStock * oldAvg + qty * price) / newStock) * 100) / 100;
+          avgMap[item.id] = newAvg;
+          patch.avgCost = newAvg;
+        }
+        update("inventory", item.id, patch);
+        add("movements", {
+          item: item.name, itemId: item.id, type: "Penerimaan", qty,
+          by: supplier ? `Impor IN ${date} · ${supplier}` : `Impor IN ${date}`,
+          batch: String(item.batch ?? ""), date, tone: "in",
+          supplier, priceExcl: price, tax, total, purpose, pic,
+        }, { action: "mengimpor GR", target: `${item.name} × ${qty}`, module: "Inventori" });
+        ok++;
+      });
+      setImportReport([`${ok} baris IN berhasil diimpor.`, ...fails]);
+      toast(`Impor IN selesai: ${ok} berhasil, ${fails.length} gagal`);
+    });
+  };
+
+  const handleImportOUTFile = (file: File) => {
+    void file.text().then((text) => {
+      const lines = text.split(/\r?\n/).map((l) => l.trim()).filter((l) => l !== "");
+      if (lines.length === 0) { setImportReport(["Berkas kosong."]); return; }
+      const firstCells = splitCsvLine(lines[0]);
+      const hasHeader = firstCells.some((c) => normHeader(c) === "kode" || normHeader(c) === "sku");
+      const headers = hasHeader ? firstCells : [];
+      const start = hasHeader ? 1 : 0;
+      const idxTanggal = hasHeader ? colIndex(headers, ["tanggal", "date"]) : 0;
+      const idxPurpose = hasHeader ? colIndex(headers, ["purpose", "untuk", "untukkapal", "keperluan", "u"]) : 1;
+      const idxKode = hasHeader ? colIndex(headers, ["kode", "sku", "code"]) : 2;
+      const idxQty = hasHeader ? colIndex(headers, ["qty", "jumlah", "quantity"]) : 3;
+      const idxPic = hasHeader ? colIndex(headers, ["pic"]) : 4;
+      const idxKet = hasHeader ? colIndex(headers, ["keterangan", "note", "referensi", "ref", "by"]) : 5;
+      if (idxKode < 0 || idxQty < 0) { setImportReport(["Header tidak valid — butuh kolom Kode & Qty. Unduh template OUT."]); return; }
+      const stockMap: Record<string, number> = Object.fromEntries(inventory.map((i) => [i.id, Number(i.stock || 0)]));
+      const batchMap: Record<string, BatchRow[]> = Object.fromEntries(
+        inventory.map((i) => [i.id, [...batchesOf(i)].sort((a, b) => String(a.date).localeCompare(String(b.date)))])
+      );
+      const reservedMap: Record<string, Reservation[]> = Object.fromEntries(
+        inventory.map((i) => [i.id, [...reservedOf(i)]])
+      );
+      const fails: string[] = [];
+      let ok = 0;
+      lines.slice(start).forEach((line, idx) => {
+        const rowNo = idx + start + 1;
+        const c = splitCsvLine(line);
+        const kode = (c[idxKode] ?? "").trim();
+        const item = kode ? findItemByKode(kode) : undefined;
+        if (!item) { fails.push(`Baris ${rowNo}: kode ${kode || "(kosong)"} tidak dikenal.`); return; }
+        const qty = Number(c[idxQty] ?? "");
+        if (!Number.isFinite(qty) || qty <= 0) { fails.push(`Baris ${rowNo}: qty harus lebih dari 0.`); return; }
+        const purpose = idxPurpose >= 0 ? (c[idxPurpose] ?? "").trim() : "";
+        const pic = idxPic >= 0 ? (c[idxPic] ?? "").trim() : "";
+        if (!purpose) { fails.push(`Baris ${rowNo}: purpose wajib diisi untuk OUT.`); return; }
+        if (!pic) { fails.push(`Baris ${rowNo}: PIC wajib diisi untuk OUT.`); return; }
+        const avail = stockMap[item.id] ?? Number(item.stock || 0);
+        if (qty > avail) { fails.push(`Baris ${rowNo}: stok ${kode} tidak cukup (tersedia ${avail}).`); return; }
+        const date = validDateOrToday(idxTanggal >= 0 ? (c[idxTanggal] ?? "") : "");
+        if (!date) { fails.push(`Baris ${rowNo}: tanggal harus format YYYY-MM-DD.`); return; }
+        const ket = idxKet >= 0 ? (c[idxKet] ?? "").trim() : "";
+        const newStock = avail - qty;
+        stockMap[item.id] = newStock;
+        let sisa = qty;
+        const nextBatches: BatchRow[] = [];
+        for (const b of (batchMap[item.id] ?? [])) {
+          if (sisa <= 0) { nextBatches.push(b); continue; }
+          const pakai = Math.min(Number(b.qty || 0), sisa);
+          sisa -= pakai;
+          const rest = Number(b.qty || 0) - pakai;
+          if (rest > 0) nextBatches.push({ ...b, qty: rest });
+        }
+        batchMap[item.id] = nextBatches;
+        let sisaRes = qty;
+        const nextRes: Reservation[] = [];
+        for (const r of (reservedMap[item.id] ?? [])) {
+          if (sisaRes <= 0) { nextRes.push(r); continue; }
+          const pakai = Math.min(Number(r.qty || 0), sisaRes);
+          sisaRes -= pakai;
+          const rest = Number(r.qty || 0) - pakai;
+          if (rest > 0) nextRes.push({ project: r.project, qty: rest });
+        }
+        reservedMap[item.id] = nextRes;
+        update("inventory", item.id, { stock: newStock, batches: nextBatches, reserved: nextRes });
+        if (newStock < Number(item.minStock || 0)) {
+          toast(`Peringatan: stok ${item.name} di bawah minimum — segera buat PR`, "info");
+        }
+        add("movements", {
+          item: item.name, itemId: item.id, type: "Pengeluaran", qty,
+          by: ket || `${purpose} (Impor OUT)`, batch: String(item.batch ?? ""),
+          date, tone: "out", supplier: "", priceExcl: 0, tax: 0, total: 0, purpose, pic,
+        }, { action: "mengimpor GI", target: `${item.name} × ${qty}`, module: "Inventori" });
+        ok++;
+      });
+      setImportReport([`${ok} baris OUT berhasil diimpor.`, ...fails]);
+      toast(`Impor OUT selesai: ${ok} berhasil, ${fails.length} gagal`);
+    });
+  };
+
   /* Impor CSV manual: parse koma, validasi SKU unik, laporan gagal per baris. */
   const handleImportFile = (file: File) => {
     void file.text().then((text) => {
@@ -712,13 +919,30 @@ export default function Inventory() {
                 </div>
               </div>
               <div className="mb-3 flex flex-wrap items-center gap-2">
-                <button className="btn-secondary text-xs" onClick={downloadTemplate}><Download className="h-3.5 w-3.5" /> Template Excel</button>
+                <select className="input w-auto py-1.5 text-xs" value={importMode} onChange={(e) => { setImportMode(e.target.value as "Katalog" | "IN" | "OUT"); setImportReport([]); }} aria-label="Mode impor">
+                  <option value="Katalog">Impor: Katalog</option>
+                  <option value="IN">Impor: IN (GR)</option>
+                  <option value="OUT">Impor: OUT (GI)</option>
+                </select>
+                {importMode === "Katalog" && (
+                  <button className="btn-secondary text-xs" onClick={downloadTemplate}><Download className="h-3.5 w-3.5" /> Template Excel</button>
+                )}
+                {importMode === "IN" && (
+                  <button className="btn-secondary text-xs" onClick={downloadTemplateIN}><Download className="h-3.5 w-3.5" /> Template IN (CSV)</button>
+                )}
+                {importMode === "OUT" && (
+                  <button className="btn-secondary text-xs" onClick={downloadTemplateOUT}><Download className="h-3.5 w-3.5" /> Template OUT (CSV)</button>
+                )}
                 <label className="btn-secondary cursor-pointer text-xs">
                   <Upload className="h-3.5 w-3.5" /> Impor CSV
-                  <input type="file" accept=".csv" className="hidden" aria-label="Impor CSV master item"
-                    onChange={(e) => { const f = e.target.files?.[0]; if (f) handleImportFile(f); e.target.value = ""; }} />
+                  <input type="file" accept=".csv" className="hidden" aria-label={importMode === "Katalog" ? "Impor CSV master item" : importMode === "IN" ? "Impor CSV penerimaan gudang" : "Impor CSV pengeluaran gudang"}
+                    onChange={(e) => { const f = e.target.files?.[0]; if (f) { if (importMode === "IN") handleImportINFile(f); else if (importMode === "OUT") handleImportOUTFile(f); else handleImportFile(f); } e.target.value = ""; }} />
                 </label>
-                <span className="text-xs text-steel-400">Kolom: nama, sku, kategori, gudang, stok, minStok, satuan, harga, rak</span>
+                <span className="text-xs text-steel-400">
+                  {importMode === "Katalog" && "Kolom: nama, sku, kategori, gudang, stok, minStok, satuan, harga, rak"}
+                  {importMode === "IN" && "Kolom IN: Tanggal, Kode, Qty, Supplier, Harga-nonPPN, Pajak, Total, Purpose, PIC — kode harus terdaftar, qty>0"}
+                  {importMode === "OUT" && "Kolom OUT: Tanggal, Purpose, Kode, Qty, PIC, Keterangan — kode harus terdaftar, qty>0, stok cukup, purpose+PIC wajib"}
+                </span>
               </div>
               {importReport.length > 0 && (
                 <div className="mb-3 rounded-lg bg-steel-50 px-3 py-2 text-xs text-steel-600">
@@ -990,7 +1214,7 @@ export default function Inventory() {
                     <Field label="Jenis kendaraan"><input className="input" value={sjVehicle} onChange={(e) => setSjVehicle(e.target.value)} /></Field>
                     <Field label="No. polisi"><input className="input font-mono" value={sjPlate} onChange={(e) => setSjPlate(e.target.value)} /></Field>
                     <Field label="Driver"><input className="input" value={sjDriver} onChange={(e) => setSjDriver(e.target.value)} /></Field>
-                    <Field label="No. Ref"><input className="input font-mono" value={sbSjNumber((data.documents ?? []).filter((d) => d.type === "Surat Jalan").length + 1)} readOnly /></Field>
+                    <Field label="No. Ref"><input className="input font-mono" value={sbSjNumber(nextSjSeq(), sjYearOf(sjDate))} readOnly /></Field>
                   </FormGrid>
                   {sjItems.map((it, idx) => (
                     <div key={idx} className="grid grid-cols-12 gap-2">
@@ -1007,9 +1231,10 @@ export default function Inventory() {
                   <button className="btn-primary w-full justify-center" onClick={() => {
                     const items = sjItems.filter((x) => x.name.trim() && x.qty.trim());
                     if (!sjTo.trim() || items.length === 0) { toast("Tujuan + minimal 1 barang wajib diisi", "info"); return; }
-                    const no = sbSjNumber((data.documents ?? []).filter((d) => d.type === "Surat Jalan").length + 1);
+                    const seq = nextSjSeq();
+                    const no = sbSjNumber(seq, sjYearOf(sjDate));
                     add("documents", {
-                      id: `SJ-SMD-${sjDate.slice(0, 4)}-${String((data.documents ?? []).filter((d) => d.type === "Surat Jalan").length + 1).padStart(3, "0")}`,
+                      id: `SJ-SMD-${sjYearOf(sjDate)}-${String(seq).padStart(3, "0")}`,
                       title: `Surat Jalan ke ${sjTo.trim()}`, type: "Surat Jalan", project: "-", vessel: sjTo.trim(),
                       owner: sjGiver.trim() || "Anda", sbRef: no, sjDate, sjVehicle: sjVehicle.trim(), sjPlate: sjPlate.trim(),
                       sjDriver: sjDriver.trim(), sjItems: items, sjReceiver: sjReceiver.trim(), sjGiver: sjGiver.trim(),

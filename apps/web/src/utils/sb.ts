@@ -1,6 +1,6 @@
 // Helper turunan RawData PT Syukur Bersaudara (docs/RawData).
 // Rumus invoice: TOTAL=Jasa+Material, DPP=TOTAL*11/12, PPN=12%*DPP (0 bila SKDT),
-// PPh=2%*Jasa, Grand=TOTAL+PPN-PPh-DP. Tonase plat: P*L*T*7850 (mm -> kg).
+// PPh=2%*Jasa, Grand=TOTAL+PPN-PPh-DP-Retensi. Tonase plat: P*L*T*7850 (mm -> kg).
 
 export const SB_KOP = {
   name: "PT. SYUKUR BERSAUDARA",
@@ -51,8 +51,28 @@ export function sbInvoiceMath(i: SbInvoiceInput): SbInvoiceMath {
   const pph = Math.round((jasa * (i.pphRate ?? PPH_JASA_DEFAULT)) / 100);
   const dpApplied = Math.max(0, Math.round(Number(i.dpApplied) || 0));
   const retentionAmt = Math.round((total * (Number(i.retentionPct) || 0)) / 100);
-  const grand = total + ppn - pph - dpApplied;
+  const grand = total + ppn - pph - dpApplied - retentionAmt;
   return { jasa, material, total, dpp, ppn, pph, dpApplied, retentionAmt, grand };
+}
+
+/** Max sekuens dari daftar nomor dokumen: parse grup digit re, kembalikan max atau 0. */
+export function maxSeq(docNos: string[], re: RegExp): number {
+  let max = 0;
+  for (const s of docNos) {
+    re.lastIndex = 0;
+    const m = re.exec(String(s ?? ""));
+    if (m) {
+      const n = parseInt(m[1] ?? m[0], 10);
+      if (Number.isFinite(n) && n > max) max = n;
+    }
+  }
+  return max;
+}
+
+/** Parse sekuens Surat Jalan format dash SJ-SMD-YYYY-nnn: ambil digit trailing. */
+export function parseSjSeq(ref: unknown): number {
+  const m = /(\d+)$/.exec(String(ref ?? ""));
+  return m ? Number(m[1]) || 0 : 0;
 }
 
 /** No. PO format RawData: nn/PO-SB/SMD/m/yyyy (cth 06/PO-SB/SMD/I/2024). */
@@ -77,8 +97,8 @@ export function sbTonasePlat(pMm: number, lMm: number, tMm: number, pcs = 1): nu
   return Math.round(pMm * lMm * tMm * pcs * 7.85e-6 * 1000) / 1000;
 }
 
-/** PO include-PPN (RawData: "Harga Include Ppn11%"): pecah DPP vs PPN. */
-export function sbSplitIncludePpn(totalIncl: number, ppnRate = 11): { dpp: number; ppn: number } {
+/** PO include-PPN (RawData: "Harga Include PPN"): pecah DPP vs PPN. Default = PPN_RATE (12%). */
+export function sbSplitIncludePpn(totalIncl: number, ppnRate = 12): { dpp: number; ppn: number } {
   const t = Math.max(0, Number(totalIncl) || 0);
   const dpp = Math.round((t * 100) / (100 + ppnRate));
   return { dpp, ppn: t - dpp };

@@ -294,12 +294,46 @@ export default function Subcontractor() {
     if (!proof.ref.trim()) { toast("No. referensi wajib diisi", "info"); return; }
     // PPh variatif RawData (cth PAK YUSUF 0.5%): potong saat bayar + simpan bukti potong.
     const pphAmt = Math.round(Number(termPay.amount || 0) * pphOf(termPay) / 100);
+    const retAmt = Math.round(Number(termPay.amount || 0) * retOf(termPay) / 100);
+    const wo = workOrders.find((w) => w.id === termPay.woId);
+    const penalty = Math.max(0, Math.round(Number(wo?.penaltyAmount || 0)));
+    const netoPayable = Math.max(0, Math.round(netoOf(termPay)) - penalty);
     update("termins", termPay.id, {
       status: "Lunas", paidAt: proof.date, paidMethod: proof.method, paidRef: proof.ref.trim(),
-      pphAmt, withholdingRef: withholdingRef.trim(),
+      pphAmt, retAmt, penaltyApplied: penalty, withholdingRef: withholdingRef.trim(),
     });
-    log("melunasi termin", `${termPay.id} via ${proof.method} ${proof.ref.trim()} · PPh ${pphOf(termPay)}% = ${fmtRupiah(pphAmt)}`, "Subkontraktor");
-    toast(`${termPay.id} lunas — PPh ${fmtRupiah(pphAmt)} dipotong`);
+    // Termin Lunas → hutang usaha: 1 baris neto (Belum Dibayar, denda mengurangi neto)
+    // + 1 baris retensi (Ditahan, dirilis setelah WO Selesai). Cek duplikat via kunci po.
+    const poNeto = `TERM-${termPay.id}`;
+    const poRet = `TERM-${termPay.id}-R`;
+    const existingPo = new Set((data.payables ?? []).map((a) => String(a.po ?? "")));
+    const vesselProj = String(wo?.project ?? "");
+    if (!existingPo.has(poNeto)) {
+      add("payables", {
+        v: String(termPay.sub ?? ""), kodePembantu: String(termPay.sub ?? ""),
+        po: poNeto, openAwal: 0, amt: netoPayable,
+        due: proof.date, pph: `${pphOf(termPay)}%`, st: "Belum Dibayar",
+        vessel: vesselProj, project: vesselProj,
+        item: String(termPay.milestone ?? termPay.progress ?? ""),
+        pay1: 0, pay2: 0,
+        note: `Termin ${termPay.id} neto; PPh ${fmtRupiah(pphAmt)}; retensi ${fmtRupiah(retAmt)} ditahan; denda ${fmtRupiah(penalty)}`,
+        terminId: termPay.id,
+      }, { action: "mencatat hutang termin", module: "Subkontraktor" });
+    }
+    if (retAmt > 0 && !existingPo.has(poRet)) {
+      add("payables", {
+        v: String(termPay.sub ?? ""), kodePembantu: String(termPay.sub ?? ""),
+        po: poRet, openAwal: 0, amt: retAmt,
+        due: proof.date, pph: `${pphOf(termPay)}%`, st: "Ditahan",
+        vessel: vesselProj, project: vesselProj,
+        item: `Retensi ${termPay.milestone ?? termPay.id}`,
+        pay1: 0, pay2: 0,
+        note: `Retensi termin ${termPay.id} — rilis setelah WO Selesai`,
+        terminId: termPay.id,
+      }, { action: "menahan retensi termin", module: "Subkontraktor" });
+    }
+    log("melunasi termin", `${termPay.id} via ${proof.method} ${proof.ref.trim()} · PPh ${pphOf(termPay)}% = ${fmtRupiah(pphAmt)} · hutang ${poNeto} ${fmtRupiah(netoPayable)}${retAmt > 0 ? ` + retensi ${fmtRupiah(retAmt)} ditahan` : ""}`, "Subkontraktor");
+    toast(`${termPay.id} lunas — PPh ${fmtRupiah(pphAmt)} dipotong · hutang ${fmtRupiah(netoPayable)} tercatat`);
     setTermPay(null);
     setWithholdingRef("");
   };
@@ -313,8 +347,15 @@ export default function Subcontractor() {
     update("termins", releaseTerm.id, {
       status: "Retensi Released", releasedAt: releaseForm.date, releaseBA: releaseForm.ba.trim(),
     });
+    // Baris retensi Ditahan → Belum Dibayar agar bisa dibayar via hutang usaha.
+    const poRet = `TERM-${releaseTerm.id}-R`;
+    const held = (data.payables ?? []).find((a) => String(a.po ?? "") === poRet && String(a.st ?? "") === "Ditahan");
+    if (held) {
+      update("payables", held.id, { st: "Belum Dibayar" });
+      log("merilis retensi hutang", `${held.id} (${poRet}) → Belum Dibayar`, "Subkontraktor");
+    }
     log("merilis retensi", `${releaseTerm.id} · BA ${releaseForm.ba.trim()} · ${fmtTanggal(releaseForm.date)}`, "Subkontraktor");
-    toast(`${releaseTerm.id} — retensi dirilis`);
+    toast(`${releaseTerm.id} — retensi dirilis${held ? " · hutang retensi siap dibayar" : ""}`);
     setReleaseTerm(null);
     setReleaseForm({ date: todayISO(), ba: "" });
   };

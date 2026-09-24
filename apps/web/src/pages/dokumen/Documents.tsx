@@ -4,7 +4,7 @@ import { Card, PageHeader, Badge, KpiCard, Modal, Field, FormGrid, ConfirmModal,
 import type { SortState } from "../../components/ui";
 import { useStore, type StoreItem } from "../../data/store";
 import { fmtTanggal, todayISO } from "../../utils/format";
-import { sbDsNumber, sbSjNumber } from "../../utils/sb";
+import { sbDsNumber, sbSjNumber, maxSeq, parseSjSeq } from "../../utils/sb";
 import { exportExcel } from "../../utils/export";
 
 const TYPES = ["Kontrak", "Drawing", "Prosedur", "Sertifikat", "Laporan", "Invoice", "NCR", "Penawaran", "Dock Space", "Surat Jalan", "Tanda Terima"];
@@ -213,13 +213,16 @@ export default function Documents() {
   };
 
   const sbSeq = (tipe: string): number => {
-    const nums = data.documents
-      .filter((d) => d.type === tipe && typeof d.sbRef === "string")
-      .map((d) => {
-        const m = /^(\d+)\//.exec(String(d.sbRef));
-        return m ? Number(m[1]) : 0;
-      });
-    return Math.max(0, ...nums) + 1;
+    const rows = data.documents.filter((d) => d.type === tipe);
+    if (tipe === "Surat Jalan") {
+      // Dash format SJ-SMD-YYYY-nnn: scan trailing digits di sbRef + id.
+      const nums = rows.flatMap((d) => [parseSjSeq(d.sbRef), parseSjSeq(d.id)]);
+      return Math.max(0, ...nums) + 1;
+    }
+    const nums = rows
+      .filter((d) => typeof d.sbRef === "string")
+      .map((d) => String(d.sbRef));
+    return maxSeq(nums, /^(\d+)\//) + 1;
   };
 
   const setF = (k: string, v: string) => setForm((f) => ({ ...f, [k]: v }));

@@ -36,7 +36,7 @@ import { useStore } from "../../data/store";
 import type { StoreItem } from "../../data/store";
 import { fmtRupiah, fmtMiliar, fmtTanggal, fmtJumlah, todayISO } from "../../utils/format";
 import { getSetting } from "../../utils/settings";
-import { sbInvoiceMath, PPN_INVOICE_DEFAULT, PPH_JASA_DEFAULT } from "../../utils/sb";
+import { sbInvoiceMath, maxSeq, PPN_INVOICE_DEFAULT, PPH_JASA_DEFAULT } from "../../utils/sb";
 import { exportExcel } from "../../utils/export";
 import {
   COA_EXCEL,
@@ -103,6 +103,29 @@ const invNext = (s: string): string[] => INV_NEXT[s] ?? [];
 const emptyProof = () => ({ date: todayISO(), method: "Transfer", ref: "" });
 const emptyLine = (): InvLine => ({ desc: "", qty: "1", unit: "pcs", price: "", rate: "", hours: "", kategori: "Jasa" });
 const num = (v: unknown): number => Number(v) || 0;
+
+// Neto invoice: grandTotal bila ada, else amount dikurangi retensi yang ditahan.
+const invNeto = (inv: StoreItem): number => {
+  const g = num(inv.grandTotal);
+  if (g > 0) return g;
+  return Math.max(0, num(inv.amount) - num(inv.retentionAmt));
+};
+
+// Payroll: bruto = basic + tunjangan (array|number) + lembur; net = kas keluar;
+// potongan = bruto − net (PPh21 + BPJS karyawan), selalu seimbang.
+const allowSum = (p: StoreItem): number => {
+  const a = p.allowances;
+  if (Array.isArray(a)) return a.reduce((s: number, l: unknown) => s + num((l as { amount?: unknown }).amount), 0);
+  return num(a);
+};
+const payBruto = (p: StoreItem): number => num(p.basic) + allowSum(p) + num(p.overtimePay);
+const payNet = (p: StoreItem): number => {
+  const n = num(p.net);
+  if (n > 0) return n;
+  const bruto = payBruto(p);
+  const pot = num(p.pph21) + num(p.bpjsKesKar ?? p.bpjsKes) + num(p.bpjsTkKar ?? p.bpjsTk) + num(p.deductions);
+  return Math.max(0, bruto - pot);
+};
 
 function lineAmount(l: InvLine, isTM: boolean): number {
   if (isTM) return num(l.rate) * num(l.hours);
@@ -363,16 +386,16 @@ export default function Finance() {
 
   const approveThreshold = getSetting(data, "APPROVE_INVOICE", 5000000);
   const needsDirector = (inv: StoreItem): boolean =>
-    num(inv.amount) > approveThreshold && !inv.directorApproved && String(inv.status) !== "Lunas" && String(inv.status) !== "Dihapusbukukan";
+    invNeto(inv) > approveThreshold && !inv.directorApproved && String(inv.status) !== "Lunas" && String(inv.status) !== "Dihapusbukukan";
 
   const arOpen = useMemo(
     () => invoices.filter((i) => i.status !== "Lunas" && i.status !== "Draft" && i.status !== "Dihapusbukukan"),
     [invoices]
   );
-  const arTotal = arOpen.reduce((s, i) => s + num(i.amount), 0);
+  const arTotal = arOpen.reduce((s, i) => s + invNeto(i), 0);
   const apTotal = payables.filter((a) => a.st !== "Lunas").reduce((s, a) => s + Math.max(0, num(a.amt) - num(a.pay1) - num(a.pay2)), 0);
   const lateCount = invoices.filter((i) => i.status === "Terlambat").length;
-  const writeOffTotal = invoices.filter((i) => i.status === "Dihapusbukukan").reduce((s, i) => s + num(i.amount), 0);
+  const writeOffTotal = invoices.filter((i) => i.status === "Dihapusbukukan").reduce((s, i) => s + invNeto(i), 0);
 
   const agingReal = useMemo(
     () =>
@@ -381,7 +404,7 @@ export default function Finance() {
           const age = ageDays(i.due, today);
           return age >= b.min && age <= b.max;
         });
-        return { ...b, count: rows.length, total: rows.reduce((s, i) => s + num(i.amount), 0) };
+        return { ...b, count: rows.length, total: rows.reduce((s, i) => s + invNeto(i), 0) };
       }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [arOpen]
@@ -423,14 +446,14 @@ export default function Finance() {
   const apPaidMonth = (a: StoreItem): string => monthOf(a.paidAt || a.due);
 
   const taxCalc = useMemo(() => {
-    if (!activePeriod) return { ppnKeluar: 0, ppnMasuk: 0, pph23: 0, pph21: 0, invBase: 0, apBase: 0, ppnRate: 11, pphRate: 2 };
+    if (!activePeriod) return { ppnKeluar: 0, ppnMasuk: 0, pph23: 0, pph21: 0, invBase: 0, apBase: 0, ppnRate: 12, pphRate: 2 };
     const invLunas = invoices.filter((i) => i.status === "Lunas" && invPaidMonth(i) === activePeriod);
-    const invBase = invLunas.reduce((s, i) => s + num(i.amount), 0);
+    const invBase = invLunas.reduce((s, i) => s + invNeto(i), 0);
     const apLunas = payables.filter((a) => a.st === "Lunas" && apPaidMonth(a) === activePeriod);
     const apBase = apLunas.reduce((s, a) => s + num(a.amt), 0);
     const payRows = (data.payroll ?? []).filter((p) => String(p.period ?? "") === activePeriod);
     const pph21 = payRows.reduce((s, p) => s + num(p.pph21), 0);
-    const ppnRate = getSetting(data, "PPN_RATE", 11);
+    const ppnRate = getSetting(data, "PPN_RATE", 12);
     const pphRate = getSetting(data, "PPH23_RATE", 2);
     return {
       ppnKeluar: Math.round((invBase * ppnRate) / 100),
@@ -479,7 +502,7 @@ export default function Finance() {
     for (const i of arOpen) {
       const dueMs = Date.parse(String(i.due ?? ""));
       if (!Number.isFinite(dueMs) || dueMs > cutoff) continue;
-      rows.push({ key: `AR:${i.id}`, kind: "AR", id: String(i.id), ref: String(i.project ?? ""), desc: String(i.client ?? ""), due: String(i.due ?? ""), amount: num(i.amount), age: ageDays(i.due, today) });
+      rows.push({ key: `AR:${i.id}`, kind: "AR", id: String(i.id), ref: String(i.project ?? ""), desc: String(i.client ?? ""), due: String(i.due ?? ""), amount: invNeto(i), age: ageDays(i.due, today) });
     }
     return rows.sort((a, b) => String(a.due).localeCompare(String(b.due)));
   }, [payables, arOpen, today]);
@@ -519,7 +542,7 @@ export default function Finance() {
   const profitPid = profitProjectId || projectsVisible[0]?.id || "";
   const profitCalc = useMemo(() => {
     if (!profitPid) return null;
-    const revenue = (data.invoices ?? []).filter((i) => i.project === profitPid && i.status === "Lunas").reduce((s, i) => s + num(i.amount), 0);
+    const revenue = (data.invoices ?? []).filter((i) => i.project === profitPid && i.status === "Lunas").reduce((s, i) => s + invNeto(i), 0);
     let costPayable = 0;
     let unallocPayable = 0;
     for (const a of data.payables ?? []) {
@@ -540,11 +563,11 @@ export default function Finance() {
     let unallocPayroll = 0;
     for (const p of data.payroll ?? []) {
       if (p.status !== "Dibayar") continue;
-      const net = num(p.net) || num(p.basic) + num(p.allowances) + num(p.overtimePay) - num(p.deductions);
+      const bruto = payBruto(p) || payNet(p);
       const ap = String(p.allocProject ?? "");
       const pct = p.allocPct === undefined || p.allocPct === "" ? 0 : num(p.allocPct);
-      if (ap === profitPid && pct > 0) costPayroll += Math.round((net * pct) / 100);
-      else if (!ap) unallocPayroll += net;
+      if (ap === profitPid && pct > 0) costPayroll += Math.round((bruto * pct) / 100);
+      else if (!ap) unallocPayroll += bruto;
     }
     const cost = costPayable + costTermin + costPayroll;
     const margin = revenue - cost;
@@ -601,7 +624,7 @@ export default function Finance() {
         desc: `Pelunasan invoice ${i.id} (${i.client ?? ""})`,
         debitAkun: "1100 Kas",
         kreditAkun: "1200 Piutang Usaha",
-        amount: num(i.amount),
+        amount: invNeto(i),
       });
     }
     for (const i of data.invoices ?? []) {
@@ -612,7 +635,7 @@ export default function Finance() {
         desc: `Hapus buku piutang ${i.id} — ${i.writeOffReason ?? ""}`,
         debitAkun: "5100 Beban Proyek",
         kreditAkun: "1200 Piutang Usaha",
-        amount: num(i.amount),
+        amount: invNeto(i),
       });
     }
     for (const a of data.payables ?? []) {
@@ -628,14 +651,40 @@ export default function Finance() {
     }
     for (const p of data.payroll ?? []) {
       if (p.status !== "Dibayar") continue;
-      rows.push({
-        date: String(p.paidAt || ""),
-        ref: String(p.id),
-        desc: `Gaji ${p.employeeId ?? ""} periode ${p.period ?? ""}`,
-        debitAkun: "5200 Beban Gaji",
-        kreditAkun: "1100 Kas",
-        amount: num(p.net) || num(p.basic) + num(p.allowances) + num(p.overtimePay) - num(p.deductions),
-      });
+      const bruto = payBruto(p) || payNet(p);
+      const net = Math.min(payNet(p), bruto);
+      const pot = Math.max(0, bruto - net);
+      const d = String(p.paidAt || "");
+      if (net > 0) {
+        rows.push({
+          date: d,
+          ref: String(p.id),
+          desc: `Gaji ${p.employeeId ?? ""} periode ${p.period ?? ""} (net)`,
+          debitAkun: "5200 Beban Gaji",
+          kreditAkun: "1100 Kas",
+          amount: net,
+        });
+      }
+      if (pot > 0) {
+        rows.push({
+          date: d,
+          ref: String(p.id),
+          desc: `Potongan ${p.employeeId ?? ""} periode ${p.period ?? ""} (PPh21+BPJS)`,
+          debitAkun: "5200 Beban Gaji",
+          kreditAkun: "2100 Hutang Usaha",
+          amount: pot,
+        });
+      }
+      if (net <= 0 && pot <= 0 && bruto > 0) {
+        rows.push({
+          date: d,
+          ref: String(p.id),
+          desc: `Gaji ${p.employeeId ?? ""} periode ${p.period ?? ""}`,
+          debitAkun: "5200 Beban Gaji",
+          kreditAkun: "1100 Kas",
+          amount: bruto,
+        });
+      }
     }
     return rows.sort((a, b) => String(b.date).localeCompare(String(a.date)));
   }, [data.invoices, data.payables, data.payroll]);
@@ -649,14 +698,14 @@ export default function Finance() {
       agg[period][k] += v;
     };
     for (const i of data.invoices ?? []) {
-      if (i.status === "Lunas") bump(monthOf(i.paidAt || i.due), "revenue", num(i.amount));
-      if (i.status === "Dihapusbukukan") bump(monthOf(i.writeOffAt || i.due), "writeoff", num(i.amount));
+      if (i.status === "Lunas") bump(monthOf(i.paidAt || i.due), "revenue", invNeto(i));
+      if (i.status === "Dihapusbukukan") bump(monthOf(i.writeOffAt || i.due), "writeoff", invNeto(i));
     }
     for (const a of data.payables ?? []) {
       if (a.st === "Lunas") bump(monthOf(a.paidAt || a.due), "costProj", num(a.amt));
     }
     for (const p of data.payroll ?? []) {
-      if (p.status === "Dibayar") bump(monthOf(p.paidAt || p.period), "salary", num(p.net) || num(p.basic) + num(p.allowances) + num(p.overtimePay) - num(p.deductions));
+      if (p.status === "Dibayar") bump(monthOf(p.paidAt || p.period), "salary", payBruto(p) || payNet(p));
     }
     return Object.keys(agg)
       .sort()
@@ -689,18 +738,21 @@ export default function Finance() {
   ];
 
   const balance = useMemo(() => {
-    const revTotal = (data.invoices ?? []).filter((i) => i.status === "Lunas").reduce((s, i) => s + num(i.amount), 0);
+    const revTotal = (data.invoices ?? []).filter((i) => i.status === "Lunas").reduce((s, i) => s + invNeto(i), 0);
     const apLunasTotal = (data.payables ?? []).filter((a) => a.st === "Lunas").reduce((s, a) => s + num(a.amt), 0);
-    const payPaidTotal = (data.payroll ?? []).filter((p) => p.status === "Dibayar").reduce((s, p) => s + (num(p.net) || num(p.basic) + num(p.allowances) + num(p.overtimePay) - num(p.deductions)), 0);
-    const kasNet = revTotal - apLunasTotal - payPaidTotal;
+    const payRows = (data.payroll ?? []).filter((p) => p.status === "Dibayar");
+    const payBrutoTotal = payRows.reduce((s, p) => s + (payBruto(p) || payNet(p)), 0);
+    const payNetTotal = payRows.reduce((s, p) => s + Math.min(payNet(p), payBruto(p) || payNet(p)), 0);
+    const payHutangTotal = Math.max(0, payBrutoTotal - payNetTotal);
+    const kasNet = revTotal - apLunasTotal - payNetTotal;
     const piutang = arTotal + retentionTotal;
-    const hutang = apTotal;
+    const hutang = apTotal + payHutangTotal;
     const ppnUtang = Math.max(0, taxCalc.ppnKeluar - taxCalc.ppnMasuk);
     const aset = kasNet + piutang;
     const kewajiban = hutang + ppnUtang;
     const ekuitas = aset - kewajiban;
-    const laba = revTotal - apLunasTotal - payPaidTotal - writeOffTotal;
-    return { revTotal, apLunasTotal, payPaidTotal, kasNet, piutang, hutang, ppnUtang, aset, kewajiban, ekuitas, laba };
+    const laba = revTotal - apLunasTotal - payBrutoTotal - writeOffTotal;
+    return { revTotal, apLunasTotal, payPaidTotal: payBrutoTotal, payNetTotal, payHutangTotal, kasNet, piutang, hutang, ppnUtang, aset, kewajiban, ekuitas, laba };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [data.invoices, data.payables, data.payroll, arTotal, retentionTotal, apTotal, taxCalc, writeOffTotal]);
 
@@ -861,7 +913,10 @@ export default function Finance() {
       if (!coaKode.has(l.db) || !coaKode.has(l.kr)) { toast(`Baris ${i + 1}: akun harus terdaftar di CoA`, "info"); return; }
       if (!num(l.amount) || num(l.amount) <= 0) { toast(`Baris ${i + 1}: nominal harus lebih dari 0`, "info"); return; }
     }
-    const voucher = juForm.dokumen.trim() || `JU-${todayISO().replaceAll("-", "")}-${String((manJournals.length ?? 0) + 1).padStart(3, "0")}`;
+    const compact = (juForm.date || todayISO()).replaceAll("-", "");
+    const juPrefix = `JU-${compact}-`;
+    const juNext = maxSeq(manJournals.map((j) => String((j as StoreItem).dokumen ?? "")), new RegExp(`^${juPrefix}(\\d+)$`)) + 1;
+    const voucher = juForm.dokumen.trim() || `${juPrefix}${String(juNext).padStart(3, "0")}`;
     lines.forEach((l, i) => {
       add("journals", {
         date: juForm.date, kodePembantu: juForm.kodePembantu.trim(), dokumen: voucher,
@@ -1125,13 +1180,41 @@ export default function Finance() {
     if (!releaseTarget) return;
     if (!releaseForm.date) { toast("Tanggal release wajib diisi", "info"); return; }
     if (!releaseForm.ba.trim()) { toast("No. berita acara wajib diisi", "info"); return; }
+    const retAmt = num(releaseTarget.retentionAmt);
     update("invoices", releaseTarget.id, {
       retentionStatus: "Released",
       retentionReleaseDate: releaseForm.date,
       retentionBaNo: releaseForm.ba.trim(),
     });
+    // Retensi yang dirilis menjadi tagihan baru (top-up AR) agar kasir bisa menagihkannya.
+    if (retAmt > 0 && !(data.invoices ?? []).some((i) => String(i.milestoneRef ?? "") === `Retensi ${releaseTarget.id}`)) {
+      let topId = `${releaseTarget.id}-R`;
+      let bumpN = 1;
+      while ((data.invoices ?? []).some((i) => String(i.id) === topId)) {
+        bumpN += 1;
+        topId = `${releaseTarget.id}-R${bumpN}`;
+      }
+      add("invoices", {
+        id: topId,
+        client: releaseTarget.client,
+        kodePembantu: releaseTarget.kodePembantu ?? releaseTarget.client,
+        project: releaseTarget.project,
+        amount: retAmt,
+        grandTotal: retAmt,
+        retentionAmt: 0,
+        retentionPct: 0,
+        retentionStatus: "-",
+        due: releaseForm.date,
+        status: "Diajukan",
+        paymentTerm: `Retensi ${releaseTarget.id}`,
+        billingType: "Retensi",
+        milestoneRef: `Retensi ${releaseTarget.id}`,
+        dunning: "Belum Ditagih",
+      }, { action: "menagih retensi yang dirilis", module: "Keuangan" });
+      log("membuat invoice retensi", `${topId} dari ${releaseTarget.id} · ${fmtRupiah(retAmt)}`, "Keuangan");
+    }
     log("me-release retensi", `${releaseTarget.id} BA ${releaseForm.ba.trim()}`, "Keuangan");
-    toast(`Retensi ${releaseTarget.id} di-release`);
+    toast(`Retensi ${releaseTarget.id} di-release${retAmt > 0 ? " — invoice penagihan dibuat" : ""}`);
     setReleaseTarget(null);
     setReleaseForm({ date: todayISO(), ba: "" });
   };
@@ -1834,7 +1917,7 @@ export default function Finance() {
               )}
               <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
                 {projectsVisible.slice(0, 6).map((p) => {
-                  const rev = (data.invoices ?? []).filter((i) => i.project === p.id).reduce((s, i) => s + num(i.amount), 0);
+                  const rev = (data.invoices ?? []).filter((i) => i.project === p.id).reduce((s, i) => s + invNeto(i), 0);
                   const margin = rev - num(p.actual);
                   return (
                     <Card key={p.id} className="card-hover p-4">
@@ -1867,13 +1950,13 @@ export default function Finance() {
                     <tbody className="divide-y divide-steel-100">
                       {sortRows((data.payroll ?? []).filter((p) => p.status === "Dibayar").slice(0, 20), alokasiSort, (p, k) =>
                         k === "emp" ? String(p.employeeId ?? "") : k === "period" ? String(p.period ?? "") :
-                        k === "net" ? (num(p.net) || num(p.basic) + num(p.allowances) + num(p.overtimePay) - num(p.deductions)) :
+                        k === "net" ? payNet(p) :
                         k === "alloc" ? String(p.allocProject ?? "") : String(p.id)).map((p) => (
                         <tr key={p.id} className="hover:bg-surface">
                           <td className="td font-mono text-xs font-semibold text-navy-900">{p.id}</td>
                           <td className="td font-mono text-xs text-steel-600">{String(p.employeeId ?? "")}</td>
                           <td className="td text-xs text-steel-600">{String(p.period ?? "")}</td>
-                          <td className="td text-xs font-semibold">{fmtRupiah(num(p.net) || num(p.basic) + num(p.allowances) + num(p.overtimePay) - num(p.deductions))}</td>
+                          <td className="td text-xs font-semibold">{fmtRupiah(payNet(p))}</td>
                           <td className="td text-xs text-steel-600">{p.allocProject ? `${p.allocProject} · ${p.allocPct}%` : "Tak teralokasi"}</td>
                           <td className="td"><button className="btn-secondary px-2 py-1 text-[11px]" onClick={() => { setAllocTarget(p); setAllocForm({ project: String(p.allocProject ?? profitPid), pct: String(p.allocPct ?? 100) }); }}>Alokasi</button></td>
                         </tr>
