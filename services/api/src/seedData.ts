@@ -1,14 +1,13 @@
-// Bulk-seed rows for POST /api/admin/seed. Sources:
-// - settings: apps/web/src/data/store.tsx seedSettings (all 36 rows)
-// - coa: apps/web/src/data/financeExcel.ts COA_EXCEL (all 98 accounts)
-// - branches: store.tsx seedBranches (BR-01..03)
-// - journals: financeExcel.ts JU_PENYESUAIAN_EXCEL via seedJournals mapping (JU-EX-01..)
-// - assets: financeExcel.ts ASET_EXCEL via seedAssets mapping (AST-EX-01..05)
-// - warranties/trials/clientPos: EMPTY to match FE [] seeds
-// - wbs_by_project: store.tsx wbsTemplate per seeded project
-// - team_by_project: store.tsx seedTeamByProject rows
-// - other collections: 1-2 small realistic example rows each, generated
-//   programmatically from the EX map below (PREFIX-style ids).
+// Bulk-seed rows for POST /api/admin/seed dan npm run seed. Sumber:
+// - settings: 36 baris (halaman Pengaturan membaca semuanya; JANGAN dikurangi)
+// - coa: apps/web/src/data/financeExcel.ts COA_EXCEL (98 akun, sama dengan FE)
+// - branches/journals/assets: sama dengan FE (financeExcel + seeds.ts)
+// - koleksi operasional: CERMIN apps/web (data/seeds.ts + data/index.ts) via
+//   `npm run seed:mirror` → seedFeMirror.ts. Id SAMA dengan FE sehingga
+//   mode lokal dan mode remote menampilkan data identik.
+// - EX: hanya baris tambahan khusus backend (saat ini kosong).
+// - wbs/team: proyek NB-2025-012 + RP-2026-003 (selaras TEAM_SEED FE).
+import { FE_MIRROR_ROWS } from "./seedFeMirror.js";
 export interface SeedRow { table: string; id: string; branch: string; data: Record<string, unknown> }
 
 export interface WbsSeed { projectId: string; wbs: Array<Record<string, unknown>> }
@@ -108,58 +107,9 @@ const COA: Array<[string, string, string, string]> = [
   ["7-300","Biaya Administrasi Bank","D","LR"],["7-400","Dividen","D","LR"],
 ];
 
-// One small realistic example per remaining collection: [table, id, branch, data].
-const EX: Array<[string, string, string, Record<string, unknown>]> = [
-  ["projects","NB-2026-001","Samarinda",{vessel:"TB Maju Jaya 09",type:"New Build",client:"PT Samudra Jaya Perkasa",status:"Sedang Berjalan",start:"2026-02-01",end:"2026-12-15",progress:18,budget:48000000000,actual:8600000000,manager:"Ir. Hendra Wijaya",scope:["Desain","Fabrikasi Baja"]}],
-  ["projects","RP-2026-001","Samarinda",{vessel:"TB Karya Bahari 12",type:"Repair",client:"PT Karya Bahari Sejahtera",status:"Dalam Proses",start:"2026-07-20",end:"2026-08-25",progress:45,budget:4200000000,actual:1900000000,manager:"Rudi Hartono",scope:["Survey Docking","Pengecatan Lambung"]}],
-  ["vessels","V-2026-001","Samarinda",{name:"TB Maju Jaya 09",type:"Tugboat",owner:"PT Samudra Jaya Perkasa",gt:420,loa:32.5,status:"Bangun Baru"}],
-  ["drydocks","DD-2026-001","Samarinda",{name:"Graving Dock 1",capacity:5000,unit:"DWT",status:"Terisi",projectId:"NB-2026-001"}],
-  ["dockSlots","DS-2026-001","Samarinda",{dockId:"DD-2026-001",projectId:"RP-2026-001",from:"2026-07-20",to:"2026-08-25",status:"Terjadwal"}],
-  ["inventory","INV-2026-001","Samarinda",{item:"Plat AH36 12mm",qty:240,unit:"lembar",warehouse:"Gudang A",min:50}],
-  ["movements","M-2026-001","Samarinda",{itemId:"INV-2026-001",kind:"Keluar",qty:12,date:"2026-08-01",projectId:"NB-2026-001"}],
-  ["equipment","EQ-2026-001","Samarinda",{name:"Gantry Crane 50T",category:"Pengangkat",code:"CRN-50",status:"Tersedia",util:68}],
-  ["bookings","BK-2026-001","Samarinda",{dockId:"DD-2026-001",vessel:"TB Nusantara 22",client:"PT Pelayaran Nusantara Abadi",from:"2026-09-01",to:"2026-09-20",status:"Dipesan"}],
-  ["subcontractors","SUB-2026-001","Samarinda",{name:"CV Sanga Sanga Interior",scope:"Interior accommodation",projectId:"NB-2026-001",value:850000000,status:"Aktif"}],
-  ["workOrders","WO-2026-001","Samarinda",{projectId:"NB-2026-001",title:"Fabrikasi section 5",assignee:"EMP-005",due:"2026-08-15",status:"Berjalan",progress:60}],
-  ["termins","TRM-2026-001","Samarinda",{projectId:"NB-2026-001",label:"Termin 1 — Hull Assembly",pct:30,amount:14400000000,status:"Ditagih"}],
-  ["employees","EMP-2026-001","Samarinda",{name:"Joko Prasetyo",role:"Welder",dept:"Produksi",status:"Aktif",join:"2024-03-01",certs:[]}],
-  ["invoices","INVV-2026-001","Samarinda",{projectId:"NB-2026-001",client:"PT Samudra Jaya Perkasa",amount:16128000000,ppn:12,status:"Terkirim",date:"2026-08-01"}],
-  ["payables","AP-2026-001","Samarinda",{vendor:"CV Berlian Jaya Gas",amount:502116000,status:"Belum Bayar",due:"2026-08-20"}],
-  ["ncr","NCR-2026-001","Samarinda",{projectId:"NB-2026-001",area:"Hull Assembly",finding:"Undercut pengelasan > 0.5mm",severity:"Mayor",status:"Terbuka"}],
-  ["incidents","INC-2026-001","Samarinda",{projectId:"RP-2026-001",title:"Tangan terjepit wire rope",severity:"Ringan",date:"2026-08-02",status:"Investigasi"}],
-  ["inspections","INS-2026-001","Samarinda",{projectId:"NB-2026-001",kind:"Welding visual",result:"Lulus",date:"2026-08-01",inspector:"Sari Wulandari"}],
-  ["purchaseOrders","PO-2026-001","Samarinda",{vendor:"PT Jotun Indonesia",item:"Cat Epoxy",qty:200,unit:"drum",amount:480000000,status:"Disetujui"}],
-  ["requisitions","PR-2026-001","Samarinda",{projectId:"NB-2026-001",item:"Wire Rope 32mm",qty:4,unit:"roll",requester:"Agus Setiawan",status:"Diajukan"}],
-  ["vendors","VND-2026-001","Samarinda",{name:"PT Jotun Indonesia",category:"Cat & Coating",contact:"021-555-0192",rating:88}],
-  ["quotations","QT-2026-001","Samarinda",{client:"PT Mitra Samudra Raya",scope:"Repair + docking TB Maju 04",value:3100000000,status:"Terkirim",date:"2026-07-22"}],
-  ["clients","C-2026-001","Samarinda",{name:"PT Samudra Jaya Perkasa",fleet:12,rating:92,since:2015}],
-  ["documents","DOC-2026-001","Samarinda",{projectId:"NB-2026-001",title:"General Arrangement Rev C",kind:"Drawing",status:"Disetujui"}],
-  ["surveys","S-2026-001","Samarinda",{vessel:"TB Karya Bahari 12",kind:"Docking survey",date:"2026-07-21",result:"Lanjut docking"}],
-  ["activities","A-2026-001","Samarinda",{projectId:"NB-2026-001",action:"Termin 1 ditagih",target:"TRM-2026-001",module:"Keuangan"}],
-  ["services","SRV-2026-001","Samarinda",{name:"Overhaul main engine",price:750000000,unit:"paket",status:"Aktif"}],
-  ["spareparts","SP-2026-001","Samarinda",{name:"Fuel filter CAT 1R-0751",stock:120,unit:"pcs",min:20,price:385000}],
-  ["boq","BQ-2026-001","Samarinda",{projectId:"NB-2026-001",item:"Plat AH36 12mm",vol:240,unit:"lembar",unitPrice:2850000,amount:684000000}],
-  ["branches","BR-01","",{name:"Samarinda — Kantor Pusat",city:"Samarinda",isHQ:true}],
-  ["branches","BR-02","",{name:"Balikpapan — Galangan",city:"Balikpapan",isHQ:false}],
-  ["branches","BR-03","",{name:"Banjarmasin — Workshop",city:"Banjarmasin",isHQ:false}],
-  ["attendance","ABS-2026-001","Samarinda",{employeeId:"EMP-2026-001",date:"2026-08-01",shift:"Pagi",status:"Hadir",checkIn:"07:55",checkOut:"17:05",overtime:1}],
-  ["payroll","PAY-2026-001","Samarinda",{employeeId:"EMP-2026-001",period:"2026-07",basic:8500000,allowances:2000000,net:9500000,status:"Dibayar",paidAt:"2026-07-31"}],
-  ["taxPeriods","TAX-202609","Samarinda",{period:"2026-09",ppnKeluar:0,ppnMasuk:0,pph23:0,pph21:0,status:"Draft"}],
-  ["rfqs","RFQ-2026-001","Samarinda",{prId:"PR-2026-001",item:"Wire Rope 32mm",vendors:["PT Steel Rig","PT Primabaja"],quotes:[],status:"Terkirim",winner:""}],
-  ["changeOrders","CO-2026-001","Samarinda",{project:"NB-2026-001",title:"Tambah Fi-Fi system deck",impact:1850000000,status:"Diajukan",requestedBy:"Budi Santoso",date:"2026-07-28"}],
-  ["risks","RSK-2026-001","Samarinda",{project:"NB-2026-001",title:"Keterlambatan baja AH36",likelihood:"Sedang",impact:"Tinggi",mitigation:"Dual vendor + buffer 2 minggu",status:"Dipantau"}],
-  ["leaves","CUT-2026-001","Samarinda",{employeeId:"EMP-2026-001",type:"Tahunan",from:"2026-08-10",to:"2026-08-12",days:3,status:"Diajukan",note:"Keperluan keluarga"}],
-  ["trainings","TRN-2026-001","Samarinda",{title:"Welding Inspector Refresh",date:"2026-09-05",participants:["EMP-2026-001"],provider:"B4T",status:"Terjadwal"}],
-  ["timesheets","TS-2026-001","Samarinda",{woId:"WO-2026-001",employeeId:"EMP-2026-001",date:"2026-08-01",hours:8,note:"Fabrikasi section 5"}],
-  ["drawings","DRW-2026-001","Samarinda",{project:"NB-2026-001",title:"General Arrangement",revision:"C",status:"Disetujui",updated:"2026-07-20",holder:"Hendra Wijaya"}],
-  ["toolbox","TBM-2026-001","Samarinda",{project:"NB-2026-001",topic:"Lifting & rigging aman",date:"2026-08-01",attendees:24,pic:"Agus Setiawan"}],
-  // warranties/trials/clientPos intentionally EMPTY to match FE [] seeds.
-  ["calibrations","CAL-2026-001","Samarinda",{equipmentId:"EQ-2026-001",item:"Load cell Gantry Crane",due:"2026-09-15",status:"Terjadwal",cert:""}],
-  ["communications","COM-2026-001","Samarinda",{quotationId:"QT-2026-001",channel:"Email",date:"2026-07-22",summary:"Kirim revisi v2 + negosiasi termin",by:"Hendra Wijaya"}],
-  ["contracts","KTR-2026-001","Samarinda",{quotationId:"QT-2026-001",projectId:"RP-2026-001",client:"PT Mitra Samudra Raya",value:3100000000,signedAt:"2026-07-12",status:"Aktif"}],
-  ["bast","BAST-2026-001","Samarinda",{projectId:"NB-2026-001",milestone:"Hull Assembly",tanggal:"2026-08-02",amount:540000000,status:"Diajukan"}],
-  ["requests","REQ-2026-002","Samarinda",{vessel:"TB Maju Jaya 09",client:"PT Samudra Jaya Perkasa",kind:"Repair Request",scope:"Docking + coating",value:3800000000,status:"Baru",date:"2026-08-01"}],
-];
+// Koleksi operasional dicerminkan dari FE (FE_MIRROR_ROWS). Tidak ada baris
+// khusus backend saat ini.
+const EX: Array<[string, string, string, Record<string, unknown>]> = [];
 
 // Mirrors JU_PENYESUAIAN_EXCEL (financeExcel.ts) via seedJournals mapping:
 // id JU-EX-01.., dokumen JUM-0831, amount = dbAmt || krAmt.
@@ -183,7 +133,7 @@ const ASET_EX: Array<[string, number, number, number]> = [
   ["Inventaris Kantor dan Peralatan Proyek",1114376400,712588275,8221458.33],
 ];
 
-// Mirrors store.tsx wbsTemplate (15 tasks, total weight 100).
+// Mirrors store wbsTemplate (15 tasks, total weight 100).
 const WBS_TEMPLATE: Array<[string, string, string, number, number]> = [
   ["Desain & Persetujuan Class","2026-01","2026-03",100,8],
   ["Pengadaan Material","2026-02","2026-05",85,10],
@@ -202,7 +152,7 @@ const WBS_TEMPLATE: Array<[string, string, string, number, number]> = [
   ["Sea Trial & Delivery","2026-09","2026-09",0,4],
 ];
 
-// Mirrors store.tsx seedTeamByProject.
+// Mirrors store seedTeamByProject.
 const TEAM_SEED: Array<[string, string[]]> = [
   ["NB-2025-012",["EMP-002","EMP-004","EMP-006"]],
   ["NB-2025-014",["EMP-003","EMP-005"]],
@@ -211,17 +161,7 @@ const TEAM_SEED: Array<[string, string[]]> = [
   ["RF-2026-001",["EMP-002","EMP-006"]],
 ];
 
-const WBS_PROJECTS = ["NB-2026-001","RP-2026-001"];
-
-// Minimal employees so TEAM_SEED memberIds (EMP-002..006) resolve.
-// Exact ids required — do NOT use EMP-2026-xxx here.
-const TEAM_ORPHANS: SeedRow[] = [
-  { table: "employees", id: "EMP-002", branch: "Samarinda", data: { name: "Budi Santoso", role: "Foreman", dept: "Produksi", status: "Aktif", join: "2024-01-15", certs: [] } },
-  { table: "employees", id: "EMP-003", branch: "Samarinda", data: { name: "Agus Setiawan", role: "Welder", dept: "Produksi", status: "Aktif", join: "2024-02-01", certs: [] } },
-  { table: "employees", id: "EMP-004", branch: "Samarinda", data: { name: "Sari Wulandari", role: "QC Inspector", dept: "QC", status: "Aktif", join: "2024-02-01", certs: [] } },
-  { table: "employees", id: "EMP-005", branch: "Samarinda", data: { name: "Rudi Hartono", role: "Fitter", dept: "Produksi", status: "Aktif", join: "2024-03-01", certs: [] } },
-  { table: "employees", id: "EMP-006", branch: "Samarinda", data: { name: "Dedi Kurniawan", role: "Electrician", dept: "Produksi", status: "Aktif", join: "2024-03-01", certs: [] } },
-];
+const WBS_PROJECTS = ["NB-2025-012","RP-2026-003"];
 
 export function buildSeedRows(): SeedRow[] {
   const rows: SeedRow[] = [...SETTINGS];
@@ -240,12 +180,14 @@ export function buildSeedRows(): SeedRow[] {
   for (const [table, id, branch, data] of EX) {
     rows.push({ table, id, branch, data });
   }
+  // Cermin FE: id sama persis → tampilan lokal & remote identik.
+  // EX didahulukan bila ada id kembar (tidak ada saat ini).
   const seen = new Set(rows.map((r) => `${r.table}:${r.id}`));
-  for (const orphan of TEAM_ORPHANS) {
-    if (!seen.has(`${orphan.table}:${orphan.id}`)) {
-      rows.push(orphan);
-      seen.add(`${orphan.table}:${orphan.id}`);
-    }
+  for (const m of FE_MIRROR_ROWS) {
+    const key = `${m.table}:${m.id}`;
+    if (seen.has(key)) continue;
+    rows.push({ table: m.table, id: m.id, branch: m.branch, data: { ...m.data } });
+    seen.add(key);
   }
   return rows;
 }

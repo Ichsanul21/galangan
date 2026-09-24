@@ -39,6 +39,10 @@ export const clients = [
   { id: "C-003", name: "PT Karya Bahari Sejahtera", fleet: 15, rating: 95, since: 2012 },
   { id: "C-004", name: "PT Laut Timur Mandiri", fleet: 6, rating: 78, since: 2019 },
   { id: "C-005", name: "PT Mitra Samudra Raya", fleet: 10, rating: 85, since: 2016 },
+  // RawData CONTOH INVOICE.xlsx — customer pada 4 pola invoice SB.
+  { id: "C-SB-001", name: "PT PELAYARAN KARTIKA SAMUDRA ADIJAYA", fleet: 6, rating: 90, since: 2024 },
+  { id: "C-SB-002", name: "PT PELAYARAN ROYLEA MARINE LINE", fleet: 9, rating: 87, since: 2023 },
+  { id: "C-SB-003", name: "PT ALVI CIPTA SENTOSA", fleet: 4, rating: 89, since: 2024 },
 ];
 
 export const projects: Project[] = [
@@ -153,6 +157,52 @@ export const projects: Project[] = [
     manager: "Rudi Hartono",
     scope: ["Docking", "Pengecatan", "Rudder"],
   },
+  // RawData Invoice/CONTOH INVOICE.xlsx — rantai QT-SB-001 → KTR-SB-001 → invoice SB.
+  {
+    id: "RP-2026-006",
+    vessel: "BG RMN 3324",
+    type: "Repair",
+    client: "PT PELAYARAN KARTIKA SAMUDRA ADIJAYA",
+    status: "Dalam Proses",
+    branch: "Samarinda",
+    start: "2026-08-01",
+    end: "2026-09-15",
+    progress: 90,
+    budget: 2000000000,
+    actual: 1650000000,
+    manager: "Rudi Hartono",
+    scope: ["Docking", "Outfitting Deck", "Painting"],
+  },
+  {
+    id: "RP-2026-007",
+    vessel: "AWB SEA HAVEN 2",
+    type: "Repair",
+    client: "PT PELAYARAN ROYLEA MARINE LINE",
+    status: "Dalam Proses",
+    branch: "Samarinda",
+    start: "2026-06-15",
+    end: "2026-08-15",
+    progress: 95,
+    budget: 3400000000,
+    actual: 3100000000,
+    manager: "Budi Santoso",
+    scope: ["Docking", "Repair", "DP-1 → Pelunasan V2"],
+  },
+  {
+    id: "RP-2026-008",
+    vessel: "BG MHKL 35",
+    type: "Repair",
+    client: "PT ALVI CIPTA SENTOSA",
+    status: "Selesai",
+    branch: "Samarinda",
+    start: "2026-04-10",
+    end: "2026-05-08",
+    progress: 100,
+    budget: 900000000,
+    actual: 724019458,
+    manager: "Rudi Hartono",
+    scope: ["Docking", "Repair (SKDT)"],
+  },
 ];
 
 export const vessels = [
@@ -225,6 +275,64 @@ export const vessels = [
       { date: "2026-06-20", event: "Keel laying", type: "Produksi" },
     ],
   },
+  // RawData Invoice/CONTOH INVOICE.xlsx — kapal pada 4 pola invoice SB.
+  {
+    id: "V-SB-001",
+    name: "BG RMN 3324",
+    imo: "-",
+    type: "Barge 28.5x8x3.8M",
+    class: "BKI",
+    flag: "Indonesia",
+    built: 2018,
+    owner: "PT PELAYARAN KARTIKA SAMUDRA ADIJAYA",
+    loa: 28.5,
+    beam: 8.0,
+    draft: 3.8,
+    bollard: 0,
+    status: "Dalam Docking",
+    certificates: [],
+    history: [
+      { date: "2026-08-01", event: "Docking & repair di SB", type: "Docking" },
+    ],
+  },
+  {
+    id: "V-SB-002",
+    name: "AWB SEA HAVEN 2",
+    imo: "-",
+    type: "AWB",
+    class: "BKI",
+    flag: "Indonesia",
+    built: 2020,
+    owner: "PT PELAYARAN ROYLEA MARINE LINE",
+    loa: 30.0,
+    beam: 9.0,
+    draft: 4.0,
+    bollard: 0,
+    status: "Dalam Docking",
+    certificates: [],
+    history: [
+      { date: "2026-06-15", event: "Docking & repair di SB (DP-1)", type: "Docking" },
+    ],
+  },
+  {
+    id: "V-SB-003",
+    name: "BG MHKL 35",
+    imo: "-",
+    type: "Barge",
+    class: "BKI",
+    flag: "Indonesia",
+    built: 2019,
+    owner: "PT ALVI CIPTA SENTOSA",
+    loa: 27.0,
+    beam: 8.0,
+    draft: 3.5,
+    bollard: 0,
+    status: "Selesai",
+    certificates: [],
+    history: [
+      { date: "2026-05-08", event: "Pelunasan SKDT", type: "Delivery" },
+    ],
+  },
 ];
 
 export const drydocks = [
@@ -241,6 +349,8 @@ export const dockSlots = [
   { id: "S3", dockId: "DD-1", project: "NB-2026-001", vessel: "TB Laut Timur 01", from: 44, to: 62, color: "bg-steel-400" },
   { id: "S4", dockId: "BH-1", project: "NB-2025-012", vessel: "TB Samudra Jaya 07", from: 1, to: 90, color: "bg-navy-700" },
   { id: "S5", dockId: "BH-1", project: "NB-2025-014", vessel: "TB Nusantara 22", from: 10, to: 90, color: "bg-ocean-500" },
+  // RawData 000-DOCK SPACE: BG RMN 3324 (28.5x8x3.8M), ref 000/DS-SB/SMD/VIII/2026.
+  { id: "DS-SB-001", dockId: "DD-1", project: "RP-2026-006", vessel: "BG RMN 3324", from: 40, to: 55, color: "bg-teal-500", dsRef: "000/DS-SB/SMD/VIII/2026", status: "Terjadwal" },
 ];
 
 export interface InventoryItem {
@@ -265,6 +375,10 @@ export const inventory: InventoryItem[] = [
   { id: "INV-006", name: "Kabel Listrik Marine 4x50", category: "Listrik", sku: "KBL-4X50", warehouse: "Gudang Listrik", stock: 1200, minStock: 800, unit: "meter", cost: 185000, location: "L-01" },
   { id: "INV-007", name: "Baut Marine M20", category: "Fastener", sku: "BLT-M20", warehouse: "Gudang B", stock: 1500, minStock: 2000, unit: "pcs", cost: 4500, location: "B1-05" },
   { id: "INV-008", name: "Winch Wire Rope", category: "Rigging", sku: "WIRE-ROPE", warehouse: "Gudang Rig", stock: 6, minStock: 4, unit: "roll", cost: 3200000, location: "R-02" },
+  // RawData REPORT WAREHOUSE 2024 (sheet KODE + STOCK ALL).
+  { id: "INV-SB-001", name: "AMRIL", category: "Umum", sku: "A0000A1", warehouse: "Gudang Santi", stock: 8, minStock: 5, unit: "pcs", cost: 50000, location: "S-01" },
+  { id: "INV-SB-002", name: "HEMPALIN ENAMEL GREEN 40640 @5LTR", category: "Cat", sku: "AL0000CAT40", warehouse: "Gudang Santi", stock: 2, minStock: 4, unit: "KLG", cost: 400000, location: "S-02" },
+  { id: "INV-SB-003", name: "PLAT 8MM 5x20", category: "Baja", sku: "EO0000LAT15", warehouse: "Gudang Santi", stock: 6, minStock: 4, unit: "LBR", cost: 6500000, location: "S-03" },
 ];
 
 export const equipment = [
@@ -284,17 +398,19 @@ export const subcontractors = [
   { id: "SUB-003", name: "PT Mesinindo Perkasa", services: "Overhaul Mesin", rating: 88, active: 3, contract: 9800000000, status: "Aktif", k3: "A" },
   { id: "SUB-004", name: "PT Kelistrikan Bahari", services: "Elektrikal & Panel", rating: 76, active: 1, contract: 3400000000, status: "Kualifikasi", k3: "B+" },
   { id: "SUB-005", name: "CV Scaffold Aman", services: "Perancah & Staging", rating: 92, active: 2, contract: 1800000000, status: "Aktif", k3: "A+" },
+  // RawData INVOICE SUBKONTRAKTOR (Pak Yusuf, BG RMN 3324, PPh 0,5%).
+  { id: "SUB-SB-001", name: "Pak Yusuf", services: "Outfitting Deck (Borongan)", rating: 85, active: 1, contract: 300000, status: "Aktif", k3: "B" },
 ];
 
 export const employees = [
-  { id: "EMP-001", name: "Andi Darman", role: "Direktur", dept: "Direksi", branch: "Samarinda", status: "Aktif", join: "2012-03-01", certs: [] },
-  { id: "EMP-002", name: "Ir. Hendra Wijaya", role: "Project Manager", dept: "Proyek", branch: "Samarinda", status: "Aktif", join: "2015-07-12", certs: ["PMP", "Welding Inspector"] },
-  { id: "EMP-003", name: "Budi Santoso", role: "Project Manager", dept: "Proyek", branch: "Samarinda", status: "Aktif", join: "2016-02-20", certs: ["PMP"] },
-  { id: "EMP-004", name: "Rudi Hartono", role: "Superintendent", dept: "Produksi", branch: "Samarinda", status: "Aktif", join: "2014-09-01", certs: ["Marine Surveyor"] },
-  { id: "EMP-005", name: "Agus Setiawan", role: "Foreman", dept: "Produksi", branch: "Samarinda", status: "Aktif", join: "2018-05-14", certs: [] },
-  { id: "EMP-006", name: "Sari Wulandari", role: "QC Engineer", dept: "Quality", branch: "Samarinda", status: "Aktif", join: "2017-11-03", certs: ["NDT Level II", "CWI"] },
-  { id: "EMP-007", name: "Dewi Lestari", role: "Finance Manager", dept: "Finance", branch: "Samarinda", status: "Aktif", join: "2013-08-25", certs: ["Brevet A/B"] },
-  { id: "EMP-008", name: "Fajar Nugroho", role: "Procurement", dept: "Procurement", branch: "Samarinda", status: "Aktif", join: "2019-01-10", certs: [] },
+  { id: "EMP-001", username: "6474010101000001", name: "Andi Darman", role: "Direktur", dept: "Direksi", branch: "Samarinda", status: "Aktif", join: "2012-03-01", certs: [] },
+  { id: "EMP-002", username: "6474010101000002", name: "Ir. Hendra Wijaya", role: "Project Manager", dept: "Proyek", branch: "Samarinda", status: "Aktif", join: "2015-07-12", certs: ["PMP", "Welding Inspector"] },
+  { id: "EMP-003", username: "6474010101000003", name: "Budi Santoso", role: "Project Manager", dept: "Proyek", branch: "Samarinda", status: "Aktif", join: "2016-02-20", certs: ["PMP"] },
+  { id: "EMP-004", username: "6474010101000004", name: "Rudi Hartono", role: "Superintendent", dept: "Produksi", branch: "Samarinda", status: "Aktif", join: "2014-09-01", certs: ["Marine Surveyor"] },
+  { id: "EMP-005", username: "6474010101000005", name: "Agus Setiawan", role: "Foreman", dept: "Produksi", branch: "Samarinda", status: "Aktif", join: "2018-05-14", certs: [] },
+  { id: "EMP-006", username: "6474010101000006", name: "Sari Wulandari", role: "QC Engineer", dept: "Quality", branch: "Samarinda", status: "Aktif", join: "2017-11-03", certs: ["NDT Level II", "CWI"] },
+  { id: "EMP-007", username: "6474010101000007", name: "Dewi Lestari", role: "Finance Manager", dept: "Finance", branch: "Samarinda", status: "Aktif", join: "2013-08-25", certs: ["Brevet A/B"] },
+  { id: "EMP-008", username: "6474010101000008", name: "Fajar Nugroho", role: "Procurement", dept: "Procurement", branch: "Samarinda", status: "Aktif", join: "2019-01-10", certs: [] },
 ];
 
 /* ====== SERVICE RECORD ====== */
@@ -376,6 +492,9 @@ export const purchaseOrders = [
   { id: "PO-2026-115", item: "Aux Engine MAK", vendor: "PT Indo Diesel", req: "PR-2026-201", amount: 1700000000, status: "Diterima", date: "2026-07-05" },
   { id: "PO-2026-116", item: "Cat Epoxy", vendor: "PT Jotun Indonesia", req: "PR-2026-207", amount: 480000000, status: "Menunggu Persetujuan", date: "2026-07-28" },
   { id: "PO-2026-117", item: "Wire Rope", vendor: "PT Steel Rig", req: "PR-2026-209", amount: 210000000, status: "Dikirim", date: "2026-07-30" },
+  // RawData FORMAT PO MATERIAL: 06/PO-SB/SMD/I/2024, WF 250/150/200,
+  // subtotal 25.055.000 + PPN 11% = 27.811.050 (include).
+  { id: "PO-SB-2024-006", item: "Besi WF (250/150/200)", vendor: "PT KALTIM LESTARI UNGGUL", req: "PR-SB-2024-006", amount: 27811050, qty: 23, unit: "btg", status: "Diterima", date: "2024-01-26", docNo: "06/PO-SB/SMD/I/2024", vessel: "U/STOCK", includePpn: true, tujuan: "stok", receivedQty: 23, lines: [{ name: "Besi WF 250", qty: 10, unit: "btg", price: 1150000 }, { name: "Besi WF 150", qty: 8, unit: "btg", price: 850000 }, { name: "Besi WF 200", qty: 5, unit: "btg", price: 1351000 }] },
 ];
 
 export const quotations = [
@@ -383,6 +502,8 @@ export const quotations = [
   { id: "QT-2026-053", client: "PT Laut Timur Mandiri", vessel: "TB LT-06", type: "New Build", value: 45200000000, stage: "Penawaran", date: "2026-07-18" },
   { id: "QT-2026-054", client: "PT Mitra Samudra Raya", vessel: "Repair MR-02", type: "Repair", value: 3100000000, stage: "Menang", date: "2026-07-12" },
   { id: "QT-2026-055", client: "PT Pelayaran Nusantara", vessel: "TB PN-05 Retrofit", type: "Retrofit", value: 8200000000, stage: "Lead", date: "2026-07-25" },
+  // RawData: penawaran BG RMN 3324 → menang → KTR-SB-001 → RP-2026-006.
+  { id: "QT-SB-001", client: "PT PELAYARAN KARTIKA SAMUDRA ADIJAYA", vessel: "BG RMN 3324", type: "Repair", value: 1671211310, stage: "Menang", date: "2026-07-28" },
 ];
 
 export const monthlyRevenue = [
@@ -610,6 +731,9 @@ export const inventoryMovement = [
   { id: "M-0905", item: "Wire Rope", type: "Penerimaan", qty: 3, by: "PO-2026-117", date: "2026-07-29", tone: "in" },
   { id: "M-0906", item: "Anoda Zink", type: "Pengeluaran", qty: 14, by: "RP-2026-005", date: "2026-07-29", tone: "out" },
   { id: "M-0907", item: "Mesin Bantu (Aux)", type: "Penerimaan", qty: 1, by: "PO-2026-115", date: "2026-07-28", tone: "in" },
+  // RawData REPORT WAREHOUSE 2024 (sheet IN/OUT JAN-DES).
+  { id: "M-SB-IN-001", item: "PLAT 8MM 5x20", itemId: "INV-SB-003", type: "Penerimaan", qty: 6, by: "UD TIGA BERLIAN", date: "2024-01-02", tone: "in", supplier: "UD TIGA BERLIAN", purpose: "TB SYUKUR 75", pic: "SANTI" },
+  { id: "M-SB-OUT-001", item: "HEMPALIN ENAMEL GREEN 40640 @5LTR", itemId: "INV-SB-002", type: "Pengeluaran", qty: 2, by: "TB SYUKUR 72", date: "2024-01-02", tone: "out", purpose: "TB SYUKUR 72", pic: "ABK" },
 ];
 
 export const stockTrend = [
