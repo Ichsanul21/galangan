@@ -212,8 +212,8 @@ export default function Payroll() {
   );
 
   const rows = useMemo(
-    () => data.payroll.filter((p) => p.period === period).sort((a, b) => String(a.employeeId).localeCompare(String(b.employeeId))),
-    [data.payroll, period],
+    () => inBranch(data.payroll.filter((p) => p.period === period)).sort((a, b) => String(a.employeeId).localeCompare(String(b.employeeId))),
+    [data.payroll, period, inBranch],
   );
   const gajiRows = useMemo(() => rows.filter((p) => rowType(p) === "Gaji"), [rows]);
   const thrRows = useMemo(() => rows.filter((p) => rowType(p) === "THR"), [rows]);
@@ -325,6 +325,7 @@ export default function Payroll() {
           net: c.net,
           status: "Draft",
           paidAt: "",
+          branch: String(e.branch ?? ""),
         },
         undefined,
       );
@@ -454,6 +455,7 @@ export default function Payroll() {
           masaBulan: Math.min(n, 12),
           status: "Draft",
           paidAt: "",
+          branch: String(e.branch ?? ""),
         },
         undefined,
       );
@@ -492,6 +494,7 @@ export default function Payroll() {
         bonusNote: bonusForm.keterangan.trim() || "Bonus",
         status: "Draft",
         paidAt: "",
+        branch: String(emp.branch ?? ""),
       },
       { action: "mencatat bonus", module: "Payroll" },
     );

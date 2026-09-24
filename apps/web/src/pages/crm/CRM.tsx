@@ -7,12 +7,14 @@ import { useStore } from "../../data/store";
 import type { StoreItem } from "../../data/store";
 import { fmtMiliar, fmtRupiah, fmtTanggal, todayISO } from "../../utils/format";
 import { exportExcel } from "../../utils/export";
+import { useDraftState } from "../../utils/draft";
 import { clientTrend, pipelineTrend, winRateTrend, wonTrend } from "../../data";
 
 const FLOW = ["Lead", "Penawaran", "Negosiasi", "Menang"];
 const TERMINAL = ["Terkonversi", "Batal", "Kalah"];
 const STAGES = [...FLOW, ...TERMINAL];
 const KLASIFIKASI = ["VIP", "Regular", "New", "Inactive"] as const;
+const REQ_KIND = ["Repair Request", "Technical Assessment"] as const;
 
 const STAGE_COLORS: Record<string, string> = {
   Lead: "#2e9ad4",
@@ -55,8 +57,8 @@ export default function CRM() {
   const [sort, setSort] = useState<SortState>({ key: null, dir: "asc" });
   const [klasFilter, setKlasFilter] = useState("Semua");
   const [oldOnly, setOldOnly] = useState(false);
-  const [hoChecks, setHoChecks] = useState<boolean[]>([false, false, false, false]);
-  const [hoBy, setHoBy] = useState("Tim Commercial");
+  const [hoChecks, setHoChecks] = useDraftState<boolean[]>("isms.draft.crm.hoChecks", [false, false, false, false]);
+  const [hoBy, setHoBy] = useDraftState("isms.draft.crm.hoBy", "Tim Commercial");
 
   const [showQ, setShowQ] = useState(false);
   const [qForm, setQForm] = useState({ client: "", vessel: "", type: "New Build", value: "", stage: "Lead", date: todayISO() });
@@ -69,6 +71,9 @@ export default function CRM() {
   const [commForm, setCommForm] = useState({ quotationId: "", channel: "Email", date: todayISO(), summary: "", by: "" });
   const [contractForm, setContractForm] = useState({ quotationId: "", value: "", signedAt: todayISO(), projectId: "" });
   const [surveyForm, setSurveyForm] = useState({ clientId: "", rating: "5" });
+  const [showReq, setShowReq] = useState(false);
+  const [reqForm, setReqForm] = useState({ vessel: "", client: "", kind: "Repair Request", scope: "", value: "", date: todayISO() });
+  const [poForm, setPoForm] = useState({ contractId: "", projectId: "", no: "", amount: "", date: todayISO() });
 
   const clientByName = useMemo(() => {
     const m: Record<string, StoreItem> = {};
@@ -252,6 +257,66 @@ export default function CRM() {
 
   const eligibleQuotations = quotations.filter((q) => q.stage === "Menang" || q.stage === "Terkonversi");
 
+  // E6 intake: requests + client POs.
+  const requests = data.requests ?? [];
+  const clientPos = data.clientPos ?? [];
+
+  const nextReqId = (dateISO: string): string => {
+    const year = (dateISO || todayISO()).slice(0, 4);
+    const prefix = `REQ-${year}-`;
+    let max = 0;
+    for (const r of requests) {
+      const m = String(r.id ?? "").match(new RegExp(`^REQ-${year}-(\\d+)$`));
+      if (m) max = Math.max(max, Number(m[1]) || 0);
+    }
+    return `${prefix}${String(max + 1).padStart(3, "0")}`;
+  };
+
+  const saveRequest = () => {
+    if (!reqForm.client) { toast("Klien wajib dipilih", "info"); return; }
+    if (!reqForm.vessel.trim()) { toast("Nama kapal wajib diisi", "info"); return; }
+    if (!reqForm.scope.trim()) { toast("Scope pekerjaan wajib diisi", "info"); return; }
+    if (!reqForm.date) { toast("Tanggal wajib diisi", "info"); return; }
+    const created = add("requests", {
+      id: nextReqId(reqForm.date), vessel: reqForm.vessel.trim(), client: reqForm.client,
+      kind: reqForm.kind, scope: reqForm.scope.trim(), value: num(reqForm.value) || 0,
+      status: "Baru", date: reqForm.date,
+    }, { action: "mencatat request", module: "CRM" });
+    toast(`Request ${created.id} dicatat`);
+    setShowReq(false);
+    setReqForm({ vessel: "", client: "", kind: "Repair Request", scope: "", value: "", date: todayISO() });
+  };
+
+  const advanceRequest = (r: StoreItem, next: string) => {
+    update("requests", r.id, { status: next });
+    log(`mengubah request ke ${next}`, r.id, "CRM");
+    toast(`${r.id} → ${next}`);
+  };
+
+  const convertRequest = (r: StoreItem) => {
+    if (String(r.status) !== "Disetujui") { toast("Hanya request Disetujui yang bisa jadi quotation", "info"); return; }
+    if ((data.quotations ?? []).some((q) => String(q.requestId ?? "") === String(r.id))) { toast("Request ini sudah punya quotation", "info"); return; }
+    const created = add("quotations", {
+      client: String(r.client ?? ""), vessel: String(r.vessel ?? ""), type: "Repair",
+      value: num(r.value) || 0, stage: "Lead", date: todayISO(), requestId: String(r.id),
+    }, { action: "mengkonversi request ke quotation", target: `${String(r.id)} → quotation`, module: "CRM" });
+    toast(`Quotation draft ${created.id} dibuat dari ${String(r.id)}`);
+  };
+
+  const saveClientPo = () => {
+    if (!poForm.contractId) { toast("Pilih kontrak dulu", "info"); return; }
+    if (!poForm.no.trim()) { toast("No. PO klien wajib diisi", "info"); return; }
+    if (clientPos.some((p) => String(p.no ?? "") === poForm.no.trim())) { toast("No. PO klien sudah dipakai", "info"); return; }
+    if (num(poForm.amount) <= 0) { toast("Nilai PO harus lebih dari 0", "info"); return; }
+    if (!poForm.date) { toast("Tanggal PO wajib diisi", "info"); return; }
+    const created = add("clientPos", {
+      contractId: poForm.contractId, ...(poForm.projectId ? { projectId: poForm.projectId } : {}),
+      no: poForm.no.trim(), amount: num(poForm.amount), date: poForm.date,
+    }, { action: "mencatat PO klien", target: poForm.no.trim(), module: "CRM" });
+    toast(`PO klien ${created.id} (${poForm.no.trim()}) dicatat`);
+    setPoForm({ contractId: "", projectId: "", no: "", amount: "", date: todayISO() });
+  };
+
   const forecastRows = FLOW.map((s) => {
     const rows = quotations.filter((q) => String(q.stage) === s);
     const nilai = rows.reduce((sum, q) => sum + num(q.value), 0);
@@ -313,7 +378,7 @@ export default function CRM() {
       </Card>
 
       <div className="mt-4 card">
-        <Tabs tabs={["Pipeline", "Klien", "Penawaran", "Komunikasi", "Kontrak", "Kepuasan"]} active={tab} onChange={setTab} />
+        <Tabs tabs={["Pipeline", "Klien", "Penawaran", "Request", "Komunikasi", "Kontrak", "Kepuasan"]} active={tab} onChange={setTab} />
         <div className="p-4">
           {tab === "Pipeline" && (
             <div className="space-y-4">
@@ -475,6 +540,43 @@ export default function CRM() {
             </div>
           )}
 
+          {tab === "Request" && (
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <p className="text-xs text-steel-500">Alur: Baru → Disurvei → Diajukan → Disetujui/Ditolak · Disetujui bisa dikonversi jadi quotation draft</p>
+                <button className="btn-secondary text-xs" onClick={() => setShowReq(true)}><Plus className="h-3.5 w-3.5" /> Request Baru</button>
+              </div>
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                {requests.map((r) => (
+                  <Card key={r.id} className="p-4">
+                    <div className="flex justify-between gap-2">
+                      <div className="min-w-0">
+                        <p className="truncate font-semibold text-navy-900" title={String(r.vessel)}>{String(r.vessel)}</p>
+                        <p className="text-xs text-steel-500">{String(r.client)} · {String(r.kind)} · {fmtTanggal(String(r.date ?? ""))}</p>
+                        <p className="mt-1 text-xs text-steel-600">{String(r.scope ?? "")}</p>
+                      </div>
+                      <Badge tone={String(r.status) === "Disetujui" ? "green" : String(r.status) === "Ditolak" ? "red" : "gray"}>{String(r.status)}</Badge>
+                    </div>
+                    <div className="mt-3 flex items-center justify-between">
+                      <span className="text-lg font-bold text-navy-900">{fmtMiliar(num(r.value))}</span>
+                      <span className="font-mono text-xs text-steel-500">{r.id}</span>
+                    </div>
+                    <div className="mt-2 flex flex-wrap gap-1.5">
+                      {String(r.status) === "Baru" && <button className="btn-secondary text-xs" onClick={() => advanceRequest(r, "Disurvei")}>Disurvei</button>}
+                      {String(r.status) === "Disurvei" && <button className="btn-secondary text-xs" onClick={() => advanceRequest(r, "Diajukan")}>Diajukan</button>}
+                      {String(r.status) === "Diajukan" && (<>
+                        <button className="btn-secondary text-xs" onClick={() => advanceRequest(r, "Disetujui")}>Disetujui</button>
+                        <button className="btn-secondary text-xs" onClick={() => advanceRequest(r, "Ditolak")}>Ditolak</button>
+                      </>)}
+                      {String(r.status) === "Disetujui" && <button className="btn-primary text-xs" onClick={() => convertRequest(r)}>Jadi Quotation</button>}
+                    </div>
+                  </Card>
+                ))}
+                {requests.length === 0 && <EmptyState title="Belum ada request" subtitle="Catat repair request / technical assessment pertama." />}
+              </div>
+            </div>
+          )}
+
           {tab === "Komunikasi" && (
             <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
               <Card className="p-4 lg:col-span-2">
@@ -522,6 +624,7 @@ export default function CRM() {
           )}
 
           {tab === "Kontrak" && (
+            <div className="space-y-4">
             <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
               <Card className="p-4 lg:col-span-2">
                 <CardHeader title="Daftar Kontrak" subtitle="Dibuat dari quotation Menang / Terkonversi" />
@@ -577,6 +680,41 @@ export default function CRM() {
                   <button className="btn-primary w-full justify-center" onClick={saveContract}>Simpan Kontrak</button>
                 </div>
               </Card>
+            </div>
+            <Card className="mt-4 p-4">
+              <CardHeader title={`PO Klien (${clientPos.length})`} subtitle="Link PO klien ke kontrak — dipakai validasi invoice Keuangan" />
+              {clientPos.length === 0 ? (
+                <EmptyState title="Belum ada PO klien" subtitle="Catat PO klien pertama dari form di bawah." />
+              ) : (
+                <div className="space-y-2">
+                  {clientPos.map((p) => (
+                    <div key={p.id} className="flex flex-wrap items-center justify-between gap-2 rounded-xl bg-surface p-3 text-sm">
+                      <span className="font-mono font-semibold text-navy-900">{String(p.no)}</span>
+                      <span className="text-xs text-steel-500">kontrak {String(p.contractId ?? "—")}{p.projectId ? ` · proyek ${String(p.projectId)}` : ""} · {fmtTanggal(String(p.date ?? ""))}</span>
+                      <span className="font-semibold text-navy-900">{fmtRupiah(num(p.amount))}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+              <div className="mt-3 grid grid-cols-1 gap-2 border-t border-steel-100 pt-3 sm:grid-cols-5">
+                <Field label="Kontrak">
+                  <select className="input" value={poForm.contractId} onChange={(e) => setPoForm({ ...poForm, contractId: e.target.value })}>
+                    <option value="">Pilih…</option>
+                    {contracts.map((c) => <option key={c.id} value={c.id}>{c.id} · {String(c.client ?? "")}</option>)}
+                  </select>
+                </Field>
+                <Field label="Proyek (opsional)">
+                  <select className="input" value={poForm.projectId} onChange={(e) => setPoForm({ ...poForm, projectId: e.target.value })}>
+                    <option value="">Tanpa link</option>
+                    {data.projects.map((p) => <option key={p.id} value={p.id}>{p.id}</option>)}
+                  </select>
+                </Field>
+                <Field label="No. PO"><input className="input font-mono" value={poForm.no} onChange={(e) => setPoForm({ ...poForm, no: e.target.value })} placeholder="cth: PO-C-2026-011" /></Field>
+                <Field label="Nilai (Rp)"><input type="number" min={0} className="input" value={poForm.amount} onChange={(e) => setPoForm({ ...poForm, amount: e.target.value })} /></Field>
+                <Field label="Tanggal"><input type="date" className="input" value={poForm.date} onChange={(e) => setPoForm({ ...poForm, date: e.target.value })} /></Field>
+              </div>
+              <button className="btn-secondary mt-2 text-xs" onClick={saveClientPo}><Plus className="h-3.5 w-3.5" /> Catat PO Klien</button>
+            </Card>
             </div>
           )}
 
@@ -669,6 +807,29 @@ export default function CRM() {
               </select>
             </Field>
           </FormGrid>
+        </div>
+      </Modal>
+
+      <Modal open={showReq} onClose={() => setShowReq(false)} title="Request / Assessment Baru" subtitle={`Alur Baru → Disurvei → Diajukan → Disetujui · ${nextReqId(reqForm.date || todayISO())}`}
+        footer={<><button className="btn-secondary" onClick={() => setShowReq(false)}>Batal</button><button className="btn-primary" onClick={saveRequest}>Simpan Request</button></>}>
+        <div className="space-y-3">
+          <FormGrid>
+            <Field label="Klien">
+              <select className="input" value={reqForm.client} onChange={(e) => setReqForm({ ...reqForm, client: e.target.value })}>
+                <option value="">Pilih klien…</option>
+                {clients.map((c) => <option key={c.id} value={c.name}>{String(c.name)}</option>)}
+              </select>
+            </Field>
+            <Field label="Kapal"><input className="input" value={reqForm.vessel} onChange={(e) => setReqForm({ ...reqForm, vessel: e.target.value })} placeholder="cth: TB Karya Bahari 12" /></Field>
+            <Field label="Jenis">
+              <select className="input" value={reqForm.kind} onChange={(e) => setReqForm({ ...reqForm, kind: e.target.value })}>
+                {REQ_KIND.map((k) => <option key={k}>{k}</option>)}
+              </select>
+            </Field>
+            <Field label="Tanggal"><input type="date" className="input" value={reqForm.date} onChange={(e) => setReqForm({ ...reqForm, date: e.target.value })} /></Field>
+          </FormGrid>
+          <Field label="Scope pekerjaan"><textarea className="input" rows={3} value={reqForm.scope} onChange={(e) => setReqForm({ ...reqForm, scope: e.target.value })} placeholder="cth: Overhaul main engine + coating lambung" /></Field>
+          <Field label="Estimasi nilai (Rp)"><input type="number" min={0} className="input" value={reqForm.value} onChange={(e) => setReqForm({ ...reqForm, value: e.target.value })} placeholder="cth: 4200000000" /></Field>
         </div>
       </Modal>
 

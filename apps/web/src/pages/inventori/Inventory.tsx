@@ -175,7 +175,12 @@ function agingBucket(days: number): string {
 const AGING_BUCKETS = ["0–30 hari", "31–90 hari", "91–180 hari", ">180 hari", "Belum ada GR"];
 
 export default function Inventory() {
-  const { data, add, update, log } = useStore();
+  const { data, add, update, log, branch } = useStore();
+  // Cabang movement: dari proyek tertaut (cocokkan teks ke id/vessel) atau fallback global.
+  const moveBranch = (hay: string): string => String(
+    (data.projects ?? []).find((p) => hay.includes(String(p.id)) || (p.vessel && hay.includes(String(p.vessel))))?.branch
+    ?? (branch !== "SEMUA" ? branch : ""),
+  );
   const inventory = data.inventory;
   const movements = data.movements;
   const projects = data.projects;
@@ -496,6 +501,8 @@ export default function Inventory() {
       total: priceExcl > 0 ? Math.round(qty * priceExcl) + taxAmt : 0,
       purpose: movePurpose.trim(),
       pic: movePic.trim(),
+      // Cabang dari proyek tertaut (cocokkan purpose/ref ke id/vessel proyek) atau fallback global.
+      branch: moveBranch(`${movePurpose} ${refNote}`),
     }, { action: moveKind === "in" ? "menerima barang" : "mengeluarkan barang", target: `${fresh.name} × ${qty}`, module: "Inventori" });
     toast(`${moveKind === "in" ? "GR" : "GI"} ${fresh.name} × ${fmtJumlah(qty)} tersimpan`);
     closeMove();
@@ -638,6 +645,7 @@ export default function Inventory() {
           by: supplier ? `Impor IN ${date} · ${supplier}` : `Impor IN ${date}`,
           batch: String(item.batch ?? ""), date, tone: "in",
           supplier, priceExcl: price, tax, total, purpose, pic,
+          branch: moveBranch(`${purpose} ${supplier}`),
         }, { action: "mengimpor GR", target: `${item.name} × ${qty}`, module: "Inventori" });
         ok++;
       });
@@ -717,6 +725,7 @@ export default function Inventory() {
           item: item.name, itemId: item.id, type: "Pengeluaran", qty,
           by: ket || `${purpose} (Impor OUT)`, batch: String(item.batch ?? ""),
           date, tone: "out", supplier: "", priceExcl: 0, tax: 0, total: 0, purpose, pic,
+          branch: moveBranch(`${purpose} ${ket}`),
         }, { action: "mengimpor GI", target: `${item.name} × ${qty}`, module: "Inventori" });
         ok++;
       });
@@ -862,6 +871,7 @@ export default function Inventory() {
       add("movements", {
         item: it.name, itemId: it.id, type: "Pengeluaran", qty,
         by: `${pickProject} (Pick List)`, date: todayISO(), tone: "out",
+        branch: moveBranch(String(pickProject)),
       }, { action: "pick list", target: `${it.name} × ${qty} (${pickProject})`, module: "Inventori" });
       ok++;
     }

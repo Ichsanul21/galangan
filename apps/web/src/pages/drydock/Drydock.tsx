@@ -119,6 +119,15 @@ export default function Drydock() {
     update("dockSlots", sel.id, { undock: next });
     if (next.every(Boolean)) {
       log("menyelesaikan docking report", `${sel.id} · undocking checklist lengkap`, "Drydock");
+      // E7: undock lengkap → append vessel history.
+      const proj = data.projects.find((p) => p.id === sel.project);
+      const vesselName = proj?.vessel ?? String(sel.vessel ?? "").split(" + ")[0];
+      const vsl = data.vessels.find((x) => x.name === vesselName);
+      if (vsl) {
+        update("vessels", vsl.id, {
+          history: [...(vsl.history ?? []), { date: new Date().toISOString().slice(0, 10), event: `Undocking selesai — slot ${sel.id} (${sel.dockId})`, type: "Docking" }],
+        });
+      }
       toast(`Docking report ${sel.id} lengkap`);
     }
   };

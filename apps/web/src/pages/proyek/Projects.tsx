@@ -60,15 +60,23 @@ const TEMPLATES: TemplateDef[] = [
     label: "New Build Tug",
     desc: "Pembangunan tugboat baru dari desain hingga serah terima",
     type: "New Build",
-    scope: ["Desain & Class Approval", "Fabrikasi Baja", "Hull Assembly", "Mesin & Kelistrikan", "Outfitting & Pengecatan", "Sea Trial"],
+    scope: ["Desain & Class Approval", "Fabrikasi Baja", "Hull Assembly", "Outfitting Machinery", "Outfitting Piping", "Outfitting Electrical", "Outfitting Nav & Comm", "Outfitting Accommodation", "Painting", "Commissioning", "Sea Trial"],
     tasks: [
-      { task: "Desain & Persetujuan Class", weight: 10 },
-      { task: "Pengadaan Material", weight: 15 },
-      { task: "Fabrikasi Baja", weight: 20 },
-      { task: "Hull Assembly", weight: 20 },
-      { task: "Mesin & Kelistrikan", weight: 20 },
-      { task: "Outfitting & Pengecatan", weight: 8 },
-      { task: "Sea Trial & Handover", weight: 7 },
+      { task: "Desain & Persetujuan Class", weight: 8 },
+      { task: "Pengadaan Material", weight: 10 },
+      { task: "Fabrikasi Baja", weight: 12 },
+      { task: "Hull Assembly", weight: 12 },
+      { task: "Outfitting — Machinery", weight: 8 },
+      { task: "Outfitting — Piping", weight: 7 },
+      { task: "Outfitting — Electrical", weight: 7 },
+      { task: "Outfitting — Nav & Comm", weight: 5 },
+      { task: "Outfitting — Accommodation", weight: 5 },
+      { task: "Painting — Surface Prep", weight: 5 },
+      { task: "Painting — Priming", weight: 4 },
+      { task: "Painting — Topcoat", weight: 4 },
+      { task: "Painting — Final Inspection", weight: 3 },
+      { task: "Commissioning", weight: 6 },
+      { task: "Sea Trial & Handover", weight: 4 },
     ],
   },
   {
@@ -201,7 +209,17 @@ export default function Projects() {
   const majuTahap = (p: StoreItem) => {
     const idx = TAHAP.indexOf(tahapOf(p));
     if (idx < 0 || idx >= TAHAP.length - 1) return;
+    const from = TAHAP[idx];
     const to = TAHAP[idx + 1];
+    // E1 gate: Desain → Produksi butuh Class Approval Disetujui.
+    if (from === "Desain" && to === "Produksi") {
+      const stages = (p.designStages ?? []) as { name: string; status: string }[];
+      const ca = stages.find((s) => s.name === "Class Approval");
+      if (!ca || ca.status !== "Disetujui") {
+        toast("Class Approval belum Disetujui — lengkapi sub-stage desain dulu", "info");
+        return;
+      }
+    }
     update("projects", p.id, {
       tahap: to,
       tahapLog: [...(p.tahapLog ?? []), { from: tahapOf(p), to, date: todayISO(), by: "Anda", reason: "" }],

@@ -89,7 +89,7 @@ function daysUntil(iso: string | null | undefined): number | null {
 const emptyForm = { title: "", type: "Laporan", project: "", vessel: "", owner: "", berlakuHingga: "", revNote: "" };
 
 export default function Documents() {
-  const { data, add, update, remove, log } = useStore();
+  const { data, add, update, remove, log, branch, inBranch } = useStore();
   const [q, setQ] = useState("");
   const [sort, setSort] = useState<SortState>({ key: null, dir: "asc" });
   const [type, setType] = useState("Semua");
@@ -103,8 +103,8 @@ export default function Documents() {
 
   const docPreview = nextDocId(form.type, data.documents);
 
-  const active = data.documents.filter((d) => !d.archived);
-  const archived = data.documents.filter((d) => d.archived);
+  const active = inBranch(data.documents.filter((d) => !d.archived));
+  const archived = inBranch(data.documents.filter((d) => d.archived));
 
   const list = (type === "Arsip" ? archived : active.filter((d) => type === "Semua" || d.type === type)).filter((d) => {
     return `${d.title} ${d.id} ${d.project} ${d.vessel}`.toLowerCase().includes(q.toLowerCase());
@@ -161,6 +161,7 @@ export default function Documents() {
         owner: form.owner.trim(), berlakuHingga: form.berlakuHingga || undefined,
         version: "v1.0", status: "Draft", updated: todayISO(), archived: false, docCopy: "Terkendali",
         related: [...relSel],
+        branch: String(data.projects.find((p) => p.id === form.project)?.branch ?? (branch !== "SEMUA" ? branch : "")),
         // Ref format SB untuk arsip operasional (cth DS: 001/DS-SB/SMD/I/2024).
         sbRef: form.type === "Dock Space" ? sbDsNumber(sbSeq("Dock Space"))
           : form.type === "Surat Jalan" ? sbSjNumber(sbSeq("Surat Jalan"))

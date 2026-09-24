@@ -1,5 +1,6 @@
 import { useState, useMemo } from "react";
 import { useStore } from "../../data/store";
+import { useAuth, canSetTarget } from "../../auth/auth";
 import { Card, Modal, Field, FormGrid, toast, EmptyState, StatusBadge, Badge, SortTh, toggleSort, sortRows } from "../../components/ui";
 import type { SortState } from "../../components/ui";
 import { Plus, FileDown } from "lucide-react";
@@ -63,6 +64,7 @@ interface Props {
 
 export default function BoQSection({ projectId }: Props) {
   const { data, update, add, log } = useStore();
+  const { user } = useAuth();
   const items = ((data.boq ?? []) as BoQExt[]).filter((b) => b.projectId === projectId);
   const [showAdd, setShowAdd] = useState(false);
   const [form, setForm] = useState({ name: "", description: "", quantity: "", unit: "pcs", unitPrice: "", category: "Mechanical", status: "Draft" as BoQItem["status"] });
@@ -117,6 +119,10 @@ export default function BoQSection({ projectId }: Props) {
   };
 
   const changeStatus = (id: string, newStatus: string) => {
+    if (newStatus === "Approved" && !canSetTarget(user?.role)) {
+      toast("Hanya Direktur/Manager", "info");
+      return;
+    }
     update("boq", id, { status: newStatus as BoQItem["status"] });
     log(`mengubah status BoQ → ${newStatus}`, `${id}`, "BoQ");
     toast(`Status ${id} → ${newStatus}`);

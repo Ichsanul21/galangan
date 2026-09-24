@@ -113,6 +113,7 @@ export default function Absensi() {
         checkIn: r.status === "Hadir" ? r.checkIn : "",
         checkOut: r.status === "Hadir" ? r.checkOut : "",
         overtime: ot,
+        branch: String(e.branch ?? ""),
       };
       const existing = data.attendance.find((a) => a.employeeId === e.id && a.date === date && a.shift === shift);
       if (existing) {
@@ -156,8 +157,8 @@ export default function Absensi() {
 
   /* ---------- rekap ---------- */
   const monthRecords = useMemo(
-    () => data.attendance.filter((a) => String(a.date).startsWith(month)),
-    [data.attendance, month],
+    () => inBranch(data.attendance.filter((a) => String(a.date).startsWith(month))),
+    [data.attendance, month, inBranch],
   );
 
   const summary = useMemo(

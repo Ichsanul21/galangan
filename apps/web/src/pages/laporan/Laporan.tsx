@@ -1,7 +1,9 @@
 import { useMemo, useState } from "react";
+import { useDraftState } from "../../utils/draft";
 import { FileText } from "lucide-react";
 import { Card, CardHeader, PageHeader, StatusBadge, Badge, KpiCard, EmptyState, ProgressBar, Donut, toast } from "../../components/ui";
 import { useStore } from "../../data/store";
+import type { StoreItem } from "../../data/store";
 import { fmtTanggal, fmtRupiah, fmtMiliar, fmtJumlah, todayISO } from "../../utils/format";
 import { exportExcel, exportPDF } from "../../utils/export";
 
@@ -62,10 +64,15 @@ export default function Laporan() {
   const [projectId, setProjectId] = useState("");
   const [tplName, setTplName] = useState("");
   const [tpls, setTpls] = useState<ReportTpl[]>(() => loadTpls());
-  const [sigName, setSigName] = useState("");
-  const [sigRole, setSigRole] = useState("");
-  const [sigDate, setSigDate] = useState(() => todayISO());
+  const [sigName, setSigName] = useDraftState("isms.draft.laporan.sigName", "");
+  const [sigRole, setSigRole] = useDraftState("isms.draft.laporan.sigRole", "");
+  const [sigDate, setSigDate] = useDraftState("isms.draft.laporan.sigDate", todayISO());
   const [arc, setArc] = useState<ReportArc[]>(() => loadArc());
+  // Filter cabang lokal untuk seksi PO/absensi/insiden/payroll (Semua + daftar cabang).
+  const [brF, setBrF] = useState("SEMUA");
+  const branchCities = useMemo(() => (data.branches ?? []).map((b) => String(b.city ?? b.name ?? b.id)), [data.branches]);
+  const matchBr = (r: StoreItem): boolean =>
+    brF === "SEMUA" || !r.branch || String(r.branch) === brF;
 
   const projectById: Record<string, boolean> = useMemo(() => {
     const m: Record<string, boolean> = {};
@@ -87,12 +94,12 @@ export default function Laporan() {
     const avgProgress = projects.length > 0 ? projects.reduce((s, p) => s + num(p.progress), 0) / projects.length : 0;
     const invTerbit = (data.invoices ?? []).filter((i) => inRange(String(i.due ?? ""), week0, week1) && matchProject(String(i.project ?? "")));
     const invLunas = (data.invoices ?? []).filter((i) => i.status === "Lunas" && inRange(String(i.paidAt ?? i.due ?? ""), week0, week1) && matchProject(String(i.project ?? "")));
-    const po = (data.purchaseOrders ?? []).filter((p) => inRange(String(p.date ?? ""), week0, week1));
+    const po = (data.purchaseOrders ?? []).filter((p) => inRange(String(p.date ?? ""), week0, week1) && matchBr(p));
     const ncr = (data.ncr ?? []).filter((n) => inRange(String(n.raised ?? ""), week0, week1) && matchProject(String(n.project ?? "")));
-    const att = (data.attendance ?? []).filter((a) => inRange(String(a.date ?? ""), week0, week1));
+    const att = (data.attendance ?? []).filter((a) => inRange(String(a.date ?? ""), week0, week1) && matchBr(a));
     const hadir = att.filter((a) => a.status === "Hadir").length;
     const hadirPct = att.length > 0 ? (hadir / att.length) * 100 : 0;
-    const incidents = (data.incidents ?? []).filter((x) => inRange(String(x.date ?? ""), week0, week1));
+    const incidents = (data.incidents ?? []).filter((x) => inRange(String(x.date ?? ""), week0, week1) && matchBr(x));
     return {
       projects, avgProgress,
       invTerbit, invTerbitVal: invTerbit.reduce((s, i) => s + num(i.amount), 0),
@@ -101,13 +108,13 @@ export default function Laporan() {
       ncr, att, hadir, hadirPct, incidents,
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [data, week0, week1, branch]);
+  }, [data, week0, week1, branch, brF]);
 
   const monthly = useMemo(() => {
     const inv = (data.invoices ?? []).filter((i) => String(i.due ?? "").slice(0, 7) === month && matchProject(String(i.project ?? "")));
     const invLunas = (data.invoices ?? []).filter((i) => i.status === "Lunas" && String(i.paidAt ?? i.due ?? "").slice(0, 7) === month && matchProject(String(i.project ?? "")));
     const apLunas = (data.payables ?? []).filter((a) => a.st === "Lunas" && String(a.paidAt ?? a.due ?? "").slice(0, 7) === month);
-    const payRows = (data.payroll ?? []).filter((p) => String(p.period ?? "") === month);
+    const payRows = (data.payroll ?? []).filter((p) => String(p.period ?? "") === month && matchBr(p));
     const revenue = invLunas.reduce((s, i) => s + num(i.amount), 0);
     const apCost = apLunas.reduce((s, a) => s + num(a.amt), 0);
     const payrollTotal = payRows.reduce((s, p) => s + (num(p.net) || num(p.basic) + num(p.allowances) + num(p.overtimePay) - num(p.deductions)), 0);
@@ -120,7 +127,7 @@ export default function Laporan() {
     const taxRow = (data.taxPeriods ?? []).find((t) => String(t.period) === month);
     return { inv, invLunas, revenue, apLunas, payRows, payrollTotal, cost, laba, ppnKeluar, ppnMasuk, pph23, pph21, taxRow };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [data, month, branch]);
+  }, [data, month, branch, brF]);
 
   const projectsVisible = useMemo(() => inBranch(data.projects ?? []), [data.projects, branch]);
   const activeProjectId = projectId || projectsVisible[0]?.id || "";
@@ -137,23 +144,23 @@ export default function Laporan() {
   const monthlyPrev = useMemo(() => {
     const invLunas = (data.invoices ?? []).filter((i) => i.status === "Lunas" && String(i.paidAt ?? i.due ?? "").slice(0, 7) === prevMonth && matchProject(String(i.project ?? "")));
     const apLunas = (data.payables ?? []).filter((a) => a.st === "Lunas" && String(a.paidAt ?? a.due ?? "").slice(0, 7) === prevMonth);
-    const payRows = (data.payroll ?? []).filter((p) => String(p.period ?? "") === prevMonth);
+    const payRows = (data.payroll ?? []).filter((p) => String(p.period ?? "") === prevMonth && matchBr(p));
     const revenue = invLunas.reduce((s, i) => s + num(i.amount), 0);
     const cost = apLunas.reduce((s, a) => s + num(a.amt), 0) + payRows.reduce((s, p) => s + (num(p.net) || num(p.basic) + num(p.allowances) + num(p.overtimePay) - num(p.deductions)), 0);
     return { revenue, cost, laba: revenue - cost };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [data, prevMonth, branch]);
+  }, [data, prevMonth, branch, brF]);
 
   const weekPrev0 = addDays(week0, -7);
   const weekPrev1 = addDays(week0, -1);
   const weeklyPrev = useMemo(() => {
     const invLunas = (data.invoices ?? []).filter((i) => i.status === "Lunas" && inRange(String(i.paidAt ?? i.due ?? ""), weekPrev0, weekPrev1) && matchProject(String(i.project ?? "")));
-    const po = (data.purchaseOrders ?? []).filter((p) => inRange(String(p.date ?? ""), weekPrev0, weekPrev1));
+    const po = (data.purchaseOrders ?? []).filter((p) => inRange(String(p.date ?? ""), weekPrev0, weekPrev1) && matchBr(p));
     const revenue = invLunas.reduce((s, i) => s + num(i.amount), 0);
     const cost = po.reduce((s, p) => s + num(p.amount), 0);
     return { revenue, cost, laba: revenue - cost };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [data, weekPrev0, weekPrev1, branch]);
+  }, [data, weekPrev0, weekPrev1, branch, brF]);
   const weeklyRev = weekly.invLunasVal;
   const weeklyCost = weekly.poVal;
   const weeklyLaba = weeklyRev - weeklyCost;
@@ -294,6 +301,13 @@ export default function Laporan() {
             <input type="date" className="input w-auto" value={week0} onChange={(e) => setWeekStart(e.target.value)} />
           </label>
         )}
+        <label className="flex items-center gap-2 text-sm text-steel-600">
+          Cabang
+          <select className="input w-auto" value={brF} onChange={(e) => setBrF(e.target.value)} aria-label="Filter cabang PO/absensi/insiden/payroll">
+            <option value="SEMUA">Semua</option>
+            {branchCities.map((c) => <option key={c} value={c}>{c}</option>)}
+          </select>
+        </label>
         {mode === "Bulanan" && (
           <label className="ml-auto flex items-center gap-2 text-sm text-steel-600">
             Bulan

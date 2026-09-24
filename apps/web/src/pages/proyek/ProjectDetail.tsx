@@ -34,6 +34,10 @@ const STATUS = ["Dalam Proses", "Sedang Berjalan", "Terlambat", "Tertunda", "Sel
 const CO_FLOW = ["Diajukan", "Disetujui", "Ditolak", "Diterapkan"];
 const RISK_LEVEL = ["Rendah", "Sedang", "Tinggi"];
 const RISK_STATUS = ["Aktif", "Dipantau", "Tertutup"];
+const DESIGN_STAGE_NAMES = ["Basic Design", "Detail Design", "Class Approval", "Production Drawing"];
+const DESIGN_STATUS = ["Belum", "Diajukan", "Disetujui"];
+const CLASS_SOCIETIES = ["BKI", "ABS", "DNV", "LR", "NK"];
+const STATIONS = ["Cutting", "Bending", "Welding", "Panel", "Block", "Erection", "Alignment", "Launching"];
 
 type WbsExt = WbsItem & { predecessor?: string };
 interface WbsBaseline { at: string; wbs: WbsExt[]; }
@@ -55,7 +59,7 @@ export default function ProjectDetail() {
   const [showTeam, setShowTeam] = useState(false);
   const [teamPick, setTeamPick] = useState("");
   const [wbsTaskUpdate, setWbsTaskUpdate] = useState<string | null>(null);
-  const [wbsUpdateForm, setWbsUpdateForm] = useState({ hours: "", material: "", status: "Sedang" as "Sedang" | "Selesai", progress: "", predecessor: "" });
+  const [wbsUpdateForm, setWbsUpdateForm] = useState({ hours: "", material: "", status: "Sedang" as "Sedang" | "Selesai", progress: "", predecessor: "", station: "", photoNote: "", dft: "" });
   const [showShare, setShowShare] = useState(false);
   const [shareForm, setShareForm] = useState({ docId: "", to: "" });
   const [showCo, setShowCo] = useState(false);
@@ -67,6 +71,8 @@ export default function ProjectDetail() {
   const [showDelBaseline, setShowDelBaseline] = useState(false);
   const [showBast, setShowBast] = useState(false);
   const [bastForm, setBastForm] = useState({ milestone: "", tanggal: todayISO(), signer: "", lampiran: "", amount: "" });
+  const [showTrial, setShowTrial] = useState(false);
+  const [trialForm, setTrialForm] = useState({ tanggal: todayISO(), parameter: "", punchList: "", hasil: "Lolos", baRef: "" });
   const [sort, setSort] = useState<SortState>({ key: null, dir: "asc" });
   const [sort2, setSort2] = useState<SortState>({ key: null, dir: "asc" });
   const [sort3, setSort3] = useState<SortState>({ key: null, dir: "asc" });
@@ -125,6 +131,7 @@ export default function ProjectDetail() {
   const wos = data.workOrders.filter((w) => w.project === pid);
   const coList = data.changeOrders.filter((c) => c.project === pid);
   const riskList = data.risks.filter((r) => r.project === pid);
+  const warrantyList = (data.warranties ?? []).filter((w) => String(w.projectId ?? "") === pid);
   const coApproved = coList.filter((c) => c.status === "Disetujui" || c.status === "Diterapkan");
   const coApprovedImpact = coApproved.reduce((s, c) => s + Number(c.impact || 0), 0);
 
@@ -185,8 +192,20 @@ export default function ProjectDetail() {
 
   const setCoStatus = (id: string, status: string) => {
     update("changeOrders", id, { status });
-    log("mengubah change order", `${id} → ${status}`, "Proyek");
+    log("mengubah change order", `${id} — ${status}`, "Proyek");
     toast(`Change order ${status.toLowerCase()}`);
+  };
+
+  // Garansi/DLP: dibuat sekali saat proyek Selesai (pintasan di tab Terkait).
+  const createWarranty = () => {
+    const year = todayISO().slice(0, 4);
+    const seq = (data.warranties ?? []).filter((w) => String(w.id ?? "").startsWith(`WRT-${year}-`)).length + 1;
+    const created = add("warranties", {
+      id: `WRT-${year}-${String(seq).padStart(3, "0")}`,
+      projectId: pid, vessel: project.vessel, start: todayISO(), months: 12,
+      status: "Aktif", branch: String(project.branch ?? ""),
+    }, { action: "membuat garansi/DLP", module: "Proyek" });
+    toast(`Garansi ${created.id} dibuat (Aktif, 12 bulan)`);
   };
 
   const openRiskNew = () => {
@@ -296,6 +315,89 @@ export default function ProjectDetail() {
     update("bast", String(b.id), { status: next });
   };
 
+  // E1: sub-stage desain + class approval, tersimpan di project.designStages.
+  const designStages = (project.designStages ?? []) as { name: string; status: string; society: string; date: string; doc: string }[];
+  const classApproval = designStages.find((s) => s.name === "Class Approval");
+
+  const saveDesignStage = (name: string, patch: Record<string, string>) => {
+    const current = DESIGN_STAGE_NAMES.map((n) => {
+      const found = designStages.find((s) => s.name === n);
+      return found ?? { name: n, status: "Belum", society: "BKI", date: "", doc: "" };
+    });
+    const next = current.map((s) => (s.name === name ? { ...s, ...patch } : s));
+    update("projects", pid, { designStages: next });
+    log("memperbarui sub-stage desain", `${pid} · ${name}`, "Proyek");
+    toast(`${name} diperbarui`);
+  };
+
+  // E4: trials (sea trial / commissioning) per proyek.
+  const trialList = (data.trials ?? []).filter((t) => t.projectId === pid);
+  const nextTrialId = (tanggalISO: string): string => {
+    const year = (tanggalISO || todayISO()).slice(0, 4);
+    const prefix = `STL-${year}-`;
+    let max = 0;
+    for (const t of (data.trials ?? [])) {
+      const m = String(t.id ?? "").match(new RegExp(`^STL-${year}-(\\d+)$`));
+      if (m) max = Math.max(max, Number(m[1]) || 0);
+    }
+    return `${prefix}${String(max + 1).padStart(3, "0")}`;
+  };
+
+  const saveTrial = () => {
+    if (!trialForm.tanggal) { toast("Tanggal trial wajib diisi", "info"); return; }
+    if (!trialForm.parameter.trim()) { toast("Parameter / catatan trial wajib diisi", "info"); return; }
+    const id = nextTrialId(trialForm.tanggal);
+    add("trials", {
+      id, projectId: pid, tanggal: trialForm.tanggal, parameter: trialForm.parameter.trim(),
+      punchList: trialForm.punchList.trim(), hasil: "Berjalan", baRef: trialForm.baRef.trim(),
+    }, { action: "membuat sea trial", target: `${id} · ${pid}`, module: "Proyek" });
+    toast(`Trial ${id} dibuat`);
+    setTrialForm({ tanggal: todayISO(), parameter: "", punchList: "", hasil: "Lolos", baRef: "" });
+    setShowTrial(false);
+  };
+
+  const advanceTrial = (t: StoreItem, hasil: string) => {
+    if (String(t.hasil) === hasil) return;
+    if (hasil === "Lolos") {
+      // E5: trial exit butuh Class Survey row yang ter-link ke trial ini.
+      const linked = (data.surveys ?? []).some((s) => String(s.linkedTrial ?? "") === String(t.id));
+      if (!linked) { toast("Butuh Class Survey ter-link sebelum trial Lolos (isi di modul Kapal)", "info"); return; }
+      const bastId = nextBastId(String(t.tanggal ?? todayISO()));
+      add("bast", {
+        id: bastId, projectId: pid, milestone: `Sea Trial — ${String(t.parameter ?? "")}`,
+        tanggal: String(t.tanggal ?? todayISO()), penandatangan: "", lampiran: String(t.punchList ?? ""),
+        amount: boqTotal, status: "Draft",
+      }, { action: "membuat BAST draft dari trial", target: `${bastId} ← ${String(t.id)}`, module: "Proyek" });
+      toast(`Trial Lolos — BAST draft ${bastId} dibuat`);
+    } else {
+      toast(`Trial ${String(t.id)} ditandai ${hasil}`, "info");
+    }
+    update("trials", String(t.id), { hasil });
+    log("memperbarui hasil trial", `${String(t.id)} → ${hasil}`, "Proyek");
+  };
+
+  // E7: QA gate + history otomatis saat Selesai.
+  const changeStatus = (next: string) => {
+    if (next === "Selesai" && project.status !== "Selesai") {
+      const openNcr = (data.ncr ?? []).filter((n) => n.project === pid && n.status !== "Tertutup");
+      if (openNcr.length > 0) { toast(`Masih ada ${openNcr.length} NCR terbuka — tutup dulu sebelum Selesai`, "info"); return; }
+      const itpHold = (data.inspections ?? []).filter((i) => i.project === pid && i.status === "NCR");
+      if (itpHold.length > 0) { toast(`Masih ada ${itpHold.length} ITP hold (status NCR) — selesaikan dulu`, "info"); return; }
+      const vsl = data.vessels.find((x) => x.name === project.vessel);
+      if (vsl) {
+        update("vessels", vsl.id, {
+          history: [...(vsl.history ?? []), { date: todayISO(), event: `Proyek ${pid} selesai — serah terima`, type: "Delivery" }],
+          dockHistory: [...(vsl.dockHistory ?? []), { date: todayISO(), dock: "Galangan", scope: `Penyelesaian proyek ${pid}`, result: "Selesai", nextDue: todayISO() }],
+        });
+      }
+      log("menyelesaikan proyek + history kapal", `${pid} · ${project.vessel}`, "Proyek");
+    } else {
+      log("mengubah status", `${pid} → ${next}`, "Proyek");
+    }
+    update("projects", pid, { status: next });
+    toast(`Status menjadi ${next}`);
+  };
+
   const saveScope = () => {
     if (!scopeVal.trim()) { toast("Isi lingkup dulu", "info"); return; }
     update("projects", pid, { scope: [...(project.scope ?? []), scopeVal.trim()] });
@@ -310,12 +412,21 @@ export default function ProjectDetail() {
     const hours = Number(wbsUpdateForm.hours) || 0;
     const prog = Math.max(0, Math.min(100, Number(wbsUpdateForm.progress)));
     if (wbsUpdateForm.progress === "" || Number.isNaN(prog)) { toast("Isi progres 0–100", "info"); return; }
+    // E2: hull tasks wajib isi station.
+    if (/hull/i.test(wbsTaskUpdate) && !wbsUpdateForm.station) { toast("Station wajib diisi untuk tugas Hull", "info"); return; }
+    const dftNum = wbsUpdateForm.dft === "" ? undefined : Number(wbsUpdateForm.dft);
+    if (wbsUpdateForm.dft !== "" && (!Number.isFinite(dftNum!) || dftNum! < 0)) { toast("DFT harus angka 0 atau lebih", "info"); return; }
     const pred = wbsUpdateForm.predecessor || "";
     if (pred && pred !== wbsTaskUpdate && createsCycle(wbs, wbsTaskUpdate, pred)) { toast("Dependensi menciptakan siklus — ditolak", "info"); return; }
     const status = prog >= 100 ? "Selesai" : wbsUpdateForm.status === "Selesai" && prog < 100 ? "Sedang" : wbsUpdateForm.status;
     const updated = wbs.map((w) =>
       w.task === wbsTaskUpdate
-        ? { ...w, actualHours: hours, materialUsed: wbsUpdateForm.material, status, progress: prog, predecessor: pred || undefined }
+        ? {
+            ...w, actualHours: hours, materialUsed: wbsUpdateForm.material, status, progress: prog, predecessor: pred || undefined,
+            ...(wbsUpdateForm.station ? { station: wbsUpdateForm.station } : { station: undefined }),
+            ...(wbsUpdateForm.photoNote.trim() ? { photoNote: wbsUpdateForm.photoNote.trim() } : { photoNote: undefined }),
+            ...(dftNum !== undefined ? { dft: dftNum } : { dft: undefined }),
+          }
         : w
     );
     setWbs(pid, updated);
@@ -323,7 +434,7 @@ export default function ProjectDetail() {
     log("mengupdate progres WBS", `${wbsTaskUpdate} → ${prog}% (${status})`, "Proyek");
     toast("Progres tugas diperbarui");
     setWbsTaskUpdate(null);
-    setWbsUpdateForm({ hours: "", material: "", status: "Sedang", progress: "", predecessor: "" });
+    setWbsUpdateForm({ hours: "", material: "", status: "Sedang", progress: "", predecessor: "", station: "", photoNote: "", dft: "" });
   };
 
   const saveWbs = () => {
@@ -357,7 +468,7 @@ export default function ProjectDetail() {
             <select
               className="input w-auto py-1.5 text-sm"
               value={project.status}
-              onChange={(e) => { update("projects", pid, { status: e.target.value }); log("mengubah status", `${pid} → ${e.target.value}`, "Proyek"); toast(`Status menjadi ${e.target.value}`); }}
+              onChange={(e) => changeStatus(e.target.value)}
             >
               {STATUS.map((s) => <option key={s}>{s}</option>)}
             </select>
@@ -393,6 +504,33 @@ export default function ProjectDetail() {
                   ))}
                   {(project.scope ?? []).length === 0 && <p className="text-sm text-steel-400">Belum ada lingkup.</p>}
                 </ul>
+                <div className="mt-6">
+                  <div className="mb-2 flex items-center justify-between">
+                    <h3 className="text-sm font-semibold text-navy-900">Desain &amp; Class Approval</h3>
+                    {classApproval?.status === "Disetujui"
+                      ? <Badge tone="green">Class Approved</Badge>
+                      : <Badge tone="amber">Class {classApproval?.status ?? "Belum"}</Badge>}
+                  </div>
+                  <p className="mb-2 text-xs text-steel-500">Maju tahap Desain → Produksi diblokir hingga Class Approval Disetujui.</p>
+                  <div className="space-y-2">
+                    {DESIGN_STAGE_NAMES.map((name) => {
+                      const st = designStages.find((s) => s.name === name) ?? { name, status: "Belum", society: "BKI", date: "", doc: "" };
+                      return (
+                        <div key={name} className="flex flex-wrap items-center gap-2 rounded-xl border border-steel-100 p-2.5 text-sm">
+                          <span className="min-w-36 flex-1 font-medium text-navy-900">{name}</span>
+                          <select className="input w-auto py-1 text-xs" value={st.status} onChange={(e) => saveDesignStage(name, { status: e.target.value })} aria-label={`Status ${name}`}>
+                            {DESIGN_STATUS.map((s) => <option key={s}>{s}</option>)}
+                          </select>
+                          <select className="input w-auto py-1 text-xs" value={st.society || "BKI"} onChange={(e) => saveDesignStage(name, { society: e.target.value })} aria-label={`Society ${name}`}>
+                            {CLASS_SOCIETIES.map((s) => <option key={s}>{s}</option>)}
+                          </select>
+                          <input type="date" className="input w-auto py-1 text-xs" value={st.date || ""} onChange={(e) => saveDesignStage(name, { date: e.target.value })} aria-label={`Tanggal ${name}`} />
+                          <input className="input w-36 py-1 text-xs" value={st.doc || ""} onChange={(e) => saveDesignStage(name, { doc: e.target.value })} placeholder="No. dokumen" aria-label={`Dokumen ${name}`} />
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
                 <div className="mt-6">
                   <div className="mb-2 flex items-center justify-between">
                     <h3 className="text-sm font-semibold text-navy-900">Progres Keseluruhan</h3>
@@ -455,7 +593,10 @@ export default function ProjectDetail() {
                   <tbody className="divide-y divide-steel-100">
                     {sortRows(wbs, sort, (w: WbsExt, k) => k === "weight" ? Number(w.weight) : k === "progress" ? Number(w.progress) : String((w as unknown as Record<string, unknown>)[k] ?? "")).map((w) => (
                       <tr key={w.task}>
-                         <td className="td font-medium text-navy-900">{w.task}</td>
+                          <td className="td font-medium text-navy-900">{w.task}
+                            {w.station ? <span className="ml-2 rounded bg-navy-50 px-1.5 py-0.5 text-[11px] font-semibold text-navy-700">{w.station}</span> : null}
+                            {w.dft !== undefined && w.dft !== null && String(w.dft) !== "" ? <span className="ml-1 text-[11px] text-steel-500">DFT {String(w.dft)}µm</span> : null}
+                          </td>
                          <td className="td font-mono text-xs text-steel-500">{fmtBulan(w.start)}</td>
                          <td className="td font-mono text-xs text-steel-500">{fmtBulan(w.end)}</td>
                         <td className="td">{w.weight}%</td>
@@ -467,7 +608,7 @@ export default function ProjectDetail() {
                           </div>
                         </td>
                         <td className="td">
-                           <button className="btn-secondary text-xs" onClick={() => { setWbsTaskUpdate(w.task); setWbsUpdateForm({ hours: String(w.actualHours ?? ""), material: w.materialUsed ?? "", status: w.status === "Selesai" ? "Selesai" : "Sedang", progress: String(w.progress ?? 0), predecessor: w.predecessor ?? "" }); }}>Perbarui</button>
+                            <button className="btn-secondary text-xs" onClick={() => { setWbsTaskUpdate(w.task); setWbsUpdateForm({ hours: String(w.actualHours ?? ""), material: w.materialUsed ?? "", status: w.status === "Selesai" ? "Selesai" : "Sedang", progress: String(w.progress ?? 0), predecessor: w.predecessor ?? "", station: w.station ?? "", photoNote: w.photoNote ?? "", dft: w.dft === undefined || w.dft === null ? "" : String(w.dft) }); }}>Perbarui</button>
                         </td>
                       </tr>
                     ))}
@@ -773,6 +914,7 @@ export default function ProjectDetail() {
           )}
 
           {tab === "Terkait" && (
+            <div className="space-y-4">
             <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
               <Card className="p-4">
                 <h3 className="mb-2 text-sm font-semibold text-navy-900">Slot Docking ({slots.length})</h3>
@@ -800,6 +942,57 @@ export default function ProjectDetail() {
                 {ncrs.length === 0 && <p className="text-xs text-steel-400">Tidak ada NCR. Catat dari modul QC.</p>}
               </Card>
             </div>
+            <Card className="p-4">
+              <div className="mb-2 flex items-center justify-between">
+                <h3 className="text-sm font-semibold text-navy-900">Garansi / DLP ({warrantyList.length})</h3>
+                {project.status === "Selesai" && (
+                  <button className="btn-secondary text-xs" onClick={createWarranty}><Plus className="h-3.5 w-3.5" /> Buat Garansi/DLP</button>
+                )}
+              </div>
+              {project.status !== "Selesai" && (
+                <p className="mb-2 text-xs text-steel-500">Pintasan buat garansi muncul setelah proyek Selesai.</p>
+              )}
+              <div className="space-y-2">
+                {warrantyList.map((w) => (
+                  <div key={w.id} className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-steel-100 p-3 text-sm">
+                    <div className="min-w-0">
+                      <p className="font-medium text-navy-900 font-mono">{w.id}</p>
+                      <p className="text-xs text-steel-500">Mulai {fmtTanggal(String(w.start ?? ""))} · {w.months} bulan · {w.vessel}</p>
+                    </div>
+                    <StatusBadge status={String(w.status ?? "Aktif")} />
+                  </div>
+                ))}
+                {warrantyList.length === 0 && <p className="text-xs text-steel-400">Belum ada garansi untuk proyek ini.</p>}
+              </div>
+            </Card>
+            <Card className="p-4">
+              <div className="mb-2 flex items-center justify-between">
+                <h3 className="text-sm font-semibold text-navy-900">Trial — Commissioning &amp; Sea Trial ({trialList.length})</h3>
+                <button className="btn-secondary text-xs" onClick={() => setShowTrial(true)}><Plus className="h-3.5 w-3.5" /> Buat Trial</button>
+              </div>
+              <p className="mb-2 text-xs text-steel-500">Trial Lolos butuh Class Survey ter-link (modul Kapal) dan otomatis membuat BAST draft.</p>
+              <div className="space-y-2">
+                {trialList.map((t) => (
+                  <div key={String(t.id)} className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-steel-100 p-3 text-sm">
+                    <div className="min-w-0">
+                      <p className="font-medium text-navy-900">{String(t.id)} · {fmtTanggal(String(t.tanggal))}</p>
+                      <p className="text-xs text-steel-500">Parameter: {String(t.parameter ?? "—")}{t.punchList ? ` · punch: ${String(t.punchList)}` : ""}{t.baRef ? ` · BA: ${String(t.baRef)}` : ""}</p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <StatusBadge status={String(t.hasil ?? "Berjalan")} />
+                      {String(t.hasil) !== "Lolos" && (
+                        <button className="btn-secondary text-xs" onClick={() => advanceTrial(t, "Lolos")}>Lolos + BAST</button>
+                      )}
+                      {String(t.hasil) !== "Gagal" && (
+                        <button className="btn-secondary text-xs" onClick={() => advanceTrial(t, "Gagal")}>Gagal</button>
+                      )}
+                    </div>
+                  </div>
+                ))}
+                {trialList.length === 0 && <p className="text-xs text-steel-400">Belum ada trial untuk proyek ini.</p>}
+              </div>
+            </Card>
+            </div>
           )}
           {tab === "BoQ" && <BoQSection projectId={pid} />}
           {tab === "Dokumen & Laporan" && <div className="mt-6"><ReportSection projectId={pid} /></div>}
@@ -808,6 +1001,17 @@ export default function ProjectDetail() {
           {tab === "Sparepart" && <SparepartServiceSection projectId={pid} view="sparepart" />}
         </div>
       </div>
+
+      {/* Modal Trial */}
+      <Modal open={showTrial} onClose={() => setShowTrial(false)} title="Buat Trial" subtitle={`${pid} · ${nextTrialId(trialForm.tanggal || todayISO())}`}
+        footer={<><button className="btn-secondary" onClick={() => setShowTrial(false)}>Batal</button><button className="btn-primary" onClick={saveTrial}>Simpan</button></>}>
+        <div className="space-y-3">
+          <Field label="Tanggal"><input type="date" className="input" value={trialForm.tanggal} onChange={(e) => setTrialForm({ ...trialForm, tanggal: e.target.value })} /></Field>
+          <Field label="Parameter / catatan"><input className="input" value={trialForm.parameter} onChange={(e) => setTrialForm({ ...trialForm, parameter: e.target.value })} placeholder="cth: Speed & endurance 4 jam" /></Field>
+          <Field label="Punch list"><input className="input" value={trialForm.punchList} onChange={(e) => setTrialForm({ ...trialForm, punchList: e.target.value })} placeholder="cth: Minor leak valve-3" /></Field>
+          <Field label="BA ref (opsional)"><input className="input" value={trialForm.baRef} onChange={(e) => setTrialForm({ ...trialForm, baRef: e.target.value })} placeholder="cth: BA-TRIAL-012" /></Field>
+        </div>
+      </Modal>
 
       {/* Modal BAST */}
       <Modal open={showBast} onClose={() => setShowBast(false)} title="Buat BAST" subtitle={`${pid} · ${nextBastId(bastForm.tanggal || todayISO())}`}
@@ -897,8 +1101,18 @@ export default function ProjectDetail() {
         footer={<><button className="btn-secondary" onClick={() => setWbsTaskUpdate(null)}>Batal</button><button className="btn-primary" onClick={saveWbsTask}>Simpan</button></>}>
         <div className="space-y-3">
           <Field label="Progres (%)" hint="0–100, diisi manual berdasarkan capaian nyata"><input type="number" min={0} max={100} className="input" value={wbsUpdateForm.progress} onChange={(e) => setWbsUpdateForm({ ...wbsUpdateForm, progress: e.target.value })} placeholder="cth: 70" /></Field>
-          <Field label="Jam Kerja Aktual"><input type="number" className="input" value={wbsUpdateForm.hours} onChange={(e) => setWbsUpdateForm({ ...wbsUpdateForm, hours: e.target.value })} placeholder="cth: 8" /></Field>
+          <FormGrid>
+            <Field label="Jam Kerja Aktual"><input type="number" className="input" value={wbsUpdateForm.hours} onChange={(e) => setWbsUpdateForm({ ...wbsUpdateForm, hours: e.target.value })} placeholder="cth: 8" /></Field>
+            <Field label="DFT (µm)" hint="Diisi untuk tugas Painting"><input type="number" min={0} className="input" value={wbsUpdateForm.dft} onChange={(e) => setWbsUpdateForm({ ...wbsUpdateForm, dft: e.target.value })} placeholder="cth: 250" /></Field>
+          </FormGrid>
           <Field label="Material Dipakai"><input className="input" value={wbsUpdateForm.material} onChange={(e) => setWbsUpdateForm({ ...wbsUpdateForm, material: e.target.value })} placeholder="cth: Baja AH36 50kg" /></Field>
+          <Field label="Station" hint={wbsTaskUpdate && /hull/i.test(wbsTaskUpdate) ? "Wajib untuk tugas Hull" : "Opsional — tahapan fabrikasi/hull"}>
+            <select className="input" value={wbsUpdateForm.station} onChange={(e) => setWbsUpdateForm({ ...wbsUpdateForm, station: e.target.value })}>
+              <option value="">Pilih station…</option>
+              {STATIONS.map((s) => <option key={s}>{s}</option>)}
+            </select>
+          </Field>
+          <Field label="Catatan foto harian" hint="Teks catatan foto — upload fisik menyusul via backend"><input className="input" value={wbsUpdateForm.photoNote} onChange={(e) => setWbsUpdateForm({ ...wbsUpdateForm, photoNote: e.target.value })} placeholder="cth: Foto seam section 4, 08:00" /></Field>
           <Field label="Status">
             <select className="input" value={wbsUpdateForm.status} onChange={(e) => setWbsUpdateForm({ ...wbsUpdateForm, status: e.target.value as "Sedang" | "Selesai" })}>
               <option value="Sedang">Sedang Dikerjakan</option>

@@ -41,6 +41,9 @@ export interface WbsItem {
   completedBy?: string;
   completionDate?: string;
   status?: "Sedang" | "Selesai";
+  station?: string;
+  photoNote?: string;
+  dft?: number;
 }
 
 export interface StoreShape {
@@ -84,10 +87,14 @@ export interface StoreShape {
   timesheets: StoreItem[];
   drawings: StoreItem[];
   toolbox: StoreItem[];
+  warranties: StoreItem[];
   calibrations: StoreItem[];
   communications: StoreItem[];
   contracts: StoreItem[];
   bast: StoreItem[];
+  trials: StoreItem[];
+  requests: StoreItem[];
+  clientPos: StoreItem[];
   settings: StoreItem[];
   coa: StoreItem[];
   journals: StoreItem[];
@@ -316,6 +323,12 @@ const seedBast: StoreItem[] = [
   { id: "BAST-SMD-2026-002", projectId: "RP-2026-003", milestone: "Docking Completion — V2 AWB SEA HAVEN 2", tanggal: "2026-08-04", penandatangan: "Rudi Hartono / Master V2 AWB SEA HAVEN 2", lampiran: "Docking report + thickness report", amount: 102000000, status: "Diajukan" },
 ];
 
+const seedTrials: StoreItem[] = [];
+const seedRequests: StoreItem[] = [
+  { id: "REQ-2026-001", vessel: "TB Karya Bahari 12", client: "PT Karya Bahari Sejahtera", kind: "Repair Request", scope: "Overhaul main engine + coating lambung", value: 4200000000, status: "Baru", date: "2026-08-01" },
+];
+const seedClientPos: StoreItem[] = [];
+
 /* Seed dari docs/RawData/DataPencatatanFinance.xlsx — sheet Akun (98 akun). */
 const seedCoa: StoreItem[] = COA_EXCEL.map((c) => ({
   id: `COA-${c.kode}`,
@@ -391,13 +404,24 @@ const seedSettings: StoreItem[] = [
 ];
 
 export const wbsTemplate: WbsItem[] = [
-  { task: "Desain & Persetujuan Class", start: "2026-01", end: "2026-03", progress: 100, weight: 10 },
-  { task: "Pengadaan Material", start: "2026-02", end: "2026-05", progress: 85, weight: 15 },
-  { task: "Fabrikasi Baja", start: "2026-03", end: "2026-07", progress: 70, weight: 20 },
-  { task: "Hull Assembly", start: "2026-05", end: "2026-08", progress: 45, weight: 20 },
-  { task: "Mesin & Kelistrikan", start: "2026-07", end: "2026-09", progress: 20, weight: 20 },
-  { task: "Pengecatan & Outfitting", start: "2026-08", end: "2026-09", progress: 5, weight: 8 },
-  { task: "Sea Trial & Delivery", start: "2026-09", end: "2026-09", progress: 0, weight: 7 },
+  // Migrasi E3/E4: template New Build dipecah (Outfitting per sistem + Painting per tahap)
+  // + Commissioning. Total bobot tetap 100. WBS proyek lama (seed/wbsByProject)
+  // TIDAK dimigrasi — hanya template untuk proyek baru.
+  { task: "Desain & Persetujuan Class", start: "2026-01", end: "2026-03", progress: 100, weight: 8 },
+  { task: "Pengadaan Material", start: "2026-02", end: "2026-05", progress: 85, weight: 10 },
+  { task: "Fabrikasi Baja", start: "2026-03", end: "2026-07", progress: 70, weight: 12 },
+  { task: "Hull Assembly", start: "2026-05", end: "2026-08", progress: 45, weight: 12 },
+  { task: "Outfitting — Machinery", start: "2026-07", end: "2026-09", progress: 20, weight: 8 },
+  { task: "Outfitting — Piping", start: "2026-07", end: "2026-09", progress: 20, weight: 7 },
+  { task: "Outfitting — Electrical", start: "2026-07", end: "2026-09", progress: 20, weight: 7 },
+  { task: "Outfitting — Nav & Comm", start: "2026-07", end: "2026-09", progress: 20, weight: 5 },
+  { task: "Outfitting — Accommodation", start: "2026-07", end: "2026-09", progress: 20, weight: 5 },
+  { task: "Painting — Surface Prep", start: "2026-08", end: "2026-09", progress: 5, weight: 5 },
+  { task: "Painting — Priming", start: "2026-08", end: "2026-09", progress: 5, weight: 4 },
+  { task: "Painting — Topcoat", start: "2026-08", end: "2026-09", progress: 5, weight: 4 },
+  { task: "Painting — Final Inspection", start: "2026-08", end: "2026-09", progress: 5, weight: 3 },
+  { task: "Commissioning", start: "2026-09", end: "2026-09", progress: 0, weight: 6 },
+  { task: "Sea Trial & Delivery", start: "2026-09", end: "2026-09", progress: 0, weight: 4 },
 ];
 
 const seedTeamByProject: Record<string, string[]> = {
@@ -454,11 +478,15 @@ function buildSeeds(): StoreShape {
      timesheets: clone(seedTimesheets),
      drawings: clone(seedDrawings),
      toolbox: clone(seedToolbox),
+     warranties: [],
      calibrations: clone(seedCalibrations),
-      communications: clone(seedCommunications),
-       contracts: clone(seedContracts),
-       bast: clone(seedBast),
-       settings: clone(seedSettings),
+       communications: clone(seedCommunications),
+        contracts: clone(seedContracts),
+        bast: clone(seedBast),
+        trials: clone(seedTrials),
+        requests: clone(seedRequests),
+        clientPos: clone(seedClientPos),
+        settings: clone(seedSettings),
       coa: clone(seedCoa),
       journals: clone(seedJournals),
       assets: clone(seedAssets),
@@ -511,10 +539,14 @@ const PREFIX: Record<string, string> = {
    timesheets: "TS",
    drawings: "DRW",
    toolbox: "TBM",
+   warranties: "WRT",
    calibrations: "CAL",
     communications: "COM",
-     contracts: "KTR",
-     bast: "BAST",
+      contracts: "KTR",
+      bast: "BAST",
+      trials: "STL",
+      requests: "REQ",
+      clientPos: "CPO",
     settings: "SET",
     coa: "COA",
     journals: "JU",
@@ -529,7 +561,8 @@ const ARRAY_KEYS: (keyof StoreShape)[] = [
   "documents", "surveys", "activities", "services", "spareparts", "boq",
   "branches", "attendance", "payroll", "taxPeriods", "rfqs", "changeOrders",
   "risks", "leaves", "trainings", "timesheets", "drawings", "toolbox",
-  "calibrations", "communications", "contracts", "bast", "settings", "coa", "journals", "assets",
+  "warranties",
+  "calibrations", "communications", "contracts", "bast", "trials", "requests", "clientPos", "settings", "coa", "journals", "assets",
 ];
 
 function sanitizeStore(parsed: Partial<StoreShape>): StoreShape {
@@ -547,17 +580,27 @@ function sanitizeStore(parsed: Partial<StoreShape>): StoreShape {
 }
 
 function loadStore(): StoreShape {
-  const candidates = [STORE_KEY, ...LEGACY_KEYS];
-  for (const key of candidates) {
+  // Persistensi localStorage (migrasi dari sessionStorage: kunci sama, baca sesi lama sekali).
+  const read = (storage: Storage, key: string): Partial<StoreShape> | null => {
     try {
-      const raw = sessionStorage.getItem(key);
+      const raw = storage.getItem(key);
       if (raw) {
         const parsed = JSON.parse(raw) as Partial<StoreShape>;
-        if (parsed && Array.isArray(parsed.projects)) return sanitizeStore(parsed);
+        if (parsed && Array.isArray(parsed.projects)) return parsed;
       }
     } catch {
       /* abaikan, coba key berikutnya */
     }
+    return null;
+  };
+  const candidates = [STORE_KEY, ...LEGACY_KEYS];
+  for (const key of candidates) {
+    const parsed = read(localStorage, key);
+    if (parsed) return sanitizeStore(parsed);
+  }
+  for (const key of candidates) {
+    const parsed = read(sessionStorage, key);
+    if (parsed) return sanitizeStore(parsed);
   }
   return buildSeeds();
 }
@@ -614,8 +657,9 @@ const ACTOR_TONE: Record<string, "navy" | "teal" | "rose" | "violet" | "amber"> 
 export function StoreProvider({ children }: { children: ReactNode }) {
   const [data, setData] = useState<StoreShape>(() => loadStore());
   const [branch, setBranchState] = useState<string>(() => {
+    // Cabang global di localStorage (migrasi dari sessionStorage, kunci sama).
     try {
-      return sessionStorage.getItem(BRANCH_KEY) ?? "SEMUA";
+      return localStorage.getItem(BRANCH_KEY) ?? sessionStorage.getItem(BRANCH_KEY) ?? "SEMUA";
     } catch {
       return "SEMUA";
     }
@@ -624,7 +668,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const setBranch = (b: string) => {
     setBranchState(b);
     try {
-      sessionStorage.setItem(BRANCH_KEY, b);
+      localStorage.setItem(BRANCH_KEY, b);
     } catch {
       /* abaikan */
     }
@@ -635,9 +679,13 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     try {
-      sessionStorage.setItem(STORE_KEY, JSON.stringify(data));
+      // Persistensi localStorage (migrasi dari sessionStorage, kunci sama).
+      localStorage.setItem(STORE_KEY, JSON.stringify(data));
       for (const k of LEGACY_KEYS) {
-        if (k !== STORE_KEY) sessionStorage.removeItem(k);
+        if (k !== STORE_KEY) {
+          localStorage.removeItem(k);
+          sessionStorage.removeItem(k);
+        }
       }
     } catch {
       /* storage penuh — abaikan */

@@ -6,6 +6,7 @@ import { useStore } from "../../data/store";
 import type { StoreItem } from "../../data/store";
 import { fmtRupiah, fmtTanggal, todayISO } from "../../utils/format";
 import { exportExcel } from "../../utils/export";
+import { useDraftState } from "../../utils/draft";
 
 const FLOW = ["Lead", "Penawaran", "Negosiasi", "Menang"];
 const num = (v: unknown): number => Number(v) || 0;
@@ -37,7 +38,7 @@ export default function QuotationDetail() {
 
   const quotation = (data.quotations ?? []).find((q) => q.id === id);
   const seedLines = useMemo(() => (quotation ? initialLines(quotation) : []), [quotation?.id]);
-  const [lines, setLines] = useState<QLine[] | null>(null);
+  const [lines, setLines] = useDraftState<QLine[] | null>(`isms.draft.quotation.${quotation?.id ?? "new"}.lines`, null);
   const [note, setNote] = useState("");
   const [sendOpen, setSendOpen] = useState(false);
   const [sendEmail, setSendEmail] = useState("");

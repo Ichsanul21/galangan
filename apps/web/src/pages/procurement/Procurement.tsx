@@ -9,6 +9,7 @@ import { getSetting } from "../../utils/settings";
 import { sbPoNumber, sbSplitIncludePpn, maxSeq, SB_KOP } from "../../utils/sb";
 import { spendByCategory, procurementTrend, poCountTrend, poValueTrend, prPendingTrend, vendorTrend } from "../../data";
 import { exportExcel } from "../../utils/export";
+import { useDraftState } from "../../utils/draft";
 
 interface POLine { name: string; qty: number; unit: string; price: number }
 interface Quote { vendor: string; price: number; eta: string }
@@ -152,7 +153,7 @@ export default function Procurement() {
   /* ---- PO Besar ---- */
   const [showBig, setShowBig] = useState(false);
   const [bigForm, setBigForm] = useState({ tujuan: "kapal" as "kapal" | "stok", prId: "", itemId: "", vendor: "", project: "", vessel: "", eta: "", includePpn: true, override: false, overrideReason: "" });
-  const [bigLines, setBigLines] = useState<POLine[]>([{ name: "", qty: 1, unit: "pcs", price: 0 }]);
+  const [bigLines, setBigLines] = useDraftState<POLine[]>("isms.draft.procurement.bigLines", [{ name: "", qty: 1, unit: "pcs", price: 0 }]);
 
   /* ---- PO Kecil ---- */
   const [showSmall, setShowSmall] = useState(false);
@@ -161,7 +162,7 @@ export default function Procurement() {
 
   /* ---- RFQ ---- */
   const [rfqPr, setRfqPr] = useState<StoreItem | null>(null);
-  const [rfqVendors, setRfqVendors] = useState<string[]>([]);
+  const [rfqVendors, setRfqVendors] = useDraftState<string[]>("isms.draft.procurement.rfqVendors", []);
   const [quoteRfq, setQuoteRfq] = useState<StoreItem | null>(null);
   const [quoteForm, setQuoteForm] = useState({ vendor: "", price: "", eta: "" });
   const [winRfq, setWinRfq] = useState<StoreItem | null>(null);

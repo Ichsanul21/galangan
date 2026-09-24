@@ -5,6 +5,7 @@ import { Card, CardHeader, PageHeader, Badge, KpiCard, Tabs, ProgressBar, ChartT
 import type { SortState } from "../../components/ui";
 import { useStore, type StoreItem } from "../../data/store";
 import { fmtRupiah, fmtMiliar, fmtTanggal, todayISO } from "../../utils/format";
+import { getSetting } from "../../utils/settings";
 import { subcontractorScore, subActiveTrend, subContractTrend, woTrend, ratingTrend } from "../../data";
 
 const toneMap: Record<string, "green" | "blue" | "amber" | "red" | "gray" | "navy"> = {
@@ -83,7 +84,7 @@ function milestonesOf(s: StoreItem): Milestone[] {
 }
 
 export default function Subcontractor() {
-  const { data, add, update, log } = useStore();
+  const { data, add, update, log, branch } = useStore();
   const subcontractors = data.subcontractors;
   const workOrders = data.workOrders;
   const payments = data.termins;
@@ -111,6 +112,8 @@ export default function Subcontractor() {
   const [termPay, setTermPay] = useState<StoreItem | null>(null);
   const [proof, setProof] = useState({ date: todayISO(), method: "Transfer", ref: "" });
   const [withholdingRef, setWithholdingRef] = useState("");
+  const [termDirCheck, setTermDirCheck] = useState(false);
+  const [termDirName, setTermDirName] = useState("");
   const [rejectTerm, setRejectTerm] = useState<StoreItem | null>(null);
   const [releaseTerm, setReleaseTerm] = useState<StoreItem | null>(null);
   const [releaseForm, setReleaseForm] = useState({ date: todayISO(), ba: "" });
@@ -144,6 +147,17 @@ export default function Subcontractor() {
 
   const hoursByWo = (woId: string): number =>
     timesheets.filter((t) => t.woId === woId).reduce((s, t) => s + Number(t.hours || 0), 0);
+
+  // Cabang global sebagai fallback bila lookup proyek/karyawan tidak punya cabang.
+  const globalBranch = branch === "SEMUA" ? "" : branch;
+  const branchOfProject = (pid: string): string =>
+    String(data.projects.find((p) => p.id === pid)?.branch ?? globalBranch ?? "");
+  const branchOfEmployee = (empId: string): string =>
+    String(data.employees.find((e) => e.id === empId)?.branch ?? globalBranch ?? "");
+  // Ambang Director untuk pelunasan termin (pengaturan APPROVE_TERMIN).
+  const terminThreshold = getSetting(data, "APPROVE_TERMIN", 2000000);
+  const needsTermDirector = (t: StoreItem | null): boolean =>
+    !!t && Number(t.amount || 0) > terminThreshold && !t.directorApproved;
 
   const woOfSub = (subName: string): StoreItem[] => workOrders.filter((w) => w.sub === subName);
   const incidentsOfSub = (subName: string): StoreItem[] => {
@@ -195,7 +209,7 @@ export default function Subcontractor() {
     if (!woForm.targetDate) { toast("Target selesai WO wajib diisi", "info"); return; }
     const penaltyPct = Number(woForm.penaltyPct);
     if (!Number.isFinite(penaltyPct) || penaltyPct < 0 || penaltyPct > 5) { toast("Denda per hari harus 0–5%", "info"); return; }
-    const created = add("workOrders", { sub: woForm.sub, project: woForm.project, scope: woForm.scope.trim(), progress: 0, status: "Dalam Proses", date: todayISO(), targetDate: woForm.targetDate, penaltyPct },
+    const created = add("workOrders", { sub: woForm.sub, project: woForm.project, scope: woForm.scope.trim(), progress: 0, status: "Dalam Proses", date: todayISO(), targetDate: woForm.targetDate, penaltyPct, branch: branchOfProject(woForm.project) },
       { action: "menerbitkan WO", module: "Subkontraktor" });
     toast(`WO ${created.id} diterbitkan`);
     setShowWo(false);
@@ -266,7 +280,7 @@ export default function Subcontractor() {
     }
     const created = add("termins", {
       sub: termForm.sub, woId: wo.id, milestone: ms.title, progress: `${wo.id} (${wo.progress}%)`, amount,
-      pphPct, retPct, status: "Draf", date: todayISO(),
+      pphPct, retPct, status: "Draf", date: todayISO(), branch: branchOfProject(String(wo.project ?? "")),
     }, { action: "mengajukan termin", module: "Subkontraktor" });
     toast(`Termin ${created.id} diajukan (Draf)`);
     setShowTerm(false);
@@ -278,6 +292,8 @@ export default function Subcontractor() {
       setTermPay(p);
       setProof({ date: todayISO(), method: "Transfer", ref: "" });
       setWithholdingRef("");
+      setTermDirCheck(false);
+      setTermDirName("");
       return;
     }
     if (next === "Ditolak") {
@@ -292,6 +308,11 @@ export default function Subcontractor() {
     if (!termPay) return;
     if (!proof.date) { toast("Tanggal bayar wajib diisi", "info"); return; }
     if (!proof.ref.trim()) { toast("No. referensi wajib diisi", "info"); return; }
+    // Termin di atas ambang APPROVE_TERMIN wajib persetujuan Director (checkbox + nama).
+    if (needsTermDirector(termPay) && (!termDirCheck || !termDirName.trim())) {
+      toast(`Termin di atas ${fmtRupiah(terminThreshold)} wajib dicentang + nama Director`, "info");
+      return;
+    }
     // PPh variatif RawData (cth PAK YUSUF 0.5%): potong saat bayar + simpan bukti potong.
     const pphAmt = Math.round(Number(termPay.amount || 0) * pphOf(termPay) / 100);
     const retAmt = Math.round(Number(termPay.amount || 0) * retOf(termPay) / 100);
@@ -301,6 +322,7 @@ export default function Subcontractor() {
     update("termins", termPay.id, {
       status: "Lunas", paidAt: proof.date, paidMethod: proof.method, paidRef: proof.ref.trim(),
       pphAmt, retAmt, penaltyApplied: penalty, withholdingRef: withholdingRef.trim(),
+      ...(needsTermDirector(termPay) ? { directorApproved: termDirName.trim() } : {}),
     });
     // Termin Lunas → hutang usaha: 1 baris neto (Belum Dibayar, denda mengurangi neto)
     // + 1 baris retensi (Ditahan, dirilis setelah WO Selesai). Cek duplikat via kunci po.
@@ -313,7 +335,7 @@ export default function Subcontractor() {
         v: String(termPay.sub ?? ""), kodePembantu: String(termPay.sub ?? ""),
         po: poNeto, openAwal: 0, amt: netoPayable,
         due: proof.date, pph: `${pphOf(termPay)}%`, st: "Belum Dibayar",
-        vessel: vesselProj, project: vesselProj,
+        vessel: vesselProj, project: vesselProj, branch: branchOfProject(vesselProj),
         item: String(termPay.milestone ?? termPay.progress ?? ""),
         pay1: 0, pay2: 0,
         note: `Termin ${termPay.id} neto; PPh ${fmtRupiah(pphAmt)}; retensi ${fmtRupiah(retAmt)} ditahan; denda ${fmtRupiah(penalty)}`,
@@ -325,7 +347,7 @@ export default function Subcontractor() {
         v: String(termPay.sub ?? ""), kodePembantu: String(termPay.sub ?? ""),
         po: poRet, openAwal: 0, amt: retAmt,
         due: proof.date, pph: `${pphOf(termPay)}%`, st: "Ditahan",
-        vessel: vesselProj, project: vesselProj,
+        vessel: vesselProj, project: vesselProj, branch: branchOfProject(vesselProj),
         item: `Retensi ${termPay.milestone ?? termPay.id}`,
         pay1: 0, pay2: 0,
         note: `Retensi termin ${termPay.id} — rilis setelah WO Selesai`,
@@ -336,6 +358,8 @@ export default function Subcontractor() {
     toast(`${termPay.id} lunas — PPh ${fmtRupiah(pphAmt)} dipotong · hutang ${fmtRupiah(netoPayable)} tercatat`);
     setTermPay(null);
     setWithholdingRef("");
+    setTermDirCheck(false);
+    setTermDirName("");
   };
 
   const confirmRelease = () => {
@@ -364,12 +388,23 @@ export default function Subcontractor() {
     if (!tsForm.wo || !tsForm.employee || !tsForm.date) { toast("WO, karyawan & tanggal wajib diisi", "info"); return; }
     const hours = Number(tsForm.hours);
     if (!Number.isFinite(hours) || hours <= 0) { toast("Jam kerja harus lebih dari 0", "info"); return; }
+    const wo = workOrders.find((w) => w.id === tsForm.wo);
+    const projectId = String(wo?.project ?? "");
+    const rate = Number(wo?.rate || 0);
     const created = add("timesheets", {
       woId: tsForm.wo, employeeId: tsForm.employee, date: tsForm.date, hours, note: tsForm.note.trim(),
+      projectId, rate, cost: Math.round(hours * rate), status: "Diajukan",
+      branch: branchOfEmployee(tsForm.employee),
     }, { action: "mencatat timesheet", module: "Subkontraktor" });
     toast(`Timesheet ${created.id} dicatat (${hours} jam)`);
     setShowTs(false);
     setTsForm({ wo: "", employee: "", date: todayISO(), hours: "", note: "" });
+  };
+
+  const approveTimesheet = (t: StoreItem) => {
+    update("timesheets", t.id, { status: "Disetujui" });
+    log("menyetujui timesheet", `${t.id} · ${t.hours} jam`, "Subkontraktor");
+    toast(`${t.id} disetujui — siap ditarik ke invoice T&M`);
   };
 
   const saveRate = () => {
@@ -648,22 +683,30 @@ export default function Subcontractor() {
               <div className="overflow-x-auto">
                 <table className="w-full">
                   <thead className="bg-surface sticky top-0 z-10">
-                    <tr><SortTh label="ID" sortKey="id" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} /><SortTh label="WO" sortKey="wo" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} /><SortTh label="Karyawan" sortKey="karyawan" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} /><SortTh label="Tanggal" sortKey="tanggal" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} /><SortTh label="Jam" sortKey="jam" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} /><SortTh label="Catatan" sortKey="catatan" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} /></tr>
+                    <tr><SortTh label="ID" sortKey="id" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} /><SortTh label="WO" sortKey="wo" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} /><SortTh label="Proyek" sortKey="proyek" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} /><SortTh label="Karyawan" sortKey="karyawan" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} /><SortTh label="Tanggal" sortKey="tanggal" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} /><SortTh label="Jam" sortKey="jam" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} /><SortTh label="Biaya" sortKey="biaya" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} /><SortTh label="Status" sortKey="status" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} /><SortTh label="Catatan" sortKey="catatan" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} /><th className="th">Aksi</th></tr>
                   </thead>
                   <tbody className="divide-y divide-steel-100">
                     {sortRows(timesheets, sort2, (t, key) =>
-                      key === "id" ? String(t.id ?? "") : key === "wo" ? String(t.woId ?? "") : key === "karyawan" ? String(t.employeeId ?? "") : key === "tanggal" ? String(t.date ?? "") : key === "jam" ? Number(t.hours ?? 0) : String(t.note ?? "")
+                      key === "id" ? String(t.id ?? "") : key === "wo" ? String(t.woId ?? "") : key === "proyek" ? String(t.projectId ?? workOrders.find((w) => w.id === t.woId)?.project ?? "") : key === "karyawan" ? String(t.employeeId ?? "") : key === "tanggal" ? String(t.date ?? "") : key === "jam" ? Number(t.hours ?? 0) : key === "biaya" ? Number(t.cost ?? Number(t.hours || 0) * Number(workOrders.find((w) => w.id === t.woId)?.rate || 0)) : key === "status" ? String(t.status ?? "Diajukan") : String(t.note ?? "")
                     ).map((t) => (
                       <tr key={t.id} className="hover:bg-surface">
                         <td className="td font-mono font-medium text-navy-900">{t.id}</td>
                         <td className="td font-mono text-xs text-steel-600">{t.woId}</td>
+                        <td className="td font-mono text-xs text-steel-600">{t.projectId ?? workOrders.find((w) => w.id === t.woId)?.project ?? "—"}</td>
                         <td className="td text-steel-600 text-xs">{t.employeeId}</td>
                         <td className="td text-steel-600">{fmtTanggal(t.date)}</td>
                         <td className="td font-semibold">{t.hours} jam</td>
+                        <td className="td text-steel-600">{fmtRupiah(Number(t.cost ?? Number(t.hours || 0) * Number(workOrders.find((w) => w.id === t.woId)?.rate || t.rate || 0)))}</td>
+                        <td className="td"><Badge tone={String(t.status ?? "Diajukan") === "Disetujui" ? "green" : "amber"}>{t.status ?? "Diajukan"}</Badge></td>
                         <td className="td text-steel-600 text-xs">{t.note ?? "—"}</td>
+                        <td className="td">
+                          {String(t.status ?? "Diajukan") !== "Disetujui"
+                            ? <button className="btn-primary text-xs" aria-label={`Setujui ${t.id}`} onClick={() => approveTimesheet(t)}>Setujui</button>
+                            : <span className="text-xs text-steel-400">—</span>}
+                        </td>
                       </tr>
                     ))}
-                    {timesheets.length === 0 && <tr><td colSpan={6} className="td text-center text-steel-400">Belum ada timesheet.</td></tr>}
+                    {timesheets.length === 0 && <tr><td colSpan={10} className="td text-center text-steel-400">Belum ada timesheet.</td></tr>}
                   </tbody>
                 </table>
               </div>
@@ -857,8 +900,8 @@ export default function Subcontractor() {
       </Modal>
 
       {/* Modal bukti bayar termin */}
-      <Modal open={termPay !== null} onClose={() => setTermPay(null)} title={`Bayar ${termPay?.id ?? ""}?`} subtitle={`${termPay?.sub ?? ""} · neto ${fmtRupiah(termPay ? netoOf(termPay) : 0)}`}
-        footer={<><button className="btn-secondary" onClick={() => setTermPay(null)}>Batal</button><button className="btn-primary" onClick={confirmBuktiTerm}>Simpan Bukti Bayar</button></>}>
+      <Modal open={termPay !== null} onClose={() => setTermPay(null)} title={`Bayar ${termPay?.id ?? ""}?`} subtitle={`${termPay?.sub ?? ""} — neto ${fmtRupiah(termPay ? netoOf(termPay) : 0)}${needsTermDirector(termPay) ? ` · di atas ambang ${fmtRupiah(terminThreshold)}, butuh Director` : ""}`}
+        footer={<><button className="btn-secondary" onClick={() => setTermPay(null)}>Batal</button><button className="btn-primary" disabled={needsTermDirector(termPay) && (!termDirCheck || !termDirName.trim())} onClick={confirmBuktiTerm}>Simpan Bukti Bayar</button></>}>
         <div className="space-y-3">
           <FormGrid>
             <Field label="Tanggal bayar"><input type="date" required className="input" value={proof.date} onChange={(e) => setProof({ ...proof, date: e.target.value })} /></Field>
@@ -874,6 +917,17 @@ export default function Subcontractor() {
           <Field label="No. bukti potong PPh (opsional)" hint={`PPh ${termPay ? pphOf(termPay) : ""}% = ${fmtRupiah(termPay ? Math.round(Number(termPay.amount || 0) * pphOf(termPay) / 100) : 0)} dipotong saat bayar`}>
             <input className="input font-mono" value={withholdingRef} onChange={(e) => setWithholdingRef(e.target.value)} placeholder="cth: BUPOT-2026-001" />
           </Field>
+          {needsTermDirector(termPay) && (
+            <>
+              <label className="flex items-start gap-2 text-sm text-steel-600">
+                <input type="checkbox" className="mt-1" checked={termDirCheck} onChange={(e) => setTermDirCheck(e.target.checked)} />
+                Saya selaku Director menyetujui pelunasan termin nominal besar ini.
+              </label>
+              <Field label="Nama Director" hint="Wajib — dicatat di log">
+                <input className="input" value={termDirName} onChange={(e) => setTermDirName(e.target.value)} placeholder="cth: Andi Darman" />
+              </Field>
+            </>
+          )}
         </div>
       </Modal>
 
@@ -906,13 +960,18 @@ export default function Subcontractor() {
             <Field label="Work Order">
               <select className="input" value={tsForm.wo} onChange={(e) => setTsForm({ ...tsForm, wo: e.target.value })}>
                 <option value="">Pilih WO…</option>
-                {workOrders.filter((w) => w.status !== "Selesai").map((w) => <option key={w.id} value={w.id}>{w.id} · {w.sub}</option>)}
+                {workOrders.filter((w) => w.status !== "Selesai").map((w) => <option key={w.id} value={w.id}>{w.id} — {w.sub}</option>)}
+              </select>
+            </Field>
+            <Field label="Proyek (dari WO)" hint={(() => { const w = workOrders.find((x) => x.id === tsForm.wo); return w && Number(w.rate || 0) > 0 ? `Rate otomatis ${fmtRupiah(Number(w.rate))}/jam` : "Rate WO belum ditetapkan"; })()}>
+              <select className="input" value={tsForm.wo} disabled={!tsForm.wo} onChange={() => {}} aria-label="Proyek dari WO">
+                <option value="">{tsForm.wo ? (workOrders.find((x) => x.id === tsForm.wo)?.project ?? "—") : "Pilih WO dulu…"}</option>
               </select>
             </Field>
             <Field label="Karyawan">
               <select className="input" value={tsForm.employee} onChange={(e) => setTsForm({ ...tsForm, employee: e.target.value })}>
                 <option value="">Pilih…</option>
-                {employeeOptions.map((e) => <option key={e.id} value={e.id}>{e.name} · {e.role}</option>)}
+                {employeeOptions.map((e) => <option key={e.id} value={e.id}>{e.name} — {e.role}</option>)}
               </select>
             </Field>
             <Field label="Tanggal"><input type="date" className="input" value={tsForm.date} onChange={(e) => setTsForm({ ...tsForm, date: e.target.value })} /></Field>

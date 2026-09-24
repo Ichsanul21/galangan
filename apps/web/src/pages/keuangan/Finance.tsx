@@ -36,6 +36,7 @@ import { useStore } from "../../data/store";
 import type { StoreItem } from "../../data/store";
 import { fmtRupiah, fmtMiliar, fmtTanggal, fmtJumlah, todayISO } from "../../utils/format";
 import { getSetting } from "../../utils/settings";
+import { useDraftState } from "../../utils/draft";
 import { sbInvoiceMath, maxSeq, PPN_INVOICE_DEFAULT, PPH_JASA_DEFAULT } from "../../utils/sb";
 import { exportExcel } from "../../utils/export";
 import {
@@ -236,6 +237,7 @@ export default function Finance() {
     billingType: "Milestone" as string,
     milestoneRef: "",
     serviceRef: "",
+    clientPO: "",
     retentionPct: "5",
     due: "",
     paymentTerm: "Termin 1",
@@ -245,7 +247,7 @@ export default function Finance() {
     skdt: false, // INV PAKAI SKDT: tanpa PPN (cth BG MHKL 35)
     dpApplied: "", // amortisasi uang muka (cth V2 potong DP-1 Rp 1.098M)
   });
-  const [invLines, setInvLines] = useState<InvLine[]>([emptyLine()]);
+  const [invLines, setInvLines] = useDraftState<InvLine[]>("isms.draft.finance.invLines", [emptyLine()]);
   const [payTarget, setPayTarget] = useState<StoreItem | null>(null);
   const [apTarget, setApTarget] = useState<StoreItem | null>(null);
   const [apPayAmt, setApPayAmt] = useState("");
@@ -256,7 +258,7 @@ export default function Finance() {
   const [apEdit, setApEdit] = useState<StoreItem | null>(null);
   const [apEditForm, setApEditForm] = useState({ v: "", kodePembantu: "", openAwal: "", amt: "", due: "", nonPpn: false, vessel: "", item: "" });
   const [releaseTarget, setReleaseTarget] = useState<StoreItem | null>(null);
-  const [releaseForm, setReleaseForm] = useState({ date: todayISO(), ba: "" });
+  const [releaseForm, setReleaseForm] = useState({ date: todayISO(), ba: "", warrantyId: "" });
   const [taxId, setTaxId] = useState("");
   const [newPeriod, setNewPeriod] = useState("");
 
@@ -264,9 +266,11 @@ export default function Finance() {
   const [writeOff, setWriteOff] = useState<StoreItem | null>(null);
   const [writeOffReason, setWriteOffReason] = useState("");
   const [confirmWriteOff, setConfirmWriteOff] = useState(false);
+  const [woDirCheck, setWoDirCheck] = useState(false);
+  const [woDirName, setWoDirName] = useState("");
 
   // 2. Jadwal bayar / batch
-  const [schedSel, setSchedSel] = useState<string[]>([]);
+  const [schedSel, setSchedSel] = useDraftState<string[]>("isms.draft.finance.schedSel", []);
   const [showBatch, setShowBatch] = useState(false);
   const [batchProof, setBatchProof] = useState(emptyProof);
 
@@ -777,6 +781,12 @@ export default function Finance() {
     if (validLines.length === 0) { toast("Isi minimal satu baris dengan nominal lebih dari 0", "info"); return; }
     if (invForm.nsfp.trim() && (data.invoices ?? []).some((i) => String(i.nsfp ?? "") === invForm.nsfp.trim())) { toast("NSFP sudah dipakai invoice lain", "info"); return; }
     if (invForm.noFaktur.trim() && (data.invoices ?? []).some((i) => String(i.noFaktur ?? "") === invForm.noFaktur.trim())) { toast("No. faktur sudah dipakai invoice lain", "info"); return; }
+    // E6: clientPO opsional — bila diisi harus milik proyek yang sama.
+    if (invForm.clientPO) {
+      const po = (data.clientPos ?? []).find((p) => String(p.no ?? "") === invForm.clientPO || String(p.id ?? "") === invForm.clientPO);
+      if (!po) { toast("PO klien tidak dikenal", "info"); return; }
+      if (po.projectId && String(po.projectId) !== proj.id) { toast(`PO klien milik proyek ${String(po.projectId)} — tidak cocok dengan ${proj.id}`, "info"); return; }
+    }
     const total = validLines.reduce((s, l) => s + lineAmount(l, isTMForm), 0);
     const pct = invForm.billingType === "Uang Muka" || invForm.billingType === "T&M" ? 0 : num(invForm.retentionPct);
     const retentionAmt = Math.round(total * (pct / 100));
@@ -812,6 +822,7 @@ export default function Finance() {
       client: proj.client,
       kodePembantu: invForm.kodePembantu.trim() || proj.client,
       project: proj.id,
+      branch: String(proj.branch ?? (branch !== "SEMUA" ? branch : "")),
       amount: total,
       due: invForm.due,
       status: "Draft",
@@ -819,6 +830,7 @@ export default function Finance() {
       billingType: invForm.billingType,
       milestoneRef: invForm.milestoneRef.trim(),
       serviceRef: invForm.serviceRef.trim(),
+      ...(invForm.clientPO ? { clientPO: invForm.clientPO } : {}),
       lines: storedLines,
       retentionPct: pct,
       retentionAmt,
@@ -841,8 +853,34 @@ export default function Finance() {
     }
     toast(`Invoice ${created.id} dibuat (Draft)`);
     setShowInv(false);
-    setInvForm({ project: "", billingType: "Milestone", milestoneRef: "", serviceRef: "", retentionPct: "5", due: "", paymentTerm: "Termin 1", nsfp: "", noFaktur: "", kodePembantu: "", skdt: false, dpApplied: "" });
+    setInvForm({ project: "", billingType: "Milestone", milestoneRef: "", serviceRef: "", clientPO: "", retentionPct: "5", due: "", paymentTerm: "Termin 1", nsfp: "", noFaktur: "", kodePembantu: "", skdt: false, dpApplied: "" });
     setInvLines([emptyLine()]);
+  };
+
+  // T&M: tarik baris otomatis dari timesheet Disetujui — jumlah jam × rate per WO proyek ini.
+  const pullTimesheetLines = () => {
+    if (!invForm.project) { toast("Pilih proyek dulu", "info"); return; }
+    const rateOf = (t: StoreItem): number =>
+      Number(t.rate || 0) || Number((data.workOrders ?? []).find((w) => w.id === t.woId)?.rate || 0);
+    const projOf = (t: StoreItem): string =>
+      String(t.projectId ?? woProject[String(t.woId ?? "")] ?? "");
+    const rows = (data.timesheets ?? []).filter(
+      (t) => String(t.status ?? "Diajukan") === "Disetujui" && projOf(t) === invForm.project && Number(t.hours || 0) > 0 && rateOf(t) > 0,
+    );
+    if (rows.length === 0) { toast("Tidak ada timesheet Disetujui ber-rate untuk proyek ini", "info"); return; }
+    const agg = new Map<string, { hours: number; rate: number }>();
+    for (const t of rows) {
+      const woId = String(t.woId ?? "-");
+      const cur = agg.get(woId) ?? { hours: 0, rate: rateOf(t) };
+      agg.set(woId, { hours: cur.hours + Number(t.hours || 0), rate: cur.rate || rateOf(t) });
+    }
+    const lines: InvLine[] = [...agg.entries()].map(([woId, a]) => ({
+      desc: `T&M ${woId} — ${a.hours} jam`, qty: "1", unit: "lot", price: "",
+      rate: String(a.rate), hours: String(a.hours), kategori: "Jasa",
+    }));
+    setInvLines(lines);
+    const total = lines.reduce((s, l) => s + lineAmount(l, true), 0);
+    toast(`${rows.length} timesheet (${lines.length} WO) ditarik — total ${fmtRupiah(total)}`);
   };
 
   const dunningOf = (inv: StoreItem): string => String(inv.dunning ?? "Belum Ditagih");
@@ -853,6 +891,8 @@ export default function Finance() {
     if (next === "Hapus Buku") {
       setWriteOff(inv);
       setWriteOffReason("");
+      setWoDirCheck(false);
+      setWoDirName("");
       return;
     }
     update("invoices", inv.id, { dunning: next });
@@ -860,19 +900,31 @@ export default function Finance() {
     toast(`${inv.id} → ${next}`);
   };
 
+  const needsWriteOffDirector = (inv: StoreItem | null): boolean =>
+    !!inv && invNeto(inv) > approveThreshold && !inv.directorApproved;
+
   const doWriteOff = () => {
     if (!writeOff) return;
+    if (!writeOffReason.trim()) { toast("Alasan hapus buku wajib diisi", "info"); return; }
+    // Hapus buku di atas ambang APPROVE_INVOICE wajib persetujuan Director (checkbox + nama).
+    if (needsWriteOffDirector(writeOff) && (!woDirCheck || !woDirName.trim())) {
+      toast(`Hapus buku di atas ${fmtRupiah(approveThreshold)} wajib dicentang + nama Director`, "info");
+      return;
+    }
     update("invoices", writeOff.id, {
       status: "Dihapusbukukan",
       dunning: "Hapus Buku",
       writeOffReason: writeOffReason.trim(),
       writeOffAt: today,
+      ...(needsWriteOffDirector(writeOff) ? { directorApproved: woDirName.trim(), writeOffBy: woDirName.trim() } : {}),
     });
     log("menghapus-bukukan piutang", `${writeOff.id} — ${writeOffReason.trim()}`, "Keuangan");
     toast(`${writeOff.id} dihapusbukukan — masuk beban`);
     setWriteOff(null);
     setWriteOffReason("");
     setConfirmWriteOff(false);
+    setWoDirCheck(false);
+    setWoDirName("");
   };
 
   // --- Akun: tambah / ubah / hapus (kolom sheet Akun) ---
@@ -923,6 +975,7 @@ export default function Finance() {
         uraian: lines.length > 1 ? `${juForm.uraian.trim()} (${i + 1}/${lines.length})` : juForm.uraian.trim(),
         db: l.db, kr: l.kr, amount: num(l.amount),
         sumber: juForm.sumber, status: "Posted",
+        branch: branch !== "SEMUA" ? branch : "",
       }, { action: "mencatat jurnal", module: "Keuangan" });
     });
     const total = lines.reduce((s, l) => s + num(l.amount), 0);
@@ -945,6 +998,7 @@ export default function Finance() {
     add("journals", {
       date: mutForm.date, kodePembantu: mutForm.kodePembantu.trim(), dokumen: mutForm.dokumen.trim() || "-",
       uraian: mutForm.uraian.trim(), db, kr, amount: num(mutForm.amount), sumber: mutForm.rekening.startsWith("1-11") ? "Kas" : "Bank", status: "Posted",
+      branch: branch !== "SEMUA" ? branch : "",
     }, { action: "mencatat mutasi kas/bank", module: "Keuangan" });
     toast(`Mutasi ${mutForm.arah} ${mutForm.rekening} tersimpan`);
     setShowMut(false);
@@ -1185,6 +1239,7 @@ export default function Finance() {
       retentionStatus: "Released",
       retentionReleaseDate: releaseForm.date,
       retentionBaNo: releaseForm.ba.trim(),
+      ...(releaseForm.warrantyId ? { warrantyId: releaseForm.warrantyId } : {}),
     });
     // Retensi yang dirilis menjadi tagihan baru (top-up AR) agar kasir bisa menagihkannya.
     if (retAmt > 0 && !(data.invoices ?? []).some((i) => String(i.milestoneRef ?? "") === `Retensi ${releaseTarget.id}`)) {
@@ -1216,7 +1271,7 @@ export default function Finance() {
     log("me-release retensi", `${releaseTarget.id} BA ${releaseForm.ba.trim()}`, "Keuangan");
     toast(`Retensi ${releaseTarget.id} di-release${retAmt > 0 ? " — invoice penagihan dibuat" : ""}`);
     setReleaseTarget(null);
-    setReleaseForm({ date: todayISO(), ba: "" });
+    setReleaseForm({ date: todayISO(), ba: "", warrantyId: "" });
   };
 
   const markTaxLapor = () => {
@@ -1492,7 +1547,7 @@ export default function Finance() {
                         <span className="text-steel-500">{fmtRupiah(num(i.retentionAmt))}</span>
                         <span className="ml-auto"><StatusBadge status={String(i.retentionStatus ?? "Ditahan")} /></span>
                         {i.retentionStatus !== "Released" && (
-                          <button className="btn-secondary px-2 py-1 text-[11px]" onClick={() => { setReleaseTarget(i); setReleaseForm({ date: todayISO(), ba: "" }); }}>
+                          <button className="btn-secondary px-2 py-1 text-[11px]" onClick={() => { setReleaseTarget(i); setReleaseForm({ date: todayISO(), ba: "", warrantyId: "" }); }}>
                             Release
                           </button>
                         )}
@@ -2426,6 +2481,14 @@ export default function Finance() {
               <input type="date" required className="input" value={invForm.due} onChange={(e) => setInv("due", e.target.value)} />
             </Field>
           </FormGrid>
+          <Field label="PO klien (opsional)" hint="Divalidasi milik proyek yang sama">
+            <select className="input font-mono" value={invForm.clientPO} onChange={(e) => setInv("clientPO", e.target.value)}>
+              <option value="">Tanpa PO klien</option>
+              {(data.clientPos ?? []).filter((p) => !invForm.project || !p.projectId || String(p.projectId) === invForm.project).map((p) => (
+                <option key={String(p.id)} value={String(p.no ?? p.id)}>{String(p.no ?? p.id)}{p.projectId ? ` · ${String(p.projectId)}` : ""}</option>
+              ))}
+            </select>
+          </Field>
           <FormGrid>
             <Field label="Kode pembantu" hint="Default = nama customer">
               <input className="input font-mono" value={invForm.kodePembantu} onChange={(e) => setInv("kodePembantu", e.target.value)} placeholder="cth: PT Kartika Samudra" />
@@ -2465,9 +2528,16 @@ export default function Finance() {
           )}
           <div>
             <div className="mb-2 flex items-center justify-between">
-              <p className="label">Lines — total {fmtRupiah(invTotal)}{retentionAmtPreview > 0 ? ` · retensi ${fmtRupiah(retentionAmtPreview)}` : ""}</p>              <button className="btn-secondary px-2 py-1 text-xs" onClick={() => setInvLines((ls) => [...ls, emptyLine()])}>
-                <Plus className="h-3.5 w-3.5" /> Baris
-              </button>
+              <p className="label">Lines — total {fmtRupiah(invTotal)}{retentionAmtPreview > 0 ? ` — retensi ${fmtRupiah(retentionAmtPreview)}` : ""}</p>              <div className="flex gap-2">
+                {isTMForm && (
+                  <button className="btn-secondary px-2 py-1 text-xs" onClick={pullTimesheetLines}>
+                    Ambil dari timesheet
+                  </button>
+                )}
+                <button className="btn-secondary px-2 py-1 text-xs" onClick={() => setInvLines((ls) => [...ls, emptyLine()])}>
+                  <Plus className="h-3.5 w-3.5" /> Baris
+                </button>
+              </div>
             </div>
             <p className="mb-2 rounded-lg bg-surface px-3 py-2 text-xs text-steel-600">
               Jasa {fmtRupiah(sbPreview.jasa)} + Material {fmtRupiah(sbPreview.material)} = {fmtRupiah(sbPreview.total)}
@@ -2609,6 +2679,14 @@ export default function Finance() {
             <Field label="Tanggal release"><input type="date" required className="input" value={releaseForm.date} onChange={(e) => setReleaseForm({ ...releaseForm, date: e.target.value })} /></Field>
             <Field label="No. berita acara"><input className="input font-mono" value={releaseForm.ba} onChange={(e) => setReleaseForm({ ...releaseForm, ba: e.target.value })} placeholder="cth: BA-2026-044" /></Field>
           </FormGrid>
+          <Field label="Tautkan garansi/DLP (opsional)" hint="Masa retensi berlanjut sebagai garansi proyek">
+            <select className="input" value={releaseForm.warrantyId} onChange={(e) => setReleaseForm({ ...releaseForm, warrantyId: e.target.value })}>
+              <option value="">Tanpa garansi…</option>
+              {(data.warranties ?? []).filter((w) => String(w.projectId ?? "") === String(releaseTarget?.project ?? "")).map((w) => (
+                <option key={w.id} value={w.id}>{w.id} · {w.status} · {fmtTanggal(String(w.start ?? ""))}</option>
+              ))}
+            </select>
+          </Field>
         </div>
       </Modal>
 
@@ -2632,6 +2710,22 @@ export default function Finance() {
       <Modal open={allocTarget !== null} onClose={() => setAllocTarget(null)} title={`Alokasi gaji ${allocTarget?.id ?? ""}?`} subtitle="Pilih proyek + persen alokasi. Sisanya tetap tak teralokasi."
         footer={<><button className="btn-secondary" onClick={() => setAllocTarget(null)}>Batal</button><button className="btn-primary" onClick={saveAlloc}>Simpan Alokasi</button></>}>
         <div className="space-y-3">
+          {(() => {
+            // Saran proyek = proyek tersering karyawan ini di timesheet (petunjuk saja, simpan tetap manual).
+            const ts = (data.timesheets ?? []).filter((t) => String(t.employeeId ?? "") === String(allocTarget?.employeeId ?? ""));
+            const freq = new Map<string, number>();
+            for (const t of ts) {
+              const pid = String(t.projectId ?? woProject[String(t.woId ?? "")] ?? "");
+              if (pid) freq.set(pid, (freq.get(pid) ?? 0) + 1);
+            }
+            const top = [...freq.entries()].sort((a, b) => b[1] - a[1])[0];
+            if (!top) return null;
+            return (
+              <p className="rounded-lg bg-surface px-3 py-2 text-xs text-steel-600">
+                Saran: <strong className="text-navy-900">{top[0]}</strong> — proyek tersering di timesheet ({top[1]} baris). Pilih manual bila berbeda.
+              </p>
+            );
+          })()}
           <FormGrid>
             <Field label="Proyek">
               <select className="input" value={allocForm.project} onChange={(e) => setAllocForm({ ...allocForm, project: e.target.value })}>
@@ -2806,10 +2900,21 @@ export default function Finance() {
         </div>
       </Modal>
 
-      <Modal open={writeOff !== null} onClose={() => { setWriteOff(null); setWriteOffReason(""); }} title={`Hapus buku ${writeOff?.id ?? ""}?`} subtitle={`${fmtRupiah(num(writeOff?.amount))} keluar dari AR dan masuk beban. Wajib isi alasan.`}        footer={<><button className="btn-secondary" onClick={() => { setWriteOff(null); setWriteOffReason(""); }}>Batal</button><button className="btn-primary" disabled={!writeOffReason.trim()} onClick={() => setConfirmWriteOff(true)}>Lanjut Konfirmasi</button></>}>
+      <Modal open={writeOff !== null} onClose={() => { setWriteOff(null); setWriteOffReason(""); setWoDirCheck(false); setWoDirName(""); }} title={`Hapus buku ${writeOff?.id ?? ""}?`} subtitle={`${fmtRupiah(num(writeOff?.amount))} keluar dari AR dan masuk beban. Wajib isi alasan.${needsWriteOffDirector(writeOff) ? ` Di atas ambang ${fmtRupiah(approveThreshold)} — butuh Director.` : ""}`}        footer={<><button className="btn-secondary" onClick={() => { setWriteOff(null); setWriteOffReason(""); setWoDirCheck(false); setWoDirName(""); }}>Batal</button><button className="btn-primary" disabled={!writeOffReason.trim() || (needsWriteOffDirector(writeOff) && (!woDirCheck || !woDirName.trim()))} onClick={() => setConfirmWriteOff(true)}>Lanjut Konfirmasi</button></>}>
         <Field label="Alasan hapus buku" hint="Wajib — cth: piutang tak tertagih 180 hari, debitur pailit">
           <input className="input" value={writeOffReason} onChange={(e) => setWriteOffReason(e.target.value)} placeholder="Tulis alasan…" />
         </Field>
+        {needsWriteOffDirector(writeOff) && (
+          <>
+            <label className="flex items-start gap-2 text-sm text-steel-600">
+              <input type="checkbox" className="mt-1" checked={woDirCheck} onChange={(e) => setWoDirCheck(e.target.checked)} />
+              Saya selaku Director menyetujui hapus buku nominal besar ini.
+            </label>
+            <Field label="Nama Director" hint="Wajib — dicatat di log">
+              <input className="input" value={woDirName} onChange={(e) => setWoDirName(e.target.value)} placeholder="cth: Andi Darman" />
+            </Field>
+          </>
+        )}
       </Modal>
 
       <ConfirmModal

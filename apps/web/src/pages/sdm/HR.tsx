@@ -26,6 +26,7 @@ import type { StoreItem } from "../../data/store";
 import { activeEmployeeTrend, certifiedTrend, certExpireTrend, employeeTrend } from "../../data";
 import { fmtTanggal, todayISO } from "../../utils/format";
 import { getSetting } from "../../utils/settings";
+import { useDraftState } from "../../utils/draft";
 import { exportExcel } from "../../utils/export";
 
 const CERT_WINDOW = 90;
@@ -198,7 +199,7 @@ export default function HR() {
   /* ---------- surat ---------- */
   const [showSurat, setShowSurat] = useState(false);
   const [suratForm, setSuratForm] = useState({ employeeId: "", jenis: "SP 1", isi: "", tanggal: todayISO() });
-  const [arsipSurat, setArsipSurat] = useState<StoreItem[]>([]);
+  const [arsipSurat, setArsipSurat] = useDraftState<StoreItem[]>("isms.draft.hr.arsipSurat", []);
 
   /* ---------- impor massal ---------- */
   const [importReport, setImportReport] = useState<{ ok: number; gagal: string[] } | null>(null);
@@ -499,10 +500,17 @@ export default function HR() {
     setLeaveForm({ employeeId: "", type: "Tahunan", from: todayISO(), to: todayISO(), note: "" });
   };
 
-  const approveLeave = (l: StoreItem) => {
+  // Cuti 2 tingkat: Diajukan → Disetujui Atasan → Disetujui (final HRD).
+  const approveSupervisor = (l: StoreItem) => {
+    update("leaves", l.id, { status: "Disetujui Atasan" });
+    log("menyetujui cuti (atasan)", `${l.id} — ${empNameOf(l.employeeId)}`, "SDM");
+    toast(`${l.id} disetujui atasan — menunggu HRD`);
+  };
+
+  const approveHrd = (l: StoreItem) => {
     update("leaves", l.id, { status: "Disetujui" });
-    log("menyetujui cuti", `${l.id} · ${empNameOf(l.employeeId)}`, "SDM");
-    toast(`${l.id} disetujui`);
+    log("menyetujui cuti final (HRD)", `${l.id} — ${empNameOf(l.employeeId)}`, "SDM");
+    toast(`${l.id} disetujui final`);
   };
 
   const empNameOf = (id: string) => data.employees.find((e) => e.id === id)?.name ?? id;
@@ -959,7 +967,12 @@ export default function HR() {
                       <td className="td">
                         {l.status === "Diajukan" ? (
                           <div className="flex items-center gap-2 whitespace-nowrap">
-                            <button className="text-sm font-semibold text-emerald-600 hover:underline" onClick={() => approveLeave(l)}>Setujui</button>
+                            <button className="text-sm font-semibold text-emerald-600 hover:underline" onClick={() => approveSupervisor(l)}>Setujui Atasan</button>
+                            <button className="text-sm font-semibold text-rose-600 hover:underline" onClick={() => setRejectTarget(l)}>Tolak</button>
+                          </div>
+                        ) : l.status === "Disetujui Atasan" ? (
+                          <div className="flex items-center gap-2 whitespace-nowrap">
+                            <button className="text-sm font-semibold text-emerald-600 hover:underline" onClick={() => approveHrd(l)}>Setujui HRD</button>
                             <button className="text-sm font-semibold text-rose-600 hover:underline" onClick={() => setRejectTarget(l)}>Tolak</button>
                           </div>
                         ) : (

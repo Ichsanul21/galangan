@@ -76,13 +76,13 @@ const PLAN_TYPES = ["Annual Survey", "Intermediate Survey", "Special Survey", "D
 
 export default function VesselDetail() {
   const { id } = useParams();
-  const { data, update, add } = useStore();
+  const { data, update, add, log } = useStore();
   const v = data.vessels.find((x) => x.id === id) ?? data.vessels[0];
 
   const [showCert, setShowCert] = useState(false);
   const [certForm, setCertForm] = useState({ name: "", issued: monthISO(), expires: "" });
   const [showSurvey, setShowSurvey] = useState(false);
-  const [surveyForm, setSurveyForm] = useState({ type: "Annual Survey", date: "", status: "Terjadwal" });
+  const [surveyForm, setSurveyForm] = useState({ type: "Annual Survey", date: "", status: "Terjadwal", linkedTrial: "" });
   const [tab, setTab] = useState("Sertifikat & Timeline");
   const [showSpec, setShowSpec] = useState(false);
   const [specForm, setSpecForm] = useState({ mmsi: "", gt: "", nt: "", bhp: "", engineType: "" });
@@ -102,7 +102,21 @@ export default function VesselDetail() {
 
   const nowMonth = todayISO().slice(0, 7);
   const projects = data.projects.filter((p) => p.vessel === v.name);
+  const vesselWarranties = (data.warranties ?? []).filter((w) => String(w.vessel ?? "") === v.name);
+
+  // Klaim garansi/DLP: Aktif → Klaim (lanjut Selesai setelah perbaikan).
+  const claimWarranty = (w: { id: string }) => {
+    update("warranties", w.id, { status: "Klaim", claimedAt: todayISO() });
+    log("mengklaim garansi", `${w.id} · ${v.name}`, "Kapal");
+    toast(`Garansi ${w.id} diklaim`);
+  };
+  const closeWarranty = (w: { id: string }) => {
+    update("warranties", w.id, { status: "Selesai" });
+    log("menyelesaikan garansi", `${w.id} · ${v.name}`, "Kapal");
+    toast(`Garansi ${w.id} selesai`);
+  };
   const surveys = data.surveys.filter((s) => s.vessel === v.name);
+  const vesselTrials = (data.trials ?? []).filter((t) => projects.some((p) => p.id === t.projectId));
   const certs = (v.certificates ?? []) as { name: string; issued?: string; expires: string }[];
   const slots = data.dockSlots.filter((s) => s.vessel === v.name);
   const pscRows = (v.psc ?? []) as PscRow[];
@@ -134,11 +148,12 @@ export default function VesselDetail() {
 
   const saveSurvey = () => {
     if (!surveyForm.date) { toast("Tanggal wajib diisi", "info"); return; }
-    add("surveys", { vessel: v.name, type: surveyForm.type, status: surveyForm.status, date: surveyForm.date, classSurveyor: "BKI" },
+    add("surveys", { vessel: v.name, type: surveyForm.type, status: surveyForm.status, date: surveyForm.date, classSurveyor: "BKI", ...(surveyForm.linkedTrial ? { linkedTrial: surveyForm.linkedTrial } : {}) },
       { action: "menjadwalkan survey", target: `${v.name} · ${surveyForm.type}`, module: "Kapal" });
     update("vessels", v.id, { history: [...(v.history ?? []), { date: surveyForm.date, event: `${surveyForm.type} (${surveyForm.status.toLowerCase()})`, type: "Survey" }] });
     toast("Survey terjadwal & masuk timeline");
     setShowSurvey(false);
+    setSurveyForm({ type: "Annual Survey", date: "", status: "Terjadwal", linkedTrial: "" });
   };
 
   const openSpec = () => {
@@ -317,12 +332,36 @@ export default function VesselDetail() {
           <div className="flex flex-wrap gap-2">
             {projects.map((p) => (
               <Link key={p.id} to={`/proyek/${p.id}`} className="rounded-lg border border-steel-200 px-3 py-1.5 text-sm font-medium text-navy-800 hover:border-ocean-400 hover:text-ocean-600">
-                {p.id} · {p.progress}%
+                {p.id} — {p.progress}%
               </Link>
             ))}
           </div>
         </Card>
       )}
+
+      <Card className="mt-5 p-4">
+        <h3 className="mb-2 text-sm font-semibold text-navy-900">Garansi / DLP ({vesselWarranties.length})</h3>
+        <div className="space-y-2">
+          {vesselWarranties.map((w) => (
+            <div key={w.id} className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-steel-100 p-3 text-sm">
+              <div className="min-w-0">
+                <p className="font-medium text-navy-900 font-mono">{w.id} <span className="font-sans text-xs font-normal text-steel-500">· {w.projectId}</span></p>
+                <p className="text-xs text-steel-500">Mulai {fmtTanggal(String(w.start ?? ""))} · {w.months} bulan{w.claimedAt ? ` · diklaim ${fmtTanggal(String(w.claimedAt))}` : ""}</p>
+              </div>
+              <div className="flex items-center gap-2">
+                <Badge tone={String(w.status) === "Aktif" ? "green" : String(w.status) === "Klaim" ? "amber" : "gray"}>{w.status}</Badge>
+                {String(w.status) === "Aktif" && (
+                  <button className="btn-secondary text-xs" onClick={() => claimWarranty(w)}>Klaim</button>
+                )}
+                {String(w.status) === "Klaim" && (
+                  <button className="btn-secondary text-xs" onClick={() => closeWarranty(w)}>Selesaikan</button>
+                )}
+              </div>
+            </div>
+          ))}
+          {vesselWarranties.length === 0 && <p className="text-xs text-steel-400">Belum ada garansi — dibuat dari tab Terkait proyek saat Selesai.</p>}
+        </div>
+      </Card>
 
       <div className="mt-5 card">
         <Tabs tabs={["Sertifikat & Timeline", "Spesifikasi", "Kepatuhan & PSC", "Rencana & Operasional", ...(getSetting(data, "SHOW_3D_VESSEL", 0) === 1 ? ["3D Viewer"] : []), "Service", "Sparepart"]} active={tab} onChange={setTab} />
@@ -377,7 +416,7 @@ export default function VesselDetail() {
                     <p className="mb-2 text-xs font-semibold text-steel-500">SURVEY TERJADWAL</p>
                     {surveys.map((s) => (
                       <div key={s.id} className="flex items-center justify-between py-1 text-sm">
-                        <span className="text-steel-700">{s.type} · {fmtTanggal(String(s.date))}</span>
+                        <span className="text-steel-700">{s.type} · {fmtTanggal(String(s.date))}{s.linkedTrial ? ` · trial ${String(s.linkedTrial)}` : ""}</span>
                         <Badge tone={s.status === "Selesai" ? "green" : s.status === "Dalam Proses" ? "blue" : "gray"}>{s.status}</Badge>
                       </div>
                     ))}
@@ -663,6 +702,12 @@ export default function VesselDetail() {
             </Field>
           </FormGrid>
           <Field label="Tanggal"><input type="date" className="input" value={surveyForm.date} onChange={(e) => setSurveyForm({ ...surveyForm, date: e.target.value })} /></Field>
+          <Field label="Link trial (opsional)" hint="Trial exit (Lolos) butuh survey yang ter-link">
+            <select className="input" value={surveyForm.linkedTrial} onChange={(e) => setSurveyForm({ ...surveyForm, linkedTrial: e.target.value })}>
+              <option value="">Tanpa link trial</option>
+              {vesselTrials.map((t) => <option key={String(t.id)} value={String(t.id)}>{String(t.id)} · {fmtTanggal(String(t.tanggal))}</option>)}
+            </select>
+          </Field>
         </div>
       </Modal>
 

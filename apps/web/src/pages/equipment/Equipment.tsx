@@ -72,7 +72,7 @@ function depreciationOf(e: StoreItem): { annual: number; book: number } | null {
 }
 
 export default function EquipmentPage() {
-  const { data, add, update, remove, log } = useStore();
+  const { data, add, update, remove, log, branch } = useStore();
   const equipment = data.equipment;
   const bookings = data.bookings;
   const calibrations = data.calibrations;
@@ -257,7 +257,7 @@ export default function EquipmentPage() {
     const { equip, proyek, date, mulai, selesai } = bookForm;
     const eq = equipment.find((e) => e.name === equip);
     if (!eq) { setBookError("Equipment tidak ditemukan."); return; }
-    const created = add("bookings", { equip, proyek, jam: `${mulai}–${selesai}`, mulai, selesai, status: "Terjadwal", date, priority },
+    const created = add("bookings", { equip, proyek, jam: `${mulai}–${selesai}`, mulai, selesai, status: "Terjadwal", date, priority, branch: String((data.projects ?? []).find((p) => String(p.id) === String(proyek))?.branch ?? (branch !== "SEMUA" ? branch : "")) },
       { action: "membooking equipment", target: `${equip} · ${priority}`, module: "Equipment" });
     update("equipment", eq.id, { status: "Terpakai" });
     toast(`Booking ${created.id} dibuat (${priority})`);

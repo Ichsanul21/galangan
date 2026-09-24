@@ -8,6 +8,14 @@ export type ProjectStatus =
   | "Terlambat"
   | "Tertunda";
 
+export interface DesignStage {
+  name: string;
+  status: "Belum" | "Diajukan" | "Disetujui";
+  society: string;
+  date: string;
+  doc: string;
+}
+
 export interface Project {
   id: string;
   vessel: string;
@@ -22,6 +30,7 @@ export interface Project {
   actual: number;
   manager: string;
   scope: string[];
+  designStages?: DesignStage[];
 }
 
 export const clients = [
@@ -47,6 +56,12 @@ export const projects: Project[] = [
     actual: 29600000000,
     manager: "Ir. Hendra Wijaya",
     scope: ["Desain", "Fabrikasi Baja", "Hull Assembly", "Mesin & Kelistrikan", "Pengecatan", "Sea Trial"],
+    designStages: [
+      { name: "Basic Design", status: "Disetujui", society: "BKI", date: "2025-12-10", doc: "BD-012 Rev C" },
+      { name: "Detail Design", status: "Disetujui", society: "BKI", date: "2026-02-18", doc: "DD-012 Rev B" },
+      { name: "Class Approval", status: "Disetujui", society: "BKI", date: "2026-03-25", doc: "BKI-APPR-012/26" },
+      { name: "Production Drawing", status: "Diajukan", society: "BKI", date: "2026-04-02", doc: "PD-012 Rev A" },
+    ],
   },
   {
     id: "NB-2025-014",

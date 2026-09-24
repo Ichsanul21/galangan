@@ -7,6 +7,7 @@ import { useStore, type StoreItem } from "../../data/store";
 import { inspectionTrend, ncrTrend, incidentTrend, hseTrend } from "../../data";
 import { fmtRupiah, fmtTanggal, todayISO } from "../../utils/format";
 import { exportExcel } from "../../utils/export";
+import { useAuth, canSetTarget } from "../../auth/auth";
 
 const CERT_WINDOW = 90;
 
@@ -46,16 +47,6 @@ const AUDIT_ITEMS = [
   "Kotak P3K terisi dan mudah dijangkau",
   "Rambu dan barikade area bahaya terpasang",
 ];
-
-interface JsaItem {
-  id: string;
-  project: string;
-  job: string;
-  hazard: string;
-  control: string;
-  pic: string;
-  date: string;
-}
 
 interface WalkItem {
   id: string;
@@ -108,46 +99,52 @@ function nextRev(rev: string): string {
 }
 
 export default function QCSafety() {
-  const { data, add, update, log } = useStore();
-  const ncrList = data.ncr;
-  const incidents = data.incidents;
-  const inspections = data.inspections;
+  const { data, add, update, log, branch, inBranch } = useStore();
+  const { user } = useAuth();
+  const ncrList = inBranch(data.ncr);
+  const incidents = inBranch(data.incidents);
+  const inspections = inBranch(data.inspections);
   const vessels = data.vessels;
-  const drawings = data.drawings;
-  const toolboxTalks = data.toolbox;
+  const drawings = inBranch(data.drawings);
+  const toolboxTalks = inBranch(data.toolbox);
+  // JSA tersimpan sebagai koleksi toolbox bertipe "JSA" (bukan state lokal).
+  const jsaList = toolboxTalks.filter((t) => String(t.type ?? "") === "JSA");
+  // Cabang global sebagai fallback; select cabang di form default "" = ikut global.
+  const globalBranch = branch === "SEMUA" ? "" : branch;
+  const branchCities = data.branches.map((b) => String(b.city ?? b.name ?? b.id));
+  const branchOf = (v: string): string => v || globalBranch;
   const qualityStaff = data.employees.filter((e) => e.dept === "Quality");
   const [tab, setTab] = useState("Inspeksi (ITP)");
   const [sort, setSort] = useState<SortState>({ key: null, dir: "asc" });
 
   const [showInsp, setShowInsp] = useState(false);
-  const [inspForm, setInspForm] = useState({ project: "", point: "", status: "Terjadwal", date: todayISO(), holdType: "Witness", nde: "Tidak", ndeMethod: "UT", inspector: "", sampleSize: "", defectsAllowed: "0", defectsFound: "0", calTool: "" });
+  const [inspForm, setInspForm] = useState({ project: "", point: "", status: "Terjadwal", date: todayISO(), holdType: "Witness", nde: "Tidak", ndeMethod: "UT", inspector: "", sampleSize: "", defectsAllowed: "0", defectsFound: "0", calTool: "", branch: "" });
   const [inspDetail, setInspDetail] = useState<StoreItem | null>(null);
   const [ncrDetail, setNcrDetail] = useState<StoreItem | null>(null);
   const [dueDraft, setDueDraft] = useState("");
   const [showNcr, setShowNcr] = useState(false);
-  const [ncrForm, setNcrForm] = useState({ project: "", vessel: "", type: "Pengelasan", severity: "Minor", issue: "", due: "", causeCat: "Manusia", causeNote: "" });
+  const [ncrForm, setNcrForm] = useState({ project: "", vessel: "", type: "Pengelasan", severity: "Minor", issue: "", due: "", causeCat: "Manusia", causeNote: "", branch: "" });
   const [closingNcr, setClosingNcr] = useState<StoreItem | null>(null);
   const [verifier, setVerifier] = useState("");
   const [verifyNote, setVerifyNote] = useState("");
   const [reopenNcr, setReopenNcr] = useState<StoreItem | null>(null);
   const [reopenReason, setReopenReason] = useState("");
   const [showInc, setShowInc] = useState(false);
-  const [incForm, setIncForm] = useState({ type: "Near Miss", location: "", desc: "", severity: "Rendah" });
+  const [incForm, setIncForm] = useState({ type: "Near Miss", location: "", desc: "", severity: "Rendah", project: "", branch: "" });
 
   // Drawing
   const [showDrw, setShowDrw] = useState(false);
-  const [drwForm, setDrwForm] = useState({ project: "", title: "", holder: "" });
+  const [drwForm, setDrwForm] = useState({ project: "", title: "", holder: "", branch: "" });
   const [expandedDrw, setExpandedDrw] = useState<string | null>(null);
   const [showTransmit, setShowTransmit] = useState(false);
   const [transmitForm, setTransmitForm] = useState({ to: "", date: todayISO(), ids: [] as string[] });
 
-  // HSE Operasional (JSA, PPE, safety walk lokal; toolbox memakai koleksi store)
-  const [jsaList, setJsaList] = useState<JsaItem[]>([]);
+  // HSE Operasional (JSA & PPE tersimpan di koleksi toolbox store; safety walk lokal)
   const [showJsa, setShowJsa] = useState(false);
-  const [jsaForm, setJsaForm] = useState({ project: "", job: "", hazard: "", control: "", pic: "", date: todayISO() });
+  const [jsaForm, setJsaForm] = useState({ project: "", job: "", hazard: "", control: "", pic: "", date: todayISO(), branch: "" });
   const [showTbm, setShowTbm] = useState(false);
-  const [tbmForm, setTbmForm] = useState({ project: "", topic: "", date: todayISO(), attendees: "", pic: "" });
-  const [ppeForm, setPpeForm] = useState({ project: "", date: todayISO() });
+  const [tbmForm, setTbmForm] = useState({ project: "", topic: "", date: todayISO(), attendees: "", pic: "", branch: "" });
+  const [ppeForm, setPpeForm] = useState({ project: "", date: todayISO(), employeeId: "", branch: "" });
   const [ppeChecked, setPpeChecked] = useState<Record<string, boolean>>({});
   const [walks, setWalks] = useState<WalkItem[]>([]);
   const [showWalk, setShowWalk] = useState(false);
@@ -252,6 +249,7 @@ export default function QCSafety() {
       calTool: inspForm.nde === "Ya" ? inspForm.calTool : "",
       inspector: inspForm.inspector,
       sampleSize: sample, defectsAllowed: allowed, defectsFound: found,
+      branch: branchOf(inspForm.branch),
     }, { action: "mencatat inspeksi", module: "QC" });
     if (inspForm.status === "NCR") {
       const proj = data.projects.find((p) => p.id === inspForm.project);
@@ -260,13 +258,14 @@ export default function QCSafety() {
         status: "Terbuka", severity: "Major", raised: inspForm.date, due: addDaysISO(inspForm.date, 14),
         causeCat: "Metode", causeNote: `Temuan inspeksi ${created.id}`,
         issue: `Temuan dari ${created.id}: ${inspForm.point.trim()}`,
+        branch: branchOf(inspForm.branch),
       }, { action: "menerbitkan NCR", module: "QC" });
       toast(`Inspeksi ${created.id} + NCR diterbitkan otomatis`);
     } else {
       toast(`Inspeksi ${created.id} dijadwalkan`);
     }
     setShowInsp(false);
-    setInspForm({ project: "", point: "", status: "Terjadwal", date: todayISO(), holdType: "Witness", nde: "Tidak", ndeMethod: "UT", inspector: "", sampleSize: "", defectsAllowed: "0", defectsFound: "0", calTool: "" });
+    setInspForm({ project: "", point: "", status: "Terjadwal", date: todayISO(), holdType: "Witness", nde: "Tidak", ndeMethod: "UT", inspector: "", sampleSize: "", defectsAllowed: "0", defectsFound: "0", calTool: "", branch: "" });
   };
 
   const saveNcr = () => {
@@ -277,11 +276,11 @@ export default function QCSafety() {
       project: ncrForm.project, vessel: ncrForm.vessel || proj?.vessel || "-", type: ncrForm.type,
       status: "Terbuka", severity: ncrForm.severity, raised: todayISO(), due: ncrForm.due,
       causeCat: ncrForm.causeCat, causeNote: ncrForm.causeNote.trim(),
-      issue: ncrForm.issue.trim(),
+      issue: ncrForm.issue.trim(), branch: branchOf(ncrForm.branch),
     }, { action: "menerbitkan NCR", module: "QC" });
     toast(`NCR ${created.id} diterbitkan`);
     setShowNcr(false);
-    setNcrForm({ project: "", vessel: "", type: "Pengelasan", severity: "Minor", issue: "", due: "", causeCat: "Manusia", causeNote: "" });
+    setNcrForm({ project: "", vessel: "", type: "Pengelasan", severity: "Minor", issue: "", due: "", causeCat: "Manusia", causeNote: "", branch: "" });
   };
 
   const advanceNcr = (n: StoreItem) => {
@@ -302,6 +301,10 @@ export default function QCSafety() {
 
   const confirmClose = () => {
     if (!closingNcr) return;
+    if (closingNcr.severity === "Critical" && !canSetTarget(user?.role)) {
+      toast("Hanya Direktur/Manager", "info");
+      return;
+    }
     if (closingNcr.severity === "Critical" && !verifier.trim()) {
       toast("NCR Critical wajib diverifikasi pihak kedua: isi nama verifikator", "info");
       return;
@@ -327,6 +330,7 @@ export default function QCSafety() {
         amount: Math.round(cost),
         sumber: "NCR",
         status: "Posted",
+        branch: String(data.projects.find((p) => p.id === closingNcr.project)?.branch ?? globalBranch),
       }, { action: "mencatat biaya rework NCR", module: "QC" });
       journaled = true;
     }
@@ -419,11 +423,12 @@ export default function QCSafety() {
     const created = add("drawings", {
       project: drwForm.project, title: drwForm.title.trim(), revision: "A",
       status: "Diajukan", updated: todayISO(), holder: drwForm.holder.trim(),
+      branch: branchOf(drwForm.branch),
       history: [{ revision: "A", date: todayISO(), holder: drwForm.holder.trim(), status: "Diajukan" }],
     }, { action: "meregistrasi drawing", module: "QC" });
     toast(`Drawing ${created.id} rev A didaftarkan`);
     setShowDrw(false);
-    setDrwForm({ project: "", title: "", holder: "" });
+    setDrwForm({ project: "", title: "", holder: "", branch: "" });
   };
 
   const reviseDrawing = (d: StoreItem) => {
@@ -435,6 +440,10 @@ export default function QCSafety() {
   };
 
   const stepDrawing = (d: StoreItem, next: string) => {
+    if (next === "Disetujui" && !canSetTarget(user?.role)) {
+      toast("Hanya Direktur/Manager", "info");
+      return;
+    }
     const history = [...(Array.isArray(d.history) ? d.history : []), { revision: String(d.revision ?? ""), date: todayISO(), holder: String(d.holder ?? ""), status: next }];
     update("drawings", d.id, { status: next, updated: todayISO(), history });
     log("memproses drawing", `${d.id} → ${next}`, "QC");
@@ -467,16 +476,17 @@ export default function QCSafety() {
       toast("Proyek, pekerjaan, bahaya, kontrol, PIC & tanggal wajib diisi", "info");
       return;
     }
-    const item: JsaItem = {
-      id: `JSA-${Date.now().toString(36).toUpperCase()}`,
-      project: jsaForm.project, job: jsaForm.job.trim(), hazard: jsaForm.hazard.trim(),
-      control: jsaForm.control.trim(), pic: jsaForm.pic.trim(), date: jsaForm.date,
-    };
-    setJsaList((prev) => [item, ...prev]);
-    log("menyusun JSA", `${item.job} · ${item.project}`, "Safety");
-    toast(`JSA ${item.id} disimpan`);
+    // JSA menetap di koleksi toolbox bertipe "JSA" (pola add toolbox yang sama).
+    const created = add("toolbox", {
+      type: "JSA",
+      project: jsaForm.project, topic: jsaForm.job.trim(), job: jsaForm.job.trim(),
+      hazard: jsaForm.hazard.trim(), control: jsaForm.control.trim(),
+      pic: jsaForm.pic.trim(), date: jsaForm.date, attendees: 0,
+      branch: branchOf(jsaForm.branch),
+    }, { action: "menyusun JSA", module: "Safety" });
+    toast(`JSA ${created.id} disimpan`);
     setShowJsa(false);
-    setJsaForm({ project: "", job: "", hazard: "", control: "", pic: "", date: todayISO() });
+    setJsaForm({ project: "", job: "", hazard: "", control: "", pic: "", date: todayISO(), branch: "" });
   };
 
   const saveToolbox = () => {
@@ -484,22 +494,27 @@ export default function QCSafety() {
     const created = add("toolbox", {
       project: tbmForm.project, topic: tbmForm.topic.trim(), date: tbmForm.date,
       attendees: Number(tbmForm.attendees) || 0, pic: tbmForm.pic.trim(),
+      branch: branchOf(tbmForm.branch),
     }, { action: "mencatat toolbox talk", module: "Safety" });
     toast(`Toolbox ${created.id} dicatat`);
     setShowTbm(false);
-    setTbmForm({ project: "", topic: "", date: todayISO(), attendees: "", pic: "" });
+    setTbmForm({ project: "", topic: "", date: todayISO(), attendees: "", pic: "", branch: "" });
   };
 
   const savePpeCheck = () => {
     if (!ppeForm.project || !ppeForm.date) { toast("Proyek & tanggal PPE check wajib diisi", "info"); return; }
+    if (!ppeForm.employeeId) { toast("Pilih karyawan penerima PPE", "info"); return; }
     const done = PPE_ITEMS.filter((item) => ppeChecked[item]);
     if (done.length < PPE_ITEMS.length) { toast(`Belum lengkap: ${done.length}/${PPE_ITEMS.length} item tercentang`, "info"); return; }
+    const emp = data.employees.find((e) => e.id === ppeForm.employeeId);
     const created = add("toolbox", {
+      type: "PPE Check",
       project: ppeForm.project, topic: `PPE Check — ${PPE_ITEMS.length} item lengkap`, date: ppeForm.date,
-      attendees: 0, pic: "HSE",
+      attendees: 0, pic: "HSE", employeeId: ppeForm.employeeId,
+      branch: branchOf(ppeForm.branch) || String(emp?.branch ?? ""),
     }, { action: "mencatat PPE check", module: "Safety" });
     toast(`PPE check tersimpan sebagai ${created.id}`);
-    setPpeForm({ project: "", date: todayISO() });
+    setPpeForm({ project: "", date: todayISO(), employeeId: "", branch: "" });
     setPpeChecked({});
   };
 
@@ -524,6 +539,7 @@ export default function QCSafety() {
       due: addDaysISO(w.date, 7), causeCat: "Lingkungan",
       causeNote: `Temuan safety walk ${w.id}`,
       issue: `Temuan safety walk ${w.id} di ${w.area}: ${w.findings} temuan`,
+      branch: globalBranch,
     }, { action: "menerbitkan NCR", module: "QC" });
     toast(`NCR ${created.id} dibuat dari safety walk`);
   };
@@ -742,16 +758,16 @@ export default function QCSafety() {
                   <button className="btn-secondary text-xs" onClick={() => setShowTbm(true)}><Plus className="h-3.5 w-3.5" /> Catat Toolbox</button>
                 </div>
                 <div className="space-y-2">
-                  {toolboxTalks.map((t) => (
+                  {toolboxTalks.filter((t) => String(t.type ?? "") !== "JSA").map((t) => (
                     <div key={t.id} className="flex flex-wrap items-center justify-between gap-2 border-b border-steel-100 py-2 text-sm">
                       <div className="min-w-0">
-                        <p className="truncate font-medium text-navy-900" title={String(t.topic)}>{t.topic}</p>
+                        <p className="truncate font-medium text-navy-900" title={String(t.topic)}>{t.topic}{t.employeeId ? <span className="ml-1 text-xs font-normal text-steel-500">· {t.employeeId}</span> : null}</p>
                         <p className="text-xs text-steel-500">{t.project} · {fmtTanggal(String(t.date))} · {t.attendees} peserta · PIC {t.pic}</p>
                       </div>
                       <span className="font-mono text-xs text-steel-400">{t.id}</span>
                     </div>
                   ))}
-                  {toolboxTalks.length === 0 && <p className="text-xs text-steel-400">Belum ada toolbox talk.</p>}
+                  {toolboxTalks.filter((t) => String(t.type ?? "") !== "JSA").length === 0 && <p className="text-xs text-steel-400">Belum ada toolbox talk.</p>}
                 </div>
               </Card>
 
@@ -764,7 +780,19 @@ export default function QCSafety() {
                       {data.projects.map((p) => <option key={p.id} value={p.id}>{p.id} · {p.vessel}</option>)}
                     </select>
                   </Field>
+                  <Field label="Karyawan penerima" hint="Pencatatan per karyawan">
+                    <select className="input" value={ppeForm.employeeId} onChange={(e) => setPpeForm({ ...ppeForm, employeeId: e.target.value })}>
+                      <option value="">Pilih karyawan…</option>
+                      {data.employees.filter((e) => e.status === "Aktif").map((e) => <option key={e.id} value={e.id}>{e.name} · {e.id}</option>)}
+                    </select>
+                  </Field>
                   <Field label="Tanggal"><input type="date" className="input" value={ppeForm.date} onChange={(e) => setPpeForm({ ...ppeForm, date: e.target.value })} /></Field>
+                  <Field label="Cabang" hint={`Default ikut global (${branch})`}>
+                    <select className="input" value={ppeForm.branch} onChange={(e) => setPpeForm({ ...ppeForm, branch: e.target.value })}>
+                      <option value="">Ikut global</option>
+                      {branchCities.map((c) => <option key={c} value={c}>{c}</option>)}
+                    </select>
+                  </Field>
                 </div>
                 <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
                   {PPE_ITEMS.map((item) => (
@@ -844,7 +872,7 @@ export default function QCSafety() {
           {tab === "Insiden" && (
             <div>
               <div className="mb-3 flex justify-end">
-                <button className="btn-secondary text-xs" onClick={() => setShowInc(true)}><Plus className="h-3.5 w-3.5" /> Catat Insiden</button>
+                <button className="btn-secondary text-xs" onClick={() => { setShowInc(true); setIncForm((f) => ({ ...f, project: f.project || data.projects[0]?.id || "" })); }}><Plus className="h-3.5 w-3.5" /> Catat Insiden</button>
               </div>
               <div className="space-y-3">
                 {incidents.map((i) => (
@@ -856,7 +884,7 @@ export default function QCSafety() {
                           <Badge tone={i.type === "Near Miss" ? "amber" : "blue"}>{i.type}</Badge>
                         </div>
                         <p className="mt-1 text-sm text-steel-700">{i.desc}</p>
-                        <p className="text-xs text-steel-500 mt-0.5">{fmtTanggal(i.date)} · {i.location} · Severity {i.severity}</p>
+                        <p className="text-xs text-steel-500 mt-0.5">{fmtTanggal(i.date)} · {i.project ?? i.projectId ?? "—"} · {i.location} · Severity {i.severity}</p>
                       </div>
                     </div>
                   </Card>
@@ -913,7 +941,13 @@ export default function QCSafety() {
             <Field label="Proyek">
               <select className="input" value={inspForm.project} onChange={(e) => setInspForm({ ...inspForm, project: e.target.value })}>
                 <option value="">Pilih proyek…</option>
-                {data.projects.map((p) => <option key={p.id} value={p.id}>{p.id} · {p.vessel}</option>)}
+                {data.projects.map((p) => <option key={p.id} value={p.id}>{p.id} — {p.vessel}</option>)}
+              </select>
+            </Field>
+            <Field label="Cabang" hint={`Default ikut global (${branch})`}>
+              <select className="input" value={inspForm.branch} onChange={(e) => setInspForm({ ...inspForm, branch: e.target.value })}>
+                <option value="">Ikut global</option>
+                {branchCities.map((c) => <option key={c} value={c}>{c}</option>)}
               </select>
             </Field>
             <Field label="Nomor ITP (otomatis & unik)" hint={`Nomor berikutnya: ${nextItp(inspections)}`}>
@@ -978,7 +1012,13 @@ export default function QCSafety() {
             <Field label="Proyek">
               <select className="input" value={ncrForm.project} onChange={(e) => setNcrForm({ ...ncrForm, project: e.target.value })}>
                 <option value="">Pilih proyek…</option>
-                {data.projects.map((p) => <option key={p.id} value={p.id}>{p.id} · {p.vessel}</option>)}
+                {data.projects.map((p) => <option key={p.id} value={p.id}>{p.id} — {p.vessel}</option>)}
+              </select>
+            </Field>
+            <Field label="Cabang" hint={`Default ikut global (${branch})`}>
+              <select className="input" value={ncrForm.branch} onChange={(e) => setNcrForm({ ...ncrForm, branch: e.target.value })}>
+                <option value="">Ikut global</option>
+                {branchCities.map((c) => <option key={c} value={c}>{c}</option>)}
               </select>
             </Field>
             <Field label="Kapal (opsional)"><input className="input" value={ncrForm.vessel} onChange={(e) => setNcrForm({ ...ncrForm, vessel: e.target.value })} placeholder="Otomatis dari proyek" /></Field>
@@ -1120,12 +1160,25 @@ export default function QCSafety() {
       <Modal open={showInc} onClose={() => setShowInc(false)} title="Catat Insiden / Near Miss"
         footer={<><button className="btn-secondary" onClick={() => setShowInc(false)}>Batal</button><button className="btn-primary" onClick={() => {
           if (!incForm.desc.trim() || !incForm.location.trim()) { toast("Lokasi & uraian wajib diisi", "info"); return; }
-          const created = add("incidents", { type: incForm.type, date: todayISO(), location: incForm.location.trim(), desc: incForm.desc.trim(), severity: incForm.severity },
+          if (!incForm.project) { toast("Proyek wajib dipilih agar terbaca subkontraktor terkait", "info"); return; }
+          const created = add("incidents", { type: incForm.type, date: todayISO(), location: incForm.location.trim(), desc: incForm.desc.trim(), severity: incForm.severity, project: incForm.project, projectId: incForm.project, branch: branchOf(incForm.branch) },
             { action: "mencatat insiden", module: "Safety" });
-          toast(`Insiden ${created.id} dicatat`); setShowInc(false); setIncForm({ type: "Near Miss", location: "", desc: "", severity: "Rendah" });
+          toast(`Insiden ${created.id} dicatat`); setShowInc(false); setIncForm({ type: "Near Miss", location: "", desc: "", severity: "Rendah", project: "", branch: "" });
         }}>Simpan</button></>}>
         <div className="space-y-3">
           <FormGrid>
+            <Field label="Proyek terkait" hint="Insiden terbaca di subkontraktor yang mengerjakan proyek ini">
+              <select className="input" value={incForm.project} onChange={(e) => setIncForm({ ...incForm, project: e.target.value })}>
+                <option value="">Pilih proyek…</option>
+                {data.projects.map((p) => <option key={p.id} value={p.id}>{p.id} — {p.vessel}</option>)}
+              </select>
+            </Field>
+            <Field label="Cabang" hint={`Default ikut global (${branch})`}>
+              <select className="input" value={incForm.branch} onChange={(e) => setIncForm({ ...incForm, branch: e.target.value })}>
+                <option value="">Ikut global</option>
+                {branchCities.map((c) => <option key={c} value={c}>{c}</option>)}
+              </select>
+            </Field>
             <Field label="Jenis">
               <select className="input" value={incForm.type} onChange={(e) => setIncForm({ ...incForm, type: e.target.value })}>
                 {["Near Miss", "First Aid", "Lost Time", "Kebakaran", "Lainnya"].map((t) => <option key={t}>{t}</option>)}
@@ -1154,6 +1207,12 @@ export default function QCSafety() {
           </Field>
           <Field label="Judul drawing"><input className="input" value={drwForm.title} onChange={(e) => setDrwForm({ ...drwForm, title: e.target.value })} placeholder="cth: General Arrangement" /></Field>
           <Field label="Holder"><input className="input" value={drwForm.holder} onChange={(e) => setDrwForm({ ...drwForm, holder: e.target.value })} placeholder="cth: Hendra Wijaya" /></Field>
+          <Field label="Cabang" hint={`Default ikut global (${branch})`}>
+            <select className="input" value={drwForm.branch} onChange={(e) => setDrwForm({ ...drwForm, branch: e.target.value })}>
+              <option value="">Ikut global</option>
+              {branchCities.map((c) => <option key={c} value={c}>{c}</option>)}
+            </select>
+          </Field>
         </div>
       </Modal>
 
@@ -1189,7 +1248,13 @@ export default function QCSafety() {
             <Field label="Proyek">
               <select className="input" value={jsaForm.project} onChange={(e) => setJsaForm({ ...jsaForm, project: e.target.value })}>
                 <option value="">Pilih proyek…</option>
-                {data.projects.map((p) => <option key={p.id} value={p.id}>{p.id} · {p.vessel}</option>)}
+                {data.projects.map((p) => <option key={p.id} value={p.id}>{p.id} — {p.vessel}</option>)}
+              </select>
+            </Field>
+            <Field label="Cabang" hint={`Default ikut global (${branch})`}>
+              <select className="input" value={jsaForm.branch} onChange={(e) => setJsaForm({ ...jsaForm, branch: e.target.value })}>
+                <option value="">Ikut global</option>
+                {branchCities.map((c) => <option key={c} value={c}>{c}</option>)}
               </select>
             </Field>
             <Field label="Tanggal"><input type="date" className="input" value={jsaForm.date} onChange={(e) => setJsaForm({ ...jsaForm, date: e.target.value })} /></Field>
@@ -1209,7 +1274,13 @@ export default function QCSafety() {
             <Field label="Proyek">
               <select className="input" value={tbmForm.project} onChange={(e) => setTbmForm({ ...tbmForm, project: e.target.value })}>
                 <option value="">Pilih proyek…</option>
-                {data.projects.map((p) => <option key={p.id} value={p.id}>{p.id} · {p.vessel}</option>)}
+                {data.projects.map((p) => <option key={p.id} value={p.id}>{p.id} — {p.vessel}</option>)}
+              </select>
+            </Field>
+            <Field label="Cabang" hint={`Default ikut global (${branch})`}>
+              <select className="input" value={tbmForm.branch} onChange={(e) => setTbmForm({ ...tbmForm, branch: e.target.value })}>
+                <option value="">Ikut global</option>
+                {branchCities.map((c) => <option key={c} value={c}>{c}</option>)}
               </select>
             </Field>
             <Field label="Tanggal"><input type="date" className="input" value={tbmForm.date} onChange={(e) => setTbmForm({ ...tbmForm, date: e.target.value })} /></Field>
