@@ -49,7 +49,9 @@ export async function q<T>(sql: string, params: unknown[] = []): Promise<T[]> {
 export async function exec(sql: string, params: unknown[] = []): Promise<void> {
   if (getDialect() === "mysql") {
     const pool = ensureMysql();
-    await pool.execute(sql, params as never[]);
+    // Use query (not execute): prepared-statement protocol rejects
+    // START TRANSACTION / COMMIT / ROLLBACK with ER_UNSUPPORTED_PS 1295.
+    await pool.query(sql, params as never[]);
     return;
   }
   const db = ensureSqlite();
