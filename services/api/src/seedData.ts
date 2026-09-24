@@ -213,6 +213,16 @@ const TEAM_SEED: Array<[string, string[]]> = [
 
 const WBS_PROJECTS = ["NB-2026-001","RP-2026-001"];
 
+// Minimal employees so TEAM_SEED memberIds (EMP-002..006) resolve.
+// Exact ids required — do NOT use EMP-2026-xxx here.
+const TEAM_ORPHANS: SeedRow[] = [
+  { table: "employees", id: "EMP-002", branch: "Samarinda", data: { name: "Budi Santoso", role: "Foreman", dept: "Produksi", status: "Aktif", join: "2024-01-15", certs: [] } },
+  { table: "employees", id: "EMP-003", branch: "Samarinda", data: { name: "Agus Setiawan", role: "Welder", dept: "Produksi", status: "Aktif", join: "2024-02-01", certs: [] } },
+  { table: "employees", id: "EMP-004", branch: "Samarinda", data: { name: "Sari Wulandari", role: "QC Inspector", dept: "QC", status: "Aktif", join: "2024-02-01", certs: [] } },
+  { table: "employees", id: "EMP-005", branch: "Samarinda", data: { name: "Rudi Hartono", role: "Fitter", dept: "Produksi", status: "Aktif", join: "2024-03-01", certs: [] } },
+  { table: "employees", id: "EMP-006", branch: "Samarinda", data: { name: "Dedi Kurniawan", role: "Electrician", dept: "Produksi", status: "Aktif", join: "2024-03-01", certs: [] } },
+];
+
 export function buildSeedRows(): SeedRow[] {
   const rows: SeedRow[] = [...SETTINGS];
   for (const [kode, nama, dk, nrlr] of COA) {
@@ -229,6 +239,13 @@ export function buildSeedRows(): SeedRow[] {
   });
   for (const [table, id, branch, data] of EX) {
     rows.push({ table, id, branch, data });
+  }
+  const seen = new Set(rows.map((r) => `${r.table}:${r.id}`));
+  for (const orphan of TEAM_ORPHANS) {
+    if (!seen.has(`${orphan.table}:${orphan.id}`)) {
+      rows.push(orphan);
+      seen.add(`${orphan.table}:${orphan.id}`);
+    }
   }
   return rows;
 }

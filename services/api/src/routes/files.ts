@@ -10,6 +10,32 @@ import { fail, ok } from "../envelope.js";
 const MAX_BYTES = 10 * 1024 * 1024;
 const ALLOWED_EXT = new Set([".png", ".jpg", ".jpeg", ".pdf", ".xlsx", ".xls", ".csv", ".txt"]);
 
+function hasMagic(buf: Buffer, ext: string): boolean {
+  if (ext === ".png") {
+    return buf.length >= 4 && buf[0] === 0x89 && buf[1] === 0x50 && buf[2] === 0x4e && buf[3] === 0x47;
+  }
+  if (ext === ".jpg" || ext === ".jpeg") {
+    return buf.length >= 3 && buf[0] === 0xff && buf[1] === 0xd8 && buf[2] === 0xff;
+  }
+  if (ext === ".pdf") {
+    return buf.length >= 4 && buf[0] === 0x25 && buf[1] === 0x50 && buf[2] === 0x44 && buf[3] === 0x46;
+  }
+  if (ext === ".xlsx" || ext === ".xls") {
+    return buf.length >= 2 && buf[0] === 0x50 && buf[1] === 0x4b;
+  }
+  if (ext === ".csv" || ext === ".txt") {
+    // Text formats: reject binary (NUL bytes) and invalid UTF-8.
+    if (buf.includes(0)) return false;
+    try {
+      new TextDecoder("utf-8", { fatal: true }).decode(buf);
+    } catch {
+      return false;
+    }
+    return true;
+  }
+  return false;
+}
+
 export function uploadsRoot(): string {
   const raw = process.env.UPLOADS_DIR ?? "./data/uploads";
   return path.isAbsolute(raw) ? raw : path.resolve(process.cwd(), raw);
@@ -30,6 +56,16 @@ export function registerFileRoutes(app: FastifyInstance): void {
       return requireAuth(req, reply);
     }
     return undefined;
+  });
+
+  // Force downloads as attachments + block MIME sniffing on served uploads.
+  app.addHook("onSend", async (req, reply, payload) => {
+    const url = req.url.split("?")[0] ?? "";
+    if (url === "/files" || url.startsWith("/files/")) {
+      reply.header("Content-Disposition", "attachment");
+      reply.header("X-Content-Type-Options", "nosniff");
+    }
+    return payload;
   });
 
   app.post("/api/files", { preHandler: [requireAuth] }, async (req, reply) => {
@@ -55,6 +91,9 @@ export function registerFileRoutes(app: FastifyInstance): void {
     }
     if (buf.length === 0) return reply.status(400).send(fail("Empty file", "VALIDATION_ERROR"));
     if (buf.length > MAX_BYTES) return reply.status(413).send(fail("File too large (max 10MB)", "PAYLOAD_TOO_LARGE"));
+    if (!hasMagic(buf, ext)) {
+      return reply.status(400).send(fail("File content does not match its extension", "VALIDATION_ERROR"));
+    }
     const month = new Date().toISOString().slice(0, 7);
     const dir = path.join(root, month);
     fs.mkdirSync(dir, { recursive: true });

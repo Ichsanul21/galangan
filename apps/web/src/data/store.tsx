@@ -505,6 +505,98 @@ function buildSeeds(): StoreShape {
 const STORE_KEY = "isms.store.v4";
 const LEGACY_KEYS = ["isms.store.v3", "isms.store.v2", "isms.store.v1"];
 const BRANCH_KEY = "isms.branch";
+/* Sinkronisasi offline yang diperkeras: dirty set + tombstone delete dipersist
+   agar selamat dari reload. Format: { savedAt, entries }. Cap 500 + TTL 7 hari. */
+const DIRTY_KEY = "isms.dirty";
+const TOMBSTONES_KEY = "isms.tombstones";
+const SYNC_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+const SYNC_CAP = 500;
+
+function loadDirtyPersisted(): string[] {
+  try {
+    const raw = localStorage.getItem(DIRTY_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw) as { savedAt?: number; entries?: unknown };
+    if (!parsed || typeof parsed !== "object") return [];
+    if (typeof parsed.savedAt === "number" && Date.now() - parsed.savedAt > SYNC_TTL_MS) {
+      try { localStorage.removeItem(DIRTY_KEY); } catch { /* abaikan */ }
+      return [];
+    }
+    const entries = Array.isArray(parsed.entries) ? parsed.entries : [];
+    return entries.filter((e): e is string => typeof e === "string").slice(0, SYNC_CAP);
+  } catch {
+    return [];
+  }
+}
+
+function saveDirtyPersisted(cols: string[]): void {
+  try {
+    localStorage.setItem(DIRTY_KEY, JSON.stringify({ savedAt: Date.now(), entries: cols.slice(0, SYNC_CAP) }));
+  } catch {
+    /* storage penuh — abaikan */
+  }
+}
+
+function loadTombstonesPersisted(): Map<string, Set<string>> {
+  const map = new Map<string, Set<string>>();
+  try {
+    const raw = localStorage.getItem(TOMBSTONES_KEY);
+    if (!raw) return map;
+    const parsed = JSON.parse(raw) as { savedAt?: number; entries?: unknown };
+    if (!parsed || typeof parsed !== "object") return map;
+    if (typeof parsed.savedAt === "number" && Date.now() - parsed.savedAt > SYNC_TTL_MS) {
+      try { localStorage.removeItem(TOMBSTONES_KEY); } catch { /* abaikan */ }
+      return map;
+    }
+    const rec = (parsed.entries ?? {}) as Record<string, unknown>;
+    let total = 0;
+    for (const [col, ids] of Object.entries(rec)) {
+      if (!Array.isArray(ids)) continue;
+      const set = new Set<string>();
+      for (const id of ids) {
+        if (typeof id !== "string") continue;
+        if (total >= SYNC_CAP) break;
+        set.add(id);
+        total += 1;
+      }
+      if (set.size > 0) map.set(col, set);
+      if (total >= SYNC_CAP) break;
+    }
+  } catch {
+    /* abaikan — mulai kosong */
+  }
+  return map;
+}
+
+function saveTombstonesPersisted(map: Map<string, Set<string>>): void {
+  try {
+    const entries: Record<string, string[]> = {};
+    let total = 0;
+    for (const [col, set] of map) {
+      const ids: string[] = [];
+      for (const id of set) {
+        if (total >= SYNC_CAP) break;
+        ids.push(id);
+        total += 1;
+      }
+      if (ids.length > 0) entries[col] = ids;
+      if (total >= SYNC_CAP) break;
+    }
+    localStorage.setItem(TOMBSTONES_KEY, JSON.stringify({ savedAt: Date.now(), entries }));
+  } catch {
+    /* storage penuh — abaikan */
+  }
+}
+
+/* Backup snapshot sebelum resync menimpa koleksi bersih: satu slot per koleksi
+   (isms.backup.<col>, capped last 1). Dipakai pemulihan manual bila BE menimpa. */
+function saveBackup(col: string, rows: StoreItem[]): void {
+  try {
+    localStorage.setItem(`isms.backup.${col}`, JSON.stringify({ savedAt: Date.now(), rows }));
+  } catch {
+    /* storage penuh — abaikan */
+  }
+}
 const PREFIX: Record<string, string> = {
   projects: "PRJ",
   vessels: "V",
@@ -695,14 +787,60 @@ function remoteActive(): boolean {
   return isBackendConfigured() && getJwt() !== null;
 }
 
+/* Contract version: cocok dengan services/api GET /api/version.
+   Minor-tolerant — sinkronisasi diblokir hanya bila MAJOR berbeda. */
+const EXPECTED_API_MAJOR = 0;
+
+function majorOf(v: unknown): number | null {
+  if (typeof v !== "string") return null;
+  const m = v.trim().split(".")[0];
+  if (m === undefined || m === "") return null;
+  const n = Number.parseInt(m, 10);
+  return Number.isInteger(n) ? n : null;
+}
+
+function notifyVersionBlocked(serverApi: string): void {
+  try {
+    window.dispatchEvent(
+      new CustomEvent("isms:toast", {
+        detail: {
+          message: `Versi backend tak kompatibel (server ${serverApi}) — sinkronisasi dibatalkan. Perbarui aplikasi.`,
+          tone: "info",
+        },
+      }),
+    );
+  } catch {
+    /* abaikan */
+  }
+}
+
+/* Fetch /api/version sebelum sync; false = major mismatch → skip sync.
+   Gagal fetch (offline/backend lama tanpa endpoint) → true agar fallback
+   normal tetap berjalan. */
+async function isApiCompatible(): Promise<boolean> {
+  try {
+    const ver = await apiFetch<{ api: string; minWeb: string }>("/api/version");
+    const serverMajor = majorOf(ver?.api);
+    if (serverMajor === null) return true;
+    if (serverMajor !== EXPECTED_API_MAJOR) {
+      notifyVersionBlocked(String(ver.api));
+      return false;
+    }
+    return true;
+  } catch {
+    return true;
+  }
+}
+
 export function StoreProvider({ children }: { children: ReactNode }) {
   const [data, setData] = useState<StoreShape>(() => loadStore());
   const [backendMode] = useState<BackendMode>(() => (isBackendConfigured() ? "remote" : "local"));
   const [backendError, setBackendError] = useState<string | null>(null);
   const fallbackToasted = useRef(false);
-  /* Anti-clobber: koleksi yang diubah lokal saat fallback tidak boleh ditimpa resync. */
-  const dirtyRef = useRef<Set<string>>(new Set());
-  const [pendingSync, setPendingSync] = useState<string[]>([]);
+  /* Anti-clobber: koleksi yang diubah lokal saat fallback tidak boleh ditimpa resync.
+     Dipersist ke localStorage (isms.dirty) agar selamat dari reload; TTL 7 hari. */
+  const dirtyRef = useRef<Set<string>>(new Set<string>(loadDirtyPersisted()));
+  const [pendingSync, setPendingSync] = useState<string[]>(() => [...dirtyRef.current]);
   const dataRef = useRef(data);
   dataRef.current = data;
 
@@ -711,19 +849,24 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     if (!dirtyRef.current.has(col)) {
       dirtyRef.current.add(col);
       setPendingSync([...dirtyRef.current]);
+      saveDirtyPersisted([...dirtyRef.current]);
     }
   }, []);
 
   const clearDirty = useCallback((col: string) => {
     if (dirtyRef.current.delete(col)) {
       setPendingSync([...dirtyRef.current]);
+      saveDirtyPersisted([...dirtyRef.current]);
     }
   }, []);
   /* Tombstone delete: col → Set<id> yang dihapus lokal saat fallback.
-     Dipakai pushPending untuk memancarkan DELETE sebelum POST/PATCH. */
-  const tombstonesRef = useRef<Map<string, Set<string>>>(new Map());
+     Dipakai pushPending untuk memancarkan DELETE sebelum POST/PATCH.
+     Dipersist ke localStorage (isms.tombstones); cap 500 + TTL 7 hari. */
+  const tombstonesRef = useRef<Map<string, Set<string>>>(loadTombstonesPersisted());
   const clearTombstones = useCallback((col: string) => {
-    tombstonesRef.current.delete(col);
+    if (tombstonesRef.current.delete(col)) {
+      saveTombstonesPersisted(tombstonesRef.current);
+    }
   }, []);
   const [branch, setBranchState] = useState<string>(() => {
     // Cabang global di localStorage (migrasi dari sessionStorage, kunci sama).
@@ -765,9 +908,12 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
   /* Tarik ulang semua koleksi + WBS/team dari backend (dipakai saat boot dan
      tepat setelah login berhasil, karena JWT baru tersedia saat itu).
-     Koleksi kotor (dirty) dilewati agar perubahan lokal tidak tertimpa. */
+     Koleksi kotor (dirty) dilewati agar perubahan lokal tidak tertimpa.
+     Koleksi bersih di-backup dulu (isms.backup.<col>, last 1); activities
+     di-merge (union by id, lokal dulu + server-only, cap 100) bukan replace. */
   const resync = useCallback(async (): Promise<void> => {
     if (!remoteActive()) return;
+    if (!(await isApiCompatible())) return;
     const dirty = dirtyRef.current;
     const pulled: Partial<Record<CollectionKey, StoreItem[]>> = {};
     await Promise.all(
@@ -781,7 +927,29 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         }
       }),
     );
-    setData((prev) => ({ ...prev, ...pulled }));
+    const serverActivities = (pulled as Partial<Record<string, StoreItem[]>>).activities;
+    if (serverActivities !== undefined) delete (pulled as Partial<Record<string, StoreItem[]>>).activities;
+    try {
+      const cur = dataRef.current as unknown as Record<string, StoreItem[]>;
+      for (const key of Object.keys(pulled)) {
+        const rows = cur[key];
+        if (Array.isArray(rows)) saveBackup(key, rows);
+      }
+      if (serverActivities !== undefined && !dirty.has("activities") && Array.isArray(cur.activities)) {
+        saveBackup("activities", cur.activities);
+      }
+    } catch {
+      /* backup best-effort — lanjutkan resync */
+    }
+    setData((prev) => {
+      const next = { ...prev, ...pulled };
+      if (serverActivities !== undefined) {
+        const local = prev.activities ?? [];
+        const seen = new Set(local.map((r) => r.id));
+        next.activities = [...local, ...serverActivities.filter((r) => !seen.has(r.id))].slice(0, 100);
+      }
+      return next;
+    });
     const projectIds = ((pulled.projects as StoreItem[] | undefined) ?? []).map((p) => p.id);
     const wbsDirty = dirty.has("wbsByProject");
     const teamDirty = dirty.has("teamByProject");
@@ -820,6 +988,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
      Bersihkan tombstones+dirty per koleksi bila sukses. */
   const pushPending = useCallback(async (): Promise<void> => {
     if (!remoteActive()) return;
+    if (!(await isApiCompatible())) return;
     const cols = [...dirtyRef.current];
     for (const col of cols) {
       try {
@@ -995,7 +1164,16 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       update: async (col, id, patch) => {
         if (remoteActive()) {
           try {
-            const saved = await remoteRepository(col).patch(id, patch);
+            /* Optimistic concurrency minimal: kirim updated_at yang terakhir
+               terlihat sebagai baseUpdatedAt top-level. BE saat ini (crud.ts
+               PatchSchema: branch+data, zod strip unknown) mengabaikannya
+               dengan aman; penegakan 409 penuh menunggu dukungan BE. */
+            const current = ((dataRef.current as unknown as Record<string, StoreItem[]>)[col as string] ?? []).find(
+              (r) => r.id === id,
+            );
+            const base = current?.updated_at;
+            const body = typeof base === "string" && base !== "" ? { ...patch, baseUpdatedAt: base } : patch;
+            const saved = await remoteRepository(col).patch(id, body);
             setData((prev) => ({
               ...prev,
               [col]: ((prev[col] as StoreItem[] | undefined) ?? []).map((r) => (r.id === id ? saved : r)),
@@ -1030,6 +1208,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         const set = tombstonesRef.current.get(col as string) ?? new Set<string>();
         set.add(id);
         tombstonesRef.current.set(col as string, set);
+        saveTombstonesPersisted(tombstonesRef.current);
         markDirty(col as string);
         setData((prev) => ({
           ...prev,

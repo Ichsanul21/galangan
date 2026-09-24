@@ -44,8 +44,12 @@ export function requestActor(req: FastifyRequest): string {
 }
 
 export function requestIp(req: FastifyRequest): string {
-  const fwd = req.headers["x-forwarded-for"];
-  if (typeof fwd === "string" && fwd.length > 0) return fwd.split(",")[0]?.trim() ?? "unknown";
+  // Mirror rateLimit: only trust x-forwarded-for when TRUST_PROXY is set.
+  const trust = (process.env.TRUST_PROXY ?? "").toLowerCase().trim();
+  if (trust === "true" || trust === "1") {
+    const fwd = req.headers["x-forwarded-for"];
+    if (typeof fwd === "string" && fwd.length > 0) return fwd.split(",")[0]?.trim() ?? "unknown";
+  }
   return req.ip ?? "unknown";
 }
 

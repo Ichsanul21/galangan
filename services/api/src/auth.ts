@@ -22,7 +22,7 @@ function getSecret(): string {
 }
 
 export async function hashPassword(plain: string): Promise<string> {
-  return bcrypt.hash(plain, 10);
+  return bcrypt.hash(plain, 12);
 }
 
 export async function comparePassword(plain: string, hash: string): Promise<boolean> {
@@ -89,25 +89,85 @@ export async function seedUsers(
 ): Promise<void> {
   const query = dbQuery ?? queryImpl;
   for (const account of SEED_ACCOUNTS) {
-    let exists = false;
+    let existing: Record<string, unknown>[] = [];
     if (query) {
-      const rows = await query("SELECT id FROM users WHERE username = ?", [account.username]);
-      exists = rows.length > 0;
+      try {
+        existing = await query("SELECT id, name, role, email, is_active FROM users WHERE username = ?", [
+          account.username,
+        ]);
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        // Very old DBs (001 without 002 applied): is_active column missing.
+        if (/no such column/i.test(message) || /unknown column/i.test(message)) {
+          existing = await query("SELECT id, name, role, email FROM users WHERE username = ?", [account.username]);
+        } else {
+          throw err;
+        }
+      }
     }
-    if (exists) continue;
+    if (existing.length > 0) {
+      const row = existing[0] as { name?: unknown; role?: unknown; email?: unknown; is_active?: unknown };
+      const patch: Record<string, unknown> = {};
+      if (typeof row.name === "string" && row.name !== account.name) patch.name = account.name;
+      if (typeof row.role === "string" && row.role !== account.role) patch.role = account.role;
+      if (typeof row.email === "string" && row.email !== account.email) patch.email = account.email;
+      // Backfill legacy NULLs (column is NOT NULL DEFAULT 1 on fresh DBs,
+      // but old rows may carry NULL). Never touch pass_hash here.
+      if (row.is_active === null || row.is_active === undefined) patch.is_active = 1;
+      if (Object.keys(patch).length > 0) {
+        const sets = Object.keys(patch)
+          .map((k) => `${k} = ?`)
+          .join(", ");
+        const params = [...Object.values(patch), account.username];
+        try {
+          await dbInsert(`UPDATE users SET ${sets} WHERE username = ?`, params);
+        } catch (err) {
+          const message = err instanceof Error ? err.message : String(err);
+          if (/no such column/i.test(message) || /unknown column/i.test(message)) {
+            // Retry without is_active on pre-002 schemas.
+            delete patch.is_active;
+            if (Object.keys(patch).length > 0) {
+              const retrySets = Object.keys(patch)
+                .map((k) => `${k} = ?`)
+                .join(", ");
+              await dbInsert(`UPDATE users SET ${retrySets} WHERE username = ?`, [
+                ...Object.values(patch),
+                account.username,
+              ]);
+            }
+          } else {
+            throw err;
+          }
+        }
+      }
+      continue;
+    }
     const passHash = await hashPassword(account.password);
     try {
-      await dbInsert("INSERT INTO users (id, username, pass_hash, name, role, email) VALUES (?, ?, ?, ?, ?, ?)", [
-        randomUUID(),
-        account.username,
-        passHash,
-        account.name,
-        account.role,
-        account.email,
-      ]);
+      await dbInsert(
+        "INSERT INTO users (id, username, pass_hash, name, role, email, is_active) VALUES (?, ?, ?, ?, ?, ?, 1)",
+        [randomUUID(), account.username, passHash, account.name, account.role, account.email],
+      );
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       if (message.includes("UNIQUE") || message.includes("Duplicate")) continue;
+      if (/no such column/i.test(message) || /unknown column/i.test(message)) {
+        try {
+          await dbInsert("INSERT INTO users (id, username, pass_hash, name, role, email) VALUES (?, ?, ?, ?, ?, ?)", [
+            randomUUID(),
+            account.username,
+            passHash,
+            account.name,
+            account.role,
+            account.email,
+          ]);
+        } catch (retryErr) {
+          const retryMsg = retryErr instanceof Error ? retryErr.message : String(retryErr);
+          if (retryMsg.includes("UNIQUE") || retryMsg.includes("Duplicate")) continue;
+          throw retryErr;
+        }
+        continue;
+      }
       throw err;
     }
   }

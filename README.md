@@ -97,8 +97,10 @@ Assessment → Proposal → Class Approval → Contract → Procurement → Inst
 
 ## Backend & Frontend Wiring
 
-- Backend: `services/api` — Fastify, CRUD 52 koleksi + WBS/team, envelope `{ok,data}`, JWT 8 jam.
-- Tanpa Docker: `DB_DIALECT=sqlite` (file `./data/isms.db`) untuk lokal, `DB_DIALECT=mysql` + `MYSQL_URL` untuk server.
+- Backend: `services/api` — Fastify, CRUD 52 koleksi + WBS/team, envelope `{ok,data}`, JWT 8 jam. Versi kontrak saat ini **API 0.2.0 / Web 0.2.0** (`GET /api/version` → `{api,minWeb}`); FE minor-tolerant — sinkronisasi diblokir (toast) hanya bila MAJOR backend berbeda.
+- Log backend terstruktur (pino) ke stdout dengan redact secret (`Authorization`, `password`/`pass_hash`/`*token*`, `MYSQL_URL`); setiap request membawa/mengembalikan `X-Request-Id` untuk korelasi.
+- `GET /health` memeriksa DB (`SELECT 1`), keterulisan `UPLOADS_DIR`, serta `uptime`/`version`/`dialect` (`status: degraded` bila DB/uploads gagal).
+- Tanpa Docker: `DB_DIALECT=sqlite` (file `./data/isms.db`) untuk lokal, `DB_DIALECT=mysql` + `MYSQL_URL` untuk server. Semua env (`PORT`, `DB_DIALECT`, `SQLITE_PATH`, `MYSQL_URL`, `JWT_SECRET`, `WEB_ORIGINS`, `SETUP_TOKEN`, `UPLOADS_DIR`, `NODE_ENV`, `TRUST_PROXY`, `ALLOW_SEED_LOGIN`) divalidasi saat boot dengan pesan galat yang jelas — lihat `services/api/.env.example`.
 - Jalankan: `cd services/api; npm install; npm run migrate; npm run seed; npm run dev` (port 3000).
 - Frontend: isi `VITE_API_URL=http://localhost:3000` (lihat `apps/web/.env.example`) agar tersambung; kosong = mode lokal. Login otomatis memakai backend bila tersedia, impor seed sekali pakai dari `/pengaturan`.
 - Sesi JWT 8 jam — kedaluwarsa otomatis diminta login ulang. Perubahan offline ditandai dan bisa didorong ulang via banner "Sinkronkan sekarang".

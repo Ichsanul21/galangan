@@ -82,6 +82,9 @@ interface BackendRow {
 function rowToItem(row: BackendRow): StoreItem {
   const item: StoreItem = { ...(row.data ?? {}), id: row.id };
   if (row.branch) item.branch = row.branch;
+  /* Pertahankan updated_at server sebagai basis optimistic concurrency
+     (dipakai store.update sebagai baseUpdatedAt; BE lama mengabaikannya). */
+  if (row.updated_at) item.updated_at = row.updated_at;
   return item;
 }
 
@@ -90,7 +93,12 @@ function itemToCreateBody(item: Omit<StoreItem, "id"> & { id?: string }): {
   branch: string;
   data: Record<string, unknown>;
 } {
-  const { id, branch, ...rest } = item;
+  const { id, branch, updated_at, baseUpdatedAt, ...rest } = item as StoreItem & {
+    baseUpdatedAt?: unknown;
+    updated_at?: unknown;
+  };
+  void updated_at;
+  void baseUpdatedAt;
   return {
     ...(id ? { id } : {}),
     branch: typeof branch === "string" ? branch : "",
@@ -101,11 +109,17 @@ function itemToCreateBody(item: Omit<StoreItem, "id"> & { id?: string }): {
 function patchToUpdateBody(patch: Record<string, unknown>): {
   branch?: string;
   data?: Record<string, unknown>;
+  baseUpdatedAt?: string;
 } {
-  const { branch, ...rest } = patch;
+  const { branch, baseUpdatedAt, updated_at, ...rest } = patch;
+  void updated_at;
   return {
     ...(typeof branch === "string" ? { branch } : {}),
     data: rest as Record<string, unknown>,
+    /* Optimistic concurrency best-effort: BE saat ini (crud.ts PatchSchema)
+       hanya kenal branch+data dan men-strip unknown keys via zod default,
+       jadi field ini diabaikan dengan aman sampai BE mendukung 409. */
+    ...(typeof baseUpdatedAt === "string" && baseUpdatedAt !== "" ? { baseUpdatedAt } : {}),
   };
 }
 

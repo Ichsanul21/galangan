@@ -96,6 +96,7 @@ const CreateSchema = z.object({
 const PatchSchema = z.object({
   branch: z.string().max(64).optional(),
   data: z.record(z.unknown()).optional(),
+  baseUpdatedAt: z.string().optional(),
 }).refine((v) => v.branch !== undefined || v.data !== undefined, {
   message: "Nothing to update",
 });
@@ -202,6 +203,13 @@ export function registerCrud(app: FastifyInstance, table: string, opts: CrudOpts
     const rows = await q<Row>(`SELECT id, branch, data, updated_at FROM ${table} WHERE id = ?`, [id]);
     if (rows.length === 0) return reply.status(404).send(fail("Not found", "NOT_FOUND"));
     const current = rows[0] as Row;
+    if (parsed.data.baseUpdatedAt !== undefined && parsed.data.baseUpdatedAt !== current.updated_at) {
+      return reply.status(409).send({
+        ok: false,
+        error: { message: "Stale data: row was modified by another user", code: "STALE" },
+        data: toJson(current),
+      });
+    }
     const oldData = JSON.parse(current.data) as Record<string, unknown>;
     const merged = parsed.data.data ? { ...oldData, ...parsed.data.data } : oldData;
     const branch = parsed.data.branch ?? current.branch;

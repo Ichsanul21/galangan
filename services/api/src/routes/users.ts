@@ -47,7 +47,7 @@ const CreateSchema = z.object({
   name: z.string().min(1).max(128),
   role: z.string().min(1).max(64),
   email: z.string().max(256).optional().default(""),
-  password: z.string().min(6),
+  password: z.string().min(6).max(72),
 });
 
 const PatchSchema = z
@@ -65,7 +65,7 @@ const PatchSchema = z
 
 const PasswordSchema = z.object({
   oldPassword: z.string().optional(),
-  newPassword: z.string().min(6),
+  newPassword: z.string().min(6).max(72),
 });
 
 const SELECT_COLS = "id, username, pass_hash, name, role, email, is_active FROM users";
