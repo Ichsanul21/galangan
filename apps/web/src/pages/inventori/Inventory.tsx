@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import {
   Plus,
@@ -38,7 +38,7 @@ import { exportExcel } from "../../utils/export";
 import { sbTonasePlat, sbSjNumber, maxSeq, parseSjSeq, SB_KOP } from "../../utils/sb";
 import { stockTrend, itemTrend, lowStockTrend, stockValueTrend, warehouseTrend } from "../../data";
 
-const emptyForm = { name: "", category: "Baja", sku: "", warehouse: "Gudang Baja A", rack: "", stock: "0", minStock: "0", unit: "pcs", cost: "0", volume: "0", batch: "", uom2: "", konversi: "", minWh: "", photoUrl: "" };
+const emptyForm = { name: "", category: "Baja", sku: "", warehouse: "Gudang Baja A", rack: "", bin: "", stock: "0", minStock: "0", unit: "pcs", cost: "0", volume: "0", batch: "", uom2: "", konversi: "", minWh: "", photoUrl: "" };
 
 /* Kebutuhan BOM TB Samudra Jaya 07 — dicocokkan ke data inventori aktual. */
 const BOM_NEEDS = [
@@ -82,6 +82,108 @@ function barcodeBits(sku: string): boolean[] {
     bits.push((((c >> (i % 5)) ^ (h >> (i % 7))) & 1) === 1);
   }
   return bits;
+}
+
+function binOf(it: StoreItem): string {
+  return String(it.bin ?? "").trim();
+}
+
+/* Payload QR eksternal: SKU stabil sebagai identifier scan. */
+function qrPayloadOf(it: StoreItem): string {
+  return String(it.sku ?? "").trim();
+}
+
+interface DetectedBarcode {
+  rawValue: string;
+}
+
+interface BarcodeDetectorInstance {
+  detect(source: HTMLVideoElement): Promise<DetectedBarcode[]>;
+}
+
+type BarcodeDetectorCtor = new (options?: { formats?: string[] }) => BarcodeDetectorInstance;
+
+function getBarcodeDetector(): BarcodeDetectorCtor | undefined {
+  return (window as unknown as { BarcodeDetector?: BarcodeDetectorCtor }).BarcodeDetector;
+}
+
+/* Modal scan kamera: getUserMedia + BarcodeDetector native, tanpa dep. */
+function ScanModal({ onDetect, onClose }: { onDetect: (value: string) => void; onClose: () => void }) {
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const cbRef = useRef(onDetect);
+  cbRef.current = onDetect;
+  const [msg, setMsg] = useState("Menyiapkan kamera…");
+  const [manual, setManual] = useState("");
+  const [detectorOk, setDetectorOk] = useState(true);
+
+  useEffect(() => {
+    let stream: MediaStream | null = null;
+    let timer = 0;
+    let stopped = false;
+    const Ctor = getBarcodeDetector();
+    if (!Ctor) setDetectorOk(false);
+    const start = async () => {
+      try {
+        if (!navigator.mediaDevices?.getUserMedia) {
+          setMsg("Kamera tidak tersedia di perangkat ini — isi SKU manual.");
+          return;
+        }
+        stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
+        const video = videoRef.current;
+        if (video) {
+          video.srcObject = stream;
+          await video.play().catch(() => undefined);
+        }
+        if (!Ctor) {
+          setMsg("BarcodeDetector tidak didukung browser ini — gunakan input SKU manual.");
+          return;
+        }
+        const detector = new Ctor({ formats: ["qr_code", "code_128", "code_39", "ean_13", "ean_8", "upc_a"] });
+        setMsg("Arahkan kamera ke QR / barcode SKU…");
+        const tick = async () => {
+          if (stopped) return;
+          try {
+            const v = videoRef.current;
+            if (v && v.readyState >= 2) {
+              const res = await detector.detect(v);
+              const raw = res?.[0]?.rawValue?.trim() ?? "";
+              if (raw) {
+                cbRef.current(raw);
+                return;
+              }
+            }
+          } catch {
+            /* abaikan error per-frame, coba lagi */
+          }
+          timer = window.setTimeout(() => { void tick(); }, 350);
+        };
+        void tick();
+      } catch {
+        setMsg("Gagal membuka kamera — periksa izin kamera / gunakan input manual.");
+      }
+    };
+    void start();
+    return () => {
+      stopped = true;
+      window.clearTimeout(timer);
+      stream?.getTracks().forEach((t) => t.stop());
+    };
+  }, []);
+
+  return (
+    <Modal open onClose={onClose} title="Scan QR / Barcode" subtitle="Kamera + BarcodeDetector native — hasil mengisi pencarian">
+      <div className="space-y-3">
+        <video ref={videoRef} className="h-48 w-full rounded-xl bg-navy-900 object-cover" muted playsInline aria-label="Pratinjau kamera pemindai" />
+        <p className="text-xs text-steel-500">{msg}{detectorOk ? "" : " (mode manual)"}</p>
+        <Field label="SKU manual (fallback bila kamera / detector tak didukung)">
+          <div className="flex gap-2">
+            <input className="input font-mono" value={manual} onChange={(e) => setManual(e.target.value)} placeholder="cth: AH36-15" />
+            <button className="btn-primary shrink-0" onClick={() => { if (manual.trim()) cbRef.current(manual.trim()); }}>Pakai</button>
+          </div>
+        </Field>
+      </div>
+    </Modal>
+  );
 }
 
 function reservedOf(it: StoreItem): Reservation[] {
@@ -187,6 +289,7 @@ export default function Inventory() {
   const requisitions = data.requisitions;
   const [tab, setTab] = useState("Katalog");
   const [q, setQ] = useState("");
+  const [showScan, setShowScan] = useState(false);
   const [cat, setCat] = useState("Semua");
   const [wh, setWh] = useState("Semua");
   const [abcF, setAbcF] = useState("Semua");
@@ -253,7 +356,7 @@ export default function Inventory() {
   const abc = abcMap(inventory);
 
   const list = inventory.filter((i) => {
-    const matchQ = `${i.name} ${i.sku}`.toLowerCase().includes(q.toLowerCase());
+    const matchQ = `${i.name} ${i.sku} ${binOf(i)}`.toLowerCase().includes(q.toLowerCase());
     const matchCat = cat === "Semua" || i.category === cat;
     const matchWh = wh === "Semua" || i.warehouse === wh;
     const matchAbc = abcF === "Semua" || abc[i.id] === abcF;
@@ -366,7 +469,7 @@ export default function Inventory() {
     setEditing(i);
     setForm({
       name: i.name, category: i.category, sku: i.sku, warehouse: i.warehouse,
-      rack: String(i.rack ?? i.location ?? ""), stock: String(i.stock), minStock: String(i.minStock),
+      rack: String(i.rack ?? i.location ?? ""), bin: binOf(i), stock: String(i.stock), minStock: String(i.minStock),
       unit: i.unit, cost: String(i.cost), volume: String(i.volume ?? 0), batch: String(i.batch ?? ""),
       uom2: uom2Of(i), konversi: convOf(i) > 0 ? String(i.konversi) : "",
       minWh: String(minWhOf(i)), photoUrl: String(i.photoUrl ?? ""),
@@ -393,6 +496,7 @@ export default function Inventory() {
     if (!Number.isFinite(numCost) || numCost < 0) { toast("Harga satuan harus angka 0 atau lebih", "info"); return; }
     if (form.minWh.trim() !== "" && (!Number.isFinite(Number(form.minWh)) || Number(form.minWh) < 0)) { toast("Min. stok gudang harus angka 0 atau lebih", "info"); return; }
     const rack = form.rack.trim();
+    const bin = form.bin.trim();
     const prevMap = (editing?.minStockByWarehouse as Record<string, number> | undefined) ?? {};
     const minWhMap = { ...prevMap };
     if (form.minWh.trim() !== "") minWhMap[form.warehouse] = Number(form.minWh) || 0;
@@ -401,7 +505,7 @@ export default function Inventory() {
       /* Stok read-only di form edit — hanya field non-stok yang disimpan. */
       update("inventory", editing.id, {
         name: form.name.trim(), category: form.category, sku: form.sku.trim(), warehouse: form.warehouse,
-        rack, location: rack, minStock: numMin, unit: form.unit,
+        rack, bin, location: rack, minStock: numMin, unit: form.unit,
         cost: numCost, volume: volume || 0, batch: form.batch.trim(),
         uom2, konversi: konv, minStockByWarehouse: minWhMap, photoUrl: form.photoUrl.trim(),
       });
@@ -412,7 +516,7 @@ export default function Inventory() {
       const batch = form.batch.trim();
       const created = add("inventory", {
         name: form.name.trim(), category: form.category, sku: form.sku.trim(), warehouse: form.warehouse,
-        rack, stock, minStock: numMin, unit: form.unit,
+        rack, bin, stock, minStock: numMin, unit: form.unit,
         cost: numCost, location: rack, volume: volume || 0, batch,
         uom2, konversi: konv, minStockByWarehouse: minWhMap, photoUrl: form.photoUrl.trim(), avgCost: 0,
         batches: batch ? [{ batch, qty: stock, date: todayISO() }] : [],
@@ -524,8 +628,8 @@ export default function Inventory() {
   const downloadTemplate = () => {
     void exportExcel(
       [
-        ["nama", "sku", "kategori", "gudang", "stok", "minStok", "satuan", "harga", "rak"],
-        ["Pelat Baja AH36 15mm", "AH36-15", "Baja", "Gudang Baja A", 100, 20, "kg", 150000, "A1-02"],
+        ["nama", "sku", "kategori", "gudang", "stok", "minStok", "satuan", "harga", "rak", "bin"],
+        ["Pelat Baja AH36 15mm", "AH36-15", "Baja", "Gudang Baja A", 100, 20, "kg", 150000, "A1-02", "B-03"],
       ],
       "Template-Inventori",
       "Template"
@@ -758,7 +862,7 @@ export default function Inventory() {
         add("inventory", {
           name: nama, sku, category: c[2] || "Lainnya", warehouse: c[3],
           stock: Number(c[4]) || 0, minStock: Number(c[5]) || 0, unit: c[6] || "pcs",
-          cost: Number(c[7]) || 0, rack: c[8] || "", location: c[8] || "",
+          cost: Number(c[7]) || 0, rack: c[8] || "", bin: (c[9] ?? "").trim(), location: c[8] || "",
           volume: 0, batch: "", batches: [], reserved: [],
           uom2: "", konversi: 0, minStockByWarehouse: {}, photoUrl: "", avgCost: 0,
         }, { action: "mengimpor material", module: "Inventori" });
@@ -805,7 +909,7 @@ export default function Inventory() {
       update("inventory", trTarget.id, { stock: srcStock - qty });
       add("inventory", {
         name: trTarget.name, sku: `${trTarget.sku}@${trDest}`, category: trTarget.category, warehouse: trDest,
-        rack: "", stock: qty, minStock: 0, unit: trTarget.unit,
+        rack: "", bin: "", stock: qty, minStock: 0, unit: trTarget.unit,
         cost: trTarget.cost, location: "", volume: Number(trTarget.volume) || 0, batch: String(trTarget.batch ?? ""),
         uom2: String((trTarget as unknown as Record<string, unknown>).uom2 ?? ""), konversi: Number((trTarget as unknown as Record<string, unknown>).konversi) || 0,
         minStockByWarehouse: {}, photoUrl: String(trTarget.photoUrl ?? ""), avgCost: Number((trTarget as unknown as Record<string, unknown>).avgCost) || 0,
@@ -911,8 +1015,11 @@ export default function Inventory() {
               <div className="mb-3 flex flex-wrap gap-3">
                 <div className="relative">
                   <Search className="absolute left-3 top-2.5 h-4 w-4 text-steel-400" />
-                  <input className="input pl-9 w-full sm:w-64" placeholder="Cari material / SKU..." value={q} onChange={(e) => setQ(e.target.value)} />
+                  <input className="input pl-9 w-full sm:w-64" placeholder="Cari material / SKU / bin..." value={q} onChange={(e) => setQ(e.target.value)} />
                 </div>
+                <button className="btn-secondary" onClick={() => setShowScan(true)} title="Scan QR / barcode via kamera" aria-label="Scan QR atau barcode">
+                  <Camera className="h-4 w-4" /> Scan
+                </button>
                 <select className="input w-auto" value={wh} onChange={(e) => setWh(e.target.value)} aria-label="Filter gudang">
                   {["Semua", ...warehouses].map((w) => <option key={w} value={w}>{w === "Semua" ? "Semua gudang" : w}</option>)}
                 </select>
@@ -949,7 +1056,7 @@ export default function Inventory() {
                     onChange={(e) => { const f = e.target.files?.[0]; if (f) { if (importMode === "IN") handleImportINFile(f); else if (importMode === "OUT") handleImportOUTFile(f); else handleImportFile(f); } e.target.value = ""; }} />
                 </label>
                 <span className="text-xs text-steel-400">
-                  {importMode === "Katalog" && "Kolom: nama, sku, kategori, gudang, stok, minStok, satuan, harga, rak"}
+                  {importMode === "Katalog" && "Kolom: nama, sku, kategori, gudang, stok, minStok, satuan, harga, rak, bin"}
                   {importMode === "IN" && "Kolom IN: Tanggal, Kode, Qty, Supplier, Harga-nonPPN, Pajak, Total, Purpose, PIC — kode harus terdaftar, qty>0"}
                   {importMode === "OUT" && "Kolom OUT: Tanggal, Purpose, Kode, Qty, PIC, Keterangan — kode harus terdaftar, qty>0, stok cukup, purpose+PIC wajib"}
                 </span>
@@ -962,7 +1069,7 @@ export default function Inventory() {
               <div className="overflow-x-auto">
                 <table className="w-full">
                   <thead className="bg-surface sticky top-0 z-10">
-                    <tr><SortTh label="Material" sortKey="material" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label="Kategori" sortKey="kategori" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label="Quantity" sortKey="qty" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label="Volume" sortKey="volume" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label="Total Nilai" sortKey="total" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label="ABC" sortKey="abc" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label="Status" sortKey="status" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label="Rak" sortKey="rak" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><th className="th">Aksi</th></tr>
+                    <tr><SortTh label="Material" sortKey="material" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label="Kategori" sortKey="kategori" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label="Quantity" sortKey="qty" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label="Volume" sortKey="volume" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label="Total Nilai" sortKey="total" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label="ABC" sortKey="abc" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label="Status" sortKey="status" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label="Rak" sortKey="rak" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label="Bin" sortKey="bin" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><th className="th">Aksi</th></tr>
                   </thead>
                   <tbody className="divide-y divide-steel-100">
                     {sortRows(list, sort, (i, k) => {
@@ -973,6 +1080,7 @@ export default function Inventory() {
                       if (k === "abc") return String(abc[i.id] ?? "");
                       if (k === "status") return Number(i.stock) <= Number(i.minStock) ? "Menipis" : "Aman";
                       if (k === "rak") return String(rackText(i));
+                      if (k === "bin") return binOf(i);
                       return String(i.name ?? "");
                     }).map((i) => {
                       const low = i.stock <= i.minStock;
@@ -998,6 +1106,7 @@ export default function Inventory() {
                             <Badge tone={low ? "red" : "green"}>{low ? "Menipis" : "Aman"}</Badge>
                           </td>
                           <td className="td text-steel-600 font-mono text-xs truncate" title={rackText(i)}>{rackText(i)}</td>
+                          <td className="td text-steel-600 font-mono text-xs truncate" title={binOf(i) || "—"}>{binOf(i) || "—"}</td>
                           <td className="td">
                             <div className="flex gap-1">
                               <button className="rounded-lg p-1.5 text-steel-500 hover:bg-steel-100" title="Detail" aria-label={`Detail ${i.name}`} onClick={() => setDetail(i)}><Eye className="h-4 w-4" /></button>
@@ -1032,7 +1141,7 @@ export default function Inventory() {
                         const thin = Number(i.stock) <= whMin;
                         return (
                           <div key={i.id} className="flex items-center justify-between gap-2 text-sm">
-                            <span className="text-steel-600 truncate" title={`${String(i.name)} · min gudang ${fmtJumlah(whMin)}`}>{i.name}</span>
+                            <span className="text-steel-600 truncate" title={`${String(i.name)} · rak ${rackText(i)} · bin ${binOf(i) || "—"} · min gudang ${fmtJumlah(whMin)}`}>{i.name}{binOf(i) ? <span className="font-mono text-xs text-steel-400"> · {binOf(i)}</span> : null}</span>
                             <span className="flex shrink-0 items-center gap-1.5 font-medium">
                               {thin && <Badge tone="red">Menipis</Badge>}
                               {fmtJumlah(Number(i.stock))}
@@ -1205,7 +1314,7 @@ export default function Inventory() {
                     if (kg <= 0) { toast("Isi dimensi dengan benar", "info"); return; }
                     add("inventory", {
                       name: `Plat ${tonT}mm ${tonP}x${tonL}`, category: "Baja", sku: `PLAT-${tonT}-${tonP}X${tonL}-${Date.now().toString(36).toUpperCase()}`,
-                      warehouse: "Gudang Baja A", rack: "", stock: Number(tonPcs) || 0, minStock: 0, unit: "lbr",
+                      warehouse: "Gudang Baja A", rack: "", bin: "", stock: Number(tonPcs) || 0, minStock: 0, unit: "lbr",
                       cost: 0, location: "", volume: kg, batch: "", uom2: "kg", konversi: kg / Math.max(1, Number(tonPcs) || 1),
                       minStockByWarehouse: {}, photoUrl: "", avgCost: 0, batches: [], reserved: [],
                     }, { action: "mendaftarkan plat dari kalkulator tonase", module: "Inventori" });
@@ -1383,7 +1492,10 @@ export default function Inventory() {
               </div>
             </Field>
           </FormGrid>
-          <Field label="Lokasi rak" hint='Format "Gudang Baja A · A1-01"'><input className="input font-mono" value={form.rack} onChange={(e) => setF("rack", e.target.value)} placeholder="cth: A1-02" /></Field>
+          <FormGrid>
+            <Field label="Lokasi rak" hint='Format "Gudang Baja A · A1-01"'><input className="input font-mono" value={form.rack} onChange={(e) => setF("rack", e.target.value)} placeholder="cth: A1-02" /></Field>
+            <Field label="Bin" hint="Kotak / slot rak, cth: B-03"><input className="input font-mono" value={form.bin} onChange={(e) => setF("bin", e.target.value)} placeholder="cth: B-03" /></Field>
+          </FormGrid>
         </div>
       </Modal>
 
@@ -1557,13 +1669,14 @@ export default function Inventory() {
           <div id="label-print" className="rounded-xl border border-steel-200 p-4 text-center">
             <p className="text-sm font-bold text-navy-900">{labelItem.name}</p>
             <p className="font-mono text-xs text-steel-500">{labelItem.sku}</p>
-            <p className="font-mono text-xs text-steel-500">{rackText(labelItem)}</p>
+            <p className="font-mono text-xs text-steel-500">{rackText(labelItem)}{binOf(labelItem) ? ` · Bin ${binOf(labelItem)}` : ""}</p>
             <div className="mt-3 flex h-12 items-stretch justify-center gap-0 overflow-hidden" aria-hidden="true">
               {barcodeBits(String(labelItem.sku)).map((b, idx) => (
                 <div key={idx} style={{ width: b ? 3 : 2, background: b ? "#0b1e33" : "#ffffff" }} />
               ))}
             </div>
             <p className="mt-2 font-mono text-xs tracking-widest text-navy-900">{labelItem.sku}</p>
+            <p className="mt-1 font-mono text-[11px] text-steel-500" title="Payload untuk cetak QR eksternal">QR: {qrPayloadOf(labelItem)}</p>
           </div>
         )}
       </Modal>
@@ -1578,6 +1691,8 @@ export default function Inventory() {
             {([
               ["Kategori", freshDetail.category],
               ["Gudang / Rak", rackText(freshDetail)],
+              ["Bin", binOf(freshDetail) || "—"],
+              ["Payload QR (SKU)", qrPayloadOf(freshDetail)],
               ["Stok", `${fmtJumlah(Number(freshDetail.stock))} ${freshDetail.unit}${hasUom2(freshDetail) ? ` (≈ ${fmtJumlah(qtyInUom2(freshDetail))} ${uom2Of(freshDetail)})` : ""}`],
               ["Tersedia", `${fmtJumlah(availOf(freshDetail))} ${freshDetail.unit}`],
               ["Reservasi", reservedOf(freshDetail).length > 0 ? reservedOf(freshDetail).map((r) => `${r.project} × ${fmtJumlah(Number(r.qty))}`).join("; ") : "—"],
@@ -1606,6 +1721,13 @@ export default function Inventory() {
           </dl>
         )}
       </Modal>
+
+      {showScan && (
+        <ScanModal
+          onClose={() => setShowScan(false)}
+          onDetect={(v) => { setQ(v); setShowScan(false); toast(`Hasil scan: ${v}`); }}
+        />
+      )}
     </div>
   );
 }

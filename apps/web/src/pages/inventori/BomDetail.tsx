@@ -23,6 +23,14 @@ function reservedQty(it: StoreItem): number {
   return r.reduce((s, x) => s + Number(x.qty || 0), 0);
 }
 
+function binOf(it: StoreItem): string {
+  return String(it.bin ?? "").trim();
+}
+
+function qrPayloadOf(it: StoreItem): string {
+  return String(it.sku ?? "").trim();
+}
+
 function rackText(it: StoreItem): string {
   const rack = it.rack ?? it.location ?? "";
   if (!rack) return String(it.warehouse ?? "—");
@@ -132,6 +140,8 @@ export default function BomDetail() {
             {([
               ["Kategori", String(item.category)],
               ["Gudang / Rak", rackText(item)],
+              ["Bin", binOf(item) || "—"],
+              ["Payload QR (SKU)", qrPayloadOf(item)],
               ["Stok", `${fmtJumlah(Number(item.stock))} ${item.unit}`],
               ["Tersedia", `${fmtJumlah(tersedia)} ${item.unit}`],
               ["Volume per unit", fmtJumlah(Number(item.volume ?? 0))],
@@ -153,6 +163,7 @@ export default function BomDetail() {
                 <div key={idx} style={{ width: b ? 3 : 2, background: b ? "#0b1e33" : "#ffffff" }} />
               ))}
             </div>
+            <p className="mt-2 font-mono text-[11px] text-steel-500" title="Payload untuk cetak QR eksternal">QR: {qrPayloadOf(item)}{binOf(item) ? ` · Bin ${binOf(item)}` : ""}</p>
           </div>
         </Card>
 

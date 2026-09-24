@@ -126,6 +126,7 @@ const emptyForm = {
   prioritas: "Sedang",
   vesselLoa: "",
   vesselType: "",
+  vesselImo: "",
 };
 
 const TPL_KEY = "isms.templates";
@@ -303,15 +304,28 @@ export default function Projects() {
 
   const save = () => {
     if (!form.vessel.trim() || !form.client.trim()) { toast("Nama kapal & klien wajib diisi", "info"); return; }
+    if (!form.branch.trim()) { toast("Cabang wajib dipilih", "info"); return; }
+    if (!branchOptions.includes(form.branch)) { toast("Cabang tidak dikenal", "info"); return; }
+    const scopeItems = form.scope.split(",").map((s) => s.trim()).filter(Boolean);
+    if (scopeItems.length === 0) { toast("Ruang lingkup minimal 1 item (pisahkan koma)", "info"); return; }
     if (!form.start || !form.end) { toast("Tanggal mulai & selesai rencana wajib diisi", "info"); return; }
     if (form.end < form.start) { toast("Tanggal selesai tidak boleh sebelum tanggal mulai", "info"); return; }
     const budget = Number(form.budget);
     if (!Number.isFinite(budget) || budget <= 0) { toast("Nilai kontrak harus lebih dari 0", "info"); return; }
     if (!form.manager) { toast("Pilih project manager", "info"); return; }
+    if (form.type === "New Build" && projects.some((p) => String(p.vessel ?? "").trim().toLowerCase() === form.vessel.trim().toLowerCase() && String(p.type) === "New Build")) {
+      toast("Kapal ini sudah punya proyek New Build — duplikat ditolak (Repair/Retrofit boleh berulang)", "info");
+      return;
+    }
     if (!vesselExists) {
       const loa = Number(form.vesselLoa);
       if (!Number.isFinite(loa) || loa <= 0) { toast("Kapal belum terdaftar: LOA kapal baru wajib diisi (> 0)", "info"); return; }
       if (!form.vesselType.trim()) { toast("Kapal belum terdaftar: tipe kapal wajib diisi", "info"); return; }
+      const imoRaw = form.vesselImo.trim();
+      if (!imoRaw || imoRaw === "-" || imoRaw.toUpperCase() === "IMO" || imoRaw.toUpperCase() === "IMO -") {
+        toast("Kapal baru: IMO wajib diisi — real IMO (cth IMO 1234567) atau TBD-... bila menyusul", "info");
+        return;
+      }
     }
     const code = nextProjectCode(form.type, form.start);
     const created: StoreItem = add(
@@ -332,7 +346,7 @@ export default function Projects() {
         budget,
         actual: 0,
         manager: form.manager,
-        scope: form.scope.split(",").map((s) => s.trim()).filter(Boolean),
+        scope: scopeItems,
       },
       { action: "membuat proyek", module: "Proyek" }
     );
@@ -350,7 +364,7 @@ export default function Projects() {
     if (!vesselExists) {
       add("vessels", {
         name: form.vessel.trim(),
-        imo: "IMO -",
+        imo: form.vesselImo.trim(),
         type: form.vesselType.trim(),
         class: "BKI",
         flag: "Indonesia",
@@ -361,7 +375,7 @@ export default function Projects() {
         certificates: [],
         history: [{ date: form.start, event: "Proyek dibuat", type: "Kontrak" }],
       }, { action: "mendaftarkan kapal", target: form.vessel.trim(), module: "Kapal" });
-      toast(`Proyek ${created.id} dibuat; kapal baru terdaftar (IMO menyusul, lengkapi data dimensi)`);
+      toast(`Proyek ${created.id} dibuat; kapal baru terdaftar (${form.vesselImo.trim()})`);
     } else {
       toast(`Proyek ${created.id} dibuat & terhubung ke kapal`);
     }
@@ -653,6 +667,11 @@ export default function Projects() {
                 <Field label="LOA kapal baru (m)"><input type="number" min={0} step={0.1} className="input" value={form.vesselLoa} onChange={(e) => setF("vesselLoa", e.target.value)} placeholder="cth: 32" /></Field>
                 <Field label="Tipe kapal baru"><input className="input" value={form.vesselType} onChange={(e) => setF("vesselType", e.target.value)} placeholder="cth: Tugboat ASD 2x1600 HP" /></Field>
               </FormGrid>
+              <div className="mt-2">
+                <Field label="IMO kapal baru" hint='Wajib — real IMO (cth IMO 1234567) atau TBD-... bila menyusul. Placeholder "IMO -" ditolak.'>
+                  <input className="input font-mono" value={form.vesselImo} onChange={(e) => setF("vesselImo", e.target.value)} placeholder="IMO 1234567 atau TBD-NB-01" />
+                </Field>
+              </div>
             </div>
           )}
           <Field label="Nilai kontrak (Rp)">

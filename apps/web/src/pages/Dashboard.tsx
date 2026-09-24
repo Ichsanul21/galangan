@@ -46,6 +46,8 @@ import {
   toast,
 } from "../components/ui";
 import { useStore } from "../data/store";
+import type { StoreItem } from "../data/store";
+import { getSetting } from "../utils/settings";
 import { useAuth, canSetTarget } from "../auth/auth";
 import { exportExcel } from "../utils/export";
 import { todayISO } from "../utils/format";
@@ -174,6 +176,11 @@ export default function Dashboard() {
 
   const today = todayISO();
   const todayMs = Date.parse(today);
+  const msDays = getSetting(data, "ALERT_MILESTONE_DAYS", 7);
+  const cpDays = getSetting(data, "ALERT_CP_DAYS", 3);
+  const cert90 = getSetting(data, "ALERT_CERT_DAYS", 90);
+  const cert60 = getSetting(data, "ALERT_CERT_60", 60);
+  const cert30 = getSetting(data, "ALERT_CERT_30", 30);
   const wbsEndMs = (end: string): number | null => {
     const m = /^(\d{4})-(\d{2})/.exec(String(end ?? ""));
     if (!m) {
@@ -189,9 +196,17 @@ export default function Dashboard() {
         const t = wbsEndMs(w.end);
         if (t === null) return false;
         const diff = Math.ceil((t - todayMs) / 86400000);
-        return diff >= 0 && diff < 30;
+        return diff >= 0 && diff <= msDays;
       })
       .map((w) => ({ project: p.id, task: w.task }))
+  );
+  const cpDelayed = branchProjects.filter((p) =>
+    wbsFor(p.id).some((w) => {
+      if (Number(w.progress || 0) !== 0) return false;
+      const t = wbsEndMs(w.end);
+      if (t === null) return false;
+      return Math.floor((todayMs - t) / 86400000) > cpDays;
+    })
   );
   const budgetTight = branchProjects.filter((p) => {
     const b = Number(p.budget || 0);
@@ -201,15 +216,26 @@ export default function Dashboard() {
   });
   const overrun = branchProjects.filter((p) => Number(p.actual || 0) > Number(p.budget || 0));
   const overrun10 = overrun.filter((p) => Number(p.actual || 0) > Number(p.budget || 0) * 1.1);
-  const certMonth = today.slice(0, 7);
-  const certExpiring = data.vessels.filter((v) =>
-    (v.certificates ?? []).some((c: { expires: string }) => {
-      const m1 = /^(\d{4})-(\d{2})$/.exec(String(c.expires ?? ""));
-      const m2 = /^(\d{4})-(\d{2})$/.exec(certMonth);
-      if (!m1 || !m2) return false;
-      return (Number(m1[1]) - Number(m2[1])) * 12 + (Number(m1[2]) - Number(m2[2])) <= 3;
-    })
-  );
+  const certDaysUntil = (exp: string): number | null => {
+    const t = wbsEndMs(exp);
+    if (t === null) return null;
+    return Math.ceil((t - todayMs) / 86400000);
+  };
+  const vesselCertTier = (v: StoreItem): "crit" | "warn" | "info" | null => {
+    let best: number | null = null;
+    for (const c of (v.certificates ?? []) as { expires?: string }[]) {
+      const d = certDaysUntil(String(c.expires ?? ""));
+      if (d === null || d > cert90) continue;
+      if (best === null || d < best) best = d;
+    }
+    if (best === null) return null;
+    if (best <= cert30) return "crit";
+    if (best <= cert60) return "warn";
+    return "info";
+  };
+  const certCrit = data.vessels.filter((v) => vesselCertTier(v) === "crit");
+  const certWarn = data.vessels.filter((v) => vesselCertTier(v) === "warn");
+  const certInfo = data.vessels.filter((v) => vesselCertTier(v) === "info");
   const overdueInvoices = data.invoices.filter(
     (i) => i.status !== "Lunas" && i.status !== "Draft" && String(i.due) < today
   );
@@ -222,7 +248,10 @@ export default function Dashboard() {
 
   const attention: { icon: typeof Boxes; text: string; to: string; tone: string }[] = [
     ...(staleMilestones.length
-      ? [{ icon: AlertTriangle, text: `${staleMilestones.length} milestone 0% berakhir <30 hari (${staleMilestones[0].project})`, to: "/proyek", tone: "bg-rose-50 text-rose-600" }]
+      ? [{ icon: AlertTriangle, text: `${staleMilestones.length} milestone 0% berakhir ≤${msDays} hari (${staleMilestones[0].project})`, to: "/proyek", tone: "bg-amber-50 text-amber-600" }]
+      : []),
+    ...(cpDelayed.length
+      ? [{ icon: Clock, text: `${cpDelayed.length} proyek critical-path delay >${cpDays} hari (${cpDelayed[0].id})`, to: "/proyek/monitoring", tone: "bg-rose-50 text-rose-600" }]
       : []),
     ...(budgetTight.length
       ? [{ icon: Wallet, text: `${budgetTight.length} proyek serapan >80% (${budgetTight[0].id})`, to: "/proyek", tone: "bg-amber-50 text-amber-600" }]
@@ -233,8 +262,14 @@ export default function Dashboard() {
     ...(lowStock.length
       ? [{ icon: Boxes, text: `${lowStock.length} item stok di bawah minimum`, to: "/inventori", tone: "bg-amber-50 text-amber-600" }]
       : []),
-    ...(certExpiring.length
-      ? [{ icon: FileCheck2, text: `${certExpiring.length} kapal sertifikat kedaluwarsa ≤90 hari`, to: "/kapal", tone: "bg-rose-50 text-rose-600" }]
+    ...(certCrit.length
+      ? [{ icon: FileCheck2, text: `${certCrit.length} kapal sertifikat kritis/kedaluwarsa ≤${cert30} hari`, to: "/kapal", tone: "bg-rose-50 text-rose-600" }]
+      : []),
+    ...(certWarn.length
+      ? [{ icon: FileCheck2, text: `${certWarn.length} kapal sertifikat warning ≤${cert60} hari`, to: "/kapal", tone: "bg-amber-50 text-amber-600" }]
+      : []),
+    ...(certInfo.length
+      ? [{ icon: FileCheck2, text: `${certInfo.length} kapal sertifikat info ≤${cert90} hari`, to: "/kapal", tone: "bg-ocean-50 text-ocean-600" }]
       : []),
     ...(overdueInvoices.length
       ? [{ icon: Wallet, text: `${overdueInvoices.length} invoice overdue (7h: ${overdue7.length} · 14h: ${overdue14.length} · 30h+: ${overdue730.length})`, to: "/keuangan", tone: "bg-rose-50 text-rose-600" }]

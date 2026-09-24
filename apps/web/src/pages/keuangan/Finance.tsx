@@ -246,6 +246,7 @@ export default function Finance() {
     kodePembantu: "",
     skdt: false, // INV PAKAI SKDT: tanpa PPN (cth BG MHKL 35)
     dpApplied: "", // amortisasi uang muka (cth V2 potong DP-1 Rp 1.098M)
+    dpRef: "", // referensi DP wajib bila dpApplied > 0 (cth INV/UM-SMD-2026-001)
   });
   const [invLines, setInvLines] = useDraftState<InvLine[]>("isms.draft.finance.invLines", [emptyLine()]);
   const [payTarget, setPayTarget] = useState<StoreItem | null>(null);
@@ -777,6 +778,9 @@ export default function Finance() {
     const proj = projectById[invForm.project];
     if (!proj) { toast("Pilih proyek dulu", "info"); return; }
     if (!invForm.due) { toast("Jatuh tempo wajib diisi", "info"); return; }
+    if (!invForm.paymentTerm.trim()) { toast("Termin label wajib diisi", "info"); return; }
+    if (invForm.billingType === "Milestone" && !invForm.milestoneRef.trim()) { toast("Milestone ref wajib untuk billing Milestone", "info"); return; }
+    if (num(invForm.dpApplied) > 0 && !invForm.dpRef.trim()) { toast("Referensi DP wajib diisi bila amortisasi DP > 0", "info"); return; }
     const validLines = invLines.filter((l) => l.desc.trim() && lineAmount(l, isTMForm) > 0);
     if (validLines.length === 0) { toast("Isi minimal satu baris dengan nominal lebih dari 0", "info"); return; }
     if (invForm.nsfp.trim() && (data.invoices ?? []).some((i) => String(i.nsfp ?? "") === invForm.nsfp.trim())) { toast("NSFP sudah dipakai invoice lain", "info"); return; }
@@ -801,6 +805,21 @@ export default function Finance() {
       dpApplied: num(invForm.dpApplied),
       retentionPct: pct,
     });
+    // H-03: recompute PPN/PPh vs stored — tolak bila tidak konsisten.
+    const verify = sbInvoiceMath({
+      jasa: jasaTotal,
+      material: matTotal,
+      ppnRate: getSetting(data, "PPN_INVOICE_RATE", PPN_INVOICE_DEFAULT),
+      pphRate: getSetting(data, "PPH_JASA_RATE", PPH_JASA_DEFAULT),
+      skdt: invForm.skdt,
+      dpApplied: num(invForm.dpApplied),
+      retentionPct: pct,
+    });
+    if (verify.dpp !== sb.dpp || verify.ppn !== sb.ppn || verify.pph !== sb.pph || verify.grand !== sb.grand || verify.retentionAmt !== retentionAmt) {
+      toast("Hitungan PPN/PPh tidak konsisten — periksa lines, tarif & retensi", "info");
+      return;
+    }
+    if (!Number.isFinite(sb.grand) || sb.grand <= 0) { toast("Grand total harus lebih dari 0 — periksa lines & potongan DP", "info"); return; }
     const storedLines = validLines.map((l) => ({
       desc: l.desc.trim(),
       qty: num(l.qty),
@@ -831,6 +850,7 @@ export default function Finance() {
       milestoneRef: invForm.milestoneRef.trim(),
       serviceRef: invForm.serviceRef.trim(),
       ...(invForm.clientPO ? { clientPO: invForm.clientPO } : {}),
+      ...(invForm.dpRef.trim() ? { dpRef: invForm.dpRef.trim() } : {}),
       lines: storedLines,
       retentionPct: pct,
       retentionAmt,
@@ -853,7 +873,7 @@ export default function Finance() {
     }
     toast(`Invoice ${created.id} dibuat (Draft)`);
     setShowInv(false);
-    setInvForm({ project: "", billingType: "Milestone", milestoneRef: "", serviceRef: "", clientPO: "", retentionPct: "5", due: "", paymentTerm: "Termin 1", nsfp: "", noFaktur: "", kodePembantu: "", skdt: false, dpApplied: "" });
+    setInvForm({ project: "", billingType: "Milestone", milestoneRef: "", serviceRef: "", clientPO: "", retentionPct: "5", due: "", paymentTerm: "Termin 1", nsfp: "", noFaktur: "", kodePembantu: "", skdt: false, dpApplied: "", dpRef: "" });
     setInvLines([emptyLine()]);
   };
 
@@ -2474,7 +2494,7 @@ export default function Finance() {
             </Field>
           </FormGrid>
           <FormGrid>
-            <Field label="Milestone ref" hint="cth: Milestone 3 / Termin 2">
+            <Field label="Milestone ref" hint="Wajib untuk billing Milestone — cth: Milestone 3 / Termin 2">
               <input className="input" value={invForm.milestoneRef} onChange={(e) => setInv("milestoneRef", e.target.value)} placeholder="Milestone 3" />
             </Field>
             <Field label="Jatuh tempo">
@@ -2505,6 +2525,9 @@ export default function Finance() {
               <input type="number" min={0} className="input" value={invForm.dpApplied} onChange={(e) => setInv("dpApplied", e.target.value)} placeholder="0" />
             </Field>
           </FormGrid>
+          <Field label="Referensi DP" hint="Wajib bila amortisasi DP > 0 — no. invoice Uang Muka yang dipotong">
+            <input className="input font-mono" value={invForm.dpRef} onChange={(e) => setInv("dpRef", e.target.value)} placeholder="cth: INV/UM-SMD-2026-001" />
+          </Field>
           <label className="flex items-center gap-2 text-sm text-steel-600">
             <input type="checkbox" checked={invForm.skdt} onChange={(e) => setInvForm((f) => ({ ...f, skdt: e.target.checked }))} />
             SKDT — tanpa PPN (cth INV PAKAI SKDT BG MHKL 35)
