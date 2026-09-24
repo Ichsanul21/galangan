@@ -15,7 +15,11 @@ import {
   Badge,
   toast,
   Avatar,
+  SortTh,
+  toggleSort,
+  sortRows,
 } from "../../components/ui";
+import type { SortState } from "../../components/ui";
 import BoQSection from "./BoQSection";
 import ReportSection from "./ReportSection";
 import SparepartServiceSection from "./SparepartServiceSection";
@@ -61,6 +65,9 @@ export default function ProjectDetail() {
   const [riskForm, setRiskForm] = useState({ title: "", likelihood: "Sedang", impact: "Sedang", mitigation: "", status: "Aktif" });
   const [docFile, setDocFile] = useState("");
   const [showDelBaseline, setShowDelBaseline] = useState(false);
+  const [sort, setSort] = useState<SortState>({ key: null, dir: "asc" });
+  const [sort2, setSort2] = useState<SortState>({ key: null, dir: "asc" });
+  const [sort3, setSort3] = useState<SortState>({ key: null, dir: "asc" });
 
   const weightedProgress = (items: { progress: number; weight: number }[]): number => {
     const totalW = items.reduce((s, w) => s + Number(w.weight || 0), 0);
@@ -287,7 +294,7 @@ export default function ProjectDetail() {
       </div>
 
       <div className="mt-5 card">
-        <Tabs tabs={["Ringkasan", "WBS & Anggaran", "BoQ", "Dokumen & Laporan", "Perubahan & Risiko", "Terkait", "3D Viewer", "Service", "Sparepart", "Tim"]} active={tab} onChange={setTab} />
+        <Tabs tabs={["Ringkasan", "WBS & Anggaran", "BoQ", "Dokumen & Laporan", "Perubahan & Risiko", "Terkait", ...(getSetting(data, "SHOW_3D_PROJECT", 0) === 1 ? ["3D Viewer"] : []), "Service", "Sparepart", "Tim"]} active={tab} onChange={setTab} />
         <div className="p-5">
           {tab === "Ringkasan" && (
             <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
@@ -363,10 +370,10 @@ export default function ProjectDetail() {
               <div className="overflow-x-auto">
                 <table className="w-full">
                   <thead className="bg-surface">
-                    <tr><th className="th">Tahapan</th><th className="th">Mulai</th><th className="th">Selesai</th><th className="th">Bobot</th><th className="th">Pred</th><th className="th">Progres</th><th className="th">Aksi</th></tr>
+                    <tr><SortTh label="Tahapan" sortKey="task" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label="Mulai" sortKey="start" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label="Selesai" sortKey="end" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label="Bobot" sortKey="weight" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label="Pred" sortKey="predecessor" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label="Progres" sortKey="progress" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><th className="th">Aksi</th></tr>
                   </thead>
                   <tbody className="divide-y divide-steel-100">
-                    {wbs.map((w) => (
+                    {sortRows(wbs, sort, (w: WbsExt, k) => k === "weight" ? Number(w.weight) : k === "progress" ? Number(w.progress) : String((w as unknown as Record<string, unknown>)[k] ?? "")).map((w) => (
                       <tr key={w.task}>
                          <td className="td font-medium text-navy-900">{w.task}</td>
                          <td className="td font-mono text-xs text-steel-500">{fmtBulan(w.start)}</td>
@@ -427,10 +434,10 @@ export default function ProjectDetail() {
                   <div className="overflow-x-auto">
                     <table className="w-full">
                       <thead className="bg-surface">
-                        <tr><th className="th">Tahapan</th><th className="th">Rencana (baseline)</th><th className="th">Aktual</th><th className="th">Deviasi</th></tr>
+                        <tr><SortTh label="Tahapan" sortKey="task" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} /><SortTh label="Rencana (baseline)" sortKey="planned" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} /><SortTh label="Aktual" sortKey="actual" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} /><SortTh label="Deviasi" sortKey="dev" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} /></tr>
                       </thead>
                       <tbody className="divide-y divide-steel-100">
-                        {wbs.map((w) => {
+                        {sortRows(wbs, sort2, (w: WbsExt, k) => { const base = baseline?.wbs.find((b) => b.task === w.task); const planned = base ? Number(base.progress) || 0 : 0; const actual = Number(w.progress) || 0; if (k === "planned") return planned; if (k === "actual") return actual; if (k === "dev") return actual - planned; return String(w.task); }).map((w) => {
                           const base = baseline.wbs.find((b) => b.task === w.task);
                           const planned = base ? Number(base.progress) || 0 : 0;
                           const actual = Number(w.progress) || 0;
@@ -613,12 +620,12 @@ export default function ProjectDetail() {
                   <table className="w-full text-center text-xs">
                     <thead>
                       <tr>
-                        <th className="th text-left">Kemungkinan \ Dampak</th>
-                        {RISK_LEVEL.map((l) => <th key={l} className="th">{l}</th>)}
+                        <SortTh label="Kemungkinan \ Dampak" sortKey="level" sort={sort3} onSort={(k) => setSort3((s) => toggleSort(s, k))} />
+                        {RISK_LEVEL.map((l) => <SortTh key={l} label={l} sortKey={l} sort={sort3} onSort={(k) => setSort3((s) => toggleSort(s, k))} />)}
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-steel-100">
-                      {RISK_LEVEL.map((lh) => (
+                      {sortRows(RISK_LEVEL, sort3, (lh, k) => k === "level" ? String(lh) : Number(riskList.filter((r) => String(r.likelihood) === String(lh) && String(r.impact) === String(k) && String(r.status) !== "Tertutup").length)).map((lh) => (
                         <tr key={lh}>
                           <td className="td text-left font-medium text-navy-900">{lh}</td>
                           {RISK_LEVEL.map((im) => {
@@ -686,7 +693,7 @@ export default function ProjectDetail() {
           )}
           {tab === "BoQ" && <BoQSection projectId={pid} />}
           {tab === "Dokumen & Laporan" && <div className="mt-6"><ReportSection projectId={pid} /></div>}
-          {tab === "3D Viewer" && <SparepartServiceSection projectId={pid} view="3d" />}
+          {tab === "3D Viewer" && getSetting(data, "SHOW_3D_PROJECT", 0) === 1 && <SparepartServiceSection projectId={pid} view="3d" />}
           {tab === "Service" && <SparepartServiceSection projectId={pid} view="service" />}
           {tab === "Sparepart" && <SparepartServiceSection projectId={pid} view="sparepart" />}
         </div>

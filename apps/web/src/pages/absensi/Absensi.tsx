@@ -7,10 +7,14 @@ import {
   EmptyState,
   KpiCard,
   PageHeader,
+  SortTh,
   StatusBadge,
   Tabs,
+  sortRows,
   toast,
+  toggleSort,
 } from "../../components/ui";
+import type { SortState } from "../../components/ui";
 import { useStore } from "../../data/store";
 import type { StoreItem } from "../../data/store";
 import { fmtJumlah, fmtTanggal, todayISO } from "../../utils/format";
@@ -56,6 +60,9 @@ export default function Absensi() {
 
   /* ---------- rekap ---------- */
   const [month, setMonth] = useState(todayISO().slice(0, 7));
+  const [sort, setSort] = useState<SortState>({ key: null, dir: "asc" });
+  const [sort2, setSort2] = useState<SortState>({ key: null, dir: "asc" });
+  const [sort3, setSort3] = useState<SortState>({ key: null, dir: "asc" });
 
   const branchCities = useMemo(() => data.branches.map((b) => String(b.city)), [data.branches]);
   const activeEmps = useMemo(
@@ -270,16 +277,28 @@ export default function Absensi() {
                   <table className="w-full">
                     <thead className="bg-surface sticky top-0 z-10">
                       <tr>
-                        <th className="th">Karyawan</th>
-                        <th className="th">Status</th>
-                        <th className="th">Masuk</th>
-                        <th className="th">Keluar</th>
-                        <th className="th">Lembur (jam)</th>
-                        <th className="th">Ket.</th>
+                        <SortTh label="Karyawan" sortKey="emp" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} />
+                        <SortTh label="Status" sortKey="status" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} />
+                        <SortTh label="Masuk" sortKey="in" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} />
+                        <SortTh label="Keluar" sortKey="out" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} />
+                        <SortTh label="Lembur (jam)" sortKey="ot" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} />
+                        <SortTh label="Ket." sortKey="ket" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} />
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-steel-100">
-                      {activeEmps.map((e: StoreItem) => {
+                      {sortRows(activeEmps, sort, (row, k) => {
+                        const e = row as StoreItem;
+                        const r = rowFor(String(e.id));
+                        switch (k) {
+                          case "emp": return String(e.name ?? "");
+                          case "status": return String(r.status ?? "");
+                          case "in": return String(r.checkIn ?? "");
+                          case "out": return String(r.checkOut ?? "");
+                          case "ot": return Number(r.overtime ?? 0);
+                          case "ket": return String(r.status) === "Hadir" && isLate(String(r.checkIn ?? "")) ? "Telat" : "";
+                          default: return "";
+                        }
+                      }).map((e: StoreItem) => {
                         const r = rowFor(e.id);
                         const hadir = r.status === "Hadir";
                         return (
@@ -344,19 +363,33 @@ export default function Absensi() {
                   <table className="w-full">
                     <thead className="bg-surface sticky top-0 z-10">
                       <tr>
-                        <th className="th">Karyawan</th>
-                        <th className="th">H</th>
-                        <th className="th">I</th>
-                        <th className="th">S</th>
-                        <th className="th">C</th>
-                        <th className="th">A</th>
-                        <th className="th">Lembur</th>
-                        <th className="th">Telat</th>
-                        <th className="th">Kehadiran</th>
+                        <SortTh label="Karyawan" sortKey="emp" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} />
+                        <SortTh label="H" sortKey="h" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} />
+                        <SortTh label="I" sortKey="i" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} />
+                        <SortTh label="S" sortKey="s" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} />
+                        <SortTh label="C" sortKey="c" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} />
+                        <SortTh label="A" sortKey="a" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} />
+                        <SortTh label="Lembur" sortKey="lembur" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} />
+                        <SortTh label="Telat" sortKey="telat" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} />
+                        <SortTh label="Kehadiran" sortKey="pct" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} />
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-steel-100">
-                      {summary.map((r) => (
+                      {sortRows(summary, sort2, (row, k) => {
+                        const r = row as { emp: StoreItem; h: number; i: number; s: number; c: number; a: number; lembur: number; telat: number; pct: number };
+                        switch (k) {
+                          case "emp": return String(r.emp.name ?? "");
+                          case "h": return Number(r.h);
+                          case "i": return Number(r.i);
+                          case "s": return Number(r.s);
+                          case "c": return Number(r.c);
+                          case "a": return Number(r.a);
+                          case "lembur": return Number(r.lembur);
+                          case "telat": return Number(r.telat);
+                          case "pct": return Number(r.pct);
+                          default: return "";
+                        }
+                      }).map((r) => (
                         <tr key={r.emp.id} className="hover:bg-surface">
                           <td className="td font-medium text-navy-900">{r.emp.name}</td>
                           <td className="td font-semibold text-emerald-600">{r.h}</td>
@@ -381,18 +414,31 @@ export default function Absensi() {
                   <table className="w-full">
                     <thead className="bg-surface sticky top-0 z-10">
                       <tr>
-                        <th className="th">Tanggal</th>
-                        <th className="th">Karyawan</th>
-                        <th className="th">Shift</th>
-                        <th className="th">Status</th>
-                        <th className="th">Jam</th>
-                        <th className="th">Lembur</th>
-                        <th className="th">Persetujuan</th>
-                        <th className="th">Ket.</th>
+                        <SortTh label="Tanggal" sortKey="date" sort={sort3} onSort={(k) => setSort3((s) => toggleSort(s, k))} />
+                        <SortTh label="Karyawan" sortKey="emp" sort={sort3} onSort={(k) => setSort3((s) => toggleSort(s, k))} />
+                        <SortTh label="Shift" sortKey="shift" sort={sort3} onSort={(k) => setSort3((s) => toggleSort(s, k))} />
+                        <SortTh label="Status" sortKey="status" sort={sort3} onSort={(k) => setSort3((s) => toggleSort(s, k))} />
+                        <SortTh label="Jam" sortKey="jam" sort={sort3} onSort={(k) => setSort3((s) => toggleSort(s, k))} />
+                        <SortTh label="Lembur" sortKey="lembur" sort={sort3} onSort={(k) => setSort3((s) => toggleSort(s, k))} />
+                        <SortTh label="Persetujuan" sortKey="ot" sort={sort3} onSort={(k) => setSort3((s) => toggleSort(s, k))} />
+                        <SortTh label="Ket." sortKey="ket" sort={sort3} onSort={(k) => setSort3((s) => toggleSort(s, k))} />
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-steel-100">
-                      {detailRecords.slice(0, 100).map((a) => (
+                      {sortRows(detailRecords, sort3, (row, k) => {
+                        const a = row as StoreItem;
+                        switch (k) {
+                          case "date": return String(a.date ?? "");
+                          case "emp": return String(empNameOf(String(a.employeeId ?? "")));
+                          case "shift": return String(a.shift ?? "");
+                          case "status": return String(a.status ?? "");
+                          case "jam": return String(a.checkIn ?? "") + "-" + String(a.checkOut ?? "");
+                          case "lembur": return Number(a.overtime ?? 0);
+                          case "ot": return String(otStatusOf(a));
+                          case "ket": return String(a.status) === "Hadir" && isLate(String(a.checkIn ?? "")) ? "Telat" : "";
+                          default: return "";
+                        }
+                      }).slice(0, 100).map((a) => (
                         <tr key={a.id} className="hover:bg-surface">
                           <td className="td text-steel-600">{fmtTanggal(a.date)}</td>
                           <td className="td text-navy-900">{empNameOf(String(a.employeeId))}</td>

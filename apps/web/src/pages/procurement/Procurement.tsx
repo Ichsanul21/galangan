@@ -1,7 +1,8 @@
 import { useState } from "react";
 import { Plus, Factory, ShoppingCart, ClipboardList, Check, X, Undo2, Printer, Pencil, Send, Star, Wallet, Umbrella } from "lucide-react";
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
-import { Card, CardHeader, PageHeader, Badge, KpiCard, Tabs, StatusBadge, Donut, ChartTooltip, Modal, Field, FormGrid, ConfirmModal, toast, EmptyState } from "../../components/ui";
+import { Card, CardHeader, PageHeader, Badge, KpiCard, Tabs, StatusBadge, Donut, ChartTooltip, Modal, Field, FormGrid, ConfirmModal, toast, EmptyState, SortTh, toggleSort, sortRows } from "../../components/ui";
+import type { SortState } from "../../components/ui";
 import { useStore, type StoreItem } from "../../data/store";
 import { fmtRupiah, fmtJumlah, fmtTanggal, todayISO } from "../../utils/format";
 import { getSetting } from "../../utils/settings";
@@ -133,6 +134,10 @@ export default function Procurement() {
   const PO_KECIL_LIMIT = getSetting(data, "PO_KECIL_LIMIT", 50000000);
 
   const [tab, setTab] = useState("PO Besar (Kantor)");
+  const [sort, setSort] = useState<SortState>({ key: null, dir: "asc" });
+  const [sort2, setSort2] = useState<SortState>({ key: null, dir: "asc" });
+  const [sort3, setSort3] = useState<SortState>({ key: null, dir: "asc" });
+  const [sort4, setSort4] = useState<SortState>({ key: null, dir: "asc" });
 
   /* ---- PO Besar ---- */
   const [showBig, setShowBig] = useState(false);
@@ -745,10 +750,19 @@ export default function Procurement() {
               <div className="overflow-x-auto">
                 <table className="w-full">
                   <thead className="bg-surface sticky top-0 z-10">
-                    <tr><th className="th">PO</th><th className="th">Item</th><th className="th">Vendor</th><th className="th">Nilai</th><th className="th">Level</th><th className="th">ETA</th><th className="th">Revisi</th><th className="th">Status</th><th className="th">Aksi</th></tr>
+                    <tr><SortTh label="PO" sortKey="po" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label="Item" sortKey="item" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label="Vendor" sortKey="vendor" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label="Nilai" sortKey="nilai" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label="Level" sortKey="level" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label="ETA" sortKey="eta" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label="Revisi" sortKey="revisi" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label="Status" sortKey="status" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><th className="th">Aksi</th></tr>
                   </thead>
                   <tbody className="divide-y divide-steel-100">
-                    {bigList.map((po) => {
+                    {sortRows(bigList, sort, (po, k) => {
+                      if (k === "nilai") return Number(po.amount || 0);
+                      if (k === "item") return String(po.item ?? "");
+                      if (k === "vendor") return String(po.vendor ?? "");
+                      if (k === "level") return String(levelOf(Number(po.amount || 0)));
+                      if (k === "eta") return String(po.eta ?? "");
+                      if (k === "revisi") return String(po.revisi || "R0");
+                      if (k === "status") return String(normPo(String(po.status ?? "")));
+                      return String(po.id ?? "");
+                    }).map((po) => {
                       const st = normPo(po.status);
                       const need = needLevels(Number(po.amount || 0));
                       const done = apprOf(po);
@@ -831,10 +845,17 @@ export default function Procurement() {
                 <div className="overflow-x-auto">
                   <table className="w-full">
                     <thead className="bg-surface sticky top-0 z-10">
-                      <tr><th className="th">PO</th><th className="th">Kebutuhan</th><th className="th">Workshop</th><th className="th">Nilai</th><th className="th">ETA</th><th className="th">Status</th><th className="th">Aksi</th></tr>
+                      <tr><SortTh label="PO" sortKey="po" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} /><SortTh label="Kebutuhan" sortKey="kebutuhan" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} /><SortTh label="Workshop" sortKey="workshop" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} /><SortTh label="Nilai" sortKey="nilai" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} /><SortTh label="ETA" sortKey="eta" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} /><SortTh label="Status" sortKey="status" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} /><th className="th">Aksi</th></tr>
                     </thead>
                     <tbody className="divide-y divide-steel-100">
-                      {smallList.map((po) => {
+                      {sortRows(smallList, sort2, (po, k) => {
+                        if (k === "nilai") return Number(po.amount || 0);
+                        if (k === "kebutuhan") return String(po.item ?? "");
+                        if (k === "workshop") return String(po.workshop ?? "");
+                        if (k === "eta") return String(po.eta ?? "");
+                        if (k === "status") return String(normPo(String(po.status ?? "")));
+                        return String(po.id ?? "");
+                      }).map((po) => {
                         const st = normPo(po.status);
                         return (
                           <tr key={po.id} className="hover:bg-surface">
@@ -891,10 +912,15 @@ export default function Procurement() {
                       : (
                         <table className="mt-3 w-full">
                           <thead className="bg-surface sticky top-0 z-10">
-                            <tr><th className="th">Vendor</th><th className="th">Harga</th><th className="th">ETA</th><th className="th">Komparasi</th></tr>
+                            <tr><SortTh label="Vendor" sortKey="vendor" sort={sort3} onSort={(k) => setSort3((s) => toggleSort(s, k))} /><SortTh label="Harga" sortKey="harga" sort={sort3} onSort={(k) => setSort3((s) => toggleSort(s, k))} /><SortTh label="ETA" sortKey="eta" sort={sort3} onSort={(k) => setSort3((s) => toggleSort(s, k))} /><SortTh label="Komparasi" sortKey="komparasi" sort={sort3} onSort={(k) => setSort3((s) => toggleSort(s, k))} /></tr>
                           </thead>
                           <tbody className="divide-y divide-steel-100">
-                            {quotes.map((x) => (
+                            {sortRows(quotes, sort3, (x, k) => {
+                              if (k === "harga") return Number(x.price || 0);
+                              if (k === "eta") return String(x.eta ?? "");
+                              if (k === "komparasi") return String(`${Number(x.price) === minPrice ? "Termurah" : ""} ${x.eta === minEta ? "Tercepat" : ""}`);
+                              return String(x.vendor ?? "");
+                            }).map((x) => (
                               <tr key={x.vendor}>
                                 <td className="td truncate" title={x.vendor}>{x.vendor}</td>
                                 <td className="td font-semibold">{fmtRupiah(Number(x.price))}</td>
@@ -971,10 +997,16 @@ export default function Procurement() {
                 <div className="overflow-x-auto">
                   <table className="w-full">
                     <thead className="bg-surface sticky top-0 z-10">
-                      <tr><th className="th">PR</th><th className="th">Item</th><th className="th">Oleh</th><th className="th">Nilai</th><th className="th">Status</th><th className="th">Aksi</th></tr>
+                      <tr><SortTh label="PR" sortKey="pr" sort={sort4} onSort={(k) => setSort4((s) => toggleSort(s, k))} /><SortTh label="Item" sortKey="item" sort={sort4} onSort={(k) => setSort4((s) => toggleSort(s, k))} /><SortTh label="Oleh" sortKey="oleh" sort={sort4} onSort={(k) => setSort4((s) => toggleSort(s, k))} /><SortTh label="Nilai" sortKey="nilai" sort={sort4} onSort={(k) => setSort4((s) => toggleSort(s, k))} /><SortTh label="Status" sortKey="status" sort={sort4} onSort={(k) => setSort4((s) => toggleSort(s, k))} /><th className="th">Aksi</th></tr>
                     </thead>
                     <tbody className="divide-y divide-steel-100">
-                      {requisitions.map((r) => (
+                      {sortRows(requisitions, sort4, (r, k) => {
+                        if (k === "nilai") return Number(r.amount || 0);
+                        if (k === "item") return String(r.item ?? "");
+                        if (k === "oleh") return String(r.by ?? "");
+                        if (k === "status") return String(r.status ?? "");
+                        return String(r.id ?? "");
+                      }).map((r) => (
                         <tr key={r.id} className="hover:bg-surface">
                           <td className="td font-mono font-medium text-navy-900">{r.id}</td>
                           <td className="td text-steel-600 truncate" title={String(r.item)}>{r.item}</td>

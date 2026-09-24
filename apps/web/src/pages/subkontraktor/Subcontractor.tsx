@@ -1,7 +1,8 @@
 import { useState } from "react";
 import { Plus, HardHat, FileSignature, Star } from "lucide-react";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from "recharts";
-import { Card, CardHeader, PageHeader, Badge, KpiCard, Tabs, ProgressBar, ChartTooltip, Modal, Field, FormGrid, ConfirmModal, toast } from "../../components/ui";
+import { Card, CardHeader, PageHeader, Badge, KpiCard, Tabs, ProgressBar, ChartTooltip, Modal, Field, FormGrid, ConfirmModal, SortTh, toggleSort, sortRows, toast } from "../../components/ui";
+import type { SortState } from "../../components/ui";
 import { useStore, type StoreItem } from "../../data/store";
 import { fmtRupiah, fmtMiliar, fmtTanggal, todayISO } from "../../utils/format";
 import { subcontractorScore, subActiveTrend, subContractTrend, woTrend, ratingTrend } from "../../data";
@@ -90,6 +91,8 @@ export default function Subcontractor() {
   const projectOptions = data.projects;
   const employeeOptions = data.employees;
   const [tab, setTab] = useState("Subkontraktor");
+  const [sort, setSort] = useState<SortState>({ key: null, dir: "asc" });
+  const [sort2, setSort2] = useState<SortState>({ key: null, dir: "asc" });
   const [typeFilter, setTypeFilter] = useState("Semua");
 
   const [showSub, setShowSub] = useState(false);
@@ -511,10 +514,12 @@ export default function Subcontractor() {
               <div className="overflow-x-auto">
                 <table className="w-full">
                   <thead className="bg-surface sticky top-0 z-10">
-                    <tr><th className="th">Termin</th><th className="th">Subkontraktor</th><th className="th">WO / Progres</th><th className="th">Nilai</th><th className="th">PPh</th><th className="th">Retensi</th><th className="th">Neto</th><th className="th">Tanggal</th><th className="th">Status</th><th className="th">Aksi</th></tr>
+                    <tr><SortTh label="Termin" sortKey="termin" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label="Subkontraktor" sortKey="sub" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label="WO / Progres" sortKey="wo" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label="Nilai" sortKey="nilai" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label="PPh" sortKey="pph" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label="Retensi" sortKey="retensi" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label="Neto" sortKey="neto" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label="Tanggal" sortKey="tanggal" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label="Status" sortKey="status" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><th className="th">Aksi</th></tr>
                   </thead>
                   <tbody className="divide-y divide-steel-100">
-                    {payments.map((p) => {
+                    {sortRows(payments, sort, (p, key) =>
+                      key === "termin" ? String(p.id ?? "") : key === "sub" ? String(p.sub ?? "") : key === "wo" ? String(p.woId ?? p.progress ?? "") : key === "nilai" ? Number(p.amount ?? 0) : key === "pph" ? Number(p.amount ?? 0) * pphOf(p) / 100 : key === "retensi" ? Number(p.amount ?? 0) * retOf(p) / 100 : key === "neto" ? netoOf(p) : key === "tanggal" ? String(p.date ?? "") : String(p.status ?? "")
+                    ).map((p) => {
                       const wo = workOrders.find((w) => w.id === p.woId);
                       const canRelease = normTerm(p.status) === "Lunas" && retOf(p) > 0 && wo?.status === "Selesai";
                       return (
@@ -602,10 +607,12 @@ export default function Subcontractor() {
               <div className="overflow-x-auto">
                 <table className="w-full">
                   <thead className="bg-surface sticky top-0 z-10">
-                    <tr><th className="th">ID</th><th className="th">WO</th><th className="th">Karyawan</th><th className="th">Tanggal</th><th className="th">Jam</th><th className="th">Catatan</th></tr>
+                    <tr><SortTh label="ID" sortKey="id" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} /><SortTh label="WO" sortKey="wo" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} /><SortTh label="Karyawan" sortKey="karyawan" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} /><SortTh label="Tanggal" sortKey="tanggal" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} /><SortTh label="Jam" sortKey="jam" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} /><SortTh label="Catatan" sortKey="catatan" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} /></tr>
                   </thead>
                   <tbody className="divide-y divide-steel-100">
-                    {timesheets.map((t) => (
+                    {sortRows(timesheets, sort2, (t, key) =>
+                      key === "id" ? String(t.id ?? "") : key === "wo" ? String(t.woId ?? "") : key === "karyawan" ? String(t.employeeId ?? "") : key === "tanggal" ? String(t.date ?? "") : key === "jam" ? Number(t.hours ?? 0) : String(t.note ?? "")
+                    ).map((t) => (
                       <tr key={t.id} className="hover:bg-surface">
                         <td className="td font-mono font-medium text-navy-900">{t.id}</td>
                         <td className="td font-mono text-xs text-steel-600">{t.woId}</td>

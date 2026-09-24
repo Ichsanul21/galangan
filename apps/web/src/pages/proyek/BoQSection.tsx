@@ -1,6 +1,7 @@
 import { useState, useMemo } from "react";
 import { useStore } from "../../data/store";
-import { Card, Modal, Field, FormGrid, toast, EmptyState, StatusBadge, Badge } from "../../components/ui";
+import { Card, Modal, Field, FormGrid, toast, EmptyState, StatusBadge, Badge, SortTh, toggleSort, sortRows } from "../../components/ui";
+import type { SortState } from "../../components/ui";
 import { Plus, FileDown } from "lucide-react";
 import { exportExcel, fmtRupiah } from "../../utils/export";
 import { SATUAN, STATUS_BOQ_ID } from "../../utils/format";
@@ -68,7 +69,7 @@ export default function BoQSection({ projectId }: Props) {
   const [q, setQ] = useState("");
   const [catF, setCatF] = useState("Semua");
   const [stF, setStF] = useState("Semua");
-  const [sortDir, setSortDir] = useState<"none" | "asc" | "desc">("none");
+  const [sort, setSort] = useState<SortState>({ key: null, dir: "asc" });
   const [revisiFor, setRevisiFor] = useState<BoQExt | null>(null);
   const [revisiPrice, setRevisiPrice] = useState("");
   const [revisiReason, setRevisiReason] = useState("");
@@ -83,10 +84,8 @@ export default function BoQSection({ projectId }: Props) {
       const matchSt = stF === "Semua" || b.status === stF;
       return matchQ && matchCat && matchSt;
     });
-    if (sortDir === "asc") return [...list].sort((a, b) => a.totalPrice - b.totalPrice);
-    if (sortDir === "desc") return [...list].sort((a, b) => b.totalPrice - a.totalPrice);
     return list;
-  }, [items, q, catF, stF, sortDir]);
+  }, [items, q, catF, stF]);
 
   const totalBoq = useMemo(() => items.reduce((s, b) => s + b.totalPrice, 0), [items]);
   const totalApproved = useMemo(() => items.filter((b) => ["Approved", "Completed"].includes(b.status)).reduce((s, b) => s + b.totalPrice, 0), [items]);
@@ -191,11 +190,6 @@ export default function BoQSection({ projectId }: Props) {
             <option value="Semua">Semua status</option>
             {["Draft", "Pending", "Approved", "Completed", "Rejected"].map((s) => <option key={s} value={s}>{STATUS_BOQ_ID[s] ?? s}</option>)}
           </select>
-          <select className="input w-auto py-1.5 text-sm" aria-label="Urut total" value={sortDir} onChange={(e) => setSortDir(e.target.value as "none" | "asc" | "desc")}>
-            <option value="none">Tanpa urutan</option>
-            <option value="asc">Total terkecil</option>
-            <option value="desc">Total terbesar</option>
-          </select>
           <span className="ml-auto text-xs text-steel-500">{filtered.length} dari {items.length} item</span>
         </div>
 
@@ -238,20 +232,20 @@ export default function BoQSection({ projectId }: Props) {
             <table className="w-full">
               <thead className="bg-surface">
                 <tr>
-                  <th className="th">No</th>
-                  <th className="th">Nama Item</th>
-                  <th className="th">Deskripsi</th>
-                  <th className="th">Qty</th>
-                  <th className="th">Unit</th>
-                  <th className="th">Harga Satuan</th>
-                  <th className="th">Total</th>
-                  <th className="th">Status</th>
-                  <th className="th">Revisi</th>
+                  <SortTh label="No" sortKey="id" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} />
+                  <SortTh label="Nama Item" sortKey="name" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} />
+                  <SortTh label="Deskripsi" sortKey="description" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} />
+                  <SortTh label="Qty" sortKey="quantity" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} />
+                  <SortTh label="Unit" sortKey="unit" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} />
+                  <SortTh label="Harga Satuan" sortKey="unitPrice" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} />
+                  <SortTh label="Total" sortKey="totalPrice" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} />
+                  <SortTh label="Status" sortKey="status" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} />
+                  <SortTh label="Revisi" sortKey="revised" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} />
                   <th className="th">Aksi</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-steel-100">
-                {filtered.map((b) => (
+                {sortRows(filtered, sort, (b: BoQExt, k) => k === "quantity" ? Number(b.quantity) : k === "unitPrice" ? Number(b.unitPrice) : k === "totalPrice" ? Number(b.totalPrice) : k === "revised" ? Number((b.priceHistory ?? []).length) : String((b as unknown as Record<string, unknown>)[k] ?? "")).map((b) => (
                   <tr key={b.id}>
                     <td className="td font-mono text-xs">{b.id}</td>
                     <td className="td font-medium text-navy-900">{b.name}</td>

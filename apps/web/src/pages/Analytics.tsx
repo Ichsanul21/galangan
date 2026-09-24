@@ -34,8 +34,12 @@ import {
   Badge,
   ChartTooltip,
   Donut,
+  SortTh,
+  toggleSort,
+  sortRows,
   toast,
 } from "../components/ui";
+import type { SortState } from "../components/ui";
 import { useStore } from "../data/store";
 import { getSetting } from "../utils/settings";
 import { exportExcel } from "../utils/export";
@@ -111,6 +115,8 @@ function exportChartPNG(chartId: string, filename: string): void {
 
 export default function Analytics() {
   const [tab, setTab] = useState("Deskriptif");
+  const [sort, setSort] = useState<SortState>({ key: null, dir: "asc" });
+  const [sort2, setSort2] = useState<SortState>({ key: null, dir: "asc" });
   const { data, update } = useStore();
   /* What-if dikendalikan dari Pengaturan (grup Analytics) — otomatis dipakai forecast. */
   const growth = getSetting(data, "WHATIF_GROWTH", 0);
@@ -468,10 +474,12 @@ export default function Analytics() {
               <div className="overflow-x-auto">
                 <table className="w-full">
                   <thead className="bg-surface">
-                    <tr><th className="th">Kategori</th><th className="th">Kejadian</th><th className="th">Dampak</th><th className="th">Tren</th></tr>
+                    <tr><SortTh label="Kategori" sortKey="kategori" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label="Kejadian" sortKey="kejadian" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label="Dampak" sortKey="dampak" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><th className="th">Tren</th></tr>
                   </thead>
                   <tbody className="divide-y divide-steel-100">
-                    {drilldown.map((d) => (
+                    {sortRows(drilldown, sort, (d, key) =>
+                      key === "kejadian" ? Number(d.count ?? 0) : key === "dampak" ? Number(d.impact ?? 0) : String(d.factor ?? "")
+                    ).map((d) => (
                       <tr key={d.factor} className="hover:bg-surface">
                         <td className="td font-medium text-navy-900">{d.factor}</td>
                         <td className="td text-steel-600">{d.count}</td>
@@ -564,12 +572,24 @@ export default function Analytics() {
                     if (!a || !b) return null;
                     return (
                       <table className="w-full text-xs">
-                        <thead className="bg-surface"><tr><th className="th">Param</th><th className="th">{a.name}</th><th className="th">{b.name}</th></tr></thead>
+                        <thead className="bg-surface"><tr><SortTh label="Param" sortKey="param" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} /><SortTh label={a.name} sortKey="a" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} /><SortTh label={b.name} sortKey="b" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} /></tr></thead>
                         <tbody className="divide-y divide-steel-100">
-                          <tr><td className="td">Growth</td><td className="td">{a.growth}%</td><td className="td">{b.growth}%</td></tr>
-                          <tr><td className="td">Biaya</td><td className="td">{a.costAdj}%</td><td className="td">{b.costAdj}%</td></tr>
-                          <tr><td className="td">Progres</td><td className="td">{a.progAdj}%</td><td className="td">{b.progAdj}%</td></tr>
-                          <tr><td className="td font-semibold">Forecast/thn</td><td className="td font-semibold">Rp {annualFor(a).toLocaleString("id-ID")} M</td><td className="td font-semibold">Rp {annualFor(b).toLocaleString("id-ID")} M</td></tr>
+                          {sortRows(
+                            [
+                              { param: "Growth", av: Number(a.growth), bv: Number(b.growth), unit: "%" },
+                              { param: "Biaya", av: Number(a.costAdj), bv: Number(b.costAdj), unit: "%" },
+                              { param: "Progres", av: Number(a.progAdj), bv: Number(b.progAdj), unit: "%" },
+                              { param: "Forecast/thn", av: annualFor(a), bv: annualFor(b), unit: "Rp" },
+                            ],
+                            sort2,
+                            (r, key) => key === "a" ? Number(r.av) : key === "b" ? Number(r.bv) : String(r.param)
+                          ).map((r) => (
+                            <tr key={r.param}>
+                              <td className={r.param === "Forecast/thn" ? "td font-semibold" : "td"}>{r.param}</td>
+                              <td className={r.param === "Forecast/thn" ? "td font-semibold" : "td"}>{r.unit === "Rp" ? `Rp ${Number(r.av).toLocaleString("id-ID")} M` : `${r.av}%`}</td>
+                              <td className={r.param === "Forecast/thn" ? "td font-semibold" : "td"}>{r.unit === "Rp" ? `Rp ${Number(r.bv).toLocaleString("id-ID")} M` : `${r.bv}%`}</td>
+                            </tr>
+                          ))}
                         </tbody>
                       </table>
                     );

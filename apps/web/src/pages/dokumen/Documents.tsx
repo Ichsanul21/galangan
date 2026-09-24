@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Plus, Search, ScrollText, FileText, Eye, Pencil, Trash2, Archive, RotateCcw, Download } from "lucide-react";
-import { Card, PageHeader, Badge, KpiCard, Modal, Field, FormGrid, ConfirmModal, toast, StatusBadge } from "../../components/ui";
+import { Card, PageHeader, Badge, KpiCard, Modal, Field, FormGrid, ConfirmModal, SortTh, toggleSort, sortRows, toast, StatusBadge } from "../../components/ui";
+import type { SortState } from "../../components/ui";
 import { useStore, type StoreItem } from "../../data/store";
 import { fmtTanggal, todayISO } from "../../utils/format";
 import { sbDsNumber, sbSjNumber } from "../../utils/sb";
@@ -90,6 +91,7 @@ const emptyForm = { title: "", type: "Laporan", project: "", vessel: "", owner: 
 export default function Documents() {
   const { data, add, update, remove, log } = useStore();
   const [q, setQ] = useState("");
+  const [sort, setSort] = useState<SortState>({ key: null, dir: "asc" });
   const [type, setType] = useState("Semua");
   const [showAdd, setShowAdd] = useState(false);
   const [editing, setEditing] = useState<StoreItem | null>(null);
@@ -280,10 +282,12 @@ export default function Documents() {
         <div className="overflow-x-auto">
           <table className="w-full">
             <thead className="bg-surface sticky top-0 z-10">
-              <tr><th className="th">Dokumen</th><th className="th">Tipe</th><th className="th">Proyek / Kapal</th><th className="th">Versi</th><th className="th">Status</th><th className="th">Diperbarui</th><th className="th">Aksi</th></tr>
+              <tr><SortTh label="Dokumen" sortKey="dokumen" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label="Tipe" sortKey="tipe" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label="Proyek / Kapal" sortKey="proyek" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label="Versi" sortKey="versi" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label="Status" sortKey="status" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label="Diperbarui" sortKey="diperbarui" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><th className="th">Aksi</th></tr>
             </thead>
             <tbody className="divide-y divide-steel-100">
-              {list.map((d) => (
+              {sortRows(list, sort, (d, key) =>
+                key === "dokumen" ? String(d.title ?? "") : key === "tipe" ? String(d.type ?? "") : key === "proyek" ? String(d.project ?? "") : key === "versi" ? String(d.version ?? "") : key === "status" ? String(d.status ?? "") : String(d.updated ?? "")
+              ).map((d) => (
                 <tr key={d.id} className="hover:bg-surface">
                   <td className="td max-w-[260px]">
                     <p className="truncate font-medium text-navy-900" title={String(d.title)}>{d.title}</p>

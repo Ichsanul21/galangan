@@ -1,7 +1,6 @@
 import React from "react";
 import ReactDOM from "react-dom/client";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
-import "@google/model-viewer";
 import "./index.css";
 import { AuthProvider, RequireAuth } from "./auth/auth";
 import { StoreProvider } from "./data/store";

@@ -8,7 +8,20 @@ export default function Settings() {
   const { data, update, log } = useStore();
   const [drafts, setDrafts] = useState<Record<string, string>>({});
 
-  const groups = [...new Set((data.settings ?? []).map((s) => String(s.group ?? "Lainnya")))];
+  const groups = [...new Set((data.settings ?? []).map((s) => String(s.group ?? "Lainnya")))]
+
+  const saveToggle = (id: string, key: string, on: boolean) => {
+    update("settings", id, { value: on ? 1 : 0 });
+    log("mengubah konstanta", `${key} → ${on ? 1 : 0}`, "Pengaturan");
+    toast(`${key} ${on ? "ditampilkan" : "disembunyikan"}`);
+    setDrafts((d) => {
+      const n = { ...d };
+      delete n[id];
+      return n;
+    });
+  };
+
+  const isToggleKey = (key: string): boolean => key === "SHOW_3D_PROJECT" || key === "SHOW_3D_VESSEL";;
 
   const save = (id: string, key: string) => {
     const raw = drafts[id];
@@ -41,6 +54,19 @@ export default function Settings() {
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
             {(data.settings ?? []).filter((s) => String(s.group ?? "Lainnya") === g).map((s) => (
               <div key={s.id} className="rounded-xl border border-steel-100 p-3">
+                {isToggleKey(String(s.key)) ? (
+                  <Field label={String(s.label ?? s.key)} hint="Matikan untuk menyembunyikan modul 3D Viewer">
+                    <button
+                      type="button"
+                      role="switch"
+                      aria-checked={Number(s.value) === 1}
+                      onClick={() => saveToggle(String(s.id), String(s.key), Number(s.value) !== 1)}
+                      className={`relative h-6 w-11 shrink-0 rounded-full transition-colors ${Number(s.value) === 1 ? "bg-ocean-500" : "bg-steel-200"}`}
+                    >
+                      <span className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-all ${Number(s.value) === 1 ? "left-[22px]" : "left-0.5"}`} />
+                    </button>
+                  </Field>
+                ) : (
                 <Field label={String(s.label ?? s.key)}>
                   <div className="flex gap-2">
                     <input
@@ -53,6 +79,7 @@ export default function Settings() {
                     <button className="btn-secondary shrink-0 text-xs" onClick={() => save(s.id, String(s.key))}>Simpan</button>
                   </div>
                 </Field>
+                )}
                 <p className="mt-1 font-mono text-[11px] text-steel-400">{String(s.key)} · aktif: {fmtJumlah(Number(s.value))}</p>
               </div>
             ))}

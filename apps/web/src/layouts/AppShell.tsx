@@ -35,6 +35,7 @@ import { useAuth } from "../auth/auth";
 import { useStore } from "../data/store";
 import { Badge, Modal, Field, Toaster, toast } from "../components/ui";
 import { computeAlerts } from "../utils/alerts";
+import { loadNotifRead, saveNotifRead } from "../utils/notifRead";
 
 export default function AppShell() {
   const { user, logout } = useAuth();
@@ -47,6 +48,25 @@ export default function AppShell() {
   const [q, setQ] = useState("");
 
   const alerts = useMemo(() => computeAlerts(data), [data]);
+
+  /* Badge bell = item belum dibaca beneran (alert + 30 aktivitas terakhir − yang sudah dibaca). */
+  const notifIds = useMemo(
+    () => [...alerts.map((al) => `alert-${al.id}`), ...(data.activities ?? []).slice(0, 30).map((a) => `act-${String(a.id)}`)],
+    [alerts, data.activities]
+  );
+  const [readTick, setReadTick] = useState(0);
+  const unreadCount = useMemo(() => {
+    void readTick;
+    const read = loadNotifRead();
+    return notifIds.filter((id) => !read.has(id)).length;
+  }, [notifIds, notifOpen, readTick]);
+  const markNotifRead = (id: string) => {
+    const read = loadNotifRead();
+    if (read.has(id)) return;
+    read.add(id);
+    saveNotifRead(read);
+    setReadTick((t) => t + 1);
+  };
 
   const lowStockCount = (data.inventory ?? []).filter((i) => Number(i.stock) <= Number(i.minStock)).length;
   const qcCount = (data.ncr ?? []).filter((n) => n.status !== "Tertutup").length + (data.incidents ?? []).length;
@@ -287,9 +307,11 @@ export default function AppShell() {
                 aria-label="Notifikasi"
               >
                 <Bell className="h-5 w-5" />
-                <span className="absolute right-0.5 top-1 flex h-4 w-4 items-center justify-center rounded-full bg-rose-500 text-[9px] font-bold text-white">
-                  {Math.min(alerts.length + data.activities.length, 9)}
-                </span>
+                {unreadCount > 0 && (
+                  <span className="absolute right-0.5 top-1 flex h-4 w-4 items-center justify-center rounded-full bg-rose-500 text-[9px] font-bold text-white">
+                    {Math.min(unreadCount, 99)}
+                  </span>
+                )}
               </button>
               {notifOpen && (
                 <>
@@ -304,7 +326,7 @@ export default function AppShell() {
                           <Link
                             key={al.id}
                             to={al.to}
-                            onClick={() => setNotifOpen(false)}
+                            onClick={() => { markNotifRead(`alert-${al.id}`); setNotifOpen(false); }}
                             className={`flex items-center gap-2 border-b border-steel-50 px-4 py-2.5 text-xs font-medium last:border-0 hover:bg-surface ${
                               al.tone === "red" ? "text-rose-700" : al.tone === "amber" ? "text-amber-700" : "text-ocean-600"
                             }`}

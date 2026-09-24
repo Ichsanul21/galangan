@@ -448,6 +448,67 @@ export default function Dashboard() {
         </Card>
       </StaggerItem>
 
+      {/* STATUS + ACTIVITY — tepat di bawah Perlu Perhatian */}
+      <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
+        <StaggerItem>
+          <Card>
+            <CardHeader
+              title="Status Proyek Aktif"
+              subtitle="Progres terbaru"
+              action={
+                <Link to="/proyek" className="inline-flex items-center gap-1 text-sm font-semibold text-ocean-600 hover:text-ocean-500">
+                  Lihat semua <ArrowRight className="h-3.5 w-3.5" />
+                </Link>
+              }
+            />
+            <div className="divide-y divide-steel-100">
+              {branchProjects.slice(0, 5).map((p) => (
+                <Link
+                  key={p.id}
+                  to={`/proyek/${p.id}`}
+                  className="flex items-center justify-between gap-3 px-5 py-3 hover:bg-surface transition-colors"
+                >
+                  <div className="min-w-0">
+                    <p className="text-sm font-semibold text-navy-900 truncate" title={p.vessel}>{p.vessel}</p>
+                    <p className="text-xs text-steel-500">{p.id} · {p.client}</p>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <div className="w-24">
+                      <ProgressBar value={p.progress} tone={p.status === "Terlambat" ? "red" : "navy"} />
+                      <p className="mt-1 text-right text-[11px] text-steel-500">{p.progress}%</p>
+                    </div>
+                    <Badge tone={p.status === "Terlambat" ? "red" : p.status === "Selesai" ? "green" : "blue"}>
+                      {p.status}
+                    </Badge>
+                  </div>
+                </Link>
+              ))}
+            </div>
+          </Card>
+        </StaggerItem>
+
+        <StaggerItem>
+          <Card className="h-full">
+            <CardHeader title="Aktivitas Terkini" subtitle="Log real-time di seluruh modul" />
+            <div className="space-y-1 p-3">
+              {activities.slice(0, 6).map((a) => (
+                <div key={a.id} className="flex items-center gap-3 rounded-xl px-2 py-2 hover:bg-surface">
+                  <Avatar name={a.actor} className="h-8 w-8 shrink-0" />
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm text-steel-700" title={`${a.actor} ${a.action} ${a.target}`}>
+                      <span className="font-semibold text-navy-900">{a.actor}</span> {a.action}{" "}
+                      <span className="font-medium text-navy-800">{a.target}</span>
+                    </p>
+                    <p className="text-[11px] text-steel-400">{a.module} · {a.time}</p>
+                  </div>
+                  <Badge tone={a.tone as never}>{a.module}</Badge>
+                </div>
+              ))}
+            </div>
+          </Card>
+        </StaggerItem>
+      </div>
+
       {/* MAIN CHARTS */}
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-3">
         <StaggerItem className="lg:col-span-2">
@@ -585,67 +646,6 @@ export default function Dashboard() {
                   </div>
                 );
               })}
-            </div>
-          </Card>
-        </StaggerItem>
-      </div>
-
-      {/* STATUS + ACTIVITY */}
-      <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
-        <StaggerItem>
-          <Card>
-            <CardHeader
-              title="Status Proyek Aktif"
-              subtitle="Progres terbaru"
-              action={
-                <Link to="/proyek" className="inline-flex items-center gap-1 text-sm font-semibold text-ocean-600 hover:text-ocean-500">
-                  Lihat semua <ArrowRight className="h-3.5 w-3.5" />
-                </Link>
-              }
-            />
-            <div className="divide-y divide-steel-100">
-              {branchProjects.slice(0, 5).map((p) => (
-                <Link
-                  key={p.id}
-                  to={`/proyek/${p.id}`}
-                  className="flex items-center justify-between gap-3 px-5 py-3 hover:bg-surface transition-colors"
-                >
-                  <div className="min-w-0">
-                    <p className="text-sm font-semibold text-navy-900 truncate" title={p.vessel}>{p.vessel}</p>
-                    <p className="text-xs text-steel-500">{p.id} · {p.client}</p>
-                  </div>
-                  <div className="flex items-center gap-3">
-                    <div className="w-24">
-                      <ProgressBar value={p.progress} tone={p.status === "Terlambat" ? "red" : "navy"} />
-                      <p className="mt-1 text-right text-[11px] text-steel-500">{p.progress}%</p>
-                    </div>
-                    <Badge tone={p.status === "Terlambat" ? "red" : p.status === "Selesai" ? "green" : "blue"}>
-                      {p.status}
-                    </Badge>
-                  </div>
-                </Link>
-              ))}
-            </div>
-          </Card>
-        </StaggerItem>
-
-        <StaggerItem>
-          <Card className="h-full">
-            <CardHeader title="Aktivitas Terkini" subtitle="Log real-time di seluruh modul" />
-            <div className="space-y-1 p-3">
-              {activities.slice(0, 6).map((a) => (
-                <div key={a.id} className="flex items-center gap-3 rounded-xl px-2 py-2 hover:bg-surface">
-                  <Avatar name={a.actor} className="h-8 w-8 shrink-0" />
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate text-sm text-steel-700" title={`${a.actor} ${a.action} ${a.target}`}>
-                      <span className="font-semibold text-navy-900">{a.actor}</span> {a.action}{" "}
-                      <span className="font-medium text-navy-800">{a.target}</span>
-                    </p>
-                    <p className="text-[11px] text-steel-400">{a.module} · {a.time}</p>
-                  </div>
-                  <Badge tone={a.tone as never}>{a.module}</Badge>
-                </div>
-              ))}
             </div>
           </Card>
         </StaggerItem>

@@ -857,6 +857,105 @@ export function FormGrid({ children }: { children: ReactNode }) {
   return <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">{children}</div>;
 }
 
+/* ============ SORTABLE TABLE ============ */
+
+export type SortDir = "asc" | "desc";
+export interface SortState { key: string | null; dir: SortDir }
+
+export function toggleSort(prev: SortState, key: string): SortState {
+  if (prev.key === key) return { key, dir: prev.dir === "asc" ? "desc" : "asc" };
+  return { key, dir: "asc" };
+}
+
+function cmpVal(a: string | number | null | undefined, b: string | number | null | undefined): number {
+  const an = typeof a === "number" ? a : Number(a);
+  const bn = typeof b === "number" ? b : Number(b);
+  const aNum = a !== "" && a !== null && a !== undefined && Number.isFinite(an);
+  const bNum = b !== "" && b !== null && b !== undefined && Number.isFinite(bn);
+  if (aNum && bNum) return an - bn;
+  return String(a ?? "").localeCompare(String(b ?? ""), "id-ID");
+}
+
+export function sortRows<T>(rows: T[], sort: SortState, get: (row: T, key: string) => string | number | null | undefined): T[] {
+  if (!sort.key) return rows;
+  const dir = sort.dir === "asc" ? 1 : -1;
+  return [...rows].sort((ra, rb) => cmpVal(get(ra, sort.key as string), get(rb, sort.key as string)) * dir);
+}
+
+export function SortTh({
+  label,
+  sortKey,
+  sort,
+  onSort,
+  title,
+  rowSpan,
+  colSpan,
+}: {
+  label: string;
+  sortKey: string;
+  sort: SortState;
+  onSort: (key: string) => void;
+  title?: string;
+  rowSpan?: number;
+  colSpan?: number;
+}) {
+  const active = sort.key === sortKey;
+  return (
+    <th className="th" title={title ?? `Urutkan: ${label}`} rowSpan={rowSpan} colSpan={colSpan}>
+      <button
+        type="button"
+        onClick={() => onSort(sortKey)}
+        aria-sort={active ? (sort.dir === "asc" ? "ascending" : "descending") : "none"}
+        className={`inline-flex items-center gap-1 font-semibold hover:text-navy-900 ${active ? "text-navy-900" : ""}`}
+      >
+        {label}
+        <span className={`text-[10px] ${active ? "text-ocean-600" : "text-steel-300"}`} aria-hidden>
+          {active ? (sort.dir === "asc" ? "▲" : "▼") : "⇅"}
+        </span>
+      </button>
+    </th>
+  );
+}
+
+/* ============ ACCORDION ============ */
+
+export function Accordion({
+  title,
+  subtitle,
+  count,
+  defaultOpen = false,
+  children,
+}: {
+  title: string;
+  subtitle?: string;
+  count?: number;
+  defaultOpen?: boolean;
+  children: ReactNode;
+}) {
+  const [open, setOpen] = useState(defaultOpen);
+  return (
+    <div className="overflow-hidden rounded-xl border border-steel-200 bg-white">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        aria-expanded={open}
+        className="flex w-full items-center gap-3 px-4 py-3 text-left hover:bg-surface"
+      >
+        <ChevronRight className={`h-4 w-4 shrink-0 text-steel-400 transition-transform ${open ? "rotate-90" : ""}`} />
+        <span className="min-w-0 flex-1">
+          <span className="block truncate text-sm font-semibold text-navy-900">
+            {title}
+            {typeof count === "number" && <span className="ml-2 rounded-full bg-surface border border-steel-200 px-1.5 py-0.5 text-[11px] font-bold text-steel-600">{count}</span>}
+          </span>
+          {subtitle && <span className="block truncate text-xs text-steel-400">{subtitle}</span>}
+        </span>
+        <span className="shrink-0 text-xs font-medium text-ocean-600">{open ? "Tutup" : "Buka"}</span>
+      </button>
+      {open && <div className="border-t border-steel-100">{children}</div>}
+    </div>
+  );
+}
+
 /* ============ T O A S T ============ */
 
 export function toast(message: string, tone: "success" | "info" = "success") {

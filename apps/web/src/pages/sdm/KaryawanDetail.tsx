@@ -9,10 +9,14 @@ import {
   FormGrid,
   Modal,
   PageHeader,
+  SortTh,
   StatusBadge,
   Tabs,
+  sortRows,
   toast,
+  toggleSort,
 } from "../../components/ui";
+import type { SortState } from "../../components/ui";
 import { useStore } from "../../data/store";
 import type { StoreItem } from "../../data/store";
 import { fmtBulan, fmtRupiah, fmtTanggal, todayISO } from "../../utils/format";
@@ -71,6 +75,10 @@ export default function KaryawanDetail() {
   const [certForm, setCertForm] = useState({ name: "", expires: todayISO().slice(0, 7) });
   const [showDoc, setShowDoc] = useState(false);
   const [docForm, setDocForm] = useState({ title: "", type: "Kontrak", status: "Berlaku" });
+  const [sort, setSort] = useState<SortState>({ key: null, dir: "asc" });
+  const [sort2, setSort2] = useState<SortState>({ key: null, dir: "asc" });
+  const [sort3, setSort3] = useState<SortState>({ key: null, dir: "asc" });
+  const [sort4, setSort4] = useState<SortState>({ key: null, dir: "asc" });
 
   const emp = useMemo(() => data.employees.find((e) => e.id === id), [data.employees, id]);
 
@@ -265,10 +273,20 @@ export default function KaryawanDetail() {
           <div className="mt-3 overflow-x-auto">
             <table className="w-full">
               <thead className="bg-surface sticky top-0 z-10">
-                <tr><th className="th">ID</th><th className="th">Judul</th><th className="th">Tipe</th><th className="th">Status</th><th className="th">Diperbarui</th></tr>
+                <tr><SortTh label="ID" sortKey="id" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label="Judul" sortKey="title" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label="Tipe" sortKey="type" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label="Status" sortKey="status" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label="Diperbarui" sortKey="updated" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /></tr>
               </thead>
               <tbody className="divide-y divide-steel-100">
-                {docs.map((d) => (
+                {sortRows(docs, sort, (row, k) => {
+                  const d = row as StoreItem;
+                  switch (k) {
+                    case "id": return String(d.id ?? "");
+                    case "title": return String(d.title ?? "");
+                    case "type": return String(d.type ?? "");
+                    case "status": return String(d.status ?? "");
+                    case "updated": return String(d.updated ?? "");
+                    default: return "";
+                  }
+                }).map((d) => (
                   <tr key={d.id} className="hover:bg-surface">
                     <td className="td font-mono text-steel-600">{d.id}</td>
                     <td className="td font-medium text-navy-900">{d.title}</td>
@@ -292,10 +310,21 @@ export default function KaryawanDetail() {
             <div className="overflow-x-auto">
               <table className="w-full">
                 <thead className="bg-surface sticky top-0 z-10">
-                  <tr><th className="th">Tanggal</th><th className="th">Shift</th><th className="th">Status</th><th className="th">Jam</th><th className="th">Lembur</th><th className="th">Ket.</th></tr>
+                  <tr><SortTh label="Tanggal" sortKey="date" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} /><SortTh label="Shift" sortKey="shift" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} /><SortTh label="Status" sortKey="status" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} /><SortTh label="Jam" sortKey="jam" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} /><SortTh label="Lembur" sortKey="lembur" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} /><SortTh label="Ket." sortKey="ket" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} /></tr>
                 </thead>
                 <tbody className="divide-y divide-steel-100">
-                  {attendance30.map((a) => (
+                  {sortRows(attendance30, sort2, (row, k) => {
+                    const a = row as StoreItem;
+                    switch (k) {
+                      case "date": return String(a.date ?? "");
+                      case "shift": return String(a.shift ?? "");
+                      case "status": return String(a.status ?? "");
+                      case "jam": return String(a.checkIn ?? "") + "-" + String(a.checkOut ?? "");
+                      case "lembur": return Number(a.overtime ?? 0);
+                      case "ket": return String(a.status) === "Hadir" && String(a.checkIn ?? "") > "08:00" ? "Telat" : "";
+                      default: return "";
+                    }
+                  }).map((a) => (
                     <tr key={a.id} className="hover:bg-surface">
                       <td className="td text-steel-600">{fmtTanggal(String(a.date))}</td>
                       <td className="td"><Badge tone="gray">{String(a.shift)}</Badge></td>
@@ -314,10 +343,24 @@ export default function KaryawanDetail() {
             <div className="overflow-x-auto">
               <table className="w-full">
                 <thead className="bg-surface sticky top-0 z-10">
-                  <tr><th className="th">Periode</th><th className="th">Pokok</th><th className="th">Tunjangan</th><th className="th">Lembur</th><th className="th">Net</th><th className="th">Status</th><th className="th">Dibayar</th></tr>
+                  <tr><SortTh label="Periode" sortKey="period" sort={sort3} onSort={(k) => setSort3((s) => toggleSort(s, k))} /><SortTh label="Pokok" sortKey="basic" sort={sort3} onSort={(k) => setSort3((s) => toggleSort(s, k))} /><SortTh label="Tunjangan" sortKey="allow" sort={sort3} onSort={(k) => setSort3((s) => toggleSort(s, k))} /><SortTh label="Lembur" sortKey="overtime" sort={sort3} onSort={(k) => setSort3((s) => toggleSort(s, k))} /><SortTh label="Net" sortKey="net" sort={sort3} onSort={(k) => setSort3((s) => toggleSort(s, k))} /><SortTh label="Status" sortKey="status" sort={sort3} onSort={(k) => setSort3((s) => toggleSort(s, k))} /><SortTh label="Dibayar" sortKey="paid" sort={sort3} onSort={(k) => setSort3((s) => toggleSort(s, k))} /></tr>
                 </thead>
                 <tbody className="divide-y divide-steel-100">
-                  {payrollRows.map((p) => (
+                  {sortRows(payrollRows, sort3, (row, k) => {
+                    const p = row as StoreItem;
+                    switch (k) {
+                      case "period": return String(p.period ?? "");
+                      case "basic": return Number(p.basic ?? 0);
+                      case "allow": return Array.isArray(p.allowances)
+                        ? Number((p.allowances as unknown[]).reduce((s: number, l: unknown) => s + (Number((l as { amount?: unknown })?.amount ?? (l as unknown)) || 0), 0))
+                        : Number(p.allowances ?? 0);
+                      case "overtime": return Number(p.overtimePay ?? 0);
+                      case "net": return Number(p.net ?? 0);
+                      case "status": return String(p.status ?? "");
+                      case "paid": return String(p.paidAt ?? "");
+                      default: return "";
+                    }
+                  }).map((p) => (
                     <tr key={p.id} className="hover:bg-surface">
                       <td className="td font-medium text-navy-900">{fmtBulan(String(p.period))}</td>
                       <td className="td text-steel-600">{fmtRupiah(Number(p.basic || 0))}</td>
@@ -337,10 +380,21 @@ export default function KaryawanDetail() {
             <div className="overflow-x-auto">
               <table className="w-full">
                 <thead className="bg-surface sticky top-0 z-10">
-                  <tr><th className="th">ID</th><th className="th">Tipe</th><th className="th">Periode</th><th className="th">Hari</th><th className="th">Status</th><th className="th">Catatan</th></tr>
+                  <tr><SortTh label="ID" sortKey="id" sort={sort4} onSort={(k) => setSort4((s) => toggleSort(s, k))} /><SortTh label="Tipe" sortKey="type" sort={sort4} onSort={(k) => setSort4((s) => toggleSort(s, k))} /><SortTh label="Periode" sortKey="period" sort={sort4} onSort={(k) => setSort4((s) => toggleSort(s, k))} /><SortTh label="Hari" sortKey="days" sort={sort4} onSort={(k) => setSort4((s) => toggleSort(s, k))} /><SortTh label="Status" sortKey="status" sort={sort4} onSort={(k) => setSort4((s) => toggleSort(s, k))} /><SortTh label="Catatan" sortKey="note" sort={sort4} onSort={(k) => setSort4((s) => toggleSort(s, k))} /></tr>
                 </thead>
                 <tbody className="divide-y divide-steel-100">
-                  {leaveRows.map((l) => (
+                  {sortRows(leaveRows, sort4, (row, k) => {
+                    const l = row as StoreItem;
+                    switch (k) {
+                      case "id": return String(l.id ?? "");
+                      case "type": return String(l.type ?? "");
+                      case "period": return String(l.from ?? "");
+                      case "days": return Number(l.days ?? 0);
+                      case "status": return String(l.status ?? "");
+                      case "note": return String(l.note ?? "");
+                      default: return "";
+                    }
+                  }).map((l) => (
                     <tr key={l.id} className="hover:bg-surface">
                       <td className="td font-mono text-steel-600">{l.id}</td>
                       <td className="td"><Badge tone="gray">{String(l.type)}</Badge></td>

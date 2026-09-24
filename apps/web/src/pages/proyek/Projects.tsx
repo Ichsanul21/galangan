@@ -12,7 +12,11 @@ import {
   Field,
   FormGrid,
   toast,
+  SortTh,
+  toggleSort,
+  sortRows,
 } from "../../components/ui";
+import type { SortState } from "../../components/ui";
 import { useStore } from "../../data/store";
 import type { StoreItem, WbsItem } from "../../data/store";
 import { fmtMiliar, sparkProjects, activeProjectTrend, contractValueTrend, avgProgressTrend } from "../../data";
@@ -147,6 +151,7 @@ export default function Projects() {
   const [prioritasFilter, setPrioritasFilter] = useState("Semua");
   const [pmFilter, setPmFilter] = useState("Semua");
   const [q, setQ] = useState("");
+  const [sort, setSort] = useState<SortState>({ key: null, dir: "asc" });
   const [showAdd, setShowAdd] = useState(false);
   const [showTemplate, setShowTemplate] = useState(false);
   const [form, setForm] = useState(emptyForm);
@@ -422,20 +427,20 @@ export default function Projects() {
           <table className="w-full">
             <thead className="sticky top-0 z-10 bg-surface">
               <tr>
-                <th className="th">Proyek</th>
-                <th className="th">Klien</th>
-                <th className="th">Jenis</th>
-                <th className="th">Tahap</th>
-                <th className="th">Prioritas</th>
-                <th className="th">Status</th>
-                <th className="th">Progres</th>
-                <th className="th">Anggaran</th>
-                <th className="th">Realisasi</th>
-                <th className="th">PM</th>
+                <SortTh label="Proyek" sortKey="vessel" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} />
+                <SortTh label="Klien" sortKey="client" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} />
+                <SortTh label="Jenis" sortKey="type" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} />
+                <SortTh label="Tahap" sortKey="tahap" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} />
+                <SortTh label="Prioritas" sortKey="prioritas" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} />
+                <SortTh label="Status" sortKey="status" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} />
+                <SortTh label="Progres" sortKey="progress" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} />
+                <SortTh label="Anggaran" sortKey="budget" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} />
+                <SortTh label="Realisasi" sortKey="actual" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} />
+                <SortTh label="PM" sortKey="manager" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} />
               </tr>
             </thead>
             <tbody className="divide-y divide-steel-100">
-              {list.map((p) => {
+              {sortRows(list, sort, (p: StoreItem, k) => k === "budget" ? Number(p.budget) : k === "actual" ? Number(p.actual) : k === "progress" ? Number(p.progress) : k === "tahap" ? String(tahapOf(p)) : String((p as StoreItem)[k] ?? "")).map((p) => {
                 const tahapIdx = TAHAP.indexOf(tahapOf(p));
                 return (
                   <tr

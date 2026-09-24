@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { motion } from "framer-motion";
 import { Anchor, Lock, User, AlertCircle, ArrowRight, ArrowUpRight, Globe2, Container, ShipWheel } from "lucide-react";
-import { useAuth } from "../auth/auth";
+import { useAuth, demoUsers } from "../auth/auth";
 import { toast } from "../components/ui";
 
 /* Latar peta rute abstrak — garis lintang/bujur */
@@ -152,11 +152,12 @@ export default function Login() {
       fail("Terlalu banyak percobaan gagal. Tunggu sebentar sebelum mencoba lagi.");
       return;
     }
-    const err = login(u, "password@123");
+    const found = demoUsers.find((x) => x.username.toLowerCase() === u.toLowerCase());
+    const err = login(u, found?.password ?? "password@123");
     if (!err) {
       setFails(0);
       setLockedUntil(0);
-      toast("Masuk sebagai akun demo");
+      toast(`Masuk sebagai ${found?.name ?? "akun demo"}`);
       navigate(from, { replace: true });
     }
   };
@@ -308,22 +309,25 @@ export default function Login() {
 
           <div className="card mt-4 p-5">
             <p className="text-xs font-semibold uppercase tracking-wider text-steel-500">Demo access — one click sign in</p>
-            <div className="mt-3">
-              <button
-                onClick={() => quickLogin("demo@galangan.com")}
-                className="group flex w-full items-center gap-2.5 rounded-xl border border-steel-200 px-3 py-2.5 text-left transition-all hover:-translate-y-0.5 hover:border-ocean-400 hover:shadow-soft"
-              >
-                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-gradient-hero text-xs font-bold text-white">
-                  DC
-                </span>
-                <span className="min-w-0 flex-1">
-                  <span className="block truncate text-[13px] font-semibold text-navy-900">Demo Client</span>
-                  <span className="block truncate text-[11px] text-steel-500">
-                    Client Viewer · <span className="font-mono">demo@galangan.com</span>
+            <div className="mt-3 space-y-2">
+              {demoUsers.map((u) => (
+                <button
+                  key={u.username}
+                  onClick={() => quickLogin(u.username)}
+                  className="group flex w-full items-center gap-2.5 rounded-xl border border-steel-200 px-3 py-2.5 text-left transition-all hover:-translate-y-0.5 hover:border-ocean-400 hover:shadow-soft"
+                >
+                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-gradient-hero text-xs font-bold text-white">
+                    {u.initials}
                   </span>
-                </span>
-                <ArrowUpRight className="h-4 w-4 shrink-0 text-steel-300 transition-colors group-hover:text-ocean-500" />
-              </button>
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-[13px] font-semibold text-navy-900">{u.name}</span>
+                    <span className="block truncate text-[11px] text-steel-500">
+                      {u.role} · <span className="font-mono">{u.username}</span>
+                    </span>
+                  </span>
+                  <ArrowUpRight className="h-4 w-4 shrink-0 text-steel-300 transition-colors group-hover:text-ocean-500" />
+                </button>
+              ))}
             </div>
           </div>
         </motion.div>

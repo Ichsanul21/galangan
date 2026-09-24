@@ -1,7 +1,8 @@
 import { useState } from "react";
 import { Plus, Cpu, Wrench, AlertTriangle, Gauge, CheckCircle2, Download } from "lucide-react";
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
-import { Card, CardHeader, PageHeader, Badge, KpiCard, Tabs, ProgressBar, ChartTooltip, RadialGauge, Modal, Field, FormGrid, EmptyState, ConfirmModal, StatusBadge, toast } from "../../components/ui";
+import { Card, CardHeader, PageHeader, Badge, KpiCard, Tabs, ProgressBar, ChartTooltip, RadialGauge, Modal, Field, FormGrid, EmptyState, ConfirmModal, StatusBadge, toast, SortTh, toggleSort, sortRows } from "../../components/ui";
+import type { SortState } from "../../components/ui";
 import { useStore } from "../../data/store";
 import type { StoreItem } from "../../data/store";
 import { equipmentHours, sparkUtil, equipTotalTrend, maintTrend, serviceDueTrend } from "../../data";
@@ -76,6 +77,10 @@ export default function EquipmentPage() {
   const bookings = data.bookings;
   const calibrations = data.calibrations;
   const [tab, setTab] = useState("Register");
+  const [sort, setSort] = useState<SortState>({ key: null, dir: "asc" });
+  const [sort2, setSort2] = useState<SortState>({ key: null, dir: "asc" });
+  const [sort3, setSort3] = useState<SortState>({ key: null, dir: "asc" });
+  const [sort4, setSort4] = useState<SortState>({ key: null, dir: "asc" });
 
   const [showAdd, setShowAdd] = useState(false);
   const [form, setForm] = useState({ name: "", category: "Pengangkat", code: "", serial: "", branch: "Samarinda", model: "", pic: "", util: "50", rate: "", fuelPrice: "0", acquisitionCost: "", usefulLife: "" });
@@ -430,10 +435,19 @@ export default function EquipmentPage() {
             <div className="overflow-x-auto">
               <table className="w-full">
                 <thead className="sticky top-0 z-10 bg-surface">
-                  <tr><th className="th">Equipment</th><th className="th">Kategori</th><th className="th">Model</th><th className="th">Status</th><th className="th">Utilisasi</th><th className="th">Jam Pakai</th><th className="th">Tarif / Jam</th><th className="th">Nilai Buku</th><th className="th">Aksi</th></tr>
+                  <tr><SortTh label="Equipment" sortKey="equipment" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label="Kategori" sortKey="kategori" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label="Model" sortKey="model" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label="Status" sortKey="status" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label="Utilisasi" sortKey="utilisasi" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label="Jam Pakai" sortKey="jam" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label="Tarif / Jam" sortKey="tarif" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label="Nilai Buku" sortKey="nilaibuku" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><th className="th">Aksi</th></tr>
                 </thead>
                 <tbody className="divide-y divide-steel-100">
-                  {equipment.map((e) => {
+                  {sortRows(equipment, sort, (e, k) => {
+                    if (k === "utilisasi") return Number(e.util || 0);
+                    if (k === "jam") return Number(e.lastHours || 0);
+                    if (k === "tarif") return Number(e.rate || 0);
+                    if (k === "nilaibuku") return Number(depreciationOf(e)?.book ?? -1);
+                    if (k === "kategori") return String(e.category ?? "");
+                    if (k === "model") return String(e.model ?? "");
+                    if (k === "status") return String(e.status ?? "");
+                    return String(e.name ?? "");
+                  }).map((e) => {
                     const expired = isCalExpired(e.id, calibrations, today);
                     return (
                     <tr key={e.id} className="hover:bg-surface">
@@ -559,10 +573,15 @@ export default function EquipmentPage() {
               <div className="overflow-x-auto">
                 <table className="w-full">
                   <thead className="sticky top-0 z-10 bg-surface">
-                    <tr><th className="th">Equipment</th><th className="th">Jadwal Servis</th><th className="th">Catatan / Estimasi</th><th className="th">Status</th><th className="th">Aksi</th></tr>
+                    <tr><SortTh label="Equipment" sortKey="equipment" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} /><SortTh label="Jadwal Servis" sortKey="jadwal" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} /><SortTh label="Catatan / Estimasi" sortKey="catatan" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} /><SortTh label="Status" sortKey="status" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} /><th className="th">Aksi</th></tr>
                   </thead>
                   <tbody className="divide-y divide-steel-100">
-                    {equipment.map((e) => (
+                    {sortRows(equipment, sort2, (e, k) => {
+                      if (k === "jadwal") return String(e.nextService ?? "");
+                      if (k === "catatan") return String(`${e.maintenanceNote ?? ""} ${e.maintenanceEta ?? ""}`);
+                      if (k === "status") return String(e.status ?? "");
+                      return String(e.name ?? "");
+                    }).map((e) => (
                       <tr key={e.id} className="hover:bg-surface">
                         <td className="td font-medium text-navy-900">{e.name}</td>
                         <td className="td text-steel-600">{fmtTanggal(typeof e.nextService === "string" ? e.nextService : "")}</td>
@@ -591,10 +610,17 @@ export default function EquipmentPage() {
               <div className="overflow-x-auto">
                 <table className="w-full">
                   <thead className="sticky top-0 z-10 bg-surface">
-                    <tr><th className="th">ID</th><th className="th">Equipment</th><th className="th">Item Ukur</th><th className="th">Due Date</th><th className="th">Sertifikat</th><th className="th">Status</th><th className="th">Aksi</th></tr>
+                    <tr><SortTh label="ID" sortKey="id" sort={sort3} onSort={(k) => setSort3((s) => toggleSort(s, k))} /><SortTh label="Equipment" sortKey="equipment" sort={sort3} onSort={(k) => setSort3((s) => toggleSort(s, k))} /><SortTh label="Item Ukur" sortKey="item" sort={sort3} onSort={(k) => setSort3((s) => toggleSort(s, k))} /><SortTh label="Due Date" sortKey="due" sort={sort3} onSort={(k) => setSort3((s) => toggleSort(s, k))} /><SortTh label="Sertifikat" sortKey="sertifikat" sort={sort3} onSort={(k) => setSort3((s) => toggleSort(s, k))} /><SortTh label="Status" sortKey="status" sort={sort3} onSort={(k) => setSort3((s) => toggleSort(s, k))} /><th className="th">Aksi</th></tr>
                   </thead>
                   <tbody className="divide-y divide-steel-100">
-                    {calibrations.map((c) => {
+                    {sortRows(calibrations, sort3, (c, k) => {
+                      if (k === "equipment") return String(equipment.find((e) => e.id === c.equipmentId)?.name ?? c.equipmentId ?? "");
+                      if (k === "item") return String(c.item ?? "");
+                      if (k === "due") return String(c.due ?? "");
+                      if (k === "sertifikat") return String(c.cert ?? "");
+                      if (k === "status") return String(c.status ?? "");
+                      return String(c.id ?? "");
+                    }).map((c) => {
                       const eq = equipment.find((e) => e.id === c.equipmentId) ?? data.equipment.find((e) => e.id === c.equipmentId);
                       const expired = c.status !== "Selesai" && String(c.due ?? "") < today;
                       return (
@@ -636,10 +662,15 @@ export default function EquipmentPage() {
                 <div className="overflow-x-auto">
                   <table className="w-full">
                     <thead className="sticky top-0 z-10 bg-surface">
-                      <tr><th className="th">Proyek</th><th className="th">Jam Pakai</th><th className="th">Downtime</th><th className="th">Biaya</th></tr>
+                      <tr><SortTh label="Proyek" sortKey="proyek" sort={sort4} onSort={(k) => setSort4((s) => toggleSort(s, k))} /><SortTh label="Jam Pakai" sortKey="jam" sort={sort4} onSort={(k) => setSort4((s) => toggleSort(s, k))} /><SortTh label="Downtime" sortKey="downtime" sort={sort4} onSort={(k) => setSort4((s) => toggleSort(s, k))} /><SortTh label="Biaya" sortKey="biaya" sort={sort4} onSort={(k) => setSort4((s) => toggleSort(s, k))} /></tr>
                     </thead>
                     <tbody className="divide-y divide-steel-100">
-                      {costRows.map(([proj, v]) => (
+                      {sortRows(costRows, sort4, ([proj, v], k) => {
+                        if (k === "jam") return Number(v.hours || 0);
+                        if (k === "downtime") return Number(v.downtime || 0);
+                        if (k === "biaya") return Number(v.cost || 0);
+                        return String(proj ?? "");
+                      }).map(([proj, v]) => (
                         <tr key={proj} className="hover:bg-surface">
                           <td className="td font-mono font-medium text-navy-900">{proj}</td>
                           <td className="td text-steel-600">{fmtJumlah(v.hours)} jam</td>

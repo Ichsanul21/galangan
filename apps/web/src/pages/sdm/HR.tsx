@@ -13,10 +13,14 @@ import {
   Modal,
   PageHeader,
   ProgressBar,
+  SortTh,
   StatusBadge,
   Tabs,
+  sortRows,
   toast,
+  toggleSort,
 } from "../../components/ui";
+import type { SortState } from "../../components/ui";
 import { useStore } from "../../data/store";
 import type { StoreItem } from "../../data/store";
 import { activeEmployeeTrend, certifiedTrend, certExpireTrend, employeeTrend } from "../../data";
@@ -162,6 +166,9 @@ const emptyEmpForm = () => ({
 export default function HR() {
   const { data, add, update, log, branch, setBranch, inBranch } = useStore();
   const [tab, setTab] = useState("Karyawan");
+  const [sort, setSort] = useState<SortState>({ key: null, dir: "asc" });
+  const [sort2, setSort2] = useState<SortState>({ key: null, dir: "asc" });
+  const [sort3, setSort3] = useState<SortState>({ key: null, dir: "asc" });
 
   /* ---------- filter karyawan ---------- */
   const [dept, setDept] = useState("Semua");
@@ -809,18 +816,30 @@ export default function HR() {
                     <table className="w-full">
                       <thead className="bg-surface sticky top-0 z-10">
                         <tr>
-                          <th className="th">Karyawan</th>
-                          <th className="th">NIK</th>
-                          <th className="th">Jabatan</th>
-                          <th className="th">Cabang</th>
-                          <th className="th">Kontrak</th>
-                          <th className="th">Saldo Cuti</th>
-                          <th className="th">Status</th>
+                          <SortTh label="Karyawan" sortKey="name" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} />
+                          <SortTh label="NIK" sortKey="nik" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} />
+                          <SortTh label="Jabatan" sortKey="role" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} />
+                          <SortTh label="Cabang" sortKey="branch" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} />
+                          <SortTh label="Kontrak" sortKey="contract" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} />
+                          <SortTh label="Saldo Cuti" sortKey="saldo" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} />
+                          <SortTh label="Status" sortKey="status" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} />
                           <th className="th">Aksi</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-steel-100">
-                        {list.map((e) => (
+                        {sortRows(list, sort, (row, k) => {
+                          const e = row as StoreItem;
+                          switch (k) {
+                            case "name": return String(e.name ?? "");
+                            case "nik": return empNik(e);
+                            case "role": return String(e.role ?? "");
+                            case "branch": return String(e.branch ?? "");
+                            case "contract": return String(e.contractEnd ?? "");
+                            case "saldo": return Number(saldoCuti(String(e.id)));
+                            case "status": return String(e.status ?? "");
+                            default: return "";
+                          }
+                        }).map((e) => (
                           <tr key={e.id} className="hover:bg-surface">
                             <td className="td">
                               <p className="font-medium text-navy-900">{e.name}</p>
@@ -905,18 +924,30 @@ export default function HR() {
               <table className="w-full">
                 <thead className="bg-surface sticky top-0 z-10">
                   <tr>
-                    <th className="th">ID</th>
-                    <th className="th">Karyawan</th>
-                    <th className="th">Tipe</th>
-                    <th className="th">Periode</th>
-                    <th className="th">Hari</th>
-                    <th className="th">Saldo Sisa</th>
-                    <th className="th">Status</th>
+                    <SortTh label="ID" sortKey="id" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} />
+                    <SortTh label="Karyawan" sortKey="emp" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} />
+                    <SortTh label="Tipe" sortKey="type" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} />
+                    <SortTh label="Periode" sortKey="period" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} />
+                    <SortTh label="Hari" sortKey="days" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} />
+                    <SortTh label="Saldo Sisa" sortKey="saldo" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} />
+                    <SortTh label="Status" sortKey="status" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} />
                     <th className="th">Aksi</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-steel-100">
-                  {data.leaves.map((l) => (
+                  {sortRows(data.leaves, sort2, (row, k) => {
+                    const l = row as StoreItem;
+                    switch (k) {
+                      case "id": return String(l.id ?? "");
+                      case "emp": return String(empNameOf(String(l.employeeId ?? "")));
+                      case "type": return String(l.type ?? "");
+                      case "period": return String(l.from ?? "");
+                      case "days": return Number(l.days ?? 0);
+                      case "saldo": return String(l.type) === "Tahunan" ? Number(saldoCuti(String(l.employeeId ?? ""))) : Number(-1);
+                      case "status": return String(l.status ?? "");
+                      default: return "";
+                    }
+                  }).map((l) => (
                     <tr key={l.id} className="hover:bg-surface">
                       <td className="td font-mono text-steel-600">{l.id}</td>
                       <td className="td text-navy-900">{empNameOf(String(l.employeeId))}</td>
@@ -1011,17 +1042,28 @@ export default function HR() {
               <table className="w-full">
                 <thead className="bg-surface sticky top-0 z-10">
                   <tr>
-                    <th className="th">ID</th>
-                    <th className="th">Judul</th>
-                    <th className="th">Tanggal</th>
-                    <th className="th">Provider</th>
-                    <th className="th">Peserta</th>
-                    <th className="th">Status</th>
+                    <SortTh label="ID" sortKey="id" sort={sort3} onSort={(k) => setSort3((s) => toggleSort(s, k))} />
+                    <SortTh label="Judul" sortKey="title" sort={sort3} onSort={(k) => setSort3((s) => toggleSort(s, k))} />
+                    <SortTh label="Tanggal" sortKey="date" sort={sort3} onSort={(k) => setSort3((s) => toggleSort(s, k))} />
+                    <SortTh label="Provider" sortKey="provider" sort={sort3} onSort={(k) => setSort3((s) => toggleSort(s, k))} />
+                    <SortTh label="Peserta" sortKey="participants" sort={sort3} onSort={(k) => setSort3((s) => toggleSort(s, k))} />
+                    <SortTh label="Status" sortKey="status" sort={sort3} onSort={(k) => setSort3((s) => toggleSort(s, k))} />
                     <th className="th">Aksi</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-steel-100">
-                  {data.trainings.map((t) => {
+                  {sortRows(data.trainings, sort3, (row, k) => {
+                    const t = row as StoreItem;
+                    switch (k) {
+                      case "id": return String(t.id ?? "");
+                      case "title": return String(t.title ?? "");
+                      case "date": return String(t.date ?? "");
+                      case "provider": return String(t.provider ?? "");
+                      case "participants": return Number(((t.participants ?? []) as unknown[]).length);
+                      case "status": return String(t.status ?? "");
+                      default: return "";
+                    }
+                  }).map((t) => {
                     const parts = ((t.participants ?? []) as string[]).map((id) => empNameOf(id));
                     return (
                       <tr key={t.id} className="hover:bg-surface">

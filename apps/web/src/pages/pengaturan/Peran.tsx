@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { Download, KeyRound } from "lucide-react";
-import { Badge, Card, Field, KpiCard, PageHeader, toast } from "../../components/ui";
+import { Badge, Card, Field, KpiCard, PageHeader, SortTh, sortRows, toast, toggleSort } from "../../components/ui";
+import type { SortState } from "../../components/ui";
 import { exportExcel } from "../../utils/export";
 
 const ACTIONS = ["Lihat", "Buat", "Ubah", "Hapus", "Setujui", "Bayar", "Export"] as const;
@@ -205,6 +206,7 @@ function granted(role: string, modul: string, aksi: RoleAction): boolean {
 
 export default function Peran() {
   const [role, setRole] = useState("Project Manager");
+  const [sort, setSort] = useState<SortState>({ key: null, dir: "asc" });
 
   const stats = useMemo(() => {
     const total = MODULES.length * ACTIONS.length;
@@ -267,14 +269,18 @@ export default function Peran() {
           <table className="w-full min-w-[860px] text-sm">
             <thead>
               <tr className="border-b border-steel-100 text-left text-xs uppercase tracking-wide text-steel-400">
-                <th className="sticky left-0 bg-white px-5 py-3 font-semibold">Modul</th>
+                <SortTh label="Modul" sortKey="modul" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} />
                 {ACTIONS.map((a) => (
-                  <th key={a} className="px-3 py-3 text-center font-semibold">{a}</th>
+                  <SortTh key={a} label={a} sortKey={a} sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} />
                 ))}
               </tr>
             </thead>
             <tbody className="divide-y divide-steel-50">
-              {MODULES.map((m) => (
+              {sortRows(MODULES, sort, (row, k) => {
+                const m = String(row);
+                if (k === "modul") return m;
+                return granted(role, m, String(k) as RoleAction) ? "Ya" : "";
+              }).map((m) => (
                 <tr key={m} className="hover:bg-surface">
                   <td className="sticky left-0 bg-white px-5 py-2.5 font-semibold text-navy-900">{m}</td>
                   {ACTIONS.map((a) => {

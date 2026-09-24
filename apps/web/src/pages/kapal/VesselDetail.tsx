@@ -11,11 +11,16 @@ import {
   FormGrid,
   Tabs,
   toast,
+  SortTh,
+  toggleSort,
+  sortRows,
 } from "../../components/ui";
+import type { SortState } from "../../components/ui";
 import SparepartServiceSection from "../proyek/SparepartServiceSection";
 import { useStore } from "../../data/store";
 import { fmtBulan, fmtJumlah, fmtRupiah, fmtTanggal, monthISO, todayISO } from "../../utils/format";
 import { COMPLIANCE_ITEMS, complianceSummary } from "./Vessels";
+import { getSetting } from "../../utils/settings";
 
 function monthDiff(expires: string, base: string): number | null {
   const m1 = /^(\d{4})-(\d{2})$/.exec(expires ?? "");
@@ -91,6 +96,7 @@ export default function VesselDetail() {
   const [crewForm, setCrewForm] = useState({ name: "", role: "" });
   const [insForm, setInsForm] = useState({ polis: "", premi: "", expiry: "" });
   const [showIns, setShowIns] = useState(false);
+  const [sort, setSort] = useState<SortState>({ key: null, dir: "asc" });
 
   if (!v) return <p className="text-sm text-steel-500">Kapal tidak ditemukan.</p>;
 
@@ -319,7 +325,7 @@ export default function VesselDetail() {
       )}
 
       <div className="mt-5 card">
-        <Tabs tabs={["Sertifikat & Timeline", "Spesifikasi", "Kepatuhan & PSC", "Rencana & Operasional", "3D Viewer", "Service", "Sparepart"]} active={tab} onChange={setTab} />
+        <Tabs tabs={["Sertifikat & Timeline", "Spesifikasi", "Kepatuhan & PSC", "Rencana & Operasional", ...(getSetting(data, "SHOW_3D_VESSEL", 0) === 1 ? ["3D Viewer"] : []), "Service", "Sparepart"]} active={tab} onChange={setTab} />
         <div className="p-5">
           {tab === "Sertifikat & Timeline" && (
             <div className="grid grid-cols-1 gap-5 lg:grid-cols-3">
@@ -505,10 +511,10 @@ export default function VesselDetail() {
                 <div className="mt-3 overflow-x-auto">
                   <table className="w-full">
                     <thead className="sticky top-0 z-10 bg-surface">
-                      <tr><th className="th">Tahun</th><th className="th">Terjadwal (survey / next due)</th><th className="th">Rencana Manual</th></tr>
+                      <tr><SortTh label="Tahun" sortKey="year" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label="Terjadwal (survey / next due)" sortKey="auto" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label="Rencana Manual" sortKey="manual" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /></tr>
                     </thead>
                     <tbody className="divide-y divide-steel-100">
-                      {planYears.map((y) => {
+                      {sortRows(planYears, sort, (y: number, k) => { if (k === "year") return Number(y); if (k === "auto") return surveys.filter((s) => String(s.date ?? "").slice(0, 4) === String(y)).length + dockHistory.filter((d) => String(d.nextDue ?? "").slice(0, 4) === String(y)).length; if (k === "manual") return plan5.filter((p) => Number(p.year) === Number(y)).length; return Number(y); }).map((y) => {
                         const auto: string[] = [
                           ...surveys.filter((s) => String(s.date ?? "").slice(0, 4) === String(y)).map((s) => `${s.type} · ${fmtTanggal(String(s.date))}`),
                           ...dockHistory.filter((d) => String(d.nextDue ?? "").slice(0, 4) === String(y)).map((d) => `Next due docking · ${fmtTanggal(d.nextDue)} (${d.dock})`),
@@ -624,7 +630,7 @@ export default function VesselDetail() {
             </div>
           )}
 
-          {tab === "3D Viewer" && <SparepartServiceSection vesselId={v.id} view="3d" />}
+          {tab === "3D Viewer" && getSetting(data, "SHOW_3D_VESSEL", 0) === 1 && <SparepartServiceSection vesselId={v.id} view="3d" />}
           {tab === "Service" && <SparepartServiceSection vesselId={v.id} view="service" />}
           {tab === "Sparepart" && <SparepartServiceSection vesselId={v.id} view="sparepart" />}
         </div>

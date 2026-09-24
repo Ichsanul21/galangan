@@ -30,7 +30,8 @@ import {
   Tooltip,
   ResponsiveContainer,
 } from "recharts";
-import { Card, CardHeader, PageHeader, Badge, KpiCard, Tabs, ChartTooltip, Modal, Field, FormGrid, toast, EmptyState, ProgressBar } from "../../components/ui";
+import { Card, CardHeader, PageHeader, Badge, KpiCard, Tabs, ChartTooltip, Modal, Field, FormGrid, toast, EmptyState, ProgressBar, SortTh, toggleSort, sortRows } from "../../components/ui";
+import type { SortState } from "../../components/ui";
 import { useStore, type StoreItem } from "../../data/store";
 import { fmtJumlah, fmtRupiah, fmtMiliar, fmtTanggal, todayISO } from "../../utils/format";
 import { exportExcel } from "../../utils/export";
@@ -184,6 +185,9 @@ export default function Inventory() {
   const [cat, setCat] = useState("Semua");
   const [wh, setWh] = useState("Semua");
   const [abcF, setAbcF] = useState("Semua");
+  const [sort, setSort] = useState<SortState>({ key: null, dir: "asc" });
+  const [sort2, setSort2] = useState<SortState>({ key: null, dir: "asc" });
+  const [sort3, setSort3] = useState<SortState>({ key: null, dir: "asc" });
 
   const [showAdd, setShowAdd] = useState(false);
   const [form, setForm] = useState(emptyForm);
@@ -724,10 +728,19 @@ export default function Inventory() {
               <div className="overflow-x-auto">
                 <table className="w-full">
                   <thead className="bg-surface sticky top-0 z-10">
-                    <tr><th className="th">Material</th><th className="th">Kategori</th><th className="th">Quantity</th><th className="th">Volume</th><th className="th">Total Nilai</th><th className="th">ABC</th><th className="th">Status</th><th className="th">Rak</th><th className="th">Aksi</th></tr>
+                    <tr><SortTh label="Material" sortKey="material" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label="Kategori" sortKey="kategori" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label="Quantity" sortKey="qty" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label="Volume" sortKey="volume" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label="Total Nilai" sortKey="total" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label="ABC" sortKey="abc" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label="Status" sortKey="status" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label="Rak" sortKey="rak" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><th className="th">Aksi</th></tr>
                   </thead>
                   <tbody className="divide-y divide-steel-100">
-                    {list.map((i) => {
+                    {sortRows(list, sort, (i, k) => {
+                      if (k === "qty") return Number(i.stock || 0);
+                      if (k === "volume") return Number(i.volume ?? 0);
+                      if (k === "total") return Number(i.stock || 0) * effCost(i);
+                      if (k === "kategori") return String(i.category ?? "");
+                      if (k === "abc") return String(abc[i.id] ?? "");
+                      if (k === "status") return Number(i.stock) <= Number(i.minStock) ? "Menipis" : "Aman";
+                      if (k === "rak") return String(rackText(i));
+                      return String(i.name ?? "");
+                    }).map((i) => {
                       const low = i.stock <= i.minStock;
                       const reserved = reservedQty(i);
                       const conv = convOf(i);
@@ -850,10 +863,16 @@ export default function Inventory() {
                 <div className="mt-3 overflow-x-auto">
                   <table className="w-full">
                     <thead className="bg-surface sticky top-0 z-10">
-                      <tr><th className="th">Proyek</th><th className="th">Kebutuhan BOM</th><th className="th">Stok</th><th className="th">Bersih</th><th className="th">Aksi</th></tr>
+                      <tr><SortTh label="Proyek" sortKey="proyek" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} /><SortTh label="Kebutuhan BOM" sortKey="kebutuhan" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} /><SortTh label="Stok" sortKey="stok" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} /><SortTh label="Bersih" sortKey="bersih" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} /><th className="th">Aksi</th></tr>
                     </thead>
                     <tbody className="divide-y divide-steel-100">
-                      {forecastRows.map((f) => (
+                      {sortRows(forecastRows, sort2, (f, k) => {
+                        if (k === "kebutuhan") return Number(f.need || 0);
+                        if (k === "stok") return Number(f.stock || 0);
+                        if (k === "bersih") return Number(f.net || 0);
+                        if (k === "proyek") return String(`${f.project ?? ""} ${f.vessel ?? ""}`);
+                        return String(f.key ?? "");
+                      }).map((f) => (
                         <tr key={`${f.project}-${f.key}`} className="hover:bg-surface">
                           <td className="td font-medium text-navy-900 truncate" title={`${f.project} — ${f.vessel}`}>{f.project} · {f.vessel}</td>
                           <td className="td text-steel-600 truncate" title={f.item ? String(f.item.name) : f.key}>{f.key} · butuh {fmtJumlah(f.need)} {f.unit}</td>
@@ -894,10 +913,19 @@ export default function Inventory() {
               <div className="overflow-x-auto">
                 <table className="w-full">
                   <thead className="bg-surface sticky top-0 z-10">
-                    <tr><th className="th">Transaksi</th><th className="th">Item</th><th className="th">Tipe</th><th className="th">Jumlah</th><th className="th">Referensi</th><th className="th">Supplier / Purpose / PIC</th><th className="th">Total</th><th className="th">Tanggal</th></tr>
+                    <tr><SortTh label="Transaksi" sortKey="transaksi" sort={sort3} onSort={(k) => setSort3((s) => toggleSort(s, k))} /><SortTh label="Item" sortKey="item" sort={sort3} onSort={(k) => setSort3((s) => toggleSort(s, k))} /><SortTh label="Tipe" sortKey="tipe" sort={sort3} onSort={(k) => setSort3((s) => toggleSort(s, k))} /><SortTh label="Jumlah" sortKey="jumlah" sort={sort3} onSort={(k) => setSort3((s) => toggleSort(s, k))} /><SortTh label="Referensi" sortKey="referensi" sort={sort3} onSort={(k) => setSort3((s) => toggleSort(s, k))} /><SortTh label="Supplier / Purpose / PIC" sortKey="info" sort={sort3} onSort={(k) => setSort3((s) => toggleSort(s, k))} /><SortTh label="Total" sortKey="total" sort={sort3} onSort={(k) => setSort3((s) => toggleSort(s, k))} /><SortTh label="Tanggal" sortKey="tanggal" sort={sort3} onSort={(k) => setSort3((s) => toggleSort(s, k))} /></tr>
                   </thead>
                   <tbody className="divide-y divide-steel-100">
-                    {movements.map((m) => (
+                    {sortRows(movements, sort3, (m, k) => {
+                      if (k === "jumlah") return Number(m.qty || 0);
+                      if (k === "total") return Number(m.total || 0);
+                      if (k === "item") return String(m.item ?? "");
+                      if (k === "tipe") return String(m.type ?? "");
+                      if (k === "referensi") return String(m.by ?? "");
+                      if (k === "info") return String(`${m.supplier ?? ""} ${m.purpose ?? ""} ${m.pic ?? ""}`);
+                      if (k === "tanggal") return String(m.date ?? "");
+                      return String(m.id ?? "");
+                    }).map((m) => (
                       <tr key={m.id} className="hover:bg-surface">
                         <td className="td font-mono font-medium text-navy-900">{m.id}</td>
                         <td className="td text-steel-600 truncate" title={String(m.item)}>{m.item}</td>

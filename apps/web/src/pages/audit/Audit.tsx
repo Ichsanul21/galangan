@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { Download, History } from "lucide-react";
-import { Badge, Card, EmptyState, Field, KpiCard, PageHeader, toast } from "../../components/ui";
+import { Badge, Card, EmptyState, Field, KpiCard, PageHeader, SortTh, toggleSort, sortRows, toast } from "../../components/ui";
+import type { SortState } from "../../components/ui";
 import { useStore } from "../../data/store";
 import { exportExcel } from "../../utils/export";
 
@@ -20,6 +21,7 @@ export default function Audit() {
   const [q, setQ] = useState("");
   const [modul, setModul] = useState("SEMUA");
   const [tanggal, setTanggal] = useState("");
+  const [sort, setSort] = useState<SortState>({ key: null, dir: "asc" });
 
   const modules = useMemo(() => {
     const set = new Set<string>();
@@ -118,15 +120,17 @@ export default function Audit() {
           <table className="w-full min-w-[720px] text-sm">
             <thead>
               <tr className="border-b border-steel-100 text-left text-xs uppercase tracking-wide text-steel-400">
-                <th className="px-5 py-3 font-semibold">Waktu</th>
-                <th className="px-3 py-3 font-semibold">Aktor</th>
-                <th className="px-3 py-3 font-semibold">Aksi</th>
-                <th className="px-3 py-3 font-semibold">Target</th>
-                <th className="px-5 py-3 font-semibold">Modul</th>
+                <SortTh label="Waktu" sortKey="waktu" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} />
+                <SortTh label="Aktor" sortKey="aktor" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} />
+                <SortTh label="Aksi" sortKey="aksi" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} />
+                <SortTh label="Target" sortKey="target" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} />
+                <SortTh label="Modul" sortKey="modul" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} />
               </tr>
             </thead>
             <tbody className="divide-y divide-steel-50">
-              {rows.map((a) => (
+              {sortRows(rows, sort, (a, key) =>
+                key === "waktu" ? String(a.time ?? "") : key === "aktor" ? String(a.actor ?? "") : key === "aksi" ? String(a.action ?? "") : key === "target" ? String(a.target ?? "") : String(a.module ?? "")
+              ).map((a) => (
                 <tr key={String(a.id)} className="hover:bg-surface">
                   <td className="whitespace-nowrap px-5 py-2.5 text-xs text-steel-500">{String(a.time ?? "-")}</td>
                   <td className="whitespace-nowrap px-3 py-2.5 font-semibold text-navy-900">{String(a.actor ?? "-")}</td>

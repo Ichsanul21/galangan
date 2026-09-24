@@ -1,7 +1,8 @@
 import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { Plus, Send, Users2, Star, Handshake, ArrowRight } from "lucide-react";
-import { Card, CardHeader, PageHeader, Badge, KpiCard, Tabs, Donut, Modal, Field, FormGrid, StatusBadge, EmptyState, toast } from "../../components/ui";
+import { Card, CardHeader, PageHeader, Badge, KpiCard, Tabs, Donut, Modal, Field, FormGrid, StatusBadge, EmptyState, SortTh, toggleSort, sortRows, toast } from "../../components/ui";
+import type { SortState } from "../../components/ui";
 import { useStore } from "../../data/store";
 import type { StoreItem } from "../../data/store";
 import { fmtMiliar, fmtRupiah, fmtTanggal, todayISO } from "../../utils/format";
@@ -51,6 +52,7 @@ function umurHari(dateStr: string | null | undefined): number | null {
 export default function CRM() {
   const { data, add, update, log, branch, inBranch } = useStore();
   const [tab, setTab] = useState("Pipeline");
+  const [sort, setSort] = useState<SortState>({ key: null, dir: "asc" });
   const [klasFilter, setKlasFilter] = useState("Semua");
   const [oldOnly, setOldOnly] = useState(false);
   const [hoChecks, setHoChecks] = useState<boolean[]>([false, false, false, false]);
@@ -528,10 +530,12 @@ export default function CRM() {
                   <div className="overflow-x-auto">
                     <table className="w-full">
                       <thead className="bg-surface sticky top-0 z-10">
-                        <tr><th className="th">Kontrak</th><th className="th">Quotation</th><th className="th">Nilai</th><th className="th">Sign</th><th className="th">Status</th></tr>
+                        <tr><SortTh label="Kontrak" sortKey="kontrak" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label="Quotation" sortKey="quotation" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label="Nilai" sortKey="nilai" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label="Sign" sortKey="sign" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label="Status" sortKey="status" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /></tr>
                       </thead>
                       <tbody className="divide-y divide-steel-100">
-                        {contracts.map((k) => (
+                        {sortRows(contracts, sort, (k, key) =>
+                          key === "kontrak" ? String(k.id ?? "") : key === "quotation" ? String(k.quotationId ?? "") : key === "nilai" ? Number(k.value ?? 0) : key === "sign" ? String(k.signedAt ?? "") : String(k.status ?? "")
+                        ).map((k) => (
                           <tr key={k.id} className="hover:bg-surface">
                             <td className="td font-mono text-xs font-semibold text-navy-900">{k.id}<span className="block font-sans text-[11px] font-normal text-steel-500">{String(k.client ?? "")}</span></td>
                             <td className="td font-mono text-xs"><Link to={`/crm/quotation/${k.quotationId}`} className="text-ocean-600">{String(k.quotationId)}</Link>{k.projectId ? <Link to={`/proyek/${k.projectId}`} className="block text-[11px] text-teal-600">{String(k.projectId)}</Link> : null}</td>

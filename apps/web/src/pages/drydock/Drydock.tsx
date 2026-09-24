@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Plus, Ship, CalendarRange, AlertTriangle, GripVertical, Trash2, Wrench, User } from "lucide-react";
-import { Card, CardHeader, PageHeader, Badge, KpiCard, ProgressBar, Modal, Field, FormGrid, ConfirmModal, StatusBadge, toast } from "../../components/ui";
+import { Card, CardHeader, PageHeader, Badge, KpiCard, ProgressBar, Modal, Field, FormGrid, ConfirmModal, StatusBadge, toast, SortTh, toggleSort, sortRows } from "../../components/ui";
+import type { SortState } from "../../components/ui";
 import { useStore } from "../../data/store";
 import type { StoreItem } from "../../data/store";
 import { dockUtilTrend, slotTrend } from "../../data";
@@ -80,6 +81,7 @@ export default function Drydock() {
   const [deleting, setDeleting] = useState<StoreItem | null>(null);
   const [wide, setWide] = useState(false);
   const [statusFilter, setStatusFilter] = useState("Semua");
+  const [sort, setSort] = useState<SortState>({ key: null, dir: "asc" });
   const [picModal, setPicModal] = useState<StoreItem | null>(null);
   const [picDraft, setPicDraft] = useState("");
   const [showMaint, setShowMaint] = useState(false);
@@ -413,10 +415,10 @@ export default function Drydock() {
           <div className="overflow-x-auto">
             <table className="w-full">
               <thead className="sticky top-0 z-10 bg-surface">
-                <tr><th className="th">Fasilitas</th><th className="th">Proyek</th><th className="th">Durasi</th><th className="th">Prioritas</th><th className="th">Status</th><th className="th">Aksi</th></tr>
+                <tr><SortTh label="Fasilitas" sortKey="facility" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label="Proyek" sortKey="vessel" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label="Durasi" sortKey="days" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label="Prioritas" sortKey="priority" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label="Status" sortKey="status" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><th className="th">Aksi</th></tr>
               </thead>
               <tbody className="divide-y divide-steel-100">
-                {filteredSlots.map((s) => {
+                {sortRows(filteredSlots, sort, (s: StoreItem, k) => k === "days" ? Number(slotDays(s)) : k === "status" ? String(slotStatus(s, data.projects)) : k === "facility" ? String(drydocks.find((d) => d.id === s.dockId)?.name ?? s.dockId) : String((s as unknown as Record<string, unknown>)[k] ?? "")).map((s) => {
                   const st = slotStatus(s, data.projects);
                   const isCrit = conflict.some((c) => c.id === s.id) && overlapsKritis(s);
                   return (

@@ -124,41 +124,52 @@ export default function SparepartServiceSection({ projectId, vesselId, view = "a
     el.innerHTML = "";
     setModelError(null);
     setModelLoading(true);
-    if (typeof customElements !== "undefined" && !customElements.get("model-viewer")) {
-      setModelLoading(false);
-      setModelError("Komponen viewer 3D belum termuat. Muat ulang halaman lalu coba lagi.");
-      return;
-    }
-    const mv = document.createElement("model-viewer") as any;
-    mv.src = modelSrc;
-    mv.alt = "Tug Boat Model";
-    mv.setAttribute("camera-controls", "");
-    mv.setAttribute("auto-rotate", "");
-    mv.setAttribute("auto-rotate-delay", "2000");
-    mv.setAttribute("ar", "");
-    mv.setAttribute("ar-modes", "webxr quick-look");
-    mv.setAttribute("camera-orbit", "45deg 55deg 22m");
-    mv.setAttribute("camera-target", "0 1 0");
-    mv.setAttribute("min-camera-orbit", "auto auto 8m");
-    mv.setAttribute("max-camera-orbit", "auto auto 60m");
-    mv.setAttribute("shadow-intensity", "1");
-    mv.style.width = "100%";
-    mv.style.height = "340px";
-    mv.style.display = "block";
-    mv.style.background = "#f8fafc";
-    const onLoad = () => setModelLoading(false);
-    const onError = () => {
-      setModelLoading(false);
-      setModelError("Gagal memuat model /models/tug_boat.glb. Pastikan file ada di public/models lalu muat ulang.");
-    };
-    mv.addEventListener("load", onLoad);
-    mv.addEventListener("error", onError);
-    el.appendChild(mv);
-    const timer = window.setTimeout(() => setModelLoading((v) => (el.children.length > 0 ? false : v)), 8000);
+    let cancelled = false;
+    /* Muat @google/model-viewer on-demand agar bundle awal tetap ringan saat tab 3D disembunyikan. */
+    void import("@google/model-viewer").then(() => {
+      if (cancelled) return;
+      if (typeof customElements !== "undefined" && !customElements.get("model-viewer")) {
+        setModelLoading(false);
+        setModelError("Komponen viewer 3D belum termuat. Muat ulang halaman lalu coba lagi.");
+        return;
+      }
+      const mv = document.createElement("model-viewer") as any;
+      mv.src = modelSrc;
+      mv.alt = "Tug Boat Model";
+      mv.setAttribute("camera-controls", "");
+      mv.setAttribute("auto-rotate", "");
+      mv.setAttribute("auto-rotate-delay", "2000");
+      mv.setAttribute("ar", "");
+      mv.setAttribute("ar-modes", "webxr quick-look");
+      mv.setAttribute("camera-orbit", "45deg 55deg 22m");
+      mv.setAttribute("camera-target", "0 1 0");
+      mv.setAttribute("min-camera-orbit", "auto auto 8m");
+      mv.setAttribute("max-camera-orbit", "auto auto 60m");
+      mv.setAttribute("shadow-intensity", "1");
+      mv.style.width = "100%";
+      mv.style.height = "340px";
+      mv.style.display = "block";
+      mv.style.background = "#f8fafc";
+      const onLoad = () => setModelLoading(false);
+      const onError = () => {
+        setModelLoading(false);
+        setModelError("Gagal memuat model /models/tug_boat.glb. Pastikan file ada di public/models lalu muat ulang.");
+      };
+      mv.addEventListener("load", onLoad);
+      mv.addEventListener("error", onError);
+      el.appendChild(mv);
+      const timer = window.setTimeout(() => setModelLoading((v) => (el.children.length > 0 ? false : v)), 8000);
+      (el as unknown as { __t?: number }).__t = timer;
+    }).catch(() => {
+      if (!cancelled) {
+        setModelLoading(false);
+        setModelError("Gagal memuat pustaka 3D. Periksa koneksi lalu coba lagi.");
+      }
+    });
     return () => {
-      window.clearTimeout(timer);
-      mv.removeEventListener("load", onLoad);
-      mv.removeEventListener("error", onError);
+      cancelled = true;
+      const t = (el as unknown as { __t?: number }).__t;
+      if (t) window.clearTimeout(t);
       el.innerHTML = "";
     };
   }, [modelSrc, show3d, modelKey, vesselId]);

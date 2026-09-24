@@ -9,10 +9,14 @@ import {
   KpiCard,
   Modal,
   PageHeader,
+  SortTh,
   StatusBadge,
   Tabs,
+  sortRows,
   toast,
+  toggleSort,
 } from "../../components/ui";
+import type { SortState } from "../../components/ui";
 import { useStore } from "../../data/store";
 import type { StoreItem } from "../../data/store";
 import { fmtBulan, fmtRupiah, fmtTanggal, todayISO } from "../../utils/format";
@@ -188,6 +192,9 @@ export default function Payroll() {
   const [proof, setProof] = useState({ date: todayISO(), method: "Transfer", ref: "" });
   const [slipTarget, setSlipTarget] = useState<StoreItem | null>(null);
   const [slipSign, setSlipSign] = useState({ received: false, date: todayISO() });
+  const [sort, setSort] = useState<SortState>({ key: null, dir: "asc" });
+  const [sort2, setSort2] = useState<SortState>({ key: null, dir: "asc" });
+  const [sort3, setSort3] = useState<SortState>({ key: null, dir: "asc" });
 
   /* ---------- THR & bonus ---------- */
   const [bonusForm, setBonusForm] = useState({ employeeId: "", nominal: "", keterangan: "" });
@@ -689,20 +696,34 @@ export default function Payroll() {
                 <table className="w-full">
                   <thead className="bg-surface sticky top-0 z-10">
                     <tr>
-                      <th className="th">ID</th>
-                      <th className="th">Karyawan</th>
-                      <th className="th">Pokok</th>
-                      <th className="th">Tunjangan</th>
-                      <th className="th">Lembur</th>
-                      <th className="th">PPh21</th>
-                      <th className="th">BPJS</th>
-                      <th className="th">Net</th>
-                      <th className="th">Status</th>
+                      <SortTh label="ID" sortKey="id" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} />
+                      <SortTh label="Karyawan" sortKey="emp" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} />
+                      <SortTh label="Pokok" sortKey="basic" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} />
+                      <SortTh label="Tunjangan" sortKey="allow" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} />
+                      <SortTh label="Lembur" sortKey="overtime" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} />
+                      <SortTh label="PPh21" sortKey="pph" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} />
+                      <SortTh label="BPJS" sortKey="bpjs" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} />
+                      <SortTh label="Net" sortKey="net" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} />
+                      <SortTh label="Status" sortKey="status" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} />
                       <th className="th">Aksi</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-steel-100">
-                    {gajiRows.map((p) => (
+                    {sortRows(gajiRows, sort, (row, k) => {
+                      const p = row as StoreItem;
+                      switch (k) {
+                        case "id": return String(p.id ?? "");
+                        case "emp": return String(empNameOf(String(p.employeeId ?? "")));
+                        case "basic": return Number(p.basic ?? 0);
+                        case "allow": return Number(sumAllowances(p.allowances));
+                        case "overtime": return Number(p.overtimePay ?? 0);
+                        case "pph": return Number(p.pph21 ?? 0);
+                        case "bpjs": return Number(bpjsKarOf(p).kes + bpjsKarOf(p).tk);
+                        case "net": return Number(p.net ?? 0);
+                        case "status": return String(p.status ?? "");
+                        default: return "";
+                      }
+                    }).map((p) => (
                       <tr key={p.id} className="hover:bg-surface">
                         <td className="td font-mono text-steel-600">{p.id}</td>
                         <td className="td font-medium text-navy-900">{empNameOf(String(p.employeeId))}</td>
@@ -768,17 +789,30 @@ export default function Payroll() {
                 <table className="w-full">
                   <thead className="bg-surface sticky top-0 z-10">
                     <tr>
-                      <th className="th">ID</th>
-                      <th className="th">Karyawan</th>
-                      <th className="th">Tipe</th>
-                      <th className="th">Nominal</th>
-                      <th className="th">Keterangan</th>
-                      <th className="th">Status</th>
+                      <SortTh label="ID" sortKey="id" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} />
+                      <SortTh label="Karyawan" sortKey="emp" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} />
+                      <SortTh label="Tipe" sortKey="type" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} />
+                      <SortTh label="Nominal" sortKey="nominal" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} />
+                      <SortTh label="Keterangan" sortKey="ket" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} />
+                      <SortTh label="Status" sortKey="status" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} />
                       <th className="th">Aksi</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-steel-100">
-                    {[...thrRows, ...bonusRows].map((p) => (
+                    {sortRows([...thrRows, ...bonusRows], sort2, (row, k) => {
+                      const p = row as StoreItem;
+                      switch (k) {
+                        case "id": return String(p.id ?? "");
+                        case "emp": return String(empNameOf(String(p.employeeId ?? "")));
+                        case "type": return String(rowType(p));
+                        case "nominal": return Number(p.net ?? 0);
+                        case "ket": return String(rowType(p)) === "THR"
+                          ? `Basis ${Number(p.thrBase ?? 0)} x ${Number(p.masaBulan ?? 0)}/12`
+                          : String(p.bonusNote ?? "");
+                        case "status": return String(p.status ?? "");
+                        default: return "";
+                      }
+                    }).map((p) => (
                       <tr key={p.id} className="hover:bg-surface">
                         <td className="td font-mono text-steel-600">{p.id}</td>
                         <td className="td font-medium text-navy-900">{empNameOf(String(p.employeeId))}</td>
@@ -838,18 +872,28 @@ export default function Payroll() {
                 <table className="w-full">
                   <thead className="bg-surface sticky top-0 z-10">
                     <tr>
-                      <th className="th">Karyawan</th>
-                      <th className="th">ID</th>
-                      <th className="th">Tanggal</th>
-                      <th className="th">Jumlah</th>
-                      <th className="th">Cicilan</th>
-                      <th className="th">Sisa</th>
+                      <SortTh label="Karyawan" sortKey="emp" sort={sort3} onSort={(k) => setSort3((s) => toggleSort(s, k))} />
+                      <SortTh label="ID" sortKey="id" sort={sort3} onSort={(k) => setSort3((s) => toggleSort(s, k))} />
+                      <SortTh label="Tanggal" sortKey="date" sort={sort3} onSort={(k) => setSort3((s) => toggleSort(s, k))} />
+                      <SortTh label="Jumlah" sortKey="amount" sort={sort3} onSort={(k) => setSort3((s) => toggleSort(s, k))} />
+                      <SortTh label="Cicilan" sortKey="install" sort={sort3} onSort={(k) => setSort3((s) => toggleSort(s, k))} />
+                      <SortTh label="Sisa" sortKey="sisa" sort={sort3} onSort={(k) => setSort3((s) => toggleSort(s, k))} />
                       <th className="th">Aksi</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-steel-100">
-                    {activeEmps.flatMap((e) =>
-                      normKasbon(e).map((k) => (
+                    {sortRows(activeEmps.flatMap((e) => normKasbon(e).map((k) => ({ e, k }))), sort3, (row, key) => {
+                      const { e, k } = row as { e: StoreItem; k: KasbonEntry };
+                      switch (key) {
+                        case "emp": return String(e.name ?? "");
+                        case "id": return String(k.id ?? "");
+                        case "date": return String(k.tanggal ?? "");
+                        case "amount": return Number(k.jumlah ?? 0);
+                        case "install": return Number(k.cicilan ?? 0);
+                        case "sisa": return Number(k.sisa ?? 0);
+                        default: return "";
+                      }
+                    }).map(({ e, k }) => (
                         <tr key={`${e.id}-${k.id}`} className="hover:bg-surface">
                           <td className="td font-medium text-navy-900">{e.name}</td>
                           <td className="td font-mono text-steel-600">{k.id}</td>
@@ -861,8 +905,7 @@ export default function Payroll() {
                             <button className="text-sm font-semibold text-rose-600 hover:underline" onClick={() => removeKasbon(e, k.id)}>Hapus</button>
                           </td>
                         </tr>
-                      )),
-                    )}
+                      ))}
                   </tbody>
                 </table>
                 {activeEmps.every((e) => normKasbon(e).length === 0) && <EmptyState title="Belum ada kasbon" subtitle="Catat kasbon lewat form di atas." />}

@@ -25,8 +25,13 @@ import {
   ConfirmModal,
   EmptyState,
   ProgressBar,
+  Accordion,
+  SortTh,
+  toggleSort,
+  sortRows,
   toast,
 } from "../../components/ui";
+import type { SortState } from "../../components/ui";
 import { useStore } from "../../data/store";
 import type { StoreItem } from "../../data/store";
 import { fmtRupiah, fmtMiliar, fmtTanggal, fmtJumlah, todayISO } from "../../utils/format";
@@ -267,6 +272,30 @@ export default function Finance() {
     const matchQ = !needle || `${c.kode} ${c.nama}`.toLowerCase().includes(needle);
     return matchT && matchQ;
   });
+  /* Sort per tabel — satu state per tabel agar tidak bentrok antar tab. */
+  const [akunSort, setAkunSort] = useState<SortState>({ key: null, dir: "asc" });
+  const [arSort, setArSort] = useState<SortState>({ key: null, dir: "asc" });
+  const [apSort, setApSort] = useState<SortState>({ key: null, dir: "asc" });
+  const [kasSort, setKasSort] = useState<SortState>({ key: null, dir: "asc" });
+  const [jadwalSort, setJadwalSort] = useState<SortState>({ key: null, dir: "asc" });
+  const [invSort, setInvSort] = useState<SortState>({ key: null, dir: "asc" });
+  const [bbSort, setBbSort] = useState<SortState>({ key: null, dir: "asc" });
+  const [lrSort, setLrSort] = useState<SortState>({ key: null, dir: "asc" });
+  const [nrSort, setNrSort] = useState<SortState>({ key: null, dir: "asc" });
+  const [asetSort, setAsetSort] = useState<SortState>({ key: null, dir: "asc" });
+  const [juSort, setJuSort] = useState<SortState>({ key: null, dir: "asc" });
+  const [alokasiSort, setAlokasiSort] = useState<SortState>({ key: null, dir: "asc" });
+  const [pajakSort, setPajakSort] = useState<SortState>({ key: null, dir: "asc" });
+  const coaTipeOf = (c: StoreItem): string => coaList.find((x) => x.kode === String(c.kode))?.tipe ?? "—";
+  const TIPE_ORDER = ["Aset", "Liabilitas", "Ekuitas", "Pendapatan", "Beban", "Header"];
+  const coaGroups = useMemo(() => {
+    const sorted = sortRows(coaFiltered, akunSort, (c, k) =>
+      k === "kode" ? String(c.kode) : k === "nama" ? String(c.nama) : k === "tipe" ? coaTipeOf(c) : k === "dk" ? String(c.dk) : String(c.nrlr));
+    const groups = TIPE_ORDER.map((t) => ({ tipe: t, rows: sorted.filter((c) => coaTipeOf(c) === t) })).filter((g) => g.rows.length > 0);
+    const other = sorted.filter((c) => !TIPE_ORDER.includes(coaTipeOf(c)));
+    if (other.length > 0) groups.push({ tipe: "Lainnya", rows: other });
+    return groups;
+  }, [coaFiltered, akunSort, coaList]);
 
   // Jurnal (sheet JU): tambah jurnal manual berimbang, multi-baris per voucher.
   const [showJu, setShowJu] = useState(false);
@@ -299,6 +328,18 @@ export default function Finance() {
     return m;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [manJournals]);
+
+  const kasFlow = (kode: string): { masuk: number; keluar: number } => {
+    let masuk = 0;
+    let keluar = 0;
+    for (const j of manJournals) {
+      if (j.status === "Void") continue;
+      if (j.sumber !== "Kas" && j.sumber !== "Bank") continue;
+      if (String(j.db) === kode) masuk += num(j.amount);
+      if (String(j.kr) === kode) keluar += num(j.amount);
+    }
+    return { masuk, keluar };
+  };
 
   const isTMForm = invForm.billingType === "T&M";
   const invTotal = invLines.reduce((s, l) => s + lineAmount(l, isTMForm), 0);
@@ -1172,39 +1213,50 @@ export default function Finance() {
                 </select>
                 <span className="ml-auto text-xs text-steel-400">{coaFiltered.length} akun</span>
               </div>
-              <div className="overflow-x-auto">
-                <table className="w-full">
-                  <thead className="bg-surface sticky top-0 z-10">
-                    <tr><th className="th">No. Akun</th><th className="th">Nama Akun</th><th className="th">Tipe</th><th className="th">D/K</th><th className="th">NR/LR</th><th className="th">Aksi</th></tr>
-                  </thead>
-                  <tbody className="divide-y divide-steel-100">
-                    {coaFiltered.map((c) => {
-                      const header = String(c.dk) === "-";
-                      const tipe = coaList.find((x) => x.kode === String(c.kode))?.tipe ?? "—";
-                      return (
-                        <tr key={String(c.id)} className={header ? "bg-navy-50 font-semibold" : "hover:bg-surface"}>
-                          <td className="td font-mono text-xs font-semibold text-navy-900">{String(c.kode)}</td>
-                          <td className="td text-xs text-steel-600">{String(c.nama)} {header && <span className="ml-1 rounded-full bg-navy-700 px-1.5 py-0.5 text-[10px] font-bold text-white">Header</span>}</td>
-                          <td className="td"><span className="rounded-full bg-surface border border-steel-200 px-2 py-0.5 text-[11px] font-medium text-navy-800">{tipe}</span></td>
-                          <td className="td text-xs text-steel-500">{String(c.dk)}</td>
-                          <td className="td text-xs text-steel-500">{String(c.nrlr)}</td>
-                          <td className="td">
-                            <div className="flex gap-1.5">
-                              <button className="btn-secondary px-2 py-1 text-[11px]" onClick={() => { setCoaTarget(c); setCoaForm({ kode: String(c.kode), nama: String(c.nama), dk: String(c.dk) === "-" ? "D" : String(c.dk), nrlr: String(c.nrlr) === "-" ? "NR" : String(c.nrlr) }); setShowCoa(true); }}>
-                                Ubah
-                              </button>
-                              {!header && (
-                                <button className="btn-secondary px-2 py-1 text-[11px] text-rose-600" onClick={() => { remove("coa", String(c.id)); log("menghapus akun", String(c.kode), "Keuangan"); toast(`Akun ${c.kode} dihapus`); }}>
-                                  Hapus
-                                </button>
-                              )}
-                            </div>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
+              <div className="space-y-3">
+                {coaGroups.map((g) => (
+                  <Accordion key={g.tipe} title={g.tipe} subtitle={g.tipe === "Header" ? "Baris header tidak bisa dihapus, posisi dikunci" : `${g.rows.length} akun`} count={g.rows.length} defaultOpen={coaGroups.length === 1 || g.tipe === "Aset"}>
+                    <div className="overflow-x-auto">
+                      <table className="w-full">
+                        <thead className="bg-surface sticky top-0 z-10">
+                          <tr>
+                            <SortTh label="No. Akun" sortKey="kode" sort={akunSort} onSort={(k) => setAkunSort((s) => toggleSort(s, k))} />
+                            <SortTh label="Nama Akun" sortKey="nama" sort={akunSort} onSort={(k) => setAkunSort((s) => toggleSort(s, k))} />
+                            <SortTh label="D/K" sortKey="dk" sort={akunSort} onSort={(k) => setAkunSort((s) => toggleSort(s, k))} />
+                            <SortTh label="NR/LR" sortKey="nrlr" sort={akunSort} onSort={(k) => setAkunSort((s) => toggleSort(s, k))} />
+                            <th className="th">Aksi</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-steel-100">
+                          {g.rows.map((c) => {
+                            const header = String(c.dk) === "-";
+                            return (
+                              <tr key={String(c.id)} className={header ? "bg-navy-50 font-semibold" : "hover:bg-surface"}>
+                                <td className="td font-mono text-xs font-semibold text-navy-900">{String(c.kode)}</td>
+                                <td className="td text-xs text-steel-600">{String(c.nama)} {header && <span className="ml-1 rounded-full bg-navy-700 px-1.5 py-0.5 text-[10px] font-bold text-white">Header</span>}</td>
+                                <td className="td text-xs text-steel-500">{String(c.dk)}</td>
+                                <td className="td text-xs text-steel-500">{String(c.nrlr)}</td>
+                                <td className="td">
+                                  <div className="flex gap-1.5">
+                                    <button className="btn-secondary px-2 py-1 text-[11px]" onClick={() => { setCoaTarget(c); setCoaForm({ kode: String(c.kode), nama: String(c.nama), dk: String(c.dk) === "-" ? "D" : String(c.dk), nrlr: String(c.nrlr) === "-" ? "NR" : String(c.nrlr) }); setShowCoa(true); }}>
+                                      Ubah
+                                    </button>
+                                    {!header && (
+                                      <button className="btn-secondary px-2 py-1 text-[11px] text-rose-600" onClick={() => { remove("coa", String(c.id)); log("menghapus akun", String(c.kode), "Keuangan"); toast(`Akun ${c.kode} dihapus`); }}>
+                                        Hapus
+                                      </button>
+                                    )}
+                                  </div>
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  </Accordion>
+                ))}
+                {coaGroups.length === 0 && <p className="py-6 text-center text-sm text-steel-400">Tidak ada akun yang cocok.</p>}
               </div>
             </div>
           )}
@@ -1216,10 +1268,24 @@ export default function Finance() {
                 <div className="overflow-x-auto">
                   <table className="w-full">
                     <thead className="bg-surface sticky top-0 z-10">
-                      <tr><th className="th">Invoice</th><th className="th">Kode Pembantu</th><th className="th">Proyek</th><th className="th">Saldo Awal</th><th className="th">Nilai</th><th className="th">Jatuh Tempo</th><th className="th">Umur</th><th className="th">Penagihan</th><th className="th">Status</th><th className="th">Aksi</th></tr>
+                      <tr>
+                        <SortTh label="Invoice" sortKey="id" sort={arSort} onSort={(k) => setArSort((s) => toggleSort(s, k))} />
+                        <SortTh label="Kode Pembantu" sortKey="kode" sort={arSort} onSort={(k) => setArSort((s) => toggleSort(s, k))} />
+                        <SortTh label="Proyek" sortKey="project" sort={arSort} onSort={(k) => setArSort((s) => toggleSort(s, k))} />
+                        <SortTh label="Saldo Awal" sortKey="openAwal" sort={arSort} onSort={(k) => setArSort((s) => toggleSort(s, k))} />
+                        <SortTh label="Nilai" sortKey="amount" sort={arSort} onSort={(k) => setArSort((s) => toggleSort(s, k))} />
+                        <SortTh label="Jatuh Tempo" sortKey="due" sort={arSort} onSort={(k) => setArSort((s) => toggleSort(s, k))} />
+                        <SortTh label="Umur" sortKey="age" sort={arSort} onSort={(k) => setArSort((s) => toggleSort(s, k))} />
+                        <th className="th">Penagihan</th>
+                        <SortTh label="Status" sortKey="status" sort={arSort} onSort={(k) => setArSort((s) => toggleSort(s, k))} />
+                        <th className="th">Aksi</th>
+                      </tr>
                     </thead>
                     <tbody className="divide-y divide-steel-100">
-                      {invoices.map((inv) => {
+                      {sortRows(invoices, arSort, (inv, k) =>
+                        k === "id" ? String(inv.id) : k === "kode" ? String(inv.kodePembantu ?? inv.client ?? "") : k === "project" ? String(inv.project ?? "") :
+                        k === "openAwal" ? num(inv.openAwal) : k === "amount" ? num(inv.amount) : k === "due" ? String(inv.due ?? "") :
+                        k === "age" ? ageDays(inv.due, today) : String(inv.status)).map((inv) => {
                         const age = ageDays(inv.due, today);
                         const dun = dunningOf(inv);
                         const nextDun = DUNNING_NEXT[dun] ?? "Ditagih";
@@ -1284,7 +1350,6 @@ export default function Finance() {
                     })}
                   </tbody>
                 </table>
-                {coaFiltered.length === 0 && <p className="py-6 text-center text-sm text-steel-400">Tidak ada akun yang cocok.</p>}
               </div>
                 {invoices.length === 0 && <EmptyState title="Belum ada invoice" subtitle="Buat invoice pertama untuk cabang ini." />}
                 <Card className="mt-4 p-4">
@@ -1292,10 +1357,14 @@ export default function Finance() {
                   <div className="overflow-x-auto px-5 pb-5">
                     <table className="w-full">
                       <thead className="bg-surface sticky top-0 z-10">
-                        <tr><th className="th">Bucket</th><th className="th">Jumlah</th><th className="th">Total</th></tr>
+                        <tr>
+                          <SortTh label="Bucket" sortKey="name" sort={arSort} onSort={(k) => setArSort((s) => toggleSort(s, k))} />
+                          <SortTh label="Jumlah" sortKey="count" sort={arSort} onSort={(k) => setArSort((s) => toggleSort(s, k))} />
+                          <SortTh label="Total" sortKey="total" sort={arSort} onSort={(k) => setArSort((s) => toggleSort(s, k))} />
+                        </tr>
                       </thead>
                       <tbody className="divide-y divide-steel-100">
-                        {agingReal.map((b) => (
+                        {sortRows(agingReal, arSort, (b, k) => k === "count" ? Number(b.count) : k === "total" ? Number(b.total) : String(b.name)).map((b) => (
                           <tr key={b.name} className="hover:bg-surface">
                             <td className="td font-medium text-navy-900">{b.name}</td>
                             <td className="td text-steel-600">{fmtJumlah(b.count)} invoice</td>
@@ -1371,10 +1440,27 @@ export default function Finance() {
               <div className="overflow-x-auto">
                 <table className="w-full">
                   <thead className="bg-surface sticky top-0 z-10">
-                    <tr><th className="th">Vendor</th><th className="th">Kode Pembantu</th><th className="th">PO</th><th className="th">U/TK Kapal</th><th className="th">Saldo Awal</th><th className="th">Saldo Akhir</th><th className="th">Bayar I</th><th className="th">Bayar II</th><th className="th">Sisa</th><th className="th">Jatuh Tempo</th><th className="th">PPh 23</th><th className="th">Status</th><th className="th">Aksi</th></tr>
+                    <tr>
+                      <SortTh label="Vendor" sortKey="v" sort={apSort} onSort={(k) => setApSort((s) => toggleSort(s, k))} />
+                      <SortTh label="Kode Pembantu" sortKey="kode" sort={apSort} onSort={(k) => setApSort((s) => toggleSort(s, k))} />
+                      <SortTh label="PO" sortKey="po" sort={apSort} onSort={(k) => setApSort((s) => toggleSort(s, k))} />
+                      <SortTh label="U/TK Kapal" sortKey="vessel" sort={apSort} onSort={(k) => setApSort((s) => toggleSort(s, k))} />
+                      <SortTh label="Saldo Awal" sortKey="openAwal" sort={apSort} onSort={(k) => setApSort((s) => toggleSort(s, k))} />
+                      <SortTh label="Saldo Akhir" sortKey="amt" sort={apSort} onSort={(k) => setApSort((s) => toggleSort(s, k))} />
+                      <th className="th">Bayar I</th>
+                      <th className="th">Bayar II</th>
+                      <SortTh label="Sisa" sortKey="sisa" sort={apSort} onSort={(k) => setApSort((s) => toggleSort(s, k))} />
+                      <SortTh label="Jatuh Tempo" sortKey="due" sort={apSort} onSort={(k) => setApSort((s) => toggleSort(s, k))} />
+                      <th className="th">PPh 23</th>
+                      <SortTh label="Status" sortKey="st" sort={apSort} onSort={(k) => setApSort((s) => toggleSort(s, k))} />
+                      <th className="th">Aksi</th>
+                    </tr>
                   </thead>
                   <tbody className="divide-y divide-steel-100">
-                    {payables.map((a) => (
+                    {sortRows(payables, apSort, (a, k) =>
+                      k === "v" ? String(a.v) : k === "kode" ? String(a.kodePembantu ?? a.v) : k === "po" ? String(a.po) :
+                      k === "vessel" ? String(a.vessel ?? "") : k === "openAwal" ? num(a.openAwal) : k === "amt" ? num(a.amt) :
+                      k === "sisa" ? Math.max(0, num(a.amt) - num(a.pay1) - num(a.pay2)) : k === "due" ? String(a.due ?? "") : String(a.st)).map((a) => (
                       <tr key={a.id} className="hover:bg-surface">
                         <td className="td font-medium text-navy-900 truncate" title={String(a.v)}>{String(a.v)}</td>
                         <td className="td font-mono text-xs text-steel-600 truncate" title={String(a.kodePembantu ?? a.v)}>{String(a.kodePembantu ?? a.v)}</td>
@@ -1453,18 +1539,22 @@ export default function Finance() {
               <div className="overflow-x-auto">
                 <table className="w-full">
                   <thead className="bg-surface sticky top-0 z-10">
-                    <tr><th className="th">Kode</th><th className="th">Rekening</th><th className="th">Saldo Awal</th><th className="th">Mutasi Masuk</th><th className="th">Mutasi Keluar</th><th className="th">Saldo Berjalan</th><th className="th">Saldo Akhir</th></tr>
+                    <tr>
+                      <SortTh label="Kode" sortKey="kode" sort={kasSort} onSort={(k) => setKasSort((s) => toggleSort(s, k))} />
+                      <SortTh label="Rekening" sortKey="nama" sort={kasSort} onSort={(k) => setKasSort((s) => toggleSort(s, k))} />
+                      <SortTh label="Saldo Awal" sortKey="awal" sort={kasSort} onSort={(k) => setKasSort((s) => toggleSort(s, k))} />
+                      <SortTh label="Mutasi Masuk" sortKey="masuk" sort={kasSort} onSort={(k) => setKasSort((s) => toggleSort(s, k))} />
+                      <SortTh label="Mutasi Keluar" sortKey="keluar" sort={kasSort} onSort={(k) => setKasSort((s) => toggleSort(s, k))} />
+                      <SortTh label="Saldo Berjalan" sortKey="berjalan" sort={kasSort} onSort={(k) => setKasSort((s) => toggleSort(s, k))} />
+                      <SortTh label="Saldo Akhir" sortKey="akhir" sort={kasSort} onSort={(k) => setKasSort((s) => toggleSort(s, k))} />
+                    </tr>
                   </thead>
                   <tbody className="divide-y divide-steel-100">
-                    {KASBANK_EXCEL.map((r) => {
-                      let masuk = 0;
-                      let keluar = 0;
-                      for (const j of manJournals) {
-                        if (j.status === "Void") continue;
-                        if (j.sumber !== "Kas" && j.sumber !== "Bank") continue;
-                        if (String(j.db) === r.kode) masuk += num(j.amount);
-                        if (String(j.kr) === r.kode) keluar += num(j.amount);
-                      }
+                    {sortRows(KASBANK_EXCEL, kasSort, (r, k) =>
+                      k === "nama" ? String(r.nama) : k === "awal" ? Number(r.awal) : k === "masuk" ? kasFlow(r.kode).masuk :
+                      k === "keluar" ? kasFlow(r.kode).keluar : k === "berjalan" ? (kasSaldo[r.kode] ?? r.awal) :
+                      k === "akhir" ? Number(r.akhir) : String(r.kode)).map((r) => {
+                      const { masuk, keluar } = kasFlow(r.kode);
                       return (
                       <tr key={r.kode} className="hover:bg-surface">
                         <td className="td font-mono text-xs font-semibold text-navy-900">{r.kode}</td>
@@ -1485,10 +1575,19 @@ export default function Finance() {
                 <div className="overflow-x-auto px-1 pb-3">
                   <table className="w-full">
                     <thead className="bg-surface sticky top-0 z-10">
-                      <tr><th className="th">Tanggal</th><th className="th">Uraian</th><th className="th">Akun DB</th><th className="th">Debit</th><th className="th">Akun KR</th><th className="th">Kredit</th></tr>
+                      <tr>
+                        <SortTh label="Tanggal" sortKey="tgl" sort={kasSort} onSort={(k) => setKasSort((s) => toggleSort(s, k))} />
+                        <SortTh label="Uraian" sortKey="uraian" sort={kasSort} onSort={(k) => setKasSort((s) => toggleSort(s, k))} />
+                        <SortTh label="Akun DB" sortKey="db" sort={kasSort} onSort={(k) => setKasSort((s) => toggleSort(s, k))} />
+                        <SortTh label="Debit" sortKey="dbAmt" sort={kasSort} onSort={(k) => setKasSort((s) => toggleSort(s, k))} />
+                        <SortTh label="Akun KR" sortKey="kr" sort={kasSort} onSort={(k) => setKasSort((s) => toggleSort(s, k))} />
+                        <SortTh label="Kredit" sortKey="krAmt" sort={kasSort} onSort={(k) => setKasSort((s) => toggleSort(s, k))} />
+                      </tr>
                     </thead>
                     <tbody className="divide-y divide-steel-100">
-                      {JU_PENYESUAIAN_EXCEL.map((j, i) => (
+                      {sortRows(JU_PENYESUAIAN_EXCEL, kasSort, (j, k) =>
+                        k === "uraian" ? String(j.uraian) : k === "db" ? String(j.db) : k === "dbAmt" ? Number(j.dbAmt) :
+                        k === "kr" ? String(j.kr) : k === "krAmt" ? Number(j.krAmt) : String(j.tgl)).map((j, i) => (
                         <tr key={i} className="hover:bg-surface">
                           <td className="td font-mono text-xs text-steel-600">{j.tgl}</td>
                           <td className="td text-xs text-steel-600">{j.uraian}</td>
@@ -1527,11 +1626,18 @@ export default function Finance() {
                     <thead className="bg-surface sticky top-0 z-10">
                       <tr>
                         <th className="th"><input type="checkbox" aria-label="Pilih semua" checked={schedSel.length === schedItems.length} onChange={() => setSchedSel((prev) => (prev.length === schedItems.length ? [] : schedItems.map((r) => r.key)))} /></th>
-                        <th className="th">Jenis</th><th className="th">ID</th><th className="th">Ref/Proyek</th><th className="th">Uraian</th><th className="th">Jatuh Tempo</th><th className="th">Nilai</th>
+                        <SortTh label="Jenis" sortKey="kind" sort={jadwalSort} onSort={(k) => setJadwalSort((s) => toggleSort(s, k))} />
+                        <SortTh label="ID" sortKey="id" sort={jadwalSort} onSort={(k) => setJadwalSort((s) => toggleSort(s, k))} />
+                        <SortTh label="Ref/Proyek" sortKey="ref" sort={jadwalSort} onSort={(k) => setJadwalSort((s) => toggleSort(s, k))} />
+                        <SortTh label="Uraian" sortKey="desc" sort={jadwalSort} onSort={(k) => setJadwalSort((s) => toggleSort(s, k))} />
+                        <SortTh label="Jatuh Tempo" sortKey="due" sort={jadwalSort} onSort={(k) => setJadwalSort((s) => toggleSort(s, k))} />
+                        <SortTh label="Nilai" sortKey="amount" sort={jadwalSort} onSort={(k) => setJadwalSort((s) => toggleSort(s, k))} />
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-steel-100">
-                      {schedItems.map((r) => (
+                      {sortRows(schedItems, jadwalSort, (r, k) =>
+                        k === "kind" ? String(r.kind) : k === "id" ? String(r.id) : k === "ref" ? String(r.ref) :
+                        k === "desc" ? String(r.desc) : k === "due" ? String(r.due) : Number(r.amount)).map((r) => (
                         <tr key={r.key} className="hover:bg-surface">
                           <td className="td"><input type="checkbox" aria-label={`Pilih ${r.id}`} checked={schedSel.includes(r.key)} onChange={() => toggleSched(r.key)} /></td>
                           <td className="td"><Badge tone={r.kind === "AP" ? "navy" : "amber"}>{r.kind}</Badge></td>
@@ -1583,10 +1689,21 @@ export default function Finance() {
               <div className="overflow-x-auto">
                 <table className="w-full">
                   <thead className="bg-surface sticky top-0 z-10">
-                    <tr><th className="th">Invoice</th><th className="th">Tipe</th><th className="th">Lines</th><th className="th">Retensi</th><th className="th">e-Faktur</th><th className="th">Nilai</th><th className="th">Status</th></tr>
+                    <tr>
+                      <SortTh label="Invoice" sortKey="id" sort={invSort} onSort={(k) => setInvSort((s) => toggleSort(s, k))} />
+                      <SortTh label="Tipe" sortKey="tipe" sort={invSort} onSort={(k) => setInvSort((s) => toggleSort(s, k))} />
+                      <SortTh label="Lines" sortKey="lines" sort={invSort} onSort={(k) => setInvSort((s) => toggleSort(s, k))} />
+                      <SortTh label="Retensi" sortKey="retensi" sort={invSort} onSort={(k) => setInvSort((s) => toggleSort(s, k))} />
+                      <SortTh label="e-Faktur" sortKey="efaktur" sort={invSort} onSort={(k) => setInvSort((s) => toggleSort(s, k))} />
+                      <SortTh label="Nilai" sortKey="amount" sort={invSort} onSort={(k) => setInvSort((s) => toggleSort(s, k))} />
+                      <SortTh label="Status" sortKey="status" sort={invSort} onSort={(k) => setInvSort((s) => toggleSort(s, k))} />
+                    </tr>
                   </thead>
                   <tbody className="divide-y divide-steel-100">
-                    {invoices.map((inv) => (
+                    {sortRows(invoices, invSort, (inv, k) =>
+                      k === "tipe" ? String(inv.billingType ?? inv.paymentTerm ?? "") : k === "lines" ? (Array.isArray(inv.lines) ? inv.lines.length : 1) :
+                      k === "retensi" ? num(inv.retentionAmt) : k === "efaktur" ? String(inv.nsfp ?? inv.noFaktur ?? "") :
+                      k === "amount" ? num(inv.amount) : k === "status" ? String(inv.status) : String(inv.id)).map((inv) => (
                       <tr key={inv.id} className="hover:bg-surface">
                         <td className="td font-mono text-xs font-semibold text-navy-900">{inv.id}<span className="block font-sans text-[11px] font-normal text-steel-500">{fmtTanggal(String(inv.due ?? ""))}</span></td>
                         <td className="td text-xs text-steel-600">{String(inv.billingType ?? inv.paymentTerm ?? "-")}{inv.serviceRef ? ` · ${inv.serviceRef}` : ""}</td>
@@ -1623,11 +1740,17 @@ export default function Finance() {
               <div className="overflow-x-auto">
                 <table className="w-full">
                   <thead className="bg-surface sticky top-0 z-10">
-                    <tr><th className="th" rowSpan={2}>Kode</th><th className="th" rowSpan={2}>Nama Akun</th><th className="th" rowSpan={2}>D/K</th><th className="th" colSpan={2}>Neraca Saldo</th><th className="th" colSpan={2}>Laba-Rugi</th><th className="th" colSpan={2}>Neraca</th></tr>
+                    <tr>
+                      <SortTh label="Kode" sortKey="kode" sort={bbSort} onSort={(k) => setBbSort((s) => toggleSort(s, k))} rowSpan={2} />
+                      <SortTh label="Nama Akun" sortKey="nama" sort={bbSort} onSort={(k) => setBbSort((s) => toggleSort(s, k))} rowSpan={2} />
+                      <SortTh label="D/K" sortKey="dk" sort={bbSort} onSort={(k) => setBbSort((s) => toggleSort(s, k))} rowSpan={2} />
+                      <th className="th" colSpan={2}>Neraca Saldo</th><th className="th" colSpan={2}>Laba-Rugi</th><th className="th" colSpan={2}>Neraca</th>
+                    </tr>
                     <tr><th className="th">Debit</th><th className="th">Kredit</th><th className="th">Debit</th><th className="th">Kredit</th><th className="th">Debit</th><th className="th">Kredit</th></tr>
                   </thead>
                   <tbody className="divide-y divide-steel-100">
-                    {coaRows.filter((c) => String(c.dk) !== "-").map((c) => {
+                    {sortRows(coaRows.filter((c) => String(c.dk) !== "-"), bbSort, (c, k) =>
+                      k === "nama" ? String(c.nama) : k === "dk" ? String(c.dk) : String(c.kode)).map((c) => {
                       const kode = String(c.kode);
                       const isLR = String(c.nrlr) === "LR";
                       const d = nlOf(kode).d;
@@ -1668,10 +1791,14 @@ export default function Finance() {
               <div className="overflow-x-auto">
                 <table className="w-full">
                   <thead className="bg-surface sticky top-0 z-10">
-                    <tr><th className="th">No. Akun</th><th className="th">Pos-Pos</th><th className="th">Nilai</th></tr>
+                    <tr>
+                      <SortTh label="No. Akun" sortKey="kode" sort={lrSort} onSort={(k) => setLrSort((s) => toggleSort(s, k))} />
+                      <SortTh label="Pos-Pos" sortKey="pos" sort={lrSort} onSort={(k) => setLrSort((s) => toggleSort(s, k))} />
+                      <SortTh label="Nilai" sortKey="nilai" sort={lrSort} onSort={(k) => setLrSort((s) => toggleSort(s, k))} />
+                    </tr>
                   </thead>
                   <tbody className="divide-y divide-steel-100">
-                    {lrRows.rows.map((r) => (
+                    {sortRows(lrRows.rows, lrSort, (r, k) => k === "pos" ? String(r.pos) : k === "nilai" ? Number(r.nilai) : String(r.kode)).map((r) => (
                       <tr key={r.kode} className="hover:bg-surface">
                         <td className="td font-mono text-xs font-semibold text-navy-900">{r.kode}</td>
                         <td className="td text-xs text-steel-600">{r.pos}</td>
@@ -1728,10 +1855,20 @@ export default function Finance() {
                 <div className="overflow-x-auto">
                   <table className="w-full">
                     <thead className="bg-surface sticky top-0 z-10">
-                      <tr><th className="th">Payroll</th><th className="th">Karyawan</th><th className="th">Periode</th><th className="th">Net</th><th className="th">Alokasi</th><th className="th">Aksi</th></tr>
+                      <tr>
+                        <SortTh label="Payroll" sortKey="id" sort={alokasiSort} onSort={(k) => setAlokasiSort((s) => toggleSort(s, k))} />
+                        <SortTh label="Karyawan" sortKey="emp" sort={alokasiSort} onSort={(k) => setAlokasiSort((s) => toggleSort(s, k))} />
+                        <SortTh label="Periode" sortKey="period" sort={alokasiSort} onSort={(k) => setAlokasiSort((s) => toggleSort(s, k))} />
+                        <SortTh label="Net" sortKey="net" sort={alokasiSort} onSort={(k) => setAlokasiSort((s) => toggleSort(s, k))} />
+                        <SortTh label="Alokasi" sortKey="alloc" sort={alokasiSort} onSort={(k) => setAlokasiSort((s) => toggleSort(s, k))} />
+                        <th className="th">Aksi</th>
+                      </tr>
                     </thead>
                     <tbody className="divide-y divide-steel-100">
-                      {(data.payroll ?? []).filter((p) => p.status === "Dibayar").slice(0, 20).map((p) => (
+                      {sortRows((data.payroll ?? []).filter((p) => p.status === "Dibayar").slice(0, 20), alokasiSort, (p, k) =>
+                        k === "emp" ? String(p.employeeId ?? "") : k === "period" ? String(p.period ?? "") :
+                        k === "net" ? (num(p.net) || num(p.basic) + num(p.allowances) + num(p.overtimePay) - num(p.deductions)) :
+                        k === "alloc" ? String(p.allocProject ?? "") : String(p.id)).map((p) => (
                         <tr key={p.id} className="hover:bg-surface">
                           <td className="td font-mono text-xs font-semibold text-navy-900">{p.id}</td>
                           <td className="td font-mono text-xs text-steel-600">{String(p.employeeId ?? "")}</td>
@@ -1784,10 +1921,19 @@ export default function Finance() {
                 <div className="overflow-x-auto">
                   <table className="w-full">
                     <thead className="bg-surface sticky top-0 z-10">
-                      <tr><th className="th">Periode</th><th className="th">Pendapatan</th><th className="th">Beban Proyek</th><th className="th">Beban Gaji</th><th className="th">Hapus Buku</th><th className="th">Laba</th></tr>
+                      <tr>
+                        <SortTh label="Periode" sortKey="period" sort={pajakSort} onSort={(k) => setPajakSort((s) => toggleSort(s, k))} />
+                        <SortTh label="Pendapatan" sortKey="revenue" sort={pajakSort} onSort={(k) => setPajakSort((s) => toggleSort(s, k))} />
+                        <SortTh label="Beban Proyek" sortKey="costProj" sort={pajakSort} onSort={(k) => setPajakSort((s) => toggleSort(s, k))} />
+                        <SortTh label="Beban Gaji" sortKey="salary" sort={pajakSort} onSort={(k) => setPajakSort((s) => toggleSort(s, k))} />
+                        <SortTh label="Hapus Buku" sortKey="writeoff" sort={pajakSort} onSort={(k) => setPajakSort((s) => toggleSort(s, k))} />
+                        <SortTh label="Laba" sortKey="laba" sort={pajakSort} onSort={(k) => setPajakSort((s) => toggleSort(s, k))} />
+                      </tr>
                     </thead>
                     <tbody className="divide-y divide-steel-100">
-                      {plMonthly.map((p) => (
+                      {sortRows(plMonthly, pajakSort, (p, k) =>
+                        k === "revenue" ? Number(p.revenue) : k === "costProj" ? Number(p.costProj) : k === "salary" ? Number(p.salary) :
+                        k === "writeoff" ? Number(p.writeoff) : k === "laba" ? Number(p.laba) : String(p.period)).map((p) => (
                         <tr key={p.period} className="hover:bg-surface">
                           <td className="td font-medium text-navy-900">{p.period}</td>
                           <td className="td">{fmtMiliar(p.revenue)}</td>
@@ -1836,9 +1982,14 @@ export default function Finance() {
                   <CardHeader title="Subledger Hutang" subtitle="Kuning = vendor Non-PPn. Saldo akhir = sisa hutang berjalan." />
                   <div className="max-h-72 overflow-y-auto">
                     <table className="w-full">
-                      <thead className="bg-surface sticky top-0 z-10"><tr><th className="th">Vendor</th><th className="th">Awal</th><th className="th">Akhir</th><th className="th">PPn</th></tr></thead>
+                      <thead className="bg-surface sticky top-0 z-10"><tr>
+                        <SortTh label="Vendor" sortKey="v" sort={nrSort} onSort={(k) => setNrSort((s) => toggleSort(s, k))} />
+                        <SortTh label="Awal" sortKey="awal" sort={nrSort} onSort={(k) => setNrSort((s) => toggleSort(s, k))} />
+                        <SortTh label="Akhir" sortKey="akhir" sort={nrSort} onSort={(k) => setNrSort((s) => toggleSort(s, k))} />
+                        <th className="th">PPn</th>
+                      </tr></thead>
                       <tbody className="divide-y divide-steel-100">
-                        {HUTANG_EXCEL.map((h) => (
+                        {sortRows(HUTANG_EXCEL, nrSort, (h, k) => k === "awal" ? Number(h.awal) : k === "akhir" ? Number(h.akhir) : String(h.v)).map((h) => (
                           <tr key={h.v} className="hover:bg-surface">
                             <td className="td text-xs font-medium text-navy-900">{h.v}</td>
                             <td className="td text-xs text-steel-600">{h.awal ? fmtRupiah(h.awal) : "—"}</td>
@@ -1854,9 +2005,14 @@ export default function Finance() {
                   <CardHeader title="Subledger Piutang" subtitle="Kuning = Non-PPn / perorangan. Saldo akhir = sisa piutang berjalan." />
                   <div className="max-h-72 overflow-y-auto">
                     <table className="w-full">
-                      <thead className="bg-surface sticky top-0 z-10"><tr><th className="th">Customer</th><th className="th">Awal</th><th className="th">Akhir</th><th className="th">PPn</th></tr></thead>
+                      <thead className="bg-surface sticky top-0 z-10"><tr>
+                        <SortTh label="Customer" sortKey="c" sort={nrSort} onSort={(k) => setNrSort((s) => toggleSort(s, k))} />
+                        <SortTh label="Awal" sortKey="awal" sort={nrSort} onSort={(k) => setNrSort((s) => toggleSort(s, k))} />
+                        <SortTh label="Akhir" sortKey="akhir" sort={nrSort} onSort={(k) => setNrSort((s) => toggleSort(s, k))} />
+                        <th className="th">PPn</th>
+                      </tr></thead>
                       <tbody className="divide-y divide-steel-100">
-                        {PIUTANG_EXCEL.map((p) => (
+                        {sortRows(PIUTANG_EXCEL, nrSort, (p, k) => k === "awal" ? Number(p.awal) : k === "akhir" ? Number(p.akhir) : String(p.c)).map((p) => (
                           <tr key={p.c} className="hover:bg-surface">
                             <td className="td text-xs font-medium text-navy-900">{p.c}</td>
                             <td className="td text-xs text-steel-600">{p.awal ? fmtRupiah(p.awal) : "—"}</td>
@@ -1947,10 +2103,26 @@ export default function Finance() {
               <div className="overflow-x-auto">
                 <table className="w-full">
                   <thead className="bg-surface sticky top-0 z-10">
-                    <tr><th className="th">No.</th><th className="th">Nama / Jenis Harta</th><th className="th">Kel.</th><th className="th">Bulan</th><th className="th">Tahun</th><th className="th">Nilai Perolehan</th><th className="th">Metode</th><th className="th">Susut / Thn</th><th className="th">Susut / Bln</th><th className="th">Akun Beban</th><th className="th">Akun Akumulasi</th><th className="th">Aksi</th></tr>
+                    <tr>
+                      <SortTh label="No." sortKey="no" sort={asetSort} onSort={(k) => setAsetSort((s) => toggleSort(s, k))} />
+                      <SortTh label="Nama / Jenis Harta" sortKey="nama" sort={asetSort} onSort={(k) => setAsetSort((s) => toggleSort(s, k))} />
+                      <SortTh label="Kel." sortKey="kel" sort={asetSort} onSort={(k) => setAsetSort((s) => toggleSort(s, k))} />
+                      <SortTh label="Bulan" sortKey="bulan" sort={asetSort} onSort={(k) => setAsetSort((s) => toggleSort(s, k))} />
+                      <SortTh label="Tahun" sortKey="tahun" sort={asetSort} onSort={(k) => setAsetSort((s) => toggleSort(s, k))} />
+                      <SortTh label="Nilai Perolehan" sortKey="nilai" sort={asetSort} onSort={(k) => setAsetSort((s) => toggleSort(s, k))} />
+                      <SortTh label="Metode" sortKey="metode" sort={asetSort} onSort={(k) => setAsetSort((s) => toggleSort(s, k))} />
+                      <SortTh label="Susut / Thn" sortKey="susut" sort={asetSort} onSort={(k) => setAsetSort((s) => toggleSort(s, k))} />
+                      <th className="th">Susut / Bln</th>
+                      <th className="th">Akun Beban</th>
+                      <th className="th">Akun Akumulasi</th>
+                      <th className="th">Aksi</th>
+                    </tr>
                   </thead>
                   <tbody className="divide-y divide-steel-100">
-                    {assetRows.map((a, i) => {
+                    {sortRows(assetRows.map((a, i) => ({ a, i })), asetSort, ({ a }, k) =>
+                      k === "nama" ? String(a.nama ?? "") : k === "kel" ? String(a.kelompok ?? "") : k === "bulan" ? String(a.bulan ?? "") :
+                      k === "tahun" ? String(a.tahun ?? "") : k === "nilai" ? num(a.nilai) : k === "metode" ? String(a.metode ?? "") :
+                      k === "susut" ? num(a.susutTahun) : String(a.id ?? "")).map(({ a, i }) => {
                       const gol = String(a.nama ?? "");
                       const beban = gol === "Bangunan" ? "6-021 C" : gol === "Alat Berat" ? "6-021 A" : gol === "Kendaraan" ? "6-021" : gol.includes("Mesin") ? "6-021 B" : "6-022";
                       const akum = gol === "Bangunan" ? "1-270" : gol === "Alat Berat" ? "1-281" : gol === "Kendaraan" ? "1-280" : gol.includes("Mesin") ? "1-282" : "1-290";
@@ -1994,10 +2166,24 @@ export default function Finance() {
               <div className="overflow-x-auto">
                 <table className="w-full">
                   <thead className="bg-surface sticky top-0 z-10">
-                    <tr><th className="th">Tanggal</th><th className="th">Kode Pembantu</th><th className="th">Dokumen</th><th className="th">Uraian</th><th className="th">Akun DB</th><th className="th">Akun KR</th><th className="th">Nominal</th><th className="th">Sumber</th><th className="th">Status</th><th className="th">Aksi</th></tr>
+                    <tr>
+                      <SortTh label="Tanggal" sortKey="date" sort={juSort} onSort={(k) => setJuSort((s) => toggleSort(s, k))} />
+                      <SortTh label="Kode Pembantu" sortKey="kode" sort={juSort} onSort={(k) => setJuSort((s) => toggleSort(s, k))} />
+                      <SortTh label="Dokumen" sortKey="dok" sort={juSort} onSort={(k) => setJuSort((s) => toggleSort(s, k))} />
+                      <SortTh label="Uraian" sortKey="uraian" sort={juSort} onSort={(k) => setJuSort((s) => toggleSort(s, k))} />
+                      <SortTh label="Akun DB" sortKey="db" sort={juSort} onSort={(k) => setJuSort((s) => toggleSort(s, k))} />
+                      <SortTh label="Akun KR" sortKey="kr" sort={juSort} onSort={(k) => setJuSort((s) => toggleSort(s, k))} />
+                      <SortTh label="Nominal" sortKey="amount" sort={juSort} onSort={(k) => setJuSort((s) => toggleSort(s, k))} />
+                      <SortTh label="Sumber" sortKey="sumber" sort={juSort} onSort={(k) => setJuSort((s) => toggleSort(s, k))} />
+                      <SortTh label="Status" sortKey="status" sort={juSort} onSort={(k) => setJuSort((s) => toggleSort(s, k))} />
+                      <th className="th">Aksi</th>
+                    </tr>
                   </thead>
                   <tbody className="divide-y divide-steel-100">
-                    {manJournals.map((j) => (
+                    {sortRows(manJournals, juSort, (j, k) =>
+                      k === "kode" ? String(j.kodePembantu ?? "") : k === "dok" ? String(j.dokumen ?? "") : k === "uraian" ? String(j.uraian ?? "") :
+                      k === "db" ? String(j.db ?? "") : k === "kr" ? String(j.kr ?? "") : k === "amount" ? num(j.amount) :
+                      k === "sumber" ? String(j.sumber ?? "") : k === "status" ? String(j.status ?? "") : String(j.date ?? "")).map((j) => (
                       <tr key={String(j.id)} className="hover:bg-surface">
                         <td className="td text-xs text-steel-600">{fmtTanggal(String(j.date ?? ""))}</td>
                         <td className="td font-mono text-xs text-steel-600">{String(j.kodePembantu || "—")}</td>
@@ -2054,10 +2240,18 @@ export default function Finance() {
                     <div className="overflow-x-auto">
                       <table className="w-full">
                         <thead className="bg-surface sticky top-0 z-10">
-                          <tr><th className="th">Tanggal</th><th className="th">Ref</th><th className="th">Debit</th><th className="th">Kredit</th><th className="th">Nilai</th></tr>
+                          <tr>
+                            <SortTh label="Tanggal" sortKey="date" sort={juSort} onSort={(k) => setJuSort((s) => toggleSort(s, k))} />
+                            <SortTh label="Ref" sortKey="ref" sort={juSort} onSort={(k) => setJuSort((s) => toggleSort(s, k))} />
+                            <SortTh label="Debit" sortKey="db" sort={juSort} onSort={(k) => setJuSort((s) => toggleSort(s, k))} />
+                            <SortTh label="Kredit" sortKey="kr" sort={juSort} onSort={(k) => setJuSort((s) => toggleSort(s, k))} />
+                            <SortTh label="Nilai" sortKey="amount" sort={juSort} onSort={(k) => setJuSort((s) => toggleSort(s, k))} />
+                          </tr>
                         </thead>
                         <tbody className="divide-y divide-steel-100">
-                          {journals.slice(0, 40).map((j, idx) => (
+                          {sortRows(journals.slice(0, 40), juSort, (j, k) =>
+                            k === "ref" ? String(j.ref) : k === "db" ? String(j.debitAkun) : k === "kr" ? String(j.kreditAkun) :
+                            k === "amount" ? Number(j.amount) : String(j.date)).map((j, idx) => (
                             <tr key={`${j.ref}-${idx}`} className="hover:bg-surface">
                               <td className="td text-xs text-steel-600">{fmtTanggal(j.date)}</td>
                               <td className="td"><p className="font-mono text-xs font-semibold text-navy-900">{j.ref}</p><p className="max-w-56 truncate text-[11px] text-steel-500" title={j.desc}>{j.desc}</p></td>
@@ -2090,10 +2284,19 @@ export default function Finance() {
                 <div className="overflow-x-auto">
                   <table className="w-full">
                     <thead className="bg-surface sticky top-0 z-10">
-                      <tr><th className="th">Periode</th><th className="th">Pendapatan</th><th className="th">Beban Proyek</th><th className="th">Beban Gaji</th><th className="th">Hapus Buku</th><th className="th">Laba</th></tr>
+                      <tr>
+                        <SortTh label="Periode" sortKey="period" sort={pajakSort} onSort={(k) => setPajakSort((s) => toggleSort(s, k))} />
+                        <SortTh label="Pendapatan" sortKey="revenue" sort={pajakSort} onSort={(k) => setPajakSort((s) => toggleSort(s, k))} />
+                        <SortTh label="Beban Proyek" sortKey="costProj" sort={pajakSort} onSort={(k) => setPajakSort((s) => toggleSort(s, k))} />
+                        <SortTh label="Beban Gaji" sortKey="salary" sort={pajakSort} onSort={(k) => setPajakSort((s) => toggleSort(s, k))} />
+                        <SortTh label="Hapus Buku" sortKey="writeoff" sort={pajakSort} onSort={(k) => setPajakSort((s) => toggleSort(s, k))} />
+                        <SortTh label="Laba" sortKey="laba" sort={pajakSort} onSort={(k) => setPajakSort((s) => toggleSort(s, k))} />
+                      </tr>
                     </thead>
                     <tbody className="divide-y divide-steel-100">
-                      {plMonthly.map((p) => (
+                      {sortRows(plMonthly, pajakSort, (p, k) =>
+                        k === "revenue" ? Number(p.revenue) : k === "costProj" ? Number(p.costProj) : k === "salary" ? Number(p.salary) :
+                        k === "writeoff" ? Number(p.writeoff) : k === "laba" ? Number(p.laba) : String(p.period)).map((p) => (
                         <tr key={p.period} className="hover:bg-surface">
                           <td className="td font-medium text-navy-900">{p.period}</td>
                           <td className="td">{fmtRupiah(p.revenue)}</td>

@@ -1,7 +1,8 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import { Plus, Search, Ship, Anchor, FileCheck2, Pencil } from "lucide-react";
-import { Card, CardHeader, PageHeader, Badge, KpiCard, Modal, Field, FormGrid, toast } from "../../components/ui";
+import { Card, CardHeader, PageHeader, Badge, KpiCard, Modal, Field, FormGrid, toast, SortTh, toggleSort, sortRows } from "../../components/ui";
+import type { SortState } from "../../components/ui";
 import { useStore } from "../../data/store";
 import type { StoreItem } from "../../data/store";
 import { fleetTrend, dockingTrend, buildTrend, certTrend } from "../../data";
@@ -135,6 +136,7 @@ export default function Vessels() {
   const { data, add, update } = useStore();
   const vessels = data.vessels;
   const [q, setQ] = useState("");
+  const [sort, setSort] = useState<SortState>({ key: null, dir: "asc" });
   const [showAdd, setShowAdd] = useState(false);
   const [form, setForm] = useState(emptyForm);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -316,10 +318,10 @@ export default function Vessels() {
           <div className="overflow-x-auto">
             <table className="w-full">
               <thead className="sticky top-0 z-10 bg-surface">
-                <tr><th className="th">Kapal</th><th className="th">Tipe Survey</th><th className="th">Surveyor</th><th className="th">Tanggal</th><th className="th">Status</th></tr>
+                <tr><SortTh label="Kapal" sortKey="vessel" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label="Tipe Survey" sortKey="type" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label="Surveyor" sortKey="classSurveyor" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label="Tanggal" sortKey="date" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label="Status" sortKey="status" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /></tr>
               </thead>
               <tbody className="divide-y divide-steel-100">
-                {data.surveys.map((s) => (
+                {sortRows(data.surveys, sort, (s: StoreItem, k) => String((s as unknown as Record<string, unknown>)[k] ?? "")).map((s) => (
                   <tr key={s.id} className="hover:bg-surface">
                     <td className="td font-medium text-navy-900">{s.vessel}</td>
                     <td className="td text-steel-600">{s.type}</td>

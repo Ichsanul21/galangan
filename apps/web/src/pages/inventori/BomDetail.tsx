@@ -1,7 +1,8 @@
 import { useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { ArrowLeft, Barcode, Package } from "lucide-react";
-import { Card, CardHeader, PageHeader, Badge, Modal, Field, FormGrid, Tabs, EmptyState, toast } from "../../components/ui";
+import { Card, CardHeader, PageHeader, Badge, Modal, Field, FormGrid, Tabs, EmptyState, toast, SortTh, toggleSort, sortRows } from "../../components/ui";
+import type { SortState } from "../../components/ui";
 import { useStore, type StoreItem } from "../../data/store";
 import { fmtJumlah, fmtRupiah, fmtTanggal, todayISO } from "../../utils/format";
 
@@ -51,6 +52,7 @@ export default function BomDetail() {
   const { data, add, update, log } = useStore();
   const item = data.inventory.find((i) => i.id === id) ?? null;
   const [tab, setTab] = useState("Riwayat");
+  const [sort, setSort] = useState<SortState>({ key: null, dir: "asc" });
   const [showReserv, setShowReserv] = useState(false);
   const [reservProject, setReservProject] = useState("");
   const [reservQtyInput, setReservQtyInput] = useState("");
@@ -164,10 +166,10 @@ export default function BomDetail() {
                   <div className="overflow-x-auto">
                     <table className="w-full">
                       <thead className="bg-surface sticky top-0 z-10">
-                        <tr><th className="th">Transaksi</th><th className="th">Tipe</th><th className="th">Jumlah</th><th className="th">Referensi</th><th className="th">Tanggal</th></tr>
+                        <tr><SortTh label="Transaksi" sortKey="id" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label="Tipe" sortKey="type" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label="Jumlah" sortKey="qty" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label="Referensi" sortKey="by" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label="Tanggal" sortKey="date" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /></tr>
                       </thead>
                       <tbody className="divide-y divide-steel-100">
-                        {moves.map((m) => (
+                        {sortRows(moves, sort, (m: StoreItem, k) => k === "qty" ? Number(m.qty) : String((m as unknown as Record<string, unknown>)[k] ?? "")).map((m) => (
                           <tr key={m.id} className="hover:bg-surface">
                             <td className="td font-mono font-medium text-navy-900">{m.id}</td>
                             <td className="td text-steel-600">{m.type}</td>
