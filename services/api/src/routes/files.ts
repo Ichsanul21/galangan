@@ -23,6 +23,15 @@ export function registerFileRoutes(app: FastifyInstance): void {
   fs.mkdirSync(root, { recursive: true });
   void app.register(fastifyStatic, { root, prefix: "/files/" });
 
+  // Static /files/* has no per-route guard: enforce auth here (GET/HEAD → 401 anon).
+  app.addHook("onRequest", async (req, reply) => {
+    const url = req.url.split("?")[0] ?? "";
+    if ((req.method === "GET" || req.method === "HEAD") && (url === "/files" || url.startsWith("/files/"))) {
+      return requireAuth(req, reply);
+    }
+    return undefined;
+  });
+
   app.post("/api/files", { preHandler: [requireAuth] }, async (req, reply) => {
     let part: Awaited<ReturnType<typeof req.file>>;
     try {

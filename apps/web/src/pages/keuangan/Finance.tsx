@@ -973,7 +973,7 @@ export default function Finance() {
   };
 
   // --- Jurnal: tambah manual berimbang multi-baris (kolom sheet JU: Kas/BPD/JPb/JPn/JM) ---
-  const saveJu = () => {
+  const saveJu = async () => {
     if (!juForm.date) { toast("Tanggal wajib diisi", "info"); return; }
     if (!juForm.uraian.trim()) { toast("Uraian wajib diisi", "info"); return; }
     const lines = juLines.filter((l) => l.db || l.kr || l.amount);
@@ -989,15 +989,21 @@ export default function Finance() {
     const juPrefix = `JU-${compact}-`;
     const juNext = maxSeq(manJournals.map((j) => String((j as StoreItem).dokumen ?? "")), new RegExp(`^${juPrefix}(\\d+)$`)) + 1;
     const voucher = juForm.dokumen.trim() || `${juPrefix}${String(juNext).padStart(3, "0")}`;
-    lines.forEach(async (l, i) => {
-      await add("journals", {
-        date: juForm.date, kodePembantu: juForm.kodePembantu.trim(), dokumen: voucher,
-        uraian: lines.length > 1 ? `${juForm.uraian.trim()} (${i + 1}/${lines.length})` : juForm.uraian.trim(),
-        db: l.db, kr: l.kr, amount: num(l.amount),
-        sumber: juForm.sumber, status: "Posted",
-        branch: branch !== "SEMUA" ? branch : "",
-      }, { action: "mencatat jurnal", module: "Keuangan" });
-    });
+    for (let i = 0; i < lines.length; i++) {
+      const l = lines[i];
+      try {
+        await add("journals", {
+          date: juForm.date, kodePembantu: juForm.kodePembantu.trim(), dokumen: voucher,
+          uraian: lines.length > 1 ? `${juForm.uraian.trim()} (${i + 1}/${lines.length})` : juForm.uraian.trim(),
+          db: l.db, kr: l.kr, amount: num(l.amount),
+          sumber: juForm.sumber, status: "Posted",
+          branch: branch !== "SEMUA" ? branch : "",
+        }, { action: "mencatat jurnal", module: "Keuangan" });
+      } catch (err) {
+        toast(`Gagal menyimpan baris ${i + 1}: ${err instanceof Error ? err.message : "backend tak terjangkau"}`, "info");
+        return;
+      }
+    }
     const total = lines.reduce((s, l) => s + num(l.amount), 0);
     toast(`Jurnal ${voucher} tersimpan (${lines.length} baris, total ${fmtRupiah(total)}, berimbang)`);
     setShowJu(false);

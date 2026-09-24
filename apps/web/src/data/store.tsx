@@ -642,6 +642,9 @@ function newId(col: CollectionKey): string {
   return newPrefixedId(p);
 }
 
+/* Koleksi global-by-design: jangan disuntik branch fallback di add(). */
+const SKIP_BRANCH_COLLECTIONS: ReadonlySet<string> = new Set(["settings", "coa", "branches"]);
+
 const ACTOR_TONE: Record<string, "navy" | "teal" | "rose" | "violet" | "amber"> = {
   Proyek: "violet",
   Keuangan: "amber",
@@ -716,6 +719,12 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       setPendingSync([...dirtyRef.current]);
     }
   }, []);
+  /* Tombstone delete: col → Set<id> yang dihapus lokal saat fallback.
+     Dipakai pushPending untuk memancarkan DELETE sebelum POST/PATCH. */
+  const tombstonesRef = useRef<Map<string, Set<string>>>(new Map());
+  const clearTombstones = useCallback((col: string) => {
+    tombstonesRef.current.delete(col);
+  }, []);
   const [branch, setBranchState] = useState<string>(() => {
     // Cabang global di localStorage (migrasi dari sessionStorage, kunci sama).
     try {
@@ -724,6 +733,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       return "SEMUA";
     }
   });
+  const branchRef = useRef(branch);
+  branchRef.current = branch;
 
   const setBranch = (b: string) => {
     setBranchState(b);
@@ -804,8 +815,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     );
   }, []);
 
-  /* Dorong perubahan lokal yang tertunda ke backend: tiap baris coba POST,
-     bila 409 (sudah ada) coba PATCH. Bersihkan dirty per koleksi bila sukses. */
+  /* Dorong perubahan lokal yang tertunda ke backend: DELETE tombstone dulu,
+     lalu tiap baris coba POST, bila 409 (sudah ada) coba PATCH.
+     Bersihkan tombstones+dirty per koleksi bila sukses. */
   const pushPending = useCallback(async (): Promise<void> => {
     if (!remoteActive()) return;
     const cols = [...dirtyRef.current];
@@ -843,8 +855,24 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           setBackendError(null);
           continue;
         }
-        const rows = ((dataRef.current as unknown as Record<string, StoreItem[]>)[col] ?? []) as StoreItem[];
         let ok = true;
+        /* DELETEs dulu agar hapus lokal terpropagasi sebelum upsert survivor. */
+        const tombstones = tombstonesRef.current.get(col);
+        if (tombstones && tombstones.size > 0) {
+          for (const id of [...tombstones]) {
+            try {
+              await remoteRepository(col).remove(id);
+            } catch (err) {
+              /* 404 = sudah hilang di BE → anggap sukses; selain itu gagal. */
+              if (!(err instanceof ApiError && err.status === 404)) {
+                ok = false;
+                break;
+              }
+            }
+          }
+          if (!ok) continue;
+        }
+        const rows = ((dataRef.current as unknown as Record<string, StoreItem[]>)[col] ?? []) as StoreItem[];
         for (const row of rows) {
           try {
             await remoteRepository(col).create(row);
@@ -863,6 +891,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           }
         }
         if (ok) {
+          clearTombstones(col);
           clearDirty(col);
           setBackendError(null);
         }
@@ -870,7 +899,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         /* koleksi ini tetap dirty — coba lagi nanti */
       }
     }
-  }, [clearDirty]);
+  }, [clearDirty, clearTombstones]);
 
   /* Boot backend-first: bila backend dikonfigurasi dan sudah login (JWT),
      tarik semua koleksi dari BE; tiap koleksi yang gagal → biarkan seed lokal. */
@@ -880,7 +909,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
   const api = useMemo<StoreCtx>(() => {
     const buildActivity = (action: string, target: string, module: string): StoreItem => ({
-      id: `A-${Date.now().toString(36).toUpperCase()}`,
+      id: newId("activities"),
       actor: "Anda",
       action,
       target,
@@ -889,8 +918,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       tone: ACTOR_TONE[module] ?? "navy",
     });
 
-    const pushActivity = (prev: StoreShape, action: string, target: string, module: string): StoreItem[] =>
-      [buildActivity(action, target, module), ...prev.activities].slice(0, 30);
+    const pushEntry = (prev: StoreShape, entry: StoreItem): StoreItem[] =>
+      [entry, ...prev.activities].slice(0, 30);
 
     /* Gagal remote → fallback lokal + tandai error + toast sekali per sesi.
        Khusus 403 (mis. butuh peran Direktur): JANGAN tulis lokal / tandai dirty,
@@ -918,17 +947,33 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       pushPending,
       add: async (col, item, activity) => {
         const full: StoreItem = { ...item, id: item.id || newId(col) };
+        /* Branch fallback terpusat: baris baru tanpa branch mewarisi cabang global.
+           "SEMUA" = semua cabang → biarkan kosong (terlihat di semua filter).
+           Koleksi global-by-design (settings/coa/branches) disentuh tidak. */
+        if (!SKIP_BRANCH_COLLECTIONS.has(col as string)) {
+          const cur = full.branch;
+          if (cur === undefined || cur === null || String(cur).trim() === "") {
+            const g = branchRef.current ?? branch;
+            if (g && g !== "SEMUA") full.branch = g;
+          }
+        }
         if (remoteActive()) {
           try {
             const saved = await remoteRepository(col).create(full);
             const finalItem = saved && saved.id ? saved : full;
+            const entry = activity
+              ? buildActivity(activity.action, activity.target ?? finalItem.id, activity.module)
+              : null;
             setData((prev) => ({
               ...prev,
               [col]: [finalItem, ...((prev[col] as StoreItem[] | undefined) ?? [])],
-              activities: activity
-                ? pushActivity(prev, activity.action, activity.target ?? finalItem.id, activity.module)
-                : prev.activities,
+              activities: entry ? pushEntry(prev, entry) : prev.activities,
             }));
+            if (entry) {
+              /* Mirror aktivitas best-effort tanpa rekursi (langsung HTTP, bukan add()).
+                 Gagal → tandai dirty agar pushPending/resync tidak menghilangkannya. */
+              remoteRepository("activities").create(entry).catch(() => markDirty("activities"));
+            }
             setBackendError(null);
             return finalItem;
           } catch (err) {
@@ -936,12 +981,14 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           }
         }
         markDirty(col as string);
+        const fallbackEntry = activity
+          ? buildActivity(activity.action, activity.target ?? full.id, activity.module)
+          : null;
+        if (fallbackEntry) markDirty("activities");
         setData((prev) => ({
           ...prev,
           [col]: [full, ...((prev[col] as StoreItem[] | undefined) ?? [])],
-          activities: activity
-            ? pushActivity(prev, activity.action, activity.target ?? full.id, activity.module)
-            : prev.activities,
+          activities: fallbackEntry ? pushEntry(prev, fallbackEntry) : prev.activities,
         }));
         return full;
       },
@@ -979,6 +1026,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             if (degrade(err)) return;
           }
         }
+        /* Fallback lokal: catat tombstone agar DELETE terpropagasi via pushPending. */
+        const set = tombstonesRef.current.get(col as string) ?? new Set<string>();
+        set.add(id);
+        tombstonesRef.current.set(col as string, set);
         markDirty(col as string);
         setData((prev) => ({
           ...prev,
@@ -990,8 +1041,11 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         setData((prev) => ({ ...prev, activities: [entry, ...prev.activities].slice(0, 30) }));
         if (remoteActive()) {
           // Best-effort mirror tanpa await — langsung via HTTP (bukan add())
-          // agar tidak terjadi rekursi; kegagalan diabaikan senyap.
-          remoteRepository("activities").create(entry).catch(() => undefined);
+          // agar tidak terjadi rekursi; gagal → tandai dirty agar tidak ter-wipe resync.
+          remoteRepository("activities").create(entry).catch(() => markDirty("activities"));
+        } else {
+          /* Offline/fallback: tandai dirty agar resync melewati koleksi activities. */
+          markDirty("activities");
         }
       },
       reset: () => {

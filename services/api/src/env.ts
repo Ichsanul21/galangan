@@ -4,7 +4,17 @@ export interface Env {
   sqlitePath: string;
   mysqlUrl: string | undefined;
   jwtSecret: string;
-  webOrigin: string | undefined;
+  webOrigins: string[];
+}
+
+function parseOrigins(): string[] {
+  const rawList = process.env.WEB_ORIGINS;
+  if (rawList !== undefined && rawList.trim() !== "") {
+    return rawList.split(",").map((s) => s.trim()).filter((s) => s.length > 0);
+  }
+  const single = process.env.WEB_ORIGIN;
+  if (single !== undefined && single.trim() !== "") return [single.trim()];
+  return [];
 }
 
 export function loadEnv(): Env {
@@ -18,10 +28,9 @@ export function loadEnv(): Env {
     throw new Error("MYSQL_URL is required when DB_DIALECT=mysql");
   }
 
-  let jwtSecret = process.env.JWT_SECRET;
-  if (!jwtSecret) {
-    jwtSecret = "dev-secret-change-me";
-    console.warn("[env] JWT_SECRET missing, using insecure dev fallback. Set JWT_SECRET in production.");
+  const jwtSecret = process.env.JWT_SECRET;
+  if (!jwtSecret || jwtSecret.trim() === "") {
+    throw new Error("JWT_SECRET is required (set it in the environment, no dev fallback).");
   }
 
   const port = Number.parseInt(process.env.PORT ?? "3000", 10);
@@ -32,6 +41,6 @@ export function loadEnv(): Env {
     sqlitePath,
     mysqlUrl,
     jwtSecret,
-    webOrigin: process.env.WEB_ORIGIN,
+    webOrigins: parseOrigins(),
   };
 }

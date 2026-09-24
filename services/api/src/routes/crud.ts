@@ -185,7 +185,7 @@ export function registerCrud(app: FastifyInstance, table: string, opts: CrudOpts
       id, branch, JSON.stringify(parsed.data.data), now,
     ]);
     await writeAudit({
-      user: requestActor(req),
+      actor: requestActor(req),
       action: "create",
       table,
       rowId: id as string,
@@ -210,7 +210,7 @@ export function registerCrud(app: FastifyInstance, table: string, opts: CrudOpts
       branch, JSON.stringify(merged), now, id,
     ]);
     await writeAudit({
-      user: requestActor(req),
+      actor: requestActor(req),
       action: "update",
       table,
       rowId: id,
@@ -230,7 +230,7 @@ export function registerCrud(app: FastifyInstance, table: string, opts: CrudOpts
     const doomed = rows[0] as Row;
     await exec(`DELETE FROM ${table} WHERE id = ?`, [id]);
     await writeAudit({
-      user: requestActor(req),
+      actor: requestActor(req),
       action: "delete",
       table,
       rowId: id,

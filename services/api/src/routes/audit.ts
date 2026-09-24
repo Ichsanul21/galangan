@@ -5,7 +5,7 @@ import { ok } from "../envelope.js";
 
 interface AuditRow {
   id: string;
-  user: string;
+  actor: string;
   action: string;
   table_name: string;
   row_id: string;
@@ -49,7 +49,7 @@ export function registerAuditRoutes(app: FastifyInstance): void {
     const countRows = await q<{ cnt: number }>(`SELECT COUNT(*) AS cnt FROM audit_log${whereSql}`, params);
     const total = Number((countRows[0] as { cnt: number } | undefined)?.cnt ?? 0);
     const rows = await q<AuditRow>(
-      `SELECT id, user, action, table_name, row_id, diff, ip, created_at FROM audit_log${whereSql}` +
+      `SELECT id, actor, action, table_name, row_id, diff, ip, created_at FROM audit_log${whereSql}` +
         " ORDER BY created_at DESC, id DESC LIMIT ? OFFSET ?",
       [...params, limit, offset],
     );

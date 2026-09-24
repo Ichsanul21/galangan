@@ -99,36 +99,40 @@ export default function Absensi() {
     return true;
   };
 
-  const persist = (overwrite: boolean) => {
+  const persist = async (overwrite: boolean) => {
     let created = 0;
     let updated = 0;
-    activeEmps.forEach(async (e) => {
-      const r = rowFor(e.id);
-      const ot = r.status === "Hadir" ? Number(r.overtime || 0) : 0;
-      const payload = {
-        employeeId: e.id,
-        date,
-        shift,
-        status: r.status,
-        checkIn: r.status === "Hadir" ? r.checkIn : "",
-        checkOut: r.status === "Hadir" ? r.checkOut : "",
-        overtime: ot,
-        branch: String(e.branch ?? ""),
-      };
-      const existing = data.attendance.find((a) => a.employeeId === e.id && a.date === date && a.shift === shift);
-      if (existing) {
-        if (overwrite) {
-          await update("attendance", existing.id, {
-            ...payload,
-            otStatus: ot > 0 ? String(existing.otStatus ?? "") || "Diajukan" : "",
-          });
-          updated += 1;
+    for (const e of activeEmps) {
+      try {
+        const r = rowFor(e.id);
+        const ot = r.status === "Hadir" ? Number(r.overtime || 0) : 0;
+        const payload = {
+          employeeId: e.id,
+          date,
+          shift,
+          status: r.status,
+          checkIn: r.status === "Hadir" ? r.checkIn : "",
+          checkOut: r.status === "Hadir" ? r.checkOut : "",
+          overtime: ot,
+          branch: String(e.branch ?? ""),
+        };
+        const existing = data.attendance.find((a) => a.employeeId === e.id && a.date === date && a.shift === shift);
+        if (existing) {
+          if (overwrite) {
+            await update("attendance", existing.id, {
+              ...payload,
+              otStatus: ot > 0 ? String(existing.otStatus ?? "") || "Diajukan" : "",
+            });
+            updated += 1;
+          }
+        } else {
+          await add("attendance", { ...payload, otStatus: ot > 0 ? "Diajukan" : "" }, undefined);
+          created += 1;
         }
-      } else {
-        await add("attendance", { ...payload, otStatus: ot > 0 ? "Diajukan" : "" }, undefined);
-        created += 1;
+      } catch (err) {
+        toast(`Gagal menyimpan ${e.name}: ${err instanceof Error ? err.message : "backend tak terjangkau"}`, "info");
       }
-    });
+    }
     if (created + updated > 0) {
       log("mencatat absensi", `${date} shift ${shift} · ${created + updated} orang`, "Absensi");
       toast(`Absensi tersimpan — ${created} baru, ${updated} diperbarui`);
@@ -152,8 +156,8 @@ export default function Absensi() {
       setConfirmOpen(true);
       return;
     }
-    persist(false);
-  };
+    void persist(false);
+  }; /* persist async, errors toast internal */
 
   /* ---------- rekap ---------- */
   const monthRecords = useMemo(
@@ -212,15 +216,23 @@ export default function Absensi() {
     toast(`${a.id} ditolak`);
   };
 
-  const approveAllOT = () => {
+  const approveAllOT = async () => {
     const pending = detailRecords.filter((a) => otStatusOf(a) === "Diajukan");
     if (pending.length === 0) {
       toast("Tidak ada lembur yang menunggu persetujuan", "info");
       return;
     }
-    pending.forEach(async (a) => await update("attendance", a.id, { otStatus: "Disetujui" }));
-    log("menyetujui lembur massal", `${month} · ${pending.length} baris`, "Absensi");
-    toast(`${pending.length} lembur disetujui`);
+    let ok = 0;
+    for (const a of pending) {
+      try {
+        await update("attendance", a.id, { otStatus: "Disetujui" });
+        ok += 1;
+      } catch (err) {
+        toast(`Gagal menyetujui ${a.id}: ${err instanceof Error ? err.message : "backend tak terjangkau"}`, "info");
+      }
+    }
+    log("menyetujui lembur massal", `${month} · ${ok} baris`, "Absensi");
+    toast(`${ok} lembur disetujui`);
   };
 
   const detailRecords = useMemo(
@@ -483,7 +495,7 @@ export default function Absensi() {
         desc={`${dupeCount} karyawan sudah tercatat pada ${fmtTanggal(date)} shift ${shift}. Lanjutkan untuk memperbarui catatan tersebut?`}
         confirmLabel="Ya, perbarui"
         onCancel={() => setConfirmOpen(false)}
-        onConfirm={() => persist(true)}
+        onConfirm={() => void persist(true)}
       />
     </div>
   );

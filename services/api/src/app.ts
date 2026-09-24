@@ -4,7 +4,7 @@ import { loadEnv } from "./env.js";
 import { fail, ok, registerErrorHandler } from "./envelope.js";
 import { createRateLimiter, getClientIp } from "./rateLimit.js";
 import { comparePassword, requireAuth, signToken } from "./auth.js";
-import { requestIp, writeAudit } from "./audit.js";
+import { getAuditErrorCount, requestIp, writeAudit } from "./audit.js";
 import { q } from "./db.js";
 import { COLLECTIONS, registerCrud } from "./routes/crud.js";
 import { registerAuditRoutes } from "./routes/audit.js";
@@ -47,25 +47,38 @@ export function buildApp(): FastifyInstance {
   const env = loadEnv();
   const app = Fastify({ logger: true });
 
-  const corsOrigin = env.webOrigin ?? (process.env.NODE_ENV === "production" ? undefined : "*");
+  // CORS allowlist: WEB_ORIGINS (comma-separated) → WEB_ORIGIN (single) → "*" in non-prod.
+  // The request Origin is validated against the list; no credentials (JWT header-based).
+  const allowAll = env.webOrigins.length === 0 && process.env.NODE_ENV !== "production";
+  const allowedOrigins: string[] = allowAll ? ["*"] : env.webOrigins;
+
+  function resolveCorsOrigin(req: { headers: { origin?: unknown } }): string | undefined {
+    if (allowedOrigins.includes("*")) return "*";
+    const origin = req.headers.origin;
+    if (typeof origin === "string" && allowedOrigins.includes(origin)) return origin;
+    return undefined;
+  }
 
   app.addHook("onSend", async (req, reply) => {
-    if (corsOrigin) {
-      reply.header("Access-Control-Allow-Origin", corsOrigin === "true" ? "*" : corsOrigin);
-      reply.header("Vary", "Origin");
-    }
+    reply.header("Vary", "Origin");
+    const origin = resolveCorsOrigin(req);
+    if (origin) reply.header("Access-Control-Allow-Origin", origin);
     return undefined;
   });
 
-  app.options("*", async (_req, reply) => {
+  app.options("*", async (req, reply) => {
+    const origin = resolveCorsOrigin(req);
+    if (origin) reply.header("Access-Control-Allow-Origin", origin);
+    reply.header("Vary", "Origin");
     reply.header("Access-Control-Allow-Methods", "GET,POST,PUT,PATCH,DELETE,OPTIONS");
     reply.header("Access-Control-Allow-Headers", "Content-Type, Authorization");
+    reply.header("Access-Control-Max-Age", "86400");
     return reply.status(204).send();
   });
 
   registerErrorHandler(app);
 
-  app.get("/health", async () => ok({ status: "ok" }));
+  app.get("/health", async () => ok({ status: "ok", auditErrors: getAuditErrorCount() }));
 
   // Pembatas ringan untuk semua rute tulis (300/mnt per IP) + header Retry-After saat 429.
   app.addHook("onRequest", async (req, reply) => {
@@ -93,7 +106,7 @@ export function buildApp(): FastifyInstance {
     const user = rows[0];
     if (!user || !(await comparePassword(password, user.pass_hash))) {
       await writeAudit({
-        user: username,
+        actor: username,
         action: "auth.login_failed",
         table: "users",
         rowId: user?.id ?? "",
@@ -106,7 +119,7 @@ export function buildApp(): FastifyInstance {
       return reply.status(403).send(fail("Akun dinonaktifkan. Hubungi administrator.", "FORBIDDEN"));
     }
     await writeAudit({
-      user: user.username,
+      actor: user.username,
       action: "auth.login_success",
       table: "users",
       rowId: user.id,

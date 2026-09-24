@@ -307,12 +307,24 @@ export default function EquipmentPage() {
     persistBooking(priority);
   };
 
-  const confirmGusur = () => {
+  const confirmGusur = async () => {
     if (!gusur) return;
     const names = gusur.clash.map((c) => `${c.id} (${c.proyek})`).join(", ");
-    gusur.clash.forEach(async (c) => await remove("bookings", c.id));
+    for (const c of gusur.clash) {
+      try {
+        await remove("bookings", c.id);
+      } catch (err) {
+        toast(`Gagal menggusur ${c.id}: ${err instanceof Error ? err.message : "backend tak terjangkau"}`, "info");
+        return;
+      }
+    }
     log("menggusur booking", `${bookForm.equip} · ${fmtTanggal(bookForm.date)} menggusur ${names}`, "Equipment");
-    persistBooking("Kritis");
+    try {
+      await persistBooking("Kritis");
+    } catch (err) {
+      toast(`Gagal membuat booking Kritis: ${err instanceof Error ? err.message : "backend tak terjangkau"}`, "info");
+      return;
+    }
     toast(`Booking Kritis menggusur: ${names}`);
     setGusur(null);
   };

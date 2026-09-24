@@ -1,11 +1,14 @@
+-- MySQL compat: VARCHAR(128) PK (MySQL cannot index a TEXT PK without a length),
+-- no TEXT DEFAULTs (defaults handled in code inserts), `actor` column name
+-- (`user` is a reserved word in MySQL).
 CREATE TABLE IF NOT EXISTS audit_log (
-  id TEXT PRIMARY KEY,
-  user TEXT NOT NULL DEFAULT '',
-  action TEXT NOT NULL DEFAULT '',
-  table_name TEXT NOT NULL DEFAULT '',
-  row_id TEXT NOT NULL DEFAULT '',
-  diff TEXT NOT NULL DEFAULT '{}',
-  ip TEXT NOT NULL DEFAULT '',
+  id VARCHAR(128) PRIMARY KEY,
+  actor TEXT NOT NULL,
+  action TEXT NOT NULL,
+  table_name TEXT NOT NULL,
+  row_id TEXT NOT NULL,
+  diff TEXT NOT NULL,
+  ip TEXT NOT NULL,
   created_at TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_audit_log_table ON audit_log(table_name);

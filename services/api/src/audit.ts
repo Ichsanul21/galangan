@@ -3,7 +3,7 @@ import type { FastifyRequest } from "fastify";
 import { exec } from "./db.js";
 
 export interface AuditInput {
-  user: string;
+  actor: string;
   action: string;
   table: string;
   rowId: string;
@@ -15,6 +15,12 @@ export function newAuditId(): string {
   return `AUD-${randomUUID().replace(/-/g, "").slice(0, 8).toUpperCase()}`;
 }
 
+let auditErrorCount = 0;
+
+export function getAuditErrorCount(): number {
+  return auditErrorCount;
+}
+
 /** Best-effort: audit failures must never break the main operation. */
 export async function writeAudit(input: AuditInput): Promise<void> {
   try {
@@ -22,11 +28,13 @@ export async function writeAudit(input: AuditInput): Promise<void> {
     const createdAt = new Date().toISOString();
     const diffText = typeof input.diff === "string" ? input.diff : JSON.stringify(input.diff ?? {});
     await exec(
-      "INSERT INTO audit_log (id, user, action, table_name, row_id, diff, ip, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-      [id, input.user, input.action, input.table, input.rowId, diffText, input.ip, createdAt],
+      "INSERT INTO audit_log (id, actor, action, table_name, row_id, diff, ip, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+      [id, input.actor, input.action, input.table, input.rowId, diffText, input.ip, createdAt],
     );
-  } catch {
-    /* audit_log missing (pre-002 DB) or write failed — ignore */
+  } catch (err) {
+    /* audit_log missing (pre-002 DB) or write failed — count it, log, keep going */
+    auditErrorCount += 1;
+    console.error("[audit] write failed:", err);
   }
 }
 

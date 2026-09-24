@@ -1,7 +1,16 @@
 # ISMS API
 
 Fastify 5 + TypeScript backend. Storage: SQLite (dev, `better-sqlite3`) or MySQL (`mysql2`).
-Generic envelope store: each collection is a table `(id TEXT PK, branch TEXT, data TEXT JSON, updated_at TEXT)`.
+Generic envelope store: each collection is a table `(id VARCHAR(128) PK, branch TEXT, data TEXT JSON, updated_at TEXT)`.
+
+Env: `JWT_SECRET` is **required** — the API throws at boot when it is missing or
+empty (no dev fallback). `WEB_ORIGINS` is a comma-separated CORS allowlist
+(falls back to single `WEB_ORIGIN`; `"*"` in non-prod when unset). Auth is
+JWT header-based (`Authorization: Bearer <token>`), so no CORS credentials.
+`GET /files/*` requires auth (401 anon). `GET /health` returns
+`{ status, auditErrors }` where `auditErrors` counts best-effort audit-write
+failures (also logged via `console.error`). DDL is MySQL-compatible:
+`VARCHAR(128)` PKs, no `TEXT DEFAULT`s, `audit_log.actor` (`user` is reserved).
 
 ## Setup (SQLite, default)
 
@@ -29,13 +38,12 @@ Create the database first (`CREATE DATABASE isms;`). The same `001_init.sql` DDL
 
 ## Migrations
 
-- `migrations/001_init.sql` is the single baseline (fresh project, no prod data).
-- `001` was edited in place to remove all `TEXT DEFAULT ...` defaults
-  (`branch TEXT`, `data TEXT NOT NULL`, etc.); defaults are handled in code
-  inserts (`crud.ts`/`admin.ts` always send `branch`/`data`/`updated_at`,
-  `wbs.ts` always sends `project_id`/`data`, `auth.ts` seed always sends all
-  `NOT NULL` user columns). No `002` needed; delete local `./data/isms.db`
-  and re-run `npm run migrate` to pick up the change.
+- `migrations/001_init.sql` is the baseline (fresh project, no prod data):
+  `VARCHAR(128)` PKs for MySQL compat, no `TEXT DEFAULT ...` defaults
+  (defaults are handled in code inserts). `002_init.sql` adds
+  `users.is_active`; `002_audit_log.sql` creates `audit_log`
+  (`VARCHAR(128)` PK, no `TEXT DEFAULT`s, `actor` column).
+  Delete local `./data/isms.db` and re-run `npm run migrate` to pick up DDL changes.
 
 ## Scripts
 
@@ -114,7 +122,7 @@ Login menolak akun nonaktif (403). Tabel `users` tidak ikut CRUD generik.
 ## Audit log & files
 
 - `GET /api/audit?table=&limit=&offset=` — log siapa-ubah-apa (user, aksi, diff, IP, waktu server), terbaru dulu.
-- `POST /api/files` (multipart field `file`, png/jpg/pdf/xlsx/csv ≤10MB) → `{ url: "/files/..." }`; dilayani statis di `GET /files/*`.
+- `POST /api/files` (multipart field `file`, png/jpg/pdf/xlsx/csv ≤10MB) → `{ url: "/files/..." }`; `GET /files/*` requires `Authorization: Bearer <token>` (401 anon).
 
 ## Rate limit & 403
 
