@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useAuth } from "../auth/auth";
 
-const WM_IDS = ["isms-wm-1", "isms-wm-2"];
+const WM_IDS = ["isms-wm-1"];
 const PRINT_ID = "isms-wm-print";
+const LEGACY_WM_IDS = ["isms-wm-2"];
 
 /* ---------- info perangkat (tanpa izin khusus) ---------- */
 
@@ -101,6 +102,9 @@ function ensureDom(bg: string, printText: string) {
       document.body.appendChild(el);
     }
     paintLayer(el, bg);
+  }
+  for (const id of LEGACY_WM_IDS) {
+    document.getElementById(id)?.remove();
   }
   let pr = document.getElementById(PRINT_ID);
   if (!pr) {
