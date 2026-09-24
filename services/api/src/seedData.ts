@@ -1,16 +1,25 @@
 // Bulk-seed rows for POST /api/admin/seed. Sources:
-// - settings: apps/web/src/data/store.tsx seedSettings (all rows)
+// - settings: apps/web/src/data/store.tsx seedSettings (all 36 rows)
 // - coa: apps/web/src/data/financeExcel.ts COA_EXCEL (all 98 accounts)
+// - branches: store.tsx seedBranches (BR-01..03)
+// - journals: financeExcel.ts JU_PENYESUAIAN_EXCEL via seedJournals mapping (JU-EX-01..)
+// - assets: financeExcel.ts ASET_EXCEL via seedAssets mapping (AST-EX-01..05)
+// - warranties/trials/clientPos: EMPTY to match FE [] seeds
+// - wbs_by_project: store.tsx wbsTemplate per seeded project
+// - team_by_project: store.tsx seedTeamByProject rows
 // - other collections: 1-2 small realistic example rows each, generated
 //   programmatically from the EX map below (PREFIX-style ids).
 export interface SeedRow { table: string; id: string; branch: string; data: Record<string, unknown> }
+
+export interface WbsSeed { projectId: string; wbs: Array<Record<string, unknown>> }
+export interface TeamSeed { projectId: string; memberIds: string[] }
 
 const S = (id: string, key: string, value: number, label: string, group: string): SeedRow =>
   ({ table: "settings", id, branch: "", data: { key, value, label, group } });
 
 const SETTINGS: SeedRow[] = [
   S("SET-PPN","PPN_RATE",12,"PPN Keluaran/Masukan hutang-belanja (%)","Pajak"),
-  S("SET-PPNINV","PPN_INVOICE_RATE",12,"PPN invoice jasa+material, DPP=TOTALx11/12 (%)","Pajak"),
+  S("SET-PPNINV","PPN_INVOICE_RATE",12,"PPN invoice jasa+material, DPP=TOTAL×11/12 (%)","Pajak"),
   S("SET-PPHJASA","PPH_JASA_RATE",2,"PPh invoice (% dari jasa)","Pajak"),
   S("SET-PPHSUB","PPH_SUBKON_DEFAULT",0.5,"PPh subkontraktor default (0.5/2)","Pajak"),
   S("SET-PPH23","PPH23_RATE",2,"PPh 23 jasa (%)","Pajak"),
@@ -130,7 +139,9 @@ const EX: Array<[string, string, string, Record<string, unknown>]> = [
   ["services","SRV-2026-001","Samarinda",{name:"Overhaul main engine",price:750000000,unit:"paket",status:"Aktif"}],
   ["spareparts","SP-2026-001","Samarinda",{name:"Fuel filter CAT 1R-0751",stock:120,unit:"pcs",min:20,price:385000}],
   ["boq","BQ-2026-001","Samarinda",{projectId:"NB-2026-001",item:"Plat AH36 12mm",vol:240,unit:"lembar",unitPrice:2850000,amount:684000000}],
-  ["branches","BR-04","",{name:"Tarakan — Workshop",city:"Tarakan",isHQ:false}],
+  ["branches","BR-01","",{name:"Samarinda — Kantor Pusat",city:"Samarinda",isHQ:true}],
+  ["branches","BR-02","",{name:"Balikpapan — Galangan",city:"Balikpapan",isHQ:false}],
+  ["branches","BR-03","",{name:"Banjarmasin — Workshop",city:"Banjarmasin",isHQ:false}],
   ["attendance","ABS-2026-001","Samarinda",{employeeId:"EMP-2026-001",date:"2026-08-01",shift:"Pagi",status:"Hadir",checkIn:"07:55",checkOut:"17:05",overtime:1}],
   ["payroll","PAY-2026-001","Samarinda",{employeeId:"EMP-2026-001",period:"2026-07",basic:8500000,allowances:2000000,net:9500000,status:"Dibayar",paidAt:"2026-07-31"}],
   ["taxPeriods","TAX-202609","Samarinda",{period:"2026-09",ppnKeluar:0,ppnMasuk:0,pph23:0,pph21:0,status:"Draft"}],
@@ -142,25 +153,93 @@ const EX: Array<[string, string, string, Record<string, unknown>]> = [
   ["timesheets","TS-2026-001","Samarinda",{woId:"WO-2026-001",employeeId:"EMP-2026-001",date:"2026-08-01",hours:8,note:"Fabrikasi section 5"}],
   ["drawings","DRW-2026-001","Samarinda",{project:"NB-2026-001",title:"General Arrangement",revision:"C",status:"Disetujui",updated:"2026-07-20",holder:"Hendra Wijaya"}],
   ["toolbox","TBM-2026-001","Samarinda",{project:"NB-2026-001",topic:"Lifting & rigging aman",date:"2026-08-01",attendees:24,pic:"Agus Setiawan"}],
-  ["warranties","WRT-2026-001","Samarinda",{projectId:"RP-2026-001",scope:"Coating lambung",months:12,until:"2027-08-25",status:"Aktif"}],
+  // warranties/trials/clientPos intentionally EMPTY to match FE [] seeds.
   ["calibrations","CAL-2026-001","Samarinda",{equipmentId:"EQ-2026-001",item:"Load cell Gantry Crane",due:"2026-09-15",status:"Terjadwal",cert:""}],
   ["communications","COM-2026-001","Samarinda",{quotationId:"QT-2026-001",channel:"Email",date:"2026-07-22",summary:"Kirim revisi v2 + negosiasi termin",by:"Hendra Wijaya"}],
   ["contracts","KTR-2026-001","Samarinda",{quotationId:"QT-2026-001",projectId:"RP-2026-001",client:"PT Mitra Samudra Raya",value:3100000000,signedAt:"2026-07-12",status:"Aktif"}],
   ["bast","BAST-2026-001","Samarinda",{projectId:"NB-2026-001",milestone:"Hull Assembly",tanggal:"2026-08-02",amount:540000000,status:"Diajukan"}],
-  ["trials","STL-2026-001","Samarinda",{projectId:"NB-2026-001",kind:"Sea trial",date:"2026-12-10",result:"",status:"Terjadwal"}],
   ["requests","REQ-2026-002","Samarinda",{vessel:"TB Maju Jaya 09",client:"PT Samudra Jaya Perkasa",kind:"Repair Request",scope:"Docking + coating",value:3800000000,status:"Baru",date:"2026-08-01"}],
-  ["clientPos","CPO-2026-001","Samarinda",{client:"PT Samudra Jaya Perkasa",projectId:"NB-2026-001",poNo:"PO-SJP-2201",value:48000000000,status:"Aktif"}],
-  ["journals","JU-2026-001","Samarinda",{date:"2026-08-01",dokumen:"JU-0801",uraian:"Biaya ATK & materai",db:"6-003",kr:"1-111",amount:2500000,sumber:"JU",status:"Posted"}],
-  ["assets","AST-2026-001","Samarinda",{nama:"Gantry Crane 50T",kelompok:"2",bulan:"01",tahun:"2020",nilai:3200000000,sisaAwal:1600000000,susutTahun:200000000,metode:"GL"}],
 ];
+
+// Mirrors JU_PENYESUAIAN_EXCEL (financeExcel.ts) via seedJournals mapping:
+// id JU-EX-01.., dokumen JUM-0831, amount = dbAmt || krAmt.
+const JU_EX: Array<[string, string, string, number, string, number]> = [
+  ["2026-08-31","Penyesuaian PPN Agustus","2-120",455632169.08,"1-170",73753513.46],
+  ["2026-08-31","Penyesuaian PPN Agustus","",0,"2-234",381878655.62],
+  ["2026-08-31","Penyesuaian Beban Penyusutan Aktiva","6-021",15499343.09,"1-280",15499343.09],
+  ["2026-08-31","Penyesuaian Beban Penyusutan Aktiva","6-021 A",42105958.33,"1-281",42105958.33],
+  ["2026-08-31","Penyesuaian Beban Penyusutan Aktiva","6-021 B",44471008.25,"1-282",44471008.25],
+  ["2026-08-31","Penyesuaian Beban Penyusutan Aktiva","6-021 C",6250000,"1-270",6250000],
+  ["2026-08-31","Penyesuaian Beban Penyusutan Aktiva","6-022",19893258.33,"1-290",19893258.33],
+];
+
+// Mirrors ASET_EXCEL (financeExcel.ts) via seedAssets mapping:
+// kelompok = Bangunan→BP, contains Inventaris→1, else 2.
+const ASET_EX: Array<[string, number, number, number]> = [
+  ["Bangunan",1500000000,450000000,6250000],
+  ["Alat Berat",4667172000,2635964375,52887208.33],
+  ["Kendaraan",2232936937,938942755,15499343.09],
+  ["Mesin dan Alat Kerja",6060425618,3158555875,42687975.22],
+  ["Inventaris Kantor dan Peralatan Proyek",1114376400,712588275,8221458.33],
+];
+
+// Mirrors store.tsx wbsTemplate (15 tasks, total weight 100).
+const WBS_TEMPLATE: Array<[string, string, string, number, number]> = [
+  ["Desain & Persetujuan Class","2026-01","2026-03",100,8],
+  ["Pengadaan Material","2026-02","2026-05",85,10],
+  ["Fabrikasi Baja","2026-03","2026-07",70,12],
+  ["Hull Assembly","2026-05","2026-08",45,12],
+  ["Outfitting — Machinery","2026-07","2026-09",20,8],
+  ["Outfitting — Piping","2026-07","2026-09",20,7],
+  ["Outfitting — Electrical","2026-07","2026-09",20,7],
+  ["Outfitting — Nav & Comm","2026-07","2026-09",20,5],
+  ["Outfitting — Accommodation","2026-07","2026-09",20,5],
+  ["Painting — Surface Prep","2026-08","2026-09",5,5],
+  ["Painting — Priming","2026-08","2026-09",5,4],
+  ["Painting — Topcoat","2026-08","2026-09",5,4],
+  ["Painting — Final Inspection","2026-08","2026-09",5,3],
+  ["Commissioning","2026-09","2026-09",0,6],
+  ["Sea Trial & Delivery","2026-09","2026-09",0,4],
+];
+
+// Mirrors store.tsx seedTeamByProject.
+const TEAM_SEED: Array<[string, string[]]> = [
+  ["NB-2025-012",["EMP-002","EMP-004","EMP-006"]],
+  ["NB-2025-014",["EMP-003","EMP-005"]],
+  ["RP-2026-003",["EMP-004","EMP-006"]],
+  ["RP-2026-005",["EMP-005"]],
+  ["RF-2026-001",["EMP-002","EMP-006"]],
+];
+
+const WBS_PROJECTS = ["NB-2026-001","RP-2026-001"];
 
 export function buildSeedRows(): SeedRow[] {
   const rows: SeedRow[] = [...SETTINGS];
   for (const [kode, nama, dk, nrlr] of COA) {
     rows.push({ table: "coa", id: `COA-${kode}`, branch: "", data: { kode, nama, dk, nrlr } });
   }
+  JU_EX.forEach(([tgl, uraian, db, dbAmt, kr, krAmt], i) => {
+    rows.push({ table: "journals", id: `JU-EX-${String(i + 1).padStart(2, "0")}`, branch: "",
+      data: { date: tgl, kodePembantu: "", dokumen: "JUM-0831", uraian, db, kr, amount: dbAmt || krAmt, sumber: "JU", status: "Posted" } });
+  });
+  ASET_EX.forEach(([gol, perolehan, sisaAwal, susut], i) => {
+    rows.push({ table: "assets", id: `AST-EX-0${i + 1}`, branch: "",
+      data: { nama: gol, kelompok: gol === "Bangunan" ? "BP" : gol.includes("Inventaris") ? "1" : "2",
+        bulan: "-", tahun: "2025", nilai: perolehan, sisaAwal, susutTahun: susut, metode: "GL" } });
+  });
   for (const [table, id, branch, data] of EX) {
     rows.push({ table, id, branch, data });
   }
   return rows;
+}
+
+export function buildWbsSeeds(): WbsSeed[] {
+  return WBS_PROJECTS.map((projectId) => ({
+    projectId,
+    wbs: WBS_TEMPLATE.map(([task, start, end, progress, weight]) => ({ task, start, end, progress, weight })),
+  }));
+}
+
+export function buildTeamSeeds(): TeamSeed[] {
+  return TEAM_SEED.map(([projectId, memberIds]) => ({ projectId, memberIds: [...memberIds] }));
 }

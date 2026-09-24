@@ -27,6 +27,16 @@ npm run dev
 
 Create the database first (`CREATE DATABASE isms;`). The same `001_init.sql` DDL runs on both dialects.
 
+## Migrations
+
+- `migrations/001_init.sql` is the single baseline (fresh project, no prod data).
+- `001` was edited in place to remove all `TEXT DEFAULT ...` defaults
+  (`branch TEXT`, `data TEXT NOT NULL`, etc.); defaults are handled in code
+  inserts (`crud.ts`/`admin.ts` always send `branch`/`data`/`updated_at`,
+  `wbs.ts` always sends `project_id`/`data`, `auth.ts` seed always sends all
+  `NOT NULL` user columns). No `002` needed; delete local `./data/isms.db`
+  and re-run `npm run migrate` to pick up the change.
+
 ## Scripts
 
 - `npm run dev` — `tsx watch src/index.ts` (migrates on boot, then listens on `PORT`)
@@ -68,7 +78,7 @@ Client ↔ FE `StoreItem` mapping: `{ id, branch, ...data }`.
 
 | Method | Endpoint | Notes |
 |---|---|---|
-| GET | `/api/<table>?branch=&q=&limit=` | `branch` exact filter; `q` substring search inside `data` JSON (`instr` on sqlite, `LOCATE` on mysql); `limit` default 200, max 1000 |
+| GET | `/api/<table>?branch=&q=&limit=&offset=` | `branch` exact filter; `q` substring search inside `data` JSON (`instr` on sqlite, `LOCATE` on mysql); `limit` default 200, max 1000 (clamped); `offset` default 0; returns `{ rows, total, limit, offset }` where `rows` are `{ id, branch, data, updated_at }` |
 | GET | `/api/<table>/:id` | 404 `NOT_FOUND` when missing |
 | POST | `/api/<table>` | body `{ id?, branch?, data }`; honors a unique client `id`, else generates `<PREFIX>-<UUID8>`; duplicate → 409 `CONFLICT`; → 201 |
 | PATCH | `/api/<table>/:id` | body `{ branch?, data? }`; `data` is merged shallow server-side (`{...old, ...patch}`) |
@@ -88,6 +98,28 @@ Missing rows read back as `[]`; `PUT` upserts.
 - `POST /api/admin/seed` with header `x-setup-token: <SETUP_TOKEN>` (else 403).
   Bulk-inserts settings (36 rows), full COA (98 accounts), and 1–2 example rows
   per other collection; existing ids are skipped. Returns `{ inserted, skipped }`.
+
+## Users (`src/routes/users.ts`, Direktur/Developer only)
+
+| Method | Endpoint | Notes |
+|---|---|---|
+| GET | `/api/users` | list tanpa password hash |
+| POST | `/api/users` | `{ username, name, role, password≥6, email? }`, 409 bila duplikat |
+| PATCH | `/api/users/:id` | nama/role/email/isActive; password hanya via endpoint khusus |
+| POST | `/api/users/:id/password` | ganti/reset (`:id` bisa `me`); self wajib password lama |
+| DELETE | `/api/users/:id` | nonaktif (`is_active=0`), tak pernah hapus fisik |
+
+Login menolak akun nonaktif (403). Tabel `users` tidak ikut CRUD generik.
+
+## Audit log & files
+
+- `GET /api/audit?table=&limit=&offset=` — log siapa-ubah-apa (user, aksi, diff, IP, waktu server), terbaru dulu.
+- `POST /api/files` (multipart field `file`, png/jpg/pdf/xlsx/csv ≤10MB) → `{ url: "/files/..." }`; dilayani statis di `GET /files/*`.
+
+## Rate limit & 403
+
+- Login 20/mnt/IP, seed 20/mnt, tulis (POST/PATCH/PUT/DELETE) 300/mnt/IP — 429 + header `Retry-After`.
+- 403 membawa alasan (`Butuh peran Direktur / Developer`); FE menampilkannya dan tidak menulis lokal.
 
 ## curl examples
 

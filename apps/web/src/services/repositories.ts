@@ -3,7 +3,7 @@
 // Bentuk record longgar (StoreItem) agar kompatibel dengan store saat ini.
 //
 // Format baris backend (services/api, envelope sudah dibuka oleh apiFetch):
-// - GET /api/<table>      → BackendRow[]  ({ id, branch, data, updated_at })
+// - GET /api/<table>?limit=&offset= → { rows: BackendRow[], total, limit, offset }
 // - GET /api/<table>/:id  → BackendRow
 // - POST /api/<table>     ← { id?, branch?, data }  → BackendRow (201)
 // - PATCH /api/<table>/:id← { branch?, data? }      → BackendRow
@@ -13,8 +13,15 @@ import type { StoreItem } from "../data/store";
 import { apiFetch, isBackendConfigured } from "./http";
 import { newId } from "./ids";
 
+export interface ListFilter {
+  q?: string;
+  branch?: string;
+}
+
 export interface Repository {
   list(): Promise<StoreItem[]>;
+  /** Filter server-side (q/branch) — opsional agar adapter lama tak rusak. */
+  listFiltered?(opts?: ListFilter): Promise<StoreItem[]>;
   create(item: Omit<StoreItem, "id"> & { id?: string }): Promise<StoreItem>;
   patch(id: string, patch: Record<string, unknown>): Promise<StoreItem>;
   remove(id: string): Promise<void>;
@@ -30,6 +37,16 @@ export function localRepository(prefix: string, snapshot: Snapshot, onWrite?: ()
   return {
     async list() {
       return snapshot.load();
+    },
+    async listFiltered(opts) {
+      const rows = snapshot.load();
+      const needle = (opts?.q ?? "").trim().toLowerCase();
+      const branch = (opts?.branch ?? "").trim();
+      return rows.filter((r) => {
+        if (branch && (r as StoreItem).branch !== branch) return false;
+        if (!needle) return true;
+        return JSON.stringify(r).toLowerCase().includes(needle);
+      });
     },
     async create(item) {
       const rows = snapshot.load();
@@ -92,13 +109,50 @@ function patchToUpdateBody(patch: Record<string, unknown>): {
   };
 }
 
+interface BackendPage {
+  rows: BackendRow[];
+  total: number;
+  limit: number;
+  offset: number;
+}
+
+function isBackendPage(v: unknown): v is BackendPage {
+  return typeof v === "object" && v !== null && Array.isArray((v as { rows?: unknown }).rows);
+}
+
 /** Adapter HTTP: dipakai otomatis saat VITE_API_URL diisi. */
 export function remoteRepository(resource: string): Repository {
   const base = `/api/${resource}`;
   return {
     async list() {
-      const rows = await apiFetch<BackendRow[]>(base);
-      return (Array.isArray(rows) ? rows : []).map(rowToItem);
+      const limit = 1000;
+      let offset = 0;
+      const all: StoreItem[] = [];
+      for (;;) {
+        const page = await apiFetch<BackendRow[] | BackendPage>(
+          `${base}?limit=${limit}&offset=${offset}`,
+        );
+        if (Array.isArray(page)) return (page as BackendRow[]).map(rowToItem);
+        if (!isBackendPage(page)) return [];
+        const rows = Array.isArray(page.rows) ? page.rows : [];
+        for (const row of rows) all.push(rowToItem(row));
+        const total = typeof page.total === "number" ? page.total : all.length;
+        if (rows.length < limit) break;
+        if (all.length >= total) break;
+        offset += limit;
+      }
+      return all;
+    },
+    async listFiltered(opts) {
+      const params = new URLSearchParams();
+      if (opts?.q?.trim()) params.set("q", opts.q.trim());
+      if (opts?.branch?.trim()) params.set("branch", opts.branch.trim());
+      params.set("limit", "50");
+      const qs = params.toString();
+      const page = await apiFetch<BackendRow[] | BackendPage>(`${base}?${qs}`);
+      if (Array.isArray(page)) return (page as BackendRow[]).map(rowToItem);
+      if (!isBackendPage(page)) return [];
+      return (Array.isArray(page.rows) ? page.rows : []).map(rowToItem);
     },
     async create(item) {
       const row = await apiFetch<BackendRow>(base, { method: "POST", body: JSON.stringify(itemToCreateBody(item)) });

@@ -33,6 +33,8 @@ import {
 import { Card, CardHeader, PageHeader, Badge, KpiCard, Tabs, ChartTooltip, Modal, Field, FormGrid, toast, EmptyState, ProgressBar, SortTh, toggleSort, sortRows } from "../../components/ui";
 import type { SortState } from "../../components/ui";
 import { useStore, type StoreItem } from "../../data/store";
+import { isBackendConfigured } from "../../services/http";
+import { uploadFile } from "../../services/upload";
 import { fmtJumlah, fmtRupiah, fmtMiliar, fmtTanggal, todayISO } from "../../utils/format";
 import { exportExcel } from "../../utils/export";
 import { sbTonasePlat, sbSjNumber, maxSeq, parseSjSeq, SB_KOP } from "../../utils/sb";
@@ -328,6 +330,8 @@ export default function Inventory() {
   const [reservTarget, setReservTarget] = useState<StoreItem | null>(null);
   const [reservProject, setReservProject] = useState("");
   const [reservQtyInput, setReservQtyInput] = useState("");
+  const photoInputRef = useRef<HTMLInputElement | null>(null);
+  const [uploadingPhoto, setUploadingPhoto] = useState(false);
   // Kalkulator tonase plat (RawData PERHITUNGAN + TABLE TONASE): P×L×T×7850.
   const [tonP, setTonP] = useState("6010");
   const [tonL, setTonL] = useState("1810");
@@ -437,6 +441,23 @@ export default function Inventory() {
     : [];
 
   const setF = (k: string, v: string) => setForm((f) => ({ ...f, [k]: v }));
+
+  /* Upload foto ke backend (/api/files); mode lokal tetap pakai URL manual. */
+  const onPhotoFile = async (f: File | undefined) => {
+    if (!f) return;
+    if (!isBackendConfigured()) { toast("Mode lokal — tempel URL foto manual", "info"); return; }
+    setUploadingPhoto(true);
+    try {
+      const url = await uploadFile(f);
+      setF("photoUrl", url);
+      toast("Foto terunggah");
+    } catch (e) {
+      toast(e instanceof Error ? e.message : "Upload foto gagal", "info");
+    } finally {
+      setUploadingPhoto(false);
+      if (photoInputRef.current) photoInputRef.current.value = "";
+    }
+  };
 
   const openMove = (it: StoreItem, kind: "in" | "out") => {
     setMoveTarget(it);
@@ -1485,10 +1506,20 @@ export default function Inventory() {
             <Field label="Min stok gudang ini" hint="Batas menipis khusus gudang terpilih, default ikut minimum global">
               <input type="number" min={0} className="input" value={form.minWh} onChange={(e) => setF("minWh", e.target.value)} placeholder="cth: 10" />
             </Field>
-            <Field label="Foto item (URL)" hint="Tempel URL gambar, siap diganti upload backend">
+            <Field label="Foto item (URL)" hint="Tempel URL gambar, atau Upload via backend bila remote">
               <div className="flex items-center gap-2">
                 <Camera className="h-4 w-4 shrink-0 text-steel-400" />
                 <input className="input font-mono" value={form.photoUrl} onChange={(e) => setF("photoUrl", e.target.value)} placeholder="https://…" />
+                <input ref={photoInputRef} type="file" accept=".png,.jpg,.jpeg,.pdf,.xlsx,.csv" className="hidden" aria-label="Pilih berkas foto item"
+                  onChange={(e) => { void onPhotoFile(e.target.files?.[0]); }} />
+                <button type="button" className="btn-secondary shrink-0 text-xs" disabled={uploadingPhoto}
+                  title={isBackendConfigured() ? "Unggah berkas ke backend" : "Mode lokal — isi URL manual"}
+                  onClick={() => {
+                    if (!isBackendConfigured()) { toast("Mode lokal — tempel URL foto manual", "info"); return; }
+                    photoInputRef.current?.click();
+                  }}>
+                  <Upload className="h-4 w-4" /> {uploadingPhoto ? "Mengunggah…" : "Upload"}
+                </button>
               </div>
             </Field>
           </FormGrid>

@@ -93,6 +93,17 @@ function envelopeMessage(v: unknown): string | null {
   return null;
 }
 
+function notifyAuthExpired(): void {
+  clearJwt();
+  try {
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(new CustomEvent("isms:auth-expired"));
+    }
+  } catch {
+    /* abaikan */
+  }
+}
+
 export async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
   if (!isBackendConfigured()) throw new ApiNotConfigured();
   const jwt = getJwt();
@@ -117,6 +128,7 @@ export async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> 
     json = null;
   }
   if (!res.ok) {
+    if (res.status === 401) notifyAuthExpired();
     throw new ApiError(res.status, envelopeMessage(json) ?? (text || `HTTP ${res.status} untuk ${path}`));
   }
   if (isEnvelope(json)) {

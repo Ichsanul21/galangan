@@ -101,6 +101,8 @@ Assessment → Proposal → Class Approval → Contract → Procurement → Inst
 - Tanpa Docker: `DB_DIALECT=sqlite` (file `./data/isms.db`) untuk lokal, `DB_DIALECT=mysql` + `MYSQL_URL` untuk server.
 - Jalankan: `cd services/api; npm install; npm run migrate; npm run seed; npm run dev` (port 3000).
 - Frontend: isi `VITE_API_URL=http://localhost:3000` (lihat `apps/web/.env.example`) agar tersambung; kosong = mode lokal. Login otomatis memakai backend bila tersedia, impor seed sekali pakai dari `/pengaturan`.
+- Sesi JWT 8 jam — kedaluwarsa otomatis diminta login ulang. Perubahan offline ditandai dan bisa didorong ulang via banner "Sinkronkan sekarang".
+- Pengguna dikelola di `/pengaturan/peran` (Direktur/Developer); audit backend di `/api/audit`.
 - Akun seed: `direktur@galangan.com/direktur123`, `manager@galangan.com/manager123`, `demo@galangan.com/password@123`, `dev@alk.id/KucingTerbang`.
 
 ---

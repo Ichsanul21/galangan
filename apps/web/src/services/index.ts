@@ -6,4 +6,5 @@
 export { apiFetch, isBackendConfigured, ApiError, ApiNotConfigured, setJwt, getJwt, clearJwt } from "./http";
 export { newId } from "./ids";
 export { localRepository, remoteRepository, pickRepository } from "./repositories";
+export { uploadFile, UploadNotConfigured } from "./upload";
 export type { Repository, Snapshot } from "./repositories";

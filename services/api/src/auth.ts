@@ -54,7 +54,10 @@ export function requireRole(...roles: string[]) {
       return reply.status(401).send({ ok: false, error: { message: "Unauthorized", code: "UNAUTHORIZED" } });
     }
     if (!roles.includes(req.user.role)) {
-      return reply.status(403).send({ ok: false, error: { message: "Forbidden", code: "FORBIDDEN" } });
+      const labels = [...new Set(roles.map((r) => r.charAt(0).toUpperCase() + r.slice(1).toLowerCase()))];
+      return reply
+        .status(403)
+        .send({ ok: false, error: { message: `Butuh peran ${labels.join(" / ")}`, code: "FORBIDDEN" } });
     }
   };
 }

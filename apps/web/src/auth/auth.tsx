@@ -1,6 +1,6 @@
 import { createContext, useContext, useState, type ReactNode } from "react";
 import { Navigate, useLocation } from "react-router-dom";
-import { ApiError, ApiNotConfigured, apiFetch, clearJwt, isBackendConfigured, setJwt } from "../services/http";
+import { ApiError, ApiNotConfigured, apiFetch, clearJwt, getJwt, isBackendConfigured, setJwt } from "../services/http";
 
 export interface DemoUser {
   username: string;
@@ -143,5 +143,7 @@ export function RequireAuth({ children }: { children: ReactNode }) {
   const { user } = useAuth();
   const location = useLocation();
   if (!user) return <Navigate to="/login" replace state={{ from: location.pathname }} />;
+  if (isBackendConfigured() && getJwt() === null)
+    return <Navigate to="/login" replace state={{ from: location.pathname }} />;
   return <>{children}</>;
 }

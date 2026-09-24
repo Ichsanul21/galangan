@@ -1,12 +1,17 @@
-import Fastify, { type FastifyInstance } from "fastify";
+import Fastify, { type FastifyInstance, type FastifyReply } from "fastify";
 import { z } from "zod";
 import { loadEnv } from "./env.js";
 import { fail, ok, registerErrorHandler } from "./envelope.js";
+import { createRateLimiter, getClientIp } from "./rateLimit.js";
 import { comparePassword, requireAuth, signToken } from "./auth.js";
+import { requestIp, writeAudit } from "./audit.js";
 import { q } from "./db.js";
 import { COLLECTIONS, registerCrud } from "./routes/crud.js";
+import { registerAuditRoutes } from "./routes/audit.js";
+import { registerFileRoutes } from "./routes/files.js";
 import { registerWbsRoutes } from "./routes/wbs.js";
 import { registerAdminRoutes } from "./routes/admin.js";
+import { registerUserRoutes } from "./routes/users.js";
 
 const LoginSchema = z.object({
   username: z.string().min(1),
@@ -20,21 +25,22 @@ interface UserRow {
   name: string;
   role: string;
   email: string;
+  is_active: number | null;
 }
 
 const LOGIN_LIMIT = 20;
 const LOGIN_WINDOW_MS = 60_000;
-const loginHits = new Map<string, { count: number; resetAt: number }>();
+const WRITE_LIMIT = 300;
+const WRITE_WINDOW_MS = 60_000;
 
-function loginRateLimit(ip: string): boolean {
-  const now = Date.now();
-  const entry = loginHits.get(ip);
-  if (!entry || now > entry.resetAt) {
-    loginHits.set(ip, { count: 1, resetAt: now + LOGIN_WINDOW_MS });
-    return true;
-  }
-  entry.count += 1;
-  return entry.count <= LOGIN_LIMIT;
+const loginLimiter = createRateLimiter(LOGIN_LIMIT, LOGIN_WINDOW_MS);
+const writeLimiter = createRateLimiter(WRITE_LIMIT, WRITE_WINDOW_MS);
+
+const WRITE_METHODS = new Set(["POST", "PATCH", "PUT", "DELETE"]);
+
+function denyRateLimited(reply: FastifyReply, retryAfterSec: number, message: string): unknown {
+  reply.header("Retry-After", String(retryAfterSec));
+  return reply.status(429).send(fail(message, "RATE_LIMITED"));
 }
 
 export function buildApp(): FastifyInstance {
@@ -61,23 +67,52 @@ export function buildApp(): FastifyInstance {
 
   app.get("/health", async () => ok({ status: "ok" }));
 
+  // Pembatas ringan untuk semua rute tulis (300/mnt per IP) + header Retry-After saat 429.
+  app.addHook("onRequest", async (req, reply) => {
+    if (!WRITE_METHODS.has(req.method)) return undefined;
+    const check = writeLimiter(getClientIp(req));
+    if (!check.allowed) {
+      return denyRateLimited(reply, check.retryAfterSec, "Too many requests, try again later");
+    }
+    return undefined;
+  });
+
   app.post("/api/auth/login", async (req, reply) => {
-    const ip = req.ip ?? req.headers["x-forwarded-for"]?.toString() ?? "unknown";
-    if (!loginRateLimit(ip)) {
-      return reply.status(429).send(fail("Too many login attempts, try again later", "RATE_LIMITED"));
+    const check = loginLimiter(getClientIp(req));
+    if (!check.allowed) {
+      return denyRateLimited(reply, check.retryAfterSec, "Too many login attempts, try again later");
     }
     const parsed = LoginSchema.safeParse(req.body);
     if (!parsed.success) {
       return reply.status(400).send(fail("Validation failed", "VALIDATION_ERROR"));
     }
     const { username, password } = parsed.data;
-    const rows = await q<UserRow>("SELECT id, username, pass_hash, name, role, email FROM users WHERE username = ?", [
+    const rows = await q<UserRow>("SELECT id, username, pass_hash, name, role, email, is_active FROM users WHERE username = ?", [
       username,
     ]);
     const user = rows[0];
     if (!user || !(await comparePassword(password, user.pass_hash))) {
+      await writeAudit({
+        user: username,
+        action: "auth.login_failed",
+        table: "users",
+        rowId: user?.id ?? "",
+        diff: { username },
+        ip: requestIp(req),
+      });
       return reply.status(401).send(fail("Invalid credentials", "UNAUTHORIZED"));
     }
+    if ((user.is_active ?? 1) === 0) {
+      return reply.status(403).send(fail("Akun dinonaktifkan. Hubungi administrator.", "FORBIDDEN"));
+    }
+    await writeAudit({
+      user: user.username,
+      action: "auth.login_success",
+      table: "users",
+      rowId: user.id,
+      diff: { username: user.username },
+      ip: requestIp(req),
+    });
     const token = signToken({ id: user.id, username: user.username, role: user.role });
     return ok({ token, user: { id: user.id, username: user.username, name: user.name, role: user.role, email: user.email } });
   });
@@ -87,8 +122,11 @@ export function buildApp(): FastifyInstance {
   });
 
   for (const table of COLLECTIONS) registerCrud(app, table);
+  registerAuditRoutes(app);
+  registerFileRoutes(app);
   registerWbsRoutes(app);
   registerAdminRoutes(app);
+  registerUserRoutes(app);
 
   app.setNotFoundHandler((_req, reply) => {
     return reply.status(404).send(fail("Not found", "NOT_FOUND"));

@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { NavLink, Outlet, Link, useNavigate } from "react-router-dom";
 import {
   LayoutDashboard,
@@ -34,13 +34,26 @@ import {
 import { useAuth } from "../auth/auth";
 import { useStore } from "../data/store";
 import { Badge, Modal, Field, Toaster, toast } from "../components/ui";
+import { apiFetch } from "../services/http";
 import { computeAlerts } from "../utils/alerts";
 import { loadNotifRead, saveNotifRead } from "../utils/notifRead";
+import { remoteRepository } from "../services/repositories";
+import { getJwt, isBackendConfigured } from "../services/http";
 
 export default function AppShell() {
   const { user, logout } = useAuth();
-  const { data, reset, branch, setBranch, backendMode, backendError } = useStore();
+  const { data, reset, branch, setBranch, backendMode, backendError, pendingSync, pushPending } = useStore();
   const navigate = useNavigate();
+
+  useEffect(() => {
+    const onExpired = () => {
+      toast("Sesi berakhir — silakan login ulang", "info");
+      logout();
+      navigate("/login");
+    };
+    window.addEventListener("isms:auth-expired", onExpired);
+    return () => window.removeEventListener("isms:auth-expired", onExpired);
+  }, [logout, navigate]);
   const [open, setOpen] = useState(false);
   const [userOpen, setUserOpen] = useState(false);
   const [notifOpen, setNotifOpen] = useState(false);
@@ -129,36 +142,110 @@ export default function AppShell() {
     toast("Data demo dikembalikan ke awal", "info");
   };
 
-  // Pencarian global terintegrasi: proyek, kapal, invoice, PO, penawaran, karyawan
+  const [oldPw, setOldPw] = useState("");
+  const [newPw, setNewPw] = useState("");
+  const doChangePassword = async () => {
+    if (!isBackendConfigured()) {
+      toast("Mode lokal — ganti password tersedia saat backend tersambung", "info");
+      return;
+    }
+    if (newPw.length < 6) {
+      toast("Password baru min. 6 karakter", "info");
+      return;
+    }
+    try {
+      await apiFetch("/api/users/me/password", {
+        method: "POST",
+        body: JSON.stringify({ oldPassword: oldPw, newPassword: newPw }),
+      });
+      setOldPw("");
+      setNewPw("");
+      toast("Password berhasil diganti");
+    } catch (e) {
+      toast(e instanceof Error ? e.message : "Gagal ganti password", "info");
+    }
+  };
+
+  // Pencarian global: lokal (fallback) + backend saat remote (q → BE).
+  interface Hit { label: string; sub: string; to: string; kind: string }
   const query = q.trim().toLowerCase();
-  const hits: { label: string; sub: string; to: string; kind: string }[] = query
-    ? [
-        ...data.projects
-          .filter((p) => `${p.vessel} ${p.id} ${p.client}`.toLowerCase().includes(query))
-          .slice(0, 3)
-          .map((p) => ({ label: p.vessel, sub: `${p.id} · ${p.client}`, to: `/proyek/${p.id}`, kind: "Proyek" })),
-        ...data.vessels
-          .filter((v) => `${v.name} ${v.imo}`.toLowerCase().includes(query))
-          .slice(0, 2)
-          .map((v) => ({ label: v.name, sub: `${v.imo}`, to: `/kapal/${v.id}`, kind: "Kapal" })),
-        ...data.invoices
-          .filter((i) => `${i.id} ${i.client}`.toLowerCase().includes(query))
-          .slice(0, 2)
-          .map((i) => ({ label: i.id, sub: `${i.client} · ${i.project}`, to: "/keuangan", kind: "Invoice" })),
-        ...data.purchaseOrders
-          .filter((p) => `${p.id} ${p.item} ${p.vendor}`.toLowerCase().includes(query))
-          .slice(0, 2)
-          .map((p) => ({ label: p.id, sub: `${p.item} · ${p.vendor}`, to: "/procurement", kind: "PO" })),
-        ...data.quotations
-          .filter((x) => `${x.id} ${x.vessel} ${x.client}`.toLowerCase().includes(query))
-          .slice(0, 2)
-          .map((x) => ({ label: x.id, sub: `${x.vessel} · ${x.client}`, to: "/crm", kind: "Quotation" })),
-        ...data.employees
-          .filter((e) => `${e.name} ${e.role}`.toLowerCase().includes(query))
-          .slice(0, 2)
-          .map((e) => ({ label: e.name, sub: `${e.role} · ${e.dept}`, to: "/sdm", kind: "Karyawan" })),
-      ]
-    : [];
+  const rawQuery = q.trim();
+  const remoteSearchable = backendMode === "remote";
+  const [remoteHits, setRemoteHits] = useState<Hit[] | null>(null);
+
+  useEffect(() => {
+    if (!remoteSearchable || !rawQuery || !isBackendConfigured() || !getJwt()) {
+      setRemoteHits(null);
+      return;
+    }
+    let cancelled = false;
+    const t = window.setTimeout(() => {
+      void (async () => {
+        try {
+          const [prj, vsl, doc, vnd] = await Promise.all([
+            remoteRepository("projects").listFiltered?.({ q: rawQuery }) ?? Promise.resolve([]),
+            remoteRepository("vessels").listFiltered?.({ q: rawQuery }) ?? Promise.resolve([]),
+            remoteRepository("documents").listFiltered?.({ q: rawQuery }) ?? Promise.resolve([]),
+            remoteRepository("vendors").listFiltered?.({ q: rawQuery }) ?? Promise.resolve([]),
+          ]);
+          if (cancelled) return;
+          setRemoteHits([
+            ...(prj ?? []).slice(0, 3).map((p) => ({
+              label: String(p.vessel ?? p.id), sub: `${p.id} · ${p.client ?? ""}`, to: `/proyek/${p.id}`, kind: "Proyek",
+            })),
+            ...(vsl ?? []).slice(0, 2).map((v) => ({
+              label: String(v.name ?? v.id), sub: String(v.imo ?? ""), to: `/kapal/${v.id}`, kind: "Kapal",
+            })),
+            ...(doc ?? []).slice(0, 2).map((d) => ({
+              label: String(d.title ?? d.id), sub: `${d.type ?? ""} · ${d.project ?? ""}`, to: "/dokumen", kind: "Dokumen",
+            })),
+            ...(vnd ?? []).slice(0, 2).map((v) => ({
+              label: String(v.name ?? v.id), sub: String(v.cat ?? ""), to: "/procurement", kind: "Vendor",
+            })),
+          ]);
+        } catch {
+          if (!cancelled) setRemoteHits(null);
+        }
+      })();
+    }, 250);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(t);
+    };
+  }, [rawQuery, remoteSearchable]);
+
+  // Fallback lokal: proyek, kapal, invoice, PO, penawaran, karyawan
+  const localHits: Hit[] = useMemo(() => {
+    if (!query) return [];
+    return [
+      ...data.projects
+        .filter((p) => `${p.vessel} ${p.id} ${p.client}`.toLowerCase().includes(query))
+        .slice(0, 3)
+        .map((p) => ({ label: p.vessel, sub: `${p.id} · ${p.client}`, to: `/proyek/${p.id}`, kind: "Proyek" })),
+      ...data.vessels
+        .filter((v) => `${v.name} ${v.imo}`.toLowerCase().includes(query))
+        .slice(0, 2)
+        .map((v) => ({ label: v.name, sub: `${v.imo}`, to: `/kapal/${v.id}`, kind: "Kapal" })),
+      ...data.invoices
+        .filter((i) => `${i.id} ${i.client}`.toLowerCase().includes(query))
+        .slice(0, 2)
+        .map((i) => ({ label: i.id, sub: `${i.client} · ${i.project}`, to: "/keuangan", kind: "Invoice" })),
+      ...data.purchaseOrders
+        .filter((p) => `${p.id} ${p.item} ${p.vendor}`.toLowerCase().includes(query))
+        .slice(0, 2)
+        .map((p) => ({ label: p.id, sub: `${p.item} · ${p.vendor}`, to: "/procurement", kind: "PO" })),
+      ...data.quotations
+        .filter((x) => `${x.id} ${x.vessel} ${x.client}`.toLowerCase().includes(query))
+        .slice(0, 2)
+        .map((x) => ({ label: x.id, sub: `${x.vessel} · ${x.client}`, to: "/crm", kind: "Quotation" })),
+      ...data.employees
+        .filter((e) => `${e.name} ${e.role}`.toLowerCase().includes(query))
+        .slice(0, 2)
+        .map((e) => ({ label: e.name, sub: `${e.role} · ${e.dept}`, to: "/sdm", kind: "Karyawan" })),
+    ];
+  }, [query, data.projects, data.vessels, data.invoices, data.purchaseOrders, data.quotations, data.employees]);
+
+  const hits: Hit[] = remoteSearchable && remoteHits !== null ? remoteHits : localHits;
 
   const sidebar = (
     <div className="flex h-full flex-col bg-navy-900 text-white">
@@ -422,6 +509,20 @@ export default function AppShell() {
           </div>
         </header>
 
+        {pendingSync.length > 0 && (
+          <div className="flex flex-wrap items-center gap-2 border-b border-amber-200 bg-amber-50 px-4 py-2 text-xs text-amber-800 lg:px-6">
+            <span>
+              {pendingSync.length} koleksi belum tersinkron ({pendingSync.join(", ")})
+            </span>
+            <button
+              className="btn-secondary px-2 py-1 text-xs"
+              onClick={() => void pushPending()}
+            >
+              Sinkronkan sekarang
+            </button>
+          </div>
+        )}
+
         <main className="p-4 lg:p-6">
           <Outlet />
         </main>
@@ -447,6 +548,29 @@ export default function AppShell() {
           <button onClick={doReset} className="btn-secondary w-full justify-center">
             <RotateCcw className="h-4 w-4" /> Kembalikan data ke awal
           </button>
+        </Field>
+        <Field label="Ganti password">
+          <div className="grid gap-2">
+            <input
+              type="password"
+              className="input"
+              placeholder="Password lama"
+              aria-label="Password lama"
+              value={oldPw}
+              onChange={(e) => setOldPw(e.target.value)}
+            />
+            <input
+              type="password"
+              className="input"
+              placeholder="Password baru (min. 6 karakter)"
+              aria-label="Password baru"
+              value={newPw}
+              onChange={(e) => setNewPw(e.target.value)}
+            />
+            <button onClick={() => void doChangePassword()} className="btn-secondary w-full justify-center">
+              <KeyRound className="h-4 w-4" /> Simpan password baru
+            </button>
+          </div>
         </Field>
       </Modal>
 

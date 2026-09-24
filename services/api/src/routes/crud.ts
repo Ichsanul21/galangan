@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { requireAuth, requireRole } from "../auth.js";
+import { requestActor, requestIp, shallowDiff, writeAudit } from "../audit.js";
 import { exec, getDialect, q } from "../db.js";
 import { fail, ok } from "../envelope.js";
 
@@ -121,6 +122,12 @@ function parseLimit(raw: unknown): number {
   return Math.min(1000, Math.max(1, n));
 }
 
+function parseOffset(raw: unknown): number {
+  const n = typeof raw === "string" ? Number.parseInt(raw, 10) : NaN;
+  if (Number.isNaN(n)) return 0;
+  return Math.max(0, n);
+}
+
 export function registerCrud(app: FastifyInstance, table: string, opts: CrudOpts = {}): void {
   if (!COLLECTIONS.includes(table)) throw new Error(`Unknown collection: ${table}`);
   const base = `/api/${table}`;
@@ -140,11 +147,14 @@ export function registerCrud(app: FastifyInstance, table: string, opts: CrudOpts
       params.push(query.q);
     }
     const limit = parseLimit(query.limit);
-    const sql = `SELECT id, branch, data, updated_at FROM ${table}` +
-      (where.length > 0 ? ` WHERE ${where.join(" AND ")}` : "") +
-      " ORDER BY id ASC LIMIT ?";
-    const rows = await q<Row>(sql, [...params, limit]);
-    return ok(rows.map(toJson));
+    const offset = parseOffset(query.offset);
+    const whereSql = where.length > 0 ? ` WHERE ${where.join(" AND ")}` : "";
+    const countRows = await q<{ cnt: number }>(`SELECT COUNT(*) AS cnt FROM ${table}${whereSql}`, params);
+    const total = Number((countRows[0] as { cnt: number } | undefined)?.cnt ?? 0);
+    const sql = `SELECT id, branch, data, updated_at FROM ${table}${whereSql}` +
+      " ORDER BY id ASC LIMIT ? OFFSET ?";
+    const rows = await q<Row>(sql, [...params, limit, offset]);
+    return ok({ rows: rows.map(toJson), total, limit, offset });
   });
 
   app.get(`${base}/:id`, { preHandler: [requireAuth] }, async (req, reply) => {
@@ -174,6 +184,14 @@ export function registerCrud(app: FastifyInstance, table: string, opts: CrudOpts
     await exec(`INSERT INTO ${table} (id, branch, data, updated_at) VALUES (?, ?, ?, ?)`, [
       id, branch, JSON.stringify(parsed.data.data), now,
     ]);
+    await writeAudit({
+      user: requestActor(req),
+      action: "create",
+      table,
+      rowId: id as string,
+      diff: { branch, data: parsed.data.data },
+      ip: requestIp(req),
+    });
     return reply.status(201).send(ok({ id, branch, data: parsed.data.data, updated_at: now }));
   });
 
@@ -191,14 +209,34 @@ export function registerCrud(app: FastifyInstance, table: string, opts: CrudOpts
     await exec(`UPDATE ${table} SET branch = ?, data = ?, updated_at = ? WHERE id = ?`, [
       branch, JSON.stringify(merged), now, id,
     ]);
+    await writeAudit({
+      user: requestActor(req),
+      action: "update",
+      table,
+      rowId: id,
+      diff: {
+        ...(current.branch !== branch ? { branch: { before: current.branch, after: branch } } : {}),
+        ...shallowDiff(oldData, merged),
+      },
+      ip: requestIp(req),
+    });
     return ok({ id, branch, data: merged, updated_at: now });
   });
 
   app.delete(`${base}/:id`, { preHandler: writeGuards }, async (req, reply) => {
     const { id } = req.params as { id: string };
-    const rows = await q<Row>(`SELECT id FROM ${table} WHERE id = ?`, [id]);
+    const rows = await q<Row>(`SELECT id, branch, data, updated_at FROM ${table} WHERE id = ?`, [id]);
     if (rows.length === 0) return reply.status(404).send(fail("Not found", "NOT_FOUND"));
+    const doomed = rows[0] as Row;
     await exec(`DELETE FROM ${table} WHERE id = ?`, [id]);
+    await writeAudit({
+      user: requestActor(req),
+      action: "delete",
+      table,
+      rowId: id,
+      diff: { branch: doomed.branch, data: JSON.parse(doomed.data) as unknown },
+      ip: requestIp(req),
+    });
     return ok({ id, deleted: true });
   });
 }

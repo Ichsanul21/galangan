@@ -1,8 +1,10 @@
-import { useState } from "react";
-import { Plus, Search, ScrollText, FileText, Eye, Pencil, Trash2, Archive, RotateCcw, Download } from "lucide-react";
+import { useRef, useState } from "react";
+import { Plus, Search, ScrollText, FileText, Eye, Pencil, Trash2, Archive, RotateCcw, Download, Upload } from "lucide-react";
 import { Card, PageHeader, Badge, KpiCard, Modal, Field, FormGrid, ConfirmModal, SortTh, toggleSort, sortRows, toast, StatusBadge } from "../../components/ui";
 import type { SortState } from "../../components/ui";
 import { useStore, type StoreItem } from "../../data/store";
+import { isBackendConfigured } from "../../services/http";
+import { uploadFile } from "../../services/upload";
 import { fmtTanggal, todayISO } from "../../utils/format";
 import { sbDsNumber, sbSjNumber, maxSeq, parseSjSeq } from "../../utils/sb";
 import { exportExcel } from "../../utils/export";
@@ -86,7 +88,7 @@ function daysUntil(iso: string | null | undefined): number | null {
   return Math.round((t - today) / 86400000);
 }
 
-const emptyForm = { title: "", type: "Laporan", project: "", vessel: "", owner: "", berlakuHingga: "", revNote: "" };
+const emptyForm = { title: "", type: "Laporan", project: "", vessel: "", owner: "", berlakuHingga: "", revNote: "", fileUrl: "" };
 
 export default function Documents() {
   const { data, add, update, remove, log, branch, inBranch } = useStore();
@@ -100,6 +102,8 @@ export default function Documents() {
   const [deleting, setDeleting] = useState<StoreItem | null>(null);
   const [form, setForm] = useState(emptyForm);
   const [relSel, setRelSel] = useState<string[]>([]);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const [uploadingFile, setUploadingFile] = useState(false);
 
   const docPreview = nextDocId(form.type, data.documents);
 
@@ -119,7 +123,24 @@ export default function Documents() {
   const openEdit = (d: StoreItem) => {
     setEditing(d);
     setRelSel(Array.isArray(d.related) ? d.related.map(String) : []);
-    setForm({ title: d.title, type: d.type, project: d.project, vessel: d.vessel ?? "", owner: d.owner, berlakuHingga: d.berlakuHingga ?? "", revNote: "" });
+    setForm({ title: d.title, type: d.type, project: d.project, vessel: d.vessel ?? "", owner: d.owner, berlakuHingga: d.berlakuHingga ?? "", revNote: "", fileUrl: String(d.fileUrl ?? "") });
+  };
+
+  /* Upload lampiran ke backend (/api/files); mode lokal tetap pakai URL manual. */
+  const onLampiranFile = async (f: File | undefined) => {
+    if (!f) return;
+    if (!isBackendConfigured()) { toast("Mode lokal — tempel URL lampiran manual", "info"); return; }
+    setUploadingFile(true);
+    try {
+      const url = await uploadFile(f);
+      setF("fileUrl", url);
+      toast("Lampiran terunggah");
+    } catch (e) {
+      toast(e instanceof Error ? e.message : "Upload lampiran gagal", "info");
+    } finally {
+      setUploadingFile(false);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    }
   };
 
   const validForm = (): boolean => {
@@ -147,6 +168,7 @@ export default function Documents() {
         title: form.title.trim(), type: form.type, project: form.project, vessel: form.vessel,
         owner: form.owner.trim(), berlakuHingga: form.berlakuHingga || undefined,
         version, revisions, updated: todayISO(), related: [...relSel],
+        fileUrl: form.fileUrl.trim(),
       });
       log(`merevisi dokumen ke ${version}`, editing.id, "Dokumen");
       toast(`Dokumen ${editing.id} naik ke ${version}`);
@@ -161,6 +183,7 @@ export default function Documents() {
         owner: form.owner.trim(), berlakuHingga: form.berlakuHingga || undefined,
         version: "v1.0", status: "Draft", updated: todayISO(), archived: false, docCopy: "Terkendali",
         related: [...relSel],
+        fileUrl: form.fileUrl.trim(),
         branch: String(data.projects.find((p) => p.id === form.project)?.branch ?? (branch !== "SEMUA" ? branch : "")),
         // Ref format SB untuk arsip operasional (cth DS: 001/DS-SB/SMD/I/2024).
         sbRef: form.type === "Dock Space" ? sbDsNumber(sbSeq("Dock Space"))
@@ -386,6 +409,21 @@ export default function Documents() {
               </Field>
             )}
           </FormGrid>
+          <Field label="Lampiran (URL)" hint="Tempel URL berkas, atau Upload via backend bila remote">
+            <div className="flex items-center gap-2">
+              <input className="input font-mono" value={form.fileUrl} onChange={(e) => setF("fileUrl", e.target.value)} placeholder="https://… atau /files/…" />
+              <input ref={fileInputRef} type="file" accept=".png,.jpg,.jpeg,.pdf,.xlsx,.csv" className="hidden" aria-label="Pilih berkas lampiran"
+                onChange={(e) => { void onLampiranFile(e.target.files?.[0]); }} />
+              <button type="button" className="btn-secondary shrink-0 text-xs" disabled={uploadingFile}
+                title={isBackendConfigured() ? "Unggah berkas ke backend" : "Mode lokal — isi URL manual"}
+                onClick={() => {
+                  if (!isBackendConfigured()) { toast("Mode lokal — tempel URL lampiran manual", "info"); return; }
+                  fileInputRef.current?.click();
+                }}>
+                <Upload className="h-4 w-4" /> {uploadingFile ? "Mengunggah…" : "Upload"}
+              </button>
+            </div>
+          </Field>
           <Field label="Dokumen terkait (boleh banyak)" hint="Tahan Ctrl/Cmd untuk pilih lebih dari satu">
             <select
               multiple
@@ -417,6 +455,18 @@ export default function Documents() {
                 <div key={k} className="flex justify-between gap-4"><dt className="text-steel-500">{k}</dt><dd className="font-medium text-navy-900">{v}</dd></div>
               ))}
               <div className="flex justify-between gap-4"><dt className="text-steel-500">Status</dt><dd><StatusBadge status={detail.status} /></dd></div>
+              <div className="flex justify-between gap-4">
+                <dt className="text-steel-500">Lampiran</dt>
+                <dd className="max-w-[60%] truncate text-right">
+                  {detail.fileUrl ? (
+                    <a className="font-medium text-navy-700 underline" href={String(detail.fileUrl)} target="_blank" rel="noreferrer" title={String(detail.fileUrl)}>
+                      {String(detail.fileUrl)}
+                    </a>
+                  ) : (
+                    <span className="font-medium text-steel-400">—</span>
+                  )}
+                </dd>
+              </div>
               <div className="flex justify-between gap-4">
                 <dt className="text-steel-500">Retensi</dt>
                 <dd className="flex items-center gap-1.5">

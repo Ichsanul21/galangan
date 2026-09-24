@@ -1,6 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { newId as newPrefixedId } from "../services/ids";
-import { apiFetch, getJwt, isBackendConfigured } from "../services/http";
+import { ApiError, apiFetch, getJwt, isBackendConfigured } from "../services/http";
 import { remoteRepository } from "../services/repositories";
 import {
   projects as seedProjects,
@@ -618,6 +618,8 @@ interface StoreCtx {
   data: StoreShape;
   backendMode: BackendMode;
   backendError: string | null;
+  pendingSync: string[];
+  pushPending: () => Promise<void>;
   add: (col: CollectionKey, item: Omit<StoreItem, "id"> & { id?: string }, activity?: { action: string; target?: string; module: string }) => Promise<StoreItem>;
   update: (col: CollectionKey, id: string, patch: Record<string, any>) => Promise<void>;
   remove: (col: CollectionKey, id: string) => Promise<void>;
@@ -675,6 +677,15 @@ function notifyBackendFallback(): void {
   }
 }
 
+/* Toast alasan penolakan backend (mis. 403 "Butuh peran Direktur") — tiap kejadian. */
+function notifyForbidden(reason: string): void {
+  try {
+    window.dispatchEvent(new CustomEvent("isms:toast", { detail: { message: reason, tone: "info" } }));
+  } catch {
+    /* abaikan */
+  }
+}
+
 /* Remote dipakai bila backend dikonfigurasi DAN ada JWT — seluruh CRUD BE wajib
    auth. Tanpa JWT (belum login) operasi berjalan lokal senyap, tanpa semburan 401. */
 function remoteActive(): boolean {
@@ -686,6 +697,25 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [backendMode] = useState<BackendMode>(() => (isBackendConfigured() ? "remote" : "local"));
   const [backendError, setBackendError] = useState<string | null>(null);
   const fallbackToasted = useRef(false);
+  /* Anti-clobber: koleksi yang diubah lokal saat fallback tidak boleh ditimpa resync. */
+  const dirtyRef = useRef<Set<string>>(new Set());
+  const [pendingSync, setPendingSync] = useState<string[]>([]);
+  const dataRef = useRef(data);
+  dataRef.current = data;
+
+  const markDirty = useCallback((col: string) => {
+    if (!isBackendConfigured()) return;
+    if (!dirtyRef.current.has(col)) {
+      dirtyRef.current.add(col);
+      setPendingSync([...dirtyRef.current]);
+    }
+  }, []);
+
+  const clearDirty = useCallback((col: string) => {
+    if (dirtyRef.current.delete(col)) {
+      setPendingSync([...dirtyRef.current]);
+    }
+  }, []);
   const [branch, setBranchState] = useState<string>(() => {
     // Cabang global di localStorage (migrasi dari sessionStorage, kunci sama).
     try {
@@ -723,13 +753,16 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   }, [data]);
 
   /* Tarik ulang semua koleksi + WBS/team dari backend (dipakai saat boot dan
-     tepat setelah login berhasil, karena JWT baru tersedia saat itu). */
+     tepat setelah login berhasil, karena JWT baru tersedia saat itu).
+     Koleksi kotor (dirty) dilewati agar perubahan lokal tidak tertimpa. */
   const resync = useCallback(async (): Promise<void> => {
     if (!remoteActive()) return;
+    const dirty = dirtyRef.current;
     const pulled: Partial<Record<CollectionKey, StoreItem[]>> = {};
     await Promise.all(
       ARRAY_KEYS.map(async (key) => {
         if (key === "wbsByProject" || key === "teamByProject") return;
+        if (dirty.has(key as string)) return;
         try {
           pulled[key] = await remoteRepository(key).list();
         } catch {
@@ -739,8 +772,11 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     );
     setData((prev) => ({ ...prev, ...pulled }));
     const projectIds = ((pulled.projects as StoreItem[] | undefined) ?? []).map((p) => p.id);
+    const wbsDirty = dirty.has("wbsByProject");
+    const teamDirty = dirty.has("teamByProject");
     await Promise.all(
       projectIds.map(async (projectId) => {
+        if (dirty.has(`wbs:${projectId}`) || wbsDirty) return;
         try {
           const wbs = await apiFetch<{ projectId: string; wbs: WbsItem[] }>(
             `/api/projects/${encodeURIComponent(projectId)}/wbs`,
@@ -752,6 +788,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         } catch {
           /* cache lokal/template tetap dipakai */
         }
+        if (dirty.has(`team:${projectId}`) || teamDirty) return;
         try {
           const team = await apiFetch<{ projectId: string; memberIds: string[] }>(
             `/api/projects/${encodeURIComponent(projectId)}/team`,
@@ -766,6 +803,74 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       }),
     );
   }, []);
+
+  /* Dorong perubahan lokal yang tertunda ke backend: tiap baris coba POST,
+     bila 409 (sudah ada) coba PATCH. Bersihkan dirty per koleksi bila sukses. */
+  const pushPending = useCallback(async (): Promise<void> => {
+    if (!remoteActive()) return;
+    const cols = [...dirtyRef.current];
+    for (const col of cols) {
+      try {
+        if (col === "wbsByProject" || col.startsWith("wbs:")) {
+          const entries = Object.entries(dataRef.current.wbsByProject ?? {});
+          const targets =
+            col === "wbsByProject"
+              ? entries
+              : entries.filter(([pid]) => col === `wbs:${pid}`);
+          for (const [projectId, wbs] of targets) {
+            await apiFetch(`/api/projects/${encodeURIComponent(projectId)}/wbs`, {
+              method: "PUT",
+              body: JSON.stringify({ wbs }),
+            });
+          }
+          clearDirty(col);
+          setBackendError(null);
+          continue;
+        }
+        if (col === "teamByProject" || col.startsWith("team:")) {
+          const entries = Object.entries(dataRef.current.teamByProject ?? {});
+          const targets =
+            col === "teamByProject"
+              ? entries
+              : entries.filter(([pid]) => col === `team:${pid}`);
+          for (const [projectId, memberIds] of targets) {
+            await apiFetch(`/api/projects/${encodeURIComponent(projectId)}/team`, {
+              method: "PUT",
+              body: JSON.stringify({ memberIds }),
+            });
+          }
+          clearDirty(col);
+          setBackendError(null);
+          continue;
+        }
+        const rows = ((dataRef.current as unknown as Record<string, StoreItem[]>)[col] ?? []) as StoreItem[];
+        let ok = true;
+        for (const row of rows) {
+          try {
+            await remoteRepository(col).create(row);
+          } catch (err) {
+            if (err instanceof ApiError && err.status === 409) {
+              try {
+                await remoteRepository(col).patch(row.id, row);
+              } catch {
+                ok = false;
+                break;
+              }
+            } else {
+              ok = false;
+              break;
+            }
+          }
+        }
+        if (ok) {
+          clearDirty(col);
+          setBackendError(null);
+        }
+      } catch {
+        /* koleksi ini tetap dirty — coba lagi nanti */
+      }
+    }
+  }, [clearDirty]);
 
   /* Boot backend-first: bila backend dikonfigurasi dan sudah login (JWT),
      tarik semua koleksi dari BE; tiap koleksi yang gagal → biarkan seed lokal. */
@@ -787,19 +892,30 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     const pushActivity = (prev: StoreShape, action: string, target: string, module: string): StoreItem[] =>
       [buildActivity(action, target, module), ...prev.activities].slice(0, 30);
 
-    /* Gagal remote → fallback lokal + tandai error + toast sekali per sesi. */
-    const degrade = (err: unknown): void => {
+    /* Gagal remote → fallback lokal + tandai error + toast sekali per sesi.
+       Khusus 403 (mis. butuh peran Direktur): JANGAN tulis lokal / tandai dirty,
+       cukup toast alasan dari backend. Kembalikan true bila 403. */
+    const degrade = (err: unknown): boolean => {
+      if (err instanceof ApiError && err.status === 403) {
+        const reason = err.message || "Akses ditolak — butuh peran yang sesuai";
+        setBackendError(reason);
+        notifyForbidden(reason);
+        return true;
+      }
       setBackendError(err instanceof Error && err.message ? err.message : "Backend tak terjangkau — mode lokal");
       if (!fallbackToasted.current) {
         fallbackToasted.current = true;
         notifyBackendFallback();
       }
+      return false;
     };
 
     return {
       data,
       backendMode,
       backendError,
+      pendingSync,
+      pushPending,
       add: async (col, item, activity) => {
         const full: StoreItem = { ...item, id: item.id || newId(col) };
         if (remoteActive()) {
@@ -816,9 +932,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             setBackendError(null);
             return finalItem;
           } catch (err) {
-            degrade(err);
+            if (degrade(err)) throw err;
           }
         }
+        markDirty(col as string);
         setData((prev) => ({
           ...prev,
           [col]: [full, ...((prev[col] as StoreItem[] | undefined) ?? [])],
@@ -839,9 +956,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             setBackendError(null);
             return;
           } catch (err) {
-            degrade(err);
+            if (degrade(err)) return;
           }
         }
+        markDirty(col as string);
         setData((prev) => ({
           ...prev,
           [col]: ((prev[col] as StoreItem[] | undefined) ?? []).map((r) => (r.id === id ? { ...r, ...patch } : r)),
@@ -858,9 +976,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             setBackendError(null);
             return;
           } catch (err) {
-            degrade(err);
+            if (degrade(err)) return;
           }
         }
+        markDirty(col as string);
         setData((prev) => ({
           ...prev,
           [col]: ((prev[col] as StoreItem[] | undefined) ?? []).filter((r) => r.id !== id),
@@ -881,6 +1000,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       resync,
       wbsFor: (projectId) => data.wbsByProject[projectId] ?? clone(wbsTemplate),
       setWbs: async (projectId, wbs) => {
+        const prevWbs = dataRef.current.wbsByProject[projectId];
         setData((prev) => ({ ...prev, wbsByProject: { ...prev.wbsByProject, [projectId]: wbs } }));
         if (remoteActive()) {
           try {
@@ -889,13 +1009,26 @@ export function StoreProvider({ children }: { children: ReactNode }) {
               body: JSON.stringify({ wbs }),
             });
             setBackendError(null);
+            return;
           } catch (err) {
-            degrade(err);
+            if (degrade(err)) {
+              // 403: kembalikan optimistik, jangan tandai dirty.
+              setData((prev) => {
+                const next = { ...prev.wbsByProject };
+                if (prevWbs === undefined) delete next[projectId];
+                else next[projectId] = prevWbs;
+                return { ...prev, wbsByProject: next };
+              });
+              return;
+            }
           }
         }
+        markDirty("wbsByProject");
+        markDirty(`wbs:${projectId}`);
       },
       teamFor: (projectId) => data.teamByProject[projectId] ?? [],
       setTeam: async (projectId, ids) => {
+        const prevTeam = dataRef.current.teamByProject[projectId];
         setData((prev) => ({ ...prev, teamByProject: { ...prev.teamByProject, [projectId]: ids } }));
         if (remoteActive()) {
           try {
@@ -904,16 +1037,28 @@ export function StoreProvider({ children }: { children: ReactNode }) {
               body: JSON.stringify({ memberIds: ids }),
             });
             setBackendError(null);
+            return;
           } catch (err) {
-            degrade(err);
+            if (degrade(err)) {
+              // 403: kembalikan optimistik, jangan tandai dirty.
+              setData((prev) => {
+                const next = { ...prev.teamByProject };
+                if (prevTeam === undefined) delete next[projectId];
+                else next[projectId] = prevTeam;
+                return { ...prev, teamByProject: next };
+              });
+              return;
+            }
           }
         }
+        markDirty("teamByProject");
+        markDirty(`team:${projectId}`);
       },
       branch,
       setBranch,
       inBranch,
     };
-  }, [data, branch, inBranch, backendMode, backendError, resync]);
+  }, [data, branch, inBranch, backendMode, backendError, resync, pendingSync, pushPending, markDirty]);
 
   return <Ctx.Provider value={api}>{children}</Ctx.Provider>;
 }
