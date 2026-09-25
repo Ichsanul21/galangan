@@ -28,13 +28,24 @@ async function put(table: string, id: string, branch: string, data: Record<strin
     ctr.skip += 1;
     return;
   }
-  await exec(`INSERT INTO ${table} (id, branch, data, updated_at) VALUES (?, ?, ?, ?)`, [
-    id,
-    branch,
-    JSON.stringify(data),
-    now,
-  ]);
-  ctr.ins += 1;
+  try {
+    await exec(`INSERT INTO ${table} (id, branch, data, updated_at) VALUES (?, ?, ?, ?)`, [
+      id,
+      branch,
+      JSON.stringify(data),
+      now,
+    ]);
+    ctr.ins += 1;
+  } catch (err) {
+    // Idempoten juga terhadap balapan/rerun: duplikat = anggap skip.
+    const code = (err as { code?: string; errno?: number } | null)?.code;
+    const errno = (err as { code?: string; errno?: number } | null)?.errno;
+    if (code === "ER_DUP_ENTRY" || errno === 1062 || /UNIQUE constraint failed/i.test(String((err as Error)?.message ?? ""))) {
+      ctr.skip += 1;
+      return;
+    }
+    throw err;
+  }
 }
 
 async function main(): Promise<void> {
@@ -74,10 +85,20 @@ async function main(): Promise<void> {
   const kode = load<{ barang: Array<{ kode: string; nama: string }>; supplier: Array<{ kode: string; nama: string }> }>("warehouse_kode.json");
   const stock = load<Array<{ kode: string; nama: string; awal: number; masuk: number; keluar: number; akhir: number }>>("warehouse_stock.json");
   const stockMap = new Map(stock.map((s) => [s.kode, s]));
+  // File asli memakai ulang 31 kode untuk barang berbeda — kemunculan
+  // ke-2+ diberi sufiks -2/-3 agar semua 4784 baris masuk persis dokumen.
+  const usedInvIds = new Set<string>();
   for (const b of kode.barang) {
     const st = stockMap.get(b.kode);
-    await put("inventory", `WH-${b.kode}`, "", {
-      id: `WH-${b.kode}`,
+    let invId = `WH-${b.kode}`;
+    if (usedInvIds.has(invId)) {
+      let k = 2;
+      while (usedInvIds.has(`${invId}-${k}`)) k += 1;
+      invId = `${invId}-${k}`;
+    }
+    usedInvIds.add(invId);
+    await put("inventory", invId, "", {
+      id: invId,
       name: b.nama || b.kode,
       category: "Warehouse 2024",
       sku: b.kode,
