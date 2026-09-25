@@ -189,8 +189,11 @@ export default function Dashboard() {
     }
     return new Date(Number(m[1]), Number(m[2]), 0).getTime();
   };
+  const hasRealWbs = (pid: string): boolean => Boolean(data.wbsByProject?.[pid]?.length);
   const staleMilestones = branchProjects.flatMap((p) =>
-    wbsFor(p.id)
+    !hasRealWbs(p.id)
+      ? []
+      : wbsFor(p.id)
       .filter((w) => Number(w.progress || 0) === 0)
       .filter((w) => {
         const t = wbsEndMs(w.end);
@@ -201,6 +204,7 @@ export default function Dashboard() {
       .map((w) => ({ project: p.id, task: w.task }))
   );
   const cpDelayed = branchProjects.filter((p) =>
+    hasRealWbs(p.id) &&
     wbsFor(p.id).some((w) => {
       if (Number(w.progress || 0) !== 0) return false;
       const t = wbsEndMs(w.end);

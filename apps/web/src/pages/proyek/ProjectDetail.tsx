@@ -27,6 +27,7 @@ import { useStore } from "../../data/store";
 import type { StoreItem, WbsItem } from "../../data/store";
 import { fmtMiliar, fmtTanggal, fmtRentang, fmtBulan } from "../../data";
 import { fmtRupiah, todayISO } from "../../utils/format";
+import { sameName } from "../../utils/names";
 import { getSetting } from "../../utils/settings";
 import { exportExcel } from "../../utils/export";
 
@@ -110,6 +111,9 @@ export default function ProjectDetail() {
 
   useEffect(() => {
     if (!project) return;
+    // Hanya proyek dengan WBS nyata (tersimpan) yang progresnya diturunkan
+    // otomatis — template fallback tidak boleh menimpa progres seed/manual.
+    if (!data.wbsByProject?.[project.id]) return;
     const wbs = wbsFor(project.id);
     const newProgress = weightedProgress(wbs);
     if (newProgress !== project.progress) {
@@ -123,7 +127,7 @@ export default function ProjectDetail() {
   const wbs = wbsFor(pid) as WbsExt[];
   const teamIds = teamFor(pid);
   const team = data.employees.filter((e) => teamIds.includes(e.id));
-  const vessel = data.vessels.find((v) => v.name === project.vessel);
+  const vessel = data.vessels.find((v) => sameName(v.name, project.vessel));
   const invoices = data.invoices.filter((i) => i.project === pid);
   const ncrs = data.ncr.filter((n) => n.project === pid);
   const slots = data.dockSlots.filter((s) => s.project === pid);

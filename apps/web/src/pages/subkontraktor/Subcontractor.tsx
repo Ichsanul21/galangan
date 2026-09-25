@@ -5,6 +5,8 @@ import { Card, CardHeader, PageHeader, Badge, KpiCard, Tabs, ProgressBar, ChartT
 import type { SortState } from "../../components/ui";
 import { useStore, type StoreItem } from "../../data/store";
 import { fmtRupiah, fmtMiliar, fmtTanggal, todayISO } from "../../utils/format";
+import { sameName } from "../../utils/names";
+import { AlertBannerView, notifRowId, useModuleAlert } from "../../components/AlertBanner";
 import { getSetting } from "../../utils/settings";
 import { subcontractorScore, subActiveTrend, subContractTrend, woTrend, ratingTrend } from "../../data";
 
@@ -51,10 +53,10 @@ function normSub(s: string): string {
 const CONTRACT_TYPES = ["Borongan", "Lump-sum", "Spesialis", "Support"];
 const PAY_SCHEMES = ["harian", "unit", "meter", "jam"];
 
-const pphOf = (p: StoreItem): number => Number(p.pphPct ?? 2);
+const pphOf = (p: StoreItem, fallback = 2): number => Number(p.pphPct ?? fallback);
 const retOf = (p: StoreItem): number => Number(p.retPct ?? 5);
-const potonganOf = (p: StoreItem): number => Number(p.amount || 0) * (pphOf(p) + retOf(p)) / 100;
-const netoOf = (p: StoreItem): number => Number(p.amount || 0) - potonganOf(p);
+const potonganOf = (p: StoreItem, pphFallback = 2): number => Number(p.amount || 0) * (pphOf(p, pphFallback) + retOf(p)) / 100;
+const netoOf = (p: StoreItem, pphFallback = 2): number => Number(p.amount || 0) - potonganOf(p, pphFallback);
 
 function complianceOf(k3: unknown): { label: string; tone: "green" | "amber" | "red" } {
   const v = String(k3 ?? "");
@@ -95,6 +97,7 @@ export default function Subcontractor() {
   const [sort, setSort] = useState<SortState>({ key: null, dir: "asc" });
   const [sort2, setSort2] = useState<SortState>({ key: null, dir: "asc" });
   const [typeFilter, setTypeFilter] = useState("Semua");
+  const modAlert = useModuleAlert("subkontraktor");
 
   const [showSub, setShowSub] = useState(false);
   const [subForm, setSubForm] = useState({ name: "", services: "", contract: "", k3: "A", contractType: "Borongan", payScheme: "unit", noBG: "", bgExpiry: "", bgValue: "" });
@@ -125,7 +128,7 @@ export default function Subcontractor() {
   const avgRating = subcontractors.length ? Math.round(subcontractors.reduce((s, x) => s + Number(x.rating || 0), 0) / subcontractors.length) : 0;
   const filteredSubs = typeFilter === "Semua" ? subcontractors : subcontractors.filter((s) => String(s.contractType ?? "Borongan") === typeFilter);
 
-  const termWoOptions = workOrders.filter((w) => termForm.sub && w.sub === termForm.sub);
+  const termWoOptions = workOrders.filter((w) => termForm.sub && sameName(w.sub, termForm.sub));
   const termWo = workOrders.find((w) => w.id === termForm.wo) ?? null;
   const termSub = subcontractors.find((s) => s.name === termForm.sub) ?? null;
   const termCap = termSub && termWo ? Number(termSub.contract || 0) * Number(termWo.progress || 0) / 100 : 0;
@@ -142,7 +145,7 @@ export default function Subcontractor() {
   const termMs = termMsList.find((m) => m.title === termForm.milestone) ?? null;
   const termMsCap = termMs && termSub ? Number(termSub.contract || 0) * Number(termMs.pct || 0) / 100 : 0;
   const termMsUsed = termMs
-    ? payments.filter((t) => t.sub === termForm.sub && t.milestone === termMs.title && t.status !== "Ditolak").reduce((s, t) => s + Number(t.amount || 0), 0)
+    ? payments.filter((t) => sameName(t.sub, termForm.sub) && t.milestone === termMs.title && t.status !== "Ditolak").reduce((s, t) => s + Number(t.amount || 0), 0)
     : 0;
 
   const hoursByWo = (woId: string): number =>
@@ -156,10 +159,12 @@ export default function Subcontractor() {
     String(data.employees.find((e) => e.id === empId)?.branch ?? globalBranch ?? "");
   // Ambang Director untuk pelunasan termin (pengaturan APPROVE_TERMIN).
   const terminThreshold = getSetting(data, "APPROVE_TERMIN", 2000000);
+  // Default PPh subkon bila termin tak menyebut pphPct (pengaturan PPH_SUBKON_DEFAULT).
+  const pphDefault = getSetting(data, "PPH_SUBKON_DEFAULT", 0.5);
   const needsTermDirector = (t: StoreItem | null): boolean =>
     !!t && Number(t.amount || 0) > terminThreshold && !t.directorApproved;
 
-  const woOfSub = (subName: string): StoreItem[] => workOrders.filter((w) => w.sub === subName);
+  const woOfSub = (subName: string): StoreItem[] => workOrders.filter((w) => sameName(w.sub, subName));
   const incidentsOfSub = (subName: string): StoreItem[] => {
     const projs = woOfSub(subName).map((w) => w.project);
     return data.incidents.filter((i) => i.project && projs.includes(i.project));
@@ -252,7 +257,7 @@ export default function Subcontractor() {
 
   const saveTerm = async () => {
     if (!termForm.sub) { toast("Subkontraktor wajib dipilih", "info"); return; }
-    const wo = workOrders.find((w) => w.id === termForm.wo && w.sub === termForm.sub);
+    const wo = workOrders.find((w) => w.id === termForm.wo && sameName(w.sub, termForm.sub));
     if (!wo) { toast("Pilih WO milik subkontraktor tersebut", "info"); return; }
     const amount = Number(termForm.amount);
     if (!amount || amount <= 0) { toast("Nilai termin harus lebih dari 0", "info"); return; }
@@ -273,7 +278,7 @@ export default function Subcontractor() {
     const ms = msList.find((m) => m.title === termForm.milestone);
     if (!ms) { toast("Termin wajib merujuk milestone SOW kontrak sub tersebut", "info"); return; }
     const msCap = Number(sub?.contract || 0) * Number(ms.pct || 0) / 100;
-    const msUsed = payments.filter((t) => t.sub === termForm.sub && t.milestone === ms.title && t.status !== "Ditolak").reduce((s, t) => s + Number(t.amount || 0), 0);
+    const msUsed = payments.filter((t) => sameName(t.sub, termForm.sub) && t.milestone === ms.title && t.status !== "Ditolak").reduce((s, t) => s + Number(t.amount || 0), 0);
     if (msUsed + amount > msCap) {
       toast(`Termin melebihi pagu milestone ${ms.title}: maks ${fmtRupiah(msCap)} (${ms.pct}% kontrak), sudah dipakai ${fmtRupiah(msUsed)}`, "info");
       return;
@@ -314,11 +319,11 @@ export default function Subcontractor() {
       return;
     }
     // PPh variatif RawData (cth PAK YUSUF 0.5%): potong saat bayar + simpan bukti potong.
-    const pphAmt = Math.round(Number(termPay.amount || 0) * pphOf(termPay) / 100);
+    const pphAmt = Math.round(Number(termPay.amount || 0) * pphOf(termPay, pphDefault) / 100);
     const retAmt = Math.round(Number(termPay.amount || 0) * retOf(termPay) / 100);
     const wo = workOrders.find((w) => w.id === termPay.woId);
     const penalty = Math.max(0, Math.round(Number(wo?.penaltyAmount || 0)));
-    const netoPayable = Math.max(0, Math.round(netoOf(termPay)) - penalty);
+    const netoPayable = Math.max(0, Math.round(netoOf(termPay, pphDefault)) - penalty);
     await update("termins", termPay.id, {
       status: "Lunas", paidAt: proof.date, paidMethod: proof.method, paidRef: proof.ref.trim(),
       pphAmt, retAmt, penaltyApplied: penalty, withholdingRef: withholdingRef.trim(),
@@ -334,7 +339,7 @@ export default function Subcontractor() {
       await add("payables", {
         v: String(termPay.sub ?? ""), kodePembantu: String(termPay.sub ?? ""),
         po: poNeto, openAwal: 0, amt: netoPayable,
-        due: proof.date, pph: `${pphOf(termPay)}%`, st: "Belum Dibayar",
+        due: proof.date, pph: `${pphOf(termPay, pphDefault)}%`, st: "Belum Dibayar",
         vessel: vesselProj, project: vesselProj, branch: branchOfProject(vesselProj),
         item: String(termPay.milestone ?? termPay.progress ?? ""),
         pay1: 0, pay2: 0,
@@ -346,7 +351,7 @@ export default function Subcontractor() {
       await add("payables", {
         v: String(termPay.sub ?? ""), kodePembantu: String(termPay.sub ?? ""),
         po: poRet, openAwal: 0, amt: retAmt,
-        due: proof.date, pph: `${pphOf(termPay)}%`, st: "Ditahan",
+        due: proof.date, pph: `${pphOf(termPay, pphDefault)}%`, st: "Ditahan",
         vessel: vesselProj, project: vesselProj, branch: branchOfProject(vesselProj),
         item: `Retensi ${termPay.milestone ?? termPay.id}`,
         pay1: 0, pay2: 0,
@@ -354,7 +359,7 @@ export default function Subcontractor() {
         terminId: termPay.id,
       }, { action: "menahan retensi termin", module: "Subkontraktor" });
     }
-    log("melunasi termin", `${termPay.id} via ${proof.method} ${proof.ref.trim()} · PPh ${pphOf(termPay)}% = ${fmtRupiah(pphAmt)} · hutang ${poNeto} ${fmtRupiah(netoPayable)}${retAmt > 0 ? ` + retensi ${fmtRupiah(retAmt)} ditahan` : ""}`, "Subkontraktor");
+    log("melunasi termin", `${termPay.id} via ${proof.method} ${proof.ref.trim()} · PPh ${pphOf(termPay, pphDefault)}% = ${fmtRupiah(pphAmt)} · hutang ${poNeto} ${fmtRupiah(netoPayable)}${retAmt > 0 ? ` + retensi ${fmtRupiah(retAmt)} ditahan` : ""}`, "Subkontraktor");
     toast(`${termPay.id} lunas — PPh ${fmtRupiah(pphAmt)} dipotong · hutang ${fmtRupiah(netoPayable)} tercatat`);
     setTermPay(null);
     setWithholdingRef("");
@@ -425,6 +430,8 @@ export default function Subcontractor() {
         icon={<HardHat className="h-5 w-5" />}
         actions={<button className="btn-primary-gradient" onClick={() => setShowSub(true)}><Plus className="h-4 w-4" /> Registrasi Sub</button>}
       />
+
+      {modAlert.active && <AlertBannerView items={modAlert.items} onClose={modAlert.dismiss} />}
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <KpiCard label="Subkontraktor Aktif" value={String(subcontractors.filter((s) => s.status === "Aktif").length)} icon={<HardHat className="h-5 w-5" />} chip="navy" spark={subActiveTrend} hint="Terdaftar & tersertifikasi" />
@@ -500,7 +507,7 @@ export default function Subcontractor() {
                   </div>
                   <div className="mt-3 flex justify-between text-xs text-steel-500">
                     <span>Kontrak {fmtMiliar(s.contract)}</span>
-                    <span>{workOrders.filter((w) => w.sub === s.name && w.status !== "Selesai").length} WO aktif</span>
+                    <span>{workOrders.filter((w) => sameName(w.sub, s.name) && w.status !== "Selesai").length} WO aktif</span>
                   </div>
                   <div className="mt-3 flex flex-wrap gap-1.5 border-t border-steel-100 pt-3">
                     <button
@@ -594,19 +601,19 @@ export default function Subcontractor() {
                   </thead>
                   <tbody className="divide-y divide-steel-100">
                     {sortRows(payments, sort, (p, key) =>
-                      key === "termin" ? String(p.id ?? "") : key === "sub" ? String(p.sub ?? "") : key === "wo" ? String(p.woId ?? p.progress ?? "") : key === "nilai" ? Number(p.amount ?? 0) : key === "pph" ? Number(p.amount ?? 0) * pphOf(p) / 100 : key === "retensi" ? Number(p.amount ?? 0) * retOf(p) / 100 : key === "neto" ? netoOf(p) : key === "tanggal" ? String(p.date ?? "") : String(p.status ?? "")
+                      key === "termin" ? String(p.id ?? "") : key === "sub" ? String(p.sub ?? "") : key === "wo" ? String(p.woId ?? p.progress ?? "") : key === "nilai" ? Number(p.amount ?? 0) : key === "pph" ? Number(p.amount ?? 0) * pphOf(p, pphDefault) / 100 : key === "retensi" ? Number(p.amount ?? 0) * retOf(p) / 100 : key === "neto" ? netoOf(p, pphDefault) : key === "tanggal" ? String(p.date ?? "") : String(p.status ?? "")
                     ).map((p) => {
                       const wo = workOrders.find((w) => w.id === p.woId);
                       const canRelease = normTerm(p.status) === "Lunas" && retOf(p) > 0 && wo?.status === "Selesai";
                       return (
-                      <tr key={p.id} className="hover:bg-surface">
+                      <tr key={p.id} id={notifRowId(String(p.id))} className={modAlert.highlight.has(String(p.id)) ? "notif-hl hover:bg-surface" : "hover:bg-surface"}>
                         <td className="td font-mono font-medium text-navy-900">{p.id}</td>
                         <td className="td text-steel-600 truncate" title={String(p.sub)}>{p.sub}</td>
                         <td className="td font-mono text-xs text-steel-500">{p.progress}{p.milestone ? <span className="block text-steel-400">MS: {p.milestone}</span> : null}</td>
                         <td className="td font-semibold">{fmtMiliar(p.amount)}</td>
-                        <td className="td text-steel-600">{fmtRupiah(Number(p.amount || 0) * pphOf(p) / 100)} <span className="text-xs text-steel-400">({pphOf(p)}%)</span></td>
+                        <td className="td text-steel-600">{fmtRupiah(Number(p.amount || 0) * pphOf(p, pphDefault) / 100)} <span className="text-xs text-steel-400">({pphOf(p, pphDefault)}%)</span></td>
                         <td className="td text-steel-600">{fmtRupiah(Number(p.amount || 0) * retOf(p) / 100)} <span className="text-xs text-steel-400">({retOf(p)}%)</span></td>
-                        <td className="td font-semibold text-emerald-600">{fmtRupiah(netoOf(p))}</td>
+                        <td className="td font-semibold text-emerald-600">{fmtRupiah(netoOf(p, pphDefault))}</td>
                         <td className="td text-steel-600">{fmtTanggal(p.date)}</td>
                         <td className="td">
                           <Badge tone={toneMap[normTerm(p.status)] ?? "gray"}>{normTerm(p.status)}</Badge>
@@ -914,7 +921,7 @@ export default function Subcontractor() {
           <Field label="No. referensi" hint="Wajib — no. bukti transfer / kuitansi">
             <input className="input font-mono" value={proof.ref} onChange={(e) => setProof({ ...proof, ref: e.target.value })} placeholder="cth: TRF-2026-0914" />
           </Field>
-          <Field label="No. bukti potong PPh (opsional)" hint={`PPh ${termPay ? pphOf(termPay) : ""}% = ${fmtRupiah(termPay ? Math.round(Number(termPay.amount || 0) * pphOf(termPay) / 100) : 0)} dipotong saat bayar`}>
+          <Field label="No. bukti potong PPh (opsional)" hint={`PPh ${termPay ? pphOf(termPay, pphDefault) : ""}% = ${fmtRupiah(termPay ? Math.round(Number(termPay.amount || 0) * pphOf(termPay, pphDefault) / 100) : 0)} dipotong saat bayar`}>
             <input className="input font-mono" value={withholdingRef} onChange={(e) => setWithholdingRef(e.target.value)} placeholder="cth: BUPOT-2026-001" />
           </Field>
           {needsTermDirector(termPay) && (

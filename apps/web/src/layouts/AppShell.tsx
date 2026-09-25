@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect, type ComponentType } from "react";
 import { NavLink, Outlet, Link, useNavigate } from "react-router-dom";
 import {
   LayoutDashboard,
@@ -37,6 +37,7 @@ import { Badge, Modal, Field, Toaster, toast } from "../components/ui";
 import { apiFetch } from "../services/http";
 import { computeAlerts } from "../utils/alerts";
 import { loadNotifRead, saveNotifRead } from "../utils/notifRead";
+import { buildModuleAlertItems, type ModuleAlertKey } from "../utils/moduleAlerts";
 import { remoteRepository } from "../services/repositories";
 import { getJwt, isBackendConfigured } from "../services/http";
 
@@ -81,12 +82,27 @@ export default function AppShell() {
     setReadTick((t) => t + 1);
   };
 
-  const lowStockCount = (data.inventory ?? []).filter((i) => Number(i.stock) <= Number(i.minStock)).length;
-  const qcCount = (data.ncr ?? []).filter((n) => n.status !== "Tertutup").length + (data.incidents ?? []).length;
-  const procCount = (data.requisitions ?? []).filter((r) => String(r.status).toLowerCase().includes("menunggu") || String(r.status).toUpperCase() === "RFQ").length;
-  const finCount = (data.invoices ?? []).filter((i) => i.status === "Terlambat" || i.status === "Belum Dibayar").length;
+  /* Badge sidebar = item pemicu modul yang BELUM dibaca (satu sumber dengan
+     highlight di halaman via buildModuleAlertItems). Dibuka → dibaca → 0. */
+  const moduleAlerts = useMemo(() => buildModuleAlertItems(data), [data]);
+  const unreadModuleCount = (key: ModuleAlertKey): number => {
+    void readTick;
+    const read = loadNotifRead();
+    return moduleAlerts[key].filter((a) => !read.has(a.id)).length;
+  };
+  const markModuleRead = (key: ModuleAlertKey) => {
+    const read = loadNotifRead();
+    let changed = false;
+    for (const a of moduleAlerts[key]) {
+      if (!read.has(a.id)) { read.add(a.id); changed = true; }
+    }
+    if (changed) {
+      saveNotifRead(read);
+      setReadTick((t) => t + 1);
+    }
+  };
 
-  const navGroups = [
+  const navGroups: { label: string; items: { to: string; label: string; icon: ComponentType<{ className?: string }>; alertKey?: ModuleAlertKey }[] }[] = [
     {
       label: "Analisis",
       items: [
@@ -99,31 +115,31 @@ export default function AppShell() {
     {
       label: "Operasional",
       items: [
-        { to: "/proyek", label: "Manajemen Proyek", icon: Anchor },
+        { to: "/proyek", label: "Manajemen Proyek", icon: Anchor, alertKey: "proyek" },
         { to: "/proyek/monitoring", label: "Monitoring E2E", icon: Activity },
-        { to: "/drydock", label: "Drydock & Kapasitas", icon: ShipWheel },
-        { to: "/inventori", label: "Inventori & Material", icon: Boxes, count: lowStockCount },
-        { to: "/equipment", label: "Equipment", icon: Cpu },
-        { to: "/subkontraktor", label: "Subkontraktor", icon: HardHat },
-        { to: "/qc-safety", label: "QC & Safety", icon: ShieldCheck, count: qcCount },
+        { to: "/drydock", label: "Drydock & Kapasitas", icon: ShipWheel, alertKey: "drydock" },
+        { to: "/inventori", label: "Inventori & Material", icon: Boxes, alertKey: "inventori" },
+        { to: "/equipment", label: "Equipment", icon: Cpu, alertKey: "equipment" },
+        { to: "/subkontraktor", label: "Subkontraktor", icon: HardHat, alertKey: "subkontraktor" },
+        { to: "/qc-safety", label: "QC & Safety", icon: ShieldCheck, alertKey: "qc" },
       ],
     },
     {
       label: "Komersial",
       items: [
-        { to: "/crm", label: "CRM & Klien", icon: Handshake },
-        { to: "/procurement", label: "Procurement", icon: ShoppingCart, count: procCount },
-        { to: "/keuangan", label: "Keuangan & Billing", icon: Wallet, count: finCount },
+        { to: "/crm", label: "CRM & Klien", icon: Handshake, alertKey: "crm" },
+        { to: "/procurement", label: "Procurement", icon: ShoppingCart, alertKey: "procurement" },
+        { to: "/keuangan", label: "Keuangan & Billing", icon: Wallet, alertKey: "keuangan" },
       ],
     },
     {
       label: "SDM",
       items: [
-        { to: "/sdm", label: "SDM & Karyawan", icon: Users },
+        { to: "/sdm", label: "SDM & Karyawan", icon: Users, alertKey: "sdm" },
         { to: "/absensi", label: "Absensi", icon: CalendarCheck },
-        { to: "/payroll", label: "Payroll", icon: Banknote },
-        { to: "/kapal", label: "Rekam Jejak Kapal", icon: Ship },
-        { to: "/dokumen", label: "Aset & Dokumen", icon: ScrollText },
+        { to: "/payroll", label: "Payroll", icon: Banknote, alertKey: "payroll" },
+        { to: "/kapal", label: "Rekam Jejak Kapal", icon: Ship, alertKey: "kapal" },
+        { to: "/dokumen", label: "Aset & Dokumen", icon: ScrollText, alertKey: "dokumen" },
         { to: "/pengaturan", label: "Pengaturan", icon: SettingsIcon },
         { to: "/audit", label: "Audit Trail", icon: History },
         { to: "/pengaturan/peran", label: "Peran & Akses", icon: KeyRound },
@@ -265,11 +281,17 @@ export default function AppShell() {
               {group.label}
             </p>
             <ul className="space-y-0.5">
-              {group.items.map((item) => (
+              {group.items.map((item) => {
+                const badge = item.alertKey ? unreadModuleCount(item.alertKey) : 0;
+                const to = item.alertKey ? `${item.to}?alert=${item.alertKey}` : item.to;
+                return (
                 <li key={item.to}>
                   <NavLink
-                    to={item.to}
-                    onClick={() => setOpen(false)}
+                    to={to}
+                    onClick={() => {
+                      setOpen(false);
+                      if (item.alertKey) markModuleRead(item.alertKey);
+                    }}
                     className={({ isActive }) =>
                       `flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm transition-colors ${
                         isActive
@@ -280,14 +302,15 @@ export default function AppShell() {
                   >
                     <item.icon className="h-4 w-4 shrink-0" />
                     <span className="truncate" title={item.label}>{item.label}</span>
-                    {typeof item.count === "number" && item.count > 0 ? (
+                    {badge > 0 ? (
                       <span className="ml-auto rounded-full bg-rose-500/90 px-1.5 py-0.5 text-[10px] font-bold leading-none text-white">
-                        {item.count > 9 ? "9+" : item.count}
+                        {badge > 9 ? "9+" : badge}
                       </span>
                     ) : null}
                   </NavLink>
                 </li>
-              ))}
+                );
+              })}
             </ul>
           </div>
         ))}

@@ -6,6 +6,8 @@ import type { SortState } from "../../components/ui";
 import { useStore } from "../../data/store";
 import type { StoreItem } from "../../data/store";
 import { fmtMiliar, fmtRupiah, fmtTanggal, todayISO } from "../../utils/format";
+import { sameName } from "../../utils/names";
+import { AlertBannerView, notifRowId, useModuleAlert } from "../../components/AlertBanner";
 import { exportExcel } from "../../utils/export";
 import { useDraftState } from "../../utils/draft";
 import { clientTrend, pipelineTrend, winRateTrend, wonTrend } from "../../data";
@@ -53,6 +55,7 @@ function umurHari(dateStr: string | null | undefined): number | null {
 
 export default function CRM() {
   const { data, add, update, log, branch, inBranch } = useStore();
+  const modAlert = useModuleAlert("crm");
   const [tab, setTab] = useState("Pipeline");
   const [sort, setSort] = useState<SortState>({ key: null, dir: "asc" });
   const [klasFilter, setKlasFilter] = useState("Semua");
@@ -355,6 +358,8 @@ export default function CRM() {
         actions={<button className="btn-primary-gradient" onClick={() => setShowQ(true)}><Plus className="h-4 w-4" /> Penawaran Baru</button>}
       />
 
+      {modAlert.active && <AlertBannerView items={modAlert.items} onClose={modAlert.dismiss} />}
+
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <KpiCard label="Total Klien Aktif" value={String(clients.length)} icon={<Users2 className="h-5 w-5" />} chip="navy" spark={clientTrend} hint={`${String(totalFleet)} unit armada tercatat`} />
         <KpiCard label="Nilai Pipeline" value={fmtMiliar(pipelineTotal)} delta={`${String(activeQuotes.length)} penawaran aktif`} deltaDirection="up" chip="teal" hint="Di luar Batal, Kalah, Terkonversi" spark={pipelineTrend} />
@@ -463,7 +468,7 @@ export default function CRM() {
               ) : (
                 <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
                   {visibleClients.map((c) => {
-                    const cq = quotations.filter((x) => x.client === c.name);
+                    const cq = quotations.filter((x) => sameName(x.client, c.name));
                     const cqVal = cq.reduce((s, x) => s + num(x.value), 0);
                     return (
                       <Card key={c.id} className="p-5">
@@ -489,7 +494,7 @@ export default function CRM() {
                           <div className="mt-1 flex justify-between"><span className="text-steel-500">Nilai penawaran</span><span className="font-semibold">{fmtMiliar(cqVal)}</span></div>
                           <div className="mt-1 flex justify-between"><span className="text-steel-500">Credit limit</span><span className="font-semibold">{fmtRupiah(num(c.creditLimit))}</span></div>
                           <div className="mt-1 flex justify-between"><span className="text-steel-500">Payment terms</span><span className="font-semibold">{String(c.paymentTerms ?? "NET 30")}</span></div>
-                          <div className="mt-1 flex justify-between"><span className="text-steel-500">Proyek berjalan</span><span className="font-semibold">{data.projects.filter((p) => p.client === c.name && p.status !== "Selesai").length} proyek</span></div>
+                          <div className="mt-1 flex justify-between"><span className="text-steel-500">Proyek berjalan</span><span className="font-semibold">{data.projects.filter((p) => sameName(p.client, c.name) && p.status !== "Selesai").length} proyek</span></div>
                         </div>
                       </Card>
                     );
@@ -548,7 +553,7 @@ export default function CRM() {
               </div>
               <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                 {requests.map((r) => (
-                  <Card key={r.id} className="p-4">
+                  <Card key={r.id} id={notifRowId(String(r.id))} className={`p-4 ${modAlert.highlight.has(String(r.id)) ? "notif-hl" : ""}`}>
                     <div className="flex justify-between gap-2">
                       <div className="min-w-0">
                         <p className="truncate font-semibold text-navy-900" title={String(r.vessel)}>{String(r.vessel)}</p>

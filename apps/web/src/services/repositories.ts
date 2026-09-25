@@ -158,15 +158,27 @@ export function remoteRepository(resource: string): Repository {
       return all;
     },
     async listFiltered(opts) {
-      const params = new URLSearchParams();
-      if (opts?.q?.trim()) params.set("q", opts.q.trim());
-      if (opts?.branch?.trim()) params.set("branch", opts.branch.trim());
-      params.set("limit", "50");
-      const qs = params.toString();
-      const page = await apiFetch<BackendRow[] | BackendPage>(`${base}?${qs}`);
-      if (Array.isArray(page)) return (page as BackendRow[]).map(rowToItem);
-      if (!isBackendPage(page)) return [];
-      return (Array.isArray(page.rows) ? page.rows : []).map(rowToItem);
+      const baseParams = new URLSearchParams();
+      if (opts?.q?.trim()) baseParams.set("q", opts.q.trim());
+      if (opts?.branch?.trim()) baseParams.set("branch", opts.branch.trim());
+      const limit = 200;
+      let offset = 0;
+      const all: StoreItem[] = [];
+      for (;;) {
+        const params = new URLSearchParams(baseParams);
+        params.set("limit", String(limit));
+        params.set("offset", String(offset));
+        const page = await apiFetch<BackendRow[] | BackendPage>(`${base}?${params.toString()}`);
+        if (Array.isArray(page)) return (page as BackendRow[]).map(rowToItem);
+        if (!isBackendPage(page)) return [];
+        const rows = Array.isArray(page.rows) ? page.rows : [];
+        for (const row of rows) all.push(rowToItem(row));
+        const total = typeof page.total === "number" ? page.total : all.length;
+        if (rows.length < limit) break;
+        if (all.length >= total) break;
+        offset += limit;
+      }
+      return all;
     },
     async create(item) {
       const row = await apiFetch<BackendRow>(base, { method: "POST", body: JSON.stringify(itemToCreateBody(item)) });

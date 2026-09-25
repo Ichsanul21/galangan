@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { Plus, ShieldCheck, AlertTriangle, Siren, Award, Send } from "lucide-react";
 import { ComposedChart, Line, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 import { Card, CardHeader, PageHeader, Badge, KpiCard, Tabs, StatusBadge, Donut, ChartTooltip, Modal, Field, FormGrid, SortTh, toggleSort, sortRows, toast } from "../../components/ui";
@@ -6,10 +6,11 @@ import type { SortState } from "../../components/ui";
 import { useStore, type StoreItem } from "../../data/store";
 import { inspectionTrend, ncrTrend, incidentTrend, hseTrend } from "../../data";
 import { fmtRupiah, fmtTanggal, todayISO } from "../../utils/format";
+import { sameName } from "../../utils/names";
+import { getSetting } from "../../utils/settings";
+import { AlertBannerView, notifRowId, useModuleAlert } from "../../components/AlertBanner";
 import { exportExcel } from "../../utils/export";
 import { useAuth, canSetTarget } from "../../auth/auth";
-
-const CERT_WINDOW = 90;
 
 const ncrTone: Record<string, "red" | "amber" | "blue" | "green"> = {
   Terbuka: "amber",
@@ -47,14 +48,6 @@ const AUDIT_ITEMS = [
   "Kotak P3K terisi dan mudah dijangkau",
   "Rambu dan barikade area bahaya terpasang",
 ];
-
-interface WalkItem {
-  id: string;
-  date: string;
-  area: string;
-  findings: number;
-  pic: string;
-}
 
 function daysUntil(iso: string | null | undefined): number | null {
   if (!iso || iso === "-") return null;
@@ -99,7 +92,8 @@ function nextRev(rev: string): string {
 }
 
 export default function QCSafety() {
-  const { data, add, update, log, branch, inBranch } = useStore();
+  const { data, add, update, remove, log, branch, inBranch } = useStore();
+  const modAlert = useModuleAlert("qc");
   const { user } = useAuth();
   const ncrList = inBranch(data.ncr);
   const incidents = inBranch(data.incidents);
@@ -146,14 +140,14 @@ export default function QCSafety() {
   const [tbmForm, setTbmForm] = useState({ project: "", topic: "", date: todayISO(), attendees: "", pic: "", branch: "" });
   const [ppeForm, setPpeForm] = useState({ project: "", date: todayISO(), employeeId: "", branch: "" });
   const [ppeChecked, setPpeChecked] = useState<Record<string, boolean>>({});
-  const [walks, setWalks] = useState<WalkItem[]>([]);
+  // Safety walk & audit internal persist di store (koleksi walks/auditPlans).
+  const walks = useMemo(() => inBranch(data.walks ?? []), [data.walks, inBranch]);
+  const auditPlans = useMemo(() => inBranch(data.auditPlans ?? []), [data.auditPlans, inBranch]);
   const [showWalk, setShowWalk] = useState(false);
   const [walkForm, setWalkForm] = useState({ date: todayISO(), area: "", findings: "0", pic: "" });
   const [auditChecked, setAuditChecked] = useState<boolean[]>(() => AUDIT_ITEMS.map(() => false));
 
   // Audit internal (terpisah dari checklist Audit HSE di atas)
-  interface AuditPlan { id: string; date: string; area: string; auditor: string; findings: number; ncrId: string }
-  const [auditPlans, setAuditPlans] = useState<AuditPlan[]>([]);
   const [showAuditPlan, setShowAuditPlan] = useState(false);
   const [auditForm, setAuditForm] = useState({ date: todayISO(), area: "", auditor: "", findings: "0", ncrId: "" });
 
@@ -166,6 +160,8 @@ export default function QCSafety() {
 
   const openNcr = ncrList.filter((n) => n.status !== "Tertutup").length;
   const criticalOpen = ncrList.filter((n) => n.severity === "Critical" && n.status !== "Tertutup").length;
+  // Ambang sertifikat dari Pengaturan (ALERT_CERT_DAYS) — selaras alert engine.
+  const CERT_WINDOW = getSetting(data, "ALERT_CERT_DAYS", 90);
 
   const ncrDist = Array.from(
     ncrList.reduce((m, n) => m.set(String(n.type ?? "Umum"), (m.get(String(n.type ?? "Umum")) ?? 0) + 1), new Map<string, number>()),
@@ -197,7 +193,7 @@ export default function QCSafety() {
   };
 
   const certsOfInspector = (name: string): string[] => {
-    const emp = data.employees.find((e) => e.name === name);
+    const emp = data.employees.find((e) => sameName(e.name, name));
     return Array.isArray(emp?.certs) ? emp.certs as string[] : [];
   };
 
@@ -239,11 +235,26 @@ export default function QCSafety() {
       if (!inspForm.calTool) { toast("NDE=Ya wajib memilih alat ukur terkalibrasi", "info"); return; }
       if (!validCals.some((c) => c.id === inspForm.calTool)) { toast("Alat ukur tidak valid (harus Selesai & due belum lewat)", "info"); return; }
     }
-    if (inspForm.status === "Lulus" && found > allowed) { toast(`Hasil tidak bisa Lulus: temuan ${found} melebihi batas ${allowed}`, "info"); return; }
+    let finalStatus = inspForm.status;
+    let ncrDone = false;
+    if (inspForm.status === "Lulus" && found > allowed) {
+      // Gagal AQL tidak boleh lolos diam-diam — NCR otomatis + inspeksi tercatat NCR.
+      const projAql = data.projects.find((p) => p.id === inspForm.project);
+      const ncrAuto = await add("ncr", {
+        project: inspForm.project, vessel: projAql?.vessel ?? "-", type: "Umum",
+        status: "Terbuka", severity: "Major", raised: inspForm.date, due: addDaysISO(inspForm.date, 14),
+        causeCat: "Metode", causeNote: "Temuan melebihi batas AQL",
+        issue: `Gagal AQL di ${inspForm.point.trim()}: temuan ${found} > batas ${allowed}`,
+        branch: branchOf(inspForm.branch),
+      }, { action: "menerbitkan NCR (gagal AQL)", module: "QC" });
+      toast(`Melebihi AQL — NCR ${ncrAuto.id} dibuat otomatis, inspeksi dicatat sebagai NCR`);
+      finalStatus = "NCR";
+      ncrDone = true;
+    }
     const itp = nextItp(inspections);
     const created = await add("inspections", {
       project: inspForm.project, point: inspForm.point.trim(), itp,
-      status: inspForm.status, date: inspForm.date,
+      status: finalStatus, date: inspForm.date,
       holdType: inspForm.holdType, nde: inspForm.nde,
       ndeMethod: inspForm.nde === "Ya" ? inspForm.ndeMethod : "-",
       calTool: inspForm.nde === "Ya" ? inspForm.calTool : "",
@@ -251,7 +262,7 @@ export default function QCSafety() {
       sampleSize: sample, defectsAllowed: allowed, defectsFound: found,
       branch: branchOf(inspForm.branch),
     }, { action: "mencatat inspeksi", module: "QC" });
-    if (inspForm.status === "NCR") {
+    if (finalStatus === "NCR" && !ncrDone) {
       const proj = data.projects.find((p) => p.id === inspForm.project);
       await add("ncr", {
         project: inspForm.project, vessel: proj?.vessel ?? "-", type: "Umum",
@@ -394,17 +405,14 @@ export default function QCSafety() {
     toast("NCR & biaya rework diekspor");
   };
 
-  const saveAuditPlan = () => {
+  const saveAuditPlan = async () => {
     if (!auditForm.date || !auditForm.area.trim() || !auditForm.auditor.trim()) { toast("Tanggal, area & auditor wajib diisi", "info"); return; }
     const findings = Math.max(0, Math.floor(Number(auditForm.findings) || 0));
-    const item: AuditPlan = {
-      id: `AUD-${Date.now().toString(36).toUpperCase()}`,
+    const created = await add("auditPlans", {
       date: auditForm.date, area: auditForm.area.trim(), auditor: auditForm.auditor.trim(),
-      findings, ncrId: auditForm.ncrId,
-    };
-    setAuditPlans((prev) => [item, ...prev]);
-    log("menjadwalkan audit internal", `${item.area} · ${fmtTanggal(item.date)} · auditor ${item.auditor}`, "QC");
-    toast(`Audit internal ${item.id} dijadwalkan`);
+      findings, ncrId: auditForm.ncrId, branch: globalBranch,
+    }, { action: "menjadwalkan audit internal", target: auditForm.area.trim(), module: "QC" });
+    toast(`Audit internal ${created.id} dijadwalkan`);
     setShowAuditPlan(false);
     setAuditForm({ date: todayISO(), area: "", auditor: "", findings: "0", ncrId: "" });
   };
@@ -454,7 +462,7 @@ export default function QCSafety() {
     setTransmitForm((f) => ({ ...f, ids: f.ids.includes(id) ? f.ids.filter((x) => x !== id) : [...f.ids, id] }));
   };
 
-  const saveTransmittal = () => {
+  const saveTransmittal = async () => {
     if (!transmitForm.to.trim()) { toast("Penerima transmittal wajib diisi", "info"); return; }
     if (!transmitForm.date) { toast("Tanggal transmittal wajib diisi", "info"); return; }
     if (transmitForm.ids.length === 0) { toast("Pilih minimal satu drawing", "info"); return; }
@@ -465,8 +473,14 @@ export default function QCSafety() {
       `Transmittal-${transmitForm.date}`,
       "Transmittal",
     );
+    // Transmittal tercatat: drawing Disetujui → Distribusi.
+    for (const d of rows) {
+      if (String(d.status ?? "") === "Disetujui") {
+        await update("drawings", String(d.id), { status: "Distribusi" });
+      }
+    }
     log("mengirim transmittal drawing", `${rows.length} drawing → ${transmitForm.to.trim()} · ${fmtTanggal(transmitForm.date)}`, "QC");
-    toast(`Transmittal ${rows.length} drawing dikirim & diekspor`);
+    toast(`Transmittal ${rows.length} drawing dikirim & didistribusikan`);
     setShowTransmit(false);
     setTransmitForm({ to: "", date: todayISO(), ids: [] });
   };
@@ -518,22 +532,19 @@ export default function QCSafety() {
     setPpeChecked({});
   };
 
-  const saveWalk = () => {
+  const saveWalk = async () => {
     if (!walkForm.date || !walkForm.area.trim() || !walkForm.pic.trim()) { toast("Tanggal, area & PIC wajib diisi", "info"); return; }
     const findings = Math.max(0, Number(walkForm.findings) || 0);
-    const item: WalkItem = {
-      id: `SW-${Date.now().toString(36).toUpperCase()}`,
+    const created = await add("walks", {
       date: walkForm.date, area: walkForm.area.trim(), findings, pic: walkForm.pic.trim(),
-    };
-    setWalks((prev) => [item, ...prev]);
-    log("melakukan safety walk", `${item.area} · ${findings} temuan`, "Safety");
-    toast(`Safety walk ${item.id} disimpan`);
+      branch: globalBranch,
+    }, { action: "melakukan safety walk", target: walkForm.area.trim(), module: "Safety" });
+    toast(`Safety walk ${created.id} disimpan`);
     setShowWalk(false);
     setWalkForm({ date: todayISO(), area: "", findings: "0", pic: "" });
   };
 
-  const walkToNcr = async (w: WalkItem) => {
-    const created = await add("ncr", {
+  const walkToNcr = async (w: StoreItem) => {    const created = await add("ncr", {
       project: data.projects[0]?.id ?? "-", vessel: data.projects[0]?.vessel ?? "-",
       type: "Umum", status: "Terbuka", severity: "Minor", raised: w.date,
       due: addDaysISO(w.date, 7), causeCat: "Lingkungan",
@@ -542,6 +553,20 @@ export default function QCSafety() {
       branch: globalBranch,
     }, { action: "menerbitkan NCR", module: "QC" });
     toast(`NCR ${created.id} dibuat dari safety walk`);
+  };
+
+  const incidentToNcr = async (i: StoreItem) => {
+    const sev = String(i.severity ?? "");
+    const severity = /kritis/i.test(sev) ? "Critical" : /berat|tinggi|besar/i.test(sev) ? "Major" : "Minor";
+    const proj = String(i.project ?? i.projectId ?? "-");
+    const created = await add("ncr", {
+      project: proj, vessel: "-", type: "Insiden", status: "Terbuka", severity,
+      raised: String(i.date ?? todayISO()), due: addDaysISO(String(i.date ?? todayISO()), 14),
+      causeCat: "Lingkungan", causeNote: `Tindak lanjut insiden ${String(i.id)}`,
+      issue: `Tindak lanjut insiden ${String(i.id)} di ${String(i.location ?? "-")}: ${String(i.desc ?? "-")}`,
+      incidentId: String(i.id), branch: globalBranch,
+    }, { action: "menerbitkan NCR dari insiden", module: "QC" });
+    toast(`NCR ${created.id} dibuat dari insiden ${String(i.id)}`);
   };
 
   const saveAudit = () => {
@@ -565,6 +590,8 @@ export default function QCSafety() {
           </div>
         }
       />
+
+      {modAlert.active && <AlertBannerView items={modAlert.items} onClose={modAlert.dismiss} />}
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <KpiCard label="NCR Terbuka" value={String(openNcr)} delta={`${String(criticalOpen)} critical`} deltaDirection="down" icon={<AlertTriangle className="h-5 w-5" />} chip="rose" spark={ncrTrend} />
@@ -651,7 +678,7 @@ export default function QCSafety() {
                 <button className="btn-secondary text-xs" onClick={exportNcr}>Ekspor NCR + Rework</button>
               </div>
               {ncrList.map((n) => (
-                <Card key={n.id} className="p-4">
+                <Card key={n.id} id={notifRowId(String(n.id))} className={`p-4 ${modAlert.highlight.has(String(n.id)) ? "notif-hl" : ""}`}>
                   <div className="flex flex-wrap items-start justify-between gap-2">
                     <div>
                       <div className="flex items-center gap-2">
@@ -858,7 +885,7 @@ export default function QCSafety() {
                     <div key={a.id} className="rounded-lg border border-steel-100 p-3 text-sm">
                       <div className="flex flex-wrap items-center justify-between gap-2">
                         <p className="font-medium text-navy-900">{a.area} <span className="font-mono text-xs text-steel-500">· {a.id}</span></p>
-                        <button className="btn-secondary text-xs" onClick={() => setAuditPlans((prev) => prev.filter((x) => x.id !== a.id))}>Hapus</button>
+                        <button className="btn-secondary text-xs" onClick={() => void remove("auditPlans", String(a.id))}>Hapus</button>
                       </div>
                       <p className="mt-1 text-xs text-steel-600">{fmtTanggal(a.date)} · auditor {a.auditor} · {a.findings} temuan{a.ncrId ? ` · terkait ${a.ncrId}` : ""}</p>
                     </div>
@@ -876,8 +903,8 @@ export default function QCSafety() {
               </div>
               <div className="space-y-3">
                 {incidents.map((i) => (
-                  <Card key={i.id} className="p-4">
-                    <div className="flex items-start justify-between">
+                  <Card key={i.id} id={notifRowId(String(i.id))} className={`p-4 ${modAlert.highlight.has(String(i.id)) ? "notif-hl" : ""}`}>
+                    <div className="flex items-start justify-between gap-2">
                       <div>
                         <div className="flex items-center gap-2">
                           <p className="font-semibold text-navy-900 font-mono">{i.id}</p>
@@ -886,6 +913,7 @@ export default function QCSafety() {
                         <p className="mt-1 text-sm text-steel-700">{i.desc}</p>
                         <p className="text-xs text-steel-500 mt-0.5">{fmtTanggal(i.date)} · {i.project ?? i.projectId ?? "—"} · {i.location} · Severity {i.severity}</p>
                       </div>
+                      <button className="btn-secondary shrink-0 text-xs" onClick={() => void incidentToNcr(i)}>Buatkan NCR</button>
                     </div>
                   </Card>
                 ))}

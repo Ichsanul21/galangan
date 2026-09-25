@@ -327,10 +327,87 @@ export const vessels = [
     beam: 8.0,
     draft: 3.5,
     bollard: 0,
-    status: "Selesai",
+    status: "Dalam Operasi",
     certificates: [],
     history: [
       { date: "2026-05-08", event: "Pelunasan SKDT", type: "Delivery" },
+    ],
+  },
+  // Kapal yang dirujuk proyek/survei/jasa (sebelumnya yatim).
+  {
+    id: "V-004",
+    name: "TB Samudra Jaya 04",
+    imo: "IMO 9934567",
+    type: "Tugboat ASD 2x1400 HP",
+    class: "BKI",
+    flag: "Indonesia",
+    built: 2021,
+    owner: "PT Samudra Jaya Perkasa",
+    loa: 30.2,
+    beam: 9.5,
+    draft: 4.1,
+    bollard: 42,
+    status: "Dalam Docking",
+    certificates: [],
+    history: [
+      { date: "2026-06-20", event: "Masuk program repair RP-2026-005", type: "Docking" },
+    ],
+  },
+  {
+    id: "V-005",
+    name: "TB Karya Bahari 15",
+    imo: "IMO 9945678",
+    type: "Tugboat ASD 2x1500 HP",
+    class: "BKI",
+    flag: "Indonesia",
+    built: 2022,
+    owner: "PT Karya Bahari Sejahtera",
+    loa: 30.8,
+    beam: 9.6,
+    draft: 4.2,
+    bollard: 44,
+    status: "Dalam Operasi",
+    certificates: [],
+    history: [
+      { date: "2026-05-01", event: "Mulai retrofit RF-2026-001", type: "Kontrak" },
+    ],
+  },
+  {
+    id: "V-006",
+    name: "TB Laut Timur 01",
+    imo: "IMO 9956789",
+    type: "Tugboat ASD 2x1600 HP",
+    class: "BKI",
+    flag: "Indonesia",
+    built: 2026,
+    owner: "PT Laut Timur Mandiri",
+    loa: 31.0,
+    beam: 9.8,
+    draft: 4.2,
+    bollard: 46,
+    status: "Dalam Pembangunan",
+    certificates: [],
+    history: [
+      { date: "2026-02-01", event: "Keel laying NB-2026-001", type: "Produksi" },
+    ],
+  },
+  {
+    id: "V-007",
+    name: "TB Mitra Raya 09",
+    imo: "IMO 9967890",
+    type: "Tugboat ASD 2x1300 HP",
+    class: "BKI",
+    flag: "Indonesia",
+    built: 2020,
+    owner: "PT Mitra Samudra Raya",
+    loa: 29.8,
+    beam: 9.4,
+    draft: 4.0,
+    bollard: 40,
+    status: "Dalam Operasi",
+    certificates: [],
+    history: [
+      { date: "2026-06-28", event: "Serah terima RP-2026-002", type: "Delivery" },
     ],
   },
 ];
@@ -348,7 +425,7 @@ export const dockSlots = [
   { id: "S2", dockId: "DD-2", project: "RP-2026-005", vessel: "TB Samudra Jaya 04", from: 1, to: 22, color: "bg-amber-500" },
   { id: "S3", dockId: "DD-1", project: "NB-2026-001", vessel: "TB Laut Timur 01", from: 44, to: 62, color: "bg-steel-400" },
   { id: "S4", dockId: "BH-1", project: "NB-2025-012", vessel: "TB Samudra Jaya 07", from: 1, to: 90, color: "bg-navy-700" },
-  { id: "S5", dockId: "BH-1", project: "NB-2025-014", vessel: "TB Nusantara 22", from: 10, to: 90, color: "bg-ocean-500" },
+  { id: "S5", dockId: "SL-1", project: "NB-2025-014", vessel: "TB Nusantara 22", from: 10, to: 90, color: "bg-ocean-500" },
   // RawData 000-DOCK SPACE: BG RMN 3324 (28.5x8x3.8M), ref 000/DS-SB/SMD/VIII/2026.
   { id: "DS-SB-001", dockId: "DD-1", project: "RP-2026-006", vessel: "BG RMN 3324", from: 40, to: 55, color: "bg-teal-500", dsRef: "000/DS-SB/SMD/VIII/2026", status: "Terjadwal" },
 ];
@@ -495,15 +572,19 @@ export const purchaseOrders = [
   // RawData FORMAT PO MATERIAL: 06/PO-SB/SMD/I/2024, WF 250/150/200,
   // subtotal 25.055.000 + PPN 11% = 27.811.050 (include).
   { id: "PO-SB-2024-006", item: "Besi WF (250/150/200)", vendor: "PT KALTIM LESTARI UNGGUL", req: "PR-SB-2024-006", amount: 27811050, qty: 23, unit: "btg", status: "Diterima", date: "2024-01-26", docNo: "06/PO-SB/SMD/I/2024", vessel: "U/STOCK", includePpn: true, tujuan: "stok", receivedQty: 23, lines: [{ name: "Besi WF 250", qty: 10, unit: "btg", price: 1150000 }, { name: "Besi WF 150", qty: 8, unit: "btg", price: 850000 }, { name: "Besi WF 200", qty: 5, unit: "btg", price: 1351000 }] },
+  // RawData CONTOH HUTANG — PO yang menjadi hutang AP-SB (docNo = po di hutang).
+  { id: "PO-SB-2026-004", item: "PLAT 14MM", vendor: "PT KALTIM LESTARI UNGGUL", req: "PR-SB-2026-004", amount: 36341622, qty: 2, unit: "lbr", status: "Diterima", date: "2026-01-07", docNo: "04/PO-SB/SMD/I/2026", vessel: "U/TK. RMN 3317", includePpn: true, tujuan: "kapal", receivedQty: 2 },
+  { id: "PO-SB-2026-012", item: "SIKU PRESS + ROUNDBAR", vendor: "PT KALTIM LESTARI UNGGUL", req: "PR-SB-2026-012", amount: 409492875, qty: 130, unit: "btg", status: "Diterima", date: "2026-01-29", docNo: "12/PO-SB/SMD/I/2026", vessel: "U/BG. KBT 26", includePpn: true, tujuan: "kapal", receivedQty: 130 },
+  { id: "PO-SB-2026-036", item: "PLAT 12MM/8MM", vendor: "PT KALTIM LESTARI UNGGUL", req: "PR-SB-2026-036", amount: 982905000, qty: 75, unit: "lbr", status: "Diterima", date: "2026-04-15", docNo: "36/PO-SB/SMD/IV/2026", vessel: "U/TK. ARTHA SARANA XI", includePpn: true, tujuan: "kapal", receivedQty: 75 },
 ];
 
 export const quotations = [
   { id: "QT-2026-052", client: "PT Samudra Jaya Perkasa", vessel: "TB Baru RJ-03", type: "New Build", value: 48500000000, stage: "Negosiasi", date: "2026-07-20" },
   { id: "QT-2026-053", client: "PT Laut Timur Mandiri", vessel: "TB LT-06", type: "New Build", value: 45200000000, stage: "Penawaran", date: "2026-07-18" },
   { id: "QT-2026-054", client: "PT Mitra Samudra Raya", vessel: "Repair MR-02", type: "Repair", value: 3100000000, stage: "Menang", date: "2026-07-12" },
-  { id: "QT-2026-055", client: "PT Pelayaran Nusantara", vessel: "TB PN-05 Retrofit", type: "Retrofit", value: 8200000000, stage: "Lead", date: "2026-07-25" },
+  { id: "QT-2026-055", client: "PT Pelayaran Nusantara Abadi", vessel: "TB PN-05 Retrofit", type: "Retrofit", value: 8200000000, stage: "Lead", date: "2026-07-25" },
   // RawData: penawaran BG RMN 3324 → menang → KTR-SB-001 → RP-2026-006.
-  { id: "QT-SB-001", client: "PT PELAYARAN KARTIKA SAMUDRA ADIJAYA", vessel: "BG RMN 3324", type: "Repair", value: 1671211310, stage: "Menang", date: "2026-07-28" },
+  { id: "QT-SB-001", client: "PT PELAYARAN KARTIKA SAMUDRA ADIJAYA", vessel: "BG RMN 3324", type: "Repair", value: 1671211310, stage: "Menang", date: "2026-07-28", requestId: "REQ-SB-002" },
 ];
 
 export const monthlyRevenue = [
@@ -727,10 +808,10 @@ export const inventoryMovement = [
   { id: "M-0901", item: "Pelat Baja AH36 12mm", type: "Pengeluaran", qty: 420, by: "NB-2025-012", date: "2026-08-01", tone: "out" },
   { id: "M-0902", item: "Cat Epoxy Primer", type: "Penerimaan", qty: 60, by: "PO-2026-116", date: "2026-08-01", tone: "in" },
   { id: "M-0903", item: "Baut Marine M20", type: "Pengeluaran", qty: 850, by: "RP-2026-003", date: "2026-07-31", tone: "out" },
-  { id: "M-0904", item: "Kabel Listrik 4x50", type: "Pengeluaran", qty: 540, by: "RF-2026-001", date: "2026-07-30", tone: "out" },
-  { id: "M-0905", item: "Wire Rope", type: "Penerimaan", qty: 3, by: "PO-2026-117", date: "2026-07-29", tone: "in" },
+  { id: "M-0904", item: "Kabel Listrik Marine 4x50", type: "Pengeluaran", qty: 540, by: "RF-2026-001", date: "2026-07-30", tone: "out" },
+  { id: "M-0905", item: "Winch Wire Rope", type: "Penerimaan", qty: 3, by: "PO-2026-117", date: "2026-07-29", tone: "in" },
   { id: "M-0906", item: "Anoda Zink", type: "Pengeluaran", qty: 14, by: "RP-2026-005", date: "2026-07-29", tone: "out" },
-  { id: "M-0907", item: "Mesin Bantu (Aux)", type: "Penerimaan", qty: 1, by: "PO-2026-115", date: "2026-07-28", tone: "in" },
+  { id: "M-0907", item: "Mesin Bantu (Aux Engine)", type: "Penerimaan", qty: 1, by: "PO-2026-115", date: "2026-07-28", tone: "in" },
   // RawData REPORT WAREHOUSE 2024 (sheet IN/OUT JAN-DES).
   { id: "M-SB-IN-001", item: "PLAT 8MM 5x20", itemId: "INV-SB-003", type: "Penerimaan", qty: 6, by: "UD TIGA BERLIAN", date: "2024-01-02", tone: "in", supplier: "UD TIGA BERLIAN", purpose: "TB SYUKUR 75", pic: "SANTI" },
   { id: "M-SB-OUT-001", item: "HEMPALIN ENAMEL GREEN 40640 @5LTR", itemId: "INV-SB-002", type: "Pengeluaran", qty: 2, by: "TB SYUKUR 72", date: "2024-01-02", tone: "out", purpose: "TB SYUKUR 72", pic: "ABK" },
@@ -854,7 +935,7 @@ export const plSummary = [
 /* ====== VESSEL ADD-ONS ====== */
 
 export const surveyTimeline = [
-  { id: "S-01", vessel: "TB Karya Bahari 12", type: "Special Survey", status: "Terjadwal", date: "2026-08-25", classSurveyor: "BKI" },
+  { id: "S-01", vessel: "TB Karya Bahari 12", type: "Special Survey", status: "Terjadwal", date: "2026-08-25", classSurveyor: "BKI", linkedTrial: "TRIAL-001" },
   { id: "S-02", vessel: "TB Samudra Jaya 04", type: "Annual Survey", status: "Dalam Proses", date: "2026-08-10", classSurveyor: "BKI" },
   { id: "S-03", vessel: "TB Mitra Raya 09", type: "Docking Survey", status: "Selesai", date: "2026-07-30", classSurveyor: "BKI" },
 ];

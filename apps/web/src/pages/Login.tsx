@@ -134,8 +134,9 @@ export default function Login() {
       fail(`Terlalu banyak percobaan gagal. Coba lagi dalam ${s} detik.`);
       return;
     }
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(username.trim())) {
-      fail("Format email tidak valid. Gunakan alamat email yang benar.");
+    const uname = username.trim();
+    if (uname.length < 3 || /\s/.test(uname)) {
+      fail("Isi username/NIK atau email yang valid (tanpa spasi).");
       return;
     }
     const err = await login(username, password);
@@ -281,12 +282,12 @@ export default function Login() {
               </div>
             )}
             <label className="block">
-              <span className="label">Username</span>
+              <span className="label">Username / NIK / Email</span>
               <div className="relative">
                 <User className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-steel-400" />
                 <input
                   className="input pl-9"
-                  placeholder="e.g. demo@galangan.com"
+                  placeholder="e.g. demo@galangan.com / 6474010101000001"
                   value={username}
                   onChange={(e) => setUsername(e.target.value)}
                   autoComplete="username"

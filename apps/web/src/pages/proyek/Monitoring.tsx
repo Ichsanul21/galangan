@@ -76,6 +76,8 @@ export default function Monitoring() {
     for (const c of diajukanCo(p.id)) {
       attention.push({ group: "CO Diajukan", title: `${c.id} · ${p.vessel}`, desc: `${String(c.title)} (${fmtRupiah(Number(c.impact))})`, pid: p.id });
     }
+    // Hanya WBS nyata — template fallback tidak boleh jadi perhatian.
+    if (!data.wbsByProject?.[p.id]?.length) continue;
     for (const w of wbsFor(p.id)) {
       const d = endInDays(w.end);
       if (Number(w.progress) === 0 && d !== null && d >= 0 && d < 30) {

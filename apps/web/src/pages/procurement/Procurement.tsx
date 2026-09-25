@@ -5,6 +5,8 @@ import { Card, CardHeader, PageHeader, Badge, KpiCard, Tabs, StatusBadge, Donut,
 import type { SortState } from "../../components/ui";
 import { useStore, type StoreItem } from "../../data/store";
 import { fmtRupiah, fmtJumlah, fmtTanggal, todayISO } from "../../utils/format";
+import { sameName } from "../../utils/names";
+import { AlertBannerView, notifRowId, useModuleAlert } from "../../components/AlertBanner";
 import { getSetting } from "../../utils/settings";
 import { sbPoNumber, sbSplitIncludePpn, maxSeq, SB_KOP } from "../../utils/sb";
 import { spendByCategory, procurementTrend, poCountTrend, poValueTrend, prPendingTrend, vendorTrend } from "../../data";
@@ -72,20 +74,22 @@ const poLines = (po: StoreItem): POLine[] => (Array.isArray(po.lines) ? (po.line
 const isLate = (po: StoreItem): boolean =>
   Boolean(po.eta) && String(po.eta) < todayISO() && normPo(po.status) !== "Diterima";
 
-/* ---- Approval bertingkat nominal PO Besar (docs/11§4.4: >Rp1M + Finance) ---- */
-function needLevels(amount: number): string[] {
+/* ---- Approval bertingkat nominal PO Besar (docs/11§4.4: >Rp1M + Finance) ----
+   Ambang Finance dari settings APPROVE_PO (default 1jt) — diteruskan dari
+   komponen karena fungsi ini murni. */
+function needLevels(amount: number, financeLimit = 1000000): string[] {
   const lv: string[] = [];
   if (amount > 500000000) lv.push("SPV", "Manager", "Director");
   else if (amount > 50000000) lv.push("SPV", "Manager");
   else lv.push("SPV");
-  if (amount > 1000000 && !lv.includes("Finance")) lv.push("Finance"); // ambang APPROVE_PO
+  if (amount > financeLimit && !lv.includes("Finance")) lv.push("Finance"); // ambang APPROVE_PO
   return lv;
 }
 
-function levelOf(amount: number): string {
+function levelOf(amount: number, financeLimit = 1000000): string {
   if (amount > 500000000) return "Director + Finance";
   if (amount > 50000000) return "Manager + Finance";
-  if (amount > 1000000) return "SPV + Finance";
+  if (amount > financeLimit) return "SPV + Finance";
   return "SPV";
 }
 
@@ -93,8 +97,8 @@ function apprOf(po: StoreItem): Approval[] {
   return Array.isArray(po.approvals) ? (po.approvals as Approval[]) : [];
 }
 
-function nextLevel(po: StoreItem): string | null {
-  const need = needLevels(Number(po.amount || 0));
+function nextLevel(po: StoreItem, financeLimit = 1000000): string | null {
+  const need = needLevels(Number(po.amount || 0), financeLimit);
   const done = apprOf(po).map((a) => a.level);
   return need.find((l) => !done.includes(l)) ?? null;
 }
@@ -126,6 +130,7 @@ function lateDaysOf(po: StoreItem): number {
 
 export default function Procurement() {
   const { data, add, update, log, inBranch } = useStore();
+  const modAlert = useModuleAlert("procurement");
   const purchaseOrders = inBranch(data.purchaseOrders);
   const requisitions = data.requisitions;
   const vendors = data.vendors;
@@ -133,6 +138,7 @@ export default function Procurement() {
   const invList = inBranch(data.inventory);
 
   const PO_KECIL_LIMIT = getSetting(data, "PO_KECIL_LIMIT", 50000000);
+  const APPROVE_PO_LIMIT = getSetting(data, "APPROVE_PO", 1000000);
   const ppnRate = getSetting(data, "PPN_RATE", 12);
 
   /* No. PO SB max+1: scan docNo tahun berjalan, parse leading (\d+)/. */
@@ -215,12 +221,12 @@ export default function Procurement() {
 
   const plafonPakai = (vendorName: string, excludeId?: string): number =>
     purchaseOrders
-      .filter((o) => o.vendor === vendorName && !["Ditolak"].includes(normPo(o.status)) && o.id !== excludeId)
+      .filter((o) => sameName(o.vendor, vendorName) && !["Ditolak"].includes(normPo(o.status)) && o.id !== excludeId)
       .reduce((s, o) => s + Number(o.amount || 0), 0);
 
   /* Validasi plafon kontrak payung: null bila vendor tanpa payung. */
   const cekPlafon = (vendorName: string, tambahan: number): { ok: boolean; pakai: number; plafon: number } | null => {
-    const v = vendors.find((x) => x.name === vendorName);
+    const v = vendors.find((x) => sameName(x.name, vendorName));
     const pg = v ? payungOf(v) : null;
     if (!pg) return null;
     const pakai = plafonPakai(vendorName);
@@ -353,11 +359,11 @@ export default function Procurement() {
 
   /* Persetujuan berjenjang SPV → Manager → Director sesuai nominal. */
   const doApproveLevel = async (po: StoreItem) => {
-    const nx = nextLevel(po);
+    const nx = nextLevel(po, APPROVE_PO_LIMIT);
     if (!nx) { toast(`${po.id} sudah disetujui penuh`, "info"); return; }
     const done: Approval[] = [...apprOf(po), { level: nx, by: "Anda", date: todayISO() }];
     const doneLevels = done.map((a) => a.level);
-    const still = needLevels(Number(po.amount || 0)).find((l) => !doneLevels.includes(l)) ?? null;
+    const still = needLevels(Number(po.amount || 0), APPROVE_PO_LIMIT).find((l) => !doneLevels.includes(l)) ?? null;
     await update("purchaseOrders", po.id, { approvals: done, status: still ? po.status : "Disetujui" });
     log("persetujuan PO", `${po.id} level ${nx}${still ? `, lanjut ke ${still}` : " (penuh)"}`, "Procurement");
     toast(still ? `${po.id} disetujui ${nx}, lanjut ke ${still}` : `${po.id} disetujui penuh`);
@@ -396,7 +402,7 @@ export default function Procurement() {
     if (!winRfq) return;
     if (!winVendor) { toast("Pilih pemenang dulu", "info"); return; }
     const quotes = (Array.isArray(winRfq.quotes) ? winRfq.quotes : []) as Quote[];
-    const win = quotes.find((x) => x.vendor === winVendor);
+    const win = quotes.find((x) => sameName(x.vendor, winVendor));
     if (!win) { toast("Pemenang belum memberi penawaran", "info"); return; }
     const plafon = cekPlafon(winVendor, win.price);
     if (plafon && !plafon.ok) { toast(`Plafon kontrak payung terlampaui (pakai ${fmtRupiah(plafon.pakai)} / plafon ${fmtRupiah(plafon.plafon)})`, "info"); return; }
@@ -456,7 +462,7 @@ export default function Procurement() {
     const q = Number(evalQ), d = Number(evalD), p = Number(evalP);
     if (![q, d, p].every((n) => n >= 1 && n <= 5)) { toast("Nilai kualitas, delivery, harga 1–5 wajib diisi", "info"); return; }
     const score = Math.round(q * 8 + d * 6 + p * 6);
-    const v = vendors.find((x) => x.name === evalPo.vendor);
+    const v = vendors.find((x) => sameName(x.name, evalPo.vendor));
     if (!v) { toast("Vendor tidak ditemukan di master", "info"); return; }
     const next = [...scoresOf(v), { po: evalPo.id, q, d, p, score, date: todayISO() }];
     const avg = next.reduce((s, x) => s + Number(x.score), 0) / next.length;
@@ -531,7 +537,7 @@ export default function Procurement() {
       ["Tanggal", fmtTanggal(po.date)],
       ["ETA", po.eta ? fmtTanggal(po.eta) : "-"],
       ["Status", normPo(po.status)],
-      ["Level approval", levelOf(Number(po.amount || 0))],
+      ["Level approval", levelOf(Number(po.amount || 0), APPROVE_PO_LIMIT)],
       ["Persetujuan", apprOf(po).length > 0 ? apprOf(po).map((a) => `${a.level} oleh ${a.by} ${a.date}`).join("; ") : "-"],
       ["No faktur pajak", po.noFaktur ?? "-"],
       ["Tanggal faktur", po.tglFaktur ? fmtTanggal(po.tglFaktur) : "-"],
@@ -656,7 +662,7 @@ export default function Procurement() {
 
   const poAksi = (po: StoreItem) => {
     const st = normPo(po.status);
-    const nx = po.poType === "Kecil" ? null : nextLevel(po);
+    const nx = po.poType === "Kecil" ? null : nextLevel(po, APPROVE_PO_LIMIT);
     return (
       <div className="flex flex-wrap gap-1.5">
         {st === "Draft" && <button className="btn-secondary text-xs" onClick={() => doPoStatus(po, "Diajukan")}>Ajukan</button>}
@@ -719,6 +725,8 @@ export default function Procurement() {
         }
       />
 
+      {modAlert.active && <AlertBannerView items={modAlert.items} onClose={modAlert.dismiss} />}
+
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <KpiCard label="PO Aktif" value={String(purchaseOrders.length)} icon={<ShoppingCart className="h-5 w-5" />} chip="navy" spark={poCountTrend} hint="Sedang berjalan" />
         <KpiCard label="Nilai PO Terbuka" value={fmtRupiah(openPo)} hint="Belum diterima penuh" icon={<ShoppingCart className="h-5 w-5" />} chip="teal" spark={poValueTrend} />
@@ -774,18 +782,18 @@ export default function Procurement() {
                       if (k === "nilai") return Number(po.amount || 0);
                       if (k === "item") return String(po.item ?? "");
                       if (k === "vendor") return String(po.vendor ?? "");
-                      if (k === "level") return String(levelOf(Number(po.amount || 0)));
+                      if (k === "level") return String(levelOf(Number(po.amount || 0), APPROVE_PO_LIMIT));
                       if (k === "eta") return String(po.eta ?? "");
                       if (k === "revisi") return String(po.revisi || "R0");
                       if (k === "status") return String(normPo(String(po.status ?? "")));
                       return String(po.id ?? "");
                     }).map((po) => {
                       const st = normPo(po.status);
-                      const need = needLevels(Number(po.amount || 0));
+                      const need = needLevels(Number(po.amount || 0), APPROVE_PO_LIMIT);
                       const done = apprOf(po);
-                      const payung = vendors.some((v) => v.name === po.vendor && payungOf(v));
+                      const payung = vendors.some((v) => sameName(v.name, po.vendor) && payungOf(v));
                       return (
-                        <tr key={po.id} className="hover:bg-surface">
+                        <tr key={po.id} id={notifRowId(String(po.id))} className={modAlert.highlight.has(String(po.id)) ? "notif-hl hover:bg-surface" : "hover:bg-surface"}>
                           <td className="td font-mono font-medium text-navy-900">{po.id}</td>
                           <td className="td text-steel-600">
                             <p className="truncate" title={String(po.item)}>{po.item}</p>
@@ -811,7 +819,7 @@ export default function Procurement() {
                             {Number(po.dendaRp || 0) > 0 && <p className="text-xs font-normal text-rose-600">Denda {fmtRupiah(Number(po.dendaRp))}</p>}
                           </td>
                           <td className="td">
-                            <Badge tone="navy">{levelOf(Number(po.amount || 0))}</Badge>
+                            <Badge tone="navy">{levelOf(Number(po.amount || 0), APPROVE_PO_LIMIT)}</Badge>
                             <p className="mt-0.5 text-xs text-steel-400">{done.length}/{need.length} tahap{done.length > 0 ? ` · ${done.map((a) => a.level).join(" → ")}` : ""}</p>
                           </td>
                           <td className="td text-steel-600">
@@ -875,7 +883,7 @@ export default function Procurement() {
                       }).map((po) => {
                         const st = normPo(po.status);
                         return (
-                          <tr key={po.id} className="hover:bg-surface">
+                          <tr key={po.id} id={notifRowId(String(po.id))} className={modAlert.highlight.has(String(po.id)) ? "notif-hl hover:bg-surface" : "hover:bg-surface"}>
                           <td className="td font-mono font-medium text-navy-900">{po.id}
                             {po.docNo && <p className="text-xs font-normal text-steel-400">{po.docNo}</p>}
                             {(() => {
@@ -1024,7 +1032,7 @@ export default function Procurement() {
                         if (k === "status") return String(r.status ?? "");
                         return String(r.id ?? "");
                       }).map((r) => (
-                        <tr key={r.id} className="hover:bg-surface">
+                        <tr key={r.id} id={notifRowId(String(r.id))} className={modAlert.highlight.has(String(r.id)) ? "notif-hl hover:bg-surface" : "hover:bg-surface"}>
                           <td className="td font-mono font-medium text-navy-900">{r.id}</td>
                           <td className="td text-steel-600 truncate" title={String(r.item)}>{r.item}</td>
                           <td className="td text-steel-600">{r.by}</td>
@@ -1187,7 +1195,7 @@ export default function Procurement() {
               ))}
             </div>
             <button className="btn-secondary mt-2 text-xs" onClick={() => setBigLines((s) => [...s, { name: "", qty: 1, unit: "pcs", price: 0 }])}><Plus className="h-3.5 w-3.5" /> Tambah baris</button>
-            <p className="mt-2 text-sm font-semibold text-navy-900">Total: {fmtRupiah(bigTotal)} · Level approval: {levelOf(bigTotal)}</p>
+            <p className="mt-2 text-sm font-semibold text-navy-900">Total: {fmtRupiah(bigTotal)} · Level approval: {levelOf(bigTotal, APPROVE_PO_LIMIT)}</p>
           </div>
           {bigOver && bigBudget && (
             <div className="rounded-lg bg-rose-50 px-3 py-2 text-xs text-rose-700">

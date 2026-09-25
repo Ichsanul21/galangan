@@ -91,6 +91,11 @@ export function sbSjNumber(seq: number, year = new Date().getFullYear()): string
   return `SJ-SMD-${year}-${String(seq).padStart(3, "0")}`;
 }
 
+/** No. Tanda Terima: TT-SMD-yyyy-nnn (segmen beda dari SJ agar unik). */
+export function sbTtNumber(seq: number, year = new Date().getFullYear()): string {
+  return `TT-SMD-${year}-${String(seq).padStart(3, "0")}`;
+}
+
 /** Berat plat (kg) dari P x L (mm) x T (mm) x pcs. Baja 7850 kg/m3. */
 export function sbTonasePlat(pMm: number, lMm: number, tMm: number, pcs = 1): number {
   if (pMm <= 0 || lMm <= 0 || tMm <= 0 || pcs <= 0) return 0;

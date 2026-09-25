@@ -105,6 +105,8 @@ export interface StoreShape {
   trials: StoreItem[];
   requests: StoreItem[];
   clientPos: StoreItem[];
+  walks: StoreItem[];
+  auditPlans: StoreItem[];
   settings: StoreItem[];
   coa: StoreItem[];
   journals: StoreItem[];
@@ -274,6 +276,8 @@ function buildSeeds(): StoreShape {
         trials: clone(seedTrials),
         requests: clone(seedRequests),
         clientPos: clone(seedClientPos),
+        walks: [],
+        auditPlans: [],
         settings: clone(seedSettings),
       coa: clone(seedCoa),
       journals: clone(seedJournals),
@@ -383,7 +387,9 @@ function saveBackup(col: string, rows: StoreItem[]): void {
 const PREFIX: Record<string, string> = {
   projects: "PRJ",
   vessels: "V",
-  inventory: "INV",
+  drydocks: "DD",
+  dockSlots: "DS",
+  inventory: "STK",
   movements: "M",
   equipment: "EQ",
   bookings: "BK",
@@ -424,9 +430,11 @@ const PREFIX: Record<string, string> = {
     communications: "COM",
       contracts: "KTR",
       bast: "BAST",
-      trials: "STL",
-      requests: "REQ",
-      clientPos: "CPO",
+  trials: "STL",
+  requests: "REQ",
+  clientPos: "CPO",
+  walks: "SW",
+  auditPlans: "AUD",
     settings: "SET",
     coa: "COA",
     journals: "JU",
@@ -442,7 +450,7 @@ const ARRAY_KEYS: (keyof StoreShape)[] = [
   "branches", "attendance", "payroll", "taxPeriods", "rfqs", "changeOrders",
   "risks", "leaves", "trainings", "timesheets", "drawings", "toolbox",
   "warranties",
-  "calibrations", "communications", "contracts", "bast", "trials", "requests", "clientPos", "settings", "coa", "journals", "assets",
+  "calibrations", "communications", "contracts", "bast", "trials", "requests", "clientPos", "walks", "auditPlans", "settings", "coa", "journals", "assets",
 ];
 
 function sanitizeStore(parsed: Partial<StoreShape>): StoreShape {
@@ -564,6 +572,15 @@ function notifyForbidden(reason: string): void {
   }
 }
 
+/* Toast konflik tulis (409 STALE/REFERENCED/VALIDATION): data server menang. */
+function notifyConflict(message: string): void {
+  try {
+    window.dispatchEvent(new CustomEvent("isms:toast", { detail: { message, tone: "info" } }));
+  } catch {
+    /* abaikan */
+  }
+}
+
 /* Remote dipakai bila backend dikonfigurasi DAN ada JWT — seluruh CRUD BE wajib
    auth. Tanpa JWT (belum login) operasi berjalan lokal senyap, tanpa semburan 401. */
 function remoteActive(): boolean {
@@ -571,14 +588,24 @@ function remoteActive(): boolean {
 }
 
 /* Contract version: cocok dengan services/api GET /api/version.
-   Minor-tolerant — sinkronisasi diblokir hanya bila MAJOR berbeda. */
+   Minor-tolerant — sinkronisasi diblokir bila MAJOR berbeda atau web minor
+   di bawah minWeb server. */
 const EXPECTED_API_MAJOR = 0;
+const EXPECTED_API_MINOR = 2;
 
 function majorOf(v: unknown): number | null {
   if (typeof v !== "string") return null;
   const m = v.trim().split(".")[0];
   if (m === undefined || m === "") return null;
   const n = Number.parseInt(m, 10);
+  return Number.isInteger(n) ? n : null;
+}
+
+function minorOf(v: unknown): number | null {
+  if (typeof v !== "string") return null;
+  const parts = v.trim().split(".");
+  if (parts.length < 2 || parts[1] === undefined || parts[1] === "") return null;
+  const n = Number.parseInt(parts[1], 10);
   return Number.isInteger(n) ? n : null;
 }
 
@@ -607,6 +634,12 @@ async function isApiCompatible(): Promise<boolean> {
     if (serverMajor === null) return true;
     if (serverMajor !== EXPECTED_API_MAJOR) {
       notifyVersionBlocked(String(ver.api));
+      return false;
+    }
+    // Kontrak minWeb: web minor harus >= minWeb minor (FE 0.2.x vs min 0.2.0).
+    const minMinor = minorOf(ver?.minWeb);
+    if (minMinor !== null && EXPECTED_API_MINOR < minMinor) {
+      notifyVersionBlocked(`${String(ver.api)} (butuh web ≥ ${String(ver.minWeb)})`);
       return false;
     }
     return true;
@@ -772,6 +805,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const pushPending = useCallback(async (): Promise<void> => {
     if (!remoteActive()) return;
     if (!(await isApiCompatible())) return;
+    const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
     const cols = [...dirtyRef.current];
     for (const col of cols) {
       try {
@@ -816,30 +850,80 @@ export function StoreProvider({ children }: { children: ReactNode }) {
               await remoteRepository(col).remove(id);
             } catch (err) {
               /* 404 = sudah hilang di BE → anggap sukses; selain itu gagal. */
-              if (!(err instanceof ApiError && err.status === 404)) {
-                ok = false;
-                break;
+              if (err instanceof ApiError && err.status === 404) {
+                tombstones.delete(id);
+                continue;
               }
+              // 409 REFERENCED = server menang (masih dipakai) — lepas
+              // tombstone agar tidak retry selamanya; baris akan kembali
+              // saat resync berikutnya setelah koleksi bersih.
+              if (err instanceof ApiError && err.status === 409) {
+                notifyConflict(err.message);
+                tombstones.delete(id);
+                continue;
+              }
+              ok = false;
+              break;
             }
+            tombstones.delete(id);
           }
+          saveTombstonesPersisted(tombstonesRef.current);
           if (!ok) continue;
         }
         const rows = ((dataRef.current as unknown as Record<string, StoreItem[]>)[col] ?? []) as StoreItem[];
         for (const row of rows) {
-          try {
-            await remoteRepository(col).create(row);
-          } catch (err) {
-            if (err instanceof ApiError && err.status === 409) {
-              try {
-                await remoteRepository(col).patch(row.id, row);
-              } catch {
-                ok = false;
-                break;
+          const attemptCreate = async (retried: boolean): Promise<"ok" | "stale" | "fail"> => {
+            try {
+              await remoteRepository(col).create(row);
+              return "ok";
+            } catch (err) {
+              if (err instanceof ApiError && err.status === 409) {
+                try {
+                  // Kirim baseUpdatedAt agar STALE terdeteksi, bukan timpa buta.
+                  const base = typeof row.updated_at === "string" ? row.updated_at : undefined;
+                  await remoteRepository(col).patch(
+                    row.id,
+                    (base ? { ...row, baseUpdatedAt: base } : row) as Record<string, unknown>,
+                  );
+                  return "ok";
+                } catch (perr) {
+                  if (perr instanceof ApiError && perr.status === 409 && perr.code === "STALE") return "stale";
+                  return "fail";
+                }
               }
-            } else {
+              // 429: hormati Retry-After sekali, lalu coba ulang sekali.
+              if (err instanceof ApiError && err.status === 429 && !retried) {
+                const waitMs = Math.min(Math.max(err.retryAfterSec ?? 5, 1), 30) * 1000;
+                setBackendError(`Terlalu banyak permintaan — jeda ${Math.round(waitMs / 1000)} dtk lalu coba lagi`);
+                await sleep(waitMs);
+                return attemptCreate(true);
+              }
+              return "fail";
+            }
+          };
+          const res = await attemptCreate(false);
+          if (res === "stale") {
+            // Server menang — tarik versi server gantikan lokal.
+            try {
+              const server = await apiFetch<{ id: string; branch: string; data: Record<string, unknown>; updated_at: string }>(
+                `/api/${col}/${encodeURIComponent(row.id)}`,
+              );
+              setData((prev) => ({
+                ...prev,
+                [col]: (((prev as unknown as Record<string, StoreItem[]>)[col] ?? []) as StoreItem[]).map((r) =>
+                  r.id === row.id ? { ...(server.data ?? {}), id: server.id, branch: server.branch, updated_at: server.updated_at } : r,
+                ),
+              }));
+            } catch {
               ok = false;
               break;
             }
+            notifyConflict("Data server lebih baru — versi server dipakai. Ulangi perubahan Anda bila perlu.");
+            continue;
+          }
+          if (res !== "ok") {
+            ok = false;
+            break;
           }
         }
         if (ok) {
@@ -882,6 +966,23 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         setBackendError(reason);
         notifyForbidden(reason);
         return true;
+      }
+      if (err instanceof ApiError && err.status === 401) {
+        setBackendError("Sesi berakhir — login ulang; perubahan ditahan untuk sinkronisasi");
+        if (!fallbackToasted.current) {
+          fallbackToasted.current = true;
+          notifyBackendFallback();
+        }
+        return false;
+      }
+      if (err instanceof ApiError && err.status === 429) {
+        const wait = err.retryAfterSec ? ` (coba lagi ${err.retryAfterSec} dtk)` : "";
+        setBackendError(`Terlalu banyak permintaan${wait} — perubahan ditahan`);
+        if (!fallbackToasted.current) {
+          fallbackToasted.current = true;
+          notifyBackendFallback();
+        }
+        return false;
       }
       setBackendError(err instanceof Error && err.message ? err.message : "Backend tak terjangkau — mode lokal");
       if (!fallbackToasted.current) {
@@ -929,6 +1030,12 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             setBackendError(null);
             return finalItem;
           } catch (err) {
+            // 409/422 ber-code (CONFLICT/REFERENCED/VALIDATION/UNPROCESSABLE):
+            // jangan tulis lokal — lempar agar caller toast gagal, bukan sukses.
+            if (err instanceof ApiError && (err.status === 409 || err.status === 422)) {
+              notifyConflict(err.message);
+              throw err;
+            }
             if (degrade(err)) throw err;
           }
         }
@@ -947,10 +1054,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       update: async (col, id, patch) => {
         if (remoteActive()) {
           try {
-            /* Optimistic concurrency minimal: kirim updated_at yang terakhir
-               terlihat sebagai baseUpdatedAt top-level. BE saat ini (crud.ts
-               PatchSchema: branch+data, zod strip unknown) mengabaikannya
-               dengan aman; penegakan 409 penuh menunggu dukungan BE. */
+            /* Optimistic concurrency: kirim updated_at terakhir sebagai
+               baseUpdatedAt; BE 409 STALE bila sudah diubah pengguna lain. */
             const current = ((dataRef.current as unknown as Record<string, StoreItem[]>)[col as string] ?? []).find(
               (r) => r.id === id,
             );
@@ -964,6 +1069,31 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             setBackendError(null);
             return;
           } catch (err) {
+            // STALE: server menang — muat versi server + beri tahu eksplisit.
+            if (err instanceof ApiError && err.status === 409 && err.code === "STALE") {
+              const server = (err.data ?? {}) as { data?: Record<string, unknown>; branch?: string; updated_at?: string };
+              setData((prev) => ({
+                ...prev,
+                [col]: ((prev[col] as StoreItem[] | undefined) ?? []).map((r) =>
+                  r.id === id
+                    ? {
+                        ...r,
+                        ...(typeof server.data === "object" && server.data !== null ? server.data : {}),
+                        ...(typeof server.branch === "string" ? { branch: server.branch } : {}),
+                        ...(typeof server.updated_at === "string" ? { updated_at: server.updated_at } : {}),
+                      }
+                    : r,
+                ),
+              }));
+              setBackendError(null);
+              notifyConflict("Data sudah diubah pengguna lain — versi server dimuat ulang. Ulangi perubahan Anda.");
+              return;
+            }
+            // REFERENCED/VALIDATION/UNPROCESSABLE: tampilkan alasan BE apa adanya.
+            if (err instanceof ApiError && (err.status === 409 || err.status === 422)) {
+              notifyConflict(err.message);
+              return;
+            }
             if (degrade(err)) return;
           }
         }
@@ -984,6 +1114,12 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             setBackendError(null);
             return;
           } catch (err) {
+            // REFERENCED (masih dipakai modul lain): tampilkan + lempar,
+            // jangan hapus lokal.
+            if (err instanceof ApiError && (err.status === 409 || err.status === 422)) {
+              notifyConflict(err.message);
+              throw err;
+            }
             if (degrade(err)) return;
           }
         }

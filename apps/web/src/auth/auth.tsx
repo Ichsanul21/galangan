@@ -24,6 +24,12 @@ export function canSetTarget(role: string | undefined | null): boolean {
   return r.includes("direktur") || r.includes("direksi") || r.includes("manager") || r.includes("developer");
 }
 
+/* Tulis settings/coa di backend: hanya direktur/developer (BE 403 untuk
+   yang lain — samakan di UI agar toast tidak berbohong). */
+export function canWriteSettings(role: string | undefined | null): boolean {
+  return ["direktur", "developer", "Direktur", "Developer"].includes(String(role ?? ""));
+}
+
 const SESSION_KEY = "isms.session";
 
 export interface Session {

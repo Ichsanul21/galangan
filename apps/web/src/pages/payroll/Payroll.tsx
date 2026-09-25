@@ -20,8 +20,10 @@ import type { SortState } from "../../components/ui";
 import { useStore } from "../../data/store";
 import type { StoreItem } from "../../data/store";
 import { fmtBulan, fmtRupiah, fmtTanggal, todayISO } from "../../utils/format";
+import { AlertBannerView, notifRowId, useModuleAlert } from "../../components/AlertBanner";
 import { getSetting } from "../../utils/settings";
 import { exportExcel } from "../../utils/export";
+import { kasKodeOf, postCashJournal } from "../../services/autoJournal";
 
 const NEXT_STATUS: Record<string, string> = {
   Draft: "Dihitung",
@@ -115,12 +117,12 @@ function bpjsKarOf(p: StoreItem): { kes: number; tk: number } {
   };
 }
 
-/* PPh21 progresif tahunan disetahunkan: bruto×12 − PTKP → lapis T1–T4 → /12. */
-function calcPphProgressive(bruto: number, ptkpStatus: string, dependents: number, r: PayrollRates): number {
-  const bruto12 = Math.max(0, bruto) * 12;
+/* PPh tahunan atas penghasilan setahun (progresif lapis). Dipakai gaji
+   (disetahunkan dari bruto bulanan) dan penghasilan tak teratur (selisih). */
+function annualPph(penghasilanSetahun: number, ptkpStatus: string, dependents: number, r: PayrollRates): number {
   const base = String(ptkpStatus).startsWith("K/") ? r.ptkpK0 : r.ptkpTK0;
   const ptkp = base + Math.min(3, Math.max(0, dependents)) * r.ptkpTang;
-  const pkp = Math.max(0, bruto12 - ptkp);
+  const pkp = Math.max(0, penghasilanSetahun - ptkp);
   if (pkp <= 0) return 0;
   const lapis: Array<[number, number]> = [
     [r.t1Max, r.t1Rate],
@@ -138,7 +140,24 @@ function calcPphProgressive(bruto: number, ptkpStatus: string, dependents: numbe
     sisa -= kena;
     bawah = atas;
   }
-  return Math.round(tahunan / 12);
+  return tahunan;
+}
+
+/* PPh21 progresif tahunan disetahunkan: bruto×12 − PTKP → lapis T1–T4 → /12. */
+function calcPphProgressive(bruto: number, ptkpStatus: string, dependents: number, r: PayrollRates): number {
+  return Math.round(annualPph(Math.max(0, bruto) * 12, ptkpStatus, dependents, r) / 12);
+}
+
+/* PPh atas penghasilan tak teratur (THR/bonus): selisih PPh tahunan
+   dengan vs tanpa komponen itu. Harian: flat 5% (konsisten tarif harian). */
+function calcPphIrregular(baseMonthly: number, irregular: number, emp: StoreItem, r: PayrollRates): number {
+  const irr = Math.max(0, Number(irregular) || 0);
+  if (irr <= 0) return 0;
+  if (String(emp.tipe ?? "") === "Harian") return Math.round(irr * 0.05);
+  const base = Math.max(0, Number(baseMonthly) || 0);
+  const dep = Number(emp.dependents ?? 0);
+  const st = String(emp.ptkpStatus ?? "TK/0");
+  return Math.max(0, Math.round(annualPph(base * 12 + irr, st, dep, r) - annualPph(base * 12, st, dep, r)));
 }
 
 /* Karyawan Harian: basic dianggap upah harian. ≤450rb/hari bebas, selebihnya 5%. */
@@ -183,6 +202,7 @@ function calcPesangon(masaKerja: number, upah: number): { pesMonths: number; pes
 
 export default function Payroll() {
   const { data, add, update, remove, log, inBranch } = useStore();
+  const modAlert = useModuleAlert("payroll");
   const [tab, setTab] = useState("Gaji");
   const [period, setPeriod] = useState(todayISO().slice(0, 7));
   const [editTarget, setEditTarget] = useState<StoreItem | null>(null);
@@ -294,6 +314,17 @@ export default function Payroll() {
       );
       const hadirDays = recs.length;
       const overtimePay = calcOvertimePay(basic, recs, otDivisor);
+      /* Potongan cuti tak dibayar: hari Unpaid yang disetujui × upah harian (basic/25). */
+      const unpaidDays = (data.leaves ?? [])
+        .filter(
+          (l) =>
+            l.employeeId === e.id &&
+            String(l.type ?? "") === "Unpaid" &&
+            String(l.status ?? "") === "Disetujui" &&
+            String(l.from ?? "").slice(0, 7) === period,
+        )
+        .reduce((s, l) => s + (Number(l.days) || 0), 0);
+      const unpaidPot = basic > 0 && unpaidDays > 0 ? Math.round((basic / 25) * unpaidDays) : 0;
       /* Cicilan kasbon otomatis: min(cicilan, sisa) per entri, langsung kurangi sisa. */
       let kasbonPot = 0;
       const kasbon = normKasbon(e);
@@ -305,7 +336,7 @@ export default function Payroll() {
         });
         await update("employees", e.id, { kasbon: next });
       }
-      const c = buildComponents(e, basic, lines, overtimePay, 0, kasbonPot, hadirDays);
+      const c = buildComponents(e, basic, lines, overtimePay, unpaidPot, kasbonPot, hadirDays);
       await add(
         "payroll",
         {
@@ -317,6 +348,8 @@ export default function Payroll() {
           overtimePay,
           deductions: c.deductions,
           kasbonPot,
+          unpaidDays,
+          unpaidPot,
           hadirDays,
           pph21: c.pph21,
           bpjsKesKar: c.bpjsKesKar,
@@ -412,6 +445,17 @@ export default function Payroll() {
       paidRef: proof.ref.trim(),
     });
     log("membayar payroll", `${payTarget.id} via ${proof.method} ${proof.ref.trim()}`, "Payroll");
+    await postCashJournal({
+      add,
+      journals: data.journals ?? [],
+      branch: String(payTarget.branch ?? ""),
+      dokumen: `PAYROLL-${String(payTarget.period ?? period)}-${String(payTarget.employeeId ?? "")}`,
+      date: proof.date,
+      uraian: `Bayar ${rowType(payTarget)} ${payTarget.id} via ${proof.ref.trim()}`,
+      db: "6-002",
+      kr: kasKodeOf(proof.method),
+      amount: Number(payTarget.net || 0),
+    });
     toast(`${payTarget.id} dibayar — bukti tersimpan`);
     setPayTarget(null);
   };
@@ -435,6 +479,7 @@ export default function Payroll() {
       const allowAvg = sumAllowances(e.allowances);
       const n = monthsWorked(String(e.join ?? ""), period);
       const thr = Math.round(((basic + allowAvg) * Math.min(n, 12)) / 12);
+      const pphThr = calcPphIrregular(basic + allowAvg, thr, e, rates);
       await add(
         "payroll",
         {
@@ -446,11 +491,11 @@ export default function Payroll() {
           overtimePay: 0,
           deductions: 0,
           kasbonPot: 0,
-          pph21: 0,
+          pph21: pphThr,
           bpjsKesKar: 0,
           bpjsKesPer: 0,
           bpjsTkKar: 0,
-          net: thr,
+          net: thr - pphThr,
           thrBase: basic + allowAvg,
           masaBulan: Math.min(n, 12),
           status: "Draft",
@@ -475,6 +520,8 @@ export default function Payroll() {
       toast("Nominal bonus harus lebih dari 0", "info");
       return;
     }
+    const bonusBase = Number(emp.basic || 0) + sumAllowances(emp.allowances);
+    const pphBonus = calcPphIrregular(bonusBase, nominal, emp, rates);
     await add(
       "payroll",
       {
@@ -486,11 +533,11 @@ export default function Payroll() {
         overtimePay: 0,
         deductions: 0,
         kasbonPot: 0,
-        pph21: 0,
+        pph21: pphBonus,
         bpjsKesKar: 0,
         bpjsKesPer: 0,
         bpjsTkKar: 0,
-        net: Math.round(nominal),
+        net: Math.round(nominal) - pphBonus,
         bonusNote: bonusForm.keterangan.trim() || "Bonus",
         status: "Draft",
         paidAt: "",
@@ -674,6 +721,8 @@ export default function Payroll() {
         }
       />
 
+      {modAlert.active && <AlertBannerView items={modAlert.items} onClose={modAlert.dismiss} />}
+
       <div className="mb-4 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <KpiCard label="Total Bruto (Gaji)" value={fmtRupiah(totals.bruto)} hint={`Periode ${fmtBulan(period)}`} chip="navy" />
         <KpiCard label="Total Net (Gaji)" value={fmtRupiah(totals.net)} hint={`${gajiRows.length} slip gaji`} chip="teal" />
@@ -727,7 +776,7 @@ export default function Payroll() {
                         default: return "";
                       }
                     }).map((p) => (
-                      <tr key={p.id} className="hover:bg-surface">
+                      <tr key={p.id} id={notifRowId(String(p.id))} className={modAlert.highlight.has(String(p.id)) ? "notif-hl hover:bg-surface" : "hover:bg-surface"}>
                         <td className="td font-mono text-steel-600">{p.id}</td>
                         <td className="td font-medium text-navy-900">{empNameOf(String(p.employeeId))}</td>
                         <td className="td text-steel-600">{fmtRupiah(Number(p.basic || 0))}</td>
@@ -816,7 +865,7 @@ export default function Payroll() {
                         default: return "";
                       }
                     }).map((p) => (
-                      <tr key={p.id} className="hover:bg-surface">
+                      <tr key={p.id} id={notifRowId(String(p.id))} className={modAlert.highlight.has(String(p.id)) ? "notif-hl hover:bg-surface" : "hover:bg-surface"}>
                         <td className="td font-mono text-steel-600">{p.id}</td>
                         <td className="td font-medium text-navy-900">{empNameOf(String(p.employeeId))}</td>
                         <td className="td"><Badge tone={rowType(p) === "THR" ? "amber" : "violet"}>{rowType(p)}</Badge></td>

@@ -2,11 +2,17 @@ import { useState } from "react";
 import { Settings as SettingsIcon } from "lucide-react";
 import { Card, PageHeader, Field, toast } from "../../components/ui";
 import { useStore } from "../../data/store";
+import { useAuth } from "../../auth/auth";
+import { canWriteSettings } from "../../auth/auth";
 import { apiFetch, isBackendConfigured } from "../../services/http";
 import { fmtJumlah } from "../../utils/format";
 
 export default function Settings() {
   const { data, update, log, backendMode, backendError, resync } = useStore();
+  const { user } = useAuth();
+  // Tulis settings ditolak BE (403) kecuali direktur/developer — kunci di UI
+  // agar toast "disimpan" tidak berbohong.
+  const canWrite = backendMode !== "remote" || canWriteSettings(user?.role);
   const [drafts, setDrafts] = useState<Record<string, string>>({});
   const [setupToken, setSetupToken] = useState("");
   const [seeding, setSeeding] = useState(false);
@@ -32,6 +38,7 @@ export default function Settings() {
   const groups = [...new Set((data.settings ?? []).map((s) => String(s.group ?? "Lainnya")))]
 
   const saveToggle = async (id: string, key: string, on: boolean) => {
+    if (!canWrite) { toast("Peran Anda tidak dapat mengubah konstanta — butuh Direktur / Developer", "info"); return; }
     await update("settings", id, { value: on ? 1 : 0 });
     log("mengubah konstanta", `${key} → ${on ? 1 : 0}`, "Pengaturan");
     toast(`${key} ${on ? "ditampilkan" : "disembunyikan"}`);
@@ -45,6 +52,7 @@ export default function Settings() {
   const isToggleKey = (key: string): boolean => key === "SHOW_3D_PROJECT" || key === "SHOW_3D_VESSEL";;
 
   const save = async (id: string, key: string) => {
+    if (!canWrite) { toast("Peran Anda tidak dapat mengubah konstanta — butuh Direktur / Developer", "info"); return; }
     const raw = drafts[id];
     if (raw === undefined || raw.trim() === "") return;
     const v = Number(raw);
@@ -74,6 +82,11 @@ export default function Settings() {
           <span className={`rounded-full px-2.5 py-1 text-[11px] font-bold ${backendMode === "remote" && !backendError ? "bg-emerald-100 text-emerald-700" : "bg-steel-100 text-steel-600"}`}>
             {backendMode === "remote" && !backendError ? "Backend: tersambung" : "Backend: mode lokal"}
           </span>
+          {!canWrite && (
+            <span className="rounded-full bg-amber-100 px-2.5 py-1 text-[11px] font-bold text-amber-700">
+              Read-only untuk peran Anda — ubah via Direktur / Developer
+            </span>
+          )}
           {backendError && <span className="text-[11px] text-steel-400">{backendError}</span>}
           <span className="ml-auto flex flex-wrap items-center gap-2">
             <input
@@ -102,6 +115,7 @@ export default function Settings() {
                       type="button"
                       role="switch"
                       aria-checked={Number(s.value) === 1}
+                      disabled={!canWrite}
                       onClick={() => saveToggle(String(s.id), String(s.key), Number(s.value) !== 1)}
                       className={`relative h-6 w-11 shrink-0 rounded-full transition-colors ${Number(s.value) === 1 ? "bg-ocean-500" : "bg-steel-200"}`}
                     >
@@ -118,7 +132,7 @@ export default function Settings() {
                       value={drafts[s.id] ?? String(s.value)}
                       onChange={(e) => setDrafts((d) => ({ ...d, [s.id]: e.target.value }))}
                     />
-                    <button className="btn-secondary shrink-0 text-xs" onClick={() => save(s.id, String(s.key))}>Simpan</button>
+                    <button className="btn-secondary shrink-0 text-xs" disabled={!canWrite} onClick={() => save(s.id, String(s.key))}>Simpan</button>
                   </div>
                 </Field>
                 )}

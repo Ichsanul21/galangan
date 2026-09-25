@@ -30,6 +30,7 @@ interface UserRow {
   role: string;
   email: string;
   is_active: number | null;
+  employee_id?: string | null;
 }
 
 const LOGIN_LIMIT = 20;
@@ -135,8 +136,8 @@ export function buildApp(): FastifyInstance {
     if (origin) reply.header("Access-Control-Allow-Origin", origin);
     reply.header("Vary", "Origin");
     reply.header("Access-Control-Allow-Methods", "GET,POST,PUT,PATCH,DELETE,OPTIONS");
-    reply.header("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Request-Id");
-    reply.header("Access-Control-Expose-Headers", "X-Request-Id");
+    reply.header("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Request-Id, X-Setup-Token");
+    reply.header("Access-Control-Expose-Headers", "X-Request-Id, Retry-After");
     reply.header("Access-Control-Max-Age", "86400");
     return reply.status(204).send();
   });
@@ -195,9 +196,30 @@ export function buildApp(): FastifyInstance {
       return reply.status(400).send(fail("Validation failed", "VALIDATION_ERROR"));
     }
     const { username, password } = parsed.data;
-    const rows = await q<UserRow>("SELECT id, username, pass_hash, name, role, email, is_active FROM users WHERE username = ?", [
+    let rows = await q<UserRow>("SELECT id, username, pass_hash, name, role, email, is_active, employee_id FROM users WHERE username = ?", [
       username,
     ]);
+    if (rows.length === 0) {
+      // Login via NIK karyawan: cocokkan employees.data.username → akun tertaut.
+      try {
+        const emps = await q<{ id: string; data: unknown }>("SELECT id, data FROM employees");
+        const match = emps.find((e) => {
+          try {
+            const d = typeof e.data === "string" ? (JSON.parse(e.data) as Record<string, unknown>) : (e.data as Record<string, unknown>);
+            return String(d?.username ?? "") === username;
+          } catch {
+            return false;
+          }
+        });
+        if (match) {
+          rows = await q<UserRow>("SELECT id, username, pass_hash, name, role, email, is_active, employee_id FROM users WHERE employee_id = ?", [
+            match.id,
+          ]);
+        }
+      } catch {
+        // abaikan — lanjut ke 401 di bawah
+      }
+    }
     const user = rows[0];
     if (!user || !(await comparePassword(password, user.pass_hash))) {
       await writeAudit({
@@ -233,7 +255,7 @@ export function buildApp(): FastifyInstance {
       ip: requestIp(req),
     });
     const token = signToken({ id: user.id, username: user.username, role: user.role });
-    return ok({ token, user: { id: user.id, username: user.username, name: user.name, role: user.role, email: user.email } });
+    return ok({ token, user: { id: user.id, username: user.username, name: user.name, role: user.role, email: user.email, employeeId: typeof user.employee_id === "string" ? user.employee_id : null } });
   });
 
   app.get("/api/auth/me", { preHandler: [requireAuth] }, async (req) => {

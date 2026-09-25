@@ -90,11 +90,13 @@ export function StaggerItem({
 export function Card({
   children,
   className = "",
+  id,
 }: {
   children: ReactNode;
   className?: string;
+  id?: string;
 }) {
-  return <div className={`card ${className}`}>{children}</div>;
+  return <div id={id} className={`card ${className}`}>{children}</div>;
 }
 
 export function CardHeader({

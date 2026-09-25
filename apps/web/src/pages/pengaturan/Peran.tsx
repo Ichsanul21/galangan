@@ -3,6 +3,7 @@ import { Download, KeyRound, Plus, RefreshCw } from "lucide-react";
 import { Badge, Card, ConfirmModal, Field, KpiCard, Modal, PageHeader, SortTh, sortRows, toast, toggleSort } from "../../components/ui";
 import type { SortState } from "../../components/ui";
 import { canSetTarget, useAuth } from "../../auth/auth";
+import { useStore } from "../../data/store";
 import { apiFetch, isBackendConfigured } from "../../services/http";
 import { exportExcel } from "../../utils/export";
 
@@ -213,6 +214,7 @@ interface ManagedUser {
   role: string;
   email: string;
   isActive: boolean;
+  employeeId?: string | null;
 }
 
 function errMsg(e: unknown, fallback: string): string {
@@ -226,14 +228,23 @@ export default function Peran() {
   /* Live user management (remote only). Matrix below stays as the RBAC reference. */
   const remote = isBackendConfigured();
   const { user: session } = useAuth();
+  const { data } = useStore();
   const canManage = canSetTarget(session?.role);
   const [users, setUsers] = useState<ManagedUser[]>([]);
   const [usersLoading, setUsersLoading] = useState(false);
   const [showCreate, setShowCreate] = useState(false);
-  const [form, setForm] = useState({ username: "", name: "", role: "Manager", password: "", email: "" });
+  const [form, setForm] = useState({ username: "", name: "", role: "Manager", password: "", email: "", employeeId: "" });
   const [pwTarget, setPwTarget] = useState<ManagedUser | null>(null);
   const [pwValue, setPwValue] = useState("");
   const [confirmTarget, setConfirmTarget] = useState<ManagedUser | null>(null);
+  const [linkTarget, setLinkTarget] = useState<ManagedUser | null>(null);
+  const [linkValue, setLinkValue] = useState("");
+
+  const empNameOf = (id: string | null | undefined): string => {
+    if (!id) return "-";
+    const e = (data.employees ?? []).find((x) => String(x.id) === String(id));
+    return e ? `${String(e.name ?? id)} (${String(e.id)})` : `${id} (karyawan tidak ada)`;
+  };
 
   const loadUsers = async () => {
     if (!isBackendConfigured()) return;
@@ -267,11 +278,12 @@ export default function Peran() {
           role: form.role,
           email: form.email.trim(),
           password: form.password,
+          employeeId: form.employeeId || "",
         }),
       });
       toast(`Pengguna ${form.username.trim()} dibuat`);
       setShowCreate(false);
-      setForm({ username: "", name: "", role: "Manager", password: "", email: "" });
+      setForm({ username: "", name: "", role: "Manager", password: "", email: "", employeeId: "" });
       await loadUsers();
     } catch (e) {
       toast(errMsg(e, "Gagal membuat pengguna"), "info");
@@ -293,6 +305,22 @@ export default function Peran() {
       setPwValue("");
     } catch (e) {
       toast(errMsg(e, "Gagal mereset password"), "info");
+    }
+  };
+
+  const doLinkEmployee = async () => {
+    if (!linkTarget) return;
+    try {
+      await apiFetch(`/api/users/${linkTarget.id}`, {
+        method: "PATCH",
+        body: JSON.stringify({ employeeId: linkValue || null }),
+      });
+      toast(linkValue ? `Akun ${linkTarget.username} ditautkan ke ${linkValue}` : `Tautan ${linkTarget.username} dilepas`);
+      setLinkTarget(null);
+      setLinkValue("");
+      await loadUsers();
+    } catch (e) {
+      toast(errMsg(e, "Gagal menautkan karyawan"), "info");
     }
   };
 
@@ -390,7 +418,7 @@ export default function Peran() {
           </p>
         ) : !canManage ? (
           <p className="text-xs leading-relaxed text-steel-500">
-            Peran Anda ({session?.role ?? "-"}) tidak dapat mengelola pengguna — butuh peran Direktur atau Developer.
+            Peran Anda ({session?.role ?? "-"}) tidak dapat mengelola pengguna — butuh peran Direktur, Manager, atau Developer.
           </p>
         ) : users.length === 0 && !usersLoading ? (
           <p className="text-xs text-steel-500">Belum ada pengguna di backend.</p>
@@ -403,6 +431,7 @@ export default function Peran() {
                   <th className="px-3 py-2">Nama</th>
                   <th className="px-3 py-2">Peran</th>
                   <th className="px-3 py-2">Email</th>
+                  <th className="px-3 py-2">Karyawan</th>
                   <th className="px-3 py-2">Status</th>
                   <th className="px-3 py-2 text-right">Aksi</th>
                 </tr>
@@ -414,11 +443,18 @@ export default function Peran() {
                     <td className="px-3 py-2">{u.name}</td>
                     <td className="px-3 py-2">{u.role}</td>
                     <td className="px-3 py-2 text-steel-500">{u.email || "-"}</td>
+                    <td className="px-3 py-2 text-steel-600">{empNameOf(u.employeeId)}</td>
                     <td className="px-3 py-2">
                       {u.isActive ? <Badge tone="green">Aktif</Badge> : <Badge tone="gray">Nonaktif</Badge>}
                     </td>
                     <td className="px-3 py-2">
                       <div className="flex justify-end gap-1.5">
+                        <button
+                          className="btn-secondary px-2 py-1 text-xs"
+                          onClick={() => { setLinkTarget(u); setLinkValue(u.employeeId ?? ""); }}
+                        >
+                          Tautkan
+                        </button>
                         <button
                           className="btn-secondary px-2 py-1 text-xs"
                           onClick={() => { setPwTarget(u); setPwValue(""); }}
@@ -503,7 +539,7 @@ export default function Peran() {
         open={showCreate}
         onClose={() => setShowCreate(false)}
         title="Tambah pengguna"
-        subtitle="Hanya Direktur / Developer — password min. 6 karakter"
+        subtitle="Direktur / Manager / Developer — password min. 6 karakter"
         footer={
           <>
             <button className="btn-secondary" onClick={() => setShowCreate(false)}>Batal</button>
@@ -531,14 +567,44 @@ export default function Peran() {
           <Field label="Password awal">
             <input type="password" className="input" value={form.password} onChange={(e) => setForm((f) => ({ ...f, password: e.target.value }))} placeholder="Min. 6 karakter" />
           </Field>
+          <Field label="Karyawan tertaut (opsional)" hint="Hubungkan akun ke data karyawan di SDM">
+            <select className="input" value={form.employeeId} onChange={(e) => setForm((f) => ({ ...f, employeeId: e.target.value }))}>
+              <option value="">— Tanpa tautan —</option>
+              {(data.employees ?? []).map((e) => (
+                <option key={String(e.id)} value={String(e.id)}>{String(e.name ?? e.id)} ({String(e.id)})</option>
+              ))}
+            </select>
+          </Field>
         </div>
+      </Modal>
+
+      <Modal
+        open={linkTarget !== null}
+        onClose={() => { setLinkTarget(null); setLinkValue(""); }}
+        title={`Tautkan karyawan — ${linkTarget?.username ?? ""}`}
+        subtitle="Hubungkan akun login ke data karyawan (HR baca NIK & tautan ini)"
+        footer={
+          <>
+            <button className="btn-secondary" onClick={() => { setLinkTarget(null); setLinkValue(""); }}>Batal</button>
+            <button className="btn-primary" onClick={() => void doLinkEmployee()}>Simpan tautan</button>
+          </>
+        }
+      >
+        <Field label="Karyawan">
+          <select className="input" value={linkValue} onChange={(e) => setLinkValue(e.target.value)}>
+            <option value="">— Lepas tautan —</option>
+            {(data.employees ?? []).map((e) => (
+              <option key={String(e.id)} value={String(e.id)}>{String(e.name ?? e.id)} ({String(e.id)})</option>
+            ))}
+          </select>
+        </Field>
       </Modal>
 
       <Modal
         open={pwTarget !== null}
         onClose={() => { setPwTarget(null); setPwValue(""); }}
         title={`Reset password — ${pwTarget?.username ?? ""}`}
-        subtitle="Direktur / Developer dapat mereset tanpa password lama"
+        subtitle="Direktur / Manager / Developer dapat mereset tanpa password lama"
         footer={
           <>
             <button className="btn-secondary" onClick={() => { setPwTarget(null); setPwValue(""); }}>Batal</button>

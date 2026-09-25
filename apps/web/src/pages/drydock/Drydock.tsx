@@ -7,6 +7,7 @@ import type { StoreItem } from "../../data/store";
 import { dockUtilTrend, slotTrend } from "../../data";
 import { fmtJumlah, fmtRupiah, fmtTanggal, fmtRentang } from "../../utils/format";
 import { sbDsNumber, maxSeq } from "../../utils/sb";
+import { AlertBannerView, notifRowId, useModuleAlert } from "../../components/AlertBanner";
 import { exportExcel } from "../../utils/export";
 
 const DAYS = 90;
@@ -70,6 +71,7 @@ function undockList(s: StoreItem): boolean[] {
 
 export default function Drydock() {
   const { data, add, update, remove, log } = useStore();
+  const modAlert = useModuleAlert("drydock");
   const drydocks = data.drydocks;
   const dockSlots = data.dockSlots;
   const projectOptions = data.projects;
@@ -284,6 +286,8 @@ export default function Drydock() {
         }
       />
 
+      {modAlert.active && <AlertBannerView items={modAlert.items} onClose={modAlert.dismiss} />}
+
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <KpiCard label="Utilitas Docking" value={`${util}%`} delta="Hari terisi per total hari dock" deltaDirection="flat" icon={<Ship className="h-5 w-5" />} chip="navy" spark={dockUtilTrend} />
         <KpiCard label="Slot Terisi" value={`${dockSlots.length} slot`} hint="Jadwal aktif semua fasilitas" icon={<CalendarRange className="h-5 w-5" />} chip="teal" spark={slotTrend} />
@@ -397,8 +401,9 @@ export default function Drydock() {
                         return (
                           <div
                             key={s.id}
+                            id={notifRowId(String(s.id))}
                             onClick={() => { if (isSel) setSelected(null); else openSlot(s); }}
-                            className={`absolute top-1/2 -translate-y-1/2 flex h-10 items-center justify-between rounded-md px-2 text-xs font-medium text-white shadow cursor-pointer transition ${isMaint ? "bg-steel-400" : isConf ? "bg-rose-500" : s.color} ${isSel ? "ring-2 ring-navy-900" : "hover:brightness-110"} ${isCrit && !isSel ? "ring-4 ring-rose-800" : isConf && !isSel ? "ring-2 ring-rose-700" : ""}`}
+                            className={`absolute top-1/2 -translate-y-1/2 flex h-10 items-center justify-between rounded-md px-2 text-xs font-medium text-white shadow cursor-pointer transition ${isMaint ? "bg-steel-400" : isConf ? "bg-rose-500" : s.color} ${isSel ? "ring-2 ring-navy-900" : "hover:brightness-110"} ${isCrit && !isSel ? "ring-4 ring-rose-800" : isConf && !isSel ? "ring-2 ring-rose-700" : ""} ${modAlert.highlight.has(String(s.id)) ? "notif-hl" : ""}`}
                             style={{ left: `${leftPct}%`, width: `${widthPct}%` }}
                             title={`${s.vessel} · ${s.project} · ${fmtRentang(dayToISO(s.from), dayToISO(s.to))}${s.priority ? ` · ${s.priority}` : ""}${isCrit ? " · KRITIS TUMPANG TINDIH" : isConf ? " · TUMPANG TINDIH" : ""}`}
                           >

@@ -5,6 +5,7 @@ import { Card, CardHeader, PageHeader, StatusBadge, Badge, KpiCard, EmptyState, 
 import { useStore } from "../../data/store";
 import type { StoreItem } from "../../data/store";
 import { fmtTanggal, fmtRupiah, fmtMiliar, fmtJumlah, todayISO } from "../../utils/format";
+import { getSetting } from "../../utils/settings";
 import { exportExcel, exportPDF } from "../../utils/export";
 
 type Mode = "Mingguan" | "Bulanan" | "Per Proyek";
@@ -120,9 +121,11 @@ export default function Laporan() {
     const payrollTotal = payRows.reduce((s, p) => s + (num(p.net) || num(p.basic) + num(p.allowances) + num(p.overtimePay) - num(p.deductions)), 0);
     const cost = apCost + payrollTotal;
     const laba = revenue - cost;
-    const ppnKeluar = Math.round(revenue * 0.11);
-    const ppnMasuk = Math.round(apLunas.reduce((s, a) => s + num(a.amt), 0) * 0.11);
-    const pph23 = Math.round(apLunas.reduce((s, a) => s + num(a.amt), 0) * 0.02);
+    const ppnRate = getSetting(data, "PPN_RATE", 12) / 100;
+    const pphRate = getSetting(data, "PPH23_RATE", 2) / 100;
+    const ppnKeluar = Math.round(revenue * ppnRate);
+    const ppnMasuk = Math.round(apLunas.reduce((s, a) => s + num(a.amt), 0) * ppnRate);
+    const pph23 = Math.round(apLunas.reduce((s, a) => s + num(a.amt), 0) * pphRate);
     const pph21 = payRows.reduce((s, p) => s + num(p.pph21), 0);
     const taxRow = (data.taxPeriods ?? []).find((t) => String(t.period) === month);
     return { inv, invLunas, revenue, apLunas, payRows, payrollTotal, cost, laba, ppnKeluar, ppnMasuk, pph23, pph21, taxRow };
@@ -132,7 +135,7 @@ export default function Laporan() {
   const projectsVisible = useMemo(() => inBranch(data.projects ?? []), [data.projects, branch]);
   const activeProjectId = projectId || projectsVisible[0]?.id || "";
   const project = projectsVisible.find((p) => p.id === activeProjectId);
-  const wbsTop = project ? wbsFor(project.id).slice(0, 5) : [];
+  const wbsTop = project && data.wbsByProject?.[project.id]?.length ? wbsFor(project.id).slice(0, 5) : [];
   const boqRows = (data.boq ?? []).filter((b) => String(b.projectId ?? b.project ?? "") === activeProjectId);
   const boqTotal = boqRows.reduce((s, b) => s + (num(b.totalPrice) || num(b.quantity) * num(b.unitPrice)), 0);
   const projInvoices = (data.invoices ?? []).filter((i) => String(i.project) === activeProjectId);

@@ -42,6 +42,19 @@ async function main(): Promise<void> {
     await exec("INSERT INTO team_by_project (project_id, data) VALUES (?, ?)", [t.projectId, JSON.stringify(t.memberIds)]);
     inserted += 1;
   }
+  // Tautkan akun seed ke karyawan (default; bisa diubah via /api/users):
+  // direktur@galangan.com → EMP-001 (Andi Darman, Direktur).
+  try {
+    const emp = await q("SELECT id FROM employees WHERE id = ?", ["EMP-001"]);
+    if (emp.length > 0) {
+      await exec("UPDATE users SET employee_id = ? WHERE username = ? AND (employee_id IS NULL OR employee_id = '')", [
+        "EMP-001",
+        "direktur@galangan.com",
+      ]);
+    }
+  } catch {
+    // DB lama tanpa kolom employee_id — migrasi akan menambahkannya saat boot.
+  }
   console.log(`[seed] done (inserted=${inserted} skipped=${skipped})`);
 }
 

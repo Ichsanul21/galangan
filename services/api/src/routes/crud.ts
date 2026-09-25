@@ -4,16 +4,18 @@ import { z } from "zod";
 import { requireAuth, requireRole } from "../auth.js";
 import { requestActor, requestIp, shallowDiff, writeAudit } from "../audit.js";
 import { exec, getDialect, q } from "../db.js";
+import { checkRefs, findUsages } from "../refs.js";
 import { fail, ok } from "../envelope.js";
 
-// ID prefix per collection — copied from apps/web/src/data/store.tsx PREFIX,
-// plus DD/DS for drydocks/dockSlots (missing in the FE map).
+// ID prefix per collection — disalin dari apps/web/src/data/store.tsx PREFIX
+// (wajib sama; newId dipakai dua sisi). inventory=STK agar tak tabrakan
+// dengan invoices=INV; vendors=VND beda dari vessels=V.
 export const PREFIX: Record<string, string> = {
   projects: "PRJ",
   vessels: "V",
   drydocks: "DD",
   dockSlots: "DS",
-  inventory: "INV",
+  inventory: "STK",
   movements: "M",
   equipment: "EQ",
   bookings: "BK",
@@ -57,6 +59,8 @@ export const PREFIX: Record<string, string> = {
   trials: "STL",
   requests: "REQ",
   clientPos: "CPO",
+  walks: "SW",
+  auditPlans: "AUD",
   settings: "SET",
   coa: "COA",
   journals: "JU",
@@ -74,7 +78,7 @@ export const COLLECTIONS: string[] = [
   "branches", "attendance", "payroll", "taxPeriods", "rfqs", "changeOrders",
   "risks", "leaves", "trainings", "timesheets", "drawings", "toolbox",
   "warranties", "calibrations", "communications", "contracts", "bast",
-  "trials", "requests", "clientPos", "settings", "coa", "journals", "assets",
+  "trials", "requests", "clientPos", "walks", "auditPlans", "settings", "coa", "journals", "assets",
 ];
 
 // Writes to these tables are restricted. Role names are matched in both
@@ -182,6 +186,8 @@ export function registerCrud(app: FastifyInstance, table: string, opts: CrudOpts
     }
     const branch = parsed.data.branch ?? "";
     const now = new Date().toISOString();
+    const refError = await checkRefs(table, parsed.data.data as Record<string, unknown>);
+    if (refError) return reply.status(422).send(fail(refError, "UNPROCESSABLE"));
     await exec(`INSERT INTO ${table} (id, branch, data, updated_at) VALUES (?, ?, ?, ?)`, [
       id, branch, JSON.stringify(parsed.data.data), now,
     ]);
@@ -214,6 +220,8 @@ export function registerCrud(app: FastifyInstance, table: string, opts: CrudOpts
     const merged = parsed.data.data ? { ...oldData, ...parsed.data.data } : oldData;
     const branch = parsed.data.branch ?? current.branch;
     const now = new Date().toISOString();
+    const refError = await checkRefs(table, merged);
+    if (refError) return reply.status(422).send(fail(refError, "UNPROCESSABLE"));
     await exec(`UPDATE ${table} SET branch = ?, data = ?, updated_at = ? WHERE id = ?`, [
       branch, JSON.stringify(merged), now, id,
     ]);
@@ -236,6 +244,12 @@ export function registerCrud(app: FastifyInstance, table: string, opts: CrudOpts
     const rows = await q<Row>(`SELECT id, branch, data, updated_at FROM ${table} WHERE id = ?`, [id]);
     if (rows.length === 0) return reply.status(404).send(fail("Not found", "NOT_FOUND"));
     const doomed = rows[0] as Row;
+    const usages = await findUsages(table, id);
+    if (usages.length > 0) {
+      return reply
+        .status(409)
+        .send(fail(`Tidak dapat menghapus: masih dipakai oleh ${usages.join(", ")}`, "REFERENCED"));
+    }
     await exec(`DELETE FROM ${table} WHERE id = ?`, [id]);
     await writeAudit({
       actor: requestActor(req),

@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { ArrowLeft, Plus, User } from "lucide-react";
 import {
@@ -19,7 +19,34 @@ import {
 import type { SortState } from "../../components/ui";
 import { useStore } from "../../data/store";
 import type { StoreItem } from "../../data/store";
+import { apiFetch, isBackendConfigured } from "../../services/http";
 import { fmtBulan, fmtRupiah, fmtTanggal, todayISO } from "../../utils/format";
+import { sameName } from "../../utils/names";
+
+/* Akun login yang tertaut ke karyawan ini (baca /api/users, best-effort:
+   non-direktur dapat 403 → tampil "-"). */
+function AkunLogin({ employeeId }: { employeeId: string }) {
+  const [label, setLabel] = useState<string | null>(null);
+  useEffect(() => {
+    if (!isBackendConfigured()) return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const res = await apiFetch<{ users: { username: string; employeeId?: string | null; isActive: boolean }[] } | { username: string; employeeId?: string | null; isActive: boolean }[]>("/api/users");
+        const list = Array.isArray(res) ? res : (res.users ?? []);
+        const hit = list.find((u) => String(u.employeeId ?? "") === employeeId);
+        if (!cancelled) setLabel(hit ? `${hit.username}${hit.isActive ? "" : " (nonaktif)"}` : "-");
+      } catch {
+        if (!cancelled) setLabel("-");
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [employeeId]);
+  if (!isBackendConfigured()) return <>-</>;
+  return <>{label ?? "…"}</>;
+}
 
 interface EmpCert {
   name: string;
@@ -45,6 +72,12 @@ function daysUntil(iso: string | null | undefined): number | null {
 function getSkills(e: StoreItem): string[] {
   if (Array.isArray(e.skills) && e.skills.length > 0) return e.skills.map((s) => String(s));
   return [];
+}
+
+/** Total tunjangan: dukung number (lama) maupun array [{label,amount}] (Payroll). */
+function sumAllowances(a: unknown): number {
+  if (Array.isArray(a)) return a.reduce((s: number, l: unknown) => s + (Number((l as { amount?: unknown })?.amount ?? l) || 0), 0);
+  return Number(a || 0);
 }
 
 function normCerts(e: StoreItem): EmpCert[] {
@@ -106,7 +139,7 @@ export default function KaryawanDetail() {
 
   const docs = useMemo(() => {
     if (!emp) return [];
-    return data.documents.filter((d) => d.owner === emp.name);
+    return data.documents.filter((d) => sameName(d.owner, emp.name));
   }, [data.documents, emp]);
 
   if (!emp) {
@@ -213,7 +246,8 @@ export default function KaryawanDetail() {
             <div className="flex justify-between"><dt className="text-steel-500">Akhir kontrak</dt><dd className="font-medium">{emp.contractEnd ? fmtTanggal(String(emp.contractEnd)) : "—"}</dd></div>
             <div className="flex justify-between"><dt className="text-steel-500">PTKP</dt><dd className="font-medium">{String(emp.ptkpStatus ?? "-")} · {Number(emp.dependents ?? 0)} tanggungan</dd></div>
             <div className="flex justify-between"><dt className="text-steel-500">Gaji pokok</dt><dd className="font-medium">{fmtRupiah(Number(emp.basic || 0))}</dd></div>
-            <div className="flex justify-between"><dt className="text-steel-500">Tunjangan</dt><dd className="font-medium">{fmtRupiah(Number(emp.allowances || 0))}</dd></div>
+            <div className="flex justify-between"><dt className="text-steel-500">Tunjangan</dt><dd className="font-medium">{fmtRupiah(sumAllowances(emp.allowances))}</dd></div>
+            <div className="flex justify-between"><dt className="text-steel-500">Akun login</dt><dd className="font-medium"><AkunLogin employeeId={String(emp.id)} /></dd></div>
           </dl>
         </Card>
 
@@ -364,7 +398,7 @@ export default function KaryawanDetail() {
                     <tr key={p.id} className="hover:bg-surface">
                       <td className="td font-medium text-navy-900">{fmtBulan(String(p.period))}</td>
                       <td className="td text-steel-600">{fmtRupiah(Number(p.basic || 0))}</td>
-                      <td className="td text-steel-600">{fmtRupiah(Number(p.allowances || 0))}</td>
+                      <td className="td text-steel-600">{fmtRupiah(sumAllowances(p.allowances))}</td>
                       <td className="td text-steel-600">{fmtRupiah(Number(p.overtimePay || 0))}</td>
                       <td className="td font-bold text-navy-900">{fmtRupiah(Number(p.net || 0))}</td>
                       <td className="td"><StatusBadge status={String(p.status)} /></td>

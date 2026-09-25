@@ -21,6 +21,7 @@ import { useStore } from "../../data/store";
 import type { StoreItem, WbsItem } from "../../data/store";
 import { fmtMiliar, sparkProjects, activeProjectTrend, contractValueTrend, avgProgressTrend } from "../../data";
 import { todayISO } from "../../utils/format";
+import { AlertBannerView, notifRowId, useModuleAlert } from "../../components/AlertBanner";
 
 export const TAHAP = ["Inquiry", "Quotation", "Kontrak", "Desain", "Produksi", "Trial", "Handover"];
 export const PRIORITAS = ["Rendah", "Sedang", "Tinggi", "Kritis"];
@@ -151,6 +152,7 @@ const persistCustomTemplates = (tpls: TemplateDef[]) => {
 
 export default function Projects() {
   const { data, add, update, log, setWbs, wbsFor, inBranch } = useStore();
+  const modAlert = useModuleAlert("proyek");
   const navigate = useNavigate();
   const projects = data.projects;
   const [filter, setFilter] = useState("Semua");
@@ -186,10 +188,10 @@ export default function Projects() {
     return matchType && matchStatus && matchTahap && matchBranch && matchPrioritas && matchPm && matchQ;
   });
 
-  const totalBudget = projects.reduce((s, p) => s + Number(p.budget || 0), 0);
-  const inProgress = projects.filter((p) => p.status !== "Selesai").length;
-  const delayed = projects.filter((p) => p.status === "Terlambat").length;
-  const avgProgress = projects.length ? Math.round(projects.reduce((s, p) => s + Number(p.progress || 0), 0) / projects.length) : 0;
+  const totalBudget = list.reduce((s, p) => s + Number(p.budget || 0), 0);
+  const inProgress = list.filter((p) => p.status !== "Selesai").length;
+  const delayed = list.filter((p) => p.status === "Terlambat").length;
+  const avgProgress = list.length ? Math.round(list.reduce((s, p) => s + Number(p.progress || 0), 0) / list.length) : 0;
 
   const setF = (k: string, v: string) => setForm((f) => ({ ...f, [k]: v }));
   const vesselExists = data.vessels.some((v) => v.name.toLowerCase() === form.vessel.trim().toLowerCase());
@@ -397,6 +399,8 @@ export default function Projects() {
         }
       />
 
+      {modAlert.active && <AlertBannerView items={modAlert.items} onClose={modAlert.dismiss} />}
+
       <div className="mb-4 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <KpiCard label="Total Proyek" value={String(projects.length)} hint="Seluruh portofolio" icon={<Anchor className="h-5 w-5" />} chip="navy" spark={sparkProjects} />
         <KpiCard label="Sedang Berjalan" value={String(inProgress)} delta={`${delayed} terlambat`} deltaDirection="down" icon={<Clock className="h-5 w-5" />} chip="amber" spark={activeProjectTrend} />
@@ -477,7 +481,8 @@ export default function Projects() {
                 return (
                   <tr
                     key={p.id}
-                    className="cursor-pointer transition-colors hover:bg-surface"
+                    id={notifRowId(String(p.id))}
+                    className={`cursor-pointer transition-colors hover:bg-surface ${modAlert.highlight.has(String(p.id)) ? "notif-hl" : ""}`}
                     onClick={() => navigate(`/proyek/${p.id}`)}
                     onKeyDown={(e) => { if (e.key === "Enter") navigate(`/proyek/${p.id}`); }}
                     tabIndex={0}

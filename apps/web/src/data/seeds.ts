@@ -18,20 +18,26 @@ export const seedWorkOrders: StoreItem[] = [
 ];
 
 export const seedTermins: StoreItem[] = [
-  { id: "TRM-001", sub: "PT Baja Utama Steel", progress: "WO-041 (70%)", amount: 2100000000, pph23: "2%", retention: "5%", status: "Belum Dibayar" },
-  { id: "TRM-002", sub: "PT Mesinindo Perkasa", progress: "WO-043 (40%)", amount: 1568000000, pph23: "2%", retention: "5%", status: "Disetujui" },
-  { id: "TRM-003", sub: "CV Scaffold Aman", progress: "WO-044 (100%)", amount: 450000000, pph23: "2%", retention: "5%", status: "Lunas" },
-  { id: "TRM-004", sub: "CV Pengecatan Marine", progress: "WO-042 (55%)", amount: 940000000, pph23: "2%", retention: "5%", status: "Belum Dibayar" },
+  { id: "TRM-001", sub: "PT Baja Utama Steel", woId: "WO-2026-041", progress: "WO-2026-041 (70%)", amount: 2100000000, pph23: "2%", retention: "5%", status: "Belum Dibayar" },
+  { id: "TRM-002", sub: "PT Mesinindo Perkasa", woId: "WO-2026-043", progress: "WO-2026-043 (40%)", amount: 1568000000, pph23: "2%", retention: "5%", status: "Disetujui" },
+  { id: "TRM-003", sub: "CV Scaffold Aman", woId: "WO-2026-044", progress: "WO-2026-044 (100%)", amount: 450000000, pph23: "2%", retention: "5%", status: "Lunas" },
+  { id: "TRM-004", sub: "CV Pengecatan Marine", woId: "WO-2026-042", progress: "WO-2026-042 (55%)", amount: 940000000, pph23: "2%", retention: "5%", status: "Belum Dibayar" },
   // RawData: subtotal 300.000 − PPh 0,5% (1.500) = 298.500 lunas.
   { id: "TRM-SB-001", sub: "Pak Yusuf", woId: "WO-SB-001", milestone: "Outfitting Deck BG RMN 3324", progress: "WO-SB-001 (100%)", amount: 300000, pphPct: 0.5, pphAmt: 1500, retPct: 0, retAmt: 0, status: "Lunas", date: "2026-09-01", paidAt: "2026-09-01", paidMethod: "Transfer BRI SB" },
 ];
 
 export const seedVendors: StoreItem[] = [
-  { id: "V-001", name: "PT Bahana Baja", cat: "Baja & Struktur", onTime: 92, quality: 95, po: 12, status: "Aktif" },
-  { id: "V-002", name: "PT Indo Diesel", cat: "Mesin & Engine", onTime: 96, quality: 90, po: 5, status: "Aktif" },
-  { id: "V-003", name: "PT Jotun Indonesia", cat: "Cat & Coating", onTime: 88, quality: 93, po: 8, status: "Aktif" },
-  { id: "V-004", name: "PT Steel Rig", cat: "Rigging & Wire", onTime: 84, quality: 87, po: 6, status: "Aktif" },
-  { id: "V-005", name: "PT Primabaja", cat: "Baja & Struktur", onTime: 81, quality: 86, po: 3, status: "Kualifikasi" },
+  { id: "VND-001", name: "PT Bahana Baja", cat: "Baja & Struktur", onTime: 92, quality: 95, po: 12, status: "Aktif" },
+  { id: "VND-002", name: "PT Indo Diesel", cat: "Mesin & Engine", onTime: 96, quality: 90, po: 5, status: "Aktif" },
+  { id: "VND-003", name: "PT Jotun Indonesia", cat: "Cat & Coating", onTime: 88, quality: 93, po: 8, status: "Aktif" },
+  { id: "VND-004", name: "PT Steel Rig", cat: "Rigging & Wire", onTime: 84, quality: 87, po: 6, status: "Aktif" },
+  { id: "VND-005", name: "PT Primabaja", cat: "Baja & Struktur", onTime: 81, quality: 86, po: 3, status: "Kualifikasi" },
+  // RawData: vendor subkontraktor WO (nama = sub di workOrders).
+  { id: "VND-041", name: "PT Baja Utama Steel", cat: "Fabrikasi & Blasting", onTime: 90, quality: 90, po: 4, status: "Aktif" },
+  { id: "VND-042", name: "CV Pengecatan Marine", cat: "Pengecatan / Coating", onTime: 84, quality: 84, po: 2, status: "Aktif" },
+  { id: "VND-043", name: "PT Mesinindo Perkasa", cat: "Overhaul Mesin", onTime: 88, quality: 88, po: 3, status: "Aktif" },
+  { id: "VND-044", name: "CV Scaffold Aman", cat: "Perancah & Staging", onTime: 92, quality: 92, po: 2, status: "Aktif" },
+  { id: "VND-045", name: "PT Kelistrikan Bahari", cat: "Elektrikal & Panel", onTime: 76, quality: 76, po: 1, status: "Kualifikasi" },
   // RawData CONTOH HUTANG + FORMAT PO MATERIAL.
   { id: "VND-SB-001", name: "PT KALTIM LESTARI UNGGUL", cat: "Baja & Pipa", onTime: 90, quality: 91, po: 9, status: "Aktif" },
 ];
@@ -42,6 +48,11 @@ export const seedRequisitions: StoreItem[] = [
   { id: "PR-2026-207", item: "Cat Epoxy", by: "Rudi H.", amount: 480000000, status: "Menunggu Approval" },
   { id: "PR-2026-209", item: "Wire Rope", by: "Sari W.", amount: 210000000, status: "RFQ" },
   { id: "PR-2026-211", item: "Anoda Zink", by: "Agus S.", amount: 94000000, status: "Menunggu Approval" },
+  // RawData: PR yang menjadi PO-SB (CONTOH HUTANG + FORMAT PO).
+  { id: "PR-SB-2024-006", item: "Besi WF (250/150/200)", by: "Fajar N.", amount: 27811050, status: "Sudah PO" },
+  { id: "PR-SB-2026-004", item: "PLAT 14MM", by: "Agus S.", amount: 36341622, status: "Sudah PO" },
+  { id: "PR-SB-2026-012", item: "SIKU PRESS + ROUNDBAR", by: "Agus S.", amount: 409492875, status: "Sudah PO" },
+  { id: "PR-SB-2026-036", item: "PLAT 12MM/8MM", by: "Fajar N.", amount: 982905000, status: "Sudah PO" },
 ];
 
 export const seedInspections: StoreItem[] = [
@@ -54,7 +65,7 @@ export const seedInspections: StoreItem[] = [
 
 export const seedBookings: StoreItem[] = [
   { equip: "Mobile Crane 100T", proyek: "NB-2025-012", jam: "08:00–17:00", status: "Terpakai", id: "BK-001", date: "2026-08-02" },
-  { equip: "Mesin Las MIG-12", proyek: "RP-2026-003", jam: "07:00–16:00", status: "Terpakai", id: "BK-002", date: "2026-08-02" },
+  { equip: "Mesin Las MIG", proyek: "RP-2026-003", jam: "07:00–16:00", status: "Terpakai", id: "BK-002", date: "2026-08-02" },
   { equip: "Forklift 10T", proyek: "RP-2026-005", jam: "09:00–15:00", status: "Terpakai", id: "BK-003", date: "2026-08-02" },
   { equip: "Gantry Crane 50T", proyek: "NB-2025-014", jam: "08:00–12:00", status: "Terjadwal", id: "BK-004", date: "2026-08-03" },
 ];
@@ -85,9 +96,14 @@ export const seedPayables: StoreItem[] = [
   { id: "AP-EX-026", v: "BFI Finance - Loader", po: "OPEN-0826", amt: 716950000, openAwal: 745628000, due: "2026-08-31", pph: "2%", st: "Belum Dibayar" },
   { id: "AP-EX-027", v: "BFI Finance - Truck", po: "OPEN-0826", amt: 129471000, openAwal: 151049500, due: "2026-08-31", pph: "2%", st: "Belum Dibayar" },
   // RawData CONTOH HUTANG (PT KALTIM LESTARI UNGGUL): bayar 2 tahap, No PO-SB, ref U/TK kapal.
-  { id: "AP-SB-001", v: "PT KALTIM LESTARI UNGGUL", po: "04/PO-SB/SMD/I/2026", amt: 36341622, openAwal: 36341622, due: "2026-04-30", pph: "2%", st: "Lunas", vessel: "U/TK. RMN 3317", item: "PLAT 14MM 2 lbr", pay1: 36341622, pay1date: "2026-04-17", pay2: 0, pay2date: "", paidAt: "2026-04-17" },
-  { id: "AP-SB-002", v: "PT KALTIM LESTARI UNGGUL", po: "12/PO-SB/SMD/I/2026", amt: 409492875, openAwal: 409492875, due: "2026-06-30", pph: "2%", st: "Lunas", vessel: "U/BG. KBT 26, BG. MEGA POWER 8, TB. KARYA STAR 35", item: "SIKU PRESS + ROUNDBAR", pay1: 309906340, pay1date: "2026-06-02", pay2: 99586535, pay2date: "2026-07-22", paidAt: "2026-07-22" },
-  { id: "AP-SB-003", v: "PT KALTIM LESTARI UNGGUL", po: "36/PO-SB/SMD/IV/2026", amt: 982905000, openAwal: 982905000, due: "2026-09-30", pph: "2%", st: "Belum Dibayar", vessel: "U/TK. ARTHA SARANA XI & U/TK. MHKL 35", item: "PLAT 12MM/8MM", pay1: 432000, pay1date: "2026-09-09", pay2: 0, pay2date: "" },
+  { id: "AP-SB-001", v: "PT KALTIM LESTARI UNGGUL", po: "PO-SB-2026-004 / 04/PO-SB/SMD/I/2026", amt: 36341622, openAwal: 36341622, due: "2026-04-30", pph: "2%", st: "Lunas", vessel: "U/TK. RMN 3317", item: "PLAT 14MM 2 lbr", pay1: 36341622, pay1date: "2026-04-17", pay2: 0, pay2date: "", paidAt: "2026-04-17" },
+  { id: "AP-SB-002", v: "PT KALTIM LESTARI UNGGUL", po: "PO-SB-2026-012 / 12/PO-SB/SMD/I/2026", amt: 409492875, openAwal: 409492875, due: "2026-06-30", pph: "2%", st: "Lunas", vessel: "U/BG. KBT 26, BG. MEGA POWER 8, TB. KARYA STAR 35", item: "SIKU PRESS + ROUNDBAR", pay1: 309906340, pay1date: "2026-06-02", pay2: 99586535, pay2date: "2026-07-22", paidAt: "2026-07-22" },
+  { id: "AP-SB-003", v: "PT KALTIM LESTARI UNGGUL", po: "PO-SB-2026-036 / 36/PO-SB/SMD/IV/2026", amt: 982905000, openAwal: 982905000, due: "2026-09-30", pph: "2%", st: "Belum Dibayar", vessel: "U/TK. ARTHA SARANA XI & U/TK. MHKL 35", item: "PLAT 12MM/8MM", pay1: 432000, pay1date: "2026-09-09", pay2: 0, pay2date: "" },
+  // Hutang dari GR runtime (PO-2026-116/117 → M-0902/M-0905).
+  { id: "AP-2026-116", v: "PT Jotun Indonesia", po: "PO-2026-116", amt: 480000000, openAwal: 480000000, due: "2026-08-28", pph: "2%", st: "Belum Dibayar", vessel: "-", item: "Cat Epoxy", pay1: 0, pay1date: "", pay2: 0, pay2date: "" },
+  { id: "AP-2026-117", v: "PT Steel Rig", po: "PO-2026-117", amt: 210000000, openAwal: 210000000, due: "2026-08-29", pph: "2%", st: "Belum Dibayar", vessel: "-", item: "Wire Rope", pay1: 0, pay1date: "", pay2: 0, pay2date: "" },
+  // Hutang neto termin Pak Yusuf (TRM-SB-001 lunas 298.500).
+  { id: "AP-SB-T1", v: "Pak Yusuf", po: "TERM-TRM-SB-001", amt: 298500, openAwal: 298500, due: "2026-09-15", pph: "Non-PPn", st: "Lunas", vessel: "BG RMN 3324", item: "Outfitting Deck BG RMN 3324", pay1: 298500, pay1date: "2026-09-01", pay2: 0, pay2date: "", paidAt: "2026-09-01" },
 ];
 
 // Seed dari docs/RawData/DataPencatatanFinance.xlsx — sheet Piutang, Agustus 2026.
@@ -132,9 +148,9 @@ export const seedInvoices: StoreItem[] = [
   { id: "INV/OPEN-2026-037", client: "PT Saha Agropalm Mandiri", project: "", amount: 812692000, openAwal: 841370000, due: "2026-08-31", status: "Belum Dibayar", paymentTerm: "Saldo Awal Agu-2026", billingType: "Saldo Awal", dunning: "Belum Ditagih", nonPpn: false },
   // RawData Invoice/CONTOH INVOICE.xlsx — 4 pola Jasa+Material. Rumus: TOTAL=J+M,
   // DPP=TOTAL×11/12, PPN=12%×DPP, PPh=2%×Jasa, Grand=TOTAL+PPN−PPh−DP.
-  { id: "INV-SB-2026-058", client: "PT PELAYARAN KARTIKA SAMUDRA ADIJAYA", project: "RP-2026-006", noInv: "058/INV-SB/SMD/IX/2026", vessel: "BG RMN 3324", jasaTotal: 808550650, matTotal: 711613605, amount: 1520164255, dpp: 1393483901, ppnAmt: 167218068, pphAmt: 16171013, dpApplied: 0, grandTotal: 1671211310, skdt: false, due: "2026-09-30", status: "Ditagih", paymentTerm: "NET 30", billingType: "Milestone", milestoneRef: "Pelunasan Docking & Repair BG RMN 3324", dunning: "Ditagih", nonPpn: false, date: "2026-09-01" },
-  { id: "INV-SB-2026-049", client: "PT PELAYARAN ROYLEA MARINE LINE", project: "RP-2026-007", noInv: "049/INV-SB/SMD/VII/2026", vessel: "AWB SEA HAVEN 2", jasaTotal: 1501469657, matTotal: 1357158023, amount: 2858627680, dpp: 2620408707, ppnAmt: 314449045, pphAmt: 30029393, dpApplied: 1098000000, dpRef: "045/INV-SB/SMD/VI/2026", grandTotal: 2045047332, skdt: false, due: "2026-08-13", status: "Ditagih", paymentTerm: "NET 30", billingType: "Milestone", milestoneRef: "Pelunasan V2 (potong DP-1)", dunning: "Ditagih", nonPpn: false, date: "2026-07-13" },
-  { id: "INV-SB-2026-037", client: "PT ALVI CIPTA SENTOSA", project: "RP-2026-008", noInv: "037/INV-SB/SMD/V/2026", vessel: "BG MHKL 35", jasaTotal: 184349645, matTotal: 543356806, amount: 727706451, dpp: 727706451, ppnAmt: 0, pphAmt: 3686993, dpApplied: 0, grandTotal: 724019458, skdt: true, due: "2026-06-08", status: "Ditagih", paymentTerm: "NET 30", billingType: "Milestone", milestoneRef: "Pelunasan BG MHKL 35 (SKDT, tanpa PPN)", dunning: "Ditagih", nonPpn: false, date: "2026-05-08" },
+  { id: "INV-SB-2026-058", client: "PT PELAYARAN KARTIKA SAMUDRA ADIJAYA", project: "RP-2026-006", noInv: "058/INV-SB/SMD/IX/2026", vessel: "BG RMN 3324", jasaTotal: 808550650, matTotal: 711613605, amount: 1520164255, dpp: 1393483901, ppnAmt: 167218068, pphAmt: 16171013, dpApplied: 0, grandTotal: 1671211310, skdt: false, due: "2026-09-30", status: "Belum Dibayar", paymentTerm: "NET 30", billingType: "Milestone", milestoneRef: "Pelunasan Docking & Repair BG RMN 3324", dunning: "Ditagih", nonPpn: false, date: "2026-09-01" },
+  { id: "INV-SB-2026-049", client: "PT PELAYARAN ROYLEA MARINE LINE", project: "RP-2026-007", noInv: "049/INV-SB/SMD/VII/2026", vessel: "AWB SEA HAVEN 2", jasaTotal: 1501469657, matTotal: 1357158023, amount: 2858627680, dpp: 2620408707, ppnAmt: 314449045, pphAmt: 30029393, dpApplied: 1098000000, dpRef: "045/INV-SB/SMD/VI/2026", grandTotal: 2045047332, skdt: false, due: "2026-08-13", status: "Belum Dibayar", paymentTerm: "NET 30", billingType: "Milestone", milestoneRef: "Pelunasan V2 (potong DP-1)", dunning: "Ditagih", nonPpn: false, date: "2026-07-13" },
+  { id: "INV-SB-2026-037", client: "PT ALVI CIPTA SENTOSA", project: "RP-2026-008", noInv: "037/INV-SB/SMD/V/2026", vessel: "BG MHKL 35", jasaTotal: 184349645, matTotal: 543356806, amount: 727706451, dpp: 727706451, ppnAmt: 0, pphAmt: 3686993, dpApplied: 0, grandTotal: 724019458, skdt: true, due: "2026-06-08", status: "Belum Dibayar", paymentTerm: "NET 30", billingType: "Milestone", milestoneRef: "Pelunasan BG MHKL 35 (SKDT, tanpa PPN)", dunning: "Ditagih", nonPpn: false, date: "2026-05-08" },
   { id: "INV-SB-2026-045", client: "PT PELAYARAN ROYLEA MARINE LINE", project: "RP-2026-007", noInv: "045/INV-SB/SMD/VI/2026", vessel: "AWB SEA HAVEN 2", jasaTotal: 600000000, matTotal: 400000000, amount: 1000000000, dpp: 916666667, ppnAmt: 110000000, pphAmt: 12000000, dpApplied: 0, grandTotal: 1098000000, skdt: false, due: "2026-07-25", status: "Lunas", paymentTerm: "NET 30", billingType: "Uang Muka", milestoneRef: "DP-1 AWB SEA HAVEN 2", dunning: "Ditagih", nonPpn: false, date: "2026-06-25", paidAt: "2026-07-10" },
 ];
 
@@ -145,12 +161,12 @@ export const seedDocuments: StoreItem[] = [
   { id: "DOC-004", title: "Certificate of Class — TB Karya Bahari 12", type: "Sertifikat", project: "RP-2026-003", vessel: "TB Karya Bahari 12", version: "2023", status: "Kedaluwarsa", updated: "2023-08-15", owner: "Sari Wulandari" },
   { id: "DOC-005", title: "Docking Report RP-2026-003", type: "Laporan", project: "RP-2026-003", vessel: "TB Karya Bahari 12", version: "v1.0", status: "Draft", updated: "2026-08-01", owner: "Rudi Hartono" },
   { id: "DOC-006", title: "Kontrak NB-2025-014 — TB Nusantara 22", type: "Kontrak", project: "NB-2025-014", vessel: "TB Nusantara 22", version: "v2.0", status: "Berlaku", updated: "2026-06-30", owner: "Andi Darman" },
-  { id: "DOC-007", title: "Sea Trial Procedure NB-2025-012", type: "Prosedur", project: "NB-2025-012", vessel: "TB Nusantara 22", version: "v1.0", status: "Menunggu Approval", updated: "2026-08-02", owner: "Budi Santoso" },
+  { id: "DOC-007", title: "Sea Trial Procedure NB-2025-012", type: "Prosedur", project: "NB-2025-012", vessel: "TB Samudra Jaya 07", version: "v1.0", status: "Diajukan", updated: "2026-08-02", owner: "Ir. Hendra Wijaya" },
   { id: "DOC-008", title: "Invoice INV/OPEN-2026-035 (Saldo Awal Piutang)", type: "Invoice", project: "-", vessel: "-", version: "v1.0", status: "Berlaku", updated: "2026-08-31", owner: "Dewi Lestari" },
-  { id: "DOC-009", title: "NCR-2026-031 Corrective Action", type: "NCR", project: "NB-2025-012", vessel: "TB Samudra Jaya 07", version: "v1.1", status: "Dalam Proses", updated: "2026-07-25", owner: "Sari Wulandari" },
+  { id: "DOC-009", title: "NCR-2026-031 Corrective Action", type: "NCR", project: "NB-2025-012", vessel: "TB Samudra Jaya 07", version: "v1.1", status: "Diajukan", updated: "2026-07-25", owner: "Sari Wulandari" },
   { id: "DOC-010", title: "Stability Booklet — TB Nusantara 22", type: "Drawing", project: "NB-2025-014", vessel: "TB Nusantara 22", version: "Rev A", status: "Disetujui", updated: "2026-07-10", owner: "Hendra Wijaya" },
   { id: "DOC-011", title: "HSE Plan 2026", type: "Prosedur", project: "-", vessel: "-", version: "v4.0", status: "Berlaku", updated: "2026-01-05", owner: "Sari Wulandari" },
-  { id: "DOC-012", title: "Quotation QT-2026-052", type: "Penawaran", project: "-", vessel: "TB Baru RJ-03", version: "v2.0", status: "Negosiasi", updated: "2026-07-20", owner: "Hendra Wijaya" },
+  { id: "DOC-012", title: "Quotation QT-2026-052", type: "Penawaran", project: "-", vessel: "TB Baru RJ-03", version: "v2.0", status: "Berlaku", updated: "2026-07-20", owner: "Ir. Hendra Wijaya" },
   // RawData: arsip operasional SB (DS + Surat Jalan + Tanda Terima BG RMN 3324).
   { id: "DS-SB-2026-001", title: "Dock Space — BG RMN 3324", type: "Dock Space", project: "RP-2026-006", vessel: "BG RMN 3324", version: "v1.0", status: "Berlaku", updated: "2026-08-10", owner: "Rudi Hartono", sbRef: "000/DS-SB/SMD/VIII/2026" },
   { id: "SJ-SMD-2026-001", title: "Surat Jalan — Material BG RMN 3324", type: "Surat Jalan", project: "RP-2026-006", vessel: "BG RMN 3324", version: "v1.0", status: "Berlaku", updated: "2026-08-15", owner: "Santi", sbRef: "001/SJ-SMD/SMD/VIII/2026" },
@@ -167,7 +183,7 @@ export const seedBranches: StoreItem[] = [
 ];
 
 export const seedAttendance: StoreItem[] = [
-  { id: "ABS-20260801-001", employeeId: "EMP-002", date: "2026-08-01", shift: "Pagi", status: "Hadir", checkIn: "07:55", checkOut: "17:05", overtime: 1 },
+  { id: "ABS-20260801-001", employeeId: "EMP-002", date: "2026-08-01", shift: "Pagi", status: "Hadir", checkIn: "07:55", checkOut: "17:05", overtime: 1, otStatus: "Disetujui" },
   { id: "ABS-20260801-002", employeeId: "EMP-004", date: "2026-08-01", shift: "Pagi", status: "Hadir", checkIn: "08:02", checkOut: "17:00", overtime: 0 },
   { id: "ABS-20260801-003", employeeId: "EMP-005", date: "2026-08-01", shift: "Siang", status: "Sakit", checkIn: "", checkOut: "", overtime: 0 },
   { id: "ABS-20260802-001", employeeId: "EMP-002", date: "2026-08-02", shift: "Pagi", status: "Hadir", checkIn: "07:50", checkOut: "19:30", overtime: 2.5 },
@@ -188,7 +204,7 @@ export const seedTaxPeriods: StoreItem[] = [
 
 export const seedRfqs: StoreItem[] = [
   { id: "RFQ-2026-031", prId: "PR-2026-207", item: "Cat Epoxy", vendors: ["PT Jotun Indonesia", "PT Bahana Baja", "PT Steel Rig"], quotes: [{ vendor: "PT Jotun Indonesia", price: 480000000, eta: "2026-08-12" }, { vendor: "PT Bahana Baja", price: 495000000, eta: "2026-08-10" }], status: "Evaluasi", winner: "" },
-  { id: "RFQ-2026-032", prId: "PR-2026-209", item: "Wire Rope", vendors: ["PT Steel Rig", "PT Primabaja"], quotes: [], status: "Terkirim", winner: "" },
+  { id: "RFQ-2026-032", prId: "PR-2026-209", item: "Wire Rope", vendors: ["PT Steel Rig", "PT Primabaja", "PT Bahana Baja"], quotes: [], status: "Terkirim", winner: "" },
 ];
 
 export const seedChangeOrders: StoreItem[] = [
@@ -212,8 +228,8 @@ export const seedTrainings: StoreItem[] = [
 ];
 
 export const seedTimesheets: StoreItem[] = [
-  { id: "TS-20260801-01", woId: "WO-2026-041", employeeId: "EMP-005", date: "2026-08-01", hours: 8, note: "Fabrikasi section 5" },
-  { id: "TS-20260801-02", woId: "WO-2026-043", employeeId: "EMP-004", date: "2026-08-01", hours: 6, note: "Overhaul cylinder 3" },
+  { id: "TS-20260801-01", woId: "WO-2026-041", employeeId: "EMP-005", date: "2026-08-01", hours: 8, note: "Fabrikasi section 5", status: "Disetujui", rate: 125000 },
+  { id: "TS-20260801-02", woId: "WO-2026-043", employeeId: "EMP-004", date: "2026-08-01", hours: 6, note: "Overhaul cylinder 3", status: "Disetujui", rate: 150000 },
 ];
 
 export const seedDrawings: StoreItem[] = [
@@ -248,9 +264,14 @@ export const seedBast: StoreItem[] = [
   { id: "BAST-SMD-2026-003", projectId: "RP-2026-006", milestone: "Docking & Repair BG RMN 3324", tanggal: "2026-09-01", penandatangan: "Rudi Hartono / Owner BG RMN 3324", lampiran: "Docking report + invoice 058/INV-SB/SMD/IX/2026", amount: 1671211310, status: "Diajukan" },
 ];
 
-export const seedTrials: StoreItem[] = [];
+export const seedTrials: StoreItem[] = [
+  { id: "TRIAL-001", projectId: "RP-2026-003", parameter: "Speed & bollard pull trial", tanggal: "2026-08-20", hasil: "Lulus", punchList: [], baRef: "BAST-SMD-2026-002" },
+];
 export const seedRequests: StoreItem[] = [
   { id: "REQ-2026-001", vessel: "TB Karya Bahari 12", client: "PT Karya Bahari Sejahtera", kind: "Repair Request", scope: "Overhaul main engine + coating lambung", value: 4200000000, status: "Baru", date: "2026-08-01" },
   { id: "REQ-SB-001", vessel: "AWB SEA HAVEN 2", client: "PT PELAYARAN ROYLEA MARINE LINE", kind: "Repair Request", scope: "Docking + repair (DP-1 → pelunasan V2)", value: 3143047332, status: "Disetujui", date: "2026-06-20" },
+  { id: "REQ-SB-002", vessel: "BG RMN 3324", client: "PT PELAYARAN KARTIKA SAMUDRA ADIJAYA", kind: "Repair Request", scope: "Docking/Undocking & Repair BG RMN 3324", value: 1671211310, status: "Disetujui", date: "2026-07-20" },
 ];
-export const seedClientPos: StoreItem[] = [];
+export const seedClientPos: StoreItem[] = [
+  { id: "CPO-SB-001", contractId: "KTR-SB-001", projectId: "RP-2026-006", no: "PO-KTR-001/SB/VIII/2026", amount: 1671211310, date: "2026-08-01" },
+];

@@ -1,5 +1,5 @@
 // GENERATED — jangan edit manual. Dibuat oleh `npm run seed:mirror`
-// dari apps/web/src/data/seeds.ts + data/index.ts (273 baris).
+// dari apps/web/src/data/seeds.ts + data/index.ts (295 baris).
 export interface MirrorRow {
   table: string;
   id: string;
@@ -87,7 +87,8 @@ export const FE_MIRROR_ROWS: MirrorRow[] = [
     "branch": "",
     "data": {
       "sub": "PT Baja Utama Steel",
-      "progress": "WO-041 (70%)",
+      "woId": "WO-2026-041",
+      "progress": "WO-2026-041 (70%)",
       "amount": 2100000000,
       "pph23": "2%",
       "retention": "5%",
@@ -100,7 +101,8 @@ export const FE_MIRROR_ROWS: MirrorRow[] = [
     "branch": "",
     "data": {
       "sub": "PT Mesinindo Perkasa",
-      "progress": "WO-043 (40%)",
+      "woId": "WO-2026-043",
+      "progress": "WO-2026-043 (40%)",
       "amount": 1568000000,
       "pph23": "2%",
       "retention": "5%",
@@ -113,7 +115,8 @@ export const FE_MIRROR_ROWS: MirrorRow[] = [
     "branch": "",
     "data": {
       "sub": "CV Scaffold Aman",
-      "progress": "WO-044 (100%)",
+      "woId": "WO-2026-044",
+      "progress": "WO-2026-044 (100%)",
       "amount": 450000000,
       "pph23": "2%",
       "retention": "5%",
@@ -126,7 +129,8 @@ export const FE_MIRROR_ROWS: MirrorRow[] = [
     "branch": "",
     "data": {
       "sub": "CV Pengecatan Marine",
-      "progress": "WO-042 (55%)",
+      "woId": "WO-2026-042",
+      "progress": "WO-2026-042 (55%)",
       "amount": 940000000,
       "pph23": "2%",
       "retention": "5%",
@@ -155,7 +159,7 @@ export const FE_MIRROR_ROWS: MirrorRow[] = [
   },
   {
     "table": "vendors",
-    "id": "V-001",
+    "id": "VND-001",
     "branch": "",
     "data": {
       "name": "PT Bahana Baja",
@@ -168,7 +172,7 @@ export const FE_MIRROR_ROWS: MirrorRow[] = [
   },
   {
     "table": "vendors",
-    "id": "V-002",
+    "id": "VND-002",
     "branch": "",
     "data": {
       "name": "PT Indo Diesel",
@@ -181,7 +185,7 @@ export const FE_MIRROR_ROWS: MirrorRow[] = [
   },
   {
     "table": "vendors",
-    "id": "V-003",
+    "id": "VND-003",
     "branch": "",
     "data": {
       "name": "PT Jotun Indonesia",
@@ -194,7 +198,7 @@ export const FE_MIRROR_ROWS: MirrorRow[] = [
   },
   {
     "table": "vendors",
-    "id": "V-004",
+    "id": "VND-004",
     "branch": "",
     "data": {
       "name": "PT Steel Rig",
@@ -207,7 +211,7 @@ export const FE_MIRROR_ROWS: MirrorRow[] = [
   },
   {
     "table": "vendors",
-    "id": "V-005",
+    "id": "VND-005",
     "branch": "",
     "data": {
       "name": "PT Primabaja",
@@ -215,6 +219,71 @@ export const FE_MIRROR_ROWS: MirrorRow[] = [
       "onTime": 81,
       "quality": 86,
       "po": 3,
+      "status": "Kualifikasi"
+    }
+  },
+  {
+    "table": "vendors",
+    "id": "VND-041",
+    "branch": "",
+    "data": {
+      "name": "PT Baja Utama Steel",
+      "cat": "Fabrikasi & Blasting",
+      "onTime": 90,
+      "quality": 90,
+      "po": 4,
+      "status": "Aktif"
+    }
+  },
+  {
+    "table": "vendors",
+    "id": "VND-042",
+    "branch": "",
+    "data": {
+      "name": "CV Pengecatan Marine",
+      "cat": "Pengecatan / Coating",
+      "onTime": 84,
+      "quality": 84,
+      "po": 2,
+      "status": "Aktif"
+    }
+  },
+  {
+    "table": "vendors",
+    "id": "VND-043",
+    "branch": "",
+    "data": {
+      "name": "PT Mesinindo Perkasa",
+      "cat": "Overhaul Mesin",
+      "onTime": 88,
+      "quality": 88,
+      "po": 3,
+      "status": "Aktif"
+    }
+  },
+  {
+    "table": "vendors",
+    "id": "VND-044",
+    "branch": "",
+    "data": {
+      "name": "CV Scaffold Aman",
+      "cat": "Perancah & Staging",
+      "onTime": 92,
+      "quality": 92,
+      "po": 2,
+      "status": "Aktif"
+    }
+  },
+  {
+    "table": "vendors",
+    "id": "VND-045",
+    "branch": "",
+    "data": {
+      "name": "PT Kelistrikan Bahari",
+      "cat": "Elektrikal & Panel",
+      "onTime": 76,
+      "quality": 76,
+      "po": 1,
       "status": "Kualifikasi"
     }
   },
@@ -284,6 +353,50 @@ export const FE_MIRROR_ROWS: MirrorRow[] = [
       "by": "Agus S.",
       "amount": 94000000,
       "status": "Menunggu Approval"
+    }
+  },
+  {
+    "table": "requisitions",
+    "id": "PR-SB-2024-006",
+    "branch": "",
+    "data": {
+      "item": "Besi WF (250/150/200)",
+      "by": "Fajar N.",
+      "amount": 27811050,
+      "status": "Sudah PO"
+    }
+  },
+  {
+    "table": "requisitions",
+    "id": "PR-SB-2026-004",
+    "branch": "",
+    "data": {
+      "item": "PLAT 14MM",
+      "by": "Agus S.",
+      "amount": 36341622,
+      "status": "Sudah PO"
+    }
+  },
+  {
+    "table": "requisitions",
+    "id": "PR-SB-2026-012",
+    "branch": "",
+    "data": {
+      "item": "SIKU PRESS + ROUNDBAR",
+      "by": "Agus S.",
+      "amount": 409492875,
+      "status": "Sudah PO"
+    }
+  },
+  {
+    "table": "requisitions",
+    "id": "PR-SB-2026-036",
+    "branch": "",
+    "data": {
+      "item": "PLAT 12MM/8MM",
+      "by": "Fajar N.",
+      "amount": 982905000,
+      "status": "Sudah PO"
     }
   },
   {
@@ -363,7 +476,7 @@ export const FE_MIRROR_ROWS: MirrorRow[] = [
     "id": "BK-002",
     "branch": "",
     "data": {
-      "equip": "Mesin Las MIG-12",
+      "equip": "Mesin Las MIG",
       "proyek": "RP-2026-003",
       "jam": "07:00–16:00",
       "status": "Terpakai",
@@ -708,7 +821,7 @@ export const FE_MIRROR_ROWS: MirrorRow[] = [
     "branch": "",
     "data": {
       "v": "PT KALTIM LESTARI UNGGUL",
-      "po": "04/PO-SB/SMD/I/2026",
+      "po": "PO-SB-2026-004 / 04/PO-SB/SMD/I/2026",
       "amt": 36341622,
       "openAwal": 36341622,
       "due": "2026-04-30",
@@ -729,7 +842,7 @@ export const FE_MIRROR_ROWS: MirrorRow[] = [
     "branch": "",
     "data": {
       "v": "PT KALTIM LESTARI UNGGUL",
-      "po": "12/PO-SB/SMD/I/2026",
+      "po": "PO-SB-2026-012 / 12/PO-SB/SMD/I/2026",
       "amt": 409492875,
       "openAwal": 409492875,
       "due": "2026-06-30",
@@ -750,7 +863,7 @@ export const FE_MIRROR_ROWS: MirrorRow[] = [
     "branch": "",
     "data": {
       "v": "PT KALTIM LESTARI UNGGUL",
-      "po": "36/PO-SB/SMD/IV/2026",
+      "po": "PO-SB-2026-036 / 36/PO-SB/SMD/IV/2026",
       "amt": 982905000,
       "openAwal": 982905000,
       "due": "2026-09-30",
@@ -762,6 +875,67 @@ export const FE_MIRROR_ROWS: MirrorRow[] = [
       "pay1date": "2026-09-09",
       "pay2": 0,
       "pay2date": ""
+    }
+  },
+  {
+    "table": "payables",
+    "id": "AP-2026-116",
+    "branch": "",
+    "data": {
+      "v": "PT Jotun Indonesia",
+      "po": "PO-2026-116",
+      "amt": 480000000,
+      "openAwal": 480000000,
+      "due": "2026-08-28",
+      "pph": "2%",
+      "st": "Belum Dibayar",
+      "vessel": "-",
+      "item": "Cat Epoxy",
+      "pay1": 0,
+      "pay1date": "",
+      "pay2": 0,
+      "pay2date": ""
+    }
+  },
+  {
+    "table": "payables",
+    "id": "AP-2026-117",
+    "branch": "",
+    "data": {
+      "v": "PT Steel Rig",
+      "po": "PO-2026-117",
+      "amt": 210000000,
+      "openAwal": 210000000,
+      "due": "2026-08-29",
+      "pph": "2%",
+      "st": "Belum Dibayar",
+      "vessel": "-",
+      "item": "Wire Rope",
+      "pay1": 0,
+      "pay1date": "",
+      "pay2": 0,
+      "pay2date": ""
+    }
+  },
+  {
+    "table": "payables",
+    "id": "AP-SB-T1",
+    "branch": "",
+    "data": {
+      "v": "Pak Yusuf",
+      "po": "TERM-TRM-SB-001",
+      "amt": 298500,
+      "openAwal": 298500,
+      "due": "2026-09-15",
+      "pph": "Non-PPn",
+      "st": "Lunas",
+      "vessel": "BG RMN 3324",
+      "item": "Outfitting Deck BG RMN 3324",
+      "pay1": 298500,
+      "pay1date": "2026-09-01",
+      "pay2": 0,
+      "pay2date": "",
+      "paidAt": "2026-09-01"
     }
   },
   {
@@ -1412,7 +1586,7 @@ export const FE_MIRROR_ROWS: MirrorRow[] = [
       "grandTotal": 1671211310,
       "skdt": false,
       "due": "2026-09-30",
-      "status": "Ditagih",
+      "status": "Belum Dibayar",
       "paymentTerm": "NET 30",
       "billingType": "Milestone",
       "milestoneRef": "Pelunasan Docking & Repair BG RMN 3324",
@@ -1441,7 +1615,7 @@ export const FE_MIRROR_ROWS: MirrorRow[] = [
       "grandTotal": 2045047332,
       "skdt": false,
       "due": "2026-08-13",
-      "status": "Ditagih",
+      "status": "Belum Dibayar",
       "paymentTerm": "NET 30",
       "billingType": "Milestone",
       "milestoneRef": "Pelunasan V2 (potong DP-1)",
@@ -1469,7 +1643,7 @@ export const FE_MIRROR_ROWS: MirrorRow[] = [
       "grandTotal": 724019458,
       "skdt": true,
       "due": "2026-06-08",
-      "status": "Ditagih",
+      "status": "Belum Dibayar",
       "paymentTerm": "NET 30",
       "billingType": "Milestone",
       "milestoneRef": "Pelunasan BG MHKL 35 (SKDT, tanpa PPN)",
@@ -1605,11 +1779,11 @@ export const FE_MIRROR_ROWS: MirrorRow[] = [
       "title": "Sea Trial Procedure NB-2025-012",
       "type": "Prosedur",
       "project": "NB-2025-012",
-      "vessel": "TB Nusantara 22",
+      "vessel": "TB Samudra Jaya 07",
       "version": "v1.0",
-      "status": "Menunggu Approval",
+      "status": "Diajukan",
       "updated": "2026-08-02",
-      "owner": "Budi Santoso"
+      "owner": "Ir. Hendra Wijaya"
     }
   },
   {
@@ -1637,7 +1811,7 @@ export const FE_MIRROR_ROWS: MirrorRow[] = [
       "project": "NB-2025-012",
       "vessel": "TB Samudra Jaya 07",
       "version": "v1.1",
-      "status": "Dalam Proses",
+      "status": "Diajukan",
       "updated": "2026-07-25",
       "owner": "Sari Wulandari"
     }
@@ -1682,9 +1856,9 @@ export const FE_MIRROR_ROWS: MirrorRow[] = [
       "project": "-",
       "vessel": "TB Baru RJ-03",
       "version": "v2.0",
-      "status": "Negosiasi",
+      "status": "Berlaku",
       "updated": "2026-07-20",
-      "owner": "Hendra Wijaya"
+      "owner": "Ir. Hendra Wijaya"
     }
   },
   {
@@ -1776,7 +1950,8 @@ export const FE_MIRROR_ROWS: MirrorRow[] = [
       "status": "Hadir",
       "checkIn": "07:55",
       "checkOut": "17:05",
-      "overtime": 1
+      "overtime": 1,
+      "otStatus": "Disetujui"
     }
   },
   {
@@ -1956,7 +2131,8 @@ export const FE_MIRROR_ROWS: MirrorRow[] = [
       "item": "Wire Rope",
       "vendors": [
         "PT Steel Rig",
-        "PT Primabaja"
+        "PT Primabaja",
+        "PT Bahana Baja"
       ],
       "quotes": [],
       "status": "Terkirim",
@@ -2082,7 +2258,9 @@ export const FE_MIRROR_ROWS: MirrorRow[] = [
       "employeeId": "EMP-005",
       "date": "2026-08-01",
       "hours": 8,
-      "note": "Fabrikasi section 5"
+      "note": "Fabrikasi section 5",
+      "status": "Disetujui",
+      "rate": 125000
     }
   },
   {
@@ -2094,7 +2272,9 @@ export const FE_MIRROR_ROWS: MirrorRow[] = [
       "employeeId": "EMP-004",
       "date": "2026-08-01",
       "hours": 6,
-      "note": "Overhaul cylinder 3"
+      "note": "Overhaul cylinder 3",
+      "status": "Disetujui",
+      "rate": 150000
     }
   },
   {
@@ -2276,6 +2456,19 @@ export const FE_MIRROR_ROWS: MirrorRow[] = [
     }
   },
   {
+    "table": "trials",
+    "id": "TRIAL-001",
+    "branch": "",
+    "data": {
+      "projectId": "RP-2026-003",
+      "parameter": "Speed & bollard pull trial",
+      "tanggal": "2026-08-20",
+      "hasil": "Lulus",
+      "punchList": [],
+      "baRef": "BAST-SMD-2026-002"
+    }
+  },
+  {
     "table": "requests",
     "id": "REQ-2026-001",
     "branch": "",
@@ -2301,6 +2494,32 @@ export const FE_MIRROR_ROWS: MirrorRow[] = [
       "value": 3143047332,
       "status": "Disetujui",
       "date": "2026-06-20"
+    }
+  },
+  {
+    "table": "requests",
+    "id": "REQ-SB-002",
+    "branch": "",
+    "data": {
+      "vessel": "BG RMN 3324",
+      "client": "PT PELAYARAN KARTIKA SAMUDRA ADIJAYA",
+      "kind": "Repair Request",
+      "scope": "Docking/Undocking & Repair BG RMN 3324",
+      "value": 1671211310,
+      "status": "Disetujui",
+      "date": "2026-07-20"
+    }
+  },
+  {
+    "table": "clientPos",
+    "id": "CPO-SB-001",
+    "branch": "",
+    "data": {
+      "contractId": "KTR-SB-001",
+      "projectId": "RP-2026-006",
+      "no": "PO-KTR-001/SB/VIII/2026",
+      "amount": 1671211310,
+      "date": "2026-08-01"
     }
   },
   {
@@ -2766,12 +2985,120 @@ export const FE_MIRROR_ROWS: MirrorRow[] = [
       "beam": 8,
       "draft": 3.5,
       "bollard": 0,
-      "status": "Selesai",
+      "status": "Dalam Operasi",
       "certificates": [],
       "history": [
         {
           "date": "2026-05-08",
           "event": "Pelunasan SKDT",
+          "type": "Delivery"
+        }
+      ]
+    }
+  },
+  {
+    "table": "vessels",
+    "id": "V-004",
+    "branch": "",
+    "data": {
+      "name": "TB Samudra Jaya 04",
+      "imo": "IMO 9934567",
+      "type": "Tugboat ASD 2x1400 HP",
+      "class": "BKI",
+      "flag": "Indonesia",
+      "built": 2021,
+      "owner": "PT Samudra Jaya Perkasa",
+      "loa": 30.2,
+      "beam": 9.5,
+      "draft": 4.1,
+      "bollard": 42,
+      "status": "Dalam Docking",
+      "certificates": [],
+      "history": [
+        {
+          "date": "2026-06-20",
+          "event": "Masuk program repair RP-2026-005",
+          "type": "Docking"
+        }
+      ]
+    }
+  },
+  {
+    "table": "vessels",
+    "id": "V-005",
+    "branch": "",
+    "data": {
+      "name": "TB Karya Bahari 15",
+      "imo": "IMO 9945678",
+      "type": "Tugboat ASD 2x1500 HP",
+      "class": "BKI",
+      "flag": "Indonesia",
+      "built": 2022,
+      "owner": "PT Karya Bahari Sejahtera",
+      "loa": 30.8,
+      "beam": 9.6,
+      "draft": 4.2,
+      "bollard": 44,
+      "status": "Dalam Operasi",
+      "certificates": [],
+      "history": [
+        {
+          "date": "2026-05-01",
+          "event": "Mulai retrofit RF-2026-001",
+          "type": "Kontrak"
+        }
+      ]
+    }
+  },
+  {
+    "table": "vessels",
+    "id": "V-006",
+    "branch": "",
+    "data": {
+      "name": "TB Laut Timur 01",
+      "imo": "IMO 9956789",
+      "type": "Tugboat ASD 2x1600 HP",
+      "class": "BKI",
+      "flag": "Indonesia",
+      "built": 2026,
+      "owner": "PT Laut Timur Mandiri",
+      "loa": 31,
+      "beam": 9.8,
+      "draft": 4.2,
+      "bollard": 46,
+      "status": "Dalam Pembangunan",
+      "certificates": [],
+      "history": [
+        {
+          "date": "2026-02-01",
+          "event": "Keel laying NB-2026-001",
+          "type": "Produksi"
+        }
+      ]
+    }
+  },
+  {
+    "table": "vessels",
+    "id": "V-007",
+    "branch": "",
+    "data": {
+      "name": "TB Mitra Raya 09",
+      "imo": "IMO 9967890",
+      "type": "Tugboat ASD 2x1300 HP",
+      "class": "BKI",
+      "flag": "Indonesia",
+      "built": 2020,
+      "owner": "PT Mitra Samudra Raya",
+      "loa": 29.8,
+      "beam": 9.4,
+      "draft": 4,
+      "bollard": 40,
+      "status": "Dalam Operasi",
+      "certificates": [],
+      "history": [
+        {
+          "date": "2026-06-28",
+          "event": "Serah terima RP-2026-002",
           "type": "Delivery"
         }
       ]
@@ -2874,7 +3201,7 @@ export const FE_MIRROR_ROWS: MirrorRow[] = [
     "id": "S5",
     "branch": "",
     "data": {
-      "dockId": "BH-1",
+      "dockId": "SL-1",
       "project": "NB-2025-014",
       "vessel": "TB Nusantara 22",
       "from": 10,
@@ -3753,6 +4080,66 @@ export const FE_MIRROR_ROWS: MirrorRow[] = [
     }
   },
   {
+    "table": "purchaseOrders",
+    "id": "PO-SB-2026-004",
+    "branch": "",
+    "data": {
+      "item": "PLAT 14MM",
+      "vendor": "PT KALTIM LESTARI UNGGUL",
+      "req": "PR-SB-2026-004",
+      "amount": 36341622,
+      "qty": 2,
+      "unit": "lbr",
+      "status": "Diterima",
+      "date": "2026-01-07",
+      "docNo": "04/PO-SB/SMD/I/2026",
+      "vessel": "U/TK. RMN 3317",
+      "includePpn": true,
+      "tujuan": "kapal",
+      "receivedQty": 2
+    }
+  },
+  {
+    "table": "purchaseOrders",
+    "id": "PO-SB-2026-012",
+    "branch": "",
+    "data": {
+      "item": "SIKU PRESS + ROUNDBAR",
+      "vendor": "PT KALTIM LESTARI UNGGUL",
+      "req": "PR-SB-2026-012",
+      "amount": 409492875,
+      "qty": 130,
+      "unit": "btg",
+      "status": "Diterima",
+      "date": "2026-01-29",
+      "docNo": "12/PO-SB/SMD/I/2026",
+      "vessel": "U/BG. KBT 26",
+      "includePpn": true,
+      "tujuan": "kapal",
+      "receivedQty": 130
+    }
+  },
+  {
+    "table": "purchaseOrders",
+    "id": "PO-SB-2026-036",
+    "branch": "",
+    "data": {
+      "item": "PLAT 12MM/8MM",
+      "vendor": "PT KALTIM LESTARI UNGGUL",
+      "req": "PR-SB-2026-036",
+      "amount": 982905000,
+      "qty": 75,
+      "unit": "lbr",
+      "status": "Diterima",
+      "date": "2026-04-15",
+      "docNo": "36/PO-SB/SMD/IV/2026",
+      "vessel": "U/TK. ARTHA SARANA XI",
+      "includePpn": true,
+      "tujuan": "kapal",
+      "receivedQty": 75
+    }
+  },
+  {
     "table": "quotations",
     "id": "QT-2026-052",
     "branch": "",
@@ -3796,7 +4183,7 @@ export const FE_MIRROR_ROWS: MirrorRow[] = [
     "id": "QT-2026-055",
     "branch": "",
     "data": {
-      "client": "PT Pelayaran Nusantara",
+      "client": "PT Pelayaran Nusantara Abadi",
       "vessel": "TB PN-05 Retrofit",
       "type": "Retrofit",
       "value": 8200000000,
@@ -3814,7 +4201,8 @@ export const FE_MIRROR_ROWS: MirrorRow[] = [
       "type": "Repair",
       "value": 1671211310,
       "stage": "Menang",
-      "date": "2026-07-28"
+      "date": "2026-07-28",
+      "requestId": "REQ-SB-002"
     }
   },
   {
@@ -3949,7 +4337,7 @@ export const FE_MIRROR_ROWS: MirrorRow[] = [
     "id": "M-0904",
     "branch": "",
     "data": {
-      "item": "Kabel Listrik 4x50",
+      "item": "Kabel Listrik Marine 4x50",
       "type": "Pengeluaran",
       "qty": 540,
       "by": "RF-2026-001",
@@ -3962,7 +4350,7 @@ export const FE_MIRROR_ROWS: MirrorRow[] = [
     "id": "M-0905",
     "branch": "",
     "data": {
-      "item": "Wire Rope",
+      "item": "Winch Wire Rope",
       "type": "Penerimaan",
       "qty": 3,
       "by": "PO-2026-117",
@@ -3988,7 +4376,7 @@ export const FE_MIRROR_ROWS: MirrorRow[] = [
     "id": "M-0907",
     "branch": "",
     "data": {
-      "item": "Mesin Bantu (Aux)",
+      "item": "Mesin Bantu (Aux Engine)",
       "type": "Penerimaan",
       "qty": 1,
       "by": "PO-2026-115",
@@ -4038,7 +4426,8 @@ export const FE_MIRROR_ROWS: MirrorRow[] = [
       "type": "Special Survey",
       "status": "Terjadwal",
       "date": "2026-08-25",
-      "classSurveyor": "BKI"
+      "classSurveyor": "BKI",
+      "linkedTrial": "TRIAL-001"
     }
   },
   {

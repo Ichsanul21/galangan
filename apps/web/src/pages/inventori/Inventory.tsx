@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import {
   Plus,
@@ -37,7 +37,8 @@ import { isBackendConfigured } from "../../services/http";
 import { uploadFile } from "../../services/upload";
 import { fmtJumlah, fmtRupiah, fmtMiliar, fmtTanggal, todayISO } from "../../utils/format";
 import { exportExcel } from "../../utils/export";
-import { sbTonasePlat, sbSjNumber, maxSeq, parseSjSeq, SB_KOP } from "../../utils/sb";
+import { sbTonasePlat, sbSjNumber, sbTtNumber, maxSeq, parseSjSeq, SB_KOP } from "../../utils/sb";
+import { AlertBannerView, notifRowId, useModuleAlert } from "../../components/AlertBanner";
 import { stockTrend, itemTrend, lowStockTrend, stockValueTrend, warehouseTrend } from "../../data";
 
 const emptyForm = { name: "", category: "Baja", sku: "", warehouse: "Gudang Baja A", rack: "", bin: "", stock: "0", minStock: "0", unit: "pcs", cost: "0", volume: "0", batch: "", uom2: "", konversi: "", minWh: "", photoUrl: "" };
@@ -289,6 +290,7 @@ export default function Inventory() {
   const movements = data.movements;
   const projects = data.projects;
   const requisitions = data.requisitions;
+  const modAlert = useModuleAlert("inventori");
   const [tab, setTab] = useState("Katalog");
   const [q, setQ] = useState("");
   const [showScan, setShowScan] = useState(false);
@@ -353,6 +355,22 @@ export default function Inventory() {
     return maxSeq(nums.map(String), /(\d+)$/) + 1;
   };
   const sjYearOf = (iso: string): number => Number(String(iso ?? "").slice(0, 4)) || new Date().getFullYear();
+  // Tanda Terima (form RawData TANDA TERIMA: kop SB + penerima/penyerah + link SJ).
+  const [ttDate, setTtDate] = useState(todayISO());
+  const [ttSjId, setTtSjId] = useState("");
+  const [ttItems, setTtItems] = useState<{ name: string; qty: string }[]>([{ name: "", qty: "" }]);
+  const [ttReceiver, setTtReceiver] = useState("");
+  const [ttGiver, setTtGiver] = useState("");
+  const sjDocs = useMemo(
+    () => (data.documents ?? []).filter((d) => d.type === "Surat Jalan"),
+    [data.documents],
+  );
+  /* TT max+1: scan dash ids + sbRef via trailing digits (TT-SMD-YYYY-nnn). */
+  const nextTtSeq = (): number => {
+    const docs = (data.documents ?? []).filter((d) => d.type === "Tanda Terima");
+    const nums = docs.flatMap((d) => [parseSjSeq(d.sbRef), parseSjSeq(d.id)]);
+    return maxSeq(nums.map(String), /(\d+)$/) + 1;
+  };
   const [showPick, setShowPick] = useState(false);
   const [pickProject, setPickProject] = useState("");
   const [pickSel, setPickSel] = useState<string[]>([]);
@@ -1020,9 +1038,10 @@ export default function Inventory() {
         }
       />
 
+      {modAlert.active && <AlertBannerView items={modAlert.items} onClose={modAlert.dismiss} />}
+
       <div className="mb-4 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <KpiCard label="Total Item Aktif" value={String(inventory.length)} icon={<Package className="h-5 w-5" />} chip="navy" spark={itemTrend} hint="Katalog keseluruhan" />
-        <KpiCard label="Item Stok Menipis" value={String(lowStock.length)} delta="Perlu reorder" deltaDirection="down" icon={<AlertTriangle className="h-5 w-5" />} chip="rose" spark={lowStockTrend} />
+        <KpiCard label="Total Item Aktif" value={String(inventory.length)} icon={<Package className="h-5 w-5" />} chip="navy" spark={itemTrend} hint="Katalog keseluruhan" />        <KpiCard label="Item Stok Menipis" value={String(lowStock.length)} delta="Perlu reorder" deltaDirection="down" icon={<AlertTriangle className="h-5 w-5" />} chip="rose" spark={lowStockTrend} />
         <KpiCard label="Nilai Stok" value={fmtMiliar(totalValue)} hint="Basis average cost total" icon={<Package className="h-5 w-5" />} chip="teal" spark={stockValueTrend} />
         <KpiCard label="Gudang" value={`${warehouses.length} lokasi`} hint={warehouses.slice(0, 3).join(", ")} chip="violet" spark={warehouseTrend} />
       </div>
@@ -1109,7 +1128,7 @@ export default function Inventory() {
                       const conv = convOf(i);
                       const u2 = uom2Of(i);
                       return (
-                        <tr key={i.id} className="hover:bg-surface">
+                        <tr key={i.id} id={notifRowId(String(i.id))} className={modAlert.highlight.has(String(i.id)) ? "notif-hl hover:bg-surface" : "hover:bg-surface"}>
                           <td className="td">
                             <p className="font-medium text-navy-900 truncate" title={String(i.name)}>{i.name}</p>
                             <p className="text-xs text-steel-500 font-mono">{i.sku}</p>
@@ -1391,6 +1410,61 @@ export default function Inventory() {
                     toast(`Surat jalan ${no} diterbitkan + diekspor`);
                     setSjTo(""); setSjVehicle(""); setSjPlate(""); setSjDriver("");
                     setSjItems([{ name: "", qty: "" }]); setSjReceiver(""); setSjGiver("");
+                  }}>
+                    Terbitkan + Cetak (kop SB)
+                  </button>
+                </div>
+              </Card>
+              <Card className="p-5">
+                <CardHeader title="Tanda Terima" subtitle="Form RawData: kop SB + link Surat Jalan + penerima/penyerah" />
+                <div className="mt-3 space-y-3">
+                  <FormGrid>
+                    <Field label="Tanggal"><input type="date" className="input" value={ttDate} onChange={(e) => setTtDate(e.target.value)} /></Field>
+                    <Field label="Surat Jalan terkait"><select className="input" value={ttSjId} onChange={(e) => setTtSjId(e.target.value)}>
+                      <option value="">— Tanpa SJ —</option>
+                      {sjDocs.map((d) => <option key={String(d.id)} value={String(d.id)}>{String(d.sbRef || d.id)} · {String(d.title)}</option>)}
+                    </select></Field>
+                    <Field label="No. Ref"><input className="input font-mono" value={sbTtNumber(nextTtSeq(), sjYearOf(ttDate))} readOnly /></Field>
+                  </FormGrid>
+                  {ttItems.map((it, idx) => (
+                    <div key={idx} className="grid grid-cols-12 gap-2">
+                      <input className="input col-span-8" placeholder={`Barang ${idx + 1}`} value={it.name} onChange={(e) => setTtItems((s) => s.map((x, i) => (i === idx ? { ...x, name: e.target.value } : x)))} />
+                      <input className="input col-span-3" placeholder="Jumlah" value={it.qty} onChange={(e) => setTtItems((s) => s.map((x, i) => (i === idx ? { ...x, qty: e.target.value } : x)))} />
+                      <button className="btn-secondary col-span-1 text-xs" aria-label={`Hapus baris TT ${idx + 1}`} onClick={() => setTtItems((s) => s.filter((_, i) => i !== idx))}>×</button>
+                    </div>
+                  ))}
+                  <button className="btn-secondary text-xs" onClick={() => setTtItems((s) => [...s, { name: "", qty: "" }])}>+ Baris barang</button>
+                  <FormGrid>
+                    <Field label="Yang menerima"><input className="input" value={ttReceiver} onChange={(e) => setTtReceiver(e.target.value)} /></Field>
+                    <Field label="Yang menyerahkan"><input className="input" value={ttGiver} onChange={(e) => setTtGiver(e.target.value)} /></Field>
+                  </FormGrid>
+                  <button className="btn-primary w-full justify-center" onClick={async () => {
+                    const items = ttItems.filter((x) => x.name.trim() && x.qty.trim());
+                    if (items.length === 0) { toast("Minimal 1 barang wajib diisi", "info"); return; }
+                    const seq = nextTtSeq();
+                    const no = sbTtNumber(seq, sjYearOf(ttDate));
+                    const sj = sjDocs.find((d) => String(d.id) === ttSjId);
+                    await add("documents", {
+                      id: `TT-SMD-${sjYearOf(ttDate)}-${String(seq).padStart(3, "0")}`,
+                      title: `Tanda Terima ${sj ? `(${String(sj.sbRef || sj.id)})` : ""}`.trim() || "Tanda Terima",
+                      type: "Tanda Terima", project: "-", vessel: "-",
+                      owner: ttGiver.trim() || "Anda", sbRef: no,
+                      ttDate, ttSjId: ttSjId || "", ttItems: items,
+                      ttReceiver: ttReceiver.trim(), ttGiver: ttGiver.trim(),
+                      version: "v1.0", status: "Berlaku", updated: todayISO(), archived: false, docCopy: "Terkendali",
+                      related: ttSjId ? [ttSjId] : [],
+                      revisions: [{ version: "v1.0", at: todayISO(), by: ttGiver.trim() || "Anda", note: "Tanda terima diterbitkan" }],
+                    }, { action: "menerbitkan tanda terima", target: no, module: "Inventori" });
+                    void exportExcel([
+                      [SB_KOP.line1, SB_KOP.name], [SB_KOP.hq, `HP ${SB_KOP.hp}`], [],
+                      ["TANDA TERIMA", `NO REF: ${no}`], ["Tanggal", ttDate],
+                      ["Surat Jalan", sj ? String(sj.sbRef || sj.id) : "-"], [],
+                      ["No", "Nama Barang", "Jumlah"], ...items.map((x, i) => [i + 1, x.name.trim(), x.qty.trim()]), [],
+                      ["Yang Menerima", "Yang Menyerahkan"], [ttReceiver.trim(), ttGiver.trim()],
+                    ], `TT-${no.replaceAll("/", "-")}`, "Tanda Terima");
+                    toast(`Tanda terima ${no} diterbitkan + diekspor`);
+                    setTtDate(todayISO()); setTtSjId("");
+                    setTtItems([{ name: "", qty: "" }]); setTtReceiver(""); setTtGiver("");
                   }}>
                     Terbitkan + Cetak (kop SB)
                   </button>

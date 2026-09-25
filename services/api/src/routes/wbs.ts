@@ -12,6 +12,11 @@ interface SideRow {
   data: string;
 }
 
+async function assertProjectExists(projectId: string): Promise<boolean> {
+  const rows = await q("SELECT id FROM projects WHERE id = ?", [projectId]);
+  return rows.length > 0;
+}
+
 async function upsert(table: string, projectId: string, payload: unknown): Promise<void> {
   const json = JSON.stringify(payload);
   if (getDialect() === "mysql") {
@@ -39,6 +44,9 @@ export function registerWbsRoutes(app: FastifyInstance): void {
     const parsed = WbsSchema.safeParse(req.body);
     if (!parsed.success) return reply.status(400).send(fail("Validation failed", "VALIDATION_ERROR"));
     const { id } = req.params as { id: string };
+    if (!(await assertProjectExists(id))) {
+      return reply.status(422).send(fail(`Proyek ${id} tidak ada`, "UNPROCESSABLE"));
+    }
     await upsert("wbs_by_project", id, parsed.data.wbs);
     return ok({ projectId: id, wbs: parsed.data.wbs });
   });
@@ -54,6 +62,15 @@ export function registerWbsRoutes(app: FastifyInstance): void {
     const parsed = TeamSchema.safeParse(req.body);
     if (!parsed.success) return reply.status(400).send(fail("Validation failed", "VALIDATION_ERROR"));
     const { id } = req.params as { id: string };
+    if (!(await assertProjectExists(id))) {
+      return reply.status(422).send(fail(`Proyek ${id} tidak ada`, "UNPROCESSABLE"));
+    }
+    for (const memberId of parsed.data.memberIds) {
+      const rows = await q("SELECT id FROM employees WHERE id = ?", [memberId]);
+      if (rows.length === 0) {
+        return reply.status(422).send(fail(`Karyawan ${memberId} tidak ada`, "UNPROCESSABLE"));
+      }
+    }
     await upsert("team_by_project", id, parsed.data.memberIds);
     return ok({ projectId: id, memberIds: parsed.data.memberIds });
   });

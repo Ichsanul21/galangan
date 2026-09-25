@@ -6,7 +6,8 @@ import { useStore, type StoreItem } from "../../data/store";
 import { isBackendConfigured } from "../../services/http";
 import { uploadFile } from "../../services/upload";
 import { fmtTanggal, todayISO } from "../../utils/format";
-import { sbDsNumber, sbSjNumber, maxSeq, parseSjSeq } from "../../utils/sb";
+import { AlertBannerView, notifRowId, useModuleAlert } from "../../components/AlertBanner";
+import { sbDsNumber, sbSjNumber, sbTtNumber, maxSeq, parseSjSeq } from "../../utils/sb";
 import { exportExcel } from "../../utils/export";
 
 const TYPES = ["Kontrak", "Drawing", "Prosedur", "Sertifikat", "Laporan", "Invoice", "NCR", "Penawaran", "Dock Space", "Surat Jalan", "Tanda Terima"];
@@ -92,6 +93,7 @@ const emptyForm = { title: "", type: "Laporan", project: "", vessel: "", owner: 
 
 export default function Documents() {
   const { data, add, update, remove, log, branch, inBranch } = useStore();
+  const modAlert = useModuleAlert("dokumen");
   const [q, setQ] = useState("");
   const [sort, setSort] = useState<SortState>({ key: null, dir: "asc" });
   const [type, setType] = useState("Semua");
@@ -188,6 +190,7 @@ export default function Documents() {
         // Ref format SB untuk arsip operasional (cth DS: 001/DS-SB/SMD/I/2024).
         sbRef: form.type === "Dock Space" ? sbDsNumber(sbSeq("Dock Space"))
           : form.type === "Surat Jalan" ? sbSjNumber(sbSeq("Surat Jalan"))
+          : form.type === "Tanda Terima" ? sbTtNumber(sbSeq("Tanda Terima"))
           : "",
         revisions: [{ version: "v1.0", at: todayISO(), by: form.owner.trim(), note: "Dokumen dibuat" }],
       }, { action: "mengarsipkan dokumen", module: "Dokumen" });
@@ -238,8 +241,8 @@ export default function Documents() {
 
   const sbSeq = (tipe: string): number => {
     const rows = data.documents.filter((d) => d.type === tipe);
-    if (tipe === "Surat Jalan") {
-      // Dash format SJ-SMD-YYYY-nnn: scan trailing digits di sbRef + id.
+    if (tipe === "Surat Jalan" || tipe === "Tanda Terima") {
+      // Dash format SJ/TT-SMD-YYYY-nnn: scan trailing digits di sbRef + id.
       const nums = rows.flatMap((d) => [parseSjSeq(d.sbRef), parseSjSeq(d.id)]);
       return Math.max(0, ...nums) + 1;
     }
@@ -267,6 +270,8 @@ export default function Documents() {
           </>
         }
       />
+
+      {modAlert.active && <AlertBannerView items={modAlert.items} onClose={modAlert.dismiss} />}
 
       <div className="mb-4 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <KpiCard label="Total Dokumen" value={String(active.length)} icon={<ScrollText className="h-5 w-5" />} chip="navy" hint="Register aktif" spark={trendOf(() => true)} />
@@ -315,7 +320,7 @@ export default function Documents() {
               {sortRows(list, sort, (d, key) =>
                 key === "dokumen" ? String(d.title ?? "") : key === "tipe" ? String(d.type ?? "") : key === "proyek" ? String(d.project ?? "") : key === "versi" ? String(d.version ?? "") : key === "status" ? String(d.status ?? "") : String(d.updated ?? "")
               ).map((d) => (
-                <tr key={d.id} className="hover:bg-surface">
+                <tr key={d.id} id={notifRowId(String(d.id))} className={modAlert.highlight.has(String(d.id)) ? "notif-hl hover:bg-surface" : "hover:bg-surface"}>
                   <td className="td max-w-[260px]">
                     <p className="truncate font-medium text-navy-900" title={String(d.title)}>{d.title}</p>
                     <p className="font-mono text-xs text-steel-500">{d.id} · {d.owner}{d.berlakuHingga ? ` · hingga ${fmtTanggal(d.berlakuHingga)}` : ""}</p>

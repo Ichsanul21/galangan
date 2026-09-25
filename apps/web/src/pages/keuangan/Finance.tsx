@@ -39,6 +39,8 @@ import { getSetting } from "../../utils/settings";
 import { useDraftState } from "../../utils/draft";
 import { sbInvoiceMath, maxSeq, PPN_INVOICE_DEFAULT, PPH_JASA_DEFAULT } from "../../utils/sb";
 import { exportExcel } from "../../utils/export";
+import { kasKodeOf, postCashJournal } from "../../services/autoJournal";
+import { AlertBannerView, notifRowId, useModuleAlert } from "../../components/AlertBanner";
 import {
   COA_EXCEL,
   NL_EXCEL,
@@ -194,6 +196,7 @@ const nlOf = (kode: string): { d: number; k: number } => NL_EXCEL[kode] ?? { d: 
 
 export default function Finance() {
   const { data, add, update, remove, log, branch, inBranch } = useStore();
+  const modAlert = useModuleAlert("keuangan");
   const [tab, setTab] = useState("Akun");
   const today = todayISO();
 
@@ -458,12 +461,16 @@ export default function Finance() {
     const apBase = apLunas.reduce((s, a) => s + num(a.amt), 0);
     const payRows = (data.payroll ?? []).filter((p) => String(p.period ?? "") === activePeriod);
     const pph21 = payRows.reduce((s, p) => s + num(p.pph21), 0);
+    // PPh dipotong dari termin subkon yang lunas periode ini (dipotong saat bayar termin).
+    const termPph = (data.termins ?? [])
+      .filter((t) => t.status === "Lunas" && monthOf(t.paidAt) === activePeriod)
+      .reduce((s, t) => s + num(t.pphAmt), 0);
     const ppnRate = getSetting(data, "PPN_RATE", 12);
     const pphRate = getSetting(data, "PPH23_RATE", 2);
     return {
       ppnKeluar: Math.round((invBase * ppnRate) / 100),
       ppnMasuk: Math.round((apBase * ppnRate) / 100),
-      pph23: Math.round((apBase * pphRate) / 100),
+      pph23: Math.round((apBase * pphRate) / 100) + Math.round(termPph),
       pph21,
       invBase,
       apBase,
@@ -1031,6 +1038,14 @@ export default function Finance() {
     setMutForm({ date: todayISO(), rekening: "1-111", arah: "Masuk", lawan: "", kodePembantu: "", dokumen: "", uraian: "", amount: "" });
   };
 
+  // --- Jurnal otomatis idempoten (uang mengalir): pelunasan invoice, bayar
+  // hutang, bayar massal masing-masing menulis 1 baris Kas/Bank berimbang.
+  // Idempoten via dokumen unik — aman dipanggil ulang / dari bayar massal.
+  const postAutoJournal = async (args: {
+    dokumen: string; date: string; uraian: string; db: string; kr: string; amount: number;
+  }): Promise<boolean> =>
+    postCashJournal({ add, journals: data.journals ?? [], branch, ...args });
+
   // --- Hutang: simpan + ubah (kolom sheet Hutang) ---
   const saveAp = async () => {
     if (!apForm.v.trim()) { toast("Vendor wajib diisi", "info"); return; }
@@ -1152,7 +1167,16 @@ export default function Finance() {
       status: "Lunas", paidAt: proof.date, paidMethod: proof.method, paidRef: proof.ref.trim(),
     });
     log("melunasi invoice", `${payTarget.id} via ${proof.method} ${proof.ref.trim()}`, "Keuangan");
-    toast(`${payTarget.id} lunas — pembayaran tercatat`);
+    const kasKode = kasKodeOf(proof.method);
+    const jurnalOk = await postAutoJournal({
+      dokumen: `CASH-${payTarget.id}`,
+      date: proof.date,
+      uraian: `Pelunasan ${payTarget.id} via ${proof.method} ${proof.ref.trim()}`,
+      db: kasKode,
+      kr: "1-130",
+      amount: invNeto(payTarget),
+    });
+    toast(`${payTarget.id} lunas — pembayaran tercatat${jurnalOk ? " + jurnal kas" : ""}`);
     setPayTarget(null);
   };
 
@@ -1174,6 +1198,14 @@ export default function Finance() {
         ...(sisa <= 0 ? { paidAt: proof.date, paidMethod: proof.method, paidRef: proof.ref.trim() } : {}),
       });
       log("membayar hutang tahap I", `${apTarget.po} ${fmtRupiah(bayar)} via ${proof.ref.trim()}`, "Keuangan");
+      await postAutoJournal({
+        dokumen: `PAY-${apTarget.id}-1`,
+        date: proof.date,
+        uraian: `Bayar hutang I ${apTarget.po} via ${proof.ref.trim()}`,
+        db: "2-110",
+        kr: kasKodeOf(proof.method),
+        amount: bayar,
+      });
       toast(`Tahap I ${fmtRupiah(bayar)} tercatat · sisa ${fmtRupiah(Math.max(0, sisa))}`);
     } else {
       const p2 = num(apTarget.pay2) + bayar;
@@ -1184,6 +1216,14 @@ export default function Finance() {
         ...(sisa <= 0 ? { paidAt: proof.date, paidMethod: proof.method, paidRef: proof.ref.trim() } : {}),
       });
       log("membayar hutang tahap II", `${apTarget.po} ${fmtRupiah(bayar)} via ${proof.ref.trim()}`, "Keuangan");
+      await postAutoJournal({
+        dokumen: `PAY-${apTarget.id}-2`,
+        date: proof.date,
+        uraian: `Bayar hutang II ${apTarget.po} via ${proof.ref.trim()}`,
+        db: "2-110",
+        kr: kasKodeOf(proof.method),
+        amount: bayar,
+      });
       toast(`Tahap II ${fmtRupiah(bayar)} tercatat · sisa ${fmtRupiah(Math.max(0, sisa))}`);
     }
     setApTarget(null);
@@ -1200,11 +1240,29 @@ export default function Finance() {
     const ordered = schedItems.filter((r) => schedSel.includes(r.key)).sort((a, b) => String(a.due).localeCompare(String(b.due)));
     for (const r of ordered) {
       if (r.kind === "AP") {
+        const ap = (data.payables ?? []).find((a) => String(a.id) === String(r.id));
+        const sisaAp = ap ? Math.max(0, num(ap.amt) - num(ap.pay1) - num(ap.pay2)) : num(r.amount);
         await update("payables", r.id, { st: "Lunas", paidAt: batchProof.date, paidMethod: batchProof.method, paidRef: batchProof.ref.trim() });
         log("melunasi hutang massal", `${r.ref} via ${batchProof.method} ${batchProof.ref.trim()}`, "Keuangan");
+        await postAutoJournal({
+          dokumen: `PAY-${r.id}-B`,
+          date: batchProof.date,
+          uraian: `Bayar hutang massal ${r.ref} via ${batchProof.ref.trim()}`,
+          db: "2-110",
+          kr: kasKodeOf(batchProof.method),
+          amount: sisaAp,
+        });
       } else {
         await update("invoices", r.id, { status: "Lunas", paidAt: batchProof.date, paidMethod: batchProof.method, paidRef: batchProof.ref.trim() });
         log("melunasi invoice massal", `${r.id} via ${batchProof.method} ${batchProof.ref.trim()}`, "Keuangan");
+        await postAutoJournal({
+          dokumen: `CASH-${r.id}`,
+          date: batchProof.date,
+          uraian: `Pelunasan massal ${r.id} via ${batchProof.ref.trim()}`,
+          db: kasKodeOf(batchProof.method),
+          kr: "1-130",
+          amount: r.amount,
+        });
       }
     }
     toast(`${ordered.length} item dilunasi massal (tertua dulu)`);
@@ -1311,6 +1369,24 @@ export default function Finance() {
       pph21: taxCalc.pph21,
       reportedAt: todayISO(),
     });
+    // Kunci pajak menerbitkan hutang pajak (idempoten via po TAX-<periode>).
+    const ppnNet = Math.max(0, num(taxCalc.ppnKeluar) - num(taxCalc.ppnMasuk));
+    const pphTotal = num(taxCalc.pph23) + num(taxCalc.pph21);
+    const taxDue = `${activePeriod}-28`;
+    if (ppnNet > 0 && !(data.payables ?? []).some((a) => String(a.po ?? "") === `TAX-${activePeriod}-PPN`)) {
+      await add("payables", {
+        v: "Hutang Pajak PPN", po: `TAX-${activePeriod}-PPN`, amt: ppnNet, openAwal: ppnNet,
+        due: taxDue, pph: "Non-PPn", st: "Belum Dibayar", vessel: "-",
+        item: `PPN terutang ${activePeriod}`, pay1: 0, pay1date: "", pay2: 0, pay2date: "",
+      }, { action: "hutang pajak dari kunci periode", module: "Pajak" });
+    }
+    if (pphTotal > 0 && !(data.payables ?? []).some((a) => String(a.po ?? "") === `TAX-${activePeriod}-PPH`)) {
+      await add("payables", {
+        v: "Hutang Pajak PPh", po: `TAX-${activePeriod}-PPH`, amt: Math.round(pphTotal), openAwal: Math.round(pphTotal),
+        due: taxDue, pph: "Non-PPn", st: "Belum Dibayar", vessel: "-",
+        item: `PPh 23+21 ${activePeriod}`, pay1: 0, pay1date: "", pay2: 0, pay2date: "",
+      }, { action: "hutang pajak dari kunci periode", module: "Pajak" });
+    }
     log("melaporkan periode pajak", `${activeTax.period} dikunci`, "Pajak");
     toast(`Periode ${activeTax.period} dilapor dan dikunci`);
   };
@@ -1340,6 +1416,8 @@ export default function Finance() {
         icon={<Wallet className="h-5 w-5" />}
         actions={<button className="btn-primary-gradient" onClick={() => setShowInv(true)}><FileText className="h-4 w-4" /> Buat Invoice</button>}
       />
+
+      {modAlert.active && <AlertBannerView items={modAlert.items} onClose={modAlert.dismiss} />}
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <KpiCard label="Total Piutang (AR)" value={fmtMiliar(arTotal)} delta={`${lateCount} telat`} deltaDirection="down" icon={<Wallet className="h-5 w-5" />} chip="rose" spark={arSpark} />
@@ -1455,7 +1533,7 @@ export default function Finance() {
                         const nextDun = DUNNING_NEXT[dun] ?? "Ditagih";
                         const open = inv.status !== "Lunas" && inv.status !== "Draft" && inv.status !== "Dihapusbukukan";
                         return (
-                          <tr key={inv.id} className="hover:bg-surface">
+                          <tr key={inv.id} id={notifRowId(String(inv.id))} className={modAlert.highlight.has(String(inv.id)) ? "notif-hl hover:bg-surface" : "hover:bg-surface"}>
                             <td className="td">
                               <p className="font-medium text-navy-900 font-mono">{inv.id}</p>
                               <p className="text-xs text-steel-500 truncate" title={String(inv.client ?? "")}>{String(inv.client ?? "")}</p>
@@ -1625,7 +1703,7 @@ export default function Finance() {
                       k === "v" ? String(a.v) : k === "kode" ? String(a.kodePembantu ?? a.v) : k === "po" ? String(a.po) :
                       k === "vessel" ? String(a.vessel ?? "") : k === "openAwal" ? num(a.openAwal) : k === "amt" ? num(a.amt) :
                       k === "sisa" ? Math.max(0, num(a.amt) - num(a.pay1) - num(a.pay2)) : k === "due" ? String(a.due ?? "") : String(a.st)).map((a) => (
-                      <tr key={a.id} className="hover:bg-surface">
+                      <tr key={a.id} id={notifRowId(String(a.id))} className={modAlert.highlight.has(String(a.id)) ? "notif-hl hover:bg-surface" : "hover:bg-surface"}>
                         <td className="td font-medium text-navy-900 truncate" title={String(a.v)}>{String(a.v)}</td>
                         <td className="td font-mono text-xs text-steel-600 truncate" title={String(a.kodePembantu ?? a.v)}>{String(a.kodePembantu ?? a.v)}</td>
                         <td className="td font-mono text-xs text-steel-600">{String(a.po)}</td>

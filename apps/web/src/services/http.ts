@@ -19,10 +19,16 @@ export class ApiNotConfigured extends Error {
 
 export class ApiError extends Error {
   status: number;
-  constructor(status: number, message: string) {
+  code?: string;
+  data?: unknown;
+  retryAfterSec?: number;
+  constructor(status: number, message: string, code?: string, data?: unknown, retryAfterSec?: number) {
     super(message);
     this.name = "ApiError";
     this.status = status;
+    this.code = code;
+    this.data = data;
+    this.retryAfterSec = retryAfterSec;
   }
 }
 
@@ -79,6 +85,19 @@ interface OkEnvelope<T> {
 interface FailEnvelope {
   ok: false;
   error: { message: string; code?: string } | string;
+  data?: unknown;
+}
+
+function envelopeCode(v: unknown): string | undefined {
+  if (!isEnvelope(v) || v.ok) return undefined;
+  const err = (v as FailEnvelope).error;
+  if (err && typeof err === "object" && typeof err.code === "string") return err.code;
+  return undefined;
+}
+
+function envelopeData(v: unknown): unknown {
+  if (!isEnvelope(v) || v.ok) return undefined;
+  return (v as FailEnvelope).data;
 }
 
 function isEnvelope(v: unknown): v is OkEnvelope<unknown> | FailEnvelope {
@@ -129,7 +148,14 @@ export async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> 
   }
   if (!res.ok) {
     if (res.status === 401) notifyAuthExpired();
-    throw new ApiError(res.status, envelopeMessage(json) ?? (text || `HTTP ${res.status} untuk ${path}`));
+    const retryAfter = Number(res.headers.get("Retry-After"));
+    throw new ApiError(
+      res.status,
+      envelopeMessage(json) ?? (text || `HTTP ${res.status} untuk ${path}`),
+      envelopeCode(json),
+      envelopeData(json),
+      Number.isFinite(retryAfter) && retryAfter > 0 ? retryAfter : undefined,
+    );
   }
   if (isEnvelope(json)) {
     if ((json as OkEnvelope<T>).ok) return (json as OkEnvelope<T>).data;

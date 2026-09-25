@@ -15,7 +15,11 @@ export default function ReportSection({ projectId }: Props) {
   const project = (data.projects ?? []).find((p: any) => p.id === projectId);
 
   const docs = useMemo(() => ((data.documents ?? []) as any[]).filter((d: any) => d.project === projectId), [data.documents, projectId]);
-  const wbs = useMemo(() => wbsFor(projectId), [wbsFor, projectId, data.projects]);
+  const wbs = useMemo(
+    () => (data.wbsByProject?.[projectId]?.length ? wbsFor(projectId) : []),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [wbsFor, projectId, data.projects, data.wbsByProject],
+  );
   const boq = useMemo(() => ((data.boq ?? []) as any[]).filter((b: any) => b.projectId === projectId), [data.boq, projectId]);
   const invoices = useMemo(() => ((data.invoices ?? []) as any[]).filter((i: any) => i.project === projectId), [data.invoices, projectId]);
   const ncrs = useMemo(() => ((data.ncr ?? []) as any[]).filter((n: any) => n.project === projectId), [data.ncr, projectId]);

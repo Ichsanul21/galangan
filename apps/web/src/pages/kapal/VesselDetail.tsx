@@ -19,6 +19,7 @@ import type { SortState } from "../../components/ui";
 import SparepartServiceSection from "../proyek/SparepartServiceSection";
 import { useStore } from "../../data/store";
 import { fmtBulan, fmtJumlah, fmtRupiah, fmtTanggal, monthISO, todayISO } from "../../utils/format";
+import { sameName, vesselMatch } from "../../utils/names";
 import { COMPLIANCE_ITEMS, complianceSummary } from "./Vessels";
 import { getSetting } from "../../utils/settings";
 
@@ -101,7 +102,7 @@ export default function VesselDetail() {
   if (!v) return <p className="text-sm text-steel-500">Kapal tidak ditemukan.</p>;
 
   const nowMonth = todayISO().slice(0, 7);
-  const projects = data.projects.filter((p) => p.vessel === v.name);
+  const projects = data.projects.filter((p) => sameName(p.vessel, v.name));
   const vesselWarranties = (data.warranties ?? []).filter((w) => String(w.vessel ?? "") === v.name);
 
   // Klaim garansi/DLP: Aktif → Klaim (lanjut Selesai setelah perbaikan).
@@ -115,10 +116,10 @@ export default function VesselDetail() {
     log("menyelesaikan garansi", `${w.id} · ${v.name}`, "Kapal");
     toast(`Garansi ${w.id} selesai`);
   };
-  const surveys = data.surveys.filter((s) => s.vessel === v.name);
+  const surveys = data.surveys.filter((s) => sameName(s.vessel, v.name));
   const vesselTrials = (data.trials ?? []).filter((t) => projects.some((p) => p.id === t.projectId));
   const certs = (v.certificates ?? []) as { name: string; issued?: string; expires: string }[];
-  const slots = data.dockSlots.filter((s) => s.vessel === v.name);
+  const slots = data.dockSlots.filter((s) => vesselMatch(s.vessel, v.name));
   const pscRows = (v.psc ?? []) as PscRow[];
   const dockHistory = (v.dockHistory ?? []) as DockHistoryRow[];
   const plan5 = (v.plan5 ?? []) as PlanRow[];

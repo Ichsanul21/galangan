@@ -7,6 +7,8 @@ import { useStore } from "../../data/store";
 import type { StoreItem } from "../../data/store";
 import { fleetTrend, dockingTrend, buildTrend, certTrend } from "../../data";
 import { fmtRupiah, fmtTanggal, todayISO } from "../../utils/format";
+import { sameName, vesselMatch } from "../../utils/names";
+import { AlertBannerView, notifRowId, useModuleAlert } from "../../components/AlertBanner";
 
 const statusTone: Record<string, "green" | "blue" | "amber" | "gray"> = {
   "Dalam Docking": "blue",
@@ -71,7 +73,8 @@ type VesselForm = typeof emptyForm;
 function validateForm(form: VesselForm, vessels: StoreItem[], excludeId?: string): string | null {
   if (!form.name.trim() || !form.owner.trim() || !form.imo.trim()) return "Nama kapal, IMO & pemilik wajib diisi";
   const imo = form.imo.trim();
-  if (vessels.some((v) => v.id !== excludeId && String(v.imo).toLowerCase() === imo.toLowerCase())) {
+  // "-" = kapal tanpa IMO (tongkang) — boleh dipakai banyak kapal, tetap unik untuk IMO asli.
+  if (imo !== "-" && vessels.some((v) => v.id !== excludeId && String(v.imo).toLowerCase() === imo.toLowerCase())) {
     return `IMO ${imo} sudah terdaftar — gunakan nomor IMO yang unik`;
   }
   if (!form.type.trim()) return "Tipe kapal wajib diisi";
@@ -134,6 +137,7 @@ function vesselToForm(v: StoreItem): VesselForm {
 
 export default function Vessels() {
   const { data, add, update } = useStore();
+  const modAlert = useModuleAlert("kapal");
   const vessels = data.vessels;
   const [q, setQ] = useState("");
   const [sort, setSort] = useState<SortState>({ key: null, dir: "asc" });
@@ -148,7 +152,7 @@ export default function Vessels() {
     (v.certificates ?? []).some((c: { expires: string }) => certNeedsAttention(c.expires, nowMonth))
   ).length;
 
-  const slotCountFor = (name: string) => data.dockSlots.filter((s) => s.vessel === name).length;
+  const slotCountFor = (name: string) => data.dockSlots.filter((s) => vesselMatch(s.vessel, name)).length;
 
   const save = async () => {
     const err = validateForm(form, vessels);
@@ -224,6 +228,8 @@ export default function Vessels() {
         actions={<button className="btn-primary-gradient" onClick={() => setShowAdd(true)}><Plus className="h-4 w-4" /> Daftarkan Kapal</button>}
       />
 
+      {modAlert.active && <AlertBannerView items={modAlert.items} onClose={modAlert.dismiss} />}
+
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <KpiCard label="Total Kapal Terdaftar" value={String(vessels.length)} icon={<Ship className="h-5 w-5" />} chip="navy" spark={fleetTrend} hint="Armada tercatat sistem" />
         <KpiCard label="Dalam Docking" value={String(vessels.filter((v) => v.status === "Dalam Docking").length)} icon={<Anchor className="h-5 w-5" />} chip="teal" spark={dockingTrend} />
@@ -240,7 +246,7 @@ export default function Vessels() {
           {list.map((v) => {
             const comp = complianceSummary(v);
             return (
-              <Card key={v.id} className="p-5 hover:shadow-md transition-shadow">
+              <Card key={v.id} id={notifRowId(String(v.id))} className={`p-5 hover:shadow-md transition-shadow ${modAlert.highlight.has(String(v.id)) ? "notif-hl" : ""}`}>
                 <Link to={`/kapal/${v.id}`}>
                   <div className="flex items-start justify-between">
                     <div className="flex items-center gap-2">
@@ -305,7 +311,7 @@ export default function Vessels() {
                   <div><p className="text-sm font-bold text-navy-900">{slotCountFor(String(v.name))}</p><p className="text-[10px] text-steel-500">Slot Dock</p></div>
                 </div>
                 {(v.certificates ?? []).length > 0 && (
-                  <p className="mt-2 text-[11px] text-steel-400">{(v.certificates ?? []).length} sertifikat · {data.surveys.filter((s) => s.vessel === v.name).length} survey terjadwal</p>
+                  <p className="mt-2 text-[11px] text-steel-400">{(v.certificates ?? []).length} sertifikat · {data.surveys.filter((s) => sameName(s.vessel, v.name)).length} survey terjadwal</p>
                 )}
               </Card>
             );

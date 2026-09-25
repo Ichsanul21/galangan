@@ -92,6 +92,14 @@
 
   /* Watermark versi cetak (ikut tercetak ke PDF) */
   .isms-wm-print { display: none; }
+
+  /* Sorot baris notifikasi modul (banner ?alert=) */
+  .notif-hl {
+    outline: 2px solid rgba(245, 158, 11, 0.75);
+    outline-offset: -2px;
+    background-color: rgba(255, 251, 235, 0.85) !important;
+    border-radius: 0.5rem;
+  }
 }
 
 @media print {

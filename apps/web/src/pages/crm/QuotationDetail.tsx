@@ -5,6 +5,7 @@ import { Card, CardHeader, PageHeader, StatusBadge, Badge, Modal, Field, FormGri
 import { useStore } from "../../data/store";
 import type { StoreItem } from "../../data/store";
 import { fmtRupiah, fmtTanggal, todayISO } from "../../utils/format";
+import { sameName } from "../../utils/names";
 import { exportExcel } from "../../utils/export";
 import { SB_KOP } from "../../utils/sb";
 import { useDraftState } from "../../utils/draft";
@@ -152,7 +153,7 @@ export default function QuotationDetail() {
     if (!convManager.trim() || convManager.trim() === "Belum ditentukan") { toast("Pilih project manager", "info"); return; }
     if (!convStart || !convEnd) { toast("Tanggal mulai & selesai rencana wajib diisi", "info"); return; }
     if (convEnd < convStart) { toast("Tanggal selesai tidak boleh sebelum tanggal mulai", "info"); return; }
-    const client = (data.clients ?? []).find((c) => String(c.name) === String(quotation.client));
+    const client = (data.clients ?? []).find((c) => sameName(c.name, quotation.client));
     const branch = String(client?.branch ?? quotation.branch ?? "Samarinda");
     const code = nextProjectCode(String(quotation.type ?? "New Build"), convStart);
     const created = await add("projects", {
@@ -200,7 +201,7 @@ export default function QuotationDetail() {
   };
 
   const cetakKop = () => {
-    const client = (data.clients ?? []).find((c) => String(c.name) === String(quotation.client));
+    const client = (data.clients ?? []).find((c) => sameName(c.name, quotation.client));
     const cabang = String(client?.branch ?? quotation.branch ?? "Samarinda");
     const terms = String(client?.paymentTerms ?? quotation.paymentTerms ?? "NET 30");
     const rows: unknown[][] = [

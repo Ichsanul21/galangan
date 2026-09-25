@@ -117,7 +117,7 @@ export default function Analytics() {
   const [tab, setTab] = useState("Deskriptif");
   const [sort, setSort] = useState<SortState>({ key: null, dir: "asc" });
   const [sort2, setSort2] = useState<SortState>({ key: null, dir: "asc" });
-  const { data, update } = useStore();
+  const { data, update, log } = useStore();
   /* What-if dikendalikan dari Pengaturan (grup Analytics) — otomatis dipakai forecast. */
   const growth = getSetting(data, "WHATIF_GROWTH", 0);
   const costAdj = getSetting(data, "WHATIF_COST", 0);
@@ -240,6 +240,7 @@ export default function Analytics() {
     apply("WHATIF_GROWTH", sc.growth);
     apply("WHATIF_COST", sc.costAdj);
     apply("WHATIF_PROG", sc.progAdj);
+    log("menerapkan skenario what-if", `${name} (g:${sc.growth} c:${sc.costAdj} p:${sc.progAdj})`, "Analytics");
     toast(`Skenario ${name} diterapkan ke Pengaturan`);
   };
 

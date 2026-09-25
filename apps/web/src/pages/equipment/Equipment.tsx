@@ -7,6 +7,8 @@ import { useStore } from "../../data/store";
 import type { StoreItem } from "../../data/store";
 import { equipmentHours, sparkUtil, equipTotalTrend, maintTrend, serviceDueTrend } from "../../data";
 import { fmtTanggal, fmtJumlah, fmtRupiah, todayISO } from "../../utils/format";
+import { sameName } from "../../utils/names";
+import { AlertBannerView, notifRowId, useModuleAlert } from "../../components/AlertBanner";
 import { exportExcel } from "../../utils/export";
 
 const BOOK_PRIORITIES = ["Normal", "Tinggi", "Kritis"];
@@ -73,6 +75,7 @@ function depreciationOf(e: StoreItem): { annual: number; book: number } | null {
 
 export default function EquipmentPage() {
   const { data, add, update, remove, log, branch } = useStore();
+  const modAlert = useModuleAlert("equipment");
   const equipment = data.equipment;
   const bookings = data.bookings;
   const calibrations = data.calibrations;
@@ -131,7 +134,7 @@ export default function EquipmentPage() {
     for (let j = i + 1; j < activeBookings.length; j++) {
       const a = activeBookings[i];
       const b = activeBookings[j];
-      if (a.equip !== b.equip || a.date !== b.date) continue;
+      if (!sameName(a.equip, b.equip) || a.date !== b.date) continue;
       const ra = bookingRange(a);
       const rb = bookingRange(b);
       if (ra && rb && rangesOverlap(ra.mulai, ra.selesai, rb.mulai, rb.selesai)) {
@@ -144,9 +147,9 @@ export default function EquipmentPage() {
 
   const doneBookings = bookings.filter((b) => b.status === "Selesai");
   const statsByEquip = (name: string): { hours: number; downtime: number; fuel: number } => ({
-    hours: doneBookings.filter((b) => b.equip === name).reduce((s, b) => s + Number(b.hours || 0), 0),
-    downtime: doneBookings.filter((b) => b.equip === name).reduce((s, b) => s + Number(b.downtime || 0), 0),
-    fuel: doneBookings.filter((b) => b.equip === name).reduce((s, b) => s + Number(b.fuelLiters || 0), 0),
+    hours: doneBookings.filter((b) => sameName(b.equip, name)).reduce((s, b) => s + Number(b.hours || 0), 0),
+    downtime: doneBookings.filter((b) => sameName(b.equip, name)).reduce((s, b) => s + Number(b.downtime || 0), 0),
+    fuel: doneBookings.filter((b) => sameName(b.equip, name)).reduce((s, b) => s + Number(b.fuelLiters || 0), 0),
   });
   const oeeOf = (name: string): { avail: number; perf: number; oee: number } | null => {
     const st = statsByEquip(name);
@@ -248,14 +251,14 @@ export default function EquipmentPage() {
 
   const clashOf = (equip: string, date: string, a: number, b: number): StoreItem[] =>
     bookings.filter((o) => {
-      if (o.equip !== equip || o.date !== date || o.status === "Selesai") return false;
+      if (!sameName(o.equip, equip) || o.date !== date || o.status === "Selesai") return false;
       const r = bookingRange(o);
       return r ? rangesOverlap(a, b, r.mulai, r.selesai) : false;
     });
 
   const persistBooking = async (priority: string) => {
     const { equip, proyek, date, mulai, selesai } = bookForm;
-    const eq = equipment.find((e) => e.name === equip);
+    const eq = equipment.find((e) => sameName(e.name, equip));
     if (!eq) { setBookError("Equipment tidak ditemukan."); return; }
     const created = await add("bookings", { equip, proyek, jam: `${mulai}–${selesai}`, mulai, selesai, status: "Terjadwal", date, priority, branch: String((data.projects ?? []).find((p) => String(p.id) === String(proyek))?.branch ?? (branch !== "SEMUA" ? branch : "")) },
       { action: "membooking equipment", target: `${equip} · ${priority}`, module: "Equipment" });
@@ -348,7 +351,7 @@ export default function EquipmentPage() {
     const rate = Number(eq?.rate || 0);
     await update("bookings", finishing.id, { status: "Selesai", hours, downtime, fuelLiters, cost: hours * rate });
     if (eq) {
-      const stillActive = bookings.some((o) => o.id !== finishing.id && o.equip === eq.name && o.status !== "Selesai");
+      const stillActive = bookings.some((o) => o.id !== finishing.id && sameName(o.equip, eq.name) && o.status !== "Selesai");
       await update("equipment", eq.id, {
         lastHours: Number(eq.lastHours || 0) + hours,
         status: stillActive ? eq.status : "Tersedia",
@@ -420,6 +423,8 @@ export default function EquipmentPage() {
         actions={<button className="btn-primary-gradient" onClick={() => setShowAdd(true)}><Plus className="h-4 w-4" /> Tambah Equipment</button>}
       />
 
+      {modAlert.active && <AlertBannerView items={modAlert.items} onClose={modAlert.dismiss} />}
+
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <KpiCard label="Total Equipment" value={String(equipment.length)} icon={<Cpu className="h-5 w-5" />} chip="navy" spark={equipTotalTrend} hint="Seluruh cabang" />
         <KpiCard label="Utilitas Rata-rata" value={`${avgUtil}%`} icon={<Gauge className="h-5 w-5" />} chip="teal" hint="Rata-rata seluruh peralatan" spark={sparkUtil} />
@@ -462,7 +467,7 @@ export default function EquipmentPage() {
                   }).map((e) => {
                     const expired = isCalExpired(e.id, calibrations, today);
                     return (
-                    <tr key={e.id} className="hover:bg-surface">
+                    <tr key={e.id} id={notifRowId(String(e.id))} className={modAlert.highlight.has(String(e.id)) ? "notif-hl hover:bg-surface" : "hover:bg-surface"}>
                       <td className="td">
                         <p className="font-medium text-navy-900">{e.name}</p>
                         <p className="text-xs text-steel-500 font-mono">{e.code}</p>

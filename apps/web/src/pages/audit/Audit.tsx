@@ -1,8 +1,9 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Download, History } from "lucide-react";
-import { Badge, Card, EmptyState, Field, KpiCard, PageHeader, SortTh, toggleSort, sortRows, toast } from "../../components/ui";
+import { Badge, Card, EmptyState, Field, KpiCard, PageHeader, SortTh, Tabs, toggleSort, sortRows, toast } from "../../components/ui";
 import type { SortState } from "../../components/ui";
 import { useStore } from "../../data/store";
+import { apiFetch, isBackendConfigured } from "../../services/http";
 import { exportExcel } from "../../utils/export";
 
 /** Ambil YYYY-MM-DD dari string waktu bila bisa diparse; abaikan "baru saja" dan teks relatif. */
@@ -16,24 +17,78 @@ function toISODateOrNull(v: unknown): string | null {
   return new Date(t).toISOString().slice(0, 10);
 }
 
-export default function Audit() {
-  const { data } = useStore();
+interface ServerAuditRow {
+  id?: unknown;
+  actor?: unknown;
+  action?: unknown;
+  table_name?: unknown;
+  row_id?: unknown;
+  created_at?: unknown;
+}
+
+interface StoreItemLike {
+  id: string;
+  time?: unknown;
+  actor?: unknown;
+  action?: unknown;
+  target?: unknown;
+  module?: unknown;
+}
+
+export default function Audit() {  const { data } = useStore();
   const [q, setQ] = useState("");
   const [modul, setModul] = useState("SEMUA");
   const [tanggal, setTanggal] = useState("");
   const [sort, setSort] = useState<SortState>({ key: null, dir: "asc" });
+  const [sumber, setSumber] = useState("Perangkat");
+  const [serverRows, setServerRows] = useState<StoreItemLike[]>([]);
+  const [serverLoading, setServerLoading] = useState(false);
+  const remote = isBackendConfigured();
+
+  useEffect(() => {
+    if (!remote || sumber !== "Server") return;
+    let cancelled = false;
+    setServerLoading(true);
+    void (async () => {
+      try {
+        const res = await apiFetch<{ rows: ServerAuditRow[] } | ServerAuditRow[]>("/api/audit?limit=200");
+        const list = Array.isArray(res) ? res : (res.rows ?? []);
+        if (!cancelled) {
+          setServerRows(
+            list.map((r) => ({
+              id: String(r.id ?? ""),
+              time: String(r.created_at ?? "-"),
+              actor: String(r.actor ?? "-"),
+              action: String(r.action ?? "-"),
+              target: String(r.row_id ?? "-"),
+              module: String(r.table_name ?? "-"),
+            })),
+          );
+        }
+      } catch {
+        if (!cancelled) setServerRows([]);
+      } finally {
+        if (!cancelled) setServerLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [remote, sumber]);
+
+  const base = sumber === "Server" && remote ? serverRows : (data.activities ?? []);
 
   const modules = useMemo(() => {
     const set = new Set<string>();
-    for (const a of data.activities ?? []) {
+    for (const a of base ?? []) {
       if (a.module) set.add(String(a.module));
     }
     return [...set].sort();
-  }, [data.activities]);
+  }, [base]);
 
   const rows = useMemo(() => {
     const query = q.trim().toLowerCase();
-    return (data.activities ?? []).filter((a) => {
+    return (base ?? []).filter((a) => {
       if (modul !== "SEMUA" && String(a.module ?? "") !== modul) return false;
       if (tanggal) {
         const iso = toISODateOrNull(a.time);
@@ -43,15 +98,15 @@ export default function Audit() {
       const hay = `${a.actor ?? ""} ${a.action ?? ""} ${a.target ?? ""} ${a.module ?? ""}`.toLowerCase();
       return hay.includes(query);
     });
-  }, [data.activities, q, modul, tanggal]);
+  }, [base, q, modul, tanggal]);
 
   const actors = useMemo(() => {
     const set = new Set<string>();
-    for (const a of data.activities ?? []) {
+    for (const a of base ?? []) {
       if (a.actor) set.add(String(a.actor));
     }
     return set.size;
-  }, [data.activities]);
+  }, [base]);
 
   const doExport = () => {
     const head = ["Waktu", "Aktor", "Aksi", "Target", "Modul"];
@@ -71,17 +126,22 @@ export default function Audit() {
     <div>
       <PageHeader
         title="Audit Trail"
-        subtitle="Jejak audit append-only dan read-only — disimpan permanen, 10 tahun versi backend"
+        subtitle={sumber === "Server" && remote ? "Jejak audit server (append-only, termasuk login) — 200 terbaru" : "Jejak aktivitas perangkat ini (30 terakhir)"}
         icon={<History className="h-5 w-5" />}
         actions={
-          <button className="btn-secondary text-xs" onClick={doExport}>
-            <Download className="h-4 w-4" /> Export Excel
-          </button>
+          <>
+            {remote && (
+              <Tabs tabs={["Perangkat", "Server"]} active={sumber} onChange={(t) => setSumber(t)} />
+            )}
+            <button className="btn-secondary text-xs" onClick={doExport}>
+              <Download className="h-4 w-4" /> Export Excel
+            </button>
+          </>
         }
       />
 
       <div className="mb-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
-        <KpiCard label="Total Jejak" value={String((data.activities ?? []).length)} hint="Seluruh aktivitas tercatat" chip="navy" icon={<History className="h-5 w-5" />} />
+        <KpiCard label="Total Jejak" value={String((base ?? []).length)} hint="Seluruh aktivitas tercatat" chip="navy" icon={<History className="h-5 w-5" />} />
         <KpiCard label="Hasil Filter" value={String(rows.length)} hint="Sesuai pencarian saat ini" chip="teal" icon={<History className="h-5 w-5" />} />
         <KpiCard label="Aktor Unik" value={String(actors)} hint="Pengguna tercatat" chip="violet" icon={<History className="h-5 w-5" />} />
       </div>
@@ -116,6 +176,9 @@ export default function Audit() {
       </Card>
 
       <Card>
+        {serverLoading && sumber === "Server" && (
+          <p className="px-5 pt-4 text-xs text-steel-400">Memuat jejak server…</p>
+        )}
         <div className="overflow-x-auto">
           <table className="w-full min-w-[720px] text-sm">
             <thead>

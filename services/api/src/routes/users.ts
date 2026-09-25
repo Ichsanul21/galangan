@@ -7,7 +7,9 @@ import { fail, ok } from "../envelope.js";
 
 // Seed roles are lowercase ("direktur"); callers may send title case
 // ("Direktur") — accept both, mirroring routes/crud.ts PRIVILEGED_ROLES.
-const MANAGE_ROLES = ["direktur", "developer", "Direktur", "Developer"];
+// Manager boleh kelola users (keputusan bisnis) tapi TIDAK boleh tulis
+// settings/coa (tetap direktur/developer di crud.ts).
+const MANAGE_ROLES = ["direktur", "developer", "Direktur", "Developer", "manager", "Manager"];
 const manageGuards = [requireAuth, requireRole(...MANAGE_ROLES)];
 
 function isPrivileged(role: unknown): boolean {
@@ -22,6 +24,7 @@ interface UserRow {
   role: string;
   email: string;
   is_active: number | null;
+  employee_id?: string | null;
 }
 
 function toPublic(row: UserRow): {
@@ -31,6 +34,7 @@ function toPublic(row: UserRow): {
   role: string;
   email: string;
   isActive: boolean;
+  employeeId: string | null;
 } {
   return {
     id: row.id,
@@ -39,7 +43,14 @@ function toPublic(row: UserRow): {
     role: row.role,
     email: row.email,
     isActive: (row.is_active ?? 1) !== 0,
+    employeeId: typeof row.employee_id === "string" ? row.employee_id : null,
   };
+}
+
+async function assertEmployeeExists(employeeId: string): Promise<boolean> {
+  if (employeeId === "") return true;
+  const rows = await q("SELECT id FROM employees WHERE id = ?", [employeeId]);
+  return rows.length > 0;
 }
 
 const CreateSchema = z.object({
@@ -48,6 +59,7 @@ const CreateSchema = z.object({
   role: z.string().min(1).max(64),
   email: z.string().max(256).optional().default(""),
   password: z.string().min(6).max(72),
+  employeeId: z.string().max(128).optional().default(""),
 });
 
 const PatchSchema = z
@@ -56,10 +68,15 @@ const PatchSchema = z
     role: z.string().min(1).max(64).optional(),
     email: z.string().max(256).optional(),
     isActive: z.union([z.boolean(), z.literal(0), z.literal(1)]).optional(),
+    employeeId: z.string().max(128).nullable().optional(),
   })
   .refine(
     (v) =>
-      v.name !== undefined || v.role !== undefined || v.email !== undefined || v.isActive !== undefined,
+      v.name !== undefined ||
+      v.role !== undefined ||
+      v.email !== undefined ||
+      v.isActive !== undefined ||
+      v.employeeId !== undefined,
     { message: "Nothing to update" },
   );
 
@@ -68,7 +85,7 @@ const PasswordSchema = z.object({
   newPassword: z.string().min(6).max(72),
 });
 
-const SELECT_COLS = "id, username, pass_hash, name, role, email, is_active FROM users";
+const SELECT_COLS = "id, username, pass_hash, name, role, email, is_active, employee_id FROM users";
 
 export function registerUserRoutes(app: FastifyInstance): void {
   app.get("/api/users", { preHandler: manageGuards }, async () => {
@@ -81,11 +98,14 @@ export function registerUserRoutes(app: FastifyInstance): void {
     if (!parsed.success) return reply.status(400).send(fail("Validation failed", "VALIDATION_ERROR"));
     const dup = await q(`SELECT id FROM users WHERE username = ?`, [parsed.data.username]);
     if (dup.length > 0) return reply.status(409).send(fail("Username sudah dipakai", "CONFLICT"));
+    if (parsed.data.employeeId && !(await assertEmployeeExists(parsed.data.employeeId))) {
+      return reply.status(422).send(fail(`Karyawan ${parsed.data.employeeId} tidak ada`, "UNPROCESSABLE"));
+    }
     const id = randomUUID();
     const passHash = await hashPassword(parsed.data.password);
     await exec(
-      "INSERT INTO users (id, username, pass_hash, name, role, email, is_active) VALUES (?, ?, ?, ?, ?, ?, 1)",
-      [id, parsed.data.username, passHash, parsed.data.name, parsed.data.role, parsed.data.email],
+      "INSERT INTO users (id, username, pass_hash, name, role, email, is_active, employee_id) VALUES (?, ?, ?, ?, ?, ?, 1, ?)",
+      [id, parsed.data.username, passHash, parsed.data.name, parsed.data.role, parsed.data.email, parsed.data.employeeId || null],
     );
     const created = {
       id,
@@ -94,6 +114,7 @@ export function registerUserRoutes(app: FastifyInstance): void {
       role: parsed.data.role,
       email: parsed.data.email,
       isActive: true,
+      employeeId: parsed.data.employeeId || null,
     };
     return reply.status(201).send(ok(created));
   });
@@ -115,6 +136,15 @@ export function registerUserRoutes(app: FastifyInstance): void {
     if (deactivating && req.user?.id === current.id) {
       return reply.status(400).send(fail("Tidak dapat menonaktifkan akun sendiri", "VALIDATION_ERROR"));
     }
+    const nextEmployeeId =
+      parsed.data.employeeId === undefined
+        ? (typeof current.employee_id === "string" ? current.employee_id : null)
+        : parsed.data.employeeId === null || parsed.data.employeeId === ""
+          ? null
+          : parsed.data.employeeId;
+    if (nextEmployeeId && !(await assertEmployeeExists(nextEmployeeId))) {
+      return reply.status(422).send(fail(`Karyawan ${nextEmployeeId} tidak ada`, "UNPROCESSABLE"));
+    }
     const next = {
       name: parsed.data.name ?? current.name,
       role: parsed.data.role ?? current.role,
@@ -124,14 +154,15 @@ export function registerUserRoutes(app: FastifyInstance): void {
           ? (current.is_active ?? 1) !== 0
           : parsed.data.isActive === true || parsed.data.isActive === 1,
     };
-    await exec("UPDATE users SET name = ?, role = ?, email = ?, is_active = ? WHERE id = ?", [
+    await exec("UPDATE users SET name = ?, role = ?, email = ?, is_active = ?, employee_id = ? WHERE id = ?", [
       next.name,
       next.role,
       next.email,
       next.isActive ? 1 : 0,
+      nextEmployeeId,
       current.id,
     ]);
-    return ok({ id: current.id, username: current.username, ...next });
+    return ok({ id: current.id, username: current.username, employeeId: nextEmployeeId, ...next });
   });
 
   app.post("/api/users/:id/password", { preHandler: [requireAuth] }, async (req, reply) => {
@@ -147,7 +178,7 @@ export function registerUserRoutes(app: FastifyInstance): void {
     const self = req.user?.id === target.id;
     const privileged = isPrivileged(req.user?.role);
     if (!self && !privileged) {
-      return reply.status(403).send(fail("Butuh peran Direktur / Developer", "FORBIDDEN"));
+      return reply.status(403).send(fail("Butuh peran Direktur / Manager / Developer", "FORBIDDEN"));
     }
     if (self && !privileged) {
       const oldOk =
