@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Plus, Factory, ShoppingCart, ClipboardList, Check, X, Undo2, Printer, Pencil, Send, Star, Wallet, Umbrella } from "lucide-react";
+import { Plus, Factory, ShoppingCart, ClipboardList, Check, X, Undo2, Printer, Pencil, Send, Star, Wallet, Umbrella, Search } from "lucide-react";
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 import { Card, CardHeader, PageHeader, Badge, KpiCard, Tabs, StatusBadge, Donut, ChartTooltip, Modal, Field, FormGrid, ConfirmModal, toast, EmptyState, SortTh, toggleSort, sortRows } from "../../components/ui";
 import type { SortState } from "../../components/ui";
@@ -12,6 +12,7 @@ import { sbPoNumber, sbSplitIncludePpn, maxSeq, SB_KOP } from "../../utils/sb";
 import { spendByCategory, procurementTrend, poCountTrend, poValueTrend, prPendingTrend, vendorTrend } from "../../data";
 import { exportExcel } from "../../utils/export";
 import { useDraftState } from "../../utils/draft";
+import { FilterPopover } from "../../components/FilterPopover";
 
 interface POLine { name: string; qty: number; unit: string; price: number }
 interface Quote { vendor: string; price: number; eta: string }
@@ -151,6 +152,8 @@ export default function Procurement() {
   };
 
   const [tab, setTab] = useState("PO Besar (Kantor)");
+  const [pq, setPq] = useState("");
+  const [pStatus, setPStatus] = useState("Semua");
   const [sort, setSort] = useState<SortState>({ key: null, dir: "asc" });
   const [sort2, setSort2] = useState<SortState>({ key: null, dir: "asc" });
   const [sort3, setSort3] = useState<SortState>({ key: null, dir: "asc" });
@@ -215,6 +218,26 @@ export default function Procurement() {
   const bigList = purchaseOrders.filter((p) => p.poType !== "Kecil");
   const smallList = purchaseOrders.filter((p) => p.poType === "Kecil");
   const approvedPRs = requisitions.filter((r) => r.status === "Disetujui");
+
+  /* Filter satu pola (cari + status) mengikuti tab aktif. */
+  const STATUS_OPSI: Record<string, string[]> = {
+    "PO Besar (Kantor)": ["Semua", "Draft", "Diajukan", "Disetujui", "Dikirim", "Diterima Sebagian", "Diterima", "Ditolak"],
+    "PO Kecil (Workshop)": ["Semua", "Diajukan", "Disetujui", "Diterima", "Ditolak"],
+    RFQ: ["Semua", "Draf", "Draft", "Terkirim", "Evaluasi", "Diputuskan"],
+    PR: ["Semua", "Draft", "Menunggu Approval", "RFQ", "Diajukan", "Disetujui", "Ditolak"],
+    Vendor: ["Semua", "Aktif", "Nonaktif", "Blacklist"],
+  };
+  const matchProc = (hay: string, st: string): boolean => {
+    if (pStatus !== "Semua" && normPo(st) !== pStatus && st !== pStatus) return false;
+    const q = pq.trim().toLowerCase();
+    if (!q) return true;
+    return hay.toLowerCase().includes(q);
+  };
+  const bigShown = bigList.filter((po) => matchProc(`${po.id} ${po.item} ${po.vendor} ${poLines(po).map((l) => l.name).join(" ")}`, String(normPo(po.status))));
+  const smallShown = smallList.filter((po) => matchProc(`${po.id} ${po.item} ${po.vendor}`, String(normPo(po.status))));
+  const rfqShown = rfqs.filter((r) => matchProc(`${r.id} ${r.item} ${r.prId} ${(Array.isArray(r.vendors) ? r.vendors as string[] : []).join(" ")}`, String(r.status)));
+  const prShown = requisitions.filter((r) => matchProc(`${r.id} ${r.item} ${r.by}`, String(r.status)));
+  const vendorShown = vendors.filter((v) => matchProc(`${v.name} ${v.cat}`, String(v.status ?? "Aktif")));
 
   const openPo = purchaseOrders.filter((p) => normPo(p.status) !== "Diterima").reduce((s, p) => s + Number(p.amount || 0), 0);
   const pendingPr = requisitions.filter((r) => PR_PENDING.includes(r.status)).length;
@@ -754,6 +777,33 @@ export default function Procurement() {
       <div className="mt-4 card">
         <Tabs tabs={["PO Besar (Kantor)", "PO Kecil (Workshop)", "RFQ", "PR", "Vendor"]} active={tab} onChange={setTab} />
         <div className="p-4">
+          <div className="mb-3 flex flex-wrap items-center gap-2">
+            <FilterPopover
+              activeCount={[pq.trim() !== "", pStatus !== "Semua"].filter(Boolean).length}
+              initial={{ q: pq, status: pStatus }}
+              onReset={() => { setPq(""); setPStatus("Semua"); }}
+              onApply={(d) => { setPq(d.q); setPStatus(d.status); }}
+            >
+              {(draft, setDraft) => (
+                <div className="space-y-3">
+                  <div className="relative">
+                    <Search className="absolute left-3 top-2.5 h-4 w-4 text-steel-400" />
+                    <input className="input pl-9 w-full" placeholder="Cari id / item / vendor..." value={draft.q} onChange={(e) => setDraft({ ...draft, q: e.target.value })} />
+                  </div>
+                  <Field label="Status">
+                    <select className="input w-full" value={draft.status} onChange={(e) => setDraft({ ...draft, status: e.target.value })}>
+                      {(STATUS_OPSI[tab] ?? ["Semua"]).map((s) => <option key={s} value={s}>{s === "Semua" ? "Semua status" : s}</option>)}
+                    </select>
+                  </Field>
+                </div>
+              )}
+            </FilterPopover>
+            {(pq.trim() !== "" || pStatus !== "Semua") && (
+              <span className="text-xs text-steel-400">
+                Filter aktif di tab {tab} — {tab === "PO Besar (Kantor)" ? bigShown.length : tab === "PO Kecil (Workshop)" ? smallShown.length : tab === "RFQ" ? rfqShown.length : tab === "PR" ? prShown.length : vendorShown.length} baris
+              </span>
+            )}
+          </div>
           {tab === "PO Besar (Kantor)" && (
             <div className="space-y-4">
               <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
@@ -795,7 +845,7 @@ export default function Procurement() {
                     <tr><SortTh label="PO" sortKey="po" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label="Item" sortKey="item" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label="Vendor" sortKey="vendor" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label="Nilai" sortKey="nilai" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label="Level" sortKey="level" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label="ETA" sortKey="eta" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label="Revisi" sortKey="revisi" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label="Status" sortKey="status" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><th className="th">Aksi</th></tr>
                   </thead>
                   <tbody className="divide-y divide-steel-100">
-                    {sortRows(bigList, sort, (po, k) => {
+                    {sortRows(bigShown, sort, (po, k) => {
                       if (k === "nilai") return Number(po.amount || 0);
                       if (k === "item") return String(po.item ?? "");
                       if (k === "vendor") return String(po.vendor ?? "");
@@ -851,7 +901,7 @@ export default function Procurement() {
                     })}
                   </tbody>
                 </table>
-                {bigList.length === 0 && <EmptyState title="Belum ada PO Besar" subtitle="Buat PO Besar dari PR Disetujui, RFQ, atau konsolidasi." />}
+                {bigShown.length === 0 && <EmptyState title="Belum ada PO Besar" subtitle="Buat PO Besar dari PR Disetujui, RFQ, atau konsolidasi." />}
               </div>
             </div>
           )}
@@ -890,7 +940,7 @@ export default function Procurement() {
                       <tr><SortTh label="PO" sortKey="po" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} /><SortTh label="Kebutuhan" sortKey="kebutuhan" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} /><SortTh label="Workshop" sortKey="workshop" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} /><SortTh label="Nilai" sortKey="nilai" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} /><SortTh label="ETA" sortKey="eta" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} /><SortTh label="Status" sortKey="status" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} /><th className="th">Aksi</th></tr>
                     </thead>
                     <tbody className="divide-y divide-steel-100">
-                      {sortRows(smallList, sort2, (po, k) => {
+                      {sortRows(smallShown, sort2, (po, k) => {
                         if (k === "nilai") return Number(po.amount || 0);
                         if (k === "kebutuhan") return String(po.item ?? "");
                         if (k === "workshop") return String(po.workshop ?? "");
@@ -928,7 +978,7 @@ export default function Procurement() {
                       })}
                     </tbody>
                   </table>
-                  {smallList.length === 0 && <EmptyState title="Belum ada PO Kecil" subtitle="PO workshop di bawah 50 juta dicatat di sini." />}
+                  {smallShown.length === 0 && <EmptyState title="Belum ada PO Kecil" subtitle="PO workshop di bawah 50 juta dicatat di sini." />}
                 </div>
               </div>
             </div>
@@ -936,7 +986,7 @@ export default function Procurement() {
 
           {tab === "RFQ" && (
             <div className="space-y-4">
-              {rfqs.map((r) => {
+              {rfqShown.map((r) => {
                 const quotes = (Array.isArray(r.quotes) ? r.quotes : []) as Quote[];
                 const minPrice = quotes.length > 0 ? Math.min(...quotes.map((x) => Number(x.price))) : 0;
                 const minEta = quotes.length > 0 ? quotes.map((x) => x.eta).sort()[0] : "";
@@ -994,7 +1044,7 @@ export default function Procurement() {
                   </Card>
                 );
               })}
-              {rfqs.length === 0 && <EmptyState title="Belum ada RFQ" subtitle="Buat RFQ dari PR Disetujui di tab PR." />}
+              {rfqShown.length === 0 && <EmptyState title="Belum ada RFQ" subtitle="Buat RFQ dari PR Disetujui di tab PR." />}
             </div>
           )}
 
@@ -1042,7 +1092,7 @@ export default function Procurement() {
                       <tr><SortTh label="PR" sortKey="pr" sort={sort4} onSort={(k) => setSort4((s) => toggleSort(s, k))} /><SortTh label="Item" sortKey="item" sort={sort4} onSort={(k) => setSort4((s) => toggleSort(s, k))} /><SortTh label="Oleh" sortKey="oleh" sort={sort4} onSort={(k) => setSort4((s) => toggleSort(s, k))} /><SortTh label="Nilai" sortKey="nilai" sort={sort4} onSort={(k) => setSort4((s) => toggleSort(s, k))} /><SortTh label="Status" sortKey="status" sort={sort4} onSort={(k) => setSort4((s) => toggleSort(s, k))} /><th className="th">Aksi</th></tr>
                     </thead>
                     <tbody className="divide-y divide-steel-100">
-                      {sortRows(requisitions, sort4, (r, k) => {
+                      {sortRows(prShown, sort4, (r, k) => {
                         if (k === "nilai") return Number(r.amount || 0);
                         if (k === "item") return String(r.item ?? "");
                         if (k === "oleh") return String(r.by ?? "");
@@ -1090,7 +1140,7 @@ export default function Procurement() {
                 <button className="btn-secondary text-xs" onClick={() => setShowVendor(true)}><Plus className="h-3.5 w-3.5" /> Tambah Vendor</button>
               </div>
               <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
-                {vendors.map((v) => {
+                {vendorShown.map((v) => {
                   const avg = avgScore(v);
                   const pg = payungOf(v);
                   const isBlack = v.status === "Blacklist";
