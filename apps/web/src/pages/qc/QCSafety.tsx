@@ -891,7 +891,7 @@ export default function QCSafety() {
               <Card className="p-4">
                 <div className="mb-2 flex items-center justify-between">
                   <h3 className="text-sm font-semibold text-navy-900">Audit Internal (terpisah dari Audit HSE)</h3>
-                  <button className="btn-secondary text-xs" onClick={() => setShowAuditPlan(true)}><Plus className="h-3.5 w-3.5" /> Jadwalkan Audit</button>
+                  <button className="btn-secondary text-xs" onClick={() => { setAuditForm({ date: todayISO(), area: "", auditor: "", findings: "0", ncrId: "" }); setShowAuditPlan(true); }}><Plus className="h-3.5 w-3.5" /> Jadwalkan Audit</button>
                 </div>
                 <div className="space-y-2">
                   {auditPlans.map((a) => (
