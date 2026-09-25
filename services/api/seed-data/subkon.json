@@ -1,0 +1,105 @@
+{
+ "title": "RINCIAN PEKERJAAN BG RMN 3324 (NAMA PEMBORONG/SUBKONTRAKTOR)",
+ "sub": "Pak Yusuf",
+ "vessel": "BG RMN 3324",
+ "lines": [
+  {
+   "row": 7,
+   "uraian": "∟ Ganti Baru Ban Daprah Ø 1200",
+   "cols": [
+    "",
+    "∟",
+    "Ganti Baru Ban Daprah Ø 1200",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    ""
+   ]
+  },
+  {
+   "row": 9,
+   "uraian": "2 Ganti Baru Tanda Selar (Number Hull)",
+   "cols": [
+    "2",
+    "Ganti Baru Tanda Selar (Number Hull)",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    ""
+   ]
+  },
+  {
+   "row": 10,
+   "uraian": "∟ Plate",
+   "cols": [
+    "",
+    "∟",
+    "Plate",
+    "",
+    "",
+    "",
+    "",
+    "1530",
+    "x",
+    "300",
+    "x",
+    "8"
+   ]
+  },
+  {
+   "row": 12,
+   "uraian": "⌐",
+   "cols": [
+    "",
+    "",
+    "⌐",
+    "Plate",
+    "",
+    "",
+    "",
+    "100",
+    "x",
+    "100",
+    "x",
+    "8"
+   ]
+  },
+  {
+   "row": 14,
+   "uraian": "5 Dilakukan pressure test tank",
+   "cols": [
+    "5",
+    "Dilakukan pressure test tank",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    ""
+   ]
+  }
+ ],
+ "subtotal": 300000,
+ "pph": -1500,
+ "total": 298500,
+ "note": "Pph untuk setiap pemborong/subkontaktor bisa berbeda; 0.5% dan 2%",
+ "brokenRef": {
+  "row": 108,
+  "formula": "=#REF!+#REF!"
+ }
+}

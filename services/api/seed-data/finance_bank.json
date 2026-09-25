@@ -1,0 +1,444 @@
+{
+ "banks": [
+  {
+   "nama": "Saldo Awal Bank Mandiri - 1480006724069",
+   "debit": 9018040.08,
+   "saldo": 9018040.08
+  },
+  {
+   "nama": "Saldo Awal Bank Negara Indonesia - 6468889991",
+   "debit": 12205254.0,
+   "saldo": 12205254.0
+  },
+  {
+   "nama": "Saldo Awal Bank Rakyat Indonesia - 008201004317300",
+   "debit": 269283397.9,
+   "saldo": 269283397.9
+  },
+  {
+   "nama": "Saldo Awal Bank Rakyat Indonesia - Non Pajak",
+   "debit": 1112412.73,
+   "saldo": 1112412.73
+  }
+ ],
+ "jurnal": [
+  {
+   "tanggal": "BANK",
+   "pihak": "",
+   "dok": "",
+   "uraian": "",
+   "akunDb": "",
+   "akunKr": "",
+   "debit": 0,
+   "kredit": 0,
+   "saldo": 0
+  },
+  {
+   "tanggal": "Bulan Agustus 2026",
+   "pihak": "",
+   "dok": "",
+   "uraian": "",
+   "akunDb": "",
+   "akunKr": "",
+   "debit": 0,
+   "kredit": 0,
+   "saldo": 0
+  },
+  {
+   "tanggal": "TANGGAL",
+   "pihak": "KODE",
+   "dok": "DOKUMEN",
+   "uraian": "URAIAN",
+   "akunDb": "AKUN",
+   "akunKr": "AKUN",
+   "debit": 0,
+   "kredit": 0,
+   "saldo": 0
+  },
+  {
+   "tanggal": "2026-08-05",
+   "pihak": "PT Teratai Sejahtera Line",
+   "dok": "101",
+   "uraian": "TERIMA PINJAMAN DANA DARI ANTAR PERUSAHAAN",
+   "akunDb": "1-121",
+   "akunKr": "2-240",
+   "debit": 180780000.0,
+   "kredit": 0,
+   "saldo": 189798040.08
+  },
+  {
+   "tanggal": "2026-08-06",
+   "pihak": "PT SAPTA SUMBER LANCAR",
+   "dok": "101",
+   "uraian": "PEMBAYARAN INVOICE",
+   "akunDb": "2-110",
+   "akunKr": "1-121",
+   "debit": 0,
+   "kredit": 180780000.0,
+   "saldo": 9018040.080000013
+  },
+  {
+   "tanggal": "2026-08-10",
+   "pihak": "",
+   "dok": "",
+   "uraian": "PENGALIHAN DANA BRI SB TO MANDIRI SB",
+   "akunDb": "1-121",
+   "akunKr": "",
+   "debit": 277000000.0,
+   "kredit": 0,
+   "saldo": 286018040.08000004
+  },
+  {
+   "tanggal": "2026-08-26",
+   "pihak": "",
+   "dok": "301",
+   "uraian": "BIAYA ADMIN",
+   "akunDb": "7-300",
+   "akunKr": "1-122",
+   "debit": 0,
+   "kredit": 25000.0,
+   "saldo": 12180254.0
+  },
+  {
+   "tanggal": "2026-08-31",
+   "pihak": "",
+   "dok": "301",
+   "uraian": "BUNGA BANK",
+   "akunDb": "1-122",
+   "akunKr": "7-100",
+   "debit": 3058.0,
+   "kredit": 0,
+   "saldo": 12183312.0
+  },
+  {
+   "tanggal": "2026-08-31",
+   "pihak": "",
+   "dok": "302",
+   "uraian": "TAX / PAJAK BUNGA",
+   "akunDb": "7-300",
+   "akunKr": "1-122",
+   "debit": 0,
+   "kredit": 612.0,
+   "saldo": 12182700.0
+  },
+  {
+   "tanggal": "2026-08-31",
+   "pihak": "",
+   "dok": "303",
+   "uraian": "BIAYA ADMIN",
+   "akunDb": "7-300",
+   "akunKr": "1-122",
+   "debit": 0,
+   "kredit": 25000.0,
+   "saldo": 12157700.0
+  },
+  {
+   "tanggal": "2026-08-01",
+   "pihak": "PT PRASETYA UTAMA ENERGI",
+   "dok": "201",
+   "uraian": "PEMBAYARAN INVOICE BBM",
+   "akunDb": "2-110",
+   "akunKr": "1-120",
+   "debit": 0,
+   "kredit": 95460000.0,
+   "saldo": 173823397.89999998
+  },
+  {
+   "tanggal": "2026-08-01",
+   "pihak": "",
+   "dok": "",
+   "uraian": "BIAYA ADMIN",
+   "akunDb": "7-300",
+   "akunKr": "1-120",
+   "debit": 0,
+   "kredit": 2500.0,
+   "saldo": 173820897.89999998
+  },
+  {
+   "tanggal": "2026-08-03",
+   "pihak": "",
+   "dok": "202",
+   "uraian": "SERAGAM KARYAWAN",
+   "akunDb": "5-500",
+   "akunKr": "1-120",
+   "debit": 0,
+   "kredit": 46080000.0,
+   "saldo": 127740897.89999998
+  },
+  {
+   "tanggal": "2026-08-03",
+   "pihak": "",
+   "dok": "",
+   "uraian": "BIAYA ADMIN",
+   "akunDb": "7-300",
+   "akunKr": "1-120",
+   "debit": 0,
+   "kredit": 2500.0,
+   "saldo": 127738397.89999998
+  },
+  {
+   "tanggal": "2026-08-05",
+   "pihak": "PT PELAYARAN ROYLEA MARINE LINE",
+   "dok": "201",
+   "uraian": "TERIMA PEMBAYARAN INV 051 - TB KKS 1201",
+   "akunDb": "1-120",
+   "akunKr": "1-130",
+   "debit": 882372596.0,
+   "kredit": 0,
+   "saldo": 1010110993.9
+  },
+  {
+   "tanggal": "2026-08-06",
+   "pihak": "PT RIZKY ENERGY JAYA",
+   "dok": "203",
+   "uraian": "PEMBAYARAN INVOICE BBM",
+   "akunDb": "2-110",
+   "akunKr": "1-120",
+   "debit": 0,
+   "kredit": 92130000.0,
+   "saldo": 917980993.9
+  },
+  {
+   "tanggal": "2026-08-06",
+   "pihak": "",
+   "dok": "",
+   "uraian": "PENGALIHAN DANA BRI SB TO BRI AYU",
+   "akunDb": "1-123",
+   "akunKr": "",
+   "debit": 1510000.0,
+   "kredit": 0,
+   "saldo": 2622412.73
+  },
+  {
+   "tanggal": "2026-08-06",
+   "pihak": "DW SAMARINDA",
+   "dok": "401",
+   "uraian": "PEMBAYARAN INVOICE",
+   "akunDb": "2-110",
+   "akunKr": "1-123",
+   "debit": 0,
+   "kredit": 850000.0,
+   "saldo": 1772412.73
+  },
+  {
+   "tanggal": "2026-08-06",
+   "pihak": "",
+   "dok": "",
+   "uraian": "BIAYA ADMIN",
+   "akunDb": "7-300",
+   "akunKr": "1-123",
+   "debit": 0,
+   "kredit": 2500.0,
+   "saldo": 1769912.73
+  },
+  {
+   "tanggal": "2026-08-06",
+   "pihak": "UD GEMILANG BARU",
+   "dok": "402",
+   "uraian": "PEMBAYARAN INVOICE",
+   "akunDb": "2-110",
+   "akunKr": "1-123",
+   "debit": 0,
+   "kredit": 660000.0,
+   "saldo": 1109912.73
+  },
+  {
+   "tanggal": "2026-08-06",
+   "pihak": "",
+   "dok": "",
+   "uraian": "BIAYA ADMIN",
+   "akunDb": "7-300",
+   "akunKr": "1-123",
+   "debit": 0,
+   "kredit": 2500.0,
+   "saldo": 1107412.73
+  },
+  {
+   "tanggal": "2026-08-10",
+   "pihak": "PT Saha Agropalm Mandiri",
+   "dok": "401",
+   "uraian": "TERIMA PEMBAYARAN INV 008 - LOADER",
+   "akunDb": "1-123",
+   "akunKr": "1-160",
+   "debit": 28678000.0,
+   "kredit": 0,
+   "saldo": 29785412.73
+  },
+  {
+   "tanggal": "2026-08-11",
+   "pihak": "",
+   "dok": "",
+   "uraian": "PENGALIHAN DANA BRI SB TO BRI AYU",
+   "akunDb": "1-123",
+   "akunKr": "",
+   "debit": 3790000.0,
+   "kredit": 0,
+   "saldo": 33575412.730000004
+  },
+  {
+   "tanggal": "2026-08-11",
+   "pihak": "",
+   "dok": "403",
+   "uraian": "PEMBELIAN MATERIAL PINTU",
+   "akunDb": "5-101",
+   "akunKr": "1-123",
+   "debit": 0,
+   "kredit": 3150000.0,
+   "saldo": 30425412.730000004
+  },
+  {
+   "tanggal": "2026-08-11",
+   "pihak": "KIM JAYA ABADI",
+   "dok": "404",
+   "uraian": "PEMBAYARAN INVOICE",
+   "akunDb": "2-110",
+   "akunKr": "1-123",
+   "debit": 0,
+   "kredit": 640000.0,
+   "saldo": 29785412.730000004
+  },
+  {
+   "tanggal": "2026-08-11",
+   "pihak": "",
+   "dok": "",
+   "uraian": "BIAYA ADMIN",
+   "akunDb": "7-300",
+   "akunKr": "1-123",
+   "debit": 0,
+   "kredit": 2500.0,
+   "saldo": 29782912.730000004
+  },
+  {
+   "tanggal": "2026-08-15",
+   "pihak": "",
+   "dok": "",
+   "uraian": "PENGALIHAN DANA BRI SB TO BRI AYU",
+   "akunDb": "1-123",
+   "akunKr": "",
+   "debit": 6250000.0,
+   "kredit": 0,
+   "saldo": 36032912.730000004
+  },
+  {
+   "tanggal": "KAS KANTOR",
+   "pihak": "",
+   "dok": "",
+   "uraian": "",
+   "akunDb": "",
+   "akunKr": "",
+   "debit": 0,
+   "kredit": 0,
+   "saldo": 0
+  },
+  {
+   "tanggal": "Bulan Agustus 2026",
+   "pihak": "",
+   "dok": "",
+   "uraian": "",
+   "akunDb": "",
+   "akunKr": "",
+   "debit": 0,
+   "kredit": 0,
+   "saldo": 0
+  },
+  {
+   "tanggal": "TANGGAL",
+   "pihak": "KODE",
+   "dok": "BKM",
+   "uraian": "URAIAN",
+   "akunDb": "AKUN",
+   "akunKr": "AKUN",
+   "debit": 0,
+   "kredit": 0,
+   "saldo": 0
+  },
+  {
+   "tanggal": "",
+   "pihak": "",
+   "dok": "",
+   "uraian": "Saldo Kas",
+   "akunDb": "",
+   "akunKr": "",
+   "debit": 18597250.0,
+   "kredit": 0,
+   "saldo": 18597250.0
+  },
+  {
+   "tanggal": "2026-08-01",
+   "pihak": "",
+   "dok": "1",
+   "uraian": "KACA BLASTING",
+   "akunDb": "5-600",
+   "akunKr": "1-111",
+   "debit": 0,
+   "kredit": 500000.0,
+   "saldo": 18097250.0
+  },
+  {
+   "tanggal": "2026-08-01",
+   "pihak": "",
+   "dok": "2",
+   "uraian": "SHOCK BELAKANG TRUK",
+   "akunDb": "5-600",
+   "akunKr": "1-111",
+   "debit": 0,
+   "kredit": 700000.0,
+   "saldo": 17397250.0
+  },
+  {
+   "tanggal": "2026-08-01",
+   "pihak": "",
+   "dok": "3",
+   "uraian": "PERLENGKAPAN KEBERSIHAN",
+   "akunDb": "6-004",
+   "akunKr": "1-111",
+   "debit": 0,
+   "kredit": 379500.0,
+   "saldo": 17017750.0
+  },
+  {
+   "tanggal": "2026-08-01",
+   "pihak": "",
+   "dok": "4",
+   "uraian": "UANG MAKAN KARYAWAN",
+   "akunDb": "5-600",
+   "akunKr": "1-111",
+   "debit": 0,
+   "kredit": 600000.0,
+   "saldo": 16417750.0
+  },
+  {
+   "tanggal": "2026-08-01",
+   "pihak": "",
+   "dok": "5",
+   "uraian": "TAMBAL BAN MOBIL L300",
+   "akunDb": "5-600",
+   "akunKr": "1-111",
+   "debit": 0,
+   "kredit": 70000.0,
+   "saldo": 16347750.0
+  },
+  {
+   "tanggal": "2026-08-01",
+   "pihak": "",
+   "dok": "6",
+   "uraian": "MINUMAN KOPI TAMU",
+   "akunDb": "6-015",
+   "akunKr": "1-111",
+   "debit": 0,
+   "kredit": 15000.0,
+   "saldo": 16332750.0
+  },
+  {
+   "tanggal": "2026-08-03",
+   "pihak": "",
+   "dok": "7",
+   "uraian": "UANG JALAN VANDA X4",
+   "akunDb": "5-600",
+   "akunKr": "1-111",
+   "debit": 0,
+   "kredit": 100000.0,
+   "saldo": 16232750.0
+  }
+ ]
+}

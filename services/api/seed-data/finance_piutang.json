@@ -1,0 +1,392 @@
+[
+ {
+  "no": "1",
+  "nama": "PT DATA NETWORK SOLUTION",
+  "saldoAwal": 0,
+  "saldoAkhir": 0.0
+ },
+ {
+  "no": "2",
+  "nama": "PT BAHTERA ENERGI SAMUDRA TUAH",
+  "saldoAwal": 0,
+  "saldoAkhir": 0.0
+ },
+ {
+  "no": "3",
+  "nama": "PT SINAR PASIFIK LESTARI",
+  "saldoAwal": 0,
+  "saldoAkhir": 0.0
+ },
+ {
+  "no": "4",
+  "nama": "PT PELAYARAN KARYA BINTANG TIMUR",
+  "saldoAwal": 1596020105.0,
+  "saldoAkhir": 0.0
+ },
+ {
+  "no": "5",
+  "nama": "PT PELAYARAN KARTIKA SAMUDRA ADIJAYA",
+  "saldoAwal": 0,
+  "saldoAkhir": 2512091953.9700003
+ },
+ {
+  "no": "6",
+  "nama": "PT BADAN MULTIPRIMA USAHATAMA",
+  "saldoAwal": 0,
+  "saldoAkhir": 0.0
+ },
+ {
+  "no": "7",
+  "nama": "PT MARITIM PRIMA MANDIRI",
+  "saldoAwal": 0,
+  "saldoAkhir": 0.0
+ },
+ {
+  "no": "8",
+  "nama": "PT MUTIARA EXPRESS LINES",
+  "saldoAwal": 717806058.0,
+  "saldoAkhir": 717806058.0
+ },
+ {
+  "no": "9",
+  "nama": "PT PELAYARAN SUMBER KARYA SAMUDERA",
+  "saldoAwal": 0,
+  "saldoAkhir": 0.0
+ },
+ {
+  "no": "10",
+  "nama": "PT PELAYARAN KARUNIA DUTA SAMUDERA",
+  "saldoAwal": 0,
+  "saldoAkhir": 0.0
+ },
+ {
+  "no": "11",
+  "nama": "PT TIRTA MAHAKAM RESOURCES TBK",
+  "saldoAwal": 0,
+  "saldoAkhir": 1323312036.67
+ },
+ {
+  "no": "12",
+  "nama": "PT PELAYARAN PRIMA SAMUDERA JAYA",
+  "saldoAwal": 0,
+  "saldoAkhir": 0.0
+ },
+ {
+  "no": "13",
+  "nama": "PT ALVI CIPTA SENTOSA",
+  "saldoAwal": 0,
+  "saldoAkhir": 0.0
+ },
+ {
+  "no": "14",
+  "nama": "PT PELAYARAN KARYA PULAU NUSANTARA",
+  "saldoAwal": 0,
+  "saldoAkhir": 0.0
+ },
+ {
+  "no": "15",
+  "nama": "PT GLOBAL TRIALFA MAHAKAVESTAMA",
+  "saldoAwal": 0,
+  "saldoAkhir": 0.0
+ },
+ {
+  "no": "16",
+  "nama": "PT MITRA KEMAKMURAN LINE",
+  "saldoAwal": 0,
+  "saldoAkhir": 725000000.0
+ },
+ {
+  "no": "17",
+  "nama": "PT PASIFIC MITRA SARANA",
+  "saldoAwal": 0,
+  "saldoAkhir": 0.0
+ },
+ {
+  "no": "18",
+  "nama": "PT MULTI PRIMA USAHATAMA",
+  "saldoAwal": 0,
+  "saldoAkhir": 0.0
+ },
+ {
+  "no": "19",
+  "nama": "PT WHS GLOBAL MANDIRI",
+  "saldoAwal": 0,
+  "saldoAkhir": 0.0
+ },
+ {
+  "no": "20",
+  "nama": "PT EMINENCE MARITIME INDONESIA",
+  "saldoAwal": 0,
+  "saldoAkhir": 0.0
+ },
+ {
+  "no": "21",
+  "nama": "PT PELAYARAN ROYLEA MARINE LINE",
+  "saldoAwal": 882372596.0,
+  "saldoAkhir": 0.0
+ },
+ {
+  "no": "22",
+  "nama": "PT PELAYARAN PELANGI SINDUMULIA",
+  "saldoAwal": 100000000.0,
+  "saldoAkhir": 50000000.0
+ },
+ {
+  "no": "23",
+  "nama": "PT IRIANA SAMUDERA ADIJAYA",
+  "saldoAwal": 0,
+  "saldoAkhir": 0.0
+ },
+ {
+  "no": "24",
+  "nama": "PT TAURUS KALTIM PRIMA",
+  "saldoAwal": 0,
+  "saldoAkhir": 0.0
+ },
+ {
+  "no": "25",
+  "nama": "PT PELAYARAN KARYAMAS KALTIM PRIMA",
+  "saldoAwal": 2439000.0,
+  "saldoAkhir": 0.0
+ },
+ {
+  "no": "26",
+  "nama": "PT VIRGO KENCANA SEJATI LINE",
+  "saldoAwal": 0,
+  "saldoAkhir": 0.0
+ },
+ {
+  "no": "27",
+  "nama": "PT PELAYARAN GLOBAL LINTAS",
+  "saldoAwal": 0,
+  "saldoAkhir": 882081202.6199999
+ },
+ {
+  "no": ".",
+  "nama": "KODE PEMBANTU",
+  "saldoAwal": 0,
+  "saldoAkhir": 0
+ },
+ {
+  "no": "1",
+  "nama": "IBU LILI KANTIN",
+  "saldoAwal": 15000000.0,
+  "saldoAkhir": 15000000.0
+ },
+ {
+  "no": "2",
+  "nama": "NORIS",
+  "saldoAwal": 7000000.0,
+  "saldoAkhir": 6000000.0
+ },
+ {
+  "no": "3",
+  "nama": "SUCI",
+  "saldoAwal": 5000000.0,
+  "saldoAkhir": 0.0
+ },
+ {
+  "no": "4",
+  "nama": "SABRAN",
+  "saldoAwal": 3000000.0,
+  "saldoAkhir": 2000000.0
+ },
+ {
+  "no": "5",
+  "nama": "AHMAD JAYADI",
+  "saldoAwal": 9000000.0,
+  "saldoAkhir": 8000000.0
+ },
+ {
+  "no": "6",
+  "nama": "SANTI",
+  "saldoAwal": 400000.0,
+  "saldoAkhir": 0.0
+ },
+ {
+  "no": "7",
+  "nama": "ADILLA",
+  "saldoAwal": 9000000.0,
+  "saldoAkhir": 9000000.0
+ },
+ {
+  "no": "8",
+  "nama": "RIZKY REYUDA",
+  "saldoAwal": 500000.0,
+  "saldoAkhir": 0.0
+ },
+ {
+  "no": "9",
+  "nama": "BUDIANSYAH",
+  "saldoAwal": 11000000.0,
+  "saldoAkhir": 10000000.0
+ },
+ {
+  "no": "10",
+  "nama": "ASEP",
+  "saldoAwal": 1000000.0,
+  "saldoAkhir": 500000.0
+ },
+ {
+  "no": "11",
+  "nama": "DONY",
+  "saldoAwal": 1000000.0,
+  "saldoAkhir": 500000.0
+ },
+ {
+  "no": "12",
+  "nama": "TARMAN",
+  "saldoAwal": 1000000.0,
+  "saldoAkhir": 2500000.0
+ },
+ {
+  "no": "13",
+  "nama": "LARUNTU",
+  "saldoAwal": 500000.0,
+  "saldoAkhir": 0.0
+ },
+ {
+  "no": "14",
+  "nama": "JESI",
+  "saldoAwal": 1500000.0,
+  "saldoAkhir": 1000000.0
+ },
+ {
+  "no": "15",
+  "nama": "AGUS RIONO",
+  "saldoAwal": 2000000.0,
+  "saldoAkhir": 1500000.0
+ },
+ {
+  "no": "16",
+  "nama": "SUKARMAN",
+  "saldoAwal": 3000000.0,
+  "saldoAkhir": 2000000.0
+ },
+ {
+  "no": "17",
+  "nama": "PASHA",
+  "saldoAwal": 2000000.0,
+  "saldoAkhir": 1500000.0
+ },
+ {
+  "no": "18",
+  "nama": "ENTONG",
+  "saldoAwal": 3000000.0,
+  "saldoAkhir": 0.0
+ },
+ {
+  "no": "19",
+  "nama": "SAFARUDIN",
+  "saldoAwal": 2000000.0,
+  "saldoAkhir": 1500000.0
+ },
+ {
+  "no": "20",
+  "nama": "ALUS",
+  "saldoAwal": 1000000.0,
+  "saldoAkhir": 5000000.0
+ },
+ {
+  "no": "21",
+  "nama": "HAIRUDIN",
+  "saldoAwal": 2500000.0,
+  "saldoAkhir": 2000000.0
+ },
+ {
+  "no": "22",
+  "nama": "RAHMAD",
+  "saldoAwal": 2500000.0,
+  "saldoAkhir": 2000000.0
+ },
+ {
+  "no": "23",
+  "nama": "SUPIAN AGUS",
+  "saldoAwal": 4000000.0,
+  "saldoAkhir": 2000000.0
+ },
+ {
+  "no": "24",
+  "nama": "AKBAR",
+  "saldoAwal": 1500000.0,
+  "saldoAkhir": 1000000.0
+ },
+ {
+  "no": "25",
+  "nama": "IHSAN",
+  "saldoAwal": 0.0,
+  "saldoAkhir": 2500000.0
+ },
+ {
+  "no": "26",
+  "nama": "AULIA",
+  "saldoAwal": 0.0,
+  "saldoAkhir": 3500000.0
+ },
+ {
+  "no": "27",
+  "nama": "AGUSRIYANTO",
+  "saldoAwal": 0.0,
+  "saldoAkhir": 3000000.0
+ },
+ {
+  "no": "28",
+  "nama": "SUNARJI",
+  "saldoAwal": 0.0,
+  "saldoAkhir": 3000000.0
+ },
+ {
+  "no": "29",
+  "nama": "BUDI",
+  "saldoAwal": 0.0,
+  "saldoAkhir": 2500000.0
+ },
+ {
+  "no": "30",
+  "nama": "GORDON",
+  "saldoAwal": 0.0,
+  "saldoAkhir": 750000.0
+ },
+ {
+  "no": "31",
+  "nama": "ALI HUSNI",
+  "saldoAwal": 0.0,
+  "saldoAkhir": 500000.0
+ },
+ {
+  "no": "32",
+  "nama": "SUGIHARTO",
+  "saldoAwal": 0.0,
+  "saldoAkhir": 5000000.0
+ },
+ {
+  "no": "33",
+  "nama": "FENY",
+  "saldoAwal": 0.0,
+  "saldoAkhir": 3500000.0
+ },
+ {
+  "no": "NO",
+  "nama": "KODE PEMBANTU",
+  "saldoAwal": 0,
+  "saldoAkhir": 0
+ },
+ {
+  "no": "1",
+  "nama": "PT BUNGA TERATAI",
+  "saldoAwal": 7322331403.0,
+  "saldoAkhir": 7322331403.0
+ },
+ {
+  "no": "2",
+  "nama": "PT Teratai Sejahtera Line.",
+  "saldoAwal": 135000000.0,
+  "saldoAkhir": 135000000.0
+ },
+ {
+  "no": "3",
+  "nama": "PT Saha Agropalm Mandiri",
+  "saldoAwal": 841370000.0,
+  "saldoAkhir": 812692000.0
+ }
+]

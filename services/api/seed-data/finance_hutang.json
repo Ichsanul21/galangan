@@ -1,0 +1,326 @@
+[
+ {
+  "no": "1",
+  "nama": "PT KALTIM LESTARI UNGGUL",
+  "saldoAwal": 0,
+  "saldoAkhir": 0
+ },
+ {
+  "no": "2",
+  "nama": "CV SUKSES MARINE SUPPLY",
+  "saldoAwal": 0,
+  "saldoAkhir": 0.0
+ },
+ {
+  "no": "3",
+  "nama": "CV ANEKA FILTER",
+  "saldoAwal": 0,
+  "saldoAkhir": 0.0
+ },
+ {
+  "no": "4",
+  "nama": "CV BERLIAN JAYA GAS",
+  "saldoAwal": 701808000.0,
+  "saldoAkhir": 502116000.32999945
+ },
+ {
+  "no": "5",
+  "nama": "CV KALINDO MITRA BERSAMA",
+  "saldoAwal": 162109950.0,
+  "saldoAkhir": 119319450.0
+ },
+ {
+  "no": "6",
+  "nama": "PT MURNI GAS RAYA",
+  "saldoAwal": 14985000.0,
+  "saldoAkhir": 1665000.0
+ },
+ {
+  "no": "7",
+  "nama": "PT SAPTA SUMBER LANCAR",
+  "saldoAwal": 355575999.0,
+  "saldoAkhir": 174796000.0
+ },
+ {
+  "no": "8",
+  "nama": "PT SOLUSI ENERGI WARNAINDO",
+  "saldoAwal": 0,
+  "saldoAkhir": 0.0
+ },
+ {
+  "no": "9",
+  "nama": "UD GEMILANG BARU",
+  "saldoAwal": 660000.0,
+  "saldoAkhir": 0.0
+ },
+ {
+  "no": "10",
+  "nama": "PT MANDALIKA VARUNA PERKASA",
+  "saldoAwal": 73267500.0,
+  "saldoAkhir": 73267500.0
+ },
+ {
+  "no": "11",
+  "nama": "DW SAMARINDA",
+  "saldoAwal": 850000.0,
+  "saldoAkhir": 425000.0
+ },
+ {
+  "no": "12",
+  "nama": "CV SUMBER GAS ABADI",
+  "saldoAwal": 53779500.0,
+  "saldoAkhir": 19719150.0
+ },
+ {
+  "no": "13",
+  "nama": "CV MASEBA TEKNIK",
+  "saldoAwal": 0,
+  "saldoAkhir": 21654399.48
+ },
+ {
+  "no": "14",
+  "nama": "PT SEMERU TEKNIK",
+  "saldoAwal": 190000000.0,
+  "saldoAkhir": 140000000.0
+ },
+ {
+  "no": "15",
+  "nama": "PT MANGGALA INDO NUSA",
+  "saldoAwal": 0,
+  "saldoAkhir": 0.0
+ },
+ {
+  "no": "16",
+  "nama": "PT RIZKY ENERGY JAYA",
+  "saldoAwal": 92130000.0,
+  "saldoAkhir": 0.0
+ },
+ {
+  "no": "17",
+  "nama": "PT PRASETYA UTAMA ENERGI",
+  "saldoAwal": 189810000.0,
+  "saldoAkhir": 218670000.0
+ },
+ {
+  "no": "18",
+  "nama": "PT SURYA BIRU MURNI",
+  "saldoAwal": 23310000.0,
+  "saldoAkhir": 24975000.0
+ },
+ {
+  "no": "19",
+  "nama": "PT CITRA MUSI LESTARI",
+  "saldoAwal": 200900000.0,
+  "saldoAkhir": 143500000.38
+ },
+ {
+  "no": "20",
+  "nama": "PT SOLUSINDO MARINTAMA COATING",
+  "saldoAwal": 0,
+  "saldoAkhir": 0.0
+ },
+ {
+  "no": "21",
+  "nama": "PT LAPAN SUMBER REJEKI",
+  "saldoAwal": 10950000.0,
+  "saldoAkhir": 0.0
+ },
+ {
+  "no": "22",
+  "nama": "HARTORA SAMARINDA",
+  "saldoAwal": 0,
+  "saldoAkhir": 0.0
+ },
+ {
+  "no": "23",
+  "nama": "PT PENAJAM ENERGY BARU",
+  "saldoAwal": 0,
+  "saldoAkhir": 0.0
+ },
+ {
+  "no": "24",
+  "nama": "TOKO KARYA SUBUR",
+  "saldoAwal": 0,
+  "saldoAkhir": 0.0
+ },
+ {
+  "no": "25",
+  "nama": "SUTONI (PEMASANGAN KACA)",
+  "saldoAwal": 0,
+  "saldoAkhir": 0.0
+ },
+ {
+  "no": "26",
+  "nama": "PT BUKIT PUTRI INDAH PERMAI",
+  "saldoAwal": 23869035.0,
+  "saldoAkhir": 7520705.0
+ },
+ {
+  "no": "27",
+  "nama": "PT SANJAYA PUTRA KENCANA",
+  "saldoAwal": 4225770.0,
+  "saldoAkhir": 4225770.0
+ },
+ {
+  "no": "28",
+  "nama": "PT CITRA KHARISMA BERSAUDARA",
+  "saldoAwal": 0,
+  "saldoAkhir": 0.0
+ },
+ {
+  "no": "29",
+  "nama": "PT NAWASENA MARINE SAFETY",
+  "saldoAwal": 0,
+  "saldoAkhir": 0.0
+ },
+ {
+  "no": "30",
+  "nama": "CV SANGA SANGA INTERIOR",
+  "saldoAwal": 35000000.0,
+  "saldoAkhir": 20000000.0
+ },
+ {
+  "no": "31",
+  "nama": "JUNAIDI (JACKETING)",
+  "saldoAwal": 0,
+  "saldoAkhir": 0.0
+ },
+ {
+  "no": "32",
+  "nama": "SUMBER REJEKI",
+  "saldoAwal": 0,
+  "saldoAkhir": 0.0
+ },
+ {
+  "no": "33",
+  "nama": "THAMRIN ELEKTRICAL",
+  "saldoAwal": 37925000.0,
+  "saldoAkhir": 22925000.0
+ },
+ {
+  "no": "34",
+  "nama": "NUR MULIA",
+  "saldoAwal": 0,
+  "saldoAkhir": 0.0
+ },
+ {
+  "no": "35",
+  "nama": "PT SAMUDRA MITRA SERVICE",
+  "saldoAwal": 24034500.0,
+  "saldoAkhir": 24034500.0
+ },
+ {
+  "no": "36",
+  "nama": "CV PRATAMA MAJU DIESEL",
+  "saldoAwal": 0.0,
+  "saldoAkhir": 0.0
+ },
+ {
+  "no": "37",
+  "nama": "PT INTI TEKNIKA SOLUSI",
+  "saldoAwal": 0.0,
+  "saldoAkhir": 0.0
+ },
+ {
+  "no": "38",
+  "nama": "PT SANY MAKMUR PERKASA",
+  "saldoAwal": 0.0,
+  "saldoAkhir": -0.5
+ },
+ {
+  "no": "39",
+  "nama": "CV MAKKADAE ABADI",
+  "saldoAwal": 753246000.0,
+  "saldoAkhir": 618048000.0
+ },
+ {
+  "no": "40",
+  "nama": "SOFYAN - SEMERU",
+  "saldoAwal": 0.0,
+  "saldoAkhir": 0.0
+ },
+ {
+  "no": "41",
+  "nama": "PT MAHAKAM BUANA DIESEL INDONESIA",
+  "saldoAwal": 0.0,
+  "saldoAkhir": 0.0
+ },
+ {
+  "no": "42",
+  "nama": "PT SURYA TRANS MAHAKAM",
+  "saldoAwal": 0.0,
+  "saldoAkhir": -5.9138983488082886e-08
+ },
+ {
+  "no": "43",
+  "nama": "PT WAHYU MANDIRI AMARA CIPTA",
+  "saldoAwal": 0.0,
+  "saldoAkhir": 66137130.0
+ },
+ {
+  "no": "44",
+  "nama": "WARUNG FAHMI",
+  "saldoAwal": 0.0,
+  "saldoAkhir": 0.0
+ },
+ {
+  "no": "NO",
+  "nama": "KODE PEMBANTU",
+  "saldoAwal": 0,
+  "saldoAkhir": 0
+ },
+ {
+  "no": "1",
+  "nama": "BFI Finance",
+  "saldoAwal": 0.0,
+  "saldoAkhir": 0.0
+ },
+ {
+  "no": "2",
+  "nama": "VOLVO MOTOR",
+  "saldoAwal": 0.0,
+  "saldoAkhir": 0.0
+ },
+ {
+  "no": "3",
+  "nama": "BFI Finance - Hitachi Excavator",
+  "saldoAwal": 0.0,
+  "saldoAkhir": 0.0
+ },
+ {
+  "no": "4",
+  "nama": "BFI Finance - Zoomlion Forklif",
+  "saldoAwal": 0.0,
+  "saldoAkhir": 0.0
+ },
+ {
+  "no": "5",
+  "nama": "BFI Finance - Sany Rough Crane",
+  "saldoAwal": 85336000.0,
+  "saldoAkhir": 85336000.0
+ },
+ {
+  "no": "6",
+  "nama": "Mandiri Tunas Finance - BMW X5",
+  "saldoAwal": 0.0,
+  "saldoAkhir": 0.0
+ },
+ {
+  "no": "7",
+  "nama": "Mandiri Tunas Finance - L 300",
+  "saldoAwal": 0.0,
+  "saldoAkhir": 0.0
+ },
+ {
+  "no": "8",
+  "nama": "BFI Finance - Loader",
+  "saldoAwal": 745628000.0,
+  "saldoAkhir": 716950000.0
+ },
+ {
+  "no": "9",
+  "nama": "BFI Finance - Truck",
+  "saldoAwal": 151049500.0,
+  "saldoAkhir": 129471000.0
+ }
+]
