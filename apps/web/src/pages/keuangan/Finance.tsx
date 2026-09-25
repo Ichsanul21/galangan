@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { Wallet, ArrowDownToLine, FileText, Receipt, TrendingUp, Plus, Trash2 } from "lucide-react";
+import { Wallet, ArrowDownToLine, FileText, Receipt, TrendingUp, Plus, Trash2, Search } from "lucide-react";
 import {
   AreaChart,
   Area,
@@ -40,6 +40,7 @@ import { useDraftState } from "../../utils/draft";
 import { sbInvoiceMath, maxSeq, PPN_INVOICE_DEFAULT, PPH_JASA_DEFAULT } from "../../utils/sb";
 import { exportExcel } from "../../utils/export";
 import { kasKodeOf, postCashJournal } from "../../services/autoJournal";
+import { FilterPopover } from "../../components/FilterPopover";
 import { AlertBannerView, notifRowId, useModuleAlert } from "../../components/AlertBanner";
 import {
   COA_EXCEL,
@@ -310,6 +311,18 @@ export default function Finance() {
   const [kasSort, setKasSort] = useState<SortState>({ key: null, dir: "asc" });
   const [jadwalSort, setJadwalSort] = useState<SortState>({ key: null, dir: "asc" });
   const [invSort, setInvSort] = useState<SortState>({ key: null, dir: "asc" });
+  const [invFQ, setInvFQ] = useState("");
+  const [invFStatus, setInvFStatus] = useState("Semua");
+  const [invFBilling, setInvFBilling] = useState("Semua");
+  const filteredInvoices = useMemo(() => {
+    const needle = invFQ.trim().toLowerCase();
+    return invoices.filter((i) => {
+      if (invFStatus !== "Semua" && String(i.status ?? "") !== invFStatus) return false;
+      if (invFBilling !== "Semua" && String(i.billingType ?? i.paymentTerm ?? "") !== invFBilling) return false;
+      if (needle && !`${i.id ?? ""} ${i.client ?? ""} ${i.project ?? ""}`.toLowerCase().includes(needle)) return false;
+      return true;
+    });
+  }, [invoices, invFQ, invFStatus, invFBilling]);
   const [bbSort, setBbSort] = useState<SortState>({ key: null, dir: "asc" });
   const [lrSort, setLrSort] = useState<SortState>({ key: null, dir: "asc" });
   const [nrSort, setNrSort] = useState<SortState>({ key: null, dir: "asc" });
@@ -1178,21 +1191,25 @@ export default function Finance() {
     if (!payTarget) return;
     if (!proof.date) { toast("Tanggal bayar wajib diisi", "info"); return; }
     if (!proof.ref.trim()) { toast("No. referensi wajib diisi", "info"); return; }
-    await update("invoices", payTarget.id, {
-      status: "Lunas", paidAt: proof.date, paidMethod: proof.method, paidRef: proof.ref.trim(),
-    });
-    log("melunasi invoice", `${payTarget.id} via ${proof.method} ${proof.ref.trim()}`, "Keuangan");
-    const kasKode = kasKodeOf(proof.method);
-    const jurnalOk = await postAutoJournal({
-      dokumen: `CASH-${payTarget.id}`,
-      date: proof.date,
-      uraian: `Pelunasan ${payTarget.id} via ${proof.method} ${proof.ref.trim()}`,
-      db: kasKode,
-      kr: "1-130",
-      amount: invNeto(payTarget),
-    });
-    toast(`${payTarget.id} lunas — pembayaran tercatat${jurnalOk ? " + jurnal kas" : ""}`);
-    setPayTarget(null);
+    try {
+      await update("invoices", payTarget.id, {
+        status: "Lunas", paidAt: proof.date, paidMethod: proof.method, paidRef: proof.ref.trim(),
+      });
+      log("melunasi invoice", `${payTarget.id} via ${proof.method} ${proof.ref.trim()}`, "Keuangan");
+      const kasKode = kasKodeOf(proof.method);
+      const jurnalOk = await postAutoJournal({
+        dokumen: `CASH-${payTarget.id}`,
+        date: proof.date,
+        uraian: `Pelunasan ${payTarget.id} via ${proof.method} ${proof.ref.trim()}`,
+        db: kasKode,
+        kr: "1-130",
+        amount: invNeto(payTarget),
+      });
+      toast(`${payTarget.id} lunas — pembayaran tercatat${jurnalOk ? " + jurnal kas" : ""}`);
+      setPayTarget(null);
+    } catch {
+      toast(`Pelunasan ${payTarget.id} gagal — periksa status invoice & jurnal`, "info");
+    }
   };
 
   const confirmBuktiAp = async () => {
@@ -1205,7 +1222,8 @@ export default function Finance() {
     const bayar = num(apPayAmt);
     if (!bayar || bayar <= 0) { toast("Nominal pembayaran tahap ini wajib diisi", "info"); return; }
     if (bayar > amt - p1 - num(apTarget.pay2)) { toast("Nominal melebihi sisa hutang", "info"); return; }
-    if (!p1) {
+    try {
+      if (!p1) {
       const sisa = amt - bayar;
       await update("payables", apTarget.id, {
         pay1: bayar, pay1date: proof.date, pay1ref: proof.ref.trim(), pay1method: proof.method,
@@ -1240,9 +1258,12 @@ export default function Finance() {
         amount: bayar,
       });
       toast(`Tahap II ${fmtRupiah(bayar)} tercatat · sisa ${fmtRupiah(Math.max(0, sisa))}`);
+      }
+      setApTarget(null);
+      setApPayAmt("");
+    } catch {
+      toast(`Pembayaran ${apTarget.po} gagal di tengah jalan — periksa hutang & jurnal`, "info");
     }
-    setApTarget(null);
-    setApPayAmt("");
   };
 
   const toggleSched = (key: string) =>
@@ -1253,8 +1274,10 @@ export default function Finance() {
     if (!batchProof.date) { toast("Tanggal bayar wajib diisi", "info"); return; }
     if (!batchProof.ref.trim()) { toast("No. referensi wajib diisi", "info"); return; }
     const ordered = schedItems.filter((r) => schedSel.includes(r.key)).sort((a, b) => String(a.due).localeCompare(String(b.due)));
+    let batchFail = 0;
     for (const r of ordered) {
-      if (r.kind === "AP") {
+      try {
+        if (r.kind === "AP") {
         const ap = (data.payables ?? []).find((a) => String(a.id) === String(r.id));
         const sisaAp = ap ? Math.max(0, num(ap.amt) - num(ap.pay1) - num(ap.pay2)) : num(r.amount);
         await update("payables", r.id, { st: "Lunas", paidAt: batchProof.date, paidMethod: batchProof.method, paidRef: batchProof.ref.trim() });
@@ -1278,9 +1301,12 @@ export default function Finance() {
           kr: "1-130",
           amount: r.amount,
         });
+        }
+      } catch {
+        batchFail++;
       }
     }
-    toast(`${ordered.length} item dilunasi massal (tertua dulu)`);
+    toast(`${ordered.length - batchFail} item dilunasi massal (tertua dulu)${batchFail > 0 ? `, ${batchFail} gagal — periksa kembali` : ""}`);
     setSchedSel([]);
     setShowBatch(false);
   };
@@ -1334,7 +1360,8 @@ export default function Finance() {
     if (!releaseForm.date) { toast("Tanggal release wajib diisi", "info"); return; }
     if (!releaseForm.ba.trim()) { toast("No. berita acara wajib diisi", "info"); return; }
     const retAmt = num(releaseTarget.retentionAmt);
-    await update("invoices", releaseTarget.id, {
+    try {
+      await update("invoices", releaseTarget.id, {
       retentionStatus: "Released",
       retentionReleaseDate: releaseForm.date,
       retentionBaNo: releaseForm.ba.trim(),
@@ -1381,12 +1408,16 @@ export default function Finance() {
     toast(`Retensi ${releaseTarget.id} di-release${retAmt > 0 ? " — invoice penagihan dibuat" : ""}`);
     setReleaseTarget(null);
     setReleaseForm({ date: todayISO(), ba: "", warrantyId: "" });
+    } catch {
+      toast(`Release retensi ${releaseTarget.id} gagal di tengah jalan — periksa invoice`, "info");
+    }
   };
 
   const markTaxLapor = async () => {
     if (!activeTax) { toast("Pilih periode dulu", "info"); return; }
     if (activeTax.status === "Lapor") { toast("Periode sudah dilapor dan dikunci", "info"); return; }
-    await update("taxPeriods", activeTax.id, {
+    try {
+      await update("taxPeriods", activeTax.id, {
       status: "Lapor",
       ppnKeluar: taxCalc.ppnKeluar,
       ppnMasuk: taxCalc.ppnMasuk,
@@ -1414,6 +1445,9 @@ export default function Finance() {
     }
     log("melaporkan periode pajak", `${activeTax.period} dikunci`, "Pajak");
     toast(`Periode ${activeTax.period} dilapor dan dikunci`);
+    } catch {
+      toast(`Kunci periode ${activeTax.period} gagal — periksa periode & hutang pajak`, "info");
+    }
   };
 
   const exportSpt = () => {
@@ -1442,7 +1476,7 @@ export default function Finance() {
         actions={<button className="btn-primary-gradient" onClick={() => setShowInv(true)}><FileText className="h-4 w-4" /> Buat Invoice</button>}
       />
 
-      {modAlert.active && <AlertBannerView items={modAlert.items} onClose={modAlert.dismiss} />}
+      {modAlert.active && <AlertBannerView items={modAlert.items} onClose={modAlert.dismiss} onPick={modAlert.scrollTo} />}
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <KpiCard label="Total Piutang (AR)" value={fmtMiliar(arTotal)} delta={`${lateCount} telat`} deltaDirection="down" icon={<Wallet className="h-5 w-5" />} chip="rose" spark={arSpark} />
@@ -1509,7 +1543,7 @@ export default function Finance() {
                                       Ubah
                                     </button>
                                     {!header && (
-                                      <button className="btn-secondary px-2 py-1 text-[11px] text-rose-600" onClick={async () => { await remove("coa", String(c.id)); log("menghapus akun", String(c.kode), "Keuangan"); toast(`Akun ${c.kode} dihapus`); }}>
+                                      <button className="btn-secondary px-2 py-1 text-[11px] text-rose-600" onClick={async () => { try { await remove("coa", String(c.id)); log("menghapus akun", String(c.kode), "Keuangan"); toast(`Akun ${c.kode} dihapus`); } catch (e) { toast(e instanceof Error ? e.message : "Akun tidak bisa dihapus", "info"); } }}>
                                         Hapus
                                       </button>
                                     )}
@@ -1953,6 +1987,34 @@ export default function Finance() {
                 </Card>
               </div>
               <CardHeader title="Daftar Invoice" subtitle="Rincian tipe, lines, retensi, e-Faktur, dan status tiap invoice." />
+              <div className="mb-3 flex flex-wrap items-center gap-2">
+                <FilterPopover
+                  activeCount={[invFQ.trim() !== "", invFStatus !== "Semua", invFBilling !== "Semua"].filter(Boolean).length}
+                  initial={{ q: invFQ, status: invFStatus, billing: invFBilling }}
+                  onReset={() => { setInvFQ(""); setInvFStatus("Semua"); setInvFBilling("Semua"); }}
+                  onApply={(d) => { setInvFQ(d.q); setInvFStatus(d.status); setInvFBilling(d.billing); }}
+                >
+                  {(draft, setDraft) => (
+                    <div className="space-y-3">
+                      <div className="relative">
+                        <Search className="absolute left-3 top-2.5 h-4 w-4 text-steel-400" />
+                        <input className="input pl-9 w-full" placeholder="Cari id / klien / proyek..." value={draft.q} onChange={(e) => setDraft({ ...draft, q: e.target.value })} />
+                      </div>
+                      <Field label="Status">
+                        <select className="input w-full" value={draft.status} onChange={(e) => setDraft({ ...draft, status: e.target.value })}>
+                          {["Semua", "Draft", "Diajukan", "Disetujui", "Belum Dibayar", "Terlambat", "Lunas", "Ditolak", "Dihapusbukukan"].map((s) => <option key={s} value={s}>{s === "Semua" ? "Semua status" : s}</option>)}
+                        </select>
+                      </Field>
+                      <Field label="Tipe billing">
+                        <select className="input w-full" value={draft.billing} onChange={(e) => setDraft({ ...draft, billing: e.target.value })}>
+                          {["Semua", "Milestone", "Progres", "Uang Muka", "Retensi", "T&M", "Saldo Awal"].map((s) => <option key={s} value={s}>{s === "Semua" ? "Semua tipe" : s}</option>)}
+                        </select>
+                      </Field>
+                    </div>
+                  )}
+                </FilterPopover>
+                <span className="ml-auto text-xs text-steel-400">{filteredInvoices.length} invoice</span>
+              </div>
               <div className="overflow-x-auto">
                 <table className="w-full">
                   <thead className="bg-surface sticky top-0 z-10">
@@ -1967,11 +2029,11 @@ export default function Finance() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-steel-100">
-                    {sortRows(invoices, invSort, (inv, k) =>
+                    {sortRows(filteredInvoices, invSort, (inv, k) =>
                       k === "tipe" ? String(inv.billingType ?? inv.paymentTerm ?? "") : k === "lines" ? (Array.isArray(inv.lines) ? inv.lines.length : 1) :
                       k === "retensi" ? num(inv.retentionAmt) : k === "efaktur" ? String(inv.nsfp ?? inv.noFaktur ?? "") :
                       k === "amount" ? num(inv.amount) : k === "status" ? String(inv.status) : String(inv.id)).map((inv) => (
-                      <tr key={inv.id} className="hover:bg-surface">
+                      <tr key={inv.id} id={notifRowId(String(inv.id))} className={modAlert.highlight.has(String(inv.id)) ? "notif-hl hover:bg-surface" : "hover:bg-surface"}>
                         <td className="td font-mono text-xs font-semibold text-navy-900">{inv.id}<span className="block font-sans text-[11px] font-normal text-steel-500">{fmtTanggal(String(inv.due ?? ""))}</span></td>
                         <td className="td text-xs text-steel-600">{String(inv.billingType ?? inv.paymentTerm ?? "-")}{inv.serviceRef ? ` · ${inv.serviceRef}` : ""}</td>
                         <td className="td text-xs text-steel-600">{Array.isArray(inv.lines) ? inv.lines.length : 1} baris</td>
@@ -2409,7 +2471,7 @@ export default function Finance() {
                         <td className="td font-mono text-[11px] text-steel-600">{akum}</td>
                         <td className="td">
                           {!seed && (
-                            <button className="btn-secondary px-2 py-1 text-[11px] text-rose-600" onClick={async () => { await remove("assets", String(a.id)); log("menghapus aset", String(a.nama), "Keuangan"); toast(`Aset ${a.nama} dihapus`); }}>
+                            <button className="btn-secondary px-2 py-1 text-[11px] text-rose-600" onClick={async () => { try { await remove("assets", String(a.id)); log("menghapus aset", String(a.nama), "Keuangan"); toast(`Aset ${a.nama} dihapus`); } catch (e) { toast(e instanceof Error ? e.message : "Aset tidak bisa dihapus", "info"); } }}>
                               Hapus
                             </button>
                           )}

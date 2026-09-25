@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { Plus, Send, Users2, Star, Handshake, ArrowRight } from "lucide-react";
 import { Card, CardHeader, PageHeader, Badge, KpiCard, Tabs, Donut, Modal, Field, FormGrid, StatusBadge, EmptyState, SortTh, toggleSort, sortRows, toast } from "../../components/ui";
+import ClientModal from "../../components/ClientModal";
 import type { SortState } from "../../components/ui";
 import { useStore } from "../../data/store";
 import type { StoreItem } from "../../data/store";
@@ -66,7 +67,6 @@ export default function CRM() {
   const [showQ, setShowQ] = useState(false);
   const [qForm, setQForm] = useState({ client: "", vessel: "", type: "New Build", value: "", stage: "Lead", date: todayISO() });
   const [showClient, setShowClient] = useState(false);
-  const [cForm, setCForm] = useState({ name: "", fleet: "1", rating: "80", klasifikasi: "Regular", creditLimit: "", paymentTerms: "NET 30", branch: "" });
   const [convertTarget, setConvertTarget] = useState<StoreItem | null>(null);
   const [sendTarget, setSendTarget] = useState<StoreItem | null>(null);
   const [sendEmail, setSendEmail] = useState("");
@@ -152,17 +152,21 @@ export default function CRM() {
     }
     if (hoChecks.some((c) => !c)) { toast("Lengkapi semua checklist serah terima ke PM", "info"); return; }
     if (!hoBy.trim()) { toast("Nama penyerah wajib diisi", "info"); return; }
-    const created = await add("projects", {
-      vessel: q.vessel, type: q.type, client: q.client, status: "Dalam Proses",
-      branch: "Samarinda", start: todayISO(), end: "-", progress: 0,
-      budget: num(q.value), actual: 0, manager: "Belum ditentukan", scope: [q.type],
-      quotationId: q.id,
-      handover: { date: todayISO(), by: hoBy.trim(), items: [...HO_ITEMS] },
-    }, { action: "mengkonversi quotation", target: `${q.id} → proyek`, module: "CRM" });
-    await update("quotations", q.id, { stage: "Terkonversi" });
-    log(`serah terima ke PM oleh ${hoBy.trim()} (${HO_ITEMS.length} item)`, `${q.id} → ${created.id}`, "CRM");
-    toast(`${q.id} menjadi proyek ${created.id}`);
-    setConvertTarget(null);
+    try {
+      const created = await add("projects", {
+        vessel: q.vessel, type: q.type, client: q.client, status: "Dalam Proses",
+        branch: "Samarinda", start: todayISO(), end: "-", progress: 0,
+        budget: num(q.value), actual: 0, manager: "Belum ditentukan", scope: [q.type],
+        quotationId: q.id,
+        handover: { date: todayISO(), by: hoBy.trim(), items: [...HO_ITEMS] },
+      }, { action: "mengkonversi quotation", target: `${q.id} → proyek`, module: "CRM" });
+      await update("quotations", q.id, { stage: "Terkonversi" });
+      log(`serah terima ke PM oleh ${hoBy.trim()} (${HO_ITEMS.length} item)`, `${q.id} → ${created.id}`, "CRM");
+      toast(`${q.id} menjadi proyek ${created.id}`);
+      setConvertTarget(null);
+    } catch (e) {
+      toast(`Konversi gagal di tengah jalan — periksa daftar proyek & quotation ${q.id}`, "info");
+    }
   };
 
   const openSend = (q: StoreItem) => {
@@ -191,25 +195,6 @@ export default function CRM() {
     toast(`Penawaran ${created.id} dibuat`);
     setShowQ(false);
     setQForm({ client: "", vessel: "", type: "New Build", value: "", stage: "Lead", date: todayISO() });
-  };
-
-  const saveClient = async () => {
-    if (!cForm.name.trim()) { toast("Nama klien wajib diisi", "info"); return; }
-    const created = await add("clients", {
-      name: cForm.name.trim(),
-      fleet: num(cForm.fleet) || 1,
-      rating: num(cForm.rating) || 80,
-      since: new Date().getFullYear(),
-      klasifikasi: cForm.klasifikasi,
-      creditLimit: num(cForm.creditLimit),
-      paymentTerms: cForm.paymentTerms,
-      currency: "IDR",
-      ...(cForm.branch ? { branch: cForm.branch } : {}),
-      survei: [],
-    }, { action: "mendaftarkan klien", module: "CRM" });
-    toast(`Klien ${created.id} ditambahkan`);
-    setShowClient(false);
-    setCForm({ name: "", fleet: "1", rating: "80", klasifikasi: "Regular", creditLimit: "", paymentTerms: "NET 30", branch: "" });
   };
 
   const saveComm = async () => {
@@ -299,11 +284,15 @@ export default function CRM() {
   const convertRequest = async (r: StoreItem) => {
     if (String(r.status) !== "Disetujui") { toast("Hanya request Disetujui yang bisa jadi quotation", "info"); return; }
     if ((data.quotations ?? []).some((q) => String(q.requestId ?? "") === String(r.id))) { toast("Request ini sudah punya quotation", "info"); return; }
-    const created = await add("quotations", {
-      client: String(r.client ?? ""), vessel: String(r.vessel ?? ""), type: "Repair",
-      value: num(r.value) || 0, stage: "Lead", date: todayISO(), requestId: String(r.id),
-    }, { action: "mengkonversi request ke quotation", target: `${String(r.id)} → quotation`, module: "CRM" });
-    toast(`Quotation draft ${created.id} dibuat dari ${String(r.id)}`);
+    try {
+      const created = await add("quotations", {
+        client: String(r.client ?? ""), vessel: String(r.vessel ?? ""), type: "Repair",
+        value: num(r.value) || 0, stage: "Lead", date: todayISO(), requestId: String(r.id),
+      }, { action: "mengkonversi request ke quotation", target: `${String(r.id)} → quotation`, module: "CRM" });
+      toast(`Quotation draft ${created.id} dibuat dari ${String(r.id)}`);
+    } catch {
+      toast(`Konversi ${String(r.id)} gagal — periksa daftar quotation`, "info");
+    }
   };
 
   const saveClientPo = async () => {
@@ -358,7 +347,7 @@ export default function CRM() {
         actions={<button className="btn-primary-gradient" onClick={() => setShowQ(true)}><Plus className="h-4 w-4" /> Penawaran Baru</button>}
       />
 
-      {modAlert.active && <AlertBannerView items={modAlert.items} onClose={modAlert.dismiss} />}
+      {modAlert.active && <AlertBannerView items={modAlert.items} onClose={modAlert.dismiss} onPick={modAlert.scrollTo} />}
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <KpiCard label="Total Klien Aktif" value={String(clients.length)} icon={<Users2 className="h-5 w-5" />} chip="navy" spark={clientTrend} hint={`${String(totalFleet)} unit armada tercatat`} />
@@ -792,28 +781,7 @@ export default function CRM() {
         </div>
       </Modal>
 
-      <Modal open={showClient} onClose={() => setShowClient(false)} title="Tambah Klien" subtitle="Klasifikasi, credit limit IDR, dan payment terms"
-        footer={<><button className="btn-secondary" onClick={() => setShowClient(false)}>Batal</button><button className="btn-primary" onClick={saveClient}>Simpan</button></>}>
-        <div className="space-y-3">
-          <Field label="Nama perusahaan"><input className="input" value={cForm.name} onChange={(e) => setCForm({ ...cForm, name: e.target.value })} placeholder="cth: PT Bahari Baru" /></Field>
-          <FormGrid>
-            <Field label="Jumlah armada"><input type="number" className="input" value={cForm.fleet} onChange={(e) => setCForm({ ...cForm, fleet: e.target.value })} /></Field>
-            <Field label="Rating (%)"><input type="number" max={100} className="input" value={cForm.rating} onChange={(e) => setCForm({ ...cForm, rating: e.target.value })} /></Field>
-            <Field label="Klasifikasi">
-              <select className="input" value={cForm.klasifikasi} onChange={(e) => setCForm({ ...cForm, klasifikasi: e.target.value })}>
-                {KLASIFIKASI.map((k) => <option key={k}>{k}</option>)}
-              </select>
-            </Field>
-            <Field label="Cabang (opsional)"><input className="input" value={cForm.branch} onChange={(e) => setCForm({ ...cForm, branch: e.target.value })} placeholder="Samarinda" /></Field>
-            <Field label="Credit limit (Rp, IDR)"><input type="number" min={0} className="input" value={cForm.creditLimit} onChange={(e) => setCForm({ ...cForm, creditLimit: e.target.value })} /></Field>
-            <Field label="Payment terms">
-              <select className="input" value={cForm.paymentTerms} onChange={(e) => setCForm({ ...cForm, paymentTerms: e.target.value })}>
-                {["NET 14", "NET 30", "NET 45", "NET 60", "Termin"].map((t) => <option key={t}>{t}</option>)}
-              </select>
-            </Field>
-          </FormGrid>
-        </div>
-      </Modal>
+      <ClientModal open={showClient} onClose={() => setShowClient(false)} onSaved={() => undefined} />
 
       <Modal open={showReq} onClose={() => setShowReq(false)} title="Request / Assessment Baru" subtitle={`Alur Baru → Disurvei → Diajukan → Disetujui · ${nextReqId(reqForm.date || todayISO())}`}
         footer={<><button className="btn-secondary" onClick={() => setShowReq(false)}>Batal</button><button className="btn-primary" onClick={saveRequest}>Simpan Request</button></>}>

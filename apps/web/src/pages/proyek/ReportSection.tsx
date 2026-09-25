@@ -37,6 +37,7 @@ export default function ReportSection({ projectId }: Props) {
   const wbsDone = wbs.filter((w) => w.status === "Selesai" || Number(w.progress) >= 100).length;
   const budgetPct = project?.budget ? Math.round((Number(project.actual || 0) / Number(project.budget)) * 100) : 0;
   const openNcr = ncrs.filter((n) => n.status !== "Tertutup").length;
+  const critNcr = ncrs.filter((n) => n.status !== "Tertutup" && n.severity === "Critical").length;
   const unpaidInv = invoices.filter((i) => i.status !== "Lunas").length;
 
   const [showShare, setShowShare] = useState(false);
@@ -163,7 +164,7 @@ export default function ReportSection({ projectId }: Props) {
           </Card>
           <Card className="p-4">
             <h4 className="mb-2 text-sm font-semibold text-navy-900">NCR / WO / Dock</h4>
-            <p className="text-xs text-steel-500">NCR terbuka: <b>{openNcr}</b> · WO: <b>{wos.length}</b> · Slot dock: <b>{slots.length}</b></p>
+            <p className="text-xs text-steel-500">NCR terbuka: <b>{openNcr}</b>{critNcr > 0 ? <> · <b className="text-rose-600">{critNcr} Critical</b></> : null} · WO: <b>{wos.length}</b> · Slot dock: <b>{slots.length}</b></p>
             <div className="mt-2 space-y-1">
               {ncrs.slice(0, 3).map((n) => (
                 <div key={n.id} className="flex items-center justify-between text-sm"><span className="font-mono text-navy-900">{n.id}</span><StatusBadge status={n.status} /></div>

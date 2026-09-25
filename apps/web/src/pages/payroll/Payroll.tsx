@@ -328,40 +328,44 @@ export default function Payroll() {
       /* Cicilan kasbon otomatis: min(cicilan, sisa) per entri, langsung kurangi sisa. */
       let kasbonPot = 0;
       const kasbon = normKasbon(e);
-      if (kasbon.length > 0) {
-        const next = kasbon.map((k) => {
-          const inst = Math.min(Math.max(0, Number(k.cicilan) || 0), Math.max(0, Number(k.sisa) || 0));
-          kasbonPot += inst;
-          return { ...k, sisa: Math.max(0, Number(k.sisa) - inst) };
-        });
-        await update("employees", e.id, { kasbon: next });
+      try {
+        if (kasbon.length > 0) {
+          const next = kasbon.map((k) => {
+            const inst = Math.min(Math.max(0, Number(k.cicilan) || 0), Math.max(0, Number(k.sisa) || 0));
+            kasbonPot += inst;
+            return { ...k, sisa: Math.max(0, Number(k.sisa) - inst) };
+          });
+          await update("employees", e.id, { kasbon: next });
+        }
+        const c = buildComponents(e, basic, lines, overtimePay, unpaidPot, kasbonPot, hadirDays);
+        await add(
+          "payroll",
+          {
+            employeeId: e.id,
+            period,
+            type: "Gaji",
+            basic,
+            allowances: lines,
+            overtimePay,
+            deductions: c.deductions,
+            kasbonPot,
+            unpaidDays,
+            unpaidPot,
+            hadirDays,
+            pph21: c.pph21,
+            bpjsKesKar: c.bpjsKesKar,
+            bpjsKesPer: c.bpjsKesPer,
+            bpjsTkKar: c.bpjsTkKar,
+            net: c.net,
+            status: "Draft",
+            paidAt: "",
+            branch: String(e.branch ?? ""),
+          },
+          undefined,
+        );
+      } catch {
+        toast(`Generate gaji ${e.name ?? e.id} gagal — dilewati`, "info");
       }
-      const c = buildComponents(e, basic, lines, overtimePay, unpaidPot, kasbonPot, hadirDays);
-      await add(
-        "payroll",
-        {
-          employeeId: e.id,
-          period,
-          type: "Gaji",
-          basic,
-          allowances: lines,
-          overtimePay,
-          deductions: c.deductions,
-          kasbonPot,
-          unpaidDays,
-          unpaidPot,
-          hadirDays,
-          pph21: c.pph21,
-          bpjsKesKar: c.bpjsKesKar,
-          bpjsKesPer: c.bpjsKesPer,
-          bpjsTkKar: c.bpjsTkKar,
-          net: c.net,
-          status: "Draft",
-          paidAt: "",
-          branch: String(e.branch ?? ""),
-        },
-        undefined,
-      );
     });
     log("generate payroll", `${period} · ${fresh.length} draft`, "Payroll");
     toast(`${fresh.length} draft payroll ${fmtBulan(period)} dibuat`);
@@ -438,32 +442,41 @@ export default function Payroll() {
       toast("No. referensi wajib diisi", "info");
       return;
     }
-    await update("payroll", payTarget.id, {
-      status: "Dibayar",
-      paidAt: proof.date,
-      paidMethod: proof.method,
-      paidRef: proof.ref.trim(),
-    });
-    log("membayar payroll", `${payTarget.id} via ${proof.method} ${proof.ref.trim()}`, "Payroll");
-    await postCashJournal({
-      add,
-      journals: data.journals ?? [],
-      branch: String(payTarget.branch ?? ""),
-      dokumen: `PAYROLL-${String(payTarget.period ?? period)}-${String(payTarget.employeeId ?? "")}`,
-      date: proof.date,
-      uraian: `Bayar ${rowType(payTarget)} ${payTarget.id} via ${proof.ref.trim()}`,
-      db: "6-002",
-      kr: kasKodeOf(proof.method),
-      amount: Number(payTarget.net || 0),
-    });
-    toast(`${payTarget.id} dibayar — bukti tersimpan`);
-    setPayTarget(null);
+    const slipId = payTarget.id;
+    try {
+      await update("payroll", payTarget.id, {
+        status: "Dibayar",
+        paidAt: proof.date,
+        paidMethod: proof.method,
+        paidRef: proof.ref.trim(),
+      });
+      log("membayar payroll", `${payTarget.id} via ${proof.method} ${proof.ref.trim()}`, "Payroll");
+      await postCashJournal({
+        add,
+        journals: data.journals ?? [],
+        branch: String(payTarget.branch ?? ""),
+        dokumen: `PAYROLL-${String(payTarget.period ?? period)}-${String(payTarget.employeeId ?? "")}`,
+        date: proof.date,
+        uraian: `Bayar ${rowType(payTarget)} ${payTarget.id} via ${proof.ref.trim()}`,
+        db: "6-002",
+        kr: kasKodeOf(proof.method),
+        amount: Number(payTarget.net || 0),
+      });
+      toast(`${payTarget.id} dibayar — bukti tersimpan`);
+      setPayTarget(null);
+    } catch {
+      toast(`Pembayaran ${slipId} gagal — periksa slip & jurnal`, "info");
+    }
   };
 
   const removeRow = async (p: StoreItem) => {
-    await remove("payroll", p.id);
-    log("menghapus payroll", `${p.id} · ${rowType(p)}`, "Payroll");
-    toast(`${p.id} dihapus`);
+    try {
+      await remove("payroll", p.id);
+      log("menghapus payroll", `${p.id} · ${rowType(p)}`, "Payroll");
+      toast(`${p.id} dihapus`);
+    } catch (e) {
+      toast(e instanceof Error ? e.message : "Baris payroll tidak bisa dihapus", "info");
+    }
   };
 
   /* ---------- THR ---------- */
@@ -721,7 +734,7 @@ export default function Payroll() {
         }
       />
 
-      {modAlert.active && <AlertBannerView items={modAlert.items} onClose={modAlert.dismiss} />}
+      {modAlert.active && <AlertBannerView items={modAlert.items} onClose={modAlert.dismiss} onPick={modAlert.scrollTo} />}
 
       <div className="mb-4 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <KpiCard label="Total Bruto (Gaji)" value={fmtRupiah(totals.bruto)} hint={`Periode ${fmtBulan(period)}`} chip="navy" />

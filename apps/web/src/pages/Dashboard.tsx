@@ -51,6 +51,7 @@ import { getSetting } from "../utils/settings";
 import { useAuth, canSetTarget } from "../auth/auth";
 import { exportExcel } from "../utils/export";
 import { todayISO } from "../utils/format";
+import { scopeNames } from "../utils/scope";
 import {
   revenueSeries,
   sparkRevenue,
@@ -96,6 +97,7 @@ export default function Dashboard() {
     .reduce((s, p) => s + Number(p.budget || 0), 0);
   const drydocks = data.drydocks;
   const openNcr = data.ncr.filter((n) => n.status !== "Tertutup").length;
+  const criticalOpenNcr = data.ncr.filter((n) => n.status !== "Tertutup" && n.severity === "Critical").length;
   const arOutstanding = data.invoices
     .filter((i) => i.status !== "Lunas" && i.status !== "Draft")
     .reduce((s, i) => s + Number(i.amount || 0), 0);
@@ -120,7 +122,7 @@ export default function Dashboard() {
   const utilDiff = lastUtil && prevUtil ? lastUtil.equipment - prevUtil.equipment : 0;
   const activeEmployees = data.employees.filter((e) => e.status === "Aktif").length;
   const seaTrialVessel =
-    projects.find((p) => p.status !== "Selesai" && (p.scope ?? []).includes("Sea Trial"))?.vessel ?? "—";
+    projects.find((p) => p.status !== "Selesai" && scopeNames(p.scope).includes("Sea Trial"))?.vessel ?? "—";
 
   const exportSummary = () => {
     const rows: (string | number)[][] = [
@@ -449,7 +451,7 @@ export default function Dashboard() {
           <div className="mt-3 grid grid-cols-1 gap-4 border-t border-steel-100 pt-3 sm:grid-cols-3">
             <div className="flex items-center justify-between text-sm">
               <span className="text-steel-500">NCR terbuka</span>
-              <Link to="/qc-safety" className="font-bold text-rose-600 hover:underline">{openNcr} kasus</Link>
+              <Link to="/qc-safety" className="font-bold text-rose-600 hover:underline" title={criticalOpenNcr > 0 ? `${criticalOpenNcr} Critical` : "Nihil Critical"}>{openNcr} kasus{criticalOpenNcr > 0 ? ` · ${criticalOpenNcr} Critical` : ""}</Link>
             </div>
             <div className="flex items-center justify-between text-sm">
               <span className="text-steel-500">Piutang tertagih</span>

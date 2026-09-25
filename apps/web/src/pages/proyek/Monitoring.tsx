@@ -14,12 +14,12 @@ import type { StoreItem } from "../../data/store";
 import { fmtBulan, fmtMiliar, fmtRupiah, todayISO } from "../../utils/format";
 import { exportExcel } from "../../utils/export";
 import { TAHAP, tahapOf } from "./Projects";
+import { canonPrioritas } from "../../utils/scope";
 
 const prioritasTone: Record<string, "gray" | "blue" | "amber" | "red"> = {
   Rendah: "gray",
   Sedang: "blue",
   Tinggi: "amber",
-  Kritis: "red",
 };
 
 interface AttentionItem {
@@ -192,7 +192,7 @@ export default function Monitoring() {
                       <p className="font-mono text-xs text-steel-500">{p.id}</p>
                       <p className="truncate text-sm font-semibold text-navy-900">{p.vessel}</p>
                       <div className="mt-1 flex items-center gap-2">
-                        <Badge tone={prioritasTone[p.prioritas ?? "Sedang"] ?? "blue"}>{p.prioritas ?? "Sedang"}</Badge>
+                        <Badge tone={prioritasTone[canonPrioritas(p.prioritas)] ?? "blue"}>{canonPrioritas(p.prioritas)}</Badge>
                         <StatusBadge status={p.status} />
                       </div>
                       {delay !== null && (
@@ -206,7 +206,7 @@ export default function Monitoring() {
                       </div>
                       <p className="mt-1.5 text-[11px] text-steel-500">{fmtMiliar(Number(p.actual))} / {fmtMiliar(Number(p.budget))}</p>
                       <ProgressBar value={pct} tone={pct > 100 ? "red" : "ocean"} />
-                      <p className="mt-1.5 text-[11px] text-steel-500">NCR terbuka: <span className={`font-semibold ${openNcr(p.id).length > 0 ? "text-rose-600" : "text-steel-500"}`}>{openNcr(p.id).length}</span></p>
+                      <p className="mt-1.5 text-[11px] text-steel-500">NCR terbuka: <span className={`font-semibold ${openNcr(p.id).length > 0 ? "text-rose-600" : "text-steel-500"}`}>{openNcr(p.id).length}{openNcr(p.id).some((n) => n.severity === "Critical") ? " · Critical" : ""}</span></p>
                     </Link>
                   );
                 })}

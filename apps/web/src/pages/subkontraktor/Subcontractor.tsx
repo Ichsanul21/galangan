@@ -318,6 +318,8 @@ export default function Subcontractor() {
       toast(`Termin di atas ${fmtRupiah(terminThreshold)} wajib dicentang + nama Director`, "info");
       return;
     }
+    const termId = termPay.id;
+    try {
     // PPh variatif RawData (cth PAK YUSUF 0.5%): potong saat bayar + simpan bukti potong.
     const pphAmt = Math.round(Number(termPay.amount || 0) * pphOf(termPay, pphDefault) / 100);
     const retAmt = Math.round(Number(termPay.amount || 0) * retOf(termPay) / 100);
@@ -365,6 +367,9 @@ export default function Subcontractor() {
     setWithholdingRef("");
     setTermDirCheck(false);
     setTermDirName("");
+    } catch {
+      toast(`Pelunasan ${termId} gagal di tengah jalan — periksa termin & hutang`, "info");
+    }
   };
 
   const confirmRelease = async () => {
@@ -373,7 +378,9 @@ export default function Subcontractor() {
     if (!wo || wo.status !== "Selesai") { toast("Retensi hanya bisa dirilis setelah WO Selesai", "info"); return; }
     if (!releaseForm.date) { toast("Tanggal rilis wajib diisi", "info"); return; }
     if (!releaseForm.ba.trim()) { toast("No. berita acara wajib diisi", "info"); return; }
-    await update("termins", releaseTerm.id, {
+    const relId = releaseTerm.id;
+    try {
+      await update("termins", releaseTerm.id, {
       status: "Retensi Released", releasedAt: releaseForm.date, releaseBA: releaseForm.ba.trim(),
     });
     // Baris retensi Ditahan → Belum Dibayar agar bisa dibayar via hutang usaha.
@@ -387,6 +394,9 @@ export default function Subcontractor() {
     toast(`${releaseTerm.id} — retensi dirilis${held ? " · hutang retensi siap dibayar" : ""}`);
     setReleaseTerm(null);
     setReleaseForm({ date: todayISO(), ba: "" });
+    } catch {
+      toast(`Rilis retensi ${relId} gagal — periksa termin & hutang`, "info");
+    }
   };
 
   const saveTimesheet = async () => {
@@ -431,7 +441,7 @@ export default function Subcontractor() {
         actions={<button className="btn-primary-gradient" onClick={() => setShowSub(true)}><Plus className="h-4 w-4" /> Registrasi Sub</button>}
       />
 
-      {modAlert.active && <AlertBannerView items={modAlert.items} onClose={modAlert.dismiss} />}
+      {modAlert.active && <AlertBannerView items={modAlert.items} onClose={modAlert.dismiss} onPick={modAlert.scrollTo} />}
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <KpiCard label="Subkontraktor Aktif" value={String(subcontractors.filter((s) => s.status === "Aktif").length)} icon={<HardHat className="h-5 w-5" />} chip="navy" spark={subActiveTrend} hint="Terdaftar & tersertifikasi" />

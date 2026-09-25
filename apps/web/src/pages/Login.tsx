@@ -4,6 +4,7 @@ import { motion } from "framer-motion";
 import { Anchor, Lock, User, AlertCircle, ArrowRight, ArrowUpRight, Globe2, Container, ShipWheel } from "lucide-react";
 import { useAuth, demoUsers } from "../auth/auth";
 import { useStore } from "../data/store";
+import { useT } from "../i18n/LanguageContext";
 import { toast } from "../components/ui";
 
 /* Latar peta rute abstrak — garis lintang/bujur */
@@ -109,6 +110,7 @@ export default function Login() {
   const [shake, setShake] = useState(0);
   const [fails, setFails] = useState(0);
   const [lockedUntil, setLockedUntil] = useState(0);
+  const { t } = useT();
 
   const fail = (message: string) => {
     setError(message);
@@ -120,7 +122,7 @@ export default function Login() {
     setFails(n);
     if (n >= 5) {
       setLockedUntil(Date.now() + 30000);
-      fail("Terlalu banyak percobaan gagal. Tunggu 30 detik sebelum mencoba lagi.");
+      fail(t.auth.lockedOut);
     } else {
       fail(message);
     }
@@ -131,12 +133,12 @@ export default function Login() {
     const now = Date.now();
     if (now < lockedUntil) {
       const s = Math.ceil((lockedUntil - now) / 1000);
-      fail(`Terlalu banyak percobaan gagal. Coba lagi dalam ${s} detik.`);
+      fail(`${t.auth.lockedOut} (${s} dtk)`);
       return;
     }
     const uname = username.trim();
     if (uname.length < 3 || /\s/.test(uname)) {
-      fail("Isi username/NIK atau email yang valid (tanpa spasi).");
+      fail(t.auth.fillUsername);
       return;
     }
     const err = await login(username, password);
@@ -146,14 +148,14 @@ export default function Login() {
     }
     setFails(0);
     setLockedUntil(0);
-    toast("Selamat datang kembali!");
+    toast(t.auth.welcome);
     await resync().catch(() => undefined);
     navigate(from, { replace: true });
   };
 
   const quickLogin = async (u: string) => {
     if (Date.now() < lockedUntil) {
-      fail("Terlalu banyak percobaan gagal. Tunggu sebentar sebelum mencoba lagi.");
+      fail(t.auth.lockedOut);
       return;
     }
     const found = demoUsers.find((x) => x.username.toLowerCase() === u.toLowerCase());
@@ -161,7 +163,7 @@ export default function Login() {
     if (!err) {
       setFails(0);
       setLockedUntil(0);
-      toast(`Masuk sebagai ${found?.name ?? "akun demo"}`);
+      toast(`${t.auth.asUser} ${found?.name ?? t.auth.demoAccount}`);
       await resync().catch(() => undefined);
       navigate(from, { replace: true });
     }
@@ -264,9 +266,9 @@ export default function Login() {
             </div>
           </div>
 
-          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-ocean-600">Sign in to continue</p>
-          <h2 className="mt-1 text-[28px] font-bold tracking-tight text-navy-900">Welcome aboard</h2>
-          <p className="mt-1 text-sm text-steel-500">Access the yard control center with your crew account.</p>
+          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-ocean-600">{t.auth.continue}</p>
+          <h2 className="mt-1 text-[28px] font-bold tracking-tight text-navy-900">{t.auth.title}</h2>
+          <p className="mt-1 text-sm text-steel-500">{t.auth.subtitle}</p>
 
           <motion.form
             key={shake}
@@ -282,7 +284,7 @@ export default function Login() {
               </div>
             )}
             <label className="block">
-              <span className="label">Username / NIK / Email</span>
+              <span className="label">{t.auth.username}</span>
               <div className="relative">
                 <User className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-steel-400" />
                 <input
@@ -295,13 +297,13 @@ export default function Login() {
               </div>
             </label>
             <label className="block">
-              <span className="label">Password</span>
+              <span className="label">{t.auth.password}</span>
               <div className="relative">
                 <Lock className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-steel-400" />
                 <input
                   type="password"
                   className="input pl-9"
-                  placeholder="Masukkan password"
+                  placeholder={t.auth.passwordPh}
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   autoComplete="current-password"
@@ -314,7 +316,7 @@ export default function Login() {
           </motion.form>
 
           <div className="card mt-4 p-5">
-            <p className="text-xs font-semibold uppercase tracking-wider text-steel-500">Demo access — one click sign in</p>
+            <p className="text-xs font-semibold uppercase tracking-wider text-steel-500">{t.auth.demoTitle}</p>
             <div className="mt-3 space-y-2">
               {demoUsers.map((u) => (
                 <button

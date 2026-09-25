@@ -55,7 +55,7 @@ export function computeAlerts(data: StoreShape): Alert[] {
   // 1. Serapan anggaran & overrun
   for (const p of data.projects ?? []) {
     const pct = Number(p.budget) > 0 ? (Number(p.actual || 0) / Number(p.budget)) * 100 : 0;
-    if (pct > 100 + overPct) out.push({ id: `ov-${p.id}`, tone: "red", text: `${p.vessel} over-budget ${Math.round(pct)}%`, to: `/proyek/${p.id}` });
+    if (pct > 100 + overPct) out.push({ id: `ov-${p.id}`, tone: "red", text: `${p.vessel} lewat anggaran ${Math.round(pct)}%`, to: `/proyek/${p.id}` });
     else if (pct > budgetPct) out.push({ id: `bd-${p.id}`, tone: "amber", text: `${p.vessel} serapan ${Math.round(pct)}%`, to: `/proyek/${p.id}` });
     if (p.status === "Terlambat") out.push({ id: `dl-${p.id}`, tone: "red", text: `${p.vessel} terlambat dari jadwal`, to: `/proyek/${p.id}` });
   }
@@ -83,7 +83,7 @@ export function computeAlerts(data: StoreShape): Alert[] {
   for (const i of overdue.slice(0, 5)) {
     const age = -(daysUntil(String(i.due)) ?? 0);
     const bucket = age >= 30 ? "30+" : age >= 14 ? "14" : "7";
-    out.push({ id: `inv-${i.id}`, tone: age >= 30 ? "red" : "amber", text: `${i.id} overdue ${bucket} hari`, to: "/keuangan" });
+    out.push({ id: `inv-${i.id}`, tone: age >= 30 ? "red" : "amber", text: `${i.id} terlambat ${bucket} hari`, to: "/keuangan" });
   }
 
   // 5. Insiden terbaru (7 hari)
@@ -156,7 +156,7 @@ export function computeAlerts(data: StoreShape): Alert[] {
         worstTask = String(w.task);
       }
     }
-    if (worst > cpDays) out.push({ id: `cp-${p.id}`, tone: "red", text: `${p.vessel} critical-path delay ${worst} hari (${worstTask})`, to: `/proyek/${p.id}` });
+    if (worst > cpDays) out.push({ id: `cp-${p.id}`, tone: "red", text: `${p.vessel} jalur kritis tertunda ${worst} hari (${worstTask})`, to: `/proyek/${p.id}` });
   }
 
   return out;

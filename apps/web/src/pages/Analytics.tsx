@@ -133,6 +133,7 @@ export default function Analytics() {
     ? Math.round(data.projects.reduce((s, p) => s + Number(p.progress || 0), 0) / data.projects.length)
     : 0;
   const openNcr = data.ncr.filter((n) => n.status !== "Tertutup").length;
+  const openNcrCritical = data.ncr.filter((n) => n.status !== "Tertutup" && n.severity === "Critical").length;
   const lowStock = data.inventory.filter((i) => i.stock <= i.minStock);
   const atRisk = data.projects.filter((p) => p.status === "Terlambat" || Number(p.actual || 0) > Number(p.budget || 0)).length;
   const dockConflict = (() => {
@@ -325,12 +326,12 @@ export default function Analytics() {
               <KpiCard label="Revenue YTD" value={`Rp ${totalRevenue.toLocaleString("id-ID", { maximumFractionDigits: 1 })} M`} delta={`${revGrowth >= 0 ? "+" : ""}${revGrowth.toLocaleString("id-ID", { maximumFractionDigits: 1 })}% vs bulan lalu`} deltaDirection={revGrowth > 0 ? "up" : revGrowth < 0 ? "down" : "flat"} icon={<TrendingUp className="h-5 w-5" />} chip="navy" spark={sparkRevenue} />
               <KpiCard label="Margin Rata-rata" value={`${avgMargin.toLocaleString("id-ID", { maximumFractionDigits: 1 })}%`} delta={`${marginDiff >= 0 ? "+" : ""}${marginDiff.toLocaleString("id-ID", { maximumFractionDigits: 1 })}pt vs bulan lalu`} deltaDirection={marginDiff > 0 ? "up" : marginDiff < 0 ? "down" : "flat"} icon={<Eye className="h-5 w-5" />} chip="teal" spark={sparkMargin} />
               <KpiCard label="Rata-rata Progres" value={`${avgProgress}%`} delta={`${data.projects.length} proyek aktif`} deltaDirection="flat" icon={<Clock className="h-5 w-5" />} chip="violet" spark={sparkProjects} />
-              <KpiCard label="NCR Terbuka" value={String(openNcr)} delta="Terhubung modul QC" deltaDirection="down" icon={<AlertTriangle className="h-5 w-5" />} chip="rose" spark={ncrTrend} />
+              <KpiCard label="NCR Terbuka" value={String(openNcr)} delta={openNcrCritical > 0 ? `${String(openNcrCritical)} Critical` : "Nihil Critical"} deltaDirection={openNcrCritical > 0 ? "down" : "up"} icon={<AlertTriangle className="h-5 w-5" />} chip="rose" spark={ncrTrend} />
             </div>
 
             <div className="grid grid-cols-1 gap-5 lg:grid-cols-3">
               <Card className="lg:col-span-2">
-                <CardHeader title="Pendapatan vs Biaya" subtitle="12 bulan terakhir (milyar Rupiah)" action={<button className="btn-secondary px-2 py-1 text-xs" onClick={() => exportChartPNG("chart-rev", "pendapatan-vs-biaya")}>Export PNG</button>} />
+                <CardHeader title="Pendapatan vs Biaya" subtitle="12 bulan terakhir (milyar Rupiah)" action={<button className="btn-secondary px-2 py-1 text-xs" onClick={() => exportChartPNG("chart-rev", "pendapatan-vs-biaya")}>Ekspor PNG</button>} />
                 <div id="chart-rev" className="h-60 p-4 pt-0 sm:h-72">
                   <ResponsiveContainer width="100%" height="100%">
                     <BarChart data={revenueSeries} margin={{ top: 10, right: 10, left: -15, bottom: 0 }}>
@@ -599,7 +600,7 @@ export default function Analytics() {
               )}
             </Card>
             <Card>
-              <CardHeader title="Forecast Pendapatan" subtitle="Aktual + forecast MA3 dengan pita kepercayaan ±15% (miliar Rupiah)" action={<span className="flex gap-1.5"><Badge tone="blue">AI Forecast</Badge><button className="btn-secondary px-2 py-1 text-xs" onClick={() => exportChartPNG("chart-forecast", "forecast-pendapatan")}>Export PNG</button></span>} />
+              <CardHeader title="Forecast Pendapatan" subtitle="Aktual + forecast MA3 dengan pita kepercayaan ±15% (miliar Rupiah)" action={<span className="flex gap-1.5"><Badge tone="blue">Prediksi AI</Badge><button className="btn-secondary px-2 py-1 text-xs" onClick={() => exportChartPNG("chart-forecast", "forecast-pendapatan")}>Ekspor PNG</button></span>} />
               <div id="chart-forecast" className="h-60 p-4 pt-0 sm:h-72">
                 <ResponsiveContainer width="100%" height="100%">
                   <ComposedChart data={forecastAdj} margin={{ top: 10, right: 10, left: -15, bottom: 0 }}>
@@ -653,7 +654,7 @@ export default function Analytics() {
             </div>
             <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
               <Card>
-                <CardHeader title="Profit per Tipe Proyek" subtitle={`Budget − aktual per ${fmtTanggal(todayISO())} (miliar Rp)`} action={<button className="btn-secondary px-2 py-1 text-xs" onClick={() => exportChartPNG("chart-profittype", "profit-tipe")}>Export PNG</button>} />
+                <CardHeader title="Profit per Tipe Proyek" subtitle={`Budget − aktual per ${fmtTanggal(todayISO())} (miliar Rp)`} action={<button className="btn-secondary px-2 py-1 text-xs" onClick={() => exportChartPNG("chart-profittype", "profit-tipe")}>Ekspor PNG</button>} />
                 <div id="chart-profittype" className="h-60 p-4 pt-0">
                   <ResponsiveContainer width="100%" height="100%">
                     <BarChart data={profitByType} margin={{ top: 10, right: 10, left: -10, bottom: 0 }}>
@@ -667,7 +668,7 @@ export default function Analytics() {
                 </div>
               </Card>
               <Card>
-                <CardHeader title="Profit per Cabang" subtitle={`Budget − aktual per ${fmtTanggal(todayISO())} (miliar Rp)`} action={<button className="btn-secondary px-2 py-1 text-xs" onClick={() => exportChartPNG("chart-profitbranch", "profit-cabang")}>Export PNG</button>} />
+                <CardHeader title="Profit per Cabang" subtitle={`Budget − aktual per ${fmtTanggal(todayISO())} (miliar Rp)`} action={<button className="btn-secondary px-2 py-1 text-xs" onClick={() => exportChartPNG("chart-profitbranch", "profit-cabang")}>Ekspor PNG</button>} />
                 <div id="chart-profitbranch" className="h-60 p-4 pt-0">
                   <ResponsiveContainer width="100%" height="100%">
                     <BarChart data={profitByBranch} margin={{ top: 10, right: 10, left: -10, bottom: 0 }}>

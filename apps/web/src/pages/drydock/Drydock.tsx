@@ -116,21 +116,25 @@ export default function Drydock() {
 
   const toggleUndock = async (idx: number) => {
     if (!sel) return;
-    const next = undockList(sel);
-    next[idx] = !next[idx];
-    await update("dockSlots", sel.id, { undock: next });
-    if (next.every(Boolean)) {
-      log("menyelesaikan docking report", `${sel.id} · undocking checklist lengkap`, "Drydock");
-      // E7: undock lengkap → append vessel history.
-      const proj = data.projects.find((p) => p.id === sel.project);
-      const vesselName = proj?.vessel ?? String(sel.vessel ?? "").split(" + ")[0];
-      const vsl = data.vessels.find((x) => x.name === vesselName);
-      if (vsl) {
-        await update("vessels", vsl.id, {
-          history: [...(vsl.history ?? []), { date: new Date().toISOString().slice(0, 10), event: `Undocking selesai — slot ${sel.id} (${sel.dockId})`, type: "Docking" }],
-        });
+    try {
+      const next = undockList(sel);
+      next[idx] = !next[idx];
+      await update("dockSlots", sel.id, { undock: next });
+      if (next.every(Boolean)) {
+        log("menyelesaikan docking report", `${sel.id} · undocking checklist lengkap`, "Drydock");
+        // E7: undock lengkap → append vessel history.
+        const proj = data.projects.find((p) => p.id === sel.project);
+        const vesselName = proj?.vessel ?? String(sel.vessel ?? "").split(" + ")[0];
+        const vsl = data.vessels.find((x) => x.name === vesselName);
+        if (vsl) {
+          await update("vessels", vsl.id, {
+            history: [...(vsl.history ?? []), { date: new Date().toISOString().slice(0, 10), event: `Undocking selesai — slot ${sel.id} (${sel.dockId})`, type: "Docking" }],
+          });
+        }
+        toast(`Docking report ${sel.id} lengkap`);
       }
-      toast(`Docking report ${sel.id} lengkap`);
+    } catch {
+      toast(`Gagal menyimpan checklist ${sel.id} — periksa kembali statusnya`, "info");
     }
   };
 
@@ -266,10 +270,14 @@ export default function Drydock() {
       setDeleting(null);
       return;
     }
-    await remove("dockSlots", deleting.id);
-    log("menghapus slot", `${deleting.id} · ${deleting.vessel}`, "Drydock");
-    toast("Slot dihapus", "info");
-    setDeleting(null);
+    try {
+      await remove("dockSlots", deleting.id);
+      log("menghapus slot", `${deleting.id} · ${deleting.vessel}`, "Drydock");
+      toast("Slot dihapus", "info");
+      setDeleting(null);
+    } catch (e) {
+      toast(e instanceof Error ? e.message : "Slot tidak bisa dihapus", "info");
+    }
   };
 
   return (
@@ -286,7 +294,7 @@ export default function Drydock() {
         }
       />
 
-      {modAlert.active && <AlertBannerView items={modAlert.items} onClose={modAlert.dismiss} />}
+      {modAlert.active && <AlertBannerView items={modAlert.items} onClose={modAlert.dismiss} onPick={modAlert.scrollTo} />}
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <KpiCard label="Utilitas Docking" value={`${util}%`} delta="Hari terisi per total hari dock" deltaDirection="flat" icon={<Ship className="h-5 w-5" />} chip="navy" spark={dockUtilTrend} />

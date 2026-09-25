@@ -237,7 +237,8 @@ export default function QCSafety() {
     }
     let finalStatus = inspForm.status;
     let ncrDone = false;
-    if (inspForm.status === "Lulus" && found > allowed) {
+    try {
+      if (inspForm.status === "Lulus" && found > allowed) {
       // Gagal AQL tidak boleh lolos diam-diam — NCR otomatis + inspeksi tercatat NCR.
       const projAql = data.projects.find((p) => p.id === inspForm.project);
       const ncrAuto = await add("ncr", {
@@ -277,6 +278,9 @@ export default function QCSafety() {
     }
     setShowInsp(false);
     setInspForm({ project: "", point: "", status: "Terjadwal", date: todayISO(), holdType: "Witness", nde: "Tidak", ndeMethod: "UT", inspector: "", sampleSize: "", defectsAllowed: "0", defectsFound: "0", calTool: "", branch: "" });
+    } catch {
+      toast("Inspeksi gagal disimpan di tengah jalan — periksa daftar inspeksi & NCR", "info");
+    }
   };
 
   const saveNcr = async () => {
@@ -316,6 +320,8 @@ export default function QCSafety() {
       toast("Hanya Direktur/Manager", "info");
       return;
     }
+    const ncrId = closingNcr.id;
+    try {
     if (closingNcr.severity === "Critical" && !verifier.trim()) {
       toast("NCR Critical wajib diverifikasi pihak kedua: isi nama verifikator", "info");
       return;
@@ -349,6 +355,9 @@ export default function QCSafety() {
     toast(journaled ? `${closingNcr.id} ditutup — rework ${fmtRupiah(Math.round(cost))} masuk jurnal` : `${closingNcr.id} ditutup`);
     setClosingNcr(null);
     setNcrDetail((d) => (d && d.id === closingNcr.id ? { ...d, status: "Tertutup" } : d));
+    } catch {
+      toast(`Penutupan ${ncrId} gagal di tengah jalan — periksa NCR & jurnal`, "info");
+    }
   };
 
   const confirmReopen = async () => {
@@ -466,7 +475,8 @@ export default function QCSafety() {
     if (!transmitForm.to.trim()) { toast("Penerima transmittal wajib diisi", "info"); return; }
     if (!transmitForm.date) { toast("Tanggal transmittal wajib diisi", "info"); return; }
     if (transmitForm.ids.length === 0) { toast("Pilih minimal satu drawing", "info"); return; }
-    const rows = transmitForm.ids.map((id) => drawings.find((d) => d.id === id)).filter((d): d is StoreItem => !!d);
+    try {
+      const rows = transmitForm.ids.map((id) => drawings.find((d) => d.id === id)).filter((d): d is StoreItem => !!d);
     void exportExcel(
       [["ID", "Proyek", "Judul", "Revisi", "Status", "Holder", "Diperbarui"],
         ...rows.map((d) => [d.id, d.project, d.title, d.revision, d.status, d.holder, fmtTanggal(String(d.updated))])],
@@ -483,6 +493,9 @@ export default function QCSafety() {
     toast(`Transmittal ${rows.length} drawing dikirim & didistribusikan`);
     setShowTransmit(false);
     setTransmitForm({ to: "", date: todayISO(), ids: [] });
+    } catch {
+      toast("Transmittal gagal di tengah jalan — periksa status drawing", "info");
+    }
   };
 
   const saveJsa = async () => {
@@ -591,10 +604,10 @@ export default function QCSafety() {
         }
       />
 
-      {modAlert.active && <AlertBannerView items={modAlert.items} onClose={modAlert.dismiss} />}
+      {modAlert.active && <AlertBannerView items={modAlert.items} onClose={modAlert.dismiss} onPick={modAlert.scrollTo} />}
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <KpiCard label="NCR Terbuka" value={String(openNcr)} delta={`${String(criticalOpen)} critical`} deltaDirection="down" icon={<AlertTriangle className="h-5 w-5" />} chip="rose" spark={ncrTrend} />
+        <KpiCard label="NCR Terbuka" value={String(openNcr)} delta={criticalOpen > 0 ? `${String(criticalOpen)} Critical` : "Nihil Critical"} deltaDirection={criticalOpen > 0 ? "down" : "up"} icon={<AlertTriangle className="h-5 w-5" />} chip="rose" spark={ncrTrend} />
         <KpiCard label="Inspeksi Tercatat" value={String(inspections.length)} delta={`${String(ncrList.length)} NCR terkait`} deltaDirection="flat" icon={<ShieldCheck className="h-5 w-5" />} chip="navy" spark={inspectionTrend.map((d) => ({ name: d.month, v: d.inspeksi }))} />
         <KpiCard label="Insiden (YTD)" value={String(incidents.length)} delta="termasuk near miss" deltaDirection="down" icon={<Siren className="h-5 w-5" />} chip="amber" spark={incidentTrend} />
         <KpiCard label="HSE Score" value="A" delta="Kinerja baik" deltaDirection="up" icon={<Award className="h-5 w-5" />} chip="teal" spark={hseTrend} />
@@ -885,7 +898,7 @@ export default function QCSafety() {
                     <div key={a.id} className="rounded-lg border border-steel-100 p-3 text-sm">
                       <div className="flex flex-wrap items-center justify-between gap-2">
                         <p className="font-medium text-navy-900">{a.area} <span className="font-mono text-xs text-steel-500">· {a.id}</span></p>
-                        <button className="btn-secondary text-xs" onClick={() => void remove("auditPlans", String(a.id))}>Hapus</button>
+                        <button className="btn-secondary text-xs" onClick={async () => { try { await remove("auditPlans", String(a.id)); } catch (e) { toast(e instanceof Error ? e.message : "Jadwal tidak bisa dihapus", "info"); } }}>Hapus</button>
                       </div>
                       <p className="mt-1 text-xs text-steel-600">{fmtTanggal(a.date)} · auditor {a.auditor} · {a.findings} temuan{a.ncrId ? ` · terkait ${a.ncrId}` : ""}</p>
                     </div>

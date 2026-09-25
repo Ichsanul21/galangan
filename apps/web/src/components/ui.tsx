@@ -1,5 +1,7 @@
 import type { ReactNode } from "react";
 import { useEffect, useId, useRef, useState, Component, type ErrorInfo } from "react";
+import { useT } from "../i18n/LanguageContext";
+import { statusLabel } from "../i18n/status";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   ArrowDownRight,
@@ -226,7 +228,13 @@ const statusTone: Record<string, keyof typeof toneMap> = {
 
 export function StatusBadge({ status, label }: { status: string; label?: string }) {
   const tone = statusTone[status] ?? "gray";
-  return <Badge tone={tone}>{label ?? status}</Badge>;
+  return <Badge tone={tone}>{label ?? <StatusText value={status} />}</Badge>;
+}
+
+/** Teks status sesuai locale aktif (nilai data tidak diubah). */
+function StatusText({ value }: { value: string }) {
+  const { locale } = useT();
+  return <>{statusLabel(value, locale)}</>;
 }
 
 /* ============ K P I   C A R D   ( P R E M I U M ) ============ */
@@ -600,10 +608,13 @@ export function Tabs({
   tabs,
   active,
   onChange,
+  labels,
 }: {
   tabs: string[];
   active: string;
   onChange: (t: string) => void;
+  /** Label tampil per tab id — id logika tidak berubah (aman untuk state). */
+  labels?: Record<string, string>;
 }) {
   const listRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -623,7 +634,7 @@ export function Tabs({
             active === t ? "text-navy-800" : "text-steel-500 hover:text-navy-700"
           }`}
         >
-          {t}
+          {labels?.[t] ?? t}
           {active === t && (
             <span className="absolute inset-x-0 -bottom-px h-0.5 rounded-full bg-gradient-hero" />
           )}

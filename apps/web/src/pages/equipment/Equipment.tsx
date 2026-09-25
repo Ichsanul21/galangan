@@ -269,7 +269,7 @@ export default function EquipmentPage() {
     setBookForm({ equip: "", proyek: "", date: todayISO(), mulai: "", selesai: "", priority: "Normal" });
   };
 
-  const saveBooking = () => {
+  const saveBooking = async () => {
     const { equip, proyek, date, mulai, selesai, priority } = bookForm;
     if (!equip || !proyek || !date || !mulai || !selesai) {
       setBookError("Lengkapi equipment, proyek, tanggal, jam mulai & jam selesai.");
@@ -281,7 +281,7 @@ export default function EquipmentPage() {
       setBookError("Jam selesai harus lebih besar dari jam mulai (format HH:MM).");
       return;
     }
-    const eq = equipment.find((e) => e.name === equip);
+    const eq = equipment.find((e) => sameName(e.name, equip));
     if (!eq) { setBookError("Equipment tidak ditemukan."); return; }
     if (eq.status === "Maintenance") {
       const msg = `Booking ditolak: ${equip} sedang maintenance.`;
@@ -307,7 +307,11 @@ export default function EquipmentPage() {
       toast(msg, "info");
       return;
     }
-    persistBooking(priority);
+    try {
+      await persistBooking(priority);
+    } catch {
+      toast(`Booking ${equip} gagal disimpan — periksa kembali`, "info");
+    }
   };
 
   const confirmGusur = async () => {
@@ -423,7 +427,7 @@ export default function EquipmentPage() {
         actions={<button className="btn-primary-gradient" onClick={() => setShowAdd(true)}><Plus className="h-4 w-4" /> Tambah Equipment</button>}
       />
 
-      {modAlert.active && <AlertBannerView items={modAlert.items} onClose={modAlert.dismiss} />}
+      {modAlert.active && <AlertBannerView items={modAlert.items} onClose={modAlert.dismiss} onPick={modAlert.scrollTo} />}
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <KpiCard label="Total Equipment" value={String(equipment.length)} icon={<Cpu className="h-5 w-5" />} chip="navy" spark={equipTotalTrend} hint="Seluruh cabang" />

@@ -406,20 +406,24 @@ export default function Procurement() {
     if (!win) { toast("Pemenang belum memberi penawaran", "info"); return; }
     const plafon = cekPlafon(winVendor, win.price);
     if (plafon && !plafon.ok) { toast(`Plafon kontrak payung terlampaui (pakai ${fmtRupiah(plafon.pakai)} / plafon ${fmtRupiah(plafon.plafon)})`, "info"); return; }
-    await update("rfqs", winRfq.id, { winner: winVendor, status: "Diputuskan" });
-    const match = invList.find((i) => i.name.toLowerCase().includes(String(winRfq.item).toLowerCase().split(" ")[0] ?? ""));
-    const created = await add("purchaseOrders", {
-      poType: "Besar", item: winRfq.item, itemId: match?.id ?? "", vendor: winVendor,
-      req: winRfq.prId, amount: win.price, qty: 1,
-      lines: [{ name: winRfq.item, qty: 1, unit: "pcs", price: win.price }],
-      project: "-", eta: win.eta, receivedQty: 0, returnedQty: 0,
-      status: "Diajukan", date: todayISO(), revisi: "", amendments: [], approvals: [],
-    }, { action: "memenangkan RFQ", target: `${winRfq.id} → ${winVendor}`, module: "Procurement" });
-    const pr = requisitions.find((r) => r.id === winRfq.prId);
-    if (pr) await update("requisitions", pr.id, { status: "Sudah PO" });
-    toast(`${winRfq.id} dimenangkan ${winVendor} → ${created.id}`);
-    setWinRfq(null);
-    setWinVendor("");
+    try {
+      await update("rfqs", winRfq.id, { winner: winVendor, status: "Diputuskan" });
+      const match = invList.find((i) => i.name.toLowerCase().includes(String(winRfq.item).toLowerCase().split(" ")[0] ?? ""));
+      const created = await add("purchaseOrders", {
+        poType: "Besar", item: winRfq.item, itemId: match?.id ?? "", vendor: winVendor,
+        req: winRfq.prId, amount: win.price, qty: 1,
+        lines: [{ name: winRfq.item, qty: 1, unit: "pcs", price: win.price }],
+        project: "-", eta: win.eta, receivedQty: 0, returnedQty: 0,
+        status: "Diajukan", date: todayISO(), revisi: "", amendments: [], approvals: [],
+      }, { action: "memenangkan RFQ", target: `${winRfq.id} → ${winVendor}`, module: "Procurement" });
+      const pr = requisitions.find((r) => r.id === winRfq.prId);
+      if (pr) await update("requisitions", pr.id, { status: "Sudah PO" });
+      toast(`${winRfq.id} dimenangkan ${winVendor} → ${created.id}`);
+      setWinRfq(null);
+      setWinVendor("");
+    } catch {
+      toast(`Penentuan pemenang ${winRfq.id} gagal di tengah jalan — periksa RFQ, PO & PR`, "info");
+    }
   };
 
   /* ============ KONSOLIDASI ============ */
@@ -436,18 +440,24 @@ export default function Procurement() {
     }
     const plafon = cekPlafon(konsVendor, total);
     if (plafon && !plafon.ok) { toast(`Plafon kontrak payung terlampaui (pakai ${fmtRupiah(plafon.pakai)} / plafon ${fmtRupiah(plafon.plafon)})`, "info"); return; }
-    const created = await add("purchaseOrders", {
-      poType: "Besar", item: `Konsolidasi ${prs.length} PR`, itemId: "",
-      vendor: konsVendor, req: prs.map((r) => r.id).join(", "), amount: total, qty: prs.length,
-      lines, project: konsProject || "-", eta: konsEta || "",
-      receivedQty: 0, returnedQty: 0, status: "Draft", date: todayISO(), revisi: "", amendments: [], approvals: [],
-    }, { action: "konsolidasi PR ke PO", target: prs.map((r) => r.id).join(", "), module: "Procurement" });
-    prs.forEach(async (r) => await update("requisitions", r.id, { status: "Sudah PO" }));
-    toast(`Konsolidasi ${prs.length} PR → ${created.id}`);
-    setKonsIds([]);
-    setKonsVendor("");
-    setKonsProject("");
-    setKonsEta("");
+    try {
+      const created = await add("purchaseOrders", {
+        poType: "Besar", item: `Konsolidasi ${prs.length} PR`, itemId: "",
+        vendor: konsVendor, req: prs.map((r) => r.id).join(", "), amount: total, qty: prs.length,
+        lines, project: konsProject || "-", eta: konsEta || "",
+        receivedQty: 0, returnedQty: 0, status: "Draft", date: todayISO(), revisi: "", amendments: [], approvals: [],
+      }, { action: "konsolidasi PR ke PO", target: prs.map((r) => r.id).join(", "), module: "Procurement" });
+      for (const r of prs) {
+        await update("requisitions", r.id, { status: "Sudah PO" });
+      }
+      toast(`Konsolidasi ${prs.length} PR → ${created.id}`);
+      setKonsIds([]);
+      setKonsVendor("");
+      setKonsProject("");
+      setKonsEta("");
+    } catch {
+      toast("Konsolidasi gagal di tengah jalan — periksa PO & status PR", "info");
+    }
   };
 
   /* ============ SKOR VENDOR (Q40 + D30 + P30, skala 100 — docs/11) ============ */
@@ -571,8 +581,7 @@ export default function Procurement() {
   })();
 
   const confirmRecv = async (mode: "penuh" | "sebagian") => {
-    if (!recvPo) return;
-    const qty = Number(recvQty);
+    if (!recvPo) return;    const qty = Number(recvQty);
     if (!qty || qty <= 0) { toast("Qty terima harus lebih dari 0", "info"); return; }
     const orderedQty = Number(recvPo.qty || 0);
     if (orderedQty > 0 && Number(recvPo.receivedQty || 0) + qty > orderedQty) { toast(`Qty terima melebihi qty PO (dipesan ${orderedQty}, sudah diterima ${Number(recvPo.receivedQty || 0)})`, "info"); return; }
@@ -582,7 +591,8 @@ export default function Procurement() {
     const invItem = invList.find((i) => i.id === recvItem);
     if (!isBig && !invItem) { toast("PO Kecil: pilih item inventori tujuan (wajib)", "info"); return; }
     if (recvItem && !invItem) { toast("Pilih item inventori tujuan", "info"); return; }
-    if (invItem) {
+    try {
+      if (invItem) {
       await update("inventory", invItem.id, { stock: Number(invItem.stock) + qty });
       await add("movements", {
         item: invItem.name, itemId: invItem.id, type: "Penerimaan", qty, by: recvPo.id, date: todayISO(), tone: "in",
@@ -629,6 +639,9 @@ export default function Procurement() {
     setRecvNoFaktur("");
     setRecvTglFaktur("");
     setRecvDendaPct("0.1");
+    } catch {
+      toast(`Penerimaan ${recvPo.id} gagal di tengah jalan — periksa stok, movement & hutang`, "info");
+    }
   };
 
   const maxRet = (po: StoreItem): number =>
@@ -643,16 +656,20 @@ export default function Procurement() {
     const invItem = invList.find((i) => i.id === retPo.itemId);
     if (!invItem) { toast("PO ini belum terlink ke item inventori", "info"); return; }
     if (Number(invItem.stock) < qty) { toast("Stok tidak cukup untuk retur", "info"); return; }
-    await update("inventory", invItem.id, { stock: Number(invItem.stock) - qty });
-    await add("movements", {
-      item: invItem.name, itemId: invItem.id, type: "Retur", qty, by: `${retPo.id} — ${retNote.trim()}`, date: todayISO(), tone: "out",
-    }, { action: "meretur barang", target: `${invItem.name} × ${qty} (${retPo.id})`, module: "Procurement" });
-    await update("purchaseOrders", retPo.id, { returnedQty: Number(retPo.returnedQty || 0) + qty });
-    log("meretur barang", `${invItem.name} × ${qty} (${retPo.id}): ${retNote.trim()}`, "Procurement");
-    toast(`Retur ${retPo.id} × ${qty} tersimpan`);
-    setRetPo(null);
-    setRetQty("");
-    setRetNote("");
+    try {
+      await update("inventory", invItem.id, { stock: Number(invItem.stock) - qty });
+      await add("movements", {
+        item: invItem.name, itemId: invItem.id, type: "Retur", qty, by: `${retPo.id} — ${retNote.trim()}`, date: todayISO(), tone: "out",
+      }, { action: "meretur barang", target: `${invItem.name} × ${qty} (${retPo.id})`, module: "Procurement" });
+      await update("purchaseOrders", retPo.id, { returnedQty: Number(retPo.returnedQty || 0) + qty });
+      log("meretur barang", `${invItem.name} × ${qty} (${retPo.id}): ${retNote.trim()}`, "Procurement");
+      toast(`Retur ${retPo.id} × ${qty} tersimpan`);
+      setRetPo(null);
+      setRetQty("");
+      setRetNote("");
+    } catch {
+      toast(`Retur ${retPo.id} gagal di tengah jalan — periksa stok & movement`, "info");
+    }
   };
 
   const approvePr = async (r: StoreItem, ok: boolean) => {
@@ -725,7 +742,7 @@ export default function Procurement() {
         }
       />
 
-      {modAlert.active && <AlertBannerView items={modAlert.items} onClose={modAlert.dismiss} />}
+      {modAlert.active && <AlertBannerView items={modAlert.items} onClose={modAlert.dismiss} onPick={modAlert.scrollTo} />}
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <KpiCard label="PO Aktif" value={String(purchaseOrders.length)} icon={<ShoppingCart className="h-5 w-5" />} chip="navy" spark={poCountTrend} hint="Sedang berjalan" />

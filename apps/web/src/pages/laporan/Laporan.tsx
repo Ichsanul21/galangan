@@ -500,13 +500,16 @@ export default function Laporan() {
                 <Card className="p-4">
                   <CardHeader title="NCR Proyek" subtitle={`${fmtJumlah(projNcr.length)} temuan`} />
                   <div className="space-y-2 px-5 pb-5 text-xs">
-                    {projNcr.slice(0, 6).map((n) => (
+                    {projNcr.slice(0, 6).map((n) => {
+                      const sev = String(n.severity ?? n.type ?? "");
+                      return (
                       <div key={n.id} className="flex items-center gap-2">
                         <span className="font-mono font-semibold text-navy-900">{n.id}</span>
-                        <Badge tone="gray">{String(n.severity ?? n.type ?? "")}</Badge>
+                        <Badge tone={sev === "Critical" ? "red" : sev === "Major" ? "amber" : "blue"}>{sev}</Badge>
                         <StatusBadge status={String(n.status)} />
                       </div>
-                    ))}
+                      );
+                    })}
                     {projNcr.length === 0 && <p className="text-steel-400">Nihil NCR.</p>}
                   </div>
                 </Card>

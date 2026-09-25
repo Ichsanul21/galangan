@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Plus, Search, Anchor, Wallet, TrendingUp, Clock, LayoutTemplate, ChevronLeft, ChevronRight } from "lucide-react";
+import { Plus, Search, Anchor, Wallet, TrendingUp, Clock, ChevronLeft, ChevronRight } from "lucide-react";
 import {
   Card,
   PageHeader,
@@ -18,13 +18,16 @@ import {
 } from "../../components/ui";
 import type { SortState } from "../../components/ui";
 import { useStore } from "../../data/store";
-import type { StoreItem, WbsItem } from "../../data/store";
+import type { StoreItem } from "../../data/store";
 import { fmtMiliar, sparkProjects, activeProjectTrend, contractValueTrend, avgProgressTrend } from "../../data";
 import { todayISO } from "../../utils/format";
+import { canonPrioritas } from "../../utils/scope";
+import ClientModal from "../../components/ClientModal";
+import { FilterPopover } from "../../components/FilterPopover";
 import { AlertBannerView, notifRowId, useModuleAlert } from "../../components/AlertBanner";
 
 export const TAHAP = ["Inquiry", "Quotation", "Kontrak", "Desain", "Produksi", "Trial", "Handover"];
-export const PRIORITAS = ["Rendah", "Sedang", "Tinggi", "Kritis"];
+export const PRIORITAS = ["Rendah", "Sedang", "Tinggi"];
 
 export function tahapOf(p: StoreItem): string {
   return TAHAP.includes(p.tahap) ? p.tahap : "Produksi";
@@ -38,79 +41,7 @@ const prioritasTone: Record<string, "gray" | "blue" | "amber" | "red"> = {
   Rendah: "gray",
   Sedang: "blue",
   Tinggi: "amber",
-  Kritis: "red",
 };
-
-interface TemplateTask {
-  task: string;
-  weight: number;
-}
-
-interface TemplateDef {
-  key: string;
-  label: string;
-  desc: string;
-  type: string;
-  scope: string[];
-  tasks: TemplateTask[];
-}
-
-const TEMPLATES: TemplateDef[] = [
-  {
-    key: "tug",
-    label: "New Build Tug",
-    desc: "Pembangunan tugboat baru dari desain hingga serah terima",
-    type: "New Build",
-    scope: ["Desain & Class Approval", "Fabrikasi Baja", "Hull Assembly", "Outfitting Machinery", "Outfitting Piping", "Outfitting Electrical", "Outfitting Nav & Comm", "Outfitting Accommodation", "Painting", "Commissioning", "Sea Trial"],
-    tasks: [
-      { task: "Desain & Persetujuan Class", weight: 8 },
-      { task: "Pengadaan Material", weight: 10 },
-      { task: "Fabrikasi Baja", weight: 12 },
-      { task: "Hull Assembly", weight: 12 },
-      { task: "Outfitting — Machinery", weight: 8 },
-      { task: "Outfitting — Piping", weight: 7 },
-      { task: "Outfitting — Electrical", weight: 7 },
-      { task: "Outfitting — Nav & Comm", weight: 5 },
-      { task: "Outfitting — Accommodation", weight: 5 },
-      { task: "Painting — Surface Prep", weight: 5 },
-      { task: "Painting — Priming", weight: 4 },
-      { task: "Painting — Topcoat", weight: 4 },
-      { task: "Painting — Final Inspection", weight: 3 },
-      { task: "Commissioning", weight: 6 },
-      { task: "Sea Trial & Handover", weight: 4 },
-    ],
-  },
-  {
-    key: "docking",
-    label: "Repair Docking",
-    desc: "Perbaikan dan docking kapal yang sedang beroperasi",
-    type: "Repair",
-    scope: ["Survey & Docking Preparation", "Hull Cleaning & Blasting", "Perbaikan Pelat", "Overhaul Mesin", "Coating", "Undocking & Trial"],
-    tasks: [
-      { task: "Persiapan Docking & Survey", weight: 10 },
-      { task: "Pembersihan & Blasting Lambung", weight: 15 },
-      { task: "Perbaikan Pelat & Struktur", weight: 25 },
-      { task: "Overhaul Mesin & Pompa", weight: 20 },
-      { task: "Coating & Antifouling", weight: 20 },
-      { task: "Undocking & Trial", weight: 10 },
-    ],
-  },
-  {
-    key: "retrofit",
-    label: "Retrofit",
-    desc: "Modernisasi sistem dan peralatan kapal eksisting",
-    type: "Retrofit",
-    scope: ["Survey & Engineering", "Pengadaan Peralatan", "Demolition", "Instalasi Sistem Baru", "Commissioning", "Trial & Handover"],
-    tasks: [
-      { task: "Survey & Engineering", weight: 10 },
-      { task: "Pengadaan Peralatan", weight: 20 },
-      { task: "Demolition & Preparasi", weight: 15 },
-      { task: "Instalasi Sistem Baru", weight: 30 },
-      { task: "Commissioning", weight: 15 },
-      { task: "Trial & Handover", weight: 10 },
-    ],
-  },
-];
 
 const emptyForm = {
   vessel: "",
@@ -121,7 +52,6 @@ const emptyForm = {
   end: "",
   budget: "",
   manager: "",
-  scope: "",
   status: "Dalam Proses",
   tahap: "Inquiry",
   prioritas: "Sedang",
@@ -130,28 +60,8 @@ const emptyForm = {
   vesselImo: "",
 };
 
-const TPL_KEY = "isms.templates";
-
-const loadCustomTemplates = (): TemplateDef[] => {
-  try {
-    const raw = localStorage.getItem(TPL_KEY);
-    const parsed = raw ? JSON.parse(raw) : [];
-    return Array.isArray(parsed) ? (parsed as TemplateDef[]) : [];
-  } catch {
-    return [];
-  }
-};
-
-const persistCustomTemplates = (tpls: TemplateDef[]) => {
-  try {
-    localStorage.setItem(TPL_KEY, JSON.stringify(tpls));
-  } catch {
-    /* penyimpanan penuh/privat — abaikan */
-  }
-};
-
 export default function Projects() {
-  const { data, add, update, log, setWbs, wbsFor, inBranch } = useStore();
+  const { data, add, update, log, inBranch } = useStore();
   const modAlert = useModuleAlert("proyek");
   const navigate = useNavigate();
   const projects = data.projects;
@@ -164,17 +74,13 @@ export default function Projects() {
   const [q, setQ] = useState("");
   const [sort, setSort] = useState<SortState>({ key: null, dir: "asc" });
   const [showAdd, setShowAdd] = useState(false);
-  const [showTemplate, setShowTemplate] = useState(false);
   const [form, setForm] = useState(emptyForm);
-  const [pendingWbs, setPendingWbs] = useState<TemplateTask[] | null>(null);
+  const [scopeRows, setScopeRows] = useState([{ service: "", lokasi: "", deskripsi: "" }]);
+  const [showClientModal, setShowClientModal] = useState(false);
   const [mundurFor, setMundurFor] = useState<StoreItem | null>(null);
   const [mundurReason, setMundurReason] = useState("");
-  const [customTpls, setCustomTpls] = useState<TemplateDef[]>(loadCustomTemplates);
-  const [tplName, setTplName] = useState("");
-  const [tplFromProject, setTplFromProject] = useState("");
 
   const pmOptions = [...new Set(projects.map((p) => String(p.manager ?? "")).filter(Boolean))].sort();
-  const hasActiveFilter = filter !== "Semua" || statusFilter !== "Semua" || tahapFilter !== "Semua" || branchFilter !== "Semua" || prioritasFilter !== "Semua" || pmFilter !== "Semua" || q.trim() !== "";
   const resetFilters = () => { setFilter("Semua"); setStatusFilter("Semua"); setTahapFilter("Semua"); setBranchFilter("Semua"); setPrioritasFilter("Semua"); setPmFilter("Semua"); setQ(""); };
 
   const list = inBranch(projects).filter((p) => {
@@ -182,7 +88,7 @@ export default function Projects() {
     const matchStatus = statusFilter === "Semua" || p.status === statusFilter;
     const matchTahap = tahapFilter === "Semua" || tahapOf(p) === tahapFilter;
     const matchBranch = branchFilter === "Semua" || p.branch === branchFilter;
-    const matchPrioritas = prioritasFilter === "Semua" || String(p.prioritas ?? "Sedang") === prioritasFilter;
+    const matchPrioritas = prioritasFilter === "Semua" || canonPrioritas(p.prioritas) === prioritasFilter;
     const matchPm = pmFilter === "Semua" || String(p.manager ?? "") === pmFilter;
     const matchQ = `${p.vessel} ${p.id} ${p.client} ${p.manager ?? ""}`.toLowerCase().includes(q.toLowerCase());
     return matchType && matchStatus && matchTahap && matchBranch && matchPrioritas && matchPm && matchQ;
@@ -247,71 +153,20 @@ export default function Projects() {
     setMundurReason("");
   };
 
-  const pickTemplate = (t: TemplateDef) => {
-    setForm((f) => ({ ...f, type: t.type, scope: t.scope.join(", "), tahap: "Inquiry" }));
-    setPendingWbs(t.tasks);
-    setShowTemplate(false);
-    setShowAdd(true);
-    toast(`Template "${t.label}" dimuat — lengkapi data & nilai kontrak`);
-  };
-
-  const storeCustomTemplate = (tpl: TemplateDef) => {
-    const next = [...customTpls, tpl];
-    setCustomTpls(next);
-    persistCustomTemplates(next);
-    log("menyimpan template proyek", tpl.label, "Proyek");
-    toast(`Template "${tpl.label}" tersimpan`);
-  };
-
-  const saveFormAsTemplate = () => {
-    if (!tplName.trim()) { toast("Isi nama template dulu", "info"); return; }
-    const scope = form.scope.split(",").map((s) => s.trim()).filter(Boolean);
-    if (scope.length === 0 && !pendingWbs) { toast("Isi lingkup atau muat template dulu", "info"); return; }
-    storeCustomTemplate({
-      key: `custom-${Date.now()}`,
-      label: tplName.trim(),
-      desc: "Template kustom dari form proyek",
-      type: form.type,
-      scope,
-      tasks: (pendingWbs ?? []).map((t) => ({ task: t.task, weight: t.weight })),
-    });
-    setTplName("");
-  };
-
-  const saveProjectAsTemplate = () => {
-    if (!tplName.trim()) { toast("Isi nama template dulu", "info"); return; }
-    const src = data.projects.find((p) => p.id === tplFromProject);
-    if (!src) { toast("Pilih proyek sumber dulu", "info"); return; }
-    const wbs = wbsFor(src.id).map((w) => ({ task: w.task, weight: Number(w.weight) || 0 })).filter((t) => t.task && t.weight > 0);
-    if (wbs.length === 0) { toast("Proyek sumber belum punya WBS", "info"); return; }
-    storeCustomTemplate({
-      key: `custom-${Date.now()}`,
-      label: tplName.trim(),
-      desc: `Template kustom dari ${src.id} · ${src.vessel}`,
-      type: String(src.type),
-      scope: [...(src.scope ?? [])],
-      tasks: wbs,
-    });
-    setTplName("");
-  };
-
-  const deleteCustomTemplate = (key: string) => {
-    const tpl = customTpls.find((t) => t.key === key);
-    const next = customTpls.filter((t) => t.key !== key);
-    setCustomTpls(next);
-    persistCustomTemplates(next);
-    log("menghapus template proyek", tpl?.label ?? key, "Proyek");
-    toast(`Template "${tpl?.label ?? key}" dihapus`, "info");
-  };
-
   const save = async () => {
     if (!form.vessel.trim() || !form.client.trim()) { toast("Nama kapal & klien wajib diisi", "info"); return; }
     if (!form.branch.trim()) { toast("Cabang wajib dipilih", "info"); return; }
     if (!branchOptions.includes(form.branch)) { toast("Cabang tidak dikenal", "info"); return; }
-    const scopeItems = form.scope.split(",").map((s) => s.trim()).filter(Boolean);
-    if (scopeItems.length === 0) { toast("Ruang lingkup minimal 1 item (pisahkan koma)", "info"); return; }
-    if (!form.start || !form.end) { toast("Tanggal mulai & selesai rencana wajib diisi", "info"); return; }
-    if (form.end < form.start) { toast("Tanggal selesai tidak boleh sebelum tanggal mulai", "info"); return; }
+    const scopeItems = scopeRows
+      .map((r) => ({
+        service: r.service.trim(),
+        ...(r.lokasi.trim() ? { lokasi: r.lokasi.trim() } : {}),
+        ...(r.deskripsi.trim() ? { deskripsi: r.deskripsi.trim() } : {}),
+      }))
+      .filter((r) => r.service);
+    if (scopeItems.length === 0) { toast("Ruang lingkup minimal 1 item — isi Service lalu Tambah", "info"); return; }
+    if (!form.start || !form.end) { toast("Tanggal rencana dimulai & estimasi penyelesaian wajib diisi", "info"); return; }
+    if (form.end < form.start) { toast("Estimasi penyelesaian tidak boleh sebelum rencana dimulai", "info"); return; }
     const budget = Number(form.budget);
     if (!Number.isFinite(budget) || budget <= 0) { toast("Nilai kontrak harus lebih dari 0", "info"); return; }
     if (!form.manager) { toast("Pilih project manager", "info"); return; }
@@ -330,59 +185,53 @@ export default function Projects() {
       }
     }
     const code = nextProjectCode(form.type, form.start);
-    const created: StoreItem = await add(
-      "projects",
-      {
-        id: code,
-        vessel: form.vessel.trim(),
-        type: form.type,
-        client: form.client,
-        status: form.status,
-        tahap: form.tahap,
-        prioritas: form.prioritas,
-        tahapLog: [{ from: "-", to: form.tahap, date: todayISO(), by: "Anda", reason: "Proyek dibuat" }],
-        branch: form.branch,
-        start: form.start,
-        end: form.end,
-        progress: 0,
-        budget,
-        actual: 0,
-        manager: form.manager,
-        scope: scopeItems,
-      },
-      { action: "membuat proyek", module: "Proyek" }
-    );
-    if (pendingWbs) {
-      const wbs: WbsItem[] = pendingWbs.map((t) => ({
-        task: t.task,
-        start: form.start.slice(0, 7) || "-",
-        end: form.end.slice(0, 7) || "-",
-        progress: 0,
-        weight: t.weight,
-      }));
-      await setWbs(created.id, wbs);
-      setPendingWbs(null);
+    try {
+      const created: StoreItem = await add(
+        "projects",
+        {
+          id: code,
+          vessel: form.vessel.trim(),
+          type: form.type,
+          client: form.client,
+          status: form.status,
+          tahap: form.tahap,
+          prioritas: form.prioritas,
+          tahapLog: [{ from: "-", to: form.tahap, date: todayISO(), by: "Anda", reason: "Proyek dibuat" }],
+          branch: form.branch,
+          start: form.start,
+          end: form.end,
+          progress: 0,
+          budget,
+          actual: 0,
+          manager: form.manager,
+          scope: scopeItems,
+        },
+        { action: "membuat proyek", module: "Proyek" }
+      );
+      if (!vesselExists) {
+        await add("vessels", {
+          name: form.vessel.trim(),
+          imo: form.vesselImo.trim(),
+          type: form.vesselType.trim(),
+          class: "BKI",
+          flag: "Indonesia",
+          built: new Date().getFullYear(),
+          owner: form.client,
+          loa: Number(form.vesselLoa), beam: 0, draft: 0, bollard: 0,
+          status: form.type === "New Build" ? "Dalam Pembangunan" : "Dalam Docking",
+          certificates: [],
+          history: [{ date: form.start, event: "Proyek dibuat", type: "Kontrak" }],
+        }, { action: "mendaftarkan kapal", target: form.vessel.trim(), module: "Kapal" });
+        toast(`Proyek ${created.id} dibuat; kapal baru terdaftar (${form.vesselImo.trim()})`);
+      } else {
+        toast(`Proyek ${created.id} dibuat & terhubung ke kapal`);
+      }
+      setForm(emptyForm);
+      setScopeRows([{ service: "", lokasi: "", deskripsi: "" }]);
+      setShowAdd(false);
+    } catch {
+      toast(`Proyek ${code} gagal disimpan di tengah jalan — periksa daftar proyek & kapal`, "info");
     }
-    if (!vesselExists) {
-      await add("vessels", {
-        name: form.vessel.trim(),
-        imo: form.vesselImo.trim(),
-        type: form.vesselType.trim(),
-        class: "BKI",
-        flag: "Indonesia",
-        built: new Date().getFullYear(),
-        owner: form.client,
-        loa: Number(form.vesselLoa), beam: 0, draft: 0, bollard: 0,
-        status: form.type === "New Build" ? "Dalam Pembangunan" : "Dalam Docking",
-        certificates: [],
-        history: [{ date: form.start, event: "Proyek dibuat", type: "Kontrak" }],
-      }, { action: "mendaftarkan kapal", target: form.vessel.trim(), module: "Kapal" });
-      toast(`Proyek ${created.id} dibuat; kapal baru terdaftar (${form.vesselImo.trim()})`);
-    } else {
-      toast(`Proyek ${created.id} dibuat & terhubung ke kapal`);
-    }
-    setForm(emptyForm);
-    setShowAdd(false);
   };
 
   return (
@@ -393,13 +242,12 @@ export default function Projects() {
         icon={<Anchor className="h-5 w-5" />}
         actions={
           <>
-            <button className="btn-secondary" onClick={() => setShowTemplate(true)}><LayoutTemplate className="h-4 w-4" /> Dari Template</button>
-            <button className="btn-primary-gradient" onClick={() => { setPendingWbs(null); setShowAdd(true); }}><Plus className="h-4 w-4" /> Proyek Baru</button>
+            <button className="btn-primary-gradient" onClick={() => { setForm(emptyForm); setScopeRows([{ service: "", lokasi: "", deskripsi: "" }]); setShowAdd(true); }}><Plus className="h-4 w-4" /> Proyek Baru</button>
           </>
         }
       />
 
-      {modAlert.active && <AlertBannerView items={modAlert.items} onClose={modAlert.dismiss} />}
+      {modAlert.active && <AlertBannerView items={modAlert.items} onClose={modAlert.dismiss} onPick={modAlert.scrollTo} />}
 
       <div className="mb-4 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <KpiCard label="Total Proyek" value={String(projects.length)} hint="Seluruh portofolio" icon={<Anchor className="h-5 w-5" />} chip="navy" spark={sparkProjects} />
@@ -409,52 +257,86 @@ export default function Projects() {
       </div>
 
       <div className="mb-4 flex flex-wrap items-center gap-3">
-        <div className="relative">
-          <Search className="absolute left-3 top-2.5 h-4 w-4 text-steel-400" />
-          <input
-            className="input pl-9 w-full sm:w-64"
-            placeholder="Cari kapal / kode proyek..."
-            aria-label="Cari proyek"
-            value={q}
-            onChange={(e) => setQ(e.target.value)}
-          />
-        </div>
-        <div className="flex gap-1">
-          {filters.map((f) => (
-            <button
-              key={f}
-              onClick={() => setFilter(f)}
-              className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
-                filter === f ? "bg-navy-700 text-white" : "bg-white border border-steel-200 text-steel-600 hover:bg-steel-100"
-              }`}
-            >
-              {f}
-            </button>
-          ))}
-        </div>
-        <select className="input w-auto py-1.5 text-sm" aria-label="Filter tahap" value={tahapFilter} onChange={(e) => setTahapFilter(e.target.value)}>
-          <option value="Semua">Semua tahap</option>
-          {TAHAP.map((t) => <option key={t} value={t}>{t}</option>)}
-        </select>
-        <select className="input w-auto py-1.5 text-sm" aria-label="Filter cabang" value={branchFilter} onChange={(e) => setBranchFilter(e.target.value)}>
-          <option value="Semua">Semua cabang</option>
-          {branchOptions.map((b) => <option key={b} value={b}>{b}</option>)}
-        </select>
-        <select className="input w-auto py-1.5 text-sm" aria-label="Filter status" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
-          <option value="Semua">Semua status</option>
-          {statusOptions.filter((s) => s !== "Semua").map((s) => <option key={s} value={s}>{s}</option>)}
-        </select>
-        <select className="input w-auto py-1.5 text-sm" aria-label="Filter prioritas" value={prioritasFilter} onChange={(e) => setPrioritasFilter(e.target.value)}>
-          <option value="Semua">Semua prioritas</option>
-          {PRIORITAS.map((r) => <option key={r} value={r}>{r}</option>)}
-        </select>
-        <select className="input w-auto py-1.5 text-sm" aria-label="Filter PM" value={pmFilter} onChange={(e) => setPmFilter(e.target.value)}>
-          <option value="Semua">Semua PM</option>
-          {pmOptions.map((m) => <option key={m} value={m}>{m}</option>)}
-        </select>
-        {hasActiveFilter && (
-          <button className="btn-secondary py-1.5 text-xs" onClick={resetFilters}>Reset</button>
-        )}
+        <FilterPopover
+          activeCount={[
+            q.trim() !== "",
+            filter !== "Semua",
+            tahapFilter !== "Semua",
+            branchFilter !== "Semua",
+            statusFilter !== "Semua",
+            prioritasFilter !== "Semua",
+            pmFilter !== "Semua",
+          ].filter(Boolean).length}
+          initial={{ q, type: filter, tahap: tahapFilter, branch: branchFilter, status: statusFilter, prioritas: prioritasFilter, pm: pmFilter }}
+          onReset={resetFilters}
+          onApply={(d) => {
+            setQ(d.q);
+            setFilter(d.type);
+            setTahapFilter(d.tahap);
+            setBranchFilter(d.branch);
+            setStatusFilter(d.status);
+            setPrioritasFilter(d.prioritas);
+            setPmFilter(d.pm);
+          }}
+        >
+          {(draft, setDraft) => (
+            <div className="space-y-3">
+              <div className="relative">
+                <Search className="absolute left-3 top-2.5 h-4 w-4 text-steel-400" />
+                <input
+                  className="input pl-9 w-full"
+                  placeholder="Cari kapal / kode proyek..."
+                  aria-label="Cari proyek"
+                  value={draft.q}
+                  onChange={(e) => setDraft({ ...draft, q: e.target.value })}
+                />
+              </div>
+              <div className="flex gap-1">
+                {filters.map((f) => (
+                  <button
+                    key={f}
+                    onClick={() => setDraft({ ...draft, type: f })}
+                    className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+                      draft.type === f ? "bg-navy-700 text-white" : "bg-white border border-steel-200 text-steel-600 hover:bg-steel-100"
+                    }`}
+                  >
+                    {f}
+                  </button>
+                ))}
+              </div>
+              <Field label="Tahap">
+                <select className="input w-full py-1.5 text-sm" aria-label="Filter tahap" value={draft.tahap} onChange={(e) => setDraft({ ...draft, tahap: e.target.value })}>
+                  <option value="Semua">Semua tahap</option>
+                  {TAHAP.map((t) => <option key={t} value={t}>{t}</option>)}
+                </select>
+              </Field>
+              <Field label="Cabang">
+                <select className="input w-full py-1.5 text-sm" aria-label="Filter cabang" value={draft.branch} onChange={(e) => setDraft({ ...draft, branch: e.target.value })}>
+                  <option value="Semua">Semua cabang</option>
+                  {branchOptions.map((b) => <option key={b} value={b}>{b}</option>)}
+                </select>
+              </Field>
+              <Field label="Status">
+                <select className="input w-full py-1.5 text-sm" aria-label="Filter status" value={draft.status} onChange={(e) => setDraft({ ...draft, status: e.target.value })}>
+                  <option value="Semua">Semua status</option>
+                  {statusOptions.filter((s) => s !== "Semua").map((s) => <option key={s} value={s}>{s}</option>)}
+                </select>
+              </Field>
+              <Field label="Prioritas">
+                <select className="input w-full py-1.5 text-sm" aria-label="Filter prioritas" value={draft.prioritas} onChange={(e) => setDraft({ ...draft, prioritas: e.target.value })}>
+                  <option value="Semua">Semua prioritas</option>
+                  {PRIORITAS.map((r) => <option key={r} value={r}>{r}</option>)}
+                </select>
+              </Field>
+              <Field label="Project manager">
+                <select className="input w-full py-1.5 text-sm" aria-label="Filter PM" value={draft.pm} onChange={(e) => setDraft({ ...draft, pm: e.target.value })}>
+                  <option value="Semua">Semua PM</option>
+                  {pmOptions.map((m) => <option key={m} value={m}>{m}</option>)}
+                </select>
+              </Field>
+            </div>
+          )}
+        </FilterPopover>
         <span className="ml-auto text-xs text-steel-400">{list.length} proyek</span>
       </div>
 
@@ -522,7 +404,7 @@ export default function Projects() {
                       </div>
                     </td>
                     <td className="td">
-                      <Badge tone={prioritasTone[p.prioritas ?? "Sedang"] ?? "blue"}>{p.prioritas ?? "Sedang"}</Badge>
+                      <Badge tone={prioritasTone[canonPrioritas(p.prioritas)] ?? "blue"}>{canonPrioritas(p.prioritas)}</Badge>
                     </td>
                     <td className="td"><StatusBadge status={p.status} /></td>
                     <td className="td">
@@ -543,66 +425,16 @@ export default function Projects() {
         </div>
       </Card>
 
-      <Modal
-        open={showTemplate}
-        onClose={() => setShowTemplate(false)}
-        title="Buat dari Template"
-        subtitle="Preset ruang lingkup + WBS otomatis — nilai kontrak wajib diisi"
-      >
-        <div className="space-y-2">
-          {TEMPLATES.map((t) => (
-            <button
-              key={t.key}
-              onClick={() => pickTemplate(t)}
-              className="block w-full rounded-xl border border-steel-200 p-3 text-left transition-colors hover:border-ocean-400 hover:bg-surface"
-            >
-              <p className="text-sm font-semibold text-navy-900">{t.label} <Badge tone={t.type === "New Build" ? "navy" : t.type === "Repair" ? "cyan" : "violet"}>{t.type}</Badge></p>
-              <p className="mt-0.5 text-xs text-steel-500">{t.desc}</p>
-              <p className="mt-1 text-xs text-steel-500">{t.tasks.length} tahapan WBS · {t.scope.join(" · ")}</p>
-            </button>
-          ))}
-        </div>
-        <div className="mt-4 border-t border-steel-100 pt-3">
-          <p className="mb-2 text-xs font-semibold text-navy-900">Template tersimpan ({customTpls.length})</p>
-          {customTpls.length === 0 ? (
-            <p className="text-xs text-steel-400">Belum ada template kustom. Simpan dari form proyek atau dari proyek berjalan di bawah.</p>
-          ) : (
-            <div className="space-y-2">
-              {customTpls.map((t) => (
-                <div key={t.key} className="flex items-center gap-2 rounded-xl border border-dashed border-steel-200 p-3">
-                  <button onClick={() => pickTemplate(t)} className="min-w-0 flex-1 text-left">
-                    <p className="truncate text-sm font-semibold text-navy-900">{t.label} <Badge tone="teal">Kustom</Badge></p>
-                    <p className="mt-0.5 truncate text-xs text-steel-500">{t.tasks.length} tahapan WBS · {t.scope.join(" · ") || "tanpa lingkup"}</p>
-                  </button>
-                  <button className="btn-secondary shrink-0 text-xs" onClick={() => deleteCustomTemplate(t.key)}>Hapus</button>
-                </div>
-              ))}
-            </div>
-          )}
-          <div className="mt-3 rounded-xl bg-surface p-3">
-            <p className="mb-2 text-xs font-semibold text-navy-900">Simpan dari proyek berjalan</p>
-            <div className="flex flex-col gap-2 sm:flex-row">
-              <select className="input flex-1" value={tplFromProject} onChange={(e) => setTplFromProject(e.target.value)} aria-label="Proyek sumber template">
-                <option value="">Pilih proyek…</option>
-                {data.projects.map((p) => <option key={p.id} value={p.id}>{p.id} · {p.vessel}</option>)}
-              </select>
-              <input className="input flex-1" value={tplName} onChange={(e) => setTplName(e.target.value)} placeholder="Nama template…" aria-label="Nama template" />
-              <button className="btn-secondary shrink-0 text-xs" onClick={saveProjectAsTemplate}>Simpan sebagai Template</button>
-            </div>
-            <p className="mt-1 text-[11px] text-steel-500">Menyimpan nama template + lingkup + WBS proyek saat ini ke penyimpanan lokal.</p>
-          </div>
-        </div>
-      </Modal>
 
       <Modal
         open={showAdd}
-        onClose={() => { setShowAdd(false); setPendingWbs(null); }}
+        onClose={() => setShowAdd(false)}
         title="Proyek Baru"
         subtitle="Kapal baru otomatis terdaftar di Rekam Jejak Kapal"
         wide
         footer={
           <>
-            <button className="btn-secondary" onClick={() => { setShowAdd(false); setPendingWbs(null); }}>Batal</button>
+            <button className="btn-secondary" onClick={() => setShowAdd(false)}>Batal</button>
             <button className="btn-primary" onClick={save}>Simpan Proyek</button>
           </>
         }
@@ -610,7 +442,6 @@ export default function Projects() {
         <div className="space-y-3">
           <p className="text-xs text-steel-500">
             Kode proyek otomatis: <span className="font-mono font-semibold text-navy-900">{codePreview}</span>
-            {pendingWbs && <span className="ml-2">· WBS template {pendingWbs.length} tahapan akan dibuat</span>}
           </p>
           <FormGrid>
             <Field label="Nama kapal">
@@ -620,10 +451,16 @@ export default function Projects() {
               </datalist>
             </Field>
             <Field label="Klien">
-              <select className="input" value={form.client} onChange={(e) => setF("client", e.target.value)}>
-                <option value="">Pilih klien…</option>
-                {data.clients.map((c) => <option key={c.id} value={c.name}>{c.name}</option>)}
-              </select>
+              <div className="flex gap-2">
+                <select className="input flex-1" value={form.client} onChange={(e) => {
+                  if (e.target.value === "__baru__") { setShowClientModal(true); return; }
+                  setF("client", e.target.value);
+                }}>
+                  <option value="">Pilih klien…</option>
+                  {data.clients.map((c) => <option key={c.id} value={c.name}>{c.name}</option>)}
+                  <option value="__baru__">+ Tambah klien baru…</option>
+                </select>
+              </div>
             </Field>
             <Field label="Jenis proyek">
               <select className="input" value={form.type} onChange={(e) => setF("type", e.target.value)}>
@@ -632,16 +469,16 @@ export default function Projects() {
                 <option>Retrofit</option>
               </select>
             </Field>
-            <Field label="Status awal">
+            <Field label="Tahap awal (E2E)">
+              <select className="input" value={form.tahap} onChange={(e) => setF("tahap", e.target.value)}>
+                {TAHAP.map((t) => <option key={t}>{t}</option>)}
+              </select>
+            </Field>
+            <Field label="Status proyek">
               <select className="input" value={form.status} onChange={(e) => setF("status", e.target.value)}>
                 <option>Dalam Proses</option>
                 <option>Sedang Berjalan</option>
                 <option>Tertunda</option>
-              </select>
-            </Field>
-            <Field label="Tahap awal (E2E)">
-              <select className="input" value={form.tahap} onChange={(e) => setF("tahap", e.target.value)}>
-                {TAHAP.map((t) => <option key={t}>{t}</option>)}
               </select>
             </Field>
             <Field label="Prioritas">
@@ -662,8 +499,8 @@ export default function Projects() {
                 ))}
               </select>
             </Field>
-            <Field label="Mulai"><input type="date" className="input" value={form.start} onChange={(e) => setF("start", e.target.value)} /></Field>
-            <Field label="Selesai (rencana)"><input type="date" className="input" value={form.end} onChange={(e) => setF("end", e.target.value)} /></Field>
+            <Field label="Rencana dimulai"><input type="date" className="input" value={form.start} onChange={(e) => setF("start", e.target.value)} /></Field>
+            <Field label="Estimasi penyelesaian pekerjaan"><input type="date" className="input" value={form.end} onChange={(e) => setF("end", e.target.value)} /></Field>
           </FormGrid>
           {!vesselExists && form.vessel.trim() && (
             <div className="rounded-xl border border-amber-200 bg-amber-50 p-3">
@@ -682,19 +519,56 @@ export default function Projects() {
           <Field label="Nilai kontrak (Rp)">
             <input type="number" className="input" min={0} value={form.budget} onChange={(e) => setF("budget", e.target.value)} placeholder="cth: 10000000000" />
           </Field>
-          <Field label="Ruang lingkup (pisahkan koma)" hint="cth: Desain, Fabrikasi Baja, Sea Trial">
-            <input className="input" value={form.scope} onChange={(e) => setF("scope", e.target.value)} />
-          </Field>
-          <div className="rounded-xl bg-surface p-3">
-            <p className="mb-2 text-xs font-semibold text-navy-900">Simpan form ini sebagai template</p>
-            <div className="flex flex-col gap-2 sm:flex-row">
-              <input className="input flex-1" value={tplName} onChange={(e) => setTplName(e.target.value)} placeholder="Nama template…" aria-label="Nama template" />
-              <button className="btn-secondary shrink-0 text-xs" onClick={saveFormAsTemplate}>Simpan sebagai Template</button>
+          <div className="rounded-xl border border-steel-200 p-3">
+            <div className="mb-2 flex items-center justify-between">
+              <p className="text-xs font-semibold text-navy-900">Ruang lingkup pekerjaan</p>
+              <button
+                className="btn-secondary px-2 py-1 text-xs"
+                onClick={() => setScopeRows((s) => [...s, { service: "", lokasi: "", deskripsi: "" }])}
+              >
+                + Tambah lingkup
+              </button>
             </div>
-            <p className="mt-1 text-[11px] text-steel-500">Menyimpan tipe + lingkup + WBS template yang sedang dimuat{pendingWbs ? ` (${pendingWbs.length} tahapan)` : ""}.</p>
+            <div className="space-y-2">
+              {scopeRows.map((r, idx) => (
+                <div key={idx} className="grid grid-cols-1 gap-2 rounded-lg bg-surface p-2 sm:grid-cols-12">
+                  <div className="sm:col-span-4">
+                    <Field label="Service apa">
+                      <input className="input" value={r.service} onChange={(e) => setScopeRows((s) => s.map((x, i) => (i === idx ? { ...x, service: e.target.value } : x)))} placeholder="cth: Fabrikasi Baja" />
+                    </Field>
+                  </div>
+                  <div className="sm:col-span-3">
+                    <Field label="Lokasi di mana">
+                      <input className="input" value={r.lokasi} onChange={(e) => setScopeRows((s) => s.map((x, i) => (i === idx ? { ...x, lokasi: e.target.value } : x)))} placeholder="cth: Workshop A" />
+                    </Field>
+                  </div>
+                  <div className="sm:col-span-4">
+                    <Field label="Deskripsinya apa">
+                      <input className="input" value={r.deskripsi} onChange={(e) => setScopeRows((s) => s.map((x, i) => (i === idx ? { ...x, deskripsi: e.target.value } : x)))} placeholder="cth: Section 4-7, tebal 12mm" />
+                    </Field>
+                  </div>
+                  <div className="flex items-end sm:col-span-1">
+                    <button
+                      className="btn-secondary w-full px-2 py-2 text-xs text-rose-600"
+                      aria-label={`Hapus lingkup ${idx + 1}`}
+                      disabled={scopeRows.length <= 1}
+                      onClick={() => setScopeRows((s) => s.filter((_, i) => i !== idx))}
+                    >
+                      ×
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
           </div>
         </div>
       </Modal>
+
+      <ClientModal
+        open={showClientModal}
+        onClose={() => setShowClientModal(false)}
+        onSaved={(name) => setF("client", name)}
+      />
 
       <Modal
         open={mundurFor !== null}

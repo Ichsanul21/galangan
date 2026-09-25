@@ -3,6 +3,7 @@ import ReactDOM from "react-dom/client";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import "./index.css";
 import { AuthProvider, RequireAuth } from "./auth/auth";
+import { LanguageProvider } from "./i18n/LanguageContext";
 import { StoreProvider } from "./data/store";
 import { SecurityGuards } from "./security/watermark";
 import AppShell from "./layouts/AppShell";
@@ -35,10 +36,19 @@ import Peran from "./pages/pengaturan/Peran";
 import Notifikasi from "./pages/notifikasi/Notifikasi";
 import Audit from "./pages/audit/Audit";
 import { ErrorBoundary } from "./components/ui";
+import { ApiError } from "./services/http";
+
+/* Jaring pengaman: ApiError selalu di-toast di sumbernya (notifyConflict /
+   notifyForbidden / degrade) — cegah warning unhandledrejection di konsol
+   untuk kegagalan yang sudah ditangani secara UX. */
+window.addEventListener("unhandledrejection", (e) => {
+  if (e.reason instanceof ApiError) e.preventDefault();
+});
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
-    <AuthProvider>
+    <LanguageProvider>
+      <AuthProvider>
       <SecurityGuards />
       <StoreProvider>
         <BrowserRouter>
@@ -84,7 +94,8 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
           </Routes>
         </BrowserRouter>
       </StoreProvider>
-    </AuthProvider>
+      </AuthProvider>
+    </LanguageProvider>
   </React.StrictMode>
 );
 

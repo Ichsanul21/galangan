@@ -38,6 +38,7 @@ import { uploadFile } from "../../services/upload";
 import { fmtJumlah, fmtRupiah, fmtMiliar, fmtTanggal, todayISO } from "../../utils/format";
 import { exportExcel } from "../../utils/export";
 import { sbTonasePlat, sbSjNumber, sbTtNumber, maxSeq, parseSjSeq, SB_KOP } from "../../utils/sb";
+import { FilterPopover } from "../../components/FilterPopover";
 import { AlertBannerView, notifRowId, useModuleAlert } from "../../components/AlertBanner";
 import { stockTrend, itemTrend, lowStockTrend, stockValueTrend, warehouseTrend } from "../../data";
 
@@ -626,29 +627,33 @@ export default function Inventory() {
     const refNote = useUom2 ? `${refBase} · ${fmtJumlah(raw)} ${uom2Of(fresh)}` : refBase;
     const priceExcl = Number(movePrice) || 0;
     const taxAmt = Number(moveTax) || 0;
-    await update("inventory", fresh.id, patch);
-    if (moveKind === "out" && next < Number(fresh.minStock || 0)) {
-      toast(`Peringatan: stok ${fresh.name} di bawah minimum (${fmtJumlah(Number(fresh.minStock || 0))} ${fresh.unit}) — segera buat PR`, "info");
+    try {
+      await update("inventory", fresh.id, patch);
+      if (moveKind === "out" && next < Number(fresh.minStock || 0)) {
+        toast(`Peringatan: stok ${fresh.name} di bawah minimum (${fmtJumlah(Number(fresh.minStock || 0))} ${fresh.unit}) — segera buat PR`, "info");
+      }
+      await add("movements", {
+        item: fresh.name, itemId: fresh.id,
+        type: moveKind === "in" ? "Penerimaan" : "Pengeluaran",
+        qty,
+        by: refNote,
+        batch: moveBatch.trim() || fresh.batch || "",
+        date: todayISO(),
+        tone: moveKind,
+        supplier: moveSupplier.trim(),
+        priceExcl,
+        tax: taxAmt,
+        total: priceExcl > 0 ? Math.round(qty * priceExcl) + taxAmt : 0,
+        purpose: movePurpose.trim(),
+        pic: movePic.trim(),
+        // Cabang dari proyek tertaut (cocokkan purpose/ref ke id/vessel proyek) atau fallback global.
+        branch: moveBranch(`${movePurpose} ${refNote}`),
+      }, { action: moveKind === "in" ? "menerima barang" : "mengeluarkan barang", target: `${fresh.name} × ${qty}`, module: "Inventori" });
+      toast(`${moveKind === "in" ? "GR" : "GI"} ${fresh.name} × ${fmtJumlah(qty)} tersimpan`);
+      closeMove();
+    } catch {
+      toast(`Transaksi ${moveKind === "in" ? "GR" : "GI"} gagal di tengah jalan — periksa stok & riwayat movement`, "info");
     }
-    await add("movements", {
-      item: fresh.name, itemId: fresh.id,
-      type: moveKind === "in" ? "Penerimaan" : "Pengeluaran",
-      qty,
-      by: refNote,
-      batch: moveBatch.trim() || fresh.batch || "",
-      date: todayISO(),
-      tone: moveKind,
-      supplier: moveSupplier.trim(),
-      priceExcl,
-      tax: taxAmt,
-      total: priceExcl > 0 ? Math.round(qty * priceExcl) + taxAmt : 0,
-      purpose: movePurpose.trim(),
-      pic: movePic.trim(),
-      // Cabang dari proyek tertaut (cocokkan purpose/ref ke id/vessel proyek) atau fallback global.
-      branch: moveBranch(`${movePurpose} ${refNote}`),
-    }, { action: moveKind === "in" ? "menerima barang" : "mengeluarkan barang", target: `${fresh.name} × ${qty}`, module: "Inventori" });
-    toast(`${moveKind === "in" ? "GR" : "GI"} ${fresh.name} × ${fmtJumlah(qty)} tersimpan`);
-    closeMove();
   };
 
   /* BOM explode → PR Draft, cegah duplikat PR terbuka untuk item sama. */
@@ -922,16 +927,20 @@ export default function Inventory() {
       const ok = window.confirm(`Selisih besar (${selisih > 0 ? "+" : ""}${selisih} dari stok ${Number(opTarget.stock)}). Pastikan sudah Berita Acara. Lanjut simpan opname?`);
       if (!ok) return;
     }
-    await update("inventory", opTarget.id, { stock: Number(opCount) });
-    await add("movements", {
-      item: opTarget.name, itemId: opTarget.id, type: "Selisih Opname", qty: selisih,
-      by: `Opname ${todayISO()}`, date: todayISO(), tone: selisih > 0 ? "in" : "out",
-    }, { action: "stok opname", target: `${opTarget.name}: selisih ${selisih > 0 ? "+" : ""}${selisih}`, module: "Inventori" });
-    log("stok opname", `${opTarget.name}: tercatat ${Number(opCount)}, selisih ${selisih > 0 ? "+" : ""}${selisih}`, "Inventori");
-    toast(`Opname ${opTarget.name} — selisih ${selisih > 0 ? "+" : ""}${selisih} tersimpan`);
-    setShowOpname(false);
-    setOpItem("");
-    setOpCount("");
+    try {
+      await update("inventory", opTarget.id, { stock: Number(opCount) });
+      await add("movements", {
+        item: opTarget.name, itemId: opTarget.id, type: "Selisih Opname", qty: selisih,
+        by: `Opname ${todayISO()}`, date: todayISO(), tone: selisih > 0 ? "in" : "out",
+      }, { action: "stok opname", target: `${opTarget.name}: selisih ${selisih > 0 ? "+" : ""}${selisih}`, module: "Inventori" });
+      log("stok opname", `${opTarget.name}: tercatat ${Number(opCount)}, selisih ${selisih > 0 ? "+" : ""}${selisih}`, "Inventori");
+      toast(`Opname ${opTarget.name} — selisih ${selisih > 0 ? "+" : ""}${selisih} tersimpan`);
+      setShowOpname(false);
+      setOpItem("");
+      setOpCount("");
+    } catch {
+      toast(`Opname ${opTarget.name} gagal di tengah jalan — periksa stok & movement`, "info");
+    }
   };
 
   const saveTransfer = async () => {
@@ -943,30 +952,34 @@ export default function Inventory() {
     if (trDest === trTarget.warehouse) { toast("Gudang tujuan sama dengan gudang asal", "info"); return; }
     const from = trTarget.warehouse;
     const srcStock = Number(trTarget.stock);
-    if (qty < srcStock) {
-      /* Split: kurangi sumber, buat baris gudang tujuan dengan SKU sama + sufiks gudang. */
-      await update("inventory", trTarget.id, { stock: srcStock - qty });
-      await add("inventory", {
-        name: trTarget.name, sku: `${trTarget.sku}@${trDest}`, category: trTarget.category, warehouse: trDest,
-        rack: "", bin: "", stock: qty, minStock: 0, unit: trTarget.unit,
-        cost: trTarget.cost, location: "", volume: Number(trTarget.volume) || 0, batch: String(trTarget.batch ?? ""),
-        uom2: String((trTarget as unknown as Record<string, unknown>).uom2 ?? ""), konversi: Number((trTarget as unknown as Record<string, unknown>).konversi) || 0,
-        minStockByWarehouse: {}, photoUrl: String(trTarget.photoUrl ?? ""), avgCost: Number((trTarget as unknown as Record<string, unknown>).avgCost) || 0,
-        batches: [], reserved: [],
-      }, { action: "transfer gudang (split)", target: `${trTarget.name} × ${qty}: ${from} → ${trDest}`, module: "Inventori" });
-    } else {
-      await update("inventory", trTarget.id, { warehouse: trDest });
+    try {
+      if (qty < srcStock) {
+        /* Split: kurangi sumber, buat baris gudang tujuan dengan SKU sama + sufiks gudang. */
+        await update("inventory", trTarget.id, { stock: srcStock - qty });
+        await add("inventory", {
+          name: trTarget.name, sku: `${trTarget.sku}@${trDest}`, category: trTarget.category, warehouse: trDest,
+          rack: "", bin: "", stock: qty, minStock: 0, unit: trTarget.unit,
+          cost: trTarget.cost, location: "", volume: Number(trTarget.volume) || 0, batch: String(trTarget.batch ?? ""),
+          uom2: String((trTarget as unknown as Record<string, unknown>).uom2 ?? ""), konversi: Number((trTarget as unknown as Record<string, unknown>).konversi) || 0,
+          minStockByWarehouse: {}, photoUrl: String(trTarget.photoUrl ?? ""), avgCost: Number((trTarget as unknown as Record<string, unknown>).avgCost) || 0,
+          batches: [], reserved: [],
+        }, { action: "transfer gudang (split)", target: `${trTarget.name} × ${qty}: ${from} → ${trDest}`, module: "Inventori" });
+      } else {
+        await update("inventory", trTarget.id, { warehouse: trDest });
+      }
+      await add("movements", {
+        item: trTarget.name, itemId: trTarget.id, type: "Transfer", qty,
+        by: `${from} → ${trDest}`, date: todayISO(), tone: "in",
+      }, { action: "transfer gudang", target: `${trTarget.name} × ${qty}: ${from} → ${trDest}`, module: "Inventori" });
+      log("transfer gudang", `${trTarget.name} × ${qty}: ${from} → ${trDest}`, "Inventori");
+      toast(`Transfer ${trTarget.name} × ${qty} ke ${trDest}`);
+      setShowTransfer(false);
+      setTrItem("");
+      setTrQty("");
+      setTrDest("");
+    } catch {
+      toast(`Transfer ${trTarget.name} gagal di tengah jalan — periksa stok & movement`, "info");
     }
-    await add("movements", {
-      item: trTarget.name, itemId: trTarget.id, type: "Transfer", qty,
-      by: `${from} → ${trDest}`, date: todayISO(), tone: "in",
-    }, { action: "transfer gudang", target: `${trTarget.name} × ${qty}: ${from} → ${trDest}`, module: "Inventori" });
-    log("transfer gudang", `${trTarget.name} × ${qty}: ${from} → ${trDest}`, "Inventori");
-    toast(`Transfer ${trTarget.name} × ${qty} ke ${trDest}`);
-    setShowTransfer(false);
-    setTrItem("");
-    setTrQty("");
-    setTrDest("");
   };
 
   const saveReservasi = async () => {
@@ -1000,6 +1013,7 @@ export default function Inventory() {
     if (!pickProject) { toast("Pilih proyek dulu", "info"); return; }
     if (pickSel.length === 0) { toast("Centang minimal 1 item pick list", "info"); return; }
     let ok = 0;
+    let fail = 0;
     for (const id of pickSel) {
       const it = inventory.find((i) => i.id === id);
       if (!it) continue;
@@ -1007,19 +1021,23 @@ export default function Inventory() {
       if (!res || Number(res.qty) <= 0) continue;
       const qty = Number(res.qty);
       if (qty > Number(it.stock)) continue;
-      await update("inventory", it.id, {
-        stock: Number(it.stock) - qty,
-        reserved: reservedOf(it).filter((r) => r.project !== pickProject),
-      });
-      await add("movements", {
-        item: it.name, itemId: it.id, type: "Pengeluaran", qty,
-        by: `${pickProject} (Pick List)`, date: todayISO(), tone: "out",
-        branch: moveBranch(String(pickProject)),
-      }, { action: "pick list", target: `${it.name} × ${qty} (${pickProject})`, module: "Inventori" });
-      ok++;
+      try {
+        await update("inventory", it.id, {
+          stock: Number(it.stock) - qty,
+          reserved: reservedOf(it).filter((r) => r.project !== pickProject),
+        });
+        await add("movements", {
+          item: it.name, itemId: it.id, type: "Pengeluaran", qty,
+          by: `${pickProject} (Pick List)`, date: todayISO(), tone: "out",
+          branch: moveBranch(String(pickProject)),
+        }, { action: "pick list", target: `${it.name} × ${qty} (${pickProject})`, module: "Inventori" });
+        ok++;
+      } catch {
+        fail++;
+      }
     }
     if (ok === 0) { toast("Tidak ada item yang bisa diambil", "info"); return; }
-    toast(`Pick list ${pickProject}: ${ok} item dikeluarkan (GI)`);
+    toast(`Pick list ${pickProject}: ${ok} item dikeluarkan (GI)${fail > 0 ? `, ${fail} gagal — periksa kembali` : ""}`);
     setShowPick(false);
     setPickSel([]);
   };
@@ -1038,7 +1056,7 @@ export default function Inventory() {
         }
       />
 
-      {modAlert.active && <AlertBannerView items={modAlert.items} onClose={modAlert.dismiss} />}
+      {modAlert.active && <AlertBannerView items={modAlert.items} onClose={modAlert.dismiss} onPick={modAlert.scrollTo} />}
 
       <div className="mb-4 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <KpiCard label="Total Item Aktif" value={String(inventory.length)} icon={<Package className="h-5 w-5" />} chip="navy" spark={itemTrend} hint="Katalog keseluruhan" />        <KpiCard label="Item Stok Menipis" value={String(lowStock.length)} delta="Perlu reorder" deltaDirection="down" icon={<AlertTriangle className="h-5 w-5" />} chip="rose" spark={lowStockTrend} />
@@ -1053,27 +1071,45 @@ export default function Inventory() {
             <>
               <p className="mb-3 rounded-lg bg-steel-50 px-3 py-2 text-xs text-steel-500">Metode persediaan: FIFO untuk batch/serial — batch tertua dipakai dulu saat GI. Tersedia = stok − reservasi. Nilai stok memakai harga rata-rata (average cost) bila ada.</p>
               <div className="mb-3 flex flex-wrap gap-3">
-                <div className="relative">
-                  <Search className="absolute left-3 top-2.5 h-4 w-4 text-steel-400" />
-                  <input className="input pl-9 w-full sm:w-64" placeholder="Cari material / SKU / bin..." value={q} onChange={(e) => setQ(e.target.value)} />
-                </div>
+                <FilterPopover
+                  activeCount={[q.trim() !== "", cat !== "Semua", wh !== "Semua", abcF !== "Semua"].filter(Boolean).length}
+                  initial={{ q, cat, wh, abc: abcF }}
+                  onReset={() => { setQ(""); setCat("Semua"); setWh("Semua"); setAbcF("Semua"); }}
+                  onApply={(d) => { setQ(d.q); setCat(d.cat); setWh(d.wh); setAbcF(d.abc); }}
+                >
+                  {(draft, setDraft) => (
+                    <div className="space-y-3">
+                      <div className="relative">
+                        <Search className="absolute left-3 top-2.5 h-4 w-4 text-steel-400" />
+                        <input className="input pl-9 w-full" placeholder="Cari material / SKU / bin..." value={draft.q} onChange={(e) => setDraft({ ...draft, q: e.target.value })} />
+                      </div>
+                      <Field label="Gudang">
+                        <select className="input w-full" value={draft.wh} onChange={(e) => setDraft({ ...draft, wh: e.target.value })} aria-label="Filter gudang">
+                          {["Semua", ...warehouses].map((w) => <option key={w} value={w}>{w === "Semua" ? "Semua gudang" : w}</option>)}
+                        </select>
+                      </Field>
+                      <Field label="Kelas ABC">
+                        <select className="input w-full" value={draft.abc} onChange={(e) => setDraft({ ...draft, abc: e.target.value })} aria-label="Filter ABC">
+                          {["Semua", "A", "B", "C"].map((a) => <option key={a} value={a}>{a === "Semua" ? "ABC semua" : `Kelas ${a}`}</option>)}
+                        </select>
+                      </Field>
+                      <div>
+                        <p className="mb-1.5 block text-xs font-medium text-steel-600">Kategori</p>
+                        <div className="flex flex-wrap gap-1">
+                          {["Semua", ...categories].map((c) => (
+                            <button key={c} onClick={() => setDraft({ ...draft, cat: c })}
+                              className={`px-2.5 py-1 rounded-lg text-xs font-medium whitespace-nowrap ${draft.cat === c ? "bg-navy-700 text-white" : "border border-steel-200 text-steel-600 hover:bg-steel-100"}`}>
+                              {c}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </FilterPopover>
                 <button className="btn-secondary" onClick={() => setShowScan(true)} title="Scan QR / barcode via kamera" aria-label="Scan QR atau barcode">
                   <Camera className="h-4 w-4" /> Scan
                 </button>
-                <select className="input w-auto" value={wh} onChange={(e) => setWh(e.target.value)} aria-label="Filter gudang">
-                  {["Semua", ...warehouses].map((w) => <option key={w} value={w}>{w === "Semua" ? "Semua gudang" : w}</option>)}
-                </select>
-                <select className="input w-auto" value={abcF} onChange={(e) => setAbcF(e.target.value)} aria-label="Filter ABC">
-                  {["Semua", "A", "B", "C"].map((a) => <option key={a} value={a}>{a === "Semua" ? "ABC semua" : `Kelas ${a}`}</option>)}
-                </select>
-                <div className="flex gap-1 overflow-x-auto">
-                  {categories.map((c) => (
-                    <button key={c} onClick={() => setCat(c)}
-                      className={`px-3 py-1.5 rounded-lg text-sm whitespace-nowrap ${cat === c ? "bg-navy-700 text-white" : "border border-steel-200 text-steel-600 hover:bg-steel-100"}`}>
-                      {c}
-                    </button>
-                  ))}
-                </div>
               </div>
               <div className="mb-3 flex flex-wrap items-center gap-2">
                 <select className="input w-auto py-1.5 text-xs" value={importMode} onChange={(e) => { setImportMode(e.target.value as "Katalog" | "IN" | "OUT"); setImportReport([]); }} aria-label="Mode impor">

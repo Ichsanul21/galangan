@@ -676,15 +676,16 @@ export default function HR() {
   const importCSV = (file: File) => {
     const reader = new FileReader();
     reader.onload = () => {
-      const rows = parseCSV(String(reader.result ?? ""));
-      if (rows.length < 2) {
-        toast("File kosong — minimal ada 1 baris data", "info");
-        return;
-      }
-      const gagal: string[] = [];
-      const seenNik = new Set(data.employees.map((e) => empNik(e).toLowerCase()));
-      let ok = 0;
-      rows.slice(1).forEach(async (cells, idx) => {
+      void (async () => {
+        const rows = parseCSV(String(reader.result ?? ""));
+        if (rows.length < 2) {
+          toast("File kosong — minimal ada 1 baris data", "info");
+          return;
+        }
+        const gagal: string[] = [];
+        const seenNik = new Set(data.employees.map((e) => empNik(e).toLowerCase()));
+        let ok = 0;
+        for (const [idx, cells] of rows.slice(1).entries()) {
         const line = idx + 2;
         const [nikRaw, nama, jabatan, deptRaw, branchRaw, statusRaw, joinRaw, tipeRaw, basicRaw, ptkpRaw, tangRaw, kontrakRaw] = [
           ...cells,
@@ -695,58 +696,63 @@ export default function HR() {
         const role = String(jabatan ?? "").trim();
         if (!nik || !name || !role) {
           gagal.push(`Baris ${line}: NIK, Nama, dan Jabatan wajib diisi`);
-          return;
+          continue;
         }
         if (seenNik.has(nik.toLowerCase())) {
           gagal.push(`Baris ${line}: NIK ${nik} sudah terdaftar`);
-          return;
+          continue;
         }
         if (!joinRaw || Number.isNaN(new Date(`${joinRaw}T00:00:00`).getTime())) {
           gagal.push(`Baris ${line}: tanggal gabung tidak valid (pakai YYYY-MM-DD)`);
-          return;
+          continue;
         }
         const basic = Number(basicRaw || 0);
         if (Number.isNaN(basic) || basic < 0) {
           gagal.push(`Baris ${line}: gaji pokok harus angka valid`);
-          return;
+          continue;
         }
         const tang = Math.min(3, Math.max(0, Number(tangRaw || 0)));
         if (Number.isNaN(tang)) {
           gagal.push(`Baris ${line}: tanggungan harus angka 0–3`);
-          return;
+          continue;
         }
         const ptkp = String(ptkpRaw || "TK/0").trim();
         if (!PTKP_STATUS.includes(ptkp)) {
           gagal.push(`Baris ${line}: status PTKP harus salah satu ${PTKP_STATUS.join(", ")}`);
-          return;
+          continue;
         }
         seenNik.add(nik.toLowerCase());
-        await add(
-          "employees",
-          {
-            username: nik,
-            name,
-            role,
-            dept: String(deptRaw || "Produksi").trim() || "Produksi",
-            branch: String(branchRaw || "Samarinda").trim() || "Samarinda",
-            status: String(statusRaw || "Aktif").trim() || "Aktif",
-            join: String(joinRaw).trim(),
-            tipe: String(tipeRaw || "Tetap").trim() || "Tetap",
-            basic,
-            allowances: 0,
-            contractEnd: String(kontrakRaw ?? "").trim(),
-            ptkpStatus: ptkp,
-            dependents: tang,
-            skills: defaultSkills(String(deptRaw || "Produksi"), role),
-            certs: [],
-          },
-          undefined,
-        );
-        ok += 1;
-      });
-      setImportReport({ ok, gagal });
-      log("impor karyawan", `${ok} berhasil · ${gagal.length} gagal`, "SDM");
-      toast(`Impor selesai — ${ok} berhasil, ${gagal.length} gagal`);
+        try {
+          await add(
+            "employees",
+            {
+              username: nik,
+              name,
+              role,
+              dept: String(deptRaw || "Produksi").trim() || "Produksi",
+              branch: String(branchRaw || "Samarinda").trim() || "Samarinda",
+              status: String(statusRaw || "Aktif").trim() || "Aktif",
+              join: String(joinRaw).trim(),
+              tipe: String(tipeRaw || "Tetap").trim() || "Tetap",
+              basic,
+              allowances: 0,
+              contractEnd: String(kontrakRaw ?? "").trim(),
+              ptkpStatus: ptkp,
+              dependents: tang,
+              skills: defaultSkills(String(deptRaw || "Produksi"), role),
+              certs: [],
+            },
+            undefined,
+          );
+          ok += 1;
+        } catch (e) {
+          gagal.push(`Baris ${line}: ${e instanceof Error ? e.message : "gagal disimpan"}`);
+        }
+        }
+        setImportReport({ ok, gagal });
+        log("impor karyawan", `${ok} berhasil · ${gagal.length} gagal`, "SDM");
+        toast(`Impor selesai — ${ok} berhasil, ${gagal.length} gagal`);
+      })();
     };
     reader.readAsText(file);
   };
@@ -782,7 +788,7 @@ export default function HR() {
         }
       />
 
-      {modAlert.active && <AlertBannerView items={modAlert.items} onClose={modAlert.dismiss} />}
+      {modAlert.active && <AlertBannerView items={modAlert.items} onClose={modAlert.dismiss} onPick={modAlert.scrollTo} />}
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <KpiCard label="Total Karyawan" value={String(data.employees.length)} icon={<Users className="h-5 w-5" />} chip="navy" spark={employeeTrend.map((d) => ({ name: d.month, v: d.count }))} hint="Data sesi berjalan" />

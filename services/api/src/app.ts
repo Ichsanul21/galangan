@@ -2,13 +2,15 @@ import Fastify, { type FastifyInstance, type FastifyReply } from "fastify";
 import fs from "node:fs";
 import path from "node:path";
 import { createRequire } from "node:module";
+import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import { loadEnv } from "./env.js";
 import { fail, ok, registerErrorHandler } from "./envelope.js";
 import { createRateLimiter, getClientIp } from "./rateLimit.js";
 import { comparePassword, requireAuth, SEED_ACCOUNTS, signToken } from "./auth.js";
 import { getAuditErrorCount, requestIp, writeAudit } from "./audit.js";
-import { q } from "./db.js";
+import { exec, q } from "./db.js";
+import { requireManageUsers } from "./rbac.js";
 import { COLLECTIONS, registerCrud } from "./routes/crud.js";
 import { registerAuditRoutes } from "./routes/audit.js";
 import { registerFileRoutes } from "./routes/files.js";
@@ -256,11 +258,69 @@ export function buildApp(): FastifyInstance {
       ip: requestIp(req),
     });
     const token = signToken({ id: user.id, username: user.username, role: user.role });
+    // Sesi realtime: 1 baris aktif per user (last writer wins).
+    try {
+      const now = new Date().toISOString();
+      const ua = String(req.headers["user-agent"] ?? "").slice(0, 256);
+      await exec("DELETE FROM sessions WHERE user_id = ?", [user.id]);
+      await exec(
+        "INSERT INTO sessions (id, user_id, username, role, login_at, last_seen_at, ip, user_agent) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        [randomUUID(), user.id, user.username, user.role, now, now, requestIp(req), ua],
+      );
+    } catch {
+      // tabel sessions belum ada (DB lama) — login tetap jalan
+    }
     return ok({ token, user: { id: user.id, username: user.username, name: user.name, role: user.role, email: user.email, employeeId: typeof user.employee_id === "string" ? user.employee_id : null } });
   });
 
   app.get("/api/auth/me", { preHandler: [requireAuth] }, async (req) => {
     return ok({ user: req.user });
+  });
+
+  // Heartbeat sesi (FE: tiap 60 dtk saat JWT ada). Upsert baris user.
+  app.post("/api/auth/heartbeat", { preHandler: [requireAuth] }, async (req) => {
+    try {
+      const now = new Date().toISOString();
+      const ua = String(req.headers["user-agent"] ?? "").slice(0, 256);
+      const rows = await q<{ id: string }>("SELECT id FROM sessions WHERE user_id = ?", [req.user?.id ?? ""]);
+      if (rows.length === 0) {
+        await exec(
+          "INSERT INTO sessions (id, user_id, username, role, login_at, last_seen_at, ip, user_agent) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+          [randomUUID(), req.user?.id ?? "", req.user?.username ?? "", req.user?.role ?? "", now, now, requestIp(req), ua],
+        );
+      } else {
+        await exec("UPDATE sessions SET last_seen_at = ?, ip = ?, user_agent = ? WHERE user_id = ?", [
+          now,
+          requestIp(req),
+          ua,
+          req.user?.id ?? "",
+        ]);
+      }
+    } catch {
+      // abaikan — presence best-effort
+    }
+    return ok({ seen: true });
+  });
+
+  // Logout eksplisit: hapus baris sesi (basi >10 mnt dianggap offline juga).
+  app.delete("/api/auth/logout", { preHandler: [requireAuth] }, async (req) => {
+    try {
+      await exec("DELETE FROM sessions WHERE user_id = ?", [req.user?.id ?? ""]);
+    } catch {
+      // abaikan
+    }
+    return ok({ loggedOut: true });
+  });
+
+  // Daftar sesi (kelola users): FE panel Sesi di Peran & Akses.
+  app.get("/api/auth/sessions", { preHandler: [requireAuth, requireManageUsers()] }, async () => {
+    let rows: unknown[] = [];
+    try {
+      rows = await q("SELECT id, user_id, username, role, login_at, last_seen_at, ip, user_agent FROM sessions ORDER BY last_seen_at DESC");
+    } catch {
+      rows = [];
+    }
+    return ok({ sessions: rows });
   });
 
   for (const table of COLLECTIONS) registerCrud(app, table);

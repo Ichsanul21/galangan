@@ -38,26 +38,46 @@ import { apiFetch } from "../services/http";
 import { computeAlerts } from "../utils/alerts";
 import { loadNotifRead, saveNotifRead } from "../utils/notifRead";
 import { buildModuleAlertItems, type ModuleAlertKey } from "../utils/moduleAlerts";
+import { useT } from "../i18n/LanguageContext";
 import { remoteRepository } from "../services/repositories";
 import { getJwt, isBackendConfigured } from "../services/http";
 
 export default function AppShell() {
   const { user, logout } = useAuth();
+  const { t, locale, setLocale } = useT();
   const { data, reset, branch, setBranch, backendMode, backendError, pendingSync, pushPending } = useStore();
   const navigate = useNavigate();
 
   useEffect(() => {
     const onExpired = () => {
-      toast("Sesi berakhir — silakan login ulang", "info");
+      toast(t.auth.sessionExpired, "info");
       logout();
       navigate("/login");
     };
     window.addEventListener("isms:auth-expired", onExpired);
     return () => window.removeEventListener("isms:auth-expired", onExpired);
-  }, [logout, navigate]);
+  }, [logout, navigate, t]);
+
+  // Heartbeat sesi realtime (BE: upsert last_seen, 60 dtk, hanya bila login).
+  useEffect(() => {
+    if (!isBackendConfigured() || !getJwt()) return;
+    let stopped = false;
+    const beat = () => {
+      if (stopped || !getJwt()) return;
+      void apiFetch("/api/auth/heartbeat", { method: "POST" }).catch(() => undefined);
+    };
+    beat();
+    const id = window.setInterval(beat, 60000);
+    return () => {
+      stopped = true;
+      window.clearInterval(id);
+    };
+  }, []);
   const [open, setOpen] = useState(false);
   const [userOpen, setUserOpen] = useState(false);
   const [notifOpen, setNotifOpen] = useState(false);
+  const [bellExpanded, setBellExpanded] = useState(false);
+  const [bellMin, setBellMin] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
   const [q, setQ] = useState("");
 
@@ -104,50 +124,53 @@ export default function AppShell() {
 
   const navGroups: { label: string; items: { to: string; label: string; icon: ComponentType<{ className?: string }>; alertKey?: ModuleAlertKey }[] }[] = [
     {
-      label: "Analisis",
+      label: t.nav.analisis,
       items: [
-        { to: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
-        { to: "/analytics", label: "Analytics", icon: BarChart3 },
-        { to: "/laporan", label: "Laporan", icon: FileText },
-        { to: "/notifikasi", label: "Notifikasi", icon: Bell },
+        { to: "/dashboard", label: t.nav.dashboard, icon: LayoutDashboard },
+        { to: "/analytics", label: t.nav.analytics, icon: BarChart3 },
+        { to: "/laporan", label: t.nav.laporan, icon: FileText },
+        { to: "/notifikasi", label: t.nav.notifikasi, icon: Bell },
       ],
     },
     {
-      label: "Operasional",
+      label: t.nav.operasional,
       items: [
-        { to: "/proyek", label: "Manajemen Proyek", icon: Anchor, alertKey: "proyek" },
-        { to: "/proyek/monitoring", label: "Monitoring E2E", icon: Activity },
-        { to: "/drydock", label: "Drydock & Kapasitas", icon: ShipWheel, alertKey: "drydock" },
-        { to: "/inventori", label: "Inventori & Material", icon: Boxes, alertKey: "inventori" },
-        { to: "/equipment", label: "Equipment", icon: Cpu, alertKey: "equipment" },
-        { to: "/subkontraktor", label: "Subkontraktor", icon: HardHat, alertKey: "subkontraktor" },
-        { to: "/qc-safety", label: "QC & Safety", icon: ShieldCheck, alertKey: "qc" },
+        { to: "/proyek", label: t.nav.proyek, icon: Anchor, alertKey: "proyek" },
+        { to: "/proyek/monitoring", label: t.nav.monitoring, icon: Activity },
+        { to: "/drydock", label: t.nav.drydock, icon: ShipWheel, alertKey: "drydock" },
+        { to: "/inventori", label: t.nav.inventori, icon: Boxes, alertKey: "inventori" },
+        { to: "/equipment", label: t.nav.equipment, icon: Cpu, alertKey: "equipment" },
+        { to: "/subkontraktor", label: t.nav.subkontraktor, icon: HardHat, alertKey: "subkontraktor" },
+        { to: "/qc-safety", label: t.nav.qc, icon: ShieldCheck, alertKey: "qc" },
       ],
     },
     {
-      label: "Komersial",
+      label: t.nav.komersial,
       items: [
-        { to: "/crm", label: "CRM & Klien", icon: Handshake, alertKey: "crm" },
-        { to: "/procurement", label: "Procurement", icon: ShoppingCart, alertKey: "procurement" },
-        { to: "/keuangan", label: "Keuangan & Billing", icon: Wallet, alertKey: "keuangan" },
+        { to: "/crm", label: t.nav.crm, icon: Handshake, alertKey: "crm" },
+        { to: "/procurement", label: t.nav.procurement, icon: ShoppingCart, alertKey: "procurement" },
+        { to: "/keuangan", label: t.nav.keuangan, icon: Wallet, alertKey: "keuangan" },
       ],
     },
     {
       label: "SDM",
       items: [
-        { to: "/sdm", label: "SDM & Karyawan", icon: Users, alertKey: "sdm" },
-        { to: "/absensi", label: "Absensi", icon: CalendarCheck },
-        { to: "/payroll", label: "Payroll", icon: Banknote, alertKey: "payroll" },
-        { to: "/kapal", label: "Rekam Jejak Kapal", icon: Ship, alertKey: "kapal" },
-        { to: "/dokumen", label: "Aset & Dokumen", icon: ScrollText, alertKey: "dokumen" },
-        { to: "/pengaturan", label: "Pengaturan", icon: SettingsIcon },
-        { to: "/audit", label: "Audit Trail", icon: History },
-        { to: "/pengaturan/peran", label: "Peran & Akses", icon: KeyRound },
+        { to: "/sdm", label: t.nav.sdm, icon: Users, alertKey: "sdm" },
+        { to: "/absensi", label: t.nav.absensi, icon: CalendarCheck },
+        { to: "/payroll", label: t.nav.payroll, icon: Banknote, alertKey: "payroll" },
+        { to: "/kapal", label: t.nav.kapal, icon: Ship, alertKey: "kapal" },
+        { to: "/dokumen", label: t.nav.dokumen, icon: ScrollText, alertKey: "dokumen" },
+        { to: "/pengaturan", label: t.nav.pengaturan, icon: SettingsIcon },
+        { to: "/audit", label: t.nav.audit, icon: History },
+        { to: "/pengaturan/peran", label: t.nav.peran, icon: KeyRound },
       ],
     },
   ];
 
   const doLogout = () => {
+    if (isBackendConfigured() && getJwt()) {
+      void apiFetch("/api/auth/logout", { method: "DELETE" }).catch(() => undefined);
+    }
     logout();
     navigate("/login");
   };
@@ -155,7 +178,7 @@ export default function AppShell() {
   const doReset = () => {
     reset();
     setProfileOpen(false);
-    toast("Data demo dikembalikan ke awal", "info");
+    toast(t.session.demoReset, "info");
   };
 
   const [oldPw, setOldPw] = useState("");
@@ -288,9 +311,11 @@ export default function AppShell() {
                 <li key={item.to}>
                   <NavLink
                     to={to}
+                    end={item.to === "/proyek"}
                     onClick={() => {
                       setOpen(false);
                       if (item.alertKey) markModuleRead(item.alertKey);
+                      window.scrollTo({ top: 0 });
                     }}
                     className={({ isActive }) =>
                       `flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm transition-colors ${
@@ -303,7 +328,10 @@ export default function AppShell() {
                     <item.icon className="h-4 w-4 shrink-0" />
                     <span className="truncate" title={item.label}>{item.label}</span>
                     {badge > 0 ? (
-                      <span className="ml-auto rounded-full bg-rose-500/90 px-1.5 py-0.5 text-[10px] font-bold leading-none text-white">
+                      <span
+                        className="ml-auto rounded-full bg-rose-500/90 px-1.5 py-0.5 text-[10px] font-bold leading-none text-white"
+                        title={item.alertKey === "qc" ? `${badge} NCR critical terbuka / insiden baru` : `${badge} notifikasi baru`}
+                      >
                         {badge > 9 ? "9+" : badge}
                       </span>
                     ) : null}
@@ -368,7 +396,7 @@ export default function AppShell() {
                 aria-label="Pilih cabang"
                 onChange={(e) => setBranch(e.target.value)}
               >
-                <option value="SEMUA">Semua Cabang</option>
+                <option value="SEMUA">{t.nav.allBranches}</option>
                 {(data.branches ?? []).map((b) => (
                   <option key={b.id} value={b.city}>{b.name}</option>
                 ))}
@@ -380,7 +408,7 @@ export default function AppShell() {
             <div className="relative">
               <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-steel-400" />
               <input
-                placeholder="Cari proyek, vessel, dokumen, vendor…"
+                placeholder={t.nav.searchPh}
                 className="input pl-9 py-2 text-sm"
                 value={q}
                 onChange={(e) => setQ(e.target.value)}
@@ -394,7 +422,7 @@ export default function AppShell() {
                 <div className="fixed inset-0 z-10" onClick={() => setQ("")} />
                 <div className="absolute left-0 right-0 z-20 mt-2 overflow-hidden rounded-xl border border-steel-200 bg-white shadow-lift">
                   {hits.length === 0 && (
-                    <p className="px-4 py-3 text-sm text-steel-400">Tidak ada hasil untuk “{q}”.</p>
+                    <p className="px-4 py-3 text-sm text-steel-400">{t.nav.noResultsFor} “{q}”.</p>
                   )}
                   {hits.map((h, i) => (
                     <Link
@@ -431,46 +459,75 @@ export default function AppShell() {
               </button>
               {notifOpen && (
                 <>
-                  <div className="fixed inset-0 z-10" onClick={() => setNotifOpen(false)} />
+                  <div className="fixed inset-0 z-10" onClick={() => { setNotifOpen(false); setBellExpanded(false); setBellMin(false); }} />
                   <div className="absolute right-0 z-20 mt-2 max-h-96 w-80 overflow-y-auto rounded-xl border border-steel-200 bg-white shadow-lift">
+                    <div className="flex items-center justify-between border-b border-steel-100 px-4 py-2.5">
+                      <p className="text-sm font-semibold text-navy-900">
+                        {t.notif.title}{unreadCount > 0 ? ` (${unreadCount} ${t.notif.unread})` : ""}
+                      </p>
+                      <button
+                        className="rounded-lg px-2 py-1 text-[11px] font-semibold text-steel-500 hover:bg-steel-100"
+                        onClick={() => setBellMin((v) => !v)}
+                        aria-label={bellMin ? t.notif.expand : t.notif.minimize}
+                      >
+                        {bellMin ? t.notif.expand : t.notif.minimize}
+                      </button>
+                    </div>
+                    {!bellMin && (
+                      <>
                     {alerts.length > 0 && (
                       <>
-                        <p className="border-b border-steel-100 px-4 py-2.5 text-sm font-semibold text-navy-900">
-                          Perlu Perhatian ({alerts.length})
+                        <p className="border-b border-steel-100 px-4 py-2 text-xs font-bold uppercase tracking-wide text-steel-400">
+                          {t.notif.attention} ({alerts.length})
                         </p>
-                        {alerts.slice(0, 6).map((al) => (
+                        {(bellExpanded ? alerts : alerts.slice(0, 5)).map((al) => (
                           <Link
                             key={al.id}
                             to={al.to}
-                            onClick={() => { markNotifRead(`alert-${al.id}`); setNotifOpen(false); }}
+                            onClick={() => { markNotifRead(`alert-${al.id}`); setNotifOpen(false); setBellExpanded(false); }}
                             className={`flex items-center gap-2 border-b border-steel-50 px-4 py-2.5 text-xs font-medium last:border-0 hover:bg-surface ${
                               al.tone === "red" ? "text-rose-700" : al.tone === "amber" ? "text-amber-700" : "text-ocean-600"
                             }`}
                           >
-                            <span className={`h-2 w-2 shrink-0 rounded-full ${al.tone === "red" ? "bg-rose-500" : al.tone === "amber" ? "bg-amber-500" : "bg-ocean-500"}`} />
+                            <span className={`h-2 w-2 shrink-0 rounded-full ${!loadNotifRead().has(`alert-${al.id}`) ? (al.tone === "red" ? "bg-rose-500" : al.tone === "amber" ? "bg-amber-500" : "bg-ocean-500") : "bg-steel-200"}`} />
                             {al.text}
                           </Link>
                         ))}
+                        {alerts.length > 5 && (
+                          <button
+                            className="block w-full px-4 py-2 text-center text-[11px] font-semibold text-ocean-600 hover:bg-surface"
+                            onClick={() => setBellExpanded((v) => !v)}
+                          >
+                            {bellExpanded ? t.notif.showLess : `${t.notif.showAll} ${alerts.length} ↓`}
+                          </button>
+                        )}
                       </>
                     )}
-                    <p className="border-b border-steel-100 px-4 py-2.5 text-sm font-semibold text-navy-900">
-                      Aktivitas Terkini
+                    <p className="border-b border-steel-100 px-4 py-2 text-xs font-bold uppercase tracking-wide text-steel-400">
+                      {t.notif.activities}
                     </p>
-                    {data.activities.slice(0, 8).map((a) => (
-                      <div key={a.id} className="border-b border-steel-50 px-4 py-2.5 last:border-0">
+                    {data.activities.slice(0, 5).map((a) => (
+                      <Link
+                        key={a.id}
+                        to="/notifikasi"
+                        onClick={() => { markNotifRead(`act-${String(a.id)}`); setNotifOpen(false); setBellExpanded(false); }}
+                        className="block border-b border-steel-50 px-4 py-2.5 last:border-0 hover:bg-surface"
+                      >
                         <p className="text-xs text-steel-700">
                           <span className="font-semibold text-navy-900">{a.actor}</span> {a.action}{" "}
                           <span className="font-medium">{a.target}</span>
                         </p>
                         <p className="mt-0.5 text-[10px] text-steel-400">{a.module} · {a.time}</p>
-                      </div>
+                      </Link>
                     ))}
+                      </>
+                    )}
                     <Link
                       to="/notifikasi"
-                      onClick={() => setNotifOpen(false)}
+                      onClick={() => { setNotifOpen(false); setBellExpanded(false); setBellMin(false); }}
                       className="block px-4 py-2.5 text-center text-xs font-semibold text-ocean-600 hover:bg-surface"
                     >
-                      Lihat semua →
+                      {t.notif.seeAll}
                     </Link>
                   </div>
                 </>
@@ -503,26 +560,41 @@ export default function AppShell() {
                         onClick={() => { setUserOpen(false); setProfileOpen(true); }}
                         className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm text-steel-700 hover:bg-steel-100"
                       >
-                        <User className="h-4 w-4 text-steel-400" /> Profil Saya
+                        <User className="h-4 w-4 text-steel-400" /> {t.nav.profile}
                       </button>
                       <button
-                        onClick={() => { setUserOpen(false); setNotifOpen(true); }}
+                        onClick={() => { setUserOpen(false); navigate("/audit"); }}
                         className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm text-steel-700 hover:bg-steel-100"
                       >
-                        <CheckCircle2 className="h-4 w-4 text-emerald-500" /> Aktivitas Saya
+                        <CheckCircle2 className="h-4 w-4 text-emerald-500" /> {t.nav.myActivity}
                       </button>
                       <button
                         onClick={() => { setUserOpen(false); navigate("/dokumen"); }}
                         className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm text-steel-700 hover:bg-steel-100"
                       >
-                        <FileText className="h-4 w-4 text-steel-400" /> Dokumen Saya
+                        <FileText className="h-4 w-4 text-steel-400" /> {t.nav.myDocs}
                       </button>
+                      <div className="my-1.5 border-t border-steel-100" />
+                      <div className="flex items-center justify-between px-3 py-2">
+                        <span className="text-xs font-semibold text-steel-500">ID | EN</span>
+                        <div className="flex gap-1">
+                          {(["id", "en"] as const).map((l) => (
+                            <button
+                              key={l}
+                              onClick={() => setLocale(l)}
+                              className={`rounded-lg px-2 py-1 text-xs font-bold uppercase ${locale === l ? "bg-navy-700 text-white" : "text-steel-500 hover:bg-steel-100"}`}
+                            >
+                              {l}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
                       <div className="my-1.5 border-t border-steel-100" />
                       <button
                         onClick={doLogout}
                         className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm text-rose-600 hover:bg-rose-50"
                       >
-                        <LogOut className="h-4 w-4" /> Keluar
+                        <LogOut className="h-4 w-4" /> {t.nav.logout}
                       </button>
                     </div>
                   </div>
@@ -535,13 +607,13 @@ export default function AppShell() {
         {pendingSync.length > 0 && (
           <div className="flex flex-wrap items-center gap-2 border-b border-amber-200 bg-amber-50 px-4 py-2 text-xs text-amber-800 lg:px-6">
             <span>
-              {pendingSync.length} koleksi belum tersinkron ({pendingSync.join(", ")})
+              {pendingSync.length} {t.session.pendingSync} ({pendingSync.join(", ")})
             </span>
             <button
               className="btn-secondary px-2 py-1 text-xs"
               onClick={() => void pushPending()}
             >
-              Sinkronkan sekarang
+              {t.session.syncNow}
             </button>
           </div>
         )}
@@ -552,7 +624,7 @@ export default function AppShell() {
       </div>
 
       {/* Modal profil */}
-      <Modal open={profileOpen} onClose={() => setProfileOpen(false)} title="Profil Saya" subtitle="Sesi demo — tersimpan di browser">
+      <Modal open={profileOpen} onClose={() => setProfileOpen(false)} title={t.nav.profile} subtitle={t.session.demoSession}>
         <div className="flex items-center gap-3">
           <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-hero text-lg font-bold text-white">
             {user?.initials}

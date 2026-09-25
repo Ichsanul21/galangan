@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { Download, History } from "lucide-react";
 import { Badge, Card, EmptyState, Field, KpiCard, PageHeader, SortTh, Tabs, toggleSort, sortRows, toast } from "../../components/ui";
 import type { SortState } from "../../components/ui";
@@ -35,8 +36,10 @@ interface StoreItemLike {
   module?: unknown;
 }
 
-export default function Audit() {  const { data } = useStore();
-  const [q, setQ] = useState("");
+export default function Audit() {
+  const { data } = useStore();
+  const [params] = useSearchParams();
+  const [q, setQ] = useState(() => params.get("actor") ?? "");
   const [modul, setModul] = useState("SEMUA");
   const [tanggal, setTanggal] = useState("");
   const [sort, setSort] = useState<SortState>({ key: null, dir: "asc" });

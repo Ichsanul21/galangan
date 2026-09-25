@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { Download, KeyRound, Plus, RefreshCw } from "lucide-react";
 import { Badge, Card, ConfirmModal, Field, KpiCard, Modal, PageHeader, SortTh, sortRows, toast, toggleSort } from "../../components/ui";
 import type { SortState } from "../../components/ui";
@@ -217,6 +218,41 @@ interface ManagedUser {
   employeeId?: string | null;
 }
 
+interface SessionRow {
+  id: string;
+  user_id: string;
+  username: string;
+  role: string;
+  login_at: string;
+  last_seen_at: string;
+  ip: string;
+  user_agent: string;
+}
+
+function sessionOnline(lastSeen: string): boolean {
+  const t = Date.parse(String(lastSeen ?? ""));
+  if (Number.isNaN(t)) return false;
+  return Date.now() - t <= 3 * 60 * 1000;
+}
+
+function sessionDuration(loginAt: string, lastSeen: string): string {
+  const a = Date.parse(String(loginAt ?? ""));
+  const b = Date.parse(String(lastSeen ?? ""));
+  if (Number.isNaN(a) || Number.isNaN(b)) return "—";
+  const mins = Math.max(0, Math.round((b - a) / 60000));
+  if (mins < 60) return `${mins} mnt`;
+  const h = Math.floor(mins / 60);
+  return `${h} jam ${mins % 60} mnt`;
+}
+
+function fmtDateTime(v: string): string {
+  const t = Date.parse(String(v ?? ""));
+  if (Number.isNaN(t)) return String(v ?? "-");
+  const d = new Date(t);
+  const p = (n: number): string => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+
 function errMsg(e: unknown, fallback: string): string {
   return e instanceof Error ? e.message : fallback;
 }
@@ -237,8 +273,11 @@ export default function Peran() {
   const [pwTarget, setPwTarget] = useState<ManagedUser | null>(null);
   const [pwValue, setPwValue] = useState("");
   const [confirmTarget, setConfirmTarget] = useState<ManagedUser | null>(null);
+  const navigate = useNavigate();
   const [linkTarget, setLinkTarget] = useState<ManagedUser | null>(null);
   const [linkValue, setLinkValue] = useState("");
+  const [sessions, setSessions] = useState<SessionRow[]>([]);
+  const [sessionsLoading, setSessionsLoading] = useState(false);
 
   const empNameOf = (id: string | null | undefined): string => {
     if (!id) return "-";
@@ -261,6 +300,7 @@ export default function Peran() {
 
   useEffect(() => {
     void loadUsers();
+    void loadSessions();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -308,8 +348,20 @@ export default function Peran() {
     }
   };
 
-  const doLinkEmployee = async () => {
-    if (!linkTarget) return;
+  const loadSessions = async () => {
+    if (!isBackendConfigured()) return;
+    setSessionsLoading(true);
+    try {
+      const res = await apiFetch<{ sessions: SessionRow[] } | SessionRow[]>("/api/auth/sessions");
+      setSessions(Array.isArray(res) ? res : (res.sessions ?? []));
+    } catch (e) {
+      toast(errMsg(e, "Gagal memuat sesi"), "info");
+    } finally {
+      setSessionsLoading(false);
+    }
+  };
+
+  const doLinkEmployee = async () => {    if (!linkTarget) return;
     try {
       await apiFetch(`/api/users/${linkTarget.id}`, {
         method: "PATCH",
@@ -480,6 +532,70 @@ export default function Peran() {
                     </td>
                   </tr>
                 ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </Card>
+
+      <Card className="mb-4 p-4">
+        <div className="mb-3 flex flex-wrap items-center gap-2">
+          <h3 className="text-sm font-bold text-navy-900">Sesi Aktif</h3>
+          <span className="text-xs text-steel-400">
+            {sessionsLoading ? "Memuat…" : `${sessions.filter((s) => sessionOnline(s.last_seen_at)).length} online dari ${sessions.length} sesi`}
+          </span>
+          <span className="ml-auto">
+            {remote && (
+              <button className="btn-secondary text-xs" onClick={() => void loadSessions()}>
+                <RefreshCw className="h-4 w-4" /> Muat ulang
+              </button>
+            )}
+          </span>
+        </div>
+        {!remote ? (
+          <p className="text-xs leading-relaxed text-steel-500">
+            Mode lokal — sesi realtime tampil setelah backend tersambung (VITE_API_URL).
+          </p>
+        ) : sessions.length === 0 && !sessionsLoading ? (
+          <p className="text-xs text-steel-500">Belum ada sesi tercatat — login untuk membuat sesi.</p>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[720px] text-sm">
+              <thead>
+                <tr className="border-b border-steel-100 text-left text-xs uppercase tracking-wide text-steel-400">
+                  <th className="px-3 py-2">Pengguna</th>
+                  <th className="px-3 py-2">Status</th>
+                  <th className="px-3 py-2">Login</th>
+                  <th className="px-3 py-2">Terakhir terlihat</th>
+                  <th className="px-3 py-2">Durasi</th>
+                  <th className="px-3 py-2">Detail</th>
+                  <th className="px-3 py-2 text-right">Log</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-steel-50">
+                {sessions.map((s) => {
+                  const online = sessionOnline(s.last_seen_at);
+                  return (
+                    <tr key={s.id} className="hover:bg-surface">
+                      <td className="px-3 py-2 font-semibold text-navy-900">{s.username}<p className="text-xs font-normal text-steel-500">{s.role}</p></td>
+                      <td className="px-3 py-2">
+                        <Badge tone={online ? "green" : "gray"}>{online ? "Online" : "Offline"}</Badge>
+                      </td>
+                      <td className="px-3 py-2 text-steel-600">{fmtDateTime(s.login_at)}</td>
+                      <td className="px-3 py-2 text-steel-600">{fmtDateTime(s.last_seen_at)}</td>
+                      <td className="px-3 py-2 text-steel-600">{sessionDuration(s.login_at, s.last_seen_at)}</td>
+                      <td className="px-3 py-2 text-xs text-steel-500" title={String(s.user_agent ?? "")}>{s.ip || "-"} · {String(s.user_agent ?? "").slice(0, 42) || "-"}</td>
+                      <td className="px-3 py-2 text-right">
+                        <button
+                          className="btn-secondary px-2 py-1 text-xs"
+                          onClick={() => navigate(`/audit?actor=${encodeURIComponent(s.username)}`)}
+                        >
+                          Lihat log
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>

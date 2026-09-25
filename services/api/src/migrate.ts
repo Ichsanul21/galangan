@@ -65,6 +65,14 @@ export async function migrate(): Promise<void> {
       for (const chunk of statements) {
         const sql = chunk.trim();
         if (!sql) continue;
+        // Lewati potongan yang hanya komentar SQL (tanpa statement) —
+        // better-sqlite3 menolak prepare() tanpa statement (ER no-statements).
+        const code = sql
+          .split("\n")
+          .filter((line) => !line.trimStart().startsWith("--"))
+          .join("\n")
+          .trim();
+        if (!code) continue;
         try {
           await exec(sql);
         } catch (err) {

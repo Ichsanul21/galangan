@@ -28,6 +28,7 @@ import type { StoreItem, WbsItem } from "../../data/store";
 import { fmtMiliar, fmtTanggal, fmtRentang, fmtBulan } from "../../data";
 import { fmtRupiah, todayISO } from "../../utils/format";
 import { sameName } from "../../utils/names";
+import { scopeList } from "../../utils/scope";
 import { getSetting } from "../../utils/settings";
 import { exportExcel } from "../../utils/export";
 
@@ -50,11 +51,11 @@ export default function ProjectDetail() {
   const [tab, setTab] = useState("Ringkasan");
 
   const [showScope, setShowScope] = useState(false);
-  const [scopeVal, setScopeVal] = useState("");
+  const [scopeVal, setScopeVal] = useState({ service: "", lokasi: "", deskripsi: "" });
   const [showDoc, setShowDoc] = useState(false);
   const [docTitle, setDocTitle] = useState("");
   const [docType, setDocType] = useState("Laporan");
-  const [delScope, setDelScope] = useState<string | null>(null);
+  const [delScope, setDelScope] = useState<number | null>(null);
   const [showWbs, setShowWbs] = useState(false);
   const [wbsForm, setWbsForm] = useState({ task: "", start: "", end: "", weight: "10", progress: "0", predecessor: "" });
   const [showTeam, setShowTeam] = useState(false);
@@ -304,20 +305,25 @@ export default function ProjectDetail() {
       } else {
         due = todayISO();
       }
-      await add("invoices", {
-        id: invId, client: project.client, project: pid, amount,
-        due, status: "Draft", paymentTerm: `Termin ${String(b.milestone)}`,
-        billingType: "Milestone", type: "Milestone", milestoneRef: `BAST ${String(b.id)}`,
-        dunning: "Belum Ditagih",
-        // Rincian pajak diisi saat invoice dirinci di Keuangan; tarif saat
-        // terbit disimpan agar laporan tak menghitung ulang bila tarif berubah.
-        jasaTotal: 0, matTotal: 0, dpp: 0, ppnAmt: 0, pphAmt: 0,
-        ppnRate: getSetting(data, "PPN_INVOICE_RATE", 12),
-        pphRate: getSetting(data, "PPH_JASA_RATE", 2),
-        skdt: false,
-      }, { action: "menerbitkan invoice milestone (BAST)", target: `${invId} ← ${String(b.id)}`, module: "Keuangan" });
-      log("menyetujui BAST + auto-invoice", `${String(b.id)} → ${invId}`, "Proyek");
-      toast(`BAST disetujui — invoice draft ${invId} dibuat`);
+      try {
+        await add("invoices", {
+          id: invId, client: project.client, project: pid, amount,
+          due, status: "Draft", paymentTerm: `Termin ${String(b.milestone)}`,
+          billingType: "Milestone", type: "Milestone", milestoneRef: `BAST ${String(b.id)}`,
+          dunning: "Belum Ditagih",
+          // Rincian pajak diisi saat invoice dirinci di Keuangan; tarif saat
+          // terbit disimpan agar laporan tak menghitung ulang bila tarif berubah.
+          jasaTotal: 0, matTotal: 0, dpp: 0, ppnAmt: 0, pphAmt: 0,
+          ppnRate: getSetting(data, "PPN_INVOICE_RATE", 12),
+          pphRate: getSetting(data, "PPH_JASA_RATE", 2),
+          skdt: false,
+        }, { action: "menerbitkan invoice milestone (BAST)", target: `${invId} ← ${String(b.id)}`, module: "Keuangan" });
+        log("menyetujui BAST + auto-invoice", `${String(b.id)} → ${invId}`, "Proyek");
+        toast(`BAST disetujui — invoice draft ${invId} dibuat`);
+      } catch {
+        toast(`BAST ${String(b.id)} gagal membuat invoice — periksa daftar invoice`, "info");
+        return;
+      }
     } else {
       log("mengajukan BAST", `${String(b.id)} → ${next}`, "Proyek");
       toast(`BAST ${next.toLowerCase()}`);
@@ -409,12 +415,21 @@ export default function ProjectDetail() {
   };
 
   const saveScope = async () => {
-    if (!scopeVal.trim()) { toast("Isi lingkup dulu", "info"); return; }
-    await update("projects", pid, { scope: [...(project.scope ?? []), scopeVal.trim()] });
-    log("menambah lingkup", `${pid} · ${scopeVal.trim()}`, "Proyek");
-    toast("Lingkup ditambahkan");
-    setScopeVal("");
-    setShowScope(false);
+    if (!scopeVal.service.trim()) { toast("Isi Service dulu", "info"); return; }
+    const item = {
+      service: scopeVal.service.trim(),
+      ...(scopeVal.lokasi.trim() ? { lokasi: scopeVal.lokasi.trim() } : {}),
+      ...(scopeVal.deskripsi.trim() ? { deskripsi: scopeVal.deskripsi.trim() } : {}),
+    };
+    try {
+      await update("projects", pid, { scope: [...scopeList(project.scope), item] });
+      log("menambah lingkup", `${pid} · ${item.service}`, "Proyek");
+      toast("Lingkup ditambahkan");
+      setScopeVal({ service: "", lokasi: "", deskripsi: "" });
+      setShowScope(false);
+    } catch {
+      toast("Lingkup gagal ditambahkan — periksa kembali", "info");
+    }
   };
 
   const saveWbsTask = async () => {
@@ -505,14 +520,18 @@ export default function ProjectDetail() {
                   <button className="btn-secondary text-xs" onClick={() => setShowScope(true)}><Plus className="h-3.5 w-3.5" /> Tambah</button>
                 </div>
                 <ul className="space-y-2">
-                  {(project.scope ?? []).map((s: string, i: number) => (
-                    <li key={`${s}-${i}`} className="group flex items-center gap-3">
+                  {scopeList(project.scope).map((s, i) => (
+                    <li key={`${s.service}-${i}`} className="group flex items-center gap-3">
                       <span className="flex h-6 w-6 items-center justify-center rounded-full bg-navy-50 text-xs font-bold text-navy-700">{i + 1}</span>
-                      <span className="flex-1 text-sm text-steel-700">{s}</span>
-                      <button className="hidden rounded p-1 text-rose-400 hover:bg-rose-50 group-hover:block" onClick={() => setDelScope(s)} title="Hapus"><Trash2 className="h-3.5 w-3.5" /></button>
+                      <span className="flex-1 text-sm text-steel-700">
+                        <span className="font-medium text-navy-900">{s.service}</span>
+                        {s.lokasi ? <span className="text-steel-500"> · {s.lokasi}</span> : null}
+                        {s.deskripsi ? <span className="block text-xs text-steel-500">{s.deskripsi}</span> : null}
+                      </span>
+                      <button className="hidden rounded p-1 text-rose-400 hover:bg-rose-50 group-hover:block" onClick={() => setDelScope(i)} title="Hapus"><Trash2 className="h-3.5 w-3.5" /></button>
                     </li>
                   ))}
-                  {(project.scope ?? []).length === 0 && <p className="text-sm text-steel-400">Belum ada lingkup.</p>}
+                  {scopeList(project.scope).length === 0 && <p className="text-sm text-steel-400">Belum ada lingkup.</p>}
                 </ul>
                 <div className="mt-6">
                   <div className="mb-2 flex items-center justify-between">
@@ -1201,13 +1220,28 @@ export default function ProjectDetail() {
       {/* Modal scope */}
       <Modal open={showScope} onClose={() => setShowScope(false)} title="Tambah Lingkup Pekerjaan"
         footer={<><button className="btn-secondary" onClick={() => setShowScope(false)}>Batal</button><button className="btn-primary" onClick={saveScope}>Tambah</button></>}>
-        <Field label="Nama lingkup">
-          <input className="input" placeholder="cth: Sea Trial" value={scopeVal} onChange={(e) => setScopeVal(e.target.value)} />
-        </Field>
+        <div className="grid gap-3">
+          <Field label="Service apa">
+            <input className="input" placeholder="cth: Sea Trial" value={scopeVal.service} onChange={(e) => setScopeVal((v) => ({ ...v, service: e.target.value }))} />
+          </Field>
+          <Field label="Lokasi di mana">
+            <input className="input" placeholder="cth: Graving Dock 1" value={scopeVal.lokasi} onChange={(e) => setScopeVal((v) => ({ ...v, lokasi: e.target.value }))} />
+          </Field>
+          <Field label="Deskripsinya apa">
+            <input className="input" placeholder="cth: Uji kecepatan & manuver" value={scopeVal.deskripsi} onChange={(e) => setScopeVal((v) => ({ ...v, deskripsi: e.target.value }))} />
+          </Field>
+        </div>
       </Modal>
-      <ConfirmModal open={delScope !== null} title="Hapus lingkup?" desc={`"${delScope}" akan dihapus dari ruang lingkup.`}
+      <ConfirmModal open={delScope !== null} title="Hapus lingkup?" desc="Item lingkup akan dihapus dari ruang lingkup."
         confirmLabel="Ya, hapus" danger onCancel={() => setDelScope(null)}
-        onConfirm={async () => { if (delScope) await update("projects", pid, { scope: (project.scope ?? []).filter((s: string) => s !== delScope) }); setDelScope(null); }} />
+        onConfirm={async () => {
+          try {
+            if (delScope !== null) await update("projects", pid, { scope: scopeList(project.scope).filter((_, i) => i !== delScope) });
+          } catch {
+            toast("Lingkup gagal dihapus — periksa kembali", "info");
+          }
+          setDelScope(null);
+        }} />
       <ConfirmModal open={showDelBaseline} title="Hapus baseline?" desc="Snapshot baseline WBS proyek ini akan dihapus dan tabel perbandingan disembunyikan."
         confirmLabel="Ya, hapus" danger onCancel={() => setShowDelBaseline(false)}
         onConfirm={async () => { await update("projects", pid, { wbsBaseline: undefined }); log("menghapus baseline WBS", pid, "Proyek"); toast("Baseline dihapus", "info"); setShowDelBaseline(false); }} />

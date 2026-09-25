@@ -156,20 +156,25 @@ export default function QuotationDetail() {
     const client = (data.clients ?? []).find((c) => sameName(c.name, quotation.client));
     const branch = String(client?.branch ?? quotation.branch ?? "Samarinda");
     const code = nextProjectCode(String(quotation.type ?? "New Build"), convStart);
-    const created = await add("projects", {
-      id: code,
-      vessel: quotation.vessel, type: quotation.type, client: quotation.client, status: "Dalam Proses",
-      tahap: "Kontrak",
-      tahapLog: [{ from: "-", to: "Kontrak", date: todayISO(), by: hoBy.trim(), reason: `Konversi ${quotation.id}` }],
-      branch, start: convStart, end: convEnd, progress: 0,
-      budget: num(quotation.value), actual: 0, manager: convManager.trim(), scope: [quotation.type],
-      quotationId: quotation.id,
-      handover: { date: todayISO(), by: hoBy.trim(), items: [...HO_ITEMS] },
-    }, { action: "mengkonversi quotation", target: `${quotation.id} → proyek`, module: "CRM" });
-    await update("quotations", quotation.id, { stage: "Terkonversi" });
-    log(`serah terima ke PM oleh ${hoBy.trim()} (${HO_ITEMS.length} item)`, `${quotation.id} → ${created.id}`, "CRM");
-    toast(`${quotation.id} menjadi proyek ${created.id}`);
-    setConvertOpen(false);
+    const qid = quotation.id;
+    try {
+      const created = await add("projects", {
+        id: code,
+        vessel: quotation.vessel, type: quotation.type, client: quotation.client, status: "Dalam Proses",
+        tahap: "Kontrak",
+        tahapLog: [{ from: "-", to: "Kontrak", date: todayISO(), by: hoBy.trim(), reason: `Konversi ${quotation.id}` }],
+        branch, start: convStart, end: convEnd, progress: 0,
+        budget: num(quotation.value), actual: 0, manager: convManager.trim(), scope: [quotation.type],
+        quotationId: quotation.id,
+        handover: { date: todayISO(), by: hoBy.trim(), items: [...HO_ITEMS] },
+      }, { action: "mengkonversi quotation", target: `${quotation.id} → proyek`, module: "CRM" });
+      await update("quotations", quotation.id, { stage: "Terkonversi" });
+      log(`serah terima ke PM oleh ${hoBy.trim()} (${HO_ITEMS.length} item)`, `${quotation.id} → ${created.id}`, "CRM");
+      toast(`${quotation.id} menjadi proyek ${created.id}`);
+      setConvertOpen(false);
+    } catch {
+      toast(`Konversi ${qid} gagal di tengah jalan — periksa daftar proyek & quotation`, "info");
+    }
   };
 
   const openSend = () => {

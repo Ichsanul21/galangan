@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { AlertTriangle, Bell, Check, CheckCheck, Download, Info, Search } from "lucide-react";
 import { Badge, Card, EmptyState, KpiCard, PageHeader, Tabs, toast } from "../../components/ui";
 import { useStore } from "../../data/store";
+import { useT } from "../../i18n/LanguageContext";
 import { computeAlerts } from "../../utils/alerts";
 import { dayGroup, loadNotifRead, relMinutes, saveNotifRead, type DayGroup } from "../../utils/notifRead";
 import { exportExcel } from "../../utils/export";
@@ -70,6 +71,7 @@ function sevOf(tone: Tone): "Merah" | "Kuning" | "Biru" {
 
 export default function Notifikasi() {
   const { data } = useStore();
+  const { t, locale } = useT();
   const [filter, setFilter] = useState("Semua");
   const [sev, setSev] = useState<(typeof SEVERITIES)[number]>("Semua");
   const [mod, setMod] = useState("Semua");
@@ -126,14 +128,14 @@ export default function Notifikasi() {
 
   const markAll = () => {
     persist(new Set(items.map((i) => i.id)));
-    toast("Semua notifikasi ditandai dibaca");
+    toast(t.notif.markAllRead);
   };
 
   const markGroup = (ids: string[]) => {
     const next = new Set(read);
     ids.forEach((id) => next.add(id));
     persist(next);
-    toast(`${ids.length} notifikasi ditandai dibaca`);
+    toast(`${ids.length} ${t.notif.markGroupRead ?? t.notif.markAllRead}`);
   };
 
   const filtered = useMemo(() => {
@@ -186,66 +188,66 @@ export default function Notifikasi() {
   return (
     <div>
       <PageHeader
-        title="Notifikasi"
-        subtitle="Pusat notifikasi in-app — status baca tersimpan per perangkat"
+        title={t.notif.title}
+        subtitle={locale === "en" ? "In-app notification center — read status stored per device" : "Pusat notifikasi in-app — status baca tersimpan per perangkat"}
         icon={<Bell className="h-5 w-5" />}
         actions={
           <>
             <button className="btn-secondary text-xs" onClick={markAll}>
-              <CheckCheck className="h-4 w-4" /> Tandai semua dibaca
+              <CheckCheck className="h-4 w-4" /> {t.notif.markAllRead}
             </button>
             <button className="btn-secondary text-xs" onClick={doExport}>
-              <Download className="h-4 w-4" /> Export Excel
+              <Download className="h-4 w-4" /> {t.common.exportExcel}
             </button>
           </>
         }
       />
 
       <div className="mb-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
-        <KpiCard label="Perlu Perhatian" value={String(alertCount)} hint="Dari ambang alert aktif" chip="rose" icon={<AlertTriangle className="h-5 w-5" />} />
-        <KpiCard label="Aktivitas" value={String(infoCount)} hint="30 aktivitas terakhir" chip="navy" icon={<Info className="h-5 w-5" />} />
-        <KpiCard label="Belum Dibaca" value={String(unread)} hint="Tersimpan per perangkat" chip="amber" icon={<Bell className="h-5 w-5" />} />
+        <KpiCard label={t.notif.attention} value={String(alertCount)} hint={locale === "en" ? "From active thresholds" : "Dari ambang alert aktif"} chip="rose" icon={<AlertTriangle className="h-5 w-5" />} />
+        <KpiCard label={t.notif.activities} value={String(infoCount)} hint={locale === "en" ? "Last 30 activities" : "30 aktivitas terakhir"} chip="navy" icon={<Info className="h-5 w-5" />} />
+        <KpiCard label={locale === "en" ? "Unread" : "Belum Dibaca"} value={String(unread)} hint={locale === "en" ? "Stored per device" : "Tersimpan per perangkat"} chip="amber" icon={<Bell className="h-5 w-5" />} />
       </div>
 
       <Card>
         <div className="space-y-3 px-5 pt-4">
-          <Tabs tabs={FILTERS} active={filter} onChange={setFilter} />
+          <Tabs tabs={FILTERS} active={filter} onChange={setFilter} labels={{ Semua: t.common.all, "Perlu Perhatian": t.notif.attention, Aktivitas: t.notif.activities }} />
           <div className="flex flex-wrap items-center gap-2 pb-1">
             <div className="relative">
               <Search className="absolute left-3 top-2.5 h-4 w-4 text-steel-400" />
               <input
                 className="input w-56 pl-9"
-                placeholder="Cari isi / aktor / modul…"
-                aria-label="Cari notifikasi"
+                placeholder={locale === "en" ? "Search content / actor / module…" : "Cari isi / aktor / modul…"}
+                aria-label={locale === "en" ? "Search notifications" : "Cari notifikasi"}
                 value={q}
                 onChange={(e) => setQ(e.target.value)}
               />
             </div>
             <select className="input w-auto py-1.5 text-sm" aria-label="Filter severity" value={sev} onChange={(e) => setSev(e.target.value as (typeof SEVERITIES)[number])}>
-              <option value="Semua">Semua severity</option>
-              <option value="Merah">Merah (kritis)</option>
-              <option value="Kuning">Kuning (waspada)</option>
-              <option value="Biru">Biru (info)</option>
+              <option value="Semua">{locale === "en" ? "All severities" : "Semua severity"}</option>
+              <option value="Merah">{locale === "en" ? "Red (critical)" : "Merah (kritis)"}</option>
+              <option value="Kuning">{locale === "en" ? "Yellow (warning)" : "Kuning (waspada)"}</option>
+              <option value="Biru">{locale === "en" ? "Blue (info)" : "Biru (info)"}</option>
             </select>
             <select className="input w-auto py-1.5 text-sm" aria-label="Filter modul" value={mod} onChange={(e) => setMod(e.target.value)}>
-              {modules.map((m) => <option key={m} value={m}>{m === "Semua" ? "Semua modul" : m}</option>)}
+              {modules.map((m) => <option key={m} value={m}>{m === "Semua" ? (locale === "en" ? "All modules" : "Semua modul") : m}</option>)}
             </select>
             <select className="input w-auto py-1.5 text-sm" aria-label="Urutan" value={order} onChange={(e) => setOrder(e.target.value as "Terbaru" | "Terlama")}>
-              <option value="Terbaru">Terbaru dulu</option>
-              <option value="Terlama">Terlama dulu</option>
+              <option value="Terbaru">{locale === "en" ? "Newest first" : "Terbaru dulu"}</option>
+              <option value="Terlama">{locale === "en" ? "Oldest first" : "Terlama dulu"}</option>
             </select>
             {hasActiveFilter && (
-              <button className="btn-secondary py-1.5 text-xs" onClick={resetFilters}>Reset</button>
+              <button className="btn-secondary py-1.5 text-xs" onClick={resetFilters}>{t.common.reset}</button>
             )}
-            <span className="ml-auto text-xs text-steel-400">{filtered.length} notifikasi</span>
+            <span className="ml-auto text-xs text-steel-400">{filtered.length} {t.notif.title.toLowerCase()}</span>
           </div>
         </div>
         <div className="px-5 pb-4">
           {grouped.length === 0 && (
             <EmptyState
               icon={<Bell className="h-8 w-8" />}
-              title="Tidak ada notifikasi"
-              subtitle="Tidak ada yang cocok dengan filter — semua aman."
+              title={t.notif.empty}
+              subtitle={t.notif.emptyHint}
             />
           )}
           {grouped.map((g) => (
@@ -256,7 +258,7 @@ export default function Notifikasi() {
                   className="ml-auto inline-flex items-center gap-1 text-[11px] font-semibold text-ocean-600 hover:underline"
                   onClick={() => markGroup(g.rows.map((r) => r.id))}
                 >
-                  <Check className="h-3 w-3" /> Tandai grup dibaca
+                  <Check className="h-3 w-3" /> {t.notif.markGroupRead}
                 </button>
               </div>
               <div className="divide-y divide-steel-50 overflow-hidden rounded-xl border border-steel-100">
@@ -275,7 +277,7 @@ export default function Notifikasi() {
                         <div className="flex flex-wrap items-center gap-2">
                           {!isRead && <span className="h-2 w-2 rounded-full bg-rose-500" aria-label="Belum dibaca" />}
                           <Badge tone={i.kind === "alert" ? i.tone : "navy"}>
-                            {i.kind === "alert" ? `Perlu Perhatian · ${sevOf(i.tone)}` : "Aktivitas"}
+                            {i.kind === "alert" ? `Perlu Perhatian · ${i.tone === "red" ? "Critical" : sevOf(i.tone)}` : "Aktivitas"}
                           </Badge>
                           <span className="text-[11px] text-steel-400">{i.meta}</span>
                         </div>
@@ -288,14 +290,14 @@ export default function Notifikasi() {
                           onClick={() => markOne(i.id)}
                           className="rounded-lg px-2.5 py-1.5 text-xs font-semibold text-ocean-600 hover:bg-ocean-50"
                         >
-                          Buka
+                          {t.notif.open}
                         </Link>
                         {!isRead && (
                           <button
                             className="rounded-lg px-2.5 py-1 text-[11px] font-medium text-steel-400 hover:bg-steel-100 hover:text-navy-800"
                             onClick={() => markOne(i.id)}
                           >
-                            Tandai dibaca
+                            {t.notif.markRead}
                           </button>
                         )}
                       </div>
