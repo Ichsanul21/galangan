@@ -467,8 +467,17 @@ export default function Finance() {
       .reduce((s, t) => s + num(t.pphAmt), 0);
     const ppnRate = getSetting(data, "PPN_RATE", 12);
     const pphRate = getSetting(data, "PPH23_RATE", 2);
+    // PPN Keluaran memakai ppnAmt HISTORIS per invoice (0 valid untuk SKDT/
+    // retensi). Hanya baris lama tanpa ppnAmt yang dihitung ulang — ganti
+    // tarif di Pengaturan tidak menulis ulang riwayat.
+    const hasStored = (i: StoreItem): boolean =>
+      i.ppnAmt !== undefined && i.ppnAmt !== null && String(i.ppnAmt) !== "";
+    const ppnKeluar = invLunas.reduce(
+      (s, i) => s + (hasStored(i) ? Math.round(num(i.ppnAmt)) : Math.round((invNeto(i) * ppnRate) / 100)),
+      0,
+    );
     return {
-      ppnKeluar: Math.round((invBase * ppnRate) / 100),
+      ppnKeluar,
       ppnMasuk: Math.round((apBase * ppnRate) / 100),
       pph23: Math.round((apBase * pphRate) / 100) + Math.round(termPph),
       pph21,
@@ -803,11 +812,15 @@ export default function Finance() {
     const retentionAmt = Math.round(total * (pct / 100));
     const jasaTotal = validLines.filter((l) => (l.kategori || "Jasa") === "Jasa").reduce((s, l) => s + lineAmount(l, isTMForm), 0);
     const matTotal = validLines.filter((l) => l.kategori === "Material").reduce((s, l) => s + lineAmount(l, isTMForm), 0);
+    // Tarif DISIMPAN per invoice — laporan pajak memakai tarif historis ini,
+    // bukan setting saat ini (ganti tarif tidak menulis ulang riwayat).
+    const ppnRateUsed = getSetting(data, "PPN_INVOICE_RATE", PPN_INVOICE_DEFAULT);
+    const pphRateUsed = getSetting(data, "PPH_JASA_RATE", PPH_JASA_DEFAULT);
     const sb = sbInvoiceMath({
       jasa: jasaTotal,
       material: matTotal,
-      ppnRate: getSetting(data, "PPN_INVOICE_RATE", PPN_INVOICE_DEFAULT),
-      pphRate: getSetting(data, "PPH_JASA_RATE", PPH_JASA_DEFAULT),
+      ppnRate: ppnRateUsed,
+      pphRate: pphRateUsed,
       skdt: invForm.skdt,
       dpApplied: num(invForm.dpApplied),
       retentionPct: pct,
@@ -816,8 +829,8 @@ export default function Finance() {
     const verify = sbInvoiceMath({
       jasa: jasaTotal,
       material: matTotal,
-      ppnRate: getSetting(data, "PPN_INVOICE_RATE", PPN_INVOICE_DEFAULT),
-      pphRate: getSetting(data, "PPH_JASA_RATE", PPH_JASA_DEFAULT),
+      ppnRate: ppnRateUsed,
+      pphRate: pphRateUsed,
       skdt: invForm.skdt,
       dpApplied: num(invForm.dpApplied),
       retentionPct: pct,
@@ -867,6 +880,8 @@ export default function Finance() {
       dpp: sb.dpp,
       ppnAmt: sb.ppn,
       pphAmt: sb.pph,
+      ppnRate: ppnRateUsed,
+      pphRate: pphRateUsed,
       dpApplied: sb.dpApplied,
       grandTotal: sb.grand,
       skdt: invForm.skdt,
@@ -1343,6 +1358,16 @@ export default function Finance() {
         retentionAmt: 0,
         retentionPct: 0,
         retentionStatus: "-",
+        // Retensi = bagian grand invoice induk yang sudah ber-PPN — tidak kena
+        // PPN/PPh baru. Tarif induk disimpan agar laporan tak menghitung ulang.
+        jasaTotal: 0,
+        matTotal: 0,
+        dpp: 0,
+        ppnAmt: 0,
+        pphAmt: 0,
+        ppnRate: num(releaseTarget.ppnRate) || getSetting(data, "PPN_INVOICE_RATE", PPN_INVOICE_DEFAULT),
+        pphRate: num(releaseTarget.pphRate) || getSetting(data, "PPH_JASA_RATE", PPH_JASA_DEFAULT),
+        skdt: Boolean(releaseTarget.skdt),
         due: releaseForm.date,
         status: "Diajukan",
         paymentTerm: `Retensi ${releaseTarget.id}`,

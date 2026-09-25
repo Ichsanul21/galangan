@@ -309,6 +309,12 @@ export default function ProjectDetail() {
         due, status: "Draft", paymentTerm: `Termin ${String(b.milestone)}`,
         billingType: "Milestone", type: "Milestone", milestoneRef: `BAST ${String(b.id)}`,
         dunning: "Belum Ditagih",
+        // Rincian pajak diisi saat invoice dirinci di Keuangan; tarif saat
+        // terbit disimpan agar laporan tak menghitung ulang bila tarif berubah.
+        jasaTotal: 0, matTotal: 0, dpp: 0, ppnAmt: 0, pphAmt: 0,
+        ppnRate: getSetting(data, "PPN_INVOICE_RATE", 12),
+        pphRate: getSetting(data, "PPH_JASA_RATE", 2),
+        skdt: false,
       }, { action: "menerbitkan invoice milestone (BAST)", target: `${invId} ← ${String(b.id)}`, module: "Keuangan" });
       log("menyetujui BAST + auto-invoice", `${String(b.id)} → ${invId}`, "Proyek");
       toast(`BAST disetujui — invoice draft ${invId} dibuat`);

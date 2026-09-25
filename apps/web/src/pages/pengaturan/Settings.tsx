@@ -106,6 +106,12 @@ export default function Settings() {
       {groups.map((g) => (
         <Card key={g} className="mb-4 p-4">
           <h3 className="mb-3 text-sm font-semibold text-navy-900">{g}</h3>
+          {g === "Pajak" && (
+            <p className="mb-3 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800">
+              Tarif pajak berlaku untuk transaksi BARU. Invoice yang sudah terbit menyimpan tarifnya
+              masing-masing — mengganti tarif tidak menulis ulang riwayat & laporan terkunci.
+            </p>
+          )}
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
             {(data.settings ?? []).filter((s) => String(s.group ?? "Lainnya") === g).map((s) => (
               <div key={s.id} className="rounded-xl border border-steel-100 p-3">
