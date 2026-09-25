@@ -6,8 +6,8 @@ CREATE TABLE IF NOT EXISTS sessions (
   user_id VARCHAR(128) NOT NULL,
   username VARCHAR(128) NOT NULL,
   role VARCHAR(64) NOT NULL,
-  login_at TEXT NOT NULL,
-  last_seen_at TEXT NOT NULL,
+  login_at VARCHAR(32) NOT NULL,
+  last_seen_at VARCHAR(32) NOT NULL,
   ip TEXT NOT NULL,
   user_agent TEXT NOT NULL
 );
