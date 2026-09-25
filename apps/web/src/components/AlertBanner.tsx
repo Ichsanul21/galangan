@@ -89,7 +89,7 @@ export function AlertBannerView({ items, onClose }: { items: ModuleAlertItem[]; 
             <p className="mt-0.5 text-xs text-amber-600">+ {items.length - 8} lainnya (gulir ke baris bersorot)</p>
           )}
           <p className="mt-1 text-[11px] text-amber-600">
-            Badge sidebar sudah dibersihkan — sorotan tetap tampil sampai kondisinya selesai.
+            Notifikasi ini akan tetap muncul sampai kondisi sudah selesai.
           </p>
         </div>
         <button
