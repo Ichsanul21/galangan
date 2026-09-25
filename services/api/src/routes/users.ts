@@ -1,16 +1,16 @@
 import { randomUUID } from "node:crypto";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
-import { comparePassword, hashPassword, requireAuth, requireRole } from "../auth.js";
+import { comparePassword, hashPassword, requireAuth } from "../auth.js";
+import { requireManageUsers } from "../rbac.js";
 import { exec, q } from "../db.js";
 import { fail, ok } from "../envelope.js";
 
-// Seed roles are lowercase ("direktur"); callers may send title case
-// ("Direktur") — accept both, mirroring routes/crud.ts PRIVILEGED_ROLES.
-// Manager boleh kelola users (keputusan bisnis) tapi TIDAK boleh tulis
-// settings/coa (tetap direktur/developer di crud.ts).
-const MANAGE_ROLES = ["direktur", "developer", "Direktur", "Developer", "manager", "Manager"];
-const manageGuards = [requireAuth, requireRole(...MANAGE_ROLES)];
+// Kelola users: direktur/developer/manager/admin (rbac.ts requireManageUsers).
+// MANAGE_ROLES di bawah dipakai untuk pesan/cek password — dua daftar
+// wajib selaras (tambah peran di rbac.ts = tambah di sini).
+const MANAGE_ROLES = ["direktur", "developer", "Direktur", "Developer", "manager", "Manager", "admin", "Admin"];
+const manageGuards = [requireAuth, requireManageUsers()];
 
 function isPrivileged(role: unknown): boolean {
   return typeof role === "string" && MANAGE_ROLES.includes(role);

@@ -4,6 +4,7 @@ import { Card, PageHeader, Badge, KpiCard, Modal, Field, FormGrid, ConfirmModal,
 import type { SortState } from "../../components/ui";
 import { useStore, type StoreItem } from "../../data/store";
 import { isBackendConfigured } from "../../services/http";
+import { ocrImageUrl } from "../../services/upload";
 import { uploadFile } from "../../services/upload";
 import { fmtTanggal, todayISO } from "../../utils/format";
 import { AlertBannerView, notifRowId, useModuleAlert } from "../../components/AlertBanner";
@@ -100,6 +101,8 @@ export default function Documents() {
   const [showAdd, setShowAdd] = useState(false);
   const [editing, setEditing] = useState<StoreItem | null>(null);
   const [detail, setDetail] = useState<StoreItem | null>(null);
+  const [ocrText, setOcrText] = useState("");
+  const [ocrBusy, setOcrBusy] = useState(false);
   const [archiving, setArchiving] = useState<StoreItem | null>(null);
   const [deleting, setDeleting] = useState<StoreItem | null>(null);
   const [form, setForm] = useState(emptyForm);
@@ -199,8 +202,31 @@ export default function Documents() {
     }
   };
 
-  const toggleCopy = async (d: StoreItem) => {
-    const next = String(d.docCopy ?? "Terkendali") === "Salinan" ? "Terkendali" : "Salinan";
+  const runOcr = async (d: StoreItem) => {
+    const url = String(d.fileUrl ?? "");
+    if (!url) { toast("Dokumen ini belum punya lampiran gambar", "info"); return; }
+    setOcrBusy(true);
+    try {
+      const text = await ocrImageUrl(url);
+      setOcrText(text);
+      toast(`OCR selesai (${text.length} karakter) — periksa lalu simpan`);
+    } catch (e) {
+      toast(e instanceof Error ? e.message : "OCR gagal", "info");
+    } finally {
+      setOcrBusy(false);
+    }
+  };
+
+  const saveOcr = async (d: StoreItem) => {
+    if (!ocrText.trim()) return;
+    await update("documents", String(d.id), { ocrText: ocrText.trim(), updated: todayISO() });
+    log("menyimpan hasil OCR", String(d.id), "Dokumen");
+    toast(`Hasil OCR disimpan ke ${String(d.id)}`);
+    setDetail((cur) => (cur && cur.id === d.id ? { ...cur, ocrText: ocrText.trim(), updated: todayISO() } : cur));
+    setOcrText("");
+  };
+
+  const toggleCopy = async (d: StoreItem) => {    const next = String(d.docCopy ?? "Terkendali") === "Salinan" ? "Terkendali" : "Salinan";
     await update("documents", d.id, { docCopy: next, updated: todayISO() });
     log(`menandai dokumen sebagai ${next}`, d.id, "Dokumen");
     toast(`${d.id} ditandai ${next}`);
@@ -445,7 +471,7 @@ export default function Documents() {
       </Modal>
 
       {/* Modal detail */}
-      <Modal open={detail !== null} onClose={() => setDetail(null)} title={detail ? String(detail.title) : ""} subtitle={detail ? `${detail.id} · ${detail.type}` : ""} wide>
+      <Modal open={detail !== null} onClose={() => { setDetail(null); setOcrText(""); }} title={detail ? String(detail.title) : ""} subtitle={detail ? `${detail.id} · ${detail.type}` : ""} wide>
         {detail && (
           <div>
             <dl className="space-y-2.5 text-sm">
@@ -488,7 +514,25 @@ export default function Documents() {
               <button className="btn-secondary text-xs" onClick={() => toggleCopy(detail)}>
                 {String(detail.docCopy ?? "Terkendali") === "Salinan" ? "Jadikan Terkendali" : "Tandai Salinan"}
               </button>
+              {isBackendConfigured() && /\.(png|jpe?g)(\?|$)/i.test(String(detail.fileUrl ?? "")) && (
+                <button className="btn-secondary text-xs" disabled={ocrBusy} onClick={() => void runOcr(detail)}>
+                  {ocrBusy ? "OCR berjalan…" : "Ekstrak teks (OCR)"}
+                </button>
+              )}
             </div>
+            {ocrText !== "" && (
+              <div className="mt-3 rounded-xl border border-steel-200 bg-surface p-3">
+                <p className="mb-1 text-xs font-semibold text-navy-900">Hasil OCR</p>
+                <pre className="max-h-48 overflow-y-auto whitespace-pre-wrap text-xs text-steel-700">{ocrText}</pre>
+                <div className="mt-2 flex gap-2">
+                  <button className="btn-secondary text-xs" onClick={() => void saveOcr(detail)}>Simpan ke dokumen</button>
+                  <button className="btn-secondary text-xs" onClick={() => setOcrText("")}>Buang</button>
+                </div>
+              </div>
+            )}
+            {String(detail.ocrText ?? "") !== "" && (
+              <p className="mt-3 whitespace-pre-wrap text-xs text-steel-500">OCR tersimpan: {String(detail.ocrText).slice(0, 300)}{String(detail.ocrText).length > 300 ? "…" : ""}</p>
+            )}
             {canonStatus(detail.status) && FLOW_NEXT[canonStatus(detail.status)].length > 0 ? (
               <div className="mt-3 flex flex-wrap gap-2">
                 {FLOW_NEXT[canonStatus(detail.status)].map((n) => (
@@ -506,7 +550,7 @@ export default function Documents() {
                 return (
                   <div key={`${rid}-${i}`} className="flex items-center justify-between gap-2 rounded-lg bg-surface px-3 py-2">
                     <span className="truncate font-mono text-xs font-semibold text-navy-900" title={found ? String(found.title) : rid}>{rid}{found ? ` · ${String(found.title)}` : ""}</span>
-                    {found && <button className="btn-secondary px-2 py-1 text-xs" onClick={() => setDetail(found)}>Buka</button>}
+                    {found && <button className="btn-secondary px-2 py-1 text-xs" onClick={() => { setOcrText(""); setDetail(found); }}>Buka</button>}
                   </div>
                 );
               })}

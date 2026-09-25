@@ -167,15 +167,18 @@ Missing rows read back as `[]`; `PUT` upserts.
   Bulk-inserts settings (36 rows), full COA (98 accounts), and 1–2 example rows
   per other collection; existing ids are skipped. Returns `{ inserted, skipped }`.
 
-## Users (`src/routes/users.ts`, Direktur/Developer only)
+## Users (`src/routes/users.ts`, kelola: Direktur/Manager/Developer)
 
 | Method | Endpoint | Notes |
 |---|---|---|
-| GET | `/api/users` | list tanpa password hash |
-| POST | `/api/users` | `{ username, name, role, password≥6, email? }`, 409 bila duplikat |
-| PATCH | `/api/users/:id` | nama/role/email/isActive; password hanya via endpoint khusus |
+| GET | `/api/users` | list tanpa password hash, termasuk `employeeId` |
+| POST | `/api/users` | `{ username, name, role, password≥6, email?, employeeId? }`, 409 bila duplikat, 422 bila karyawan tak ada |
+| PATCH | `/api/users/:id` | nama/role/email/isActive/employeeId (null = lepas tautan); password hanya via endpoint khusus |
 | POST | `/api/users/:id/password` | ganti/reset (`:id` bisa `me`); self wajib password lama |
 | DELETE | `/api/users/:id` | nonaktif (`is_active=0`), tak pernah hapus fisik |
+
+Login menerima username, email, atau NIK karyawan (cocok `employees.data.username` → akun tertaut).
+Akun tertaut via `employee_id` (migrasi 003; seed: direktur → EMP-001).
 
 Login menolak akun nonaktif (403). Tabel `users` tidak ikut CRUD generik.
 Password baru min 6 / maks 72 chars (bcrypt, cost 12); login menerima maks
@@ -190,13 +193,31 @@ Di production, akun demo seed tidak bisa login kecuali
   divalidasi magic bytes sesuai ekstensi (PNG/JPG/PDF/ZIP-PK; csv/txt harus teks UTF-8 valid tanpa NUL);
   `GET /files/*` requires `Authorization: Bearer <token>` (401 anon) dan disajikan sebagai
   `attachment` + `X-Content-Type-Options: nosniff`.
+- `GET /api/ocr/status` → `{ available }` (apakah tesseract terinstal).
+  `POST /api/ocr` (multipart field `file`, png/jpg/jpeg ≤10MB, auth) → `{ text, chars, filename }`;
+  501 `OCR_UNAVAILABLE` bila tesseract belum ada (`apt install tesseract-ocr tesseract-ocr-ind`);
+  PDF ditolak 400 (konversi ke gambar dulu). Dieksekusi via `execFile` tanpa shell,
+  file temp acak selalu dihapus, timeout 60 dtk.
+
+## RBAC tulis (`src/rbac.ts` — ditegakkan server)
+
+- direktur/developer/admin: semua koleksi + kelola users + settings/coa.
+- manager: semua operasional + kelola users (tanpa settings/coa).
+- Operasional per kata kunci (qc, gudang, procurement, finance, hr, sales, proyek, drydock, equipment):
+  tulis hanya koleksinya; baca semua koleksi tetap `requireAuth`.
+- viewer/client/tamu + peran tak dikenal: read-only. Tulis yang ditolak → 403
+  `Peran X tidak boleh mengubah Y` (FE menampilkannya jujur, tanpa tulis lokal).
+- Tulis referensi yatim → 422 (`field "id" tidak ada di tabel`); akun CoA tak dikenal → 422.
+  Hapus baris yang masih dirujuk → 409 + daftar pemakai (tanpa cascade).
+  WBS/team PUT wajib proyek + anggota valid (422).
 
 ## Rate limit & 403
 
 - Login 20/mnt/IP, seed 20/mnt, tulis (POST/PATCH/PUT/DELETE) 300/mnt/IP — 429 + header `Retry-After`.
   `x-forwarded-for` hanya dipercaya bila `TRUST_PROXY=true` (default: `req.ip`); bucket kedaluwarsa
   disapu tiap 60 detik.
-- 403 membawa alasan (`Butuh peran Direktur / Developer`); FE menampilkannya dan tidak menulis lokal.
+- 403 membawa alasan (`Butuh peran Direktur / Manager / Developer`, `tidak boleh mengubah <koleksi>`);
+  FE menampilkannya dan tidak menulis lokal.
 
 ## curl examples
 

@@ -1,6 +1,7 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { requireAuth } from "../auth.js";
+import { requireCollectionWrite } from "../rbac.js";
 import { exec, getDialect, q } from "../db.js";
 import { fail, ok } from "../envelope.js";
 
@@ -40,7 +41,7 @@ export function registerWbsRoutes(app: FastifyInstance): void {
     return ok({ projectId: id, wbs });
   });
 
-  app.put("/api/projects/:id/wbs", { preHandler: [requireAuth] }, async (req, reply) => {
+  app.put("/api/projects/:id/wbs", { preHandler: [requireAuth, requireCollectionWrite("wbs_by_project")] }, async (req, reply) => {
     const parsed = WbsSchema.safeParse(req.body);
     if (!parsed.success) return reply.status(400).send(fail("Validation failed", "VALIDATION_ERROR"));
     const { id } = req.params as { id: string };
@@ -58,7 +59,7 @@ export function registerWbsRoutes(app: FastifyInstance): void {
     return ok({ projectId: id, memberIds });
   });
 
-  app.put("/api/projects/:id/team", { preHandler: [requireAuth] }, async (req, reply) => {
+  app.put("/api/projects/:id/team", { preHandler: [requireAuth, requireCollectionWrite("team_by_project")] }, async (req, reply) => {
     const parsed = TeamSchema.safeParse(req.body);
     if (!parsed.success) return reply.status(400).send(fail("Validation failed", "VALIDATION_ERROR"));
     const { id } = req.params as { id: string };

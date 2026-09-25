@@ -12,6 +12,7 @@ import { q } from "./db.js";
 import { COLLECTIONS, registerCrud } from "./routes/crud.js";
 import { registerAuditRoutes } from "./routes/audit.js";
 import { registerFileRoutes } from "./routes/files.js";
+import { registerOcrRoutes } from "./routes/ocr.js";
 import { registerWbsRoutes } from "./routes/wbs.js";
 import { registerAdminRoutes } from "./routes/admin.js";
 import { registerUserRoutes } from "./routes/users.js";
@@ -265,6 +266,7 @@ export function buildApp(): FastifyInstance {
   for (const table of COLLECTIONS) registerCrud(app, table);
   registerAuditRoutes(app);
   registerFileRoutes(app);
+  registerOcrRoutes(app);
   registerWbsRoutes(app);
   registerAdminRoutes(app);
   registerUserRoutes(app);

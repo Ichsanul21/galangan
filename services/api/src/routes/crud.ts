@@ -1,8 +1,9 @@
 import { randomUUID } from "node:crypto";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
-import { requireAuth, requireRole } from "../auth.js";
+import { requireAuth } from "../auth.js";
 import { requestActor, requestIp, shallowDiff, writeAudit } from "../audit.js";
+import { requireCollectionWrite, requireSettingsWrite } from "../rbac.js";
 import { exec, getDialect, q } from "../db.js";
 import { checkRefs, findUsages } from "../refs.js";
 import { fail, ok } from "../envelope.js";
@@ -81,16 +82,8 @@ export const COLLECTIONS: string[] = [
   "trials", "requests", "clientPos", "walks", "auditPlans", "settings", "coa", "journals", "assets",
 ];
 
-// Writes to these tables are restricted. Role names are matched in both
-// casings because seed roles are lowercase ("direktur") while callers may
-// pass title case ("Direktur").
-const RESTRICTED_TABLES = new Set(["settings", "coa", "users"]);
-const PRIVILEGED_ROLES = ["direktur", "developer", "Direktur", "Developer"];
-
-export interface CrudOpts {
-  writeRoles?: string[];
-}
-
+// Tulis settings/coa dibatasi di registerCrud (requireSettingsWrite).
+// "users" bukan koleksi envelope — diatur routes/users.ts.
 const CreateSchema = z.object({
   id: z.string().min(1).max(128).optional(),
   branch: z.string().max(64).optional(),
@@ -133,11 +126,15 @@ function parseOffset(raw: unknown): number {
   return Math.max(0, n);
 }
 
-export function registerCrud(app: FastifyInstance, table: string, opts: CrudOpts = {}): void {
+export function registerCrud(app: FastifyInstance, table: string): void {
   if (!COLLECTIONS.includes(table)) throw new Error(`Unknown collection: ${table}`);
   const base = `/api/${table}`;
-  const writeRoles = opts.writeRoles ?? (RESTRICTED_TABLES.has(table) ? PRIVILEGED_ROLES : undefined);
-  const writeGuards = writeRoles ? [requireAuth, requireRole(...writeRoles)] : [requireAuth];
+  // Tulis settings/coa: direktur/developer/admin. Koleksi lain ikut
+  // kebijakan RBAC (rbac.ts); baca tetap requireAuth untuk semua peran.
+  const writeGuards =
+    table === "settings" || table === "coa"
+      ? [requireAuth, requireSettingsWrite()]
+      : [requireAuth, requireCollectionWrite(table)];
 
   app.get(base, { preHandler: [requireAuth] }, async (req) => {
     const query = (req.query ?? {}) as Record<string, string | undefined>;

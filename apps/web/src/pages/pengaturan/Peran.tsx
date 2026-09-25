@@ -531,7 +531,7 @@ export default function Peran() {
           </table>
         </div>
         <p className="border-t border-steel-100 px-5 py-3 text-xs text-steel-400">
-          Sel kosong berarti peran tidak memiliki akses. Matriks ini read-only dan menjadi acuan enforcement saat backend tersedia.
+          Sel kosong berarti peran tidak memiliki akses. Backend menegakkan tulis per koleksi (lihat `services/api/src/rbac.ts`); matriks ini acuan bisnisnya.
         </p>
       </Card>
 
