@@ -595,7 +595,7 @@ export default function ProjectDetail() {
               </div>
               <Card className="p-5">
                 <h3 className="mb-3 text-sm font-semibold text-navy-900">Informasi Proyek</h3>
-                <dl className="space-y-2.5 text-sm">
+                <dl className="dl-div text-sm">
                   <div className="flex justify-between"><dt className="text-steel-500">Manajer</dt><dd className="font-medium">{project.manager}</dd></div>
                   <div className="flex justify-between"><dt className="text-steel-500">Cabang</dt><dd className="font-medium">{project.branch}</dd></div>
                    <div className="flex justify-between"><dt className="text-steel-500">Mulai</dt><dd className="font-medium">{fmtTanggal(project.start)}</dd></div>
@@ -745,7 +745,7 @@ export default function ProjectDetail() {
                   const eac = cpi > 0 ? Math.round(ac / cpi) : ac;
                   return (
                     <>
-                      <dl className="space-y-1.5 text-sm">
+                      <dl className="dl-div text-sm">
                         <div className="flex justify-between"><dt className="text-steel-500">PV (anggaran × 100%)</dt><dd className="font-medium">{fmtMiliar(pv)}</dd></div>
                         <div className="flex justify-between"><dt className="text-steel-500">EV (anggaran × progres)</dt><dd className="font-medium">{fmtMiliar(ev)}</dd></div>
                         <div className="flex justify-between"><dt className="text-steel-500">AC (realisasi)</dt><dd className="font-medium">{fmtMiliar(ac)}</dd></div>

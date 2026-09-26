@@ -478,7 +478,7 @@ export default function Documents() {
       <Modal open={detail !== null} onClose={() => { setDetail(null); setOcrText(""); }} title={detail ? String(detail.title) : ""} subtitle={detail ? `${detail.id} · ${detail.type}` : ""} wide>
         {detail && (
           <div>
-            <dl className="space-y-2.5 text-sm">
+            <dl className="dl-div text-sm">
               {[
                 ["Proyek", detail.project],
                 ["Kapal", detail.vessel],

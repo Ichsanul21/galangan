@@ -1097,7 +1097,7 @@ export default function QCSafety() {
         }}>Proses ke tahap berikut</button> : undefined}>
         {ncrDetail && (
           <div>
-            <dl className="space-y-2.5 text-sm">
+            <dl className="dl-div text-sm">
               {[["Proyek", ncrDetail.project], ["Kapal", ncrDetail.vessel], ["Kategori", ncrDetail.type], ["Severity", ncrDetail.severity], ["Dilaporkan", fmtTanggal(ncrDetail.raised)], ["Tenggat CAPA", fmtTanggal(ncrDetail.due)], ["Root-cause", ncrDetail.causeCat ? `${ncrDetail.causeCat}${ncrDetail.causeNote ? ` — ${ncrDetail.causeNote}` : ""}` : "—"], ["Uraian", ncrDetail.issue], ...(ncrDetail.verifiedBy ? [["Diverifikasi oleh", `${ncrDetail.verifiedBy}${ncrDetail.verifyNote ? ` — ${ncrDetail.verifyNote}` : ""}`]] : []), ...(ncrDetail.closedAt ? [["Ditutup", fmtTanggal(ncrDetail.closedAt)]] : []), ...(ncrDetail.reopenReason ? [["Alasan dibuka kembali", ncrDetail.reopenReason]] : [])].map(([k, v]) => (
                 <div key={k} className="flex justify-between gap-4"><dt className="shrink-0 text-steel-500">{k}</dt><dd className="text-right font-medium text-navy-900">{v}</dd></div>
               ))}
@@ -1149,7 +1149,7 @@ export default function QCSafety() {
       <Modal open={inspDetail !== null} onClose={() => setInspDetail(null)} title={inspDetail ? String(inspDetail.id) : ""} subtitle="Detail sampling AQL, alat NDE & sertifikat inspector">
         {inspDetail && (
           <div>
-            <dl className="space-y-2.5 text-sm">
+            <dl className="dl-div text-sm">
               {[["Proyek", inspDetail.project], ["Titik", inspDetail.point], ["ITP", inspDetail.itp], ["Tanggal", fmtTanggal(inspDetail.date)], ["Hold / Witness", inspDetail.holdType ?? "—"], ["NDE", inspDetail.nde === "Ya" ? `Ya · ${inspDetail.ndeMethod ?? "-"} · ${inspDetail.calTool ? calLabel(String(inspDetail.calTool)) : "tanpa alat"}` : "Tidak"], ["Sampling AQL", inspDetail.sampleSize ? `n=${inspDetail.sampleSize} · temuan ${inspDetail.defectsFound ?? 0} / batas ${inspDetail.defectsAllowed ?? 0} · ${(Number(inspDetail.defectsFound ?? 0) <= Number(inspDetail.defectsAllowed ?? 0)) ? "Lulus AQL" : "Gagal AQL"}` : "—"], ["Inspector", inspDetail.inspector ?? "—"]].map(([k, v]) => (
                 <div key={k} className="flex justify-between gap-4"><dt className="shrink-0 text-steel-500">{k}</dt><dd className="text-right font-medium text-navy-900">{v}</dd></div>
               ))}

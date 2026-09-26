@@ -1172,7 +1172,7 @@ export default function Payroll() {
             <Field label="Masa kerja (tahun)"><input type="number" min="0" step="0.5" className="input" value={pesForm.masaKerja} onChange={(e) => setPesForm({ ...pesForm, masaKerja: e.target.value })} /></Field>
             <Field label="Upah bulanan (Rp)"><input type="number" min="0" className="input" value={pesForm.upah} onChange={(e) => setPesForm({ ...pesForm, upah: e.target.value })} /></Field>
           </FormGrid>
-          <dl className="space-y-2 rounded-xl bg-surface p-3 text-sm">
+          <dl className="dl-div rounded-xl bg-surface p-3 text-sm">
             <div className="flex justify-between"><dt className="text-steel-500">Pesangon ({pesHitung.pesMonths}× upah, maks 9)</dt><dd className="font-medium">{fmtRupiah(pesHitung.pesangon)}</dd></div>
             <div className="flex justify-between"><dt className="text-steel-500">UPMK ({pesHitung.upmkMonths}× upah)</dt><dd className="font-medium">{fmtRupiah(pesHitung.upmk)}</dd></div>
             <div className="flex justify-between"><dt className="text-steel-500">UPH (15% × pesangon+UPMK)</dt><dd className="font-medium">{fmtRupiah(pesHitung.uph)}</dd></div>
@@ -1205,7 +1205,7 @@ export default function Payroll() {
           const manualDed = Number(slipTarget.deductions || 0) - Number(slipTarget.kasbonPot || 0);
           return (
             <div className="space-y-3">
-              <dl className="space-y-2 text-sm">
+              <dl className="dl-div text-sm">
                 {rowType(slipTarget) === "Gaji" ? (
                   <>
                     <div className="flex justify-between"><dt className="text-steel-500">{isHarian ? `Upah harian × ${Number(slipTarget.hadirDays ?? 0)} hari` : "Gaji pokok"}</dt><dd className="font-medium">{fmtRupiah(Number(slipTarget.basic || 0))}</dd></div>

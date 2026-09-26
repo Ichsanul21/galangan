@@ -136,7 +136,7 @@ export default function BomDetail() {
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
         <Card className="p-5">
           <CardHeader title="Detail Item" subtitle="Katalog + klasifikasi" />
-          <dl className="space-y-2.5 text-sm">
+          <dl className="dl-div text-sm">
             {([
               ["Kategori", String(item.category)],
               ["Gudang / Rak", rackText(item)],

@@ -1850,7 +1850,7 @@ export default function Inventory() {
       {/* Modal detail */}
       <Modal open={detail !== null} onClose={() => setDetail(null)} title={freshDetail?.name ?? ""} subtitle={freshDetail ? `${freshDetail.id} · ${freshDetail.sku}` : ""}>
         {freshDetail && (
-          <dl className="space-y-2.5 text-sm">
+          <dl className="dl-div text-sm">
             {freshDetail.photoUrl ? (
               <img src={String(freshDetail.photoUrl)} alt={String(freshDetail.name)} className="h-32 w-full rounded-xl border border-steel-200 object-cover" />
             ) : null}

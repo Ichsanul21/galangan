@@ -100,6 +100,19 @@
     background-color: rgba(255, 251, 235, 0.85) !important;
     border-radius: 0.5rem;
   }
+
+  /* Divider antar baris form detail/view (<dl>): baca cepat, tidak polos.
+     Pakai: <dl className="dl-div text-sm">, anak langsung = baris. */
+  .dl-div > div {
+    border-bottom: 1px solid #d7e1ea;
+    padding-bottom: 0.625rem;
+    margin-bottom: 0.625rem;
+  }
+  .dl-div > div:last-child {
+    border-bottom: 0;
+    padding-bottom: 0;
+    margin-bottom: 0;
+  }
 }
 
 @media print {

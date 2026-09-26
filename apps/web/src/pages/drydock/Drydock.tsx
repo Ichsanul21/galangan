@@ -533,7 +533,7 @@ export default function Drydock() {
       <Modal open={sel !== null} onClose={() => setSelected(null)} title={`Slot ${sel?.id ?? ""}`} subtitle={sel ? `${sel.vessel} · ${sel.project}` : ""}>
         {sel && (
           <div>
-          <dl className="space-y-2.5 text-sm">
+          <dl className="dl-div text-sm">
             <div className="flex justify-between"><dt className="text-steel-500">Fasilitas</dt><dd className="font-medium">{drydocks.find((d) => d.id === sel.dockId)?.name}</dd></div>
             <div className="flex justify-between"><dt className="text-steel-500">Durasi</dt><dd className="font-medium">{fmtRentang(dayToISO(sel.from), dayToISO(sel.to))} ({slotDays(sel)} hari)</dd></div>
             <div className="flex justify-between"><dt className="text-steel-500">Prioritas</dt><dd className="font-medium">{sel.priority ?? "Normal"}</dd></div>

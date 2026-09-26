@@ -656,7 +656,7 @@ export default function VesselDetail() {
                       <button className="btn-secondary text-xs" onClick={openIns}><Pencil className="h-3 w-3" /> {insurance ? "Edit" : "Isi"}</button>
                     </div>
                     {insurance ? (
-                      <dl className="space-y-1.5 text-sm">
+                      <dl className="dl-div text-sm">
                         <div className="flex justify-between"><dt className="text-steel-500">Polis</dt><dd className="font-medium font-mono">{insurance.polis}</dd></div>
                         <div className="flex justify-between"><dt className="text-steel-500">Premi</dt><dd className="font-medium">{fmtRupiah(Number(insurance.premi || 0))}</dd></div>
                         <div className="flex justify-between"><dt className="text-steel-500">Expiry</dt><dd className="font-medium">{fmtTanggal(insurance.expiry)}</dd></div>

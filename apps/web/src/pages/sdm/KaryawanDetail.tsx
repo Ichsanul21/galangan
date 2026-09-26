@@ -237,7 +237,7 @@ export default function KaryawanDetail() {
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
         <Card className="p-5">
           <h3 className="text-sm font-semibold text-navy-900">Profil & Kontrak</h3>
-          <dl className="mt-3 space-y-2 text-sm">
+          <dl className="dl-div mt-3 text-sm">
             <div className="flex justify-between"><dt className="text-steel-500">Jabatan</dt><dd className="font-medium text-navy-900">{String(emp.role)}</dd></div>
             <div className="flex justify-between"><dt className="text-steel-500">Departemen</dt><dd className="font-medium">{String(emp.dept)}</dd></div>
             <div className="flex justify-between"><dt className="text-steel-500">Cabang</dt><dd className="font-medium">{String(emp.branch ?? "-")}</dd></div>
