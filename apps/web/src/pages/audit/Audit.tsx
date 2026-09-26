@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { Download, History } from "lucide-react";
-import { Badge, Card, EmptyState, Field, KpiCard, PageHeader, SortTh, Tabs, toggleSort, sortRows, toast } from "../../components/ui";
+import { Badge, Card, EmptyState, Field, KpiCard, PageHeader, SortTh, Tabs, toggleSort, sortRows, toast, usePager } from "../../components/ui";
 import type { SortState } from "../../components/ui";
 import { useStore } from "../../data/store";
 import { apiFetch, isBackendConfigured } from "../../services/http";
@@ -102,6 +102,14 @@ export default function Audit() {
       return hay.includes(query);
     });
   }, [base, q, modul, tanggal]);
+  const sortedAudits = useMemo(() => sortRows(rows, sort, (a, key) =>
+    key === "waktu" ? String(a.time ?? "") : key === "aktor" ? String(a.actor ?? "") : key === "aksi" ? String(a.action ?? "") : key === "target" ? String(a.target ?? "") : String(a.module ?? "")
+  ), [rows, sort]);
+  const auditPager = usePager(rows.length);
+  useEffect(() => {
+    auditPager.reset();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [q, modul, tanggal, sumber]);
 
   const actors = useMemo(() => {
     const set = new Set<string>();
@@ -194,9 +202,7 @@ export default function Audit() {
               </tr>
             </thead>
             <tbody className="divide-y divide-steel-50">
-              {sortRows(rows, sort, (a, key) =>
-                key === "waktu" ? String(a.time ?? "") : key === "aktor" ? String(a.actor ?? "") : key === "aksi" ? String(a.action ?? "") : key === "target" ? String(a.target ?? "") : String(a.module ?? "")
-              ).map((a) => (
+              {auditPager.slice(sortedAudits).map((a) => (
                 <tr key={String(a.id)} className="hover:bg-surface">
                   <td className="whitespace-nowrap px-5 py-2.5 text-xs text-steel-500">{String(a.time ?? "-")}</td>
                   <td className="whitespace-nowrap px-3 py-2.5 font-semibold text-navy-900">{String(a.actor ?? "-")}</td>
@@ -216,6 +222,7 @@ export default function Audit() {
               subtitle="Ubah kata kunci, modul, atau tanggal filter."
             />
           )}
+          {auditPager.bar}
         </div>
       </Card>
     </div>

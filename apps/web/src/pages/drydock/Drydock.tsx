@@ -1,6 +1,6 @@
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Plus, Ship, CalendarRange, AlertTriangle, GripVertical, Trash2, Wrench, User } from "lucide-react";
-import { Card, CardHeader, PageHeader, Badge, KpiCard, ProgressBar, Modal, Field, FormGrid, ConfirmModal, StatusBadge, toast, SortTh, toggleSort, sortRows } from "../../components/ui";
+import { Card, CardHeader, PageHeader, Badge, KpiCard, ProgressBar, Modal, Field, FormGrid, ConfirmModal, StatusBadge, toast, SortTh, toggleSort, sortRows, usePager } from "../../components/ui";
 import type { SortState } from "../../components/ui";
 import { useStore } from "../../data/store";
 import type { StoreItem } from "../../data/store";
@@ -197,6 +197,12 @@ export default function Drydock() {
   const filteredSlots = statusFilter === "Semua"
     ? dockSlots
     : dockSlots.filter((s) => slotStatus(s, data.projects) === statusFilter);
+  const sortedSlots = useMemo(() => sortRows(filteredSlots, sort, (s: StoreItem, k) => k === "days" ? Number(slotDays(s)) : k === "status" ? String(slotStatus(s, data.projects)) : k === "facility" ? String(drydocks.find((d) => d.id === s.dockId)?.name ?? s.dockId) : String((s as unknown as Record<string, unknown>)[k] ?? "")), [filteredSlots, sort, data.projects, drydocks]);
+  const pager = usePager(filteredSlots.length);
+  useEffect(() => {
+    pager.reset();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [statusFilter]);
 
   const saveBooking = async () => {
     const proj = data.projects.find((p) => p.id === bookForm.project);
@@ -444,7 +450,7 @@ export default function Drydock() {
                 <tr><SortTh label="Fasilitas" sortKey="facility" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label="Proyek" sortKey="vessel" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label="Durasi" sortKey="days" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label="Prioritas" sortKey="priority" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label="Status" sortKey="status" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><th className="th">Aksi</th></tr>
               </thead>
               <tbody className="divide-y divide-steel-100">
-                {sortRows(filteredSlots, sort, (s: StoreItem, k) => k === "days" ? Number(slotDays(s)) : k === "status" ? String(slotStatus(s, data.projects)) : k === "facility" ? String(drydocks.find((d) => d.id === s.dockId)?.name ?? s.dockId) : String((s as unknown as Record<string, unknown>)[k] ?? "")).map((s) => {
+                {pager.slice(sortedSlots).map((s) => {
                   const st = slotStatus(s, data.projects);
                   const isCrit = conflict.some((c) => c.id === s.id) && overlapsKritis(s);
                   return (
@@ -475,6 +481,7 @@ export default function Drydock() {
                 {filteredSlots.length === 0 && <tr><td colSpan={6} className="td text-center text-steel-400">Belum ada slot pada filter ini.</td></tr>}
               </tbody>
             </table>
+            {pager.bar}
           </div>
         </Card>
 

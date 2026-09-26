@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { CalendarCheck, Download } from "lucide-react";
 import {
   Badge,
@@ -13,6 +13,7 @@ import {
   sortRows,
   toast,
   toggleSort,
+  usePager,
 } from "../../components/ui";
 import type { SortState } from "../../components/ui";
 import { useStore } from "../../data/store";
@@ -178,6 +179,26 @@ export default function Absensi() {
       }),
     [activeEmps, monthRecords],
   );
+  const sortedRekap = useMemo(() => sortRows(summary, sort2, (row, k) => {
+    const r = row as { emp: StoreItem; h: number; i: number; s: number; c: number; a: number; lembur: number; telat: number; pct: number };
+    switch (k) {
+      case "emp": return String(r.emp.name ?? "");
+      case "h": return Number(r.h);
+      case "i": return Number(r.i);
+      case "s": return Number(r.s);
+      case "c": return Number(r.c);
+      case "a": return Number(r.a);
+      case "lembur": return Number(r.lembur);
+      case "telat": return Number(r.telat);
+      case "pct": return Number(r.pct);
+      default: return "";
+    }
+  }), [summary, sort2]);
+  const rekapPager = usePager(summary.length);
+  useEffect(() => {
+    rekapPager.reset();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [month, branch, tab]);
 
   const kpiHadir = monthRecords.filter((a) => a.status === "Hadir").length;
   const kpiTelat = monthRecords.filter((a) => a.status === "Hadir" && isLate(String(a.checkIn))).length;
@@ -388,21 +409,7 @@ export default function Absensi() {
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-steel-100">
-                      {sortRows(summary, sort2, (row, k) => {
-                        const r = row as { emp: StoreItem; h: number; i: number; s: number; c: number; a: number; lembur: number; telat: number; pct: number };
-                        switch (k) {
-                          case "emp": return String(r.emp.name ?? "");
-                          case "h": return Number(r.h);
-                          case "i": return Number(r.i);
-                          case "s": return Number(r.s);
-                          case "c": return Number(r.c);
-                          case "a": return Number(r.a);
-                          case "lembur": return Number(r.lembur);
-                          case "telat": return Number(r.telat);
-                          case "pct": return Number(r.pct);
-                          default: return "";
-                        }
-                      }).map((r) => (
+                      {rekapPager.slice(sortedRekap).map((r) => (
                         <tr key={r.emp.id} className="hover:bg-surface">
                           <td className="td font-medium text-navy-900">{r.emp.name}</td>
                           <td className="td font-semibold text-emerald-600">{r.h}</td>
@@ -418,6 +425,7 @@ export default function Absensi() {
                     </tbody>
                   </table>
                   {summary.length === 0 && <EmptyState title="Tidak ada karyawan" subtitle="Ubah filter cabang." />}
+                  {rekapPager.bar}
                 </div>
               </Card>
 

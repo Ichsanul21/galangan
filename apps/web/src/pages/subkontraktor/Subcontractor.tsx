@@ -1,7 +1,7 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Plus, HardHat, FileSignature, Star } from "lucide-react";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from "recharts";
-import { Card, CardHeader, PageHeader, Badge, KpiCard, Tabs, ProgressBar, ChartTooltip, Modal, Field, FormGrid, ConfirmModal, SortTh, toggleSort, sortRows, toast } from "../../components/ui";
+import { Card, CardHeader, PageHeader, Badge, KpiCard, Tabs, ProgressBar, ChartTooltip, Modal, Field, FormGrid, ConfirmModal, SortTh, toggleSort, sortRows, usePager, toast } from "../../components/ui";
 import type { SortState } from "../../components/ui";
 import { useStore, type StoreItem } from "../../data/store";
 import { fmtRupiah, fmtMiliar, fmtTanggal, todayISO } from "../../utils/format";
@@ -127,6 +127,11 @@ export default function Subcontractor() {
   const runningWo = workOrders.filter((w) => w.status !== "Selesai").length;
   const avgRating = subcontractors.length ? Math.round(subcontractors.reduce((s, x) => s + Number(x.rating || 0), 0) / subcontractors.length) : 0;
   const filteredSubs = typeFilter === "Semua" ? subcontractors : subcontractors.filter((s) => String(s.contractType ?? "Borongan") === typeFilter);
+  const woPager = usePager(workOrders.length);
+  useEffect(() => {
+    woPager.reset();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tab]);
 
   const termWoOptions = workOrders.filter((w) => termForm.sub && sameName(w.sub, termForm.sub));
   const termWo = workOrders.find((w) => w.id === termForm.wo) ?? null;
@@ -550,7 +555,7 @@ export default function Subcontractor() {
                 <button className="btn-secondary text-xs" onClick={() => setShowWo(true)}><Plus className="h-3.5 w-3.5" /> Terbitkan WO</button>
               </div>
               <div className="space-y-3">
-                {workOrders.map((w) => (
+                {woPager.slice(workOrders).map((w) => (
                   <Card key={w.id} className="p-4">
                     <div className="flex flex-wrap items-center justify-between gap-2">
                       <div className="flex min-w-0 items-center gap-3">
@@ -595,6 +600,7 @@ export default function Subcontractor() {
                   </Card>
                 ))}
                 {workOrders.length === 0 && <p className="py-6 text-center text-sm text-steel-400">Belum ada WO.</p>}
+                {woPager.bar}
               </div>
             </div>
           )}

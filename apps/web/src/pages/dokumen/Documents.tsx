@@ -1,6 +1,6 @@
-import { useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Plus, Search, ScrollText, FileText, Eye, Pencil, Trash2, Archive, RotateCcw, Download, Upload } from "lucide-react";
-import { Card, PageHeader, Badge, KpiCard, Modal, Field, FormGrid, ConfirmModal, SortTh, toggleSort, sortRows, toast, StatusBadge } from "../../components/ui";
+import { Card, PageHeader, Badge, KpiCard, Modal, Field, FormGrid, ConfirmModal, SortTh, toggleSort, sortRows, toast, StatusBadge, usePager } from "../../components/ui";
 import type { SortState } from "../../components/ui";
 import { useStore, type StoreItem } from "../../data/store";
 import { isBackendConfigured } from "../../services/http";
@@ -118,6 +118,14 @@ export default function Documents() {
   const list = (type === "Arsip" ? archived : active.filter((d) => type === "Semua" || d.type === type)).filter((d) => {
     return `${d.title} ${d.id} ${d.project} ${d.vessel}`.toLowerCase().includes(q.toLowerCase());
   });
+  const sortedDocs = useMemo(() => sortRows(list, sort, (d, key) =>
+    key === "dokumen" ? String(d.title ?? "") : key === "tipe" ? String(d.type ?? "") : key === "proyek" ? String(d.project ?? "") : key === "versi" ? String(d.version ?? "") : key === "status" ? String(d.status ?? "") : String(d.updated ?? "")
+  ), [list, sort]);
+  const docPager = usePager(list.length);
+  useEffect(() => {
+    docPager.reset();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [q, type, branch]);
 
   const expiring = active
     .map((d) => ({ doc: d, days: daysUntil(d.berlakuHingga) }))
@@ -347,9 +355,7 @@ export default function Documents() {
               <tr><SortTh label="Dokumen" sortKey="dokumen" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label="Tipe" sortKey="tipe" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label="Proyek / Kapal" sortKey="proyek" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label="Versi" sortKey="versi" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label="Status" sortKey="status" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label="Diperbarui" sortKey="diperbarui" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><th className="th">Aksi</th></tr>
             </thead>
             <tbody className="divide-y divide-steel-100">
-              {sortRows(list, sort, (d, key) =>
-                key === "dokumen" ? String(d.title ?? "") : key === "tipe" ? String(d.type ?? "") : key === "proyek" ? String(d.project ?? "") : key === "versi" ? String(d.version ?? "") : key === "status" ? String(d.status ?? "") : String(d.updated ?? "")
-              ).map((d) => (
+              {docPager.slice(sortedDocs).map((d) => (
                 <tr key={d.id} id={notifRowId(String(d.id))} className={modAlert.highlight.has(String(d.id)) ? "notif-hl hover:bg-surface" : "hover:bg-surface"}>
                   <td className="td max-w-[260px]">
                     <p className="truncate font-medium text-navy-900" title={String(d.title)}>{d.title}</p>
@@ -385,6 +391,7 @@ export default function Documents() {
             </tbody>
           </table>
           {list.length === 0 && <p className="py-8 text-center text-sm text-steel-400">Tidak ada dokumen yang cocok.</p>}
+          {docPager.bar}
         </div>
       </Card>
 

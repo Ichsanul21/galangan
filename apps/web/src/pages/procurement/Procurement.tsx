@@ -1,7 +1,7 @@
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Plus, Factory, ShoppingCart, ClipboardList, Check, X, Undo2, Printer, Pencil, Send, Star, Wallet, Umbrella, Search } from "lucide-react";
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
-import { Card, CardHeader, PageHeader, Badge, KpiCard, Tabs, StatusBadge, Donut, ChartTooltip, Modal, Field, FormGrid, ConfirmModal, toast, EmptyState, SortTh, toggleSort, sortRows } from "../../components/ui";
+import { Card, CardHeader, PageHeader, Badge, KpiCard, Tabs, StatusBadge, Donut, ChartTooltip, Modal, Field, FormGrid, ConfirmModal, toast, EmptyState, SortTh, toggleSort, sortRows, usePager } from "../../components/ui";
 import type { SortState } from "../../components/ui";
 import { useStore, type StoreItem } from "../../data/store";
 import { fmtRupiah, fmtJumlah, fmtTanggal, todayISO } from "../../utils/format";
@@ -238,6 +238,41 @@ export default function Procurement() {
   const rfqShown = rfqs.filter((r) => matchProc(`${r.id} ${r.item} ${r.prId} ${(Array.isArray(r.vendors) ? r.vendors as string[] : []).join(" ")}`, String(r.status)));
   const prShown = requisitions.filter((r) => matchProc(`${r.id} ${r.item} ${r.by}`, String(r.status)));
   const vendorShown = vendors.filter((v) => matchProc(`${v.name} ${v.cat}`, String(v.status ?? "Aktif")));
+
+  const sortedBig = useMemo(() => sortRows(bigShown, sort, (po, k) => {
+    if (k === "nilai") return Number(po.amount || 0);
+    if (k === "item") return String(po.item ?? "");
+    if (k === "vendor") return String(po.vendor ?? "");
+    if (k === "level") return String(levelOf(Number(po.amount || 0), APPROVE_PO_LIMIT));
+    if (k === "eta") return String(po.eta ?? "");
+    if (k === "revisi") return String(po.revisi || "R0");
+    if (k === "status") return String(normPo(String(po.status ?? "")));
+    return String(po.id ?? "");
+  }), [bigShown, sort, APPROVE_PO_LIMIT]);
+  const sortedSmall = useMemo(() => sortRows(smallShown, sort2, (po, k) => {
+    if (k === "nilai") return Number(po.amount || 0);
+    if (k === "kebutuhan") return String(po.item ?? "");
+    if (k === "workshop") return String(po.workshop ?? "");
+    if (k === "eta") return String(po.eta ?? "");
+    if (k === "status") return String(normPo(String(po.status ?? "")));
+    return String(po.id ?? "");
+  }), [smallShown, sort2]);
+  const sortedPr = useMemo(() => sortRows(prShown, sort4, (r, k) => {
+    if (k === "nilai") return Number(r.amount || 0);
+    if (k === "item") return String(r.item ?? "");
+    if (k === "oleh") return String(r.by ?? "");
+    if (k === "status") return String(r.status ?? "");
+    return String(r.id ?? "");
+  }), [prShown, sort4]);
+  const bigPager = usePager(bigShown.length);
+  const smallPager = usePager(smallShown.length);
+  const prPager = usePager(prShown.length);
+  useEffect(() => {
+    bigPager.reset();
+    smallPager.reset();
+    prPager.reset();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pq, pStatus, tab]);
 
   const openPo = purchaseOrders.filter((p) => normPo(p.status) !== "Diterima").reduce((s, p) => s + Number(p.amount || 0), 0);
   const pendingPr = requisitions.filter((r) => PR_PENDING.includes(r.status)).length;
@@ -845,16 +880,7 @@ export default function Procurement() {
                     <tr><SortTh label="PO" sortKey="po" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label="Item" sortKey="item" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label="Vendor" sortKey="vendor" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label="Nilai" sortKey="nilai" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label="Level" sortKey="level" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label="ETA" sortKey="eta" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label="Revisi" sortKey="revisi" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label="Status" sortKey="status" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><th className="th">Aksi</th></tr>
                   </thead>
                   <tbody className="divide-y divide-steel-100">
-                    {sortRows(bigShown, sort, (po, k) => {
-                      if (k === "nilai") return Number(po.amount || 0);
-                      if (k === "item") return String(po.item ?? "");
-                      if (k === "vendor") return String(po.vendor ?? "");
-                      if (k === "level") return String(levelOf(Number(po.amount || 0), APPROVE_PO_LIMIT));
-                      if (k === "eta") return String(po.eta ?? "");
-                      if (k === "revisi") return String(po.revisi || "R0");
-                      if (k === "status") return String(normPo(String(po.status ?? "")));
-                      return String(po.id ?? "");
-                    }).map((po) => {
+                    {bigPager.slice(sortedBig).map((po) => {
                       const st = normPo(po.status);
                       const need = needLevels(Number(po.amount || 0), APPROVE_PO_LIMIT);
                       const done = apprOf(po);
@@ -902,6 +928,7 @@ export default function Procurement() {
                   </tbody>
                 </table>
                 {bigShown.length === 0 && <EmptyState title="Belum ada PO Besar" subtitle="Buat PO Besar dari PR Disetujui, RFQ, atau konsolidasi." />}
+                {bigPager.bar}
               </div>
             </div>
           )}
@@ -940,14 +967,7 @@ export default function Procurement() {
                       <tr><SortTh label="PO" sortKey="po" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} /><SortTh label="Kebutuhan" sortKey="kebutuhan" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} /><SortTh label="Workshop" sortKey="workshop" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} /><SortTh label="Nilai" sortKey="nilai" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} /><SortTh label="ETA" sortKey="eta" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} /><SortTh label="Status" sortKey="status" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} /><th className="th">Aksi</th></tr>
                     </thead>
                     <tbody className="divide-y divide-steel-100">
-                      {sortRows(smallShown, sort2, (po, k) => {
-                        if (k === "nilai") return Number(po.amount || 0);
-                        if (k === "kebutuhan") return String(po.item ?? "");
-                        if (k === "workshop") return String(po.workshop ?? "");
-                        if (k === "eta") return String(po.eta ?? "");
-                        if (k === "status") return String(normPo(String(po.status ?? "")));
-                        return String(po.id ?? "");
-                      }).map((po) => {
+                      {smallPager.slice(sortedSmall).map((po) => {
                         const st = normPo(po.status);
                         return (
                           <tr key={po.id} id={notifRowId(String(po.id))} className={modAlert.highlight.has(String(po.id)) ? "notif-hl hover:bg-surface" : "hover:bg-surface"}>
@@ -979,6 +999,7 @@ export default function Procurement() {
                     </tbody>
                   </table>
                   {smallShown.length === 0 && <EmptyState title="Belum ada PO Kecil" subtitle="PO workshop di bawah 50 juta dicatat di sini." />}
+                  {smallPager.bar}
                 </div>
               </div>
             </div>
@@ -1092,13 +1113,7 @@ export default function Procurement() {
                       <tr><SortTh label="PR" sortKey="pr" sort={sort4} onSort={(k) => setSort4((s) => toggleSort(s, k))} /><SortTh label="Item" sortKey="item" sort={sort4} onSort={(k) => setSort4((s) => toggleSort(s, k))} /><SortTh label="Oleh" sortKey="oleh" sort={sort4} onSort={(k) => setSort4((s) => toggleSort(s, k))} /><SortTh label="Nilai" sortKey="nilai" sort={sort4} onSort={(k) => setSort4((s) => toggleSort(s, k))} /><SortTh label="Status" sortKey="status" sort={sort4} onSort={(k) => setSort4((s) => toggleSort(s, k))} /><th className="th">Aksi</th></tr>
                     </thead>
                     <tbody className="divide-y divide-steel-100">
-                      {sortRows(prShown, sort4, (r, k) => {
-                        if (k === "nilai") return Number(r.amount || 0);
-                        if (k === "item") return String(r.item ?? "");
-                        if (k === "oleh") return String(r.by ?? "");
-                        if (k === "status") return String(r.status ?? "");
-                        return String(r.id ?? "");
-                      }).map((r) => (
+                      {prPager.slice(sortedPr).map((r) => (
                         <tr key={r.id} id={notifRowId(String(r.id))} className={modAlert.highlight.has(String(r.id)) ? "notif-hl hover:bg-surface" : "hover:bg-surface"}>
                           <td className="td font-mono font-medium text-navy-900">{r.id}</td>
                           <td className="td text-steel-600 truncate" title={String(r.item)}>{r.item}</td>
@@ -1129,6 +1144,7 @@ export default function Procurement() {
                       ))}
                     </tbody>
                   </table>
+                  {prPager.bar}
                 </div>
               </div>
             </div>

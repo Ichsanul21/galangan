@@ -1,7 +1,7 @@
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { Plus, Search, Ship, Anchor, FileCheck2, Pencil } from "lucide-react";
-import { Card, CardHeader, PageHeader, Badge, KpiCard, Modal, Field, FormGrid, toast, SortTh, toggleSort, sortRows } from "../../components/ui";
+import { Card, CardHeader, PageHeader, Badge, KpiCard, Modal, Field, FormGrid, toast, SortTh, toggleSort, sortRows, usePager } from "../../components/ui";
 import type { SortState } from "../../components/ui";
 import { useStore } from "../../data/store";
 import type { StoreItem } from "../../data/store";
@@ -148,6 +148,14 @@ export default function Vessels() {
 
   const nowMonth = todayISO().slice(0, 7);
   const list = vessels.filter((v) => `${v.name} ${v.imo}`.toLowerCase().includes(q.toLowerCase()));
+  const cardPager = usePager(list.length);
+  const surveySorted = useMemo(() => sortRows(data.surveys, sort, (s: StoreItem, k) => String((s as unknown as Record<string, unknown>)[k] ?? "")), [data.surveys, sort]);
+  const surveyPager = usePager(data.surveys.length);
+  useEffect(() => {
+    cardPager.reset();
+    surveyPager.reset();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [q]);
   const expiring = vessels.filter((v) =>
     (v.certificates ?? []).some((c: { expires: string }) => certNeedsAttention(c.expires, nowMonth))
   ).length;
@@ -243,7 +251,7 @@ export default function Vessels() {
           <input className="input pl-9 w-full sm:w-64" placeholder="Cari kapal / IMO..." aria-label="Cari kapal" value={q} onChange={(e) => setQ(e.target.value)} />
         </div>
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
-          {list.map((v) => {
+          {cardPager.slice(list).map((v) => {
             const comp = complianceSummary(v);
             return (
               <Card key={v.id} id={notifRowId(String(v.id))} className={`p-5 hover:shadow-md transition-shadow ${modAlert.highlight.has(String(v.id)) ? "notif-hl" : ""}`}>
@@ -317,6 +325,7 @@ export default function Vessels() {
             );
           })}
         </div>
+        {cardPager.bar}
         {list.length === 0 && <p className="py-8 text-center text-sm text-steel-400">Tidak ada kapal yang cocok.</p>}
 
         <Card className="mt-5">
@@ -327,7 +336,7 @@ export default function Vessels() {
                 <tr><SortTh label="Kapal" sortKey="vessel" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label="Tipe Survey" sortKey="type" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label="Surveyor" sortKey="classSurveyor" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label="Tanggal" sortKey="date" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label="Status" sortKey="status" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /></tr>
               </thead>
               <tbody className="divide-y divide-steel-100">
-                {sortRows(data.surveys, sort, (s: StoreItem, k) => String((s as unknown as Record<string, unknown>)[k] ?? "")).map((s) => (
+                {surveyPager.slice(surveySorted).map((s) => (
                   <tr key={s.id} className="hover:bg-surface">
                     <td className="td font-medium text-navy-900">{s.vessel}</td>
                     <td className="td text-steel-600">{s.type}</td>
@@ -338,6 +347,7 @@ export default function Vessels() {
                 ))}
               </tbody>
             </table>
+            {surveyPager.bar}
           </div>
         </Card>
       </div>

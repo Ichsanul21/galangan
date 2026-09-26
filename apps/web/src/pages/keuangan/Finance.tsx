@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Wallet, ArrowDownToLine, FileText, Receipt, TrendingUp, Plus, Trash2, Search } from "lucide-react";
 import {
   AreaChart,
@@ -29,6 +29,7 @@ import {
   SortTh,
   toggleSort,
   sortRows,
+  usePager,
   toast,
 } from "../../components/ui";
 import type { SortState } from "../../components/ui";
@@ -424,6 +425,36 @@ export default function Finance() {
   const [juSort, setJuSort] = useState<SortState>({ key: null, dir: "asc" });
   const [alokasiSort, setAlokasiSort] = useState<SortState>({ key: null, dir: "asc" });
   const [pajakSort, setPajakSort] = useState<SortState>({ key: null, dir: "asc" });
+  const sortedInv = useMemo(() => sortRows(filteredInvoices, invSort, (inv, k) =>
+    k === "tipe" ? String(inv.billingType ?? inv.paymentTerm ?? "") : k === "lines" ? (Array.isArray(inv.lines) ? inv.lines.length : 1) :
+    k === "retensi" ? num(inv.retentionAmt) : k === "efaktur" ? String(inv.nsfp ?? inv.noFaktur ?? "") :
+    k === "amount" ? num(inv.amount) : k === "status" ? String(inv.status) : String(inv.id)), [filteredInvoices, invSort]);
+  const sortedAr = useMemo(() => sortRows(invoices, arSort, (inv, k) =>
+    k === "id" ? String(inv.id) : k === "kode" ? String(inv.kodePembantu ?? inv.client ?? "") : k === "project" ? String(inv.project ?? "") :
+    k === "openAwal" ? num(inv.openAwal) : k === "amount" ? num(inv.amount) : k === "due" ? String(inv.due ?? "") :
+    k === "age" ? ageDays(inv.due, today) : String(inv.status)), [invoices, arSort, today]);
+  const sortedAp = useMemo(() => sortRows(payables, apSort, (a, k) =>
+    k === "v" ? String(a.v) : k === "kode" ? String(a.kodePembantu ?? a.v) : k === "po" ? String(a.po) :
+    k === "vessel" ? String(a.vessel ?? "") : k === "openAwal" ? num(a.openAwal) : k === "amt" ? num(a.amt) :
+    k === "sisa" ? Math.max(0, num(a.amt) - num(a.pay1) - num(a.pay2)) : k === "due" ? String(a.due ?? "") : String(a.st)), [payables, apSort]);
+  const sortedJu = useMemo(() => sortRows(manJournals, juSort, (j, k) =>
+    k === "kode" ? String(j.kodePembantu ?? "") : k === "dok" ? String(j.dokumen ?? "") : k === "uraian" ? String(j.uraian ?? "") :
+    k === "db" ? String(j.db ?? "") : k === "kr" ? String(j.kr ?? "") : k === "amount" ? num(j.amount) :
+    k === "sumber" ? String(j.sumber ?? "") : k === "status" ? String(j.status ?? "") : String(j.date ?? "")), [manJournals, juSort]);
+  const invPager = usePager(filteredInvoices.length);
+  const arPager = usePager(invoices.length);
+  const apPager = usePager(payables.length);
+  const juPager = usePager(manJournals.length);
+  useEffect(() => {
+    invPager.reset();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [invFQ, invFStatus, invFBilling, tab]);
+  useEffect(() => {
+    arPager.reset();
+    apPager.reset();
+    juPager.reset();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tab]);
   const coaTipeOf = (c: StoreItem): string => coaList.find((x) => x.kode === String(c.kode))?.tipe ?? "—";
   const TIPE_ORDER = ["Aset", "Liabilitas", "Ekuitas", "Pendapatan", "Beban", "Header"];
   const coaGroups = useMemo(() => {
@@ -1679,10 +1710,7 @@ export default function Finance() {
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-steel-100">
-                      {sortRows(invoices, arSort, (inv, k) =>
-                        k === "id" ? String(inv.id) : k === "kode" ? String(inv.kodePembantu ?? inv.client ?? "") : k === "project" ? String(inv.project ?? "") :
-                        k === "openAwal" ? num(inv.openAwal) : k === "amount" ? num(inv.amount) : k === "due" ? String(inv.due ?? "") :
-                        k === "age" ? ageDays(inv.due, today) : String(inv.status)).map((inv) => {
+                      {arPager.slice(sortedAr).map((inv) => {
                         const age = ageDays(inv.due, today);
                         const dun = dunningOf(inv);
                         const nextDun = DUNNING_NEXT[dun] ?? "Ditagih";
@@ -1756,6 +1784,7 @@ export default function Finance() {
                 </table>
               </div>
                 {invoices.length === 0 && <EmptyState title="Belum ada invoice" subtitle="Buat invoice pertama untuk cabang ini." />}
+                {arPager.bar}
                 <Card className="mt-4 p-4">
                   <CardHeader title="Aging Real per Bucket" subtitle="Dihitung dari jatuh tempo vs hari ini. Hanya invoice non-Lunas/Draft/Dihapusbukukan." />
                   <div className="overflow-x-auto px-5 pb-5">
@@ -1861,10 +1890,7 @@ export default function Finance() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-steel-100">
-                    {sortRows(payables, apSort, (a, k) =>
-                      k === "v" ? String(a.v) : k === "kode" ? String(a.kodePembantu ?? a.v) : k === "po" ? String(a.po) :
-                      k === "vessel" ? String(a.vessel ?? "") : k === "openAwal" ? num(a.openAwal) : k === "amt" ? num(a.amt) :
-                      k === "sisa" ? Math.max(0, num(a.amt) - num(a.pay1) - num(a.pay2)) : k === "due" ? String(a.due ?? "") : String(a.st)).map((a) => (
+                    {apPager.slice(sortedAp).map((a) => (
                       <tr key={a.id} id={notifRowId(String(a.id))} className={modAlert.highlight.has(String(a.id)) ? "notif-hl hover:bg-surface" : "hover:bg-surface"}>
                         <td className="td font-medium text-navy-900 truncate" title={String(a.v)}>{String(a.v)}</td>
                         <td className="td font-mono text-xs text-steel-600 truncate" title={String(a.kodePembantu ?? a.v)}>{String(a.kodePembantu ?? a.v)}</td>
@@ -1904,6 +1930,7 @@ export default function Finance() {
                     ))}
                   </tbody>
                 </table>
+                {apPager.bar}
               </div>
               <Card>
                 <CardHeader title="Arus Kas Bulanan" subtitle="Live dari pelunasan (milyar Rupiah) — kosong hingga ada invoice/hutang dilunasi" />
@@ -2133,10 +2160,7 @@ export default function Finance() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-steel-100">
-                    {sortRows(filteredInvoices, invSort, (inv, k) =>
-                      k === "tipe" ? String(inv.billingType ?? inv.paymentTerm ?? "") : k === "lines" ? (Array.isArray(inv.lines) ? inv.lines.length : 1) :
-                      k === "retensi" ? num(inv.retentionAmt) : k === "efaktur" ? String(inv.nsfp ?? inv.noFaktur ?? "") :
-                      k === "amount" ? num(inv.amount) : k === "status" ? String(inv.status) : String(inv.id)).map((inv) => (
+                    {invPager.slice(sortedInv).map((inv) => (
                       <tr key={inv.id} id={notifRowId(String(inv.id))} className={modAlert.highlight.has(String(inv.id)) ? "notif-hl hover:bg-surface" : "hover:bg-surface"}>
                         <td className="td font-mono text-xs font-semibold text-navy-900">{inv.id}<span className="block font-sans text-[11px] font-normal text-steel-500">{fmtTanggal(String(inv.due ?? ""))}</span></td>
                         <td className="td text-xs text-steel-600">{String(inv.billingType ?? inv.paymentTerm ?? "-")}{inv.serviceRef ? ` · ${inv.serviceRef}` : ""}</td>
@@ -2155,6 +2179,7 @@ export default function Finance() {
                     ))}
                   </tbody>
                 </table>
+                {invPager.bar}
               </div>
             </div>
           )}
@@ -2613,10 +2638,7 @@ export default function Finance() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-steel-100">
-                    {sortRows(manJournals, juSort, (j, k) =>
-                      k === "kode" ? String(j.kodePembantu ?? "") : k === "dok" ? String(j.dokumen ?? "") : k === "uraian" ? String(j.uraian ?? "") :
-                      k === "db" ? String(j.db ?? "") : k === "kr" ? String(j.kr ?? "") : k === "amount" ? num(j.amount) :
-                      k === "sumber" ? String(j.sumber ?? "") : k === "status" ? String(j.status ?? "") : String(j.date ?? "")).map((j) => (
+                    {juPager.slice(sortedJu).map((j) => (
                       <tr key={String(j.id)} className="hover:bg-surface">
                         <td className="td text-xs text-steel-600">{fmtTanggal(String(j.date ?? ""))}</td>
                         <td className="td font-mono text-xs text-steel-600">{String(j.kodePembantu || "—")}</td>
@@ -2641,6 +2663,7 @@ export default function Finance() {
                     )}
                   </tbody>
                 </table>
+                {juPager.bar}
               </div>
               <CardHeader title="Jurnal Ringkas (Derivasi)" subtitle="Dihitung dari invoice Lunas, hapus buku, payable Lunas, dan payroll Dibayar. Total debit selalu sama dengan total kredit." />
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">

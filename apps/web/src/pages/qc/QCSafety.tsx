@@ -1,7 +1,7 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Plus, ShieldCheck, AlertTriangle, Siren, Award, Send } from "lucide-react";
 import { ComposedChart, Line, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
-import { Card, CardHeader, PageHeader, Badge, KpiCard, Tabs, StatusBadge, Donut, ChartTooltip, Modal, Field, FormGrid, SortTh, toggleSort, sortRows, toast } from "../../components/ui";
+import { Card, CardHeader, PageHeader, Badge, KpiCard, Tabs, StatusBadge, Donut, ChartTooltip, Modal, Field, FormGrid, SortTh, toggleSort, sortRows, usePager, toast } from "../../components/ui";
 import type { SortState } from "../../components/ui";
 import { useStore, type StoreItem } from "../../data/store";
 import { inspectionTrend, ncrTrend, incidentTrend, hseTrend } from "../../data";
@@ -110,6 +110,14 @@ export default function QCSafety() {
   const qualityStaff = data.employees.filter((e) => e.dept === "Quality");
   const [tab, setTab] = useState("Inspeksi (ITP)");
   const [sort, setSort] = useState<SortState>({ key: null, dir: "asc" });
+  const sortedInsp = useMemo(() => sortRows(inspections, sort, (i, key) =>
+    key === "inspeksi" ? String(i.id ?? "") : key === "proyek" ? String(i.project ?? "") : key === "titik" ? String(i.point ?? "") : key === "itp" ? String(i.itp ?? "") : key === "hold" ? String(i.holdType ?? "") : key === "nde" ? String(i.nde ?? "") : key === "sampel" ? Number(i.sampleSize ?? 0) : key === "inspector" ? String(i.inspector ?? "") : key === "tanggal" ? String(i.date ?? "") : String(i.status ?? "")
+  ), [inspections, sort]);
+  const inspPager = usePager(inspections.length);
+  useEffect(() => {
+    inspPager.reset();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tab]);
 
   const [showInsp, setShowInsp] = useState(false);
   const [inspForm, setInspForm] = useState({ project: "", point: "", status: "Terjadwal", date: todayISO(), holdType: "Witness", nde: "Tidak", ndeMethod: "UT", inspector: "", sampleSize: "", defectsAllowed: "0", defectsFound: "0", calTool: "", branch: "" });
@@ -656,9 +664,7 @@ export default function QCSafety() {
                     <tr><SortTh label="Inspeksi" sortKey="inspeksi" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label="Proyek" sortKey="proyek" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label="Titik Inspeksi" sortKey="titik" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label="ITP" sortKey="itp" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label="Hold / Witness" sortKey="hold" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label="NDE" sortKey="nde" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label="Sampel (AQL)" sortKey="sampel" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label="Inspector" sortKey="inspector" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label="Tanggal" sortKey="tanggal" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label="Hasil" sortKey="hasil" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><th className="th">Aksi</th></tr>
                   </thead>
                   <tbody className="divide-y divide-steel-100">
-                    {sortRows(inspections, sort, (i, key) =>
-                      key === "inspeksi" ? String(i.id ?? "") : key === "proyek" ? String(i.project ?? "") : key === "titik" ? String(i.point ?? "") : key === "itp" ? String(i.itp ?? "") : key === "hold" ? String(i.holdType ?? "") : key === "nde" ? String(i.nde ?? "") : key === "sampel" ? Number(i.sampleSize ?? 0) : key === "inspector" ? String(i.inspector ?? "") : key === "tanggal" ? String(i.date ?? "") : String(i.status ?? "")
-                    ).map((i) => (
+                    {inspPager.slice(sortedInsp).map((i) => (
                       <tr key={i.id} className="hover:bg-surface">
                         <td className="td font-mono font-medium text-navy-900">{i.id}</td>
                         <td className="td text-steel-600 font-mono text-xs">{i.project}</td>
@@ -677,6 +683,7 @@ export default function QCSafety() {
                     ))}
                   </tbody>
                 </table>
+                {inspPager.bar}
               </div>
             </div>
           )}

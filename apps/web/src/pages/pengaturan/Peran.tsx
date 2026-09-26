@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Download, KeyRound, Plus, RefreshCw } from "lucide-react";
-import { Badge, Card, ConfirmModal, Field, KpiCard, Modal, PageHeader, SortTh, sortRows, toast, toggleSort } from "../../components/ui";
+import { Badge, Card, ConfirmModal, Field, KpiCard, Modal, PageHeader, SortTh, sortRows, toast, toggleSort, usePager } from "../../components/ui";
 import type { SortState } from "../../components/ui";
 import { canSetTarget, useAuth } from "../../auth/auth";
 import { useStore } from "../../data/store";
@@ -407,6 +407,19 @@ export default function Peran() {
     return { yes, total, withAccess, pct: total > 0 ? Math.round((yes / total) * 100) : 0 };
   }, [role]);
 
+  const userPager = usePager(users.length);
+  const sortedModules = useMemo(() => sortRows(MODULES, sort, (row, k) => {
+    const m = String(row);
+    if (k === "modul") return m;
+    return granted(role, m, String(k) as RoleAction) ? "Ya" : "";
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }), [sort, role]);
+  const matrixPager = usePager(MODULES.length);
+  useEffect(() => {
+    matrixPager.reset();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [role]);
+
   const doExport = () => {
     const head = ["Peran", "Modul", ...ACTIONS];
     const body: string[][] = [];
@@ -489,7 +502,7 @@ export default function Peran() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-steel-50">
-                {users.map((u) => (
+                {userPager.slice(users).map((u) => (
                   <tr key={u.id} className="hover:bg-surface">
                     <td className="px-3 py-2 font-semibold text-navy-900">{u.username}</td>
                     <td className="px-3 py-2">{u.name}</td>
@@ -534,6 +547,7 @@ export default function Peran() {
                 ))}
               </tbody>
             </table>
+            {userPager.bar}
           </div>
         )}
       </Card>
@@ -626,11 +640,7 @@ export default function Peran() {
               </tr>
             </thead>
             <tbody className="divide-y divide-steel-50">
-              {sortRows(MODULES, sort, (row, k) => {
-                const m = String(row);
-                if (k === "modul") return m;
-                return granted(role, m, String(k) as RoleAction) ? "Ya" : "";
-              }).map((m) => (
+              {matrixPager.slice(sortedModules).map((m) => (
                 <tr key={m} className="hover:bg-surface">
                   <td className="sticky left-0 bg-white px-5 py-2.5 font-semibold text-navy-900">{m}</td>
                   {ACTIONS.map((a) => {
@@ -645,6 +655,7 @@ export default function Peran() {
               ))}
             </tbody>
           </table>
+          {matrixPager.bar}
         </div>
         <p className="border-t border-steel-100 px-5 py-3 text-xs text-steel-400">
           Sel kosong berarti peran tidak memiliki akses. Backend menegakkan tulis per koleksi (lihat `services/api/src/rbac.ts`); matriks ini acuan bisnisnya.

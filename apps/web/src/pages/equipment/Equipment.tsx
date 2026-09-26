@@ -1,7 +1,7 @@
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Plus, Cpu, Wrench, AlertTriangle, Gauge, CheckCircle2, Download } from "lucide-react";
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
-import { Card, CardHeader, PageHeader, Badge, KpiCard, Tabs, ProgressBar, ChartTooltip, RadialGauge, Modal, Field, FormGrid, EmptyState, ConfirmModal, StatusBadge, toast, SortTh, toggleSort, sortRows } from "../../components/ui";
+import { Card, CardHeader, PageHeader, Badge, KpiCard, Tabs, ProgressBar, ChartTooltip, RadialGauge, Modal, Field, FormGrid, EmptyState, ConfirmModal, StatusBadge, toast, SortTh, toggleSort, sortRows, usePager } from "../../components/ui";
 import type { SortState } from "../../components/ui";
 import { useStore } from "../../data/store";
 import type { StoreItem } from "../../data/store";
@@ -171,6 +171,21 @@ export default function EquipmentPage() {
   });
   const costRows = Array.from(costByProject.entries());
   const totalCost = costRows.reduce((s, [, v]) => s + v.cost, 0);
+  const regSorted = useMemo(() => sortRows(equipment, sort, (e, k) => {
+    if (k === "utilisasi") return Number(e.util || 0);
+    if (k === "jam") return Number(e.lastHours || 0);
+    if (k === "tarif") return Number(e.rate || 0);
+    if (k === "nilaibuku") return Number(depreciationOf(e)?.book ?? -1);
+    if (k === "kategori") return String(e.category ?? "");
+    if (k === "model") return String(e.model ?? "");
+    if (k === "status") return String(e.status ?? "");
+    return String(e.name ?? "");
+  }), [equipment, sort]);
+  const regPager = usePager(equipment.length);
+  useEffect(() => {
+    regPager.reset();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tab]);
 
   const saveAdd = async () => {
     if (!form.name.trim() || !form.code.trim()) { toast("Nama & kode wajib diisi", "info"); return; }
@@ -459,16 +474,7 @@ export default function EquipmentPage() {
                   <tr><SortTh label="Equipment" sortKey="equipment" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label="Kategori" sortKey="kategori" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label="Model" sortKey="model" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label="Status" sortKey="status" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label="Utilisasi" sortKey="utilisasi" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label="Jam Pakai" sortKey="jam" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label="Tarif / Jam" sortKey="tarif" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label="Nilai Buku" sortKey="nilaibuku" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><th className="th">Aksi</th></tr>
                 </thead>
                 <tbody className="divide-y divide-steel-100">
-                  {sortRows(equipment, sort, (e, k) => {
-                    if (k === "utilisasi") return Number(e.util || 0);
-                    if (k === "jam") return Number(e.lastHours || 0);
-                    if (k === "tarif") return Number(e.rate || 0);
-                    if (k === "nilaibuku") return Number(depreciationOf(e)?.book ?? -1);
-                    if (k === "kategori") return String(e.category ?? "");
-                    if (k === "model") return String(e.model ?? "");
-                    if (k === "status") return String(e.status ?? "");
-                    return String(e.name ?? "");
-                  }).map((e) => {
+                  {regPager.slice(regSorted).map((e) => {
                     const expired = isCalExpired(e.id, calibrations, today);
                     return (
                     <tr key={e.id} id={notifRowId(String(e.id))} className={modAlert.highlight.has(String(e.id)) ? "notif-hl hover:bg-surface" : "hover:bg-surface"}>
@@ -527,6 +533,7 @@ export default function EquipmentPage() {
                   })}
                 </tbody>
               </table>
+              {regPager.bar}
             </div>
             </div>
           )}

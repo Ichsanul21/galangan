@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { Award, BadgeCheck, Network, Plus, Search, Users } from "lucide-react";
 import {
@@ -19,6 +19,7 @@ import {
   sortRows,
   toast,
   toggleSort,
+  usePager,
 } from "../../components/ui";
 import type { SortState } from "../../components/ui";
 import { useStore } from "../../data/store";
@@ -241,6 +242,25 @@ export default function HR() {
       }),
     [scopedEmployees, dept, q, contractSoonOnly],
   );
+  const sortedEmps = useMemo(() => sortRows(list, sort, (row, k) => {
+    const e = row as StoreItem;
+    switch (k) {
+      case "name": return String(e.name ?? "");
+      case "nik": return empNik(e);
+      case "role": return String(e.role ?? "");
+      case "branch": return String(e.branch ?? "");
+      case "contract": return String(e.contractEnd ?? "");
+      case "saldo": return Number(saldoCuti(String(e.id)));
+      case "status": return String(e.status ?? "");
+      default: return "";
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }), [list, sort]);
+  const empPager = usePager(list.length);
+  useEffect(() => {
+    empPager.reset();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dept, q, contractSoonOnly, branch, tab]);
 
   const deptCounts = useMemo(() => {
     const m = new Map<string, number>();
@@ -845,19 +865,7 @@ export default function HR() {
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-steel-100">
-                        {sortRows(list, sort, (row, k) => {
-                          const e = row as StoreItem;
-                          switch (k) {
-                            case "name": return String(e.name ?? "");
-                            case "nik": return empNik(e);
-                            case "role": return String(e.role ?? "");
-                            case "branch": return String(e.branch ?? "");
-                            case "contract": return String(e.contractEnd ?? "");
-                            case "saldo": return Number(saldoCuti(String(e.id)));
-                            case "status": return String(e.status ?? "");
-                            default: return "";
-                          }
-                        }).map((e) => (
+                        {empPager.slice(sortedEmps).map((e) => (
                           <tr key={e.id} className="hover:bg-surface">
                             <td className="td">
                               <p className="font-medium text-navy-900">{e.name}</p>
@@ -895,6 +903,7 @@ export default function HR() {
                       </tbody>
                     </table>
                     {list.length === 0 && <EmptyState title="Tidak ada karyawan yang cocok" subtitle="Ubah kata kunci atau filter cabang." />}
+                    {empPager.bar}
                   </div>
                 </Card>
 

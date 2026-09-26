@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Plus, Search, Anchor, Wallet, TrendingUp, Clock, ChevronLeft, ChevronRight } from "lucide-react";
 import {
@@ -15,6 +15,7 @@ import {
   SortTh,
   toggleSort,
   sortRows,
+  usePager,
 } from "../../components/ui";
 import type { SortState } from "../../components/ui";
 import { useStore } from "../../data/store";
@@ -98,6 +99,12 @@ export default function Projects() {
   const inProgress = list.filter((p) => p.status !== "Selesai").length;
   const delayed = list.filter((p) => p.status === "Terlambat").length;
   const avgProgress = list.length ? Math.round(list.reduce((s, p) => s + Number(p.progress || 0), 0) / list.length) : 0;
+  const sorted = useMemo(() => sortRows(list, sort, (p: StoreItem, k) => k === "budget" ? Number(p.budget) : k === "actual" ? Number(p.actual) : k === "progress" ? Number(p.progress) : k === "tahap" ? String(tahapOf(p)) : String((p as StoreItem)[k] ?? "")), [list, sort]);
+  const pager = usePager(list.length);
+  useEffect(() => {
+    pager.reset();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filter, statusFilter, tahapFilter, branchFilter, prioritasFilter, pmFilter, q]);
 
   const setF = (k: string, v: string) => setForm((f) => ({ ...f, [k]: v }));
   const vesselExists = data.vessels.some((v) => v.name.toLowerCase() === form.vessel.trim().toLowerCase());
@@ -356,7 +363,7 @@ export default function Projects() {
               </tr>
             </thead>
             <tbody className="divide-y divide-steel-100">
-              {sortRows(list, sort, (p: StoreItem, k) => k === "budget" ? Number(p.budget) : k === "actual" ? Number(p.actual) : k === "progress" ? Number(p.progress) : k === "tahap" ? String(tahapOf(p)) : String((p as StoreItem)[k] ?? "")).map((p) => {
+              {pager.slice(sorted).map((p) => {
                 const tahapIdx = TAHAP.indexOf(tahapOf(p));
                 return (
                   <tr
@@ -420,6 +427,7 @@ export default function Projects() {
             </tbody>
           </table>
           {list.length === 0 && <p className="py-8 text-center text-sm text-steel-400">Tidak ada proyek yang cocok.</p>}
+          {pager.bar}
         </div>
       </Card>
 

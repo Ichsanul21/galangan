@@ -1,7 +1,7 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { Plus, Send, Users2, Star, Handshake, ArrowRight } from "lucide-react";
-import { Card, CardHeader, PageHeader, Badge, KpiCard, Tabs, Donut, Modal, Field, FormGrid, StatusBadge, EmptyState, SortTh, toggleSort, sortRows, toast } from "../../components/ui";
+import { Card, CardHeader, PageHeader, Badge, KpiCard, Tabs, Donut, Modal, Field, FormGrid, StatusBadge, EmptyState, SortTh, toggleSort, sortRows, toast, usePager } from "../../components/ui";
 import ClientModal from "../../components/ClientModal";
 import type { SortState } from "../../components/ui";
 import { useStore } from "../../data/store";
@@ -321,6 +321,18 @@ export default function CRM() {
     if (!oldOnly) return true;
     return (umurHari(String(q.date ?? "")) ?? 0) > 30;
   });
+  const sortedContracts = useMemo(() => sortRows(contracts, sort, (k, key) =>
+    key === "kontrak" ? String(k.id ?? "") : key === "quotation" ? String(k.quotationId ?? "") : key === "nilai" ? Number(k.value ?? 0) : key === "sign" ? String(k.signedAt ?? "") : String(k.status ?? "")
+  ), [contracts, sort]);
+  const quotPager = usePager(penawaranList.length);
+  const reqPager = usePager(requests.length);
+  const contractPager = usePager(contracts.length);
+  useEffect(() => {
+    quotPager.reset();
+    reqPager.reset();
+    contractPager.reset();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [oldOnly, tab]);
 
   const openConvert = (q: StoreItem) => {
     setHoChecks([false, false, false, false]);
@@ -500,7 +512,7 @@ export default function CRM() {
                 Hanya lead tua &gt;30 hari ({oldLeads.length})
               </label>
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-              {penawaranList.map((q) => (
+              {quotPager.slice(penawaranList).map((q) => (
                 <Card key={q.id} className="p-4">
                   <div className="flex justify-between gap-2">
                     <div className="min-w-0">
@@ -531,6 +543,7 @@ export default function CRM() {
               ))}
               {penawaranList.length === 0 && <EmptyState title="Belum ada penawaran" subtitle={oldOnly ? "Tidak ada lead tua >30 hari." : "Buat penawaran baru untuk memulai pipeline."} />}
             </div>
+            {quotPager.bar}
             </div>
           )}
 
@@ -541,7 +554,7 @@ export default function CRM() {
                 <button className="btn-secondary text-xs" onClick={() => setShowReq(true)}><Plus className="h-3.5 w-3.5" /> Request Baru</button>
               </div>
               <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                {requests.map((r) => (
+                {reqPager.slice(requests).map((r) => (
                   <Card key={r.id} id={notifRowId(String(r.id))} className={`p-4 ${modAlert.highlight.has(String(r.id)) ? "notif-hl" : ""}`}>
                     <div className="flex justify-between gap-2">
                       <div className="min-w-0">
@@ -568,6 +581,7 @@ export default function CRM() {
                 ))}
                 {requests.length === 0 && <EmptyState title="Belum ada request" subtitle="Catat repair request / technical assessment pertama." />}
               </div>
+              {reqPager.bar}
             </div>
           )}
 
@@ -631,9 +645,7 @@ export default function CRM() {
                         <tr><SortTh label="Kontrak" sortKey="kontrak" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label="Quotation" sortKey="quotation" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label="Nilai" sortKey="nilai" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label="Sign" sortKey="sign" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label="Status" sortKey="status" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /></tr>
                       </thead>
                       <tbody className="divide-y divide-steel-100">
-                        {sortRows(contracts, sort, (k, key) =>
-                          key === "kontrak" ? String(k.id ?? "") : key === "quotation" ? String(k.quotationId ?? "") : key === "nilai" ? Number(k.value ?? 0) : key === "sign" ? String(k.signedAt ?? "") : String(k.status ?? "")
-                        ).map((k) => (
+                        {contractPager.slice(sortedContracts).map((k) => (
                           <tr key={k.id} className="hover:bg-surface">
                             <td className="td font-mono text-xs font-semibold text-navy-900">{k.id}<span className="block font-sans text-[11px] font-normal text-steel-500">{String(k.client ?? "")}</span></td>
                             <td className="td font-mono text-xs"><Link to={`/crm/quotation/${k.quotationId}`} className="text-ocean-600">{String(k.quotationId)}</Link>{k.projectId ? <Link to={`/proyek/${k.projectId}`} className="block text-[11px] text-teal-600">{String(k.projectId)}</Link> : null}</td>
@@ -644,6 +656,7 @@ export default function CRM() {
                         ))}
                       </tbody>
                     </table>
+                    {contractPager.bar}
                   </div>
                 )}
               </Card>
