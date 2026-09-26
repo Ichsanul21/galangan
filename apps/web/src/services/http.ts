@@ -131,7 +131,9 @@ export async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> 
     res = await fetch(`${BASE}${path}`, {
       ...init,
       headers: {
-        "Content-Type": "application/json",
+        // Tanpa body (heartbeat/logout) jangan kirim Content-Type JSON —
+        // Fastify menolak body JSON kosong dengan 400.
+        ...(init?.body != null ? { "Content-Type": "application/json" } : {}),
         ...(jwt ? { Authorization: `Bearer ${jwt}` } : {}),
         ...((init?.headers as Record<string, string> | undefined) ?? {}),
       },

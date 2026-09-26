@@ -51,6 +51,10 @@ export function accessFor(role: unknown): AccessProfile {
 }
 
 export function canWriteCollection(role: unknown, collection: string): boolean {
+  // Jejak audit: semua peran login boleh mencatat aktivitas (append-only
+  // dari sisi FE). Tanpa ini antrean pendingSync activities 403 selamanya
+  // untuk peran operasional.
+  if (collection === "activities") return true;
   const a = accessFor(role);
   if (a.writeCollections === "*") return true;
   return a.writeCollections.includes(collection);
