@@ -30,7 +30,7 @@ import {
   Tooltip,
   ResponsiveContainer,
 } from "recharts";
-import { Card, CardHeader, PageHeader, Badge, KpiCard, Tabs, ChartTooltip, Modal, Field, FormGrid, toast, EmptyState, ProgressBar, SortTh, toggleSort, sortRows, usePager } from "../../components/ui";
+import { Card, CardHeader, PageHeader, Badge, KpiCard, Tabs, ChartTooltip, Modal, Field, FormGrid, toast, EmptyState, ProgressBar, SortTh, toggleSort, sortRows, usePager, useDebouncedValue } from "../../components/ui";
 import type { SortState } from "../../components/ui";
 import { useStore, type StoreItem } from "../../data/store";
 import { isBackendConfigured } from "../../services/http";
@@ -376,18 +376,32 @@ export default function Inventory() {
   const [pickProject, setPickProject] = useState("");
   const [pickSel, setPickSel] = useState<string[]>([]);
 
-  const abc = abcMap(inventory);
+  const dq = useDebouncedValue(q);
+  const abc = useMemo(() => abcMap(inventory), [inventory]);
 
-  const list = inventory.filter((i) => {
-    const matchQ = `${i.name} ${i.sku} ${binOf(i)}`.toLowerCase().includes(q.toLowerCase());
+  const list = useMemo(() => inventory.filter((i) => {
+    const matchQ = `${i.name} ${i.sku} ${binOf(i)}`.toLowerCase().includes(dq.toLowerCase());
     const matchCat = cat === "Semua" || i.category === cat;
     const matchWh = wh === "Semua" || i.warehouse === wh;
     const matchAbc = abcF === "Semua" || abc[i.id] === abcF;
     return matchQ && matchCat && matchWh && matchAbc;
-  });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }), [inventory, dq, cat, wh, abcF, abc]);
+  const sorted = useMemo(() => sortRows(list, sort, (i, k) => {
+    if (k === "qty") return Number(i.stock || 0);
+    if (k === "volume") return Number(i.volume ?? 0);
+    if (k === "total") return Number(i.stock || 0) * effCost(i);
+    if (k === "kategori") return String(i.category ?? "");
+    if (k === "abc") return String(abc[i.id] ?? "");
+    if (k === "status") return Number(i.stock) <= Number(i.minStock) ? "Menipis" : "Aman";
+    if (k === "rak") return String(rackText(i));
+    if (k === "bin") return binOf(i);
+    return String(i.name ?? "");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }), [list, sort, abc]);
   const pager = usePager(list.length);
   const movPager = usePager(movements.length);
-  const movSorted = sortRows(movements, sort3, (m, k) => {
+  const movSorted = useMemo(() => sortRows(movements, sort3, (m, k) => {
     if (k === "jumlah") return Number(m.qty || 0);
     if (k === "total") return Number(m.total || 0);
     if (k === "item") return String(m.item ?? "");
@@ -396,16 +410,42 @@ export default function Inventory() {
     if (k === "info") return String(`${m.supplier ?? ""} ${m.purpose ?? ""} ${m.pic ?? ""}`);
     if (k === "tanggal") return String(m.date ?? "");
     return String(m.id ?? "");
-  });
+  }), [movements, sort3]);
   useEffect(() => {
     pager.reset();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [q, cat, wh, abcF]);
+  }, [dq, cat, wh, abcF]);
 
-  const lowStock = inventory.filter((i) => i.stock <= i.minStock);
-  const categories = ["Semua", ...Array.from(new Set(inventory.map((i) => i.category)))];
-  const totalValue = inventory.reduce((s, i) => s + Number(i.stock || 0) * effCost(i), 0);
-  const warehouses = Array.from(new Set(inventory.map((i) => i.warehouse)));
+  // Indeks tanggal pergerakan per barang: 1x scan O(movements), lookup O(1).
+  // Sebelumnya tiap barang memindai + sort seluruh movements tiap render.
+  const moveIdx = useMemo(() => {
+    const out = new Map<string, string>();
+    const inn = new Map<string, string>();
+    for (const m of movements) {
+      const d = String(m.date ?? "");
+      if (!d) continue;
+      const isOut = m.type === "Pengeluaran";
+      const isIn = m.type === "Penerimaan" || m.tone === "in";
+      if (!isOut && !isIn) continue;
+      for (const k of [String(m.itemId ?? ""), String(m.item ?? "")]) {
+        if (!k) continue;
+        if (isOut && (!(out.has(k)) || d > (out.get(k) as string))) out.set(k, d);
+        if (isIn && (!(inn.has(k)) || d > (inn.get(k) as string))) inn.set(k, d);
+      }
+    }
+    return { out, inn };
+  }, [movements]);
+
+  const lastOutOf = (it: StoreItem): string | null =>
+    moveIdx.out.get(String(it.id)) ?? moveIdx.out.get(String(it.name)) ?? null;
+
+  const lastInOf = (it: StoreItem): string | null =>
+    moveIdx.inn.get(String(it.id)) ?? moveIdx.inn.get(String(it.name)) ?? null;
+
+  const lowStock = useMemo(() => inventory.filter((i) => i.stock <= i.minStock), [inventory]);
+  const categories = useMemo(() => ["Semua", ...Array.from(new Set(inventory.map((i) => i.category)))], [inventory]);
+  const totalValue = useMemo(() => inventory.reduce((s, i) => s + Number(i.stock || 0) * effCost(i), 0), [inventory]);
+  const warehouses = useMemo(() => Array.from(new Set(inventory.map((i) => i.warehouse))), [inventory]);
 
   const bomRows = BOM_NEEDS.map((b) => {
     const item = inventory.find((i) => i.name.toLowerCase().includes(b.key.toLowerCase()));
@@ -413,43 +453,29 @@ export default function Inventory() {
     return { ...b, item, stock, ok: stock >= b.need };
   });
 
-  const lastOutOf = (it: StoreItem): string | null => {
-    const outs = movements
-      .filter((m) => (m.itemId === it.id || m.item === it.name) && m.type === "Pengeluaran")
-      .sort((a, b) => String(b.date).localeCompare(String(a.date)));
-    return outs.length > 0 ? String(outs[0].date) : null;
-  };
-
-  const lastInOf = (it: StoreItem): string | null => {
-    const ins = movements
-      .filter((m) => (m.itemId === it.id || m.item === it.name) && (m.type === "Penerimaan" || m.tone === "in"))
-      .sort((a, b) => String(b.date).localeCompare(String(a.date)));
-    return ins.length > 0 ? String(ins[0].date) : null;
-  };
-
   const auditOf = (it: StoreItem) =>
     movements
       .filter((m) => m.itemId === it.id || m.item === it.name)
       .sort((a, b) => String(b.date).localeCompare(String(a.date)))
       .slice(0, 5);
 
-  const slowItems = inventory.filter((i) => {
+  const slowItems = useMemo(() => inventory.filter((i) => {
     const d = lastOutOf(i);
     if (!d) return false;
     const days = daysSince(d);
     return days > 60 && days <= 180;
-  });
-  const deadItems = inventory.filter((i) => {
+  }), [inventory, moveIdx]);
+  const deadItems = useMemo(() => inventory.filter((i) => {
     const d = lastOutOf(i);
     if (!d) return true;
     return daysSince(d) > 180;
-  });
+  }), [inventory, moveIdx]);
 
-  const agingRows = inventory.map((i) => {
+  const agingRows = useMemo(() => inventory.map((i) => {
     const lastIn = lastInOf(i);
     const age = lastIn ? daysSince(lastIn) : 9999;
     return { item: i, lastIn, age, bucket: lastIn ? agingBucket(age) : "Belum ada GR" };
-  });
+  }), [inventory, moveIdx]);
 
   const activeProjects = projects.filter((p) => String(p.status) !== "Selesai");
   const forecastRows = activeProjects.flatMap((p) =>
@@ -1164,17 +1190,7 @@ export default function Inventory() {
                     <tr><SortTh label="Material" sortKey="material" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label="Kategori" sortKey="kategori" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label="Quantity" sortKey="qty" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label="Volume" sortKey="volume" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label="Total Nilai" sortKey="total" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label="ABC" sortKey="abc" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label="Status" sortKey="status" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label="Rak" sortKey="rak" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label="Bin" sortKey="bin" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><th className="th">Aksi</th></tr>
                   </thead>
                   <tbody className="divide-y divide-steel-100">
-                    {pager.slice(sortRows(list, sort, (i, k) => {
-                      if (k === "qty") return Number(i.stock || 0);
-                      if (k === "volume") return Number(i.volume ?? 0);
-                      if (k === "total") return Number(i.stock || 0) * effCost(i);
-                      if (k === "kategori") return String(i.category ?? "");
-                      if (k === "abc") return String(abc[i.id] ?? "");
-                      if (k === "status") return Number(i.stock) <= Number(i.minStock) ? "Menipis" : "Aman";
-                      if (k === "rak") return String(rackText(i));
-                      if (k === "bin") return binOf(i);
-                      return String(i.name ?? "");
-                    }).map((i) => {
+                    {pager.slice(sorted).map((i) => {
                       const low = i.stock <= i.minStock;
                       const reserved = reservedQty(i);
                       const conv = convOf(i);
@@ -1211,7 +1227,7 @@ export default function Inventory() {
                           </td>
                         </tr>
                       );
-                    }))}
+                    })}
                   </tbody>
                 </table>
                 {list.length === 0 && <EmptyState title="Tidak ada material yang cocok" subtitle="Ubah kata kunci atau filter gudang / ABC." />}

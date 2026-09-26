@@ -139,7 +139,7 @@ export function remoteRepository(resource: string): Repository {
   const base = `/api/${resource}`;
   return {
     async list() {
-      const limit = 1000;
+      const limit = 5000;
       let offset = 0;
       const all: StoreItem[] = [];
       for (;;) {

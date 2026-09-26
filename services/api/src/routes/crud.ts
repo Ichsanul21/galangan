@@ -117,7 +117,9 @@ function newId(table: string): string {
 function parseLimit(raw: unknown): number {
   const n = typeof raw === "string" ? Number.parseInt(raw, 10) : NaN;
   if (Number.isNaN(n)) return 200;
-  return Math.min(1000, Math.max(1, n));
+  // Cap 5000: sync awal FE menarik tabel besar (movements ±19k) — halaman
+  // 1000 berarti 19 round-trip; 5000 memangkas jadi 4x tanpa beban berarti.
+  return Math.min(5000, Math.max(1, n));
 }
 
 function parseOffset(raw: unknown): number {

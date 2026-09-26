@@ -1021,6 +1021,15 @@ export function usePager(total: number, defaultSize = 100): {
 
 /* ============ T O A S T ============ */
 
+export function useDebouncedValue<T>(value: T, delay = 200): T {
+  const [v, setV] = useState(value);
+  useEffect(() => {
+    const id = window.setTimeout(() => setV(value), delay);
+    return () => window.clearTimeout(id);
+  }, [value, delay]);
+  return v;
+}
+
 export function toast(message: string, tone: "success" | "info" = "success") {
   window.dispatchEvent(new CustomEvent("isms:toast", { detail: { message, tone } }));
 }
