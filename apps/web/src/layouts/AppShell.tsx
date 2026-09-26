@@ -36,8 +36,8 @@ import { useStore } from "../data/store";
 import { Badge, Modal, Field, Toaster, toast } from "../components/ui";
 import { apiFetch } from "../services/http";
 import { computeAlerts } from "../utils/alerts";
-import { loadNotifRead, saveNotifRead } from "../utils/notifRead";
-import { type ModuleAlertKey } from "../utils/moduleAlerts";
+import { loadNotifRead, saveNotifRead, loadModSeen } from "../utils/notifRead";
+import { buildModuleAlertItems, type ModuleAlertKey } from "../utils/moduleAlerts";
 import { useT } from "../i18n/LanguageContext";
 import { remoteRepository } from "../services/repositories";
 import { getJwt, isBackendConfigured } from "../services/http";
@@ -102,8 +102,28 @@ export default function AppShell() {
     setReadTick((t) => t + 1);
   };
 
-  /* Badge sidebar DIHAPUS — banner + highlight per halaman modul murni
-     ikut kondisi (tanpa read-state). */
+  /* Badge sidebar "tampil sekali": jumlah item kondisi yang belum seen.
+     Modul dibuka (jalur mana pun) → hook useModuleAlert mencatat seen +
+     event isms:modseen → hitung ulang. Tanpa cap 500 (bug lama).
+     Banner + highlight di halaman tetap ikut kondisi. */
+  const [seenTick, setSeenTick] = useState(0);
+  useEffect(() => {
+    const onSeen = () => setSeenTick((v) => v + 1);
+    window.addEventListener("isms:modseen", onSeen);
+    return () => window.removeEventListener("isms:modseen", onSeen);
+  }, []);
+  const unreadModuleCount = useMemo(() => {
+    void seenTick;
+    const seen = loadModSeen();
+    const all = buildModuleAlertItems(data);
+    const out = {} as Record<ModuleAlertKey, number>;
+    (Object.keys(all) as ModuleAlertKey[]).forEach((k) => {
+      const s = new Set(seen[k] ?? []);
+      out[k] = all[k].filter((a) => !s.has(a.id)).length;
+    });
+    return out;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [data, seenTick]);
 
   const navGroups: { label: string; items: { to: string; label: string; icon: ComponentType<{ className?: string }>; alertKey?: ModuleAlertKey }[] }[] = [
     {
@@ -288,9 +308,9 @@ export default function AppShell() {
             </p>
             <ul className="space-y-0.5">
               {group.items.map((item) => {
-                // Tanpa badge sidebar (per 2026-09-26): notif hanya banner
-                // + highlight per halaman modul. Link tetap bawa ?alert= agar
+                // Badge sidebar tampil-sekali; link tetap bawa ?alert= agar
                 // banner modul langsung terbuka.
+                const badge = item.alertKey ? (unreadModuleCount[item.alertKey] ?? 0) : 0;
                 const to = item.alertKey ? `${item.to}?alert=${item.alertKey}` : item.to;
                 return (
                 <li key={item.to}>
@@ -311,6 +331,14 @@ export default function AppShell() {
                   >
                     <item.icon className="h-4 w-4 shrink-0" />
                     <span className="truncate" title={item.label}>{item.label}</span>
+                    {badge > 0 ? (
+                      <span
+                        className="ml-auto rounded-full bg-rose-500/90 px-1.5 py-0.5 text-[10px] font-bold leading-none text-white"
+                        title={`${badge} notifikasi baru — hilang setelah modul dibuka`}
+                      >
+                        {badge > 99 ? "99+" : badge}
+                      </span>
+                    ) : null}
                   </NavLink>
                 </li>
                 );

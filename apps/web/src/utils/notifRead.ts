@@ -20,6 +20,45 @@ export function saveNotifRead(ids: Set<string>): void {
   }
 }
 
+/* Seen per modul untuk badge sidebar "tampil sekali": dibuka → hilang.
+// Model TIMPA (bukan tambah): seen[key] = daftar id kondisi saat dibuka.
+// Badge = item kondisi yang id-nya belum ada di seen[key]. Tanpa cap 500
+// (bug lama: saveNotifRead slice(0,500) bikin badge ribuan item tak pernah nol).
+// Terpisah dari KEY bell di atas agar tidak saling mengotori. */
+
+const MOD_KEY = "isms.modSeen";
+
+export function loadModSeen(): Record<string, string[]> {
+  try {
+    const raw = localStorage.getItem(MOD_KEY);
+    const obj = raw ? (JSON.parse(raw) as unknown) : {};
+    if (obj && typeof obj === "object" && !Array.isArray(obj)) {
+      const out: Record<string, string[]> = {};
+      for (const [k, v] of Object.entries(obj as Record<string, unknown>)) {
+        if (Array.isArray(v)) out[k] = v.map(String);
+      }
+      return out;
+    }
+  } catch {
+    /* abaikan */
+  }
+  return {};
+}
+
+export function saveModSeen(key: string, ids: string[]): void {
+  try {
+    const all = loadModSeen();
+    all[key] = ids;
+    localStorage.setItem(MOD_KEY, JSON.stringify(all));
+  } catch {
+    /* abaikan */
+  }
+}
+
+export function notifyModSeen(): void {
+  window.dispatchEvent(new CustomEvent("isms:modseen"));
+}
+
 /* Ubah label waktu relatif-ID ("baru saja", "N menit/jam/hari lalu", "kemarin")
    menjadi menit-yang-lalu agar bisa di-sort dan dikelompokkan. */
 export function relMinutes(time: string | null | undefined): number {

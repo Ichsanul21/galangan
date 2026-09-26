@@ -5,11 +5,12 @@
 //   {ma.active && <AlertBannerView items={ma.items} onPick={ma.scrollTo} />}
 //   <tr id={notifRowId(i.id)} className={ma.highlight.has(String(i.id)) ? "notif-hl" : ""}>
 // Class .notif-hl didefinisikan di index.css.
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { Bell, ChevronDown, ChevronUp } from "lucide-react";
 import { useStore } from "../data/store";
 import { useT } from "../i18n/LanguageContext";
+import { loadModSeen, notifyModSeen, saveModSeen } from "../utils/notifRead";
 import { buildModuleAlertItemsFor, type ModuleAlertKey, type ModuleAlertItem } from "../utils/moduleAlerts";
 
 export function notifRowId(id: string): string {
@@ -29,8 +30,21 @@ export function useModuleAlert(key: ModuleAlertKey): {
   const [params] = useSearchParams();
   const active = params.get("alert") === key;
   // Hanya hitung 1 modul (murah) — bukan 13 modul sekaligus.
-  const items = useMemo(() => (active ? buildModuleAlertItemsFor(data, key) : []), [data, key, active]);
+  const items = useMemo(() => buildModuleAlertItemsFor(data, key), [data, key]);
   const highlight = useMemo(() => new Set(items.map((a) => a.rowId)), [items]);
+
+  // Badge sidebar "tampil sekali": modul dibuka (jalur mana pun) → id kondisi
+  // saat ini dicatat sebagai seen (model timpa), badge modul itu nol.
+  // Banner + highlight tetap ikut kondisi, tidak ikut seen.
+  useEffect(() => {
+    const ids = items.map((a) => a.id);
+    const prev = loadModSeen()[key] ?? [];
+    if (prev.length !== ids.length || ids.some((id, i) => prev[i] !== id)) {
+      saveModSeen(key, ids);
+      notifyModSeen();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [key, items]);
 
   const scrollTo = (rowId: string) => {
     document.getElementById(notifRowId(rowId))?.scrollIntoView({ block: "center", behavior: "smooth" });

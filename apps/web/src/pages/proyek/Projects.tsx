@@ -257,9 +257,18 @@ export default function Projects() {
       </div>
 
       <div className="mb-4 flex flex-wrap items-center gap-3">
+        <div className="relative min-w-52 flex-1 sm:max-w-xs">
+          <Search className="absolute left-3 top-2.5 h-4 w-4 text-steel-400" />
+          <input
+            className="input pl-9 w-full"
+            placeholder="Cari kapal / kode proyek..."
+            aria-label="Cari proyek"
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+          />
+        </div>
         <FilterPopover
           activeCount={[
-            q.trim() !== "",
             filter !== "Semua",
             tahapFilter !== "Semua",
             branchFilter !== "Semua",
@@ -267,10 +276,9 @@ export default function Projects() {
             prioritasFilter !== "Semua",
             pmFilter !== "Semua",
           ].filter(Boolean).length}
-          initial={{ q, type: filter, tahap: tahapFilter, branch: branchFilter, status: statusFilter, prioritas: prioritasFilter, pm: pmFilter }}
+          initial={{ type: filter, tahap: tahapFilter, branch: branchFilter, status: statusFilter, prioritas: prioritasFilter, pm: pmFilter }}
           onReset={resetFilters}
           onApply={(d) => {
-            setQ(d.q);
             setFilter(d.type);
             setTahapFilter(d.tahap);
             setBranchFilter(d.branch);
@@ -281,16 +289,6 @@ export default function Projects() {
         >
           {(draft, setDraft) => (
             <div className="space-y-3">
-              <div className="relative">
-                <Search className="absolute left-3 top-2.5 h-4 w-4 text-steel-400" />
-                <input
-                  className="input pl-9 w-full"
-                  placeholder="Cari kapal / kode proyek..."
-                  aria-label="Cari proyek"
-                  value={draft.q}
-                  onChange={(e) => setDraft({ ...draft, q: e.target.value })}
-                />
-              </div>
               <div className="flex gap-1">
                 {filters.map((f) => (
                   <button

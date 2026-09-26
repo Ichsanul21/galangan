@@ -1113,18 +1113,18 @@ export default function Inventory() {
             <>
               <p className="mb-3 rounded-lg bg-steel-50 px-3 py-2 text-xs text-steel-500">Metode persediaan: FIFO untuk batch/serial — batch tertua dipakai dulu saat GI. Tersedia = stok − reservasi. Nilai stok memakai harga rata-rata (average cost) bila ada.</p>
               <div className="mb-3 flex flex-wrap gap-3">
+                <div className="relative min-w-52 flex-1 sm:max-w-xs">
+                  <Search className="absolute left-3 top-2.5 h-4 w-4 text-steel-400" />
+                  <input className="input pl-9 w-full" placeholder="Cari material / SKU / bin..." aria-label="Cari material" value={q} onChange={(e) => setQ(e.target.value)} />
+                </div>
                 <FilterPopover
-                  activeCount={[q.trim() !== "", cat !== "Semua", wh !== "Semua", abcF !== "Semua"].filter(Boolean).length}
-                  initial={{ q, cat, wh, abc: abcF }}
-                  onReset={() => { setQ(""); setCat("Semua"); setWh("Semua"); setAbcF("Semua"); }}
-                  onApply={(d) => { setQ(d.q); setCat(d.cat); setWh(d.wh); setAbcF(d.abc); }}
+                  activeCount={[cat !== "Semua", wh !== "Semua", abcF !== "Semua"].filter(Boolean).length}
+                  initial={{ cat, wh, abc: abcF }}
+                  onReset={() => { setCat("Semua"); setWh("Semua"); setAbcF("Semua"); }}
+                  onApply={(d) => { setCat(d.cat); setWh(d.wh); setAbcF(d.abc); }}
                 >
                   {(draft, setDraft) => (
                     <div className="space-y-3">
-                      <div className="relative">
-                        <Search className="absolute left-3 top-2.5 h-4 w-4 text-steel-400" />
-                        <input className="input pl-9 w-full" placeholder="Cari material / SKU / bin..." value={draft.q} onChange={(e) => setDraft({ ...draft, q: e.target.value })} />
-                      </div>
                       <Field label="Gudang">
                         <select className="input w-full" value={draft.wh} onChange={(e) => setDraft({ ...draft, wh: e.target.value })} aria-label="Filter gudang">
                           {["Semua", ...warehouses].map((w) => <option key={w} value={w}>{w === "Semua" ? "Semua gudang" : w}</option>)}

@@ -46,7 +46,7 @@ export function FilterPopover<T extends Record<string, string>>({
       {open && (
         <>
           <div className="fixed inset-0 z-10" onClick={() => setOpen(false)} />
-          <div className="absolute left-0 z-20 mt-2 w-72 rounded-xl border border-steel-200 bg-white p-4 shadow-lift">
+          <div className="absolute left-full top-0 z-20 ml-2 max-h-[70vh] w-72 max-w-[calc(100vw-2rem)] overflow-y-auto rounded-xl border border-steel-200 bg-white p-4 shadow-lift">
             {children(draft, setDraft)}
             <div className="mt-3 flex items-center justify-end gap-2 border-t border-steel-100 pt-3">
               <button

@@ -778,18 +778,18 @@ export default function Procurement() {
         <Tabs tabs={["PO Besar (Kantor)", "PO Kecil (Workshop)", "RFQ", "PR", "Vendor"]} active={tab} onChange={setTab} />
         <div className="p-4">
           <div className="mb-3 flex flex-wrap items-center gap-2">
+            <div className="relative min-w-52 flex-1 sm:max-w-xs">
+              <Search className="absolute left-3 top-2.5 h-4 w-4 text-steel-400" />
+              <input className="input pl-9 w-full" placeholder="Cari id / item / vendor..." aria-label="Cari procurement" value={pq} onChange={(e) => setPq(e.target.value)} />
+            </div>
             <FilterPopover
-              activeCount={[pq.trim() !== "", pStatus !== "Semua"].filter(Boolean).length}
-              initial={{ q: pq, status: pStatus }}
+              activeCount={[pStatus !== "Semua"].filter(Boolean).length}
+              initial={{ status: pStatus }}
               onReset={() => { setPq(""); setPStatus("Semua"); }}
-              onApply={(d) => { setPq(d.q); setPStatus(d.status); }}
+              onApply={(d) => { setPStatus(d.status); }}
             >
               {(draft, setDraft) => (
                 <div className="space-y-3">
-                  <div className="relative">
-                    <Search className="absolute left-3 top-2.5 h-4 w-4 text-steel-400" />
-                    <input className="input pl-9 w-full" placeholder="Cari id / item / vendor..." value={draft.q} onChange={(e) => setDraft({ ...draft, q: e.target.value })} />
-                  </div>
                   <Field label="Status">
                     <select className="input w-full" value={draft.status} onChange={(e) => setDraft({ ...draft, status: e.target.value })}>
                       {(STATUS_OPSI[tab] ?? ["Semua"]).map((s) => <option key={s} value={s}>{s === "Semua" ? "Semua status" : s}</option>)}

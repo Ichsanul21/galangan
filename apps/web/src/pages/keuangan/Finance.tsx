@@ -1988,18 +1988,18 @@ export default function Finance() {
               </div>
               <CardHeader title="Daftar Invoice" subtitle="Rincian tipe, lines, retensi, e-Faktur, dan status tiap invoice." />
               <div className="mb-3 flex flex-wrap items-center gap-2">
+                <div className="relative min-w-52 flex-1 sm:max-w-xs">
+                  <Search className="absolute left-3 top-2.5 h-4 w-4 text-steel-400" />
+                  <input className="input pl-9 w-full" placeholder="Cari id / klien / proyek..." aria-label="Cari invoice" value={invFQ} onChange={(e) => setInvFQ(e.target.value)} />
+                </div>
                 <FilterPopover
-                  activeCount={[invFQ.trim() !== "", invFStatus !== "Semua", invFBilling !== "Semua"].filter(Boolean).length}
-                  initial={{ q: invFQ, status: invFStatus, billing: invFBilling }}
+                  activeCount={[invFStatus !== "Semua", invFBilling !== "Semua"].filter(Boolean).length}
+                  initial={{ status: invFStatus, billing: invFBilling }}
                   onReset={() => { setInvFQ(""); setInvFStatus("Semua"); setInvFBilling("Semua"); }}
-                  onApply={(d) => { setInvFQ(d.q); setInvFStatus(d.status); setInvFBilling(d.billing); }}
+                  onApply={(d) => { setInvFStatus(d.status); setInvFBilling(d.billing); }}
                 >
                   {(draft, setDraft) => (
                     <div className="space-y-3">
-                      <div className="relative">
-                        <Search className="absolute left-3 top-2.5 h-4 w-4 text-steel-400" />
-                        <input className="input pl-9 w-full" placeholder="Cari id / klien / proyek..." value={draft.q} onChange={(e) => setDraft({ ...draft, q: e.target.value })} />
-                      </div>
                       <Field label="Status">
                         <select className="input w-full" value={draft.status} onChange={(e) => setDraft({ ...draft, status: e.target.value })}>
                           {["Semua", "Draft", "Diajukan", "Disetujui", "Belum Dibayar", "Terlambat", "Lunas", "Ditolak", "Dihapusbukukan"].map((s) => <option key={s} value={s}>{s === "Semua" ? "Semua status" : s}</option>)}
