@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Plus, Cpu, Wrench, AlertTriangle, Gauge, CheckCircle2, Download } from "lucide-react";
+import { Plus, Cpu, Wrench, AlertTriangle, Gauge, CheckCircle2, Download, Search } from "lucide-react";
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 import { Card, CardHeader, PageHeader, Badge, KpiCard, Tabs, ProgressBar, ChartTooltip, RadialGauge, Modal, Field, FormGrid, EmptyState, ConfirmModal, StatusBadge, toast, SortTh, toggleSort, sortRows, usePager } from "../../components/ui";
 import type { SortState } from "../../components/ui";
@@ -10,6 +10,7 @@ import { fmtTanggal, fmtJumlah, fmtRupiah, todayISO } from "../../utils/format";
 import { sameName } from "../../utils/names";
 import { AlertBannerView, notifRowId, useModuleAlert } from "../../components/AlertBanner";
 import { exportExcel } from "../../utils/export";
+import { FilterPopover } from "../../components/FilterPopover";
 
 const BOOK_PRIORITIES = ["Normal", "Tinggi", "Kritis"];
 const TARGET_HOURS = 176;
@@ -80,6 +81,9 @@ export default function EquipmentPage() {
   const bookings = data.bookings;
   const calibrations = data.calibrations;
   const [tab, setTab] = useState("Register");
+  const [eqQ, setEqQ] = useState("");
+  const [eqStatus, setEqStatus] = useState("Semua");
+  const [eqCat, setEqCat] = useState("Semua");
   const [sort, setSort] = useState<SortState>({ key: null, dir: "asc" });
   const [sort2, setSort2] = useState<SortState>({ key: null, dir: "asc" });
   const [sort3, setSort3] = useState<SortState>({ key: null, dir: "asc" });
@@ -171,7 +175,14 @@ export default function EquipmentPage() {
   });
   const costRows = Array.from(costByProject.entries());
   const totalCost = costRows.reduce((s, [, v]) => s + v.cost, 0);
-  const regSorted = useMemo(() => sortRows(equipment, sort, (e, k) => {
+  const regFiltered = equipment.filter((e) => {
+    if (eqStatus !== "Semua" && String(e.status ?? "") !== eqStatus) return false;
+    if (eqCat !== "Semua" && String(e.category ?? "") !== eqCat) return false;
+    const needle = eqQ.trim().toLowerCase();
+    if (!needle) return true;
+    return `${e.name ?? ""} ${e.code ?? ""} ${e.model ?? ""}`.toLowerCase().includes(needle);
+  });
+  const regSorted = useMemo(() => sortRows(regFiltered, sort, (e, k) => {
     if (k === "utilisasi") return Number(e.util || 0);
     if (k === "jam") return Number(e.lastHours || 0);
     if (k === "tarif") return Number(e.rate || 0);
@@ -180,12 +191,12 @@ export default function EquipmentPage() {
     if (k === "model") return String(e.model ?? "");
     if (k === "status") return String(e.status ?? "");
     return String(e.name ?? "");
-  }), [equipment, sort]);
-  const regPager = usePager(equipment.length);
+  }), [regFiltered, sort]);
+  const regPager = usePager(regFiltered.length);
   useEffect(() => {
     regPager.reset();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tab]);
+  }, [eqQ, eqStatus, eqCat, tab]);
 
   const saveAdd = async () => {
     if (!form.name.trim() || !form.code.trim()) { toast("Nama & kode wajib diisi", "info"); return; }
@@ -464,6 +475,38 @@ export default function EquipmentPage() {
         <div className="p-4">
           {tab === "Register" && (
             <div>
+              <div className="mb-3 flex flex-wrap items-center gap-2">
+                <div className="relative min-w-52 flex-1 sm:max-w-xs">
+                  <Search className="absolute left-3 top-2.5 h-4 w-4 text-steel-400" />
+                  <input className="input pl-9 w-full" placeholder="Cari nama / kode / model..." aria-label="Cari equipment" value={eqQ} onChange={(e) => setEqQ(e.target.value)} />
+                </div>
+                <FilterPopover
+                  activeCount={[eqStatus !== "Semua", eqCat !== "Semua"].filter(Boolean).length}
+                  initial={{ status: eqStatus, kategori: eqCat }}
+                  onReset={() => { setEqQ(""); setEqStatus("Semua"); setEqCat("Semua"); }}
+                  onApply={(d) => { setEqStatus(d.status); setEqCat(d.kategori); }}
+                >
+                  {(draft, setDraft) => (
+                    <div className="space-y-3">
+                      <Field label="Status">
+                        <select className="input w-full" value={draft.status} onChange={(e) => setDraft({ ...draft, status: e.target.value })}>
+                          {["Semua", "Tersedia", "Terpakai", "Maintenance"].map((s) => <option key={s} value={s}>{s === "Semua" ? "Semua status" : s}</option>)}
+                        </select>
+                      </Field>
+                      <Field label="Kategori">
+                        <select className="input w-full" value={draft.kategori} onChange={(e) => setDraft({ ...draft, kategori: e.target.value })}>
+                          {["Semua", "Pengangkat", "Pengelasan", "Tenaga", "Transportasi", "Pengecatan", "Lainnya"].map((c) => <option key={c} value={c}>{c === "Semua" ? "Semua kategori" : c}</option>)}
+                        </select>
+                      </Field>
+                    </div>
+                  )}
+                </FilterPopover>
+                {(eqQ.trim() !== "" || eqStatus !== "Semua" || eqCat !== "Semua") && (
+                  <span className="text-xs text-steel-400">
+                    Filter aktif di tab Register — {regSorted.length} baris
+                  </span>
+                )}
+              </div>
               <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
                 <p className="text-xs text-steel-500">Nilai buku garis lurus · asumsi penyusutan tahun berjalan (perolehan − penyusutan 1 tahun)</p>
                 <button className="btn-secondary text-xs" onClick={exportRegister}><Download className="h-3.5 w-3.5" /> Ekspor Register Aset</button>

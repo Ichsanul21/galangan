@@ -22,6 +22,7 @@ import {
   usePager,
 } from "../../components/ui";
 import type { SortState } from "../../components/ui";
+import { FilterPopover } from "../../components/FilterPopover";
 import { useStore } from "../../data/store";
 import type { StoreItem } from "../../data/store";
 import { activeEmployeeTrend, certifiedTrend, certExpireTrend, employeeTrend } from "../../data";
@@ -827,25 +828,40 @@ export default function HR() {
           {tab === "Karyawan" && (
             <div>
               <div className="mb-3 flex flex-wrap items-center gap-2">
-                <div className="relative">
+                <div className="relative min-w-52 flex-1 sm:max-w-xs">
                   <Search className="absolute left-3 top-2.5 h-4 w-4 text-steel-400" />
-                  <input className="input pl-9 w-full sm:w-60" placeholder="Cari nama / NIK / jabatan..." value={q} onChange={(e) => setQ(e.target.value)} />
+                  <input className="input pl-9 w-full" placeholder="Cari nama / NIK / jabatan..." aria-label="Cari karyawan" value={q} onChange={(e) => setQ(e.target.value)} />
                 </div>
-                <select className="input w-auto" value={dept} onChange={(e) => setDept(e.target.value)} aria-label="Filter departemen">
-                  {deptOptions.map((d) => (
-                    <option key={d} value={d}>{d === "Semua" ? "Semua Dept" : d}</option>
-                  ))}
-                </select>
-                <select className="input w-auto" value={branch} onChange={(e) => setBranch(e.target.value)} aria-label="Filter cabang">
-                  <option value="SEMUA">Semua Cabang</option>
-                  {branchCities.map((c) => (
-                    <option key={c} value={c}>{c}</option>
-                  ))}
-                </select>
-                <label className="flex cursor-pointer items-center gap-2 text-sm text-steel-600">
-                  <input type="checkbox" checked={contractSoonOnly} onChange={(e) => setContractSoonOnly(e.target.checked)} />
-                  Kontrak ≤30 hari
-                </label>
+                <FilterPopover
+                  activeCount={[dept !== "Semua", branch !== "SEMUA", contractSoonOnly].filter(Boolean).length}
+                  initial={{ dept, branch, kontrak: contractSoonOnly ? "1" : "0" }}
+                  onReset={() => { setQ(""); setDept("Semua"); setBranch("SEMUA"); setContractSoonOnly(false); }}
+                  onApply={(d) => { setDept(d.dept); setBranch(d.branch); setContractSoonOnly(d.kontrak === "1"); }}
+                >
+                  {(draft, setDraft) => (
+                    <div className="space-y-3">
+                      <Field label="Departemen">
+                        <select className="input w-full" value={draft.dept} onChange={(e) => setDraft({ ...draft, dept: e.target.value })} aria-label="Filter departemen">
+                          {deptOptions.map((d) => (
+                            <option key={d} value={d}>{d === "Semua" ? "Semua Dept" : d}</option>
+                          ))}
+                        </select>
+                      </Field>
+                      <Field label="Cabang">
+                        <select className="input w-full" value={draft.branch} onChange={(e) => setDraft({ ...draft, branch: e.target.value })} aria-label="Filter cabang">
+                          <option value="SEMUA">Semua Cabang</option>
+                          {branchCities.map((c) => (
+                            <option key={c} value={c}>{c}</option>
+                          ))}
+                        </select>
+                      </Field>
+                      <label className="flex cursor-pointer items-center gap-2 text-sm text-steel-600">
+                        <input type="checkbox" checked={draft.kontrak === "1"} onChange={(e) => setDraft({ ...draft, kontrak: e.target.checked ? "1" : "0" })} />
+                        Kontrak ≤30 hari
+                      </label>
+                    </div>
+                  )}
+                </FilterPopover>
               </div>
 
               <div className="grid grid-cols-1 gap-4 xl:grid-cols-3">

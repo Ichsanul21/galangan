@@ -5,6 +5,7 @@ import {
   Card,
   ConfirmModal,
   EmptyState,
+  Field,
   KpiCard,
   PageHeader,
   SortTh,
@@ -16,6 +17,7 @@ import {
   usePager,
 } from "../../components/ui";
 import type { SortState } from "../../components/ui";
+import { FilterPopover } from "../../components/FilterPopover";
 import { useStore } from "../../data/store";
 import type { StoreItem } from "../../data/store";
 import { fmtJumlah, fmtTanggal, todayISO } from "../../utils/format";
@@ -382,14 +384,26 @@ export default function Absensi() {
               </div>
 
               <div className="mb-3 flex flex-wrap items-center gap-2">
-                <label className="flex items-center gap-2 text-sm text-steel-600">
-                  Bulan
-                  <input type="month" className="input w-auto" value={month} onChange={(e) => setMonth(e.target.value)} />
-                </label>
-                <select className="input w-auto" value={branch} onChange={(e) => setBranch(e.target.value)} aria-label="Filter cabang">
-                  <option value="SEMUA">Semua Cabang</option>
-                  {branchCities.map((c) => <option key={c} value={c}>{c}</option>)}
-                </select>
+                <FilterPopover
+                  activeCount={[month !== todayISO().slice(0, 7), branch !== "SEMUA"].filter(Boolean).length}
+                  initial={{ month, branch }}
+                  onReset={() => { setMonth(todayISO().slice(0, 7)); setBranch("SEMUA"); }}
+                  onApply={(d) => { setMonth(d.month); setBranch(d.branch); }}
+                >
+                  {(draft, setDraft) => (
+                    <div className="space-y-3">
+                      <Field label="Bulan">
+                        <input type="month" className="input w-full" value={draft.month} onChange={(e) => setDraft({ ...draft, month: e.target.value })} />
+                      </Field>
+                      <Field label="Cabang">
+                        <select className="input w-full" value={draft.branch} onChange={(e) => setDraft({ ...draft, branch: e.target.value })} aria-label="Filter cabang">
+                          <option value="SEMUA">Semua Cabang</option>
+                          {branchCities.map((c) => <option key={c} value={c}>{c}</option>)}
+                        </select>
+                      </Field>
+                    </div>
+                  )}
+                </FilterPopover>
               </div>
 
               <Card>

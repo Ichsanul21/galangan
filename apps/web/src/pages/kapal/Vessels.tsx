@@ -7,6 +7,7 @@ import { useStore } from "../../data/store";
 import type { StoreItem } from "../../data/store";
 import { fleetTrend, dockingTrend, buildTrend, certTrend } from "../../data";
 import { fmtRupiah, fmtTanggal, todayISO } from "../../utils/format";
+import { FilterPopover } from "../../components/FilterPopover";
 import { sameName, vesselMatch } from "../../utils/names";
 import { AlertBannerView, notifRowId, useModuleAlert } from "../../components/AlertBanner";
 
@@ -140,6 +141,7 @@ export default function Vessels() {
   const modAlert = useModuleAlert("kapal");
   const vessels = data.vessels;
   const [q, setQ] = useState("");
+  const [certFilter, setCertFilter] = useState("Semua");
   const [sort, setSort] = useState<SortState>({ key: null, dir: "asc" });
   const [showAdd, setShowAdd] = useState(false);
   const [form, setForm] = useState(emptyForm);
@@ -147,7 +149,14 @@ export default function Vessels() {
   const [editForm, setEditForm] = useState<VesselForm>(emptyForm);
 
   const nowMonth = todayISO().slice(0, 7);
-  const list = vessels.filter((v) => `${v.name} ${v.imo}`.toLowerCase().includes(q.toLowerCase()));
+  const list = vessels.filter((v) => {
+    if (certFilter !== "Semua") {
+      const need = (v.certificates ?? []).some((c: { expires: string }) => certNeedsAttention(c.expires, nowMonth));
+      if (certFilter === "Perlu Perhatian" && !need) return false;
+      if (certFilter === "Aman" && need) return false;
+    }
+    return `${v.name} ${v.imo}`.toLowerCase().includes(q.toLowerCase());
+  });
   const cardPager = usePager(list.length);
   const surveySorted = useMemo(() => sortRows(data.surveys, sort, (s: StoreItem, k) => String((s as unknown as Record<string, unknown>)[k] ?? "")), [data.surveys, sort]);
   const surveyPager = usePager(data.surveys.length);
@@ -155,7 +164,7 @@ export default function Vessels() {
     cardPager.reset();
     surveyPager.reset();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [q]);
+  }, [q, certFilter]);
   const expiring = vessels.filter((v) =>
     (v.certificates ?? []).some((c: { expires: string }) => certNeedsAttention(c.expires, nowMonth))
   ).length;
@@ -246,9 +255,32 @@ export default function Vessels() {
       </div>
 
       <div className="mt-4">
-        <div className="mb-3 relative">
-          <Search className="absolute left-3 top-2.5 h-4 w-4 text-steel-400" />
-          <input className="input pl-9 w-full sm:w-64" placeholder="Cari kapal / IMO..." aria-label="Cari kapal" value={q} onChange={(e) => setQ(e.target.value)} />
+        <div className="mb-3 flex flex-wrap items-center gap-2">
+          <div className="relative">
+            <Search className="absolute left-3 top-2.5 h-4 w-4 text-steel-400" />
+            <input className="input pl-9 w-full sm:w-64" placeholder="Cari kapal / IMO..." aria-label="Cari kapal" value={q} onChange={(e) => setQ(e.target.value)} />
+          </div>
+          <FilterPopover
+            activeCount={[certFilter !== "Semua"].filter(Boolean).length}
+            initial={{ status: certFilter }}
+            onReset={() => { setQ(""); setCertFilter("Semua"); }}
+            onApply={(d) => { setCertFilter(d.status); }}
+          >
+            {(draft, setDraft) => (
+              <div className="space-y-3">
+                <Field label="Status sertifikat">
+                  <select className="input w-full" value={draft.status} onChange={(e) => setDraft({ ...draft, status: e.target.value })}>
+                    {["Semua", "Perlu Perhatian", "Aman"].map((s) => <option key={s} value={s}>{s === "Semua" ? "Semua status" : s}</option>)}
+                  </select>
+                </Field>
+              </div>
+            )}
+          </FilterPopover>
+          {(q.trim() !== "" || certFilter !== "Semua") && (
+            <span className="text-xs text-steel-400">
+              Filter aktif — {list.length} kapal
+            </span>
+          )}
         </div>
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
           {cardPager.slice(list).map((v) => {

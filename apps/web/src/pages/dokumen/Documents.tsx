@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Plus, Search, ScrollText, FileText, Eye, Pencil, Trash2, Archive, RotateCcw, Download, Upload } from "lucide-react";
 import { Card, PageHeader, Badge, KpiCard, Modal, Field, FormGrid, ConfirmModal, SortTh, toggleSort, sortRows, toast, StatusBadge, usePager } from "../../components/ui";
 import type { SortState } from "../../components/ui";
+import { FilterPopover } from "../../components/FilterPopover";
 import { useStore, type StoreItem } from "../../data/store";
 import { isBackendConfigured } from "../../services/http";
 import { ocrImageUrl } from "../../services/upload";
@@ -334,21 +335,36 @@ export default function Documents() {
         </Card>
       )}
 
-      <Card>
-        <div className="flex flex-wrap items-center gap-3 p-4">
-          <div className="relative">
-            <Search className="absolute left-3 top-2.5 h-4 w-4 text-steel-400" />
-            <input className="input pl-9 w-full sm:w-64" placeholder="Cari judul / ID / proyek..." value={q} onChange={(e) => setQ(e.target.value)} />
-          </div>
-          <div className="flex gap-1 overflow-x-auto">
-            {FILTERS.map((t) => (
-              <button key={t} onClick={() => setType(t)}
-                className={`whitespace-nowrap rounded-lg px-3 py-1.5 text-sm ${type === t ? "bg-navy-700 text-white" : "border border-steel-200 text-steel-600 hover:bg-steel-100"}`}>
-                {t}{t === "Arsip" ? ` (${String(archived.length)})` : ""}
-              </button>
-            ))}
-          </div>
+      <div className="mb-3 flex flex-wrap items-center gap-2">
+        <div className="relative min-w-52 flex-1 sm:max-w-xs">
+          <Search className="absolute left-3 top-2.5 h-4 w-4 text-steel-400" />
+          <input className="input pl-9 w-full" placeholder="Cari judul / ID / proyek..." aria-label="Cari dokumen" value={q} onChange={(e) => setQ(e.target.value)} />
         </div>
+        <FilterPopover
+          activeCount={[type !== "Semua"].filter(Boolean).length}
+          initial={{ type }}
+          onReset={() => { setQ(""); setType("Semua"); }}
+          onApply={(d) => { setType(d.type); }}
+        >
+          {(draft, setDraft) => (
+            <div className="space-y-3">
+              <div>
+                <p className="mb-1.5 block text-xs font-medium text-steel-600">Tipe / Arsip</p>
+                <div className="flex flex-wrap gap-1">
+                  {FILTERS.map((t) => (
+                    <button key={t} onClick={() => setDraft({ ...draft, type: t })}
+                      className={`whitespace-nowrap rounded-lg px-3 py-1.5 text-sm ${draft.type === t ? "bg-navy-700 text-white" : "border border-steel-200 text-steel-600 hover:bg-steel-100"}`}>
+                      {t}{t === "Arsip" ? ` (${String(archived.length)})` : ""}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
+        </FilterPopover>
+      </div>
+
+      <Card>
         <div className="overflow-x-auto">
           <table className="w-full">
             <thead className="bg-surface sticky top-0 z-10">

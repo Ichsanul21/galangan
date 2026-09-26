@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import { Download, History } from "lucide-react";
-import { Badge, Card, EmptyState, Field, KpiCard, PageHeader, SortTh, Tabs, toggleSort, sortRows, toast, usePager } from "../../components/ui";
+import { Download, History, Search } from "lucide-react";
+import { Badge, Card, EmptyState, Field, KpiCard, PageHeader, SortTh, toggleSort, sortRows, toast, usePager } from "../../components/ui";
 import type { SortState } from "../../components/ui";
+import { FilterPopover } from "../../components/FilterPopover";
 import { useStore } from "../../data/store";
 import { apiFetch, isBackendConfigured } from "../../services/http";
 import { exportExcel } from "../../utils/export";
@@ -140,14 +141,9 @@ export default function Audit() {
         subtitle={sumber === "Server" && remote ? "Jejak audit server (append-only, termasuk login) — 200 terbaru" : "Jejak aktivitas perangkat ini (30 terakhir)"}
         icon={<History className="h-5 w-5" />}
         actions={
-          <>
-            {remote && (
-              <Tabs tabs={["Perangkat", "Server"]} active={sumber} onChange={(t) => setSumber(t)} />
-            )}
-            <button className="btn-secondary text-xs" onClick={doExport}>
-              <Download className="h-4 w-4" /> Export Excel
-            </button>
-          </>
+          <button className="btn-secondary text-xs" onClick={doExport}>
+            <Download className="h-4 w-4" /> Export Excel
+          </button>
         }
       />
 
@@ -157,34 +153,53 @@ export default function Audit() {
         <KpiCard label="Aktor Unik" value={String(actors)} hint="Pengguna tercatat" chip="violet" icon={<History className="h-5 w-5" />} />
       </div>
 
-      <Card className="mb-4 p-4">
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-          <Field label="Cari teks">
-            <input
-              className="input"
-              placeholder="Aktor, aksi, atau target…"
-              value={q}
-              onChange={(e) => setQ(e.target.value)}
-            />
-          </Field>
-          <Field label="Modul">
-            <select className="input" value={modul} onChange={(e) => setModul(e.target.value)}>
-              <option value="SEMUA">Semua Modul</option>
-              {modules.map((m) => (
-                <option key={m} value={m}>{m}</option>
-              ))}
-            </select>
-          </Field>
-          <Field label="Tanggal" hint="Hanya baris bertanggal yang bisa diparse; 'baru saja' diabaikan">
-            <input
-              type="date"
-              className="input"
-              value={tanggal}
-              onChange={(e) => setTanggal(e.target.value)}
-            />
-          </Field>
+      <div className="mb-3 flex flex-wrap items-center gap-2">
+        <div className="relative min-w-52 flex-1 sm:max-w-xs">
+          <Search className="absolute left-3 top-2.5 h-4 w-4 text-steel-400" />
+          <input
+            className="input pl-9 w-full"
+            placeholder="Aktor, aksi, atau target…"
+            aria-label="Cari audit"
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+          />
         </div>
-      </Card>
+        <FilterPopover
+          activeCount={[modul !== "SEMUA", tanggal !== "", sumber !== "Perangkat"].filter(Boolean).length}
+          initial={{ modul, tanggal, sumber }}
+          onReset={() => { setQ(""); setModul("SEMUA"); setTanggal(""); setSumber("Perangkat"); }}
+          onApply={(d) => { setModul(d.modul); setTanggal(d.tanggal); setSumber(d.sumber); }}
+        >
+          {(draft, setDraft) => (
+            <div className="space-y-3">
+              <Field label="Modul">
+                <select className="input w-full" value={draft.modul} onChange={(e) => setDraft({ ...draft, modul: e.target.value })}>
+                  <option value="SEMUA">Semua Modul</option>
+                  {modules.map((m) => (
+                    <option key={m} value={m}>{m}</option>
+                  ))}
+                </select>
+              </Field>
+              <Field label="Tanggal" hint="Hanya baris bertanggal yang bisa diparse; 'baru saja' diabaikan">
+                <input
+                  type="date"
+                  className="input w-full"
+                  value={draft.tanggal}
+                  onChange={(e) => setDraft({ ...draft, tanggal: e.target.value })}
+                />
+              </Field>
+              {remote && (
+                <Field label="Sumber">
+                  <select className="input w-full" value={draft.sumber} onChange={(e) => setDraft({ ...draft, sumber: e.target.value })}>
+                    <option value="Perangkat">Perangkat</option>
+                    <option value="Server">Server</option>
+                  </select>
+                </Field>
+              )}
+            </div>
+          )}
+        </FilterPopover>
+      </div>
 
       <Card>
         {serverLoading && sumber === "Server" && (

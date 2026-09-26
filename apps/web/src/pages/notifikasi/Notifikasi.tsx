@@ -1,7 +1,8 @@
 import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { AlertTriangle, Bell, Check, CheckCheck, Download, Info, Search } from "lucide-react";
-import { Badge, Card, EmptyState, KpiCard, PageHeader, Tabs, toast } from "../../components/ui";
+import { Badge, Card, EmptyState, Field, KpiCard, PageHeader, Tabs, toast } from "../../components/ui";
+import { FilterPopover } from "../../components/FilterPopover";
 import { useStore } from "../../data/store";
 import { useT } from "../../i18n/LanguageContext";
 import { computeAlerts } from "../../utils/alerts";
@@ -165,8 +166,8 @@ export default function Notifikasi() {
   const unread = items.filter((i) => !read.has(i.id)).length;
   const alertCount = items.filter((i) => i.kind === "alert").length;
   const infoCount = items.filter((i) => i.kind === "info").length;
-  const hasActiveFilter = filter !== "Semua" || sev !== "Semua" || mod !== "Semua" || q.trim() !== "";
-  const resetFilters = () => { setFilter("Semua"); setSev("Semua"); setMod("Semua"); setQ(""); };
+  const hasActiveFilter = filter !== "Semua" || sev !== "Semua" || mod !== "Semua" || q.trim() !== "" || order !== "Terbaru";
+  const resetFilters = () => { setFilter("Semua"); setSev("Semua"); setMod("Semua"); setQ(""); setOrder("Terbaru"); };
 
   const doExport = () => {
     const head = ["ID", "Jenis", "Isi", "Detail", "Modul", "Waktu", "Tautan", "Status"];
@@ -223,19 +224,36 @@ export default function Notifikasi() {
                 onChange={(e) => setQ(e.target.value)}
               />
             </div>
-            <select className="input w-auto py-1.5 text-sm" aria-label="Filter severity" value={sev} onChange={(e) => setSev(e.target.value as (typeof SEVERITIES)[number])}>
-              <option value="Semua">{locale === "en" ? "All severities" : "Semua severity"}</option>
-              <option value="Merah">{locale === "en" ? "Red (critical)" : "Merah (kritis)"}</option>
-              <option value="Kuning">{locale === "en" ? "Yellow (warning)" : "Kuning (waspada)"}</option>
-              <option value="Biru">{locale === "en" ? "Blue (info)" : "Biru (info)"}</option>
-            </select>
-            <select className="input w-auto py-1.5 text-sm" aria-label="Filter modul" value={mod} onChange={(e) => setMod(e.target.value)}>
-              {modules.map((m) => <option key={m} value={m}>{m === "Semua" ? (locale === "en" ? "All modules" : "Semua modul") : m}</option>)}
-            </select>
-            <select className="input w-auto py-1.5 text-sm" aria-label="Urutan" value={order} onChange={(e) => setOrder(e.target.value as "Terbaru" | "Terlama")}>
-              <option value="Terbaru">{locale === "en" ? "Newest first" : "Terbaru dulu"}</option>
-              <option value="Terlama">{locale === "en" ? "Oldest first" : "Terlama dulu"}</option>
-            </select>
+            <FilterPopover
+              activeCount={[sev !== "Semua", mod !== "Semua", order !== "Terbaru"].filter(Boolean).length}
+              initial={{ severity: sev as string, modul: mod, urutan: order as string }}
+              onReset={resetFilters}
+              onApply={(d) => { setSev(d.severity as (typeof SEVERITIES)[number]); setMod(d.modul); setOrder(d.urutan as "Terbaru" | "Terlama"); }}
+            >
+              {(draft, setDraft) => (
+                <div className="space-y-3">
+                  <Field label={locale === "en" ? "Severity" : "Severity"}>
+                    <select className="input w-full" aria-label="Filter severity" value={draft.severity} onChange={(e) => setDraft({ ...draft, severity: e.target.value })}>
+                      <option value="Semua">{locale === "en" ? "All severities" : "Semua severity"}</option>
+                      <option value="Merah">{locale === "en" ? "Red (critical)" : "Merah (kritis)"}</option>
+                      <option value="Kuning">{locale === "en" ? "Yellow (warning)" : "Kuning (waspada)"}</option>
+                      <option value="Biru">{locale === "en" ? "Blue (info)" : "Biru (info)"}</option>
+                    </select>
+                  </Field>
+                  <Field label="Modul">
+                    <select className="input w-full" aria-label="Filter modul" value={draft.modul} onChange={(e) => setDraft({ ...draft, modul: e.target.value })}>
+                      {modules.map((m) => <option key={m} value={m}>{m === "Semua" ? (locale === "en" ? "All modules" : "Semua modul") : m}</option>)}
+                    </select>
+                  </Field>
+                  <Field label={locale === "en" ? "Order" : "Urutan"}>
+                    <select className="input w-full" aria-label="Urutan" value={draft.urutan} onChange={(e) => setDraft({ ...draft, urutan: e.target.value })}>
+                      <option value="Terbaru">{locale === "en" ? "Newest first" : "Terbaru dulu"}</option>
+                      <option value="Terlama">{locale === "en" ? "Oldest first" : "Terlama dulu"}</option>
+                    </select>
+                  </Field>
+                </div>
+              )}
+            </FilterPopover>
             {hasActiveFilter && (
               <button className="btn-secondary py-1.5 text-xs" onClick={resetFilters}>{t.common.reset}</button>
             )}

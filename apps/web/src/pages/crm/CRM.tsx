@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { Plus, Send, Users2, Star, Handshake, ArrowRight } from "lucide-react";
+import { Plus, Send, Users2, Star, Handshake, ArrowRight, Search } from "lucide-react";
 import { Card, CardHeader, PageHeader, Badge, KpiCard, Tabs, Donut, Modal, Field, FormGrid, StatusBadge, EmptyState, SortTh, toggleSort, sortRows, toast, usePager } from "../../components/ui";
 import ClientModal from "../../components/ClientModal";
 import type { SortState } from "../../components/ui";
@@ -12,6 +12,7 @@ import { AlertBannerView, notifRowId, useModuleAlert } from "../../components/Al
 import { exportExcel } from "../../utils/export";
 import { useDraftState } from "../../utils/draft";
 import { clientTrend, pipelineTrend, winRateTrend, wonTrend } from "../../data";
+import { FilterPopover } from "../../components/FilterPopover";
 
 const FLOW = ["Lead", "Penawaran", "Negosiasi", "Menang"];
 const TERMINAL = ["Terkonversi", "Batal", "Kalah"];
@@ -60,6 +61,8 @@ export default function CRM() {
   const [tab, setTab] = useState("Pipeline");
   const [sort, setSort] = useState<SortState>({ key: null, dir: "asc" });
   const [klasFilter, setKlasFilter] = useState("Semua");
+  const [crmQ, setCrmQ] = useState("");
+  const [stageFilter, setStageFilter] = useState("Semua");
   const [oldOnly, setOldOnly] = useState(false);
   const [hoChecks, setHoChecks] = useDraftState<boolean[]>("isms.draft.crm.hoChecks", [false, false, false, false]);
   const [hoBy, setHoBy] = useDraftState("isms.draft.crm.hoBy", "Tim Commercial");
@@ -86,10 +89,14 @@ export default function CRM() {
 
   const visibleClients = useMemo(() => {
     const base = inBranch(data.clients ?? []);
-    if (klasFilter === "Semua") return base;
-    return base.filter((c) => String(c.klasifikasi ?? "Regular") === klasFilter);
+    const needle = crmQ.trim().toLowerCase();
+    const searched = needle
+      ? base.filter((c) => `${c.name ?? ""} ${c.id ?? ""}`.toLowerCase().includes(needle))
+      : base;
+    if (klasFilter === "Semua") return searched;
+    return searched.filter((c) => String(c.klasifikasi ?? "Regular") === klasFilter);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [data.clients, klasFilter, branch]);
+  }, [data.clients, klasFilter, crmQ, branch]);
 
   const quotations = useMemo(() => {
     const all = data.quotations ?? [];
@@ -388,6 +395,38 @@ export default function CRM() {
         <div className="p-4">
           {tab === "Pipeline" && (
             <div className="space-y-4">
+              <div className="mb-3 flex flex-wrap items-center gap-2">
+                <div className="relative min-w-52 flex-1 sm:max-w-xs">
+                  <Search className="absolute left-3 top-2.5 h-4 w-4 text-steel-400" />
+                  <input className="input pl-9 w-full" placeholder="Cari kapal / klien..." aria-label="Cari pipeline" value={crmQ} onChange={(e) => setCrmQ(e.target.value)} />
+                </div>
+                <FilterPopover
+                  activeCount={[stageFilter !== "Semua"].filter(Boolean).length}
+                  initial={{ stage: stageFilter }}
+                  onReset={() => { setCrmQ(""); setKlasFilter("Semua"); setStageFilter("Semua"); }}
+                  onApply={(d) => { setStageFilter(d.stage); }}
+                >
+                  {(draft, setDraft) => (
+                    <div className="space-y-3">
+                      <Field label="Stage">
+                        <select className="input w-full" value={draft.stage} onChange={(e) => setDraft({ ...draft, stage: e.target.value })}>
+                          {["Semua", ...STAGES].map((s) => <option key={s} value={s}>{s === "Semua" ? "Semua stage" : s}</option>)}
+                        </select>
+                      </Field>
+                    </div>
+                  )}
+                </FilterPopover>
+                {(crmQ.trim() !== "" || stageFilter !== "Semua") && (
+                  <span className="text-xs text-steel-400">
+                    Filter aktif di tab Pipeline — {quotations.filter((q) => {
+                      if (stageFilter !== "Semua" && String(q.stage) !== stageFilter) return false;
+                      const needle = crmQ.trim().toLowerCase();
+                      if (!needle) return true;
+                      return `${q.vessel ?? ""} ${q.client ?? ""} ${q.id ?? ""}`.toLowerCase().includes(needle);
+                    }).length} baris
+                  </span>
+                )}
+              </div>
               <Card>
                 <CardHeader title="Distribusi Penawaran" subtitle="Jumlah penawaran per tahap" />
                 <div className="flex flex-wrap items-center gap-6 p-4 pt-0">
@@ -405,7 +444,13 @@ export default function CRM() {
               </Card>
               <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
                 {STAGES.map((stage) => {
-                  const items = quotations.filter((q) => q.stage === stage);
+                  const items = quotations.filter((q) => {
+                    if (q.stage !== stage) return false;
+                    if (stageFilter !== "Semua" && String(q.stage) !== stageFilter) return false;
+                    const needle = crmQ.trim().toLowerCase();
+                    if (!needle) return true;
+                    return `${q.vessel ?? ""} ${q.client ?? ""} ${q.id ?? ""}`.toLowerCase().includes(needle);
+                  });
                   return (
                     <div key={stage} className="rounded-xl bg-surface p-3">
                       <div className="mb-3 flex items-center justify-between">
@@ -455,14 +500,33 @@ export default function CRM() {
 
           {tab === "Klien" && (
             <div className="space-y-3">
-              <div className="flex flex-wrap items-end justify-between gap-2">
-                <Field label="Filter klasifikasi">
-                  <select className="input" value={klasFilter} onChange={(e) => setKlasFilter(e.target.value)}>
-                    <option>Semua</option>
-                    {KLASIFIKASI.map((k) => <option key={k}>{k}</option>)}
-                  </select>
-                </Field>
-                <button className="btn-secondary text-xs" onClick={() => setShowClient(true)}><Plus className="h-3.5 w-3.5" /> Tambah Klien</button>
+              <div className="flex flex-wrap items-center gap-2">
+                <div className="relative min-w-52 flex-1 sm:max-w-xs">
+                  <Search className="absolute left-3 top-2.5 h-4 w-4 text-steel-400" />
+                  <input className="input pl-9 w-full" placeholder="Cari nama / id klien..." aria-label="Cari klien" value={crmQ} onChange={(e) => setCrmQ(e.target.value)} />
+                </div>
+                <FilterPopover
+                  activeCount={[klasFilter !== "Semua"].filter(Boolean).length}
+                  initial={{ klasifikasi: klasFilter }}
+                  onReset={() => { setCrmQ(""); setKlasFilter("Semua"); setStageFilter("Semua"); }}
+                  onApply={(d) => { setKlasFilter(d.klasifikasi); }}
+                >
+                  {(draft, setDraft) => (
+                    <div className="space-y-3">
+                      <Field label="Klasifikasi">
+                        <select className="input w-full" value={draft.klasifikasi} onChange={(e) => setDraft({ ...draft, klasifikasi: e.target.value })}>
+                          {["Semua", ...KLASIFIKASI].map((k) => <option key={k} value={k}>{k === "Semua" ? "Semua klasifikasi" : k}</option>)}
+                        </select>
+                      </Field>
+                    </div>
+                  )}
+                </FilterPopover>
+                {(crmQ.trim() !== "" || klasFilter !== "Semua") && (
+                  <span className="text-xs text-steel-400">
+                    Filter aktif di tab Klien — {visibleClients.length} baris
+                  </span>
+                )}
+                <button className="btn-secondary ml-auto text-xs" onClick={() => setShowClient(true)}><Plus className="h-3.5 w-3.5" /> Tambah Klien</button>
               </div>
               {visibleClients.length === 0 ? (
                 <EmptyState title="Tidak ada klien" subtitle="Ubah filter atau tambah klien baru." />

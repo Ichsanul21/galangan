@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Plus, HardHat, FileSignature, Star } from "lucide-react";
+import { Plus, HardHat, FileSignature, Star, Search } from "lucide-react";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from "recharts";
 import { Card, CardHeader, PageHeader, Badge, KpiCard, Tabs, ProgressBar, ChartTooltip, Modal, Field, FormGrid, ConfirmModal, SortTh, toggleSort, sortRows, usePager, toast } from "../../components/ui";
 import type { SortState } from "../../components/ui";
@@ -9,6 +9,7 @@ import { sameName } from "../../utils/names";
 import { AlertBannerView, notifRowId, useModuleAlert } from "../../components/AlertBanner";
 import { getSetting } from "../../utils/settings";
 import { subcontractorScore, subActiveTrend, subContractTrend, woTrend, ratingTrend } from "../../data";
+import { FilterPopover } from "../../components/FilterPopover";
 
 const toneMap: Record<string, "green" | "blue" | "amber" | "red" | "gray" | "navy"> = {
   Aktif: "green",
@@ -97,6 +98,8 @@ export default function Subcontractor() {
   const [sort, setSort] = useState<SortState>({ key: null, dir: "asc" });
   const [sort2, setSort2] = useState<SortState>({ key: null, dir: "asc" });
   const [typeFilter, setTypeFilter] = useState("Semua");
+  const [subQ, setSubQ] = useState("");
+  const [subStatus, setSubStatus] = useState("Semua");
   const modAlert = useModuleAlert("subkontraktor");
 
   const [showSub, setShowSub] = useState(false);
@@ -126,7 +129,13 @@ export default function Subcontractor() {
 
   const runningWo = workOrders.filter((w) => w.status !== "Selesai").length;
   const avgRating = subcontractors.length ? Math.round(subcontractors.reduce((s, x) => s + Number(x.rating || 0), 0) / subcontractors.length) : 0;
-  const filteredSubs = typeFilter === "Semua" ? subcontractors : subcontractors.filter((s) => String(s.contractType ?? "Borongan") === typeFilter);
+  const filteredSubs = subcontractors.filter((s) => {
+    if (typeFilter !== "Semua" && String(s.contractType ?? "Borongan") !== typeFilter) return false;
+    if (subStatus !== "Semua" && normSub(s.status) !== subStatus) return false;
+    const needle = subQ.trim().toLowerCase();
+    if (!needle) return true;
+    return `${s.name ?? ""} ${s.services ?? ""}`.toLowerCase().includes(needle);
+  });
   const woPager = usePager(workOrders.length);
   useEffect(() => {
     woPager.reset();
@@ -478,11 +487,37 @@ export default function Subcontractor() {
                   </ResponsiveContainer>
                 </div>
               </Card>
-              <div className="flex justify-end">
-                <select className="input max-w-56 text-xs" value={typeFilter} onChange={(e) => setTypeFilter(e.target.value)} aria-label="Filter tipe kontrak">
-                  <option>Semua</option>
-                  {CONTRACT_TYPES.map((t) => <option key={t}>{t}</option>)}
-                </select>
+              <div className="mb-3 flex flex-wrap items-center gap-2">
+                <div className="relative min-w-52 flex-1 sm:max-w-xs">
+                  <Search className="absolute left-3 top-2.5 h-4 w-4 text-steel-400" />
+                  <input className="input pl-9 w-full" placeholder="Cari nama / layanan..." aria-label="Cari subkontraktor" value={subQ} onChange={(e) => setSubQ(e.target.value)} />
+                </div>
+                <FilterPopover
+                  activeCount={[subStatus !== "Semua", typeFilter !== "Semua"].filter(Boolean).length}
+                  initial={{ status: subStatus, tipe: typeFilter }}
+                  onReset={() => { setSubQ(""); setSubStatus("Semua"); setTypeFilter("Semua"); }}
+                  onApply={(d) => { setSubStatus(d.status); setTypeFilter(d.tipe); }}
+                >
+                  {(draft, setDraft) => (
+                    <div className="space-y-3">
+                      <Field label="Status">
+                        <select className="input w-full" value={draft.status} onChange={(e) => setDraft({ ...draft, status: e.target.value })}>
+                          {["Semua", "Aktif", "Kualifikasi", "Blacklist"].map((s) => <option key={s} value={s}>{s === "Semua" ? "Semua status" : s}</option>)}
+                        </select>
+                      </Field>
+                      <Field label="Tipe kontrak">
+                        <select className="input w-full" value={draft.tipe} onChange={(e) => setDraft({ ...draft, tipe: e.target.value })}>
+                          {["Semua", ...CONTRACT_TYPES].map((t) => <option key={t} value={t}>{t === "Semua" ? "Semua tipe" : t}</option>)}
+                        </select>
+                      </Field>
+                    </div>
+                  )}
+                </FilterPopover>
+                {(subQ.trim() !== "" || subStatus !== "Semua" || typeFilter !== "Semua") && (
+                  <span className="text-xs text-steel-400">
+                    Filter aktif di tab Subkontraktor — {filteredSubs.length} baris
+                  </span>
+                )}
               </div>
               <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
               {filteredSubs.map((s) => (

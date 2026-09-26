@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Plus, ShieldCheck, AlertTriangle, Siren, Award, Send } from "lucide-react";
+import { Plus, ShieldCheck, AlertTriangle, Siren, Award, Send, Search } from "lucide-react";
 import { ComposedChart, Line, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 import { Card, CardHeader, PageHeader, Badge, KpiCard, Tabs, StatusBadge, Donut, ChartTooltip, Modal, Field, FormGrid, SortTh, toggleSort, sortRows, usePager, toast } from "../../components/ui";
 import type { SortState } from "../../components/ui";
@@ -11,6 +11,7 @@ import { getSetting } from "../../utils/settings";
 import { AlertBannerView, notifRowId, useModuleAlert } from "../../components/AlertBanner";
 import { exportExcel } from "../../utils/export";
 import { useAuth, canSetTarget } from "../../auth/auth";
+import { FilterPopover } from "../../components/FilterPopover";
 
 const ncrTone: Record<string, "red" | "amber" | "blue" | "green"> = {
   Terbuka: "amber",
@@ -109,15 +110,23 @@ export default function QCSafety() {
   const branchOf = (v: string): string => v || globalBranch;
   const qualityStaff = data.employees.filter((e) => e.dept === "Quality");
   const [tab, setTab] = useState("Inspeksi (ITP)");
+  const [inspQ, setInspQ] = useState("");
+  const [inspStatus, setInspStatus] = useState("Semua");
   const [sort, setSort] = useState<SortState>({ key: null, dir: "asc" });
-  const sortedInsp = useMemo(() => sortRows(inspections, sort, (i, key) =>
-    key === "inspeksi" ? String(i.id ?? "") : key === "proyek" ? String(i.project ?? "") : key === "titik" ? String(i.point ?? "") : key === "itp" ? String(i.itp ?? "") : key === "hold" ? String(i.holdType ?? "") : key === "nde" ? String(i.nde ?? "") : key === "sampel" ? Number(i.sampleSize ?? 0) : key === "inspector" ? String(i.inspector ?? "") : key === "tanggal" ? String(i.date ?? "") : String(i.status ?? "")
-  ), [inspections, sort]);
-  const inspPager = usePager(inspections.length);
+  const inspFiltered = inspections.filter((i) => {
+    if (inspStatus !== "Semua" && String(i.status ?? "") !== inspStatus) return false;
+    const needle = inspQ.trim().toLowerCase();
+    if (!needle) return true;
+    return `${i.id ?? ""} ${i.project ?? ""} ${i.point ?? ""} ${i.itp ?? ""} ${i.inspector ?? ""}`.toLowerCase().includes(needle);
+  });
+  const sortedInsp = useMemo(() => sortRows(inspFiltered, sort, (i, key) =>
+    key === "inspeksi" ? String(i.id ?? "") : key === "proyek" ? String(i.project ?? "") : key === "titik" ? String(i.point ?? "") : key === "itp" ? String(i.itp ?? "") : key === "hold" ? String(i.holdType ?? "") : key === "nde" ? String(i.nde ?? "") : key === "sampel" ? Number(i.sampleSize ?? 0) : key === "inspector" ? String(i.inspector ?? "") : key === "tanggal" ? String(i.date ?? "")     : String(i.status ?? "")
+  ), [inspFiltered, sort]);
+  const inspPager = usePager(inspFiltered.length);
   useEffect(() => {
     inspPager.reset();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tab]);
+  }, [inspQ, inspStatus, tab]);
 
   const [showInsp, setShowInsp] = useState(false);
   const [inspForm, setInspForm] = useState({ project: "", point: "", status: "Terjadwal", date: todayISO(), holdType: "Witness", nde: "Tidak", ndeMethod: "UT", inspector: "", sampleSize: "", defectsAllowed: "0", defectsFound: "0", calTool: "", branch: "" });
@@ -657,6 +666,33 @@ export default function QCSafety() {
                     </ResponsiveContainer>
                   </div>
                 </Card>
+              </div>
+              <div className="mb-3 flex flex-wrap items-center gap-2">
+                <div className="relative min-w-52 flex-1 sm:max-w-xs">
+                  <Search className="absolute left-3 top-2.5 h-4 w-4 text-steel-400" />
+                  <input className="input pl-9 w-full" placeholder="Cari id / proyek / titik / inspector..." aria-label="Cari inspeksi" value={inspQ} onChange={(e) => setInspQ(e.target.value)} />
+                </div>
+                <FilterPopover
+                  activeCount={[inspStatus !== "Semua"].filter(Boolean).length}
+                  initial={{ status: inspStatus }}
+                  onReset={() => { setInspQ(""); setInspStatus("Semua"); }}
+                  onApply={(d) => { setInspStatus(d.status); }}
+                >
+                  {(draft, setDraft) => (
+                    <div className="space-y-3">
+                      <Field label="Hasil">
+                        <select className="input w-full" value={draft.status} onChange={(e) => setDraft({ ...draft, status: e.target.value })}>
+                          {["Semua", "Terjadwal", "Dalam Proses", "Lulus", "NCR"].map((s) => <option key={s} value={s}>{s === "Semua" ? "Semua hasil" : s}</option>)}
+                        </select>
+                      </Field>
+                    </div>
+                  )}
+                </FilterPopover>
+                {(inspQ.trim() !== "" || inspStatus !== "Semua") && (
+                  <span className="text-xs text-steel-400">
+                    Filter aktif di tab Inspeksi — {sortedInsp.length} baris
+                  </span>
+                )}
               </div>
               <div className="overflow-x-auto">
                 <table className="w-full">
