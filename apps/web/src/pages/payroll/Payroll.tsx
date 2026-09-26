@@ -3,6 +3,7 @@ import { Download, Wallet } from "lucide-react";
 import {
   Badge,
   Card,
+  ConfirmModal,
   EmptyState,
   Field,
   FormGrid,
@@ -30,6 +31,55 @@ const NEXT_STATUS: Record<string, string> = {
   Dihitung: "Disetujui",
   Disetujui: "Dibayar",
 };
+
+/* Alur kaku payroll: Draft → Dihitung → Disetujui → Dibayar. Tidak bisa
+   loncat, tidak bisa mundur, edit hanya di Draft, hapus hanya di Draft. */
+const PAY_STAGES = ["Draft", "Dihitung", "Disetujui", "Dibayar"] as const;
+
+const ADV_LABEL: Record<string, string> = {
+  Draft: "Hitung",
+  Dihitung: "Setujui",
+  Disetujui: "Bayar",
+};
+
+function StageStrip({ counts, active, onPick, prefix }: {
+  counts: Record<string, number>;
+  active: string;
+  onPick: (s: string) => void;
+  prefix: string;
+}) {
+  const total = PAY_STAGES.reduce((s, st) => s + (counts[st] ?? 0), 0);
+  return (
+    <div className="mb-3 flex flex-wrap items-center gap-2" role="group" aria-label="Filter tahap payroll">
+      {PAY_STAGES.map((st, i) => {
+        const n = counts[st] ?? 0;
+        const on = active === st;
+        return (
+          <button
+            key={st}
+            onClick={() => onPick(on ? "Semua" : st)}
+            aria-pressed={on}
+            title={n === 0 ? `Tidak ada slip ${st} — klik untuk filter` : `Tampilkan ${n} slip ${st}`}
+            className={`flex items-center gap-2 rounded-xl border px-3 py-2 text-xs font-semibold transition-colors ${
+              on ? "border-navy-700 bg-navy-700 text-white" : "border-steel-200 bg-white text-steel-700 hover:border-navy-400"
+            }`}
+          >
+            <span className={`flex h-5 w-5 items-center justify-center rounded-full text-[10px] font-bold ${on ? "bg-white/25 text-white" : "bg-surface text-navy-800"}`}>
+              {i + 1}
+            </span>
+            {st}
+            <span className={`rounded-full px-1.5 py-0.5 text-[11px] font-bold ${on ? "bg-white/25 text-white" : "bg-surface text-steel-600"}`}>
+              {n}
+            </span>
+            {i < PAY_STAGES.length - 1 && <span aria-hidden className={on ? "text-white/60" : "text-steel-300"}>→</span>}
+          </button>
+        );
+      })}
+      <span className="text-xs text-steel-400">{total} slip · klik tahap untuk filter, klik lagi untuk lepas</span>
+      <span className="sr-only" id={`${prefix}-stage-hint`}>Tahap aktif: {active}</span>
+    </div>
+  );
+}
 
 const PAY_TYPES = ["Gaji", "THR", "Bonus"];
 
@@ -210,6 +260,9 @@ export default function Payroll() {
   const [editLines, setEditLines] = useState<AllowanceLine[]>([]);
   const [payTarget, setPayTarget] = useState<StoreItem | null>(null);
   const [proof, setProof] = useState({ date: todayISO(), method: "Transfer", ref: "" });
+  const [confirmAdv, setConfirmAdv] = useState<StoreItem | null>(null);
+  const [gajiStage, setGajiStage] = useState<string>("Semua");
+  const [thrStage, setThrStage] = useState<string>("Semua");
   const [slipTarget, setSlipTarget] = useState<StoreItem | null>(null);
   const [slipSign, setSlipSign] = useState({ received: false, date: todayISO() });
   const [sort, setSort] = useState<SortState>({ key: null, dir: "asc" });
@@ -238,6 +291,23 @@ export default function Payroll() {
   const gajiRows = useMemo(() => rows.filter((p) => rowType(p) === "Gaji"), [rows]);
   const thrRows = useMemo(() => rows.filter((p) => rowType(p) === "THR"), [rows]);
   const bonusRows = useMemo(() => rows.filter((p) => rowType(p) === "Bonus"), [rows]);
+  const stageCounts = (list: StoreItem[]): Record<string, number> => {
+    const c: Record<string, number> = { Draft: 0, Dihitung: 0, Disetujui: 0, Dibayar: 0 };
+    for (const p of list) {
+      const s = String(p.status ?? "");
+      if (s in c) c[s] += 1;
+    }
+    return c;
+  };
+  const gajiShown = useMemo(
+    () => (gajiStage === "Semua" ? gajiRows : gajiRows.filter((p) => String(p.status) === gajiStage)),
+    [gajiRows, gajiStage],
+  );
+  const thrBonusAll = useMemo(() => [...thrRows, ...bonusRows], [thrRows, bonusRows]);
+  const thrShown = useMemo(
+    () => (thrStage === "Semua" ? thrBonusAll : thrBonusAll.filter((p) => String(p.status) === thrStage)),
+    [thrBonusAll, thrStage],
+  );
 
   const rates: PayrollRates = {
     pphRate: getSetting(data, "PPH21_T1_RATE", 5),
@@ -371,7 +441,9 @@ export default function Payroll() {
     toast(`${fresh.length} draft payroll ${fmtBulan(period)} dibuat`);
   };
 
-  const advance = async (p: StoreItem) => {
+  /* Alur kaku: validasi + konfirmasi sebelum pindah tahap. Dibayar lewat
+     modal bukti (kas + jurnal otomatis). Tidak ada jalan pintas status. */
+  const askAdvance = (p: StoreItem) => {
     const next = NEXT_STATUS[String(p.status)];
     if (!next) return;
     if (next === "Dibayar") {
@@ -379,9 +451,24 @@ export default function Payroll() {
       setProof({ date: todayISO(), method: "Transfer", ref: "" });
       return;
     }
-    await update("payroll", p.id, { status: next });
-    log("memproses payroll", `${p.id} → ${next}`, "Payroll");
-    toast(`${p.id} → ${next}`);
+    if (!(Number(p.net || 0) > 0)) {
+      toast(`${p.id} net Rp 0 — perbaiki komponen dulu via Edit`, "info");
+      return;
+    }
+    setConfirmAdv(p);
+  };
+
+  const doAdvance = async () => {
+    if (!confirmAdv) return;
+    const next = NEXT_STATUS[String(confirmAdv.status)];
+    if (!next || next === "Dibayar") {
+      setConfirmAdv(null);
+      return;
+    }
+    await update("payroll", confirmAdv.id, { status: next });
+    log("memproses payroll", `${confirmAdv.id} ${confirmAdv.status} → ${next}`, "Payroll");
+    toast(`${confirmAdv.id} → ${next}`);
+    setConfirmAdv(null);
   };
 
   const openEdit = (p: StoreItem) => {
@@ -751,12 +838,13 @@ export default function Payroll() {
               <div className="mb-3 flex flex-wrap items-center gap-2">
                 <label className="flex items-center gap-2 text-sm text-steel-600">
                   Periode
-                  <input type="month" className="input w-auto" value={period} onChange={(e) => setPeriod(e.target.value)} />
+                  <input type="month" className="input w-auto" value={period} onChange={(e) => { setPeriod(e.target.value); setGajiStage("Semua"); }} />
                 </label>
                 <span className="text-xs text-steel-400">
                   Lembur dari absensi bulan berjalan (hanya Disetujui) · tarif = pokok/{otDivisor} · jam 1–2: 1,5x · jam 3–4: 2x · jam 5+: 3x · Harian: PPh 5% × kelebihan Rp 450rb/hari
                 </span>
               </div>
+              <StageStrip counts={stageCounts(gajiRows)} active={gajiStage} onPick={setGajiStage} prefix="gaji" />
               <div className="overflow-x-auto p-2">
                 <table className="w-full">
                   <thead className="bg-surface sticky top-0 z-10">
@@ -774,7 +862,7 @@ export default function Payroll() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-steel-100">
-                    {sortRows(gajiRows, sort, (row, k) => {
+                    {sortRows(gajiShown, sort, (row, k) => {
                       const p = row as StoreItem;
                       switch (k) {
                         case "id": return String(p.id ?? "");
@@ -802,11 +890,15 @@ export default function Payroll() {
                         <td className="td">
                           <div className="flex items-center gap-2 whitespace-nowrap">
                             {p.status === "Draft" && (
-                              <button className="text-sm font-semibold text-ocean-600 hover:underline" onClick={() => openEdit(p)}>Edit</button>
+                              <button className="text-sm font-semibold text-ocean-600 hover:underline" title="Ubah komponen (hanya bisa di Draft)" onClick={() => openEdit(p)}>Edit</button>
                             )}
                             {NEXT_STATUS[String(p.status)] && (
-                              <button className="text-sm font-semibold text-emerald-600 hover:underline" onClick={() => advance(p)}>
-                                {String(p.status) === "Disetujui" ? "Bayar" : `→ ${NEXT_STATUS[String(p.status)]}`}
+                              <button
+                                className="text-sm font-semibold text-emerald-600 hover:underline"
+                                title={String(p.status) === "Disetujui" ? "Bayar via modal bukti (kas + jurnal otomatis)" : `Pindah ke ${NEXT_STATUS[String(p.status)]} (konfirmasi dulu)`}
+                                onClick={() => askAdvance(p)}
+                              >
+                                {ADV_LABEL[String(p.status)] ?? `→ ${NEXT_STATUS[String(p.status)]}`}
                               </button>
                             )}
                             <button className="text-sm font-semibold text-navy-700 hover:underline" onClick={() => openSlip(p)}>Slip</button>
@@ -816,7 +908,12 @@ export default function Payroll() {
                     ))}
                   </tbody>
                 </table>
-                {gajiRows.length === 0 && <EmptyState title={`Belum ada payroll ${fmtBulan(period)}`} subtitle="Klik Generate untuk membuat draft dari data karyawan & absensi." />}
+                {gajiShown.length === 0 && (
+                  <EmptyState
+                    title={gajiStage === "Semua" ? `Belum ada payroll ${fmtBulan(period)}` : `Tidak ada slip ${gajiStage} di ${fmtBulan(period)}`}
+                    subtitle={gajiStage === "Semua" ? "Klik Generate untuk membuat draft dari data karyawan & absensi." : "Klik tahap lain atau lepas filter tahap."}
+                  />
+                )}
               </div>
             </div>
           )}
@@ -832,6 +929,7 @@ export default function Payroll() {
                   THR = 1×(pokok + tunjangan rata-rata) bila masa kerja ≥12 bln, selain itu proporsional n/12 · total THR {fmtRupiah(totals.thr)} · total Bonus {fmtRupiah(totals.bonus)}
                 </span>
               </div>
+              <StageStrip counts={stageCounts(thrBonusAll)} active={thrStage} onPick={setThrStage} prefix="thr" />
               <Card className="p-4">
                 <h3 className="text-sm font-semibold text-navy-900">Bonus Manual</h3>
                 <div className="mt-2 flex flex-wrap items-end gap-2">
@@ -864,7 +962,7 @@ export default function Payroll() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-steel-100">
-                    {sortRows([...thrRows, ...bonusRows], sort2, (row, k) => {
+                    {sortRows(thrShown, sort2, (row, k) => {
                       const p = row as StoreItem;
                       switch (k) {
                         case "id": return String(p.id ?? "");
@@ -890,13 +988,17 @@ export default function Payroll() {
                         <td className="td">
                           <div className="flex items-center gap-2 whitespace-nowrap">
                             {NEXT_STATUS[String(p.status)] && (
-                              <button className="text-sm font-semibold text-emerald-600 hover:underline" onClick={() => advance(p)}>
-                                {String(p.status) === "Disetujui" ? "Bayar" : `→ ${NEXT_STATUS[String(p.status)]}`}
+                              <button
+                                className="text-sm font-semibold text-emerald-600 hover:underline"
+                                title={String(p.status) === "Disetujui" ? "Bayar via modal bukti (kas + jurnal otomatis)" : `Pindah ke ${NEXT_STATUS[String(p.status)]} (konfirmasi dulu)`}
+                                onClick={() => askAdvance(p)}
+                              >
+                                {ADV_LABEL[String(p.status)] ?? `→ ${NEXT_STATUS[String(p.status)]}`}
                               </button>
                             )}
                             <button className="text-sm font-semibold text-navy-700 hover:underline" onClick={() => openSlip(p)}>Slip</button>
                             {p.status === "Draft" && (
-                              <button className="text-sm font-semibold text-rose-600 hover:underline" onClick={() => removeRow(p)}>Hapus</button>
+                              <button className="text-sm font-semibold text-rose-600 hover:underline" title="Hapus permanen (hanya bisa di Draft)" onClick={() => removeRow(p)}>Hapus</button>
                             )}
                           </div>
                         </td>
@@ -904,7 +1006,12 @@ export default function Payroll() {
                     ))}
                   </tbody>
                 </table>
-                {thrRows.length + bonusRows.length === 0 && <EmptyState title={`Belum ada THR/bonus ${fmtBulan(period)}`} subtitle="Klik Hitung THR atau catat bonus manual." />}
+                {thrShown.length === 0 && (
+                  <EmptyState
+                    title={thrStage === "Semua" ? `Belum ada THR/bonus ${fmtBulan(period)}` : `Tidak ada THR/bonus ${thrStage} di ${fmtBulan(period)}`}
+                    subtitle={thrStage === "Semua" ? "Klik Hitung THR atau catat bonus manual." : "Klik tahap lain atau lepas filter tahap."}
+                  />
+                )}
               </div>
             </div>
           )}
@@ -1143,6 +1250,18 @@ export default function Payroll() {
           );
         })()}
       </Modal>
+      <ConfirmModal
+        open={confirmAdv !== null}
+        title={confirmAdv ? `Pindah tahap: ${confirmAdv.id}` : "Pindah tahap"}
+        desc={
+          confirmAdv
+            ? `${empNameOf(String(confirmAdv.employeeId))} · ${rowType(confirmAdv)} ${fmtBulan(period)} · net ${fmtRupiah(Number(confirmAdv.net || 0))} — dari ${confirmAdv.status} ke ${NEXT_STATUS[String(confirmAdv.status)] ?? "?"}. Tidak bisa dibatalkan dari sini (hubungi admin bila salah tahap).`
+            : ""
+        }
+        confirmLabel={confirmAdv ? ADV_LABEL[String(confirmAdv.status)] ?? "Lanjut" : "Lanjut"}
+        onCancel={() => setConfirmAdv(null)}
+        onConfirm={() => void doAdvance()}
+      />
     </div>
   );
 }
