@@ -22,38 +22,57 @@ function payDate(note: string): string {
   return `${yy}-${m[2].padStart(2, "0")}-${m[1].padStart(2, "0")}`;
 }
 
-async function put(table: string, id: string, branch: string, data: Record<string, unknown>, now: string, ctr: { ins: number; skip: number }): Promise<void> {
+async function put(table: string, id: string, branch: string, data: Record<string, unknown>, now: string, ctr: { ins: number; skip: number; done: number; total: number }): Promise<void> {
   const exists = await q("SELECT id FROM " + table + " WHERE id = ?", [id]);
   if (exists.length > 0) {
     ctr.skip += 1;
-    return;
-  }
-  try {
-    await exec(`INSERT INTO ${table} (id, branch, data, updated_at) VALUES (?, ?, ?, ?)`, [
-      id,
-      branch,
-      JSON.stringify(data),
-      now,
-    ]);
-    ctr.ins += 1;
-  } catch (err) {
-    // Idempoten juga terhadap balapan/rerun: duplikat = anggap skip.
-    const code = (err as { code?: string; errno?: number } | null)?.code;
-    const errno = (err as { code?: string; errno?: number } | null)?.errno;
-    if (code === "ER_DUP_ENTRY" || errno === 1062 || /UNIQUE constraint failed/i.test(String((err as Error)?.message ?? ""))) {
-      ctr.skip += 1;
-      return;
+  } else {
+    try {
+      await exec(`INSERT INTO ${table} (id, branch, data, updated_at) VALUES (?, ?, ?, ?)`, [
+        id,
+        branch,
+        JSON.stringify(data),
+        now,
+      ]);
+      ctr.ins += 1;
+    } catch (err) {
+      // Idempoten juga terhadap balapan/rerun: duplikat = anggap skip.
+      const code = (err as { code?: string; errno?: number } | null)?.code;
+      const errno = (err as { code?: string; errno?: number } | null)?.errno;
+      if (code === "ER_DUP_ENTRY" || errno === 1062 || /UNIQUE constraint failed/i.test(String((err as Error)?.message ?? ""))) {
+        ctr.skip += 1;
+      } else {
+        throw err;
+      }
     }
-    throw err;
+  }
+  // Progress bar kasar: tulis tiap 2000 baris + tiap fase.
+  ctr.done += 1;
+  if (ctr.done % 2000 === 0 || ctr.done === ctr.total) {
+    const pct = ctr.total > 0 ? Math.round((ctr.done / ctr.total) * 100) : 0;
+    console.log(`[seed:bulk] ${ctr.done}/${ctr.total} (${pct}%) ins=${ctr.ins} skip=${ctr.skip}`);
   }
 }
 
 async function main(): Promise<void> {
   const now = new Date().toISOString();
-  const ctr = { ins: 0, skip: 0 };
+  const hutang = load<{ items: Array<Record<string, any>> }>("hutang.json");
+  const kode = load<{ barang: Array<{ kode: string; nama: string }>; supplier: Array<{ kode: string; nama: string }> }>("warehouse_kode.json");
+  const stock = load<Array<{ kode: string; nama: string; awal: number; masuk: number; keluar: number; akhir: number }>>("warehouse_stock.json");
+  const win = load<Array<Record<string, any>>>("warehouse_in.json");
+  const wout = load<Array<Record<string, any>>>("warehouse_out.json");
+  const fhutang = load<Array<{ no: string; nama: string; saldoAwal: number; saldoAkhir: number }>>("finance_hutang.json");
+  const fpiu = load<Array<{ no: string; nama: string; saldoAwal: number; saldoAkhir: number }>>("finance_piutang.json");
+  const fbank = load<{ banks: Array<Record<string, any>>; jurnal: Array<Record<string, any>> }>("finance_bank.json");
+  const faset = load<Array<Record<string, any>>>("finance_aset.json");
+  const total =
+    hutang.items.length + kode.barang.length + win.length + wout.length +
+    kode.supplier.length + fhutang.length + fpiu.length + fbank.jurnal.length +
+    faset.length + 3; // 3 baris settings
+  const ctr = { ins: 0, skip: 0, done: 0, total };
+  console.log(`[seed:bulk] mulai, total ${total} baris`);
 
   // ---- 1. Hutang dagang 48 baris -> payables ----
-  const hutang = load<{ items: Array<Record<string, any>> }>("hutang.json");
   let n = 0;
   for (const h of hutang.items) {
     n += 1;
@@ -82,8 +101,6 @@ async function main(): Promise<void> {
   }
 
   // ---- 2. Warehouse KODE+STOCK -> inventory ----
-  const kode = load<{ barang: Array<{ kode: string; nama: string }>; supplier: Array<{ kode: string; nama: string }> }>("warehouse_kode.json");
-  const stock = load<Array<{ kode: string; nama: string; awal: number; masuk: number; keluar: number; akhir: number }>>("warehouse_stock.json");
   const stockMap = new Map(stock.map((s) => [s.kode, s]));
   // File asli memakai ulang 31 kode untuk barang berbeda — kemunculan
   // ke-2+ diberi sufiks -2/-3 agar semua 4784 baris masuk persis dokumen.
@@ -115,7 +132,6 @@ async function main(): Promise<void> {
   }
 
   // ---- 3. IN/OUT -> movements ----
-  const win = load<Array<Record<string, any>>>("warehouse_in.json");
   n = 0;
   for (const m of win) {
     n += 1;
@@ -136,7 +152,6 @@ async function main(): Promise<void> {
       purpose: m.purpose,
     }, now, ctr);
   }
-  const wout = load<Array<Record<string, any>>>("warehouse_out.json");
   n = 0;
   for (const m of wout) {
     n += 1;
@@ -171,7 +186,6 @@ async function main(): Promise<void> {
       status: "Aktif",
     }, now, ctr);
   }
-  const fhutang = load<Array<{ no: string; nama: string; saldoAwal: number; saldoAkhir: number }>>("finance_hutang.json");
   let vh = 0;
   for (const v of fhutang) {
     if (!v.nama || supSeen.has(v.nama.toUpperCase())) continue;
@@ -188,7 +202,6 @@ async function main(): Promise<void> {
   }
 
   // ---- 5. Piutang -> clients ----
-  const fpiu = load<Array<{ no: string; nama: string; saldoAwal: number; saldoAkhir: number }>>("finance_piutang.json");
   let cp = 0;
   for (const c of fpiu) {
     if (!c.nama) continue;
@@ -202,7 +215,6 @@ async function main(): Promise<void> {
   }
 
   // ---- 6. Bank + jurnal + aset ----
-  const fbank = load<{ banks: Array<Record<string, any>>; jurnal: Array<Record<string, any>> }>("finance_bank.json");
   await put("settings", "BANK_ACCOUNTS_RAW", "", {
     id: "BANK_ACCOUNTS_RAW",
     key: "BANK_ACCOUNTS_RAW",
@@ -219,7 +231,6 @@ async function main(): Promise<void> {
       ...j,
     }, now, ctr);
   }
-  const faset = load<Array<Record<string, any>>>("finance_aset.json");
   let an = 0;
   for (const a of faset) {
     an += 1;
