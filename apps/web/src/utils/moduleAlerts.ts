@@ -1,8 +1,8 @@
-// Skema notifikasi per modul — SATU SUMBER untuk badge sidebar dan
-// highlight di dalam modul. Badge = item pemicu yang belum dibaca
-// (read-state di utils/notifRead, persist per perangkat); highlight di
-// halaman berbasis KONDISI (tetap tampil walau badge sudah 0).
-// Predikat di sini WAJIB sama dengan yang dipakai halaman highlight.
+// Skema notifikasi per modul — SATU SUMBER untuk banner + highlight.
+// Badge sidebar DIHAPUS (per 2026-09-26): yang stay hanya banner + highlight
+// per halaman modul, murni ikut KONDISI data (tanpa read-state).
+// Builder per modul agar hook halaman hanya hitung 1 modul (murah) —
+// buildModuleAlertItems (semua) dipertahankan untuk kompatibilitas.
 import type { StoreShape, StoreItem } from "../data/store";
 import { computeAlerts } from "./alerts";
 import { getSetting } from "./settings";
@@ -13,7 +13,7 @@ export type ModuleAlertKey =
   | "kapal" | "dokumen";
 
 export interface ModuleAlertItem {
-  /** id stabil untuk read-state (mod-<modul>-...; proyek reuse alert-<id>). */
+  /** id stabil per baris kondisi (dipakai highlight + key React). */
   id: string;
   /** id baris di koleksi (untuk highlight). */
   rowId: string;
@@ -54,25 +54,28 @@ function todayISO(): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
 
-export function buildModuleAlertItems(data: StoreShape): Record<ModuleAlertKey, ModuleAlertItem[]> {
-  const items = data as unknown as Record<string, StoreItem[] | undefined>;
-  const list = (k: string): StoreItem[] => (Array.isArray(items[k]) ? (items[k] as StoreItem[]) : []);
-  const out: Record<ModuleAlertKey, ModuleAlertItem[]> = {
-    proyek: [], drydock: [], inventori: [], equipment: [], subkontraktor: [],
-    qc: [], crm: [], procurement: [], keuangan: [], sdm: [], payroll: [],
-    kapal: [], dokumen: [],
-  };
+type Ctx = {
+  data: StoreShape;
+  list: (k: string) => StoreItem[];
+  today: string;
+};
 
-  // Proyek: reuse engine alerts yang mengarah ke /proyek* (bell ikut turun).
+function buildProyek(ctx: Ctx): ModuleAlertItem[] {
+  const out: ModuleAlertItem[] = [];
+  // Reuse engine alerts yang mengarah ke /proyek* (bell ikut turun).
   // rowId = id proyek (untuk highlight baris), kecuali agregat monitoring.
-  for (const al of computeAlerts(data)) {
+  for (const al of computeAlerts(ctx.data)) {
     if (!al.to.startsWith("/proyek")) continue;
     const m = /^\/proyek\/([^/]+)$/.exec(al.to);
-    out.proyek.push({ id: `alert-${al.id}`, rowId: m ? m[1] : "", label: al.text, detail: `Tujuan: ${al.to}` });
+    out.push({ id: `alert-${al.id}`, rowId: m ? m[1] : "", label: al.text, detail: `Tujuan: ${al.to}` });
   }
+  return out;
+}
 
-  // Drydock: slot konflik (sama dengan engine #7, per slot).
-  const slots = list("dockSlots");
+function buildDrydock(ctx: Ctx): ModuleAlertItem[] {
+  const out: ModuleAlertItem[] = [];
+  // Slot konflik (sama dengan engine #7, per slot).
+  const slots = ctx.list("dockSlots");
   const conflicted = new Set<string>();
   for (const s of slots) {
     const clash = slots.some(
@@ -83,146 +86,176 @@ export function buildModuleAlertItems(data: StoreShape): Record<ModuleAlertKey, 
   }
   for (const s of slots) {
     if (!conflicted.has(String(s.id))) continue;
-    out.drydock.push({
+    out.push({
       id: `mod-dock-${s.id}`, rowId: String(s.id),
       label: `Slot ${s.id} konflik di ${s.dockId ?? "-"}`,
       detail: `${s.vessel ?? "-"} · ${s.from}→${s.to}`,
     });
   }
+  return out;
+}
 
-  // Inventori: stok ≤ minimum (sama dengan badge lama).
-  for (const i of list("inventory")) {
+function buildInventori(ctx: Ctx): ModuleAlertItem[] {
+  const out: ModuleAlertItem[] = [];
+  for (const i of ctx.list("inventory")) {
     if (Number(i.stock) > Number(i.minStock)) continue;
-    out.inventori.push({
+    out.push({
       id: `mod-inv-${i.id}`, rowId: String(i.id),
       label: `${i.name ?? i.id} menipis (${num(i.stock)} ${i.unit ?? ""} ≤ min ${num(i.minStock)})`,
       detail: `Gudang: ${i.warehouse ?? "-"}`,
     });
   }
+  return out;
+}
 
-  // Equipment: servis ≤ 14 hari atau status Maintenance.
-  const today = todayISO();
-  for (const e of list("equipment")) {
+function buildEquipment(ctx: Ctx): ModuleAlertItem[] {
+  const out: ModuleAlertItem[] = [];
+  for (const e of ctx.list("equipment")) {
     const due = daysUntil(String(e.nextService ?? ""));
     if (String(e.status ?? "") === "Maintenance") {
-      out.equipment.push({
+      out.push({
         id: `mod-eq-${e.id}`, rowId: String(e.id),
         label: `${e.name ?? e.id} dalam maintenance`, detail: String(e.maintenanceNote ?? e.code ?? ""),
       });
     } else if (due !== null && due >= 0 && due <= 14) {
-      out.equipment.push({
+      out.push({
         id: `mod-eq-${e.id}`, rowId: String(e.id),
         label: `${e.name ?? e.id} servis H-${due}`, detail: `Jadwal: ${e.nextService}`,
       });
     }
   }
+  return out;
+}
 
-  // Subkontraktor: termin Diajukan (butuh persetujuan).
-  for (const t of list("termins")) {
+function buildSubkontraktor(ctx: Ctx): ModuleAlertItem[] {
+  const out: ModuleAlertItem[] = [];
+  for (const t of ctx.list("termins")) {
     if (String(t.status ?? "") !== "Diajukan") continue;
-    out.subkontraktor.push({
+    out.push({
       id: `mod-sub-${t.id}`, rowId: String(t.id),
       label: `Termin ${t.id} menunggu persetujuan (${t.sub ?? "-"})`,
       detail: `${t.milestone ?? ""} · ${num(t.amount)}`,
     });
   }
+  return out;
+}
 
-  // QC: NCR terbuka + insiden (unread-based: badge sekali, highlight kondisi).
-  for (const n of list("ncr")) {
+function buildQc(ctx: Ctx): ModuleAlertItem[] {
+  const out: ModuleAlertItem[] = [];
+  for (const n of ctx.list("ncr")) {
     if (String(n.status ?? "") === "Tertutup") continue;
-    out.qc.push({
+    out.push({
       id: `mod-qc-${n.id}`, rowId: String(n.id),
       label: `NCR ${n.id} terbuka (${n.severity ?? "-"})`,
       detail: String(n.issue ?? n.project ?? ""),
     });
   }
-  for (const i of list("incidents")) {
-    out.qc.push({
+  for (const i of ctx.list("incidents")) {
+    out.push({
       id: `mod-qc-${i.id}`, rowId: String(i.id),
       label: `Insiden: ${i.desc ?? i.type ?? i.id}`,
       detail: `${i.date ?? ""} · ${i.location ?? ""}`,
     });
   }
+  return out;
+}
 
-  // CRM: request Baru/Disurvei (butuh tindak lanjut).
-  for (const r of list("requests")) {
+function buildCrm(ctx: Ctx): ModuleAlertItem[] {
+  const out: ModuleAlertItem[] = [];
+  for (const r of ctx.list("requests")) {
     if (!["Baru", "Disurvei"].includes(String(r.status ?? ""))) continue;
-    out.crm.push({
+    out.push({
       id: `mod-crm-${r.id}`, rowId: String(r.id),
       label: `Request ${r.id} ${r.status} (${r.vessel ?? "-"})`,
       detail: String(r.client ?? ""),
     });
   }
+  return out;
+}
 
-  // Procurement: requisition menunggu/RFQ + PO menunggu persetujuan.
-  for (const r of list("requisitions")) {
+function buildProcurement(ctx: Ctx): ModuleAlertItem[] {
+  const out: ModuleAlertItem[] = [];
+  for (const r of ctx.list("requisitions")) {
     const st = String(r.status ?? "");
     if (!st.toLowerCase().includes("menunggu") && st.toUpperCase() !== "RFQ") continue;
-    out.procurement.push({
+    out.push({
       id: `mod-proc-${r.id}`, rowId: String(r.id),
       label: `PR ${r.id} ${st} (${r.item ?? "-"})`,
       detail: String(r.by ?? ""),
     });
   }
-  for (const p of list("purchaseOrders")) {
+  for (const p of ctx.list("purchaseOrders")) {
     const st = String(p.status ?? "");
     const canon = st === "Menunggu Persetujuan" ? "Diajukan" : st;
     if (canon !== "Diajukan") continue;
-    out.procurement.push({
+    out.push({
       id: `mod-proc-${p.id}`, rowId: String(p.id),
       label: `PO ${p.id} menunggu persetujuan (${p.vendor ?? "-"})`,
       detail: String(p.item ?? ""),
     });
   }
+  return out;
+}
 
-  // Keuangan: invoice Belum Dibayar/Terlambat + hutang jatuh tempo.
-  for (const i of list("invoices")) {
+function buildKeuangan(ctx: Ctx): ModuleAlertItem[] {
+  const out: ModuleAlertItem[] = [];
+  for (const i of ctx.list("invoices")) {
     if (!["Belum Dibayar", "Terlambat"].includes(String(i.status ?? ""))) continue;
-    out.keuangan.push({
+    out.push({
       id: `mod-fin-${i.id}`, rowId: String(i.id),
       label: `Invoice ${i.id} ${i.status} (${i.client ?? "-"})`,
       detail: `Jatuh tempo: ${i.due ?? "-"} · ${num(i.grandTotal || i.amount)}`,
     });
   }
-  for (const a of list("payables")) {
+  for (const a of ctx.list("payables")) {
     if (String(a.st ?? "") === "Lunas") continue;
     const due = String(a.due ?? "");
-    if (!due || due >= today) continue;
-    out.keuangan.push({
+    if (!due || due >= ctx.today) continue;
+    out.push({
       id: `mod-fin-${a.id}`, rowId: String(a.id),
       label: `Hutang ${a.po ?? a.id} jatuh tempo (${a.v ?? "-"})`,
       detail: `Jatuh tempo: ${due}`,
     });
   }
+  return out;
+}
 
-  // SDM: cuti Diajukan.
-  for (const l of list("leaves")) {
+function buildSdm(ctx: Ctx): ModuleAlertItem[] {
+  const out: ModuleAlertItem[] = [];
+  for (const l of ctx.list("leaves")) {
     if (String(l.status ?? "") !== "Diajukan") continue;
-    out.sdm.push({
+    out.push({
       id: `mod-sdm-${l.id}`, rowId: String(l.id),
       label: `Cuti ${l.employeeId ?? "-"} menunggu (${l.type ?? "-"})`,
       detail: `${l.from ?? ""}→${l.to ?? ""} · ${l.days ?? "?"} hari`,
     });
   }
+  return out;
+}
 
-  // Payroll: slip Draft.
-  for (const p of list("payroll")) {
+function buildPayroll(ctx: Ctx): ModuleAlertItem[] {
+  const out: ModuleAlertItem[] = [];
+  for (const p of ctx.list("payroll")) {
     if (String(p.status ?? "") !== "Draft") continue;
-    out.payroll.push({
+    out.push({
       id: `mod-pay-${p.id}`, rowId: String(p.id),
       label: `Payroll ${p.employeeId ?? "-"} ${p.period ?? ""} masih Draft`,
       detail: String(p.type ?? "Gaji"),
     });
   }
+  return out;
+}
 
-  // Kapal: sertifikat kritis/warning ≤ 60 hari.
-  const warnDays = getSetting(data, "ALERT_CERT_60", 60);
-  for (const v of list("vessels")) {
+function buildKapal(ctx: Ctx): ModuleAlertItem[] {
+  const out: ModuleAlertItem[] = [];
+  // Sertifikat kritis/warning ≤ 60 hari.
+  const warnDays = getSetting(ctx.data, "ALERT_CERT_60", 60);
+  for (const v of ctx.list("vessels")) {
     const certs = Array.isArray(v.certificates) ? (v.certificates as { name?: unknown; expires?: unknown }[]) : [];
     for (const c of certs) {
       const d = daysUntil(String(c.expires ?? ""));
       if (d === null || d > warnDays) continue;
-      out.kapal.push({
+      out.push({
         id: `mod-vsl-${v.id}-${String(c.name ?? "cert")}`,
         rowId: String(v.id),
         label: `${v.name ?? v.id}: ${c.name ?? "sertifikat"} ${d < 0 ? `lewat ${-d} hari` : `sisa ${d} hari`}`,
@@ -230,25 +263,76 @@ export function buildModuleAlertItems(data: StoreShape): Record<ModuleAlertKey, 
       });
     }
   }
+  return out;
+}
 
-  // Dokumen: kedaluwarsa + perlu approval.
-  for (const d of list("documents")) {
+function buildDokumen(ctx: Ctx): ModuleAlertItem[] {
+  const out: ModuleAlertItem[] = [];
+  for (const d of ctx.list("documents")) {
     const st = String(d.status ?? "");
     const needAppr = st === "Diajukan" || st === "Draft" || st === "Menunggu Approval";
     if (st === "Kedaluwarsa") {
-      out.dokumen.push({
+      out.push({
         id: `mod-doc-${d.id}`, rowId: String(d.id),
         label: `Dokumen ${d.id} kedaluwarsa`,
         detail: String(d.title ?? d.type ?? ""),
       });
     } else if (needAppr) {
-      out.dokumen.push({
+      out.push({
         id: `mod-doc-${d.id}`, rowId: String(d.id),
         label: `Dokumen ${d.id} perlu approval (${st})`,
         detail: String(d.title ?? d.type ?? ""),
       });
     }
   }
-
   return out;
+}
+
+const BUILDERS: Record<ModuleAlertKey, (ctx: Ctx) => ModuleAlertItem[]> = {
+  proyek: buildProyek,
+  drydock: buildDrydock,
+  inventori: buildInventori,
+  equipment: buildEquipment,
+  subkontraktor: buildSubkontraktor,
+  qc: buildQc,
+  crm: buildCrm,
+  procurement: buildProcurement,
+  keuangan: buildKeuangan,
+  sdm: buildSdm,
+  payroll: buildPayroll,
+  kapal: buildKapal,
+  dokumen: buildDokumen,
+};
+
+function makeCtx(data: StoreShape): Ctx {
+  const items = data as unknown as Record<string, StoreItem[] | undefined>;
+  return {
+    data,
+    list: (k: string): StoreItem[] => (Array.isArray(items[k]) ? (items[k] as StoreItem[]) : []),
+    today: todayISO(),
+  };
+}
+
+/** Hitung 1 modul saja (murah) — dipakai hook halaman. */
+export function buildModuleAlertItemsFor(data: StoreShape, key: ModuleAlertKey): ModuleAlertItem[] {
+  return BUILDERS[key](makeCtx(data));
+}
+
+export function buildModuleAlertItems(data: StoreShape): Record<ModuleAlertKey, ModuleAlertItem[]> {
+  const ctx = makeCtx(data);
+  return {
+    proyek: buildProyek(ctx),
+    drydock: buildDrydock(ctx),
+    inventori: buildInventori(ctx),
+    equipment: buildEquipment(ctx),
+    subkontraktor: buildSubkontraktor(ctx),
+    qc: buildQc(ctx),
+    crm: buildCrm(ctx),
+    procurement: buildProcurement(ctx),
+    keuangan: buildKeuangan(ctx),
+    sdm: buildSdm(ctx),
+    payroll: buildPayroll(ctx),
+    kapal: buildKapal(ctx),
+    dokumen: buildDokumen(ctx),
+  };
 }

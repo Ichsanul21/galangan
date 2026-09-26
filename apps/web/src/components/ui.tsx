@@ -975,6 +975,50 @@ export function Accordion({
   );
 }
 
+/* ============ P A G E R ============ */
+
+export function usePager(total: number, defaultSize = 100): {
+  page: number;
+  size: number;
+  pages: number;
+  slice: <T>(rows: T[]) => T[];
+  reset: () => void;
+  bar: ReactNode;
+} {
+  const [page, setPage] = useState(1);
+  const [size, setSize] = useState(defaultSize);
+  const pages = Math.max(1, Math.ceil(total / size));
+  const safe = Math.min(page, pages);
+  const slice = <T,>(rows: T[]): T[] => rows.slice((safe - 1) * size, safe * size);
+  const reset = () => setPage(1);
+  const go = (p: number) => setPage(Math.min(Math.max(1, p), pages));
+  const bar = total <= size ? null : (
+    <div className="flex flex-wrap items-center gap-2 py-2 text-xs text-steel-500">
+      <span>
+        {(safe - 1) * size + 1}–{Math.min(safe * size, total)} dari {total}
+      </span>
+      <span className="ml-auto flex items-center gap-1">
+        <button className="btn-secondary px-2 py-1" disabled={safe <= 1} onClick={() => go(1)}>«</button>
+        <button className="btn-secondary px-2 py-1" disabled={safe <= 1} onClick={() => go(safe - 1)}>‹</button>
+        <span className="px-1 font-semibold text-navy-900">{safe} / {pages}</span>
+        <button className="btn-secondary px-2 py-1" disabled={safe >= pages} onClick={() => go(safe + 1)}>›</button>
+        <button className="btn-secondary px-2 py-1" disabled={safe >= pages} onClick={() => go(pages)}>»</button>
+        <select
+          className="input ml-1 !w-auto px-1.5 py-1 text-xs"
+          value={size}
+          aria-label="Baris per halaman"
+          onChange={(e) => { setSize(Number(e.target.value)); setPage(1); }}
+        >
+          {[50, 100, 200].map((n) => (
+            <option key={n} value={n}>{n}/hal</option>
+          ))}
+        </select>
+      </span>
+    </div>
+  );
+  return { page: safe, size, pages, slice, reset, bar };
+}
+
 /* ============ T O A S T ============ */
 
 export function toast(message: string, tone: "success" | "info" = "success") {

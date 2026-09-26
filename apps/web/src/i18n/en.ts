@@ -121,6 +121,7 @@ export const en: Dict = {
     markGroupRead: "Mark group as read",
     open: "Open",
     persistsNote: "This notification stays until the condition is resolved.",
+    cappedNote: "Showing first 200 — filter the table for the rest.",
     jumpHint: "click to jump to its row",
     empty: "No notifications",
     emptyHint: "Nothing matches the filter — all clear.",

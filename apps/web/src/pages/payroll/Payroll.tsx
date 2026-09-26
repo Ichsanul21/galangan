@@ -734,7 +734,7 @@ export default function Payroll() {
         }
       />
 
-      {modAlert.active && <AlertBannerView items={modAlert.items} onClose={modAlert.dismiss} onPick={modAlert.scrollTo} />}
+      {modAlert.active && <AlertBannerView items={modAlert.items} onPick={modAlert.scrollTo} />}
 
       <div className="mb-4 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <KpiCard label="Total Bruto (Gaji)" value={fmtRupiah(totals.bruto)} hint={`Periode ${fmtBulan(period)}`} chip="navy" />

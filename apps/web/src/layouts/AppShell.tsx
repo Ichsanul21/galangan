@@ -37,7 +37,7 @@ import { Badge, Modal, Field, Toaster, toast } from "../components/ui";
 import { apiFetch } from "../services/http";
 import { computeAlerts } from "../utils/alerts";
 import { loadNotifRead, saveNotifRead } from "../utils/notifRead";
-import { buildModuleAlertItems, type ModuleAlertKey } from "../utils/moduleAlerts";
+import { type ModuleAlertKey } from "../utils/moduleAlerts";
 import { useT } from "../i18n/LanguageContext";
 import { remoteRepository } from "../services/repositories";
 import { getJwt, isBackendConfigured } from "../services/http";
@@ -102,25 +102,8 @@ export default function AppShell() {
     setReadTick((t) => t + 1);
   };
 
-  /* Badge sidebar = item pemicu modul yang BELUM dibaca (satu sumber dengan
-     highlight di halaman via buildModuleAlertItems). Dibuka → dibaca → 0. */
-  const moduleAlerts = useMemo(() => buildModuleAlertItems(data), [data]);
-  const unreadModuleCount = (key: ModuleAlertKey): number => {
-    void readTick;
-    const read = loadNotifRead();
-    return moduleAlerts[key].filter((a) => !read.has(a.id)).length;
-  };
-  const markModuleRead = (key: ModuleAlertKey) => {
-    const read = loadNotifRead();
-    let changed = false;
-    for (const a of moduleAlerts[key]) {
-      if (!read.has(a.id)) { read.add(a.id); changed = true; }
-    }
-    if (changed) {
-      saveNotifRead(read);
-      setReadTick((t) => t + 1);
-    }
-  };
+  /* Badge sidebar DIHAPUS — banner + highlight per halaman modul murni
+     ikut kondisi (tanpa read-state). */
 
   const navGroups: { label: string; items: { to: string; label: string; icon: ComponentType<{ className?: string }>; alertKey?: ModuleAlertKey }[] }[] = [
     {
@@ -305,7 +288,9 @@ export default function AppShell() {
             </p>
             <ul className="space-y-0.5">
               {group.items.map((item) => {
-                const badge = item.alertKey ? unreadModuleCount(item.alertKey) : 0;
+                // Tanpa badge sidebar (per 2026-09-26): notif hanya banner
+                // + highlight per halaman modul. Link tetap bawa ?alert= agar
+                // banner modul langsung terbuka.
                 const to = item.alertKey ? `${item.to}?alert=${item.alertKey}` : item.to;
                 return (
                 <li key={item.to}>
@@ -314,7 +299,6 @@ export default function AppShell() {
                     end={item.to === "/proyek"}
                     onClick={() => {
                       setOpen(false);
-                      if (item.alertKey) markModuleRead(item.alertKey);
                       window.scrollTo({ top: 0 });
                     }}
                     className={({ isActive }) =>
@@ -327,14 +311,6 @@ export default function AppShell() {
                   >
                     <item.icon className="h-4 w-4 shrink-0" />
                     <span className="truncate" title={item.label}>{item.label}</span>
-                    {badge > 0 ? (
-                      <span
-                        className="ml-auto rounded-full bg-rose-500/90 px-1.5 py-0.5 text-[10px] font-bold leading-none text-white"
-                        title={item.alertKey === "qc" ? `${badge} NCR critical terbuka / insiden baru` : `${badge} notifikasi baru`}
-                      >
-                        {badge > 9 ? "9+" : badge}
-                      </span>
-                    ) : null}
                   </NavLink>
                 </li>
                 );

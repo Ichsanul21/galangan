@@ -30,7 +30,7 @@ import {
   Tooltip,
   ResponsiveContainer,
 } from "recharts";
-import { Card, CardHeader, PageHeader, Badge, KpiCard, Tabs, ChartTooltip, Modal, Field, FormGrid, toast, EmptyState, ProgressBar, SortTh, toggleSort, sortRows } from "../../components/ui";
+import { Card, CardHeader, PageHeader, Badge, KpiCard, Tabs, ChartTooltip, Modal, Field, FormGrid, toast, EmptyState, ProgressBar, SortTh, toggleSort, sortRows, usePager } from "../../components/ui";
 import type { SortState } from "../../components/ui";
 import { useStore, type StoreItem } from "../../data/store";
 import { isBackendConfigured } from "../../services/http";
@@ -385,6 +385,22 @@ export default function Inventory() {
     const matchAbc = abcF === "Semua" || abc[i.id] === abcF;
     return matchQ && matchCat && matchWh && matchAbc;
   });
+  const pager = usePager(list.length);
+  const movPager = usePager(movements.length);
+  const movSorted = sortRows(movements, sort3, (m, k) => {
+    if (k === "jumlah") return Number(m.qty || 0);
+    if (k === "total") return Number(m.total || 0);
+    if (k === "item") return String(m.item ?? "");
+    if (k === "tipe") return String(m.type ?? "");
+    if (k === "referensi") return String(m.by ?? "");
+    if (k === "info") return String(`${m.supplier ?? ""} ${m.purpose ?? ""} ${m.pic ?? ""}`);
+    if (k === "tanggal") return String(m.date ?? "");
+    return String(m.id ?? "");
+  });
+  useEffect(() => {
+    pager.reset();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [q, cat, wh, abcF]);
 
   const lowStock = inventory.filter((i) => i.stock <= i.minStock);
   const categories = ["Semua", ...Array.from(new Set(inventory.map((i) => i.category)))];
@@ -1056,7 +1072,7 @@ export default function Inventory() {
         }
       />
 
-      {modAlert.active && <AlertBannerView items={modAlert.items} onClose={modAlert.dismiss} onPick={modAlert.scrollTo} />}
+      {modAlert.active && <AlertBannerView items={modAlert.items} onPick={modAlert.scrollTo} />}
 
       <div className="mb-4 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <KpiCard label="Total Item Aktif" value={String(inventory.length)} icon={<Package className="h-5 w-5" />} chip="navy" spark={itemTrend} hint="Katalog keseluruhan" />        <KpiCard label="Item Stok Menipis" value={String(lowStock.length)} delta="Perlu reorder" deltaDirection="down" icon={<AlertTriangle className="h-5 w-5" />} chip="rose" spark={lowStockTrend} />
@@ -1148,7 +1164,7 @@ export default function Inventory() {
                     <tr><SortTh label="Material" sortKey="material" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label="Kategori" sortKey="kategori" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label="Quantity" sortKey="qty" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label="Volume" sortKey="volume" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label="Total Nilai" sortKey="total" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label="ABC" sortKey="abc" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label="Status" sortKey="status" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label="Rak" sortKey="rak" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label="Bin" sortKey="bin" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><th className="th">Aksi</th></tr>
                   </thead>
                   <tbody className="divide-y divide-steel-100">
-                    {sortRows(list, sort, (i, k) => {
+                    {pager.slice(sortRows(list, sort, (i, k) => {
                       if (k === "qty") return Number(i.stock || 0);
                       if (k === "volume") return Number(i.volume ?? 0);
                       if (k === "total") return Number(i.stock || 0) * effCost(i);
@@ -1195,10 +1211,11 @@ export default function Inventory() {
                           </td>
                         </tr>
                       );
-                    })}
+                    }))}
                   </tbody>
                 </table>
                 {list.length === 0 && <EmptyState title="Tidak ada material yang cocok" subtitle="Ubah kata kunci atau filter gudang / ABC." />}
+                {pager.bar}
               </div>
             </>
           )}
@@ -1335,16 +1352,7 @@ export default function Inventory() {
                     <tr><SortTh label="Transaksi" sortKey="transaksi" sort={sort3} onSort={(k) => setSort3((s) => toggleSort(s, k))} /><SortTh label="Item" sortKey="item" sort={sort3} onSort={(k) => setSort3((s) => toggleSort(s, k))} /><SortTh label="Tipe" sortKey="tipe" sort={sort3} onSort={(k) => setSort3((s) => toggleSort(s, k))} /><SortTh label="Jumlah" sortKey="jumlah" sort={sort3} onSort={(k) => setSort3((s) => toggleSort(s, k))} /><SortTh label="Referensi" sortKey="referensi" sort={sort3} onSort={(k) => setSort3((s) => toggleSort(s, k))} /><SortTh label="Supplier / Purpose / PIC" sortKey="info" sort={sort3} onSort={(k) => setSort3((s) => toggleSort(s, k))} /><SortTh label="Total" sortKey="total" sort={sort3} onSort={(k) => setSort3((s) => toggleSort(s, k))} /><SortTh label="Tanggal" sortKey="tanggal" sort={sort3} onSort={(k) => setSort3((s) => toggleSort(s, k))} /></tr>
                   </thead>
                   <tbody className="divide-y divide-steel-100">
-                    {sortRows(movements, sort3, (m, k) => {
-                      if (k === "jumlah") return Number(m.qty || 0);
-                      if (k === "total") return Number(m.total || 0);
-                      if (k === "item") return String(m.item ?? "");
-                      if (k === "tipe") return String(m.type ?? "");
-                      if (k === "referensi") return String(m.by ?? "");
-                      if (k === "info") return String(`${m.supplier ?? ""} ${m.purpose ?? ""} ${m.pic ?? ""}`);
-                      if (k === "tanggal") return String(m.date ?? "");
-                      return String(m.id ?? "");
-                    }).map((m) => (
+                    {movPager.slice(movSorted).map((m) => (
                       <tr key={m.id} className="hover:bg-surface">
                         <td className="td font-mono font-medium text-navy-900">{m.id}</td>
                         <td className="td text-steel-600 truncate" title={String(m.item)}>{m.item}</td>
@@ -1367,6 +1375,7 @@ export default function Inventory() {
                     ))}
                   </tbody>
                 </table>
+                {movPager.bar}
               </div>
             </div>
           )}
