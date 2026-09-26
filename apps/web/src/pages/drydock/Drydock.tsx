@@ -344,6 +344,55 @@ export default function Drydock() {
         </div>
       )}
 
+
+      <div className="mt-5 grid grid-cols-1 gap-5 lg:grid-cols-2">
+        <Card>
+          <CardHeader title="Slot Docking Aktif" subtitle="Detail slot saat ini" action={
+            <select className="input text-xs" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} aria-label="Filter status slot">
+              {STATUS_FILTERS.map((s) => <option key={s}>{s}</option>)}
+            </select>
+          } />
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead className="sticky top-0 z-10 bg-surface">
+                <tr><SortTh label="Fasilitas" sortKey="facility" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label="Proyek" sortKey="vessel" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label="Durasi" sortKey="days" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label="Prioritas" sortKey="priority" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label="Status" sortKey="status" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><th className="th">Aksi</th></tr>
+              </thead>
+              <tbody className="divide-y divide-steel-100">
+                {pager.slice(sortedSlots).map((s) => {
+                  const st = slotStatus(s, data.projects);
+                  const isCrit = conflict.some((c) => c.id === s.id) && overlapsKritis(s);
+                  return (
+                    <tr key={s.id} className={`hover:bg-surface ${isCrit ? "bg-rose-50" : ""}`}>
+                      <td className="td text-steel-600">{drydocks.find((d) => d.id === s.dockId)?.name}</td>
+                      <td className="td">
+                        <p className="font-medium text-navy-900">{s.vessel}</p>
+                        <p className="text-xs font-mono text-steel-500">{s.project}</p>
+                        {s.dsRef ? <p className="text-xs font-mono text-steel-400">DS {s.dsRef}</p> : null}
+                        {s.startDate ? <p className="text-xs text-steel-400">Mulai {fmtTanggal(s.startDate)}</p> : null}
+                      </td>
+                      <td className="td text-steel-600">{fmtRentang(dayToISO(s.from), dayToISO(s.to))} ({s.to - s.from} hari)</td>
+                      <td className="td">
+                        {s.project === "MAINT"
+                          ? <Badge tone="gray">Blokir</Badge>
+                          : <Badge tone={s.priority === "Kritis" ? "red" : s.priority === "Tinggi" ? "amber" : "gray"}>{s.priority ?? "Normal"}</Badge>}
+                      </td>
+                      <td className="td"><StatusBadge status={st} /></td>
+                      <td className="td">
+                        <div className="flex gap-1.5">
+                          <button className="btn-secondary text-xs" onClick={() => openSlot(s)}>Detail</button>
+                          <button className="rounded-lg p-1.5 text-rose-500 hover:bg-rose-50" title={`Hapus slot ${s.id}`} aria-label={`Hapus slot ${s.id}`} onClick={() => setDeleting(s)}><Trash2 className="h-4 w-4" /></button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+                {filteredSlots.length === 0 && <tr><td colSpan={6} className="td text-center text-steel-400">Belum ada slot pada filter ini.</td></tr>}
+              </tbody>
+            </table>
+            {pager.bar}
+          </div>
+        </Card>
+
       <Card>
         <CardHeader
           title="Gantt Penjadwalan Docking"
@@ -436,54 +485,6 @@ export default function Drydock() {
           </div>
         </div>
       </Card>
-
-      <div className="mt-5 grid grid-cols-1 gap-5 lg:grid-cols-2">
-        <Card>
-          <CardHeader title="Slot Docking Aktif" subtitle="Detail slot saat ini" action={
-            <select className="input text-xs" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} aria-label="Filter status slot">
-              {STATUS_FILTERS.map((s) => <option key={s}>{s}</option>)}
-            </select>
-          } />
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead className="sticky top-0 z-10 bg-surface">
-                <tr><SortTh label="Fasilitas" sortKey="facility" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label="Proyek" sortKey="vessel" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label="Durasi" sortKey="days" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label="Prioritas" sortKey="priority" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label="Status" sortKey="status" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><th className="th">Aksi</th></tr>
-              </thead>
-              <tbody className="divide-y divide-steel-100">
-                {pager.slice(sortedSlots).map((s) => {
-                  const st = slotStatus(s, data.projects);
-                  const isCrit = conflict.some((c) => c.id === s.id) && overlapsKritis(s);
-                  return (
-                    <tr key={s.id} className={`hover:bg-surface ${isCrit ? "bg-rose-50" : ""}`}>
-                      <td className="td text-steel-600">{drydocks.find((d) => d.id === s.dockId)?.name}</td>
-                      <td className="td">
-                        <p className="font-medium text-navy-900">{s.vessel}</p>
-                        <p className="text-xs font-mono text-steel-500">{s.project}</p>
-                        {s.dsRef ? <p className="text-xs font-mono text-steel-400">DS {s.dsRef}</p> : null}
-                        {s.startDate ? <p className="text-xs text-steel-400">Mulai {fmtTanggal(s.startDate)}</p> : null}
-                      </td>
-                      <td className="td text-steel-600">{fmtRentang(dayToISO(s.from), dayToISO(s.to))} ({s.to - s.from} hari)</td>
-                      <td className="td">
-                        {s.project === "MAINT"
-                          ? <Badge tone="gray">Blokir</Badge>
-                          : <Badge tone={s.priority === "Kritis" ? "red" : s.priority === "Tinggi" ? "amber" : "gray"}>{s.priority ?? "Normal"}</Badge>}
-                      </td>
-                      <td className="td"><StatusBadge status={st} /></td>
-                      <td className="td">
-                        <div className="flex gap-1.5">
-                          <button className="btn-secondary text-xs" onClick={() => openSlot(s)}>Detail</button>
-                          <button className="rounded-lg p-1.5 text-rose-500 hover:bg-rose-50" title={`Hapus slot ${s.id}`} aria-label={`Hapus slot ${s.id}`} onClick={() => setDeleting(s)}><Trash2 className="h-4 w-4" /></button>
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
-                {filteredSlots.length === 0 && <tr><td colSpan={6} className="td text-center text-steel-400">Belum ada slot pada filter ini.</td></tr>}
-              </tbody>
-            </table>
-            {pager.bar}
-          </div>
-        </Card>
 
         <Card className="p-5">
           <h3 className="mb-3 text-sm font-semibold text-navy-900">Utilisasi per Fasilitas</h3>

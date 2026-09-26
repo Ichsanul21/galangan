@@ -631,42 +631,10 @@ export default function QCSafety() {
       </div>
 
       <div className="mt-4 card">
-        <Tabs tabs={["Inspeksi (ITP)", "NCR", "Drawing", "HSE Operasional", "Insiden", "Sertifikat"]} active={tab} onChange={setTab} />
+        <Tabs tabs={["Drawing", "Inspeksi (ITP)", "NCR", "HSE Operasional", "Insiden", "Sertifikat"]} active={tab} onChange={setTab} />
         <div className="p-4">
           {tab === "Inspeksi (ITP)" && (
             <div className="space-y-4">
-              <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
-                <Card>
-                  <CardHeader title="Distribusi NCR" subtitle="Per kategori kejadian" />
-                  <div className="flex items-center gap-4 p-4 pt-0">
-                    <Donut data={ncrDist.map(({ name, value }) => ({ name, value }))} colors={ncrDist.map((d) => d.color)} size={130} thickness={18} centerValue={String(ncrList.length)} centerLabel="NCR" />
-                    <div className="flex-1 space-y-1.5">
-                      {ncrDist.map((d) => (
-                        <div key={d.name} className="flex items-center gap-2 text-sm">
-                          <span className="h-3 w-3 rounded-sm" style={{ background: d.color }} />
-                          <span className="truncate text-steel-600" title={d.name}>{d.name}</span>
-                          <span className="ml-auto font-semibold text-navy-900">{d.value}</span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                </Card>
-                <Card className="lg:col-span-2">
-                  <CardHeader title="Inspeksi & Tingkat Kelulusan" subtitle="Total inspeksi vs yang lulus per bulan" />
-                  <div className="h-44 p-4 pt-0">
-                    <ResponsiveContainer width="100%" height="100%">
-                      <ComposedChart data={inspectionTrend} margin={{ top: 5, right: 5, left: -20, bottom: 0 }}>
-                        <CartesianGrid strokeDasharray="3 3" stroke="#e9eff4" vertical={false} />
-                        <XAxis dataKey="month" stroke="#8aa2b6" axisLine={false} tickLine={false} />
-                        <YAxis stroke="#8aa2b6" axisLine={false} tickLine={false} />
-                        <Tooltip content={<ChartTooltip />} />
-                        <Bar dataKey="inspeksi" name="Inspeksi" fill="#8cc9e8" radius={[4, 4, 0, 0]} barSize={18} />
-                        <Line type="monotone" dataKey="lulus" name="Lulus" stroke="#1f9d55" strokeWidth={2.5} dot={{ r: 3 }} />
-                      </ComposedChart>
-                    </ResponsiveContainer>
-                  </div>
-                </Card>
-              </div>
               <div className="mb-3 flex flex-wrap items-center gap-2">
                 <div className="relative min-w-52 flex-1 sm:max-w-xs">
                   <Search className="absolute left-3 top-2.5 h-4 w-4 text-steel-400" />
@@ -720,6 +688,38 @@ export default function QCSafety() {
                   </tbody>
                 </table>
                 {inspPager.bar}
+              </div>
+              <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+                <Card>
+                  <CardHeader title="Distribusi NCR" subtitle="Per kategori kejadian" />
+                  <div className="flex items-center gap-4 p-4 pt-0">
+                    <Donut data={ncrDist.map(({ name, value }) => ({ name, value }))} colors={ncrDist.map((d) => d.color)} size={130} thickness={18} centerValue={String(ncrList.length)} centerLabel="NCR" />
+                    <div className="flex-1 space-y-1.5">
+                      {ncrDist.map((d) => (
+                        <div key={d.name} className="flex items-center gap-2 text-sm">
+                          <span className="h-3 w-3 rounded-sm" style={{ background: d.color }} />
+                          <span className="truncate text-steel-600" title={d.name}>{d.name}</span>
+                          <span className="ml-auto font-semibold text-navy-900">{d.value}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </Card>
+                <Card className="lg:col-span-2">
+                  <CardHeader title="Inspeksi & Tingkat Kelulusan" subtitle="Total inspeksi vs yang lulus per bulan" />
+                  <div className="h-44 p-4 pt-0">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <ComposedChart data={inspectionTrend} margin={{ top: 5, right: 5, left: -20, bottom: 0 }}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="#e9eff4" vertical={false} />
+                        <XAxis dataKey="month" stroke="#8aa2b6" axisLine={false} tickLine={false} />
+                        <YAxis stroke="#8aa2b6" axisLine={false} tickLine={false} />
+                        <Tooltip content={<ChartTooltip />} />
+                        <Bar dataKey="inspeksi" name="Inspeksi" fill="#8cc9e8" radius={[4, 4, 0, 0]} barSize={18} />
+                        <Line type="monotone" dataKey="lulus" name="Lulus" stroke="#1f9d55" strokeWidth={2.5} dot={{ r: 3 }} />
+                      </ComposedChart>
+                    </ResponsiveContainer>
+                  </div>
+                </Card>
               </div>
             </div>
           )}

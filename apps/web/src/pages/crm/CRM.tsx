@@ -375,23 +375,8 @@ export default function CRM() {
         <KpiCard label="Nilai Kontrak Menang" value={fmtMiliar(wonValue)} delta="Menang + Terkonversi" deltaDirection="up" chip="amber" hint="Bulan berjalan" spark={wonTrend} />
       </div>
 
-      <Card className="mt-4 p-4">
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <div>
-            <h3 className="text-sm font-semibold text-navy-900">Forecast Weighted · {fmtMiliar(forecastTotal)}</h3>
-            <p className="text-xs text-steel-500">Lead 10% · Penawaran 30% · Negosiasi 60% · Menang 100% · {oldLeads.length} lead tua &gt;30 hari</p>
-          </div>
-          <button className="btn-secondary text-xs" onClick={exportForecast}>Export Forecast</button>
-        </div>
-        <div className="mt-2 flex flex-wrap gap-1.5">
-          {forecastRows.map((r) => (
-            <Badge key={r.stage} tone="gray">{r.stage} {Math.round(r.prob * 100)}% · {r.count} · {fmtMiliar(r.weighted)}</Badge>
-          ))}
-        </div>
-      </Card>
-
       <div className="mt-4 card">
-        <Tabs tabs={["Pipeline", "Klien", "Penawaran", "Request", "Komunikasi", "Kontrak", "Kepuasan"]} active={tab} onChange={setTab} />
+        <Tabs tabs={["Klien", "Request", "Pipeline", "Penawaran", "Komunikasi", "Kontrak", "Kepuasan"]} active={tab} onChange={setTab} />
         <div className="p-4">
           {tab === "Pipeline" && (
             <div className="space-y-4">
@@ -828,6 +813,21 @@ export default function CRM() {
           )}
         </div>
       </div>
+
+      <Card className="mt-4 p-4">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div>
+            <h3 className="text-sm font-semibold text-navy-900">Forecast Weighted · {fmtMiliar(forecastTotal)}</h3>
+            <p className="text-xs text-steel-500">Lead 10% · Penawaran 30% · Negosiasi 60% · Menang 100% · {oldLeads.length} lead tua &gt;30 hari</p>
+          </div>
+          <button className="btn-secondary text-xs" onClick={exportForecast}>Export Forecast</button>
+        </div>
+        <div className="mt-2 flex flex-wrap gap-1.5">
+          {forecastRows.map((r) => (
+            <Badge key={r.stage} tone="gray">{r.stage} {Math.round(r.prob * 100)}% · {r.count} · {fmtMiliar(r.weighted)}</Badge>
+          ))}
+        </div>
+      </Card>
 
       <Modal open={showQ} onClose={() => setShowQ(false)} title="Penawaran Baru" subtitle="Masuk ke tahap pipeline terpilih"
         wide footer={<><button className="btn-secondary" onClick={() => setShowQ(false)}>Batal</button><button className="btn-primary" onClick={saveQuotation}>Simpan Penawaran</button></>}>

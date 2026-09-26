@@ -151,7 +151,7 @@ export default function Procurement() {
     return maxSeq(nums, /^(\d+)\//) + 1;
   };
 
-  const [tab, setTab] = useState("PO Besar (Kantor)");
+  const [tab, setTab] = useState("PR");
   const [pq, setPq] = useState("");
   const [pStatus, setPStatus] = useState("Semua");
   const [sort, setSort] = useState<SortState>({ key: null, dir: "asc" });
@@ -810,7 +810,7 @@ export default function Procurement() {
       </div>
 
       <div className="mt-4 card">
-        <Tabs tabs={["PO Besar (Kantor)", "PO Kecil (Workshop)", "RFQ", "PR", "Vendor"]} active={tab} onChange={setTab} />
+        <Tabs tabs={["PR", "RFQ", "PO Besar (Kantor)", "PO Kecil (Workshop)", "Vendor"]} active={tab} onChange={setTab} />
         <div className="p-4">
           <div className="mb-3 flex flex-wrap items-center gap-2">
             <div className="relative min-w-52 flex-1 sm:max-w-xs">
@@ -841,38 +841,6 @@ export default function Procurement() {
           </div>
           {tab === "PO Besar (Kantor)" && (
             <div className="space-y-4">
-              <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
-                <Card>
-                  <CardHeader title="Belanja per Kategori" subtitle="Persentase total pengeluaran" />
-                  <div className="flex items-center gap-4 p-4 pt-0">
-                    <Donut data={spendByCategory} colors={spendByCategory.map((d) => d.color)} size={130} thickness={18} centerValue="100" centerLabel="%" />
-                    <div className="flex-1 space-y-1.5">
-                      {spendByCategory.map((d) => (
-                        <div key={d.name} className="flex items-center gap-2 text-sm">
-                          <span className="h-3 w-3 rounded-sm" style={{ background: d.color }} />
-                          <span className="truncate text-steel-600" title={d.name}>{d.name}</span>
-                          <span className="ml-auto font-semibold text-navy-900">{d.value}%</span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                </Card>
-                <Card className="lg:col-span-2">
-                  <CardHeader title="Tren Pengadaan" subtitle="Jumlah PO & nilai pengeluaran (milyar Rupiah)" />
-                  <div className="h-44 p-4 pt-0">
-                    <ResponsiveContainer width="100%" height="100%">
-                      <AreaChart data={procurementTrend} margin={{ top: 5, right: 5, left: -20, bottom: 0 }}>
-                        <defs><linearGradient id="procGrad" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="#0d9488" stopOpacity={0.3} /><stop offset="95%" stopColor="#0d9488" stopOpacity={0} /></linearGradient></defs>
-                        <CartesianGrid strokeDasharray="3 3" stroke="#e9eff4" vertical={false} />
-                        <XAxis dataKey="month" stroke="#8aa2b6" axisLine={false} tickLine={false} />
-                        <YAxis stroke="#8aa2b6" axisLine={false} tickLine={false} />
-                        <Tooltip content={<ChartTooltip formatter={(v) => (typeof v === "number" ? `Rp ${v} M` : v)} />} />
-                        <Area type="monotone" dataKey="pengeluaran" name="Pengeluaran" stroke="#0d9488" strokeWidth={2.5} fill="url(#procGrad)" />
-                      </AreaChart>
-                    </ResponsiveContainer>
-                  </div>
-                </Card>
-              </div>
               <p className="rounded-lg bg-steel-50 px-3 py-2 text-xs text-steel-500">Approval bertingkat nominal: ≤50 jt SPV · ≤500 jt +Manager · &gt;500 jt +Director · &gt;Rp1 jt +Finance (docs/11§4.4). PO Besar wajib faktur pajak saat terima. Hutang vendor otomatis terbentuk saat GR (3-way match PO–GR–AP).</p>
               <div className="overflow-x-auto">
                 <table className="w-full">
@@ -929,6 +897,38 @@ export default function Procurement() {
                 </table>
                 {bigShown.length === 0 && <EmptyState title="Belum ada PO Besar" subtitle="Buat PO Besar dari PR Disetujui, RFQ, atau konsolidasi." />}
                 {bigPager.bar}
+              <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+                <Card>
+                  <CardHeader title="Belanja per Kategori" subtitle="Persentase total pengeluaran" />
+                  <div className="flex items-center gap-4 p-4 pt-0">
+                    <Donut data={spendByCategory} colors={spendByCategory.map((d) => d.color)} size={130} thickness={18} centerValue="100" centerLabel="%" />
+                    <div className="flex-1 space-y-1.5">
+                      {spendByCategory.map((d) => (
+                        <div key={d.name} className="flex items-center gap-2 text-sm">
+                          <span className="h-3 w-3 rounded-sm" style={{ background: d.color }} />
+                          <span className="truncate text-steel-600" title={d.name}>{d.name}</span>
+                          <span className="ml-auto font-semibold text-navy-900">{d.value}%</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </Card>
+                <Card className="lg:col-span-2">
+                  <CardHeader title="Tren Pengadaan" subtitle="Jumlah PO & nilai pengeluaran (milyar Rupiah)" />
+                  <div className="h-44 p-4 pt-0">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <AreaChart data={procurementTrend} margin={{ top: 5, right: 5, left: -20, bottom: 0 }}>
+                        <defs><linearGradient id="procGrad" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="#0d9488" stopOpacity={0.3} /><stop offset="95%" stopColor="#0d9488" stopOpacity={0} /></linearGradient></defs>
+                        <CartesianGrid strokeDasharray="3 3" stroke="#e9eff4" vertical={false} />
+                        <XAxis dataKey="month" stroke="#8aa2b6" axisLine={false} tickLine={false} />
+                        <YAxis stroke="#8aa2b6" axisLine={false} tickLine={false} />
+                        <Tooltip content={<ChartTooltip formatter={(v) => (typeof v === "number" ? `Rp ${v} M` : v)} />} />
+                        <Area type="monotone" dataKey="pengeluaran" name="Pengeluaran" stroke="#0d9488" strokeWidth={2.5} fill="url(#procGrad)" />
+                      </AreaChart>
+                    </ResponsiveContainer>
+                  </div>
+                </Card>
+              </div>
               </div>
             </div>
           )}
