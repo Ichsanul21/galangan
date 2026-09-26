@@ -62,33 +62,40 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
               }
             >
               <Route path="/" element={<ErrorBoundary title="Dashboard gagal dimuat"><Dashboard /></ErrorBoundary>} />
+              {/* Utama */}
               <Route path="/dashboard" element={<ErrorBoundary title="Dashboard gagal dimuat"><Dashboard /></ErrorBoundary>} />
-              <Route path="/analytics" element={<ErrorBoundary title="Analytics gagal dimuat"><Analytics /></ErrorBoundary>} />
+              {/* Komersial: CRM → Procurement → Keuangan */}
+              <Route path="/crm" element={<ErrorBoundary title="CRM gagal dimuat"><CRM /></ErrorBoundary>} />
+              <Route path="/crm/quotation/:id" element={<ErrorBoundary title="Penawaran gagal dimuat"><QuotationDetail /></ErrorBoundary>} />
+              <Route path="/procurement" element={<ErrorBoundary title="Procurement gagal dimuat"><Procurement /></ErrorBoundary>} />
+              <Route path="/keuangan" element={<ErrorBoundary title="Keuangan gagal dimuat"><Finance /></ErrorBoundary>} />
+              {/* Operasional: Proyek → Drydock → Inventori → Equipment → Subkontraktor → QC */}
               <Route path="/proyek" element={<ErrorBoundary title="Proyek gagal dimuat"><Projects /></ErrorBoundary>} />
               <Route path="/proyek/monitoring" element={<ErrorBoundary title="Monitoring gagal dimuat"><Monitoring /></ErrorBoundary>} />
               <Route path="/proyek/:id" element={<ErrorBoundary title="Detail proyek gagal dimuat"><ProjectDetail /></ErrorBoundary>} />
+              <Route path="/drydock" element={<ErrorBoundary title="Drydock gagal dimuat"><Drydock /></ErrorBoundary>} />
               <Route path="/inventori" element={<ErrorBoundary title="Inventori gagal dimuat"><Inventory /></ErrorBoundary>} />
               <Route path="/inventori/bom/:id" element={<ErrorBoundary title="BOM gagal dimuat"><BomDetail /></ErrorBoundary>} />
-              <Route path="/absensi" element={<ErrorBoundary title="Absensi gagal dimuat"><Absensi /></ErrorBoundary>} />
-              <Route path="/payroll" element={<ErrorBoundary title="Payroll gagal dimuat"><Payroll /></ErrorBoundary>} />
-              <Route path="/laporan" element={<ErrorBoundary title="Laporan gagal dimuat"><Laporan /></ErrorBoundary>} />
-              <Route path="/keuangan" element={<ErrorBoundary title="Keuangan gagal dimuat"><Finance /></ErrorBoundary>} />
+              <Route path="/equipment" element={<ErrorBoundary title="Equipment gagal dimuat"><EquipmentPage /></ErrorBoundary>} />
+              <Route path="/subkontraktor" element={<ErrorBoundary title="Subkontraktor gagal dimuat"><Subcontractor /></ErrorBoundary>} />
+              <Route path="/qc-safety" element={<ErrorBoundary title="QC & Safety gagal dimuat"><QCSafety /></ErrorBoundary>} />
+              {/* SDM */}
               <Route path="/sdm" element={<ErrorBoundary title="SDM gagal dimuat"><HR /></ErrorBoundary>} />
               <Route path="/sdm/karyawan/:id" element={<ErrorBoundary title="Karyawan gagal dimuat"><KaryawanDetail /></ErrorBoundary>} />
-              <Route path="/crm" element={<ErrorBoundary title="CRM gagal dimuat"><CRM /></ErrorBoundary>} />
-              <Route path="/crm/quotation/:id" element={<ErrorBoundary title="Penawaran gagal dimuat"><QuotationDetail /></ErrorBoundary>} />
-              <Route path="/pengaturan" element={<ErrorBoundary title="Pengaturan gagal dimuat"><Settings /></ErrorBoundary>} />
-              <Route path="/procurement" element={<ErrorBoundary title="Procurement gagal dimuat"><Procurement /></ErrorBoundary>} />
-              <Route path="/qc-safety" element={<ErrorBoundary title="QC & Safety gagal dimuat"><QCSafety /></ErrorBoundary>} />
-              <Route path="/drydock" element={<ErrorBoundary title="Drydock gagal dimuat"><Drydock /></ErrorBoundary>} />
-              <Route path="/subkontraktor" element={<ErrorBoundary title="Subkontraktor gagal dimuat"><Subcontractor /></ErrorBoundary>} />
+              <Route path="/absensi" element={<ErrorBoundary title="Absensi gagal dimuat"><Absensi /></ErrorBoundary>} />
+              <Route path="/payroll" element={<ErrorBoundary title="Payroll gagal dimuat"><Payroll /></ErrorBoundary>} />
+              {/* Aset (master) */}
               <Route path="/kapal" element={<ErrorBoundary title="Kapal gagal dimuat"><Vessels /></ErrorBoundary>} />
               <Route path="/kapal/:id" element={<ErrorBoundary title="Detail kapal gagal dimuat"><VesselDetail /></ErrorBoundary>} />
-              <Route path="/equipment" element={<ErrorBoundary title="Equipment gagal dimuat"><EquipmentPage /></ErrorBoundary>} />
               <Route path="/dokumen" element={<ErrorBoundary title="Dokumen gagal dimuat"><Documents /></ErrorBoundary>} />
+              {/* Analisis */}
+              <Route path="/analytics" element={<ErrorBoundary title="Analytics gagal dimuat"><Analytics /></ErrorBoundary>} />
+              <Route path="/laporan" element={<ErrorBoundary title="Laporan gagal dimuat"><Laporan /></ErrorBoundary>} />
+              {/* Sistem */}
               <Route path="/notifikasi" element={<ErrorBoundary title="Notifikasi gagal dimuat"><Notifikasi /></ErrorBoundary>} />
-              <Route path="/audit" element={<ErrorBoundary title="Audit gagal dimuat"><Audit /></ErrorBoundary>} />
+              <Route path="/pengaturan" element={<ErrorBoundary title="Pengaturan gagal dimuat"><Settings /></ErrorBoundary>} />
               <Route path="/pengaturan/peran" element={<ErrorBoundary title="Peran gagal dimuat"><Peran /></ErrorBoundary>} />
+              <Route path="/audit" element={<ErrorBoundary title="Audit gagal dimuat"><Audit /></ErrorBoundary>} />
             </Route>
             <Route path="*" element={<Navigate to="/dashboard" replace />} />
           </Routes>

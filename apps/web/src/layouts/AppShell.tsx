@@ -125,14 +125,21 @@ export default function AppShell() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [data, seenTick]);
 
-  const navGroups: { label: string; items: { to: string; label: string; icon: ComponentType<{ className?: string }>; alertKey?: ModuleAlertKey }[] }[] = [
+  /* Urutan grup ikut alur bisnis galangan: Utama → Komersial (CRM melahirkan
+     Proyek) → Operasional → SDM → Aset (master) → Analisis → Sistem. */
+  const navGroups: { label: string; items: { to: string; label: string; icon: ComponentType<{ className?: string }>; alertKey?: ModuleAlertKey; child?: boolean }[] }[] = [
     {
-      label: t.nav.analisis,
+      label: t.nav.utama,
       items: [
         { to: "/dashboard", label: t.nav.dashboard, icon: LayoutDashboard },
-        { to: "/analytics", label: t.nav.analytics, icon: BarChart3 },
-        { to: "/laporan", label: t.nav.laporan, icon: FileText },
-        { to: "/notifikasi", label: t.nav.notifikasi, icon: Bell },
+      ],
+    },
+    {
+      label: t.nav.komersial,
+      items: [
+        { to: "/crm", label: t.nav.crm, icon: Handshake, alertKey: "crm" },
+        { to: "/procurement", label: t.nav.procurement, icon: ShoppingCart, alertKey: "procurement" },
+        { to: "/keuangan", label: t.nav.keuangan, icon: Wallet, alertKey: "keuangan" },
       ],
     },
     {
@@ -148,24 +155,34 @@ export default function AppShell() {
       ],
     },
     {
-      label: t.nav.komersial,
-      items: [
-        { to: "/crm", label: t.nav.crm, icon: Handshake, alertKey: "crm" },
-        { to: "/procurement", label: t.nav.procurement, icon: ShoppingCart, alertKey: "procurement" },
-        { to: "/keuangan", label: t.nav.keuangan, icon: Wallet, alertKey: "keuangan" },
-      ],
-    },
-    {
-      label: "SDM",
+      label: t.nav.grupSdm,
       items: [
         { to: "/sdm", label: t.nav.sdm, icon: Users, alertKey: "sdm" },
         { to: "/absensi", label: t.nav.absensi, icon: CalendarCheck },
         { to: "/payroll", label: t.nav.payroll, icon: Banknote, alertKey: "payroll" },
+      ],
+    },
+    {
+      label: t.nav.aset,
+      items: [
         { to: "/kapal", label: t.nav.kapal, icon: Ship, alertKey: "kapal" },
         { to: "/dokumen", label: t.nav.dokumen, icon: ScrollText, alertKey: "dokumen" },
+      ],
+    },
+    {
+      label: t.nav.analisis,
+      items: [
+        { to: "/analytics", label: t.nav.analytics, icon: BarChart3 },
+        { to: "/laporan", label: t.nav.laporan, icon: FileText },
+      ],
+    },
+    {
+      label: t.nav.sistem,
+      items: [
+        { to: "/notifikasi", label: t.nav.notifikasi, icon: Bell },
         { to: "/pengaturan", label: t.nav.pengaturan, icon: SettingsIcon },
+        { to: "/pengaturan/peran", label: t.nav.peran, icon: KeyRound, child: true },
         { to: "/audit", label: t.nav.audit, icon: History },
-        { to: "/pengaturan/peran", label: t.nav.peran, icon: KeyRound },
       ],
     },
   ];
@@ -316,13 +333,13 @@ export default function AppShell() {
                 <li key={item.to}>
                   <NavLink
                     to={to}
-                    end={item.to === "/proyek"}
+                    end={item.to === "/proyek" || item.to === "/pengaturan"}
                     onClick={() => {
                       setOpen(false);
                       window.scrollTo({ top: 0 });
                     }}
                     className={({ isActive }) =>
-                      `flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm transition-colors ${
+                      `flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm transition-colors ${item.child ? "ml-6 " : ""}${
                         isActive
                           ? "bg-ocean-500/20 text-white font-semibold"
                           : "text-steel-300 hover:bg-white/5 hover:text-white"
