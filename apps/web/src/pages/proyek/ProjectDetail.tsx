@@ -1221,14 +1221,14 @@ export default function ProjectDetail() {
       <Modal open={showScope} onClose={() => setShowScope(false)} title="Tambah Lingkup Pekerjaan"
         footer={<><button className="btn-secondary" onClick={() => setShowScope(false)}>Batal</button><button className="btn-primary" onClick={saveScope}>Tambah</button></>}>
         <div className="grid gap-3">
-          <Field label="Service apa">
-            <input className="input" placeholder="cth: Sea Trial" value={scopeVal.service} onChange={(e) => setScopeVal((v) => ({ ...v, service: e.target.value }))} />
+          <Field label="Jenis pekerjaan">
+            <input className="input" placeholder="Sea Trial" value={scopeVal.service} onChange={(e) => setScopeVal((v) => ({ ...v, service: e.target.value }))} />
           </Field>
-          <Field label="Lokasi di mana">
-            <input className="input" placeholder="cth: Graving Dock 1" value={scopeVal.lokasi} onChange={(e) => setScopeVal((v) => ({ ...v, lokasi: e.target.value }))} />
+          <Field label="Lokasi">
+            <input className="input" placeholder="Graving Dock 1" value={scopeVal.lokasi} onChange={(e) => setScopeVal((v) => ({ ...v, lokasi: e.target.value }))} />
           </Field>
-          <Field label="Deskripsinya apa">
-            <input className="input" placeholder="cth: Uji kecepatan & manuver" value={scopeVal.deskripsi} onChange={(e) => setScopeVal((v) => ({ ...v, deskripsi: e.target.value }))} />
+          <Field label="Deskripsi">
+            <input className="input" placeholder="Uji kecepatan & manuver" value={scopeVal.deskripsi} onChange={(e) => setScopeVal((v) => ({ ...v, deskripsi: e.target.value }))} />
           </Field>
         </div>
       </Modal>

@@ -539,18 +539,18 @@ export default function Projects() {
               {scopeRows.map((r, idx) => (
                 <div key={idx} className="grid grid-cols-1 gap-2 rounded-lg bg-surface p-2 sm:grid-cols-12">
                   <div className="sm:col-span-4">
-                    <Field label="Service apa">
-                      <input className="input" value={r.service} onChange={(e) => setScopeRows((s) => s.map((x, i) => (i === idx ? { ...x, service: e.target.value } : x)))} placeholder="cth: Fabrikasi Baja" />
+                    <Field label="Jenis pekerjaan">
+                      <input className="input" value={r.service} onChange={(e) => setScopeRows((s) => s.map((x, i) => (i === idx ? { ...x, service: e.target.value } : x)))} placeholder="Fabrikasi Baja" />
                     </Field>
                   </div>
                   <div className="sm:col-span-3">
-                    <Field label="Lokasi di mana">
-                      <input className="input" value={r.lokasi} onChange={(e) => setScopeRows((s) => s.map((x, i) => (i === idx ? { ...x, lokasi: e.target.value } : x)))} placeholder="cth: Workshop A" />
+                    <Field label="Lokasi">
+                      <input className="input" value={r.lokasi} onChange={(e) => setScopeRows((s) => s.map((x, i) => (i === idx ? { ...x, lokasi: e.target.value } : x)))} placeholder="Workshop A" />
                     </Field>
                   </div>
                   <div className="sm:col-span-4">
-                    <Field label="Deskripsinya apa">
-                      <input className="input" value={r.deskripsi} onChange={(e) => setScopeRows((s) => s.map((x, i) => (i === idx ? { ...x, deskripsi: e.target.value } : x)))} placeholder="cth: Section 4-7, tebal 12mm" />
+                    <Field label="Deskripsi">
+                      <input className="input" value={r.deskripsi} onChange={(e) => setScopeRows((s) => s.map((x, i) => (i === idx ? { ...x, deskripsi: e.target.value } : x)))} placeholder="Section 4-7, tebal 12mm" />
                     </Field>
                   </div>
                   <div className="flex items-end sm:col-span-1">
