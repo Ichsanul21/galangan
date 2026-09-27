@@ -302,7 +302,7 @@ export function buildApp(): FastifyInstance {
     return ok({ seen: true });
   });
 
-  // Logout eksplisit: hapus baris sesi (basi >10 mnt dianggap offline juga).
+  // Logout eksplisit: hapus baris sesi (basi >3 mnt dianggap offline juga).
   app.delete("/api/auth/logout", { preHandler: [requireAuth] }, async (req) => {
     try {
       await exec("DELETE FROM sessions WHERE user_id = ?", [req.user?.id ?? ""]);

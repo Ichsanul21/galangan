@@ -147,8 +147,20 @@ export default function Subcontractor() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tab]);
   const pickNotif = (rowId: string) => {
+    const tIdx = payments.findIndex((t) => String(t.id) === rowId);
+    if (tIdx >= 0) {
+      if (tab === "Termin & Pembayaran") { flash.pick(rowId, -1, () => {}, 100); return; }
+      setTab("Termin & Pembayaran");
+      window.setTimeout(() => { flash.pick(rowId, -1, () => {}, 100); }, 250);
+      return;
+    }
     const idx = workOrders.findIndex((r) => String(r.id) === rowId);
-    if (idx >= 0) { flash.pick(rowId, idx, woPager.go, woPager.size); return; }
+    if (idx >= 0) {
+      if (tab === "Work Order") { flash.pick(rowId, idx, woPager.go, woPager.size); return; }
+      setTab("Work Order");
+      window.setTimeout(() => { flash.pick(rowId, idx, woPager.go, woPager.size); }, 250);
+      return;
+    }
     flash.pick(rowId, -1, () => {}, 100);
   };
 

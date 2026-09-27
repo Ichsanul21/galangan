@@ -342,11 +342,26 @@ export default function CRM() {
   const pickNotif = (rowId: string) => {
     const key = String(rowId);
     const reqIdx = requests.findIndex((r) => String(r.id) === key);
-    if (reqIdx >= 0) { flash.pick(key, reqIdx, reqPager.go, reqPager.size); return; }
+    if (reqIdx >= 0) {
+      if (tab === "Request") { flash.pick(key, reqIdx, reqPager.go, reqPager.size); return; }
+      setTab("Request");
+      window.setTimeout(() => { flash.pick(key, reqIdx, reqPager.go, reqPager.size); }, 250);
+      return;
+    }
     const quotIdx = penawaranList.findIndex((q) => String(q.id) === key);
-    if (quotIdx >= 0) { flash.pick(key, quotIdx, quotPager.go, quotPager.size); return; }
+    if (quotIdx >= 0) {
+      if (tab === "Penawaran") { flash.pick(key, quotIdx, quotPager.go, quotPager.size); return; }
+      setTab("Penawaran");
+      window.setTimeout(() => { flash.pick(key, quotIdx, quotPager.go, quotPager.size); }, 250);
+      return;
+    }
     const conIdx = sortedContracts.findIndex((k) => String(k.id) === key);
-    if (conIdx >= 0) { flash.pick(key, conIdx, contractPager.go, contractPager.size); return; }
+    if (conIdx >= 0) {
+      if (tab === "Kontrak") { flash.pick(key, conIdx, contractPager.go, contractPager.size); return; }
+      setTab("Kontrak");
+      window.setTimeout(() => { flash.pick(key, conIdx, contractPager.go, contractPager.size); }, 250);
+      return;
+    }
     flash.pick(key, -1, () => {}, 100);
   };
   useEffect(() => {

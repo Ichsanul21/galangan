@@ -268,9 +268,22 @@ export default function HR() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dept, q, contractSoonOnly, branch, tab]);
   const pickNotif = (rowId: string) => {
-    const idx = sortedEmps.findIndex((r) => String(r.id) === rowId);
-    if (idx >= 0) { flash.pick(rowId, idx, empPager.go, empPager.size); return; }
-    flash.pick(rowId, -1, () => {}, 100);
+    const key = String(rowId);
+    const leaveIdx = data.leaves.findIndex((l) => String(l.id) === key);
+    if (leaveIdx >= 0) {
+      if (tab === "Cuti & Izin") { flash.pick(key, -1, () => {}, 100); return; }
+      setTab("Cuti & Izin");
+      window.setTimeout(() => { flash.pick(key, -1, () => {}, 100); }, 250);
+      return;
+    }
+    const idx = sortedEmps.findIndex((r) => String(r.id) === key);
+    if (idx >= 0) {
+      if (tab === "Karyawan") { flash.pick(key, idx, empPager.go, empPager.size); return; }
+      setTab("Karyawan");
+      window.setTimeout(() => { flash.pick(key, idx, empPager.go, empPager.size); }, 250);
+      return;
+    }
+    flash.pick(key, -1, () => {}, 100);
   };
 
   const deptCounts = useMemo(() => {

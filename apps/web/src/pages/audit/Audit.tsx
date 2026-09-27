@@ -48,7 +48,7 @@ export default function Audit() {
   const [modul, setModul] = useState("SEMUA");
   const [tanggal, setTanggal] = useState("");
   const [sort, setSort] = useState<SortState>({ key: null, dir: "asc" });
-  const [sumber, setSumber] = useState("Perangkat");
+  const [sumber, setSumber] = useState(() => (params.get("actor") && isBackendConfigured() ? "Server" : "Perangkat"));
   const [serverRows, setServerRows] = useState<StoreItemLike[]>([]);
   const [serverLoading, setServerLoading] = useState(false);
   const remote = isBackendConfigured();

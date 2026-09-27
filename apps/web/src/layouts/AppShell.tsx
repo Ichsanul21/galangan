@@ -31,6 +31,8 @@ import {
   Activity,
   KeyRound,
   Settings as SettingsIcon,
+  ChevronDown,
+  PanelLeft,
 } from "lucide-react";
 import { useAuth } from "../auth/auth";
 import { useStore } from "../data/store";
@@ -62,6 +64,8 @@ export default function AppShell() {
   }, [logout, navigate, t]);
 
   // Heartbeat sesi realtime (BE: upsert last_seen, 60 dtk, hanya bila login).
+  // Deps user?.id: mulai ulang setelah login dalam sesi SPA yang sama
+  // (sebelumnya deps [] sehingga login tanpa remount tak pernah beat).
   useEffect(() => {
     if (!isBackendConfigured() || !getJwt()) return;
     let stopped = false;
@@ -75,8 +79,49 @@ export default function AppShell() {
       stopped = true;
       window.clearInterval(id);
     };
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.username]);
   const [open, setOpen] = useState(false);
+  // Sidebar minimize (desktop): rail ikon animasi, preferensi persist.
+  const [minSide, setMinSide] = useState(() => {
+    try {
+      return localStorage.getItem("isms.minSide") === "1";
+    } catch {
+      return false;
+    }
+  });
+  const toggleMinSide = () => {
+    setMinSide((v) => {
+      try {
+        localStorage.setItem("isms.minSide", v ? "0" : "1");
+      } catch {
+        /* abaikan */
+      }
+      return !v;
+    });
+  };
+  // Accordion grup nav: default open semua, pilihan persist.
+  const [openGroups, setOpenGroups] = useState<Record<string, boolean>>(() => {
+    try {
+      const raw = localStorage.getItem("isms.navGroups");
+      if (raw) return JSON.parse(raw) as Record<string, boolean>;
+    } catch {
+      /* abaikan */
+    }
+    return {};
+  });
+  const isGroupOpen = (label: string): boolean => openGroups[label] !== false;
+  const toggleGroup = (label: string) => {
+    setOpenGroups((prev) => {
+      const next = { ...prev, [label]: !isGroupOpen(label) };
+      try {
+        localStorage.setItem("isms.navGroups", JSON.stringify(next));
+      } catch {
+        /* abaikan */
+      }
+      return next;
+    });
+  };
   const [userOpen, setUserOpen] = useState(false);
   const [notifOpen, setNotifOpen] = useState(false);
   const [bellExpanded, setBellExpanded] = useState(false);
@@ -309,24 +354,38 @@ export default function AppShell() {
 
   const hits: Hit[] = remoteSearchable && remoteHits !== null ? remoteHits : localHits;
 
-  const sidebar = (
+  const renderSidebar = (mini: boolean) => (
     <div className="flex h-full flex-col bg-navy-900 text-white">
-      <div className="flex items-center gap-2.5 px-5 py-4 border-b border-white/10">
-        <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-ocean-500 text-white">
+      <div className={`flex items-center gap-2.5 border-b border-white/10 px-5 py-4 ${mini ? "justify-center px-3" : ""}`}>
+        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-ocean-500 text-white">
           <Anchor className="h-5 w-5" />
         </div>
-        <div>
-          <p className="text-sm font-bold leading-tight">ISMS Galangan</p>
-          <p className="text-[10px] text-steel-300">PT Syukur Bersaudara</p>
-        </div>
+        {!mini && (
+          <div className="min-w-0">
+            <p className="truncate text-sm font-bold leading-tight">ISMS Galangan</p>
+            <p className="truncate text-[10px] text-steel-300">PT Syukur Bersaudara</p>
+          </div>
+        )}
       </div>
       <nav className="flex-1 overflow-y-auto px-3 py-4">
-        {navGroups.map((group) => (
-          <div key={group.label} className="mb-4">
-            <p className="px-2 mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-steel-300">
-              {group.label}
-            </p>
-            <ul className="space-y-0.5">
+        {navGroups.map((group) => {
+          const gOpen = mini ? true : isGroupOpen(group.label);
+          return (
+          <div key={group.label} className="mb-3">
+            {!mini ? (
+              <button
+                className="mb-1 flex w-full items-center gap-1 rounded-md px-2 py-1 text-left text-[10px] font-semibold uppercase tracking-wider text-steel-300 hover:text-white"
+                onClick={() => toggleGroup(group.label)}
+                aria-expanded={gOpen}
+              >
+                <span className="truncate">{group.label}</span>
+                <ChevronDown className={`ml-auto h-3.5 w-3.5 shrink-0 transition-transform duration-300 ${gOpen ? "" : "-rotate-90"}`} />
+              </button>
+            ) : (
+              <div className="mb-1 border-b border-white/10" aria-hidden />
+            )}
+            <div className={`grid transition-all duration-300 ease-in-out ${gOpen ? "grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0"}`}>
+              <ul className="space-y-0.5 overflow-hidden">
               {group.items.map((item) => {
                 // Badge sidebar tampil-sekali; link tetap bawa ?alert= agar
                 // banner modul langsung terbuka.
@@ -337,12 +396,15 @@ export default function AppShell() {
                   <NavLink
                     to={to}
                     end={item.to === "/proyek" || item.to === "/pengaturan"}
+                    title={mini ? item.label : undefined}
                     onClick={() => {
                       setOpen(false);
                       window.scrollTo({ top: 0 });
                     }}
                     className={({ isActive }) =>
-                      `flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm transition-colors ${item.child ? "ml-6 " : ""}${
+                      `flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm transition-colors ${mini ? "justify-center" : ""} ${
+                        item.child && !mini ? "ml-4 border-l-2 border-white/15 pl-3" : ""
+                      }${
                         isActive
                           ? "bg-ocean-500/20 text-white font-semibold"
                           : "text-steel-300 hover:bg-white/5 hover:text-white"
@@ -350,8 +412,8 @@ export default function AppShell() {
                     }
                   >
                     <item.icon className="h-4 w-4 shrink-0" />
-                    <span className="truncate" title={item.label}>{item.label}</span>
-                    {badge > 0 ? (
+                    {!mini && <span className="truncate" title={item.label}>{item.label}</span>}
+                    {!mini && badge > 0 ? (
                       <span
                         className="ml-auto rounded-full bg-rose-500/90 px-1.5 py-0.5 text-[10px] font-bold leading-none text-white"
                         title={S.shNewNotif.replace("{n}", String(badge))}
@@ -363,19 +425,23 @@ export default function AppShell() {
                 </li>
                 );
               })}
-            </ul>
+              </ul>
+            </div>
           </div>
-        ))}
+          );
+        })}
       </nav>
       <div className="border-t border-white/10 p-3">
-        <div className="flex items-center gap-2.5 rounded-lg bg-white/5 px-3 py-2">
+        <div className={`flex items-center gap-2.5 rounded-lg bg-white/5 px-3 py-2 ${mini ? "justify-center" : ""}`}>
           <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-gradient-hero text-xs font-bold text-white">
             {user?.initials ?? "?"}
           </div>
-          <div className="min-w-0">
-            <p className="truncate text-xs font-semibold">{user?.name ?? "-"}</p>
-            <p className="truncate text-[10px] text-steel-300">{user?.role ?? "-"}</p>
-          </div>
+          {!mini && (
+            <div className="min-w-0">
+              <p className="truncate text-xs font-semibold">{user?.name ?? "-"}</p>
+              <p className="truncate text-[10px] text-steel-300">{user?.role ?? "-"}</p>
+            </div>
+          )}
         </div>
       </div>
     </div>
@@ -387,14 +453,15 @@ export default function AppShell() {
       {open && (
         <div className="fixed inset-0 z-40 lg:hidden">
           <div className="absolute inset-0 bg-black/40" onClick={() => setOpen(false)} />
-          <div className="absolute inset-y-0 left-0 w-72 shadow-xl">{sidebar}</div>
+          <div className="absolute inset-y-0 left-0 w-72 shadow-xl">{renderSidebar(false)}</div>
         </div>
       )}
 
       {/* Desktop sidebar */}
-      <aside className="fixed inset-y-0 left-0 z-30 hidden w-64 lg:block">{sidebar}</aside>
+      <aside className={`fixed inset-y-0 left-0 z-30 hidden transition-all duration-300 lg:block ${minSide ? "w-20" : "w-64"}`}>{renderSidebar(minSide)}</aside>
 
-      <div className="lg:pl-64">
+      <div className={`transition-all duration-300 ${minSide ? "lg:pl-20" : "lg:pl-64"}`}>
+
         {/* Topbar */}
         <header className="sticky top-0 z-20 flex h-14 items-center justify-between gap-4 border-b border-steel-200 bg-white/85 px-4 backdrop-blur lg:px-6">
           <div className="flex items-center gap-3">
@@ -404,6 +471,14 @@ export default function AppShell() {
               aria-label="Menu"
             >
               <Menu className="h-5 w-5" />
+            </button>
+            <button
+              className="hidden rounded-lg p-1.5 text-steel-500 hover:bg-steel-100 lg:block"
+              onClick={toggleMinSide}
+              aria-label={minSide ? S.shExpandSide : S.shMinSide}
+              title={minSide ? S.shExpandSide : S.shMinSide}
+            >
+              <PanelLeft className="h-5 w-5" />
             </button>
             <div className="flex items-center gap-2 text-sm text-steel-500">
               <span className="font-medium text-navy-800">{S.shGalangan}</span>

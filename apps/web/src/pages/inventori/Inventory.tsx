@@ -300,6 +300,7 @@ export default function Inventory() {
   const modAlert = useModuleAlert("inventori");
   const flash = useNotifFlash();
   const [tab, setTab] = useState("Katalog");
+  const [bomProject, setBomProject] = useState("Semua proyek");
   const [q, setQ] = useState("");
   const [showScan, setShowScan] = useState(false);
   const [cat, setCat] = useState("Semua");
@@ -425,7 +426,19 @@ export default function Inventory() {
 
   const pickNotif = (rowId: string) => {
     const idx = sorted.findIndex((r) => String(r.id) === rowId);
-    if (idx >= 0) { flash.pick(rowId, idx, pager.go, pager.size); return; }
+    if (idx >= 0) {
+      if (tab === "Katalog") { flash.pick(rowId, idx, pager.go, pager.size); return; }
+      setTab("Katalog");
+      window.setTimeout(() => { flash.pick(rowId, idx, pager.go, pager.size); }, 250);
+      return;
+    }
+    const mIdx = movSorted.findIndex((m) => String(m.id) === rowId);
+    if (mIdx >= 0) {
+      if (tab === "Pergerakan") { flash.pick(rowId, mIdx, movPager.go, movPager.size); return; }
+      setTab("Pergerakan");
+      window.setTimeout(() => { flash.pick(rowId, mIdx, movPager.go, movPager.size); }, 250);
+      return;
+    }
     flash.pick(rowId, -1, () => {}, 100);
   };
 
@@ -1257,7 +1270,7 @@ export default function Inventory() {
                   <Card key={w} className="p-4">
                     <h3 className="mb-2 text-sm font-semibold text-navy-900 truncate" title={w}>{w}</h3>
                     <p className="text-xs text-steel-500">{items.length} item · {fmtJumlah(items.reduce((s, i) => s + Number(i.stock || 0), 0))} unit</p>
-                    <div className="mt-3 space-y-1.5">
+                    <div className="mt-3 max-h-44 space-y-1.5 overflow-y-auto pr-1">
                       {items.map((i) => {
                         const whMin = minWhOf(i, w);
                         const thin = Number(i.stock) <= whMin;
@@ -1272,6 +1285,9 @@ export default function Inventory() {
                         );
                       })}
                     </div>
+                    {items.length > 5 && (
+                      <p className="mt-2 text-[11px] text-steel-400">Menampilkan 5 dari {items.length} - scroll untuk sisanya</p>
+                    )}
                   </Card>
                 );
               })}
@@ -1279,10 +1295,21 @@ export default function Inventory() {
           )}
 
           {tab === "BOM" && (
+            <div className="space-y-4">
+              <div className="flex flex-wrap items-center gap-2">
+                <label className="text-xs font-medium text-steel-600" htmlFor="bom-project">Proyek</label>
+                <select id="bom-project" className="input w-auto py-1.5 text-xs" value={bomProject} onChange={(e) => setBomProject(e.target.value)} aria-label="Filter BOM per proyek">
+                  <option value="Semua proyek">Semua proyek</option>
+                  {activeProjects.map((p) => <option key={p.id} value={p.id}>{p.id} - {p.vessel}</option>)}
+                </select>
+                {bomProject !== "Semua proyek" && (
+                  <p className="text-xs text-steel-500">Kebutuhan BOM bersifat generik (global) - tabel forecast difilter ke {bomProject}.</p>
+                )}
+              </div>
             <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
               <Card className="p-5 lg:col-span-2">
                 <CardHeader title={S.bomCardT} subtitle={S.bomCardS} />
-                <div className="mt-3 space-y-2">
+                <div className="mt-3 max-h-56 space-y-2 overflow-y-auto pr-1">
                   {bomRows.map((b) => {
                     const kurang = Math.max(0, b.need - b.stock);
                     return (
@@ -1313,11 +1340,14 @@ export default function Inventory() {
                     );
                   })}
                 </div>
+                {bomRows.length > 3 && (
+                  <p className="mt-2 text-[11px] text-steel-400">Menampilkan 3 dari {bomRows.length} - scroll untuk sisanya{bomProject !== "Semua proyek" ? " · kebutuhan global, tidak difilter proyek" : ""}</p>
+                )}
               </Card>
               <Card className="p-5">
                 <CardHeader title={S.aksiMatT} subtitle={S.aksiMatS} />
                 <div className="mt-4 space-y-3">
-                  <button className="btn-primary w-full justify-center" onClick={() => { const first = lowStock[0] ?? inventory[0]; if (first) openMove(first, "in"); }}><ArrowDownToLine className="h-4 w-4" /> {S.btnGr}</button>
+                  <button className="btn-primary w-full justify-center whitespace-nowrap py-5 text-base" onClick={() => { const first = lowStock[0] ?? inventory[0]; if (first) openMove(first, "in"); }}><ArrowDownToLine className="h-4 w-4" /> {S.btnGr}</button>
                   <button className="btn-secondary w-full justify-center" onClick={() => { const first = inventory[0]; if (first) openMove(first, "out"); }}><ArrowUpFromLine className="h-4 w-4" /> {S.btnGi}</button>
                   <button className="btn-secondary w-full justify-center" onClick={() => setShowTransfer(true)}><Repeat className="h-4 w-4" /> {S.btnTransfer}</button>
                   <button className="btn-secondary w-full justify-center" onClick={() => setShowOpname(true)}><ClipboardCheck className="h-4 w-4" /> {S.opnameT}</button>
@@ -1331,7 +1361,7 @@ export default function Inventory() {
                       <tr><SortTh label={S.thProyek} sortKey="proyek" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} /><SortTh label={S.thNeed} sortKey="kebutuhan" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} /><SortTh label={S.stockLbl} sortKey="stok" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} /><SortTh label={S.thNet} sortKey="bersih" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} /><th className="th">{S.thAksi}</th></tr>
                     </thead>
                     <tbody className="divide-y divide-steel-100">
-                      {sortRows(forecastRows, sort2, (f, k) => {
+                      {sortRows(forecastRows.filter((f) => bomProject === "Semua proyek" || f.project === bomProject), sort2, (f, k) => {
                         if (k === "kebutuhan") return Number(f.need || 0);
                         if (k === "stok") return Number(f.stock || 0);
                         if (k === "bersih") return Number(f.net || 0);
@@ -1352,9 +1382,10 @@ export default function Inventory() {
                       ))}
                     </tbody>
                   </table>
-                  {forecastRows.length === 0 && <EmptyState title={S.emptyNoProjT} subtitle={S.emptyNoProjS} />}
+                  {forecastRows.filter((f) => bomProject === "Semua proyek" || f.project === bomProject).length === 0 && <EmptyState title={S.emptyNoProjT} subtitle={S.emptyNoProjS} />}
                 </div>
               </Card>
+            </div>
             </div>
           )}
 

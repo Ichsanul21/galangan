@@ -134,7 +134,26 @@ export default function QCSafety() {
   }, [inspQ, inspStatus, tab]);
   const pickNotif = (rowId: string) => {
     const idx = sortedInsp.findIndex((r) => String(r.id) === rowId);
-    if (idx >= 0) { flash.pick(rowId, idx, inspPager.go, inspPager.size); return; }
+    if (idx >= 0) {
+      if (tab === "Inspeksi (ITP)") { flash.pick(rowId, idx, inspPager.go, inspPager.size); return; }
+      setTab("Inspeksi (ITP)");
+      window.setTimeout(() => { flash.pick(rowId, idx, inspPager.go, inspPager.size); }, 250);
+      return;
+    }
+    const nIdx = ncrList.findIndex((n) => String(n.id) === rowId);
+    if (nIdx >= 0) {
+      if (tab === "NCR") { flash.pick(rowId, -1, () => {}, 100); return; }
+      setTab("NCR");
+      window.setTimeout(() => { flash.pick(rowId, -1, () => {}, 100); }, 250);
+      return;
+    }
+    const iIdx = incidents.findIndex((i) => String(i.id) === rowId);
+    if (iIdx >= 0) {
+      if (tab === "Insiden") { flash.pick(rowId, -1, () => {}, 100); return; }
+      setTab("Insiden");
+      window.setTimeout(() => { flash.pick(rowId, -1, () => {}, 100); }, 250);
+      return;
+    }
     flash.pick(rowId, -1, () => {}, 100);
   };
 

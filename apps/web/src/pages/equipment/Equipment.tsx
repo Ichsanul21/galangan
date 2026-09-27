@@ -201,8 +201,32 @@ export default function EquipmentPage() {
   const pickNotif = (rowId: string) => {
     const key = String(rowId);
     const idx = regSorted.findIndex((e) => String(e.id) === key);
-    if (idx >= 0) flash.pick(key, idx, regPager.go, regPager.size);
-    else flash.pick(key, -1, () => {}, 100);
+    if (idx >= 0) {
+      if (tab === "Register") { flash.pick(key, idx, regPager.go, regPager.size); return; }
+      setTab("Register");
+      window.setTimeout(() => { flash.pick(key, idx, regPager.go, regPager.size); }, 250);
+      return;
+    }
+    const found = equipment.find((e) => String(e.id) === key);
+    if (!found) { flash.pick(key, -1, () => {}, 100); return; }
+    const fullSorted = sortRows(equipment, sort, (e, k) => {
+      if (k === "utilisasi") return Number(e.util || 0);
+      if (k === "jam") return Number(e.lastHours || 0);
+      if (k === "tarif") return Number(e.rate || 0);
+      if (k === "nilaibuku") return Number(depreciationOf(e)?.book ?? -1);
+      if (k === "kategori") return String(e.category ?? "");
+      if (k === "model") return String(e.model ?? "");
+      if (k === "status") return String(e.status ?? "");
+      return String(e.name ?? "");
+    });
+    const fullIdx = fullSorted.findIndex((e) => String(e.id) === key);
+    setTab("Register");
+    setEqStatus("Semua");
+    setEqCat("Semua");
+    window.setTimeout(() => {
+      if (fullIdx >= 0) flash.pick(key, fullIdx, regPager.go, regPager.size);
+      else flash.pick(key, -1, () => {}, 100);
+    }, 250);
   };
   useEffect(() => {
     regPager.reset();

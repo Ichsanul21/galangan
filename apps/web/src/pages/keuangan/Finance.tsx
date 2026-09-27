@@ -473,11 +473,26 @@ export default function Finance() {
 
   const pickNotif = (rowId: string) => {
     const idxInv = sortedInv.findIndex((r) => String(r.id) === rowId);
-    if (idxInv >= 0) { flash.pick(rowId, idxInv, invPager.go, invPager.size); return; }
+    if (idxInv >= 0) {
+      if (tab === "Invoice") { flash.pick(rowId, idxInv, invPager.go, invPager.size); return; }
+      setTab("Invoice");
+      window.setTimeout(() => { flash.pick(rowId, idxInv, invPager.go, invPager.size); }, 250);
+      return;
+    }
     const idxAp = sortedAp.findIndex((r) => String(r.id) === rowId);
-    if (idxAp >= 0) { flash.pick(rowId, idxAp, apPager.go, apPager.size); return; }
+    if (idxAp >= 0) {
+      if (tab === "Hutang (AP)") { flash.pick(rowId, idxAp, apPager.go, apPager.size); return; }
+      setTab("Hutang (AP)");
+      window.setTimeout(() => { flash.pick(rowId, idxAp, apPager.go, apPager.size); }, 250);
+      return;
+    }
     const idxAr = sortedAr.findIndex((r) => String(r.id) === rowId);
-    if (idxAr >= 0) { flash.pick(rowId, idxAr, arPager.go, arPager.size); return; }
+    if (idxAr >= 0) {
+      if (tab === "Piutang (AR)") { flash.pick(rowId, idxAr, arPager.go, arPager.size); return; }
+      setTab("Piutang (AR)");
+      window.setTimeout(() => { flash.pick(rowId, idxAr, arPager.go, arPager.size); }, 250);
+      return;
+    }
     flash.pick(rowId, -1, () => {}, 100);
   };
   const coaTipeOf = (c: StoreItem): string => coaList.find((x) => x.kode === String(c.kode))?.tipe ?? "-";

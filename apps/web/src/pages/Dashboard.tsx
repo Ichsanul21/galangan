@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { useEffect, useState } from "react";
+import { Link } from "react-router-dom";
 import {
   Anchor,
   Wallet,
@@ -14,6 +14,8 @@ import {
   AlertTriangle,
   FileCheck2,
   Clock,
+  Maximize,
+  Minimize,
 } from "lucide-react";
 import {
   AreaChart,
@@ -66,6 +68,8 @@ import {
 } from "../data";
 import { useT } from "../i18n/LanguageContext";
 import { n_misc } from "../i18n/n_misc";
+import { n_prj } from "../i18n/n_prj";
+import ProjectAddModal from "../components/ProjectAddModal";
 
 const RANGES = ["6B", "12B"] as const;
 
@@ -80,12 +84,19 @@ function loadTargets(): Record<string, BranchTarget> {
 }
 
 export default function Dashboard() {
-  const { data, wbsFor, branch } = useStore();
+  const { data, wbsFor, branch, add } = useStore();
   const { locale } = useT();
   const S = n_misc[locale];
+  const SP = n_prj[locale];
   const { user } = useAuth();
   const allowedTarget = canSetTarget(user?.role);
-  const navigate = useNavigate();
+  const [showAddProject, setShowAddProject] = useState(false);
+  const [isFs, setIsFs] = useState(() => typeof document !== "undefined" && !!document.fullscreenElement);
+  useEffect(() => {
+    const onFs = () => setIsFs(!!document.fullscreenElement);
+    document.addEventListener("fullscreenchange", onFs);
+    return () => document.removeEventListener("fullscreenchange", onFs);
+  }, []);
   const projects = data.projects;
   const branchProjects = data.projects.filter((p) => branch === "SEMUA" || !p.branch || p.branch === branch);
   const activities = data.activities;
@@ -301,19 +312,30 @@ export default function Dashboard() {
           icon={<TrendingUp className="h-5 w-5" />}
           actions={
             <>
-              <button className="btn-secondary" onClick={togglePresent}>
-                <Sparkles className="h-4 w-4" /> {S.presentBtn}
+              <button className="btn-secondary" onClick={togglePresent} title={isFs ? S.exitFullscreen : S.presentBtn}>
+                {isFs ? <Minimize className="h-4 w-4" /> : <Maximize className="h-4 w-4" />} {isFs ? S.exitFullscreen : S.presentBtn}
               </button>
               <button className="btn-secondary" onClick={exportSummary}>
                 <Download className="h-4 w-4" /> {S.exportBtn}
               </button>
-              <button className="btn-primary-gradient" onClick={() => navigate("/proyek")}>
+              <button className="btn-primary-gradient" onClick={() => setShowAddProject(true)}>
                 <Plus className="h-4 w-4" /> {S.newProjectBtn}
               </button>
             </>
           }
         />
       </StaggerItem>
+
+      <ProjectAddModal
+        open={showAddProject}
+        onClose={() => setShowAddProject(false)}
+        S={SP}
+        projects={projects}
+        vessels={data.vessels}
+        clients={data.clients}
+        employees={data.employees}
+        add={add}
+      />
 
       {/* TARGET VS AKTUAL - atur via tombol, hanya Direktur/Manager */}
       <StaggerItem>
@@ -364,7 +386,7 @@ export default function Dashboard() {
               <Badge tone="teal" className="bg-white/15 border-white/20">
                 <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" /> {S.systemOperational}
               </Badge>
-              <span className="px-3 py-1.5 rounded-lg bg-white/15 text-sm font-medium">
+              <span className="px-3 py-1.5 rounded-lg bg-black/25 text-sm font-medium text-white">
                 {S.activeWorkers.replace("{n}", String(activeEmployees))}
               </span>
             </div>

@@ -210,8 +210,16 @@ export default function Drydock() {
   const pickNotif = (rowId: string) => {
     const key = String(rowId);
     const idx = sortedSlots.findIndex((s) => String(s.id) === key);
-    if (idx >= 0) flash.pick(key, idx, pager.go, pager.size);
-    else flash.pick(key, -1, () => {}, 100);
+    if (idx >= 0) { flash.pick(key, idx, pager.go, pager.size); return; }
+    const found = dockSlots.find((s) => String(s.id) === key);
+    if (!found || statusFilter === "Semua") { flash.pick(key, -1, () => {}, 100); return; }
+    const fullSorted = sortRows(dockSlots, sort, (s: StoreItem, k) => k === "days" ? Number(slotDays(s)) : k === "status" ? String(slotStatus(s, data.projects)) : k === "facility" ? String(drydocks.find((d) => d.id === s.dockId)?.name ?? s.dockId) : String((s as unknown as Record<string, unknown>)[k] ?? ""));
+    const fullIdx = fullSorted.findIndex((s) => String(s.id) === key);
+    setStatusFilter("Semua");
+    window.setTimeout(() => {
+      if (fullIdx >= 0) flash.pick(key, fullIdx, pager.go, pager.size);
+      else flash.pick(key, -1, () => {}, 100);
+    }, 250);
   };
   useEffect(() => {
     pager.reset();
@@ -399,7 +407,26 @@ export default function Drydock() {
       )}
 
 
-      <div className="mt-5 grid grid-cols-1 gap-5 lg:grid-cols-2">
+        <Card className="p-5">
+          <h3 className="mb-3 text-sm font-semibold text-navy-900">{S.utilTitle}</h3>
+          <div className="space-y-3">
+            {coverageByDock.map(({ dock, pct }) => (
+              <div key={dock.id}>
+                <div className="mb-1 flex justify-between text-sm">
+                  <span className="text-steel-600">{dock.name}</span>
+                  <span className="font-semibold text-navy-900">{pct}%</span>
+                </div>
+                <ProgressBar value={pct} tone={pct > 80 ? "red" : pct > 60 ? "amber" : "green"} />
+                <p className="mt-1 text-xs text-steel-500">{S.dockCost.replace("{a}", fmtRupiah(dockCostTotal(dock.id)))}</p>
+              </div>
+            ))}
+          </div>
+          <p className="mt-3 text-xs text-steel-400">
+            {busiest ? S.busiestNow.replace("{a}", busiest.dock.name).replace("{b}", String(busiest.pct)) : S.noUtil} {S.utilNote.replace("{n}", String(DAYS))}
+          </p>
+        </Card>
+
+      <div className="mt-5 grid grid-cols-1 gap-5">
         <Card>
           <CardHeader title={S.cardSlots} subtitle={S.cardSlotsSub} action={
             <select className="input text-xs" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} aria-label={S.filterStatusAria}>
@@ -548,24 +575,6 @@ export default function Drydock() {
         </div>
       </Card>
 
-        <Card className="p-5">
-          <h3 className="mb-3 text-sm font-semibold text-navy-900">{S.utilTitle}</h3>
-          <div className="space-y-3">
-            {coverageByDock.map(({ dock, pct }) => (
-              <div key={dock.id}>
-                <div className="mb-1 flex justify-between text-sm">
-                  <span className="text-steel-600">{dock.name}</span>
-                  <span className="font-semibold text-navy-900">{pct}%</span>
-                </div>
-                <ProgressBar value={pct} tone={pct > 80 ? "red" : pct > 60 ? "amber" : "green"} />
-                <p className="mt-1 text-xs text-steel-500">{S.dockCost.replace("{a}", fmtRupiah(dockCostTotal(dock.id)))}</p>
-              </div>
-            ))}
-          </div>
-          <p className="mt-3 text-xs text-steel-400">
-            {busiest ? S.busiestNow.replace("{a}", busiest.dock.name).replace("{b}", String(busiest.pct)) : S.noUtil} {S.utilNote.replace("{n}", String(DAYS))}
-          </p>
-        </Card>
       </div>
 
       <Card className="mt-5">

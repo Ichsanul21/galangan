@@ -281,11 +281,26 @@ export default function Procurement() {
 
   const pickNotif = (rowId: string) => {
     const idxBig = sortedBig.findIndex((r) => String(r.id) === rowId);
-    if (idxBig >= 0) { flash.pick(rowId, idxBig, bigPager.go, bigPager.size); return; }
+    if (idxBig >= 0) {
+      if (tab === "PO Besar (Kantor)") { flash.pick(rowId, idxBig, bigPager.go, bigPager.size); return; }
+      setTab("PO Besar (Kantor)");
+      window.setTimeout(() => { flash.pick(rowId, idxBig, bigPager.go, bigPager.size); }, 250);
+      return;
+    }
     const idxSmall = sortedSmall.findIndex((r) => String(r.id) === rowId);
-    if (idxSmall >= 0) { flash.pick(rowId, idxSmall, smallPager.go, smallPager.size); return; }
+    if (idxSmall >= 0) {
+      if (tab === "PO Kecil (Workshop)") { flash.pick(rowId, idxSmall, smallPager.go, smallPager.size); return; }
+      setTab("PO Kecil (Workshop)");
+      window.setTimeout(() => { flash.pick(rowId, idxSmall, smallPager.go, smallPager.size); }, 250);
+      return;
+    }
     const idxPr = sortedPr.findIndex((r) => String(r.id) === rowId);
-    if (idxPr >= 0) { flash.pick(rowId, idxPr, prPager.go, prPager.size); return; }
+    if (idxPr >= 0) {
+      if (tab === "PR") { flash.pick(rowId, idxPr, prPager.go, prPager.size); return; }
+      setTab("PR");
+      window.setTimeout(() => { flash.pick(rowId, idxPr, prPager.go, prPager.size); }, 250);
+      return;
+    }
     flash.pick(rowId, -1, () => {}, 100);
   };
 

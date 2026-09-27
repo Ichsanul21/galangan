@@ -256,7 +256,21 @@ export default function Payroll() {
   const modAlert = useModuleAlert("payroll");
   const flash = useNotifFlash();
   const pickNotif = (rowId: string) => {
-    flash.pick(rowId, -1, () => {}, 100);
+    const key = String(rowId);
+    const row = data.payroll.find((p) => String(p.id) === key);
+    if (!row) { flash.pick(key, -1, () => {}, 100); return; }
+    const targetTab = rowType(row) === "Gaji" ? "Gaji" : "THR & Bonus";
+    const needTab = tab !== targetTab;
+    const needStage = (targetTab === "Gaji" ? gajiStage : thrStage) !== "Semua";
+    const needPeriod = String(row.period ?? "") !== "" && String(row.period) !== period;
+    if (!needTab && !needStage && !needPeriod) { flash.pick(key, -1, () => {}, 100); return; }
+    if (needTab) setTab(targetTab);
+    if (needStage) {
+      if (targetTab === "Gaji") setGajiStage("Semua");
+      else setThrStage("Semua");
+    }
+    if (needPeriod) setPeriod(String(row.period));
+    window.setTimeout(() => { flash.pick(key, -1, () => {}, 100); }, 250);
   };
   const [tab, setTab] = useState("Gaji");
   const [period, setPeriod] = useState(todayISO().slice(0, 7));

@@ -131,8 +131,23 @@ export default function Documents() {
   const pickNotif = (rowId: string) => {
     const key = String(rowId);
     const idx = sortedDocs.findIndex((d) => String(d.id) === key);
-    if (idx >= 0) flash.pick(key, idx, docPager.go, docPager.size);
-    else flash.pick(key, -1, () => {}, 100);
+    if (idx >= 0) { flash.pick(key, idx, docPager.go, docPager.size); return; }
+    const doc = data.documents.find((d) => String(d.id) === key);
+    if (!doc) { flash.pick(key, -1, () => {}, 100); return; }
+    const target = doc.archived ? "Arsip" : "Semua";
+    if (type === target) { flash.pick(key, -1, () => {}, 100); return; }
+    const targetBase = target === "Arsip" ? archived : active;
+    const targetSorted = sortRows(
+      targetBase.filter((d) => `${d.title} ${d.id} ${d.project} ${d.vessel}`.toLowerCase().includes(q.toLowerCase())),
+      sort,
+      (d, k) => k === "dokumen" ? String(d.title ?? "") : k === "tipe" ? String(d.type ?? "") : k === "proyek" ? String(d.project ?? "") : k === "versi" ? String(d.version ?? "") : k === "status" ? String(d.status ?? "") : String(d.updated ?? ""),
+    );
+    const targetIdx = targetSorted.findIndex((d) => String(d.id) === key);
+    setType(target);
+    window.setTimeout(() => {
+      if (targetIdx >= 0) flash.pick(key, targetIdx, docPager.go, docPager.size);
+      else flash.pick(key, -1, () => {}, 100);
+    }, 250);
   };
   useEffect(() => {
     docPager.reset();

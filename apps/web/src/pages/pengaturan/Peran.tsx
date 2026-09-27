@@ -231,10 +231,28 @@ interface SessionRow {
   user_agent: string;
 }
 
+interface AuditRow {
+  id: string;
+  actor: string;
+  action: string;
+  created_at: string;
+}
+
 function sessionOnline(lastSeen: string): boolean {
   const t = Date.parse(String(lastSeen ?? ""));
   if (Number.isNaN(t)) return false;
   return Date.now() - t <= 3 * 60 * 1000;
+}
+
+function relTime(v: string, S: typeof n_roles.id, now: number): string {
+  const t = Date.parse(String(v ?? ""));
+  if (Number.isNaN(t)) return S.neverSeen;
+  const mins = Math.max(0, Math.round((now - t) / 60000));
+  if (mins < 1) return S.agoNow;
+  if (mins < 60) return S.agoMin.replace("{n}", String(mins));
+  const h = Math.floor(mins / 60);
+  if (h < 48) return S.agoHour.replace("{n}", String(h));
+  return S.agoDay.replace("{n}", String(Math.floor(h / 24)));
 }
 
 function sessionDuration(loginAt: string, lastSeen: string, S: typeof n_roles.id): string {
@@ -291,6 +309,9 @@ export default function Peran() {
   const [linkValue, setLinkValue] = useState("");
   const [sessions, setSessions] = useState<SessionRow[]>([]);
   const [sessionsLoading, setSessionsLoading] = useState(false);
+  const [auditRows, setAuditRows] = useState<AuditRow[]>([]);
+  const [nowTick, setNowTick] = useState(() => Date.now());
+  const [sessDetail, setSessDetail] = useState<ManagedUser | null>(null);
 
   const empNameOf = (id: string | null | undefined): string => {
     if (!id) return "-";
@@ -314,6 +335,13 @@ export default function Peran() {
   useEffect(() => {
     void loadUsers();
     void loadSessions();
+    void loadAudit();
+    // Polling ringan: daftar sesi + jam "x lalu" hidup tanpa reload halaman.
+    const id = window.setInterval(() => {
+      void loadSessions();
+      setNowTick(Date.now());
+    }, 30000);
+    return () => window.clearInterval(id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -373,6 +401,34 @@ export default function Peran() {
       setSessionsLoading(false);
     }
   };
+
+  // Jejak audit server untuk kolom "aktivitas terakhir" — bisa dibaca
+  // walau user sudah offline (audit tersimpan permanen di BE).
+  const loadAudit = async () => {
+    if (!isBackendConfigured()) return;
+    try {
+      const res = await apiFetch<{ rows: AuditRow[] } | AuditRow[]>("/api/audit?limit=1000");
+      const rows = Array.isArray(res) ? res : (res.rows ?? []);
+      setAuditRows(rows);
+    } catch {
+      // abaikan — kolom aktivitas tampil "-"
+    }
+  };
+
+  // Aktivitas terbaru per aktor (username).
+  const lastActByUser = useMemo(() => {
+    const map = new Map<string, AuditRow[]>();
+    for (const r of auditRows) {
+      const k = String(r.actor ?? "");
+      if (!k) continue;
+      if (!map.has(k)) map.set(k, []);
+      map.get(k)!.push(r);
+    }
+    for (const list of map.values()) {
+      list.sort((a, b) => String(b.created_at ?? "").localeCompare(String(a.created_at ?? "")));
+    }
+    return map;
+  }, [auditRows]);
 
   const doLinkEmployee = async () => {    if (!linkTarget) return;
     try {
@@ -568,11 +624,15 @@ export default function Peran() {
         <div className="mb-3 flex flex-wrap items-center gap-2">
           <h3 className="text-sm font-bold text-navy-900">{S.sessionsTitle}</h3>
           <span className="text-xs text-steel-400">
-            {sessionsLoading ? S.loading : S.sessCount.replace("{a}", String(sessions.filter((s) => sessionOnline(s.last_seen_at)).length)).replace("{b}", String(sessions.length))}
+            {sessionsLoading ? S.loading : S.sessCount.replace("{a}", String(users.filter((u) => {
+              const s = sessions.find((x) => String(x.user_id) === String(u.id));
+              return s ? sessionOnline(s.last_seen_at) : false;
+            }).length)).replace("{b}", String(users.length))}
+            {" · "}{S.autoRefreshNote}
           </span>
           <span className="ml-auto">
             {remote && (
-              <button className="btn-secondary text-xs" onClick={() => void loadSessions()}>
+              <button className="btn-secondary text-xs" onClick={() => { void loadSessions(); void loadAudit(); setNowTick(Date.now()); }}>
                 <RefreshCw className="h-4 w-4" /> {S.reload}
               </button>
             )}
@@ -582,42 +642,65 @@ export default function Peran() {
           <p className="text-xs leading-relaxed text-steel-500">
             {S.localModeSessions}
           </p>
-        ) : sessions.length === 0 && !sessionsLoading ? (
+        ) : users.length === 0 && !sessionsLoading ? (
           <p className="text-xs text-steel-500">{S.emptySessions}</p>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[720px] text-sm">
+            <table className="w-full min-w-[880px] text-sm">
               <thead>
                 <tr className="border-b border-steel-100 text-left text-xs uppercase tracking-wide text-steel-400">
                   <th className="px-3 py-2">{S.thUser}</th>
                   <th className="px-3 py-2">{S.thStatus}</th>
-                  <th className="px-3 py-2">{S.thLogin}</th>
+                  <th className="px-3 py-2">{S.thLastLogin}</th>
                   <th className="px-3 py-2">{S.thLastSeen}</th>
                   <th className="px-3 py-2">{S.thDuration}</th>
-                  <th className="px-3 py-2">{S.thDetail}</th>
+                  <th className="px-3 py-2">{S.thLastAct}</th>
                   <th className="px-3 py-2 text-right">{S.thLog}</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-steel-50">
-                {sessions.map((s) => {
-                  const online = sessionOnline(s.last_seen_at);
+                {users.map((u) => {
+                  const s = sessions.find((x) => String(x.user_id) === String(u.id)) ?? null;
+                  const online = s ? sessionOnline(s.last_seen_at) : false;
+                  const acts = lastActByUser.get(u.username) ?? [];
+                  const lastAct = acts[0] ?? null;
+                  const dur = s ? sessionDuration(s.login_at, online ? new Date(nowTick).toISOString() : s.last_seen_at, S) : "-";
                   return (
-                    <tr key={s.id} className="hover:bg-surface">
-                      <td className="px-3 py-2 font-semibold text-navy-900">{s.username}<p className="text-xs font-normal text-steel-500">{s.role}</p></td>
-                      <td className="px-3 py-2">
-                        <Badge tone={online ? "green" : "gray"}>{online ? "Online" : "Offline"}</Badge>
+                    <tr key={u.id} className="hover:bg-surface">
+                      <td className="px-3 py-2 font-semibold text-navy-900">
+                        {u.username}
+                        <p className="text-xs font-normal text-steel-500">{u.name} · {u.role}</p>
                       </td>
-                      <td className="px-3 py-2 text-steel-600">{fmtDateTime(s.login_at)}</td>
-                      <td className="px-3 py-2 text-steel-600">{fmtDateTime(s.last_seen_at)}</td>
-                      <td className="px-3 py-2 text-steel-600">{sessionDuration(s.login_at, s.last_seen_at, S)}</td>
-                      <td className="px-3 py-2 text-xs text-steel-500" title={String(s.user_agent ?? "")}>{s.ip || "-"} · {String(s.user_agent ?? "").slice(0, 42) || "-"}</td>
+                      <td className="px-3 py-2">
+                        {!u.isActive
+                          ? <Badge tone="gray">{S.statusInactive}</Badge>
+                          : <Badge tone={online ? "green" : "gray"}>{online ? "Online" : "Offline"}</Badge>}
+                      </td>
+                      <td className="px-3 py-2 text-steel-600">{s ? fmtDateTime(s.login_at) : S.neverSeen}</td>
+                      <td className="px-3 py-2 text-steel-600">{s ? relTime(s.last_seen_at, S, nowTick) : S.neverSeen}</td>
+                      <td className="px-3 py-2 text-steel-600">{s ? (online ? S.runningFor.replace("{a}", dur) : S.lastFor.replace("{a}", dur)) : "-"}</td>
+                      <td className="px-3 py-2 text-xs text-steel-600">
+                        {lastAct ? (
+                          <span title={`${lastAct.action} · ${fmtDateTime(lastAct.created_at)}`}>
+                            {lastAct.action} · {relTime(lastAct.created_at, S, nowTick)}
+                          </span>
+                        ) : S.noActivity}
+                      </td>
                       <td className="px-3 py-2 text-right">
-                        <button
-                          className="btn-secondary px-2 py-1 text-xs"
-                          onClick={() => navigate(`/audit?actor=${encodeURIComponent(s.username)}`)}
-                        >
-                          {S.viewLog}
-                        </button>
+                        <div className="flex justify-end gap-1.5">
+                          <button
+                            className="btn-secondary px-2 py-1 text-xs"
+                            onClick={() => setSessDetail(u)}
+                          >
+                            {S.thDetail}
+                          </button>
+                          <button
+                            className="btn-secondary px-2 py-1 text-xs"
+                            onClick={() => navigate(`/audit?actor=${encodeURIComponent(u.username)}`)}
+                          >
+                            {S.viewLog}
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   );
@@ -627,6 +710,42 @@ export default function Peran() {
           </div>
         )}
       </Card>
+
+      <Modal open={sessDetail !== null} onClose={() => setSessDetail(null)} title={S.detailTitle} subtitle={sessDetail ? `${sessDetail.username} · ${sessDetail.name}` : ""}>
+        {sessDetail && (() => {
+          const s = sessions.find((x) => String(x.user_id) === String(sessDetail.id)) ?? null;
+          const online = s ? sessionOnline(s.last_seen_at) : false;
+          const acts = (lastActByUser.get(sessDetail.username) ?? []).slice(0, 10);
+          return (
+            <div className="space-y-3">
+              <dl className="dl-div text-sm">
+                <div className="flex justify-between"><dt className="text-steel-500">{S.thStatus}</dt><dd>{!sessDetail.isActive ? <Badge tone="gray">{S.statusInactive}</Badge> : <Badge tone={online ? "green" : "gray"}>{online ? "Online" : "Offline"}</Badge>}</dd></div>
+                <div className="flex justify-between"><dt className="text-steel-500">{S.thLastLogin}</dt><dd className="font-medium">{s ? fmtDateTime(s.login_at) : S.neverSeen}</dd></div>
+                <div className="flex justify-between"><dt className="text-steel-500">{S.thLastSeen}</dt><dd className="font-medium">{s ? `${fmtDateTime(s.last_seen_at)} (${relTime(s.last_seen_at, S, nowTick)})` : S.neverSeen}</dd></div>
+                <div className="flex justify-between"><dt className="text-steel-500">{S.thDuration}</dt><dd className="font-medium">{s ? sessionDuration(s.login_at, online ? new Date(nowTick).toISOString() : s.last_seen_at, S) : "-"}</dd></div>
+                {s && <div className="flex justify-between"><dt className="text-steel-500">IP</dt><dd className="font-medium">{s.ip || "-"}</dd></div>}
+                {s && <div className="flex justify-between"><dt className="text-steel-500">User Agent</dt><dd className="max-w-[60%] truncate text-right font-medium" title={String(s.user_agent ?? "")}>{String(s.user_agent ?? "-")}</dd></div>}
+              </dl>
+              <p className="text-xs font-semibold text-steel-500">{S.detailActs}</p>
+              {acts.length === 0 ? (
+                <p className="text-xs text-steel-500">{S.detailNoActs}</p>
+              ) : (
+                <ul className="max-h-64 space-y-1 overflow-y-auto pr-1">
+                  {acts.map((a) => (
+                    <li key={a.id} className="flex items-start gap-1.5 text-xs" title={`${a.action} · ${fmtDateTime(a.created_at)}`}>
+                      <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-ocean-500" />
+                      <span className="min-w-0">
+                        <span className="block truncate font-medium text-navy-900">{a.action}</span>
+                        <span className="block truncate text-steel-500">{fmtDateTime(a.created_at)}</span>
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          );
+        })()}
+      </Modal>
 
       <Card className="mb-4 p-4">
         <div className="max-w-sm">
