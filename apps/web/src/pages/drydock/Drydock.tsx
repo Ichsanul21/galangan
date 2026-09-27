@@ -81,6 +81,9 @@ export default function Drydock() {
   const [bookForm, setBookForm] = useState({ dockId: "DD-1", project: "", from: "1", to: "30", priority: "Normal", ratePerDay: "0", dsRef: "", vessel2: "", startDate: "" });
   const [bookError, setBookError] = useState<string | null>(null);
   const [deleting, setDeleting] = useState<StoreItem | null>(null);
+  const [moveTarget, setMoveTarget] = useState<StoreItem | null>(null);
+  const [moveForm, setMoveForm] = useState({ dockId: "DD-1", from: "", to: "" });
+  const [moveError, setMoveError] = useState<string | null>(null);
   const [wide, setWide] = useState(false);
   const [statusFilter, setStatusFilter] = useState("Semua");
   const [sort, setSort] = useState<SortState>({ key: null, dir: "asc" });
@@ -268,8 +271,48 @@ export default function Drydock() {
     setPicDraft("");
   };
 
-  const confirmDelete = async () => {
-    if (!deleting) return;
+  /* Tindak lanjut slot konflik: geser tanggal / pindah fasilitas.
+     Hapus diblokir bila proyek belum Selesai, jadi jalan keluarnya pindah —
+     validasi sama dengan booking baru (abaikan slot sendiri). */
+  const openMove = (s: StoreItem) => {
+    setMoveTarget(s);
+    setMoveForm({ dockId: String(s.dockId ?? "DD-1"), from: String(s.from ?? ""), to: String(s.to ?? "") });
+    setMoveError(null);
+  };
+
+  const saveMove = async () => {
+    if (!moveTarget) return;
+    const from = Number(moveForm.from);
+    const to = Number(moveForm.to);
+    if (!from || !to || to <= from || from < 0 || to > DAYS) {
+      setMoveError(`Rentang hari tidak valid (1-${DAYS}).`);
+      return;
+    }
+    if (overlap(moveForm.dockId, from, to, String(moveTarget.id))) {
+      const dock = drydocks.find((d) => d.id === moveForm.dockId);
+      setMoveError(`Masih tumpang tindih dengan slot lain di ${dock?.name ?? moveForm.dockId} — pilih rentang/fasilitas lain.`);
+      return;
+    }
+    const dock = drydocks.find((d) => d.id === moveForm.dockId);
+    const proj = data.projects.find((p) => p.id === moveTarget.project);
+    const loa = proj ? vesselLoa(proj.vessel, data.vessels) : null;
+    const cap = dock ? dockLengthM(dock.capacity) : null;
+    if (cap !== null && loa !== null && loa > cap) {
+      setMoveError(`LOA ${moveTarget.vessel} (${loa} m) melebihi kapasitas ${dock?.name} (${cap} m).`);
+      return;
+    }
+    try {
+      await update("dockSlots", moveTarget.id, { dockId: moveForm.dockId, from, to });
+      log("memindah slot", `${moveTarget.id} → ${moveForm.dockId} hari ${from}-${to}`, "Drydock");
+      toast(`Slot ${moveTarget.id} dipindah ke hari ${from}-${to}`);
+      setMoveTarget(null);
+      setMoveError(null);
+    } catch (e) {
+      setMoveError(e instanceof Error ? e.message : "Gagal memindah slot");
+    }
+  };
+
+  const confirmDelete = async () => {    if (!deleting) return;
     const proj = data.projects.find((p) => p.id === deleting.project);
     if (proj && proj.status !== "Selesai") {
       toast(`Slot ${deleting.id} tidak bisa dihapus: proyek ${proj.id} masih berstatus ${proj.status}.`, "info");
@@ -380,6 +423,14 @@ export default function Drydock() {
                       <td className="td">
                         <div className="flex gap-1.5">
                           <button className="btn-secondary text-xs" onClick={() => openSlot(s)}>Detail</button>
+                          <button
+                            className="btn-secondary text-xs"
+                            title={conflict.some((c) => c.id === s.id) ? "Geser tanggal / pindah fasilitas untuk lepas dari konflik" : "Geser tanggal / pindah fasilitas"}
+                            aria-label={`Geser slot ${s.id}`}
+                            onClick={() => openMove(s)}
+                          >
+                            Geser
+                          </button>
                           <button className="rounded-lg p-1.5 text-rose-500 hover:bg-rose-50" title={`Hapus slot ${s.id}`} aria-label={`Hapus slot ${s.id}`} onClick={() => setDeleting(s)}><Trash2 className="h-4 w-4" /></button>
                         </div>
                       </td>
@@ -573,9 +624,30 @@ export default function Drydock() {
               ))}
             </div>
           </div>
-            <button className="btn-danger mt-3 w-full justify-center" onClick={() => { setDeleting(sel); setSelected(null); }}><Trash2 className="h-4 w-4" /> Hapus Slot</button>
+            <div className="mt-3 flex gap-2">
+              <button className="btn-secondary flex-1 justify-center" onClick={() => { setSelected(null); openMove(sel); }}>Geser / Pindah Slot</button>
+              <button className="btn-danger flex-1 justify-center" onClick={() => { setDeleting(sel); setSelected(null); }}><Trash2 className="h-4 w-4" /> Hapus Slot</button>
+            </div>
           </div>
         )}
+      </Modal>
+
+      {/* Modal geser/pindah slot (tindak lanjut konflik) */}
+      <Modal open={moveTarget !== null} onClose={() => { setMoveTarget(null); setMoveError(null); }} title={`Geser Slot ${moveTarget?.id ?? ""}`} subtitle="Pindah tanggal / fasilitas — ditolak bila masih tumpang tindih"
+        footer={<><button className="btn-secondary" onClick={() => { setMoveTarget(null); setMoveError(null); }}>Batal</button><button className="btn-primary" onClick={() => void saveMove()}>Simpan Pindahan</button></>}>
+        <div className="space-y-3">
+          {moveError && <p className="rounded-lg bg-rose-50 px-3 py-2 text-xs font-medium text-rose-700">{moveError}</p>}
+          <Field label="Fasilitas tujuan">
+            <select className="input" value={moveForm.dockId} onChange={(e) => setMoveForm({ ...moveForm, dockId: e.target.value })}>
+              {drydocks.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
+            </select>
+          </Field>
+          <FormGrid>
+            <Field label={`Mulai (hari ke-1-${DAYS})`}><input type="number" min={1} max={DAYS} className="input" value={moveForm.from} onChange={(e) => setMoveForm({ ...moveForm, from: e.target.value })} /></Field>
+            <Field label={`Selesai (hari ke-1-${DAYS})`}><input type="number" min={1} max={DAYS} className="input" value={moveForm.to} onChange={(e) => setMoveForm({ ...moveForm, to: e.target.value })} /></Field>
+          </FormGrid>
+          <p className="text-xs text-steel-500">Durasi baru: {Number(moveForm.to) > Number(moveForm.from) ? `${Number(moveForm.to) - Number(moveForm.from)} hari` : "-"}. Biaya dock ikut berubah otomatis (tarif × durasi).</p>
+        </div>
       </Modal>
 
       {/* Modal booking */}
