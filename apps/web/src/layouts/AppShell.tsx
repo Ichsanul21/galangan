@@ -11,7 +11,9 @@ import {
   ShieldCheck,
   Ship,
   HardHat,
-  ScrollText,
+  FolderOpen,
+  FolderKanban,
+  ClipboardCheck,
   Cpu,
   BarChart3,
   Menu,
@@ -27,7 +29,6 @@ import {
   CalendarCheck,
   Banknote,
   Activity,
-  History,
   KeyRound,
   Settings as SettingsIcon,
 } from "lucide-react";
@@ -145,13 +146,13 @@ export default function AppShell() {
     {
       label: t.nav.operasional,
       items: [
-        { to: "/proyek", label: t.nav.proyek, icon: Anchor, alertKey: "proyek" },
+        { to: "/proyek", label: t.nav.proyek, icon: FolderKanban, alertKey: "proyek" },
         { to: "/proyek/monitoring", label: t.nav.monitoring, icon: Activity },
         { to: "/drydock", label: t.nav.drydock, icon: ShipWheel, alertKey: "drydock" },
         { to: "/inventori", label: t.nav.inventori, icon: Boxes, alertKey: "inventori" },
         { to: "/equipment", label: t.nav.equipment, icon: Cpu, alertKey: "equipment" },
         { to: "/subkontraktor", label: t.nav.subkontraktor, icon: HardHat, alertKey: "subkontraktor" },
-        { to: "/qc-safety", label: t.nav.qc, icon: ShieldCheck, alertKey: "qc" },
+        { to: "/qc-safety", label: t.nav.qc, icon: ClipboardCheck, alertKey: "qc" },
       ],
     },
     {
@@ -166,7 +167,7 @@ export default function AppShell() {
       label: t.nav.aset,
       items: [
         { to: "/kapal", label: t.nav.kapal, icon: Ship, alertKey: "kapal" },
-        { to: "/dokumen", label: t.nav.dokumen, icon: ScrollText, alertKey: "dokumen" },
+        { to: "/dokumen", label: t.nav.dokumen, icon: FolderOpen, alertKey: "dokumen" },
       ],
     },
     {
@@ -182,7 +183,7 @@ export default function AppShell() {
         { to: "/notifikasi", label: t.nav.notifikasi, icon: Bell },
         { to: "/pengaturan", label: t.nav.pengaturan, icon: SettingsIcon },
         { to: "/pengaturan/peran", label: t.nav.peran, icon: KeyRound, child: true },
-        { to: "/audit", label: t.nav.audit, icon: History },
+        { to: "/audit", label: t.nav.audit, icon: ShieldCheck },
       ],
     },
   ];

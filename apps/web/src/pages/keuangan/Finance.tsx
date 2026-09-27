@@ -1624,7 +1624,7 @@ export default function Finance() {
       </div>
 
       <div className="mt-4 card">
-        <Tabs tabs={["Akun", "Jurnal", "Kas & Bank", "Hutang (AP)", "Piutang (AR)", "Buku Besar", "Laba Rugi", "Neraca", "Aset", "Jadwal Bayar", "Invoice", "Project P&L", "Pajak"]} active={tab} onChange={setTab} />
+        <Tabs tabs={["Akun", "Aset", "Invoice", "Piutang (AR)", "Hutang (AP)", "Jadwal Bayar", "Kas & Bank", "Jurnal", "Buku Besar", "Laba Rugi", "Neraca", "Project P&L", "Pajak"]} active={tab} onChange={setTab} />
         <div className="p-4">
           <FinFlowStrip tab={tab} onPick={setTab} />
           {tab === "Akun" && (

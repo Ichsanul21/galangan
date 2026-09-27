@@ -1,7 +1,7 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { AlertTriangle, Bell, Check, CheckCheck, Download, Info, Search } from "lucide-react";
-import { Badge, Card, EmptyState, Field, KpiCard, PageHeader, Tabs, toast } from "../../components/ui";
+import { Badge, Card, EmptyState, Field, KpiCard, PageHeader, Tabs, toast, usePager } from "../../components/ui";
 import { FilterPopover } from "../../components/FilterPopover";
 import { useStore } from "../../data/store";
 import { useT } from "../../i18n/LanguageContext";
@@ -68,6 +68,34 @@ function sevOf(tone: Tone): "Merah" | "Kuning" | "Biru" {
   if (tone === "red") return "Merah";
   if (tone === "amber") return "Kuning";
   return "Biru";
+}
+
+/* Satu grup hari + pager sendiri (20/grup): grup tidak pecah,
+   markGroup tetap per grup penuh (bukan per halaman). */
+function NotifGroup({ g, renderRow, markGroup, markGroupRead }: {
+  g: { group: DayGroup; rows: NotifItem[] };
+  renderRow: (i: NotifItem) => ReactNode;
+  markGroup: (ids: string[]) => void;
+  markGroupRead: string;
+}) {
+  const pager = usePager(g.rows.length, 20);
+  return (
+    <div className="mt-3">
+      <div className="mb-1 flex items-center gap-2">
+        <p className="text-xs font-bold uppercase tracking-wide text-steel-400">{g.group} ({g.rows.length})</p>
+        <button
+          className="ml-auto inline-flex items-center gap-1 text-[11px] font-semibold text-ocean-600 hover:underline"
+          onClick={() => markGroup(g.rows.map((r) => r.id))}
+        >
+          <Check className="h-3 w-3" /> {markGroupRead}
+        </button>
+      </div>
+      <div className="divide-y divide-steel-50 overflow-hidden rounded-xl border border-steel-100">
+        {pager.slice(g.rows).map((i) => renderRow(i))}
+      </div>
+      {pager.bar}
+    </div>
+  );
 }
 
 export default function Notifikasi() {
@@ -269,61 +297,54 @@ export default function Notifikasi() {
             />
           )}
           {grouped.map((g) => (
-            <div key={g.group} className="mt-3">
-              <div className="mb-1 flex items-center gap-2">
-                <p className="text-xs font-bold uppercase tracking-wide text-steel-400">{g.group} ({g.rows.length})</p>
-                <button
-                  className="ml-auto inline-flex items-center gap-1 text-[11px] font-semibold text-ocean-600 hover:underline"
-                  onClick={() => markGroup(g.rows.map((r) => r.id))}
-                >
-                  <Check className="h-3 w-3" /> {t.notif.markGroupRead}
-                </button>
-              </div>
-              <div className="divide-y divide-steel-50 overflow-hidden rounded-xl border border-steel-100">
-                {g.rows.map((i) => {
-                  const isRead = read.has(i.id);
-                  return (
-                    <div key={i.id} className={`flex items-start gap-3 px-3 py-3 ${isRead ? "bg-white opacity-60" : "bg-ocean-50/40"}`}>
-                      <div
-                        className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-white ${
-                          i.tone === "red" ? "bg-gradient-rose" : i.tone === "amber" ? "bg-gradient-amber" : "bg-gradient-hero"
-                        }`}
-                      >
-                        {i.kind === "alert" ? <AlertTriangle className="h-4 w-4" /> : <Info className="h-4 w-4" />}
-                      </div>
-                      <div className="min-w-0 flex-1">
-                        <div className="flex flex-wrap items-center gap-2">
-                          {!isRead && <span className="h-2 w-2 rounded-full bg-rose-500" aria-label="Belum dibaca" />}
-                          <Badge tone={i.kind === "alert" ? i.tone : "navy"}>
-                            {i.kind === "alert" ? `Perlu Perhatian · ${i.tone === "red" ? "Critical" : sevOf(i.tone)}` : "Aktivitas"}
-                          </Badge>
-                          <span className="text-[11px] text-steel-400">{i.meta}</span>
-                        </div>
-                        <p className="mt-1 text-sm font-medium text-navy-900">{i.text}</p>
-                        <p className="mt-0.5 truncate text-xs text-steel-400" title={i.detail}>{i.detail}</p>
-                      </div>
-                      <div className="flex shrink-0 flex-col items-end gap-1">
-                        <Link
-                          to={i.to}
-                          onClick={() => markOne(i.id)}
-                          className="rounded-lg px-2.5 py-1.5 text-xs font-semibold text-ocean-600 hover:bg-ocean-50"
-                        >
-                          {t.notif.open}
-                        </Link>
-                        {!isRead && (
-                          <button
-                            className="rounded-lg px-2.5 py-1 text-[11px] font-medium text-steel-400 hover:bg-steel-100 hover:text-navy-800"
-                            onClick={() => markOne(i.id)}
-                          >
-                            {t.notif.markRead}
-                          </button>
-                        )}
-                      </div>
+            <NotifGroup
+              key={g.group}
+              g={g}
+              markGroup={markGroup}
+              markGroupRead={t.notif.markGroupRead}
+              renderRow={(i) => {
+                const isRead = read.has(i.id);
+                return (
+                  <div key={i.id} className={`flex items-start gap-3 px-3 py-3 ${isRead ? "bg-white opacity-60" : "bg-ocean-50/40"}`}>
+                    <div
+                      className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-white ${
+                        i.tone === "red" ? "bg-gradient-rose" : i.tone === "amber" ? "bg-gradient-amber" : "bg-gradient-hero"
+                      }`}
+                    >
+                      {i.kind === "alert" ? <AlertTriangle className="h-4 w-4" /> : <Info className="h-4 w-4" />}
                     </div>
-                  );
-                })}
-              </div>
-            </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex flex-wrap items-center gap-2">
+                        {!isRead && <span className="h-2 w-2 rounded-full bg-rose-500" aria-label="Belum dibaca" />}
+                        <Badge tone={i.kind === "alert" ? i.tone : "navy"}>
+                          {i.kind === "alert" ? `Perlu Perhatian · ${i.tone === "red" ? "Critical" : sevOf(i.tone)}` : "Aktivitas"}
+                        </Badge>
+                        <span className="text-[11px] text-steel-400">{i.meta}</span>
+                      </div>
+                      <p className="mt-1 text-sm font-medium text-navy-900">{i.text}</p>
+                      <p className="mt-0.5 truncate text-xs text-steel-400" title={i.detail}>{i.detail}</p>
+                    </div>
+                    <div className="flex shrink-0 flex-col items-end gap-1">
+                      <Link
+                        to={i.to}
+                        onClick={() => markOne(i.id)}
+                        className="rounded-lg px-2.5 py-1.5 text-xs font-semibold text-ocean-600 hover:bg-ocean-50"
+                      >
+                        {t.notif.open}
+                      </Link>
+                      {!isRead && (
+                        <button
+                          className="rounded-lg px-2.5 py-1 text-[11px] font-medium text-steel-400 hover:bg-steel-100 hover:text-navy-800"
+                          onClick={() => markOne(i.id)}
+                        >
+                          {t.notif.markRead}
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                );
+              }}
+            />
           ))}
         </div>
       </Card>
