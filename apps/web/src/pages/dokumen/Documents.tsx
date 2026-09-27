@@ -8,7 +8,7 @@ import { isBackendConfigured } from "../../services/http";
 import { ocrImageUrl } from "../../services/upload";
 import { uploadFile } from "../../services/upload";
 import { fmtTanggal, todayISO } from "../../utils/format";
-import { AlertBannerView, notifRowId, useModuleAlert } from "../../components/AlertBanner";
+import { AlertBannerView, notifRowId, useModuleAlert, useNotifFlash } from "../../components/AlertBanner";
 import { sbDsNumber, sbSjNumber, sbTtNumber, maxSeq, parseSjSeq } from "../../utils/sb";
 import { exportExcel } from "../../utils/export";
 import { n_dry } from "../../i18n/n_dry";
@@ -100,6 +100,7 @@ export default function Documents() {
   const { locale } = useT();
   const S = n_dry[locale];
   const modAlert = useModuleAlert("dokumen");
+  const flash = useNotifFlash();
   const [q, setQ] = useState("");
   const [sort, setSort] = useState<SortState>({ key: null, dir: "asc" });
   const [type, setType] = useState("Semua");
@@ -127,6 +128,12 @@ export default function Documents() {
     key === "dokumen" ? String(d.title ?? "") : key === "tipe" ? String(d.type ?? "") : key === "proyek" ? String(d.project ?? "") : key === "versi" ? String(d.version ?? "") : key === "status" ? String(d.status ?? "") : String(d.updated ?? "")
   ), [list, sort]);
   const docPager = usePager(list.length);
+  const pickNotif = (rowId: string) => {
+    const key = String(rowId);
+    const idx = sortedDocs.findIndex((d) => String(d.id) === key);
+    if (idx >= 0) flash.pick(key, idx, docPager.go, docPager.size);
+    else flash.pick(key, -1, () => {}, 100);
+  };
   useEffect(() => {
     docPager.reset();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -314,7 +321,7 @@ export default function Documents() {
         }
       />
 
-      {modAlert.active && <AlertBannerView items={modAlert.items} onPick={modAlert.scrollTo} />}
+      {modAlert.active && <AlertBannerView items={modAlert.items} onPick={pickNotif} />}
 
       <div className="mb-4 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <KpiCard label={S.kpiTotal} value={String(active.length)} icon={<ScrollText className="h-5 w-5" />} chip="navy" hint={S.kpiTotalHint} spark={trendOf(() => true)} />
@@ -376,7 +383,7 @@ export default function Documents() {
             </thead>
             <tbody className="divide-y divide-steel-100">
               {docPager.slice(sortedDocs).map((d) => (
-                <tr key={d.id} id={notifRowId(String(d.id))} className={modAlert.highlight.has(String(d.id)) ? "notif-hl hover:bg-surface" : "hover:bg-surface"}>
+                <tr key={d.id} id={notifRowId(String(d.id))} className={flash.flashId === String(d.id) ? "notif-flash hover:bg-surface" : "hover:bg-surface"}>
                   <td className="td max-w-[260px]">
                     <p className="truncate font-medium text-navy-900" title={String(d.title)}>{d.title}</p>
                     <p className="font-mono text-xs text-steel-500">{d.id} · {d.owner}{d.berlakuHingga ? S.untilSuffix.replace("{a}", fmtTanggal(d.berlakuHingga)) : ""}</p>

@@ -27,7 +27,7 @@ import { useStore } from "../../data/store";
 import type { StoreItem } from "../../data/store";
 import { activeEmployeeTrend, certifiedTrend, certExpireTrend, employeeTrend } from "../../data";
 import { fmtTanggal, todayISO } from "../../utils/format";
-import { AlertBannerView, notifRowId, useModuleAlert } from "../../components/AlertBanner";
+import { AlertBannerView, notifRowId, useModuleAlert, useNotifFlash } from "../../components/AlertBanner";
 import { getSetting } from "../../utils/settings";
 import { useDraftState } from "../../utils/draft";
 import { exportExcel } from "../../utils/export";
@@ -174,6 +174,7 @@ export default function HR() {
   const { locale } = useT();
   const S = n_qc[locale];
   const modAlert = useModuleAlert("sdm");
+  const flash = useNotifFlash();
   const [tab, setTab] = useState("Karyawan");
   const [sort, setSort] = useState<SortState>({ key: null, dir: "asc" });
   const [sort2, setSort2] = useState<SortState>({ key: null, dir: "asc" });
@@ -266,6 +267,11 @@ export default function HR() {
     empPager.reset();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dept, q, contractSoonOnly, branch, tab]);
+  const pickNotif = (rowId: string) => {
+    const idx = sortedEmps.findIndex((r) => String(r.id) === rowId);
+    if (idx >= 0) { flash.pick(rowId, idx, empPager.go, empPager.size); return; }
+    flash.pick(rowId, -1, () => {}, 100);
+  };
 
   const deptCounts = useMemo(() => {
     const m = new Map<string, number>();
@@ -813,7 +819,7 @@ export default function HR() {
         }
       />
 
-      {modAlert.active && <AlertBannerView items={modAlert.items} onPick={modAlert.scrollTo} />}
+      {modAlert.active && <AlertBannerView items={modAlert.items} onPick={pickNotif} />}
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <KpiCard label={S.kpiTotal} value={String(data.employees.length)} icon={<Users className="h-5 w-5" />} chip="navy" spark={employeeTrend.map((d) => ({ name: d.month, v: d.count }))} hint={S.hintSesi} />
@@ -995,7 +1001,7 @@ export default function HR() {
                       default: return "";
                     }
                   }).map((l) => (
-                    <tr key={l.id} id={notifRowId(String(l.id))} className={modAlert.highlight.has(String(l.id)) ? "notif-hl hover:bg-surface" : "hover:bg-surface"}>
+                    <tr key={l.id} id={notifRowId(String(l.id))} className={flash.flashId === String(l.id) ? "notif-flash hover:bg-surface" : "hover:bg-surface"}>
                       <td className="td font-mono text-steel-600">{l.id}</td>
                       <td className="td text-navy-900">{empNameOf(String(l.employeeId))}</td>
                       <td className="td"><Badge tone="gray">{l.type}</Badge></td>

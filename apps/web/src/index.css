@@ -93,13 +93,25 @@
   /* Watermark versi cetak (ikut tercetak ke PDF) */
   .isms-wm-print { display: none; }
 
-  /* Sorot baris notifikasi modul (banner ?alert=) */
-  .notif-hl {
-    outline: 2px solid rgba(245, 158, 11, 0.75);
-    outline-offset: -2px;
-    background-color: rgba(255, 251, 235, 0.85) !important;
-    border-radius: 0.5rem;
+  /* Kedip sesaat baris notifikasi yang diklik dari banner (pengganti
+     highlight permanen). Hormati prefers-reduced-motion. */
+  @keyframes notif-flash {
+    0%, 100% { outline-color: rgba(245, 158, 11, 0); background-color: transparent; }
+    30%, 60% { outline-color: rgba(245, 158, 11, 0.85); background-color: rgba(255, 251, 235, 0.9); }
   }
+  .notif-flash {
+    outline: 2px solid rgba(245, 158, 11, 0.85);
+    outline-offset: -2px;
+    border-radius: 0.5rem;
+    animation: notif-flash 0.8s ease-in-out 3;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .notif-flash {
+      animation: none;
+      background-color: rgba(255, 251, 235, 0.9);
+    }
+  }
+}
 
   /* Divider antar baris form detail/view (<dl>): baca cepat, tidak polos.
      Pakai: <dl className="dl-div text-sm">, anak langsung = baris. */
@@ -113,7 +125,6 @@
     padding-bottom: 0;
     margin-bottom: 0;
   }
-}
 
 @media print {
   .isms-wm-print {

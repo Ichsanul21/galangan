@@ -9,7 +9,7 @@ import { fleetTrend, dockingTrend, buildTrend, certTrend } from "../../data";
 import { fmtRupiah, fmtTanggal, todayISO } from "../../utils/format";
 import { FilterPopover } from "../../components/FilterPopover";
 import { sameName, vesselMatch } from "../../utils/names";
-import { AlertBannerView, notifRowId, useModuleAlert } from "../../components/AlertBanner";
+import { AlertBannerView, notifRowId, useModuleAlert, useNotifFlash } from "../../components/AlertBanner";
 import { useT } from "../../i18n/LanguageContext";
 import { n_eqp } from "../../i18n/n_eqp";
 
@@ -143,6 +143,7 @@ export default function Vessels() {
   const { locale } = useT();
   const S = n_eqp[locale];
   const modAlert = useModuleAlert("kapal");
+  const flash = useNotifFlash();
   const vessels = data.vessels;
   const [q, setQ] = useState("");
   const [certFilter, setCertFilter] = useState("Semua");
@@ -164,6 +165,14 @@ export default function Vessels() {
   const cardPager = usePager(list.length);
   const surveySorted = useMemo(() => sortRows(data.surveys, sort, (s: StoreItem, k) => String((s as unknown as Record<string, unknown>)[k] ?? "")), [data.surveys, sort]);
   const surveyPager = usePager(data.surveys.length);
+  const pickNotif = (rowId: string) => {
+    const key = String(rowId);
+    const idx = list.findIndex((v) => String(v.id) === key);
+    if (idx >= 0) { flash.pick(key, idx, cardPager.go, cardPager.size); return; }
+    const sIdx = surveySorted.findIndex((s) => String(s.id) === key);
+    if (sIdx >= 0) { flash.pick(key, sIdx, surveyPager.go, surveyPager.size); return; }
+    flash.pick(key, -1, () => {}, 100);
+  };
   useEffect(() => {
     cardPager.reset();
     surveyPager.reset();
@@ -249,7 +258,7 @@ export default function Vessels() {
         actions={<button className="btn-primary-gradient" onClick={() => setShowAdd(true)}><Plus className="h-4 w-4" /> {S.vsAdd}</button>}
       />
 
-      {modAlert.active && <AlertBannerView items={modAlert.items} onPick={modAlert.scrollTo} />}
+      {modAlert.active && <AlertBannerView items={modAlert.items} onPick={pickNotif} />}
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <KpiCard label={S.vsKpiTotal} value={String(vessels.length)} icon={<Ship className="h-5 w-5" />} chip="navy" spark={fleetTrend} hint={S.vsKpiTotalHint} />
@@ -290,7 +299,7 @@ export default function Vessels() {
           {cardPager.slice(list).map((v) => {
             const comp = complianceSummary(v);
             return (
-              <Card key={v.id} id={notifRowId(String(v.id))} className={`p-5 hover:shadow-md transition-shadow ${modAlert.highlight.has(String(v.id)) ? "notif-hl" : ""}`}>
+              <Card key={v.id} id={notifRowId(String(v.id))} className={`p-5 hover:shadow-md transition-shadow ${flash.flashId === String(v.id) ? "notif-flash" : ""}`}>
                 <Link to={`/kapal/${v.id}`}>
                   <div className="flex items-start justify-between">
                     <div className="flex items-center gap-2">

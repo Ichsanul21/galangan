@@ -8,7 +8,7 @@ import { useStore } from "../../data/store";
 import type { StoreItem } from "../../data/store";
 import { fmtMiliar, fmtRupiah, fmtTanggal, todayISO } from "../../utils/format";
 import { sameName } from "../../utils/names";
-import { AlertBannerView, notifRowId, useModuleAlert } from "../../components/AlertBanner";
+import { AlertBannerView, notifRowId, useModuleAlert, useNotifFlash } from "../../components/AlertBanner";
 import { exportExcel } from "../../utils/export";
 import { useDraftState } from "../../utils/draft";
 import { clientTrend, pipelineTrend, winRateTrend, wonTrend } from "../../data";
@@ -62,6 +62,7 @@ export default function CRM() {
   const { locale } = useT();
   const S = n_crm[locale];
   const modAlert = useModuleAlert("crm");
+  const flash = useNotifFlash();
   const [tab, setTab] = useState("Pipeline");
   const [sort, setSort] = useState<SortState>({ key: null, dir: "asc" });
   const [klasFilter, setKlasFilter] = useState("Semua");
@@ -338,6 +339,16 @@ export default function CRM() {
   const quotPager = usePager(penawaranList.length);
   const reqPager = usePager(requests.length);
   const contractPager = usePager(contracts.length);
+  const pickNotif = (rowId: string) => {
+    const key = String(rowId);
+    const reqIdx = requests.findIndex((r) => String(r.id) === key);
+    if (reqIdx >= 0) { flash.pick(key, reqIdx, reqPager.go, reqPager.size); return; }
+    const quotIdx = penawaranList.findIndex((q) => String(q.id) === key);
+    if (quotIdx >= 0) { flash.pick(key, quotIdx, quotPager.go, quotPager.size); return; }
+    const conIdx = sortedContracts.findIndex((k) => String(k.id) === key);
+    if (conIdx >= 0) { flash.pick(key, conIdx, contractPager.go, contractPager.size); return; }
+    flash.pick(key, -1, () => {}, 100);
+  };
   useEffect(() => {
     quotPager.reset();
     reqPager.reset();
@@ -370,7 +381,7 @@ export default function CRM() {
         actions={<button className="btn-primary-gradient" onClick={() => setShowQ(true)}><Plus className="h-4 w-4" /> {S.newQuotation}</button>}
       />
 
-      {modAlert.active && <AlertBannerView items={modAlert.items} onPick={modAlert.scrollTo} />}
+      {modAlert.active && <AlertBannerView items={modAlert.items} onPick={pickNotif} />}
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <KpiCard label={S.kpiActiveClients} value={String(clients.length)} icon={<Users2 className="h-5 w-5" />} chip="navy" spark={clientTrend} hint={S.kpiFleetHint.replace("{n}", String(totalFleet))} />
@@ -566,7 +577,7 @@ export default function CRM() {
               </label>
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
               {quotPager.slice(penawaranList).map((q) => (
-                <Card key={q.id} className="p-4">
+                <Card key={q.id} id={notifRowId(String(q.id))} className={`p-4 ${flash.flashId === String(q.id) ? "notif-flash" : ""}`}>
                   <div className="flex justify-between gap-2">
                     <div className="min-w-0">
                       <p className="truncate font-semibold text-navy-900" title={String(q.vessel)}>{String(q.vessel)}</p>
@@ -607,7 +618,7 @@ export default function CRM() {
               </div>
               <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                 {reqPager.slice(requests).map((r) => (
-                  <Card key={r.id} id={notifRowId(String(r.id))} className={`p-4 ${modAlert.highlight.has(String(r.id)) ? "notif-hl" : ""}`}>
+                  <Card key={r.id} id={notifRowId(String(r.id))} className={`p-4 ${flash.flashId === String(r.id) ? "notif-flash" : ""}`}>
                     <div className="flex justify-between gap-2">
                       <div className="min-w-0">
                         <p className="truncate font-semibold text-navy-900" title={String(r.vessel)}>{String(r.vessel)}</p>
@@ -698,7 +709,7 @@ export default function CRM() {
                       </thead>
                       <tbody className="divide-y divide-steel-100">
                         {contractPager.slice(sortedContracts).map((k) => (
-                          <tr key={k.id} className="hover:bg-surface">
+                          <tr key={k.id} id={notifRowId(String(k.id))} className={flash.flashId === String(k.id) ? "notif-flash hover:bg-surface" : "hover:bg-surface"}>
                             <td className="td font-mono text-xs font-semibold text-navy-900">{k.id}<span className="block font-sans text-[11px] font-normal text-steel-500">{String(k.client ?? "")}</span></td>
                             <td className="td font-mono text-xs"><Link to={`/crm/quotation/${k.quotationId}`} className="text-ocean-600">{String(k.quotationId)}</Link>{k.projectId ? <Link to={`/proyek/${k.projectId}`} className="block text-[11px] text-teal-600">{String(k.projectId)}</Link> : null}</td>
                             <td className="td text-xs font-semibold">{fmtRupiah(num(k.value))}</td>

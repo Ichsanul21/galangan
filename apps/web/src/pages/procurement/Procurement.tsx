@@ -6,7 +6,7 @@ import type { SortState } from "../../components/ui";
 import { useStore, type StoreItem } from "../../data/store";
 import { fmtRupiah, fmtJumlah, fmtTanggal, todayISO } from "../../utils/format";
 import { sameName } from "../../utils/names";
-import { AlertBannerView, notifRowId, useModuleAlert } from "../../components/AlertBanner";
+import { AlertBannerView, notifRowId, useModuleAlert, useNotifFlash } from "../../components/AlertBanner";
 import { getSetting } from "../../utils/settings";
 import { sbPoNumber, sbSplitIncludePpn, maxSeq, SB_KOP } from "../../utils/sb";
 import { spendByCategory, procurementTrend, poCountTrend, poValueTrend, prPendingTrend, vendorTrend } from "../../data";
@@ -136,6 +136,7 @@ export default function Procurement() {
   const { locale } = useT();
   const S = n_proc[locale];
   const modAlert = useModuleAlert("procurement");
+  const flash = useNotifFlash();
   const purchaseOrders = inBranch(data.purchaseOrders);
   const requisitions = data.requisitions;
   const vendors = data.vendors;
@@ -277,6 +278,16 @@ export default function Procurement() {
     prPager.reset();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pq, pStatus, tab]);
+
+  const pickNotif = (rowId: string) => {
+    const idxBig = sortedBig.findIndex((r) => String(r.id) === rowId);
+    if (idxBig >= 0) { flash.pick(rowId, idxBig, bigPager.go, bigPager.size); return; }
+    const idxSmall = sortedSmall.findIndex((r) => String(r.id) === rowId);
+    if (idxSmall >= 0) { flash.pick(rowId, idxSmall, smallPager.go, smallPager.size); return; }
+    const idxPr = sortedPr.findIndex((r) => String(r.id) === rowId);
+    if (idxPr >= 0) { flash.pick(rowId, idxPr, prPager.go, prPager.size); return; }
+    flash.pick(rowId, -1, () => {}, 100);
+  };
 
   const openPo = purchaseOrders.filter((p) => normPo(p.status) !== "Diterima").reduce((s, p) => s + Number(p.amount || 0), 0);
   const pendingPr = requisitions.filter((r) => PR_PENDING.includes(r.status)).length;
@@ -804,7 +815,7 @@ export default function Procurement() {
         }
       />
 
-      {modAlert.active && <AlertBannerView items={modAlert.items} onPick={modAlert.scrollTo} />}
+      {modAlert.active && <AlertBannerView items={modAlert.items} onPick={pickNotif} />}
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <KpiCard label={S.kpiActive} value={String(purchaseOrders.length)} icon={<ShoppingCart className="h-5 w-5" />} chip="navy" spark={poCountTrend} hint={S.kpiActiveHint} />
@@ -858,7 +869,7 @@ export default function Procurement() {
                       const done = apprOf(po);
                       const payung = vendors.some((v) => sameName(v.name, po.vendor) && payungOf(v));
                       return (
-                        <tr key={po.id} id={notifRowId(String(po.id))} className={modAlert.highlight.has(String(po.id)) ? "notif-hl hover:bg-surface" : "hover:bg-surface"}>
+                        <tr key={po.id} id={notifRowId(String(po.id))} className={flash.flashId === String(po.id) ? "notif-flash hover:bg-surface" : "hover:bg-surface"}>
                           <td className="td font-mono font-medium text-navy-900">{po.id}</td>
                           <td className="td text-steel-600">
                             <p className="truncate" title={String(po.item)}>{po.item}</p>
@@ -974,7 +985,7 @@ export default function Procurement() {
                       {smallPager.slice(sortedSmall).map((po) => {
                         const st = normPo(po.status);
                         return (
-                          <tr key={po.id} id={notifRowId(String(po.id))} className={modAlert.highlight.has(String(po.id)) ? "notif-hl hover:bg-surface" : "hover:bg-surface"}>
+                          <tr key={po.id} id={notifRowId(String(po.id))} className={flash.flashId === String(po.id) ? "notif-flash hover:bg-surface" : "hover:bg-surface"}>
                           <td className="td font-mono font-medium text-navy-900">{po.id}
                             {po.docNo && <p className="text-xs font-normal text-steel-400">{po.docNo}</p>}
                             {(() => {
@@ -1118,7 +1129,7 @@ export default function Procurement() {
                     </thead>
                     <tbody className="divide-y divide-steel-100">
                       {prPager.slice(sortedPr).map((r) => (
-                        <tr key={r.id} id={notifRowId(String(r.id))} className={modAlert.highlight.has(String(r.id)) ? "notif-hl hover:bg-surface" : "hover:bg-surface"}>
+                        <tr key={r.id} id={notifRowId(String(r.id))} className={flash.flashId === String(r.id) ? "notif-flash hover:bg-surface" : "hover:bg-surface"}>
                           <td className="td font-mono font-medium text-navy-900">{r.id}</td>
                           <td className="td text-steel-600 truncate" title={String(r.item)}>{r.item}</td>
                           <td className="td text-steel-600">{r.by}</td>

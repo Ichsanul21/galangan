@@ -8,7 +8,7 @@ import { inspectionTrend, ncrTrend, incidentTrend, hseTrend } from "../../data";
 import { fmtRupiah, fmtTanggal, todayISO } from "../../utils/format";
 import { sameName } from "../../utils/names";
 import { getSetting } from "../../utils/settings";
-import { AlertBannerView, notifRowId, useModuleAlert } from "../../components/AlertBanner";
+import { AlertBannerView, notifRowId, useModuleAlert, useNotifFlash } from "../../components/AlertBanner";
 import { exportExcel } from "../../utils/export";
 import { useAuth, canSetTarget } from "../../auth/auth";
 import { FilterPopover } from "../../components/FilterPopover";
@@ -97,6 +97,7 @@ function nextRev(rev: string): string {
 export default function QCSafety() {
   const { data, add, update, remove, log, branch, inBranch } = useStore();
   const modAlert = useModuleAlert("qc");
+  const flash = useNotifFlash();
   const { user } = useAuth();
   const { locale } = useT();
   const S = n_qc[locale];
@@ -131,6 +132,11 @@ export default function QCSafety() {
     inspPager.reset();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [inspQ, inspStatus, tab]);
+  const pickNotif = (rowId: string) => {
+    const idx = sortedInsp.findIndex((r) => String(r.id) === rowId);
+    if (idx >= 0) { flash.pick(rowId, idx, inspPager.go, inspPager.size); return; }
+    flash.pick(rowId, -1, () => {}, 100);
+  };
 
   const [showInsp, setShowInsp] = useState(false);
   const [inspForm, setInspForm] = useState({ project: "", point: "", status: "Terjadwal", date: todayISO(), holdType: "Witness", nde: "Tidak", ndeMethod: "UT", inspector: "", sampleSize: "", defectsAllowed: "0", defectsFound: "0", calTool: "", branch: "" });
@@ -625,7 +631,7 @@ export default function QCSafety() {
         }
       />
 
-      {modAlert.active && <AlertBannerView items={modAlert.items} onPick={modAlert.scrollTo} />}
+      {modAlert.active && <AlertBannerView items={modAlert.items} onPick={pickNotif} />}
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <KpiCard label={S.kpiNcrTerbuka} value={String(openNcr)} delta={criticalOpen > 0 ? S.kpiCriticalN.replace("{n}", String(criticalOpen)) : S.kpiNihilCritical} deltaDirection={criticalOpen > 0 ? "down" : "up"} icon={<AlertTriangle className="h-5 w-5" />} chip="rose" spark={ncrTrend} />
@@ -738,7 +744,7 @@ export default function QCSafety() {
                 <button className="btn-secondary text-xs" onClick={exportNcr}>{S.btnEksporNcr}</button>
               </div>
               {ncrList.map((n) => (
-                <Card key={n.id} id={notifRowId(String(n.id))} className={`p-4 ${modAlert.highlight.has(String(n.id)) ? "notif-hl" : ""}`}>
+                <Card key={n.id} id={notifRowId(String(n.id))} className={`p-4 ${flash.flashId === String(n.id) ? "notif-flash" : ""}`}>
                   <div className="flex flex-wrap items-start justify-between gap-2">
                     <div>
                       <div className="flex items-center gap-2">
@@ -963,7 +969,7 @@ export default function QCSafety() {
               </div>
               <div className="space-y-3">
                 {incidents.map((i) => (
-                  <Card key={i.id} id={notifRowId(String(i.id))} className={`p-4 ${modAlert.highlight.has(String(i.id)) ? "notif-hl" : ""}`}>
+                  <Card key={i.id} id={notifRowId(String(i.id))} className={`p-4 ${flash.flashId === String(i.id) ? "notif-flash" : ""}`}>
                     <div className="flex items-start justify-between gap-2">
                       <div>
                         <div className="flex items-center gap-2">

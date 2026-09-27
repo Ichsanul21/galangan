@@ -44,7 +44,7 @@ import { sbInvoiceMath, maxSeq, PPN_INVOICE_DEFAULT, PPH_JASA_DEFAULT } from "..
 import { exportExcel } from "../../utils/export";
 import { kasKodeOf, postCashJournal } from "../../services/autoJournal";
 import { FilterPopover } from "../../components/FilterPopover";
-import { AlertBannerView, notifRowId, useModuleAlert } from "../../components/AlertBanner";
+import { AlertBannerView, notifRowId, useModuleAlert, useNotifFlash } from "../../components/AlertBanner";
 import {
   COA_EXCEL,
   NL_EXCEL,
@@ -298,6 +298,7 @@ export default function Finance() {
   const { locale } = useT();
   const S = n_fin[locale];
   const modAlert = useModuleAlert("keuangan");
+  const flash = useNotifFlash();
   const [tab, setTab] = useState("Akun");
   const today = todayISO();
 
@@ -469,6 +470,16 @@ export default function Finance() {
     juPager.reset();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tab]);
+
+  const pickNotif = (rowId: string) => {
+    const idxInv = sortedInv.findIndex((r) => String(r.id) === rowId);
+    if (idxInv >= 0) { flash.pick(rowId, idxInv, invPager.go, invPager.size); return; }
+    const idxAp = sortedAp.findIndex((r) => String(r.id) === rowId);
+    if (idxAp >= 0) { flash.pick(rowId, idxAp, apPager.go, apPager.size); return; }
+    const idxAr = sortedAr.findIndex((r) => String(r.id) === rowId);
+    if (idxAr >= 0) { flash.pick(rowId, idxAr, arPager.go, arPager.size); return; }
+    flash.pick(rowId, -1, () => {}, 100);
+  };
   const coaTipeOf = (c: StoreItem): string => coaList.find((x) => x.kode === String(c.kode))?.tipe ?? "-";
   const TIPE_ORDER = ["Aset", "Liabilitas", "Ekuitas", "Pendapatan", "Beban", "Header"];
   const coaGroups = useMemo(() => {
@@ -1616,7 +1627,7 @@ export default function Finance() {
         actions={<button className="btn-primary-gradient" onClick={() => setShowInv(true)}><FileText className="h-4 w-4" /> {S.createInvoice}</button>}
       />
 
-      {modAlert.active && <AlertBannerView items={modAlert.items} onPick={modAlert.scrollTo} />}
+      {modAlert.active && <AlertBannerView items={modAlert.items} onPick={pickNotif} />}
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <KpiCard label={S.kpiAR} value={fmtMiliar(arTotal)} delta={S.lateDelta.replace("{n}", String(lateCount))} deltaDirection="down" icon={<Wallet className="h-5 w-5" />} chip="rose" spark={arSpark} />
@@ -1726,7 +1737,7 @@ export default function Finance() {
                         const nextDun = DUNNING_NEXT[dun] ?? "Ditagih";
                         const open = inv.status !== "Lunas" && inv.status !== "Draft" && inv.status !== "Dihapusbukukan";
                         return (
-                          <tr key={inv.id} id={notifRowId(String(inv.id))} className={modAlert.highlight.has(String(inv.id)) ? "notif-hl hover:bg-surface" : "hover:bg-surface"}>
+                          <tr key={inv.id} id={notifRowId(String(inv.id))} className={flash.flashId === String(inv.id) ? "notif-flash hover:bg-surface" : "hover:bg-surface"}>
                             <td className="td">
                               <p className="font-medium text-navy-900 font-mono">{inv.id}</p>
                               <p className="text-xs text-steel-500 truncate" title={String(inv.client ?? "")}>{String(inv.client ?? "")}</p>
@@ -1893,7 +1904,7 @@ export default function Finance() {
                   </thead>
                   <tbody className="divide-y divide-steel-100">
                     {apPager.slice(sortedAp).map((a) => (
-                      <tr key={a.id} id={notifRowId(String(a.id))} className={modAlert.highlight.has(String(a.id)) ? "notif-hl hover:bg-surface" : "hover:bg-surface"}>
+                      <tr key={a.id} id={notifRowId(String(a.id))} className={flash.flashId === String(a.id) ? "notif-flash hover:bg-surface" : "hover:bg-surface"}>
                         <td className="td font-medium text-navy-900 truncate" title={String(a.v)}>{String(a.v)}</td>
                         <td className="td font-mono text-xs text-steel-600 truncate" title={String(a.kodePembantu ?? a.v)}>{String(a.kodePembantu ?? a.v)}</td>
                         <td className="td font-mono text-xs text-steel-600">{String(a.po)}</td>
@@ -2159,7 +2170,7 @@ export default function Finance() {
                   </thead>
                   <tbody className="divide-y divide-steel-100">
                     {invPager.slice(sortedInv).map((inv) => (
-                      <tr key={inv.id} id={notifRowId(String(inv.id))} className={modAlert.highlight.has(String(inv.id)) ? "notif-hl hover:bg-surface" : "hover:bg-surface"}>
+                      <tr key={inv.id} id={notifRowId(String(inv.id))} className={flash.flashId === String(inv.id) ? "notif-flash hover:bg-surface" : "hover:bg-surface"}>
                         <td className="td font-mono text-xs font-semibold text-navy-900">{inv.id}<span className="block font-sans text-[11px] font-normal text-steel-500">{fmtTanggal(String(inv.due ?? ""))}</span></td>
                         <td className="td text-xs text-steel-600">{String(inv.billingType ?? inv.paymentTerm ?? "-")}{inv.serviceRef ? ` · ${inv.serviceRef}` : ""}</td>
                         <td className="td text-xs text-steel-600">{S.linesCount.replace("{n}", String(Array.isArray(inv.lines) ? inv.lines.length : 1))}</td>

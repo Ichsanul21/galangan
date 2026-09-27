@@ -983,6 +983,7 @@ export function usePager(total: number, defaultSize = 100): {
   pages: number;
   slice: <T>(rows: T[]) => T[];
   reset: () => void;
+  go: (p: number) => void;
   bar: ReactNode;
 } {
   const [page, setPage] = useState(1);
@@ -1016,7 +1017,7 @@ export function usePager(total: number, defaultSize = 100): {
       </span>
     </div>
   );
-  return { page: safe, size, pages, slice, reset, bar };
+  return { page: safe, size, pages, slice, reset, go, bar };
 }
 
 /* ============ T O A S T ============ */

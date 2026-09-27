@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { motion } from "framer-motion";
-import { Anchor, Lock, User, AlertCircle, ArrowRight, ArrowUpRight, Globe2, Container, ShipWheel } from "lucide-react";
+import { Anchor, Lock, User, AlertCircle, ArrowRight, ArrowUpRight, Globe2, Container, ShipWheel, Loader2 } from "lucide-react";
 import { useAuth, demoUsers } from "../auth/auth";
 import { useStore } from "../data/store";
 import { useT } from "../i18n/LanguageContext";
@@ -111,6 +111,9 @@ export default function Login() {
   const [shake, setShake] = useState(0);
   const [fails, setFails] = useState(0);
   const [lockedUntil, setLockedUntil] = useState(0);
+  // busy: null | "auth" (menghubungi server) | "sync" (menarik data).
+  // Bedakan "sedang proses" vs "jaringan mati" + cegah double-submit.
+  const [busy, setBusy] = useState<null | "auth" | "sync">(null);
   const { t, locale } = useT();
   const S = n_misc[locale];
 
@@ -132,6 +135,7 @@ export default function Login() {
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (busy) return;
     const now = Date.now();
     if (now < lockedUntil) {
       const s = Math.ceil((lockedUntil - now) / 1000);
@@ -143,31 +147,43 @@ export default function Login() {
       fail(t.auth.fillUsername);
       return;
     }
+    setError(null);
+    setBusy("auth");
     const err = await login(username, password);
     if (err) {
+      setBusy(null);
       registerFail(err);
       return;
     }
     setFails(0);
     setLockedUntil(0);
     toast(t.auth.welcome);
+    setBusy("sync");
     await resync().catch(() => undefined);
+    setBusy(null);
     navigate(from, { replace: true });
   };
 
   const quickLogin = async (u: string) => {
+    if (busy) return;
     if (Date.now() < lockedUntil) {
       fail(t.auth.lockedOut);
       return;
     }
+    setError(null);
+    setBusy("auth");
     const found = demoUsers.find((x) => x.username.toLowerCase() === u.toLowerCase());
     const err = await login(u, found?.password ?? "password@123");
     if (!err) {
       setFails(0);
       setLockedUntil(0);
       toast(`${t.auth.asUser} ${found?.name ?? t.auth.demoAccount}`);
+      setBusy("sync");
       await resync().catch(() => undefined);
+      setBusy(null);
       navigate(from, { replace: true });
+    } else {
+      setBusy(null);
     }
   };
 
@@ -295,6 +311,7 @@ export default function Login() {
                   value={username}
                   onChange={(e) => setUsername(e.target.value)}
                   autoComplete="username"
+                  disabled={busy !== null}
                 />
               </div>
             </label>
@@ -309,11 +326,19 @@ export default function Login() {
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   autoComplete="current-password"
+                  disabled={busy !== null}
                 />
               </div>
             </label>
-            <button type="submit" className="btn-primary-gradient w-full justify-center py-2.5">
-              Sign In <ArrowRight className="h-4 w-4" />
+            <button type="submit" className="btn-primary-gradient w-full justify-center py-2.5" disabled={busy !== null}>
+              {busy === null ? (
+                <>Sign In <ArrowRight className="h-4 w-4" /></>
+              ) : (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  {busy === "auth" ? S.lgConnecting : S.lgSyncing}
+                </>
+              )}
             </button>
           </motion.form>
 
@@ -324,7 +349,8 @@ export default function Login() {
                 <button
                   key={u.username}
                   onClick={() => quickLogin(u.username)}
-                  className="group flex w-full items-center gap-2.5 rounded-xl border border-steel-200 px-3 py-2.5 text-left transition-all hover:-translate-y-0.5 hover:border-ocean-400 hover:shadow-soft"
+                  disabled={busy !== null}
+                  className="group flex w-full items-center gap-2.5 rounded-xl border border-steel-200 px-3 py-2.5 text-left transition-all hover:-translate-y-0.5 hover:border-ocean-400 hover:shadow-soft disabled:opacity-60 disabled:hover:translate-y-0"
                 >
                   <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-gradient-hero text-xs font-bold text-white">
                     {u.initials}

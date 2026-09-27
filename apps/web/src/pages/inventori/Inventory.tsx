@@ -41,7 +41,7 @@ import { sbTonasePlat, sbSjNumber, sbTtNumber, maxSeq, parseSjSeq, SB_KOP } from
 import { FilterPopover } from "../../components/FilterPopover";
 import { useT } from "../../i18n/LanguageContext";
 import { n_inv } from "../../i18n/n_inv";
-import { AlertBannerView, notifRowId, useModuleAlert } from "../../components/AlertBanner";
+import { AlertBannerView, notifRowId, useModuleAlert, useNotifFlash } from "../../components/AlertBanner";
 import { stockTrend, itemTrend, lowStockTrend, stockValueTrend, warehouseTrend } from "../../data";
 
 const emptyForm = { name: "", category: "Baja", sku: "", warehouse: "Gudang Baja A", rack: "", bin: "", stock: "0", minStock: "0", unit: "pcs", cost: "0", volume: "0", batch: "", uom2: "", konversi: "", minWh: "", photoUrl: "" };
@@ -298,6 +298,7 @@ export default function Inventory() {
   const projects = data.projects;
   const requisitions = data.requisitions;
   const modAlert = useModuleAlert("inventori");
+  const flash = useNotifFlash();
   const [tab, setTab] = useState("Katalog");
   const [q, setQ] = useState("");
   const [showScan, setShowScan] = useState(false);
@@ -421,6 +422,12 @@ export default function Inventory() {
     pager.reset();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dq, cat, wh, abcF]);
+
+  const pickNotif = (rowId: string) => {
+    const idx = sorted.findIndex((r) => String(r.id) === rowId);
+    if (idx >= 0) { flash.pick(rowId, idx, pager.go, pager.size); return; }
+    flash.pick(rowId, -1, () => {}, 100);
+  };
 
   // Indeks tanggal pergerakan per barang: 1x scan O(movements), lookup O(1).
   // Sebelumnya tiap barang memindai + sort seluruh movements tiap render.
@@ -1104,7 +1111,7 @@ export default function Inventory() {
         }
       />
 
-      {modAlert.active && <AlertBannerView items={modAlert.items} onPick={modAlert.scrollTo} />}
+      {modAlert.active && <AlertBannerView items={modAlert.items} onPick={pickNotif} />}
 
       <div className="mb-4 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <KpiCard label={S.kpiItems} value={String(inventory.length)} icon={<Package className="h-5 w-5" />} chip="navy" spark={itemTrend} hint={S.kpiItemsHint} />        <KpiCard label={S.kpiLow} value={String(lowStock.length)} delta={S.kpiLowDelta} deltaDirection="down" icon={<AlertTriangle className="h-5 w-5" />} chip="rose" spark={lowStockTrend} />
@@ -1202,7 +1209,7 @@ export default function Inventory() {
                       const conv = convOf(i);
                       const u2 = uom2Of(i);
                       return (
-                        <tr key={i.id} id={notifRowId(String(i.id))} className={modAlert.highlight.has(String(i.id)) ? "notif-hl hover:bg-surface" : "hover:bg-surface"}>
+                        <tr key={i.id} id={notifRowId(String(i.id))} className={flash.flashId === String(i.id) ? "notif-flash hover:bg-surface" : "hover:bg-surface"}>
                           <td className="td">
                             <p className="font-medium text-navy-900 truncate" title={String(i.name)}>{i.name}</p>
                             <p className="text-xs text-steel-500 font-mono">{i.sku}</p>

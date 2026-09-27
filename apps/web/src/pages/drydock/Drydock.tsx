@@ -7,7 +7,7 @@ import type { StoreItem } from "../../data/store";
 import { dockUtilTrend, slotTrend } from "../../data";
 import { fmtJumlah, fmtRupiah, fmtTanggal, fmtRentang } from "../../utils/format";
 import { sbDsNumber, maxSeq } from "../../utils/sb";
-import { AlertBannerView, notifRowId, useModuleAlert } from "../../components/AlertBanner";
+import { AlertBannerView, notifRowId, useModuleAlert, useNotifFlash } from "../../components/AlertBanner";
 import { exportExcel } from "../../utils/export";
 import { n_dry } from "../../i18n/n_dry";
 import { useT } from "../../i18n/LanguageContext";
@@ -76,6 +76,7 @@ export default function Drydock() {
   const { locale } = useT();
   const S = n_dry[locale];
   const modAlert = useModuleAlert("drydock");
+  const flash = useNotifFlash();
   const drydocks = data.drydocks;
   const dockSlots = data.dockSlots;
   const projectOptions = data.projects;
@@ -206,6 +207,12 @@ export default function Drydock() {
     : dockSlots.filter((s) => slotStatus(s, data.projects) === statusFilter);
   const sortedSlots = useMemo(() => sortRows(filteredSlots, sort, (s: StoreItem, k) => k === "days" ? Number(slotDays(s)) : k === "status" ? String(slotStatus(s, data.projects)) : k === "facility" ? String(drydocks.find((d) => d.id === s.dockId)?.name ?? s.dockId) : String((s as unknown as Record<string, unknown>)[k] ?? "")), [filteredSlots, sort, data.projects, drydocks]);
   const pager = usePager(filteredSlots.length);
+  const pickNotif = (rowId: string) => {
+    const key = String(rowId);
+    const idx = sortedSlots.findIndex((s) => String(s.id) === key);
+    if (idx >= 0) flash.pick(key, idx, pager.go, pager.size);
+    else flash.pick(key, -1, () => {}, 100);
+  };
   useEffect(() => {
     pager.reset();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -347,7 +354,7 @@ export default function Drydock() {
         }
       />
 
-      {modAlert.active && <AlertBannerView items={modAlert.items} onPick={modAlert.scrollTo} />}
+      {modAlert.active && <AlertBannerView items={modAlert.items} onPick={pickNotif} />}
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <KpiCard label={S.kpiUtil} value={`${util}%`} delta={S.kpiUtilDelta} deltaDirection="flat" icon={<Ship className="h-5 w-5" />} chip="navy" spark={dockUtilTrend} />
@@ -409,7 +416,7 @@ export default function Drydock() {
                   const st = slotStatus(s, data.projects);
                   const isCrit = conflict.some((c) => c.id === s.id) && overlapsKritis(s);
                   return (
-                    <tr key={s.id} className={`hover:bg-surface ${isCrit ? "bg-rose-50" : ""}`}>
+                    <tr key={s.id} id={notifRowId(String(s.id))} className={`hover:bg-surface ${isCrit ? "bg-rose-50" : ""} ${flash.flashId === String(s.id) ? "notif-flash" : ""}`}>
                       <td className="td text-steel-600">{drydocks.find((d) => d.id === s.dockId)?.name}</td>
                       <td className="td">
                         <p className="font-medium text-navy-900">{s.vessel}</p>
@@ -521,7 +528,7 @@ export default function Drydock() {
                             key={s.id}
                             id={notifRowId(String(s.id))}
                             onClick={() => { if (isSel) setSelected(null); else openSlot(s); }}
-                            className={`absolute top-1/2 -translate-y-1/2 flex h-10 items-center justify-between rounded-md px-2 text-xs font-medium text-white shadow cursor-pointer transition ${isMaint ? "bg-steel-400" : isConf ? "bg-rose-500" : s.color} ${isSel ? "ring-2 ring-navy-900" : "hover:brightness-110"} ${isCrit && !isSel ? "ring-4 ring-rose-800" : isConf && !isSel ? "ring-2 ring-rose-700" : ""} ${modAlert.highlight.has(String(s.id)) ? "notif-hl" : ""}`}
+                            className={`absolute top-1/2 -translate-y-1/2 flex h-10 items-center justify-between rounded-md px-2 text-xs font-medium text-white shadow cursor-pointer transition ${isMaint ? "bg-steel-400" : isConf ? "bg-rose-500" : s.color} ${isSel ? "ring-2 ring-navy-900" : "hover:brightness-110"} ${isCrit && !isSel ? "ring-4 ring-rose-800" : isConf && !isSel ? "ring-2 ring-rose-700" : ""} ${flash.flashId === String(s.id) ? "notif-flash" : ""}`}
                             style={{ left: `${leftPct}%`, width: `${widthPct}%` }}
                             title={`${s.vessel} · ${s.project} · ${fmtRentang(dayToISO(s.from), dayToISO(s.to))}${s.priority ? ` · ${s.priority}` : ""}${isCrit ? S.tipCrit : isConf ? S.tipOverlap : ""}`}
                           >

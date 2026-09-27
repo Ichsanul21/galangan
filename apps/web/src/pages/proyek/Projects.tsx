@@ -27,7 +27,7 @@ import { todayISO } from "../../utils/format";
 import { canonPrioritas } from "../../utils/scope";
 import ClientModal from "../../components/ClientModal";
 import { FilterPopover } from "../../components/FilterPopover";
-import { AlertBannerView, notifRowId, useModuleAlert } from "../../components/AlertBanner";
+import { AlertBannerView, notifRowId, useModuleAlert, useNotifFlash } from "../../components/AlertBanner";
 
 export const TAHAP = ["Inquiry", "Quotation", "Kontrak", "Desain", "Produksi", "Trial", "Handover"];
 export const PRIORITAS = ["Rendah", "Sedang", "Tinggi"];
@@ -68,6 +68,7 @@ export default function Projects() {
   const S = n_prj[locale];
   const { data, add, update, log, inBranch } = useStore();
   const modAlert = useModuleAlert("proyek");
+  const flash = useNotifFlash();
   const navigate = useNavigate();
   const projects = data.projects;
   const [filter, setFilter] = useState("Semua");
@@ -109,6 +110,12 @@ export default function Projects() {
     pager.reset();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filter, statusFilter, tahapFilter, branchFilter, prioritasFilter, pmFilter, q]);
+
+  const pickNotif = (rowId: string) => {
+    const idx = sorted.findIndex((r) => String(r.id) === rowId);
+    if (idx >= 0) { flash.pick(rowId, idx, pager.go, pager.size); return; }
+    flash.pick(rowId, -1, () => {}, 100);
+  };
 
   const setF = (k: string, v: string) => setForm((f) => ({ ...f, [k]: v }));
   const vesselExists = data.vessels.some((v) => v.name.toLowerCase() === form.vessel.trim().toLowerCase());
@@ -258,7 +265,7 @@ export default function Projects() {
         }
       />
 
-      {modAlert.active && <AlertBannerView items={modAlert.items} onPick={modAlert.scrollTo} />}
+      {modAlert.active && <AlertBannerView items={modAlert.items} onPick={pickNotif} />}
 
       <div className="mb-4 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <KpiCard label={S.prjKpiTotal} value={String(projects.length)} hint={S.prjKpiTotalHint} icon={<Anchor className="h-5 w-5" />} chip="navy" spark={sparkProjects} />
@@ -373,7 +380,7 @@ export default function Projects() {
                   <tr
                     key={p.id}
                     id={notifRowId(String(p.id))}
-                    className={`cursor-pointer transition-colors hover:bg-surface ${modAlert.highlight.has(String(p.id)) ? "notif-hl" : ""}`}
+                    className={`cursor-pointer transition-colors hover:bg-surface ${flash.flashId === String(p.id) ? "notif-flash" : ""}`}
                     onClick={() => navigate(`/proyek/${p.id}`)}
                     onKeyDown={(e) => { if (e.key === "Enter") navigate(`/proyek/${p.id}`); }}
                     tabIndex={0}

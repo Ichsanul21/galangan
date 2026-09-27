@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { Settings as SettingsIcon } from "lucide-react";
+import { useEffect, useState } from "react";
+import { Settings as SettingsIcon, Loader2 } from "lucide-react";
 import { Card, PageHeader, Field, toast } from "../../components/ui";
 import { useStore } from "../../data/store";
 import { useT } from "../../i18n/LanguageContext";
@@ -20,6 +20,17 @@ export default function Settings() {
   const [drafts, setDrafts] = useState<Record<string, string>>({});
   const [setupToken, setSetupToken] = useState("");
   const [seeding, setSeeding] = useState(false);
+  const [seedSecs, setSeedSecs] = useState(0);
+
+  // Timer jujur: endpoint one-shot tanpa progress event, jadi tampilkan
+  // spinner + detik berjalan (BUKAN persen palsu).
+  useEffect(() => {
+    if (!seeding) return;
+    setSeedSecs(0);
+    const t0 = Date.now();
+    const id = window.setInterval(() => setSeedSecs(Math.floor((Date.now() - t0) / 1000)), 500);
+    return () => window.clearInterval(id);
+  }, [seeding]);
 
   const importSeed = async () => {
     if (!isBackendConfigured()) { toast(S.noBackend, "info"); return; }
@@ -102,7 +113,14 @@ export default function Settings() {
               onChange={(e) => setSetupToken(e.target.value)}
             />
             <button className="btn-secondary text-xs" disabled={seeding} onClick={() => void importSeed()}>
-              {seeding ? S.importing : S.importSeedBtn}
+              {seeding ? (
+                <span className="inline-flex items-center gap-1.5">
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  {S.importing}… {seedSecs}{locale === "en" ? "s" : " dtk"}
+                </span>
+              ) : (
+                S.importSeedBtn
+              )}
             </button>
           </span>
         </div>

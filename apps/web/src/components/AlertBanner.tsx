@@ -1,11 +1,7 @@
-// Banner + highlight notifikasi modul (tanpa badge sidebar, tanpa read-state).
-// Banner + highlight murni ikut KONDISI data: muncul selama kondisi ada,
-// hilang saat kondisi selesai. Pola pakai per halaman:
-//   const ma = useModuleAlert("inventori");
-//   {ma.active && <AlertBannerView items={ma.items} onPick={ma.scrollTo} />}
-//   <tr id={notifRowId(i.id)} className={ma.highlight.has(String(i.id)) ? "notif-hl" : ""}>
-// Class .notif-hl didefinisikan di index.css.
-import { useEffect, useMemo, useState } from "react";
+// Banner notifikasi modul (tanpa badge sidebar, tanpa read-state).
+// Banner murni ikut KONDISI data: muncul selama kondisi ada.
+// Klik item banner → lompat ke baris + kedip sesaat via useNotifFlash.
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { Bell, ChevronDown, ChevronUp } from "lucide-react";
 import { useStore } from "../data/store";
@@ -17,25 +13,53 @@ export function notifRowId(id: string): string {
   return `notifrow-${String(id).replace(/[^A-Za-z0-9_-]/g, "_")}`;
 }
 
-const PREVIEW_N = 10;
+/** Kedip sesaat saat item banner diklik (pengganti highlight permanen).
+ * pick(rowId, index, goToPage, size): index = posisi di list terurut halaman
+ * (<0 bila tak ada pager); goToPage melompat ke halaman target dulu. */
+export function useNotifFlash(): {
+  flashId: string | null;
+  pick: (rowId: string, index: number, goToPage: (p: number) => void, size: number) => void;
+} {
+  const [flashId, setFlashId] = useState<string | null>(null);
+  const timers = useRef<number[]>([]);
+  useEffect(() => () => {
+    timers.current.forEach((t) => window.clearTimeout(t));
+    timers.current = [];
+  }, []);
+  const pick = useCallback((rowId: string, index: number, goToPage: (p: number) => void, size: number) => {
+    timers.current.forEach((t) => window.clearTimeout(t));
+    timers.current = [];
+    setFlashId(null);
+    if (index >= 0) {
+      goToPage(Math.floor(index / Math.max(1, size)) + 1);
+    }
+    timers.current.push(window.setTimeout(() => {
+      document.getElementById(notifRowId(rowId))?.scrollIntoView({ block: "center", behavior: "smooth" });
+      setFlashId(rowId);
+    }, index >= 0 ? 200 : 0));
+    timers.current.push(window.setTimeout(() => {
+      setFlashId((cur) => (cur === rowId ? null : cur));
+    }, 2600));
+  }, []);
+  return { flashId, pick };
+}
+
+const PREVIEW_N = 5;
 const RENDER_CAP = 200;
 
 export function useModuleAlert(key: ModuleAlertKey): {
   active: boolean;
   items: ModuleAlertItem[];
-  highlight: Set<string>;
-  scrollTo: (rowId: string) => void;
 } {
   const { data } = useStore();
   const [params] = useSearchParams();
   const active = params.get("alert") === key;
   // Hanya hitung 1 modul (murah) - bukan 13 modul sekaligus.
   const items = useMemo(() => buildModuleAlertItemsFor(data, key), [data, key]);
-  const highlight = useMemo(() => new Set(items.map((a) => a.rowId)), [items]);
 
   // Badge sidebar "tampil sekali": modul dibuka (jalur mana pun) → id kondisi
   // saat ini dicatat sebagai seen (model timpa), badge modul itu nol.
-  // Banner + highlight tetap ikut kondisi, tidak ikut seen.
+  // Banner tetap ikut kondisi, tidak ikut seen.
   useEffect(() => {
     const ids = items.map((a) => a.id);
     const prev = loadModSeen()[key] ?? [];
@@ -46,11 +70,7 @@ export function useModuleAlert(key: ModuleAlertKey): {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key, items]);
 
-  const scrollTo = (rowId: string) => {
-    document.getElementById(notifRowId(rowId))?.scrollIntoView({ block: "center", behavior: "smooth" });
-  };
-
-  return { active, items, highlight, scrollTo };
+  return { active, items };
 }
 
 export function AlertBannerView({ items, onPick }: { items: ModuleAlertItem[]; onPick?: (rowId: string) => void }) {

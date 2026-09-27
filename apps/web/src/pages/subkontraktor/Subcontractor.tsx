@@ -6,7 +6,7 @@ import type { SortState } from "../../components/ui";
 import { useStore, type StoreItem } from "../../data/store";
 import { fmtRupiah, fmtMiliar, fmtTanggal, todayISO } from "../../utils/format";
 import { sameName } from "../../utils/names";
-import { AlertBannerView, notifRowId, useModuleAlert } from "../../components/AlertBanner";
+import { AlertBannerView, notifRowId, useModuleAlert, useNotifFlash } from "../../components/AlertBanner";
 import { getSetting } from "../../utils/settings";
 import { subcontractorScore, subActiveTrend, subContractTrend, woTrend, ratingTrend } from "../../data";
 import { FilterPopover } from "../../components/FilterPopover";
@@ -105,6 +105,7 @@ export default function Subcontractor() {
   const [subQ, setSubQ] = useState("");
   const [subStatus, setSubStatus] = useState("Semua");
   const modAlert = useModuleAlert("subkontraktor");
+  const flash = useNotifFlash();
 
   const [showSub, setShowSub] = useState(false);
   const [subForm, setSubForm] = useState({ name: "", services: "", contract: "", k3: "A", contractType: "Borongan", payScheme: "unit", noBG: "", bgExpiry: "", bgValue: "" });
@@ -145,6 +146,11 @@ export default function Subcontractor() {
     woPager.reset();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tab]);
+  const pickNotif = (rowId: string) => {
+    const idx = workOrders.findIndex((r) => String(r.id) === rowId);
+    if (idx >= 0) { flash.pick(rowId, idx, woPager.go, woPager.size); return; }
+    flash.pick(rowId, -1, () => {}, 100);
+  };
 
   const termWoOptions = workOrders.filter((w) => termForm.sub && sameName(w.sub, termForm.sub));
   const termWo = workOrders.find((w) => w.id === termForm.wo) ?? null;
@@ -459,7 +465,7 @@ export default function Subcontractor() {
         actions={<button className="btn-primary-gradient" onClick={() => setShowSub(true)}><Plus className="h-4 w-4" /> {S.regSubBtn}</button>}
       />
 
-      {modAlert.active && <AlertBannerView items={modAlert.items} onPick={modAlert.scrollTo} />}
+      {modAlert.active && <AlertBannerView items={modAlert.items} onPick={pickNotif} />}
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <KpiCard label={S.kpiActiveSubs} value={String(subcontractors.filter((s) => s.status === "Aktif").length)} icon={<HardHat className="h-5 w-5" />} chip="navy" spark={subActiveTrend} hint={S.kpiActiveSubsHint} />
@@ -661,7 +667,7 @@ export default function Subcontractor() {
                       const wo = workOrders.find((w) => w.id === p.woId);
                       const canRelease = normTerm(p.status) === "Lunas" && retOf(p) > 0 && wo?.status === "Selesai";
                       return (
-                      <tr key={p.id} id={notifRowId(String(p.id))} className={modAlert.highlight.has(String(p.id)) ? "notif-hl hover:bg-surface" : "hover:bg-surface"}>
+                      <tr key={p.id} id={notifRowId(String(p.id))} className={flash.flashId === String(p.id) ? "notif-flash hover:bg-surface" : "hover:bg-surface"}>
                         <td className="td font-mono font-medium text-navy-900">{p.id}</td>
                         <td className="td text-steel-600 truncate" title={String(p.sub)}>{p.sub}</td>
                         <td className="td font-mono text-xs text-steel-500">{p.progress}{p.milestone ? <span className="block text-steel-400">{S.msPrefix.replace("{n}", String(p.milestone))}</span> : null}</td>

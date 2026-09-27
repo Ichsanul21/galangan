@@ -123,13 +123,19 @@ function notifyAuthExpired(): void {
   }
 }
 
-export async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
+/** Timeout default 20 dtk: jaringan mati total tidak boleh diam selamanya. */
+export const API_TIMEOUT_MS = 20000;
+
+export async function apiFetch<T>(path: string, init?: RequestInit & { timeoutMs?: number }): Promise<T> {
   if (!isBackendConfigured()) throw new ApiNotConfigured();
   const jwt = getJwt();
+  const ctrl = new AbortController();
+  const timer = window.setTimeout(() => ctrl.abort(), init?.timeoutMs ?? API_TIMEOUT_MS);
   let res: Response;
   try {
     res = await fetch(`${BASE}${path}`, {
       ...init,
+      signal: ctrl.signal,
       headers: {
         // Tanpa body (heartbeat/logout) jangan kirim Content-Type JSON -
         // Fastify menolak body JSON kosong dengan 400.
@@ -138,8 +144,13 @@ export async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> 
         ...((init?.headers as Record<string, string> | undefined) ?? {}),
       },
     });
-  } catch {
+  } catch (e) {
+    if (e instanceof DOMException && e.name === "AbortError") {
+      throw new ApiError(0, `Backend tidak merespons dalam ${(init?.timeoutMs ?? API_TIMEOUT_MS) / 1000} detik (${path}). Periksa koneksi atau server.`);
+    }
     throw new ApiError(0, `Backend tak terjangkau (${path}). Periksa koneksi atau VITE_API_URL.`);
+  } finally {
+    window.clearTimeout(timer);
   }
   const text = await res.text().catch(() => "");
   let json: unknown = null;

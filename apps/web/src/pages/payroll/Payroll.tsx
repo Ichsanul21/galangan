@@ -21,7 +21,7 @@ import type { SortState } from "../../components/ui";
 import { useStore } from "../../data/store";
 import type { StoreItem } from "../../data/store";
 import { fmtBulan, fmtRupiah, fmtTanggal, todayISO } from "../../utils/format";
-import { AlertBannerView, notifRowId, useModuleAlert } from "../../components/AlertBanner";
+import { AlertBannerView, notifRowId, useModuleAlert, useNotifFlash } from "../../components/AlertBanner";
 import { getSetting } from "../../utils/settings";
 import { exportExcel } from "../../utils/export";
 import { kasKodeOf, postCashJournal } from "../../services/autoJournal";
@@ -254,6 +254,10 @@ export default function Payroll() {
   const S = n_dry[locale];
   const advLabel: Record<string, string> = { Draft: S.advCalc, Dihitung: S.advApprove, Disetujui: S.advPay };
   const modAlert = useModuleAlert("payroll");
+  const flash = useNotifFlash();
+  const pickNotif = (rowId: string) => {
+    flash.pick(rowId, -1, () => {}, 100);
+  };
   const [tab, setTab] = useState("Gaji");
   const [period, setPeriod] = useState(todayISO().slice(0, 7));
   const [editTarget, setEditTarget] = useState<StoreItem | null>(null);
@@ -822,7 +826,7 @@ export default function Payroll() {
         }
       />
 
-      {modAlert.active && <AlertBannerView items={modAlert.items} onPick={modAlert.scrollTo} />}
+      {modAlert.active && <AlertBannerView items={modAlert.items} onPick={pickNotif} />}
 
       <div className="mb-4 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <KpiCard label={S.kpiBruto} value={fmtRupiah(totals.bruto)} hint={S.kpiPeriod.replace("{a}", fmtBulan(period))} chip="navy" />
@@ -878,7 +882,7 @@ export default function Payroll() {
                         default: return "";
                       }
                     }).map((p) => (
-                      <tr key={p.id} id={notifRowId(String(p.id))} className={modAlert.highlight.has(String(p.id)) ? "notif-hl hover:bg-surface" : "hover:bg-surface"}>
+                      <tr key={p.id} id={notifRowId(String(p.id))} className={flash.flashId === String(p.id) ? "notif-flash hover:bg-surface" : "hover:bg-surface"}>
                         <td className="td font-mono text-steel-600">{p.id}</td>
                         <td className="td font-medium text-navy-900">{empNameOf(String(p.employeeId))}</td>
                         <td className="td text-steel-600">{fmtRupiah(Number(p.basic || 0))}</td>
@@ -977,7 +981,7 @@ export default function Payroll() {
                         default: return "";
                       }
                     }).map((p) => (
-                      <tr key={p.id} id={notifRowId(String(p.id))} className={modAlert.highlight.has(String(p.id)) ? "notif-hl hover:bg-surface" : "hover:bg-surface"}>
+                      <tr key={p.id} id={notifRowId(String(p.id))} className={flash.flashId === String(p.id) ? "notif-flash hover:bg-surface" : "hover:bg-surface"}>
                         <td className="td font-mono text-steel-600">{p.id}</td>
                         <td className="td font-medium text-navy-900">{empNameOf(String(p.employeeId))}</td>
                         <td className="td"><Badge tone={rowType(p) === "THR" ? "amber" : "violet"}>{rowType(p)}</Badge></td>

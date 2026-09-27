@@ -8,7 +8,7 @@ import type { StoreItem } from "../../data/store";
 import { equipmentHours, sparkUtil, equipTotalTrend, maintTrend, serviceDueTrend } from "../../data";
 import { fmtTanggal, fmtJumlah, fmtRupiah, todayISO } from "../../utils/format";
 import { sameName } from "../../utils/names";
-import { AlertBannerView, notifRowId, useModuleAlert } from "../../components/AlertBanner";
+import { AlertBannerView, notifRowId, useModuleAlert, useNotifFlash } from "../../components/AlertBanner";
 import { exportExcel } from "../../utils/export";
 import { FilterPopover } from "../../components/FilterPopover";
 import { useT } from "../../i18n/LanguageContext";
@@ -81,6 +81,7 @@ export default function EquipmentPage() {
   const { locale } = useT();
   const S = n_eqp[locale];
   const modAlert = useModuleAlert("equipment");
+  const flash = useNotifFlash();
   const equipment = data.equipment;
   const bookings = data.bookings;
   const calibrations = data.calibrations;
@@ -197,6 +198,12 @@ export default function EquipmentPage() {
     return String(e.name ?? "");
   }), [regFiltered, sort]);
   const regPager = usePager(regFiltered.length);
+  const pickNotif = (rowId: string) => {
+    const key = String(rowId);
+    const idx = regSorted.findIndex((e) => String(e.id) === key);
+    if (idx >= 0) flash.pick(key, idx, regPager.go, regPager.size);
+    else flash.pick(key, -1, () => {}, 100);
+  };
   useEffect(() => {
     regPager.reset();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -457,7 +464,7 @@ export default function EquipmentPage() {
         actions={<button className="btn-primary-gradient" onClick={() => setShowAdd(true)}><Plus className="h-4 w-4" /> {S.eqAdd}</button>}
       />
 
-      {modAlert.active && <AlertBannerView items={modAlert.items} onPick={modAlert.scrollTo} />}
+      {modAlert.active && <AlertBannerView items={modAlert.items} onPick={pickNotif} />}
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <KpiCard label={S.eqKpiTotal} value={String(equipment.length)} icon={<Cpu className="h-5 w-5" />} chip="navy" spark={equipTotalTrend} hint={S.eqKpiTotalHint} />
@@ -524,7 +531,7 @@ export default function EquipmentPage() {
                   {regPager.slice(regSorted).map((e) => {
                     const expired = isCalExpired(e.id, calibrations, today);
                     return (
-                    <tr key={e.id} id={notifRowId(String(e.id))} className={modAlert.highlight.has(String(e.id)) ? "notif-hl hover:bg-surface" : "hover:bg-surface"}>
+                    <tr key={e.id} id={notifRowId(String(e.id))} className={flash.flashId === String(e.id) ? "notif-flash hover:bg-surface" : "hover:bg-surface"}>
                       <td className="td">
                         <p className="font-medium text-navy-900">{e.name}</p>
                         <p className="text-xs text-steel-500 font-mono">{e.code}</p>
