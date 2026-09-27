@@ -5,6 +5,7 @@ import { Anchor, Lock, User, AlertCircle, ArrowRight, ArrowUpRight, Globe2, Cont
 import { useAuth, demoUsers } from "../auth/auth";
 import { useStore } from "../data/store";
 import { useT } from "../i18n/LanguageContext";
+import { n_misc } from "../i18n/n_misc";
 import { toast } from "../components/ui";
 
 /* Latar peta rute abstrak - garis lintang/bujur */
@@ -110,7 +111,8 @@ export default function Login() {
   const [shake, setShake] = useState(0);
   const [fails, setFails] = useState(0);
   const [lockedUntil, setLockedUntil] = useState(0);
-  const { t } = useT();
+  const { t, locale } = useT();
+  const S = n_misc[locale];
 
   const fail = (message: string) => {
     setError(message);
@@ -133,7 +135,7 @@ export default function Login() {
     const now = Date.now();
     if (now < lockedUntil) {
       const s = Math.ceil((lockedUntil - now) / 1000);
-      fail(`${t.auth.lockedOut} (${s} dtk)`);
+      fail(S.lgLockedCountdown.replace("{a}", t.auth.lockedOut).replace("{n}", String(s)));
       return;
     }
     const uname = username.trim();

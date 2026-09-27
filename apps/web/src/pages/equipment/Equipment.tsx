@@ -11,6 +11,8 @@ import { sameName } from "../../utils/names";
 import { AlertBannerView, notifRowId, useModuleAlert } from "../../components/AlertBanner";
 import { exportExcel } from "../../utils/export";
 import { FilterPopover } from "../../components/FilterPopover";
+import { useT } from "../../i18n/LanguageContext";
+import { n_eqp } from "../../i18n/n_eqp";
 
 const BOOK_PRIORITIES = ["Normal", "Tinggi", "Kritis"];
 const TARGET_HOURS = 176;
@@ -76,6 +78,8 @@ function depreciationOf(e: StoreItem): { annual: number; book: number } | null {
 
 export default function EquipmentPage() {
   const { data, add, update, remove, log, branch } = useStore();
+  const { locale } = useT();
+  const S = n_eqp[locale];
   const modAlert = useModuleAlert("equipment");
   const equipment = data.equipment;
   const bookings = data.bookings;
@@ -199,22 +203,22 @@ export default function EquipmentPage() {
   }, [eqQ, eqStatus, eqCat, tab]);
 
   const saveAdd = async () => {
-    if (!form.name.trim() || !form.code.trim()) { toast("Nama & kode wajib diisi", "info"); return; }
+    if (!form.name.trim() || !form.code.trim()) { toast(S.eqReqNameCode, "info"); return; }
     const code = form.code.trim().toUpperCase();
-    if (!/^[A-Z0-9-]{3,20}$/.test(code)) { toast("Kode aset harus 3-20 karakter (huruf/angka/-)", "info"); return; }
-    if (equipment.some((e) => String(e.code).toUpperCase() === code)) { toast(`Kode ${code} sudah dipakai equipment lain`, "info"); return; }
-    if (!form.serial.trim()) { toast("Nomor seri wajib diisi", "info"); return; }
-    if (!form.pic.trim()) { toast("PIC penanggung jawab wajib diisi", "info"); return; }
+    if (!/^[A-Z0-9-]{3,20}$/.test(code)) { toast(S.eqCodeFormat, "info"); return; }
+    if (equipment.some((e) => String(e.code).toUpperCase() === code)) { toast(S.eqCodeUsed.replace("{a}", code), "info"); return; }
+    if (!form.serial.trim()) { toast(S.eqSerialReq, "info"); return; }
+    if (!form.pic.trim()) { toast(S.eqPicReq, "info"); return; }
     const util = Number(form.util);
-    if (!Number.isFinite(util) || util < 0 || util > 100) { toast("Utilisasi awal harus 0-100%", "info"); return; }
+    if (!Number.isFinite(util) || util < 0 || util > 100) { toast(S.eqUtilRange, "info"); return; }
     const rate = Number(form.rate || 0);
-    if (!Number.isFinite(rate) || rate < 0) { toast("Tarif pakai harus 0 atau lebih", "info"); return; }
+    if (!Number.isFinite(rate) || rate < 0) { toast(S.eqRateMin, "info"); return; }
     const fuelPrice = Number(form.fuelPrice || 0);
     const acquisitionCost = Number(form.acquisitionCost || 0);
     const usefulLife = Number(form.usefulLife || 0);
-    if (fuelPrice < 0 || !Number.isFinite(fuelPrice)) { toast("Harga BBM per liter harus 0 atau lebih", "info"); return; }
+    if (fuelPrice < 0 || !Number.isFinite(fuelPrice)) { toast(S.eqFuelMin, "info"); return; }
     if ((form.acquisitionCost && (!Number.isFinite(acquisitionCost) || acquisitionCost < 0)) || (form.usefulLife && (!Number.isFinite(usefulLife) || usefulLife <= 0))) {
-      toast("Harga perolehan harus 0 atau lebih & umur ekonomis lebih dari 0", "info");
+      toast(S.eqCostLife, "info");
       return;
     }
     const created = await add("equipment", {
@@ -222,17 +226,17 @@ export default function EquipmentPage() {
       status: "Tersedia", util, nextService: "-", lastHours: 0, model: form.model.trim() || "-",
       pic: form.pic.trim(), rate, fuelPrice, acquisitionCost, usefulLife,
     }, { action: "mendaftarkan equipment", module: "Equipment" });
-    toast(`Equipment ${created.id} ditambahkan`);
+    toast(S.eqAdded.replace("{a}", created.id));
     setShowAdd(false);
     setForm({ name: "", category: "Pengangkat", code: "", serial: "", branch: "Samarinda", model: "", pic: "", util: "50", rate: "", fuelPrice: "0", acquisitionCost: "", usefulLife: "" });
   };
 
   const saveService = async () => {
-    if (!svcTarget || !svcDate) { toast("Pilih equipment & tanggal servis (wajib diisi)", "info"); return; }
+    if (!svcTarget || !svcDate) { toast(S.eqSvcReq, "info"); return; }
     const target = equipment.find((e) => e.id === svcTarget);
     await update("equipment", svcTarget, { nextService: svcDate });
     log("menjadwalkan servis", `${target?.name ?? svcTarget} · ${fmtTanggal(svcDate)}`, "Equipment");
-    toast("Jadwal servis diperbarui");
+    toast(S.eqSvcUpdated);
     setShowService(false);
     setSvcDate("");
     setSvcTarget("");
@@ -245,25 +249,25 @@ export default function EquipmentPage() {
 
   const saveRecord = async () => {
     if (!recording) return;
-    if (!woForm.tanggal || !woForm.teknisi.trim() || !woForm.hours) { toast("Tanggal, teknisi & hour-meter wajib diisi", "info"); return; }
+    if (!woForm.tanggal || !woForm.teknisi.trim() || !woForm.hours) { toast(S.eqRecordReq, "info"); return; }
     const hours = Number(woForm.hours);
-    if (!Number.isFinite(hours) || hours < 0) { toast("Hour-meter tidak valid", "info"); return; }
+    if (!Number.isFinite(hours) || hours < 0) { toast(S.eqHoursInvalid, "info"); return; }
     await update("equipment", recording.id, {
       lastHours: hours,
       nextService: woForm.next || recording.nextService,
       status: recording.status === "Maintenance" ? "Tersedia" : recording.status,
     });
     log("mencatat servis", `${recording.name} · ${fmtTanggal(woForm.tanggal)}${woForm.catatan.trim() ? ` · ${woForm.catatan.trim()}` : ""}`, "Equipment");
-    toast(`Servis ${recording.name} dicatat`);
+    toast(S.eqSvcRecorded.replace("{a}", recording.name));
     setRecording(null);
   };
 
   const startMaintenance = async () => {
     if (!maintaining) return;
-    if (!maintNote.trim() || !maintEta) { toast("Catatan & estimasi selesai wajib diisi", "info"); return; }
+    if (!maintNote.trim() || !maintEta) { toast(S.eqMaintReq, "info"); return; }
     await update("equipment", maintaining.id, { status: "Maintenance", maintenanceNote: maintNote.trim(), maintenanceEta: maintEta });
     log("memasukkan maintenance", `${maintaining.name} · selesai ${fmtTanggal(maintEta)}`, "Equipment");
-    toast(`${maintaining.name} masuk maintenance`);
+    toast(S.eqEnterMaint.replace("{a}", maintaining.name));
     setMaintaining(null);
     setMaintNote("");
     setMaintEta("");
@@ -272,7 +276,7 @@ export default function EquipmentPage() {
   const endMaintenance = async (eq: StoreItem) => {
     await update("equipment", eq.id, { status: "Tersedia", maintenanceNote: "", maintenanceEta: "" });
     log("menyelesaikan maintenance", eq.name, "Equipment");
-    toast(`${eq.name} kembali Tersedia`);
+    toast(S.eqBackAvail.replace("{a}", eq.name));
   };
 
   const clashOf = (equip: string, date: string, a: number, b: number): StoreItem[] =>
@@ -285,11 +289,11 @@ export default function EquipmentPage() {
   const persistBooking = async (priority: string) => {
     const { equip, proyek, date, mulai, selesai } = bookForm;
     const eq = equipment.find((e) => sameName(e.name, equip));
-    if (!eq) { setBookError("Equipment tidak ditemukan."); return; }
+    if (!eq) { setBookError(S.eqNotFound); return; }
     const created = await add("bookings", { equip, proyek, jam: `${mulai}-${selesai}`, mulai, selesai, status: "Terjadwal", date, priority, branch: String((data.projects ?? []).find((p) => String(p.id) === String(proyek))?.branch ?? (branch !== "SEMUA" ? branch : "")) },
       { action: "membooking equipment", target: `${equip} · ${priority}`, module: "Equipment" });
     await update("equipment", eq.id, { status: "Terpakai" });
-    toast(`Booking ${created.id} dibuat (${priority})`);
+    toast(S.eqBookingCreated.replace("{a}", created.id).replace("{b}", priority));
     setShowBook(false);
     setBookError(null);
     setBookForm({ equip: "", proyek: "", date: todayISO(), mulai: "", selesai: "", priority: "Normal" });
@@ -298,25 +302,25 @@ export default function EquipmentPage() {
   const saveBooking = async () => {
     const { equip, proyek, date, mulai, selesai, priority } = bookForm;
     if (!equip || !proyek || !date || !mulai || !selesai) {
-      setBookError("Lengkapi equipment, proyek, tanggal, jam mulai & jam selesai.");
+      setBookError(S.eqBookReq);
       return;
     }
     const a = toMinutes(mulai);
     const b = toMinutes(selesai);
     if (a === null || b === null || b <= a) {
-      setBookError("Jam selesai harus lebih besar dari jam mulai (format HH:MM).");
+      setBookError(S.eqBookTimeOrder);
       return;
     }
     const eq = equipment.find((e) => sameName(e.name, equip));
-    if (!eq) { setBookError("Equipment tidak ditemukan."); return; }
+    if (!eq) { setBookError(S.eqNotFound); return; }
     if (eq.status === "Maintenance") {
-      const msg = `Booking ditolak: ${equip} sedang maintenance.`;
+      const msg = S.eqRejectMaint.replace("{a}", equip);
       setBookError(msg);
       toast(msg, "info");
       return;
     }
     if (isMeasuring(eq) && isCalExpired(eq.id, calibrations, today)) {
-      const msg = `Booking ditolak: ${equip} kalibrasinya kedaluwarsa - jadwalkan ulang kalibrasi di tab Kalibrasi.`;
+      const msg = S.eqRejectCal.replace("{a}", equip);
       setBookError(msg);
       toast(msg, "info");
       return;
@@ -328,7 +332,7 @@ export default function EquipmentPage() {
         setGusur({ clash });
         return;
       }
-      const msg = `Booking ditolak: ${equip} sudah terbooking pada ${fmtTanggal(date)} di rentang jam tersebut.`;
+      const msg = S.eqRejectClash.replace("{a}", equip).replace("{b}", fmtTanggal(date));
       setBookError(msg);
       toast(msg, "info");
       return;
@@ -336,7 +340,7 @@ export default function EquipmentPage() {
     try {
       await persistBooking(priority);
     } catch {
-      toast(`Booking ${equip} gagal disimpan - periksa kembali`, "info");
+      toast(S.eqBookFail.replace("{a}", equip), "info");
     }
   };
 
@@ -347,7 +351,7 @@ export default function EquipmentPage() {
       try {
         await remove("bookings", c.id);
       } catch (err) {
-        toast(`Gagal menggusur ${c.id}: ${err instanceof Error ? err.message : "backend tak terjangkau"}`, "info");
+        toast(S.eqGusurFail.replace("{a}", c.id).replace("{b}", err instanceof Error ? err.message : S.eqBackendDown), "info");
         return;
       }
     }
@@ -355,10 +359,10 @@ export default function EquipmentPage() {
     try {
       await persistBooking("Kritis");
     } catch (err) {
-      toast(`Gagal membuat booking Kritis: ${err instanceof Error ? err.message : "backend tak terjangkau"}`, "info");
+      toast(S.eqCritFail.replace("{a}", err instanceof Error ? err.message : S.eqBackendDown), "info");
       return;
     }
-    toast(`Booking Kritis menggusur: ${names}`);
+    toast(S.eqCritGusur.replace("{a}", names));
     setGusur(null);
   };
 
@@ -373,10 +377,10 @@ export default function EquipmentPage() {
   const confirmFinish = async () => {
     if (!finishing) return;
     const hours = Number(finishHours);
-    if (!Number.isFinite(hours) || hours <= 0) { toast("Jam pakai harus lebih dari 0", "info"); return; }
+    if (!Number.isFinite(hours) || hours <= 0) { toast(S.eqHoursPositive, "info"); return; }
     const downtime = Math.max(0, Number(finishDowntime) || 0);
     const fuelLiters = Math.max(0, Number(finishFuel) || 0);
-    if (!Number.isFinite(fuelLiters) || fuelLiters < 0) { toast("BBM liter harus 0 atau lebih", "info"); return; }
+    if (!Number.isFinite(fuelLiters) || fuelLiters < 0) { toast(S.eqFuelNonNeg, "info"); return; }
     const eq = equipment.find((e) => e.name === finishing.equip);
     const rate = Number(eq?.rate || 0);
     await update("bookings", finishing.id, { status: "Selesai", hours, downtime, fuelLiters, cost: hours * rate });
@@ -388,7 +392,7 @@ export default function EquipmentPage() {
       });
     }
     log("menyelesaikan booking", `${finishing.equip} · ${fmtTanggal(String(finishing.date))} · ${hours} jam · downtime ${downtime} jam`, "Equipment");
-    toast(`Booking ${finishing.id} diselesaikan`);
+    toast(S.eqBookingDone.replace("{a}", finishing.id));
     setFinishing(null);
     setFinishHours("");
     setFinishDowntime("0");
@@ -396,25 +400,25 @@ export default function EquipmentPage() {
   };
 
   const saveCalibration = async () => {
-    if (!calForm.equipmentId || !calForm.item.trim() || !calForm.due) { toast("Equipment, item ukur & due date wajib diisi", "info"); return; }
-    if (calForm.due < today) { toast("Due date kalibrasi tidak boleh di masa lalu", "info"); return; }
+    if (!calForm.equipmentId || !calForm.item.trim() || !calForm.due) { toast(S.eqCalReq, "info"); return; }
+    if (calForm.due < today) { toast(S.eqCalPast, "info"); return; }
     const dupe = calibrations.some((c) => c.equipmentId === calForm.equipmentId && String(c.item).toLowerCase() === calForm.item.trim().toLowerCase() && c.status !== "Selesai");
-    if (dupe) { toast("Jadwal kalibrasi terbuka untuk item ini sudah ada", "info"); return; }
+    if (dupe) { toast(S.eqCalDupe, "info"); return; }
     const eq = equipment.find((e) => e.id === calForm.equipmentId);
     const created = await add("calibrations", {
       equipmentId: calForm.equipmentId, item: calForm.item.trim(), due: calForm.due, status: "Terjadwal", cert: "",
     }, { action: "menjadwalkan kalibrasi", target: `${eq?.name ?? calForm.equipmentId} · ${fmtTanggal(calForm.due)}`, module: "Equipment" });
-    toast(`Kalibrasi ${created.id} dijadwalkan`);
+    toast(S.eqCalScheduled.replace("{a}", created.id));
     setShowCal(false);
     setCalForm({ equipmentId: "", item: "", due: "" });
   };
 
   const confirmCalFinish = async () => {
     if (!finishingCal) return;
-    if (!calCert.trim()) { toast("No. sertifikat wajib diisi saat menyelesaikan kalibrasi", "info"); return; }
+    if (!calCert.trim()) { toast(S.eqCertReq, "info"); return; }
     await update("calibrations", finishingCal.id, { status: "Selesai", cert: calCert.trim() });
     log("menyelesaikan kalibrasi", `${finishingCal.id} · sertifikat ${calCert.trim()}`, "Equipment");
-    toast(`Kalibrasi ${finishingCal.id} selesai`);
+    toast(S.eqCalDone.replace("{a}", finishingCal.id));
     setFinishingCal(null);
     setCalCert("");
   };
@@ -426,7 +430,7 @@ export default function EquipmentPage() {
       `Biaya-Equipment-${today}`,
       "Biaya",
     );
-    toast("Biaya per proyek diekspor");
+    toast(S.eqCostExported);
   };
 
   const exportRegister = () => {
@@ -441,28 +445,28 @@ export default function EquipmentPage() {
       `Register-Aset-Equipment-${today}`,
       "Register",
     );
-    toast("Register aset diekspor");
+    toast(S.eqRegisterExported);
   };
 
   return (
     <div>
       <PageHeader
-        title="Utilisasi Equipment Galangan"
-        subtitle="Asset register, alokasi, dan jadwal maintenance peralatan"
+        title={S.eqTitle}
+        subtitle={S.eqSubtitle}
         icon={<Cpu className="h-5 w-5" />}
-        actions={<button className="btn-primary-gradient" onClick={() => setShowAdd(true)}><Plus className="h-4 w-4" /> Tambah Equipment</button>}
+        actions={<button className="btn-primary-gradient" onClick={() => setShowAdd(true)}><Plus className="h-4 w-4" /> {S.eqAdd}</button>}
       />
 
       {modAlert.active && <AlertBannerView items={modAlert.items} onPick={modAlert.scrollTo} />}
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <KpiCard label="Total Equipment" value={String(equipment.length)} icon={<Cpu className="h-5 w-5" />} chip="navy" spark={equipTotalTrend} hint="Seluruh cabang" />
-        <KpiCard label="Utilitas Rata-rata" value={`${avgUtil}%`} icon={<Gauge className="h-5 w-5" />} chip="teal" hint="Rata-rata seluruh peralatan" spark={sparkUtil} />
-        <KpiCard label="Dalam Maintenance" value={String(maintenance)} delta="Jadwal servis" deltaDirection="down" icon={<Wrench className="h-5 w-5" />} chip="amber" spark={maintTrend} />
+        <KpiCard label={S.eqKpiTotal} value={String(equipment.length)} icon={<Cpu className="h-5 w-5" />} chip="navy" spark={equipTotalTrend} hint={S.eqKpiTotalHint} />
+        <KpiCard label={S.eqKpiAvgUtil} value={`${avgUtil}%`} icon={<Gauge className="h-5 w-5" />} chip="teal" hint={S.eqKpiAvgHint} spark={sparkUtil} />
+        <KpiCard label={S.eqKpiMaint} value={String(maintenance)} delta={S.eqKpiMaintDelta} deltaDirection="down" icon={<Wrench className="h-5 w-5" />} chip="amber" spark={maintTrend} />
         <KpiCard
-          label="Perlu Servis (14 hari)"
+          label={S.eqKpiDue}
           value={String(dueSoon.length)}
-          delta={dueSoon.length > 0 ? dueSoon.slice(0, 2).map((e) => e.name).join(" · ") : "Semua terjadwal aman"}
+          delta={dueSoon.length > 0 ? dueSoon.slice(0, 2).map((e) => e.name).join(" · ") : S.eqKpiDueSafe}
           deltaDirection={dueSoon.length > 0 ? "down" : "up"}
           icon={<AlertTriangle className="h-5 w-5" />}
           chip="rose"
@@ -471,14 +475,14 @@ export default function EquipmentPage() {
       </div>
 
       <div className="mt-4 card">
-        <Tabs tabs={["Register", "Alokasi / Booking", "Maintenance", "Kalibrasi", "Biaya", "Utilisasi"]} active={tab} onChange={setTab} />
+        <Tabs tabs={["Register", "Alokasi / Booking", "Maintenance", "Kalibrasi", "Biaya", "Utilisasi"]} active={tab} onChange={setTab} labels={{ Register: S.eqTabRegister, "Alokasi / Booking": S.eqTabBooking, Maintenance: S.eqTabMaint, Kalibrasi: S.eqTabCal, Biaya: S.eqTabCost, Utilisasi: S.eqTabUtil }} />
         <div className="p-4">
           {tab === "Register" && (
             <div>
               <div className="mb-3 flex flex-wrap items-center gap-2">
                 <div className="relative min-w-52 flex-1 sm:max-w-xs">
                   <Search className="absolute left-3 top-2.5 h-4 w-4 text-steel-400" />
-                  <input className="input pl-9 w-full" placeholder="Cari nama / kode / model..." aria-label="Cari equipment" value={eqQ} onChange={(e) => setEqQ(e.target.value)} />
+                  <input className="input pl-9 w-full" placeholder={S.eqSearchPh} aria-label={S.eqSearchAria} value={eqQ} onChange={(e) => setEqQ(e.target.value)} />
                 </div>
                 <FilterPopover
                   activeCount={[eqStatus !== "Semua", eqCat !== "Semua"].filter(Boolean).length}
@@ -488,14 +492,14 @@ export default function EquipmentPage() {
                 >
                   {(draft, setDraft) => (
                     <div className="space-y-3">
-                      <Field label="Status">
+                      <Field label={S.thStatus}>
                         <select className="input w-full" value={draft.status} onChange={(e) => setDraft({ ...draft, status: e.target.value })}>
-                          {["Semua", "Tersedia", "Terpakai", "Maintenance"].map((s) => <option key={s} value={s}>{s === "Semua" ? "Semua status" : s}</option>)}
+                          {["Semua", "Tersedia", "Terpakai", "Maintenance"].map((s) => <option key={s} value={s}>{s === "Semua" ? S.eqAllStatus : s}</option>)}
                         </select>
                       </Field>
-                      <Field label="Kategori">
+                      <Field label={S.thCategory}>
                         <select className="input w-full" value={draft.kategori} onChange={(e) => setDraft({ ...draft, kategori: e.target.value })}>
-                          {["Semua", "Pengangkat", "Pengelasan", "Tenaga", "Transportasi", "Pengecatan", "Lainnya"].map((c) => <option key={c} value={c}>{c === "Semua" ? "Semua kategori" : c}</option>)}
+                          {["Semua", "Pengangkat", "Pengelasan", "Tenaga", "Transportasi", "Pengecatan", "Lainnya"].map((c) => <option key={c} value={c}>{c === "Semua" ? S.eqAllCat : c}</option>)}
                         </select>
                       </Field>
                     </div>
@@ -503,18 +507,18 @@ export default function EquipmentPage() {
                 </FilterPopover>
                 {(eqQ.trim() !== "" || eqStatus !== "Semua" || eqCat !== "Semua") && (
                   <span className="text-xs text-steel-400">
-                    Filter aktif di tab Register - {regSorted.length} baris
+                    {S.eqFilterActive.replace("{n}", String(regSorted.length))}
                   </span>
                 )}
               </div>
               <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-                <p className="text-xs text-steel-500">Nilai buku garis lurus · asumsi penyusutan tahun berjalan (perolehan - penyusutan 1 tahun)</p>
-                <button className="btn-secondary text-xs" onClick={exportRegister}><Download className="h-3.5 w-3.5" /> Ekspor Register Aset</button>
+                <p className="text-xs text-steel-500">{S.eqBookNote}</p>
+                <button className="btn-secondary text-xs" onClick={exportRegister}><Download className="h-3.5 w-3.5" /> {S.eqExportRegister}</button>
               </div>
             <div className="overflow-x-auto">
               <table className="w-full">
                 <thead className="sticky top-0 z-10 bg-surface">
-                  <tr><SortTh label="Equipment" sortKey="equipment" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label="Kategori" sortKey="kategori" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label="Model" sortKey="model" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label="Status" sortKey="status" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label="Utilisasi" sortKey="utilisasi" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label="Jam Pakai" sortKey="jam" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label="Tarif / Jam" sortKey="tarif" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label="Nilai Buku" sortKey="nilaibuku" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><th className="th">Aksi</th></tr>
+                  <tr><SortTh label={S.thEquipment} sortKey="equipment" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.thCategory} sortKey="kategori" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.thModel} sortKey="model" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.thStatus} sortKey="status" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.thUtil} sortKey="utilisasi" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.thHours} sortKey="jam" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.thRate} sortKey="tarif" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.thBookVal} sortKey="nilaibuku" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><th className="th">{S.thAction}</th></tr>
                 </thead>
                 <tbody className="divide-y divide-steel-100">
                   {regPager.slice(regSorted).map((e) => {
@@ -530,7 +534,7 @@ export default function EquipmentPage() {
                       <td className="td">
                         <div className="flex flex-wrap gap-1">
                           <Badge tone={statusTone[e.status] ?? "gray"}>{e.status}</Badge>
-                          {isMeasuring(e) && expired && <Badge tone="red">Kalibrasi Expired</Badge>}
+                          {isMeasuring(e) && expired && <Badge tone="red">{S.eqCalExpired}</Badge>}
                         </div>
                       </td>
                       <td className="td">
@@ -559,16 +563,16 @@ export default function EquipmentPage() {
                       <td className="td">
                         {e.status === "Tersedia" && (
                           <button className="btn-secondary text-xs" onClick={() => { setMaintaining(e); setMaintNote(""); setMaintEta(""); }}>
-                            <Wrench className="h-3.5 w-3.5" /> Maintenance
+                            <Wrench className="h-3.5 w-3.5" /> {S.eqTabMaint}
                           </button>
                         )}
                         {e.status === "Maintenance" && (
                           <button className="btn-secondary text-xs" onClick={() => endMaintenance(e)}>
-                            <CheckCircle2 className="h-3.5 w-3.5" /> Kembali Tersedia
+                            <CheckCircle2 className="h-3.5 w-3.5" /> {S.eqBackAvailBtn}
                           </button>
                         )}
                         {e.status === "Terpakai" && (
-                          <span className="text-xs text-steel-500">Aktif via booking - selesaikan dari tab Booking</span>
+                          <span className="text-xs text-steel-500">{S.eqBackToBooking}</span>
                         )}
                       </td>
                     </tr>
@@ -585,8 +589,8 @@ export default function EquipmentPage() {
             <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
               <Card className="p-5">
                 <div className="mb-3 flex items-center justify-between">
-                  <h3 className="text-sm font-semibold text-navy-900">Booking Berjalan</h3>
-                  <button className="btn-secondary text-xs" onClick={() => { setShowBook(true); setBookError(null); }}><Plus className="h-3.5 w-3.5" /> Booking</button>
+                  <h3 className="text-sm font-semibold text-navy-900">{S.eqActiveBookings}</h3>
+                  <button className="btn-secondary text-xs" onClick={() => { setShowBook(true); setBookError(null); }}><Plus className="h-3.5 w-3.5" /> {S.eqBookBtn}</button>
                 </div>
                 <div className="space-y-2.5">
                   {activeBookings.map((b) => (
@@ -598,28 +602,28 @@ export default function EquipmentPage() {
                       <div className="flex shrink-0 items-center gap-2">
                         <Badge tone={b.status === "Terpakai" ? "blue" : "gray"}>{b.status}</Badge>
                         <button className="btn-secondary text-xs" onClick={() => openFinish(b)}>
-                          <CheckCircle2 className="h-3.5 w-3.5" /> Selesaikan
+                          <CheckCircle2 className="h-3.5 w-3.5" /> {S.finishBtn}
                         </button>
                       </div>
                     </div>
                   ))}
                   {activeBookings.length === 0 && (
-                    <EmptyState title="Belum ada booking aktif" subtitle="Buat booking baru untuk mengalokasikan equipment ke proyek." />
+                    <EmptyState title={S.eqNoBookingTitle} subtitle={S.eqNoBookingSub} />
                   )}
                 </div>
               </Card>
               <Card className="p-5">
-                <h3 className="mb-3 text-sm font-semibold text-navy-900">Deteksi Konflik Jadwal</h3>
+                <h3 className="mb-3 text-sm font-semibold text-navy-900">{S.eqConflictTitle}</h3>
                 {conflictList.length === 0 ? (
                   <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-700">
-                    <p className="font-medium">Tidak ada konflik</p>
-                    <p className="mt-1 text-xs">Tidak ada equipment yang terbooking ganda pada tanggal & jam yang beririsan.</p>
+                    <p className="font-medium">{S.eqNoConflict}</p>
+                    <p className="mt-1 text-xs">{S.eqNoConflictDesc}</p>
                   </div>
                 ) : (
                   <div className="space-y-2">
                     <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">
-                      <p className="font-medium">{conflictList.length} booking bertabrakan</p>
-                      <p className="mt-1 text-xs">Sesuaikan jam atau tanggal booking berikut agar tidak beririsan.</p>
+                      <p className="font-medium">{S.eqClashCount.replace("{n}", String(conflictList.length))}</p>
+                      <p className="mt-1 text-xs">{S.eqClashDesc}</p>
                     </div>
                     {conflictList.map((b) => (
                       <div key={b.id} className="flex items-center justify-between rounded-lg border border-red-200 px-3 py-2 text-sm">
@@ -627,7 +631,7 @@ export default function EquipmentPage() {
                           <p className="truncate font-medium text-navy-900" title={`${b.equip} · ${b.proyek}`}>{b.equip} · {b.proyek}</p>
                           <p className="text-xs text-steel-500">{b.jam} · {fmtTanggal(String(b.date))}</p>
                         </div>
-                        <Badge tone="red">Bentrok</Badge>
+                        <Badge tone="red">{S.eqClashBadge}</Badge>
                       </div>
                     ))}
                   </div>
@@ -639,12 +643,12 @@ export default function EquipmentPage() {
           {tab === "Maintenance" && (
             <div>
               <div className="mb-3 flex justify-end">
-                <button className="btn-secondary text-xs" onClick={() => setShowService(true)}><Wrench className="h-3.5 w-3.5" /> Jadwalkan Servis</button>
+                <button className="btn-secondary text-xs" onClick={() => setShowService(true)}><Wrench className="h-3.5 w-3.5" /> {S.eqSchedSvc}</button>
               </div>
               <div className="overflow-x-auto">
                 <table className="w-full">
                   <thead className="sticky top-0 z-10 bg-surface">
-                    <tr><SortTh label="Equipment" sortKey="equipment" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} /><SortTh label="Jadwal Servis" sortKey="jadwal" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} /><SortTh label="Catatan / Estimasi" sortKey="catatan" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} /><SortTh label="Status" sortKey="status" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} /><th className="th">Aksi</th></tr>
+                    <tr><SortTh label={S.thEquipment} sortKey="equipment" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} /><SortTh label={S.thSchedule} sortKey="jadwal" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} /><SortTh label={S.thNoteEta} sortKey="catatan" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} /><SortTh label={S.thStatus} sortKey="status" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} /><th className="th">{S.thAction}</th></tr>
                   </thead>
                   <tbody className="divide-y divide-steel-100">
                     {sortRows(equipment, sort2, (e, k) => {
@@ -661,9 +665,9 @@ export default function EquipmentPage() {
                             ? `${e.maintenanceNote}${e.maintenanceEta ? ` · selesai ${fmtTanggal(String(e.maintenanceEta))}` : ""}`
                             : <span className="text-steel-400">-</span>}
                         </td>
-                        <td className="td"><Badge tone={e.status === "Maintenance" ? "amber" : "green"}>{e.status === "Maintenance" ? "Dalam Servis" : "Terjadwal"}</Badge></td>
+                        <td className="td"><Badge tone={e.status === "Maintenance" ? "amber" : "green"}>{e.status === "Maintenance" ? S.eqInService : S.eqScheduled}</Badge></td>
                         <td className="td">
-                          <button className="btn-secondary text-xs" onClick={() => openRecord(e)}>Catat Servis</button>
+                          <button className="btn-secondary text-xs" onClick={() => openRecord(e)}>{S.eqLogSvc}</button>
                         </td>
                       </tr>
                     ))}
@@ -676,12 +680,12 @@ export default function EquipmentPage() {
           {tab === "Kalibrasi" && (
             <div>
               <div className="mb-3 flex justify-end">
-                <button className="btn-secondary text-xs" onClick={() => setShowCal(true)}><Plus className="h-3.5 w-3.5" /> Jadwalkan Kalibrasi</button>
+                <button className="btn-secondary text-xs" onClick={() => setShowCal(true)}><Plus className="h-3.5 w-3.5" /> {S.eqSchedCal}</button>
               </div>
               <div className="overflow-x-auto">
                 <table className="w-full">
                   <thead className="sticky top-0 z-10 bg-surface">
-                    <tr><SortTh label="ID" sortKey="id" sort={sort3} onSort={(k) => setSort3((s) => toggleSort(s, k))} /><SortTh label="Equipment" sortKey="equipment" sort={sort3} onSort={(k) => setSort3((s) => toggleSort(s, k))} /><SortTh label="Item Ukur" sortKey="item" sort={sort3} onSort={(k) => setSort3((s) => toggleSort(s, k))} /><SortTh label="Due Date" sortKey="due" sort={sort3} onSort={(k) => setSort3((s) => toggleSort(s, k))} /><SortTh label="Sertifikat" sortKey="sertifikat" sort={sort3} onSort={(k) => setSort3((s) => toggleSort(s, k))} /><SortTh label="Status" sortKey="status" sort={sort3} onSort={(k) => setSort3((s) => toggleSort(s, k))} /><th className="th">Aksi</th></tr>
+                    <tr><SortTh label={S.thId} sortKey="id" sort={sort3} onSort={(k) => setSort3((s) => toggleSort(s, k))} /><SortTh label={S.thEquipment} sortKey="equipment" sort={sort3} onSort={(k) => setSort3((s) => toggleSort(s, k))} /><SortTh label={S.thMeasure} sortKey="item" sort={sort3} onSort={(k) => setSort3((s) => toggleSort(s, k))} /><SortTh label={S.thDue} sortKey="due" sort={sort3} onSort={(k) => setSort3((s) => toggleSort(s, k))} /><SortTh label={S.thCert} sortKey="sertifikat" sort={sort3} onSort={(k) => setSort3((s) => toggleSort(s, k))} /><SortTh label={S.thStatus} sortKey="status" sort={sort3} onSort={(k) => setSort3((s) => toggleSort(s, k))} /><th className="th">{S.thAction}</th></tr>
                   </thead>
                   <tbody className="divide-y divide-steel-100">
                     {sortRows(calibrations, sort3, (c, k) => {
@@ -704,22 +708,22 @@ export default function EquipmentPage() {
                           <td className="td">
                             <div className="flex flex-wrap gap-1">
                               <StatusBadge status={String(c.status)} />
-                              {expired && <Badge tone="red">Expired</Badge>}
+                              {expired && <Badge tone="red">{S.eqExpired}</Badge>}
                             </div>
                           </td>
                           <td className="td">
                             {c.status !== "Selesai" && (
-                              <button className="btn-secondary text-xs" onClick={() => { setFinishingCal(c); setCalCert(""); }}>Selesaikan</button>
+                              <button className="btn-secondary text-xs" onClick={() => { setFinishingCal(c); setCalCert(""); }}>{S.finishBtn}</button>
                             )}
                           </td>
                         </tr>
                       );
                     })}
-                    {calibrations.length === 0 && <tr><td colSpan={7} className="td text-center text-steel-400">Belum ada jadwal kalibrasi.</td></tr>}
+                    {calibrations.length === 0 && <tr><td colSpan={7} className="td text-center text-steel-400">{S.eqNoCal}</td></tr>}
                   </tbody>
                 </table>
               </div>
-              <p className="mt-2 text-xs text-steel-500">Alat ukur terdeteksi dari nama mengandung Las / Ukur / Load / Meter. Kalibrasi kedaluwarsa memblokir booking baru alat tersebut.</p>
+              <p className="mt-2 text-xs text-steel-500">{S.eqCalNote}</p>
             </div>
           )}
 
@@ -727,13 +731,13 @@ export default function EquipmentPage() {
             <div className="space-y-4">
               <Card className="p-5">
                 <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-                  <h3 className="text-sm font-semibold text-navy-900">Biaya per Proyek <span className="text-xs font-normal text-steel-500">(jam × tarif dari booking Selesai)</span></h3>
-                  <button className="btn-secondary text-xs" onClick={exportCost}><Download className="h-3.5 w-3.5" /> Ekspor Excel</button>
+                  <h3 className="text-sm font-semibold text-navy-900">{S.eqCostTitle} <span className="text-xs font-normal text-steel-500">{S.eqCostHint}</span></h3>
+                  <button className="btn-secondary text-xs" onClick={exportCost}><Download className="h-3.5 w-3.5" /> {S.eqExportExcel}</button>
                 </div>
                 <div className="overflow-x-auto">
                   <table className="w-full">
                     <thead className="sticky top-0 z-10 bg-surface">
-                      <tr><SortTh label="Proyek" sortKey="proyek" sort={sort4} onSort={(k) => setSort4((s) => toggleSort(s, k))} /><SortTh label="Jam Pakai" sortKey="jam" sort={sort4} onSort={(k) => setSort4((s) => toggleSort(s, k))} /><SortTh label="Downtime" sortKey="downtime" sort={sort4} onSort={(k) => setSort4((s) => toggleSort(s, k))} /><SortTh label="Biaya" sortKey="biaya" sort={sort4} onSort={(k) => setSort4((s) => toggleSort(s, k))} /></tr>
+                      <tr><SortTh label={S.thProject} sortKey="proyek" sort={sort4} onSort={(k) => setSort4((s) => toggleSort(s, k))} /><SortTh label={S.thHours} sortKey="jam" sort={sort4} onSort={(k) => setSort4((s) => toggleSort(s, k))} /><SortTh label={S.thDowntime} sortKey="downtime" sort={sort4} onSort={(k) => setSort4((s) => toggleSort(s, k))} /><SortTh label={S.thCost} sortKey="biaya" sort={sort4} onSort={(k) => setSort4((s) => toggleSort(s, k))} /></tr>
                     </thead>
                     <tbody className="divide-y divide-steel-100">
                       {sortRows(costRows, sort4, ([proj, v], k) => {
@@ -749,14 +753,14 @@ export default function EquipmentPage() {
                           <td className="td font-semibold">{fmtRupiah(v.cost)}</td>
                         </tr>
                       ))}
-                      {costRows.length === 0 && <tr><td colSpan={4} className="td text-center text-steel-400">Belum ada booking Selesai.</td></tr>}
+                      {costRows.length === 0 && <tr><td colSpan={4} className="td text-center text-steel-400">{S.eqNoDoneBooking}</td></tr>}
                     </tbody>
                   </table>
                 </div>
-                <p className="mt-2 text-right text-sm font-semibold text-navy-900">Total {fmtRupiah(totalCost)}</p>
+                <p className="mt-2 text-right text-sm font-semibold text-navy-900">{S.eqTotal.replace("{a}", fmtRupiah(totalCost))}</p>
               </Card>
               <Card className="p-5">
-                <h3 className="mb-2 text-sm font-semibold text-navy-900">Riwayat Booking Selesai</h3>
+                <h3 className="mb-2 text-sm font-semibold text-navy-900">{S.eqDoneHistory}</h3>
                 <div className="space-y-2">
                   {doneBookings.map((b) => (
                     <div key={b.id} className="flex flex-wrap items-center justify-between gap-2 border-b border-steel-100 py-2 text-sm">
@@ -767,11 +771,11 @@ export default function EquipmentPage() {
                       <Badge tone="green">{fmtRupiah(Number(b.cost || 0))}</Badge>
                     </div>
                   ))}
-                  {doneBookings.length === 0 && <p className="text-xs text-steel-400">Belum ada booking Selesai.</p>}
+                  {doneBookings.length === 0 && <p className="text-xs text-steel-400">{S.eqNoDoneBooking}</p>}
                 </div>
               </Card>
               <Card className="p-5">
-                <h3 className="mb-2 text-sm font-semibold text-navy-900">BBM per Equipment <span className="text-xs font-normal text-steel-500">(liter × harga/L di register)</span></h3>
+                <h3 className="mb-2 text-sm font-semibold text-navy-900">{S.eqFuelTitle} <span className="text-xs font-normal text-steel-500">{S.eqFuelHint}</span></h3>
                 <div className="space-y-2">
                   {equipment.map((e) => {
                     const st = statsByEquip(e.name);
@@ -795,8 +799,8 @@ export default function EquipmentPage() {
             <div className="space-y-4">
               <Card className="p-5">
                 <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-                  <h3 className="text-sm font-semibold text-navy-900">OEE per Equipment <span className="text-xs font-normal text-steel-500">(availability × performance · target {TARGET_HOURS} jam/bln)</span></h3>
-                  <Badge tone="navy">Rata-rata {avgOee !== null ? `${Math.round(avgOee * 100)}%` : "-"}</Badge>
+                  <h3 className="text-sm font-semibold text-navy-900">{S.eqOeeTitle} <span className="text-xs font-normal text-steel-500">{S.eqOeeHint.replace("{a}", String(TARGET_HOURS))}</span></h3>
+                  <Badge tone="navy">{S.eqAvgOee.replace("{a}", avgOee !== null ? `${Math.round(avgOee * 100)}%` : "-")}</Badge>
                 </div>
                 <div className="space-y-2.5">
                   {equipment.map((e) => {
@@ -804,7 +808,7 @@ export default function EquipmentPage() {
                     if (!v) return (
                       <div key={e.id} className="flex items-center justify-between gap-2 border-b border-steel-100 py-1.5 text-sm">
                         <span className="text-steel-600">{e.name}</span>
-                        <span className="text-xs text-steel-400">Belum ada booking Selesai</span>
+                        <span className="text-xs text-steel-400">{S.eqNoOee}</span>
                       </div>
                     );
                     return (
@@ -821,14 +825,14 @@ export default function EquipmentPage() {
               </Card>
               <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
                 <Card className="p-5">
-                  <CardHeader title="Utilitas Keseluruhan" />
+                  <CardHeader title={S.eqOverallUtil} />
                   <div className="flex items-center justify-center">
-                    <RadialGauge value={avgUtil} label="Equipment" size={140} />
+                    <RadialGauge value={avgUtil} label={S.thEquipment} size={140} />
                   </div>
-                  <p className="mt-2 text-center text-xs text-steel-500">Rata-rata utilisasi seluruh peralatan</p>
+                  <p className="mt-2 text-center text-xs text-steel-500">{S.eqOverallUtilCap}</p>
                 </Card>
                 <Card className="lg:col-span-2">
-                  <CardHeader title="Jam Pakai per Bulan" subtitle="Total jam operasional semua equipment" />
+                  <CardHeader title={S.eqHoursPerMonth} subtitle={S.eqHoursPerMonthSub} />
                   <div className="h-52 p-4 pt-0">
                     <ResponsiveContainer width="100%" height="100%">
                       <AreaChart data={equipmentHours} margin={{ top: 5, right: 5, left: -15, bottom: 0 }}>
@@ -854,98 +858,98 @@ export default function EquipmentPage() {
                   </div>
                 ))}
               </div>
-              <p className="text-xs text-steel-400">Forecast kebutuhan equipment & downtime prediktif tersedia di modul Analytics (Prediktif).</p>
+              <p className="text-xs text-steel-400">{S.eqForecastNote}</p>
             </div>
           )}
         </div>
       </div>
 
       {/* Modal tambah */}
-      <Modal open={showAdd} onClose={() => setShowAdd(false)} title="Tambah Equipment"
-        wide footer={<><button className="btn-secondary" onClick={() => setShowAdd(false)}>Batal</button><button className="btn-primary" onClick={saveAdd}>Simpan</button></>}>
+      <Modal open={showAdd} onClose={() => setShowAdd(false)} title={S.eqAdd}
+        wide footer={<><button className="btn-secondary" onClick={() => setShowAdd(false)}>{S.cancelBtn}</button><button className="btn-primary" onClick={saveAdd}>{S.saveBtn}</button></>}>
         <div className="space-y-3">
           <FormGrid>
-            <Field label="Nama equipment"><input className="input" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="cth: Excavator Mini" /></Field>
-            <Field label="Kode aset"><input className="input font-mono" value={form.code} onChange={(e) => setForm({ ...form, code: e.target.value })} placeholder="cth: EXC-01" /></Field>
-            <Field label="Kategori">
+            <Field label={S.eqNameField}><input className="input" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder={S.eqNamePh} /></Field>
+            <Field label={S.eqCodeField}><input className="input font-mono" value={form.code} onChange={(e) => setForm({ ...form, code: e.target.value })} placeholder={S.eqCodePh} /></Field>
+            <Field label={S.thCategory}>
               <select className="input" value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })}>
                 {["Pengangkat", "Pengelasan", "Tenaga", "Transportasi", "Pengecatan", "Lainnya"].map((c) => <option key={c}>{c}</option>)}
               </select>
             </Field>
-            <Field label="Cabang">
+            <Field label={S.eqBranchField}>
               <select className="input" value={form.branch} onChange={(e) => setForm({ ...form, branch: e.target.value })}>
                 {data.branches.map((b) => <option key={b.id} value={String(b.city)}>{String(b.city)}</option>)}
               </select>
             </Field>
-            <Field label="Nomor seri" hint="Wajib - unik per unit"><input className="input font-mono" value={form.serial} onChange={(e) => setForm({ ...form, serial: e.target.value })} placeholder="cth: SN-2024-001" /></Field>
-            <Field label="PIC" hint="Penanggung jawab unit"><input className="input" value={form.pic} onChange={(e) => setForm({ ...form, pic: e.target.value })} placeholder="cth: Budi Santoso" /></Field>
-            <Field label="Model"><input className="input" value={form.model} onChange={(e) => setForm({ ...form, model: e.target.value })} /></Field>
-            <Field label="Utilisasi awal (%)"><input type="number" className="input" value={form.util} onChange={(e) => setForm({ ...form, util: e.target.value })} /></Field>
-            <Field label="Tarif pakai (Rp/jam)"><input type="number" min={0} className="input" value={form.rate} onChange={(e) => setForm({ ...form, rate: e.target.value })} placeholder="cth: 350000" /></Field>
-            <Field label="Harga BBM (Rp/liter)"><input type="number" min={0} className="input" value={form.fuelPrice} onChange={(e) => setForm({ ...form, fuelPrice: e.target.value })} placeholder="cth: 13500" /></Field>
-            <Field label="Harga perolehan (Rp)"><input type="number" min={0} className="input" value={form.acquisitionCost} onChange={(e) => setForm({ ...form, acquisitionCost: e.target.value })} placeholder="cth: 2500000000" /></Field>
-            <Field label="Umur ekonomis (tahun)"><input type="number" min={0} className="input" value={form.usefulLife} onChange={(e) => setForm({ ...form, usefulLife: e.target.value })} placeholder="cth: 10" /></Field>
+            <Field label={S.eqSerialField} hint={S.eqSerialHint}><input className="input font-mono" value={form.serial} onChange={(e) => setForm({ ...form, serial: e.target.value })} placeholder={S.eqSerialPh} /></Field>
+            <Field label={S.eqPicField} hint={S.eqPicHint}><input className="input" value={form.pic} onChange={(e) => setForm({ ...form, pic: e.target.value })} placeholder={S.eqPicPh} /></Field>
+            <Field label={S.thModel}><input className="input" value={form.model} onChange={(e) => setForm({ ...form, model: e.target.value })} /></Field>
+            <Field label={S.eqUtilField}><input type="number" className="input" value={form.util} onChange={(e) => setForm({ ...form, util: e.target.value })} /></Field>
+            <Field label={S.eqRateField}><input type="number" min={0} className="input" value={form.rate} onChange={(e) => setForm({ ...form, rate: e.target.value })} placeholder={S.eqRatePh} /></Field>
+            <Field label={S.eqFuelField}><input type="number" min={0} className="input" value={form.fuelPrice} onChange={(e) => setForm({ ...form, fuelPrice: e.target.value })} placeholder={S.eqFuelPh} /></Field>
+            <Field label={S.eqCostField}><input type="number" min={0} className="input" value={form.acquisitionCost} onChange={(e) => setForm({ ...form, acquisitionCost: e.target.value })} placeholder={S.eqCostPh} /></Field>
+            <Field label={S.eqLifeField}><input type="number" min={0} className="input" value={form.usefulLife} onChange={(e) => setForm({ ...form, usefulLife: e.target.value })} placeholder={S.eqLifePh} /></Field>
           </FormGrid>
         </div>
       </Modal>
 
       {/* Modal servis */}
-      <Modal open={showService} onClose={() => setShowService(false)} title="Jadwalkan Servis"
-        footer={<><button className="btn-secondary" onClick={() => setShowService(false)}>Batal</button><button className="btn-primary" onClick={saveService}>Simpan</button></>}>
+      <Modal open={showService} onClose={() => setShowService(false)} title={S.eqSchedSvc}
+        footer={<><button className="btn-secondary" onClick={() => setShowService(false)}>{S.cancelBtn}</button><button className="btn-primary" onClick={saveService}>{S.saveBtn}</button></>}>
         <div className="space-y-3">
-          <Field label="Equipment">
+          <Field label={S.thEquipment}>
             <select className="input" value={svcTarget} onChange={(e) => setSvcTarget(e.target.value)}>
-              <option value="">Pilih…</option>
+              <option value="">{S.eqChoose}</option>
               {equipment.map((e) => <option key={e.id} value={e.id}>{e.name} ({e.code})</option>)}
             </select>
           </Field>
-          <Field label="Tanggal servis"><input type="date" className="input" value={svcDate} onChange={(e) => setSvcDate(e.target.value)} /></Field>
+          <Field label={S.eqSvcDateField}><input type="date" className="input" value={svcDate} onChange={(e) => setSvcDate(e.target.value)} /></Field>
         </div>
       </Modal>
 
-      <Modal open={recording !== null} onClose={() => setRecording(null)} title={`Catat Servis - ${recording?.name ?? ""}`} subtitle="Pelaksanaan servis terjadwal"
-        footer={<><button className="btn-secondary" onClick={() => setRecording(null)}>Batal</button><button className="btn-primary" onClick={saveRecord}>Simpan Servis</button></>}>
+      <Modal open={recording !== null} onClose={() => setRecording(null)} title={S.eqRecordTitle.replace("{a}", recording?.name ?? "")} subtitle={S.eqRecordSub}
+        footer={<><button className="btn-secondary" onClick={() => setRecording(null)}>{S.cancelBtn}</button><button className="btn-primary" onClick={saveRecord}>{S.eqSaveSvc}</button></>}>
         <div className="space-y-3">
           <FormGrid>
-            <Field label="Tanggal servis"><input type="date" className="input" value={woForm.tanggal} onChange={(e) => setWoForm({ ...woForm, tanggal: e.target.value })} /></Field>
-            <Field label="Teknisi"><input className="input" value={woForm.teknisi} onChange={(e) => setWoForm({ ...woForm, teknisi: e.target.value })} placeholder="cth: Agus Setiawan" /></Field>
-            <Field label="Hour-meter (jam)"><input type="number" min={0} className="input" value={woForm.hours} onChange={(e) => setWoForm({ ...woForm, hours: e.target.value })} /></Field>
-            <Field label="Servis berikutnya"><input type="date" className="input" value={woForm.next} onChange={(e) => setWoForm({ ...woForm, next: e.target.value })} /></Field>
+            <Field label={S.eqSvcDateField}><input type="date" className="input" value={woForm.tanggal} onChange={(e) => setWoForm({ ...woForm, tanggal: e.target.value })} /></Field>
+            <Field label={S.eqTechField}><input className="input" value={woForm.teknisi} onChange={(e) => setWoForm({ ...woForm, teknisi: e.target.value })} placeholder={S.eqTechPh} /></Field>
+            <Field label={S.eqHourMeter}><input type="number" min={0} className="input" value={woForm.hours} onChange={(e) => setWoForm({ ...woForm, hours: e.target.value })} /></Field>
+            <Field label={S.eqNextSvc}><input type="date" className="input" value={woForm.next} onChange={(e) => setWoForm({ ...woForm, next: e.target.value })} /></Field>
           </FormGrid>
-          <Field label="Catatan pekerjaan"><input className="input" value={woForm.catatan} onChange={(e) => setWoForm({ ...woForm, catatan: e.target.value })} placeholder="cth: Ganti oli & filter hidrolik" /></Field>
+          <Field label={S.eqWorkNote}><input className="input" value={woForm.catatan} onChange={(e) => setWoForm({ ...woForm, catatan: e.target.value })} placeholder={S.eqWorkNotePh} /></Field>
         </div>
       </Modal>
 
       {/* Modal maintenance */}
-      <Modal open={maintaining !== null} onClose={() => setMaintaining(null)} title={`Maintenance - ${maintaining?.name ?? ""}`}
-        footer={<><button className="btn-secondary" onClick={() => setMaintaining(null)}>Batal</button><button className="btn-primary" onClick={startMaintenance}>Masuk Maintenance</button></>}>
+      <Modal open={maintaining !== null} onClose={() => setMaintaining(null)} title={S.eqMaintTitle.replace("{a}", maintaining?.name ?? "")}
+        footer={<><button className="btn-secondary" onClick={() => setMaintaining(null)}>{S.cancelBtn}</button><button className="btn-primary" onClick={startMaintenance}>{S.eqEnterMaintBtn}</button></>}>
         <div className="space-y-3">
-          <Field label="Catatan kerusakan"><input className="input" value={maintNote} onChange={(e) => setMaintNote(e.target.value)} placeholder="cth: Seal hidrolik bocor" /></Field>
-          <Field label="Estimasi selesai"><input type="date" className="input" value={maintEta} onChange={(e) => setMaintEta(e.target.value)} /></Field>
+          <Field label={S.eqDamageNote}><input className="input" value={maintNote} onChange={(e) => setMaintNote(e.target.value)} placeholder={S.eqDamageNotePh} /></Field>
+          <Field label={S.eqEtaField}><input type="date" className="input" value={maintEta} onChange={(e) => setMaintEta(e.target.value)} /></Field>
         </div>
       </Modal>
 
       {/* Modal booking */}
-      <Modal open={showBook} onClose={() => { setShowBook(false); setBookError(null); }} title="Booking Equipment" subtitle="Booking yang bentrok akan ditolak otomatis"
-        footer={<><button className="btn-secondary" onClick={() => { setShowBook(false); setBookError(null); }}>Batal</button><button className="btn-primary" onClick={saveBooking}>Simpan Booking</button></>}>
+      <Modal open={showBook} onClose={() => { setShowBook(false); setBookError(null); }} title={S.eqBookTitle} subtitle={S.eqBookSub}
+        footer={<><button className="btn-secondary" onClick={() => { setShowBook(false); setBookError(null); }}>{S.cancelBtn}</button><button className="btn-primary" onClick={saveBooking}>{S.eqSaveBooking}</button></>}>
         <div className="space-y-3">
           <FormGrid>
-            <Field label="Equipment">
+            <Field label={S.thEquipment}>
               <select className="input" value={bookForm.equip} onChange={(e) => setBookForm({ ...bookForm, equip: e.target.value })}>
-                <option value="">Pilih…</option>
+                <option value="">{S.eqChoose}</option>
                 {equipment.filter((e) => e.status !== "Maintenance").map((e) => <option key={e.id} value={e.name}>{e.name}</option>)}
               </select>
             </Field>
-            <Field label="Proyek">
+            <Field label={S.thProject}>
               <select className="input" value={bookForm.proyek} onChange={(e) => setBookForm({ ...bookForm, proyek: e.target.value })}>
-                <option value="">Pilih…</option>
+                <option value="">{S.eqChoose}</option>
                 {data.projects.filter((p) => p.status !== "Selesai").map((p) => <option key={p.id} value={p.id}>{p.id} · {p.vessel}</option>)}
               </select>
             </Field>
-            <Field label="Tanggal"><input type="date" className="input" value={bookForm.date} onChange={(e) => setBookForm({ ...bookForm, date: e.target.value })} /></Field>
-            <Field label="Jam mulai"><input type="time" className="input" value={bookForm.mulai} onChange={(e) => setBookForm({ ...bookForm, mulai: e.target.value })} /></Field>
-            <Field label="Jam selesai"><input type="time" className="input" value={bookForm.selesai} onChange={(e) => setBookForm({ ...bookForm, selesai: e.target.value })} /></Field>
-            <Field label="Prioritas">
+            <Field label={S.dateLabel}><input type="date" className="input" value={bookForm.date} onChange={(e) => setBookForm({ ...bookForm, date: e.target.value })} /></Field>
+            <Field label={S.eqStartField}><input type="time" className="input" value={bookForm.mulai} onChange={(e) => setBookForm({ ...bookForm, mulai: e.target.value })} /></Field>
+            <Field label={S.eqEndField}><input type="time" className="input" value={bookForm.selesai} onChange={(e) => setBookForm({ ...bookForm, selesai: e.target.value })} /></Field>
+            <Field label={S.eqPriorityField}>
               <select className="input" value={bookForm.priority} onChange={(e) => setBookForm({ ...bookForm, priority: e.target.value })}>
                 {BOOK_PRIORITIES.map((p) => <option key={p}>{p}</option>)}
               </select>
@@ -960,50 +964,50 @@ export default function EquipmentPage() {
       {/* Konfirmasi gusur booking Kritis */}
       <ConfirmModal
         open={gusur !== null}
-        title="Gusur booking Normal dengan Kritis?"
-        desc={`Booking Kritis akan menggusur ${gusur?.clash.map((c) => `${c.id} (${c.proyek})`).join(", ") ?? ""}. Aksi dicatat dan kedua pihak diberi tahu via toast.`}
-        confirmLabel="Ya, gusur"
+        title={S.eqGusurTitle}
+        desc={S.eqGusurDesc.replace("{a}", gusur?.clash.map((c) => `${c.id} (${c.proyek})`).join(", ") ?? "")}
+        confirmLabel={S.eqGusurYes}
         danger
         onCancel={() => setGusur(null)}
         onConfirm={confirmGusur}
       />
 
       {/* Modal selesaikan booking */}
-      <Modal open={finishing !== null} onClose={() => setFinishing(null)} title={`Selesaikan Booking - ${finishing?.equip ?? ""}`} subtitle={finishing ? `${finishing.proyek} · ${finishing.jam} · ${fmtTanggal(String(finishing.date))}` : ""}
-        footer={<><button className="btn-secondary" onClick={() => setFinishing(null)}>Batal</button><button className="btn-primary" onClick={confirmFinish}>Selesaikan</button></>}>
+      <Modal open={finishing !== null} onClose={() => setFinishing(null)} title={S.eqFinishBookTitle.replace("{a}", finishing?.equip ?? "")} subtitle={finishing ? `${finishing.proyek} · ${finishing.jam} · ${fmtTanggal(String(finishing.date))}` : ""}
+        footer={<><button className="btn-secondary" onClick={() => setFinishing(null)}>{S.cancelBtn}</button><button className="btn-primary" onClick={confirmFinish}>{S.finishBtn}</button></>}>
         <div className="space-y-3">
-          <Field label="Jam pakai aktual (jam)" hint="Default = durasi booking; menambah hour-meter equipment">
+          <Field label={S.eqActualHours} hint={S.eqActualHoursHint}>
             <input type="number" min={0} step={0.5} className="input" value={finishHours} onChange={(e) => setFinishHours(e.target.value)} />
           </Field>
-          <Field label="Downtime (jam)" hint="Waktu alat berhenti / tidak produktif selama booking">
+          <Field label={S.eqDowntimeField} hint={S.eqDowntimeHint}>
             <input type="number" min={0} step={0.5} className="input" value={finishDowntime} onChange={(e) => setFinishDowntime(e.target.value)} />
           </Field>
-          <Field label="BBM (liter)" hint="Konsumsi BBM booking ini · masuk total per equipment">
+          <Field label={S.eqFuelLitField} hint={S.eqFuelLitHint}>
             <input type="number" min={0} step={0.5} className="input" value={finishFuel} onChange={(e) => setFinishFuel(e.target.value)} />
           </Field>
         </div>
       </Modal>
 
       {/* Modal jadwalkan kalibrasi */}
-      <Modal open={showCal} onClose={() => setShowCal(false)} title="Jadwalkan Kalibrasi"
-        footer={<><button className="btn-secondary" onClick={() => setShowCal(false)}>Batal</button><button className="btn-primary" onClick={saveCalibration}>Simpan</button></>}>
+      <Modal open={showCal} onClose={() => setShowCal(false)} title={S.eqSchedCal}
+        footer={<><button className="btn-secondary" onClick={() => setShowCal(false)}>{S.cancelBtn}</button><button className="btn-primary" onClick={saveCalibration}>{S.saveBtn}</button></>}>
         <div className="space-y-3">
-          <Field label="Equipment">
+          <Field label={S.thEquipment}>
             <select className="input" value={calForm.equipmentId} onChange={(e) => setCalForm({ ...calForm, equipmentId: e.target.value })}>
-              <option value="">Pilih…</option>
+              <option value="">{S.eqChoose}</option>
               {equipment.map((e) => <option key={e.id} value={e.id}>{e.name} ({e.code}){isMeasuring(e) ? " · alat ukur" : ""}</option>)}
             </select>
           </Field>
-          <Field label="Item ukur"><input className="input" value={calForm.item} onChange={(e) => setCalForm({ ...calForm, item: e.target.value })} placeholder="cth: Load cell Mobile Crane" /></Field>
-          <Field label="Due date"><input type="date" className="input" value={calForm.due} onChange={(e) => setCalForm({ ...calForm, due: e.target.value })} /></Field>
+          <Field label={S.eqMeasureField}><input className="input" value={calForm.item} onChange={(e) => setCalForm({ ...calForm, item: e.target.value })} placeholder={S.eqMeasurePh} /></Field>
+          <Field label={S.eqDueField}><input type="date" className="input" value={calForm.due} onChange={(e) => setCalForm({ ...calForm, due: e.target.value })} /></Field>
         </div>
       </Modal>
 
       {/* Modal selesaikan kalibrasi */}
-      <Modal open={finishingCal !== null} onClose={() => setFinishingCal(null)} title={`Selesaikan Kalibrasi ${finishingCal?.id ?? ""}`}
-        footer={<><button className="btn-secondary" onClick={() => setFinishingCal(null)}>Batal</button><button className="btn-primary" onClick={confirmCalFinish}>Selesaikan</button></>}>
-        <Field label="No. sertifikat" hint="Wajib diisi saat kalibrasi Selesai">
-          <input className="input font-mono" value={calCert} onChange={(e) => setCalCert(e.target.value)} placeholder="cth: CAL-0502" />
+      <Modal open={finishingCal !== null} onClose={() => setFinishingCal(null)} title={S.eqCalDoneTitle.replace("{a}", finishingCal?.id ?? "")}
+        footer={<><button className="btn-secondary" onClick={() => setFinishingCal(null)}>{S.cancelBtn}</button><button className="btn-primary" onClick={confirmCalFinish}>{S.finishBtn}</button></>}>
+        <Field label={S.eqCertNoField} hint={S.eqCertNoHint}>
+          <input className="input font-mono" value={calCert} onChange={(e) => setCalCert(e.target.value)} placeholder={S.eqCertNoPh} />
         </Field>
       </Modal>
     </div>

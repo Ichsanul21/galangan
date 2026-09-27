@@ -44,6 +44,8 @@ import { useStore } from "../data/store";
 import { getSetting } from "../utils/settings";
 import { exportExcel } from "../utils/export";
 import { fmtTanggal, fmtMiliar, fmtRupiah, todayISO } from "../utils/format";
+import { useT } from "../i18n/LanguageContext";
+import { n_misc } from "../i18n/n_misc";
 import {
   revenueSeries,
   sparkRevenue,
@@ -81,11 +83,18 @@ function loadNotes(): Record<string, string[]> {
   } catch { return {}; }
 }
 
+function miscLocale(): "id" | "en" {
+  try {
+    return localStorage.getItem("isms.locale") === "en" ? "en" : "id";
+  } catch { return "id"; }
+}
+
 function exportChartPNG(chartId: string, filename: string): void {
+  const S0 = n_misc[miscLocale()];
   try {
     const wrap = document.getElementById(chartId);
     const svg = wrap?.querySelector("svg");
-    if (!svg) { toast("Chart belum siap diekspor", "info"); return; }
+    if (!svg) { toast(S0.tChartNotReady, "info"); return; }
     const clone = svg.cloneNode(true) as SVGSVGElement;
     clone.setAttribute("xmlns", "http://www.w3.org/2000/svg");
     const xml = new XMLSerializer().serializeToString(clone);
@@ -97,7 +106,7 @@ function exportChartPNG(chartId: string, filename: string): void {
         canvas.width = svg.clientWidth * 2 || 1200;
         canvas.height = svg.clientHeight * 2 || 600;
         const ctx = canvas.getContext("2d");
-        if (!ctx) { toast("Canvas tidak didukung", "info"); return; }
+        if (!ctx) { toast(S0.tCanvasUnsupported, "info"); return; }
         ctx.fillStyle = "#ffffff";
         ctx.fillRect(0, 0, canvas.width, canvas.height);
         ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
@@ -105,15 +114,17 @@ function exportChartPNG(chartId: string, filename: string): void {
         a.href = canvas.toDataURL("image/png");
         a.download = `${filename}.png`;
         a.click();
-        toast("Chart PNG diunduh");
-      } catch { toast("Gagal mengekspor chart", "info"); }
+        toast(S0.tChartPngDownloaded);
+      } catch { toast(S0.tChartExportFailed, "info"); }
     };
-    img.onerror = () => toast("Gagal mengekspor chart", "info");
+    img.onerror = () => toast(S0.tChartExportFailed, "info");
     img.src = url;
-  } catch { toast("Gagal mengekspor chart", "info"); }
+  } catch { toast(S0.tChartExportFailed, "info"); }
 }
 
 export default function Analytics() {
+  const { locale } = useT();
+  const S = n_misc[locale];
   const [tab, setTab] = useState("Deskriptif");
   const [sort, setSort] = useState<SortState>({ key: null, dir: "asc" });
   const [sort2, setSort2] = useState<SortState>({ key: null, dir: "asc" });
@@ -201,10 +212,10 @@ export default function Analytics() {
   const worstVendor = [...data.vendors].sort((a, b) => Number(a.onTime || 100) - Number(b.onTime || 100))[0];
   const maintEquip = data.equipment.filter((e) => e.status === "Maintenance");
   const fishbones: { tulang: string; sebab: string[] }[] = [
-    { tulang: "Manusia", sebab: [`Insiden terbanyak: ${topIncident ? `${topIncident[0]} (${topIncident[1]} kejadian)` : "nihil"}`, `NCR ${topNcrType} butuh welder/inspector bersertifikat`] },
-    { tulang: "Metode", sebab: [`${failedInspections.length} titik inspeksi berstatus NCR perlu ITP ulang`, `${openNcr} NCR terbuka menumpuk di ${drilldown.length} kategori`] },
-    { tulang: "Material", sebab: [`${lowStock.length} item di bawah minimum (${lowStock.slice(0, 2).map((i) => String(i.name)).join("; ") || "-"})`, `Vendor on-time terendah: ${worstVendor ? `${worstVendor.name} (${worstVendor.onTime}%)` : "-"}`] },
-    { tulang: "Mesin", sebab: [`${maintEquip.length} equipment dalam maintenance (${maintEquip.slice(0, 2).map((e) => String(e.name)).join("; ") || "-"})`, `${data.calibrations.filter((c) => c.status !== "Selesai").length} kalibrasi belum selesai`] },
+    { tulang: S.boneMan, sebab: [topIncident ? S.fishTopIncident.replace("{a}", `${topIncident[0]} (${topIncident[1]} kejadian)`) : S.fishTopIncidentEmpty, S.fishNcrNeed.replace("{n}", topNcrType)] },
+    { tulang: S.boneMethod, sebab: [S.fishFailedInspection.replace("{n}", String(failedInspections.length)), S.fishOpenNcr.replace("{n}", String(openNcr)).replace("{a}", String(drilldown.length))] },
+    { tulang: S.boneMaterial, sebab: [lowStock.slice(0, 2).map((i) => String(i.name)).join("; ") ? S.fishLowStock.replace("{n}", String(lowStock.length)).replace("{a}", lowStock.slice(0, 2).map((i) => String(i.name)).join("; ")) : S.fishLowStockEmpty.replace("{n}", String(lowStock.length)), worstVendor ? S.fishWorstVendor.replace("{a}", `${worstVendor.name} (${worstVendor.onTime}%)`) : S.fishWorstVendorEmpty] },
+    { tulang: S.boneMachine, sebab: [maintEquip.slice(0, 2).map((e) => String(e.name)).join("; ") ? S.fishMaintenance.replace("{n}", String(maintEquip.length)).replace("{a}", maintEquip.slice(0, 2).map((e) => String(e.name)).join("; ")) : S.fishMaintenanceEmpty.replace("{n}", String(maintEquip.length)), S.fishCalibration.replace("{n}", String(data.calibrations.filter((c) => c.status !== "Selesai").length))] },
   ];
 
   const revFactor = (1 + growth / 100) * (1 + progAdj / 100);
@@ -222,12 +233,12 @@ export default function Analytics() {
   const annualFor = (s: Scenario): number => Math.round(ma3 * (1 + s.growth / 100) * (1 + s.progAdj / 100) * 12);
 
   const saveScenario = () => {
-    if (!scName.trim()) { toast("Nama skenario wajib diisi", "info"); return; }
+    if (!scName.trim()) { toast(S.tScenarioNameRequired, "info"); return; }
     const sc: Scenario = { name: scName.trim(), growth, costAdj, progAdj };
     const next = [sc, ...scenarios.filter((s) => s.name !== sc.name)].slice(0, 20);
     setScenarios(next);
     try { localStorage.setItem("isms.scenario", JSON.stringify(next)); } catch { /* abaikan */ }
-    toast(`Skenario ${sc.name} disimpan`);
+    toast(S.tScenarioSaved.replace("{n}", sc.name));
     setScName("");
   };
 
@@ -242,23 +253,23 @@ export default function Analytics() {
     apply("WHATIF_COST", sc.costAdj);
     apply("WHATIF_PROG", sc.progAdj);
     log("menerapkan skenario what-if", `${name} (g:${sc.growth} c:${sc.costAdj} p:${sc.progAdj})`, "Analytics");
-    toast(`Skenario ${name} diterapkan ke Pengaturan`);
+    toast(S.tScenarioApplied.replace("{n}", name));
   };
 
   const delScenario = (name: string) => {
     const next = scenarios.filter((s) => s.name !== name);
     setScenarios(next);
     try { localStorage.setItem("isms.scenario", JSON.stringify(next)); } catch { /* abaikan */ }
-    toast(`Skenario ${name} dihapus`, "info");
+    toast(S.tScenarioDeleted.replace("{n}", name), "info");
   };
 
   const saveNote = () => {
-    if (!noteInput.trim()) { toast("Catatan kosong", "info"); return; }
+    if (!noteInput.trim()) { toast(S.tNoteEmpty, "info"); return; }
     const next = { ...notes, [tab]: [...(notes[tab] ?? []), noteInput.trim()].slice(0, 20) };
     setNotes(next);
     try { localStorage.setItem("isms.notes", JSON.stringify(next)); } catch { /* abaikan */ }
     setNoteInput("");
-    toast("Catatan insight disimpan");
+    toast(S.tInsightSaved);
   };
 
   const delNote = (idx: number) => {
@@ -303,35 +314,35 @@ export default function Analytics() {
       ...revenueSeries.map((d) => [d.month, d.revenue, d.cost]),
     ];
     exportExcel(rows, "Laporan Analytics");
-    toast("Laporan analytics diekspor ke Excel");
+    toast(S.tAnalyticsExported);
   };
 
   return (
     <div>
       <PageHeader
         title="Analytics #ISMS"
-        subtitle="Analisis 4 level - dari 'apa yang terjadi' hingga 'harus berbuat apa'"
+        subtitle={S.anSubtitle}
         icon={<BarChart3 className="h-5 w-5" />}
         actions={
-          <button className="btn-primary-gradient" onClick={exportReport}>Ekspor Laporan</button>
+          <button className="btn-primary-gradient" onClick={exportReport}>{S.exportReportBtn}</button>
         }
       />
 
-      <Tabs tabs={["Deskriptif", "Diagnostik", "Prediktif", "Preskriptif", "Profitabilitas"]} active={tab} onChange={setTab} />
+      <Tabs tabs={["Deskriptif", "Diagnostik", "Prediktif", "Preskriptif", "Profitabilitas"]} active={tab} onChange={setTab} labels={{ Deskriptif: S.tabDescriptive, Diagnostik: S.tabDiagnostic, Prediktif: S.tabPredictive, Preskriptif: S.tabPrescriptive, Profitabilitas: S.tabProfitability }} />
 
       <div className="mt-5">
         {tab === "Deskriptif" && (
           <div className="space-y-5">
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-              <KpiCard label="Revenue YTD" value={`Rp ${totalRevenue.toLocaleString("id-ID", { maximumFractionDigits: 1 })} M`} delta={`${revGrowth >= 0 ? "+" : ""}${revGrowth.toLocaleString("id-ID", { maximumFractionDigits: 1 })}% vs bulan lalu`} deltaDirection={revGrowth > 0 ? "up" : revGrowth < 0 ? "down" : "flat"} icon={<TrendingUp className="h-5 w-5" />} chip="navy" spark={sparkRevenue} />
-              <KpiCard label="Margin Rata-rata" value={`${avgMargin.toLocaleString("id-ID", { maximumFractionDigits: 1 })}%`} delta={`${marginDiff >= 0 ? "+" : ""}${marginDiff.toLocaleString("id-ID", { maximumFractionDigits: 1 })}pt vs bulan lalu`} deltaDirection={marginDiff > 0 ? "up" : marginDiff < 0 ? "down" : "flat"} icon={<Eye className="h-5 w-5" />} chip="teal" spark={sparkMargin} />
-              <KpiCard label="Rata-rata Progres" value={`${avgProgress}%`} delta={`${data.projects.length} proyek aktif`} deltaDirection="flat" icon={<Clock className="h-5 w-5" />} chip="violet" spark={sparkProjects} />
-              <KpiCard label="NCR Terbuka" value={String(openNcr)} delta={openNcrCritical > 0 ? `${String(openNcrCritical)} Critical` : "Nihil Critical"} deltaDirection={openNcrCritical > 0 ? "down" : "up"} icon={<AlertTriangle className="h-5 w-5" />} chip="rose" spark={ncrTrend} />
+              <KpiCard label={S.kpiRevenueYtd} value={`Rp ${totalRevenue.toLocaleString("id-ID", { maximumFractionDigits: 1 })} M`} delta={S.deltaPctVsMonth.replace("{n}", `${revGrowth >= 0 ? "+" : ""}${revGrowth.toLocaleString("id-ID", { maximumFractionDigits: 1 })}`)} deltaDirection={revGrowth > 0 ? "up" : revGrowth < 0 ? "down" : "flat"} icon={<TrendingUp className="h-5 w-5" />} chip="navy" spark={sparkRevenue} />
+              <KpiCard label={S.kpiAvgMargin} value={`${avgMargin.toLocaleString("id-ID", { maximumFractionDigits: 1 })}%`} delta={S.deltaPtVsMonth.replace("{n}", `${marginDiff >= 0 ? "+" : ""}${marginDiff.toLocaleString("id-ID", { maximumFractionDigits: 1 })}`)} deltaDirection={marginDiff > 0 ? "up" : marginDiff < 0 ? "down" : "flat"} icon={<Eye className="h-5 w-5" />} chip="teal" spark={sparkMargin} />
+              <KpiCard label={S.kpiAvgProgress} value={`${avgProgress}%`} delta={S.activeProjectsCount.replace("{n}", String(data.projects.length))} deltaDirection="flat" icon={<Clock className="h-5 w-5" />} chip="violet" spark={sparkProjects} />
+              <KpiCard label={S.kpiOpenNcr} value={String(openNcr)} delta={openNcrCritical > 0 ? S.criticalCount.replace("{n}", String(openNcrCritical)) : S.nihilCritical} deltaDirection={openNcrCritical > 0 ? "down" : "up"} icon={<AlertTriangle className="h-5 w-5" />} chip="rose" spark={ncrTrend} />
             </div>
 
             <div className="grid grid-cols-1 gap-5 lg:grid-cols-3">
               <Card className="lg:col-span-2">
-                <CardHeader title="Pendapatan vs Biaya" subtitle="12 bulan terakhir (milyar Rupiah)" action={<button className="btn-secondary px-2 py-1 text-xs" onClick={() => exportChartPNG("chart-rev", "pendapatan-vs-biaya")}>Ekspor PNG</button>} />
+                <CardHeader title={S.revenueVsCost} subtitle={S.last12Months} action={<button className="btn-secondary px-2 py-1 text-xs" onClick={() => exportChartPNG("chart-rev", "pendapatan-vs-biaya")}>{S.exportPngBtn}</button>} />
                 <div id="chart-rev" className="h-60 p-4 pt-0 sm:h-72">
                   <ResponsiveContainer width="100%" height="100%">
                     <BarChart data={revenueSeries} margin={{ top: 10, right: 10, left: -15, bottom: 0 }}>
@@ -340,14 +351,14 @@ export default function Analytics() {
                       <YAxis tick={{ fontSize: 12 }} stroke="#8aa2b6" axisLine={false} tickLine={false} />
                       <Tooltip content={<ChartTooltip formatter={(v) => `Rp ${v} M`} />} />
                       <Legend wrapperStyle={{ fontSize: 12 }} />
-                      <Bar dataKey="revenue" name="Pendapatan" fill="#0b3a63" radius={[4, 4, 0, 0]} isAnimationActive={false} />
-                      <Bar dataKey="cost" name="Biaya" fill="#8cc9e8" radius={[4, 4, 0, 0]} isAnimationActive={false} />
+                      <Bar dataKey="revenue" name={S.legendRevenue} fill="#0b3a63" radius={[4, 4, 0, 0]} isAnimationActive={false} />
+                      <Bar dataKey="cost" name={S.legendCost} fill="#8cc9e8" radius={[4, 4, 0, 0]} isAnimationActive={false} />
                     </BarChart>
                   </ResponsiveContainer>
                 </div>
               </Card>
               <Card>
-                <CardHeader title="Komposisi Jenis Pekerjaan" subtitle="Distribusi portofolio (live)" />
+                <CardHeader title={S.jobComposition} subtitle={S.portfolioDistLive} />
                 <div className="flex flex-col items-center gap-3 p-4">
                   <Donut
                     data={typeDist}
@@ -355,7 +366,7 @@ export default function Analytics() {
                     size={150}
                     thickness={20}
                     centerValue={String(typeDist.reduce((s, d) => s + d.value, 0))}
-                    centerLabel="total"
+                    centerLabel={S.donutTotal}
                   />
                   <div className="grid w-full grid-cols-1 gap-1.5">
                     {typeDist.map((d) => (
@@ -371,7 +382,7 @@ export default function Analytics() {
             </div>
 
             <Card>
-              <CardHeader title="Margin Bruto & Volume Inspeksi" subtitle="Tren margin + aktivitas QC (inspeksi per bulan)" />
+              <CardHeader title={S.marginVsInspection} subtitle={S.marginQcTrend} />
               <div className="grid grid-cols-1 gap-4 p-4 pt-0 lg:grid-cols-2">
                 <div className="h-56">
                   <ResponsiveContainer width="100%" height="100%">
@@ -380,7 +391,7 @@ export default function Analytics() {
                       <XAxis dataKey="month" stroke="#8aa2b6" axisLine={false} tickLine={false} />
                       <YAxis domain={[15, 35]} stroke="#8aa2b6" axisLine={false} tickLine={false} />
                       <Tooltip content={<ChartTooltip formatter={(v) => `${v}%`} />} />
-                      <Line type="monotone" dataKey="margin" name="Margin" stroke="#0d9488" strokeWidth={2.5} dot={{ r: 3 }} isAnimationActive={false} />
+                      <Line type="monotone" dataKey="margin" name={S.legendMargin} stroke="#0d9488" strokeWidth={2.5} dot={{ r: 3 }} isAnimationActive={false} />
                     </LineChart>
                   </ResponsiveContainer>
                 </div>
@@ -392,8 +403,8 @@ export default function Analytics() {
                       <YAxis stroke="#8aa2b6" axisLine={false} tickLine={false} />
                       <Tooltip />
                       <Legend wrapperStyle={{ fontSize: 12 }} />
-                      <Area type="monotone" dataKey="inspeksi" name="Inspeksi" stroke="#2e9ad4" fill="#8cc9e8" fillOpacity={0.4} isAnimationActive={false} />
-                      <Line type="monotone" dataKey="lulus" name="Lulus" stroke="#1f9d55" strokeWidth={2} dot={false} isAnimationActive={false} />
+                      <Area type="monotone" dataKey="inspeksi" name={S.legendInspection} stroke="#2e9ad4" fill="#8cc9e8" fillOpacity={0.4} isAnimationActive={false} />
+                      <Line type="monotone" dataKey="lulus" name={S.legendPassed} stroke="#1f9d55" strokeWidth={2} dot={false} isAnimationActive={false} />
                     </ComposedChart>
                   </ResponsiveContainer>
                 </div>
@@ -406,7 +417,7 @@ export default function Analytics() {
           <div className="space-y-5">
             <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
               <Card>
-                <CardHeader title="Temuan NCR per Kategori" subtitle="Terhubung modul QC - live" action={<Badge tone="red">{`${drilldown.length} kategori`}</Badge>} />
+                <CardHeader title={S.ncrByCategory} subtitle={S.connectedQcLive} action={<Badge tone="red">{S.categoryCount.replace("{n}", String(drilldown.length))}</Badge>} />
                 <div className="p-5 space-y-4 pt-2">
                   {drilldown.map((d, i) => (
                     <div key={d.factor} className="flex items-center gap-4">
@@ -414,24 +425,24 @@ export default function Analytics() {
                       <div className="flex-1">
                         <div className="mb-1 flex justify-between text-sm">
                           <span className="text-steel-700">{d.factor}</span>
-                          <span className="font-semibold text-navy-900">{d.impact}% impact</span>
+                          <span className="font-semibold text-navy-900">{S.impactPct.replace("{n}", String(d.impact))}</span>
                         </div>
                         <ProgressBar value={d.impact} tone="red" />
-                        <p className="mt-0.5 text-xs text-steel-500">{d.count} kejadian tercatat</p>
+                        <p className="mt-0.5 text-xs text-steel-500">{S.incidentsRecorded.replace("{n}", String(d.count))}</p>
                       </div>
                     </div>
                   ))}
                 </div>
               </Card>
               <Card>
-                <CardHeader title="Variance Anggaran Bulanan" subtitle="Deviasi pendapatan vs rata-rata (juta Rupiah)" />
+                <CardHeader title={S.monthlyBudgetVariance} subtitle={S.varianceVsAvg} />
                 <div className="h-64 p-4 pt-0">
                   <ResponsiveContainer width="100%" height="100%">
                     <BarChart data={variance} margin={{ top: 10, right: 10, left: -15, bottom: 0 }}>
                       <CartesianGrid strokeDasharray="3 3" stroke="#e9eff4" />
                       <XAxis dataKey="n" stroke="#8aa2b6" axisLine={false} tickLine={false} />
                       <YAxis stroke="#8aa2b6" axisLine={false} tickLine={false} />
-                      <Tooltip content={<ChartTooltip formatter={(v) => `${v} juta`} />} />
+                      <Tooltip content={<ChartTooltip formatter={(v) => S.millionSuffix.replace("{n}", String(v))} />} />
                       <ReferenceLine y={0} stroke="#dc2626" />
                       <Bar dataKey="v" fill="#2e9ad4" radius={[4, 4, 0, 0]} />
                     </BarChart>
@@ -441,7 +452,7 @@ export default function Analytics() {
             </div>
             <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
               <Card>
-                <CardHeader title="Pareto NCR per Kategori" subtitle="Bar jumlah + garis kumulatif % - live" action={<Badge tone="red">Pareto</Badge>} />
+                <CardHeader title={S.paretoNcr} subtitle={S.paretoBarLine} action={<Badge tone="red">Pareto</Badge>} />
                 <div className="h-64 p-4 pt-0">
                   <ResponsiveContainer width="100%" height="100%">
                     <ComposedChart data={pareto} margin={{ top: 10, right: 10, left: -15, bottom: 0 }}>
@@ -451,14 +462,14 @@ export default function Analytics() {
                       <YAxis yAxisId="kanan" orientation="right" domain={[0, 100]} tick={{ fontSize: 12 }} stroke="#8aa2b6" axisLine={false} tickLine={false} />
                       <Tooltip content={<ChartTooltip formatter={(v, n) => (n === "kum" ? `${v}%` : `${v} kejadian`)} />} />
                       <Legend wrapperStyle={{ fontSize: 12 }} />
-                      <Bar yAxisId="kiri" dataKey="count" name="Kejadian" fill="#0b3a63" radius={[4, 4, 0, 0]} />
-                      <Line yAxisId="kanan" type="monotone" dataKey="kum" name="Kumulatif" stroke="#e11d48" strokeWidth={2} dot={{ r: 3 }} />
+                      <Bar yAxisId="kiri" dataKey="count" name={S.legendIncidents} fill="#0b3a63" radius={[4, 4, 0, 0]} />
+                      <Line yAxisId="kanan" type="monotone" dataKey="kum" name={S.legendCumulative} stroke="#e11d48" strokeWidth={2} dot={{ r: 3 }} />
                     </ComposedChart>
                   </ResponsiveContainer>
                 </div>
               </Card>
               <Card>
-                <CardHeader title="Fishbone Penyebab Keterlambatan" subtitle={`Top delay: NCR ${topNcrType} per ${fmtTanggal(todayISO())}`} action={<Badge tone="amber">4M</Badge>} />
+                <CardHeader title={S.fishboneTitle} subtitle={S.fishboneSub.replace("{a}", topNcrType).replace("{b}", fmtTanggal(todayISO()))} action={<Badge tone="amber">4M</Badge>} />
                 <div className="grid grid-cols-1 gap-2.5 p-5 pt-2 sm:grid-cols-2">
                   {fishbones.map((f) => (
                     <div key={f.tulang} className="rounded-xl border border-steel-100 bg-surface p-3">
@@ -472,11 +483,11 @@ export default function Analytics() {
               </Card>
             </div>
             <Card>
-              <CardHeader title="Drill-down NCR" subtitle={`Rincian per kategori per ${fmtTanggal(todayISO())}`} />
+              <CardHeader title={S.drilldownNcr} subtitle={S.drilldownSub.replace("{n}", fmtTanggal(todayISO()))} />
               <div className="overflow-x-auto">
                 <table className="w-full">
                   <thead className="bg-surface">
-                    <tr><SortTh label="Kategori" sortKey="kategori" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label="Kejadian" sortKey="kejadian" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label="Dampak" sortKey="dampak" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><th className="th">Tren</th></tr>
+                    <tr><SortTh label={S.sortCategory} sortKey="kategori" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.sortIncidents} sortKey="kejadian" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.sortImpact} sortKey="dampak" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><th className="th">{S.sortTrend}</th></tr>
                   </thead>
                   <tbody className="divide-y divide-steel-100">
                     {sortRows(drilldown, sort, (d, key) =>
@@ -494,21 +505,21 @@ export default function Analytics() {
               </div>
             </Card>
             <Card>
-              <CardHeader title="Pendapatan per Cabang" subtitle="Nilai kontrak proyek per cabang - live" />
+              <CardHeader title={S.revenuePerBranch} subtitle={S.contractPerBranchLive} />
               <div className="space-y-3 p-5 pt-2">
                 {branchRows.map(([branch, value]) => {
                   const maxBranch = branchRows.length ? branchRows[0][1] : 1;
                   return (
                     <div key={branch}>
                       <div className="mb-1 flex justify-between text-sm">
-                        <span className="text-steel-700">{branch} ({data.projects.filter((p) => p.branch === branch).length} proyek)</span>
+                        <span className="text-steel-700">{branch} {S.projectCountParen.replace("{n}", String(data.projects.filter((p) => p.branch === branch).length))}</span>
                         <span className="font-semibold text-navy-900">Rp {(value / 1000000000).toLocaleString("id-ID", { maximumFractionDigits: 1 })} M</span>
                       </div>
                       <ProgressBar value={maxBranch ? (value / maxBranch) * 100 : 0} tone="navy" />
                     </div>
                   );
                 })}
-                {branchRows.length === 0 && <p className="text-sm text-steel-400">Belum ada data proyek.</p>}
+                {branchRows.length === 0 && <p className="text-sm text-steel-400">{S.noProjectData}</p>}
               </div>
             </Card>
           </div>
@@ -517,54 +528,54 @@ export default function Analytics() {
         {tab === "Prediktif" && (
           <div className="space-y-5">
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-              <KpiCard label="Forecast Revenue 2026" value={`Rp ${forecastAnnualAdj.toLocaleString("id-ID")} M`} delta={`What-if ${growth >= 0 ? "+" : ""}${growth}%`} deltaDirection={growth > 0 ? "up" : growth < 0 ? "down" : "flat"} icon={<TrendingUp className="h-5 w-5" />} chip="navy" spark={forecastAdj.map((f) => ({ name: f.name, v: f.forecast ?? 0 }))} />
-              <KpiCard label="Konflik Drydock" value={dockConflict ? `${dockConflict} slot` : "Aman"} delta={dockConflict ? "Perlu atasi" : "Tidak ada tumpang tindih"} deltaDirection={dockConflict ? "down" : "up"} icon={<AlertTriangle className="h-5 w-5" />} chip="rose" spark={slotTrend} />
-              <KpiCard label="Stok Kritis" value={`${lowStock.length} item`} delta={lowStock.slice(0, 2).map((i) => i.name.split(" ").slice(0, 2).join(" ")).join(" · ") || "Semua aman"} deltaDirection={lowStock.length ? "down" : "up"} icon={<AlertTriangle className="h-5 w-5" />} chip="amber" spark={lowStockTrend} />
-              <KpiCard label="Proyek Berisiko" value={`${atRisk} proyek`} delta="Terlambat / over-budget" deltaDirection={atRisk ? "down" : "up"} icon={<Clock className="h-5 w-5" />} chip="violet" spark={activeProjectTrend} />
+              <KpiCard label={S.forecastAnnual} value={`Rp ${forecastAnnualAdj.toLocaleString("id-ID")} M`} delta={S.whatifDelta.replace("{n}", `${growth >= 0 ? "+" : ""}${growth}`)} deltaDirection={growth > 0 ? "up" : growth < 0 ? "down" : "flat"} icon={<TrendingUp className="h-5 w-5" />} chip="navy" spark={forecastAdj.map((f) => ({ name: f.name, v: f.forecast ?? 0 }))} />
+              <KpiCard label={S.drydockConflict} value={dockConflict ? S.slotCount.replace("{n}", String(dockConflict)) : S.safeLabel} delta={dockConflict ? S.needFix : S.noOverlap} deltaDirection={dockConflict ? "down" : "up"} icon={<AlertTriangle className="h-5 w-5" />} chip="rose" spark={slotTrend} />
+              <KpiCard label={S.criticalStock} value={S.itemCount.replace("{n}", String(lowStock.length))} delta={lowStock.slice(0, 2).map((i) => i.name.split(" ").slice(0, 2).join(" ")).join(" · ") || S.allSafe} deltaDirection={lowStock.length ? "down" : "up"} icon={<AlertTriangle className="h-5 w-5" />} chip="amber" spark={lowStockTrend} />
+              <KpiCard label={S.riskyProjects} value={S.riskyCount.replace("{n}", String(atRisk))} delta={S.lateOverBudget} deltaDirection={atRisk ? "down" : "up"} icon={<Clock className="h-5 w-5" />} chip="violet" spark={activeProjectTrend} />
             </div>
             <Card>
-              <CardHeader title="What-if Pertumbuhan" subtitle={`Baseline Rp ${forecastAnnual.toLocaleString("id-ID")} M (MA3 × 12) - diatur di Pengaturan, otomatis dipakai`} action={<Badge tone="violet">{`${growth >= 0 ? "+" : ""}${growth}%`}</Badge>} />
+              <CardHeader title={S.whatifGrowth} subtitle={S.whatifBaseline.replace("{n}", forecastAnnual.toLocaleString("id-ID"))} action={<Badge tone="violet">{`${growth >= 0 ? "+" : ""}${growth}%`}</Badge>} />
               <div className="flex flex-col gap-3 p-5 pt-2">
                 <div className="grid grid-cols-1 gap-2 text-sm sm:grid-cols-3">
-                  <div className="rounded-xl bg-surface px-3 py-2"><p className="text-[11px] text-steel-400">Pertumbuhan pasar</p><p className="font-bold text-navy-900">{growth}%</p></div>
-                  <div className="rounded-xl bg-surface px-3 py-2"><p className="text-[11px] text-steel-400">Biaya (±, menekan margin)</p><p className="font-bold text-navy-900">{costAdj}%</p></div>
-                  <div className="rounded-xl bg-surface px-3 py-2"><p className="text-[11px] text-steel-400">Progres (±, menggeser forecast)</p><p className="font-bold text-navy-900">{progAdj}%</p></div>
+                  <div className="rounded-xl bg-surface px-3 py-2"><p className="text-[11px] text-steel-400">{S.marketGrowth}</p><p className="font-bold text-navy-900">{growth}%</p></div>
+                  <div className="rounded-xl bg-surface px-3 py-2"><p className="text-[11px] text-steel-400">{S.costSuppress}</p><p className="font-bold text-navy-900">{costAdj}%</p></div>
+                  <div className="rounded-xl bg-surface px-3 py-2"><p className="text-[11px] text-steel-400">{S.progressShift}</p><p className="font-bold text-navy-900">{progAdj}%</p></div>
                 </div>
                 <div className="flex flex-wrap gap-2">
-                  <Link to="/pengaturan" className="btn-secondary text-xs">Ubah di Pengaturan</Link>
+                  <Link to="/pengaturan" className="btn-secondary text-xs">{S.changeInSettings}</Link>
                 </div>
-                <p className="text-sm text-steel-600">Forecast tahunan tersimulasi: <span className="font-bold text-navy-900">Rp {forecastAnnualAdj.toLocaleString("id-ID")} M</span> · margin live {marginLive.toLocaleString("id-ID", { maximumFractionDigits: 1 })}% per {fmtTanggal(todayISO())}</p>
-                <p className="text-xs text-steel-400">Asumsi: progres +/- menggeser revenue secara proporsional; biaya +1% menekan margin 0,3 poin; pita ±15%.</p>
+                <p className="text-sm text-steel-600">{S.forecastSimulated.replace("{a}", `Rp ${forecastAnnualAdj.toLocaleString("id-ID")} M`).replace("{b}", marginLive.toLocaleString("id-ID", { maximumFractionDigits: 1 })).replace("{c}", fmtTanggal(todayISO()))}</p>
+                <p className="text-xs text-steel-400">{S.whatifAssumption}</p>
               </div>
             </Card>
             <Card>
-              <CardHeader title="Skenario Tersimpan" subtitle="Simpan set What-if Pengaturan + bandingkan 2 skenario" />
+              <CardHeader title={S.savedScenarios} subtitle={S.savedScenariosSub} />
               <div className="flex flex-wrap gap-2 p-5 pt-2">
-                <input className="input w-48" placeholder="Nama skenario…" value={scName} onChange={(e) => setScName(e.target.value)} />
-                <button className="btn-secondary text-xs" onClick={saveScenario}>Simpan Skenario</button>
+                <input className="input w-48" placeholder={S.scenarioNamePh} value={scName} onChange={(e) => setScName(e.target.value)} />
+                <button className="btn-secondary text-xs" onClick={saveScenario}>{S.saveScenarioBtn}</button>
               </div>
               <div className="space-y-1.5 px-5 pb-2 text-sm">
                 {scenarios.map((s) => (
                   <div key={s.name} className="flex items-center gap-2 rounded-xl bg-surface px-3 py-2">
                     <span className="font-semibold text-navy-900">{s.name}</span>
-                    <span className="text-xs text-steel-500">+{s.growth}% / biaya {s.costAdj}% / prog {s.progAdj}% · Rp {annualFor(s).toLocaleString("id-ID")} M</span>
+                    <span className="text-xs text-steel-500">{S.scenarioMeta.replace("{a}", String(s.growth)).replace("{b}", String(s.costAdj)).replace("{c}", String(s.progAdj)).replace("{n}", annualFor(s).toLocaleString("id-ID"))}</span>
                     <span className="ml-auto flex gap-1.5">
-                      <button className="btn-secondary px-2 py-1 text-xs" onClick={() => loadScenario(s.name)}>Terapkan</button>
-                      <button className="btn-secondary px-2 py-1 text-xs" onClick={() => delScenario(s.name)}>Hapus</button>
+                      <button className="btn-secondary px-2 py-1 text-xs" onClick={() => loadScenario(s.name)}>{S.applyBtn}</button>
+                      <button className="btn-secondary px-2 py-1 text-xs" onClick={() => delScenario(s.name)}>{S.deleteBtn}</button>
                     </span>
                   </div>
                 ))}
-                {scenarios.length === 0 && <p className="text-xs text-steel-400">Belum ada skenario.</p>}
+                {scenarios.length === 0 && <p className="text-xs text-steel-400">{S.noScenarios}</p>}
               </div>
               {scenarios.length >= 1 && (
                 <div className="space-y-2 px-5 pb-5 text-sm">
                   <div className="flex flex-wrap gap-2">
                     <select className="input w-44" value={cmpA} onChange={(e) => setCmpA(e.target.value)}>
-                      <option value="">Skenario A…</option>
+                      <option value="">{S.scenarioA}</option>
                       {scenarios.map((s) => <option key={s.name} value={s.name}>{s.name}</option>)}
                     </select>
                     <select className="input w-44" value={cmpB} onChange={(e) => setCmpB(e.target.value)}>
-                      <option value="">Skenario B…</option>
+                      <option value="">{S.scenarioB}</option>
                       {scenarios.map((s) => <option key={s.name} value={s.name}>{s.name}</option>)}
                     </select>
                   </div>
@@ -574,14 +585,14 @@ export default function Analytics() {
                     if (!a || !b) return null;
                     return (
                       <table className="w-full text-xs">
-                        <thead className="bg-surface"><tr><SortTh label="Param" sortKey="param" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} /><SortTh label={a.name} sortKey="a" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} /><SortTh label={b.name} sortKey="b" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} /></tr></thead>
+                        <thead className="bg-surface"><tr><SortTh label={S.paramLabel} sortKey="param" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} /><SortTh label={a.name} sortKey="a" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} /><SortTh label={b.name} sortKey="b" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} /></tr></thead>
                         <tbody className="divide-y divide-steel-100">
                           {sortRows(
                             [
-                              { param: "Growth", av: Number(a.growth), bv: Number(b.growth), unit: "%" },
-                              { param: "Biaya", av: Number(a.costAdj), bv: Number(b.costAdj), unit: "%" },
-                              { param: "Progres", av: Number(a.progAdj), bv: Number(b.progAdj), unit: "%" },
-                              { param: "Forecast/thn", av: annualFor(a), bv: annualFor(b), unit: "Rp" },
+                              { param: S.paramGrowth, av: Number(a.growth), bv: Number(b.growth), unit: "%" },
+                              { param: S.paramCost, av: Number(a.costAdj), bv: Number(b.costAdj), unit: "%" },
+                              { param: S.paramProgress, av: Number(a.progAdj), bv: Number(b.progAdj), unit: "%" },
+                              { param: S.paramForecastYear, av: annualFor(a), bv: annualFor(b), unit: "Rp" },
                             ],
                             sort2,
                             (r, key) => key === "a" ? Number(r.av) : key === "b" ? Number(r.bv) : String(r.param)
@@ -600,7 +611,7 @@ export default function Analytics() {
               )}
             </Card>
             <Card>
-              <CardHeader title="Forecast Pendapatan" subtitle="Aktual + forecast MA3 dengan pita kepercayaan ±15% (miliar Rupiah)" action={<span className="flex gap-1.5"><Badge tone="blue">Prediksi AI</Badge><button className="btn-secondary px-2 py-1 text-xs" onClick={() => exportChartPNG("chart-forecast", "forecast-pendapatan")}>Ekspor PNG</button></span>} />
+              <CardHeader title={S.forecastRevenue} subtitle={S.forecastBand} action={<span className="flex gap-1.5"><Badge tone="blue">{S.aiPrediction}</Badge><button className="btn-secondary px-2 py-1 text-xs" onClick={() => exportChartPNG("chart-forecast", "forecast-pendapatan")}>{S.exportPngBtn}</button></span>} />
               <div id="chart-forecast" className="h-60 p-4 pt-0 sm:h-72">
                 <ResponsiveContainer width="100%" height="100%">
                   <ComposedChart data={forecastAdj} margin={{ top: 10, right: 10, left: -15, bottom: 0 }}>
@@ -609,10 +620,10 @@ export default function Analytics() {
                     <YAxis stroke="#8aa2b6" axisLine={false} tickLine={false} />
                     <Tooltip content={<ChartTooltip formatter={(v) => `Rp ${v} M`} />} />
                     <Legend wrapperStyle={{ fontSize: 12 }} />
-                    <Area type="monotone" dataKey="high" name="Batas atas" stroke="none" fill="#8cc9e8" fillOpacity={0.35} connectNulls />
-                    <Area type="monotone" dataKey="low" name="Batas bawah" stroke="none" fill="#ffffff" fillOpacity={0.9} connectNulls />
-                    <Line type="monotone" dataKey="actual" name="Aktual" stroke="#dc2626" strokeWidth={2} connectNulls dot={{ r: 4 }} />
-                    <Line type="monotone" dataKey="forecast" name="Forecast" stroke="#2e9ad4" strokeDasharray="6 3" strokeWidth={2} dot={{ r: 4 }} />
+                    <Area type="monotone" dataKey="high" name={S.limitTop} stroke="none" fill="#8cc9e8" fillOpacity={0.35} connectNulls />
+                    <Area type="monotone" dataKey="low" name={S.limitBottom} stroke="none" fill="#ffffff" fillOpacity={0.9} connectNulls />
+                    <Line type="monotone" dataKey="actual" name={S.legendActual} stroke="#dc2626" strokeWidth={2} connectNulls dot={{ r: 4 }} />
+                    <Line type="monotone" dataKey="forecast" name={S.legendForecast} stroke="#2e9ad4" strokeDasharray="6 3" strokeWidth={2} dot={{ r: 4 }} />
                   </ComposedChart>
                 </ResponsiveContainer>
               </div>
@@ -624,10 +635,10 @@ export default function Analytics() {
           <div className="space-y-5">
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               {[
-                { icon: Lightbulb, tone: "bg-navy-50 text-navy-700", title: "Alokasi Drydock", desc: "Geser slot yang bertabrakan ke minggu berikutnya; gunakan berth 1 untuk assembly.", to: "/drydock", cta: "Buka Drydock" },
-                { icon: CheckCircle2, tone: "bg-emerald-50 text-emerald-600", title: "Reorder Material", desc: `${lowStock.length} item di bawah minimum. Terbitkan PO sekarang dengan lead time 3 minggu.`, to: "/procurement", cta: "Buka Procurement" },
-                { icon: Lightbulb, tone: "bg-amber-50 text-amber-600", title: "Prioritas Proyek", desc: `${atRisk} proyek terlambat/over-budget. Alokasikan tim las tambahan & tinjau WBS.`, to: "/proyek", cta: "Buka Proyek" },
-                { icon: CheckCircle2, tone: "bg-violet-50 text-violet-700", title: "Tindak Lanjut NCR", desc: `${openNcr} NCR masih terbuka. Selesaikan temuan critical terlebih dahulu.`, to: "/qc-safety", cta: "Buka QC" },
+                { icon: Lightbulb, tone: "bg-navy-50 text-navy-700", title: S.allocDrydock, desc: S.allocDrydockDesc, to: "/drydock", cta: S.openDrydock },
+                { icon: CheckCircle2, tone: "bg-emerald-50 text-emerald-600", title: S.reorderMaterial, desc: S.reorderDesc.replace("{n}", String(lowStock.length)), to: "/procurement", cta: S.openProcurement },
+                { icon: Lightbulb, tone: "bg-amber-50 text-amber-600", title: S.projectPriority, desc: S.projectPriorityDesc.replace("{n}", String(atRisk)), to: "/proyek", cta: S.openProjects },
+                { icon: CheckCircle2, tone: "bg-violet-50 text-violet-700", title: S.followUpNcr, desc: S.followUpNcrDesc.replace("{n}", String(openNcr)), to: "/qc-safety", cta: S.openQc },
               ].map((r) => (
                 <Card key={r.title} className="card-hover p-5">
                   <div className="flex items-start gap-3">
@@ -647,14 +658,14 @@ export default function Analytics() {
         {tab === "Profitabilitas" && (
           <div className="space-y-5">
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-              <KpiCard label="Total Profit Portofolio" value={fmtMiliar(profitByType.reduce((s, d) => s + d.profit * 1000000000, 0))} delta={`${data.projects.length} proyek`} deltaDirection="flat" icon={<TrendingUp className="h-5 w-5" />} chip="navy" spark={sparkRevenue} />
-              <KpiCard label="Biaya Rework" value={fmtRupiah(reworkCost)} delta="Estimasi berjalan" deltaDirection="down" icon={<AlertTriangle className="h-5 w-5" />} chip="rose" spark={ncrTrend} />
-              <KpiCard label="Utilisasi vs Target" value={`${lastUtil}% / ${utilTarget}%`} delta={lastUtil >= utilTarget ? "Target tercapai" : "Di bawah target"} deltaDirection={lastUtil >= utilTarget ? "up" : "down"} icon={<Clock className="h-5 w-5" />} chip="teal" spark={sparkProjects} />
-              <KpiCard label="Tipe Paling Profitabel" value={profitByType.length ? [...profitByType].sort((a, b) => b.profit - a.profit)[0].name : "-"} delta={profitByType.length ? fmtMiliar([...profitByType].sort((a, b) => b.profit - a.profit)[0].profit * 1000000000) : "-"} deltaDirection="flat" icon={<Eye className="h-5 w-5" />} chip="violet" spark={sparkMargin} />
+              <KpiCard label={S.totalPortfolioProfit} value={fmtMiliar(profitByType.reduce((s, d) => s + d.profit * 1000000000, 0))} delta={`${data.projects.length} proyek`} deltaDirection="flat" icon={<TrendingUp className="h-5 w-5" />} chip="navy" spark={sparkRevenue} />
+              <KpiCard label={S.reworkCost} value={fmtRupiah(reworkCost)} delta={S.runningEstimate} deltaDirection="down" icon={<AlertTriangle className="h-5 w-5" />} chip="rose" spark={ncrTrend} />
+              <KpiCard label={S.utilVsTarget} value={`${lastUtil}% / ${utilTarget}%`} delta={lastUtil >= utilTarget ? S.targetReached : S.belowTarget} deltaDirection={lastUtil >= utilTarget ? "up" : "down"} icon={<Clock className="h-5 w-5" />} chip="teal" spark={sparkProjects} />
+              <KpiCard label={S.mostProfitableType} value={profitByType.length ? [...profitByType].sort((a, b) => b.profit - a.profit)[0].name : "-"} delta={profitByType.length ? fmtMiliar([...profitByType].sort((a, b) => b.profit - a.profit)[0].profit * 1000000000) : "-"} deltaDirection="flat" icon={<Eye className="h-5 w-5" />} chip="violet" spark={sparkMargin} />
             </div>
             <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
               <Card>
-                <CardHeader title="Profit per Tipe Proyek" subtitle={`Budget - aktual per ${fmtTanggal(todayISO())} (miliar Rp)`} action={<button className="btn-secondary px-2 py-1 text-xs" onClick={() => exportChartPNG("chart-profittype", "profit-tipe")}>Ekspor PNG</button>} />
+                <CardHeader title={S.profitPerType} subtitle={S.budgetActualPer.replace("{n}", fmtTanggal(todayISO()))} action={<button className="btn-secondary px-2 py-1 text-xs" onClick={() => exportChartPNG("chart-profittype", "profit-tipe")}>{S.exportPngBtn}</button>} />
                 <div id="chart-profittype" className="h-60 p-4 pt-0">
                   <ResponsiveContainer width="100%" height="100%">
                     <BarChart data={profitByType} margin={{ top: 10, right: 10, left: -10, bottom: 0 }}>
@@ -662,13 +673,13 @@ export default function Analytics() {
                       <XAxis dataKey="name" tick={{ fontSize: 12 }} stroke="#8aa2b6" axisLine={false} tickLine={false} />
                       <YAxis tick={{ fontSize: 12 }} stroke="#8aa2b6" axisLine={false} tickLine={false} />
                       <Tooltip content={<ChartTooltip formatter={(v) => `Rp ${v} M`} />} />
-                      <Bar dataKey="profit" name="Profit" fill="#0b3a63" radius={[4, 4, 0, 0]} />
+                      <Bar dataKey="profit" name={S.profitLabel} fill="#0b3a63" radius={[4, 4, 0, 0]} />
                     </BarChart>
                   </ResponsiveContainer>
                 </div>
               </Card>
               <Card>
-                <CardHeader title="Profit per Cabang" subtitle={`Budget - aktual per ${fmtTanggal(todayISO())} (miliar Rp)`} action={<button className="btn-secondary px-2 py-1 text-xs" onClick={() => exportChartPNG("chart-profitbranch", "profit-cabang")}>Ekspor PNG</button>} />
+                <CardHeader title={S.profitPerBranch} subtitle={S.budgetActualPer.replace("{n}", fmtTanggal(todayISO()))} action={<button className="btn-secondary px-2 py-1 text-xs" onClick={() => exportChartPNG("chart-profitbranch", "profit-cabang")}>{S.exportPngBtn}</button>} />
                 <div id="chart-profitbranch" className="h-60 p-4 pt-0">
                   <ResponsiveContainer width="100%" height="100%">
                     <BarChart data={profitByBranch} margin={{ top: 10, right: 10, left: -10, bottom: 0 }}>
@@ -676,7 +687,7 @@ export default function Analytics() {
                       <XAxis dataKey="name" tick={{ fontSize: 12 }} stroke="#8aa2b6" axisLine={false} tickLine={false} />
                       <YAxis tick={{ fontSize: 12 }} stroke="#8aa2b6" axisLine={false} tickLine={false} />
                       <Tooltip content={<ChartTooltip formatter={(v) => `Rp ${v} M`} />} />
-                      <Bar dataKey="profit" name="Profit" fill="#2e9ad4" radius={[4, 4, 0, 0]} />
+                      <Bar dataKey="profit" name={S.profitLabel} fill="#2e9ad4" radius={[4, 4, 0, 0]} />
                     </BarChart>
                   </ResponsiveContainer>
                 </div>
@@ -684,36 +695,36 @@ export default function Analytics() {
             </div>
             <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
               <Card>
-                <CardHeader title="Utilisasi vs Target" subtitle={`Rata-rata progres ${avgProgress}% terhadap target ${utilTarget}%`} />
+                <CardHeader title="Utilisasi vs Target" subtitle={S.avgProgressVsTarget.replace("{a}", String(avgProgress)).replace("{b}", String(utilTarget))} />
                 <div className="space-y-3 p-5 pt-2">
                   <ProgressBar value={utilTarget ? (lastUtil / utilTarget) * 100 : 0} tone={lastUtil >= utilTarget ? "green" : "amber"} />
-                  <p className="text-xs text-steel-500">{lastUtil}% dari target {utilTarget}% - dihitung dari rata-rata progres {data.projects.length} proyek.</p>
+                  <p className="text-xs text-steel-500">{S.utilFromTarget.replace("{a}", String(lastUtil)).replace("{b}", String(utilTarget)).replace("{n}", String(data.projects.length))}</p>
                 </div>
               </Card>
               <Card>
-                <CardHeader title="Biaya Rework" subtitle="Rumus: Σ change order dampak negatif + estimasi NCR 2% dari budget proyek ber-NCR terbuka" />
+                <CardHeader title={S.reworkCost} subtitle={S.reworkFormula} />
                 <div className="space-y-2 p-5 pt-2 text-sm">
-                  <div className="flex justify-between"><span className="text-steel-600">Change order negatif</span><span className="font-semibold text-navy-900">{fmtRupiah(negCo)}</span></div>
-                  <div className="flex justify-between"><span className="text-steel-600">Estimasi NCR ({openNcrProjects.size} proyek, 2%)</span><span className="font-semibold text-navy-900">{fmtRupiah(Math.round(ncrEstimate))}</span></div>
-                  <div className="flex justify-between border-t border-steel-100 pt-2"><span className="font-semibold text-navy-900">Total rework</span><span className="font-bold text-rose-600">{fmtRupiah(reworkCost)}</span></div>
+                  <div className="flex justify-between"><span className="text-steel-600">{S.negativeChangeOrder}</span><span className="font-semibold text-navy-900">{fmtRupiah(negCo)}</span></div>
+                  <div className="flex justify-between"><span className="text-steel-600">{S.ncrEstimateLabel.replace("{n}", String(openNcrProjects.size))}</span><span className="font-semibold text-navy-900">{fmtRupiah(Math.round(ncrEstimate))}</span></div>
+                  <div className="flex justify-between border-t border-steel-100 pt-2"><span className="font-semibold text-navy-900">{S.totalRework}</span><span className="font-bold text-rose-600">{fmtRupiah(reworkCost)}</span></div>
                 </div>
               </Card>
             </div>
           </div>
         )}
         <Card className="mt-5">
-          <CardHeader title={`Anotasi Insight · ${tab}`} subtitle="Catatan per tab - tersimpan per perangkat" />
+          <CardHeader title={S.annotationTitle.replace("{n}", tab)} subtitle={S.notesPerTab} />
           <div className="flex flex-col gap-2 p-5 pt-2">
-            <textarea className="input" rows={2} value={noteInput} onChange={(e) => setNoteInput(e.target.value)} placeholder={`Tulis insight untuk tab ${tab}…`} />
-            <div><button className="btn-secondary text-xs" onClick={saveNote}>Simpan Catatan</button></div>
+            <textarea className="input" rows={2} value={noteInput} onChange={(e) => setNoteInput(e.target.value)} placeholder={S.insightPh.replace("{n}", tab)} />
+            <div><button className="btn-secondary text-xs" onClick={saveNote}>{S.saveNoteBtn}</button></div>
             <div className="space-y-1.5">
               {(notes[tab] ?? []).map((n, i) => (
                 <div key={i} className="flex items-start gap-2 rounded-xl bg-surface px-3 py-2 text-sm text-steel-700">
                   <span className="flex-1">{n}</span>
-                  <button className="btn-secondary px-2 py-1 text-xs" onClick={() => delNote(i)}>Hapus</button>
+                  <button className="btn-secondary px-2 py-1 text-xs" onClick={() => delNote(i)}>{S.deleteBtn}</button>
                 </div>
               ))}
-              {(notes[tab] ?? []).length === 0 && <p className="text-xs text-steel-400">Belum ada catatan untuk tab ini.</p>}
+              {(notes[tab] ?? []).length === 0 && <p className="text-xs text-steel-400">{S.noNotesForTab}</p>}
             </div>
           </div>
         </Card>

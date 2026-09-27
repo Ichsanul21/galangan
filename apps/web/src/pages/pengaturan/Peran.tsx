@@ -5,6 +5,8 @@ import { Badge, Card, ConfirmModal, Field, KpiCard, Modal, PageHeader, SortTh, s
 import type { SortState } from "../../components/ui";
 import { canSetTarget, useAuth } from "../../auth/auth";
 import { useStore } from "../../data/store";
+import { useT } from "../../i18n/LanguageContext";
+import { n_roles } from "../../i18n/n_roles";
 import { apiFetch, isBackendConfigured } from "../../services/http";
 import { exportExcel } from "../../utils/export";
 
@@ -235,14 +237,14 @@ function sessionOnline(lastSeen: string): boolean {
   return Date.now() - t <= 3 * 60 * 1000;
 }
 
-function sessionDuration(loginAt: string, lastSeen: string): string {
+function sessionDuration(loginAt: string, lastSeen: string, S: typeof n_roles.id): string {
   const a = Date.parse(String(loginAt ?? ""));
   const b = Date.parse(String(lastSeen ?? ""));
   if (Number.isNaN(a) || Number.isNaN(b)) return "-";
   const mins = Math.max(0, Math.round((b - a) / 60000));
-  if (mins < 60) return `${mins} mnt`;
+  if (mins < 60) return S.durMin.replace("{n}", String(mins));
   const h = Math.floor(mins / 60);
-  return `${h} jam ${mins % 60} mnt`;
+  return S.durHourMin.replace("{a}", String(h)).replace("{b}", String(mins % 60));
 }
 
 function fmtDateTime(v: string): string {
@@ -258,6 +260,17 @@ function errMsg(e: unknown, fallback: string): string {
 }
 
 export default function Peran() {
+  const { locale } = useT();
+  const S = n_roles[locale];
+  const actionLabel: Record<RoleAction, string> = {
+    Lihat: S.actView,
+    Buat: S.actCreate,
+    Ubah: S.actUpdate,
+    Hapus: S.actDelete,
+    Setujui: S.actApprove,
+    Bayar: S.actPay,
+    Ekspor: S.actExport,
+  };
   const [role, setRole] = useState("Project Manager");
   const [sort, setSort] = useState<SortState>({ key: null, dir: "asc" });
 
@@ -282,7 +295,7 @@ export default function Peran() {
   const empNameOf = (id: string | null | undefined): string => {
     if (!id) return "-";
     const e = (data.employees ?? []).find((x) => String(x.id) === String(id));
-    return e ? `${String(e.name ?? id)} (${String(e.id)})` : `${id} (karyawan tidak ada)`;
+    return e ? `${String(e.name ?? id)} (${String(e.id)})` : S.empMissing.replace("{n}", id);
   };
 
   const loadUsers = async () => {
@@ -292,7 +305,7 @@ export default function Peran() {
       const res = await apiFetch<{ users: ManagedUser[] } | ManagedUser[]>("/api/users");
       setUsers(Array.isArray(res) ? res : (res.users ?? []));
     } catch (e) {
-      toast(errMsg(e, "Gagal memuat pengguna"), "info");
+      toast(errMsg(e, S.failLoadUsers), "info");
     } finally {
       setUsersLoading(false);
     }
@@ -306,7 +319,7 @@ export default function Peran() {
 
   const doCreate = async () => {
     if (!form.username.trim() || !form.name.trim() || form.password.length < 6) {
-      toast("Lengkapi username, nama, dan password (min. 6 karakter)", "info");
+      toast(S.formIncomplete, "info");
       return;
     }
     try {
@@ -321,18 +334,18 @@ export default function Peran() {
           employeeId: form.employeeId || "",
         }),
       });
-      toast(`Pengguna ${form.username.trim()} dibuat`);
+      toast(S.userCreated.replace("{n}", form.username.trim()));
       setShowCreate(false);
       setForm({ username: "", name: "", role: "Manager", password: "", email: "", employeeId: "" });
       await loadUsers();
     } catch (e) {
-      toast(errMsg(e, "Gagal membuat pengguna"), "info");
+      toast(errMsg(e, S.failCreateUser), "info");
     }
   };
 
   const doResetPassword = async () => {
     if (!pwTarget || pwValue.length < 6) {
-      toast("Password baru min. 6 karakter", "info");
+      toast(S.pwTooShort, "info");
       return;
     }
     try {
@@ -340,11 +353,11 @@ export default function Peran() {
         method: "POST",
         body: JSON.stringify({ newPassword: pwValue }),
       });
-      toast(`Password ${pwTarget.username} direset`);
+      toast(S.pwReset.replace("{n}", pwTarget.username));
       setPwTarget(null);
       setPwValue("");
     } catch (e) {
-      toast(errMsg(e, "Gagal mereset password"), "info");
+      toast(errMsg(e, S.failResetPw), "info");
     }
   };
 
@@ -355,7 +368,7 @@ export default function Peran() {
       const res = await apiFetch<{ sessions: SessionRow[] } | SessionRow[]>("/api/auth/sessions");
       setSessions(Array.isArray(res) ? res : (res.sessions ?? []));
     } catch (e) {
-      toast(errMsg(e, "Gagal memuat sesi"), "info");
+      toast(errMsg(e, S.failLoadSessions), "info");
     } finally {
       setSessionsLoading(false);
     }
@@ -367,12 +380,12 @@ export default function Peran() {
         method: "PATCH",
         body: JSON.stringify({ employeeId: linkValue || null }),
       });
-      toast(linkValue ? `Akun ${linkTarget.username} ditautkan ke ${linkValue}` : `Tautan ${linkTarget.username} dilepas`);
+      toast(linkValue ? S.linkLinked.replace("{a}", linkTarget.username).replace("{b}", linkValue) : S.linkUnlinked.replace("{n}", linkTarget.username));
       setLinkTarget(null);
       setLinkValue("");
       await loadUsers();
     } catch (e) {
-      toast(errMsg(e, "Gagal menautkan karyawan"), "info");
+      toast(errMsg(e, S.failLinkEmployee), "info");
     }
   };
 
@@ -380,18 +393,18 @@ export default function Peran() {
     try {
       if (u.isActive) {
         await apiFetch(`/api/users/${u.id}`, { method: "DELETE" });
-        toast(`${u.username} dinonaktifkan`);
+        toast(S.userDeactivated.replace("{n}", u.username));
       } else {
         await apiFetch(`/api/users/${u.id}`, {
           method: "PATCH",
           body: JSON.stringify({ isActive: true }),
         });
-        toast(`${u.username} diaktifkan kembali`);
+        toast(S.userReactivated.replace("{n}", u.username));
       }
       setConfirmTarget(null);
       await loadUsers();
     } catch (e) {
-      toast(errMsg(e, "Gagal mengubah status pengguna"), "info");
+      toast(errMsg(e, S.failToggleUser), "info");
     }
   };
 
@@ -421,7 +434,7 @@ export default function Peran() {
   }, [role]);
 
   const doExport = () => {
-    const head = ["Peran", "Modul", ...ACTIONS];
+    const head = [S.thRole, S.thModule, ...ACTIONS];
     const body: string[][] = [];
     for (const r of ROLES) {
       for (const m of MODULES) {
@@ -429,76 +442,75 @@ export default function Peran() {
       }
     }
     void exportExcel([head, ...body], "matriks-peran-akses", "RBAC").then(() =>
-      toast("Matriks peran diekspor ke Excel")
+      toast(S.matrixExported)
     );
   };
 
   return (
     <div>
       <PageHeader
-        title="Peran & Akses"
-        subtitle="Matriks RBAC tampilan + siap enforce - enforcement penuh di backend"
+        title={S.title}
+        subtitle={S.subtitle}
         icon={<KeyRound className="h-5 w-5" />}
         actions={
           <button className="btn-secondary text-xs" onClick={doExport}>
-            <Download className="h-4 w-4" /> Export Excel
+            <Download className="h-4 w-4" /> {S.exportBtn}
           </button>
         }
       />
 
       <div className="mb-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
-        <KpiCard label="Cakupan Akses" value={`${stats.pct}%`} hint={`${stats.yes} dari ${stats.total} sel`} chip="navy" icon={<KeyRound className="h-5 w-5" />} />
-        <KpiCard label="Modul Terakses" value={`${stats.withAccess} / ${MODULES.length}`} hint={`Peran ${role}`} chip="teal" icon={<KeyRound className="h-5 w-5" />} />
-        <KpiCard label="Total Peran" value={String(ROLES.length)} hint="Termasuk Client eksternal" chip="violet" icon={<KeyRound className="h-5 w-5" />} />
+        <KpiCard label={S.kpiCoverage} value={`${stats.pct}%`} hint={S.kpiCells.replace("{a}", String(stats.yes)).replace("{b}", String(stats.total))} chip="navy" icon={<KeyRound className="h-5 w-5" />} />
+        <KpiCard label={S.kpiModules} value={`${stats.withAccess} / ${MODULES.length}`} hint={S.kpiRole.replace("{n}", role)} chip="teal" icon={<KeyRound className="h-5 w-5" />} />
+        <KpiCard label={S.kpiRoles} value={String(ROLES.length)} hint={S.kpiRolesHint} chip="violet" icon={<KeyRound className="h-5 w-5" />} />
       </div>
 
       <Card className="mb-4 p-4">
         <div className="mb-3 flex flex-wrap items-center gap-2">
-          <h3 className="text-sm font-bold text-navy-900">Manajemen Pengguna</h3>
+          <h3 className="text-sm font-bold text-navy-900">{S.mgmtUsers}</h3>
           <span className={`rounded-full px-2.5 py-1 text-[11px] font-bold ${remote ? "bg-emerald-100 text-emerald-700" : "bg-steel-100 text-steel-600"}`}>
-            {remote ? "Backend: tersambung" : "Mode lokal"}
+            {remote ? S.backendConnected : S.modeLocal}
           </span>
           {remote && (
             <span className="text-xs text-steel-400">
-              {usersLoading ? "Memuat…" : `${users.length} pengguna`}
+              {usersLoading ? S.loading : S.usersCount.replace("{n}", String(users.length))}
             </span>
           )}
           <span className="ml-auto flex gap-2">
             {remote && (
               <button className="btn-secondary text-xs" onClick={() => void loadUsers()}>
-                <RefreshCw className="h-4 w-4" /> Muat ulang
+                <RefreshCw className="h-4 w-4" /> {S.reload}
               </button>
             )}
             {remote && canManage && (
               <button className="btn-primary text-xs" onClick={() => setShowCreate(true)}>
-                <Plus className="h-4 w-4" /> Tambah pengguna
+                <Plus className="h-4 w-4" /> {S.addUser}
               </button>
             )}
           </span>
         </div>
         {!remote ? (
           <p className="text-xs leading-relaxed text-steel-500">
-            Mode lokal - daftar pengguna live tampil setelah backend tersambung (VITE_API_URL).
-            Matriks peran di bawah tetap menjadi acuan akses.
+            {S.localModeUsers}
           </p>
         ) : !canManage ? (
           <p className="text-xs leading-relaxed text-steel-500">
-            Peran Anda ({session?.role ?? "-"}) tidak dapat mengelola pengguna - butuh peran Direktur, Manager, atau Developer.
+            {S.cannotManage.replace("{n}", String(session?.role ?? "-"))}
           </p>
         ) : users.length === 0 && !usersLoading ? (
-          <p className="text-xs text-steel-500">Belum ada pengguna di backend.</p>
+          <p className="text-xs text-steel-500">{S.emptyUsers}</p>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full min-w-[720px] text-sm">
               <thead>
                 <tr className="border-b border-steel-100 text-left text-xs uppercase tracking-wide text-steel-400">
-                  <th className="px-3 py-2">Username</th>
-                  <th className="px-3 py-2">Nama</th>
-                  <th className="px-3 py-2">Peran</th>
-                  <th className="px-3 py-2">Email</th>
-                  <th className="px-3 py-2">Karyawan</th>
-                  <th className="px-3 py-2">Status</th>
-                  <th className="px-3 py-2 text-right">Aksi</th>
+                  <th className="px-3 py-2">{S.thUsername}</th>
+                  <th className="px-3 py-2">{S.thName}</th>
+                  <th className="px-3 py-2">{S.thRole}</th>
+                  <th className="px-3 py-2">{S.thEmail}</th>
+                  <th className="px-3 py-2">{S.thEmployee}</th>
+                  <th className="px-3 py-2">{S.thStatus}</th>
+                  <th className="px-3 py-2 text-right">{S.thAction}</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-steel-50">
@@ -518,27 +530,27 @@ export default function Peran() {
                           className="btn-secondary px-2 py-1 text-xs"
                           onClick={() => { setLinkTarget(u); setLinkValue(u.employeeId ?? ""); }}
                         >
-                          Tautkan
+                          {S.linkBtn}
                         </button>
                         <button
                           className="btn-secondary px-2 py-1 text-xs"
                           onClick={() => { setPwTarget(u); setPwValue(""); }}
                         >
-                          Reset password
+                          {S.resetPwBtn}
                         </button>
                         {u.isActive ? (
                           <button
                             className="btn-secondary px-2 py-1 text-xs text-rose-600"
                             onClick={() => setConfirmTarget(u)}
                           >
-                            Nonaktifkan
+                            {S.deactivateBtn}
                           </button>
                         ) : (
                           <button
                             className="btn-secondary px-2 py-1 text-xs"
                             onClick={() => void doToggleActive(u)}
                           >
-                            Aktifkan
+                            {S.activateBtn}
                           </button>
                         )}
                       </div>
@@ -554,36 +566,36 @@ export default function Peran() {
 
       <Card className="mb-4 p-4">
         <div className="mb-3 flex flex-wrap items-center gap-2">
-          <h3 className="text-sm font-bold text-navy-900">Sesi Aktif</h3>
+          <h3 className="text-sm font-bold text-navy-900">{S.sessionsTitle}</h3>
           <span className="text-xs text-steel-400">
-            {sessionsLoading ? "Memuat…" : `${sessions.filter((s) => sessionOnline(s.last_seen_at)).length} online dari ${sessions.length} sesi`}
+            {sessionsLoading ? S.loading : S.sessCount.replace("{a}", String(sessions.filter((s) => sessionOnline(s.last_seen_at)).length)).replace("{b}", String(sessions.length))}
           </span>
           <span className="ml-auto">
             {remote && (
               <button className="btn-secondary text-xs" onClick={() => void loadSessions()}>
-                <RefreshCw className="h-4 w-4" /> Muat ulang
+                <RefreshCw className="h-4 w-4" /> {S.reload}
               </button>
             )}
           </span>
         </div>
         {!remote ? (
           <p className="text-xs leading-relaxed text-steel-500">
-            Mode lokal - sesi realtime tampil setelah backend tersambung (VITE_API_URL).
+            {S.localModeSessions}
           </p>
         ) : sessions.length === 0 && !sessionsLoading ? (
-          <p className="text-xs text-steel-500">Belum ada sesi tercatat - login untuk membuat sesi.</p>
+          <p className="text-xs text-steel-500">{S.emptySessions}</p>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full min-w-[720px] text-sm">
               <thead>
                 <tr className="border-b border-steel-100 text-left text-xs uppercase tracking-wide text-steel-400">
-                  <th className="px-3 py-2">Pengguna</th>
-                  <th className="px-3 py-2">Status</th>
-                  <th className="px-3 py-2">Login</th>
-                  <th className="px-3 py-2">Terakhir terlihat</th>
-                  <th className="px-3 py-2">Durasi</th>
-                  <th className="px-3 py-2">Detail</th>
-                  <th className="px-3 py-2 text-right">Log</th>
+                  <th className="px-3 py-2">{S.thUser}</th>
+                  <th className="px-3 py-2">{S.thStatus}</th>
+                  <th className="px-3 py-2">{S.thLogin}</th>
+                  <th className="px-3 py-2">{S.thLastSeen}</th>
+                  <th className="px-3 py-2">{S.thDuration}</th>
+                  <th className="px-3 py-2">{S.thDetail}</th>
+                  <th className="px-3 py-2 text-right">{S.thLog}</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-steel-50">
@@ -597,14 +609,14 @@ export default function Peran() {
                       </td>
                       <td className="px-3 py-2 text-steel-600">{fmtDateTime(s.login_at)}</td>
                       <td className="px-3 py-2 text-steel-600">{fmtDateTime(s.last_seen_at)}</td>
-                      <td className="px-3 py-2 text-steel-600">{sessionDuration(s.login_at, s.last_seen_at)}</td>
+                      <td className="px-3 py-2 text-steel-600">{sessionDuration(s.login_at, s.last_seen_at, S)}</td>
                       <td className="px-3 py-2 text-xs text-steel-500" title={String(s.user_agent ?? "")}>{s.ip || "-"} · {String(s.user_agent ?? "").slice(0, 42) || "-"}</td>
                       <td className="px-3 py-2 text-right">
                         <button
                           className="btn-secondary px-2 py-1 text-xs"
                           onClick={() => navigate(`/audit?actor=${encodeURIComponent(s.username)}`)}
                         >
-                          Lihat log
+                          {S.viewLog}
                         </button>
                       </td>
                     </tr>
@@ -618,7 +630,7 @@ export default function Peran() {
 
       <Card className="mb-4 p-4">
         <div className="max-w-sm">
-          <Field label="Pilih peran" hint="Read-only - perubahan peran dilakukan saat backend tersedia">
+          <Field label={S.selectRole} hint={S.selectRoleHint}>
             <select className="input" value={role} onChange={(e) => setRole(e.target.value)}>
               {ROLES.map((r) => (
                 <option key={r} value={r}>{r}</option>
@@ -633,9 +645,9 @@ export default function Peran() {
           <table className="w-full min-w-[860px] text-sm">
             <thead>
               <tr className="border-b border-steel-100 text-left text-xs uppercase tracking-wide text-steel-400">
-                <SortTh label="Modul" sortKey="modul" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} />
+                <SortTh label={S.thModule} sortKey="modul" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} />
                 {ACTIONS.map((a) => (
-                  <SortTh key={a} label={a} sortKey={a} sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} />
+                  <SortTh key={a} label={actionLabel[a]} sortKey={a} sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} />
                 ))}
               </tr>
             </thead>
@@ -658,45 +670,45 @@ export default function Peran() {
           {matrixPager.bar}
         </div>
         <p className="border-t border-steel-100 px-5 py-3 text-xs text-steel-400">
-          Sel kosong berarti peran tidak memiliki akses. Backend menegakkan tulis per koleksi (lihat `services/api/src/rbac.ts`); matriks ini acuan bisnisnya.
+          {S.matrixNote}
         </p>
       </Card>
 
       <Modal
         open={showCreate}
         onClose={() => setShowCreate(false)}
-        title="Tambah pengguna"
-        subtitle="Direktur / Manager / Developer - password min. 6 karakter"
+        title={S.addUser}
+        subtitle={S.addUserSubtitle}
         footer={
           <>
-            <button className="btn-secondary" onClick={() => setShowCreate(false)}>Batal</button>
-            <button className="btn-primary" onClick={() => void doCreate()}>Simpan</button>
+            <button className="btn-secondary" onClick={() => setShowCreate(false)}>{S.cancel}</button>
+            <button className="btn-primary" onClick={() => void doCreate()}>{S.save}</button>
           </>
         }
       >
         <div className="grid gap-3">
-          <Field label="Username">
-            <input className="input" value={form.username} onChange={(e) => setForm((f) => ({ ...f, username: e.target.value }))} placeholder="nama@galangan.com" />
+          <Field label={S.thUsername}>
+            <input className="input" value={form.username} onChange={(e) => setForm((f) => ({ ...f, username: e.target.value }))} placeholder={S.userPh} />
           </Field>
-          <Field label="Nama">
-            <input className="input" value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} placeholder="Nama lengkap" />
+          <Field label={S.thName}>
+            <input className="input" value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} placeholder={S.namePh} />
           </Field>
-          <Field label="Peran">
+          <Field label={S.thRole}>
             <select className="input" value={form.role} onChange={(e) => setForm((f) => ({ ...f, role: e.target.value }))}>
               {ROLES.map((r) => (
                 <option key={r} value={r}>{r}</option>
               ))}
             </select>
           </Field>
-          <Field label="Email (opsional)">
-            <input className="input" value={form.email} onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))} placeholder="email@galangan.com" />
+          <Field label={S.emailOptional}>
+            <input className="input" value={form.email} onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))} placeholder={S.emailPh} />
           </Field>
-          <Field label="Password awal">
-            <input type="password" className="input" value={form.password} onChange={(e) => setForm((f) => ({ ...f, password: e.target.value }))} placeholder="Min. 6 karakter" />
+          <Field label={S.pwInitial}>
+            <input type="password" className="input" value={form.password} onChange={(e) => setForm((f) => ({ ...f, password: e.target.value }))} placeholder={S.pwMinPh} />
           </Field>
-          <Field label="Karyawan tertaut (opsional)" hint="Hubungkan akun ke data karyawan di SDM">
+          <Field label={S.linkedEmployee} hint={S.linkedEmployeeHint}>
             <select className="input" value={form.employeeId} onChange={(e) => setForm((f) => ({ ...f, employeeId: e.target.value }))}>
-              <option value="">- Tanpa tautan -</option>
+              <option value="">{S.noLink}</option>
               {(data.employees ?? []).map((e) => (
                 <option key={String(e.id)} value={String(e.id)}>{String(e.name ?? e.id)} ({String(e.id)})</option>
               ))}
@@ -708,18 +720,18 @@ export default function Peran() {
       <Modal
         open={linkTarget !== null}
         onClose={() => { setLinkTarget(null); setLinkValue(""); }}
-        title={`Tautkan karyawan - ${linkTarget?.username ?? ""}`}
-        subtitle="Hubungkan akun login ke data karyawan (HR baca NIK & tautan ini)"
+        title={S.linkTitle.replace("{n}", linkTarget?.username ?? "")}
+        subtitle={S.linkSubtitle}
         footer={
           <>
-            <button className="btn-secondary" onClick={() => { setLinkTarget(null); setLinkValue(""); }}>Batal</button>
-            <button className="btn-primary" onClick={() => void doLinkEmployee()}>Simpan tautan</button>
+            <button className="btn-secondary" onClick={() => { setLinkTarget(null); setLinkValue(""); }}>{S.cancel}</button>
+            <button className="btn-primary" onClick={() => void doLinkEmployee()}>{S.saveLink}</button>
           </>
         }
       >
-        <Field label="Karyawan">
+        <Field label={S.thEmployee}>
           <select className="input" value={linkValue} onChange={(e) => setLinkValue(e.target.value)}>
-            <option value="">- Lepas tautan -</option>
+            <option value="">{S.unlinkOption}</option>
             {(data.employees ?? []).map((e) => (
               <option key={String(e.id)} value={String(e.id)}>{String(e.name ?? e.id)} ({String(e.id)})</option>
             ))}
@@ -730,31 +742,31 @@ export default function Peran() {
       <Modal
         open={pwTarget !== null}
         onClose={() => { setPwTarget(null); setPwValue(""); }}
-        title={`Reset password - ${pwTarget?.username ?? ""}`}
-        subtitle="Direktur / Manager / Developer dapat mereset tanpa password lama"
+        title={S.resetPwTitle.replace("{n}", pwTarget?.username ?? "")}
+        subtitle={S.resetPwSubtitle}
         footer={
           <>
-            <button className="btn-secondary" onClick={() => { setPwTarget(null); setPwValue(""); }}>Batal</button>
-            <button className="btn-primary" onClick={() => void doResetPassword()}>Reset</button>
+            <button className="btn-secondary" onClick={() => { setPwTarget(null); setPwValue(""); }}>{S.cancel}</button>
+            <button className="btn-primary" onClick={() => void doResetPassword()}>{S.resetBtn}</button>
           </>
         }
       >
-        <Field label="Password baru (min. 6 karakter)">
+        <Field label={S.newPw}>
           <input
             type="password"
             className="input"
             value={pwValue}
             onChange={(e) => setPwValue(e.target.value)}
-            placeholder="Password baru"
+            placeholder={S.newPwPh}
           />
         </Field>
       </Modal>
 
       <ConfirmModal
         open={confirmTarget !== null}
-        title="Nonaktifkan pengguna?"
-        desc={`${confirmTarget?.username ?? ""} tidak bisa login lagi sampai diaktifkan kembali. Data pengguna tidak dihapus.`}
-        confirmLabel="Ya, nonaktifkan"
+        title={S.confirmTitle}
+        desc={S.confirmDesc.replace("{n}", confirmTarget?.username ?? "")}
+        confirmLabel={S.confirmLabel}
         danger
         onCancel={() => setConfirmTarget(null)}
         onConfirm={() => { const t = confirmTarget; if (t) void doToggleActive(t); }}

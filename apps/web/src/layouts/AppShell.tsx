@@ -40,6 +40,7 @@ import { computeAlerts } from "../utils/alerts";
 import { loadNotifRead, saveNotifRead, loadModSeen } from "../utils/notifRead";
 import { buildModuleAlertItems, type ModuleAlertKey } from "../utils/moduleAlerts";
 import { useT } from "../i18n/LanguageContext";
+import { n_misc } from "../i18n/n_misc";
 import { remoteRepository } from "../services/repositories";
 import { getJwt, isBackendConfigured } from "../services/http";
 
@@ -47,6 +48,7 @@ export default function AppShell() {
   const { user, logout } = useAuth();
   const { t, locale, setLocale } = useT();
   const { data, reset, branch, setBranch, backendMode, backendError, pendingSync, pushPending } = useStore();
+  const S = n_misc[locale];
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -206,11 +208,11 @@ export default function AppShell() {
   const [newPw, setNewPw] = useState("");
   const doChangePassword = async () => {
     if (!isBackendConfigured()) {
-      toast("Mode lokal - ganti password tersedia saat backend tersambung", "info");
+      toast(S.tLocalPasswordInfo, "info");
       return;
     }
     if (newPw.length < 6) {
-      toast("Password baru min. 6 karakter", "info");
+      toast(S.tNewPasswordMin, "info");
       return;
     }
     try {
@@ -220,9 +222,9 @@ export default function AppShell() {
       });
       setOldPw("");
       setNewPw("");
-      toast("Password berhasil diganti");
+      toast(S.tPasswordChanged);
     } catch (e) {
-      toast(e instanceof Error ? e.message : "Gagal ganti password", "info");
+      toast(e instanceof Error ? e.message : S.tPasswordFailed, "info");
     }
   };
 
@@ -352,7 +354,7 @@ export default function AppShell() {
                     {badge > 0 ? (
                       <span
                         className="ml-auto rounded-full bg-rose-500/90 px-1.5 py-0.5 text-[10px] font-bold leading-none text-white"
-                        title={`${badge} notifikasi baru - hilang setelah modul dibuka`}
+                        title={S.shNewNotif.replace("{n}", String(badge))}
                       >
                         {badge > 99 ? "99+" : badge}
                       </span>
@@ -404,18 +406,18 @@ export default function AppShell() {
               <Menu className="h-5 w-5" />
             </button>
             <div className="flex items-center gap-2 text-sm text-steel-500">
-              <span className="font-medium text-navy-800">Galangan</span>
+              <span className="font-medium text-navy-800">{S.shGalangan}</span>
               <span>/</span>
               <span
-                title={backendError ?? (backendMode === "remote" ? "Tersambung ke backend" : "Berjalan lokal (VITE_API_URL kosong / belum login)")}
+                title={backendError ?? (backendMode === "remote" ? S.shConnectedServer : S.shRunningLocal)}
                 className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${backendMode === "remote" && !backendError ? "bg-emerald-100 text-emerald-700" : "bg-steel-100 text-steel-500"}`}
               >
-                {backendMode === "remote" && !backendError ? "● Server" : "● Lokal"}
+                {backendMode === "remote" && !backendError ? S.shServerBadge : S.shLocalBadge}
               </span>
               <select
                 className="input w-auto border-0 bg-transparent py-1 text-sm font-medium text-navy-800 shadow-none"
                 value={branch}
-                aria-label="Pilih cabang"
+                aria-label={S.shPickBranchAria}
                 onChange={(e) => setBranch(e.target.value)}
               >
                 <option value="SEMUA">{t.nav.allBranches}</option>
@@ -470,7 +472,7 @@ export default function AppShell() {
               <button
                 onClick={() => setNotifOpen((v) => !v)}
                 className="relative flex items-center gap-1.5 rounded-lg px-2 py-1.5 text-steel-500 hover:bg-steel-100"
-                aria-label="Notifikasi"
+                aria-label={S.shNotifAria}
               >
                 <Bell className="h-5 w-5" />
                 {unreadCount > 0 && (
@@ -658,34 +660,33 @@ export default function AppShell() {
           </div>
         </div>
         <div className="mt-4 rounded-xl bg-surface p-3 text-xs leading-relaxed text-steel-600">
-          Semua perubahan data yang Anda buat di semua modul tersimpan otomatis di sesi browser ini (sessionStorage).
-          Menutup tab akan menghapus sesi login; data demo dapat dikembalikan kapan saja.
+          {S.shSessionDesc}
         </div>
-        <Field label="Reset data demo">
+        <Field label={S.shResetDemoLabel}>
           <button onClick={doReset} className="btn-secondary w-full justify-center">
-            <RotateCcw className="h-4 w-4" /> Kembalikan data ke awal
+            <RotateCcw className="h-4 w-4" /> {S.shRestoreInitial}
           </button>
         </Field>
-        <Field label="Ganti password">
+        <Field label={S.shChangePasswordLabel}>
           <div className="grid gap-2">
             <input
               type="password"
               className="input"
-              placeholder="Password lama"
-              aria-label="Password lama"
+              placeholder={S.shOldPasswordPh}
+              aria-label={S.shOldPasswordPh}
               value={oldPw}
               onChange={(e) => setOldPw(e.target.value)}
             />
             <input
               type="password"
               className="input"
-              placeholder="Password baru (min. 6 karakter)"
-              aria-label="Password baru"
+              placeholder={S.shNewPasswordPh}
+              aria-label={S.shNewPasswordPh}
               value={newPw}
               onChange={(e) => setNewPw(e.target.value)}
             />
             <button onClick={() => void doChangePassword()} className="btn-secondary w-full justify-center">
-              <KeyRound className="h-4 w-4" /> Simpan password baru
+              <KeyRound className="h-4 w-4" /> {S.shSaveNewPassword}
             </button>
           </div>
         </Field>

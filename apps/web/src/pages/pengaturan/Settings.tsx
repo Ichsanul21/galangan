@@ -2,12 +2,16 @@ import { useState } from "react";
 import { Settings as SettingsIcon } from "lucide-react";
 import { Card, PageHeader, Field, toast } from "../../components/ui";
 import { useStore } from "../../data/store";
+import { useT } from "../../i18n/LanguageContext";
+import { n_roles } from "../../i18n/n_roles";
 import { useAuth } from "../../auth/auth";
 import { canWriteSettings } from "../../auth/auth";
 import { apiFetch, isBackendConfigured } from "../../services/http";
 import { fmtJumlah } from "../../utils/format";
 
 export default function Settings() {
+  const { locale } = useT();
+  const S = n_roles[locale];
   const { data, update, log, backendMode, backendError, resync } = useStore();
   const { user } = useAuth();
   // Tulis settings ditolak BE (403) kecuali direktur/developer - kunci di UI
@@ -18,30 +22,30 @@ export default function Settings() {
   const [seeding, setSeeding] = useState(false);
 
   const importSeed = async () => {
-    if (!isBackendConfigured()) { toast("Backend belum dikonfigurasi (VITE_API_URL kosong)", "info"); return; }
-    if (!setupToken.trim()) { toast("Isi token setup backend dulu", "info"); return; }
+    if (!isBackendConfigured()) { toast(S.noBackend, "info"); return; }
+    if (!setupToken.trim()) { toast(S.needToken, "info"); return; }
     setSeeding(true);
     try {
       const r = await apiFetch<{ inserted: number; skipped: number }>("/api/admin/seed", {
         method: "POST",
         headers: { "x-setup-token": setupToken.trim() },
       });
-      toast(`Seed backend: ${r.inserted} baru, ${r.skipped} sudah ada`);
+      toast(S.seedDone.replace("{a}", String(r.inserted)).replace("{b}", String(r.skipped)));
       await resync().catch(() => undefined);
     } catch (e) {
-      toast(e instanceof Error ? e.message : "Gagal mengimpor seed", "info");
+      toast(e instanceof Error ? e.message : S.seedFail, "info");
     } finally {
       setSeeding(false);
     }
   };
 
-  const groups = [...new Set((data.settings ?? []).map((s) => String(s.group ?? "Lainnya")))]
+  const groups = [...new Set((data.settings ?? []).map((s) => String(s.group ?? S.otherGroup)))]
 
   const saveToggle = async (id: string, key: string, on: boolean) => {
-    if (!canWrite) { toast("Peran Anda tidak dapat mengubah konstanta - butuh Direktur / Developer", "info"); return; }
+    if (!canWrite) { toast(S.noWriteConst, "info"); return; }
     await update("settings", id, { value: on ? 1 : 0 });
     log("mengubah konstanta", `${key} → ${on ? 1 : 0}`, "Pengaturan");
-    toast(`${key} ${on ? "ditampilkan" : "disembunyikan"}`);
+    toast((on ? S.shownKey : S.hiddenKey).replace("{n}", key));
     setDrafts((d) => {
       const n = { ...d };
       delete n[id];
@@ -52,17 +56,17 @@ export default function Settings() {
   const isToggleKey = (key: string): boolean => key === "SHOW_3D_PROJECT" || key === "SHOW_3D_VESSEL";;
 
   const save = async (id: string, key: string) => {
-    if (!canWrite) { toast("Peran Anda tidak dapat mengubah konstanta - butuh Direktur / Developer", "info"); return; }
+    if (!canWrite) { toast(S.noWriteConst, "info"); return; }
     const raw = drafts[id];
     if (raw === undefined || raw.trim() === "") return;
     const v = Number(raw);
     const isWhatif = key.startsWith("WHATIF_");
     const min = isWhatif ? -20 : 0;
     const max = isWhatif ? 50 : Number.POSITIVE_INFINITY;
-    if (!Number.isFinite(v) || v < min || v > max) { toast(isWhatif ? "Nilai What-if harus -20 s.d. 50" : "Nilai harus angka 0 atau lebih", "info"); return; }
+    if (!Number.isFinite(v) || v < min || v > max) { toast(isWhatif ? S.whatifRange : S.minZero, "info"); return; }
     await update("settings", id, { value: v });
     log("mengubah konstanta", `${key} → ${v}`, "Pengaturan");
-    toast(`${key} disimpan`);
+    toast(S.savedKey.replace("{n}", key));
     setDrafts((d) => {
       const n = { ...d };
       delete n[id];
@@ -73,18 +77,18 @@ export default function Settings() {
   return (
     <div>
       <PageHeader
-        title="Pengaturan"
-        subtitle="Konstanta bisnis terpusat - semua rumus membaca dari sini"
+        title={S.setTitle}
+        subtitle={S.setSubtitle}
         icon={<SettingsIcon className="h-5 w-5" />}
       />
       <Card className="mb-4 p-4">
         <div className="flex flex-wrap items-center gap-2">
           <span className={`rounded-full px-2.5 py-1 text-[11px] font-bold ${backendMode === "remote" && !backendError ? "bg-emerald-100 text-emerald-700" : "bg-steel-100 text-steel-600"}`}>
-            {backendMode === "remote" && !backendError ? "Backend: tersambung" : "Backend: mode lokal"}
+            {backendMode === "remote" && !backendError ? S.backendConnected : S.backendLocal}
           </span>
           {!canWrite && (
             <span className="rounded-full bg-amber-100 px-2.5 py-1 text-[11px] font-bold text-amber-700">
-              Read-only untuk peran Anda - ubah via Direktur / Developer
+              {S.readOnlyRole}
             </span>
           )}
           {backendError && <span className="text-[11px] text-steel-400">{backendError}</span>}
@@ -92,13 +96,13 @@ export default function Settings() {
             <input
               className="input w-44"
               type="password"
-              placeholder="Token setup backend"
-              aria-label="Token setup backend"
+              placeholder={S.tokenPh}
+              aria-label={S.tokenPh}
               value={setupToken}
               onChange={(e) => setSetupToken(e.target.value)}
             />
             <button className="btn-secondary text-xs" disabled={seeding} onClick={() => void importSeed()}>
-              {seeding ? "Mengimpor…" : "Impor seed awal ke backend"}
+              {seeding ? S.importing : S.importSeedBtn}
             </button>
           </span>
         </div>
@@ -108,15 +112,14 @@ export default function Settings() {
           <h3 className="mb-3 text-sm font-semibold text-navy-900">{g}</h3>
           {g === "Pajak" && (
             <p className="mb-3 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800">
-              Tarif pajak berlaku untuk transaksi BARU. Invoice yang sudah terbit menyimpan tarifnya
-              masing-masing - mengganti tarif tidak menulis ulang riwayat & laporan terkunci.
+              {S.taxNote}
             </p>
           )}
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
-            {(data.settings ?? []).filter((s) => String(s.group ?? "Lainnya") === g).map((s) => (
+            {(data.settings ?? []).filter((s) => String(s.group ?? S.otherGroup) === g).map((s) => (
               <div key={s.id} className="rounded-xl border border-steel-100 p-3">
                 {isToggleKey(String(s.key)) ? (
-                  <Field label={String(s.label ?? s.key)} hint="Matikan untuk menyembunyikan modul 3D Viewer">
+                  <Field label={String(s.label ?? s.key)} hint={S.toggle3dHint}>
                     <button
                       type="button"
                       role="switch"
@@ -138,11 +141,11 @@ export default function Settings() {
                       value={drafts[s.id] ?? String(s.value)}
                       onChange={(e) => setDrafts((d) => ({ ...d, [s.id]: e.target.value }))}
                     />
-                    <button className="btn-secondary shrink-0 text-xs" disabled={!canWrite} onClick={() => save(s.id, String(s.key))}>Simpan</button>
+                    <button className="btn-secondary shrink-0 text-xs" disabled={!canWrite} onClick={() => save(s.id, String(s.key))}>{S.save}</button>
                   </div>
                 </Field>
                 )}
-                <p className="mt-1 font-mono text-[11px] text-steel-400">{String(s.key)} · aktif: {fmtJumlah(Number(s.value))}</p>
+                <p className="mt-1 font-mono text-[11px] text-steel-400">{String(s.key)} · {S.activeState}: {fmtJumlah(Number(s.value))}</p>
               </div>
             ))}
           </div>

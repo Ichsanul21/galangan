@@ -11,6 +11,8 @@ import {
 } from "../../components/ui";
 import { useStore } from "../../data/store";
 import type { StoreItem } from "../../data/store";
+import { useT } from "../../i18n/LanguageContext";
+import { n_prj } from "../../i18n/n_prj";
 import { fmtBulan, fmtMiliar, fmtRupiah, todayISO } from "../../utils/format";
 import { exportExcel } from "../../utils/export";
 import { TAHAP, tahapOf } from "./Projects";
@@ -40,7 +42,10 @@ function endInDays(end: string): number | null {
 }
 
 export default function Monitoring() {
+  const { locale } = useT();
+  const S = n_prj[locale];
   const { data, wbsFor, inBranch } = useStore();
+  const groupLbl: Record<string, string> = { Terlambat: S.attLate, "Over-budget": S.attOver, "NCR Critical": S.attNcr, "CO Diajukan": S.attCo, "Milestone dekat": S.attMile };
   const projects = data.projects;
   const [branchFilter, setBranchFilter] = useState("Semua");
   const [q, setQ] = useState("");
@@ -64,10 +69,10 @@ export default function Monitoring() {
   const attention: AttentionItem[] = [];
   for (const p of filtered) {
     if (p.status === "Terlambat") {
-      attention.push({ group: "Terlambat", title: `${p.id} · ${p.vessel}`, desc: `Status Terlambat · progres ${p.progress}%`, pid: p.id });
+      attention.push({ group: "Terlambat", title: `${p.id} · ${p.vessel}`, desc: S.monLateDesc.replace("{n}", String(p.progress)), pid: p.id });
     }
     if (Number(p.actual) > Number(p.budget)) {
-      attention.push({ group: "Over-budget", title: `${p.id} · ${p.vessel}`, desc: `Realisasi ${fmtRupiah(Number(p.actual))} melebihi anggaran ${fmtRupiah(Number(p.budget))}`, pid: p.id });
+      attention.push({ group: "Over-budget", title: `${p.id} · ${p.vessel}`, desc: S.monOverDesc.replace("{a}", fmtRupiah(Number(p.actual))).replace("{b}", fmtRupiah(Number(p.budget))), pid: p.id });
     }
     const critical = openNcr(p.id).filter((n) => n.severity === "Critical");
     for (const n of critical) {
@@ -81,7 +86,7 @@ export default function Monitoring() {
     for (const w of wbsFor(p.id)) {
       const d = endInDays(w.end);
       if (Number(w.progress) === 0 && d !== null && d >= 0 && d < 30) {
-        attention.push({ group: "Milestone dekat", title: `${p.id} · ${w.task}`, desc: `Belum mulai (0%) · berakhir ${fmtBulan(w.end)}`, pid: p.id });
+        attention.push({ group: "Milestone dekat", title: `${p.id} · ${w.task}`, desc: S.monMileDesc.replace("{a}", fmtBulan(w.end)), pid: p.id });
       }
     }
   }
@@ -105,16 +110,16 @@ export default function Monitoring() {
         openNcr(p.id).length, diajukanCo(p.id).length,
       ]),
     ];
-    void exportExcel(rows, "monitoring-proyek", "Monitoring").then(() => toast("Rekap monitoring diekspor ke Excel"));
+    void exportExcel(rows, "monitoring-proyek", "Monitoring").then(() => toast(S.monToastExport));
   };
 
   return (
     <div>
       <PageHeader
-        title="Monitoring End-to-End"
-        subtitle="Pipeline tahap Inquiry hingga Handover lintas proyek"
+        title={S.monTitle}
+        subtitle={S.monSubtitle}
         icon={<Activity className="h-5 w-5" />}
-        actions={<button className="btn-secondary" onClick={exportRekap}><FileDown className="h-4 w-4" /> Export Excel</button>}
+        actions={<button className="btn-secondary" onClick={exportRekap}><FileDown className="h-4 w-4" /> {S.exportExcelBtn}</button>}
       />
 
       <div className="mb-4 flex flex-wrap items-center gap-3">
@@ -122,17 +127,17 @@ export default function Monitoring() {
           <Search className="absolute left-3 top-2.5 h-4 w-4 text-steel-400" />
           <input
             className="input pl-9 w-full sm:w-64"
-            placeholder="Cari kapal / kode proyek..."
-            aria-label="Cari proyek"
+            placeholder={S.searchProjectPh}
+            aria-label={S.searchProjectAria}
             value={q}
             onChange={(e) => setQ(e.target.value)}
           />
         </div>
-        <select className="input w-auto py-1.5 text-sm" aria-label="Filter cabang" value={branchFilter} onChange={(e) => setBranchFilter(e.target.value)}>
-          <option value="Semua">Semua cabang</option>
+        <select className="input w-auto py-1.5 text-sm" aria-label={S.prjFilterCabangAria} value={branchFilter} onChange={(e) => setBranchFilter(e.target.value)}>
+          <option value="Semua">{S.prjAllCabang}</option>
           {branchCities.map((b) => <option key={b} value={b}>{b}</option>)}
         </select>
-        <div className="flex gap-1" role="group" aria-label="Mode tampilan pipeline">
+        <div className="flex gap-1" role="group" aria-label={S.monModeAria}>
           {(["Semua", "Perhatian"] as const).map((m) => (
             <button
               key={m}
@@ -141,18 +146,18 @@ export default function Monitoring() {
                 mode === m ? "bg-navy-700 text-white" : "bg-white border border-steel-200 text-steel-600 hover:bg-steel-100"
               }`}
             >
-              {m === "Semua" ? "Semua" : "Hanya Perhatian"}
+              {m === "Semua" ? S.filterAll : S.monModeAtt}
             </button>
           ))}
         </div>
-        <p className="ml-auto text-xs text-steel-500">{pipeline.length} proyek · {attention.length} perlu perhatian</p>
+        <p className="ml-auto text-xs text-steel-500">{S.monCount.replace("{a}", String(pipeline.length)).replace("{b}", String(attention.length))}</p>
       </div>
 
       <Card className="mb-4 p-5">
         <h3 className="mb-3 flex items-center gap-2 text-sm font-semibold text-navy-900">
-          <AlertTriangle className="h-4 w-4 text-amber-500" /> Perlu Perhatian ({attention.length})
+          <AlertTriangle className="h-4 w-4 text-amber-500" /> {S.monAttTitle.replace("{n}", String(attention.length))}
         </h3>
-        {attention.length === 0 && <p className="text-sm text-steel-400">Tidak ada item perhatian.</p>}
+        {attention.length === 0 && <p className="text-sm text-steel-400">{S.monAttEmpty}</p>}
         <div className="grid grid-cols-1 gap-2 lg:grid-cols-2">
           {attention.map((a, i) => (
             <Link
@@ -160,7 +165,7 @@ export default function Monitoring() {
               to={`/proyek/${a.pid}`}
               className="flex items-center gap-3 rounded-xl border border-steel-100 p-2.5 text-sm transition-colors hover:border-ocean-400 hover:bg-surface"
             >
-              <Badge tone={a.group === "NCR Critical" || a.group === "Terlambat" || a.group === "Over-budget" ? "red" : "amber"}>{a.group}</Badge>
+              <Badge tone={a.group === "NCR Critical" || a.group === "Terlambat" || a.group === "Over-budget" ? "red" : "amber"}>{groupLbl[a.group] ?? a.group}</Badge>
               <div className="min-w-0">
                 <p className="truncate font-medium text-navy-900">{a.title}</p>
                 <p className="truncate text-xs text-steel-500">{a.desc}</p>
@@ -197,7 +202,7 @@ export default function Monitoring() {
                       </div>
                       {delay !== null && (
                         <p className={`mt-1.5 text-[11px] font-semibold ${delay > 0 ? "text-rose-600" : "text-amber-600"}`}>
-                          {delay > 0 ? `Terlambat ${delay} hari dari rencana selesai` : "Status Terlambat - cek jadwal"}
+                          {delay > 0 ? S.monDelayDays.replace("{n}", String(delay)) : S.monDelayCheck}
                         </p>
                       )}
                       <div className="mt-2 flex items-center gap-2">
@@ -206,11 +211,11 @@ export default function Monitoring() {
                       </div>
                       <p className="mt-1.5 text-[11px] text-steel-500">{fmtMiliar(Number(p.actual))} / {fmtMiliar(Number(p.budget))}</p>
                       <ProgressBar value={pct} tone={pct > 100 ? "red" : "ocean"} />
-                      <p className="mt-1.5 text-[11px] text-steel-500">NCR terbuka: <span className={`font-semibold ${openNcr(p.id).length > 0 ? "text-rose-600" : "text-steel-500"}`}>{openNcr(p.id).length}{openNcr(p.id).some((n) => n.severity === "Critical") ? " · Critical" : ""}</span></p>
+                      <p className="mt-1.5 text-[11px] text-steel-500">{S.monNcrOpen}<span className={`font-semibold ${openNcr(p.id).length > 0 ? "text-rose-600" : "text-steel-500"}`}>{openNcr(p.id).length}{openNcr(p.id).some((n) => n.severity === "Critical") ? S.monCritSuffix : ""}</span></p>
                     </Link>
                   );
                 })}
-                {cols.length === 0 && <p className="py-4 text-center text-xs text-steel-400">Kosong</p>}
+                {cols.length === 0 && <p className="py-4 text-center text-xs text-steel-400">{S.monEmptyStage}</p>}
               </div>
             </div>
           );

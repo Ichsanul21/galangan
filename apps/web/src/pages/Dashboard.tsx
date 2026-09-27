@@ -64,6 +64,8 @@ import {
   insights,
   fmtMiliar,
 } from "../data";
+import { useT } from "../i18n/LanguageContext";
+import { n_misc } from "../i18n/n_misc";
 
 const RANGES = ["6B", "12B"] as const;
 
@@ -79,6 +81,8 @@ function loadTargets(): Record<string, BranchTarget> {
 
 export default function Dashboard() {
   const { data, wbsFor, branch } = useStore();
+  const { locale } = useT();
+  const S = n_misc[locale];
   const { user } = useAuth();
   const allowedTarget = canSetTarget(user?.role);
   const navigate = useNavigate();
@@ -130,7 +134,7 @@ export default function Dashboard() {
       ...projects.map((p) => [p.id, p.vessel, Number(p.progress || 0), Number(p.budget || 0), Number(p.actual || 0)]),
     ];
     exportExcel(rows, "Ringkasan Portofolio");
-    toast("Ringkasan portofolio diekspor ke Excel");
+    toast(S.tPortfolioExported);
   };
 
   const tgt = targets[branch] ?? { revenue: 0, projects: 0 };
@@ -138,21 +142,21 @@ export default function Dashboard() {
   const aktualProj = branchProjects.filter((p) => p.status !== "Selesai").length;
 
   const saveTarget = () => {
-    if (!allowedTarget) { toast("Hanya Direktur / Manager yang dapat mengatur target", "info"); return; }
+    if (!allowedTarget) { toast(S.tOnlyDirectorManager, "info"); return; }
     const revenue = Number(tgtRev);
     const nProj = Number(tgtProj);
-    if (!Number.isFinite(revenue) || revenue < 0 || !Number.isFinite(nProj) || nProj < 0) { toast("Target harus angka ≥ 0", "info"); return; }
+    if (!Number.isFinite(revenue) || revenue < 0 || !Number.isFinite(nProj) || nProj < 0) { toast(S.tTargetNonNegative, "info"); return; }
     const next = { ...targets, [branch]: { revenue, projects: Math.round(nProj) } };
     setTargets(next);
     try { localStorage.setItem("isms.targets", JSON.stringify(next)); } catch { /* abaikan */ }
-    toast(`Target ${branch} disimpan`);
+    toast(S.tTargetSaved.replace("{n}", branch));
     setShowTarget(false);
     setTgtRev("");
     setTgtProj("");
   };
 
   const openTargetModal = () => {
-    if (!allowedTarget) { toast("Hanya Direktur / Manager yang dapat mengatur target", "info"); return; }
+    if (!allowedTarget) { toast(S.tOnlyDirectorManager, "info"); return; }
     setTgtRev(String(tgt.revenue || ""));
     setTgtProj(String(tgt.projects || ""));
     setShowTarget(true);
@@ -162,7 +166,7 @@ export default function Dashboard() {
     try {
       if (document.fullscreenElement) void document.exitFullscreen();
       else void document.documentElement.requestFullscreen();
-    } catch { toast("Fullscreen tidak didukung browser ini", "info"); }
+    } catch { toast(S.tFullscreenUnsupported, "info"); }
   };
 
   const totalRevenue = revenueSeries.reduce((s, d) => s + d.revenue, 0);
@@ -254,37 +258,37 @@ export default function Dashboard() {
 
   const attention: { icon: typeof Boxes; text: string; to: string; tone: string }[] = [
     ...(staleMilestones.length
-      ? [{ icon: AlertTriangle, text: `${staleMilestones.length} milestone 0% berakhir ≤${msDays} hari (${staleMilestones[0].project})`, to: "/proyek", tone: "bg-amber-50 text-amber-600" }]
+      ? [{ icon: AlertTriangle, text: S.attMilestone.replace("{n}", String(staleMilestones.length)).replace("{a}", String(msDays)).replace("{b}", String(staleMilestones[0].project)), to: "/proyek", tone: "bg-amber-50 text-amber-600" }]
       : []),
     ...(cpDelayed.length
-      ? [{ icon: Clock, text: `${cpDelayed.length} proyek critical-path delay >${cpDays} hari (${cpDelayed[0].id})`, to: "/proyek/monitoring", tone: "bg-rose-50 text-rose-600" }]
+      ? [{ icon: Clock, text: S.attCriticalPath.replace("{n}", String(cpDelayed.length)).replace("{a}", String(cpDays)).replace("{b}", String(cpDelayed[0].id)), to: "/proyek/monitoring", tone: "bg-rose-50 text-rose-600" }]
       : []),
     ...(budgetTight.length
-      ? [{ icon: Wallet, text: `${budgetTight.length} proyek serapan >80% (${budgetTight[0].id})`, to: "/proyek", tone: "bg-amber-50 text-amber-600" }]
+      ? [{ icon: Wallet, text: S.attAbsorption.replace("{n}", String(budgetTight.length)).replace("{b}", String(budgetTight[0].id)), to: "/proyek", tone: "bg-amber-50 text-amber-600" }]
       : []),
     ...(overrun.length
-      ? [{ icon: AlertTriangle, text: `${overrun.length} proyek overrun${overrun10.length ? ` (${overrun10.length} di antaranya >10%)` : ""}`, to: "/keuangan", tone: "bg-rose-50 text-rose-600" }]
+      ? [{ icon: AlertTriangle, text: S.attOverrun.replace("{n}", String(overrun.length)) + (overrun10.length ? S.attOverrunExtra.replace("{n}", String(overrun10.length)) : ""), to: "/keuangan", tone: "bg-rose-50 text-rose-600" }]
       : []),
     ...(lowStock.length
-      ? [{ icon: Boxes, text: `${lowStock.length} item stok di bawah minimum`, to: "/inventori", tone: "bg-amber-50 text-amber-600" }]
+      ? [{ icon: Boxes, text: S.attLowStock.replace("{n}", String(lowStock.length)), to: "/inventori", tone: "bg-amber-50 text-amber-600" }]
       : []),
     ...(certCrit.length
-      ? [{ icon: FileCheck2, text: `${certCrit.length} kapal sertifikat kritis/kedaluwarsa ≤${cert30} hari`, to: "/kapal", tone: "bg-rose-50 text-rose-600" }]
+      ? [{ icon: FileCheck2, text: S.attCertCrit.replace("{n}", String(certCrit.length)).replace("{a}", String(cert30)), to: "/kapal", tone: "bg-rose-50 text-rose-600" }]
       : []),
     ...(certWarn.length
-      ? [{ icon: FileCheck2, text: `${certWarn.length} kapal sertifikat warning ≤${cert60} hari`, to: "/kapal", tone: "bg-amber-50 text-amber-600" }]
+      ? [{ icon: FileCheck2, text: S.attCertWarn.replace("{n}", String(certWarn.length)).replace("{a}", String(cert60)), to: "/kapal", tone: "bg-amber-50 text-amber-600" }]
       : []),
     ...(certInfo.length
-      ? [{ icon: FileCheck2, text: `${certInfo.length} kapal sertifikat info ≤${cert90} hari`, to: "/kapal", tone: "bg-ocean-50 text-ocean-600" }]
+      ? [{ icon: FileCheck2, text: S.attCertInfo.replace("{n}", String(certInfo.length)).replace("{a}", String(cert90)), to: "/kapal", tone: "bg-ocean-50 text-ocean-600" }]
       : []),
     ...(overdueInvoices.length
-      ? [{ icon: Wallet, text: `${overdueInvoices.length} invoice overdue (7h: ${overdue7.length} · 14h: ${overdue14.length} · 30h+: ${overdue730.length})`, to: "/keuangan", tone: "bg-rose-50 text-rose-600" }]
+      ? [{ icon: Wallet, text: S.attOverdue.replace("{n}", String(overdueInvoices.length)).replace("{a}", String(overdue7.length)).replace("{b}", String(overdue14.length)).replace("{c}", String(overdue730.length)), to: "/keuangan", tone: "bg-rose-50 text-rose-600" }]
       : []),
     ...(latestIncident
-      ? [{ icon: Clock, text: `Insiden terbaru: ${latestIncident.id} - ${latestIncident.desc}`, to: "/qc-safety", tone: "bg-violet-50 text-violet-600" }]
+      ? [{ icon: Clock, text: S.attLatestIncident.replace("{a}", String(latestIncident.id)).replace("{b}", String(latestIncident.desc)), to: "/qc-safety", tone: "bg-violet-50 text-violet-600" }]
       : []),
     ...(delayedProjects.length
-      ? [{ icon: AlertTriangle, text: `${delayedProjects.length} proyek Terlambat (${delayedProjects[0].id})`, to: "/proyek", tone: "bg-rose-50 text-rose-600" }]
+      ? [{ icon: AlertTriangle, text: S.attDelayed.replace("{n}", String(delayedProjects.length)).replace("{b}", String(delayedProjects[0].id)), to: "/proyek", tone: "bg-rose-50 text-rose-600" }]
       : []),
   ];
 
@@ -292,19 +296,19 @@ export default function Dashboard() {
     <Stagger className="space-y-5">
       <StaggerItem>
         <PageHeader
-          title="Dashboard Eksekutif"
-          subtitle="PT Syukur Bersaudara - pusat kendali operasional galangan, Samarinda real-time"
+          title={S.dashTitle}
+          subtitle={S.dashSubtitle}
           icon={<TrendingUp className="h-5 w-5" />}
           actions={
             <>
               <button className="btn-secondary" onClick={togglePresent}>
-                <Sparkles className="h-4 w-4" /> Presentasi
+                <Sparkles className="h-4 w-4" /> {S.presentBtn}
               </button>
               <button className="btn-secondary" onClick={exportSummary}>
-                <Download className="h-4 w-4" /> Ekspor
+                <Download className="h-4 w-4" /> {S.exportBtn}
               </button>
               <button className="btn-primary-gradient" onClick={() => navigate("/proyek")}>
-                <Plus className="h-4 w-4" /> Proyek Baru
+                <Plus className="h-4 w-4" /> {S.newProjectBtn}
               </button>
             </>
           }
@@ -315,31 +319,31 @@ export default function Dashboard() {
       <StaggerItem>
         <Card className="p-4">
           <div className="mb-2 flex items-center justify-between px-1">
-            <h3 className="text-sm font-semibold text-navy-900">Target vs Aktual · {branch}</h3>
+            <h3 className="text-sm font-semibold text-navy-900">{S.targetVsActual.replace("{n}", branch)}</h3>
             {allowedTarget ? (
-              <button className="btn-secondary text-xs" onClick={openTargetModal}>Atur Target</button>
+              <button className="btn-secondary text-xs" onClick={openTargetModal}>{S.setTargetBtn}</button>
             ) : (
-              <span className="text-xs text-steel-400">Hanya Direktur / Manager dapat mengatur</span>
+              <span className="text-xs text-steel-400">{S.onlyDirectorManager}</span>
             )}
           </div>
           <div className="grid grid-cols-1 gap-3 px-1 sm:grid-cols-2">
             <div>
-              <div className="mb-1 flex justify-between text-xs"><span className="text-steel-500">Revenue aktual vs target</span><span className="font-semibold text-navy-900">{fmtMiliar(aktualRev)} / {fmtMiliar(tgt.revenue)}</span></div>
+              <div className="mb-1 flex justify-between text-xs"><span className="text-steel-500">{S.revenueActualVsTarget}</span><span className="font-semibold text-navy-900">{fmtMiliar(aktualRev)} / {fmtMiliar(tgt.revenue)}</span></div>
               <ProgressBar value={tgt.revenue > 0 ? (aktualRev / tgt.revenue) * 100 : 0} tone="navy" />
             </div>
             <div>
-              <div className="mb-1 flex justify-between text-xs"><span className="text-steel-500">Proyek aktual vs target</span><span className="font-semibold text-navy-900">{aktualProj} / {tgt.projects}</span></div>
+              <div className="mb-1 flex justify-between text-xs"><span className="text-steel-500">{S.projectActualVsTarget}</span><span className="font-semibold text-navy-900">{aktualProj} / {tgt.projects}</span></div>
               <ProgressBar value={tgt.projects > 0 ? (aktualProj / tgt.projects) * 100 : 0} tone="teal" />
             </div>
           </div>
         </Card>
       </StaggerItem>
 
-      <Modal open={showTarget} onClose={() => setShowTarget(false)} title={`Atur Target · ${branch}`} subtitle="Hanya Direktur / Manager - tersimpan per cabang per perangkat"
-        footer={<><button className="btn-secondary" onClick={() => setShowTarget(false)}>Batal</button><button className="btn-primary" onClick={saveTarget}>Simpan Target</button></>}>
+      <Modal open={showTarget} onClose={() => setShowTarget(false)} title={S.setTargetTitle.replace("{n}", branch)} subtitle={S.setTargetSub}
+        footer={<><button className="btn-secondary" onClick={() => setShowTarget(false)}>{S.cancelBtn}</button><button className="btn-primary" onClick={saveTarget}>{S.saveTargetBtn}</button></>}>
         <div className="space-y-3">
-          <Field label="Target revenue (Rp)"><input type="number" min={0} className="input" placeholder="cth: 50000000000" value={tgtRev} onChange={(e) => setTgtRev(e.target.value)} /></Field>
-          <Field label="Target proyek aktif"><input type="number" min={0} className="input" placeholder="cth: 8" value={tgtProj} onChange={(e) => setTgtProj(e.target.value)} /></Field>
+          <Field label={S.targetRevenueLabel}><input type="number" min={0} className="input" placeholder={S.targetRevenuePh} value={tgtRev} onChange={(e) => setTgtRev(e.target.value)} /></Field>
+          <Field label={S.targetProjectLabel}><input type="number" min={0} className="input" placeholder={S.targetProjectPh} value={tgtProj} onChange={(e) => setTgtProj(e.target.value)} /></Field>
         </div>
       </Modal>
 
@@ -352,16 +356,16 @@ export default function Dashboard() {
                 <Sparkles className="h-6 w-6" />
               </div>
               <div>
-                <p className="text-sm text-steel-300">Total Nilai Portofolio Berjalan</p>
+                <p className="text-sm text-steel-300">{S.totalPortfolio}</p>
                 <p className="text-3xl font-bold tracking-tight">{fmtMiliar(activeContracts)}</p>
               </div>
             </div>
             <div className="flex items-center gap-2">
               <Badge tone="teal" className="bg-white/15 border-white/20">
-                <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" /> Sistem Operasional
+                <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" /> {S.systemOperational}
               </Badge>
               <span className="px-3 py-1.5 rounded-lg bg-white/15 text-sm font-medium">
-                {activeEmployees} pekerja aktif
+                {S.activeWorkers.replace("{n}", String(activeEmployees))}
               </span>
             </div>
           </div>
@@ -372,9 +376,9 @@ export default function Dashboard() {
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <StaggerItem>
           <KpiCard
-            label="Proyek Aktif"
+            label={S.kpiActiveProjects}
             value={String(totalActive)}
-            delta={`${delayed} terlambat`}
+            delta={S.delayedSuffix.replace("{n}", String(delayed))}
             deltaDirection="down"
             icon={<Anchor className="h-5 w-5" />}
             chip="navy"
@@ -383,9 +387,9 @@ export default function Dashboard() {
         </StaggerItem>
         <StaggerItem>
           <KpiCard
-            label="Pendapatan 12 Bulan"
+            label={S.kpiRevenue12}
             value={totalRevenueLabel}
-            delta={`${revGrowth >= 0 ? "+" : ""}${revGrowth.toLocaleString("id-ID", { maximumFractionDigits: 1 })}% vs bulan lalu`}
+            delta={S.deltaPctVsMonth.replace("{n}", `${revGrowth >= 0 ? "+" : ""}${revGrowth.toLocaleString("id-ID", { maximumFractionDigits: 1 })}`)}
             deltaDirection={revGrowth > 0 ? "up" : revGrowth < 0 ? "down" : "flat"}
             icon={<Wallet className="h-5 w-5" />}
             chip="teal"
@@ -394,9 +398,9 @@ export default function Dashboard() {
         </StaggerItem>
         <StaggerItem>
           <KpiCard
-            label="Margin Bruto"
+            label={S.kpiGrossMargin}
             value={`${lastMargin.margin.toLocaleString("id-ID", { maximumFractionDigits: 1 })}%`}
-            delta={`${marginDiff >= 0 ? "+" : ""}${marginDiff.toLocaleString("id-ID", { maximumFractionDigits: 1 })} poin vs bulan lalu`}
+            delta={S.deltaPoinVsMonth.replace("{n}", `${marginDiff >= 0 ? "+" : ""}${marginDiff.toLocaleString("id-ID", { maximumFractionDigits: 1 })}`)}
             deltaDirection={marginDiff > 0 ? "up" : marginDiff < 0 ? "down" : "flat"}
             icon={<TrendingUp className="h-5 w-5" />}
             chip="violet"
@@ -405,9 +409,9 @@ export default function Dashboard() {
         </StaggerItem>
         <StaggerItem>
           <KpiCard
-            label="Utilitas Equipment"
+            label={S.kpiEquipUtil}
             value={`${utilEquipment}%`}
-            delta={`${utilDiff >= 0 ? "+" : ""}${utilDiff.toLocaleString("id-ID", { maximumFractionDigits: 1 })} poin vs bulan lalu`}
+            delta={S.deltaPoinVsMonth.replace("{n}", `${utilDiff >= 0 ? "+" : ""}${utilDiff.toLocaleString("id-ID", { maximumFractionDigits: 1 })}`)}
             deltaDirection={utilDiff > 0 ? "up" : utilDiff < 0 ? "down" : "flat"}
             icon={<Cpu className="h-5 w-5" />}
             chip="amber"
@@ -425,7 +429,7 @@ export default function Dashboard() {
                 <Boxes className="h-5 w-5" />
               </span>
               <div>
-                <p className="text-sm font-semibold text-navy-900">Nilai Stok {lowStock.length > 0 && <span className="ml-1 rounded-full bg-rose-100 px-1.5 py-0.5 text-[10px] font-bold text-rose-600">{lowStock.length} menipis</span>}</p>
+                <p className="text-sm font-semibold text-navy-900">{S.stockValueLabel} {lowStock.length > 0 && <span className="ml-1 rounded-full bg-rose-100 px-1.5 py-0.5 text-[10px] font-bold text-rose-600">{S.lowStockBadge.replace("{n}", String(lowStock.length))}</span>}</p>
                 <Link to="/inventori" className="text-lg font-bold text-gradient-navy hover:underline">{fmtMiliar(stockValue)}</Link>
               </div>
             </div>
@@ -434,7 +438,7 @@ export default function Dashboard() {
                 <Calendar className="h-5 w-5" />
               </span>
               <div>
-                <p className="text-sm font-semibold text-navy-900">Sea Trial Terjadwal</p>
+                <p className="text-sm font-semibold text-navy-900">{S.seaTrialLabel}</p>
                 <p className="text-lg font-bold text-gradient-navy">{seaTrialVessel}</p>
               </div>
             </div>
@@ -443,22 +447,22 @@ export default function Dashboard() {
                 <Anchor className="h-5 w-5" />
               </span>
               <div>
-                <p className="text-sm font-semibold text-navy-900">Quotation Aktif</p>
+                <p className="text-sm font-semibold text-navy-900">{S.activeQuotationLabel}</p>
                 <Link to="/crm" className="text-lg font-bold text-gradient-navy hover:underline">{fmtMiliar(pipelineActive)}</Link>
               </div>
             </div>
           </div>
           <div className="mt-3 grid grid-cols-1 gap-4 border-t border-steel-100 pt-3 sm:grid-cols-3">
             <div className="flex items-center justify-between text-sm">
-              <span className="text-steel-500">NCR terbuka</span>
-              <Link to="/qc-safety" className="font-bold text-rose-600 hover:underline" title={criticalOpenNcr > 0 ? `${criticalOpenNcr} Critical` : "Nihil Critical"}>{openNcr} kasus{criticalOpenNcr > 0 ? ` · ${criticalOpenNcr} Critical` : ""}</Link>
+              <span className="text-steel-500">{S.openNcrLabel}</span>
+              <Link to="/qc-safety" className="font-bold text-rose-600 hover:underline" title={criticalOpenNcr > 0 ? S.criticalCount.replace("{n}", String(criticalOpenNcr)) : S.nihilCritical}>{criticalOpenNcr > 0 ? S.ncrCasesCritical.replace("{n}", String(openNcr)).replace("{a}", String(criticalOpenNcr)) : S.ncrCases.replace("{n}", String(openNcr))}</Link>
             </div>
             <div className="flex items-center justify-between text-sm">
-              <span className="text-steel-500">Piutang tertagih</span>
+              <span className="text-steel-500">{S.arLabel}</span>
               <Link to="/keuangan" className="font-bold text-navy-900 hover:underline">{fmtMiliar(arOutstanding)}</Link>
             </div>
             <div className="flex items-center justify-between text-sm">
-              <span className="text-steel-500">Kontrak menang (CRM)</span>
+              <span className="text-steel-500">{S.wonContractLabel}</span>
               <Link to="/crm" className="font-bold text-navy-900 hover:underline">{fmtMiliar(wonQuotes)}</Link>
             </div>
           </div>
@@ -470,11 +474,11 @@ export default function Dashboard() {
         <Card className="p-4">
           <div className="mb-3 flex items-center gap-2 px-1">
             <AlertTriangle className="h-4 w-4 text-rose-500" />
-            <h3 className="text-sm font-semibold text-navy-900">Perlu Perhatian ({attention.length})</h3>
-            <span className="text-xs text-steel-400">Ambang otomatis dari data berjalan</span>
+            <h3 className="text-sm font-semibold text-navy-900">{S.needAttention.replace("{n}", String(attention.length))}</h3>
+            <span className="text-xs text-steel-400">{S.autoThreshold}</span>
           </div>
           {attention.length === 0 && (
-            <p className="px-1 text-sm text-steel-400">Semua ambang dalam batas aman.</p>
+            <p className="px-1 text-sm text-steel-400">{S.allThresholdsSafe}</p>
           )}
           <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-4">
             {attention.map((a, i) => (
@@ -494,11 +498,11 @@ export default function Dashboard() {
         <StaggerItem>
           <Card>
             <CardHeader
-              title="Status Proyek Aktif"
-              subtitle="Progres terbaru"
+              title={S.activeProjectStatus}
+              subtitle={S.latestProgress}
               action={
                 <Link to="/proyek" className="inline-flex items-center gap-1 text-sm font-semibold text-ocean-600 hover:text-ocean-500">
-                  Lihat semua <ArrowRight className="h-3.5 w-3.5" />
+                  {S.seeAll} <ArrowRight className="h-3.5 w-3.5" />
                 </Link>
               }
             />
@@ -530,7 +534,7 @@ export default function Dashboard() {
 
         <StaggerItem>
           <Card className="h-full">
-            <CardHeader title="Aktivitas Terkini" subtitle="Log real-time di seluruh modul" />
+            <CardHeader title={S.recentActivity} subtitle={S.realtimeLog} />
             <div className="space-y-1 p-3">
               {activities.slice(0, 6).map((a) => (
                 <div key={a.id} className="flex items-center gap-3 rounded-xl px-2 py-2 hover:bg-surface">
@@ -555,8 +559,8 @@ export default function Dashboard() {
         <StaggerItem className="lg:col-span-2">
           <Card>
             <CardHeader
-              title="Pendapatan & Volume Proyek"
-              subtitle="Tren 12 bulan terakhir (dalam miliar Rupiah)"
+              title={S.revenueVsVolume}
+              subtitle={S.trend12Months}
               action={
                 <div className="flex items-center gap-1 rounded-lg border border-steel-200 bg-surface p-0.5">
                   {RANGES.map((r) => (
@@ -587,9 +591,9 @@ export default function Dashboard() {
                   <YAxis yAxisId="rev" tick={{ fontSize: 12 }} stroke="#8aa2b6" axisLine={false} tickLine={false} />
                   <YAxis yAxisId="proj" orientation="right" tick={{ fontSize: 12 }} stroke="#8aa2b6" axisLine={false} tickLine={false} />
                   <Tooltip content={<ChartTooltip formatter={(v) => (typeof v === "number" ? `Rp ${v} M` : v)} />} />
-                  <Area yAxisId="rev" type="monotone" dataKey="revenue" name="Pendapatan" stroke="#0b3a63" strokeWidth={2.5} fill="url(#revGrad)" />
-                  <Bar yAxisId="proj" dataKey="projects" name="Jumlah Proyek" fill="#8cc9e8" radius={[4, 4, 0, 0]} barSize={16} />
-                  <Line yAxisId="rev" type="monotone" dataKey="cost" name="Biaya" stroke="#e11d48" strokeWidth={2} strokeDasharray="6 3" dot={false} />
+                  <Area yAxisId="rev" type="monotone" dataKey="revenue" name={S.legendRevenue} stroke="#0b3a63" strokeWidth={2.5} fill="url(#revGrad)" />
+                  <Bar yAxisId="proj" dataKey="projects" name={S.legendProjectCount} fill="#8cc9e8" radius={[4, 4, 0, 0]} barSize={16} />
+                  <Line yAxisId="rev" type="monotone" dataKey="cost" name={S.legendCost} stroke="#e11d48" strokeWidth={2} strokeDasharray="6 3" dot={false} />
                 </ComposedChart>
               </ResponsiveContainer>
             </div>
@@ -598,7 +602,7 @@ export default function Dashboard() {
 
         <StaggerItem>
           <Card className="h-full">
-            <CardHeader title="Komposisi Proyek" subtitle="Berdasarkan jenis pekerjaan" />
+            <CardHeader title={S.projectComposition} subtitle={S.byJobType} />
             <div className="flex flex-col items-center gap-4 p-4">
               <Donut
                 data={typeDist}
@@ -606,7 +610,7 @@ export default function Dashboard() {
                 size={170}
                 thickness={22}
                 centerValue={String(typeDist.reduce((s, d) => s + d.value, 0))}
-                centerLabel="proyek"
+                centerLabel={S.donutProjects}
               />
               <div className="grid w-full grid-cols-2 gap-2">
                 {typeDist.map((d) => (
@@ -626,11 +630,11 @@ export default function Dashboard() {
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-4">
         <StaggerItem className="lg:col-span-2">
           <Card>
-            <CardHeader title="Utilisasi Kapasitas" subtitle="Drydock, slipway & berth" />
+            <CardHeader title={S.capacityUtil} subtitle={S.drydockSlipwayBerth} />
             <div className="p-4">
               <div className="mb-3 flex items-end gap-2">
                 <span className="text-3xl font-bold text-navy-900">{utilDrydock}%</span>
-                <span className="pb-1 text-xs text-steel-500">dari {drydocks.length} fasilitas terpasang</span>
+                <span className="pb-1 text-xs text-steel-500">{S.facilitiesInstalled.replace("{n}", String(drydocks.length))}</span>
               </div>
               <div className="space-y-3">
                 {drydockLoad.map((d) => (
@@ -649,7 +653,7 @@ export default function Dashboard() {
 
         <StaggerItem>
           <Card className="h-full">
-            <CardHeader title="Produksi & Utilisasi" subtitle="Tren drydock vs equipment" />
+            <CardHeader title={S.productionUtil} subtitle={S.drydockVsEquip} />
             <div className="flex items-center justify-center gap-6 p-4">
               <RadialGauge value={utilDrydock} label="Drydock" color="#0b3a63" />
               <RadialGauge value={utilEquipment} label="Equipment" color="#2e9ad4" />
@@ -672,7 +676,7 @@ export default function Dashboard() {
 
         <StaggerItem>
           <Card className="h-full">
-            <CardHeader title="Wawasan Cerdas" subtitle="Rekomendasi otomatis" />
+            <CardHeader title={S.smartInsights} subtitle={S.autoRecommendations} />
             <div className="space-y-2.5 p-4 pt-0">
               {insights.map((i) => {
                 const dot =

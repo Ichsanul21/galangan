@@ -20,6 +20,8 @@ import {
 import type { SortState } from "../../components/ui";
 import { useStore } from "../../data/store";
 import type { StoreItem } from "../../data/store";
+import { useT } from "../../i18n/LanguageContext";
+import { n_prj } from "../../i18n/n_prj";
 import { fmtMiliar, sparkProjects, activeProjectTrend, contractValueTrend, avgProgressTrend } from "../../data";
 import { todayISO } from "../../utils/format";
 import { canonPrioritas } from "../../utils/scope";
@@ -62,6 +64,8 @@ const emptyForm = {
 };
 
 export default function Projects() {
+  const { locale } = useT();
+  const S = n_prj[locale];
   const { data, add, update, log, inBranch } = useStore();
   const modAlert = useModuleAlert("proyek");
   const navigate = useNavigate();
@@ -132,7 +136,7 @@ export default function Projects() {
       const stages = (p.designStages ?? []) as { name: string; status: string }[];
       const ca = stages.find((s) => s.name === "Class Approval");
       if (!ca || ca.status !== "Disetujui") {
-        toast("Class Approval belum Disetujui - lengkapi sub-stage desain dulu", "info");
+        toast(S.prjToastGate, "info");
         return;
       }
     }
@@ -141,12 +145,12 @@ export default function Projects() {
       tahapLog: [...(p.tahapLog ?? []), { from: tahapOf(p), to, date: todayISO(), by: "Anda", reason: "" }],
     });
     log("memajukan tahap", `${p.id} → ${to}`, "Proyek");
-    toast(`Tahap ${p.id} menjadi ${to}`);
+    toast(S.prjToastAdvance.replace("{a}", p.id).replace("{b}", to));
   };
 
   const confirmMundur = async () => {
     if (!mundurFor) return;
-    if (!mundurReason.trim()) { toast("Alasan penarikan tahap wajib diisi", "info"); return; }
+    if (!mundurReason.trim()) { toast(S.prjToastReasonReq, "info"); return; }
     const idx = TAHAP.indexOf(tahapOf(mundurFor));
     if (idx <= 0) { setMundurFor(null); return; }
     const to = TAHAP[idx - 1];
@@ -155,15 +159,15 @@ export default function Projects() {
       tahapLog: [...(mundurFor.tahapLog ?? []), { from: tahapOf(mundurFor), to, date: todayISO(), by: "Anda", reason: mundurReason.trim() }],
     });
     log("menurunkan tahap", `${mundurFor.id} → ${to} (alasan: ${mundurReason.trim()})`, "Proyek");
-    toast(`Tahap ${mundurFor.id} ditarik ke ${to}`);
+    toast(S.prjToastPulled.replace("{a}", mundurFor.id).replace("{b}", to));
     setMundurFor(null);
     setMundurReason("");
   };
 
   const save = async () => {
-    if (!form.vessel.trim() || !form.client.trim()) { toast("Nama kapal & klien wajib diisi", "info"); return; }
-    if (!form.branch.trim()) { toast("Cabang wajib dipilih", "info"); return; }
-    if (!branchOptions.includes(form.branch)) { toast("Cabang tidak dikenal", "info"); return; }
+    if (!form.vessel.trim() || !form.client.trim()) { toast(S.prjToastVesselClient, "info"); return; }
+    if (!form.branch.trim()) { toast(S.prjToastBranchReq, "info"); return; }
+    if (!branchOptions.includes(form.branch)) { toast(S.prjToastBranchUnknown, "info"); return; }
     const scopeItems = scopeRows
       .map((r) => ({
         service: r.service.trim(),
@@ -171,23 +175,23 @@ export default function Projects() {
         ...(r.deskripsi.trim() ? { deskripsi: r.deskripsi.trim() } : {}),
       }))
       .filter((r) => r.service);
-    if (scopeItems.length === 0) { toast("Ruang lingkup minimal 1 item - isi Service lalu Tambah", "info"); return; }
-    if (!form.start || !form.end) { toast("Tanggal rencana dimulai & estimasi penyelesaian wajib diisi", "info"); return; }
-    if (form.end < form.start) { toast("Estimasi penyelesaian tidak boleh sebelum rencana dimulai", "info"); return; }
+    if (scopeItems.length === 0) { toast(S.prjToastScopeMin, "info"); return; }
+    if (!form.start || !form.end) { toast(S.prjToastDatesReq, "info"); return; }
+    if (form.end < form.start) { toast(S.prjToastDateOrder, "info"); return; }
     const budget = Number(form.budget);
-    if (!Number.isFinite(budget) || budget <= 0) { toast("Nilai kontrak harus lebih dari 0", "info"); return; }
-    if (!form.manager) { toast("Pilih project manager", "info"); return; }
+    if (!Number.isFinite(budget) || budget <= 0) { toast(S.prjToastBudget, "info"); return; }
+    if (!form.manager) { toast(S.prjToastPm, "info"); return; }
     if (form.type === "New Build" && projects.some((p) => String(p.vessel ?? "").trim().toLowerCase() === form.vessel.trim().toLowerCase() && String(p.type) === "New Build")) {
-      toast("Kapal ini sudah punya proyek New Build - duplikat ditolak (Repair/Retrofit boleh berulang)", "info");
+      toast(S.prjToastDup, "info");
       return;
     }
     if (!vesselExists) {
       const loa = Number(form.vesselLoa);
-      if (!Number.isFinite(loa) || loa <= 0) { toast("Kapal belum terdaftar: LOA kapal baru wajib diisi (> 0)", "info"); return; }
-      if (!form.vesselType.trim()) { toast("Kapal belum terdaftar: tipe kapal wajib diisi", "info"); return; }
+      if (!Number.isFinite(loa) || loa <= 0) { toast(S.prjToastLoa, "info"); return; }
+      if (!form.vesselType.trim()) { toast(S.prjToastVType, "info"); return; }
       const imoRaw = form.vesselImo.trim();
       if (!imoRaw || imoRaw === "-" || imoRaw.toUpperCase() === "IMO" || imoRaw.toUpperCase() === "IMO -") {
-        toast("Kapal baru: IMO wajib diisi - real IMO (cth IMO 1234567) atau TBD-... bila menyusul", "info");
+        toast(S.prjToastImo, "info");
         return;
       }
     }
@@ -229,27 +233,27 @@ export default function Projects() {
           certificates: [],
           history: [{ date: form.start, event: "Proyek dibuat", type: "Kontrak" }],
         }, { action: "mendaftarkan kapal", target: form.vessel.trim(), module: "Kapal" });
-        toast(`Proyek ${created.id} dibuat; kapal baru terdaftar (${form.vesselImo.trim()})`);
+        toast(S.prjToastCreatedVessel.replace("{a}", created.id).replace("{b}", form.vesselImo.trim()));
       } else {
-        toast(`Proyek ${created.id} dibuat & terhubung ke kapal`);
+        toast(S.prjToastCreated.replace("{a}", created.id));
       }
       setForm(emptyForm);
       setScopeRows([{ service: "", lokasi: "", deskripsi: "" }]);
       setShowAdd(false);
     } catch {
-      toast(`Proyek ${code} gagal disimpan di tengah jalan - periksa daftar proyek & kapal`, "info");
+      toast(S.prjToastSaveFail.replace("{a}", code), "info");
     }
   };
 
   return (
     <div>
       <PageHeader
-        title="Manajemen Proyek"
-        subtitle="New Build, Repair & Maintenance, Retrofit"
+        title={S.prjTitle}
+        subtitle={S.prjSubtitle}
         icon={<Anchor className="h-5 w-5" />}
         actions={
           <>
-            <button className="btn-primary-gradient" onClick={() => { setForm(emptyForm); setScopeRows([{ service: "", lokasi: "", deskripsi: "" }]); setShowAdd(true); }}><Plus className="h-4 w-4" /> Proyek Baru</button>
+            <button className="btn-primary-gradient" onClick={() => { setForm(emptyForm); setScopeRows([{ service: "", lokasi: "", deskripsi: "" }]); setShowAdd(true); }}><Plus className="h-4 w-4" /> {S.prjNew}</button>
           </>
         }
       />
@@ -257,10 +261,10 @@ export default function Projects() {
       {modAlert.active && <AlertBannerView items={modAlert.items} onPick={modAlert.scrollTo} />}
 
       <div className="mb-4 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <KpiCard label="Total Proyek" value={String(projects.length)} hint="Seluruh portofolio" icon={<Anchor className="h-5 w-5" />} chip="navy" spark={sparkProjects} />
-        <KpiCard label="Sedang Berjalan" value={String(inProgress)} delta={`${delayed} terlambat`} deltaDirection="down" icon={<Clock className="h-5 w-5" />} chip="amber" spark={activeProjectTrend} />
-        <KpiCard label="Nilai Kontrak" value={fmtMiliar(totalBudget)} delta="Portofolio total" deltaDirection="up" icon={<Wallet className="h-5 w-5" />} chip="teal" spark={contractValueTrend} />
-        <KpiCard label="Rata-rata Progres" value={`${avgProgress}%`} delta="Penyelesaian umum" deltaDirection="flat" icon={<TrendingUp className="h-5 w-5" />} chip="violet" spark={avgProgressTrend} />
+        <KpiCard label={S.prjKpiTotal} value={String(projects.length)} hint={S.prjKpiTotalHint} icon={<Anchor className="h-5 w-5" />} chip="navy" spark={sparkProjects} />
+        <KpiCard label={S.prjKpiActive} value={String(inProgress)} delta={S.prjKpiLate.replace("{n}", String(delayed))} deltaDirection="down" icon={<Clock className="h-5 w-5" />} chip="amber" spark={activeProjectTrend} />
+        <KpiCard label={S.prjKpiContract} value={fmtMiliar(totalBudget)} delta={S.prjKpiContractHint} deltaDirection="up" icon={<Wallet className="h-5 w-5" />} chip="teal" spark={contractValueTrend} />
+        <KpiCard label={S.prjKpiAvg} value={`${avgProgress}%`} delta={S.prjKpiAvgHint} deltaDirection="flat" icon={<TrendingUp className="h-5 w-5" />} chip="violet" spark={avgProgressTrend} />
       </div>
 
       <div className="mb-4 flex flex-wrap items-center gap-3">
@@ -268,8 +272,8 @@ export default function Projects() {
           <Search className="absolute left-3 top-2.5 h-4 w-4 text-steel-400" />
           <input
             className="input pl-9 w-full"
-            placeholder="Cari kapal / kode proyek..."
-            aria-label="Cari proyek"
+            placeholder={S.searchProjectPh}
+            aria-label={S.searchProjectAria}
             value={q}
             onChange={(e) => setQ(e.target.value)}
           />
@@ -309,40 +313,40 @@ export default function Projects() {
                   </button>
                 ))}
               </div>
-              <Field label="Tahap">
-                <select className="input w-full py-1.5 text-sm" aria-label="Filter tahap" value={draft.tahap} onChange={(e) => setDraft({ ...draft, tahap: e.target.value })}>
-                  <option value="Semua">Semua tahap</option>
+              <Field label={S.prjFieldTahap}>
+                <select className="input w-full py-1.5 text-sm" aria-label={S.prjFilterTahapAria} value={draft.tahap} onChange={(e) => setDraft({ ...draft, tahap: e.target.value })}>
+                  <option value="Semua">{S.prjAllTahap}</option>
                   {TAHAP.map((t) => <option key={t} value={t}>{t}</option>)}
                 </select>
               </Field>
-              <Field label="Cabang">
-                <select className="input w-full py-1.5 text-sm" aria-label="Filter cabang" value={draft.branch} onChange={(e) => setDraft({ ...draft, branch: e.target.value })}>
-                  <option value="Semua">Semua cabang</option>
+              <Field label={S.branchLabel}>
+                <select className="input w-full py-1.5 text-sm" aria-label={S.prjFilterCabangAria} value={draft.branch} onChange={(e) => setDraft({ ...draft, branch: e.target.value })}>
+                  <option value="Semua">{S.prjAllCabang}</option>
                   {branchOptions.map((b) => <option key={b} value={b}>{b}</option>)}
                 </select>
               </Field>
-              <Field label="Status">
-                <select className="input w-full py-1.5 text-sm" aria-label="Filter status" value={draft.status} onChange={(e) => setDraft({ ...draft, status: e.target.value })}>
-                  <option value="Semua">Semua status</option>
+              <Field label={S.statusLabel}>
+                <select className="input w-full py-1.5 text-sm" aria-label={S.prjFilterStatusAria} value={draft.status} onChange={(e) => setDraft({ ...draft, status: e.target.value })}>
+                  <option value="Semua">{S.prjAllStatus}</option>
                   {statusOptions.filter((s) => s !== "Semua").map((s) => <option key={s} value={s}>{s}</option>)}
                 </select>
               </Field>
-              <Field label="Prioritas">
-                <select className="input w-full py-1.5 text-sm" aria-label="Filter prioritas" value={draft.prioritas} onChange={(e) => setDraft({ ...draft, prioritas: e.target.value })}>
-                  <option value="Semua">Semua prioritas</option>
+              <Field label={S.prjFieldPrioritas}>
+                <select className="input w-full py-1.5 text-sm" aria-label={S.prjFilterPrioritasAria} value={draft.prioritas} onChange={(e) => setDraft({ ...draft, prioritas: e.target.value })}>
+                  <option value="Semua">{S.prjAllPrioritas}</option>
                   {PRIORITAS.map((r) => <option key={r} value={r}>{r}</option>)}
                 </select>
               </Field>
-              <Field label="Project manager">
-                <select className="input w-full py-1.5 text-sm" aria-label="Filter PM" value={draft.pm} onChange={(e) => setDraft({ ...draft, pm: e.target.value })}>
-                  <option value="Semua">Semua PM</option>
+              <Field label={S.prjFieldPm}>
+                <select className="input w-full py-1.5 text-sm" aria-label={S.prjFilterPmAria} value={draft.pm} onChange={(e) => setDraft({ ...draft, pm: e.target.value })}>
+                  <option value="Semua">{S.prjAllPm}</option>
                   {pmOptions.map((m) => <option key={m} value={m}>{m}</option>)}
                 </select>
               </Field>
             </div>
           )}
         </FilterPopover>
-        <span className="ml-auto text-xs text-steel-400">{list.length} proyek</span>
+        <span className="ml-auto text-xs text-steel-400">{S.prjCount.replace("{n}", String(list.length))}</span>
       </div>
 
       <Card>
@@ -350,16 +354,16 @@ export default function Projects() {
           <table className="w-full">
             <thead className="sticky top-0 z-10 bg-surface">
               <tr>
-                <SortTh label="Proyek" sortKey="vessel" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} />
-                <SortTh label="Klien" sortKey="client" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} />
-                <SortTh label="Jenis" sortKey="type" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} />
-                <SortTh label="Tahap" sortKey="tahap" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} />
-                <SortTh label="Prioritas" sortKey="prioritas" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} />
-                <SortTh label="Status" sortKey="status" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} />
-                <SortTh label="Progres" sortKey="progress" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} />
-                <SortTh label="Anggaran" sortKey="budget" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} />
-                <SortTh label="Realisasi" sortKey="actual" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} />
-                <SortTh label="PM" sortKey="manager" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} />
+                <SortTh label={S.colProject} sortKey="vessel" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} />
+                <SortTh label={S.colClient} sortKey="client" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} />
+                <SortTh label={S.colType} sortKey="type" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} />
+                <SortTh label={S.prjFieldTahap} sortKey="tahap" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} />
+                <SortTh label={S.prjFieldPrioritas} sortKey="prioritas" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} />
+                <SortTh label={S.statusLabel} sortKey="status" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} />
+                <SortTh label={S.progLabel} sortKey="progress" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} />
+                <SortTh label={S.colBudget} sortKey="budget" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} />
+                <SortTh label={S.colActual} sortKey="actual" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} />
+                <SortTh label={S.colPm} sortKey="manager" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} />
               </tr>
             </thead>
             <tbody className="divide-y divide-steel-100">
@@ -373,7 +377,7 @@ export default function Projects() {
                     onClick={() => navigate(`/proyek/${p.id}`)}
                     onKeyDown={(e) => { if (e.key === "Enter") navigate(`/proyek/${p.id}`); }}
                     tabIndex={0}
-                    title={`Buka ${p.id}`}
+                    title={S.prjOpenRow.replace("{a}", p.id)}
                   >
                     <td className="td">
                       <span className="block">
@@ -392,7 +396,7 @@ export default function Projects() {
                         <Badge tone="navy">{tahapOf(p)}</Badge>
                         <button
                           className="rounded p-1 text-steel-400 hover:bg-steel-100 hover:text-navy-700 disabled:opacity-30 disabled:hover:bg-transparent"
-                          title="Mundur satu tahap (perlu alasan)"
+                           title={S.prjStepBackTitle}
                           disabled={tahapIdx <= 0}
                           onClick={(e) => { e.stopPropagation(); setMundurFor(p); }}
                         >
@@ -400,7 +404,7 @@ export default function Projects() {
                         </button>
                         <button
                           className="rounded p-1 text-steel-400 hover:bg-steel-100 hover:text-navy-700 disabled:opacity-30 disabled:hover:bg-transparent"
-                          title="Maju satu tahap"
+                           title={S.prjStepNextTitle}
                           disabled={tahapIdx < 0 || tahapIdx >= TAHAP.length - 1}
                           onClick={(e) => { e.stopPropagation(); majuTahap(p); }}
                         >
@@ -426,7 +430,7 @@ export default function Projects() {
               })}
             </tbody>
           </table>
-          {list.length === 0 && <p className="py-8 text-center text-sm text-steel-400">Tidak ada proyek yang cocok.</p>}
+          {list.length === 0 && <p className="py-8 text-center text-sm text-steel-400">{S.prjEmpty}</p>}
           {pager.bar}
         </div>
       </Card>
@@ -435,128 +439,128 @@ export default function Projects() {
       <Modal
         open={showAdd}
         onClose={() => setShowAdd(false)}
-        title="Proyek Baru"
-        subtitle="Kapal baru otomatis terdaftar di Rekam Jejak Kapal"
+        title={S.prjNew}
+        subtitle={S.prjModalSub}
         wide
         footer={
           <>
-            <button className="btn-secondary" onClick={() => setShowAdd(false)}>Batal</button>
-            <button className="btn-primary" onClick={save}>Simpan Proyek</button>
+            <button className="btn-secondary" onClick={() => setShowAdd(false)}>{S.cancelBtn}</button>
+            <button className="btn-primary" onClick={save}>{S.prjSave}</button>
           </>
         }
       >
         <div className="space-y-3">
           <p className="text-xs text-steel-500">
-            Kode proyek otomatis: <span className="font-mono font-semibold text-navy-900">{codePreview}</span>
+            {S.prjCodeAuto}<span className="font-mono font-semibold text-navy-900">{codePreview}</span>
           </p>
           <FormGrid>
-            <Field label="Nama kapal">
-              <input className="input" list="vessel-list" placeholder="cth: TB Samudra Jaya 08" value={form.vessel} onChange={(e) => setF("vessel", e.target.value)} />
+            <Field label={S.prjVesselName}>
+              <input className="input" list="vessel-list" placeholder={S.prjVesselPh} value={form.vessel} onChange={(e) => setF("vessel", e.target.value)} />
               <datalist id="vessel-list">
                 {data.vessels.map((v) => <option key={v.id} value={v.name} />)}
               </datalist>
             </Field>
-            <Field label="Klien">
+            <Field label={S.colClient}>
               <div className="flex gap-2">
                 <select className="input flex-1" value={form.client} onChange={(e) => {
                   if (e.target.value === "__baru__") { setShowClientModal(true); return; }
                   setF("client", e.target.value);
                 }}>
-                  <option value="">Pilih klien…</option>
+                  <option value="">{S.prjPickClient}</option>
                   {data.clients.map((c) => <option key={c.id} value={c.name}>{c.name}</option>)}
-                  <option value="__baru__">+ Tambah klien baru…</option>
+                  <option value="__baru__">{S.prjAddClient}</option>
                 </select>
               </div>
             </Field>
-            <Field label="Jenis proyek">
+            <Field label={S.prjType}>
               <select className="input" value={form.type} onChange={(e) => setF("type", e.target.value)}>
                 <option>New Build</option>
                 <option>Repair</option>
                 <option>Retrofit</option>
               </select>
             </Field>
-            <Field label="Tahap awal (E2E)">
+            <Field label={S.prjInitStage}>
               <select className="input" value={form.tahap} onChange={(e) => setF("tahap", e.target.value)}>
                 {TAHAP.map((t) => <option key={t}>{t}</option>)}
               </select>
             </Field>
-            <Field label="Status proyek">
+            <Field label={S.prjStatusField}>
               <select className="input" value={form.status} onChange={(e) => setF("status", e.target.value)}>
                 <option>Dalam Proses</option>
                 <option>Sedang Berjalan</option>
                 <option>Tertunda</option>
               </select>
             </Field>
-            <Field label="Prioritas">
+            <Field label={S.prjFieldPrioritas}>
               <select className="input" value={form.prioritas} onChange={(e) => setF("prioritas", e.target.value)}>
                 {PRIORITAS.map((r) => <option key={r}>{r}</option>)}
               </select>
             </Field>
-            <Field label="Cabang">
+            <Field label={S.branchLabel}>
               <select className="input" value={form.branch} onChange={(e) => setF("branch", e.target.value)}>
                 {branchOptions.map((b) => <option key={b}>{b}</option>)}
               </select>
             </Field>
-            <Field label="Project manager">
+            <Field label={S.prjFieldPm}>
               <select className="input" value={form.manager} onChange={(e) => setF("manager", e.target.value)}>
-                <option value="">Pilih PM…</option>
+                <option value="">{S.prjPickPm}</option>
                 {data.employees.filter((e) => e.dept === "Proyek" || e.role.includes("Manager")).map((e) => (
                   <option key={e.id} value={e.name}>{e.name}</option>
                 ))}
               </select>
             </Field>
-            <Field label="Rencana dimulai"><input type="date" className="input" value={form.start} onChange={(e) => setF("start", e.target.value)} /></Field>
-            <Field label="Estimasi penyelesaian pekerjaan"><input type="date" className="input" value={form.end} onChange={(e) => setF("end", e.target.value)} /></Field>
+            <Field label={S.prjStart}><input type="date" className="input" value={form.start} onChange={(e) => setF("start", e.target.value)} /></Field>
+            <Field label={S.prjEnd}><input type="date" className="input" value={form.end} onChange={(e) => setF("end", e.target.value)} /></Field>
           </FormGrid>
           {!vesselExists && form.vessel.trim() && (
             <div className="rounded-xl border border-amber-200 bg-amber-50 p-3">
-              <p className="mb-2 text-xs font-semibold text-amber-800">Kapal belum terdaftar - lengkapi data kapal baru:</p>
+              <p className="mb-2 text-xs font-semibold text-amber-800">{S.prjNewVesselNote}</p>
               <FormGrid>
-                <Field label="LOA kapal baru (m)"><input type="number" min={0} step={0.1} className="input" value={form.vesselLoa} onChange={(e) => setF("vesselLoa", e.target.value)} placeholder="cth: 32" /></Field>
-                <Field label="Tipe kapal baru"><input className="input" value={form.vesselType} onChange={(e) => setF("vesselType", e.target.value)} placeholder="cth: Tugboat ASD 2x1600 HP" /></Field>
+                <Field label={S.prjLoa}><input type="number" min={0} step={0.1} className="input" value={form.vesselLoa} onChange={(e) => setF("vesselLoa", e.target.value)} placeholder={S.prjLoaPh} /></Field>
+                <Field label={S.prjVesselType}><input className="input" value={form.vesselType} onChange={(e) => setF("vesselType", e.target.value)} placeholder={S.prjVesselTypePh} /></Field>
               </FormGrid>
               <div className="mt-2">
-                <Field label="IMO kapal baru" hint='Wajib - real IMO (cth IMO 1234567) atau TBD-... bila menyusul. Placeholder "IMO -" ditolak.'>
-                  <input className="input font-mono" value={form.vesselImo} onChange={(e) => setF("vesselImo", e.target.value)} placeholder="IMO 1234567 atau TBD-NB-01" />
+                <Field label={S.prjImo} hint={S.prjImoHint}>
+                  <input className="input font-mono" value={form.vesselImo} onChange={(e) => setF("vesselImo", e.target.value)} placeholder={S.prjImoPh} />
                 </Field>
               </div>
             </div>
           )}
-          <Field label="Nilai kontrak (Rp)">
-            <input type="number" className="input" min={0} value={form.budget} onChange={(e) => setF("budget", e.target.value)} placeholder="cth: 10000000000" />
+          <Field label={S.prjBudget}>
+            <input type="number" className="input" min={0} value={form.budget} onChange={(e) => setF("budget", e.target.value)} placeholder={S.prjBudgetPh} />
           </Field>
           <div className="rounded-xl border border-steel-200 p-3">
             <div className="mb-2 flex items-center justify-between">
-              <p className="text-xs font-semibold text-navy-900">Ruang lingkup pekerjaan</p>
+              <p className="text-xs font-semibold text-navy-900">{S.prjScope}</p>
               <button
                 className="btn-secondary px-2 py-1 text-xs"
                 onClick={() => setScopeRows((s) => [...s, { service: "", lokasi: "", deskripsi: "" }])}
               >
-                + Tambah lingkup
+                {S.prjAddScope}
               </button>
             </div>
             <div className="space-y-2">
               {scopeRows.map((r, idx) => (
                 <div key={idx} className="grid grid-cols-1 gap-2 rounded-lg bg-surface p-2 sm:grid-cols-12">
                   <div className="sm:col-span-4">
-                    <Field label="Jenis pekerjaan">
-                      <input className="input" value={r.service} onChange={(e) => setScopeRows((s) => s.map((x, i) => (i === idx ? { ...x, service: e.target.value } : x)))} placeholder="Fabrikasi Baja" />
+                    <Field label={S.prjScopeType}>
+                      <input className="input" value={r.service} onChange={(e) => setScopeRows((s) => s.map((x, i) => (i === idx ? { ...x, service: e.target.value } : x)))} placeholder={S.prjScopeTypePh} />
                     </Field>
                   </div>
                   <div className="sm:col-span-3">
-                    <Field label="Lokasi">
-                      <input className="input" value={r.lokasi} onChange={(e) => setScopeRows((s) => s.map((x, i) => (i === idx ? { ...x, lokasi: e.target.value } : x)))} placeholder="Workshop A" />
+                    <Field label={S.prjScopeLoc}>
+                      <input className="input" value={r.lokasi} onChange={(e) => setScopeRows((s) => s.map((x, i) => (i === idx ? { ...x, lokasi: e.target.value } : x)))} placeholder={S.prjScopeLocPh} />
                     </Field>
                   </div>
                   <div className="sm:col-span-4">
-                    <Field label="Deskripsi">
-                      <input className="input" value={r.deskripsi} onChange={(e) => setScopeRows((s) => s.map((x, i) => (i === idx ? { ...x, deskripsi: e.target.value } : x)))} placeholder="Section 4-7, tebal 12mm" />
+                    <Field label={S.prjScopeDesc}>
+                      <input className="input" value={r.deskripsi} onChange={(e) => setScopeRows((s) => s.map((x, i) => (i === idx ? { ...x, deskripsi: e.target.value } : x)))} placeholder={S.prjScopeDescPh} />
                     </Field>
                   </div>
                   <div className="flex items-end sm:col-span-1">
                     <button
                       className="btn-secondary w-full px-2 py-2 text-xs text-rose-600"
-                      aria-label={`Hapus lingkup ${idx + 1}`}
+                      aria-label={S.prjDelScopeAria.replace("{n}", String(idx + 1))}
                       disabled={scopeRows.length <= 1}
                       onClick={() => setScopeRows((s) => s.filter((_, i) => i !== idx))}
                     >
@@ -579,17 +583,17 @@ export default function Projects() {
       <Modal
         open={mundurFor !== null}
         onClose={() => { setMundurFor(null); setMundurReason(""); }}
-        title={`Tarik tahap: ${mundurFor?.vessel ?? ""}`}
-        subtitle={mundurFor ? `${mundurFor.id} · dari ${tahapOf(mundurFor)} ke ${TAHAP[TAHAP.indexOf(tahapOf(mundurFor)) - 1] ?? "-"}` : ""}
+        title={S.prjPullTitle.replace("{a}", mundurFor?.vessel ?? "")}
+        subtitle={mundurFor ? S.prjPullSub.replace("{a}", mundurFor.id).replace("{b}", tahapOf(mundurFor)).replace("{c}", TAHAP[TAHAP.indexOf(tahapOf(mundurFor)) - 1] ?? "-") : ""}
         footer={
           <>
-            <button className="btn-secondary" onClick={() => { setMundurFor(null); setMundurReason(""); }}>Batal</button>
-            <button className="btn-primary" onClick={confirmMundur}>Tarik Tahap</button>
+            <button className="btn-secondary" onClick={() => { setMundurFor(null); setMundurReason(""); }}>{S.cancelBtn}</button>
+            <button className="btn-primary" onClick={confirmMundur}>{S.prjPullBtn}</button>
           </>
         }
       >
-        <Field label="Alasan penarikan tahap" hint="Wajib diisi - tercatat di log aktivitas proyek">
-          <textarea className="input" rows={3} value={mundurReason} onChange={(e) => setMundurReason(e.target.value)} placeholder="cth: Desain revisi class belum disetujui" />
+        <Field label={S.prjPullReason} hint={S.prjPullReasonHint}>
+          <textarea className="input" rows={3} value={mundurReason} onChange={(e) => setMundurReason(e.target.value)} placeholder={S.prjPullReasonPh} />
         </Field>
       </Modal>
     </div>

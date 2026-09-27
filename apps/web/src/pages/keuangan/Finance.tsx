@@ -33,6 +33,8 @@ import {
   toast,
 } from "../../components/ui";
 import type { SortState } from "../../components/ui";
+import { n_fin } from "../../i18n/n_fin";
+import { useT } from "../../i18n/LanguageContext";
 import { useStore } from "../../data/store";
 import type { StoreItem } from "../../data/store";
 import { fmtRupiah, fmtMiliar, fmtTanggal, fmtJumlah, todayISO } from "../../utils/format";
@@ -80,8 +82,16 @@ const FIN_FLOW = [
 const INV_STAGES = ["Draft", "Diajukan", "Disetujui", "Belum Dibayar", "Terlambat", "Lunas", "Ditolak", "Dihapusbukukan"] as const;
 
 function FinFlowStrip({ tab, onPick }: { tab: string; onPick: (t: string) => void }) {
+  const { locale } = useT();
+  const S = n_fin[locale];
+  const FLOW_TXT: Record<number, { label: string; desc: string }> = {
+    1: { label: S.flowMaster, desc: S.flowMasterDesc },
+    2: { label: S.flowBilling, desc: S.flowBillingDesc },
+    3: { label: S.flowReport, desc: S.flowReportDesc },
+    4: { label: S.flowTax, desc: S.flowTaxDesc },
+  };
   return (
-    <div className="mb-3 grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-4" role="group" aria-label="Alur keuangan">
+    <div className="mb-3 grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-4" role="group" aria-label={S.flowAria}>
       {FIN_FLOW.map((st) => {
         const has = st.tabs.includes(tab);
         return (
@@ -90,9 +100,9 @@ function FinFlowStrip({ tab, onPick }: { tab: string; onPick: (t: string) => voi
               <span className={`flex h-5 w-5 items-center justify-center rounded-full text-[10px] ${has ? "bg-white/25 text-white" : "bg-surface text-navy-800"}`}>
                 {st.n}
               </span>
-              {st.label}
+              {FLOW_TXT[st.n].label}
             </p>
-            <p className={`mt-0.5 text-[11px] ${has ? "text-white/80" : "text-steel-500"}`}>{st.desc}</p>
+            <p className={`mt-0.5 text-[11px] ${has ? "text-white/80" : "text-steel-500"}`}>{FLOW_TXT[st.n].desc}</p>
             <div className="mt-2 flex flex-wrap gap-1">
               {st.tabs.map((t) => (
                 <button
@@ -123,8 +133,10 @@ function InvStageStrip({ counts, active, onPick }: {
   active: string;
   onPick: (s: string) => void;
 }) {
+  const { locale } = useT();
+  const S = n_fin[locale];
   return (
-    <div className="mb-3 flex flex-wrap items-center gap-2" role="group" aria-label="Filter tahap invoice">
+    <div className="mb-3 flex flex-wrap items-center gap-2" role="group" aria-label={S.invFilterAria}>
       {INV_STAGES.map((st, i) => {
         const n = counts[st] ?? 0;
         const on = active === st;
@@ -133,7 +145,7 @@ function InvStageStrip({ counts, active, onPick }: {
             key={st}
             onClick={() => onPick(on ? "Semua" : st)}
             aria-pressed={on}
-            title={n === 0 ? `Tidak ada invoice ${st}` : `Tampilkan ${n} invoice ${st}`}
+            title={n === 0 ? S.stageEmpty.replace("{a}", st) : S.stageShow.replace("{n}", String(n)).replace("{a}", st)}
             className={`flex items-center gap-1.5 rounded-xl border px-2.5 py-1.5 text-xs font-semibold transition-colors ${
               on ? "border-navy-700 bg-navy-700 text-white" : "border-steel-200 bg-white text-steel-700 hover:border-navy-400"
             }`}
@@ -146,7 +158,7 @@ function InvStageStrip({ counts, active, onPick }: {
           </button>
         );
       })}
-      <span className="text-xs text-steel-400">klik tahap untuk filter, klik lagi untuk lepas</span>
+      <span className="text-xs text-steel-400">{S.flowHint}</span>
     </div>
   );
 }
@@ -283,6 +295,8 @@ const nlOf = (kode: string): { d: number; k: number } => NL_EXCEL[kode] ?? { d: 
 
 export default function Finance() {
   const { data, add, update, remove, log, branch, inBranch } = useStore();
+  const { locale } = useT();
+  const S = n_fin[locale];
   const modAlert = useModuleAlert("keuangan");
   const [tab, setTab] = useState("Akun");
   const today = todayISO();
@@ -930,20 +944,20 @@ export default function Finance() {
 
   const saveInvoice = async () => {
     const proj = projectById[invForm.project];
-    if (!proj) { toast("Pilih proyek dulu", "info"); return; }
-    if (!invForm.due) { toast("Jatuh tempo wajib diisi", "info"); return; }
-    if (!invForm.paymentTerm.trim()) { toast("Termin label wajib diisi", "info"); return; }
-    if (invForm.billingType === "Milestone" && !invForm.milestoneRef.trim()) { toast("Milestone ref wajib untuk billing Milestone", "info"); return; }
-    if (num(invForm.dpApplied) > 0 && !invForm.dpRef.trim()) { toast("Referensi DP wajib diisi bila amortisasi DP > 0", "info"); return; }
+    if (!proj) { toast(S.pickProjectFirst, "info"); return; }
+    if (!invForm.due) { toast(S.dueRequired, "info"); return; }
+    if (!invForm.paymentTerm.trim()) { toast(S.termLabelRequired, "info"); return; }
+    if (invForm.billingType === "Milestone" && !invForm.milestoneRef.trim()) { toast(S.milestoneRequired, "info"); return; }
+    if (num(invForm.dpApplied) > 0 && !invForm.dpRef.trim()) { toast(S.dpRefRequired, "info"); return; }
     const validLines = invLines.filter((l) => l.desc.trim() && lineAmount(l, isTMForm) > 0);
-    if (validLines.length === 0) { toast("Isi minimal satu baris dengan nominal lebih dari 0", "info"); return; }
-    if (invForm.nsfp.trim() && (data.invoices ?? []).some((i) => String(i.nsfp ?? "") === invForm.nsfp.trim())) { toast("NSFP sudah dipakai invoice lain", "info"); return; }
-    if (invForm.noFaktur.trim() && (data.invoices ?? []).some((i) => String(i.noFaktur ?? "") === invForm.noFaktur.trim())) { toast("No. faktur sudah dipakai invoice lain", "info"); return; }
+    if (validLines.length === 0) { toast(S.minOneLine, "info"); return; }
+    if (invForm.nsfp.trim() && (data.invoices ?? []).some((i) => String(i.nsfp ?? "") === invForm.nsfp.trim())) { toast(S.nsfpUsed, "info"); return; }
+    if (invForm.noFaktur.trim() && (data.invoices ?? []).some((i) => String(i.noFaktur ?? "") === invForm.noFaktur.trim())) { toast(S.fakturUsed, "info"); return; }
     // E6: clientPO opsional - bila diisi harus milik proyek yang sama.
     if (invForm.clientPO) {
       const po = (data.clientPos ?? []).find((p) => String(p.no ?? "") === invForm.clientPO || String(p.id ?? "") === invForm.clientPO);
-      if (!po) { toast("PO klien tidak dikenal", "info"); return; }
-      if (po.projectId && String(po.projectId) !== proj.id) { toast(`PO klien milik proyek ${String(po.projectId)} - tidak cocok dengan ${proj.id}`, "info"); return; }
+      if (!po) { toast(S.poUnknown, "info"); return; }
+      if (po.projectId && String(po.projectId) !== proj.id) { toast(S.poMismatch.replace("{a}", String(po.projectId)).replace("{b}", proj.id), "info"); return; }
     }
     const total = validLines.reduce((s, l) => s + lineAmount(l, isTMForm), 0);
     const pct = invForm.billingType === "Uang Muka" || invForm.billingType === "T&M" ? 0 : num(invForm.retentionPct);
@@ -974,10 +988,10 @@ export default function Finance() {
       retentionPct: pct,
     });
     if (verify.dpp !== sb.dpp || verify.ppn !== sb.ppn || verify.pph !== sb.pph || verify.grand !== sb.grand || verify.retentionAmt !== retentionAmt) {
-      toast("Hitungan PPN/PPh tidak konsisten - periksa lines, tarif & retensi", "info");
+      toast(S.taxMismatch, "info");
       return;
     }
-    if (!Number.isFinite(sb.grand) || sb.grand <= 0) { toast("Grand total harus lebih dari 0 - periksa lines & potongan DP", "info"); return; }
+    if (!Number.isFinite(sb.grand) || sb.grand <= 0) { toast(S.grandPositive, "info"); return; }
     const storedLines = validLines.map((l) => ({
       desc: l.desc.trim(),
       qty: num(l.qty),
@@ -1031,7 +1045,7 @@ export default function Finance() {
       await update("projects", proj.id, { hasAdvance: true });
       log("menandai uang muka proyek", proj.id, "Keuangan");
     }
-    toast(`Invoice ${created.id} dibuat (Draft)`);
+    toast(S.invCreated.replace("{a}", created.id));
     setShowInv(false);
     setInvForm({ project: "", billingType: "Milestone", milestoneRef: "", serviceRef: "", clientPO: "", retentionPct: "5", due: "", paymentTerm: "Termin 1", nsfp: "", noFaktur: "", kodePembantu: "", skdt: false, dpApplied: "", dpRef: "" });
     setInvLines([emptyLine()]);
@@ -1039,7 +1053,7 @@ export default function Finance() {
 
   // T&M: tarik baris otomatis dari timesheet Disetujui - jumlah jam × rate per WO proyek ini.
   const pullTimesheetLines = () => {
-    if (!invForm.project) { toast("Pilih proyek dulu", "info"); return; }
+    if (!invForm.project) { toast(S.pickProjectFirst, "info"); return; }
     const rateOf = (t: StoreItem): number =>
       Number(t.rate || 0) || Number((data.workOrders ?? []).find((w) => w.id === t.woId)?.rate || 0);
     const projOf = (t: StoreItem): string =>
@@ -1047,7 +1061,7 @@ export default function Finance() {
     const rows = (data.timesheets ?? []).filter(
       (t) => String(t.status ?? "Diajukan") === "Disetujui" && projOf(t) === invForm.project && Number(t.hours || 0) > 0 && rateOf(t) > 0,
     );
-    if (rows.length === 0) { toast("Tidak ada timesheet Disetujui ber-rate untuk proyek ini", "info"); return; }
+    if (rows.length === 0) { toast(S.noTimesheet, "info"); return; }
     const agg = new Map<string, { hours: number; rate: number }>();
     for (const t of rows) {
       const woId = String(t.woId ?? "-");
@@ -1060,7 +1074,7 @@ export default function Finance() {
     }));
     setInvLines(lines);
     const total = lines.reduce((s, l) => s + lineAmount(l, true), 0);
-    toast(`${rows.length} timesheet (${lines.length} WO) ditarik - total ${fmtRupiah(total)}`);
+    toast(S.tsPulled.replace("{n}", String(rows.length)).replace("{a}", String(lines.length)).replace("{b}", fmtRupiah(total)));
   };
 
   const dunningOf = (inv: StoreItem): string => String(inv.dunning ?? "Belum Ditagih");
@@ -1077,7 +1091,7 @@ export default function Finance() {
     }
     await update("invoices", inv.id, { dunning: next });
     log("mengupdate penagihan", `${inv.id} → ${next}`, "Keuangan");
-    toast(`${inv.id} → ${next}`);
+    toast(S.movedTo.replace("{a}", inv.id).replace("{b}", next));
   };
 
   const needsWriteOffDirector = (inv: StoreItem | null): boolean =>
@@ -1085,10 +1099,10 @@ export default function Finance() {
 
   const doWriteOff = async () => {
     if (!writeOff) return;
-    if (!writeOffReason.trim()) { toast("Alasan hapus buku wajib diisi", "info"); return; }
+    if (!writeOffReason.trim()) { toast(S.woReasonRequired, "info"); return; }
     // Hapus buku di atas ambang APPROVE_INVOICE wajib persetujuan Director (checkbox + nama).
     if (needsWriteOffDirector(writeOff) && (!woDirCheck || !woDirName.trim())) {
-      toast(`Hapus buku di atas ${fmtRupiah(approveThreshold)} wajib dicentang + nama Director`, "info");
+      toast(S.woDirectorRequired.replace("{a}", fmtRupiah(approveThreshold)), "info");
       return;
     }
     await update("invoices", writeOff.id, {
@@ -1099,7 +1113,7 @@ export default function Finance() {
       ...(needsWriteOffDirector(writeOff) ? { directorApproved: woDirName.trim(), writeOffBy: woDirName.trim() } : {}),
     });
     log("menghapus-bukukan piutang", `${writeOff.id} - ${writeOffReason.trim()}`, "Keuangan");
-    toast(`${writeOff.id} dihapusbukukan - masuk beban`);
+    toast(S.woDone.replace("{a}", writeOff.id));
     setWriteOff(null);
     setWriteOffReason("");
     setConfirmWriteOff(false);
@@ -1110,9 +1124,9 @@ export default function Finance() {
   // --- Akun: tambah / ubah / hapus (kolom sheet Akun) ---
   const saveCoa = async () => {
     const kode = coaForm.kode.trim();
-    if (!kode) { toast("No. akun wajib diisi", "info"); return; }
-    if (!/^\d+-\d+$/.test(kode)) { toast("No. akun harus format angka-angka, cth: 1-125", "info"); return; }
-    if (!coaForm.nama.trim()) { toast("Nama akun wajib diisi", "info"); return; }
+    if (!kode) { toast(S.coaNoRequired, "info"); return; }
+    if (!/^\d+-\d+$/.test(kode)) { toast(S.coaNoFormat, "info"); return; }
+    if (!coaForm.nama.trim()) { toast(S.coaNameRequired, "info"); return; }
     if (coaTarget) {
       if (String(coaTarget.dk) === "-") {
         /* Baris header: hanya nama yang boleh diubah, posisi D/K & NR/LR dikunci. */
@@ -1121,11 +1135,11 @@ export default function Finance() {
         await update("coa", coaTarget.id, { nama: coaForm.nama.trim(), dk: coaForm.dk, nrlr: coaForm.nrlr });
       }
       log("mengubah akun", kode, "Keuangan");
-      toast(`Akun ${kode} diubah`);
+      toast(S.coaUpdated.replace("{a}", kode));
     } else {
-      if (coaKode.has(kode)) { toast("No. akun sudah ada", "info"); return; }
+      if (coaKode.has(kode)) { toast(S.coaExists, "info"); return; }
       await add("coa", { id: `COA-${kode}`, kode, nama: coaForm.nama.trim(), dk: coaForm.dk, nrlr: coaForm.nrlr }, { action: "menambah akun", module: "Keuangan" });
-      toast(`Akun ${kode} ditambah`);
+      toast(S.coaAdded.replace("{a}", kode));
     }
     setShowCoa(false);
     setCoaTarget(null);
@@ -1134,16 +1148,16 @@ export default function Finance() {
 
   // --- Jurnal: tambah manual berimbang multi-baris (kolom sheet JU: Kas/BPD/JPb/JPn/JM) ---
   const saveJu = async () => {
-    if (!juForm.date) { toast("Tanggal wajib diisi", "info"); return; }
-    if (!juForm.uraian.trim()) { toast("Uraian wajib diisi", "info"); return; }
+    if (!juForm.date) { toast(S.dateRequired, "info"); return; }
+    if (!juForm.uraian.trim()) { toast(S.descRequired, "info"); return; }
     const lines = juLines.filter((l) => l.db || l.kr || l.amount);
-    if (lines.length === 0) { toast("Isi minimal satu baris jurnal", "info"); return; }
+    if (lines.length === 0) { toast(S.minOneJuLine, "info"); return; }
     for (let i = 0; i < lines.length; i++) {
       const l = lines[i];
-      if (!l.db || !l.kr) { toast(`Baris ${i + 1}: akun DB dan KR wajib diisi`, "info"); return; }
-      if (l.db === l.kr) { toast(`Baris ${i + 1}: akun DB dan KR harus berbeda`, "info"); return; }
-      if (!coaKode.has(l.db) || !coaKode.has(l.kr)) { toast(`Baris ${i + 1}: akun harus terdaftar di CoA`, "info"); return; }
-      if (!num(l.amount) || num(l.amount) <= 0) { toast(`Baris ${i + 1}: nominal harus lebih dari 0`, "info"); return; }
+      if (!l.db || !l.kr) { toast(S.juRowRequire.replace("{n}", String(i + 1)), "info"); return; }
+      if (l.db === l.kr) { toast(S.juRowDiff.replace("{n}", String(i + 1)), "info"); return; }
+      if (!coaKode.has(l.db) || !coaKode.has(l.kr)) { toast(S.juRowCoa.replace("{n}", String(i + 1)), "info"); return; }
+      if (!num(l.amount) || num(l.amount) <= 0) { toast(S.juRowPositive.replace("{n}", String(i + 1)), "info"); return; }
     }
     const compact = (juForm.date || todayISO()).replaceAll("-", "");
     const juPrefix = `JU-${compact}-`;
@@ -1160,12 +1174,12 @@ export default function Finance() {
           branch: branch !== "SEMUA" ? branch : "",
         }, { action: "mencatat jurnal", module: "Keuangan" });
       } catch (err) {
-        toast(`Gagal menyimpan baris ${i + 1}: ${err instanceof Error ? err.message : "backend tak terjangkau"}`, "info");
+        toast(S.juRowFail.replace("{n}", String(i + 1)).replace("{a}", err instanceof Error ? err.message : S.backendUnreachable), "info");
         return;
       }
     }
     const total = lines.reduce((s, l) => s + num(l.amount), 0);
-    toast(`Jurnal ${voucher} tersimpan (${lines.length} baris, total ${fmtRupiah(total)}, berimbang)`);
+    toast(S.juSaved.replace("{a}", voucher).replace("{n}", String(lines.length)).replace("{b}", fmtRupiah(total)));
     setShowJu(false);
     setJuForm({ date: todayISO(), kodePembantu: "", dokumen: "", uraian: "", sumber: "JU" });
     setJuLines([{ db: "", kr: "", amount: "" }]);
@@ -1173,12 +1187,12 @@ export default function Finance() {
 
   // --- Kas & Bank: mutasi masuk/keluar per rekening ---
   const saveMut = async () => {
-    if (!mutForm.date) { toast("Tanggal wajib diisi", "info"); return; }
-    if (!mutForm.rekening) { toast("Pilih rekening kas/bank", "info"); return; }
-    if (!mutForm.lawan) { toast("Pilih akun lawan", "info"); return; }
-    if (mutForm.lawan === mutForm.rekening) { toast("Akun lawan harus berbeda", "info"); return; }
-    if (!mutForm.uraian.trim()) { toast("Uraian wajib diisi", "info"); return; }
-    if (!num(mutForm.amount) || num(mutForm.amount) <= 0) { toast("Nominal harus lebih dari 0", "info"); return; }
+    if (!mutForm.date) { toast(S.dateRequired, "info"); return; }
+    if (!mutForm.rekening) { toast(S.pickCashAccount, "info"); return; }
+    if (!mutForm.lawan) { toast(S.pickCounter, "info"); return; }
+    if (mutForm.lawan === mutForm.rekening) { toast(S.counterDiff, "info"); return; }
+    if (!mutForm.uraian.trim()) { toast(S.descRequired, "info"); return; }
+    if (!num(mutForm.amount) || num(mutForm.amount) <= 0) { toast(S.amountPositive, "info"); return; }
     const db = mutForm.arah === "Masuk" ? mutForm.rekening : mutForm.lawan;
     const kr = mutForm.arah === "Masuk" ? mutForm.lawan : mutForm.rekening;
     await add("journals", {
@@ -1186,7 +1200,7 @@ export default function Finance() {
       uraian: mutForm.uraian.trim(), db, kr, amount: num(mutForm.amount), sumber: mutForm.rekening.startsWith("1-11") ? "Kas" : "Bank", status: "Posted",
       branch: branch !== "SEMUA" ? branch : "",
     }, { action: "mencatat mutasi kas/bank", module: "Keuangan" });
-    toast(`Mutasi ${mutForm.arah} ${mutForm.rekening} tersimpan`);
+    toast(S.mutSaved.replace("{a}", mutForm.arah).replace("{b}", mutForm.rekening));
     setShowMut(false);
     setMutForm({ date: todayISO(), rekening: "1-111", arah: "Masuk", lawan: "", kodePembantu: "", dokumen: "", uraian: "", amount: "" });
   };
@@ -1201,24 +1215,24 @@ export default function Finance() {
 
   // --- Hutang: simpan + ubah (kolom sheet Hutang) ---
   const saveAp = async () => {
-    if (!apForm.v.trim()) { toast("Vendor wajib diisi", "info"); return; }
-    if (!num(apForm.amt) || num(apForm.amt) <= 0) { toast("Saldo akhir harus lebih dari 0", "info"); return; }
-    if (!apForm.due) { toast("Jatuh tempo wajib diisi", "info"); return; }
+    if (!apForm.v.trim()) { toast(S.vendorRequired, "info"); return; }
+    if (!num(apForm.amt) || num(apForm.amt) <= 0) { toast(S.balancePositive, "info"); return; }
+    if (!apForm.due) { toast(S.dueRequired, "info"); return; }
     const created = await add("payables", {
       v: apForm.v.trim(), kodePembantu: apForm.kodePembantu.trim() || apForm.v.trim(),
       po: apForm.po.trim() || "OPEN-0826", openAwal: num(apForm.openAwal), amt: num(apForm.amt),
       due: apForm.due, pph: apForm.nonPpn ? "Non-PPn" : "2%", st: "Belum Dibayar",
       vessel: apForm.vessel.trim(), item: apForm.item.trim(), pay1: 0, pay2: 0,
     }, { action: "mencatat hutang", module: "Keuangan" });
-    toast(`Hutang ${created.id} dicatat`);
+    toast(S.apAdded.replace("{a}", created.id));
     setShowAp(false);
     setApForm({ v: "", kodePembantu: "", po: "", openAwal: "", amt: "", due: "", nonPpn: false, vessel: "", item: "" });
   };
 
   const saveApEdit = async () => {
     if (!apEdit) return;
-    if (!apEditForm.v.trim()) { toast("Vendor wajib diisi", "info"); return; }
-    if (!num(apEditForm.amt) || num(apEditForm.amt) <= 0) { toast("Saldo akhir harus lebih dari 0", "info"); return; }
+    if (!apEditForm.v.trim()) { toast(S.vendorRequired, "info"); return; }
+    if (!num(apEditForm.amt) || num(apEditForm.amt) <= 0) { toast(S.balancePositive, "info"); return; }
     await update("payables", apEdit.id, {
       v: apEditForm.v.trim(), kodePembantu: apEditForm.kodePembantu.trim() || apEditForm.v.trim(),
       openAwal: num(apEditForm.openAwal), amt: num(apEditForm.amt), due: apEditForm.due,
@@ -1226,15 +1240,15 @@ export default function Finance() {
       vessel: apEditForm.vessel.trim(), item: apEditForm.item.trim(),
     });
     log("mengubah hutang", apEdit.id, "Keuangan");
-    toast(`Hutang ${apEdit.id} diubah`);
+    toast(S.apUpdated.replace("{a}", apEdit.id));
     setApEdit(null);
   };
 
   // --- Piutang: ubah invoice belum lunas ---
   const saveInvEdit = async () => {
     if (!invEdit) return;
-    if (!invEditForm.client.trim()) { toast("Customer wajib diisi", "info"); return; }
-    if (!invEditForm.due) { toast("Jatuh tempo wajib diisi", "info"); return; }
+    if (!invEditForm.client.trim()) { toast(S.customerRequired, "info"); return; }
+    if (!invEditForm.due) { toast(S.dueRequired, "info"); return; }
     await update("invoices", invEdit.id, {
       client: invEditForm.client.trim(),
       kodePembantu: invEditForm.kodePembantu.trim() || invEditForm.client.trim(),
@@ -1242,15 +1256,15 @@ export default function Finance() {
       milestoneRef: invEditForm.milestoneRef.trim(), nsfp: invEditForm.nsfp.trim(), noFaktur: invEditForm.noFaktur.trim(),
     });
     log("mengubah invoice", invEdit.id, "Keuangan");
-    toast(`Invoice ${invEdit.id} diubah`);
+    toast(S.invUpdated.replace("{a}", invEdit.id));
     setInvEdit(null);
   };
 
   // --- Aset: tambah harta (kolom sheet Aset), tarif fiskal GL ---
   const AST_TARIF: Record<string, number> = { BP: 5, "1": 25, "2": 12.5, "3": 6.25 };
   const saveAst = async () => {
-    if (!astForm.nama.trim()) { toast("Nama/jenis harta wajib diisi", "info"); return; }
-    if (!num(astForm.nilai) || num(astForm.nilai) <= 0) { toast("Nilai perolehan harus lebih dari 0", "info"); return; }
+    if (!astForm.nama.trim()) { toast(S.assetNameRequired, "info"); return; }
+    if (!num(astForm.nilai) || num(astForm.nilai) <= 0) { toast(S.assetValuePositive, "info"); return; }
     const tarif = AST_TARIF[astForm.kelompok] ?? 12.5;
     const susutTahun = Math.round((num(astForm.nilai) * tarif) / 100);
     await add("assets", {
@@ -1258,7 +1272,7 @@ export default function Finance() {
       tahun: astForm.tahun.trim() || today.slice(0, 4), nilai: num(astForm.nilai),
       sisaAwal: num(astForm.nilai), susutTahun, metode: astForm.metode || "GL",
     }, { action: "menambah aset", module: "Keuangan" });
-    toast(`Aset ${astForm.nama.trim()} ditambah (susut ${tarif}%/thn)`);
+    toast(S.assetAdded.replace("{a}", astForm.nama.trim()).replace("{b}", String(tarif)));
     setShowAst(false);
     setAstForm({ nama: "", kelompok: "2", bulan: "", tahun: "", nilai: "", metode: "GL" });
   };
@@ -1295,13 +1309,13 @@ export default function Finance() {
     }
     await update("invoices", inv.id, { status: next });
     log("memproses invoice", `${inv.id} ${inv.status} → ${next}`, "Keuangan");
-    toast(`${inv.id} → ${next}`);
+    toast(S.movedTo.replace("{a}", inv.id).replace("{b}", next));
   };
 
   const confirmDirector = async () => {
     if (!dirTarget) return;
-    if (!dirCheck) { toast("Centang persetujuan Director dulu", "info"); return; }
-    if (!dirName.trim()) { toast("Nama penyetuju wajib diisi", "info"); return; }
+    if (!dirCheck) { toast(S.dirCheckRequired, "info"); return; }
+    if (!dirName.trim()) { toast(S.approverRequired, "info"); return; }
     await update("invoices", dirTarget.id, {
       status: "Disetujui",
       directorApproved: true,
@@ -1309,14 +1323,14 @@ export default function Finance() {
       directorAt: today,
     });
     log("menyetujui invoice via Director", `${dirTarget.id} oleh ${dirName.trim()}`, "Keuangan");
-    toast(`${dirTarget.id} disetujui Director`);
+    toast(S.dirApproved.replace("{a}", dirTarget.id));
     setDirTarget(null);
   };
 
   const confirmBuktiInv = async () => {
     if (!payTarget) return;
-    if (!proof.date) { toast("Tanggal bayar wajib diisi", "info"); return; }
-    if (!proof.ref.trim()) { toast("No. referensi wajib diisi", "info"); return; }
+    if (!proof.date) { toast(S.payDateRequired, "info"); return; }
+    if (!proof.ref.trim()) { toast(S.refRequired, "info"); return; }
     try {
       await update("invoices", payTarget.id, {
         status: "Lunas", paidAt: proof.date, paidMethod: proof.method, paidRef: proof.ref.trim(),
@@ -1331,23 +1345,23 @@ export default function Finance() {
         kr: "1-130",
         amount: invNeto(payTarget),
       });
-      toast(`${payTarget.id} lunas - pembayaran tercatat${jurnalOk ? " + jurnal kas" : ""}`);
+      toast(S.paidRecorded.replace("{a}", payTarget.id) + (jurnalOk ? S.paidWithJournal : ""));
       setPayTarget(null);
     } catch {
-      toast(`Pelunasan ${payTarget.id} gagal - periksa status invoice & jurnal`, "info");
+      toast(S.paidFail.replace("{a}", payTarget.id), "info");
     }
   };
 
   const confirmBuktiAp = async () => {
     if (!apTarget) return;
-    if (!proof.date) { toast("Tanggal bayar wajib diisi", "info"); return; }
-    if (!proof.ref.trim()) { toast("No. referensi wajib diisi", "info"); return; }
+    if (!proof.date) { toast(S.payDateRequired, "info"); return; }
+    if (!proof.ref.trim()) { toast(S.refRequired, "info"); return; }
     // Hutang 2 tahap ala CONTOH HUTANG.xlsx (Pembayaran I / II + sisa).
     const amt = num(apTarget.amt);
     const p1 = num(apTarget.pay1);
     const bayar = num(apPayAmt);
-    if (!bayar || bayar <= 0) { toast("Nominal pembayaran tahap ini wajib diisi", "info"); return; }
-    if (bayar > amt - p1 - num(apTarget.pay2)) { toast("Nominal melebihi sisa hutang", "info"); return; }
+    if (!bayar || bayar <= 0) { toast(S.stageAmountRequired, "info"); return; }
+    if (bayar > amt - p1 - num(apTarget.pay2)) { toast(S.overRemain, "info"); return; }
     try {
       if (!p1) {
       const sisa = amt - bayar;
@@ -1365,7 +1379,7 @@ export default function Finance() {
         kr: kasKodeOf(proof.method),
         amount: bayar,
       });
-      toast(`Tahap I ${fmtRupiah(bayar)} tercatat · sisa ${fmtRupiah(Math.max(0, sisa))}`);
+      toast(S.stageOneDone.replace("{a}", fmtRupiah(bayar)).replace("{b}", fmtRupiah(Math.max(0, sisa))));
     } else {
       const p2 = num(apTarget.pay2) + bayar;
       const sisa = amt - p1 - p2;
@@ -1383,12 +1397,12 @@ export default function Finance() {
         kr: kasKodeOf(proof.method),
         amount: bayar,
       });
-      toast(`Tahap II ${fmtRupiah(bayar)} tercatat · sisa ${fmtRupiah(Math.max(0, sisa))}`);
+      toast(S.stageTwoDone.replace("{a}", fmtRupiah(bayar)).replace("{b}", fmtRupiah(Math.max(0, sisa))));
       }
       setApTarget(null);
       setApPayAmt("");
     } catch {
-      toast(`Pembayaran ${apTarget.po} gagal di tengah jalan - periksa hutang & jurnal`, "info");
+      toast(S.apPayFail.replace("{a}", String(apTarget.po)), "info");
     }
   };
 
@@ -1396,9 +1410,9 @@ export default function Finance() {
     setSchedSel((prev) => (prev.includes(key) ? prev.filter((k) => k !== key) : [...prev, key]));
 
   const confirmBatch = async () => {
-    if (schedSel.length === 0) { toast("Pilih minimal satu jadwal", "info"); return; }
-    if (!batchProof.date) { toast("Tanggal bayar wajib diisi", "info"); return; }
-    if (!batchProof.ref.trim()) { toast("No. referensi wajib diisi", "info"); return; }
+    if (schedSel.length === 0) { toast(S.pickSchedule, "info"); return; }
+    if (!batchProof.date) { toast(S.payDateRequired, "info"); return; }
+    if (!batchProof.ref.trim()) { toast(S.refRequired, "info"); return; }
     const ordered = schedItems.filter((r) => schedSel.includes(r.key)).sort((a, b) => String(a.due).localeCompare(String(b.due)));
     let batchFail = 0;
     for (const r of ordered) {
@@ -1432,7 +1446,7 @@ export default function Finance() {
         batchFail++;
       }
     }
-    toast(`${ordered.length - batchFail} item dilunasi massal (tertua dulu)${batchFail > 0 ? `, ${batchFail} gagal - periksa kembali` : ""}`);
+    toast(S.batchDone.replace("{n}", String(ordered.length - batchFail)) + (batchFail > 0 ? S.batchFailSuffix.replace("{n}", String(batchFail)) : ""));
     setSchedSel([]);
     setShowBatch(false);
   };
@@ -1443,12 +1457,12 @@ export default function Finance() {
       ...schedItems.map((r) => [r.kind, r.id, r.ref, r.desc, r.due, r.age, r.amount]),
     ];
     void exportExcel(rows, "Jadwal-Bayar-30hari");
-    toast("Excel jadwal bayar diunduh");
+    toast(S.scheduleExported);
   };
 
   const exportEfaktur = () => {
-    if (!activePeriod) { toast("Pilih periode dulu", "info"); return; }
-    if (efakturRows.length === 0) { toast("Tidak ada invoice Lunas pada periode aktif", "info"); return; }
+    if (!activePeriod) { toast(S.pickPeriodFirst, "info"); return; }
+    if (efakturRows.length === 0) { toast(S.noLunasPeriod, "info"); return; }
     const rows = efakturRows.map((i) => [
       String(i.nsfp ?? ""),
       String(i.noFaktur ?? ""),
@@ -1458,33 +1472,33 @@ export default function Finance() {
       num(i.ppnAmt) || Math.round((num(i.amount) * taxCalc.ppnRate) / 100),
     ]);
     downloadCsv(`EFAKTUR-${activePeriod}.csv`, ["NSFP", "NoFaktur", "Tanggal", "Client", "DPP", "PPN"], rows);
-    toast(`CSV e-Faktur ${activePeriod} diunduh (${efakturRows.length} baris)`);
+    toast(S.efakturExported.replace("{a}", activePeriod).replace("{n}", String(efakturRows.length)));
   };
 
   const saveAlloc = async () => {
     if (!allocTarget) return;
-    if (!allocForm.project) { toast("Pilih proyek alokasi", "info"); return; }
+    if (!allocForm.project) { toast(S.pickAllocProject, "info"); return; }
     const pct = num(allocForm.pct);
-    if (pct <= 0 || pct > 100) { toast("Persen alokasi 1-100", "info"); return; }
+    if (pct <= 0 || pct > 100) { toast(S.allocPctRange, "info"); return; }
     await update("payroll", allocTarget.id, { allocProject: allocForm.project, allocPct: pct });
     log("mengalokasikan gaji", `${allocTarget.id} → ${allocForm.project} ${pct}%`, "Keuangan");
-    toast(`Gaji ${allocTarget.id} dialokasikan ${pct}% ke ${allocForm.project}`);
+    toast(S.allocSaved.replace("{a}", allocTarget.id).replace("{n}", String(pct)).replace("{b}", allocForm.project));
     setAllocTarget(null);
   };
 
   const saveOverhead = async () => {
     if (!profitPid) return;
     const pct = num(overheadPct);
-    if (pct < 0 || pct > 100) { toast("Overhead % harus 0-100", "info"); return; }
+    if (pct < 0 || pct > 100) { toast(S.overheadRange, "info"); return; }
     await update("projects", profitPid, { overheadPct: pct });
     log("mengatur overhead proyek", `${profitPid} ${pct}%`, "Keuangan");
-    toast(`Overhead ${profitPid} disimpan ${pct}%`);
+    toast(S.overheadSaved.replace("{a}", profitPid).replace("{n}", String(pct)));
   };
 
   const confirmRelease = async () => {
     if (!releaseTarget) return;
-    if (!releaseForm.date) { toast("Tanggal release wajib diisi", "info"); return; }
-    if (!releaseForm.ba.trim()) { toast("No. berita acara wajib diisi", "info"); return; }
+    if (!releaseForm.date) { toast(S.releaseDateRequired, "info"); return; }
+    if (!releaseForm.ba.trim()) { toast(S.baRequired, "info"); return; }
     const retAmt = num(releaseTarget.retentionAmt);
     try {
       await update("invoices", releaseTarget.id, {
@@ -1531,17 +1545,17 @@ export default function Finance() {
       log("membuat invoice retensi", `${topId} dari ${releaseTarget.id} · ${fmtRupiah(retAmt)}`, "Keuangan");
     }
     log("me-release retensi", `${releaseTarget.id} BA ${releaseForm.ba.trim()}`, "Keuangan");
-    toast(`Retensi ${releaseTarget.id} di-release${retAmt > 0 ? " - invoice penagihan dibuat" : ""}`);
+    toast(S.retentionReleased.replace("{a}", releaseTarget.id) + (retAmt > 0 ? S.retentionBilled : ""));
     setReleaseTarget(null);
     setReleaseForm({ date: todayISO(), ba: "", warrantyId: "" });
     } catch {
-      toast(`Release retensi ${releaseTarget.id} gagal di tengah jalan - periksa invoice`, "info");
+      toast(S.releaseFail.replace("{a}", releaseTarget.id), "info");
     }
   };
 
   const markTaxLapor = async () => {
-    if (!activeTax) { toast("Pilih periode dulu", "info"); return; }
-    if (activeTax.status === "Lapor") { toast("Periode sudah dilapor dan dikunci", "info"); return; }
+    if (!activeTax) { toast(S.pickPeriodFirst, "info"); return; }
+    if (activeTax.status === "Lapor") { toast(S.periodLocked, "info"); return; }
     try {
       await update("taxPeriods", activeTax.id, {
       status: "Lapor",
@@ -1570,9 +1584,9 @@ export default function Finance() {
       }, { action: "hutang pajak dari kunci periode", module: "Pajak" });
     }
     log("melaporkan periode pajak", `${activeTax.period} dikunci`, "Pajak");
-    toast(`Periode ${activeTax.period} dilapor dan dikunci`);
+    toast(S.periodReported.replace("{a}", String(activeTax.period)));
     } catch {
-      toast(`Kunci periode ${activeTax.period} gagal - periksa periode & hutang pajak`, "info");
+      toast(S.periodLockFail.replace("{a}", String(activeTax.period)), "info");
     }
   };
 
@@ -1588,7 +1602,7 @@ export default function Finance() {
       ["PPN Terutang (Keluaran - Masukan)", "-", "-", taxCalc.ppnKeluar - taxCalc.ppnMasuk],
     ];
     void exportExcel(rows, `SPT-${activeTax.period}`);
-    toast("Excel SPT ringkas diunduh");
+    toast(S.sptExported);
   };
 
   const firstLate = invoices.find((i) => i.status === "Terlambat") ?? null;
@@ -1596,28 +1610,28 @@ export default function Finance() {
   return (
     <div>
       <PageHeader
-        title="Keuangan & Billing"
-        subtitle="Piutang, hutang, invoice, retensi, pajak, dan jurnal"
+        title={S.pageTitle}
+        subtitle={S.pageSubtitle}
         icon={<Wallet className="h-5 w-5" />}
-        actions={<button className="btn-primary-gradient" onClick={() => setShowInv(true)}><FileText className="h-4 w-4" /> Buat Invoice</button>}
+        actions={<button className="btn-primary-gradient" onClick={() => setShowInv(true)}><FileText className="h-4 w-4" /> {S.createInvoice}</button>}
       />
 
       {modAlert.active && <AlertBannerView items={modAlert.items} onPick={modAlert.scrollTo} />}
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <KpiCard label="Total Piutang (AR)" value={fmtMiliar(arTotal)} delta={`${lateCount} telat`} deltaDirection="down" icon={<Wallet className="h-5 w-5" />} chip="rose" spark={arSpark} />
-        <KpiCard label="Total Hutang (AP)" value={fmtMiliar(apTotal)} hint="Sisa hutang berjalan" icon={<Wallet className="h-5 w-5" />} chip="navy" spark={apSpark} />
+        <KpiCard label={S.kpiAR} value={fmtMiliar(arTotal)} delta={S.lateDelta.replace("{n}", String(lateCount))} deltaDirection="down" icon={<Wallet className="h-5 w-5" />} chip="rose" spark={arSpark} />
+        <KpiCard label={S.kpiAP} value={fmtMiliar(apTotal)} hint={S.kpiAPHin} icon={<Wallet className="h-5 w-5" />} chip="navy" spark={apSpark} />
         <KpiCard
-          label="Kas & Bank"
+          label={S.kasTitle}
           value={fmtMiliar(kasAkhir)}
-          delta={`${kasDelta >= 0 ? "+" : ""}${kasDelta}% vs saldo awal`}
+          delta={(kasDelta >= 0 ? "+" : "") + S.kasDelta.replace("{a}", String(kasDelta))}
           deltaDirection={kasDelta >= 0 ? "up" : "down"}
           icon={<ArrowDownToLine className="h-5 w-5" />} chip="teal" spark={kasSpark}
         />
         <KpiCard
-          label={plMonthly.length ? "Laba Berjalan (derivasi jurnal)" : "Laba Bersih"}
+          label={plMonthly.length ? S.kpiLabaRun : S.kpiLabaNet}
           value={fmtMiliar(labaLast)}
-          delta={`${labaDelta >= 0 ? "+" : ""}${labaDelta}% vs bulan lalu`}
+          delta={(labaDelta >= 0 ? "+" : "") + S.labaDelta.replace("{a}", String(labaDelta))}
           deltaDirection={labaDelta >= 0 ? "up" : "down"}
           icon={<TrendingUp className="h-5 w-5" />} chip="violet" spark={labaSpark}
         />
@@ -1630,29 +1644,29 @@ export default function Finance() {
           {tab === "Akun" && (
             <div className="space-y-4">
               <CardHeader
-                title="Daftar Akun"
-                subtitle="Kelola master akun: tambah, ubah, hapus. Baris header (D/K = -) tidak bisa dihapus dan posisinya dikunci."
-                action={<button className="btn-primary text-xs" onClick={() => { setCoaTarget(null); setCoaForm({ kode: "", nama: "", dk: "D", nrlr: "NR" }); setShowCoa(true); }}>+ Tambah Akun</button>}
+                title={S.akunTitle}
+                subtitle={S.akunSub}
+                action={<button className="btn-primary text-xs" onClick={() => { setCoaTarget(null); setCoaForm({ kode: "", nama: "", dk: "D", nrlr: "NR" }); setShowCoa(true); }}>{S.addAkun}</button>}
               />
               <div className="flex flex-wrap items-center gap-2">
-                <input className="input w-56" placeholder="Cari no / nama akun…" value={coaQ} onChange={(e) => setCoaQ(e.target.value)} aria-label="Cari akun" />
-                <select className="input w-auto py-1.5 text-sm" value={coaTipe} onChange={(e) => setCoaTipe(e.target.value)} aria-label="Filter tipe akun">
-                  {coaTipeOptions.map((t) => <option key={t} value={t}>{t === "Semua" ? "Semua tipe" : t}</option>)}
+                <input className="input w-56" placeholder={S.searchAkunPh} value={coaQ} onChange={(e) => setCoaQ(e.target.value)} aria-label={S.searchAkunAria} />
+                <select className="input w-auto py-1.5 text-sm" value={coaTipe} onChange={(e) => setCoaTipe(e.target.value)} aria-label={S.filterTipeAria}>
+                  {coaTipeOptions.map((t) => <option key={t} value={t}>{t === "Semua" ? S.allTypes : t}</option>)}
                 </select>
-                <span className="ml-auto text-xs text-steel-400">{coaFiltered.length} akun</span>
+                <span className="ml-auto text-xs text-steel-400">{S.countAkun.replace("{n}", String(coaFiltered.length))}</span>
               </div>
               <div className="space-y-3">
                 {coaGroups.map((g) => (
-                  <Accordion key={g.tipe} title={g.tipe} subtitle={g.tipe === "Header" ? "Baris header tidak bisa dihapus, posisi dikunci" : `${g.rows.length} akun`} count={g.rows.length} defaultOpen={coaGroups.length === 1 || g.tipe === "Aset"}>
+                  <Accordion key={g.tipe} title={g.tipe} subtitle={g.tipe === "Header" ? S.headerLockNote : S.countAkun.replace("{n}", String(g.rows.length))} count={g.rows.length} defaultOpen={coaGroups.length === 1 || g.tipe === "Aset"}>
                     <div className="overflow-x-auto">
                       <table className="w-full">
                         <thead className="bg-surface sticky top-0 z-10">
                           <tr>
-                            <SortTh label="No. Akun" sortKey="kode" sort={akunSort} onSort={(k) => setAkunSort((s) => toggleSort(s, k))} />
-                            <SortTh label="Nama Akun" sortKey="nama" sort={akunSort} onSort={(k) => setAkunSort((s) => toggleSort(s, k))} />
+                            <SortTh label={S.colNoAkun} sortKey="kode" sort={akunSort} onSort={(k) => setAkunSort((s) => toggleSort(s, k))} />
+                            <SortTh label={S.colNamaAkun} sortKey="nama" sort={akunSort} onSort={(k) => setAkunSort((s) => toggleSort(s, k))} />
                             <SortTh label="D/K" sortKey="dk" sort={akunSort} onSort={(k) => setAkunSort((s) => toggleSort(s, k))} />
                             <SortTh label="NR/LR" sortKey="nrlr" sort={akunSort} onSort={(k) => setAkunSort((s) => toggleSort(s, k))} />
-                            <th className="th">Aksi</th>
+                            <th className="th">{S.actionTh}</th>
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-steel-100">
@@ -1666,13 +1680,9 @@ export default function Finance() {
                                 <td className="td text-xs text-steel-500">{String(c.nrlr)}</td>
                                 <td className="td">
                                   <div className="flex gap-1.5">
-                                    <button className="btn-secondary px-2 py-1 text-[11px]" onClick={() => { setCoaTarget(c); setCoaForm({ kode: String(c.kode), nama: String(c.nama), dk: String(c.dk) === "-" ? "D" : String(c.dk), nrlr: String(c.nrlr) === "-" ? "NR" : String(c.nrlr) }); setShowCoa(true); }}>
-                                      Ubah
-                                    </button>
+                                    <button className="btn-secondary px-2 py-1 text-[11px]" onClick={() => { setCoaTarget(c); setCoaForm({ kode: String(c.kode), nama: String(c.nama), dk: String(c.dk) === "-" ? "D" : String(c.dk), nrlr: String(c.nrlr) === "-" ? "NR" : String(c.nrlr) }); setShowCoa(true); }}>{S.editBtn}</button>
                                     {!header && (
-                                      <button className="btn-secondary px-2 py-1 text-[11px] text-rose-600" onClick={async () => { try { await remove("coa", String(c.id)); log("menghapus akun", String(c.kode), "Keuangan"); toast(`Akun ${c.kode} dihapus`); } catch (e) { toast(e instanceof Error ? e.message : "Akun tidak bisa dihapus", "info"); } }}>
-                                        Hapus
-                                      </button>
+                                      <button className="btn-secondary px-2 py-1 text-[11px] text-rose-600" onClick={async () => { try { await remove("coa", String(c.id)); log("menghapus akun", String(c.kode), "Keuangan"); toast(S.coaDeleted.replace("{a}", String(c.kode))); } catch (e) { toast(e instanceof Error ? e.message : S.coaDeleteFail, "info"); } }}>{S.deleteBtn}</button>
                                     )}
                                   </div>
                                 </td>
@@ -1684,7 +1694,7 @@ export default function Finance() {
                     </div>
                   </Accordion>
                 ))}
-                {coaGroups.length === 0 && <p className="py-6 text-center text-sm text-steel-400">Tidak ada akun yang cocok.</p>}
+                {coaGroups.length === 0 && <p className="py-6 text-center text-sm text-steel-400">{S.noAkunMatch}</p>}
               </div>
             </div>
           )}
@@ -1692,21 +1702,21 @@ export default function Finance() {
           {tab === "Piutang (AR)" && (
             <div className="grid grid-cols-1 gap-5 lg:grid-cols-3">
               <div className="lg:col-span-2">
-                <CardHeader title="Daftar Invoice" subtitle="Umur = hari ini - jatuh tempo." />
+                <CardHeader title={S.invListTitle} subtitle={S.arSub} />
                 <div className="overflow-x-auto">
                   <table className="w-full">
                     <thead className="bg-surface sticky top-0 z-10">
                       <tr>
-                        <SortTh label="Invoice" sortKey="id" sort={arSort} onSort={(k) => setArSort((s) => toggleSort(s, k))} />
-                        <SortTh label="Kode Pembantu" sortKey="kode" sort={arSort} onSort={(k) => setArSort((s) => toggleSort(s, k))} />
-                        <SortTh label="Proyek" sortKey="project" sort={arSort} onSort={(k) => setArSort((s) => toggleSort(s, k))} />
-                        <SortTh label="Saldo Awal" sortKey="openAwal" sort={arSort} onSort={(k) => setArSort((s) => toggleSort(s, k))} />
-                        <SortTh label="Nilai" sortKey="amount" sort={arSort} onSort={(k) => setArSort((s) => toggleSort(s, k))} />
-                        <SortTh label="Jatuh Tempo" sortKey="due" sort={arSort} onSort={(k) => setArSort((s) => toggleSort(s, k))} />
-                        <SortTh label="Umur" sortKey="age" sort={arSort} onSort={(k) => setArSort((s) => toggleSort(s, k))} />
-                        <th className="th">Penagihan</th>
-                        <SortTh label="Status" sortKey="status" sort={arSort} onSort={(k) => setArSort((s) => toggleSort(s, k))} />
-                        <th className="th">Aksi</th>
+                        <SortTh label={S.colInvoice} sortKey="id" sort={arSort} onSort={(k) => setArSort((s) => toggleSort(s, k))} />
+                        <SortTh label={S.colKodePembantu} sortKey="kode" sort={arSort} onSort={(k) => setArSort((s) => toggleSort(s, k))} />
+                        <SortTh label={S.colProyek} sortKey="project" sort={arSort} onSort={(k) => setArSort((s) => toggleSort(s, k))} />
+                        <SortTh label={S.colSaldoAwal} sortKey="openAwal" sort={arSort} onSort={(k) => setArSort((s) => toggleSort(s, k))} />
+                        <SortTh label={S.colNilai} sortKey="amount" sort={arSort} onSort={(k) => setArSort((s) => toggleSort(s, k))} />
+                        <SortTh label={S.colDue} sortKey="due" sort={arSort} onSort={(k) => setArSort((s) => toggleSort(s, k))} />
+                        <SortTh label={S.colUmur} sortKey="age" sort={arSort} onSort={(k) => setArSort((s) => toggleSort(s, k))} />
+                        <th className="th">{S.colPenagihan}</th>
+                        <SortTh label={S.colStatus} sortKey="status" sort={arSort} onSort={(k) => setArSort((s) => toggleSort(s, k))} />
+                        <th className="th">{S.actionTh}</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-steel-100">
@@ -1721,7 +1731,7 @@ export default function Finance() {
                               <p className="font-medium text-navy-900 font-mono">{inv.id}</p>
                               <p className="text-xs text-steel-500 truncate" title={String(inv.client ?? "")}>{String(inv.client ?? "")}</p>
                               <p className="text-[11px] text-steel-400">{String(inv.billingType ?? inv.paymentTerm ?? "")}{inv.milestoneRef ? ` · ${inv.milestoneRef}` : ""}</p>
-                              {needsDirector(inv) && <span className="mt-1 inline-block"><Badge tone="amber">Butuh Director</Badge></span>}
+                              {needsDirector(inv) && <span className="mt-1 inline-block"><Badge tone="amber">{S.needDirector}</Badge></span>}
                             </td>
                             <td className="td text-steel-600 font-mono text-xs truncate" title={String(inv.project)}>{inv.project}</td>
                             <td className="td text-steel-600 font-mono text-xs truncate" title={String(inv.kodePembantu ?? inv.client ?? "")}>{String(inv.kodePembantu ?? inv.client ?? "")}{inv.nonPpn ? " · Non-PPn" : ""}</td>
@@ -1729,14 +1739,12 @@ export default function Finance() {
                             <td className="td text-xs text-steel-500">{num(inv.openAwal) ? fmtRupiah(num(inv.openAwal)) : "-"}</td>
                             <td className="td font-semibold text-navy-900">{fmtRupiah(num(inv.amount))}</td>
                             <td className="td text-steel-600">{fmtTanggal(String(inv.due ?? ""))}</td>
-                            <td className="td text-xs text-steel-600">{open ? `${fmtJumlah(age)} hari` : "-"}</td>
+                            <td className="td text-xs text-steel-600">{open ? S.ageDays.replace("{n}", fmtJumlah(age)) : "-"}</td>
                             <td className="td">
                               {open ? (
                                 <span className="flex items-center gap-1.5">
                                   <StatusBadge status={dun} />
-                                  <button className="btn-secondary px-2 py-1 text-[11px]" onClick={() => advanceDunning(inv)}>
-                                    → {nextDun}
-                                  </button>
+                                  <button className="btn-secondary px-2 py-1 text-[11px]" onClick={() => advanceDunning(inv)}>{S.dunningNext.replace("{a}", nextDun)}</button>
                                 </span>
                               ) : <span className="text-xs text-steel-400">-</span>}
                             </td>
@@ -1748,20 +1756,20 @@ export default function Finance() {
                                     key={next}
                                     className={next === "Lunas" ? "btn-primary text-xs" : next === "Ditolak" ? "btn-secondary text-xs text-rose-600" : "btn-secondary text-xs"}
                                     title={
-                                      next === "Lunas" ? "Lunasi via modal bukti (kas + jurnal otomatis)"
-                                      : next === "Ditolak" ? "Tolak via modal alasan → kembali ke Draft"
-                                      : next === "Disetujui" ? "Setujui (butuh Director bila di atas ambang)"
-                                      : `Pindah ke ${next}`
+                                      next === "Lunas" ? S.settleViaModal
+                                      : next === "Ditolak" ? S.rejectViaModal
+                                      : next === "Disetujui" ? S.approveNote
+                                      : S.moveTo.replace("{a}", next)
                                     }
                                     onClick={() => stepInvoice(inv, next)}
                                   >
-                                    {next === "Lunas" ? "Tandai Lunas" : next}
+                                    {next === "Lunas" ? S.markPaid : next}
                                   </button>
                                 ))}
                                 {(String(inv.status) === "Draft" || String(inv.status) === "Ditolak") && (
                                   <button
                                     className="btn-secondary text-xs"
-                                    title="Ubah isi (hanya bisa di Draft/Ditolak - terkunci setelah Diajukan)"
+                                    title={S.editLockedNote}
                                     onClick={() => {
                                       setInvEdit(inv);
                                       setInvEditForm({
@@ -1770,9 +1778,7 @@ export default function Finance() {
                                         milestoneRef: String(inv.milestoneRef ?? ""), nsfp: String(inv.nsfp ?? ""), noFaktur: String(inv.noFaktur ?? ""),
                                       });
                                     }}
-                                  >
-                                    Ubah
-                                  </button>
+                                  >{S.editBtn}</button>
                                 )}
                                 {invNext(String(inv.status)).length === 0 && (String(inv.status) === "Lunas" || String(inv.status) === "Dihapusbukukan") && <span className="text-xs text-steel-400">-</span>}
                               </div>
@@ -1783,24 +1789,24 @@ export default function Finance() {
                   </tbody>
                 </table>
               </div>
-                {invoices.length === 0 && <EmptyState title="Belum ada invoice" subtitle="Buat invoice pertama untuk cabang ini." />}
+                {invoices.length === 0 && <EmptyState title={S.emptyInvTitle} subtitle={S.emptyInvSub} />}
                 {arPager.bar}
                 <Card className="mt-4 p-4">
-                  <CardHeader title="Aging Real per Bucket" subtitle="Dihitung dari jatuh tempo vs hari ini. Hanya invoice non-Lunas/Draft/Dihapusbukukan." />
+                  <CardHeader title={S.agingTitle} subtitle={S.agingSub} />
                   <div className="overflow-x-auto px-5 pb-5">
                     <table className="w-full">
                       <thead className="bg-surface sticky top-0 z-10">
                         <tr>
-                          <SortTh label="Bucket" sortKey="name" sort={arSort} onSort={(k) => setArSort((s) => toggleSort(s, k))} />
-                          <SortTh label="Jumlah" sortKey="count" sort={arSort} onSort={(k) => setArSort((s) => toggleSort(s, k))} />
-                          <SortTh label="Total" sortKey="total" sort={arSort} onSort={(k) => setArSort((s) => toggleSort(s, k))} />
+                          <SortTh label={S.colBucket} sortKey="name" sort={arSort} onSort={(k) => setArSort((s) => toggleSort(s, k))} />
+                          <SortTh label={S.colJumlah} sortKey="count" sort={arSort} onSort={(k) => setArSort((s) => toggleSort(s, k))} />
+                          <SortTh label={S.colTotal} sortKey="total" sort={arSort} onSort={(k) => setArSort((s) => toggleSort(s, k))} />
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-steel-100">
                         {sortRows(agingReal, arSort, (b, k) => k === "count" ? Number(b.count) : k === "total" ? Number(b.total) : String(b.name)).map((b) => (
                           <tr key={b.name} className="hover:bg-surface">
                             <td className="td font-medium text-navy-900">{b.name}</td>
-                            <td className="td text-steel-600">{fmtJumlah(b.count)} invoice</td>
+                            <td className="td text-steel-600">{S.countInvoice.replace("{n}", fmtJumlah(b.count))}</td>
                             <td className="td font-semibold">{fmtRupiah(b.total)}</td>
                           </tr>
                         ))}
@@ -1811,7 +1817,7 @@ export default function Finance() {
               </div>
               <div className="space-y-5">
                 <div>
-                  <CardHeader title="Aging Piutang" subtitle="Real dari jatuh tempo vs hari ini, milyar Rupiah" />
+                  <CardHeader title={S.agingDonutTitle} subtitle={S.agingDonutSub} />
                   <div className="flex items-center gap-4 p-1">
                     <Donut
                       data={agingDonut}
@@ -1833,7 +1839,7 @@ export default function Finance() {
                   </div>
                 </div>
                 <Card className="p-4">
-                  <CardHeader title="Retensi Ditahan" subtitle="5% default tiap termin, release per invoice" />
+                  <CardHeader title={S.retentionTitle} subtitle={S.retentionSub} />
                   <p className="px-5 pb-2 text-2xl font-bold text-navy-900">{fmtRupiah(retentionTotal)}</p>
                   <div className="space-y-2 px-5 pb-5">
                     {invoices.filter((i) => num(i.retentionAmt) > 0).slice(0, 5).map((i) => (
@@ -1842,22 +1848,18 @@ export default function Finance() {
                         <span className="text-steel-500">{fmtRupiah(num(i.retentionAmt))}</span>
                         <span className="ml-auto"><StatusBadge status={String(i.retentionStatus ?? "Ditahan")} /></span>
                         {i.retentionStatus !== "Released" && (
-                          <button className="btn-secondary px-2 py-1 text-[11px]" onClick={() => { setReleaseTarget(i); setReleaseForm({ date: todayISO(), ba: "", warrantyId: "" }); }}>
-                            Release
-                          </button>
+                          <button className="btn-secondary px-2 py-1 text-[11px]" onClick={() => { setReleaseTarget(i); setReleaseForm({ date: todayISO(), ba: "", warrantyId: "" }); }}>{S.releaseBtn}</button>
                         )}
                       </div>
                     ))}
                     {invoices.filter((i) => num(i.retentionAmt) > 0).length === 0 && (
-                      <p className="text-xs text-steel-400">Belum ada retensi ditahan.</p>
+                      <p className="text-xs text-steel-400">{S.noRetention}</p>
                     )}
                   </div>
                 </Card>
                 <p className="inline-flex items-center gap-1.5 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-700">
-                  <Receipt className="h-3.5 w-3.5" /> {lateCount} invoice terlambat ·
-                  <button className="font-semibold underline" onClick={() => { if (firstLate) { setPayTarget(firstLate); setProof(emptyProof()); } }}>
-                    tandai lunas
-                  </button>
+                  <Receipt className="h-3.5 w-3.5" /> {S.lateBanner.replace("{n}", String(lateCount))}
+                  <button className="font-semibold underline" onClick={() => { if (firstLate) { setPayTarget(firstLate); setProof(emptyProof()); } }}>{S.markPaidLink}</button>
                 </p>
               </div>
             </div>
@@ -1866,27 +1868,27 @@ export default function Finance() {
           {tab === "Hutang (AP)" && (
             <div className="space-y-5">
               <CardHeader
-                title="Hutang Usaha (AP)"
-                subtitle="Tagihan vendor, termin pembayaran, dan status pelunasan. Tanda kuning = vendor Non-PPn (tanpa potong PPh 23)."
-                action={<button className="btn-secondary text-xs" onClick={() => setShowAp(true)}>+ Catat Hutang</button>}
+                title={S.apTitle}
+                subtitle={S.apSub}
+                action={<button className="btn-secondary text-xs" onClick={() => setShowAp(true)}>{S.addHutang}</button>}
               />
               <div className="overflow-x-auto">
                 <table className="w-full">
                   <thead className="bg-surface sticky top-0 z-10">
                     <tr>
-                      <SortTh label="Vendor" sortKey="v" sort={apSort} onSort={(k) => setApSort((s) => toggleSort(s, k))} />
-                      <SortTh label="Kode Pembantu" sortKey="kode" sort={apSort} onSort={(k) => setApSort((s) => toggleSort(s, k))} />
-                      <SortTh label="PO" sortKey="po" sort={apSort} onSort={(k) => setApSort((s) => toggleSort(s, k))} />
-                      <SortTh label="U/TK Kapal" sortKey="vessel" sort={apSort} onSort={(k) => setApSort((s) => toggleSort(s, k))} />
-                      <SortTh label="Saldo Awal" sortKey="openAwal" sort={apSort} onSort={(k) => setApSort((s) => toggleSort(s, k))} />
-                      <SortTh label="Saldo Akhir" sortKey="amt" sort={apSort} onSort={(k) => setApSort((s) => toggleSort(s, k))} />
-                      <th className="th">Bayar I</th>
-                      <th className="th">Bayar II</th>
-                      <SortTh label="Sisa" sortKey="sisa" sort={apSort} onSort={(k) => setApSort((s) => toggleSort(s, k))} />
-                      <SortTh label="Jatuh Tempo" sortKey="due" sort={apSort} onSort={(k) => setApSort((s) => toggleSort(s, k))} />
-                      <th className="th">PPh 23</th>
-                      <SortTh label="Status" sortKey="st" sort={apSort} onSort={(k) => setApSort((s) => toggleSort(s, k))} />
-                      <th className="th">Aksi</th>
+                      <SortTh label={S.colVendor} sortKey="v" sort={apSort} onSort={(k) => setApSort((s) => toggleSort(s, k))} />
+                      <SortTh label={S.colKodePembantu} sortKey="kode" sort={apSort} onSort={(k) => setApSort((s) => toggleSort(s, k))} />
+                      <SortTh label={S.colPO} sortKey="po" sort={apSort} onSort={(k) => setApSort((s) => toggleSort(s, k))} />
+                      <SortTh label={S.colVessel} sortKey="vessel" sort={apSort} onSort={(k) => setApSort((s) => toggleSort(s, k))} />
+                      <SortTh label={S.colSaldoAwal} sortKey="openAwal" sort={apSort} onSort={(k) => setApSort((s) => toggleSort(s, k))} />
+                      <SortTh label={S.colSaldoAkhir} sortKey="amt" sort={apSort} onSort={(k) => setApSort((s) => toggleSort(s, k))} />
+                      <th className="th">{S.colBayar1}</th>
+                      <th className="th">{S.colBayar2}</th>
+                      <SortTh label={S.colSisa} sortKey="sisa" sort={apSort} onSort={(k) => setApSort((s) => toggleSort(s, k))} />
+                      <SortTh label={S.colDue} sortKey="due" sort={apSort} onSort={(k) => setApSort((s) => toggleSort(s, k))} />
+                      <th className="th">{S.pph23}</th>
+                      <SortTh label={S.colStatus} sortKey="st" sort={apSort} onSort={(k) => setApSort((s) => toggleSort(s, k))} />
+                      <th className="th">{S.actionTh}</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-steel-100">
@@ -1909,7 +1911,7 @@ export default function Finance() {
                             {a.st !== "Lunas" && (
                               <>
                                 <button className="btn-secondary text-xs" onClick={() => { setApTarget(a); setProof(emptyProof()); setApPayAmt(String(Math.max(0, num(a.amt) - num(a.pay1) - num(a.pay2)))); }}>
-                                  Bayar{num(a.pay1) ? " II" : " I"}
+                                  {S.payStage.replace("{a}", num(a.pay1) ? " II" : " I")}
                                 </button>
                                 <button className="btn-secondary text-xs" onClick={() => {
                                   setApEdit(a);
@@ -1919,9 +1921,7 @@ export default function Finance() {
                                     due: String(a.due ?? ""), nonPpn: String(a.pph ?? "") === "Non-PPn",
                                     vessel: String(a.vessel ?? ""), item: String(a.item ?? ""),
                                   });
-                                }}>
-                                  Ubah
-                                </button>
+                                }}>{S.editBtn}</button>
                               </>
                             )}
                           </div>
@@ -1933,9 +1933,9 @@ export default function Finance() {
                 {apPager.bar}
               </div>
               <Card>
-                <CardHeader title="Arus Kas Bulanan" subtitle="Live dari pelunasan (milyar Rupiah) - kosong hingga ada invoice/hutang dilunasi" />
+                <CardHeader title={S.cashflowTitle} subtitle={S.cashflowSub} />
                 {flowMonthly.length === 0 ? (
-                  <div className="p-4"><EmptyState title="Belum ada arus kas" subtitle="Lunasi invoice atau hutang agar arus kas terbentuk dari data nyata." /></div>
+                  <div className="p-4"><EmptyState title={S.emptyCashTitle} subtitle={S.emptyCashSub} /></div>
                 ) : (
                 <div className="h-56 p-4">
                   <ResponsiveContainer width="100%" height="100%">
@@ -1950,8 +1950,8 @@ export default function Finance() {
                       <XAxis dataKey="month" stroke="#8aa2b6" axisLine={false} tickLine={false} />
                       <YAxis stroke="#8aa2b6" axisLine={false} tickLine={false} />
                       <Tooltip content={<ChartTooltip formatter={(v) => `Rp ${v} M`} />} />
-                      <Area type="monotone" dataKey="masuk" name="Masuk" stroke="#0d9488" strokeWidth={2.5} fill="url(#cp)" />
-                      <Area type="monotone" dataKey="keluar" name="Keluar" stroke="#e11d48" strokeWidth={2} fill="transparent" />
+                      <Area type="monotone" dataKey="masuk" name={S.chartIn} stroke="#0d9488" strokeWidth={2.5} fill="url(#cp)" />
+                      <Area type="monotone" dataKey="keluar" name={S.chartOut} stroke="#e11d48" strokeWidth={2} fill="transparent" />
                     </AreaChart>
                   </ResponsiveContainer>
                 </div>
@@ -1963,21 +1963,21 @@ export default function Finance() {
           {tab === "Kas & Bank" && (
             <div className="space-y-4">
               <CardHeader
-                title="Kas & Bank"
-                subtitle="Pantau saldo tiap rekening dan catat mutasi masuk/keluar. Bandingkan Saldo Berjalan dengan Saldo Akhir."
-                action={<button className="btn-primary text-xs" onClick={() => setShowMut(true)}>+ Catat Mutasi</button>}
+                title={S.kasTitle}
+                subtitle={S.kasSub}
+                action={<button className="btn-primary text-xs" onClick={() => setShowMut(true)}>{S.addMutasi}</button>}
               />
               <div className="overflow-x-auto">
                 <table className="w-full">
                   <thead className="bg-surface sticky top-0 z-10">
                     <tr>
-                      <SortTh label="Kode" sortKey="kode" sort={kasSort} onSort={(k) => setKasSort((s) => toggleSort(s, k))} />
-                      <SortTh label="Rekening" sortKey="nama" sort={kasSort} onSort={(k) => setKasSort((s) => toggleSort(s, k))} />
-                      <SortTh label="Saldo Awal" sortKey="awal" sort={kasSort} onSort={(k) => setKasSort((s) => toggleSort(s, k))} />
-                      <SortTh label="Mutasi Masuk" sortKey="masuk" sort={kasSort} onSort={(k) => setKasSort((s) => toggleSort(s, k))} />
-                      <SortTh label="Mutasi Keluar" sortKey="keluar" sort={kasSort} onSort={(k) => setKasSort((s) => toggleSort(s, k))} />
-                      <SortTh label="Saldo Berjalan" sortKey="berjalan" sort={kasSort} onSort={(k) => setKasSort((s) => toggleSort(s, k))} />
-                      <SortTh label="Saldo Akhir" sortKey="akhir" sort={kasSort} onSort={(k) => setKasSort((s) => toggleSort(s, k))} />
+                      <SortTh label={S.colKode} sortKey="kode" sort={kasSort} onSort={(k) => setKasSort((s) => toggleSort(s, k))} />
+                      <SortTh label={S.colRekening} sortKey="nama" sort={kasSort} onSort={(k) => setKasSort((s) => toggleSort(s, k))} />
+                      <SortTh label={S.colSaldoAwal} sortKey="awal" sort={kasSort} onSort={(k) => setKasSort((s) => toggleSort(s, k))} />
+                      <SortTh label={S.colMasuk} sortKey="masuk" sort={kasSort} onSort={(k) => setKasSort((s) => toggleSort(s, k))} />
+                      <SortTh label={S.colKeluar} sortKey="keluar" sort={kasSort} onSort={(k) => setKasSort((s) => toggleSort(s, k))} />
+                      <SortTh label={S.colBerjalan} sortKey="berjalan" sort={kasSort} onSort={(k) => setKasSort((s) => toggleSort(s, k))} />
+                      <SortTh label={S.colSaldoAkhir} sortKey="akhir" sort={kasSort} onSort={(k) => setKasSort((s) => toggleSort(s, k))} />
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-steel-100">
@@ -2002,17 +2002,17 @@ export default function Finance() {
                 </table>
               </div>
               <Card className="p-4">
-                <CardHeader title="Jurnal Penyesuaian Rutin" subtitle="Acuan penyesuaian PPN + penyusutan tiap akhir bulan." />
+                <CardHeader title={S.adjTitle} subtitle={S.adjSub} />
                 <div className="overflow-x-auto px-1 pb-3">
                   <table className="w-full">
                     <thead className="bg-surface sticky top-0 z-10">
                       <tr>
-                        <SortTh label="Tanggal" sortKey="tgl" sort={kasSort} onSort={(k) => setKasSort((s) => toggleSort(s, k))} />
-                        <SortTh label="Uraian" sortKey="uraian" sort={kasSort} onSort={(k) => setKasSort((s) => toggleSort(s, k))} />
-                        <SortTh label="Akun DB" sortKey="db" sort={kasSort} onSort={(k) => setKasSort((s) => toggleSort(s, k))} />
-                        <SortTh label="Debit" sortKey="dbAmt" sort={kasSort} onSort={(k) => setKasSort((s) => toggleSort(s, k))} />
-                        <SortTh label="Akun KR" sortKey="kr" sort={kasSort} onSort={(k) => setKasSort((s) => toggleSort(s, k))} />
-                        <SortTh label="Kredit" sortKey="krAmt" sort={kasSort} onSort={(k) => setKasSort((s) => toggleSort(s, k))} />
+                        <SortTh label={S.colTanggal} sortKey="tgl" sort={kasSort} onSort={(k) => setKasSort((s) => toggleSort(s, k))} />
+                        <SortTh label={S.colUraian} sortKey="uraian" sort={kasSort} onSort={(k) => setKasSort((s) => toggleSort(s, k))} />
+                        <SortTh label={S.colAkunDB} sortKey="db" sort={kasSort} onSort={(k) => setKasSort((s) => toggleSort(s, k))} />
+                        <SortTh label={S.colDebit} sortKey="dbAmt" sort={kasSort} onSort={(k) => setKasSort((s) => toggleSort(s, k))} />
+                        <SortTh label={S.colAkunKR} sortKey="kr" sort={kasSort} onSort={(k) => setKasSort((s) => toggleSort(s, k))} />
+                        <SortTh label={S.colKredit} sortKey="krAmt" sort={kasSort} onSort={(k) => setKasSort((s) => toggleSort(s, k))} />
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-steel-100">
@@ -2038,31 +2038,31 @@ export default function Finance() {
           {tab === "Jadwal Bayar" && (
             <div className="space-y-4">
               <CardHeader
-                title="Jadwal Bayar 30 Hari"
-                subtitle="Payable + invoice jatuh tempo ≤30 hari (termasuk yang sudah lewat), urut jatuh tempo tertua dulu."
+                title={S.schedTitle}
+                subtitle={S.schedSub}
                 action={
                   <div className="flex gap-2">
-                    <button className="btn-secondary text-xs" onClick={exportJadwal}>Ekspor Excel</button>
+                    <button className="btn-secondary text-xs" onClick={exportJadwal}>{S.exportExcelBtn}</button>
                     <button className="btn-primary text-xs" disabled={schedSel.length === 0} onClick={() => { setBatchProof(emptyProof()); setShowBatch(true); }}>
-                      Bayar Massal ({fmtJumlah(schedSel.length)}) · {fmtRupiah(schedTotal)}
+                      {S.batchPay.replace("{n}", fmtJumlah(schedSel.length)).replace("{a}", fmtRupiah(schedTotal))}
                     </button>
                   </div>
                 }
               />
               {schedItems.length === 0 ? (
-                <EmptyState title="Tidak ada jadwal jatuh tempo" subtitle="Tidak ada payable/invoice jatuh tempo dalam 30 hari ke depan." />
+                <EmptyState title={S.emptySchedTitle} subtitle={S.emptySchedSub} />
               ) : (
                 <div className="overflow-x-auto">
                   <table className="w-full">
                     <thead className="bg-surface sticky top-0 z-10">
                       <tr>
-                        <th className="th"><input type="checkbox" aria-label="Pilih semua" checked={schedSel.length === schedItems.length} onChange={() => setSchedSel((prev) => (prev.length === schedItems.length ? [] : schedItems.map((r) => r.key)))} /></th>
-                        <SortTh label="Jenis" sortKey="kind" sort={jadwalSort} onSort={(k) => setJadwalSort((s) => toggleSort(s, k))} />
-                        <SortTh label="ID" sortKey="id" sort={jadwalSort} onSort={(k) => setJadwalSort((s) => toggleSort(s, k))} />
-                        <SortTh label="Ref/Proyek" sortKey="ref" sort={jadwalSort} onSort={(k) => setJadwalSort((s) => toggleSort(s, k))} />
-                        <SortTh label="Uraian" sortKey="desc" sort={jadwalSort} onSort={(k) => setJadwalSort((s) => toggleSort(s, k))} />
-                        <SortTh label="Jatuh Tempo" sortKey="due" sort={jadwalSort} onSort={(k) => setJadwalSort((s) => toggleSort(s, k))} />
-                        <SortTh label="Nilai" sortKey="amount" sort={jadwalSort} onSort={(k) => setJadwalSort((s) => toggleSort(s, k))} />
+                        <th className="th"><input type="checkbox" aria-label={S.selectAll} checked={schedSel.length === schedItems.length} onChange={() => setSchedSel((prev) => (prev.length === schedItems.length ? [] : schedItems.map((r) => r.key)))} /></th>
+                        <SortTh label={S.colJenis} sortKey="kind" sort={jadwalSort} onSort={(k) => setJadwalSort((s) => toggleSort(s, k))} />
+                        <SortTh label={S.colID} sortKey="id" sort={jadwalSort} onSort={(k) => setJadwalSort((s) => toggleSort(s, k))} />
+                        <SortTh label={S.colRefProject} sortKey="ref" sort={jadwalSort} onSort={(k) => setJadwalSort((s) => toggleSort(s, k))} />
+                        <SortTh label={S.colUraian} sortKey="desc" sort={jadwalSort} onSort={(k) => setJadwalSort((s) => toggleSort(s, k))} />
+                        <SortTh label={S.colDue} sortKey="due" sort={jadwalSort} onSort={(k) => setJadwalSort((s) => toggleSort(s, k))} />
+                        <SortTh label={S.colNilai} sortKey="amount" sort={jadwalSort} onSort={(k) => setJadwalSort((s) => toggleSort(s, k))} />
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-steel-100">
@@ -2070,12 +2070,12 @@ export default function Finance() {
                         k === "kind" ? String(r.kind) : k === "id" ? String(r.id) : k === "ref" ? String(r.ref) :
                         k === "desc" ? String(r.desc) : k === "due" ? String(r.due) : Number(r.amount)).map((r) => (
                         <tr key={r.key} className="hover:bg-surface">
-                          <td className="td"><input type="checkbox" aria-label={`Pilih ${r.id}`} checked={schedSel.includes(r.key)} onChange={() => toggleSched(r.key)} /></td>
+                          <td className="td"><input type="checkbox" aria-label={S.selectItem.replace("{a}", r.id)} checked={schedSel.includes(r.key)} onChange={() => toggleSched(r.key)} /></td>
                           <td className="td"><Badge tone={r.kind === "AP" ? "navy" : "amber"}>{r.kind}</Badge></td>
                           <td className="td font-mono text-xs font-semibold text-navy-900">{r.id}</td>
                           <td className="td font-mono text-xs text-steel-600">{r.ref}</td>
                           <td className="td text-xs text-steel-600 truncate" title={r.desc}>{r.desc}</td>
-                          <td className="td text-xs text-steel-600">{fmtTanggal(r.due)}{r.age > 0 ? ` (${fmtJumlah(r.age)} hari lewat)` : ""}</td>
+                          <td className="td text-xs text-steel-600">{fmtTanggal(r.due)}{r.age > 0 ? S.ageLate.replace("{n}", fmtJumlah(r.age)) : ""}</td>
                           <td className="td text-xs font-semibold">{fmtRupiah(r.amount)}</td>
                         </tr>
                       ))}
@@ -2090,9 +2090,9 @@ export default function Finance() {
             <div className="space-y-4">
               <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
                 <Card className="p-5 lg:col-span-2">
-                  <CardHeader title="Pergerakan Invoice" subtitle="Live dari penerbitan per bulan (milyar Rupiah)" />
+                  <CardHeader title={S.invMoveTitle} subtitle={S.invMoveSub} />
                   {flowMonthly.length === 0 ? (
-                    <div className="flex h-56 items-center justify-center"><EmptyState title="Belum ada pergerakan" subtitle="Invoice saldo awal belum lunas - grafik terbentuk dari pelunasan nyata." /></div>
+                    <div className="flex h-56 items-center justify-center"><EmptyState title={S.emptyMoveTitle} subtitle={S.emptyMoveSub} /></div>
                   ) : (
                   <div className="h-56">
                     <ResponsiveContainer width="100%" height="100%">
@@ -2101,27 +2101,25 @@ export default function Finance() {
                         <XAxis dataKey="month" stroke="#8aa2b6" axisLine={false} tickLine={false} />
                         <YAxis stroke="#8aa2b6" axisLine={false} tickLine={false} />
                         <Tooltip content={<ChartTooltip formatter={(v) => `Rp ${v} M`} />} />
-                        <Area type="monotone" dataKey="masuk" name="Diterbitkan" stroke="#0b3a63" strokeWidth={2.5} fill="#8cc9e8" fillOpacity={0.3} />
+                        <Area type="monotone" dataKey="masuk" name={S.chartIssued} stroke="#0b3a63" strokeWidth={2.5} fill="#8cc9e8" fillOpacity={0.3} />
                       </AreaChart>
                     </ResponsiveContainer>
                   </div>
                   )}
                 </Card>
                 <Card className="p-5">
-                  <CardHeader title="Dokumen Invoice" />
-                  <p className="text-sm text-steel-600">
-                    Invoice mendukung lines, tipe Milestone / Progres / Uang Muka / Retensi / T&amp;M, referensi milestone, dan referensi service/WO untuk T&amp;M.
-                  </p>
-                  <p className="mt-2 text-xs text-steel-500">Nomor otomatis per tipe, mis. {invPreview} untuk {invForm.billingType}. NSFP dan No. Faktur opsional tetapi unik bila diisi.</p>
-                  <button className="btn-primary mt-4 w-full justify-center" onClick={() => setShowInv(true)}>Buat Invoice</button>
+                  <CardHeader title={S.invDocTitle} />
+                  <p className="text-sm text-steel-600">{S.invDocPara}</p>
+                  <p className="mt-2 text-xs text-steel-500">{S.invDocNote.replace("{a}", invPreview).replace("{b}", invForm.billingType)}</p>
+                  <button className="btn-primary mt-4 w-full justify-center" onClick={() => setShowInv(true)}>{S.createInvoice}</button>
                 </Card>
               </div>
-              <CardHeader title="Daftar Invoice" subtitle="Rincian tipe, lines, retensi, e-Faktur, dan status tiap invoice." />
+              <CardHeader title={S.invListTitle} subtitle={S.invTableSub} />
               <InvStageStrip counts={invStageCounts} active={invFStatus} onPick={setInvFStatus} />
               <div className="mb-3 flex flex-wrap items-center gap-2">
                 <div className="relative min-w-52 flex-1 sm:max-w-xs">
                   <Search className="absolute left-3 top-2.5 h-4 w-4 text-steel-400" />
-                  <input className="input pl-9 w-full" placeholder="Cari id / klien / proyek..." aria-label="Cari invoice" value={invFQ} onChange={(e) => setInvFQ(e.target.value)} />
+                  <input className="input pl-9 w-full" placeholder={S.searchInvPh} aria-label={S.searchInvAria} value={invFQ} onChange={(e) => setInvFQ(e.target.value)} />
                 </div>
                 <FilterPopover
                   activeCount={[invFStatus !== "Semua", invFBilling !== "Semua"].filter(Boolean).length}
@@ -2131,32 +2129,32 @@ export default function Finance() {
                 >
                   {(draft, setDraft) => (
                     <div className="space-y-3">
-                      <Field label="Status">
+                      <Field label={S.colStatus}>
                         <select className="input w-full" value={draft.status} onChange={(e) => setDraft({ ...draft, status: e.target.value })}>
-                          {["Semua", "Draft", "Diajukan", "Disetujui", "Belum Dibayar", "Terlambat", "Lunas", "Ditolak", "Dihapusbukukan"].map((s) => <option key={s} value={s}>{s === "Semua" ? "Semua status" : s}</option>)}
+                          {["Semua", "Draft", "Diajukan", "Disetujui", "Belum Dibayar", "Terlambat", "Lunas", "Ditolak", "Dihapusbukukan"].map((s) => <option key={s} value={s}>{s === "Semua" ? S.allStatus : s}</option>)}
                         </select>
                       </Field>
-                      <Field label="Tipe billing">
+                      <Field label={S.billingTypeLabel}>
                         <select className="input w-full" value={draft.billing} onChange={(e) => setDraft({ ...draft, billing: e.target.value })}>
-                          {["Semua", "Milestone", "Progres", "Uang Muka", "Retensi", "T&M", "Saldo Awal"].map((s) => <option key={s} value={s}>{s === "Semua" ? "Semua tipe" : s}</option>)}
+                          {["Semua", "Milestone", "Progres", "Uang Muka", "Retensi", "T&M", "Saldo Awal"].map((s) => <option key={s} value={s}>{s === "Semua" ? S.allTypes : s}</option>)}
                         </select>
                       </Field>
                     </div>
                   )}
                 </FilterPopover>
-                <span className="ml-auto text-xs text-steel-400">{filteredInvoices.length} invoice</span>
+                <span className="ml-auto text-xs text-steel-400">{S.countInvoice.replace("{n}", String(filteredInvoices.length))}</span>
               </div>
               <div className="overflow-x-auto">
                 <table className="w-full">
                   <thead className="bg-surface sticky top-0 z-10">
                     <tr>
-                      <SortTh label="Invoice" sortKey="id" sort={invSort} onSort={(k) => setInvSort((s) => toggleSort(s, k))} />
-                      <SortTh label="Tipe" sortKey="tipe" sort={invSort} onSort={(k) => setInvSort((s) => toggleSort(s, k))} />
-                      <SortTh label="Lines" sortKey="lines" sort={invSort} onSort={(k) => setInvSort((s) => toggleSort(s, k))} />
-                      <SortTh label="Retensi" sortKey="retensi" sort={invSort} onSort={(k) => setInvSort((s) => toggleSort(s, k))} />
-                      <SortTh label="e-Faktur" sortKey="efaktur" sort={invSort} onSort={(k) => setInvSort((s) => toggleSort(s, k))} />
-                      <SortTh label="Nilai" sortKey="amount" sort={invSort} onSort={(k) => setInvSort((s) => toggleSort(s, k))} />
-                      <SortTh label="Status" sortKey="status" sort={invSort} onSort={(k) => setInvSort((s) => toggleSort(s, k))} />
+                      <SortTh label={S.colInvoice} sortKey="id" sort={invSort} onSort={(k) => setInvSort((s) => toggleSort(s, k))} />
+                      <SortTh label={S.colTipe} sortKey="tipe" sort={invSort} onSort={(k) => setInvSort((s) => toggleSort(s, k))} />
+                      <SortTh label={S.colLines} sortKey="lines" sort={invSort} onSort={(k) => setInvSort((s) => toggleSort(s, k))} />
+                      <SortTh label={S.colRetensi} sortKey="retensi" sort={invSort} onSort={(k) => setInvSort((s) => toggleSort(s, k))} />
+                      <SortTh label={S.colEfaktur} sortKey="efaktur" sort={invSort} onSort={(k) => setInvSort((s) => toggleSort(s, k))} />
+                      <SortTh label={S.colNilai} sortKey="amount" sort={invSort} onSort={(k) => setInvSort((s) => toggleSort(s, k))} />
+                      <SortTh label={S.colStatus} sortKey="status" sort={invSort} onSort={(k) => setInvSort((s) => toggleSort(s, k))} />
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-steel-100">
@@ -2164,7 +2162,7 @@ export default function Finance() {
                       <tr key={inv.id} id={notifRowId(String(inv.id))} className={modAlert.highlight.has(String(inv.id)) ? "notif-hl hover:bg-surface" : "hover:bg-surface"}>
                         <td className="td font-mono text-xs font-semibold text-navy-900">{inv.id}<span className="block font-sans text-[11px] font-normal text-steel-500">{fmtTanggal(String(inv.due ?? ""))}</span></td>
                         <td className="td text-xs text-steel-600">{String(inv.billingType ?? inv.paymentTerm ?? "-")}{inv.serviceRef ? ` · ${inv.serviceRef}` : ""}</td>
-                        <td className="td text-xs text-steel-600">{Array.isArray(inv.lines) ? inv.lines.length : 1} baris</td>
+                        <td className="td text-xs text-steel-600">{S.linesCount.replace("{n}", String(Array.isArray(inv.lines) ? inv.lines.length : 1))}</td>
                         <td className="td text-xs">
                           {num(inv.retentionAmt) > 0 ? (
                             <span className="flex items-center gap-2">
@@ -2187,24 +2185,24 @@ export default function Finance() {
           {tab === "Buku Besar" && (
             <div className="space-y-4">
               <CardHeader
-                title="Buku Besar & Neraca Lajur"
-                subtitle="Saldo tiap akun dikelompokkan ke Laba-Rugi atau Neraca. Selisih Laba-Rugi = laba berjalan."
+                title={S.bbTitle}
+                subtitle={S.bbSub}
               />
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-                <Card className="p-4"><p className="text-xs text-steel-500">Total Pendapatan</p><p className="mt-1 text-lg font-bold text-navy-900">{fmtRupiah(LAPORAN_EXCEL.totalPendapatan)}</p><p className="mt-1 text-[11px] text-steel-400">4-101 Repair & Docking</p></Card>
-                <Card className="p-4"><p className="text-xs text-steel-500">Total Beban Pokok</p><p className="mt-1 text-lg font-bold text-navy-900">{fmtRupiah(LAPORAN_EXCEL.totalBebanPokok)}</p><p className="mt-1 text-[11px] text-steel-400">5-101 + 5-200 + 5-500 + 5-600</p></Card>
-                <Card className="p-4"><p className="text-xs text-steel-500">Laba Bersih</p><p className="mt-1 text-lg font-bold text-emerald-600">{fmtRupiah(LAPORAN_EXCEL.labaBersih)}</p><p className="mt-1 text-[11px] text-steel-400">Pendapatan - beban - biaya</p></Card>
+                <Card className="p-4"><p className="text-xs text-steel-500">{S.bbRevTitle}</p><p className="mt-1 text-lg font-bold text-navy-900">{fmtRupiah(LAPORAN_EXCEL.totalPendapatan)}</p><p className="mt-1 text-[11px] text-steel-400">{S.bbRevNote}</p></Card>
+                <Card className="p-4"><p className="text-xs text-steel-500">{S.bbCostTitle}</p><p className="mt-1 text-lg font-bold text-navy-900">{fmtRupiah(LAPORAN_EXCEL.totalBebanPokok)}</p><p className="mt-1 text-[11px] text-steel-400">{S.bbCostNote}</p></Card>
+                <Card className="p-4"><p className="text-xs text-steel-500">{S.kpiLabaNet}</p><p className="mt-1 text-lg font-bold text-emerald-600">{fmtRupiah(LAPORAN_EXCEL.labaBersih)}</p><p className="mt-1 text-[11px] text-steel-400">{S.bbNetNote}</p></Card>
               </div>
               <div className="overflow-x-auto">
                 <table className="w-full">
                   <thead className="bg-surface sticky top-0 z-10">
                     <tr>
-                      <SortTh label="Kode" sortKey="kode" sort={bbSort} onSort={(k) => setBbSort((s) => toggleSort(s, k))} rowSpan={2} />
-                      <SortTh label="Nama Akun" sortKey="nama" sort={bbSort} onSort={(k) => setBbSort((s) => toggleSort(s, k))} rowSpan={2} />
+                      <SortTh label={S.colKode} sortKey="kode" sort={bbSort} onSort={(k) => setBbSort((s) => toggleSort(s, k))} rowSpan={2} />
+                      <SortTh label={S.colNamaAkun} sortKey="nama" sort={bbSort} onSort={(k) => setBbSort((s) => toggleSort(s, k))} rowSpan={2} />
                       <SortTh label="D/K" sortKey="dk" sort={bbSort} onSort={(k) => setBbSort((s) => toggleSort(s, k))} rowSpan={2} />
-                      <th className="th" colSpan={2}>Neraca Saldo</th><th className="th" colSpan={2}>Laba-Rugi</th><th className="th" colSpan={2}>Neraca</th>
+                      <th className="th" colSpan={2}>{S.bbTrial}</th><th className="th" colSpan={2}>{S.bbPL}</th><th className="th" colSpan={2}>{S.bbBalance}</th>
                     </tr>
-                    <tr><th className="th">Debit</th><th className="th">Kredit</th><th className="th">Debit</th><th className="th">Kredit</th><th className="th">Debit</th><th className="th">Kredit</th></tr>
+                    <tr><th className="th">{S.colDebit}</th><th className="th">{S.colKredit}</th><th className="th">{S.colDebit}</th><th className="th">{S.colKredit}</th><th className="th">{S.colDebit}</th><th className="th">{S.colKredit}</th></tr>
                   </thead>
                   <tbody className="divide-y divide-steel-100">
                     {sortRows(coaRows.filter((c) => String(c.dk) !== "-"), bbSort, (c, k) =>
@@ -2230,29 +2228,29 @@ export default function Finance() {
                   </tbody>
                 </table>
               </div>
-              <p className="text-xs text-steel-500">Sumber jurnal BB: Kas / Bank (BPD) / JPb / JPn / JM. Saldo akhir BB = pembanding kolom Debit/Kredit di atas.</p>
+              <p className="text-xs text-steel-500">{S.bbNote}</p>
             </div>
           )}
 
           {tab === "Laba Rugi" && (
             <div className="space-y-4">
               <CardHeader
-                title="Laporan Laba-Rugi"
-                subtitle="POS-POS per akun dari Neraca Saldo. Laba = Pendapatan - Beban Pokok - Biaya Usaha + Lain Masuk - Lain Keluar."
+                title={S.lrTitle}
+                subtitle={S.lrSub}
               />
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-                <Card className="p-4"><p className="text-xs text-steel-500">Total Pendapatan</p><p className="mt-1 text-lg font-bold text-navy-900">{fmtRupiah(lrRows.pend)}</p><p className="mt-1 text-[11px] text-steel-400">Akun 4-xxx</p></Card>
-                <Card className="p-4"><p className="text-xs text-steel-500">Beban Pokok Pendapatan</p><p className="mt-1 text-lg font-bold text-navy-900">{fmtRupiah(lrRows.bebanPokok)}</p><p className="mt-1 text-[11px] text-steel-400">Akun 5-xxx</p></Card>
-                <Card className="p-4"><p className="text-xs text-steel-500">Biaya Usaha</p><p className="mt-1 text-lg font-bold text-navy-900">{fmtRupiah(lrRows.biayaUsaha)}</p><p className="mt-1 text-[11px] text-steel-400">Akun 6-xxx</p></Card>
-                <Card className="p-4"><p className="text-xs text-steel-500">Laba Bersih</p><p className="mt-1 text-lg font-bold text-emerald-600">{fmtRupiah(lrRows.pend - lrRows.bebanPokok - lrRows.biayaUsaha + lrRows.lainMasuk - lrRows.lainKeluar)}</p><p className="mt-1 text-[11px] text-steel-400">Lain-lain neto {fmtRupiah(lrRows.lainMasuk - lrRows.lainKeluar)}</p></Card>
+                <Card className="p-4"><p className="text-xs text-steel-500">{S.bbRevTitle}</p><p className="mt-1 text-lg font-bold text-navy-900">{fmtRupiah(lrRows.pend)}</p><p className="mt-1 text-[11px] text-steel-400">{S.lrRevNote}</p></Card>
+                <Card className="p-4"><p className="text-xs text-steel-500">{S.lrCostTitle}</p><p className="mt-1 text-lg font-bold text-navy-900">{fmtRupiah(lrRows.bebanPokok)}</p><p className="mt-1 text-[11px] text-steel-400">{S.lrCostNote}</p></Card>
+                <Card className="p-4"><p className="text-xs text-steel-500">{S.lrOpexTitle}</p><p className="mt-1 text-lg font-bold text-navy-900">{fmtRupiah(lrRows.biayaUsaha)}</p><p className="mt-1 text-[11px] text-steel-400">{S.lrOpexNote}</p></Card>
+                <Card className="p-4"><p className="text-xs text-steel-500">{S.kpiLabaNet}</p><p className="mt-1 text-lg font-bold text-emerald-600">{fmtRupiah(lrRows.pend - lrRows.bebanPokok - lrRows.biayaUsaha + lrRows.lainMasuk - lrRows.lainKeluar)}</p><p className="mt-1 text-[11px] text-steel-400">{S.lrOtherNet.replace("{a}", fmtRupiah(lrRows.lainMasuk - lrRows.lainKeluar))}</p></Card>
               </div>
               <div className="overflow-x-auto">
                 <table className="w-full">
                   <thead className="bg-surface sticky top-0 z-10">
                     <tr>
-                      <SortTh label="No. Akun" sortKey="kode" sort={lrSort} onSort={(k) => setLrSort((s) => toggleSort(s, k))} />
-                      <SortTh label="Pos-Pos" sortKey="pos" sort={lrSort} onSort={(k) => setLrSort((s) => toggleSort(s, k))} />
-                      <SortTh label="Nilai" sortKey="nilai" sort={lrSort} onSort={(k) => setLrSort((s) => toggleSort(s, k))} />
+                      <SortTh label={S.colNoAkun} sortKey="kode" sort={lrSort} onSort={(k) => setLrSort((s) => toggleSort(s, k))} />
+                      <SortTh label={S.colPos} sortKey="pos" sort={lrSort} onSort={(k) => setLrSort((s) => toggleSort(s, k))} />
+                      <SortTh label={S.colNilai} sortKey="nilai" sort={lrSort} onSort={(k) => setLrSort((s) => toggleSort(s, k))} />
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-steel-100">
@@ -2272,11 +2270,11 @@ export default function Finance() {
           {tab === "Project P&L" && (
             <div className="space-y-5">
               <CardHeader
-                title="Project P&L - Laba Rugi per Proyek"
-                subtitle="Pendapatan dari invoice Lunas. Payable dipetakan via PO ke proyek, termin Lunas via WO, gaji via alokasi manual. Sisanya masuk Tak teralokasi."
+                title={S.plTitle}
+                subtitle={S.plSub}
               />
               <div className="flex flex-wrap items-end gap-2">
-                <Field label="Proyek analisis">
+                <Field label={S.profitProject}>
                   <select className="input" value={profitPid} onChange={(e) => { setProfitProjectId(e.target.value); const p = projectById[e.target.value]; setOverheadPct(String(p?.overheadPct ?? 5)); }}>
                     {projectsVisible.map((p) => <option key={p.id} value={p.id}>{p.id} · {p.vessel}</option>)}
                   </select>
@@ -2284,10 +2282,10 @@ export default function Finance() {
               </div>
               {profitCalc && (
                 <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-                  <KpiCard label={`Pendapatan ${profitPid}`} value={fmtMiliar(profitCalc.revenue)} hint="Invoice Lunas proyek" chip="teal" />
-                  <KpiCard label={`Biaya ${profitPid}`} value={fmtMiliar(profitCalc.cost)} hint={`Payable ${fmtMiliar(profitCalc.costPayable)} · Termin ${fmtMiliar(profitCalc.costTermin)} · Gaji ${fmtMiliar(profitCalc.costPayroll)}`} chip="navy" />
-                  <KpiCard label={`Margin ${profitPid}`} value={fmtMiliar(profitCalc.margin)} delta={`${profitCalc.marginPct}% margin`} deltaDirection={profitCalc.margin >= 0 ? "up" : "down"} chip="violet" />
-                  <KpiCard label="Tak Teralokasi" value={fmtMiliar(profitCalc.unallocPayable + profitCalc.unallocTermin + profitCalc.unallocPayroll)} hint={`Payable ${fmtMiliar(profitCalc.unallocPayable)} · Termin ${fmtMiliar(profitCalc.unallocTermin)} · Gaji ${fmtMiliar(profitCalc.unallocPayroll)}`} chip="amber" />
+                  <KpiCard label={S.revPid.replace("{a}", profitPid)} value={fmtMiliar(profitCalc.revenue)} hint={S.invLunasHint} chip="teal" />
+                  <KpiCard label={S.costPid.replace("{a}", profitPid)} value={fmtMiliar(profitCalc.cost)} hint={S.costBreakdown.replace("{a}", fmtMiliar(profitCalc.costPayable)).replace("{b}", fmtMiliar(profitCalc.costTermin)).replace("{c}", fmtMiliar(profitCalc.costPayroll))} chip="navy" />
+                  <KpiCard label={S.marginVal.replace("{a}", profitPid)} value={fmtMiliar(profitCalc.margin)} delta={S.marginDelta.replace("{n}", String(profitCalc.marginPct))} deltaDirection={profitCalc.margin >= 0 ? "up" : "down"} chip="violet" />
+                  <KpiCard label={S.unallocatedCard} value={fmtMiliar(profitCalc.unallocPayable + profitCalc.unallocTermin + profitCalc.unallocPayroll)} hint={S.costBreakdown.replace("{a}", fmtMiliar(profitCalc.unallocPayable)).replace("{b}", fmtMiliar(profitCalc.unallocTermin)).replace("{c}", fmtMiliar(profitCalc.unallocPayroll))} chip="amber" />
                 </div>
               )}
               <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
@@ -2296,12 +2294,12 @@ export default function Finance() {
                   const margin = rev - num(p.actual);
                   return (
                     <Card key={p.id} className="card-hover p-4">
-                      <p className="text-xs text-steel-500 font-mono truncate" title={`${p.id} · ${p.vessel}`}>{p.id} · {p.vessel}{p.hasAdvance ? " · Uang muka" : ""}</p>
-                      <p className="mt-1 text-sm font-semibold text-navy-900">Margin {fmtMiliar(margin)}</p>
+                      <p className="text-xs text-steel-500 font-mono truncate" title={`${p.id} · ${p.vessel}`}>{p.id} · {p.vessel}{p.hasAdvance ? S.advanceTag : ""}</p>
+                      <p className="mt-1 text-sm font-semibold text-navy-900">{S.marginVal.replace("{a}", fmtMiliar(margin))}</p>
                       <div className="mt-2 text-xs text-steel-500">
-                        <p>Tertagih {fmtMiliar(rev)} · Cost {fmtMiliar(num(p.actual))}</p>
+                        <p>{S.billedCost.replace("{a}", fmtMiliar(rev)).replace("{b}", fmtMiliar(num(p.actual)))}</p>
                         <p className={`mt-1 font-medium ${margin >= 0 ? "text-emerald-600" : "text-rose-600"}`}>
-                          Margin {rev ? Math.round((margin / rev) * 100) : 0}%
+                          {S.marginPct.replace("{n}", String(rev ? Math.round((margin / rev) * 100) : 0))}
                         </p>
                       </div>
                     </Card>
@@ -2309,17 +2307,17 @@ export default function Finance() {
                 })}
               </div>
               <Card>
-                <CardHeader title="Alokasi Gaji per Proyek" subtitle="Payroll Dibayar tanpa alokasi tampil sebagai Tak teralokasi. Klik Alokasi untuk menetapkan proyek + %." />
+                <CardHeader title={S.allocTitle2} subtitle={S.allocSub2} />
                 <div className="overflow-x-auto">
                   <table className="w-full">
                     <thead className="bg-surface sticky top-0 z-10">
                       <tr>
-                        <SortTh label="Payroll" sortKey="id" sort={alokasiSort} onSort={(k) => setAlokasiSort((s) => toggleSort(s, k))} />
-                        <SortTh label="Karyawan" sortKey="emp" sort={alokasiSort} onSort={(k) => setAlokasiSort((s) => toggleSort(s, k))} />
-                        <SortTh label="Periode" sortKey="period" sort={alokasiSort} onSort={(k) => setAlokasiSort((s) => toggleSort(s, k))} />
-                        <SortTh label="Net" sortKey="net" sort={alokasiSort} onSort={(k) => setAlokasiSort((s) => toggleSort(s, k))} />
-                        <SortTh label="Alokasi" sortKey="alloc" sort={alokasiSort} onSort={(k) => setAlokasiSort((s) => toggleSort(s, k))} />
-                        <th className="th">Aksi</th>
+                        <SortTh label={S.colPayroll} sortKey="id" sort={alokasiSort} onSort={(k) => setAlokasiSort((s) => toggleSort(s, k))} />
+                        <SortTh label={S.colKaryawan} sortKey="emp" sort={alokasiSort} onSort={(k) => setAlokasiSort((s) => toggleSort(s, k))} />
+                        <SortTh label={S.colPeriode} sortKey="period" sort={alokasiSort} onSort={(k) => setAlokasiSort((s) => toggleSort(s, k))} />
+                        <SortTh label={S.colNet} sortKey="net" sort={alokasiSort} onSort={(k) => setAlokasiSort((s) => toggleSort(s, k))} />
+                        <SortTh label={S.colAlokasi} sortKey="alloc" sort={alokasiSort} onSort={(k) => setAlokasiSort((s) => toggleSort(s, k))} />
+                        <th className="th">{S.actionTh}</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-steel-100">
@@ -2332,8 +2330,8 @@ export default function Finance() {
                           <td className="td font-mono text-xs text-steel-600">{String(p.employeeId ?? "")}</td>
                           <td className="td text-xs text-steel-600">{String(p.period ?? "")}</td>
                           <td className="td text-xs font-semibold">{fmtRupiah(payNet(p))}</td>
-                          <td className="td text-xs text-steel-600">{p.allocProject ? `${p.allocProject} · ${p.allocPct}%` : "Tak teralokasi"}</td>
-                          <td className="td"><button className="btn-secondary px-2 py-1 text-[11px]" onClick={() => { setAllocTarget(p); setAllocForm({ project: String(p.allocProject ?? profitPid), pct: String(p.allocPct ?? 100) }); }}>Alokasi</button></td>
+                          <td className="td text-xs text-steel-600">{p.allocProject ? `${p.allocProject} · ${p.allocPct}%` : S.unallocatedCell}</td>
+                          <td className="td"><button className="btn-secondary px-2 py-1 text-[11px]" onClick={() => { setAllocTarget(p); setAllocForm({ project: String(p.allocProject ?? profitPid), pct: String(p.allocPct ?? 100) }); }}>{S.colAlokasi}</button></td>
                         </tr>
                       ))}
                     </tbody>
@@ -2343,29 +2341,29 @@ export default function Finance() {
               {cbs && (
                 <Card>
                   <CardHeader
-                    title={`CBS ${profitPid} - Auto Collect`}
-                    subtitle="Material dari movement Pengeluaran proyek × harga inventori. Labor dari alokasi gaji. Subcon dari termin Lunas. Equipment dari booking Selesai × Rp 1,5 jt/jam. Overhead % manual per proyek."
+                    title={S.cbsTitle.replace("{a}", profitPid)}
+                    subtitle={S.cbsSub}
                     action={
                       <div className="flex items-end gap-2">
-                        <Field label="Overhead %">
+                        <Field label={S.overheadPctLabel}>
                           <input type="number" min={0} max={100} className="input w-24" value={overheadPct} onChange={(e) => setOverheadPct(e.target.value)} />
                         </Field>
-                        <button className="btn-secondary text-xs" onClick={saveOverhead}>Simpan</button>
+                        <button className="btn-secondary text-xs" onClick={saveOverhead}>{S.saveBtn}</button>
                       </div>
                     }
                   />
                   <div className="overflow-x-auto">
                     <table className="w-full">
                       <thead className="bg-surface sticky top-0 z-10">
-                        <tr><th className="th">Elemen</th><th className="th">Nilai</th><th className="th">Catatan</th></tr>
+                        <tr><th className="th">{S.colElemen}</th><th className="th">{S.colNilai}</th><th className="th">{S.colCatatan}</th></tr>
                       </thead>
                       <tbody className="divide-y divide-steel-100">
-                        <tr className="hover:bg-surface"><td className="td font-medium text-navy-900">Material</td><td className="td font-semibold">{fmtRupiah(cbs.material)}</td><td className="td text-xs text-steel-500">Movement Pengeluaran proyek</td></tr>
-                        <tr className="hover:bg-surface"><td className="td font-medium text-navy-900">Labor</td><td className="td font-semibold">{fmtRupiah(cbs.labor)}</td><td className="td text-xs text-steel-500">Payroll alokasi proyek</td></tr>
-                        <tr className="hover:bg-surface"><td className="td font-medium text-navy-900">Subcon</td><td className="td font-semibold">{fmtRupiah(cbs.subcon)}</td><td className="td text-xs text-steel-500">Termin Lunas proyek</td></tr>
-                        <tr className="hover:bg-surface"><td className="td font-medium text-navy-900">Equipment</td><td className="td font-semibold">{fmtRupiah(cbs.equipment)}</td><td className="td text-xs text-steel-500">Booking Selesai × tarif alat</td></tr>
-                        <tr className="hover:bg-surface"><td className="td font-medium text-navy-900">Overhead ({fmtJumlah(cbs.ohPct)}%)</td><td className="td font-semibold">{fmtRupiah(cbs.overhead)}</td><td className="td text-xs text-steel-500">Manual per proyek</td></tr>
-                        <tr className="hover:bg-surface"><td className="td font-bold text-navy-900">Total biaya</td><td className="td font-bold text-navy-900">{fmtRupiah(cbs.total)}</td><td className="td text-xs text-steel-500">vs budget {fmtRupiah(cbs.budget)} · selisih {fmtRupiah(cbs.vsBudget)}</td></tr>
+                        <tr className="hover:bg-surface"><td className="td font-medium text-navy-900">{S.cbsMaterial}</td><td className="td font-semibold">{fmtRupiah(cbs.material)}</td><td className="td text-xs text-steel-500">{S.cbsMaterialNote}</td></tr>
+                        <tr className="hover:bg-surface"><td className="td font-medium text-navy-900">{S.cbsLabor}</td><td className="td font-semibold">{fmtRupiah(cbs.labor)}</td><td className="td text-xs text-steel-500">{S.cbsLaborNote}</td></tr>
+                        <tr className="hover:bg-surface"><td className="td font-medium text-navy-900">{S.cbsSubcon}</td><td className="td font-semibold">{fmtRupiah(cbs.subcon)}</td><td className="td text-xs text-steel-500">{S.cbsSubconNote}</td></tr>
+                        <tr className="hover:bg-surface"><td className="td font-medium text-navy-900">{S.cbsEquipment}</td><td className="td font-semibold">{fmtRupiah(cbs.equipment)}</td><td className="td text-xs text-steel-500">{S.cbsEquipmentNote}</td></tr>
+                        <tr className="hover:bg-surface"><td className="td font-medium text-navy-900">{S.overheadRow.replace("{a}", fmtJumlah(cbs.ohPct))}</td><td className="td font-semibold">{fmtRupiah(cbs.overhead)}</td><td className="td text-xs text-steel-500">{S.cbsOverheadManual}</td></tr>
+                        <tr className="hover:bg-surface"><td className="td font-bold text-navy-900">{S.totalCost}</td><td className="td font-bold text-navy-900">{fmtRupiah(cbs.total)}</td><td className="td text-xs text-steel-500">{S.vsBudget.replace("{a}", fmtRupiah(cbs.budget)).replace("{b}", fmtRupiah(cbs.vsBudget))}</td></tr>
                       </tbody>
                     </table>
                   </div>
@@ -2375,17 +2373,17 @@ export default function Finance() {
                 </Card>
               )}
               <Card>
-                <CardHeader title="P&L Bulanan (derivasi jurnal)" subtitle="Pendapatan dari invoice Lunas, beban proyek dari payable Lunas, beban gaji dari payroll Dibayar, hapus buku dari piutang Dihapusbukukan." />
+                <CardHeader title={S.plMonthlyTitle} subtitle={S.plMonthlySub} />
                 <div className="overflow-x-auto">
                   <table className="w-full">
                     <thead className="bg-surface sticky top-0 z-10">
                       <tr>
-                        <SortTh label="Periode" sortKey="period" sort={pajakSort} onSort={(k) => setPajakSort((s) => toggleSort(s, k))} />
-                        <SortTh label="Pendapatan" sortKey="revenue" sort={pajakSort} onSort={(k) => setPajakSort((s) => toggleSort(s, k))} />
-                        <SortTh label="Beban Proyek" sortKey="costProj" sort={pajakSort} onSort={(k) => setPajakSort((s) => toggleSort(s, k))} />
-                        <SortTh label="Beban Gaji" sortKey="salary" sort={pajakSort} onSort={(k) => setPajakSort((s) => toggleSort(s, k))} />
-                        <SortTh label="Hapus Buku" sortKey="writeoff" sort={pajakSort} onSort={(k) => setPajakSort((s) => toggleSort(s, k))} />
-                        <SortTh label="Laba" sortKey="laba" sort={pajakSort} onSort={(k) => setPajakSort((s) => toggleSort(s, k))} />
+                        <SortTh label={S.colPeriode} sortKey="period" sort={pajakSort} onSort={(k) => setPajakSort((s) => toggleSort(s, k))} />
+                        <SortTh label={S.colPendapatan} sortKey="revenue" sort={pajakSort} onSort={(k) => setPajakSort((s) => toggleSort(s, k))} />
+                        <SortTh label={S.colBebanProyek} sortKey="costProj" sort={pajakSort} onSort={(k) => setPajakSort((s) => toggleSort(s, k))} />
+                        <SortTh label={S.colBebanGaji} sortKey="salary" sort={pajakSort} onSort={(k) => setPajakSort((s) => toggleSort(s, k))} />
+                        <SortTh label={S.colHapusBuku} sortKey="writeoff" sort={pajakSort} onSort={(k) => setPajakSort((s) => toggleSort(s, k))} />
+                        <SortTh label={S.colLaba} sortKey="laba" sort={pajakSort} onSort={(k) => setPajakSort((s) => toggleSort(s, k))} />
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-steel-100">
@@ -2402,7 +2400,7 @@ export default function Finance() {
                         </tr>
                       ))}
                       {plMonthly.length === 0 && (
-                        <tr><td className="td text-xs text-steel-400" colSpan={6}>Belum ada jurnal Lunas pada periode berjalan.</td></tr>
+                        <tr><td className="td text-xs text-steel-400" colSpan={6}>{S.plEmpty}</td></tr>
                       )}
                     </tbody>
                   </table>
@@ -2413,37 +2411,37 @@ export default function Finance() {
 
           {tab === "Neraca" && (
             <div className="space-y-4">
-              <CardHeader title="Neraca + Laba Ditahan" subtitle={`Total neraca Rp ${LAPORAN_EXCEL.neracaTotal.toLocaleString("id-ID")} (Aktiva = Kewajiban + Ekuitas).`} />
+              <CardHeader title={S.nrTitle} subtitle={S.nrSub.replace("{a}", LAPORAN_EXCEL.neracaTotal.toLocaleString("id-ID"))} />
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-                <Card className="p-4"><p className="text-xs text-steel-500">Aktiva Lancar</p><p className="mt-1 text-lg font-bold text-navy-900">{fmtRupiah(LAPORAN_EXCEL.aktivaLancar)}</p><p className="mt-1 text-[11px] text-steel-400">Dominan Piutang Direksi + Antar Perusahaan + Usaha</p></Card>
-                <Card className="p-4"><p className="text-xs text-steel-500">Nilai Buku Aktiva Tetap</p><p className="mt-1 text-lg font-bold text-navy-900">{fmtRupiah(LAPORAN_EXCEL.bukuAktivaTetap)}</p><p className="mt-1 text-[11px] text-steel-400">Perolehan 15,57T - Akum 9,65T</p></Card>
-                <Card className="p-4"><p className="text-xs text-steel-500">Laba Ditahan Awal</p><p className="mt-1 text-lg font-bold text-navy-900">{fmtRupiah(LAPORAN_EXCEL.labaDitahanAwal)}</p><p className="mt-1 text-[11px] text-steel-400">Saldo awal periode</p></Card>
-                <Card className="p-4"><p className="text-xs text-steel-500">Laba Ditahan Akhir</p><p className="mt-1 text-lg font-bold text-emerald-600">{fmtRupiah(LAPORAN_EXCEL.labaDitahanAkhir)}</p><p className="mt-1 text-[11px] text-steel-400">Awal + berjalan {fmtRupiah(LAPORAN_EXCEL.labaBerjalan)}</p></Card>
+                <Card className="p-4"><p className="text-xs text-steel-500">{S.nrCurrentAsset}</p><p className="mt-1 text-lg font-bold text-navy-900">{fmtRupiah(LAPORAN_EXCEL.aktivaLancar)}</p><p className="mt-1 text-[11px] text-steel-400">{S.nrCurrentNote}</p></Card>
+                <Card className="p-4"><p className="text-xs text-steel-500">{S.nrFixedBook}</p><p className="mt-1 text-lg font-bold text-navy-900">{fmtRupiah(LAPORAN_EXCEL.bukuAktivaTetap)}</p><p className="mt-1 text-[11px] text-steel-400">{S.nrFixedNote}</p></Card>
+                <Card className="p-4"><p className="text-xs text-steel-500">{S.nrOpenTitle}</p><p className="mt-1 text-lg font-bold text-navy-900">{fmtRupiah(LAPORAN_EXCEL.labaDitahanAwal)}</p><p className="mt-1 text-[11px] text-steel-400">{S.nrOpenNote}</p></Card>
+                <Card className="p-4"><p className="text-xs text-steel-500">{S.nrCloseTitle}</p><p className="mt-1 text-lg font-bold text-emerald-600">{fmtRupiah(LAPORAN_EXCEL.labaDitahanAkhir)}</p><p className="mt-1 text-[11px] text-steel-400">{S.nrCloseNote.replace("{a}", fmtRupiah(LAPORAN_EXCEL.labaBerjalan))}</p></Card>
               </div>
               <Card className="p-4">
-                <CardHeader title="Laba Ditahan" subtitle="Jumlah Laba Ditahan = Laba Ditahan awal + Laba (Rugi) periode berjalan." />
+                <CardHeader title={S.reTitle} subtitle={S.reSub} />
                 <div className="overflow-x-auto px-1 pb-3">
                   <table className="w-full">
                     <thead className="bg-surface sticky top-0 z-10">
-                      <tr><th className="th">No. Akun</th><th className="th">Pos-Pos</th><th className="th">Nilai</th></tr>
+                      <tr><th className="th">{S.colNoAkun}</th><th className="th">{S.colPos}</th><th className="th">{S.colNilai}</th></tr>
                     </thead>
                     <tbody className="divide-y divide-steel-100">
-                      <tr className="hover:bg-surface"><td className="td font-mono text-xs font-semibold text-navy-900">3-200</td><td className="td text-xs text-steel-600">Laba Ditahan</td><td className="td text-xs font-semibold">{fmtRupiah(LAPORAN_EXCEL.labaDitahanAwal)}</td></tr>
-                      <tr className="hover:bg-surface"><td className="td font-mono text-xs text-steel-400">-</td><td className="td text-xs text-steel-600">Laba (Rugi) Periode Berjalan</td><td className="td text-xs font-semibold">{fmtRupiah(labaLast)}</td></tr>
-                      <tr className="hover:bg-surface"><td className="td font-mono text-xs text-steel-400">-</td><td className="td text-xs font-bold text-navy-900">Jumlah Laba Ditahan</td><td className="td text-xs font-bold text-navy-900">{fmtRupiah(LAPORAN_EXCEL.labaDitahanAwal + labaLast)}</td></tr>
+                      <tr className="hover:bg-surface"><td className="td font-mono text-xs font-semibold text-navy-900">3-200</td><td className="td text-xs text-steel-600">{S.reTitle}</td><td className="td text-xs font-semibold">{fmtRupiah(LAPORAN_EXCEL.labaDitahanAwal)}</td></tr>
+                      <tr className="hover:bg-surface"><td className="td font-mono text-xs text-steel-400">-</td><td className="td text-xs text-steel-600">{S.reCurrentRow}</td><td className="td text-xs font-semibold">{fmtRupiah(labaLast)}</td></tr>
+                      <tr className="hover:bg-surface"><td className="td font-mono text-xs text-steel-400">-</td><td className="td text-xs font-bold text-navy-900">{S.reTotalRow}</td><td className="td text-xs font-bold text-navy-900">{fmtRupiah(LAPORAN_EXCEL.labaDitahanAwal + labaLast)}</td></tr>
                     </tbody>
                   </table>
                 </div>
               </Card>
               <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
                 <Card className="p-4">
-                  <CardHeader title="Subledger Hutang" subtitle="Kuning = vendor Non-PPn. Saldo akhir = sisa hutang berjalan." />
+                  <CardHeader title={S.subHutangTitle} subtitle={S.subHutangSub} />
                   <div className="max-h-72 overflow-y-auto">
                     <table className="w-full">
                       <thead className="bg-surface sticky top-0 z-10"><tr>
-                        <SortTh label="Vendor" sortKey="v" sort={nrSort} onSort={(k) => setNrSort((s) => toggleSort(s, k))} />
-                        <SortTh label="Awal" sortKey="awal" sort={nrSort} onSort={(k) => setNrSort((s) => toggleSort(s, k))} />
-                        <SortTh label="Akhir" sortKey="akhir" sort={nrSort} onSort={(k) => setNrSort((s) => toggleSort(s, k))} />
+                        <SortTh label={S.colVendor} sortKey="v" sort={nrSort} onSort={(k) => setNrSort((s) => toggleSort(s, k))} />
+                        <SortTh label={S.colAwal} sortKey="awal" sort={nrSort} onSort={(k) => setNrSort((s) => toggleSort(s, k))} />
+                        <SortTh label={S.colAkhir} sortKey="akhir" sort={nrSort} onSort={(k) => setNrSort((s) => toggleSort(s, k))} />
                         <th className="th">PPn</th>
                       </tr></thead>
                       <tbody className="divide-y divide-steel-100">
@@ -2460,13 +2458,13 @@ export default function Finance() {
                   </div>
                 </Card>
                 <Card className="p-4">
-                  <CardHeader title="Subledger Piutang" subtitle="Kuning = Non-PPn / perorangan. Saldo akhir = sisa piutang berjalan." />
+                  <CardHeader title={S.subPiutangTitle} subtitle={S.subPiutangSub} />
                   <div className="max-h-72 overflow-y-auto">
                     <table className="w-full">
                       <thead className="bg-surface sticky top-0 z-10"><tr>
-                        <SortTh label="Customer" sortKey="c" sort={nrSort} onSort={(k) => setNrSort((s) => toggleSort(s, k))} />
-                        <SortTh label="Awal" sortKey="awal" sort={nrSort} onSort={(k) => setNrSort((s) => toggleSort(s, k))} />
-                        <SortTh label="Akhir" sortKey="akhir" sort={nrSort} onSort={(k) => setNrSort((s) => toggleSort(s, k))} />
+                        <SortTh label={S.colCustomer} sortKey="c" sort={nrSort} onSort={(k) => setNrSort((s) => toggleSort(s, k))} />
+                        <SortTh label={S.colAwal} sortKey="awal" sort={nrSort} onSort={(k) => setNrSort((s) => toggleSort(s, k))} />
+                        <SortTh label={S.colAkhir} sortKey="akhir" sort={nrSort} onSort={(k) => setNrSort((s) => toggleSort(s, k))} />
                         <th className="th">PPn</th>
                       </tr></thead>
                       <tbody className="divide-y divide-steel-100">
@@ -2489,48 +2487,46 @@ export default function Finance() {
           {tab === "Pajak" && (
             <div className="space-y-4">
               <CardHeader
-                title="Ringkasan Pajak per Periode"
-                subtitle={`PPN Keluaran ${taxCalc.ppnRate}% dari invoice Lunas periode (paidAt/due), PPN Masukan ${taxCalc.ppnRate}% dari payable Lunas, PPh23 ${taxCalc.pphRate}% dari payable Lunas jasa, PPh21 total payroll periode.`}
+                title={S.taxTitle}
+                subtitle={S.taxSub.replace("{a}", String(taxCalc.ppnRate)).replace("{b}", String(taxCalc.pphRate))}
               />
               <div className="flex flex-wrap items-end gap-2">
-                <Field label="Periode">
+                <Field label={S.colPeriode}>
                   <select className="input" value={activeTaxId} onChange={(e) => setTaxId(e.target.value)}>
                     {taxPeriods.map((t) => <option key={t.id} value={t.id}>{t.period} · {t.status}</option>)}
                   </select>
                 </Field>
-                <Field label="Periode baru (YYYY-MM)">
+                <Field label={S.newPeriodLabel}>
                   <input className="input font-mono" placeholder="2026-09" value={newPeriod} onChange={(e) => setNewPeriod(e.target.value)} />
                 </Field>
                 <button
                   className="btn-secondary text-xs"
                   onClick={async () => {
-                    if (!/^\d{4}-\d{2}$/.test(newPeriod.trim())) { toast("Format periode YYYY-MM", "info"); return; }
-                    if (taxPeriods.some((t) => t.period === newPeriod.trim())) { toast("Periode sudah ada", "info"); return; }
+                    if (!/^\d{4}-\d{2}$/.test(newPeriod.trim())) { toast(S.periodFormat, "info"); return; }
+                    if (taxPeriods.some((t) => t.period === newPeriod.trim())) { toast(S.periodExists, "info"); return; }
                     const created = await add("taxPeriods", { period: newPeriod.trim(), ppnKeluar: 0, ppnMasuk: 0, pph23: 0, pph21: 0, status: "Draft" }, { action: "membuat periode pajak", module: "Pajak" });
                     setTaxId(created.id);
                     setNewPeriod("");
-                    toast(`Periode ${created.period} dibuat`);
+                    toast(S.periodCreated.replace("{a}", String(created.period)));
                   }}
-                >
-                  Periode Baru
-                </button>
+                >{S.newPeriodBtn}</button>
                 <div className="ml-auto flex gap-2">
-                  <button className="btn-secondary text-xs" onClick={exportEfaktur}>Ekspor CSV e-Faktur</button>
-                  <button className="btn-secondary text-xs" onClick={exportSpt}>Ekspor Excel SPT</button>
+                  <button className="btn-secondary text-xs" onClick={exportEfaktur}>{S.exportEfaktur}</button>
+                  <button className="btn-secondary text-xs" onClick={exportSpt}>{S.exportSpt}</button>
                   <button className="btn-primary text-xs" disabled={taxLocked} onClick={markTaxLapor}>
-                    {taxLocked ? "Sudah Lapor (Terkunci)" : "Tandai Lapor"}
+                    {taxLocked ? S.alreadyReported : S.markReported}
                   </button>
                 </div>
               </div>
               {!activeTax ? (
-                <EmptyState title="Belum ada periode pajak" subtitle="Buat periode baru untuk mulai." />
+                <EmptyState title={S.emptyTaxTitle} subtitle={S.emptyTaxSub} />
               ) : (
                 <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
                   {[
-                    { label: "PPN Keluaran", value: fmtRupiah(taxShown.ppnKeluar), hint: `${taxCalc.ppnRate}% dari ${fmtRupiah(taxCalc.invBase)}` },
-                    { label: "PPN Masukan", value: fmtRupiah(taxShown.ppnMasuk), hint: `${taxCalc.ppnRate}% dari ${fmtRupiah(taxCalc.apBase)}` },
-                    { label: "PPh 23", value: fmtRupiah(taxShown.pph23), hint: `${taxCalc.pphRate}% dari payable Lunas` },
-                    { label: "PPh 21", value: fmtRupiah(taxShown.pph21), hint: `Payroll ${activePeriod}` },
+                    { label: S.ppnOut, value: fmtRupiah(taxShown.ppnKeluar), hint: S.ppnOutHint.replace("{a}", String(taxCalc.ppnRate)).replace("{b}", fmtRupiah(taxCalc.invBase)) },
+                    { label: S.ppnIn, value: fmtRupiah(taxShown.ppnMasuk), hint: S.ppnOutHint.replace("{a}", String(taxCalc.ppnRate)).replace("{b}", fmtRupiah(taxCalc.apBase)) },
+                    { label: S.pph23, value: fmtRupiah(taxShown.pph23), hint: S.pph23Hint.replace("{a}", String(taxCalc.pphRate)) },
+                    { label: S.pph21, value: fmtRupiah(taxShown.pph21), hint: S.payrollHint.replace("{a}", activePeriod) },
                   ].map((k) => (
                     <Card key={k.label} className="p-4">
                       <p className="text-xs text-steel-500">{k.label}</p>
@@ -2542,11 +2538,11 @@ export default function Finance() {
               )}
               <Card className="p-4">
                 <p className="text-sm text-steel-600">
-                  PPN terutang periode {activePeriod || "-"}: <strong className="text-navy-900">{fmtRupiah(taxShown.ppnKeluar - taxShown.ppnMasuk)}</strong>
-                  {taxLocked ? " · Angka dikunci dari snapshot saat pelaporan." : " · Angka live dari data Lunas."}
-                  {" "}Dilapor per {fmtTanggal(activeTax?.reportedAt)}.
+                  {S.taxOwed.replace("{a}", activePeriod || "-").replace("{b}", fmtRupiah(taxShown.ppnKeluar - taxShown.ppnMasuk))}
+                  {taxLocked ? S.taxLockedNote : S.taxLiveNote}
+                  {" "}{S.reportedOn.replace("{a}", fmtTanggal(activeTax?.reportedAt))}
                 </p>
-                <p className="mt-1 text-xs text-steel-500">e-Faktur periode {activePeriod || "-"}: {fmtJumlah(efakturRows.length)} invoice Lunas (kolom NSFP, NoFaktur, Tanggal, Client, DPP, PPN).</p>
+                <p className="mt-1 text-xs text-steel-500">{S.efakturNote.replace("{a}", activePeriod || "-").replace("{n}", fmtJumlah(efakturRows.length))}</p>
               </Card>
             </div>
           )}
@@ -2554,26 +2550,26 @@ export default function Finance() {
           {tab === "Aset" && (
             <div className="space-y-4">
               <CardHeader
-                title="Aset Tetap"
-                subtitle="Beban bulanan: 6-021→1-280, 6-021A→1-281, 6-021B→1-282, 6-021C→1-270, 6-022→1-290."
-                action={<button className="btn-primary text-xs" onClick={() => setShowAst(true)}>+ Tambah Aset</button>}
+                title={S.assetTitle}
+                subtitle={S.assetSub}
+                action={<button className="btn-primary text-xs" onClick={() => setShowAst(true)}>{S.addAset}</button>}
               />
               <div className="overflow-x-auto">
                 <table className="w-full">
                   <thead className="bg-surface sticky top-0 z-10">
                     <tr>
-                      <SortTh label="No." sortKey="no" sort={asetSort} onSort={(k) => setAsetSort((s) => toggleSort(s, k))} />
-                      <SortTh label="Nama / Jenis Harta" sortKey="nama" sort={asetSort} onSort={(k) => setAsetSort((s) => toggleSort(s, k))} />
-                      <SortTh label="Kel." sortKey="kel" sort={asetSort} onSort={(k) => setAsetSort((s) => toggleSort(s, k))} />
-                      <SortTh label="Bulan" sortKey="bulan" sort={asetSort} onSort={(k) => setAsetSort((s) => toggleSort(s, k))} />
-                      <SortTh label="Tahun" sortKey="tahun" sort={asetSort} onSort={(k) => setAsetSort((s) => toggleSort(s, k))} />
-                      <SortTh label="Nilai Perolehan" sortKey="nilai" sort={asetSort} onSort={(k) => setAsetSort((s) => toggleSort(s, k))} />
-                      <SortTh label="Metode" sortKey="metode" sort={asetSort} onSort={(k) => setAsetSort((s) => toggleSort(s, k))} />
-                      <SortTh label="Susut / Thn" sortKey="susut" sort={asetSort} onSort={(k) => setAsetSort((s) => toggleSort(s, k))} />
-                      <th className="th">Susut / Bln</th>
-                      <th className="th">Akun Beban</th>
-                      <th className="th">Akun Akumulasi</th>
-                      <th className="th">Aksi</th>
+                      <SortTh label={S.colNo} sortKey="no" sort={asetSort} onSort={(k) => setAsetSort((s) => toggleSort(s, k))} />
+                      <SortTh label={S.colNamaHarta} sortKey="nama" sort={asetSort} onSort={(k) => setAsetSort((s) => toggleSort(s, k))} />
+                      <SortTh label={S.colKel} sortKey="kel" sort={asetSort} onSort={(k) => setAsetSort((s) => toggleSort(s, k))} />
+                      <SortTh label={S.colBulan} sortKey="bulan" sort={asetSort} onSort={(k) => setAsetSort((s) => toggleSort(s, k))} />
+                      <SortTh label={S.colTahun} sortKey="tahun" sort={asetSort} onSort={(k) => setAsetSort((s) => toggleSort(s, k))} />
+                      <SortTh label={S.colNilaiPerolehan} sortKey="nilai" sort={asetSort} onSort={(k) => setAsetSort((s) => toggleSort(s, k))} />
+                      <SortTh label={S.colMetode} sortKey="metode" sort={asetSort} onSort={(k) => setAsetSort((s) => toggleSort(s, k))} />
+                      <SortTh label={S.colSusut} sortKey="susut" sort={asetSort} onSort={(k) => setAsetSort((s) => toggleSort(s, k))} />
+                      <th className="th">{S.colSusutBln}</th>
+                      <th className="th">{S.colAkunBeban}</th>
+                      <th className="th">{S.colAkunAkum}</th>
+                      <th className="th">{S.actionTh}</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-steel-100">
@@ -2600,9 +2596,7 @@ export default function Finance() {
                         <td className="td font-mono text-[11px] text-steel-600">{akum}</td>
                         <td className="td">
                           {!seed && (
-                            <button className="btn-secondary px-2 py-1 text-[11px] text-rose-600" onClick={async () => { try { await remove("assets", String(a.id)); log("menghapus aset", String(a.nama), "Keuangan"); toast(`Aset ${a.nama} dihapus`); } catch (e) { toast(e instanceof Error ? e.message : "Aset tidak bisa dihapus", "info"); } }}>
-                              Hapus
-                            </button>
+                            <button className="btn-secondary px-2 py-1 text-[11px] text-rose-600" onClick={async () => { try { await remove("assets", String(a.id)); log("menghapus aset", String(a.nama), "Keuangan"); toast(S.assetDeleted.replace("{a}", String(a.nama))); } catch (e) { toast(e instanceof Error ? e.message : S.assetDeleteFail, "info"); } }}>{S.deleteBtn}</button>
                           )}
                         </td>
                       </tr>
@@ -2617,24 +2611,24 @@ export default function Finance() {
           {tab === "Jurnal" && (
             <div className="space-y-4">
               <CardHeader
-                title="Jurnal Umum"
-                subtitle="Catat jurnal berimbang (debit = kredit): penyesuaian, koreksi, memorial. Void untuk membatalkan."
-                action={<button className="btn-primary text-xs" onClick={() => setShowJu(true)}>+ Catat Jurnal</button>}
+                title={S.juTitle}
+                subtitle={S.juSub}
+                action={<button className="btn-primary text-xs" onClick={() => setShowJu(true)}>{S.addJurnal}</button>}
               />
               <div className="overflow-x-auto">
                 <table className="w-full">
                   <thead className="bg-surface sticky top-0 z-10">
                     <tr>
-                      <SortTh label="Tanggal" sortKey="date" sort={juSort} onSort={(k) => setJuSort((s) => toggleSort(s, k))} />
-                      <SortTh label="Kode Pembantu" sortKey="kode" sort={juSort} onSort={(k) => setJuSort((s) => toggleSort(s, k))} />
-                      <SortTh label="Dokumen" sortKey="dok" sort={juSort} onSort={(k) => setJuSort((s) => toggleSort(s, k))} />
-                      <SortTh label="Uraian" sortKey="uraian" sort={juSort} onSort={(k) => setJuSort((s) => toggleSort(s, k))} />
-                      <SortTh label="Akun DB" sortKey="db" sort={juSort} onSort={(k) => setJuSort((s) => toggleSort(s, k))} />
-                      <SortTh label="Akun KR" sortKey="kr" sort={juSort} onSort={(k) => setJuSort((s) => toggleSort(s, k))} />
-                      <SortTh label="Nominal" sortKey="amount" sort={juSort} onSort={(k) => setJuSort((s) => toggleSort(s, k))} />
-                      <SortTh label="Sumber" sortKey="sumber" sort={juSort} onSort={(k) => setJuSort((s) => toggleSort(s, k))} />
-                      <SortTh label="Status" sortKey="status" sort={juSort} onSort={(k) => setJuSort((s) => toggleSort(s, k))} />
-                      <th className="th">Aksi</th>
+                      <SortTh label={S.colTanggal} sortKey="date" sort={juSort} onSort={(k) => setJuSort((s) => toggleSort(s, k))} />
+                      <SortTh label={S.colKodePembantu} sortKey="kode" sort={juSort} onSort={(k) => setJuSort((s) => toggleSort(s, k))} />
+                      <SortTh label={S.colDokumen} sortKey="dok" sort={juSort} onSort={(k) => setJuSort((s) => toggleSort(s, k))} />
+                      <SortTh label={S.colUraian} sortKey="uraian" sort={juSort} onSort={(k) => setJuSort((s) => toggleSort(s, k))} />
+                      <SortTh label={S.colAkunDB} sortKey="db" sort={juSort} onSort={(k) => setJuSort((s) => toggleSort(s, k))} />
+                      <SortTh label={S.colAkunKR} sortKey="kr" sort={juSort} onSort={(k) => setJuSort((s) => toggleSort(s, k))} />
+                      <SortTh label={S.colNominal} sortKey="amount" sort={juSort} onSort={(k) => setJuSort((s) => toggleSort(s, k))} />
+                      <SortTh label={S.colSumber} sortKey="sumber" sort={juSort} onSort={(k) => setJuSort((s) => toggleSort(s, k))} />
+                      <SortTh label={S.colStatus} sortKey="status" sort={juSort} onSort={(k) => setJuSort((s) => toggleSort(s, k))} />
+                      <th className="th">{S.actionTh}</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-steel-100">
@@ -2651,57 +2645,55 @@ export default function Finance() {
                         <td className="td"><StatusBadge status={String(j.status ?? "Posted")} /></td>
                         <td className="td">
                           {String(j.status) !== "Void" && (
-                            <button className="btn-secondary px-2 py-1 text-[11px] text-rose-600" onClick={async () => { await update("journals", String(j.id), { status: "Void" }); log("mem-void jurnal", String(j.id), "Keuangan"); toast(`${j.id} di-void`); }}>
-                              Void
-                            </button>
+                            <button className="btn-secondary px-2 py-1 text-[11px] text-rose-600" onClick={async () => { await update("journals", String(j.id), { status: "Void" }); log("mem-void jurnal", String(j.id), "Keuangan"); toast(S.voided.replace("{a}", j.id)); }}>{S.voidBtn}</button>
                           )}
                         </td>
                       </tr>
                     ))}
                     {manJournals.length === 0 && (
-                      <tr><td className="td text-xs text-steel-400" colSpan={10}>Belum ada jurnal manual.</td></tr>
+                      <tr><td className="td text-xs text-steel-400" colSpan={10}>{S.emptyJuManual}</td></tr>
                     )}
                   </tbody>
                 </table>
                 {juPager.bar}
               </div>
-              <CardHeader title="Jurnal Ringkas (Derivasi)" subtitle="Dihitung dari invoice Lunas, hapus buku, payable Lunas, dan payroll Dibayar. Total debit selalu sama dengan total kredit." />
+              <CardHeader title={S.juSumTitle} subtitle={S.juSumSub} />
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
                 <Card className="p-4">
-                  <p className="text-xs text-steel-500">Aset (Kas + Piutang + Retensi)</p>
+                  <p className="text-xs text-steel-500">{S.balAssetTitle}</p>
                   <p className="mt-1 text-lg font-bold text-navy-900">{fmtRupiah(balance.aset)}</p>
-                  <p className="mt-1 text-[11px] text-steel-400">Kas {fmtRupiah(balance.kasNet)} · Piutang {fmtRupiah(balance.piutang)}</p>
+                  <p className="mt-1 text-[11px] text-steel-400">{S.balAssetHint.replace("{a}", fmtRupiah(balance.kasNet)).replace("{b}", fmtRupiah(balance.piutang))}</p>
                 </Card>
                 <Card className="p-4">
-                  <p className="text-xs text-steel-500">Kewajiban (Hutang + PPN terutang)</p>
+                  <p className="text-xs text-steel-500">{S.balLiabTitle}</p>
                   <p className="mt-1 text-lg font-bold text-navy-900">{fmtRupiah(balance.kewajiban)}</p>
-                  <p className="mt-1 text-[11px] text-steel-400">Hutang {fmtRupiah(balance.hutang)} · PPN {fmtRupiah(balance.ppnUtang)}</p>
+                  <p className="mt-1 text-[11px] text-steel-400">{S.balLiabHint.replace("{a}", fmtRupiah(balance.hutang)).replace("{b}", fmtRupiah(balance.ppnUtang))}</p>
                 </Card>
                 <Card className="p-4">
-                  <p className="text-xs text-steel-500">Ekuitas (Aset - Kewajiban)</p>
+                  <p className="text-xs text-steel-500">{S.balEquityTitle}</p>
                   <p className="mt-1 text-lg font-bold text-navy-900">{fmtRupiah(balance.ekuitas)}</p>
-                  <p className="mt-1 text-[11px] text-steel-400">Termasuk laba berjalan</p>
+                  <p className="mt-1 text-[11px] text-steel-400">{S.balEquityHint}</p>
                 </Card>
                 <Card className="p-4">
-                  <p className="text-xs text-steel-500">Laba Berjalan</p>
+                  <p className="text-xs text-steel-500">{S.balProfitTitle}</p>
                   <p className="mt-1 text-lg font-bold text-navy-900">{fmtRupiah(balance.laba)}</p>
-                  <p className="mt-1 text-[11px] text-steel-400">Pendapatan - beban proyek - gaji - hapus buku</p>
+                  <p className="mt-1 text-[11px] text-steel-400">{S.balProfitHint}</p>
                 </Card>
               </div>
               <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
                 <div className="lg:col-span-2">
                   {journals.length === 0 ? (
-                    <EmptyState title="Belum ada jurnal" subtitle="Lunasi invoice atau hutang untuk membentuk jurnal otomatis." />
+                    <EmptyState title={S.emptyJuTitle} subtitle={S.emptyJuSub} />
                   ) : (
                     <div className="overflow-x-auto">
                       <table className="w-full">
                         <thead className="bg-surface sticky top-0 z-10">
                           <tr>
-                            <SortTh label="Tanggal" sortKey="date" sort={juSort} onSort={(k) => setJuSort((s) => toggleSort(s, k))} />
-                            <SortTh label="Ref" sortKey="ref" sort={juSort} onSort={(k) => setJuSort((s) => toggleSort(s, k))} />
-                            <SortTh label="Debit" sortKey="db" sort={juSort} onSort={(k) => setJuSort((s) => toggleSort(s, k))} />
-                            <SortTh label="Kredit" sortKey="kr" sort={juSort} onSort={(k) => setJuSort((s) => toggleSort(s, k))} />
-                            <SortTh label="Nilai" sortKey="amount" sort={juSort} onSort={(k) => setJuSort((s) => toggleSort(s, k))} />
+                            <SortTh label={S.colTanggal} sortKey="date" sort={juSort} onSort={(k) => setJuSort((s) => toggleSort(s, k))} />
+                            <SortTh label={S.colRef} sortKey="ref" sort={juSort} onSort={(k) => setJuSort((s) => toggleSort(s, k))} />
+                            <SortTh label={S.colDebit} sortKey="db" sort={juSort} onSort={(k) => setJuSort((s) => toggleSort(s, k))} />
+                            <SortTh label={S.colKredit} sortKey="kr" sort={juSort} onSort={(k) => setJuSort((s) => toggleSort(s, k))} />
+                            <SortTh label={S.colNilai} sortKey="amount" sort={juSort} onSort={(k) => setJuSort((s) => toggleSort(s, k))} />
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-steel-100">
@@ -2720,10 +2712,10 @@ export default function Finance() {
                       </table>
                     </div>
                   )}
-                  <p className="mt-2 text-xs text-steel-500">Total debit {fmtRupiah(journalTotal)} = Total kredit {fmtRupiah(journalTotal)} · Seimbang.</p>
+                  <p className="mt-2 text-xs text-steel-500">{S.balancedNote.replace("{a}", fmtRupiah(journalTotal)).replace("{b}", fmtRupiah(journalTotal))}</p>
                 </div>
                 <Card className="p-4">
-                  <CardHeader title="CoA Referensi" subtitle={`${coaList.length} akun`} />
+                  <CardHeader title={S.coaRefTitle} subtitle={S.countAkun.replace("{n}", String(coaList.length))} />
                   <div className="max-h-96 space-y-1.5 overflow-y-auto px-5 pb-5 text-xs">
                     {coaList.map((c) => (
                       <div key={c.kode} className="flex gap-2">
@@ -2736,17 +2728,17 @@ export default function Finance() {
                 </Card>
               </div>
               <Card>
-                <CardHeader title="P&L Bulanan dari Jurnal" subtitle="Grup periode YYYY-MM dari tanggal jurnal (paidAt/due). Hapus buku masuk kolom beban hapus buku." />
+                <CardHeader title={S.plJuTitle} subtitle={S.plJuSub} />
                 <div className="overflow-x-auto">
                   <table className="w-full">
                     <thead className="bg-surface sticky top-0 z-10">
                       <tr>
-                        <SortTh label="Periode" sortKey="period" sort={pajakSort} onSort={(k) => setPajakSort((s) => toggleSort(s, k))} />
-                        <SortTh label="Pendapatan" sortKey="revenue" sort={pajakSort} onSort={(k) => setPajakSort((s) => toggleSort(s, k))} />
-                        <SortTh label="Beban Proyek" sortKey="costProj" sort={pajakSort} onSort={(k) => setPajakSort((s) => toggleSort(s, k))} />
-                        <SortTh label="Beban Gaji" sortKey="salary" sort={pajakSort} onSort={(k) => setPajakSort((s) => toggleSort(s, k))} />
-                        <SortTh label="Hapus Buku" sortKey="writeoff" sort={pajakSort} onSort={(k) => setPajakSort((s) => toggleSort(s, k))} />
-                        <SortTh label="Laba" sortKey="laba" sort={pajakSort} onSort={(k) => setPajakSort((s) => toggleSort(s, k))} />
+                        <SortTh label={S.colPeriode} sortKey="period" sort={pajakSort} onSort={(k) => setPajakSort((s) => toggleSort(s, k))} />
+                        <SortTh label={S.colPendapatan} sortKey="revenue" sort={pajakSort} onSort={(k) => setPajakSort((s) => toggleSort(s, k))} />
+                        <SortTh label={S.colBebanProyek} sortKey="costProj" sort={pajakSort} onSort={(k) => setPajakSort((s) => toggleSort(s, k))} />
+                        <SortTh label={S.colBebanGaji} sortKey="salary" sort={pajakSort} onSort={(k) => setPajakSort((s) => toggleSort(s, k))} />
+                        <SortTh label={S.colHapusBuku} sortKey="writeoff" sort={pajakSort} onSort={(k) => setPajakSort((s) => toggleSort(s, k))} />
+                        <SortTh label={S.colLaba} sortKey="laba" sort={pajakSort} onSort={(k) => setPajakSort((s) => toggleSort(s, k))} />
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-steel-100">
@@ -2763,7 +2755,7 @@ export default function Finance() {
                         </tr>
                       ))}
                       {plMonthly.length === 0 && (
-                        <tr><td className="td text-xs text-steel-400" colSpan={6}>Belum ada jurnal pada periode berjalan.</td></tr>
+                        <tr><td className="td text-xs text-steel-400" colSpan={6}>{S.juPlEmpty}</td></tr>
                       )}
                     </tbody>
                   </table>
@@ -2774,73 +2766,73 @@ export default function Finance() {
         </div>
       </div>
 
-      <Modal open={showInv} onClose={() => setShowInv(false)} title="Buat Invoice" subtitle="Lines + tipe billing + milestone ref. Jatuh tempo wajib." wide
-        footer={<><button className="btn-secondary" onClick={() => setShowInv(false)}>Batal</button><button className="btn-primary" onClick={saveInvoice}>Terbitkan (Draft)</button></>}>
+      <Modal open={showInv} onClose={() => setShowInv(false)} title={S.createInvoice} subtitle={S.newInvoiceSub} wide
+        footer={<><button className="btn-secondary" onClick={() => setShowInv(false)}>{S.cancelBtn}</button><button className="btn-primary" onClick={saveInvoice}>{S.publishDraft}</button></>}>
         <div className="space-y-3">
-          <p className="rounded-lg bg-surface px-3 py-2 text-xs text-steel-600">Nomor preview: <strong className="font-mono text-navy-900">{invPreview}</strong> · Tipe {invForm.billingType}{invTotal > approveThreshold ? <span className="ml-2"><Badge tone="amber">Butuh Director saat approve</Badge></span> : ""}</p>
+          <p className="rounded-lg bg-surface px-3 py-2 text-xs text-steel-600">{S.previewNo} <strong className="font-mono text-navy-900">{invPreview}</strong> {S.previewType.replace("{a}", invForm.billingType)}{invTotal > approveThreshold ? <span className="ml-2"><Badge tone="amber">{S.needDirectorApprove}</Badge></span> : ""}</p>
           <FormGrid>
-            <Field label="Proyek">
+            <Field label={S.colProyek}>
               <select className="input" value={invForm.project} onChange={(e) => setInv("project", e.target.value)}>
-                <option value="">Pilih proyek…</option>
+                <option value="">{S.selectProject}</option>
                 {projectsVisible.map((p) => <option key={p.id} value={p.id}>{p.id} · {p.vessel} · {p.client}</option>)}
               </select>
             </Field>
-            <Field label="Tipe billing">
+            <Field label={S.billingTypeLabel}>
               <select className="input" value={invForm.billingType} onChange={(e) => setInv("billingType", e.target.value)}>
                 {BILLING_TYPES.map((t) => <option key={t}>{t}</option>)}
               </select>
             </Field>
           </FormGrid>
           <FormGrid>
-            <Field label="Milestone ref" hint="Wajib untuk billing Milestone - cth: Milestone 3 / Termin 2">
+            <Field label={S.fMilestone} hint={S.milestoneHint}>
               <input className="input" value={invForm.milestoneRef} onChange={(e) => setInv("milestoneRef", e.target.value)} placeholder="Milestone 3" />
             </Field>
-            <Field label="Jatuh tempo">
+            <Field label={S.dueLabel}>
               <input type="date" required className="input" value={invForm.due} onChange={(e) => setInv("due", e.target.value)} />
             </Field>
           </FormGrid>
-          <Field label="PO klien (opsional)" hint="Divalidasi milik proyek yang sama">
+          <Field label={S.fClientPO} hint={S.clientPOHint}>
             <select className="input font-mono" value={invForm.clientPO} onChange={(e) => setInv("clientPO", e.target.value)}>
-              <option value="">Tanpa PO klien</option>
+              <option value="">{S.noClientPO}</option>
               {(data.clientPos ?? []).filter((p) => !invForm.project || !p.projectId || String(p.projectId) === invForm.project).map((p) => (
                 <option key={String(p.id)} value={String(p.no ?? p.id)}>{String(p.no ?? p.id)}{p.projectId ? ` · ${String(p.projectId)}` : ""}</option>
               ))}
             </select>
           </Field>
           <FormGrid>
-            <Field label="Kode pembantu" hint="Default = nama customer">
-              <input className="input font-mono" value={invForm.kodePembantu} onChange={(e) => setInv("kodePembantu", e.target.value)} placeholder="cth: PT Kartika Samudra" />
+            <Field label={S.fKodePembantu} hint={S.kodePembantuHint}>
+              <input className="input font-mono" value={invForm.kodePembantu} onChange={(e) => setInv("kodePembantu", e.target.value)} placeholder={S.kodePembantuPh} />
             </Field>
-            <Field label="NSFP (opsional, unik)" hint="cth: 0026.001-25.00000001">
+            <Field label={S.fNsfp} hint={S.nsfpHint}>
               <input className="input font-mono" value={invForm.nsfp} onChange={(e) => setInv("nsfp", e.target.value)} placeholder="NSFP" />
             </Field>
           </FormGrid>
           <FormGrid>
-            <Field label="No. faktur (opsional, unik)" hint="cth: 010.002-26.00000001">
-              <input className="input font-mono" value={invForm.noFaktur} onChange={(e) => setInv("noFaktur", e.target.value)} placeholder="No. faktur" />
+            <Field label={S.fNoFaktur} hint={S.noFakturHint}>
+              <input className="input font-mono" value={invForm.noFaktur} onChange={(e) => setInv("noFaktur", e.target.value)} placeholder={S.noFakturShort} />
             </Field>
-            <Field label="Amortisasi DP (Rp)" hint="cth V2 potong DP-1 1098000000">
+            <Field label={S.fDpAmort} hint={S.dpAmortHint}>
               <input type="number" min={0} className="input" value={invForm.dpApplied} onChange={(e) => setInv("dpApplied", e.target.value)} placeholder="0" />
             </Field>
           </FormGrid>
-          <Field label="Referensi DP" hint="Wajib bila amortisasi DP > 0 - no. invoice Uang Muka yang dipotong">
-            <input className="input font-mono" value={invForm.dpRef} onChange={(e) => setInv("dpRef", e.target.value)} placeholder="cth: INV/UM-SMD-2026-001" />
+          <Field label={S.fDpRef} hint={S.dpRefHint}>
+            <input className="input font-mono" value={invForm.dpRef} onChange={(e) => setInv("dpRef", e.target.value)} placeholder={S.dpRefPh} />
           </Field>
           <label className="flex items-center gap-2 text-sm text-steel-600">
             <input type="checkbox" checked={invForm.skdt} onChange={(e) => setInvForm((f) => ({ ...f, skdt: e.target.checked }))} />
-            SKDT - tanpa PPN (cth INV PAKAI SKDT BG MHKL 35)
+            {S.skdtCheck}
           </label>
           {isTMForm && (
-            <Field label="Referensi service / WO" hint="cth: SRV-002 / WO-2026-043">
+            <Field label={S.fServiceRef} hint={S.serviceRefHint}>
               <input className="input font-mono" value={invForm.serviceRef} onChange={(e) => setInv("serviceRef", e.target.value)} placeholder="SRV-002" />
             </Field>
           )}
           {!isTMForm && invForm.billingType !== "Uang Muka" && (
             <FormGrid>
-              <Field label="Retensi % (default 5)">
+              <Field label={S.fRetentionPct}>
                 <input type="number" min={0} max={100} className="input" value={invForm.retentionPct} onChange={(e) => setInv("retentionPct", e.target.value)} />
               </Field>
-              <Field label="Termin label">
+              <Field label={S.fTermLabel}>
                 <select className="input" value={invForm.paymentTerm} onChange={(e) => setInv("paymentTerm", e.target.value)}>
                   {["Termin 1", "Termin 2", "Termin 3", "Milestone 1", "Milestone 2", "Milestone 3", "Progress", "Final"].map((t) => <option key={t}>{t}</option>)}
                 </select>
@@ -2849,14 +2841,12 @@ export default function Finance() {
           )}
           <div>
             <div className="mb-2 flex items-center justify-between">
-              <p className="label">Lines - total {fmtRupiah(invTotal)}{retentionAmtPreview > 0 ? ` - retensi ${fmtRupiah(retentionAmtPreview)}` : ""}</p>              <div className="flex gap-2">
+              <p className="label">{S.linesTotal.replace("{a}", fmtRupiah(invTotal))}{retentionAmtPreview > 0 ? S.retentionSuffix.replace("{a}", fmtRupiah(retentionAmtPreview)) : ""}</p>              <div className="flex gap-2">
                 {isTMForm && (
-                  <button className="btn-secondary px-2 py-1 text-xs" onClick={pullTimesheetLines}>
-                    Ambil dari timesheet
-                  </button>
+                  <button className="btn-secondary px-2 py-1 text-xs" onClick={pullTimesheetLines}>{S.pullTimesheet}</button>
                 )}
                 <button className="btn-secondary px-2 py-1 text-xs" onClick={() => setInvLines((ls) => [...ls, emptyLine()])}>
-                  <Plus className="h-3.5 w-3.5" /> Baris
+                  <Plus className="h-3.5 w-3.5" /> {S.addRow}
                 </button>
               </div>
             </div>
@@ -2870,11 +2860,11 @@ export default function Finance() {
               {invLines.map((l, idx) => (
                 <div key={idx} className="grid grid-cols-12 items-end gap-2 rounded-xl bg-surface p-2">
                   <div className="col-span-6 sm:col-span-3">
-                    <Field label="Deskripsi"><input className="input" value={l.desc} onChange={(e) => setLine(idx, "desc", e.target.value)} placeholder="cth: Hull assembly section 4" /></Field>
+                    <Field label={S.fDesc}><input className="input" value={l.desc} onChange={(e) => setLine(idx, "desc", e.target.value)} placeholder={S.descPh} /></Field>
                   </div>
                   {!isTMForm && (
                     <div className="col-span-6 sm:col-span-2">
-                      <Field label="Kategori">
+                      <Field label={S.fKategori}>
                         <select className="input" value={l.kategori || "Jasa"} onChange={(e) => setLine(idx, "kategori", e.target.value)}>
                           <option>Jasa</option>
                           <option>Material</option>
@@ -2884,20 +2874,20 @@ export default function Finance() {
                   )}
                   {isTMForm ? (
                     <>
-                      <div className="col-span-5 sm:col-span-3"><Field label="Rate (Rp)"><input type="number" min={0} className="input" value={l.rate} onChange={(e) => setLine(idx, "rate", e.target.value)} /></Field></div>
-                      <div className="col-span-5 sm:col-span-3"><Field label="Hours"><input type="number" min={0} className="input" value={l.hours} onChange={(e) => setLine(idx, "hours", e.target.value)} /></Field></div>
+                      <div className="col-span-5 sm:col-span-3"><Field label={S.fRate}><input type="number" min={0} className="input" value={l.rate} onChange={(e) => setLine(idx, "rate", e.target.value)} /></Field></div>
+                      <div className="col-span-5 sm:col-span-3"><Field label={S.fHours}><input type="number" min={0} className="input" value={l.hours} onChange={(e) => setLine(idx, "hours", e.target.value)} /></Field></div>
                       <div className="col-span-2 sm:col-span-2">
                         <p className="text-xs font-semibold text-navy-900">{fmtRupiah(lineAmount(l, true))}</p>
-                        <button className="mt-1 text-rose-600" aria-label="Hapus baris" onClick={() => setInvLines((ls) => ls.filter((_, i) => i !== idx))}><Trash2 className="h-4 w-4" /></button>
+                        <button className="mt-1 text-rose-600" aria-label={S.delRow} onClick={() => setInvLines((ls) => ls.filter((_, i) => i !== idx))}><Trash2 className="h-4 w-4" /></button>
                       </div>
                     </>
                   ) : (
                     <>
-                      <div className="col-span-3 sm:col-span-2"><Field label="Qty"><input type="number" min={0} className="input" value={l.qty} onChange={(e) => setLine(idx, "qty", e.target.value)} /></Field></div>
-                      <div className="col-span-3 sm:col-span-2"><Field label="Unit"><input className="input" value={l.unit} onChange={(e) => setLine(idx, "unit", e.target.value)} /></Field></div>
-                      <div className="col-span-4 sm:col-span-3"><Field label="Harga (Rp)"><input type="number" min={0} className="input" value={l.price} onChange={(e) => setLine(idx, "price", e.target.value)} /></Field></div>
+                      <div className="col-span-3 sm:col-span-2"><Field label={S.fQty}><input type="number" min={0} className="input" value={l.qty} onChange={(e) => setLine(idx, "qty", e.target.value)} /></Field></div>
+                      <div className="col-span-3 sm:col-span-2"><Field label={S.fUnit}><input className="input" value={l.unit} onChange={(e) => setLine(idx, "unit", e.target.value)} /></Field></div>
+                      <div className="col-span-4 sm:col-span-3"><Field label={S.fPrice}><input type="number" min={0} className="input" value={l.price} onChange={(e) => setLine(idx, "price", e.target.value)} /></Field></div>
                       <div className="col-span-2 sm:col-span-1">
-                        <button className="text-rose-600" aria-label="Hapus baris" onClick={() => setInvLines((ls) => ls.filter((_, i) => i !== idx))}><Trash2 className="h-4 w-4" /></button>
+                        <button className="text-rose-600" aria-label={S.delRow} onClick={() => setInvLines((ls) => ls.filter((_, i) => i !== idx))}><Trash2 className="h-4 w-4" /></button>
                       </div>
                     </>
                   )}
@@ -2908,101 +2898,101 @@ export default function Finance() {
         </div>
       </Modal>
 
-      <Modal open={payTarget !== null} onClose={() => setPayTarget(null)} title={`Tandai lunas ${payTarget?.id ?? ""}?`} subtitle={`${String(payTarget?.client ?? "")} · ${fmtRupiah(num(payTarget?.amount))}`}
-        footer={<><button className="btn-secondary" onClick={() => setPayTarget(null)}>Batal</button><button className="btn-primary" onClick={confirmBuktiInv}>Simpan Bukti Lunas</button></>}>
+      <Modal open={payTarget !== null} onClose={() => setPayTarget(null)} title={S.markPaidTitle.replace("{a}", payTarget?.id ?? "")} subtitle={`${String(payTarget?.client ?? "")} · ${fmtRupiah(num(payTarget?.amount))}`}
+        footer={<><button className="btn-secondary" onClick={() => setPayTarget(null)}>{S.cancelBtn}</button><button className="btn-primary" onClick={confirmBuktiInv}>{S.saveProofPaid}</button></>}>
         <div className="space-y-3">
           <FormGrid>
-            <Field label="Tanggal bayar"><input type="date" required className="input" value={proof.date} onChange={(e) => setProofField("date", e.target.value)} /></Field>
-            <Field label="Metode">
+            <Field label={S.fPayDate}><input type="date" required className="input" value={proof.date} onChange={(e) => setProofField("date", e.target.value)} /></Field>
+            <Field label={S.colMetode}>
               <select className="input" value={proof.method} onChange={(e) => setProofField("method", e.target.value)}>
                 {["Transfer", "Tunai", "Giro"].map((m) => <option key={m}>{m}</option>)}
               </select>
             </Field>
           </FormGrid>
-          <Field label="No. referensi" hint="Wajib - no. bukti transfer / kuitansi">
-            <input className="input font-mono" value={proof.ref} onChange={(e) => setProofField("ref", e.target.value)} placeholder="cth: TRF-2026-0912" />
+          <Field label={S.fRefNo} hint={S.refProofHint}>
+            <input className="input font-mono" value={proof.ref} onChange={(e) => setProofField("ref", e.target.value)} placeholder={S.refProofPh} />
           </Field>
         </div>
       </Modal>
 
       <ConfirmModal
         open={rejectInv !== null}
-        title={`Tolak ${rejectInv?.id ?? ""}?`}
-        desc="Invoice yang ditolak kembali ke status Draft dan bisa diajukan ulang."
-        confirmLabel="Ya, tolak"
+        title={S.rejectTitle.replace("{a}", rejectInv?.id ?? "")}
+        desc={S.rejectDesc}
+        confirmLabel={S.confirmReject}
         onCancel={() => setRejectInv(null)}
-        onConfirm={async () => { if (rejectInv) { await update("invoices", rejectInv.id, { status: "Ditolak" }); toast(`${rejectInv.id} ditolak → Draft menyusul`); } setRejectInv(null); }}
+        onConfirm={async () => { if (rejectInv) { await update("invoices", rejectInv.id, { status: "Ditolak" }); toast(S.rejected.replace("{a}", rejectInv.id)); } setRejectInv(null); }}
       />
 
-      <Modal open={apTarget !== null} onClose={() => setApTarget(null)} title={`Bayar ${!num(apTarget?.pay1) ? "I" : "II"} ${String(apTarget?.po ?? "")}?`} subtitle={`${String(apTarget?.v ?? "")} · sisa ${fmtRupiah(Math.max(0, num(apTarget?.amt) - num(apTarget?.pay1) - num(apTarget?.pay2)))}`}
-        footer={<><button className="btn-secondary" onClick={() => setApTarget(null)}>Batal</button><button className="btn-primary" onClick={confirmBuktiAp}>Simpan Bukti Bayar</button></>}>
+      <Modal open={apTarget !== null} onClose={() => setApTarget(null)} title={S.apPayTitle.replace("{a}", !num(apTarget?.pay1) ? "I" : "II").replace("{b}", String(apTarget?.po ?? ""))} subtitle={S.apPaySub.replace("{a}", String(apTarget?.v ?? "")).replace("{b}", fmtRupiah(Math.max(0, num(apTarget?.amt) - num(apTarget?.pay1) - num(apTarget?.pay2))))}
+        footer={<><button className="btn-secondary" onClick={() => setApTarget(null)}>{S.cancelBtn}</button><button className="btn-primary" onClick={confirmBuktiAp}>{S.saveProofPay}</button></>}>
         <div className="space-y-3">
-          <Field label="Nominal tahap ini (Rp)" hint={!num(apTarget?.pay1) ? "Pembayaran I" : `Sudah bayar I ${fmtRupiah(num(apTarget?.pay1))} - ini tahap II`}>
-            <input type="number" min={0} className="input" value={apPayAmt} onChange={(e) => setApPayAmt(e.target.value)} placeholder="cth: 309906340" />
+          <Field label={S.fStageAmount} hint={!num(apTarget?.pay1) ? S.apPhase1 : S.apPhase2.replace("{a}", fmtRupiah(num(apTarget?.pay1)))}>
+            <input type="number" min={0} className="input" value={apPayAmt} onChange={(e) => setApPayAmt(e.target.value)} placeholder={S.stagePh} />
           </Field>
           <FormGrid>
-            <Field label="Tanggal bayar"><input type="date" required className="input" value={proof.date} onChange={(e) => setProofField("date", e.target.value)} /></Field>
-            <Field label="Metode">
+            <Field label={S.fPayDate}><input type="date" required className="input" value={proof.date} onChange={(e) => setProofField("date", e.target.value)} /></Field>
+            <Field label={S.colMetode}>
               <select className="input" value={proof.method} onChange={(e) => setProofField("method", e.target.value)}>
                 {["Transfer", "Tunai", "Giro"].map((m) => <option key={m}>{m}</option>)}
               </select>
             </Field>
           </FormGrid>
-          <Field label="No. referensi" hint="Wajib - no. bukti transfer / giro">
-            <input className="input font-mono" value={proof.ref} onChange={(e) => setProofField("ref", e.target.value)} placeholder="cth: TRF-2026-0913" />
+          <Field label={S.fRefNo} hint={S.refGiroHint}>
+            <input className="input font-mono" value={proof.ref} onChange={(e) => setProofField("ref", e.target.value)} placeholder={S.refGiroPh} />
           </Field>
         </div>
       </Modal>
 
-      <Modal open={showAp} onClose={() => setShowAp(false)} title="Catat Hutang Vendor"
-        footer={<><button className="btn-secondary" onClick={() => setShowAp(false)}>Batal</button><button className="btn-primary" onClick={saveAp}>Simpan</button></>}>
+      <Modal open={showAp} onClose={() => setShowAp(false)} title={S.apNewTitle}
+        footer={<><button className="btn-secondary" onClick={() => setShowAp(false)}>{S.cancelBtn}</button><button className="btn-primary" onClick={saveAp}>{S.saveBtn}</button></>}>
         <div className="space-y-3">
           <FormGrid>
-            <Field label="Vendor"><input className="input" value={apForm.v} onChange={(e) => setApForm({ ...apForm, v: e.target.value })} /></Field>
-            <Field label="Kode pembantu" hint="Default = nama vendor"><input className="input font-mono" value={apForm.kodePembantu} onChange={(e) => setApForm({ ...apForm, kodePembantu: e.target.value })} /></Field>
-            <Field label="Referensi PO" hint="Format SB: nn/PO-SB/SMD/m/yyyy"><input className="input font-mono" value={apForm.po} onChange={(e) => setApForm({ ...apForm, po: e.target.value })} placeholder="cth: 04/PO-SB/SMD/I/2026" /></Field>
-            <Field label="U/TK kapal" hint="cth: U/TK. RMN 3317"><input className="input" value={apForm.vessel} onChange={(e) => setApForm({ ...apForm, vessel: e.target.value })} /></Field>
-            <Field label="Jenis barang"><input className="input" value={apForm.item} onChange={(e) => setApForm({ ...apForm, item: e.target.value })} placeholder="cth: PLAT 14MM X 6' X 20'" /></Field>
-            <Field label="Saldo awal bulan (Rp)"><input type="number" min={0} className="input" value={apForm.openAwal} onChange={(e) => setApForm({ ...apForm, openAwal: e.target.value })} /></Field>
-            <Field label="Saldo akhir (Rp)"><input type="number" min={0} className="input" value={apForm.amt} onChange={(e) => setApForm({ ...apForm, amt: e.target.value })} /></Field>
-            <Field label="Jatuh tempo"><input type="date" required className="input" value={apForm.due} onChange={(e) => setApForm({ ...apForm, due: e.target.value })} /></Field>
+            <Field label={S.colVendor}><input className="input" value={apForm.v} onChange={(e) => setApForm({ ...apForm, v: e.target.value })} /></Field>
+            <Field label={S.fKodePembantu} hint={S.vendorDefaultHint}><input className="input font-mono" value={apForm.kodePembantu} onChange={(e) => setApForm({ ...apForm, kodePembantu: e.target.value })} /></Field>
+            <Field label={S.fPoRef} hint={S.poFormatHint}><input className="input font-mono" value={apForm.po} onChange={(e) => setApForm({ ...apForm, po: e.target.value })} placeholder={S.poPh} /></Field>
+            <Field label={S.fVessel} hint={S.vesselHint}><input className="input" value={apForm.vessel} onChange={(e) => setApForm({ ...apForm, vessel: e.target.value })} /></Field>
+            <Field label={S.fItem}><input className="input" value={apForm.item} onChange={(e) => setApForm({ ...apForm, item: e.target.value })} placeholder={S.itemPh} /></Field>
+            <Field label={S.fOpenBal}><input type="number" min={0} className="input" value={apForm.openAwal} onChange={(e) => setApForm({ ...apForm, openAwal: e.target.value })} /></Field>
+            <Field label={S.fCloseBal}><input type="number" min={0} className="input" value={apForm.amt} onChange={(e) => setApForm({ ...apForm, amt: e.target.value })} /></Field>
+            <Field label={S.dueLabel}><input type="date" required className="input" value={apForm.due} onChange={(e) => setApForm({ ...apForm, due: e.target.value })} /></Field>
           </FormGrid>
           <label className="flex items-center gap-2 text-sm text-steel-600">
             <input type="checkbox" checked={apForm.nonPpn} onChange={(e) => setApForm({ ...apForm, nonPpn: e.target.checked })} />
-            Vendor Non-PPn (tanpa potong PPh 23)
+            {S.nonPpnCheck}
           </label>
         </div>
       </Modal>
 
-      <Modal open={apEdit !== null} onClose={() => setApEdit(null)} title={`Ubah hutang ${String(apEdit?.po ?? apEdit?.id ?? "")}?`} subtitle={String(apEdit?.v ?? "")}
-        footer={<><button className="btn-secondary" onClick={() => setApEdit(null)}>Batal</button><button className="btn-primary" onClick={saveApEdit}>Simpan Perubahan</button></>}>
+      <Modal open={apEdit !== null} onClose={() => setApEdit(null)} title={S.editApTitle.replace("{a}", String(apEdit?.po ?? apEdit?.id ?? ""))} subtitle={String(apEdit?.v ?? "")}
+        footer={<><button className="btn-secondary" onClick={() => setApEdit(null)}>{S.cancelBtn}</button><button className="btn-primary" onClick={saveApEdit}>{S.saveChanges}</button></>}>
         <div className="space-y-3">
           <FormGrid>
-            <Field label="Vendor"><input className="input" value={apEditForm.v} onChange={(e) => setApEditForm({ ...apEditForm, v: e.target.value })} /></Field>
-            <Field label="Kode pembantu"><input className="input font-mono" value={apEditForm.kodePembantu} onChange={(e) => setApEditForm({ ...apEditForm, kodePembantu: e.target.value })} /></Field>
-            <Field label="U/TK kapal"><input className="input" value={apEditForm.vessel} onChange={(e) => setApEditForm({ ...apEditForm, vessel: e.target.value })} /></Field>
-            <Field label="Jenis barang"><input className="input" value={apEditForm.item} onChange={(e) => setApEditForm({ ...apEditForm, item: e.target.value })} /></Field>
-            <Field label="Saldo awal bulan (Rp)"><input type="number" min={0} className="input" value={apEditForm.openAwal} onChange={(e) => setApEditForm({ ...apEditForm, openAwal: e.target.value })} /></Field>
-            <Field label="Saldo akhir (Rp)"><input type="number" min={0} className="input" value={apEditForm.amt} onChange={(e) => setApEditForm({ ...apEditForm, amt: e.target.value })} /></Field>
-            <Field label="Jatuh tempo"><input type="date" required className="input" value={apEditForm.due} onChange={(e) => setApEditForm({ ...apEditForm, due: e.target.value })} /></Field>
+            <Field label={S.colVendor}><input className="input" value={apEditForm.v} onChange={(e) => setApEditForm({ ...apEditForm, v: e.target.value })} /></Field>
+            <Field label={S.fKodePembantu}><input className="input font-mono" value={apEditForm.kodePembantu} onChange={(e) => setApEditForm({ ...apEditForm, kodePembantu: e.target.value })} /></Field>
+            <Field label={S.fVessel}><input className="input" value={apEditForm.vessel} onChange={(e) => setApEditForm({ ...apEditForm, vessel: e.target.value })} /></Field>
+            <Field label={S.fItem}><input className="input" value={apEditForm.item} onChange={(e) => setApEditForm({ ...apEditForm, item: e.target.value })} /></Field>
+            <Field label={S.fOpenBal}><input type="number" min={0} className="input" value={apEditForm.openAwal} onChange={(e) => setApEditForm({ ...apEditForm, openAwal: e.target.value })} /></Field>
+            <Field label={S.fCloseBal}><input type="number" min={0} className="input" value={apEditForm.amt} onChange={(e) => setApEditForm({ ...apEditForm, amt: e.target.value })} /></Field>
+            <Field label={S.dueLabel}><input type="date" required className="input" value={apEditForm.due} onChange={(e) => setApEditForm({ ...apEditForm, due: e.target.value })} /></Field>
           </FormGrid>
           <label className="flex items-center gap-2 text-sm text-steel-600">
             <input type="checkbox" checked={apEditForm.nonPpn} onChange={(e) => setApEditForm({ ...apEditForm, nonPpn: e.target.checked })} />
-            Vendor Non-PPn (tanpa potong PPh 23)
+            {S.nonPpnCheck}
           </label>
         </div>
       </Modal>
 
-      <Modal open={releaseTarget !== null} onClose={() => setReleaseTarget(null)} title={`Release retensi ${releaseTarget?.id ?? ""}?`} subtitle={`${fmtRupiah(num(releaseTarget?.retentionAmt))} · butuh tanggal + no. berita acara`}
-        footer={<><button className="btn-secondary" onClick={() => setReleaseTarget(null)}>Batal</button><button className="btn-primary" onClick={confirmRelease}>Release Retensi</button></>}>
+      <Modal open={releaseTarget !== null} onClose={() => setReleaseTarget(null)} title={S.relTitle.replace("{a}", releaseTarget?.id ?? "")} subtitle={S.relSub.replace("{a}", fmtRupiah(num(releaseTarget?.retentionAmt)))}
+        footer={<><button className="btn-secondary" onClick={() => setReleaseTarget(null)}>{S.cancelBtn}</button><button className="btn-primary" onClick={confirmRelease}>{S.releaseRetensiBtn}</button></>}>
         <div className="space-y-3">
           <FormGrid>
-            <Field label="Tanggal release"><input type="date" required className="input" value={releaseForm.date} onChange={(e) => setReleaseForm({ ...releaseForm, date: e.target.value })} /></Field>
-            <Field label="No. berita acara"><input className="input font-mono" value={releaseForm.ba} onChange={(e) => setReleaseForm({ ...releaseForm, ba: e.target.value })} placeholder="cth: BA-2026-044" /></Field>
+            <Field label={S.fReleaseDate}><input type="date" required className="input" value={releaseForm.date} onChange={(e) => setReleaseForm({ ...releaseForm, date: e.target.value })} /></Field>
+            <Field label={S.fBaNo}><input className="input font-mono" value={releaseForm.ba} onChange={(e) => setReleaseForm({ ...releaseForm, ba: e.target.value })} placeholder={S.baPh} /></Field>
           </FormGrid>
-          <Field label="Tautkan garansi/DLP (opsional)" hint="Masa retensi berlanjut sebagai garansi proyek">
+          <Field label={S.fWarranty} hint={S.warrantyHint}>
             <select className="input" value={releaseForm.warrantyId} onChange={(e) => setReleaseForm({ ...releaseForm, warrantyId: e.target.value })}>
-              <option value="">Tanpa garansi…</option>
+              <option value="">{S.noWarranty}</option>
               {(data.warranties ?? []).filter((w) => String(w.projectId ?? "") === String(releaseTarget?.project ?? "")).map((w) => (
                 <option key={w.id} value={w.id}>{w.id} · {w.status} · {fmtTanggal(String(w.start ?? ""))}</option>
               ))}
@@ -3011,25 +3001,25 @@ export default function Finance() {
         </div>
       </Modal>
 
-      <Modal open={showBatch} onClose={() => setShowBatch(false)} title={`Bayar massal ${fmtJumlah(schedSel.length)} item?`} subtitle={`Total ${fmtRupiah(schedTotal)} · urutan pelunasan tertua dulu · satu bukti untuk semua`}
-        footer={<><button className="btn-secondary" onClick={() => setShowBatch(false)}>Batal</button><button className="btn-primary" onClick={confirmBatch}>Lunasi Semua Terpilih</button></>}>
+      <Modal open={showBatch} onClose={() => setShowBatch(false)} title={S.batchTitle.replace("{n}", fmtJumlah(schedSel.length))} subtitle={S.batchSub.replace("{a}", fmtRupiah(schedTotal))}
+        footer={<><button className="btn-secondary" onClick={() => setShowBatch(false)}>{S.cancelBtn}</button><button className="btn-primary" onClick={confirmBatch}>{S.settleAll}</button></>}>
         <div className="space-y-3">
           <FormGrid>
-            <Field label="Tanggal bayar"><input type="date" required className="input" value={batchProof.date} onChange={(e) => setBatchProof({ ...batchProof, date: e.target.value })} /></Field>
-            <Field label="Metode">
+            <Field label={S.fPayDate}><input type="date" required className="input" value={batchProof.date} onChange={(e) => setBatchProof({ ...batchProof, date: e.target.value })} /></Field>
+            <Field label={S.colMetode}>
               <select className="input" value={batchProof.method} onChange={(e) => setBatchProof({ ...batchProof, method: e.target.value })}>
                 {["Transfer", "Tunai", "Giro"].map((m) => <option key={m}>{m}</option>)}
               </select>
             </Field>
           </FormGrid>
-          <Field label="No. referensi" hint="Wajib - satu no. bukti untuk seluruh batch">
-            <input className="input font-mono" value={batchProof.ref} onChange={(e) => setBatchProof({ ...batchProof, ref: e.target.value })} placeholder="cth: TRF-2026-0999" />
+          <Field label={S.fRefNo} hint={S.batchRefHint}>
+            <input className="input font-mono" value={batchProof.ref} onChange={(e) => setBatchProof({ ...batchProof, ref: e.target.value })} placeholder={S.batchRefPh} />
           </Field>
         </div>
       </Modal>
 
-      <Modal open={allocTarget !== null} onClose={() => setAllocTarget(null)} title={`Alokasi gaji ${allocTarget?.id ?? ""}?`} subtitle="Pilih proyek + persen alokasi. Sisanya tetap tak teralokasi."
-        footer={<><button className="btn-secondary" onClick={() => setAllocTarget(null)}>Batal</button><button className="btn-primary" onClick={saveAlloc}>Simpan Alokasi</button></>}>
+      <Modal open={allocTarget !== null} onClose={() => setAllocTarget(null)} title={S.allocTitle.replace("{a}", allocTarget?.id ?? "")} subtitle={S.allocSub}
+        footer={<><button className="btn-secondary" onClick={() => setAllocTarget(null)}>{S.cancelBtn}</button><button className="btn-primary" onClick={saveAlloc}>{S.saveAlloc}</button></>}>
         <div className="space-y-3">
           {(() => {
             // Saran proyek = proyek tersering karyawan ini di timesheet (petunjuk saja, simpan tetap manual).
@@ -3043,50 +3033,50 @@ export default function Finance() {
             if (!top) return null;
             return (
               <p className="rounded-lg bg-surface px-3 py-2 text-xs text-steel-600">
-                Saran: <strong className="text-navy-900">{top[0]}</strong> - proyek tersering di timesheet ({top[1]} baris). Pilih manual bila berbeda.
+                {S.suggestLead} <strong className="text-navy-900">{top[0]}</strong>{S.suggestRest.replace("{n}", String(top[1]))}
               </p>
             );
           })()}
           <FormGrid>
-            <Field label="Proyek">
+            <Field label={S.colProyek}>
               <select className="input" value={allocForm.project} onChange={(e) => setAllocForm({ ...allocForm, project: e.target.value })}>
-                <option value="">Pilih proyek…</option>
+                <option value="">{S.selectProject}</option>
                 {projectsVisible.map((p) => <option key={p.id} value={p.id}>{p.id} · {p.vessel}</option>)}
               </select>
             </Field>
-            <Field label="Persen (%)"><input type="number" min={1} max={100} className="input" value={allocForm.pct} onChange={(e) => setAllocForm({ ...allocForm, pct: e.target.value })} /></Field>
+            <Field label={S.fAllocPct}><input type="number" min={1} max={100} className="input" value={allocForm.pct} onChange={(e) => setAllocForm({ ...allocForm, pct: e.target.value })} /></Field>
           </FormGrid>
         </div>
       </Modal>
 
-      <Modal open={dirTarget !== null} onClose={() => setDirTarget(null)} title={`Persetujuan Director ${dirTarget?.id ?? ""}?`} subtitle={`${fmtRupiah(num(dirTarget?.amount))} di atas ambang ${fmtRupiah(approveThreshold)}. Tombol Setujui terkunci sampai checklist + nama diisi.`}
-        footer={<><button className="btn-secondary" onClick={() => setDirTarget(null)}>Batal</button><button className="btn-primary" disabled={!dirCheck || !dirName.trim()} onClick={confirmDirector}>Setujui sebagai Director</button></>}>
+      <Modal open={dirTarget !== null} onClose={() => setDirTarget(null)} title={S.dirTitle.replace("{a}", dirTarget?.id ?? "")} subtitle={S.dirSub.replace("{a}", fmtRupiah(num(dirTarget?.amount))).replace("{b}", fmtRupiah(approveThreshold))}
+        footer={<><button className="btn-secondary" onClick={() => setDirTarget(null)}>{S.cancelBtn}</button><button className="btn-primary" disabled={!dirCheck || !dirName.trim()} onClick={confirmDirector}>{S.approveAsDirector}</button></>}>
         <div className="space-y-3">
           <label className="flex items-start gap-2 text-sm text-steel-600">
             <input type="checkbox" className="mt-1" checked={dirCheck} onChange={(e) => setDirCheck(e.target.checked)} />
-            Saya selaku Director menyetujui invoice nominal besar ini.
+            {S.dirCheck}
           </label>
-          <Field label="Nama Director" hint="Wajib - dicatat di log">
-            <input className="input" value={dirName} onChange={(e) => setDirName(e.target.value)} placeholder="cth: Andi Darman" />
+          <Field label={S.fDirName} hint={S.dirNameHint}>
+            <input className="input" value={dirName} onChange={(e) => setDirName(e.target.value)} placeholder={S.dirNamePh} />
           </Field>
         </div>
       </Modal>
 
-      <Modal open={showCoa} onClose={() => { setShowCoa(false); setCoaTarget(null); }} title={coaTarget ? `Ubah akun ${coaTarget.kode}?` : "Tambah Akun"} subtitle={coaTarget && String(coaTarget.dk) === "-" ? "Baris header: hanya nama yang dapat diubah" : "Isi nomor (format angka-angka), nama, posisi debit/kredit, dan kelompok laporan"}
-        footer={<><button className="btn-secondary" onClick={() => { setShowCoa(false); setCoaTarget(null); }}>Batal</button><button className="btn-primary" onClick={saveCoa}>Simpan</button></>}>
+      <Modal open={showCoa} onClose={() => { setShowCoa(false); setCoaTarget(null); }} title={coaTarget ? S.coaEditTitle.replace("{a}", String(coaTarget.kode)) : S.coaAdd} subtitle={coaTarget && String(coaTarget.dk) === "-" ? S.coaHeaderNote : S.coaFormNote}
+        footer={<><button className="btn-secondary" onClick={() => { setShowCoa(false); setCoaTarget(null); }}>{S.cancelBtn}</button><button className="btn-primary" onClick={saveCoa}>{S.saveBtn}</button></>}>
         <div className="space-y-3">
           <FormGrid>
-            <Field label="No. akun" hint="Format angka-angka, cth: 1-125">
+            <Field label={S.fCoaNo} hint={S.coaNoHint}>
               <input className="input font-mono" value={coaForm.kode} disabled={coaTarget !== null} onChange={(e) => setCoaForm({ ...coaForm, kode: e.target.value })} placeholder="1-125" />
             </Field>
-            <Field label="Nama akun"><input className="input" value={coaForm.nama} onChange={(e) => setCoaForm({ ...coaForm, nama: e.target.value })} placeholder="cth: Bank Kaltimtara Syariah" /></Field>
-            <Field label="Akun D/K" hint={coaTarget && String(coaTarget.dk) === "-" ? "Dikunci untuk baris header" : undefined}>
+            <Field label={S.fCoaName}><input className="input" value={coaForm.nama} onChange={(e) => setCoaForm({ ...coaForm, nama: e.target.value })} placeholder={S.coaNamePh} /></Field>
+            <Field label={S.fCoaDK} hint={coaTarget && String(coaTarget.dk) === "-" ? S.lockedHeader : undefined}>
               <select className="input" value={coaForm.dk} disabled={coaTarget !== null && String(coaTarget.dk) === "-"} onChange={(e) => setCoaForm({ ...coaForm, dk: e.target.value })}>
                 <option value="D">D - Debit</option>
                 <option value="K">K - Kredit</option>
               </select>
             </Field>
-            <Field label="Akun NR/LR" hint={coaTarget && String(coaTarget.dk) === "-" ? "Dikunci untuk baris header" : undefined}>
+            <Field label={S.fCoaNRLR} hint={coaTarget && String(coaTarget.dk) === "-" ? S.lockedHeader : undefined}>
               <select className="input" value={coaForm.nrlr} disabled={coaTarget !== null && String(coaTarget.dk) === "-"} onChange={(e) => setCoaForm({ ...coaForm, nrlr: e.target.value })}>
                 <option value="NR">NR - Neraca</option>
                 <option value="LR">LR - Laba-Rugi</option>
@@ -3096,51 +3086,51 @@ export default function Finance() {
         </div>
       </Modal>
 
-      <Modal open={showJu} onClose={() => setShowJu(false)} title="Catat Jurnal Umum" subtitle="Multi-baris per voucher (cth sheet JU: Kas/BPD/JPb/JPn/JM) - tiap baris DB≠KR, total otomatis berimbang"
-        footer={<><button className="btn-secondary" onClick={() => setShowJu(false)}>Batal</button><button className="btn-primary" onClick={saveJu}>Simpan (Posted)</button></>}>
+      <Modal open={showJu} onClose={() => setShowJu(false)} title={S.juNewTitle} subtitle={S.juNewSub}
+        footer={<><button className="btn-secondary" onClick={() => setShowJu(false)}>{S.cancelBtn}</button><button className="btn-primary" onClick={saveJu}>{S.juSave}</button></>}>
         <div className="space-y-3">
           <FormGrid>
-            <Field label="Tanggal"><input type="date" required className="input" value={juForm.date} onChange={(e) => setJuForm({ ...juForm, date: e.target.value })} /></Field>
-            <Field label="Kode pembantu"><input className="input font-mono" value={juForm.kodePembantu} onChange={(e) => setJuForm({ ...juForm, kodePembantu: e.target.value })} placeholder="vendor / customer" /></Field>
-            <Field label="Dokumen / Voucher" hint="cth: 101 / 201 / BKM-001 (otomatis bila kosong)"><input className="input font-mono" value={juForm.dokumen} onChange={(e) => setJuForm({ ...juForm, dokumen: e.target.value })} /></Field>
-            <Field label="Sumber">
+            <Field label={S.colTanggal}><input type="date" required className="input" value={juForm.date} onChange={(e) => setJuForm({ ...juForm, date: e.target.value })} /></Field>
+            <Field label={S.fKodePembantu}><input className="input font-mono" value={juForm.kodePembantu} onChange={(e) => setJuForm({ ...juForm, kodePembantu: e.target.value })} placeholder="vendor / customer" /></Field>
+            <Field label={S.fVoucher} hint={S.voucherHint}><input className="input font-mono" value={juForm.dokumen} onChange={(e) => setJuForm({ ...juForm, dokumen: e.target.value })} /></Field>
+            <Field label={S.colSumber}>
               <select className="input" value={juForm.sumber} onChange={(e) => setJuForm({ ...juForm, sumber: e.target.value })}>
                 {["JU", "Kas", "Bank", "JPb", "JPn", "JM"].map((x) => <option key={x}>{x}</option>)}
               </select>
             </Field>
           </FormGrid>
-          <Field label="Uraian"><input className="input" value={juForm.uraian} onChange={(e) => setJuForm({ ...juForm, uraian: e.target.value })} placeholder="cth: Penyesuaian PPN September" /></Field>
+          <Field label={S.colUraian}><input className="input" value={juForm.uraian} onChange={(e) => setJuForm({ ...juForm, uraian: e.target.value })} placeholder={S.juDescPh} /></Field>
           <div>
             <div className="mb-2 flex items-center justify-between">
-              <p className="label">Baris jurnal - total {fmtRupiah(juLines.reduce((s, l) => s + num(l.amount), 0))}</p>
+              <p className="label">{S.juLinesTitle.replace("{a}", fmtRupiah(juLines.reduce((s, l) => s + num(l.amount), 0)))}</p>
               <button className="btn-secondary px-2 py-1 text-xs" onClick={() => setJuLines((ls) => [...ls, { db: "", kr: "", amount: "" }])}>
-                <Plus className="h-3.5 w-3.5" /> Baris
+                <Plus className="h-3.5 w-3.5" /> {S.addRow}
               </button>
             </div>
             <div className="space-y-2">
               {juLines.map((l, idx) => (
                 <div key={idx} className="grid grid-cols-12 items-end gap-2 rounded-xl bg-surface p-2">
                   <div className="col-span-12 sm:col-span-4">
-                    <Field label={`DB #${idx + 1}`}>
+                    <Field label={S.dbLine.replace("{n}", String(idx + 1))}>
                       <select className="input font-mono" value={l.db} onChange={(e) => setJuLines((ls) => ls.map((x, i) => (i === idx ? { ...x, db: e.target.value } : x)))}>
-                        <option value="">Pilih akun…</option>
+                        <option value="">{S.selectAccount}</option>
                         {coaRows.filter((c) => String(c.dk) !== "-").map((c) => <option key={String(c.id)} value={String(c.kode)}>{String(c.kode)} · {String(c.nama)}</option>)}
                       </select>
                     </Field>
                   </div>
                   <div className="col-span-12 sm:col-span-4">
-                    <Field label={`KR #${idx + 1}`}>
+                    <Field label={S.krLine.replace("{n}", String(idx + 1))}>
                       <select className="input font-mono" value={l.kr} onChange={(e) => setJuLines((ls) => ls.map((x, i) => (i === idx ? { ...x, kr: e.target.value } : x)))}>
-                        <option value="">Pilih akun…</option>
+                        <option value="">{S.selectAccount}</option>
                         {coaRows.filter((c) => String(c.dk) !== "-").map((c) => <option key={String(c.id)} value={String(c.kode)}>{String(c.kode)} · {String(c.nama)}</option>)}
                       </select>
                     </Field>
                   </div>
                   <div className="col-span-10 sm:col-span-3">
-                    <Field label="Nominal (Rp)"><input type="number" min={0} className="input" value={l.amount} onChange={(e) => setJuLines((ls) => ls.map((x, i) => (i === idx ? { ...x, amount: e.target.value } : x)))} /></Field>
+                    <Field label={S.fNominal}><input type="number" min={0} className="input" value={l.amount} onChange={(e) => setJuLines((ls) => ls.map((x, i) => (i === idx ? { ...x, amount: e.target.value } : x)))} /></Field>
                   </div>
                   <div className="col-span-2 sm:col-span-1">
-                    <button className="text-rose-600" aria-label={`Hapus baris jurnal ${idx + 1}`} onClick={() => setJuLines((ls) => (ls.length > 1 ? ls.filter((_, i) => i !== idx) : [{ db: "", kr: "", amount: "" }]))}><Trash2 className="h-4 w-4" /></button>
+                    <button className="text-rose-600" aria-label={S.delJuRow.replace("{n}", String(idx + 1))} onClick={() => setJuLines((ls) => (ls.length > 1 ? ls.filter((_, i) => i !== idx) : [{ db: "", kr: "", amount: "" }]))}><Trash2 className="h-4 w-4" /></button>
                   </div>
                 </div>
               ))}
@@ -3149,59 +3139,59 @@ export default function Finance() {
         </div>
       </Modal>
 
-      <Modal open={showMut} onClose={() => setShowMut(false)} title="Catat Mutasi Kas & Bank" subtitle="Masuk menambah saldo rekening, keluar mengurangi - otomatis jadi jurnal berimbang"
-        footer={<><button className="btn-secondary" onClick={() => setShowMut(false)}>Batal</button><button className="btn-primary" onClick={saveMut}>Simpan</button></>}>
+      <Modal open={showMut} onClose={() => setShowMut(false)} title={S.mutTitle} subtitle={S.mutSub}
+        footer={<><button className="btn-secondary" onClick={() => setShowMut(false)}>{S.cancelBtn}</button><button className="btn-primary" onClick={saveMut}>{S.saveBtn}</button></>}>
         <div className="space-y-3">
           <FormGrid>
-            <Field label="Tanggal"><input type="date" required className="input" value={mutForm.date} onChange={(e) => setMutForm({ ...mutForm, date: e.target.value })} /></Field>
-            <Field label="Rekening">
+            <Field label={S.colTanggal}><input type="date" required className="input" value={mutForm.date} onChange={(e) => setMutForm({ ...mutForm, date: e.target.value })} /></Field>
+            <Field label={S.colRekening}>
               <select className="input font-mono" value={mutForm.rekening} onChange={(e) => setMutForm({ ...mutForm, rekening: e.target.value })}>
                 {KAS_REKENING.map((c) => <option key={String(c.id)} value={String(c.kode)}>{String(c.kode)} · {String(c.nama)}</option>)}
               </select>
             </Field>
-            <Field label="Arah">
+            <Field label={S.fArah}>
               <select className="input" value={mutForm.arah} onChange={(e) => setMutForm({ ...mutForm, arah: e.target.value })}>
                 <option>Masuk</option>
                 <option>Keluar</option>
               </select>
             </Field>
-            <Field label="Akun lawan">
+            <Field label={S.fLawan}>
               <select className="input font-mono" value={mutForm.lawan} onChange={(e) => setMutForm({ ...mutForm, lawan: e.target.value })}>
-                <option value="">Pilih akun…</option>
+                <option value="">{S.selectAccount}</option>
                 {coaRows.filter((c) => String(c.dk) !== "-").map((c) => <option key={String(c.id)} value={String(c.kode)}>{String(c.kode)} · {String(c.nama)}</option>)}
               </select>
             </Field>
           </FormGrid>
           <FormGrid>
-            <Field label="Kode pembantu"><input className="input font-mono" value={mutForm.kodePembantu} onChange={(e) => setMutForm({ ...mutForm, kodePembantu: e.target.value })} /></Field>
-            <Field label="No. dokumen" hint="cth: 101 / BKM-009"><input className="input font-mono" value={mutForm.dokumen} onChange={(e) => setMutForm({ ...mutForm, dokumen: e.target.value })} /></Field>
+            <Field label={S.fKodePembantu}><input className="input font-mono" value={mutForm.kodePembantu} onChange={(e) => setMutForm({ ...mutForm, kodePembantu: e.target.value })} /></Field>
+            <Field label={S.fNoDoc} hint={S.noDocHint}><input className="input font-mono" value={mutForm.dokumen} onChange={(e) => setMutForm({ ...mutForm, dokumen: e.target.value })} /></Field>
           </FormGrid>
-          <Field label="Uraian"><input className="input" value={mutForm.uraian} onChange={(e) => setMutForm({ ...mutForm, uraian: e.target.value })} placeholder="cth: Terima pembayaran invoice" /></Field>
-          <Field label="Nominal (Rp)"><input type="number" min={0} className="input" value={mutForm.amount} onChange={(e) => setMutForm({ ...mutForm, amount: e.target.value })} /></Field>
+          <Field label={S.colUraian}><input className="input" value={mutForm.uraian} onChange={(e) => setMutForm({ ...mutForm, uraian: e.target.value })} placeholder={S.mutDescPh} /></Field>
+          <Field label={S.fNominal}><input type="number" min={0} className="input" value={mutForm.amount} onChange={(e) => setMutForm({ ...mutForm, amount: e.target.value })} /></Field>
         </div>
       </Modal>
 
-      <Modal open={invEdit !== null} onClose={() => setInvEdit(null)} title={`Ubah invoice ${invEdit?.id ?? ""}?`} subtitle="Hanya untuk invoice yang belum lunas/dihapusbukukan"
-        footer={<><button className="btn-secondary" onClick={() => setInvEdit(null)}>Batal</button><button className="btn-primary" onClick={saveInvEdit}>Simpan Perubahan</button></>}>
+      <Modal open={invEdit !== null} onClose={() => setInvEdit(null)} title={S.editInvTitle.replace("{a}", invEdit?.id ?? "")} subtitle={S.editInvSub}
+        footer={<><button className="btn-secondary" onClick={() => setInvEdit(null)}>{S.cancelBtn}</button><button className="btn-primary" onClick={saveInvEdit}>{S.saveChanges}</button></>}>
         <div className="space-y-3">
           <FormGrid>
-            <Field label="Customer"><input className="input" value={invEditForm.client} onChange={(e) => setInvEditForm({ ...invEditForm, client: e.target.value })} /></Field>
-            <Field label="Kode pembantu"><input className="input font-mono" value={invEditForm.kodePembantu} onChange={(e) => setInvEditForm({ ...invEditForm, kodePembantu: e.target.value })} /></Field>
-            <Field label="Jatuh tempo"><input type="date" required className="input" value={invEditForm.due} onChange={(e) => setInvEditForm({ ...invEditForm, due: e.target.value })} /></Field>
-            <Field label="Termin"><input className="input" value={invEditForm.paymentTerm} onChange={(e) => setInvEditForm({ ...invEditForm, paymentTerm: e.target.value })} /></Field>
-            <Field label="Milestone ref"><input className="input" value={invEditForm.milestoneRef} onChange={(e) => setInvEditForm({ ...invEditForm, milestoneRef: e.target.value })} /></Field>
+            <Field label={S.colCustomer}><input className="input" value={invEditForm.client} onChange={(e) => setInvEditForm({ ...invEditForm, client: e.target.value })} /></Field>
+            <Field label={S.fKodePembantu}><input className="input font-mono" value={invEditForm.kodePembantu} onChange={(e) => setInvEditForm({ ...invEditForm, kodePembantu: e.target.value })} /></Field>
+            <Field label={S.dueLabel}><input type="date" required className="input" value={invEditForm.due} onChange={(e) => setInvEditForm({ ...invEditForm, due: e.target.value })} /></Field>
+            <Field label={S.fTermin}><input className="input" value={invEditForm.paymentTerm} onChange={(e) => setInvEditForm({ ...invEditForm, paymentTerm: e.target.value })} /></Field>
+            <Field label={S.fMilestone}><input className="input" value={invEditForm.milestoneRef} onChange={(e) => setInvEditForm({ ...invEditForm, milestoneRef: e.target.value })} /></Field>
             <Field label="NSFP"><input className="input font-mono" value={invEditForm.nsfp} onChange={(e) => setInvEditForm({ ...invEditForm, nsfp: e.target.value })} /></Field>
-            <Field label="No. faktur"><input className="input font-mono" value={invEditForm.noFaktur} onChange={(e) => setInvEditForm({ ...invEditForm, noFaktur: e.target.value })} /></Field>
+            <Field label={S.noFakturShort}><input className="input font-mono" value={invEditForm.noFaktur} onChange={(e) => setInvEditForm({ ...invEditForm, noFaktur: e.target.value })} /></Field>
           </FormGrid>
         </div>
       </Modal>
 
-      <Modal open={showAst} onClose={() => setShowAst(false)} title="Tambah Aset" subtitle="Tarif fiskal GL: BP 5%, Kel.1 25%, Kel.2 12,5%, Kel.3 6,25%"
-        footer={<><button className="btn-secondary" onClick={() => setShowAst(false)}>Batal</button><button className="btn-primary" onClick={saveAst}>Simpan</button></>}>
+      <Modal open={showAst} onClose={() => setShowAst(false)} title={S.astTitle} subtitle={S.astSub}
+        footer={<><button className="btn-secondary" onClick={() => setShowAst(false)}>{S.cancelBtn}</button><button className="btn-primary" onClick={saveAst}>{S.saveBtn}</button></>}>
         <div className="space-y-3">
           <FormGrid>
-            <Field label="Nama / jenis harta"><input className="input" value={astForm.nama} onChange={(e) => setAstForm({ ...astForm, nama: e.target.value })} placeholder="cth: Excavator PC 200" /></Field>
-            <Field label="Kel. harta">
+            <Field label={S.fAssetName}><input className="input" value={astForm.nama} onChange={(e) => setAstForm({ ...astForm, nama: e.target.value })} placeholder={S.assetNamePh} /></Field>
+            <Field label={S.fAssetGroup}>
               <select className="input" value={astForm.kelompok} onChange={(e) => setAstForm({ ...astForm, kelompok: e.target.value })}>
                 <option value="BP">BP - Bangunan Permanen (5%)</option>
                 <option value="1">1 - Kelompok 1 (25%)</option>
@@ -3209,10 +3199,10 @@ export default function Finance() {
                 <option value="3">3 - Kelompok 3 (6,25%)</option>
               </select>
             </Field>
-            <Field label="Bulan perolehan" hint="cth: Jan"><input className="input" value={astForm.bulan} onChange={(e) => setAstForm({ ...astForm, bulan: e.target.value })} /></Field>
-            <Field label="Tahun perolehan"><input className="input font-mono" value={astForm.tahun} onChange={(e) => setAstForm({ ...astForm, tahun: e.target.value })} placeholder="2026" /></Field>
-            <Field label="Nilai perolehan (Rp)"><input type="number" min={0} className="input" value={astForm.nilai} onChange={(e) => setAstForm({ ...astForm, nilai: e.target.value })} /></Field>
-            <Field label="Metode">
+            <Field label={S.fAssetMonth} hint={S.assetMonthHint}><input className="input" value={astForm.bulan} onChange={(e) => setAstForm({ ...astForm, bulan: e.target.value })} /></Field>
+            <Field label={S.fAssetYear}><input className="input font-mono" value={astForm.tahun} onChange={(e) => setAstForm({ ...astForm, tahun: e.target.value })} placeholder="2026" /></Field>
+            <Field label={S.fAssetValue}><input type="number" min={0} className="input" value={astForm.nilai} onChange={(e) => setAstForm({ ...astForm, nilai: e.target.value })} /></Field>
+            <Field label={S.colMetode}>
               <select className="input" value={astForm.metode} onChange={(e) => setAstForm({ ...astForm, metode: e.target.value })}>
                 <option>GL</option>
               </select>
@@ -3221,18 +3211,18 @@ export default function Finance() {
         </div>
       </Modal>
 
-      <Modal open={writeOff !== null} onClose={() => { setWriteOff(null); setWriteOffReason(""); setWoDirCheck(false); setWoDirName(""); }} title={`Hapus buku ${writeOff?.id ?? ""}?`} subtitle={`${fmtRupiah(num(writeOff?.amount))} keluar dari AR dan masuk beban. Wajib isi alasan.${needsWriteOffDirector(writeOff) ? ` Di atas ambang ${fmtRupiah(approveThreshold)} - butuh Director.` : ""}`}        footer={<><button className="btn-secondary" onClick={() => { setWriteOff(null); setWriteOffReason(""); setWoDirCheck(false); setWoDirName(""); }}>Batal</button><button className="btn-primary" disabled={!writeOffReason.trim() || (needsWriteOffDirector(writeOff) && (!woDirCheck || !woDirName.trim()))} onClick={() => setConfirmWriteOff(true)}>Lanjut Konfirmasi</button></>}>
-        <Field label="Alasan hapus buku" hint="Wajib - cth: piutang tak tertagih 180 hari, debitur pailit">
-          <input className="input" value={writeOffReason} onChange={(e) => setWriteOffReason(e.target.value)} placeholder="Tulis alasan…" />
+      <Modal open={writeOff !== null} onClose={() => { setWriteOff(null); setWriteOffReason(""); setWoDirCheck(false); setWoDirName(""); }} title={S.woTitle.replace("{a}", writeOff?.id ?? "")} subtitle={S.woSub.replace("{a}", fmtRupiah(num(writeOff?.amount))) + (needsWriteOffDirector(writeOff) ? S.woThresholdNote.replace("{a}", fmtRupiah(approveThreshold)) : "")}        footer={<><button className="btn-secondary" onClick={() => { setWriteOff(null); setWriteOffReason(""); setWoDirCheck(false); setWoDirName(""); }}>{S.cancelBtn}</button><button className="btn-primary" disabled={!writeOffReason.trim() || (needsWriteOffDirector(writeOff) && (!woDirCheck || !woDirName.trim()))} onClick={() => setConfirmWriteOff(true)}>{S.continueConfirm}</button></>}>
+        <Field label={S.fWoReason} hint={S.woReasonHint}>
+          <input className="input" value={writeOffReason} onChange={(e) => setWriteOffReason(e.target.value)} placeholder={S.woReasonPh} />
         </Field>
         {needsWriteOffDirector(writeOff) && (
           <>
             <label className="flex items-start gap-2 text-sm text-steel-600">
               <input type="checkbox" className="mt-1" checked={woDirCheck} onChange={(e) => setWoDirCheck(e.target.checked)} />
-              Saya selaku Director menyetujui hapus buku nominal besar ini.
+              {S.woDirCheck}
             </label>
-            <Field label="Nama Director" hint="Wajib - dicatat di log">
-              <input className="input" value={woDirName} onChange={(e) => setWoDirName(e.target.value)} placeholder="cth: Andi Darman" />
+            <Field label={S.fDirName} hint={S.dirNameHint}>
+              <input className="input" value={woDirName} onChange={(e) => setWoDirName(e.target.value)} placeholder={S.dirNamePh} />
             </Field>
           </>
         )}
@@ -3240,9 +3230,9 @@ export default function Finance() {
 
       <ConfirmModal
         open={confirmWriteOff && writeOff !== null}
-        title={`Hapus buku ${writeOff?.id ?? ""}?`}
-        desc={`Alasan: ${writeOffReason.trim() || "-"}. Status menjadi Dihapusbukukan dan tercatat sebagai beban.`}
-        confirmLabel="Ya, hapus-bukukan"
+        title={S.woTitle.replace("{a}", writeOff?.id ?? "")}
+        desc={S.woDesc.replace("{a}", writeOffReason.trim() || "-")}
+        confirmLabel={S.confirmWo}
         danger
         onCancel={() => setConfirmWriteOff(false)}
         onConfirm={doWriteOff}

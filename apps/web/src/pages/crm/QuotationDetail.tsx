@@ -9,6 +9,8 @@ import { sameName } from "../../utils/names";
 import { exportExcel } from "../../utils/export";
 import { SB_KOP } from "../../utils/sb";
 import { useDraftState } from "../../utils/draft";
+import { useT } from "../../i18n/LanguageContext";
+import { n_crm } from "../../i18n/n_crm";
 
 const FLOW = ["Lead", "Penawaran", "Negosiasi", "Menang"];
 const num = (v: unknown): number => Number(v) || 0;
@@ -37,6 +39,8 @@ export default function QuotationDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
   const { data, add, update, log } = useStore();
+  const { locale } = useT();
+  const S = n_crm[locale];
 
   const quotation = (data.quotations ?? []).find((q) => q.id === id);
   const seedLines = useMemo(() => (quotation ? initialLines(quotation) : []), [quotation?.id]);
@@ -61,8 +65,8 @@ export default function QuotationDetail() {
   if (!quotation) {
     return (
       <div>
-        <PageHeader title="Detail Penawaran" subtitle="Data tidak ditemukan" actions={<button className="btn-secondary" onClick={() => navigate("/crm")}><ArrowLeft className="h-4 w-4" /> Kembali</button>} />
-        <EmptyState title="Quotation tidak ditemukan" subtitle="ID tidak tercatat di store sesi ini." />
+        <PageHeader title={S.qdNotFoundTitle} subtitle={S.qdNotFoundSub} actions={<button className="btn-secondary" onClick={() => navigate("/crm")}><ArrowLeft className="h-4 w-4" /> {S.backBtn}</button>} />
+        <EmptyState title={S.qdMissingTitle} subtitle={S.qdMissingSub} />
       </div>
     );
   }
@@ -84,7 +88,7 @@ export default function QuotationDetail() {
 
   const saveRevisi = async () => {
     const valid = activeLines.filter((l) => l.desc.trim() && num(l.qty) * num(l.price) > 0);
-    if (valid.length === 0) { toast("Minimal satu baris valid", "info"); return; }
+    if (valid.length === 0) { toast(S.tMinOneRow, "info"); return; }
     const sum = valid.reduce((s, l) => s + num(l.qty) * num(l.price), 0);
     const nextVersion = version + 1;
     await update("quotations", quotation.id, {
@@ -94,7 +98,7 @@ export default function QuotationDetail() {
       riwayat: [...riwayat, { v: nextVersion, date: todayISO(), note: note.trim() || "Revisi lines", total: sum }],
     });
     log(`merevisi penawaran ke v${nextVersion}`, quotation.id, "CRM");
-    toast(`${quotation.id} direvisi ke v${nextVersion}`);
+    toast(S.tRevised.replace("{a}", quotation.id).replace("{b}", String(nextVersion)));
     setLines(null);
     setNote("");
   };
@@ -106,14 +110,14 @@ export default function QuotationDetail() {
     if (!next) return;
     await update("quotations", quotation.id, { stage: next });
     log(`memindahkan quotation ke ${next}`, quotation.id, "CRM");
-    toast(`${quotation.id} → ${next}`);
+    toast(S.movedTo.replace("{a}", quotation.id).replace("{b}", next));
   };
 
   const markTerminal = async (stage: "Batal" | "Kalah") => {
     if (FLOW.indexOf(String(quotation.stage)) < 0 && quotation.stage !== "Menang") return;
     await update("quotations", quotation.id, { stage });
     log(`memindahkan quotation ke ${stage}`, quotation.id, "CRM");
-    toast(`${quotation.id} ditandai ${stage}`, "info");
+    toast(S.markedAs.replace("{a}", quotation.id).replace("{b}", stage), "info");
   };
 
   const nextProjectCode = (type: string, start: string): string => {
@@ -138,21 +142,21 @@ export default function QuotationDetail() {
 
   const confirmConvert = async () => {
     if (quotation.stage !== "Menang") {
-      toast("Konversi ditolak: hanya quotation Menang yang bisa dikonversi", "info");
+      toast(S.tOnlyWonConvert, "info");
       setConvertOpen(false);
       return;
     }
     if (quotation.stage === "Terkonversi" || data.projects.some((p) => p.vessel === quotation.vessel)) {
-      toast("Konversi ditolak: sudah terkonversi atau proyek kapalnya sudah ada", "info");
+      toast(S.tAlreadyConverted, "info");
       setConvertOpen(false);
       return;
     }
-    if (hoChecks.some((c) => !c)) { toast("Lengkapi semua checklist serah terima ke PM", "info"); return; }
-    if (!hoBy.trim()) { toast("Nama penyerah wajib diisi", "info"); return; }
-    if (num(quotation.value) <= 0) { toast("Nilai quotation harus lebih dari 0", "info"); return; }
-    if (!convManager.trim() || convManager.trim() === "Belum ditentukan") { toast("Pilih project manager", "info"); return; }
-    if (!convStart || !convEnd) { toast("Tanggal mulai & selesai rencana wajib diisi", "info"); return; }
-    if (convEnd < convStart) { toast("Tanggal selesai tidak boleh sebelum tanggal mulai", "info"); return; }
+    if (hoChecks.some((c) => !c)) { toast(S.hoIncomplete, "info"); return; }
+    if (!hoBy.trim()) { toast(S.handoverByRequired, "info"); return; }
+    if (num(quotation.value) <= 0) { toast(S.tQuoteValueZero, "info"); return; }
+    if (!convManager.trim() || convManager.trim() === "Belum ditentukan") { toast(S.tPickPm, "info"); return; }
+    if (!convStart || !convEnd) { toast(S.tPlanDatesRequired, "info"); return; }
+    if (convEnd < convStart) { toast(S.tEndBeforeStart, "info"); return; }
     const client = (data.clients ?? []).find((c) => sameName(c.name, quotation.client));
     const branch = String(client?.branch ?? quotation.branch ?? "Samarinda");
     const code = nextProjectCode(String(quotation.type ?? "New Build"), convStart);
@@ -170,30 +174,30 @@ export default function QuotationDetail() {
       }, { action: "mengkonversi quotation", target: `${quotation.id} → proyek`, module: "CRM" });
       await update("quotations", quotation.id, { stage: "Terkonversi" });
       log(`serah terima ke PM oleh ${hoBy.trim()} (${HO_ITEMS.length} item)`, `${quotation.id} → ${created.id}`, "CRM");
-      toast(`${quotation.id} menjadi proyek ${created.id}`);
+      toast(S.becameProject.replace("{a}", quotation.id).replace("{b}", created.id));
       setConvertOpen(false);
     } catch {
-      toast(`Konversi ${qid} gagal di tengah jalan - periksa daftar proyek & quotation`, "info");
+      toast(S.tConvertStuckQd.replace("{n}", qid), "info");
     }
   };
 
   const openSend = () => {
     setSendEmail("");
-    setSendMsg(`Yth. ${quotation.client},\n\nTerlampir penawaran ${quotation.id} v${version} untuk ${quotation.vessel} senilai ${fmtRupiah(num(quotation.value))}.\n\nHormat kami,\nTim Commercial`);
+    setSendMsg(S.sendBodyQd.replace("{a}", String(quotation.client)).replace("{b}", quotation.id).replace("{c}", String(version)).replace("{d}", String(quotation.vessel)).replace("{e}", fmtRupiah(num(quotation.value))));
     setSendOpen(true);
   };
 
   const confirmSend = async () => {
-    if (!sendEmail.includes("@")) { toast("Email tujuan tidak valid", "info"); return; }
+    if (!sendEmail.includes("@")) { toast(S.emailInvalid, "info"); return; }
     await update("quotations", quotation.id, { statusKirim: "Terkirim", sentAt: todayISO(), sentTo: sendEmail.trim() });
     log(`mengirim penawaran ke ${sendEmail.trim()}`, quotation.id, "CRM");
-    toast(`${quotation.id} terkirim`);
+    toast(S.tSentShort.replace("{n}", quotation.id));
     setSendOpen(false);
   };
 
   const saveComm = async () => {
-    if (!commForm.date) { toast("Tanggal wajib diisi", "info"); return; }
-    if (!commForm.summary.trim()) { toast("Ringkasan wajib diisi", "info"); return; }
+    if (!commForm.date) { toast(S.dateRequired, "info"); return; }
+    if (!commForm.summary.trim()) { toast(S.summaryRequired, "info"); return; }
     const created = await add("communications", {
       quotationId: quotation.id,
       channel: commForm.channel,
@@ -201,7 +205,7 @@ export default function QuotationDetail() {
       summary: commForm.summary.trim(),
       by: commForm.by.trim() || "Tim Commercial",
     }, { action: "mencatat komunikasi", target: quotation.id, module: "CRM" });
-    toast(`Komunikasi ${created.id} dicatat`);
+    toast(S.commLogged.replace("{n}", created.id));
     setCommForm({ channel: "Email", date: todayISO(), summary: "", by: "" });
   };
 
@@ -224,7 +228,7 @@ export default function QuotationDetail() {
       [`Syarat pembayaran: ${terms}`],
     ];
     void exportExcel(rows, `Kop-${quotation.id}-v${version}`, "Kop Penawaran");
-    toast(`Kop ${quotation.id} diekspor ke Excel`);
+    toast(S.tKopExported.replace("{n}", quotation.id));
   };
 
   return (
@@ -234,62 +238,62 @@ export default function QuotationDetail() {
         subtitle={`${String(quotation.client)} · ${String(quotation.type)} · ${fmtTanggal(String(quotation.date ?? ""))}`}
         actions={
           <>
-            <button className="btn-secondary" onClick={() => navigate("/crm")}><ArrowLeft className="h-4 w-4" /> Kembali</button>
-            <button className="btn-secondary" onClick={cetakKop}>Cetak Kop</button>
-            <button className="btn-primary" onClick={openSend}><Send className="h-4 w-4" /> Kirim</button>
+            <button className="btn-secondary" onClick={() => navigate("/crm")}><ArrowLeft className="h-4 w-4" /> {S.backBtn}</button>
+            <button className="btn-secondary" onClick={cetakKop}>{S.printKopBtn}</button>
+            <button className="btn-primary" onClick={openSend}><Send className="h-4 w-4" /> {S.sendBtn}</button>
           </>
         }
       />
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
         <Card className="p-5">
-          <CardHeader title="Header Penawaran" />
+          <CardHeader title={S.headerQuoteTitle} />
           <div className="space-y-1.5 px-5 pb-5 text-sm">
-            <div className="flex justify-between"><span className="text-steel-500">Klien</span><span className="font-semibold text-navy-900">{String(quotation.client)}</span></div>
-            <div className="flex justify-between"><span className="text-steel-500">Kapal / pekerjaan</span><span className="font-semibold text-navy-900">{String(quotation.vessel)}</span></div>
-            <div className="flex justify-between"><span className="text-steel-500">Nilai</span><span className="font-bold text-navy-900">{fmtRupiah(num(quotation.value))}</span></div>
-            <div className="flex justify-between"><span className="text-steel-500">Stage</span><StatusBadge status={String(quotation.stage)} /></div>
-            <div className="flex justify-between"><span className="text-steel-500">Versi</span><Badge tone="navy">v{version}</Badge></div>
+            <div className="flex justify-between"><span className="text-steel-500">{S.clientLabel}</span><span className="font-semibold text-navy-900">{String(quotation.client)}</span></div>
+            <div className="flex justify-between"><span className="text-steel-500">{S.vesselJobLabel}</span><span className="font-semibold text-navy-900">{String(quotation.vessel)}</span></div>
+            <div className="flex justify-between"><span className="text-steel-500">{S.sortValue}</span><span className="font-bold text-navy-900">{fmtRupiah(num(quotation.value))}</span></div>
+            <div className="flex justify-between"><span className="text-steel-500">{S.stageLabel}</span><StatusBadge status={String(quotation.stage)} /></div>
+            <div className="flex justify-between"><span className="text-steel-500">{S.versionLabel}</span><Badge tone="navy">v{version}</Badge></div>
             {quotation.statusKirim === "Terkirim" && (
-              <p className="text-xs text-teal-600">Terkirim {fmtTanggal(String(quotation.sentAt ?? ""))} ke {String(quotation.sentTo ?? "")}</p>
+              <p className="text-xs text-teal-600">{S.sentInfo.replace("{a}", fmtTanggal(String(quotation.sentAt ?? ""))).replace("{b}", String(quotation.sentTo ?? ""))}</p>
             )}
           </div>
           <div className="flex flex-wrap gap-1.5 px-5 pb-5">
-            <button className="btn-secondary text-xs" disabled={locked || FLOW.indexOf(String(quotation.stage)) <= 0} onClick={() => move(-1)}>Mundur</button>
-            <button className="btn-secondary text-xs" disabled={locked || FLOW.indexOf(String(quotation.stage)) < 0 || FLOW.indexOf(String(quotation.stage)) >= FLOW.length - 1} onClick={() => move(1)}>Maju</button>
-            <button className="btn-secondary text-xs" disabled={locked} onClick={() => markTerminal("Batal")}>Batal</button>
-            <button className="btn-secondary text-xs" disabled={locked} onClick={() => markTerminal("Kalah")}>Kalah</button>
-            <button className="btn-primary text-xs" disabled={locked || String(quotation.stage) !== "Menang"} onClick={openConvert}>Konversi</button>
+            <button className="btn-secondary text-xs" disabled={locked || FLOW.indexOf(String(quotation.stage)) <= 0} onClick={() => move(-1)}>{S.backStepBtn}</button>
+            <button className="btn-secondary text-xs" disabled={locked || FLOW.indexOf(String(quotation.stage)) < 0 || FLOW.indexOf(String(quotation.stage)) >= FLOW.length - 1} onClick={() => move(1)}>{S.advanceBtn}</button>
+            <button className="btn-secondary text-xs" disabled={locked} onClick={() => markTerminal("Batal")}>{S.cancelBtn}</button>
+            <button className="btn-secondary text-xs" disabled={locked} onClick={() => markTerminal("Kalah")}>{S.loseBtn}</button>
+            <button className="btn-primary text-xs" disabled={locked || String(quotation.stage) !== "Menang"} onClick={openConvert}>{S.convertBtn}</button>
           </div>
         </Card>
 
         <Card className="p-5 lg:col-span-2">
-          <CardHeader title={`Lines · total ${fmtRupiah(total)}`} subtitle="Revisi menaikkan versi otomatis + riwayat" />
+          <CardHeader title={S.linesTitle.replace("{n}", fmtRupiah(total))} subtitle={S.linesSub} />
           <div className="space-y-2 px-5 pb-2">
             {activeLines.map((l, idx) => (
               <div key={idx} className="grid grid-cols-12 gap-2 rounded-xl bg-surface p-2">
-                <div className="col-span-12 sm:col-span-6"><Field label="Deskripsi"><input className="input" value={l.desc} onChange={(e) => setLine(idx, "desc", e.target.value)} /></Field></div>
-                <div className="col-span-5 sm:col-span-2"><Field label="Qty"><input type="number" min={0} className="input" value={l.qty} onChange={(e) => setLine(idx, "qty", e.target.value)} /></Field></div>
-                <div className="col-span-7 sm:col-span-4"><Field label="Harga (Rp)"><input type="number" min={0} className="input" value={l.price} onChange={(e) => setLine(idx, "price", e.target.value)} /></Field></div>
+                <div className="col-span-12 sm:col-span-6"><Field label={S.descLabel}><input className="input" value={l.desc} onChange={(e) => setLine(idx, "desc", e.target.value)} /></Field></div>
+                <div className="col-span-5 sm:col-span-2"><Field label={S.qtyLabel}><input type="number" min={0} className="input" value={l.qty} onChange={(e) => setLine(idx, "qty", e.target.value)} /></Field></div>
+                <div className="col-span-7 sm:col-span-4"><Field label={S.priceLabel}><input type="number" min={0} className="input" value={l.price} onChange={(e) => setLine(idx, "price", e.target.value)} /></Field></div>
               </div>
             ))}
             <div className="flex flex-wrap gap-2">
-              <button className="btn-secondary text-xs" onClick={() => setLines([...activeLines, { desc: "", qty: "1", price: "" }])}>+ Baris</button>
+              <button className="btn-secondary text-xs" onClick={() => setLines([...activeLines, { desc: "", qty: "1", price: "" }])}>{S.addRowBtn}</button>
               {activeLines.length > 1 && (
-                <button className="btn-secondary text-xs" onClick={() => setLines(activeLines.slice(0, -1))}>Hapus baris terakhir</button>
+                <button className="btn-secondary text-xs" onClick={() => setLines(activeLines.slice(0, -1))}>{S.delRowBtn}</button>
               )}
             </div>
             <FormGrid>
-              <Field label="Catatan revisi"><input className="input" value={note} onChange={(e) => setNote(e.target.value)} placeholder="cth: Sesuaikan harga baja" /></Field>
-              <Field label="Aksi">
-                <button className="btn-primary w-full justify-center" onClick={saveRevisi}>Simpan Revisi (v{version + 1})</button>
+              <Field label={S.revNoteLabel}><input className="input" value={note} onChange={(e) => setNote(e.target.value)} placeholder={S.revNotePh} /></Field>
+              <Field label={S.actionLabel}>
+                <button className="btn-primary w-full justify-center" onClick={saveRevisi}>{S.saveRevisionBtn.replace("{n}", String(version + 1))}</button>
               </Field>
             </FormGrid>
           </div>
           <div className="px-5 pb-5">
-            <p className="label">Riwayat versi</p>
+            <p className="label">{S.versionHistory}</p>
             {riwayat.length === 0 ? (
-              <p className="text-xs text-steel-400">v{version} · versi awal, belum ada revisi.</p>
+              <p className="text-xs text-steel-400">{S.versionInit.replace("{n}", String(version))}</p>
             ) : (
               <div className="space-y-1.5">
                 {riwayat.map((r, i) => (
@@ -308,9 +312,9 @@ export default function QuotationDetail() {
 
       <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-3">
         <Card className="p-5 lg:col-span-2">
-          <CardHeader title="Komunikasi Terkait" subtitle="Channel, tanggal, dan ringkasan" />
+          <CardHeader title={S.commRelatedTitle} subtitle={S.commRelatedSub} />
           <div className="space-y-2 px-5 pb-2">
-            {comms.length === 0 && <EmptyState title="Belum ada komunikasi" subtitle="Catat interaksi pertama untuk quotation ini." />}
+            {comms.length === 0 && <EmptyState title={S.emptyCommTitle} subtitle={S.emptyCommSubQuote} />}
             {comms.map((m) => (
               <div key={m.id} className="rounded-xl bg-surface p-3 text-sm">
                 <div className="flex flex-wrap items-center gap-2">
@@ -323,58 +327,58 @@ export default function QuotationDetail() {
           </div>
           <div className="space-y-3 px-5 pb-5">
             <FormGrid>
-              <Field label="Channel">
+              <Field label={S.channelLabel}>
                 <select className="input" value={commForm.channel} onChange={(e) => setCommForm({ ...commForm, channel: e.target.value })}>
                   {["Email", "Telepon", "Meeting", "WhatsApp", "Kunjungan"].map((c) => <option key={c}>{c}</option>)}
                 </select>
               </Field>
-              <Field label="Tanggal"><input type="date" className="input" value={commForm.date} onChange={(e) => setCommForm({ ...commForm, date: e.target.value })} /></Field>
+              <Field label={S.dateLabel}><input type="date" className="input" value={commForm.date} onChange={(e) => setCommForm({ ...commForm, date: e.target.value })} /></Field>
             </FormGrid>
-            <Field label="Ringkasan"><textarea className="input" rows={3} value={commForm.summary} onChange={(e) => setCommForm({ ...commForm, summary: e.target.value })} /></Field>
-            <Field label="Oleh"><input className="input" value={commForm.by} onChange={(e) => setCommForm({ ...commForm, by: e.target.value })} placeholder="Nama PIC" /></Field>
-            <button className="btn-primary w-full justify-center" onClick={saveComm}>Tambah Komunikasi</button>
+            <Field label={S.summaryLabel}><textarea className="input" rows={3} value={commForm.summary} onChange={(e) => setCommForm({ ...commForm, summary: e.target.value })} /></Field>
+            <Field label={S.byLabel}><input className="input" value={commForm.by} onChange={(e) => setCommForm({ ...commForm, by: e.target.value })} placeholder={S.byPh} /></Field>
+            <button className="btn-primary w-full justify-center" onClick={saveComm}>{S.addCommBtn}</button>
           </div>
         </Card>
 
         <Card className="p-5">
-          <CardHeader title="Kontrak" subtitle="Link kontrak bila sudah ada" />
+          <CardHeader title={S.contractTitle} subtitle={S.contractSub} />
           <div className="px-5 pb-5 text-sm">
             {!contract ? (
-              <p className="text-steel-500">Belum ada kontrak untuk quotation ini. Buat dari tab Kontrak setelah Menang / Terkonversi.</p>
+              <p className="text-steel-500">{S.emptyContractQd}</p>
             ) : (
               <div className="rounded-xl bg-surface p-3">
                 <p className="font-mono text-xs font-bold text-navy-900">{contract.id}</p>
-                <p className="mt-1 text-steel-600">Nilai {fmtRupiah(num(contract.value))} · Sign {fmtTanggal(String(contract.signedAt ?? ""))}</p>
+                <p className="mt-1 text-steel-600">{S.contractValueSign.replace("{a}", fmtRupiah(num(contract.value))).replace("{b}", fmtTanggal(String(contract.signedAt ?? "")))}</p>
                 <p className="mt-1"><StatusBadge status={String(contract.status ?? "Aktif")} /></p>
-                {contract.projectId && <Link to={`/proyek/${contract.projectId}`} className="mt-2 inline-block text-xs font-semibold text-ocean-600">Buka {String(contract.projectId)} →</Link>}
+                {contract.projectId && <Link to={`/proyek/${contract.projectId}`} className="mt-2 inline-block text-xs font-semibold text-ocean-600">{S.openProjectLink.replace("{n}", String(contract.projectId))}</Link>}
               </div>
             )}
           </div>
         </Card>
       </div>
 
-      <Modal open={sendOpen} onClose={() => setSendOpen(false)} title={`Kirim ${quotation.id}`} subtitle="Pratinjau sebelum dikirim" wide
-        footer={<><button className="btn-secondary" onClick={() => setSendOpen(false)}>Batal</button><button className="btn-primary" onClick={confirmSend}><Send className="h-4 w-4" /> Kirim</button></>}>
+      <Modal open={sendOpen} onClose={() => setSendOpen(false)} title={S.sendTitle.replace("{n}", quotation.id)} subtitle={S.sendPreviewSubQd} wide
+        footer={<><button className="btn-secondary" onClick={() => setSendOpen(false)}>{S.cancelBtn}</button><button className="btn-primary" onClick={confirmSend}><Send className="h-4 w-4" /> {S.sendBtn}</button></>}>
         <div className="space-y-3">
           <div className="rounded-xl bg-surface p-4 text-sm">
             <p className="font-semibold text-navy-900">{String(quotation.vessel)} · v{version}</p>
             <p className="text-xs text-steel-500">{String(quotation.client)} · {fmtRupiah(num(quotation.value))} · {fmtTanggal(String(quotation.date ?? ""))}</p>
           </div>
-          <Field label="Email tujuan"><input type="email" className="input" value={sendEmail} onChange={(e) => setSendEmail(e.target.value)} /></Field>
-          <Field label="Pesan"><textarea className="input" rows={5} value={sendMsg} onChange={(e) => setSendMsg(e.target.value)} /></Field>
+          <Field label={S.emailToLabel}><input type="email" className="input" value={sendEmail} onChange={(e) => setSendEmail(e.target.value)} /></Field>
+          <Field label={S.messageLabel}><textarea className="input" rows={5} value={sendMsg} onChange={(e) => setSendMsg(e.target.value)} /></Field>
         </div>
       </Modal>
 
       <Modal
         open={convertOpen}
         onClose={() => setConvertOpen(false)}
-        title={`Konversi ${quotation.id} jadi proyek?`}
-        subtitle="Serah terima ke PM - checklist, PM, dan jadwal wajib diisi"
-        footer={<><button className="btn-secondary" onClick={() => setConvertOpen(false)}>Batal</button><button className="btn-primary" onClick={confirmConvert}>Ya, konversi</button></>}
+        title={S.convertTitle.replace("{n}", quotation.id)}
+        subtitle={S.convertSubQd}
+        footer={<><button className="btn-secondary" onClick={() => setConvertOpen(false)}>{S.cancelBtn}</button><button className="btn-primary" onClick={confirmConvert}>{S.convertConfirmQd}</button></>}
       >
         <div className="space-y-3">
-          <p className="text-sm text-steel-600">Quotation dikunci ke Terkonversi dan dibuat satu proyek baru (kode NB/RP/RF otomatis) beserta catatan handover. Konversi ganda ditolak bila kapal sudah ada.</p>
-          <Field label="Diserahkan oleh"><input className="input" value={hoBy} onChange={(e) => setHoBy(e.target.value)} placeholder="Nama penyerah" /></Field>
+          <p className="text-sm text-steel-600">{S.convertBodyQd}</p>
+          <Field label={S.handoverByLabel}><input className="input" value={hoBy} onChange={(e) => setHoBy(e.target.value)} placeholder={S.handoverByPh} /></Field>
           <div className="space-y-2">
             {HO_ITEMS.map((item, i) => (
               <label key={item} className="flex items-start gap-2 rounded-xl bg-surface p-3 text-sm text-steel-700">
@@ -384,15 +388,15 @@ export default function QuotationDetail() {
             ))}
           </div>
           <FormGrid>
-            <Field label="Project manager (wajib)">
+            <Field label={S.pmLabel}>
               <select className="input" value={convManager} onChange={(e) => setConvManager(e.target.value)}>
-                <option value="">Pilih PM…</option>
+                <option value="">{S.pickPmOpt}</option>
                 {pmNames.map((n) => <option key={n} value={n}>{n}</option>)}
               </select>
             </Field>
-            <Field label="Mulai (rencana)"><input type="date" className="input" value={convStart} onChange={(e) => setConvStart(e.target.value)} /></Field>
+            <Field label={S.startPlanLabel}><input type="date" className="input" value={convStart} onChange={(e) => setConvStart(e.target.value)} /></Field>
           </FormGrid>
-          <Field label="Selesai (rencana)"><input type="date" className="input" value={convEnd} onChange={(e) => setConvEnd(e.target.value)} /></Field>
+          <Field label={S.endPlanLabel}><input type="date" className="input" value={convEnd} onChange={(e) => setConvEnd(e.target.value)} /></Field>
         </div>
       </Modal>
     </div>

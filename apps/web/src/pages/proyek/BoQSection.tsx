@@ -1,5 +1,7 @@
 import { useState, useMemo } from "react";
 import { useStore } from "../../data/store";
+import { useT } from "../../i18n/LanguageContext";
+import { n_prj } from "../../i18n/n_prj";
 import { useAuth, canSetTarget } from "../../auth/auth";
 import { Card, Modal, Field, FormGrid, toast, EmptyState, StatusBadge, Badge, SortTh, toggleSort, sortRows } from "../../components/ui";
 import type { SortState } from "../../components/ui";
@@ -63,6 +65,8 @@ interface Props {
 }
 
 export default function BoQSection({ projectId }: Props) {
+  const { locale } = useT();
+  const S = n_prj[locale];
   const { data, update, add, log } = useStore();
   const { user } = useAuth();
   const items = ((data.boq ?? []) as BoQExt[]).filter((b) => b.projectId === projectId);
@@ -97,9 +101,9 @@ export default function BoQSection({ projectId }: Props) {
   const nextStatus = (current: string): string[] => STATUS_FLOW[current] ?? [];
 
   const saveBoq = async () => {
-    if (!form.name.trim()) { toast("Nama item wajib diisi", "info"); return; }
-    if (!form.quantity || Number(form.quantity) <= 0) { toast("Quantity tidak valid", "info"); return; }
-    if (!form.unitPrice || Number(form.unitPrice) <= 0) { toast("Harga satuan tidak valid", "info"); return; }
+    if (!form.name.trim()) { toast(S.boqToastName, "info"); return; }
+    if (!form.quantity || Number(form.quantity) <= 0) { toast(S.boqToastQty, "info"); return; }
+    if (!form.unitPrice || Number(form.unitPrice) <= 0) { toast(S.boqToastPrice, "info"); return; }
     const total = Number(form.quantity) * Number(form.unitPrice);
     await add("boq", {
       projectId,
@@ -113,30 +117,30 @@ export default function BoQSection({ projectId }: Props) {
       status: "Draft",
       requestedBy: "Anda",
     }, { action: "menambahkan BoQ item", module: "BoQ" });
-    toast("BoQ item ditambahkan");
+    toast(S.boqToastAdded);
     setShowAdd(false);
     setForm({ name: "", description: "", quantity: "", unit: "pcs", unitPrice: "", category: "Mechanical", status: "Draft" });
   };
 
   const changeStatus = async (id: string, newStatus: string) => {
     if (newStatus === "Approved" && !canSetTarget(user?.role)) {
-      toast("Hanya Direktur/Manager", "info");
+      toast(S.boqToastRole, "info");
       return;
     }
     await update("boq", id, { status: newStatus as BoQItem["status"] });
     log(`mengubah status BoQ → ${newStatus}`, `${id}`, "BoQ");
-    toast(`Status ${id} → ${newStatus}`);
+    toast(S.boqToastStatus.replace("{a}", id).replace("{b}", newStatus));
   };
 
   const saveRevisi = async () => {
     if (!revisiFor) return;
     const next = Number(revisiPrice);
-    if (!Number.isFinite(next) || next <= 0) { toast("Harga satuan baru tidak valid", "info"); return; }
-    if (!revisiReason.trim()) { toast("Alasan revisi wajib diisi", "info"); return; }
+    if (!Number.isFinite(next) || next <= 0) { toast(S.boqToastNewPrice, "info"); return; }
+    if (!revisiReason.trim()) { toast(S.boqToastReason, "info"); return; }
     const hist: PriceHist[] = [...(revisiFor.priceHistory ?? []), { old: revisiFor.unitPrice, new: next, reason: revisiReason.trim(), date: todayISO(), by: "Anda" }];
     await update("boq", revisiFor.id, { unitPrice: next, totalPrice: Number(revisiFor.quantity) * next, priceHistory: hist });
     log("merevisi harga BoQ", `${revisiFor.id} · ${fmtRupiah(revisiFor.unitPrice)} → ${fmtRupiah(next)} (${revisiReason.trim()})`, "BoQ");
-    toast(`Harga ${revisiFor.id} direvisi`);
+    toast(S.boqToastRevised.replace("{a}", revisiFor.id));
     setRevisiFor(null);
     setRevisiPrice("");
     setRevisiReason("");
@@ -145,7 +149,7 @@ export default function BoQSection({ projectId }: Props) {
   const importPreset = async () => {
     const list = PRESET[presetCat] ?? [];
     const item = list[Number(presetIdx)];
-    if (!item) { toast("Pilih item preset dulu", "info"); return; }
+    if (!item) { toast(S.boqToastPreset, "info"); return; }
     await add("boq", {
       projectId,
       name: item.name,
@@ -158,7 +162,7 @@ export default function BoQSection({ projectId }: Props) {
       status: "Draft",
       requestedBy: "Anda",
     }, { action: "mengimpor BoQ preset", module: "BoQ" });
-    toast(`${item.name} ditambahkan sebagai Draft`);
+    toast(S.boqToastPresetAdd.replace("{a}", item.name));
   };
 
   const handleExport = () => {
@@ -166,88 +170,88 @@ export default function BoQSection({ projectId }: Props) {
     items.forEach((b, i) => rows.push([String(i + 1), b.name, b.description, String(b.quantity), b.unit, String(b.unitPrice), String(b.totalPrice), b.status]));
     rows.push(["", "TOTAL", "", "", "", "", String(totalBoq), ""]);
     exportExcel(rows, `BoQ-${projectId}`);
-    toast("BoQ diekspor ke Excel");
+    toast(S.boqToastExport);
   };
 
   return (
     <div className="space-y-4">
       <Card className="p-4">
         <div className="mb-3 flex items-center justify-between">
-          <h3 className="text-sm font-semibold text-navy-900 flex items-center gap-2"><FileDown className="h-4 w-4" /> Daftar BoQ ({items.length})</h3>
+          <h3 className="text-sm font-semibold text-navy-900 flex items-center gap-2"><FileDown className="h-4 w-4" /> {S.boqTitle.replace("{n}", String(items.length))}</h3>
           <div className="flex gap-2">
-            <button className="btn-secondary text-xs" onClick={handleExport}><FileDown className="h-3.5 w-3.5" /> Export Excel</button>
-            <button className="btn-primary text-xs" onClick={() => setShowAdd(true)}><Plus className="h-3.5 w-3.5" /> Tambah BoQ</button>
+            <button className="btn-secondary text-xs" onClick={handleExport}><FileDown className="h-3.5 w-3.5" /> {S.exportExcelBtn}</button>
+            <button className="btn-primary text-xs" onClick={() => setShowAdd(true)}><Plus className="h-3.5 w-3.5" /> {S.boqAddBtn}</button>
           </div>
         </div>
 
         <div className="mb-3 flex flex-wrap items-center gap-2">
           <input
             className="input w-full sm:w-52"
-            placeholder="Cari item / deskripsi..."
-            aria-label="Cari BoQ"
+            placeholder={S.boqSearchPh}
+            aria-label={S.boqSearchAria}
             value={q}
             onChange={(e) => setQ(e.target.value)}
           />
-          <select className="input w-auto py-1.5 text-sm" aria-label="Filter kategori" value={catF} onChange={(e) => setCatF(e.target.value)}>
-            <option value="Semua">Semua kategori</option>
+          <select className="input w-auto py-1.5 text-sm" aria-label={S.boqCatAria} value={catF} onChange={(e) => setCatF(e.target.value)}>
+            <option value="Semua">{S.boqAllCat}</option>
             {CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
           </select>
-          <select className="input w-auto py-1.5 text-sm" aria-label="Filter status" value={stF} onChange={(e) => setStF(e.target.value)}>
-            <option value="Semua">Semua status</option>
+          <select className="input w-auto py-1.5 text-sm" aria-label={S.boqStatusAria} value={stF} onChange={(e) => setStF(e.target.value)}>
+            <option value="Semua">{S.prjAllStatus}</option>
             {["Draft", "Pending", "Approved", "Completed", "Rejected"].map((s) => <option key={s} value={s}>{STATUS_BOQ_ID[s] ?? s}</option>)}
           </select>
-          <span className="ml-auto text-xs text-steel-500">{filtered.length} dari {items.length} item</span>
+          <span className="ml-auto text-xs text-steel-500">{S.boqCount.replace("{a}", String(filtered.length)).replace("{b}", String(items.length))}</span>
         </div>
 
         <div className="mb-4 flex flex-wrap items-center gap-2 rounded-xl bg-surface p-2.5">
-          <span className="text-xs font-semibold text-navy-900">Impor dari preset:</span>
-          <select className="input w-auto py-1.5 text-sm" aria-label="Kategori preset" value={presetCat} onChange={(e) => { setPresetCat(e.target.value); setPresetIdx("0"); }}>
+          <span className="text-xs font-semibold text-navy-900">{S.boqPresetLead}</span>
+          <select className="input w-auto py-1.5 text-sm" aria-label={S.boqPresetCatAria} value={presetCat} onChange={(e) => { setPresetCat(e.target.value); setPresetIdx("0"); }}>
             {CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
           </select>
-          <select className="input w-auto max-w-64 py-1.5 text-sm" aria-label="Item preset" value={presetIdx} onChange={(e) => setPresetIdx(e.target.value)}>
+          <select className="input w-auto max-w-64 py-1.5 text-sm" aria-label={S.boqPresetItemAria} value={presetIdx} onChange={(e) => setPresetIdx(e.target.value)}>
             {(PRESET[presetCat] ?? []).map((p, i) => <option key={p.name} value={String(i)}>{p.name} · {p.unit} · {fmtRupiah(p.price)}</option>)}
           </select>
-          <button className="btn-secondary text-xs" onClick={importPreset}><Plus className="h-3.5 w-3.5" /> Tambah sebagai Draft</button>
+          <button className="btn-secondary text-xs" onClick={importPreset}><Plus className="h-3.5 w-3.5" /> {S.boqPresetAdd}</button>
         </div>
 
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
           <div className="rounded-lg bg-surface p-3 text-center">
-            <p className="text-xs text-steel-500">Total BoQ</p>
+            <p className="text-xs text-steel-500">{S.boqKpiTotal}</p>
             <p className="text-sm font-bold text-navy-900">{fmtRupiah(totalBoq)}</p>
           </div>
           <div className="rounded-lg bg-surface p-3 text-center">
-            <p className="text-xs text-steel-500">Approved</p>
+            <p className="text-xs text-steel-500">{S.boqKpiApproved}</p>
             <p className="text-sm font-bold text-blue-600">{fmtRupiah(totalApproved)}</p>
           </div>
           <div className="rounded-lg bg-surface p-3 text-center">
-            <p className="text-xs text-steel-500">Completed</p>
+            <p className="text-xs text-steel-500">{S.boqKpiDone}</p>
             <p className="text-sm font-bold text-green-600">{fmtRupiah(totalCompleted)}</p>
           </div>
           <div className="rounded-lg bg-surface p-3 text-center">
-            <p className="text-xs text-steel-500">Progress</p>
+            <p className="text-xs text-steel-500">{S.boqKpiProg}</p>
             <p className="text-sm font-bold text-navy-900">{progress}%</p>
           </div>
         </div>
 
         {items.length === 0 ? (
-          <EmptyState icon={<FileDown className="h-6 w-6" />} title="Belum ada BoQ" subtitle="Tambah item BoQ untuk memulai" />
+          <EmptyState icon={<FileDown className="h-6 w-6" />} title={S.boqEmptyTitle} subtitle={S.boqEmptySub} />
         ) : filtered.length === 0 ? (
-          <p className="py-6 text-center text-sm text-steel-400">Tidak ada item yang cocok dengan pencarian/filter.</p>
+          <p className="py-6 text-center text-sm text-steel-400">{S.boqNoMatch}</p>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full">
               <thead className="bg-surface">
                 <tr>
-                  <SortTh label="No" sortKey="id" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} />
-                  <SortTh label="Nama Item" sortKey="name" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} />
-                  <SortTh label="Deskripsi" sortKey="description" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} />
-                  <SortTh label="Qty" sortKey="quantity" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} />
-                  <SortTh label="Unit" sortKey="unit" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} />
-                  <SortTh label="Harga Satuan" sortKey="unitPrice" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} />
-                  <SortTh label="Total" sortKey="totalPrice" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} />
-                  <SortTh label="Status" sortKey="status" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} />
-                  <SortTh label="Revisi" sortKey="revised" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} />
-                  <th className="th">Aksi</th>
+                  <SortTh label={S.colNo} sortKey="id" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} />
+                  <SortTh label={S.colItem} sortKey="name" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} />
+                  <SortTh label={S.prjScopeDesc} sortKey="description" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} />
+                  <SortTh label={S.colQty} sortKey="quantity" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} />
+                  <SortTh label={S.colUnit} sortKey="unit" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} />
+                  <SortTh label={S.colUnitPrice} sortKey="unitPrice" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} />
+                  <SortTh label={S.colTotal} sortKey="totalPrice" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} />
+                  <SortTh label={S.statusLabel} sortKey="status" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} />
+                  <SortTh label={S.colRevision} sortKey="revised" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} />
+                  <th className="th">{S.actionTh}</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-steel-100">
@@ -263,8 +267,8 @@ export default function BoQSection({ projectId }: Props) {
                     <td className="td"><StatusBadge status={b.status} label={STATUS_BOQ_ID[b.status] ?? b.status} /></td>
                     <td className="td">
                       {(b.priceHistory ?? []).length > 0 ? (
-                        <button className="btn-secondary text-xs" onClick={() => setHistFor(b)}>
-                          <Badge tone="amber">{(b.priceHistory ?? []).length}x</Badge> Riwayat
+                          <button className="btn-secondary text-xs" onClick={() => setHistFor(b)}>
+                          <Badge tone="amber">{(b.priceHistory ?? []).length}x</Badge> {S.boqHistoryBtn}
                         </button>
                       ) : (
                         <span className="text-xs text-steel-400">-</span>
@@ -275,7 +279,7 @@ export default function BoQSection({ projectId }: Props) {
                         {nextStatus(b.status).map((ns) => (
                           <button
                             key={ns}
-                            aria-label={`Ubah ${b.name} menjadi ${STATUS_BOQ_ID[ns] ?? ns}`}
+                            aria-label={S.boqChangeAria.replace("{a}", b.name).replace("{b}", STATUS_BOQ_ID[ns] ?? ns)}
                             className={`rounded px-2 py-0.5 text-xs font-semibold transition-colors ${
                               ns === "Approved" ? "bg-green-100 text-green-700 hover:bg-green-200" :
                               ns === "Rejected" ? "bg-rose-100 text-rose-700 hover:bg-rose-200" :
@@ -284,15 +288,15 @@ export default function BoQSection({ projectId }: Props) {
                             }`}
                             onClick={() => changeStatus(b.id, ns)}
                           >
-                            {ns === "Approved" ? "Setujui" : ns === "Rejected" ? "Tolak" : ns === "Completed" ? "Selesaikan" : "Ajukan"}
+                            {ns === "Approved" ? S.detApproveBtn : ns === "Rejected" ? S.detRejectBtn : ns === "Completed" ? S.boqComplete : S.detProposeBtn}
                           </button>
                         ))}
                         <button
-                          aria-label={`Revisi harga ${b.name}`}
+                          aria-label={S.boqReviseAria.replace("{a}", b.name)}
                           className="rounded bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-700 transition-colors hover:bg-amber-200"
                           onClick={() => { setRevisiFor(b); setRevisiPrice(String(b.unitPrice)); setRevisiReason(""); }}
                         >
-                          Revisi Harga
+                          {S.boqRevise}
                         </button>
                       </div>
                     </td>
@@ -304,36 +308,36 @@ export default function BoQSection({ projectId }: Props) {
         )}
       </Card>
 
-      <Modal open={showAdd} onClose={() => setShowAdd(false)} title="Tambah BoQ Item"
-        footer={<><button className="btn-secondary" onClick={() => setShowAdd(false)}>Batal</button><button className="btn-primary" onClick={saveBoq}>Simpan</button></>}>
+      <Modal open={showAdd} onClose={() => setShowAdd(false)} title={S.boqAddTitle}
+        footer={<><button className="btn-secondary" onClick={() => setShowAdd(false)}>{S.cancelBtn}</button><button className="btn-primary" onClick={saveBoq}>{S.saveBtn}</button></>}>
         <div className="space-y-3">
-          <Field label="Nama item"><input className="input" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="cth: Overhaul Main Engine" /></Field>
-          <Field label="Deskripsi"><input className="input" value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} /></Field>
+          <Field label={S.boqNameField}><input className="input" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder={S.boqNamePh} /></Field>
+          <Field label={S.prjScopeDesc}><input className="input" value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} /></Field>
           <FormGrid>
-            <Field label="Quantity"><input type="number" className="input" value={form.quantity} onChange={(e) => setForm({ ...form, quantity: e.target.value })} /></Field>
-            <Field label="Unit"><select className="input" value={form.unit} onChange={(e) => setForm({ ...form, unit: e.target.value })}>
+            <Field label={S.boqQty}><input type="number" className="input" value={form.quantity} onChange={(e) => setForm({ ...form, quantity: e.target.value })} /></Field>
+            <Field label={S.colUnit}><select className="input" value={form.unit} onChange={(e) => setForm({ ...form, unit: e.target.value })}>
               {SATUAN.map((u) => <option key={u} value={u}>{u}</option>)}
             </select></Field>
           </FormGrid>
           <FormGrid>
-            <Field label="Harga Satuan"><input type="number" className="input" value={form.unitPrice} onChange={(e) => setForm({ ...form, unitPrice: e.target.value })} /></Field>
-            <Field label="Kategori"><select className="input" value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })}>
+            <Field label={S.colUnitPrice}><input type="number" className="input" value={form.unitPrice} onChange={(e) => setForm({ ...form, unitPrice: e.target.value })} /></Field>
+            <Field label={S.boqCategory}><select className="input" value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })}>
               {CATEGORIES.map((c) => <option key={c}>{c}</option>)}
             </select></Field>
           </FormGrid>
         </div>
       </Modal>
 
-      <Modal open={revisiFor !== null} onClose={() => setRevisiFor(null)} title={`Revisi Harga: ${revisiFor?.name ?? ""}`} subtitle={revisiFor?.id}
-        footer={<><button className="btn-secondary" onClick={() => setRevisiFor(null)}>Batal</button><button className="btn-primary" onClick={saveRevisi}>Simpan Revisi</button></>}>
+      <Modal open={revisiFor !== null} onClose={() => setRevisiFor(null)} title={S.boqRevTitle.replace("{a}", revisiFor?.name ?? "")} subtitle={revisiFor?.id}
+        footer={<><button className="btn-secondary" onClick={() => setRevisiFor(null)}>{S.cancelBtn}</button><button className="btn-primary" onClick={saveRevisi}>{S.boqSaveRev}</button></>}>
         <div className="space-y-3">
-          <p className="text-xs text-steel-500">Harga saat ini: <span className="font-semibold text-navy-900">{revisiFor ? fmtRupiah(revisiFor.unitPrice) : ""}</span> · total {revisiFor ? fmtRupiah(revisiFor.totalPrice) : ""} (qty {revisiFor?.quantity}). Riwayat tersimpan: {(revisiFor?.priceHistory ?? []).length}x.</p>
-          <Field label="Harga satuan baru (Rp)"><input type="number" min={0} className="input" value={revisiPrice} onChange={(e) => setRevisiPrice(e.target.value)} placeholder="cth: 500000000" /></Field>
-          <Field label="Alasan revisi" hint="Wajib diisi - tercatat di riwayat harga"><textarea className="input" rows={3} value={revisiReason} onChange={(e) => setRevisiReason(e.target.value)} placeholder="cth: Penyesuaian kurs vendor +10%" /></Field>
+          <p className="text-xs text-steel-500">{S.boqRevInfo.replace("{a}", revisiFor ? fmtRupiah(revisiFor.unitPrice) : "").replace("{b}", revisiFor ? fmtRupiah(revisiFor.totalPrice) : "").replace("{c}", String(revisiFor?.quantity ?? "")).replace("{d}", String((revisiFor?.priceHistory ?? []).length))}</p>
+          <Field label={S.boqNewPrice}><input type="number" min={0} className="input" value={revisiPrice} onChange={(e) => setRevisiPrice(e.target.value)} placeholder={S.boqNewPricePh} /></Field>
+          <Field label={S.boqRevReason} hint={S.boqRevHint}><textarea className="input" rows={3} value={revisiReason} onChange={(e) => setRevisiReason(e.target.value)} placeholder={S.boqRevPh} /></Field>
         </div>
       </Modal>
 
-      <Modal open={histFor !== null} onClose={() => setHistFor(null)} title={`Riwayat Harga: ${histFor?.name ?? ""}`} subtitle={histFor?.id}>
+      <Modal open={histFor !== null} onClose={() => setHistFor(null)} title={S.boqHistTitle.replace("{a}", histFor?.name ?? "")} subtitle={histFor?.id}>
         <div className="space-y-2">
           {(histFor?.priceHistory ?? []).map((h, i) => (
             <div key={i} className="rounded-xl border border-steel-100 p-2.5 text-sm">
@@ -341,7 +345,7 @@ export default function BoQSection({ projectId }: Props) {
               <p className="text-xs text-steel-500">{h.date} · {h.by} · {h.reason}</p>
             </div>
           ))}
-          {(histFor?.priceHistory ?? []).length === 0 && <p className="text-sm text-steel-400">Belum ada riwayat revisi.</p>}
+          {(histFor?.priceHistory ?? []).length === 0 && <p className="text-sm text-steel-400">{S.boqNoHist}</p>}
         </div>
       </Modal>
     </div>

@@ -10,6 +10,8 @@ import { AlertBannerView, notifRowId, useModuleAlert } from "../../components/Al
 import { getSetting } from "../../utils/settings";
 import { subcontractorScore, subActiveTrend, subContractTrend, woTrend, ratingTrend } from "../../data";
 import { FilterPopover } from "../../components/FilterPopover";
+import { useT } from "../../i18n/LanguageContext";
+import { n_crm } from "../../i18n/n_crm";
 
 const toneMap: Record<string, "green" | "blue" | "amber" | "red" | "gray" | "navy"> = {
   Aktif: "green",
@@ -88,6 +90,8 @@ function milestonesOf(s: StoreItem): Milestone[] {
 
 export default function Subcontractor() {
   const { data, add, update, log, branch } = useStore();
+  const { locale } = useT();
+  const S = n_crm[locale];
   const subcontractors = data.subcontractors;
   const workOrders = data.workOrders;
   const payments = data.termins;
@@ -185,9 +189,9 @@ export default function Subcontractor() {
   };
 
   const saveSub = async () => {
-    if (!subForm.name.trim()) { toast("Nama subkontraktor wajib diisi", "info"); return; }
+    if (!subForm.name.trim()) { toast(S.tSubNameRequired, "info"); return; }
     const bgValue = Number(subForm.bgValue || 0);
-    if (subForm.bgValue && (!Number.isFinite(bgValue) || bgValue < 0)) { toast("Nilai bank garansi harus 0 atau lebih", "info"); return; }
+    if (subForm.bgValue && (!Number.isFinite(bgValue) || bgValue < 0)) { toast(S.tBgInvalid, "info"); return; }
     const created = await add("subcontractors", {
       name: subForm.name.trim(), services: subForm.services.trim() || "Umum",
       rating: 80, active: 0, contract: Number(subForm.contract) || 0, status: "Kualifikasi", k3: subForm.k3,
@@ -195,22 +199,22 @@ export default function Subcontractor() {
       noBG: subForm.noBG.trim(), bgExpiry: subForm.bgExpiry, bgValue,
       milestones: [],
     }, { action: "meregistrasi subkontraktor", module: "Subkontraktor" });
-    toast(`${created.id} teregistrasi (Kualifikasi)`);
+    toast(S.tSubRegistered.replace("{n}", created.id));
     setShowSub(false);
     setSubForm({ name: "", services: "", contract: "", k3: "A", contractType: "Borongan", payScheme: "unit", noBG: "", bgExpiry: "", bgValue: "" });
   };
 
   const saveMilestone = async () => {
     if (!msSub) return;
-    if (!msForm.title.trim()) { toast("Judul milestone wajib diisi", "info"); return; }
+    if (!msForm.title.trim()) { toast(S.tMsTitleRequired, "info"); return; }
     const pct = Number(msForm.pct);
-    if (!Number.isFinite(pct) || pct <= 0 || pct > 100) { toast("Bobot milestone harus 0-100%", "info"); return; }
-    if (!msForm.due) { toast("Due date milestone wajib diisi", "info"); return; }
+    if (!Number.isFinite(pct) || pct <= 0 || pct > 100) { toast(S.tMsWeightRange, "info"); return; }
+    if (!msForm.due) { toast(S.tMsDueRequired, "info"); return; }
     const next = [...milestonesOf(msSub), { title: msForm.title.trim(), pct, due: msForm.due }];
-    if (next.reduce((s, m) => s + Number(m.pct || 0), 0) > 100) { toast("Kumulatif bobot milestone melebihi 100%", "info"); return; }
+    if (next.reduce((s, m) => s + Number(m.pct || 0), 0) > 100) { toast(S.tMsOverweight, "info"); return; }
     await update("subcontractors", msSub.id, { milestones: next });
     log("menambah milestone SOW", `${msSub.name} · ${msForm.title.trim()} (${pct}%)`, "Subkontraktor");
-    toast(`Milestone ditambahkan ke ${msSub.name}`);
+    toast(S.tMsAdded.replace("{n}", String(msSub.name)));
     setMsSub({ ...msSub, milestones: next });
     setMsForm({ title: "", pct: "", due: "" });
   };
@@ -224,13 +228,13 @@ export default function Subcontractor() {
   };
 
   const saveWo = async () => {
-    if (!woForm.sub || !woForm.project || !woForm.scope.trim()) { toast("Sub, proyek & lingkup wajib diisi", "info"); return; }
-    if (!woForm.targetDate) { toast("Target selesai WO wajib diisi", "info"); return; }
+    if (!woForm.sub || !woForm.project || !woForm.scope.trim()) { toast(S.tWoFieldsRequired, "info"); return; }
+    if (!woForm.targetDate) { toast(S.tWoTargetRequired, "info"); return; }
     const penaltyPct = Number(woForm.penaltyPct);
-    if (!Number.isFinite(penaltyPct) || penaltyPct < 0 || penaltyPct > 5) { toast("Denda per hari harus 0-5%", "info"); return; }
+    if (!Number.isFinite(penaltyPct) || penaltyPct < 0 || penaltyPct > 5) { toast(S.tPenaltyRange, "info"); return; }
     const created = await add("workOrders", { sub: woForm.sub, project: woForm.project, scope: woForm.scope.trim(), progress: 0, status: "Dalam Proses", date: todayISO(), targetDate: woForm.targetDate, penaltyPct, branch: branchOfProject(woForm.project) },
       { action: "menerbitkan WO", module: "Subkontraktor" });
-    toast(`WO ${created.id} diterbitkan`);
+    toast(S.tWoIssued.replace("{n}", created.id));
     setShowWo(false);
     setWoForm({ sub: "", project: "", scope: "", targetDate: "", penaltyPct: "0.1" });
   };
@@ -244,20 +248,20 @@ export default function Subcontractor() {
     const amount = Math.min(raw, base * 5 / 100);
     await update("workOrders", w.id, { penaltyDays: late, penaltyAmount: Math.round(amount), penaltyAt: todayISO() });
     log("mencatat denda keterlambatan", `${w.id} · telat ${late} hari · ${fmtRupiah(Math.round(amount))}`, "Subkontraktor");
-    toast(`Denda ${w.id} dicatat: ${fmtRupiah(Math.round(amount))}`);
+    toast(S.tPenaltyLogged.replace("{a}", w.id).replace("{b}", fmtRupiah(Math.round(amount))));
   };
 
   const applyWoProgress = async (id: string, v: number, note: string) => {
     await update("workOrders", id, { progress: v, status: v >= 100 ? "Selesai" : "Dalam Proses" });
     log("mengupdate progres", `${id} → ${v}%${note ? ` - ${note}` : ""}`, "Subkontraktor");
-    toast(`${id} → ${v}%`);
+    toast(S.tProgressTo.replace("{a}", id).replace("{b}", String(v)));
   };
 
   const saveWoProgress = () => {
     if (!woProg) return;
     const v = Math.min(100, Math.max(0, Number(progVal) || 0));
     if (v < Number(woProg.progress) && !progNote.trim()) {
-      toast("Progres mundur wajib disertai catatan", "info");
+      toast(S.tProgressNoteRequired, "info");
       return;
     }
     if (v >= 100) {
@@ -270,38 +274,38 @@ export default function Subcontractor() {
   };
 
   const saveTerm = async () => {
-    if (!termForm.sub) { toast("Subkontraktor wajib dipilih", "info"); return; }
+    if (!termForm.sub) { toast(S.tSubRequired, "info"); return; }
     const wo = workOrders.find((w) => w.id === termForm.wo && sameName(w.sub, termForm.sub));
-    if (!wo) { toast("Pilih WO milik subkontraktor tersebut", "info"); return; }
+    if (!wo) { toast(S.tWoBelongsSub, "info"); return; }
     const amount = Number(termForm.amount);
-    if (!amount || amount <= 0) { toast("Nilai termin harus lebih dari 0", "info"); return; }
+    if (!amount || amount <= 0) { toast(S.tTermPositive, "info"); return; }
     const pphPct = Number(termForm.pphPct);
     const retPct = Number(termForm.retPct);
     if (Number.isNaN(pphPct) || pphPct < 0 || pphPct > 100 || Number.isNaN(retPct) || retPct < 0 || retPct > 100) {
-      toast("PPh/retensi harus 0-100%", "info");
+      toast(S.tTaxRange, "info");
       return;
     }
     const sub = subcontractors.find((s) => s.name === termForm.sub);
     const cap = sub ? Number(sub.contract || 0) * Number(wo.progress || 0) / 100 : 0;
     const used = payments.filter((t) => t.woId === wo.id && t.status !== "Ditolak").reduce((s, t) => s + Number(t.amount || 0), 0);
     if (used + amount > cap) {
-      toast(`Termin melebihi batas WO: maks ${fmtRupiah(cap)} (kontrak ${fmtRupiah(Number(sub?.contract || 0))} × progres ${wo.progress}%), sudah diajukan ${fmtRupiah(used)}`, "info");
+      toast(S.tTermOverCap.replace("{a}", fmtRupiah(cap)).replace("{b}", fmtRupiah(Number(sub?.contract || 0))).replace("{c}", String(wo.progress)).replace("{d}", fmtRupiah(used)), "info");
       return;
     }
     const msList = sub ? milestonesOf(sub) : [];
     const ms = msList.find((m) => m.title === termForm.milestone);
-    if (!ms) { toast("Termin wajib merujuk milestone SOW kontrak sub tersebut", "info"); return; }
+    if (!ms) { toast(S.tTermNeedMs, "info"); return; }
     const msCap = Number(sub?.contract || 0) * Number(ms.pct || 0) / 100;
     const msUsed = payments.filter((t) => sameName(t.sub, termForm.sub) && t.milestone === ms.title && t.status !== "Ditolak").reduce((s, t) => s + Number(t.amount || 0), 0);
     if (msUsed + amount > msCap) {
-      toast(`Termin melebihi pagu milestone ${ms.title}: maks ${fmtRupiah(msCap)} (${ms.pct}% kontrak), sudah dipakai ${fmtRupiah(msUsed)}`, "info");
+      toast(S.tTermOverMs.replace("{a}", ms.title).replace("{b}", fmtRupiah(msCap)).replace("{c}", String(ms.pct)).replace("{d}", fmtRupiah(msUsed)), "info");
       return;
     }
     const created = await add("termins", {
       sub: termForm.sub, woId: wo.id, milestone: ms.title, progress: `${wo.id} (${wo.progress}%)`, amount,
       pphPct, retPct, status: "Draf", date: todayISO(), branch: branchOfProject(String(wo.project ?? "")),
     }, { action: "mengajukan termin", module: "Subkontraktor" });
-    toast(`Termin ${created.id} diajukan (Draf)`);
+    toast(S.tTermFiled.replace("{n}", created.id));
     setShowTerm(false);
     setTermForm({ sub: "", wo: "", milestone: "", amount: "", pphPct: "0.5", retPct: "5" });
   };
@@ -320,16 +324,16 @@ export default function Subcontractor() {
       return;
     }
     await update("termins", p.id, { status: next });
-    toast(`${p.id} → ${next}`);
+    toast(S.movedTo.replace("{a}", p.id).replace("{b}", next));
   };
 
   const confirmBuktiTerm = async () => {
     if (!termPay) return;
-    if (!proof.date) { toast("Tanggal bayar wajib diisi", "info"); return; }
-    if (!proof.ref.trim()) { toast("No. referensi wajib diisi", "info"); return; }
+    if (!proof.date) { toast(S.tPayDateRequired, "info"); return; }
+    if (!proof.ref.trim()) { toast(S.tRefRequired, "info"); return; }
     // Termin di atas ambang APPROVE_TERMIN wajib persetujuan Director (checkbox + nama).
     if (needsTermDirector(termPay) && (!termDirCheck || !termDirName.trim())) {
-      toast(`Termin di atas ${fmtRupiah(terminThreshold)} wajib dicentang + nama Director`, "info");
+      toast(S.tDirectorRequired.replace("{n}", fmtRupiah(terminThreshold)), "info");
       return;
     }
     const termId = termPay.id;
@@ -376,22 +380,22 @@ export default function Subcontractor() {
       }, { action: "menahan retensi termin", module: "Subkontraktor" });
     }
     log("melunasi termin", `${termPay.id} via ${proof.method} ${proof.ref.trim()} · PPh ${pphOf(termPay, pphDefault)}% = ${fmtRupiah(pphAmt)} · hutang ${poNeto} ${fmtRupiah(netoPayable)}${retAmt > 0 ? ` + retensi ${fmtRupiah(retAmt)} ditahan` : ""}`, "Subkontraktor");
-    toast(`${termPay.id} lunas - PPh ${fmtRupiah(pphAmt)} dipotong · hutang ${fmtRupiah(netoPayable)} tercatat`);
+    toast(S.tTermPaid.replace("{a}", termPay.id).replace("{b}", fmtRupiah(pphAmt)).replace("{c}", fmtRupiah(netoPayable)));
     setTermPay(null);
     setWithholdingRef("");
     setTermDirCheck(false);
     setTermDirName("");
     } catch {
-      toast(`Pelunasan ${termId} gagal di tengah jalan - periksa termin & hutang`, "info");
+      toast(S.tPayStuck.replace("{n}", termId), "info");
     }
   };
 
   const confirmRelease = async () => {
     if (!releaseTerm) return;
     const wo = workOrders.find((w) => w.id === releaseTerm.woId);
-    if (!wo || wo.status !== "Selesai") { toast("Retensi hanya bisa dirilis setelah WO Selesai", "info"); return; }
-    if (!releaseForm.date) { toast("Tanggal rilis wajib diisi", "info"); return; }
-    if (!releaseForm.ba.trim()) { toast("No. berita acara wajib diisi", "info"); return; }
+    if (!wo || wo.status !== "Selesai") { toast(S.tReleaseNeedDone, "info"); return; }
+    if (!releaseForm.date) { toast(S.tReleaseDateRequired, "info"); return; }
+    if (!releaseForm.ba.trim()) { toast(S.tBaRequired, "info"); return; }
     const relId = releaseTerm.id;
     try {
       await update("termins", releaseTerm.id, {
@@ -405,18 +409,18 @@ export default function Subcontractor() {
       log("merilis retensi hutang", `${held.id} (${poRet}) → Belum Dibayar`, "Subkontraktor");
     }
     log("merilis retensi", `${releaseTerm.id} · BA ${releaseForm.ba.trim()} · ${fmtTanggal(releaseForm.date)}`, "Subkontraktor");
-    toast(`${releaseTerm.id} - retensi dirilis${held ? " · hutang retensi siap dibayar" : ""}`);
+    toast(S.tReleased.replace("{n}", releaseTerm.id) + (held ? S.tReleasedDebt : ""));
     setReleaseTerm(null);
     setReleaseForm({ date: todayISO(), ba: "" });
     } catch {
-      toast(`Rilis retensi ${relId} gagal - periksa termin & hutang`, "info");
+      toast(S.tReleaseStuck.replace("{n}", relId), "info");
     }
   };
 
   const saveTimesheet = async () => {
-    if (!tsForm.wo || !tsForm.employee || !tsForm.date) { toast("WO, karyawan & tanggal wajib diisi", "info"); return; }
+    if (!tsForm.wo || !tsForm.employee || !tsForm.date) { toast(S.tTsFieldsRequired, "info"); return; }
     const hours = Number(tsForm.hours);
-    if (!Number.isFinite(hours) || hours <= 0) { toast("Jam kerja harus lebih dari 0", "info"); return; }
+    if (!Number.isFinite(hours) || hours <= 0) { toast(S.tHoursPositive, "info"); return; }
     const wo = workOrders.find((w) => w.id === tsForm.wo);
     const projectId = String(wo?.project ?? "");
     const rate = Number(wo?.rate || 0);
@@ -425,7 +429,7 @@ export default function Subcontractor() {
       projectId, rate, cost: Math.round(hours * rate), status: "Diajukan",
       branch: branchOfEmployee(tsForm.employee),
     }, { action: "mencatat timesheet", module: "Subkontraktor" });
-    toast(`Timesheet ${created.id} dicatat (${hours} jam)`);
+    toast(S.tTsLogged.replace("{a}", created.id).replace("{b}", String(hours)));
     setShowTs(false);
     setTsForm({ wo: "", employee: "", date: todayISO(), hours: "", note: "" });
   };
@@ -433,44 +437,44 @@ export default function Subcontractor() {
   const approveTimesheet = async (t: StoreItem) => {
     await update("timesheets", t.id, { status: "Disetujui" });
     log("menyetujui timesheet", `${t.id} · ${t.hours} jam`, "Subkontraktor");
-    toast(`${t.id} disetujui - siap ditarik ke invoice T&M`);
+    toast(S.tTsApproved.replace("{n}", t.id));
   };
 
   const saveRate = async () => {
-    if (!rateForm.wo) { toast("Pilih WO dulu", "info"); return; }
+    if (!rateForm.wo) { toast(S.tPickWoFirst, "info"); return; }
     const rate = Number(rateForm.rate);
-    if (!Number.isFinite(rate) || rate < 0) { toast("Rate tidak valid", "info"); return; }
+    if (!Number.isFinite(rate) || rate < 0) { toast(S.tRateInvalid, "info"); return; }
     await update("workOrders", rateForm.wo, { rate });
     log("menetapkan rate WO", `${rateForm.wo} · ${fmtRupiah(rate)}/jam`, "Subkontraktor");
-    toast(`Rate ${rateForm.wo} disimpan`);
+    toast(S.tRateSaved.replace("{n}", rateForm.wo));
     setRateForm({ wo: "", rate: "" });
   };
 
   return (
     <div>
       <PageHeader
-        title="Subkontraktor & Pihak Ketiga"
-        subtitle="Kontrak, work order, termin, dan evaluasi kinerja"
+        title={S.scTitle}
+        subtitle={S.scSubtitle}
         icon={<HardHat className="h-5 w-5" />}
-        actions={<button className="btn-primary-gradient" onClick={() => setShowSub(true)}><Plus className="h-4 w-4" /> Registrasi Sub</button>}
+        actions={<button className="btn-primary-gradient" onClick={() => setShowSub(true)}><Plus className="h-4 w-4" /> {S.regSubBtn}</button>}
       />
 
       {modAlert.active && <AlertBannerView items={modAlert.items} onPick={modAlert.scrollTo} />}
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <KpiCard label="Subkontraktor Aktif" value={String(subcontractors.filter((s) => s.status === "Aktif").length)} icon={<HardHat className="h-5 w-5" />} chip="navy" spark={subActiveTrend} hint="Terdaftar & tersertifikasi" />
-        <KpiCard label="Nilai Kontrak Aktif" value={fmtMiliar(subcontractors.reduce((s, x) => s + Number(x.contract || 0), 0))} icon={<FileSignature className="h-5 w-5" />} chip="teal" spark={subContractTrend} />
-        <KpiCard label="Work Order Berjalan" value={String(runningWo)} hint="Sedang eksekusi" icon={<HardHat className="h-5 w-5" />} chip="amber" spark={woTrend} />
-        <KpiCard label="Rating Rata-rata" value={`${avgRating}%`} delta="Kinerja baik" deltaDirection="up" icon={<Star className="h-5 w-5" />} chip="violet" spark={ratingTrend} />
+        <KpiCard label={S.kpiActiveSubs} value={String(subcontractors.filter((s) => s.status === "Aktif").length)} icon={<HardHat className="h-5 w-5" />} chip="navy" spark={subActiveTrend} hint={S.kpiActiveSubsHint} />
+        <KpiCard label={S.kpiActiveContracts} value={fmtMiliar(subcontractors.reduce((s, x) => s + Number(x.contract || 0), 0))} icon={<FileSignature className="h-5 w-5" />} chip="teal" spark={subContractTrend} />
+        <KpiCard label={S.kpiRunningWo} value={String(runningWo)} hint={S.kpiRunningWoHint} icon={<HardHat className="h-5 w-5" />} chip="amber" spark={woTrend} />
+        <KpiCard label={S.kpiAvgRating} value={`${avgRating}%`} delta={S.kpiRatingDelta} deltaDirection="up" icon={<Star className="h-5 w-5" />} chip="violet" spark={ratingTrend} />
       </div>
 
       <div className="mt-4 card">
-        <Tabs tabs={["Subkontraktor", "Work Order", "Termin & Pembayaran", "Timesheet", "Kepatuhan K3"]} active={tab} onChange={setTab} />
+        <Tabs tabs={["Subkontraktor", "Work Order", "Termin & Pembayaran", "Timesheet", "Kepatuhan K3"]} active={tab} onChange={setTab} labels={{ Subkontraktor: S.tabSub, "Work Order": S.tabWo, "Termin & Pembayaran": S.tabTermin, Timesheet: S.tabTimesheet, "Kepatuhan K3": S.tabK3 }} />
         <div className="p-4">
           {tab === "Subkontraktor" && (
             <div className="space-y-4">
               <Card>
-                <CardHeader title="Evaluasi Kinerja Subkontraktor" subtitle="Skor biaya, kualitas, ketepatan kirim & keselamatan" />
+                <CardHeader title={S.evalTitle} subtitle={S.evalSub} />
                 <div className="h-52 p-4 pt-0 sm:h-60">
                   <ResponsiveContainer width="100%" height="100%">
                     <BarChart data={subcontractorScore} margin={{ top: 10, right: 10, left: -15, bottom: 0 }}>
@@ -490,7 +494,7 @@ export default function Subcontractor() {
               <div className="mb-3 flex flex-wrap items-center gap-2">
                 <div className="relative min-w-52 flex-1 sm:max-w-xs">
                   <Search className="absolute left-3 top-2.5 h-4 w-4 text-steel-400" />
-                  <input className="input pl-9 w-full" placeholder="Cari nama / layanan..." aria-label="Cari subkontraktor" value={subQ} onChange={(e) => setSubQ(e.target.value)} />
+                  <input className="input pl-9 w-full" placeholder={S.subSearchPh} aria-label={S.subSearchAria} value={subQ} onChange={(e) => setSubQ(e.target.value)} />
                 </div>
                 <FilterPopover
                   activeCount={[subStatus !== "Semua", typeFilter !== "Semua"].filter(Boolean).length}
@@ -500,14 +504,14 @@ export default function Subcontractor() {
                 >
                   {(draft, setDraft) => (
                     <div className="space-y-3">
-                      <Field label="Status">
+                      <Field label={S.statusLabel}>
                         <select className="input w-full" value={draft.status} onChange={(e) => setDraft({ ...draft, status: e.target.value })}>
-                          {["Semua", "Aktif", "Kualifikasi", "Blacklist"].map((s) => <option key={s} value={s}>{s === "Semua" ? "Semua status" : s}</option>)}
+                          {["Semua", "Aktif", "Kualifikasi", "Blacklist"].map((s) => <option key={s} value={s}>{s === "Semua" ? S.allStatus : s}</option>)}
                         </select>
                       </Field>
-                      <Field label="Tipe kontrak">
+                      <Field label={S.contractTypeLabel}>
                         <select className="input w-full" value={draft.tipe} onChange={(e) => setDraft({ ...draft, tipe: e.target.value })}>
-                          {["Semua", ...CONTRACT_TYPES].map((t) => <option key={t} value={t}>{t === "Semua" ? "Semua tipe" : t}</option>)}
+                          {["Semua", ...CONTRACT_TYPES].map((t) => <option key={t} value={t}>{t === "Semua" ? S.allTypes : t}</option>)}
                         </select>
                       </Field>
                     </div>
@@ -515,7 +519,7 @@ export default function Subcontractor() {
                 </FilterPopover>
                 {(subQ.trim() !== "" || subStatus !== "Semua" || typeFilter !== "Semua") && (
                   <span className="text-xs text-steel-400">
-                    Filter aktif di tab Subkontraktor - {filteredSubs.length} baris
+                    {S.subFilterActive.replace("{n}", String(filteredSubs.length))}
                   </span>
                 )}
               </div>
@@ -531,50 +535,50 @@ export default function Subcontractor() {
                   </div>
                   <div className="mt-2 flex flex-wrap gap-1.5">
                     <Badge tone="navy">{s.contractType ?? "Borongan"}</Badge>
-                    <Badge tone="gray">Skema: {s.payScheme ?? "unit"}</Badge>
+                    <Badge tone="gray">{S.schemeLabel.replace("{n}", String(s.payScheme ?? "unit"))}</Badge>
                     {(() => {
                       const left = daysUntil(String(s.bgExpiry ?? ""));
-                      if (!s.bgExpiry) return <Badge tone="gray">Tanpa BG</Badge>;
+                      if (!s.bgExpiry) return <Badge tone="gray">{S.noBg}</Badge>;
                       if (left === null) return null;
-                      if (left < 0) return <Badge tone="red">BG Expired</Badge>;
-                      if (left <= 30) return <Badge tone="amber">BG H-{left}</Badge>;
-                      return <Badge tone="green">BG Aman</Badge>;
+                      if (left < 0) return <Badge tone="red">{S.bgExpired}</Badge>;
+                      if (left <= 30) return <Badge tone="amber">{S.bgCountdown.replace("{n}", String(left))}</Badge>;
+                      return <Badge tone="green">{S.bgSafe}</Badge>;
                     })()}
-                    <Badge tone="teal">{milestonesOf(s).length} milestone</Badge>
+                    <Badge tone="teal">{S.msCount.replace("{n}", String(milestonesOf(s).length))}</Badge>
                   </div>
                   {s.noBG ? (
                     <p className="mt-1.5 text-xs text-steel-500">BG {s.noBG} · {fmtRupiah(Number(s.bgValue || 0))}{s.bgExpiry ? ` · exp ${fmtTanggal(String(s.bgExpiry))}` : ""}</p>
                   ) : null}
                   <div className="mt-4 grid grid-cols-2 gap-3 text-sm">
                     <div className="rounded-lg bg-surface p-2.5">
-                      <p className="text-xs text-steel-500">Rating</p>
+                      <p className="text-xs text-steel-500">{S.scRatingLabel}</p>
                       <p className="font-semibold text-navy-900">{s.rating}%</p>
                     </div>
                     <div className="rounded-lg bg-surface p-2.5">
-                      <p className="text-xs text-steel-500">K3</p>
+                      <p className="text-xs text-steel-500">{S.scK3Label}</p>
                       <p className="font-semibold text-navy-900">{s.k3}</p>
                     </div>
                   </div>
                   <div className="mt-3 flex justify-between text-xs text-steel-500">
-                    <span>Kontrak {fmtMiliar(s.contract)}</span>
-                    <span>{workOrders.filter((w) => sameName(w.sub, s.name) && w.status !== "Selesai").length} WO aktif</span>
+                    <span>{S.contractLabel} {fmtMiliar(s.contract)}</span>
+                    <span>{S.woActiveCount.replace("{n}", String(workOrders.filter((w) => sameName(w.sub, s.name) && w.status !== "Selesai").length))}</span>
                   </div>
                   <div className="mt-3 flex flex-wrap gap-1.5 border-t border-steel-100 pt-3">
                     <button
                       className="btn-secondary text-xs"
-                      aria-label={`Kelola milestone ${s.name}`}
+                      aria-label={S.manageMsAria.replace("{n}", String(s.name))}
                       onClick={() => { setMsSub(s); setMsForm({ title: "", pct: "", due: "" }); }}
                     >
-                      Milestone SOW
+                      {S.msSowBtn}
                     </button>
                     {SUB_NEXT[normSub(s.status)].map((next) => (
                       <button
                         key={next}
                         className="btn-secondary text-xs"
-                        aria-label={`Ubah ${s.name} menjadi ${next}`}
+                        aria-label={S.changeStatusAria.replace("{a}", String(s.name)).replace("{b}", next)}
                         onClick={() => setSubConfirm({ id: s.id, name: s.name, next })}
                       >
-                        → {next}
+                        {S.toNextBtn.replace("{n}", next)}
                       </button>
                     ))}
                   </div>
@@ -587,7 +591,7 @@ export default function Subcontractor() {
           {tab === "Work Order" && (
             <div>
               <div className="mb-3 flex justify-end">
-                <button className="btn-secondary text-xs" onClick={() => setShowWo(true)}><Plus className="h-3.5 w-3.5" /> Terbitkan WO</button>
+                <button className="btn-secondary text-xs" onClick={() => setShowWo(true)}><Plus className="h-3.5 w-3.5" /> {S.issueWoBtn}</button>
               </div>
               <div className="space-y-3">
                 {woPager.slice(workOrders).map((w) => (
@@ -599,8 +603,8 @@ export default function Subcontractor() {
                           <p className="truncate" title={`${w.sub} · ${w.project}`}>{w.sub} · {w.project}</p>
                           <p className="text-xs text-steel-500 truncate" title={String(w.scope)}>{w.scope}</p>
                           {w.date && <p className="text-xs text-steel-400">{fmtTanggal(w.date)}</p>}
-                          {w.targetDate && <p className="text-xs text-steel-500">Target {fmtTanggal(String(w.targetDate))} · denda {Number(w.penaltyPct || 0)}%/hari</p>}
-                          {Number(w.rate || 0) > 0 && <p className="text-xs text-steel-500">Rate {fmtRupiah(Number(w.rate))}/jam</p>}
+                          {w.targetDate && <p className="text-xs text-steel-500">{S.targetPenalty.replace("{a}", fmtTanggal(String(w.targetDate))).replace("{b}", String(Number(w.penaltyPct || 0)))}</p>}
+                          {Number(w.rate || 0) > 0 && <p className="text-xs text-steel-500">{S.ratePerHour.replace("{n}", fmtRupiah(Number(w.rate)))}</p>}
                           {(() => {
                             if (Number(w.progress || 0) >= 100 || !w.targetDate) return null;
                             const late = daysLate(String(w.targetDate));
@@ -611,8 +615,8 @@ export default function Subcontractor() {
                             const usulan = Math.min(base * perDay / 100 * late, base * 5 / 100);
                             return (
                               <p className="text-xs font-medium text-rose-600">
-                                Telat {late} hari · usulan denda {fmtRupiah(Math.round(usulan))} (maks 5% kontrak)
-                                {w.penaltyAt ? ` · tercatat ${fmtTanggal(String(w.penaltyAt))}` : ""}
+                                {S.latePenalty.replace("{a}", String(late)).replace("{b}", fmtRupiah(Math.round(usulan)))}
+                                {w.penaltyAt ? S.penaltyLogged.replace("{n}", fmtTanggal(String(w.penaltyAt))) : ""}
                               </p>
                             );
                           })()}
@@ -625,16 +629,16 @@ export default function Subcontractor() {
                         </div>
                         <Badge tone={toneMap[w.status] ?? "gray"}>{w.status}</Badge>
                         {w.status !== "Selesai" && (
-                          <button className="btn-secondary text-xs" aria-label={`Update progres ${w.id}`} onClick={() => { setWoProg(w); setProgVal(String(w.progress)); setProgNote(""); }}>Update</button>
+                          <button className="btn-secondary text-xs" aria-label={S.updateProgAria.replace("{n}", w.id)} onClick={() => { setWoProg(w); setProgVal(String(w.progress)); setProgNote(""); }}>{S.updateBtn}</button>
                         )}
                         {Number(w.progress || 0) < 100 && w.targetDate && daysLate(String(w.targetDate)) > 0 && !w.penaltyAt && (
-                          <button className="btn-secondary text-xs" aria-label={`Catat denda ${w.id}`} onClick={() => recordPenalty(w)}>Catat Denda</button>
+                          <button className="btn-secondary text-xs" aria-label={S.logPenaltyAria.replace("{n}", w.id)} onClick={() => recordPenalty(w)}>{S.logPenaltyBtn}</button>
                         )}
                       </div>
                     </div>
                   </Card>
                 ))}
-                {workOrders.length === 0 && <p className="py-6 text-center text-sm text-steel-400">Belum ada WO.</p>}
+                {workOrders.length === 0 && <p className="py-6 text-center text-sm text-steel-400">{S.emptyWo}</p>}
                 {woPager.bar}
               </div>
             </div>
@@ -643,12 +647,12 @@ export default function Subcontractor() {
           {tab === "Termin & Pembayaran" && (
             <div>
               <div className="mb-3 flex justify-end">
-                <button className="btn-secondary text-xs" onClick={() => setShowTerm(true)}><Plus className="h-3.5 w-3.5" /> Ajukan Termin</button>
+                <button className="btn-secondary text-xs" onClick={() => setShowTerm(true)}><Plus className="h-3.5 w-3.5" /> {S.proposeTerminBtn}</button>
               </div>
               <div className="overflow-x-auto">
                 <table className="w-full">
                   <thead className="bg-surface sticky top-0 z-10">
-                    <tr><SortTh label="Termin" sortKey="termin" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label="Subkontraktor" sortKey="sub" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label="WO / Progres" sortKey="wo" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label="Nilai" sortKey="nilai" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label="PPh" sortKey="pph" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label="Retensi" sortKey="retensi" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label="Neto" sortKey="neto" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label="Tanggal" sortKey="tanggal" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label="Status" sortKey="status" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><th className="th">Aksi</th></tr>
+                    <tr><SortTh label={S.sortTermin} sortKey="termin" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.sortSub} sortKey="sub" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.sortWoProg} sortKey="wo" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.sortValue} sortKey="nilai" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.sortPph} sortKey="pph" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.sortRetensi} sortKey="retensi" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.sortNeto} sortKey="neto" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.dateLabel} sortKey="tanggal" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.sortStatus} sortKey="status" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><th className="th">{S.actionLabel}</th></tr>
                   </thead>
                   <tbody className="divide-y divide-steel-100">
                     {sortRows(payments, sort, (p, key) =>
@@ -660,7 +664,7 @@ export default function Subcontractor() {
                       <tr key={p.id} id={notifRowId(String(p.id))} className={modAlert.highlight.has(String(p.id)) ? "notif-hl hover:bg-surface" : "hover:bg-surface"}>
                         <td className="td font-mono font-medium text-navy-900">{p.id}</td>
                         <td className="td text-steel-600 truncate" title={String(p.sub)}>{p.sub}</td>
-                        <td className="td font-mono text-xs text-steel-500">{p.progress}{p.milestone ? <span className="block text-steel-400">MS: {p.milestone}</span> : null}</td>
+                        <td className="td font-mono text-xs text-steel-500">{p.progress}{p.milestone ? <span className="block text-steel-400">{S.msPrefix.replace("{n}", String(p.milestone))}</span> : null}</td>
                         <td className="td font-semibold">{fmtMiliar(p.amount)}</td>
                         <td className="td text-steel-600">{fmtRupiah(Number(p.amount || 0) * pphOf(p, pphDefault) / 100)} <span className="text-xs text-steel-400">({pphOf(p, pphDefault)}%)</span></td>
                         <td className="td text-steel-600">{fmtRupiah(Number(p.amount || 0) * retOf(p) / 100)} <span className="text-xs text-steel-400">({retOf(p)}%)</span></td>
@@ -668,7 +672,7 @@ export default function Subcontractor() {
                         <td className="td text-steel-600">{fmtTanggal(p.date)}</td>
                         <td className="td">
                           <Badge tone={toneMap[normTerm(p.status)] ?? "gray"}>{normTerm(p.status)}</Badge>
-                          {p.status === "Retensi Released" && p.releasedAt && <p className="mt-1 text-xs text-steel-500">BA {p.releaseBA} · {fmtTanggal(p.releasedAt)}</p>}
+                          {p.status === "Retensi Released" && p.releasedAt && <p className="mt-1 text-xs text-steel-500">{S.baInfo.replace("{a}", String(p.releaseBA)).replace("{b}", fmtTanggal(p.releasedAt))}</p>}
                         </td>
                         <td className="td">
                           <div className="flex flex-wrap gap-1.5">
@@ -676,15 +680,15 @@ export default function Subcontractor() {
                               <button
                                 key={next}
                                 className={next === "Lunas" ? "btn-primary text-xs" : "btn-secondary text-xs"}
-                                aria-label={`${next} ${p.id}`}
+                                aria-label={S.stepAria.replace("{a}", next).replace("{b}", p.id)}
                                 onClick={() => stepTerm(p, next)}
                               >
-                                {next === "Lunas" ? "Bayar" : next === "Diajukan" ? "Ajukan" : next}
+                                {next === "Lunas" ? S.payBtn : next === "Diajukan" ? S.proposeBtn : next}
                               </button>
                             ))}
                             {canRelease && (
-                              <button className="btn-primary text-xs" aria-label={`Release retensi ${p.id}`} onClick={() => { setReleaseTerm(p); setReleaseForm({ date: todayISO(), ba: "" }); }}>
-                                Release Retensi
+                              <button className="btn-primary text-xs" aria-label={S.releaseRetAria.replace("{n}", p.id)} onClick={() => { setReleaseTerm(p); setReleaseForm({ date: todayISO(), ba: "" }); }}>
+                                {S.releaseRetBtn}
                               </button>
                             )}
                             {termNext(p.status).length === 0 && !canRelease && <span className="text-xs text-steel-400">-</span>}
@@ -702,10 +706,10 @@ export default function Subcontractor() {
           {tab === "Timesheet" && (
             <div className="space-y-4">
               <div className="flex flex-wrap justify-end gap-2">
-                <button className="btn-secondary text-xs" onClick={() => setShowTs(true)}><Plus className="h-3.5 w-3.5" /> Catat Timesheet</button>
+                <button className="btn-secondary text-xs" onClick={() => setShowTs(true)}><Plus className="h-3.5 w-3.5" /> {S.logTsBtn}</button>
               </div>
               <Card className="p-4">
-                <h3 className="text-sm font-semibold text-navy-900">Rekap Jam per WO</h3>
+                <h3 className="text-sm font-semibold text-navy-900">{S.recapWoTitle}</h3>
                 <div className="mt-2 space-y-2">
                   {workOrders.map((w) => {
                     const hours = hoursByWo(w.id);
@@ -717,31 +721,31 @@ export default function Subcontractor() {
                       <div key={w.id} className="flex flex-wrap items-center justify-between gap-2 border-b border-steel-100 py-2 text-sm">
                         <div>
                           <p className="font-mono font-medium text-navy-900">{w.id} <span className="font-sans text-xs text-steel-500">· {w.sub}</span></p>
-                          <p className="text-xs text-steel-500">Total {hours} jam · skema {scheme}{rate > 0 ? ` · rate ${fmtRupiah(rate)}/jam` : ""}</p>
+                          <p className="text-xs text-steel-500">{S.woHoursScheme.replace("{a}", String(hours)).replace("{b}", scheme)}{rate > 0 ? S.rateAutoSuffix.replace("{n}", fmtRupiah(rate)) : ""}</p>
                         </div>
-                        {usulan > 0 && <Badge tone="teal">Usulan termin {fmtRupiah(usulan)}</Badge>}
+                        {usulan > 0 && <Badge tone="teal">{S.proposeTerminBadge.replace("{n}", fmtRupiah(usulan))}</Badge>}
                       </div>
                     );
                   })}
-                  {workOrders.length === 0 && <p className="text-xs text-steel-400">Belum ada WO.</p>}
+                  {workOrders.length === 0 && <p className="text-xs text-steel-400">{S.emptyWo}</p>}
                 </div>
                 <div className="mt-3 flex flex-wrap items-end gap-2 border-t border-steel-100 pt-3">
-                  <Field label="WO (rate per jam)">
+                  <Field label={S.woRateLabel}>
                     <select className="input" value={rateForm.wo} onChange={(e) => setRateForm({ ...rateForm, wo: e.target.value })}>
-                      <option value="">Pilih WO…</option>
+                      <option value="">{S.pickWoOpt}</option>
                       {workOrders.map((w) => <option key={w.id} value={w.id}>{w.id} ({w.sub})</option>)}
                     </select>
                   </Field>
-                  <Field label="Rate (Rp/jam)">
-                    <input type="number" min={0} className="input" value={rateForm.rate} onChange={(e) => setRateForm({ ...rateForm, rate: e.target.value })} placeholder="cth: 75000" />
+                  <Field label={S.rateLabel}>
+                    <input type="number" min={0} className="input" value={rateForm.rate} onChange={(e) => setRateForm({ ...rateForm, rate: e.target.value })} placeholder={S.ratePh} />
                   </Field>
-                  <button className="btn-secondary text-xs" onClick={saveRate}>Simpan Rate</button>
+                  <button className="btn-secondary text-xs" onClick={saveRate}>{S.saveRateBtn}</button>
                 </div>
               </Card>
               <div className="overflow-x-auto">
                 <table className="w-full">
                   <thead className="bg-surface sticky top-0 z-10">
-                    <tr><SortTh label="ID" sortKey="id" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} /><SortTh label="WO" sortKey="wo" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} /><SortTh label="Proyek" sortKey="proyek" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} /><SortTh label="Karyawan" sortKey="karyawan" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} /><SortTh label="Tanggal" sortKey="tanggal" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} /><SortTh label="Jam" sortKey="jam" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} /><SortTh label="Biaya" sortKey="biaya" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} /><SortTh label="Status" sortKey="status" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} /><SortTh label="Catatan" sortKey="catatan" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} /><th className="th">Aksi</th></tr>
+                    <tr><SortTh label={S.sortId} sortKey="id" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} /><SortTh label={S.sortWo} sortKey="wo" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} /><SortTh label={S.projectLabel} sortKey="proyek" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} /><SortTh label={S.employeeLabel} sortKey="karyawan" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} /><SortTh label={S.dateLabel} sortKey="tanggal" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} /><SortTh label={S.sortHours} sortKey="jam" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} /><SortTh label={S.sortCost} sortKey="biaya" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} /><SortTh label={S.sortStatus} sortKey="status" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} /><SortTh label={S.sortNote} sortKey="catatan" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} /><th className="th">{S.actionLabel}</th></tr>
                   </thead>
                   <tbody className="divide-y divide-steel-100">
                     {sortRows(timesheets, sort2, (t, key) =>
@@ -753,18 +757,18 @@ export default function Subcontractor() {
                         <td className="td font-mono text-xs text-steel-600">{t.projectId ?? workOrders.find((w) => w.id === t.woId)?.project ?? "-"}</td>
                         <td className="td text-steel-600 text-xs">{t.employeeId}</td>
                         <td className="td text-steel-600">{fmtTanggal(t.date)}</td>
-                        <td className="td font-semibold">{t.hours} jam</td>
+                        <td className="td font-semibold">{S.hoursSuffix.replace("{n}", String(t.hours))}</td>
                         <td className="td text-steel-600">{fmtRupiah(Number(t.cost ?? Number(t.hours || 0) * Number(workOrders.find((w) => w.id === t.woId)?.rate || t.rate || 0)))}</td>
                         <td className="td"><Badge tone={String(t.status ?? "Diajukan") === "Disetujui" ? "green" : "amber"}>{t.status ?? "Diajukan"}</Badge></td>
                         <td className="td text-steel-600 text-xs">{t.note ?? "-"}</td>
                         <td className="td">
                           {String(t.status ?? "Diajukan") !== "Disetujui"
-                            ? <button className="btn-primary text-xs" aria-label={`Setujui ${t.id}`} onClick={() => approveTimesheet(t)}>Setujui</button>
+                            ? <button className="btn-primary text-xs" aria-label={S.approveAria.replace("{n}", t.id)} onClick={() => approveTimesheet(t)}>{S.approveBtn}</button>
                             : <span className="text-xs text-steel-400">-</span>}
                         </td>
                       </tr>
                     ))}
-                    {timesheets.length === 0 && <tr><td colSpan={10} className="td text-center text-steel-400">Belum ada timesheet.</td></tr>}
+                    {timesheets.length === 0 && <tr><td colSpan={10} className="td text-center text-steel-400">{S.emptyTs}</td></tr>}
                   </tbody>
                 </table>
               </div>
@@ -781,7 +785,7 @@ export default function Subcontractor() {
                     <div className="flex flex-wrap items-start justify-between gap-2">
                       <div>
                         <p className="font-semibold text-navy-900">{s.name}</p>
-                        <p className="text-xs text-steel-500 mt-0.5">{woOfSub(s.name).length} WO · rating K3 {s.k3}</p>
+                        <p className="text-xs text-steel-500 mt-0.5">{S.k3WoRating.replace("{a}", String(woOfSub(s.name).length)).replace("{b}", String(s.k3))}</p>
                       </div>
                       <Badge tone={comp.tone}>{comp.label} · {list.length} insiden</Badge>
                     </div>
@@ -789,7 +793,7 @@ export default function Subcontractor() {
                       {list.map((i) => (
                         <p key={i.id} className="text-xs text-steel-600">{i.id} · {i.type} · {fmtTanggal(i.date)} · {i.location} - {i.desc}</p>
                       ))}
-                      {list.length === 0 && <p className="text-xs text-steel-400">Tidak ada insiden pada proyek yang dikerjakan sub ini.</p>}
+                      {list.length === 0 && <p className="text-xs text-steel-400">{S.emptyIncident}</p>}
                     </div>
                   </Card>
                 );
@@ -800,105 +804,105 @@ export default function Subcontractor() {
       </div>
 
       {/* Modal registrasi */}
-      <Modal open={showSub} onClose={() => setShowSub(false)} title="Registrasi Subkontraktor" subtitle="Masuk tahap Kualifikasi terlebih dahulu"
-        footer={<><button className="btn-secondary" onClick={() => setShowSub(false)}>Batal</button><button className="btn-primary" onClick={saveSub}>Registrasi</button></>}>
+      <Modal open={showSub} onClose={() => setShowSub(false)} title={S.regTitle} subtitle={S.regSub2}
+        footer={<><button className="btn-secondary" onClick={() => setShowSub(false)}>{S.cancelBtn}</button><button className="btn-primary" onClick={saveSub}>{S.regConfirmBtn}</button></>}>
         <div className="space-y-3">
-          <Field label="Nama perusahaan"><input className="input" value={subForm.name} onChange={(e) => setSubForm({ ...subForm, name: e.target.value })} placeholder="cth: PT Lasindo Jaya" /></Field>
-          <Field label="Layanan"><input className="input" value={subForm.services} onChange={(e) => setSubForm({ ...subForm, services: e.target.value })} placeholder="cth: Fabrikasi & Blasting" /></Field>
+          <Field label={S.companyNameLabel}><input className="input" value={subForm.name} onChange={(e) => setSubForm({ ...subForm, name: e.target.value })} placeholder={S.companyNamePh} /></Field>
+          <Field label={S.servicesLabel}><input className="input" value={subForm.services} onChange={(e) => setSubForm({ ...subForm, services: e.target.value })} placeholder={S.servicesPh} /></Field>
           <FormGrid>
-            <Field label="Nilai kontrak (Rp)"><input type="number" min={0} className="input" value={subForm.contract} onChange={(e) => setSubForm({ ...subForm, contract: e.target.value })} /></Field>
-            <Field label="Rating K3">
+            <Field label={S.contractAmountLabel}><input type="number" min={0} className="input" value={subForm.contract} onChange={(e) => setSubForm({ ...subForm, contract: e.target.value })} /></Field>
+            <Field label={S.k3RatingLabel}>
               <select className="input" value={subForm.k3} onChange={(e) => setSubForm({ ...subForm, k3: e.target.value })}>
                 {["A+", "A", "B+", "B", "C"].map((k) => <option key={k}>{k}</option>)}
               </select>
             </Field>
-            <Field label="Tipe kontrak">
+            <Field label={S.contractTypeLabel}>
               <select className="input" value={subForm.contractType} onChange={(e) => setSubForm({ ...subForm, contractType: e.target.value })}>
                 {CONTRACT_TYPES.map((t) => <option key={t}>{t}</option>)}
               </select>
             </Field>
-            <Field label="Skema bayar">
+            <Field label={S.paySchemeLabel}>
               <select className="input" value={subForm.payScheme} onChange={(e) => setSubForm({ ...subForm, payScheme: e.target.value })}>
                 {PAY_SCHEMES.map((t) => <option key={t}>{t}</option>)}
               </select>
             </Field>
-            <Field label="No. bank garansi"><input className="input font-mono" value={subForm.noBG} onChange={(e) => setSubForm({ ...subForm, noBG: e.target.value })} placeholder="cth: BG-2026-081" /></Field>
-            <Field label="Expiry BG"><input type="date" className="input" value={subForm.bgExpiry} onChange={(e) => setSubForm({ ...subForm, bgExpiry: e.target.value })} /></Field>
-            <Field label="Nilai BG (Rp)"><input type="number" min={0} className="input" value={subForm.bgValue} onChange={(e) => setSubForm({ ...subForm, bgValue: e.target.value })} placeholder="cth: 500000000" /></Field>
+            <Field label={S.bgNoLabel}><input className="input font-mono" value={subForm.noBG} onChange={(e) => setSubForm({ ...subForm, noBG: e.target.value })} placeholder={S.bgNoPh} /></Field>
+            <Field label={S.bgExpiryLabel}><input type="date" className="input" value={subForm.bgExpiry} onChange={(e) => setSubForm({ ...subForm, bgExpiry: e.target.value })} /></Field>
+            <Field label={S.bgValueLabel}><input type="number" min={0} className="input" value={subForm.bgValue} onChange={(e) => setSubForm({ ...subForm, bgValue: e.target.value })} placeholder={S.bgValuePh} /></Field>
           </FormGrid>
         </div>
       </Modal>
 
       {/* Modal kelola milestone SOW */}
-      <Modal open={msSub !== null} onClose={() => setMsSub(null)} title={`Milestone SOW - ${msSub?.name ?? ""}`} subtitle="Termin hanya bisa merujuk milestone di sini"
-        footer={<button className="btn-secondary" onClick={() => setMsSub(null)}>Tutup</button>}>
+      <Modal open={msSub !== null} onClose={() => setMsSub(null)} title={S.msTitle.replace("{n}", msSub?.name ?? "")} subtitle={S.msSub}
+        footer={<button className="btn-secondary" onClick={() => setMsSub(null)}>{S.closeBtn}</button>}>
         <div className="space-y-3">
           <div className="space-y-2">
             {msSub && milestonesOf(msSub).map((m, idx) => (
               <div key={idx} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-steel-100 px-3 py-2 text-sm">
                 <div>
                   <p className="font-medium text-navy-900">{m.title}</p>
-                  <p className="text-xs text-steel-500">{m.pct}% · due {fmtTanggal(m.due)} · pagu {fmtRupiah(Number(msSub.contract || 0) * Number(m.pct || 0) / 100)}</p>
+                  <p className="text-xs text-steel-500">{S.msMeta.replace("{a}", String(m.pct)).replace("{b}", fmtTanggal(m.due)).replace("{c}", fmtRupiah(Number(msSub.contract || 0) * Number(m.pct || 0) / 100))}</p>
                 </div>
-                <button className="btn-secondary text-xs" onClick={() => removeMilestone(idx)}>Hapus</button>
+                <button className="btn-secondary text-xs" onClick={() => removeMilestone(idx)}>{S.deleteBtn}</button>
               </div>
             ))}
-            {(!msSub || milestonesOf(msSub).length === 0) && <p className="text-xs text-steel-400">Belum ada milestone.</p>}
+            {(!msSub || milestonesOf(msSub).length === 0) && <p className="text-xs text-steel-400">{S.emptyMs}</p>}
           </div>
           <FormGrid>
-            <Field label="Judul milestone"><input className="input" value={msForm.title} onChange={(e) => setMsForm({ ...msForm, title: e.target.value })} placeholder="cth: Fabrikasi 50%" /></Field>
-            <Field label="Bobot (%)"><input type="number" min={0} max={100} className="input" value={msForm.pct} onChange={(e) => setMsForm({ ...msForm, pct: e.target.value })} placeholder="cth: 30" /></Field>
-            <Field label="Due date"><input type="date" className="input" value={msForm.due} onChange={(e) => setMsForm({ ...msForm, due: e.target.value })} /></Field>
+            <Field label={S.msNameLabel}><input className="input" value={msForm.title} onChange={(e) => setMsForm({ ...msForm, title: e.target.value })} placeholder={S.msNamePh} /></Field>
+            <Field label={S.weightLabel}><input type="number" min={0} max={100} className="input" value={msForm.pct} onChange={(e) => setMsForm({ ...msForm, pct: e.target.value })} placeholder={S.weightPh} /></Field>
+            <Field label={S.dueLabel}><input type="date" className="input" value={msForm.due} onChange={(e) => setMsForm({ ...msForm, due: e.target.value })} /></Field>
           </FormGrid>
-          <button className="btn-primary text-xs" onClick={saveMilestone}><Plus className="h-3.5 w-3.5" /> Tambah Milestone</button>
+          <button className="btn-primary text-xs" onClick={saveMilestone}><Plus className="h-3.5 w-3.5" /> {S.addMsBtn}</button>
         </div>
       </Modal>
 
       {/* Konfirmasi status subkontraktor */}
       <ConfirmModal
         open={subConfirm !== null}
-        title={`Ubah ${subConfirm?.name ?? ""} → ${subConfirm?.next ?? ""}?`}
-        desc="Perubahan status subkontraktor memengaruhi kelayakan penugasan WO baru."
-        confirmLabel="Ya, ubah"
+        title={S.subStatusTitle.replace("{a}", subConfirm?.name ?? "").replace("{b}", subConfirm?.next ?? "")}
+        desc={S.subStatusDesc}
+        confirmLabel={S.confirmChangeBtn}
         onCancel={() => setSubConfirm(null)}
-        onConfirm={async () => { if (subConfirm) { await update("subcontractors", subConfirm.id, { status: subConfirm.next }); toast(`${subConfirm.name} → ${subConfirm.next}`); } setSubConfirm(null); }}
+        onConfirm={async () => { if (subConfirm) { await update("subcontractors", subConfirm.id, { status: subConfirm.next }); toast(S.movedTo.replace("{a}", subConfirm.name).replace("{b}", subConfirm.next)); } setSubConfirm(null); }}
       />
 
       {/* Modal WO */}
-      <Modal open={showWo} onClose={() => setShowWo(false)} title="Terbitkan Work Order"
-        footer={<><button className="btn-secondary" onClick={() => setShowWo(false)}>Batal</button><button className="btn-primary" onClick={saveWo}>Terbitkan</button></>}>
+      <Modal open={showWo} onClose={() => setShowWo(false)} title={S.issueWoTitle}
+        footer={<><button className="btn-secondary" onClick={() => setShowWo(false)}>{S.cancelBtn}</button><button className="btn-primary" onClick={saveWo}>{S.issueWoConfirm}</button></>}>
         <div className="space-y-3">
           <FormGrid>
-            <Field label="Subkontraktor">
+            <Field label={S.tabSub}>
               <select className="input" value={woForm.sub} onChange={(e) => setWoForm({ ...woForm, sub: e.target.value })}>
-                <option value="">Pilih…</option>
+                <option value="">{S.pickOpt}</option>
                 {subcontractors.filter((s) => s.status === "Aktif").map((s) => <option key={s.id} value={s.name}>{s.name}</option>)}
               </select>
             </Field>
-            <Field label="Proyek">
+            <Field label={S.projectLabel}>
               <select className="input" value={woForm.project} onChange={(e) => setWoForm({ ...woForm, project: e.target.value })}>
-                <option value="">Pilih…</option>
+                <option value="">{S.pickOpt}</option>
                 {projectOptions.filter((p) => p.status !== "Selesai").map((p) => <option key={p.id} value={p.id}>{p.id} · {p.vessel}</option>)}
               </select>
             </Field>
           </FormGrid>
-          <Field label="Lingkup pekerjaan"><input className="input" value={woForm.scope} onChange={(e) => setWoForm({ ...woForm, scope: e.target.value })} placeholder="cth: Fabrikasi section 8-10" /></Field>
+          <Field label={S.scopeJobLabel}><input className="input" value={woForm.scope} onChange={(e) => setWoForm({ ...woForm, scope: e.target.value })} placeholder={S.scopeJobPh} /></Field>
           <FormGrid>
-            <Field label="Target selesai"><input type="date" className="input" value={woForm.targetDate} onChange={(e) => setWoForm({ ...woForm, targetDate: e.target.value })} /></Field>
-            <Field label="Denda per hari (%)" hint="Default 0,1% · maks 5%"><input type="number" min={0} max={5} step={0.1} className="input" value={woForm.penaltyPct} onChange={(e) => setWoForm({ ...woForm, penaltyPct: e.target.value })} /></Field>
+            <Field label={S.targetDoneLabel}><input type="date" className="input" value={woForm.targetDate} onChange={(e) => setWoForm({ ...woForm, targetDate: e.target.value })} /></Field>
+            <Field label={S.penaltyLabel} hint={S.penaltyHint}><input type="number" min={0} max={5} step={0.1} className="input" value={woForm.penaltyPct} onChange={(e) => setWoForm({ ...woForm, penaltyPct: e.target.value })} /></Field>
           </FormGrid>
         </div>
       </Modal>
 
       {/* Modal progres WO */}
-      <Modal open={woProg !== null} onClose={() => setWoProg(null)} title={`Update progres ${woProg?.id ?? ""}`}
-        footer={<><button className="btn-secondary" onClick={() => setWoProg(null)}>Batal</button><button className="btn-primary" onClick={saveWoProgress}>Simpan</button></>}>
+      <Modal open={woProg !== null} onClose={() => setWoProg(null)} title={S.progTitle.replace("{n}", woProg?.id ?? "")}
+        footer={<><button className="btn-secondary" onClick={() => setWoProg(null)}>{S.cancelBtn}</button><button className="btn-primary" onClick={saveWoProgress}>{S.saveBtn}</button></>}>
         <div className="space-y-3">
-          <Field label={`Progres: ${progVal}% (saat ini ${woProg?.progress ?? 0}%)`}>
+          <Field label={S.progFieldLabel.replace("{a}", progVal).replace("{b}", String(woProg?.progress ?? 0))}>
             <input type="range" min={0} max={100} value={Number(progVal) || 0} onChange={(e) => setProgVal(e.target.value)} className="w-full" />
           </Field>
-          <Field label="Catatan" hint="Wajib diisi jika progres dimundurkan">
-            <input className="input" value={progNote} onChange={(e) => setProgNote(e.target.value)} placeholder="cth: Revisi hasil QC section 4" />
+          <Field label={S.noteLabel} hint={S.progNoteHint}>
+            <input className="input" value={progNote} onChange={(e) => setProgNote(e.target.value)} placeholder={S.progNotePh} />
           </Field>
         </div>
       </Modal>
@@ -906,83 +910,83 @@ export default function Subcontractor() {
       {/* Konfirmasi WO selesai 100% */}
       <ConfirmModal
         open={confirmFinish !== null}
-        title={`Selesaikan ${confirmFinish?.id ?? ""}?`}
-        desc="Progres 100% menandai WO Selesai dan mengunci update progres berikutnya."
-        confirmLabel="Ya, selesaikan"
+        title={S.finishTitle.replace("{n}", confirmFinish?.id ?? "")}
+        desc={S.finishDesc}
+        confirmLabel={S.finishConfirmBtn}
         onCancel={() => setConfirmFinish(null)}
         onConfirm={() => { if (confirmFinish) applyWoProgress(confirmFinish.id, confirmFinish.v, confirmFinish.note); setConfirmFinish(null); setWoProg(null); setProgNote(""); }}
       />
 
       {/* Modal termin */}
-      <Modal open={showTerm} onClose={() => setShowTerm(false)} title="Ajukan Termin Pembayaran" subtitle="WO mengikuti subkontraktor yang dipilih"
-        footer={<><button className="btn-secondary" onClick={() => setShowTerm(false)}>Batal</button><button className="btn-primary" onClick={saveTerm}>Ajukan</button></>}>
+      <Modal open={showTerm} onClose={() => setShowTerm(false)} title={S.termTitle} subtitle={S.termSub2}
+        footer={<><button className="btn-secondary" onClick={() => setShowTerm(false)}>{S.cancelBtn}</button><button className="btn-primary" onClick={saveTerm}>{S.proposeBtn}</button></>}>
         <div className="space-y-3">
           <FormGrid>
-            <Field label="Subkontraktor">
+            <Field label={S.tabSub}>
               <select className="input" value={termForm.sub} onChange={(e) => setTermForm({ ...termForm, sub: e.target.value, wo: "", milestone: "" })}>
-                <option value="">Pilih…</option>
+                <option value="">{S.pickOpt}</option>
                 {subcontractors.map((s) => <option key={s.id} value={s.name}>{s.name}</option>)}
               </select>
             </Field>
-            <Field label="Work Order">
+            <Field label={S.woLabel}>
               <select className="input" value={termForm.wo} onChange={(e) => setTermForm({ ...termForm, wo: e.target.value })} disabled={!termForm.sub}>
-                <option value="">{termForm.sub ? "Pilih WO…" : "Pilih sub dulu…"}</option>
+                <option value="">{termForm.sub ? S.pickWoOpt : S.pickSubFirst}</option>
                 {termWoOptions.map((w) => <option key={w.id} value={w.id}>{w.id} ({w.progress}%)</option>)}
               </select>
             </Field>
-            <Field label="Milestone SOW" hint="Wajib · kumulatif per milestone divalidasi">
+            <Field label={S.msSowBtn} hint={S.msHint}>
               <select className="input" value={termForm.milestone} onChange={(e) => setTermForm({ ...termForm, milestone: e.target.value })} disabled={!termForm.sub}>
-                <option value="">{termForm.sub ? (termMsList.length ? "Pilih milestone…" : "Belum ada milestone - kelola dulu") : "Pilih sub dulu…"}</option>
+                <option value="">{termForm.sub ? (termMsList.length ? S.pickMsOpt : S.noMsOpt) : S.pickSubFirst}</option>
                 {termMsList.map((m) => <option key={m.title} value={m.title}>{m.title} ({m.pct}% · due {fmtTanggal(m.due)})</option>)}
               </select>
             </Field>
           </FormGrid>
           {termSub && termWo && (
             <p className="rounded-lg bg-surface px-3 py-2 text-xs text-steel-600">
-              Batas termin WO ini {fmtRupiah(termCap)} (kontrak {fmtRupiah(Number(termSub.contract || 0))} × progres {termWo.progress}%) · sudah diajukan {fmtRupiah(termUsed)}
-              {termMs ? ` · pagu ${termMs.title} ${fmtRupiah(termMsCap)} · terpakai ${fmtRupiah(termMsUsed)}` : ""}
-              {termTsRef > 0 ? ` · referensi timesheet ${termTsHours} jam × ${fmtRupiah(Number(termWo.rate))} = ${fmtRupiah(termTsRef)}` : ""}
+              {S.termCapInfo.replace("{a}", fmtRupiah(termCap)).replace("{b}", fmtRupiah(Number(termSub.contract || 0))).replace("{c}", String(termWo.progress)).replace("{d}", fmtRupiah(termUsed))}
+              {termMs ? S.msCapInfo.replace("{a}", termMs.title).replace("{b}", fmtRupiah(termMsCap)).replace("{c}", fmtRupiah(termMsUsed)) : ""}
+              {termTsRef > 0 ? S.tsRefInfo.replace("{a}", String(termTsHours)).replace("{b}", fmtRupiah(Number(termWo.rate))).replace("{c}", fmtRupiah(termTsRef)) : ""}
             </p>
           )}
-          <Field label="Nilai termin (Rp)"><input type="number" min={0} className="input" value={termForm.amount} onChange={(e) => setTermForm({ ...termForm, amount: e.target.value })} /></Field>
+          <Field label={S.termAmountLabel}><input type="number" min={0} className="input" value={termForm.amount} onChange={(e) => setTermForm({ ...termForm, amount: e.target.value })} /></Field>
           <FormGrid>
-            <Field label="PPh - variatif RawData (0.5% final / 2%)">
+            <Field label={S.pphLabel}>
               <select className="input" value={termForm.pphPct} onChange={(e) => setTermForm({ ...termForm, pphPct: e.target.value })}>
                 <option value="0.5">0.5% Final (cth Pak Yusuf)</option>
                 <option value="2">2% PPh 23</option>
               </select>
             </Field>
-            <Field label="Retensi (%)"><input type="number" min={0} max={100} className="input" value={termForm.retPct} onChange={(e) => setTermForm({ ...termForm, retPct: e.target.value })} /></Field>
+            <Field label={S.retensiLabel}><input type="number" min={0} max={100} className="input" value={termForm.retPct} onChange={(e) => setTermForm({ ...termForm, retPct: e.target.value })} /></Field>
           </FormGrid>
         </div>
       </Modal>
 
       {/* Modal bukti bayar termin */}
-      <Modal open={termPay !== null} onClose={() => setTermPay(null)} title={`Bayar ${termPay?.id ?? ""}?`} subtitle={`${termPay?.sub ?? ""} - neto ${fmtRupiah(termPay ? netoOf(termPay) : 0)}${needsTermDirector(termPay) ? ` · di atas ambang ${fmtRupiah(terminThreshold)}, butuh Director` : ""}`}
-        footer={<><button className="btn-secondary" onClick={() => setTermPay(null)}>Batal</button><button className="btn-primary" disabled={needsTermDirector(termPay) && (!termDirCheck || !termDirName.trim())} onClick={confirmBuktiTerm}>Simpan Bukti Bayar</button></>}>
+      <Modal open={termPay !== null} onClose={() => setTermPay(null)} title={S.payTermTitle.replace("{n}", termPay?.id ?? "")} subtitle={S.payTermSub.replace("{a}", termPay?.sub ?? "").replace("{b}", fmtRupiah(termPay ? netoOf(termPay) : 0)).replace("{c}", needsTermDirector(termPay) ? S.directorNeeded.replace("{n}", fmtRupiah(terminThreshold)) : "")}
+        footer={<><button className="btn-secondary" onClick={() => setTermPay(null)}>{S.cancelBtn}</button><button className="btn-primary" disabled={needsTermDirector(termPay) && (!termDirCheck || !termDirName.trim())} onClick={confirmBuktiTerm}>{S.saveProofBtn}</button></>}>
         <div className="space-y-3">
           <FormGrid>
-            <Field label="Tanggal bayar"><input type="date" required className="input" value={proof.date} onChange={(e) => setProof({ ...proof, date: e.target.value })} /></Field>
-            <Field label="Metode">
+            <Field label={S.payDateLabel}><input type="date" required className="input" value={proof.date} onChange={(e) => setProof({ ...proof, date: e.target.value })} /></Field>
+            <Field label={S.methodLabel}>
               <select className="input" value={proof.method} onChange={(e) => setProof({ ...proof, method: e.target.value })}>
                 {["Transfer", "Tunai", "Giro"].map((m) => <option key={m}>{m}</option>)}
               </select>
             </Field>
           </FormGrid>
-          <Field label="No. referensi" hint="Wajib - no. bukti transfer / kuitansi">
-            <input className="input font-mono" value={proof.ref} onChange={(e) => setProof({ ...proof, ref: e.target.value })} placeholder="cth: TRF-2026-0914" />
+          <Field label={S.refNoLabel} hint={S.refNoHint}>
+            <input className="input font-mono" value={proof.ref} onChange={(e) => setProof({ ...proof, ref: e.target.value })} placeholder={S.refNoPh} />
           </Field>
-          <Field label="No. bukti potong PPh (opsional)" hint={`PPh ${termPay ? pphOf(termPay, pphDefault) : ""}% = ${fmtRupiah(termPay ? Math.round(Number(termPay.amount || 0) * pphOf(termPay, pphDefault) / 100) : 0)} dipotong saat bayar`}>
-            <input className="input font-mono" value={withholdingRef} onChange={(e) => setWithholdingRef(e.target.value)} placeholder="cth: BUPOT-2026-001" />
+          <Field label={S.withholdLabel} hint={S.withholdHint.replace("{a}", String(termPay ? pphOf(termPay, pphDefault) : "")).replace("{b}", fmtRupiah(termPay ? Math.round(Number(termPay.amount || 0) * pphOf(termPay, pphDefault) / 100) : 0))}>
+            <input className="input font-mono" value={withholdingRef} onChange={(e) => setWithholdingRef(e.target.value)} placeholder={S.withholdPh} />
           </Field>
           {needsTermDirector(termPay) && (
             <>
               <label className="flex items-start gap-2 text-sm text-steel-600">
                 <input type="checkbox" className="mt-1" checked={termDirCheck} onChange={(e) => setTermDirCheck(e.target.checked)} />
-                Saya selaku Director menyetujui pelunasan termin nominal besar ini.
+                {S.directorCheck}
               </label>
-              <Field label="Nama Director" hint="Wajib - dicatat di log">
-                <input className="input" value={termDirName} onChange={(e) => setTermDirName(e.target.value)} placeholder="cth: Andi Darman" />
+              <Field label={S.directorNameLabel} hint={S.directorNameHint}>
+                <input className="input" value={termDirName} onChange={(e) => setTermDirName(e.target.value)} placeholder={S.directorNamePh} />
               </Field>
             </>
           )}
@@ -992,50 +996,50 @@ export default function Subcontractor() {
       {/* Konfirmasi penolakan termin */}
       <ConfirmModal
         open={rejectTerm !== null}
-        title={`Tolak ${rejectTerm?.id ?? ""}?`}
-        desc="Termin yang ditolak tidak dihitung dalam kumulatif batas WO."
-        confirmLabel="Ya, tolak"
+        title={S.rejectTermTitle.replace("{n}", rejectTerm?.id ?? "")}
+        desc={S.rejectTermDesc}
+        confirmLabel={S.rejectConfirmBtn}
         onCancel={() => setRejectTerm(null)}
-        onConfirm={async () => { if (rejectTerm) { await update("termins", rejectTerm.id, { status: "Ditolak" }); toast(`${rejectTerm.id} ditolak`); } setRejectTerm(null); }}
+        onConfirm={async () => { if (rejectTerm) { await update("termins", rejectTerm.id, { status: "Ditolak" }); toast(S.tRejected.replace("{n}", rejectTerm.id)); } setRejectTerm(null); }}
       />
 
       {/* Modal release retensi */}
-      <Modal open={releaseTerm !== null} onClose={() => setReleaseTerm(null)} title={`Release Retensi ${releaseTerm?.id ?? ""}?`} subtitle="Hanya setelah WO Selesai · status menjadi Retensi Released"
-        footer={<><button className="btn-secondary" onClick={() => setReleaseTerm(null)}>Batal</button><button className="btn-primary" onClick={confirmRelease}>Rilis Retensi</button></>}>
+      <Modal open={releaseTerm !== null} onClose={() => setReleaseTerm(null)} title={S.releaseTitle.replace("{n}", releaseTerm?.id ?? "")} subtitle={S.releaseSub}
+        footer={<><button className="btn-secondary" onClick={() => setReleaseTerm(null)}>{S.cancelBtn}</button><button className="btn-primary" onClick={confirmRelease}>{S.releaseConfirmBtn}</button></>}>
         <div className="space-y-3">
           <FormGrid>
-            <Field label="Tanggal rilis"><input type="date" className="input" value={releaseForm.date} onChange={(e) => setReleaseForm({ ...releaseForm, date: e.target.value })} /></Field>
-            <Field label="No. berita acara"><input className="input font-mono" value={releaseForm.ba} onChange={(e) => setReleaseForm({ ...releaseForm, ba: e.target.value })} placeholder="cth: BA-2026-118" /></Field>
+            <Field label={S.releaseDateLabel}><input type="date" className="input" value={releaseForm.date} onChange={(e) => setReleaseForm({ ...releaseForm, date: e.target.value })} /></Field>
+            <Field label={S.baNoLabel}><input className="input font-mono" value={releaseForm.ba} onChange={(e) => setReleaseForm({ ...releaseForm, ba: e.target.value })} placeholder={S.baNoPh} /></Field>
           </FormGrid>
         </div>
       </Modal>
 
       {/* Modal timesheet */}
-      <Modal open={showTs} onClose={() => setShowTs(false)} title="Catat Timesheet"
-        footer={<><button className="btn-secondary" onClick={() => setShowTs(false)}>Batal</button><button className="btn-primary" onClick={saveTimesheet}>Simpan</button></>}>
+      <Modal open={showTs} onClose={() => setShowTs(false)} title={S.tsTitle}
+        footer={<><button className="btn-secondary" onClick={() => setShowTs(false)}>{S.cancelBtn}</button><button className="btn-primary" onClick={saveTimesheet}>{S.saveBtn}</button></>}>
         <div className="space-y-3">
           <FormGrid>
-            <Field label="Work Order">
+            <Field label={S.woLabel}>
               <select className="input" value={tsForm.wo} onChange={(e) => setTsForm({ ...tsForm, wo: e.target.value })}>
-                <option value="">Pilih WO…</option>
+                <option value="">{S.pickWoOpt}</option>
                 {workOrders.filter((w) => w.status !== "Selesai").map((w) => <option key={w.id} value={w.id}>{w.id} - {w.sub}</option>)}
               </select>
             </Field>
-            <Field label="Proyek (dari WO)" hint={(() => { const w = workOrders.find((x) => x.id === tsForm.wo); return w && Number(w.rate || 0) > 0 ? `Rate otomatis ${fmtRupiah(Number(w.rate))}/jam` : "Rate WO belum ditetapkan"; })()}>
-              <select className="input" value={tsForm.wo} disabled={!tsForm.wo} onChange={() => {}} aria-label="Proyek dari WO">
-                <option value="">{tsForm.wo ? (workOrders.find((x) => x.id === tsForm.wo)?.project ?? "-") : "Pilih WO dulu…"}</option>
+            <Field label={S.projectFromWo} hint={(() => { const w = workOrders.find((x) => x.id === tsForm.wo); return w && Number(w.rate || 0) > 0 ? S.rateAutoHint.replace("{n}", fmtRupiah(Number(w.rate))) : S.rateMissingHint; })()}>
+              <select className="input" value={tsForm.wo} disabled={!tsForm.wo} onChange={() => {}} aria-label={S.projectFromWoAria}>
+                <option value="">{tsForm.wo ? (workOrders.find((x) => x.id === tsForm.wo)?.project ?? "-") : S.pickWoFirstTs}</option>
               </select>
             </Field>
-            <Field label="Karyawan">
+            <Field label={S.employeeLabel}>
               <select className="input" value={tsForm.employee} onChange={(e) => setTsForm({ ...tsForm, employee: e.target.value })}>
-                <option value="">Pilih…</option>
+                <option value="">{S.pickOpt}</option>
                 {employeeOptions.map((e) => <option key={e.id} value={e.id}>{e.name} - {e.role}</option>)}
               </select>
             </Field>
-            <Field label="Tanggal"><input type="date" className="input" value={tsForm.date} onChange={(e) => setTsForm({ ...tsForm, date: e.target.value })} /></Field>
-            <Field label="Jam kerja"><input type="number" min={0} step={0.5} className="input" value={tsForm.hours} onChange={(e) => setTsForm({ ...tsForm, hours: e.target.value })} /></Field>
+            <Field label={S.dateLabel}><input type="date" className="input" value={tsForm.date} onChange={(e) => setTsForm({ ...tsForm, date: e.target.value })} /></Field>
+            <Field label={S.hoursLabel}><input type="number" min={0} step={0.5} className="input" value={tsForm.hours} onChange={(e) => setTsForm({ ...tsForm, hours: e.target.value })} /></Field>
           </FormGrid>
-          <Field label="Catatan"><input className="input" value={tsForm.note} onChange={(e) => setTsForm({ ...tsForm, note: e.target.value })} placeholder="cth: Fabrikasi section 5" /></Field>
+          <Field label={S.noteLabel}><input className="input" value={tsForm.note} onChange={(e) => setTsForm({ ...tsForm, note: e.target.value })} placeholder={S.notePhTs} /></Field>
         </div>
       </Modal>
     </div>

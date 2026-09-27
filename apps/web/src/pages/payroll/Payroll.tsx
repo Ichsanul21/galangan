@@ -25,6 +25,8 @@ import { AlertBannerView, notifRowId, useModuleAlert } from "../../components/Al
 import { getSetting } from "../../utils/settings";
 import { exportExcel } from "../../utils/export";
 import { kasKodeOf, postCashJournal } from "../../services/autoJournal";
+import { n_dry } from "../../i18n/n_dry";
+import { useT } from "../../i18n/LanguageContext";
 
 const NEXT_STATUS: Record<string, string> = {
   Draft: "Dihitung",
@@ -36,12 +38,6 @@ const NEXT_STATUS: Record<string, string> = {
    loncat, tidak bisa mundur, edit hanya di Draft, hapus hanya di Draft. */
 const PAY_STAGES = ["Draft", "Dihitung", "Disetujui", "Dibayar"] as const;
 
-const ADV_LABEL: Record<string, string> = {
-  Draft: "Hitung",
-  Dihitung: "Setujui",
-  Disetujui: "Bayar",
-};
-
 function StageStrip({ counts, active, onPick, prefix }: {
   counts: Record<string, number>;
   active: string;
@@ -49,8 +45,10 @@ function StageStrip({ counts, active, onPick, prefix }: {
   prefix: string;
 }) {
   const total = PAY_STAGES.reduce((s, st) => s + (counts[st] ?? 0), 0);
+  const { locale } = useT();
+  const S = n_dry[locale];
   return (
-    <div className="mb-3 flex flex-wrap items-center gap-2" role="group" aria-label="Filter tahap payroll">
+    <div className="mb-3 flex flex-wrap items-center gap-2" role="group" aria-label={S.stageAria}>
       {PAY_STAGES.map((st, i) => {
         const n = counts[st] ?? 0;
         const on = active === st;
@@ -59,7 +57,7 @@ function StageStrip({ counts, active, onPick, prefix }: {
             key={st}
             onClick={() => onPick(on ? "Semua" : st)}
             aria-pressed={on}
-            title={n === 0 ? `Tidak ada slip ${st} - klik untuk filter` : `Tampilkan ${n} slip ${st}`}
+            title={n === 0 ? S.stageEmpty.replace("{a}", st) : S.stageShow.replace("{n}", String(n)).replace("{a}", st)}
             className={`flex items-center gap-2 rounded-xl border px-3 py-2 text-xs font-semibold transition-colors ${
               on ? "border-navy-700 bg-navy-700 text-white" : "border-steel-200 bg-white text-steel-700 hover:border-navy-400"
             }`}
@@ -75,8 +73,8 @@ function StageStrip({ counts, active, onPick, prefix }: {
           </button>
         );
       })}
-      <span className="text-xs text-steel-400">{total} slip · klik tahap untuk filter, klik lagi untuk lepas</span>
-      <span className="sr-only" id={`${prefix}-stage-hint`}>Tahap aktif: {active}</span>
+      <span className="text-xs text-steel-400">{S.stageHint.replace("{n}", String(total))}</span>
+      <span className="sr-only" id={`${prefix}-stage-hint`}>{S.stageActive.replace("{a}", active)}</span>
     </div>
   );
 }
@@ -252,6 +250,9 @@ function calcPesangon(masaKerja: number, upah: number): { pesMonths: number; pes
 
 export default function Payroll() {
   const { data, add, update, remove, log, inBranch } = useStore();
+  const { locale } = useT();
+  const S = n_dry[locale];
+  const advLabel: Record<string, string> = { Draft: S.advCalc, Dihitung: S.advApprove, Disetujui: S.advPay };
   const modAlert = useModuleAlert("payroll");
   const [tab, setTab] = useState("Gaji");
   const [period, setPeriod] = useState(todayISO().slice(0, 7));
@@ -368,7 +369,7 @@ export default function Payroll() {
     const existing = new Set(gajiRows.map((p) => String(p.employeeId)));
     const fresh = activeEmps.filter((e) => !existing.has(e.id));
     if (fresh.length === 0) {
-      toast("Semua karyawan aktif sudah punya draft periode ini", "info");
+      toast(S.tAllDrafted, "info");
       return;
     }
     fresh.forEach(async (e) => {
@@ -434,11 +435,11 @@ export default function Payroll() {
           undefined,
         );
       } catch {
-        toast(`Generate gaji ${e.name ?? e.id} gagal - dilewati`, "info");
+        toast(S.tGenFail.replace("{a}", String(e.name ?? e.id)), "info");
       }
     });
     log("generate payroll", `${period} · ${fresh.length} draft`, "Payroll");
-    toast(`${fresh.length} draft payroll ${fmtBulan(period)} dibuat`);
+    toast(S.tDraftsMade.replace("{n}", String(fresh.length)).replace("{a}", fmtBulan(period)));
   };
 
   /* Alur kaku: validasi + konfirmasi sebelum pindah tahap. Dibayar lewat
@@ -452,7 +453,7 @@ export default function Payroll() {
       return;
     }
     if (!(Number(p.net || 0) > 0)) {
-      toast(`${p.id} net Rp 0 - perbaiki komponen dulu via Edit`, "info");
+      toast(S.tNetZero.replace("{a}", String(p.id)), "info");
       return;
     }
     setConfirmAdv(p);
@@ -467,7 +468,7 @@ export default function Payroll() {
     }
     await update("payroll", confirmAdv.id, { status: next });
     log("memproses payroll", `${confirmAdv.id} ${confirmAdv.status} → ${next}`, "Payroll");
-    toast(`${confirmAdv.id} → ${next}`);
+    toast(S.movedTo.replace("{a}", String(confirmAdv.id)).replace("{b}", next));
     setConfirmAdv(null);
   };
 
@@ -486,18 +487,18 @@ export default function Payroll() {
     if (!editTarget) return;
     const emp = empOf(String(editTarget.employeeId));
     if (!emp) {
-      toast("Data karyawan tidak ditemukan", "info");
+      toast(S.tEmpMissing, "info");
       return;
     }
     const basic = Number(editForm.basic);
     const overtimePay = Number(editForm.overtimePay);
     const manualDed = Number(editForm.deductions);
     if ([basic, overtimePay, manualDed].some((n) => Number.isNaN(n) || n < 0)) {
-      toast("Komponen gaji harus angka valid", "info");
+      toast(S.tCompInvalid, "info");
       return;
     }
     if (editLines.some((l) => Number.isNaN(Number(l.amount)) || Number(l.amount) < 0)) {
-      toast("Nominal tunjangan harus angka valid", "info");
+      toast(S.tAllowanceInvalid, "info");
       return;
     }
     const lines = editLines.map((l) => ({ label: l.label.trim() || "Tunjangan", amount: Number(l.amount) || 0 }));
@@ -515,18 +516,18 @@ export default function Payroll() {
       bpjsTkKar: c.bpjsTkKar,
       net: c.net,
     });
-    toast(`${editTarget.id} diperbarui - net ${fmtRupiah(c.net)}`);
+    toast(S.tUpdated.replace("{a}", String(editTarget.id)).replace("{b}", fmtRupiah(c.net)));
     setEditTarget(null);
   };
 
   const confirmPay = async () => {
     if (!payTarget) return;
     if (!proof.date) {
-      toast("Tanggal bayar wajib diisi", "info");
+      toast(S.tDateReq, "info");
       return;
     }
     if (!proof.ref.trim()) {
-      toast("No. referensi wajib diisi", "info");
+      toast(S.tRefReq, "info");
       return;
     }
     const slipId = payTarget.id;
@@ -549,10 +550,10 @@ export default function Payroll() {
         kr: kasKodeOf(proof.method),
         amount: Number(payTarget.net || 0),
       });
-      toast(`${payTarget.id} dibayar - bukti tersimpan`);
+      toast(S.tPaid.replace("{a}", String(payTarget.id)));
       setPayTarget(null);
     } catch {
-      toast(`Pembayaran ${slipId} gagal - periksa slip & jurnal`, "info");
+      toast(S.tPayFail.replace("{a}", slipId), "info");
     }
   };
 
@@ -560,9 +561,9 @@ export default function Payroll() {
     try {
       await remove("payroll", p.id);
       log("menghapus payroll", `${p.id} · ${rowType(p)}`, "Payroll");
-      toast(`${p.id} dihapus`);
+      toast(S.tRowDeleted.replace("{a}", String(p.id)));
     } catch (e) {
-      toast(e instanceof Error ? e.message : "Baris payroll tidak bisa dihapus", "info");
+      toast(e instanceof Error ? e.message : S.tRowDeleteFail, "info");
     }
   };
 
@@ -571,7 +572,7 @@ export default function Payroll() {
     const existing = new Set(thrRows.map((p) => String(p.employeeId)));
     const fresh = activeEmps.filter((e) => !existing.has(e.id));
     if (fresh.length === 0) {
-      toast("THR periode ini sudah dihitung untuk semua karyawan aktif", "info");
+      toast(S.tThrDone, "info");
       return;
     }
     fresh.forEach(async (e) => {
@@ -606,18 +607,18 @@ export default function Payroll() {
       );
     });
     log("hitung THR", `${period} · ${fresh.length} penerima`, "Payroll");
-    toast(`${fresh.length} THR ${fmtBulan(period)} dihitung`);
+    toast(S.tThrMade.replace("{n}", String(fresh.length)).replace("{a}", fmtBulan(period)));
   };
 
   const saveBonus = async () => {
     const emp = empOf(bonusForm.employeeId);
     if (!emp) {
-      toast("Pilih karyawan dulu", "info");
+      toast(S.tPickEmp, "info");
       return;
     }
     const nominal = Number(bonusForm.nominal);
     if (!Number.isFinite(nominal) || nominal <= 0) {
-      toast("Nominal bonus harus lebih dari 0", "info");
+      toast(S.tBonusInvalid, "info");
       return;
     }
     const bonusBase = Number(emp.basic || 0) + sumAllowances(emp.allowances);
@@ -645,7 +646,7 @@ export default function Payroll() {
       },
       { action: "mencatat bonus", module: "Payroll" },
     );
-    toast(`Bonus ${fmtRupiah(nominal)} untuk ${emp.name} dicatat`);
+    toast(S.tBonusSaved.replace("{a}", fmtRupiah(nominal)).replace("{b}", String(emp.name)));
     setBonusForm({ employeeId: "", nominal: "", keterangan: "" });
   };
 
@@ -653,21 +654,21 @@ export default function Payroll() {
   const saveKasbon = async () => {
     const emp = empOf(kasbonForm.employeeId);
     if (!emp) {
-      toast("Pilih karyawan dulu", "info");
+      toast(S.tPickEmp, "info");
       return;
     }
     const jumlah = Number(kasbonForm.jumlah);
     const cicilan = Number(kasbonForm.cicilan);
     if (!Number.isFinite(jumlah) || jumlah <= 0) {
-      toast("Jumlah kasbon harus lebih dari 0", "info");
+      toast(S.tKasbonInvalid, "info");
       return;
     }
     if (!Number.isFinite(cicilan) || cicilan <= 0) {
-      toast("Cicilan per payroll harus lebih dari 0", "info");
+      toast(S.tInstallInvalid, "info");
       return;
     }
     if (!kasbonForm.tanggal) {
-      toast("Tanggal kasbon wajib diisi", "info");
+      toast(S.tKasbonDateReq, "info");
       return;
     }
     const entry: KasbonEntry = {
@@ -679,14 +680,14 @@ export default function Payroll() {
     };
     await update("employees", emp.id, { kasbon: [...normKasbon(emp), entry] });
     log("mencatat kasbon", `${entry.id} · ${emp.name} · ${fmtRupiah(entry.jumlah)}`, "Payroll");
-    toast(`Kasbon ${fmtRupiah(entry.jumlah)} untuk ${emp.name} dicatat`);
+    toast(S.tKasbonSaved.replace("{a}", fmtRupiah(entry.jumlah)).replace("{b}", String(emp.name)));
     setKasbonForm({ employeeId: "", tanggal: todayISO(), jumlah: "", cicilan: "" });
   };
 
   const removeKasbon = async (emp: StoreItem, kasbonId: string) => {
     await update("employees", emp.id, { kasbon: normKasbon(emp).filter((k) => k.id !== kasbonId) });
     log("menghapus kasbon", `${kasbonId} · ${emp.name}`, "Payroll");
-    toast(`Kasbon ${kasbonId} dihapus`);
+    toast(S.tKasbonDeleted.replace("{a}", kasbonId));
   };
 
   /* ---------- export ---------- */
@@ -712,7 +713,7 @@ export default function Payroll() {
       ];
     });
     void exportExcel([head, ...body], `rekap-payroll-${period}`, "Rekap");
-    toast("Rekap payroll diunduh");
+    toast(S.tRekapDone);
   };
 
   const exportThrBonus = () => {
@@ -727,7 +728,7 @@ export default function Payroll() {
       p.status,
     ]);
     void exportExcel([head, ...body], `thr-bonus-${period}`, "THR Bonus");
-    toast("Daftar THR & bonus diunduh");
+    toast(S.tThrBonusDone);
   };
 
   const openSlip = (p: StoreItem) => {
@@ -739,12 +740,12 @@ export default function Payroll() {
   const saveSlipSign = async () => {
     if (!slipTarget) return;
     if (slipSign.received && !slipSign.date) {
-      toast("Tanggal terima wajib diisi", "info");
+      toast(S.tReceiveDateReq, "info");
       return;
     }
     await update("payroll", slipTarget.id, { slipSign: { received: slipSign.received, date: slipSign.received ? slipSign.date : "" } });
     log("tanda terima slip", `${slipTarget.id} · ${slipSign.received ? `diterima ${slipSign.date}` : "belum diterima"}`, "Payroll");
-    toast(`Tanda terima ${slipTarget.id} disimpan`);
+    toast(S.tSignSaved.replace("{a}", String(slipTarget.id)));
     setSlipTarget(null);
   };
 
@@ -773,7 +774,7 @@ export default function Payroll() {
       ["Tanda terima", sign.received ? `Sudah diterima ${fmtTanggal(sign.date ?? "")}` : "Belum diterima"],
     ];
     void exportExcel([head, ...body], `slip-${p.id}`, "Slip");
-    toast(`Slip ${p.id} diunduh`);
+    toast(S.tSlipDone.replace("{a}", String(p.id)));
   };
 
   /* ---------- pesangon ---------- */
@@ -790,33 +791,33 @@ export default function Payroll() {
     ];
     void exportExcel([head, ...body], "kalkulator-pesangon", "Pesangon");
     log("hitung pesangon", `mk ${pesForm.masaKerja} thn · total ${fmtRupiah(pesHitung.total)}`, "Payroll");
-    toast("Hasil pesangon diunduh (tanpa disimpan)");
+    toast(S.tPesangonDone);
   };
 
   return (
     <div>
       <PageHeader
-        title="Payroll"
-        subtitle="PPh21 progresif disetahunkan (PTKP TK/0-K/3) · BPJS split karyawan/perusahaan · lembur hanya yang Disetujui"
+        title={S.payPageTitle}
+        subtitle={S.payPageSubtitle}
         icon={<Wallet className="h-5 w-5" />}
         actions={
           tab === "Gaji" ? (
             <>
-              <button className="btn-secondary" onClick={() => setShowPesangon(true)}>Kalkulator Pesangon</button>
+              <button className="btn-secondary" onClick={() => setShowPesangon(true)}>{S.btnPesangon}</button>
               <button className="btn-secondary" onClick={exportRekap}>
-                <Download className="h-4 w-4" /> Ekspor Rekap
+                <Download className="h-4 w-4" /> {S.btnExportRekap}
               </button>
-              <button className="btn-primary-gradient" onClick={generate}>Generate {fmtBulan(period)}</button>
+              <button className="btn-primary-gradient" onClick={generate}>{S.btnGenerate.replace("{a}", fmtBulan(period))}</button>
             </>
           ) : tab === "THR & Bonus" ? (
             <>
               <button className="btn-secondary" onClick={exportThrBonus}>
-                <Download className="h-4 w-4" /> Ekspor THR & Bonus
+                <Download className="h-4 w-4" /> {S.btnExportThr}
               </button>
-              <button className="btn-primary-gradient" onClick={generateTHR}>Hitung THR {fmtBulan(period)}</button>
+              <button className="btn-primary-gradient" onClick={generateTHR}>{S.btnCalcThr.replace("{a}", fmtBulan(period))}</button>
             </>
           ) : (
-            <button className="btn-secondary" onClick={() => setShowPesangon(true)}>Kalkulator Pesangon</button>
+            <button className="btn-secondary" onClick={() => setShowPesangon(true)}>{S.btnPesangon}</button>
           )
         }
       />
@@ -824,24 +825,24 @@ export default function Payroll() {
       {modAlert.active && <AlertBannerView items={modAlert.items} onPick={modAlert.scrollTo} />}
 
       <div className="mb-4 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <KpiCard label="Total Bruto (Gaji)" value={fmtRupiah(totals.bruto)} hint={`Periode ${fmtBulan(period)}`} chip="navy" />
-        <KpiCard label="Total Net (Gaji)" value={fmtRupiah(totals.net)} hint={`${gajiRows.length} slip gaji`} chip="teal" />
-        <KpiCard label="Total PPh21" value={fmtRupiah(totals.pph21)} hint="Progresif T1-T4 disetahunkan" chip="amber" />
-        <KpiCard label="Total BPJS Karyawan" value={fmtRupiah(totals.bpjs)} hint={`Kes ${rates.bpjsKes}% + TK-JHT ${rates.bpjsTk}%`} chip="violet" />
+        <KpiCard label={S.kpiBruto} value={fmtRupiah(totals.bruto)} hint={S.kpiPeriod.replace("{a}", fmtBulan(period))} chip="navy" />
+        <KpiCard label={S.kpiNet} value={fmtRupiah(totals.net)} hint={S.kpiSlips.replace("{n}", String(gajiRows.length))} chip="teal" />
+        <KpiCard label={S.kpiPph} value={fmtRupiah(totals.pph21)} hint={S.kpiPphHint} chip="amber" />
+        <KpiCard label={S.kpiBpjs} value={fmtRupiah(totals.bpjs)} hint={S.kpiBpjsHint.replace("{a}", String(rates.bpjsKes)).replace("{b}", String(rates.bpjsTk))} chip="violet" />
       </div>
 
       <div className="card">
-        <Tabs tabs={["Gaji", "THR & Bonus", "Kasbon"]} active={tab} onChange={setTab} />
+        <Tabs tabs={["Gaji", "THR & Bonus", "Kasbon"]} active={tab} onChange={setTab} labels={{ Gaji: S.tabGaji, "THR & Bonus": S.tabThr, Kasbon: S.tabKasbon }} />
         <div className="p-4">
           {tab === "Gaji" && (
             <div>
               <div className="mb-3 flex flex-wrap items-center gap-2">
                 <label className="flex items-center gap-2 text-sm text-steel-600">
-                  Periode
+                  {S.lblPeriod}
                   <input type="month" className="input w-auto" value={period} onChange={(e) => { setPeriod(e.target.value); setGajiStage("Semua"); }} />
                 </label>
                 <span className="text-xs text-steel-400">
-                  Lembur dari absensi bulan berjalan (hanya Disetujui) · tarif = pokok/{otDivisor} · jam 1-2: 1,5x · jam 3-4: 2x · jam 5+: 3x · Harian: PPh 5% × kelebihan Rp 450rb/hari
+                  {S.overtimeInfo.replace("{a}", String(otDivisor))}
                 </span>
               </div>
               <StageStrip counts={stageCounts(gajiRows)} active={gajiStage} onPick={setGajiStage} prefix="gaji" />
@@ -849,16 +850,16 @@ export default function Payroll() {
                 <table className="w-full">
                   <thead className="bg-surface sticky top-0 z-10">
                     <tr>
-                      <SortTh label="ID" sortKey="id" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} />
-                      <SortTh label="Karyawan" sortKey="emp" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} />
-                      <SortTh label="Pokok" sortKey="basic" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} />
-                      <SortTh label="Tunjangan" sortKey="allow" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} />
-                      <SortTh label="Lembur" sortKey="overtime" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} />
-                      <SortTh label="PPh21" sortKey="pph" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} />
-                      <SortTh label="BPJS" sortKey="bpjs" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} />
-                      <SortTh label="Net" sortKey="net" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} />
-                      <SortTh label="Status" sortKey="status" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} />
-                      <th className="th">Aksi</th>
+                      <SortTh label={S.colId} sortKey="id" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} />
+                      <SortTh label={S.colEmployee} sortKey="emp" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} />
+                      <SortTh label={S.colBasic} sortKey="basic" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} />
+                      <SortTh label={S.colAllowance} sortKey="allow" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} />
+                      <SortTh label={S.colOvertime} sortKey="overtime" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} />
+                      <SortTh label={S.colPph} sortKey="pph" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} />
+                      <SortTh label={S.colBpjs} sortKey="bpjs" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} />
+                      <SortTh label={S.colNet} sortKey="net" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} />
+                      <SortTh label={S.colStatus} sortKey="status" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} />
+                      <th className="th">{S.colAction}</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-steel-100">
@@ -890,18 +891,18 @@ export default function Payroll() {
                         <td className="td">
                           <div className="flex items-center gap-2 whitespace-nowrap">
                             {p.status === "Draft" && (
-                              <button className="text-sm font-semibold text-ocean-600 hover:underline" title="Ubah komponen (hanya bisa di Draft)" onClick={() => openEdit(p)}>Edit</button>
+                              <button className="text-sm font-semibold text-ocean-600 hover:underline" title={S.editTitleAttr} onClick={() => openEdit(p)}>{S.btnEdit}</button>
                             )}
                             {NEXT_STATUS[String(p.status)] && (
                               <button
                                 className="text-sm font-semibold text-emerald-600 hover:underline"
-                                title={String(p.status) === "Disetujui" ? "Bayar via modal bukti (kas + jurnal otomatis)" : `Pindah ke ${NEXT_STATUS[String(p.status)]} (konfirmasi dulu)`}
+                                title={String(p.status) === "Disetujui" ? S.payViaModal : S.moveToNext.replace("{a}", NEXT_STATUS[String(p.status)])}
                                 onClick={() => askAdvance(p)}
                               >
-                                {ADV_LABEL[String(p.status)] ?? `→ ${NEXT_STATUS[String(p.status)]}`}
+                                {advLabel[String(p.status)] ?? S.advFallback.replace("{a}", NEXT_STATUS[String(p.status)])}
                               </button>
                             )}
-                            <button className="text-sm font-semibold text-navy-700 hover:underline" onClick={() => openSlip(p)}>Slip</button>
+                            <button className="text-sm font-semibold text-navy-700 hover:underline" onClick={() => openSlip(p)}>{S.btnSlip}</button>
                           </div>
                         </td>
                       </tr>
@@ -910,8 +911,8 @@ export default function Payroll() {
                 </table>
                 {gajiShown.length === 0 && (
                   <EmptyState
-                    title={gajiStage === "Semua" ? `Belum ada payroll ${fmtBulan(period)}` : `Tidak ada slip ${gajiStage} di ${fmtBulan(period)}`}
-                    subtitle={gajiStage === "Semua" ? "Klik Generate untuk membuat draft dari data karyawan & absensi." : "Klik tahap lain atau lepas filter tahap."}
+                    title={gajiStage === "Semua" ? S.emptyGaji.replace("{a}", fmtBulan(period)) : S.emptyStage.replace("{a}", gajiStage).replace("{b}", fmtBulan(period))}
+                    subtitle={gajiStage === "Semua" ? S.emptyGajiHint : S.emptyStageHint}
                   />
                 )}
               </div>
@@ -922,43 +923,43 @@ export default function Payroll() {
             <div className="space-y-4">
               <div className="flex flex-wrap items-center gap-2">
                 <label className="flex items-center gap-2 text-sm text-steel-600">
-                  Periode
+                  {S.lblPeriod}
                   <input type="month" className="input w-auto" value={period} onChange={(e) => setPeriod(e.target.value)} />
                 </label>
                 <span className="text-xs text-steel-400">
-                  THR = 1×(pokok + tunjangan rata-rata) bila masa kerja ≥12 bln, selain itu proporsional n/12 · total THR {fmtRupiah(totals.thr)} · total Bonus {fmtRupiah(totals.bonus)}
+                  {S.thrInfo.replace("{a}", fmtRupiah(totals.thr)).replace("{b}", fmtRupiah(totals.bonus))}
                 </span>
               </div>
               <StageStrip counts={stageCounts(thrBonusAll)} active={thrStage} onPick={setThrStage} prefix="thr" />
               <Card className="p-4">
-                <h3 className="text-sm font-semibold text-navy-900">Bonus Manual</h3>
+                <h3 className="text-sm font-semibold text-navy-900">{S.bonusManual}</h3>
                 <div className="mt-2 flex flex-wrap items-end gap-2">
-                  <Field label="Karyawan">
+                  <Field label={S.colEmployee}>
                     <select className="input w-auto" value={bonusForm.employeeId} onChange={(e) => setBonusForm({ ...bonusForm, employeeId: e.target.value })}>
-                      <option value="">- Pilih -</option>
+                      <option value="">{S.optPick}</option>
                       {activeEmps.map((e) => <option key={e.id} value={e.id}>{e.name}</option>)}
                     </select>
                   </Field>
-                  <Field label="Nominal (Rp)">
-                    <input type="number" min="0" className="input w-44" value={bonusForm.nominal} onChange={(e) => setBonusForm({ ...bonusForm, nominal: e.target.value })} placeholder="cth: 1000000" />
+                  <Field label={S.lblNominal}>
+                    <input type="number" min="0" className="input w-44" value={bonusForm.nominal} onChange={(e) => setBonusForm({ ...bonusForm, nominal: e.target.value })} placeholder={S.phBonusNominal} />
                   </Field>
-                  <Field label="Keterangan">
-                    <input className="input w-56" value={bonusForm.keterangan} onChange={(e) => setBonusForm({ ...bonusForm, keterangan: e.target.value })} placeholder="cth: Bonus proyek Q3" />
+                  <Field label={S.lblNote}>
+                    <input className="input w-56" value={bonusForm.keterangan} onChange={(e) => setBonusForm({ ...bonusForm, keterangan: e.target.value })} placeholder={S.phBonusNote} />
                   </Field>
-                  <button className="btn-primary" onClick={saveBonus}>Catat Bonus</button>
+                  <button className="btn-primary" onClick={saveBonus}>{S.btnAddBonus}</button>
                 </div>
               </Card>
               <div className="overflow-x-auto p-2">
                 <table className="w-full">
                   <thead className="bg-surface sticky top-0 z-10">
                     <tr>
-                      <SortTh label="ID" sortKey="id" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} />
-                      <SortTh label="Karyawan" sortKey="emp" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} />
-                      <SortTh label="Tipe" sortKey="type" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} />
-                      <SortTh label="Nominal" sortKey="nominal" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} />
-                      <SortTh label="Keterangan" sortKey="ket" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} />
-                      <SortTh label="Status" sortKey="status" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} />
-                      <th className="th">Aksi</th>
+                      <SortTh label={S.colId} sortKey="id" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} />
+                      <SortTh label={S.colEmployee} sortKey="emp" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} />
+                      <SortTh label={S.colType} sortKey="type" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} />
+                      <SortTh label={S.colNominal} sortKey="nominal" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} />
+                      <SortTh label={S.lblNote} sortKey="ket" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} />
+                      <SortTh label={S.colStatus} sortKey="status" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} />
+                      <th className="th">{S.colAction}</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-steel-100">
@@ -981,8 +982,8 @@ export default function Payroll() {
                         <td className="td font-medium text-navy-900">{empNameOf(String(p.employeeId))}</td>
                         <td className="td"><Badge tone={rowType(p) === "THR" ? "amber" : "violet"}>{rowType(p)}</Badge></td>
                         <td className="td font-bold text-navy-900">{fmtRupiah(Number(p.net || 0))}</td>
-                        <td className="td max-w-[240px] truncate text-steel-600" title={rowType(p) === "THR" ? `Basis ${fmtRupiah(Number(p.thrBase || 0))} × ${Number(p.masaBulan || 0)}/12` : String(p.bonusNote ?? "")}>
-                          {rowType(p) === "THR" ? `Basis ${fmtRupiah(Number(p.thrBase || 0))} × ${Number(p.masaBulan || 0)}/12` : String(p.bonusNote ?? "")}
+                        <td className="td max-w-[240px] truncate text-steel-600" title={rowType(p) === "THR" ? S.thrBasis.replace("{a}", fmtRupiah(Number(p.thrBase || 0))).replace("{b}", String(Number(p.masaBulan || 0))) : String(p.bonusNote ?? "")}>
+                          {rowType(p) === "THR" ? S.thrBasis.replace("{a}", fmtRupiah(Number(p.thrBase || 0))).replace("{b}", String(Number(p.masaBulan || 0))) : String(p.bonusNote ?? "")}
                         </td>
                         <td className="td"><StatusBadge status={String(p.status)} /></td>
                         <td className="td">
@@ -990,15 +991,15 @@ export default function Payroll() {
                             {NEXT_STATUS[String(p.status)] && (
                               <button
                                 className="text-sm font-semibold text-emerald-600 hover:underline"
-                                title={String(p.status) === "Disetujui" ? "Bayar via modal bukti (kas + jurnal otomatis)" : `Pindah ke ${NEXT_STATUS[String(p.status)]} (konfirmasi dulu)`}
+                                title={String(p.status) === "Disetujui" ? S.payViaModal : S.moveToNext.replace("{a}", NEXT_STATUS[String(p.status)])}
                                 onClick={() => askAdvance(p)}
                               >
-                                {ADV_LABEL[String(p.status)] ?? `→ ${NEXT_STATUS[String(p.status)]}`}
+                                {advLabel[String(p.status)] ?? S.advFallback.replace("{a}", NEXT_STATUS[String(p.status)])}
                               </button>
                             )}
-                            <button className="text-sm font-semibold text-navy-700 hover:underline" onClick={() => openSlip(p)}>Slip</button>
+                            <button className="text-sm font-semibold text-navy-700 hover:underline" onClick={() => openSlip(p)}>{S.btnSlip}</button>
                             {p.status === "Draft" && (
-                              <button className="text-sm font-semibold text-rose-600 hover:underline" title="Hapus permanen (hanya bisa di Draft)" onClick={() => removeRow(p)}>Hapus</button>
+                              <button className="text-sm font-semibold text-rose-600 hover:underline" title={S.delTitleAttr} onClick={() => removeRow(p)}>{S.btnDelete}</button>
                             )}
                           </div>
                         </td>
@@ -1008,8 +1009,8 @@ export default function Payroll() {
                 </table>
                 {thrShown.length === 0 && (
                   <EmptyState
-                    title={thrStage === "Semua" ? `Belum ada THR/bonus ${fmtBulan(period)}` : `Tidak ada THR/bonus ${thrStage} di ${fmtBulan(period)}`}
-                    subtitle={thrStage === "Semua" ? "Klik Hitung THR atau catat bonus manual." : "Klik tahap lain atau lepas filter tahap."}
+                    title={thrStage === "Semua" ? S.emptyThr.replace("{a}", fmtBulan(period)) : S.emptyThrStage.replace("{a}", thrStage).replace("{b}", fmtBulan(period))}
+                    subtitle={thrStage === "Semua" ? S.emptyThrHint : S.emptyStageHint}
                   />
                 )}
               </div>
@@ -1019,38 +1020,38 @@ export default function Payroll() {
           {tab === "Kasbon" && (
             <div className="space-y-4">
               <Card className="p-4">
-                <h3 className="text-sm font-semibold text-navy-900">Tambah Kasbon</h3>
-                <p className="mt-1 text-xs text-steel-500">Cicilan otomatis = min(cicilan, sisa) dipotong saat Generate payroll dan mengurangi sisa.</p>
+                <h3 className="text-sm font-semibold text-navy-900">{S.kasbonAdd}</h3>
+                <p className="mt-1 text-xs text-steel-500">{S.kasbonInfo}</p>
                 <div className="mt-2 flex flex-wrap items-end gap-2">
-                  <Field label="Karyawan">
+                  <Field label={S.colEmployee}>
                     <select className="input w-auto" value={kasbonForm.employeeId} onChange={(e) => setKasbonForm({ ...kasbonForm, employeeId: e.target.value })}>
-                      <option value="">- Pilih -</option>
+                      <option value="">{S.optPick}</option>
                       {activeEmps.map((e) => <option key={e.id} value={e.id}>{e.name} · sisa {fmtRupiah(kasbonSisa(e))}</option>)}
                     </select>
                   </Field>
-                  <Field label="Tanggal">
+                  <Field label={S.lblDate}>
                     <input type="date" className="input w-auto" value={kasbonForm.tanggal} onChange={(e) => setKasbonForm({ ...kasbonForm, tanggal: e.target.value })} />
                   </Field>
-                  <Field label="Jumlah (Rp)">
-                    <input type="number" min="0" className="input w-44" value={kasbonForm.jumlah} onChange={(e) => setKasbonForm({ ...kasbonForm, jumlah: e.target.value })} placeholder="cth: 2000000" />
+                  <Field label={S.lblAmount}>
+                    <input type="number" min="0" className="input w-44" value={kasbonForm.jumlah} onChange={(e) => setKasbonForm({ ...kasbonForm, jumlah: e.target.value })} placeholder={S.phKasbonAmount} />
                   </Field>
-                  <Field label="Cicilan/payroll (Rp)">
-                    <input type="number" min="0" className="input w-44" value={kasbonForm.cicilan} onChange={(e) => setKasbonForm({ ...kasbonForm, cicilan: e.target.value })} placeholder="cth: 500000" />
+                  <Field label={S.lblInstall}>
+                    <input type="number" min="0" className="input w-44" value={kasbonForm.cicilan} onChange={(e) => setKasbonForm({ ...kasbonForm, cicilan: e.target.value })} placeholder={S.phKasbonInstall} />
                   </Field>
-                  <button className="btn-primary" onClick={saveKasbon}>Catat Kasbon</button>
+                  <button className="btn-primary" onClick={saveKasbon}>{S.btnAddKasbon}</button>
                 </div>
               </Card>
               <div className="overflow-x-auto p-2">
                 <table className="w-full">
                   <thead className="bg-surface sticky top-0 z-10">
                     <tr>
-                      <SortTh label="Karyawan" sortKey="emp" sort={sort3} onSort={(k) => setSort3((s) => toggleSort(s, k))} />
-                      <SortTh label="ID" sortKey="id" sort={sort3} onSort={(k) => setSort3((s) => toggleSort(s, k))} />
-                      <SortTh label="Tanggal" sortKey="date" sort={sort3} onSort={(k) => setSort3((s) => toggleSort(s, k))} />
-                      <SortTh label="Jumlah" sortKey="amount" sort={sort3} onSort={(k) => setSort3((s) => toggleSort(s, k))} />
-                      <SortTh label="Cicilan" sortKey="install" sort={sort3} onSort={(k) => setSort3((s) => toggleSort(s, k))} />
-                      <SortTh label="Sisa" sortKey="sisa" sort={sort3} onSort={(k) => setSort3((s) => toggleSort(s, k))} />
-                      <th className="th">Aksi</th>
+                      <SortTh label={S.colEmployee} sortKey="emp" sort={sort3} onSort={(k) => setSort3((s) => toggleSort(s, k))} />
+                      <SortTh label={S.colId} sortKey="id" sort={sort3} onSort={(k) => setSort3((s) => toggleSort(s, k))} />
+                      <SortTh label={S.colDate} sortKey="date" sort={sort3} onSort={(k) => setSort3((s) => toggleSort(s, k))} />
+                      <SortTh label={S.colAmount} sortKey="amount" sort={sort3} onSort={(k) => setSort3((s) => toggleSort(s, k))} />
+                      <SortTh label={S.colInstall} sortKey="install" sort={sort3} onSort={(k) => setSort3((s) => toggleSort(s, k))} />
+                      <SortTh label={S.colRemain} sortKey="sisa" sort={sort3} onSort={(k) => setSort3((s) => toggleSort(s, k))} />
+                      <th className="th">{S.colAction}</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-steel-100">
@@ -1074,13 +1075,13 @@ export default function Payroll() {
                           <td className="td text-steel-600">{fmtRupiah(k.cicilan)}</td>
                           <td className="td font-bold text-navy-900">{fmtRupiah(Math.max(0, k.sisa))}</td>
                           <td className="td">
-                            <button className="text-sm font-semibold text-rose-600 hover:underline" onClick={() => removeKasbon(e, k.id)}>Hapus</button>
+                            <button className="text-sm font-semibold text-rose-600 hover:underline" onClick={() => removeKasbon(e, k.id)}>{S.btnDelete}</button>
                           </td>
                         </tr>
                       ))}
                   </tbody>
                 </table>
-                {activeEmps.every((e) => normKasbon(e).length === 0) && <EmptyState title="Belum ada kasbon" subtitle="Catat kasbon lewat form di atas." />}
+                {activeEmps.every((e) => normKasbon(e).length === 0) && <EmptyState title={S.emptyKasbon} subtitle={S.emptyKasbonHint} />}
               </div>
             </div>
           )}
@@ -1091,35 +1092,35 @@ export default function Payroll() {
       <Modal
         open={editTarget !== null}
         onClose={() => setEditTarget(null)}
-        title="Edit Komponen (Draft)"
-        subtitle={editTarget ? `${editTarget.id} · PPh21 & BPJS dihitung ulang otomatis` : ""}
+        title={S.editCompTitle}
+        subtitle={editTarget ? S.editCompSub.replace("{a}", String(editTarget.id)) : ""}
         wide
         footer={
           <>
-            <button className="btn-secondary" onClick={() => setEditTarget(null)}>Batal</button>
-            <button className="btn-primary" onClick={saveEdit}>Simpan</button>
+            <button className="btn-secondary" onClick={() => setEditTarget(null)}>{S.cancelBtn}</button>
+            <button className="btn-primary" onClick={saveEdit}>{S.saveShort}</button>
           </>
         }
       >
         <FormGrid>
-          <Field label="Gaji pokok (Rp)"><input type="number" min="0" className="input" value={editForm.basic} onChange={(e) => setEditForm({ ...editForm, basic: e.target.value })} /></Field>
-          <Field label="Upah lembur (Rp)"><input type="number" min="0" className="input" value={editForm.overtimePay} onChange={(e) => setEditForm({ ...editForm, overtimePay: e.target.value })} /></Field>
-          <Field label="Potongan manual (Rp)"><input type="number" min="0" className="input" value={editForm.deductions} onChange={(e) => setEditForm({ ...editForm, deductions: e.target.value })} /></Field>
+          <Field label={S.lblBasic}><input type="number" min="0" className="input" value={editForm.basic} onChange={(e) => setEditForm({ ...editForm, basic: e.target.value })} /></Field>
+          <Field label={S.lblOvertimePay}><input type="number" min="0" className="input" value={editForm.overtimePay} onChange={(e) => setEditForm({ ...editForm, overtimePay: e.target.value })} /></Field>
+          <Field label={S.lblManualDed}><input type="number" min="0" className="input" value={editForm.deductions} onChange={(e) => setEditForm({ ...editForm, deductions: e.target.value })} /></Field>
         </FormGrid>
         <div className="mt-3">
           <div className="mb-2 flex items-center justify-between">
-            <p className="text-sm font-semibold text-navy-900">Tunjangan rinci</p>
-            <button className="btn-secondary text-xs" onClick={() => setEditLines((prev) => [...prev, { label: "", amount: 0 }])}>+ Baris</button>
+            <p className="text-sm font-semibold text-navy-900">{S.allowDetail}</p>
+            <button className="btn-secondary text-xs" onClick={() => setEditLines((prev) => [...prev, { label: "", amount: 0 }])}>{S.addRow}</button>
           </div>
           <div className="space-y-2">
             {editLines.map((l, i) => (
               <div key={i} className="flex items-center gap-2">
-                <input className="input flex-1" value={l.label} onChange={(e) => setEditLines((prev) => prev.map((x, j) => (j === i ? { ...x, label: e.target.value } : x)))} placeholder="cth: Transport" />
-                <input type="number" min="0" className="input w-44" value={String(l.amount)} onChange={(e) => setEditLines((prev) => prev.map((x, j) => (j === i ? { ...x, amount: Number(e.target.value) } : x)))} placeholder="Nominal" />
-                <button className="text-sm font-semibold text-rose-600 hover:underline" onClick={() => setEditLines((prev) => prev.filter((_, j) => j !== i))}>Hapus</button>
+                <input className="input flex-1" value={l.label} onChange={(e) => setEditLines((prev) => prev.map((x, j) => (j === i ? { ...x, label: e.target.value } : x)))} placeholder={S.phTransport} />
+                <input type="number" min="0" className="input w-44" value={String(l.amount)} onChange={(e) => setEditLines((prev) => prev.map((x, j) => (j === i ? { ...x, amount: Number(e.target.value) } : x)))} placeholder={S.phNominal} />
+                <button className="text-sm font-semibold text-rose-600 hover:underline" onClick={() => setEditLines((prev) => prev.filter((_, j) => j !== i))}>{S.btnDelete}</button>
               </div>
             ))}
-            {editLines.length === 0 && <p className="text-xs text-steel-400">Belum ada baris tunjangan.</p>}
+            {editLines.length === 0 && <p className="text-xs text-steel-400">{S.noAllowRows}</p>}
           </div>
         </div>
       </Modal>
@@ -1128,19 +1129,19 @@ export default function Payroll() {
       <Modal
         open={payTarget !== null}
         onClose={() => setPayTarget(null)}
-        title="Bukti Pembayaran"
-        subtitle={payTarget ? `${payTarget.id} · net ${fmtRupiah(Number(payTarget.net || 0))}` : ""}
+        title={S.payProofTitle}
+        subtitle={payTarget ? S.payProofSub.replace("{a}", String(payTarget.id)).replace("{b}", fmtRupiah(Number(payTarget.net || 0))) : ""}
         footer={
           <>
-            <button className="btn-secondary" onClick={() => setPayTarget(null)}>Batal</button>
-            <button className="btn-primary" onClick={confirmPay}>Konfirmasi Bayar</button>
+            <button className="btn-secondary" onClick={() => setPayTarget(null)}>{S.cancelBtn}</button>
+            <button className="btn-primary" onClick={confirmPay}>{S.btnConfirmPay}</button>
           </>
         }
       >
         <div className="space-y-3">
           <FormGrid>
-            <Field label="Tanggal bayar"><input type="date" className="input" value={proof.date} onChange={(e) => setProof({ ...proof, date: e.target.value })} /></Field>
-            <Field label="Metode">
+            <Field label={S.lblPayDate}><input type="date" className="input" value={proof.date} onChange={(e) => setProof({ ...proof, date: e.target.value })} /></Field>
+            <Field label={S.lblMethod}>
               <select className="input" value={proof.method} onChange={(e) => setProof({ ...proof, method: e.target.value })}>
                 <option>Transfer</option>
                 <option>Tunai</option>
@@ -1148,7 +1149,7 @@ export default function Payroll() {
               </select>
             </Field>
           </FormGrid>
-          <Field label="No. referensi"><input className="input" value={proof.ref} onChange={(e) => setProof({ ...proof, ref: e.target.value })} placeholder="cth: TRF-202608-001" /></Field>
+          <Field label={S.lblRefNo}><input className="input" value={proof.ref} onChange={(e) => setProof({ ...proof, ref: e.target.value })} placeholder={S.phRefNo} /></Field>
         </div>
       </Modal>
 
@@ -1156,27 +1157,27 @@ export default function Payroll() {
       <Modal
         open={showPesangon}
         onClose={() => setShowPesangon(false)}
-        title="Kalkulator Pesangon"
-        subtitle="Hitung read-only + export - tanpa menyimpan"
+        title={S.pesTitle}
+        subtitle={S.pesSub}
         footer={
           <>
-            <button className="btn-secondary" onClick={() => setShowPesangon(false)}>Tutup</button>
+            <button className="btn-secondary" onClick={() => setShowPesangon(false)}>{S.closeBtn}</button>
             <button className="btn-primary" onClick={exportPesangon}>
-              <Download className="h-4 w-4" /> Ekspor Hasil
+              <Download className="h-4 w-4" /> {S.btnExportResult}
             </button>
           </>
         }
       >
         <div className="space-y-3">
           <FormGrid>
-            <Field label="Masa kerja (tahun)"><input type="number" min="0" step="0.5" className="input" value={pesForm.masaKerja} onChange={(e) => setPesForm({ ...pesForm, masaKerja: e.target.value })} /></Field>
-            <Field label="Upah bulanan (Rp)"><input type="number" min="0" className="input" value={pesForm.upah} onChange={(e) => setPesForm({ ...pesForm, upah: e.target.value })} /></Field>
+            <Field label={S.lblWorkYears}><input type="number" min="0" step="0.5" className="input" value={pesForm.masaKerja} onChange={(e) => setPesForm({ ...pesForm, masaKerja: e.target.value })} /></Field>
+            <Field label={S.lblMonthlyWage}><input type="number" min="0" className="input" value={pesForm.upah} onChange={(e) => setPesForm({ ...pesForm, upah: e.target.value })} /></Field>
           </FormGrid>
           <dl className="dl-div rounded-xl bg-surface p-3 text-sm">
-            <div className="flex justify-between"><dt className="text-steel-500">Pesangon ({pesHitung.pesMonths}× upah, maks 9)</dt><dd className="font-medium">{fmtRupiah(pesHitung.pesangon)}</dd></div>
-            <div className="flex justify-between"><dt className="text-steel-500">UPMK ({pesHitung.upmkMonths}× upah)</dt><dd className="font-medium">{fmtRupiah(pesHitung.upmk)}</dd></div>
-            <div className="flex justify-between"><dt className="text-steel-500">UPH (15% × pesangon+UPMK)</dt><dd className="font-medium">{fmtRupiah(pesHitung.uph)}</dd></div>
-            <div className="flex justify-between border-t border-steel-200 pt-2"><dt className="font-bold text-navy-900">Total</dt><dd className="font-bold text-navy-900">{fmtRupiah(pesHitung.total)}</dd></div>
+            <div className="flex justify-between"><dt className="text-steel-500">{S.pesRow.replace("{a}", String(pesHitung.pesMonths))}</dt><dd className="font-medium">{fmtRupiah(pesHitung.pesangon)}</dd></div>
+            <div className="flex justify-between"><dt className="text-steel-500">{S.upmkRow.replace("{a}", String(pesHitung.upmkMonths))}</dt><dd className="font-medium">{fmtRupiah(pesHitung.upmk)}</dd></div>
+            <div className="flex justify-between"><dt className="text-steel-500">{S.uphRow}</dt><dd className="font-medium">{fmtRupiah(pesHitung.uph)}</dd></div>
+            <div className="flex justify-between border-t border-steel-200 pt-2"><dt className="font-bold text-navy-900">{S.totalRow}</dt><dd className="font-bold text-navy-900">{fmtRupiah(pesHitung.total)}</dd></div>
           </dl>
         </div>
       </Modal>
@@ -1185,14 +1186,14 @@ export default function Payroll() {
       <Modal
         open={slipTarget !== null}
         onClose={() => setSlipTarget(null)}
-        title={slipTarget && rowType(slipTarget) !== "Gaji" ? `Slip ${rowType(slipTarget)}` : "Slip Gaji"}
+        title={slipTarget && rowType(slipTarget) !== "Gaji" ? S.slipTypeTitle.replace("{a}", rowType(slipTarget)) : S.slipGajiTitle}
         subtitle={slipTarget ? `${slipTarget.id} · ${empNameOf(String(slipTarget.employeeId))} · ${fmtBulan(String(slipTarget.period))}` : ""}
         wide
         footer={
           <>
-            <button className="btn-secondary" onClick={() => setSlipTarget(null)}>Tutup</button>
+            <button className="btn-secondary" onClick={() => setSlipTarget(null)}>{S.closeBtn}</button>
             <button className="btn-primary" onClick={() => slipTarget && exportSlip(slipTarget)}>
-              <Download className="h-4 w-4" /> Unduh Slip
+              <Download className="h-4 w-4" /> {S.btnDownloadSlip}
             </button>
           </>
         }
@@ -1208,57 +1209,57 @@ export default function Payroll() {
               <dl className="dl-div text-sm">
                 {rowType(slipTarget) === "Gaji" ? (
                   <>
-                    <div className="flex justify-between"><dt className="text-steel-500">{isHarian ? `Upah harian × ${Number(slipTarget.hadirDays ?? 0)} hari` : "Gaji pokok"}</dt><dd className="font-medium">{fmtRupiah(Number(slipTarget.basic || 0))}</dd></div>
+                    <div className="flex justify-between"><dt className="text-steel-500">{isHarian ? S.dailyWage.replace("{n}", String(Number(slipTarget.hadirDays ?? 0))) : S.basicPay}</dt><dd className="font-medium">{fmtRupiah(Number(slipTarget.basic || 0))}</dd></div>
                     {normAllowances(slipTarget.allowances).map((l, i) => (
-                      <div key={i} className="flex justify-between"><dt className="text-steel-500">Tunjangan - {l.label}</dt><dd className="font-medium">{fmtRupiah(Number(l.amount) || 0)}</dd></div>
+                      <div key={i} className="flex justify-between"><dt className="text-steel-500">{S.allowanceRow.replace("{a}", l.label)}</dt><dd className="font-medium">{fmtRupiah(Number(l.amount) || 0)}</dd></div>
                     ))}
-                    <div className="flex justify-between"><dt className="text-steel-500">Upah lembur</dt><dd className="font-medium">{fmtRupiah(Number(slipTarget.overtimePay || 0))}</dd></div>
-                    <div className="flex justify-between"><dt className="text-steel-500">Cicilan kasbon</dt><dd className="font-medium">-{fmtRupiah(Number(slipTarget.kasbonPot || 0))}</dd></div>
-                    <div className="flex justify-between"><dt className="text-steel-500">Potongan manual</dt><dd className="font-medium">-{fmtRupiah(manualDed)}</dd></div>
-                    <div className="flex justify-between"><dt className="text-steel-500">{isHarian ? "PPh harian" : `PPh 21 (${emp?.ptkpStatus ?? "TK/0"})`}</dt><dd className="font-medium">-{fmtRupiah(Number(slipTarget.pph21 || 0))}</dd></div>
-                    <div className="flex justify-between"><dt className="text-steel-500">BPJS Kesehatan karyawan ({rates.bpjsKes}%)</dt><dd className="font-medium">-{fmtRupiah(b.kes)}</dd></div>
-                    <div className="flex justify-between"><dt className="text-steel-500">BPJS TK - JHT karyawan ({rates.bpjsTk}%)</dt><dd className="font-medium">-{fmtRupiah(b.tk)}</dd></div>
-                    <div className="flex justify-between"><dt className="text-steel-500">BPJS Kesehatan perusahaan ({rates.bpjsKesPer}%) - info</dt><dd className="font-medium">{fmtRupiah(Number(slipTarget.bpjsKesPer || 0))}</dd></div>
-                    <div className="flex justify-between border-t border-steel-200 pt-2"><dt className="font-bold text-navy-900">Gaji bersih</dt><dd className="font-bold text-navy-900">{fmtRupiah(Number(slipTarget.net || 0))}</dd></div>
+                    <div className="flex justify-between"><dt className="text-steel-500">{S.wageOvertime}</dt><dd className="font-medium">{fmtRupiah(Number(slipTarget.overtimePay || 0))}</dd></div>
+                    <div className="flex justify-between"><dt className="text-steel-500">{S.kasbonInstallRow}</dt><dd className="font-medium">-{fmtRupiah(Number(slipTarget.kasbonPot || 0))}</dd></div>
+                    <div className="flex justify-between"><dt className="text-steel-500">{S.manualDedRow}</dt><dd className="font-medium">-{fmtRupiah(manualDed)}</dd></div>
+                    <div className="flex justify-between"><dt className="text-steel-500">{isHarian ? S.pphDaily : S.pph21Status.replace("{a}", String(emp?.ptkpStatus ?? "TK/0"))}</dt><dd className="font-medium">-{fmtRupiah(Number(slipTarget.pph21 || 0))}</dd></div>
+                    <div className="flex justify-between"><dt className="text-steel-500">{S.bpjsKesRow.replace("{a}", String(rates.bpjsKes))}</dt><dd className="font-medium">-{fmtRupiah(b.kes)}</dd></div>
+                    <div className="flex justify-between"><dt className="text-steel-500">{S.bpjsTkRow.replace("{a}", String(rates.bpjsTk))}</dt><dd className="font-medium">-{fmtRupiah(b.tk)}</dd></div>
+                    <div className="flex justify-between"><dt className="text-steel-500">{S.bpjsPerRow.replace("{a}", String(rates.bpjsKesPer))}</dt><dd className="font-medium">{fmtRupiah(Number(slipTarget.bpjsKesPer || 0))}</dd></div>
+                    <div className="flex justify-between border-t border-steel-200 pt-2"><dt className="font-bold text-navy-900">{S.netPay}</dt><dd className="font-bold text-navy-900">{fmtRupiah(Number(slipTarget.net || 0))}</dd></div>
                   </>
                 ) : (
                   <>
-                    <div className="flex justify-between"><dt className="text-steel-500">Tipe</dt><dd><Badge tone={rowType(slipTarget) === "THR" ? "amber" : "violet"}>{rowType(slipTarget)}</Badge></dd></div>
-                    <div className="flex justify-between"><dt className="text-steel-500">Keterangan</dt><dd className="font-medium">{rowType(slipTarget) === "THR" ? `Basis ${fmtRupiah(Number(slipTarget.thrBase || 0))} × ${Number(slipTarget.masaBulan || 0)}/12` : String(slipTarget.bonusNote ?? "")}</dd></div>
-                    <div className="flex justify-between border-t border-steel-200 pt-2"><dt className="font-bold text-navy-900">Nominal diterima</dt><dd className="font-bold text-navy-900">{fmtRupiah(Number(slipTarget.net || 0))}</dd></div>
+                    <div className="flex justify-between"><dt className="text-steel-500">{S.colType}</dt><dd><Badge tone={rowType(slipTarget) === "THR" ? "amber" : "violet"}>{rowType(slipTarget)}</Badge></dd></div>
+                    <div className="flex justify-between"><dt className="text-steel-500">{S.lblNote}</dt><dd className="font-medium">{rowType(slipTarget) === "THR" ? S.thrBasis.replace("{a}", fmtRupiah(Number(slipTarget.thrBase || 0))).replace("{b}", String(Number(slipTarget.masaBulan || 0))) : String(slipTarget.bonusNote ?? "")}</dd></div>
+                    <div className="flex justify-between border-t border-steel-200 pt-2"><dt className="font-bold text-navy-900">{S.nominalReceived}</dt><dd className="font-bold text-navy-900">{fmtRupiah(Number(slipTarget.net || 0))}</dd></div>
                   </>
                 )}
-                <div className="flex justify-between"><dt className="text-steel-500">Status</dt><dd><StatusBadge status={String(slipTarget.status)} /></dd></div>
-                {slipTarget.paidAt && <div className="flex justify-between"><dt className="text-steel-500">Dibayar</dt><dd className="font-medium">{fmtTanggal(slipTarget.paidAt)}</dd></div>}
-                {sign.received && <div className="flex justify-between"><dt className="text-steel-500">Diterima</dt><dd className="font-medium">{fmtTanggal(sign.date ?? "")}</dd></div>}
+                <div className="flex justify-between"><dt className="text-steel-500">{S.colStatus}</dt><dd><StatusBadge status={String(slipTarget.status)} /></dd></div>
+                {slipTarget.paidAt && <div className="flex justify-between"><dt className="text-steel-500">{S.paidOn}</dt><dd className="font-medium">{fmtTanggal(slipTarget.paidAt)}</dd></div>}
+                {sign.received && <div className="flex justify-between"><dt className="text-steel-500">{S.receivedOn}</dt><dd className="font-medium">{fmtTanggal(sign.date ?? "")}</dd></div>}
               </dl>
               <div className="rounded-xl bg-surface p-3">
-                <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-steel-500">Tanda terima</p>
+                <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-steel-500">{S.signTitle}</p>
                 <div className="flex flex-wrap items-center gap-2">
                   <label className="flex cursor-pointer items-center gap-2 text-sm text-steel-700">
                     <input type="checkbox" checked={slipSign.received} onChange={(e) => setSlipSign({ ...slipSign, received: e.target.checked })} />
-                    Sudah diterima
+                    {S.receivedCheck}
                   </label>
                   {slipSign.received && (
                     <input type="date" className="input w-auto" value={slipSign.date} onChange={(e) => setSlipSign({ ...slipSign, date: e.target.value })} />
                   )}
-                  <button className="btn-secondary text-xs" onClick={saveSlipSign}>Simpan Tanda Terima</button>
+                  <button className="btn-secondary text-xs" onClick={saveSlipSign}>{S.btnSaveSign}</button>
                 </div>
               </div>
-              <p className="text-xs text-steel-400">Jenis payroll: {PAY_TYPES.join(" / ")} · baris lama tanpa tipe dianggap Gaji.</p>
+              <p className="text-xs text-steel-400">{S.typesNote.replace("{a}", PAY_TYPES.join(" / "))}</p>
             </div>
           );
         })()}
       </Modal>
       <ConfirmModal
         open={confirmAdv !== null}
-        title={confirmAdv ? `Pindah tahap: ${confirmAdv.id}` : "Pindah tahap"}
+        title={confirmAdv ? S.advTitle.replace("{a}", String(confirmAdv.id)) : S.advTitleEmpty}
         desc={
           confirmAdv
-            ? `${empNameOf(String(confirmAdv.employeeId))} · ${rowType(confirmAdv)} ${fmtBulan(period)} · net ${fmtRupiah(Number(confirmAdv.net || 0))} - dari ${confirmAdv.status} ke ${NEXT_STATUS[String(confirmAdv.status)] ?? "?"}. Tidak bisa dibatalkan dari sini (hubungi admin bila salah tahap).`
+            ? S.advDesc.replace("{a}", empNameOf(String(confirmAdv.employeeId))).replace("{b}", rowType(confirmAdv)).replace("{c}", fmtBulan(period)).replace("{d}", fmtRupiah(Number(confirmAdv.net || 0))).replace("{e}", String(confirmAdv.status)).replace("{f}", NEXT_STATUS[String(confirmAdv.status)] ?? "?")
             : ""
         }
-        confirmLabel={confirmAdv ? ADV_LABEL[String(confirmAdv.status)] ?? "Lanjut" : "Lanjut"}
+        confirmLabel={confirmAdv ? advLabel[String(confirmAdv.status)] ?? S.advContinue : S.advContinue}
         onCancel={() => setConfirmAdv(null)}
         onConfirm={() => void doAdvance()}
       />

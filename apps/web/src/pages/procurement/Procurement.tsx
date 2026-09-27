@@ -12,6 +12,8 @@ import { sbPoNumber, sbSplitIncludePpn, maxSeq, SB_KOP } from "../../utils/sb";
 import { spendByCategory, procurementTrend, poCountTrend, poValueTrend, prPendingTrend, vendorTrend } from "../../data";
 import { exportExcel } from "../../utils/export";
 import { useDraftState } from "../../utils/draft";
+import { useT } from "../../i18n/LanguageContext";
+import { n_proc } from "../../i18n/n_proc";
 import { FilterPopover } from "../../components/FilterPopover";
 
 interface POLine { name: string; qty: number; unit: string; price: number }
@@ -131,6 +133,8 @@ function lateDaysOf(po: StoreItem): number {
 
 export default function Procurement() {
   const { data, add, update, log, inBranch } = useStore();
+  const { locale } = useT();
+  const S = n_proc[locale];
   const modAlert = useModuleAlert("procurement");
   const purchaseOrders = inBranch(data.purchaseOrders);
   const requisitions = data.requisitions;
@@ -317,43 +321,43 @@ export default function Procurement() {
   const exportKas = () => {
     void exportExcel(
       [
-        ["Realisasi PO Kecil vs Kasbon Workshop", bulanIni],
-        ["Saldo awal sesi (manual)", Number(kasAwal) || 0],
+        [S.kasT, bulanIni],
+        [S.xSaldoManual, Number(kasAwal) || 0],
         [],
-        ["PO", "Kebutuhan", "Nilai"],
+        [S.po, S.kebutuhan, S.nilai],
         ...smallBulan.map((p) => [p.id, String(p.item ?? ""), Number(p.amount || 0)]),
-        ["Realisasi bulan ini", "", smallBulanTotal],
-        ["Sisa", "", kasSisa],
+        [S.kasBulanIni, "", smallBulanTotal],
+        [S.xSisa, "", kasSisa],
       ],
       `Kas-Kecil-${bulanIni}`,
       "Kas Kecil"
     );
-    toast("Realisasi kas kecil diekspor");
+    toast(S.tKasExport);
   };
 
   /* ============ PO BESAR ============ */
   const saveBig = async () => {
-    if (!bigForm.prId) { toast("PR wajib dipilih (dropdown PR Disetujui)", "info"); return; }
+    if (!bigForm.prId) { toast(S.tPrWajib, "info"); return; }
     const invItem = invList.find((i) => i.id === bigForm.itemId);
-    if (!invItem) { toast("Pilih item inventori dari daftar", "info"); return; }
-    if (!bigForm.vendor) { toast("Vendor wajib dipilih", "info"); return; }
+    if (!invItem) { toast(S.tItemInv, "info"); return; }
+    if (!bigForm.vendor) { toast(S.tVendorWajib, "info"); return; }
     if (bigForm.tujuan === "kapal") {
-      if (!bigForm.project) { toast("Untuk Kapal: proyek wajib dipilih", "info"); return; }
-      if (!bigForm.vessel.trim()) { toast("Untuk Kapal: U/TK kapal wajib diisi", "info"); return; }
+      if (!bigForm.project) { toast(S.tKapalProyek, "info"); return; }
+      if (!bigForm.vessel.trim()) { toast(S.tKapalUtk, "info"); return; }
     }
-    if (!bigForm.eta) { toast("ETA wajib diisi", "info"); return; }
-    if (bigLines.length === 0) { toast("Minimal 1 baris item", "info"); return; }
+    if (!bigForm.eta) { toast(S.tEtaWajib, "info"); return; }
+    if (bigLines.length === 0) { toast(S.tMinBaris, "info"); return; }
     for (const l of bigLines) {
-      if (!l.name.trim()) { toast("Nama baris item wajib diisi", "info"); return; }
-      if (!Number(l.qty) || Number(l.qty) <= 0) { toast("Qty tiap baris harus lebih dari 0", "info"); return; }
-      if (!Number(l.price) || Number(l.price) <= 0) { toast("Harga tiap baris harus lebih dari 0", "info"); return; }
+      if (!l.name.trim()) { toast(S.tNamaBaris, "info"); return; }
+      if (!Number(l.qty) || Number(l.qty) <= 0) { toast(S.tQtyBaris, "info"); return; }
+      if (!Number(l.price) || Number(l.price) <= 0) { toast(S.tHargaBaris, "info"); return; }
     }
     if (bigOver && (!bigForm.override || !bigForm.overrideReason.trim())) {
-      toast("Melebihi sisa budget proyek - centang override dan isi alasan", "info");
+      toast(S.tOverBudget, "info");
       return;
     }
     const plafon = cekPlafon(bigForm.vendor, bigTotal);
-    if (plafon && !plafon.ok) { toast(`Plafon kontrak payung terlampaui (pakai ${fmtRupiah(plafon.pakai)} / plafon ${fmtRupiah(plafon.plafon)})`, "info"); return; }
+    if (plafon && !plafon.ok) { toast(S.tPlafon.replace("{a}", fmtRupiah(plafon.pakai)).replace("{b}", fmtRupiah(plafon.plafon)), "info"); return; }
     const pr = requisitions.find((r) => r.id === bigForm.prId);
     const docNo = sbPoNumber(nextPoSeq());
     const isStok = bigForm.tujuan === "stok";
@@ -367,7 +371,7 @@ export default function Procurement() {
       amendments: [], approvals: [], overrideReason: bigOver ? bigForm.overrideReason.trim() : "",
     }, { action: "membuat PO Besar", module: "Procurement" });
     if (pr && pr.status === "Disetujui") await update("requisitions", pr.id, { status: "Sudah PO" });
-    toast(`PO Besar ${created.id} (${docNo}) dibuat (Draft)`);
+    toast(S.tBigCreated.replace("{a}", created.id).replace("{b}", docNo));
     setShowBig(false);
     setBigForm({ tujuan: "kapal", prId: "", itemId: "", vendor: "", project: "", vessel: "", eta: "", includePpn: true, override: false, overrideReason: "" });
     setBigLines([{ name: "", qty: 1, unit: "pcs", price: 0 }]);
@@ -375,20 +379,20 @@ export default function Procurement() {
 
   /* ============ PO KECIL ============ */
   const saveSmall = async () => {
-    if (!smallForm.workshop.trim()) { toast("Workshop wajib diisi", "info"); return; }
-    if (!smallForm.requester.trim()) { toast("Peminta wajib diisi", "info"); return; }
-    if (!smallForm.item.trim()) { toast("Item kebutuhan wajib diisi", "info"); return; }
+    if (!smallForm.workshop.trim()) { toast(S.tWorkshop, "info"); return; }
+    if (!smallForm.requester.trim()) { toast(S.tPeminta, "info"); return; }
+    if (!smallForm.item.trim()) { toast(S.tItemButuh2, "info"); return; }
     const qty = Number(smallForm.qty);
     const price = Number(smallForm.price);
-    if (!qty || qty <= 0) { toast("Qty harus lebih dari 0", "info"); return; }
-    if (!price || price <= 0) { toast("Estimasi harga harus lebih dari 0", "info"); return; }
-    if (!smallForm.unit.trim()) { toast("Satuan wajib dipilih", "info"); return; }
-    if (!smallForm.eta) { toast("ETA wajib diisi", "info"); return; }
-    if (smallForm.project && !smallForm.vessel.trim()) { toast("Jika proyek diisi, U/TK kapal wajib diisi", "info"); return; }
+    if (!qty || qty <= 0) { toast(S.tQtyPos, "info"); return; }
+    if (!price || price <= 0) { toast(S.tEstHarga, "info"); return; }
+    if (!smallForm.unit.trim()) { toast(S.tSatuan, "info"); return; }
+    if (!smallForm.eta) { toast(S.tEtaWajib, "info"); return; }
+    if (smallForm.project && !smallForm.vessel.trim()) { toast(S.tProyekUtk, "info"); return; }
     const amount = qty * price;
-    if (amount > PO_KECIL_LIMIT) { toast("melebihi batas PO Kecil, gunakan PO Besar", "info"); return; }
+    if (amount > PO_KECIL_LIMIT) { toast(S.tOverKecil, "info"); return; }
     if (smallOver && (!smallForm.override || !smallForm.overrideReason.trim())) {
-      toast("Melebihi sisa budget proyek - centang override dan isi alasan", "info");
+      toast(S.tOverBudget, "info");
       return;
     }
     await add("purchaseOrders", {
@@ -401,7 +405,7 @@ export default function Procurement() {
       lines: [{ name: smallForm.item.trim(), qty, unit: smallForm.unit.trim(), price }],
       revisi: "", amendments: [], overrideReason: smallOver ? smallForm.overrideReason.trim() : "",
     }, { action: "membuat PO Kecil", module: "Procurement" });
-    toast("PO Kecil dibuat (Diajukan)");
+    toast(S.tSmallCreated);
     setShowSmall(false);
     setSmallForm({ workshop: "", requester: "", item: "", qty: "1", unit: "pcs", price: "", eta: "", project: "", vessel: "", nota: "", override: false, overrideReason: "" });
   };
@@ -409,61 +413,61 @@ export default function Procurement() {
   const doPoStatus = async (po: StoreItem, next: string) => {
     if (po.poType === "Kecil") {
       const allowed = SMALL_NEXT[normPo(po.status)] ?? [];
-      if (!allowed.includes(next)) { toast(`Transisi ${po.status} → ${next} tidak diizinkan untuk PO Kecil`, "info"); return; }
+      if (!allowed.includes(next)) { toast(S.tTransSmall.replace("{a}", String(po.status)).replace("{b}", next), "info"); return; }
     }
     await update("purchaseOrders", po.id, { status: next });
-    toast(`${po.id} → ${next}`);
+    toast(S.tArrow.replace("{a}", po.id).replace("{b}", next));
   };
 
   /* Persetujuan berjenjang SPV → Manager → Director sesuai nominal. */
   const doApproveLevel = async (po: StoreItem) => {
     const nx = nextLevel(po, APPROVE_PO_LIMIT);
-    if (!nx) { toast(`${po.id} sudah disetujui penuh`, "info"); return; }
+    if (!nx) { toast(S.tFullApproved.replace("{n}", po.id), "info"); return; }
     const done: Approval[] = [...apprOf(po), { level: nx, by: "Anda", date: todayISO() }];
     const doneLevels = done.map((a) => a.level);
     const still = needLevels(Number(po.amount || 0), APPROVE_PO_LIMIT).find((l) => !doneLevels.includes(l)) ?? null;
     await update("purchaseOrders", po.id, { approvals: done, status: still ? po.status : "Disetujui" });
     log("persetujuan PO", `${po.id} level ${nx}${still ? `, lanjut ke ${still}` : " (penuh)"}`, "Procurement");
-    toast(still ? `${po.id} disetujui ${nx}, lanjut ke ${still}` : `${po.id} disetujui penuh`);
+    toast(still ? S.tApprNext.replace("{n}", po.id).replace("{a}", nx).replace("{b}", still) : S.tApprFull.replace("{n}", po.id));
   };
 
   /* ============ RFQ ============ */
   const saveRfq = async () => {
     if (!rfqPr) return;
-    if (rfqVendors.length < 3) { toast("Pilih minimal 3 vendor untuk RFQ (docs/11)", "info"); return; }
+    if (rfqVendors.length < 3) { toast(S.tRfqMin3, "info"); return; }
     await add("rfqs", {
       prId: rfqPr.id, item: rfqPr.item, vendors: rfqVendors, quotes: [],
       status: "Draf", winner: "",
     }, { action: "membuat RFQ", target: rfqPr.id, module: "Procurement" });
     await update("requisitions", rfqPr.id, { status: "RFQ" });
-    toast(`RFQ untuk ${rfqPr.id} dibuat (Draf)`);
+    toast(S.tRfqCreated.replace("{n}", rfqPr.id));
     setRfqPr(null);
     setRfqVendors([]);
   };
 
   const saveQuote = async () => {
     if (!quoteRfq) return;
-    if (!quoteForm.vendor) { toast("Pilih vendor dulu", "info"); return; }
+    if (!quoteForm.vendor) { toast(S.tPilihVendor, "info"); return; }
     const price = Number(quoteForm.price);
-    if (!price || price <= 0) { toast("Harga penawaran harus lebih dari 0", "info"); return; }
-    if (!quoteForm.eta) { toast("ETA wajib diisi", "info"); return; }
+    if (!price || price <= 0) { toast(S.tHargaQuote, "info"); return; }
+    if (!quoteForm.eta) { toast(S.tEtaWajib, "info"); return; }
     const cur = (Array.isArray(quoteRfq.quotes) ? quoteRfq.quotes : []) as Quote[];
     const next = [...cur.filter((x) => x.vendor !== quoteForm.vendor), { vendor: quoteForm.vendor, price, eta: quoteForm.eta }];
     const nextStatus = quoteRfq.status === "Terkirim" ? "Evaluasi" : quoteRfq.status;
     await update("rfqs", quoteRfq.id, { quotes: next, status: nextStatus });
-    toast(`Penawaran ${quoteForm.vendor} tersimpan`);
+    toast(S.tQuoteSaved.replace("{n}", quoteForm.vendor));
     setQuoteRfq(null);
     setQuoteForm({ vendor: "", price: "", eta: "" });
   };
 
   const confirmWin = async () => {
     if (!winRfq) return;
-    if (!winVendor) { toast("Pilih pemenang dulu", "info"); return; }
+    if (!winVendor) { toast(S.tPilihMenang, "info"); return; }
     const quotes = (Array.isArray(winRfq.quotes) ? winRfq.quotes : []) as Quote[];
     const win = quotes.find((x) => sameName(x.vendor, winVendor));
-    if (!win) { toast("Pemenang belum memberi penawaran", "info"); return; }
+    if (!win) { toast(S.tMenangNoQuote, "info"); return; }
     const plafon = cekPlafon(winVendor, win.price);
-    if (plafon && !plafon.ok) { toast(`Plafon kontrak payung terlampaui (pakai ${fmtRupiah(plafon.pakai)} / plafon ${fmtRupiah(plafon.plafon)})`, "info"); return; }
+    if (plafon && !plafon.ok) { toast(S.tPlafon.replace("{a}", fmtRupiah(plafon.pakai)).replace("{b}", fmtRupiah(plafon.plafon)), "info"); return; }
     try {
       await update("rfqs", winRfq.id, { winner: winVendor, status: "Diputuskan" });
       const match = invList.find((i) => i.name.toLowerCase().includes(String(winRfq.item).toLowerCase().split(" ")[0] ?? ""));
@@ -476,28 +480,28 @@ export default function Procurement() {
       }, { action: "memenangkan RFQ", target: `${winRfq.id} → ${winVendor}`, module: "Procurement" });
       const pr = requisitions.find((r) => r.id === winRfq.prId);
       if (pr) await update("requisitions", pr.id, { status: "Sudah PO" });
-      toast(`${winRfq.id} dimenangkan ${winVendor} → ${created.id}`);
+      toast(S.tWinInfo.replace("{n}", winRfq.id).replace("{a}", winVendor).replace("{b}", created.id));
       setWinRfq(null);
       setWinVendor("");
     } catch {
-      toast(`Penentuan pemenang ${winRfq.id} gagal di tengah jalan - periksa RFQ, PO & PR`, "info");
+      toast(S.tWinFail.replace("{n}", winRfq.id), "info");
     }
   };
 
   /* ============ KONSOLIDASI ============ */
   const saveKonsolidasi = async () => {
-    if (konsIds.length < 2) { toast("Pilih minimal 2 PR Disetujui untuk konsolidasi", "info"); return; }
-    if (!konsVendor) { toast("Vendor wajib dipilih", "info"); return; }
+    if (konsIds.length < 2) { toast(S.tKonsMin2, "info"); return; }
+    if (!konsVendor) { toast(S.tVendorWajib, "info"); return; }
     const prs = requisitions.filter((r) => konsIds.includes(r.id));
-    if (prs.some((r) => r.status !== "Disetujui")) { toast("Semua PR harus berstatus Disetujui", "info"); return; }
+    if (prs.some((r) => r.status !== "Disetujui")) { toast(S.tKonsStatus, "info"); return; }
     const lines = prs.map((r) => ({ name: r.item, qty: 1, unit: "pcs", price: Number(r.amount) || 0 }));
     const total = lineTotal(lines);
     if (konsProject) {
       const info = budgetInfo(konsProject, total);
-      if (info && info.aktif + total > info.sisa) { toast("Gabungan PR melebihi sisa budget proyek", "info"); return; }
+      if (info && info.aktif + total > info.sisa) { toast(S.tKonsBudget, "info"); return; }
     }
     const plafon = cekPlafon(konsVendor, total);
-    if (plafon && !plafon.ok) { toast(`Plafon kontrak payung terlampaui (pakai ${fmtRupiah(plafon.pakai)} / plafon ${fmtRupiah(plafon.plafon)})`, "info"); return; }
+    if (plafon && !plafon.ok) { toast(S.tPlafon.replace("{a}", fmtRupiah(plafon.pakai)).replace("{b}", fmtRupiah(plafon.plafon)), "info"); return; }
     try {
       const created = await add("purchaseOrders", {
         poType: "Besar", item: `Konsolidasi ${prs.length} PR`, itemId: "",
@@ -508,13 +512,13 @@ export default function Procurement() {
       for (const r of prs) {
         await update("requisitions", r.id, { status: "Sudah PO" });
       }
-      toast(`Konsolidasi ${prs.length} PR → ${created.id}`);
+      toast(S.tKonsOk.replace("{n}", String(prs.length)).replace("{a}", created.id));
       setKonsIds([]);
       setKonsVendor("");
       setKonsProject("");
       setKonsEta("");
     } catch {
-      toast("Konsolidasi gagal di tengah jalan - periksa PO & status PR", "info");
+      toast(S.tKonsFail, "info");
     }
   };
 
@@ -528,10 +532,10 @@ export default function Procurement() {
   const saveEval = async () => {
     if (!evalPo) return;
     const q = Number(evalQ), d = Number(evalD), p = Number(evalP);
-    if (![q, d, p].every((n) => n >= 1 && n <= 5)) { toast("Nilai kualitas, delivery, harga 1-5 wajib diisi", "info"); return; }
+    if (![q, d, p].every((n) => n >= 1 && n <= 5)) { toast(S.tEvalRange, "info"); return; }
     const score = Math.round(q * 8 + d * 6 + p * 6);
     const v = vendors.find((x) => sameName(x.name, evalPo.vendor));
-    if (!v) { toast("Vendor tidak ditemukan di master", "info"); return; }
+    if (!v) { toast(S.tVendNotFound, "info"); return; }
     const next = [...scoresOf(v), { po: evalPo.id, q, d, p, score, date: todayISO() }];
     const avg = next.reduce((s, x) => s + Number(x.score), 0) / next.length;
     const patch: Record<string, unknown> = { scores: next };
@@ -539,7 +543,7 @@ export default function Procurement() {
     await update("vendors", v.id, patch);
     await update("purchaseOrders", evalPo.id, { evaluated: true });
     log("evaluasi vendor", `${v.name}: skor ${score} dari ${evalPo.id} (rata-rata ${Math.round(avg)})`, "Procurement");
-    toast(avg < 60 ? `${v.name} skor ${score} - rata-rata ${Math.round(avg)}, otomatis Blacklist` : `Skor ${v.name}: ${score} tersimpan`);
+    toast(avg < 60 ? S.tEvalBlack.replace("{n}", v.name).replace("{a}", String(score)).replace("{b}", String(Math.round(avg))) : S.tEvalSaved.replace("{n}", v.name).replace("{a}", String(score)));
     setEvalPo(null);
     setEvalQ("");
     setEvalD("");
@@ -549,15 +553,15 @@ export default function Procurement() {
   const savePayung = async () => {
     if (!payungVendor) return;
     const plafon = Number(payungPlafon);
-    if (payungPlafon.trim() !== "" && (!plafon || plafon <= 0)) { toast("Plafon harus lebih dari 0 bila diisi", "info"); return; }
+    if (payungPlafon.trim() !== "" && (!plafon || plafon <= 0)) { toast(S.tPlafonPos, "info"); return; }
     if (payungPlafon.trim() === "") {
       await update("vendors", payungVendor.id, { payung: null });
       log("hapus kontrak payung", payungVendor.name, "Procurement");
-      toast(`Kontrak payung ${payungVendor.name} dihapus`);
+      toast(S.tPayDel.replace("{n}", payungVendor.name));
     } else {
       await update("vendors", payungVendor.id, { payung: { periode: payungPeriode.trim() || "-", plafon } });
       log("kontrak payung", `${payungVendor.name}: plafon ${fmtRupiah(plafon)} (${payungPeriode.trim() || "-"})`, "Procurement");
-      toast(`Kontrak payung ${payungVendor.name} tersimpan`);
+      toast(S.tPaySaved.replace("{n}", payungVendor.name));
     }
     setPayungVendor(null);
     setPayungPeriode("");
@@ -568,12 +572,12 @@ export default function Procurement() {
   const confirmAmendNow = async () => {
     if (!amendPo) return;
     const st = normPo(amendPo.status);
-    if (st !== "Disetujui" && st !== "Dikirim") { toast("Amandemen hanya untuk PO Disetujui/Dikirim", "info"); return; }
-    if (!amendForm.name.trim()) { toast("Nama baris tambahan wajib diisi", "info"); return; }
+    if (st !== "Disetujui" && st !== "Dikirim") { toast(S.tAmdOnly, "info"); return; }
+    if (!amendForm.name.trim()) { toast(S.tAmdName, "info"); return; }
     const qty = Number(amendForm.qty);
     const price = Number(amendForm.price);
-    if (!qty || qty <= 0 || !price || price <= 0) { toast("Qty & harga tambahan harus lebih dari 0", "info"); return; }
-    if (!amendForm.note.trim()) { toast("Catatan amandemen wajib diisi", "info"); return; }
+    if (!qty || qty <= 0 || !price || price <= 0) { toast(S.tAmdQtyPrice, "info"); return; }
+    if (!amendForm.note.trim()) { toast(S.tAmdNote, "info"); return; }
     const cur = (amendPo.revisi as string) || "";
     const n = cur.startsWith("R") ? Number(cur.slice(1)) + 1 : 1;
     const revisi = `R${n}`;
@@ -582,7 +586,7 @@ export default function Procurement() {
     const amendments = [...(Array.isArray(amendPo.amendments) ? amendPo.amendments : []), { note: amendForm.note.trim(), date: todayISO(), revisi }];
     await update("purchaseOrders", amendPo.id, { lines, amendments, revisi, amount: lineTotal(lines) });
     log("amandemen PO", `${amendPo.id} ${revisi}: ${amendForm.note.trim()}`, "Procurement");
-    toast(`${amendPo.id} diamandemen (${revisi})`);
+    toast(S.tAmdOk.replace("{a}", amendPo.id).replace("{b}", revisi));
     setAmendPo(null);
     setConfirmAmend(false);
     setAmendForm({ name: "", qty: "1", unit: "pcs", price: "", note: "" });
@@ -596,28 +600,28 @@ export default function Procurement() {
       [SB_KOP.line1, SB_KOP.name],
       [SB_KOP.hq, `${SB_KOP.addr1} · HP ${SB_KOP.hp}`],
       [],
-      ["Purchase Order", po.docNo ? `${po.id} / ${po.docNo}` : po.id],
-      ["Tipe", po.poType === "Kecil" ? "PO Kecil (Workshop)" : "PO Besar (Kantor)"],
-      ["Vendor", po.vendor ?? "-"],
-      ["Referensi PR", po.req ?? "-"],
-      ["Proyek", po.project ?? "-"],
-      ["U/TK Kapal", po.vessel ?? "-"],
-      ["Tanggal", fmtTanggal(po.date)],
-      ["ETA", po.eta ? fmtTanggal(po.eta) : "-"],
-      ["Status", normPo(po.status)],
-      ["Level approval", levelOf(Number(po.amount || 0), APPROVE_PO_LIMIT)],
-      ["Persetujuan", apprOf(po).length > 0 ? apprOf(po).map((a) => `${a.level} oleh ${a.by} ${a.date}`).join("; ") : "-"],
-      ["No faktur pajak", po.noFaktur ?? "-"],
-      ["Tanggal faktur", po.tglFaktur ? fmtTanggal(po.tglFaktur) : "-"],
-      ["Denda keterlambatan (Rp)", Number(po.dendaRp || 0)],
+      [S.xPo, po.docNo ? `${po.id} / ${po.docNo}` : po.id],
+      [S.xTipe, po.poType === "Kecil" ? S.tabSmall : S.tabBig],
+      [S.vendor, po.vendor ?? "-"],
+      [S.xRefPr, po.req ?? "-"],
+      [S.proyek, po.project ?? "-"],
+      [S.xUtk, po.vessel ?? "-"],
+      [S.xTgl, fmtTanggal(po.date)],
+      [S.eta, po.eta ? fmtTanggal(po.eta) : "-"],
+      [S.status, normPo(po.status)],
+      [S.xLevelAppr, levelOf(Number(po.amount || 0), APPROVE_PO_LIMIT)],
+      [S.xAppr, apprOf(po).length > 0 ? apprOf(po).map((a) => S.apprJoin.replace("{n}", a.level).replace("{a}", a.by).replace("{b}", a.date)).join("; ") : "-"],
+      [S.noFaktur, po.noFaktur ?? "-"],
+      [S.tglFaktur, po.tglFaktur ? fmtTanggal(po.tglFaktur) : "-"],
+      [S.xDenda, Number(po.dendaRp || 0)],
       [],
-      ["Baris", "Qty", "Satuan", "Harga", "Subtotal"],
+      [S.xBaris, S.qty, S.satuan, S.harga, S.xSubtotal],
       ...lines.map((l) => [l.name, l.qty, l.unit, l.price, Number(l.qty) * Number(l.price)]),
-      ["Total", "", "", "", Number(po.amount || lineTotal(lines))],
-      ...(split ? [[`DPP (Total include PPN ${ppnRate}%)`, "", "", "", split.dpp], [`PPN ${ppnRate}%`, "", "", "", split.ppn]] : []),
+      [S.xTotal, "", "", "", Number(po.amount || lineTotal(lines))],
+      ...(split ? [[S.xDpp.replace("{n}", String(ppnRate)), "", "", "", split.dpp], [S.xPpn.replace("{n}", String(ppnRate)), "", "", "", split.ppn]] : []),
     ];
     void exportExcel(rows, `PO-${po.id}`, "PO");
-    toast(`PO ${po.id} diekspor ke Excel`);
+    toast(S.tPoExport.replace("{n}", po.id));
   };
 
   /* ============ TERIMA & RETUR (qty persis) ============ */
@@ -640,15 +644,15 @@ export default function Procurement() {
 
   const confirmRecv = async (mode: "penuh" | "sebagian") => {
     if (!recvPo) return;    const qty = Number(recvQty);
-    if (!qty || qty <= 0) { toast("Qty terima harus lebih dari 0", "info"); return; }
+    if (!qty || qty <= 0) { toast(S.tRecvQty, "info"); return; }
     const orderedQty = Number(recvPo.qty || 0);
-    if (orderedQty > 0 && Number(recvPo.receivedQty || 0) + qty > orderedQty) { toast(`Qty terima melebihi qty PO (dipesan ${orderedQty}, sudah diterima ${Number(recvPo.receivedQty || 0)})`, "info"); return; }
+    if (orderedQty > 0 && Number(recvPo.receivedQty || 0) + qty > orderedQty) { toast(S.tRecvOver.replace("{a}", String(orderedQty)).replace("{b}", String(Number(recvPo.receivedQty || 0))), "info"); return; }
     const isBig = recvPo.poType !== "Kecil";
-    if (isBig && (!recvNoFaktur.trim() || !recvTglFaktur)) { toast("No faktur & tanggal faktur wajib untuk PO Besar", "info"); return; }
-    if (!isBig && !recvNoFaktur.trim()) { toast("No. nota/bukti wajib diisi untuk PO Kecil", "info"); return; }
+    if (isBig && (!recvNoFaktur.trim() || !recvTglFaktur)) { toast(S.tFakturWajib, "info"); return; }
+    if (!isBig && !recvNoFaktur.trim()) { toast(S.tNotaWajib, "info"); return; }
     const invItem = invList.find((i) => i.id === recvItem);
-    if (!isBig && !invItem) { toast("PO Kecil: pilih item inventori tujuan (wajib)", "info"); return; }
-    if (recvItem && !invItem) { toast("Pilih item inventori tujuan", "info"); return; }
+    if (!isBig && !invItem) { toast(S.tKecilItem, "info"); return; }
+    if (recvItem && !invItem) { toast(S.tPilihItem, "info"); return; }
     try {
       if (invItem) {
       await update("inventory", invItem.id, { stock: Number(invItem.stock) + qty });
@@ -690,7 +694,7 @@ export default function Procurement() {
       log("auto-hutang GR", `${recvPo.id} → hutang ${recvPo.vendor} ${fmtRupiah(apTotal)}`, "Procurement");
     }
     if (late > 0 && dendaRp > 0) log("denda keterlambatan", `${recvPo.id}: telat ${late} hari → ${fmtRupiah(dendaRp)}`, "Procurement");
-    toast(`${recvPo.id} ${mode === "penuh" ? "diterima" : "diterima sebagian"}${invItem ? ` - stok ${invItem.name} +${qty}` : ""}${dendaRp > 0 ? ` · denda ${fmtRupiah(dendaRp)}` : ""}`);
+    toast(`${recvPo.id} ${mode === "penuh" ? S.tRecvPenuh : S.tRecvSebagian}${invItem ? S.tRecvStok.replace("{a}", invItem.name).replace("{b}", String(qty)) : ""}${dendaRp > 0 ? S.tRecvDenda.replace("{n}", fmtRupiah(dendaRp)) : ""}`);
     setRecvPo(null);
     setRecvItem("");
     setRecvQty("");
@@ -698,7 +702,7 @@ export default function Procurement() {
     setRecvTglFaktur("");
     setRecvDendaPct("0.1");
     } catch {
-      toast(`Penerimaan ${recvPo.id} gagal di tengah jalan - periksa stok, movement & hutang`, "info");
+      toast(S.tRecvFail.replace("{n}", recvPo.id), "info");
     }
   };
 
@@ -708,12 +712,12 @@ export default function Procurement() {
   const confirmRetur = async () => {
     if (!retPo) return;
     const qty = Number(retQty);
-    if (!qty || qty <= 0) { toast("Qty retur harus lebih dari 0", "info"); return; }
-    if (qty > maxRet(retPo)) { toast(`Qty retur melebihi qty diterima (maks ${maxRet(retPo)})`, "info"); return; }
-    if (!retNote.trim()) { toast("Alasan retur wajib diisi", "info"); return; }
+    if (!qty || qty <= 0) { toast(S.tRetQty, "info"); return; }
+    if (qty > maxRet(retPo)) { toast(S.tRetOver.replace("{n}", String(maxRet(retPo))), "info"); return; }
+    if (!retNote.trim()) { toast(S.tRetNote, "info"); return; }
     const invItem = invList.find((i) => i.id === retPo.itemId);
-    if (!invItem) { toast("PO ini belum terlink ke item inventori", "info"); return; }
-    if (Number(invItem.stock) < qty) { toast("Stok tidak cukup untuk retur", "info"); return; }
+    if (!invItem) { toast(S.tRetNoLink, "info"); return; }
+    if (Number(invItem.stock) < qty) { toast(S.tRetStok, "info"); return; }
     try {
       await update("inventory", invItem.id, { stock: Number(invItem.stock) - qty });
       await add("movements", {
@@ -721,18 +725,18 @@ export default function Procurement() {
       }, { action: "meretur barang", target: `${invItem.name} × ${qty} (${retPo.id})`, module: "Procurement" });
       await update("purchaseOrders", retPo.id, { returnedQty: Number(retPo.returnedQty || 0) + qty });
       log("meretur barang", `${invItem.name} × ${qty} (${retPo.id}): ${retNote.trim()}`, "Procurement");
-      toast(`Retur ${retPo.id} × ${qty} tersimpan`);
+      toast(S.tRetOk.replace("{a}", retPo.id).replace("{b}", String(qty)));
       setRetPo(null);
       setRetQty("");
       setRetNote("");
     } catch {
-      toast(`Retur ${retPo.id} gagal di tengah jalan - periksa stok & movement`, "info");
+      toast(S.tRetFail.replace("{n}", retPo.id), "info");
     }
   };
 
   const approvePr = async (r: StoreItem, ok: boolean) => {
     await update("requisitions", r.id, { status: ok ? "Disetujui" : "Ditolak" });
-    toast(`${r.id} ${ok ? "disetujui" : "ditolak"}`);
+    toast(ok ? S.tPrOk.replace("{n}", r.id) : S.tPrNo.replace("{n}", r.id));
   };
 
   const poAksi = (po: StoreItem) => {
@@ -740,46 +744,46 @@ export default function Procurement() {
     const nx = po.poType === "Kecil" ? null : nextLevel(po, APPROVE_PO_LIMIT);
     return (
       <div className="flex flex-wrap gap-1.5">
-        {st === "Draft" && <button className="btn-secondary text-xs" onClick={() => doPoStatus(po, "Diajukan")}>Ajukan</button>}
+        {st === "Draft" && <button className="btn-secondary text-xs" onClick={() => doPoStatus(po, "Diajukan")}>{S.btnAjukan}</button>}
         {st === "Diajukan" && po.poType === "Kecil" && (
           <>
-            <button className="btn-secondary text-xs" onClick={() => setConfirmApprove(po)}><Check className="h-3.5 w-3.5" /> Setujui</button>
-            <button className="btn-secondary text-xs text-rose-600" aria-label={`Tolak ${po.id}`} onClick={() => setConfirmRejectPo(po)}><X className="h-3.5 w-3.5" /> Tolak</button>
+            <button className="btn-secondary text-xs" onClick={() => setConfirmApprove(po)}><Check className="h-3.5 w-3.5" /> {S.btnSetujui}</button>
+            <button className="btn-secondary text-xs text-rose-600" aria-label={S.ariaTolakN.replace("{n}", po.id)} onClick={() => setConfirmRejectPo(po)}><X className="h-3.5 w-3.5" /> {S.btnTolak}</button>
           </>
         )}
         {st === "Diajukan" && po.poType !== "Kecil" && (
           <>
             {nx
-              ? <button className="btn-primary text-xs" onClick={() => doApproveLevel(po)}><Check className="h-3.5 w-3.5" /> Setujui ({nx})</button>
-              : <span className="text-xs text-steel-400">Menunggu tahap lain</span>}
-            <button className="btn-secondary text-xs text-rose-600" aria-label={`Tolak ${po.id}`} onClick={() => setConfirmRejectPo(po)}><X className="h-3.5 w-3.5" /> Tolak</button>
+              ? <button className="btn-primary text-xs" onClick={() => doApproveLevel(po)}><Check className="h-3.5 w-3.5" /> {S.btnSetujuiNx.replace("{n}", nx)}</button>
+              : <span className="text-xs text-steel-400">{S.menungguTahap}</span>}
+            <button className="btn-secondary text-xs text-rose-600" aria-label={S.ariaTolakN.replace("{n}", po.id)} onClick={() => setConfirmRejectPo(po)}><X className="h-3.5 w-3.5" /> {S.btnTolak}</button>
           </>
         )}
         {st === "Disetujui" && (
-          <button className="btn-secondary text-xs" onClick={() => doPoStatus(po, "Dikirim")}><Send className="h-3.5 w-3.5" /> Kirim</button>
+          <button className="btn-secondary text-xs" onClick={() => doPoStatus(po, "Dikirim")}><Send className="h-3.5 w-3.5" /> {S.btnKirim}</button>
         )}
         {(st === "Dikirim" || st === "Diterima Sebagian") && (
           <>
-            <button className="btn-primary text-xs" onClick={() => openRecv(po)}>Terima</button>
-            {st === "Dikirim" && <button className="btn-secondary text-xs" onClick={() => openRecv(po)}>Terima Sebagian</button>}
+            <button className="btn-primary text-xs" onClick={() => openRecv(po)}>{S.btnTerima}</button>
+            {st === "Dikirim" && <button className="btn-secondary text-xs" onClick={() => openRecv(po)}>{S.btnTerimaSebagian}</button>}
           </>
         )}
         {(st === "Disetujui" || st === "Dikirim") && (
-          <button className="btn-secondary text-xs" aria-label={`Amandemen ${po.id}`} onClick={() => { setAmendPo(po); setAmendForm({ name: "", qty: "1", unit: "pcs", price: "", note: "" }); }}>
-            <Pencil className="h-3.5 w-3.5" /> Amandemen
+          <button className="btn-secondary text-xs" aria-label={S.ariaAmandemen.replace("{n}", po.id)} onClick={() => { setAmendPo(po); setAmendForm({ name: "", qty: "1", unit: "pcs", price: "", note: "" }); }}>
+            <Pencil className="h-3.5 w-3.5" /> {S.btnAmandemen}
           </button>
         )}
         {st === "Diterima" && !po.evaluated && (
-          <button className="btn-secondary text-xs" aria-label={`Nilai vendor ${po.id}`} onClick={() => { setEvalPo(po); setEvalQ(""); setEvalD(""); setEvalP(""); }}>
-            <Star className="h-3.5 w-3.5" /> Nilai
+          <button className="btn-secondary text-xs" aria-label={S.ariaNilaiVendor.replace("{n}", po.id)} onClick={() => { setEvalPo(po); setEvalQ(""); setEvalD(""); setEvalP(""); }}>
+            <Star className="h-3.5 w-3.5" /> {S.btnNilai}
           </button>
         )}
         {st === "Diterima" && (
-          <button className="btn-secondary text-xs" aria-label={`Retur ${po.id}`} onClick={() => { setRetPo(po); setRetQty(""); setRetNote(""); }}>
-            <Undo2 className="h-3.5 w-3.5" /> Retur
+          <button className="btn-secondary text-xs" aria-label={S.ariaRetur.replace("{n}", po.id)} onClick={() => { setRetPo(po); setRetQty(""); setRetNote(""); }}>
+            <Undo2 className="h-3.5 w-3.5" /> {S.btnRetur}
           </button>
         )}
-        <button className="btn-secondary text-xs" aria-label={`Cetak ${po.id}`} onClick={() => cetakPo(po)}><Printer className="h-3.5 w-3.5" /> Cetak</button>
+        <button className="btn-secondary text-xs" aria-label={S.ariaCetak.replace("{n}", po.id)} onClick={() => cetakPo(po)}><Printer className="h-3.5 w-3.5" /> {S.btnCetak}</button>
         {poNext(po.status).length === 0 && st !== "Diterima" && <span className="text-xs text-steel-400">-</span>}
       </div>
     );
@@ -788,14 +792,14 @@ export default function Procurement() {
   return (
     <div>
       <PageHeader
-        title="Procurement & Purchasing"
-        subtitle="Permintaan, penawaran, PO, dan manajemen vendor"
+        title={S.pageTitle}
+        subtitle={S.pageSub}
         icon={<ShoppingCart className="h-5 w-5" />}
         actions={
           <div className="flex items-center gap-2">
             {tab === "PO Kecil (Workshop)"
-              ? <button className="btn-primary-gradient" onClick={() => setShowSmall(true)}><Plus className="h-4 w-4" /> Buat PO Kecil</button>
-              : <button className="btn-primary-gradient" onClick={() => { setShowBig(true); }}><Plus className="h-4 w-4" /> Buat PO Besar</button>}
+              ? <button className="btn-primary-gradient" onClick={() => setShowSmall(true)}><Plus className="h-4 w-4" /> {S.btnCreateSmall}</button>
+              : <button className="btn-primary-gradient" onClick={() => { setShowBig(true); }}><Plus className="h-4 w-4" /> {S.btnCreateBig}</button>}
           </div>
         }
       />
@@ -803,19 +807,19 @@ export default function Procurement() {
       {modAlert.active && <AlertBannerView items={modAlert.items} onPick={modAlert.scrollTo} />}
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <KpiCard label="PO Aktif" value={String(purchaseOrders.length)} icon={<ShoppingCart className="h-5 w-5" />} chip="navy" spark={poCountTrend} hint="Sedang berjalan" />
-        <KpiCard label="Nilai PO Terbuka" value={fmtRupiah(openPo)} hint="Belum diterima penuh" icon={<ShoppingCart className="h-5 w-5" />} chip="teal" spark={poValueTrend} />
-        <KpiCard label="Permintaan Menunggu" value={`${pendingPr} PR`} hint="Perlu approval" icon={<ClipboardList className="h-5 w-5" />} chip="amber" spark={prPendingTrend} />
-        <KpiCard label="Vendor Terdaftar" value={String(vendors.length)} icon={<Factory className="h-5 w-5" />} chip="violet" hint="Rating & evaluasi" spark={vendorTrend} />
+        <KpiCard label={S.kpiActive} value={String(purchaseOrders.length)} icon={<ShoppingCart className="h-5 w-5" />} chip="navy" spark={poCountTrend} hint={S.kpiActiveHint} />
+        <KpiCard label={S.kpiOpen} value={fmtRupiah(openPo)} hint={S.kpiOpenHint} icon={<ShoppingCart className="h-5 w-5" />} chip="teal" spark={poValueTrend} />
+        <KpiCard label={S.kpiPending} value={S.pendingPrVal.replace("{n}", String(pendingPr))} hint={S.kpiPendingHint} icon={<ClipboardList className="h-5 w-5" />} chip="amber" spark={prPendingTrend} />
+        <KpiCard label={S.kpiVendor} value={String(vendors.length)} icon={<Factory className="h-5 w-5" />} chip="violet" hint={S.kpiVendorHint} spark={vendorTrend} />
       </div>
 
       <div className="mt-4 card">
-        <Tabs tabs={["PR", "RFQ", "PO Besar (Kantor)", "PO Kecil (Workshop)", "Vendor"]} active={tab} onChange={setTab} />
+        <Tabs tabs={["PR", "RFQ", "PO Besar (Kantor)", "PO Kecil (Workshop)", "Vendor"]} active={tab} onChange={setTab} labels={{ PR: S.tabPr, RFQ: S.tabRfq, "PO Besar (Kantor)": S.tabBig, "PO Kecil (Workshop)": S.tabSmall, Vendor: S.tabVendor }} />
         <div className="p-4">
           <div className="mb-3 flex flex-wrap items-center gap-2">
             <div className="relative min-w-52 flex-1 sm:max-w-xs">
               <Search className="absolute left-3 top-2.5 h-4 w-4 text-steel-400" />
-              <input className="input pl-9 w-full" placeholder="Cari id / item / vendor..." aria-label="Cari procurement" value={pq} onChange={(e) => setPq(e.target.value)} />
+              <input className="input pl-9 w-full" placeholder={S.searchPh} aria-label={S.searchAria} value={pq} onChange={(e) => setPq(e.target.value)} />
             </div>
             <FilterPopover
               activeCount={[pStatus !== "Semua"].filter(Boolean).length}
@@ -825,9 +829,9 @@ export default function Procurement() {
             >
               {(draft, setDraft) => (
                 <div className="space-y-3">
-                  <Field label="Status">
+                  <Field label={S.status}>
                     <select className="input w-full" value={draft.status} onChange={(e) => setDraft({ ...draft, status: e.target.value })}>
-                      {(STATUS_OPSI[tab] ?? ["Semua"]).map((s) => <option key={s} value={s}>{s === "Semua" ? "Semua status" : s}</option>)}
+                      {(STATUS_OPSI[tab] ?? ["Semua"]).map((s) => <option key={s} value={s}>{s === "Semua" ? S.allStatus : s}</option>)}
                     </select>
                   </Field>
                 </div>
@@ -835,17 +839,17 @@ export default function Procurement() {
             </FilterPopover>
             {(pq.trim() !== "" || pStatus !== "Semua") && (
               <span className="text-xs text-steel-400">
-                Filter aktif di tab {tab} - {tab === "PO Besar (Kantor)" ? bigShown.length : tab === "PO Kecil (Workshop)" ? smallShown.length : tab === "RFQ" ? rfqShown.length : tab === "PR" ? prShown.length : vendorShown.length} baris
+                {S.filterActive.replace("{a}", tab).replace("{n}", String(tab === "PO Besar (Kantor)" ? bigShown.length : tab === "PO Kecil (Workshop)" ? smallShown.length : tab === "RFQ" ? rfqShown.length : tab === "PR" ? prShown.length : vendorShown.length))}
               </span>
             )}
           </div>
           {tab === "PO Besar (Kantor)" && (
             <div className="space-y-4">
-              <p className="rounded-lg bg-steel-50 px-3 py-2 text-xs text-steel-500">Approval bertingkat nominal: ≤50 jt SPV · ≤500 jt +Manager · &gt;500 jt +Director · &gt;Rp1 jt +Finance (docs/11§4.4). PO Besar wajib faktur pajak saat terima. Hutang vendor otomatis terbentuk saat GR (3-way match PO-GR-AP).</p>
+              <p className="rounded-lg bg-steel-50 px-3 py-2 text-xs text-steel-500">{S.bigInfo}</p>
               <div className="overflow-x-auto">
                 <table className="w-full">
                   <thead className="bg-surface sticky top-0 z-10">
-                    <tr><SortTh label="PO" sortKey="po" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label="Item" sortKey="item" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label="Vendor" sortKey="vendor" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label="Nilai" sortKey="nilai" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label="Level" sortKey="level" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label="ETA" sortKey="eta" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label="Revisi" sortKey="revisi" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label="Status" sortKey="status" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><th className="th">Aksi</th></tr>
+                    <tr><SortTh label={S.po} sortKey="po" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.item} sortKey="item" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.vendor} sortKey="vendor" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.nilai} sortKey="nilai" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.level} sortKey="level" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.eta} sortKey="eta" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.revisi} sortKey="revisi" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.status} sortKey="status" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><th className="th">{S.aksi}</th></tr>
                   </thead>
                   <tbody className="divide-y divide-steel-100">
                     {bigPager.slice(sortedBig).map((po) => {
@@ -860,32 +864,32 @@ export default function Procurement() {
                             <p className="truncate" title={String(po.item)}>{po.item}</p>
                             {(po.qty || po.receivedQty) && (
                               <p className="text-xs text-steel-400">
-                                Qty {po.qty ? fmtJumlah(Number(po.qty)) : "-"} · Diterima {fmtJumlah(Number(po.receivedQty || 0))}
-                                {Number(po.returnedQty || 0) > 0 && ` · Retur ${fmtJumlah(Number(po.returnedQty))}`}
+                                {S.qtyDiterima.replace("{a}", po.qty ? fmtJumlah(Number(po.qty)) : "-").replace("{b}", fmtJumlah(Number(po.receivedQty || 0)))}
+                                {Number(po.returnedQty || 0) > 0 && S.returN.replace("{n}", fmtJumlah(Number(po.returnedQty)))}
                               </p>
                             )}
                             {poLines(po).length > 0 && (
-                              <p className="text-xs text-steel-400 truncate" title={poLines(po).map((l) => `${l.name} ×${l.qty}`).join("; ")}>{poLines(po).length} baris · PR {po.req}</p>
+                              <p className="text-xs text-steel-400 truncate" title={poLines(po).map((l) => `${l.name} ×${l.qty}`).join("; ")}>{S.barisPr.replace("{n}", String(poLines(po).length)).replace("{a}", String(po.req ?? ""))}</p>
                             )}
                             {po.noFaktur && (
-                              <p className="text-xs text-steel-400 truncate" title={`Faktur ${po.noFaktur}`}>Faktur {po.noFaktur}{po.tglFaktur ? ` · ${fmtTanggal(po.tglFaktur)}` : ""}</p>
+                              <p className="text-xs text-steel-400 truncate" title={S.fakturN.replace("{n}", String(po.noFaktur))}>{S.fakturN.replace("{n}", String(po.noFaktur))}{po.tglFaktur ? S.dotN.replace("{n}", fmtTanggal(po.tglFaktur)) : ""}</p>
                             )}
                           </td>
                           <td className="td text-steel-600">
                             <p className="truncate" title={String(po.vendor)}>{po.vendor}</p>
-                            {payung && <span className="mt-0.5 inline-block"><Badge tone="navy">Payung</Badge></span>}
+                            {payung && <span className="mt-0.5 inline-block"><Badge tone="navy">{S.payung}</Badge></span>}
                           </td>
                           <td className="td font-semibold">
                             {fmtRupiah(po.amount)}
-                            {Number(po.dendaRp || 0) > 0 && <p className="text-xs font-normal text-rose-600">Denda {fmtRupiah(Number(po.dendaRp))}</p>}
+                            {Number(po.dendaRp || 0) > 0 && <p className="text-xs font-normal text-rose-600">{S.dendaN.replace("{n}", fmtRupiah(Number(po.dendaRp)))}</p>}
                           </td>
                           <td className="td">
                             <Badge tone="navy">{levelOf(Number(po.amount || 0), APPROVE_PO_LIMIT)}</Badge>
-                            <p className="mt-0.5 text-xs text-steel-400">{done.length}/{need.length} tahap{done.length > 0 ? ` · ${done.map((a) => a.level).join(" → ")}` : ""}</p>
+                            <p className="mt-0.5 text-xs text-steel-400">{S.tahap.replace("{a}", String(done.length)).replace("{b}", String(need.length))}{done.length > 0 ? S.tahapLanjut.replace("{n}", done.map((a) => a.level).join(" → ")) : ""}</p>
                           </td>
                           <td className="td text-steel-600">
                             {po.eta ? fmtTanggal(po.eta) : "-"}
-                            {isLate(po) && <span className="ml-1.5"><Badge tone="red">Terlambat</Badge></span>}
+                            {isLate(po) && <span className="ml-1.5"><Badge tone="red">{S.terlambat}</Badge></span>}
                           </td>
                           <td className="td text-steel-600 font-mono text-xs">{po.revisi || "R0"}</td>
                           <td className="td"><Badge tone={poStatus[po.status] ?? poStatus[st] ?? "gray"}>{st}</Badge></td>
@@ -895,11 +899,11 @@ export default function Procurement() {
                     })}
                   </tbody>
                 </table>
-                {bigShown.length === 0 && <EmptyState title="Belum ada PO Besar" subtitle="Buat PO Besar dari PR Disetujui, RFQ, atau konsolidasi." />}
+                {bigShown.length === 0 && <EmptyState title={S.emptyBigT} subtitle={S.emptyBigS} />}
                 {bigPager.bar}
               <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
                 <Card>
-                  <CardHeader title="Belanja per Kategori" subtitle="Persentase total pengeluaran" />
+                  <CardHeader title={S.cardSpendT} subtitle={S.cardSpendS} />
                   <div className="flex items-center gap-4 p-4 pt-0">
                     <Donut data={spendByCategory} colors={spendByCategory.map((d) => d.color)} size={130} thickness={18} centerValue="100" centerLabel="%" />
                     <div className="flex-1 space-y-1.5">
@@ -914,7 +918,7 @@ export default function Procurement() {
                   </div>
                 </Card>
                 <Card className="lg:col-span-2">
-                  <CardHeader title="Tren Pengadaan" subtitle="Jumlah PO & nilai pengeluaran (milyar Rupiah)" />
+                  <CardHeader title={S.cardTrenT} subtitle={S.cardTrenS} />
                   <div className="h-44 p-4 pt-0">
                     <ResponsiveContainer width="100%" height="100%">
                       <AreaChart data={procurementTrend} margin={{ top: 5, right: 5, left: -20, bottom: 0 }}>
@@ -922,8 +926,8 @@ export default function Procurement() {
                         <CartesianGrid strokeDasharray="3 3" stroke="#e9eff4" vertical={false} />
                         <XAxis dataKey="month" stroke="#8aa2b6" axisLine={false} tickLine={false} />
                         <YAxis stroke="#8aa2b6" axisLine={false} tickLine={false} />
-                        <Tooltip content={<ChartTooltip formatter={(v) => (typeof v === "number" ? `Rp ${v} M` : v)} />} />
-                        <Area type="monotone" dataKey="pengeluaran" name="Pengeluaran" stroke="#0d9488" strokeWidth={2.5} fill="url(#procGrad)" />
+                        <Tooltip content={<ChartTooltip formatter={(v) => (typeof v === "number" ? S.chartRpM.replace("{n}", String(v)) : v)} />} />
+                        <Area type="monotone" dataKey="pengeluaran" name={S.chartKeluar} stroke="#0d9488" strokeWidth={2.5} fill="url(#procGrad)" />
                       </AreaChart>
                     </ResponsiveContainer>
                   </div>
@@ -936,35 +940,35 @@ export default function Procurement() {
           {tab === "PO Kecil (Workshop)" && (
             <div className="space-y-4">
               <Card className="p-5">
-                <CardHeader title="Realisasi PO Kecil vs Kasbon Workshop" subtitle="Alat bantu sesi ini - bukan ledger permanen" />
+                <CardHeader title={S.kasT} subtitle={S.kasS} />
                 <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-4">
-                  <Field label={`Saldo awal sesi (${bulanIni})`}>
-                    <input type="number" min={0} className="input" value={kasAwal} onChange={(e) => setKasAwal(e.target.value)} placeholder="cth: 25000000" />
+                  <Field label={S.kasSaldo.replace("{n}", bulanIni)}>
+                    <input type="number" min={0} className="input" value={kasAwal} onChange={(e) => setKasAwal(e.target.value)} placeholder={S.phKasContoh} />
                   </Field>
                   <div className="rounded-lg bg-surface p-2.5">
-                    <p className="flex items-center gap-1 text-xs text-steel-500"><Wallet className="h-3.5 w-3.5" /> Realisasi bulan ini</p>
+                    <p className="flex items-center gap-1 text-xs text-steel-500"><Wallet className="h-3.5 w-3.5" /> {S.kasBulanIni}</p>
                     <p className="font-semibold text-navy-900">{fmtRupiah(smallBulanTotal)}</p>
-                    <p className="text-xs text-steel-400">{smallBulan.length} PO Kecil</p>
+                    <p className="text-xs text-steel-400">{S.kasPoKecil.replace("{n}", String(smallBulan.length))}</p>
                   </div>
                   <div className="rounded-lg bg-surface p-2.5">
-                    <p className="text-xs text-steel-500">Sisa kasbon</p>
+                    <p className="text-xs text-steel-500">{S.kasSisa}</p>
                     <p className={`font-semibold ${kasSisa < 0 ? "text-rose-600" : "text-navy-900"}`}>{fmtRupiah(kasSisa)}</p>
-                    <p className="text-xs text-steel-400">Saldo awal - realisasi</p>
+                    <p className="text-xs text-steel-400">{S.kasSisaHint}</p>
                   </div>
                   <div className="flex items-end">
-                    <button className="btn-secondary text-xs" onClick={exportKas}><Printer className="h-3.5 w-3.5" /> Export</button>
+                    <button className="btn-secondary text-xs" onClick={exportKas}><Printer className="h-3.5 w-3.5" /> {S.btnExport}</button>
                   </div>
                 </div>
               </Card>
               <div>
                 <div className="mb-3 flex justify-end">
-                  <button className="btn-secondary text-xs" onClick={() => setShowSmall(true)}><Plus className="h-3.5 w-3.5" /> Buat PO Kecil</button>
+                  <button className="btn-secondary text-xs" onClick={() => setShowSmall(true)}><Plus className="h-3.5 w-3.5" /> {S.btnCreateSmall}</button>
                 </div>
-                <p className="mb-3 rounded-lg bg-steel-50 px-3 py-2 text-xs text-steel-500">PO Kecil: Diajukan → Disetujui → Diterima, tanpa RFQ. Batas {fmtRupiah(PO_KECIL_LIMIT)} - selebihnya gunakan PO Besar.</p>
+                <p className="mb-3 rounded-lg bg-steel-50 px-3 py-2 text-xs text-steel-500">{S.smallInfo.replace("{n}", fmtRupiah(PO_KECIL_LIMIT))}</p>
                 <div className="overflow-x-auto">
                   <table className="w-full">
                     <thead className="bg-surface sticky top-0 z-10">
-                      <tr><SortTh label="PO" sortKey="po" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} /><SortTh label="Kebutuhan" sortKey="kebutuhan" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} /><SortTh label="Workshop" sortKey="workshop" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} /><SortTh label="Nilai" sortKey="nilai" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} /><SortTh label="ETA" sortKey="eta" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} /><SortTh label="Status" sortKey="status" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} /><th className="th">Aksi</th></tr>
+                      <tr><SortTh label={S.po} sortKey="po" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} /><SortTh label={S.kebutuhan} sortKey="kebutuhan" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} /><SortTh label={S.workshop} sortKey="workshop" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} /><SortTh label={S.nilai} sortKey="nilai" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} /><SortTh label={S.eta} sortKey="eta" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} /><SortTh label={S.status} sortKey="status" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} /><th className="th">{S.aksi}</th></tr>
                     </thead>
                     <tbody className="divide-y divide-steel-100">
                       {smallPager.slice(sortedSmall).map((po) => {
@@ -983,13 +987,13 @@ export default function Procurement() {
                           </td>
                             <td className="td text-steel-600">
                               <p className="truncate" title={String(po.item)}>{po.item}</p>
-                              <p className="text-xs text-steel-400">Qty {fmtJumlah(Number(po.qty || 0))} · {po.requester}</p>
+                              <p className="text-xs text-steel-400">{S.qtyBy.replace("{a}", fmtJumlah(Number(po.qty || 0))).replace("{b}", String(po.requester ?? ""))}</p>
                             </td>
                             <td className="td text-steel-600 truncate" title={String(po.workshop ?? "-")}>{po.workshop ?? "-"}</td>
                             <td className="td font-semibold">{fmtRupiah(po.amount)}</td>
                             <td className="td text-steel-600">
                               {po.eta ? fmtTanggal(po.eta) : "-"}
-                              {isLate(po) && <span className="ml-1.5"><Badge tone="red">Terlambat</Badge></span>}
+                              {isLate(po) && <span className="ml-1.5"><Badge tone="red">{S.terlambat}</Badge></span>}
                             </td>
                             <td className="td"><Badge tone={poStatus[st] ?? "gray"}>{st}</Badge></td>
                             <td className="td">{poAksi(po)}</td>
@@ -998,7 +1002,7 @@ export default function Procurement() {
                       })}
                     </tbody>
                   </table>
-                  {smallShown.length === 0 && <EmptyState title="Belum ada PO Kecil" subtitle="PO workshop di bawah 50 juta dicatat di sini." />}
+                  {smallShown.length === 0 && <EmptyState title={S.emptySmallT} subtitle={S.emptySmallS} />}
                   {smallPager.bar}
                 </div>
               </div>
@@ -1016,16 +1020,16 @@ export default function Procurement() {
                     <div className="flex flex-wrap items-start justify-between gap-2">
                       <div className="min-w-0">
                         <p className="font-mono text-sm font-semibold text-navy-900">{r.id} · {r.item}</p>
-                        <p className="text-xs text-steel-500 truncate" title={`PR ${r.prId}`}>PR {r.prId} · Vendor: {(r.vendors as string[]).join(", ")}</p>
+                        <p className="text-xs text-steel-500 truncate" title={S.prN.replace("{n}", String(r.prId))}>{S.rfqPrVendor.replace("{a}", String(r.prId)).replace("{b}", (r.vendors as string[]).join(", "))}</p>
                       </div>
                       <StatusBadge status={r.status} />
                     </div>
                     {quotes.length === 0
-                      ? <div className="mt-2"><EmptyState title="Belum ada penawaran" subtitle="Input harga + ETA tiap vendor." /></div>
+                      ? <div className="mt-2"><EmptyState title={S.emptyQuoteT} subtitle={S.emptyQuoteS} /></div>
                       : (
                         <table className="mt-3 w-full">
                           <thead className="bg-surface sticky top-0 z-10">
-                            <tr><SortTh label="Vendor" sortKey="vendor" sort={sort3} onSort={(k) => setSort3((s) => toggleSort(s, k))} /><SortTh label="Harga" sortKey="harga" sort={sort3} onSort={(k) => setSort3((s) => toggleSort(s, k))} /><SortTh label="ETA" sortKey="eta" sort={sort3} onSort={(k) => setSort3((s) => toggleSort(s, k))} /><SortTh label="Komparasi" sortKey="komparasi" sort={sort3} onSort={(k) => setSort3((s) => toggleSort(s, k))} /></tr>
+                            <tr><SortTh label={S.vendor} sortKey="vendor" sort={sort3} onSort={(k) => setSort3((s) => toggleSort(s, k))} /><SortTh label={S.harga} sortKey="harga" sort={sort3} onSort={(k) => setSort3((s) => toggleSort(s, k))} /><SortTh label={S.eta} sortKey="eta" sort={sort3} onSort={(k) => setSort3((s) => toggleSort(s, k))} /><SortTh label={S.komparasi} sortKey="komparasi" sort={sort3} onSort={(k) => setSort3((s) => toggleSort(s, k))} /></tr>
                           </thead>
                           <tbody className="divide-y divide-steel-100">
                             {sortRows(quotes, sort3, (x, k) => {
@@ -1040,8 +1044,8 @@ export default function Procurement() {
                                 <td className="td text-steel-600">{fmtTanggal(x.eta)}</td>
                                 <td className="td">
                                   <div className="flex gap-1.5">
-                                    {Number(x.price) === minPrice && <Badge tone="green">Termurah</Badge>}
-                                    {x.eta === minEta && <Badge tone="blue">Tercepat</Badge>}
+                                    {Number(x.price) === minPrice && <Badge tone="green">{S.cheapest}</Badge>}
+                                    {x.eta === minEta && <Badge tone="blue">{S.fastest}</Badge>}
                                   </div>
                                 </td>
                               </tr>
@@ -1051,66 +1055,66 @@ export default function Procurement() {
                       )}
                     <div className="mt-3 flex flex-wrap gap-1.5">
                       {(RFQ_NEXT[r.status] ?? []).map((n) => (
-                        <button key={n} className="btn-secondary text-xs" onClick={async () => { await update("rfqs", r.id, { status: n }); toast(`${r.id} → ${n}`); }}>{n}</button>
+                        <button key={n} className="btn-secondary text-xs" onClick={async () => { await update("rfqs", r.id, { status: n }); toast(S.tArrow.replace("{a}", r.id).replace("{b}", n)); }}>{n}</button>
                       ))}
-                      <button className="btn-secondary text-xs" onClick={() => { setQuoteRfq(r); setQuoteForm({ vendor: "", price: "", eta: "" }); }}>Input Penawaran</button>
+                      <button className="btn-secondary text-xs" onClick={() => { setQuoteRfq(r); setQuoteForm({ vendor: "", price: "", eta: "" }); }}>{S.btnInputQuote}</button>
                       {r.status === "Evaluasi" && quotes.length > 0 && (
                         <button className="btn-primary text-xs" onClick={() => {
                           const cheap = quotes.find((x) => Number(x.price) === minPrice);
                           setWinRfq(r); setWinVendor(cheap?.vendor ?? "");
-                        }}>Menangkan</button>
+                        }}>{S.btnWin}</button>
                       )}
-                      {r.winner && <Badge tone="green">Pemenang: {r.winner}</Badge>}
+                      {r.winner && <Badge tone="green">{S.winnerN.replace("{n}", String(r.winner))}</Badge>}
                     </div>
                   </Card>
                 );
               })}
-              {rfqShown.length === 0 && <EmptyState title="Belum ada RFQ" subtitle="Buat RFQ dari PR Disetujui di tab PR." />}
+              {rfqShown.length === 0 && <EmptyState title={S.emptyRfqT} subtitle={S.emptyRfqS} />}
             </div>
           )}
 
           {tab === "PR" && (
             <div className="space-y-4">
               <Card className="p-5">
-                <CardHeader title="Konsolidasi PR" subtitle="Centang multi-PR Disetujui satu vendor menjadi 1 PO Besar" />
+                <CardHeader title={S.konsT} subtitle={S.konsS} />
                 {approvedPRs.length === 0
-                  ? <p className="py-3 text-center text-sm text-steel-400">Tidak ada PR Disetujui untuk dikonsolidasi.</p>
+                  ? <p className="py-3 text-center text-sm text-steel-400">{S.konsEmpty}</p>
                   : (
                     <div className="space-y-2">
                       {approvedPRs.map((r) => (
                         <label key={r.id} className="flex items-center gap-3 rounded-xl border border-steel-200 px-3 py-2 text-sm">
-                          <input type="checkbox" checked={konsIds.includes(r.id)} onChange={(e) => setKonsIds((s) => (e.target.checked ? [...s, r.id] : s.filter((x) => x !== r.id)))} aria-label={`Konsolidasi ${r.id}`} />
+                          <input type="checkbox" checked={konsIds.includes(r.id)} onChange={(e) => setKonsIds((s) => (e.target.checked ? [...s, r.id] : s.filter((x) => x !== r.id)))} aria-label={S.konsAria.replace("{n}", r.id)} />
                           <span className="min-w-0 flex-1 truncate font-medium text-navy-900" title={`${r.id} - ${r.item}`}>{r.id} - {r.item}</span>
                           <span className="shrink-0 font-semibold">{fmtRupiah(r.amount)}</span>
                         </label>
                       ))}
                       <FormGrid>
-                        <Field label="Vendor gabungan">
+                        <Field label={S.fVendorGab}>
                           <select className="input" value={konsVendor} onChange={(e) => setKonsVendor(e.target.value)}>
-                            <option value="">Pilih vendor…</option>
+                            <option value="">{S.optPilihVendor}</option>
                             {vendors.map((v) => <option key={v.id} value={v.name}>{v.name}</option>)}
                           </select>
                         </Field>
-                        <Field label="Proyek">
+                        <Field label={S.proyek}>
                           <select className="input" value={konsProject} onChange={(e) => setKonsProject(e.target.value)}>
-                            <option value="">Tanpa proyek…</option>
+                            <option value="">{S.optTanpaProyek}</option>
                             {data.projects.map((p) => <option key={p.id} value={p.id}>{p.id} - {p.vessel}</option>)}
                           </select>
                         </Field>
                       </FormGrid>
-                      <Field label="ETA"><input type="date" className="input" value={konsEta} onChange={(e) => setKonsEta(e.target.value)} /></Field>
-                      <button className="btn-primary text-xs" onClick={saveKonsolidasi}>Konsolidasi → PO Besar</button>
+                      <Field label={S.eta}><input type="date" className="input" value={konsEta} onChange={(e) => setKonsEta(e.target.value)} /></Field>
+                      <button className="btn-primary text-xs" onClick={saveKonsolidasi}>{S.btnKons}</button>
                     </div>
                   )}
               </Card>
               <div>
                 <div className="mb-3 flex justify-end">
-                  <button className="btn-secondary text-xs" onClick={() => setShowPr(true)}><Plus className="h-3.5 w-3.5" /> Buat PR</button>
+                  <button className="btn-secondary text-xs" onClick={() => setShowPr(true)}><Plus className="h-3.5 w-3.5" /> {S.btnBuatPr}</button>
                 </div>
                 <div className="overflow-x-auto">
                   <table className="w-full">
                     <thead className="bg-surface sticky top-0 z-10">
-                      <tr><SortTh label="PR" sortKey="pr" sort={sort4} onSort={(k) => setSort4((s) => toggleSort(s, k))} /><SortTh label="Item" sortKey="item" sort={sort4} onSort={(k) => setSort4((s) => toggleSort(s, k))} /><SortTh label="Oleh" sortKey="oleh" sort={sort4} onSort={(k) => setSort4((s) => toggleSort(s, k))} /><SortTh label="Nilai" sortKey="nilai" sort={sort4} onSort={(k) => setSort4((s) => toggleSort(s, k))} /><SortTh label="Status" sortKey="status" sort={sort4} onSort={(k) => setSort4((s) => toggleSort(s, k))} /><th className="th">Aksi</th></tr>
+                      <tr><SortTh label={S.pr} sortKey="pr" sort={sort4} onSort={(k) => setSort4((s) => toggleSort(s, k))} /><SortTh label={S.item} sortKey="item" sort={sort4} onSort={(k) => setSort4((s) => toggleSort(s, k))} /><SortTh label={S.oleh} sortKey="oleh" sort={sort4} onSort={(k) => setSort4((s) => toggleSort(s, k))} /><SortTh label={S.nilai} sortKey="nilai" sort={sort4} onSort={(k) => setSort4((s) => toggleSort(s, k))} /><SortTh label={S.status} sortKey="status" sort={sort4} onSort={(k) => setSort4((s) => toggleSort(s, k))} /><th className="th">{S.aksi}</th></tr>
                     </thead>
                     <tbody className="divide-y divide-steel-100">
                       {prPager.slice(sortedPr).map((r) => (
@@ -1123,19 +1127,19 @@ export default function Procurement() {
                           <td className="td">
                             <div className="flex flex-wrap gap-1.5">
                               {(r.status === "Draft" || r.status === "Draf") && (
-                                <button className="btn-primary text-xs" onClick={async () => { await update("requisitions", r.id, { status: "Diajukan" }); log("mengajukan PR", r.id, "Procurement"); toast(`${r.id} diajukan`); }}>Ajukan</button>
+                                <button className="btn-primary text-xs" onClick={async () => { await update("requisitions", r.id, { status: "Diajukan" }); log("mengajukan PR", r.id, "Procurement"); toast(S.tPrRowDiajukan.replace("{n}", r.id)); }}>{S.btnAjukan}</button>
                               )}
                               {PR_PENDING.includes(r.status) && (
                                 <>
-                                  <button className="btn-secondary text-xs" onClick={() => approvePr(r, true)}><Check className="h-3.5 w-3.5" /> Setujui</button>
-                                  <button className="btn-secondary text-xs text-rose-600" aria-label={`Tolak ${r.id}`} onClick={() => approvePr(r, false)}><X className="h-3.5 w-3.5" /> Tolak</button>
+                                  <button className="btn-secondary text-xs" onClick={() => approvePr(r, true)}><Check className="h-3.5 w-3.5" /> {S.btnSetujui}</button>
+                                  <button className="btn-secondary text-xs text-rose-600" aria-label={S.ariaTolakN.replace("{n}", r.id)} onClick={() => approvePr(r, false)}><X className="h-3.5 w-3.5" /> {S.btnTolak}</button>
                                 </>
                               )}
                               {r.status === "Disetujui" && (
-                                <button className="btn-primary text-xs" onClick={() => { setRfqPr(r); setRfqVendors([]); }}>Buat RFQ</button>
+                                <button className="btn-primary text-xs" onClick={() => { setRfqPr(r); setRfqVendors([]); }}>{S.btnBuatRfq}</button>
                               )}
                               {r.status === "Ditolak" && (
-                                <button className="btn-secondary text-xs" onClick={async () => await update("requisitions", r.id, { status: "Menunggu Approval" })}>Ajukan Ulang</button>
+                                <button className="btn-secondary text-xs" onClick={async () => await update("requisitions", r.id, { status: "Menunggu Approval" })}>{S.btnAjukanUlang}</button>
                               )}
                               {(r.status === "Sudah PO" || r.status === "RFQ") && <span className="text-xs text-steel-400">-</span>}
                             </div>
@@ -1153,7 +1157,7 @@ export default function Procurement() {
           {tab === "Vendor" && (
             <div>
               <div className="mb-3 flex justify-end">
-                <button className="btn-secondary text-xs" onClick={() => setShowVendor(true)}><Plus className="h-3.5 w-3.5" /> Tambah Vendor</button>
+                <button className="btn-secondary text-xs" onClick={() => setShowVendor(true)}><Plus className="h-3.5 w-3.5" /> {S.btnTambahVendor}</button>
               </div>
               <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
                 {vendorShown.map((v) => {
@@ -1168,38 +1172,38 @@ export default function Procurement() {
                           <p className="text-xs text-steel-500">{v.cat}</p>
                         </div>
                         <div className="flex shrink-0 items-center gap-1.5">
-                          {pg && <Badge tone="navy">Payung</Badge>}
+                          {pg && <Badge tone="navy">{S.payung}</Badge>}
                           <Badge tone={isBlack ? "red" : v.status === "Aktif" ? "green" : "amber"}>{v.status ?? "Aktif"}</Badge>
                         </div>
                       </div>
                       <div className="mt-4 grid grid-cols-2 gap-3 text-sm">
                         <div className="rounded-lg bg-surface p-2.5">
-                          <p className="text-xs text-steel-500">On-time</p>
+                          <p className="text-xs text-steel-500">{S.vOnTime}</p>
                           <p className="font-semibold text-navy-900">{v.onTime}%</p>
                         </div>
                         <div className="rounded-lg bg-surface p-2.5">
-                          <p className="text-xs text-steel-500">Kualitas</p>
+                          <p className="text-xs text-steel-500">{S.vKualitas}</p>
                           <p className="font-semibold text-navy-900">{v.quality}%</p>
                         </div>
                       </div>
-                      <p className="mt-3 text-xs text-steel-500">{v.po} PO ditangani</p>
+                      <p className="mt-3 text-xs text-steel-500">{S.vPoDitangani.replace("{n}", String(v.po ?? ""))}</p>
                       <div className="mt-2 flex items-center gap-1.5 text-sm">
                         <Star className="h-4 w-4 text-amber-500" />
                         {avg === null
-                          ? <span className="text-xs text-steel-400">Belum ada evaluasi</span>
-                          : <span className="font-semibold text-navy-900">Skor {Math.round(avg)} <span className="font-normal text-steel-400">({scoresOf(v).length} evaluasi)</span></span>}
+                          ? <span className="text-xs text-steel-400">{S.vBelumEval}</span>
+                          : <span className="font-semibold text-navy-900">{S.vSkorA.replace("{n}", String(Math.round(avg)))} <span className="font-normal text-steel-400">{S.vSkorB.replace("{n}", String(scoresOf(v).length))}</span></span>}
                       </div>
                       {pg && (
                         <p className="mt-1.5 text-xs text-steel-500">
-                          Payung {pg.periode} · plafon {fmtRupiah(pg.plafon)} · terpakai {fmtRupiah(plafonPakai(v.name))}
+                          {S.vPayungInfo.replace("{n}", pg.periode).replace("{a}", fmtRupiah(pg.plafon)).replace("{b}", fmtRupiah(plafonPakai(v.name)))}
                         </p>
                       )}
                       <div className="mt-3 flex flex-wrap gap-1.5">
                         <button className="btn-secondary text-xs" onClick={() => { setPayungVendor(v); setPayungPeriode(pg?.periode === "-" ? "" : pg?.periode ?? ""); setPayungPlafon(pg ? String(pg.plafon) : ""); }}>
-                          <Umbrella className="h-3.5 w-3.5" /> {pg ? "Ubah Payung" : "Kontrak Payung"}
+                          <Umbrella className="h-3.5 w-3.5" /> {pg ? S.btnUbahPayung : S.btnKontrakPayung}
                         </button>
                         {isBlack && (
-                          <button className="btn-secondary text-xs text-rose-600" onClick={() => setUnblockVendor(v)}>Buka Blokir (Eskalasi)</button>
+                          <button className="btn-secondary text-xs text-rose-600" onClick={() => setUnblockVendor(v)}>{S.btnBukaBlokir}</button>
                         )}
                       </div>
                     </Card>
@@ -1212,137 +1216,137 @@ export default function Procurement() {
       </div>
 
       {/* Modal PO Besar */}
-      <Modal open={showBig} onClose={() => setShowBig(false)} title="Buat PO Besar" subtitle="Masuk status Draft · wajib link PR Disetujui · pilih tujuan Kapal atau Stok"
-        wide footer={<><button className="btn-secondary" onClick={() => setShowBig(false)}>Batal</button><button className="btn-primary" onClick={saveBig}>Simpan PO Besar</button></>}>
+      <Modal open={showBig} onClose={() => setShowBig(false)} title={S.mBigT} subtitle={S.mBigS}
+        wide footer={<><button className="btn-secondary" onClick={() => setShowBig(false)}>{S.btnBatal}</button><button className="btn-primary" onClick={saveBig}>{S.btnSimpanBig}</button></>}>
         <div className="space-y-3">
-          <div className="flex flex-wrap gap-2" role="radiogroup" aria-label="Tujuan PO">
+          <div className="flex flex-wrap gap-2" role="radiogroup" aria-label={S.ariaTujuan}>
             {(["kapal", "stok"] as const).map((t) => (
               <label key={t} className={`flex cursor-pointer items-center gap-2 rounded-lg border px-3 py-1.5 text-sm font-medium ${bigForm.tujuan === t ? "border-navy-700 bg-navy-50 text-navy-900" : "border-steel-200 text-steel-600"}`}>
                 <input type="radio" name="tujuan-po" checked={bigForm.tujuan === t} onChange={() => setBigForm({ ...bigForm, tujuan: t })} />
-                {t === "kapal" ? "Untuk Kapal (proyek + U/TK wajib)" : "Stok Gudang saja"}
+                {t === "kapal" ? S.tujuanKapal : S.tujuanStok}
               </label>
             ))}
           </div>
           <FormGrid>
-            <Field label="PR Disetujui" hint="Wajib - 1 PR per PO manual">
+            <Field label={S.fPrDisetujui} hint={S.hintPrWajib}>
               <select className="input" value={bigForm.prId} onChange={(e) => setBigForm({ ...bigForm, prId: e.target.value })}>
-                <option value="">Pilih PR…</option>
+                <option value="">{S.optPilihPr}</option>
                 {approvedPRs.map((r) => <option key={r.id} value={r.id}>{r.id} - {r.item} · {fmtRupiah(r.amount)}</option>)}
               </select>
             </Field>
-            <Field label="Item inventori" hint="Wajib - penerimaan menambah stok item ini persis sebesar qty">
+            <Field label={S.fItemInv} hint={S.hintItemWajib}>
               <select className="input" value={bigForm.itemId} onChange={(e) => setBigForm({ ...bigForm, itemId: e.target.value })}>
-                <option value="">Pilih item…</option>
+                <option value="">{S.optPilihItem}</option>
                 {invList.map((i) => <option key={i.id} value={i.id}>{i.name} · stok {fmtJumlah(Number(i.stock))} {i.unit}</option>)}
               </select>
             </Field>
           </FormGrid>
           <FormGrid>
-            <Field label="Vendor">
+            <Field label={S.vendor}>
               <select className="input" value={bigForm.vendor} onChange={(e) => setBigForm({ ...bigForm, vendor: e.target.value })}>
-                <option value="">Pilih vendor…</option>
+                <option value="">{S.optPilihVendor}</option>
                 {vendors.map((v) => <option key={v.id} value={v.name}>{v.name}{payungOf(v) ? ` (Payung: ${fmtRupiah(payungOf(v)!.plafon)})` : ""}</option>)}
               </select>
             </Field>
-            <Field label="Proyek (cek budget)" hint={bigForm.tujuan === "kapal" ? "Wajib untuk PO kapal" : "Dikosongkan otomatis untuk stok"}>
+            <Field label={S.proyekBudget} hint={bigForm.tujuan === "kapal" ? S.hintWajibKapal : S.hintStokAuto}>
               <select className="input" value={bigForm.project} disabled={bigForm.tujuan === "stok"} onChange={(e) => setBigForm({ ...bigForm, project: e.target.value })}>
-                <option value="">Tanpa proyek…</option>
+                <option value="">{S.optTanpaProyek}</option>
                 {data.projects.map((p) => <option key={p.id} value={p.id}>{p.id} - {p.vessel}</option>)}
               </select>
             </Field>
           </FormGrid>
-          <Field label="ETA (wajib)"><input type="date" className="input" value={bigForm.eta} onChange={(e) => setBigForm({ ...bigForm, eta: e.target.value })} /></Field>
+          <Field label={S.etaWajib}><input type="date" className="input" value={bigForm.eta} onChange={(e) => setBigForm({ ...bigForm, eta: e.target.value })} /></Field>
           <FormGrid>
-            <Field label="U/TK kapal" hint={bigForm.tujuan === "kapal" ? "Wajib - cth: U/TB. TRIALFA 01" : "Tidak dipakai untuk stok"}><input className="input" value={bigForm.vessel} disabled={bigForm.tujuan === "stok"} onChange={(e) => setBigForm({ ...bigForm, vessel: e.target.value })} placeholder="U/…" /></Field>
-            <Field label="Harga" hint={`RawData: "Harga Include PPN ${ppnRate}%"`}>
+            <Field label={S.fUtk} hint={bigForm.tujuan === "kapal" ? S.hintUtkContoh : S.hintUtkStok}><input className="input" value={bigForm.vessel} disabled={bigForm.tujuan === "stok"} onChange={(e) => setBigForm({ ...bigForm, vessel: e.target.value })} placeholder={S.phUtk} /></Field>
+            <Field label={S.harga} hint={S.hintHarga.replace("{n}", String(ppnRate))}>
               <select className="input" value={bigForm.includePpn ? "include" : "exclude"} onChange={(e) => setBigForm({ ...bigForm, includePpn: e.target.value === "include" })}>
-                <option value="include">Include PPN {ppnRate}%</option>
-                <option value="exclude">Exclude PPN</option>
+                <option value="include">{S.optIncludePpn.replace("{n}", String(ppnRate))}</option>
+                <option value="exclude">{S.optExcludePpn}</option>
               </select>
             </Field>
           </FormGrid>
-          <p className="text-xs text-steel-500">No. dokumen SB otomatis: <span className="font-mono">{sbPoNumber(nextPoSeq())}</span> (format nn/PO-SB/SMD/m/yyyy)</p>
+          <p className="text-xs text-steel-500">{S.docSb} <span className="font-mono">{sbPoNumber(nextPoSeq())}</span> {S.docSbFmt}</p>
           <div>
-            <p className="label">Baris item (minimal 1)</p>
+            <p className="label">{S.barisMin}</p>
             <div className="space-y-2">
               {bigLines.map((l, idx) => (
                 <div key={idx} className="grid grid-cols-12 gap-2">
-                  <input className="input col-span-5" placeholder="Nama baris" value={l.name} onChange={(e) => setBigLines((s) => s.map((x, i) => (i === idx ? { ...x, name: e.target.value } : x)))} />
-                  <input type="number" min={1} className="input col-span-2" placeholder="Qty" value={l.qty} onChange={(e) => setBigLines((s) => s.map((x, i) => (i === idx ? { ...x, qty: Number(e.target.value) } : x)))} />
+                  <input className="input col-span-5" placeholder={S.phNamaBaris} value={l.name} onChange={(e) => setBigLines((s) => s.map((x, i) => (i === idx ? { ...x, name: e.target.value } : x)))} />
+                  <input type="number" min={1} className="input col-span-2" placeholder={S.qty} value={l.qty} onChange={(e) => setBigLines((s) => s.map((x, i) => (i === idx ? { ...x, qty: Number(e.target.value) } : x)))} />
                   <select className="input col-span-2" value={l.unit} onChange={(e) => setBigLines((s) => s.map((x, i) => (i === idx ? { ...x, unit: e.target.value } : x)))}>
                     {["pcs", "kg", "liter", "meter", "batang", "unit", "roll"].map((u) => <option key={u}>{u}</option>)}
                   </select>
-                  <input type="number" min={0} className="input col-span-2" placeholder="Harga" value={l.price} onChange={(e) => setBigLines((s) => s.map((x, i) => (i === idx ? { ...x, price: Number(e.target.value) } : x)))} />
-                  <button className="btn-secondary col-span-1 text-xs" aria-label={`Hapus baris ${idx + 1}`} onClick={() => setBigLines((s) => s.filter((_, i) => i !== idx))}><X className="h-3.5 w-3.5" /></button>
+                  <input type="number" min={0} className="input col-span-2" placeholder={S.harga} value={l.price} onChange={(e) => setBigLines((s) => s.map((x, i) => (i === idx ? { ...x, price: Number(e.target.value) } : x)))} />
+                  <button className="btn-secondary col-span-1 text-xs" aria-label={S.ariaHapusBaris.replace("{n}", String(idx + 1))} onClick={() => setBigLines((s) => s.filter((_, i) => i !== idx))}><X className="h-3.5 w-3.5" /></button>
                 </div>
               ))}
             </div>
-            <button className="btn-secondary mt-2 text-xs" onClick={() => setBigLines((s) => [...s, { name: "", qty: 1, unit: "pcs", price: 0 }])}><Plus className="h-3.5 w-3.5" /> Tambah baris</button>
-            <p className="mt-2 text-sm font-semibold text-navy-900">Total: {fmtRupiah(bigTotal)} · Level approval: {levelOf(bigTotal, APPROVE_PO_LIMIT)}</p>
+            <button className="btn-secondary mt-2 text-xs" onClick={() => setBigLines((s) => [...s, { name: "", qty: 1, unit: "pcs", price: 0 }])}><Plus className="h-3.5 w-3.5" /> {S.btnTambahBaris}</button>
+            <p className="mt-2 text-sm font-semibold text-navy-900">{S.totalLevel.replace("{a}", fmtRupiah(bigTotal)).replace("{b}", levelOf(bigTotal, APPROVE_PO_LIMIT))}</p>
           </div>
           {bigOver && bigBudget && (
             <div className="rounded-lg bg-rose-50 px-3 py-2 text-xs text-rose-700">
-              Peringatan keras: total PO aktif proyek {fmtRupiah(bigBudget.aktif)} + PO ini {fmtRupiah(bigTotal)} melebihi sisa budget {fmtRupiah(bigBudget.sisa)}.
+              {S.overBig.replace("{n}", fmtRupiah(bigBudget.aktif)).replace("{a}", fmtRupiah(bigTotal)).replace("{b}", fmtRupiah(bigBudget.sisa))}
               <label className="mt-2 flex items-center gap-2 font-medium">
-                <input type="checkbox" checked={bigForm.override} onChange={(e) => setBigForm({ ...bigForm, override: e.target.checked })} /> Override dengan alasan
+                <input type="checkbox" checked={bigForm.override} onChange={(e) => setBigForm({ ...bigForm, override: e.target.checked })} /> {S.overrideAlasan}
               </label>
-              <input className="input mt-2" placeholder="Alasan override…" value={bigForm.overrideReason} onChange={(e) => setBigForm({ ...bigForm, overrideReason: e.target.value })} />
+              <input className="input mt-2" placeholder={S.phOverride} value={bigForm.overrideReason} onChange={(e) => setBigForm({ ...bigForm, overrideReason: e.target.value })} />
             </div>
           )}
         </div>
       </Modal>
 
       {/* Modal PO Kecil */}
-      <Modal open={showSmall} onClose={() => setShowSmall(false)} title="Buat PO Kecil" subtitle="Workshop · Diajukan → Disetujui → Diterima · tanpa RFQ"
-        footer={<><button className="btn-secondary" onClick={() => setShowSmall(false)}>Batal</button><button className="btn-primary" onClick={saveSmall}>Simpan PO Kecil</button></>}>
+      <Modal open={showSmall} onClose={() => setShowSmall(false)} title={S.mSmallT} subtitle={S.mSmallS}
+        footer={<><button className="btn-secondary" onClick={() => setShowSmall(false)}>{S.btnBatal}</button><button className="btn-primary" onClick={saveSmall}>{S.btnSimpanSmall}</button></>}>
         <div className="space-y-3">
           <FormGrid>
-            <Field label="Workshop"><input className="input" value={smallForm.workshop} onChange={(e) => setSmallForm({ ...smallForm, workshop: e.target.value })} placeholder="cth: Workshop Balikpapan" /></Field>
-            <Field label="Peminta"><input className="input" value={smallForm.requester} onChange={(e) => setSmallForm({ ...smallForm, requester: e.target.value })} placeholder="cth: Rudi H." /></Field>
+            <Field label={S.workshop}><input className="input" value={smallForm.workshop} onChange={(e) => setSmallForm({ ...smallForm, workshop: e.target.value })} placeholder={S.phWorkshop} /></Field>
+            <Field label={S.peminta}><input className="input" value={smallForm.requester} onChange={(e) => setSmallForm({ ...smallForm, requester: e.target.value })} placeholder={S.phPeminta} /></Field>
           </FormGrid>
-          <Field label="Item bebas"><input className="input" value={smallForm.item} onChange={(e) => setSmallForm({ ...smallForm, item: e.target.value })} placeholder="cth: Oli hidrolik 20L" /></Field>
+          <Field label={S.itemBebas}><input className="input" value={smallForm.item} onChange={(e) => setSmallForm({ ...smallForm, item: e.target.value })} placeholder={S.phItemBebas} /></Field>
           <FormGrid>
-            <Field label="Qty"><input type="number" min={1} className="input" value={smallForm.qty} onChange={(e) => setSmallForm({ ...smallForm, qty: e.target.value })} /></Field>
-            <Field label="Satuan">
+            <Field label={S.qty}><input type="number" min={1} className="input" value={smallForm.qty} onChange={(e) => setSmallForm({ ...smallForm, qty: e.target.value })} /></Field>
+            <Field label={S.satuan}>
               <select className="input" value={smallForm.unit} onChange={(e) => setSmallForm({ ...smallForm, unit: e.target.value })}>
                 {["pcs", "kg", "liter", "meter", "batang", "unit", "roll", "set", "pak"].map((u) => <option key={u}>{u}</option>)}
               </select>
             </Field>
           </FormGrid>
           <FormGrid>
-            <Field label="Estimasi harga satuan (Rp)"><input type="number" min={0} className="input" value={smallForm.price} onChange={(e) => setSmallForm({ ...smallForm, price: e.target.value })} /></Field>
-            <Field label="No. nota/bukti (wajib saat terima)"><input className="input" value={smallForm.nota} onChange={(e) => setSmallForm({ ...smallForm, nota: e.target.value })} placeholder="cth: NT-2026-001" /></Field>
+            <Field label={S.estHarga}><input type="number" min={0} className="input" value={smallForm.price} onChange={(e) => setSmallForm({ ...smallForm, price: e.target.value })} /></Field>
+            <Field label={S.nota}><input className="input" value={smallForm.nota} onChange={(e) => setSmallForm({ ...smallForm, nota: e.target.value })} placeholder={S.phNota} /></Field>
           </FormGrid>
           <FormGrid>
-            <Field label="ETA (wajib)"><input type="date" className="input" value={smallForm.eta} onChange={(e) => setSmallForm({ ...smallForm, eta: e.target.value })} /></Field>
-            <Field label="Proyek (cek budget)">
+            <Field label={S.etaWajib}><input type="date" className="input" value={smallForm.eta} onChange={(e) => setSmallForm({ ...smallForm, eta: e.target.value })} /></Field>
+            <Field label={S.proyekBudget}>
               <select className="input" value={smallForm.project} onChange={(e) => setSmallForm({ ...smallForm, project: e.target.value })}>
-                <option value="">Stok workshop (tanpa proyek)…</option>
+                <option value="">{S.optStokWorkshop}</option>
                 {data.projects.map((p) => <option key={p.id} value={p.id}>{p.id} - {p.vessel}</option>)}
               </select>
             </Field>
           </FormGrid>
-          <Field label="U/TK kapal" hint="Wajib bila proyek diisi"><input className="input" value={smallForm.vessel} onChange={(e) => setSmallForm({ ...smallForm, vessel: e.target.value })} placeholder="U/… atau kosongkan untuk stok" /></Field>
-          <p className="text-sm font-semibold text-navy-900">Total: {fmtRupiah(smallAmount)} · Batas {fmtRupiah(PO_KECIL_LIMIT)}</p>
+          <Field label={S.fUtk} hint={S.hintWajibProyek}><input className="input" value={smallForm.vessel} onChange={(e) => setSmallForm({ ...smallForm, vessel: e.target.value })} placeholder={S.phUtkStok} /></Field>
+          <p className="text-sm font-semibold text-navy-900">{S.totalBatas.replace("{a}", fmtRupiah(smallAmount)).replace("{b}", fmtRupiah(PO_KECIL_LIMIT))}</p>
           {smallOver && smallBudget && (
             <div className="rounded-lg bg-rose-50 px-3 py-2 text-xs text-rose-700">
-              Peringatan keras: melebihi sisa budget {fmtRupiah(smallBudget.sisa)}.
+              {S.overSmall.replace("{n}", fmtRupiah(smallBudget.sisa))}
               <label className="mt-2 flex items-center gap-2 font-medium">
-                <input type="checkbox" checked={smallForm.override} onChange={(e) => setSmallForm({ ...smallForm, override: e.target.checked })} /> Override dengan alasan
+                <input type="checkbox" checked={smallForm.override} onChange={(e) => setSmallForm({ ...smallForm, override: e.target.checked })} /> {S.overrideAlasan}
               </label>
-              <input className="input mt-2" placeholder="Alasan override…" value={smallForm.overrideReason} onChange={(e) => setSmallForm({ ...smallForm, overrideReason: e.target.value })} />
+              <input className="input mt-2" placeholder={S.phOverride} value={smallForm.overrideReason} onChange={(e) => setSmallForm({ ...smallForm, overrideReason: e.target.value })} />
             </div>
           )}
         </div>
       </Modal>
 
       {/* Modal buat RFQ */}
-      <Modal open={rfqPr !== null} onClose={() => setRfqPr(null)} title={`Buat RFQ - ${rfqPr?.id ?? ""}`} subtitle={`${rfqPr?.item ?? ""} · pilih minimal 3 vendor`}
-        footer={<><button className="btn-secondary" onClick={() => setRfqPr(null)}>Batal</button><button className="btn-primary" onClick={saveRfq}>Buat RFQ (Draf)</button></>}>
+      <Modal open={rfqPr !== null} onClose={() => setRfqPr(null)} title={S.mRfqT.replace("{n}", rfqPr?.id ?? "")} subtitle={S.mRfqS.replace("{a}", rfqPr?.item ?? "")}
+        footer={<><button className="btn-secondary" onClick={() => setRfqPr(null)}>{S.btnBatal}</button><button className="btn-primary" onClick={saveRfq}>{S.btnBuatRfqDraf}</button></>}>
         <div className="space-y-2">
           {vendors.map((v) => (
             <label key={v.id} className="flex items-center gap-3 rounded-xl border border-steel-200 px-3 py-2 text-sm">
-              <input type="checkbox" checked={rfqVendors.includes(v.name)} onChange={(e) => setRfqVendors((s) => (e.target.checked ? [...s, v.name] : s.filter((x) => x !== v.name)))} aria-label={`RFQ ke ${v.name}`} />
+              <input type="checkbox" checked={rfqVendors.includes(v.name)} onChange={(e) => setRfqVendors((s) => (e.target.checked ? [...s, v.name] : s.filter((x) => x !== v.name)))} aria-label={S.ariaRfqKe.replace("{n}", String(v.name))} />
               <span className="truncate font-medium text-navy-900" title={v.name}>{v.name}</span>
               <span className="ml-auto text-xs text-steel-400">{v.cat}</span>
             </label>
@@ -1351,18 +1355,18 @@ export default function Procurement() {
       </Modal>
 
       {/* Modal input penawaran */}
-      <Modal open={quoteRfq !== null} onClose={() => setQuoteRfq(null)} title={`Penawaran - ${quoteRfq?.id ?? ""}`} subtitle="Harga + ETA per vendor"
-        footer={<><button className="btn-secondary" onClick={() => setQuoteRfq(null)}>Batal</button><button className="btn-primary" onClick={saveQuote}>Simpan Penawaran</button></>}>
+      <Modal open={quoteRfq !== null} onClose={() => setQuoteRfq(null)} title={S.mQuoteT.replace("{n}", quoteRfq?.id ?? "")} subtitle={S.mQuoteS}
+        footer={<><button className="btn-secondary" onClick={() => setQuoteRfq(null)}>{S.btnBatal}</button><button className="btn-primary" onClick={saveQuote}>{S.btnSimpanQuote}</button></>}>
         <div className="space-y-3">
-          <Field label="Vendor">
+          <Field label={S.vendor}>
             <select className="input" value={quoteForm.vendor} onChange={(e) => setQuoteForm({ ...quoteForm, vendor: e.target.value })}>
-              <option value="">Pilih vendor…</option>
+              <option value="">{S.optPilihVendor}</option>
               {((quoteRfq?.vendors as string[]) ?? []).map((v) => <option key={v} value={v}>{v}</option>)}
             </select>
           </Field>
           <FormGrid>
-            <Field label="Harga (Rp)"><input type="number" min={0} className="input" value={quoteForm.price} onChange={(e) => setQuoteForm({ ...quoteForm, price: e.target.value })} /></Field>
-            <Field label="ETA"><input type="date" className="input" value={quoteForm.eta} onChange={(e) => setQuoteForm({ ...quoteForm, eta: e.target.value })} /></Field>
+            <Field label={S.hargaRp}><input type="number" min={0} className="input" value={quoteForm.price} onChange={(e) => setQuoteForm({ ...quoteForm, price: e.target.value })} /></Field>
+            <Field label={S.eta}><input type="date" className="input" value={quoteForm.eta} onChange={(e) => setQuoteForm({ ...quoteForm, eta: e.target.value })} /></Field>
           </FormGrid>
         </div>
       </Modal>
@@ -1370,49 +1374,49 @@ export default function Procurement() {
       {/* Konfirmasi setujui / tolak PO (PO Kecil: setujui tunggal) */}
       <ConfirmModal
         open={confirmApprove !== null}
-        title={`Setujui ${confirmApprove?.id ?? ""}?`}
-        desc="PO yang disetujui berlanjut ke tahap pengiriman."
-        confirmLabel="Ya, setujui"
+        title={S.cmApprT.replace("{n}", confirmApprove?.id ?? "")}
+        desc={S.cmApprD}
+        confirmLabel={S.cmApprC}
         onCancel={() => setConfirmApprove(null)}
         onConfirm={() => { if (confirmApprove) doPoStatus(confirmApprove, "Disetujui"); setConfirmApprove(null); }}
       />
       <ConfirmModal
         open={confirmRejectPo !== null}
-        title={`Tolak ${confirmRejectPo?.id ?? ""}?`}
-        desc="PO yang ditolak berhenti di tahap pengajuan."
-        confirmLabel="Ya, tolak"
+        title={S.cmRejT.replace("{n}", confirmRejectPo?.id ?? "")}
+        desc={S.cmRejD}
+        confirmLabel={S.cmRejC}
         onCancel={() => setConfirmRejectPo(null)}
         onConfirm={() => { if (confirmRejectPo) doPoStatus(confirmRejectPo, "Ditolak"); setConfirmRejectPo(null); }}
       />
 
       {/* Modal terima barang */}
-      <Modal open={recvPo !== null} onClose={() => setRecvPo(null)} title={`Terima ${recvPo?.id ?? ""}`} subtitle="Stok bertambah persis sebesar qty yang diterima"
+      <Modal open={recvPo !== null} onClose={() => setRecvPo(null)} title={S.mRecvT.replace("{n}", recvPo?.id ?? "")} subtitle={S.mRecvS}
         footer={<>
-          <button className="btn-secondary" onClick={() => setRecvPo(null)}>Batal</button>
-          <button className="btn-secondary" onClick={() => confirmRecv("sebagian")}>Terima Sebagian</button>
-          <button className="btn-primary" onClick={() => confirmRecv("penuh")}>Terima Penuh</button>
+          <button className="btn-secondary" onClick={() => setRecvPo(null)}>{S.btnBatal}</button>
+          <button className="btn-secondary" onClick={() => confirmRecv("sebagian")}>{S.btnTerimaSebagian}</button>
+          <button className="btn-primary" onClick={() => confirmRecv("penuh")}>{S.btnTerimaPenuh}</button>
         </>}>
         <div className="space-y-3">
-          <Field label="Item inventori tujuan" hint={recvPo?.poType === "Kecil" ? "Opsional untuk PO Kecil (item bebas)" : undefined}>
+          <Field label={S.itemTujuan} hint={recvPo?.poType === "Kecil" ? S.hintKecilOps : undefined}>
             <select className="input" value={recvItem} onChange={(e) => setRecvItem(e.target.value)}>
-              <option value="">Pilih item…</option>
+              <option value="">{S.optPilihItem}</option>
               {invList.map((i) => <option key={i.id} value={i.id}>{i.name} · stok {fmtJumlah(Number(i.stock))} {i.unit}</option>)}
             </select>
           </Field>
-          <Field label="Qty diterima"><input type="number" min={0} className="input" value={recvQty} onChange={(e) => setRecvQty(e.target.value)} /></Field>
+          <Field label={S.qtyDiterimaF}><input type="number" min={0} className="input" value={recvQty} onChange={(e) => setRecvQty(e.target.value)} /></Field>
           <FormGrid>
-            <Field label="No faktur pajak" hint={recvPo?.poType === "Kecil" ? "Opsional untuk PO Kecil" : "Wajib untuk PO Besar"}>
-              <input className="input font-mono" value={recvNoFaktur} onChange={(e) => setRecvNoFaktur(e.target.value)} placeholder="cth: 010.000-26.00000001" />
+            <Field label={S.noFaktur} hint={recvPo?.poType === "Kecil" ? S.hintOpsKecil : S.hintWajibBesar}>
+              <input className="input font-mono" value={recvNoFaktur} onChange={(e) => setRecvNoFaktur(e.target.value)} placeholder={S.phFaktur} />
             </Field>
-            <Field label="Tanggal faktur" hint={recvPo?.poType === "Kecil" ? "Opsional untuk PO Kecil" : "Wajib untuk PO Besar"}>
+            <Field label={S.tglFaktur} hint={recvPo?.poType === "Kecil" ? S.hintOpsKecil : S.hintWajibBesar}>
               <input type="date" className="input" value={recvTglFaktur} onChange={(e) => setRecvTglFaktur(e.target.value)} />
             </Field>
           </FormGrid>
           {recvPo && recvLate > 0 && (
             <div className="rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-700">
-              Terlambat {recvLate} hari dari ETA {fmtTanggal(recvPo.eta)} - usulan denda {fmtRupiah(recvDendaPreview)}.
+              {S.lateInfo.replace("{n}", String(recvLate)).replace("{a}", fmtTanggal(recvPo.eta)).replace("{b}", fmtRupiah(recvDendaPreview))}
               <div className="mt-2">
-                <Field label="Denda per hari (%)" hint="Batas total 5% dari nilai PO">
+                <Field label={S.dendaHari} hint={S.hintDendaMax}>
                   <input type="number" min={0} max={5} step={0.1} className="input" value={recvDendaPct} onChange={(e) => setRecvDendaPct(e.target.value)} />
                 </Field>
               </div>
@@ -1422,56 +1426,56 @@ export default function Procurement() {
       </Modal>
 
       {/* Modal retur */}
-      <Modal open={retPo !== null} onClose={() => setRetPo(null)} title={`Retur ${retPo?.id ?? ""}`} subtitle={retPo ? `Maksimal ${fmtJumlah(maxRet(retPo))} (diterima dikurangi yang sudah diretur)` : ""}
-        footer={<><button className="btn-secondary" onClick={() => setRetPo(null)}>Batal</button><button className="btn-primary" onClick={confirmRetur}>Simpan Retur</button></>}>
+      <Modal open={retPo !== null} onClose={() => setRetPo(null)} title={S.mRetT.replace("{n}", retPo?.id ?? "")} subtitle={retPo ? S.mRetS.replace("{n}", fmtJumlah(maxRet(retPo))) : ""}
+        footer={<><button className="btn-secondary" onClick={() => setRetPo(null)}>{S.btnBatal}</button><button className="btn-primary" onClick={confirmRetur}>{S.btnSimpanRetur}</button></>}>
         <div className="space-y-3">
           <FormGrid>
-            <Field label="Qty retur"><input type="number" min={0} className="input" value={retQty} onChange={(e) => setRetQty(e.target.value)} /></Field>
-            <Field label="Alasan"><input className="input" value={retNote} onChange={(e) => setRetNote(e.target.value)} placeholder="cth: Rusak saat kirim" /></Field>
+            <Field label={S.qtyRetur}><input type="number" min={0} className="input" value={retQty} onChange={(e) => setRetQty(e.target.value)} /></Field>
+            <Field label={S.alasan}><input className="input" value={retNote} onChange={(e) => setRetNote(e.target.value)} placeholder={S.phAlasan} /></Field>
           </FormGrid>
         </div>
       </Modal>
 
       {/* Modal amandemen */}
-      <Modal open={amendPo !== null && !confirmAmend} onClose={() => setAmendPo(null)} title={`Amandemen ${amendPo?.id ?? ""}`} subtitle="Tambah baris/catatan · revisi naik otomatis"
-        footer={<><button className="btn-secondary" onClick={() => setAmendPo(null)}>Batal</button><button className="btn-primary" onClick={() => setConfirmAmend(true)}>Lanjut Konfirmasi</button></>}>
+      <Modal open={amendPo !== null && !confirmAmend} onClose={() => setAmendPo(null)} title={S.mAmdT.replace("{n}", amendPo?.id ?? "")} subtitle={S.mAmdS}
+        footer={<><button className="btn-secondary" onClick={() => setAmendPo(null)}>{S.btnBatal}</button><button className="btn-primary" onClick={() => setConfirmAmend(true)}>{S.btnLanjutKonfirm}</button></>}>
         <div className="space-y-3">
           <FormGrid>
-            <Field label="Baris tambahan"><input className="input" value={amendForm.name} onChange={(e) => setAmendForm({ ...amendForm, name: e.target.value })} /></Field>
-            <Field label="Satuan">
+            <Field label={S.barisTambahan}><input className="input" value={amendForm.name} onChange={(e) => setAmendForm({ ...amendForm, name: e.target.value })} /></Field>
+            <Field label={S.satuan}>
               <select className="input" value={amendForm.unit} onChange={(e) => setAmendForm({ ...amendForm, unit: e.target.value })}>
                 {["pcs", "kg", "liter", "meter", "batang", "unit", "roll"].map((u) => <option key={u}>{u}</option>)}
               </select>
             </Field>
           </FormGrid>
           <FormGrid>
-            <Field label="Qty"><input type="number" min={1} className="input" value={amendForm.qty} onChange={(e) => setAmendForm({ ...amendForm, qty: e.target.value })} /></Field>
-            <Field label="Harga satuan (Rp)"><input type="number" min={0} className="input" value={amendForm.price} onChange={(e) => setAmendForm({ ...amendForm, price: e.target.value })} /></Field>
+            <Field label={S.qty}><input type="number" min={1} className="input" value={amendForm.qty} onChange={(e) => setAmendForm({ ...amendForm, qty: e.target.value })} /></Field>
+            <Field label={S.hargaSatuan}><input type="number" min={0} className="input" value={amendForm.price} onChange={(e) => setAmendForm({ ...amendForm, price: e.target.value })} /></Field>
           </FormGrid>
-          <Field label="Catatan amandemen"><input className="input" value={amendForm.note} onChange={(e) => setAmendForm({ ...amendForm, note: e.target.value })} placeholder="cth: Tambah scope baut" /></Field>
+          <Field label={S.catatanAmd}><input className="input" value={amendForm.note} onChange={(e) => setAmendForm({ ...amendForm, note: e.target.value })} placeholder={S.phCatatanAmd} /></Field>
         </div>
       </Modal>
       <ConfirmModal
         open={confirmAmend}
-        title={`Simpan amandemen ${amendPo?.id ?? ""}?`}
-        desc="Baris tambahan dicatat di amendments dan nomor revisi naik (R1, R2, …)."
-        confirmLabel="Ya, simpan amandemen"
+        title={S.cmAmdT.replace("{n}", amendPo?.id ?? "")}
+        desc={S.cmAmdD}
+        confirmLabel={S.cmAmdC}
         onCancel={() => setConfirmAmend(false)}
         onConfirm={confirmAmendNow}
       />
 
       {/* Modal evaluasi vendor */}
-      <Modal open={evalPo !== null} onClose={() => setEvalPo(null)} title={`Evaluasi Vendor - ${evalPo?.id ?? ""}`} subtitle={`${evalPo?.vendor ?? ""} · kualitas 30 + delivery 30 + harga 40 (skala 100)`}
-        footer={<><button className="btn-secondary" onClick={() => setEvalPo(null)}>Batal</button><button className="btn-primary" onClick={saveEval}>Simpan Skor</button></>}>
+      <Modal open={evalPo !== null} onClose={() => setEvalPo(null)} title={S.mEvalT.replace("{n}", evalPo?.id ?? "")} subtitle={S.mEvalS.replace("{n}", evalPo?.vendor ?? "")}
+        footer={<><button className="btn-secondary" onClick={() => setEvalPo(null)}>{S.btnBatal}</button><button className="btn-primary" onClick={saveEval}>{S.btnSimpanSkor}</button></>}>
         <div className="space-y-3">
           <FormGrid>
             {(["Kualitas", "Delivery", "Harga"] as const).map((lbl) => {
               const val = lbl === "Kualitas" ? evalQ : lbl === "Delivery" ? evalD : evalP;
               const set = lbl === "Kualitas" ? setEvalQ : lbl === "Delivery" ? setEvalD : setEvalP;
               return (
-                <Field key={lbl} label={`${lbl} (1-5)`}>
-                  <select className="input" value={val} onChange={(e) => set(e.target.value)} aria-label={`Nilai ${lbl}`}>
-                    <option value="">Pilih…</option>
+                <Field key={lbl} label={`${lbl === "Kualitas" ? S.skKualitas : lbl === "Delivery" ? S.skDelivery : S.skHarga} (1-5)`}>
+                  <select className="input" value={val} onChange={(e) => set(e.target.value)} aria-label={S.ariaNilaiLbl.replace("{n}", lbl === "Kualitas" ? S.skKualitas : lbl === "Delivery" ? S.skDelivery : S.skHarga)}>
+                    <option value="">{S.optPilih}</option>
                     {[1, 2, 3, 4, 5].map((n) => <option key={n} value={n}>{n}</option>)}
                   </select>
                 </Field>
@@ -1479,73 +1483,73 @@ export default function Procurement() {
             })}
           </FormGrid>
           <p className="rounded-lg bg-steel-50 px-3 py-2 text-xs text-steel-600">
-            {evalPreview === null ? "Isi ketiga nilai untuk melihat skor." : `Skor usulan: ${evalPreview} (rata-rata vendor <60 otomatis Blacklist).`}
+            {evalPreview === null ? S.evalIsiDulu : S.evalUsulan.replace("{n}", String(evalPreview))}
           </p>
         </div>
       </Modal>
       <ConfirmModal
         open={unblockVendor !== null}
-        title={`Buka blokir ${unblockVendor?.name ?? ""}?`}
-        desc="Vendor Blacklist hanya dibuka lewat eskalasi - tercatat di log."
-        confirmLabel="Ya, buka (eskalasi)"
+        title={S.cmUnblockT.replace("{n}", unblockVendor?.name ?? "")}
+        desc={S.cmUnblockD}
+        confirmLabel={S.cmUnblockC}
         onCancel={() => setUnblockVendor(null)}
         onConfirm={async () => {
           if (unblockVendor) {
             await update("vendors", unblockVendor.id, { status: "Aktif" });
             log("buka blacklist (eskalasi)", unblockVendor.name, "Procurement");
-            toast(`${unblockVendor.name} dibuka kembali (Aktif)`);
+            toast(S.tUnblocked.replace("{n}", unblockVendor.name));
           }
           setUnblockVendor(null);
         }}
       />
 
       {/* Modal kontrak payung */}
-      <Modal open={payungVendor !== null} onClose={() => setPayungVendor(null)} title={`Kontrak Payung - ${payungVendor?.name ?? ""}`} subtitle="PO ke vendor ini divalidasi terhadap plafon kumulatif"
-        footer={<><button className="btn-secondary" onClick={() => setPayungVendor(null)}>Batal</button><button className="btn-primary" onClick={savePayung}>Simpan</button></>}>
+      <Modal open={payungVendor !== null} onClose={() => setPayungVendor(null)} title={S.mPayT.replace("{n}", payungVendor?.name ?? "")} subtitle={S.mPayS}
+        footer={<><button className="btn-secondary" onClick={() => setPayungVendor(null)}>{S.btnBatal}</button><button className="btn-primary" onClick={savePayung}>{S.btnSimpan}</button></>}>
         <div className="space-y-3">
-          <Field label="Periode" hint="cth: 2026-01 s.d. 2026-12">
-            <input className="input" value={payungPeriode} onChange={(e) => setPayungPeriode(e.target.value)} placeholder="cth: 2026" />
+          <Field label={S.periode} hint={S.hintPeriode}>
+            <input className="input" value={payungPeriode} onChange={(e) => setPayungPeriode(e.target.value)} placeholder={S.phPeriode} />
           </Field>
-          <Field label="Plafon (Rp)" hint="Kosongkan untuk menghapus kontrak payung">
-            <input type="number" min={0} className="input" value={payungPlafon} onChange={(e) => setPayungPlafon(e.target.value)} placeholder="cth: 5000000000" />
+          <Field label={S.plafon} hint={S.hintPlafonKosong}>
+            <input type="number" min={0} className="input" value={payungPlafon} onChange={(e) => setPayungPlafon(e.target.value)} placeholder={S.phPlafon} />
           </Field>
           {payungVendor && (
             <p className="rounded-lg bg-steel-50 px-3 py-2 text-xs text-steel-600">
-              Terpakai saat ini {fmtRupiah(plafonPakai(payungVendor.name))} (PO aktif, di luar Ditolak).
+              {S.payTerpakai.replace("{n}", fmtRupiah(plafonPakai(payungVendor.name)))}
             </p>
           )}
         </div>
       </Modal>
 
       {/* Modal PR */}
-      <Modal open={showPr} onClose={() => setShowPr(false)} title="Buat Purchase Requisition"
-        footer={<><button className="btn-secondary" onClick={() => setShowPr(false)}>Batal</button><button className="btn-primary" onClick={async () => {
-          if (!prForm.item.trim()) { toast("Item wajib diisi", "info"); return; }
-          if (!Number(prForm.amount) || Number(prForm.amount) <= 0) { toast("Estimasi nilai harus lebih dari 0", "info"); return; }
+      <Modal open={showPr} onClose={() => setShowPr(false)} title={S.mPrT}
+        footer={<><button className="btn-secondary" onClick={() => setShowPr(false)}>{S.btnBatal}</button><button className="btn-primary" onClick={async () => {
+          if (!prForm.item.trim()) { toast(S.tItemWajib, "info"); return; }
+          if (!Number(prForm.amount) || Number(prForm.amount) <= 0) { toast(S.tEstPos, "info"); return; }
           const created = await add("requisitions", { item: prForm.item.trim(), by: prForm.by.trim() || "Anda", amount: Number(prForm.amount), status: "Menunggu Approval" },
             { action: "mengajukan PR", module: "Procurement" });
-          toast(`PR ${created.id} diajukan`); setShowPr(false); setPrForm({ item: "", by: "", amount: "" });
-        }}>Ajukan</button></>}>
+          toast(S.tPrDiajukan.replace("{n}", created.id)); setShowPr(false); setPrForm({ item: "", by: "", amount: "" });
+        }}>{S.btnAjukan}</button></>}>
         <div className="space-y-3">
-          <Field label="Item dibutuhkan"><input className="input" value={prForm.item} onChange={(e) => setPrForm({ ...prForm, item: e.target.value })} /></Field>
+          <Field label={S.itemButuh}><input className="input" value={prForm.item} onChange={(e) => setPrForm({ ...prForm, item: e.target.value })} /></Field>
           <FormGrid>
-            <Field label="Pemohon"><input className="input" value={prForm.by} onChange={(e) => setPrForm({ ...prForm, by: e.target.value })} placeholder="cth: Rudi H." /></Field>
-            <Field label="Estimasi nilai (Rp)"><input type="number" min={0} className="input" value={prForm.amount} onChange={(e) => setPrForm({ ...prForm, amount: e.target.value })} /></Field>
+            <Field label={S.pemohon}><input className="input" value={prForm.by} onChange={(e) => setPrForm({ ...prForm, by: e.target.value })} placeholder={S.phPeminta} /></Field>
+            <Field label={S.estNilai}><input type="number" min={0} className="input" value={prForm.amount} onChange={(e) => setPrForm({ ...prForm, amount: e.target.value })} /></Field>
           </FormGrid>
         </div>
       </Modal>
 
       {/* Modal vendor */}
-      <Modal open={showVendor} onClose={() => setShowVendor(false)} title="Tambah Vendor"
-        footer={<><button className="btn-secondary" onClick={() => setShowVendor(false)}>Batal</button><button className="btn-primary" onClick={async () => {
-          if (!vForm.name.trim()) { toast("Nama vendor wajib diisi", "info"); return; }
+      <Modal open={showVendor} onClose={() => setShowVendor(false)} title={S.btnTambahVendor}
+        footer={<><button className="btn-secondary" onClick={() => setShowVendor(false)}>{S.btnBatal}</button><button className="btn-primary" onClick={async () => {
+          if (!vForm.name.trim()) { toast(S.tVendName, "info"); return; }
           const created = await add("vendors", { name: vForm.name.trim(), cat: vForm.cat, onTime: 100, quality: 100, po: 0, status: "Kualifikasi", scores: [] },
             { action: "mendaftarkan vendor", module: "Procurement" });
-          toast(`Vendor ${created.id} ditambahkan`); setShowVendor(false); setVForm({ name: "", cat: "Baja & Struktur" });
-        }}>Simpan</button></>}>
+          toast(S.tVendAdded.replace("{n}", created.id)); setShowVendor(false); setVForm({ name: "", cat: "Baja & Struktur" });
+        }}>{S.btnSimpan}</button></>}>
         <div className="space-y-3">
-          <Field label="Nama vendor"><input className="input" value={vForm.name} onChange={(e) => setVForm({ ...vForm, name: e.target.value })} /></Field>
-          <Field label="Kategori">
+          <Field label={S.namaVendor}><input className="input" value={vForm.name} onChange={(e) => setVForm({ ...vForm, name: e.target.value })} /></Field>
+          <Field label={S.kategori}>
             <select className="input" value={vForm.cat} onChange={(e) => setVForm({ ...vForm, cat: e.target.value })}>
               {["Baja & Struktur", "Mesin & Engine", "Cat & Coating", "Rigging & Wire", "Listrik", "Jasa"].map((c) => <option key={c}>{c}</option>)}
             </select>
@@ -1554,11 +1558,11 @@ export default function Procurement() {
       </Modal>
 
       {/* Dialog pemenang RFQ - pilihan vendor + konfirmasi */}
-      <Modal open={winRfq !== null} onClose={() => { setWinRfq(null); setWinVendor(""); }} title={`Pemenang - ${winRfq?.id ?? ""}`} subtitle="Komparasi otomatis lalu menangkan satu vendor"
-        footer={<><button className="btn-secondary" onClick={() => { setWinRfq(null); setWinVendor(""); }}>Batal</button><button className="btn-primary" onClick={confirmWin}>Menangkan & Buat PO</button></>}>
-        <Field label="Vendor pemenang">
+      <Modal open={winRfq !== null} onClose={() => { setWinRfq(null); setWinVendor(""); }} title={S.mWinT.replace("{n}", winRfq?.id ?? "")} subtitle={S.mWinS}
+        footer={<><button className="btn-secondary" onClick={() => { setWinRfq(null); setWinVendor(""); }}>{S.btnBatal}</button><button className="btn-primary" onClick={confirmWin}>{S.btnWinBuat}</button></>}>
+        <Field label={S.vendorMenang}>
           <select className="input" value={winVendor} onChange={(e) => setWinVendor(e.target.value)}>
-            <option value="">Pilih pemenang…</option>
+            <option value="">{S.optPilihMenang}</option>
             {((winRfq?.quotes as Quote[] | undefined) ?? []).map((x) => (
               <option key={x.vendor} value={x.vendor}>{x.vendor} · {fmtRupiah(Number(x.price))} · ETA {fmtTanggal(x.eta)}</option>
             ))}

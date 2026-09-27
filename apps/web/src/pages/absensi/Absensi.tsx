@@ -21,6 +21,8 @@ import { FilterPopover } from "../../components/FilterPopover";
 import { useStore } from "../../data/store";
 import type { StoreItem } from "../../data/store";
 import { fmtJumlah, fmtTanggal, todayISO } from "../../utils/format";
+import { useT } from "../../i18n/LanguageContext";
+import { n_misc } from "../../i18n/n_misc";
 import { exportExcel } from "../../utils/export";
 
 const SHIFTS = ["Pagi", "Siang", "Malam"];
@@ -52,6 +54,8 @@ function otStatusOf(a: StoreItem): string {
 
 export default function Absensi() {
   const { data, add, update, log, branch, setBranch, inBranch } = useStore();
+  const { locale } = useT();
+  const S = n_misc[locale];
   const [tab, setTab] = useState("Catat");
 
   /* ---------- catat ---------- */
@@ -83,19 +87,19 @@ export default function Absensi() {
       next[e.id] = defaultRow();
     });
     setRows(next);
-    toast(`${activeEmps.length} karyawan ditandai hadir`);
+    toast(S.tMarkedPresent.replace("{n}", String(activeEmps.length)));
   };
 
   const validateRows = (): boolean => {
     for (const e of activeEmps) {
       const r = rowFor(e.id);
       if (r.status === "Hadir" && (!r.checkIn || !r.checkOut)) {
-        toast(`Jam masuk/keluar ${e.name} wajib diisi`, "info");
+        toast(S.tTimeRequired.replace("{n}", String(e.name)), "info");
         return false;
       }
       const ot = Number(r.overtime || 0);
       if (r.status === "Hadir" && (Number.isNaN(ot) || ot < 0 || ot > 8)) {
-        toast(`Lembur ${e.name} harus 0-8 jam`, "info");
+        toast(S.tOvertimeRange.replace("{n}", String(e.name)), "info");
         return false;
       }
     }
@@ -133,21 +137,21 @@ export default function Absensi() {
           created += 1;
         }
       } catch (err) {
-        toast(`Gagal menyimpan ${e.name}: ${err instanceof Error ? err.message : "backend tak terjangkau"}`, "info");
+        toast(S.tSaveFailed.replace("{a}", String(e.name)).replace("{b}", err instanceof Error ? err.message : "backend tak terjangkau"), "info");
       }
     }
     if (created + updated > 0) {
       log("mencatat absensi", `${date} shift ${shift} · ${created + updated} orang`, "Absensi");
-      toast(`Absensi tersimpan - ${created} baru, ${updated} diperbarui`);
+      toast(S.tAttendanceSaved.replace("{a}", String(created)).replace("{b}", String(updated)));
     } else {
-      toast("Tidak ada data baru - semua sudah tercatat", "info");
+      toast(S.tNoNewData, "info");
     }
     setConfirmOpen(false);
   };
 
   const saveAll = () => {
     if (!date) {
-      toast("Tanggal wajib diisi", "info");
+      toast(S.tDateRequired, "info");
       return;
     }
     if (!validateRows()) return;
@@ -221,7 +225,7 @@ export default function Absensi() {
       Math.round(r.pct * 10) / 10,
     ]);
     void exportExcel([head, ...body], `rekap-absensi-${month}`, "Rekap");
-    toast("Rekap absensi diunduh");
+    toast(S.tRekapDownloaded);
   };
 
   const empNameOf = (id: string): string => data.employees.find((e) => e.id === id)?.name ?? id;
@@ -230,19 +234,19 @@ export default function Absensi() {
   const approveOT = async (a: StoreItem) => {
     await update("attendance", a.id, { otStatus: "Disetujui" });
     log("menyetujui lembur", `${a.id} · ${empNameOf(String(a.employeeId))} · ${Number(a.overtime || 0)} jam`, "Absensi");
-    toast(`${a.id} disetujui - masuk hitungan payroll`);
+    toast(S.tOtApproved.replace("{n}", String(a.id)));
   };
 
   const rejectOT = async (a: StoreItem) => {
     await update("attendance", a.id, { otStatus: "Ditolak" });
     log("menolak lembur", `${a.id} · ${empNameOf(String(a.employeeId))}`, "Absensi");
-    toast(`${a.id} ditolak`);
+    toast(S.tOtRejected.replace("{n}", String(a.id)));
   };
 
   const approveAllOT = async () => {
     const pending = detailRecords.filter((a) => otStatusOf(a) === "Diajukan");
     if (pending.length === 0) {
-      toast("Tidak ada lembur yang menunggu persetujuan", "info");
+      toast(S.tNoPendingOt, "info");
       return;
     }
     let ok = 0;
@@ -251,11 +255,11 @@ export default function Absensi() {
         await update("attendance", a.id, { otStatus: "Disetujui" });
         ok += 1;
       } catch (err) {
-        toast(`Gagal menyetujui ${a.id}: ${err instanceof Error ? err.message : "backend tak terjangkau"}`, "info");
+        toast(S.tOtApproveFailed.replace("{a}", String(a.id)).replace("{b}", err instanceof Error ? err.message : "backend tak terjangkau"), "info");
       }
     }
     log("menyetujui lembur massal", `${month} · ${ok} baris`, "Absensi");
-    toast(`${ok} lembur disetujui`);
+    toast(S.tOtBulkApproved.replace("{n}", String(ok)));
   };
 
   const detailRecords = useMemo(
@@ -266,20 +270,20 @@ export default function Absensi() {
   return (
     <div>
       <PageHeader
-        title="Absensi"
-        subtitle="Pencatatan harian per shift dan rekap bulanan"
+        title={S.abTitle}
+        subtitle={S.abSubtitle}
         icon={<CalendarCheck className="h-5 w-5" />}
         actions={
           tab === "Catat" ? (
             <>
-              <button className="btn-secondary" onClick={markAllPresent}>Tandai semua hadir</button>
-              <button className="btn-primary-gradient" onClick={saveAll}>Simpan Absensi</button>
+              <button className="btn-secondary" onClick={markAllPresent}>{S.markAllPresentBtn}</button>
+              <button className="btn-primary-gradient" onClick={saveAll}>{S.saveAttendanceBtn}</button>
             </>
           ) : (
             <div className="flex items-center gap-2">
-              <button className="btn-secondary" onClick={approveAllOT}>Setujui Semua Lembur</button>
+              <button className="btn-secondary" onClick={approveAllOT}>{S.approveAllOtBtn}</button>
               <button className="btn-secondary" onClick={exportRekap}>
-                <Download className="h-4 w-4" /> Ekspor Excel
+                <Download className="h-4 w-4" /> {S.exportExcelBtn}
               </button>
             </div>
           )
@@ -287,23 +291,23 @@ export default function Absensi() {
       />
 
       <div className="card">
-        <Tabs tabs={["Catat", "Rekap"]} active={tab} onChange={setTab} />
+        <Tabs tabs={["Catat", "Rekap"]} active={tab} onChange={setTab} labels={{ Catat: S.tabRecord, Rekap: S.tabRecap }} />
         <div className="p-4">
           {tab === "Catat" && (
             <div>
               <div className="mb-3 flex flex-wrap items-center gap-2">
                 <label className="flex items-center gap-2 text-sm text-steel-600">
-                  Tanggal
+                  {S.dateFieldLabel}
                   <input type="date" className="input w-auto" value={date} onChange={(e) => setDate(e.target.value)} />
                 </label>
                 <label className="flex items-center gap-2 text-sm text-steel-600">
-                  Shift
+                  {S.shiftLabel}
                   <select className="input w-auto" value={shift} onChange={(e) => setShift(e.target.value)}>
                     {SHIFTS.map((s) => <option key={s}>{s}</option>)}
                   </select>
                 </label>
-                <select className="input w-auto" value={branch} onChange={(e) => setBranch(e.target.value)} aria-label="Filter cabang">
-                  <option value="SEMUA">Semua Cabang</option>
+                <select className="input w-auto" value={branch} onChange={(e) => setBranch(e.target.value)} aria-label={S.branchFilterShortAria}>
+                  <option value="SEMUA">{S.allBranches}</option>
                   {branchCities.map((c) => <option key={c} value={c}>{c}</option>)}
                 </select>
               </div>
@@ -313,12 +317,12 @@ export default function Absensi() {
                   <table className="w-full">
                     <thead className="bg-surface sticky top-0 z-10">
                       <tr>
-                        <SortTh label="Karyawan" sortKey="emp" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} />
-                        <SortTh label="Status" sortKey="status" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} />
-                        <SortTh label="Masuk" sortKey="in" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} />
-                        <SortTh label="Keluar" sortKey="out" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} />
-                        <SortTh label="Lembur (jam)" sortKey="ot" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} />
-                        <SortTh label="Ket." sortKey="ket" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} />
+                        <SortTh label={S.sortEmployee} sortKey="emp" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} />
+                        <SortTh label={S.sortStatus} sortKey="status" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} />
+                        <SortTh label={S.sortIn} sortKey="in" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} />
+                        <SortTh label={S.sortOut} sortKey="out" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} />
+                        <SortTh label={S.sortOvertime} sortKey="ot" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} />
+                        <SortTh label={S.sortNote} sortKey="ket" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} />
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-steel-100">
@@ -358,18 +362,18 @@ export default function Absensi() {
                               <input type="number" min="0" max="8" step="0.5" className="input w-24 py-1.5 text-sm" value={r.overtime} disabled={!hadir} onChange={(ev) => setRow(e.id, { overtime: ev.target.value })} />
                             </td>
                             <td className="td">
-                              {hadir && isLate(r.checkIn) ? <Badge tone="red">Telat</Badge> : <span className="text-xs text-steel-400">-</span>}
+                              {hadir && isLate(r.checkIn) ? <Badge tone="red">{S.lateBadge}</Badge> : <span className="text-xs text-steel-400">-</span>}
                             </td>
                           </tr>
                         );
                       })}
                     </tbody>
                   </table>
-                  {activeEmps.length === 0 && <EmptyState title="Tidak ada karyawan aktif" subtitle="Ubah filter cabang." />}
+                  {activeEmps.length === 0 && <EmptyState title={S.emptyActiveEmployees} subtitle={S.changeBranchFilter} />}
                 </div>
               </Card>
               <p className="mt-3 text-xs text-steel-500">
-                Aturan lembur (dipakai Payroll): jam ke-1-2 = 1,5x · jam ke-3-4 = 2x · jam ke-5+ = 3x dari tarif per jam (gaji pokok / 173). Telat = masuk setelah 08:00.
+                {S.overtimeRule}
               </p>
             </div>
           )}
@@ -377,10 +381,10 @@ export default function Absensi() {
           {tab === "Rekap" && (
             <div>
               <div className="mb-4 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-                <KpiCard label="Tingkat Kehadiran" value={`${kpiPct.toLocaleString("id-ID", { maximumFractionDigits: 1 })}%`} hint={`Bulan ${month}`} chip="teal" />
-                <KpiCard label="Total Hadir" value={fmtJumlah(kpiHadir)} hint={`${fmtJumlah(monthRecords.length)} catatan`} chip="navy" />
-                <KpiCard label="Keterlambatan" value={fmtJumlah(kpiTelat)} hint="Masuk setelah 08:00" chip="rose" />
-                <KpiCard label="Total Lembur" value={`${fmtJumlah(Math.round(kpiLembur * 10) / 10)} jam`} hint="Hanya yang Disetujui masuk payroll" chip="amber" />
+                <KpiCard label={S.kpiAttendanceRate} value={`${kpiPct.toLocaleString("id-ID", { maximumFractionDigits: 1 })}%`} hint={S.monthHint.replace("{n}", month)} chip="teal" />
+                <KpiCard label={S.kpiTotalPresent} value={fmtJumlah(kpiHadir)} hint={S.recordsHint.replace("{n}", fmtJumlah(monthRecords.length))} chip="navy" />
+                <KpiCard label={S.kpiLateCount} value={fmtJumlah(kpiTelat)} hint={S.lateHint} chip="rose" />
+                <KpiCard label={S.kpiTotalOvertime} value={`${fmtJumlah(Math.round(kpiLembur * 10) / 10)} jam`} hint={S.approvedOnlyPayroll} chip="amber" />
               </div>
 
               <div className="mb-3 flex flex-wrap items-center gap-2">
@@ -392,12 +396,12 @@ export default function Absensi() {
                 >
                   {(draft, setDraft) => (
                     <div className="space-y-3">
-                      <Field label="Bulan">
+                      <Field label={S.monthFilterLabel}>
                         <input type="month" className="input w-full" value={draft.month} onChange={(e) => setDraft({ ...draft, month: e.target.value })} />
                       </Field>
-                      <Field label="Cabang">
-                        <select className="input w-full" value={draft.branch} onChange={(e) => setDraft({ ...draft, branch: e.target.value })} aria-label="Filter cabang">
-                          <option value="SEMUA">Semua Cabang</option>
+                      <Field label={S.branchLabel}>
+                        <select className="input w-full" value={draft.branch} onChange={(e) => setDraft({ ...draft, branch: e.target.value })} aria-label={S.branchFilterShortAria}>
+                          <option value="SEMUA">{S.allBranches}</option>
                           {branchCities.map((c) => <option key={c} value={c}>{c}</option>)}
                         </select>
                       </Field>
@@ -411,15 +415,15 @@ export default function Absensi() {
                   <table className="w-full">
                     <thead className="bg-surface sticky top-0 z-10">
                       <tr>
-                        <SortTh label="Karyawan" sortKey="emp" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} />
+                        <SortTh label={S.sortEmployee} sortKey="emp" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} />
                         <SortTh label="H" sortKey="h" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} />
                         <SortTh label="I" sortKey="i" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} />
                         <SortTh label="S" sortKey="s" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} />
                         <SortTh label="C" sortKey="c" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} />
                         <SortTh label="A" sortKey="a" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} />
-                        <SortTh label="Lembur" sortKey="lembur" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} />
-                        <SortTh label="Telat" sortKey="telat" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} />
-                        <SortTh label="Kehadiran" sortKey="pct" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} />
+                        <SortTh label={S.sortOvertimeShort} sortKey="lembur" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} />
+                        <SortTh label={S.sortLate} sortKey="telat" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} />
+                        <SortTh label={S.sortAttendance} sortKey="pct" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} />
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-steel-100">
@@ -431,32 +435,32 @@ export default function Absensi() {
                           <td className="td">{r.s}</td>
                           <td className="td">{r.c}</td>
                           <td className="td text-rose-600">{r.a}</td>
-                          <td className="td">{fmtJumlah(Math.round(r.lembur * 10) / 10)} jam</td>
-                          <td className="td">{r.telat > 0 ? <Badge tone="red">{r.telat}x Telat</Badge> : <span className="text-xs text-steel-400">-</span>}</td>
+                          <td className="td">{S.hoursSuffix.replace("{n}", fmtJumlah(Math.round(r.lembur * 10) / 10))}</td>
+                          <td className="td">{r.telat > 0 ? <Badge tone="red">{S.lateTimesBadge.replace("{n}", String(r.telat))}</Badge> : <span className="text-xs text-steel-400">-</span>}</td>
                           <td className="td font-semibold">{r.pct.toLocaleString("id-ID", { maximumFractionDigits: 1 })}%</td>
                         </tr>
                       ))}
                     </tbody>
                   </table>
-                  {summary.length === 0 && <EmptyState title="Tidak ada karyawan" subtitle="Ubah filter cabang." />}
+                  {summary.length === 0 && <EmptyState title={S.emptyEmployees} subtitle={S.changeBranchFilter} />}
                   {rekapPager.bar}
                 </div>
               </Card>
 
-              <h3 className="mb-2 mt-5 text-sm font-semibold text-navy-900">Rincian catatan bulan berjalan</h3>
+              <h3 className="mb-2 mt-5 text-sm font-semibold text-navy-900">{S.detailCurrentMonth}</h3>
               <Card>
                 <div className="overflow-x-auto p-2">
                   <table className="w-full">
                     <thead className="bg-surface sticky top-0 z-10">
                       <tr>
-                        <SortTh label="Tanggal" sortKey="date" sort={sort3} onSort={(k) => setSort3((s) => toggleSort(s, k))} />
-                        <SortTh label="Karyawan" sortKey="emp" sort={sort3} onSort={(k) => setSort3((s) => toggleSort(s, k))} />
-                        <SortTh label="Shift" sortKey="shift" sort={sort3} onSort={(k) => setSort3((s) => toggleSort(s, k))} />
-                        <SortTh label="Status" sortKey="status" sort={sort3} onSort={(k) => setSort3((s) => toggleSort(s, k))} />
-                        <SortTh label="Jam" sortKey="jam" sort={sort3} onSort={(k) => setSort3((s) => toggleSort(s, k))} />
-                        <SortTh label="Lembur" sortKey="lembur" sort={sort3} onSort={(k) => setSort3((s) => toggleSort(s, k))} />
-                        <SortTh label="Persetujuan" sortKey="ot" sort={sort3} onSort={(k) => setSort3((s) => toggleSort(s, k))} />
-                        <SortTh label="Ket." sortKey="ket" sort={sort3} onSort={(k) => setSort3((s) => toggleSort(s, k))} />
+                        <SortTh label={S.sortDate} sortKey="date" sort={sort3} onSort={(k) => setSort3((s) => toggleSort(s, k))} />
+                        <SortTh label={S.sortEmployee} sortKey="emp" sort={sort3} onSort={(k) => setSort3((s) => toggleSort(s, k))} />
+                        <SortTh label={S.sortShift} sortKey="shift" sort={sort3} onSort={(k) => setSort3((s) => toggleSort(s, k))} />
+                        <SortTh label={S.sortStatus} sortKey="status" sort={sort3} onSort={(k) => setSort3((s) => toggleSort(s, k))} />
+                        <SortTh label={S.sortTime} sortKey="jam" sort={sort3} onSort={(k) => setSort3((s) => toggleSort(s, k))} />
+                        <SortTh label={S.sortOvertimeShort} sortKey="lembur" sort={sort3} onSort={(k) => setSort3((s) => toggleSort(s, k))} />
+                        <SortTh label={S.sortApproval} sortKey="ot" sort={sort3} onSort={(k) => setSort3((s) => toggleSort(s, k))} />
+                        <SortTh label={S.sortNote} sortKey="ket" sort={sort3} onSort={(k) => setSort3((s) => toggleSort(s, k))} />
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-steel-100">
@@ -480,15 +484,15 @@ export default function Absensi() {
                           <td className="td"><Badge tone="gray">{a.shift}</Badge></td>
                           <td className="td"><StatusBadge status={String(a.status)} /></td>
                           <td className="td text-steel-600">{a.checkIn && a.checkOut ? `${a.checkIn}-${a.checkOut}` : "-"}</td>
-                          <td className="td text-steel-600">{Number(a.overtime || 0) > 0 ? `${fmtJumlah(Number(a.overtime))} jam` : "-"}</td>
+                          <td className="td text-steel-600">{Number(a.overtime || 0) > 0 ? S.hoursSuffix.replace("{n}", fmtJumlah(Number(a.overtime))) : "-"}</td>
                           <td className="td">
                             {Number(a.overtime || 0) > 0 ? (
                               <div className="flex items-center gap-2 whitespace-nowrap">
                                 <StatusBadge status={otStatusOf(a)} />
                                 {otStatusOf(a) === "Diajukan" && (
                                   <>
-                                    <button className="text-sm font-semibold text-emerald-600 hover:underline" onClick={() => approveOT(a)}>Setujui</button>
-                                    <button className="text-sm font-semibold text-rose-600 hover:underline" onClick={() => rejectOT(a)}>Tolak</button>
+                                    <button className="text-sm font-semibold text-emerald-600 hover:underline" onClick={() => approveOT(a)}>{S.approveBtn}</button>
+                                    <button className="text-sm font-semibold text-rose-600 hover:underline" onClick={() => rejectOT(a)}>{S.rejectBtn}</button>
                                   </>
                                 )}
                               </div>
@@ -497,13 +501,13 @@ export default function Absensi() {
                             )}
                           </td>
                           <td className="td">
-                            {a.status === "Hadir" && isLate(String(a.checkIn)) ? <Badge tone="red">Telat</Badge> : <span className="text-xs text-steel-400">-</span>}
+                            {a.status === "Hadir" && isLate(String(a.checkIn)) ? <Badge tone="red">{S.lateBadge}</Badge> : <span className="text-xs text-steel-400">-</span>}
                           </td>
                         </tr>
                       ))}
                     </tbody>
                   </table>
-                  {detailRecords.length === 0 && <EmptyState title="Belum ada catatan bulan ini" subtitle="Isi lewat tab Catat." />}
+                  {detailRecords.length === 0 && <EmptyState title={S.emptyMonthRecords} subtitle={S.fillViaRecord} />}
                 </div>
               </Card>
             </div>
@@ -513,9 +517,9 @@ export default function Absensi() {
 
       <ConfirmModal
         open={confirmOpen}
-        title="Perbarui catatan duplikat?"
-        desc={`${dupeCount} karyawan sudah tercatat pada ${fmtTanggal(date)} shift ${shift}. Lanjutkan untuk memperbarui catatan tersebut?`}
-        confirmLabel="Ya, perbarui"
+        title={S.dupeTitle}
+        desc={S.dupeDesc.replace("{n}", String(dupeCount)).replace("{a}", fmtTanggal(date)).replace("{b}", shift)}
+        confirmLabel={S.confirmUpdate}
         onCancel={() => setConfirmOpen(false)}
         onConfirm={() => void persist(true)}
       />

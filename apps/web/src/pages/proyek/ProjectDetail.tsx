@@ -25,6 +25,8 @@ import ReportSection from "./ReportSection";
 import SparepartServiceSection from "./SparepartServiceSection";
 import { useStore } from "../../data/store";
 import type { StoreItem, WbsItem } from "../../data/store";
+import { useT } from "../../i18n/LanguageContext";
+import { n_prj } from "../../i18n/n_prj";
 import { fmtMiliar, fmtTanggal, fmtRentang, fmtBulan } from "../../data";
 import { fmtRupiah, todayISO } from "../../utils/format";
 import { sameName } from "../../utils/names";
@@ -44,6 +46,8 @@ type WbsExt = WbsItem & { predecessor?: string };
 interface WbsBaseline { at: string; wbs: WbsExt[]; }
 
 export default function ProjectDetail() {
+  const { locale } = useT();
+  const S = n_prj[locale];
   const { id } = useParams();
   const { data, update, add, wbsFor, setWbs, teamFor, setTeam, log } = useStore();
   const project = data.projects.find((p) => p.id === id) ?? data.projects[0];
@@ -121,7 +125,7 @@ export default function ProjectDetail() {
     }
   }, [data.projects]);
 
-  if (!project) return <p className="text-sm text-steel-500">Proyek tidak ditemukan.</p>;
+  if (!project) return <p className="text-sm text-steel-500">{S.detNotFound}</p>;
   const pid = project.id;
 
   const wbs = wbsFor(pid) as WbsExt[];
@@ -178,18 +182,18 @@ export default function ProjectDetail() {
   const snapshotBaseline = async () => {
     await update("projects", pid, { wbsBaseline: { at: todayISO(), wbs: JSON.parse(JSON.stringify(wbs)) as WbsExt[] } });
     log("membuat baseline WBS", `${pid} · ${wbs.length} tahapan`, "Proyek");
-    toast("Baseline WBS tersimpan");
+    toast(S.detToastBaseline);
   };
 
   const saveCo = async () => {
-    if (!coForm.title.trim()) { toast("Judul perubahan wajib diisi", "info"); return; }
-    if (coForm.impact === "" || !Number.isFinite(Number(coForm.impact))) { toast("Dampak biaya wajib diisi (boleh negatif)", "info"); return; }
-    if (!coForm.requestedBy.trim()) { toast("Pemohon wajib diisi", "info"); return; }
+    if (!coForm.title.trim()) { toast(S.detToastCoTitle, "info"); return; }
+    if (coForm.impact === "" || !Number.isFinite(Number(coForm.impact))) { toast(S.detToastCoImpact, "info"); return; }
+    if (!coForm.requestedBy.trim()) { toast(S.detToastCoBy, "info"); return; }
     await add("changeOrders", {
       project: pid, title: coForm.title.trim(), impact: Number(coForm.impact),
       status: "Diajukan", requestedBy: coForm.requestedBy.trim(), date: coForm.date || todayISO(),
     }, { action: "mengajukan change order", module: "Proyek" });
-    toast("Change order diajukan");
+    toast(S.detToastCoSent);
     setCoForm({ title: "", impact: "", requestedBy: "", date: "" });
     setShowCo(false);
   };
@@ -197,7 +201,7 @@ export default function ProjectDetail() {
   const setCoStatus = async (id: string, status: string) => {
     await update("changeOrders", id, { status });
     log("mengubah change order", `${id} - ${status}`, "Proyek");
-    toast(`Change order ${status.toLowerCase()}`);
+    toast(S.detToastCoStatus.replace("{a}", status.toLowerCase()));
   };
 
   // Garansi/DLP: dibuat sekali saat proyek Selesai (pintasan di tab Terkait).
@@ -209,7 +213,7 @@ export default function ProjectDetail() {
       projectId: pid, vessel: project.vessel, start: todayISO(), months: 12,
       status: "Aktif", branch: String(project.branch ?? ""),
     }, { action: "membuat garansi/DLP", module: "Proyek" });
-    toast(`Garansi ${created.id} dibuat (Aktif, 12 bulan)`);
+    toast(S.detToastWarranty.replace("{a}", created.id));
   };
 
   const openRiskNew = () => {
@@ -225,17 +229,17 @@ export default function ProjectDetail() {
   };
 
   const saveRisk = async () => {
-    if (!riskForm.title.trim()) { toast("Judul risiko wajib diisi", "info"); return; }
+    if (!riskForm.title.trim()) { toast(S.detToastRiskTitle, "info"); return; }
     if (riskEditId) {
       await update("risks", riskEditId, { title: riskForm.title.trim(), likelihood: riskForm.likelihood, impact: riskForm.impact, mitigation: riskForm.mitigation.trim(), status: riskForm.status });
       log("memperbarui risiko", `${riskEditId} · ${riskForm.title.trim()}`, "Proyek");
-      toast("Risiko diperbarui");
+      toast(S.detToastRiskUpd);
     } else {
       await add("risks", {
         project: pid, title: riskForm.title.trim(), likelihood: riskForm.likelihood,
         impact: riskForm.impact, mitigation: riskForm.mitigation.trim(), status: riskForm.status,
       }, { action: "mencatat risiko", module: "Proyek" });
-      toast("Risiko ditambahkan");
+      toast(S.detToastRiskAdd);
     }
     setShowRisk(false);
     setRiskEditId(null);
@@ -261,18 +265,18 @@ export default function ProjectDetail() {
   };
 
   const saveBast = async () => {
-    if (!bastForm.milestone) { toast("Pilih milestone WBS dulu", "info"); return; }
-    if (!bastForm.tanggal) { toast("Tanggal BAST wajib diisi", "info"); return; }
-    if (!bastForm.signer.trim()) { toast("Penandatangan wajib diisi", "info"); return; }
+    if (!bastForm.milestone) { toast(S.detToastBastMile, "info"); return; }
+    if (!bastForm.tanggal) { toast(S.detToastBastDate, "info"); return; }
+    if (!bastForm.signer.trim()) { toast(S.detToastBastSigner, "info"); return; }
     const amt = bastForm.amount === "" ? 0 : Number(bastForm.amount);
-    if (bastForm.amount !== "" && (!Number.isFinite(amt) || amt < 0)) { toast("Nominal harus angka 0 atau lebih", "info"); return; }
+    if (bastForm.amount !== "" && (!Number.isFinite(amt) || amt < 0)) { toast(S.detToastAmount, "info"); return; }
     const id = nextBastId(bastForm.tanggal);
     await add("bast", {
       id, projectId: pid, milestone: bastForm.milestone, tanggal: bastForm.tanggal,
       penandatangan: bastForm.signer.trim(), lampiran: bastForm.lampiran.trim(),
       amount: amt > 0 ? amt : boqTotal, status: "Draft",
     }, { action: "membuat BAST", target: `${id} · ${bastForm.milestone}`, module: "Proyek" });
-    toast(`BAST ${id} dibuat (Draft)`);
+    toast(S.detToastBastMade.replace("{a}", id));
     setBastForm({ milestone: "", tanggal: todayISO(), signer: "", lampiran: "", amount: "" });
     setShowBast(false);
   };
@@ -281,11 +285,11 @@ export default function ProjectDetail() {
     const order = ["Draft", "Diajukan", "Disetujui"];
     const curIdx = order.indexOf(String(b.status));
     const nextIdx = order.indexOf(next);
-    if (nextIdx !== curIdx + 1) { toast(`Alur BAST: ${order.join(" → ")}`, "info"); return; }
+    if (nextIdx !== curIdx + 1) { toast(S.detToastBastFlow.replace("{a}", order.join(" → ")), "info"); return; }
     if (next === "Disetujui") {
       const linked = findLinkedWbs(String(b.milestone ?? ""));
       if (linked && Number(linked.progress) !== 100) {
-        toast(`Milestone "${linked.task}" baru ${linked.progress}% - BAST butuh progres 100%`, "info");
+        toast(S.detToastBastProg.replace("{a}", linked.task).replace("{b}", String(linked.progress)), "info");
         return;
       }
       const amount = Number(b.amount) > 0 ? Number(b.amount) : boqTotal;
@@ -318,14 +322,14 @@ export default function ProjectDetail() {
           skdt: false,
         }, { action: "menerbitkan invoice milestone (BAST)", target: `${invId} ← ${String(b.id)}`, module: "Keuangan" });
         log("menyetujui BAST + auto-invoice", `${String(b.id)} → ${invId}`, "Proyek");
-        toast(`BAST disetujui - invoice draft ${invId} dibuat`);
+        toast(S.detToastBastInv.replace("{a}", invId));
       } catch {
-        toast(`BAST ${String(b.id)} gagal membuat invoice - periksa daftar invoice`, "info");
+        toast(S.detToastBastInvFail.replace("{a}", String(b.id)), "info");
         return;
       }
     } else {
       log("mengajukan BAST", `${String(b.id)} → ${next}`, "Proyek");
-      toast(`BAST ${next.toLowerCase()}`);
+      toast(S.detToastBastStatus.replace("{a}", next.toLowerCase()));
     }
     await update("bast", String(b.id), { status: next });
   };
@@ -342,7 +346,7 @@ export default function ProjectDetail() {
     const next = current.map((s) => (s.name === name ? { ...s, ...patch } : s));
     await update("projects", pid, { designStages: next });
     log("memperbarui sub-stage desain", `${pid} · ${name}`, "Proyek");
-    toast(`${name} diperbarui`);
+    toast(S.detToastStageUpd.replace("{a}", name));
   };
 
   // E4: trials (sea trial / commissioning) per proyek.
@@ -359,14 +363,14 @@ export default function ProjectDetail() {
   };
 
   const saveTrial = async () => {
-    if (!trialForm.tanggal) { toast("Tanggal trial wajib diisi", "info"); return; }
-    if (!trialForm.parameter.trim()) { toast("Parameter / catatan trial wajib diisi", "info"); return; }
+    if (!trialForm.tanggal) { toast(S.detToastTrialDate, "info"); return; }
+    if (!trialForm.parameter.trim()) { toast(S.detToastTrialParam, "info"); return; }
     const id = nextTrialId(trialForm.tanggal);
     await add("trials", {
       id, projectId: pid, tanggal: trialForm.tanggal, parameter: trialForm.parameter.trim(),
       punchList: trialForm.punchList.trim(), hasil: "Berjalan", baRef: trialForm.baRef.trim(),
     }, { action: "membuat sea trial", target: `${id} · ${pid}`, module: "Proyek" });
-    toast(`Trial ${id} dibuat`);
+    toast(S.detToastTrialMade.replace("{a}", id));
     setTrialForm({ tanggal: todayISO(), parameter: "", punchList: "", hasil: "Lolos", baRef: "" });
     setShowTrial(false);
   };
@@ -376,16 +380,16 @@ export default function ProjectDetail() {
     if (hasil === "Lolos") {
       // E5: trial exit butuh Class Survey row yang ter-link ke trial ini.
       const linked = (data.surveys ?? []).some((s) => String(s.linkedTrial ?? "") === String(t.id));
-      if (!linked) { toast("Butuh Class Survey ter-link sebelum trial Lolos (isi di modul Kapal)", "info"); return; }
+      if (!linked) { toast(S.detToastSurvey, "info"); return; }
       const bastId = nextBastId(String(t.tanggal ?? todayISO()));
       await add("bast", {
         id: bastId, projectId: pid, milestone: `Sea Trial - ${String(t.parameter ?? "")}`,
         tanggal: String(t.tanggal ?? todayISO()), penandatangan: "", lampiran: String(t.punchList ?? ""),
         amount: boqTotal, status: "Draft",
       }, { action: "membuat BAST draft dari trial", target: `${bastId} ← ${String(t.id)}`, module: "Proyek" });
-      toast(`Trial Lolos - BAST draft ${bastId} dibuat`);
+      toast(S.detToastTrialPass.replace("{a}", bastId));
     } else {
-      toast(`Trial ${String(t.id)} ditandai ${hasil}`, "info");
+      toast(S.detToastTrialMark.replace("{a}", String(t.id)).replace("{b}", hasil), "info");
     }
     await update("trials", String(t.id), { hasil });
     log("memperbarui hasil trial", `${String(t.id)} → ${hasil}`, "Proyek");
@@ -395,9 +399,9 @@ export default function ProjectDetail() {
   const changeStatus = async (next: string) => {
     if (next === "Selesai" && project.status !== "Selesai") {
       const openNcr = (data.ncr ?? []).filter((n) => n.project === pid && n.status !== "Tertutup");
-      if (openNcr.length > 0) { toast(`Masih ada ${openNcr.length} NCR terbuka - tutup dulu sebelum Selesai`, "info"); return; }
+      if (openNcr.length > 0) { toast(S.detToastNcrOpen.replace("{n}", String(openNcr.length)), "info"); return; }
       const itpHold = (data.inspections ?? []).filter((i) => i.project === pid && i.status === "NCR");
-      if (itpHold.length > 0) { toast(`Masih ada ${itpHold.length} ITP hold (status NCR) - selesaikan dulu`, "info"); return; }
+      if (itpHold.length > 0) { toast(S.detToastItp.replace("{n}", String(itpHold.length)), "info"); return; }
       const vsl = data.vessels.find((x) => x.name === project.vessel);
       if (vsl) {
         await update("vessels", vsl.id, {
@@ -410,11 +414,11 @@ export default function ProjectDetail() {
       log("mengubah status", `${pid} → ${next}`, "Proyek");
     }
     await update("projects", pid, { status: next });
-    toast(`Status menjadi ${next}`);
+    toast(S.detToastStatus.replace("{a}", next));
   };
 
   const saveScope = async () => {
-    if (!scopeVal.service.trim()) { toast("Isi Service dulu", "info"); return; }
+    if (!scopeVal.service.trim()) { toast(S.detToastSvcReq, "info"); return; }
     const item = {
       service: scopeVal.service.trim(),
       ...(scopeVal.lokasi.trim() ? { lokasi: scopeVal.lokasi.trim() } : {}),
@@ -423,11 +427,11 @@ export default function ProjectDetail() {
     try {
       await update("projects", pid, { scope: [...scopeList(project.scope), item] });
       log("menambah lingkup", `${pid} · ${item.service}`, "Proyek");
-      toast("Lingkup ditambahkan");
+      toast(S.detToastScopeAdd);
       setScopeVal({ service: "", lokasi: "", deskripsi: "" });
       setShowScope(false);
     } catch {
-      toast("Lingkup gagal ditambahkan - periksa kembali", "info");
+      toast(S.detToastScopeFail, "info");
     }
   };
 
@@ -435,13 +439,13 @@ export default function ProjectDetail() {
     if (!wbsTaskUpdate) return;
     const hours = Number(wbsUpdateForm.hours) || 0;
     const prog = Math.max(0, Math.min(100, Number(wbsUpdateForm.progress)));
-    if (wbsUpdateForm.progress === "" || Number.isNaN(prog)) { toast("Isi progres 0-100", "info"); return; }
+    if (wbsUpdateForm.progress === "" || Number.isNaN(prog)) { toast(S.detToastProgRange, "info"); return; }
     // E2: hull tasks wajib isi station.
-    if (/hull/i.test(wbsTaskUpdate) && !wbsUpdateForm.station) { toast("Station wajib diisi untuk tugas Hull", "info"); return; }
+    if (/hull/i.test(wbsTaskUpdate) && !wbsUpdateForm.station) { toast(S.detToastStation, "info"); return; }
     const dftNum = wbsUpdateForm.dft === "" ? undefined : Number(wbsUpdateForm.dft);
-    if (wbsUpdateForm.dft !== "" && (!Number.isFinite(dftNum!) || dftNum! < 0)) { toast("DFT harus angka 0 atau lebih", "info"); return; }
+    if (wbsUpdateForm.dft !== "" && (!Number.isFinite(dftNum!) || dftNum! < 0)) { toast(S.detToastDft, "info"); return; }
     const pred = wbsUpdateForm.predecessor || "";
-    if (pred && pred !== wbsTaskUpdate && createsCycle(wbs, wbsTaskUpdate, pred)) { toast("Dependensi menciptakan siklus - ditolak", "info"); return; }
+    if (pred && pred !== wbsTaskUpdate && createsCycle(wbs, wbsTaskUpdate, pred)) { toast(S.detToastCycle, "info"); return; }
     const status = prog >= 100 ? "Selesai" : wbsUpdateForm.status === "Selesai" && prog < 100 ? "Sedang" : wbsUpdateForm.status;
     const updated = wbs.map((w) =>
       w.task === wbsTaskUpdate
@@ -456,25 +460,25 @@ export default function ProjectDetail() {
     await setWbs(pid, updated);
     await update("projects", pid, { progress: weightedProgress(updated) });
     log("mengupdate progres WBS", `${wbsTaskUpdate} → ${prog}% (${status})`, "Proyek");
-    toast("Progres tugas diperbarui");
+    toast(S.detToastWbsProg);
     setWbsTaskUpdate(null);
     setWbsUpdateForm({ hours: "", material: "", status: "Sedang", progress: "", predecessor: "", station: "", photoNote: "", dft: "" });
   };
 
   const saveWbs = async () => {
-    if (!wbsForm.task.trim()) { toast("Nama tahapan wajib diisi", "info"); return; }
-    if (wbs.some((w) => w.task === wbsForm.task.trim())) { toast("Nama tahapan sudah ada", "info"); return; }
+    if (!wbsForm.task.trim()) { toast(S.detToastStageName, "info"); return; }
+    if (wbs.some((w) => w.task === wbsForm.task.trim())) { toast(S.detToastStageDup, "info"); return; }
     const weight = Number(wbsForm.weight) || 0;
-    if (weight <= 0) { toast("Bobot harus lebih dari 0", "info"); return; }
+    if (weight <= 0) { toast(S.detToastWeight, "info"); return; }
     const pred = wbsForm.predecessor || "";
-    if (pred && !wbs.some((w) => w.task === pred)) { toast("Predecessor tidak dikenal", "info"); return; }
+    if (pred && !wbs.some((w) => w.task === pred)) { toast(S.detToastPredUnknown, "info"); return; }
     const next = [...wbs, { task: wbsForm.task.trim(), start: wbsForm.start || "-", end: wbsForm.end || "-", progress: Number(wbsForm.progress) || 0, weight, ...(pred ? { predecessor: pred } : {}) }];
     const totalW = next.reduce((s, w) => s + Number(w.weight || 0), 0);
-    if (totalW !== 100) { toast(`Total bobot menjadi ${totalW}% - harus tepat 100%`, "info"); return; }
+    if (totalW !== 100) { toast(S.detToastWeightTotal.replace("{n}", String(totalW)), "info"); return; }
     await setWbs(pid, next);
     await update("projects", pid, { progress: weightedProgress(next) });
     log("menambah tahapan WBS", `${pid} · ${wbsForm.task.trim()}`, "Proyek");
-    toast("Tahapan ditambahkan");
+    toast(S.detToastStageAdd);
     setShowWbs(false);
     setWbsForm({ task: "", start: "", end: "", weight: "10", progress: "0", predecessor: "" });
   };
@@ -482,7 +486,7 @@ export default function ProjectDetail() {
   return (
     <div>
       <Link to="/proyek" className="mb-3 inline-flex items-center gap-1.5 text-sm font-medium text-ocean-600 hover:underline">
-        <ArrowLeft className="h-4 w-4" /> Kembali ke Proyek
+        <ArrowLeft className="h-4 w-4" /> {S.detBack}
       </Link>
       <PageHeader
         title={project.vessel}
@@ -502,21 +506,21 @@ export default function ProjectDetail() {
       />
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <KpiCard label="Anggaran" value={fmtMiliar(project.budget)} hint="Total kontrak proyek" icon={<Calendar className="h-5 w-5" />} />
-        <KpiCard label="Realisasi" value={fmtMiliar(project.actual)} delta={`${project.budget ? Math.round((project.actual / project.budget) * 100) : 0}% terpakai`} deltaDirection={project.actual > project.budget ? "down" : "flat"} hint="Biaya aktual" />
-        <KpiCard label="Progres" value={`${project.progress}%`} delta={project.status === "Terlambat" ? "Terlambat dari jadwal" : "Sesuai jadwal"} deltaDirection={project.status === "Terlambat" ? "down" : "up"} hint="Rata-rata berbobot WBS" />
-        <KpiCard label="Periode" value={fmtRentang(project.start, project.end)} hint={project.branch} icon={<MapPin className="h-5 w-5" />} />
+        <KpiCard label={S.colBudget} value={fmtMiliar(project.budget)} hint={S.detKpiBudgetHint} icon={<Calendar className="h-5 w-5" />} />
+        <KpiCard label={S.colActual} value={fmtMiliar(project.actual)} delta={S.detKpiUsed.replace("{a}", String(project.budget ? Math.round((project.actual / project.budget) * 100) : 0))} deltaDirection={project.actual > project.budget ? "down" : "flat"} hint={S.detKpiActualHint} />
+        <KpiCard label={S.progLabel} value={`${project.progress}%`} delta={project.status === "Terlambat" ? S.detKpiLate : S.detKpiOnTrack} deltaDirection={project.status === "Terlambat" ? "down" : "up"} hint={S.detKpiAvgHint} />
+        <KpiCard label={S.detKpiPeriod} value={fmtRentang(project.start, project.end)} hint={project.branch} icon={<MapPin className="h-5 w-5" />} />
       </div>
 
       <div className="mt-5 card">
-        <Tabs tabs={["Ringkasan", "WBS & Anggaran", "BoQ", "Dokumen & Laporan", "Perubahan & Risiko", "Terkait", ...(getSetting(data, "SHOW_3D_PROJECT", 0) === 1 ? ["3D Viewer"] : []), "Service", "Sparepart", "Tim"]} active={tab} onChange={setTab} />
+        <Tabs tabs={["Ringkasan", "WBS & Anggaran", "BoQ", "Dokumen & Laporan", "Perubahan & Risiko", "Terkait", ...(getSetting(data, "SHOW_3D_PROJECT", 0) === 1 ? ["3D Viewer"] : []), "Service", "Sparepart", "Tim"]} active={tab} onChange={setTab} labels={{ Ringkasan: S.tabRingkasan, "WBS & Anggaran": S.tabWbs, BoQ: S.tabBoq, "Dokumen & Laporan": S.tabDocs, "Perubahan & Risiko": S.tabChange, Terkait: S.tabRelated, "3D Viewer": S.tabViewer, Service: S.tabService, Sparepart: S.tabSparepart, Tim: S.tabTeam }} />
         <div className="p-5">
           {tab === "Ringkasan" && (
             <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
               <div className="lg:col-span-2">
                 <div className="mb-2 flex items-center justify-between">
-                  <h3 className="text-sm font-semibold text-navy-900">Ruang Lingkup Pekerjaan</h3>
-                  <button className="btn-secondary text-xs" onClick={() => setShowScope(true)}><Plus className="h-3.5 w-3.5" /> Tambah</button>
+                  <h3 className="text-sm font-semibold text-navy-900">{S.detScopeTitle}</h3>
+                  <button className="btn-secondary text-xs" onClick={() => setShowScope(true)}><Plus className="h-3.5 w-3.5" /> {S.addBtn}</button>
                 </div>
                 <ul className="space-y-2">
                   {scopeList(project.scope).map((s, i) => (
@@ -527,33 +531,33 @@ export default function ProjectDetail() {
                         {s.lokasi ? <span className="text-steel-500"> · {s.lokasi}</span> : null}
                         {s.deskripsi ? <span className="block text-xs text-steel-500">{s.deskripsi}</span> : null}
                       </span>
-                      <button className="hidden rounded p-1 text-rose-400 hover:bg-rose-50 group-hover:block" onClick={() => setDelScope(i)} title="Hapus"><Trash2 className="h-3.5 w-3.5" /></button>
+                      <button className="hidden rounded p-1 text-rose-400 hover:bg-rose-50 group-hover:block" onClick={() => setDelScope(i)} title={S.detScopeDelTitle}><Trash2 className="h-3.5 w-3.5" /></button>
                     </li>
                   ))}
-                  {scopeList(project.scope).length === 0 && <p className="text-sm text-steel-400">Belum ada lingkup.</p>}
+                  {scopeList(project.scope).length === 0 && <p className="text-sm text-steel-400">{S.detScopeEmpty}</p>}
                 </ul>
                 <div className="mt-6">
                   <div className="mb-2 flex items-center justify-between">
-                    <h3 className="text-sm font-semibold text-navy-900">Desain &amp; Class Approval</h3>
+                    <h3 className="text-sm font-semibold text-navy-900">{S.detDesignTitle}</h3>
                     {classApproval?.status === "Disetujui"
-                      ? <Badge tone="green">Class Approved</Badge>
-                      : <Badge tone="amber">Class {classApproval?.status ?? "Belum"}</Badge>}
+                      ? <Badge tone="green">{S.detClassOk}</Badge>
+                      : <Badge tone="amber">{S.detClassPending.replace("{a}", classApproval?.status ?? "Belum")}</Badge>}
                   </div>
-                  <p className="mb-2 text-xs text-steel-500">Maju tahap Desain → Produksi diblokir hingga Class Approval Disetujui.</p>
+                  <p className="mb-2 text-xs text-steel-500">{S.detDesignGate}</p>
                   <div className="space-y-2">
                     {DESIGN_STAGE_NAMES.map((name) => {
                       const st = designStages.find((s) => s.name === name) ?? { name, status: "Belum", society: "BKI", date: "", doc: "" };
                       return (
                         <div key={name} className="flex flex-wrap items-center gap-2 rounded-xl border border-steel-100 p-2.5 text-sm">
                           <span className="min-w-36 flex-1 font-medium text-navy-900">{name}</span>
-                          <select className="input w-auto py-1 text-xs" value={st.status} onChange={(e) => saveDesignStage(name, { status: e.target.value })} aria-label={`Status ${name}`}>
+                          <select className="input w-auto py-1 text-xs" value={st.status} onChange={(e) => saveDesignStage(name, { status: e.target.value })} aria-label={S.detStatusAria.replace("{a}", name)}>
                             {DESIGN_STATUS.map((s) => <option key={s}>{s}</option>)}
                           </select>
-                          <select className="input w-auto py-1 text-xs" value={st.society || "BKI"} onChange={(e) => saveDesignStage(name, { society: e.target.value })} aria-label={`Society ${name}`}>
+                          <select className="input w-auto py-1 text-xs" value={st.society || "BKI"} onChange={(e) => saveDesignStage(name, { society: e.target.value })} aria-label={S.detSocietyAria.replace("{a}", name)}>
                             {CLASS_SOCIETIES.map((s) => <option key={s}>{s}</option>)}
                           </select>
-                          <input type="date" className="input w-auto py-1 text-xs" value={st.date || ""} onChange={(e) => saveDesignStage(name, { date: e.target.value })} aria-label={`Tanggal ${name}`} />
-                          <input className="input w-36 py-1 text-xs" value={st.doc || ""} onChange={(e) => saveDesignStage(name, { doc: e.target.value })} placeholder="No. dokumen" aria-label={`Dokumen ${name}`} />
+                          <input type="date" className="input w-auto py-1 text-xs" value={st.date || ""} onChange={(e) => saveDesignStage(name, { date: e.target.value })} aria-label={S.detDateAria.replace("{a}", name)} />
+                          <input className="input w-36 py-1 text-xs" value={st.doc || ""} onChange={(e) => saveDesignStage(name, { doc: e.target.value })} placeholder={S.detDocNoPh} aria-label={S.detDocAria.replace("{a}", name)} />
                         </div>
                       );
                     })}
@@ -561,25 +565,25 @@ export default function ProjectDetail() {
                 </div>
                 <div className="mt-6">
                   <div className="mb-2 flex items-center justify-between">
-                    <h3 className="text-sm font-semibold text-navy-900">Progres Keseluruhan</h3>
-                    <span className="text-xs text-steel-500">Rata-rata berbobot WBS</span>
+                    <h3 className="text-sm font-semibold text-navy-900">{S.detOverallTitle}</h3>
+                    <span className="text-xs text-steel-500">{S.detKpiAvgHint}</span>
                   </div>
                    <ProgressBar value={project.progress} tone={project.status === "Terlambat" ? "red" : "navy"} />
-                    <p className="mt-1 text-xs text-steel-500">{project.progress}% selesai · target penyelesaian {fmtTanggal(project.end)}</p>
+                    <p className="mt-1 text-xs text-steel-500">{S.detOverallDone.replace("{a}", String(project.progress)).replace("{b}", fmtTanggal(project.end))}</p>
                 </div>
                 <div className="mt-6">
                   <div className="mb-2 flex items-center justify-between">
-                    <h3 className="text-sm font-semibold text-navy-900">Milestone Dekat (H-{milestoneDays})</h3>
-                    <Link to="/proyek/monitoring" className="text-xs font-medium text-ocean-600 hover:underline">Monitoring</Link>
+                    <h3 className="text-sm font-semibold text-navy-900">{S.detMileTitle.replace("{n}", String(milestoneDays))}</h3>
+                    <Link to="/proyek/monitoring" className="text-xs font-medium text-ocean-600 hover:underline">{S.detMonitoringLink}</Link>
                   </div>
                   {milestonesNear.length === 0 ? (
-                    <p className="text-xs text-steel-400">Tidak ada milestone dalam {milestoneDays} hari ke depan.</p>
+                    <p className="text-xs text-steel-400">{S.detMileEmpty.replace("{n}", String(milestoneDays))}</p>
                   ) : (
                     <div className="space-y-1.5">
                       {milestonesNear.map((w) => (
                         <div key={w.task} className="flex items-center justify-between rounded-lg border border-amber-200 bg-amber-50 px-3 py-1.5 text-sm">
                           <span className="font-medium text-navy-900">{w.task}</span>
-                          <span className="text-xs text-steel-500">{w.progress}% · berakhir {fmtBulan(w.end)}</span>
+                          <span className="text-xs text-steel-500">{S.detMileRow.replace("{a}", String(w.progress)).replace("{b}", fmtBulan(w.end))}</span>
                         </div>
                       ))}
                     </div>
@@ -587,21 +591,21 @@ export default function ProjectDetail() {
                 </div>
                 {vessel && (
                   <div className="mt-6 rounded-xl border border-steel-100 bg-surface p-3 text-sm">
-                    <span className="text-steel-500">Kapal terkait: </span>
+                    <span className="text-steel-500">{S.detVesselLink}</span>
                     <Link to={`/kapal/${vessel.id}`} className="font-semibold text-ocean-600 hover:underline">{vessel.name} ({vessel.imo})</Link>
                   </div>
                 )}
               </div>
               <Card className="p-5">
-                <h3 className="mb-3 text-sm font-semibold text-navy-900">Informasi Proyek</h3>
+                <h3 className="mb-3 text-sm font-semibold text-navy-900">{S.detInfoTitle}</h3>
                 <dl className="dl-div text-sm">
-                  <div className="flex justify-between"><dt className="text-steel-500">Manajer</dt><dd className="font-medium">{project.manager}</dd></div>
-                  <div className="flex justify-between"><dt className="text-steel-500">Cabang</dt><dd className="font-medium">{project.branch}</dd></div>
-                   <div className="flex justify-between"><dt className="text-steel-500">Mulai</dt><dd className="font-medium">{fmtTanggal(project.start)}</dd></div>
-                   <div className="flex justify-between"><dt className="text-steel-500">Selesai</dt><dd className="font-medium">{fmtTanggal(project.end)}</dd></div>
-                  <div className="flex justify-between"><dt className="text-steel-500">Status</dt><dd><StatusBadge status={project.status} /></dd></div>
-                  <div className="flex justify-between"><dt className="text-steel-500">Invoice</dt><dd className="font-medium">{invoices.length} dokumen</dd></div>
-                  <div className="flex justify-between"><dt className="text-steel-500">NCR terbuka</dt><dd className="font-medium">{ncrs.filter((n) => n.status !== "Tertutup").length}</dd></div>
+                  <div className="flex justify-between"><dt className="text-steel-500">{S.detManager}</dt><dd className="font-medium">{project.manager}</dd></div>
+                  <div className="flex justify-between"><dt className="text-steel-500">{S.branchLabel}</dt><dd className="font-medium">{project.branch}</dd></div>
+                   <div className="flex justify-between"><dt className="text-steel-500">{S.detStart}</dt><dd className="font-medium">{fmtTanggal(project.start)}</dd></div>
+                   <div className="flex justify-between"><dt className="text-steel-500">{S.detEnd}</dt><dd className="font-medium">{fmtTanggal(project.end)}</dd></div>
+                  <div className="flex justify-between"><dt className="text-steel-500">{S.statusLabel}</dt><dd><StatusBadge status={project.status} /></dd></div>
+                  <div className="flex justify-between"><dt className="text-steel-500">{S.detInvoices}</dt><dd className="font-medium">{S.detDocCount.replace("{n}", String(invoices.length))}</dd></div>
+                  <div className="flex justify-between"><dt className="text-steel-500">{S.detNcrOpen}</dt><dd className="font-medium">{ncrs.filter((n) => n.status !== "Tertutup").length}</dd></div>
                 </dl>
               </Card>
             </div>
@@ -609,14 +613,14 @@ export default function ProjectDetail() {
 
           {tab === "WBS & Anggaran" && (
             <div>
-              <h3 className="mb-2 text-sm font-semibold text-navy-900">Work Breakdown Structure</h3>
+              <h3 className="mb-2 text-sm font-semibold text-navy-900">{S.detWbsTitle}</h3>
               <div className="mb-3 flex justify-end">
-                <button className="btn-secondary text-xs" onClick={() => setShowWbs(true)}><Plus className="h-3.5 w-3.5" /> Tambah Tahapan</button>
+                <button className="btn-secondary text-xs" onClick={() => setShowWbs(true)}><Plus className="h-3.5 w-3.5" /> {S.detAddStage}</button>
               </div>
               <div className="overflow-x-auto">
                 <table className="w-full">
                   <thead className="bg-surface">
-                    <tr><SortTh label="Tahapan" sortKey="task" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label="Mulai" sortKey="start" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label="Selesai" sortKey="end" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label="Bobot" sortKey="weight" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label="Pred" sortKey="predecessor" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label="Progres" sortKey="progress" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><th className="th">Aksi</th></tr>
+                    <tr><SortTh label={S.colStageName} sortKey="task" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.detStart} sortKey="start" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.detEnd} sortKey="end" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.colWeight} sortKey="weight" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.colPred} sortKey="predecessor" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.progLabel} sortKey="progress" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><th className="th">{S.actionTh}</th></tr>
                   </thead>
                   <tbody className="divide-y divide-steel-100">
                     {sortRows(wbs, sort, (w: WbsExt, k) => k === "weight" ? Number(w.weight) : k === "progress" ? Number(w.progress) : String((w as unknown as Record<string, unknown>)[k] ?? "")).map((w) => (
@@ -636,7 +640,7 @@ export default function ProjectDetail() {
                           </div>
                         </td>
                         <td className="td">
-                            <button className="btn-secondary text-xs" onClick={() => { setWbsTaskUpdate(w.task); setWbsUpdateForm({ hours: String(w.actualHours ?? ""), material: w.materialUsed ?? "", status: w.status === "Selesai" ? "Selesai" : "Sedang", progress: String(w.progress ?? 0), predecessor: w.predecessor ?? "", station: w.station ?? "", photoNote: w.photoNote ?? "", dft: w.dft === undefined || w.dft === null ? "" : String(w.dft) }); }}>Perbarui</button>
+                            <button className="btn-secondary text-xs" onClick={() => { setWbsTaskUpdate(w.task); setWbsUpdateForm({ hours: String(w.actualHours ?? ""), material: w.materialUsed ?? "", status: w.status === "Selesai" ? "Selesai" : "Sedang", progress: String(w.progress ?? 0), predecessor: w.predecessor ?? "", station: w.station ?? "", photoNote: w.photoNote ?? "", dft: w.dft === undefined || w.dft === null ? "" : String(w.dft) }); }}>{S.detUpdateBtn}</button>
                         </td>
                       </tr>
                     ))}
@@ -646,7 +650,7 @@ export default function ProjectDetail() {
               {ganttRange && wbs.length > 0 && (
                 <div className="mt-4">
                   <div className="mb-2 flex items-center justify-between">
-                    <h4 className="text-xs font-semibold text-navy-900">Gantt Mini</h4>
+                    <h4 className="text-xs font-semibold text-navy-900">{S.detGantt}</h4>
                     <span className="text-[11px] text-steel-500">{fmtBulan(`${ganttRange.min.y}-${String(ganttRange.min.m).padStart(2, "0")}`)} → {fmtBulan(`${ganttRange.max.y}-${String(ganttRange.max.m).padStart(2, "0")}`)}</span>
                   </div>
                   <div className="space-y-1.5">
@@ -670,20 +674,20 @@ export default function ProjectDetail() {
               <div className="mt-4 rounded-xl border border-steel-100 p-3">
                 <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
                   <h4 className="text-xs font-semibold text-navy-900">
-                    Baseline WBS{baseline ? ` · snapshot ${fmtTanggal(baseline.at)}` : " · belum ada snapshot"}
+                    {S.detBaseline}{baseline ? S.detBaselineSnap.replace("{a}", fmtTanggal(baseline.at)) : S.detBaselineNone}
                   </h4>
                   <div className="flex gap-2">
-                    <button className="btn-secondary text-xs" onClick={snapshotBaseline}>Snapshot Baseline</button>
-                    {baseline && <button className="btn-secondary text-xs" onClick={() => setShowDelBaseline(true)}>Hapus Baseline</button>}
+                    <button className="btn-secondary text-xs" onClick={snapshotBaseline}>{S.detSnapBtn}</button>
+                    {baseline && <button className="btn-secondary text-xs" onClick={() => setShowDelBaseline(true)}>{S.detDelBaselineBtn}</button>}
                   </div>
                 </div>
                 {!baseline ? (
-                  <p className="text-xs text-steel-400">Belum ada baseline. Ambil snapshot untuk membandingkan rencana vs aktual.</p>
+                  <p className="text-xs text-steel-400">{S.detBaselineEmpty}</p>
                 ) : (
                   <div className="overflow-x-auto">
                     <table className="w-full">
                       <thead className="bg-surface">
-                        <tr><SortTh label="Tahapan" sortKey="task" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} /><SortTh label="Rencana (baseline)" sortKey="planned" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} /><SortTh label="Aktual" sortKey="actual" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} /><SortTh label="Deviasi" sortKey="dev" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} /></tr>
+                        <tr><SortTh label={S.colStageName} sortKey="task" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} /><SortTh label={S.detPlanBase} sortKey="planned" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} /><SortTh label={S.detActualCol} sortKey="actual" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} /><SortTh label={S.detDevCol} sortKey="dev" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} /></tr>
                       </thead>
                       <tbody className="divide-y divide-steel-100">
                         {sortRows(wbs, sort2, (w: WbsExt, k) => { const base = baseline?.wbs.find((b) => b.task === w.task); const planned = base ? Number(base.progress) || 0 : 0; const actual = Number(w.progress) || 0; if (k === "planned") return planned; if (k === "actual") return actual; if (k === "dev") return actual - planned; return String(w.task); }).map((w) => {
@@ -694,7 +698,7 @@ export default function ProjectDetail() {
                           return (
                             <tr key={`base-${w.task}`}>
                               <td className="td font-medium text-navy-900">{w.task}</td>
-                              <td className="td text-xs text-steel-500">{base ? `${planned}% · ${fmtTanggal(baseline.at)}` : "baru (di luar baseline)"}</td>
+                              <td className="td text-xs text-steel-500">{base ? S.detBaseRow.replace("{a}", String(planned)).replace("{b}", fmtTanggal(baseline.at)) : S.detNewOutside}</td>
                               <td className="td text-xs font-medium">{actual}%</td>
                               <td className={`td text-xs font-semibold ${dev < 0 ? "text-rose-600" : dev > 0 ? "text-emerald-600" : "text-steel-500"}`}>
                                 {dev > 0 ? `+${dev}%` : `${dev}%`}
@@ -712,17 +716,17 @@ export default function ProjectDetail() {
 
           {tab === "WBS & Anggaran" && (
             <div className="mt-6">
-              <h3 className="mb-2 text-sm font-semibold text-navy-900">Anggaran & Nilai Hasil</h3>
+              <h3 className="mb-2 text-sm font-semibold text-navy-900">{S.detBudgetTitle}</h3>
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <Card className="p-5">
                 <div className="mb-2 flex items-center justify-between">
-                  <h3 className="text-sm font-semibold text-navy-900">Budget vs Actual</h3>
-                  <button className="btn-secondary text-xs" onClick={() => toast("Update via BoQ section")}>Catat Realisasi</button>
+                  <h3 className="text-sm font-semibold text-navy-900">{S.detBudgetVs}</h3>
+                  <button className="btn-secondary text-xs" onClick={() => toast(S.detToastBoqSection)}>{S.detRecordActual}</button>
                 </div>
                 <div className="flex items-end gap-2">
                   <div>
                     <p className="text-2xl font-bold text-navy-900">{fmtMiliar(project.actual)}</p>
-                    <p className="text-xs text-steel-500">Realisasi dari {fmtMiliar(project.budget)}</p>
+                    <p className="text-xs text-steel-500">{S.detActualOf.replace("{a}", fmtMiliar(project.budget))}</p>
                   </div>
                   <Badge tone={project.actual > project.budget ? "red" : "green"}>
                     {project.budget ? Math.round((project.actual / project.budget) * 100) : 0}%
@@ -730,11 +734,11 @@ export default function ProjectDetail() {
                 </div>
                 <ProgressBar value={project.budget ? (project.actual / project.budget) * 100 : 0} tone="ocean" className="mt-3" />
                 <p className="mt-3 text-xs text-steel-500">
-                  Dampak CO disetujui/diterapkan: <span className="font-semibold text-navy-900">{fmtRupiah(coApprovedImpact)}</span> ({coApproved.length} CO) - kelola di tab Perubahan &amp; Risiko.
+                  {S.detCoImpact.replace("{a}", fmtRupiah(coApprovedImpact)).replace("{n}", String(coApproved.length))}
                 </p>
               </Card>
               <Card className="p-5">
-                <h3 className="mb-2 text-sm font-semibold text-navy-900">Nilai Hasil (EVM)</h3>
+                <h3 className="mb-2 text-sm font-semibold text-navy-900">{S.detEvmTitle}</h3>
                 {(() => {
                   const pv = project.budget;
                   const ev = Math.round((project.budget * project.progress) / 100);
@@ -745,19 +749,19 @@ export default function ProjectDetail() {
                   return (
                     <>
                       <dl className="dl-div text-sm">
-                        <div className="flex justify-between"><dt className="text-steel-500">PV (anggaran × 100%)</dt><dd className="font-medium">{fmtMiliar(pv)}</dd></div>
-                        <div className="flex justify-between"><dt className="text-steel-500">EV (anggaran × progres)</dt><dd className="font-medium">{fmtMiliar(ev)}</dd></div>
-                        <div className="flex justify-between"><dt className="text-steel-500">AC (realisasi)</dt><dd className="font-medium">{fmtMiliar(ac)}</dd></div>
-                        <div className="flex justify-between"><dt className="text-steel-500">SPI / CPI</dt><dd className="font-medium">{spi.toFixed(2)} / {cpi.toFixed(2)}</dd></div>
+                        <div className="flex justify-between"><dt className="text-steel-500">{S.detPv}</dt><dd className="font-medium">{fmtMiliar(pv)}</dd></div>
+                        <div className="flex justify-between"><dt className="text-steel-500">{S.detEv}</dt><dd className="font-medium">{fmtMiliar(ev)}</dd></div>
+                        <div className="flex justify-between"><dt className="text-steel-500">{S.detAc}</dt><dd className="font-medium">{fmtMiliar(ac)}</dd></div>
+                        <div className="flex justify-between"><dt className="text-steel-500">{S.detSpiCpi}</dt><dd className="font-medium">{spi.toFixed(2)} / {cpi.toFixed(2)}</dd></div>
                       </dl>
                       <p className="mt-3 text-sm text-steel-600">
-                        Estimasi biaya akhir (EAC) <span className="font-semibold text-amber-600">{fmtMiliar(eac)}</span>{" "}
-                        {cpi < 1 && ac > 0 ? "- di atas anggaran, perlu pengendalian biaya." : cpi >= 1 ? "- dalam kendali anggaran." : "- belum ada realisasi tercatat."}
+                        {S.detEacPrefix}<span className="font-semibold text-amber-600">{fmtMiliar(eac)}</span>{" "}
+                        {cpi < 1 && ac > 0 ? S.detEacOver : cpi >= 1 ? S.detEacOk : S.detEacNone}
                       </p>
                     </>
                   );
                 })()}
-                <h3 className="mb-2 mt-4 text-sm font-semibold text-navy-900">Invoice proyek ini ({invoices.length})</h3>
+                <h3 className="mb-2 mt-4 text-sm font-semibold text-navy-900">{S.detProjInv.replace("{n}", String(invoices.length))}</h3>
                 <div className="space-y-1.5">
                   {invoices.map((i) => (
                     <div key={i.id} className="flex items-center justify-between text-sm">
@@ -766,7 +770,7 @@ export default function ProjectDetail() {
                       <StatusBadge status={i.status} />
                     </div>
                   ))}
-                  {invoices.length === 0 && <p className="text-xs text-steel-400">Belum ada invoice. Buat dari modul Keuangan.</p>}
+                  {invoices.length === 0 && <p className="text-xs text-steel-400">{S.detNoInv}</p>}
                 </div>
               </Card>
             </div>
@@ -776,7 +780,7 @@ export default function ProjectDetail() {
           {tab === "Tim" && (
             <div>
               <div className="mb-3 flex justify-end">
-                <button className="btn-secondary text-xs" onClick={() => setShowTeam(true)}><Plus className="h-3.5 w-3.5" /> Tambah Anggota</button>
+                <button className="btn-secondary text-xs" onClick={() => setShowTeam(true)}><Plus className="h-3.5 w-3.5" /> {S.detAddMember}</button>
               </div>
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
                 {team.map((e) => (
@@ -786,21 +790,21 @@ export default function ProjectDetail() {
                       <p className="truncate text-sm font-semibold text-navy-900">{e.name}</p>
                       <p className="text-xs text-steel-500">{e.role} · {e.dept}</p>
                     </div>
-                    <button className="rounded p-1 text-rose-400 hover:bg-rose-50" title="Keluarkan" onClick={async () => { await setTeam(pid, teamIds.filter((t) => t !== e.id)); toast(`${e.name} dikeluarkan dari tim`, "info"); }}>
+                    <button className="rounded p-1 text-rose-400 hover:bg-rose-50" title={S.detRemoveTitle} onClick={async () => { await setTeam(pid, teamIds.filter((t) => t !== e.id)); toast(S.detToastRemoved.replace("{a}", e.name), "info"); }}>
                       <Trash2 className="h-4 w-4" />
                     </button>
                   </Card>
                 ))}
-                {team.length === 0 && <p className="text-sm text-steel-400">Belum ada anggota tim.</p>}
+                {team.length === 0 && <p className="text-sm text-steel-400">{S.detNoTeam}</p>}
               </div>
             </div>
           )}
 
           {tab === "Dokumen & Laporan" && (
             <div>
-              <h3 className="mb-2 text-sm font-semibold text-navy-900">Dokumen Proyek</h3>
+              <h3 className="mb-2 text-sm font-semibold text-navy-900">{S.detDocTitle}</h3>
               <div className="mb-3 flex justify-end">
-                <button className="btn-secondary text-xs" onClick={() => setShowDoc(true)}><Plus className="h-3.5 w-3.5" /> Tambah Dokumen</button>
+                <button className="btn-secondary text-xs" onClick={() => setShowDoc(true)}><Plus className="h-3.5 w-3.5" /> {S.detAddDoc}</button>
               </div>
               <div className="space-y-2">
                 {docs.map((d) => (
@@ -810,20 +814,20 @@ export default function ProjectDetail() {
                       <p className="text-xs text-steel-500">{d.id} · {d.type} · {d.version} · {d.updated}{d.fileName ? ` · lampiran: ${d.fileName}` : ""}</p>
                     </div>
                     <div className="flex gap-2">
-                      <button className="btn-secondary text-xs" aria-label={`Ekspor ${d.title} ke Excel`} onClick={() => {
+                      <button className="btn-secondary text-xs" aria-label={S.detExportAria.replace("{a}", d.title)} onClick={() => {
                         exportExcel([["Field", "Value"], ["ID", d.id], ["Judul", d.title], ["Tipe", d.type], ["Proyek", pid], ["Versi", d.version], ["Status", d.status], ["Diperbarui", d.updated], ["Owner", d.owner]], `${d.id}-ringkasan`);
-                        toast(`${d.id} diekspor ke Excel`);
-                      }}><FileDown className="h-3.5 w-3.5" /> Excel</button>
+                        toast(S.detToastExported.replace("{a}", d.id));
+                      }}><FileDown className="h-3.5 w-3.5" /> {S.excelBtn}</button>
                       <StatusBadge status={d.status} />
                     </div>
                   </div>
                 ))}
-                {docs.length === 0 && <p className="text-sm text-steel-400">Belum ada dokumen untuk proyek ini.</p>}
+                {docs.length === 0 && <p className="text-sm text-steel-400">{S.detNoDocs}</p>}
               </div>
               <div className="mt-6">
                 <div className="mb-2 flex items-center justify-between">
-                  <h3 className="text-sm font-semibold text-navy-900">BAST - Berita Acara Serah Terima ({bastList.length})</h3>
-                  <button className="btn-secondary text-xs" onClick={() => { setBastForm({ milestone: "", tanggal: todayISO(), signer: "", lampiran: "", amount: "" }); setShowBast(true); }}><Plus className="h-3.5 w-3.5" /> Buat BAST</button>
+                  <h3 className="text-sm font-semibold text-navy-900">{S.detBastTitle.replace("{n}", String(bastList.length))}</h3>
+                  <button className="btn-secondary text-xs" onClick={() => { setBastForm({ milestone: "", tanggal: todayISO(), signer: "", lampiran: "", amount: "" }); setShowBast(true); }}><Plus className="h-3.5 w-3.5" /> {S.detCreateBast}</button>
                 </div>
                 <div className="space-y-2">
                   {bastList.map((b) => {
@@ -832,21 +836,21 @@ export default function ProjectDetail() {
                       <div key={String(b.id)} className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-steel-100 p-3 text-sm">
                         <div className="min-w-0">
                           <p className="font-medium text-navy-900">{String(b.id)} · {String(b.milestone)}</p>
-                          <p className="text-xs text-steel-500">{fmtTanggal(String(b.tanggal))} · penandatangan: {String(b.penandatangan ?? "-")}{b.lampiran ? ` · lampiran: ${String(b.lampiran)}` : ""} · {fmtRupiah(Number(b.amount || 0))}{linked ? ` · WBS "${linked.task}" ${linked.progress}%` : ""}</p>
+                          <p className="text-xs text-steel-500">{fmtTanggal(String(b.tanggal))}{S.detBastSigner}{String(b.penandatangan ?? "-")}{b.lampiran ? `${S.detBastAttach}${String(b.lampiran)}` : ""} · {fmtRupiah(Number(b.amount || 0))}{linked ? S.detBastWbs.replace("{a}", linked.task).replace("{b}", String(linked.progress)) : ""}</p>
                         </div>
                         <div className="flex items-center gap-2">
                           <StatusBadge status={String(b.status)} />
                           {String(b.status) === "Draft" && (
-                            <button className="btn-secondary text-xs" onClick={() => advanceBast(b, "Diajukan")}>Ajukan</button>
+                            <button className="btn-secondary text-xs" onClick={() => advanceBast(b, "Diajukan")}>{S.detProposeBtn}</button>
                           )}
                           {String(b.status) === "Diajukan" && (
-                            <button className="btn-secondary text-xs" onClick={() => advanceBast(b, "Disetujui")}>Setujui + Invoice</button>
+                            <button className="btn-secondary text-xs" onClick={() => advanceBast(b, "Disetujui")}>{S.detApproveInvBtn}</button>
                           )}
                         </div>
                       </div>
                     );
                   })}
-                  {bastList.length === 0 && <p className="text-sm text-steel-400">Belum ada BAST untuk proyek ini.</p>}
+                  {bastList.length === 0 && <p className="text-sm text-steel-400">{S.detNoBast}</p>}
                 </div>
               </div>
             </div>
@@ -856,49 +860,49 @@ export default function ProjectDetail() {
             <div className="space-y-6">
               <div>
                 <div className="mb-2 flex items-center justify-between">
-                  <h3 className="text-sm font-semibold text-navy-900">Change Orders ({coList.length})</h3>
-                  <button className="btn-secondary text-xs" onClick={() => setShowCo(true)}><Plus className="h-3.5 w-3.5" /> Ajukan CO</button>
+                  <h3 className="text-sm font-semibold text-navy-900">{S.detCoTitle.replace("{n}", String(coList.length))}</h3>
+                  <button className="btn-secondary text-xs" onClick={() => setShowCo(true)}><Plus className="h-3.5 w-3.5" /> {S.detProposeCo}</button>
                 </div>
                 <div className="mb-3 rounded-xl border border-steel-100 bg-surface p-3 text-sm">
-                  <span className="text-steel-500">Total dampak disetujui/diterapkan: </span>
+                  <span className="text-steel-500">{S.detCoTotalPrefix}</span>
                   <span className="font-semibold text-navy-900">{fmtRupiah(coApprovedImpact)}</span>
-                  <span className="text-steel-500"> dari {coApproved.length} CO</span>
+                  <span className="text-steel-500">{S.detCoTotalSuffix.replace("{n}", String(coApproved.length))}</span>
                 </div>
                 <div className="space-y-2">
                   {coList.map((c) => (
                     <div key={c.id} className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-steel-100 p-3 text-sm">
                       <div className="min-w-0">
                         <p className="font-medium text-navy-900">{c.title}</p>
-                        <p className="text-xs text-steel-500">{c.id} · {fmtTanggal(c.date)} · pemohon: {c.requestedBy} · dampak: <span className={`font-semibold ${Number(c.impact) < 0 ? "text-emerald-600" : "text-navy-900"}`}>{fmtRupiah(Number(c.impact))}</span></p>
+                        <p className="text-xs text-steel-500">{c.id} · {fmtTanggal(c.date)} · {S.detCoRequester}{c.requestedBy} · {S.detCoImpactLbl}<span className={`font-semibold ${Number(c.impact) < 0 ? "text-emerald-600" : "text-navy-900"}`}>{fmtRupiah(Number(c.impact))}</span></p>
                       </div>
                       <div className="flex items-center gap-2">
                         <StatusBadge status={c.status} />
                         {c.status === "Diajukan" && (
                           <>
-                            <button className="btn-secondary text-xs" onClick={() => setCoStatus(c.id, "Disetujui")}>Setujui</button>
-                            <button className="btn-secondary text-xs" onClick={() => setCoStatus(c.id, "Ditolak")}>Tolak</button>
+                            <button className="btn-secondary text-xs" onClick={() => setCoStatus(c.id, "Disetujui")}>{S.detApproveBtn}</button>
+                            <button className="btn-secondary text-xs" onClick={() => setCoStatus(c.id, "Ditolak")}>{S.detRejectBtn}</button>
                           </>
                         )}
                         {c.status === "Disetujui" && (
-                          <button className="btn-secondary text-xs" onClick={() => setCoStatus(c.id, "Diterapkan")}>Terapkan</button>
+                            <button className="btn-secondary text-xs" onClick={() => setCoStatus(c.id, "Diterapkan")}>{S.detApplyBtn}</button>
                         )}
                       </div>
                     </div>
                   ))}
-                  {coList.length === 0 && <p className="text-sm text-steel-400">Belum ada change order.</p>}
+                  {coList.length === 0 && <p className="text-sm text-steel-400">{S.detNoCo}</p>}
                 </div>
               </div>
 
               <div>
                 <div className="mb-2 flex items-center justify-between">
-                  <h3 className="text-sm font-semibold text-navy-900">Risiko ({riskList.length})</h3>
-                  <button className="btn-secondary text-xs" onClick={openRiskNew}><Plus className="h-3.5 w-3.5" /> Tambah Risiko</button>
+                  <h3 className="text-sm font-semibold text-navy-900">{S.detRiskTitle.replace("{n}", String(riskList.length))}</h3>
+                  <button className="btn-secondary text-xs" onClick={openRiskNew}><Plus className="h-3.5 w-3.5" /> {S.detAddRisk}</button>
                 </div>
                 <div className="mb-3 overflow-x-auto">
                   <table className="w-full text-center text-xs">
                     <thead>
                       <tr>
-                        <SortTh label="Kemungkinan \ Dampak" sortKey="level" sort={sort3} onSort={(k) => setSort3((s) => toggleSort(s, k))} />
+                        <SortTh label={S.detMatrixCorner} sortKey="level" sort={sort3} onSort={(k) => setSort3((s) => toggleSort(s, k))} />
                         {RISK_LEVEL.map((l) => <SortTh key={l} label={l} sortKey={l} sort={sort3} onSort={(k) => setSort3((s) => toggleSort(s, k))} />)}
                       </tr>
                     </thead>
@@ -911,7 +915,7 @@ export default function ProjectDetail() {
                             const score = (RISK_LEVEL.indexOf(lh) + 1) * (RISK_LEVEL.indexOf(im) + 1);
                             return (
                               <td key={im} className="td">
-                                <Badge tone={n > 0 ? riskTone(score) : "gray"}>{n} risiko</Badge>
+                                <Badge tone={n > 0 ? riskTone(score) : "gray"}>{S.detRiskCount.replace("{n}", String(n))}</Badge>
                               </td>
                             );
                           })}
@@ -925,16 +929,16 @@ export default function ProjectDetail() {
                     <div key={r.id} className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-steel-100 p-3 text-sm">
                       <div className="min-w-0">
                         <p className="font-medium text-navy-900">{r.title}</p>
-                        <p className="text-xs text-steel-500">{r.id} · mitigasi: {r.mitigation || "-"}</p>
+                        <p className="text-xs text-steel-500">{r.id} · {S.detMitigation}{r.mitigation || "-"}</p>
                       </div>
                       <div className="flex items-center gap-2">
                         <Badge tone={riskTone(riskScore(r))}>{r.likelihood} × {r.impact}</Badge>
                         <StatusBadge status={r.status} />
-                        <button className="btn-secondary text-xs" onClick={() => openRiskEdit(r)}>Ubah</button>
+                        <button className="btn-secondary text-xs" onClick={() => openRiskEdit(r)}>{S.detEditBtn}</button>
                       </div>
                     </div>
                   ))}
-                  {riskList.length === 0 && <p className="text-sm text-steel-400">Belum ada risiko tercatat.</p>}
+                  {riskList.length === 0 && <p className="text-sm text-steel-400">{S.detNoRisk}</p>}
                 </div>
               </div>
             </div>
@@ -944,79 +948,79 @@ export default function ProjectDetail() {
             <div className="space-y-4">
             <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
               <Card className="p-4">
-                <h3 className="mb-2 text-sm font-semibold text-navy-900">Slot Docking ({slots.length})</h3>
-                {slots.map((s) => <p key={s.id} className="py-1 text-sm text-steel-600">{s.dockId} · hari {s.from}-{s.to}</p>)}
-                {slots.length === 0 && <p className="text-xs text-steel-400">Belum ada slot. Booking dari modul Drydock.</p>}
+                <h3 className="mb-2 text-sm font-semibold text-navy-900">{S.detDockTitle.replace("{n}", String(slots.length))}</h3>
+                {slots.map((s) => <p key={s.id} className="py-1 text-sm text-steel-600">{S.detDockRow.replace("{a}", s.dockId).replace("{b}", String(s.from)).replace("{c}", String(s.to))}</p>)}
+                {slots.length === 0 && <p className="text-xs text-steel-400">{S.detNoDock}</p>}
               </Card>
               <Card className="p-4">
-                <h3 className="mb-2 text-sm font-semibold text-navy-900">Work Order ({wos.length})</h3>
+                <h3 className="mb-2 text-sm font-semibold text-navy-900">{S.detWoTitle.replace("{n}", String(wos.length))}</h3>
                 {wos.map((w) => (
                   <div key={w.id} className="flex items-center justify-between py-1 text-sm">
                     <span className="text-steel-600">{w.id} · {w.sub}</span>
                     <Badge tone={w.status === "Selesai" ? "green" : "blue"}>{w.progress}%</Badge>
                   </div>
                 ))}
-                {wos.length === 0 && <p className="text-xs text-steel-400">Belum ada WO. Buat dari modul Subkontraktor.</p>}
+                {wos.length === 0 && <p className="text-xs text-steel-400">{S.detNoWo}</p>}
               </Card>
               <Card className="p-4">
-                <h3 className="mb-2 text-sm font-semibold text-navy-900">NCR ({ncrs.length})</h3>
+                <h3 className="mb-2 text-sm font-semibold text-navy-900">{S.detNcrTitle.replace("{n}", String(ncrs.length))}</h3>
                 {ncrs.map((n) => (
                   <div key={n.id} className="flex items-center justify-between py-1 text-sm">
                     <span className="font-mono text-navy-900">{n.id}</span>
                     <StatusBadge status={n.status} />
                   </div>
                 ))}
-                {ncrs.length === 0 && <p className="text-xs text-steel-400">Tidak ada NCR. Catat dari modul QC.</p>}
+                {ncrs.length === 0 && <p className="text-xs text-steel-400">{S.detNoNcr}</p>}
               </Card>
             </div>
             <Card className="p-4">
               <div className="mb-2 flex items-center justify-between">
-                <h3 className="text-sm font-semibold text-navy-900">Garansi / DLP ({warrantyList.length})</h3>
+                <h3 className="text-sm font-semibold text-navy-900">{S.detWarTitle.replace("{n}", String(warrantyList.length))}</h3>
                 {project.status === "Selesai" && (
-                  <button className="btn-secondary text-xs" onClick={createWarranty}><Plus className="h-3.5 w-3.5" /> Buat Garansi/DLP</button>
+                  <button className="btn-secondary text-xs" onClick={createWarranty}><Plus className="h-3.5 w-3.5" /> {S.detCreateWar}</button>
                 )}
               </div>
               {project.status !== "Selesai" && (
-                <p className="mb-2 text-xs text-steel-500">Pintasan buat garansi muncul setelah proyek Selesai.</p>
+                <p className="mb-2 text-xs text-steel-500">{S.detWarHint}</p>
               )}
               <div className="space-y-2">
                 {warrantyList.map((w) => (
                   <div key={w.id} className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-steel-100 p-3 text-sm">
                     <div className="min-w-0">
                       <p className="font-medium text-navy-900 font-mono">{w.id}</p>
-                      <p className="text-xs text-steel-500">Mulai {fmtTanggal(String(w.start ?? ""))} · {w.months} bulan · {w.vessel}</p>
+                      <p className="text-xs text-steel-500">{S.detWarRow.replace("{a}", fmtTanggal(String(w.start ?? ""))).replace("{b}", String(w.months)).replace("{c}", String(w.vessel))}</p>
                     </div>
                     <StatusBadge status={String(w.status ?? "Aktif")} />
                   </div>
                 ))}
-                {warrantyList.length === 0 && <p className="text-xs text-steel-400">Belum ada garansi untuk proyek ini.</p>}
+                {warrantyList.length === 0 && <p className="text-xs text-steel-400">{S.detNoWar}</p>}
               </div>
             </Card>
             <Card className="p-4">
               <div className="mb-2 flex items-center justify-between">
-                <h3 className="text-sm font-semibold text-navy-900">Trial - Commissioning &amp; Sea Trial ({trialList.length})</h3>
-                <button className="btn-secondary text-xs" onClick={() => setShowTrial(true)}><Plus className="h-3.5 w-3.5" /> Buat Trial</button>
+                <h3 className="text-sm font-semibold text-navy-900">{S.detTrialTitle.replace("{n}", String(trialList.length))}</h3>
+                <button className="btn-secondary text-xs" onClick={() => setShowTrial(true)}><Plus className="h-3.5 w-3.5" /> {S.detCreateTrial}</button>
               </div>
-              <p className="mb-2 text-xs text-steel-500">Trial Lolos butuh Class Survey ter-link (modul Kapal) dan otomatis membuat BAST draft.</p>
+              <p className="mb-2 text-xs text-steel-500">{S.detTrialHint}</p>
               <div className="space-y-2">
                 {trialList.map((t) => (
                   <div key={String(t.id)} className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-steel-100 p-3 text-sm">
                     <div className="min-w-0">
                       <p className="font-medium text-navy-900">{String(t.id)} · {fmtTanggal(String(t.tanggal))}</p>
-                      <p className="text-xs text-steel-500">Parameter: {String(t.parameter ?? "-")}{t.punchList ? ` · punch: ${String(t.punchList)}` : ""}{t.baRef ? ` · BA: ${String(t.baRef)}` : ""}</p>
+                      <p className="text-xs text-steel-500">{S.detTrialParam}{String(t.parameter ?? "-")}{t.punchList ? `${S.detTrialPunch}${String(t.punchList)}` : ""}{t.baRef ? `${S.detTrialBa}${String(t.baRef)}` : ""}</p>
                     </div>
                     <div className="flex items-center gap-2">
                       <StatusBadge status={String(t.hasil ?? "Berjalan")} />
                       {String(t.hasil) !== "Lolos" && (
-                        <button className="btn-secondary text-xs" onClick={() => advanceTrial(t, "Lolos")}>Lolos + BAST</button>
+                        <button className="btn-secondary text-xs" onClick={() => advanceTrial(t, "Lolos")}>{S.detTrialPassBtn}</button>
                       )}
                       {String(t.hasil) !== "Gagal" && (
-                        <button className="btn-secondary text-xs" onClick={() => advanceTrial(t, "Gagal")}>Gagal</button>
+                        <button className="btn-secondary text-xs" onClick={() => advanceTrial(t, "Gagal")}>{S.detTrialFailBtn}</button>
                       )}
                     </div>
                   </div>
                 ))}
-                {trialList.length === 0 && <p className="text-xs text-steel-400">Belum ada trial untuk proyek ini.</p>}
+                {trialList.length === 0 && <p className="text-xs text-steel-400">{S.detNoTrial}</p>}
               </div>
             </Card>
             </div>
@@ -1030,69 +1034,69 @@ export default function ProjectDetail() {
       </div>
 
       {/* Modal Trial */}
-      <Modal open={showTrial} onClose={() => setShowTrial(false)} title="Buat Trial" subtitle={`${pid} · ${nextTrialId(trialForm.tanggal || todayISO())}`}
-        footer={<><button className="btn-secondary" onClick={() => setShowTrial(false)}>Batal</button><button className="btn-primary" onClick={saveTrial}>Simpan</button></>}>
+      <Modal open={showTrial} onClose={() => setShowTrial(false)} title={S.detCreateTrial} subtitle={`${pid} · ${nextTrialId(trialForm.tanggal || todayISO())}`}
+        footer={<><button className="btn-secondary" onClick={() => setShowTrial(false)}>{S.cancelBtn}</button><button className="btn-primary" onClick={saveTrial}>{S.saveBtn}</button></>}>
         <div className="space-y-3">
-          <Field label="Tanggal"><input type="date" className="input" value={trialForm.tanggal} onChange={(e) => setTrialForm({ ...trialForm, tanggal: e.target.value })} /></Field>
-          <Field label="Parameter / catatan"><input className="input" value={trialForm.parameter} onChange={(e) => setTrialForm({ ...trialForm, parameter: e.target.value })} placeholder="cth: Speed & endurance 4 jam" /></Field>
-          <Field label="Punch list"><input className="input" value={trialForm.punchList} onChange={(e) => setTrialForm({ ...trialForm, punchList: e.target.value })} placeholder="cth: Minor leak valve-3" /></Field>
-          <Field label="BA ref (opsional)"><input className="input" value={trialForm.baRef} onChange={(e) => setTrialForm({ ...trialForm, baRef: e.target.value })} placeholder="cth: BA-TRIAL-012" /></Field>
+          <Field label={S.dateField}><input type="date" className="input" value={trialForm.tanggal} onChange={(e) => setTrialForm({ ...trialForm, tanggal: e.target.value })} /></Field>
+          <Field label={S.detParamField}><input className="input" value={trialForm.parameter} onChange={(e) => setTrialForm({ ...trialForm, parameter: e.target.value })} placeholder={S.detParamPh} /></Field>
+          <Field label={S.detPunchField}><input className="input" value={trialForm.punchList} onChange={(e) => setTrialForm({ ...trialForm, punchList: e.target.value })} placeholder={S.detPunchPh} /></Field>
+          <Field label={S.detBaField}><input className="input" value={trialForm.baRef} onChange={(e) => setTrialForm({ ...trialForm, baRef: e.target.value })} placeholder={S.detBaPh} /></Field>
         </div>
       </Modal>
 
       {/* Modal BAST */}
-      <Modal open={showBast} onClose={() => setShowBast(false)} title="Buat BAST" subtitle={`${pid} · ${nextBastId(bastForm.tanggal || todayISO())}`}
-        footer={<><button className="btn-secondary" onClick={() => setShowBast(false)}>Batal</button><button className="btn-primary" onClick={saveBast}>Simpan Draft</button></>}>
+      <Modal open={showBast} onClose={() => setShowBast(false)} title={S.detCreateBast} subtitle={`${pid} · ${nextBastId(bastForm.tanggal || todayISO())}`}
+        footer={<><button className="btn-secondary" onClick={() => setShowBast(false)}>{S.cancelBtn}</button><button className="btn-primary" onClick={saveBast}>{S.detSaveDraft}</button></>}>
         <div className="space-y-3">
-          <Field label="Milestone / WBS ref" hint="Pilih tahapan WBS - persetujuan butuh progres 100%">
+          <Field label={S.detMileField} hint={S.detMileHint}>
             <select className="input" value={bastForm.milestone} onChange={(e) => setBastForm({ ...bastForm, milestone: e.target.value })}>
-              <option value="">Pilih milestone…</option>
+              <option value="">{S.detPickMile}</option>
               {wbs.map((t) => <option key={t.task} value={t.task}>{t.task} · {t.progress}%</option>)}
             </select>
           </Field>
           <FormGrid>
-            <Field label="Tanggal"><input type="date" className="input" value={bastForm.tanggal} onChange={(e) => setBastForm({ ...bastForm, tanggal: e.target.value })} /></Field>
-            <Field label="Nominal invoice (Rp)" hint={boqTotal > 0 ? `Default total BoQ ${fmtRupiah(boqTotal)} bila dikosongkan` : "Nominal draft invoice milestone"}>
-              <input type="number" min={0} className="input" value={bastForm.amount} onChange={(e) => setBastForm({ ...bastForm, amount: e.target.value })} placeholder={boqTotal > 0 ? String(boqTotal) : "cth: 540000000"} />
+            <Field label={S.dateField}><input type="date" className="input" value={bastForm.tanggal} onChange={(e) => setBastForm({ ...bastForm, tanggal: e.target.value })} /></Field>
+            <Field label={S.detAmountField} hint={boqTotal > 0 ? S.detAmountHintBoq.replace("{a}", fmtRupiah(boqTotal)) : S.detAmountHintPlain}>
+              <input type="number" min={0} className="input" value={bastForm.amount} onChange={(e) => setBastForm({ ...bastForm, amount: e.target.value })} placeholder={boqTotal > 0 ? String(boqTotal) : S.detAmountPh} />
             </Field>
           </FormGrid>
-          <Field label="Penandatangan"><input className="input" value={bastForm.signer} onChange={(e) => setBastForm({ ...bastForm, signer: e.target.value })} placeholder="cth: Hendra Wijaya / Owner" /></Field>
-          <Field label="Lampiran / catatan"><input className="input" value={bastForm.lampiran} onChange={(e) => setBastForm({ ...bastForm, lampiran: e.target.value })} placeholder="cth: Checklist + foto section 4-7" /></Field>
+          <Field label={S.detSignerField}><input className="input" value={bastForm.signer} onChange={(e) => setBastForm({ ...bastForm, signer: e.target.value })} placeholder={S.detSignerPh} /></Field>
+          <Field label={S.detAttachField}><input className="input" value={bastForm.lampiran} onChange={(e) => setBastForm({ ...bastForm, lampiran: e.target.value })} placeholder={S.detAttachPh} /></Field>
         </div>
       </Modal>
 
       {/* Modal change order */}
-      <Modal open={showCo} onClose={() => setShowCo(false)} title="Ajukan Change Order" subtitle={pid}
-        footer={<><button className="btn-secondary" onClick={() => setShowCo(false)}>Batal</button><button className="btn-primary" onClick={saveCo}>Ajukan</button></>}>
+      <Modal open={showCo} onClose={() => setShowCo(false)} title={S.detCoModal} subtitle={pid}
+        footer={<><button className="btn-secondary" onClick={() => setShowCo(false)}>{S.cancelBtn}</button><button className="btn-primary" onClick={saveCo}>{S.detProposeCo}</button></>}>
         <div className="space-y-3">
-          <Field label="Judul perubahan"><input className="input" value={coForm.title} onChange={(e) => setCoForm({ ...coForm, title: e.target.value })} placeholder="cth: Tambah Fi-Fi system deck" /></Field>
+          <Field label={S.detCoTitleField}><input className="input" value={coForm.title} onChange={(e) => setCoForm({ ...coForm, title: e.target.value })} placeholder={S.detCoTitlePh} /></Field>
           <FormGrid>
-            <Field label="Dampak biaya (Rp)" hint="Boleh negatif untuk pengurangan scope"><input type="number" className="input" value={coForm.impact} onChange={(e) => setCoForm({ ...coForm, impact: e.target.value })} placeholder="cth: 1850000000 atau -120000000" /></Field>
-            <Field label="Tanggal"><input type="date" className="input" value={coForm.date} onChange={(e) => setCoForm({ ...coForm, date: e.target.value })} /></Field>
+            <Field label={S.detCoImpactField} hint={S.detCoImpactHint}><input type="number" className="input" value={coForm.impact} onChange={(e) => setCoForm({ ...coForm, impact: e.target.value })} placeholder={S.detCoImpactPh} /></Field>
+            <Field label={S.dateField}><input type="date" className="input" value={coForm.date} onChange={(e) => setCoForm({ ...coForm, date: e.target.value })} /></Field>
           </FormGrid>
-          <Field label="Pemohon"><input className="input" value={coForm.requestedBy} onChange={(e) => setCoForm({ ...coForm, requestedBy: e.target.value })} placeholder="cth: Budi Santoso" /></Field>
+          <Field label={S.detRequester}><input className="input" value={coForm.requestedBy} onChange={(e) => setCoForm({ ...coForm, requestedBy: e.target.value })} placeholder={S.detRequesterPh} /></Field>
         </div>
       </Modal>
 
       {/* Modal risiko */}
-      <Modal open={showRisk} onClose={() => setShowRisk(false)} title={riskEditId ? "Ubah Risiko" : "Tambah Risiko"} subtitle={pid}
-        footer={<><button className="btn-secondary" onClick={() => setShowRisk(false)}>Batal</button><button className="btn-primary" onClick={saveRisk}>Simpan</button></>}>
+      <Modal open={showRisk} onClose={() => setShowRisk(false)} title={riskEditId ? S.detRiskEdit : S.detAddRisk} subtitle={pid}
+        footer={<><button className="btn-secondary" onClick={() => setShowRisk(false)}>{S.cancelBtn}</button><button className="btn-primary" onClick={saveRisk}>{S.saveBtn}</button></>}>
         <div className="space-y-3">
-          <Field label="Judul risiko"><input className="input" value={riskForm.title} onChange={(e) => setRiskForm({ ...riskForm, title: e.target.value })} placeholder="cth: Keterlambatan baja AH36" /></Field>
+          <Field label={S.detRiskTitleField}><input className="input" value={riskForm.title} onChange={(e) => setRiskForm({ ...riskForm, title: e.target.value })} placeholder={S.detRiskTitlePh} /></Field>
           <FormGrid>
-            <Field label="Kemungkinan">
+            <Field label={S.detLikelihood}>
               <select className="input" value={riskForm.likelihood} onChange={(e) => setRiskForm({ ...riskForm, likelihood: e.target.value })}>
                 {RISK_LEVEL.map((l) => <option key={l}>{l}</option>)}
               </select>
             </Field>
-            <Field label="Dampak">
+            <Field label={S.detImpact}>
               <select className="input" value={riskForm.impact} onChange={(e) => setRiskForm({ ...riskForm, impact: e.target.value })}>
                 {RISK_LEVEL.map((l) => <option key={l}>{l}</option>)}
               </select>
             </Field>
           </FormGrid>
-          <Field label="Mitigasi"><input className="input" value={riskForm.mitigation} onChange={(e) => setRiskForm({ ...riskForm, mitigation: e.target.value })} placeholder="cth: Dual vendor + buffer 2 minggu" /></Field>
-          <Field label="Status">
+          <Field label={S.detMitigationField}><input className="input" value={riskForm.mitigation} onChange={(e) => setRiskForm({ ...riskForm, mitigation: e.target.value })} placeholder={S.detMitigationPh} /></Field>
+          <Field label={S.statusLabel}>
             <select className="input" value={riskForm.status} onChange={(e) => setRiskForm({ ...riskForm, status: e.target.value })}>
               {RISK_STATUS.map((s) => <option key={s}>{s}</option>)}
             </select>
@@ -1101,53 +1105,53 @@ export default function ProjectDetail() {
       </Modal>
 
       {/* Modal share */}
-      <Modal open={showShare} onClose={() => setShowShare(false)} title="Bagikan Laporan ke Atasan"
-        footer={<><button className="btn-secondary" onClick={() => setShowShare(false)}>Batal</button><button className="btn-primary" onClick={async () => {
-          if (!shareForm.docId || !shareForm.to) { toast("Pilih dokumen dan tujuan", "info"); return; }
+      <Modal open={showShare} onClose={() => setShowShare(false)} title={S.detShareModal}
+        footer={<><button className="btn-secondary" onClick={() => setShowShare(false)}>{S.cancelBtn}</button><button className="btn-primary" onClick={async () => {
+          if (!shareForm.docId || !shareForm.to) { toast(S.detToastPickDoc, "info"); return; }
           const doc = docs.find((d: any) => d.id === shareForm.docId);
           await update("documents", shareForm.docId, { sharedWith: [...(doc?.sharedWith ?? []), shareForm.to] });
           log("berbagi dokumen dengan atasan", `${shareForm.docId} → ${shareForm.to}`, "Dokumen");
-          toast(`Dokumen dibagikan ke ${shareForm.to}`);
+          toast(S.detToastShared.replace("{a}", shareForm.to));
           setShowShare(false);
           setShareForm({ docId: "", to: "" });
-        }}>Kirim</button></>}>
+        }}>{S.detSendBtn}</button></>}>
         <FormGrid>
-          <Field label="Dokumen">
+          <Field label={S.detDocField}>
             <select className="input" value={shareForm.docId} onChange={(e) => setShareForm({ ...shareForm, docId: e.target.value })}>
-              <option value="">Pilih…</option>
+              <option value="">{S.detPickDoc}</option>
               {docs.map((d: any) => <option key={d.id} value={d.id}>{d.title}</option>)}
             </select>
           </Field>
-          <Field label="Ditujukan ke"><input className="input" value={shareForm.to} onChange={(e) => setShareForm({ ...shareForm, to: e.target.value })} placeholder="cth: Atasan/Nama" /></Field>
+          <Field label={S.detShareTo}><input className="input" value={shareForm.to} onChange={(e) => setShareForm({ ...shareForm, to: e.target.value })} placeholder={S.detShareToPh} /></Field>
         </FormGrid>
       </Modal>
 
       {/* Modal update WBS task */}
-      <Modal open={wbsTaskUpdate !== null} onClose={() => setWbsTaskUpdate(null)} title={`Update Progress: ${wbsTaskUpdate ?? ""}`}
-        footer={<><button className="btn-secondary" onClick={() => setWbsTaskUpdate(null)}>Batal</button><button className="btn-primary" onClick={saveWbsTask}>Simpan</button></>}>
+      <Modal open={wbsTaskUpdate !== null} onClose={() => setWbsTaskUpdate(null)} title={S.detWbsUpdateTitle.replace("{a}", wbsTaskUpdate ?? "")}
+        footer={<><button className="btn-secondary" onClick={() => setWbsTaskUpdate(null)}>{S.cancelBtn}</button><button className="btn-primary" onClick={saveWbsTask}>{S.saveBtn}</button></>}>
         <div className="space-y-3">
-          <Field label="Progres (%)" hint="0-100, diisi manual berdasarkan capaian nyata"><input type="number" min={0} max={100} className="input" value={wbsUpdateForm.progress} onChange={(e) => setWbsUpdateForm({ ...wbsUpdateForm, progress: e.target.value })} placeholder="cth: 70" /></Field>
+          <Field label={S.detProgField} hint={S.detProgHint}><input type="number" min={0} max={100} className="input" value={wbsUpdateForm.progress} onChange={(e) => setWbsUpdateForm({ ...wbsUpdateForm, progress: e.target.value })} placeholder={S.detProgPh} /></Field>
           <FormGrid>
-            <Field label="Jam Kerja Aktual"><input type="number" className="input" value={wbsUpdateForm.hours} onChange={(e) => setWbsUpdateForm({ ...wbsUpdateForm, hours: e.target.value })} placeholder="cth: 8" /></Field>
-            <Field label="DFT (µm)" hint="Diisi untuk tugas Painting"><input type="number" min={0} className="input" value={wbsUpdateForm.dft} onChange={(e) => setWbsUpdateForm({ ...wbsUpdateForm, dft: e.target.value })} placeholder="cth: 250" /></Field>
+            <Field label={S.detHours}><input type="number" className="input" value={wbsUpdateForm.hours} onChange={(e) => setWbsUpdateForm({ ...wbsUpdateForm, hours: e.target.value })} placeholder={S.detHoursPh} /></Field>
+            <Field label={S.detDft} hint={S.detDftHint}><input type="number" min={0} className="input" value={wbsUpdateForm.dft} onChange={(e) => setWbsUpdateForm({ ...wbsUpdateForm, dft: e.target.value })} placeholder={S.detDftPh} /></Field>
           </FormGrid>
-          <Field label="Material Dipakai"><input className="input" value={wbsUpdateForm.material} onChange={(e) => setWbsUpdateForm({ ...wbsUpdateForm, material: e.target.value })} placeholder="cth: Baja AH36 50kg" /></Field>
-          <Field label="Station" hint={wbsTaskUpdate && /hull/i.test(wbsTaskUpdate) ? "Wajib untuk tugas Hull" : "Opsional - tahapan fabrikasi/hull"}>
+          <Field label={S.detMaterial}><input className="input" value={wbsUpdateForm.material} onChange={(e) => setWbsUpdateForm({ ...wbsUpdateForm, material: e.target.value })} placeholder={S.detMaterialPh} /></Field>
+          <Field label={S.detStation} hint={wbsTaskUpdate && /hull/i.test(wbsTaskUpdate) ? S.detStationReq : S.detStationOpt}>
             <select className="input" value={wbsUpdateForm.station} onChange={(e) => setWbsUpdateForm({ ...wbsUpdateForm, station: e.target.value })}>
-              <option value="">Pilih station…</option>
+              <option value="">{S.detPickStation}</option>
               {STATIONS.map((s) => <option key={s}>{s}</option>)}
             </select>
           </Field>
-          <Field label="Catatan foto harian" hint="Teks catatan foto - upload fisik menyusul via backend"><input className="input" value={wbsUpdateForm.photoNote} onChange={(e) => setWbsUpdateForm({ ...wbsUpdateForm, photoNote: e.target.value })} placeholder="cth: Foto seam section 4, 08:00" /></Field>
-          <Field label="Status">
+          <Field label={S.detPhotoNote} hint={S.detPhotoHint}><input className="input" value={wbsUpdateForm.photoNote} onChange={(e) => setWbsUpdateForm({ ...wbsUpdateForm, photoNote: e.target.value })} placeholder={S.detPhotoPh} /></Field>
+          <Field label={S.statusLabel}>
             <select className="input" value={wbsUpdateForm.status} onChange={(e) => setWbsUpdateForm({ ...wbsUpdateForm, status: e.target.value as "Sedang" | "Selesai" })}>
               <option value="Sedang">Sedang Dikerjakan</option>
               <option value="Selesai">Selesai</option>
             </select>
           </Field>
-          <Field label="Predecessor (opsional)" hint="Tugas pendahulu - ditolak bila membentuk siklus">
+          <Field label={S.detPred} hint={S.detPredHint}>
             <select className="input" value={wbsUpdateForm.predecessor} onChange={(e) => setWbsUpdateForm({ ...wbsUpdateForm, predecessor: e.target.value })}>
-              <option value="">Tanpa predecessor</option>
+              <option value="">{S.detNoPred}</option>
               {wbs.filter((w) => w.task !== wbsTaskUpdate).map((w) => <option key={w.task} value={w.task}>{w.task}</option>)}
             </select>
           </Field>
@@ -1155,19 +1159,19 @@ export default function ProjectDetail() {
       </Modal>
 
       {/* Modal WBS */}
-      <Modal open={showWbs} onClose={() => setShowWbs(false)} title="Tambah Tahapan WBS"
-        footer={<><button className="btn-secondary" onClick={() => setShowWbs(false)}>Batal</button><button className="btn-primary" onClick={saveWbs}>Tambah</button></>}>
+      <Modal open={showWbs} onClose={() => setShowWbs(false)} title={S.detWbsModal}
+        footer={<><button className="btn-secondary" onClick={() => setShowWbs(false)}>{S.cancelBtn}</button><button className="btn-primary" onClick={saveWbs}>{S.addBtn}</button></>}>
         <div className="space-y-3">
-          <Field label="Nama tahapan"><input className="input" value={wbsForm.task} onChange={(e) => setWbsForm({ ...wbsForm, task: e.target.value })} /></Field>
+          <Field label={S.detStageName}><input className="input" value={wbsForm.task} onChange={(e) => setWbsForm({ ...wbsForm, task: e.target.value })} /></Field>
           <FormGrid>
-            <Field label="Mulai"><input className="input" placeholder="2026-08" value={wbsForm.start} onChange={(e) => setWbsForm({ ...wbsForm, start: e.target.value })} /></Field>
-            <Field label="Selesai"><input className="input" placeholder="2026-09" value={wbsForm.end} onChange={(e) => setWbsForm({ ...wbsForm, end: e.target.value })} /></Field>
-            <Field label="Bobot (%)"><input type="number" className="input" value={wbsForm.weight} onChange={(e) => setWbsForm({ ...wbsForm, weight: e.target.value })} /></Field>
-            <Field label="Progres (%)"><input type="number" className="input" value={wbsForm.progress} onChange={(e) => setWbsForm({ ...wbsForm, progress: e.target.value })} /></Field>
+            <Field label={S.detStart}><input className="input" placeholder={S.detWbsStartPh} value={wbsForm.start} onChange={(e) => setWbsForm({ ...wbsForm, start: e.target.value })} /></Field>
+            <Field label={S.detEnd}><input className="input" placeholder={S.detWbsEndPh} value={wbsForm.end} onChange={(e) => setWbsForm({ ...wbsForm, end: e.target.value })} /></Field>
+            <Field label={S.detWeight}><input type="number" className="input" value={wbsForm.weight} onChange={(e) => setWbsForm({ ...wbsForm, weight: e.target.value })} /></Field>
+            <Field label={S.detProgField}><input type="number" className="input" value={wbsForm.progress} onChange={(e) => setWbsForm({ ...wbsForm, progress: e.target.value })} /></Field>
           </FormGrid>
-          <Field label="Predecessor (opsional)" hint="Tugas pendahulu - ditolak bila membentuk siklus">
+          <Field label={S.detPred} hint={S.detPredHint}>
             <select className="input" value={wbsForm.predecessor} onChange={(e) => setWbsForm({ ...wbsForm, predecessor: e.target.value })}>
-              <option value="">Tanpa predecessor</option>
+              <option value="">{S.detNoPred}</option>
               {wbs.map((w) => <option key={w.task} value={w.task}>{w.task}</option>)}
             </select>
           </Field>
@@ -1175,17 +1179,17 @@ export default function ProjectDetail() {
       </Modal>
 
       {/* Modal tim */}
-      <Modal open={showTeam} onClose={() => setShowTeam(false)} title="Tambah Anggota Tim"
-        footer={<><button className="btn-secondary" onClick={() => setShowTeam(false)}>Batal</button><button className="btn-primary" onClick={async () => {
-          if (!teamPick) { toast("Pilih karyawan dulu", "info"); return; }
-          if (teamIds.includes(teamPick)) { toast("Sudah menjadi anggota", "info"); return; }
+      <Modal open={showTeam} onClose={() => setShowTeam(false)} title={S.detTeamModal}
+        footer={<><button className="btn-secondary" onClick={() => setShowTeam(false)}>{S.cancelBtn}</button><button className="btn-primary" onClick={async () => {
+          if (!teamPick) { toast(S.detToastPickEmp, "info"); return; }
+          if (teamIds.includes(teamPick)) { toast(S.detToastDupMember, "info"); return; }
           await setTeam(pid, [...teamIds, teamPick]);
           log("menambah anggota tim", `${pid} · ${data.employees.find((e) => e.id === teamPick)?.name}`, "Proyek");
-          toast("Anggota ditambahkan"); setShowTeam(false); setTeamPick("");
-        }}>Tambah</button></>}>
-        <Field label="Karyawan">
+          toast(S.detToastMemberAdd); setShowTeam(false); setTeamPick("");
+        }}>{S.addBtn}</button></>}>
+        <Field label={S.detEmployee}>
           <select className="input" value={teamPick} onChange={(e) => setTeamPick(e.target.value)}>
-            <option value="">Pilih karyawan…</option>
+            <option value="">{S.detPickEmployee}</option>
             {data.employees.filter((e) => !teamIds.includes(e.id)).map((e) => (
               <option key={e.id} value={e.id}>{e.name} · {e.role}</option>
             ))}
@@ -1194,54 +1198,54 @@ export default function ProjectDetail() {
       </Modal>
 
       {/* Modal dokumen proyek */}
-      <Modal open={showDoc} onClose={() => setShowDoc(false)} title="Tambah Dokumen Proyek" subtitle={pid}
-        footer={<><button className="btn-secondary" onClick={() => setShowDoc(false)}>Batal</button><button className="btn-primary" onClick={async () => {
-          if (!docTitle.trim()) { toast("Judul wajib diisi", "info"); return; }
+      <Modal open={showDoc} onClose={() => setShowDoc(false)} title={S.detDocModal} subtitle={pid}
+        footer={<><button className="btn-secondary" onClick={() => setShowDoc(false)}>{S.cancelBtn}</button><button className="btn-primary" onClick={async () => {
+          if (!docTitle.trim()) { toast(S.detToastDocTitle, "info"); return; }
           await add("documents", { title: docTitle.trim(), type: docType, project: pid, vessel: project.vessel, version: "v1.0", status: "Draft", updated: new Date().toISOString().slice(0, 10), owner: "Anda", sharedWith: [], approvalStatus: "Draft", fileName: docFile.trim() || "-" },
             { action: "mengarsipkan dokumen", module: "Dokumen" });
-          toast("Dokumen ditambahkan"); setShowDoc(false); setDocTitle(""); setDocFile("");
-        }}>Simpan</button></>}>
+          toast(S.detToastDocAdd); setShowDoc(false); setDocTitle(""); setDocFile("");
+        }} >{S.saveBtn}</button></>}>
         <div className="space-y-3">
-          <Field label="Judul dokumen"><input className="input" value={docTitle} onChange={(e) => setDocTitle(e.target.value)} /></Field>
-          <Field label="Tipe">
+          <Field label={S.detDocTitleField}><input className="input" value={docTitle} onChange={(e) => setDocTitle(e.target.value)} /></Field>
+          <Field label={S.detDocType}>
             <select className="input" value={docType} onChange={(e) => setDocType(e.target.value)}>
               {["Laporan", "Kontrak", "Kontrak Kerja", "Drawing", "Prosedur", "Sertifikat", "Invoice", "NCR"].map((t) => <option key={t}>{t}</option>)}
             </select>
           </Field>
-          <Field label="Lampiran (nama file)" hint="Metadata nama file - upload fisik menyusul via backend">
-            <input className="input" value={docFile} onChange={(e) => setDocFile(e.target.value)} placeholder="cth: kontrak-kerja-NB-2025-012.pdf" />
+          <Field label={S.detDocFile} hint={S.detDocFileHint}>
+            <input className="input" value={docFile} onChange={(e) => setDocFile(e.target.value)} placeholder={S.detDocFilePh} />
           </Field>
         </div>
       </Modal>
 
       {/* Modal scope */}
-      <Modal open={showScope} onClose={() => setShowScope(false)} title="Tambah Lingkup Pekerjaan"
-        footer={<><button className="btn-secondary" onClick={() => setShowScope(false)}>Batal</button><button className="btn-primary" onClick={saveScope}>Tambah</button></>}>
+      <Modal open={showScope} onClose={() => setShowScope(false)} title={S.detScopeModal}
+        footer={<><button className="btn-secondary" onClick={() => setShowScope(false)}>{S.cancelBtn}</button><button className="btn-primary" onClick={saveScope}>{S.addBtn}</button></>}>
         <div className="grid gap-3">
-          <Field label="Jenis pekerjaan">
-            <input className="input" placeholder="Sea Trial" value={scopeVal.service} onChange={(e) => setScopeVal((v) => ({ ...v, service: e.target.value }))} />
+          <Field label={S.prjScopeType}>
+            <input className="input" placeholder={S.detScopeTypePh2} value={scopeVal.service} onChange={(e) => setScopeVal((v) => ({ ...v, service: e.target.value }))} />
           </Field>
-          <Field label="Lokasi">
-            <input className="input" placeholder="Graving Dock 1" value={scopeVal.lokasi} onChange={(e) => setScopeVal((v) => ({ ...v, lokasi: e.target.value }))} />
+          <Field label={S.prjScopeLoc}>
+            <input className="input" placeholder={S.detScopeLocPh} value={scopeVal.lokasi} onChange={(e) => setScopeVal((v) => ({ ...v, lokasi: e.target.value }))} />
           </Field>
-          <Field label="Deskripsi">
-            <input className="input" placeholder="Uji kecepatan & manuver" value={scopeVal.deskripsi} onChange={(e) => setScopeVal((v) => ({ ...v, deskripsi: e.target.value }))} />
+          <Field label={S.prjScopeDesc}>
+            <input className="input" placeholder={S.detScopeDescPh} value={scopeVal.deskripsi} onChange={(e) => setScopeVal((v) => ({ ...v, deskripsi: e.target.value }))} />
           </Field>
         </div>
       </Modal>
-      <ConfirmModal open={delScope !== null} title="Hapus lingkup?" desc="Item lingkup akan dihapus dari ruang lingkup."
-        confirmLabel="Ya, hapus" danger onCancel={() => setDelScope(null)}
+      <ConfirmModal open={delScope !== null} title={S.detDelScopeTitle} desc={S.detDelScopeDesc}
+        confirmLabel={S.detConfirmDelete} danger onCancel={() => setDelScope(null)}
         onConfirm={async () => {
           try {
             if (delScope !== null) await update("projects", pid, { scope: scopeList(project.scope).filter((_, i) => i !== delScope) });
           } catch {
-            toast("Lingkup gagal dihapus - periksa kembali", "info");
+            toast(S.detToastScopeDelFail, "info");
           }
           setDelScope(null);
         }} />
-      <ConfirmModal open={showDelBaseline} title="Hapus baseline?" desc="Snapshot baseline WBS proyek ini akan dihapus dan tabel perbandingan disembunyikan."
-        confirmLabel="Ya, hapus" danger onCancel={() => setShowDelBaseline(false)}
-        onConfirm={async () => { await update("projects", pid, { wbsBaseline: undefined }); log("menghapus baseline WBS", pid, "Proyek"); toast("Baseline dihapus", "info"); setShowDelBaseline(false); }} />
+      <ConfirmModal open={showDelBaseline} title={S.detDelBaseTitle} desc={S.detDelBaseDesc}
+        confirmLabel={S.detConfirmDelete} danger onCancel={() => setShowDelBaseline(false)}
+        onConfirm={async () => { await update("projects", pid, { wbsBaseline: undefined }); log("menghapus baseline WBS", pid, "Proyek"); toast(S.detToastBaseDel, "info"); setShowDelBaseline(false); }} />
     </div>
   );
 }

@@ -11,6 +11,8 @@ import { fmtTanggal, todayISO } from "../../utils/format";
 import { AlertBannerView, notifRowId, useModuleAlert } from "../../components/AlertBanner";
 import { sbDsNumber, sbSjNumber, sbTtNumber, maxSeq, parseSjSeq } from "../../utils/sb";
 import { exportExcel } from "../../utils/export";
+import { n_dry } from "../../i18n/n_dry";
+import { useT } from "../../i18n/LanguageContext";
 
 const TYPES = ["Kontrak", "Drawing", "Prosedur", "Sertifikat", "Laporan", "Invoice", "NCR", "Penawaran", "Dock Space", "Surat Jalan", "Tanda Terima"];
 const FILTERS = ["Semua", ...TYPES, "Arsip"];
@@ -95,6 +97,8 @@ const emptyForm = { title: "", type: "Laporan", project: "", vessel: "", owner: 
 
 export default function Documents() {
   const { data, add, update, remove, log, branch, inBranch } = useStore();
+  const { locale } = useT();
+  const S = n_dry[locale];
   const modAlert = useModuleAlert("dokumen");
   const [q, setQ] = useState("");
   const [sort, setSort] = useState<SortState>({ key: null, dir: "asc" });
@@ -143,14 +147,14 @@ export default function Documents() {
   /* Upload lampiran ke backend (/api/files); mode lokal tetap pakai URL manual. */
   const onLampiranFile = async (f: File | undefined) => {
     if (!f) return;
-    if (!isBackendConfigured()) { toast("Mode lokal - tempel URL lampiran manual", "info"); return; }
+    if (!isBackendConfigured()) { toast(S.tLocalMode, "info"); return; }
     setUploadingFile(true);
     try {
       const url = await uploadFile(f);
       setF("fileUrl", url);
-      toast("Lampiran terunggah");
+      toast(S.tUploaded);
     } catch (e) {
-      toast(e instanceof Error ? e.message : "Upload lampiran gagal", "info");
+      toast(e instanceof Error ? e.message : S.tUploadFail, "info");
     } finally {
       setUploadingFile(false);
       if (fileInputRef.current) fileInputRef.current.value = "";
@@ -158,16 +162,16 @@ export default function Documents() {
   };
 
   const validForm = (): boolean => {
-    if (!form.title.trim()) { toast("Judul dokumen wajib diisi", "info"); return false; }
-    if (!form.type) { toast("Tipe dokumen wajib diisi", "info"); return false; }
-    if (!form.project) { toast("Proyek terkait wajib diisi (pilih - untuk umum)", "info"); return false; }
-    if (!form.owner.trim()) { toast("Penanggung jawab wajib diisi", "info"); return false; }
+    if (!form.title.trim()) { toast(S.tTitleReq, "info"); return false; }
+    if (!form.type) { toast(S.tTypeReq, "info"); return false; }
+    if (!form.project) { toast(S.tProjectReq, "info"); return false; }
+    if (!form.owner.trim()) { toast(S.tOwnerReq, "info"); return false; }
     if (!data.employees.some((e) => String(e.name).toLowerCase() === form.owner.trim().toLowerCase())) {
-      toast("Penanggung jawab harus karyawan terdaftar", "info");
+      toast(S.tOwnerEmployee, "info");
       return false;
     }
-    if (form.type === "Sertifikat" && !form.berlakuHingga) { toast("Sertifikat wajib isi berlaku hingga", "info"); return false; }
-    if (editing && !form.revNote.trim()) { toast("Catatan revisi wajib diisi", "info"); return false; }
+    if (form.type === "Sertifikat" && !form.berlakuHingga) { toast(S.tCertExpiry, "info"); return false; }
+    if (editing && !form.revNote.trim()) { toast(S.tRevNoteReq, "info"); return false; }
     return true;
   };
 
@@ -175,7 +179,7 @@ export default function Documents() {
     if (!validForm()) return;
     if (editing) {
       const dupe = data.documents.some((d) => d.id !== editing.id && d.type === form.type && String(d.title).toLowerCase() === form.title.trim().toLowerCase());
-      if (dupe) { toast("Judul sudah dipakai untuk tipe dokumen ini", "info"); return; }
+      if (dupe) { toast(S.tTitleDupe, "info"); return; }
       const version = nextVersion(String(editing.version ?? "v1.0"));
       const revisions = [...(editing.revisions ?? []), { version, at: todayISO(), by: form.owner.trim(), note: form.revNote.trim() }];
       await update("documents", editing.id, {
@@ -185,12 +189,12 @@ export default function Documents() {
         fileUrl: form.fileUrl.trim(),
       });
       log(`merevisi dokumen ke ${version}`, editing.id, "Dokumen");
-      toast(`Dokumen ${editing.id} naik ke ${version}`);
+      toast(S.tVersionUp.replace("{a}", editing.id).replace("{b}", version));
       setEditing(null);
     } else {
       const dupe = data.documents.some((d) => d.type === form.type && String(d.title).toLowerCase() === form.title.trim().toLowerCase());
-      if (dupe) { toast("Judul sudah dipakai untuk tipe dokumen ini", "info"); return; }
-      if (data.documents.some((d) => d.id === docPreview)) { toast("Nomor dokumen sudah dipakai, coba lagi", "info"); return; }
+      if (dupe) { toast(S.tTitleDupe, "info"); return; }
+      if (data.documents.some((d) => d.id === docPreview)) { toast(S.tIdDupe, "info"); return; }
       const created = await add("documents", {
         id: docPreview,
         title: form.title.trim(), type: form.type, project: form.project, vessel: form.vessel,
@@ -206,21 +210,21 @@ export default function Documents() {
           : "",
         revisions: [{ version: "v1.0", at: todayISO(), by: form.owner.trim(), note: "Dokumen dibuat" }],
       }, { action: "mengarsipkan dokumen", module: "Dokumen" });
-      toast(`Dokumen ${created.id} ditambahkan`);
+      toast(S.tAdded.replace("{a}", created.id));
       setShowAdd(false);
     }
   };
 
   const runOcr = async (d: StoreItem) => {
     const url = String(d.fileUrl ?? "");
-    if (!url) { toast("Dokumen ini belum punya lampiran gambar", "info"); return; }
+    if (!url) { toast(S.tNoImage, "info"); return; }
     setOcrBusy(true);
     try {
       const text = await ocrImageUrl(url);
       setOcrText(text);
-      toast(`OCR selesai (${text.length} karakter) - periksa lalu simpan`);
+      toast(S.tOcrDone.replace("{n}", String(text.length)));
     } catch (e) {
-      toast(e instanceof Error ? e.message : "OCR gagal", "info");
+      toast(e instanceof Error ? e.message : S.tOcrFail, "info");
     } finally {
       setOcrBusy(false);
     }
@@ -230,7 +234,7 @@ export default function Documents() {
     if (!ocrText.trim()) return;
     await update("documents", String(d.id), { ocrText: ocrText.trim(), updated: todayISO() });
     log("menyimpan hasil OCR", String(d.id), "Dokumen");
-    toast(`Hasil OCR disimpan ke ${String(d.id)}`);
+    toast(S.tOcrSaved.replace("{a}", String(d.id)));
     setDetail((cur) => (cur && cur.id === d.id ? { ...cur, ocrText: ocrText.trim(), updated: todayISO() } : cur));
     setOcrText("");
   };
@@ -238,17 +242,17 @@ export default function Documents() {
   const toggleCopy = async (d: StoreItem) => {    const next = String(d.docCopy ?? "Terkendali") === "Salinan" ? "Terkendali" : "Salinan";
     await update("documents", d.id, { docCopy: next, updated: todayISO() });
     log(`menandai dokumen sebagai ${next}`, d.id, "Dokumen");
-    toast(`${d.id} ditandai ${next}`);
+    toast(S.tCopyMarked.replace("{a}", String(d.id)).replace("{b}", next));
     setDetail((cur) => (cur && cur.id === d.id ? { ...cur, docCopy: next, updated: todayISO() } : cur));
   };
 
   const flowTo = async (d: StoreItem, next: string) => {
-    const ok = window.confirm(`Ubah status ${d.id} ke ${next}? Tercatat di riwayat revisi.`);
+    const ok = window.confirm(S.flowConfirm.replace("{a}", String(d.id)).replace("{b}", next));
     if (!ok) return;
     const revisions = [...(d.revisions ?? []), { version: String(d.version ?? "v1.0"), at: todayISO(), by: String(d.owner ?? ""), note: `Status → ${next}` }];
     await update("documents", d.id, { status: next, updated: todayISO(), revisions });
     log(`mengubah status dokumen ke ${next}`, d.id, "Dokumen");
-    toast(`${d.id} → ${next}`);
+    toast(S.movedTo.replace("{a}", String(d.id)).replace("{b}", next));
     setDetail((cur) => (cur && cur.id === d.id ? { ...cur, status: next, updated: todayISO(), revisions } : cur));
   };
 
@@ -256,7 +260,7 @@ export default function Documents() {
     if (!archiving) return;
     await update("documents", archiving.id, { archived: true });
     log("mengarsipkan dokumen", archiving.id, "Dokumen");
-    toast(`${archiving.id} diarsipkan`, "info");
+    toast(S.tArchived.replace("{a}", String(archiving.id)), "info");
     setArchiving(null);
   };
 
@@ -265,17 +269,17 @@ export default function Documents() {
     try {
       await remove("documents", deleting.id);
       log("menghapus permanen dokumen", deleting.id, "Dokumen");
-      toast(`${deleting.id} dihapus permanen`, "info");
+      toast(S.tDeletedPerm.replace("{a}", String(deleting.id)), "info");
       setDeleting(null);
     } catch (e) {
-      toast(e instanceof Error ? e.message : "Dokumen tidak bisa dihapus", "info");
+      toast(e instanceof Error ? e.message : S.tDeleteDocFail, "info");
     }
   };
 
   const doExport = () => {
     const rows = list.map((d) => [d.id, d.title, d.type, d.project, d.version, d.status, d.owner, d.updated, d.berlakuHingga ?? "", Array.isArray(d.related) ? d.related.length : 0]);
     exportExcel([["ID", "Judul", "Tipe", "Proyek", "Versi", "Status", "Owner", "Updated", "Berlaku Hingga", "Jml Terkait"], ...rows], `register-dokumen-${todayISO()}`);
-    toast(`${String(rows.length)} baris diekspor ke Excel`);
+    toast(S.tExported.replace("{n}", String(rows.length)));
   };
 
   const sbSeq = (tipe: string): number => {
@@ -299,13 +303,13 @@ export default function Documents() {
   return (
     <div>
       <PageHeader
-        title="Aset & Dokumen"
-        subtitle="Register dokumen terpusat - kontrak, drawing, sertifikat, laporan"
+        title={S.docPageTitle}
+        subtitle={S.docPageSubtitle}
         icon={<ScrollText className="h-5 w-5" />}
         actions={
           <>
-            <button className="btn-secondary" onClick={doExport}><Download className="h-4 w-4" /> Ekspor Excel</button>
-            <button className="btn-primary-gradient" onClick={openAdd}><Plus className="h-4 w-4" /> Arsipkan Dokumen</button>
+            <button className="btn-secondary" onClick={doExport}><Download className="h-4 w-4" /> {S.exportExcelBtn}</button>
+            <button className="btn-primary-gradient" onClick={openAdd}><Plus className="h-4 w-4" /> {S.btnArchiveDoc}</button>
           </>
         }
       />
@@ -313,21 +317,21 @@ export default function Documents() {
       {modAlert.active && <AlertBannerView items={modAlert.items} onPick={modAlert.scrollTo} />}
 
       <div className="mb-4 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <KpiCard label="Total Dokumen" value={String(active.length)} icon={<ScrollText className="h-5 w-5" />} chip="navy" hint="Register aktif" spark={trendOf(() => true)} />
-        <KpiCard label="Berlaku / Disetujui" value={String(active.filter((d) => d.status === "Berlaku" || d.status === "Disetujui").length)} icon={<FileText className="h-5 w-5" />} chip="teal" hint="Dokumen aktif" spark={trendOf((d) => d.status === "Berlaku" || d.status === "Disetujui")} />
-        <KpiCard label="Menunggu Approval" value={String(active.filter((d) => canonStatus(d.status) === "Diajukan" || d.status === "Draft").length)} icon={<FileText className="h-5 w-5" />} chip="amber" hint="Perlu tindakan" spark={trendOf((d) => canonStatus(d.status) === "Diajukan" || d.status === "Draft")} />
-        <KpiCard label="Kedaluwarsa" value={String(active.filter((d) => d.status === "Kedaluwarsa").length)} icon={<FileText className="h-5 w-5" />} chip="rose" hint="Perlu perpanjangan" spark={trendOf((d) => d.status === "Kedaluwarsa")} />
+        <KpiCard label={S.kpiTotal} value={String(active.length)} icon={<ScrollText className="h-5 w-5" />} chip="navy" hint={S.kpiTotalHint} spark={trendOf(() => true)} />
+        <KpiCard label={S.kpiValid} value={String(active.filter((d) => d.status === "Berlaku" || d.status === "Disetujui").length)} icon={<FileText className="h-5 w-5" />} chip="teal" hint={S.kpiValidHint} spark={trendOf((d) => d.status === "Berlaku" || d.status === "Disetujui")} />
+        <KpiCard label={S.kpiPending} value={String(active.filter((d) => canonStatus(d.status) === "Diajukan" || d.status === "Draft").length)} icon={<FileText className="h-5 w-5" />} chip="amber" hint={S.kpiPendingHint} spark={trendOf((d) => canonStatus(d.status) === "Diajukan" || d.status === "Draft")} />
+        <KpiCard label={S.kpiExpired} value={String(active.filter((d) => d.status === "Kedaluwarsa").length)} icon={<FileText className="h-5 w-5" />} chip="rose" hint={S.kpiExpiredHint} spark={trendOf((d) => d.status === "Kedaluwarsa")} />
       </div>
 
       {expiring.length > 0 && type !== "Arsip" && (
         <Card className="mb-4 p-4">
-          <h3 className="text-sm font-semibold text-navy-900">Segera expire - dalam {String(EXPIRY_WINDOW)} hari</h3>
+          <h3 className="text-sm font-semibold text-navy-900">{S.expiringTitle.replace("{n}", String(EXPIRY_WINDOW))}</h3>
           <div className="mt-2 space-y-1.5 text-sm">
             {expiring.slice(0, 6).map((x) => (
               <div key={x.doc.id} className="flex items-center justify-between gap-2">
-                <span className="truncate text-steel-600" title={`${String(x.doc.title)} · berlaku hingga ${fmtTanggal(x.doc.berlakuHingga)}`}>{x.doc.title}</span>
+                <span className="truncate text-steel-600" title={S.expiryTip.replace("{a}", String(x.doc.title)).replace("{b}", fmtTanggal(x.doc.berlakuHingga))}>{x.doc.title}</span>
                 <Badge tone={(x.days as number) < 0 ? "red" : "amber"}>
-                  {(x.days as number) < 0 ? `Lewat ${String(Math.abs(x.days as number))} hari` : `${fmtTanggal(x.doc.berlakuHingga)} · sisa ${String(x.days)} hari`}
+                  {(x.days as number) < 0 ? S.overdueBy.replace("{n}", String(Math.abs(x.days as number))) : S.remainAt.replace("{a}", fmtTanggal(x.doc.berlakuHingga)).replace("{b}", String(x.days))}
                 </Badge>
               </div>
             ))}
@@ -338,7 +342,7 @@ export default function Documents() {
       <div className="mb-3 flex flex-wrap items-center gap-2">
         <div className="relative min-w-52 flex-1 sm:max-w-xs">
           <Search className="absolute left-3 top-2.5 h-4 w-4 text-steel-400" />
-          <input className="input pl-9 w-full" placeholder="Cari judul / ID / proyek..." aria-label="Cari dokumen" value={q} onChange={(e) => setQ(e.target.value)} />
+          <input className="input pl-9 w-full" placeholder={S.searchPh} aria-label={S.searchAria} value={q} onChange={(e) => setQ(e.target.value)} />
         </div>
         <FilterPopover
           activeCount={[type !== "Semua"].filter(Boolean).length}
@@ -349,7 +353,7 @@ export default function Documents() {
           {(draft, setDraft) => (
             <div className="space-y-3">
               <div>
-                <p className="mb-1.5 block text-xs font-medium text-steel-600">Tipe / Arsip</p>
+                <p className="mb-1.5 block text-xs font-medium text-steel-600">{S.filterTypeLabel}</p>
                 <div className="flex flex-wrap gap-1">
                   {FILTERS.map((t) => (
                     <button key={t} onClick={() => setDraft({ ...draft, type: t })}
@@ -368,17 +372,17 @@ export default function Documents() {
         <div className="overflow-x-auto">
           <table className="w-full">
             <thead className="bg-surface sticky top-0 z-10">
-              <tr><SortTh label="Dokumen" sortKey="dokumen" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label="Tipe" sortKey="tipe" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label="Proyek / Kapal" sortKey="proyek" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label="Versi" sortKey="versi" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label="Status" sortKey="status" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label="Diperbarui" sortKey="diperbarui" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><th className="th">Aksi</th></tr>
+              <tr><SortTh label={S.colDoc} sortKey="dokumen" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.colType} sortKey="tipe" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.colProjectShip} sortKey="proyek" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.colVersion} sortKey="versi" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.colStatus} sortKey="status" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.colUpdated} sortKey="diperbarui" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><th className="th">{S.colAction}</th></tr>
             </thead>
             <tbody className="divide-y divide-steel-100">
               {docPager.slice(sortedDocs).map((d) => (
                 <tr key={d.id} id={notifRowId(String(d.id))} className={modAlert.highlight.has(String(d.id)) ? "notif-hl hover:bg-surface" : "hover:bg-surface"}>
                   <td className="td max-w-[260px]">
                     <p className="truncate font-medium text-navy-900" title={String(d.title)}>{d.title}</p>
-                    <p className="font-mono text-xs text-steel-500">{d.id} · {d.owner}{d.berlakuHingga ? ` · hingga ${fmtTanggal(d.berlakuHingga)}` : ""}</p>
+                    <p className="font-mono text-xs text-steel-500">{d.id} · {d.owner}{d.berlakuHingga ? S.untilSuffix.replace("{a}", fmtTanggal(d.berlakuHingga)) : ""}</p>
                     <div className="mt-1 flex flex-wrap gap-1">
                       <Badge tone={String(d.docCopy ?? "Terkendali") === "Salinan" ? "amber" : "teal"}>{String(d.docCopy ?? "Terkendali")}</Badge>
-                      {lewatRetensi(d) && <Badge tone="red">Melewati Retensi</Badge>}
+                      {lewatRetensi(d) && <Badge tone="red">{S.overRetensi}</Badge>}
                     </div>
                   </td>
                   <td className="td"><Badge tone="navy">{d.type}</Badge></td>
@@ -388,16 +392,16 @@ export default function Documents() {
                   <td className="td text-steel-600">{fmtTanggal(d.updated)}</td>
                   <td className="td">
                     <div className="flex gap-1">
-                      <button className="rounded-lg p-1.5 text-steel-500 hover:bg-steel-100" title="Detail" aria-label={`Detail ${d.id}`} onClick={() => setDetail(d)}><Eye className="h-4 w-4" /></button>
+                      <button className="rounded-lg p-1.5 text-steel-500 hover:bg-steel-100" title={S.detailBtn} aria-label={S.detailOf.replace("{a}", String(d.id))} onClick={() => setDetail(d)}><Eye className="h-4 w-4" /></button>
                       {type === "Arsip" ? (
                         <>
-                          <button className="rounded-lg p-1.5 text-teal-600 hover:bg-teal-50" title="Pulihkan" aria-label={`Pulihkan ${d.id}`} onClick={async () => { await update("documents", d.id, { archived: false }); log("memulihkan dokumen dari arsip", d.id, "Dokumen"); toast(`${d.id} dipulihkan`); }}><RotateCcw className="h-4 w-4" /></button>
-                          <button className="rounded-lg p-1.5 text-rose-500 hover:bg-rose-50" title="Hapus permanen" aria-label={`Hapus permanen ${d.id}`} onClick={() => setDeleting(d)}><Trash2 className="h-4 w-4" /></button>
+                          <button className="rounded-lg p-1.5 text-teal-600 hover:bg-teal-50" title={S.actRestore} aria-label={S.actRestoreOf.replace("{a}", String(d.id))} onClick={async () => { await update("documents", d.id, { archived: false }); log("memulihkan dokumen dari arsip", d.id, "Dokumen"); toast(S.tRestored.replace("{a}", String(d.id))); }}><RotateCcw className="h-4 w-4" /></button>
+                          <button className="rounded-lg p-1.5 text-rose-500 hover:bg-rose-50" title={S.actDeletePerm} aria-label={S.actDeletePermOf.replace("{a}", String(d.id))} onClick={() => setDeleting(d)}><Trash2 className="h-4 w-4" /></button>
                         </>
                       ) : (
                         <>
-                          <button className="rounded-lg p-1.5 text-steel-500 hover:bg-steel-100" title="Ubah" aria-label={`Ubah ${d.id}`} onClick={() => openEdit(d)}><Pencil className="h-4 w-4" /></button>
-                          <button className="rounded-lg p-1.5 text-steel-500 hover:bg-steel-100" title="Arsipkan" aria-label={`Arsipkan ${d.id}`} onClick={() => setArchiving(d)}><Archive className="h-4 w-4" /></button>
+                          <button className="rounded-lg p-1.5 text-steel-500 hover:bg-steel-100" title={S.actEdit} aria-label={S.actEditOf.replace("{a}", String(d.id))} onClick={() => openEdit(d)}><Pencil className="h-4 w-4" /></button>
+                          <button className="rounded-lg p-1.5 text-steel-500 hover:bg-steel-100" title={S.actArchive} aria-label={S.actArchiveOf.replace("{a}", String(d.id))} onClick={() => setArchiving(d)}><Archive className="h-4 w-4" /></button>
                         </>
                       )}
                     </div>
@@ -406,7 +410,7 @@ export default function Documents() {
               ))}
             </tbody>
           </table>
-          {list.length === 0 && <p className="py-8 text-center text-sm text-steel-400">Tidak ada dokumen yang cocok.</p>}
+          {list.length === 0 && <p className="py-8 text-center text-sm text-steel-400">{S.emptyDocs}</p>}
           {docPager.bar}
         </div>
       </Card>
@@ -415,74 +419,74 @@ export default function Documents() {
       <Modal
         open={showAdd || editing !== null}
         onClose={() => { setShowAdd(false); setEditing(null); }}
-        title={editing ? `Ubah Dokumen ${editing.id}` : "Arsipkan Dokumen Baru"}
-        subtitle={editing ? `Versi otomatis naik ke ${nextVersion(String(editing.version ?? "v1.0"))}` : "Versi awal otomatis v1.0, status awal Draft"}
+        title={editing ? S.editTitle.replace("{a}", editing.id) : S.addTitle}
+        subtitle={editing ? S.editSub.replace("{a}", nextVersion(String(editing.version ?? "v1.0"))) : S.addSub}
         wide
         footer={
           <>
-            <button className="btn-secondary" onClick={() => { setShowAdd(false); setEditing(null); }}>Batal</button>
-            <button className="btn-primary" onClick={save}>Simpan Dokumen</button>
+            <button className="btn-secondary" onClick={() => { setShowAdd(false); setEditing(null); }}>{S.cancelBtn}</button>
+            <button className="btn-primary" onClick={save}>{S.btnSaveDoc}</button>
           </>
         }
       >
         <div className="space-y-3">
           {!editing && (
             <p className="rounded-xl bg-surface p-3 text-sm text-steel-600">
-              Nomor otomatis (preview): <span className="font-mono font-bold text-navy-900">{docPreview}</span>
-              <span className="block text-xs text-steel-400">{PREFIX[form.type] ?? "DOC"} + tahun berjalan + urutan, disimpan sebagai ID.</span>
+              {S.autoNo} <span className="font-mono font-bold text-navy-900">{docPreview}</span>
+              <span className="block text-xs text-steel-400">{S.autoNoHint.replace("{a}", PREFIX[form.type] ?? "DOC")}</span>
             </p>
           )}
-          <Field label="Judul dokumen">
-            <input className="input" placeholder="cth: Docking Report RP-2026-005" value={form.title} onChange={(e) => setF("title", e.target.value)} />
+          <Field label={S.lblDocTitle}>
+            <input className="input" placeholder={S.phDocTitle} value={form.title} onChange={(e) => setF("title", e.target.value)} />
           </Field>
           <FormGrid>
-            <Field label="Tipe">
+            <Field label={S.colType}>
               <select className="input" value={form.type} onChange={(e) => setF("type", e.target.value)}>
                 {TYPES.map((t) => <option key={t}>{t}</option>)}
               </select>
             </Field>
-            <Field label="Proyek terkait">
+            <Field label={S.lblRelProject}>
               <select className="input" value={form.project} onChange={(e) => setF("project", e.target.value)}>
-                <option value="">Pilih proyek…</option>
-                <option value="-">Umum (non-proyek)</option>
+                <option value="">{S.optPickProject}</option>
+                <option value="-">{S.optGeneral}</option>
                 {data.projects.map((p) => <option key={p.id} value={p.id}>{p.id} · {p.vessel}</option>)}
               </select>
             </Field>
-            <Field label="Kapal terkait">
+            <Field label={S.lblRelVessel}>
               <select className="input" value={form.vessel} onChange={(e) => setF("vessel", e.target.value)}>
                 <option value="">-</option>
-                <option value="-">Umum</option>
+                <option value="-">{S.optGeneralShort}</option>
                 {data.vessels.map((v) => <option key={v.id} value={v.name}>{v.name}</option>)}
               </select>
             </Field>
-            <Field label="Penanggung jawab">
-              <input className="input" placeholder="cth: Sari Wulandari" value={form.owner} onChange={(e) => setF("owner", e.target.value)} />
+            <Field label={S.lblOwner}>
+              <input className="input" placeholder={S.phOwner} value={form.owner} onChange={(e) => setF("owner", e.target.value)} />
             </Field>
-            <Field label="Berlaku hingga (opsional)">
+            <Field label={S.lblValidUntil}>
               <input type="date" className="input" value={form.berlakuHingga} onChange={(e) => setF("berlakuHingga", e.target.value)} />
             </Field>
             {editing && (
-              <Field label="Catatan revisi">
-                <input className="input" placeholder="cth: Perbarui hasil docking" value={form.revNote} onChange={(e) => setF("revNote", e.target.value)} />
+              <Field label={S.lblRevNote}>
+                <input className="input" placeholder={S.phRevNote} value={form.revNote} onChange={(e) => setF("revNote", e.target.value)} />
               </Field>
             )}
           </FormGrid>
-          <Field label="Lampiran (URL)" hint="Tempel URL berkas, atau Upload via backend bila remote">
+          <Field label={S.lblAttachment} hint={S.hintAttachment}>
             <div className="flex items-center gap-2">
-              <input className="input font-mono" value={form.fileUrl} onChange={(e) => setF("fileUrl", e.target.value)} placeholder="https://… atau /files/…" />
-              <input ref={fileInputRef} type="file" accept=".png,.jpg,.jpeg,.pdf,.xlsx,.csv" className="hidden" aria-label="Pilih berkas lampiran"
+              <input className="input font-mono" value={form.fileUrl} onChange={(e) => setF("fileUrl", e.target.value)} placeholder={S.phFileUrl} />
+              <input ref={fileInputRef} type="file" accept=".png,.jpg,.jpeg,.pdf,.xlsx,.csv" className="hidden" aria-label={S.attachAria}
                 onChange={(e) => { void onLampiranFile(e.target.files?.[0]); }} />
               <button type="button" className="btn-secondary shrink-0 text-xs" disabled={uploadingFile}
-                title={isBackendConfigured() ? "Unggah berkas ke backend" : "Mode lokal - isi URL manual"}
+                title={isBackendConfigured() ? S.uploadBackendTitle : S.uploadLocalTitle}
                 onClick={() => {
-                  if (!isBackendConfigured()) { toast("Mode lokal - tempel URL lampiran manual", "info"); return; }
+                  if (!isBackendConfigured()) { toast(S.tLocalMode, "info"); return; }
                   fileInputRef.current?.click();
                 }}>
-                <Upload className="h-4 w-4" /> {uploadingFile ? "Mengunggah…" : "Upload"}
+                <Upload className="h-4 w-4" /> {uploadingFile ? S.uploadingNow : S.uploadBtn}
               </button>
             </div>
           </Field>
-          <Field label="Dokumen terkait (boleh banyak)" hint="Tahan Ctrl/Cmd untuk pilih lebih dari satu">
+          <Field label={S.lblRelated} hint={S.hintRelated}>
             <select
               multiple
               className="input min-h-[96px]"
@@ -503,18 +507,18 @@ export default function Documents() {
           <div>
             <dl className="dl-div text-sm">
               {[
-                ["Proyek", detail.project],
-                ["Kapal", detail.vessel],
-                ["Versi", detail.version],
-                ["Berlaku hingga", fmtTanggal(detail.berlakuHingga)],
-                ["Diperbarui", fmtTanggal(detail.updated)],
-                ["Penanggung jawab", detail.owner],
+                [S.colProject, detail.project],
+                [S.lblVessel, detail.vessel],
+                [S.colVersion, detail.version],
+                [S.lblValidUntil2, fmtTanggal(detail.berlakuHingga)],
+                [S.colUpdated, fmtTanggal(detail.updated)],
+                [S.lblOwner, detail.owner],
               ].map(([k, v]) => (
                 <div key={k} className="flex justify-between gap-4"><dt className="text-steel-500">{k}</dt><dd className="font-medium text-navy-900">{v}</dd></div>
               ))}
-              <div className="flex justify-between gap-4"><dt className="text-steel-500">Status</dt><dd><StatusBadge status={detail.status} /></dd></div>
+              <div className="flex justify-between gap-4"><dt className="text-steel-500">{S.colStatus}</dt><dd><StatusBadge status={detail.status} /></dd></div>
               <div className="flex justify-between gap-4">
-                <dt className="text-steel-500">Lampiran</dt>
+                <dt className="text-steel-500">{S.lblAttachShort}</dt>
                 <dd className="max-w-[60%] truncate text-right">
                   {detail.fileUrl ? (
                     <a className="font-medium text-navy-700 underline" href={String(detail.fileUrl)} target="_blank" rel="noreferrer" title={String(detail.fileUrl)}>
@@ -526,39 +530,39 @@ export default function Documents() {
                 </dd>
               </div>
               <div className="flex justify-between gap-4">
-                <dt className="text-steel-500">Retensi</dt>
+                <dt className="text-steel-500">{S.lblRetention}</dt>
                 <dd className="flex items-center gap-1.5">
-                  <span className="font-medium text-navy-900">{RETENSI[String(detail.type)] === null || RETENSI[String(detail.type)] === undefined ? "Permanen" : `${String(RETENSI[String(detail.type)])} tahun`}</span>
-                  {lewatRetensi(detail) && <Badge tone="red">Melewati Retensi</Badge>}
+                  <span className="font-medium text-navy-900">{RETENSI[String(detail.type)] === null || RETENSI[String(detail.type)] === undefined ? S.permanentNow : S.yearsCount.replace("{n}", String(RETENSI[String(detail.type)]))}</span>
+                  {lewatRetensi(detail) && <Badge tone="red">{S.overRetensi}</Badge>}
                 </dd>
               </div>
               <div className="flex justify-between gap-4">
-                <dt className="text-steel-500">Salinan</dt>
+                <dt className="text-steel-500">{S.lblCopy}</dt>
                 <dd><Badge tone={String(detail.docCopy ?? "Terkendali") === "Salinan" ? "amber" : "teal"}>{String(detail.docCopy ?? "Terkendali")}</Badge></dd>
               </div>
             </dl>
             <div className="mt-3 flex flex-wrap gap-2">
               <button className="btn-secondary text-xs" onClick={() => toggleCopy(detail)}>
-                {String(detail.docCopy ?? "Terkendali") === "Salinan" ? "Jadikan Terkendali" : "Tandai Salinan"}
+                {String(detail.docCopy ?? "Terkendali") === "Salinan" ? S.toControlled : S.toCopy}
               </button>
               {isBackendConfigured() && /\.(png|jpe?g)(\?|$)/i.test(String(detail.fileUrl ?? "")) && (
                 <button className="btn-secondary text-xs" disabled={ocrBusy} onClick={() => void runOcr(detail)}>
-                  {ocrBusy ? "OCR berjalan…" : "Ekstrak teks (OCR)"}
+                  {ocrBusy ? S.ocrRunning : S.ocrExtract}
                 </button>
               )}
             </div>
             {ocrText !== "" && (
               <div className="mt-3 rounded-xl border border-steel-200 bg-surface p-3">
-                <p className="mb-1 text-xs font-semibold text-navy-900">Hasil OCR</p>
+                <p className="mb-1 text-xs font-semibold text-navy-900">{S.ocrResult}</p>
                 <pre className="max-h-48 overflow-y-auto whitespace-pre-wrap text-xs text-steel-700">{ocrText}</pre>
                 <div className="mt-2 flex gap-2">
-                  <button className="btn-secondary text-xs" onClick={() => void saveOcr(detail)}>Simpan ke dokumen</button>
-                  <button className="btn-secondary text-xs" onClick={() => setOcrText("")}>Buang</button>
+                  <button className="btn-secondary text-xs" onClick={() => void saveOcr(detail)}>{S.ocrSave}</button>
+                  <button className="btn-secondary text-xs" onClick={() => setOcrText("")}>{S.ocrDiscard}</button>
                 </div>
               </div>
             )}
             {String(detail.ocrText ?? "") !== "" && (
-              <p className="mt-3 whitespace-pre-wrap text-xs text-steel-500">OCR tersimpan: {String(detail.ocrText).slice(0, 300)}{String(detail.ocrText).length > 300 ? "…" : ""}</p>
+              <p className="mt-3 whitespace-pre-wrap text-xs text-steel-500">{S.ocrStored.replace("{a}", `${String(detail.ocrText).slice(0, 300)}${String(detail.ocrText).length > 300 ? "…" : ""}`)}</p>
             )}
             {canonStatus(detail.status) && FLOW_NEXT[canonStatus(detail.status)].length > 0 ? (
               <div className="mt-3 flex flex-wrap gap-2">
@@ -567,9 +571,9 @@ export default function Documents() {
                 ))}
               </div>
             ) : !canonStatus(detail.status) ? (
-              <p className="mt-3 text-xs text-steel-400">Status warisan - read-only, tanpa aksi alur.</p>
+              <p className="mt-3 text-xs text-steel-400">{S.legacyStatus}</p>
             ) : null}
-            <h4 className="mb-2 mt-4 text-sm font-semibold text-navy-900">Dokumen terkait</h4>
+            <h4 className="mb-2 mt-4 text-sm font-semibold text-navy-900">{S.relatedTitle}</h4>
             <div className="space-y-1.5 text-sm">
               {((Array.isArray(detail.related) ? detail.related : []) as unknown[]).map((rel, i) => {
                 const rid = String(rel);
@@ -577,13 +581,13 @@ export default function Documents() {
                 return (
                   <div key={`${rid}-${i}`} className="flex items-center justify-between gap-2 rounded-lg bg-surface px-3 py-2">
                     <span className="truncate font-mono text-xs font-semibold text-navy-900" title={found ? String(found.title) : rid}>{rid}{found ? ` · ${String(found.title)}` : ""}</span>
-                    {found && <button className="btn-secondary px-2 py-1 text-xs" onClick={() => { setOcrText(""); setDetail(found); }}>Buka</button>}
+                    {found && <button className="btn-secondary px-2 py-1 text-xs" onClick={() => { setOcrText(""); setDetail(found); }}>{S.openBtn}</button>}
                   </div>
                 );
               })}
-              {(!Array.isArray(detail.related) || detail.related.length === 0) && <p className="text-xs text-steel-400">Belum ada dokumen terkait.</p>}
+              {(!Array.isArray(detail.related) || detail.related.length === 0) && <p className="text-xs text-steel-400">{S.noRelated}</p>}
             </div>
-            <h4 className="mb-2 mt-4 text-sm font-semibold text-navy-900">Riwayat revisi</h4>
+            <h4 className="mb-2 mt-4 text-sm font-semibold text-navy-900">{S.historyTitle}</h4>
             <div className="space-y-1.5 text-sm">
               {((detail.revisions ?? []) as { version: string; at: string; by: string; note: string }[]).map((r) => (
                 <div key={r.version} className="flex items-center justify-between gap-2 rounded-lg bg-surface px-3 py-2">
@@ -592,7 +596,7 @@ export default function Documents() {
                   <span className="text-xs text-steel-500 whitespace-nowrap">{fmtTanggal(r.at)}</span>
                 </div>
               ))}
-              {((detail.revisions ?? []) as unknown[]).length === 0 && <p className="text-xs text-steel-400">Belum ada riwayat revisi.</p>}
+              {((detail.revisions ?? []) as unknown[]).length === 0 && <p className="text-xs text-steel-400">{S.noHistory}</p>}
             </div>
           </div>
         )}
@@ -600,18 +604,18 @@ export default function Documents() {
 
       <ConfirmModal
         open={archiving !== null}
-        title={`Arsipkan ${archiving?.id ?? ""}?`}
-        desc="Dokumen disembunyikan dari register aktif dan pindah ke filter Arsip. Bisa dipulihkan kapan saja."
-        confirmLabel="Ya, arsipkan"
+        title={S.archiveTitle.replace("{a}", archiving?.id ?? "")}
+        desc={S.archiveDesc}
+        confirmLabel={S.confirmArchive}
         onCancel={() => setArchiving(null)}
         onConfirm={confirmArchive}
       />
 
       <ConfirmModal
         open={deleting !== null}
-        title={`Hapus permanen ${deleting?.id ?? ""}?`}
-        desc="Dokumen yang sudah diarsip akan dihapus permanen dari register sesi ini dan tidak dapat dikembalikan."
-        confirmLabel="Ya, hapus permanen"
+        title={S.deleteTitle.replace("{a}", deleting?.id ?? "")}
+        desc={S.deleteDesc}
+        confirmLabel={S.confirmDeletePerm}
         danger
         onCancel={() => setDeleting(null)}
         onConfirm={confirmDelete}

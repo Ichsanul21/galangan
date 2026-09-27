@@ -9,6 +9,8 @@ import { fmtJumlah, fmtRupiah, fmtTanggal, fmtRentang } from "../../utils/format
 import { sbDsNumber, maxSeq } from "../../utils/sb";
 import { AlertBannerView, notifRowId, useModuleAlert } from "../../components/AlertBanner";
 import { exportExcel } from "../../utils/export";
+import { n_dry } from "../../i18n/n_dry";
+import { useT } from "../../i18n/LanguageContext";
 
 const DAYS = 90;
 const FREE_WINDOW = 7;
@@ -71,6 +73,8 @@ function undockList(s: StoreItem): boolean[] {
 
 export default function Drydock() {
   const { data, add, update, remove, log } = useStore();
+  const { locale } = useT();
+  const S = n_dry[locale];
   const modAlert = useModuleAlert("drydock");
   const drydocks = data.drydocks;
   const dockSlots = data.dockSlots;
@@ -109,12 +113,12 @@ export default function Drydock() {
     const power = Number(utilDraft.power || 0);
     const water = Number(utilDraft.water || 0);
     if (power < 0 || water < 0 || !Number.isFinite(power) || !Number.isFinite(water)) {
-      toast("Konsumsi listrik/air harus angka 0 atau lebih", "info");
+      toast(S.tUtilInvalid, "info");
       return;
     }
     await update("dockSlots", sel.id, { powerKwh: power, waterM3: water });
     log("mencatat konsumsi slot", `${sel.id} · ${power} kWh · ${water} m³`, "Drydock");
-    toast(`Konsumsi slot ${sel.id} disimpan`);
+    toast(S.tUtilSaved.replace("{a}", sel.id));
   };
 
   const toggleUndock = async (idx: number) => {
@@ -134,10 +138,10 @@ export default function Drydock() {
             history: [...(vsl.history ?? []), { date: new Date().toISOString().slice(0, 10), event: `Undocking selesai - slot ${sel.id} (${sel.dockId})`, type: "Docking" }],
           });
         }
-        toast(`Docking report ${sel.id} lengkap`);
+        toast(S.tUndockDone.replace("{a}", sel.id));
       }
     } catch {
-      toast(`Gagal menyimpan checklist ${sel.id} - periksa kembali statusnya`, "info");
+      toast(S.tChecklistFail.replace("{a}", sel.id), "info");
     }
   };
 
@@ -151,7 +155,7 @@ export default function Drydock() {
       "Rencana-Dock-Tahunan",
       "Dock Plan",
     );
-    toast("Rencana dock tahunan diekspor");
+    toast(S.tAnnualExported);
   };
 
   const coverageByDock = drydocks.map((d) => ({
@@ -209,12 +213,12 @@ export default function Drydock() {
 
   const saveBooking = async () => {
     const proj = data.projects.find((p) => p.id === bookForm.project);
-    if (!proj) { setBookError("Pilih proyek dulu."); return; }
+    if (!proj) { setBookError(S.tPickProject); return; }
     const from = Number(bookForm.from);
     const to = Number(bookForm.to);
-    if (!from || !to || to <= from || from < 0 || to > DAYS) { setBookError(`Rentang hari tidak valid (1-${DAYS}).`); return; }
+    if (!from || !to || to <= from || from < 0 || to > DAYS) { setBookError(S.rangeInvalid.replace("{n}", String(DAYS))); return; }
     if (overlap(bookForm.dockId, from, to)) {
-      const msg = `Booking ditolak: rentang hari ${from}-${to} tumpang tindih dengan slot lain di ${selDock?.name ?? bookForm.dockId}.`;
+      const msg = S.tOverlapReject.replace("{a}", String(from)).replace("{b}", String(to)).replace("{c}", selDock?.name ?? bookForm.dockId);
       setBookError(msg);
       toast(msg, "info");
       return;
@@ -222,13 +226,13 @@ export default function Drydock() {
     const cap = selDock ? dockLengthM(selDock.capacity) : null;
     const loa = vesselLoa(proj.vessel, data.vessels);
     if (cap !== null && loa !== null && loa > cap) {
-      const msg = `Booking ditolak: LOA ${proj.vessel} (${loa} m) melebihi kapasitas ${selDock?.name} (${cap} m).`;
+      const msg = S.tLoaReject.replace("{a}", proj.vessel).replace("{b}", String(loa)).replace("{c}", selDock?.name ?? "").replace("{d}", String(cap));
       setBookError(msg);
       toast(msg, "info");
       return;
     }
     const ratePerDay = Number(bookForm.ratePerDay || 0);
-    if (!Number.isFinite(ratePerDay) || ratePerDay < 0) { setBookError("Tarif dock per hari harus 0 atau lebih."); return; }
+    if (!Number.isFinite(ratePerDay) || ratePerDay < 0) { setBookError(S.tRateInvalid); return; }
     // No. Dock Space SB: pakai input atau auto (format nnn/DS-SB/SMD/m/yyyy).
     const dsRef = bookForm.dsRef.trim() || sbDsNumber(nextDsSeq());
     const vesselFull = bookForm.vessel2.trim() ? `${proj.vessel} + ${bookForm.vessel2.trim()}` : proj.vessel;
@@ -238,7 +242,7 @@ export default function Drydock() {
       startDate: bookForm.startDate || undefined,
       color: SLOT_COLORS[dockSlots.length % SLOT_COLORS.length],
     }, { action: "membooking slot", target: `${bookForm.dockId} · ${vesselFull} · ${bookForm.priority}`, module: "Drydock" });
-    toast(`Slot ${created.id} dibooking (${bookForm.priority}) · DS ${dsRef}`);
+    toast(S.tBooked.replace("{a}", created.id).replace("{b}", bookForm.priority).replace("{c}", dsRef));
     setBookForm({ dockId: "DD-1", project: "", from: "1", to: "30", priority: "Normal", ratePerDay: "0", dsRef: "", vessel2: "", startDate: "" });
     setShowBook(false);
     setBookError(null);
@@ -248,16 +252,16 @@ export default function Drydock() {
     const from = Number(maintForm.from);
     const to = Number(maintForm.to);
     if (!Number.isFinite(from) || !Number.isFinite(to) || to <= from || from < 0 || to > DAYS) {
-      toast(`Rentang hari tidak valid (1-${DAYS}).`, "info");
+      toast(S.rangeInvalid.replace("{n}", String(DAYS)), "info");
       return;
     }
-    if (!maintForm.reason.trim()) { toast("Alasan maintenance wajib diisi", "info"); return; }
+    if (!maintForm.reason.trim()) { toast(S.tMaintReason, "info"); return; }
     const dock = drydocks.find((d) => d.id === maintForm.dockId);
     const created = await add("dockSlots", {
       dockId: maintForm.dockId, project: "MAINT", vessel: `Maintenance - ${maintForm.reason.trim()}`,
       from, to, priority: "Normal", reason: maintForm.reason.trim(), color: "bg-steel-400",
     }, { action: "memblokir maintenance", target: `${maintForm.dockId} · ${fmtRentang(dayToISO(from), dayToISO(to))}`, module: "Drydock" });
-    toast(`Blok maintenance ${created.id} di ${dock?.name ?? maintForm.dockId}`);
+    toast(S.tMaintSaved.replace("{a}", created.id).replace("{b}", dock?.name ?? maintForm.dockId));
     setShowMaint(false);
     setMaintForm({ dockId: "DD-1", from: "1", to: "7", reason: "" });
   };
@@ -266,7 +270,7 @@ export default function Drydock() {
     if (!picModal) return;
     await update("drydocks", picModal.id, { pic: picDraft.trim() || "Belum ditentukan" });
     log("menetapkan PIC dock", `${picModal.name} · ${picDraft.trim() || "Belum ditentukan"}`, "Drydock");
-    toast(`PIC ${picModal.name} diperbarui`);
+    toast(S.tPicSaved.replace("{a}", picModal.name));
     setPicModal(null);
     setPicDraft("");
   };
@@ -285,12 +289,12 @@ export default function Drydock() {
     const from = Number(moveForm.from);
     const to = Number(moveForm.to);
     if (!from || !to || to <= from || from < 0 || to > DAYS) {
-      setMoveError(`Rentang hari tidak valid (1-${DAYS}).`);
+      setMoveError(S.rangeInvalid.replace("{n}", String(DAYS)));
       return;
     }
     if (overlap(moveForm.dockId, from, to, String(moveTarget.id))) {
       const dock = drydocks.find((d) => d.id === moveForm.dockId);
-      setMoveError(`Masih tumpang tindih dengan slot lain di ${dock?.name ?? moveForm.dockId} — pilih rentang/fasilitas lain.`);
+      setMoveError(S.tMoveOverlap.replace("{a}", dock?.name ?? moveForm.dockId));
       return;
     }
     const dock = drydocks.find((d) => d.id === moveForm.dockId);
@@ -298,47 +302,47 @@ export default function Drydock() {
     const loa = proj ? vesselLoa(proj.vessel, data.vessels) : null;
     const cap = dock ? dockLengthM(dock.capacity) : null;
     if (cap !== null && loa !== null && loa > cap) {
-      setMoveError(`LOA ${moveTarget.vessel} (${loa} m) melebihi kapasitas ${dock?.name} (${cap} m).`);
+      setMoveError(S.tMoveLoa.replace("{a}", String(moveTarget.vessel)).replace("{b}", String(loa)).replace("{c}", dock?.name ?? "").replace("{d}", String(cap)));
       return;
     }
     try {
       await update("dockSlots", moveTarget.id, { dockId: moveForm.dockId, from, to });
       log("memindah slot", `${moveTarget.id} → ${moveForm.dockId} hari ${from}-${to}`, "Drydock");
-      toast(`Slot ${moveTarget.id} dipindah ke hari ${from}-${to}`);
+      toast(S.tMoved.replace("{a}", String(moveTarget.id)).replace("{b}", String(from)).replace("{c}", String(to)));
       setMoveTarget(null);
       setMoveError(null);
     } catch (e) {
-      setMoveError(e instanceof Error ? e.message : "Gagal memindah slot");
+      setMoveError(e instanceof Error ? e.message : S.tMoveFail);
     }
   };
 
   const confirmDelete = async () => {    if (!deleting) return;
     const proj = data.projects.find((p) => p.id === deleting.project);
     if (proj && proj.status !== "Selesai") {
-      toast(`Slot ${deleting.id} tidak bisa dihapus: proyek ${proj.id} masih berstatus ${proj.status}.`, "info");
+      toast(S.tDeleteBlocked.replace("{a}", String(deleting.id)).replace("{b}", proj.id).replace("{c}", String(proj.status)), "info");
       setDeleting(null);
       return;
     }
     try {
       await remove("dockSlots", deleting.id);
       log("menghapus slot", `${deleting.id} · ${deleting.vessel}`, "Drydock");
-      toast("Slot dihapus", "info");
+      toast(S.tDeleted, "info");
       setDeleting(null);
     } catch (e) {
-      toast(e instanceof Error ? e.message : "Slot tidak bisa dihapus", "info");
+      toast(e instanceof Error ? e.message : S.tDeleteFail, "info");
     }
   };
 
   return (
     <div>
       <PageHeader
-        title="Drydock & Kapasitas"
-        subtitle="Penjadwalan slot docking, utilisasi, dan deteksi konflik"
+        title={S.pageTitle}
+        subtitle={S.pageSubtitle}
         icon={<Ship className="h-5 w-5" />}
         actions={
           <div className="flex gap-2">
-            <button className="btn-secondary" onClick={() => setShowMaint(true)}><Wrench className="h-4 w-4" /> Blokir Maintenance</button>
-            <button className="btn-primary-gradient" onClick={() => { setShowBook(true); setBookError(null); }}><Plus className="h-4 w-4" /> Booking Slot</button>
+            <button className="btn-secondary" onClick={() => setShowMaint(true)}><Wrench className="h-4 w-4" /> {S.btnMaintBlock}</button>
+            <button className="btn-primary-gradient" onClick={() => { setShowBook(true); setBookError(null); }}><Plus className="h-4 w-4" /> {S.btnBookSlot}</button>
           </div>
         }
       />
@@ -346,21 +350,21 @@ export default function Drydock() {
       {modAlert.active && <AlertBannerView items={modAlert.items} onPick={modAlert.scrollTo} />}
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <KpiCard label="Utilitas Docking" value={`${util}%`} delta="Hari terisi per total hari dock" deltaDirection="flat" icon={<Ship className="h-5 w-5" />} chip="navy" spark={dockUtilTrend} />
-        <KpiCard label="Slot Terisi" value={`${dockSlots.length} slot`} hint="Jadwal aktif semua fasilitas" icon={<CalendarRange className="h-5 w-5" />} chip="teal" spark={slotTrend} />
+        <KpiCard label={S.kpiUtil} value={`${util}%`} delta={S.kpiUtilDelta} deltaDirection="flat" icon={<Ship className="h-5 w-5" />} chip="navy" spark={dockUtilTrend} />
+        <KpiCard label={S.kpiSlots} value={S.kpiSlotsVal.replace("{n}", String(dockSlots.length))} hint={S.kpiSlotsHint} icon={<CalendarRange className="h-5 w-5" />} chip="teal" spark={slotTrend} />
         <KpiCard
-          label="Konflik Slot"
+          label={S.kpiConflict}
           value={hasConflict ? String(conflict.length) : "0"}
-          delta={hasConflict ? "Perlu atasi" : "Tidak ada"}
+          delta={hasConflict ? S.kpiConflictYes : S.kpiConflictNo}
           deltaDirection={hasConflict ? "down" : "up"}
           icon={<AlertTriangle className="h-5 w-5" />}
           chip={hasConflict ? "rose" : "teal"}
           spark={slotTrend}
         />
         <KpiCard
-          label="Kapasitas Berikutnya"
-          value={nextFree ? fmtTanggal(dayToISO(nextFree.start)) : "Penuh"}
-          hint={nextFree ? `${nextFree.dock.name} · slot seminggu bebas` : `${DAYS} hari ke depan`}
+          label={S.kpiNext}
+          value={nextFree ? fmtTanggal(dayToISO(nextFree.start)) : S.kpiFull}
+          hint={nextFree ? S.kpiNextHint.replace("{a}", nextFree.dock.name) : S.kpiFullHint.replace("{n}", String(DAYS))}
           chip="amber"
           spark={dockUtilTrend}
         />
@@ -370,15 +374,15 @@ export default function Drydock() {
         <div className="mb-4 flex items-start gap-3 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">
           <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
           <div>
-            <p className="font-semibold">Deteksi konflik slot ({conflict.length})</p>
-            <p>Slot docking tumpang tindih pada fasilitas yang sama: {conflict.map((c) => c.vessel).join(", ")}. Tinjau ulang alokasi untuk menghindari penundaan proyek.</p>
+            <p className="font-semibold">{S.conflictTitle.replace("{n}", String(conflict.length))}</p>
+            <p>{S.conflictDesc.replace("{a}", conflict.map((c) => c.vessel).join(", "))}</p>
           </div>
         </div>
       )}
 
       {criticalConflicts.length > 0 && (
         <div className="mb-4 rounded-lg border-2 border-rose-600 bg-rose-50 p-3 text-sm text-rose-800">
-          <p className="font-bold">Panel perhatian - konflik melibatkan slot Kritis ({criticalConflicts.length})</p>
+          <p className="font-bold">{S.critTitle.replace("{n}", String(criticalConflicts.length))}</p>
           <ul className="mt-1 list-disc pl-5">
             {criticalConflicts.map((c) => (
               <li key={c.id} className="font-semibold">{c.vessel} · {c.project} · {drydocks.find((d) => d.id === c.dockId)?.name} · {fmtRentang(dayToISO(Number(c.from)), dayToISO(Number(c.to)))}</li>
@@ -390,15 +394,15 @@ export default function Drydock() {
 
       <div className="mt-5 grid grid-cols-1 gap-5 lg:grid-cols-2">
         <Card>
-          <CardHeader title="Slot Docking Aktif" subtitle="Detail slot saat ini" action={
-            <select className="input text-xs" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} aria-label="Filter status slot">
+          <CardHeader title={S.cardSlots} subtitle={S.cardSlotsSub} action={
+            <select className="input text-xs" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} aria-label={S.filterStatusAria}>
               {STATUS_FILTERS.map((s) => <option key={s}>{s}</option>)}
             </select>
           } />
           <div className="overflow-x-auto">
             <table className="w-full">
               <thead className="sticky top-0 z-10 bg-surface">
-                <tr><SortTh label="Fasilitas" sortKey="facility" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label="Proyek" sortKey="vessel" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label="Durasi" sortKey="days" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label="Prioritas" sortKey="priority" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label="Status" sortKey="status" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><th className="th">Aksi</th></tr>
+                <tr><SortTh label={S.colFacility} sortKey="facility" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.colProject} sortKey="vessel" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.colDuration} sortKey="days" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.colPriority} sortKey="priority" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.colStatus} sortKey="status" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><th className="th">{S.colAction}</th></tr>
               </thead>
               <tbody className="divide-y divide-steel-100">
                 {pager.slice(sortedSlots).map((s) => {
@@ -411,33 +415,33 @@ export default function Drydock() {
                         <p className="font-medium text-navy-900">{s.vessel}</p>
                         <p className="text-xs font-mono text-steel-500">{s.project}</p>
                         {s.dsRef ? <p className="text-xs font-mono text-steel-400">DS {s.dsRef}</p> : null}
-                        {s.startDate ? <p className="text-xs text-steel-400">Mulai {fmtTanggal(s.startDate)}</p> : null}
+                        {s.startDate ? <p className="text-xs text-steel-400">{S.startedOn.replace("{a}", fmtTanggal(s.startDate))}</p> : null}
                       </td>
-                      <td className="td text-steel-600">{fmtRentang(dayToISO(s.from), dayToISO(s.to))} ({s.to - s.from} hari)</td>
+                      <td className="td text-steel-600">{fmtRentang(dayToISO(s.from), dayToISO(s.to))} ({S.durationDays.replace("{n}", String(s.to - s.from))})</td>
                       <td className="td">
                         {s.project === "MAINT"
-                          ? <Badge tone="gray">Blokir</Badge>
+                          ? <Badge tone="gray">{S.maintBadge}</Badge>
                           : <Badge tone={s.priority === "Kritis" ? "red" : s.priority === "Tinggi" ? "amber" : "gray"}>{s.priority ?? "Normal"}</Badge>}
                       </td>
                       <td className="td"><StatusBadge status={st} /></td>
                       <td className="td">
                         <div className="flex gap-1.5">
-                          <button className="btn-secondary text-xs" onClick={() => openSlot(s)}>Detail</button>
+                          <button className="btn-secondary text-xs" onClick={() => openSlot(s)}>{S.detailBtn}</button>
                           <button
                             className="btn-secondary text-xs"
-                            title={conflict.some((c) => c.id === s.id) ? "Geser tanggal / pindah fasilitas untuk lepas dari konflik" : "Geser tanggal / pindah fasilitas"}
-                            aria-label={`Geser slot ${s.id}`}
+                            title={conflict.some((c) => c.id === s.id) ? S.moveTitleConflict : S.moveTitlePlain}
+                            aria-label={S.moveAria.replace("{a}", String(s.id))}
                             onClick={() => openMove(s)}
                           >
-                            Geser
+                            {S.btnMove}
                           </button>
-                          <button className="rounded-lg p-1.5 text-rose-500 hover:bg-rose-50" title={`Hapus slot ${s.id}`} aria-label={`Hapus slot ${s.id}`} onClick={() => setDeleting(s)}><Trash2 className="h-4 w-4" /></button>
+                          <button className="rounded-lg p-1.5 text-rose-500 hover:bg-rose-50" title={S.delSlotTitle.replace("{a}", String(s.id))} aria-label={S.delSlotTitle.replace("{a}", String(s.id))} onClick={() => setDeleting(s)}><Trash2 className="h-4 w-4" /></button>
                         </div>
                       </td>
                     </tr>
                   );
                 })}
-                {filteredSlots.length === 0 && <tr><td colSpan={6} className="td text-center text-steel-400">Belum ada slot pada filter ini.</td></tr>}
+                {filteredSlots.length === 0 && <tr><td colSpan={6} className="td text-center text-steel-400">{S.emptySlots}</td></tr>}
               </tbody>
             </table>
             {pager.bar}
@@ -446,25 +450,25 @@ export default function Drydock() {
 
       <Card>
         <CardHeader
-          title="Gantt Penjadwalan Docking"
-          subtitle="Klik slot untuk detail · 13 minggu ke depan"
+          title={S.ganttTitle}
+          subtitle={S.ganttSub}
           action={
             <div className="flex items-center gap-2">
-              <Badge tone="navy">{DAYS} hari</Badge>
+              <Badge tone="navy">{S.daysBadge.replace("{n}", String(DAYS))}</Badge>
               <div className="flex items-center gap-1 rounded-lg border border-steel-200 bg-surface p-0.5">
                 <button
                   onClick={() => setWide(false)}
-                  aria-label="Tampilan gantt sempit"
+                  aria-label={S.ganttNarrowAria}
                   className={`rounded-md px-3 py-1 text-xs font-semibold transition-colors ${!wide ? "bg-white text-navy-800 shadow-sm" : "text-steel-500 hover:text-navy-700"}`}
                 >
-                  Sempit
+                  {S.ganttNarrow}
                 </button>
                 <button
                   onClick={() => setWide(true)}
-                  aria-label="Tampilan gantt lebar"
+                  aria-label={S.ganttWideAria}
                   className={`rounded-md px-3 py-1 text-xs font-semibold transition-colors ${wide ? "bg-white text-navy-800 shadow-sm" : "text-steel-500 hover:text-navy-700"}`}
                 >
-                  Lebar
+                  {S.ganttWide}
                 </button>
               </div>
             </div>
@@ -477,7 +481,7 @@ export default function Drydock() {
               <div className="flex flex-1 gap-px">
                 {weeks.map((w) => (
                   <div key={w} className="flex-1 border-l border-steel-200 pl-1 text-[10px] text-steel-400">
-                    <p className="font-semibold">W{w}</p>
+                    <p className="font-semibold">{S.weekShort.replace("{n}", String(w))}</p>
                     <p>{fmtTanggal(dayToISO((w - 1) * 7))}</p>
                   </div>
                 ))}
@@ -491,8 +495,8 @@ export default function Drydock() {
                   <div className="mb-1 flex flex-wrap items-center justify-between gap-2">
                     <div className="flex items-center gap-2">
                       <p className="text-sm font-semibold text-navy-900">{dock.name}</p>
-                      <span className="inline-flex items-center gap-1 text-xs text-steel-500"><User className="h-3 w-3" /> PIC: {dock.pic ?? "Belum ditentukan"}</span>
-                      <button className="btn-secondary text-xs" onClick={() => { setPicModal(dock); setPicDraft(String(dock.pic ?? "")); }}>PIC</button>
+                      <span className="inline-flex items-center gap-1 text-xs text-steel-500"><User className="h-3 w-3" /> {S.picLabel.replace("{a}", String(dock.pic ?? S.picFallback))}</span>
+                      <button className="btn-secondary text-xs" onClick={() => { setPicModal(dock); setPicDraft(String(dock.pic ?? "")); }}>{S.btnPic}</button>
                     </div>
                     <Badge tone={dock.status === "Terpakai" ? "blue" : "green"}>{dock.status}</Badge>
                   </div>
@@ -519,7 +523,7 @@ export default function Drydock() {
                             onClick={() => { if (isSel) setSelected(null); else openSlot(s); }}
                             className={`absolute top-1/2 -translate-y-1/2 flex h-10 items-center justify-between rounded-md px-2 text-xs font-medium text-white shadow cursor-pointer transition ${isMaint ? "bg-steel-400" : isConf ? "bg-rose-500" : s.color} ${isSel ? "ring-2 ring-navy-900" : "hover:brightness-110"} ${isCrit && !isSel ? "ring-4 ring-rose-800" : isConf && !isSel ? "ring-2 ring-rose-700" : ""} ${modAlert.highlight.has(String(s.id)) ? "notif-hl" : ""}`}
                             style={{ left: `${leftPct}%`, width: `${widthPct}%` }}
-                            title={`${s.vessel} · ${s.project} · ${fmtRentang(dayToISO(s.from), dayToISO(s.to))}${s.priority ? ` · ${s.priority}` : ""}${isCrit ? " · KRITIS TUMPANG TINDIH" : isConf ? " · TUMPANG TINDIH" : ""}`}
+                            title={`${s.vessel} · ${s.project} · ${fmtRentang(dayToISO(s.from), dayToISO(s.to))}${s.priority ? ` · ${s.priority}` : ""}${isCrit ? S.tipCrit : isConf ? S.tipOverlap : ""}`}
                           >
                             <span className="truncate min-w-0 flex-1 flex items-center gap-1" title={s.vessel}>
                               <GripVertical className="h-3 w-3 shrink-0 opacity-70" />
@@ -538,7 +542,7 @@ export default function Drydock() {
       </Card>
 
         <Card className="p-5">
-          <h3 className="mb-3 text-sm font-semibold text-navy-900">Utilisasi per Fasilitas</h3>
+          <h3 className="mb-3 text-sm font-semibold text-navy-900">{S.utilTitle}</h3>
           <div className="space-y-3">
             {coverageByDock.map(({ dock, pct }) => (
               <div key={dock.id}>
@@ -547,21 +551,21 @@ export default function Drydock() {
                   <span className="font-semibold text-navy-900">{pct}%</span>
                 </div>
                 <ProgressBar value={pct} tone={pct > 80 ? "red" : pct > 60 ? "amber" : "green"} />
-                <p className="mt-1 text-xs text-steel-500">Biaya dock {fmtRupiah(dockCostTotal(dock.id))}</p>
+                <p className="mt-1 text-xs text-steel-500">{S.dockCost.replace("{a}", fmtRupiah(dockCostTotal(dock.id)))}</p>
               </div>
             ))}
           </div>
           <p className="mt-3 text-xs text-steel-400">
-            {busiest ? `${busiest.dock.name} saat ini paling padat (${busiest.pct}%).` : "Belum ada data utilisasi."} Dihitung dari hari terisi slot per {DAYS} hari.
+            {busiest ? S.busiestNow.replace("{a}", busiest.dock.name).replace("{b}", String(busiest.pct)) : S.noUtil} {S.utilNote.replace("{n}", String(DAYS))}
           </p>
         </Card>
       </div>
 
       <Card className="mt-5">
         <CardHeader
-          title="Rencana Dock Tahunan (12 Bulan)"
-          subtitle="Read-only · slot existing per bulan"
-          action={<button className="btn-secondary text-xs" onClick={exportAnnualPlan}>Ekspor Excel</button>}
+          title={S.annualTitle}
+          subtitle={S.annualSub}
+          action={<button className="btn-secondary text-xs" onClick={exportAnnualPlan}>{S.exportExcelBtn}</button>}
         />
         <div className="overflow-x-auto p-4 pt-0">
           <div className="grid min-w-[1100px] grid-cols-12 gap-2">
@@ -579,7 +583,7 @@ export default function Drydock() {
                         {s.vessel}
                       </button>
                     ))}
-                    {inMonth.length === 0 && <p className="text-[11px] text-steel-400">Kosong</p>}
+                    {inMonth.length === 0 && <p className="text-[11px] text-steel-400">{S.monthEmpty}</p>}
                   </div>
                 </div>
               );
@@ -589,31 +593,31 @@ export default function Drydock() {
       </Card>
 
       {/* Modal detail slot */}
-      <Modal open={sel !== null} onClose={() => setSelected(null)} title={`Slot ${sel?.id ?? ""}`} subtitle={sel ? `${sel.vessel} · ${sel.project}` : ""}>
+      <Modal open={sel !== null} onClose={() => setSelected(null)} title={S.slotTitle.replace("{a}", sel?.id ?? "")} subtitle={sel ? `${sel.vessel} · ${sel.project}` : ""}>
         {sel && (
           <div>
           <dl className="dl-div text-sm">
-            <div className="flex justify-between"><dt className="text-steel-500">Fasilitas</dt><dd className="font-medium">{drydocks.find((d) => d.id === sel.dockId)?.name}</dd></div>
-            <div className="flex justify-between"><dt className="text-steel-500">Durasi</dt><dd className="font-medium">{fmtRentang(dayToISO(sel.from), dayToISO(sel.to))} ({slotDays(sel)} hari)</dd></div>
-            <div className="flex justify-between"><dt className="text-steel-500">Prioritas</dt><dd className="font-medium">{sel.priority ?? "Normal"}</dd></div>
-            <div className="flex justify-between"><dt className="text-steel-500">Tarif dock</dt><dd className="font-medium">{fmtRupiah(Number(sel.ratePerDay || 0))}/hari</dd></div>
-            <div className="flex justify-between"><dt className="text-steel-500">Biaya dock</dt><dd className="font-semibold text-navy-900">{slotDays(sel)} hari × {fmtRupiah(Number(sel.ratePerDay || 0))} = {fmtRupiah(slotCost(sel))}</dd></div>
-            <div className="flex justify-between"><dt className="text-steel-500">Status</dt><dd><StatusBadge status={slotStatus(sel, data.projects)} /></dd></div>
-            <div className="flex justify-between"><dt className="text-steel-500">Konflik</dt><dd>{conflict.some((c) => c.id === sel.id) ? <Badge tone="red">Tumpang tindih</Badge> : <Badge tone="green">Aman</Badge>}</dd></div>
-            <div className="flex justify-between"><dt className="text-steel-500">Konsumsi tercatat</dt><dd className="font-medium">{fmtJumlah(Number(sel.powerKwh || 0))} kWh · {fmtJumlah(Number(sel.waterM3 || 0))} m³</dd></div>
+            <div className="flex justify-between"><dt className="text-steel-500">{S.colFacility}</dt><dd className="font-medium">{drydocks.find((d) => d.id === sel.dockId)?.name}</dd></div>
+            <div className="flex justify-between"><dt className="text-steel-500">{S.colDuration}</dt><dd className="font-medium">{fmtRentang(dayToISO(sel.from), dayToISO(sel.to))} ({S.durationDays.replace("{n}", String(slotDays(sel)))})</dd></div>
+            <div className="flex justify-between"><dt className="text-steel-500">{S.colPriority}</dt><dd className="font-medium">{sel.priority ?? "Normal"}</dd></div>
+            <div className="flex justify-between"><dt className="text-steel-500">{S.lblRate}</dt><dd className="font-medium">{S.perDay.replace("{a}", fmtRupiah(Number(sel.ratePerDay || 0)))}</dd></div>
+            <div className="flex justify-between"><dt className="text-steel-500">{S.lblCost}</dt><dd className="font-semibold text-navy-900">{S.durationDays.replace("{n}", String(slotDays(sel)))} × {fmtRupiah(Number(sel.ratePerDay || 0))} = {fmtRupiah(slotCost(sel))}</dd></div>
+            <div className="flex justify-between"><dt className="text-steel-500">{S.colStatus}</dt><dd><StatusBadge status={slotStatus(sel, data.projects)} /></dd></div>
+            <div className="flex justify-between"><dt className="text-steel-500">{S.lblConflict}</dt><dd>{conflict.some((c) => c.id === sel.id) ? <Badge tone="red">{S.conflictBadge}</Badge> : <Badge tone="green">{S.safeBadge}</Badge>}</dd></div>
+            <div className="flex justify-between"><dt className="text-steel-500">{S.lblRecorded}</dt><dd className="font-medium">{fmtJumlah(Number(sel.powerKwh || 0))} kWh · {fmtJumlah(Number(sel.waterM3 || 0))} m³</dd></div>
           </dl>
           <div className="mt-3 border-t border-steel-100 pt-3">
-            <p className="text-xs font-semibold text-steel-500">KONSUMSI LISTRIK / AIR PER SLOT</p>
+            <p className="text-xs font-semibold text-steel-500">{S.utilSection}</p>
             <div className="mt-2 grid grid-cols-2 gap-2">
-              <Field label="Listrik (kWh)"><input type="number" min={0} className="input" value={utilDraft.power} onChange={(e) => setUtilDraft({ ...utilDraft, power: e.target.value })} placeholder="cth: 1200" /></Field>
-              <Field label="Air (m³)"><input type="number" min={0} className="input" value={utilDraft.water} onChange={(e) => setUtilDraft({ ...utilDraft, water: e.target.value })} placeholder="cth: 85" /></Field>
+              <Field label={S.lblPower}><input type="number" min={0} className="input" value={utilDraft.power} onChange={(e) => setUtilDraft({ ...utilDraft, power: e.target.value })} placeholder={S.phPower} /></Field>
+              <Field label={S.lblWater}><input type="number" min={0} className="input" value={utilDraft.water} onChange={(e) => setUtilDraft({ ...utilDraft, water: e.target.value })} placeholder={S.phWater} /></Field>
             </div>
-            <button className="btn-secondary mt-2 text-xs" onClick={saveUtility}>Simpan Konsumsi</button>
+            <button className="btn-secondary mt-2 text-xs" onClick={saveUtility}>{S.btnSaveUtil}</button>
           </div>
           <div className="mt-3 border-t border-steel-100 pt-3">
             <div className="flex items-center justify-between">
-              <p className="text-xs font-semibold text-steel-500">DOCKING REPORT - CHECKLIST UNDOCKING</p>
-              <Badge tone={undockList(sel).every(Boolean) ? "green" : "amber"}>{undockList(sel).every(Boolean) ? "Siap Undocking" : `${undockList(sel).filter(Boolean).length}/5`}</Badge>
+              <p className="text-xs font-semibold text-steel-500">{S.undockSection}</p>
+              <Badge tone={undockList(sel).every(Boolean) ? "green" : "amber"}>{undockList(sel).every(Boolean) ? S.undockReady : S.undockProgress.replace("{n}", String(undockList(sel).filter(Boolean).length))}</Badge>
             </div>
             <div className="mt-2 space-y-1.5">
               {UNDOCK_ITEMS.map((item, idx) => (
@@ -625,74 +629,74 @@ export default function Drydock() {
             </div>
           </div>
             <div className="mt-3 flex gap-2">
-              <button className="btn-secondary flex-1 justify-center" onClick={() => { setSelected(null); openMove(sel); }}>Geser / Pindah Slot</button>
-              <button className="btn-danger flex-1 justify-center" onClick={() => { setDeleting(sel); setSelected(null); }}><Trash2 className="h-4 w-4" /> Hapus Slot</button>
+              <button className="btn-secondary flex-1 justify-center" onClick={() => { setSelected(null); openMove(sel); }}>{S.btnMoveSlot}</button>
+              <button className="btn-danger flex-1 justify-center" onClick={() => { setDeleting(sel); setSelected(null); }}><Trash2 className="h-4 w-4" /> {S.btnDelSlot}</button>
             </div>
           </div>
         )}
       </Modal>
 
       {/* Modal geser/pindah slot (tindak lanjut konflik) */}
-      <Modal open={moveTarget !== null} onClose={() => { setMoveTarget(null); setMoveError(null); }} title={`Geser Slot ${moveTarget?.id ?? ""}`} subtitle="Pindah tanggal / fasilitas — ditolak bila masih tumpang tindih"
-        footer={<><button className="btn-secondary" onClick={() => { setMoveTarget(null); setMoveError(null); }}>Batal</button><button className="btn-primary" onClick={() => void saveMove()}>Simpan Pindahan</button></>}>
+      <Modal open={moveTarget !== null} onClose={() => { setMoveTarget(null); setMoveError(null); }} title={S.moveSlotTitle.replace("{a}", moveTarget?.id ?? "")} subtitle={S.moveSlotSub}
+        footer={<><button className="btn-secondary" onClick={() => { setMoveTarget(null); setMoveError(null); }}>{S.cancelBtn}</button><button className="btn-primary" onClick={() => void saveMove()}>{S.btnSaveMove}</button></>}>
         <div className="space-y-3">
           {moveError && <p className="rounded-lg bg-rose-50 px-3 py-2 text-xs font-medium text-rose-700">{moveError}</p>}
-          <Field label="Fasilitas tujuan">
+          <Field label={S.lblTargetFacility}>
             <select className="input" value={moveForm.dockId} onChange={(e) => setMoveForm({ ...moveForm, dockId: e.target.value })}>
               {drydocks.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
             </select>
           </Field>
           <FormGrid>
-            <Field label={`Mulai (hari ke-1-${DAYS})`}><input type="number" min={1} max={DAYS} className="input" value={moveForm.from} onChange={(e) => setMoveForm({ ...moveForm, from: e.target.value })} /></Field>
-            <Field label={`Selesai (hari ke-1-${DAYS})`}><input type="number" min={1} max={DAYS} className="input" value={moveForm.to} onChange={(e) => setMoveForm({ ...moveForm, to: e.target.value })} /></Field>
+            <Field label={S.lblStartDay.replace("{n}", String(DAYS))}><input type="number" min={1} max={DAYS} className="input" value={moveForm.from} onChange={(e) => setMoveForm({ ...moveForm, from: e.target.value })} /></Field>
+            <Field label={S.lblEndDay.replace("{n}", String(DAYS))}><input type="number" min={1} max={DAYS} className="input" value={moveForm.to} onChange={(e) => setMoveForm({ ...moveForm, to: e.target.value })} /></Field>
           </FormGrid>
-          <p className="text-xs text-steel-500">Durasi baru: {Number(moveForm.to) > Number(moveForm.from) ? `${Number(moveForm.to) - Number(moveForm.from)} hari` : "-"}. Biaya dock ikut berubah otomatis (tarif × durasi).</p>
+          <p className="text-xs text-steel-500">{S.moveHint.replace("{a}", Number(moveForm.to) > Number(moveForm.from) ? S.durationDays.replace("{n}", String(Number(moveForm.to) - Number(moveForm.from))) : "-")}</p>
         </div>
       </Modal>
 
       {/* Modal booking */}
-      <Modal open={showBook} onClose={() => { setShowBook(false); setBookError(null); }} title="Booking Slot Docking" subtitle="Booking yang tumpang tindih akan ditolak"
-        footer={<><button className="btn-secondary" onClick={() => { setShowBook(false); setBookError(null); }}>Batal</button><button className="btn-primary" onClick={saveBooking}>Simpan Booking</button></>}>
+      <Modal open={showBook} onClose={() => { setShowBook(false); setBookError(null); }} title={S.bookTitle} subtitle={S.bookSub}
+        footer={<><button className="btn-secondary" onClick={() => { setShowBook(false); setBookError(null); }}>{S.cancelBtn}</button><button className="btn-primary" onClick={saveBooking}>{S.btnSaveBook}</button></>}>
         <div className="space-y-3">
           <FormGrid>
-            <Field label="Fasilitas">
+            <Field label={S.colFacility}>
               <select className="input" value={bookForm.dockId} onChange={(e) => setBookForm({ ...bookForm, dockId: e.target.value })}>
                 {drydocks.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
               </select>
             </Field>
-            <Field label="Proyek">
+            <Field label={S.colProject}>
               <select className="input" value={bookForm.project} onChange={(e) => setBookForm({ ...bookForm, project: e.target.value })}>
-                <option value="">Pilih proyek…</option>
+                <option value="">{S.optPickProject}</option>
                 {projectOptions.filter((p) => p.status !== "Selesai").map((p) => <option key={p.id} value={p.id}>{p.id} · {p.vessel}</option>)}
               </select>
             </Field>
-            <Field label="Mulai (hari ke-)"><input type="number" min={0} max={90} className="input" value={bookForm.from} onChange={(e) => setBookForm({ ...bookForm, from: e.target.value })} /></Field>
-            <Field label="Selesai (hari ke-)"><input type="number" min={1} max={90} className="input" value={bookForm.to} onChange={(e) => setBookForm({ ...bookForm, to: e.target.value })} /></Field>
-            <Field label="Prioritas">
+            <Field label={S.lblStartAt}><input type="number" min={0} max={90} className="input" value={bookForm.from} onChange={(e) => setBookForm({ ...bookForm, from: e.target.value })} /></Field>
+            <Field label={S.lblEndAt}><input type="number" min={1} max={90} className="input" value={bookForm.to} onChange={(e) => setBookForm({ ...bookForm, to: e.target.value })} /></Field>
+            <Field label={S.colPriority}>
               <select className="input" value={bookForm.priority} onChange={(e) => setBookForm({ ...bookForm, priority: e.target.value })}>
                 {PRIORITIES.map((p) => <option key={p}>{p}</option>)}
               </select>
             </Field>
-            <Field label="Tarif dock per hari (Rp)" hint="Default 0 · biaya = hari × tarif">
-              <input type="number" min={0} className="input" value={bookForm.ratePerDay} onChange={(e) => setBookForm({ ...bookForm, ratePerDay: e.target.value })} placeholder="cth: 15000000" />
+            <Field label={S.lblRateDay} hint={S.hintRate}>
+              <input type="number" min={0} className="input" value={bookForm.ratePerDay} onChange={(e) => setBookForm({ ...bookForm, ratePerDay: e.target.value })} placeholder={S.phRate} />
             </Field>
-            <Field label="No. Dock Space (SB)" hint="Otomatis bila kosong: nnn/DS-SB/SMD/m/yyyy">
+            <Field label={S.lblDs} hint={S.hintDs}>
               <input className="input font-mono" value={bookForm.dsRef} onChange={(e) => setBookForm({ ...bookForm, dsRef: e.target.value })} placeholder={sbDsNumber(nextDsSeq())} />
             </Field>
-            <Field label="Kapal pasangan (Barge)" hint="Opsional - cth surat TB/Barge">
-              <input className="input" value={bookForm.vessel2} onChange={(e) => setBookForm({ ...bookForm, vessel2: e.target.value })} placeholder="cth: BG RMN 3324" />
+            <Field label={S.lblPartner} hint={S.hintPartner}>
+              <input className="input" value={bookForm.vessel2} onChange={(e) => setBookForm({ ...bookForm, vessel2: e.target.value })} placeholder={S.phPartner} />
             </Field>
-            <Field label="Tanggal mulai kalender" hint="Arsip/backdate - cth surat 00 Jan 2024">
+            <Field label={S.lblCalDate} hint={S.hintCalDate}>
               <input type="date" className="input" value={bookForm.startDate} onChange={(e) => setBookForm({ ...bookForm, startDate: e.target.value })} />
             </Field>
           </FormGrid>
           <p className="rounded-lg bg-surface px-3 py-2 text-xs text-steel-600">
-            Estimasi biaya dock: {Math.max(0, Number(bookForm.to || 0) - Number(bookForm.from || 0))} hari × {fmtRupiah(Number(bookForm.ratePerDay || 0))} = {fmtRupiah(Math.max(0, Number(bookForm.to || 0) - Number(bookForm.from || 0)) * Math.max(0, Number(bookForm.ratePerDay || 0)))}
+            {S.costEstimate.replace("{a}", String(Math.max(0, Number(bookForm.to || 0) - Number(bookForm.from || 0)))).replace("{b}", fmtRupiah(Number(bookForm.ratePerDay || 0))).replace("{c}", fmtRupiah(Math.max(0, Number(bookForm.to || 0) - Number(bookForm.from || 0)) * Math.max(0, Number(bookForm.ratePerDay || 0))))}
           </p>
           <p className="rounded-lg bg-surface px-3 py-2 text-xs text-steel-600">
-            Info kapasitas: {selDock?.capacity ?? "-"}
-            {selProj ? (selLoa !== null ? ` · LOA ${selProj.vessel} ${selLoa} m` : ` · data LOA ${selProj.vessel} tidak tersedia`) : ""}
-            {selCap !== null && selLoa !== null ? (selLoa > selCap ? " · MELEBIHI KAPASITAS - booking akan ditolak." : " · muat di fasilitas ini.") : ""}
+            {S.capInfo.replace("{a}", selDock?.capacity ?? "-")}
+            {selProj ? (selLoa !== null ? S.loaInfo.replace("{a}", selProj.vessel).replace("{b}", String(selLoa)) : S.loaMissing.replace("{a}", selProj.vessel)) : ""}
+            {selCap !== null && selLoa !== null ? (selLoa > selCap ? S.overCap : S.fitsCap) : ""}
           </p>
           {bookError && (
             <p className="rounded-lg bg-rose-50 px-3 py-2 text-xs font-medium text-rose-700">{bookError}</p>
@@ -701,32 +705,32 @@ export default function Drydock() {
       </Modal>
 
       {/* Modal blokir maintenance */}
-      <Modal open={showMaint} onClose={() => setShowMaint(false)} title="Blokir Maintenance Dock" subtitle="Blok ikut deteksi overlap seperti slot biasa"
-        footer={<><button className="btn-secondary" onClick={() => setShowMaint(false)}>Batal</button><button className="btn-primary" onClick={saveMaintBlock}>Simpan Blokir</button></>}>
+      <Modal open={showMaint} onClose={() => setShowMaint(false)} title={S.maintTitle} subtitle={S.maintSub}
+        footer={<><button className="btn-secondary" onClick={() => setShowMaint(false)}>{S.cancelBtn}</button><button className="btn-primary" onClick={saveMaintBlock}>{S.btnSaveMaint}</button></>}>
         <div className="space-y-3">
           <FormGrid>
-            <Field label="Fasilitas">
+            <Field label={S.colFacility}>
               <select className="input" value={maintForm.dockId} onChange={(e) => setMaintForm({ ...maintForm, dockId: e.target.value })}>
                 {drydocks.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
               </select>
             </Field>
-            <Field label="Alasan"><input className="input" value={maintForm.reason} onChange={(e) => setMaintForm({ ...maintForm, reason: e.target.value })} placeholder="cth: Perbaikan rail slipway" /></Field>
-            <Field label="Dari (hari ke-)"><input type="number" min={0} max={90} className="input" value={maintForm.from} onChange={(e) => setMaintForm({ ...maintForm, from: e.target.value })} /></Field>
-            <Field label="Sampai (hari ke-)"><input type="number" min={1} max={90} className="input" value={maintForm.to} onChange={(e) => setMaintForm({ ...maintForm, to: e.target.value })} /></Field>
+            <Field label={S.lblReason}><input className="input" value={maintForm.reason} onChange={(e) => setMaintForm({ ...maintForm, reason: e.target.value })} placeholder={S.phReason} /></Field>
+            <Field label={S.lblFromDay}><input type="number" min={0} max={90} className="input" value={maintForm.from} onChange={(e) => setMaintForm({ ...maintForm, from: e.target.value })} /></Field>
+            <Field label={S.lblToDay}><input type="number" min={1} max={90} className="input" value={maintForm.to} onChange={(e) => setMaintForm({ ...maintForm, to: e.target.value })} /></Field>
           </FormGrid>
         </div>
       </Modal>
 
       {/* Modal PIC dock */}
-      <Modal open={picModal !== null} onClose={() => setPicModal(null)} title={`PIC - ${picModal?.name ?? ""}`}
-        footer={<><button className="btn-secondary" onClick={() => setPicModal(null)}>Batal</button><button className="btn-primary" onClick={savePic}>Simpan PIC</button></>}>
-        <Field label="Penanggung jawab dock" hint="Kosongkan untuk kembali ke Belum ditentukan">
-          <input className="input" value={picDraft} onChange={(e) => setPicDraft(e.target.value)} placeholder="cth: Rudi Hartono" />
+      <Modal open={picModal !== null} onClose={() => setPicModal(null)} title={S.picTitle.replace("{a}", picModal?.name ?? "")}
+        footer={<><button className="btn-secondary" onClick={() => setPicModal(null)}>{S.cancelBtn}</button><button className="btn-primary" onClick={savePic}>{S.btnSavePic}</button></>}>
+        <Field label={S.lblPic} hint={S.hintPic}>
+          <input className="input" value={picDraft} onChange={(e) => setPicDraft(e.target.value)} placeholder={S.phPic} />
         </Field>
       </Modal>
 
-      <ConfirmModal open={deleting !== null} title={`Hapus slot ${deleting?.id}?`} desc={`${deleting?.vessel} akan dikeluarkan dari jadwal docking.`}
-        confirmLabel="Ya, hapus" danger onCancel={() => setDeleting(null)}
+      <ConfirmModal open={deleting !== null} title={S.delTitle.replace("{a}", deleting?.id ?? "")} desc={S.delDesc.replace("{a}", String(deleting?.vessel ?? ""))}
+        confirmLabel={S.confirmDelete} danger onCancel={() => setDeleting(null)}
         onConfirm={confirmDelete} />
     </div>
   );

@@ -5,6 +5,7 @@ import { Badge, Card, EmptyState, Field, KpiCard, PageHeader, Tabs, toast, usePa
 import { FilterPopover } from "../../components/FilterPopover";
 import { useStore } from "../../data/store";
 import { useT } from "../../i18n/LanguageContext";
+import { n_misc } from "../../i18n/n_misc";
 import { computeAlerts } from "../../utils/alerts";
 import { dayGroup, loadNotifRead, relMinutes, saveNotifRead, type DayGroup } from "../../utils/notifRead";
 import { exportExcel } from "../../utils/export";
@@ -78,11 +79,13 @@ function NotifGroup({ g, renderRow, markGroup, markGroupRead }: {
   markGroup: (ids: string[]) => void;
   markGroupRead: string;
 }) {
+  const { locale } = useT();
+  const S = n_misc[locale];
   const pager = usePager(g.rows.length, 20);
   return (
     <div className="mt-3">
       <div className="mb-1 flex items-center gap-2">
-        <p className="text-xs font-bold uppercase tracking-wide text-steel-400">{g.group} ({g.rows.length})</p>
+        <p className="text-xs font-bold uppercase tracking-wide text-steel-400">{g.group === "Hari ini" ? S.ntDayToday : g.group === "Kemarin" ? S.ntDayYesterday : S.ntDayOlder} ({g.rows.length})</p>
         <button
           className="ml-auto inline-flex items-center gap-1 text-[11px] font-semibold text-ocean-600 hover:underline"
           onClick={() => markGroup(g.rows.map((r) => r.id))}
@@ -101,6 +104,7 @@ function NotifGroup({ g, renderRow, markGroup, markGroupRead }: {
 export default function Notifikasi() {
   const { data } = useStore();
   const { t, locale } = useT();
+  const S = n_misc[locale];
   const [filter, setFilter] = useState("Semua");
   const [sev, setSev] = useState<(typeof SEVERITIES)[number]>("Semua");
   const [mod, setMod] = useState("Semua");
@@ -116,10 +120,10 @@ export default function Notifikasi() {
       kind: "alert",
       tone: al.tone,
       text: al.text,
-      meta: "Perlu perhatian · ambang otomatis",
-      detail: `Sumber: engine ambang (budget, stok, sertifikat, invoice, milestone) · tujuan ${al.to}`,
+      meta: S.ntMetaAttention,
+      detail: S.ntSourceDetail.replace("{n}", al.to),
       module: "Alert",
-      timeLabel: "Sekarang",
+      timeLabel: S.ntNow,
       minAgo: 0,
       to: al.to,
     }));
@@ -129,7 +133,7 @@ export default function Notifikasi() {
       tone: normTone(x.tone),
       text: `${String(x.actor ?? "")} ${String(x.action ?? "")} ${String(x.target ?? "")}`.trim(),
       meta: `${String(x.module ?? "-")} · ${String(x.time ?? "-")}`,
-      detail: `Aktor: ${String(x.actor ?? "-")} · aksi: ${String(x.action ?? "-")} · target: ${String(x.target ?? "-")}`,
+      detail: S.ntActorDetail.replace("{a}", String(x.actor ?? "-")).replace("{b}", String(x.action ?? "-")).replace("{c}", String(x.target ?? "-")),
       module: String(x.module ?? "-"),
       timeLabel: String(x.time ?? "-"),
       minAgo: relMinutes(String(x.time ?? "")),
@@ -210,7 +214,7 @@ export default function Notifikasi() {
       read.has(i.id) ? "Dibaca" : "Belum dibaca",
     ]);
     void exportExcel([head, ...body], "daftar-notifikasi", "Notifikasi").then(() =>
-      toast("Daftar notifikasi diekspor ke Excel")
+      toast(S.tNotifExported)
     );
   };
 
@@ -218,7 +222,7 @@ export default function Notifikasi() {
     <div>
       <PageHeader
         title={t.notif.title}
-        subtitle={locale === "en" ? "In-app notification center - read status stored per device" : "Pusat notifikasi in-app - status baca tersimpan per perangkat"}
+        subtitle={S.ntSubtitle}
         icon={<Bell className="h-5 w-5" />}
         actions={
           <>
@@ -233,9 +237,9 @@ export default function Notifikasi() {
       />
 
       <div className="mb-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
-        <KpiCard label={t.notif.attention} value={String(alertCount)} hint={locale === "en" ? "From active thresholds" : "Dari ambang alert aktif"} chip="rose" icon={<AlertTriangle className="h-5 w-5" />} />
-        <KpiCard label={t.notif.activities} value={String(infoCount)} hint={locale === "en" ? "Last 30 activities" : "30 aktivitas terakhir"} chip="navy" icon={<Info className="h-5 w-5" />} />
-        <KpiCard label={locale === "en" ? "Unread" : "Belum Dibaca"} value={String(unread)} hint={locale === "en" ? "Stored per device" : "Tersimpan per perangkat"} chip="amber" icon={<Bell className="h-5 w-5" />} />
+        <KpiCard label={t.notif.attention} value={String(alertCount)} hint={S.ntFromThresholds} chip="rose" icon={<AlertTriangle className="h-5 w-5" />} />
+        <KpiCard label={t.notif.activities} value={String(infoCount)} hint={S.ntLast30} chip="navy" icon={<Info className="h-5 w-5" />} />
+        <KpiCard label={S.ntUnreadLabel} value={String(unread)} hint={S.ntStoredPerDevice} chip="amber" icon={<Bell className="h-5 w-5" />} />
       </div>
 
       <Card>
@@ -246,8 +250,8 @@ export default function Notifikasi() {
               <Search className="absolute left-3 top-2.5 h-4 w-4 text-steel-400" />
               <input
                 className="input w-56 pl-9"
-                placeholder={locale === "en" ? "Search content / actor / module…" : "Cari isi / aktor / modul…"}
-                aria-label={locale === "en" ? "Search notifications" : "Cari notifikasi"}
+                placeholder={S.ntSearchPh}
+                aria-label={S.ntSearchAria}
                 value={q}
                 onChange={(e) => setQ(e.target.value)}
               />
@@ -260,23 +264,23 @@ export default function Notifikasi() {
             >
               {(draft, setDraft) => (
                 <div className="space-y-3">
-                  <Field label={locale === "en" ? "Severity" : "Severity"}>
-                    <select className="input w-full" aria-label="Filter severity" value={draft.severity} onChange={(e) => setDraft({ ...draft, severity: e.target.value })}>
-                      <option value="Semua">{locale === "en" ? "All severities" : "Semua severity"}</option>
-                      <option value="Merah">{locale === "en" ? "Red (critical)" : "Merah (kritis)"}</option>
-                      <option value="Kuning">{locale === "en" ? "Yellow (warning)" : "Kuning (waspada)"}</option>
-                      <option value="Biru">{locale === "en" ? "Blue (info)" : "Biru (info)"}</option>
+                  <Field label="Severity">
+                    <select className="input w-full" aria-label={S.ntSeverityFilterAria} value={draft.severity} onChange={(e) => setDraft({ ...draft, severity: e.target.value })}>
+                      <option value="Semua">{S.ntAllSeverities}</option>
+                      <option value="Merah">{S.ntRedCritical}</option>
+                      <option value="Kuning">{S.ntYellowWarn}</option>
+                      <option value="Biru">{S.ntBlueInfo}</option>
                     </select>
                   </Field>
-                  <Field label="Modul">
-                    <select className="input w-full" aria-label="Filter modul" value={draft.modul} onChange={(e) => setDraft({ ...draft, modul: e.target.value })}>
-                      {modules.map((m) => <option key={m} value={m}>{m === "Semua" ? (locale === "en" ? "All modules" : "Semua modul") : m}</option>)}
+                  <Field label={S.ntModuleLabel}>
+                    <select className="input w-full" aria-label={S.ntModuleFilterAria} value={draft.modul} onChange={(e) => setDraft({ ...draft, modul: e.target.value })}>
+                      {modules.map((m) => <option key={m} value={m}>{m === "Semua" ? S.ntAllModules : m}</option>)}
                     </select>
                   </Field>
-                  <Field label={locale === "en" ? "Order" : "Urutan"}>
-                    <select className="input w-full" aria-label="Urutan" value={draft.urutan} onChange={(e) => setDraft({ ...draft, urutan: e.target.value })}>
-                      <option value="Terbaru">{locale === "en" ? "Newest first" : "Terbaru dulu"}</option>
-                      <option value="Terlama">{locale === "en" ? "Oldest first" : "Terlama dulu"}</option>
+                  <Field label={S.ntOrderLabel}>
+                    <select className="input w-full" aria-label={S.ntOrderAria} value={draft.urutan} onChange={(e) => setDraft({ ...draft, urutan: e.target.value })}>
+                      <option value="Terbaru">{S.ntNewestFirst}</option>
+                      <option value="Terlama">{S.ntOldestFirst}</option>
                     </select>
                   </Field>
                 </div>
@@ -315,9 +319,9 @@ export default function Notifikasi() {
                     </div>
                     <div className="min-w-0 flex-1">
                       <div className="flex flex-wrap items-center gap-2">
-                        {!isRead && <span className="h-2 w-2 rounded-full bg-rose-500" aria-label="Belum dibaca" />}
+                        {!isRead && <span className="h-2 w-2 rounded-full bg-rose-500" aria-label={S.ntUnreadDot} />}
                         <Badge tone={i.kind === "alert" ? i.tone : "navy"}>
-                          {i.kind === "alert" ? `Perlu Perhatian · ${i.tone === "red" ? "Critical" : sevOf(i.tone)}` : "Aktivitas"}
+                          {i.kind === "alert" ? S.ntAlertBadge.replace("{n}", i.tone === "red" ? S.ntSevCritical : sevOf(i.tone) === "Kuning" ? S.ntSevWarning : S.ntSevInfo) : S.ntActivityBadge}
                         </Badge>
                         <span className="text-[11px] text-steel-400">{i.meta}</span>
                       </div>
