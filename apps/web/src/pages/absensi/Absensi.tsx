@@ -279,7 +279,7 @@ export default function Absensi() {
             <div className="flex items-center gap-2">
               <button className="btn-secondary" onClick={approveAllOT}>Setujui Semua Lembur</button>
               <button className="btn-secondary" onClick={exportRekap}>
-                <Download className="h-4 w-4" /> Export Excel
+                <Download className="h-4 w-4" /> Ekspor Excel
               </button>
             </div>
           )

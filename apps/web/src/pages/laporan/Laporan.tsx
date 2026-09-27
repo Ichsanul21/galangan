@@ -279,10 +279,10 @@ export default function Laporan() {
         icon={<FileText className="h-5 w-5" />}
         actions={
           mode === "Mingguan"
-            ? <><button className="btn-secondary" onClick={exportWeek}>Export Excel</button><button className="btn-primary" onClick={exportPDFLogged}>Export PDF</button></>
+            ? <><button className="btn-secondary" onClick={exportWeek}>Ekspor Excel</button><button className="btn-primary" onClick={exportPDFLogged}>Export PDF</button></>
             : mode === "Bulanan"
-              ? <><button className="btn-secondary" onClick={exportMonth}>Export Excel</button><button className="btn-primary" onClick={exportPDFLogged}>Export PDF</button></>
-              : <><button className="btn-secondary" onClick={exportProject}>Export Excel</button><button className="btn-primary" onClick={exportPDFLogged}>Export PDF</button></>
+              ? <><button className="btn-secondary" onClick={exportMonth}>Ekspor Excel</button><button className="btn-primary" onClick={exportPDFLogged}>Export PDF</button></>
+              : <><button className="btn-secondary" onClick={exportProject}>Ekspor Excel</button><button className="btn-primary" onClick={exportPDFLogged}>Export PDF</button></>
         }
       />
 

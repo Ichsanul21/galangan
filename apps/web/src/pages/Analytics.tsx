@@ -313,7 +313,7 @@ export default function Analytics() {
         subtitle="Analisis 4 level - dari 'apa yang terjadi' hingga 'harus berbuat apa'"
         icon={<BarChart3 className="h-5 w-5" />}
         actions={
-          <button className="btn-primary-gradient" onClick={exportReport}>Export Laporan</button>
+          <button className="btn-primary-gradient" onClick={exportReport}>Ekspor Laporan</button>
         }
       />
 

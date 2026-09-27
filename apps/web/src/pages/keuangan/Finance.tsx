@@ -2042,7 +2042,7 @@ export default function Finance() {
                 subtitle="Payable + invoice jatuh tempo ≤30 hari (termasuk yang sudah lewat), urut jatuh tempo tertua dulu."
                 action={
                   <div className="flex gap-2">
-                    <button className="btn-secondary text-xs" onClick={exportJadwal}>Export Excel</button>
+                    <button className="btn-secondary text-xs" onClick={exportJadwal}>Ekspor Excel</button>
                     <button className="btn-primary text-xs" disabled={schedSel.length === 0} onClick={() => { setBatchProof(emptyProof()); setShowBatch(true); }}>
                       Bayar Massal ({fmtJumlah(schedSel.length)}) · {fmtRupiah(schedTotal)}
                     </button>
@@ -2515,8 +2515,8 @@ export default function Finance() {
                   Periode Baru
                 </button>
                 <div className="ml-auto flex gap-2">
-                  <button className="btn-secondary text-xs" onClick={exportEfaktur}>Export CSV e-Faktur</button>
-                  <button className="btn-secondary text-xs" onClick={exportSpt}>Export Excel SPT</button>
+                  <button className="btn-secondary text-xs" onClick={exportEfaktur}>Ekspor CSV e-Faktur</button>
+                  <button className="btn-secondary text-xs" onClick={exportSpt}>Ekspor Excel SPT</button>
                   <button className="btn-primary text-xs" disabled={taxLocked} onClick={markTaxLapor}>
                     {taxLocked ? "Sudah Lapor (Terkunci)" : "Tandai Lapor"}
                   </button>

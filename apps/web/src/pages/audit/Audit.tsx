@@ -142,7 +142,7 @@ export default function Audit() {
         icon={<History className="h-5 w-5" />}
         actions={
           <button className="btn-secondary text-xs" onClick={doExport}>
-            <Download className="h-4 w-4" /> Export Excel
+            <Download className="h-4 w-4" /> Ekspor Excel
           </button>
         }
       />

@@ -804,14 +804,14 @@ export default function Payroll() {
             <>
               <button className="btn-secondary" onClick={() => setShowPesangon(true)}>Kalkulator Pesangon</button>
               <button className="btn-secondary" onClick={exportRekap}>
-                <Download className="h-4 w-4" /> Export Rekap
+                <Download className="h-4 w-4" /> Ekspor Rekap
               </button>
               <button className="btn-primary-gradient" onClick={generate}>Generate {fmtBulan(period)}</button>
             </>
           ) : tab === "THR & Bonus" ? (
             <>
               <button className="btn-secondary" onClick={exportThrBonus}>
-                <Download className="h-4 w-4" /> Export THR & Bonus
+                <Download className="h-4 w-4" /> Ekspor THR & Bonus
               </button>
               <button className="btn-primary-gradient" onClick={generateTHR}>Hitung THR {fmtBulan(period)}</button>
             </>
@@ -1162,7 +1162,7 @@ export default function Payroll() {
           <>
             <button className="btn-secondary" onClick={() => setShowPesangon(false)}>Tutup</button>
             <button className="btn-primary" onClick={exportPesangon}>
-              <Download className="h-4 w-4" /> Export Hasil
+              <Download className="h-4 w-4" /> Ekspor Hasil
             </button>
           </>
         }

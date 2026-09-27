@@ -224,7 +224,7 @@ export default function VesselDetail() {
 
   const saveDock = async () => {
     if (!dockForm.date || !dockForm.dock.trim()) { toast("Tanggal & dok/galangan wajib diisi", "info"); return; }
-    if (!dockForm.nextDue) { toast("Next due wajib diisi", "info"); return; }
+    if (!dockForm.nextDue) { toast("Jatuh tempo wajib diisi", "info"); return; }
     const row: DockHistoryRow = {
       date: dockForm.date,
       dock: dockForm.dock.trim(),
@@ -534,7 +534,7 @@ export default function VesselDetail() {
                         </div>
                         {d.scope && <p className="mt-1 text-xs text-steel-600">Scope: {d.scope}</p>}
                         {d.result && <p className="text-xs text-steel-600">Hasil: {d.result}</p>}
-                        <p className="mt-1 text-xs text-steel-500">Next due: {fmtTanggal(d.nextDue)}</p>
+                        <p className="mt-1 text-xs text-steel-500">Jatuh tempo: {fmtTanggal(d.nextDue)}</p>
                       </div>
                     ))}
                   </div>

@@ -819,7 +819,7 @@ export default function CRM() {
             <h3 className="text-sm font-semibold text-navy-900">Forecast Weighted · {fmtMiliar(forecastTotal)}</h3>
             <p className="text-xs text-steel-500">Lead 10% · Penawaran 30% · Negosiasi 60% · Menang 100% · {oldLeads.length} lead tua &gt;30 hari</p>
           </div>
-          <button className="btn-secondary text-xs" onClick={exportForecast}>Export Forecast</button>
+          <button className="btn-secondary text-xs" onClick={exportForecast}>Ekspor Forecast</button>
         </div>
         <div className="mt-2 flex flex-wrap gap-1.5">
           {forecastRows.map((r) => (

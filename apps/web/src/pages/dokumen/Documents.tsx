@@ -304,7 +304,7 @@ export default function Documents() {
         icon={<ScrollText className="h-5 w-5" />}
         actions={
           <>
-            <button className="btn-secondary" onClick={doExport}><Download className="h-4 w-4" /> Export Excel</button>
+            <button className="btn-secondary" onClick={doExport}><Download className="h-4 w-4" /> Ekspor Excel</button>
             <button className="btn-primary-gradient" onClick={openAdd}><Plus className="h-4 w-4" /> Arsipkan Dokumen</button>
           </>
         }
