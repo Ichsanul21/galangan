@@ -1,5 +1,5 @@
 // Struktur kamus i18n. Prinsip: LABEL UI boleh 2 bahasa; NILAI DATA
-// (status, stage, tipe) tetap Bahasa Indonesia sebagai canonical —
+// (status, stage, tipe) tetap Bahasa Indonesia sebagai canonical -
 // mengganti nilai data merusak filter, state machine & API.
 export type Locale = "id" | "en";
 

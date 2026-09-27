@@ -74,9 +74,9 @@ type VesselForm = typeof emptyForm;
 function validateForm(form: VesselForm, vessels: StoreItem[], excludeId?: string): string | null {
   if (!form.name.trim() || !form.owner.trim() || !form.imo.trim()) return "Nama kapal, IMO & pemilik wajib diisi";
   const imo = form.imo.trim();
-  // "-" = kapal tanpa IMO (tongkang) — boleh dipakai banyak kapal, tetap unik untuk IMO asli.
+  // "-" = kapal tanpa IMO (tongkang) - boleh dipakai banyak kapal, tetap unik untuk IMO asli.
   if (imo !== "-" && vessels.some((v) => v.id !== excludeId && String(v.imo).toLowerCase() === imo.toLowerCase())) {
-    return `IMO ${imo} sudah terdaftar — gunakan nomor IMO yang unik`;
+    return `IMO ${imo} sudah terdaftar - gunakan nomor IMO yang unik`;
   }
   if (!form.type.trim()) return "Tipe kapal wajib diisi";
   const dims = { loa: Number(form.loa), beam: Number(form.beam), draft: Number(form.draft), bollard: Number(form.bollard) };
@@ -182,7 +182,7 @@ export default function Vessels() {
       certificates: [],
       history: [{ date: todayISO(), event: "Kapal didaftarkan", type: "Registrasi" }],
     }, { action: "mendaftarkan kapal", module: "Kapal" });
-    toast(warnZero ? `Kapal ${created.id} terdaftar — dimensi 0 diizinkan karena masih dalam pembangunan` : `Kapal ${created.id} terdaftar`);
+    toast(warnZero ? `Kapal ${created.id} terdaftar - dimensi 0 diizinkan karena masih dalam pembangunan` : `Kapal ${created.id} terdaftar`);
     setShowAdd(false);
     setForm(emptyForm);
   };
@@ -278,7 +278,7 @@ export default function Vessels() {
           </FilterPopover>
           {(q.trim() !== "" || certFilter !== "Semua") && (
             <span className="text-xs text-steel-400">
-              Filter aktif — {list.length} kapal
+              Filter aktif - {list.length} kapal
             </span>
           )}
         </div>
@@ -316,7 +316,7 @@ export default function Vessels() {
                 </div>
                 <div className="mt-2 flex flex-wrap gap-1.5">
                   <Badge tone={comp.state === "ok" ? "green" : comp.state === "issue" ? "red" : "gray"}>
-                    {comp.state === "ok" ? "Patuh — semua berlaku" : comp.state === "issue" ? `Kepatuhan ${comp.valid}/${comp.total}` : "Kepatuhan belum dinilai"}
+                    {comp.state === "ok" ? "Patuh - semua berlaku" : comp.state === "issue" ? `Kepatuhan ${comp.valid}/${comp.total}` : "Kepatuhan belum dinilai"}
                   </Badge>
                   {(() => {
                     const ins = v.insurance as { polis?: string; premi?: number; expiry?: string } | undefined;
@@ -346,8 +346,8 @@ export default function Vessels() {
                   <div><p className="text-sm font-bold text-navy-900">{v.built}</p><p className="text-[10px] text-steel-500">Tahun</p></div>
                 </div>
                 <div className="mt-2 grid grid-cols-3 gap-2 text-center">
-                  <div><p className="text-sm font-bold text-navy-900">{v.gt ?? "—"}</p><p className="text-[10px] text-steel-500">GT</p></div>
-                  <div><p className="text-sm font-bold text-navy-900">{v.bhp ? `${v.bhp}` : "—"}</p><p className="text-[10px] text-steel-500">BHP</p></div>
+                  <div><p className="text-sm font-bold text-navy-900">{v.gt ?? "-"}</p><p className="text-[10px] text-steel-500">GT</p></div>
+                  <div><p className="text-sm font-bold text-navy-900">{v.bhp ? `${v.bhp}` : "-"}</p><p className="text-[10px] text-steel-500">BHP</p></div>
                   <div><p className="text-sm font-bold text-navy-900">{slotCountFor(String(v.name))}</p><p className="text-[10px] text-steel-500">Slot Dock</p></div>
                 </div>
                 {(v.certificates ?? []).length > 0 && (

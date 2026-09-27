@@ -238,7 +238,7 @@ function sessionOnline(lastSeen: string): boolean {
 function sessionDuration(loginAt: string, lastSeen: string): string {
   const a = Date.parse(String(loginAt ?? ""));
   const b = Date.parse(String(lastSeen ?? ""));
-  if (Number.isNaN(a) || Number.isNaN(b)) return "—";
+  if (Number.isNaN(a) || Number.isNaN(b)) return "-";
   const mins = Math.max(0, Math.round((b - a) / 60000));
   if (mins < 60) return `${mins} mnt`;
   const h = Math.floor(mins / 60);
@@ -437,7 +437,7 @@ export default function Peran() {
     <div>
       <PageHeader
         title="Peran & Akses"
-        subtitle="Matriks RBAC tampilan + siap enforce — enforcement penuh di backend"
+        subtitle="Matriks RBAC tampilan + siap enforce - enforcement penuh di backend"
         icon={<KeyRound className="h-5 w-5" />}
         actions={
           <button className="btn-secondary text-xs" onClick={doExport}>
@@ -478,12 +478,12 @@ export default function Peran() {
         </div>
         {!remote ? (
           <p className="text-xs leading-relaxed text-steel-500">
-            Mode lokal — daftar pengguna live tampil setelah backend tersambung (VITE_API_URL).
+            Mode lokal - daftar pengguna live tampil setelah backend tersambung (VITE_API_URL).
             Matriks peran di bawah tetap menjadi acuan akses.
           </p>
         ) : !canManage ? (
           <p className="text-xs leading-relaxed text-steel-500">
-            Peran Anda ({session?.role ?? "-"}) tidak dapat mengelola pengguna — butuh peran Direktur, Manager, atau Developer.
+            Peran Anda ({session?.role ?? "-"}) tidak dapat mengelola pengguna - butuh peran Direktur, Manager, atau Developer.
           </p>
         ) : users.length === 0 && !usersLoading ? (
           <p className="text-xs text-steel-500">Belum ada pengguna di backend.</p>
@@ -568,10 +568,10 @@ export default function Peran() {
         </div>
         {!remote ? (
           <p className="text-xs leading-relaxed text-steel-500">
-            Mode lokal — sesi realtime tampil setelah backend tersambung (VITE_API_URL).
+            Mode lokal - sesi realtime tampil setelah backend tersambung (VITE_API_URL).
           </p>
         ) : sessions.length === 0 && !sessionsLoading ? (
-          <p className="text-xs text-steel-500">Belum ada sesi tercatat — login untuk membuat sesi.</p>
+          <p className="text-xs text-steel-500">Belum ada sesi tercatat - login untuk membuat sesi.</p>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full min-w-[720px] text-sm">
@@ -618,7 +618,7 @@ export default function Peran() {
 
       <Card className="mb-4 p-4">
         <div className="max-w-sm">
-          <Field label="Pilih peran" hint="Read-only — perubahan peran dilakukan saat backend tersedia">
+          <Field label="Pilih peran" hint="Read-only - perubahan peran dilakukan saat backend tersedia">
             <select className="input" value={role} onChange={(e) => setRole(e.target.value)}>
               {ROLES.map((r) => (
                 <option key={r} value={r}>{r}</option>
@@ -647,7 +647,7 @@ export default function Peran() {
                     const ok = granted(role, m, a);
                     return (
                       <td key={a} className="px-3 py-2.5 text-center">
-                        {ok ? <Badge tone="green">✓ Siap</Badge> : <Badge tone="gray">—</Badge>}
+                        {ok ? <Badge tone="green">✓ Siap</Badge> : <Badge tone="gray">-</Badge>}
                       </td>
                     );
                   })}
@@ -666,7 +666,7 @@ export default function Peran() {
         open={showCreate}
         onClose={() => setShowCreate(false)}
         title="Tambah pengguna"
-        subtitle="Direktur / Manager / Developer — password min. 6 karakter"
+        subtitle="Direktur / Manager / Developer - password min. 6 karakter"
         footer={
           <>
             <button className="btn-secondary" onClick={() => setShowCreate(false)}>Batal</button>
@@ -696,7 +696,7 @@ export default function Peran() {
           </Field>
           <Field label="Karyawan tertaut (opsional)" hint="Hubungkan akun ke data karyawan di SDM">
             <select className="input" value={form.employeeId} onChange={(e) => setForm((f) => ({ ...f, employeeId: e.target.value }))}>
-              <option value="">— Tanpa tautan —</option>
+              <option value="">- Tanpa tautan -</option>
               {(data.employees ?? []).map((e) => (
                 <option key={String(e.id)} value={String(e.id)}>{String(e.name ?? e.id)} ({String(e.id)})</option>
               ))}
@@ -708,7 +708,7 @@ export default function Peran() {
       <Modal
         open={linkTarget !== null}
         onClose={() => { setLinkTarget(null); setLinkValue(""); }}
-        title={`Tautkan karyawan — ${linkTarget?.username ?? ""}`}
+        title={`Tautkan karyawan - ${linkTarget?.username ?? ""}`}
         subtitle="Hubungkan akun login ke data karyawan (HR baca NIK & tautan ini)"
         footer={
           <>
@@ -719,7 +719,7 @@ export default function Peran() {
       >
         <Field label="Karyawan">
           <select className="input" value={linkValue} onChange={(e) => setLinkValue(e.target.value)}>
-            <option value="">— Lepas tautan —</option>
+            <option value="">- Lepas tautan -</option>
             {(data.employees ?? []).map((e) => (
               <option key={String(e.id)} value={String(e.id)}>{String(e.name ?? e.id)} ({String(e.id)})</option>
             ))}
@@ -730,7 +730,7 @@ export default function Peran() {
       <Modal
         open={pwTarget !== null}
         onClose={() => { setPwTarget(null); setPwValue(""); }}
-        title={`Reset password — ${pwTarget?.username ?? ""}`}
+        title={`Reset password - ${pwTarget?.username ?? ""}`}
         subtitle="Direktur / Manager / Developer dapat mereset tanpa password lama"
         footer={
           <>

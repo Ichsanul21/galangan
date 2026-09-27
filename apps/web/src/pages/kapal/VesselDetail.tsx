@@ -243,7 +243,7 @@ export default function VesselDetail() {
 
   const savePlan = async () => {
     const year = Number(planForm.year);
-    if (!Number.isFinite(year) || year <= baseYear || year > baseYear + 5) { toast(`Tahun rencana harus ${baseYear + 1}–${baseYear + 5}`, "info"); return; }
+    if (!Number.isFinite(year) || year <= baseYear || year > baseYear + 5) { toast(`Tahun rencana harus ${baseYear + 1}-${baseYear + 5}`, "info"); return; }
     await update("vessels", v.id, { plan5: [...plan5, { year, type: planForm.type, note: planForm.note.trim() }] });
     toast(`Rencana ${year} ditambahkan`);
     setPlanForm({ year: String(baseYear + 1), type: "Docking", note: "" });
@@ -321,10 +321,10 @@ export default function VesselDetail() {
       </div>
 
       <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <KpiCard label="MMSI" value={v.mmsi ? String(v.mmsi) : "—"} icon={<Ship className="h-5 w-5" />} />
-        <KpiCard label="Tonase GT / NT" value={v.gt !== undefined ? `${v.gt} / ${v.nt ?? "—"}` : "—"} icon={<Ship className="h-5 w-5" />} />
-        <KpiCard label="BHP Mesin Utama" value={v.bhp !== undefined && v.bhp !== "" ? `${v.bhp} HP` : "—"} icon={<Ship className="h-5 w-5" />} />
-        <KpiCard label="Tipe Mesin" value={v.engineType ? String(v.engineType) : "—"} icon={<Ship className="h-5 w-5" />} />
+        <KpiCard label="MMSI" value={v.mmsi ? String(v.mmsi) : "-"} icon={<Ship className="h-5 w-5" />} />
+        <KpiCard label="Tonase GT / NT" value={v.gt !== undefined ? `${v.gt} / ${v.nt ?? "-"}` : "-"} icon={<Ship className="h-5 w-5" />} />
+        <KpiCard label="BHP Mesin Utama" value={v.bhp !== undefined && v.bhp !== "" ? `${v.bhp} HP` : "-"} icon={<Ship className="h-5 w-5" />} />
+        <KpiCard label="Tipe Mesin" value={v.engineType ? String(v.engineType) : "-"} icon={<Ship className="h-5 w-5" />} />
       </div>
 
       {projects.length > 0 && (
@@ -333,7 +333,7 @@ export default function VesselDetail() {
           <div className="flex flex-wrap gap-2">
             {projects.map((p) => (
               <Link key={p.id} to={`/proyek/${p.id}`} className="rounded-lg border border-steel-200 px-3 py-1.5 text-sm font-medium text-navy-800 hover:border-ocean-400 hover:text-ocean-600">
-                {p.id} — {p.progress}%
+                {p.id} - {p.progress}%
               </Link>
             ))}
           </div>
@@ -360,7 +360,7 @@ export default function VesselDetail() {
               </div>
             </div>
           ))}
-          {vesselWarranties.length === 0 && <p className="text-xs text-steel-400">Belum ada garansi — dibuat dari tab Terkait proyek saat Selesai.</p>}
+          {vesselWarranties.length === 0 && <p className="text-xs text-steel-400">Belum ada garansi - dibuat dari tab Terkait proyek saat Selesai.</p>}
         </div>
       </Card>
 
@@ -388,7 +388,7 @@ export default function VesselDetail() {
                     );
                   })}
                   {certs.length === 0 && (
-                    <p className="text-sm text-steel-400">Belum ada sertifikat — kapal masih dalam pembangunan.</p>
+                    <p className="text-sm text-steel-400">Belum ada sertifikat - kapal masih dalam pembangunan.</p>
                   )}
                 </div>
               </Card>
@@ -440,9 +440,9 @@ export default function VesselDetail() {
                 <div className="rounded-lg bg-surface p-3"><dt className="text-xs text-steel-500">Bendera</dt><dd className="text-sm font-medium text-navy-900">{v.flag}</dd></div>
                 <div className="rounded-lg bg-surface p-3"><dt className="text-xs text-steel-500">LOA / Beam / Draft</dt><dd className="text-sm font-medium text-navy-900">{v.loa} / {v.beam} / {v.draft} m</dd></div>
                 <div className="rounded-lg bg-surface p-3"><dt className="text-xs text-steel-500">Bollard Pull</dt><dd className="text-sm font-medium text-navy-900">{v.bollard} T</dd></div>
-                <div className="rounded-lg bg-surface p-3"><dt className="text-xs text-steel-500">MMSI</dt><dd className="text-sm font-medium text-navy-900">{v.mmsi ?? "—"}</dd></div>
-                <div className="rounded-lg bg-surface p-3"><dt className="text-xs text-steel-500">GT / NT</dt><dd className="text-sm font-medium text-navy-900">{v.gt ?? "—"} / {v.nt ?? "—"}</dd></div>
-                <div className="rounded-lg bg-surface p-3"><dt className="text-xs text-steel-500">Mesin Utama</dt><dd className="text-sm font-medium text-navy-900">{v.engineType ?? "—"} · {v.bhp ?? "—"} HP</dd></div>
+                <div className="rounded-lg bg-surface p-3"><dt className="text-xs text-steel-500">MMSI</dt><dd className="text-sm font-medium text-navy-900">{v.mmsi ?? "-"}</dd></div>
+                <div className="rounded-lg bg-surface p-3"><dt className="text-xs text-steel-500">GT / NT</dt><dd className="text-sm font-medium text-navy-900">{v.gt ?? "-"} / {v.nt ?? "-"}</dd></div>
+                <div className="rounded-lg bg-surface p-3"><dt className="text-xs text-steel-500">Mesin Utama</dt><dd className="text-sm font-medium text-navy-900">{v.engineType ?? "-"} · {v.bhp ?? "-"} HP</dd></div>
               </dl>
             </Card>
           )}
@@ -546,7 +546,7 @@ export default function VesselDetail() {
           {tab === "Rencana & Operasional" && (
             <div className="space-y-5">
               <Card className="p-5">
-                <h3 className="text-sm font-semibold text-navy-900">Docking Plan 5 Tahun ({baseYear + 1}–{baseYear + 5})</h3>
+                <h3 className="text-sm font-semibold text-navy-900">Docking Plan 5 Tahun ({baseYear + 1}-{baseYear + 5})</h3>
                 <p className="mt-0.5 text-xs text-steel-500">Survey/docking terjadwal otomatis dari daftar survey & next due riwayat docking · tambah rencana manual di bawah</p>
                 <div className="mt-3 overflow-x-auto">
                   <table className="w-full">
@@ -564,14 +564,14 @@ export default function VesselDetail() {
                           <tr key={y} className="hover:bg-surface">
                             <td className="td font-semibold text-navy-900">{y}</td>
                             <td className="td text-xs text-steel-600">
-                              {auto.length === 0 && <span className="text-steel-400">—</span>}
+                              {auto.length === 0 && <span className="text-steel-400">-</span>}
                               {auto.map((a, i) => <p key={i}>{a}</p>)}
                             </td>
                             <td className="td text-xs text-steel-600">
-                              {manual.length === 0 && <span className="text-steel-400">—</span>}
+                              {manual.length === 0 && <span className="text-steel-400">-</span>}
                               {manual.map((m) => (
                                 <p key={m.idx} className="flex flex-wrap items-center justify-between gap-2">
-                                  <span>{m.type}{m.note ? ` — ${m.note}` : ""}</span>
+                                  <span>{m.type}{m.note ? ` - ${m.note}` : ""}</span>
                                   <button className="btn-secondary text-xs" onClick={() => removePlan(m.idx)}>Hapus</button>
                                 </p>
                               ))}
@@ -676,7 +676,7 @@ export default function VesselDetail() {
         </div>
       </div>
 
-      <Modal open={showCert} onClose={() => setShowCert(false)} title={`Tambah Sertifikat — ${v.name}`}
+      <Modal open={showCert} onClose={() => setShowCert(false)} title={`Tambah Sertifikat - ${v.name}`}
         footer={<><button className="btn-secondary" onClick={() => setShowCert(false)}>Batal</button><button className="btn-primary" onClick={saveCert}>Simpan</button></>}>
         <div className="space-y-3">
           <Field label="Nama sertifikat"><input className="input" value={certForm.name} onChange={(e) => setCertForm({ ...certForm, name: e.target.value })} placeholder="cth: Load Line Certificate" /></Field>
@@ -687,7 +687,7 @@ export default function VesselDetail() {
         </div>
       </Modal>
 
-      <Modal open={showSurvey} onClose={() => setShowSurvey(false)} title={`Jadwalkan Survey — ${v.name}`} subtitle="Masuk ke timeline & daftar survey"
+      <Modal open={showSurvey} onClose={() => setShowSurvey(false)} title={`Jadwalkan Survey - ${v.name}`} subtitle="Masuk ke timeline & daftar survey"
         footer={<><button className="btn-secondary" onClick={() => setShowSurvey(false)}>Batal</button><button className="btn-primary" onClick={saveSurvey}>Jadwalkan</button></>}>
         <div className="space-y-3">
           <FormGrid>
@@ -712,7 +712,7 @@ export default function VesselDetail() {
         </div>
       </Modal>
 
-      <Modal open={showSpec} onClose={() => setShowSpec(false)} title={`Edit Spesifikasi — ${v.name}`}
+      <Modal open={showSpec} onClose={() => setShowSpec(false)} title={`Edit Spesifikasi - ${v.name}`}
         footer={<><button className="btn-secondary" onClick={() => setShowSpec(false)}>Batal</button><button className="btn-primary" onClick={saveSpec}>Simpan</button></>}>
         <FormGrid>
           <Field label="MMSI (9 digit)"><input className="input font-mono" value={specForm.mmsi} onChange={(e) => setSpecForm({ ...specForm, mmsi: e.target.value })} placeholder="cth: 525003456" /></Field>
@@ -723,7 +723,7 @@ export default function VesselDetail() {
         </FormGrid>
       </Modal>
 
-      <Modal open={showPsc} onClose={() => setShowPsc(false)} title={`Catat Inspeksi PSC — ${v.name}`}
+      <Modal open={showPsc} onClose={() => setShowPsc(false)} title={`Catat Inspeksi PSC - ${v.name}`}
         footer={<><button className="btn-secondary" onClick={() => setShowPsc(false)}>Batal</button><button className="btn-primary" onClick={savePsc}>Simpan</button></>}>
         <div className="space-y-3">
           <FormGrid>
@@ -739,7 +739,7 @@ export default function VesselDetail() {
         </div>
       </Modal>
 
-      <Modal open={showDock} onClose={() => setShowDock(false)} title={`${editingDock === null ? "Tambah" : "Edit"} Riwayat Docking — ${v.name}`} subtitle="Scope, hasil & next due tersimpan di kapal"
+      <Modal open={showDock} onClose={() => setShowDock(false)} title={`${editingDock === null ? "Tambah" : "Edit"} Riwayat Docking - ${v.name}`} subtitle="Scope, hasil & next due tersimpan di kapal"
         footer={<><button className="btn-secondary" onClick={() => setShowDock(false)}>Batal</button><button className="btn-primary" onClick={saveDock}>Simpan</button></>}>
         <div className="space-y-3">
           <FormGrid>
@@ -752,7 +752,7 @@ export default function VesselDetail() {
         </div>
       </Modal>
 
-      <Modal open={showIns} onClose={() => setShowIns(false)} title={`Asuransi — ${v.name}`} subtitle="Polis, premi & expiry · alert H-30 tampil di kartu kapal"
+      <Modal open={showIns} onClose={() => setShowIns(false)} title={`Asuransi - ${v.name}`} subtitle="Polis, premi & expiry · alert H-30 tampil di kartu kapal"
         footer={<><button className="btn-secondary" onClick={() => setShowIns(false)}>Batal</button><button className="btn-primary" onClick={saveIns}>Simpan</button></>}>
         <div className="space-y-3">
           <Field label="No. polis"><input className="input font-mono" value={insForm.polis} onChange={(e) => setInsForm({ ...insForm, polis: e.target.value })} placeholder="cth: HULL-2026-014" /></Field>

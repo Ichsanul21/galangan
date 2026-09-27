@@ -1,4 +1,4 @@
-// Draft lokal per halaman — localStorage agar draf tidak hilang saat tab ditutup.
+// Draft lokal per halaman - localStorage agar draf tidak hilang saat tab ditutup.
 // Kunci: `isms.draft.*`. Muat malas (lazy) + simpan via effect di tiap halaman.
 
 import { useEffect, useState, type Dispatch, type SetStateAction } from "react";
@@ -22,7 +22,7 @@ export function useDraftState<T>(key: string, initial: T | (() => T)): [T, Dispa
     try {
       localStorage.setItem(key, JSON.stringify(value));
     } catch {
-      /* storage penuh — abaikan */
+      /* storage penuh - abaikan */
     }
   }, [key, value]);
   return [value, setValue];

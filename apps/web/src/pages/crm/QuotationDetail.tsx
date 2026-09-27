@@ -173,7 +173,7 @@ export default function QuotationDetail() {
       toast(`${quotation.id} menjadi proyek ${created.id}`);
       setConvertOpen(false);
     } catch {
-      toast(`Konversi ${qid} gagal di tengah jalan — periksa daftar proyek & quotation`, "info");
+      toast(`Konversi ${qid} gagal di tengah jalan - periksa daftar proyek & quotation`, "info");
     }
   };
 
@@ -369,7 +369,7 @@ export default function QuotationDetail() {
         open={convertOpen}
         onClose={() => setConvertOpen(false)}
         title={`Konversi ${quotation.id} jadi proyek?`}
-        subtitle="Serah terima ke PM — checklist, PM, dan jadwal wajib diisi"
+        subtitle="Serah terima ke PM - checklist, PM, dan jadwal wajib diisi"
         footer={<><button className="btn-secondary" onClick={() => setConvertOpen(false)}>Batal</button><button className="btn-primary" onClick={confirmConvert}>Ya, konversi</button></>}
       >
         <div className="space-y-3">

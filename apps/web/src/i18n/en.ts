@@ -1,5 +1,5 @@
 // English dictionary. Keys mirror id.ts 1:1. DATA values stay Indonesian
-// (canonical business language) — see status.ts.
+// (canonical business language) - see status.ts.
 import type { Dict } from "./types";
 
 export const en: Dict = {
@@ -81,7 +81,7 @@ export const en: Dict = {
     username: "Username / ID / Email",
     password: "Password",
     welcome: "Welcome back!",
-    sessionExpired: "Session expired — please sign in again",
+    sessionExpired: "Session expired - please sign in again",
     invalidCredentials: "Incorrect username or password.",
     lockedOut: "Too many failed attempts. Wait 30 seconds and try again.",
     fillUsername: "Enter a valid username/ID or email (no spaces).",
@@ -89,16 +89,16 @@ export const en: Dict = {
     subtitle: "Access the yard control center with your crew account.",
     continue: "Sign in to continue",
     passwordPh: "Enter password",
-    demoTitle: "Demo access — one click sign in",
+    demoTitle: "Demo access - one click sign in",
     asUser: "Signed in as",
     demoAccount: "demo account",
   },
   toast: {
-    backendFallback: "Backend unreachable — local mode",
-    forbidden: "Access denied — insufficient role",
+    backendFallback: "Backend unreachable - local mode",
+    forbidden: "Access denied - insufficient role",
     saved: "Saved",
     deleted: "Deleted",
-    failed: "Failed — please check again",
+    failed: "Failed - please check again",
     copied: "Copied",
     exported: "Exported to Excel",
   },
@@ -125,10 +125,10 @@ export const en: Dict = {
     markGroupRead: "Mark group as read",
     open: "Open",
     persistsNote: "This notification stays until the condition is resolved.",
-    cappedNote: "Showing first 200 — filter the table for the rest.",
+    cappedNote: "Showing first 200 - filter the table for the rest.",
     jumpHint: "click to jump to its row",
     empty: "No notifications",
-    emptyHint: "Nothing matches the filter — all clear.",
+    emptyHint: "Nothing matches the filter - all clear.",
   },
   session: {
     online: "Online",
@@ -143,7 +143,7 @@ export const en: Dict = {
     userLog: "View log",
     sessionsTitle: "Active sessions",
     noSessions: "No recorded sessions yet.",
-    demoSession: "Demo session — stored in browser",
+    demoSession: "Demo session - stored in browser",
     demoReset: "Demo data has been reset",
     pendingSync: "collections pending sync",
     syncNow: "Sync now",

@@ -25,7 +25,7 @@ export function canSetTarget(role: string | undefined | null): boolean {
 }
 
 /* Tulis settings/coa di backend: hanya direktur/developer (BE 403 untuk
-   yang lain — samakan di UI agar toast tidak berbohong). */
+   yang lain - samakan di UI agar toast tidak berbohong). */
 export function canWriteSettings(role: string | undefined | null): boolean {
   return ["direktur", "developer", "Direktur", "Developer"].includes(String(role ?? ""));
 }
@@ -51,7 +51,7 @@ function loadSession(): Session | null {
 }
 
 /* Role sesi saat ini (null bila belum login). Perilaku: baca sesi yang sama
-   dengan yang dipakai AuthProvider — tidak mengubah kebiasaan rolecheck. */
+   dengan yang dipakai AuthProvider - tidak mengubah kebiasaan rolecheck. */
 export function getRole(): string | null {
   return loadSession()?.role ?? null;
 }

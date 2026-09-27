@@ -1,6 +1,6 @@
 // Jurnal kas/bank otomatis idempoten (uang mengalir): dipakai Finance
 // (pelunasan invoice, bayar hutang) dan Payroll (bayar gaji).
-// Idempoten via dokumen unik — aman dipanggil ulang / dari aksi massal.
+// Idempoten via dokumen unik - aman dipanggil ulang / dari aksi massal.
 import type { CollectionKey, StoreItem } from "../data/store";
 
 export interface CashJournalArgs {

@@ -177,7 +177,7 @@ export default function QCSafety() {
 
   const openNcr = ncrList.filter((n) => n.status !== "Tertutup").length;
   const criticalOpen = ncrList.filter((n) => n.severity === "Critical" && n.status !== "Tertutup").length;
-  // Ambang sertifikat dari Pengaturan (ALERT_CERT_DAYS) — selaras alert engine.
+  // Ambang sertifikat dari Pengaturan (ALERT_CERT_DAYS) - selaras alert engine.
   const CERT_WINDOW = getSetting(data, "ALERT_CERT_DAYS", 90);
 
   const ncrDist = Array.from(
@@ -256,7 +256,7 @@ export default function QCSafety() {
     let ncrDone = false;
     try {
       if (inspForm.status === "Lulus" && found > allowed) {
-      // Gagal AQL tidak boleh lolos diam-diam — NCR otomatis + inspeksi tercatat NCR.
+      // Gagal AQL tidak boleh lolos diam-diam - NCR otomatis + inspeksi tercatat NCR.
       const projAql = data.projects.find((p) => p.id === inspForm.project);
       const ncrAuto = await add("ncr", {
         project: inspForm.project, vessel: projAql?.vessel ?? "-", type: "Umum",
@@ -265,7 +265,7 @@ export default function QCSafety() {
         issue: `Gagal AQL di ${inspForm.point.trim()}: temuan ${found} > batas ${allowed}`,
         branch: branchOf(inspForm.branch),
       }, { action: "menerbitkan NCR (gagal AQL)", module: "QC" });
-      toast(`Melebihi AQL — NCR ${ncrAuto.id} dibuat otomatis, inspeksi dicatat sebagai NCR`);
+      toast(`Melebihi AQL - NCR ${ncrAuto.id} dibuat otomatis, inspeksi dicatat sebagai NCR`);
       finalStatus = "NCR";
       ncrDone = true;
     }
@@ -296,7 +296,7 @@ export default function QCSafety() {
     setShowInsp(false);
     setInspForm({ project: "", point: "", status: "Terjadwal", date: todayISO(), holdType: "Witness", nde: "Tidak", ndeMethod: "UT", inspector: "", sampleSize: "", defectsAllowed: "0", defectsFound: "0", calTool: "", branch: "" });
     } catch {
-      toast("Inspeksi gagal disimpan di tengah jalan — periksa daftar inspeksi & NCR", "info");
+      toast("Inspeksi gagal disimpan di tengah jalan - periksa daftar inspeksi & NCR", "info");
     }
   };
 
@@ -369,11 +369,11 @@ export default function QCSafety() {
       journaled = true;
     }
     log("menutup NCR", journaled ? `${closingNcr.id} · rework ${fmtRupiah(Math.round(cost))} dijurnal` : closingNcr.id, "QC");
-    toast(journaled ? `${closingNcr.id} ditutup — rework ${fmtRupiah(Math.round(cost))} masuk jurnal` : `${closingNcr.id} ditutup`);
+    toast(journaled ? `${closingNcr.id} ditutup - rework ${fmtRupiah(Math.round(cost))} masuk jurnal` : `${closingNcr.id} ditutup`);
     setClosingNcr(null);
     setNcrDetail((d) => (d && d.id === closingNcr.id ? { ...d, status: "Tertutup" } : d));
     } catch {
-      toast(`Penutupan ${ncrId} gagal di tengah jalan — periksa NCR & jurnal`, "info");
+      toast(`Penutupan ${ncrId} gagal di tengah jalan - periksa NCR & jurnal`, "info");
     }
   };
 
@@ -414,7 +414,7 @@ export default function QCSafety() {
     if (!followUpForm.date) { toast("Tanggal verifikasi lanjutan wajib diisi", "info"); return; }
     if (!followUpForm.note.trim()) { toast("Catatan verifikasi lanjutan wajib diisi", "info"); return; }
     await update("ncr", followUpNcr.id, { followUpDate: followUpForm.date, followUpNote: followUpForm.note.trim() });
-    log("melakukan verifikasi lanjutan", `${followUpNcr.id} · ${fmtTanggal(followUpForm.date)} — ${followUpForm.note.trim()}`, "QC");
+    log("melakukan verifikasi lanjutan", `${followUpNcr.id} · ${fmtTanggal(followUpForm.date)} - ${followUpForm.note.trim()}`, "QC");
     toast(`Verifikasi lanjutan ${followUpNcr.id} dicatat`);
     setNcrDetail((d) => (d && d.id === followUpNcr.id ? { ...d, followUpDate: followUpForm.date, followUpNote: followUpForm.note.trim() } : d));
     setFollowUpNcr(null);
@@ -424,7 +424,7 @@ export default function QCSafety() {
   const exportNcr = () => {
     void exportExcel(
       [["NCR", "Proyek", "Severity", "Status", "Tenggat", "Ditutup", "Jam Rework", "Rate (Rp/jam)", "Material (Rp)", "Biaya Rework (Rp)", "Verifikasi Lanjutan"],
-        ...ncrList.map((n) => [n.id, n.project, n.severity, n.status, fmtTanggal(String(n.due ?? "")), fmtTanggal(String(n.closedAt ?? "")), Number(n.reworkHours || 0), Number(n.reworkRate || 0), Number(n.reworkMaterial || 0), reworkCost(n), n.followUpDate ? `${fmtTanggal(String(n.followUpDate))} — ${n.followUpNote ?? ""}` : "—"])],
+        ...ncrList.map((n) => [n.id, n.project, n.severity, n.status, fmtTanggal(String(n.due ?? "")), fmtTanggal(String(n.closedAt ?? "")), Number(n.reworkHours || 0), Number(n.reworkRate || 0), Number(n.reworkMaterial || 0), reworkCost(n), n.followUpDate ? `${fmtTanggal(String(n.followUpDate))} - ${n.followUpNote ?? ""}` : "-"])],
       `NCR-Rework-${today}`,
       "NCR",
     );
@@ -511,7 +511,7 @@ export default function QCSafety() {
     setShowTransmit(false);
     setTransmitForm({ to: "", date: todayISO(), ids: [] });
     } catch {
-      toast("Transmittal gagal di tengah jalan — periksa status drawing", "info");
+      toast("Transmittal gagal di tengah jalan - periksa status drawing", "info");
     }
   };
 
@@ -553,7 +553,7 @@ export default function QCSafety() {
     const emp = data.employees.find((e) => e.id === ppeForm.employeeId);
     const created = await add("toolbox", {
       type: "PPE Check",
-      project: ppeForm.project, topic: `PPE Check — ${PPE_ITEMS.length} item lengkap`, date: ppeForm.date,
+      project: ppeForm.project, topic: `PPE Check - ${PPE_ITEMS.length} item lengkap`, date: ppeForm.date,
       attendees: 0, pic: "HSE", employeeId: ppeForm.employeeId,
       branch: branchOf(ppeForm.branch) || String(emp?.branch ?? ""),
     }, { action: "mencatat PPE check", module: "Safety" });
@@ -603,7 +603,7 @@ export default function QCSafety() {
     const answered = auditChecked.length;
     if (answered < AUDIT_ITEMS.length) return;
     log("melakukan audit HSE", `skor ${auditScore}% (${auditChecked.filter(Boolean).length}/${AUDIT_ITEMS.length} item)`, "Safety");
-    toast(`Audit HSE disimpan — skor ${auditScore}%`);
+    toast(`Audit HSE disimpan - skor ${auditScore}%`);
     setAuditChecked(AUDIT_ITEMS.map(() => false));
   };
 
@@ -658,7 +658,7 @@ export default function QCSafety() {
                 </FilterPopover>
                 {(inspQ.trim() !== "" || inspStatus !== "Semua") && (
                   <span className="text-xs text-steel-400">
-                    Filter aktif di tab Inspeksi — {sortedInsp.length} baris
+                    Filter aktif di tab Inspeksi - {sortedInsp.length} baris
                   </span>
                 )}
               </div>
@@ -674,12 +674,12 @@ export default function QCSafety() {
                         <td className="td text-steel-600 font-mono text-xs">{i.project}</td>
                         <td className="td text-steel-600 max-w-[240px] truncate" title={String(i.point)}>{i.point}</td>
                         <td className="td text-steel-600 font-mono text-xs">{i.itp}</td>
-                        <td className="td"><Badge tone={i.holdType === "Hold" ? "red" : i.holdType === "Witness" ? "amber" : "blue"}>{i.holdType ?? "—"}</Badge></td>
+                        <td className="td"><Badge tone={i.holdType === "Hold" ? "red" : i.holdType === "Witness" ? "amber" : "blue"}>{i.holdType ?? "-"}</Badge></td>
                         <td className="td text-steel-600 text-xs">{i.nde === "Ya" ? `Ya · ${i.ndeMethod ?? "-"}` : "Tidak"}</td>
                         <td className="td text-steel-600 text-xs">
-                          {i.sampleSize ? `n=${i.sampleSize} · temuan ${i.defectsFound ?? 0}/${i.defectsAllowed ?? 0}` : "—"}
+                          {i.sampleSize ? `n=${i.sampleSize} · temuan ${i.defectsFound ?? 0}/${i.defectsAllowed ?? 0}` : "-"}
                         </td>
-                        <td className="td text-steel-600 text-xs">{i.inspector ?? "—"}</td>
+                        <td className="td text-steel-600 text-xs">{i.inspector ?? "-"}</td>
                         <td className="td text-steel-600">{fmtTanggal(i.date)}</td>
                         <td className="td"><StatusBadge status={i.status} /></td>
                         <td className="td"><button className="btn-secondary text-xs" onClick={() => setInspDetail(i)}>Detail</button></td>
@@ -885,7 +885,7 @@ export default function QCSafety() {
                     </label>
                   ))}
                 </div>
-                <p className="mt-2 text-xs text-steel-500">Lengkap {PPE_ITEMS.filter((i) => ppeChecked[i]).length}/{PPE_ITEMS.length} — bila lengkap, checklist tersimpan sebagai record toolbox bertopik PPE Check.</p>
+                <p className="mt-2 text-xs text-steel-500">Lengkap {PPE_ITEMS.filter((i) => ppeChecked[i]).length}/{PPE_ITEMS.length} - bila lengkap, checklist tersimpan sebagai record toolbox bertopik PPE Check.</p>
                 <button className="btn-primary mt-2 text-xs" onClick={savePpeCheck}>Simpan PPE Check</button>
               </Card>
 
@@ -924,7 +924,7 @@ export default function QCSafety() {
                   <p className="text-xs font-semibold text-steel-500">Riwayat 5 audit terakhir</p>
                   <div className="mt-1 space-y-1">
                     {auditHistory.map((a) => (
-                      <p key={a.id} className="text-xs text-steel-600">{a.action} — {a.target} <span className="text-steel-400">· {a.time}</span></p>
+                      <p key={a.id} className="text-xs text-steel-600">{a.action} - {a.target} <span className="text-steel-400">· {a.time}</span></p>
                     ))}
                     {auditHistory.length === 0 && <p className="text-xs text-steel-400">Belum ada audit tersimpan.</p>}
                   </div>
@@ -967,7 +967,7 @@ export default function QCSafety() {
                           <Badge tone={i.type === "Near Miss" ? "amber" : "blue"}>{i.type}</Badge>
                         </div>
                         <p className="mt-1 text-sm text-steel-700">{i.desc}</p>
-                        <p className="text-xs text-steel-500 mt-0.5">{fmtTanggal(i.date)} · {i.project ?? i.projectId ?? "—"} · {i.location} · Severity {i.severity}</p>
+                        <p className="text-xs text-steel-500 mt-0.5">{fmtTanggal(i.date)} · {i.project ?? i.projectId ?? "-"} · {i.location} · Severity {i.severity}</p>
                       </div>
                       <button className="btn-secondary shrink-0 text-xs" onClick={() => void incidentToNcr(i)}>Buatkan NCR</button>
                     </div>
@@ -980,11 +980,11 @@ export default function QCSafety() {
           {tab === "Sertifikat" && (
             <div className="space-y-4">
               <Card className="p-4">
-                <h3 className="text-sm font-semibold text-navy-900">Perlu perhatian — expire dalam {String(CERT_WINDOW)} hari</h3>
+                <h3 className="text-sm font-semibold text-navy-900">Perlu perhatian - expire dalam {String(CERT_WINDOW)} hari</h3>
                 <div className="mt-2 space-y-2 text-sm">
                   {certAttention.map((c) => (
                     <div key={`${c.vessel}-${c.name}`} className="flex items-center justify-between gap-2">
-                      <span className="truncate text-steel-600" title={`${c.name} — ${c.vessel} · berlaku hingga ${fmtTanggal(c.expires)}`}>{c.name} — {c.vessel}</span>
+                      <span className="truncate text-steel-600" title={`${c.name} - ${c.vessel} · berlaku hingga ${fmtTanggal(c.expires)}`}>{c.name} - {c.vessel}</span>
                       <Badge tone={(c.days as number) < 0 ? "red" : "amber"}>
                         {(c.days as number) < 0 ? `Lewat ${String(Math.abs(c.days as number))} hari` : `Sisa ${String(c.days)} hari`}
                       </Badge>
@@ -1025,7 +1025,7 @@ export default function QCSafety() {
             <Field label="Proyek">
               <select className="input" value={inspForm.project} onChange={(e) => setInspForm({ ...inspForm, project: e.target.value })}>
                 <option value="">Pilih proyek…</option>
-                {data.projects.map((p) => <option key={p.id} value={p.id}>{p.id} — {p.vessel}</option>)}
+                {data.projects.map((p) => <option key={p.id} value={p.id}>{p.id} - {p.vessel}</option>)}
               </select>
             </Field>
             <Field label="Cabang" hint={`Default ikut global (${branch})`}>
@@ -1096,7 +1096,7 @@ export default function QCSafety() {
             <Field label="Proyek">
               <select className="input" value={ncrForm.project} onChange={(e) => setNcrForm({ ...ncrForm, project: e.target.value })}>
                 <option value="">Pilih proyek…</option>
-                {data.projects.map((p) => <option key={p.id} value={p.id}>{p.id} — {p.vessel}</option>)}
+                {data.projects.map((p) => <option key={p.id} value={p.id}>{p.id} - {p.vessel}</option>)}
               </select>
             </Field>
             <Field label="Cabang" hint={`Default ikut global (${branch})`}>
@@ -1141,7 +1141,7 @@ export default function QCSafety() {
         {ncrDetail && (
           <div>
             <dl className="dl-div text-sm">
-              {[["Proyek", ncrDetail.project], ["Kapal", ncrDetail.vessel], ["Kategori", ncrDetail.type], ["Severity", ncrDetail.severity], ["Dilaporkan", fmtTanggal(ncrDetail.raised)], ["Tenggat CAPA", fmtTanggal(ncrDetail.due)], ["Root-cause", ncrDetail.causeCat ? `${ncrDetail.causeCat}${ncrDetail.causeNote ? ` — ${ncrDetail.causeNote}` : ""}` : "—"], ["Uraian", ncrDetail.issue], ...(ncrDetail.verifiedBy ? [["Diverifikasi oleh", `${ncrDetail.verifiedBy}${ncrDetail.verifyNote ? ` — ${ncrDetail.verifyNote}` : ""}`]] : []), ...(ncrDetail.closedAt ? [["Ditutup", fmtTanggal(ncrDetail.closedAt)]] : []), ...(ncrDetail.reopenReason ? [["Alasan dibuka kembali", ncrDetail.reopenReason]] : [])].map(([k, v]) => (
+              {[["Proyek", ncrDetail.project], ["Kapal", ncrDetail.vessel], ["Kategori", ncrDetail.type], ["Severity", ncrDetail.severity], ["Dilaporkan", fmtTanggal(ncrDetail.raised)], ["Tenggat CAPA", fmtTanggal(ncrDetail.due)], ["Root-cause", ncrDetail.causeCat ? `${ncrDetail.causeCat}${ncrDetail.causeNote ? ` - ${ncrDetail.causeNote}` : ""}` : "-"], ["Uraian", ncrDetail.issue], ...(ncrDetail.verifiedBy ? [["Diverifikasi oleh", `${ncrDetail.verifiedBy}${ncrDetail.verifyNote ? ` - ${ncrDetail.verifyNote}` : ""}`]] : []), ...(ncrDetail.closedAt ? [["Ditutup", fmtTanggal(ncrDetail.closedAt)]] : []), ...(ncrDetail.reopenReason ? [["Alasan dibuka kembali", ncrDetail.reopenReason]] : [])].map(([k, v]) => (
                 <div key={k} className="flex justify-between gap-4"><dt className="shrink-0 text-steel-500">{k}</dt><dd className="text-right font-medium text-navy-900">{v}</dd></div>
               ))}
               <div className="flex justify-between gap-4"><dt className="text-steel-500">Status</dt><dd><Badge tone={ncrTone[ncrDetail.status] ?? "gray"}>{ncrDetail.status}</Badge></dd></div>
@@ -1170,7 +1170,7 @@ export default function QCSafety() {
                 {needsFollowUp(ncrDetail) && <Badge tone="amber">Follow-up H+30</Badge>}
               </div>
               {ncrDetail.followUpDate ? (
-                <p className="mt-1 text-sm text-steel-600">Terverifikasi {fmtTanggal(String(ncrDetail.followUpDate))} — {String(ncrDetail.followUpNote ?? "")}</p>
+                <p className="mt-1 text-sm text-steel-600">Terverifikasi {fmtTanggal(String(ncrDetail.followUpDate))} - {String(ncrDetail.followUpNote ?? "")}</p>
               ) : (
                 <p className="mt-1 text-xs text-steel-500">
                   {ncrDetail.status === "Tertutup"
@@ -1193,7 +1193,7 @@ export default function QCSafety() {
         {inspDetail && (
           <div>
             <dl className="dl-div text-sm">
-              {[["Proyek", inspDetail.project], ["Titik", inspDetail.point], ["ITP", inspDetail.itp], ["Tanggal", fmtTanggal(inspDetail.date)], ["Hold / Witness", inspDetail.holdType ?? "—"], ["NDE", inspDetail.nde === "Ya" ? `Ya · ${inspDetail.ndeMethod ?? "-"} · ${inspDetail.calTool ? calLabel(String(inspDetail.calTool)) : "tanpa alat"}` : "Tidak"], ["Sampling AQL", inspDetail.sampleSize ? `n=${inspDetail.sampleSize} · temuan ${inspDetail.defectsFound ?? 0} / batas ${inspDetail.defectsAllowed ?? 0} · ${(Number(inspDetail.defectsFound ?? 0) <= Number(inspDetail.defectsAllowed ?? 0)) ? "Lulus AQL" : "Gagal AQL"}` : "—"], ["Inspector", inspDetail.inspector ?? "—"]].map(([k, v]) => (
+              {[["Proyek", inspDetail.project], ["Titik", inspDetail.point], ["ITP", inspDetail.itp], ["Tanggal", fmtTanggal(inspDetail.date)], ["Hold / Witness", inspDetail.holdType ?? "-"], ["NDE", inspDetail.nde === "Ya" ? `Ya · ${inspDetail.ndeMethod ?? "-"} · ${inspDetail.calTool ? calLabel(String(inspDetail.calTool)) : "tanpa alat"}` : "Tidak"], ["Sampling AQL", inspDetail.sampleSize ? `n=${inspDetail.sampleSize} · temuan ${inspDetail.defectsFound ?? 0} / batas ${inspDetail.defectsAllowed ?? 0} · ${(Number(inspDetail.defectsFound ?? 0) <= Number(inspDetail.defectsAllowed ?? 0)) ? "Lulus AQL" : "Gagal AQL"}` : "-"], ["Inspector", inspDetail.inspector ?? "-"]].map(([k, v]) => (
                 <div key={k} className="flex justify-between gap-4"><dt className="shrink-0 text-steel-500">{k}</dt><dd className="text-right font-medium text-navy-900">{v}</dd></div>
               ))}
               <div className="flex justify-between gap-4"><dt className="text-steel-500">Hasil</dt><dd><StatusBadge status={inspDetail.status} /></dd></div>
@@ -1254,7 +1254,7 @@ export default function QCSafety() {
             <Field label="Proyek terkait" hint="Insiden terbaca di subkontraktor yang mengerjakan proyek ini">
               <select className="input" value={incForm.project} onChange={(e) => setIncForm({ ...incForm, project: e.target.value })}>
                 <option value="">Pilih proyek…</option>
-                {data.projects.map((p) => <option key={p.id} value={p.id}>{p.id} — {p.vessel}</option>)}
+                {data.projects.map((p) => <option key={p.id} value={p.id}>{p.id} - {p.vessel}</option>)}
               </select>
             </Field>
             <Field label="Cabang" hint={`Default ikut global (${branch})`}>
@@ -1332,7 +1332,7 @@ export default function QCSafety() {
             <Field label="Proyek">
               <select className="input" value={jsaForm.project} onChange={(e) => setJsaForm({ ...jsaForm, project: e.target.value })}>
                 <option value="">Pilih proyek…</option>
-                {data.projects.map((p) => <option key={p.id} value={p.id}>{p.id} — {p.vessel}</option>)}
+                {data.projects.map((p) => <option key={p.id} value={p.id}>{p.id} - {p.vessel}</option>)}
               </select>
             </Field>
             <Field label="Cabang" hint={`Default ikut global (${branch})`}>
@@ -1358,7 +1358,7 @@ export default function QCSafety() {
             <Field label="Proyek">
               <select className="input" value={tbmForm.project} onChange={(e) => setTbmForm({ ...tbmForm, project: e.target.value })}>
                 <option value="">Pilih proyek…</option>
-                {data.projects.map((p) => <option key={p.id} value={p.id}>{p.id} — {p.vessel}</option>)}
+                {data.projects.map((p) => <option key={p.id} value={p.id}>{p.id} - {p.vessel}</option>)}
               </select>
             </Field>
             <Field label="Cabang" hint={`Default ikut global (${branch})`}>

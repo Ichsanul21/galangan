@@ -423,7 +423,7 @@ export default function HR() {
       return;
     }
     if (Number.isNaN(dependents)) {
-      toast("Tanggungan harus angka 0–3", "info");
+      toast("Tanggungan harus angka 0-3", "info");
       return;
     }
     const empPatch = {
@@ -526,13 +526,13 @@ export default function HR() {
   // Cuti 2 tingkat: Diajukan → Disetujui Atasan → Disetujui (final HRD).
   const approveSupervisor = async (l: StoreItem) => {
     await update("leaves", l.id, { status: "Disetujui Atasan" });
-    log("menyetujui cuti (atasan)", `${l.id} — ${empNameOf(l.employeeId)}`, "SDM");
-    toast(`${l.id} disetujui atasan — menunggu HRD`);
+    log("menyetujui cuti (atasan)", `${l.id} - ${empNameOf(l.employeeId)}`, "SDM");
+    toast(`${l.id} disetujui atasan - menunggu HRD`);
   };
 
   const approveHrd = async (l: StoreItem) => {
     await update("leaves", l.id, { status: "Disetujui" });
-    log("menyetujui cuti final (HRD)", `${l.id} — ${empNameOf(l.employeeId)}`, "SDM");
+    log("menyetujui cuti final (HRD)", `${l.id} - ${empNameOf(l.employeeId)}`, "SDM");
     toast(`${l.id} disetujui final`);
   };
 
@@ -610,7 +610,7 @@ export default function HR() {
   const finishTraining = async (t: StoreItem) => {
     await update("trainings", t.id, { status: "Selesai" });
     log("menyelesaikan training", `${t.id} · ${t.title}`, "SDM");
-    toast(`${t.id} selesai — terapkan sertifikat bila perlu`);
+    toast(`${t.id} selesai - terapkan sertifikat bila perlu`);
   };
 
   const applyCert = () => {
@@ -691,7 +691,7 @@ export default function HR() {
   /* ---------- impor massal via CSV ---------- */
   const downloadTemplate = () => {
     void exportExcel([IMPORT_HEADERS], "template-impor-karyawan", "Template");
-    toast("Template diunduh — isi lalu simpan sebagai CSV");
+    toast("Template diunduh - isi lalu simpan sebagai CSV");
   };
 
   const importCSV = (file: File) => {
@@ -700,7 +700,7 @@ export default function HR() {
       void (async () => {
         const rows = parseCSV(String(reader.result ?? ""));
         if (rows.length < 2) {
-          toast("File kosong — minimal ada 1 baris data", "info");
+          toast("File kosong - minimal ada 1 baris data", "info");
           return;
         }
         const gagal: string[] = [];
@@ -734,7 +734,7 @@ export default function HR() {
         }
         const tang = Math.min(3, Math.max(0, Number(tangRaw || 0)));
         if (Number.isNaN(tang)) {
-          gagal.push(`Baris ${line}: tanggungan harus angka 0–3`);
+          gagal.push(`Baris ${line}: tanggungan harus angka 0-3`);
           continue;
         }
         const ptkp = String(ptkpRaw || "TK/0").trim();
@@ -772,7 +772,7 @@ export default function HR() {
         }
         setImportReport({ ok, gagal });
         log("impor karyawan", `${ok} berhasil · ${gagal.length} gagal`, "SDM");
-        toast(`Impor selesai — ${ok} berhasil, ${gagal.length} gagal`);
+        toast(`Impor selesai - ${ok} berhasil, ${gagal.length} gagal`);
       })();
     };
     reader.readAsText(file);
@@ -903,7 +903,7 @@ export default function HR() {
                                   })()}
                                 </div>
                               ) : (
-                                <span className="text-xs text-steel-400">—</span>
+                                <span className="text-xs text-steel-400">-</span>
                               )}
                             </td>
                             <td className="td font-semibold text-navy-900">{saldoCuti(e.id)} hari</td>
@@ -997,7 +997,7 @@ export default function HR() {
                       <td className="td"><Badge tone="gray">{l.type}</Badge></td>
                       <td className="td text-steel-600">{fmtTanggal(l.from)} → {fmtTanggal(l.to)}</td>
                       <td className="td font-semibold">{l.days} hari</td>
-                      <td className="td text-steel-600">{l.type === "Tahunan" ? `${saldoCuti(String(l.employeeId))} hari` : "—"}</td>
+                      <td className="td text-steel-600">{l.type === "Tahunan" ? `${saldoCuti(String(l.employeeId))} hari` : "-"}</td>
                       <td className="td"><StatusBadge status={String(l.status)} /></td>
                       <td className="td">
                         {l.status === "Diajukan" ? (
@@ -1011,7 +1011,7 @@ export default function HR() {
                             <button className="text-sm font-semibold text-rose-600 hover:underline" onClick={() => setRejectTarget(l)}>Tolak</button>
                           </div>
                         ) : (
-                          <span className="text-xs text-steel-400">—</span>
+                          <span className="text-xs text-steel-400">-</span>
                         )}
                       </td>
                     </tr>
@@ -1163,7 +1163,7 @@ export default function HR() {
               <Card className="p-5">
                 <h3 className="text-sm font-semibold text-navy-900">Impor Karyawan Massal</h3>
                 <p className="mt-1 text-xs text-steel-500">
-                  Unduh template Excel, isi, lalu simpan sebagai CSV (koma) sebelum diimpor. NIK harus unik — baris gagal dilaporkan per baris.
+                  Unduh template Excel, isi, lalu simpan sebagai CSV (koma) sebelum diimpor. NIK harus unik - baris gagal dilaporkan per baris.
                 </p>
                 <div className="mt-3 flex flex-wrap items-center gap-2">
                   <button className="btn-secondary text-xs" onClick={downloadTemplate}>Unduh Template</button>
@@ -1202,7 +1202,7 @@ export default function HR() {
         open={showForm}
         onClose={() => setShowForm(false)}
         title={editingId ? "Edit Karyawan" : "Tambah Karyawan"}
-        subtitle="NIK harus unik — angka & saldo cuti ditarik dari data"
+        subtitle="NIK harus unik - angka & saldo cuti ditarik dari data"
         wide
         footer={
           <>
@@ -1247,7 +1247,7 @@ export default function HR() {
                 {PTKP_STATUS.map((s) => <option key={s}>{s}</option>)}
               </select>
             </Field>
-            <Field label="Tanggungan (0–3)">
+            <Field label="Tanggungan (0-3)">
               <select className="input" value={form.dependents} onChange={(e) => setForm({ ...form, dependents: e.target.value })}>
                 {["0", "1", "2", "3"].map((d) => <option key={d}>{d}</option>)}
               </select>
@@ -1272,7 +1272,7 @@ export default function HR() {
         <div className="space-y-3">
           <Field label="Karyawan">
             <select className="input" value={leaveForm.employeeId} onChange={(e) => setLeaveForm({ ...leaveForm, employeeId: e.target.value })}>
-              <option value="">— Pilih —</option>
+              <option value="">- Pilih -</option>
               {scopedEmployees.map((e) => (
                 <option key={e.id} value={e.id}>{e.name} · sisa {saldoCuti(e.id)} hari</option>
               ))}
@@ -1325,7 +1325,7 @@ export default function HR() {
         <div className="space-y-3">
           <Field label="Karyawan">
             <select className="input" value={mutasiForm.employeeId} onChange={(e) => setMutasiForm({ ...mutasiForm, employeeId: e.target.value })}>
-              <option value="">— Pilih —</option>
+              <option value="">- Pilih -</option>
               {data.employees.map((e) => (
                 <option key={e.id} value={e.id}>{e.name} · {e.dept}/{e.branch}/{e.role}</option>
               ))}
@@ -1418,7 +1418,7 @@ export default function HR() {
           <FormGrid>
             <Field label="Karyawan">
               <select className="input" value={suratForm.employeeId} onChange={(e) => setSuratForm({ ...suratForm, employeeId: e.target.value })}>
-                <option value="">— Pilih —</option>
+                <option value="">- Pilih -</option>
                 {data.employees.map((e) => (
                   <option key={e.id} value={e.id}>{e.name} · {e.role}</option>
                 ))}

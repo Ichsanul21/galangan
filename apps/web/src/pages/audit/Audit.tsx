@@ -138,7 +138,7 @@ export default function Audit() {
     <div>
       <PageHeader
         title="Audit Trail"
-        subtitle={sumber === "Server" && remote ? "Jejak audit server (append-only, termasuk login) — 200 terbaru" : "Jejak aktivitas perangkat ini (30 terakhir)"}
+        subtitle={sumber === "Server" && remote ? "Jejak audit server (append-only, termasuk login) - 200 terbaru" : "Jejak aktivitas perangkat ini (30 terakhir)"}
         icon={<History className="h-5 w-5" />}
         actions={
           <button className="btn-secondary text-xs" onClick={doExport}>

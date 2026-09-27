@@ -172,7 +172,7 @@ export default function CRM() {
       toast(`${q.id} menjadi proyek ${created.id}`);
       setConvertTarget(null);
     } catch (e) {
-      toast(`Konversi gagal di tengah jalan — periksa daftar proyek & quotation ${q.id}`, "info");
+      toast(`Konversi gagal di tengah jalan - periksa daftar proyek & quotation ${q.id}`, "info");
     }
   };
 
@@ -240,7 +240,7 @@ export default function CRM() {
   const saveSurvey = async () => {
     if (!surveyForm.clientId) { toast("Pilih klien dulu", "info"); return; }
     const r = num(surveyForm.rating);
-    if (r < 1 || r > 5) { toast("Rating 1–5", "info"); return; }
+    if (r < 1 || r > 5) { toast("Rating 1-5", "info"); return; }
     const c = clients.find((x) => x.id === surveyForm.clientId);
     if (!c) return;
     const next = [...(Array.isArray(c.survei) ? c.survei : []), r];
@@ -298,7 +298,7 @@ export default function CRM() {
       }, { action: "mengkonversi request ke quotation", target: `${String(r.id)} → quotation`, module: "CRM" });
       toast(`Quotation draft ${created.id} dibuat dari ${String(r.id)}`);
     } catch {
-      toast(`Konversi ${String(r.id)} gagal — periksa daftar quotation`, "info");
+      toast(`Konversi ${String(r.id)} gagal - periksa daftar quotation`, "info");
     }
   };
 
@@ -403,7 +403,7 @@ export default function CRM() {
                 </FilterPopover>
                 {(crmQ.trim() !== "" || stageFilter !== "Semua") && (
                   <span className="text-xs text-steel-400">
-                    Filter aktif di tab Pipeline — {quotations.filter((q) => {
+                    Filter aktif di tab Pipeline - {quotations.filter((q) => {
                       if (stageFilter !== "Semua" && String(q.stage) !== stageFilter) return false;
                       const needle = crmQ.trim().toLowerCase();
                       if (!needle) return true;
@@ -447,7 +447,7 @@ export default function CRM() {
                           <Card key={q.id} className="card-hover p-3">
                             <p className="truncate text-sm font-semibold text-navy-900" title={String(q.vessel)}>{String(q.vessel)}</p>
                             <p className="truncate text-xs text-steel-500" title={String(q.client)}>{String(q.client)}</p>
-                            <p className="mt-0.5 text-xs text-steel-500">{String(q.type)} · {fmtTanggal(String(q.date ?? ""))} · umur {umurHari(String(q.date ?? "")) ?? "—"} hari{(umurHari(String(q.date ?? "")) ?? 0) > 30 && !isTerminal(String(q.stage)) ? " · tua" : ""}</p>
+                            <p className="mt-0.5 text-xs text-steel-500">{String(q.type)} · {fmtTanggal(String(q.date ?? ""))} · umur {umurHari(String(q.date ?? "")) ?? "-"} hari{(umurHari(String(q.date ?? "")) ?? 0) > 30 && !isTerminal(String(q.stage)) ? " · tua" : ""}</p>
                             <div className="mt-2 flex items-center justify-between">
                               <span className="font-semibold text-navy-800">{fmtMiliar(num(q.value))}</span>
                               <Badge tone={STAGE_TONE[String(q.stage)] ?? "gray"}>{q.id}</Badge>
@@ -508,7 +508,7 @@ export default function CRM() {
                 </FilterPopover>
                 {(crmQ.trim() !== "" || klasFilter !== "Semua") && (
                   <span className="text-xs text-steel-400">
-                    Filter aktif di tab Klien — {visibleClients.length} baris
+                    Filter aktif di tab Klien - {visibleClients.length} baris
                   </span>
                 )}
                 <button className="btn-secondary ml-auto text-xs" onClick={() => setShowClient(true)}><Plus className="h-3.5 w-3.5" /> Tambah Klien</button>
@@ -529,7 +529,7 @@ export default function CRM() {
                             </div>
                             <div>
                               <p className="truncate text-sm font-semibold text-navy-900" title={String(c.name)}>{String(c.name)}</p>
-                              <p className="text-xs text-steel-500">{String(c.id)} · sejak {String(c.since ?? "—")}</p>
+                              <p className="text-xs text-steel-500">{String(c.id)} · sejak {String(c.since ?? "-")}</p>
                             </div>
                           </div>
                           <Badge tone="green"><Star className="h-3 w-3 mr-0.5" /> {String(c.rating ?? 0)}%</Badge>
@@ -566,7 +566,7 @@ export default function CRM() {
                   <div className="flex justify-between gap-2">
                     <div className="min-w-0">
                       <p className="truncate font-semibold text-navy-900" title={String(q.vessel)}>{String(q.vessel)}</p>
-                      <p className="text-xs text-steel-500">{String(q.client)} · {String(q.type)} · {fmtTanggal(String(q.date ?? ""))} · umur {umurHari(String(q.date ?? "")) ?? "—"} hari</p>
+                      <p className="text-xs text-steel-500">{String(q.client)} · {String(q.type)} · {fmtTanggal(String(q.date ?? ""))} · umur {umurHari(String(q.date ?? "")) ?? "-"} hari</p>
                       {q.statusKirim === "Terkirim" && (
                         <p className="mt-0.5 text-xs text-teal-600">Terkirim {fmtTanggal(String(q.sentAt ?? ""))} ke {String(q.sentTo ?? "")}</p>
                       )}
@@ -598,8 +598,7 @@ export default function CRM() {
 
           {tab === "Request" && (
             <div className="space-y-3">
-              <div className="flex items-center justify-between">
-                <p className="text-xs text-steel-500">Alur: Baru → Disurvei → Diajukan → Disetujui/Ditolak · Disetujui bisa dikonversi jadi quotation draft</p>
+              <div className="flex items-center justify-end">
                 <button className="btn-secondary text-xs" onClick={() => setShowReq(true)}><Plus className="h-3.5 w-3.5" /> Request Baru</button>
               </div>
               <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
@@ -738,7 +737,7 @@ export default function CRM() {
               </Card>
             </div>
             <Card className="mt-4 p-4">
-              <CardHeader title={`PO Klien (${clientPos.length})`} subtitle="Link PO klien ke kontrak — dipakai validasi invoice Keuangan" />
+              <CardHeader title={`PO Klien (${clientPos.length})`} subtitle="Link PO klien ke kontrak - dipakai validasi invoice Keuangan" />
               {clientPos.length === 0 ? (
                 <EmptyState title="Belum ada PO klien" subtitle="Catat PO klien pertama dari form di bawah." />
               ) : (
@@ -746,7 +745,7 @@ export default function CRM() {
                   {clientPos.map((p) => (
                     <div key={p.id} className="flex flex-wrap items-center justify-between gap-2 rounded-xl bg-surface p-3 text-sm">
                       <span className="font-mono font-semibold text-navy-900">{String(p.no)}</span>
-                      <span className="text-xs text-steel-500">kontrak {String(p.contractId ?? "—")}{p.projectId ? ` · proyek ${String(p.projectId)}` : ""} · {fmtTanggal(String(p.date ?? ""))}</span>
+                      <span className="text-xs text-steel-500">kontrak {String(p.contractId ?? "-")}{p.projectId ? ` · proyek ${String(p.projectId)}` : ""} · {fmtTanggal(String(p.date ?? ""))}</span>
                       <span className="font-semibold text-navy-900">{fmtRupiah(num(p.amount))}</span>
                     </div>
                   ))}
@@ -777,23 +776,23 @@ export default function CRM() {
           {tab === "Kepuasan" && (
             <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
               <Card className="p-4 lg:col-span-2">
-                <CardHeader title="Kepuasan Klien" subtitle={`Rata-rata global ${globalSatisfaction ? globalSatisfaction.toFixed(1) : "—"} / 5 dari ${allSurveys.length} survei`} />
+                <CardHeader title="Kepuasan Klien" subtitle={`Rata-rata global ${globalSatisfaction ? globalSatisfaction.toFixed(1) : "-"} / 5 dari ${allSurveys.length} survei`} />
                 <div className="space-y-2">
                   {clients.map((c) => (
                     <div key={c.id} className="flex items-center gap-3 rounded-xl bg-surface p-3 text-sm">
                       <div className="min-w-0 flex-1">
                         <p className="truncate font-semibold text-navy-900" title={String(c.name)}>{String(c.name)}</p>
-                        <p className="text-xs text-steel-500">{Array.isArray(c.survei) ? c.survei.length : 0} survei · rata-rata {surveyAvg(c) ? surveyAvg(c).toFixed(1) : "—"} / 5</p>
+                        <p className="text-xs text-steel-500">{Array.isArray(c.survei) ? c.survei.length : 0} survei · rata-rata {surveyAvg(c) ? surveyAvg(c).toFixed(1) : "-"} / 5</p>
                       </div>
                       <Badge tone={surveyAvg(c) >= 4 ? "green" : surveyAvg(c) >= 3 ? "amber" : "gray"}>
-                        <Star className="h-3 w-3 mr-0.5" /> {surveyAvg(c) ? surveyAvg(c).toFixed(1) : "—"}
+                        <Star className="h-3 w-3 mr-0.5" /> {surveyAvg(c) ? surveyAvg(c).toFixed(1) : "-"}
                       </Badge>
                     </div>
                   ))}
                 </div>
               </Card>
               <Card className="p-4">
-                <CardHeader title="Tambah Survei" subtitle="Rating 1–5 per klien" />
+                <CardHeader title="Tambah Survei" subtitle="Rating 1-5 per klien" />
                 <div className="space-y-3 px-1 pb-1">
                   <Field label="Klien">
                     <select className="input" value={surveyForm.clientId} onChange={(e) => setSurveyForm({ ...surveyForm, clientId: e.target.value })}>
@@ -801,7 +800,7 @@ export default function CRM() {
                       {clients.map((c) => <option key={c.id} value={c.id}>{String(c.name)}</option>)}
                     </select>
                   </Field>
-                  <Field label="Rating (1–5)">
+                  <Field label="Rating (1-5)">
                     <select className="input" value={surveyForm.rating} onChange={(e) => setSurveyForm({ ...surveyForm, rating: e.target.value })}>
                       {["1", "2", "3", "4", "5"].map((r) => <option key={r}>{r}</option>)}
                     </select>
@@ -906,7 +905,7 @@ export default function CRM() {
         open={convertTarget !== null}
         onClose={() => setConvertTarget(null)}
         title={`Konversi ${convertTarget?.id ?? ""} jadi proyek?`}
-        subtitle="Serah terima ke PM — semua checklist wajib dicentang"
+        subtitle="Serah terima ke PM - semua checklist wajib dicentang"
         footer={<><button className="btn-secondary" onClick={() => setConvertTarget(null)}>Batal</button><button className="btn-primary" onClick={confirmConvert}>Ya, konversi + serah terima</button></>}
       >
         <div className="space-y-3">

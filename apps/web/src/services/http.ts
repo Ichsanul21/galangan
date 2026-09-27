@@ -1,6 +1,6 @@
 // Seam backend: seluruh akses HTTP backend lewat sini.
 // Selama backend belum ada, VITE_API_URL dikosongkan dan apiFetch
-// melempar ApiNotConfigured — halaman tetap memakai adapter lokal (store.tsx).
+// melempar ApiNotConfigured - halaman tetap memakai adapter lokal (store.tsx).
 //
 // Kontrak backend (services/api):
 // - Envelope sukses: { ok: true, data: T } → apiFetch mengembalikan `data`.
@@ -49,7 +49,7 @@ export function setJwt(token: string): void {
   try {
     safeStorage()?.setItem(JWT_KEY, token);
   } catch {
-    /* storage tak tersedia — abaikan */
+    /* storage tak tersedia - abaikan */
   }
 }
 
@@ -131,7 +131,7 @@ export async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> 
     res = await fetch(`${BASE}${path}`, {
       ...init,
       headers: {
-        // Tanpa body (heartbeat/logout) jangan kirim Content-Type JSON —
+        // Tanpa body (heartbeat/logout) jangan kirim Content-Type JSON -
         // Fastify menolak body JSON kosong dengan 400.
         ...(init?.body != null ? { "Content-Type": "application/json" } : {}),
         ...(jwt ? { Authorization: `Bearer ${jwt}` } : {}),

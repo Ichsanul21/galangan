@@ -1,6 +1,6 @@
 // Label status multibahasa TANPA mengubah nilai data.
 // Nilai canonical = Bahasa Indonesia (kunci logika, filter, API).
-// EN hanya untuk tampil — panggil statusLabel(value, dict).
+// EN hanya untuk tampil - panggil statusLabel(value, dict).
 const EN_LABEL: Record<string, string> = {
   Draft: "Draft",
   Draf: "Draft",

@@ -29,7 +29,7 @@ export function useModuleAlert(key: ModuleAlertKey): {
   const { data } = useStore();
   const [params] = useSearchParams();
   const active = params.get("alert") === key;
-  // Hanya hitung 1 modul (murah) — bukan 13 modul sekaligus.
+  // Hanya hitung 1 modul (murah) - bukan 13 modul sekaligus.
   const items = useMemo(() => buildModuleAlertItemsFor(data, key), [data, key]);
   const highlight = useMemo(() => new Set(items.map((a) => a.rowId)), [items]);
 
@@ -65,7 +65,7 @@ export function AlertBannerView({ items, onPick }: { items: ModuleAlertItem[]; o
         <Bell className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
         <div className="min-w-0 flex-1">
           <p className="text-sm font-semibold text-amber-900">
-            {items.length} {t.notif.title.toLowerCase()} — {t.notif.jumpHint}
+            {items.length} {t.notif.title.toLowerCase()} - {t.notif.jumpHint}
           </p>
           {!min && (
             <>
@@ -96,7 +96,7 @@ export function AlertBannerView({ items, onPick }: { items: ModuleAlertItem[]; o
               )}
               {expand && items.length > RENDER_CAP && (
                 <p className="mt-0.5 text-xs text-amber-600">
-                  {t.notif.cappedNote ?? `Menampilkan ${RENDER_CAP} pertama — saring tabel untuk sisanya.`}
+                  {t.notif.cappedNote ?? `Menampilkan ${RENDER_CAP} pertama - saring tabel untuk sisanya.`}
                 </p>
               )}
               <p className="mt-1 text-[11px] text-amber-600">

@@ -33,7 +33,7 @@ function qrPayloadOf(it: StoreItem): string {
 
 function rackText(it: StoreItem): string {
   const rack = it.rack ?? it.location ?? "";
-  if (!rack) return String(it.warehouse ?? "—");
+  if (!rack) return String(it.warehouse ?? "-");
   if (String(rack).includes("·")) return String(rack);
   return `${it.warehouse} · ${rack}`;
 }
@@ -73,7 +73,7 @@ export default function BomDetail() {
         <Link to="/inventori" className="mb-3 inline-flex items-center gap-1.5 text-sm font-medium text-ocean-600 hover:underline">
           <ArrowLeft className="h-4 w-4" /> Kembali ke Inventori
         </Link>
-        <EmptyState title="Item tidak ditemukan" subtitle={`ID ${id ?? "—"} tidak ada di katalog.`} />
+        <EmptyState title="Item tidak ditemukan" subtitle={`ID ${id ?? "-"} tidak ada di katalog.`} />
       </div>
     );
   }
@@ -105,13 +105,13 @@ export default function BomDetail() {
   const saveOpname = async () => {
     if (opCount === "" || Number.isNaN(Number(opCount)) || Number(opCount) < 0) { toast("Stok hasil hitung tidak valid", "info"); return; }
     const selisih = Number(opCount) - Number(item.stock);
-    if (selisih === 0) { toast("Tidak ada selisih — stok sudah sama", "info"); return; }
+    if (selisih === 0) { toast("Tidak ada selisih - stok sudah sama", "info"); return; }
     await update("inventory", item.id, { stock: Number(opCount) });
     await add("movements", {
       item: item.name, itemId: item.id, type: "Selisih Opname", qty: selisih,
       by: `Opname ${todayISO()}`, date: todayISO(), tone: selisih > 0 ? "in" : "out",
     }, { action: "stok opname", target: `${item.name}: selisih ${selisih > 0 ? "+" : ""}${selisih}`, module: "Inventori" });
-    toast(`Opname tersimpan — selisih ${selisih > 0 ? "+" : ""}${selisih}`);
+    toast(`Opname tersimpan - selisih ${selisih > 0 ? "+" : ""}${selisih}`);
     setShowOpname(false);
     setOpCount("");
   };
@@ -122,7 +122,7 @@ export default function BomDetail() {
         <ArrowLeft className="h-4 w-4" /> Kembali ke Inventori
       </Link>
       <PageHeader
-        title={`BOM — ${item.name}`}
+        title={`BOM - ${item.name}`}
         subtitle={`${item.id} · ${item.sku} · ${item.category}`}
         icon={<Package className="h-5 w-5" />}
         actions={
@@ -140,12 +140,12 @@ export default function BomDetail() {
             {([
               ["Kategori", String(item.category)],
               ["Gudang / Rak", rackText(item)],
-              ["Bin", binOf(item) || "—"],
+              ["Bin", binOf(item) || "-"],
               ["Payload QR (SKU)", qrPayloadOf(item)],
               ["Stok", `${fmtJumlah(Number(item.stock))} ${item.unit}`],
               ["Tersedia", `${fmtJumlah(tersedia)} ${item.unit}`],
               ["Volume per unit", fmtJumlah(Number(item.volume ?? 0))],
-              ["Batch / Serial", item.batch ? String(item.batch) : "—"],
+              ["Batch / Serial", item.batch ? String(item.batch) : "-"],
               ["Harga satuan", fmtRupiah(Number(item.cost))],
               ["Nilai total", fmtRupiah(Number(item.stock) * Number(item.cost))],
             ] as [string, string][]).map(([k, v]) => (
@@ -202,7 +202,7 @@ export default function BomDetail() {
                     {usedProjects.map((p) => (
                       <div key={p.id} className="flex items-center justify-between gap-3 rounded-xl border border-steel-200 px-3 py-2 text-sm">
                         <div className="min-w-0">
-                          <p className="truncate font-medium text-navy-900" title={`${p.id} — ${p.vessel}`}>{p.id} — {p.vessel}</p>
+                          <p className="truncate font-medium text-navy-900" title={`${p.id} - ${p.vessel}`}>{p.id} - {p.vessel}</p>
                           <p className="text-xs text-steel-400">{moves.filter((m) => String(m.by ?? "").includes(p.id)).length} movement item ini</p>
                         </div>
                         <Badge tone="navy">{p.status}</Badge>
@@ -215,21 +215,21 @@ export default function BomDetail() {
         </div>
       </div>
 
-      <Modal open={showReserv} onClose={() => setShowReserv(false)} title={`Reservasi — ${item.name}`}
+      <Modal open={showReserv} onClose={() => setShowReserv(false)} title={`Reservasi - ${item.name}`}
         subtitle={`Tersedia: ${fmtJumlah(tersedia)} ${item.unit}`}
         footer={<><button className="btn-secondary" onClick={() => setShowReserv(false)}>Batal</button><button className="btn-primary" onClick={saveReserv}>Simpan Reservasi</button></>}>
         <div className="space-y-3">
           <Field label="Proyek">
             <select className="input" value={reservProject} onChange={(e) => setReservProject(e.target.value)}>
               <option value="">Pilih proyek…</option>
-              {data.projects.map((p) => <option key={p.id} value={p.id}>{p.id} — {p.vessel}</option>)}
+              {data.projects.map((p) => <option key={p.id} value={p.id}>{p.id} - {p.vessel}</option>)}
             </select>
           </Field>
           <Field label="Qty reservasi"><input type="number" min={1} className="input" value={reservQtyInput} onChange={(e) => setReservQtyInput(e.target.value)} /></Field>
         </div>
       </Modal>
 
-      <Modal open={showOpname} onClose={() => setShowOpname(false)} title={`Opname — ${item.name}`}
+      <Modal open={showOpname} onClose={() => setShowOpname(false)} title={`Opname - ${item.name}`}
         subtitle={`Tercatat: ${fmtJumlah(Number(item.stock))} ${item.unit}`}
         footer={<><button className="btn-secondary" onClick={() => setShowOpname(false)}>Batal</button><button className="btn-primary" onClick={saveOpname}>Simpan Opname</button></>}>
         <FormGrid>

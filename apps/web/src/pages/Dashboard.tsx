@@ -122,7 +122,7 @@ export default function Dashboard() {
   const utilDiff = lastUtil && prevUtil ? lastUtil.equipment - prevUtil.equipment : 0;
   const activeEmployees = data.employees.filter((e) => e.status === "Aktif").length;
   const seaTrialVessel =
-    projects.find((p) => p.status !== "Selesai" && scopeNames(p.scope).includes("Sea Trial"))?.vessel ?? "—";
+    projects.find((p) => p.status !== "Selesai" && scopeNames(p.scope).includes("Sea Trial"))?.vessel ?? "-";
 
   const exportSummary = () => {
     const rows: (string | number)[][] = [
@@ -281,7 +281,7 @@ export default function Dashboard() {
       ? [{ icon: Wallet, text: `${overdueInvoices.length} invoice overdue (7h: ${overdue7.length} · 14h: ${overdue14.length} · 30h+: ${overdue730.length})`, to: "/keuangan", tone: "bg-rose-50 text-rose-600" }]
       : []),
     ...(latestIncident
-      ? [{ icon: Clock, text: `Insiden terbaru: ${latestIncident.id} — ${latestIncident.desc}`, to: "/qc-safety", tone: "bg-violet-50 text-violet-600" }]
+      ? [{ icon: Clock, text: `Insiden terbaru: ${latestIncident.id} - ${latestIncident.desc}`, to: "/qc-safety", tone: "bg-violet-50 text-violet-600" }]
       : []),
     ...(delayedProjects.length
       ? [{ icon: AlertTriangle, text: `${delayedProjects.length} proyek Terlambat (${delayedProjects[0].id})`, to: "/proyek", tone: "bg-rose-50 text-rose-600" }]
@@ -293,7 +293,7 @@ export default function Dashboard() {
       <StaggerItem>
         <PageHeader
           title="Dashboard Eksekutif"
-          subtitle="PT Syukur Bersaudara — pusat kendali operasional galangan, Samarinda real-time"
+          subtitle="PT Syukur Bersaudara - pusat kendali operasional galangan, Samarinda real-time"
           icon={<TrendingUp className="h-5 w-5" />}
           actions={
             <>
@@ -311,7 +311,7 @@ export default function Dashboard() {
         />
       </StaggerItem>
 
-      {/* TARGET VS AKTUAL — atur via tombol, hanya Direktur/Manager */}
+      {/* TARGET VS AKTUAL - atur via tombol, hanya Direktur/Manager */}
       <StaggerItem>
         <Card className="p-4">
           <div className="mb-2 flex items-center justify-between px-1">
@@ -335,7 +335,7 @@ export default function Dashboard() {
         </Card>
       </StaggerItem>
 
-      <Modal open={showTarget} onClose={() => setShowTarget(false)} title={`Atur Target · ${branch}`} subtitle="Hanya Direktur / Manager — tersimpan per cabang per perangkat"
+      <Modal open={showTarget} onClose={() => setShowTarget(false)} title={`Atur Target · ${branch}`} subtitle="Hanya Direktur / Manager - tersimpan per cabang per perangkat"
         footer={<><button className="btn-secondary" onClick={() => setShowTarget(false)}>Batal</button><button className="btn-primary" onClick={saveTarget}>Simpan Target</button></>}>
         <div className="space-y-3">
           <Field label="Target revenue (Rp)"><input type="number" min={0} className="input" placeholder="cth: 50000000000" value={tgtRev} onChange={(e) => setTgtRev(e.target.value)} /></Field>
@@ -416,7 +416,7 @@ export default function Dashboard() {
         </StaggerItem>
       </div>
 
-      {/* RINGKASAN OPERASIONAL — pindahan strip, tepat di bawah 4 kartu utama */}
+      {/* RINGKASAN OPERASIONAL - pindahan strip, tepat di bawah 4 kartu utama */}
       <StaggerItem>
         <Card className="p-4">
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
@@ -489,7 +489,7 @@ export default function Dashboard() {
         </Card>
       </StaggerItem>
 
-      {/* STATUS + ACTIVITY — tepat di bawah Perlu Perhatian */}
+      {/* STATUS + ACTIVITY - tepat di bawah Perlu Perhatian */}
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
         <StaggerItem>
           <Card>

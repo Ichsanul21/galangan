@@ -59,7 +59,7 @@ function StageStrip({ counts, active, onPick, prefix }: {
             key={st}
             onClick={() => onPick(on ? "Semua" : st)}
             aria-pressed={on}
-            title={n === 0 ? `Tidak ada slip ${st} — klik untuk filter` : `Tampilkan ${n} slip ${st}`}
+            title={n === 0 ? `Tidak ada slip ${st} - klik untuk filter` : `Tampilkan ${n} slip ${st}`}
             className={`flex items-center gap-2 rounded-xl border px-3 py-2 text-xs font-semibold transition-colors ${
               on ? "border-navy-700 bg-navy-700 text-white" : "border-steel-200 bg-white text-steel-700 hover:border-navy-400"
             }`}
@@ -193,7 +193,7 @@ function annualPph(penghasilanSetahun: number, ptkpStatus: string, dependents: n
   return tahunan;
 }
 
-/* PPh21 progresif tahunan disetahunkan: bruto×12 − PTKP → lapis T1–T4 → /12. */
+/* PPh21 progresif tahunan disetahunkan: bruto×12 - PTKP → lapis T1-T4 → /12. */
 function calcPphProgressive(bruto: number, ptkpStatus: string, dependents: number, r: PayrollRates): number {
   return Math.round(annualPph(Math.max(0, bruto) * 12, ptkpStatus, dependents, r) / 12);
 }
@@ -434,7 +434,7 @@ export default function Payroll() {
           undefined,
         );
       } catch {
-        toast(`Generate gaji ${e.name ?? e.id} gagal — dilewati`, "info");
+        toast(`Generate gaji ${e.name ?? e.id} gagal - dilewati`, "info");
       }
     });
     log("generate payroll", `${period} · ${fresh.length} draft`, "Payroll");
@@ -452,7 +452,7 @@ export default function Payroll() {
       return;
     }
     if (!(Number(p.net || 0) > 0)) {
-      toast(`${p.id} net Rp 0 — perbaiki komponen dulu via Edit`, "info");
+      toast(`${p.id} net Rp 0 - perbaiki komponen dulu via Edit`, "info");
       return;
     }
     setConfirmAdv(p);
@@ -515,7 +515,7 @@ export default function Payroll() {
       bpjsTkKar: c.bpjsTkKar,
       net: c.net,
     });
-    toast(`${editTarget.id} diperbarui — net ${fmtRupiah(c.net)}`);
+    toast(`${editTarget.id} diperbarui - net ${fmtRupiah(c.net)}`);
     setEditTarget(null);
   };
 
@@ -549,10 +549,10 @@ export default function Payroll() {
         kr: kasKodeOf(proof.method),
         amount: Number(payTarget.net || 0),
       });
-      toast(`${payTarget.id} dibayar — bukti tersimpan`);
+      toast(`${payTarget.id} dibayar - bukti tersimpan`);
       setPayTarget(null);
     } catch {
-      toast(`Pembayaran ${slipId} gagal — periksa slip & jurnal`, "info");
+      toast(`Pembayaran ${slipId} gagal - periksa slip & jurnal`, "info");
     }
   };
 
@@ -760,14 +760,14 @@ export default function Payroll() {
       ["Periode", fmtBulan(String(p.period))],
       ["Tipe", rowType(p)],
       [isHarian ? "Upah harian" : "Gaji pokok", fmtRupiah(Number(p.basic || 0))],
-      ...normAllowances(p.allowances).map((l) => [`Tunjangan — ${l.label}`, fmtRupiah(Number(l.amount) || 0)] as string[]),
+      ...normAllowances(p.allowances).map((l) => [`Tunjangan - ${l.label}`, fmtRupiah(Number(l.amount) || 0)] as string[]),
       ["Upah lembur", fmtRupiah(Number(p.overtimePay || 0))],
       ["Cicilan kasbon", fmtRupiah(Number(p.kasbonPot || 0))],
       ["Potongan manual", fmtRupiah(Number(p.deductions || 0) - Number(p.kasbonPot || 0))],
       [isHarian ? "PPh harian (5% × kelebihan 450rb × hari hadir)" : "PPh 21 (progresif disetahunkan)", fmtRupiah(Number(p.pph21 || 0))],
       [`BPJS Kesehatan karyawan (${rates.bpjsKes}%)`, fmtRupiah(b.kes)],
-      [`BPJS Ketenagakerjaan – JHT karyawan (${rates.bpjsTk}%)`, fmtRupiah(b.tk)],
-      [`BPJS Kesehatan perusahaan (${rates.bpjsKesPer}%) — info, tidak memotong gaji`, fmtRupiah(Number(p.bpjsKesPer || 0))],
+      [`BPJS Ketenagakerjaan - JHT karyawan (${rates.bpjsTk}%)`, fmtRupiah(b.tk)],
+      [`BPJS Kesehatan perusahaan (${rates.bpjsKesPer}%) - info, tidak memotong gaji`, fmtRupiah(Number(p.bpjsKesPer || 0))],
       [rowType(p) === "Gaji" ? "Gaji bersih" : "Nominal diterima", fmtRupiah(Number(p.net || 0))],
       ["Status", String(p.status)],
       ["Tanda terima", sign.received ? `Sudah diterima ${fmtTanggal(sign.date ?? "")}` : "Belum diterima"],
@@ -797,7 +797,7 @@ export default function Payroll() {
     <div>
       <PageHeader
         title="Payroll"
-        subtitle="PPh21 progresif disetahunkan (PTKP TK/0–K/3) · BPJS split karyawan/perusahaan · lembur hanya yang Disetujui"
+        subtitle="PPh21 progresif disetahunkan (PTKP TK/0-K/3) · BPJS split karyawan/perusahaan · lembur hanya yang Disetujui"
         icon={<Wallet className="h-5 w-5" />}
         actions={
           tab === "Gaji" ? (
@@ -826,7 +826,7 @@ export default function Payroll() {
       <div className="mb-4 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <KpiCard label="Total Bruto (Gaji)" value={fmtRupiah(totals.bruto)} hint={`Periode ${fmtBulan(period)}`} chip="navy" />
         <KpiCard label="Total Net (Gaji)" value={fmtRupiah(totals.net)} hint={`${gajiRows.length} slip gaji`} chip="teal" />
-        <KpiCard label="Total PPh21" value={fmtRupiah(totals.pph21)} hint="Progresif T1–T4 disetahunkan" chip="amber" />
+        <KpiCard label="Total PPh21" value={fmtRupiah(totals.pph21)} hint="Progresif T1-T4 disetahunkan" chip="amber" />
         <KpiCard label="Total BPJS Karyawan" value={fmtRupiah(totals.bpjs)} hint={`Kes ${rates.bpjsKes}% + TK-JHT ${rates.bpjsTk}%`} chip="violet" />
       </div>
 
@@ -841,7 +841,7 @@ export default function Payroll() {
                   <input type="month" className="input w-auto" value={period} onChange={(e) => { setPeriod(e.target.value); setGajiStage("Semua"); }} />
                 </label>
                 <span className="text-xs text-steel-400">
-                  Lembur dari absensi bulan berjalan (hanya Disetujui) · tarif = pokok/{otDivisor} · jam 1–2: 1,5x · jam 3–4: 2x · jam 5+: 3x · Harian: PPh 5% × kelebihan Rp 450rb/hari
+                  Lembur dari absensi bulan berjalan (hanya Disetujui) · tarif = pokok/{otDivisor} · jam 1-2: 1,5x · jam 3-4: 2x · jam 5+: 3x · Harian: PPh 5% × kelebihan Rp 450rb/hari
                 </span>
               </div>
               <StageStrip counts={stageCounts(gajiRows)} active={gajiStage} onPick={setGajiStage} prefix="gaji" />
@@ -935,7 +935,7 @@ export default function Payroll() {
                 <div className="mt-2 flex flex-wrap items-end gap-2">
                   <Field label="Karyawan">
                     <select className="input w-auto" value={bonusForm.employeeId} onChange={(e) => setBonusForm({ ...bonusForm, employeeId: e.target.value })}>
-                      <option value="">— Pilih —</option>
+                      <option value="">- Pilih -</option>
                       {activeEmps.map((e) => <option key={e.id} value={e.id}>{e.name}</option>)}
                     </select>
                   </Field>
@@ -1024,7 +1024,7 @@ export default function Payroll() {
                 <div className="mt-2 flex flex-wrap items-end gap-2">
                   <Field label="Karyawan">
                     <select className="input w-auto" value={kasbonForm.employeeId} onChange={(e) => setKasbonForm({ ...kasbonForm, employeeId: e.target.value })}>
-                      <option value="">— Pilih —</option>
+                      <option value="">- Pilih -</option>
                       {activeEmps.map((e) => <option key={e.id} value={e.id}>{e.name} · sisa {fmtRupiah(kasbonSisa(e))}</option>)}
                     </select>
                   </Field>
@@ -1157,7 +1157,7 @@ export default function Payroll() {
         open={showPesangon}
         onClose={() => setShowPesangon(false)}
         title="Kalkulator Pesangon"
-        subtitle="Hitung read-only + export — tanpa menyimpan"
+        subtitle="Hitung read-only + export - tanpa menyimpan"
         footer={
           <>
             <button className="btn-secondary" onClick={() => setShowPesangon(false)}>Tutup</button>
@@ -1210,15 +1210,15 @@ export default function Payroll() {
                   <>
                     <div className="flex justify-between"><dt className="text-steel-500">{isHarian ? `Upah harian × ${Number(slipTarget.hadirDays ?? 0)} hari` : "Gaji pokok"}</dt><dd className="font-medium">{fmtRupiah(Number(slipTarget.basic || 0))}</dd></div>
                     {normAllowances(slipTarget.allowances).map((l, i) => (
-                      <div key={i} className="flex justify-between"><dt className="text-steel-500">Tunjangan — {l.label}</dt><dd className="font-medium">{fmtRupiah(Number(l.amount) || 0)}</dd></div>
+                      <div key={i} className="flex justify-between"><dt className="text-steel-500">Tunjangan - {l.label}</dt><dd className="font-medium">{fmtRupiah(Number(l.amount) || 0)}</dd></div>
                     ))}
                     <div className="flex justify-between"><dt className="text-steel-500">Upah lembur</dt><dd className="font-medium">{fmtRupiah(Number(slipTarget.overtimePay || 0))}</dd></div>
-                    <div className="flex justify-between"><dt className="text-steel-500">Cicilan kasbon</dt><dd className="font-medium">−{fmtRupiah(Number(slipTarget.kasbonPot || 0))}</dd></div>
-                    <div className="flex justify-between"><dt className="text-steel-500">Potongan manual</dt><dd className="font-medium">−{fmtRupiah(manualDed)}</dd></div>
-                    <div className="flex justify-between"><dt className="text-steel-500">{isHarian ? "PPh harian" : `PPh 21 (${emp?.ptkpStatus ?? "TK/0"})`}</dt><dd className="font-medium">−{fmtRupiah(Number(slipTarget.pph21 || 0))}</dd></div>
-                    <div className="flex justify-between"><dt className="text-steel-500">BPJS Kesehatan karyawan ({rates.bpjsKes}%)</dt><dd className="font-medium">−{fmtRupiah(b.kes)}</dd></div>
-                    <div className="flex justify-between"><dt className="text-steel-500">BPJS TK – JHT karyawan ({rates.bpjsTk}%)</dt><dd className="font-medium">−{fmtRupiah(b.tk)}</dd></div>
-                    <div className="flex justify-between"><dt className="text-steel-500">BPJS Kesehatan perusahaan ({rates.bpjsKesPer}%) — info</dt><dd className="font-medium">{fmtRupiah(Number(slipTarget.bpjsKesPer || 0))}</dd></div>
+                    <div className="flex justify-between"><dt className="text-steel-500">Cicilan kasbon</dt><dd className="font-medium">-{fmtRupiah(Number(slipTarget.kasbonPot || 0))}</dd></div>
+                    <div className="flex justify-between"><dt className="text-steel-500">Potongan manual</dt><dd className="font-medium">-{fmtRupiah(manualDed)}</dd></div>
+                    <div className="flex justify-between"><dt className="text-steel-500">{isHarian ? "PPh harian" : `PPh 21 (${emp?.ptkpStatus ?? "TK/0"})`}</dt><dd className="font-medium">-{fmtRupiah(Number(slipTarget.pph21 || 0))}</dd></div>
+                    <div className="flex justify-between"><dt className="text-steel-500">BPJS Kesehatan karyawan ({rates.bpjsKes}%)</dt><dd className="font-medium">-{fmtRupiah(b.kes)}</dd></div>
+                    <div className="flex justify-between"><dt className="text-steel-500">BPJS TK - JHT karyawan ({rates.bpjsTk}%)</dt><dd className="font-medium">-{fmtRupiah(b.tk)}</dd></div>
+                    <div className="flex justify-between"><dt className="text-steel-500">BPJS Kesehatan perusahaan ({rates.bpjsKesPer}%) - info</dt><dd className="font-medium">{fmtRupiah(Number(slipTarget.bpjsKesPer || 0))}</dd></div>
                     <div className="flex justify-between border-t border-steel-200 pt-2"><dt className="font-bold text-navy-900">Gaji bersih</dt><dd className="font-bold text-navy-900">{fmtRupiah(Number(slipTarget.net || 0))}</dd></div>
                   </>
                 ) : (
@@ -1255,7 +1255,7 @@ export default function Payroll() {
         title={confirmAdv ? `Pindah tahap: ${confirmAdv.id}` : "Pindah tahap"}
         desc={
           confirmAdv
-            ? `${empNameOf(String(confirmAdv.employeeId))} · ${rowType(confirmAdv)} ${fmtBulan(period)} · net ${fmtRupiah(Number(confirmAdv.net || 0))} — dari ${confirmAdv.status} ke ${NEXT_STATUS[String(confirmAdv.status)] ?? "?"}. Tidak bisa dibatalkan dari sini (hubungi admin bila salah tahap).`
+            ? `${empNameOf(String(confirmAdv.employeeId))} · ${rowType(confirmAdv)} ${fmtBulan(period)} · net ${fmtRupiah(Number(confirmAdv.net || 0))} - dari ${confirmAdv.status} ke ${NEXT_STATUS[String(confirmAdv.status)] ?? "?"}. Tidak bisa dibatalkan dari sini (hubungi admin bila salah tahap).`
             : ""
         }
         confirmLabel={confirmAdv ? ADV_LABEL[String(confirmAdv.status)] ?? "Lanjut" : "Lanjut"}

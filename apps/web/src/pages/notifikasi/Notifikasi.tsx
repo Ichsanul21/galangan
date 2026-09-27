@@ -218,7 +218,7 @@ export default function Notifikasi() {
     <div>
       <PageHeader
         title={t.notif.title}
-        subtitle={locale === "en" ? "In-app notification center — read status stored per device" : "Pusat notifikasi in-app — status baca tersimpan per perangkat"}
+        subtitle={locale === "en" ? "In-app notification center - read status stored per device" : "Pusat notifikasi in-app - status baca tersimpan per perangkat"}
         icon={<Bell className="h-5 w-5" />}
         actions={
           <>

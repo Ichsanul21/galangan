@@ -7,7 +7,7 @@ import { useStore } from "../data/store";
 import { useT } from "../i18n/LanguageContext";
 import { toast } from "../components/ui";
 
-/* Latar peta rute abstrak — garis lintang/bujur */
+/* Latar peta rute abstrak - garis lintang/bujur */
 function RouteGrid() {
   return (
     <svg className="absolute inset-0 h-full w-full opacity-[0.14]" preserveAspectRatio="xMidYMid slice" viewBox="0 0 800 1000">
@@ -92,7 +92,7 @@ function ShipScene() {
       </svg>
       {/* label koordinat */}
       <div className="absolute left-4 top-3 flex items-center gap-1.5 text-[10px] font-medium tracking-wider text-[#9fd4ef]">
-        <Globe2 className="h-3.5 w-3.5" /> 0°30′S 117°09′E — SAMARINDA
+        <Globe2 className="h-3.5 w-3.5" /> 0°30′S 117°09′E - SAMARINDA
       </div>
     </div>
   );
@@ -171,7 +171,7 @@ export default function Login() {
 
   return (
     <div className="flex min-h-screen bg-[#06182e]">
-      {/* Panel kiri — brand maritim */}
+      {/* Panel kiri - brand maritim */}
       <div className="relative hidden w-[46%] flex-col justify-between overflow-hidden p-10 text-white lg:flex">
         <div className="absolute inset-0 bg-gradient-to-br from-[#0b3a63] via-[#0a2c4e] to-[#06182e]" />
         <RouteGrid />
@@ -205,7 +205,7 @@ export default function Login() {
               shipyard<span className="text-[#5ec8f2]">.</span>
             </h1>
             <p className="mt-3 max-w-md text-sm leading-relaxed text-[#b8d4e8]">
-              Integrated Shipbuilding Management System — 13 modules covering project, drydock, inventory,
+              Integrated Shipbuilding Management System - 13 modules covering project, drydock, inventory,
               QC, finance and vessel lifecycle. Trusted by shipyards across Indonesia.
             </p>
           </motion.div>
@@ -247,7 +247,7 @@ export default function Login() {
         </div>
       </div>
 
-      {/* Panel kanan — form */}
+      {/* Panel kanan - form */}
       <div className="relative flex flex-1 items-center justify-center bg-surface p-6">
         <div className="pointer-events-none absolute inset-x-0 top-0 h-1.5 bg-gradient-hero" />
         <motion.div

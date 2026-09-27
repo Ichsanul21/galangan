@@ -132,7 +132,7 @@ export default function Projects() {
       const stages = (p.designStages ?? []) as { name: string; status: string }[];
       const ca = stages.find((s) => s.name === "Class Approval");
       if (!ca || ca.status !== "Disetujui") {
-        toast("Class Approval belum Disetujui — lengkapi sub-stage desain dulu", "info");
+        toast("Class Approval belum Disetujui - lengkapi sub-stage desain dulu", "info");
         return;
       }
     }
@@ -171,14 +171,14 @@ export default function Projects() {
         ...(r.deskripsi.trim() ? { deskripsi: r.deskripsi.trim() } : {}),
       }))
       .filter((r) => r.service);
-    if (scopeItems.length === 0) { toast("Ruang lingkup minimal 1 item — isi Service lalu Tambah", "info"); return; }
+    if (scopeItems.length === 0) { toast("Ruang lingkup minimal 1 item - isi Service lalu Tambah", "info"); return; }
     if (!form.start || !form.end) { toast("Tanggal rencana dimulai & estimasi penyelesaian wajib diisi", "info"); return; }
     if (form.end < form.start) { toast("Estimasi penyelesaian tidak boleh sebelum rencana dimulai", "info"); return; }
     const budget = Number(form.budget);
     if (!Number.isFinite(budget) || budget <= 0) { toast("Nilai kontrak harus lebih dari 0", "info"); return; }
     if (!form.manager) { toast("Pilih project manager", "info"); return; }
     if (form.type === "New Build" && projects.some((p) => String(p.vessel ?? "").trim().toLowerCase() === form.vessel.trim().toLowerCase() && String(p.type) === "New Build")) {
-      toast("Kapal ini sudah punya proyek New Build — duplikat ditolak (Repair/Retrofit boleh berulang)", "info");
+      toast("Kapal ini sudah punya proyek New Build - duplikat ditolak (Repair/Retrofit boleh berulang)", "info");
       return;
     }
     if (!vesselExists) {
@@ -187,7 +187,7 @@ export default function Projects() {
       if (!form.vesselType.trim()) { toast("Kapal belum terdaftar: tipe kapal wajib diisi", "info"); return; }
       const imoRaw = form.vesselImo.trim();
       if (!imoRaw || imoRaw === "-" || imoRaw.toUpperCase() === "IMO" || imoRaw.toUpperCase() === "IMO -") {
-        toast("Kapal baru: IMO wajib diisi — real IMO (cth IMO 1234567) atau TBD-... bila menyusul", "info");
+        toast("Kapal baru: IMO wajib diisi - real IMO (cth IMO 1234567) atau TBD-... bila menyusul", "info");
         return;
       }
     }
@@ -237,7 +237,7 @@ export default function Projects() {
       setScopeRows([{ service: "", lokasi: "", deskripsi: "" }]);
       setShowAdd(false);
     } catch {
-      toast(`Proyek ${code} gagal disimpan di tengah jalan — periksa daftar proyek & kapal`, "info");
+      toast(`Proyek ${code} gagal disimpan di tengah jalan - periksa daftar proyek & kapal`, "info");
     }
   };
 
@@ -510,13 +510,13 @@ export default function Projects() {
           </FormGrid>
           {!vesselExists && form.vessel.trim() && (
             <div className="rounded-xl border border-amber-200 bg-amber-50 p-3">
-              <p className="mb-2 text-xs font-semibold text-amber-800">Kapal belum terdaftar — lengkapi data kapal baru:</p>
+              <p className="mb-2 text-xs font-semibold text-amber-800">Kapal belum terdaftar - lengkapi data kapal baru:</p>
               <FormGrid>
                 <Field label="LOA kapal baru (m)"><input type="number" min={0} step={0.1} className="input" value={form.vesselLoa} onChange={(e) => setF("vesselLoa", e.target.value)} placeholder="cth: 32" /></Field>
                 <Field label="Tipe kapal baru"><input className="input" value={form.vesselType} onChange={(e) => setF("vesselType", e.target.value)} placeholder="cth: Tugboat ASD 2x1600 HP" /></Field>
               </FormGrid>
               <div className="mt-2">
-                <Field label="IMO kapal baru" hint='Wajib — real IMO (cth IMO 1234567) atau TBD-... bila menyusul. Placeholder "IMO -" ditolak.'>
+                <Field label="IMO kapal baru" hint='Wajib - real IMO (cth IMO 1234567) atau TBD-... bila menyusul. Placeholder "IMO -" ditolak.'>
                   <input className="input font-mono" value={form.vesselImo} onChange={(e) => setF("vesselImo", e.target.value)} placeholder="IMO 1234567 atau TBD-NB-01" />
                 </Field>
               </div>
@@ -588,7 +588,7 @@ export default function Projects() {
           </>
         }
       >
-        <Field label="Alasan penarikan tahap" hint="Wajib diisi — tercatat di log aktivitas proyek">
+        <Field label="Alasan penarikan tahap" hint="Wajib diisi - tercatat di log aktivitas proyek">
           <textarea className="input" rows={3} value={mundurReason} onChange={(e) => setMundurReason(e.target.value)} placeholder="cth: Desain revisi class belum disetujui" />
         </Field>
       </Modal>

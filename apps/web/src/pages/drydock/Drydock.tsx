@@ -128,13 +128,13 @@ export default function Drydock() {
         const vsl = data.vessels.find((x) => x.name === vesselName);
         if (vsl) {
           await update("vessels", vsl.id, {
-            history: [...(vsl.history ?? []), { date: new Date().toISOString().slice(0, 10), event: `Undocking selesai — slot ${sel.id} (${sel.dockId})`, type: "Docking" }],
+            history: [...(vsl.history ?? []), { date: new Date().toISOString().slice(0, 10), event: `Undocking selesai - slot ${sel.id} (${sel.dockId})`, type: "Docking" }],
           });
         }
         toast(`Docking report ${sel.id} lengkap`);
       }
     } catch {
-      toast(`Gagal menyimpan checklist ${sel.id} — periksa kembali statusnya`, "info");
+      toast(`Gagal menyimpan checklist ${sel.id} - periksa kembali statusnya`, "info");
     }
   };
 
@@ -209,9 +209,9 @@ export default function Drydock() {
     if (!proj) { setBookError("Pilih proyek dulu."); return; }
     const from = Number(bookForm.from);
     const to = Number(bookForm.to);
-    if (!from || !to || to <= from || from < 0 || to > DAYS) { setBookError(`Rentang hari tidak valid (1–${DAYS}).`); return; }
+    if (!from || !to || to <= from || from < 0 || to > DAYS) { setBookError(`Rentang hari tidak valid (1-${DAYS}).`); return; }
     if (overlap(bookForm.dockId, from, to)) {
-      const msg = `Booking ditolak: rentang hari ${from}–${to} tumpang tindih dengan slot lain di ${selDock?.name ?? bookForm.dockId}.`;
+      const msg = `Booking ditolak: rentang hari ${from}-${to} tumpang tindih dengan slot lain di ${selDock?.name ?? bookForm.dockId}.`;
       setBookError(msg);
       toast(msg, "info");
       return;
@@ -245,13 +245,13 @@ export default function Drydock() {
     const from = Number(maintForm.from);
     const to = Number(maintForm.to);
     if (!Number.isFinite(from) || !Number.isFinite(to) || to <= from || from < 0 || to > DAYS) {
-      toast(`Rentang hari tidak valid (1–${DAYS}).`, "info");
+      toast(`Rentang hari tidak valid (1-${DAYS}).`, "info");
       return;
     }
     if (!maintForm.reason.trim()) { toast("Alasan maintenance wajib diisi", "info"); return; }
     const dock = drydocks.find((d) => d.id === maintForm.dockId);
     const created = await add("dockSlots", {
-      dockId: maintForm.dockId, project: "MAINT", vessel: `Maintenance — ${maintForm.reason.trim()}`,
+      dockId: maintForm.dockId, project: "MAINT", vessel: `Maintenance - ${maintForm.reason.trim()}`,
       from, to, priority: "Normal", reason: maintForm.reason.trim(), color: "bg-steel-400",
     }, { action: "memblokir maintenance", target: `${maintForm.dockId} · ${fmtRentang(dayToISO(from), dayToISO(to))}`, module: "Drydock" });
     toast(`Blok maintenance ${created.id} di ${dock?.name ?? maintForm.dockId}`);
@@ -335,7 +335,7 @@ export default function Drydock() {
 
       {criticalConflicts.length > 0 && (
         <div className="mb-4 rounded-lg border-2 border-rose-600 bg-rose-50 p-3 text-sm text-rose-800">
-          <p className="font-bold">Panel perhatian — konflik melibatkan slot Kritis ({criticalConflicts.length})</p>
+          <p className="font-bold">Panel perhatian - konflik melibatkan slot Kritis ({criticalConflicts.length})</p>
           <ul className="mt-1 list-disc pl-5">
             {criticalConflicts.map((c) => (
               <li key={c.id} className="font-semibold">{c.vessel} · {c.project} · {drydocks.find((d) => d.id === c.dockId)?.name} · {fmtRentang(dayToISO(Number(c.from)), dayToISO(Number(c.to)))}</li>
@@ -561,7 +561,7 @@ export default function Drydock() {
           </div>
           <div className="mt-3 border-t border-steel-100 pt-3">
             <div className="flex items-center justify-between">
-              <p className="text-xs font-semibold text-steel-500">DOCKING REPORT — CHECKLIST UNDOCKING</p>
+              <p className="text-xs font-semibold text-steel-500">DOCKING REPORT - CHECKLIST UNDOCKING</p>
               <Badge tone={undockList(sel).every(Boolean) ? "green" : "amber"}>{undockList(sel).every(Boolean) ? "Siap Undocking" : `${undockList(sel).filter(Boolean).length}/5`}</Badge>
             </div>
             <div className="mt-2 space-y-1.5">
@@ -607,10 +607,10 @@ export default function Drydock() {
             <Field label="No. Dock Space (SB)" hint="Otomatis bila kosong: nnn/DS-SB/SMD/m/yyyy">
               <input className="input font-mono" value={bookForm.dsRef} onChange={(e) => setBookForm({ ...bookForm, dsRef: e.target.value })} placeholder={sbDsNumber(nextDsSeq())} />
             </Field>
-            <Field label="Kapal pasangan (Barge)" hint="Opsional — cth surat TB/Barge">
+            <Field label="Kapal pasangan (Barge)" hint="Opsional - cth surat TB/Barge">
               <input className="input" value={bookForm.vessel2} onChange={(e) => setBookForm({ ...bookForm, vessel2: e.target.value })} placeholder="cth: BG RMN 3324" />
             </Field>
-            <Field label="Tanggal mulai kalender" hint="Arsip/backdate — cth surat 00 Jan 2024">
+            <Field label="Tanggal mulai kalender" hint="Arsip/backdate - cth surat 00 Jan 2024">
               <input type="date" className="input" value={bookForm.startDate} onChange={(e) => setBookForm({ ...bookForm, startDate: e.target.value })} />
             </Field>
           </FormGrid>
@@ -618,9 +618,9 @@ export default function Drydock() {
             Estimasi biaya dock: {Math.max(0, Number(bookForm.to || 0) - Number(bookForm.from || 0))} hari × {fmtRupiah(Number(bookForm.ratePerDay || 0))} = {fmtRupiah(Math.max(0, Number(bookForm.to || 0) - Number(bookForm.from || 0)) * Math.max(0, Number(bookForm.ratePerDay || 0)))}
           </p>
           <p className="rounded-lg bg-surface px-3 py-2 text-xs text-steel-600">
-            Info kapasitas: {selDock?.capacity ?? "—"}
+            Info kapasitas: {selDock?.capacity ?? "-"}
             {selProj ? (selLoa !== null ? ` · LOA ${selProj.vessel} ${selLoa} m` : ` · data LOA ${selProj.vessel} tidak tersedia`) : ""}
-            {selCap !== null && selLoa !== null ? (selLoa > selCap ? " · MELEBIHI KAPASITAS — booking akan ditolak." : " · muat di fasilitas ini.") : ""}
+            {selCap !== null && selLoa !== null ? (selLoa > selCap ? " · MELEBIHI KAPASITAS - booking akan ditolak." : " · muat di fasilitas ini.") : ""}
           </p>
           {bookError && (
             <p className="rounded-lg bg-rose-50 px-3 py-2 text-xs font-medium text-rose-700">{bookError}</p>
@@ -646,7 +646,7 @@ export default function Drydock() {
       </Modal>
 
       {/* Modal PIC dock */}
-      <Modal open={picModal !== null} onClose={() => setPicModal(null)} title={`PIC — ${picModal?.name ?? ""}`}
+      <Modal open={picModal !== null} onClose={() => setPicModal(null)} title={`PIC - ${picModal?.name ?? ""}`}
         footer={<><button className="btn-secondary" onClick={() => setPicModal(null)}>Batal</button><button className="btn-primary" onClick={savePic}>Simpan PIC</button></>}>
         <Field label="Penanggung jawab dock" hint="Kosongkan untuk kembali ke Belum ditentukan">
           <input className="input" value={picDraft} onChange={(e) => setPicDraft(e.target.value)} placeholder="cth: Rudi Hartono" />

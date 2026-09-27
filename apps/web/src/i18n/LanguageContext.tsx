@@ -1,5 +1,5 @@
 // Konteks bahasa + hook useT(). Default "id", persist isms.locale.
-// Status DATA tidak diterjemahkan nilainya — pakai status.ts (label saja).
+// Status DATA tidak diterjemahkan nilainya - pakai status.ts (label saja).
 import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from "react";
 import type { Dict, Locale } from "./types";
 import { id } from "./id";

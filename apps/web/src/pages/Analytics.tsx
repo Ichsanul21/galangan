@@ -118,7 +118,7 @@ export default function Analytics() {
   const [sort, setSort] = useState<SortState>({ key: null, dir: "asc" });
   const [sort2, setSort2] = useState<SortState>({ key: null, dir: "asc" });
   const { data, update, log } = useStore();
-  /* What-if dikendalikan dari Pengaturan (grup Analytics) — otomatis dipakai forecast. */
+  /* What-if dikendalikan dari Pengaturan (grup Analytics) - otomatis dipakai forecast. */
   const growth = getSetting(data, "WHATIF_GROWTH", 0);
   const costAdj = getSetting(data, "WHATIF_COST", 0);
   const progAdj = getSetting(data, "WHATIF_PROG", 0);
@@ -196,15 +196,15 @@ export default function Analytics() {
   const incidentByType = new Map<string, number>();
   for (const i of data.incidents) incidentByType.set(String(i.type || "Lainnya"), (incidentByType.get(String(i.type || "Lainnya")) ?? 0) + 1);
   const topIncident = [...incidentByType.entries()].sort((a, b) => b[1] - a[1])[0];
-  const topNcrType = drilldown[0]?.factor ?? "—";
+  const topNcrType = drilldown[0]?.factor ?? "-";
   const failedInspections = data.inspections.filter((i) => i.status === "NCR");
   const worstVendor = [...data.vendors].sort((a, b) => Number(a.onTime || 100) - Number(b.onTime || 100))[0];
   const maintEquip = data.equipment.filter((e) => e.status === "Maintenance");
   const fishbones: { tulang: string; sebab: string[] }[] = [
     { tulang: "Manusia", sebab: [`Insiden terbanyak: ${topIncident ? `${topIncident[0]} (${topIncident[1]} kejadian)` : "nihil"}`, `NCR ${topNcrType} butuh welder/inspector bersertifikat`] },
     { tulang: "Metode", sebab: [`${failedInspections.length} titik inspeksi berstatus NCR perlu ITP ulang`, `${openNcr} NCR terbuka menumpuk di ${drilldown.length} kategori`] },
-    { tulang: "Material", sebab: [`${lowStock.length} item di bawah minimum (${lowStock.slice(0, 2).map((i) => String(i.name)).join("; ") || "—"})`, `Vendor on-time terendah: ${worstVendor ? `${worstVendor.name} (${worstVendor.onTime}%)` : "—"}`] },
-    { tulang: "Mesin", sebab: [`${maintEquip.length} equipment dalam maintenance (${maintEquip.slice(0, 2).map((e) => String(e.name)).join("; ") || "—"})`, `${data.calibrations.filter((c) => c.status !== "Selesai").length} kalibrasi belum selesai`] },
+    { tulang: "Material", sebab: [`${lowStock.length} item di bawah minimum (${lowStock.slice(0, 2).map((i) => String(i.name)).join("; ") || "-"})`, `Vendor on-time terendah: ${worstVendor ? `${worstVendor.name} (${worstVendor.onTime}%)` : "-"}`] },
+    { tulang: "Mesin", sebab: [`${maintEquip.length} equipment dalam maintenance (${maintEquip.slice(0, 2).map((e) => String(e.name)).join("; ") || "-"})`, `${data.calibrations.filter((c) => c.status !== "Selesai").length} kalibrasi belum selesai`] },
   ];
 
   const revFactor = (1 + growth / 100) * (1 + progAdj / 100);
@@ -310,7 +310,7 @@ export default function Analytics() {
     <div>
       <PageHeader
         title="Analytics #ISMS"
-        subtitle="Analisis 4 level — dari 'apa yang terjadi' hingga 'harus berbuat apa'"
+        subtitle="Analisis 4 level - dari 'apa yang terjadi' hingga 'harus berbuat apa'"
         icon={<BarChart3 className="h-5 w-5" />}
         actions={
           <button className="btn-primary-gradient" onClick={exportReport}>Export Laporan</button>
@@ -406,7 +406,7 @@ export default function Analytics() {
           <div className="space-y-5">
             <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
               <Card>
-                <CardHeader title="Temuan NCR per Kategori" subtitle="Terhubung modul QC — live" action={<Badge tone="red">{`${drilldown.length} kategori`}</Badge>} />
+                <CardHeader title="Temuan NCR per Kategori" subtitle="Terhubung modul QC - live" action={<Badge tone="red">{`${drilldown.length} kategori`}</Badge>} />
                 <div className="p-5 space-y-4 pt-2">
                   {drilldown.map((d, i) => (
                     <div key={d.factor} className="flex items-center gap-4">
@@ -441,7 +441,7 @@ export default function Analytics() {
             </div>
             <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
               <Card>
-                <CardHeader title="Pareto NCR per Kategori" subtitle="Bar jumlah + garis kumulatif % — live" action={<Badge tone="red">Pareto</Badge>} />
+                <CardHeader title="Pareto NCR per Kategori" subtitle="Bar jumlah + garis kumulatif % - live" action={<Badge tone="red">Pareto</Badge>} />
                 <div className="h-64 p-4 pt-0">
                   <ResponsiveContainer width="100%" height="100%">
                     <ComposedChart data={pareto} margin={{ top: 10, right: 10, left: -15, bottom: 0 }}>
@@ -494,7 +494,7 @@ export default function Analytics() {
               </div>
             </Card>
             <Card>
-              <CardHeader title="Pendapatan per Cabang" subtitle="Nilai kontrak proyek per cabang — live" />
+              <CardHeader title="Pendapatan per Cabang" subtitle="Nilai kontrak proyek per cabang - live" />
               <div className="space-y-3 p-5 pt-2">
                 {branchRows.map(([branch, value]) => {
                   const maxBranch = branchRows.length ? branchRows[0][1] : 1;
@@ -523,7 +523,7 @@ export default function Analytics() {
               <KpiCard label="Proyek Berisiko" value={`${atRisk} proyek`} delta="Terlambat / over-budget" deltaDirection={atRisk ? "down" : "up"} icon={<Clock className="h-5 w-5" />} chip="violet" spark={activeProjectTrend} />
             </div>
             <Card>
-              <CardHeader title="What-if Pertumbuhan" subtitle={`Baseline Rp ${forecastAnnual.toLocaleString("id-ID")} M (MA3 × 12) — diatur di Pengaturan, otomatis dipakai`} action={<Badge tone="violet">{`${growth >= 0 ? "+" : ""}${growth}%`}</Badge>} />
+              <CardHeader title="What-if Pertumbuhan" subtitle={`Baseline Rp ${forecastAnnual.toLocaleString("id-ID")} M (MA3 × 12) - diatur di Pengaturan, otomatis dipakai`} action={<Badge tone="violet">{`${growth >= 0 ? "+" : ""}${growth}%`}</Badge>} />
               <div className="flex flex-col gap-3 p-5 pt-2">
                 <div className="grid grid-cols-1 gap-2 text-sm sm:grid-cols-3">
                   <div className="rounded-xl bg-surface px-3 py-2"><p className="text-[11px] text-steel-400">Pertumbuhan pasar</p><p className="font-bold text-navy-900">{growth}%</p></div>
@@ -534,7 +534,7 @@ export default function Analytics() {
                   <Link to="/pengaturan" className="btn-secondary text-xs">Ubah di Pengaturan</Link>
                 </div>
                 <p className="text-sm text-steel-600">Forecast tahunan tersimulasi: <span className="font-bold text-navy-900">Rp {forecastAnnualAdj.toLocaleString("id-ID")} M</span> · margin live {marginLive.toLocaleString("id-ID", { maximumFractionDigits: 1 })}% per {fmtTanggal(todayISO())}</p>
-                <p className="text-xs text-steel-400">Asumsi: progres +/− menggeser revenue secara proporsional; biaya +1% menekan margin 0,3 poin; pita ±15%.</p>
+                <p className="text-xs text-steel-400">Asumsi: progres +/- menggeser revenue secara proporsional; biaya +1% menekan margin 0,3 poin; pita ±15%.</p>
               </div>
             </Card>
             <Card>
@@ -650,11 +650,11 @@ export default function Analytics() {
               <KpiCard label="Total Profit Portofolio" value={fmtMiliar(profitByType.reduce((s, d) => s + d.profit * 1000000000, 0))} delta={`${data.projects.length} proyek`} deltaDirection="flat" icon={<TrendingUp className="h-5 w-5" />} chip="navy" spark={sparkRevenue} />
               <KpiCard label="Biaya Rework" value={fmtRupiah(reworkCost)} delta="Estimasi berjalan" deltaDirection="down" icon={<AlertTriangle className="h-5 w-5" />} chip="rose" spark={ncrTrend} />
               <KpiCard label="Utilisasi vs Target" value={`${lastUtil}% / ${utilTarget}%`} delta={lastUtil >= utilTarget ? "Target tercapai" : "Di bawah target"} deltaDirection={lastUtil >= utilTarget ? "up" : "down"} icon={<Clock className="h-5 w-5" />} chip="teal" spark={sparkProjects} />
-              <KpiCard label="Tipe Paling Profitabel" value={profitByType.length ? [...profitByType].sort((a, b) => b.profit - a.profit)[0].name : "—"} delta={profitByType.length ? fmtMiliar([...profitByType].sort((a, b) => b.profit - a.profit)[0].profit * 1000000000) : "—"} deltaDirection="flat" icon={<Eye className="h-5 w-5" />} chip="violet" spark={sparkMargin} />
+              <KpiCard label="Tipe Paling Profitabel" value={profitByType.length ? [...profitByType].sort((a, b) => b.profit - a.profit)[0].name : "-"} delta={profitByType.length ? fmtMiliar([...profitByType].sort((a, b) => b.profit - a.profit)[0].profit * 1000000000) : "-"} deltaDirection="flat" icon={<Eye className="h-5 w-5" />} chip="violet" spark={sparkMargin} />
             </div>
             <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
               <Card>
-                <CardHeader title="Profit per Tipe Proyek" subtitle={`Budget − aktual per ${fmtTanggal(todayISO())} (miliar Rp)`} action={<button className="btn-secondary px-2 py-1 text-xs" onClick={() => exportChartPNG("chart-profittype", "profit-tipe")}>Ekspor PNG</button>} />
+                <CardHeader title="Profit per Tipe Proyek" subtitle={`Budget - aktual per ${fmtTanggal(todayISO())} (miliar Rp)`} action={<button className="btn-secondary px-2 py-1 text-xs" onClick={() => exportChartPNG("chart-profittype", "profit-tipe")}>Ekspor PNG</button>} />
                 <div id="chart-profittype" className="h-60 p-4 pt-0">
                   <ResponsiveContainer width="100%" height="100%">
                     <BarChart data={profitByType} margin={{ top: 10, right: 10, left: -10, bottom: 0 }}>
@@ -668,7 +668,7 @@ export default function Analytics() {
                 </div>
               </Card>
               <Card>
-                <CardHeader title="Profit per Cabang" subtitle={`Budget − aktual per ${fmtTanggal(todayISO())} (miliar Rp)`} action={<button className="btn-secondary px-2 py-1 text-xs" onClick={() => exportChartPNG("chart-profitbranch", "profit-cabang")}>Ekspor PNG</button>} />
+                <CardHeader title="Profit per Cabang" subtitle={`Budget - aktual per ${fmtTanggal(todayISO())} (miliar Rp)`} action={<button className="btn-secondary px-2 py-1 text-xs" onClick={() => exportChartPNG("chart-profitbranch", "profit-cabang")}>Ekspor PNG</button>} />
                 <div id="chart-profitbranch" className="h-60 p-4 pt-0">
                   <ResponsiveContainer width="100%" height="100%">
                     <BarChart data={profitByBranch} margin={{ top: 10, right: 10, left: -10, bottom: 0 }}>
@@ -687,7 +687,7 @@ export default function Analytics() {
                 <CardHeader title="Utilisasi vs Target" subtitle={`Rata-rata progres ${avgProgress}% terhadap target ${utilTarget}%`} />
                 <div className="space-y-3 p-5 pt-2">
                   <ProgressBar value={utilTarget ? (lastUtil / utilTarget) * 100 : 0} tone={lastUtil >= utilTarget ? "green" : "amber"} />
-                  <p className="text-xs text-steel-500">{lastUtil}% dari target {utilTarget}% — dihitung dari rata-rata progres {data.projects.length} proyek.</p>
+                  <p className="text-xs text-steel-500">{lastUtil}% dari target {utilTarget}% - dihitung dari rata-rata progres {data.projects.length} proyek.</p>
                 </div>
               </Card>
               <Card>
@@ -702,7 +702,7 @@ export default function Analytics() {
           </div>
         )}
         <Card className="mt-5">
-          <CardHeader title={`Anotasi Insight · ${tab}`} subtitle="Catatan per tab — tersimpan per perangkat" />
+          <CardHeader title={`Anotasi Insight · ${tab}`} subtitle="Catatan per tab - tersimpan per perangkat" />
           <div className="flex flex-col gap-2 p-5 pt-2">
             <textarea className="input" rows={2} value={noteInput} onChange={(e) => setNoteInput(e.target.value)} placeholder={`Tulis insight untuk tab ${tab}…`} />
             <div><button className="btn-secondary text-xs" onClick={saveNote}>Simpan Catatan</button></div>

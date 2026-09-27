@@ -1,4 +1,4 @@
-// Modal tambah klien (dipakai form proyek + halaman CRM) — field & validasi
+// Modal tambah klien (dipakai form proyek + halaman CRM) - field & validasi
 // satu pintu agar konsisten.
 import { useState } from "react";
 import { Field, Modal, toast } from "./ui";
@@ -52,7 +52,7 @@ export default function ClientModal({
       onClose();
       setForm({ name: "", fleet: "1", rating: "80", klasifikasi: "Regular", creditLimit: "", paymentTerms: "NET 30", branch: "" });
     } catch {
-      toast("Klien gagal disimpan — periksa kembali isian", "info");
+      toast("Klien gagal disimpan - periksa kembali isian", "info");
     }
   };
 

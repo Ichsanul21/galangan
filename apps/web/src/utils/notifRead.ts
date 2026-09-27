@@ -1,4 +1,4 @@
-/* Status baca notifikasi — persist per perangkat agar tidak hilang saat reload. */
+/* Status baca notifikasi - persist per perangkat agar tidak hilang saat reload. */
 
 const KEY = "isms.notifRead";
 

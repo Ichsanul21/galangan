@@ -1,7 +1,7 @@
-// Skema notifikasi per modul — SATU SUMBER untuk banner + highlight.
+// Skema notifikasi per modul - SATU SUMBER untuk banner + highlight.
 // Badge sidebar DIHAPUS (per 2026-09-26): yang stay hanya banner + highlight
 // per halaman modul, murni ikut KONDISI data (tanpa read-state).
-// Builder per modul agar hook halaman hanya hitung 1 modul (murah) —
+// Builder per modul agar hook halaman hanya hitung 1 modul (murah) -
 // buildModuleAlertItems (semua) dipertahankan untuk kompatibilitas.
 import type { StoreShape, StoreItem } from "../data/store";
 import { computeAlerts } from "./alerts";
@@ -313,7 +313,7 @@ function makeCtx(data: StoreShape): Ctx {
   };
 }
 
-/** Hitung 1 modul saja (murah) — dipakai hook halaman. */
+/** Hitung 1 modul saja (murah) - dipakai hook halaman. */
 export function buildModuleAlertItemsFor(data: StoreShape, key: ModuleAlertKey): ModuleAlertItem[] {
   return BUILDERS[key](makeCtx(data));
 }

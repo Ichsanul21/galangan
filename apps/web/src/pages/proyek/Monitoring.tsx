@@ -76,7 +76,7 @@ export default function Monitoring() {
     for (const c of diajukanCo(p.id)) {
       attention.push({ group: "CO Diajukan", title: `${c.id} · ${p.vessel}`, desc: `${String(c.title)} (${fmtRupiah(Number(c.impact))})`, pid: p.id });
     }
-    // Hanya WBS nyata — template fallback tidak boleh jadi perhatian.
+    // Hanya WBS nyata - template fallback tidak boleh jadi perhatian.
     if (!data.wbsByProject?.[p.id]?.length) continue;
     for (const w of wbsFor(p.id)) {
       const d = endInDays(w.end);
@@ -197,7 +197,7 @@ export default function Monitoring() {
                       </div>
                       {delay !== null && (
                         <p className={`mt-1.5 text-[11px] font-semibold ${delay > 0 ? "text-rose-600" : "text-amber-600"}`}>
-                          {delay > 0 ? `Terlambat ${delay} hari dari rencana selesai` : "Status Terlambat — cek jadwal"}
+                          {delay > 0 ? `Terlambat ${delay} hari dari rencana selesai` : "Status Terlambat - cek jadwal"}
                         </p>
                       )}
                       <div className="mt-2 flex items-center gap-2">

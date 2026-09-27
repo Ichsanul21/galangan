@@ -116,7 +116,7 @@ export interface StoreShape {
 }
 
 
-/* Seed dari docs/RawData/DataPencatatanFinance.xlsx — sheet Akun (98 akun). */
+/* Seed dari docs/RawData/DataPencatatanFinance.xlsx - sheet Akun (98 akun). */
 const seedCoa: StoreItem[] = COA_EXCEL.map((c) => ({
   id: `COA-${c.kode}`,
   kode: c.kode,
@@ -125,7 +125,7 @@ const seedCoa: StoreItem[] = COA_EXCEL.map((c) => ({
   nrlr: c.nrlr,
 }));
 
-/* Seed dari sheet JU — jurnal penyesuaian Agustus 2026 (sudah posted, berimbang). */
+/* Seed dari sheet JU - jurnal penyesuaian Agustus 2026 (sudah posted, berimbang). */
 const seedJournals: StoreItem[] = JU_PENYESUAIAN_EXCEL.map((j, i) => ({
   id: `JU-EX-${String(i + 1).padStart(2, "0")}`,
   date: j.tgl,
@@ -139,7 +139,7 @@ const seedJournals: StoreItem[] = JU_PENYESUAIAN_EXCEL.map((j, i) => ({
   status: "Posted",
 }));
 
-/* Seed dari sheet Aset — ringkasan fiskal 2025 per golongan, metode garis lurus (GL). */
+/* Seed dari sheet Aset - ringkasan fiskal 2025 per golongan, metode garis lurus (GL). */
 const seedAssets: StoreItem[] = ASET_EXCEL.map((a, i) => ({
   id: `AST-EX-0${i + 1}`,
   nama: a.gol,
@@ -152,7 +152,7 @@ const seedAssets: StoreItem[] = ASET_EXCEL.map((a, i) => ({
   metode: "GL",
 }));
 
-/* Konstanta bisnis terpusat — semua rumus baca dari sini via utils/settings.
+/* Konstanta bisnis terpusat - semua rumus baca dari sini via utils/settings.
    Ubah lewat halaman Pengaturan; kalibrasi saat dokumen client datang. */
 const seedSettings: StoreItem[] = [
   { id: "SET-PPN", key: "PPN_RATE", value: 12, label: "PPN Keluaran/Masukan hutang-belanja (%)", group: "Pajak" },
@@ -196,20 +196,20 @@ const seedSettings: StoreItem[] = [
 export const wbsTemplate: WbsItem[] = [
   // Migrasi E3/E4: template New Build dipecah (Outfitting per sistem + Painting per tahap)
   // + Commissioning. Total bobot tetap 100. WBS proyek lama (seed/wbsByProject)
-  // TIDAK dimigrasi — hanya template untuk proyek baru.
+  // TIDAK dimigrasi - hanya template untuk proyek baru.
   { task: "Desain & Persetujuan Class", start: "2026-01", end: "2026-03", progress: 100, weight: 8 },
   { task: "Pengadaan Material", start: "2026-02", end: "2026-05", progress: 85, weight: 10 },
   { task: "Fabrikasi Baja", start: "2026-03", end: "2026-07", progress: 70, weight: 12 },
   { task: "Hull Assembly", start: "2026-05", end: "2026-08", progress: 45, weight: 12 },
-  { task: "Outfitting — Machinery", start: "2026-07", end: "2026-09", progress: 20, weight: 8 },
-  { task: "Outfitting — Piping", start: "2026-07", end: "2026-09", progress: 20, weight: 7 },
-  { task: "Outfitting — Electrical", start: "2026-07", end: "2026-09", progress: 20, weight: 7 },
-  { task: "Outfitting — Nav & Comm", start: "2026-07", end: "2026-09", progress: 20, weight: 5 },
-  { task: "Outfitting — Accommodation", start: "2026-07", end: "2026-09", progress: 20, weight: 5 },
-  { task: "Painting — Surface Prep", start: "2026-08", end: "2026-09", progress: 5, weight: 5 },
-  { task: "Painting — Priming", start: "2026-08", end: "2026-09", progress: 5, weight: 4 },
-  { task: "Painting — Topcoat", start: "2026-08", end: "2026-09", progress: 5, weight: 4 },
-  { task: "Painting — Final Inspection", start: "2026-08", end: "2026-09", progress: 5, weight: 3 },
+  { task: "Outfitting - Machinery", start: "2026-07", end: "2026-09", progress: 20, weight: 8 },
+  { task: "Outfitting - Piping", start: "2026-07", end: "2026-09", progress: 20, weight: 7 },
+  { task: "Outfitting - Electrical", start: "2026-07", end: "2026-09", progress: 20, weight: 7 },
+  { task: "Outfitting - Nav & Comm", start: "2026-07", end: "2026-09", progress: 20, weight: 5 },
+  { task: "Outfitting - Accommodation", start: "2026-07", end: "2026-09", progress: 20, weight: 5 },
+  { task: "Painting - Surface Prep", start: "2026-08", end: "2026-09", progress: 5, weight: 5 },
+  { task: "Painting - Priming", start: "2026-08", end: "2026-09", progress: 5, weight: 4 },
+  { task: "Painting - Topcoat", start: "2026-08", end: "2026-09", progress: 5, weight: 4 },
+  { task: "Painting - Final Inspection", start: "2026-08", end: "2026-09", progress: 5, weight: 3 },
   { task: "Commissioning", start: "2026-09", end: "2026-09", progress: 0, weight: 6 },
   { task: "Sea Trial & Delivery", start: "2026-09", end: "2026-09", progress: 0, weight: 4 },
 ];
@@ -320,7 +320,7 @@ function saveDirtyPersisted(cols: string[]): void {
   try {
     localStorage.setItem(DIRTY_KEY, JSON.stringify({ savedAt: Date.now(), entries: cols.slice(0, SYNC_CAP) }));
   } catch {
-    /* storage penuh — abaikan */
+    /* storage penuh - abaikan */
   }
 }
 
@@ -350,7 +350,7 @@ function loadTombstonesPersisted(): Map<string, Set<string>> {
       if (total >= SYNC_CAP) break;
     }
   } catch {
-    /* abaikan — mulai kosong */
+    /* abaikan - mulai kosong */
   }
   return map;
 }
@@ -371,7 +371,7 @@ function saveTombstonesPersisted(map: Map<string, Set<string>>): void {
     }
     localStorage.setItem(TOMBSTONES_KEY, JSON.stringify({ savedAt: Date.now(), entries }));
   } catch {
-    /* storage penuh — abaikan */
+    /* storage penuh - abaikan */
   }
 }
 
@@ -381,7 +381,7 @@ function saveBackup(col: string, rows: StoreItem[]): void {
   try {
     localStorage.setItem(`isms.backup.${col}`, JSON.stringify({ savedAt: Date.now(), rows }));
   } catch {
-    /* storage penuh — abaikan */
+    /* storage penuh - abaikan */
   }
 }
 const PREFIX: Record<string, string> = {
@@ -556,14 +556,14 @@ const ACTOR_TONE: Record<string, "navy" | "teal" | "rose" | "violet" | "amber"> 
 function notifyBackendFallback(): void {
   try {
     window.dispatchEvent(
-      new CustomEvent("isms:toast", { detail: { message: "Backend tak terjangkau — mode lokal", tone: "info" } }),
+      new CustomEvent("isms:toast", { detail: { message: "Backend tak terjangkau - mode lokal", tone: "info" } }),
     );
   } catch {
     /* abaikan */
   }
 }
 
-/* Toast alasan penolakan backend (mis. 403 "Butuh peran Direktur") — tiap kejadian. */
+/* Toast alasan penolakan backend (mis. 403 "Butuh peran Direktur") - tiap kejadian. */
 function notifyForbidden(reason: string): void {
   try {
     window.dispatchEvent(new CustomEvent("isms:toast", { detail: { message: reason, tone: "info" } }));
@@ -581,14 +581,14 @@ function notifyConflict(message: string): void {
   }
 }
 
-/* Remote dipakai bila backend dikonfigurasi DAN ada JWT — seluruh CRUD BE wajib
+/* Remote dipakai bila backend dikonfigurasi DAN ada JWT - seluruh CRUD BE wajib
    auth. Tanpa JWT (belum login) operasi berjalan lokal senyap, tanpa semburan 401. */
 function remoteActive(): boolean {
   return isBackendConfigured() && getJwt() !== null;
 }
 
 /* Contract version: cocok dengan services/api GET /api/version.
-   Minor-tolerant — sinkronisasi diblokir bila MAJOR berbeda atau web minor
+   Minor-tolerant - sinkronisasi diblokir bila MAJOR berbeda atau web minor
    di bawah minWeb server. */
 const EXPECTED_API_MAJOR = 0;
 const EXPECTED_API_MINOR = 2;
@@ -614,7 +614,7 @@ function notifyVersionBlocked(serverApi: string): void {
     window.dispatchEvent(
       new CustomEvent("isms:toast", {
         detail: {
-          message: `Versi backend tak kompatibel (server ${serverApi}) — sinkronisasi dibatalkan. Perbarui aplikasi.`,
+          message: `Versi backend tak kompatibel (server ${serverApi}) - sinkronisasi dibatalkan. Perbarui aplikasi.`,
           tone: "info",
         },
       }),
@@ -718,7 +718,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         }
       }
     } catch {
-      /* storage penuh — abaikan */
+      /* storage penuh - abaikan */
     }
   }, [data]);
 
@@ -755,7 +755,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         saveBackup("activities", cur.activities);
       }
     } catch {
-      /* backup best-effort — lanjutkan resync */
+      /* backup best-effort - lanjutkan resync */
     }
     setData((prev) => {
       const next = { ...prev, ...pulled };
@@ -854,7 +854,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
                 tombstones.delete(id);
                 continue;
               }
-              // 409 REFERENCED = server menang (masih dipakai) — lepas
+              // 409 REFERENCED = server menang (masih dipakai) - lepas
               // tombstone agar tidak retry selamanya; baris akan kembali
               // saat resync berikutnya setelah koleksi bersih.
               if (err instanceof ApiError && err.status === 409) {
@@ -894,7 +894,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
               // 429: hormati Retry-After sekali, lalu coba ulang sekali.
               if (err instanceof ApiError && err.status === 429 && !retried) {
                 const waitMs = Math.min(Math.max(err.retryAfterSec ?? 5, 1), 30) * 1000;
-                setBackendError(`Terlalu banyak permintaan — jeda ${Math.round(waitMs / 1000)} dtk lalu coba lagi`);
+                setBackendError(`Terlalu banyak permintaan - jeda ${Math.round(waitMs / 1000)} dtk lalu coba lagi`);
                 await sleep(waitMs);
                 return attemptCreate(true);
               }
@@ -903,7 +903,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           };
           const res = await attemptCreate(false);
           if (res === "stale") {
-            // Server menang — tarik versi server gantikan lokal.
+            // Server menang - tarik versi server gantikan lokal.
             try {
               const server = await apiFetch<{ id: string; branch: string; data: Record<string, unknown>; updated_at: string }>(
                 `/api/${col}/${encodeURIComponent(row.id)}`,
@@ -918,7 +918,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
               ok = false;
               break;
             }
-            notifyConflict("Data server lebih baru — versi server dipakai. Ulangi perubahan Anda bila perlu.");
+            notifyConflict("Data server lebih baru - versi server dipakai. Ulangi perubahan Anda bila perlu.");
             continue;
           }
           if (res !== "ok") {
@@ -932,7 +932,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           setBackendError(null);
         }
       } catch {
-        /* koleksi ini tetap dirty — coba lagi nanti */
+        /* koleksi ini tetap dirty - coba lagi nanti */
       }
     }
   }, [clearDirty, clearTombstones]);
@@ -962,13 +962,13 @@ export function StoreProvider({ children }: { children: ReactNode }) {
        cukup toast alasan dari backend. Kembalikan true bila 403. */
     const degrade = (err: unknown): boolean => {
       if (err instanceof ApiError && err.status === 403) {
-        const reason = err.message || "Akses ditolak — butuh peran yang sesuai";
+        const reason = err.message || "Akses ditolak - butuh peran yang sesuai";
         setBackendError(reason);
         notifyForbidden(reason);
         return true;
       }
       if (err instanceof ApiError && err.status === 401) {
-        setBackendError("Sesi berakhir — login ulang; perubahan ditahan untuk sinkronisasi");
+        setBackendError("Sesi berakhir - login ulang; perubahan ditahan untuk sinkronisasi");
         if (!fallbackToasted.current) {
           fallbackToasted.current = true;
           notifyBackendFallback();
@@ -977,14 +977,14 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       }
       if (err instanceof ApiError && err.status === 429) {
         const wait = err.retryAfterSec ? ` (coba lagi ${err.retryAfterSec} dtk)` : "";
-        setBackendError(`Terlalu banyak permintaan${wait} — perubahan ditahan`);
+        setBackendError(`Terlalu banyak permintaan${wait} - perubahan ditahan`);
         if (!fallbackToasted.current) {
           fallbackToasted.current = true;
           notifyBackendFallback();
         }
         return false;
       }
-      setBackendError(err instanceof Error && err.message ? err.message : "Backend tak terjangkau — mode lokal");
+      setBackendError(err instanceof Error && err.message ? err.message : "Backend tak terjangkau - mode lokal");
       if (!fallbackToasted.current) {
         fallbackToasted.current = true;
         notifyBackendFallback();
@@ -1031,7 +1031,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             return finalItem;
           } catch (err) {
             // 409/422 ber-code (CONFLICT/REFERENCED/VALIDATION/UNPROCESSABLE):
-            // jangan tulis lokal — lempar agar caller toast gagal, bukan sukses.
+            // jangan tulis lokal - lempar agar caller toast gagal, bukan sukses.
             if (err instanceof ApiError && (err.status === 409 || err.status === 422)) {
               notifyConflict(err.message);
               throw err;
@@ -1069,7 +1069,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             setBackendError(null);
             return;
           } catch (err) {
-            // STALE: server menang — muat versi server + beri tahu eksplisit.
+            // STALE: server menang - muat versi server + beri tahu eksplisit.
             if (err instanceof ApiError && err.status === 409 && err.code === "STALE") {
               const server = (err.data ?? {}) as { data?: Record<string, unknown>; branch?: string; updated_at?: string };
               setData((prev) => ({
@@ -1086,7 +1086,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
                 ),
               }));
               setBackendError(null);
-              notifyConflict("Data sudah diubah pengguna lain — versi server dimuat ulang. Ulangi perubahan Anda.");
+              notifyConflict("Data sudah diubah pengguna lain - versi server dimuat ulang. Ulangi perubahan Anda.");
               return;
             }
             // REFERENCED/VALIDATION/UNPROCESSABLE: tampilkan alasan BE apa adanya.
@@ -1138,7 +1138,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         const entry = buildActivity(action, target, module);
         setData((prev) => ({ ...prev, activities: [entry, ...prev.activities].slice(0, 30) }));
         if (remoteActive()) {
-          // Best-effort mirror tanpa await — langsung via HTTP (bukan add())
+          // Best-effort mirror tanpa await - langsung via HTTP (bukan add())
           // agar tidak terjadi rekursi; gagal → tandai dirty agar tidak ter-wipe resync.
           remoteRepository("activities").create(entry).catch(() => markDirty("activities"));
         } else {

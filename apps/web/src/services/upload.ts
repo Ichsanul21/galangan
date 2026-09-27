@@ -7,7 +7,7 @@ import { getJwt, isBackendConfigured } from "./http";
 
 export class UploadNotConfigured extends Error {
   constructor() {
-    super("Backend belum dikonfigurasi — isi URL manual atau atur VITE_API_URL.");
+    super("Backend belum dikonfigurasi - isi URL manual atau atur VITE_API_URL.");
     this.name = "UploadNotConfigured";
   }
 }
@@ -50,7 +50,7 @@ export async function uploadFile(file: File): Promise<string> {
 }
 
 /** OCR gambar lampiran via backend (POST /api/ocr). `url` boleh relatif
- *  (/files/...) — diambil dulu dengan JWT lalu dikirim ulang sebagai file.
+ *  (/files/...) - diambil dulu dengan JWT lalu dikirim ulang sebagai file.
  *  501 = tesseract belum terinstal di server. */
 export async function ocrImageUrl(url: string): Promise<string> {
   if (!isBackendConfigured() || !BASE) throw new UploadNotConfigured();

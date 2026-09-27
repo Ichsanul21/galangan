@@ -230,7 +230,7 @@ export default function SparepartServiceSection({ projectId, vesselId, view = "a
       </div>
       {modelPick !== "Tugboat" && (
         <p className="mb-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-1.5 text-xs text-amber-800">
-          Model generik — tipe kapal ini memakai model tugboat sebagai representasi.
+          Model generik - tipe kapal ini memakai model tugboat sebagai representasi.
         </p>
       )}
       <div className="relative overflow-hidden rounded-xl border border-steel-100 bg-surface" style={{ minHeight: 340 }}>
@@ -274,7 +274,7 @@ export default function SparepartServiceSection({ projectId, vesselId, view = "a
                 <p className="font-medium text-navy-900">{sp.name}</p>
                 <p className="text-xs text-steel-500">{sp.partNumber} · {sp.category} · req {sp.requestDate}</p>
                 <p className="text-xs text-steel-500">
-                  dipakai: {sp.usedDate && sp.usedDate !== "-" ? sp.usedDate : "—"} · teknisi: {sp.technician || "—"} · garansi s.d. {sp.warrantyUntil && sp.warrantyUntil !== "-" ? sp.warrantyUntil : "—"}
+                  dipakai: {sp.usedDate && sp.usedDate !== "-" ? sp.usedDate : "-"} · teknisi: {sp.technician || "-"} · garansi s.d. {sp.warrantyUntil && sp.warrantyUntil !== "-" ? sp.warrantyUntil : "-"}
                 </p>
               </div>
               <div className="text-right">
@@ -426,7 +426,7 @@ export default function SparepartServiceSection({ projectId, vesselId, view = "a
 
       <Modal open={cancelFor !== null} onClose={() => setCancelFor(null)} title={`Batalkan service: ${cancelFor?.description ?? ""}`} subtitle={cancelFor?.id}
         footer={<><button className="btn-secondary" onClick={() => setCancelFor(null)}>Kembali</button><button className="btn-primary" onClick={confirmCancel}>Batalkan Service</button></>}>
-        <Field label="Alasan pembatalan" hint="Wajib diisi — tercatat di riwayat service">
+        <Field label="Alasan pembatalan" hint="Wajib diisi - tercatat di riwayat service">
           <textarea className="input" rows={3} value={cancelReason} onChange={(e) => setCancelReason(e.target.value)} placeholder="cth: Pekerjaan dialihkan ke subkontraktor" />
         </Field>
       </Modal>

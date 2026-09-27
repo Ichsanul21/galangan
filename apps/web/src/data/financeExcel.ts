@@ -1,5 +1,5 @@
 // CoA + saldo pembanding dari docs/RawData/DataPencatatanFinance.xlsx (Agustus 2026).
-// PT Syukur Bersaudara — sumber kebenaran revisi modul finance; angka contoh, bukan live.
+// PT Syukur Bersaudara - sumber kebenaran revisi modul finance; angka contoh, bukan live.
 export interface CoaExcel { kode: string; nama: string; dk: string; nrlr: string }
 export const COA_EXCEL: CoaExcel[] = [
   { kode: '1-000', nama: 'A K T I V A', dk: '-', nrlr: '-' },

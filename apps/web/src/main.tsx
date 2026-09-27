@@ -39,7 +39,7 @@ import { ErrorBoundary } from "./components/ui";
 import { ApiError } from "./services/http";
 
 /* Jaring pengaman: ApiError selalu di-toast di sumbernya (notifyConflict /
-   notifyForbidden / degrade) — cegah warning unhandledrejection di konsol
+   notifyForbidden / degrade) - cegah warning unhandledrejection di konsol
    untuk kegagalan yang sudah ditangani secara UX. */
 window.addEventListener("unhandledrejection", (e) => {
   if (e.reason instanceof ApiError) e.preventDefault();

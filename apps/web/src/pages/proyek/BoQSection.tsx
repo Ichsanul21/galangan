@@ -267,7 +267,7 @@ export default function BoQSection({ projectId }: Props) {
                           <Badge tone="amber">{(b.priceHistory ?? []).length}x</Badge> Riwayat
                         </button>
                       ) : (
-                        <span className="text-xs text-steel-400">—</span>
+                        <span className="text-xs text-steel-400">-</span>
                       )}
                     </td>
                     <td className="td">
@@ -329,7 +329,7 @@ export default function BoQSection({ projectId }: Props) {
         <div className="space-y-3">
           <p className="text-xs text-steel-500">Harga saat ini: <span className="font-semibold text-navy-900">{revisiFor ? fmtRupiah(revisiFor.unitPrice) : ""}</span> · total {revisiFor ? fmtRupiah(revisiFor.totalPrice) : ""} (qty {revisiFor?.quantity}). Riwayat tersimpan: {(revisiFor?.priceHistory ?? []).length}x.</p>
           <Field label="Harga satuan baru (Rp)"><input type="number" min={0} className="input" value={revisiPrice} onChange={(e) => setRevisiPrice(e.target.value)} placeholder="cth: 500000000" /></Field>
-          <Field label="Alasan revisi" hint="Wajib diisi — tercatat di riwayat harga"><textarea className="input" rows={3} value={revisiReason} onChange={(e) => setRevisiReason(e.target.value)} placeholder="cth: Penyesuaian kurs vendor +10%" /></Field>
+          <Field label="Alasan revisi" hint="Wajib diisi - tercatat di riwayat harga"><textarea className="input" rows={3} value={revisiReason} onChange={(e) => setRevisiReason(e.target.value)} placeholder="cth: Penyesuaian kurs vendor +10%" /></Field>
         </div>
       </Modal>
 

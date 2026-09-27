@@ -67,7 +67,7 @@ const INV_NEXT: Record<string, string[]> = {
 const BILLING_TYPES = ["Milestone", "Progres", "Uang Muka", "Retensi", "T&M"] as const;
 
 /* Alur kaku Keuangan & Billing: 4 tahap berurutan. Strip di bawah
-   memetakan tiap tab ke tahapnya — klik chip langsung lompat ke tab. */
+   memetakan tiap tab ke tahapnya - klik chip langsung lompat ke tab. */
 const FIN_FLOW = [
   { n: 1, label: "Master", desc: "Akun + Aset acuan", tabs: ["Akun", "Aset"] },
   { n: 2, label: "Billing & Transaksi", desc: "Invoice → Piutang / Hutang → Kas → Jurnal", tabs: ["Invoice", "Piutang (AR)", "Hutang (AP)", "Jadwal Bayar", "Kas & Bank", "Jurnal"] },
@@ -170,10 +170,10 @@ const DUNNING_NEXT: Record<string, string> = {
 
 const AR_BUCKETS = [
   { name: "Current", min: Number.NEGATIVE_INFINITY, max: 0 },
-  { name: "1–30 hari", min: 1, max: 30 },
-  { name: "31–60 hari", min: 31, max: 60 },
-  { name: "61–90 hari", min: 61, max: 90 },
-  { name: "91–120 hari", min: 91, max: 120 },
+  { name: "1-30 hari", min: 1, max: 30 },
+  { name: "31-60 hari", min: 31, max: 60 },
+  { name: "61-90 hari", min: 61, max: 90 },
+  { name: "91-120 hari", min: 91, max: 120 },
   { name: ">120 hari", min: 121, max: Number.POSITIVE_INFINITY },
 ];
 
@@ -186,7 +186,7 @@ interface InvLine {
   price: string;
   rate: string;
   hours: string;
-  kategori: string; // "Jasa" | "Material" — split RawData CONTOH INVOICE
+  kategori: string; // "Jasa" | "Material" - split RawData CONTOH INVOICE
 }
 
 const invNext = (s: string): string[] => INV_NEXT[s] ?? [];
@@ -202,7 +202,7 @@ const invNeto = (inv: StoreItem): number => {
 };
 
 // Payroll: bruto = basic + tunjangan (array|number) + lembur; net = kas keluar;
-// potongan = bruto − net (PPh21 + BPJS karyawan), selalu seimbang.
+// potongan = bruto - net (PPh21 + BPJS karyawan), selalu seimbang.
 const allowSum = (p: StoreItem): number => {
   const a = p.allowances;
   if (Array.isArray(a)) return a.reduce((s: number, l: unknown) => s + num((l as { amount?: unknown }).amount), 0);
@@ -390,7 +390,7 @@ export default function Finance() {
     const matchQ = !needle || `${c.kode} ${c.nama}`.toLowerCase().includes(needle);
     return matchT && matchQ;
   });
-  /* Sort per tabel — satu state per tabel agar tidak bentrok antar tab. */
+  /* Sort per tabel - satu state per tabel agar tidak bentrok antar tab. */
   const [akunSort, setAkunSort] = useState<SortState>({ key: null, dir: "asc" });
   const [arSort, setArSort] = useState<SortState>({ key: null, dir: "asc" });
   const [apSort, setApSort] = useState<SortState>({ key: null, dir: "asc" });
@@ -455,7 +455,7 @@ export default function Finance() {
     juPager.reset();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tab]);
-  const coaTipeOf = (c: StoreItem): string => coaList.find((x) => x.kode === String(c.kode))?.tipe ?? "—";
+  const coaTipeOf = (c: StoreItem): string => coaList.find((x) => x.kode === String(c.kode))?.tipe ?? "-";
   const TIPE_ORDER = ["Aset", "Liabilitas", "Ekuitas", "Pendapatan", "Beban", "Header"];
   const coaGroups = useMemo(() => {
     const sorted = sortRows(coaFiltered, akunSort, (c, k) =>
@@ -513,7 +513,7 @@ export default function Finance() {
   const isTMForm = invForm.billingType === "T&M";
   const invTotal = invLines.reduce((s, l) => s + lineAmount(l, isTMForm), 0);
   // Rumus RawData CONTOH INVOICE: TOTAL=Jasa+Material, DPP=TOTAL×11/12,
-  // PPN=12%×DPP (0 bila SKDT), PPh=2%×Jasa, Grand=TOTAL+PPN−PPh−DP.
+  // PPN=12%×DPP (0 bila SKDT), PPh=2%×Jasa, Grand=TOTAL+PPN-PPh-DP.
   const sbPreview = useMemo(() => {
     const jasa = invLines.filter((l) => (l.kategori || "Jasa") === "Jasa").reduce((s, l) => s + lineAmount(l, isTMForm), 0);
     const material = invLines.filter((l) => l.kategori === "Material").reduce((s, l) => s + lineAmount(l, isTMForm), 0);
@@ -570,7 +570,7 @@ export default function Finance() {
   );
   const agingDonutTotal = agingDonut.reduce((s, d) => s + d.value, 0);
 
-  // Kas & Bank dari Excel (sheet JU,Kas,Bank + BB) — bukan dummy.
+  // Kas & Bank dari Excel (sheet JU,Kas,Bank + BB) - bukan dummy.
   const kasAwal = KASBANK_EXCEL.reduce((s, r) => s + r.awal, 0);
   const kasAkhir = KASBANK_EXCEL.reduce((s, r) => s + r.akhir, 0);
   const kasDelta = kasAwal ? Math.round(((kasAkhir - kasAwal) / Math.abs(kasAwal)) * 100) : 0;
@@ -606,7 +606,7 @@ export default function Finance() {
     const ppnRate = getSetting(data, "PPN_RATE", 12);
     const pphRate = getSetting(data, "PPH23_RATE", 2);
     // PPN Keluaran memakai ppnAmt HISTORIS per invoice (0 valid untuk SKDT/
-    // retensi). Hanya baris lama tanpa ppnAmt yang dihitung ulang — ganti
+    // retensi). Hanya baris lama tanpa ppnAmt yang dihitung ulang - ganti
     // tarif di Pengaturan tidak menulis ulang riwayat.
     const hasStored = (i: StoreItem): boolean =>
       i.ppnAmt !== undefined && i.ppnAmt !== null && String(i.ppnAmt) !== "";
@@ -791,7 +791,7 @@ export default function Finance() {
       rows.push({
         date: String(i.writeOffAt || i.due || ""),
         ref: String(i.id),
-        desc: `Hapus buku piutang ${i.id} — ${i.writeOffReason ?? ""}`,
+        desc: `Hapus buku piutang ${i.id} - ${i.writeOffReason ?? ""}`,
         debitAkun: "5100 Beban Proyek",
         kreditAkun: "1200 Piutang Usaha",
         amount: invNeto(i),
@@ -876,7 +876,7 @@ export default function Finance() {
   const labaDelta = labaPrev ? Math.round(((labaLast - labaPrev) / Math.abs(labaPrev)) * 100) : 0;
 
   // Arus kas live dari jurnal Lunas (masuk = invoice Lunas, keluar = payable + payroll).
-  // Kosong bila belum ada pelunasan — grafik menampilkan empty state, bukan kurva dummy.
+  // Kosong bila belum ada pelunasan - grafik menampilkan empty state, bukan kurva dummy.
   const flowMonthly = plMonthly.map((p) => ({
     month: p.period.slice(5),
     masuk: Math.round(((p.revenue || 0) / 1000000000) * 10) / 10,
@@ -939,18 +939,18 @@ export default function Finance() {
     if (validLines.length === 0) { toast("Isi minimal satu baris dengan nominal lebih dari 0", "info"); return; }
     if (invForm.nsfp.trim() && (data.invoices ?? []).some((i) => String(i.nsfp ?? "") === invForm.nsfp.trim())) { toast("NSFP sudah dipakai invoice lain", "info"); return; }
     if (invForm.noFaktur.trim() && (data.invoices ?? []).some((i) => String(i.noFaktur ?? "") === invForm.noFaktur.trim())) { toast("No. faktur sudah dipakai invoice lain", "info"); return; }
-    // E6: clientPO opsional — bila diisi harus milik proyek yang sama.
+    // E6: clientPO opsional - bila diisi harus milik proyek yang sama.
     if (invForm.clientPO) {
       const po = (data.clientPos ?? []).find((p) => String(p.no ?? "") === invForm.clientPO || String(p.id ?? "") === invForm.clientPO);
       if (!po) { toast("PO klien tidak dikenal", "info"); return; }
-      if (po.projectId && String(po.projectId) !== proj.id) { toast(`PO klien milik proyek ${String(po.projectId)} — tidak cocok dengan ${proj.id}`, "info"); return; }
+      if (po.projectId && String(po.projectId) !== proj.id) { toast(`PO klien milik proyek ${String(po.projectId)} - tidak cocok dengan ${proj.id}`, "info"); return; }
     }
     const total = validLines.reduce((s, l) => s + lineAmount(l, isTMForm), 0);
     const pct = invForm.billingType === "Uang Muka" || invForm.billingType === "T&M" ? 0 : num(invForm.retentionPct);
     const retentionAmt = Math.round(total * (pct / 100));
     const jasaTotal = validLines.filter((l) => (l.kategori || "Jasa") === "Jasa").reduce((s, l) => s + lineAmount(l, isTMForm), 0);
     const matTotal = validLines.filter((l) => l.kategori === "Material").reduce((s, l) => s + lineAmount(l, isTMForm), 0);
-    // Tarif DISIMPAN per invoice — laporan pajak memakai tarif historis ini,
+    // Tarif DISIMPAN per invoice - laporan pajak memakai tarif historis ini,
     // bukan setting saat ini (ganti tarif tidak menulis ulang riwayat).
     const ppnRateUsed = getSetting(data, "PPN_INVOICE_RATE", PPN_INVOICE_DEFAULT);
     const pphRateUsed = getSetting(data, "PPH_JASA_RATE", PPH_JASA_DEFAULT);
@@ -963,7 +963,7 @@ export default function Finance() {
       dpApplied: num(invForm.dpApplied),
       retentionPct: pct,
     });
-    // H-03: recompute PPN/PPh vs stored — tolak bila tidak konsisten.
+    // H-03: recompute PPN/PPh vs stored - tolak bila tidak konsisten.
     const verify = sbInvoiceMath({
       jasa: jasaTotal,
       material: matTotal,
@@ -974,10 +974,10 @@ export default function Finance() {
       retentionPct: pct,
     });
     if (verify.dpp !== sb.dpp || verify.ppn !== sb.ppn || verify.pph !== sb.pph || verify.grand !== sb.grand || verify.retentionAmt !== retentionAmt) {
-      toast("Hitungan PPN/PPh tidak konsisten — periksa lines, tarif & retensi", "info");
+      toast("Hitungan PPN/PPh tidak konsisten - periksa lines, tarif & retensi", "info");
       return;
     }
-    if (!Number.isFinite(sb.grand) || sb.grand <= 0) { toast("Grand total harus lebih dari 0 — periksa lines & potongan DP", "info"); return; }
+    if (!Number.isFinite(sb.grand) || sb.grand <= 0) { toast("Grand total harus lebih dari 0 - periksa lines & potongan DP", "info"); return; }
     const storedLines = validLines.map((l) => ({
       desc: l.desc.trim(),
       qty: num(l.qty),
@@ -1037,7 +1037,7 @@ export default function Finance() {
     setInvLines([emptyLine()]);
   };
 
-  // T&M: tarik baris otomatis dari timesheet Disetujui — jumlah jam × rate per WO proyek ini.
+  // T&M: tarik baris otomatis dari timesheet Disetujui - jumlah jam × rate per WO proyek ini.
   const pullTimesheetLines = () => {
     if (!invForm.project) { toast("Pilih proyek dulu", "info"); return; }
     const rateOf = (t: StoreItem): number =>
@@ -1055,12 +1055,12 @@ export default function Finance() {
       agg.set(woId, { hours: cur.hours + Number(t.hours || 0), rate: cur.rate || rateOf(t) });
     }
     const lines: InvLine[] = [...agg.entries()].map(([woId, a]) => ({
-      desc: `T&M ${woId} — ${a.hours} jam`, qty: "1", unit: "lot", price: "",
+      desc: `T&M ${woId} - ${a.hours} jam`, qty: "1", unit: "lot", price: "",
       rate: String(a.rate), hours: String(a.hours), kategori: "Jasa",
     }));
     setInvLines(lines);
     const total = lines.reduce((s, l) => s + lineAmount(l, true), 0);
-    toast(`${rows.length} timesheet (${lines.length} WO) ditarik — total ${fmtRupiah(total)}`);
+    toast(`${rows.length} timesheet (${lines.length} WO) ditarik - total ${fmtRupiah(total)}`);
   };
 
   const dunningOf = (inv: StoreItem): string => String(inv.dunning ?? "Belum Ditagih");
@@ -1098,8 +1098,8 @@ export default function Finance() {
       writeOffAt: today,
       ...(needsWriteOffDirector(writeOff) ? { directorApproved: woDirName.trim(), writeOffBy: woDirName.trim() } : {}),
     });
-    log("menghapus-bukukan piutang", `${writeOff.id} — ${writeOffReason.trim()}`, "Keuangan");
-    toast(`${writeOff.id} dihapusbukukan — masuk beban`);
+    log("menghapus-bukukan piutang", `${writeOff.id} - ${writeOffReason.trim()}`, "Keuangan");
+    toast(`${writeOff.id} dihapusbukukan - masuk beban`);
     setWriteOff(null);
     setWriteOffReason("");
     setConfirmWriteOff(false);
@@ -1193,7 +1193,7 @@ export default function Finance() {
 
   // --- Jurnal otomatis idempoten (uang mengalir): pelunasan invoice, bayar
   // hutang, bayar massal masing-masing menulis 1 baris Kas/Bank berimbang.
-  // Idempoten via dokumen unik — aman dipanggil ulang / dari bayar massal.
+  // Idempoten via dokumen unik - aman dipanggil ulang / dari bayar massal.
   const postAutoJournal = async (args: {
     dokumen: string; date: string; uraian: string; db: string; kr: string; amount: number;
   }): Promise<boolean> =>
@@ -1331,10 +1331,10 @@ export default function Finance() {
         kr: "1-130",
         amount: invNeto(payTarget),
       });
-      toast(`${payTarget.id} lunas — pembayaran tercatat${jurnalOk ? " + jurnal kas" : ""}`);
+      toast(`${payTarget.id} lunas - pembayaran tercatat${jurnalOk ? " + jurnal kas" : ""}`);
       setPayTarget(null);
     } catch {
-      toast(`Pelunasan ${payTarget.id} gagal — periksa status invoice & jurnal`, "info");
+      toast(`Pelunasan ${payTarget.id} gagal - periksa status invoice & jurnal`, "info");
     }
   };
 
@@ -1388,7 +1388,7 @@ export default function Finance() {
       setApTarget(null);
       setApPayAmt("");
     } catch {
-      toast(`Pembayaran ${apTarget.po} gagal di tengah jalan — periksa hutang & jurnal`, "info");
+      toast(`Pembayaran ${apTarget.po} gagal di tengah jalan - periksa hutang & jurnal`, "info");
     }
   };
 
@@ -1432,7 +1432,7 @@ export default function Finance() {
         batchFail++;
       }
     }
-    toast(`${ordered.length - batchFail} item dilunasi massal (tertua dulu)${batchFail > 0 ? `, ${batchFail} gagal — periksa kembali` : ""}`);
+    toast(`${ordered.length - batchFail} item dilunasi massal (tertua dulu)${batchFail > 0 ? `, ${batchFail} gagal - periksa kembali` : ""}`);
     setSchedSel([]);
     setShowBatch(false);
   };
@@ -1465,7 +1465,7 @@ export default function Finance() {
     if (!allocTarget) return;
     if (!allocForm.project) { toast("Pilih proyek alokasi", "info"); return; }
     const pct = num(allocForm.pct);
-    if (pct <= 0 || pct > 100) { toast("Persen alokasi 1–100", "info"); return; }
+    if (pct <= 0 || pct > 100) { toast("Persen alokasi 1-100", "info"); return; }
     await update("payroll", allocTarget.id, { allocProject: allocForm.project, allocPct: pct });
     log("mengalokasikan gaji", `${allocTarget.id} → ${allocForm.project} ${pct}%`, "Keuangan");
     toast(`Gaji ${allocTarget.id} dialokasikan ${pct}% ke ${allocForm.project}`);
@@ -1475,7 +1475,7 @@ export default function Finance() {
   const saveOverhead = async () => {
     if (!profitPid) return;
     const pct = num(overheadPct);
-    if (pct < 0 || pct > 100) { toast("Overhead % harus 0–100", "info"); return; }
+    if (pct < 0 || pct > 100) { toast("Overhead % harus 0-100", "info"); return; }
     await update("projects", profitPid, { overheadPct: pct });
     log("mengatur overhead proyek", `${profitPid} ${pct}%`, "Keuangan");
     toast(`Overhead ${profitPid} disimpan ${pct}%`);
@@ -1511,7 +1511,7 @@ export default function Finance() {
         retentionAmt: 0,
         retentionPct: 0,
         retentionStatus: "-",
-        // Retensi = bagian grand invoice induk yang sudah ber-PPN — tidak kena
+        // Retensi = bagian grand invoice induk yang sudah ber-PPN - tidak kena
         // PPN/PPh baru. Tarif induk disimpan agar laporan tak menghitung ulang.
         jasaTotal: 0,
         matTotal: 0,
@@ -1531,11 +1531,11 @@ export default function Finance() {
       log("membuat invoice retensi", `${topId} dari ${releaseTarget.id} · ${fmtRupiah(retAmt)}`, "Keuangan");
     }
     log("me-release retensi", `${releaseTarget.id} BA ${releaseForm.ba.trim()}`, "Keuangan");
-    toast(`Retensi ${releaseTarget.id} di-release${retAmt > 0 ? " — invoice penagihan dibuat" : ""}`);
+    toast(`Retensi ${releaseTarget.id} di-release${retAmt > 0 ? " - invoice penagihan dibuat" : ""}`);
     setReleaseTarget(null);
     setReleaseForm({ date: todayISO(), ba: "", warrantyId: "" });
     } catch {
-      toast(`Release retensi ${releaseTarget.id} gagal di tengah jalan — periksa invoice`, "info");
+      toast(`Release retensi ${releaseTarget.id} gagal di tengah jalan - periksa invoice`, "info");
     }
   };
 
@@ -1572,7 +1572,7 @@ export default function Finance() {
     log("melaporkan periode pajak", `${activeTax.period} dikunci`, "Pajak");
     toast(`Periode ${activeTax.period} dilapor dan dikunci`);
     } catch {
-      toast(`Kunci periode ${activeTax.period} gagal — periksa periode & hutang pajak`, "info");
+      toast(`Kunci periode ${activeTax.period} gagal - periksa periode & hutang pajak`, "info");
     }
   };
 
@@ -1631,7 +1631,7 @@ export default function Finance() {
             <div className="space-y-4">
               <CardHeader
                 title="Daftar Akun"
-                subtitle="Kelola master akun: tambah, ubah, hapus. Baris header (D/K = −) tidak bisa dihapus dan posisinya dikunci."
+                subtitle="Kelola master akun: tambah, ubah, hapus. Baris header (D/K = -) tidak bisa dihapus dan posisinya dikunci."
                 action={<button className="btn-primary text-xs" onClick={() => { setCoaTarget(null); setCoaForm({ kode: "", nama: "", dk: "D", nrlr: "NR" }); setShowCoa(true); }}>+ Tambah Akun</button>}
               />
               <div className="flex flex-wrap items-center gap-2">
@@ -1692,7 +1692,7 @@ export default function Finance() {
           {tab === "Piutang (AR)" && (
             <div className="grid grid-cols-1 gap-5 lg:grid-cols-3">
               <div className="lg:col-span-2">
-                <CardHeader title="Daftar Invoice" subtitle="Umur = hari ini − jatuh tempo." />
+                <CardHeader title="Daftar Invoice" subtitle="Umur = hari ini - jatuh tempo." />
                 <div className="overflow-x-auto">
                   <table className="w-full">
                     <thead className="bg-surface sticky top-0 z-10">
@@ -1725,11 +1725,11 @@ export default function Finance() {
                             </td>
                             <td className="td text-steel-600 font-mono text-xs truncate" title={String(inv.project)}>{inv.project}</td>
                             <td className="td text-steel-600 font-mono text-xs truncate" title={String(inv.kodePembantu ?? inv.client ?? "")}>{String(inv.kodePembantu ?? inv.client ?? "")}{inv.nonPpn ? " · Non-PPn" : ""}</td>
-                            <td className="td text-steel-600 font-mono text-xs truncate" title={String(inv.project)}>{inv.project || "—"}</td>
-                            <td className="td text-xs text-steel-500">{num(inv.openAwal) ? fmtRupiah(num(inv.openAwal)) : "—"}</td>
+                            <td className="td text-steel-600 font-mono text-xs truncate" title={String(inv.project)}>{inv.project || "-"}</td>
+                            <td className="td text-xs text-steel-500">{num(inv.openAwal) ? fmtRupiah(num(inv.openAwal)) : "-"}</td>
                             <td className="td font-semibold text-navy-900">{fmtRupiah(num(inv.amount))}</td>
                             <td className="td text-steel-600">{fmtTanggal(String(inv.due ?? ""))}</td>
-                            <td className="td text-xs text-steel-600">{open ? `${fmtJumlah(age)} hari` : "—"}</td>
+                            <td className="td text-xs text-steel-600">{open ? `${fmtJumlah(age)} hari` : "-"}</td>
                             <td className="td">
                               {open ? (
                                 <span className="flex items-center gap-1.5">
@@ -1738,7 +1738,7 @@ export default function Finance() {
                                     → {nextDun}
                                   </button>
                                 </span>
-                              ) : <span className="text-xs text-steel-400">—</span>}
+                              ) : <span className="text-xs text-steel-400">-</span>}
                             </td>
                             <td className="td"><StatusBadge status={String(inv.status)} /></td>
                             <td className="td">
@@ -1761,7 +1761,7 @@ export default function Finance() {
                                 {(String(inv.status) === "Draft" || String(inv.status) === "Ditolak") && (
                                   <button
                                     className="btn-secondary text-xs"
-                                    title="Ubah isi (hanya bisa di Draft/Ditolak — terkunci setelah Diajukan)"
+                                    title="Ubah isi (hanya bisa di Draft/Ditolak - terkunci setelah Diajukan)"
                                     onClick={() => {
                                       setInvEdit(inv);
                                       setInvEditForm({
@@ -1774,7 +1774,7 @@ export default function Finance() {
                                     Ubah
                                   </button>
                                 )}
-                                {invNext(String(inv.status)).length === 0 && (String(inv.status) === "Lunas" || String(inv.status) === "Dihapusbukukan") && <span className="text-xs text-steel-400">—</span>}
+                                {invNext(String(inv.status)).length === 0 && (String(inv.status) === "Lunas" || String(inv.status) === "Dihapusbukukan") && <span className="text-xs text-steel-400">-</span>}
                               </div>
                             </td>
                           </tr>
@@ -1895,11 +1895,11 @@ export default function Finance() {
                         <td className="td font-medium text-navy-900 truncate" title={String(a.v)}>{String(a.v)}</td>
                         <td className="td font-mono text-xs text-steel-600 truncate" title={String(a.kodePembantu ?? a.v)}>{String(a.kodePembantu ?? a.v)}</td>
                         <td className="td font-mono text-xs text-steel-600">{String(a.po)}</td>
-                        <td className="td text-xs text-steel-600 truncate" title={String(a.vessel ?? a.item ?? "")}>{String(a.vessel ?? "") || "—"}</td>
-                        <td className="td text-xs text-steel-500">{num(a.openAwal) ? fmtRupiah(num(a.openAwal)) : "—"}</td>
+                        <td className="td text-xs text-steel-600 truncate" title={String(a.vessel ?? a.item ?? "")}>{String(a.vessel ?? "") || "-"}</td>
+                        <td className="td text-xs text-steel-500">{num(a.openAwal) ? fmtRupiah(num(a.openAwal)) : "-"}</td>
                         <td className="td font-semibold">{fmtRupiah(num(a.amt))}</td>
-                        <td className="td text-xs text-steel-600">{num(a.pay1) ? `${fmtRupiah(num(a.pay1))}${a.pay1date ? ` · ${fmtTanggal(String(a.pay1date))}` : ""}` : "—"}</td>
-                        <td className="td text-xs text-steel-600">{num(a.pay2) ? `${fmtRupiah(num(a.pay2))}${a.pay2date ? ` · ${fmtTanggal(String(a.pay2date))}` : ""}` : "—"}</td>
+                        <td className="td text-xs text-steel-600">{num(a.pay1) ? `${fmtRupiah(num(a.pay1))}${a.pay1date ? ` · ${fmtTanggal(String(a.pay1date))}` : ""}` : "-"}</td>
+                        <td className="td text-xs text-steel-600">{num(a.pay2) ? `${fmtRupiah(num(a.pay2))}${a.pay2date ? ` · ${fmtTanggal(String(a.pay2date))}` : ""}` : "-"}</td>
                         <td className="td font-semibold text-navy-900">{fmtRupiah(Math.max(0, num(a.amt) - num(a.pay1) - num(a.pay2)))}</td>
                         <td className="td text-steel-600">{fmtTanggal(String(a.due ?? ""))}</td>
                         <td className="td text-steel-600">{String(a.pph ?? "2%")}</td>
@@ -1933,7 +1933,7 @@ export default function Finance() {
                 {apPager.bar}
               </div>
               <Card>
-                <CardHeader title="Arus Kas Bulanan" subtitle="Live dari pelunasan (milyar Rupiah) — kosong hingga ada invoice/hutang dilunasi" />
+                <CardHeader title="Arus Kas Bulanan" subtitle="Live dari pelunasan (milyar Rupiah) - kosong hingga ada invoice/hutang dilunasi" />
                 {flowMonthly.length === 0 ? (
                   <div className="p-4"><EmptyState title="Belum ada arus kas" subtitle="Lunasi invoice atau hutang agar arus kas terbentuk dari data nyata." /></div>
                 ) : (
@@ -1991,8 +1991,8 @@ export default function Finance() {
                         <td className="td font-mono text-xs font-semibold text-navy-900">{r.kode}</td>
                         <td className="td text-xs text-steel-600">{r.nama}</td>
                         <td className="td text-xs">{fmtRupiah(r.awal)}</td>
-                        <td className="td text-xs text-emerald-600">{masuk ? fmtRupiah(masuk) : "—"}</td>
-                        <td className="td text-xs text-rose-600">{keluar ? fmtRupiah(keluar) : "—"}</td>
+                        <td className="td text-xs text-emerald-600">{masuk ? fmtRupiah(masuk) : "-"}</td>
+                        <td className="td text-xs text-rose-600">{keluar ? fmtRupiah(keluar) : "-"}</td>
                         <td className="td text-xs font-semibold">{fmtRupiah((kasSaldo[r.kode] ?? r.awal))}</td>
                         <td className="td text-xs text-steel-500">{fmtRupiah(r.akhir)}</td>
                       </tr>
@@ -2022,8 +2022,8 @@ export default function Finance() {
                         <tr key={i} className="hover:bg-surface">
                           <td className="td font-mono text-xs text-steel-600">{j.tgl}</td>
                           <td className="td text-xs text-steel-600">{j.uraian}</td>
-                          <td className="td font-mono text-xs">{j.db || "—"}</td>
-                          <td className="td text-xs">{j.dbAmt ? fmtRupiah(j.dbAmt) : "—"}</td>
+                          <td className="td font-mono text-xs">{j.db || "-"}</td>
+                          <td className="td text-xs">{j.dbAmt ? fmtRupiah(j.dbAmt) : "-"}</td>
                           <td className="td font-mono text-xs">{j.kr}</td>
                           <td className="td text-xs">{fmtRupiah(j.krAmt)}</td>
                         </tr>
@@ -2092,7 +2092,7 @@ export default function Finance() {
                 <Card className="p-5 lg:col-span-2">
                   <CardHeader title="Pergerakan Invoice" subtitle="Live dari penerbitan per bulan (milyar Rupiah)" />
                   {flowMonthly.length === 0 ? (
-                    <div className="flex h-56 items-center justify-center"><EmptyState title="Belum ada pergerakan" subtitle="Invoice saldo awal belum lunas — grafik terbentuk dari pelunasan nyata." /></div>
+                    <div className="flex h-56 items-center justify-center"><EmptyState title="Belum ada pergerakan" subtitle="Invoice saldo awal belum lunas - grafik terbentuk dari pelunasan nyata." /></div>
                   ) : (
                   <div className="h-56">
                     <ResponsiveContainer width="100%" height="100%">
@@ -2170,9 +2170,9 @@ export default function Finance() {
                             <span className="flex items-center gap-2">
                               {fmtRupiah(num(inv.retentionAmt))} <StatusBadge status={String(inv.retentionStatus ?? "Ditahan")} />
                             </span>
-                          ) : <span className="text-steel-400">—</span>}
+                          ) : <span className="text-steel-400">-</span>}
                         </td>
-                        <td className="td font-mono text-[11px] text-steel-600">{inv.nsfp || inv.noFaktur ? `${inv.nsfp || "-"} / ${inv.noFaktur || "-"}` : "—"}</td>
+                        <td className="td font-mono text-[11px] text-steel-600">{inv.nsfp || inv.noFaktur ? `${inv.nsfp || "-"} / ${inv.noFaktur || "-"}` : "-"}</td>
                         <td className="td font-semibold">{fmtRupiah(num(inv.amount))}</td>
                         <td className="td"><StatusBadge status={String(inv.status)} /></td>
                       </tr>
@@ -2193,7 +2193,7 @@ export default function Finance() {
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
                 <Card className="p-4"><p className="text-xs text-steel-500">Total Pendapatan</p><p className="mt-1 text-lg font-bold text-navy-900">{fmtRupiah(LAPORAN_EXCEL.totalPendapatan)}</p><p className="mt-1 text-[11px] text-steel-400">4-101 Repair & Docking</p></Card>
                 <Card className="p-4"><p className="text-xs text-steel-500">Total Beban Pokok</p><p className="mt-1 text-lg font-bold text-navy-900">{fmtRupiah(LAPORAN_EXCEL.totalBebanPokok)}</p><p className="mt-1 text-[11px] text-steel-400">5-101 + 5-200 + 5-500 + 5-600</p></Card>
-                <Card className="p-4"><p className="text-xs text-steel-500">Laba Bersih</p><p className="mt-1 text-lg font-bold text-emerald-600">{fmtRupiah(LAPORAN_EXCEL.labaBersih)}</p><p className="mt-1 text-[11px] text-steel-400">Pendapatan − beban − biaya</p></Card>
+                <Card className="p-4"><p className="text-xs text-steel-500">Laba Bersih</p><p className="mt-1 text-lg font-bold text-emerald-600">{fmtRupiah(LAPORAN_EXCEL.labaBersih)}</p><p className="mt-1 text-[11px] text-steel-400">Pendapatan - beban - biaya</p></Card>
               </div>
               <div className="overflow-x-auto">
                 <table className="w-full">
@@ -2218,12 +2218,12 @@ export default function Finance() {
                         <td className="td font-mono text-xs font-semibold text-navy-900">{kode}</td>
                         <td className="td text-xs text-steel-600">{String(c.nama)}</td>
                         <td className="td text-xs text-steel-500">{String(c.dk)}</td>
-                        <td className="td text-xs">{d ? fmtRupiah(d) : "—"}</td>
-                        <td className="td text-xs">{k ? fmtRupiah(k) : "—"}</td>
-                        <td className="td text-xs">{isLR && d ? fmtRupiah(d) : "—"}</td>
-                        <td className="td text-xs">{isLR && k ? fmtRupiah(k) : "—"}</td>
-                        <td className="td text-xs">{!isLR && d ? fmtRupiah(d) : "—"}</td>
-                        <td className="td text-xs">{!isLR && k ? fmtRupiah(k) : "—"}</td>
+                        <td className="td text-xs">{d ? fmtRupiah(d) : "-"}</td>
+                        <td className="td text-xs">{k ? fmtRupiah(k) : "-"}</td>
+                        <td className="td text-xs">{isLR && d ? fmtRupiah(d) : "-"}</td>
+                        <td className="td text-xs">{isLR && k ? fmtRupiah(k) : "-"}</td>
+                        <td className="td text-xs">{!isLR && d ? fmtRupiah(d) : "-"}</td>
+                        <td className="td text-xs">{!isLR && k ? fmtRupiah(k) : "-"}</td>
                       </tr>
                       );
                     })}
@@ -2238,7 +2238,7 @@ export default function Finance() {
             <div className="space-y-4">
               <CardHeader
                 title="Laporan Laba-Rugi"
-                subtitle="POS-POS per akun dari Neraca Saldo. Laba = Pendapatan − Beban Pokok − Biaya Usaha + Lain Masuk − Lain Keluar."
+                subtitle="POS-POS per akun dari Neraca Saldo. Laba = Pendapatan - Beban Pokok - Biaya Usaha + Lain Masuk - Lain Keluar."
               />
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
                 <Card className="p-4"><p className="text-xs text-steel-500">Total Pendapatan</p><p className="mt-1 text-lg font-bold text-navy-900">{fmtRupiah(lrRows.pend)}</p><p className="mt-1 text-[11px] text-steel-400">Akun 4-xxx</p></Card>
@@ -2272,7 +2272,7 @@ export default function Finance() {
           {tab === "Project P&L" && (
             <div className="space-y-5">
               <CardHeader
-                title="Project P&L — Laba Rugi per Proyek"
+                title="Project P&L - Laba Rugi per Proyek"
                 subtitle="Pendapatan dari invoice Lunas. Payable dipetakan via PO ke proyek, termin Lunas via WO, gaji via alokasi manual. Sisanya masuk Tak teralokasi."
               />
               <div className="flex flex-wrap items-end gap-2">
@@ -2343,7 +2343,7 @@ export default function Finance() {
               {cbs && (
                 <Card>
                   <CardHeader
-                    title={`CBS ${profitPid} — Auto Collect`}
+                    title={`CBS ${profitPid} - Auto Collect`}
                     subtitle="Material dari movement Pengeluaran proyek × harga inventori. Labor dari alokasi gaji. Subcon dari termin Lunas. Equipment dari booking Selesai × Rp 1,5 jt/jam. Overhead % manual per proyek."
                     action={
                       <div className="flex items-end gap-2">
@@ -2416,7 +2416,7 @@ export default function Finance() {
               <CardHeader title="Neraca + Laba Ditahan" subtitle={`Total neraca Rp ${LAPORAN_EXCEL.neracaTotal.toLocaleString("id-ID")} (Aktiva = Kewajiban + Ekuitas).`} />
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
                 <Card className="p-4"><p className="text-xs text-steel-500">Aktiva Lancar</p><p className="mt-1 text-lg font-bold text-navy-900">{fmtRupiah(LAPORAN_EXCEL.aktivaLancar)}</p><p className="mt-1 text-[11px] text-steel-400">Dominan Piutang Direksi + Antar Perusahaan + Usaha</p></Card>
-                <Card className="p-4"><p className="text-xs text-steel-500">Nilai Buku Aktiva Tetap</p><p className="mt-1 text-lg font-bold text-navy-900">{fmtRupiah(LAPORAN_EXCEL.bukuAktivaTetap)}</p><p className="mt-1 text-[11px] text-steel-400">Perolehan 15,57T − Akum 9,65T</p></Card>
+                <Card className="p-4"><p className="text-xs text-steel-500">Nilai Buku Aktiva Tetap</p><p className="mt-1 text-lg font-bold text-navy-900">{fmtRupiah(LAPORAN_EXCEL.bukuAktivaTetap)}</p><p className="mt-1 text-[11px] text-steel-400">Perolehan 15,57T - Akum 9,65T</p></Card>
                 <Card className="p-4"><p className="text-xs text-steel-500">Laba Ditahan Awal</p><p className="mt-1 text-lg font-bold text-navy-900">{fmtRupiah(LAPORAN_EXCEL.labaDitahanAwal)}</p><p className="mt-1 text-[11px] text-steel-400">Saldo awal periode</p></Card>
                 <Card className="p-4"><p className="text-xs text-steel-500">Laba Ditahan Akhir</p><p className="mt-1 text-lg font-bold text-emerald-600">{fmtRupiah(LAPORAN_EXCEL.labaDitahanAkhir)}</p><p className="mt-1 text-[11px] text-steel-400">Awal + berjalan {fmtRupiah(LAPORAN_EXCEL.labaBerjalan)}</p></Card>
               </div>
@@ -2429,8 +2429,8 @@ export default function Finance() {
                     </thead>
                     <tbody className="divide-y divide-steel-100">
                       <tr className="hover:bg-surface"><td className="td font-mono text-xs font-semibold text-navy-900">3-200</td><td className="td text-xs text-steel-600">Laba Ditahan</td><td className="td text-xs font-semibold">{fmtRupiah(LAPORAN_EXCEL.labaDitahanAwal)}</td></tr>
-                      <tr className="hover:bg-surface"><td className="td font-mono text-xs text-steel-400">—</td><td className="td text-xs text-steel-600">Laba (Rugi) Periode Berjalan</td><td className="td text-xs font-semibold">{fmtRupiah(labaLast)}</td></tr>
-                      <tr className="hover:bg-surface"><td className="td font-mono text-xs text-steel-400">—</td><td className="td text-xs font-bold text-navy-900">Jumlah Laba Ditahan</td><td className="td text-xs font-bold text-navy-900">{fmtRupiah(LAPORAN_EXCEL.labaDitahanAwal + labaLast)}</td></tr>
+                      <tr className="hover:bg-surface"><td className="td font-mono text-xs text-steel-400">-</td><td className="td text-xs text-steel-600">Laba (Rugi) Periode Berjalan</td><td className="td text-xs font-semibold">{fmtRupiah(labaLast)}</td></tr>
+                      <tr className="hover:bg-surface"><td className="td font-mono text-xs text-steel-400">-</td><td className="td text-xs font-bold text-navy-900">Jumlah Laba Ditahan</td><td className="td text-xs font-bold text-navy-900">{fmtRupiah(LAPORAN_EXCEL.labaDitahanAwal + labaLast)}</td></tr>
                     </tbody>
                   </table>
                 </div>
@@ -2450,8 +2450,8 @@ export default function Finance() {
                         {sortRows(HUTANG_EXCEL, nrSort, (h, k) => k === "awal" ? Number(h.awal) : k === "akhir" ? Number(h.akhir) : String(h.v)).map((h) => (
                           <tr key={h.v} className="hover:bg-surface">
                             <td className="td text-xs font-medium text-navy-900">{h.v}</td>
-                            <td className="td text-xs text-steel-600">{h.awal ? fmtRupiah(h.awal) : "—"}</td>
-                            <td className="td text-xs font-semibold">{h.akhir ? fmtRupiah(h.akhir) : "—"}</td>
+                            <td className="td text-xs text-steel-600">{h.awal ? fmtRupiah(h.awal) : "-"}</td>
+                            <td className="td text-xs font-semibold">{h.akhir ? fmtRupiah(h.akhir) : "-"}</td>
                             <td className="td text-xs">{h.nonPpn ? <Badge tone="amber">Non-PPn</Badge> : <span className="text-steel-400">PPn</span>}</td>
                           </tr>
                         ))}
@@ -2473,8 +2473,8 @@ export default function Finance() {
                         {sortRows(PIUTANG_EXCEL, nrSort, (p, k) => k === "awal" ? Number(p.awal) : k === "akhir" ? Number(p.akhir) : String(p.c)).map((p) => (
                           <tr key={p.c} className="hover:bg-surface">
                             <td className="td text-xs font-medium text-navy-900">{p.c}</td>
-                            <td className="td text-xs text-steel-600">{p.awal ? fmtRupiah(p.awal) : "—"}</td>
-                            <td className="td text-xs font-semibold">{p.akhir ? fmtRupiah(p.akhir) : "—"}</td>
+                            <td className="td text-xs text-steel-600">{p.awal ? fmtRupiah(p.awal) : "-"}</td>
+                            <td className="td text-xs font-semibold">{p.akhir ? fmtRupiah(p.akhir) : "-"}</td>
                             <td className="td text-xs">{p.nonPpn ? <Badge tone="amber">Non-PPn</Badge> : <span className="text-steel-400">PPn</span>}</td>
                           </tr>
                         ))}
@@ -2542,11 +2542,11 @@ export default function Finance() {
               )}
               <Card className="p-4">
                 <p className="text-sm text-steel-600">
-                  PPN terutang periode {activePeriod || "—"}: <strong className="text-navy-900">{fmtRupiah(taxShown.ppnKeluar - taxShown.ppnMasuk)}</strong>
+                  PPN terutang periode {activePeriod || "-"}: <strong className="text-navy-900">{fmtRupiah(taxShown.ppnKeluar - taxShown.ppnMasuk)}</strong>
                   {taxLocked ? " · Angka dikunci dari snapshot saat pelaporan." : " · Angka live dari data Lunas."}
                   {" "}Dilapor per {fmtTanggal(activeTax?.reportedAt)}.
                 </p>
-                <p className="mt-1 text-xs text-steel-500">e-Faktur periode {activePeriod || "—"}: {fmtJumlah(efakturRows.length)} invoice Lunas (kolom NSFP, NoFaktur, Tanggal, Client, DPP, PPN).</p>
+                <p className="mt-1 text-xs text-steel-500">e-Faktur periode {activePeriod || "-"}: {fmtJumlah(efakturRows.length)} invoice Lunas (kolom NSFP, NoFaktur, Tanggal, Client, DPP, PPN).</p>
               </Card>
             </div>
           )}
@@ -2641,10 +2641,10 @@ export default function Finance() {
                     {juPager.slice(sortedJu).map((j) => (
                       <tr key={String(j.id)} className="hover:bg-surface">
                         <td className="td text-xs text-steel-600">{fmtTanggal(String(j.date ?? ""))}</td>
-                        <td className="td font-mono text-xs text-steel-600">{String(j.kodePembantu || "—")}</td>
+                        <td className="td font-mono text-xs text-steel-600">{String(j.kodePembantu || "-")}</td>
                         <td className="td font-mono text-xs text-steel-600">{String(j.dokumen ?? "-")}</td>
                         <td className="td max-w-56 truncate text-xs text-steel-600" title={String(j.uraian ?? "")}>{String(j.uraian ?? "")}</td>
-                        <td className="td font-mono text-xs">{String(j.db || "—")}</td>
+                        <td className="td font-mono text-xs">{String(j.db || "-")}</td>
                         <td className="td font-mono text-xs">{String(j.kr)}</td>
                         <td className="td text-xs font-semibold">{fmtRupiah(num(j.amount))}</td>
                         <td className="td text-xs text-steel-500">{String(j.sumber ?? "JU")}</td>
@@ -2678,14 +2678,14 @@ export default function Finance() {
                   <p className="mt-1 text-[11px] text-steel-400">Hutang {fmtRupiah(balance.hutang)} · PPN {fmtRupiah(balance.ppnUtang)}</p>
                 </Card>
                 <Card className="p-4">
-                  <p className="text-xs text-steel-500">Ekuitas (Aset − Kewajiban)</p>
+                  <p className="text-xs text-steel-500">Ekuitas (Aset - Kewajiban)</p>
                   <p className="mt-1 text-lg font-bold text-navy-900">{fmtRupiah(balance.ekuitas)}</p>
                   <p className="mt-1 text-[11px] text-steel-400">Termasuk laba berjalan</p>
                 </Card>
                 <Card className="p-4">
                   <p className="text-xs text-steel-500">Laba Berjalan</p>
                   <p className="mt-1 text-lg font-bold text-navy-900">{fmtRupiah(balance.laba)}</p>
-                  <p className="mt-1 text-[11px] text-steel-400">Pendapatan − beban proyek − gaji − hapus buku</p>
+                  <p className="mt-1 text-[11px] text-steel-400">Pendapatan - beban proyek - gaji - hapus buku</p>
                 </Card>
               </div>
               <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
@@ -2792,7 +2792,7 @@ export default function Finance() {
             </Field>
           </FormGrid>
           <FormGrid>
-            <Field label="Milestone ref" hint="Wajib untuk billing Milestone — cth: Milestone 3 / Termin 2">
+            <Field label="Milestone ref" hint="Wajib untuk billing Milestone - cth: Milestone 3 / Termin 2">
               <input className="input" value={invForm.milestoneRef} onChange={(e) => setInv("milestoneRef", e.target.value)} placeholder="Milestone 3" />
             </Field>
             <Field label="Jatuh tempo">
@@ -2823,12 +2823,12 @@ export default function Finance() {
               <input type="number" min={0} className="input" value={invForm.dpApplied} onChange={(e) => setInv("dpApplied", e.target.value)} placeholder="0" />
             </Field>
           </FormGrid>
-          <Field label="Referensi DP" hint="Wajib bila amortisasi DP > 0 — no. invoice Uang Muka yang dipotong">
+          <Field label="Referensi DP" hint="Wajib bila amortisasi DP > 0 - no. invoice Uang Muka yang dipotong">
             <input className="input font-mono" value={invForm.dpRef} onChange={(e) => setInv("dpRef", e.target.value)} placeholder="cth: INV/UM-SMD-2026-001" />
           </Field>
           <label className="flex items-center gap-2 text-sm text-steel-600">
             <input type="checkbox" checked={invForm.skdt} onChange={(e) => setInvForm((f) => ({ ...f, skdt: e.target.checked }))} />
-            SKDT — tanpa PPN (cth INV PAKAI SKDT BG MHKL 35)
+            SKDT - tanpa PPN (cth INV PAKAI SKDT BG MHKL 35)
           </label>
           {isTMForm && (
             <Field label="Referensi service / WO" hint="cth: SRV-002 / WO-2026-043">
@@ -2849,7 +2849,7 @@ export default function Finance() {
           )}
           <div>
             <div className="mb-2 flex items-center justify-between">
-              <p className="label">Lines — total {fmtRupiah(invTotal)}{retentionAmtPreview > 0 ? ` — retensi ${fmtRupiah(retentionAmtPreview)}` : ""}</p>              <div className="flex gap-2">
+              <p className="label">Lines - total {fmtRupiah(invTotal)}{retentionAmtPreview > 0 ? ` - retensi ${fmtRupiah(retentionAmtPreview)}` : ""}</p>              <div className="flex gap-2">
                 {isTMForm && (
                   <button className="btn-secondary px-2 py-1 text-xs" onClick={pullTimesheetLines}>
                     Ambil dari timesheet
@@ -2863,7 +2863,7 @@ export default function Finance() {
             <p className="mb-2 rounded-lg bg-surface px-3 py-2 text-xs text-steel-600">
               Jasa {fmtRupiah(sbPreview.jasa)} + Material {fmtRupiah(sbPreview.material)} = {fmtRupiah(sbPreview.total)}
               {" · "}DPP (×11/12) {fmtRupiah(sbPreview.dpp)} · PPN {fmtRupiah(sbPreview.ppn)}{invForm.skdt ? " (SKDT)" : ""}
-              {" · "}PPh jasa {fmtRupiah(sbPreview.pph)}{num(invForm.dpApplied) > 0 ? ` · DP −${fmtRupiah(sbPreview.dpApplied)}` : ""}
+              {" · "}PPh jasa {fmtRupiah(sbPreview.pph)}{num(invForm.dpApplied) > 0 ? ` · DP -${fmtRupiah(sbPreview.dpApplied)}` : ""}
               {" → "}<strong className="text-navy-900">Grand {fmtRupiah(sbPreview.grand)}</strong>
             </p>
             <div className="space-y-2">
@@ -2919,7 +2919,7 @@ export default function Finance() {
               </select>
             </Field>
           </FormGrid>
-          <Field label="No. referensi" hint="Wajib — no. bukti transfer / kuitansi">
+          <Field label="No. referensi" hint="Wajib - no. bukti transfer / kuitansi">
             <input className="input font-mono" value={proof.ref} onChange={(e) => setProofField("ref", e.target.value)} placeholder="cth: TRF-2026-0912" />
           </Field>
         </div>
@@ -2937,7 +2937,7 @@ export default function Finance() {
       <Modal open={apTarget !== null} onClose={() => setApTarget(null)} title={`Bayar ${!num(apTarget?.pay1) ? "I" : "II"} ${String(apTarget?.po ?? "")}?`} subtitle={`${String(apTarget?.v ?? "")} · sisa ${fmtRupiah(Math.max(0, num(apTarget?.amt) - num(apTarget?.pay1) - num(apTarget?.pay2)))}`}
         footer={<><button className="btn-secondary" onClick={() => setApTarget(null)}>Batal</button><button className="btn-primary" onClick={confirmBuktiAp}>Simpan Bukti Bayar</button></>}>
         <div className="space-y-3">
-          <Field label="Nominal tahap ini (Rp)" hint={!num(apTarget?.pay1) ? "Pembayaran I" : `Sudah bayar I ${fmtRupiah(num(apTarget?.pay1))} — ini tahap II`}>
+          <Field label="Nominal tahap ini (Rp)" hint={!num(apTarget?.pay1) ? "Pembayaran I" : `Sudah bayar I ${fmtRupiah(num(apTarget?.pay1))} - ini tahap II`}>
             <input type="number" min={0} className="input" value={apPayAmt} onChange={(e) => setApPayAmt(e.target.value)} placeholder="cth: 309906340" />
           </Field>
           <FormGrid>
@@ -2948,7 +2948,7 @@ export default function Finance() {
               </select>
             </Field>
           </FormGrid>
-          <Field label="No. referensi" hint="Wajib — no. bukti transfer / giro">
+          <Field label="No. referensi" hint="Wajib - no. bukti transfer / giro">
             <input className="input font-mono" value={proof.ref} onChange={(e) => setProofField("ref", e.target.value)} placeholder="cth: TRF-2026-0913" />
           </Field>
         </div>
@@ -3022,7 +3022,7 @@ export default function Finance() {
               </select>
             </Field>
           </FormGrid>
-          <Field label="No. referensi" hint="Wajib — satu no. bukti untuk seluruh batch">
+          <Field label="No. referensi" hint="Wajib - satu no. bukti untuk seluruh batch">
             <input className="input font-mono" value={batchProof.ref} onChange={(e) => setBatchProof({ ...batchProof, ref: e.target.value })} placeholder="cth: TRF-2026-0999" />
           </Field>
         </div>
@@ -3043,7 +3043,7 @@ export default function Finance() {
             if (!top) return null;
             return (
               <p className="rounded-lg bg-surface px-3 py-2 text-xs text-steel-600">
-                Saran: <strong className="text-navy-900">{top[0]}</strong> — proyek tersering di timesheet ({top[1]} baris). Pilih manual bila berbeda.
+                Saran: <strong className="text-navy-900">{top[0]}</strong> - proyek tersering di timesheet ({top[1]} baris). Pilih manual bila berbeda.
               </p>
             );
           })()}
@@ -3066,7 +3066,7 @@ export default function Finance() {
             <input type="checkbox" className="mt-1" checked={dirCheck} onChange={(e) => setDirCheck(e.target.checked)} />
             Saya selaku Director menyetujui invoice nominal besar ini.
           </label>
-          <Field label="Nama Director" hint="Wajib — dicatat di log">
+          <Field label="Nama Director" hint="Wajib - dicatat di log">
             <input className="input" value={dirName} onChange={(e) => setDirName(e.target.value)} placeholder="cth: Andi Darman" />
           </Field>
         </div>
@@ -3082,21 +3082,21 @@ export default function Finance() {
             <Field label="Nama akun"><input className="input" value={coaForm.nama} onChange={(e) => setCoaForm({ ...coaForm, nama: e.target.value })} placeholder="cth: Bank Kaltimtara Syariah" /></Field>
             <Field label="Akun D/K" hint={coaTarget && String(coaTarget.dk) === "-" ? "Dikunci untuk baris header" : undefined}>
               <select className="input" value={coaForm.dk} disabled={coaTarget !== null && String(coaTarget.dk) === "-"} onChange={(e) => setCoaForm({ ...coaForm, dk: e.target.value })}>
-                <option value="D">D — Debit</option>
-                <option value="K">K — Kredit</option>
+                <option value="D">D - Debit</option>
+                <option value="K">K - Kredit</option>
               </select>
             </Field>
             <Field label="Akun NR/LR" hint={coaTarget && String(coaTarget.dk) === "-" ? "Dikunci untuk baris header" : undefined}>
               <select className="input" value={coaForm.nrlr} disabled={coaTarget !== null && String(coaTarget.dk) === "-"} onChange={(e) => setCoaForm({ ...coaForm, nrlr: e.target.value })}>
-                <option value="NR">NR — Neraca</option>
-                <option value="LR">LR — Laba-Rugi</option>
+                <option value="NR">NR - Neraca</option>
+                <option value="LR">LR - Laba-Rugi</option>
               </select>
             </Field>
           </FormGrid>
         </div>
       </Modal>
 
-      <Modal open={showJu} onClose={() => setShowJu(false)} title="Catat Jurnal Umum" subtitle="Multi-baris per voucher (cth sheet JU: Kas/BPD/JPb/JPn/JM) — tiap baris DB≠KR, total otomatis berimbang"
+      <Modal open={showJu} onClose={() => setShowJu(false)} title="Catat Jurnal Umum" subtitle="Multi-baris per voucher (cth sheet JU: Kas/BPD/JPb/JPn/JM) - tiap baris DB≠KR, total otomatis berimbang"
         footer={<><button className="btn-secondary" onClick={() => setShowJu(false)}>Batal</button><button className="btn-primary" onClick={saveJu}>Simpan (Posted)</button></>}>
         <div className="space-y-3">
           <FormGrid>
@@ -3112,7 +3112,7 @@ export default function Finance() {
           <Field label="Uraian"><input className="input" value={juForm.uraian} onChange={(e) => setJuForm({ ...juForm, uraian: e.target.value })} placeholder="cth: Penyesuaian PPN September" /></Field>
           <div>
             <div className="mb-2 flex items-center justify-between">
-              <p className="label">Baris jurnal — total {fmtRupiah(juLines.reduce((s, l) => s + num(l.amount), 0))}</p>
+              <p className="label">Baris jurnal - total {fmtRupiah(juLines.reduce((s, l) => s + num(l.amount), 0))}</p>
               <button className="btn-secondary px-2 py-1 text-xs" onClick={() => setJuLines((ls) => [...ls, { db: "", kr: "", amount: "" }])}>
                 <Plus className="h-3.5 w-3.5" /> Baris
               </button>
@@ -3149,7 +3149,7 @@ export default function Finance() {
         </div>
       </Modal>
 
-      <Modal open={showMut} onClose={() => setShowMut(false)} title="Catat Mutasi Kas & Bank" subtitle="Masuk menambah saldo rekening, keluar mengurangi — otomatis jadi jurnal berimbang"
+      <Modal open={showMut} onClose={() => setShowMut(false)} title="Catat Mutasi Kas & Bank" subtitle="Masuk menambah saldo rekening, keluar mengurangi - otomatis jadi jurnal berimbang"
         footer={<><button className="btn-secondary" onClick={() => setShowMut(false)}>Batal</button><button className="btn-primary" onClick={saveMut}>Simpan</button></>}>
         <div className="space-y-3">
           <FormGrid>
@@ -3203,10 +3203,10 @@ export default function Finance() {
             <Field label="Nama / jenis harta"><input className="input" value={astForm.nama} onChange={(e) => setAstForm({ ...astForm, nama: e.target.value })} placeholder="cth: Excavator PC 200" /></Field>
             <Field label="Kel. harta">
               <select className="input" value={astForm.kelompok} onChange={(e) => setAstForm({ ...astForm, kelompok: e.target.value })}>
-                <option value="BP">BP — Bangunan Permanen (5%)</option>
-                <option value="1">1 — Kelompok 1 (25%)</option>
-                <option value="2">2 — Kelompok 2 (12,5%)</option>
-                <option value="3">3 — Kelompok 3 (6,25%)</option>
+                <option value="BP">BP - Bangunan Permanen (5%)</option>
+                <option value="1">1 - Kelompok 1 (25%)</option>
+                <option value="2">2 - Kelompok 2 (12,5%)</option>
+                <option value="3">3 - Kelompok 3 (6,25%)</option>
               </select>
             </Field>
             <Field label="Bulan perolehan" hint="cth: Jan"><input className="input" value={astForm.bulan} onChange={(e) => setAstForm({ ...astForm, bulan: e.target.value })} /></Field>
@@ -3221,8 +3221,8 @@ export default function Finance() {
         </div>
       </Modal>
 
-      <Modal open={writeOff !== null} onClose={() => { setWriteOff(null); setWriteOffReason(""); setWoDirCheck(false); setWoDirName(""); }} title={`Hapus buku ${writeOff?.id ?? ""}?`} subtitle={`${fmtRupiah(num(writeOff?.amount))} keluar dari AR dan masuk beban. Wajib isi alasan.${needsWriteOffDirector(writeOff) ? ` Di atas ambang ${fmtRupiah(approveThreshold)} — butuh Director.` : ""}`}        footer={<><button className="btn-secondary" onClick={() => { setWriteOff(null); setWriteOffReason(""); setWoDirCheck(false); setWoDirName(""); }}>Batal</button><button className="btn-primary" disabled={!writeOffReason.trim() || (needsWriteOffDirector(writeOff) && (!woDirCheck || !woDirName.trim()))} onClick={() => setConfirmWriteOff(true)}>Lanjut Konfirmasi</button></>}>
-        <Field label="Alasan hapus buku" hint="Wajib — cth: piutang tak tertagih 180 hari, debitur pailit">
+      <Modal open={writeOff !== null} onClose={() => { setWriteOff(null); setWriteOffReason(""); setWoDirCheck(false); setWoDirName(""); }} title={`Hapus buku ${writeOff?.id ?? ""}?`} subtitle={`${fmtRupiah(num(writeOff?.amount))} keluar dari AR dan masuk beban. Wajib isi alasan.${needsWriteOffDirector(writeOff) ? ` Di atas ambang ${fmtRupiah(approveThreshold)} - butuh Director.` : ""}`}        footer={<><button className="btn-secondary" onClick={() => { setWriteOff(null); setWriteOffReason(""); setWoDirCheck(false); setWoDirName(""); }}>Batal</button><button className="btn-primary" disabled={!writeOffReason.trim() || (needsWriteOffDirector(writeOff) && (!woDirCheck || !woDirName.trim()))} onClick={() => setConfirmWriteOff(true)}>Lanjut Konfirmasi</button></>}>
+        <Field label="Alasan hapus buku" hint="Wajib - cth: piutang tak tertagih 180 hari, debitur pailit">
           <input className="input" value={writeOffReason} onChange={(e) => setWriteOffReason(e.target.value)} placeholder="Tulis alasan…" />
         </Field>
         {needsWriteOffDirector(writeOff) && (
@@ -3231,7 +3231,7 @@ export default function Finance() {
               <input type="checkbox" className="mt-1" checked={woDirCheck} onChange={(e) => setWoDirCheck(e.target.checked)} />
               Saya selaku Director menyetujui hapus buku nominal besar ini.
             </label>
-            <Field label="Nama Director" hint="Wajib — dicatat di log">
+            <Field label="Nama Director" hint="Wajib - dicatat di log">
               <input className="input" value={woDirName} onChange={(e) => setWoDirName(e.target.value)} placeholder="cth: Andi Darman" />
             </Field>
           </>
@@ -3241,7 +3241,7 @@ export default function Finance() {
       <ConfirmModal
         open={confirmWriteOff && writeOff !== null}
         title={`Hapus buku ${writeOff?.id ?? ""}?`}
-        desc={`Alasan: ${writeOffReason.trim() || "—"}. Status menjadi Dihapusbukukan dan tercatat sebagai beban.`}
+        desc={`Alasan: ${writeOffReason.trim() || "-"}. Status menjadi Dihapusbukukan dan tercatat sebagai beban.`}
         confirmLabel="Ya, hapus-bukukan"
         danger
         onCancel={() => setConfirmWriteOff(false)}

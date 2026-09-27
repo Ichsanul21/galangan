@@ -10,7 +10,7 @@ import { fmtJumlah } from "../../utils/format";
 export default function Settings() {
   const { data, update, log, backendMode, backendError, resync } = useStore();
   const { user } = useAuth();
-  // Tulis settings ditolak BE (403) kecuali direktur/developer — kunci di UI
+  // Tulis settings ditolak BE (403) kecuali direktur/developer - kunci di UI
   // agar toast "disimpan" tidak berbohong.
   const canWrite = backendMode !== "remote" || canWriteSettings(user?.role);
   const [drafts, setDrafts] = useState<Record<string, string>>({});
@@ -38,7 +38,7 @@ export default function Settings() {
   const groups = [...new Set((data.settings ?? []).map((s) => String(s.group ?? "Lainnya")))]
 
   const saveToggle = async (id: string, key: string, on: boolean) => {
-    if (!canWrite) { toast("Peran Anda tidak dapat mengubah konstanta — butuh Direktur / Developer", "info"); return; }
+    if (!canWrite) { toast("Peran Anda tidak dapat mengubah konstanta - butuh Direktur / Developer", "info"); return; }
     await update("settings", id, { value: on ? 1 : 0 });
     log("mengubah konstanta", `${key} → ${on ? 1 : 0}`, "Pengaturan");
     toast(`${key} ${on ? "ditampilkan" : "disembunyikan"}`);
@@ -52,14 +52,14 @@ export default function Settings() {
   const isToggleKey = (key: string): boolean => key === "SHOW_3D_PROJECT" || key === "SHOW_3D_VESSEL";;
 
   const save = async (id: string, key: string) => {
-    if (!canWrite) { toast("Peran Anda tidak dapat mengubah konstanta — butuh Direktur / Developer", "info"); return; }
+    if (!canWrite) { toast("Peran Anda tidak dapat mengubah konstanta - butuh Direktur / Developer", "info"); return; }
     const raw = drafts[id];
     if (raw === undefined || raw.trim() === "") return;
     const v = Number(raw);
     const isWhatif = key.startsWith("WHATIF_");
     const min = isWhatif ? -20 : 0;
     const max = isWhatif ? 50 : Number.POSITIVE_INFINITY;
-    if (!Number.isFinite(v) || v < min || v > max) { toast(isWhatif ? "Nilai What-if harus −20 s.d. 50" : "Nilai harus angka 0 atau lebih", "info"); return; }
+    if (!Number.isFinite(v) || v < min || v > max) { toast(isWhatif ? "Nilai What-if harus -20 s.d. 50" : "Nilai harus angka 0 atau lebih", "info"); return; }
     await update("settings", id, { value: v });
     log("mengubah konstanta", `${key} → ${v}`, "Pengaturan");
     toast(`${key} disimpan`);
@@ -74,7 +74,7 @@ export default function Settings() {
     <div>
       <PageHeader
         title="Pengaturan"
-        subtitle="Konstanta bisnis terpusat — semua rumus membaca dari sini"
+        subtitle="Konstanta bisnis terpusat - semua rumus membaca dari sini"
         icon={<SettingsIcon className="h-5 w-5" />}
       />
       <Card className="mb-4 p-4">
@@ -84,7 +84,7 @@ export default function Settings() {
           </span>
           {!canWrite && (
             <span className="rounded-full bg-amber-100 px-2.5 py-1 text-[11px] font-bold text-amber-700">
-              Read-only untuk peran Anda — ubah via Direktur / Developer
+              Read-only untuk peran Anda - ubah via Direktur / Developer
             </span>
           )}
           {backendError && <span className="text-[11px] text-steel-400">{backendError}</span>}
@@ -109,7 +109,7 @@ export default function Settings() {
           {g === "Pajak" && (
             <p className="mb-3 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800">
               Tarif pajak berlaku untuk transaksi BARU. Invoice yang sudah terbit menyimpan tarifnya
-              masing-masing — mengganti tarif tidak menulis ulang riwayat & laporan terkunci.
+              masing-masing - mengganti tarif tidak menulis ulang riwayat & laporan terkunci.
             </p>
           )}
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">

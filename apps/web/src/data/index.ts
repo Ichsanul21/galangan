@@ -39,7 +39,7 @@ export const clients = [
   { id: "C-003", name: "PT Karya Bahari Sejahtera", fleet: 15, rating: 95, since: 2012 },
   { id: "C-004", name: "PT Laut Timur Mandiri", fleet: 6, rating: 78, since: 2019 },
   { id: "C-005", name: "PT Mitra Samudra Raya", fleet: 10, rating: 85, since: 2016 },
-  // RawData CONTOH INVOICE.xlsx — customer pada 4 pola invoice SB.
+  // RawData CONTOH INVOICE.xlsx - customer pada 4 pola invoice SB.
   { id: "C-SB-001", name: "PT PELAYARAN KARTIKA SAMUDRA ADIJAYA", fleet: 6, rating: 90, since: 2024 },
   { id: "C-SB-002", name: "PT PELAYARAN ROYLEA MARINE LINE", fleet: 9, rating: 87, since: 2023 },
   { id: "C-SB-003", name: "PT ALVI CIPTA SENTOSA", fleet: 4, rating: 89, since: 2024 },
@@ -157,7 +157,7 @@ export const projects: Project[] = [
     manager: "Rudi Hartono",
     scope: ["Docking", "Pengecatan", "Rudder"],
   },
-  // RawData Invoice/CONTOH INVOICE.xlsx — rantai QT-SB-001 → KTR-SB-001 → invoice SB.
+  // RawData Invoice/CONTOH INVOICE.xlsx - rantai QT-SB-001 → KTR-SB-001 → invoice SB.
   {
     id: "RP-2026-006",
     vessel: "BG RMN 3324",
@@ -275,7 +275,7 @@ export const vessels = [
       { date: "2026-06-20", event: "Keel laying", type: "Produksi" },
     ],
   },
-  // RawData Invoice/CONTOH INVOICE.xlsx — kapal pada 4 pola invoice SB.
+  // RawData Invoice/CONTOH INVOICE.xlsx - kapal pada 4 pola invoice SB.
   {
     id: "V-SB-001",
     name: "BG RMN 3324",
@@ -413,8 +413,8 @@ export const vessels = [
 ];
 
 export const drydocks = [
-  { id: "DD-1", name: "Drydock 1 — Panjang 120m", capacity: "120m / 12m / 6m draft", status: "Terpakai" },
-  { id: "DD-2", name: "Drydock 2 — Panjang 90m", capacity: "90m / 10m / 5m draft", status: "Terpakai" },
+  { id: "DD-1", name: "Drydock 1 - Panjang 120m", capacity: "120m / 12m / 6m draft", status: "Terpakai" },
+  { id: "DD-2", name: "Drydock 2 - Panjang 90m", capacity: "90m / 10m / 5m draft", status: "Terpakai" },
   { id: "SL-1", name: "Slipway 1", capacity: "80m / bearer", status: "Tersedia" },
   { id: "BH-1", name: "Berth 1", capacity: "New build assembly", status: "Terpakai" },
 ];
@@ -548,7 +548,7 @@ export interface Invoice {
   paymentTerm: string;
 }
 
-// Seed invoice dihapus — sumber kebenaran adalah saldo awal Piutang Excel
+// Seed invoice dihapus - sumber kebenaran adalah saldo awal Piutang Excel
 // (seedInvoices di store.tsx, dari sheet Piutang Agustus 2026).
 
 export const ncrList = [
@@ -572,7 +572,7 @@ export const purchaseOrders = [
   // RawData FORMAT PO MATERIAL: 06/PO-SB/SMD/I/2024, WF 250/150/200,
   // subtotal 25.055.000 + PPN 11% = 27.811.050 (include).
   { id: "PO-SB-2024-006", item: "Besi WF (250/150/200)", vendor: "PT KALTIM LESTARI UNGGUL", req: "PR-SB-2024-006", amount: 27811050, qty: 23, unit: "btg", status: "Diterima", date: "2024-01-26", docNo: "06/PO-SB/SMD/I/2024", vessel: "U/STOCK", includePpn: true, tujuan: "stok", receivedQty: 23, lines: [{ name: "Besi WF 250", qty: 10, unit: "btg", price: 1150000 }, { name: "Besi WF 150", qty: 8, unit: "btg", price: 850000 }, { name: "Besi WF 200", qty: 5, unit: "btg", price: 1351000 }] },
-  // RawData CONTOH HUTANG — PO yang menjadi hutang AP-SB (docNo = po di hutang).
+  // RawData CONTOH HUTANG - PO yang menjadi hutang AP-SB (docNo = po di hutang).
   { id: "PO-SB-2026-004", item: "PLAT 14MM", vendor: "PT KALTIM LESTARI UNGGUL", req: "PR-SB-2026-004", amount: 36341622, qty: 2, unit: "lbr", status: "Diterima", date: "2026-01-07", docNo: "04/PO-SB/SMD/I/2026", vessel: "U/TK. RMN 3317", includePpn: true, tujuan: "kapal", receivedQty: 2 },
   { id: "PO-SB-2026-012", item: "SIKU PRESS + ROUNDBAR", vendor: "PT KALTIM LESTARI UNGGUL", req: "PR-SB-2026-012", amount: 409492875, qty: 130, unit: "btg", status: "Diterima", date: "2026-01-29", docNo: "12/PO-SB/SMD/I/2026", vessel: "U/BG. KBT 26", includePpn: true, tujuan: "kapal", receivedQty: 130 },
   { id: "PO-SB-2026-036", item: "PLAT 12MM/8MM", vendor: "PT KALTIM LESTARI UNGGUL", req: "PR-SB-2026-036", amount: 982905000, qty: 75, unit: "lbr", status: "Diterima", date: "2026-04-15", docNo: "36/PO-SB/SMD/IV/2026", vessel: "U/TK. ARTHA SARANA XI", includePpn: true, tujuan: "kapal", receivedQty: 75 },
@@ -715,13 +715,13 @@ export const insights = [
     id: "I1",
     tone: "navy" as const,
     title: "Utilisasi Drydock 92%",
-    desc: "Hampir penuh. 3 slot kompetitif untuk minggu depan — pertimbangkan prioritas proyek dan subkontraktor ekstra.",
+    desc: "Hampir penuh. 3 slot kompetitif untuk minggu depan - pertimbangkan prioritas proyek dan subkontraktor ekstra.",
   },
   {
     id: "I2",
     tone: "rose" as const,
     title: "37 Saldo Awal Belum Dibayar",
-    desc: "Total Rp 14,6 M dari sheet Piutang Excel Agustus 2026. Seluruhnya jatuh tempo 2026-08-31 — perlu penagihan bertingkat.",
+    desc: "Total Rp 14,6 M dari sheet Piutang Excel Agustus 2026. Seluruhnya jatuh tempo 2026-08-31 - perlu penagihan bertingkat.",
   },
   {
     id: "I3",
@@ -984,7 +984,7 @@ export const seedBoq: BoQItem[] = [
   ...(boqByProject["RP-2026-005"] ?? []),
 ];
 
-/* ====== Deret tren per modul — 1 deret per kartu KPI (12 titik, Sep-Ags) ====== */
+/* ====== Deret tren per modul - 1 deret per kartu KPI (12 titik, Sep-Ags) ====== */
 
 const M12 = ["Sep", "Okt", "Nov", "Des", "Jan", "Feb", "Mar", "Apr", "Mei", "Jun", "Jul", "Ags"];
 const mk = (vs: number[]) => M12.map((name, i) => ({ name, v: vs[i] ?? vs[vs.length - 1] }));

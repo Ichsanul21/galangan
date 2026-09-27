@@ -47,7 +47,7 @@ function isLate(checkIn: string): boolean {
 function otStatusOf(a: StoreItem): string {
   const raw = String(a.otStatus ?? "").trim();
   if (raw) return raw;
-  return Number(a.overtime || 0) > 0 ? "Diajukan" : "—";
+  return Number(a.overtime || 0) > 0 ? "Diajukan" : "-";
 }
 
 export default function Absensi() {
@@ -95,7 +95,7 @@ export default function Absensi() {
       }
       const ot = Number(r.overtime || 0);
       if (r.status === "Hadir" && (Number.isNaN(ot) || ot < 0 || ot > 8)) {
-        toast(`Lembur ${e.name} harus 0–8 jam`, "info");
+        toast(`Lembur ${e.name} harus 0-8 jam`, "info");
         return false;
       }
     }
@@ -138,9 +138,9 @@ export default function Absensi() {
     }
     if (created + updated > 0) {
       log("mencatat absensi", `${date} shift ${shift} · ${created + updated} orang`, "Absensi");
-      toast(`Absensi tersimpan — ${created} baru, ${updated} diperbarui`);
+      toast(`Absensi tersimpan - ${created} baru, ${updated} diperbarui`);
     } else {
-      toast("Tidak ada data baru — semua sudah tercatat", "info");
+      toast("Tidak ada data baru - semua sudah tercatat", "info");
     }
     setConfirmOpen(false);
   };
@@ -230,7 +230,7 @@ export default function Absensi() {
   const approveOT = async (a: StoreItem) => {
     await update("attendance", a.id, { otStatus: "Disetujui" });
     log("menyetujui lembur", `${a.id} · ${empNameOf(String(a.employeeId))} · ${Number(a.overtime || 0)} jam`, "Absensi");
-    toast(`${a.id} disetujui — masuk hitungan payroll`);
+    toast(`${a.id} disetujui - masuk hitungan payroll`);
   };
 
   const rejectOT = async (a: StoreItem) => {
@@ -358,7 +358,7 @@ export default function Absensi() {
                               <input type="number" min="0" max="8" step="0.5" className="input w-24 py-1.5 text-sm" value={r.overtime} disabled={!hadir} onChange={(ev) => setRow(e.id, { overtime: ev.target.value })} />
                             </td>
                             <td className="td">
-                              {hadir && isLate(r.checkIn) ? <Badge tone="red">Telat</Badge> : <span className="text-xs text-steel-400">—</span>}
+                              {hadir && isLate(r.checkIn) ? <Badge tone="red">Telat</Badge> : <span className="text-xs text-steel-400">-</span>}
                             </td>
                           </tr>
                         );
@@ -369,7 +369,7 @@ export default function Absensi() {
                 </div>
               </Card>
               <p className="mt-3 text-xs text-steel-500">
-                Aturan lembur (dipakai Payroll): jam ke-1–2 = 1,5x · jam ke-3–4 = 2x · jam ke-5+ = 3x dari tarif per jam (gaji pokok / 173). Telat = masuk setelah 08:00.
+                Aturan lembur (dipakai Payroll): jam ke-1-2 = 1,5x · jam ke-3-4 = 2x · jam ke-5+ = 3x dari tarif per jam (gaji pokok / 173). Telat = masuk setelah 08:00.
               </p>
             </div>
           )}
@@ -432,7 +432,7 @@ export default function Absensi() {
                           <td className="td">{r.c}</td>
                           <td className="td text-rose-600">{r.a}</td>
                           <td className="td">{fmtJumlah(Math.round(r.lembur * 10) / 10)} jam</td>
-                          <td className="td">{r.telat > 0 ? <Badge tone="red">{r.telat}x Telat</Badge> : <span className="text-xs text-steel-400">—</span>}</td>
+                          <td className="td">{r.telat > 0 ? <Badge tone="red">{r.telat}x Telat</Badge> : <span className="text-xs text-steel-400">-</span>}</td>
                           <td className="td font-semibold">{r.pct.toLocaleString("id-ID", { maximumFractionDigits: 1 })}%</td>
                         </tr>
                       ))}
@@ -479,8 +479,8 @@ export default function Absensi() {
                           <td className="td text-navy-900">{empNameOf(String(a.employeeId))}</td>
                           <td className="td"><Badge tone="gray">{a.shift}</Badge></td>
                           <td className="td"><StatusBadge status={String(a.status)} /></td>
-                          <td className="td text-steel-600">{a.checkIn && a.checkOut ? `${a.checkIn}–${a.checkOut}` : "—"}</td>
-                          <td className="td text-steel-600">{Number(a.overtime || 0) > 0 ? `${fmtJumlah(Number(a.overtime))} jam` : "—"}</td>
+                          <td className="td text-steel-600">{a.checkIn && a.checkOut ? `${a.checkIn}-${a.checkOut}` : "-"}</td>
+                          <td className="td text-steel-600">{Number(a.overtime || 0) > 0 ? `${fmtJumlah(Number(a.overtime))} jam` : "-"}</td>
                           <td className="td">
                             {Number(a.overtime || 0) > 0 ? (
                               <div className="flex items-center gap-2 whitespace-nowrap">
@@ -493,11 +493,11 @@ export default function Absensi() {
                                 )}
                               </div>
                             ) : (
-                              <span className="text-xs text-steel-400">—</span>
+                              <span className="text-xs text-steel-400">-</span>
                             )}
                           </td>
                           <td className="td">
-                            {a.status === "Hadir" && isLate(String(a.checkIn)) ? <Badge tone="red">Telat</Badge> : <span className="text-xs text-steel-400">—</span>}
+                            {a.status === "Hadir" && isLate(String(a.checkIn)) ? <Badge tone="red">Telat</Badge> : <span className="text-xs text-steel-400">-</span>}
                           </td>
                         </tr>
                       ))}

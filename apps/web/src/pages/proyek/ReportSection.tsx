@@ -100,7 +100,7 @@ export default function ReportSection({ projectId }: Props) {
         <Card className="p-4">
           <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
             <div>
-              <h3 className="flex items-center gap-2 text-sm font-semibold text-navy-900"><FileText className="h-4 w-4" /> Report Summary — {project?.vessel ?? projectId}</h3>
+              <h3 className="flex items-center gap-2 text-sm font-semibold text-navy-900"><FileText className="h-4 w-4" /> Report Summary - {project?.vessel ?? projectId}</h3>
               <p className="text-xs text-steel-500">{projectId} · {project?.type ?? "-"} · {project?.client ?? "-"} · {project?.manager ?? "-"} · {fmtRentang(project?.start, project?.end)}</p>
             </div>
             <div className="flex gap-2">
@@ -179,8 +179,8 @@ export default function ReportSection({ projectId }: Props) {
             <h4 className="mb-2 text-sm font-semibold text-navy-900">Service & Sparepart</h4>
             <p className="text-xs text-steel-500">Service: <b>{svc.length}</b> · Sparepart: <b>{spare.length}</b></p>
             <div className="mt-2">
-              <p className="text-xs text-steel-500">Sparepart — Akan: {spare.filter((s) => s.status === "Akan").length} · Sedang: {spare.filter((s) => s.status === "Sedang").length} · Selesai: {spare.filter((s) => s.status === "Selesai").length}</p>
-              <p className="mt-1 text-xs text-steel-500">Service — Selesai: {svc.filter((s) => s.status === "Done").length} · Berjalan: {svc.filter((s) => s.status === "In Progress").length} · Terjadwal: {svc.filter((s) => s.status === "Scheduled").length}</p>
+              <p className="text-xs text-steel-500">Sparepart - Akan: {spare.filter((s) => s.status === "Akan").length} · Sedang: {spare.filter((s) => s.status === "Sedang").length} · Selesai: {spare.filter((s) => s.status === "Selesai").length}</p>
+              <p className="mt-1 text-xs text-steel-500">Service - Selesai: {svc.filter((s) => s.status === "Done").length} · Berjalan: {svc.filter((s) => s.status === "In Progress").length} · Terjadwal: {svc.filter((s) => s.status === "Scheduled").length}</p>
             </div>
             <h4 className="mb-1 mt-3 text-xs font-semibold text-steel-500">AKTIVITAS TERAKHIR</h4>
             {activities.length === 0 ? <p className="text-xs text-steel-400">Belum ada aktivitas tercatat.</p> : activities.map((a) => (

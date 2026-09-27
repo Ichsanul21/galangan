@@ -76,7 +76,7 @@ const isLate = (po: StoreItem): boolean =>
   Boolean(po.eta) && String(po.eta) < todayISO() && normPo(po.status) !== "Diterima";
 
 /* ---- Approval bertingkat nominal PO Besar (docs/11§4.4: >Rp1M + Finance) ----
-   Ambang Finance dari settings APPROVE_PO (default 1jt) — diteruskan dari
+   Ambang Finance dari settings APPROVE_PO (default 1jt) - diteruskan dari
    komponen karena fungsi ini murni. */
 function needLevels(amount: number, financeLimit = 1000000): string[] {
   const lv: string[] = [];
@@ -349,7 +349,7 @@ export default function Procurement() {
       if (!Number(l.price) || Number(l.price) <= 0) { toast("Harga tiap baris harus lebih dari 0", "info"); return; }
     }
     if (bigOver && (!bigForm.override || !bigForm.overrideReason.trim())) {
-      toast("Melebihi sisa budget proyek — centang override dan isi alasan", "info");
+      toast("Melebihi sisa budget proyek - centang override dan isi alasan", "info");
       return;
     }
     const plafon = cekPlafon(bigForm.vendor, bigTotal);
@@ -388,7 +388,7 @@ export default function Procurement() {
     const amount = qty * price;
     if (amount > PO_KECIL_LIMIT) { toast("melebihi batas PO Kecil, gunakan PO Besar", "info"); return; }
     if (smallOver && (!smallForm.override || !smallForm.overrideReason.trim())) {
-      toast("Melebihi sisa budget proyek — centang override dan isi alasan", "info");
+      toast("Melebihi sisa budget proyek - centang override dan isi alasan", "info");
       return;
     }
     await add("purchaseOrders", {
@@ -480,7 +480,7 @@ export default function Procurement() {
       setWinRfq(null);
       setWinVendor("");
     } catch {
-      toast(`Penentuan pemenang ${winRfq.id} gagal di tengah jalan — periksa RFQ, PO & PR`, "info");
+      toast(`Penentuan pemenang ${winRfq.id} gagal di tengah jalan - periksa RFQ, PO & PR`, "info");
     }
   };
 
@@ -514,11 +514,11 @@ export default function Procurement() {
       setKonsProject("");
       setKonsEta("");
     } catch {
-      toast("Konsolidasi gagal di tengah jalan — periksa PO & status PR", "info");
+      toast("Konsolidasi gagal di tengah jalan - periksa PO & status PR", "info");
     }
   };
 
-  /* ============ SKOR VENDOR (Q40 + D30 + P30, skala 100 — docs/11) ============ */
+  /* ============ SKOR VENDOR (Q40 + D30 + P30, skala 100 - docs/11) ============ */
   const evalPreview = (() => {
     const q = Number(evalQ), d = Number(evalD), p = Number(evalP);
     if (![q, d, p].every((n) => n >= 1 && n <= 5)) return null;
@@ -528,7 +528,7 @@ export default function Procurement() {
   const saveEval = async () => {
     if (!evalPo) return;
     const q = Number(evalQ), d = Number(evalD), p = Number(evalP);
-    if (![q, d, p].every((n) => n >= 1 && n <= 5)) { toast("Nilai kualitas, delivery, harga 1–5 wajib diisi", "info"); return; }
+    if (![q, d, p].every((n) => n >= 1 && n <= 5)) { toast("Nilai kualitas, delivery, harga 1-5 wajib diisi", "info"); return; }
     const score = Math.round(q * 8 + d * 6 + p * 6);
     const v = vendors.find((x) => sameName(x.name, evalPo.vendor));
     if (!v) { toast("Vendor tidak ditemukan di master", "info"); return; }
@@ -539,7 +539,7 @@ export default function Procurement() {
     await update("vendors", v.id, patch);
     await update("purchaseOrders", evalPo.id, { evaluated: true });
     log("evaluasi vendor", `${v.name}: skor ${score} dari ${evalPo.id} (rata-rata ${Math.round(avg)})`, "Procurement");
-    toast(avg < 60 ? `${v.name} skor ${score} — rata-rata ${Math.round(avg)}, otomatis Blacklist` : `Skor ${v.name}: ${score} tersimpan`);
+    toast(avg < 60 ? `${v.name} skor ${score} - rata-rata ${Math.round(avg)}, otomatis Blacklist` : `Skor ${v.name}: ${score} tersimpan`);
     setEvalPo(null);
     setEvalQ("");
     setEvalD("");
@@ -673,7 +673,7 @@ export default function Procurement() {
       tglFaktur: recvTglFaktur,
       dendaRp,
     });
-    /* Auto-AP dari GR (3-way match PO–GR–Invoice): hutang vendor terbentuk saat terima. */
+    /* Auto-AP dari GR (3-way match PO-GR-Invoice): hutang vendor terbentuk saat terima. */
     const apExists = (data.payables ?? []).some((a) => String(a.po ?? "") === String(recvPo.id));
     if (!apExists && Number(recvPo.amount || 0) > 0) {
       const poAmount = Number(recvPo.amount || 0);
@@ -690,7 +690,7 @@ export default function Procurement() {
       log("auto-hutang GR", `${recvPo.id} → hutang ${recvPo.vendor} ${fmtRupiah(apTotal)}`, "Procurement");
     }
     if (late > 0 && dendaRp > 0) log("denda keterlambatan", `${recvPo.id}: telat ${late} hari → ${fmtRupiah(dendaRp)}`, "Procurement");
-    toast(`${recvPo.id} ${mode === "penuh" ? "diterima" : "diterima sebagian"}${invItem ? ` — stok ${invItem.name} +${qty}` : ""}${dendaRp > 0 ? ` · denda ${fmtRupiah(dendaRp)}` : ""}`);
+    toast(`${recvPo.id} ${mode === "penuh" ? "diterima" : "diterima sebagian"}${invItem ? ` - stok ${invItem.name} +${qty}` : ""}${dendaRp > 0 ? ` · denda ${fmtRupiah(dendaRp)}` : ""}`);
     setRecvPo(null);
     setRecvItem("");
     setRecvQty("");
@@ -698,7 +698,7 @@ export default function Procurement() {
     setRecvTglFaktur("");
     setRecvDendaPct("0.1");
     } catch {
-      toast(`Penerimaan ${recvPo.id} gagal di tengah jalan — periksa stok, movement & hutang`, "info");
+      toast(`Penerimaan ${recvPo.id} gagal di tengah jalan - periksa stok, movement & hutang`, "info");
     }
   };
 
@@ -717,7 +717,7 @@ export default function Procurement() {
     try {
       await update("inventory", invItem.id, { stock: Number(invItem.stock) - qty });
       await add("movements", {
-        item: invItem.name, itemId: invItem.id, type: "Retur", qty, by: `${retPo.id} — ${retNote.trim()}`, date: todayISO(), tone: "out",
+        item: invItem.name, itemId: invItem.id, type: "Retur", qty, by: `${retPo.id} - ${retNote.trim()}`, date: todayISO(), tone: "out",
       }, { action: "meretur barang", target: `${invItem.name} × ${qty} (${retPo.id})`, module: "Procurement" });
       await update("purchaseOrders", retPo.id, { returnedQty: Number(retPo.returnedQty || 0) + qty });
       log("meretur barang", `${invItem.name} × ${qty} (${retPo.id}): ${retNote.trim()}`, "Procurement");
@@ -726,7 +726,7 @@ export default function Procurement() {
       setRetQty("");
       setRetNote("");
     } catch {
-      toast(`Retur ${retPo.id} gagal di tengah jalan — periksa stok & movement`, "info");
+      toast(`Retur ${retPo.id} gagal di tengah jalan - periksa stok & movement`, "info");
     }
   };
 
@@ -780,7 +780,7 @@ export default function Procurement() {
           </button>
         )}
         <button className="btn-secondary text-xs" aria-label={`Cetak ${po.id}`} onClick={() => cetakPo(po)}><Printer className="h-3.5 w-3.5" /> Cetak</button>
-        {poNext(po.status).length === 0 && st !== "Diterima" && <span className="text-xs text-steel-400">—</span>}
+        {poNext(po.status).length === 0 && st !== "Diterima" && <span className="text-xs text-steel-400">-</span>}
       </div>
     );
   };
@@ -835,13 +835,13 @@ export default function Procurement() {
             </FilterPopover>
             {(pq.trim() !== "" || pStatus !== "Semua") && (
               <span className="text-xs text-steel-400">
-                Filter aktif di tab {tab} — {tab === "PO Besar (Kantor)" ? bigShown.length : tab === "PO Kecil (Workshop)" ? smallShown.length : tab === "RFQ" ? rfqShown.length : tab === "PR" ? prShown.length : vendorShown.length} baris
+                Filter aktif di tab {tab} - {tab === "PO Besar (Kantor)" ? bigShown.length : tab === "PO Kecil (Workshop)" ? smallShown.length : tab === "RFQ" ? rfqShown.length : tab === "PR" ? prShown.length : vendorShown.length} baris
               </span>
             )}
           </div>
           {tab === "PO Besar (Kantor)" && (
             <div className="space-y-4">
-              <p className="rounded-lg bg-steel-50 px-3 py-2 text-xs text-steel-500">Approval bertingkat nominal: ≤50 jt SPV · ≤500 jt +Manager · &gt;500 jt +Director · &gt;Rp1 jt +Finance (docs/11§4.4). PO Besar wajib faktur pajak saat terima. Hutang vendor otomatis terbentuk saat GR (3-way match PO–GR–AP).</p>
+              <p className="rounded-lg bg-steel-50 px-3 py-2 text-xs text-steel-500">Approval bertingkat nominal: ≤50 jt SPV · ≤500 jt +Manager · &gt;500 jt +Director · &gt;Rp1 jt +Finance (docs/11§4.4). PO Besar wajib faktur pajak saat terima. Hutang vendor otomatis terbentuk saat GR (3-way match PO-GR-AP).</p>
               <div className="overflow-x-auto">
                 <table className="w-full">
                   <thead className="bg-surface sticky top-0 z-10">
@@ -860,7 +860,7 @@ export default function Procurement() {
                             <p className="truncate" title={String(po.item)}>{po.item}</p>
                             {(po.qty || po.receivedQty) && (
                               <p className="text-xs text-steel-400">
-                                Qty {po.qty ? fmtJumlah(Number(po.qty)) : "—"} · Diterima {fmtJumlah(Number(po.receivedQty || 0))}
+                                Qty {po.qty ? fmtJumlah(Number(po.qty)) : "-"} · Diterima {fmtJumlah(Number(po.receivedQty || 0))}
                                 {Number(po.returnedQty || 0) > 0 && ` · Retur ${fmtJumlah(Number(po.returnedQty))}`}
                               </p>
                             )}
@@ -884,7 +884,7 @@ export default function Procurement() {
                             <p className="mt-0.5 text-xs text-steel-400">{done.length}/{need.length} tahap{done.length > 0 ? ` · ${done.map((a) => a.level).join(" → ")}` : ""}</p>
                           </td>
                           <td className="td text-steel-600">
-                            {po.eta ? fmtTanggal(po.eta) : "—"}
+                            {po.eta ? fmtTanggal(po.eta) : "-"}
                             {isLate(po) && <span className="ml-1.5"><Badge tone="red">Terlambat</Badge></span>}
                           </td>
                           <td className="td text-steel-600 font-mono text-xs">{po.revisi || "R0"}</td>
@@ -936,7 +936,7 @@ export default function Procurement() {
           {tab === "PO Kecil (Workshop)" && (
             <div className="space-y-4">
               <Card className="p-5">
-                <CardHeader title="Realisasi PO Kecil vs Kasbon Workshop" subtitle="Alat bantu sesi ini — bukan ledger permanen" />
+                <CardHeader title="Realisasi PO Kecil vs Kasbon Workshop" subtitle="Alat bantu sesi ini - bukan ledger permanen" />
                 <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-4">
                   <Field label={`Saldo awal sesi (${bulanIni})`}>
                     <input type="number" min={0} className="input" value={kasAwal} onChange={(e) => setKasAwal(e.target.value)} placeholder="cth: 25000000" />
@@ -949,7 +949,7 @@ export default function Procurement() {
                   <div className="rounded-lg bg-surface p-2.5">
                     <p className="text-xs text-steel-500">Sisa kasbon</p>
                     <p className={`font-semibold ${kasSisa < 0 ? "text-rose-600" : "text-navy-900"}`}>{fmtRupiah(kasSisa)}</p>
-                    <p className="text-xs text-steel-400">Saldo awal − realisasi</p>
+                    <p className="text-xs text-steel-400">Saldo awal - realisasi</p>
                   </div>
                   <div className="flex items-end">
                     <button className="btn-secondary text-xs" onClick={exportKas}><Printer className="h-3.5 w-3.5" /> Export</button>
@@ -960,7 +960,7 @@ export default function Procurement() {
                 <div className="mb-3 flex justify-end">
                   <button className="btn-secondary text-xs" onClick={() => setShowSmall(true)}><Plus className="h-3.5 w-3.5" /> Buat PO Kecil</button>
                 </div>
-                <p className="mb-3 rounded-lg bg-steel-50 px-3 py-2 text-xs text-steel-500">PO Kecil: Diajukan → Disetujui → Diterima, tanpa RFQ. Batas {fmtRupiah(PO_KECIL_LIMIT)} — selebihnya gunakan PO Besar.</p>
+                <p className="mb-3 rounded-lg bg-steel-50 px-3 py-2 text-xs text-steel-500">PO Kecil: Diajukan → Disetujui → Diterima, tanpa RFQ. Batas {fmtRupiah(PO_KECIL_LIMIT)} - selebihnya gunakan PO Besar.</p>
                 <div className="overflow-x-auto">
                   <table className="w-full">
                     <thead className="bg-surface sticky top-0 z-10">
@@ -988,7 +988,7 @@ export default function Procurement() {
                             <td className="td text-steel-600 truncate" title={String(po.workshop ?? "-")}>{po.workshop ?? "-"}</td>
                             <td className="td font-semibold">{fmtRupiah(po.amount)}</td>
                             <td className="td text-steel-600">
-                              {po.eta ? fmtTanggal(po.eta) : "—"}
+                              {po.eta ? fmtTanggal(po.eta) : "-"}
                               {isLate(po) && <span className="ml-1.5"><Badge tone="red">Terlambat</Badge></span>}
                             </td>
                             <td className="td"><Badge tone={poStatus[st] ?? "gray"}>{st}</Badge></td>
@@ -1080,7 +1080,7 @@ export default function Procurement() {
                       {approvedPRs.map((r) => (
                         <label key={r.id} className="flex items-center gap-3 rounded-xl border border-steel-200 px-3 py-2 text-sm">
                           <input type="checkbox" checked={konsIds.includes(r.id)} onChange={(e) => setKonsIds((s) => (e.target.checked ? [...s, r.id] : s.filter((x) => x !== r.id)))} aria-label={`Konsolidasi ${r.id}`} />
-                          <span className="min-w-0 flex-1 truncate font-medium text-navy-900" title={`${r.id} — ${r.item}`}>{r.id} — {r.item}</span>
+                          <span className="min-w-0 flex-1 truncate font-medium text-navy-900" title={`${r.id} - ${r.item}`}>{r.id} - {r.item}</span>
                           <span className="shrink-0 font-semibold">{fmtRupiah(r.amount)}</span>
                         </label>
                       ))}
@@ -1094,7 +1094,7 @@ export default function Procurement() {
                         <Field label="Proyek">
                           <select className="input" value={konsProject} onChange={(e) => setKonsProject(e.target.value)}>
                             <option value="">Tanpa proyek…</option>
-                            {data.projects.map((p) => <option key={p.id} value={p.id}>{p.id} — {p.vessel}</option>)}
+                            {data.projects.map((p) => <option key={p.id} value={p.id}>{p.id} - {p.vessel}</option>)}
                           </select>
                         </Field>
                       </FormGrid>
@@ -1137,7 +1137,7 @@ export default function Procurement() {
                               {r.status === "Ditolak" && (
                                 <button className="btn-secondary text-xs" onClick={async () => await update("requisitions", r.id, { status: "Menunggu Approval" })}>Ajukan Ulang</button>
                               )}
-                              {(r.status === "Sudah PO" || r.status === "RFQ") && <span className="text-xs text-steel-400">—</span>}
+                              {(r.status === "Sudah PO" || r.status === "RFQ") && <span className="text-xs text-steel-400">-</span>}
                             </div>
                           </td>
                         </tr>
@@ -1224,13 +1224,13 @@ export default function Procurement() {
             ))}
           </div>
           <FormGrid>
-            <Field label="PR Disetujui" hint="Wajib — 1 PR per PO manual">
+            <Field label="PR Disetujui" hint="Wajib - 1 PR per PO manual">
               <select className="input" value={bigForm.prId} onChange={(e) => setBigForm({ ...bigForm, prId: e.target.value })}>
                 <option value="">Pilih PR…</option>
-                {approvedPRs.map((r) => <option key={r.id} value={r.id}>{r.id} — {r.item} · {fmtRupiah(r.amount)}</option>)}
+                {approvedPRs.map((r) => <option key={r.id} value={r.id}>{r.id} - {r.item} · {fmtRupiah(r.amount)}</option>)}
               </select>
             </Field>
-            <Field label="Item inventori" hint="Wajib — penerimaan menambah stok item ini persis sebesar qty">
+            <Field label="Item inventori" hint="Wajib - penerimaan menambah stok item ini persis sebesar qty">
               <select className="input" value={bigForm.itemId} onChange={(e) => setBigForm({ ...bigForm, itemId: e.target.value })}>
                 <option value="">Pilih item…</option>
                 {invList.map((i) => <option key={i.id} value={i.id}>{i.name} · stok {fmtJumlah(Number(i.stock))} {i.unit}</option>)}
@@ -1247,13 +1247,13 @@ export default function Procurement() {
             <Field label="Proyek (cek budget)" hint={bigForm.tujuan === "kapal" ? "Wajib untuk PO kapal" : "Dikosongkan otomatis untuk stok"}>
               <select className="input" value={bigForm.project} disabled={bigForm.tujuan === "stok"} onChange={(e) => setBigForm({ ...bigForm, project: e.target.value })}>
                 <option value="">Tanpa proyek…</option>
-                {data.projects.map((p) => <option key={p.id} value={p.id}>{p.id} — {p.vessel}</option>)}
+                {data.projects.map((p) => <option key={p.id} value={p.id}>{p.id} - {p.vessel}</option>)}
               </select>
             </Field>
           </FormGrid>
           <Field label="ETA (wajib)"><input type="date" className="input" value={bigForm.eta} onChange={(e) => setBigForm({ ...bigForm, eta: e.target.value })} /></Field>
           <FormGrid>
-            <Field label="U/TK kapal" hint={bigForm.tujuan === "kapal" ? "Wajib — cth: U/TB. TRIALFA 01" : "Tidak dipakai untuk stok"}><input className="input" value={bigForm.vessel} disabled={bigForm.tujuan === "stok"} onChange={(e) => setBigForm({ ...bigForm, vessel: e.target.value })} placeholder="U/…" /></Field>
+            <Field label="U/TK kapal" hint={bigForm.tujuan === "kapal" ? "Wajib - cth: U/TB. TRIALFA 01" : "Tidak dipakai untuk stok"}><input className="input" value={bigForm.vessel} disabled={bigForm.tujuan === "stok"} onChange={(e) => setBigForm({ ...bigForm, vessel: e.target.value })} placeholder="U/…" /></Field>
             <Field label="Harga" hint={`RawData: "Harga Include PPN ${ppnRate}%"`}>
               <select className="input" value={bigForm.includePpn ? "include" : "exclude"} onChange={(e) => setBigForm({ ...bigForm, includePpn: e.target.value === "include" })}>
                 <option value="include">Include PPN {ppnRate}%</option>
@@ -1318,7 +1318,7 @@ export default function Procurement() {
             <Field label="Proyek (cek budget)">
               <select className="input" value={smallForm.project} onChange={(e) => setSmallForm({ ...smallForm, project: e.target.value })}>
                 <option value="">Stok workshop (tanpa proyek)…</option>
-                {data.projects.map((p) => <option key={p.id} value={p.id}>{p.id} — {p.vessel}</option>)}
+                {data.projects.map((p) => <option key={p.id} value={p.id}>{p.id} - {p.vessel}</option>)}
               </select>
             </Field>
           </FormGrid>
@@ -1337,7 +1337,7 @@ export default function Procurement() {
       </Modal>
 
       {/* Modal buat RFQ */}
-      <Modal open={rfqPr !== null} onClose={() => setRfqPr(null)} title={`Buat RFQ — ${rfqPr?.id ?? ""}`} subtitle={`${rfqPr?.item ?? ""} · pilih minimal 3 vendor`}
+      <Modal open={rfqPr !== null} onClose={() => setRfqPr(null)} title={`Buat RFQ - ${rfqPr?.id ?? ""}`} subtitle={`${rfqPr?.item ?? ""} · pilih minimal 3 vendor`}
         footer={<><button className="btn-secondary" onClick={() => setRfqPr(null)}>Batal</button><button className="btn-primary" onClick={saveRfq}>Buat RFQ (Draf)</button></>}>
         <div className="space-y-2">
           {vendors.map((v) => (
@@ -1351,7 +1351,7 @@ export default function Procurement() {
       </Modal>
 
       {/* Modal input penawaran */}
-      <Modal open={quoteRfq !== null} onClose={() => setQuoteRfq(null)} title={`Penawaran — ${quoteRfq?.id ?? ""}`} subtitle="Harga + ETA per vendor"
+      <Modal open={quoteRfq !== null} onClose={() => setQuoteRfq(null)} title={`Penawaran - ${quoteRfq?.id ?? ""}`} subtitle="Harga + ETA per vendor"
         footer={<><button className="btn-secondary" onClick={() => setQuoteRfq(null)}>Batal</button><button className="btn-primary" onClick={saveQuote}>Simpan Penawaran</button></>}>
         <div className="space-y-3">
           <Field label="Vendor">
@@ -1410,7 +1410,7 @@ export default function Procurement() {
           </FormGrid>
           {recvPo && recvLate > 0 && (
             <div className="rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-700">
-              Terlambat {recvLate} hari dari ETA {fmtTanggal(recvPo.eta)} — usulan denda {fmtRupiah(recvDendaPreview)}.
+              Terlambat {recvLate} hari dari ETA {fmtTanggal(recvPo.eta)} - usulan denda {fmtRupiah(recvDendaPreview)}.
               <div className="mt-2">
                 <Field label="Denda per hari (%)" hint="Batas total 5% dari nilai PO">
                   <input type="number" min={0} max={5} step={0.1} className="input" value={recvDendaPct} onChange={(e) => setRecvDendaPct(e.target.value)} />
@@ -1461,7 +1461,7 @@ export default function Procurement() {
       />
 
       {/* Modal evaluasi vendor */}
-      <Modal open={evalPo !== null} onClose={() => setEvalPo(null)} title={`Evaluasi Vendor — ${evalPo?.id ?? ""}`} subtitle={`${evalPo?.vendor ?? ""} · kualitas 30 + delivery 30 + harga 40 (skala 100)`}
+      <Modal open={evalPo !== null} onClose={() => setEvalPo(null)} title={`Evaluasi Vendor - ${evalPo?.id ?? ""}`} subtitle={`${evalPo?.vendor ?? ""} · kualitas 30 + delivery 30 + harga 40 (skala 100)`}
         footer={<><button className="btn-secondary" onClick={() => setEvalPo(null)}>Batal</button><button className="btn-primary" onClick={saveEval}>Simpan Skor</button></>}>
         <div className="space-y-3">
           <FormGrid>
@@ -1469,7 +1469,7 @@ export default function Procurement() {
               const val = lbl === "Kualitas" ? evalQ : lbl === "Delivery" ? evalD : evalP;
               const set = lbl === "Kualitas" ? setEvalQ : lbl === "Delivery" ? setEvalD : setEvalP;
               return (
-                <Field key={lbl} label={`${lbl} (1–5)`}>
+                <Field key={lbl} label={`${lbl} (1-5)`}>
                   <select className="input" value={val} onChange={(e) => set(e.target.value)} aria-label={`Nilai ${lbl}`}>
                     <option value="">Pilih…</option>
                     {[1, 2, 3, 4, 5].map((n) => <option key={n} value={n}>{n}</option>)}
@@ -1486,7 +1486,7 @@ export default function Procurement() {
       <ConfirmModal
         open={unblockVendor !== null}
         title={`Buka blokir ${unblockVendor?.name ?? ""}?`}
-        desc="Vendor Blacklist hanya dibuka lewat eskalasi — tercatat di log."
+        desc="Vendor Blacklist hanya dibuka lewat eskalasi - tercatat di log."
         confirmLabel="Ya, buka (eskalasi)"
         onCancel={() => setUnblockVendor(null)}
         onConfirm={async () => {
@@ -1500,7 +1500,7 @@ export default function Procurement() {
       />
 
       {/* Modal kontrak payung */}
-      <Modal open={payungVendor !== null} onClose={() => setPayungVendor(null)} title={`Kontrak Payung — ${payungVendor?.name ?? ""}`} subtitle="PO ke vendor ini divalidasi terhadap plafon kumulatif"
+      <Modal open={payungVendor !== null} onClose={() => setPayungVendor(null)} title={`Kontrak Payung - ${payungVendor?.name ?? ""}`} subtitle="PO ke vendor ini divalidasi terhadap plafon kumulatif"
         footer={<><button className="btn-secondary" onClick={() => setPayungVendor(null)}>Batal</button><button className="btn-primary" onClick={savePayung}>Simpan</button></>}>
         <div className="space-y-3">
           <Field label="Periode" hint="cth: 2026-01 s.d. 2026-12">
@@ -1553,8 +1553,8 @@ export default function Procurement() {
         </div>
       </Modal>
 
-      {/* Dialog pemenang RFQ — pilihan vendor + konfirmasi */}
-      <Modal open={winRfq !== null} onClose={() => { setWinRfq(null); setWinVendor(""); }} title={`Pemenang — ${winRfq?.id ?? ""}`} subtitle="Komparasi otomatis lalu menangkan satu vendor"
+      {/* Dialog pemenang RFQ - pilihan vendor + konfirmasi */}
+      <Modal open={winRfq !== null} onClose={() => { setWinRfq(null); setWinVendor(""); }} title={`Pemenang - ${winRfq?.id ?? ""}`} subtitle="Komparasi otomatis lalu menangkan satu vendor"
         footer={<><button className="btn-secondary" onClick={() => { setWinRfq(null); setWinVendor(""); }}>Batal</button><button className="btn-primary" onClick={confirmWin}>Menangkan & Buat PO</button></>}>
         <Field label="Vendor pemenang">
           <select className="input" value={winVendor} onChange={(e) => setWinVendor(e.target.value)}>

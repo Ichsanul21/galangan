@@ -1,5 +1,5 @@
 // Kamus Bahasa Indonesia (default). Kunci: hirarki common/nav/auth/...,
-// nilai: label UI. Nilai DATA (status dsb.) tidak ada di sini — lihat status.ts.
+// nilai: label UI. Nilai DATA (status dsb.) tidak ada di sini - lihat status.ts.
 import type { Dict } from "./types";
 
 export const id: Dict = {
@@ -79,7 +79,7 @@ export const id: Dict = {
     username: "Username / NIK / Email",
     password: "Password",
     welcome: "Selamat datang kembali!",
-    sessionExpired: "Sesi berakhir — silakan login ulang",
+    sessionExpired: "Sesi berakhir - silakan login ulang",
     invalidCredentials: "Username atau password salah.",
     lockedOut: "Terlalu banyak percobaan gagal. Tunggu 30 detik sebelum mencoba lagi.",
     fillUsername: "Isi username/NIK atau email yang valid (tanpa spasi).",
@@ -87,16 +87,16 @@ export const id: Dict = {
     subtitle: "Masuk ke pusat kendali galangan dengan akun kru Anda.",
     continue: "Masuk untuk melanjutkan",
     passwordPh: "Masukkan password",
-    demoTitle: "Akses demo — masuk satu klik",
+    demoTitle: "Akses demo - masuk satu klik",
     asUser: "Masuk sebagai",
     demoAccount: "akun demo",
   },
   toast: {
-    backendFallback: "Backend tak terjangkau — mode lokal",
-    forbidden: "Akses ditolak — butuh peran yang sesuai",
+    backendFallback: "Backend tak terjangkau - mode lokal",
+    forbidden: "Akses ditolak - butuh peran yang sesuai",
     saved: "Tersimpan",
     deleted: "Dihapus",
-    failed: "Gagal — periksa kembali",
+    failed: "Gagal - periksa kembali",
     copied: "Disalin",
     exported: "Diekspor ke Excel",
   },
@@ -123,10 +123,10 @@ export const id: Dict = {
     markGroupRead: "Tandai grup dibaca",
     open: "Buka",
     persistsNote: "Notifikasi ini akan tetap muncul sampai kondisi sudah selesai.",
-    cappedNote: "Menampilkan 200 pertama — saring tabel untuk sisanya.",
+    cappedNote: "Menampilkan 200 pertama - saring tabel untuk sisanya.",
     jumpHint: "klik untuk lompat ke barisnya",
     empty: "Tidak ada notifikasi",
-    emptyHint: "Tidak ada yang cocok dengan filter — semua aman.",
+    emptyHint: "Tidak ada yang cocok dengan filter - semua aman.",
   },
   session: {
     online: "Online",    offline: "Offline",
@@ -140,7 +140,7 @@ export const id: Dict = {
     userLog: "Lihat log",
     sessionsTitle: "Sesi aktif",
     noSessions: "Belum ada sesi tercatat.",
-    demoSession: "Sesi demo — tersimpan di browser",
+    demoSession: "Sesi demo - tersimpan di browser",
     demoReset: "Data demo dikembalikan ke awal",
     pendingSync: "koleksi belum tersinkron",
     syncNow: "Sinkronkan sekarang",

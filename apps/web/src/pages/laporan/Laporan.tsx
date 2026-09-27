@@ -169,7 +169,7 @@ export default function Laporan() {
   const weeklyLaba = weeklyRev - weeklyCost;
 
   const sigRows = (): unknown[][] => (
-    sigName.trim() ? [[""], ["Disahkan oleh", `${sigName.trim()} · ${sigRole.trim() || "—"} · ${fmtTanggal(sigDate)}`]] : []
+    sigName.trim() ? [[""], ["Disahkan oleh", `${sigName.trim()} · ${sigRole.trim() || "-"} · ${fmtTanggal(sigDate)}`]] : []
   );
 
   const pushArc = (name: string, info: string, m: Mode) => {
@@ -275,7 +275,7 @@ export default function Laporan() {
     <div>
       <PageHeader
         title="Pusat Laporan"
-        subtitle="Mingguan, bulanan, dan per proyek — semua angka dari data sesi ini"
+        subtitle="Mingguan, bulanan, dan per proyek - semua angka dari data sesi ini"
         icon={<FileText className="h-5 w-5" />}
         actions={
           mode === "Mingguan"
@@ -537,7 +537,7 @@ export default function Laporan() {
       </div>
 
       <Card className="mt-4 p-4">
-        <CardHeader title="Arsip Laporan Terkirim" subtitle="10 terakhir — tiap export tercatat di aktivitas" />
+        <CardHeader title="Arsip Laporan Terkirim" subtitle="10 terakhir - tiap export tercatat di aktivitas" />
         <div className="space-y-1.5 px-5 pb-5 text-sm">
           {arc.map((a, i) => (
             <div key={`${a.name}-${i}`} className="flex items-center gap-2 rounded-xl bg-surface px-3 py-2">

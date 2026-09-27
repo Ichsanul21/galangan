@@ -243,7 +243,7 @@ export default function KaryawanDetail() {
             <div className="flex justify-between"><dt className="text-steel-500">Cabang</dt><dd className="font-medium">{String(emp.branch ?? "-")}</dd></div>
             <div className="flex justify-between"><dt className="text-steel-500">Tipe</dt><dd><Badge tone="gray">{String(emp.tipe ?? "-")}</Badge></dd></div>
             <div className="flex justify-between"><dt className="text-steel-500">Bergabung</dt><dd className="font-medium">{fmtTanggal(String(emp.join))}</dd></div>
-            <div className="flex justify-between"><dt className="text-steel-500">Akhir kontrak</dt><dd className="font-medium">{emp.contractEnd ? fmtTanggal(String(emp.contractEnd)) : "—"}</dd></div>
+            <div className="flex justify-between"><dt className="text-steel-500">Akhir kontrak</dt><dd className="font-medium">{emp.contractEnd ? fmtTanggal(String(emp.contractEnd)) : "-"}</dd></div>
             <div className="flex justify-between"><dt className="text-steel-500">PTKP</dt><dd className="font-medium">{String(emp.ptkpStatus ?? "-")} · {Number(emp.dependents ?? 0)} tanggungan</dd></div>
             <div className="flex justify-between"><dt className="text-steel-500">Gaji pokok</dt><dd className="font-medium">{fmtRupiah(Number(emp.basic || 0))}</dd></div>
             <div className="flex justify-between"><dt className="text-steel-500">Tunjangan</dt><dd className="font-medium">{fmtRupiah(sumAllowances(emp.allowances))}</dd></div>
@@ -363,9 +363,9 @@ export default function KaryawanDetail() {
                       <td className="td text-steel-600">{fmtTanggal(String(a.date))}</td>
                       <td className="td"><Badge tone="gray">{String(a.shift)}</Badge></td>
                       <td className="td"><StatusBadge status={String(a.status)} /></td>
-                      <td className="td text-steel-600">{a.checkIn && a.checkOut ? `${a.checkIn}–${a.checkOut}` : "—"}</td>
+                      <td className="td text-steel-600">{a.checkIn && a.checkOut ? `${a.checkIn}-${a.checkOut}` : "-"}</td>
                       <td className="td text-steel-600">{Number(a.overtime || 0)} jam</td>
-                      <td className="td">{a.status === "Hadir" && String(a.checkIn) > "08:00" ? <Badge tone="red">Telat</Badge> : <span className="text-xs text-steel-400">—</span>}</td>
+                      <td className="td">{a.status === "Hadir" && String(a.checkIn) > "08:00" ? <Badge tone="red">Telat</Badge> : <span className="text-xs text-steel-400">-</span>}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -402,7 +402,7 @@ export default function KaryawanDetail() {
                       <td className="td text-steel-600">{fmtRupiah(Number(p.overtimePay || 0))}</td>
                       <td className="td font-bold text-navy-900">{fmtRupiah(Number(p.net || 0))}</td>
                       <td className="td"><StatusBadge status={String(p.status)} /></td>
-                      <td className="td text-steel-600">{p.paidAt ? fmtTanggal(String(p.paidAt)) : "—"}</td>
+                      <td className="td text-steel-600">{p.paidAt ? fmtTanggal(String(p.paidAt)) : "-"}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -435,7 +435,7 @@ export default function KaryawanDetail() {
                       <td className="td text-steel-600">{fmtTanggal(String(l.from))} → {fmtTanggal(String(l.to))}</td>
                       <td className="td font-semibold">{Number(l.days || 0)} hari</td>
                       <td className="td"><StatusBadge status={String(l.status)} /></td>
-                      <td className="td text-steel-600">{String(l.note || "—")}</td>
+                      <td className="td text-steel-600">{String(l.note || "-")}</td>
                     </tr>
                   ))}
                 </tbody>

@@ -1,4 +1,4 @@
-// Kontrak repository async — dipakai halaman hari ini via adapter lokal,
+// Kontrak repository async - dipakai halaman hari ini via adapter lokal,
 // besok via adapter HTTP tanpa mengubah halaman.
 // Bentuk record longgar (StoreItem) agar kompatibel dengan store saat ini.
 //
@@ -20,7 +20,7 @@ export interface ListFilter {
 
 export interface Repository {
   list(): Promise<StoreItem[]>;
-  /** Filter server-side (q/branch) — opsional agar adapter lama tak rusak. */
+  /** Filter server-side (q/branch) - opsional agar adapter lama tak rusak. */
   listFiltered?(opts?: ListFilter): Promise<StoreItem[]>;
   create(item: Omit<StoreItem, "id"> & { id?: string }): Promise<StoreItem>;
   patch(id: string, patch: Record<string, unknown>): Promise<StoreItem>;

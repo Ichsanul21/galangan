@@ -143,7 +143,7 @@ export default function Documents() {
   /* Upload lampiran ke backend (/api/files); mode lokal tetap pakai URL manual. */
   const onLampiranFile = async (f: File | undefined) => {
     if (!f) return;
-    if (!isBackendConfigured()) { toast("Mode lokal — tempel URL lampiran manual", "info"); return; }
+    if (!isBackendConfigured()) { toast("Mode lokal - tempel URL lampiran manual", "info"); return; }
     setUploadingFile(true);
     try {
       const url = await uploadFile(f);
@@ -218,7 +218,7 @@ export default function Documents() {
     try {
       const text = await ocrImageUrl(url);
       setOcrText(text);
-      toast(`OCR selesai (${text.length} karakter) — periksa lalu simpan`);
+      toast(`OCR selesai (${text.length} karakter) - periksa lalu simpan`);
     } catch (e) {
       toast(e instanceof Error ? e.message : "OCR gagal", "info");
     } finally {
@@ -300,7 +300,7 @@ export default function Documents() {
     <div>
       <PageHeader
         title="Aset & Dokumen"
-        subtitle="Register dokumen terpusat — kontrak, drawing, sertifikat, laporan"
+        subtitle="Register dokumen terpusat - kontrak, drawing, sertifikat, laporan"
         icon={<ScrollText className="h-5 w-5" />}
         actions={
           <>
@@ -321,7 +321,7 @@ export default function Documents() {
 
       {expiring.length > 0 && type !== "Arsip" && (
         <Card className="mb-4 p-4">
-          <h3 className="text-sm font-semibold text-navy-900">Segera expire — dalam {String(EXPIRY_WINDOW)} hari</h3>
+          <h3 className="text-sm font-semibold text-navy-900">Segera expire - dalam {String(EXPIRY_WINDOW)} hari</h3>
           <div className="mt-2 space-y-1.5 text-sm">
             {expiring.slice(0, 6).map((x) => (
               <div key={x.doc.id} className="flex items-center justify-between gap-2">
@@ -450,7 +450,7 @@ export default function Documents() {
             </Field>
             <Field label="Kapal terkait">
               <select className="input" value={form.vessel} onChange={(e) => setF("vessel", e.target.value)}>
-                <option value="">—</option>
+                <option value="">-</option>
                 <option value="-">Umum</option>
                 {data.vessels.map((v) => <option key={v.id} value={v.name}>{v.name}</option>)}
               </select>
@@ -473,9 +473,9 @@ export default function Documents() {
               <input ref={fileInputRef} type="file" accept=".png,.jpg,.jpeg,.pdf,.xlsx,.csv" className="hidden" aria-label="Pilih berkas lampiran"
                 onChange={(e) => { void onLampiranFile(e.target.files?.[0]); }} />
               <button type="button" className="btn-secondary shrink-0 text-xs" disabled={uploadingFile}
-                title={isBackendConfigured() ? "Unggah berkas ke backend" : "Mode lokal — isi URL manual"}
+                title={isBackendConfigured() ? "Unggah berkas ke backend" : "Mode lokal - isi URL manual"}
                 onClick={() => {
-                  if (!isBackendConfigured()) { toast("Mode lokal — tempel URL lampiran manual", "info"); return; }
+                  if (!isBackendConfigured()) { toast("Mode lokal - tempel URL lampiran manual", "info"); return; }
                   fileInputRef.current?.click();
                 }}>
                 <Upload className="h-4 w-4" /> {uploadingFile ? "Mengunggah…" : "Upload"}
@@ -521,7 +521,7 @@ export default function Documents() {
                       {String(detail.fileUrl)}
                     </a>
                   ) : (
-                    <span className="font-medium text-steel-400">—</span>
+                    <span className="font-medium text-steel-400">-</span>
                   )}
                 </dd>
               </div>
@@ -567,7 +567,7 @@ export default function Documents() {
                 ))}
               </div>
             ) : !canonStatus(detail.status) ? (
-              <p className="mt-3 text-xs text-steel-400">Status warisan — read-only, tanpa aksi alur.</p>
+              <p className="mt-3 text-xs text-steel-400">Status warisan - read-only, tanpa aksi alur.</p>
             ) : null}
             <h4 className="mb-2 mt-4 text-sm font-semibold text-navy-900">Dokumen terkait</h4>
             <div className="space-y-1.5 text-sm">
@@ -588,7 +588,7 @@ export default function Documents() {
               {((detail.revisions ?? []) as { version: string; at: string; by: string; note: string }[]).map((r) => (
                 <div key={r.version} className="flex items-center justify-between gap-2 rounded-lg bg-surface px-3 py-2">
                   <span className="font-mono font-semibold text-navy-900">{r.version}</span>
-                  <span className="truncate text-xs text-steel-500" title={`${r.note} — ${r.by}`}>{r.note} — {r.by}</span>
+                  <span className="truncate text-xs text-steel-500" title={`${r.note} - ${r.by}`}>{r.note} - {r.by}</span>
                   <span className="text-xs text-steel-500 whitespace-nowrap">{fmtTanggal(r.at)}</span>
                 </div>
               ))}

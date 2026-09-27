@@ -201,12 +201,12 @@ export default function EquipmentPage() {
   const saveAdd = async () => {
     if (!form.name.trim() || !form.code.trim()) { toast("Nama & kode wajib diisi", "info"); return; }
     const code = form.code.trim().toUpperCase();
-    if (!/^[A-Z0-9-]{3,20}$/.test(code)) { toast("Kode aset harus 3–20 karakter (huruf/angka/-)", "info"); return; }
+    if (!/^[A-Z0-9-]{3,20}$/.test(code)) { toast("Kode aset harus 3-20 karakter (huruf/angka/-)", "info"); return; }
     if (equipment.some((e) => String(e.code).toUpperCase() === code)) { toast(`Kode ${code} sudah dipakai equipment lain`, "info"); return; }
     if (!form.serial.trim()) { toast("Nomor seri wajib diisi", "info"); return; }
     if (!form.pic.trim()) { toast("PIC penanggung jawab wajib diisi", "info"); return; }
     const util = Number(form.util);
-    if (!Number.isFinite(util) || util < 0 || util > 100) { toast("Utilisasi awal harus 0–100%", "info"); return; }
+    if (!Number.isFinite(util) || util < 0 || util > 100) { toast("Utilisasi awal harus 0-100%", "info"); return; }
     const rate = Number(form.rate || 0);
     if (!Number.isFinite(rate) || rate < 0) { toast("Tarif pakai harus 0 atau lebih", "info"); return; }
     const fuelPrice = Number(form.fuelPrice || 0);
@@ -286,7 +286,7 @@ export default function EquipmentPage() {
     const { equip, proyek, date, mulai, selesai } = bookForm;
     const eq = equipment.find((e) => sameName(e.name, equip));
     if (!eq) { setBookError("Equipment tidak ditemukan."); return; }
-    const created = await add("bookings", { equip, proyek, jam: `${mulai}–${selesai}`, mulai, selesai, status: "Terjadwal", date, priority, branch: String((data.projects ?? []).find((p) => String(p.id) === String(proyek))?.branch ?? (branch !== "SEMUA" ? branch : "")) },
+    const created = await add("bookings", { equip, proyek, jam: `${mulai}-${selesai}`, mulai, selesai, status: "Terjadwal", date, priority, branch: String((data.projects ?? []).find((p) => String(p.id) === String(proyek))?.branch ?? (branch !== "SEMUA" ? branch : "")) },
       { action: "membooking equipment", target: `${equip} · ${priority}`, module: "Equipment" });
     await update("equipment", eq.id, { status: "Terpakai" });
     toast(`Booking ${created.id} dibuat (${priority})`);
@@ -316,7 +316,7 @@ export default function EquipmentPage() {
       return;
     }
     if (isMeasuring(eq) && isCalExpired(eq.id, calibrations, today)) {
-      const msg = `Booking ditolak: ${equip} kalibrasinya kedaluwarsa — jadwalkan ulang kalibrasi di tab Kalibrasi.`;
+      const msg = `Booking ditolak: ${equip} kalibrasinya kedaluwarsa - jadwalkan ulang kalibrasi di tab Kalibrasi.`;
       setBookError(msg);
       toast(msg, "info");
       return;
@@ -336,7 +336,7 @@ export default function EquipmentPage() {
     try {
       await persistBooking(priority);
     } catch {
-      toast(`Booking ${equip} gagal disimpan — periksa kembali`, "info");
+      toast(`Booking ${equip} gagal disimpan - periksa kembali`, "info");
     }
   };
 
@@ -503,12 +503,12 @@ export default function EquipmentPage() {
                 </FilterPopover>
                 {(eqQ.trim() !== "" || eqStatus !== "Semua" || eqCat !== "Semua") && (
                   <span className="text-xs text-steel-400">
-                    Filter aktif di tab Register — {regSorted.length} baris
+                    Filter aktif di tab Register - {regSorted.length} baris
                   </span>
                 )}
               </div>
               <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-                <p className="text-xs text-steel-500">Nilai buku garis lurus · asumsi penyusutan tahun berjalan (perolehan − penyusutan 1 tahun)</p>
+                <p className="text-xs text-steel-500">Nilai buku garis lurus · asumsi penyusutan tahun berjalan (perolehan - penyusutan 1 tahun)</p>
                 <button className="btn-secondary text-xs" onClick={exportRegister}><Download className="h-3.5 w-3.5" /> Ekspor Register Aset</button>
               </div>
             <div className="overflow-x-auto">
@@ -541,13 +541,13 @@ export default function EquipmentPage() {
                       </td>
                       <td className="td text-steel-600 font-mono text-xs">{fmtJumlah(Number(e.lastHours || 0))} jam</td>
                       <td className="td text-steel-600 text-xs">
-                        {Number(e.rate || 0) > 0 ? fmtRupiah(Number(e.rate)) : "—"}
+                        {Number(e.rate || 0) > 0 ? fmtRupiah(Number(e.rate)) : "-"}
                         <span className="block text-steel-400">BBM {fmtRupiah(Number(e.fuelPrice || 0))}/L</span>
                       </td>
                       <td className="td text-steel-600 text-xs">
                         {(() => {
                           const dep = depreciationOf(e);
-                          if (!dep) return <span className="text-steel-400">—</span>;
+                          if (!dep) return <span className="text-steel-400">-</span>;
                           return (
                             <span>
                               <span className="font-semibold text-navy-900">{fmtRupiah(Math.round(dep.book))}</span>
@@ -568,7 +568,7 @@ export default function EquipmentPage() {
                           </button>
                         )}
                         {e.status === "Terpakai" && (
-                          <span className="text-xs text-steel-500">Aktif via booking — selesaikan dari tab Booking</span>
+                          <span className="text-xs text-steel-500">Aktif via booking - selesaikan dari tab Booking</span>
                         )}
                       </td>
                     </tr>
@@ -659,7 +659,7 @@ export default function EquipmentPage() {
                         <td className="td text-xs text-steel-600">
                           {e.status === "Maintenance" && e.maintenanceNote
                             ? `${e.maintenanceNote}${e.maintenanceEta ? ` · selesai ${fmtTanggal(String(e.maintenanceEta))}` : ""}`
-                            : <span className="text-steel-400">—</span>}
+                            : <span className="text-steel-400">-</span>}
                         </td>
                         <td className="td"><Badge tone={e.status === "Maintenance" ? "amber" : "green"}>{e.status === "Maintenance" ? "Dalam Servis" : "Terjadwal"}</Badge></td>
                         <td className="td">
@@ -700,7 +700,7 @@ export default function EquipmentPage() {
                           <td className="td text-steel-600">{eq?.name ?? c.equipmentId}</td>
                           <td className="td text-steel-600">{c.item}</td>
                           <td className="td text-steel-600">{fmtTanggal(String(c.due))}</td>
-                          <td className="td font-mono text-xs text-steel-600">{c.cert || "—"}</td>
+                          <td className="td font-mono text-xs text-steel-600">{c.cert || "-"}</td>
                           <td className="td">
                             <div className="flex flex-wrap gap-1">
                               <StatusBadge status={String(c.status)} />
@@ -796,7 +796,7 @@ export default function EquipmentPage() {
               <Card className="p-5">
                 <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
                   <h3 className="text-sm font-semibold text-navy-900">OEE per Equipment <span className="text-xs font-normal text-steel-500">(availability × performance · target {TARGET_HOURS} jam/bln)</span></h3>
-                  <Badge tone="navy">Rata-rata {avgOee !== null ? `${Math.round(avgOee * 100)}%` : "—"}</Badge>
+                  <Badge tone="navy">Rata-rata {avgOee !== null ? `${Math.round(avgOee * 100)}%` : "-"}</Badge>
                 </div>
                 <div className="space-y-2.5">
                   {equipment.map((e) => {
@@ -877,7 +877,7 @@ export default function EquipmentPage() {
                 {data.branches.map((b) => <option key={b.id} value={String(b.city)}>{String(b.city)}</option>)}
               </select>
             </Field>
-            <Field label="Nomor seri" hint="Wajib — unik per unit"><input className="input font-mono" value={form.serial} onChange={(e) => setForm({ ...form, serial: e.target.value })} placeholder="cth: SN-2024-001" /></Field>
+            <Field label="Nomor seri" hint="Wajib - unik per unit"><input className="input font-mono" value={form.serial} onChange={(e) => setForm({ ...form, serial: e.target.value })} placeholder="cth: SN-2024-001" /></Field>
             <Field label="PIC" hint="Penanggung jawab unit"><input className="input" value={form.pic} onChange={(e) => setForm({ ...form, pic: e.target.value })} placeholder="cth: Budi Santoso" /></Field>
             <Field label="Model"><input className="input" value={form.model} onChange={(e) => setForm({ ...form, model: e.target.value })} /></Field>
             <Field label="Utilisasi awal (%)"><input type="number" className="input" value={form.util} onChange={(e) => setForm({ ...form, util: e.target.value })} /></Field>
@@ -903,7 +903,7 @@ export default function EquipmentPage() {
         </div>
       </Modal>
 
-      <Modal open={recording !== null} onClose={() => setRecording(null)} title={`Catat Servis — ${recording?.name ?? ""}`} subtitle="Pelaksanaan servis terjadwal"
+      <Modal open={recording !== null} onClose={() => setRecording(null)} title={`Catat Servis - ${recording?.name ?? ""}`} subtitle="Pelaksanaan servis terjadwal"
         footer={<><button className="btn-secondary" onClick={() => setRecording(null)}>Batal</button><button className="btn-primary" onClick={saveRecord}>Simpan Servis</button></>}>
         <div className="space-y-3">
           <FormGrid>
@@ -917,7 +917,7 @@ export default function EquipmentPage() {
       </Modal>
 
       {/* Modal maintenance */}
-      <Modal open={maintaining !== null} onClose={() => setMaintaining(null)} title={`Maintenance — ${maintaining?.name ?? ""}`}
+      <Modal open={maintaining !== null} onClose={() => setMaintaining(null)} title={`Maintenance - ${maintaining?.name ?? ""}`}
         footer={<><button className="btn-secondary" onClick={() => setMaintaining(null)}>Batal</button><button className="btn-primary" onClick={startMaintenance}>Masuk Maintenance</button></>}>
         <div className="space-y-3">
           <Field label="Catatan kerusakan"><input className="input" value={maintNote} onChange={(e) => setMaintNote(e.target.value)} placeholder="cth: Seal hidrolik bocor" /></Field>
@@ -969,7 +969,7 @@ export default function EquipmentPage() {
       />
 
       {/* Modal selesaikan booking */}
-      <Modal open={finishing !== null} onClose={() => setFinishing(null)} title={`Selesaikan Booking — ${finishing?.equip ?? ""}`} subtitle={finishing ? `${finishing.proyek} · ${finishing.jam} · ${fmtTanggal(String(finishing.date))}` : ""}
+      <Modal open={finishing !== null} onClose={() => setFinishing(null)} title={`Selesaikan Booking - ${finishing?.equip ?? ""}`} subtitle={finishing ? `${finishing.proyek} · ${finishing.jam} · ${fmtTanggal(String(finishing.date))}` : ""}
         footer={<><button className="btn-secondary" onClick={() => setFinishing(null)}>Batal</button><button className="btn-primary" onClick={confirmFinish}>Selesaikan</button></>}>
         <div className="space-y-3">
           <Field label="Jam pakai aktual (jam)" hint="Default = durasi booking; menambah hour-meter equipment">

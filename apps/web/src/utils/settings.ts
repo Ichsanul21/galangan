@@ -1,4 +1,4 @@
-// Konstanta bisnis terpusat — baca dari koleksi settings (halaman Pengaturan).
+// Konstanta bisnis terpusat - baca dari koleksi settings (halaman Pengaturan).
 // Semua rumus WAJIB pakai helper ini, bukan angka literal.
 
 import type { StoreShape, StoreItem } from "../data/store";

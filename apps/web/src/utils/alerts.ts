@@ -106,7 +106,7 @@ export function computeAlerts(data: StoreShape): Alert[] {
   const leaveN = (data.leaves ?? []).filter((l) => l.status === "Diajukan").length;
   if (leaveN > 0) out.push({ id: "cuti", tone: "blue", text: `${leaveN} pengajuan cuti menunggu`, to: "/sdm" });
 
-  // 9. Milestone H-7 — task WBS progress==0 yang berakhir dalam msDays hari.
+  // 9. Milestone H-7 - task WBS progress==0 yang berakhir dalam msDays hari.
   // Aproksimasi milestone: task belum mulai. YYYY-MM dihitung akhir bulan.
   const msTasks: { pid: string; vessel: string; task: string; d: number }[] = [];
   for (const p of data.projects ?? []) {
@@ -122,7 +122,7 @@ export function computeAlerts(data: StoreShape): Alert[] {
   }
   if (msTasks.length > 5) out.push({ id: "ms-more", tone: "amber", text: `${msTasks.length - 5} milestone lain ≤ ${msDays} hari`, to: "/proyek/monitoring" });
 
-  // 10. Sertifikat tiers 90/60/30 — tiga bucket terpisah (di samping alert `cert` lama).
+  // 10. Sertifikat tiers 90/60/30 - tiga bucket terpisah (di samping alert `cert` lama).
   // kritis ≤30 (termasuk kedaluwarsa d<0) → red; warning (30,60] → amber; info (60,90] → blue.
   let certCrit = 0;
   let certWarn = 0;
@@ -142,7 +142,7 @@ export function computeAlerts(data: StoreShape): Alert[] {
   if (certWarn > 0) out.push({ id: "cert-warn", tone: "amber", text: `${certWarn} sertifikat warning ≤ ${cert60} hari`, to: "/kapal" });
   if (certInfo > 0) out.push({ id: "cert-info", tone: "blue", text: `${certInfo} sertifikat info ≤ ${certDays} hari`, to: "/kapal" });
 
-  // 11. Critical-path delay > cpDays — aproksimasi: task progress==0 yang
+  // 11. Critical-path delay > cpDays - aproksimasi: task progress==0 yang
   // sudah lewat end-nya lebih dari cpDays (tanpa graf predecessor eksplisit di WBS).
   for (const p of data.projects ?? []) {
     const wbs = data.wbsByProject?.[String(p.id)] ?? [];

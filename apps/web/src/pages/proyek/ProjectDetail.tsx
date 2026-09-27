@@ -33,7 +33,6 @@ import { getSetting } from "../../utils/settings";
 import { exportExcel } from "../../utils/export";
 
 const STATUS = ["Dalam Proses", "Sedang Berjalan", "Terlambat", "Tertunda", "Selesai"];
-const CO_FLOW = ["Diajukan", "Disetujui", "Ditolak", "Diterapkan"];
 const RISK_LEVEL = ["Rendah", "Sedang", "Tinggi"];
 const RISK_STATUS = ["Aktif", "Dipantau", "Tertutup"];
 const DESIGN_STAGE_NAMES = ["Basic Design", "Detail Design", "Class Approval", "Production Drawing"];
@@ -113,7 +112,7 @@ export default function ProjectDetail() {
   useEffect(() => {
     if (!project) return;
     // Hanya proyek dengan WBS nyata (tersimpan) yang progresnya diturunkan
-    // otomatis — template fallback tidak boleh menimpa progres seed/manual.
+    // otomatis - template fallback tidak boleh menimpa progres seed/manual.
     if (!data.wbsByProject?.[project.id]) return;
     const wbs = wbsFor(project.id);
     const newProgress = weightedProgress(wbs);
@@ -197,7 +196,7 @@ export default function ProjectDetail() {
 
   const setCoStatus = async (id: string, status: string) => {
     await update("changeOrders", id, { status });
-    log("mengubah change order", `${id} — ${status}`, "Proyek");
+    log("mengubah change order", `${id} - ${status}`, "Proyek");
     toast(`Change order ${status.toLowerCase()}`);
   };
 
@@ -286,7 +285,7 @@ export default function ProjectDetail() {
     if (next === "Disetujui") {
       const linked = findLinkedWbs(String(b.milestone ?? ""));
       if (linked && Number(linked.progress) !== 100) {
-        toast(`Milestone "${linked.task}" baru ${linked.progress}% — BAST butuh progres 100%`, "info");
+        toast(`Milestone "${linked.task}" baru ${linked.progress}% - BAST butuh progres 100%`, "info");
         return;
       }
       const amount = Number(b.amount) > 0 ? Number(b.amount) : boqTotal;
@@ -319,9 +318,9 @@ export default function ProjectDetail() {
           skdt: false,
         }, { action: "menerbitkan invoice milestone (BAST)", target: `${invId} ← ${String(b.id)}`, module: "Keuangan" });
         log("menyetujui BAST + auto-invoice", `${String(b.id)} → ${invId}`, "Proyek");
-        toast(`BAST disetujui — invoice draft ${invId} dibuat`);
+        toast(`BAST disetujui - invoice draft ${invId} dibuat`);
       } catch {
-        toast(`BAST ${String(b.id)} gagal membuat invoice — periksa daftar invoice`, "info");
+        toast(`BAST ${String(b.id)} gagal membuat invoice - periksa daftar invoice`, "info");
         return;
       }
     } else {
@@ -380,11 +379,11 @@ export default function ProjectDetail() {
       if (!linked) { toast("Butuh Class Survey ter-link sebelum trial Lolos (isi di modul Kapal)", "info"); return; }
       const bastId = nextBastId(String(t.tanggal ?? todayISO()));
       await add("bast", {
-        id: bastId, projectId: pid, milestone: `Sea Trial — ${String(t.parameter ?? "")}`,
+        id: bastId, projectId: pid, milestone: `Sea Trial - ${String(t.parameter ?? "")}`,
         tanggal: String(t.tanggal ?? todayISO()), penandatangan: "", lampiran: String(t.punchList ?? ""),
         amount: boqTotal, status: "Draft",
       }, { action: "membuat BAST draft dari trial", target: `${bastId} ← ${String(t.id)}`, module: "Proyek" });
-      toast(`Trial Lolos — BAST draft ${bastId} dibuat`);
+      toast(`Trial Lolos - BAST draft ${bastId} dibuat`);
     } else {
       toast(`Trial ${String(t.id)} ditandai ${hasil}`, "info");
     }
@@ -396,13 +395,13 @@ export default function ProjectDetail() {
   const changeStatus = async (next: string) => {
     if (next === "Selesai" && project.status !== "Selesai") {
       const openNcr = (data.ncr ?? []).filter((n) => n.project === pid && n.status !== "Tertutup");
-      if (openNcr.length > 0) { toast(`Masih ada ${openNcr.length} NCR terbuka — tutup dulu sebelum Selesai`, "info"); return; }
+      if (openNcr.length > 0) { toast(`Masih ada ${openNcr.length} NCR terbuka - tutup dulu sebelum Selesai`, "info"); return; }
       const itpHold = (data.inspections ?? []).filter((i) => i.project === pid && i.status === "NCR");
-      if (itpHold.length > 0) { toast(`Masih ada ${itpHold.length} ITP hold (status NCR) — selesaikan dulu`, "info"); return; }
+      if (itpHold.length > 0) { toast(`Masih ada ${itpHold.length} ITP hold (status NCR) - selesaikan dulu`, "info"); return; }
       const vsl = data.vessels.find((x) => x.name === project.vessel);
       if (vsl) {
         await update("vessels", vsl.id, {
-          history: [...(vsl.history ?? []), { date: todayISO(), event: `Proyek ${pid} selesai — serah terima`, type: "Delivery" }],
+          history: [...(vsl.history ?? []), { date: todayISO(), event: `Proyek ${pid} selesai - serah terima`, type: "Delivery" }],
           dockHistory: [...(vsl.dockHistory ?? []), { date: todayISO(), dock: "Galangan", scope: `Penyelesaian proyek ${pid}`, result: "Selesai", nextDue: todayISO() }],
         });
       }
@@ -428,7 +427,7 @@ export default function ProjectDetail() {
       setScopeVal({ service: "", lokasi: "", deskripsi: "" });
       setShowScope(false);
     } catch {
-      toast("Lingkup gagal ditambahkan — periksa kembali", "info");
+      toast("Lingkup gagal ditambahkan - periksa kembali", "info");
     }
   };
 
@@ -436,13 +435,13 @@ export default function ProjectDetail() {
     if (!wbsTaskUpdate) return;
     const hours = Number(wbsUpdateForm.hours) || 0;
     const prog = Math.max(0, Math.min(100, Number(wbsUpdateForm.progress)));
-    if (wbsUpdateForm.progress === "" || Number.isNaN(prog)) { toast("Isi progres 0–100", "info"); return; }
+    if (wbsUpdateForm.progress === "" || Number.isNaN(prog)) { toast("Isi progres 0-100", "info"); return; }
     // E2: hull tasks wajib isi station.
     if (/hull/i.test(wbsTaskUpdate) && !wbsUpdateForm.station) { toast("Station wajib diisi untuk tugas Hull", "info"); return; }
     const dftNum = wbsUpdateForm.dft === "" ? undefined : Number(wbsUpdateForm.dft);
     if (wbsUpdateForm.dft !== "" && (!Number.isFinite(dftNum!) || dftNum! < 0)) { toast("DFT harus angka 0 atau lebih", "info"); return; }
     const pred = wbsUpdateForm.predecessor || "";
-    if (pred && pred !== wbsTaskUpdate && createsCycle(wbs, wbsTaskUpdate, pred)) { toast("Dependensi menciptakan siklus — ditolak", "info"); return; }
+    if (pred && pred !== wbsTaskUpdate && createsCycle(wbs, wbsTaskUpdate, pred)) { toast("Dependensi menciptakan siklus - ditolak", "info"); return; }
     const status = prog >= 100 ? "Selesai" : wbsUpdateForm.status === "Selesai" && prog < 100 ? "Sedang" : wbsUpdateForm.status;
     const updated = wbs.map((w) =>
       w.task === wbsTaskUpdate
@@ -471,7 +470,7 @@ export default function ProjectDetail() {
     if (pred && !wbs.some((w) => w.task === pred)) { toast("Predecessor tidak dikenal", "info"); return; }
     const next = [...wbs, { task: wbsForm.task.trim(), start: wbsForm.start || "-", end: wbsForm.end || "-", progress: Number(wbsForm.progress) || 0, weight, ...(pred ? { predecessor: pred } : {}) }];
     const totalW = next.reduce((s, w) => s + Number(w.weight || 0), 0);
-    if (totalW !== 100) { toast(`Total bobot menjadi ${totalW}% — harus tepat 100%`, "info"); return; }
+    if (totalW !== 100) { toast(`Total bobot menjadi ${totalW}% - harus tepat 100%`, "info"); return; }
     await setWbs(pid, next);
     await update("projects", pid, { progress: weightedProgress(next) });
     log("menambah tahapan WBS", `${pid} · ${wbsForm.task.trim()}`, "Proyek");
@@ -629,7 +628,7 @@ export default function ProjectDetail() {
                          <td className="td font-mono text-xs text-steel-500">{fmtBulan(w.start)}</td>
                          <td className="td font-mono text-xs text-steel-500">{fmtBulan(w.end)}</td>
                         <td className="td">{w.weight}%</td>
-                        <td className="td text-xs text-steel-500">{w.predecessor || "—"}</td>
+                        <td className="td text-xs text-steel-500">{w.predecessor || "-"}</td>
                         <td className="td">
                           <div className="flex items-center gap-3">
                             <ProgressBar value={w.progress} className="w-32" tone={w.progress >= 100 ? "green" : "navy"} />
@@ -731,7 +730,7 @@ export default function ProjectDetail() {
                 </div>
                 <ProgressBar value={project.budget ? (project.actual / project.budget) * 100 : 0} tone="ocean" className="mt-3" />
                 <p className="mt-3 text-xs text-steel-500">
-                  Dampak CO disetujui/diterapkan: <span className="font-semibold text-navy-900">{fmtRupiah(coApprovedImpact)}</span> ({coApproved.length} CO) — kelola di tab Perubahan &amp; Risiko.
+                  Dampak CO disetujui/diterapkan: <span className="font-semibold text-navy-900">{fmtRupiah(coApprovedImpact)}</span> ({coApproved.length} CO) - kelola di tab Perubahan &amp; Risiko.
                 </p>
               </Card>
               <Card className="p-5">
@@ -753,7 +752,7 @@ export default function ProjectDetail() {
                       </dl>
                       <p className="mt-3 text-sm text-steel-600">
                         Estimasi biaya akhir (EAC) <span className="font-semibold text-amber-600">{fmtMiliar(eac)}</span>{" "}
-                        {cpi < 1 && ac > 0 ? "— di atas anggaran, perlu pengendalian biaya." : cpi >= 1 ? "— dalam kendali anggaran." : "— belum ada realisasi tercatat."}
+                        {cpi < 1 && ac > 0 ? "- di atas anggaran, perlu pengendalian biaya." : cpi >= 1 ? "- dalam kendali anggaran." : "- belum ada realisasi tercatat."}
                       </p>
                     </>
                   );
@@ -823,10 +822,9 @@ export default function ProjectDetail() {
               </div>
               <div className="mt-6">
                 <div className="mb-2 flex items-center justify-between">
-                  <h3 className="text-sm font-semibold text-navy-900">BAST — Berita Acara Serah Terima ({bastList.length})</h3>
+                  <h3 className="text-sm font-semibold text-navy-900">BAST - Berita Acara Serah Terima ({bastList.length})</h3>
                   <button className="btn-secondary text-xs" onClick={() => { setBastForm({ milestone: "", tanggal: todayISO(), signer: "", lampiran: "", amount: "" }); setShowBast(true); }}><Plus className="h-3.5 w-3.5" /> Buat BAST</button>
                 </div>
-                <p className="mb-2 text-xs text-steel-500">Alur: Draft → Diajukan → Disetujui. Persetujuan butuh progres WBS 100% untuk milestone terkait; saat Disetujui otomatis dibuat invoice draft Milestone (milestoneRef = &quot;BAST &quot; + id).</p>
                 <div className="space-y-2">
                   {bastList.map((b) => {
                     const linked = findLinkedWbs(String(b.milestone ?? ""));
@@ -834,7 +832,7 @@ export default function ProjectDetail() {
                       <div key={String(b.id)} className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-steel-100 p-3 text-sm">
                         <div className="min-w-0">
                           <p className="font-medium text-navy-900">{String(b.id)} · {String(b.milestone)}</p>
-                          <p className="text-xs text-steel-500">{fmtTanggal(String(b.tanggal))} · penandatangan: {String(b.penandatangan ?? "—")}{b.lampiran ? ` · lampiran: ${String(b.lampiran)}` : ""} · {fmtRupiah(Number(b.amount || 0))}{linked ? ` · WBS "${linked.task}" ${linked.progress}%` : ""}</p>
+                          <p className="text-xs text-steel-500">{fmtTanggal(String(b.tanggal))} · penandatangan: {String(b.penandatangan ?? "-")}{b.lampiran ? ` · lampiran: ${String(b.lampiran)}` : ""} · {fmtRupiah(Number(b.amount || 0))}{linked ? ` · WBS "${linked.task}" ${linked.progress}%` : ""}</p>
                         </div>
                         <div className="flex items-center gap-2">
                           <StatusBadge status={String(b.status)} />
@@ -927,7 +925,7 @@ export default function ProjectDetail() {
                     <div key={r.id} className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-steel-100 p-3 text-sm">
                       <div className="min-w-0">
                         <p className="font-medium text-navy-900">{r.title}</p>
-                        <p className="text-xs text-steel-500">{r.id} · mitigasi: {r.mitigation || "—"}</p>
+                        <p className="text-xs text-steel-500">{r.id} · mitigasi: {r.mitigation || "-"}</p>
                       </div>
                       <div className="flex items-center gap-2">
                         <Badge tone={riskTone(riskScore(r))}>{r.likelihood} × {r.impact}</Badge>
@@ -947,7 +945,7 @@ export default function ProjectDetail() {
             <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
               <Card className="p-4">
                 <h3 className="mb-2 text-sm font-semibold text-navy-900">Slot Docking ({slots.length})</h3>
-                {slots.map((s) => <p key={s.id} className="py-1 text-sm text-steel-600">{s.dockId} · hari {s.from}–{s.to}</p>)}
+                {slots.map((s) => <p key={s.id} className="py-1 text-sm text-steel-600">{s.dockId} · hari {s.from}-{s.to}</p>)}
                 {slots.length === 0 && <p className="text-xs text-steel-400">Belum ada slot. Booking dari modul Drydock.</p>}
               </Card>
               <Card className="p-4">
@@ -996,7 +994,7 @@ export default function ProjectDetail() {
             </Card>
             <Card className="p-4">
               <div className="mb-2 flex items-center justify-between">
-                <h3 className="text-sm font-semibold text-navy-900">Trial — Commissioning &amp; Sea Trial ({trialList.length})</h3>
+                <h3 className="text-sm font-semibold text-navy-900">Trial - Commissioning &amp; Sea Trial ({trialList.length})</h3>
                 <button className="btn-secondary text-xs" onClick={() => setShowTrial(true)}><Plus className="h-3.5 w-3.5" /> Buat Trial</button>
               </div>
               <p className="mb-2 text-xs text-steel-500">Trial Lolos butuh Class Survey ter-link (modul Kapal) dan otomatis membuat BAST draft.</p>
@@ -1005,7 +1003,7 @@ export default function ProjectDetail() {
                   <div key={String(t.id)} className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-steel-100 p-3 text-sm">
                     <div className="min-w-0">
                       <p className="font-medium text-navy-900">{String(t.id)} · {fmtTanggal(String(t.tanggal))}</p>
-                      <p className="text-xs text-steel-500">Parameter: {String(t.parameter ?? "—")}{t.punchList ? ` · punch: ${String(t.punchList)}` : ""}{t.baRef ? ` · BA: ${String(t.baRef)}` : ""}</p>
+                      <p className="text-xs text-steel-500">Parameter: {String(t.parameter ?? "-")}{t.punchList ? ` · punch: ${String(t.punchList)}` : ""}{t.baRef ? ` · BA: ${String(t.baRef)}` : ""}</p>
                     </div>
                     <div className="flex items-center gap-2">
                       <StatusBadge status={String(t.hasil ?? "Berjalan")} />
@@ -1046,7 +1044,7 @@ export default function ProjectDetail() {
       <Modal open={showBast} onClose={() => setShowBast(false)} title="Buat BAST" subtitle={`${pid} · ${nextBastId(bastForm.tanggal || todayISO())}`}
         footer={<><button className="btn-secondary" onClick={() => setShowBast(false)}>Batal</button><button className="btn-primary" onClick={saveBast}>Simpan Draft</button></>}>
         <div className="space-y-3">
-          <Field label="Milestone / WBS ref" hint="Pilih tahapan WBS — persetujuan butuh progres 100%">
+          <Field label="Milestone / WBS ref" hint="Pilih tahapan WBS - persetujuan butuh progres 100%">
             <select className="input" value={bastForm.milestone} onChange={(e) => setBastForm({ ...bastForm, milestone: e.target.value })}>
               <option value="">Pilih milestone…</option>
               {wbs.map((t) => <option key={t.task} value={t.task}>{t.task} · {t.progress}%</option>)}
@@ -1073,7 +1071,6 @@ export default function ProjectDetail() {
             <Field label="Tanggal"><input type="date" className="input" value={coForm.date} onChange={(e) => setCoForm({ ...coForm, date: e.target.value })} /></Field>
           </FormGrid>
           <Field label="Pemohon"><input className="input" value={coForm.requestedBy} onChange={(e) => setCoForm({ ...coForm, requestedBy: e.target.value })} placeholder="cth: Budi Santoso" /></Field>
-          <p className="text-xs text-steel-500">Alur: {CO_FLOW.join(" → ")} — CO baru berstatus Diajukan.</p>
         </div>
       </Modal>
 
@@ -1129,26 +1126,26 @@ export default function ProjectDetail() {
       <Modal open={wbsTaskUpdate !== null} onClose={() => setWbsTaskUpdate(null)} title={`Update Progress: ${wbsTaskUpdate ?? ""}`}
         footer={<><button className="btn-secondary" onClick={() => setWbsTaskUpdate(null)}>Batal</button><button className="btn-primary" onClick={saveWbsTask}>Simpan</button></>}>
         <div className="space-y-3">
-          <Field label="Progres (%)" hint="0–100, diisi manual berdasarkan capaian nyata"><input type="number" min={0} max={100} className="input" value={wbsUpdateForm.progress} onChange={(e) => setWbsUpdateForm({ ...wbsUpdateForm, progress: e.target.value })} placeholder="cth: 70" /></Field>
+          <Field label="Progres (%)" hint="0-100, diisi manual berdasarkan capaian nyata"><input type="number" min={0} max={100} className="input" value={wbsUpdateForm.progress} onChange={(e) => setWbsUpdateForm({ ...wbsUpdateForm, progress: e.target.value })} placeholder="cth: 70" /></Field>
           <FormGrid>
             <Field label="Jam Kerja Aktual"><input type="number" className="input" value={wbsUpdateForm.hours} onChange={(e) => setWbsUpdateForm({ ...wbsUpdateForm, hours: e.target.value })} placeholder="cth: 8" /></Field>
             <Field label="DFT (µm)" hint="Diisi untuk tugas Painting"><input type="number" min={0} className="input" value={wbsUpdateForm.dft} onChange={(e) => setWbsUpdateForm({ ...wbsUpdateForm, dft: e.target.value })} placeholder="cth: 250" /></Field>
           </FormGrid>
           <Field label="Material Dipakai"><input className="input" value={wbsUpdateForm.material} onChange={(e) => setWbsUpdateForm({ ...wbsUpdateForm, material: e.target.value })} placeholder="cth: Baja AH36 50kg" /></Field>
-          <Field label="Station" hint={wbsTaskUpdate && /hull/i.test(wbsTaskUpdate) ? "Wajib untuk tugas Hull" : "Opsional — tahapan fabrikasi/hull"}>
+          <Field label="Station" hint={wbsTaskUpdate && /hull/i.test(wbsTaskUpdate) ? "Wajib untuk tugas Hull" : "Opsional - tahapan fabrikasi/hull"}>
             <select className="input" value={wbsUpdateForm.station} onChange={(e) => setWbsUpdateForm({ ...wbsUpdateForm, station: e.target.value })}>
               <option value="">Pilih station…</option>
               {STATIONS.map((s) => <option key={s}>{s}</option>)}
             </select>
           </Field>
-          <Field label="Catatan foto harian" hint="Teks catatan foto — upload fisik menyusul via backend"><input className="input" value={wbsUpdateForm.photoNote} onChange={(e) => setWbsUpdateForm({ ...wbsUpdateForm, photoNote: e.target.value })} placeholder="cth: Foto seam section 4, 08:00" /></Field>
+          <Field label="Catatan foto harian" hint="Teks catatan foto - upload fisik menyusul via backend"><input className="input" value={wbsUpdateForm.photoNote} onChange={(e) => setWbsUpdateForm({ ...wbsUpdateForm, photoNote: e.target.value })} placeholder="cth: Foto seam section 4, 08:00" /></Field>
           <Field label="Status">
             <select className="input" value={wbsUpdateForm.status} onChange={(e) => setWbsUpdateForm({ ...wbsUpdateForm, status: e.target.value as "Sedang" | "Selesai" })}>
               <option value="Sedang">Sedang Dikerjakan</option>
               <option value="Selesai">Selesai</option>
             </select>
           </Field>
-          <Field label="Predecessor (opsional)" hint="Tugas pendahulu — ditolak bila membentuk siklus">
+          <Field label="Predecessor (opsional)" hint="Tugas pendahulu - ditolak bila membentuk siklus">
             <select className="input" value={wbsUpdateForm.predecessor} onChange={(e) => setWbsUpdateForm({ ...wbsUpdateForm, predecessor: e.target.value })}>
               <option value="">Tanpa predecessor</option>
               {wbs.filter((w) => w.task !== wbsTaskUpdate).map((w) => <option key={w.task} value={w.task}>{w.task}</option>)}
@@ -1168,7 +1165,7 @@ export default function ProjectDetail() {
             <Field label="Bobot (%)"><input type="number" className="input" value={wbsForm.weight} onChange={(e) => setWbsForm({ ...wbsForm, weight: e.target.value })} /></Field>
             <Field label="Progres (%)"><input type="number" className="input" value={wbsForm.progress} onChange={(e) => setWbsForm({ ...wbsForm, progress: e.target.value })} /></Field>
           </FormGrid>
-          <Field label="Predecessor (opsional)" hint="Tugas pendahulu — ditolak bila membentuk siklus">
+          <Field label="Predecessor (opsional)" hint="Tugas pendahulu - ditolak bila membentuk siklus">
             <select className="input" value={wbsForm.predecessor} onChange={(e) => setWbsForm({ ...wbsForm, predecessor: e.target.value })}>
               <option value="">Tanpa predecessor</option>
               {wbs.map((w) => <option key={w.task} value={w.task}>{w.task}</option>)}
@@ -1211,7 +1208,7 @@ export default function ProjectDetail() {
               {["Laporan", "Kontrak", "Kontrak Kerja", "Drawing", "Prosedur", "Sertifikat", "Invoice", "NCR"].map((t) => <option key={t}>{t}</option>)}
             </select>
           </Field>
-          <Field label="Lampiran (nama file)" hint="Metadata nama file — upload fisik menyusul via backend">
+          <Field label="Lampiran (nama file)" hint="Metadata nama file - upload fisik menyusul via backend">
             <input className="input" value={docFile} onChange={(e) => setDocFile(e.target.value)} placeholder="cth: kontrak-kerja-NB-2025-012.pdf" />
           </Field>
         </div>
@@ -1238,7 +1235,7 @@ export default function ProjectDetail() {
           try {
             if (delScope !== null) await update("projects", pid, { scope: scopeList(project.scope).filter((_, i) => i !== delScope) });
           } catch {
-            toast("Lingkup gagal dihapus — periksa kembali", "info");
+            toast("Lingkup gagal dihapus - periksa kembali", "info");
           }
           setDelScope(null);
         }} />

@@ -84,7 +84,7 @@ export default function AppShell() {
 
   const alerts = useMemo(() => computeAlerts(data), [data]);
 
-  /* Badge bell = item belum dibaca beneran (alert + 30 aktivitas terakhir − yang sudah dibaca). */
+  /* Badge bell = item belum dibaca beneran (alert + 30 aktivitas terakhir - yang sudah dibaca). */
   const notifIds = useMemo(
     () => [...alerts.map((al) => `alert-${al.id}`), ...(data.activities ?? []).slice(0, 30).map((a) => `act-${String(a.id)}`)],
     [alerts, data.activities]
@@ -206,7 +206,7 @@ export default function AppShell() {
   const [newPw, setNewPw] = useState("");
   const doChangePassword = async () => {
     if (!isBackendConfigured()) {
-      toast("Mode lokal — ganti password tersedia saat backend tersambung", "info");
+      toast("Mode lokal - ganti password tersedia saat backend tersambung", "info");
       return;
     }
     if (newPw.length < 6) {
@@ -352,7 +352,7 @@ export default function AppShell() {
                     {badge > 0 ? (
                       <span
                         className="ml-auto rounded-full bg-rose-500/90 px-1.5 py-0.5 text-[10px] font-bold leading-none text-white"
-                        title={`${badge} notifikasi baru — hilang setelah modul dibuka`}
+                        title={`${badge} notifikasi baru - hilang setelah modul dibuka`}
                       >
                         {badge > 99 ? "99+" : badge}
                       </span>

@@ -44,7 +44,7 @@ import { stockTrend, itemTrend, lowStockTrend, stockValueTrend, warehouseTrend }
 
 const emptyForm = { name: "", category: "Baja", sku: "", warehouse: "Gudang Baja A", rack: "", bin: "", stock: "0", minStock: "0", unit: "pcs", cost: "0", volume: "0", batch: "", uom2: "", konversi: "", minWh: "", photoUrl: "" };
 
-/* Kebutuhan BOM TB Samudra Jaya 07 — dicocokkan ke data inventori aktual. */
+/* Kebutuhan BOM TB Samudra Jaya 07 - dicocokkan ke data inventori aktual. */
 const BOM_NEEDS = [
   { key: "Pelat Baja", need: 82000, unit: "kg" },
   { key: "Mesin Bantu", need: 2, unit: "unit" },
@@ -129,7 +129,7 @@ function ScanModal({ onDetect, onClose }: { onDetect: (value: string) => void; o
     const start = async () => {
       try {
         if (!navigator.mediaDevices?.getUserMedia) {
-          setMsg("Kamera tidak tersedia di perangkat ini — isi SKU manual.");
+          setMsg("Kamera tidak tersedia di perangkat ini - isi SKU manual.");
           return;
         }
         stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
@@ -139,7 +139,7 @@ function ScanModal({ onDetect, onClose }: { onDetect: (value: string) => void; o
           await video.play().catch(() => undefined);
         }
         if (!Ctor) {
-          setMsg("BarcodeDetector tidak didukung browser ini — gunakan input SKU manual.");
+          setMsg("BarcodeDetector tidak didukung browser ini - gunakan input SKU manual.");
           return;
         }
         const detector = new Ctor({ formats: ["qr_code", "code_128", "code_39", "ean_13", "ean_8", "upc_a"] });
@@ -163,7 +163,7 @@ function ScanModal({ onDetect, onClose }: { onDetect: (value: string) => void; o
         };
         void tick();
       } catch {
-        setMsg("Gagal membuka kamera — periksa izin kamera / gunakan input manual.");
+        setMsg("Gagal membuka kamera - periksa izin kamera / gunakan input manual.");
       }
     };
     void start();
@@ -175,7 +175,7 @@ function ScanModal({ onDetect, onClose }: { onDetect: (value: string) => void; o
   }, []);
 
   return (
-    <Modal open onClose={onClose} title="Scan QR / Barcode" subtitle="Kamera + BarcodeDetector native — hasil mengisi pencarian">
+    <Modal open onClose={onClose} title="Scan QR / Barcode" subtitle="Kamera + BarcodeDetector native - hasil mengisi pencarian">
       <div className="space-y-3">
         <video ref={videoRef} className="h-48 w-full rounded-xl bg-navy-900 object-cover" muted playsInline aria-label="Pratinjau kamera pemindai" />
         <p className="text-xs text-steel-500">{msg}{detectorOk ? "" : " (mode manual)"}</p>
@@ -272,13 +272,13 @@ function daysSince(dateISO: string): number {
 }
 
 function agingBucket(days: number): string {
-  if (days <= 30) return "0–30 hari";
-  if (days <= 90) return "31–90 hari";
-  if (days <= 180) return "91–180 hari";
+  if (days <= 30) return "0-30 hari";
+  if (days <= 90) return "31-90 hari";
+  if (days <= 180) return "91-180 hari";
   return ">180 hari";
 }
 
-const AGING_BUCKETS = ["0–30 hari", "31–90 hari", "91–180 hari", ">180 hari", "Belum ada GR"];
+const AGING_BUCKETS = ["0-30 hari", "31-90 hari", "91-180 hari", ">180 hari", "Belum ada GR"];
 
 export default function Inventory() {
   const { data, add, update, log, branch } = useStore();
@@ -506,7 +506,7 @@ export default function Inventory() {
   /* Upload foto ke backend (/api/files); mode lokal tetap pakai URL manual. */
   const onPhotoFile = async (f: File | undefined) => {
     if (!f) return;
-    if (!isBackendConfigured()) { toast("Mode lokal — tempel URL foto manual", "info"); return; }
+    if (!isBackendConfigured()) { toast("Mode lokal - tempel URL foto manual", "info"); return; }
     setUploadingPhoto(true);
     try {
       const url = await uploadFile(f);
@@ -584,7 +584,7 @@ export default function Inventory() {
     if (form.minWh.trim() !== "") minWhMap[form.warehouse] = Number(form.minWh) || 0;
     if (minWhMap[form.warehouse] !== undefined && minWhMap[form.warehouse] < 0) { toast("Min. stok gudang harus angka 0 atau lebih", "info"); return; }
     if (editing) {
-      /* Stok read-only di form edit — hanya field non-stok yang disimpan. */
+      /* Stok read-only di form edit - hanya field non-stok yang disimpan. */
       await update("inventory", editing.id, {
         name: form.name.trim(), category: form.category, sku: form.sku.trim(), warehouse: form.warehouse,
         rack, bin, location: rack, minStock: numMin, unit: form.unit,
@@ -672,7 +672,7 @@ export default function Inventory() {
     try {
       await update("inventory", fresh.id, patch);
       if (moveKind === "out" && next < Number(fresh.minStock || 0)) {
-        toast(`Peringatan: stok ${fresh.name} di bawah minimum (${fmtJumlah(Number(fresh.minStock || 0))} ${fresh.unit}) — segera buat PR`, "info");
+        toast(`Peringatan: stok ${fresh.name} di bawah minimum (${fmtJumlah(Number(fresh.minStock || 0))} ${fresh.unit}) - segera buat PR`, "info");
       }
       await add("movements", {
         item: fresh.name, itemId: fresh.id,
@@ -694,7 +694,7 @@ export default function Inventory() {
       toast(`${moveKind === "in" ? "GR" : "GI"} ${fresh.name} × ${fmtJumlah(qty)} tersimpan`);
       closeMove();
     } catch {
-      toast(`Transaksi ${moveKind === "in" ? "GR" : "GI"} gagal di tengah jalan — periksa stok & riwayat movement`, "info");
+      toast(`Transaksi ${moveKind === "in" ? "GR" : "GI"} gagal di tengah jalan - periksa stok & riwayat movement`, "info");
     }
   };
 
@@ -794,7 +794,7 @@ export default function Inventory() {
       const idxTotal = hasHeader ? colIndex(headers, ["total"]) : 6;
       const idxPurpose = hasHeader ? colIndex(headers, ["purpose", "untuk", "untukkapal", "keperluan", "u"]) : 7;
       const idxPic = hasHeader ? colIndex(headers, ["pic"]) : 8;
-      if (idxKode < 0 || idxQty < 0) { setImportReport(["Header tidak valid — butuh kolom Kode & Qty. Unduh template IN."]); return; }
+      if (idxKode < 0 || idxQty < 0) { setImportReport(["Header tidak valid - butuh kolom Kode & Qty. Unduh template IN."]); return; }
       const stockMap: Record<string, number> = Object.fromEntries(inventory.map((i) => [i.id, Number(i.stock || 0)]));
       const avgMap: Record<string, number> = Object.fromEntries(inventory.map((i) => [i.id, Number(i.avgCost) || 0]));
       const fails: string[] = [];
@@ -858,7 +858,7 @@ export default function Inventory() {
       const idxQty = hasHeader ? colIndex(headers, ["qty", "jumlah", "quantity"]) : 3;
       const idxPic = hasHeader ? colIndex(headers, ["pic"]) : 4;
       const idxKet = hasHeader ? colIndex(headers, ["keterangan", "note", "referensi", "ref", "by"]) : 5;
-      if (idxKode < 0 || idxQty < 0) { setImportReport(["Header tidak valid — butuh kolom Kode & Qty. Unduh template OUT."]); return; }
+      if (idxKode < 0 || idxQty < 0) { setImportReport(["Header tidak valid - butuh kolom Kode & Qty. Unduh template OUT."]); return; }
       const stockMap: Record<string, number> = Object.fromEntries(inventory.map((i) => [i.id, Number(i.stock || 0)]));
       const batchMap: Record<string, BatchRow[]> = Object.fromEntries(
         inventory.map((i) => [i.id, [...batchesOf(i)].sort((a, b) => String(a.date).localeCompare(String(b.date)))])
@@ -909,7 +909,7 @@ export default function Inventory() {
         reservedMap[item.id] = nextRes;
         await update("inventory", item.id, { stock: newStock, batches: nextBatches, reserved: nextRes });
         if (newStock < Number(item.minStock || 0)) {
-          toast(`Peringatan: stok ${item.name} di bawah minimum — segera buat PR`, "info");
+          toast(`Peringatan: stok ${item.name} di bawah minimum - segera buat PR`, "info");
         }
         await add("movements", {
           item: item.name, itemId: item.id, type: "Pengeluaran", qty,
@@ -963,7 +963,7 @@ export default function Inventory() {
     if (!opTarget) { toast("Pilih item dulu", "info"); return; }
     if (opCount === "" || Number.isNaN(Number(opCount)) || Number(opCount) < 0) { toast("Stok hasil hitung tidak valid", "info"); return; }
     const selisih = Number(opCount) - Number(opTarget.stock);
-    if (selisih === 0) { toast("Tidak ada selisih — stok sudah sama", "info"); return; }
+    if (selisih === 0) { toast("Tidak ada selisih - stok sudah sama", "info"); return; }
     const base = Math.max(5, Math.abs(Number(opTarget.stock)) * 0.2);
     if (Math.abs(selisih) > base) {
       const ok = window.confirm(`Selisih besar (${selisih > 0 ? "+" : ""}${selisih} dari stok ${Number(opTarget.stock)}). Pastikan sudah Berita Acara. Lanjut simpan opname?`);
@@ -976,12 +976,12 @@ export default function Inventory() {
         by: `Opname ${todayISO()}`, date: todayISO(), tone: selisih > 0 ? "in" : "out",
       }, { action: "stok opname", target: `${opTarget.name}: selisih ${selisih > 0 ? "+" : ""}${selisih}`, module: "Inventori" });
       log("stok opname", `${opTarget.name}: tercatat ${Number(opCount)}, selisih ${selisih > 0 ? "+" : ""}${selisih}`, "Inventori");
-      toast(`Opname ${opTarget.name} — selisih ${selisih > 0 ? "+" : ""}${selisih} tersimpan`);
+      toast(`Opname ${opTarget.name} - selisih ${selisih > 0 ? "+" : ""}${selisih} tersimpan`);
       setShowOpname(false);
       setOpItem("");
       setOpCount("");
     } catch {
-      toast(`Opname ${opTarget.name} gagal di tengah jalan — periksa stok & movement`, "info");
+      toast(`Opname ${opTarget.name} gagal di tengah jalan - periksa stok & movement`, "info");
     }
   };
 
@@ -1020,7 +1020,7 @@ export default function Inventory() {
       setTrQty("");
       setTrDest("");
     } catch {
-      toast(`Transfer ${trTarget.name} gagal di tengah jalan — periksa stok & movement`, "info");
+      toast(`Transfer ${trTarget.name} gagal di tengah jalan - periksa stok & movement`, "info");
     }
   };
 
@@ -1079,7 +1079,7 @@ export default function Inventory() {
       }
     }
     if (ok === 0) { toast("Tidak ada item yang bisa diambil", "info"); return; }
-    toast(`Pick list ${pickProject}: ${ok} item dikeluarkan (GI)${fail > 0 ? `, ${fail} gagal — periksa kembali` : ""}`);
+    toast(`Pick list ${pickProject}: ${ok} item dikeluarkan (GI)${fail > 0 ? `, ${fail} gagal - periksa kembali` : ""}`);
     setShowPick(false);
     setPickSel([]);
   };
@@ -1111,7 +1111,7 @@ export default function Inventory() {
         <div className="p-4">
           {tab === "Katalog" && (
             <>
-              <p className="mb-3 rounded-lg bg-steel-50 px-3 py-2 text-xs text-steel-500">Metode persediaan: FIFO untuk batch/serial — batch tertua dipakai dulu saat GI. Tersedia = stok − reservasi. Nilai stok memakai harga rata-rata (average cost) bila ada.</p>
+              <p className="mb-3 rounded-lg bg-steel-50 px-3 py-2 text-xs text-steel-500">Metode persediaan: FIFO untuk batch/serial - batch tertua dipakai dulu saat GI. Tersedia = stok - reservasi. Nilai stok memakai harga rata-rata (average cost) bila ada.</p>
               <div className="mb-3 flex flex-wrap gap-3">
                 <div className="relative min-w-52 flex-1 sm:max-w-xs">
                   <Search className="absolute left-3 top-2.5 h-4 w-4 text-steel-400" />
@@ -1175,8 +1175,8 @@ export default function Inventory() {
                 </label>
                 <span className="text-xs text-steel-400">
                   {importMode === "Katalog" && "Kolom: nama, sku, kategori, gudang, stok, minStok, satuan, harga, rak, bin"}
-                  {importMode === "IN" && "Kolom IN: Tanggal, Kode, Qty, Supplier, Harga-nonPPN, Pajak, Total, Purpose, PIC — kode harus terdaftar, qty>0"}
-                  {importMode === "OUT" && "Kolom OUT: Tanggal, Purpose, Kode, Qty, PIC, Keterangan — kode harus terdaftar, qty>0, stok cukup, purpose+PIC wajib"}
+                  {importMode === "IN" && "Kolom IN: Tanggal, Kode, Qty, Supplier, Harga-nonPPN, Pajak, Total, Purpose, PIC - kode harus terdaftar, qty>0"}
+                  {importMode === "OUT" && "Kolom OUT: Tanggal, Purpose, Kode, Qty, PIC, Keterangan - kode harus terdaftar, qty>0, stok cukup, purpose+PIC wajib"}
                 </span>
               </div>
               {importReport.length > 0 && (
@@ -1214,7 +1214,7 @@ export default function Inventory() {
                             <Badge tone={low ? "red" : "green"}>{low ? "Menipis" : "Aman"}</Badge>
                           </td>
                           <td className="td text-steel-600 font-mono text-xs truncate" title={rackText(i)}>{rackText(i)}</td>
-                          <td className="td text-steel-600 font-mono text-xs truncate" title={binOf(i) || "—"}>{binOf(i) || "—"}</td>
+                          <td className="td text-steel-600 font-mono text-xs truncate" title={binOf(i) || "-"}>{binOf(i) || "-"}</td>
                           <td className="td">
                             <div className="flex gap-1">
                               <button className="rounded-lg p-1.5 text-steel-500 hover:bg-steel-100" title="Detail" aria-label={`Detail ${i.name}`} onClick={() => setDetail(i)}><Eye className="h-4 w-4" /></button>
@@ -1250,7 +1250,7 @@ export default function Inventory() {
                         const thin = Number(i.stock) <= whMin;
                         return (
                           <div key={i.id} className="flex items-center justify-between gap-2 text-sm">
-                            <span className="text-steel-600 truncate" title={`${String(i.name)} · rak ${rackText(i)} · bin ${binOf(i) || "—"} · min gudang ${fmtJumlah(whMin)}`}>{i.name}{binOf(i) ? <span className="font-mono text-xs text-steel-400"> · {binOf(i)}</span> : null}</span>
+                            <span className="text-steel-600 truncate" title={`${String(i.name)} · rak ${rackText(i)} · bin ${binOf(i) || "-"} · min gudang ${fmtJumlah(whMin)}`}>{i.name}{binOf(i) ? <span className="font-mono text-xs text-steel-400"> · {binOf(i)}</span> : null}</span>
                             <span className="flex shrink-0 items-center gap-1.5 font-medium">
                               {thin && <Badge tone="red">Menipis</Badge>}
                               {fmtJumlah(Number(i.stock))}
@@ -1268,7 +1268,7 @@ export default function Inventory() {
           {tab === "BOM" && (
             <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
               <Card className="p-5 lg:col-span-2">
-                <CardHeader title="Bill of Materials — TB Samudra Jaya 07" subtitle="Kebutuhan vs stok aktual inventori" />
+                <CardHeader title="Bill of Materials - TB Samudra Jaya 07" subtitle="Kebutuhan vs stok aktual inventori" />
                 <div className="mt-3 space-y-2">
                   {bomRows.map((b) => {
                     const kurang = Math.max(0, b.need - b.stock);
@@ -1289,7 +1289,7 @@ export default function Inventory() {
                         <div className="text-right shrink-0">
                           <p className="font-medium text-navy-900">Butuh {fmtJumlah(b.need)} {b.unit} · Stok {fmtJumlah(b.stock)}</p>
                           <p className="mt-0.5 flex items-center justify-end gap-2 text-xs text-steel-500">
-                            {b.item ? fmtRupiah(b.need * Number(b.item.cost || 0)) : "—"}
+                            {b.item ? fmtRupiah(b.need * Number(b.item.cost || 0)) : "-"}
                             <Badge tone={b.ok ? "green" : "red"}>{b.ok ? "Cukup" : "Kurang"}</Badge>
                           </p>
                           {b.item && b.need > 0 && (
@@ -1311,7 +1311,7 @@ export default function Inventory() {
                 </div>
               </Card>
               <Card className="p-5 lg:col-span-3">
-                <CardHeader title="Forecast Kebutuhan Proyek Aktif" subtitle="Kebutuhan bersih = kebutuhan BOM − stok · tombol PR gabung dengan explode BOM" />
+                <CardHeader title="Forecast Kebutuhan Proyek Aktif" subtitle="Kebutuhan bersih = kebutuhan BOM - stok · tombol PR gabung dengan explode BOM" />
                 <div className="mt-3 overflow-x-auto">
                   <table className="w-full">
                     <thead className="bg-surface sticky top-0 z-10">
@@ -1326,14 +1326,14 @@ export default function Inventory() {
                         return String(f.key ?? "");
                       }).map((f) => (
                         <tr key={`${f.project}-${f.key}`} className="hover:bg-surface">
-                          <td className="td font-medium text-navy-900 truncate" title={`${f.project} — ${f.vessel}`}>{f.project} · {f.vessel}</td>
+                          <td className="td font-medium text-navy-900 truncate" title={`${f.project} - ${f.vessel}`}>{f.project} · {f.vessel}</td>
                           <td className="td text-steel-600 truncate" title={f.item ? String(f.item.name) : f.key}>{f.key} · butuh {fmtJumlah(f.need)} {f.unit}</td>
                           <td className="td text-steel-600">{fmtJumlah(f.stock)}</td>
                           <td className="td font-semibold text-navy-900">{fmtJumlah(f.net)} {f.unit}</td>
                           <td className="td">
                             {f.net > 0 && f.item
                               ? <button className="btn-secondary text-xs" onClick={() => buatPRDraft(f.item!.name, f.net, f.net * Number(f.item!.cost || 0))}>Buat PR</button>
-                              : <span className="text-xs text-steel-400">—</span>}
+                              : <span className="text-xs text-steel-400">-</span>}
                           </td>
                         </tr>
                       ))}
@@ -1383,9 +1383,9 @@ export default function Inventory() {
                           {m.supplier ? <p className="truncate" title={String(m.supplier)}>{m.supplier}</p> : null}
                           {m.purpose ? <p className="truncate" title={String(m.purpose)}>U: {m.purpose}</p> : null}
                           {m.pic ? <p className="truncate" title={String(m.pic)}>PIC: {m.pic}</p> : null}
-                          {!m.supplier && !m.purpose && !m.pic ? "—" : null}
+                          {!m.supplier && !m.purpose && !m.pic ? "-" : null}
                         </td>
-                        <td className="td text-xs font-semibold">{Number(m.total) ? fmtRupiah(Number(m.total)) : "—"}</td>
+                        <td className="td text-xs font-semibold">{Number(m.total) ? fmtRupiah(Number(m.total)) : "-"}</td>
                         <td className="td text-steel-600">{fmtTanggal(m.date)}</td>
                       </tr>
                     ))}
@@ -1482,7 +1482,7 @@ export default function Inventory() {
                   <FormGrid>
                     <Field label="Tanggal"><input type="date" className="input" value={ttDate} onChange={(e) => setTtDate(e.target.value)} /></Field>
                     <Field label="Surat Jalan terkait"><select className="input" value={ttSjId} onChange={(e) => setTtSjId(e.target.value)}>
-                      <option value="">— Tanpa SJ —</option>
+                      <option value="">- Tanpa SJ -</option>
                       {sjDocs.map((d) => <option key={String(d.id)} value={String(d.id)}>{String(d.sbRef || d.id)} · {String(d.title)}</option>)}
                     </select></Field>
                     <Field label="No. Ref"><input className="input font-mono" value={sbTtNumber(nextTtSeq(), sjYearOf(ttDate))} readOnly /></Field>
@@ -1586,7 +1586,7 @@ export default function Inventory() {
                           {r.lastIn ? `GR terakhir ${fmtTanggal(r.lastIn)} · ${r.age} hari lalu` : "Belum pernah ada GR"} · Stok {fmtJumlah(Number(r.item.stock))} {r.item.unit}
                         </p>
                       </div>
-                      <Badge tone={r.bucket === "0–30 hari" ? "green" : r.bucket === "31–90 hari" ? "blue" : r.bucket === "91–180 hari" ? "amber" : "red"}>{r.bucket}</Badge>
+                      <Badge tone={r.bucket === "0-30 hari" ? "green" : r.bucket === "31-90 hari" ? "blue" : r.bucket === "91-180 hari" ? "amber" : "red"}>{r.bucket}</Badge>
                     </div>
                   ))}
                 </div>
@@ -1635,7 +1635,7 @@ export default function Inventory() {
             <Field label="Satuan kedua (UOM2)" hint="Opsional, cth: meter">
               <input className="input" value={form.uom2} onChange={(e) => setF("uom2", e.target.value)} placeholder="cth: meter" />
             </Field>
-            <Field label="Konversi ke UOM2" hint={`Isi UOM2 per 1 ${form.unit || "satuan"} — cth: 1 batang = 6 meter → isi 6`}>
+            <Field label="Konversi ke UOM2" hint={`Isi UOM2 per 1 ${form.unit || "satuan"} - cth: 1 batang = 6 meter → isi 6`}>
               <input type="number" min={0} className="input" value={form.konversi} onChange={(e) => setF("konversi", e.target.value)} placeholder="cth: 6" />
             </Field>
             <Field label="Min stok gudang ini" hint="Batas menipis khusus gudang terpilih, default ikut minimum global">
@@ -1648,9 +1648,9 @@ export default function Inventory() {
                 <input ref={photoInputRef} type="file" accept=".png,.jpg,.jpeg,.pdf,.xlsx,.csv" className="hidden" aria-label="Pilih berkas foto item"
                   onChange={(e) => { void onPhotoFile(e.target.files?.[0]); }} />
                 <button type="button" className="btn-secondary shrink-0 text-xs" disabled={uploadingPhoto}
-                  title={isBackendConfigured() ? "Unggah berkas ke backend" : "Mode lokal — isi URL manual"}
+                  title={isBackendConfigured() ? "Unggah berkas ke backend" : "Mode lokal - isi URL manual"}
                   onClick={() => {
-                    if (!isBackendConfigured()) { toast("Mode lokal — tempel URL foto manual", "info"); return; }
+                    if (!isBackendConfigured()) { toast("Mode lokal - tempel URL foto manual", "info"); return; }
                     photoInputRef.current?.click();
                   }}>
                   <Upload className="h-4 w-4" /> {uploadingPhoto ? "Mengunggah…" : "Upload"}
@@ -1666,7 +1666,7 @@ export default function Inventory() {
       </Modal>
 
       {/* Modal GR/GI */}
-      <Modal open={moveTarget !== null} onClose={closeMove} title={`${moveKind === "in" ? "Terima Barang (GR)" : "Keluar Barang (GI)"} — ${moveTarget?.name ?? ""}`}
+      <Modal open={moveTarget !== null} onClose={closeMove} title={`${moveKind === "in" ? "Terima Barang (GR)" : "Keluar Barang (GI)"} - ${moveTarget?.name ?? ""}`}
         subtitle={moveFresh ? `Stok: ${fmtJumlah(Number(moveFresh.stock))} · Tersedia: ${fmtJumlah(availOf(moveFresh))} ${moveFresh.unit}${hasUom2(moveFresh) ? ` (≈ ${fmtJumlah(qtyInUom2(moveFresh))} ${uom2Of(moveFresh)})` : ""}` : ""}
         footer={<><button className="btn-secondary" onClick={closeMove}>Batal</button><button className="btn-primary" onClick={saveMove}>Simpan Transaksi</button></>}>
         <div className="space-y-3">
@@ -1682,7 +1682,7 @@ export default function Inventory() {
           </Field>
           {moveKind === "out" && moveBatches.length > 0 && (
             <div className="rounded-lg bg-steel-50 px-3 py-2 text-xs text-steel-600">
-              <p className="font-semibold text-navy-900">FIFO — batch tertua dipakai dulu:</p>
+              <p className="font-semibold text-navy-900">FIFO - batch tertua dipakai dulu:</p>
               {moveBatches.map((b) => <p key={`${b.batch}-${b.date}`} className="font-mono">{b.batch} · {fmtJumlah(Number(b.qty))} · {fmtTanggal(b.date)}</p>)}
             </div>
           )}
@@ -1713,7 +1713,7 @@ export default function Inventory() {
           )}
           {moveKind === "in" && (
             <FormGrid>
-              <Field label="Harga satuan non-PPN (Rp)" hint="Kolom HARGA REPORT WAREHOUSE — average cost dihitung ulang">
+              <Field label="Harga satuan non-PPN (Rp)" hint="Kolom HARGA REPORT WAREHOUSE - average cost dihitung ulang">
                 <input type="number" min={0} className="input" value={movePrice} onChange={(e) => setMovePrice(e.target.value)} placeholder="cth: 150000" />
               </Field>
               <Field label="Pajak (Rp)" hint="Kolom PAJAK bila ada">
@@ -1734,7 +1734,7 @@ export default function Inventory() {
               <input className="input" value={movePic} onChange={(e) => setMovePic(e.target.value)} placeholder="cth: ABK / nama subkon" />
             </Field>
           </FormGrid>
-          <Field label="Batch / Serial" hint="Opsional — dicatat di movement & FIFO">
+          <Field label="Batch / Serial" hint="Opsional - dicatat di movement & FIFO">
             <input className="input font-mono" value={moveBatch} onChange={(e) => setMoveBatch(e.target.value)} placeholder="cth: SN-2026-001" />
           </Field>
         </div>
@@ -1786,14 +1786,14 @@ export default function Inventory() {
       </Modal>
 
       {/* Modal reservasi */}
-      <Modal open={reservTarget !== null} onClose={() => setReservTarget(null)} title={`Reservasi — ${reservTarget?.name ?? ""}`}
+      <Modal open={reservTarget !== null} onClose={() => setReservTarget(null)} title={`Reservasi - ${reservTarget?.name ?? ""}`}
         subtitle={reservTarget ? `Tersedia: ${fmtJumlah(availOf(inventory.find((i) => i.id === reservTarget.id) ?? reservTarget))} ${reservTarget.unit}` : ""}
         footer={<><button className="btn-secondary" onClick={() => setReservTarget(null)}>Batal</button><button className="btn-primary" onClick={saveReservasi}>Simpan Reservasi</button></>}>
         <div className="space-y-3">
           <Field label="Proyek">
             <select className="input" value={reservProject} onChange={(e) => setReservProject(e.target.value)}>
               <option value="">Pilih proyek…</option>
-              {projects.map((p) => <option key={p.id} value={p.id}>{p.id} — {p.vessel}</option>)}
+              {projects.map((p) => <option key={p.id} value={p.id}>{p.id} - {p.vessel}</option>)}
             </select>
           </Field>
           <Field label="Qty reservasi"><input type="number" min={1} className="input" value={reservQtyInput} onChange={(e) => setReservQtyInput(e.target.value)} /></Field>
@@ -1810,7 +1810,7 @@ export default function Inventory() {
               setPickSel(inventory.filter((i) => reservedOf(i).some((r) => r.project === e.target.value)).map((i) => i.id));
             }}>
               <option value="">Pilih proyek…</option>
-              {projects.map((p) => <option key={p.id} value={p.id}>{p.id} — {p.vessel}</option>)}
+              {projects.map((p) => <option key={p.id} value={p.id}>{p.id} - {p.vessel}</option>)}
             </select>
           </Field>
           {pickProject && pickItems.length === 0 && <EmptyState title="Tidak ada reservasi" subtitle={`Belum ada item direservasi untuk ${pickProject}.`} />}
@@ -1829,7 +1829,7 @@ export default function Inventory() {
       </Modal>
 
       {/* Modal label barcode */}
-      <Modal open={labelItem !== null} onClose={() => setLabelItem(null)} title={`Label — ${labelItem?.name ?? ""}`} subtitle={labelItem ? `${labelItem.id} · ${labelItem.sku}` : ""}
+      <Modal open={labelItem !== null} onClose={() => setLabelItem(null)} title={`Label - ${labelItem?.name ?? ""}`} subtitle={labelItem ? `${labelItem.id} · ${labelItem.sku}` : ""}
         footer={<><button className="btn-secondary" onClick={() => setLabelItem(null)}>Tutup</button><button className="btn-primary" onClick={() => window.print()}><Printer className="h-4 w-4" /> Cetak</button></>}>
         {labelItem && (
           <div id="label-print" className="rounded-xl border border-steel-200 p-4 text-center">
@@ -1857,18 +1857,18 @@ export default function Inventory() {
             {([
               ["Kategori", freshDetail.category],
               ["Gudang / Rak", rackText(freshDetail)],
-              ["Bin", binOf(freshDetail) || "—"],
+              ["Bin", binOf(freshDetail) || "-"],
               ["Payload QR (SKU)", qrPayloadOf(freshDetail)],
               ["Stok", `${fmtJumlah(Number(freshDetail.stock))} ${freshDetail.unit}${hasUom2(freshDetail) ? ` (≈ ${fmtJumlah(qtyInUom2(freshDetail))} ${uom2Of(freshDetail)})` : ""}`],
               ["Tersedia", `${fmtJumlah(availOf(freshDetail))} ${freshDetail.unit}`],
-              ["Reservasi", reservedOf(freshDetail).length > 0 ? reservedOf(freshDetail).map((r) => `${r.project} × ${fmtJumlah(Number(r.qty))}`).join("; ") : "—"],
+              ["Reservasi", reservedOf(freshDetail).length > 0 ? reservedOf(freshDetail).map((r) => `${r.project} × ${fmtJumlah(Number(r.qty))}`).join("; ") : "-"],
               ["Volume per unit", fmtJumlah(Number(freshDetail.volume ?? 0))],
               ["Minimum global", fmtJumlah(Number(freshDetail.minStock))],
               [`Minimum ${freshDetail.warehouse}`, fmtJumlah(minWhOf(freshDetail))],
-              ["Batch / Serial", freshDetail.batch ? String(freshDetail.batch) : "—"],
-              ["Kelas ABC", abc[freshDetail.id] ?? "—"],
+              ["Batch / Serial", freshDetail.batch ? String(freshDetail.batch) : "-"],
+              ["Kelas ABC", abc[freshDetail.id] ?? "-"],
               ["Harga satuan (master)", fmtRupiah(Number(freshDetail.cost))],
-              ["Harga rata-rata (avg)", Number(freshDetail.avgCost) > 0 ? fmtRupiah(Number(freshDetail.avgCost)) : "— (pakai harga master)"],
+              ["Harga rata-rata (avg)", Number(freshDetail.avgCost) > 0 ? fmtRupiah(Number(freshDetail.avgCost)) : "- (pakai harga master)"],
               ["Nilai total", fmtRupiah(Number(freshDetail.stock) * effCost(freshDetail))],
             ] as [string, string][]).map(([k, v]) => (
               <div key={k} className="flex justify-between gap-4"><dt className="text-steel-500">{k}</dt><dd className="font-medium text-navy-900 text-right">{v}</dd></div>

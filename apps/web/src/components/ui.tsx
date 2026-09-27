@@ -613,7 +613,7 @@ export function Tabs({
   tabs: string[];
   active: string;
   onChange: (t: string) => void;
-  /** Label tampil per tab id — id logika tidak berubah (aman untuk state). */
+  /** Label tampil per tab id - id logika tidak berubah (aman untuk state). */
   labels?: Record<string, string>;
 }) {
   const listRef = useRef<HTMLDivElement>(null);
@@ -995,7 +995,7 @@ export function usePager(total: number, defaultSize = 100): {
   const bar = total <= size ? null : (
     <div className="flex flex-wrap items-center gap-2 py-2 text-xs text-steel-500">
       <span>
-        {(safe - 1) * size + 1}–{Math.min(safe * size, total)} dari {total}
+        {(safe - 1) * size + 1}-{Math.min(safe * size, total)} dari {total}
       </span>
       <span className="ml-auto flex items-center gap-1">
         <button className="btn-secondary px-2 py-1" disabled={safe <= 1} onClick={() => go(1)}>«</button>
