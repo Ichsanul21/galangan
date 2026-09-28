@@ -32,6 +32,7 @@ import { fmtMiliar, fmtTanggal, fmtRentang, fmtBulan } from "../../data";
 import { fmtRupiah, todayISO } from "../../utils/format";
 import { sameName } from "../../utils/names";
 import { scopeList } from "../../utils/scope";
+import { TAHAP, tahapOf } from "./Projects";
 import { getSetting } from "../../utils/settings";
 import { exportExcel } from "../../utils/export";
 
@@ -84,6 +85,78 @@ export default function ProjectDetail() {
   const [wbsUpdateForm, setWbsUpdateForm] = useState({ hours: "", material: "", status: "Sedang" as "Sedang" | "Selesai", progress: "", predecessor: "", station: "", photoNote: "", dft: "" });
   const [showShare, setShowShare] = useState(false);
   const [shareForm, setShareForm] = useState({ docId: "", to: "" });
+  const [statusPending, setStatusPending] = useState<string | null>(null);
+  const [statusReason, setStatusReason] = useState("");
+  const [tahapMove, setTahapMove] = useState<null | { dir: 1 | -1 }>(null);
+  const [tahapReason, setTahapReason] = useState("");
+
+  /* Ganti status kaku: konfirmasi + alasan wajib (NCR gate tetap untuk Selesai). */
+  const askStatus = (next: string) => {
+    if (next === project.status) return;
+    if (next === "Selesai" && project.status !== "Selesai") {
+      const openNcr = (data.ncr ?? []).filter((n) => n.project === pid && n.status !== "Tertutup");
+      if (openNcr.length > 0) { toast(S.detToastNcrOpen.replace("{n}", String(openNcr.length)), "info"); return; }
+      const itpHold = (data.inspections ?? []).filter((i) => i.project === pid && i.status === "NCR");
+      if (itpHold.length > 0) { toast(S.detToastItp.replace("{n}", String(itpHold.length)), "info"); return; }
+    }
+    setStatusPending(next);
+    setStatusReason("");
+  };
+
+  const confirmStatus = async () => {
+    if (!statusPending) return;
+    if (!statusReason.trim()) { toast(S.detToastReasonReq, "info"); return; }
+    const next = statusPending;
+    try {
+      if (next === "Selesai" && project.status !== "Selesai") {
+        const vsl = data.vessels.find((x) => x.name === project.vessel);
+        if (vsl) {
+          await update("vessels", vsl.id, {
+            history: [...(vsl.history ?? []), { date: todayISO(), event: `Proyek ${pid} selesai - serah terima`, type: "Delivery" }],
+            dockHistory: [...(vsl.dockHistory ?? []), { date: todayISO(), dock: "Galangan", scope: `Penyelesaian proyek ${pid}`, result: "Selesai", nextDue: todayISO() }],
+          });
+        }
+        log("menyelesaikan proyek + history kapal", `${pid} · ${project.vessel} (alasan: ${statusReason.trim()})`, "Proyek");
+      } else {
+        log("mengubah status", `${pid} → ${next} (alasan: ${statusReason.trim()})`, "Proyek");
+      }
+      await update("projects", pid, { status: next });
+      toast(S.detToastStatus.replace("{a}", next));
+      setStatusPending(null);
+      setStatusReason("");
+    } catch (e) {
+      toast(e instanceof Error ? e.message : S.saveFail, "info");
+    }
+  };
+
+  /* Geser tahap kaku di detail: E1 gate + alasan wajib + tahapLog. */
+  const confirmTahapMove = async () => {
+    if (!tahapMove) return;
+    if (!tahapReason.trim()) { toast(S.detToastReasonReq, "info"); return; }
+    const idx = TAHAP.indexOf(tahapOf(project));
+    const to = TAHAP[idx + tahapMove.dir];
+    if (!to) { setTahapMove(null); return; }
+    if (tahapMove.dir === 1) {
+      const from = TAHAP[idx];
+      if (from === "Desain" && to === "Produksi") {
+        const stages = (project.designStages ?? []) as { name: string; status: string }[];
+        const ca = stages.find((s) => s.name === "Class Approval");
+        if (!ca || ca.status !== "Disetujui") { toast(S.detToastGate, "info"); return; }
+      }
+    }
+    try {
+      await update("projects", pid, {
+        tahap: to,
+        tahapLog: [...(project.tahapLog ?? []), { from: tahapOf(project), to, date: todayISO(), by: "Anda", reason: tahapReason.trim() }],
+      });
+      log(tahapMove.dir === 1 ? "memajukan tahap" : "menurunkan tahap", `${pid} → ${to} (alasan: ${tahapReason.trim()})`, "Proyek");
+      toast(S.detToastStage.replace("{a}", pid).replace("{b}", to));
+      setTahapMove(null);
+      setTahapReason("");
+    } catch (e) {
+      toast(e instanceof Error ? e.message : S.saveFail, "info");
+    }
+  };
   const [showCo, setShowCo] = useState(false);
   const [coForm, setCoForm] = useState({ title: "", impact: "", requestedBy: "", date: "" });
   const [showRisk, setShowRisk] = useState(false);
@@ -457,33 +530,6 @@ export default function ProjectDetail() {
   };
 
   // E7: QA gate + history otomatis saat Selesai.
-  const changeStatus = async (next: string) => {
-    if (next === "Selesai" && project.status !== "Selesai") {
-      const openNcr = (data.ncr ?? []).filter((n) => n.project === pid && n.status !== "Tertutup");
-      if (openNcr.length > 0) { toast(S.detToastNcrOpen.replace("{n}", String(openNcr.length)), "info"); return; }
-      const itpHold = (data.inspections ?? []).filter((i) => i.project === pid && i.status === "NCR");
-      if (itpHold.length > 0) { toast(S.detToastItp.replace("{n}", String(itpHold.length)), "info"); return; }
-    }
-    try {
-      if (next === "Selesai" && project.status !== "Selesai") {
-        const vsl = data.vessels.find((x) => x.name === project.vessel);
-        if (vsl) {
-          await update("vessels", vsl.id, {
-            history: [...(vsl.history ?? []), { date: todayISO(), event: `Proyek ${pid} selesai - serah terima`, type: "Delivery" }],
-            dockHistory: [...(vsl.dockHistory ?? []), { date: todayISO(), dock: "Galangan", scope: `Penyelesaian proyek ${pid}`, result: "Selesai", nextDue: todayISO() }],
-          });
-        }
-        log("menyelesaikan proyek + history kapal", `${pid} · ${project.vessel}`, "Proyek");
-      } else {
-        log("mengubah status", `${pid} → ${next}`, "Proyek");
-      }
-      await update("projects", pid, { status: next });
-      toast(S.detToastStatus.replace("{a}", next));
-    } catch (e) {
-      toast(e instanceof Error ? e.message : S.saveFail, "info");
-    }
-  };
-
   const saveScope = async () => {
     if (!scopeVal.service.trim()) { toast(S.detToastSvcReq, "info"); return; }
     const item = {
@@ -571,7 +617,7 @@ export default function ProjectDetail() {
             <select
               className="input w-auto py-1.5 text-sm"
               value={project.status}
-              onChange={(e) => changeStatus(e.target.value)}
+              onChange={(e) => askStatus(e.target.value)}
             >
               {STATUS.map((s) => <option key={s}>{s}</option>)}
             </select>
@@ -579,6 +625,27 @@ export default function ProjectDetail() {
           </div>
         }
       />
+
+      {/* Stepper tahap kaku: posisi + geser via modal beralasan. */}
+      <div className="mt-4 flex flex-wrap items-center gap-1.5" role="group" aria-label="Tahap proyek">
+        {TAHAP.map((t, i) => {
+          const cur = TAHAP.indexOf(tahapOf(project));
+          const done = i < cur;
+          const on = i === cur;
+          return (
+            <span key={t} className="flex items-center gap-1.5">
+              <span className={`rounded-lg px-2.5 py-1.5 text-xs font-semibold ${on ? "bg-navy-700 text-white" : done ? "bg-emerald-100 text-emerald-700" : "bg-steel-100 text-steel-500"}`}>
+                {i + 1}. {t}
+              </span>
+              {i < TAHAP.length - 1 && <span aria-hidden className="text-steel-300">→</span>}
+            </span>
+          );
+        })}
+        <span className="ml-1 flex gap-1.5">
+          <button className="btn-secondary px-2 py-1 text-xs" disabled={TAHAP.indexOf(tahapOf(project)) <= 0} onClick={() => { setTahapMove({ dir: -1 }); setTahapReason(""); }}>{S.detTahapBack}</button>
+          <button className="btn-secondary px-2 py-1 text-xs" disabled={TAHAP.indexOf(tahapOf(project)) >= TAHAP.length - 1} onClick={() => { setTahapMove({ dir: 1 }); setTahapReason(""); }}>{S.detTahapNext}</button>
+        </span>
+      </div>
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <KpiCard label={S.colBudget} value={fmtMiliar(project.budget)} hint={S.detKpiBudgetHint} icon={<Calendar className="h-5 w-5" />} />
@@ -1186,6 +1253,24 @@ export default function ProjectDetail() {
           <NumInput min={0} className="input" value={actualVal} onChange={(e) => setActualVal(e.target.value)} placeholder={S.detActualPh} />
         </Field>
         <p className="mt-2 text-xs text-steel-500">{S.detActualNow.replace("{a}", fmtRupiah(Number(project.actual ?? 0)))}</p>
+      </Modal>
+
+      {/* Modal ubah status (kaku: konfirmasi + alasan wajib) */}
+      <Modal open={statusPending !== null} onClose={() => { setStatusPending(null); setStatusReason(""); }} title={S.detStatusTitle.replace("{a}", statusPending ?? "")}
+        footer={<><button className="btn-secondary" onClick={() => { setStatusPending(null); setStatusReason(""); }}>{S.cancelBtn}</button><button className="btn-primary" onClick={() => void confirmStatus()}>{S.saveBtn}</button></>}>
+        <p className="text-sm text-steel-600">{project.id} · {project.status} → {statusPending}</p>
+        <Field label={S.detStatusReason}>
+          <textarea className="input" rows={3} value={statusReason} onChange={(e) => setStatusReason(e.target.value)} />
+        </Field>
+      </Modal>
+
+      {/* Modal geser tahap (kaku: E1 gate + alasan wajib) */}
+      <Modal open={tahapMove !== null} onClose={() => { setTahapMove(null); setTahapReason(""); }} title={S.detTahapTitle.replace("{a}", pid)}
+        footer={<><button className="btn-secondary" onClick={() => { setTahapMove(null); setTahapReason(""); }}>{S.cancelBtn}</button><button className="btn-primary" onClick={() => void confirmTahapMove()}>{S.saveBtn}</button></>}>
+        <p className="text-sm text-steel-600">{tahapOf(project)} → {tahapMove ? TAHAP[TAHAP.indexOf(tahapOf(project)) + tahapMove.dir] : "-"}</p>
+        <Field label={S.detTahapReason}>
+          <textarea className="input" rows={3} value={tahapReason} onChange={(e) => setTahapReason(e.target.value)} />
+        </Field>
       </Modal>
 
       {/* Modal share */}

@@ -317,7 +317,7 @@ export default function Dashboard() {
               <button className="btn-secondary" onClick={exportSummary}>
                 <Download className="h-4 w-4" /> {S.exportBtn}
               </button>
-              <button className="btn-primary-gradient" onClick={() => navigate("/proyek?create=1")}>
+              <button className="btn-primary-gradient" onClick={() => navigate("/proyek?create=1&alert=proyek")}>
                 <Plus className="h-4 w-4" /> {S.newProjectBtn}
               </button>
             </>

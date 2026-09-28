@@ -76,6 +76,8 @@ export default function Projects() {
   }, []);
   const [mundurFor, setMundurFor] = useState<StoreItem | null>(null);
   const [mundurReason, setMundurReason] = useState("");
+  const [majuFor, setMajuFor] = useState<StoreItem | null>(null);
+  const [majuReason, setMajuReason] = useState("");
 
   const pmOptions = [...new Set(projects.map((p) => String(p.manager ?? "")).filter(Boolean))].sort();
   const resetFilters = () => { setFilter("Semua"); setStatusFilter("Semua"); setTahapFilter("Semua"); setBranchFilter("Semua"); setPrioritasFilter("Semua"); setPmFilter("Semua"); setQ(""); };
@@ -108,14 +110,16 @@ export default function Projects() {
     flash.pick(rowId, -1, () => {}, 100);
   };
 
-  const majuTahap = async (p: StoreItem) => {
-    const idx = TAHAP.indexOf(tahapOf(p));
-    if (idx < 0 || idx >= TAHAP.length - 1) return;
+  const confirmMaju = async () => {
+    if (!majuFor) return;
+    if (!majuReason.trim()) { toast(S.prjToastReasonReq, "info"); return; }
+    const idx = TAHAP.indexOf(tahapOf(majuFor));
+    if (idx < 0 || idx >= TAHAP.length - 1) { setMajuFor(null); return; }
     const from = TAHAP[idx];
     const to = TAHAP[idx + 1];
     // E1 gate: Desain → Produksi butuh Class Approval Disetujui.
     if (from === "Desain" && to === "Produksi") {
-      const stages = (p.designStages ?? []) as { name: string; status: string }[];
+      const stages = (majuFor.designStages ?? []) as { name: string; status: string }[];
       const ca = stages.find((s) => s.name === "Class Approval");
       if (!ca || ca.status !== "Disetujui") {
         toast(S.prjToastGate, "info");
@@ -123,14 +127,16 @@ export default function Projects() {
       }
     }
     try {
-      await update("projects", p.id, {
+      await update("projects", majuFor.id, {
         tahap: to,
-        tahapLog: [...(p.tahapLog ?? []), { from: tahapOf(p), to, date: todayISO(), by: "Anda", reason: "" }],
+        tahapLog: [...(majuFor.tahapLog ?? []), { from: tahapOf(majuFor), to, date: todayISO(), by: "Anda", reason: majuReason.trim() }],
       });
-      log("memajukan tahap", `${p.id} → ${to}`, "Proyek");
-      toast(S.prjToastAdvance.replace("{a}", p.id).replace("{b}", to));
+      log("memajukan tahap", `${majuFor.id} → ${to} (alasan: ${majuReason.trim()})`, "Proyek");
+      toast(S.prjToastAdvance.replace("{a}", majuFor.id).replace("{b}", to));
+      setMajuFor(null);
+      setMajuReason("");
     } catch (e) {
-      toast(e instanceof Error ? e.message : S.prjToastSaveFail.replace("{a}", p.id), "info");
+      toast(e instanceof Error ? e.message : S.prjToastSaveFail.replace("{a}", majuFor.id), "info");
     }
   };
 
@@ -304,6 +310,7 @@ export default function Projects() {
                     <td className="td">
                       <div className="flex items-center gap-1">
                         <Badge tone="navy">{tahapOf(p)}</Badge>
+                        <span className="text-[11px] text-steel-400">{tahapIdx + 1}/{TAHAP.length}</span>
                         <button
                           className="rounded p-1 text-steel-400 hover:bg-steel-100 hover:text-navy-700 disabled:opacity-30 disabled:hover:bg-transparent"
                            title={S.prjStepBackTitle}
@@ -316,7 +323,7 @@ export default function Projects() {
                           className="rounded p-1 text-steel-400 hover:bg-steel-100 hover:text-navy-700 disabled:opacity-30 disabled:hover:bg-transparent"
                            title={S.prjStepNextTitle}
                           disabled={tahapIdx < 0 || tahapIdx >= TAHAP.length - 1}
-                          onClick={(e) => { e.stopPropagation(); majuTahap(p); }}
+                          onClick={(e) => { e.stopPropagation(); setMajuFor(p); setMajuReason(""); }}
                         >
                           <ChevronRight className="h-3.5 w-3.5" />
                         </button>
@@ -356,6 +363,23 @@ export default function Projects() {
         employees={data.employees}
         add={add}
       />
+
+      <Modal
+        open={majuFor !== null}
+        onClose={() => { setMajuFor(null); setMajuReason(""); }}
+        title={S.prjPushTitle.replace("{a}", majuFor?.vessel ?? "")}
+        subtitle={majuFor ? S.prjPushSub.replace("{a}", majuFor.id).replace("{b}", tahapOf(majuFor)).replace("{c}", TAHAP[TAHAP.indexOf(tahapOf(majuFor)) + 1] ?? "-") : ""}
+        footer={
+          <>
+            <button className="btn-secondary" onClick={() => { setMajuFor(null); setMajuReason(""); }}>{S.cancelBtn}</button>
+            <button className="btn-primary" onClick={confirmMaju}>{S.prjPushBtn}</button>
+          </>
+        }
+      >
+        <Field label={S.prjPushReason} hint={S.prjPullReasonHint}>
+          <textarea className="input" rows={3} value={majuReason} onChange={(e) => setMajuReason(e.target.value)} placeholder={S.prjPushReasonPh} />
+        </Field>
+      </Modal>
 
       <Modal
         open={mundurFor !== null}

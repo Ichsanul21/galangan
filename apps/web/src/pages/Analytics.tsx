@@ -747,6 +747,11 @@ export default function Analytics() {
       {/* Section cetak PDF tersembunyi: TANPA chart/grafik — SVG recharts berisiko
           blank saat di-raster oleh html2canvas, jadi hanya KPI + tabel + list teks. */}
       <div id="analytics-pdf" style={{ position: "absolute", left: -9999, top: 0, width: 1000, background: "#ffffff", padding: 24, fontSize: 12, color: "#000" }}>
+        <div style={{ textAlign: "center", borderBottom: "3px solid #0B3A63", paddingBottom: 12, marginBottom: 12 }}>
+          <p style={{ fontWeight: 800, fontSize: 18, color: "#0B3A63", margin: 0 }}>PT. SYUKUR BERSAUDARA</p>
+          <p style={{ fontSize: 11, color: "#33475B", margin: 0 }}>PERUSAHAAN GALANGAN DAN INDUSTRI KAPAL</p>
+          <p style={{ fontSize: 10, color: "#52697C", margin: 0 }}>KANTOR PUSAT SAMARINDA - KALIMANTAN TIMUR</p>
+        </div>
         <h1 style={{ fontSize: 18, fontWeight: 700 }}>ISMS Galangan - Laporan Analytics</h1>
         <p style={{ fontSize: 11 }}>{fmtTanggal(todayISO())}</p>
 

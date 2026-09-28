@@ -5,6 +5,7 @@ import { Card, CardHeader, PageHeader, StatusBadge, Badge, KpiCard, EmptyState, 
 import { useStore } from "../../data/store";
 import type { StoreItem } from "../../data/store";
 import { fmtTanggal, fmtRupiah, fmtMiliar, fmtJumlah, todayISO } from "../../utils/format";
+import { SB_KOP } from "../../utils/sb";
 import { getSetting } from "../../utils/settings";
 import { useT } from "../../i18n/LanguageContext";
 import { n_misc } from "../../i18n/n_misc";
@@ -363,6 +364,12 @@ export default function Laporan() {
       </div>
 
       <div id="laporan-konten">
+        <div style={{ textAlign: "center", borderBottom: "3px solid #0B3A63", paddingBottom: 12, marginBottom: 16 }}>
+          <p style={{ fontWeight: 800, fontSize: 18, color: "#0B3A63", margin: 0 }}>{SB_KOP.name}</p>
+          <p style={{ fontSize: 11, color: "#33475B", margin: 0 }}>{SB_KOP.line1}</p>
+          <p style={{ fontSize: 10, color: "#52697C", margin: 0 }}>{SB_KOP.hq} · {SB_KOP.addr1}</p>
+          <p style={{ fontSize: 12, fontWeight: 700, color: "#0B3A63", marginTop: 8 }}>{pdfName}</p>
+        </div>
         {mode === "Mingguan" && (
           <div className="space-y-4">
             <p className="text-sm text-steel-500">{S.weekRangeProjects.replace("{a}", fmtTanggal(week0)).replace("{b}", fmtTanggal(week1)).replace("{n}", fmtJumlah(weekly.projects.length))}</p>

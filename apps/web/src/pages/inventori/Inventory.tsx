@@ -506,15 +506,29 @@ export default function Inventory() {
     return { item: i, lastIn, age, bucket: lastIn ? agingBucket(age) : "Belum ada GR" };
   }), [inventory, moveIdx]);
 
-  // Analisis: saring + batasi 8 per kartu (scroll untuk sisanya).
-  const [anQ, setAnQ] = useState("");
-  const anNeedle = anQ.trim().toLowerCase();
-  const slowFiltered = useMemo(() => (anNeedle ? slowItems.filter((i) => `${i.name} ${i.sku}`.toLowerCase().includes(anNeedle)) : slowItems), [slowItems, anNeedle]);
-  const slowShown = useMemo(() => slowFiltered.slice(0, 8), [slowFiltered]);
-  const deadFiltered = useMemo(() => (anNeedle ? deadItems.filter((i) => `${i.name} ${i.sku}`.toLowerCase().includes(anNeedle)) : deadItems), [deadItems, anNeedle]);
-  const deadShown = useMemo(() => deadFiltered.slice(0, 8), [deadFiltered]);
-  const agingFiltered = useMemo(() => (anNeedle ? agingRows.filter((r) => `${r.item.name} ${r.bucket}`.toLowerCase().includes(anNeedle)) : agingRows), [agingRows, anNeedle]);
-  const agingShown = useMemo(() => agingFiltered.slice(0, 8), [agingFiltered]);
+  // Analisis + BOM + Stok: search PER CARD (bukan global), tanpa potong jumlah.
+  const [slowQ, setSlowQ] = useState("");
+  const [deadQ, setDeadQ] = useState("");
+  const [agingQ, setAgingQ] = useState("");
+  const [gudangQ, setGudangQ] = useState<Record<string, string>>({});
+  const [bomNeedQ, setBomNeedQ] = useState("");
+  const [bomFcQ, setBomFcQ] = useState("");
+  const slowShown = useMemo(() => {
+    const nq = slowQ.trim().toLowerCase();
+    return nq ? slowItems.filter((i) => `${i.name} ${i.sku}`.toLowerCase().includes(nq)) : slowItems;
+  }, [slowItems, slowQ]);
+  const deadShown = useMemo(() => {
+    const nq = deadQ.trim().toLowerCase();
+    return nq ? deadItems.filter((i) => `${i.name} ${i.sku}`.toLowerCase().includes(nq)) : deadItems;
+  }, [deadItems, deadQ]);
+  const agingShown = useMemo(() => {
+    const nq = agingQ.trim().toLowerCase();
+    return nq ? agingRows.filter((r) => `${r.item.name} ${r.bucket}`.toLowerCase().includes(nq)) : agingRows;
+  }, [agingRows, agingQ]);
+  const bomNeedShown = useMemo(() => {
+    const nq = bomNeedQ.trim().toLowerCase();
+    return nq ? bomRows.filter((b) => `${b.key} ${b.item?.name ?? ""}`.toLowerCase().includes(nq)) : bomRows;
+  }, [bomRows, bomNeedQ]);
 
   const activeProjects = projects.filter((p) => String(p.status) !== "Selesai");
   const forecastRows = activeProjects.flatMap((p) =>
@@ -524,6 +538,11 @@ export default function Inventory() {
       const net = Math.max(0, b.need - stock);
       return { project: p.id, vessel: String(p.vessel ?? ""), ...b, item, stock, net };
     })
+  );
+  const forecastBase = useMemo(
+    () => forecastRows.filter((f) => bomProject === "Semua proyek" || f.project === bomProject),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [forecastRows, bomProject],
   );
 
   const opTarget = inventory.find((i) => i.id === opItem) ?? null;
@@ -1308,12 +1327,18 @@ export default function Inventory() {
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
               {warehouses.map((w) => {
                 const items = inventory.filter((i) => i.warehouse === w);
+                const gq = (gudangQ[w] ?? "").trim().toLowerCase();
+                const shown = gq ? items.filter((i) => `${i.name} ${i.sku} ${binOf(i)}`.toLowerCase().includes(gq)) : items;
                 return (
                   <Card key={w} className="p-4">
                     <h3 className="mb-2 text-sm font-semibold text-navy-900 truncate" title={w}>{w}</h3>
                     <p className="text-xs text-steel-500">{items.length} item · {fmtJumlah(items.reduce((s, i) => s + Number(i.stock || 0), 0))} unit</p>
-                    <div className="mt-3 max-h-44 space-y-1.5 overflow-y-auto pr-1">
-                      {items.map((i) => {
+                    <div className="relative mt-2">
+                      <Search className="absolute left-2.5 top-2 h-3.5 w-3.5 text-steel-400" />
+                      <input className="input pl-8 !py-1.5 text-xs" placeholder={S.anSearchPh} aria-label={`${S.anSearchPh} ${w}`} value={gudangQ[w] ?? ""} onChange={(e) => setGudangQ((m) => ({ ...m, [w]: e.target.value }))} />
+                    </div>
+                    <div className="mt-3 max-h-64 space-y-1.5 overflow-y-auto pr-1">
+                      {shown.map((i) => {
                         const whMin = minWhOf(i, w);
                         const thin = Number(i.stock) <= whMin;
                         return (
@@ -1327,9 +1352,7 @@ export default function Inventory() {
                         );
                       })}
                     </div>
-                    {items.length > 5 && (
-                      <p className="mt-2 text-[11px] text-steel-400">Menampilkan 5 dari {items.length} - scroll untuk sisanya</p>
-                    )}
+                    {gq && <p className="mt-1 text-[11px] text-steel-400">{shown.length} / {items.length}</p>}
                   </Card>
                 );
               })}
@@ -1351,8 +1374,12 @@ export default function Inventory() {
             <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
               <Card className="p-5 lg:col-span-2">
                 <CardHeader title={S.bomCardT} subtitle={S.bomCardS} />
-                <div className="mt-3 max-h-56 space-y-2 overflow-y-auto pr-1">
-                  {bomRows.map((b) => {
+                <div className="relative mt-2">
+                  <Search className="absolute left-2.5 top-2 h-3.5 w-3.5 text-steel-400" />
+                  <input className="input pl-8 !py-1.5 text-xs" placeholder={S.anSearchPh} aria-label={S.anSearchPh} value={bomNeedQ} onChange={(e) => setBomNeedQ(e.target.value)} />
+                </div>
+                <div className="mt-3 max-h-96 space-y-2 overflow-y-auto pr-1">
+                  {bomNeedShown.map((b) => {
                     const kurang = Math.max(0, b.need - b.stock);
                     return (
                       <div key={b.key} className="flex items-center justify-between gap-3 border-b border-steel-100 py-2 text-sm">
@@ -1382,9 +1409,6 @@ export default function Inventory() {
                     );
                   })}
                 </div>
-                {bomRows.length > 3 && (
-                  <p className="mt-2 text-[11px] text-steel-400">Menampilkan 3 dari {bomRows.length} - scroll untuk sisanya{bomProject !== "Semua proyek" ? " · kebutuhan global, tidak difilter proyek" : ""}</p>
-                )}
               </Card>
               <Card className="p-5">
                 <CardHeader title={S.aksiMatT} subtitle={S.aksiMatS} />
@@ -1397,13 +1421,22 @@ export default function Inventory() {
               </Card>
               <Card className="p-5 lg:col-span-3">
                 <CardHeader title={S.fcT} subtitle={S.fcS} />
-                <div className="mt-3 overflow-x-auto">
+                <div className="relative mt-2 max-w-xs">
+                  <Search className="absolute left-2.5 top-2 h-3.5 w-3.5 text-steel-400" />
+                  <input className="input pl-8 !py-1.5 text-xs" placeholder={S.anSearchPh} aria-label={S.anSearchPh} value={bomFcQ} onChange={(e) => setBomFcQ(e.target.value)} />
+                </div>
+                <div className="mt-3 max-h-96 overflow-y-auto">
+                <div className="overflow-x-auto">
                   <table className="w-full">
                     <thead className="bg-surface sticky top-0 z-10">
                       <tr><SortTh label={S.thProyek} sortKey="proyek" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} /><SortTh label={S.thNeed} sortKey="kebutuhan" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} /><SortTh label={S.stockLbl} sortKey="stok" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} /><SortTh label={S.thNet} sortKey="bersih" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} /><th className="th">{S.thAksi}</th></tr>
                     </thead>
                     <tbody className="divide-y divide-steel-100">
-                      {sortRows(forecastRows.filter((f) => bomProject === "Semua proyek" || f.project === bomProject), sort2, (f, k) => {
+                      {sortRows(forecastBase.filter((f) => {
+                        const nq = bomFcQ.trim().toLowerCase();
+                        if (nq && !`${f.project} ${f.vessel} ${f.key} ${f.item?.name ?? ""}`.toLowerCase().includes(nq)) return false;
+                        return true;
+                      }), sort2, (f, k) => {
                         if (k === "kebutuhan") return Number(f.need || 0);
                         if (k === "stok") return Number(f.stock || 0);
                         if (k === "bersih") return Number(f.net || 0);
@@ -1424,8 +1457,9 @@ export default function Inventory() {
                       ))}
                     </tbody>
                   </table>
-                  {forecastRows.filter((f) => bomProject === "Semua proyek" || f.project === bomProject).length === 0 && <EmptyState title={S.emptyNoProjT} subtitle={S.emptyNoProjS} />}
                 </div>
+                </div>
+                {forecastBase.length === 0 && <EmptyState title={S.emptyNoProjT} subtitle={S.emptyNoProjS} />}
               </Card>
             </div>
             </div>
@@ -1634,13 +1668,13 @@ export default function Inventory() {
 
           {tab === "Analisis" && (
             <div className="space-y-4">
-              <div className="relative min-w-52 max-w-xs">
-                <Search className="absolute left-3 top-2.5 h-4 w-4 text-steel-400" />
-                <input className="input pl-9 w-full" placeholder={S.anSearchPh} aria-label={S.anSearchPh} value={anQ} onChange={(e) => setAnQ(e.target.value)} />
-              </div>
               <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
                 <Card className="p-5">
                   <CardHeader title={S.slowT} subtitle={S.slowS} />
+                  <div className="relative mt-2">
+                    <Search className="absolute left-2.5 top-2 h-3.5 w-3.5 text-steel-400" />
+                    <input className="input pl-8 !py-1.5 text-xs" placeholder={S.anSearchPh} aria-label={S.anSearchPh} value={slowQ} onChange={(e) => setSlowQ(e.target.value)} />
+                  </div>
                   <div className="mt-2 max-h-96 space-y-2 overflow-y-auto pr-1">
                     {slowShown.length === 0 && <p className="py-4 text-center text-sm text-steel-400">{S.slowEmpty}</p>}
                     {slowShown.map((i) => (
@@ -1653,10 +1687,13 @@ export default function Inventory() {
                       </div>
                     ))}
                   </div>
-                  {slowFiltered.length > 8 && <p className="mt-1 text-xs text-steel-400">{S.anShowing.replace("{a}", "8").replace("{b}", String(slowFiltered.length))}</p>}
                 </Card>
                 <Card className="p-5">
                   <CardHeader title={S.deadT} subtitle={S.deadS} />
+                  <div className="relative mt-2">
+                    <Search className="absolute left-2.5 top-2 h-3.5 w-3.5 text-steel-400" />
+                    <input className="input pl-8 !py-1.5 text-xs" placeholder={S.anSearchPh} aria-label={S.anSearchPh} value={deadQ} onChange={(e) => setDeadQ(e.target.value)} />
+                  </div>
                   <div className="mt-2 max-h-96 space-y-2 overflow-y-auto pr-1">
                     {deadShown.length === 0 && <p className="py-4 text-center text-sm text-steel-400">{S.deadEmpty}</p>}
                     {deadShown.map((i) => (
@@ -1669,11 +1706,14 @@ export default function Inventory() {
                       </div>
                     ))}
                   </div>
-                  {deadFiltered.length > 8 && <p className="mt-1 text-xs text-steel-400">{S.anShowing.replace("{a}", "8").replace("{b}", String(deadFiltered.length))}</p>}
                 </Card>
               </div>
               <Card className="p-5">
                 <CardHeader title={S.agingT} subtitle={S.agingS} />
+                <div className="relative mt-2 max-w-xs">
+                  <Search className="absolute left-2.5 top-2 h-3.5 w-3.5 text-steel-400" />
+                  <input className="input pl-8 !py-1.5 text-xs" placeholder={S.anSearchPh} aria-label={S.anSearchPh} value={agingQ} onChange={(e) => setAgingQ(e.target.value)} />
+                </div>
                 <div className="mt-3 flex flex-wrap gap-2">
                   {AGING_BUCKETS.map((b) => (
                     <span key={b} className="rounded-lg bg-steel-50 px-3 py-1.5 text-xs font-medium text-steel-600">
@@ -1694,7 +1734,6 @@ export default function Inventory() {
                     </div>
                   ))}
                 </div>
-                {agingFiltered.length > 8 && <p className="mt-1 text-xs text-steel-400">{S.anShowing.replace("{a}", "8").replace("{b}", String(agingFiltered.length))}</p>}
               </Card>
             </div>
           )}
