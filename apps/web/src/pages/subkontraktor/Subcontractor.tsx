@@ -1047,9 +1047,9 @@ export default function Subcontractor() {
               </select>
             </Field>
             <Field label={S.projectFromWo} hint={(() => { const w = workOrders.find((x) => x.id === tsForm.wo); return w && Number(w.rate || 0) > 0 ? S.rateAutoHint.replace("{n}", fmtRupiah(Number(w.rate))) : S.rateMissingHint; })()}>
-              <select className="input" value={tsForm.wo} disabled={!tsForm.wo} onChange={() => {}} aria-label={S.projectFromWoAria}>
-                <option value="">{tsForm.wo ? (workOrders.find((x) => x.id === tsForm.wo)?.project ?? "-") : S.pickWoFirstTs}</option>
-              </select>
+              <p className="input bg-surface text-steel-600" aria-label={S.projectFromWoAria}>
+                {tsForm.wo ? (workOrders.find((x) => x.id === tsForm.wo)?.project ?? "-") : S.pickWoFirstTs}
+              </p>
             </Field>
             <Field label={S.employeeLabel}>
               <select className="input" value={tsForm.employee} onChange={(e) => setTsForm({ ...tsForm, employee: e.target.value })}>

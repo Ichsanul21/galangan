@@ -14,6 +14,33 @@ export class UploadNotConfigured extends Error {
 
 const BASE = (import.meta.env.VITE_API_URL as string | undefined)?.replace(/\/$/, "") ?? "";
 
+/** Timeout 60 dtk (upload/OCR file bisa besar) + pesan error baca .message. */
+const UPLOAD_TIMEOUT_MS = 60000;
+
+function errMsg(json: unknown, text: string, fallback: string): string {
+  if (json && typeof json === "object" && "error" in json) {
+    const e = (json as { error?: { message?: string } | string }).error;
+    if (typeof e === "string" && e) return e;
+    if (e && typeof e === "object" && typeof e.message === "string" && e.message) return e.message;
+  }
+  return text || fallback;
+}
+
+async function fetchTimeout(input: string, init: RequestInit, ms = UPLOAD_TIMEOUT_MS): Promise<Response> {
+  const ctrl = new AbortController();
+  const timer = window.setTimeout(() => ctrl.abort(), ms);
+  try {
+    return await fetch(input, { ...init, signal: ctrl.signal });
+  } catch (e) {
+    if (e instanceof DOMException && e.name === "AbortError") {
+      throw new Error(`Backend tidak merespons dalam ${ms / 1000} detik. Periksa koneksi atau coba file lebih kecil.`);
+    }
+    throw e;
+  } finally {
+    window.clearTimeout(timer);
+  }
+}
+
 export async function uploadFile(file: File): Promise<string> {
   if (!isBackendConfigured() || !BASE) throw new UploadNotConfigured();
   const form = new FormData();
@@ -21,7 +48,7 @@ export async function uploadFile(file: File): Promise<string> {
   const jwt = getJwt();
   let res: Response;
   try {
-    res = await fetch(`${BASE}/api/files`, {
+    res = await fetchTimeout(`${BASE}/api/files`, {
       method: "POST",
       headers: jwt ? { Authorization: `Bearer ${jwt}` } : {},
       body: form,
@@ -37,11 +64,7 @@ export async function uploadFile(file: File): Promise<string> {
     json = null;
   }
   if (!res.ok) {
-    const msg =
-      json && typeof json === "object" && "error" in json
-        ? String((json as { error: { message?: string } | string }).error ?? text)
-        : text || `Upload gagal (HTTP ${res.status})`;
-    throw new Error(typeof msg === "string" ? msg : `Upload gagal (HTTP ${res.status})`);
+    throw new Error(errMsg(json, text, `Upload gagal (HTTP ${res.status})`));
   }
   const data = (json as { ok?: boolean; data?: { url?: string } } | null)?.data;
   const rel = data?.url;
@@ -58,7 +81,7 @@ export async function ocrImageUrl(url: string): Promise<string> {
   const abs = url.startsWith("http") ? url : `${BASE}${url.split("?")[0]}`;
   let blob: Blob;
   try {
-    const res = await fetch(abs, { headers: jwt ? { Authorization: `Bearer ${jwt}` } : {} });
+    const res = await fetchTimeout(abs, { headers: jwt ? { Authorization: `Bearer ${jwt}` } : {} });
     if (!res.ok) throw new Error(`Gagal mengunduh lampiran (HTTP ${res.status}).`);
     blob = await res.blob();
   } catch (e) {
@@ -69,13 +92,13 @@ export async function ocrImageUrl(url: string): Promise<string> {
   form.append("file", blob, name);
   let res: Response;
   try {
-    res = await fetch(`${BASE}/api/ocr`, {
+    res = await fetchTimeout(`${BASE}/api/ocr`, {
       method: "POST",
       headers: jwt ? { Authorization: `Bearer ${jwt}` } : {},
       body: form,
     });
-  } catch {
-    throw new Error("Backend tak terjangkau. Periksa koneksi atau VITE_API_URL.");
+  } catch (e) {
+    throw new Error(e instanceof Error ? e.message : "Backend tak terjangkau. Periksa koneksi atau VITE_API_URL.");
   }
   const text = await res.text().catch(() => "");
   let json: unknown = null;
@@ -85,11 +108,7 @@ export async function ocrImageUrl(url: string): Promise<string> {
     json = null;
   }
   if (!res.ok) {
-    const env = json as { error?: { message?: string } | string } | null;
-    const msg = env && typeof env === "object" && "error" in env
-      ? String((env.error as { message?: string } | string) ?? text)
-      : text || `OCR gagal (HTTP ${res.status})`;
-    throw new Error(typeof msg === "string" ? msg : `OCR gagal (HTTP ${res.status})`);
+    throw new Error(errMsg(json, text, `OCR gagal (HTTP ${res.status})`));
   }
   const out = (json as { ok?: boolean; data?: { text?: string } } | null)?.data?.text;
   if (typeof out !== "string" || out.trim() === "") throw new Error("OCR tidak menemukan teks pada gambar.");

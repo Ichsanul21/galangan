@@ -20,8 +20,14 @@ function hasMagic(buf: Buffer, ext: string): boolean {
   if (ext === ".pdf") {
     return buf.length >= 4 && buf[0] === 0x25 && buf[1] === 0x50 && buf[2] === 0x44 && buf[3] === 0x46;
   }
-  if (ext === ".xlsx" || ext === ".xls") {
+  if (ext === ".xlsx") {
     return buf.length >= 2 && buf[0] === 0x50 && buf[1] === 0x4b;
+  }
+  if (ext === ".xls") {
+    // OLE warisan: D0 CF 11 E0 (bukan PK zip seperti xlsx).
+    return (
+      buf.length >= 4 && buf[0] === 0xd0 && buf[1] === 0xcf && buf[2] === 0x11 && buf[3] === 0xe0
+    );
   }
   if (ext === ".csv" || ext === ".txt") {
     // Text formats: reject binary (NUL bytes) and invalid UTF-8.

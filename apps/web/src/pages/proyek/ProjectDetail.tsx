@@ -57,6 +57,22 @@ export default function ProjectDetail() {
   const [showScope, setShowScope] = useState(false);
   const [scopeVal, setScopeVal] = useState({ service: "", lokasi: "", deskripsi: "" });
   const [showDoc, setShowDoc] = useState(false);
+  const [showActual, setShowActual] = useState(false);
+  const [actualVal, setActualVal] = useState("");
+
+  const saveActual = async () => {
+    const v = Number(actualVal);
+    if (!Number.isFinite(v) || v < 0) { toast(S.detToastActualInvalid, "info"); return; }
+    try {
+      await update("projects", pid, { actual: v });
+      log("mencatat realisasi", `${pid} → ${fmtRupiah(v)}`, "Proyek");
+      toast(S.detToastActualSaved.replace("{a}", fmtRupiah(v)));
+      setShowActual(false);
+      setActualVal("");
+    } catch (e) {
+      toast(e instanceof Error ? e.message : S.detActualFail, "info");
+    }
+  };
   const [docTitle, setDocTitle] = useState("");
   const [docType, setDocType] = useState("Laporan");
   const [delScope, setDelScope] = useState<number | null>(null);
@@ -722,7 +738,7 @@ export default function ProjectDetail() {
               <Card className="p-5">
                 <div className="mb-2 flex items-center justify-between">
                   <h3 className="text-sm font-semibold text-navy-900">{S.detBudgetVs}</h3>
-                  <button className="btn-secondary text-xs" onClick={() => toast(S.detToastBoqSection)}>{S.detRecordActual}</button>
+                  <button className="btn-secondary text-xs" onClick={() => { setActualVal(String(project.actual ?? 0)); setShowActual(true); }}>{S.detRecordActual}</button>
                 </div>
                 <div className="flex items-end gap-2">
                   <div>
@@ -819,6 +835,7 @@ export default function ProjectDetail() {
                         exportExcel([["Field", "Value"], ["ID", d.id], ["Judul", d.title], ["Tipe", d.type], ["Proyek", pid], ["Versi", d.version], ["Status", d.status], ["Diperbarui", d.updated], ["Owner", d.owner]], `${d.id}-ringkasan`);
                         toast(S.detToastExported.replace("{a}", d.id));
                       }}><FileDown className="h-3.5 w-3.5" /> {S.excelBtn}</button>
+                      <button className="btn-secondary text-xs" onClick={() => { setShareForm({ docId: String(d.id), to: "" }); setShowShare(true); }}>{S.detShareBtn}</button>
                       <StatusBadge status={d.status} />
                     </div>
                   </div>
@@ -1103,6 +1120,15 @@ export default function ProjectDetail() {
             </select>
           </Field>
         </div>
+      </Modal>
+
+      {/* Modal catat realisasi (R2: tombol toast-only dijadikan tulis beneran) */}
+      <Modal open={showActual} onClose={() => setShowActual(false)} title={S.detActualModal}
+        footer={<><button className="btn-secondary" onClick={() => setShowActual(false)}>{S.cancelBtn}</button><button className="btn-primary" onClick={() => void saveActual()}>{S.saveBtn}</button></>}>
+        <Field label={S.detActualAmount}>
+          <NumInput min={0} className="input" value={actualVal} onChange={(e) => setActualVal(e.target.value)} placeholder={S.detActualPh} />
+        </Field>
+        <p className="mt-2 text-xs text-steel-500">{S.detActualNow.replace("{a}", fmtRupiah(Number(project.actual ?? 0)))}</p>
       </Modal>
 
       {/* Modal share */}
