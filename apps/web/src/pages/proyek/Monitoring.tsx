@@ -110,7 +110,7 @@ export default function Monitoring() {
         openNcr(p.id).length, diajukanCo(p.id).length,
       ]),
     ];
-    void exportExcel(rows, "monitoring-proyek", "Monitoring").then(() => toast(S.monToastExport));
+    void exportExcel(rows, "monitoring-proyek", "Monitoring").then(() => toast(S.monToastExport)).catch(() => toast(S.saveFail, "info"));
   };
 
   return (

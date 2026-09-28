@@ -466,6 +466,7 @@ export default function HR() {
       ptkpStatus: form.ptkpStatus,
       dependents,
     };
+    try {
     if (editingId) {
       await update("employees", editingId, empPatch);
       log("memperbarui data karyawan", editingId, "SDM");
@@ -497,6 +498,7 @@ export default function HR() {
     setShowForm(false);
     setEditingId(null);
     setForm(emptyEmpForm());
+    } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); }
   };
 
   /* ---------- cuti ---------- */
@@ -530,6 +532,7 @@ export default function HR() {
       toast(S.tKetSakit, "info");
       return;
     }
+    try {
     const created = await add(
       "leaves",
       {
@@ -546,19 +549,24 @@ export default function HR() {
     toast(S.tLeaveOk.replace("{n}", created.id).replace("{a}", String(leaveDays)));
     setShowLeave(false);
     setLeaveForm({ employeeId: "", type: "Tahunan", from: todayISO(), to: todayISO(), note: "" });
+    } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); }
   };
 
   // Cuti 2 tingkat: Diajukan → Disetujui Atasan → Disetujui (final HRD).
   const approveSupervisor = async (l: StoreItem) => {
+    try {
     await update("leaves", l.id, { status: "Disetujui Atasan" });
     log("menyetujui cuti (atasan)", `${l.id} - ${empNameOf(l.employeeId)}`, "SDM");
     toast(S.tLeaveSup.replace("{n}", l.id));
+    } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); }
   };
 
   const approveHrd = async (l: StoreItem) => {
+    try {
     await update("leaves", l.id, { status: "Disetujui" });
     log("menyetujui cuti final (HRD)", `${l.id} - ${empNameOf(l.employeeId)}`, "SDM");
     toast(S.tLeaveHrd.replace("{n}", l.id));
+    } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); }
   };
 
   const empNameOf = (id: string) => data.employees.find((e) => e.id === id)?.name ?? id;
@@ -588,11 +596,13 @@ export default function HR() {
     }
     const from = `${emp.dept}/${emp.branch}/${emp.role}`;
     const to = `${mutasiForm.dept}/${mutasiForm.branch}/${mutasiForm.role.trim()}`;
+    try {
     await update("employees", emp.id, { dept: mutasiForm.dept, branch: mutasiForm.branch, role: mutasiForm.role.trim() });
     log(`mutasi ${from} → ${to} per ${mutasiForm.date}${mutasiForm.reason.trim() ? ` · ${mutasiForm.reason.trim()}` : ""}`, emp.id, "SDM");
     toast(S.tMutasiOk.replace("{n}", emp.id));
     setShowMutasi(false);
     setMutasiForm({ employeeId: "", dept: "Produksi", branch: "Samarinda", role: "", date: todayISO(), reason: "" });
+    } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); }
   };
 
   /* ---------- training ---------- */
@@ -616,6 +626,7 @@ export default function HR() {
       toast(S.tPesertaMin, "info");
       return;
     }
+    try {
     const created = await add(
       "trainings",
       {
@@ -630,27 +641,32 @@ export default function HR() {
     toast(S.tTrainOk.replace("{n}", created.id));
     setShowTraining(false);
     setTrainingForm({ title: "", date: todayISO(), provider: "", participants: [] });
+    } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); }
   };
 
   const finishTraining = async (t: StoreItem) => {
+    try {
     await update("trainings", t.id, { status: "Selesai" });
     log("menyelesaikan training", `${t.id} · ${t.title}`, "SDM");
     toast(S.tTrainSelesai.replace("{n}", t.id));
+    } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); }
   };
 
-  const applyCert = () => {
+  const applyCert = async () => {
     if (!certTarget) return;
     if (!certForm.name.trim() || !certForm.expires) {
       toast(S.tCertWajib, "info");
       return;
     }
     const ids = (certTarget.participants ?? []) as string[];
-    ids.forEach(async (empId) => {
+    for (const empId of ids) {
+      try {
       const emp = data.employees.find((e) => e.id === empId);
-      if (!emp) return;
+      if (!emp) continue;
       const next = [...normCerts(emp), { name: certForm.name.trim(), expires: certForm.expires }];
       await update("employees", empId, { certs: next });
-    });
+      } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); }
+    }
     log("menerapkan sertifikat training", `${certTarget.id} · ${certForm.name.trim()} → ${ids.length} peserta`, "SDM");
     toast(S.tCertOk.replace("{n}", String(ids.length)));
     setCertTarget(null);
@@ -1326,9 +1342,11 @@ export default function HR() {
         onCancel={() => setRejectTarget(null)}
         onConfirm={async () => {
           if (rejectTarget) {
+            try {
             await update("leaves", rejectTarget.id, { status: "Ditolak" });
             log("menolak cuti", rejectTarget.id, "SDM");
             toast(S.tTolak.replace("{n}", rejectTarget.id));
+            } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); }
           }
           setRejectTarget(null);
         }}

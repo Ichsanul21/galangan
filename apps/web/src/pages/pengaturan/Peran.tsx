@@ -477,6 +477,7 @@ export default function Peran() {
   }, [role]);
 
   const userPager = usePager(users.length);
+  const sessPager = usePager(users.length);
   const sortedModules = useMemo(() => sortRows(MODULES, sort, (row, k) => {
     const m = String(row);
     if (k === "modul") return m;
@@ -659,7 +660,7 @@ export default function Peran() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-steel-50">
-                {users.map((u) => {
+                {sessPager.slice(users).map((u) => {
                   const s = sessions.find((x) => String(x.user_id) === String(u.id)) ?? null;
                   const online = s ? sessionOnline(s.last_seen_at) : false;
                   const acts = lastActByUser.get(u.username) ?? [];
@@ -707,6 +708,7 @@ export default function Peran() {
                 })}
               </tbody>
             </table>
+            {sessPager.bar}
           </div>
         )}
       </Card>

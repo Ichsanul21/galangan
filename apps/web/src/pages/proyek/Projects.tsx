@@ -122,12 +122,16 @@ export default function Projects() {
         return;
       }
     }
-    await update("projects", p.id, {
-      tahap: to,
-      tahapLog: [...(p.tahapLog ?? []), { from: tahapOf(p), to, date: todayISO(), by: "Anda", reason: "" }],
-    });
-    log("memajukan tahap", `${p.id} → ${to}`, "Proyek");
-    toast(S.prjToastAdvance.replace("{a}", p.id).replace("{b}", to));
+    try {
+      await update("projects", p.id, {
+        tahap: to,
+        tahapLog: [...(p.tahapLog ?? []), { from: tahapOf(p), to, date: todayISO(), by: "Anda", reason: "" }],
+      });
+      log("memajukan tahap", `${p.id} → ${to}`, "Proyek");
+      toast(S.prjToastAdvance.replace("{a}", p.id).replace("{b}", to));
+    } catch (e) {
+      toast(e instanceof Error ? e.message : S.prjToastSaveFail.replace("{a}", p.id), "info");
+    }
   };
 
   const confirmMundur = async () => {
@@ -136,14 +140,18 @@ export default function Projects() {
     const idx = TAHAP.indexOf(tahapOf(mundurFor));
     if (idx <= 0) { setMundurFor(null); return; }
     const to = TAHAP[idx - 1];
-    await update("projects", mundurFor.id, {
-      tahap: to,
-      tahapLog: [...(mundurFor.tahapLog ?? []), { from: tahapOf(mundurFor), to, date: todayISO(), by: "Anda", reason: mundurReason.trim() }],
-    });
-    log("menurunkan tahap", `${mundurFor.id} → ${to} (alasan: ${mundurReason.trim()})`, "Proyek");
-    toast(S.prjToastPulled.replace("{a}", mundurFor.id).replace("{b}", to));
-    setMundurFor(null);
-    setMundurReason("");
+    try {
+      await update("projects", mundurFor.id, {
+        tahap: to,
+        tahapLog: [...(mundurFor.tahapLog ?? []), { from: tahapOf(mundurFor), to, date: todayISO(), by: "Anda", reason: mundurReason.trim() }],
+      });
+      log("menurunkan tahap", `${mundurFor.id} → ${to} (alasan: ${mundurReason.trim()})`, "Proyek");
+      toast(S.prjToastPulled.replace("{a}", mundurFor.id).replace("{b}", to));
+      setMundurFor(null);
+      setMundurReason("");
+    } catch (e) {
+      toast(e instanceof Error ? e.message : S.prjToastSaveFail.replace("{a}", mundurFor.id), "info");
+    }
   };
 
 

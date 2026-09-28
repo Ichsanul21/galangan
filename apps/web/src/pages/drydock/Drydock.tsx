@@ -131,9 +131,13 @@ export default function Drydock() {
       toast(S.tUtilInvalid, "info");
       return;
     }
-    await update("dockSlots", sel.id, { powerKwh: power, waterM3: water });
-    log("mencatat konsumsi slot", `${sel.id} · ${power} kWh · ${water} m³`, "Drydock");
-    toast(S.tUtilSaved.replace("{a}", sel.id));
+    try {
+      await update("dockSlots", sel.id, { powerKwh: power, waterM3: water });
+      log("mencatat konsumsi slot", `${sel.id} · ${power} kWh · ${water} m³`, "Drydock");
+      toast(S.tUtilSaved.replace("{a}", sel.id));
+    } catch (e) {
+      toast(e instanceof Error ? e.message : S.saveFail, "info");
+    }
   };
 
   const toggleUndock = async (idx: number) => {
@@ -169,8 +173,7 @@ export default function Drydock() {
         ...dockSlots.map((s) => [s.id, drydocks.find((d) => d.id === s.dockId)?.name ?? s.dockId, s.vessel, fmtTanggal(dayToISO(Number(s.from))), fmtTanggal(dayToISO(Number(s.to))), slotDays(s), Number(s.ratePerDay || 0), slotCost(s), Number(s.powerKwh || 0), Number(s.waterM3 || 0)])],
       "Rencana-Dock-Tahunan",
       "Dock Plan",
-    );
-    toast(S.tAnnualExported);
+    ).then(() => toast(S.tAnnualExported)).catch(() => toast(S.saveFail, "info"));
   };
 
   const coverageByDock = drydocks.map((d) => ({
@@ -265,16 +268,20 @@ export default function Drydock() {
     // No. Dock Space SB: pakai input atau auto (format nnn/DS-SB/SMD/m/yyyy).
     const dsRef = bookForm.dsRef.trim() || sbDsNumber(nextDsSeq());
     const vesselFull = bookForm.vessel2.trim() ? `${proj.vessel} + ${bookForm.vessel2.trim()}` : proj.vessel;
-    const created = await add("dockSlots", {
-      dockId: bookForm.dockId, project: proj.id, vessel: vesselFull, from, to,
-      priority: bookForm.priority, ratePerDay, dsRef,
-      startDate: bookForm.startDate || undefined,
-      color: SLOT_COLORS[dockSlots.length % SLOT_COLORS.length],
-    }, { action: "membooking slot", target: `${bookForm.dockId} · ${vesselFull} · ${bookForm.priority}`, module: "Drydock" });
-    toast(S.tBooked.replace("{a}", created.id).replace("{b}", bookForm.priority).replace("{c}", dsRef));
-    setBookForm({ dockId: "DD-1", project: "", from: "1", to: "30", priority: "Normal", ratePerDay: "0", dsRef: "", vessel2: "", startDate: "" });
-    setShowBook(false);
-    setBookError(null);
+    try {
+      const created = await add("dockSlots", {
+        dockId: bookForm.dockId, project: proj.id, vessel: vesselFull, from, to,
+        priority: bookForm.priority, ratePerDay, dsRef,
+        startDate: bookForm.startDate || undefined,
+        color: SLOT_COLORS[dockSlots.length % SLOT_COLORS.length],
+      }, { action: "membooking slot", target: `${bookForm.dockId} · ${vesselFull} · ${bookForm.priority}`, module: "Drydock" });
+      toast(S.tBooked.replace("{a}", created.id).replace("{b}", bookForm.priority).replace("{c}", dsRef));
+      setBookForm({ dockId: "DD-1", project: "", from: "1", to: "30", priority: "Normal", ratePerDay: "0", dsRef: "", vessel2: "", startDate: "" });
+      setShowBook(false);
+      setBookError(null);
+    } catch (e) {
+      toast(e instanceof Error ? e.message : S.saveFail, "info");
+    }
   };
 
   const saveMaintBlock = async () => {
@@ -286,22 +293,30 @@ export default function Drydock() {
     }
     if (!maintForm.reason.trim()) { toast(S.tMaintReason, "info"); return; }
     const dock = drydocks.find((d) => d.id === maintForm.dockId);
-    const created = await add("dockSlots", {
-      dockId: maintForm.dockId, project: "MAINT", vessel: `Maintenance - ${maintForm.reason.trim()}`,
-      from, to, priority: "Normal", reason: maintForm.reason.trim(), color: "bg-steel-400",
-    }, { action: "memblokir maintenance", target: `${maintForm.dockId} · ${fmtRentang(dayToISO(from), dayToISO(to))}`, module: "Drydock" });
-    toast(S.tMaintSaved.replace("{a}", created.id).replace("{b}", dock?.name ?? maintForm.dockId));
-    setShowMaint(false);
-    setMaintForm({ dockId: "DD-1", from: "1", to: "7", reason: "" });
+    try {
+      const created = await add("dockSlots", {
+        dockId: maintForm.dockId, project: "MAINT", vessel: `Maintenance - ${maintForm.reason.trim()}`,
+        from, to, priority: "Normal", reason: maintForm.reason.trim(), color: "bg-steel-400",
+      }, { action: "memblokir maintenance", target: `${maintForm.dockId} · ${fmtRentang(dayToISO(from), dayToISO(to))}`, module: "Drydock" });
+      toast(S.tMaintSaved.replace("{a}", created.id).replace("{b}", dock?.name ?? maintForm.dockId));
+      setShowMaint(false);
+      setMaintForm({ dockId: "DD-1", from: "1", to: "7", reason: "" });
+    } catch (e) {
+      toast(e instanceof Error ? e.message : S.saveFail, "info");
+    }
   };
 
   const savePic = async () => {
     if (!picModal) return;
-    await update("drydocks", picModal.id, { pic: picDraft.trim() || "Belum ditentukan" });
-    log("menetapkan PIC dock", `${picModal.name} · ${picDraft.trim() || "Belum ditentukan"}`, "Drydock");
-    toast(S.tPicSaved.replace("{a}", picModal.name));
-    setPicModal(null);
-    setPicDraft("");
+    try {
+      await update("drydocks", picModal.id, { pic: picDraft.trim() || "Belum ditentukan" });
+      log("menetapkan PIC dock", `${picModal.name} · ${picDraft.trim() || "Belum ditentukan"}`, "Drydock");
+      toast(S.tPicSaved.replace("{a}", picModal.name));
+      setPicModal(null);
+      setPicDraft("");
+    } catch (e) {
+      toast(e instanceof Error ? e.message : S.saveFail, "info");
+    }
   };
 
   /* Tindak lanjut slot konflik: geser tanggal / pindah fasilitas.

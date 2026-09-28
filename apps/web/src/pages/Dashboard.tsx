@@ -117,8 +117,9 @@ export default function Dashboard() {
   const lowStock = data.inventory.filter((i) => i.stock <= i.minStock);
   const stockValue = data.inventory.reduce((s, i) => s + Number(i.stock || 0) * Number(i.cost || 0), 0);
   const wonQuotes = data.quotations.filter((x) => x.stage === "Menang").reduce((s, x) => s + Number(x.value || 0), 0);
-  const utilDrydock =
-    Math.round((drydocks.filter((d) => d.status === "Terpakai").length / drydocks.length) * 100);
+  const utilDrydock = drydocks.length
+    ? Math.round((drydocks.filter((d) => d.status === "Terpakai").length / drydocks.length) * 100)
+    : 0;
   const utilEquipment = Math.round(utilSeries[utilSeries.length - 1].equipment);
 
   const chartData =

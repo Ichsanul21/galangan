@@ -3,7 +3,7 @@
 // Bila backend belum dikonfigurasi (mode lokal), panggil isBackendConfigured()
 // dulu dan biarkan input URL manual sebagai fallback.
 
-import { getJwt, isBackendConfigured } from "./http";
+import { getJwt, isBackendConfigured, BASE } from "./http";
 
 export class UploadNotConfigured extends Error {
   constructor() {
@@ -11,8 +11,6 @@ export class UploadNotConfigured extends Error {
     this.name = "UploadNotConfigured";
   }
 }
-
-const BASE = (import.meta.env.VITE_API_URL as string | undefined)?.replace(/\/$/, "") ?? "";
 
 /** Timeout 60 dtk (upload/OCR file bisa besar) + pesan error baca .message. */
 const UPLOAD_TIMEOUT_MS = 60000;

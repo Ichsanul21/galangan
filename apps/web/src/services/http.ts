@@ -71,7 +71,7 @@ export function clearJwt(): void {
 
 /* ============ FETCH + ENVELOPE ============ */
 
-const BASE = (import.meta.env.VITE_API_URL as string | undefined)?.replace(/\/$/, "") ?? "";
+export const BASE = (import.meta.env.VITE_API_URL as string | undefined)?.replace(/\/$/, "") ?? "";
 
 export function isBackendConfigured(): boolean {
   return BASE.length > 0;

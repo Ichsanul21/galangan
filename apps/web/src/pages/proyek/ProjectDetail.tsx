@@ -197,40 +197,56 @@ export default function ProjectDetail() {
   const baseline = (project.wbsBaseline ?? null) as WbsBaseline | null;
 
   const snapshotBaseline = async () => {
-    await update("projects", pid, { wbsBaseline: { at: todayISO(), wbs: JSON.parse(JSON.stringify(wbs)) as WbsExt[] } });
-    log("membuat baseline WBS", `${pid} · ${wbs.length} tahapan`, "Proyek");
-    toast(S.detToastBaseline);
+    try {
+      await update("projects", pid, { wbsBaseline: { at: todayISO(), wbs: JSON.parse(JSON.stringify(wbs)) as WbsExt[] } });
+      log("membuat baseline WBS", `${pid} · ${wbs.length} tahapan`, "Proyek");
+      toast(S.detToastBaseline);
+    } catch (e) {
+      toast(e instanceof Error ? e.message : S.saveFail, "info");
+    }
   };
 
   const saveCo = async () => {
     if (!coForm.title.trim()) { toast(S.detToastCoTitle, "info"); return; }
     if (coForm.impact === "" || !Number.isFinite(Number(coForm.impact))) { toast(S.detToastCoImpact, "info"); return; }
     if (!coForm.requestedBy.trim()) { toast(S.detToastCoBy, "info"); return; }
-    await add("changeOrders", {
-      project: pid, title: coForm.title.trim(), impact: Number(coForm.impact),
-      status: "Diajukan", requestedBy: coForm.requestedBy.trim(), date: coForm.date || todayISO(),
-    }, { action: "mengajukan change order", module: "Proyek" });
-    toast(S.detToastCoSent);
-    setCoForm({ title: "", impact: "", requestedBy: "", date: "" });
-    setShowCo(false);
+    try {
+      await add("changeOrders", {
+        project: pid, title: coForm.title.trim(), impact: Number(coForm.impact),
+        status: "Diajukan", requestedBy: coForm.requestedBy.trim(), date: coForm.date || todayISO(),
+      }, { action: "mengajukan change order", module: "Proyek" });
+      toast(S.detToastCoSent);
+      setCoForm({ title: "", impact: "", requestedBy: "", date: "" });
+      setShowCo(false);
+    } catch (e) {
+      toast(e instanceof Error ? e.message : S.saveFail, "info");
+    }
   };
 
   const setCoStatus = async (id: string, status: string) => {
-    await update("changeOrders", id, { status });
-    log("mengubah change order", `${id} - ${status}`, "Proyek");
-    toast(S.detToastCoStatus.replace("{a}", status.toLowerCase()));
+    try {
+      await update("changeOrders", id, { status });
+      log("mengubah change order", `${id} - ${status}`, "Proyek");
+      toast(S.detToastCoStatus.replace("{a}", status.toLowerCase()));
+    } catch (e) {
+      toast(e instanceof Error ? e.message : S.saveFail, "info");
+    }
   };
 
   // Garansi/DLP: dibuat sekali saat proyek Selesai (pintasan di tab Terkait).
   const createWarranty = async () => {
     const year = todayISO().slice(0, 4);
     const seq = (data.warranties ?? []).filter((w) => String(w.id ?? "").startsWith(`WRT-${year}-`)).length + 1;
-    const created = await add("warranties", {
-      id: `WRT-${year}-${String(seq).padStart(3, "0")}`,
-      projectId: pid, vessel: project.vessel, start: todayISO(), months: 12,
-      status: "Aktif", branch: String(project.branch ?? ""),
-    }, { action: "membuat garansi/DLP", module: "Proyek" });
-    toast(S.detToastWarranty.replace("{a}", created.id));
+    try {
+      const created = await add("warranties", {
+        id: `WRT-${year}-${String(seq).padStart(3, "0")}`,
+        projectId: pid, vessel: project.vessel, start: todayISO(), months: 12,
+        status: "Aktif", branch: String(project.branch ?? ""),
+      }, { action: "membuat garansi/DLP", module: "Proyek" });
+      toast(S.detToastWarranty.replace("{a}", created.id));
+    } catch (e) {
+      toast(e instanceof Error ? e.message : S.saveFail, "info");
+    }
   };
 
   const openRiskNew = () => {
@@ -247,19 +263,23 @@ export default function ProjectDetail() {
 
   const saveRisk = async () => {
     if (!riskForm.title.trim()) { toast(S.detToastRiskTitle, "info"); return; }
-    if (riskEditId) {
-      await update("risks", riskEditId, { title: riskForm.title.trim(), likelihood: riskForm.likelihood, impact: riskForm.impact, mitigation: riskForm.mitigation.trim(), status: riskForm.status });
-      log("memperbarui risiko", `${riskEditId} · ${riskForm.title.trim()}`, "Proyek");
-      toast(S.detToastRiskUpd);
-    } else {
-      await add("risks", {
-        project: pid, title: riskForm.title.trim(), likelihood: riskForm.likelihood,
-        impact: riskForm.impact, mitigation: riskForm.mitigation.trim(), status: riskForm.status,
-      }, { action: "mencatat risiko", module: "Proyek" });
-      toast(S.detToastRiskAdd);
+    try {
+      if (riskEditId) {
+        await update("risks", riskEditId, { title: riskForm.title.trim(), likelihood: riskForm.likelihood, impact: riskForm.impact, mitigation: riskForm.mitigation.trim(), status: riskForm.status });
+        log("memperbarui risiko", `${riskEditId} · ${riskForm.title.trim()}`, "Proyek");
+        toast(S.detToastRiskUpd);
+      } else {
+        await add("risks", {
+          project: pid, title: riskForm.title.trim(), likelihood: riskForm.likelihood,
+          impact: riskForm.impact, mitigation: riskForm.mitigation.trim(), status: riskForm.status,
+        }, { action: "mencatat risiko", module: "Proyek" });
+        toast(S.detToastRiskAdd);
+      }
+      setShowRisk(false);
+      setRiskEditId(null);
+    } catch (e) {
+      toast(e instanceof Error ? e.message : S.saveFail, "info");
     }
-    setShowRisk(false);
-    setRiskEditId(null);
   };
 
   const bastList = (data.bast ?? []).filter((b) => b.projectId === pid);
@@ -288,14 +308,18 @@ export default function ProjectDetail() {
     const amt = bastForm.amount === "" ? 0 : Number(bastForm.amount);
     if (bastForm.amount !== "" && (!Number.isFinite(amt) || amt < 0)) { toast(S.detToastAmount, "info"); return; }
     const id = nextBastId(bastForm.tanggal);
-    await add("bast", {
-      id, projectId: pid, milestone: bastForm.milestone, tanggal: bastForm.tanggal,
-      penandatangan: bastForm.signer.trim(), lampiran: bastForm.lampiran.trim(),
-      amount: amt > 0 ? amt : boqTotal, status: "Draft",
-    }, { action: "membuat BAST", target: `${id} · ${bastForm.milestone}`, module: "Proyek" });
-    toast(S.detToastBastMade.replace("{a}", id));
-    setBastForm({ milestone: "", tanggal: todayISO(), signer: "", lampiran: "", amount: "" });
-    setShowBast(false);
+    try {
+      await add("bast", {
+        id, projectId: pid, milestone: bastForm.milestone, tanggal: bastForm.tanggal,
+        penandatangan: bastForm.signer.trim(), lampiran: bastForm.lampiran.trim(),
+        amount: amt > 0 ? amt : boqTotal, status: "Draft",
+      }, { action: "membuat BAST", target: `${id} · ${bastForm.milestone}`, module: "Proyek" });
+      toast(S.detToastBastMade.replace("{a}", id));
+      setBastForm({ milestone: "", tanggal: todayISO(), signer: "", lampiran: "", amount: "" });
+      setShowBast(false);
+    } catch (e) {
+      toast(e instanceof Error ? e.message : S.saveFail, "info");
+    }
   };
 
   const advanceBast = async (b: StoreItem, next: string) => {
@@ -309,46 +333,52 @@ export default function ProjectDetail() {
         toast(S.detToastBastProg.replace("{a}", linked.task).replace("{b}", String(linked.progress)), "info");
         return;
       }
-      const amount = Number(b.amount) > 0 ? Number(b.amount) : boqTotal;
-      const baseId = `INV/${String(b.id)}`;
-      let invId = baseId;
-      let bump = 1;
-      while ((data.invoices ?? []).some((i) => String(i.id) === invId)) {
-        bump += 1;
-        invId = `${baseId}-${bump}`;
-      }
-      let due = String(b.tanggal ?? todayISO());
-      const d = new Date(`${due}T00:00:00`);
-      if (!Number.isNaN(d.getTime())) {
-        d.setDate(d.getDate() + 30);
-        due = d.toISOString().slice(0, 10);
-      } else {
-        due = todayISO();
-      }
-      try {
-        await add("invoices", {
-          id: invId, client: project.client, project: pid, amount,
-          due, status: "Draft", paymentTerm: `Termin ${String(b.milestone)}`,
-          billingType: "Milestone", type: "Milestone", milestoneRef: `BAST ${String(b.id)}`,
-          dunning: "Belum Ditagih",
-          // Rincian pajak diisi saat invoice dirinci di Keuangan; tarif saat
-          // terbit disimpan agar laporan tak menghitung ulang bila tarif berubah.
-          jasaTotal: 0, matTotal: 0, dpp: 0, ppnAmt: 0, pphAmt: 0,
-          ppnRate: getSetting(data, "PPN_INVOICE_RATE", 12),
-          pphRate: getSetting(data, "PPH_JASA_RATE", 2),
-          skdt: false,
-        }, { action: "menerbitkan invoice milestone (BAST)", target: `${invId} ← ${String(b.id)}`, module: "Keuangan" });
-        log("menyetujui BAST + auto-invoice", `${String(b.id)} → ${invId}`, "Proyek");
-        toast(S.detToastBastInv.replace("{a}", invId));
-      } catch {
-        toast(S.detToastBastInvFail.replace("{a}", String(b.id)), "info");
-        return;
-      }
-    } else {
-      log("mengajukan BAST", `${String(b.id)} → ${next}`, "Proyek");
-      toast(S.detToastBastStatus.replace("{a}", next.toLowerCase()));
     }
-    await update("bast", String(b.id), { status: next });
+    try {
+      if (next === "Disetujui") {
+        const amount = Number(b.amount) > 0 ? Number(b.amount) : boqTotal;
+        const baseId = `INV/${String(b.id)}`;
+        let invId = baseId;
+        let bump = 1;
+        while ((data.invoices ?? []).some((i) => String(i.id) === invId)) {
+          bump += 1;
+          invId = `${baseId}-${bump}`;
+        }
+        let due = String(b.tanggal ?? todayISO());
+        const d = new Date(`${due}T00:00:00`);
+        if (!Number.isNaN(d.getTime())) {
+          d.setDate(d.getDate() + 30);
+          due = d.toISOString().slice(0, 10);
+        } else {
+          due = todayISO();
+        }
+        try {
+          await add("invoices", {
+            id: invId, client: project.client, project: pid, amount,
+            due, status: "Draft", paymentTerm: `Termin ${String(b.milestone)}`,
+            billingType: "Milestone", type: "Milestone", milestoneRef: `BAST ${String(b.id)}`,
+            dunning: "Belum Ditagih",
+            // Rincian pajak diisi saat invoice dirinci di Keuangan; tarif saat
+            // terbit disimpan agar laporan tak menghitung ulang bila tarif berubah.
+            jasaTotal: 0, matTotal: 0, dpp: 0, ppnAmt: 0, pphAmt: 0,
+            ppnRate: getSetting(data, "PPN_INVOICE_RATE", 12),
+            pphRate: getSetting(data, "PPH_JASA_RATE", 2),
+            skdt: false,
+          }, { action: "menerbitkan invoice milestone (BAST)", target: `${invId} ← ${String(b.id)}`, module: "Keuangan" });
+          log("menyetujui BAST + auto-invoice", `${String(b.id)} → ${invId}`, "Proyek");
+          toast(S.detToastBastInv.replace("{a}", invId));
+        } catch {
+          toast(S.detToastBastInvFail.replace("{a}", String(b.id)), "info");
+          return;
+        }
+      } else {
+        log("mengajukan BAST", `${String(b.id)} → ${next}`, "Proyek");
+        toast(S.detToastBastStatus.replace("{a}", next.toLowerCase()));
+      }
+      await update("bast", String(b.id), { status: next });
+    } catch (e) {
+      toast(e instanceof Error ? e.message : S.saveFail, "info");
+    }
   };
 
   // E1: sub-stage desain + class approval, tersimpan di project.designStages.
@@ -361,9 +391,13 @@ export default function ProjectDetail() {
       return found ?? { name: n, status: "Belum", society: "BKI", date: "", doc: "" };
     });
     const next = current.map((s) => (s.name === name ? { ...s, ...patch } : s));
-    await update("projects", pid, { designStages: next });
-    log("memperbarui sub-stage desain", `${pid} · ${name}`, "Proyek");
-    toast(S.detToastStageUpd.replace("{a}", name));
+    try {
+      await update("projects", pid, { designStages: next });
+      log("memperbarui sub-stage desain", `${pid} · ${name}`, "Proyek");
+      toast(S.detToastStageUpd.replace("{a}", name));
+    } catch (e) {
+      toast(e instanceof Error ? e.message : S.saveFail, "info");
+    }
   };
 
   // E4: trials (sea trial / commissioning) per proyek.
@@ -383,13 +417,17 @@ export default function ProjectDetail() {
     if (!trialForm.tanggal) { toast(S.detToastTrialDate, "info"); return; }
     if (!trialForm.parameter.trim()) { toast(S.detToastTrialParam, "info"); return; }
     const id = nextTrialId(trialForm.tanggal);
-    await add("trials", {
-      id, projectId: pid, tanggal: trialForm.tanggal, parameter: trialForm.parameter.trim(),
-      punchList: trialForm.punchList.trim(), hasil: "Berjalan", baRef: trialForm.baRef.trim(),
-    }, { action: "membuat sea trial", target: `${id} · ${pid}`, module: "Proyek" });
-    toast(S.detToastTrialMade.replace("{a}", id));
-    setTrialForm({ tanggal: todayISO(), parameter: "", punchList: "", hasil: "Lolos", baRef: "" });
-    setShowTrial(false);
+    try {
+      await add("trials", {
+        id, projectId: pid, tanggal: trialForm.tanggal, parameter: trialForm.parameter.trim(),
+        punchList: trialForm.punchList.trim(), hasil: "Berjalan", baRef: trialForm.baRef.trim(),
+      }, { action: "membuat sea trial", target: `${id} · ${pid}`, module: "Proyek" });
+      toast(S.detToastTrialMade.replace("{a}", id));
+      setTrialForm({ tanggal: todayISO(), parameter: "", punchList: "", hasil: "Lolos", baRef: "" });
+      setShowTrial(false);
+    } catch (e) {
+      toast(e instanceof Error ? e.message : S.saveFail, "info");
+    }
   };
 
   const advanceTrial = async (t: StoreItem, hasil: string) => {
@@ -398,18 +436,24 @@ export default function ProjectDetail() {
       // E5: trial exit butuh Class Survey row yang ter-link ke trial ini.
       const linked = (data.surveys ?? []).some((s) => String(s.linkedTrial ?? "") === String(t.id));
       if (!linked) { toast(S.detToastSurvey, "info"); return; }
-      const bastId = nextBastId(String(t.tanggal ?? todayISO()));
-      await add("bast", {
-        id: bastId, projectId: pid, milestone: `Sea Trial - ${String(t.parameter ?? "")}`,
-        tanggal: String(t.tanggal ?? todayISO()), penandatangan: "", lampiran: String(t.punchList ?? ""),
-        amount: boqTotal, status: "Draft",
-      }, { action: "membuat BAST draft dari trial", target: `${bastId} ← ${String(t.id)}`, module: "Proyek" });
-      toast(S.detToastTrialPass.replace("{a}", bastId));
-    } else {
-      toast(S.detToastTrialMark.replace("{a}", String(t.id)).replace("{b}", hasil), "info");
     }
-    await update("trials", String(t.id), { hasil });
-    log("memperbarui hasil trial", `${String(t.id)} → ${hasil}`, "Proyek");
+    try {
+      if (hasil === "Lolos") {
+        const bastId = nextBastId(String(t.tanggal ?? todayISO()));
+        await add("bast", {
+          id: bastId, projectId: pid, milestone: `Sea Trial - ${String(t.parameter ?? "")}`,
+          tanggal: String(t.tanggal ?? todayISO()), penandatangan: "", lampiran: String(t.punchList ?? ""),
+          amount: boqTotal, status: "Draft",
+        }, { action: "membuat BAST draft dari trial", target: `${bastId} ← ${String(t.id)}`, module: "Proyek" });
+        toast(S.detToastTrialPass.replace("{a}", bastId));
+      } else {
+        toast(S.detToastTrialMark.replace("{a}", String(t.id)).replace("{b}", hasil), "info");
+      }
+      await update("trials", String(t.id), { hasil });
+      log("memperbarui hasil trial", `${String(t.id)} → ${hasil}`, "Proyek");
+    } catch (e) {
+      toast(e instanceof Error ? e.message : S.saveFail, "info");
+    }
   };
 
   // E7: QA gate + history otomatis saat Selesai.
@@ -419,19 +463,25 @@ export default function ProjectDetail() {
       if (openNcr.length > 0) { toast(S.detToastNcrOpen.replace("{n}", String(openNcr.length)), "info"); return; }
       const itpHold = (data.inspections ?? []).filter((i) => i.project === pid && i.status === "NCR");
       if (itpHold.length > 0) { toast(S.detToastItp.replace("{n}", String(itpHold.length)), "info"); return; }
-      const vsl = data.vessels.find((x) => x.name === project.vessel);
-      if (vsl) {
-        await update("vessels", vsl.id, {
-          history: [...(vsl.history ?? []), { date: todayISO(), event: `Proyek ${pid} selesai - serah terima`, type: "Delivery" }],
-          dockHistory: [...(vsl.dockHistory ?? []), { date: todayISO(), dock: "Galangan", scope: `Penyelesaian proyek ${pid}`, result: "Selesai", nextDue: todayISO() }],
-        });
-      }
-      log("menyelesaikan proyek + history kapal", `${pid} · ${project.vessel}`, "Proyek");
-    } else {
-      log("mengubah status", `${pid} → ${next}`, "Proyek");
     }
-    await update("projects", pid, { status: next });
-    toast(S.detToastStatus.replace("{a}", next));
+    try {
+      if (next === "Selesai" && project.status !== "Selesai") {
+        const vsl = data.vessels.find((x) => x.name === project.vessel);
+        if (vsl) {
+          await update("vessels", vsl.id, {
+            history: [...(vsl.history ?? []), { date: todayISO(), event: `Proyek ${pid} selesai - serah terima`, type: "Delivery" }],
+            dockHistory: [...(vsl.dockHistory ?? []), { date: todayISO(), dock: "Galangan", scope: `Penyelesaian proyek ${pid}`, result: "Selesai", nextDue: todayISO() }],
+          });
+        }
+        log("menyelesaikan proyek + history kapal", `${pid} · ${project.vessel}`, "Proyek");
+      } else {
+        log("mengubah status", `${pid} → ${next}`, "Proyek");
+      }
+      await update("projects", pid, { status: next });
+      toast(S.detToastStatus.replace("{a}", next));
+    } catch (e) {
+      toast(e instanceof Error ? e.message : S.saveFail, "info");
+    }
   };
 
   const saveScope = async () => {
@@ -474,12 +524,16 @@ export default function ProjectDetail() {
           }
         : w
     );
-    await setWbs(pid, updated);
-    await update("projects", pid, { progress: weightedProgress(updated) });
-    log("mengupdate progres WBS", `${wbsTaskUpdate} → ${prog}% (${status})`, "Proyek");
-    toast(S.detToastWbsProg);
-    setWbsTaskUpdate(null);
-    setWbsUpdateForm({ hours: "", material: "", status: "Sedang", progress: "", predecessor: "", station: "", photoNote: "", dft: "" });
+    try {
+      await setWbs(pid, updated);
+      await update("projects", pid, { progress: weightedProgress(updated) });
+      log("mengupdate progres WBS", `${wbsTaskUpdate} → ${prog}% (${status})`, "Proyek");
+      toast(S.detToastWbsProg);
+      setWbsTaskUpdate(null);
+      setWbsUpdateForm({ hours: "", material: "", status: "Sedang", progress: "", predecessor: "", station: "", photoNote: "", dft: "" });
+    } catch (e) {
+      toast(e instanceof Error ? e.message : S.saveFail, "info");
+    }
   };
 
   const saveWbs = async () => {
@@ -492,12 +546,16 @@ export default function ProjectDetail() {
     const next = [...wbs, { task: wbsForm.task.trim(), start: wbsForm.start || "-", end: wbsForm.end || "-", progress: Number(wbsForm.progress) || 0, weight, ...(pred ? { predecessor: pred } : {}) }];
     const totalW = next.reduce((s, w) => s + Number(w.weight || 0), 0);
     if (totalW !== 100) { toast(S.detToastWeightTotal.replace("{n}", String(totalW)), "info"); return; }
-    await setWbs(pid, next);
-    await update("projects", pid, { progress: weightedProgress(next) });
-    log("menambah tahapan WBS", `${pid} · ${wbsForm.task.trim()}`, "Proyek");
-    toast(S.detToastStageAdd);
-    setShowWbs(false);
-    setWbsForm({ task: "", start: "", end: "", weight: "10", progress: "0", predecessor: "" });
+    try {
+      await setWbs(pid, next);
+      await update("projects", pid, { progress: weightedProgress(next) });
+      log("menambah tahapan WBS", `${pid} · ${wbsForm.task.trim()}`, "Proyek");
+      toast(S.detToastStageAdd);
+      setShowWbs(false);
+      setWbsForm({ task: "", start: "", end: "", weight: "10", progress: "0", predecessor: "" });
+    } catch (e) {
+      toast(e instanceof Error ? e.message : S.saveFail, "info");
+    }
   };
 
   return (
@@ -807,7 +865,7 @@ export default function ProjectDetail() {
                       <p className="truncate text-sm font-semibold text-navy-900">{e.name}</p>
                       <p className="text-xs text-steel-500">{e.role} · {e.dept}</p>
                     </div>
-                    <button className="rounded p-1 text-rose-400 hover:bg-rose-50" title={S.detRemoveTitle} onClick={async () => { await setTeam(pid, teamIds.filter((t) => t !== e.id)); toast(S.detToastRemoved.replace("{a}", e.name), "info"); }}>
+                    <button className="rounded p-1 text-rose-400 hover:bg-rose-50" title={S.detRemoveTitle} onClick={async () => { try { await setTeam(pid, teamIds.filter((t) => t !== e.id)); toast(S.detToastRemoved.replace("{a}", e.name), "info"); } catch (err) { toast(err instanceof Error ? err.message : S.saveFail, "info"); } }}>
                       <Trash2 className="h-4 w-4" />
                     </button>
                   </Card>
@@ -832,8 +890,7 @@ export default function ProjectDetail() {
                     </div>
                     <div className="flex gap-2">
                       <button className="btn-secondary text-xs" aria-label={S.detExportAria.replace("{a}", d.title)} onClick={() => {
-                        exportExcel([["Field", "Value"], ["ID", d.id], ["Judul", d.title], ["Tipe", d.type], ["Proyek", pid], ["Versi", d.version], ["Status", d.status], ["Diperbarui", d.updated], ["Owner", d.owner]], `${d.id}-ringkasan`);
-                        toast(S.detToastExported.replace("{a}", d.id));
+                        void exportExcel([["Field", "Value"], ["ID", d.id], ["Judul", d.title], ["Tipe", d.type], ["Proyek", pid], ["Versi", d.version], ["Status", d.status], ["Diperbarui", d.updated], ["Owner", d.owner]], `${d.id}-ringkasan`).then(() => toast(S.detToastExported.replace("{a}", d.id))).catch(() => toast(S.saveFail, "info"));
                       }}><FileDown className="h-3.5 w-3.5" /> {S.excelBtn}</button>
                       <button className="btn-secondary text-xs" onClick={() => { setShareForm({ docId: String(d.id), to: "" }); setShowShare(true); }}>{S.detShareBtn}</button>
                       <StatusBadge status={d.status} />
@@ -1136,11 +1193,15 @@ export default function ProjectDetail() {
         footer={<><button className="btn-secondary" onClick={() => setShowShare(false)}>{S.cancelBtn}</button><button className="btn-primary" onClick={async () => {
           if (!shareForm.docId || !shareForm.to) { toast(S.detToastPickDoc, "info"); return; }
           const doc = docs.find((d: any) => d.id === shareForm.docId);
-          await update("documents", shareForm.docId, { sharedWith: [...(doc?.sharedWith ?? []), shareForm.to] });
-          log("berbagi dokumen dengan atasan", `${shareForm.docId} → ${shareForm.to}`, "Dokumen");
-          toast(S.detToastShared.replace("{a}", shareForm.to));
-          setShowShare(false);
-          setShareForm({ docId: "", to: "" });
+          try {
+            await update("documents", shareForm.docId, { sharedWith: [...(doc?.sharedWith ?? []), shareForm.to] });
+            log("berbagi dokumen dengan atasan", `${shareForm.docId} → ${shareForm.to}`, "Dokumen");
+            toast(S.detToastShared.replace("{a}", shareForm.to));
+            setShowShare(false);
+            setShareForm({ docId: "", to: "" });
+          } catch (e) {
+            toast(e instanceof Error ? e.message : S.saveFail, "info");
+          }
         }}>{S.detSendBtn}</button></>}>
         <FormGrid>
           <Field label={S.detDocField}>
@@ -1210,9 +1271,13 @@ export default function ProjectDetail() {
         footer={<><button className="btn-secondary" onClick={() => setShowTeam(false)}>{S.cancelBtn}</button><button className="btn-primary" onClick={async () => {
           if (!teamPick) { toast(S.detToastPickEmp, "info"); return; }
           if (teamIds.includes(teamPick)) { toast(S.detToastDupMember, "info"); return; }
-          await setTeam(pid, [...teamIds, teamPick]);
-          log("menambah anggota tim", `${pid} · ${data.employees.find((e) => e.id === teamPick)?.name}`, "Proyek");
-          toast(S.detToastMemberAdd); setShowTeam(false); setTeamPick("");
+          try {
+            await setTeam(pid, [...teamIds, teamPick]);
+            log("menambah anggota tim", `${pid} · ${data.employees.find((e) => e.id === teamPick)?.name}`, "Proyek");
+            toast(S.detToastMemberAdd); setShowTeam(false); setTeamPick("");
+          } catch (e) {
+            toast(e instanceof Error ? e.message : S.saveFail, "info");
+          }
         }}>{S.addBtn}</button></>}>
         <Field label={S.detEmployee}>
           <select className="input" value={teamPick} onChange={(e) => setTeamPick(e.target.value)}>
@@ -1228,9 +1293,13 @@ export default function ProjectDetail() {
       <Modal open={showDoc} onClose={() => setShowDoc(false)} title={S.detDocModal} subtitle={pid}
         footer={<><button className="btn-secondary" onClick={() => setShowDoc(false)}>{S.cancelBtn}</button><button className="btn-primary" onClick={async () => {
           if (!docTitle.trim()) { toast(S.detToastDocTitle, "info"); return; }
-          await add("documents", { title: docTitle.trim(), type: docType, project: pid, vessel: project.vessel, version: "v1.0", status: "Draft", updated: new Date().toISOString().slice(0, 10), owner: "Anda", sharedWith: [], approvalStatus: "Draft", fileName: docFile.trim() || "-" },
-            { action: "mengarsipkan dokumen", module: "Dokumen" });
-          toast(S.detToastDocAdd); setShowDoc(false); setDocTitle(""); setDocFile("");
+          try {
+            await add("documents", { title: docTitle.trim(), type: docType, project: pid, vessel: project.vessel, version: "v1.0", status: "Draft", updated: new Date().toISOString().slice(0, 10), owner: "Anda", sharedWith: [], approvalStatus: "Draft", fileName: docFile.trim() || "-" },
+              { action: "mengarsipkan dokumen", module: "Dokumen" });
+            toast(S.detToastDocAdd); setShowDoc(false); setDocTitle(""); setDocFile("");
+          } catch (e) {
+            toast(e instanceof Error ? e.message : S.saveFail, "info");
+          }
         }} >{S.saveBtn}</button></>}>
         <div className="space-y-3">
           <Field label={S.detDocTitleField}><input className="input" value={docTitle} onChange={(e) => setDocTitle(e.target.value)} /></Field>
@@ -1272,7 +1341,7 @@ export default function ProjectDetail() {
         }} />
       <ConfirmModal open={showDelBaseline} title={S.detDelBaseTitle} desc={S.detDelBaseDesc}
         confirmLabel={S.detConfirmDelete} danger onCancel={() => setShowDelBaseline(false)}
-        onConfirm={async () => { await update("projects", pid, { wbsBaseline: undefined }); log("menghapus baseline WBS", pid, "Proyek"); toast(S.detToastBaseDel, "info"); setShowDelBaseline(false); }} />
+        onConfirm={async () => { try { await update("projects", pid, { wbsBaseline: undefined }); log("menghapus baseline WBS", pid, "Proyek"); toast(S.detToastBaseDel, "info"); setShowDelBaseline(false); } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); } }} />
     </div>
   );
 }

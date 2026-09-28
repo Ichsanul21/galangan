@@ -624,27 +624,37 @@ export default function Inventory() {
     if (minWhMap[form.warehouse] !== undefined && minWhMap[form.warehouse] < 0) { toast(S.minWhInvalid, "info"); return; }
     if (editing) {
       /* Stok read-only di form edit - hanya field non-stok yang disimpan. */
-      await update("inventory", editing.id, {
-        name: form.name.trim(), category: form.category, sku: form.sku.trim(), warehouse: form.warehouse,
-        rack, bin, location: rack, minStock: numMin, unit: form.unit,
-        cost: numCost, volume: volume || 0, batch: form.batch.trim(),
-        uom2, konversi: konv, minStockByWarehouse: minWhMap, photoUrl: form.photoUrl.trim(),
-      });
-      toast(S.updatedId.replace("{n}", editing.id));
-      setEditing(null);
+      try {
+        await update("inventory", editing.id, {
+          name: form.name.trim(), category: form.category, sku: form.sku.trim(), warehouse: form.warehouse,
+          rack, bin, location: rack, minStock: numMin, unit: form.unit,
+          cost: numCost, volume: volume || 0, batch: form.batch.trim(),
+          uom2, konversi: konv, minStockByWarehouse: minWhMap, photoUrl: form.photoUrl.trim(),
+        });
+        toast(S.updatedId.replace("{n}", editing.id));
+        setEditing(null);
+      } catch (e) {
+        toast(e instanceof Error ? e.message : S.saveFail, "info");
+        return;
+      }
     } else {
       const stock = numStock;
       const batch = form.batch.trim();
-      const created = await add("inventory", {
-        name: form.name.trim(), category: form.category, sku: form.sku.trim(), warehouse: form.warehouse,
-        rack, bin, stock, minStock: numMin, unit: form.unit,
-        cost: numCost, location: rack, volume: volume || 0, batch,
-        uom2, konversi: konv, minStockByWarehouse: minWhMap, photoUrl: form.photoUrl.trim(), avgCost: 0,
-        batches: batch ? [{ batch, qty: stock, date: todayISO() }] : [],
-        reserved: [],
-      }, { action: "mendaftarkan material", module: "Inventori" });
-      toast(S.materialAdded.replace("{n}", created.id));
-      setShowAdd(false);
+      try {
+        const created = await add("inventory", {
+          name: form.name.trim(), category: form.category, sku: form.sku.trim(), warehouse: form.warehouse,
+          rack, bin, stock, minStock: numMin, unit: form.unit,
+          cost: numCost, location: rack, volume: volume || 0, batch,
+          uom2, konversi: konv, minStockByWarehouse: minWhMap, photoUrl: form.photoUrl.trim(), avgCost: 0,
+          batches: batch ? [{ batch, qty: stock, date: todayISO() }] : [],
+          reserved: [],
+        }, { action: "mendaftarkan material", module: "Inventori" });
+        toast(S.materialAdded.replace("{n}", created.id));
+        setShowAdd(false);
+      } catch (e) {
+        toast(e instanceof Error ? e.message : S.saveFail, "info");
+        return;
+      }
     }
     setForm(emptyForm);
   };
@@ -744,10 +754,14 @@ export default function Inventory() {
         && ["Draft", "Draf", "Menunggu Approval", "RFQ", "Diajukan"].includes(String(r.status))
     );
     if (open) { toast(S.prOpenExists.replace("{n}", itemName), "info"); return; }
-    const created = await add("requisitions", {
-      item: itemName, by: "System BOM", amount: Math.max(0, Math.round(estAmount)), status: "Draft",
-    }, { action: "membuat PR Draft (BOM)", target: `${itemName} × ${fmtJumlah(qtyKurang)}`, module: "Inventori" });
-    toast(S.prDraftMade.replace("{a}", created.id).replace("{b}", itemName).replace("{n}", fmtJumlah(qtyKurang)));
+    try {
+      const created = await add("requisitions", {
+        item: itemName, by: "System BOM", amount: Math.max(0, Math.round(estAmount)), status: "Draft",
+      }, { action: "membuat PR Draft (BOM)", target: `${itemName} × ${fmtJumlah(qtyKurang)}`, module: "Inventori" });
+      toast(S.prDraftMade.replace("{a}", created.id).replace("{b}", itemName).replace("{n}", fmtJumlah(qtyKurang)));
+    } catch (e) {
+      toast(e instanceof Error ? e.message : S.saveFail, "info");
+    }
   };
 
   const downloadTemplate = () => {
@@ -758,8 +772,7 @@ export default function Inventory() {
       ],
       "Template-Inventori",
       "Template"
-    );
-    toast(S.tplExcelDone);
+    ).then(() => toast(S.tplExcelDone)).catch(() => toast(S.saveFail, "info"));
   };
 
   const downloadCSV = (filename: string, headers: string[], example: (string | number)[]) => {
@@ -868,19 +881,23 @@ export default function Inventory() {
           avgMap[item.id] = newAvg;
           patch.avgCost = newAvg;
         }
-        await update("inventory", item.id, patch);
-        await add("movements", {
-          item: item.name, itemId: item.id, type: "Penerimaan", qty,
-          by: supplier ? `Impor IN ${date} · ${supplier}` : `Impor IN ${date}`,
-          batch: String(item.batch ?? ""), date, tone: "in",
-          supplier, priceExcl: price, tax, total, purpose, pic,
-          branch: moveBranch(`${purpose} ${supplier}`),
-        }, { action: "mengimpor GR", target: `${item.name} × ${qty}`, module: "Inventori" });
-        ok++;
+        try {
+          await update("inventory", item.id, patch);
+          await add("movements", {
+            item: item.name, itemId: item.id, type: "Penerimaan", qty,
+            by: supplier ? `Impor IN ${date} · ${supplier}` : `Impor IN ${date}`,
+            batch: String(item.batch ?? ""), date, tone: "in",
+            supplier, priceExcl: price, tax, total, purpose, pic,
+            branch: moveBranch(`${purpose} ${supplier}`),
+          }, { action: "mengimpor GR", target: `${item.name} × ${qty}`, module: "Inventori" });
+          ok++;
+        } catch (e) {
+          fails.push(e instanceof Error ? e.message : S.saveFail);
+        }
       }
       setImportReport([S.inOk.replace("{n}", String(ok)), ...fails]);
       toast(S.inDone.replace("{a}", String(ok)).replace("{b}", String(fails.length)));
-    });
+    }).catch((e) => toast(e instanceof Error ? e.message : S.saveFail, "info"));
   };
 
   const handleImportOUTFile = (file: File) => {
@@ -946,21 +963,25 @@ export default function Inventory() {
           if (rest > 0) nextRes.push({ project: r.project, qty: rest });
         }
         reservedMap[item.id] = nextRes;
-        await update("inventory", item.id, { stock: newStock, batches: nextBatches, reserved: nextRes });
-        if (newStock < Number(item.minStock || 0)) {
-          toast(S.warnBelowMinSimple.replace("{n}", item.name), "info");
+        try {
+          await update("inventory", item.id, { stock: newStock, batches: nextBatches, reserved: nextRes });
+          if (newStock < Number(item.minStock || 0)) {
+            toast(S.warnBelowMinSimple.replace("{n}", item.name), "info");
+          }
+          await add("movements", {
+            item: item.name, itemId: item.id, type: "Pengeluaran", qty,
+            by: ket || `${purpose} (Impor OUT)`, batch: String(item.batch ?? ""),
+            date, tone: "out", supplier: "", priceExcl: 0, tax: 0, total: 0, purpose, pic,
+            branch: moveBranch(`${purpose} ${ket}`),
+          }, { action: "mengimpor GI", target: `${item.name} × ${qty}`, module: "Inventori" });
+          ok++;
+        } catch (e) {
+          fails.push(e instanceof Error ? e.message : S.saveFail);
         }
-        await add("movements", {
-          item: item.name, itemId: item.id, type: "Pengeluaran", qty,
-          by: ket || `${purpose} (Impor OUT)`, batch: String(item.batch ?? ""),
-          date, tone: "out", supplier: "", priceExcl: 0, tax: 0, total: 0, purpose, pic,
-          branch: moveBranch(`${purpose} ${ket}`),
-        }, { action: "mengimpor GI", target: `${item.name} × ${qty}`, module: "Inventori" });
-        ok++;
       }
       setImportReport([S.outOk.replace("{n}", String(ok)), ...fails]);
       toast(S.outDone.replace("{a}", String(ok)).replace("{b}", String(fails.length)));
-    });
+    }).catch((e) => toast(e instanceof Error ? e.message : S.saveFail, "info"));
   };
 
   /* Impor CSV manual: parse koma, validasi SKU unik, laporan gagal per baris. */
@@ -984,18 +1005,22 @@ export default function Inventory() {
         if ((c[7] ?? "") !== "" && (Number.isNaN(Number(c[7])) || Number(c[7]) < 0)) { fails.push(S.rowPrice.replace("{a}", String(rowNo))); continue; }
         if (!c[3]) { fails.push(S.rowWh.replace("{a}", String(rowNo))); continue; }
         skuSeen.add(sku.toLowerCase());
-        await add("inventory", {
-          name: nama, sku, category: c[2] || "Lainnya", warehouse: c[3],
-          stock: Number(c[4]) || 0, minStock: Number(c[5]) || 0, unit: c[6] || "pcs",
-          cost: Number(c[7]) || 0, rack: c[8] || "", bin: (c[9] ?? "").trim(), location: c[8] || "",
-          volume: 0, batch: "", batches: [], reserved: [],
-          uom2: "", konversi: 0, minStockByWarehouse: {}, photoUrl: "", avgCost: 0,
-        }, { action: "mengimpor material", module: "Inventori" });
-        ok++;
+        try {
+          await add("inventory", {
+            name: nama, sku, category: c[2] || "Lainnya", warehouse: c[3],
+            stock: Number(c[4]) || 0, minStock: Number(c[5]) || 0, unit: c[6] || "pcs",
+            cost: Number(c[7]) || 0, rack: c[8] || "", bin: (c[9] ?? "").trim(), location: c[8] || "",
+            volume: 0, batch: "", batches: [], reserved: [],
+            uom2: "", konversi: 0, minStockByWarehouse: {}, photoUrl: "", avgCost: 0,
+          }, { action: "mengimpor material", module: "Inventori" });
+          ok++;
+        } catch (e) {
+          fails.push(e instanceof Error ? e.message : S.saveFail);
+        }
       }
       setImportReport([S.importOk.replace("{n}", String(ok)), ...fails]);
       toast(S.importDone.replace("{a}", String(ok)).replace("{b}", String(fails.length)));
-    });
+    }).catch((e) => toast(e instanceof Error ? e.message : S.saveFail, "info"));
   };
 
   const saveOpname = async () => {
@@ -1075,12 +1100,16 @@ export default function Inventory() {
     const next = same
       ? cur.map((r) => (r.project === reservProject ? { project: r.project, qty: Number(r.qty) + qty } : r))
       : [...cur, { project: reservProject, qty }];
-    await update("inventory", fresh.id, { reserved: next });
-    log("reservasi stok", `${fresh.name} × ${qty} untuk ${reservProject}`, "Inventori");
-    toast(S.reservSaved.replace("{a}", fresh.name).replace("{n}", String(qty)).replace("{b}", reservProject));
-    setReservTarget(null);
-    setReservProject("");
-    setReservQtyInput("");
+    try {
+      await update("inventory", fresh.id, { reserved: next });
+      log("reservasi stok", `${fresh.name} × ${qty} untuk ${reservProject}`, "Inventori");
+      toast(S.reservSaved.replace("{a}", fresh.name).replace("{n}", String(qty)).replace("{b}", reservProject));
+      setReservTarget(null);
+      setReservProject("");
+      setReservQtyInput("");
+    } catch (e) {
+      toast(e instanceof Error ? e.message : S.saveFail, "info");
+    }
   };
 
   const openPick = () => {
@@ -1470,13 +1499,17 @@ export default function Inventory() {
                   <button className="btn-secondary w-full justify-center text-xs" onClick={async () => {
                     const kg = sbTonasePlat(Number(tonP) || 0, Number(tonL) || 0, Number(tonT) || 0, Number(tonPcs) || 0);
                     if (kg <= 0) { toast(S.dimsInvalid, "info"); return; }
-                    await add("inventory", {
-                      name: `Plat ${tonT}mm ${tonP}x${tonL}`, category: "Baja", sku: `PLAT-${tonT}-${tonP}X${tonL}-${Date.now().toString(36).toUpperCase()}`,
-                      warehouse: "Gudang Baja A", rack: "", bin: "", stock: Number(tonPcs) || 0, minStock: 0, unit: "lbr",
-                      cost: 0, location: "", volume: kg, batch: "", uom2: "kg", konversi: kg / Math.max(1, Number(tonPcs) || 1),
-                      minStockByWarehouse: {}, photoUrl: "", avgCost: 0, batches: [], reserved: [],
-                    }, { action: "mendaftarkan plat dari kalkulator tonase", module: "Inventori" });
-                    toast(S.plateAdded.replace("{a}", tonT).replace("{b}", String(kg)));
+                    try {
+                      await add("inventory", {
+                        name: `Plat ${tonT}mm ${tonP}x${tonL}`, category: "Baja", sku: `PLAT-${tonT}-${tonP}X${tonL}-${Date.now().toString(36).toUpperCase()}`,
+                        warehouse: "Gudang Baja A", rack: "", bin: "", stock: Number(tonPcs) || 0, minStock: 0, unit: "lbr",
+                        cost: 0, location: "", volume: kg, batch: "", uom2: "kg", konversi: kg / Math.max(1, Number(tonPcs) || 1),
+                        minStockByWarehouse: {}, photoUrl: "", avgCost: 0, batches: [], reserved: [],
+                      }, { action: "mendaftarkan plat dari kalkulator tonase", module: "Inventori" });
+                      toast(S.plateAdded.replace("{a}", tonT).replace("{b}", String(kg)));
+                    } catch (e) {
+                      toast(e instanceof Error ? e.message : S.saveFail, "info");
+                    }
                   }}>
                     {S.btnToCatalog}
                   </button>
@@ -1510,24 +1543,28 @@ export default function Inventory() {
                     if (!sjTo.trim() || items.length === 0) { toast(S.sjNeedDest, "info"); return; }
                     const seq = nextSjSeq();
                     const no = sbSjNumber(seq, sjYearOf(sjDate));
-                    await add("documents", {
-                      id: `SJ-SMD-${sjYearOf(sjDate)}-${String(seq).padStart(3, "0")}`,
-                      title: `Surat Jalan ke ${sjTo.trim()}`, type: "Surat Jalan", project: "-", vessel: sjTo.trim(),
-                      owner: sjGiver.trim() || "Anda", sbRef: no, sjDate, sjVehicle: sjVehicle.trim(), sjPlate: sjPlate.trim(),
-                      sjDriver: sjDriver.trim(), sjItems: items, sjReceiver: sjReceiver.trim(), sjGiver: sjGiver.trim(),
-                      version: "v1.0", status: "Berlaku", updated: todayISO(), archived: false, docCopy: "Terkendali",
-                      related: [], revisions: [{ version: "v1.0", at: todayISO(), by: sjGiver.trim() || "Anda", note: "Surat jalan diterbitkan" }],
-                    }, { action: "menerbitkan surat jalan", target: no, module: "Inventori" });
-                    void exportExcel([
-                      [SB_KOP.line1, SB_KOP.name], [SB_KOP.hq, `HP ${SB_KOP.hp}`], [],
-                      ["SURAT JALAN", `NO REF: ${no}`], ["Tanggal", sjDate], ["Tujuan", sjTo.trim()],
-                      ["Kendaraan", sjVehicle.trim()], ["No. Polisi", sjPlate.trim()], ["Driver", sjDriver.trim()], [],
-                      ["No", "Nama Barang", "Jumlah"], ...items.map((x, i) => [i + 1, x.name.trim(), x.qty.trim()]), [],
-                      ["Yang Menerima", "Yang Menyerahkan"], [sjReceiver.trim(), sjGiver.trim()],
-                    ], `SJ-${no.replaceAll("/", "-")}`, "Surat Jalan");
-                    toast(S.sjIssued.replace("{n}", no));
-                    setSjTo(""); setSjVehicle(""); setSjPlate(""); setSjDriver("");
-                    setSjItems([{ name: "", qty: "" }]); setSjReceiver(""); setSjGiver("");
+                    try {
+                      await add("documents", {
+                        id: `SJ-SMD-${sjYearOf(sjDate)}-${String(seq).padStart(3, "0")}`,
+                        title: `Surat Jalan ke ${sjTo.trim()}`, type: "Surat Jalan", project: "-", vessel: sjTo.trim(),
+                        owner: sjGiver.trim() || "Anda", sbRef: no, sjDate, sjVehicle: sjVehicle.trim(), sjPlate: sjPlate.trim(),
+                        sjDriver: sjDriver.trim(), sjItems: items, sjReceiver: sjReceiver.trim(), sjGiver: sjGiver.trim(),
+                        version: "v1.0", status: "Berlaku", updated: todayISO(), archived: false, docCopy: "Terkendali",
+                        related: [], revisions: [{ version: "v1.0", at: todayISO(), by: sjGiver.trim() || "Anda", note: "Surat jalan diterbitkan" }],
+                      }, { action: "menerbitkan surat jalan", target: no, module: "Inventori" });
+                      void exportExcel([
+                        [SB_KOP.line1, SB_KOP.name], [SB_KOP.hq, `HP ${SB_KOP.hp}`], [],
+                        ["SURAT JALAN", `NO REF: ${no}`], ["Tanggal", sjDate], ["Tujuan", sjTo.trim()],
+                        ["Kendaraan", sjVehicle.trim()], ["No. Polisi", sjPlate.trim()], ["Driver", sjDriver.trim()], [],
+                        ["No", "Nama Barang", "Jumlah"], ...items.map((x, i) => [i + 1, x.name.trim(), x.qty.trim()]), [],
+                        ["Yang Menerima", "Yang Menyerahkan"], [sjReceiver.trim(), sjGiver.trim()],
+                      ], `SJ-${no.replaceAll("/", "-")}`, "Surat Jalan").catch(() => toast(S.saveFail, "info"));
+                      toast(S.sjIssued.replace("{n}", no));
+                      setSjTo(""); setSjVehicle(""); setSjPlate(""); setSjDriver("");
+                      setSjItems([{ name: "", qty: "" }]); setSjReceiver(""); setSjGiver("");
+                    } catch (e) {
+                      toast(e instanceof Error ? e.message : S.saveFail, "info");
+                    }
                   }}>
                     {S.issueBtn}
                   </button>
@@ -1562,27 +1599,31 @@ export default function Inventory() {
                     const seq = nextTtSeq();
                     const no = sbTtNumber(seq, sjYearOf(ttDate));
                     const sj = sjDocs.find((d) => String(d.id) === ttSjId);
-                    await add("documents", {
-                      id: `TT-SMD-${sjYearOf(ttDate)}-${String(seq).padStart(3, "0")}`,
-                      title: `Tanda Terima ${sj ? `(${String(sj.sbRef || sj.id)})` : ""}`.trim() || "Tanda Terima",
-                      type: "Tanda Terima", project: "-", vessel: "-",
-                      owner: ttGiver.trim() || "Anda", sbRef: no,
-                      ttDate, ttSjId: ttSjId || "", ttItems: items,
-                      ttReceiver: ttReceiver.trim(), ttGiver: ttGiver.trim(),
-                      version: "v1.0", status: "Berlaku", updated: todayISO(), archived: false, docCopy: "Terkendali",
-                      related: ttSjId ? [ttSjId] : [],
-                      revisions: [{ version: "v1.0", at: todayISO(), by: ttGiver.trim() || "Anda", note: "Tanda terima diterbitkan" }],
-                    }, { action: "menerbitkan tanda terima", target: no, module: "Inventori" });
-                    void exportExcel([
-                      [SB_KOP.line1, SB_KOP.name], [SB_KOP.hq, `HP ${SB_KOP.hp}`], [],
-                      ["TANDA TERIMA", `NO REF: ${no}`], ["Tanggal", ttDate],
-                      ["Surat Jalan", sj ? String(sj.sbRef || sj.id) : "-"], [],
-                      ["No", "Nama Barang", "Jumlah"], ...items.map((x, i) => [i + 1, x.name.trim(), x.qty.trim()]), [],
-                      ["Yang Menerima", "Yang Menyerahkan"], [ttReceiver.trim(), ttGiver.trim()],
-                    ], `TT-${no.replaceAll("/", "-")}`, "Tanda Terima");
-                    toast(S.ttIssued.replace("{n}", no));
-                    setTtDate(todayISO()); setTtSjId("");
-                    setTtItems([{ name: "", qty: "" }]); setTtReceiver(""); setTtGiver("");
+                    try {
+                      await add("documents", {
+                        id: `TT-SMD-${sjYearOf(ttDate)}-${String(seq).padStart(3, "0")}`,
+                        title: `Tanda Terima ${sj ? `(${String(sj.sbRef || sj.id)})` : ""}`.trim() || "Tanda Terima",
+                        type: "Tanda Terima", project: "-", vessel: "-",
+                        owner: ttGiver.trim() || "Anda", sbRef: no,
+                        ttDate, ttSjId: ttSjId || "", ttItems: items,
+                        ttReceiver: ttReceiver.trim(), ttGiver: ttGiver.trim(),
+                        version: "v1.0", status: "Berlaku", updated: todayISO(), archived: false, docCopy: "Terkendali",
+                        related: ttSjId ? [ttSjId] : [],
+                        revisions: [{ version: "v1.0", at: todayISO(), by: ttGiver.trim() || "Anda", note: "Tanda terima diterbitkan" }],
+                      }, { action: "menerbitkan tanda terima", target: no, module: "Inventori" });
+                      void exportExcel([
+                        [SB_KOP.line1, SB_KOP.name], [SB_KOP.hq, `HP ${SB_KOP.hp}`], [],
+                        ["TANDA TERIMA", `NO REF: ${no}`], ["Tanggal", ttDate],
+                        ["Surat Jalan", sj ? String(sj.sbRef || sj.id) : "-"], [],
+                        ["No", "Nama Barang", "Jumlah"], ...items.map((x, i) => [i + 1, x.name.trim(), x.qty.trim()]), [],
+                        ["Yang Menerima", "Yang Menyerahkan"], [ttReceiver.trim(), ttGiver.trim()],
+                      ], `TT-${no.replaceAll("/", "-")}`, "Tanda Terima").catch(() => toast(S.saveFail, "info"));
+                      toast(S.ttIssued.replace("{n}", no));
+                      setTtDate(todayISO()); setTtSjId("");
+                      setTtItems([{ name: "", qty: "" }]); setTtReceiver(""); setTtGiver("");
+                    } catch (e) {
+                      toast(e instanceof Error ? e.message : S.saveFail, "info");
+                    }
                   }}>
                     {S.issueBtn}
                   </button>

@@ -188,6 +188,7 @@ export default function Vessels() {
   const slotCountFor = (name: string) => data.dockSlots.filter((s) => vesselMatch(s.vessel, name)).length;
 
   const save = async () => {
+    try {
     const err = validateForm(form, vessels, undefined, S);
     if (err) { toast(err, "info"); return; }
     const dimsZero = [form.loa, form.beam, form.draft, form.bollard].some((n) => Number(n) <= 0);
@@ -201,6 +202,7 @@ export default function Vessels() {
     toast(warnZero ? S.vsRegisteredZero.replace("{a}", created.id) : S.vsRegistered.replace("{a}", created.id));
     setShowAdd(false);
     setForm(emptyForm);
+    } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); }
   };
 
   const openEdit = (v: StoreItem) => {
@@ -209,12 +211,14 @@ export default function Vessels() {
   };
 
   const saveEdit = async () => {
+    try {
     if (!editingId) return;
     const err = validateForm(editForm, vessels, editingId, S);
     if (err) { toast(err, "info"); return; }
     await update("vessels", editingId, formToPayload(editForm));
     toast(S.vsUpdated);
     setEditingId(null);
+    } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); }
   };
 
   const renderFormFields = (f: VesselForm, setF: (v: VesselForm) => void) => (

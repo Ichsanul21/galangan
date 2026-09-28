@@ -2,6 +2,7 @@ export const n_prj = {
   id: {
     cancelBtn: "Batal",
     saveBtn: "Simpan",
+    saveFail: "Gagal menyimpan",
     addBtn: "Tambah",
     filterAll: "Semua",
     searchProjectPh: "Cari kapal / kode proyek...",
@@ -580,6 +581,7 @@ export const n_prj = {
   en: {
     cancelBtn: "Cancel",
     saveBtn: "Save",
+    saveFail: "Failed to save",
     addBtn: "Add",
     filterAll: "All",
     searchProjectPh: "Search vessel / project code...",

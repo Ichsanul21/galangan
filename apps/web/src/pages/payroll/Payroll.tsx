@@ -385,14 +385,14 @@ export default function Payroll() {
     return { allowTotal, bruto, pph21, bpjsKesKar, bpjsKesPer, bpjsTkKar, deductions, net };
   };
 
-  const generate = () => {
+  const generate = async () => {
     const existing = new Set(gajiRows.map((p) => String(p.employeeId)));
     const fresh = activeEmps.filter((e) => !existing.has(e.id));
     if (fresh.length === 0) {
       toast(S.tAllDrafted, "info");
       return;
     }
-    fresh.forEach(async (e) => {
+    for (const e of fresh) {
       const basic = Number(e.basic || 0);
       const lines = normAllowances(e.allowances);
       if (lines.length === 0) lines.push({ label: "Tunjangan", amount: 0 });
@@ -429,7 +429,7 @@ export default function Payroll() {
           await update("employees", e.id, { kasbon: next });
         }
         const c = buildComponents(e, basic, lines, overtimePay, unpaidPot, kasbonPot, hadirDays);
-        await add(
+    await add(
           "payroll",
           {
             employeeId: e.id,
@@ -457,7 +457,7 @@ export default function Payroll() {
       } catch {
         toast(S.tGenFail.replace("{a}", String(e.name ?? e.id)), "info");
       }
-    });
+    }
     log("generate payroll", `${period} · ${fresh.length} draft`, "Payroll");
     toast(S.tDraftsMade.replace("{n}", String(fresh.length)).replace("{a}", fmtBulan(period)));
   };
@@ -486,10 +486,12 @@ export default function Payroll() {
       setConfirmAdv(null);
       return;
     }
+    try {
     await update("payroll", confirmAdv.id, { status: next });
     log("memproses payroll", `${confirmAdv.id} ${confirmAdv.status} → ${next}`, "Payroll");
     toast(S.movedTo.replace("{a}", String(confirmAdv.id)).replace("{b}", next));
     setConfirmAdv(null);
+    } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); }
   };
 
   const openEdit = (p: StoreItem) => {
@@ -525,6 +527,7 @@ export default function Payroll() {
     const kasbonPot = Number(editTarget.kasbonPot || 0);
     const hadirDays = Number(editTarget.hadirDays ?? 0);
     const c = buildComponents(emp, basic, lines, overtimePay, manualDed, kasbonPot, hadirDays);
+    try {
     await update("payroll", editTarget.id, {
       basic,
       allowances: lines,
@@ -538,6 +541,7 @@ export default function Payroll() {
     });
     toast(S.tUpdated.replace("{a}", String(editTarget.id)).replace("{b}", fmtRupiah(c.net)));
     setEditTarget(null);
+    } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); }
   };
 
   const confirmPay = async () => {
@@ -588,14 +592,15 @@ export default function Payroll() {
   };
 
   /* ---------- THR ---------- */
-  const generateTHR = () => {
+  const generateTHR = async () => {
     const existing = new Set(thrRows.map((p) => String(p.employeeId)));
     const fresh = activeEmps.filter((e) => !existing.has(e.id));
     if (fresh.length === 0) {
       toast(S.tThrDone, "info");
       return;
     }
-    fresh.forEach(async (e) => {
+    for (const e of fresh) {
+      try {
       const basic = Number(e.basic || 0);
       const allowAvg = sumAllowances(e.allowances);
       const n = monthsWorked(String(e.join ?? ""), period);
@@ -625,7 +630,8 @@ export default function Payroll() {
         },
         undefined,
       );
-    });
+      } catch (err) { toast(err instanceof Error ? err.message : S.saveFail, "info"); }
+    }
     log("hitung THR", `${period} · ${fresh.length} penerima`, "Payroll");
     toast(S.tThrMade.replace("{n}", String(fresh.length)).replace("{a}", fmtBulan(period)));
   };
@@ -643,6 +649,7 @@ export default function Payroll() {
     }
     const bonusBase = Number(emp.basic || 0) + sumAllowances(emp.allowances);
     const pphBonus = calcPphIrregular(bonusBase, nominal, emp, rates);
+    try {
     await add(
       "payroll",
       {
@@ -668,6 +675,7 @@ export default function Payroll() {
     );
     toast(S.tBonusSaved.replace("{a}", fmtRupiah(nominal)).replace("{b}", String(emp.name)));
     setBonusForm({ employeeId: "", nominal: "", keterangan: "" });
+    } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); }
   };
 
   /* ---------- kasbon ---------- */
@@ -698,16 +706,20 @@ export default function Payroll() {
       cicilan: Math.round(cicilan),
       sisa: Math.round(jumlah),
     };
+    try {
     await update("employees", emp.id, { kasbon: [...normKasbon(emp), entry] });
     log("mencatat kasbon", `${entry.id} · ${emp.name} · ${fmtRupiah(entry.jumlah)}`, "Payroll");
     toast(S.tKasbonSaved.replace("{a}", fmtRupiah(entry.jumlah)).replace("{b}", String(emp.name)));
     setKasbonForm({ employeeId: "", tanggal: todayISO(), jumlah: "", cicilan: "" });
+    } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); }
   };
 
   const removeKasbon = async (emp: StoreItem, kasbonId: string) => {
+    try {
     await update("employees", emp.id, { kasbon: normKasbon(emp).filter((k) => k.id !== kasbonId) });
     log("menghapus kasbon", `${kasbonId} · ${emp.name}`, "Payroll");
     toast(S.tKasbonDeleted.replace("{a}", kasbonId));
+    } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); }
   };
 
   /* ---------- export ---------- */
@@ -763,10 +775,12 @@ export default function Payroll() {
       toast(S.tReceiveDateReq, "info");
       return;
     }
+    try {
     await update("payroll", slipTarget.id, { slipSign: { received: slipSign.received, date: slipSign.received ? slipSign.date : "" } });
     log("tanda terima slip", `${slipTarget.id} · ${slipSign.received ? `diterima ${slipSign.date}` : "belum diterima"}`, "Payroll");
     toast(S.tSignSaved.replace("{a}", String(slipTarget.id)));
     setSlipTarget(null);
+    } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); }
   };
 
   const exportSlip = (p: StoreItem) => {

@@ -100,26 +100,34 @@ export default function BomDetail() {
     const next = same
       ? cur.map((r) => (r.project === reservProject ? { project: r.project, qty: Number(r.qty) + qty } : r))
       : [...cur, { project: reservProject, qty }];
-    await update("inventory", item.id, { reserved: next });
-    log("reservasi stok", `${item.name} × ${qty} untuk ${reservProject}`, "Inventori");
-    toast(S.reservSaved.replace("{a}", item.name).replace("{n}", String(qty)).replace("{b}", reservProject));
-    setShowReserv(false);
-    setReservProject("");
-    setReservQtyInput("");
+    try {
+      await update("inventory", item.id, { reserved: next });
+      log("reservasi stok", `${item.name} × ${qty} untuk ${reservProject}`, "Inventori");
+      toast(S.reservSaved.replace("{a}", item.name).replace("{n}", String(qty)).replace("{b}", reservProject));
+      setShowReserv(false);
+      setReservProject("");
+      setReservQtyInput("");
+    } catch (e) {
+      toast(e instanceof Error ? e.message : S.saveFail, "info");
+    }
   };
 
   const saveOpname = async () => {
     if (opCount === "" || Number.isNaN(Number(opCount)) || Number(opCount) < 0) { toast(S.opInvalid, "info"); return; }
     const selisih = Number(opCount) - Number(item.stock);
     if (selisih === 0) { toast(S.opNoDiff, "info"); return; }
-    await update("inventory", item.id, { stock: Number(opCount) });
-    await add("movements", {
-      item: item.name, itemId: item.id, type: "Selisih Opname", qty: selisih,
-      by: `Opname ${todayISO()}`, date: todayISO(), tone: selisih > 0 ? "in" : "out",
-    }, { action: "stok opname", target: `${item.name}: selisih ${selisih > 0 ? "+" : ""}${selisih}`, module: "Inventori" });
-    toast(S.opSavedSimple.replace("{a}", selisih > 0 ? "+" : "").replace("{b}", String(selisih)));
-    setShowOpname(false);
-    setOpCount("");
+    try {
+      await update("inventory", item.id, { stock: Number(opCount) });
+      await add("movements", {
+        item: item.name, itemId: item.id, type: "Selisih Opname", qty: selisih,
+        by: `Opname ${todayISO()}`, date: todayISO(), tone: selisih > 0 ? "in" : "out",
+      }, { action: "stok opname", target: `${item.name}: selisih ${selisih > 0 ? "+" : ""}${selisih}`, module: "Inventori" });
+      toast(S.opSavedSimple.replace("{a}", selisih > 0 ? "+" : "").replace("{b}", String(selisih)));
+      setShowOpname(false);
+      setOpCount("");
+    } catch (e) {
+      toast(e instanceof Error ? e.message : S.opFailed.replace("{n}", item.name), "info");
+    }
   };
 
   return (

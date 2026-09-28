@@ -237,6 +237,7 @@ export default function EquipmentPage() {
   }, [eqQ, eqStatus, eqCat, tab]);
 
   const saveAdd = async () => {
+    try {
     if (!form.name.trim() || !form.code.trim()) { toast(S.eqReqNameCode, "info"); return; }
     const code = form.code.trim().toUpperCase();
     if (!/^[A-Z0-9-]{3,20}$/.test(code)) { toast(S.eqCodeFormat, "info"); return; }
@@ -263,9 +264,11 @@ export default function EquipmentPage() {
     toast(S.eqAdded.replace("{a}", created.id));
     setShowAdd(false);
     setForm({ name: "", category: "Pengangkat", code: "", serial: "", branch: "Samarinda", model: "", pic: "", util: "50", rate: "", fuelPrice: "0", acquisitionCost: "", usefulLife: "" });
+    } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); }
   };
 
   const saveService = async () => {
+    try {
     if (!svcTarget || !svcDate) { toast(S.eqSvcReq, "info"); return; }
     const target = equipment.find((e) => e.id === svcTarget);
     await update("equipment", svcTarget, { nextService: svcDate });
@@ -274,6 +277,7 @@ export default function EquipmentPage() {
     setShowService(false);
     setSvcDate("");
     setSvcTarget("");
+    } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); }
   };
 
   const openRecord = (eq: StoreItem) => {
@@ -282,6 +286,7 @@ export default function EquipmentPage() {
   };
 
   const saveRecord = async () => {
+    try {
     if (!recording) return;
     if (!woForm.tanggal || !woForm.teknisi.trim() || !woForm.hours) { toast(S.eqRecordReq, "info"); return; }
     const hours = Number(woForm.hours);
@@ -294,9 +299,11 @@ export default function EquipmentPage() {
     log("mencatat servis", `${recording.name} · ${fmtTanggal(woForm.tanggal)}${woForm.catatan.trim() ? ` · ${woForm.catatan.trim()}` : ""}`, "Equipment");
     toast(S.eqSvcRecorded.replace("{a}", recording.name));
     setRecording(null);
+    } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); }
   };
 
   const startMaintenance = async () => {
+    try {
     if (!maintaining) return;
     if (!maintNote.trim() || !maintEta) { toast(S.eqMaintReq, "info"); return; }
     await update("equipment", maintaining.id, { status: "Maintenance", maintenanceNote: maintNote.trim(), maintenanceEta: maintEta });
@@ -305,12 +312,15 @@ export default function EquipmentPage() {
     setMaintaining(null);
     setMaintNote("");
     setMaintEta("");
+    } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); }
   };
 
   const endMaintenance = async (eq: StoreItem) => {
+    try {
     await update("equipment", eq.id, { status: "Tersedia", maintenanceNote: "", maintenanceEta: "" });
     log("menyelesaikan maintenance", eq.name, "Equipment");
     toast(S.eqBackAvail.replace("{a}", eq.name));
+    } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); }
   };
 
   const clashOf = (equip: string, date: string, a: number, b: number): StoreItem[] =>
@@ -409,6 +419,7 @@ export default function EquipmentPage() {
   };
 
   const confirmFinish = async () => {
+    try {
     if (!finishing) return;
     const hours = Number(finishHours);
     if (!Number.isFinite(hours) || hours <= 0) { toast(S.eqHoursPositive, "info"); return; }
@@ -431,9 +442,11 @@ export default function EquipmentPage() {
     setFinishHours("");
     setFinishDowntime("0");
     setFinishFuel("0");
+    } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); }
   };
 
   const saveCalibration = async () => {
+    try {
     if (!calForm.equipmentId || !calForm.item.trim() || !calForm.due) { toast(S.eqCalReq, "info"); return; }
     if (calForm.due < today) { toast(S.eqCalPast, "info"); return; }
     const dupe = calibrations.some((c) => c.equipmentId === calForm.equipmentId && String(c.item).toLowerCase() === calForm.item.trim().toLowerCase() && c.status !== "Selesai");
@@ -445,9 +458,11 @@ export default function EquipmentPage() {
     toast(S.eqCalScheduled.replace("{a}", created.id));
     setShowCal(false);
     setCalForm({ equipmentId: "", item: "", due: "" });
+    } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); }
   };
 
   const confirmCalFinish = async () => {
+    try {
     if (!finishingCal) return;
     if (!calCert.trim()) { toast(S.eqCertReq, "info"); return; }
     await update("calibrations", finishingCal.id, { status: "Selesai", cert: calCert.trim() });
@@ -455,6 +470,7 @@ export default function EquipmentPage() {
     toast(S.eqCalDone.replace("{a}", finishingCal.id));
     setFinishingCal(null);
     setCalCert("");
+    } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); }
   };
 
   const exportCost = () => {
@@ -463,7 +479,7 @@ export default function EquipmentPage() {
         ...costRows.map(([proj, v]) => [proj, v.hours, v.downtime, v.cost])],
       `Biaya-Equipment-${today}`,
       "Biaya",
-    );
+    ).catch(() => toast(S.saveFail, "info"));
     toast(S.eqCostExported);
   };
 
@@ -478,7 +494,7 @@ export default function EquipmentPage() {
         })],
       `Register-Aset-Equipment-${today}`,
       "Register",
-    );
+    ).catch(() => toast(S.saveFail, "info"));
     toast(S.eqRegisterExported);
   };
 

@@ -142,19 +142,23 @@ export default function CRM() {
   const globalSatisfaction = allSurveys.length > 0 ? allSurveys.reduce((s, v) => s + v, 0) / allSurveys.length : 0;
 
   const advance = async (q: StoreItem) => {
+    try {
     const idx = FLOW.indexOf(String(q.stage));
     if (idx < 0 || idx >= FLOW.length - 1) return;
     const next = FLOW[idx + 1];
     await update("quotations", q.id, { stage: next });
     log(`memajukan quotation ke ${next}`, q.id, "CRM");
     toast(S.tAdvanced.replace("{a}", q.id).replace("{b}", next));
+    } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); }
   };
 
   const markTerminal = async (q: StoreItem, stage: "Batal" | "Kalah") => {
+    try {
     if (isTerminal(String(q.stage))) return;
     await update("quotations", q.id, { stage });
     log(`memindahkan quotation ke ${stage}`, q.id, "CRM");
     toast(S.markedAs.replace("{a}", q.id).replace("{b}", stage), "info");
+    } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); }
   };
 
   const confirmConvert = async () => {
@@ -191,15 +195,18 @@ export default function CRM() {
   };
 
   const confirmSend = async () => {
+    try {
     if (!sendTarget) return;
     if (!sendEmail.includes("@")) { toast(S.emailInvalid, "info"); return; }
     await update("quotations", sendTarget.id, { statusKirim: "Terkirim", sentAt: todayISO(), sentTo: sendEmail.trim() });
     log(`mengirim penawaran ke ${sendEmail.trim()}`, sendTarget.id, "CRM");
     toast(S.tSentTo.replace("{a}", sendTarget.id).replace("{b}", sendEmail.trim()));
     setSendTarget(null);
+    } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); }
   };
 
   const saveQuotation = async () => {
+    try {
     if (!qForm.client || !qForm.vessel.trim()) { toast(S.tClientVesselRequired, "info"); return; }
     if (!qForm.date) { toast(S.quoteDateToast, "info"); return; }
     if (num(qForm.value) <= 0) { toast(S.tQuoteValuePositive, "info"); return; }
@@ -210,9 +217,11 @@ export default function CRM() {
     toast(S.tQuoteCreated.replace("{n}", created.id));
     setShowQ(false);
     setQForm({ client: "", vessel: "", type: "New Build", value: "", stage: "Lead", date: todayISO() });
+    } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); }
   };
 
   const saveComm = async () => {
+    try {
     if (!commForm.quotationId) { toast(S.tPickQuoteFirst, "info"); return; }
     if (!commForm.date) { toast(S.dateRequired, "info"); return; }
     if (!commForm.summary.trim()) { toast(S.summaryRequired, "info"); return; }
@@ -225,9 +234,11 @@ export default function CRM() {
     }, { action: "mencatat komunikasi", target: commForm.quotationId, module: "CRM" });
     toast(S.commLogged.replace("{n}", created.id));
     setCommForm({ quotationId: "", channel: "Email", date: todayISO(), summary: "", by: "" });
+    } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); }
   };
 
   const saveContract = async () => {
+    try {
     const q = quotations.find((x) => x.id === contractForm.quotationId);
     if (!q) { toast(S.tPickWonQuote, "info"); return; }
     if (q.stage !== "Menang" && q.stage !== "Terkonversi") { toast(S.tOnlyWonQuote, "info"); return; }
@@ -243,9 +254,11 @@ export default function CRM() {
     }, { action: "membuat kontrak", target: q.id, module: "CRM" });
     toast(S.tContractCreated.replace("{n}", created.id));
     setContractForm({ quotationId: "", value: "", signedAt: todayISO(), projectId: "" });
+    } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); }
   };
 
   const saveSurvey = async () => {
+    try {
     if (!surveyForm.clientId) { toast(S.tPickClientFirst, "info"); return; }
     const r = num(surveyForm.rating);
     if (r < 1 || r > 5) { toast(S.tRatingRange, "info"); return; }
@@ -256,6 +269,7 @@ export default function CRM() {
     log("mencatat survei kepuasan", `${c.name} rating ${r}`, "CRM");
     toast(S.tSurveySaved.replace("{n}", String(c.name)));
     setSurveyForm({ clientId: "", rating: "5" });
+    } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); }
   };
 
   const eligibleQuotations = quotations.filter((q) => q.stage === "Menang" || q.stage === "Terkonversi");
@@ -276,6 +290,7 @@ export default function CRM() {
   };
 
   const saveRequest = async () => {
+    try {
     if (!reqForm.client) { toast(S.tClientRequired, "info"); return; }
     if (!reqForm.vessel.trim()) { toast(S.tVesselRequired, "info"); return; }
     if (!reqForm.scope.trim()) { toast(S.tScopeRequired, "info"); return; }
@@ -288,12 +303,15 @@ export default function CRM() {
     toast(S.tRequestLogged.replace("{n}", created.id));
     setShowReq(false);
     setReqForm({ vessel: "", client: "", kind: "Repair Request", scope: "", value: "", date: todayISO() });
+    } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); }
   };
 
   const advanceRequest = async (r: StoreItem, next: string) => {
+    try {
     await update("requests", r.id, { status: next });
     log(`mengubah request ke ${next}`, r.id, "CRM");
     toast(S.movedTo.replace("{a}", r.id).replace("{b}", next));
+    } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); }
   };
 
   const convertRequest = async (r: StoreItem) => {
@@ -311,6 +329,7 @@ export default function CRM() {
   };
 
   const saveClientPo = async () => {
+    try {
     if (!poForm.contractId) { toast(S.tPickContractFirst, "info"); return; }
     if (!poForm.no.trim()) { toast(S.tPoNoRequired, "info"); return; }
     if (clientPos.some((p) => String(p.no ?? "") === poForm.no.trim())) { toast(S.tPoNoUsed, "info"); return; }
@@ -322,6 +341,7 @@ export default function CRM() {
     }, { action: "mencatat PO klien", target: poForm.no.trim(), module: "CRM" });
     toast(S.tPoLogged.replace("{a}", created.id).replace("{b}", poForm.no.trim()));
     setPoForm({ contractId: "", projectId: "", no: "", amount: "", date: todayISO() });
+    } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); }
   };
 
   const forecastRows = FLOW.map((s) => {
@@ -386,7 +406,7 @@ export default function CRM() {
       ...forecastRows.map((r) => [r.stage, `${Math.round(r.prob * 100)}%`, r.count, r.nilai, r.weighted]),
       ["Total forecast weighted", "", "", "", forecastTotal],
     ];
-    void exportExcel(rows, `forecast-weighted-${todayISO()}`, "Forecast");
+    void exportExcel(rows, `forecast-weighted-${todayISO()}`, "Forecast").catch(() => toast(S.saveFail, "info"));
     toast(S.tForecastExported.replace("{n}", fmtMiliar(forecastTotal)));
   };
 

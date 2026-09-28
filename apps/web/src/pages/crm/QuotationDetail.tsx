@@ -89,6 +89,7 @@ export default function QuotationDetail() {
   };
 
   const saveRevisi = async () => {
+    try {
     const valid = activeLines.filter((l) => l.desc.trim() && num(l.qty) * num(l.price) > 0);
     if (valid.length === 0) { toast(S.tMinOneRow, "info"); return; }
     const sum = valid.reduce((s, l) => s + num(l.qty) * num(l.price), 0);
@@ -103,9 +104,11 @@ export default function QuotationDetail() {
     toast(S.tRevised.replace("{a}", quotation.id).replace("{b}", String(nextVersion)));
     setLines(null);
     setNote("");
+    } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); }
   };
 
   const move = async (dir: 1 | -1) => {
+    try {
     const idx = FLOW.indexOf(String(quotation.stage));
     if (idx < 0) return;
     const next = FLOW[idx + dir];
@@ -113,13 +116,16 @@ export default function QuotationDetail() {
     await update("quotations", quotation.id, { stage: next });
     log(`memindahkan quotation ke ${next}`, quotation.id, "CRM");
     toast(S.movedTo.replace("{a}", quotation.id).replace("{b}", next));
+    } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); }
   };
 
   const markTerminal = async (stage: "Batal" | "Kalah") => {
+    try {
     if (FLOW.indexOf(String(quotation.stage)) < 0 && quotation.stage !== "Menang") return;
     await update("quotations", quotation.id, { stage });
     log(`memindahkan quotation ke ${stage}`, quotation.id, "CRM");
     toast(S.markedAs.replace("{a}", quotation.id).replace("{b}", stage), "info");
+    } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); }
   };
 
   const nextProjectCode = (type: string, start: string): string => {
@@ -190,14 +196,17 @@ export default function QuotationDetail() {
   };
 
   const confirmSend = async () => {
+    try {
     if (!sendEmail.includes("@")) { toast(S.emailInvalid, "info"); return; }
     await update("quotations", quotation.id, { statusKirim: "Terkirim", sentAt: todayISO(), sentTo: sendEmail.trim() });
     log(`mengirim penawaran ke ${sendEmail.trim()}`, quotation.id, "CRM");
     toast(S.tSentShort.replace("{n}", quotation.id));
     setSendOpen(false);
+    } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); }
   };
 
   const saveComm = async () => {
+    try {
     if (!commForm.date) { toast(S.dateRequired, "info"); return; }
     if (!commForm.summary.trim()) { toast(S.summaryRequired, "info"); return; }
     const created = await add("communications", {
@@ -209,6 +218,7 @@ export default function QuotationDetail() {
     }, { action: "mencatat komunikasi", target: quotation.id, module: "CRM" });
     toast(S.commLogged.replace("{n}", created.id));
     setCommForm({ channel: "Email", date: todayISO(), summary: "", by: "" });
+    } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); }
   };
 
   const cetakKop = () => {
@@ -229,7 +239,7 @@ export default function QuotationDetail() {
       [],
       [`Syarat pembayaran: ${terms}`],
     ];
-    void exportExcel(rows, `Kop-${quotation.id}-v${version}`, "Kop Penawaran");
+    void exportExcel(rows, `Kop-${quotation.id}-v${version}`, "Kop Penawaran").catch(() => toast(S.saveFail, "info"));
     toast(S.tKopExported.replace("{n}", quotation.id));
   };
 

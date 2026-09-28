@@ -200,6 +200,7 @@ export default function Documents() {
 
   const save = async () => {
     if (!validForm()) return;
+    try {
     if (editing) {
       const dupe = data.documents.some((d) => d.id !== editing.id && d.type === form.type && String(d.title).toLowerCase() === form.title.trim().toLowerCase());
       if (dupe) { toast(S.tTitleDupe, "info"); return; }
@@ -236,6 +237,7 @@ export default function Documents() {
       toast(S.tAdded.replace("{a}", created.id));
       setShowAdd(false);
     }
+    } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); }
   };
 
   const runOcr = async (d: StoreItem) => {
@@ -255,36 +257,44 @@ export default function Documents() {
 
   const saveOcr = async (d: StoreItem) => {
     if (!ocrText.trim()) return;
+    try {
     await update("documents", String(d.id), { ocrText: ocrText.trim(), updated: todayISO() });
     log("menyimpan hasil OCR", String(d.id), "Dokumen");
     toast(S.tOcrSaved.replace("{a}", String(d.id)));
     setDetail((cur) => (cur && cur.id === d.id ? { ...cur, ocrText: ocrText.trim(), updated: todayISO() } : cur));
     setOcrText("");
+    } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); }
   };
 
   const toggleCopy = async (d: StoreItem) => {    const next = String(d.docCopy ?? "Terkendali") === "Salinan" ? "Terkendali" : "Salinan";
+    try {
     await update("documents", d.id, { docCopy: next, updated: todayISO() });
     log(`menandai dokumen sebagai ${next}`, d.id, "Dokumen");
     toast(S.tCopyMarked.replace("{a}", String(d.id)).replace("{b}", next));
     setDetail((cur) => (cur && cur.id === d.id ? { ...cur, docCopy: next, updated: todayISO() } : cur));
+    } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); }
   };
 
   const flowTo = async (d: StoreItem, next: string) => {
     const ok = window.confirm(S.flowConfirm.replace("{a}", String(d.id)).replace("{b}", next));
     if (!ok) return;
     const revisions = [...(d.revisions ?? []), { version: String(d.version ?? "v1.0"), at: todayISO(), by: String(d.owner ?? ""), note: `Status → ${next}` }];
+    try {
     await update("documents", d.id, { status: next, updated: todayISO(), revisions });
     log(`mengubah status dokumen ke ${next}`, d.id, "Dokumen");
     toast(S.movedTo.replace("{a}", String(d.id)).replace("{b}", next));
     setDetail((cur) => (cur && cur.id === d.id ? { ...cur, status: next, updated: todayISO(), revisions } : cur));
+    } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); }
   };
 
   const confirmArchive = async () => {
     if (!archiving) return;
+    try {
     await update("documents", archiving.id, { archived: true });
     log("mengarsipkan dokumen", archiving.id, "Dokumen");
     toast(S.tArchived.replace("{a}", String(archiving.id)), "info");
     setArchiving(null);
+    } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); }
   };
 
   const confirmDelete = async () => {
@@ -418,7 +428,7 @@ export default function Documents() {
                       <button className="rounded-lg p-1.5 text-steel-500 hover:bg-steel-100" title={S.detailBtn} aria-label={S.detailOf.replace("{a}", String(d.id))} onClick={() => setDetail(d)}><Eye className="h-4 w-4" /></button>
                       {type === "Arsip" ? (
                         <>
-                          <button className="rounded-lg p-1.5 text-teal-600 hover:bg-teal-50" title={S.actRestore} aria-label={S.actRestoreOf.replace("{a}", String(d.id))} onClick={async () => { await update("documents", d.id, { archived: false }); log("memulihkan dokumen dari arsip", d.id, "Dokumen"); toast(S.tRestored.replace("{a}", String(d.id))); }}><RotateCcw className="h-4 w-4" /></button>
+                          <button className="rounded-lg p-1.5 text-teal-600 hover:bg-teal-50" title={S.actRestore} aria-label={S.actRestoreOf.replace("{a}", String(d.id))} onClick={async () => { try { await update("documents", d.id, { archived: false }); log("memulihkan dokumen dari arsip", d.id, "Dokumen"); toast(S.tRestored.replace("{a}", String(d.id))); } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); } }}><RotateCcw className="h-4 w-4" /></button>
                           <button className="rounded-lg p-1.5 text-rose-500 hover:bg-rose-50" title={S.actDeletePerm} aria-label={S.actDeletePermOf.replace("{a}", String(d.id))} onClick={() => setDeleting(d)}><Trash2 className="h-4 w-4" /></button>
                         </>
                       ) : (

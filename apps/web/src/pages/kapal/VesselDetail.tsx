@@ -112,14 +112,18 @@ export default function VesselDetail() {
 
   // Klaim garansi/DLP: Aktif → Klaim (lanjut Selesai setelah perbaikan).
   const claimWarranty = async (w: { id: string }) => {
+    try {
     await update("warranties", w.id, { status: "Klaim", claimedAt: todayISO() });
     log("mengklaim garansi", `${w.id} · ${v.name}`, "Kapal");
     toast(S.vdWarrantyClaimed.replace("{a}", w.id));
+    } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); }
   };
   const closeWarranty = async (w: { id: string }) => {
+    try {
     await update("warranties", w.id, { status: "Selesai" });
     log("menyelesaikan garansi", `${w.id} · ${v.name}`, "Kapal");
     toast(S.vdWarrantyClosed.replace("{a}", w.id));
+    } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); }
   };
   const surveys = data.surveys.filter((s) => sameName(s.vessel, v.name));
   const vesselTrials = (data.trials ?? []).filter((t) => projects.some((p) => p.id === t.projectId));
@@ -145,14 +149,17 @@ export default function VesselDetail() {
   });
 
   const saveCert = async () => {
+    try {
     if (!certForm.name.trim() || !certForm.issued || !certForm.expires) { toast(S.vdCertReq, "info"); return; }
     await update("vessels", v.id, { certificates: [...certs, { name: certForm.name.trim(), issued: certForm.issued, expires: certForm.expires }] });
     toast(S.vdCertAdded.replace("{a}", v.name));
     setShowCert(false);
     setCertForm({ name: "", issued: monthISO(), expires: "" });
+    } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); }
   };
 
   const saveSurvey = async () => {
+    try {
     if (!surveyForm.date) { toast(S.vdDateReq, "info"); return; }
     await add("surveys", { vessel: v.name, type: surveyForm.type, status: surveyForm.status, date: surveyForm.date, classSurveyor: "BKI", ...(surveyForm.linkedTrial ? { linkedTrial: surveyForm.linkedTrial } : {}) },
       { action: "menjadwalkan survey", target: `${v.name} · ${surveyForm.type}`, module: "Kapal" });
@@ -160,6 +167,7 @@ export default function VesselDetail() {
     toast(S.vdSurveyScheduled);
     setShowSurvey(false);
     setSurveyForm({ type: "Annual Survey", date: "", status: "Terjadwal", linkedTrial: "" });
+    } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); }
   };
 
   const openSpec = () => {
@@ -174,6 +182,7 @@ export default function VesselDetail() {
   };
 
   const saveSpec = async () => {
+    try {
     const gt = Number(specForm.gt);
     const bhp = Number(specForm.bhp);
     const nt = specForm.nt.trim() === "" ? 0 : Number(specForm.nt);
@@ -189,9 +198,11 @@ export default function VesselDetail() {
     });
     toast(S.vdSpecUpdated);
     setShowSpec(false);
+    } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); }
   };
 
   const setCompliance = async (name: string, patch: { status?: string; date?: string }) => {
+    try {
     const current = ((v.compliance ?? []) as { name: string; status: string; date: string }[]).slice();
     const idx = current.findIndex((r) => r.name === name);
     if (idx >= 0) {
@@ -200,9 +211,11 @@ export default function VesselDetail() {
       current.push({ name, status: patch.status ?? "", date: patch.date ?? "" });
     }
     await update("vessels", v.id, { compliance: current });
+    } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); }
   };
 
   const savePsc = async () => {
+    try {
     if (!pscForm.date || !pscForm.port.trim()) { toast(S.vdPscReq, "info"); return; }
     const def = Number(pscForm.deficiencies);
     if (!Number.isFinite(def) || def < 0) { toast(S.vdDefNum, "info"); return; }
@@ -212,6 +225,7 @@ export default function VesselDetail() {
     toast(S.vdPscAdded);
     setShowPsc(false);
     setPscForm({ date: todayISO(), port: "", deficiencies: "0", status: "Bersih" });
+    } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); }
   };
 
   const openDockAdd = () => {
@@ -228,6 +242,7 @@ export default function VesselDetail() {
   };
 
   const saveDock = async () => {
+    try {
     if (!dockForm.date || !dockForm.dock.trim()) { toast(S.vdDockReq, "info"); return; }
     if (!dockForm.nextDue) { toast(S.vdNextDueReq, "info"); return; }
     const row: DockHistoryRow = {
@@ -244,22 +259,28 @@ export default function VesselDetail() {
     toast(editingDock === null ? S.vdDockAdded : S.vdDockUpdated);
     setShowDock(false);
     setEditingDock(null);
+    } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); }
   };
 
   const savePlan = async () => {
+    try {
     const year = Number(planForm.year);
     if (!Number.isFinite(year) || year <= baseYear || year > baseYear + 5) { toast(S.vdPlanYearRange.replace("{a}", String(baseYear + 1)).replace("{b}", String(baseYear + 5)), "info"); return; }
     await update("vessels", v.id, { plan5: [...plan5, { year, type: planForm.type, note: planForm.note.trim() }] });
     toast(S.vdPlanAdded.replace("{a}", String(year)));
     setPlanForm({ year: String(baseYear + 1), type: "Docking", note: "" });
+    } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); }
   };
 
   const removePlan = async (idx: number) => {
+    try {
     await update("vessels", v.id, { plan5: plan5.filter((_, i) => i !== idx) });
     toast(S.vdPlanRemoved, "info");
+    } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); }
   };
 
   const saveBunker = async () => {
+    try {
     if (!bunkerForm.date) { toast(S.vdDateReq, "info"); return; }
     const qty = Number(bunkerForm.qty);
     if (!Number.isFinite(qty) || qty <= 0) { toast(S.vdQtyPos, "info"); return; }
@@ -267,18 +288,23 @@ export default function VesselDetail() {
     await update("vessels", v.id, { bunker: [...bunkerRows, { date: bunkerForm.date, jenis: bunkerForm.jenis, qty, satuan: bunkerForm.satuan.trim() }] });
     toast(S.vdBunkerAdded);
     setBunkerForm({ date: todayISO(), jenis: "Solar", qty: "", satuan: "liter" });
+    } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); }
   };
 
   const saveCrew = async () => {
+    try {
     if (!crewForm.name.trim() || !crewForm.role.trim()) { toast(S.vdCrewReq, "info"); return; }
     await update("vessels", v.id, { crew: [...crewRows, { name: crewForm.name.trim(), role: crewForm.role.trim() }] });
     toast(S.vdCrewAdded);
     setCrewForm({ name: "", role: "" });
+    } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); }
   };
 
   const removeCrew = async (idx: number) => {
+    try {
     await update("vessels", v.id, { crew: crewRows.filter((_, i) => i !== idx) });
     toast(S.vdCrewRemoved, "info");
+    } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); }
   };
 
   const openIns = () => {
@@ -287,6 +313,7 @@ export default function VesselDetail() {
   };
 
   const saveIns = async () => {
+    try {
     if (!insForm.polis.trim()) { toast(S.vdPolisReq, "info"); return; }
     const premi = Number(insForm.premi || 0);
     if (!Number.isFinite(premi) || premi < 0) { toast(S.vdPremiMin, "info"); return; }
@@ -294,6 +321,7 @@ export default function VesselDetail() {
     await update("vessels", v.id, { insurance: { polis: insForm.polis.trim(), premi, expiry: insForm.expiry } });
     toast(S.vdInsSaved);
     setShowIns(false);
+    } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); }
   };
 
   return (
@@ -310,7 +338,7 @@ export default function VesselDetail() {
               {comp.state === "ok" ? S.vdComplyOk : comp.state === "issue" ? S.vdComplyIssue.replace("{a}", String(comp.valid)).replace("{b}", String(comp.total)) : S.vdComplyEmpty}
             </Badge>
             <select className="input w-auto py-1.5 text-sm" value={v.status}
-              onChange={async (e) => { await update("vessels", v.id, { status: e.target.value }); toast(S.vdStatusSet.replace("{a}", e.target.value)); }}>
+              onChange={async (e) => { try { await update("vessels", v.id, { status: e.target.value }); toast(S.vdStatusSet.replace("{a}", e.target.value)); } catch (err) { toast(err instanceof Error ? err.message : S.saveFail, "info"); } }}>
               {["Dalam Operasi", "Dalam Docking", "Dalam Pembangunan", "Menganggur"].map((s) => <option key={s}>{s}</option>)}
             </select>
             <Badge tone="blue">{v.status}</Badge>

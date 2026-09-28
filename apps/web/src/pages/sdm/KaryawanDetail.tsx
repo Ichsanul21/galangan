@@ -171,22 +171,28 @@ export default function KaryawanDetail() {
     for (const s of extra) {
       if (!lower.has(s.toLowerCase())) { merged.push(s); lower.add(s.toLowerCase()); }
     }
+    try {
     await update("employees", emp.id, { skills: merged });
     log("memperbarui skill karyawan", emp.id, "SDM");
     setSkillInput("");
     toast(S.tSkillOk);
+    } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); }
   };
 
   const delSkill = async (name: string) => {
+    try {
     await update("employees", emp.id, { skills: skills.filter((s) => s !== name) });
     log("menghapus skill karyawan", `${emp.id} · ${name}`, "SDM");
     toast(S.tSkillDel.replace("{n}", name), "info");
+    } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); }
   };
 
   const delCert = async (name: string) => {
+    try {
     await update("employees", emp.id, { certs: certs.filter((c) => c.name !== name) });
     log("menghapus sertifikat karyawan", `${emp.id} · ${name}`, "SDM");
     toast(S.tCertDel.replace("{n}", name), "info");
+    } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); }
   };
 
   const saveCert = async () => {
@@ -195,11 +201,13 @@ export default function KaryawanDetail() {
       return;
     }
     const next = [...certs, { name: certForm.name.trim(), expires: certForm.expires }];
+    try {
     await update("employees", emp.id, { certs: next });
     log("menambah sertifikat karyawan", emp.id, "SDM");
     setCertForm({ name: "", expires: todayISO().slice(0, 7) });
     setShowCert(false);
     toast(S.tCertAdd);
+    } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); }
   };
 
   const saveDoc = async () => {
@@ -207,6 +215,7 @@ export default function KaryawanDetail() {
       toast(S.tDocJudul, "info");
       return;
     }
+    try {
     const created = await add(
       "documents",
       {
@@ -224,6 +233,7 @@ export default function KaryawanDetail() {
     toast(S.tDocOk.replace("{n}", created.id));
     setShowDoc(false);
     setDocForm({ title: "", type: "Kontrak", status: "Berlaku" });
+    } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); }
   };
 
   return (

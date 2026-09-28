@@ -210,6 +210,7 @@ export default function Subcontractor() {
   };
 
   const saveSub = async () => {
+    try {
     if (!subForm.name.trim()) { toast(S.tSubNameRequired, "info"); return; }
     const bgValue = Number(subForm.bgValue || 0);
     if (subForm.bgValue && (!Number.isFinite(bgValue) || bgValue < 0)) { toast(S.tBgInvalid, "info"); return; }
@@ -223,9 +224,11 @@ export default function Subcontractor() {
     toast(S.tSubRegistered.replace("{n}", created.id));
     setShowSub(false);
     setSubForm({ name: "", services: "", contract: "", k3: "A", contractType: "Borongan", payScheme: "unit", noBG: "", bgExpiry: "", bgValue: "" });
+    } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); }
   };
 
   const saveMilestone = async () => {
+    try {
     if (!msSub) return;
     if (!msForm.title.trim()) { toast(S.tMsTitleRequired, "info"); return; }
     const pct = Number(msForm.pct);
@@ -238,17 +241,21 @@ export default function Subcontractor() {
     toast(S.tMsAdded.replace("{n}", String(msSub.name)));
     setMsSub({ ...msSub, milestones: next });
     setMsForm({ title: "", pct: "", due: "" });
+    } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); }
   };
 
   const removeMilestone = async (idx: number) => {
+    try {
     if (!msSub) return;
     const next = milestonesOf(msSub).filter((_, i) => i !== idx);
     await update("subcontractors", msSub.id, { milestones: next });
     log("menghapus milestone SOW", `${msSub.name} · index ${idx + 1}`, "Subkontraktor");
     setMsSub({ ...msSub, milestones: next });
+    } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); }
   };
 
   const saveWo = async () => {
+    try {
     if (!woForm.sub || !woForm.project || !woForm.scope.trim()) { toast(S.tWoFieldsRequired, "info"); return; }
     if (!woForm.targetDate) { toast(S.tWoTargetRequired, "info"); return; }
     const penaltyPct = Number(woForm.penaltyPct);
@@ -258,9 +265,11 @@ export default function Subcontractor() {
     toast(S.tWoIssued.replace("{n}", created.id));
     setShowWo(false);
     setWoForm({ sub: "", project: "", scope: "", targetDate: "", penaltyPct: "0.1" });
+    } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); }
   };
 
   const recordPenalty = async (w: StoreItem) => {
+    try {
     const sub = subcontractors.find((s) => s.name === w.sub);
     const late = daysLate(String(w.targetDate ?? ""));
     const perDay = Number(w.penaltyPct || 0);
@@ -270,12 +279,15 @@ export default function Subcontractor() {
     await update("workOrders", w.id, { penaltyDays: late, penaltyAmount: Math.round(amount), penaltyAt: todayISO() });
     log("mencatat denda keterlambatan", `${w.id} · telat ${late} hari · ${fmtRupiah(Math.round(amount))}`, "Subkontraktor");
     toast(S.tPenaltyLogged.replace("{a}", w.id).replace("{b}", fmtRupiah(Math.round(amount))));
+    } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); }
   };
 
   const applyWoProgress = async (id: string, v: number, note: string) => {
+    try {
     await update("workOrders", id, { progress: v, status: v >= 100 ? "Selesai" : "Dalam Proses" });
     log("mengupdate progres", `${id} → ${v}%${note ? ` - ${note}` : ""}`, "Subkontraktor");
     toast(S.tProgressTo.replace("{a}", id).replace("{b}", String(v)));
+    } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); }
   };
 
   const saveWoProgress = () => {
@@ -295,6 +307,7 @@ export default function Subcontractor() {
   };
 
   const saveTerm = async () => {
+    try {
     if (!termForm.sub) { toast(S.tSubRequired, "info"); return; }
     const wo = workOrders.find((w) => w.id === termForm.wo && sameName(w.sub, termForm.sub));
     if (!wo) { toast(S.tWoBelongsSub, "info"); return; }
@@ -329,6 +342,7 @@ export default function Subcontractor() {
     toast(S.tTermFiled.replace("{n}", created.id));
     setShowTerm(false);
     setTermForm({ sub: "", wo: "", milestone: "", amount: "", pphPct: "0.5", retPct: "5" });
+    } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); }
   };
 
   const stepTerm = async (p: StoreItem, next: string) => {
@@ -344,8 +358,10 @@ export default function Subcontractor() {
       setRejectTerm(p);
       return;
     }
+    try {
     await update("termins", p.id, { status: next });
     toast(S.movedTo.replace("{a}", p.id).replace("{b}", next));
+    } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); }
   };
 
   const confirmBuktiTerm = async () => {
@@ -439,6 +455,7 @@ export default function Subcontractor() {
   };
 
   const saveTimesheet = async () => {
+    try {
     if (!tsForm.wo || !tsForm.employee || !tsForm.date) { toast(S.tTsFieldsRequired, "info"); return; }
     const hours = Number(tsForm.hours);
     if (!Number.isFinite(hours) || hours <= 0) { toast(S.tHoursPositive, "info"); return; }
@@ -453,15 +470,19 @@ export default function Subcontractor() {
     toast(S.tTsLogged.replace("{a}", created.id).replace("{b}", String(hours)));
     setShowTs(false);
     setTsForm({ wo: "", employee: "", date: todayISO(), hours: "", note: "" });
+    } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); }
   };
 
   const approveTimesheet = async (t: StoreItem) => {
+    try {
     await update("timesheets", t.id, { status: "Disetujui" });
     log("menyetujui timesheet", `${t.id} · ${t.hours} jam`, "Subkontraktor");
     toast(S.tTsApproved.replace("{n}", t.id));
+    } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); }
   };
 
   const saveRate = async () => {
+    try {
     if (!rateForm.wo) { toast(S.tPickWoFirst, "info"); return; }
     const rate = Number(rateForm.rate);
     if (!Number.isFinite(rate) || rate < 0) { toast(S.tRateInvalid, "info"); return; }
@@ -469,6 +490,7 @@ export default function Subcontractor() {
     log("menetapkan rate WO", `${rateForm.wo} · ${fmtRupiah(rate)}/jam`, "Subkontraktor");
     toast(S.tRateSaved.replace("{n}", rateForm.wo));
     setRateForm({ wo: "", rate: "" });
+    } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); }
   };
 
   return (
@@ -886,7 +908,7 @@ export default function Subcontractor() {
         desc={S.subStatusDesc}
         confirmLabel={S.confirmChangeBtn}
         onCancel={() => setSubConfirm(null)}
-        onConfirm={async () => { if (subConfirm) { await update("subcontractors", subConfirm.id, { status: subConfirm.next }); toast(S.movedTo.replace("{a}", subConfirm.name).replace("{b}", subConfirm.next)); } setSubConfirm(null); }}
+        onConfirm={async () => { try { if (subConfirm) { await update("subcontractors", subConfirm.id, { status: subConfirm.next }); toast(S.movedTo.replace("{a}", subConfirm.name).replace("{b}", subConfirm.next)); } setSubConfirm(null); } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); } }}
       />
 
       {/* Modal WO */}
@@ -1021,7 +1043,7 @@ export default function Subcontractor() {
         desc={S.rejectTermDesc}
         confirmLabel={S.rejectConfirmBtn}
         onCancel={() => setRejectTerm(null)}
-        onConfirm={async () => { if (rejectTerm) { await update("termins", rejectTerm.id, { status: "Ditolak" }); toast(S.tRejected.replace("{n}", rejectTerm.id)); } setRejectTerm(null); }}
+        onConfirm={async () => { try { if (rejectTerm) { await update("termins", rejectTerm.id, { status: "Ditolak" }); toast(S.tRejected.replace("{n}", rejectTerm.id)); } setRejectTerm(null); } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); } }}
       />
 
       {/* Modal release retensi */}

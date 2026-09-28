@@ -333,6 +333,7 @@ export default function QCSafety() {
   };
 
   const saveNcr = async () => {
+    try {
     if (!ncrForm.project || !ncrForm.issue.trim()) { toast(S.tNcrWajib, "info"); return; }
     if (!ncrForm.due) { toast(S.tCapaWajib, "info"); return; }
     const proj = data.projects.find((p) => p.id === ncrForm.project);
@@ -345,9 +346,11 @@ export default function QCSafety() {
     toast(S.tNcrTerbit.replace("{n}", created.id));
     setShowNcr(false);
     setNcrForm({ project: "", vessel: "", type: "Pengelasan", severity: "Minor", issue: "", due: "", causeCat: "Manusia", causeNote: "", branch: "" });
+    } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); }
   };
 
   const advanceNcr = async (n: StoreItem) => {
+    try {
     const idx = NCR_FLOW.indexOf(n.status);
     if (idx < 0 || idx >= NCR_FLOW.length - 1) return;
     const next = NCR_FLOW[idx + 1];
@@ -361,6 +364,7 @@ export default function QCSafety() {
     await update("ncr", n.id, { status: next });
     log(`memproses NCR ke ${next}`, n.id, "QC");
     toast(S.tArrow.replace("{a}", n.id).replace("{b}", next));
+    } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); }
   };
 
   const confirmClose = async () => {
@@ -410,6 +414,7 @@ export default function QCSafety() {
   };
 
   const confirmReopen = async () => {
+    try {
     if (!reopenNcr) return;
     if (!reopenReason.trim()) { toast(S.tReopenWajib, "info"); return; }
     await update("ncr", reopenNcr.id, { status: "Terbuka", reopenReason: reopenReason.trim() });
@@ -418,6 +423,7 @@ export default function QCSafety() {
     setReopenNcr(null);
     setReopenReason("");
     setNcrDetail((d) => (d && d.id === reopenNcr.id ? { ...d, status: "Terbuka" } : d));
+    } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); }
   };
 
   const openDetail = (n: StoreItem) => {
@@ -427,6 +433,7 @@ export default function QCSafety() {
   };
 
   const saveRework = async () => {
+    try {
     if (!ncrDetail) return;
     const hours = Number(reworkDraft.hours || 0);
     const rate = Number(reworkDraft.rate || 0);
@@ -439,9 +446,11 @@ export default function QCSafety() {
     log("mencatat biaya rework", `${ncrDetail.id} · ${hours} jam × ${fmtRupiah(rate)} + material ${fmtRupiah(material)}`, "QC");
     setNcrDetail({ ...ncrDetail, reworkHours: hours, reworkRate: rate, reworkMaterial: material });
     toast(S.tReworkSimpan.replace("{n}", ncrDetail.id));
+    } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); }
   };
 
   const confirmFollowUp = async () => {
+    try {
     if (!followUpNcr) return;
     if (!followUpForm.date) { toast(S.tFollowDate, "info"); return; }
     if (!followUpForm.note.trim()) { toast(S.tFollowNote, "info"); return; }
@@ -451,6 +460,7 @@ export default function QCSafety() {
     setNcrDetail((d) => (d && d.id === followUpNcr.id ? { ...d, followUpDate: followUpForm.date, followUpNote: followUpForm.note.trim() } : d));
     setFollowUpNcr(null);
     setFollowUpForm({ date: todayISO(), note: "" });
+    } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); }
   };
 
   const exportNcr = () => {
@@ -459,11 +469,12 @@ export default function QCSafety() {
         ...ncrList.map((n) => [n.id, n.project, n.severity, n.status, fmtTanggal(String(n.due ?? "")), fmtTanggal(String(n.closedAt ?? "")), Number(n.reworkHours || 0), Number(n.reworkRate || 0), Number(n.reworkMaterial || 0), reworkCost(n), n.followUpDate ? `${fmtTanggal(String(n.followUpDate))} - ${n.followUpNote ?? ""}` : "-"])],
       `NCR-Rework-${today}`,
       "NCR",
-    );
+    ).catch(() => toast(S.saveFail, "info"));
     toast(S.tNcrExport);
   };
 
   const saveAuditPlan = async () => {
+    try {
     if (!auditForm.date || !auditForm.area.trim() || !auditForm.auditor.trim()) { toast(S.tAuditWajib, "info"); return; }
     const findings = Math.max(0, Math.floor(Number(auditForm.findings) || 0));
     const created = await add("auditPlans", {
@@ -473,18 +484,22 @@ export default function QCSafety() {
     toast(S.tAuditJadwal.replace("{n}", created.id));
     setShowAuditPlan(false);
     setAuditForm({ date: todayISO(), area: "", auditor: "", findings: "0", ncrId: "" });
+    } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); }
   };
 
   const saveDue = async () => {
+    try {
     if (!ncrDetail) return;
     if (!dueDraft) { toast(S.tCapaWajib, "info"); return; }
     await update("ncr", ncrDetail.id, { due: dueDraft });
     log("memperbarui tenggat CAPA", ncrDetail.id, "QC");
     setNcrDetail({ ...ncrDetail, due: dueDraft });
     toast(S.tCapaUpdate);
+    } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); }
   };
 
   const saveDrawing = async () => {
+    try {
     if (!drwForm.project || !drwForm.title.trim() || !drwForm.holder.trim()) { toast(S.tDrwWajib, "info"); return; }
     const created = await add("drawings", {
       project: drwForm.project, title: drwForm.title.trim(), revision: "A",
@@ -495,17 +510,21 @@ export default function QCSafety() {
     toast(S.tDrwDaftar.replace("{n}", created.id));
     setShowDrw(false);
     setDrwForm({ project: "", title: "", holder: "", branch: "" });
+    } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); }
   };
 
   const reviseDrawing = async (d: StoreItem) => {
+    try {
     const rev = nextRev(String(d.revision ?? "A"));
     const history = [...(Array.isArray(d.history) ? d.history : []), { revision: rev, date: todayISO(), holder: String(d.holder ?? ""), status: String(d.status ?? "Diajukan") }];
     await update("drawings", d.id, { revision: rev, updated: todayISO(), history });
     log("merevisi drawing", `${d.id} → rev ${rev}`, "QC");
     toast(S.tDrwNaik.replace("{n}", d.id).replace("{a}", rev));
+    } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); }
   };
 
   const stepDrawing = async (d: StoreItem, next: string) => {
+    try {
     if (next === "Disetujui" && !canSetTarget(user?.role)) {
       toast(S.tHanyaDir, "info");
       return;
@@ -514,6 +533,7 @@ export default function QCSafety() {
     await update("drawings", d.id, { status: next, updated: todayISO(), history });
     log("memproses drawing", `${d.id} → ${next}`, "QC");
     toast(S.tArrow.replace("{a}", d.id).replace("{b}", next));
+    } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); }
   };
 
   const toggleTransmitId = (id: string) => {
@@ -548,6 +568,7 @@ export default function QCSafety() {
   };
 
   const saveJsa = async () => {
+    try {
     if (!jsaForm.project || !jsaForm.job.trim() || !jsaForm.hazard.trim() || !jsaForm.control.trim() || !jsaForm.pic.trim() || !jsaForm.date) {
       toast(S.tJsaWajib, "info");
       return;
@@ -563,9 +584,11 @@ export default function QCSafety() {
     toast(S.tJsaOk.replace("{n}", created.id));
     setShowJsa(false);
     setJsaForm({ project: "", job: "", hazard: "", control: "", pic: "", date: todayISO(), branch: "" });
+    } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); }
   };
 
   const saveToolbox = async () => {
+    try {
     if (!tbmForm.project || !tbmForm.topic.trim() || !tbmForm.date || !tbmForm.pic.trim()) { toast(S.tTbmWajib, "info"); return; }
     const created = await add("toolbox", {
       project: tbmForm.project, topic: tbmForm.topic.trim(), date: tbmForm.date,
@@ -575,9 +598,11 @@ export default function QCSafety() {
     toast(S.tTbmOk.replace("{n}", created.id));
     setShowTbm(false);
     setTbmForm({ project: "", topic: "", date: todayISO(), attendees: "", pic: "", branch: "" });
+    } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); }
   };
 
   const savePpeCheck = async () => {
+    try {
     if (!ppeForm.project || !ppeForm.date) { toast(S.tPpeWajib, "info"); return; }
     if (!ppeForm.employeeId) { toast(S.tPpeKaryawan, "info"); return; }
     const done = PPE_ITEMS.filter((item) => ppeChecked[item]);
@@ -592,9 +617,11 @@ export default function QCSafety() {
     toast(S.tPpeOk.replace("{n}", created.id));
     setPpeForm({ project: "", date: todayISO(), employeeId: "", branch: "" });
     setPpeChecked({});
+    } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); }
   };
 
   const saveWalk = async () => {
+    try {
     if (!walkForm.date || !walkForm.area.trim() || !walkForm.pic.trim()) { toast(S.tWalkWajib, "info"); return; }
     const findings = Math.max(0, Number(walkForm.findings) || 0);
     const created = await add("walks", {
@@ -604,9 +631,10 @@ export default function QCSafety() {
     toast(S.tWalkOk.replace("{n}", created.id));
     setShowWalk(false);
     setWalkForm({ date: todayISO(), area: "", findings: "0", pic: "" });
+    } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); }
   };
 
-  const walkToNcr = async (w: StoreItem) => {    const created = await add("ncr", {
+  const walkToNcr = async (w: StoreItem) => {    try {const created = await add("ncr", {
       project: data.projects[0]?.id ?? "-", vessel: data.projects[0]?.vessel ?? "-",
       type: "Umum", status: "Terbuka", severity: "Minor", raised: w.date,
       due: addDaysISO(w.date, 7), causeCat: "Lingkungan",
@@ -615,9 +643,11 @@ export default function QCSafety() {
       branch: globalBranch,
     }, { action: "menerbitkan NCR", module: "QC" });
     toast(S.tNcrFromWalk.replace("{n}", created.id));
+    } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); }
   };
 
   const incidentToNcr = async (i: StoreItem) => {
+    try {
     const sev = String(i.severity ?? "");
     const severity = /kritis/i.test(sev) ? "Critical" : /berat|tinggi|besar/i.test(sev) ? "Major" : "Minor";
     const proj = String(i.project ?? i.projectId ?? "-");
@@ -629,6 +659,7 @@ export default function QCSafety() {
       incidentId: String(i.id), branch: globalBranch,
     }, { action: "menerbitkan NCR dari insiden", module: "QC" });
     toast(S.tNcrFromInc.replace("{n}", created.id).replace("{a}", String(i.id)));
+    } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); }
   };
 
   const saveAudit = () => {
@@ -1275,11 +1306,13 @@ export default function QCSafety() {
       {/* Modal insiden */}
       <Modal open={showInc} onClose={() => setShowInc(false)} title={S.mIncT}
         footer={<><button className="btn-secondary" onClick={() => setShowInc(false)}>{S.btnBatal}</button><button className="btn-primary" onClick={async () => {
+          try {
           if (!incForm.desc.trim() || !incForm.location.trim()) { toast(S.tLokasiWajib, "info"); return; }
           if (!incForm.project) { toast(S.tProyekTerkait, "info"); return; }
           const created = await add("incidents", { type: incForm.type, date: todayISO(), location: incForm.location.trim(), desc: incForm.desc.trim(), severity: incForm.severity, project: incForm.project, projectId: incForm.project, branch: branchOf(incForm.branch) },
             { action: "mencatat insiden", module: "Safety" });
           toast(S.tIncOk.replace("{n}", created.id)); setShowInc(false); setIncForm({ type: "Near Miss", location: "", desc: "", severity: "Rendah", project: "", branch: "" });
+          } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); }
         }}>{S.btnSimpan}</button></>}>
         <div className="space-y-3">
           <FormGrid>

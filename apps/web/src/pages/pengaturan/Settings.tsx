@@ -54,6 +54,7 @@ export default function Settings() {
 
   const saveToggle = async (id: string, key: string, on: boolean) => {
     if (!canWrite) { toast(S.noWriteConst, "info"); return; }
+    try {
     await update("settings", id, { value: on ? 1 : 0 });
     log("mengubah konstanta", `${key} → ${on ? 1 : 0}`, "Pengaturan");
     toast((on ? S.shownKey : S.hiddenKey).replace("{n}", key));
@@ -62,6 +63,7 @@ export default function Settings() {
       delete n[id];
       return n;
     });
+    } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); }
   };
 
   const isToggleKey = (key: string): boolean => key === "SHOW_3D_PROJECT" || key === "SHOW_3D_VESSEL";;
@@ -75,6 +77,7 @@ export default function Settings() {
     const min = isWhatif ? -20 : 0;
     const max = isWhatif ? 50 : Number.POSITIVE_INFINITY;
     if (!Number.isFinite(v) || v < min || v > max) { toast(isWhatif ? S.whatifRange : S.minZero, "info"); return; }
+    try {
     await update("settings", id, { value: v });
     log("mengubah konstanta", `${key} → ${v}`, "Pengaturan");
     toast(S.savedKey.replace("{n}", key));
@@ -83,6 +86,7 @@ export default function Settings() {
       delete n[id];
       return n;
     });
+    } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); }
   };
 
   return (

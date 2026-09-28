@@ -360,12 +360,13 @@ export default function Procurement() {
       ],
       `Kas-Kecil-${bulanIni}`,
       "Kas Kecil"
-    );
+    ).catch(() => toast(S.saveFail, "info"));
     toast(S.tKasExport);
   };
 
   /* ============ PO BESAR ============ */
   const saveBig = async () => {
+    try {
     if (!bigForm.prId) { toast(S.tPrWajib, "info"); return; }
     const invItem = invList.find((i) => i.id === bigForm.itemId);
     if (!invItem) { toast(S.tItemInv, "info"); return; }
@@ -404,10 +405,12 @@ export default function Procurement() {
     setShowBig(false);
     setBigForm({ tujuan: "kapal", prId: "", itemId: "", vendor: "", project: "", vessel: "", eta: "", includePpn: true, override: false, overrideReason: "" });
     setBigLines([{ name: "", qty: 1, unit: "pcs", price: 0 }]);
+    } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); }
   };
 
   /* ============ PO KECIL ============ */
   const saveSmall = async () => {
+    try {
     if (!smallForm.workshop.trim()) { toast(S.tWorkshop, "info"); return; }
     if (!smallForm.requester.trim()) { toast(S.tPeminta, "info"); return; }
     if (!smallForm.item.trim()) { toast(S.tItemButuh2, "info"); return; }
@@ -437,19 +440,23 @@ export default function Procurement() {
     toast(S.tSmallCreated);
     setShowSmall(false);
     setSmallForm({ workshop: "", requester: "", item: "", qty: "1", unit: "pcs", price: "", eta: "", project: "", vessel: "", nota: "", override: false, overrideReason: "" });
+    } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); }
   };
 
   const doPoStatus = async (po: StoreItem, next: string) => {
+    try {
     if (po.poType === "Kecil") {
       const allowed = SMALL_NEXT[normPo(po.status)] ?? [];
       if (!allowed.includes(next)) { toast(S.tTransSmall.replace("{a}", String(po.status)).replace("{b}", next), "info"); return; }
     }
     await update("purchaseOrders", po.id, { status: next });
     toast(S.tArrow.replace("{a}", po.id).replace("{b}", next));
+    } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); }
   };
 
   /* Persetujuan berjenjang SPV → Manager → Director sesuai nominal. */
   const doApproveLevel = async (po: StoreItem) => {
+    try {
     const nx = nextLevel(po, APPROVE_PO_LIMIT);
     if (!nx) { toast(S.tFullApproved.replace("{n}", po.id), "info"); return; }
     const done: Approval[] = [...apprOf(po), { level: nx, by: "Anda", date: todayISO() }];
@@ -458,10 +465,12 @@ export default function Procurement() {
     await update("purchaseOrders", po.id, { approvals: done, status: still ? po.status : "Disetujui" });
     log("persetujuan PO", `${po.id} level ${nx}${still ? `, lanjut ke ${still}` : " (penuh)"}`, "Procurement");
     toast(still ? S.tApprNext.replace("{n}", po.id).replace("{a}", nx).replace("{b}", still) : S.tApprFull.replace("{n}", po.id));
+    } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); }
   };
 
   /* ============ RFQ ============ */
   const saveRfq = async () => {
+    try {
     if (!rfqPr) return;
     if (rfqVendors.length < 3) { toast(S.tRfqMin3, "info"); return; }
     await add("rfqs", {
@@ -472,9 +481,11 @@ export default function Procurement() {
     toast(S.tRfqCreated.replace("{n}", rfqPr.id));
     setRfqPr(null);
     setRfqVendors([]);
+    } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); }
   };
 
   const saveQuote = async () => {
+    try {
     if (!quoteRfq) return;
     if (!quoteForm.vendor) { toast(S.tPilihVendor, "info"); return; }
     const price = Number(quoteForm.price);
@@ -487,6 +498,7 @@ export default function Procurement() {
     toast(S.tQuoteSaved.replace("{n}", quoteForm.vendor));
     setQuoteRfq(null);
     setQuoteForm({ vendor: "", price: "", eta: "" });
+    } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); }
   };
 
   const confirmWin = async () => {
@@ -559,6 +571,7 @@ export default function Procurement() {
   })();
 
   const saveEval = async () => {
+    try {
     if (!evalPo) return;
     const q = Number(evalQ), d = Number(evalD), p = Number(evalP);
     if (![q, d, p].every((n) => n >= 1 && n <= 5)) { toast(S.tEvalRange, "info"); return; }
@@ -577,9 +590,11 @@ export default function Procurement() {
     setEvalQ("");
     setEvalD("");
     setEvalP("");
+    } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); }
   };
 
   const savePayung = async () => {
+    try {
     if (!payungVendor) return;
     const plafon = Number(payungPlafon);
     if (payungPlafon.trim() !== "" && (!plafon || plafon <= 0)) { toast(S.tPlafonPos, "info"); return; }
@@ -595,10 +610,12 @@ export default function Procurement() {
     setPayungVendor(null);
     setPayungPeriode("");
     setPayungPlafon("");
+    } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); }
   };
 
   /* ============ AMANDEMEN ============ */
   const confirmAmendNow = async () => {
+    try {
     if (!amendPo) return;
     const st = normPo(amendPo.status);
     if (st !== "Disetujui" && st !== "Dikirim") { toast(S.tAmdOnly, "info"); return; }
@@ -619,6 +636,7 @@ export default function Procurement() {
     setAmendPo(null);
     setConfirmAmend(false);
     setAmendForm({ name: "", qty: "1", unit: "pcs", price: "", note: "" });
+    } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); }
   };
 
   /* ============ CETAK (kop SB + pecah DPP/PPN bila include) ============ */
@@ -649,7 +667,7 @@ export default function Procurement() {
       [S.xTotal, "", "", "", Number(po.amount || lineTotal(lines))],
       ...(split ? [[S.xDpp.replace("{n}", String(ppnRate)), "", "", "", split.dpp], [S.xPpn.replace("{n}", String(ppnRate)), "", "", "", split.ppn]] : []),
     ];
-    void exportExcel(rows, `PO-${po.id}`, "PO");
+    void exportExcel(rows, `PO-${po.id}`, "PO").catch(() => toast(S.saveFail, "info"));
     toast(S.tPoExport.replace("{n}", po.id));
   };
 
@@ -764,8 +782,10 @@ export default function Procurement() {
   };
 
   const approvePr = async (r: StoreItem, ok: boolean) => {
+    try {
     await update("requisitions", r.id, { status: ok ? "Disetujui" : "Ditolak" });
     toast(ok ? S.tPrOk.replace("{n}", r.id) : S.tPrNo.replace("{n}", r.id));
+    } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); }
   };
 
   const poAksi = (po: StoreItem) => {
@@ -1084,7 +1104,7 @@ export default function Procurement() {
                       )}
                     <div className="mt-3 flex flex-wrap gap-1.5">
                       {(RFQ_NEXT[r.status] ?? []).map((n) => (
-                        <button key={n} className="btn-secondary text-xs" onClick={async () => { await update("rfqs", r.id, { status: n }); toast(S.tArrow.replace("{a}", r.id).replace("{b}", n)); }}>{n}</button>
+                        <button key={n} className="btn-secondary text-xs" onClick={async () => { try { await update("rfqs", r.id, { status: n }); toast(S.tArrow.replace("{a}", r.id).replace("{b}", n)); } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); } }}>{n}</button>
                       ))}
                       <button className="btn-secondary text-xs" onClick={() => { setQuoteRfq(r); setQuoteForm({ vendor: "", price: "", eta: "" }); }}>{S.btnInputQuote}</button>
                       {r.status === "Evaluasi" && quotes.length > 0 && (
@@ -1156,7 +1176,7 @@ export default function Procurement() {
                           <td className="td">
                             <div className="flex flex-wrap gap-1.5">
                               {(r.status === "Draft" || r.status === "Draf") && (
-                                <button className="btn-primary text-xs" onClick={async () => { await update("requisitions", r.id, { status: "Diajukan" }); log("mengajukan PR", r.id, "Procurement"); toast(S.tPrRowDiajukan.replace("{n}", r.id)); }}>{S.btnAjukan}</button>
+                                <button className="btn-primary text-xs" onClick={async () => { try { await update("requisitions", r.id, { status: "Diajukan" }); log("mengajukan PR", r.id, "Procurement"); toast(S.tPrRowDiajukan.replace("{n}", r.id)); } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); } }}>{S.btnAjukan}</button>
                               )}
                               {PR_PENDING.includes(r.status) && (
                                 <>
@@ -1168,7 +1188,7 @@ export default function Procurement() {
                                 <button className="btn-primary text-xs" onClick={() => { setRfqPr(r); setRfqVendors([]); }}>{S.btnBuatRfq}</button>
                               )}
                               {r.status === "Ditolak" && (
-                                <button className="btn-secondary text-xs" onClick={async () => await update("requisitions", r.id, { status: "Menunggu Approval" })}>{S.btnAjukanUlang}</button>
+                                <button className="btn-secondary text-xs" onClick={async () => { try { await update("requisitions", r.id, { status: "Menunggu Approval" }); } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); } }}>{S.btnAjukanUlang}</button>
                               )}
                               {(r.status === "Sudah PO" || r.status === "RFQ") && <span className="text-xs text-steel-400">-</span>}
                             </div>
@@ -1523,12 +1543,14 @@ export default function Procurement() {
         confirmLabel={S.cmUnblockC}
         onCancel={() => setUnblockVendor(null)}
         onConfirm={async () => {
+          try {
           if (unblockVendor) {
             await update("vendors", unblockVendor.id, { status: "Aktif" });
             log("buka blacklist (eskalasi)", unblockVendor.name, "Procurement");
             toast(S.tUnblocked.replace("{n}", unblockVendor.name));
           }
           setUnblockVendor(null);
+          } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); }
         }}
       />
 
@@ -1553,11 +1575,13 @@ export default function Procurement() {
       {/* Modal PR */}
       <Modal open={showPr} onClose={() => setShowPr(false)} title={S.mPrT}
         footer={<><button className="btn-secondary" onClick={() => setShowPr(false)}>{S.btnBatal}</button><button className="btn-primary" onClick={async () => {
+          try {
           if (!prForm.item.trim()) { toast(S.tItemWajib, "info"); return; }
           if (!Number(prForm.amount) || Number(prForm.amount) <= 0) { toast(S.tEstPos, "info"); return; }
           const created = await add("requisitions", { item: prForm.item.trim(), by: prForm.by.trim() || "Anda", amount: Number(prForm.amount), status: "Menunggu Approval" },
             { action: "mengajukan PR", module: "Procurement" });
           toast(S.tPrDiajukan.replace("{n}", created.id)); setShowPr(false); setPrForm({ item: "", by: "", amount: "" });
+          } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); }
         }}>{S.btnAjukan}</button></>}>
         <div className="space-y-3">
           <Field label={S.itemButuh}><input className="input" value={prForm.item} onChange={(e) => setPrForm({ ...prForm, item: e.target.value })} /></Field>
@@ -1571,10 +1595,12 @@ export default function Procurement() {
       {/* Modal vendor */}
       <Modal open={showVendor} onClose={() => setShowVendor(false)} title={S.btnTambahVendor}
         footer={<><button className="btn-secondary" onClick={() => setShowVendor(false)}>{S.btnBatal}</button><button className="btn-primary" onClick={async () => {
+          try {
           if (!vForm.name.trim()) { toast(S.tVendName, "info"); return; }
           const created = await add("vendors", { name: vForm.name.trim(), cat: vForm.cat, onTime: 100, quality: 100, po: 0, status: "Kualifikasi", scores: [] },
             { action: "mendaftarkan vendor", module: "Procurement" });
           toast(S.tVendAdded.replace("{n}", created.id)); setShowVendor(false); setVForm({ name: "", cat: "Baja & Struktur" });
+          } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); }
         }}>{S.btnSimpan}</button></>}>
         <div className="space-y-3">
           <Field label={S.namaVendor}><input className="input" value={vForm.name} onChange={(e) => setVForm({ ...vForm, name: e.target.value })} /></Field>

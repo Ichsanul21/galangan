@@ -233,15 +233,19 @@ export default function Absensi() {
 
   /* ---------- persetujuan lembur ---------- */
   const approveOT = async (a: StoreItem) => {
+    try {
     await update("attendance", a.id, { otStatus: "Disetujui" });
     log("menyetujui lembur", `${a.id} · ${empNameOf(String(a.employeeId))} · ${Number(a.overtime || 0)} jam`, "Absensi");
     toast(S.tOtApproved.replace("{n}", String(a.id)));
+    } catch (e) { toast(e instanceof Error ? e.message : S.tOtApproveFailed.replace("{a}", String(a.id)).replace("{b}", "backend tak terjangkau"), "info"); }
   };
 
   const rejectOT = async (a: StoreItem) => {
+    try {
     await update("attendance", a.id, { otStatus: "Ditolak" });
     log("menolak lembur", `${a.id} · ${empNameOf(String(a.employeeId))}`, "Absensi");
     toast(S.tOtRejected.replace("{n}", String(a.id)));
+    } catch (e) { toast(e instanceof Error ? e.message : S.tSaveFailed.replace("{a}", String(a.id)).replace("{b}", "backend tak terjangkau"), "info"); }
   };
 
   const approveAllOT = async () => {

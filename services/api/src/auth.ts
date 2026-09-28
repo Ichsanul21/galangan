@@ -56,7 +56,13 @@ export function requireRole(...roles: string[]) {
       return reply.status(401).send({ ok: false, error: { message: "Unauthorized", code: "UNAUTHORIZED" } });
     }
     if (!roles.includes(req.user.role)) {
-      const labels = [...new Set(roles.map((r) => r.charAt(0).toUpperCase() + r.slice(1).toLowerCase()))];
+      // Akronim umum jangan dirusak kapitalisasinya (QC/HR/BKI/SDM).
+      const ACRONYMS = new Set(["QC", "HR", "HSE", "BKI", "SDM", "IT", "API"]);
+      const labels = [...new Set(roles.map((r) => {
+        const u = String(r ?? "").toUpperCase();
+        if (ACRONYMS.has(u)) return u;
+        return r.charAt(0).toUpperCase() + r.slice(1).toLowerCase();
+      }))];
       return reply
         .status(403)
         .send({ ok: false, error: { message: `Butuh peran ${labels.join(" / ")}`, code: "FORBIDDEN" } });
