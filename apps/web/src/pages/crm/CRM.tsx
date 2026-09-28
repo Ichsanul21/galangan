@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { Plus, Send, Users2, Star, Handshake, ArrowRight, Search } from "lucide-react";
-import { Card, CardHeader, PageHeader, Badge, KpiCard, Tabs, Donut, Modal, Field, FormGrid, StatusBadge, EmptyState, SortTh, toggleSort, sortRows, toast, usePager } from "../../components/ui";
+import { Card, CardHeader, PageHeader, Badge, KpiCard, Tabs, Donut, Modal, Field, FormGrid, StatusBadge, EmptyState, SortTh, toggleSort, sortRows, toast, usePager,
+  NumInput,
+} from "../../components/ui";
 import ClientModal from "../../components/ClientModal";
 import type { SortState } from "../../components/ui";
 import { useStore } from "../../data/store";
@@ -592,7 +594,7 @@ export default function CRM() {
               </label>
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
               {quotPager.slice(penawaranList).map((q) => (
-                <Card key={q.id} id={notifRowId(String(q.id))} className={`p-4 ${flash.flashId === String(q.id) ? "notif-flash" : ""}`}>
+                <Card key={q.id} id={notifRowId(String(q.id))} className={`p-4 ${flash.flashId === String(q.id) ? "notif-hl notif-flash" : "notif-hl"}`}>
                   <div className="flex justify-between gap-2">
                     <div className="min-w-0">
                       <p className="truncate font-semibold text-navy-900" title={String(q.vessel)}>{String(q.vessel)}</p>
@@ -633,7 +635,7 @@ export default function CRM() {
               </div>
               <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                 {reqPager.slice(requests).map((r) => (
-                  <Card key={r.id} id={notifRowId(String(r.id))} className={`p-4 ${flash.flashId === String(r.id) ? "notif-flash" : ""}`}>
+                  <Card key={r.id} id={notifRowId(String(r.id))} className={`p-4 ${flash.flashId === String(r.id) ? "notif-hl notif-flash" : "notif-hl"}`}>
                     <div className="flex justify-between gap-2">
                       <div className="min-w-0">
                         <p className="truncate font-semibold text-navy-900" title={String(r.vessel)}>{String(r.vessel)}</p>
@@ -724,7 +726,7 @@ export default function CRM() {
                       </thead>
                       <tbody className="divide-y divide-steel-100">
                         {contractPager.slice(sortedContracts).map((k) => (
-                          <tr key={k.id} id={notifRowId(String(k.id))} className={flash.flashId === String(k.id) ? "notif-flash hover:bg-surface" : "hover:bg-surface"}>
+                          <tr key={k.id} id={notifRowId(String(k.id))} className={flash.flashId === String(k.id) ? "notif-hl notif-flash hover:bg-surface" : "notif-hl hover:bg-surface"}>
                             <td className="td font-mono text-xs font-semibold text-navy-900">{k.id}<span className="block font-sans text-[11px] font-normal text-steel-500">{String(k.client ?? "")}</span></td>
                             <td className="td font-mono text-xs"><Link to={`/crm/quotation/${k.quotationId}`} className="text-ocean-600">{String(k.quotationId)}</Link>{k.projectId ? <Link to={`/proyek/${k.projectId}`} className="block text-[11px] text-teal-600">{String(k.projectId)}</Link> : null}</td>
                             <td className="td text-xs font-semibold">{fmtRupiah(num(k.value))}</td>
@@ -754,7 +756,7 @@ export default function CRM() {
                       {eligibleQuotations.map((q) => <option key={q.id} value={q.id}>{q.id} · {String(q.vessel)} · {fmtMiliar(num(q.value))}</option>)}
                     </select>
                   </Field>
-                  <Field label={S.contractValueLabel}><input type="number" min={0} className="input" value={contractForm.value} onChange={(e) => setContractForm({ ...contractForm, value: e.target.value })} /></Field>
+                  <Field label={S.contractValueLabel}><NumInput min={0} className="input" value={contractForm.value} onChange={(e) => setContractForm({ ...contractForm, value: e.target.value })} /></Field>
                   <Field label={S.signDateLabel}><input type="date" className="input" value={contractForm.signedAt} onChange={(e) => setContractForm({ ...contractForm, signedAt: e.target.value })} /></Field>
                   <Field label={S.linkProjectLabel}>
                     <select className="input" value={contractForm.projectId} onChange={(e) => setContractForm({ ...contractForm, projectId: e.target.value })}>
@@ -795,7 +797,7 @@ export default function CRM() {
                   </select>
                 </Field>
                 <Field label={S.poNoLabel}><input className="input font-mono" value={poForm.no} onChange={(e) => setPoForm({ ...poForm, no: e.target.value })} placeholder={S.poNoPh} /></Field>
-                <Field label={S.amountLabel}><input type="number" min={0} className="input" value={poForm.amount} onChange={(e) => setPoForm({ ...poForm, amount: e.target.value })} /></Field>
+                <Field label={S.amountLabel}><NumInput min={0} className="input" value={poForm.amount} onChange={(e) => setPoForm({ ...poForm, amount: e.target.value })} /></Field>
                 <Field label={S.dateLabel}><input type="date" className="input" value={poForm.date} onChange={(e) => setPoForm({ ...poForm, date: e.target.value })} /></Field>
               </div>
               <button className="btn-secondary mt-2 text-xs" onClick={saveClientPo}><Plus className="h-3.5 w-3.5" /> {S.logPoBtn}</button>
@@ -881,7 +883,7 @@ export default function CRM() {
             </Field>
           </FormGrid>
           <FormGrid>
-            <Field label={S.quoteValueField} hint={S.positiveHint}><input type="number" min={1} className="input" value={qForm.value} onChange={(e) => setQForm({ ...qForm, value: e.target.value })} /></Field>
+            <Field label={S.quoteValueField} hint={S.positiveHint}><NumInput min={1} className="input" value={qForm.value} onChange={(e) => setQForm({ ...qForm, value: e.target.value })} /></Field>
             <Field label={S.quoteDateLabel}><input type="date" className="input" value={qForm.date} onChange={(e) => setQForm({ ...qForm, date: e.target.value })} /></Field>
           </FormGrid>
         </div>
@@ -908,7 +910,7 @@ export default function CRM() {
             <Field label={S.dateLabel}><input type="date" className="input" value={reqForm.date} onChange={(e) => setReqForm({ ...reqForm, date: e.target.value })} /></Field>
           </FormGrid>
           <Field label={S.scopeLabel}><textarea className="input" rows={3} value={reqForm.scope} onChange={(e) => setReqForm({ ...reqForm, scope: e.target.value })} placeholder={S.scopePh} /></Field>
-          <Field label={S.estValueLabel}><input type="number" min={0} className="input" value={reqForm.value} onChange={(e) => setReqForm({ ...reqForm, value: e.target.value })} placeholder={S.estValuePh} /></Field>
+          <Field label={S.estValueLabel}><NumInput min={0} className="input" value={reqForm.value} onChange={(e) => setReqForm({ ...reqForm, value: e.target.value })} placeholder={S.estValuePh} /></Field>
         </div>
       </Modal>
 

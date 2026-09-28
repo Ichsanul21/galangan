@@ -16,6 +16,7 @@ import {
   sortRows,
   toast,
   toggleSort,
+  NumInput,
 } from "../../components/ui";
 import type { SortState } from "../../components/ui";
 import { useStore } from "../../data/store";
@@ -896,7 +897,7 @@ export default function Payroll() {
                         default: return "";
                       }
                     }).map((p) => (
-                      <tr key={p.id} id={notifRowId(String(p.id))} className={flash.flashId === String(p.id) ? "notif-flash hover:bg-surface" : "hover:bg-surface"}>
+                      <tr key={p.id} id={notifRowId(String(p.id))} className={flash.flashId === String(p.id) ? "notif-hl notif-flash hover:bg-surface" : "notif-hl hover:bg-surface"}>
                         <td className="td font-mono text-steel-600">{p.id}</td>
                         <td className="td font-medium text-navy-900">{empNameOf(String(p.employeeId))}</td>
                         <td className="td text-steel-600">{fmtRupiah(Number(p.basic || 0))}</td>
@@ -959,7 +960,7 @@ export default function Payroll() {
                     </select>
                   </Field>
                   <Field label={S.lblNominal}>
-                    <input type="number" min="0" className="input w-44" value={bonusForm.nominal} onChange={(e) => setBonusForm({ ...bonusForm, nominal: e.target.value })} placeholder={S.phBonusNominal} />
+                    <NumInput min="0" className="input w-44" value={bonusForm.nominal} onChange={(e) => setBonusForm({ ...bonusForm, nominal: e.target.value })} placeholder={S.phBonusNominal} />
                   </Field>
                   <Field label={S.lblNote}>
                     <input className="input w-56" value={bonusForm.keterangan} onChange={(e) => setBonusForm({ ...bonusForm, keterangan: e.target.value })} placeholder={S.phBonusNote} />
@@ -995,7 +996,7 @@ export default function Payroll() {
                         default: return "";
                       }
                     }).map((p) => (
-                      <tr key={p.id} id={notifRowId(String(p.id))} className={flash.flashId === String(p.id) ? "notif-flash hover:bg-surface" : "hover:bg-surface"}>
+                      <tr key={p.id} id={notifRowId(String(p.id))} className={flash.flashId === String(p.id) ? "notif-hl notif-flash hover:bg-surface" : "notif-hl hover:bg-surface"}>
                         <td className="td font-mono text-steel-600">{p.id}</td>
                         <td className="td font-medium text-navy-900">{empNameOf(String(p.employeeId))}</td>
                         <td className="td"><Badge tone={rowType(p) === "THR" ? "amber" : "violet"}>{rowType(p)}</Badge></td>
@@ -1051,10 +1052,10 @@ export default function Payroll() {
                     <input type="date" className="input w-auto" value={kasbonForm.tanggal} onChange={(e) => setKasbonForm({ ...kasbonForm, tanggal: e.target.value })} />
                   </Field>
                   <Field label={S.lblAmount}>
-                    <input type="number" min="0" className="input w-44" value={kasbonForm.jumlah} onChange={(e) => setKasbonForm({ ...kasbonForm, jumlah: e.target.value })} placeholder={S.phKasbonAmount} />
+                    <NumInput min="0" className="input w-44" value={kasbonForm.jumlah} onChange={(e) => setKasbonForm({ ...kasbonForm, jumlah: e.target.value })} placeholder={S.phKasbonAmount} />
                   </Field>
                   <Field label={S.lblInstall}>
-                    <input type="number" min="0" className="input w-44" value={kasbonForm.cicilan} onChange={(e) => setKasbonForm({ ...kasbonForm, cicilan: e.target.value })} placeholder={S.phKasbonInstall} />
+                    <NumInput min="0" className="input w-44" value={kasbonForm.cicilan} onChange={(e) => setKasbonForm({ ...kasbonForm, cicilan: e.target.value })} placeholder={S.phKasbonInstall} />
                   </Field>
                   <button className="btn-primary" onClick={saveKasbon}>{S.btnAddKasbon}</button>
                 </div>
@@ -1121,9 +1122,9 @@ export default function Payroll() {
         }
       >
         <FormGrid>
-          <Field label={S.lblBasic}><input type="number" min="0" className="input" value={editForm.basic} onChange={(e) => setEditForm({ ...editForm, basic: e.target.value })} /></Field>
-          <Field label={S.lblOvertimePay}><input type="number" min="0" className="input" value={editForm.overtimePay} onChange={(e) => setEditForm({ ...editForm, overtimePay: e.target.value })} /></Field>
-          <Field label={S.lblManualDed}><input type="number" min="0" className="input" value={editForm.deductions} onChange={(e) => setEditForm({ ...editForm, deductions: e.target.value })} /></Field>
+          <Field label={S.lblBasic}><NumInput min="0" className="input" value={editForm.basic} onChange={(e) => setEditForm({ ...editForm, basic: e.target.value })} /></Field>
+          <Field label={S.lblOvertimePay}><NumInput min="0" className="input" value={editForm.overtimePay} onChange={(e) => setEditForm({ ...editForm, overtimePay: e.target.value })} /></Field>
+          <Field label={S.lblManualDed}><NumInput min="0" className="input" value={editForm.deductions} onChange={(e) => setEditForm({ ...editForm, deductions: e.target.value })} /></Field>
         </FormGrid>
         <div className="mt-3">
           <div className="mb-2 flex items-center justify-between">
@@ -1134,7 +1135,7 @@ export default function Payroll() {
             {editLines.map((l, i) => (
               <div key={i} className="flex items-center gap-2">
                 <input className="input flex-1" value={l.label} onChange={(e) => setEditLines((prev) => prev.map((x, j) => (j === i ? { ...x, label: e.target.value } : x)))} placeholder={S.phTransport} />
-                <input type="number" min="0" className="input w-44" value={String(l.amount)} onChange={(e) => setEditLines((prev) => prev.map((x, j) => (j === i ? { ...x, amount: Number(e.target.value) } : x)))} placeholder={S.phNominal} />
+                <NumInput min="0" className="input w-44" value={String(l.amount)} onChange={(e) => setEditLines((prev) => prev.map((x, j) => (j === i ? { ...x, amount: Number(e.target.value) } : x)))} placeholder={S.phNominal} />
                 <button className="text-sm font-semibold text-rose-600 hover:underline" onClick={() => setEditLines((prev) => prev.filter((_, j) => j !== i))}>{S.btnDelete}</button>
               </div>
             ))}
@@ -1188,8 +1189,8 @@ export default function Payroll() {
       >
         <div className="space-y-3">
           <FormGrid>
-            <Field label={S.lblWorkYears}><input type="number" min="0" step="0.5" className="input" value={pesForm.masaKerja} onChange={(e) => setPesForm({ ...pesForm, masaKerja: e.target.value })} /></Field>
-            <Field label={S.lblMonthlyWage}><input type="number" min="0" className="input" value={pesForm.upah} onChange={(e) => setPesForm({ ...pesForm, upah: e.target.value })} /></Field>
+            <Field label={S.lblWorkYears}><NumInput min="0" step="0.5" className="input" value={pesForm.masaKerja} onChange={(e) => setPesForm({ ...pesForm, masaKerja: e.target.value })} /></Field>
+            <Field label={S.lblMonthlyWage}><NumInput min="0" className="input" value={pesForm.upah} onChange={(e) => setPesForm({ ...pesForm, upah: e.target.value })} /></Field>
           </FormGrid>
           <dl className="dl-div rounded-xl bg-surface p-3 text-sm">
             <div className="flex justify-between"><dt className="text-steel-500">{S.pesRow.replace("{a}", String(pesHitung.pesMonths))}</dt><dd className="font-medium">{fmtRupiah(pesHitung.pesangon)}</dd></div>

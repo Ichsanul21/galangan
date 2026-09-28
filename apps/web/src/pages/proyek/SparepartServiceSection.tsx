@@ -2,7 +2,9 @@ import { useState, useMemo, useRef, useEffect } from "react";
 import { useStore } from "../../data/store";
 import { useT } from "../../i18n/LanguageContext";
 import { n_prj } from "../../i18n/n_prj";
-import { Card, StatusBadge, Modal, Field, FormGrid, toast, EmptyState, Badge } from "../../components/ui";
+import { Card, StatusBadge, Modal, Field, FormGrid, toast, EmptyState, Badge,
+  NumInput,
+} from "../../components/ui";
 import { Plus, Wrench, Package, Box, RotateCcw, FileDown } from "lucide-react";
 import { exportExcel, fmtRupiah } from "../../utils/export";
 import type { ServiceRecord, Sparepart } from "../../data";
@@ -388,7 +390,7 @@ export default function SparepartServiceSection({ projectId, vesselId, view = "a
             </Field>
           </FormGrid>
           <FormGrid>
-            <Field label={S.spsCost}><input type="number" className="input" value={form.cost} onChange={(e) => setForm({ ...form, cost: e.target.value })} /></Field>
+            <Field label={S.spsCost}><NumInput className="input" value={form.cost} onChange={(e) => setForm({ ...form, cost: e.target.value })} /></Field>
             <Field label={S.spsNotes}><input className="input" value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} placeholder={S.spsNotesPh} /></Field>
           </FormGrid>
           <FormGrid>
@@ -421,7 +423,7 @@ export default function SparepartServiceSection({ projectId, vesselId, view = "a
             <Field label={S.dateField}><input type="date" className="input" value={svcForm.date} onChange={(e) => setSvcForm({ ...svcForm, date: e.target.value })} /></Field>
             <Field label={S.spsSvcTech}><input className="input" value={svcForm.technician} onChange={(e) => setSvcForm({ ...svcForm, technician: e.target.value })} placeholder={S.spsTechPh} /></Field>
           </FormGrid>
-          <Field label={S.spsSvcCost}><input type="number" className="input" value={svcForm.cost} onChange={(e) => setSvcForm({ ...svcForm, cost: e.target.value })} /></Field>
+          <Field label={S.spsSvcCost}><NumInput className="input" value={svcForm.cost} onChange={(e) => setSvcForm({ ...svcForm, cost: e.target.value })} /></Field>
         </div>
       </Modal>
 

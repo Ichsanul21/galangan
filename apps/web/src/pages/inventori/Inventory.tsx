@@ -30,7 +30,9 @@ import {
   Tooltip,
   ResponsiveContainer,
 } from "recharts";
-import { Card, CardHeader, PageHeader, Badge, KpiCard, Tabs, ChartTooltip, Modal, Field, FormGrid, toast, EmptyState, ProgressBar, SortTh, toggleSort, sortRows, usePager, useDebouncedValue } from "../../components/ui";
+import { Card, CardHeader, PageHeader, Badge, KpiCard, Tabs, ChartTooltip, Modal, Field, FormGrid, toast, EmptyState, ProgressBar, SortTh, toggleSort, sortRows, usePager, useDebouncedValue,
+  NumInput,
+} from "../../components/ui";
 import type { SortState } from "../../components/ui";
 import { useStore, type StoreItem } from "../../data/store";
 import { isBackendConfigured } from "../../services/http";
@@ -1222,7 +1224,7 @@ export default function Inventory() {
                       const conv = convOf(i);
                       const u2 = uom2Of(i);
                       return (
-                        <tr key={i.id} id={notifRowId(String(i.id))} className={flash.flashId === String(i.id) ? "notif-flash hover:bg-surface" : "hover:bg-surface"}>
+                        <tr key={i.id} id={notifRowId(String(i.id))} className={flash.flashId === String(i.id) ? "notif-hl notif-flash hover:bg-surface" : "notif-hl hover:bg-surface"}>
                           <td className="td">
                             <p className="font-medium text-navy-900 truncate" title={String(i.name)}>{i.name}</p>
                             <p className="text-xs text-steel-500 font-mono">{i.sku}</p>
@@ -1446,10 +1448,10 @@ export default function Inventory() {
                 <CardHeader title={S.tonT} subtitle={S.tonS} />
                 <div className="mt-3 space-y-3">
                   <FormGrid>
-                    <Field label={S.tonP} hint={S.tonPHint}><input type="number" min={0} className="input" value={tonP} onChange={(e) => setTonP(e.target.value)} /></Field>
-                    <Field label={S.tonL} hint={S.tonLHint}><input type="number" min={0} className="input" value={tonL} onChange={(e) => setTonL(e.target.value)} /></Field>
-                    <Field label={S.thickLbl}><input type="number" min={0} className="input" value={tonT} onChange={(e) => setTonT(e.target.value)} /></Field>
-                    <Field label={S.sheetsLbl}><input type="number" min={1} className="input" value={tonPcs} onChange={(e) => setTonPcs(e.target.value)} /></Field>
+                    <Field label={S.tonP} hint={S.tonPHint}><NumInput min={0} className="input" value={tonP} onChange={(e) => setTonP(e.target.value)} /></Field>
+                    <Field label={S.tonL} hint={S.tonLHint}><NumInput min={0} className="input" value={tonL} onChange={(e) => setTonL(e.target.value)} /></Field>
+                    <Field label={S.thickLbl}><NumInput min={0} className="input" value={tonT} onChange={(e) => setTonT(e.target.value)} /></Field>
+                    <Field label={S.sheetsLbl}><NumInput min={1} className="input" value={tonPcs} onChange={(e) => setTonPcs(e.target.value)} /></Field>
                   </FormGrid>
                   <p className="rounded-lg bg-surface px-3 py-2 text-sm font-semibold text-navy-900">
                     Berat: {fmtJumlah(sbTonasePlat(Number(tonP) || 0, Number(tonL) || 0, Number(tonT) || 0, Number(tonPcs) || 0))} kg
@@ -1663,16 +1665,16 @@ export default function Inventory() {
                 <input className="input bg-steel-50" value={fmtJumlah(Number(editing.stock))} disabled readOnly />
               </Field>
             ) : (
-              <Field label={S.stock0Lbl}><input type="number" min={0} className="input" value={form.stock} onChange={(e) => setF("stock", e.target.value)} /></Field>
+              <Field label={S.stock0Lbl}><NumInput min={0} className="input" value={form.stock} onChange={(e) => setF("stock", e.target.value)} /></Field>
             )}
-            <Field label={S.minLbl}><input type="number" min={0} className="input" value={form.minStock} onChange={(e) => setF("minStock", e.target.value)} /></Field>
+            <Field label={S.minLbl}><NumInput min={0} className="input" value={form.minStock} onChange={(e) => setF("minStock", e.target.value)} /></Field>
             <Field label={S.unitLbl}>
               <select className="input" value={form.unit} onChange={(e) => setF("unit", e.target.value)}>
                 {["pcs", "kg", "liter", "meter", "batang", "unit", "roll"].map((u) => <option key={u}>{u}</option>)}
               </select>
             </Field>
-            <Field label={S.costLbl}><input type="number" min={0} className="input" value={form.cost} onChange={(e) => setF("cost", e.target.value)} /></Field>
-            <Field label={S.volLbl} hint={S.hintVol}><input type="number" min={0} className="input" value={form.volume} onChange={(e) => setF("volume", e.target.value)} /></Field>
+            <Field label={S.costLbl}><NumInput min={0} className="input" value={form.cost} onChange={(e) => setF("cost", e.target.value)} /></Field>
+            <Field label={S.volLbl} hint={S.hintVol}><NumInput min={0} className="input" value={form.volume} onChange={(e) => setF("volume", e.target.value)} /></Field>
             <Field label={S.batchLbl} hint={form.category === "Mesin" ? S.hintBatchMesin : S.hintBatchOpt}>
               <input className="input font-mono" value={form.batch} onChange={(e) => setF("batch", e.target.value)} placeholder={S.phBatch} />
             </Field>
@@ -1680,10 +1682,10 @@ export default function Inventory() {
               <input className="input" value={form.uom2} onChange={(e) => setF("uom2", e.target.value)} placeholder={S.phUom2} />
             </Field>
             <Field label={S.convLbl} hint={S.convHint.replace("{n}", form.unit || S.unitFallback)}>
-              <input type="number" min={0} className="input" value={form.konversi} onChange={(e) => setF("konversi", e.target.value)} placeholder={S.phConv} />
+              <NumInput min={0} className="input" value={form.konversi} onChange={(e) => setF("konversi", e.target.value)} placeholder={S.phConv} />
             </Field>
             <Field label={S.minWhLbl} hint={S.hintMinWh}>
-              <input type="number" min={0} className="input" value={form.minWh} onChange={(e) => setF("minWh", e.target.value)} placeholder={S.phMinWh} />
+              <NumInput min={0} className="input" value={form.minWh} onChange={(e) => setF("minWh", e.target.value)} placeholder={S.phMinWh} />
             </Field>
             <Field label={S.photoLbl} hint={S.hintPhoto}>
               <div className="flex items-center gap-2">
@@ -1731,7 +1733,7 @@ export default function Inventory() {
             </div>
           )}
           <FormGrid>
-            <Field label={S.jumlahLbl}><input type="number" min={1} className="input" value={moveQty} onChange={(e) => setMoveQty(e.target.value)} /></Field>
+            <Field label={S.jumlahLbl}><NumInput min={1} className="input" value={moveQty} onChange={(e) => setMoveQty(e.target.value)} /></Field>
             {moveFresh && hasUom2(moveFresh) ? (
               <Field label={S.inputUnitLbl} hint={S.inputUnitHint.replace("{a}", moveFresh.unit).replace("{b}", `${fmtJumlah(convOf(moveFresh))} ${uom2Of(moveFresh)}`)}>
                 <select className="input" value={moveUom} onChange={(e) => setMoveUom(e.target.value)} aria-label={S.inputUnitAria}>
@@ -1758,10 +1760,10 @@ export default function Inventory() {
           {moveKind === "in" && (
             <FormGrid>
               <Field label={S.priceExLbl} hint={S.hintPriceEx}>
-                <input type="number" min={0} className="input" value={movePrice} onChange={(e) => setMovePrice(e.target.value)} placeholder={S.phPrice} />
+                <NumInput min={0} className="input" value={movePrice} onChange={(e) => setMovePrice(e.target.value)} placeholder={S.phPrice} />
               </Field>
               <Field label={S.taxLbl} hint={S.hintTax}>
-                <input type="number" min={0} className="input" value={moveTax} onChange={(e) => setMoveTax(e.target.value)} placeholder="0" />
+                <NumInput min={0} className="input" value={moveTax} onChange={(e) => setMoveTax(e.target.value)} placeholder="0" />
               </Field>
             </FormGrid>
           )}
@@ -1795,7 +1797,7 @@ export default function Inventory() {
             </select>
           </Field>
           <Field label={S.countedLbl} hint={opTarget ? S.recordedHint.replace("{a}", fmtJumlah(Number(opTarget.stock))).replace("{b}", opTarget.unit) : undefined}>
-            <input type="number" min={0} className="input" value={opCount} onChange={(e) => setOpCount(e.target.value)} />
+            <NumInput min={0} className="input" value={opCount} onChange={(e) => setOpCount(e.target.value)} />
           </Field>
           {opSelisih !== null && opSelisih !== 0 && (
             <p className="rounded-lg bg-blue-50 px-3 py-2 text-xs font-medium text-blue-700">
@@ -1817,7 +1819,7 @@ export default function Inventory() {
           </Field>
           <FormGrid>
             <Field label={S.qtyTrLbl} hint={trTarget ? S.availHint.replace("{a}", fmtJumlah(Number(trTarget.stock))).replace("{b}", trTarget.unit) : undefined}>
-              <input type="number" min={1} className="input" value={trQty} onChange={(e) => setTrQty(e.target.value)} />
+              <NumInput min={1} className="input" value={trQty} onChange={(e) => setTrQty(e.target.value)} />
             </Field>
             <Field label={S.destLbl}>
               <select className="input" value={trDest} onChange={(e) => setTrDest(e.target.value)}>
@@ -1840,7 +1842,7 @@ export default function Inventory() {
               {projects.map((p) => <option key={p.id} value={p.id}>{p.id} - {p.vessel}</option>)}
             </select>
           </Field>
-          <Field label={S.reservQtyLbl}><input type="number" min={1} className="input" value={reservQtyInput} onChange={(e) => setReservQtyInput(e.target.value)} /></Field>
+          <Field label={S.reservQtyLbl}><NumInput min={1} className="input" value={reservQtyInput} onChange={(e) => setReservQtyInput(e.target.value)} /></Field>
         </div>
       </Modal>
 

@@ -46,6 +46,7 @@ import {
   Modal,
   Field,
   toast,
+  NumInput,
 } from "../components/ui";
 import { useStore } from "../data/store";
 import type { StoreItem } from "../data/store";
@@ -364,8 +365,8 @@ export default function Dashboard() {
       <Modal open={showTarget} onClose={() => setShowTarget(false)} title={S.setTargetTitle.replace("{n}", branch)} subtitle={S.setTargetSub}
         footer={<><button className="btn-secondary" onClick={() => setShowTarget(false)}>{S.cancelBtn}</button><button className="btn-primary" onClick={saveTarget}>{S.saveTargetBtn}</button></>}>
         <div className="space-y-3">
-          <Field label={S.targetRevenueLabel}><input type="number" min={0} className="input" placeholder={S.targetRevenuePh} value={tgtRev} onChange={(e) => setTgtRev(e.target.value)} /></Field>
-          <Field label={S.targetProjectLabel}><input type="number" min={0} className="input" placeholder={S.targetProjectPh} value={tgtProj} onChange={(e) => setTgtProj(e.target.value)} /></Field>
+          <Field label={S.targetRevenueLabel}><NumInput min={0} className="input" placeholder={S.targetRevenuePh} value={tgtRev} onChange={(e) => setTgtRev(e.target.value)} /></Field>
+          <Field label={S.targetProjectLabel}><NumInput min={0} className="input" placeholder={S.targetProjectPh} value={tgtProj} onChange={(e) => setTgtProj(e.target.value)} /></Field>
         </div>
       </Modal>
 

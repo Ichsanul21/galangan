@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import type { ReactNode, InputHTMLAttributes, KeyboardEvent as ReactKeyboardEvent } from "react";
 import { useEffect, useId, useRef, useState, Component, type ErrorInfo } from "react";
 import { useT } from "../i18n/LanguageContext";
 import { statusLabel } from "../i18n/status";
@@ -1018,6 +1018,32 @@ export function usePager(total: number, defaultSize = 100): {
     </div>
   );
   return { page: safe, size, pages, slice, reset, go, bar };
+}
+
+/* ============ N U M I N P U T ============ */
+
+/** Input angka terkunci: blokir e/E/+/- di keyboard (+ titik/koma bila integer).
+ * Validasi Number() di handler tetap sebagai jaring kedua. */
+export function NumInput({ integer = false, allowNegative = false, onKeyDown, inputMode, ...rest }: InputHTMLAttributes<HTMLInputElement> & { integer?: boolean; allowNegative?: boolean }) {
+  const block = (e: ReactKeyboardEvent<HTMLInputElement>) => {
+    if (["e", "E", "+", "-"].includes(e.key) && !(e.key === "-" && allowNegative)) {
+      e.preventDefault();
+      return;
+    }
+    if (integer && (e.key === "." || e.key === ",")) {
+      e.preventDefault();
+      return;
+    }
+    onKeyDown?.(e);
+  };
+  return (
+    <input
+      type="number"
+      inputMode={inputMode ?? (integer ? "numeric" : "decimal")}
+      onKeyDown={block}
+      {...rest}
+    />
+  );
 }
 
 /* ============ T O A S T ============ */

@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { Plus, Search, Ship, Anchor, FileCheck2, Pencil } from "lucide-react";
-import { Card, CardHeader, PageHeader, Badge, KpiCard, Modal, Field, FormGrid, toast, SortTh, toggleSort, sortRows, usePager } from "../../components/ui";
+import { Card, CardHeader, PageHeader, Badge, KpiCard, Modal, Field, FormGrid, toast, SortTh, toggleSort, sortRows, usePager,
+  NumInput,
+} from "../../components/ui";
 import type { SortState } from "../../components/ui";
 import { useStore } from "../../data/store";
 import type { StoreItem } from "../../data/store";
@@ -223,13 +225,13 @@ export default function Vessels() {
         <Field label={S.typeLabel}><input className="input" value={f.type} onChange={(e) => setF({ ...f, type: e.target.value })} placeholder={S.vsTypePh} /></Field>
         <Field label={S.vsOwnerField}><input className="input" value={f.owner} onChange={(e) => setF({ ...f, owner: e.target.value })} placeholder={S.vsOwnerPh} /></Field>
         <Field label={S.vsEngineField}><input className="input" value={f.engineType} onChange={(e) => setF({ ...f, engineType: e.target.value })} placeholder={S.vsEnginePh} /></Field>
-        <Field label={S.vsLoaField}><input type="number" min={0} step={0.1} className="input" value={f.loa} onChange={(e) => setF({ ...f, loa: e.target.value })} placeholder={S.vsLoaPh} /></Field>
-        <Field label={S.vsBeamField}><input type="number" min={0} step={0.1} className="input" value={f.beam} onChange={(e) => setF({ ...f, beam: e.target.value })} placeholder={S.vsBeamPh} /></Field>
-        <Field label={S.vsDraftField}><input type="number" min={0} step={0.1} className="input" value={f.draft} onChange={(e) => setF({ ...f, draft: e.target.value })} placeholder={S.vsDraftPh} /></Field>
-        <Field label={S.vsBollardField}><input type="number" min={0} step={0.1} className="input" value={f.bollard} onChange={(e) => setF({ ...f, bollard: e.target.value })} placeholder={S.vsBollardPh} /></Field>
-        <Field label={S.vsGtField}><input type="number" min={0} step={1} className="input" value={f.gt} onChange={(e) => setF({ ...f, gt: e.target.value })} placeholder={S.vsGtPh} /></Field>
-        <Field label={S.vsNtField}><input type="number" min={0} step={1} className="input" value={f.nt} onChange={(e) => setF({ ...f, nt: e.target.value })} placeholder={S.vsNtPh} /></Field>
-        <Field label={S.vsBhpField}><input type="number" min={0} step={1} className="input" value={f.bhp} onChange={(e) => setF({ ...f, bhp: e.target.value })} placeholder={S.vsBhpPh} /></Field>
+        <Field label={S.vsLoaField}><NumInput min={0} step={0.1} className="input" value={f.loa} onChange={(e) => setF({ ...f, loa: e.target.value })} placeholder={S.vsLoaPh} /></Field>
+        <Field label={S.vsBeamField}><NumInput min={0} step={0.1} className="input" value={f.beam} onChange={(e) => setF({ ...f, beam: e.target.value })} placeholder={S.vsBeamPh} /></Field>
+        <Field label={S.vsDraftField}><NumInput min={0} step={0.1} className="input" value={f.draft} onChange={(e) => setF({ ...f, draft: e.target.value })} placeholder={S.vsDraftPh} /></Field>
+        <Field label={S.vsBollardField}><NumInput min={0} step={0.1} className="input" value={f.bollard} onChange={(e) => setF({ ...f, bollard: e.target.value })} placeholder={S.vsBollardPh} /></Field>
+        <Field label={S.vsGtField}><NumInput min={0} step={1} className="input" value={f.gt} onChange={(e) => setF({ ...f, gt: e.target.value })} placeholder={S.vsGtPh} /></Field>
+        <Field label={S.vsNtField}><NumInput min={0} step={1} className="input" value={f.nt} onChange={(e) => setF({ ...f, nt: e.target.value })} placeholder={S.vsNtPh} /></Field>
+        <Field label={S.vsBhpField}><NumInput min={0} step={1} className="input" value={f.bhp} onChange={(e) => setF({ ...f, bhp: e.target.value })} placeholder={S.vsBhpPh} /></Field>
         <Field label={S.vsClassField}>
           <select className="input" value={f.class} onChange={(e) => setF({ ...f, class: e.target.value })}>
             {CLASS_OPTIONS.map((c) => <option key={c}>{c}</option>)}
@@ -299,7 +301,7 @@ export default function Vessels() {
           {cardPager.slice(list).map((v) => {
             const comp = complianceSummary(v);
             return (
-              <Card key={v.id} id={notifRowId(String(v.id))} className={`p-5 hover:shadow-md transition-shadow ${flash.flashId === String(v.id) ? "notif-flash" : ""}`}>
+              <Card key={v.id} id={notifRowId(String(v.id))} className={`p-5 hover:shadow-md transition-shadow ${flash.flashId === String(v.id) ? "notif-hl notif-flash" : "notif-hl"}`}>
                 <Link to={`/kapal/${v.id}`}>
                   <div className="flex items-start justify-between">
                     <div className="flex items-center gap-2">

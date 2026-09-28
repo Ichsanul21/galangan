@@ -1,7 +1,9 @@
 // Modal tambah klien (dipakai form proyek + halaman CRM) - field & validasi
 // satu pintu agar konsisten.
 import { useState } from "react";
-import { Field, Modal, toast } from "./ui";
+import { Field, Modal, toast,
+  NumInput,
+} from "./ui";
 import { useStore } from "../data/store";
 
 export default function ClientModal({
@@ -78,10 +80,10 @@ export default function ClientModal({
           <input className="input" value={form.name} onChange={(e) => setF("name", e.target.value)} placeholder="cth: PT Bahari Baru" />
         </Field>
         <Field label="Jumlah armada">
-          <input type="number" min={0} className="input" value={form.fleet} onChange={(e) => setF("fleet", e.target.value)} />
+          <NumInput min={0} className="input" value={form.fleet} onChange={(e) => setF("fleet", e.target.value)} />
         </Field>
         <Field label="Rating (%)">
-          <input type="number" max={100} className="input" value={form.rating} onChange={(e) => setF("rating", e.target.value)} />
+          <NumInput max={100} className="input" value={form.rating} onChange={(e) => setF("rating", e.target.value)} />
         </Field>
         <Field label="Klasifikasi">
           <select className="input" value={form.klasifikasi} onChange={(e) => setF("klasifikasi", e.target.value)}>
@@ -94,7 +96,7 @@ export default function ClientModal({
           <input className="input" value={form.branch} onChange={(e) => setF("branch", e.target.value)} placeholder="Samarinda" />
         </Field>
         <Field label="Credit limit (Rp, IDR)">
-          <input type="number" min={0} className="input" value={form.creditLimit} onChange={(e) => setF("creditLimit", e.target.value)} />
+          <NumInput min={0} className="input" value={form.creditLimit} onChange={(e) => setF("creditLimit", e.target.value)} />
         </Field>
         <Field label="Payment terms">
           <select className="input" value={form.paymentTerms} onChange={(e) => setF("paymentTerms", e.target.value)}>

@@ -1,4 +1,5 @@
 import { useState } from "react";
+import type { CSSProperties } from "react";
 import { Link } from "react-router-dom";
 import {
   Eye,
@@ -42,7 +43,7 @@ import {
 import type { SortState } from "../components/ui";
 import { useStore } from "../data/store";
 import { getSetting } from "../utils/settings";
-import { exportExcel } from "../utils/export";
+import { exportExcel, exportPDF } from "../utils/export";
 import { fmtTanggal, fmtMiliar, fmtRupiah, todayISO } from "../utils/format";
 import { useT } from "../i18n/LanguageContext";
 import { n_misc } from "../i18n/n_misc";
@@ -317,6 +318,16 @@ export default function Analytics() {
     toast(S.tAnalyticsExported);
   };
 
+  const exportPdfReport = () => {
+    exportPDF("analytics-pdf", `Laporan-Analytics-${todayISO()}`);
+    toast(S.tAnalyticsPdfExported);
+  };
+
+  // Style print-friendly untuk section PDF tersembunyi (tabel polos, tanpa chart).
+  const pdfTh: CSSProperties = { border: "1px solid #999", padding: "4px 6px", background: "#eee", textAlign: "left", fontSize: 11 };
+  const pdfTd: CSSProperties = { border: "1px solid #999", padding: "4px 6px", fontSize: 11 };
+  const pdfTable: CSSProperties = { width: "100%", borderCollapse: "collapse", marginTop: 6, marginBottom: 12 };
+
   return (
     <div>
       <PageHeader
@@ -324,7 +335,10 @@ export default function Analytics() {
         subtitle={S.anSubtitle}
         icon={<BarChart3 className="h-5 w-5" />}
         actions={
-          <button className="btn-primary-gradient" onClick={exportReport}>{S.exportReportBtn}</button>
+          <span style={{ display: "flex", gap: 8 }}>
+            <button className="btn-primary-gradient" onClick={exportReport}>{S.exportReportBtn}</button>
+            <button className="btn-secondary" onClick={exportPdfReport}>{S.pdfReportBtn}</button>
+          </span>
         }
       />
 
@@ -728,6 +742,122 @@ export default function Analytics() {
             </div>
           </div>
         </Card>
+      </div>
+
+      {/* Section cetak PDF tersembunyi: TANPA chart/grafik — SVG recharts berisiko
+          blank saat di-raster oleh html2canvas, jadi hanya KPI + tabel + list teks. */}
+      <div id="analytics-pdf" style={{ position: "absolute", left: -9999, top: 0, width: 1000, background: "#ffffff", padding: 24, fontSize: 12, color: "#000" }}>
+        <h1 style={{ fontSize: 18, fontWeight: 700 }}>ISMS Galangan - Laporan Analytics</h1>
+        <p style={{ fontSize: 11 }}>{fmtTanggal(todayISO())}</p>
+
+        <h2 style={{ fontSize: 14, fontWeight: 700, marginTop: 16 }}>{S.tabDescriptive}</h2>
+        <p style={{ fontSize: 11 }}>
+          {S.kpiRevenueYtd}: Rp {totalRevenue.toLocaleString("id-ID", { maximumFractionDigits: 1 })} M
+          ({revGrowth >= 0 ? "+" : ""}{revGrowth.toLocaleString("id-ID", { maximumFractionDigits: 1 })}%) ·{" "}
+          {S.kpiAvgMargin}: {avgMargin.toLocaleString("id-ID", { maximumFractionDigits: 1 })}%
+          ({marginDiff >= 0 ? "+" : ""}{marginDiff.toLocaleString("id-ID", { maximumFractionDigits: 1 })}pt) ·{" "}
+          {S.kpiAvgProgress}: {avgProgress}% · {S.kpiOpenNcr}: {openNcr}
+        </p>
+        <table style={pdfTable}>
+          <thead><tr><th style={pdfTh}>Bulan</th><th style={pdfTh}>Pendapatan (M Rp)</th><th style={pdfTh}>Biaya (M Rp)</th></tr></thead>
+          <tbody>
+            {revenueSeries.map((d) => (
+              <tr key={d.month}><td style={pdfTd}>{d.month}</td><td style={pdfTd}>{d.revenue}</td><td style={pdfTd}>{d.cost}</td></tr>
+            ))}
+          </tbody>
+        </table>
+
+        <h2 style={{ fontSize: 14, fontWeight: 700, marginTop: 16 }}>{S.tabDiagnostic}</h2>
+        <table style={pdfTable}>
+          <thead><tr><th style={pdfTh}>{S.sortCategory}</th><th style={pdfTh}>{S.sortIncidents}</th><th style={pdfTh}>{S.sortImpact}</th></tr></thead>
+          <tbody>
+            {drilldown.map((d) => (
+              <tr key={d.factor}><td style={pdfTd}>{d.factor}</td><td style={pdfTd}>{d.count}</td><td style={pdfTd}>{d.impact}%</td></tr>
+            ))}
+          </tbody>
+        </table>
+        <table style={pdfTable}>
+          <thead><tr><th style={pdfTh}>{S.sortCategory}</th><th style={pdfTh}>{S.sortIncidents}</th><th style={pdfTh}>{S.legendCumulative} %</th></tr></thead>
+          <tbody>
+            {pareto.map((p) => (
+              <tr key={p.name}><td style={pdfTd}>{p.name}</td><td style={pdfTd}>{p.count}</td><td style={pdfTd}>{p.kum}%</td></tr>
+            ))}
+          </tbody>
+        </table>
+        <ul style={{ fontSize: 11, paddingLeft: 16 }}>
+          {fishbones.map((f) => (
+            <li key={f.tulang}><strong>{f.tulang}:</strong> {f.sebab.join("; ")}</li>
+          ))}
+        </ul>
+        <table style={pdfTable}>
+          <thead><tr><th style={pdfTh}>{S.branchLabel}</th><th style={pdfTh}>{S.revenueLabel}</th></tr></thead>
+          <tbody>
+            {branchRows.map(([branch, value]) => (
+              <tr key={branch}><td style={pdfTd}>{branch}</td><td style={pdfTd}>Rp {(value / 1000000000).toLocaleString("id-ID", { maximumFractionDigits: 1 })} M</td></tr>
+            ))}
+          </tbody>
+        </table>
+
+        <h2 style={{ fontSize: 14, fontWeight: 700, marginTop: 16 }}>{S.tabPredictive}</h2>
+        <p style={{ fontSize: 11 }}>
+          {S.forecastAnnual}: Rp {forecastAnnualAdj.toLocaleString("id-ID")} M · {S.kpiAvgMargin}: {marginLive.toLocaleString("id-ID", { maximumFractionDigits: 1 })}% ·{" "}
+          {S.drydockConflict}: {dockConflict} · {S.criticalStock}: {lowStock.length} · {S.riskyProjects}: {atRisk}
+        </p>
+        <table style={pdfTable}>
+          <thead><tr><th style={pdfTh}>Bulan</th><th style={pdfTh}>{S.legendActual}</th><th style={pdfTh}>{S.legendForecast}</th><th style={pdfTh}>{S.limitBottom}</th><th style={pdfTh}>{S.limitTop}</th></tr></thead>
+          <tbody>
+            {forecastAdj.map((f) => (
+              <tr key={f.name}><td style={pdfTd}>{f.name}</td><td style={pdfTd}>{f.actual ?? "-"}</td><td style={pdfTd}>{f.forecast ?? "-"}</td><td style={pdfTd}>{f.low ?? "-"}</td><td style={pdfTd}>{f.high ?? "-"}</td></tr>
+            ))}
+          </tbody>
+        </table>
+        {scenarios.length > 0 && (
+          <table style={pdfTable}>
+            <thead><tr><th style={pdfTh}>{S.savedScenarios}</th><th style={pdfTh}>{S.paramForecastYear}</th></tr></thead>
+            <tbody>
+              {scenarios.map((s) => (
+                <tr key={s.name}><td style={pdfTd}>{s.name} (+{s.growth}% / {s.costAdj}% / {s.progAdj}%)</td><td style={pdfTd}>Rp {annualFor(s).toLocaleString("id-ID")} M</td></tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+
+        <h2 style={{ fontSize: 14, fontWeight: 700, marginTop: 16 }}>{S.tabPrescriptive}</h2>
+        <ol style={{ fontSize: 11, paddingLeft: 16 }}>
+          <li><strong>{S.allocDrydock}:</strong> {S.allocDrydockDesc}</li>
+          <li><strong>{S.reorderMaterial}:</strong> {S.reorderDesc.replace("{n}", String(lowStock.length))}</li>
+          <li><strong>{S.projectPriority}:</strong> {S.projectPriorityDesc.replace("{n}", String(atRisk))}</li>
+          <li><strong>{S.followUpNcr}:</strong> {S.followUpNcrDesc.replace("{n}", String(openNcr))}</li>
+        </ol>
+
+        <h2 style={{ fontSize: 14, fontWeight: 700, marginTop: 16 }}>{S.tabProfitability}</h2>
+        <p style={{ fontSize: 11 }}>
+          {S.totalPortfolioProfit}: {fmtMiliar(profitByType.reduce((s, d) => s + d.profit * 1000000000, 0))} ·{" "}
+          {S.reworkCost}: {fmtRupiah(reworkCost)} · {S.utilVsTarget}: {lastUtil}% / {utilTarget}%
+        </p>
+        <table style={pdfTable}>
+          <thead><tr><th style={pdfTh}>{S.projectLabel}</th><th style={pdfTh}>{S.profitLabel} (M Rp)</th><th style={pdfTh}>{S.itemCountSuffix.replace("{n}", "")}</th></tr></thead>
+          <tbody>
+            {profitByType.map((r) => (
+              <tr key={r.name}><td style={pdfTd}>{r.name}</td><td style={pdfTd}>{r.profit}</td><td style={pdfTd}>{r.count}</td></tr>
+            ))}
+          </tbody>
+        </table>
+        <table style={pdfTable}>
+          <thead><tr><th style={pdfTh}>{S.branchLabel}</th><th style={pdfTh}>{S.profitLabel} (M Rp)</th><th style={pdfTh}>{S.itemCountSuffix.replace("{n}", "")}</th></tr></thead>
+          <tbody>
+            {profitByBranch.map((r) => (
+              <tr key={r.name}><td style={pdfTd}>{r.name}</td><td style={pdfTd}>{r.profit}</td><td style={pdfTd}>{r.count}</td></tr>
+            ))}
+          </tbody>
+        </table>
+        <table style={pdfTable}>
+          <tbody>
+            <tr><td style={pdfTd}>{S.negativeChangeOrder}</td><td style={pdfTd}>{fmtRupiah(negCo)}</td></tr>
+            <tr><td style={pdfTd}>{S.ncrEstimateLabel.replace("{n}", String(openNcrProjects.size))}</td><td style={pdfTd}>{fmtRupiah(Math.round(ncrEstimate))}</td></tr>
+            <tr><td style={pdfTd}><strong>{S.totalRework}</strong></td><td style={pdfTd}><strong>{fmtRupiah(reworkCost)}</strong></td></tr>
+          </tbody>
+        </table>
       </div>
     </div>
   );

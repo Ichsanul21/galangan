@@ -1,7 +1,9 @@
 import { useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { ArrowLeft, Barcode, Package } from "lucide-react";
-import { Card, CardHeader, PageHeader, Badge, Modal, Field, FormGrid, Tabs, EmptyState, toast, SortTh, toggleSort, sortRows } from "../../components/ui";
+import { Card, CardHeader, PageHeader, Badge, Modal, Field, FormGrid, Tabs, EmptyState, toast, SortTh, toggleSort, sortRows,
+  NumInput,
+} from "../../components/ui";
 import type { SortState } from "../../components/ui";
 import { useT } from "../../i18n/LanguageContext";
 import { n_inv } from "../../i18n/n_inv";
@@ -229,7 +231,7 @@ export default function BomDetail() {
               {data.projects.map((p) => <option key={p.id} value={p.id}>{p.id} - {p.vessel}</option>)}
             </select>
           </Field>
-          <Field label={S.reservQtyLbl}><input type="number" min={1} className="input" value={reservQtyInput} onChange={(e) => setReservQtyInput(e.target.value)} /></Field>
+          <Field label={S.reservQtyLbl}><NumInput min={1} className="input" value={reservQtyInput} onChange={(e) => setReservQtyInput(e.target.value)} /></Field>
         </div>
       </Modal>
 
@@ -237,7 +239,7 @@ export default function BomDetail() {
         subtitle={S.recordedSub.replace("{a}", fmtJumlah(Number(item.stock))).replace("{b}", item.unit)}
         footer={<><button className="btn-secondary" onClick={() => setShowOpname(false)}>{S.cancelBtn}</button><button className="btn-primary" onClick={saveOpname}>{S.btnSaveOp}</button></>}>
         <FormGrid>
-          <Field label={S.countedLbl}><input type="number" min={0} className="input" value={opCount} onChange={(e) => setOpCount(e.target.value)} /></Field>
+          <Field label={S.countedLbl}><NumInput min={0} className="input" value={opCount} onChange={(e) => setOpCount(e.target.value)} /></Field>
         </FormGrid>
       </Modal>
     </div>

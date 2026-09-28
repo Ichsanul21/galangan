@@ -820,7 +820,7 @@ export default function Peran() {
             </select>
           </Field>
           <Field label={S.emailOptional}>
-            <input className="input" value={form.email} onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))} placeholder={S.emailPh} />
+            <input type="email" className="input" value={form.email} onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))} placeholder={S.emailPh} />
           </Field>
           <Field label={S.pwInitial}>
             <input type="password" className="input" value={form.password} onChange={(e) => setForm((f) => ({ ...f, password: e.target.value }))} placeholder={S.pwMinPh} />

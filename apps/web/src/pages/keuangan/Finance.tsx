@@ -31,6 +31,7 @@ import {
   sortRows,
   usePager,
   toast,
+  NumInput,
 } from "../../components/ui";
 import type { SortState } from "../../components/ui";
 import { n_fin } from "../../i18n/n_fin";
@@ -1752,7 +1753,7 @@ export default function Finance() {
                         const nextDun = DUNNING_NEXT[dun] ?? "Ditagih";
                         const open = inv.status !== "Lunas" && inv.status !== "Draft" && inv.status !== "Dihapusbukukan";
                         return (
-                          <tr key={inv.id} id={notifRowId(String(inv.id))} className={flash.flashId === String(inv.id) ? "notif-flash hover:bg-surface" : "hover:bg-surface"}>
+                          <tr key={inv.id} id={notifRowId(String(inv.id))} className={flash.flashId === String(inv.id) ? "notif-hl notif-flash hover:bg-surface" : "notif-hl hover:bg-surface"}>
                             <td className="td">
                               <p className="font-medium text-navy-900 font-mono">{inv.id}</p>
                               <p className="text-xs text-steel-500 truncate" title={String(inv.client ?? "")}>{String(inv.client ?? "")}</p>
@@ -1919,7 +1920,7 @@ export default function Finance() {
                   </thead>
                   <tbody className="divide-y divide-steel-100">
                     {apPager.slice(sortedAp).map((a) => (
-                      <tr key={a.id} id={notifRowId(String(a.id))} className={flash.flashId === String(a.id) ? "notif-flash hover:bg-surface" : "hover:bg-surface"}>
+                      <tr key={a.id} id={notifRowId(String(a.id))} className={flash.flashId === String(a.id) ? "notif-hl notif-flash hover:bg-surface" : "notif-hl hover:bg-surface"}>
                         <td className="td font-medium text-navy-900 truncate" title={String(a.v)}>{String(a.v)}</td>
                         <td className="td font-mono text-xs text-steel-600 truncate" title={String(a.kodePembantu ?? a.v)}>{String(a.kodePembantu ?? a.v)}</td>
                         <td className="td font-mono text-xs text-steel-600">{String(a.po)}</td>
@@ -2185,7 +2186,7 @@ export default function Finance() {
                   </thead>
                   <tbody className="divide-y divide-steel-100">
                     {invPager.slice(sortedInv).map((inv) => (
-                      <tr key={inv.id} id={notifRowId(String(inv.id))} className={flash.flashId === String(inv.id) ? "notif-flash hover:bg-surface" : "hover:bg-surface"}>
+                      <tr key={inv.id} id={notifRowId(String(inv.id))} className={flash.flashId === String(inv.id) ? "notif-hl notif-flash hover:bg-surface" : "notif-hl hover:bg-surface"}>
                         <td className="td font-mono text-xs font-semibold text-navy-900">{inv.id}<span className="block font-sans text-[11px] font-normal text-steel-500">{fmtTanggal(String(inv.due ?? ""))}</span></td>
                         <td className="td text-xs text-steel-600">{String(inv.billingType ?? inv.paymentTerm ?? "-")}{inv.serviceRef ? ` · ${inv.serviceRef}` : ""}</td>
                         <td className="td text-xs text-steel-600">{S.linesCount.replace("{n}", String(Array.isArray(inv.lines) ? inv.lines.length : 1))}</td>
@@ -2372,7 +2373,7 @@ export default function Finance() {
                     action={
                       <div className="flex items-end gap-2">
                         <Field label={S.overheadPctLabel}>
-                          <input type="number" min={0} max={100} className="input w-24" value={overheadPct} onChange={(e) => setOverheadPct(e.target.value)} />
+                          <NumInput min={0} max={100} className="input w-24" value={overheadPct} onChange={(e) => setOverheadPct(e.target.value)} />
                         </Field>
                         <button className="btn-secondary text-xs" onClick={saveOverhead}>{S.saveBtn}</button>
                       </div>
@@ -2838,7 +2839,7 @@ export default function Finance() {
               <input className="input font-mono" value={invForm.noFaktur} onChange={(e) => setInv("noFaktur", e.target.value)} placeholder={S.noFakturShort} />
             </Field>
             <Field label={S.fDpAmort} hint={S.dpAmortHint}>
-              <input type="number" min={0} className="input" value={invForm.dpApplied} onChange={(e) => setInv("dpApplied", e.target.value)} placeholder="0" />
+              <NumInput min={0} className="input" value={invForm.dpApplied} onChange={(e) => setInv("dpApplied", e.target.value)} placeholder="0" />
             </Field>
           </FormGrid>
           <Field label={S.fDpRef} hint={S.dpRefHint}>
@@ -2856,7 +2857,7 @@ export default function Finance() {
           {!isTMForm && invForm.billingType !== "Uang Muka" && (
             <FormGrid>
               <Field label={S.fRetentionPct}>
-                <input type="number" min={0} max={100} className="input" value={invForm.retentionPct} onChange={(e) => setInv("retentionPct", e.target.value)} />
+                <NumInput min={0} max={100} className="input" value={invForm.retentionPct} onChange={(e) => setInv("retentionPct", e.target.value)} />
               </Field>
               <Field label={S.fTermLabel}>
                 <select className="input" value={invForm.paymentTerm} onChange={(e) => setInv("paymentTerm", e.target.value)}>
@@ -2900,8 +2901,8 @@ export default function Finance() {
                   )}
                   {isTMForm ? (
                     <>
-                      <div className="col-span-5 sm:col-span-3"><Field label={S.fRate}><input type="number" min={0} className="input" value={l.rate} onChange={(e) => setLine(idx, "rate", e.target.value)} /></Field></div>
-                      <div className="col-span-5 sm:col-span-3"><Field label={S.fHours}><input type="number" min={0} className="input" value={l.hours} onChange={(e) => setLine(idx, "hours", e.target.value)} /></Field></div>
+                      <div className="col-span-5 sm:col-span-3"><Field label={S.fRate}><NumInput min={0} className="input" value={l.rate} onChange={(e) => setLine(idx, "rate", e.target.value)} /></Field></div>
+                      <div className="col-span-5 sm:col-span-3"><Field label={S.fHours}><NumInput min={0} className="input" value={l.hours} onChange={(e) => setLine(idx, "hours", e.target.value)} /></Field></div>
                       <div className="col-span-2 sm:col-span-2">
                         <p className="text-xs font-semibold text-navy-900">{fmtRupiah(lineAmount(l, true))}</p>
                         <button className="mt-1 text-rose-600" aria-label={S.delRow} onClick={() => setInvLines((ls) => ls.filter((_, i) => i !== idx))}><Trash2 className="h-4 w-4" /></button>
@@ -2909,9 +2910,9 @@ export default function Finance() {
                     </>
                   ) : (
                     <>
-                      <div className="col-span-3 sm:col-span-2"><Field label={S.fQty}><input type="number" min={0} className="input" value={l.qty} onChange={(e) => setLine(idx, "qty", e.target.value)} /></Field></div>
+                      <div className="col-span-3 sm:col-span-2"><Field label={S.fQty}><NumInput min={0} className="input" value={l.qty} onChange={(e) => setLine(idx, "qty", e.target.value)} /></Field></div>
                       <div className="col-span-3 sm:col-span-2"><Field label={S.fUnit}><input className="input" value={l.unit} onChange={(e) => setLine(idx, "unit", e.target.value)} /></Field></div>
-                      <div className="col-span-4 sm:col-span-3"><Field label={S.fPrice}><input type="number" min={0} className="input" value={l.price} onChange={(e) => setLine(idx, "price", e.target.value)} /></Field></div>
+                      <div className="col-span-4 sm:col-span-3"><Field label={S.fPrice}><NumInput min={0} className="input" value={l.price} onChange={(e) => setLine(idx, "price", e.target.value)} /></Field></div>
                       <div className="col-span-2 sm:col-span-1">
                         <button className="text-rose-600" aria-label={S.delRow} onClick={() => setInvLines((ls) => ls.filter((_, i) => i !== idx))}><Trash2 className="h-4 w-4" /></button>
                       </div>
@@ -2954,7 +2955,7 @@ export default function Finance() {
         footer={<><button className="btn-secondary" onClick={() => setApTarget(null)}>{S.cancelBtn}</button><button className="btn-primary" onClick={confirmBuktiAp}>{S.saveProofPay}</button></>}>
         <div className="space-y-3">
           <Field label={S.fStageAmount} hint={!num(apTarget?.pay1) ? S.apPhase1 : S.apPhase2.replace("{a}", fmtRupiah(num(apTarget?.pay1)))}>
-            <input type="number" min={0} className="input" value={apPayAmt} onChange={(e) => setApPayAmt(e.target.value)} placeholder={S.stagePh} />
+            <NumInput min={0} className="input" value={apPayAmt} onChange={(e) => setApPayAmt(e.target.value)} placeholder={S.stagePh} />
           </Field>
           <FormGrid>
             <Field label={S.fPayDate}><input type="date" required className="input" value={proof.date} onChange={(e) => setProofField("date", e.target.value)} /></Field>
@@ -2979,8 +2980,8 @@ export default function Finance() {
             <Field label={S.fPoRef} hint={S.poFormatHint}><input className="input font-mono" value={apForm.po} onChange={(e) => setApForm({ ...apForm, po: e.target.value })} placeholder={S.poPh} /></Field>
             <Field label={S.fVessel} hint={S.vesselHint}><input className="input" value={apForm.vessel} onChange={(e) => setApForm({ ...apForm, vessel: e.target.value })} /></Field>
             <Field label={S.fItem}><input className="input" value={apForm.item} onChange={(e) => setApForm({ ...apForm, item: e.target.value })} placeholder={S.itemPh} /></Field>
-            <Field label={S.fOpenBal}><input type="number" min={0} className="input" value={apForm.openAwal} onChange={(e) => setApForm({ ...apForm, openAwal: e.target.value })} /></Field>
-            <Field label={S.fCloseBal}><input type="number" min={0} className="input" value={apForm.amt} onChange={(e) => setApForm({ ...apForm, amt: e.target.value })} /></Field>
+            <Field label={S.fOpenBal}><NumInput min={0} className="input" value={apForm.openAwal} onChange={(e) => setApForm({ ...apForm, openAwal: e.target.value })} /></Field>
+            <Field label={S.fCloseBal}><NumInput min={0} className="input" value={apForm.amt} onChange={(e) => setApForm({ ...apForm, amt: e.target.value })} /></Field>
             <Field label={S.dueLabel}><input type="date" required className="input" value={apForm.due} onChange={(e) => setApForm({ ...apForm, due: e.target.value })} /></Field>
           </FormGrid>
           <label className="flex items-center gap-2 text-sm text-steel-600">
@@ -2998,8 +2999,8 @@ export default function Finance() {
             <Field label={S.fKodePembantu}><input className="input font-mono" value={apEditForm.kodePembantu} onChange={(e) => setApEditForm({ ...apEditForm, kodePembantu: e.target.value })} /></Field>
             <Field label={S.fVessel}><input className="input" value={apEditForm.vessel} onChange={(e) => setApEditForm({ ...apEditForm, vessel: e.target.value })} /></Field>
             <Field label={S.fItem}><input className="input" value={apEditForm.item} onChange={(e) => setApEditForm({ ...apEditForm, item: e.target.value })} /></Field>
-            <Field label={S.fOpenBal}><input type="number" min={0} className="input" value={apEditForm.openAwal} onChange={(e) => setApEditForm({ ...apEditForm, openAwal: e.target.value })} /></Field>
-            <Field label={S.fCloseBal}><input type="number" min={0} className="input" value={apEditForm.amt} onChange={(e) => setApEditForm({ ...apEditForm, amt: e.target.value })} /></Field>
+            <Field label={S.fOpenBal}><NumInput min={0} className="input" value={apEditForm.openAwal} onChange={(e) => setApEditForm({ ...apEditForm, openAwal: e.target.value })} /></Field>
+            <Field label={S.fCloseBal}><NumInput min={0} className="input" value={apEditForm.amt} onChange={(e) => setApEditForm({ ...apEditForm, amt: e.target.value })} /></Field>
             <Field label={S.dueLabel}><input type="date" required className="input" value={apEditForm.due} onChange={(e) => setApEditForm({ ...apEditForm, due: e.target.value })} /></Field>
           </FormGrid>
           <label className="flex items-center gap-2 text-sm text-steel-600">
@@ -3070,7 +3071,7 @@ export default function Finance() {
                 {projectsVisible.map((p) => <option key={p.id} value={p.id}>{p.id} · {p.vessel}</option>)}
               </select>
             </Field>
-            <Field label={S.fAllocPct}><input type="number" min={1} max={100} className="input" value={allocForm.pct} onChange={(e) => setAllocForm({ ...allocForm, pct: e.target.value })} /></Field>
+            <Field label={S.fAllocPct}><NumInput min={1} max={100} className="input" value={allocForm.pct} onChange={(e) => setAllocForm({ ...allocForm, pct: e.target.value })} /></Field>
           </FormGrid>
         </div>
       </Modal>
@@ -3153,7 +3154,7 @@ export default function Finance() {
                     </Field>
                   </div>
                   <div className="col-span-10 sm:col-span-3">
-                    <Field label={S.fNominal}><input type="number" min={0} className="input" value={l.amount} onChange={(e) => setJuLines((ls) => ls.map((x, i) => (i === idx ? { ...x, amount: e.target.value } : x)))} /></Field>
+                    <Field label={S.fNominal}><NumInput min={0} className="input" value={l.amount} onChange={(e) => setJuLines((ls) => ls.map((x, i) => (i === idx ? { ...x, amount: e.target.value } : x)))} /></Field>
                   </div>
                   <div className="col-span-2 sm:col-span-1">
                     <button className="text-rose-600" aria-label={S.delJuRow.replace("{n}", String(idx + 1))} onClick={() => setJuLines((ls) => (ls.length > 1 ? ls.filter((_, i) => i !== idx) : [{ db: "", kr: "", amount: "" }]))}><Trash2 className="h-4 w-4" /></button>
@@ -3193,7 +3194,7 @@ export default function Finance() {
             <Field label={S.fNoDoc} hint={S.noDocHint}><input className="input font-mono" value={mutForm.dokumen} onChange={(e) => setMutForm({ ...mutForm, dokumen: e.target.value })} /></Field>
           </FormGrid>
           <Field label={S.colUraian}><input className="input" value={mutForm.uraian} onChange={(e) => setMutForm({ ...mutForm, uraian: e.target.value })} placeholder={S.mutDescPh} /></Field>
-          <Field label={S.fNominal}><input type="number" min={0} className="input" value={mutForm.amount} onChange={(e) => setMutForm({ ...mutForm, amount: e.target.value })} /></Field>
+          <Field label={S.fNominal}><NumInput min={0} className="input" value={mutForm.amount} onChange={(e) => setMutForm({ ...mutForm, amount: e.target.value })} /></Field>
         </div>
       </Modal>
 
@@ -3227,7 +3228,7 @@ export default function Finance() {
             </Field>
             <Field label={S.fAssetMonth} hint={S.assetMonthHint}><input className="input" value={astForm.bulan} onChange={(e) => setAstForm({ ...astForm, bulan: e.target.value })} /></Field>
             <Field label={S.fAssetYear}><input className="input font-mono" value={astForm.tahun} onChange={(e) => setAstForm({ ...astForm, tahun: e.target.value })} placeholder="2026" /></Field>
-            <Field label={S.fAssetValue}><input type="number" min={0} className="input" value={astForm.nilai} onChange={(e) => setAstForm({ ...astForm, nilai: e.target.value })} /></Field>
+            <Field label={S.fAssetValue}><NumInput min={0} className="input" value={astForm.nilai} onChange={(e) => setAstForm({ ...astForm, nilai: e.target.value })} /></Field>
             <Field label={S.colMetode}>
               <select className="input" value={astForm.metode} onChange={(e) => setAstForm({ ...astForm, metode: e.target.value })}>
                 <option>GL</option>

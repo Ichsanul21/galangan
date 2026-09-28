@@ -93,6 +93,12 @@
   /* Watermark versi cetak (ikut tercetak ke PDF) */
   .isms-wm-print { display: none; }
 
+  /* Highlight lembut permanen untuk SEMUA baris ternotif (tidak mencolok:
+     background tipis saja, tanpa outline). Yang diklik dapat .notif-flash
+     di atasnya (jauh lebih mencolok) lalu kembali ke lembut. */
+  .notif-hl {
+    background-color: rgba(255, 251, 235, 0.6);
+  }
   /* Kedip sesaat baris notifikasi yang diklik dari banner (pengganti
      highlight permanen). Hormati prefers-reduced-motion. */
   @keyframes notif-flash {

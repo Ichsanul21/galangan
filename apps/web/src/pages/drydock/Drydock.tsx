@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { Plus, Ship, CalendarRange, AlertTriangle, GripVertical, Trash2, Wrench, User } from "lucide-react";
-import { Card, CardHeader, PageHeader, Badge, KpiCard, ProgressBar, Modal, Field, FormGrid, ConfirmModal, StatusBadge, toast, SortTh, toggleSort, sortRows, usePager } from "../../components/ui";
+import { Card, CardHeader, PageHeader, Badge, KpiCard, ProgressBar, Modal, Field, FormGrid, ConfirmModal, StatusBadge, toast, SortTh, toggleSort, sortRows, usePager,
+  NumInput,
+} from "../../components/ui";
 import type { SortState } from "../../components/ui";
 import { useStore } from "../../data/store";
 import type { StoreItem } from "../../data/store";
@@ -443,7 +445,7 @@ export default function Drydock() {
                   const st = slotStatus(s, data.projects);
                   const isCrit = conflict.some((c) => c.id === s.id) && overlapsKritis(s);
                   return (
-                    <tr key={s.id} id={notifRowId(String(s.id))} className={`hover:bg-surface ${isCrit ? "bg-rose-50" : ""} ${flash.flashId === String(s.id) ? "notif-flash" : ""}`}>
+                    <tr key={s.id} id={notifRowId(String(s.id))} className={`hover:bg-surface ${isCrit ? "bg-rose-50" : ""} ${flash.flashId === String(s.id) ? "notif-hl notif-flash" : "notif-hl"}`}>
                       <td className="td text-steel-600">{drydocks.find((d) => d.id === s.dockId)?.name}</td>
                       <td className="td">
                         <p className="font-medium text-navy-900">{s.vessel}</p>
@@ -555,7 +557,7 @@ export default function Drydock() {
                             key={s.id}
                             id={notifRowId(String(s.id))}
                             onClick={() => { if (isSel) setSelected(null); else openSlot(s); }}
-                            className={`absolute top-1/2 -translate-y-1/2 flex h-10 items-center justify-between rounded-md px-2 text-xs font-medium text-white shadow cursor-pointer transition ${isMaint ? "bg-steel-400" : isConf ? "bg-rose-500" : s.color} ${isSel ? "ring-2 ring-navy-900" : "hover:brightness-110"} ${isCrit && !isSel ? "ring-4 ring-rose-800" : isConf && !isSel ? "ring-2 ring-rose-700" : ""} ${flash.flashId === String(s.id) ? "notif-flash" : ""}`}
+                            className={`absolute top-1/2 -translate-y-1/2 flex h-10 items-center justify-between rounded-md px-2 text-xs font-medium text-white shadow cursor-pointer transition ${isMaint ? "bg-steel-400" : isConf ? "bg-rose-500" : s.color} ${isSel ? "ring-2 ring-navy-900" : "hover:brightness-110"} ${isCrit && !isSel ? "ring-4 ring-rose-800" : isConf && !isSel ? "ring-2 ring-rose-700" : ""} ${flash.flashId === String(s.id) ? "notif-hl notif-flash" : "notif-hl"}`}
                             style={{ left: `${leftPct}%`, width: `${widthPct}%` }}
                             title={`${s.vessel} · ${s.project} · ${fmtRentang(dayToISO(s.from), dayToISO(s.to))}${s.priority ? ` · ${s.priority}` : ""}${isCrit ? S.tipCrit : isConf ? S.tipOverlap : ""}`}
                           >
@@ -625,8 +627,8 @@ export default function Drydock() {
           <div className="mt-3 border-t border-steel-100 pt-3">
             <p className="text-xs font-semibold text-steel-500">{S.utilSection}</p>
             <div className="mt-2 grid grid-cols-2 gap-2">
-              <Field label={S.lblPower}><input type="number" min={0} className="input" value={utilDraft.power} onChange={(e) => setUtilDraft({ ...utilDraft, power: e.target.value })} placeholder={S.phPower} /></Field>
-              <Field label={S.lblWater}><input type="number" min={0} className="input" value={utilDraft.water} onChange={(e) => setUtilDraft({ ...utilDraft, water: e.target.value })} placeholder={S.phWater} /></Field>
+              <Field label={S.lblPower}><NumInput min={0} className="input" value={utilDraft.power} onChange={(e) => setUtilDraft({ ...utilDraft, power: e.target.value })} placeholder={S.phPower} /></Field>
+              <Field label={S.lblWater}><NumInput min={0} className="input" value={utilDraft.water} onChange={(e) => setUtilDraft({ ...utilDraft, water: e.target.value })} placeholder={S.phWater} /></Field>
             </div>
             <button className="btn-secondary mt-2 text-xs" onClick={saveUtility}>{S.btnSaveUtil}</button>
           </div>
@@ -663,8 +665,8 @@ export default function Drydock() {
             </select>
           </Field>
           <FormGrid>
-            <Field label={S.lblStartDay.replace("{n}", String(DAYS))}><input type="number" min={1} max={DAYS} className="input" value={moveForm.from} onChange={(e) => setMoveForm({ ...moveForm, from: e.target.value })} /></Field>
-            <Field label={S.lblEndDay.replace("{n}", String(DAYS))}><input type="number" min={1} max={DAYS} className="input" value={moveForm.to} onChange={(e) => setMoveForm({ ...moveForm, to: e.target.value })} /></Field>
+            <Field label={S.lblStartDay.replace("{n}", String(DAYS))}><NumInput min={1} max={DAYS} className="input" value={moveForm.from} onChange={(e) => setMoveForm({ ...moveForm, from: e.target.value })} /></Field>
+            <Field label={S.lblEndDay.replace("{n}", String(DAYS))}><NumInput min={1} max={DAYS} className="input" value={moveForm.to} onChange={(e) => setMoveForm({ ...moveForm, to: e.target.value })} /></Field>
           </FormGrid>
           <p className="text-xs text-steel-500">{S.moveHint.replace("{a}", Number(moveForm.to) > Number(moveForm.from) ? S.durationDays.replace("{n}", String(Number(moveForm.to) - Number(moveForm.from))) : "-")}</p>
         </div>
@@ -686,15 +688,15 @@ export default function Drydock() {
                 {projectOptions.filter((p) => p.status !== "Selesai").map((p) => <option key={p.id} value={p.id}>{p.id} · {p.vessel}</option>)}
               </select>
             </Field>
-            <Field label={S.lblStartAt}><input type="number" min={0} max={90} className="input" value={bookForm.from} onChange={(e) => setBookForm({ ...bookForm, from: e.target.value })} /></Field>
-            <Field label={S.lblEndAt}><input type="number" min={1} max={90} className="input" value={bookForm.to} onChange={(e) => setBookForm({ ...bookForm, to: e.target.value })} /></Field>
+            <Field label={S.lblStartAt}><NumInput min={0} max={90} className="input" value={bookForm.from} onChange={(e) => setBookForm({ ...bookForm, from: e.target.value })} /></Field>
+            <Field label={S.lblEndAt}><NumInput min={1} max={90} className="input" value={bookForm.to} onChange={(e) => setBookForm({ ...bookForm, to: e.target.value })} /></Field>
             <Field label={S.colPriority}>
               <select className="input" value={bookForm.priority} onChange={(e) => setBookForm({ ...bookForm, priority: e.target.value })}>
                 {PRIORITIES.map((p) => <option key={p}>{p}</option>)}
               </select>
             </Field>
             <Field label={S.lblRateDay} hint={S.hintRate}>
-              <input type="number" min={0} className="input" value={bookForm.ratePerDay} onChange={(e) => setBookForm({ ...bookForm, ratePerDay: e.target.value })} placeholder={S.phRate} />
+              <NumInput min={0} className="input" value={bookForm.ratePerDay} onChange={(e) => setBookForm({ ...bookForm, ratePerDay: e.target.value })} placeholder={S.phRate} />
             </Field>
             <Field label={S.lblDs} hint={S.hintDs}>
               <input className="input font-mono" value={bookForm.dsRef} onChange={(e) => setBookForm({ ...bookForm, dsRef: e.target.value })} placeholder={sbDsNumber(nextDsSeq())} />
@@ -731,8 +733,8 @@ export default function Drydock() {
               </select>
             </Field>
             <Field label={S.lblReason}><input className="input" value={maintForm.reason} onChange={(e) => setMaintForm({ ...maintForm, reason: e.target.value })} placeholder={S.phReason} /></Field>
-            <Field label={S.lblFromDay}><input type="number" min={0} max={90} className="input" value={maintForm.from} onChange={(e) => setMaintForm({ ...maintForm, from: e.target.value })} /></Field>
-            <Field label={S.lblToDay}><input type="number" min={1} max={90} className="input" value={maintForm.to} onChange={(e) => setMaintForm({ ...maintForm, to: e.target.value })} /></Field>
+            <Field label={S.lblFromDay}><NumInput min={0} max={90} className="input" value={maintForm.from} onChange={(e) => setMaintForm({ ...maintForm, from: e.target.value })} /></Field>
+            <Field label={S.lblToDay}><NumInput min={1} max={90} className="input" value={maintForm.to} onChange={(e) => setMaintForm({ ...maintForm, to: e.target.value })} /></Field>
           </FormGrid>
         </div>
       </Modal>

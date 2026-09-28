@@ -14,6 +14,7 @@ import {
   SortTh,
   toggleSort,
   sortRows,
+  NumInput,
 } from "../../components/ui";
 import type { SortState } from "../../components/ui";
 import SparepartServiceSection from "../proyek/SparepartServiceSection";
@@ -626,7 +627,7 @@ export default function VesselDetail() {
                         {BUNKER_JENIS.map((j) => <option key={j}>{j}</option>)}
                       </select>
                     </Field>
-                    <Field label={S.vdQtyField}><input type="number" min={0} className="input" value={bunkerForm.qty} onChange={(e) => setBunkerForm({ ...bunkerForm, qty: e.target.value })} placeholder={S.vdQtyPh} /></Field>
+                    <Field label={S.vdQtyField}><NumInput min={0} className="input" value={bunkerForm.qty} onChange={(e) => setBunkerForm({ ...bunkerForm, qty: e.target.value })} placeholder={S.vdQtyPh} /></Field>
                     <Field label={S.vdUnitField}><input className="input" value={bunkerForm.satuan} onChange={(e) => setBunkerForm({ ...bunkerForm, satuan: e.target.value })} placeholder={S.vdUnitPh} /></Field>
                   </div>
                   <button className="btn-secondary mt-2 text-xs" onClick={saveBunker}><Plus className="h-3.5 w-3.5" /> {S.vdAddBunker}</button>
@@ -721,9 +722,9 @@ export default function VesselDetail() {
         <FormGrid>
           <Field label={S.vsMmsiField}><input className="input font-mono" value={specForm.mmsi} onChange={(e) => setSpecForm({ ...specForm, mmsi: e.target.value })} placeholder={S.vsMmsiPh} /></Field>
           <Field label={S.vsEngineField}><input className="input" value={specForm.engineType} onChange={(e) => setSpecForm({ ...specForm, engineType: e.target.value })} placeholder={S.vsEnginePh} /></Field>
-          <Field label={S.vsGtField}><input type="number" min={0} className="input" value={specForm.gt} onChange={(e) => setSpecForm({ ...specForm, gt: e.target.value })} /></Field>
-          <Field label={S.vsNtField}><input type="number" min={0} className="input" value={specForm.nt} onChange={(e) => setSpecForm({ ...specForm, nt: e.target.value })} /></Field>
-          <Field label={S.vsBhpField}><input type="number" min={0} className="input" value={specForm.bhp} onChange={(e) => setSpecForm({ ...specForm, bhp: e.target.value })} /></Field>
+          <Field label={S.vsGtField}><NumInput min={0} className="input" value={specForm.gt} onChange={(e) => setSpecForm({ ...specForm, gt: e.target.value })} /></Field>
+          <Field label={S.vsNtField}><NumInput min={0} className="input" value={specForm.nt} onChange={(e) => setSpecForm({ ...specForm, nt: e.target.value })} /></Field>
+          <Field label={S.vsBhpField}><NumInput min={0} className="input" value={specForm.bhp} onChange={(e) => setSpecForm({ ...specForm, bhp: e.target.value })} /></Field>
         </FormGrid>
       </Modal>
 
@@ -733,7 +734,7 @@ export default function VesselDetail() {
           <FormGrid>
             <Field label={S.dateLabel}><input type="date" className="input" value={pscForm.date} onChange={(e) => setPscForm({ ...pscForm, date: e.target.value })} /></Field>
             <Field label={S.vdPortField}><input className="input" value={pscForm.port} onChange={(e) => setPscForm({ ...pscForm, port: e.target.value })} placeholder={S.vdPortPh} /></Field>
-            <Field label={S.vdDefField}><input type="number" min={0} className="input" value={pscForm.deficiencies} onChange={(e) => setPscForm({ ...pscForm, deficiencies: e.target.value })} /></Field>
+            <Field label={S.vdDefField}><NumInput min={0} className="input" value={pscForm.deficiencies} onChange={(e) => setPscForm({ ...pscForm, deficiencies: e.target.value })} /></Field>
             <Field label={S.thStatus}>
               <select className="input" value={pscForm.status} onChange={(e) => setPscForm({ ...pscForm, status: e.target.value })}>
                 {PSC_STATUS.map((s) => <option key={s}>{s}</option>)}
@@ -761,7 +762,7 @@ export default function VesselDetail() {
         <div className="space-y-3">
           <Field label={S.vdPolisNo}><input className="input font-mono" value={insForm.polis} onChange={(e) => setInsForm({ ...insForm, polis: e.target.value })} placeholder={S.vdPolisPh} /></Field>
           <FormGrid>
-            <Field label={S.vdPremiRp}><input type="number" min={0} className="input" value={insForm.premi} onChange={(e) => setInsForm({ ...insForm, premi: e.target.value })} placeholder={S.vdPremiPh} /></Field>
+            <Field label={S.vdPremiRp}><NumInput min={0} className="input" value={insForm.premi} onChange={(e) => setInsForm({ ...insForm, premi: e.target.value })} placeholder={S.vdPremiPh} /></Field>
             <Field label={S.vdExpiryField}><input type="date" className="input" value={insForm.expiry} onChange={(e) => setInsForm({ ...insForm, expiry: e.target.value })} /></Field>
           </FormGrid>
         </div>

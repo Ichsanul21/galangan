@@ -2,7 +2,9 @@
 // ("Proyek Baru" langsung buka form, tanpa pindah halaman).
 // Logika + validasi pindahan utuh dari Projects.tsx (satu sumber).
 import { useState } from "react";
-import { Field, FormGrid, Modal, toast } from "./ui";
+import { Field, FormGrid, Modal, toast,
+  NumInput,
+} from "./ui";
 import type { StoreItem } from "../data/store";
 import { todayISO } from "../utils/format";
 import ClientModal from "./ClientModal";
@@ -228,7 +230,7 @@ export default function ProjectAddModal({ open, onClose, S, projects, vessels, c
             <div className="rounded-xl border border-amber-200 bg-amber-50 p-3">
               <p className="mb-2 text-xs font-semibold text-amber-800">{S.prjNewVesselNote}</p>
               <FormGrid>
-                <Field label={S.prjLoa}><input type="number" min={0} step={0.1} className="input" value={form.vesselLoa} onChange={(e) => setF("vesselLoa", e.target.value)} placeholder={S.prjLoaPh} /></Field>
+                <Field label={S.prjLoa}><NumInput min={0} step={0.1} className="input" value={form.vesselLoa} onChange={(e) => setF("vesselLoa", e.target.value)} placeholder={S.prjLoaPh} /></Field>
                 <Field label={S.prjVesselType}><input className="input" value={form.vesselType} onChange={(e) => setF("vesselType", e.target.value)} placeholder={S.prjVesselTypePh} /></Field>
               </FormGrid>
               <div className="mt-2">
@@ -239,7 +241,7 @@ export default function ProjectAddModal({ open, onClose, S, projects, vessels, c
             </div>
           )}
           <Field label={S.prjBudget}>
-            <input type="number" className="input" min={0} value={form.budget} onChange={(e) => setF("budget", e.target.value)} placeholder={S.prjBudgetPh} />
+            <NumInput className="input" min={0} value={form.budget} onChange={(e) => setF("budget", e.target.value)} placeholder={S.prjBudgetPh} />
           </Field>
           <div className="rounded-xl border border-steel-200 p-3">
             <div className="mb-2 flex items-center justify-between">

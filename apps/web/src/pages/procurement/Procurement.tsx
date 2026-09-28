@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
 import { Plus, Factory, ShoppingCart, ClipboardList, Check, X, Undo2, Printer, Pencil, Send, Star, Wallet, Umbrella, Search } from "lucide-react";
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
-import { Card, CardHeader, PageHeader, Badge, KpiCard, Tabs, StatusBadge, Donut, ChartTooltip, Modal, Field, FormGrid, ConfirmModal, toast, EmptyState, SortTh, toggleSort, sortRows, usePager } from "../../components/ui";
+import { Card, CardHeader, PageHeader, Badge, KpiCard, Tabs, StatusBadge, Donut, ChartTooltip, Modal, Field, FormGrid, ConfirmModal, toast, EmptyState, SortTh, toggleSort, sortRows, usePager,
+  NumInput,
+} from "../../components/ui";
 import type { SortState } from "../../components/ui";
 import { useStore, type StoreItem } from "../../data/store";
 import { fmtRupiah, fmtJumlah, fmtTanggal, todayISO } from "../../utils/format";
@@ -884,7 +886,7 @@ export default function Procurement() {
                       const done = apprOf(po);
                       const payung = vendors.some((v) => sameName(v.name, po.vendor) && payungOf(v));
                       return (
-                        <tr key={po.id} id={notifRowId(String(po.id))} className={flash.flashId === String(po.id) ? "notif-flash hover:bg-surface" : "hover:bg-surface"}>
+                        <tr key={po.id} id={notifRowId(String(po.id))} className={flash.flashId === String(po.id) ? "notif-hl notif-flash hover:bg-surface" : "notif-hl hover:bg-surface"}>
                           <td className="td font-mono font-medium text-navy-900">{po.id}</td>
                           <td className="td text-steel-600">
                             <p className="truncate" title={String(po.item)}>{po.item}</p>
@@ -969,7 +971,7 @@ export default function Procurement() {
                 <CardHeader title={S.kasT} subtitle={S.kasS} />
                 <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-4">
                   <Field label={S.kasSaldo.replace("{n}", bulanIni)}>
-                    <input type="number" min={0} className="input" value={kasAwal} onChange={(e) => setKasAwal(e.target.value)} placeholder={S.phKasContoh} />
+                    <NumInput min={0} className="input" value={kasAwal} onChange={(e) => setKasAwal(e.target.value)} placeholder={S.phKasContoh} />
                   </Field>
                   <div className="rounded-lg bg-surface p-2.5">
                     <p className="flex items-center gap-1 text-xs text-steel-500"><Wallet className="h-3.5 w-3.5" /> {S.kasBulanIni}</p>
@@ -1000,7 +1002,7 @@ export default function Procurement() {
                       {smallPager.slice(sortedSmall).map((po) => {
                         const st = normPo(po.status);
                         return (
-                          <tr key={po.id} id={notifRowId(String(po.id))} className={flash.flashId === String(po.id) ? "notif-flash hover:bg-surface" : "hover:bg-surface"}>
+                          <tr key={po.id} id={notifRowId(String(po.id))} className={flash.flashId === String(po.id) ? "notif-hl notif-flash hover:bg-surface" : "notif-hl hover:bg-surface"}>
                           <td className="td font-mono font-medium text-navy-900">{po.id}
                             {po.docNo && <p className="text-xs font-normal text-steel-400">{po.docNo}</p>}
                             {(() => {
@@ -1144,7 +1146,7 @@ export default function Procurement() {
                     </thead>
                     <tbody className="divide-y divide-steel-100">
                       {prPager.slice(sortedPr).map((r) => (
-                        <tr key={r.id} id={notifRowId(String(r.id))} className={flash.flashId === String(r.id) ? "notif-flash hover:bg-surface" : "hover:bg-surface"}>
+                        <tr key={r.id} id={notifRowId(String(r.id))} className={flash.flashId === String(r.id) ? "notif-hl notif-flash hover:bg-surface" : "notif-hl hover:bg-surface"}>
                           <td className="td font-mono font-medium text-navy-900">{r.id}</td>
                           <td className="td text-steel-600 truncate" title={String(r.item)}>{r.item}</td>
                           <td className="td text-steel-600">{r.by}</td>
@@ -1298,11 +1300,11 @@ export default function Procurement() {
               {bigLines.map((l, idx) => (
                 <div key={idx} className="grid grid-cols-12 gap-2">
                   <input className="input col-span-5" placeholder={S.phNamaBaris} value={l.name} onChange={(e) => setBigLines((s) => s.map((x, i) => (i === idx ? { ...x, name: e.target.value } : x)))} />
-                  <input type="number" min={1} className="input col-span-2" placeholder={S.qty} value={l.qty} onChange={(e) => setBigLines((s) => s.map((x, i) => (i === idx ? { ...x, qty: Number(e.target.value) } : x)))} />
+                  <NumInput min={1} className="input col-span-2" placeholder={S.qty} value={l.qty} onChange={(e) => setBigLines((s) => s.map((x, i) => (i === idx ? { ...x, qty: Number(e.target.value) } : x)))} />
                   <select className="input col-span-2" value={l.unit} onChange={(e) => setBigLines((s) => s.map((x, i) => (i === idx ? { ...x, unit: e.target.value } : x)))}>
                     {["pcs", "kg", "liter", "meter", "batang", "unit", "roll"].map((u) => <option key={u}>{u}</option>)}
                   </select>
-                  <input type="number" min={0} className="input col-span-2" placeholder={S.harga} value={l.price} onChange={(e) => setBigLines((s) => s.map((x, i) => (i === idx ? { ...x, price: Number(e.target.value) } : x)))} />
+                  <NumInput min={0} className="input col-span-2" placeholder={S.harga} value={l.price} onChange={(e) => setBigLines((s) => s.map((x, i) => (i === idx ? { ...x, price: Number(e.target.value) } : x)))} />
                   <button className="btn-secondary col-span-1 text-xs" aria-label={S.ariaHapusBaris.replace("{n}", String(idx + 1))} onClick={() => setBigLines((s) => s.filter((_, i) => i !== idx))}><X className="h-3.5 w-3.5" /></button>
                 </div>
               ))}
@@ -1332,7 +1334,7 @@ export default function Procurement() {
           </FormGrid>
           <Field label={S.itemBebas}><input className="input" value={smallForm.item} onChange={(e) => setSmallForm({ ...smallForm, item: e.target.value })} placeholder={S.phItemBebas} /></Field>
           <FormGrid>
-            <Field label={S.qty}><input type="number" min={1} className="input" value={smallForm.qty} onChange={(e) => setSmallForm({ ...smallForm, qty: e.target.value })} /></Field>
+            <Field label={S.qty}><NumInput min={1} className="input" value={smallForm.qty} onChange={(e) => setSmallForm({ ...smallForm, qty: e.target.value })} /></Field>
             <Field label={S.satuan}>
               <select className="input" value={smallForm.unit} onChange={(e) => setSmallForm({ ...smallForm, unit: e.target.value })}>
                 {["pcs", "kg", "liter", "meter", "batang", "unit", "roll", "set", "pak"].map((u) => <option key={u}>{u}</option>)}
@@ -1340,7 +1342,7 @@ export default function Procurement() {
             </Field>
           </FormGrid>
           <FormGrid>
-            <Field label={S.estHarga}><input type="number" min={0} className="input" value={smallForm.price} onChange={(e) => setSmallForm({ ...smallForm, price: e.target.value })} /></Field>
+            <Field label={S.estHarga}><NumInput min={0} className="input" value={smallForm.price} onChange={(e) => setSmallForm({ ...smallForm, price: e.target.value })} /></Field>
             <Field label={S.nota}><input className="input" value={smallForm.nota} onChange={(e) => setSmallForm({ ...smallForm, nota: e.target.value })} placeholder={S.phNota} /></Field>
           </FormGrid>
           <FormGrid>
@@ -1391,7 +1393,7 @@ export default function Procurement() {
             </select>
           </Field>
           <FormGrid>
-            <Field label={S.hargaRp}><input type="number" min={0} className="input" value={quoteForm.price} onChange={(e) => setQuoteForm({ ...quoteForm, price: e.target.value })} /></Field>
+            <Field label={S.hargaRp}><NumInput min={0} className="input" value={quoteForm.price} onChange={(e) => setQuoteForm({ ...quoteForm, price: e.target.value })} /></Field>
             <Field label={S.eta}><input type="date" className="input" value={quoteForm.eta} onChange={(e) => setQuoteForm({ ...quoteForm, eta: e.target.value })} /></Field>
           </FormGrid>
         </div>
@@ -1429,7 +1431,7 @@ export default function Procurement() {
               {invList.map((i) => <option key={i.id} value={i.id}>{i.name} · stok {fmtJumlah(Number(i.stock))} {i.unit}</option>)}
             </select>
           </Field>
-          <Field label={S.qtyDiterimaF}><input type="number" min={0} className="input" value={recvQty} onChange={(e) => setRecvQty(e.target.value)} /></Field>
+          <Field label={S.qtyDiterimaF}><NumInput min={0} className="input" value={recvQty} onChange={(e) => setRecvQty(e.target.value)} /></Field>
           <FormGrid>
             <Field label={S.noFaktur} hint={recvPo?.poType === "Kecil" ? S.hintOpsKecil : S.hintWajibBesar}>
               <input className="input font-mono" value={recvNoFaktur} onChange={(e) => setRecvNoFaktur(e.target.value)} placeholder={S.phFaktur} />
@@ -1443,7 +1445,7 @@ export default function Procurement() {
               {S.lateInfo.replace("{n}", String(recvLate)).replace("{a}", fmtTanggal(recvPo.eta)).replace("{b}", fmtRupiah(recvDendaPreview))}
               <div className="mt-2">
                 <Field label={S.dendaHari} hint={S.hintDendaMax}>
-                  <input type="number" min={0} max={5} step={0.1} className="input" value={recvDendaPct} onChange={(e) => setRecvDendaPct(e.target.value)} />
+                  <NumInput min={0} max={5} step={0.1} className="input" value={recvDendaPct} onChange={(e) => setRecvDendaPct(e.target.value)} />
                 </Field>
               </div>
             </div>
@@ -1456,7 +1458,7 @@ export default function Procurement() {
         footer={<><button className="btn-secondary" onClick={() => setRetPo(null)}>{S.btnBatal}</button><button className="btn-primary" onClick={confirmRetur}>{S.btnSimpanRetur}</button></>}>
         <div className="space-y-3">
           <FormGrid>
-            <Field label={S.qtyRetur}><input type="number" min={0} className="input" value={retQty} onChange={(e) => setRetQty(e.target.value)} /></Field>
+            <Field label={S.qtyRetur}><NumInput min={0} className="input" value={retQty} onChange={(e) => setRetQty(e.target.value)} /></Field>
             <Field label={S.alasan}><input className="input" value={retNote} onChange={(e) => setRetNote(e.target.value)} placeholder={S.phAlasan} /></Field>
           </FormGrid>
         </div>
@@ -1475,8 +1477,8 @@ export default function Procurement() {
             </Field>
           </FormGrid>
           <FormGrid>
-            <Field label={S.qty}><input type="number" min={1} className="input" value={amendForm.qty} onChange={(e) => setAmendForm({ ...amendForm, qty: e.target.value })} /></Field>
-            <Field label={S.hargaSatuan}><input type="number" min={0} className="input" value={amendForm.price} onChange={(e) => setAmendForm({ ...amendForm, price: e.target.value })} /></Field>
+            <Field label={S.qty}><NumInput min={1} className="input" value={amendForm.qty} onChange={(e) => setAmendForm({ ...amendForm, qty: e.target.value })} /></Field>
+            <Field label={S.hargaSatuan}><NumInput min={0} className="input" value={amendForm.price} onChange={(e) => setAmendForm({ ...amendForm, price: e.target.value })} /></Field>
           </FormGrid>
           <Field label={S.catatanAmd}><input className="input" value={amendForm.note} onChange={(e) => setAmendForm({ ...amendForm, note: e.target.value })} placeholder={S.phCatatanAmd} /></Field>
         </div>
@@ -1537,7 +1539,7 @@ export default function Procurement() {
             <input className="input" value={payungPeriode} onChange={(e) => setPayungPeriode(e.target.value)} placeholder={S.phPeriode} />
           </Field>
           <Field label={S.plafon} hint={S.hintPlafonKosong}>
-            <input type="number" min={0} className="input" value={payungPlafon} onChange={(e) => setPayungPlafon(e.target.value)} placeholder={S.phPlafon} />
+            <NumInput min={0} className="input" value={payungPlafon} onChange={(e) => setPayungPlafon(e.target.value)} placeholder={S.phPlafon} />
           </Field>
           {payungVendor && (
             <p className="rounded-lg bg-steel-50 px-3 py-2 text-xs text-steel-600">
@@ -1560,7 +1562,7 @@ export default function Procurement() {
           <Field label={S.itemButuh}><input className="input" value={prForm.item} onChange={(e) => setPrForm({ ...prForm, item: e.target.value })} /></Field>
           <FormGrid>
             <Field label={S.pemohon}><input className="input" value={prForm.by} onChange={(e) => setPrForm({ ...prForm, by: e.target.value })} placeholder={S.phPeminta} /></Field>
-            <Field label={S.estNilai}><input type="number" min={0} className="input" value={prForm.amount} onChange={(e) => setPrForm({ ...prForm, amount: e.target.value })} /></Field>
+            <Field label={S.estNilai}><NumInput min={0} className="input" value={prForm.amount} onChange={(e) => setPrForm({ ...prForm, amount: e.target.value })} /></Field>
           </FormGrid>
         </div>
       </Modal>

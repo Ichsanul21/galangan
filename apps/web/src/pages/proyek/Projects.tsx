@@ -262,7 +262,7 @@ export default function Projects() {
                   <tr
                     key={p.id}
                     id={notifRowId(String(p.id))}
-                    className={`cursor-pointer transition-colors hover:bg-surface ${flash.flashId === String(p.id) ? "notif-flash" : ""}`}
+                    className={`cursor-pointer transition-colors hover:bg-surface ${flash.flashId === String(p.id) ? "notif-hl notif-flash" : "notif-hl"}`}
                     onClick={() => navigate(`/proyek/${p.id}`)}
                     onKeyDown={(e) => { if (e.key === "Enter") navigate(`/proyek/${p.id}`); }}
                     tabIndex={0}

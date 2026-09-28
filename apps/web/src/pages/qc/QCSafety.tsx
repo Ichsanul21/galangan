@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
 import { Plus, ShieldCheck, AlertTriangle, Siren, Award, Send, Search } from "lucide-react";
 import { ComposedChart, Line, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
-import { Card, CardHeader, PageHeader, Badge, KpiCard, Tabs, StatusBadge, Donut, ChartTooltip, Modal, Field, FormGrid, SortTh, toggleSort, sortRows, usePager, toast } from "../../components/ui";
+import { Card, CardHeader, PageHeader, Badge, KpiCard, Tabs, StatusBadge, Donut, ChartTooltip, Modal, Field, FormGrid, SortTh, toggleSort, sortRows, usePager, toast,
+  NumInput,
+} from "../../components/ui";
 import type { SortState } from "../../components/ui";
 import { useStore, type StoreItem } from "../../data/store";
 import { inspectionTrend, ncrTrend, incidentTrend, hseTrend } from "../../data";
@@ -763,7 +765,7 @@ export default function QCSafety() {
                 <button className="btn-secondary text-xs" onClick={exportNcr}>{S.btnEksporNcr}</button>
               </div>
               {ncrList.map((n) => (
-                <Card key={n.id} id={notifRowId(String(n.id))} className={`p-4 ${flash.flashId === String(n.id) ? "notif-flash" : ""}`}>
+                <Card key={n.id} id={notifRowId(String(n.id))} className={`p-4 ${flash.flashId === String(n.id) ? "notif-hl notif-flash" : "notif-hl"}`}>
                   <div className="flex flex-wrap items-start justify-between gap-2">
                     <div>
                       <div className="flex items-center gap-2">
@@ -988,7 +990,7 @@ export default function QCSafety() {
               </div>
               <div className="space-y-3">
                 {incidents.map((i) => (
-                  <Card key={i.id} id={notifRowId(String(i.id))} className={`p-4 ${flash.flashId === String(i.id) ? "notif-flash" : ""}`}>
+                  <Card key={i.id} id={notifRowId(String(i.id))} className={`p-4 ${flash.flashId === String(i.id) ? "notif-hl notif-flash" : "notif-hl"}`}>
                     <div className="flex items-start justify-between gap-2">
                       <div>
                         <div className="flex items-center gap-2">
@@ -1096,13 +1098,13 @@ export default function QCSafety() {
               </Field>
             )}
             <Field label={S.fSampel} hint={S.hintSampel}>
-              <input type="number" min={1} className="input" value={inspForm.sampleSize} onChange={(e) => setInspForm({ ...inspForm, sampleSize: e.target.value })} placeholder={S.phCth50} />
+              <NumInput min={1} className="input" value={inspForm.sampleSize} onChange={(e) => setInspForm({ ...inspForm, sampleSize: e.target.value })} placeholder={S.phCth50} />
             </Field>
             <Field label={S.fDefectAllow} hint={S.hintDefect}>
-              <input type="number" min={0} className="input" value={inspForm.defectsAllowed} onChange={(e) => setInspForm({ ...inspForm, defectsAllowed: e.target.value })} placeholder={S.phCth1} />
+              <NumInput min={0} className="input" value={inspForm.defectsAllowed} onChange={(e) => setInspForm({ ...inspForm, defectsAllowed: e.target.value })} placeholder={S.phCth1} />
             </Field>
             <Field label={S.fTemuan}>
-              <input type="number" min={0} className="input" value={inspForm.defectsFound} onChange={(e) => setInspForm({ ...inspForm, defectsFound: e.target.value })} placeholder={S.phCth0} />
+              <NumInput min={0} className="input" value={inspForm.defectsFound} onChange={(e) => setInspForm({ ...inspForm, defectsFound: e.target.value })} placeholder={S.phCth0} />
             </Field>
             {inspForm.nde === "Ya" && (
               <Field label={S.fAlatKal} hint={S.hintAlat}>
@@ -1184,9 +1186,9 @@ export default function QCSafety() {
             <div className="mt-3 border-t border-steel-100 pt-3">
               <p className="text-xs font-semibold text-steel-500">{S.reworkHead}</p>
               <div className="mt-2 grid grid-cols-3 gap-2">
-                <Field label={S.fJam}><input type="number" min={0} step={0.5} className="input" value={reworkDraft.hours} onChange={(e) => setReworkDraft({ ...reworkDraft, hours: e.target.value })} placeholder={S.phCth12} /></Field>
-                <Field label={S.fRate}><input type="number" min={0} className="input" value={reworkDraft.rate} onChange={(e) => setReworkDraft({ ...reworkDraft, rate: e.target.value })} placeholder={S.phCth75} /></Field>
-                <Field label={S.fMaterial}><input type="number" min={0} className="input" value={reworkDraft.material} onChange={(e) => setReworkDraft({ ...reworkDraft, material: e.target.value })} placeholder={S.phCth500} /></Field>
+                <Field label={S.fJam}><NumInput min={0} step={0.5} className="input" value={reworkDraft.hours} onChange={(e) => setReworkDraft({ ...reworkDraft, hours: e.target.value })} placeholder={S.phCth12} /></Field>
+                <Field label={S.fRate}><NumInput min={0} className="input" value={reworkDraft.rate} onChange={(e) => setReworkDraft({ ...reworkDraft, rate: e.target.value })} placeholder={S.phCth75} /></Field>
+                <Field label={S.fMaterial}><NumInput min={0} className="input" value={reworkDraft.material} onChange={(e) => setReworkDraft({ ...reworkDraft, material: e.target.value })} placeholder={S.phCth500} /></Field>
               </div>
               <div className="mt-2 flex items-center justify-between gap-2">
                 <p className="text-sm text-steel-600">{S.totalN.split("{n}")[0]}<span className="font-semibold text-navy-900">{fmtRupiah((Number(reworkDraft.hours) || 0) * (Number(reworkDraft.rate) || 0) + (Number(reworkDraft.material) || 0))}</span>{S.totalN.split("{n}")[1]}</p>
@@ -1397,7 +1399,7 @@ export default function QCSafety() {
               </select>
             </Field>
             <Field label={S.thTanggal}><input type="date" className="input" value={tbmForm.date} onChange={(e) => setTbmForm({ ...tbmForm, date: e.target.value })} /></Field>
-            <Field label={S.fJmlPeserta}><input type="number" min={0} className="input" value={tbmForm.attendees} onChange={(e) => setTbmForm({ ...tbmForm, attendees: e.target.value })} /></Field>
+            <Field label={S.fJmlPeserta}><NumInput min={0} className="input" value={tbmForm.attendees} onChange={(e) => setTbmForm({ ...tbmForm, attendees: e.target.value })} /></Field>
             <Field label={S.fPic}><input className="input" value={tbmForm.pic} onChange={(e) => setTbmForm({ ...tbmForm, pic: e.target.value })} /></Field>
           </FormGrid>
           <Field label={S.fTopik}><input className="input" value={tbmForm.topic} onChange={(e) => setTbmForm({ ...tbmForm, topic: e.target.value })} placeholder={S.phTopik} /></Field>
@@ -1412,7 +1414,7 @@ export default function QCSafety() {
             <Field label={S.thTanggal}><input type="date" className="input" value={walkForm.date} onChange={(e) => setWalkForm({ ...walkForm, date: e.target.value })} /></Field>
             <Field label={S.fPic}><input className="input" value={walkForm.pic} onChange={(e) => setWalkForm({ ...walkForm, pic: e.target.value })} /></Field>
             <Field label={S.fArea}><input className="input" value={walkForm.area} onChange={(e) => setWalkForm({ ...walkForm, area: e.target.value })} placeholder={S.phArea} /></Field>
-            <Field label={S.fJmlTemuan}><input type="number" min={0} className="input" value={walkForm.findings} onChange={(e) => setWalkForm({ ...walkForm, findings: e.target.value })} /></Field>
+            <Field label={S.fJmlTemuan}><NumInput min={0} className="input" value={walkForm.findings} onChange={(e) => setWalkForm({ ...walkForm, findings: e.target.value })} /></Field>
           </FormGrid>
         </div>
       </Modal>
@@ -1425,7 +1427,7 @@ export default function QCSafety() {
             <Field label={S.thTanggal}><input type="date" className="input" value={auditForm.date} onChange={(e) => setAuditForm({ ...auditForm, date: e.target.value })} /></Field>
             <Field label={S.fArea}><input className="input" value={auditForm.area} onChange={(e) => setAuditForm({ ...auditForm, area: e.target.value })} placeholder={S.phArea2} /></Field>
             <Field label={S.fAuditor}><input className="input" value={auditForm.auditor} onChange={(e) => setAuditForm({ ...auditForm, auditor: e.target.value })} placeholder={S.phAuditor} /></Field>
-            <Field label={S.fJmlTemuan}><input type="number" min={0} className="input" value={auditForm.findings} onChange={(e) => setAuditForm({ ...auditForm, findings: e.target.value })} /></Field>
+            <Field label={S.fJmlTemuan}><NumInput min={0} className="input" value={auditForm.findings} onChange={(e) => setAuditForm({ ...auditForm, findings: e.target.value })} /></Field>
           </FormGrid>
           <Field label={S.fLinkNcr}>
             <select className="input" value={auditForm.ncrId} onChange={(e) => setAuditForm({ ...auditForm, ncrId: e.target.value })}>

@@ -1,7 +1,9 @@
 import { useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { ArrowLeft, Send } from "lucide-react";
-import { Card, CardHeader, PageHeader, StatusBadge, Badge, Modal, Field, FormGrid, EmptyState, toast } from "../../components/ui";
+import { Card, CardHeader, PageHeader, StatusBadge, Badge, Modal, Field, FormGrid, EmptyState, toast,
+  NumInput,
+} from "../../components/ui";
 import { useStore } from "../../data/store";
 import type { StoreItem } from "../../data/store";
 import { fmtRupiah, fmtTanggal, todayISO } from "../../utils/format";
@@ -273,8 +275,8 @@ export default function QuotationDetail() {
             {activeLines.map((l, idx) => (
               <div key={idx} className="grid grid-cols-12 gap-2 rounded-xl bg-surface p-2">
                 <div className="col-span-12 sm:col-span-6"><Field label={S.descLabel}><input className="input" value={l.desc} onChange={(e) => setLine(idx, "desc", e.target.value)} /></Field></div>
-                <div className="col-span-5 sm:col-span-2"><Field label={S.qtyLabel}><input type="number" min={0} className="input" value={l.qty} onChange={(e) => setLine(idx, "qty", e.target.value)} /></Field></div>
-                <div className="col-span-7 sm:col-span-4"><Field label={S.priceLabel}><input type="number" min={0} className="input" value={l.price} onChange={(e) => setLine(idx, "price", e.target.value)} /></Field></div>
+                <div className="col-span-5 sm:col-span-2"><Field label={S.qtyLabel}><NumInput min={0} className="input" value={l.qty} onChange={(e) => setLine(idx, "qty", e.target.value)} /></Field></div>
+                <div className="col-span-7 sm:col-span-4"><Field label={S.priceLabel}><NumInput min={0} className="input" value={l.price} onChange={(e) => setLine(idx, "price", e.target.value)} /></Field></div>
               </div>
             ))}
             <div className="flex flex-wrap gap-2">
