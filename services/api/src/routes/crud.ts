@@ -98,6 +98,38 @@ const PatchSchema = z.object({
   message: "Nothing to update",
 });
 
+// Validasi domain minimal saat CREATE (422, bukan 400, agar FE melempar
+// bukan menyimpan lokal): data harus objek + field kunci koleksi kritis.
+// PATCH parsial tidak divalidasi isi (sengaja).
+const REQUIRED_DATA: Record<string, string[]> = {
+  projects: ["vessel", "client"],
+  vessels: ["name"],
+  invoices: ["client"],
+  payables: ["v", "amt"],
+  purchaseOrders: ["vendor"],
+  requisitions: ["item"],
+  employees: ["name"],
+  payroll: ["employeeId", "period"],
+  inventory: ["name"],
+  vendors: ["name"],
+  clients: ["name"],
+  quotations: ["client", "vessel"],
+};
+
+function assertDomain(table: string, data: unknown): string | null {
+  if (typeof data !== "object" || data === null || Array.isArray(data)) {
+    return "data harus objek";
+  }
+  const need = REQUIRED_DATA[table] ?? [];
+  const rec = data as Record<string, unknown>;
+  const missing = need.filter((k) => {
+    const v = rec[k];
+    return v === undefined || v === null || (typeof v === "string" && v.trim() === "");
+  });
+  if (missing.length > 0) return `field wajib kosong: ${missing.join(", ")}`;
+  return null;
+}
+
 interface Row {
   id: string;
   branch: string;
@@ -106,7 +138,14 @@ interface Row {
 }
 
 function toJson(row: Row): { id: string; branch: string; data: unknown; updated_at: string } {
-  return { id: row.id, branch: row.branch, data: JSON.parse(row.data) as unknown, updated_at: row.updated_at };
+  let data: unknown = {};
+  try {
+    data = JSON.parse(row.data) as unknown;
+  } catch {
+    // Satu baris korup tidak boleh menumbangkan seluruh halaman (RAGU-28).
+    data = { _corrupt: true, _raw: String(row.data ?? "").slice(0, 200) };
+  }
+  return { id: row.id, branch: row.branch, data, updated_at: row.updated_at };
 }
 
 function newId(table: string): string {
@@ -185,6 +224,8 @@ export function registerCrud(app: FastifyInstance, table: string): void {
     }
     const branch = parsed.data.branch ?? "";
     const now = new Date().toISOString();
+    const domainError = assertDomain(table, parsed.data.data);
+    if (domainError) return reply.status(422).send(fail(domainError, "UNPROCESSABLE"));
     const refError = await checkRefs(table, parsed.data.data as Record<string, unknown>);
     if (refError) return reply.status(422).send(fail(refError, "UNPROCESSABLE"));
     await exec(`INSERT INTO ${table} (id, branch, data, updated_at) VALUES (?, ?, ?, ?)`, [
@@ -215,7 +256,13 @@ export function registerCrud(app: FastifyInstance, table: string): void {
         data: toJson(current),
       });
     }
-    const oldData = JSON.parse(current.data) as Record<string, unknown>;
+    const oldData = (() => {
+      try {
+        return JSON.parse(current.data) as Record<string, unknown>;
+      } catch {
+        return {};
+      }
+    })();
     const merged = parsed.data.data ? { ...oldData, ...parsed.data.data } : oldData;
     const branch = parsed.data.branch ?? current.branch;
     const now = new Date().toISOString();

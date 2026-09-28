@@ -7,13 +7,14 @@ import { exec, q } from "../db.js";
 import { fail, ok } from "../envelope.js";
 
 // Kelola users: direktur/developer/manager/admin (rbac.ts requireManageUsers).
-// MANAGE_ROLES di bawah dipakai untuk pesan/cek password — dua daftar
-// wajib selaras (tambah peran di rbac.ts = tambah di sini).
-const MANAGE_ROLES = ["direktur", "developer", "Direktur", "Developer", "manager", "Manager", "admin", "Admin"];
+// Daftar di bawah untuk pesan/cek password — selaras dengan rbac (unik,
+// case-insensitive agar "Manager"/"ADMIN" tidak lolos satu jalur tapi gagal
+// di jalur lain).
+const MANAGE_ROLES = ["direktur", "developer", "manager", "admin"];
 const manageGuards = [requireAuth, requireManageUsers()];
 
 function isPrivileged(role: unknown): boolean {
-  return typeof role === "string" && MANAGE_ROLES.includes(role);
+  return typeof role === "string" && MANAGE_ROLES.includes(role.toLowerCase());
 }
 
 interface UserRow {

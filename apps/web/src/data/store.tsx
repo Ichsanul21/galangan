@@ -1030,9 +1030,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             setBackendError(null);
             return finalItem;
           } catch (err) {
-            // 409/422 ber-code (CONFLICT/REFERENCED/VALIDATION/UNPROCESSABLE):
+            // 400/409/422 ber-code (VALIDATION/CONFLICT/REFERENCED/UNPROCESSABLE):
             // jangan tulis lokal - lempar agar caller toast gagal, bukan sukses.
-            if (err instanceof ApiError && (err.status === 409 || err.status === 422)) {
+            // (400 validasi masuk sini agar data invalid tak tersimpan lokal.)
+            if (err instanceof ApiError && (err.status === 400 || err.status === 409 || err.status === 422)) {
               notifyConflict(err.message);
               throw err;
             }
@@ -1089,10 +1090,11 @@ export function StoreProvider({ children }: { children: ReactNode }) {
               notifyConflict("Data sudah diubah pengguna lain - versi server dimuat ulang. Ulangi perubahan Anda.");
               return;
             }
-            // REFERENCED/VALIDATION/UNPROCESSABLE: tampilkan alasan BE apa adanya.
-            if (err instanceof ApiError && (err.status === 409 || err.status === 422)) {
+            // REFERENCED/VALIDATION/UNPROCESSABLE (+400 validasi): tampilkan
+            // alasan BE apa adanya + lempar agar caller toast gagal.
+            if (err instanceof ApiError && (err.status === 400 || err.status === 409 || err.status === 422)) {
               notifyConflict(err.message);
-              return;
+              throw err;
             }
             if (degrade(err)) return;
           }
@@ -1114,9 +1116,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             setBackendError(null);
             return;
           } catch (err) {
-            // REFERENCED (masih dipakai modul lain): tampilkan + lempar,
-            // jangan hapus lokal.
-            if (err instanceof ApiError && (err.status === 409 || err.status === 422)) {
+            // REFERENCED (masih dipakai modul lain) + 400/422: tampilkan +
+            // lempar, jangan hapus lokal.
+            if (err instanceof ApiError && (err.status === 400 || err.status === 409 || err.status === 422)) {
               notifyConflict(err.message);
               throw err;
             }

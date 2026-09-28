@@ -61,7 +61,27 @@ export async function migrate(): Promise<void> {
     }
     await exec(beginSql);
     try {
-      const statements = raw.split(";");
+      // Split sadar-string: ";" di dalam literal '...' / "..." bukan
+      // pemisah statement (R8: splitter naif pecah pada DEFAULT ';').
+      const statements: string[] = [];
+      let cur = "";
+      let quote: string | null = null;
+      for (let i = 0; i < raw.length; i += 1) {
+        const c = raw[i];
+        if (quote) {
+          cur += c;
+          if (c === quote && raw[i - 1] !== "\\") quote = null;
+        } else if (c === "'" || c === '"') {
+          quote = c;
+          cur += c;
+        } else if (c === ";") {
+          statements.push(cur);
+          cur = "";
+        } else {
+          cur += c;
+        }
+      }
+      if (cur.trim()) statements.push(cur);
       for (const chunk of statements) {
         const sql = chunk.trim();
         if (!sql) continue;
