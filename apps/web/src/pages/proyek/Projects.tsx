@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { Plus, Search, Anchor, Wallet, TrendingUp, Clock, ChevronLeft, ChevronRight } from "lucide-react";
 import {
   Card,
@@ -50,6 +50,7 @@ export default function Projects() {
   const { data, add, update, log, inBranch } = useStore();
   const modAlert = useModuleAlert("proyek");
   const flash = useNotifFlash();
+  const notified = useMemo(() => new Set(modAlert.items.map((a) => a.rowId)), [modAlert.items]);
   const navigate = useNavigate();
   const projects = data.projects;
   const [filter, setFilter] = useState("Semua");
@@ -61,6 +62,18 @@ export default function Projects() {
   const [q, setQ] = useState("");
   const [sort, setSort] = useState<SortState>({ key: null, dir: "asc" });
   const [showAdd, setShowAdd] = useState(false);
+  const [searchParams, setSearchParams] = useSearchParams();
+
+  // Alur dari Dashboard: /proyek?create=1 langsung buka form tambah proyek.
+  useEffect(() => {
+    if (searchParams.get("create") === "1") {
+      setShowAdd(true);
+      const next = new URLSearchParams(searchParams);
+      next.delete("create");
+      setSearchParams(next, { replace: true });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const [mundurFor, setMundurFor] = useState<StoreItem | null>(null);
   const [mundurReason, setMundurReason] = useState("");
 
@@ -262,7 +275,7 @@ export default function Projects() {
                   <tr
                     key={p.id}
                     id={notifRowId(String(p.id))}
-                    className={`cursor-pointer transition-colors hover:bg-surface ${flash.flashId === String(p.id) ? "notif-hl notif-flash" : "notif-hl"}`}
+                    className={`cursor-pointer transition-colors hover:bg-surface ${flash.flashId === String(p.id) ? "notif-hl notif-flash" : (notified.has(String(p.id)) ? "notif-hl" : "")}`}
                     onClick={() => navigate(`/proyek/${p.id}`)}
                     onKeyDown={(e) => { if (e.key === "Enter") navigate(`/proyek/${p.id}`); }}
                     tabIndex={0}

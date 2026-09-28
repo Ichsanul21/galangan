@@ -84,6 +84,7 @@ export default function EquipmentPage() {
   const S = n_eqp[locale];
   const modAlert = useModuleAlert("equipment");
   const flash = useNotifFlash();
+  const notified = useMemo(() => new Set(modAlert.items.map((a) => a.rowId)), [modAlert.items]);
   const equipment = data.equipment;
   const bookings = data.bookings;
   const calibrations = data.calibrations;
@@ -557,7 +558,7 @@ export default function EquipmentPage() {
                   {regPager.slice(regSorted).map((e) => {
                     const expired = isCalExpired(e.id, calibrations, today);
                     return (
-                    <tr key={e.id} id={notifRowId(String(e.id))} className={flash.flashId === String(e.id) ? "notif-hl notif-flash hover:bg-surface" : "notif-hl hover:bg-surface"}>
+                    <tr key={e.id} id={notifRowId(String(e.id))} className={flash.flashId === String(e.id) ? "notif-hl notif-flash hover:bg-surface" : (notified.has(String(e.id)) ? "notif-hl hover:bg-surface" : "hover:bg-surface")}>
                       <td className="td">
                         <p className="font-medium text-navy-900">{e.name}</p>
                         <p className="text-xs text-steel-500 font-mono">{e.code}</p>

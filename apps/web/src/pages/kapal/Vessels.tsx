@@ -146,6 +146,7 @@ export default function Vessels() {
   const S = n_eqp[locale];
   const modAlert = useModuleAlert("kapal");
   const flash = useNotifFlash();
+  const notified = useMemo(() => new Set(modAlert.items.map((a) => a.rowId)), [modAlert.items]);
   const vessels = data.vessels;
   const [q, setQ] = useState("");
   const [certFilter, setCertFilter] = useState("Semua");
@@ -301,7 +302,7 @@ export default function Vessels() {
           {cardPager.slice(list).map((v) => {
             const comp = complianceSummary(v);
             return (
-              <Card key={v.id} id={notifRowId(String(v.id))} className={`p-5 hover:shadow-md transition-shadow ${flash.flashId === String(v.id) ? "notif-hl notif-flash" : "notif-hl"}`}>
+              <Card key={v.id} id={notifRowId(String(v.id))} className={`p-5 hover:shadow-md transition-shadow ${flash.flashId === String(v.id) ? "notif-hl notif-flash" : (notified.has(String(v.id)) ? "notif-hl" : "")}`}>
                 <Link to={`/kapal/${v.id}`}>
                   <div className="flex items-start justify-between">
                     <div className="flex items-center gap-2">

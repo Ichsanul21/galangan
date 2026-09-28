@@ -176,6 +176,7 @@ export default function HR() {
   const S = n_qc[locale];
   const modAlert = useModuleAlert("sdm");
   const flash = useNotifFlash();
+  const notified = useMemo(() => new Set(modAlert.items.map((a) => a.rowId)), [modAlert.items]);
   const [tab, setTab] = useState("Karyawan");
   const [sort, setSort] = useState<SortState>({ key: null, dir: "asc" });
   const [sort2, setSort2] = useState<SortState>({ key: null, dir: "asc" });
@@ -1015,7 +1016,7 @@ export default function HR() {
                       default: return "";
                     }
                   }).map((l) => (
-                    <tr key={l.id} id={notifRowId(String(l.id))} className={flash.flashId === String(l.id) ? "notif-hl notif-flash hover:bg-surface" : "notif-hl hover:bg-surface"}>
+                    <tr key={l.id} id={notifRowId(String(l.id))} className={flash.flashId === String(l.id) ? "notif-hl notif-flash hover:bg-surface" : (notified.has(String(l.id)) ? "notif-hl hover:bg-surface" : "hover:bg-surface")}>
                       <td className="td font-mono text-steel-600">{l.id}</td>
                       <td className="td text-navy-900">{empNameOf(String(l.employeeId))}</td>
                       <td className="td"><Badge tone="gray">{l.type}</Badge></td>

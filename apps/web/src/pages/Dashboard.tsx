@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import {
   Anchor,
   Wallet,
@@ -69,8 +69,6 @@ import {
 } from "../data";
 import { useT } from "../i18n/LanguageContext";
 import { n_misc } from "../i18n/n_misc";
-import { n_prj } from "../i18n/n_prj";
-import ProjectAddModal from "../components/ProjectAddModal";
 
 const RANGES = ["6B", "12B"] as const;
 
@@ -85,13 +83,12 @@ function loadTargets(): Record<string, BranchTarget> {
 }
 
 export default function Dashboard() {
-  const { data, wbsFor, branch, add } = useStore();
+  const { data, wbsFor, branch } = useStore();
   const { locale } = useT();
   const S = n_misc[locale];
-  const SP = n_prj[locale];
   const { user } = useAuth();
   const allowedTarget = canSetTarget(user?.role);
-  const [showAddProject, setShowAddProject] = useState(false);
+  const navigate = useNavigate();
   const [isFs, setIsFs] = useState(() => typeof document !== "undefined" && !!document.fullscreenElement);
   useEffect(() => {
     const onFs = () => setIsFs(!!document.fullscreenElement);
@@ -319,24 +316,13 @@ export default function Dashboard() {
               <button className="btn-secondary" onClick={exportSummary}>
                 <Download className="h-4 w-4" /> {S.exportBtn}
               </button>
-              <button className="btn-primary-gradient" onClick={() => setShowAddProject(true)}>
+              <button className="btn-primary-gradient" onClick={() => navigate("/proyek?create=1")}>
                 <Plus className="h-4 w-4" /> {S.newProjectBtn}
               </button>
             </>
           }
         />
       </StaggerItem>
-
-      <ProjectAddModal
-        open={showAddProject}
-        onClose={() => setShowAddProject(false)}
-        S={SP}
-        projects={projects}
-        vessels={data.vessels}
-        clients={data.clients}
-        employees={data.employees}
-        add={add}
-      />
 
       {/* TARGET VS AKTUAL - atur via tombol, hanya Direktur/Manager */}
       <StaggerItem>
@@ -529,8 +515,8 @@ export default function Dashboard() {
                 </Link>
               }
             />
-            <div className="divide-y divide-steel-100">
-              {branchProjects.slice(0, 5).map((p) => (
+            <div className="max-h-80 divide-y divide-steel-100 overflow-y-auto">
+              {branchProjects.map((p) => (
                 <Link
                   key={p.id}
                   to={`/proyek/${p.id}`}
@@ -558,8 +544,8 @@ export default function Dashboard() {
         <StaggerItem>
           <Card className="h-full">
             <CardHeader title={S.recentActivity} subtitle={S.realtimeLog} />
-            <div className="space-y-1 p-3">
-              {activities.slice(0, 6).map((a) => (
+            <div className="max-h-80 space-y-1 overflow-y-auto p-3">
+              {activities.map((a) => (
                 <div key={a.id} className="flex items-center gap-3 rounded-xl px-2 py-2 hover:bg-surface">
                   <Avatar name={a.actor} className="h-8 w-8 shrink-0" />
                   <div className="min-w-0 flex-1">
@@ -659,7 +645,7 @@ export default function Dashboard() {
                 <span className="text-3xl font-bold text-navy-900">{utilDrydock}%</span>
                 <span className="pb-1 text-xs text-steel-500">{S.facilitiesInstalled.replace("{n}", String(drydocks.length))}</span>
               </div>
-              <div className="space-y-3">
+              <div className="max-h-64 space-y-3 overflow-y-auto pr-1">
                 {drydockLoad.map((d) => (
                   <div key={d.dock}>
                     <div className="mb-1 flex justify-between text-xs">
@@ -700,7 +686,7 @@ export default function Dashboard() {
         <StaggerItem>
           <Card className="h-full">
             <CardHeader title={S.smartInsights} subtitle={S.autoRecommendations} />
-            <div className="space-y-2.5 p-4 pt-0">
+            <div className="max-h-80 space-y-2.5 overflow-y-auto p-4 pt-0">
               {insights.map((i) => {
                 const dot =
                   i.tone === "rose" ? "bg-rose-500" : i.tone === "teal" ? "bg-teal-500" : i.tone === "violet" ? "bg-violet-500" : "bg-ocean-500";

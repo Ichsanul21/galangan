@@ -256,6 +256,7 @@ export default function Payroll() {
   const advLabel: Record<string, string> = { Draft: S.advCalc, Dihitung: S.advApprove, Disetujui: S.advPay };
   const modAlert = useModuleAlert("payroll");
   const flash = useNotifFlash();
+  const notified = useMemo(() => new Set(modAlert.items.map((a) => a.rowId)), [modAlert.items]);
   const pickNotif = (rowId: string) => {
     const key = String(rowId);
     const row = data.payroll.find((p) => String(p.id) === key);
@@ -897,7 +898,7 @@ export default function Payroll() {
                         default: return "";
                       }
                     }).map((p) => (
-                      <tr key={p.id} id={notifRowId(String(p.id))} className={flash.flashId === String(p.id) ? "notif-hl notif-flash hover:bg-surface" : "notif-hl hover:bg-surface"}>
+                      <tr key={p.id} id={notifRowId(String(p.id))} className={flash.flashId === String(p.id) ? "notif-hl notif-flash hover:bg-surface" : (notified.has(String(p.id)) ? "notif-hl hover:bg-surface" : "hover:bg-surface")}>
                         <td className="td font-mono text-steel-600">{p.id}</td>
                         <td className="td font-medium text-navy-900">{empNameOf(String(p.employeeId))}</td>
                         <td className="td text-steel-600">{fmtRupiah(Number(p.basic || 0))}</td>
@@ -996,7 +997,7 @@ export default function Payroll() {
                         default: return "";
                       }
                     }).map((p) => (
-                      <tr key={p.id} id={notifRowId(String(p.id))} className={flash.flashId === String(p.id) ? "notif-hl notif-flash hover:bg-surface" : "notif-hl hover:bg-surface"}>
+                      <tr key={p.id} id={notifRowId(String(p.id))} className={flash.flashId === String(p.id) ? "notif-hl notif-flash hover:bg-surface" : (notified.has(String(p.id)) ? "notif-hl hover:bg-surface" : "hover:bg-surface")}>
                         <td className="td font-mono text-steel-600">{p.id}</td>
                         <td className="td font-medium text-navy-900">{empNameOf(String(p.employeeId))}</td>
                         <td className="td"><Badge tone={rowType(p) === "THR" ? "amber" : "violet"}>{rowType(p)}</Badge></td>

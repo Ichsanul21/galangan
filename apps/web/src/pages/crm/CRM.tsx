@@ -65,6 +65,7 @@ export default function CRM() {
   const S = n_crm[locale];
   const modAlert = useModuleAlert("crm");
   const flash = useNotifFlash();
+  const notified = useMemo(() => new Set(modAlert.items.map((a) => a.rowId)), [modAlert.items]);
   const [tab, setTab] = useState("Pipeline");
   const [sort, setSort] = useState<SortState>({ key: null, dir: "asc" });
   const [klasFilter, setKlasFilter] = useState("Semua");
@@ -594,7 +595,7 @@ export default function CRM() {
               </label>
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
               {quotPager.slice(penawaranList).map((q) => (
-                <Card key={q.id} id={notifRowId(String(q.id))} className={`p-4 ${flash.flashId === String(q.id) ? "notif-hl notif-flash" : "notif-hl"}`}>
+                <Card key={q.id} id={notifRowId(String(q.id))} className={`p-4 ${flash.flashId === String(q.id) ? "notif-hl notif-flash" : (notified.has(String(q.id)) ? "notif-hl" : "")}`}>
                   <div className="flex justify-between gap-2">
                     <div className="min-w-0">
                       <p className="truncate font-semibold text-navy-900" title={String(q.vessel)}>{String(q.vessel)}</p>
@@ -635,7 +636,7 @@ export default function CRM() {
               </div>
               <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                 {reqPager.slice(requests).map((r) => (
-                  <Card key={r.id} id={notifRowId(String(r.id))} className={`p-4 ${flash.flashId === String(r.id) ? "notif-hl notif-flash" : "notif-hl"}`}>
+                  <Card key={r.id} id={notifRowId(String(r.id))} className={`p-4 ${flash.flashId === String(r.id) ? "notif-hl notif-flash" : (notified.has(String(r.id)) ? "notif-hl" : "")}`}>
                     <div className="flex justify-between gap-2">
                       <div className="min-w-0">
                         <p className="truncate font-semibold text-navy-900" title={String(r.vessel)}>{String(r.vessel)}</p>
@@ -726,7 +727,7 @@ export default function CRM() {
                       </thead>
                       <tbody className="divide-y divide-steel-100">
                         {contractPager.slice(sortedContracts).map((k) => (
-                          <tr key={k.id} id={notifRowId(String(k.id))} className={flash.flashId === String(k.id) ? "notif-hl notif-flash hover:bg-surface" : "notif-hl hover:bg-surface"}>
+                          <tr key={k.id} id={notifRowId(String(k.id))} className={flash.flashId === String(k.id) ? "notif-hl notif-flash hover:bg-surface" : (notified.has(String(k.id)) ? "notif-hl hover:bg-surface" : "hover:bg-surface")}>
                             <td className="td font-mono text-xs font-semibold text-navy-900">{k.id}<span className="block font-sans text-[11px] font-normal text-steel-500">{String(k.client ?? "")}</span></td>
                             <td className="td font-mono text-xs"><Link to={`/crm/quotation/${k.quotationId}`} className="text-ocean-600">{String(k.quotationId)}</Link>{k.projectId ? <Link to={`/proyek/${k.projectId}`} className="block text-[11px] text-teal-600">{String(k.projectId)}</Link> : null}</td>
                             <td className="td text-xs font-semibold">{fmtRupiah(num(k.value))}</td>

@@ -101,6 +101,7 @@ export default function Documents() {
   const S = n_dry[locale];
   const modAlert = useModuleAlert("dokumen");
   const flash = useNotifFlash();
+  const notified = useMemo(() => new Set(modAlert.items.map((a) => a.rowId)), [modAlert.items]);
   const [q, setQ] = useState("");
   const [sort, setSort] = useState<SortState>({ key: null, dir: "asc" });
   const [type, setType] = useState("Semua");
@@ -398,7 +399,7 @@ export default function Documents() {
             </thead>
             <tbody className="divide-y divide-steel-100">
               {docPager.slice(sortedDocs).map((d) => (
-                <tr key={d.id} id={notifRowId(String(d.id))} className={flash.flashId === String(d.id) ? "notif-hl notif-flash hover:bg-surface" : "notif-hl hover:bg-surface"}>
+                <tr key={d.id} id={notifRowId(String(d.id))} className={flash.flashId === String(d.id) ? "notif-hl notif-flash hover:bg-surface" : (notified.has(String(d.id)) ? "notif-hl hover:bg-surface" : "hover:bg-surface")}>
                   <td className="td max-w-[260px]">
                     <p className="truncate font-medium text-navy-900" title={String(d.title)}>{d.title}</p>
                     <p className="font-mono text-xs text-steel-500">{d.id} · {d.owner}{d.berlakuHingga ? S.untilSuffix.replace("{a}", fmtTanggal(d.berlakuHingga)) : ""}</p>

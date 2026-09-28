@@ -139,6 +139,7 @@ export default function Procurement() {
   const S = n_proc[locale];
   const modAlert = useModuleAlert("procurement");
   const flash = useNotifFlash();
+  const notified = useMemo(() => new Set(modAlert.items.map((a) => a.rowId)), [modAlert.items]);
   const purchaseOrders = inBranch(data.purchaseOrders);
   const requisitions = data.requisitions;
   const vendors = data.vendors;
@@ -886,7 +887,7 @@ export default function Procurement() {
                       const done = apprOf(po);
                       const payung = vendors.some((v) => sameName(v.name, po.vendor) && payungOf(v));
                       return (
-                        <tr key={po.id} id={notifRowId(String(po.id))} className={flash.flashId === String(po.id) ? "notif-hl notif-flash hover:bg-surface" : "notif-hl hover:bg-surface"}>
+                        <tr key={po.id} id={notifRowId(String(po.id))} className={flash.flashId === String(po.id) ? "notif-hl notif-flash hover:bg-surface" : (notified.has(String(po.id)) ? "notif-hl hover:bg-surface" : "hover:bg-surface")}>
                           <td className="td font-mono font-medium text-navy-900">{po.id}</td>
                           <td className="td text-steel-600">
                             <p className="truncate" title={String(po.item)}>{po.item}</p>
@@ -1002,7 +1003,7 @@ export default function Procurement() {
                       {smallPager.slice(sortedSmall).map((po) => {
                         const st = normPo(po.status);
                         return (
-                          <tr key={po.id} id={notifRowId(String(po.id))} className={flash.flashId === String(po.id) ? "notif-hl notif-flash hover:bg-surface" : "notif-hl hover:bg-surface"}>
+                          <tr key={po.id} id={notifRowId(String(po.id))} className={flash.flashId === String(po.id) ? "notif-hl notif-flash hover:bg-surface" : (notified.has(String(po.id)) ? "notif-hl hover:bg-surface" : "hover:bg-surface")}>
                           <td className="td font-mono font-medium text-navy-900">{po.id}
                             {po.docNo && <p className="text-xs font-normal text-steel-400">{po.docNo}</p>}
                             {(() => {
@@ -1146,7 +1147,7 @@ export default function Procurement() {
                     </thead>
                     <tbody className="divide-y divide-steel-100">
                       {prPager.slice(sortedPr).map((r) => (
-                        <tr key={r.id} id={notifRowId(String(r.id))} className={flash.flashId === String(r.id) ? "notif-hl notif-flash hover:bg-surface" : "notif-hl hover:bg-surface"}>
+                        <tr key={r.id} id={notifRowId(String(r.id))} className={flash.flashId === String(r.id) ? "notif-hl notif-flash hover:bg-surface" : (notified.has(String(r.id)) ? "notif-hl hover:bg-surface" : "hover:bg-surface")}>
                           <td className="td font-mono font-medium text-navy-900">{r.id}</td>
                           <td className="td text-steel-600 truncate" title={String(r.item)}>{r.item}</td>
                           <td className="td text-steel-600">{r.by}</td>

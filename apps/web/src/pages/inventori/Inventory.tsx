@@ -301,6 +301,7 @@ export default function Inventory() {
   const requisitions = data.requisitions;
   const modAlert = useModuleAlert("inventori");
   const flash = useNotifFlash();
+  const notified = useMemo(() => new Set(modAlert.items.map((a) => a.rowId)), [modAlert.items]);
   const [tab, setTab] = useState("Katalog");
   const [bomProject, setBomProject] = useState("Semua proyek");
   const [q, setQ] = useState("");
@@ -504,6 +505,16 @@ export default function Inventory() {
     const age = lastIn ? daysSince(lastIn) : 9999;
     return { item: i, lastIn, age, bucket: lastIn ? agingBucket(age) : "Belum ada GR" };
   }), [inventory, moveIdx]);
+
+  // Analisis: saring + batasi 8 per kartu (scroll untuk sisanya).
+  const [anQ, setAnQ] = useState("");
+  const anNeedle = anQ.trim().toLowerCase();
+  const slowFiltered = useMemo(() => (anNeedle ? slowItems.filter((i) => `${i.name} ${i.sku}`.toLowerCase().includes(anNeedle)) : slowItems), [slowItems, anNeedle]);
+  const slowShown = useMemo(() => slowFiltered.slice(0, 8), [slowFiltered]);
+  const deadFiltered = useMemo(() => (anNeedle ? deadItems.filter((i) => `${i.name} ${i.sku}`.toLowerCase().includes(anNeedle)) : deadItems), [deadItems, anNeedle]);
+  const deadShown = useMemo(() => deadFiltered.slice(0, 8), [deadFiltered]);
+  const agingFiltered = useMemo(() => (anNeedle ? agingRows.filter((r) => `${r.item.name} ${r.bucket}`.toLowerCase().includes(anNeedle)) : agingRows), [agingRows, anNeedle]);
+  const agingShown = useMemo(() => agingFiltered.slice(0, 8), [agingFiltered]);
 
   const activeProjects = projects.filter((p) => String(p.status) !== "Selesai");
   const forecastRows = activeProjects.flatMap((p) =>
@@ -1224,7 +1235,7 @@ export default function Inventory() {
                       const conv = convOf(i);
                       const u2 = uom2Of(i);
                       return (
-                        <tr key={i.id} id={notifRowId(String(i.id))} className={flash.flashId === String(i.id) ? "notif-hl notif-flash hover:bg-surface" : "notif-hl hover:bg-surface"}>
+                        <tr key={i.id} id={notifRowId(String(i.id))} className={flash.flashId === String(i.id) ? "notif-hl notif-flash hover:bg-surface" : (notified.has(String(i.id)) ? "notif-hl hover:bg-surface" : "hover:bg-surface")}>
                           <td className="td">
                             <p className="font-medium text-navy-900 truncate" title={String(i.name)}>{i.name}</p>
                             <p className="text-xs text-steel-500 font-mono">{i.sku}</p>
@@ -1582,12 +1593,16 @@ export default function Inventory() {
 
           {tab === "Analisis" && (
             <div className="space-y-4">
+              <div className="relative min-w-52 max-w-xs">
+                <Search className="absolute left-3 top-2.5 h-4 w-4 text-steel-400" />
+                <input className="input pl-9 w-full" placeholder={S.anSearchPh} aria-label={S.anSearchPh} value={anQ} onChange={(e) => setAnQ(e.target.value)} />
+              </div>
               <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
                 <Card className="p-5">
                   <CardHeader title={S.slowT} subtitle={S.slowS} />
-                  <div className="mt-2 space-y-2">
-                    {slowItems.length === 0 && <p className="py-4 text-center text-sm text-steel-400">{S.slowEmpty}</p>}
-                    {slowItems.map((i) => (
+                  <div className="mt-2 max-h-96 space-y-2 overflow-y-auto pr-1">
+                    {slowShown.length === 0 && <p className="py-4 text-center text-sm text-steel-400">{S.slowEmpty}</p>}
+                    {slowShown.map((i) => (
                       <div key={i.id} className="flex items-center justify-between gap-3 border-b border-steel-100 py-2 text-sm">
                         <div className="min-w-0">
                           <p className="truncate font-medium text-navy-900" title={String(i.name)}>{i.name}</p>
@@ -1597,12 +1612,13 @@ export default function Inventory() {
                       </div>
                     ))}
                   </div>
+                  {slowFiltered.length > 8 && <p className="mt-1 text-xs text-steel-400">{S.anShowing.replace("{a}", "8").replace("{b}", String(slowFiltered.length))}</p>}
                 </Card>
                 <Card className="p-5">
                   <CardHeader title={S.deadT} subtitle={S.deadS} />
-                  <div className="mt-2 space-y-2">
-                    {deadItems.length === 0 && <p className="py-4 text-center text-sm text-steel-400">{S.deadEmpty}</p>}
-                    {deadItems.map((i) => (
+                  <div className="mt-2 max-h-96 space-y-2 overflow-y-auto pr-1">
+                    {deadShown.length === 0 && <p className="py-4 text-center text-sm text-steel-400">{S.deadEmpty}</p>}
+                    {deadShown.map((i) => (
                       <div key={i.id} className="flex items-center justify-between gap-3 border-b border-steel-100 py-2 text-sm">
                         <div className="min-w-0">
                           <p className="truncate font-medium text-navy-900" title={String(i.name)}>{i.name}</p>
@@ -1612,6 +1628,7 @@ export default function Inventory() {
                       </div>
                     ))}
                   </div>
+                  {deadFiltered.length > 8 && <p className="mt-1 text-xs text-steel-400">{S.anShowing.replace("{a}", "8").replace("{b}", String(deadFiltered.length))}</p>}
                 </Card>
               </div>
               <Card className="p-5">
@@ -1623,8 +1640,8 @@ export default function Inventory() {
                     </span>
                   ))}
                 </div>
-                <div className="mt-3 space-y-2">
-                  {agingRows.map((r) => (
+                <div className="mt-3 max-h-96 space-y-2 overflow-y-auto pr-1">
+                  {agingShown.map((r) => (
                     <div key={r.item.id} className="flex items-center justify-between gap-3 border-b border-steel-100 py-2 text-sm">
                       <div className="min-w-0">
                         <p className="truncate font-medium text-navy-900" title={String(r.item.name)}>{r.item.name}</p>
@@ -1636,6 +1653,7 @@ export default function Inventory() {
                     </div>
                   ))}
                 </div>
+                {agingFiltered.length > 8 && <p className="mt-1 text-xs text-steel-400">{S.anShowing.replace("{a}", "8").replace("{b}", String(agingFiltered.length))}</p>}
               </Card>
             </div>
           )}

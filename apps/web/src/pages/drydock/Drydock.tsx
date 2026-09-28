@@ -18,6 +18,17 @@ const DAYS = 90;
 const FREE_WINDOW = 7;
 const weeks = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13];
 const SLOT_COLORS = ["bg-ocean-500", "bg-navy-700", "bg-amber-500", "bg-teal-500", "bg-violet-500", "bg-steel-400"];
+
+/* Warna bar gantt HARUS inline style: class dari data (s.color) tidak
+   di-generate Tailwind (build hanya scan source) sehingga background hilang. */
+const SLOT_HEX: Record<string, string> = {
+  "bg-ocean-500": "#2e9ad4",
+  "bg-navy-700": "#12598f",
+  "bg-amber-500": "#f59e0b",
+  "bg-teal-500": "#0d9488",
+  "bg-violet-500": "#8b5cf6",
+  "bg-steel-400": "#8aa2b6",
+};
 const PRIORITIES = ["Normal", "Tinggi", "Kritis"];
 const STATUS_FILTERS = ["Semua", "Terjadwal", "Berjalan", "Selesai", "Maintenance"];
 const UNDOCK_ITEMS = ["Lambung bersih", "Katup laut tertutup", "Anoda terpasang", "Propeller terpasang", "Sea trial siap"];
@@ -79,6 +90,7 @@ export default function Drydock() {
   const S = n_dry[locale];
   const modAlert = useModuleAlert("drydock");
   const flash = useNotifFlash();
+  const notified = useMemo(() => new Set(modAlert.items.map((a) => a.rowId)), [modAlert.items]);
   const drydocks = data.drydocks;
   const dockSlots = data.dockSlots;
   const projectOptions = data.projects;
@@ -445,7 +457,7 @@ export default function Drydock() {
                   const st = slotStatus(s, data.projects);
                   const isCrit = conflict.some((c) => c.id === s.id) && overlapsKritis(s);
                   return (
-                    <tr key={s.id} id={notifRowId(String(s.id))} className={`hover:bg-surface ${isCrit ? "bg-rose-50" : ""} ${flash.flashId === String(s.id) ? "notif-hl notif-flash" : "notif-hl"}`}>
+                    <tr key={s.id} id={notifRowId(String(s.id))} className={`hover:bg-surface ${isCrit ? "bg-rose-50" : ""} ${flash.flashId === String(s.id) ? "notif-hl notif-flash" : (notified.has(String(s.id)) ? "notif-hl" : "")}`}>
                       <td className="td text-steel-600">{drydocks.find((d) => d.id === s.dockId)?.name}</td>
                       <td className="td">
                         <p className="font-medium text-navy-900">{s.vessel}</p>
@@ -552,13 +564,14 @@ export default function Drydock() {
                         const isConf = conflict.some((c) => c.id === s.id);
                         const isCrit = isConf && overlapsKritis(s);
                         const isMaint = s.project === "MAINT";
+                        const barBg = isMaint ? "#8aa2b6" : isConf ? "#f43f5e" : (SLOT_HEX[String(s.color)] ?? "#2e9ad4");
                         return (
                           <div
                             key={s.id}
                             id={notifRowId(String(s.id))}
                             onClick={() => { if (isSel) setSelected(null); else openSlot(s); }}
-                            className={`absolute top-1/2 -translate-y-1/2 flex h-10 items-center justify-between rounded-md px-2 text-xs font-medium text-white shadow cursor-pointer transition ${isMaint ? "bg-steel-400" : isConf ? "bg-rose-500" : s.color} ${isSel ? "ring-2 ring-navy-900" : "hover:brightness-110"} ${isCrit && !isSel ? "ring-4 ring-rose-800" : isConf && !isSel ? "ring-2 ring-rose-700" : ""} ${flash.flashId === String(s.id) ? "notif-hl notif-flash" : "notif-hl"}`}
-                            style={{ left: `${leftPct}%`, width: `${widthPct}%` }}
+                            className={`absolute top-1/2 -translate-y-1/2 flex h-10 items-center justify-between rounded-md px-2 text-xs font-medium text-white shadow cursor-pointer transition ${isSel ? "ring-2 ring-navy-900" : "hover:brightness-110"} ${isCrit && !isSel ? "ring-4 ring-rose-800" : isConf && !isSel ? "ring-2 ring-rose-700" : ""} ${flash.flashId === String(s.id) ? "notif-hl notif-flash" : (notified.has(String(s.id)) ? "notif-hl" : "")}`}
+                            style={{ left: `${leftPct}%`, width: `${widthPct}%`, backgroundColor: barBg }}
                             title={`${s.vessel} · ${s.project} · ${fmtRentang(dayToISO(s.from), dayToISO(s.to))}${s.priority ? ` · ${s.priority}` : ""}${isCrit ? S.tipCrit : isConf ? S.tipOverlap : ""}`}
                           >
                             <span className="truncate min-w-0 flex-1 flex items-center gap-1" title={s.vessel}>

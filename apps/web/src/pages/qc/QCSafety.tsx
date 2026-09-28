@@ -100,6 +100,7 @@ export default function QCSafety() {
   const { data, add, update, remove, log, branch, inBranch } = useStore();
   const modAlert = useModuleAlert("qc");
   const flash = useNotifFlash();
+  const notified = useMemo(() => new Set(modAlert.items.map((a) => a.rowId)), [modAlert.items]);
   const { user } = useAuth();
   const { locale } = useT();
   const S = n_qc[locale];
@@ -765,7 +766,7 @@ export default function QCSafety() {
                 <button className="btn-secondary text-xs" onClick={exportNcr}>{S.btnEksporNcr}</button>
               </div>
               {ncrList.map((n) => (
-                <Card key={n.id} id={notifRowId(String(n.id))} className={`p-4 ${flash.flashId === String(n.id) ? "notif-hl notif-flash" : "notif-hl"}`}>
+                <Card key={n.id} id={notifRowId(String(n.id))} className={`p-4 ${flash.flashId === String(n.id) ? "notif-hl notif-flash" : (notified.has(String(n.id)) ? "notif-hl" : "")}`}>
                   <div className="flex flex-wrap items-start justify-between gap-2">
                     <div>
                       <div className="flex items-center gap-2">
@@ -990,7 +991,7 @@ export default function QCSafety() {
               </div>
               <div className="space-y-3">
                 {incidents.map((i) => (
-                  <Card key={i.id} id={notifRowId(String(i.id))} className={`p-4 ${flash.flashId === String(i.id) ? "notif-hl notif-flash" : "notif-hl"}`}>
+                  <Card key={i.id} id={notifRowId(String(i.id))} className={`p-4 ${flash.flashId === String(i.id) ? "notif-hl notif-flash" : (notified.has(String(i.id)) ? "notif-hl" : "")}`}>
                     <div className="flex items-start justify-between gap-2">
                       <div>
                         <div className="flex items-center gap-2">
