@@ -1,7 +1,7 @@
 import { useMemo, useState, type ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { AlertTriangle, Bell, Check, CheckCheck, Download, Info, Search } from "lucide-react";
-import { Badge, Card, EmptyState, Field, KpiCard, PageHeader, Tabs, toast, usePager } from "../../components/ui";
+import { Badge, Card, EmptyState, Field, KpiCard, PageHeader, Tabs, toast } from "../../components/ui";
 import { FilterPopover } from "../../components/FilterPopover";
 import { useStore } from "../../data/store";
 import { useT } from "../../i18n/LanguageContext";
@@ -71,8 +71,8 @@ function sevOf(tone: Tone): "Merah" | "Kuning" | "Biru" {
   return "Biru";
 }
 
-/* Satu grup hari + pager sendiri (20/grup): grup tidak pecah,
-   markGroup tetap per grup penuh (bukan per halaman). */
+/* Satu grup hari tampil penuh + scroll internal (search global di atas tetap
+   berlaku); markGroup tetap per grup penuh. */
 function NotifGroup({ g, renderRow, markGroup, markGroupRead }: {
   g: { group: DayGroup; rows: NotifItem[] };
   renderRow: (i: NotifItem) => ReactNode;
@@ -81,7 +81,6 @@ function NotifGroup({ g, renderRow, markGroup, markGroupRead }: {
 }) {
   const { locale } = useT();
   const S = n_misc[locale];
-  const pager = usePager(g.rows.length, 20);
   return (
     <div className="mt-3">
       <div className="mb-1 flex items-center gap-2">
@@ -93,10 +92,9 @@ function NotifGroup({ g, renderRow, markGroup, markGroupRead }: {
           <Check className="h-3 w-3" /> {markGroupRead}
         </button>
       </div>
-      <div className="divide-y divide-steel-50 overflow-hidden rounded-xl border border-steel-100">
-        {pager.slice(g.rows).map((i) => renderRow(i))}
+      <div className="max-h-96 divide-y divide-steel-50 overflow-y-auto rounded-xl border border-steel-100">
+        {g.rows.map((i) => renderRow(i))}
       </div>
-      {pager.bar}
     </div>
   );
 }

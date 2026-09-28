@@ -42,6 +42,53 @@ function hasMagic(buf: Buffer, ext: string): boolean {
   return false;
 }
 
+/** Validasi ISI (bukan sekadar magic): skrip/injeksi/makro. null = bersih,
+ * string = alasan penolakan (400). Tanpa dep baru, scan bytes cepat. */
+function scanContent(buf: Buffer, ext: string): string | null {
+  const head = buf.subarray(0, 256 * 1024).toString("latin1");
+  if (ext === ".csv" || ext === ".txt") {
+    const lines = head.split(/\r?\n/).slice(0, 200);
+    for (const ln of lines) {
+      for (const cell of ln.split(/[,;\t|]/)) {
+        const c = cell.trimStart();
+        if (!c) continue;
+        // Angka negatif ("-5", "-12.5") wajar di finance - bukan injeksi.
+        if (/^-[\d.]/.test(c)) continue;
+        if (c.startsWith("=") || c.startsWith("+") || c.startsWith("-") || c.startsWith("@")) {
+          return "Sel terlarang injeksi formula (awalan = + - @) - bersihkan dulu";
+        }
+      }
+    }
+    return null;
+  }
+  if (ext === ".pdf") {
+    if (/\/JavaScript|\/AA\b|\/OpenAction|\/EmbeddedFiles|\/Launch/i.test(head)) {
+      return "PDF mengandung skrip/aksi tertanam - tidak diizinkan";
+    }
+    return null;
+  }
+  if (ext === ".png" || ext === ".jpg" || ext === ".jpeg") {
+    if (/<script|<\?php|<html/i.test(head)) {
+      return "Gambar mengandung muatan skrip - tidak diizinkan";
+    }
+    return null;
+  }
+  if (ext === ".xlsx") {
+    // ZIP: tolak entri berekstensi executable di central directory.
+    if (/\.(exe|bat|cmd|js|jse|vbs|vbe|ps1|msi|com|scr|pif)["']/i.test(head)) {
+      return "Arsip xlsx mengandung file executable - tidak diizinkan";
+    }
+    return null;
+  }
+  if (ext === ".xls") {
+    if (/vbaProject|Attribute\s+VB_|VBA/i.test(head)) {
+      return "File .xls mengandung makro - simpan ulang sebagai .xlsx tanpa makro";
+    }
+    return null;
+  }
+  return null;
+}
+
 export function uploadsRoot(): string {
   const raw = process.env.UPLOADS_DIR ?? "./data/uploads";
   return path.isAbsolute(raw) ? raw : path.resolve(process.cwd(), raw);
@@ -99,6 +146,10 @@ export function registerFileRoutes(app: FastifyInstance): void {
     if (buf.length > MAX_BYTES) return reply.status(413).send(fail("File too large (max 10MB)", "PAYLOAD_TOO_LARGE"));
     if (!hasMagic(buf, ext)) {
       return reply.status(400).send(fail("File content does not match its extension", "VALIDATION_ERROR"));
+    }
+    const contentError = scanContent(buf, ext);
+    if (contentError) {
+      return reply.status(400).send(fail(contentError, "VALIDATION_ERROR"));
     }
     const month = new Date().toISOString().slice(0, 7);
     const dir = path.join(root, month);

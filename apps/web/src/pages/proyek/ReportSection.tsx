@@ -46,6 +46,10 @@ export default function ReportSection({ projectId }: Props) {
 
   const [showShare, setShowShare] = useState(false);
   const [shareForm, setShareForm] = useState({ docId: "", to: "" });
+  const [wbsQ, setWbsQ] = useState("");
+  const [boqQ, setBoqQ] = useState("");
+  const [invQ, setInvQ] = useState("");
+  const [ncrWoQ, setNcrWoQ] = useState("");
 
   const submitReport = async (docId: string, action: "approve" | "reject") => {
     await update("documents", docId, {
@@ -124,11 +128,12 @@ export default function ReportSection({ projectId }: Props) {
         <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-2">
           <Card className="p-4">
             <h4 className="mb-2 text-sm font-semibold text-navy-900">{S.repWbsTitle.replace("{a}", String(wbsDone)).replace("{b}", String(wbs.length))}</h4>
+            <input className="input mb-2" value={wbsQ} onChange={(e) => setWbsQ(e.target.value)} placeholder={S.cardSearchPh} aria-label={S.cardSearchPh} />
             {wbs.length === 0 ? (
               <p className="text-xs text-steel-400">{S.repNoWbs}</p>
             ) : (
-              <div className="space-y-2">
-                {wbs.slice(0, 6).map((w) => (
+              <div className="max-h-64 space-y-2 overflow-y-auto pr-1">
+                {wbs.filter((w) => !wbsQ.trim() || `${w.task ?? ""} ${w.progress ?? ""}`.toLowerCase().includes(wbsQ.trim().toLowerCase())).map((w) => (
                   <div key={w.task}>
                     <div className="flex justify-between text-xs"><span className="font-medium text-navy-900">{w.task}</span><span className="text-steel-500">{w.progress}%</span></div>
                     <ProgressBar value={Number(w.progress) || 0} className="mt-1" tone={Number(w.progress) >= 100 ? "green" : "navy"} />
@@ -139,11 +144,12 @@ export default function ReportSection({ projectId }: Props) {
           </Card>
           <Card className="p-4">
             <h4 className="mb-2 text-sm font-semibold text-navy-900">{S.repBoqTitle.replace("{n}", String(boq.length))}</h4>
+            <input className="input mb-2" value={boqQ} onChange={(e) => setBoqQ(e.target.value)} placeholder={S.cardSearchPh} aria-label={S.cardSearchPh} />
             {boq.length === 0 ? (
               <p className="text-xs text-steel-400">{S.repNoBoq}</p>
             ) : (
-              <div className="space-y-1.5">
-                {boq.slice(0, 6).map((b) => (
+              <div className="max-h-64 space-y-1.5 overflow-y-auto pr-1">
+                {boq.filter((b) => !boqQ.trim() || `${b.name ?? ""} ${b.id ?? ""} ${b.status ?? ""}`.toLowerCase().includes(boqQ.trim().toLowerCase())).map((b) => (
                   <div key={b.id} className="flex items-center justify-between text-sm">
                     <span className="text-steel-700">{b.name} <span className="text-xs text-steel-400">× {b.quantity} {b.unit}</span></span>
                     <span className="flex items-center gap-2"><span className="font-mono text-xs">{fmtRupiah(Number(b.totalPrice || 0))}</span><StatusBadge status={b.status} label={STATUS_BOQ_ID[b.status] ?? b.status} /></span>
@@ -158,22 +164,24 @@ export default function ReportSection({ projectId }: Props) {
         <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-3">
           <Card className="p-4">
             <h4 className="mb-2 text-sm font-semibold text-navy-900">{S.repInvTitle.replace("{n}", String(invoices.length))}</h4>
-            {invoices.length === 0 ? <p className="text-xs text-steel-400">{S.repNoInv}</p> : invoices.slice(0, 5).map((i) => (
+            <input className="input mb-2" value={invQ} onChange={(e) => setInvQ(e.target.value)} placeholder={S.cardSearchPh} aria-label={S.cardSearchPh} />
+            {invoices.length === 0 ? <p className="text-xs text-steel-400">{S.repNoInv}</p> : <div className="max-h-64 overflow-y-auto pr-1">{invoices.filter((i) => !invQ.trim() || `${i.id ?? ""} ${i.status ?? ""}`.toLowerCase().includes(invQ.trim().toLowerCase())).map((i) => (
               <div key={i.id} className="flex items-center justify-between py-1 text-sm">
                 <span className="font-mono text-navy-900">{i.id}</span>
                 <span className="text-steel-600">{fmtMiliar(Number(i.amount || 0))}</span>
                 <StatusBadge status={i.status} />
               </div>
-            ))}
+            ))}</div>}
           </Card>
           <Card className="p-4">
             <h4 className="mb-2 text-sm font-semibold text-navy-900">{S.repNcrTitle}</h4>
             <p className="text-xs text-steel-500">{S.repNcrOpenLbl}<b>{openNcr}</b>{critNcr > 0 ? <> · <b className="text-rose-600">{S.repCritCount.replace("{n}", String(critNcr))}</b></> : null}{S.repWoLbl}<b>{wos.length}</b>{S.repDockLbl}<b>{slots.length}</b></p>
-            <div className="mt-2 space-y-1">
-              {ncrs.slice(0, 3).map((n) => (
+            <input className="input mb-2 mt-2" value={ncrWoQ} onChange={(e) => setNcrWoQ(e.target.value)} placeholder={S.cardSearchPh} aria-label={S.cardSearchPh} />
+            <div className="mt-2 max-h-64 space-y-1 overflow-y-auto pr-1">
+              {ncrs.filter((n) => !ncrWoQ.trim() || `${n.id ?? ""} ${n.status ?? ""}`.toLowerCase().includes(ncrWoQ.trim().toLowerCase())).map((n) => (
                 <div key={n.id} className="flex items-center justify-between text-sm"><span className="font-mono text-navy-900">{n.id}</span><StatusBadge status={n.status} /></div>
               ))}
-              {wos.slice(0, 3).map((w) => (
+              {wos.filter((w) => !ncrWoQ.trim() || `${w.id ?? ""} ${w.sub ?? ""}`.toLowerCase().includes(ncrWoQ.trim().toLowerCase())).map((w) => (
                 <div key={w.id} className="flex items-center justify-between text-sm"><span className="text-steel-600">{w.id} · {w.sub}</span><Badge tone="blue">{w.progress}%</Badge></div>
               ))}
               {(ncrs.length === 0 && wos.length === 0) && <p className="text-xs text-steel-400">{S.repNoNcrWo}</p>}

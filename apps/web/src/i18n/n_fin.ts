@@ -536,6 +536,7 @@ export const n_fin = {
     confirmWo: "Ya, hapus-bukukan",
     cancelBtn: "Batal",
     addHutang: "+ Catat Hutang",
+    cardSearchPh: "Cari di daftar ini...",
   },
   en: {
     pageTitle: "Finance & Billing",
@@ -1074,5 +1075,6 @@ export const n_fin = {
     confirmWo: "Yes, write off",
     cancelBtn: "Cancel",
     addHutang: "+ Record Payable",
+    cardSearchPh: "Search this list...",
   },
 };

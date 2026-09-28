@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
-import { ArrowLeft, Plus, User } from "lucide-react";
+import { ArrowLeft, Plus, Search, User } from "lucide-react";
 import {
   Badge,
   Card,
@@ -116,15 +116,15 @@ export default function KaryawanDetail() {
   const [sort2, setSort2] = useState<SortState>({ key: null, dir: "asc" });
   const [sort3, setSort3] = useState<SortState>({ key: null, dir: "asc" });
   const [sort4, setSort4] = useState<SortState>({ key: null, dir: "asc" });
+  const [attQ, setAttQ] = useState("");
 
   const emp = useMemo(() => data.employees.find((e) => e.id === id), [data.employees, id]);
 
-  const attendance30 = useMemo(() => {
+  const attendanceAll = useMemo(() => {
     if (!emp) return [];
     return data.attendance
       .filter((a) => a.employeeId === emp.id)
-      .sort((a, b) => String(b.date).localeCompare(String(a.date)))
-      .slice(0, 30);
+      .sort((a, b) => String(b.date).localeCompare(String(a.date)));
   }, [data.attendance, emp]);
 
   const payrollRows = useMemo(() => {
@@ -355,13 +355,22 @@ export default function KaryawanDetail() {
         <Tabs tabs={["Absensi", "Payroll", "Cuti"]} active={tab} onChange={setTab} labels={{ Absensi: S.tabAbsensi, Payroll: S.tabPayroll, Cuti: S.tabCuti2 }} />
         <div className="p-4">
           {tab === "Absensi" && (
-            <div className="overflow-x-auto">
+            <div>
+              <div className="relative mb-2">
+                <Search className="absolute left-3 top-2.5 h-4 w-4 text-steel-400" />
+                <input className="input pl-9 w-full" placeholder={S.cardSearchPh} aria-label={S.cardSearchPh} value={attQ} onChange={(e) => setAttQ(e.target.value)} />
+              </div>
+              <div className="max-h-96 overflow-auto">
               <table className="w-full">
                 <thead className="bg-surface sticky top-0 z-10">
                   <tr><SortTh label={S.thTanggal} sortKey="date" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} /><SortTh label={S.thShift} sortKey="shift" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} /><SortTh label={S.dlStatus} sortKey="status" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} /><SortTh label={S.thJam} sortKey="jam" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} /><SortTh label={S.thLembur} sortKey="lembur" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} /><SortTh label={S.thKet} sortKey="ket" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} /></tr>
                 </thead>
                 <tbody className="divide-y divide-steel-100">
-                  {sortRows(attendance30, sort2, (row, k) => {
+                  {sortRows(attendanceAll.filter((a) => {
+                    const needle = attQ.trim().toLowerCase();
+                    if (!needle) return true;
+                    return `${a.date ?? ""} ${a.shift ?? ""} ${a.status ?? ""} ${a.checkIn ?? ""} ${a.checkOut ?? ""}`.toLowerCase().includes(needle);
+                  }), sort2, (row, k) => {
                     const a = row as StoreItem;
                     switch (k) {
                       case "date": return String(a.date ?? "");
@@ -384,7 +393,8 @@ export default function KaryawanDetail() {
                   ))}
                 </tbody>
               </table>
-              {attendance30.length === 0 && <EmptyState title={S.emptyAbsenT} subtitle={S.emptyAbsenS} />}
+              {attendanceAll.length === 0 && <EmptyState title={S.emptyAbsenT} subtitle={S.emptyAbsenS} />}
+              </div>
             </div>
           )}
           {tab === "Payroll" && (

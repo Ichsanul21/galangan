@@ -90,6 +90,7 @@ export default function EquipmentPage() {
   const calibrations = data.calibrations;
   const [tab, setTab] = useState("Register");
   const [eqQ, setEqQ] = useState("");
+  const [utilQ, setUtilQ] = useState("");
   const [eqStatus, setEqStatus] = useState("Semua");
   const [eqCat, setEqCat] = useState("Semua");
   const [sort, setSort] = useState<SortState>({ key: null, dir: "asc" });
@@ -897,16 +898,26 @@ export default function EquipmentPage() {
                   </div>
                 </Card>
               </div>
-              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                {equipment.slice(0, 6).map((e) => (
-                  <div key={e.id}>
-                    <div className="mb-1 flex justify-between text-sm">
-                      <span className="text-steel-600">{e.name}</span>
-                      <span className="font-semibold text-navy-900">{e.util}%</span>
+              <div className="relative">
+                <Search className="absolute left-3 top-2.5 h-4 w-4 text-steel-400" />
+                <input className="input pl-9 w-full" placeholder={S.cardSearchPh} aria-label={S.cardSearchPh} value={utilQ} onChange={(e) => setUtilQ(e.target.value)} />
+              </div>
+              <div className="max-h-96 overflow-y-auto pr-1">
+                <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                  {equipment.filter((e) => {
+                    const needle = utilQ.trim().toLowerCase();
+                    if (!needle) return true;
+                    return `${e.name ?? ""} ${e.code ?? ""}`.toLowerCase().includes(needle);
+                  }).map((e) => (
+                    <div key={e.id}>
+                      <div className="mb-1 flex justify-between text-sm">
+                        <span className="text-steel-600">{e.name}</span>
+                        <span className="font-semibold text-navy-900">{e.util}%</span>
+                      </div>
+                      <ProgressBar value={e.util} tone={e.util > 75 ? "red" : e.util > 60 ? "amber" : "green"} />
                     </div>
-                    <ProgressBar value={e.util} tone={e.util > 75 ? "red" : e.util > 60 ? "amber" : "green"} />
-                  </div>
-                ))}
+                  ))}
+                </div>
               </div>
               <p className="text-xs text-steel-400">{S.eqForecastNote}</p>
             </div>

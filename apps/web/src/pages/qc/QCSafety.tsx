@@ -195,6 +195,7 @@ export default function QCSafety() {
   const [showWalk, setShowWalk] = useState(false);
   const [walkForm, setWalkForm] = useState({ date: todayISO(), area: "", findings: "0", pic: "" });
   const [auditChecked, setAuditChecked] = useState<boolean[]>(() => AUDIT_ITEMS.map(() => false));
+  const [auditQ, setAuditQ] = useState("");
 
   // Audit internal (terpisah dari checklist Audit HSE di atas)
   const [showAuditPlan, setShowAuditPlan] = useState(false);
@@ -228,7 +229,7 @@ export default function QCSafety() {
     .filter((c) => c.days !== null && (c.days as number) <= CERT_WINDOW)
     .sort((a, b) => (a.days as number) - (b.days as number));
 
-  const auditHistory = data.activities.filter((a) => String(a.action ?? "").toLowerCase().includes("audit hse")).slice(0, 5);
+  const auditHistory = data.activities.filter((a) => String(a.action ?? "").toLowerCase().includes("audit hse"));
   const auditScore = Math.round((auditChecked.filter(Boolean).length / AUDIT_ITEMS.length) * 100);
 
   // Kalibrasi valid untuk NDE: status Selesai & due belum lewat
@@ -985,8 +986,16 @@ export default function QCSafety() {
                 <button className="btn-primary mt-2 text-xs" onClick={saveAudit}>{S.btnSimpanAudit}</button>
                 <div className="mt-3 border-t border-steel-100 pt-2">
                   <p className="text-xs font-semibold text-steel-500">{S.riwayatAudit}</p>
-                  <div className="mt-1 space-y-1">
-                    {auditHistory.map((a) => (
+                  <div className="relative mt-1">
+                    <Search className="absolute left-3 top-2.5 h-4 w-4 text-steel-400" />
+                    <input className="input pl-9 w-full text-xs" placeholder={S.cardSearchPh} aria-label={S.cardSearchPh} value={auditQ} onChange={(e) => setAuditQ(e.target.value)} />
+                  </div>
+                  <div className="mt-1 max-h-64 space-y-1 overflow-y-auto pr-1">
+                    {auditHistory.filter((a) => {
+                      const needle = auditQ.trim().toLowerCase();
+                      if (!needle) return true;
+                      return `${a.action ?? ""} ${a.target ?? ""} ${a.time ?? ""}`.toLowerCase().includes(needle);
+                    }).map((a) => (
                       <p key={a.id} className="text-xs text-steel-600">{a.action} - {a.target} <span className="text-steel-400">· {a.time}</span></p>
                     ))}
                     {auditHistory.length === 0 && <p className="text-xs text-steel-400">{S.emptyAudit}</p>}

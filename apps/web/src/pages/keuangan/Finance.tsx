@@ -302,6 +302,10 @@ export default function Finance() {
   const flash = useNotifFlash();
   const notified = useMemo(() => new Set(modAlert.items.map((a) => a.rowId)), [modAlert.items]);
   const [tab, setTab] = useState("Akun");
+  const [retQ, setRetQ] = useState("");
+  const [plQ, setPlQ] = useState("");
+  const [allocQ, setAllocQ] = useState("");
+  const [juListQ, setJuListQ] = useState("");
   const today = todayISO();
 
   const projectById = useMemo(() => {
@@ -1895,8 +1899,9 @@ export default function Finance() {
                 <Card className="p-4">
                   <CardHeader title={S.retentionTitle} subtitle={S.retentionSub} />
                   <p className="px-5 pb-2 text-2xl font-bold text-navy-900">{fmtRupiah(retentionTotal)}</p>
-                  <div className="space-y-2 px-5 pb-5">
-                    {invoices.filter((i) => num(i.retentionAmt) > 0).slice(0, 5).map((i) => (
+                  <div className="px-5 pb-2"><input className="input" value={retQ} onChange={(e) => setRetQ(e.target.value)} placeholder={S.cardSearchPh} aria-label={S.cardSearchPh} /></div>
+                  <div className="max-h-64 space-y-2 overflow-y-auto px-5 pb-5 pr-4">
+                    {invoices.filter((i) => num(i.retentionAmt) > 0).filter((i) => !retQ.trim() || `${i.id ?? ""} ${i.retentionStatus ?? ""}`.toLowerCase().includes(retQ.trim().toLowerCase())).map((i) => (
                       <div key={i.id} className="flex items-center gap-2 text-xs">
                         <span className="font-mono font-semibold text-navy-900">{i.id}</span>
                         <span className="text-steel-500">{fmtRupiah(num(i.retentionAmt))}</span>
@@ -2333,6 +2338,9 @@ export default function Finance() {
                     {projectsVisible.map((p) => <option key={p.id} value={p.id}>{p.id} · {p.vessel}</option>)}
                   </select>
                 </Field>
+                <Field label={S.cardSearchPh}>
+                  <input className="input" value={plQ} onChange={(e) => setPlQ(e.target.value)} placeholder={S.cardSearchPh} aria-label={S.cardSearchPh} />
+                </Field>
               </div>
               {profitCalc && (
                 <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
@@ -2342,8 +2350,8 @@ export default function Finance() {
                   <KpiCard label={S.unallocatedCard} value={fmtMiliar(profitCalc.unallocPayable + profitCalc.unallocTermin + profitCalc.unallocPayroll)} hint={S.costBreakdown.replace("{a}", fmtMiliar(profitCalc.unallocPayable)).replace("{b}", fmtMiliar(profitCalc.unallocTermin)).replace("{c}", fmtMiliar(profitCalc.unallocPayroll))} chip="amber" />
                 </div>
               )}
-              <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
-                {projectsVisible.slice(0, 6).map((p) => {
+              <div className="grid max-h-80 grid-cols-1 gap-4 overflow-y-auto pr-1 lg:grid-cols-3">
+                {projectsVisible.filter((p) => !plQ.trim() || `${p.id ?? ""} ${p.vessel ?? ""}`.toLowerCase().includes(plQ.trim().toLowerCase())).map((p) => {
                   const rev = (data.invoices ?? []).filter((i) => i.project === p.id).reduce((s, i) => s + invNeto(i), 0);
                   const margin = rev - num(p.actual);
                   return (
@@ -2362,6 +2370,8 @@ export default function Finance() {
               </div>
               <Card>
                 <CardHeader title={S.allocTitle2} subtitle={S.allocSub2} />
+                <div className="px-5 pb-2"><input className="input" value={allocQ} onChange={(e) => setAllocQ(e.target.value)} placeholder={S.cardSearchPh} aria-label={S.cardSearchPh} /></div>
+                <div className="max-h-80 overflow-y-auto">
                 <div className="overflow-x-auto">
                   <table className="w-full">
                     <thead className="bg-surface sticky top-0 z-10">
@@ -2375,7 +2385,7 @@ export default function Finance() {
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-steel-100">
-                      {sortRows((data.payroll ?? []).filter((p) => p.status === "Dibayar").slice(0, 20), alokasiSort, (p, k) =>
+                      {sortRows((data.payroll ?? []).filter((p) => p.status === "Dibayar").filter((p) => !allocQ.trim() || `${p.id ?? ""} ${p.employeeId ?? ""} ${p.period ?? ""} ${p.allocProject ?? ""}`.toLowerCase().includes(allocQ.trim().toLowerCase())), alokasiSort, (p, k) =>
                         k === "emp" ? String(p.employeeId ?? "") : k === "period" ? String(p.period ?? "") :
                         k === "net" ? payNet(p) :
                         k === "alloc" ? String(p.allocProject ?? "") : String(p.id)).map((p) => (
@@ -2390,6 +2400,7 @@ export default function Finance() {
                       ))}
                     </tbody>
                   </table>
+                </div>
                 </div>
               </Card>
               {cbs && (
@@ -2741,6 +2752,9 @@ export default function Finance() {
                   {journals.length === 0 ? (
                     <EmptyState title={S.emptyJuTitle} subtitle={S.emptyJuSub} />
                   ) : (
+                    <div>
+                    <div className="mb-2"><input className="input" value={juListQ} onChange={(e) => setJuListQ(e.target.value)} placeholder={S.cardSearchPh} aria-label={S.cardSearchPh} /></div>
+                    <div className="max-h-80 overflow-y-auto">
                     <div className="overflow-x-auto">
                       <table className="w-full">
                         <thead className="bg-surface sticky top-0 z-10">
@@ -2753,7 +2767,7 @@ export default function Finance() {
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-steel-100">
-                          {sortRows(journals.slice(0, 40), juSort, (j, k) =>
+                          {sortRows(journals.filter((j) => !juListQ.trim() || `${j.ref ?? ""} ${j.desc ?? ""} ${j.debitAkun ?? ""} ${j.kreditAkun ?? ""}`.toLowerCase().includes(juListQ.trim().toLowerCase())), juSort, (j, k) =>
                             k === "ref" ? String(j.ref) : k === "db" ? String(j.debitAkun) : k === "kr" ? String(j.kreditAkun) :
                             k === "amount" ? Number(j.amount) : String(j.date)).map((j, idx) => (
                             <tr key={`${j.ref}-${idx}`} className="hover:bg-surface">
@@ -2766,6 +2780,8 @@ export default function Finance() {
                           ))}
                         </tbody>
                       </table>
+                    </div>
+                    </div>
                     </div>
                   )}
                   <p className="mt-2 text-xs text-steel-500">{S.balancedNote.replace("{a}", fmtRupiah(journalTotal)).replace("{b}", fmtRupiah(journalTotal))}</p>

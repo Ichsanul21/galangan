@@ -484,6 +484,7 @@ export const n_misc = {
     tNewPasswordMin: "Password baru min. 6 karakter",
     tPasswordChanged: "Password berhasil diganti",
     tPasswordFailed: "Gagal ganti password",
+    cardSearchPh: "Cari di daftar ini...",
   },
   en: {
     dashTitle: "Executive Dashboard",
@@ -970,5 +971,6 @@ export const n_misc = {
     tNewPasswordMin: "New password must be at least 6 characters",
     tPasswordChanged: "Password changed successfully",
     tPasswordFailed: "Failed to change password",
+    cardSearchPh: "Search this list...",
   },
 };

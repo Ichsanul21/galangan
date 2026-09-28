@@ -482,7 +482,7 @@ export default function Absensi() {
                           case "ket": return String(a.status) === "Hadir" && isLate(String(a.checkIn ?? "")) ? "Telat" : "";
                           default: return "";
                         }
-                      }).slice(0, 100).map((a) => (
+                      }).map((a) => (
                         <tr key={a.id} className="hover:bg-surface">
                           <td className="td text-steel-600">{fmtTanggal(a.date)}</td>
                           <td className="td text-navy-900">{empNameOf(String(a.employeeId))}</td>

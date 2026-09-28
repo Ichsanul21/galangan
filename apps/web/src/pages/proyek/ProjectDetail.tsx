@@ -19,6 +19,7 @@ import {
   toggleSort,
   sortRows,
   NumInput,
+  FileUploadButton,
 } from "../../components/ui";
 import type { SortState } from "../../components/ui";
 import BoQSection from "./BoQSection";
@@ -82,7 +83,7 @@ export default function ProjectDetail() {
   const [showTeam, setShowTeam] = useState(false);
   const [teamPick, setTeamPick] = useState("");
   const [wbsTaskUpdate, setWbsTaskUpdate] = useState<string | null>(null);
-  const [wbsUpdateForm, setWbsUpdateForm] = useState({ hours: "", material: "", status: "Sedang" as "Sedang" | "Selesai", progress: "", predecessor: "", station: "", photoNote: "", dft: "" });
+  const [wbsUpdateForm, setWbsUpdateForm] = useState({ hours: "", material: "", status: "Sedang" as "Sedang" | "Selesai", progress: "", predecessor: "", station: "", photoNote: "", photoUrl: "", dft: "" });
   const [showShare, setShowShare] = useState(false);
   const [shareForm, setShareForm] = useState({ docId: "", to: "" });
   const [statusPending, setStatusPending] = useState<string | null>(null);
@@ -566,6 +567,7 @@ export default function ProjectDetail() {
             ...w, actualHours: hours, materialUsed: wbsUpdateForm.material, status, progress: prog, predecessor: pred || undefined,
             ...(wbsUpdateForm.station ? { station: wbsUpdateForm.station } : { station: undefined }),
             ...(wbsUpdateForm.photoNote.trim() ? { photoNote: wbsUpdateForm.photoNote.trim() } : { photoNote: undefined }),
+            ...(wbsUpdateForm.photoUrl.trim() ? { photoUrl: wbsUpdateForm.photoUrl.trim() } : { photoUrl: undefined }),
             ...(dftNum !== undefined ? { dft: dftNum } : { dft: undefined }),
           }
         : w
@@ -576,7 +578,7 @@ export default function ProjectDetail() {
       log("mengupdate progres WBS", `${wbsTaskUpdate} → ${prog}% (${status})`, "Proyek");
       toast(S.detToastWbsProg);
       setWbsTaskUpdate(null);
-      setWbsUpdateForm({ hours: "", material: "", status: "Sedang", progress: "", predecessor: "", station: "", photoNote: "", dft: "" });
+      setWbsUpdateForm({ hours: "", material: "", status: "Sedang", progress: "", predecessor: "", station: "", photoNote: "", photoUrl: "", dft: "" });
     } catch (e) {
       toast(e instanceof Error ? e.message : S.saveFail, "info");
     }
@@ -782,7 +784,7 @@ export default function ProjectDetail() {
                           </div>
                         </td>
                         <td className="td">
-                            <button className="btn-secondary text-xs" onClick={() => { setWbsTaskUpdate(w.task); setWbsUpdateForm({ hours: String(w.actualHours ?? ""), material: w.materialUsed ?? "", status: w.status === "Selesai" ? "Selesai" : "Sedang", progress: String(w.progress ?? 0), predecessor: w.predecessor ?? "", station: w.station ?? "", photoNote: w.photoNote ?? "", dft: w.dft === undefined || w.dft === null ? "" : String(w.dft) }); }}>{S.detUpdateBtn}</button>
+                            <button className="btn-secondary text-xs" onClick={() => { setWbsTaskUpdate(w.task); setWbsUpdateForm({ hours: String(w.actualHours ?? ""), material: w.materialUsed ?? "", status: w.status === "Selesai" ? "Selesai" : "Sedang", progress: String(w.progress ?? 0), predecessor: w.predecessor ?? "", station: w.station ?? "", photoNote: w.photoNote ?? "", photoUrl: String(w.photoUrl ?? ""), dft: w.dft === undefined || w.dft === null ? "" : String(w.dft) }); }}>{S.detUpdateBtn}</button>
                         </td>
                       </tr>
                     ))}
@@ -1204,6 +1206,7 @@ export default function ProjectDetail() {
           </FormGrid>
           <Field label={S.detSignerField}><input className="input" value={bastForm.signer} onChange={(e) => setBastForm({ ...bastForm, signer: e.target.value })} placeholder={S.detSignerPh} /></Field>
           <Field label={S.detAttachField}><input className="input" value={bastForm.lampiran} onChange={(e) => setBastForm({ ...bastForm, lampiran: e.target.value })} placeholder={S.detAttachPh} /></Field>
+          <FileUploadButton label={S.detAttachUpload} onUploaded={(url) => setBastForm((v) => ({ ...v, lampiran: url }))} />
         </div>
       </Modal>
 
@@ -1316,6 +1319,12 @@ export default function ProjectDetail() {
             </select>
           </Field>
           <Field label={S.detPhotoNote} hint={S.detPhotoHint}><input className="input" value={wbsUpdateForm.photoNote} onChange={(e) => setWbsUpdateForm({ ...wbsUpdateForm, photoNote: e.target.value })} placeholder={S.detPhotoPh} /></Field>
+          <div className="flex items-center gap-2">
+            <FileUploadButton accept=".png,.jpg,.jpeg" label={S.detPhotoUpload} onUploaded={(url) => setWbsUpdateForm((v) => ({ ...v, photoUrl: url }))} />
+            {wbsUpdateForm.photoUrl ? (
+              <a className="text-xs font-semibold text-ocean-600 underline" href={wbsUpdateForm.photoUrl} target="_blank" rel="noreferrer">{S.detPhotoSee}</a>
+            ) : null}
+          </div>
           <Field label={S.statusLabel}>
             <select className="input" value={wbsUpdateForm.status} onChange={(e) => setWbsUpdateForm({ ...wbsUpdateForm, status: e.target.value as "Sedang" | "Selesai" })}>
               <option value="Sedang">Sedang Dikerjakan</option>
@@ -1396,6 +1405,7 @@ export default function ProjectDetail() {
           <Field label={S.detDocFile} hint={S.detDocFileHint}>
             <input className="input" value={docFile} onChange={(e) => setDocFile(e.target.value)} placeholder={S.detDocFilePh} />
           </Field>
+          <FileUploadButton label={S.detAttachUpload} onUploaded={(url) => setDocFile(url)} />
         </div>
       </Modal>
 

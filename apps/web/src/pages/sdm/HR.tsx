@@ -200,6 +200,7 @@ export default function HR() {
   /* ---------- mutasi ---------- */
   const [showMutasi, setShowMutasi] = useState(false);
   const [mutasiForm, setMutasiForm] = useState({ employeeId: "", dept: "Produksi", branch: "Samarinda", role: "", date: todayISO(), reason: "" });
+  const [mutQ, setMutQ] = useState("");
 
   /* ---------- training ---------- */
   const [showTraining, setShowTraining] = useState(false);
@@ -345,8 +346,7 @@ export default function HR() {
   const mutasiLog = useMemo(
     () =>
       data.activities
-        .filter((a) => `${a.action} ${a.target}`.toLowerCase().includes("mutasi"))
-        .slice(0, 5),
+        .filter((a) => `${a.action} ${a.target}`.toLowerCase().includes("mutasi")),
     [data.activities],
   );
 
@@ -1067,8 +1067,16 @@ export default function HR() {
             <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
               <Card className="p-5">
                 <h3 className="text-sm font-semibold text-navy-900">{S.mutasiTerakhir}</h3>
-                <div className="mt-3 space-y-2.5">
-                  {mutasiLog.map((a) => (
+                <div className="relative mt-3">
+                  <Search className="absolute left-3 top-2.5 h-4 w-4 text-steel-400" />
+                  <input className="input pl-9 w-full" placeholder={S.cardSearchPh} aria-label={S.cardSearchPh} value={mutQ} onChange={(e) => setMutQ(e.target.value)} />
+                </div>
+                <div className="mt-3 max-h-96 space-y-2.5 overflow-y-auto pr-1">
+                  {mutasiLog.filter((a) => {
+                    const needle = mutQ.trim().toLowerCase();
+                    if (!needle) return true;
+                    return `${a.action ?? ""} ${a.target ?? ""} ${a.time ?? ""}`.toLowerCase().includes(needle);
+                  }).map((a) => (
                     <div key={a.id} className="rounded-lg bg-surface p-2.5 text-sm">
                       <p className="font-medium text-navy-900">{a.action}</p>
                       <p className="text-xs text-steel-500">{a.target} · {a.time}</p>

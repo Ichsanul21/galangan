@@ -76,6 +76,9 @@ export default function Laporan() {
   const [arc, setArc] = useState<ReportArc[]>(() => loadArc());
   // Filter cabang lokal untuk seksi PO/absensi/insiden/payroll (Semua + daftar cabang).
   const [brF, setBrF] = useState("SEMUA");
+  const [weekProjQ, setWeekProjQ] = useState("");
+  const [weekFindQ, setWeekFindQ] = useState("");
+  const [projNcrQ, setProjNcrQ] = useState("");
   const branchCities = useMemo(() => (data.branches ?? []).map((b) => String(b.city ?? b.name ?? b.id)), [data.branches]);
   const matchBr = (r: StoreItem): boolean =>
     brF === "SEMUA" || !r.branch || String(r.branch) === brF;
@@ -390,8 +393,9 @@ export default function Laporan() {
             <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
               <Card className="p-4">
                 <CardHeader title={S.projectProgress} subtitle={S.activeThisWeek} />
-                <div className="space-y-3 px-5 pb-5">
-                  {weekly.projects.slice(0, 6).map((p) => (
+                <div className="px-5 pb-2"><input className="input" value={weekProjQ} onChange={(e) => setWeekProjQ(e.target.value)} placeholder={S.cardSearchPh} aria-label={S.cardSearchPh} /></div>
+                <div className="max-h-64 space-y-3 overflow-y-auto px-5 pb-5 pr-4">
+                  {weekly.projects.filter((p) => !weekProjQ.trim() || `${p.id ?? ""} ${num(p.progress)}`.toLowerCase().includes(weekProjQ.trim().toLowerCase())).map((p) => (
                     <div key={p.id}>
                       <div className="flex justify-between text-xs"><span className="font-mono font-semibold text-navy-900">{p.id}</span><span className="text-steel-500">{num(p.progress)}%</span></div>
                       <ProgressBar value={num(p.progress)} className="mt-1" />
@@ -402,15 +406,16 @@ export default function Laporan() {
               </Card>
               <Card className="p-4">
                 <CardHeader title={S.ncrPlusIncident} subtitle={S.ncrIncidentCount.replace("{a}", fmtJumlah(weekly.ncr.length)).replace("{b}", fmtJumlah(weekly.incidents.length))} />
-                <div className="space-y-2 px-5 pb-5 text-xs">
-                  {weekly.ncr.slice(0, 5).map((n) => (
+                <div className="px-5 pb-2"><input className="input" value={weekFindQ} onChange={(e) => setWeekFindQ(e.target.value)} placeholder={S.cardSearchPh} aria-label={S.cardSearchPh} /></div>
+                <div className="max-h-64 space-y-2 overflow-y-auto px-5 pb-5 pr-4 text-xs">
+                  {weekly.ncr.filter((n) => !weekFindQ.trim() || `${n.id ?? ""} ${n.status ?? ""}`.toLowerCase().includes(weekFindQ.trim().toLowerCase())).map((n) => (
                     <div key={n.id} className="flex items-center gap-2">
                       <span className="font-mono font-semibold text-navy-900">{n.id}</span>
                       <StatusBadge status={String(n.status)} />
                       <span className="ml-auto text-steel-500">{fmtTanggal(String(n.raised ?? ""))}</span>
                     </div>
                   ))}
-                  {weekly.incidents.slice(0, 5).map((x) => (
+                  {weekly.incidents.filter((x) => !weekFindQ.trim() || `${x.id ?? ""} ${x.desc ?? ""} ${x.type ?? ""}`.toLowerCase().includes(weekFindQ.trim().toLowerCase())).map((x) => (
                     <div key={x.id} className="flex items-center gap-2">
                       <span className="font-mono font-semibold text-navy-900">{x.id}</span>
                       <span className="truncate text-steel-600">{String(x.desc ?? x.type ?? "")}</span>
@@ -510,8 +515,9 @@ export default function Laporan() {
                 </Card>
                 <Card className="p-4">
                   <CardHeader title={S.projectNcr} subtitle={S.findingsCount.replace("{n}", fmtJumlah(projNcr.length))} />
-                  <div className="space-y-2 px-5 pb-5 text-xs">
-                    {projNcr.slice(0, 6).map((n) => {
+                  <div className="px-5 pb-2"><input className="input" value={projNcrQ} onChange={(e) => setProjNcrQ(e.target.value)} placeholder={S.cardSearchPh} aria-label={S.cardSearchPh} /></div>
+                  <div className="max-h-64 space-y-2 overflow-y-auto px-5 pb-5 pr-4 text-xs">
+                    {projNcr.filter((n) => !projNcrQ.trim() || `${n.id ?? ""} ${n.severity ?? ""} ${n.type ?? ""} ${n.status ?? ""}`.toLowerCase().includes(projNcrQ.trim().toLowerCase())).map((n) => {
                       const sev = String(n.severity ?? n.type ?? "");
                       return (
                       <div key={n.id} className="flex items-center gap-2">

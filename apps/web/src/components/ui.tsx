@@ -11,6 +11,8 @@ import {
   X,
   CheckCircle2,
   Info,
+  Loader2,
+  Upload as UploadIcon,
 } from "lucide-react";
 import {
   Area,
@@ -1043,6 +1045,58 @@ export function NumInput({ integer = false, allowNegative = false, onKeyDown, in
       onKeyDown={block}
       {...rest}
     />
+  );
+}
+
+/* ============ F I L E U P L O A D B U T T O N ============ */
+
+import { uploadFile } from "../services/upload";
+
+/** Tombol upload file generik: spinner saat unggah, toast pesan backend,
+ * mode lokal biarkan input URL manual (fallback di luar komponen ini). */
+export function FileUploadButton({ accept, onUploaded, label, disabled }: {
+  accept?: string;
+  onUploaded: (url: string) => void;
+  label: ReactNode;
+  disabled?: boolean;
+}) {
+  const inputRef = useRef<HTMLInputElement | null>(null);
+  const [busy, setBusy] = useState(false);
+  return (
+    <>
+      <input
+        ref={inputRef}
+        type="file"
+        accept={accept ?? ".png,.jpg,.jpeg,.pdf,.xlsx,.xls,.csv,.txt"}
+        className="hidden"
+        aria-hidden
+        tabIndex={-1}
+        onChange={(e) => {
+          const f = e.target.files?.[0];
+          e.target.value = "";
+          if (!f) return;
+          void (async () => {
+            setBusy(true);
+            try {
+              onUploaded(await uploadFile(f));
+            } catch (err) {
+              toast(err instanceof Error ? err.message : "Upload gagal", "info");
+            } finally {
+              setBusy(false);
+            }
+          })();
+        }}
+      />
+      <button
+        type="button"
+        className="btn-secondary text-xs"
+        disabled={disabled || busy}
+        onClick={() => inputRef.current?.click()}
+      >
+        {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <UploadIcon className="h-3.5 w-3.5" />}
+        {label}
+      </button>
+    </>
   );
 }
 

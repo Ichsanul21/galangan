@@ -53,6 +53,7 @@ export interface WbsItem {
   status?: "Sedang" | "Selesai";
   station?: string;
   photoNote?: string;
+  photoUrl?: string;
   dft?: number;
 }
 
