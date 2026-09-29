@@ -122,6 +122,27 @@ function calcDays(from: string, to: string): number {
   return Math.round((b - a) / 86400000) + 1;
 }
 
+/* Daftar tanggal ISO (YYYY-MM-DD) dari from..to inklusif untuk sinkron cuti → absensi. */
+function datesBetween(from: string, to: string): string[] {
+  const a = new Date(`${from}T00:00:00`).getTime();
+  const b = new Date(`${to}T00:00:00`).getTime();
+  if (Number.isNaN(a) || Number.isNaN(b) || b < a) return [];
+  const out: string[] = [];
+  for (let t = a; t <= b; t += 86400000) {
+    const d = new Date(t);
+    out.push(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`);
+  }
+  return out;
+}
+
+/* Petakan tipe cuti ke status absensi agar rekap sinkron. */
+function leaveToAttStatus(type: string): string {
+  const t = String(type ?? "");
+  if (t === "Sakit") return "Sakit";
+  if (t === "Izin") return "Izin";
+  return "Cuti";
+}
+
 /* Parse CSV sederhana: baris dipisah newline, kolom dipisah koma, petik ganda opsional. */
 function parseCSV(text: string): string[][] {
   return String(text)
@@ -565,6 +586,44 @@ export default function HR() {
     try {
     await update("leaves", l.id, { status: "Disetujui" });
     log("menyetujui cuti final (HRD)", `${l.id} - ${empNameOf(l.employeeId)}`, "SDM");
+    /* Cuti final otomatis sinkron ke absensi: buat baris baru (status Cuti/
+       Sakit/Izin) per tanggal bila belum ada, atau perbarui baris yang sudah
+       ada agar rekap kehadiran sinkron. */
+    try {
+      const empId = String(l.employeeId ?? "");
+      const emp = data.employees.find((e) => e.id === empId);
+      const attStatus = leaveToAttStatus(String(l.type ?? ""));
+      let synced = 0;
+      for (const d of datesBetween(String(l.from ?? ""), String(l.to ?? ""))) {
+        const existing = data.attendance.filter((a) => String(a.employeeId) === empId && String(a.date) === d);
+        if (existing.length === 0) {
+          await add(
+            "attendance",
+            {
+              employeeId: empId,
+              date: d,
+              shift: "Pagi",
+              status: attStatus,
+              checkIn: "",
+              checkOut: "",
+              overtime: 0,
+              otStatus: "",
+              branch: String(emp?.branch ?? ""),
+            },
+            undefined,
+          );
+          synced += 1;
+        } else {
+          for (const a of existing) {
+            await update("attendance", a.id, { status: attStatus, checkIn: "", checkOut: "", overtime: 0, otStatus: "" });
+            synced += 1;
+          }
+        }
+      }
+      if (synced > 0) log("sinkron cuti ke absensi", `${l.id} → ${synced} baris ${attStatus}`, "SDM");
+    } catch {
+      /* sinkron best-effort - status cuti sudah tersimpan */
+    }
     toast(S.tLeaveHrd.replace("{n}", l.id));
     } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); }
   };
@@ -746,6 +805,7 @@ export default function HR() {
         }
         const gagal: string[] = [];
         const seenNik = new Set(data.employees.map((e) => empNik(e).toLowerCase()));
+        const seenName = new Set(data.employees.map((e) => String(e.name).toLowerCase()));
         let ok = 0;
         for (const [idx, cells] of rows.slice(1).entries()) {
         const line = idx + 2;
@@ -760,12 +820,50 @@ export default function HR() {
           gagal.push(S.rowWajib.replace("{n}", String(line)));
           continue;
         }
-        if (seenNik.has(nik.toLowerCase())) {
-          gagal.push(S.rowDupe.replace("{n}", String(line)).replace("{a}", nik));
+        /* Validasi SAMA dengan form: NIK 16 digit angka. */
+        if (!/^\d{16}$/.test(nik)) {
+          gagal.push(`Baris ${line}: NIK harus 16 digit angka`);
           continue;
         }
-        if (!joinRaw || Number.isNaN(new Date(`${joinRaw}T00:00:00`).getTime())) {
+        /* Duplikat nama ATAU NIK (form menolak keduanya), termasuk dalam file. */
+        if (seenNik.has(nik.toLowerCase()) || seenName.has(name.toLowerCase())) {
+          gagal.push(S.rowDupe.replace("{n}", String(line)).replace("{a}", `${nik} / ${name}`));
+          continue;
+        }
+        /* Departemen & cabang harus masuk whitelist (seperti form). */
+        const deptV = String(deptRaw || "Produksi").trim() || "Produksi";
+        if (!DEPT_OPTIONS.includes(deptV)) {
+          gagal.push(`Baris ${line}: departemen "${deptV}" tidak dikenal (${DEPT_OPTIONS.join(", ")})`);
+          continue;
+        }
+        const branchV = String(branchRaw || "Samarinda").trim() || "Samarinda";
+        if (!branchCities.includes(branchV)) {
+          gagal.push(`Baris ${line}: cabang "${branchV}" tidak dikenal (${branchCities.join(", ")})`);
+          continue;
+        }
+        const joinV = String(joinRaw ?? "").trim();
+        if (!joinV || Number.isNaN(new Date(`${joinV}T00:00:00`).getTime())) {
           gagal.push(S.rowJoin.replace("{n}", String(line)));
+          continue;
+        }
+        /* Tanggal gabung tidak boleh future (seperti form). */
+        if (joinV > todayISO()) {
+          gagal.push(`Baris ${line}: tanggal gabung tidak boleh di masa depan`);
+          continue;
+        }
+        /* Tipe karyawan whitelist + kontrak wajib untuk Kontrak/Outsourcing. */
+        const tipeV = String(tipeRaw || "Tetap").trim() || "Tetap";
+        if (!TIPE_KARYAWAN.includes(tipeV)) {
+          gagal.push(`Baris ${line}: tipe "${tipeV}" tidak dikenal (${TIPE_KARYAWAN.join(", ")})`);
+          continue;
+        }
+        const kontrakV = String(kontrakRaw ?? "").trim();
+        if ((tipeV === "Kontrak" || tipeV === "Outsourcing") && !kontrakV) {
+          gagal.push(`Baris ${line}: kontrak berakhir wajib untuk tipe ${tipeV}`);
+          continue;
+        }
+        if (kontrakV && kontrakV < joinV) {
+          gagal.push(`Baris ${line}: kontrak berakhir tidak boleh sebelum tanggal gabung`);
           continue;
         }
         const basic = Number(basicRaw || 0);
@@ -784,6 +882,7 @@ export default function HR() {
           continue;
         }
         seenNik.add(nik.toLowerCase());
+        seenName.add(name.toLowerCase());
         try {
           await add(
             "employees",
@@ -791,17 +890,17 @@ export default function HR() {
               username: nik,
               name,
               role,
-              dept: String(deptRaw || "Produksi").trim() || "Produksi",
-              branch: String(branchRaw || "Samarinda").trim() || "Samarinda",
+              dept: deptV,
+              branch: branchV,
               status: String(statusRaw || "Aktif").trim() || "Aktif",
-              join: String(joinRaw).trim(),
-              tipe: String(tipeRaw || "Tetap").trim() || "Tetap",
+              join: joinV,
+              tipe: tipeV,
               basic,
               allowances: 0,
-              contractEnd: String(kontrakRaw ?? "").trim(),
+              contractEnd: kontrakV,
               ptkpStatus: ptkp,
               dependents: tang,
-              skills: defaultSkills(String(deptRaw || "Produksi"), role),
+              skills: defaultSkills(deptV, role),
               certs: [],
             },
             undefined,
@@ -928,7 +1027,7 @@ export default function HR() {
                               <p className="font-medium text-navy-900">{e.name}</p>
                               <p className="text-xs text-steel-500 font-mono">{e.id} · {e.dept}</p>
                             </td>
-                            <td className="td font-mono text-steel-600">{empNik(e)}</td>
+                            <td className="td font-mono text-steel-600" title="NIK = username login karyawan">{empNik(e)}</td>
                             <td className="td text-steel-600 max-w-[160px] truncate" title={String(e.role)}>{e.role}</td>
                             <td className="td"><Badge tone="gray">{e.branch ?? "-"}</Badge></td>
                             <td className="td">
@@ -1262,7 +1361,7 @@ export default function HR() {
       >
         <div className="space-y-3">
           <FormGrid>
-            <Field label={S.fNik}><input className="input" inputMode="numeric" pattern="[0-9]*" maxLength={16} value={form.nik} onChange={(e) => setForm({ ...form, nik: e.target.value.replace(/[^0-9]/g, "").slice(0, 16) })} placeholder={S.phNik} /></Field>
+            <Field label={S.fNik} hint="NIK = username login karyawan (16 digit angka, dipakai untuk masuk aplikasi)."><input className="input" inputMode="numeric" pattern="[0-9]*" maxLength={16} value={form.nik} onChange={(e) => setForm({ ...form, nik: e.target.value.replace(/[^0-9]/g, "").slice(0, 16) })} placeholder={S.phNik} /></Field>
             <Field label={S.fNama}><input className="input" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder={S.phNamaHr} /></Field>
             <Field label={S.thJabatan}><input className="input" value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value })} placeholder={S.phWelder} /></Field>
             <Field label={S.fDept}>

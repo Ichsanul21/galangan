@@ -91,6 +91,7 @@ export default function EquipmentPage() {
   const [tab, setTab] = useState("Register");
   const [eqQ, setEqQ] = useState("");
   const [utilQ, setUtilQ] = useState("");
+  const [utilDraft, setUtilDraft] = useState<Record<string, string>>({});
   const [eqStatus, setEqStatus] = useState("Semua");
   const [eqCat, setEqCat] = useState("Semua");
   const [sort, setSort] = useState<SortState>({ key: null, dir: "asc" });
@@ -120,13 +121,44 @@ export default function EquipmentPage() {
 
   const [recording, setRecording] = useState<StoreItem | null>(null);
   const [woForm, setWoForm] = useState({ tanggal: todayISO(), teknisi: "", catatan: "", hours: "", next: "" });
+  const [svcMats, setSvcMats] = useState<{ itemId: string; qty: string }[]>([]);
 
   const [showCal, setShowCal] = useState(false);
   const [calForm, setCalForm] = useState({ equipmentId: "", item: "", due: "" });
   const [finishingCal, setFinishingCal] = useState<StoreItem | null>(null);
   const [calCert, setCalCert] = useState("");
+  const [calResult, setCalResult] = useState("Lulus");
+  const [calDoneDate, setCalDoneDate] = useState(todayISO());
+  const [calInterval, setCalInterval] = useState("12");
 
   const today = todayISO();
+
+  /* Booking dicocokkan by ID/code; nama lama tetap terbaca (fallback) untuk data lama. */
+  const resolveEquip = (ref: unknown): StoreItem | undefined => {
+    const key = String(ref ?? "").trim();
+    if (!key) return undefined;
+    return equipment.find((e) => String(e.id) === key || String(e.code ?? "").toUpperCase() === key.toUpperCase())
+      ?? equipment.find((e) => sameName(e.name, key));
+  };
+  const equipKey = (ref: unknown): string => resolveEquip(ref)?.id ?? `name:${String(ref ?? "").trim().toLowerCase()}`;
+  const equipLabel = (ref: unknown): string => {
+    const e = resolveEquip(ref);
+    return e ? `${e.name} (${e.code})` : String(ref ?? "-");
+  };
+  const invCost = (it: StoreItem): number => {
+    const a = Number(it.avgCost);
+    return a > 0 ? a : Number(it.cost || 0);
+  };
+  /* Utilisasi hybrid: manual bila flag utilManual (default true utk data lama), else auto. */
+  const autoUtilOf = (eq: StoreItem): number => {
+    const month = today.slice(0, 7);
+    const hours = bookings
+      .filter((b) => b.status === "Selesai" && equipKey(b.equip) === String(eq.id) && String(b.date ?? "").slice(0, 7) === month)
+      .reduce((s, b) => s + Number(b.hours || 0), 0);
+    return Math.min(100, Math.round((hours / TARGET_HOURS) * 100));
+  };
+  const dispUtil = (eq: StoreItem): number =>
+    (eq.utilManual ?? true) ? Number(eq.util || 0) : autoUtilOf(eq);
 
   const statusTone: Record<string, "green" | "blue" | "amber" | "gray"> = {
     Tersedia: "green",
@@ -135,7 +167,7 @@ export default function EquipmentPage() {
   };
 
   const maintenance = equipment.filter((e) => e.status === "Maintenance").length;
-  const avgUtil = equipment.length ? Math.round(equipment.reduce((s, e) => s + Number(e.util || 0), 0) / equipment.length) : 0;
+  const avgUtil = equipment.length ? Math.round(equipment.reduce((s, e) => s + dispUtil(e), 0) / equipment.length) : 0;
   const dueSoon = equipment.filter((e) => {
     const d = daysUntil(String(e.nextService ?? ""), today);
     return d !== null && d <= 14;
@@ -147,7 +179,7 @@ export default function EquipmentPage() {
     for (let j = i + 1; j < activeBookings.length; j++) {
       const a = activeBookings[i];
       const b = activeBookings[j];
-      if (!sameName(a.equip, b.equip) || a.date !== b.date) continue;
+      if (equipKey(a.equip) !== equipKey(b.equip) || a.date !== b.date) continue;
       const ra = bookingRange(a);
       const rb = bookingRange(b);
       if (ra && rb && rangesOverlap(ra.mulai, ra.selesai, rb.mulai, rb.selesai)) {
@@ -159,10 +191,10 @@ export default function EquipmentPage() {
   const conflictList = activeBookings.filter((b) => conflictIds.has(b.id));
 
   const doneBookings = bookings.filter((b) => b.status === "Selesai");
-  const statsByEquip = (name: string): { hours: number; downtime: number; fuel: number } => ({
-    hours: doneBookings.filter((b) => sameName(b.equip, name)).reduce((s, b) => s + Number(b.hours || 0), 0),
-    downtime: doneBookings.filter((b) => sameName(b.equip, name)).reduce((s, b) => s + Number(b.downtime || 0), 0),
-    fuel: doneBookings.filter((b) => sameName(b.equip, name)).reduce((s, b) => s + Number(b.fuelLiters || 0), 0),
+  const statsByEquip = (ref: string): { hours: number; downtime: number; fuel: number } => ({
+    hours: doneBookings.filter((b) => equipKey(b.equip) === equipKey(ref)).reduce((s, b) => s + Number(b.hours || 0), 0),
+    downtime: doneBookings.filter((b) => equipKey(b.equip) === equipKey(ref)).reduce((s, b) => s + Number(b.downtime || 0), 0),
+    fuel: doneBookings.filter((b) => equipKey(b.equip) === equipKey(ref)).reduce((s, b) => s + Number(b.fuelLiters || 0), 0),
   });
   const oeeOf = (name: string): { avail: number; perf: number; oee: number } | null => {
     const st = statsByEquip(name);
@@ -259,7 +291,7 @@ export default function EquipmentPage() {
     }
     const created = await add("equipment", {
       name: form.name.trim(), category: form.category, code, serial: form.serial.trim(), branch: form.branch,
-      status: "Tersedia", util, nextService: "-", lastHours: 0, model: form.model.trim() || "-",
+      status: "Tersedia", util, utilManual: true, nextService: "-", lastHours: 0, model: form.model.trim() || "-",
       pic: form.pic.trim(), rate, fuelPrice, acquisitionCost, usefulLife,
     }, { action: "mendaftarkan equipment", module: "Equipment" });
     toast(S.eqAdded.replace("{a}", created.id));
@@ -284,7 +316,13 @@ export default function EquipmentPage() {
   const openRecord = (eq: StoreItem) => {
     setRecording(eq);
     setWoForm({ tanggal: todayISO(), teknisi: "", catatan: "", hours: String(eq.lastHours ?? 0), next: typeof eq.nextService === "string" && eq.nextService !== "-" ? eq.nextService : "" });
+    setSvcMats([]);
   };
+
+  const svcMatsCost = svcMats.reduce((s, m) => {
+    const it = (data.inventory ?? []).find((x) => x.id === m.itemId);
+    return s + (Number(m.qty) || 0) * (it ? invCost(it) : 0);
+  }, 0);
 
   const saveRecord = async () => {
     try {
@@ -292,14 +330,45 @@ export default function EquipmentPage() {
     if (!woForm.tanggal || !woForm.teknisi.trim() || !woForm.hours) { toast(S.eqRecordReq, "info"); return; }
     const hours = Number(woForm.hours);
     if (!Number.isFinite(hours) || hours < 0) { toast(S.eqHoursInvalid, "info"); return; }
+    const fresh = equipment.find((e) => e.id === recording.id) ?? recording;
+    if (hours < Number(fresh.lastHours || 0)) { toast(`Hour meter ${fmtJumlah(hours)} di bawah catatan terakhir ${fmtJumlah(Number(fresh.lastHours || 0))} — odometer tidak boleh mundur`, "info"); return; }
+    /* Validasi material servis: qty positif & cukup stok. */
+    const mats = svcMats.filter((m) => m.itemId);
+    for (const m of mats) {
+      const it = (data.inventory ?? []).find((x) => x.id === m.itemId);
+      const q = Number(m.qty);
+      if (!it) { toast("Material servis tidak dikenal", "info"); return; }
+      if (!Number.isFinite(q) || q <= 0) { toast(`Qty material ${it.name} harus positif`, "info"); return; }
+      if (q > Number(it.stock || 0)) { toast(`Stok ${it.name} kurang (tersedia ${fmtJumlah(Number(it.stock || 0))} ${it.unit})`, "info"); return; }
+    }
+    const matCost = mats.reduce((s, m) => {
+      const it = (data.inventory ?? []).find((x) => x.id === m.itemId);
+      return s + (Number(m.qty) || 0) * (it ? invCost(it) : 0);
+    }, 0);
+    const matSummary = mats.map((m) => {
+      const it = (data.inventory ?? []).find((x) => x.id === m.itemId);
+      return { itemId: m.itemId, name: String(it?.name ?? m.itemId), qty: Number(m.qty) || 0, unit: String(it?.unit ?? ""), cost: (Number(m.qty) || 0) * (it ? invCost(it) : 0) };
+    });
     await update("equipment", recording.id, {
       lastHours: hours,
       nextService: woForm.next || recording.nextService,
       status: recording.status === "Maintenance" ? "Tersedia" : recording.status,
+      ...(matSummary.length > 0 ? { lastServiceMaterials: matSummary, lastServiceCost: Math.round(matCost) } : {}),
     });
-    log("mencatat servis", `${recording.name} · ${fmtTanggal(woForm.tanggal)}${woForm.catatan.trim() ? ` · ${woForm.catatan.trim()}` : ""}`, "Equipment");
+    for (const m of matSummary) {
+      const it = (data.inventory ?? []).find((x) => x.id === m.itemId);
+      if (!it) continue;
+      await update("inventory", it.id, { stock: Number(it.stock || 0) - m.qty });
+      await add("movements", {
+        item: it.name, itemId: it.id, type: "Pengeluaran", qty: m.qty,
+        by: `Servis ${recording.name} · ${fmtTanggal(woForm.tanggal)}`, date: woForm.tanggal, tone: "out",
+        purpose: `Servis ${recording.name}`, pic: woForm.teknisi.trim(),
+      }, { action: "material servis", target: `${it.name} × ${m.qty} (${recording.name})`, module: "Equipment" });
+    }
+    log("mencatat servis", `${recording.name} · ${fmtTanggal(woForm.tanggal)}${woForm.catatan.trim() ? ` · ${woForm.catatan.trim()}` : ""}${matSummary.length > 0 ? ` · material ${matSummary.map((m) => `${m.name} × ${m.qty}`).join("; ")} (${fmtRupiah(Math.round(matCost))})` : ""}`, "Equipment");
     toast(S.eqSvcRecorded.replace("{a}", recording.name));
     setRecording(null);
+    setSvcMats([]);
     } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); }
   };
 
@@ -326,17 +395,17 @@ export default function EquipmentPage() {
 
   const clashOf = (equip: string, date: string, a: number, b: number): StoreItem[] =>
     bookings.filter((o) => {
-      if (!sameName(o.equip, equip) || o.date !== date || o.status === "Selesai") return false;
+      if (equipKey(o.equip) !== equipKey(equip) || o.date !== date || o.status === "Selesai") return false;
       const r = bookingRange(o);
       return r ? rangesOverlap(a, b, r.mulai, r.selesai) : false;
     });
 
   const persistBooking = async (priority: string) => {
     const { equip, proyek, date, mulai, selesai } = bookForm;
-    const eq = equipment.find((e) => sameName(e.name, equip));
+    const eq = resolveEquip(equip);
     if (!eq) { setBookError(S.eqNotFound); return; }
-    const created = await add("bookings", { equip, proyek, jam: `${mulai}-${selesai}`, mulai, selesai, status: "Terjadwal", date, priority, branch: String((data.projects ?? []).find((p) => String(p.id) === String(proyek))?.branch ?? (branch !== "SEMUA" ? branch : "")) },
-      { action: "membooking equipment", target: `${equip} · ${priority}`, module: "Equipment" });
+    const created = await add("bookings", { equip: eq.id, equipCode: eq.code, equipName: eq.name, proyek, jam: `${mulai}-${selesai}`, mulai, selesai, status: "Terjadwal", date, priority, branch: String((data.projects ?? []).find((p) => String(p.id) === String(proyek))?.branch ?? (branch !== "SEMUA" ? branch : "")) },
+      { action: "membooking equipment", target: `${eq.name} · ${priority}`, module: "Equipment" });
     await update("equipment", eq.id, { status: "Terpakai" });
     toast(S.eqBookingCreated.replace("{a}", created.id).replace("{b}", priority));
     setShowBook(false);
@@ -356,16 +425,16 @@ export default function EquipmentPage() {
       setBookError(S.eqBookTimeOrder);
       return;
     }
-    const eq = equipment.find((e) => sameName(e.name, equip));
+    const eq = resolveEquip(equip);
     if (!eq) { setBookError(S.eqNotFound); return; }
     if (eq.status === "Maintenance") {
-      const msg = S.eqRejectMaint.replace("{a}", equip);
+      const msg = S.eqRejectMaint.replace("{a}", equipLabel(equip));
       setBookError(msg);
       toast(msg, "info");
       return;
     }
     if (isMeasuring(eq) && isCalExpired(eq.id, calibrations, today)) {
-      const msg = S.eqRejectCal.replace("{a}", equip);
+      const msg = S.eqRejectCal.replace("{a}", equipLabel(equip));
       setBookError(msg);
       toast(msg, "info");
       return;
@@ -377,7 +446,7 @@ export default function EquipmentPage() {
         setGusur({ clash });
         return;
       }
-      const msg = S.eqRejectClash.replace("{a}", equip).replace("{b}", fmtTanggal(date));
+      const msg = S.eqRejectClash.replace("{a}", equipLabel(equip)).replace("{b}", fmtTanggal(date));
       setBookError(msg);
       toast(msg, "info");
       return;
@@ -385,7 +454,7 @@ export default function EquipmentPage() {
     try {
       await persistBooking(priority);
     } catch {
-      toast(S.eqBookFail.replace("{a}", equip), "info");
+      toast(S.eqBookFail.replace("{a}", equipLabel(equip)), "info");
     }
   };
 
@@ -400,7 +469,7 @@ export default function EquipmentPage() {
         return;
       }
     }
-    log("menggusur booking", `${bookForm.equip} · ${fmtTanggal(bookForm.date)} menggusur ${names}`, "Equipment");
+    log("menggusur booking", `${equipLabel(bookForm.equip)} · ${fmtTanggal(bookForm.date)} menggusur ${names}`, "Equipment");
     try {
       await persistBooking("Kritis");
     } catch (err) {
@@ -427,17 +496,17 @@ export default function EquipmentPage() {
     const downtime = Math.max(0, Number(finishDowntime) || 0);
     const fuelLiters = Math.max(0, Number(finishFuel) || 0);
     if (!Number.isFinite(fuelLiters) || fuelLiters < 0) { toast(S.eqFuelNonNeg, "info"); return; }
-    const eq = equipment.find((e) => e.name === finishing.equip);
+    const eq = resolveEquip(finishing.equip);
     const rate = Number(eq?.rate || 0);
     await update("bookings", finishing.id, { status: "Selesai", hours, downtime, fuelLiters, cost: hours * rate });
     if (eq) {
-      const stillActive = bookings.some((o) => o.id !== finishing.id && sameName(o.equip, eq.name) && o.status !== "Selesai");
+      const stillActive = bookings.some((o) => o.id !== finishing.id && equipKey(o.equip) === String(eq.id) && o.status !== "Selesai");
       await update("equipment", eq.id, {
         lastHours: Number(eq.lastHours || 0) + hours,
         status: stillActive ? eq.status : "Tersedia",
       });
     }
-    log("menyelesaikan booking", `${finishing.equip} · ${fmtTanggal(String(finishing.date))} · ${hours} jam · downtime ${downtime} jam`, "Equipment");
+    log("menyelesaikan booking", `${equipLabel(finishing.equip)} · ${fmtTanggal(String(finishing.date))} · ${hours} jam · downtime ${downtime} jam`, "Equipment");
     toast(S.eqBookingDone.replace("{a}", finishing.id));
     setFinishing(null);
     setFinishHours("");
@@ -449,7 +518,7 @@ export default function EquipmentPage() {
   const saveCalibration = async () => {
     try {
     if (!calForm.equipmentId || !calForm.item.trim() || !calForm.due) { toast(S.eqCalReq, "info"); return; }
-    if (calForm.due < today) { toast(S.eqCalPast, "info"); return; }
+    /* Backdate diizinkan: due boleh kemarin (pencatatan susulan kalibrasi lapangan). */
     const dupe = calibrations.some((c) => c.equipmentId === calForm.equipmentId && String(c.item).toLowerCase() === calForm.item.trim().toLowerCase() && c.status !== "Selesai");
     if (dupe) { toast(S.eqCalDupe, "info"); return; }
     const eq = equipment.find((e) => e.id === calForm.equipmentId);
@@ -462,15 +531,53 @@ export default function EquipmentPage() {
     } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); }
   };
 
+  function addMonthsISO(iso: string, months: number): string {
+    const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso ?? "");
+    if (!m) return todayISO();
+    const d = new Date(Number(m[1]), Number(m[2]) - 1 + months, Number(m[3]));
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  }
+
   const confirmCalFinish = async () => {
     try {
     if (!finishingCal) return;
     if (!calCert.trim()) { toast(S.eqCertReq, "info"); return; }
-    await update("calibrations", finishingCal.id, { status: "Selesai", cert: calCert.trim() });
-    log("menyelesaikan kalibrasi", `${finishingCal.id} · sertifikat ${calCert.trim()}`, "Equipment");
-    toast(S.eqCalDone.replace("{a}", finishingCal.id));
+    if (!calDoneDate) { toast("Tanggal pelaksanaan kalibrasi wajib diisi (boleh backdate)", "info"); return; }
+    const interval = Math.max(1, Math.floor(Number(calInterval) || 12));
+    const nextDue = addMonthsISO(calDoneDate, interval);
+    const passed = calResult === "Lulus";
+    await update("calibrations", finishingCal.id, { status: passed ? "Selesai" : "Gagal", cert: calCert.trim(), result: calResult, doneDate: calDoneDate });
+    /* Auto-set due berikutnya: jadwal kalibrasi ulang otomatis dibuat. */
+    const dupeNext = calibrations.some((c) => c.id !== finishingCal.id && c.equipmentId === finishingCal.equipmentId && String(c.item).toLowerCase() === String(finishingCal.item).toLowerCase() && c.status !== "Selesai" && c.status !== "Gagal");
+    if (!dupeNext) {
+      await add("calibrations", {
+        equipmentId: finishingCal.equipmentId, item: String(finishingCal.item), due: nextDue, status: "Terjadwal", cert: "",
+      }, { action: "menjadwalkan kalibrasi ulang", target: `${equipLabel(finishingCal.equipmentId)} · ${fmtTanggal(nextDue)}`, module: "Equipment" });
+    }
+    const eq = equipment.find((e) => e.id === finishingCal.equipmentId);
+    log("menyelesaikan kalibrasi", `${finishingCal.id} · ${calResult} · sertifikat ${calCert.trim()} · due berikutnya ${fmtTanggal(nextDue)}`, "Equipment");
+    toast(`${S.eqCalDone.replace("{a}", finishingCal.id)} · ${calResult} · berikutnya ${fmtTanggal(nextDue)}${eq ? ` (${eq.name})` : ""}`);
     setFinishingCal(null);
     setCalCert("");
+    setCalResult("Lulus");
+    setCalDoneDate(todayISO());
+    setCalInterval("12");
+    } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); }
+  };
+
+  const saveUtilOverride = async (eq: StoreItem, manual: boolean) => {
+    try {
+      if (manual) {
+        const v = Number(utilDraft[eq.id] ?? eq.util);
+        if (!Number.isFinite(v) || v < 0 || v > 100) { toast(S.eqUtilRange, "info"); return; }
+        await update("equipment", eq.id, { util: v, utilManual: true });
+        log("override utilisasi manual", `${eq.name} → ${v}%`, "Equipment");
+        toast(`Utilisasi ${eq.name} dikunci manual ${v}%`);
+      } else {
+        await update("equipment", eq.id, { utilManual: false });
+        log("utilisasi auto", `${eq.name} → auto ${autoUtilOf(eq)}%`, "Equipment");
+        toast(`Utilisasi ${eq.name} mengikuti auto (${autoUtilOf(eq)}%)`);
+      }
     } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); }
   };
 
@@ -590,8 +697,9 @@ export default function EquipmentPage() {
                       </td>
                       <td className="td">
                         <div className="flex items-center gap-2">
-                          <ProgressBar value={e.util} className="w-20" tone={e.util > 75 ? "amber" : "navy"} />
-                          <span className="text-xs font-medium">{e.util}%</span>
+                          <ProgressBar value={dispUtil(e)} className="w-20" tone={dispUtil(e) > 75 ? "amber" : "navy"} />
+                          <span className="text-xs font-medium">{dispUtil(e)}%</span>
+                          <Badge tone={(e.utilManual ?? true) ? "gray" : "blue"}>{(e.utilManual ?? true) ? "Manual" : "Auto"}</Badge>
                         </div>
                       </td>
                       <td className="td text-steel-600 font-mono text-xs">{fmtJumlah(Number(e.lastHours || 0))} jam</td>
@@ -647,7 +755,7 @@ export default function EquipmentPage() {
                   {activeBookings.map((b) => (
                     <div key={b.id} className="flex items-center justify-between gap-2 border-b border-steel-100 py-2 text-sm">
                       <div className="min-w-0">
-                        <p className="truncate font-medium text-navy-900" title={b.equip}>{b.equip}</p>
+                        <p className="truncate font-medium text-navy-900" title={equipLabel(b.equip)}>{equipLabel(b.equip)}</p>
                         <p className="text-xs text-steel-500">{b.proyek} · {b.jam} · {fmtTanggal(String(b.date))} · {b.priority ?? "Normal"}</p>
                       </div>
                       <div className="flex shrink-0 items-center gap-2">
@@ -679,7 +787,7 @@ export default function EquipmentPage() {
                     {conflictList.map((b) => (
                       <div key={b.id} className="flex items-center justify-between rounded-lg border border-red-200 px-3 py-2 text-sm">
                         <div className="min-w-0">
-                          <p className="truncate font-medium text-navy-900" title={`${b.equip} · ${b.proyek}`}>{b.equip} · {b.proyek}</p>
+                          <p className="truncate font-medium text-navy-900" title={`${equipLabel(b.equip)} · ${b.proyek}`}>{equipLabel(b.equip)} · {b.proyek}</p>
                           <p className="text-xs text-steel-500">{b.jam} · {fmtTanggal(String(b.date))}</p>
                         </div>
                         <Badge tone="red">{S.eqClashBadge}</Badge>
@@ -714,7 +822,9 @@ export default function EquipmentPage() {
                         <td className="td text-xs text-steel-600">
                           {e.status === "Maintenance" && e.maintenanceNote
                             ? `${e.maintenanceNote}${e.maintenanceEta ? ` · selesai ${fmtTanggal(String(e.maintenanceEta))}` : ""}`
-                            : <span className="text-steel-400">-</span>}
+                            : Array.isArray(e.lastServiceMaterials) && e.lastServiceMaterials.length > 0
+                              ? `Servis terakhir: ${(e.lastServiceMaterials as { name: string; qty: number; unit: string }[]).map((m) => `${m.name} × ${m.qty} ${m.unit ?? ""}`).join("; ")} (${fmtRupiah(Number(e.lastServiceCost || 0))})`
+                              : <span className="text-steel-400">-</span>}
                         </td>
                         <td className="td"><Badge tone={e.status === "Maintenance" ? "amber" : "green"}>{e.status === "Maintenance" ? S.eqInService : S.eqScheduled}</Badge></td>
                         <td className="td">
@@ -759,12 +869,13 @@ export default function EquipmentPage() {
                           <td className="td">
                             <div className="flex flex-wrap gap-1">
                               <StatusBadge status={String(c.status)} />
+                              {c.result ? <Badge tone={String(c.result) === "Lulus" ? "green" : "red"}>{String(c.result)}</Badge> : null}
                               {expired && <Badge tone="red">{S.eqExpired}</Badge>}
                             </div>
                           </td>
                           <td className="td">
-                            {c.status !== "Selesai" && (
-                              <button className="btn-secondary text-xs" onClick={() => { setFinishingCal(c); setCalCert(""); }}>{S.finishBtn}</button>
+                            {c.status !== "Selesai" && c.status !== "Gagal" && (
+                              <button className="btn-secondary text-xs" onClick={() => { setFinishingCal(c); setCalCert(""); setCalResult("Lulus"); setCalDoneDate(todayISO()); setCalInterval("12"); }}>{S.finishBtn}</button>
                             )}
                           </td>
                         </tr>
@@ -816,7 +927,7 @@ export default function EquipmentPage() {
                   {doneBookings.map((b) => (
                     <div key={b.id} className="flex flex-wrap items-center justify-between gap-2 border-b border-steel-100 py-2 text-sm">
                       <div>
-                        <p className="font-medium text-navy-900">{b.equip} <span className="font-mono text-xs text-steel-500">· {b.id}</span></p>
+                        <p className="font-medium text-navy-900">{equipLabel(b.equip)} <span className="font-mono text-xs text-steel-500">· {b.id}</span></p>
                         <p className="text-xs text-steel-500">{b.proyek} · {fmtTanggal(String(b.date))} · {b.hours ?? 0} jam · downtime {b.downtime ?? 0} jam · BBM {fmtJumlah(Number(b.fuelLiters || 0))} L</p>
                       </div>
                       <Badge tone="green">{fmtRupiah(Number(b.cost || 0))}</Badge>
@@ -848,6 +959,15 @@ export default function EquipmentPage() {
 
           {tab === "Utilisasi" && (
             <div className="space-y-4">
+              <Card className="p-5">
+                <h3 className="mb-2 text-sm font-semibold text-navy-900">Cara baca utilisasi (hybrid)</h3>
+                <ul className="list-disc space-y-1 pl-5 text-xs text-steel-600">
+                  <li>Rumus auto: (total jam booking <b>Selesai</b> bulan berjalan ÷ 176 jam) × 100%. Agregasi per equipment dari modul Booking.</li>
+                  <li>Ambang: &gt;85% = over-utilized (bar merah) — pertimbangkan tambah unit / reschedule.</li>
+                  <li>Mode Auto mengikuti booking; mode Manual mengunci angka (flag utilManual) — input manual tetap tersedia per baris di bawah.</li>
+                  <li>Modul terkait: Alokasi/Booking (sumber jam) · Maintenance (downtime menekan availability) · Biaya (tarif × jam) · Kalibrasi (alat ukur kedaluwarsa menolak booking).</li>
+                </ul>
+              </Card>
               <Card className="p-5">
                 <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
                   <h3 className="text-sm font-semibold text-navy-900">{S.eqOeeTitle} <span className="text-xs font-normal text-steel-500">{S.eqOeeHint.replace("{a}", String(TARGET_HOURS))}</span></h3>
@@ -908,15 +1028,33 @@ export default function EquipmentPage() {
                     const needle = utilQ.trim().toLowerCase();
                     if (!needle) return true;
                     return `${e.name ?? ""} ${e.code ?? ""}`.toLowerCase().includes(needle);
-                  }).map((e) => (
-                    <div key={e.id}>
-                      <div className="mb-1 flex justify-between text-sm">
-                        <span className="text-steel-600">{e.name}</span>
-                        <span className="font-semibold text-navy-900">{e.util}%</span>
+                  }).map((e) => {
+                    const manual = e.utilManual ?? true;
+                    const auto = autoUtilOf(e);
+                    const disp = manual ? Number(e.util || 0) : auto;
+                    return (
+                    <div key={e.id} className="rounded-xl border border-steel-100 p-3">
+                      <div className="mb-1 flex justify-between gap-2 text-sm">
+                        <span className="text-steel-600">{e.name} <span className="font-mono text-xs text-steel-400">{e.code}</span></span>
+                        <span className="flex shrink-0 items-center gap-1.5 font-semibold text-navy-900">{disp}% <Badge tone={manual ? "gray" : "blue"}>{manual ? "Manual" : "Auto"}</Badge></span>
                       </div>
-                      <ProgressBar value={e.util} tone={e.util > 75 ? "red" : e.util > 60 ? "amber" : "green"} />
+                      <ProgressBar value={disp} tone={disp > 85 ? "red" : disp > 60 ? "amber" : "green"} />
+                      <p className="mt-1 text-xs text-steel-500">Auto bulan ini: {auto}% (jam Selesai ÷ 176)</p>
+                      <div className="mt-2 flex flex-wrap items-center gap-2">
+                        <select className="input w-auto py-1 text-xs" value={manual ? "Manual" : "Auto"} onChange={(ev) => { if (ev.target.value === "Auto") void saveUtilOverride(e, false); else setUtilDraft((m) => ({ ...m, [e.id]: String(e.util ?? 0) })); }} aria-label={`Mode utilisasi ${e.name}`}>
+                          <option value="Auto">Auto</option>
+                          <option value="Manual">Manual</option>
+                        </select>
+                        {manual && (
+                          <>
+                            <NumInput min={0} className="input w-20 !py-1 text-xs" value={utilDraft[e.id] ?? String(e.util ?? 0)} onChange={(ev) => setUtilDraft((m) => ({ ...m, [e.id]: ev.target.value }))} aria-label={`Util manual ${e.name}`} />
+                            <button className="btn-secondary text-xs" onClick={() => void saveUtilOverride(e, true)}>Kunci</button>
+                          </>
+                        )}
+                      </div>
                     </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </div>
               <p className="text-xs text-steel-400">{S.eqForecastNote}</p>
@@ -974,10 +1112,38 @@ export default function EquipmentPage() {
           <FormGrid>
             <Field label={S.eqSvcDateField}><input type="date" className="input" value={woForm.tanggal} onChange={(e) => setWoForm({ ...woForm, tanggal: e.target.value })} /></Field>
             <Field label={S.eqTechField}><input className="input" value={woForm.teknisi} onChange={(e) => setWoForm({ ...woForm, teknisi: e.target.value })} placeholder={S.eqTechPh} /></Field>
-            <Field label={S.eqHourMeter}><NumInput min={0} className="input" value={woForm.hours} onChange={(e) => setWoForm({ ...woForm, hours: e.target.value })} /></Field>
+            <Field label="Hour meter (odometer)" hint={`Angka odometer alat — bukan jam kerja. Terakhir: ${fmtJumlah(Number((equipment.find((e) => e.id === recording?.id) ?? recording)?.lastHours || 0))} — tidak boleh mundur.`}><NumInput min={0} className="input" value={woForm.hours} onChange={(e) => setWoForm({ ...woForm, hours: e.target.value })} /></Field>
             <Field label={S.eqNextSvc}><input type="date" className="input" value={woForm.next} onChange={(e) => setWoForm({ ...woForm, next: e.target.value })} /></Field>
           </FormGrid>
           <Field label={S.eqWorkNote}><input className="input" value={woForm.catatan} onChange={(e) => setWoForm({ ...woForm, catatan: e.target.value })} placeholder={S.eqWorkNotePh} /></Field>
+          <div className="border-t border-steel-100 pt-3">
+            <div className="mb-2 flex items-center justify-between">
+              <p className="text-xs font-semibold text-steel-500">Material servis dari inventory (potong stok/GI)</p>
+              <button className="btn-secondary text-xs" onClick={() => setSvcMats((m) => [...m, { itemId: "", qty: "" }])}>+ Tambah material</button>
+            </div>
+            {svcMats.length === 0 && <p className="text-xs text-steel-400">Belum ada material — tambah bila servis memakai sparepart dari gudang.</p>}
+            {svcMats.map((m, idx) => {
+              const it = (data.inventory ?? []).find((x) => x.id === m.itemId);
+              return (
+                <div key={idx} className="mb-2 grid grid-cols-12 items-end gap-2">
+                  <div className="col-span-7">
+                    <p className="label">Item · gudang</p>
+                    <select className="input" value={m.itemId} onChange={(e) => setSvcMats((arr) => arr.map((x, i) => (i === idx ? { ...x, itemId: e.target.value } : x)))}>
+                      <option value="">— Pilih item —</option>
+                      {(data.inventory ?? []).map((x) => <option key={x.id} value={x.id}>{x.name} · {x.warehouse} · stok {fmtJumlah(Number(x.stock || 0))} {x.unit}</option>)}
+                    </select>
+                  </div>
+                  <div className="col-span-3">
+                    <p className="label">Qty{it ? ` (${it.unit})` : ""}</p>
+                    <NumInput min={0} className="input" value={m.qty} onChange={(e) => setSvcMats((arr) => arr.map((x, i) => (i === idx ? { ...x, qty: e.target.value } : x)))} />
+                  </div>
+                  <button className="btn-secondary col-span-2 text-xs" onClick={() => setSvcMats((arr) => arr.filter((_, i) => i !== idx))}>Hapus</button>
+                  {it && <p className="col-span-12 text-xs text-steel-500">≈ {fmtRupiah((Number(m.qty) || 0) * invCost(it))} · stok tersedia {fmtJumlah(Number(it.stock || 0))} {it.unit}</p>}
+                </div>
+              );
+            })}
+            {svcMats.length > 0 && <p className="text-right text-sm font-semibold text-navy-900">Total material: {fmtRupiah(Math.round(svcMatsCost))} (masuk biaya servis)</p>}
+          </div>
         </div>
       </Modal>
 
@@ -998,7 +1164,7 @@ export default function EquipmentPage() {
             <Field label={S.thEquipment}>
               <select className="input" value={bookForm.equip} onChange={(e) => setBookForm({ ...bookForm, equip: e.target.value })}>
                 <option value="">{S.eqChoose}</option>
-                {equipment.filter((e) => e.status !== "Maintenance").map((e) => <option key={e.id} value={e.name}>{e.name}</option>)}
+                {equipment.filter((e) => e.status !== "Maintenance").map((e) => <option key={e.id} value={e.id}>{e.name} ({e.code})</option>)}
               </select>
             </Field>
             <Field label={S.thProject}>
@@ -1034,7 +1200,7 @@ export default function EquipmentPage() {
       />
 
       {/* Modal selesaikan booking */}
-      <Modal open={finishing !== null} onClose={() => setFinishing(null)} title={S.eqFinishBookTitle.replace("{a}", finishing?.equip ?? "")} subtitle={finishing ? `${finishing.proyek} · ${finishing.jam} · ${fmtTanggal(String(finishing.date))}` : ""}
+      <Modal open={finishing !== null} onClose={() => setFinishing(null)} title={S.eqFinishBookTitle.replace("{a}", finishing ? equipLabel(finishing.equip) : "")} subtitle={finishing ? `${finishing.proyek} · ${finishing.jam} · ${fmtTanggal(String(finishing.date))}` : ""}
         footer={<><button className="btn-secondary" onClick={() => setFinishing(null)}>{S.cancelBtn}</button><button className="btn-primary" onClick={confirmFinish}>{S.finishBtn}</button></>}>
         <div className="space-y-3">
           <Field label={S.eqActualHours} hint={S.eqActualHoursHint}>
@@ -1067,9 +1233,25 @@ export default function EquipmentPage() {
       {/* Modal selesaikan kalibrasi */}
       <Modal open={finishingCal !== null} onClose={() => setFinishingCal(null)} title={S.eqCalDoneTitle.replace("{a}", finishingCal?.id ?? "")}
         footer={<><button className="btn-secondary" onClick={() => setFinishingCal(null)}>{S.cancelBtn}</button><button className="btn-primary" onClick={confirmCalFinish}>{S.finishBtn}</button></>}>
-        <Field label={S.eqCertNoField} hint={S.eqCertNoHint}>
-          <input className="input font-mono" value={calCert} onChange={(e) => setCalCert(e.target.value)} placeholder={S.eqCertNoPh} />
-        </Field>
+        <div className="space-y-3">
+          <FormGrid>
+            <Field label="Tanggal pelaksanaan" hint="Boleh backdate (pencatatan susulan)">
+              <input type="date" className="input" value={calDoneDate} onChange={(e) => setCalDoneDate(e.target.value)} />
+            </Field>
+            <Field label="Hasil kalibrasi">
+              <select className="input" value={calResult} onChange={(e) => setCalResult(e.target.value)}>
+                <option value="Lulus">Lulus</option>
+                <option value="Gagal">Gagal</option>
+              </select>
+            </Field>
+          </FormGrid>
+          <Field label={S.eqCertNoField} hint={S.eqCertNoHint}>
+            <input className="input font-mono" value={calCert} onChange={(e) => setCalCert(e.target.value)} placeholder={S.eqCertNoPh} />
+          </Field>
+          <Field label="Interval kalibrasi ulang (bulan)" hint={calDoneDate ? `Due berikutnya otomatis: ${fmtTanggal(addMonthsISO(calDoneDate, Math.max(1, Math.floor(Number(calInterval) || 12))))}` : undefined}>
+            <NumInput min={1} className="input" value={calInterval} onChange={(e) => setCalInterval(e.target.value)} />
+          </Field>
+        </div>
       </Modal>
     </div>
   );

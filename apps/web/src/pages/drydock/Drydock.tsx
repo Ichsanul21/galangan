@@ -7,7 +7,9 @@ import type { SortState } from "../../components/ui";
 import { useStore } from "../../data/store";
 import type { StoreItem } from "../../data/store";
 import { dockUtilTrend, slotTrend } from "../../data";
-import { fmtJumlah, fmtRupiah, fmtTanggal, fmtRentang } from "../../utils/format";
+import { fmtJumlah, fmtRupiah, fmtTanggal, fmtRentang, todayISO } from "../../utils/format";
+import { getSetting } from "../../utils/settings";
+import { sameName } from "../../utils/names";
 import { sbDsNumber, maxSeq } from "../../utils/sb";
 import { AlertBannerView, notifRowId, useModuleAlert, useNotifFlash } from "../../components/AlertBanner";
 import { exportExcel } from "../../utils/export";
@@ -66,6 +68,7 @@ function coveredDays(dockId: string, slots: StoreItem[]): number {
 
 function slotStatus(s: StoreItem, projects: StoreItem[]): string {
   if (s.project === "MAINT") return "Maintenance";
+  if (s.undockDone === true) return "Selesai";
   const proj = projects.find((p) => p.id === s.project);
   if (proj?.status === "Selesai" || Number(s.to) <= 0) return "Selesai";
   if (Number(s.from) <= 0) return "Berjalan";
@@ -118,6 +121,13 @@ export default function Drydock() {
 
   const sel = dockSlots.find((s) => s.id === selected) ?? null;
   const [utilDraft, setUtilDraft] = useState({ power: "", water: "" });
+  const [bastOffer, setBastOffer] = useState<StoreItem | null>(null);
+
+  const tarifKwh = getSetting(data, "TARIF_LISTRIK_KWH", 1500);
+  const tarifAir = getSetting(data, "TARIF_AIR_M3", 15000);
+  const utilCostOf = (s: StoreItem): number =>
+    Math.max(0, Number(s.powerKwh || 0)) * tarifKwh + Math.max(0, Number(s.waterM3 || 0)) * tarifAir;
+  const tagihanOf = (s: StoreItem): number => slotCost(s) + utilCostOf(s);
 
   const openSlot = (s: StoreItem) => {
     setSelected(s.id);
@@ -126,16 +136,28 @@ export default function Drydock() {
 
   const saveUtility = async () => {
     if (!sel) return;
-    const power = Number(utilDraft.power || 0);
-    const water = Number(utilDraft.water || 0);
-    if (power < 0 || water < 0 || !Number.isFinite(power) || !Number.isFinite(water)) {
+    /* Konsumsi AKUMULASI: input = tambahan meter, bukan timpa. Riwayat dicatat di meterLog. */
+    const addPower = Number(utilDraft.power || 0);
+    const addWater = Number(utilDraft.water || 0);
+    if (addPower < 0 || addWater < 0 || !Number.isFinite(addPower) || !Number.isFinite(addWater)) {
       toast(S.tUtilInvalid, "info");
       return;
     }
+    if (addPower === 0 && addWater === 0) {
+      toast("Isi tambahan kWh/m³ dulu (konsumsi diakumulasi, bukan ditimpa)", "info");
+      return;
+    }
+    const power = Number(sel.powerKwh || 0) + addPower;
+    const water = Number(sel.waterM3 || 0) + addWater;
     try {
-      await update("dockSlots", sel.id, { powerKwh: power, waterM3: water });
-      log("mencatat konsumsi slot", `${sel.id} · ${power} kWh · ${water} m³`, "Drydock");
+      await update("dockSlots", sel.id, {
+        powerKwh: power,
+        waterM3: water,
+        meterLog: [...(Array.isArray(sel.meterLog) ? sel.meterLog : []), { date: todayISO(), power: addPower, water: addWater }],
+      });
+      log("mencatat konsumsi slot", `${sel.id} · +${addPower} kWh · +${addWater} m³ (total ${power} kWh · ${water} m³)`, "Drydock");
       toast(S.tUtilSaved.replace("{a}", sel.id));
+      setUtilDraft({ power: "", water: "" });
     } catch (e) {
       toast(e instanceof Error ? e.message : S.saveFail, "info");
     }
@@ -147,21 +169,93 @@ export default function Drydock() {
       const next = undockList(sel);
       next[idx] = !next[idx];
       await update("dockSlots", sel.id, { undock: next });
-      if (next.every(Boolean)) {
+      if (next.every(Boolean) && !sel.undockDone) {
         log("menyelesaikan docking report", `${sel.id} · undocking checklist lengkap`, "Drydock");
-        // E7: undock lengkap → append vessel history.
-        const proj = data.projects.find((p) => p.id === sel.project);
-        const vesselName = proj?.vessel ?? String(sel.vessel ?? "").split(" + ")[0];
-        const vsl = data.vessels.find((x) => x.name === vesselName);
-        if (vsl) {
+        // Undock tutup alur: status kapal kembali seperti sebelum masuk dock.
+        const prevMap = (sel.prevVesselStatus ?? {}) as Record<string, string>;
+        const names = String(sel.vessel ?? "").split("+").map((x) => x.trim()).filter(Boolean);
+        for (const vesselName of names) {
+          const vsl = data.vessels.find((x) => sameName(x.name, vesselName));
+          if (!vsl) continue;
+          const backTo = prevMap[vesselName] ?? prevMap[String(vsl.name)] ?? (String(vsl.status) === "Dalam Docking" ? "Dalam Operasi" : String(vsl.status));
           await update("vessels", vsl.id, {
+            status: backTo,
+            // History SEMUA kapal pada slot ganda "A + B".
             history: [...(vsl.history ?? []), { date: new Date().toISOString().slice(0, 10), event: `Undocking selesai - slot ${sel.id} (${sel.dockId})`, type: "Docking" }],
           });
         }
-        toast(S.tUndockDone.replace("{a}", sel.id));
+        await update("dockSlots", sel.id, { undockDone: true });
+        // Cek NCR terbuka proyek ini sebelum menutup alur.
+        const openNcr = (data.ncr ?? []).filter((n) => String(n.project) === String(sel.project) && String(n.status) !== "Tertutup");
+        if (openNcr.length > 0) {
+          toast(`Slot ${sel.id} Selesai — perhatian: ${openNcr.length} NCR masih terbuka (${openNcr.map((n) => String(n.id)).join(", ")})`, "info");
+          log("undock dengan NCR terbuka", `${sel.id} · ${openNcr.map((n) => String(n.id)).join(", ")}`, "Drydock");
+        } else {
+          toast(S.tUndockDone.replace("{a}", sel.id));
+        }
+        // Tawar BAST draft untuk slot yang baru selesai.
+        setBastOffer({ ...sel, undock: next, undockDone: true });
       }
     } catch {
       toast(S.tChecklistFail.replace("{a}", sel.id), "info");
+    }
+  };
+
+  const confirmBastOffer = async () => {
+    if (!bastOffer) return;
+    try {
+      const created = await add("bast", {
+        projectId: String(bastOffer.project), milestone: `Docking ${String(bastOffer.vessel)} (${String(bastOffer.id)})`,
+        tanggal: todayISO(), penandatangan: "", lampiran: `Docking report slot ${String(bastOffer.id)}`,
+        amount: tagihanOf(bastOffer), status: "Draft", slotId: String(bastOffer.id),
+      }, { action: "menawarkan BAST undock", target: `${String(bastOffer.id)} · Docking ${String(bastOffer.vessel)}`, module: "Drydock" });
+      log("membuat BAST undock", `${created.id} ← slot ${String(bastOffer.id)}`, "Drydock");
+      toast(`BAST draft ${created.id} dibuat dari slot ${String(bastOffer.id)}`);
+    } catch (e) {
+      toast(e instanceof Error ? e.message : S.saveFail, "info");
+    } finally {
+      setBastOffer(null);
+    }
+  };
+
+  const createInvoiceFromSlot = async (s: StoreItem) => {
+    const proj = data.projects.find((p) => p.id === s.project);
+    if (!proj || s.project === "MAINT") { toast("Slot maintenance / tanpa proyek tidak bisa ditagih", "info"); return; }
+    const ref = `Dock ${String(s.id)}`;
+    const dupe = (data.invoices ?? []).some((i) => String(i.milestoneRef ?? "") === ref || String(i.paymentTerm ?? "").startsWith(ref));
+    if (dupe) { toast(`${ref} sudah pernah dibuatkan invoice - tolak tagih ganda`, "info"); return; }
+    const days = slotDays(s);
+    const rate = Math.max(0, Number(s.ratePerDay || 0));
+    const dockAmt = days * rate;
+    const kwh = Math.max(0, Number(s.powerKwh || 0));
+    const m3 = Math.max(0, Number(s.waterM3 || 0));
+    const total = dockAmt + kwh * tarifKwh + m3 * tarifAir;
+    if (total <= 0) { toast("Tagihan nol — isi tarif/hari atau konsumsi dulu", "info"); return; }
+    const due = (() => {
+      const d = new Date(`${todayISO()}T00:00:00`);
+      d.setDate(d.getDate() + 30);
+      return d.toISOString().slice(0, 10);
+    })();
+    try {
+      const created = await add("invoices", {
+        client: proj.client, kodePembantu: proj.client, project: proj.id,
+        branch: String(proj.branch ?? ""),
+        amount: total, grandTotal: total, dpp: total, ppnAmt: 0, pphAmt: 0,
+        jasaTotal: dockAmt, matTotal: kwh * tarifKwh + m3 * tarifAir,
+        ppnRate: 0, pphRate: 0, dpApplied: 0, retentionPct: 0, retentionAmt: 0, retentionStatus: "-",
+        skdt: false, due, status: "Draft", paymentTerm: `${ref} · ${String(s.vessel)}`,
+        billingType: "Milestone", milestoneRef: ref, slotId: String(s.id),
+        lines: [
+          { desc: `Dock ${days} hari × ${fmtRupiah(rate)}`, qty: days, unit: "hari", price: rate, amount: dockAmt },
+          ...(kwh > 0 ? [{ desc: `Listrik ${fmtJumlah(kwh)} kWh × ${fmtRupiah(tarifKwh)}`, qty: kwh, unit: "kWh", price: tarifKwh, amount: kwh * tarifKwh }] : []),
+          ...(m3 > 0 ? [{ desc: `Air ${fmtJumlah(m3)} m³ × ${fmtRupiah(tarifAir)}`, qty: m3, unit: "m³", price: tarifAir, amount: m3 * tarifAir }] : []),
+        ],
+        dunning: "Belum Ditagih",
+      }, { action: "membuat invoice dari slot dock", target: `${ref} · ${fmtRupiah(total)}`, module: "Drydock" });
+      log("membuat invoice dock", `${created.id} ← ${ref} · ${fmtRupiah(total)}`, "Drydock");
+      toast(`Invoice draft ${created.id} dibuat dari ${ref} (${fmtRupiah(total)})`);
+    } catch (e) {
+      toast(e instanceof Error ? e.message : S.saveFail, "info");
     }
   };
 
@@ -249,7 +343,8 @@ export default function Drydock() {
     if (!proj) { setBookError(S.tPickProject); return; }
     const from = Number(bookForm.from);
     const to = Number(bookForm.to);
-    if (!from || !to || to <= from || from < 0 || to > DAYS) { setBookError(S.rangeInvalid.replace("{n}", String(DAYS))); return; }
+    /* from=0 diizinkan: slot langsung Berjalan (hari ini). */
+    if (!Number.isFinite(from) || !Number.isFinite(to) || to <= from || from < 0 || to > DAYS) { setBookError(S.rangeInvalid.replace("{n}", String(DAYS))); return; }
     if (overlap(bookForm.dockId, from, to)) {
       const msg = S.tOverlapReject.replace("{a}", String(from)).replace("{b}", String(to)).replace("{c}", selDock?.name ?? bookForm.dockId);
       setBookError(msg);
@@ -276,6 +371,20 @@ export default function Drydock() {
         startDate: bookForm.startDate || undefined,
         color: SLOT_COLORS[dockSlots.length % SLOT_COLORS.length],
       }, { action: "membooking slot", target: `${bookForm.dockId} · ${vesselFull} · ${bookForm.priority}`, module: "Drydock" });
+      /* Sinkron status kapal: masuk dock → Dalam Docking (status sebelumnya disimpan di slot). */
+      const prevMap: Record<string, string> = {};
+      for (const vesselName of String(vesselFull).split("+").map((x: string) => x.trim()).filter(Boolean)) {
+        const vsl = data.vessels.find((x) => sameName(x.name, vesselName));
+        if (!vsl) continue;
+        prevMap[vesselName] = String(vsl.status);
+        if (String(vsl.status) !== "Dalam Docking") {
+          await update("vessels", vsl.id, {
+            status: "Dalam Docking",
+            history: [...(vsl.history ?? []), { date: todayISO(), event: `Masuk docking - slot ${created.id} (${bookForm.dockId})`, type: "Docking" }],
+          });
+        }
+      }
+      await update("dockSlots", created.id, { prevVesselStatus: prevMap });
       toast(S.tBooked.replace("{a}", created.id).replace("{b}", bookForm.priority).replace("{c}", dsRef));
       setBookForm({ dockId: "DD-1", project: "", from: "1", to: "30", priority: "Normal", ratePerDay: "0", dsRef: "", vessel2: "", startDate: "" });
       setShowBook(false);
@@ -293,6 +402,11 @@ export default function Drydock() {
       return;
     }
     if (!maintForm.reason.trim()) { toast(S.tMaintReason, "info"); return; }
+    if (overlap(maintForm.dockId, from, to)) {
+      const msg = S.tOverlapReject.replace("{a}", String(from)).replace("{b}", String(to)).replace("{c}", drydocks.find((d) => d.id === maintForm.dockId)?.name ?? maintForm.dockId);
+      toast(msg, "info");
+      return;
+    }
     const dock = drydocks.find((d) => d.id === maintForm.dockId);
     try {
       const created = await add("dockSlots", {
@@ -333,7 +447,7 @@ export default function Drydock() {
     if (!moveTarget) return;
     const from = Number(moveForm.from);
     const to = Number(moveForm.to);
-    if (!from || !to || to <= from || from < 0 || to > DAYS) {
+    if (!Number.isFinite(from) || !Number.isFinite(to) || to <= from || from < 0 || to > DAYS) {
       setMoveError(S.rangeInvalid.replace("{n}", String(DAYS)));
       return;
     }
@@ -657,19 +771,33 @@ export default function Drydock() {
             <div className="flex justify-between"><dt className="text-steel-500">{S.colStatus}</dt><dd><StatusBadge status={slotStatus(sel, data.projects)} /></dd></div>
             <div className="flex justify-between"><dt className="text-steel-500">{S.lblConflict}</dt><dd>{conflict.some((c) => c.id === sel.id) ? <Badge tone="red">{S.conflictBadge}</Badge> : <Badge tone="green">{S.safeBadge}</Badge>}</dd></div>
             <div className="flex justify-between"><dt className="text-steel-500">{S.lblRecorded}</dt><dd className="font-medium">{fmtJumlah(Number(sel.powerKwh || 0))} kWh · {fmtJumlah(Number(sel.waterM3 || 0))} m³</dd></div>
+            <div className="flex justify-between"><dt className="text-steel-500">Tagihan konsumsi</dt><dd className="font-medium text-right">{fmtJumlah(Number(sel.powerKwh || 0))} kWh × {fmtRupiah(tarifKwh)} + {fmtJumlah(Number(sel.waterM3 || 0))} m³ × {fmtRupiah(tarifAir)} = {fmtRupiah(utilCostOf(sel))}</dd></div>
+            <div className="flex justify-between"><dt className="text-steel-500">Total tagihan slot</dt><dd className="font-semibold text-navy-900">Dock {fmtRupiah(slotCost(sel))} + konsumsi {fmtRupiah(utilCostOf(sel))} = {fmtRupiah(tagihanOf(sel))}</dd></div>
+            <p className="text-right text-[11px] text-steel-400">Tarif dari Pengaturan (TARIF_LISTRIK_KWH / TARIF_AIR_M3)</p>
           </dl>
+          <button className="btn-primary mt-2 w-full justify-center text-xs" onClick={() => void createInvoiceFromSlot(sel)}>Buat invoice dari slot (draft Milestone)</button>
           <div className="mt-3 border-t border-steel-100 pt-3">
-            <p className="text-xs font-semibold text-steel-500">{S.utilSection}</p>
+            <p className="text-xs font-semibold text-steel-500">{S.utilSection} (tambah — diakumulasi)</p>
             <div className="mt-2 grid grid-cols-2 gap-2">
-              <Field label={S.lblPower}><NumInput min={0} className="input" value={utilDraft.power} onChange={(e) => setUtilDraft({ ...utilDraft, power: e.target.value })} placeholder={S.phPower} /></Field>
-              <Field label={S.lblWater}><NumInput min={0} className="input" value={utilDraft.water} onChange={(e) => setUtilDraft({ ...utilDraft, water: e.target.value })} placeholder={S.phWater} /></Field>
+              <Field label={`+ ${S.lblPower}`}><NumInput min={0} className="input" value={utilDraft.power} onChange={(e) => setUtilDraft({ ...utilDraft, power: e.target.value })} placeholder={S.phPower} /></Field>
+              <Field label={`+ ${S.lblWater}`}><NumInput min={0} className="input" value={utilDraft.water} onChange={(e) => setUtilDraft({ ...utilDraft, water: e.target.value })} placeholder={S.phWater} /></Field>
             </div>
             <button className="btn-secondary mt-2 text-xs" onClick={saveUtility}>{S.btnSaveUtil}</button>
+            {Array.isArray(sel.meterLog) && sel.meterLog.length > 0 && (
+              <div className="mt-2 rounded-lg bg-steel-50 px-3 py-2">
+                <p className="text-xs font-semibold text-navy-900">Riwayat meter</p>
+                {(sel.meterLog as { date: string; power: number; water: number }[]).slice(-5).reverse().map((m, i) => (
+                  <p key={i} className="text-xs text-steel-600">{fmtTanggal(m.date)} · +{fmtJumlah(Number(m.power || 0))} kWh · +{fmtJumlah(Number(m.water || 0))} m³</p>
+                ))}
+              </div>
+            )}
           </div>
           <div className="mt-3 border-t border-steel-100 pt-3">
             <div className="flex items-center justify-between">
               <p className="text-xs font-semibold text-steel-500">{S.undockSection}</p>
-              <Badge tone={undockList(sel).every(Boolean) ? "green" : "amber"}>{undockList(sel).every(Boolean) ? S.undockReady : S.undockProgress.replace("{n}", String(undockList(sel).filter(Boolean).length))}</Badge>
+              {sel.undockDone
+                ? <Badge tone="green">Selesai — undock tuntas</Badge>
+                : <Badge tone={undockList(sel).every(Boolean) ? "green" : "amber"}>{undockList(sel).every(Boolean) ? S.undockReady : S.undockProgress.replace("{n}", String(undockList(sel).filter(Boolean).length))}</Badge>}
             </div>
             <div className="mt-2 space-y-1.5">
               {UNDOCK_ITEMS.map((item, idx) => (
@@ -699,7 +827,7 @@ export default function Drydock() {
             </select>
           </Field>
           <FormGrid>
-            <Field label={S.lblStartDay.replace("{n}", String(DAYS))}><NumInput min={1} max={DAYS} className="input" value={moveForm.from} onChange={(e) => setMoveForm({ ...moveForm, from: e.target.value })} /></Field>
+            <Field label={S.lblStartDay.replace("{n}", String(DAYS))}><NumInput min={0} max={DAYS} className="input" value={moveForm.from} onChange={(e) => setMoveForm({ ...moveForm, from: e.target.value })} /></Field>
             <Field label={S.lblEndDay.replace("{n}", String(DAYS))}><NumInput min={1} max={DAYS} className="input" value={moveForm.to} onChange={(e) => setMoveForm({ ...moveForm, to: e.target.value })} /></Field>
           </FormGrid>
           <p className="text-xs text-steel-500">{S.moveHint.replace("{a}", Number(moveForm.to) > Number(moveForm.from) ? S.durationDays.replace("{n}", String(Number(moveForm.to) - Number(moveForm.from))) : "-")}</p>
@@ -780,6 +908,11 @@ export default function Drydock() {
           <input className="input" value={picDraft} onChange={(e) => setPicDraft(e.target.value)} placeholder={S.phPic} />
         </Field>
       </Modal>
+
+      <ConfirmModal open={bastOffer !== null} title={`Buat BAST draft untuk slot ${bastOffer?.id ?? ""}?`}
+        desc={bastOffer ? `Undock ${String(bastOffer.vessel)} tuntas. Buat BAST draft "Docking ${String(bastOffer.vessel)} (${String(bastOffer.id)})" senilai ${fmtRupiah(tagihanOf(bastOffer))} (dock + konsumsi)?` : ""}
+        confirmLabel="Buat BAST draft" onCancel={() => setBastOffer(null)}
+        onConfirm={confirmBastOffer} />
 
       <ConfirmModal open={deleting !== null} title={S.delTitle.replace("{a}", deleting?.id ?? "")} desc={(() => {
         const base = S.delDesc.replace("{a}", String(deleting?.vessel ?? ""));

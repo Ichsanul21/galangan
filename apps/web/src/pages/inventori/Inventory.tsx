@@ -35,6 +35,7 @@ import { Card, CardHeader, PageHeader, Badge, KpiCard, Tabs, ChartTooltip, Modal
 } from "../../components/ui";
 import type { SortState } from "../../components/ui";
 import { useStore, type StoreItem } from "../../data/store";
+import { sameName } from "../../utils/names";
 import { isBackendConfigured } from "../../services/http";
 import { uploadFile } from "../../services/upload";
 import { fmtJumlah, fmtRupiah, fmtMiliar, fmtTanggal, todayISO } from "../../utils/format";
@@ -325,6 +326,7 @@ export default function Inventory() {
   const [moveBatch, setMoveBatch] = useState("");
   const [moveUom, setMoveUom] = useState("base");
   const [movePrice, setMovePrice] = useState("");
+  const [movePo, setMovePo] = useState("");
   // Kolom RawData REPORT WAREHOUSE: supplier, pajak, purpose (U/TK kapal), PIC.
   const [moveSupplier, setMoveSupplier] = useState("");
   const [moveTax, setMoveTax] = useState("");
@@ -340,6 +342,11 @@ export default function Inventory() {
   const [trItem, setTrItem] = useState("");
   const [trQty, setTrQty] = useState("");
   const [trDest, setTrDest] = useState("");
+  const [showRetur, setShowRetur] = useState(false);
+  const [retItem, setRetItem] = useState("");
+  const [retQty, setRetQty] = useState("");
+  const [retVendor, setRetVendor] = useState("");
+  const [retReason, setRetReason] = useState("");
 
   const [reservTarget, setReservTarget] = useState<StoreItem | null>(null);
   const [reservProject, setReservProject] = useState("");
@@ -386,6 +393,8 @@ export default function Inventory() {
   const [showPick, setShowPick] = useState(false);
   const [pickProject, setPickProject] = useState("");
   const [pickSel, setPickSel] = useState<string[]>([]);
+  const [pickQty, setPickQty] = useState<Record<string, string>>({});
+  const [pickFail, setPickFail] = useState<string[]>([]);
 
   const dq = useDebouncedValue(q);
   const abc = useMemo(() => abcMap(inventory), [inventory]);
@@ -586,6 +595,7 @@ export default function Inventory() {
     setMoveBatch("");
     setMoveUom("base");
     setMovePrice("");
+    setMovePo("");
     setMoveSupplier("");
     setMoveTax("");
     setMovePurpose("");
@@ -599,6 +609,7 @@ export default function Inventory() {
     setMoveBatch("");
     setMoveUom("base");
     setMovePrice("");
+    setMovePo("");
     setMoveSupplier("");
     setMoveTax("");
     setMovePurpose("");
@@ -733,7 +744,9 @@ export default function Inventory() {
         patch.avgCost = Math.round(((oldVal + qty * price) / (oldStock + qty)) * 100) / 100;
       }
     }
-    const refBase = moveRef.trim() || (moveKind === "in" ? "GR manual" : "GI manual");
+    const refBase = moveKind === "in"
+      ? [movePo.trim(), moveRef.trim()].filter(Boolean).join(" · ") || "GR manual · tanpa PO"
+      : (moveRef.trim() || "GI manual");
     const refNote = useUom2 ? `${refBase} · ${fmtJumlah(raw)} ${uom2Of(fresh)}` : refBase;
     const priceExcl = Number(movePrice) || 0;
     const taxAmt = Number(moveTax) || 0;
@@ -750,6 +763,7 @@ export default function Inventory() {
         batch: moveBatch.trim() || fresh.batch || "",
         date: todayISO(),
         tone: moveKind,
+        ...(moveKind === "in" && movePo.trim() ? { po: movePo.trim() } : {}),
         supplier: moveSupplier.trim(),
         priceExcl,
         tax: taxAmt,
@@ -1077,20 +1091,78 @@ export default function Inventory() {
     if (trDest === trTarget.warehouse) { toast(S.destSame, "info"); return; }
     const from = trTarget.warehouse;
     const srcStock = Number(trTarget.stock);
+    /* Kunci item: itemId bila ada, fallback SKU dasar (tanpa sufiks "@gudang" lama). */
+    const baseSkuOf = (sku: unknown): string => String(sku ?? "").split("@")[0].trim().toLowerCase();
+    const srcKey = String((trTarget as StoreItem).itemId ?? "").trim() || baseSkuOf(trTarget.sku);
+    const destRow = inventory.find((i) =>
+      String(i.id) !== String(trTarget.id)
+      && String(i.warehouse) === String(trDest)
+      && (String((i as StoreItem).itemId ?? "").trim() || baseSkuOf(i.sku)) === srcKey
+    ) ?? null;
+    /* Ambil FIFO qty dari daftar batch sumber → {kept, moved}. */
+    const splitBatches = (rows: BatchRow[], qtyNeed: number): { kept: BatchRow[]; moved: BatchRow[] } => {
+      let sisa = qtyNeed;
+      const kept: BatchRow[] = [];
+      const moved: BatchRow[] = [];
+      for (const b of rows) {
+        if (sisa <= 0) { kept.push(b); continue; }
+        const pakai = Math.min(Number(b.qty || 0), sisa);
+        sisa -= pakai;
+        if (Number(b.qty || 0) - pakai > 0) kept.push({ ...b, qty: Number(b.qty || 0) - pakai });
+        if (pakai > 0) moved.push({ ...b, qty: pakai });
+      }
+      return { kept, moved };
+    };
+    /* Pindah reservasi proporsional qty → {kept, moved} (digabung per proyek di tujuan). */
+    const splitReserved = (rows: Reservation[], qtyNeed: number): { kept: Reservation[]; moved: Reservation[] } => {
+      let sisa = qtyNeed;
+      const kept: Reservation[] = [];
+      const moved: Reservation[] = [];
+      for (const r of rows) {
+        if (sisa <= 0) { kept.push(r); continue; }
+        const pakai = Math.min(Number(r.qty || 0), sisa);
+        sisa -= pakai;
+        if (Number(r.qty || 0) - pakai > 0) kept.push({ project: r.project, qty: Number(r.qty || 0) - pakai });
+        if (pakai > 0) moved.push({ project: r.project, qty: pakai });
+      }
+      return { kept, moved };
+    };
+    const mergeReserved = (a: Reservation[], b: Reservation[]): Reservation[] => {
+      const map = new Map<string, number>();
+      for (const r of [...a, ...b]) map.set(r.project, (map.get(r.project) ?? 0) + Number(r.qty || 0));
+      return Array.from(map.entries()).map(([project, qty]) => ({ project, qty }));
+    };
     try {
-      if (qty < srcStock) {
-        /* Split: kurangi sumber, buat baris gudang tujuan dengan SKU sama + sufiks gudang. */
-        await update("inventory", trTarget.id, { stock: srcStock - qty });
-        await add("inventory", {
-          name: trTarget.name, sku: `${trTarget.sku}@${trDest}`, category: trTarget.category, warehouse: trDest,
-          rack: "", bin: "", stock: qty, minStock: 0, unit: trTarget.unit,
-          cost: trTarget.cost, location: "", volume: Number(trTarget.volume) || 0, batch: String(trTarget.batch ?? ""),
-          uom2: String((trTarget as unknown as Record<string, unknown>).uom2 ?? ""), konversi: Number((trTarget as unknown as Record<string, unknown>).konversi) || 0,
-          minStockByWarehouse: {}, photoUrl: String(trTarget.photoUrl ?? ""), avgCost: Number((trTarget as unknown as Record<string, unknown>).avgCost) || 0,
-          batches: [], reserved: [],
-        }, { action: "transfer gudang (split)", target: `${trTarget.name} × ${qty}: ${from} → ${trDest}`, module: "Inventori" });
+      const srcB = splitBatches([...batchesOf(trTarget)].sort((a, b) => String(a.date).localeCompare(String(b.date))), qty);
+      const srcR = splitReserved(reservedOf(trTarget), qty);
+      const srcMinMap = { ...((trTarget.minStockByWarehouse as Record<string, number> | undefined) ?? {}) };
+      await update("inventory", trTarget.id, { stock: srcStock - qty, batches: srcB.kept, reserved: srcR.kept });
+      if (destRow) {
+        /* Kumpulkan ke baris tujuan ber-itemId sama: tambah stok + batch + reservasi + minStock. */
+        const destMinMap = { ...((destRow.minStockByWarehouse as Record<string, number> | undefined) ?? {}), ...srcMinMap };
+        await update("inventory", destRow.id, {
+          stock: Number(destRow.stock || 0) + qty,
+          batches: [...batchesOf(destRow), ...srcB.moved],
+          reserved: mergeReserved(reservedOf(destRow), srcR.moved),
+          minStock: Math.max(Number(destRow.minStock || 0), Number(trTarget.minStock || 0)),
+          minStockByWarehouse: destMinMap,
+        });
       } else {
-        await update("inventory", trTarget.id, { warehouse: trDest });
+        /* Buat baris tujuan: SKU ASLI, sufiks lokasi di bin/rack (bukan SKU). */
+        const rackSrc = String(trTarget.rack ?? trTarget.location ?? "").trim();
+        const binSrc = binOf(trTarget);
+        await add("inventory", {
+          name: trTarget.name, sku: String(trTarget.sku), category: trTarget.category, warehouse: trDest,
+          rack: rackSrc ? `${rackSrc} (${trDest})` : trDest,
+          bin: binSrc ? `${binSrc} (${trDest})` : trDest,
+          stock: qty, minStock: Number(trTarget.minStock || 0), unit: trTarget.unit,
+          cost: trTarget.cost, location: rackSrc ? `${rackSrc} (${trDest})` : trDest,
+          volume: Number(trTarget.volume) || 0, batch: String(trTarget.batch ?? ""),
+          uom2: String((trTarget as unknown as Record<string, unknown>).uom2 ?? ""), konversi: Number((trTarget as unknown as Record<string, unknown>).konversi) || 0,
+          minStockByWarehouse: { ...srcMinMap },
+          photoUrl: String(trTarget.photoUrl ?? ""), avgCost: Number((trTarget as unknown as Record<string, unknown>).avgCost) || 0,
+          batches: srcB.moved, reserved: srcR.moved,
+        }, { action: "transfer gudang", target: `${trTarget.name} × ${qty}: ${from} → ${trDest}`, module: "Inventori" });
       }
       await add("movements", {
         item: trTarget.name, itemId: trTarget.id, type: "Transfer", qty,
@@ -1104,6 +1176,53 @@ export default function Inventory() {
       setTrDest("");
     } catch {
       toast(S.transferFailed.replace("{n}", trTarget.name), "info");
+    }
+  };
+
+  const saveRetur = async () => {
+    const item = inventory.find((i) => i.id === retItem) ?? null;
+    if (!item) { toast("Pilih item retur dulu", "info"); return; }
+    const qty = Number(retQty);
+    if (!qty || qty <= 0) { toast(S.qtyGtZero, "info"); return; }
+    if (qty > Number(item.stock)) { toast(S.stockShort.replace("{n}", fmtJumlah(Number(item.stock))), "info"); return; }
+    if (!retVendor.trim()) { toast("Vendor retur wajib diisi", "info"); return; }
+    if (!retReason.trim()) { toast("Alasan retur wajib diisi", "info"); return; }
+    try {
+      await update("inventory", item.id, { stock: Number(item.stock) - qty });
+      await add("movements", {
+        item: item.name, itemId: item.id, type: "Retur", qty,
+        by: `Retur ke ${retVendor.trim()} - ${retReason.trim()}`, date: todayISO(), tone: "out",
+        supplier: retVendor.trim(), purpose: retReason.trim(),
+        branch: moveBranch(`${retVendor} ${retReason}`),
+      }, { action: "meretur barang", target: `${item.name} × ${qty} (${retVendor.trim()})`, module: "Inventori" });
+      /* Koreksi hutang: cari payable po/item/vendor terkait, kurangi amt proporsional. */
+      const vendorTrim = retVendor.trim();
+      const cands = (data.payables ?? []).filter((a) => {
+        const vendorOk = sameName(a.v ?? a.vendor, vendorTrim);
+        const itemOk = sameName(a.item, item.name);
+        const poOk = String(a.po ?? "").toLowerCase().includes(String(item.id).toLowerCase())
+          || String(a.po ?? "").toLowerCase().includes(String(item.sku ?? "").split("@")[0].trim().toLowerCase());
+        return (vendorOk && (itemOk || poOk || !a.item)) || (itemOk && !vendorTrim);
+      });
+      const unitVal = effCost(item);
+      let corrected = 0;
+      for (const a of cands) {
+        const amt = Number(a.amt || 0);
+        if (amt <= 0) continue;
+        const red = Math.min(amt, Math.round(qty * unitVal * 100) / 100);
+        if (red <= 0) continue;
+        await update("payables", a.id, { amt: Math.round((amt - red) * 100) / 100 });
+        log("koreksi hutang (retur)", `${a.id} · ${item.name} × ${qty} → -${fmtRupiah(red)} (sisa ${fmtRupiah(amt - red)})`, "Inventori");
+        corrected++;
+      }
+      log("meretur barang", `${item.name} × ${qty} ke ${vendorTrim}: ${retReason.trim()}`, "Inventori");
+      toast(corrected > 0
+        ? `Retur ${item.name} × ${qty} tersimpan + koreksi ${corrected} hutang`
+        : `Retur ${item.name} × ${qty} tersimpan (tanpa payable terkait)`);
+      setShowRetur(false);
+      setRetItem(""); setRetQty(""); setRetVendor(""); setRetReason("");
+    } catch {
+      toast(S.transferFailed.replace("{n}", item.name), "info");
     }
   };
 
@@ -1134,7 +1253,15 @@ export default function Inventory() {
   const openPick = () => {
     const first = projects[0]?.id ?? "";
     setPickProject(first);
-    setPickSel(first ? inventory.filter((i) => reservedOf(i).some((r) => r.project === first)).map((i) => i.id) : []);
+    const rows = first ? inventory.filter((i) => reservedOf(i).some((r) => r.project === first)) : [];
+    setPickSel(rows.map((i) => i.id));
+    const q0: Record<string, string> = {};
+    for (const i of rows) {
+      const res = reservedOf(i).find((r) => r.project === first);
+      q0[i.id] = String(Number(res?.qty ?? 0));
+    }
+    setPickQty(q0);
+    setPickFail([]);
     setShowPick(true);
   };
 
@@ -1142,33 +1269,41 @@ export default function Inventory() {
     if (!pickProject) { toast(S.projectFirst, "info"); return; }
     if (pickSel.length === 0) { toast(S.pickCheckOne, "info"); return; }
     let ok = 0;
-    let fail = 0;
+    const fails: string[] = [];
     for (const id of pickSel) {
       const it = inventory.find((i) => i.id === id);
-      if (!it) continue;
+      if (!it) { fails.push(`${id}: item tidak ditemukan`); continue; }
       const res = reservedOf(it).find((r) => r.project === pickProject);
-      if (!res || Number(res.qty) <= 0) continue;
-      const qty = Number(res.qty);
-      if (qty > Number(it.stock)) continue;
+      if (!res || Number(res.qty) <= 0) { fails.push(`${it.name}: tanpa reservasi untuk ${pickProject}`); continue; }
+      const want = pickQty[id] !== undefined && pickQty[id] !== "" ? Number(pickQty[id]) : Number(res.qty);
+      if (!Number.isFinite(want) || want <= 0) { fails.push(`${it.name}: qty pick tidak valid`); continue; }
+      if (want > Number(res.qty)) { fails.push(`${it.name}: pick ${fmtJumlah(want)} melebihi reservasi ${fmtJumlah(Number(res.qty))}`); continue; }
+      if (want > Number(it.stock)) { fails.push(`${it.name}: stok ${fmtJumlah(Number(it.stock))} kurang untuk pick ${fmtJumlah(want)}`); continue; }
       try {
+        const rest = Number(res.qty) - want;
         await update("inventory", it.id, {
-          stock: Number(it.stock) - qty,
-          reserved: reservedOf(it).filter((r) => r.project !== pickProject),
+          stock: Number(it.stock) - want,
+          reserved: rest > 0
+            ? reservedOf(it).map((r) => (r.project === pickProject ? { project: r.project, qty: rest } : r))
+            : reservedOf(it).filter((r) => r.project !== pickProject),
         });
         await add("movements", {
-          item: it.name, itemId: it.id, type: "Pengeluaran", qty,
+          item: it.name, itemId: it.id, type: "Pengeluaran", qty: want,
           by: `${pickProject} (Pick List)`, date: todayISO(), tone: "out",
           branch: moveBranch(String(pickProject)),
-        }, { action: "pick list", target: `${it.name} × ${qty} (${pickProject})`, module: "Inventori" });
+        }, { action: "pick list", target: `${it.name} × ${want} (${pickProject})`, module: "Inventori" });
         ok++;
       } catch {
-        fail++;
+        fails.push(`${it.name}: gagal simpan`);
       }
     }
-    if (ok === 0) { toast(S.pickNothing, "info"); return; }
-    toast(S.pickDone.replace("{a}", pickProject).replace("{n}", String(ok)).replace("{b}", fail > 0 ? S.pickFailSuffix.replace("{n}", String(fail)) : ""));
-    setShowPick(false);
-    setPickSel([]);
+    setPickFail(fails);
+    if (ok === 0) { toast(fails.length > 0 ? `Pick gagal: ${fails[0]}` : S.pickNothing, "info"); return; }
+    toast(S.pickDone.replace("{a}", pickProject).replace("{n}", String(ok)).replace("{b}", fails.length > 0 ? S.pickFailSuffix.replace("{n}", String(fails.length)) : ""));
+    if (fails.length === 0) {
+      setShowPick(false);
+      setPickSel([]);
+    }
   };
 
   return (
@@ -1416,6 +1551,7 @@ export default function Inventory() {
                   <button className="btn-primary w-full justify-center whitespace-nowrap py-5 text-base" onClick={() => { const first = lowStock[0] ?? inventory[0]; if (first) openMove(first, "in"); }}><ArrowDownToLine className="h-4 w-4" /> {S.btnGr}</button>
                   <button className="btn-secondary w-full justify-center" onClick={() => { const first = inventory[0]; if (first) openMove(first, "out"); }}><ArrowUpFromLine className="h-4 w-4" /> {S.btnGi}</button>
                   <button className="btn-secondary w-full justify-center" onClick={() => setShowTransfer(true)}><Repeat className="h-4 w-4" /> {S.btnTransfer}</button>
+                  <button className="btn-secondary w-full justify-center" onClick={() => { setRetItem(""); setRetQty(""); setRetVendor(""); setRetReason(""); setShowRetur(true); }}><ArrowUpFromLine className="h-4 w-4" /> Retur ke Vendor</button>
                   <button className="btn-secondary w-full justify-center" onClick={() => setShowOpname(true)}><ClipboardCheck className="h-4 w-4" /> {S.opnameT}</button>
                 </div>
               </Card>
@@ -1870,6 +2006,16 @@ export default function Inventory() {
               <input className="input" value={moveSupplier} onChange={(e) => setMoveSupplier(e.target.value)} placeholder={S.phSupplier} />
             </Field>
           )}
+          {moveKind === "in" && (
+            <Field label="PO terkait (opsional)" hint="Pilih PO terbuka agar GR terhubung ke PO. Kosong = dicatat tanpa PO.">
+              <select className="input" value={movePo} onChange={(e) => setMovePo(e.target.value)}>
+                <option value="">— Tanpa PO —</option>
+                {(data.purchaseOrders ?? [])
+                  .filter((p) => ["Diajukan", "Disetujui", "Dikirim"].includes(String(p.status)))
+                  .map((p) => <option key={String(p.id)} value={String(p.id)}>{String(p.id)} · {String(p.item ?? "-")} · {String(p.vendor ?? "-")}</option>)}
+              </select>
+            </Field>
+          )}
           <FormGrid>
             <Field label={S.purposeLbl} hint={S.hintPurpose}>
               <input className="input" value={movePurpose} onChange={(e) => setMovePurpose(e.target.value)} placeholder={S.phPurpose} />
@@ -1929,6 +2075,30 @@ export default function Inventory() {
         </div>
       </Modal>
 
+      {/* Modal retur ke vendor */}
+      <Modal open={showRetur} onClose={() => setShowRetur(false)} title="Retur ke Vendor" subtitle="Kurangi stok + movement Retur + koreksi hutang terkait"
+        footer={<><button className="btn-secondary" onClick={() => setShowRetur(false)}>{S.cancelBtn}</button><button className="btn-primary" onClick={saveRetur}>Simpan Retur</button></>}>
+        <div className="space-y-3">
+          <Field label={S.itemLbl}>
+            <select className="input" value={retItem} onChange={(e) => setRetItem(e.target.value)}>
+              <option value="">{S.pickItem}</option>
+              {inventory.map((i) => <option key={i.id} value={i.id}>{i.name} · stok {fmtJumlah(Number(i.stock))} {i.unit}</option>)}
+            </select>
+          </Field>
+          <FormGrid>
+            <Field label={S.qtyTrLbl}>
+              <NumInput min={1} className="input" value={retQty} onChange={(e) => setRetQty(e.target.value)} />
+            </Field>
+            <Field label="Vendor">
+              <input className="input" value={retVendor} onChange={(e) => setRetVendor(e.target.value)} placeholder="Nama vendor" />
+            </Field>
+          </FormGrid>
+          <Field label="Alasan retur" hint="Wajib diisi, dicatat di movement + log koreksi hutang">
+            <input className="input" value={retReason} onChange={(e) => setRetReason(e.target.value)} placeholder="Cth: barang cacat / salah kirim" />
+          </Field>
+        </div>
+      </Modal>
+
       {/* Modal reservasi */}
       <Modal open={reservTarget !== null} onClose={() => setReservTarget(null)} title={S.reservTitle.replace("{n}", reservTarget?.name ?? "")}
         subtitle={reservTarget ? S.tersediaSub.replace("{a}", fmtJumlah(availOf(inventory.find((i) => i.id === reservTarget.id) ?? reservTarget))).replace("{b}", reservTarget.unit) : ""}
@@ -1951,7 +2121,15 @@ export default function Inventory() {
           <Field label={S.proyekLbl}>
             <select className="input" value={pickProject} onChange={(e) => {
               setPickProject(e.target.value);
-              setPickSel(inventory.filter((i) => reservedOf(i).some((r) => r.project === e.target.value)).map((i) => i.id));
+              const rows = inventory.filter((i) => reservedOf(i).some((r) => r.project === e.target.value));
+              setPickSel(rows.map((i) => i.id));
+              const q0: Record<string, string> = {};
+              for (const i of rows) {
+                const res = reservedOf(i).find((r) => r.project === e.target.value);
+                q0[i.id] = String(Number(res?.qty ?? 0));
+              }
+              setPickQty(q0);
+              setPickFail([]);
             }}>
               <option value="">{S.pickProject}</option>
               {projects.map((p) => <option key={p.id} value={p.id}>{p.id} - {p.vessel}</option>)}
@@ -1962,13 +2140,20 @@ export default function Inventory() {
             const res = reservedOf(i).find((r) => r.project === pickProject);
             const checked = pickSel.includes(i.id);
             return (
-              <label key={i.id} className="flex items-center gap-3 rounded-xl border border-steel-200 px-3 py-2 text-sm">
+              <div key={i.id} className="flex items-center gap-3 rounded-xl border border-steel-200 px-3 py-2 text-sm">
                 <input type="checkbox" checked={checked} onChange={(e) => setPickSel((s) => (e.target.checked ? [...s, i.id] : s.filter((x) => x !== i.id)))} aria-label={S.takeAria.replace("{n}", i.name)} />
                 <span className="min-w-0 flex-1 truncate font-medium text-navy-900" title={String(i.name)}>{i.name}</span>
-                <span className="shrink-0 text-steel-500">{fmtJumlah(Number(res?.qty ?? 0))} {i.unit}</span>
-              </label>
+                <span className="shrink-0 text-xs text-steel-500">reservasi {fmtJumlah(Number(res?.qty ?? 0))} · stok {fmtJumlah(Number(i.stock))} {i.unit}</span>
+                <NumInput min={0} className="input w-24 !py-1.5 text-xs" value={pickQty[i.id] ?? ""} onChange={(e) => setPickQty((m) => ({ ...m, [i.id]: e.target.value }))} aria-label={`Qty pick ${i.name}`} />
+              </div>
             );
           })}
+          {pickFail.length > 0 && (
+            <div className="rounded-lg bg-rose-50 px-3 py-2 text-xs text-rose-700">
+              <p className="font-semibold">Gagal pick ({pickFail.length}):</p>
+              {pickFail.map((f, idx) => <p key={idx}>• {f}</p>)}
+            </div>
+          )}
         </div>
       </Modal>
 

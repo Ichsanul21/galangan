@@ -29,6 +29,13 @@ import { exportExcel } from "../../utils/export";
 const SHIFTS = ["Pagi", "Siang", "Malam"];
 const STATUS = ["Hadir", "Izin", "Sakit", "Cuti", "Alpa"];
 
+/* Jam masuk acuan per shift untuk hitung telat (bukan hardcoded 08:00). */
+const SHIFT_START: Record<string, string> = {
+  Pagi: "08:00",
+  Siang: "14:00",
+  Malam: "20:00",
+};
+
 interface CatatRow {
   status: string;
   checkIn: string;
@@ -36,14 +43,20 @@ interface CatatRow {
   overtime: string;
 }
 
-const defaultRow = (): CatatRow => ({ status: "Hadir", checkIn: "08:00", checkOut: "17:00", overtime: "0" });
+const defaultRow = (shift = "Pagi"): CatatRow => ({
+  status: "Hadir",
+  checkIn: SHIFT_START[shift] ?? "08:00",
+  checkOut: "17:00",
+  overtime: "0",
+});
 
 /* StoreItem ber-index-signature sehingga tidak memenuhi constraint generik inBranch;
    intersection ini mempertahankan field sekaligus memuaskan constraint. */
 type Branchable = StoreItem & { branch?: string };
 
-function isLate(checkIn: string): boolean {
-  return !!checkIn && checkIn > "08:00";
+function isLate(checkIn: string, shift = "Pagi"): boolean {
+  const start = SHIFT_START[shift] ?? "08:00";
+  return !!checkIn && checkIn > start;
 }
 
 /* Persetujuan lembur: baris lembur>0 default "Diajukan"; Payroll hanya menghitung yang "Disetujui". */
@@ -78,14 +91,14 @@ export default function Absensi() {
     [data.employees, inBranch],
   );
 
-  const rowFor = (id: string): CatatRow => rows[id] ?? defaultRow();
+  const rowFor = (id: string): CatatRow => rows[id] ?? defaultRow(shift);
   const setRow = (id: string, patch: Partial<CatatRow>) =>
     setRows((prev) => ({ ...prev, [id]: { ...rowFor(id), ...patch } }));
 
   const markAllPresent = () => {
     const next: Record<string, CatatRow> = {};
     activeEmps.forEach((e) => {
-      next[e.id] = defaultRow();
+      next[e.id] = defaultRow(shift);
     });
     setRows(next);
     toast(S.tMarkedPresent.replace("{n}", String(activeEmps.length)));
@@ -179,7 +192,7 @@ export default function Absensi() {
         const recs = monthRecords.filter((a) => a.employeeId === e.id);
         const count = (s: string) => recs.filter((a) => a.status === s).length;
         const lembur = recs.reduce((s, a) => s + Number(a.overtime || 0), 0);
-        const telat = recs.filter((a) => a.status === "Hadir" && isLate(String(a.checkIn))).length;
+        const telat = recs.filter((a) => a.status === "Hadir" && isLate(String(a.checkIn), String(a.shift ?? ""))).length;
         const hadir = count("Hadir");
         const pct = recs.length > 0 ? (hadir / recs.length) * 100 : 0;
         return { emp: e, h: hadir, i: count("Izin"), s: count("Sakit"), c: count("Cuti"), a: count("Alpa"), lembur, telat, pct, total: recs.length };
@@ -208,7 +221,7 @@ export default function Absensi() {
   }, [month, branch, tab]);
 
   const kpiHadir = monthRecords.filter((a) => a.status === "Hadir").length;
-  const kpiTelat = monthRecords.filter((a) => a.status === "Hadir" && isLate(String(a.checkIn))).length;
+  const kpiTelat = monthRecords.filter((a) => a.status === "Hadir" && isLate(String(a.checkIn), String(a.shift ?? ""))).length;
   const kpiLembur = monthRecords.reduce((s, a) => s + Number(a.overtime || 0), 0);
   const kpiPct = monthRecords.length > 0 ? (kpiHadir / monthRecords.length) * 100 : 0;
 
@@ -310,6 +323,7 @@ export default function Absensi() {
                   <select className="input w-auto" value={shift} onChange={(e) => setShift(e.target.value)}>
                     {SHIFTS.map((s) => <option key={s}>{s}</option>)}
                   </select>
+                  <span className="text-xs text-steel-400">Masuk {SHIFT_START[shift] ?? "08:00"} · telat dihitung per shift</span>
                 </label>
                 <select className="input w-auto" value={branch} onChange={(e) => setBranch(e.target.value)} aria-label={S.branchFilterShortAria}>
                   <option value="SEMUA">{S.allBranches}</option>
@@ -340,7 +354,7 @@ export default function Absensi() {
                           case "in": return String(r.checkIn ?? "");
                           case "out": return String(r.checkOut ?? "");
                           case "ot": return Number(r.overtime ?? 0);
-                          case "ket": return String(r.status) === "Hadir" && isLate(String(r.checkIn ?? "")) ? "Telat" : "";
+                          case "ket": return String(r.status) === "Hadir" && isLate(String(r.checkIn ?? ""), shift) ? "Telat" : "";
                           default: return "";
                         }
                       }).map((e: StoreItem) => {
@@ -367,7 +381,7 @@ export default function Absensi() {
                               <NumInput min="0" max="8" step="0.5" className="input w-24 py-1.5 text-sm" value={r.overtime} disabled={!hadir} onChange={(ev) => setRow(e.id, { overtime: ev.target.value })} />
                             </td>
                             <td className="td">
-                              {hadir && isLate(r.checkIn) ? <Badge tone="red">{S.lateBadge}</Badge> : <span className="text-xs text-steel-400">-</span>}
+                              {hadir && isLate(r.checkIn, shift) ? <Badge tone="red">{S.lateBadge}</Badge> : <span className="text-xs text-steel-400">-</span>}
                             </td>
                           </tr>
                         );
@@ -479,7 +493,7 @@ export default function Absensi() {
                           case "jam": return String(a.checkIn ?? "") + "-" + String(a.checkOut ?? "");
                           case "lembur": return Number(a.overtime ?? 0);
                           case "ot": return String(otStatusOf(a));
-                          case "ket": return String(a.status) === "Hadir" && isLate(String(a.checkIn ?? "")) ? "Telat" : "";
+                          case "ket": return String(a.status) === "Hadir" && isLate(String(a.checkIn ?? ""), String(a.shift ?? "")) ? "Telat" : "";
                           default: return "";
                         }
                       }).map((a) => (
@@ -506,7 +520,7 @@ export default function Absensi() {
                             )}
                           </td>
                           <td className="td">
-                            {a.status === "Hadir" && isLate(String(a.checkIn)) ? <Badge tone="red">{S.lateBadge}</Badge> : <span className="text-xs text-steel-400">-</span>}
+                            {a.status === "Hadir" && isLate(String(a.checkIn), String(a.shift ?? "")) ? <Badge tone="red">{S.lateBadge}</Badge> : <span className="text-xs text-steel-400">-</span>}
                           </td>
                         </tr>
                       ))}

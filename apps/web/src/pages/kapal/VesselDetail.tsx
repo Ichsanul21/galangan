@@ -549,12 +549,17 @@ export default function VesselDetail() {
                   {slots.length > 0 && (
                     <div className="mb-3">
                       <p className="mb-1.5 text-xs font-semibold text-steel-500">{S.vdActiveSlots}</p>
-                      {slots.map((s) => (
-                        <div key={s.id} className="flex items-center justify-between py-1 text-sm">
-                          <span className="text-steel-700">{s.dockId} · {s.project}</span>
-                          <Badge tone="blue">{S.eqScheduled}</Badge>
-                        </div>
-                      ))}
+                      {slots.map((s) => {
+                        const st: string = s.project === "MAINT" ? "Maintenance" : s.undockDone === true ? "Selesai" : Number(s.to) <= 0 ? "Selesai" : Number(s.from) <= 0 ? "Berjalan" : "Terjadwal";
+                        const tone = st === "Berjalan" ? "blue" : st === "Selesai" ? "green" : st === "Maintenance" ? "gray" : "amber";
+                        const und = Array.isArray(s.undock) ? (s.undock as unknown[]).filter((x) => x === true).length : 0;
+                        return (
+                          <div key={s.id} className="flex items-center justify-between gap-2 py-1 text-sm">
+                            <span className="text-steel-700">{s.dockId} · {s.project}{s.dsRef ? <span className="font-mono text-xs text-steel-400"> · DS {String(s.dsRef)}</span> : null}{st === "Berjalan" || st === "Terjadwal" ? <span className="text-xs text-steel-400"> · undock {und}/5</span> : null}</span>
+                            <Badge tone={tone as "green" | "blue" | "amber" | "gray"}>{st}</Badge>
+                          </div>
+                        );
+                      })}
                     </div>
                   )}
                   {dockHistory.length === 0 && <p className="text-sm text-steel-400">{S.vdNoDock}</p>}

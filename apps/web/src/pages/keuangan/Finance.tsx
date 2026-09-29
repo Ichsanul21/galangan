@@ -651,7 +651,10 @@ export default function Finance() {
     .reduce((s, i) => s + num(i.retentionAmt), 0);
 
   const taxPeriods = data.taxPeriods ?? [];
-  const activeTaxId = taxId || taxPeriods[1]?.id || taxPeriods[0]?.id || "";
+  /* Default = periode berjalan (YYYY-MM hari ini), bukan taxPeriods[1]. */
+  const curYM = today.slice(0, 7);
+  const defaultTax = taxPeriods.find((t) => String(t.period ?? "") === curYM) ?? taxPeriods[0];
+  const activeTaxId = taxId || defaultTax?.id || "";
   const activeTax = taxPeriods.find((t) => t.id === activeTaxId) ?? taxPeriods[0];
   const activePeriod = String(activeTax?.period ?? "");
 
@@ -665,7 +668,9 @@ export default function Finance() {
     const invBase = invLunas.reduce((s, i) => s + invNeto(i), 0);
     const apLunas = payables.filter((a) => a.st === "Lunas" && apPaidMonth(a) === activePeriod);
     const apBase = apLunas.reduce((s, a) => s + num(a.amt), 0);
-    const payRows = (data.payroll ?? []).filter((p) => String(p.period ?? "") === activePeriod);
+    const payRows = (data.payroll ?? []).filter(
+      (p) => String(p.period ?? "") === activePeriod && String(p.status ?? "") === "Dibayar",
+    );
     const pph21 = payRows.reduce((s, p) => s + num(p.pph21), 0);
     // PPh dipotong dari termin subkon yang lunas periode ini (dipotong saat bayar termin).
     const termPph = (data.termins ?? [])
@@ -1744,9 +1749,11 @@ export default function Finance() {
       pph21: taxCalc.pph21,
       reportedAt: todayISO(),
     });
-    // Kunci pajak menerbitkan hutang pajak (idempoten via po TAX-<periode>).
+    // Kunci pajak menerbitkan hutang pajak (idempoten via po TAX-<periode>-*):
+    // PPh 23 dan PPh 21 sebagai DUA baris terpisah.
     const ppnNet = Math.max(0, num(taxCalc.ppnKeluar) - num(taxCalc.ppnMasuk));
-    const pphTotal = num(taxCalc.pph23) + num(taxCalc.pph21);
+    const pph23 = Math.round(num(taxCalc.pph23));
+    const pph21lock = Math.round(num(taxCalc.pph21));
     const taxDue = `${activePeriod}-28`;
     if (ppnNet > 0 && !(data.payables ?? []).some((a) => String(a.po ?? "") === `TAX-${activePeriod}-PPN`)) {
       await add("payables", {
@@ -1755,11 +1762,18 @@ export default function Finance() {
         item: `PPN terutang ${activePeriod}`, pay1: 0, pay1date: "", pay2: 0, pay2date: "",
       }, { action: "hutang pajak dari kunci periode", module: "Pajak" });
     }
-    if (pphTotal > 0 && !(data.payables ?? []).some((a) => String(a.po ?? "") === `TAX-${activePeriod}-PPH`)) {
+    if (pph23 > 0 && !(data.payables ?? []).some((a) => String(a.po ?? "") === `TAX-${activePeriod}-PPH23`)) {
       await add("payables", {
-        v: "Hutang Pajak PPh", po: `TAX-${activePeriod}-PPH`, amt: Math.round(pphTotal), openAwal: Math.round(pphTotal),
+        v: "Hutang Pajak PPh 23", po: `TAX-${activePeriod}-PPH23`, amt: pph23, openAwal: pph23,
         due: taxDue, pph: "Non-PPn", st: "Belum Dibayar", vessel: "-",
-        item: `PPh 23+21 ${activePeriod}`, pay1: 0, pay1date: "", pay2: 0, pay2date: "",
+        item: `PPh 23 ${activePeriod}`, pay1: 0, pay1date: "", pay2: 0, pay2date: "",
+      }, { action: "hutang pajak dari kunci periode", module: "Pajak" });
+    }
+    if (pph21lock > 0 && !(data.payables ?? []).some((a) => String(a.po ?? "") === `TAX-${activePeriod}-PPH21`)) {
+      await add("payables", {
+        v: "Hutang Pajak PPh 21", po: `TAX-${activePeriod}-PPH21`, amt: pph21lock, openAwal: pph21lock,
+        due: taxDue, pph: "Non-PPn", st: "Belum Dibayar", vessel: "-",
+        item: `PPh 21 ${activePeriod}`, pay1: 0, pay1date: "", pay2: 0, pay2date: "",
       }, { action: "hutang pajak dari kunci periode", module: "Pajak" });
     }
     log("melaporkan periode pajak", `${activeTax.period} dikunci`, "Pajak");
@@ -1771,14 +1785,17 @@ export default function Finance() {
 
   const exportSpt = () => {
     if (!activeTax) return;
+    /* SPT dari snapshot kunci: nilai tampil (taxShown) dan ekspor SAMA.
+       Dasar/tarif kolom memakai kalkulasi berjalan sebagai keterangan. */
+    const shown = taxShown;
     const rows: unknown[][] = [
       ["SPT Ringkas", activeTax.period, `Status: ${activeTax.status}`],
       ["Jenis", "Dasar", "Tarif", "Nilai (Rp)"],
-      ["PPN Keluaran", taxCalc.invBase, `${taxCalc.ppnRate}%`, taxCalc.ppnKeluar],
-      ["PPN Masukan", taxCalc.apBase, `${taxCalc.ppnRate}%`, taxCalc.ppnMasuk],
-      ["PPh 23", taxCalc.apBase, `${taxCalc.pphRate}%`, taxCalc.pph23],
-      ["PPh 21", "Total payroll", "-", taxCalc.pph21],
-      ["PPN Terutang (Keluaran - Masukan)", "-", "-", taxCalc.ppnKeluar - taxCalc.ppnMasuk],
+      ["PPN Keluaran", taxCalc.invBase, `${taxCalc.ppnRate}%`, shown.ppnKeluar],
+      ["PPN Masukan", taxCalc.apBase, `${taxCalc.ppnRate}%`, shown.ppnMasuk],
+      ["PPh 23", taxCalc.apBase, `${taxCalc.pphRate}%`, shown.pph23],
+      ["PPh 21", "Total payroll", "-", shown.pph21],
+      ["PPN Terutang (Keluaran - Masukan)", "-", "-", shown.ppnKeluar - shown.ppnMasuk],
     ];
     void exportExcel(rows, `SPT-${activeTax.period}`);
     toast(S.sptExported);

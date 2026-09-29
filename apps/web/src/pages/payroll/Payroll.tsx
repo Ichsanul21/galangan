@@ -36,8 +36,9 @@ const NEXT_STATUS: Record<string, string> = {
   Disetujui: "Dibayar",
 };
 
-/* Alur kaku payroll: Draft → Dihitung → Disetujui → Dibayar. Tidak bisa
-   loncat, tidak bisa mundur, edit hanya di Draft, hapus hanya di Draft. */
+/* Alur bisa mundur: Dihitung/Disetujui dapat dikembalikan langsung ke Draft
+   (via konfirmasi + log). Tidak bisa mundur dari Dibayar. */
+const PREV_TO_DRAFT = ["Dihitung", "Disetujui"];
 const PAY_STAGES = ["Draft", "Dihitung", "Disetujui", "Dibayar"] as const;
 
 function StageStrip({ counts, active, onPick, prefix }: {
@@ -283,6 +284,7 @@ export default function Payroll() {
   const [payTarget, setPayTarget] = useState<StoreItem | null>(null);
   const [proof, setProof] = useState({ date: todayISO(), method: "Transfer", ref: "" });
   const [confirmAdv, setConfirmAdv] = useState<StoreItem | null>(null);
+  const [revertTarget, setRevertTarget] = useState<StoreItem | null>(null);
   const [gajiStage, setGajiStage] = useState<string>("Semua");
   const [thrStage, setThrStage] = useState<string>("Semua");
   const [slipTarget, setSlipTarget] = useState<StoreItem | null>(null);
@@ -400,38 +402,35 @@ export default function Payroll() {
       const basic = Number(e.basic || 0);
       const lines = normAllowances(e.allowances);
       if (lines.length === 0) lines.push({ label: "Tunjangan", amount: 0 });
-      const recs = data.attendance.filter(
+      /* Kehadiran tetap dihitung walau lembur belum disetujui; hanya upah
+         lembur yang dinolkan bila otStatus bukan "Disetujui". */
+      const recsHadir = data.attendance.filter(
         (a) =>
           a.employeeId === e.id &&
           String(a.date).startsWith(period) &&
-          a.status === "Hadir" &&
-          (Number(a.overtime || 0) === 0 || String(a.otStatus ?? "") === "Disetujui"),
+          a.status === "Hadir",
       );
-      const hadirDays = recs.length;
-      const overtimePay = calcOvertimePay(basic, recs, otDivisor);
-      /* Potongan cuti tak dibayar: hari Unpaid yang disetujui × upah harian (basic/25). */
+      const recsOT = recsHadir.filter(
+        (a) => Number(a.overtime || 0) === 0 || String(a.otStatus ?? "") === "Disetujui",
+      );
+      const hadirDays = recsHadir.length;
+      const overtimePay = calcOvertimePay(basic, recsOT, otDivisor);
+      /* Potongan cuti tak dibayar: hari Unpaid yang sudah final × upah harian
+         (basic/25). "Disetujui Atasan" dianggap final untuk potongan ini. */
       const unpaidDays = (data.leaves ?? [])
         .filter(
           (l) =>
             l.employeeId === e.id &&
             String(l.type ?? "") === "Unpaid" &&
-            String(l.status ?? "") === "Disetujui" &&
+            ["Disetujui", "Disetujui Atasan"].includes(String(l.status ?? "")) &&
             String(l.from ?? "").slice(0, 7) === period,
         )
         .reduce((s, l) => s + (Number(l.days) || 0), 0);
       const unpaidPot = basic > 0 && unpaidDays > 0 ? Math.round((basic / 25) * unpaidDays) : 0;
-      /* Cicilan kasbon otomatis: min(cicilan, sisa) per entri, langsung kurangi sisa. */
-      let kasbonPot = 0;
-      const kasbon = normKasbon(e);
+      /* Kasbon TIDAK dipotong saat generate Draft - potongan cicilan baru
+         diterapkan saat Bayar (confirmPay). kasbonPot draft selalu 0. */
+      const kasbonPot = 0;
       try {
-        if (kasbon.length > 0) {
-          const next = kasbon.map((k) => {
-            const inst = Math.min(Math.max(0, Number(k.cicilan) || 0), Math.max(0, Number(k.sisa) || 0));
-            kasbonPot += inst;
-            return { ...k, sisa: Math.max(0, Number(k.sisa) - inst) };
-          });
-          await update("employees", e.id, { kasbon: next });
-        }
         const c = buildComponents(e, basic, lines, overtimePay, unpaidPot, kasbonPot, hadirDays);
     await add(
           "payroll",
@@ -466,18 +465,15 @@ export default function Payroll() {
     toast(S.tDraftsMade.replace("{n}", String(fresh.length)).replace("{a}", fmtBulan(period)));
   };
 
-  /* Alur kaku: validasi + konfirmasi sebelum pindah tahap. Dibayar lewat
-     modal bukti (kas + jurnal otomatis). Tidak ada jalan pintas status. */
+  /* Alur maju: validasi + konfirmasi sebelum pindah tahap. Net ≤ 0 tetap
+     boleh maju, tetapi wajib lewat konfirmasi peringatan. Dibayar lewat
+     modal bukti (kas + jurnal otomatis). */
   const askAdvance = (p: StoreItem) => {
     const next = NEXT_STATUS[String(p.status)];
     if (!next) return;
     if (next === "Dibayar") {
       setPayTarget(p);
       setProof({ date: todayISO(), method: "Transfer", ref: "" });
-      return;
-    }
-    if (!(Number(p.net || 0) > 0)) {
-      toast(S.tNetZero.replace("{a}", String(p.id)), "info");
       return;
     }
     setConfirmAdv(p);
@@ -495,6 +491,16 @@ export default function Payroll() {
     log("memproses payroll", `${confirmAdv.id} ${confirmAdv.status} → ${next}`, "Payroll");
     toast(S.movedTo.replace("{a}", String(confirmAdv.id)).replace("{b}", next));
     setConfirmAdv(null);
+    } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); }
+  };
+
+  const doRevert = async () => {
+    if (!revertTarget) return;
+    try {
+    await update("payroll", revertTarget.id, { status: "Draft" });
+    log("mengembalikan payroll ke Draft", `${revertTarget.id} ${revertTarget.status} → Draft`, "Payroll");
+    toast(`${revertTarget.id} dikembalikan ke Draft`);
+    setRevertTarget(null);
     } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); }
   };
 
@@ -560,23 +566,47 @@ export default function Payroll() {
     }
     const slipId = payTarget.id;
     try {
+      /* Kasbon dipotong saat Bayar: min(cicilan, sisa) per entri, kurangi sisa
+         karyawan, lalu sesuaikan potongan + net slip ini. */
+      let kasbonPot = Number(payTarget.kasbonPot || 0);
+      let deductions = Number(payTarget.deductions || 0);
+      let net = Number(payTarget.net || 0);
+      const empKas = empOf(String(payTarget.employeeId));
+      const kasbon = empKas ? normKasbon(empKas) : [];
+      if (kasbon.length > 0 && String(payTarget.status ?? "") !== "Dibayar") {
+        let pot = 0;
+        const next = kasbon.map((k) => {
+          const inst = Math.min(Math.max(0, Number(k.cicilan) || 0), Math.max(0, Number(k.sisa) || 0));
+          pot += inst;
+          return { ...k, sisa: Math.max(0, Number(k.sisa) - inst) };
+        });
+        if (pot > 0) {
+          await update("employees", String(payTarget.employeeId), { kasbon: next });
+          kasbonPot += pot;
+          deductions += pot;
+          net -= pot;
+        }
+      }
       await update("payroll", payTarget.id, {
         status: "Dibayar",
         paidAt: proof.date,
         paidMethod: proof.method,
         paidRef: proof.ref.trim(),
+        kasbonPot,
+        deductions,
+        net,
       });
-      log("membayar payroll", `${payTarget.id} via ${proof.method} ${proof.ref.trim()}`, "Payroll");
+      log("membayar payroll", `${payTarget.id} via ${proof.method} ${proof.ref.trim()}${kasbonPot > 0 ? ` · kasbon ${fmtRupiah(kasbonPot)}` : ""}`, "Payroll");
       await postCashJournal({
         add,
         journals: data.journals ?? [],
         branch: String(payTarget.branch ?? ""),
-        dokumen: `PAYROLL-${String(payTarget.period ?? period)}-${String(payTarget.employeeId ?? "")}`,
+        dokumen: `PAYROLL-${rowType(payTarget)}-${String(payTarget.period ?? period)}-${String(payTarget.employeeId ?? "")}`,
         date: proof.date,
         uraian: `Bayar ${rowType(payTarget)} ${payTarget.id} via ${proof.ref.trim()}`,
         db: "6-002",
         kr: kasKodeOf(proof.method),
-        amount: Number(payTarget.net || 0),
+        amount: Math.max(0, net),
       });
       toast(S.tPaid.replace("{a}", String(payTarget.id)));
       setPayTarget(null);
@@ -587,9 +617,26 @@ export default function Payroll() {
 
   const removeRow = async (p: StoreItem) => {
     try {
+      /* Hapus Draft Gaji: kembalikan sisa kasbon bila slip ini sudah telanjur
+         memotong (data lama yang potong saat generate). */
+      let restored = 0;
+      const refund = String(p.status ?? "") === "Draft" ? Math.max(0, Number(p.kasbonPot || 0)) : 0;
+      const empDel = refund > 0 ? empOf(String(p.employeeId)) : undefined;
+      if (empDel && refund > 0) {
+        let left = refund;
+        const next = normKasbon(empDel).map((k) => {
+          if (left <= 0) return k;
+          const room = Math.max(0, Number(k.jumlah || 0) - Number(k.sisa || 0));
+          const back = Math.min(room, left);
+          left -= back;
+          restored += back;
+          return { ...k, sisa: Number(k.sisa || 0) + back };
+        });
+        if (restored > 0) await update("employees", empDel.id, { kasbon: next });
+      }
       await remove("payroll", p.id);
-      log("menghapus payroll", `${p.id} · ${rowType(p)}`, "Payroll");
-      toast(S.tRowDeleted.replace("{a}", String(p.id)));
+      log("menghapus payroll", `${p.id} · ${rowType(p)}${restored > 0 ? ` · kasbon kembali ${fmtRupiah(restored)}` : ""}`, "Payroll");
+      toast(S.tRowDeleted.replace("{a}", String(p.id)) + (restored > 0 ? ` · kasbon kembali ${fmtRupiah(restored)}` : ""));
     } catch (e) {
       toast(e instanceof Error ? e.message : S.tRowDeleteFail, "info");
     }
@@ -940,7 +987,19 @@ export default function Payroll() {
                                 {advLabel[String(p.status)] ?? S.advFallback.replace("{a}", NEXT_STATUS[String(p.status)])}
                               </button>
                             )}
+                            {PREV_TO_DRAFT.includes(String(p.status)) && (
+                              <button
+                                className="text-sm font-semibold text-amber-600 hover:underline"
+                                title={`Kembalikan ${p.id} ke Draft`}
+                                onClick={() => setRevertTarget(p)}
+                              >
+                                Kembalikan ke Draft
+                              </button>
+                            )}
                             <button className="text-sm font-semibold text-navy-700 hover:underline" onClick={() => openSlip(p)}>{S.btnSlip}</button>
+                            {p.status === "Draft" && (
+                              <button className="text-sm font-semibold text-rose-600 hover:underline" title={S.delTitleAttr} onClick={() => setDelPay(p)}>{S.btnDelete}</button>
+                            )}
                           </div>
                         </td>
                       </tr>
@@ -1036,6 +1095,15 @@ export default function Payroll() {
                               </button>
                             )}
                             <button className="text-sm font-semibold text-navy-700 hover:underline" onClick={() => openSlip(p)}>{S.btnSlip}</button>
+                            {PREV_TO_DRAFT.includes(String(p.status)) && (
+                              <button
+                                className="text-sm font-semibold text-amber-600 hover:underline"
+                                title={`Kembalikan ${p.id} ke Draft`}
+                                onClick={() => setRevertTarget(p)}
+                              >
+                                Kembalikan ke Draft
+                              </button>
+                            )}
                             {p.status === "Draft" && (
                               <button className="text-sm font-semibold text-rose-600 hover:underline" title={S.delTitleAttr} onClick={() => setDelPay(p)}>{S.btnDelete}</button>
                             )}
@@ -1294,7 +1362,10 @@ export default function Payroll() {
         title={confirmAdv ? S.advTitle.replace("{a}", String(confirmAdv.id)) : S.advTitleEmpty}
         desc={
           confirmAdv
-            ? S.advDesc.replace("{a}", empNameOf(String(confirmAdv.employeeId))).replace("{b}", rowType(confirmAdv)).replace("{c}", fmtBulan(period)).replace("{d}", fmtRupiah(Number(confirmAdv.net || 0))).replace("{e}", String(confirmAdv.status)).replace("{f}", NEXT_STATUS[String(confirmAdv.status)] ?? "?")
+            ? ((Number(confirmAdv.net || 0) > 0)
+              ? ""
+              : `⚠ Peringatan: net ${fmtRupiah(Number(confirmAdv.net || 0))} ≤ 0 (minus/potongan berlebih). Lanjutkan? `)
+              + S.advDesc.replace("{a}", empNameOf(String(confirmAdv.employeeId))).replace("{b}", rowType(confirmAdv)).replace("{c}", fmtBulan(period)).replace("{d}", fmtRupiah(Number(confirmAdv.net || 0))).replace("{e}", String(confirmAdv.status)).replace("{f}", NEXT_STATUS[String(confirmAdv.status)] ?? "?")
             : ""
         }
         confirmLabel={confirmAdv ? advLabel[String(confirmAdv.status)] ?? S.advContinue : S.advContinue}
@@ -1302,11 +1373,26 @@ export default function Payroll() {
         onConfirm={() => void doAdvance()}
       />
       <ConfirmModal
+        open={revertTarget !== null}
+        title={revertTarget ? `Kembalikan ${revertTarget.id} ke Draft?` : ""}
+        desc={
+          revertTarget
+            ? `${rowType(revertTarget)} ${empNameOf(String(revertTarget.employeeId))} · ${fmtBulan(period)} · ${fmtRupiah(Number(revertTarget.net || 0))} akan dikembalikan dari ${revertTarget.status} ke Draft agar bisa dikoreksi. Riwayat tercatat di log.`
+            : ""
+        }
+        confirmLabel="Kembalikan ke Draft"
+        onCancel={() => setRevertTarget(null)}
+        onConfirm={() => void doRevert()}
+      />
+      <ConfirmModal
         open={delPay !== null}
         title={delPay ? `Hapus ${rowType(delPay)} ${delPay.id}?` : ""}
         desc={(() => {
           const used = delPay ? findUsages(data, "payroll", String(delPay.id)) : [];
-          const base = delPay ? `${rowType(delPay)} ${empNameOf(String(delPay.employeeId))} · ${fmtBulan(period)} · ${fmtRupiah(Number(delPay.net || 0))} akan dihapus permanen.` : "";
+          const kasbonNote = delPay && String(delPay.status ?? "") === "Draft" && Number(delPay.kasbonPot || 0) > 0
+            ? ` Sisa kasbon ${fmtRupiah(Number(delPay.kasbonPot))} akan dikembalikan ke karyawan.`
+            : "";
+          const base = delPay ? `${rowType(delPay)} ${empNameOf(String(delPay.employeeId))} · ${fmtBulan(period)} · ${fmtRupiah(Number(delPay.net || 0))} akan dihapus permanen.${kasbonNote}` : "";
           return used.length > 0 ? `${base} Dipakai di: ${used.join(", ")}. Penghapusan diblokir.` : base;
         })()}
         confirmLabel={delPay && findUsages(data, "payroll", String(delPay.id)).length > 0 ? "Diblokir - masih dipakai" : S.btnDelete}

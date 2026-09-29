@@ -167,7 +167,10 @@ export default function QCSafety() {
   const [ncrDetail, setNcrDetail] = useState<StoreItem | null>(null);
   const [dueDraft, setDueDraft] = useState("");
   const [showNcr, setShowNcr] = useState(false);
-  const [ncrForm, setNcrForm] = useState({ project: "", vessel: "", type: "Pengelasan", severity: "Minor", issue: "", due: "", causeCat: "Manusia", causeNote: "", branch: "" });
+  const [ncrForm, setNcrForm] = useState({ project: "", vessel: "", type: "Pengelasan", severity: "Minor", issue: "", due: "", causeCat: "Manusia", causeNote: "", branch: "", penerima: "" });
+  const [capaFor, setCapaFor] = useState<StoreItem | null>(null);
+  const [capaForm, setCapaForm] = useState({ corrective: "", pic: "", photoUrl: "" });
+  const isClient = String(user?.role ?? "").toLowerCase().includes("client");
   const [closingNcr, setClosingNcr] = useState<StoreItem | null>(null);
   const [verifier, setVerifier] = useState("");
   const [verifyNote, setVerifyNote] = useState("");
@@ -345,10 +348,11 @@ export default function QCSafety() {
       status: "Terbuka", severity: ncrForm.severity, raised: todayISO(), due: ncrForm.due,
       causeCat: ncrForm.causeCat, causeNote: ncrForm.causeNote.trim(),
       issue: ncrForm.issue.trim(), branch: branchOf(ncrForm.branch),
+      penerima: ncrForm.penerima.trim(),
     }, { action: "menerbitkan NCR", module: "QC" });
     toast(S.tNcrTerbit.replace("{n}", created.id));
     setShowNcr(false);
-    setNcrForm({ project: "", vessel: "", type: "Pengelasan", severity: "Minor", issue: "", due: "", causeCat: "Manusia", causeNote: "", branch: "" });
+    setNcrForm({ project: "", vessel: "", type: "Pengelasan", severity: "Minor", issue: "", due: "", causeCat: "Manusia", causeNote: "", branch: "", penerima: "" });
     } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); }
   };
 
@@ -358,6 +362,12 @@ export default function QCSafety() {
     if (idx < 0 || idx >= NCR_FLOW.length - 1) return;
     const next = NCR_FLOW[idx + 1];
     if (!n.due) { toast(S.tCapaLengkapi, "info"); return; }
+    /* Bukti/CAPA wajib saat masuk Dalam Perbaikan: buka form korektif dulu. */
+    if (next === "Dalam Perbaikan") {
+      setCapaFor(n);
+      setCapaForm({ corrective: String(n.corrective ?? ""), pic: String(n.capaPic ?? ""), photoUrl: String(n.photoUrl ?? "") });
+      return;
+    }
     if (next === "Tertutup") {
       setClosingNcr(n);
       setVerifier("");
@@ -367,6 +377,45 @@ export default function QCSafety() {
     await update("ncr", n.id, { status: next });
     log(`memproses NCR ke ${next}`, n.id, "QC");
     toast(S.tArrow.replace("{a}", n.id).replace("{b}", next));
+    setNcrDetail((d) => (d && d.id === n.id ? { ...d, status: next } : d));
+    } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); }
+  };
+
+  const saveCapa = async () => {
+    try {
+    if (!capaFor) return;
+    if (!capaForm.corrective.trim() || !capaForm.pic.trim()) { toast("Tindakan korektif + PIC wajib diisi saat Dalam Perbaikan (foto URL opsional)", "info"); return; }
+    const patch = { status: "Dalam Perbaikan", corrective: capaForm.corrective.trim(), capaPic: capaForm.pic.trim(), photoUrl: capaForm.photoUrl.trim() };
+    await update("ncr", capaFor.id, patch);
+    log("mencatat CAPA NCR", `${capaFor.id} · korektif: ${capaForm.corrective.trim()} · PIC ${capaForm.pic.trim()}`, "QC");
+    toast(S.tArrow.replace("{a}", capaFor.id).replace("{b}", "Dalam Perbaikan"));
+    setNcrDetail((d) => (d && d.id === capaFor.id ? { ...d, ...patch } : d));
+    setCapaFor(null);
+    setCapaForm({ corrective: "", pic: "", photoUrl: "" });
+    } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); }
+  };
+
+  const acceptNcr = async (n: StoreItem) => {
+    try {
+    if (!isClient) { toast("Tombol Terima hanya untuk peran client", "info"); return; }
+    await update("ncr", n.id, { acceptedBy: user?.name ?? "Client", acceptedAt: todayISO() });
+    log("menerima NCR (owner acceptance)", `${n.id} · diterima ${user?.name ?? "Client"}`, "QC");
+    toast(`NCR ${n.id} diterima owner (${user?.name ?? "Client"})`);
+    setNcrDetail((d) => (d && d.id === n.id ? { ...d, acceptedBy: user?.name ?? "Client", acceptedAt: todayISO() } : d));
+    } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); }
+  };
+
+  const makeBastForNcr = async (n: StoreItem) => {
+    try {
+    const existing = (data.bast ?? []).find((b) => String(b.ncrId ?? "") === String(n.id));
+    if (existing) { toast(`NCR ${n.id} sudah tertaut ke BAST ${String(existing.id)}`, "info"); return; }
+    const created = await add("bast", {
+      projectId: String(n.project), milestone: `Tindak lanjut ${String(n.id)}: ${String(n.issue ?? "").slice(0, 80)}`,
+      tanggal: todayISO(), penandatangan: String(n.penerima ?? ""), lampiran: "",
+      amount: reworkCost(n), status: "Draft", ncrId: String(n.id),
+    }, { action: "membuat BAST dari NCR", target: `${String(n.id)}`, module: "QC" });
+    log("membuat BAST dari NCR", `${created.id} ← ${String(n.id)}`, "QC");
+    toast(`BAST draft ${created.id} dibuat & tertaut ke NCR ${String(n.id)}`);
     } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); }
   };
 
@@ -806,6 +855,8 @@ export default function QCSafety() {
                       <div className="flex items-center gap-2">
                         <p className="font-semibold text-navy-900 font-mono">{n.id}</p>
                         <Badge tone={n.severity === "Critical" ? "red" : n.severity === "Major" ? "amber" : "blue"}>{n.severity}</Badge>
+                        {n.penerima ? <span className="text-xs text-steel-500">→ {String(n.penerima)}</span> : null}
+                        {n.acceptedAt ? <Badge tone="green">Diterima owner {fmtTanggal(String(n.acceptedAt))}</Badge> : null}
                         {dueBadge(n)}
                         {needsFollowUp(n) && <Badge tone="amber">{S.badgeFollowup}</Badge>}
                         {Number(n.reworkHours || 0) > 0 || Number(n.reworkMaterial || 0) > 0 ? (
@@ -1191,6 +1242,12 @@ export default function QCSafety() {
               </select>
             </Field>
             <Field label={S.fTenggat}><input type="date" className="input" value={ncrForm.due} onChange={(e) => setNcrForm({ ...ncrForm, due: e.target.value })} /></Field>
+            <Field label="Penerima (owner/client)" hint="Owner yang berhak menekan Terima di detail NCR">
+              <select className="input" value={ncrForm.penerima} onChange={(e) => setNcrForm({ ...ncrForm, penerima: e.target.value })}>
+                <option value="">— Belum ditentukan —</option>
+                {data.clients.map((c) => <option key={String(c.id)} value={String(c.name)}>{String(c.name)}</option>)}
+              </select>
+            </Field>
             <Field label={S.fRootcat}>
               <select className="input" value={ncrForm.causeCat} onChange={(e) => setNcrForm({ ...ncrForm, causeCat: e.target.value })}>
                 {ROOT_CAUSES.map((r) => <option key={r}>{r}</option>)}
@@ -1204,14 +1261,7 @@ export default function QCSafety() {
 
       {/* Modal detail NCR */}
       <Modal open={ncrDetail !== null} onClose={() => setNcrDetail(null)} title={ncrDetail ? String(ncrDetail.id) : ""} subtitle={S.mNcrDetailS}
-        footer={ncrDetail && ncrDetail.status !== "Tertutup" ? <button className="btn-primary" onClick={() => {
-          const n = ncrDetail;
-          if (!n.due) { toast(S.tCapaLengkapi, "info"); return; }
-          const next = NCR_FLOW[NCR_FLOW.indexOf(n.status) + 1];
-          if (next === "Tertutup") { setClosingNcr(n); setVerifier(""); setVerifyNote(""); return; }
-          advanceNcr(n);
-          setNcrDetail({ ...n, status: next });
-        }}>{S.btnProsesNext}</button> : undefined}>
+        footer={ncrDetail && ncrDetail.status !== "Tertutup" ? <button className="btn-primary" onClick={() => { if (ncrDetail) void advanceNcr(ncrDetail); }}>{S.btnProsesNext}</button> : undefined}>
         {ncrDetail && (
           <div>
             <dl className="dl-div text-sm">
@@ -1220,6 +1270,46 @@ export default function QCSafety() {
               ))}
               <div className="flex justify-between gap-4"><dt className="text-steel-500">{S.dlStatus}</dt><dd><Badge tone={ncrTone[ncrDetail.status] ?? "gray"}>{ncrDetail.status}</Badge></dd></div>
             </dl>
+            <div className="mt-3 border-t border-steel-100 pt-3">
+              <p className="text-xs font-semibold text-steel-500">Bukti & CAPA (wajib saat Dalam Perbaikan)</p>
+              <dl className="dl-div mt-1 text-sm">
+                {([["Tindakan korektif", ncrDetail.corrective || "-"], ["PIC perbaikan", ncrDetail.capaPic || "-"], ["Foto/bukti URL", ncrDetail.photoUrl || "-"], ["Penerima (owner)", ncrDetail.penerima || "-"]] as [string, string][]).map(([k, v]) => (
+                  <div key={k} className="flex justify-between gap-4"><dt className="shrink-0 text-steel-500">{k}</dt><dd className="break-all text-right font-medium text-navy-900">{v}</dd></div>
+                ))}
+              </dl>
+              {ncrDetail.status !== "Tertutup" && (!ncrDetail.corrective || !ncrDetail.capaPic) && (
+                <button className="btn-secondary mt-2 text-xs" onClick={() => { setCapaFor(ncrDetail); setCapaForm({ corrective: String(ncrDetail.corrective ?? ""), pic: String(ncrDetail.capaPic ?? ""), photoUrl: String(ncrDetail.photoUrl ?? "") }); }}>Lengkapi bukti/CAPA</button>
+              )}
+            </div>
+            <div className="mt-3 border-t border-steel-100 pt-3">
+              <div className="flex items-center justify-between gap-2">
+                <p className="text-xs font-semibold text-steel-500">Owner acceptance</p>
+                {ncrDetail.acceptedAt ? <Badge tone="green">Diterima {String(ncrDetail.acceptedBy ?? "")} · {fmtTanggal(String(ncrDetail.acceptedAt))}</Badge> : <Badge tone="gray">Belum diterima</Badge>}
+              </div>
+              {!ncrDetail.acceptedAt && isClient && (
+                <button className="btn-primary mt-2 text-xs" onClick={() => void acceptNcr(ncrDetail)}>Terima (sebagai {user?.name ?? "client"})</button>
+              )}
+              {!ncrDetail.acceptedAt && !isClient && (
+                <p className="mt-1 text-xs text-steel-500">Menunggu penerimaan owner{ncrDetail.penerima ? ` (${String(ncrDetail.penerima)})` : ""} — tombol Terima hanya untuk peran client.</p>
+              )}
+            </div>
+            <div className="mt-3 border-t border-steel-100 pt-3">
+              <div className="flex items-center justify-between gap-2">
+                <p className="text-xs font-semibold text-steel-500">BAST terkait</p>
+                <button className="btn-secondary text-xs" onClick={() => void makeBastForNcr(ncrDetail)}>Buat BAST terkait</button>
+              </div>
+              {(() => {
+                const linked = (data.bast ?? []).filter((b) => String(b.ncrId ?? "") === String(ncrDetail.id));
+                if (linked.length === 0) return <p className="mt-1 text-xs text-steel-400">Belum ada BAST tertaut (ncrId).</p>;
+                return (
+                  <div className="mt-1 space-y-1">
+                    {linked.map((b) => (
+                      <p key={String(b.id)} className="text-xs text-steel-600"><span className="font-mono font-semibold text-navy-900">{String(b.id)}</span> · {String(b.milestone ?? "-")} · {String(b.status ?? "-")}</p>
+                    ))}
+                  </div>
+                );
+              })()}
+            </div>
             {ncrDetail.status !== "Tertutup" && (
               <div className="mt-3 flex gap-2">
                 <input type="date" className="input flex-1" value={dueDraft} onChange={(e) => setDueDraft(e.target.value)} aria-label={S.ariaTenggat} />
@@ -1294,6 +1384,18 @@ export default function QCSafety() {
         <div className="space-y-3">
           <Field label={S.fTglVerif}><input type="date" className="input" value={followUpForm.date} onChange={(e) => setFollowUpForm({ ...followUpForm, date: e.target.value })} /></Field>
           <Field label={S.fCatVerif}><textarea className="input" rows={3} value={followUpForm.note} onChange={(e) => setFollowUpForm({ ...followUpForm, note: e.target.value })} placeholder={S.phFollow} /></Field>
+        </div>
+      </Modal>
+
+      {/* Modal bukti/CAPA wajib (masuk Dalam Perbaikan) */}
+      <Modal open={capaFor !== null} onClose={() => setCapaFor(null)} title={capaFor ? `CAPA ${String(capaFor.id)}` : ""} subtitle="Wajib: tindakan korektif + PIC (foto URL opsional)"
+        footer={<><button className="btn-secondary" onClick={() => setCapaFor(null)}>{S.btnBatal}</button><button className="btn-primary" onClick={saveCapa}>Simpan & Proses ke Dalam Perbaikan</button></>}>
+        <div className="space-y-3">
+          <Field label="Tindakan korektif (corrective)"><textarea className="input" rows={3} value={capaForm.corrective} onChange={(e) => setCapaForm({ ...capaForm, corrective: e.target.value })} placeholder="Cth: gerinda ulang + las ulang seam 4, WPS-07" /></Field>
+          <FormGrid>
+            <Field label="PIC perbaikan"><input className="input" value={capaForm.pic} onChange={(e) => setCapaForm({ ...capaForm, pic: e.target.value })} placeholder="Nama PIC" /></Field>
+            <Field label="Foto/bukti URL (opsional)"><input className="input font-mono" value={capaForm.photoUrl} onChange={(e) => setCapaForm({ ...capaForm, photoUrl: e.target.value })} placeholder="https://…" /></Field>
+          </FormGrid>
         </div>
       </Modal>
 
