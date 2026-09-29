@@ -15,6 +15,8 @@ import {
   sortRows,
   toast,
   toggleSort,
+  SecureImg,
+  FileUploadButton,
 } from "../../components/ui";
 import type { SortState } from "../../components/ui";
 import { useStore } from "../../data/store";
@@ -111,7 +113,8 @@ export default function KaryawanDetail() {
   const [showCert, setShowCert] = useState(false);
   const [certForm, setCertForm] = useState({ name: "", expires: todayISO().slice(0, 7) });
   const [showDoc, setShowDoc] = useState(false);
-  const [docForm, setDocForm] = useState({ title: "", type: "Kontrak", status: "Berlaku" });
+  const [docForm, setDocForm] = useState({ title: "", type: "Kontrak", status: "Berlaku", fileUrl: "" });
+  const [docPreview, setDocPreview] = useState<StoreItem | null>(null);
   const [sort, setSort] = useState<SortState>({ key: null, dir: "asc" });
   const [sort2, setSort2] = useState<SortState>({ key: null, dir: "asc" });
   const [sort3, setSort3] = useState<SortState>({ key: null, dir: "asc" });
@@ -227,12 +230,13 @@ export default function KaryawanDetail() {
         status: docForm.status,
         updated: todayISO(),
         owner: emp.name,
+        ...(docForm.fileUrl.trim() ? { fileUrl: docForm.fileUrl.trim() } : {}),
       },
       { action: "menambah dokumen karyawan", module: "SDM" },
     );
     toast(S.tDocOk.replace("{n}", created.id));
     setShowDoc(false);
-    setDocForm({ title: "", type: "Kontrak", status: "Berlaku" });
+    setDocForm({ title: "", type: "Kontrak", status: "Berlaku", fileUrl: "" });
     } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); }
   };
 
@@ -250,7 +254,14 @@ export default function KaryawanDetail() {
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
         <Card className="p-5">
-          <h3 className="text-sm font-semibold text-navy-900">{S.cardProfil}</h3>
+          <div className="flex items-center gap-3">
+            <SecureImg src={emp.photo} alt={String(emp.name)} name={String(emp.name)} className="h-14 w-14 shrink-0 rounded-full object-cover text-base" />
+            <div className="min-w-0">
+              <h3 className="truncate text-sm font-semibold text-navy-900">{String(emp.name)}</h3>
+              <p className="text-xs text-steel-500">{String(emp.role)} · {String(emp.id)}</p>
+            </div>
+          </div>
+          <h3 className="mt-4 text-sm font-semibold text-navy-900">{S.cardProfil}</h3>
           <dl className="dl-div mt-3 text-sm">
             <div className="flex justify-between"><dt className="text-steel-500">{S.thJabatan}</dt><dd className="font-medium text-navy-900">{String(emp.role)}</dd></div>
             <div className="flex justify-between"><dt className="text-steel-500">{S.fDept}</dt><dd className="font-medium">{String(emp.dept)}</dd></div>
@@ -321,7 +332,7 @@ export default function KaryawanDetail() {
           <div className="mt-3 overflow-x-auto">
             <table className="w-full">
               <thead className="bg-surface sticky top-0 z-10">
-                <tr><SortTh label={S.thId} sortKey="id" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.thJudul} sortKey="title" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.thTipe} sortKey="type" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.dlStatus} sortKey="status" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.thUpdated} sortKey="updated" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /></tr>
+                <tr><SortTh label={S.thId} sortKey="id" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.thJudul} sortKey="title" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.thTipe} sortKey="type" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.dlStatus} sortKey="status" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.thUpdated} sortKey="updated" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={locale === "en" ? "File" : "Berkas"} sortKey="file" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /></tr>
               </thead>
               <tbody className="divide-y divide-steel-100">
                 {sortRows(docs, sort, (row, k) => {
@@ -332,6 +343,7 @@ export default function KaryawanDetail() {
                     case "type": return String(d.type ?? "");
                     case "status": return String(d.status ?? "");
                     case "updated": return String(d.updated ?? "");
+                    case "file": return String(d.fileUrl ?? "");
                     default: return "";
                   }
                 }).map((d) => (
@@ -341,6 +353,15 @@ export default function KaryawanDetail() {
                     <td className="td"><Badge tone="gray">{d.type}</Badge></td>
                     <td className="td"><StatusBadge status={String(d.status)} /></td>
                     <td className="td text-steel-600">{fmtTanggal(String(d.updated))}</td>
+                    <td className="td">
+                      {d.fileUrl ? (
+                        <button className="text-xs font-semibold text-ocean-600 underline" onClick={() => setDocPreview(d)}>
+                          {locale === "en" ? "Preview" : "Pratinjau"}
+                        </button>
+                      ) : (
+                        <span className="text-xs text-steel-400">-</span>
+                      )}
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -438,7 +459,7 @@ export default function KaryawanDetail() {
             <div className="overflow-x-auto">
               <table className="w-full">
                 <thead className="bg-surface sticky top-0 z-10">
-                  <tr><SortTh label={S.thId} sortKey="id" sort={sort4} onSort={(k) => setSort4((s) => toggleSort(s, k))} /><SortTh label={S.thTipe} sortKey="type" sort={sort4} onSort={(k) => setSort4((s) => toggleSort(s, k))} /><SortTh label={S.thPeriode} sortKey="period" sort={sort4} onSort={(k) => setSort4((s) => toggleSort(s, k))} /><SortTh label={S.thHari} sortKey="days" sort={sort4} onSort={(k) => setSort4((s) => toggleSort(s, k))} /><SortTh label={S.dlStatus} sortKey="status" sort={sort4} onSort={(k) => setSort4((s) => toggleSort(s, k))} /><SortTh label={S.thCatatan} sortKey="note" sort={sort4} onSort={(k) => setSort4((s) => toggleSort(s, k))} /></tr>
+                  <tr><SortTh label={S.thId} sortKey="id" sort={sort4} onSort={(k) => setSort4((s) => toggleSort(s, k))} /><SortTh label={S.thTipe} sortKey="type" sort={sort4} onSort={(k) => setSort4((s) => toggleSort(s, k))} /><SortTh label={S.thPeriode} sortKey="period" sort={sort4} onSort={(k) => setSort4((s) => toggleSort(s, k))} /><SortTh label={S.thHari} sortKey="days" sort={sort4} onSort={(k) => setSort4((s) => toggleSort(s, k))} /><SortTh label={S.dlStatus} sortKey="status" sort={sort4} onSort={(k) => setSort4((s) => toggleSort(s, k))} /><SortTh label={S.thCatatan} sortKey="note" sort={sort4} onSort={(k) => setSort4((s) => toggleSort(s, k))} /><SortTh label={locale === "en" ? "Attachment" : "Lampiran"} sortKey="file" sort={sort4} onSort={(k) => setSort4((s) => toggleSort(s, k))} /></tr>
                 </thead>
                 <tbody className="divide-y divide-steel-100">
                   {sortRows(leaveRows, sort4, (row, k) => {
@@ -450,6 +471,7 @@ export default function KaryawanDetail() {
                       case "days": return Number(l.days ?? 0);
                       case "status": return String(l.status ?? "");
                       case "note": return String(l.note ?? "");
+                      case "file": return String(l.fileUrl ?? "");
                       default: return "";
                     }
                   }).map((l) => (
@@ -460,6 +482,15 @@ export default function KaryawanDetail() {
                       <td className="td font-semibold">{S.daysN.replace("{n}", String(Number(l.days || 0)))}</td>
                       <td className="td"><StatusBadge status={String(l.status)} /></td>
                       <td className="td text-steel-600">{String(l.note || "-")}</td>
+                      <td className="td">
+                        {String(l.status) === "Disetujui" && l.fileUrl ? (
+                          <a className="text-xs font-semibold text-ocean-600 underline" href={String(l.fileUrl)} target="_blank" rel="noreferrer" title={String(l.fileUrl)}>
+                            {locale === "en" ? "Preview" : "Pratinjau"}
+                          </a>
+                        ) : (
+                          <span className="text-xs text-steel-400">-</span>
+                        )}
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -517,7 +548,33 @@ export default function KaryawanDetail() {
               </select>
             </Field>
           </FormGrid>
+          <Field label={locale === "en" ? "File URL" : "URL berkas"}>
+            <div className="flex flex-wrap items-center gap-2">
+              <input className="input flex-1 font-mono" value={docForm.fileUrl} onChange={(e) => setDocForm({ ...docForm, fileUrl: e.target.value })} placeholder="https://…" />
+              <FileUploadButton label={locale === "en" ? "Upload" : "Unggah"} onUploaded={(url) => setDocForm((f) => ({ ...f, fileUrl: url }))} />
+            </div>
+          </Field>
         </div>
+      </Modal>
+
+      <Modal
+        open={docPreview !== null}
+        onClose={() => setDocPreview(null)}
+        title={docPreview ? String(docPreview.title) : ""}
+        subtitle={docPreview ? `${String(docPreview.id)} · ${String(docPreview.type)}` : ""}
+      >
+        {docPreview?.fileUrl ? (
+          <div className="space-y-2">
+            {/\.(png|jpe?g|gif|webp)(\?|$)/i.test(String(docPreview.fileUrl)) ? (
+              <SecureImg src={String(docPreview.fileUrl)} alt={String(docPreview.title)} name={String(docPreview.title)} className="max-h-96 w-full rounded-xl border border-steel-200 object-contain" />
+            ) : (
+              <iframe title={String(docPreview.title)} src={String(docPreview.fileUrl)} className="h-96 w-full rounded-xl border border-steel-200" />
+            )}
+            <a className="block truncate text-xs font-semibold text-ocean-600 underline" href={String(docPreview.fileUrl)} target="_blank" rel="noreferrer">{String(docPreview.fileUrl)}</a>
+          </div>
+        ) : (
+          <p className="text-sm text-steel-400">-</p>
+        )}
       </Modal>
     </div>
   );

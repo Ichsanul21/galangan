@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import type { CSSProperties } from "react";
 import { Link } from "react-router-dom";
 import {
@@ -43,7 +43,8 @@ import {
 import type { SortState } from "../components/ui";
 import { useStore } from "../data/store";
 import { getSetting } from "../utils/settings";
-import { exportExcel, exportPDF } from "../utils/export";
+import { exportPDF } from "../utils/export";
+import writeXlsxFile from "write-excel-file/browser";
 import { fmtTanggal, fmtMiliar, fmtRupiah, todayISO } from "../utils/format";
 import { useT } from "../i18n/LanguageContext";
 import { n_misc } from "../i18n/n_misc";
@@ -60,7 +61,29 @@ import {
   inspectionTrend,
 } from "../data";
 
-const MONTHS = ["Jan", "Feb", "Mar", "Apr", "Mei", "Jun", "Jul", "Ags", "Sep", "Okt", "Nov", "Des"];
+const MON_ID = ["Jan", "Feb", "Mar", "Apr", "Mei", "Jun", "Jul", "Ags", "Sep", "Okt", "Nov", "Des"];
+
+/* Label sumbu "Mon YYYY" + putar series agar bulan berjalan jadi titik terakhir.
+   SEED TIDAK DIUBAH - transformasi murni untuk tampilan. */
+function withMonthLabels<T extends { month: string }>(arr: T[]): (T & { bln: string })[] {
+  const now = new Date();
+  const cur = now.getMonth(); // 0 = Jan
+  const pos = arr.findIndex((d) => d.month === MON_ID[cur]);
+  const rot = pos >= 0 ? [...arr.slice(pos + 1), ...arr.slice(0, pos + 1)] : [...arr];
+  const y = now.getFullYear();
+  return rot.map((d) => {
+    const mi = MON_ID.indexOf(d.month);
+    const yy = mi < 0 ? y : mi <= cur ? y : y - 1;
+    return { ...d, bln: `${d.month} ${yy}` };
+  });
+}
+
+/* Label "Mon YYYY" untuk k bulan ke depan dari bulan berjalan. */
+function futureLabel(k: number): string {
+  const d = new Date();
+  d.setMonth(d.getMonth() + k);
+  return `${MON_ID[d.getMonth()]} ${d.getFullYear()}`;
+}
 
 function round1(n: number): number {
   return Math.round(n * 10) / 10;
@@ -158,30 +181,34 @@ export default function Analytics() {
     color: ["#0b3a63", "#2e9ad4", "#22c55e"][i],
   }));
 
-  const totalRevenue = revenueSeries.reduce((s, d) => s + d.revenue, 0);
-  const avgRevenue = revenueSeries.length ? totalRevenue / revenueSeries.length : 0;
-  const lastRevPoint = revenueSeries[revenueSeries.length - 1];
-  const prevRevPoint = revenueSeries[revenueSeries.length - 2];
+  /* Series tampilan: label "Mon YYYY", bulan berjalan di posisi terakhir. */
+  const revDisp = useMemo(() => withMonthLabels(revenueSeries), []);
+  const marDisp = useMemo(() => withMonthLabels(marginSeries), []);
+  const inspDisp = useMemo(() => withMonthLabels(inspectionTrend), []);
+
+  const totalRevenue = revDisp.reduce((s, d) => s + d.revenue, 0);
+  const avgRevenue = revDisp.length ? totalRevenue / revDisp.length : 0;
+  const lastRevPoint = revDisp[revDisp.length - 1];
+  const prevRevPoint = revDisp[revDisp.length - 2];
   const revGrowth = prevRevPoint && prevRevPoint.revenue ? ((lastRevPoint.revenue - prevRevPoint.revenue) / prevRevPoint.revenue) * 100 : 0;
-  const avgMargin = marginSeries.length ? marginSeries.reduce((s, d) => s + d.margin, 0) / marginSeries.length : 0;
-  const lastMarginPoint = marginSeries[marginSeries.length - 1];
-  const prevMarginPoint = marginSeries[marginSeries.length - 2];
+  const avgMargin = marDisp.length ? marDisp.reduce((s, d) => s + d.margin, 0) / marDisp.length : 0;
+  const lastMarginPoint = marDisp[marDisp.length - 1];
+  const prevMarginPoint = marDisp[marDisp.length - 2];
   const marginDiff = lastMarginPoint && prevMarginPoint ? lastMarginPoint.margin - prevMarginPoint.margin : 0;
 
-  const last3 = revenueSeries.slice(-3);
+  const last3 = revDisp.slice(-3);
   const ma3 = last3.length ? last3.reduce((s, d) => s + d.revenue, 0) / last3.length : 0;
-  const lastMonthIdx = MONTHS.indexOf(lastRevPoint.month);
   const forecast = [
-    { name: lastRevPoint.month, actual: round1(lastRevPoint.revenue), forecast: round1(lastRevPoint.revenue) },
+    { name: lastRevPoint.bln, actual: round1(lastRevPoint.revenue), forecast: round1(lastRevPoint.revenue) },
     ...[1, 2, 3, 4].map((k) => ({
-      name: MONTHS[(lastMonthIdx + k + MONTHS.length) % MONTHS.length],
+      name: futureLabel(k),
       actual: null as number | null,
       forecast: round1(ma3),
     })),
   ];
   const forecastAnnual = Math.round(ma3 * 12);
 
-  const variance = revenueSeries.map((d) => ({ n: d.month, v: Math.round((d.revenue - avgRevenue) * 1000) }));
+  const variance = revDisp.map((d) => ({ n: d.bln, v: Math.round((d.revenue - avgRevenue) * 1000) }));
 
   const ncrTotal = data.ncr.length || 1;
   const ncrByType = new Map<string, number>();
@@ -309,13 +336,61 @@ export default function Analytics() {
   const lastUtil = data.projects.length ? avgProgress : 0;
   const utilTarget = 85;
 
-  const exportReport = () => {
-    const rows: (string | number)[][] = [
-      ["Bulan", "Pendapatan (M Rp)", "Biaya (M Rp)"],
-      ...revenueSeries.map((d) => [d.month, d.revenue, d.cost]),
-    ];
-    exportExcel(rows, "Laporan Analytics");
-    toast(S.tAnalyticsExported);
+  /* Ekspor LENGKAP satu workbook: KPI + drilldown + forecast + skenario + profit. */
+  const exportReport = async () => {
+    try {
+      const kpi: (string | number)[][] = [
+        ["Indikator", "Nilai"],
+        ["Pendapatan YTD (M Rp)", round1(totalRevenue)],
+        ["Rata-rata margin (%)", round1(avgMargin)],
+        ["Rata-rata progres (%)", avgProgress],
+        ["NCR terbuka", openNcr],
+        ["Forecast tahunan adj (M Rp)", forecastAnnualAdj],
+        ["Margin berjalan (%)", round1(marginLive)],
+        ["Slot konflik", dockConflict],
+        ["Stok kritis (item)", lowStock.length],
+        ["Proyek berisiko", atRisk],
+        ["Laba portofolio (M Rp)", profitByType.reduce((s, d) => s + d.profit, 0)],
+        ["Biaya rework (Rp)", reworkCost],
+      ];
+      const drill: (string | number)[][] = [
+        ["Kategori NCR", "Kejadian", "Dampak (%)"],
+        ...drilldown.map((d) => [d.factor, d.count, d.impact] as (string | number)[]),
+        [],
+        ["Cabang", "Pendapatan (M Rp)"],
+        ...branchRows.map(([b, v]) => [b, round1(v / 1000000000)] as (string | number)[]),
+      ];
+      const fc: (string | number)[][] = [
+        ["Bulan", "Aktual", "Forecast", "Batas bawah", "Batas atas"],
+        ...forecastAdj.map((f) => [f.name, f.actual ?? "-", f.forecast ?? "-", f.low ?? "-", f.high ?? ""] as (string | number)[]),
+      ];
+      const sc: (string | number)[][] = [
+        ["Skenario", "Growth %", "Cost %", "Prog %", "Forecast/thn (M Rp)"],
+        ...scenarios.map((s) => [s.name, s.growth, s.costAdj, s.progAdj, annualFor(s)] as (string | number)[]),
+      ];
+      const pf: (string | number)[][] = [
+        ["Tipe proyek", "Laba (M Rp)", "Jumlah proyek"],
+        ...profitByType.map((r) => [r.name, r.profit, r.count] as (string | number)[]),
+        [],
+        ["Cabang", "Laba (M Rp)", "Jumlah proyek"],
+        ...profitByBranch.map((r) => [r.name, r.profit, r.count] as (string | number)[]),
+        [],
+        ["Komponen rework", "Nilai (Rp)"],
+        ["Change order negatif", Math.round(negCo)],
+        [`Estimasi NCR (${openNcrProjects.size} proyek)`, Math.round(ncrEstimate)],
+        ["Total rework", reworkCost],
+      ];
+      await writeXlsxFile([
+        { data: kpi, sheet: "KPI" },
+        { data: drill, sheet: "Drilldown" },
+        { data: fc, sheet: "Forecast" },
+        { data: sc, sheet: "Skenario" },
+        { data: pf, sheet: "Profit" },
+      ]).toFile(`Laporan-Analytics-${todayISO()}.xlsx`);
+      toast(S.tAnalyticsExported);
+    } catch {
+      toast(S.tChartExportFailed, "info");
+    }
   };
 
   const exportPdfReport = () => {
@@ -359,9 +434,9 @@ export default function Analytics() {
                 <CardHeader title={S.revenueVsCost} subtitle={S.last12Months} action={<button className="btn-secondary px-2 py-1 text-xs" onClick={() => exportChartPNG("chart-rev", "pendapatan-vs-biaya")}>{S.exportPngBtn}</button>} />
                 <div id="chart-rev" className="h-60 p-4 pt-0 sm:h-72">
                   <ResponsiveContainer width="100%" height="100%">
-                    <BarChart data={revenueSeries} margin={{ top: 10, right: 10, left: -15, bottom: 0 }}>
+                    <BarChart data={revDisp} margin={{ top: 10, right: 10, left: -15, bottom: 0 }}>
                       <CartesianGrid strokeDasharray="3 3" stroke="#e9eff4" vertical={false} />
-                      <XAxis dataKey="month" tick={{ fontSize: 12 }} stroke="#8aa2b6" axisLine={false} tickLine={false} />
+                      <XAxis dataKey="bln" tick={{ fontSize: 12 }} stroke="#8aa2b6" axisLine={false} tickLine={false} />
                       <YAxis tick={{ fontSize: 12 }} stroke="#8aa2b6" axisLine={false} tickLine={false} />
                       <Tooltip content={<ChartTooltip formatter={(v) => `Rp ${v} M`} />} />
                       <Legend wrapperStyle={{ fontSize: 12 }} />
@@ -400,9 +475,9 @@ export default function Analytics() {
               <div className="grid grid-cols-1 gap-4 p-4 pt-0 lg:grid-cols-2">
                 <div className="h-56">
                   <ResponsiveContainer width="100%" height="100%">
-                    <LineChart data={marginSeries} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                    <LineChart data={marDisp} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
                       <CartesianGrid strokeDasharray="3 3" stroke="#e9eff4" />
-                      <XAxis dataKey="month" stroke="#8aa2b6" axisLine={false} tickLine={false} />
+                      <XAxis dataKey="bln" stroke="#8aa2b6" axisLine={false} tickLine={false} />
                       <YAxis domain={[15, 35]} stroke="#8aa2b6" axisLine={false} tickLine={false} />
                       <Tooltip content={<ChartTooltip formatter={(v) => `${v}%`} />} />
                       <Line type="monotone" dataKey="margin" name={S.legendMargin} stroke="#0d9488" strokeWidth={2.5} dot={{ r: 3 }} isAnimationActive={false} />
@@ -411,9 +486,9 @@ export default function Analytics() {
                 </div>
                 <div className="h-56">
                   <ResponsiveContainer width="100%" height="100%">
-                    <ComposedChart data={inspectionTrend} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                    <ComposedChart data={inspDisp} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
                       <CartesianGrid strokeDasharray="3 3" stroke="#e9eff4" />
-                      <XAxis dataKey="month" stroke="#8aa2b6" axisLine={false} tickLine={false} />
+                      <XAxis dataKey="bln" stroke="#8aa2b6" axisLine={false} tickLine={false} />
                       <YAxis stroke="#8aa2b6" axisLine={false} tickLine={false} />
                       <Tooltip />
                       <Legend wrapperStyle={{ fontSize: 12 }} />
@@ -747,32 +822,36 @@ export default function Analytics() {
       {/* Section cetak PDF tersembunyi: TANPA chart/grafik — SVG recharts berisiko
           blank saat di-raster oleh html2canvas, jadi hanya KPI + tabel + list teks. */}
       <div id="analytics-pdf" style={{ position: "absolute", left: -9999, top: 0, width: 1000, background: "#ffffff", padding: 24, fontSize: 12, color: "#000" }}>
-        <div style={{ textAlign: "center", borderBottom: "3px solid #0B3A63", paddingBottom: 12, marginBottom: 12 }}>
+        <div style={{ textAlign: "center", borderBottom: "3px solid #0B3A63", paddingBottom: 12, marginBottom: 12, breakInside: "avoid", pageBreakInside: "avoid" }}>
           <p style={{ fontWeight: 800, fontSize: 18, color: "#0B3A63", margin: 0 }}>PT. SYUKUR BERSAUDARA</p>
           <p style={{ fontSize: 11, color: "#33475B", margin: 0 }}>PERUSAHAAN GALANGAN DAN INDUSTRI KAPAL</p>
           <p style={{ fontSize: 10, color: "#52697C", margin: 0 }}>KANTOR PUSAT SAMARINDA - KALIMANTAN TIMUR</p>
         </div>
-        <h1 style={{ fontSize: 18, fontWeight: 700 }}>ISMS Galangan - Laporan Analytics</h1>
-        <p style={{ fontSize: 11 }}>{fmtTanggal(todayISO())}</p>
+        <div style={{ breakInside: "avoid", pageBreakInside: "avoid" }}>
+          <h1 style={{ fontSize: 18, fontWeight: 700 }}>ISMS Galangan - Laporan Analytics</h1>
+          <p style={{ fontSize: 11 }}>{fmtTanggal(todayISO())}</p>
+        </div>
 
-        <h2 style={{ fontSize: 14, fontWeight: 700, marginTop: 16 }}>{S.tabDescriptive}</h2>
-        <p style={{ fontSize: 11 }}>
-          {S.kpiRevenueYtd}: Rp {totalRevenue.toLocaleString("id-ID", { maximumFractionDigits: 1 })} M
-          ({revGrowth >= 0 ? "+" : ""}{revGrowth.toLocaleString("id-ID", { maximumFractionDigits: 1 })}%) ·{" "}
-          {S.kpiAvgMargin}: {avgMargin.toLocaleString("id-ID", { maximumFractionDigits: 1 })}%
-          ({marginDiff >= 0 ? "+" : ""}{marginDiff.toLocaleString("id-ID", { maximumFractionDigits: 1 })}pt) ·{" "}
-          {S.kpiAvgProgress}: {avgProgress}% · {S.kpiOpenNcr}: {openNcr}
-        </p>
+        <div style={{ breakInside: "avoid", pageBreakInside: "avoid" }}>
+          <h2 style={{ fontSize: 14, fontWeight: 700, marginTop: 16 }}>{S.tabDescriptive}</h2>
+          <p style={{ fontSize: 11 }}>
+            {S.kpiRevenueYtd}: Rp {totalRevenue.toLocaleString("id-ID", { maximumFractionDigits: 1 })} M
+            ({revGrowth >= 0 ? "+" : ""}{revGrowth.toLocaleString("id-ID", { maximumFractionDigits: 1 })}%) ·{" "}
+            {S.kpiAvgMargin}: {avgMargin.toLocaleString("id-ID", { maximumFractionDigits: 1 })}%
+            ({marginDiff >= 0 ? "+" : ""}{marginDiff.toLocaleString("id-ID", { maximumFractionDigits: 1 })}pt) ·{" "}
+            {S.kpiAvgProgress}: {avgProgress}% · {S.kpiOpenNcr}: {openNcr}
+          </p>
+        </div>
         <table style={pdfTable}>
           <thead><tr><th style={pdfTh}>Bulan</th><th style={pdfTh}>Pendapatan (M Rp)</th><th style={pdfTh}>Biaya (M Rp)</th></tr></thead>
           <tbody>
-            {revenueSeries.map((d) => (
-              <tr key={d.month}><td style={pdfTd}>{d.month}</td><td style={pdfTd}>{d.revenue}</td><td style={pdfTd}>{d.cost}</td></tr>
+            {revDisp.map((d) => (
+              <tr key={d.bln}><td style={pdfTd}>{d.bln}</td><td style={pdfTd}>{d.revenue}</td><td style={pdfTd}>{d.cost}</td></tr>
             ))}
           </tbody>
         </table>
 
-        <h2 style={{ fontSize: 14, fontWeight: 700, marginTop: 16 }}>{S.tabDiagnostic}</h2>
+        <h2 style={{ fontSize: 14, fontWeight: 700, marginTop: 16, breakAfter: "avoid", pageBreakAfter: "avoid" }}>{S.tabDiagnostic}</h2>
         <table style={pdfTable}>
           <thead><tr><th style={pdfTh}>{S.sortCategory}</th><th style={pdfTh}>{S.sortIncidents}</th><th style={pdfTh}>{S.sortImpact}</th></tr></thead>
           <tbody>
@@ -789,7 +868,7 @@ export default function Analytics() {
             ))}
           </tbody>
         </table>
-        <ul style={{ fontSize: 11, paddingLeft: 16 }}>
+        <ul style={{ fontSize: 11, paddingLeft: 16, breakInside: "avoid", pageBreakInside: "avoid" }}>
           {fishbones.map((f) => (
             <li key={f.tulang}><strong>{f.tulang}:</strong> {f.sebab.join("; ")}</li>
           ))}
@@ -803,8 +882,8 @@ export default function Analytics() {
           </tbody>
         </table>
 
-        <h2 style={{ fontSize: 14, fontWeight: 700, marginTop: 16 }}>{S.tabPredictive}</h2>
-        <p style={{ fontSize: 11 }}>
+        <h2 style={{ fontSize: 14, fontWeight: 700, marginTop: 16, breakAfter: "avoid", pageBreakAfter: "avoid" }}>{S.tabPredictive}</h2>
+        <p style={{ fontSize: 11, breakInside: "avoid", pageBreakInside: "avoid" }}>
           {S.forecastAnnual}: Rp {forecastAnnualAdj.toLocaleString("id-ID")} M · {S.kpiAvgMargin}: {marginLive.toLocaleString("id-ID", { maximumFractionDigits: 1 })}% ·{" "}
           {S.drydockConflict}: {dockConflict} · {S.criticalStock}: {lowStock.length} · {S.riskyProjects}: {atRisk}
         </p>
@@ -827,19 +906,23 @@ export default function Analytics() {
           </table>
         )}
 
-        <h2 style={{ fontSize: 14, fontWeight: 700, marginTop: 16 }}>{S.tabPrescriptive}</h2>
-        <ol style={{ fontSize: 11, paddingLeft: 16 }}>
-          <li><strong>{S.allocDrydock}:</strong> {S.allocDrydockDesc}</li>
-          <li><strong>{S.reorderMaterial}:</strong> {S.reorderDesc.replace("{n}", String(lowStock.length))}</li>
-          <li><strong>{S.projectPriority}:</strong> {S.projectPriorityDesc.replace("{n}", String(atRisk))}</li>
-          <li><strong>{S.followUpNcr}:</strong> {S.followUpNcrDesc.replace("{n}", String(openNcr))}</li>
-        </ol>
+        <div style={{ breakInside: "avoid", pageBreakInside: "avoid" }}>
+          <h2 style={{ fontSize: 14, fontWeight: 700, marginTop: 16 }}>{S.tabPrescriptive}</h2>
+          <ol style={{ fontSize: 11, paddingLeft: 16 }}>
+            <li><strong>{S.allocDrydock}:</strong> {S.allocDrydockDesc}</li>
+            <li><strong>{S.reorderMaterial}:</strong> {S.reorderDesc.replace("{n}", String(lowStock.length))}</li>
+            <li><strong>{S.projectPriority}:</strong> {S.projectPriorityDesc.replace("{n}", String(atRisk))}</li>
+            <li><strong>{S.followUpNcr}:</strong> {S.followUpNcrDesc.replace("{n}", String(openNcr))}</li>
+          </ol>
+        </div>
 
-        <h2 style={{ fontSize: 14, fontWeight: 700, marginTop: 16 }}>{S.tabProfitability}</h2>
-        <p style={{ fontSize: 11 }}>
-          {S.totalPortfolioProfit}: {fmtMiliar(profitByType.reduce((s, d) => s + d.profit * 1000000000, 0))} ·{" "}
-          {S.reworkCost}: {fmtRupiah(reworkCost)} · {S.utilVsTarget}: {lastUtil}% / {utilTarget}%
-        </p>
+        <div style={{ breakInside: "avoid", pageBreakInside: "avoid" }}>
+          <h2 style={{ fontSize: 14, fontWeight: 700, marginTop: 16 }}>{S.tabProfitability}</h2>
+          <p style={{ fontSize: 11 }}>
+            {S.totalPortfolioProfit}: {fmtMiliar(profitByType.reduce((s, d) => s + d.profit * 1000000000, 0))} ·{" "}
+            {S.reworkCost}: {fmtRupiah(reworkCost)} · {S.utilVsTarget}: {lastUtil}% / {utilTarget}%
+          </p>
+        </div>
         <table style={pdfTable}>
           <thead><tr><th style={pdfTh}>{S.projectLabel}</th><th style={pdfTh}>{S.profitLabel} (M Rp)</th><th style={pdfTh}>{S.itemCountSuffix.replace("{n}", "")}</th></tr></thead>
           <tbody>

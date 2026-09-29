@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
-import { useNavigate, useSearchParams } from "react-router-dom";
-import { Plus, Search, Anchor, Wallet, TrendingUp, Clock, ChevronLeft, ChevronRight } from "lucide-react";
+import { useNavigate, useSearchParams, Link } from "react-router-dom";
+import { Plus, Search, Anchor, Wallet, TrendingUp, Clock } from "lucide-react";
 import {
   Card,
   PageHeader,
@@ -8,9 +8,7 @@ import {
   ProgressBar,
   Badge,
   KpiCard,
-  Modal,
   Field,
-  toast,
   SortTh,
   toggleSort,
   sortRows,
@@ -63,7 +61,7 @@ const prioritasTone: Record<string, "gray" | "blue" | "amber" | "red"> = {
 export default function Projects() {
   const { locale } = useT();
   const S = n_prj[locale];
-  const { data, add, update, log, inBranch } = useStore();
+  const { data, add, update, inBranch } = useStore();
   const modAlert = useModuleAlert("proyek");
   const flash = useNotifFlash();
   const notified = useMemo(() => new Set(modAlert.items.map((a) => a.rowId)), [modAlert.items]);
@@ -90,10 +88,7 @@ export default function Projects() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-  const [mundurFor, setMundurFor] = useState<StoreItem | null>(null);
-  const [mundurReason, setMundurReason] = useState("");
-  const [majuFor, setMajuFor] = useState<StoreItem | null>(null);
-  const [majuReason, setMajuReason] = useState("");
+  // Edit tahap HANYA via detail (stepper + modal alasan di ProjectDetail).
 
   // Terlambat otomatis dari due (menggantikan flag manual): proyek berjalan yang
   // lewat tanggal selesai & progres < 100% otomatis berstatus Terlambat.
@@ -140,65 +135,6 @@ export default function Projects() {
     if (idx >= 0) { flash.pick(rowId, idx, pager.go, pager.size); return; }
     flash.pick(rowId, -1, () => {}, 100);
   };
-
-  const confirmMaju = async () => {
-    if (!majuFor) return;
-    if (!majuReason.trim()) { toast(S.prjToastReasonReq, "info"); return; }
-    const idx = TAHAP.indexOf(tahapOf(majuFor));
-    if (idx < 0 || idx >= TAHAP.length - 1) { setMajuFor(null); return; }
-    const from = TAHAP[idx];
-    const to = TAHAP[idx + 1];
-    // E1 gate: Desain → Produksi butuh Class Approval Disetujui.
-    if (from === "Desain" && to === "Produksi") {
-      const stages = (majuFor.designStages ?? []) as { name: string; status: string }[];
-      const ca = stages.find((s) => s.name === "Class Approval");
-      if (!ca || ca.status !== "Disetujui") {
-        toast(S.prjToastGate, "info");
-        return;
-      }
-    }
-    // Gate kontrak: tahap awal dikunci bila proyek hasil konversi belum punya kontrak.
-    if (idx <= 2 && majuFor.quotationId && !hasContract(majuFor, data.contracts ?? [])) {
-      toast(`Tahap ${from} dikunci - buat kontrak untuk quotation ${majuFor.quotationId} dulu`, "info");
-      return;
-    }
-    try {
-      // Aturan silang tahap×status: masuk Handover berarti selesai.
-      const patch: Record<string, unknown> = {
-        tahap: to,
-        tahapLog: [...(majuFor.tahapLog ?? []), { from: tahapOf(majuFor), to, date: todayISO(), by: "Anda", reason: majuReason.trim() }],
-        ...(to === "Handover" ? { status: "Selesai" } : {}),
-      };
-      await update("projects", majuFor.id, patch);
-      log("memajukan tahap", `${majuFor.id} → ${to} (alasan: ${majuReason.trim()})${to === "Handover" ? " + status Selesai" : ""}`, "Proyek");
-      toast(S.prjToastAdvance.replace("{a}", majuFor.id).replace("{b}", to));
-      setMajuFor(null);
-      setMajuReason("");
-    } catch (e) {
-      toast(e instanceof Error ? e.message : S.prjToastSaveFail.replace("{a}", majuFor.id), "info");
-    }
-  };
-
-  const confirmMundur = async () => {
-    if (!mundurFor) return;
-    if (!mundurReason.trim()) { toast(S.prjToastReasonReq, "info"); return; }
-    const idx = TAHAP.indexOf(tahapOf(mundurFor));
-    if (idx <= 0) { setMundurFor(null); return; }
-    const to = TAHAP[idx - 1];
-    try {
-      await update("projects", mundurFor.id, {
-        tahap: to,
-        tahapLog: [...(mundurFor.tahapLog ?? []), { from: tahapOf(mundurFor), to, date: todayISO(), by: "Anda", reason: mundurReason.trim() }],
-      });
-      log("menurunkan tahap", `${mundurFor.id} → ${to} (alasan: ${mundurReason.trim()})`, "Proyek");
-      toast(S.prjToastPulled.replace("{a}", mundurFor.id).replace("{b}", to));
-      setMundurFor(null);
-      setMundurReason("");
-    } catch (e) {
-      toast(e instanceof Error ? e.message : S.prjToastSaveFail.replace("{a}", mundurFor.id), "info");
-    }
-  };
-
 
   return (
     <div>
@@ -350,22 +286,13 @@ export default function Projects() {
                       <div className="flex items-center gap-1">
                         <Badge tone="navy">{tahapOf(p)}</Badge>
                         <span className="text-[11px] text-steel-400">{tahapIdx + 1}/{TAHAP.length}</span>
-                        <button
-                          className="rounded p-1 text-steel-400 hover:bg-steel-100 hover:text-navy-700 disabled:opacity-30 disabled:hover:bg-transparent"
-                           title={S.prjStepBackTitle}
-                          disabled={tahapIdx <= 0}
-                          onClick={(e) => { e.stopPropagation(); setMundurFor(p); }}
+                        <Link
+                          to={`/proyek/${p.id}`}
+                          onClick={(e) => e.stopPropagation()}
+                          className="ml-1 whitespace-nowrap text-xs font-semibold text-ocean-600 hover:underline"
                         >
-                          <ChevronLeft className="h-3.5 w-3.5" />
-                        </button>
-                        <button
-                          className="rounded p-1 text-steel-400 hover:bg-steel-100 hover:text-navy-700 disabled:opacity-30 disabled:hover:bg-transparent"
-                           title={S.prjStepNextTitle}
-                          disabled={tahapIdx < 0 || tahapIdx >= TAHAP.length - 1}
-                          onClick={(e) => { e.stopPropagation(); setMajuFor(p); setMajuReason(""); }}
-                        >
-                          <ChevronRight className="h-3.5 w-3.5" />
-                        </button>
+                          {locale === "en" ? "Manage in detail" : "Kelola di detail"}
+                        </Link>
                       </div>
                     </td>
                     <td className="td">
@@ -402,40 +329,6 @@ export default function Projects() {
         employees={data.employees}
         add={add}
       />
-
-      <Modal
-        open={majuFor !== null}
-        onClose={() => { setMajuFor(null); setMajuReason(""); }}
-        title={S.prjPushTitle.replace("{a}", majuFor?.vessel ?? "")}
-        subtitle={majuFor ? S.prjPushSub.replace("{a}", majuFor.id).replace("{b}", tahapOf(majuFor)).replace("{c}", TAHAP[TAHAP.indexOf(tahapOf(majuFor)) + 1] ?? "-") : ""}
-        footer={
-          <>
-            <button className="btn-secondary" onClick={() => { setMajuFor(null); setMajuReason(""); }}>{S.cancelBtn}</button>
-            <button className="btn-primary" onClick={confirmMaju}>{S.prjPushBtn}</button>
-          </>
-        }
-      >
-        <Field label={S.prjPushReason} hint={S.prjPullReasonHint}>
-          <textarea className="input" rows={3} value={majuReason} onChange={(e) => setMajuReason(e.target.value)} placeholder={S.prjPushReasonPh} />
-        </Field>
-      </Modal>
-
-      <Modal
-        open={mundurFor !== null}
-        onClose={() => { setMundurFor(null); setMundurReason(""); }}
-        title={S.prjPullTitle.replace("{a}", mundurFor?.vessel ?? "")}
-        subtitle={mundurFor ? S.prjPullSub.replace("{a}", mundurFor.id).replace("{b}", tahapOf(mundurFor)).replace("{c}", TAHAP[TAHAP.indexOf(tahapOf(mundurFor)) - 1] ?? "-") : ""}
-        footer={
-          <>
-            <button className="btn-secondary" onClick={() => { setMundurFor(null); setMundurReason(""); }}>{S.cancelBtn}</button>
-            <button className="btn-primary" onClick={confirmMundur}>{S.prjPullBtn}</button>
-          </>
-        }
-      >
-        <Field label={S.prjPullReason} hint={S.prjPullReasonHint}>
-          <textarea className="input" rows={3} value={mundurReason} onChange={(e) => setMundurReason(e.target.value)} placeholder={S.prjPullReasonPh} />
-        </Field>
-      </Modal>
     </div>
   );
 }

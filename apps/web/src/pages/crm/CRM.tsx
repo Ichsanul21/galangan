@@ -88,7 +88,7 @@ export default function CRM() {
   const [sendMsg, setSendMsg] = useState("");
   const [commForm, setCommForm] = useState({ quotationId: "", channel: "Email", date: todayISO(), summary: "", by: "" });
   const [contractForm, setContractForm] = useState({ quotationId: "", value: "", signedAt: todayISO(), projectId: "" });
-  const [surveyForm, setSurveyForm] = useState({ clientId: "", rating: "5" });
+  const [surveyForm, setSurveyForm] = useState({ clientId: "", rating: "5", desc: "" });
   const [showReq, setShowReq] = useState(false);
   const [reqForm, setReqForm] = useState({ vessel: "", client: "", kind: "Repair Request", scope: "", value: "", date: todayISO() });
   const [poForm, setPoForm] = useState({ contractId: "", projectId: "", no: "", amount: "", date: todayISO() });
@@ -266,6 +266,7 @@ export default function CRM() {
     }, { action: "membuat penawaran", module: "CRM" });
     toast(S.tQuoteCreated.replace("{n}", created.id));
     setShowQ(false);
+    setTab("Penawaran");
     setQForm({ client: "", vessel: "", type: "New Build", value: "", stage: "Lead", date: todayISO() });
     } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); }
   };
@@ -327,10 +328,11 @@ export default function CRM() {
     const c = clients.find((x) => x.id === surveyForm.clientId);
     if (!c) return;
     const next = [...(Array.isArray(c.survei) ? c.survei : []), r];
-    await update("clients", c.id, { survei: next });
-    log("mencatat survei kepuasan", `${c.name} rating ${r}`, "CRM");
+    const nextDesc = [...(Array.isArray(c.surveiCatatan) ? c.surveiCatatan : []), surveyForm.desc.trim()];
+    await update("clients", c.id, { survei: next, surveiCatatan: nextDesc });
+    log("mencatat survei kepuasan", `${c.name} rating ${r}${surveyForm.desc.trim() ? ` - ${surveyForm.desc.trim()}` : ""}`, "CRM");
     toast(S.tSurveySaved.replace("{n}", String(c.name)));
-    setSurveyForm({ clientId: "", rating: "5" });
+    setSurveyForm({ clientId: "", rating: "5", desc: "" });
     } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); }
   };
 
@@ -922,6 +924,9 @@ export default function CRM() {
                       <div className="min-w-0 flex-1">
                         <p className="truncate font-semibold text-navy-900" title={String(c.name)}>{String(c.name)}</p>
                         <p className="text-xs text-steel-500">{S.satDetail.replace("{a}", String(Array.isArray(c.survei) ? c.survei.length : 0)).replace("{b}", surveyAvg(c) ? surveyAvg(c).toFixed(1) : "-")}</p>
+                        {String((Array.isArray(c.surveiCatatan) ? c.surveiCatatan : []).filter((x: unknown) => String(x ?? "").trim() !== "").slice(-1)[0] ?? "") !== "" && (
+                          <p className="mt-0.5 truncate text-xs italic text-steel-500" title={String((Array.isArray(c.surveiCatatan) ? c.surveiCatatan : []).slice(-1)[0] ?? "")}>“{String((Array.isArray(c.surveiCatatan) ? c.surveiCatatan : []).slice(-1)[0] ?? "")}”</p>
+                        )}
                       </div>
                       <Badge tone={surveyAvg(c) >= 4 ? "green" : surveyAvg(c) >= 3 ? "amber" : "gray"}>
                         <Star className="h-3 w-3 mr-0.5" /> {surveyAvg(c) ? surveyAvg(c).toFixed(1) : "-"}
@@ -943,6 +948,9 @@ export default function CRM() {
                     <select className="input" value={surveyForm.rating} onChange={(e) => setSurveyForm({ ...surveyForm, rating: e.target.value })}>
                       {["1", "2", "3", "4", "5"].map((r) => <option key={r}>{r}</option>)}
                     </select>
+                  </Field>
+                  <Field label={S.descLabel}>
+                    <textarea className="input" rows={2} value={surveyForm.desc} onChange={(e) => setSurveyForm({ ...surveyForm, desc: e.target.value })} placeholder={S.surveyDescPh} />
                   </Field>
                   <button className="btn-primary w-full justify-center" onClick={saveSurvey}>{S.saveSurveyBtn}</button>
                 </div>

@@ -15,6 +15,7 @@ import {
   Badge,
   toast,
   Avatar,
+  SecureImg,
   SortTh,
   toggleSort,
   sortRows,
@@ -1048,7 +1049,11 @@ export default function ProjectDetail() {
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
                 {team.map((e) => (
                   <Card key={e.id} className="flex items-center gap-3 p-4">
-                    <Avatar name={e.name} className="h-10 w-10 shrink-0" />
+                    {e.photo ? (
+                      <SecureImg src={String(e.photo)} alt={String(e.name)} name={String(e.name)} className="h-10 w-10 shrink-0 rounded-full object-cover" />
+                    ) : (
+                      <Avatar name={String(e.name)} className="h-10 w-10 shrink-0" />
+                    )}
                     <div className="min-w-0 flex-1">
                       <p className="truncate text-sm font-semibold text-navy-900">{e.name}</p>
                       <p className="text-xs text-steel-500">{e.role} · {e.dept}</p>
@@ -1441,7 +1446,10 @@ export default function ProjectDetail() {
           <div className="flex items-center gap-2">
             <FileUploadButton accept=".png,.jpg,.jpeg" label={S.detPhotoUpload} onUploaded={(url) => setWbsUpdateForm((v) => ({ ...v, photoUrl: url }))} />
             {wbsUpdateForm.photoUrl ? (
-              <a className="text-xs font-semibold text-ocean-600 underline" href={wbsUpdateForm.photoUrl} target="_blank" rel="noreferrer">{S.detPhotoSee}</a>
+              <span className="flex flex-wrap items-center gap-2">
+                <SecureImg src={wbsUpdateForm.photoUrl} alt="Foto WBS" name="WBS" className="h-14 w-20 rounded-lg border border-steel-200 object-cover" />
+                <a className="text-xs font-semibold text-ocean-600 underline" href={wbsUpdateForm.photoUrl} target="_blank" rel="noreferrer">{S.detPhotoSee}</a>
+              </span>
             ) : null}
           </div>
           <Field label={S.statusLabel}>

@@ -30,8 +30,9 @@ import {
   Tooltip,
   ResponsiveContainer,
 } from "recharts";
+import { QRCodeSVG } from "qrcode.react";
 import { Card, CardHeader, PageHeader, Badge, KpiCard, Tabs, ChartTooltip, Modal, Field, FormGrid, toast, EmptyState, ProgressBar, SortTh, toggleSort, sortRows, usePager, useDebouncedValue,
-  NumInput,
+  NumInput, SecureImg,
 } from "../../components/ui";
 import type { SortState } from "../../components/ui";
 import { useStore, type StoreItem } from "../../data/store";
@@ -47,7 +48,38 @@ import { n_inv } from "../../i18n/n_inv";
 import { AlertBannerView, notifRowId, useModuleAlert, useNotifFlash } from "../../components/AlertBanner";
 import { stockTrend, itemTrend, lowStockTrend, stockValueTrend, warehouseTrend } from "../../data";
 
-const emptyForm = { name: "", category: "Baja", sku: "", warehouse: "Gudang Baja A", rack: "", bin: "", stock: "0", minStock: "0", unit: "pcs", cost: "0", volume: "0", batch: "", uom2: "", konversi: "", minWh: "", photoUrl: "" };
+const emptyForm = { name: "", category: "Baja", sku: "", warehouse: "Gudang Baja A", rack: "", bin: "", stock: "0", minStock: "0", unit: "pcs", cost: "0", volume: "0", batch: "", uom2: "", konversi: "", minWh: "", photoUrl: "", matType: "habis-pakai" };
+
+/* Jenis material: habis-pakai | retur | service. */
+const MAT_TYPES = ["habis-pakai", "retur", "service"] as const;
+function matTypeOf(it: StoreItem): string {
+  const v = String(it.matType ?? "habis-pakai").trim().toLowerCase();
+  return (MAT_TYPES as readonly string[]).includes(v) ? v : "habis-pakai";
+}
+function matTone(t: string): "gray" | "blue" | "teal" {
+  return t === "retur" ? "blue" : t === "service" ? "teal" : "gray";
+}
+
+const INV_ID_MON = ["Jan", "Feb", "Mar", "Apr", "Mei", "Jun", "Jul", "Agu", "Sep", "Okt", "Nov", "Des"];
+const INV_EN_MON = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+/* Label "Mon YYYY" untuk deret statis, bulan berjalan terakhir. */
+function invTrailingLabels(n: number, locale: string): string[] {
+  const now = new Date();
+  const M = locale === "en" ? INV_EN_MON : INV_ID_MON;
+  const out: string[] = [];
+  for (let i = n - 1; i >= 0; i--) {
+    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+    out.push(`${M[d.getMonth()]} ${d.getFullYear()}`);
+  }
+  return out;
+}
+
+/* Nomor DO format RawData: nn/DO-SB/SMD/m/yyyy. */
+const ROMAWII = ["I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X", "XI", "XII"];
+function doNumber(seq: number, date = new Date()): string {
+  return `${String(seq).padStart(2, "0")}/DO-SB/SMD/${ROMAWII[date.getMonth()]}/${date.getFullYear()}`;
+}
 
 /* Kebutuhan BOM TB Samudra Jaya 07 - dicocokkan ke data inventori aktual. */
 const BOM_NEEDS = [
@@ -66,6 +98,19 @@ function moveLabel(type: string): string {
   if (type === "Transfer") return "Transfer";
   if (type === "Retur") return "Retur";
   return type;
+}
+/* Gudang asal/tujuan pergerakan: transfer dari by ("A → B"), GR dari supplier, GI ke purpose. */
+function whFlowOf(m: StoreItem): string {
+  if (String(m.type ?? "") === "Transfer") return String(m.by ?? "-");
+  const parts: string[] = [];
+  if (m.supplier) parts.push(`dari ${String(m.supplier)}`);
+  if (m.purpose) parts.push(`ke ${String(m.purpose)}`);
+  return parts.length > 0 ? parts.join(" · ") : "-";
+}
+function grGiTip(type: string, locale: string): string {
+  if (type === "Penerimaan") return locale === "en" ? "GR = goods in (Goods Receive)" : "GR = barang masuk (Goods Receive)";
+  if (type === "Pengeluaran") return locale === "en" ? "GI = goods out (Goods Issue)" : "GI = barang keluar (Goods Issue)";
+  return String(type);
 }
 
 function moveTone(type: string, tone: string): "green" | "amber" | "blue" | "navy" | "red" | "gray" {
@@ -310,6 +355,7 @@ export default function Inventory() {
   const [cat, setCat] = useState("Semua");
   const [wh, setWh] = useState("Semua");
   const [abcF, setAbcF] = useState("Semua");
+  const [matF, setMatF] = useState("Semua");
   const [sort, setSort] = useState<SortState>({ key: null, dir: "asc" });
   const [sort2, setSort2] = useState<SortState>({ key: null, dir: "asc" });
   const [sort3, setSort3] = useState<SortState>({ key: null, dir: "asc" });
@@ -353,6 +399,9 @@ export default function Inventory() {
   const [reservQtyInput, setReservQtyInput] = useState("");
   const photoInputRef = useRef<HTMLInputElement | null>(null);
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
+  /* Preset plat roll→meter: panjang × lebar (m). */
+  const [platP, setPlatP] = useState("6");
+  const [platL, setPlatL] = useState("1.5");
   // Kalkulator tonase plat (RawData PERHITUNGAN + TABLE TONASE): P×L×T×7850.
   const [tonP, setTonP] = useState("6010");
   const [tonL, setTonL] = useState("1810");
@@ -390,6 +439,33 @@ export default function Inventory() {
     const nums = docs.flatMap((d) => [parseSjSeq(d.sbRef), parseSjSeq(d.id)]);
     return maxSeq(nums.map(String), /(\d+)$/) + 1;
   };
+  // Delivery Order penuh: nomor nn/DO-SB/SMD/m/yyyy + cetak + link ke Surat Jalan.
+  const [doTo, setDoTo] = useState("");
+  const [doDate, setDoDate] = useState(todayISO());
+  const [doSjId, setDoSjId] = useState("");
+  const [doDriver, setDoDriver] = useState("");
+  const [doItems, setDoItems] = useState<{ name: string; qty: string }[]>([{ name: "", qty: "" }]);
+  const doDocs = useMemo(
+    () => (data.documents ?? []).filter((d) => d.type === "Delivery Order"),
+    [data.documents],
+  );
+  /* DO max+1: sbRef gaya PO (leading nn/...) + dash id (trailing nnn). */
+  const nextDoSeq = (): number => {
+    const lead = maxSeq(doDocs.map((d) => String(d.sbRef ?? "")), /^(\d+)\//);
+    const trail = maxSeq(doDocs.map((d) => String(d.id ?? "")), /(\d+)$/);
+    return Math.max(lead, trail) + 1;
+  };
+  const printDo = (d: StoreItem) => {
+    const items = (Array.isArray(d.doItems) ? d.doItems : []) as { name: string; qty: string }[];
+    void exportExcel([
+      [SB_KOP.line1, SB_KOP.name], [SB_KOP.hq, `HP ${SB_KOP.hp}`], [],
+      ["DELIVERY ORDER", `NO: ${String(d.sbRef ?? d.id)}`], ["Tanggal", String(d.doDate ?? d.updated ?? "")],
+      ["Tujuan", String(d.doTo ?? d.vessel ?? "-")], ["Driver", String(d.doDriver ?? "-")],
+      ["Surat Jalan", String(d.doSjRef ?? d.doSjId ?? "-")], [],
+      ["No", "Nama Barang", "Jumlah"], ...items.map((x, i) => [i + 1, String(x.name ?? ""), String(x.qty ?? "")]),
+    ], `DO-${String(d.sbRef ?? d.id).replaceAll("/", "-")}`, "Delivery Order").catch(() => toast(S.saveFail, "info"));
+    toast(locale === "en" ? `DO ${String(d.sbRef ?? d.id)} printed` : `DO ${String(d.sbRef ?? d.id)} dicetak`);
+  };
   const [showPick, setShowPick] = useState(false);
   const [pickProject, setPickProject] = useState("");
   const [pickSel, setPickSel] = useState<string[]>([]);
@@ -399,20 +475,47 @@ export default function Inventory() {
   const dq = useDebouncedValue(q);
   const abc = useMemo(() => abcMap(inventory), [inventory]);
 
+  /* Tren nilai stok: label "Mon YYYY", bulan berjalan terakhir. */
+  const invTrend = useMemo(() => {
+    const labels = invTrailingLabels(stockTrend.length, locale);
+    return stockTrend.map((d, i) => ({ ...d, label: labels[i] ?? d.month }));
+  }, [locale]);
+
+  /* Kapasitas gudang dari Settings key WAREHOUSE_CAP = JSON {nama: kapasitas}. */
+  const warehouseCap = useMemo(() => {
+    try {
+      const row = (data.settings ?? []).find((s) => String(s.key ?? "") === "WAREHOUSE_CAP");
+      const raw = String(row?.value ?? "").trim();
+      if (!raw) return null;
+      const parsed = JSON.parse(raw) as Record<string, unknown>;
+      if (!parsed || typeof parsed !== "object") return null;
+      const map: Record<string, number> = {};
+      for (const [k, v] of Object.entries(parsed)) {
+        const n = Number(v);
+        if (Number.isFinite(n) && n > 0) map[k] = n;
+      }
+      return Object.keys(map).length > 0 ? map : null;
+    } catch {
+      return null;
+    }
+  }, [data.settings]);
+
   const list = useMemo(() => inventory.filter((i) => {
     const matchQ = `${i.name} ${i.sku} ${binOf(i)}`.toLowerCase().includes(dq.toLowerCase());
     const matchCat = cat === "Semua" || i.category === cat;
     const matchWh = wh === "Semua" || i.warehouse === wh;
     const matchAbc = abcF === "Semua" || abc[i.id] === abcF;
-    return matchQ && matchCat && matchWh && matchAbc;
+    const matchMat = matF === "Semua" || matTypeOf(i) === matF;
+    return matchQ && matchCat && matchWh && matchAbc && matchMat;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }), [inventory, dq, cat, wh, abcF, abc]);
+  }), [inventory, dq, cat, wh, abcF, matF, abc]);
   const sorted = useMemo(() => sortRows(list, sort, (i, k) => {
     if (k === "qty") return Number(i.stock || 0);
     if (k === "volume") return Number(i.volume ?? 0);
     if (k === "total") return Number(i.stock || 0) * effCost(i);
     if (k === "kategori") return String(i.category ?? "");
     if (k === "abc") return String(abc[i.id] ?? "");
+    if (k === "mattype") return matTypeOf(i);
     if (k === "status") return Number(i.stock) <= Number(i.minStock) ? "Menipis" : "Aman";
     if (k === "rak") return String(rackText(i));
     if (k === "bin") return binOf(i);
@@ -426,6 +529,7 @@ export default function Inventory() {
     if (k === "total") return Number(m.total || 0);
     if (k === "item") return String(m.item ?? "");
     if (k === "tipe") return String(m.type ?? "");
+    if (k === "gudang") return whFlowOf(m);
     if (k === "referensi") return String(m.by ?? "");
     if (k === "info") return String(`${m.supplier ?? ""} ${m.purpose ?? ""} ${m.pic ?? ""}`);
     if (k === "tanggal") return String(m.date ?? "");
@@ -480,7 +584,24 @@ export default function Inventory() {
   const lastInOf = (it: StoreItem): string | null =>
     moveIdx.inn.get(String(it.id)) ?? moveIdx.inn.get(String(it.name)) ?? null;
 
+  /* Alasan dead stock: stok nol | tak pernah GR | >180 hari tanpa keluar. */
+  const deadReason = (it: StoreItem): string => {
+    if (Number(it.stock || 0) <= 0) return locale === "en" ? "zero stock" : "stok nol";
+    if (!lastInOf(it)) return locale === "en" ? "never GR" : "tak pernah GR";
+    return locale === "en" ? "no issue >180 days" : ">180 hari tanpa keluar";
+  };
+
   const lowStock = useMemo(() => inventory.filter((i) => i.stock <= i.minStock), [inventory]);
+  /* Warning dikelompokkan per kategori: 1 banner per category. */
+  const lowByCat = useMemo(() => {
+    const map = new Map<string, StoreItem[]>();
+    for (const i of lowStock) {
+      const c = String(i.category ?? "-");
+      if (!map.has(c)) map.set(c, []);
+      (map.get(c) as StoreItem[]).push(i);
+    }
+    return Array.from(map.entries()).sort((a, b) => b[1].length - a[1].length);
+  }, [lowStock]);
   const categories = useMemo(() => ["Semua", ...Array.from(new Set(inventory.map((i) => i.category)))], [inventory]);
   const totalValue = useMemo(() => inventory.reduce((s, i) => s + Number(i.stock || 0) * effCost(i), 0), [inventory]);
   const warehouses = useMemo(() => Array.from(new Set(inventory.map((i) => i.warehouse))), [inventory]);
@@ -623,7 +744,7 @@ export default function Inventory() {
       rack: String(i.rack ?? i.location ?? ""), bin: binOf(i), stock: String(i.stock), minStock: String(i.minStock),
       unit: i.unit, cost: String(i.cost), volume: String(i.volume ?? 0), batch: String(i.batch ?? ""),
       uom2: uom2Of(i), konversi: convOf(i) > 0 ? String(i.konversi) : "",
-      minWh: String(minWhOf(i)), photoUrl: String(i.photoUrl ?? ""),
+      minWh: String(minWhOf(i)), photoUrl: String(i.photoUrl ?? ""), matType: matTypeOf(i),
     });
   };
 
@@ -648,6 +769,7 @@ export default function Inventory() {
     if (form.minWh.trim() !== "" && (!Number.isFinite(Number(form.minWh)) || Number(form.minWh) < 0)) { toast(S.minWhInvalid, "info"); return; }
     const rack = form.rack.trim();
     const bin = form.bin.trim();
+    const matType = (MAT_TYPES as readonly string[]).includes(String(form.matType ?? "").trim()) ? String(form.matType).trim() : "habis-pakai";
     const prevMap = (editing?.minStockByWarehouse as Record<string, number> | undefined) ?? {};
     const minWhMap = { ...prevMap };
     if (form.minWh.trim() !== "") minWhMap[form.warehouse] = Number(form.minWh) || 0;
@@ -659,7 +781,7 @@ export default function Inventory() {
           name: form.name.trim(), category: form.category, sku: form.sku.trim(), warehouse: form.warehouse,
           rack, bin, location: rack, minStock: numMin, unit: form.unit,
           cost: numCost, volume: volume || 0, batch: form.batch.trim(),
-          uom2, konversi: konv, minStockByWarehouse: minWhMap, photoUrl: form.photoUrl.trim(),
+          uom2, konversi: konv, minStockByWarehouse: minWhMap, photoUrl: form.photoUrl.trim(), matType,
         });
         toast(S.updatedId.replace("{n}", editing.id));
         setEditing(null);
@@ -675,7 +797,7 @@ export default function Inventory() {
           name: form.name.trim(), category: form.category, sku: form.sku.trim(), warehouse: form.warehouse,
           rack, bin, stock, minStock: numMin, unit: form.unit,
           cost: numCost, location: rack, volume: volume || 0, batch,
-          uom2, konversi: konv, minStockByWarehouse: minWhMap, photoUrl: form.photoUrl.trim(), avgCost: 0,
+          uom2, konversi: konv, minStockByWarehouse: minWhMap, photoUrl: form.photoUrl.trim(), avgCost: 0, matType,
           batches: batch ? [{ batch, qty: stock, date: todayISO() }] : [],
           reserved: [],
         }, { action: "mendaftarkan material", module: "Inventori" });
@@ -1334,16 +1456,36 @@ export default function Inventory() {
           {tab === "Katalog" && (
             <>
               <p className="mb-3 rounded-lg bg-steel-50 px-3 py-2 text-xs text-steel-500">{S.fifoInfo}</p>
+              <p className="mb-3 rounded-lg bg-steel-50 px-3 py-2 text-xs text-steel-500">
+                {locale === "en"
+                  ? "ABC formula: items ranked by stock value (stock × cost); cumulative ≤70% = A, ≤90% = B, rest = C."
+                  : "Rumus ABC: item diurutkan berdasar nilai stok (stok × harga); kumulatif ≤70% = A, ≤90% = B, sisanya = C."}
+              </p>
+              {lowByCat.length > 0 && (
+                <div className="mb-3 space-y-2">
+                  {lowByCat.map(([c, items]) => (
+                    <div key={c} className="flex flex-wrap items-center gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm">
+                      <AlertTriangle className="h-4 w-4 shrink-0 text-amber-600" />
+                      <p className="font-medium text-amber-800">
+                        {c}: {items.length} {locale === "en" ? "low item(s)" : "item menipis"}
+                      </p>
+                      <p className="w-full truncate text-xs text-amber-700" title={items.map((i) => String(i.name)).join(", ")}>
+                        {items.slice(0, 6).map((i) => String(i.name)).join(" · ")}{items.length > 6 ? " …" : ""}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              )}
               <div className="mb-3 flex flex-wrap gap-3">
                 <div className="relative min-w-52 flex-1 sm:max-w-xs">
                   <Search className="absolute left-3 top-2.5 h-4 w-4 text-steel-400" />
                   <input className="input pl-9 w-full" placeholder={S.searchPh} aria-label={S.searchAria} value={q} onChange={(e) => setQ(e.target.value)} />
                 </div>
                 <FilterPopover
-                  activeCount={[cat !== "Semua", wh !== "Semua", abcF !== "Semua"].filter(Boolean).length}
-                  initial={{ cat, wh, abc: abcF }}
-                  onReset={() => { setCat("Semua"); setWh("Semua"); setAbcF("Semua"); }}
-                  onApply={(d) => { setCat(d.cat); setWh(d.wh); setAbcF(d.abc); }}
+                  activeCount={[cat !== "Semua", wh !== "Semua", abcF !== "Semua", matF !== "Semua"].filter(Boolean).length}
+                  initial={{ cat, wh, abc: abcF, mat: matF }}
+                  onReset={() => { setCat("Semua"); setWh("Semua"); setAbcF("Semua"); setMatF("Semua"); }}
+                  onApply={(d) => { setCat(d.cat); setWh(d.wh); setAbcF(d.abc); setMatF(d.mat ?? "Semua"); }}
                 >
                   {(draft, setDraft) => (
                     <div className="space-y-3">
@@ -1357,10 +1499,15 @@ export default function Inventory() {
                           {["Semua", "A", "B", "C"].map((a) => <option key={a} value={a}>{a === "Semua" ? S.abcAll : S.kelasAbc.replace("{n}", a)}</option>)}
                         </select>
                       </Field>
+                      <Field label={locale === "en" ? "Material type" : "Jenis material"}>
+                        <select className="input w-full" value={draft.mat ?? "Semua"} onChange={(e) => setDraft({ ...draft, mat: e.target.value })}>
+                          {["Semua", ...MAT_TYPES].map((m) => <option key={m} value={m}>{m}</option>)}
+                        </select>
+                      </Field>
                       <div>
                         <p className="mb-1.5 block text-xs font-medium text-steel-600">{S.catLbl}</p>
                         <div className="flex flex-wrap gap-1">
-                          {["Semua", ...categories].map((c) => (
+                          {categories.map((c) => (
                             <button key={c} onClick={() => setDraft({ ...draft, cat: c })}
                               className={`px-2.5 py-1 rounded-lg text-xs font-medium whitespace-nowrap ${draft.cat === c ? "bg-navy-700 text-white" : "border border-steel-200 text-steel-600 hover:bg-steel-100"}`}>
                               {c}
@@ -1409,7 +1556,7 @@ export default function Inventory() {
               <div className="overflow-x-auto">
                 <table className="w-full">
                   <thead className="bg-surface sticky top-0 z-10">
-                    <tr><SortTh label={S.thMaterial} sortKey="material" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.catLbl} sortKey="kategori" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.thQty} sortKey="qty" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.thVolume} sortKey="volume" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.thTotal} sortKey="total" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.thAbc} sortKey="abc" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.thStatus} sortKey="status" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.thRak} sortKey="rak" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.binLbl} sortKey="bin" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><th className="th">{S.thAksi}</th></tr>
+                    <tr><SortTh label={S.thMaterial} sortKey="material" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.catLbl} sortKey="kategori" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={locale === "en" ? "Type" : "Jenis"} sortKey="mattype" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.thQty} sortKey="qty" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.thVolume} sortKey="volume" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.thTotal} sortKey="total" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.thAbc} sortKey="abc" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.thStatus} sortKey="status" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.thRak} sortKey="rak" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.binLbl} sortKey="bin" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><th className="th">{S.thAksi}</th></tr>
                   </thead>
                   <tbody className="divide-y divide-steel-100">
                     {pager.slice(sorted).map((i) => {
@@ -1425,6 +1572,7 @@ export default function Inventory() {
                             {reserved > 0 && <p className="text-xs text-amber-600">Reservasi {fmtJumlah(reserved)} {i.unit}</p>}
                           </td>
                           <td className="td"><Badge tone="gray">{i.category}</Badge></td>
+                          <td className="td"><Badge tone={matTone(matTypeOf(i))}>{matTypeOf(i)}</Badge></td>
                           <td className="td font-semibold text-navy-900">
                             {fmtJumlah(Number(i.stock))} <span className="font-normal text-steel-400">{i.unit}</span>
                             {hasUom2(i) && <p className="text-xs font-normal text-steel-400">≈ {fmtJumlah(qtyInUom2(i))} {u2} (1 {i.unit} = {fmtJumlah(conv)} {u2})</p>}
@@ -1468,6 +1616,19 @@ export default function Inventory() {
                   <Card key={w} className="p-4">
                     <h3 className="mb-2 text-sm font-semibold text-navy-900 truncate" title={w}>{w}</h3>
                     <p className="text-xs text-steel-500">{items.length} item · {fmtJumlah(items.reduce((s, i) => s + Number(i.stock || 0), 0))} unit</p>
+                    {warehouseCap?.[w] != null && (() => {
+                      const used = items.reduce((s, i) => s + Number(i.stock || 0), 0);
+                      const cap = Number(warehouseCap[w]);
+                      const pct = cap > 0 ? Math.min(100, Math.round((used / cap) * 100)) : 0;
+                      return (
+                        <div className="mt-2">
+                          <ProgressBar value={pct} tone={pct >= 90 ? "red" : pct >= 70 ? "amber" : "navy"} />
+                          <p className="mt-1 text-[11px] text-steel-500">
+                            {locale === "en" ? "Capacity" : "Kapasitas"}: {fmtJumlah(used)} / {fmtJumlah(cap)} ({pct}%)
+                          </p>
+                        </div>
+                      );
+                    })()}
                     <div className="relative mt-2">
                       <Search className="absolute left-2.5 top-2 h-3.5 w-3.5 text-steel-400" />
                       <input className="input pl-8 !py-1.5 text-xs" placeholder={S.anSearchPh} aria-label={`${S.anSearchPh} ${w}`} value={gudangQ[w] ?? ""} onChange={(e) => setGudangQ((m) => ({ ...m, [w]: e.target.value }))} />
@@ -1548,8 +1709,8 @@ export default function Inventory() {
               <Card className="p-5">
                 <CardHeader title={S.aksiMatT} subtitle={S.aksiMatS} />
                 <div className="mt-4 space-y-3">
-                  <button className="btn-primary w-full justify-center whitespace-nowrap py-5 text-base" onClick={() => { const first = lowStock[0] ?? inventory[0]; if (first) openMove(first, "in"); }}><ArrowDownToLine className="h-4 w-4" /> {S.btnGr}</button>
-                  <button className="btn-secondary w-full justify-center" onClick={() => { const first = inventory[0]; if (first) openMove(first, "out"); }}><ArrowUpFromLine className="h-4 w-4" /> {S.btnGi}</button>
+                  <button className="btn-primary w-full justify-center whitespace-nowrap py-5 text-base" title={grGiTip("Penerimaan", locale)} onClick={() => { const first = lowStock[0] ?? inventory[0]; if (first) openMove(first, "in"); }}><ArrowDownToLine className="h-4 w-4" /> {S.btnGr}</button>
+                  <button className="btn-secondary w-full justify-center" title={grGiTip("Pengeluaran", locale)} onClick={() => { const first = inventory[0]; if (first) openMove(first, "out"); }}><ArrowUpFromLine className="h-4 w-4" /> {S.btnGi}</button>
                   <button className="btn-secondary w-full justify-center" onClick={() => setShowTransfer(true)}><Repeat className="h-4 w-4" /> {S.btnTransfer}</button>
                   <button className="btn-secondary w-full justify-center" onClick={() => { setRetItem(""); setRetQty(""); setRetVendor(""); setRetReason(""); setShowRetur(true); }}><ArrowUpFromLine className="h-4 w-4" /> Retur ke Vendor</button>
                   <button className="btn-secondary w-full justify-center" onClick={() => setShowOpname(true)}><ClipboardCheck className="h-4 w-4" /> {S.opnameT}</button>
@@ -1607,10 +1768,10 @@ export default function Inventory() {
                 <CardHeader title={S.trendT} subtitle={S.trendS} />
                 <div className="h-44 p-4 pt-0">
                   <ResponsiveContainer width="100%" height="100%">
-                    <AreaChart data={stockTrend} margin={{ top: 5, right: 5, left: -15, bottom: 0 }}>
+                    <AreaChart data={invTrend} margin={{ top: 5, right: 5, left: -15, bottom: 0 }}>
                       <defs><linearGradient id="invGrad" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="#0b3a63" stopOpacity={0.3} /><stop offset="95%" stopColor="#0b3a63" stopOpacity={0} /></linearGradient></defs>
                       <CartesianGrid strokeDasharray="3 3" stroke="#e9eff4" vertical={false} />
-                      <XAxis dataKey="month" stroke="#8aa2b6" axisLine={false} tickLine={false} />
+                      <XAxis dataKey="label" stroke="#8aa2b6" axisLine={false} tickLine={false} tick={{ fontSize: 10 }} />
                       <YAxis stroke="#8aa2b6" axisLine={false} tickLine={false} />
                       <Tooltip content={<ChartTooltip formatter={(v) => `Rp ${v} M`} />} />
                       <Area type="monotone" dataKey="nilai" stroke="#0b3a63" strokeWidth={2.5} fill="url(#invGrad)" />
@@ -1618,10 +1779,13 @@ export default function Inventory() {
                   </ResponsiveContainer>
                 </div>
               </Card>
+              <p className="rounded-lg bg-steel-50 px-3 py-2 text-xs text-steel-500" title={locale === "en" ? "GR = goods received, GI = goods issued" : "GR = barang masuk (Goods Receive), GI = barang keluar (Goods Issue)"}>
+                {locale === "en" ? "GR = goods in (Goods Receive) · GI = goods out (Goods Issue)" : "GR = barang masuk (Goods Receive) · GI = barang keluar (Goods Issue)"}
+              </p>
               <div className="overflow-x-auto">
                 <table className="w-full">
                   <thead className="bg-surface sticky top-0 z-10">
-                    <tr><SortTh label={S.thTx} sortKey="transaksi" sort={sort3} onSort={(k) => setSort3((s) => toggleSort(s, k))} /><SortTh label={S.itemLbl} sortKey="item" sort={sort3} onSort={(k) => setSort3((s) => toggleSort(s, k))} /><SortTh label={S.thType} sortKey="tipe" sort={sort3} onSort={(k) => setSort3((s) => toggleSort(s, k))} /><SortTh label={S.jumlahLbl} sortKey="jumlah" sort={sort3} onSort={(k) => setSort3((s) => toggleSort(s, k))} /><SortTh label={S.thRef} sortKey="referensi" sort={sort3} onSort={(k) => setSort3((s) => toggleSort(s, k))} /><SortTh label={S.thInfo} sortKey="info" sort={sort3} onSort={(k) => setSort3((s) => toggleSort(s, k))} /><SortTh label={S.thTotalCol} sortKey="total" sort={sort3} onSort={(k) => setSort3((s) => toggleSort(s, k))} /><SortTh label={S.dateLbl} sortKey="tanggal" sort={sort3} onSort={(k) => setSort3((s) => toggleSort(s, k))} /></tr>
+                    <tr><SortTh label={S.thTx} sortKey="transaksi" sort={sort3} onSort={(k) => setSort3((s) => toggleSort(s, k))} /><SortTh label={S.itemLbl} sortKey="item" sort={sort3} onSort={(k) => setSort3((s) => toggleSort(s, k))} /><SortTh label={S.thType} sortKey="tipe" sort={sort3} onSort={(k) => setSort3((s) => toggleSort(s, k))} /><SortTh label={S.jumlahLbl} sortKey="jumlah" sort={sort3} onSort={(k) => setSort3((s) => toggleSort(s, k))} /><SortTh label={S.thRef} sortKey="referensi" sort={sort3} onSort={(k) => setSort3((s) => toggleSort(s, k))} /><SortTh label={S.thInfo} sortKey="info" sort={sort3} onSort={(k) => setSort3((s) => toggleSort(s, k))} /><SortTh label={locale === "en" ? "Warehouse from/to" : "Gudang asal/tujuan"} sortKey="gudang" sort={sort3} onSort={(k) => setSort3((s) => toggleSort(s, k))} /><SortTh label={S.thTotalCol} sortKey="total" sort={sort3} onSort={(k) => setSort3((s) => toggleSort(s, k))} /><SortTh label={S.dateLbl} sortKey="tanggal" sort={sort3} onSort={(k) => setSort3((s) => toggleSort(s, k))} /></tr>
                   </thead>
                   <tbody className="divide-y divide-steel-100">
                     {movPager.slice(movSorted).map((m) => (
@@ -1629,9 +1793,11 @@ export default function Inventory() {
                         <td className="td font-mono font-medium text-navy-900">{m.id}</td>
                         <td className="td text-steel-600 truncate" title={String(m.item)}>{m.item}</td>
                         <td className="td">
-                          <Badge tone={moveTone(m.type, m.tone)}>
-                            {moveLabel(m.type)}
-                          </Badge>
+                          <span title={grGiTip(String(m.type ?? ""), locale)}>
+                            <Badge tone={moveTone(m.type, m.tone)}>
+                              {moveLabel(m.type)}
+                            </Badge>
+                          </span>
                         </td>
                         <td className="td font-semibold">{fmtJumlah(Number(m.qty))}</td>
                         <td className="td font-mono text-xs text-steel-600 truncate" title={String(m.by)}>{m.by}</td>
@@ -1641,6 +1807,7 @@ export default function Inventory() {
                           {m.pic ? <p className="truncate" title={String(m.pic)}>PIC: {m.pic}</p> : null}
                           {!m.supplier && !m.purpose && !m.pic ? "-" : null}
                         </td>
+                        <td className="td text-xs text-steel-600 truncate" title={whFlowOf(m)}>{whFlowOf(m)}</td>
                         <td className="td text-xs font-semibold">{Number(m.total) ? fmtRupiah(Number(m.total)) : "-"}</td>
                         <td className="td text-steel-600">{fmtTanggal(m.date)}</td>
                       </tr>
@@ -1653,6 +1820,7 @@ export default function Inventory() {
           )}
 
           {tab === "Tonase & Surat Jalan" && (
+            <>
             <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
               <Card className="p-5">
                 <CardHeader title={S.tonT} subtitle={S.tonS} />
@@ -1799,7 +1967,78 @@ export default function Inventory() {
                   </button>
                 </div>
               </Card>
+              <Card className="p-5">
+                <CardHeader title={locale === "en" ? "Delivery Order (DO)" : "Delivery Order (DO)"} subtitle={locale === "en" ? "Number nn/DO-SB/SMD/m/yyyy · print · link to Surat Jalan" : "Nomor nn/DO-SB/SMD/m/yyyy · cetak · taut ke Surat Jalan"} />
+                <div className="mt-3 space-y-3">
+                  <FormGrid>
+                    <Field label={S.dateLbl}><input type="date" className="input" value={doDate} onChange={(e) => setDoDate(e.target.value)} /></Field>
+                    <Field label={S.fDest}><input className="input" value={doTo} onChange={(e) => setDoTo(e.target.value)} placeholder={S.phDest} /></Field>
+                    <Field label={S.driverLbl}><input className="input" value={doDriver} onChange={(e) => setDoDriver(e.target.value)} /></Field>
+                    <Field label={S.linkedSjLbl}><select className="input" value={doSjId} onChange={(e) => setDoSjId(e.target.value)}>
+                      <option value="">{S.noSj}</option>
+                      {sjDocs.map((d) => <option key={String(d.id)} value={String(d.id)}>{String(d.sbRef || d.id)} · {String(d.title)}</option>)}
+                    </select></Field>
+                    <Field label={S.refNoLbl}><input className="input font-mono" value={doNumber(nextDoSeq(), new Date(`${doDate}T00:00:00`))} readOnly /></Field>
+                  </FormGrid>
+                  {doItems.map((it, idx) => (
+                    <div key={idx} className="grid grid-cols-12 gap-2">
+                      <input className="input col-span-8" placeholder={S.itemPh.replace("{n}", String(idx + 1))} value={it.name} onChange={(e) => setDoItems((s) => s.map((x, i) => (i === idx ? { ...x, name: e.target.value } : x)))} />
+                      <input className="input col-span-3" placeholder={S.jumlahLbl} value={it.qty} onChange={(e) => setDoItems((s) => s.map((x, i) => (i === idx ? { ...x, qty: e.target.value } : x)))} />
+                      <button className="btn-secondary col-span-1 text-xs" aria-label={S.delSjRow.replace("{n}", String(idx + 1))} onClick={() => setDoItems((s) => s.filter((_, i) => i !== idx))}>×</button>
+                    </div>
+                  ))}
+                  <button className="btn-secondary text-xs" onClick={() => setDoItems((s) => [...s, { name: "", qty: "" }])}>{S.addRow}</button>
+                  <button className="btn-primary w-full justify-center" onClick={async () => {
+                    const items = doItems.filter((x) => x.name.trim() && x.qty.trim());
+                    if (!doTo.trim() || items.length === 0) { toast(S.sjNeedDest, "info"); return; }
+                    const seq = nextDoSeq();
+                    const no = doNumber(seq, new Date(`${doDate}T00:00:00`));
+                    const sj = sjDocs.find((d) => String(d.id) === doSjId);
+                    try {
+                      await add("documents", {
+                        id: `DO-SMD-${sjYearOf(doDate)}-${String(seq).padStart(3, "0")}`,
+                        title: `Delivery Order ke ${doTo.trim()}`, type: "Delivery Order", project: "-", vessel: doTo.trim(),
+                        owner: "Anda", sbRef: no, doDate, doDriver: doDriver.trim(), doTo: doTo.trim(),
+                        doSjId: doSjId || "", doSjRef: sj ? String(sj.sbRef || sj.id) : "", doItems: items,
+                        version: "v1.0", status: "Berlaku", updated: todayISO(), archived: false, docCopy: "Terkendali",
+                        related: doSjId ? [doSjId] : [],
+                        revisions: [{ version: "v1.0", at: todayISO(), by: "Anda", note: "Delivery order diterbitkan" }],
+                      }, { action: "menerbitkan delivery order", target: no, module: "Inventori" });
+                      toast(locale === "en" ? `DO ${no} issued` : `DO ${no} diterbitkan`);
+                      setDoTo(""); setDoSjId(""); setDoDriver("");
+                      setDoItems([{ name: "", qty: "" }]);
+                    } catch (e) {
+                      toast(e instanceof Error ? e.message : S.saveFail, "info");
+                    }
+                  }}>
+                    {S.issueBtn}
+                  </button>
+                </div>
+              </Card>
             </div>
+            <Card className="mt-4 p-5">
+              <CardHeader title={locale === "en" ? "Issued DOs" : "DO Terbit"} subtitle={locale === "en" ? "Print + linked Surat Jalan" : "Cetak + Surat Jalan tertaut"} />
+              <div className="mt-2 space-y-2">
+                {doDocs.map((d) => (
+                  <div key={String(d.id)} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-steel-100 px-3 py-2 text-sm">
+                    <div className="min-w-0">
+                      <p className="font-medium text-navy-900">{String(d.title)} <span className="font-mono text-xs text-steel-500">· {String(d.sbRef ?? d.id)}</span></p>
+                      <p className="text-xs text-steel-500">{fmtTanggal(String(d.doDate ?? d.updated ?? ""))} · {String(d.doTo ?? "-")}</p>
+                    </div>
+                    <div className="flex shrink-0 items-center gap-1.5">
+                      {d.doSjId ? (
+                        <Link to="/dokumen" className="btn-secondary text-xs" title={String(d.doSjRef ?? d.doSjId)}>
+                          {locale === "en" ? "Open Surat Jalan" : "Buka Surat Jalan"}
+                        </Link>
+                      ) : null}
+                      <button className="btn-secondary text-xs" onClick={() => printDo(d)}><Printer className="h-3.5 w-3.5" /> {S.printBtn}</button>
+                    </div>
+                  </div>
+                ))}
+                {doDocs.length === 0 && <p className="text-xs text-steel-400">-</p>}
+              </div>
+            </Card>
+            </>
           )}
 
           {tab === "Analisis" && (
@@ -1838,7 +2077,10 @@ export default function Inventory() {
                           <p className="truncate font-medium text-navy-900" title={String(i.name)}>{i.name}</p>
                           <p className="text-xs text-steel-400">Stok {fmtJumlah(Number(i.stock))} {i.unit} · {fmtRupiah(Number(i.stock) * effCost(i))}</p>
                         </div>
-                        <Badge tone="red">Dead</Badge>
+                        <span className="flex shrink-0 flex-col items-end gap-1">
+                          <Badge tone="red">Dead</Badge>
+                          <span className="text-[11px] text-steel-500">{deadReason(i)}</span>
+                        </span>
                       </div>
                     ))}
                   </div>
@@ -1889,6 +2131,11 @@ export default function Inventory() {
                 {["Baja", "Mesin", "Pipa", "Listrik", "Cat", "Fastener", "Rigging", "Perlindungan", "Lainnya"].map((c) => <option key={c}>{c}</option>)}
               </select>
             </Field>
+            <Field label={locale === "en" ? "Material type" : "Jenis material"}>
+              <select className="input" value={form.matType} onChange={(e) => setF("matType", e.target.value)}>
+                {MAT_TYPES.map((m) => <option key={m} value={m}>{m}</option>)}
+              </select>
+            </Field>
             <Field label={S.whLbl}>
               <select className="input" value={form.warehouse} onChange={(e) => setF("warehouse", e.target.value)}>
                 {["Gudang Baja A", "Gudang Mesin", "Gudang Pipa", "Gudang Listrik", "Gudang B", "Gudang Rig"].map((w) => <option key={w}>{w}</option>)}
@@ -1918,6 +2165,37 @@ export default function Inventory() {
             <Field label={S.convLbl} hint={S.convHint.replace("{n}", form.unit || S.unitFallback)}>
               <NumInput min={0} className="input" value={form.konversi} onChange={(e) => setF("konversi", e.target.value)} placeholder={S.phConv} />
             </Field>
+            <div className="rounded-xl bg-steel-50 p-2.5">
+              <p className="label">{locale === "en" ? "Retail conversion presets" : "Preset konversi eceran"}</p>
+              <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+                <button
+                  type="button"
+                  className="btn-secondary text-xs"
+                  title={locale === "en" ? "Oil: tons to liters ×1100" : "Oli: Ton ke Liter ×1100"}
+                  onClick={() => { setF("uom2", "liter"); setF("konversi", "1100"); }}
+                >
+                  {locale === "en" ? "Oil: Ton → Liter ×1100" : "Oli: Ton → Liter ×1100"}
+                </button>
+                <span className="flex items-center gap-1 text-xs text-steel-600">
+                  P <input className="input !w-16 !py-1 text-xs" value={platP} onChange={(e) => setPlatP(e.target.value)} aria-label="Panjang (m)" /> × L{" "}
+                  <input className="input !w-16 !py-1 text-xs" value={platL} onChange={(e) => setPlatL(e.target.value)} aria-label="Lebar (m)" />
+                </span>
+                <button
+                  type="button"
+                  className="btn-secondary text-xs"
+                  title={locale === "en" ? "Plate roll to meters via P×L" : "Plat roll ke Meter via P×L"}
+                  onClick={() => {
+                    const p = Number(platP) || 0;
+                    const l = Number(platL) || 0;
+                    if (p <= 0 || l <= 0) { toast(locale === "en" ? "P×L must be positive" : "P×L harus positif", "info"); return; }
+                    setF("uom2", "meter");
+                    setF("konversi", String(Math.round(p * l * 100) / 100));
+                  }}
+                >
+                  {locale === "en" ? "Plate roll → Meter (P×L)" : "Plat roll → Meter (P×L)"}
+                </button>
+              </div>
+            </div>
             <Field label={S.minWhLbl} hint={S.hintMinWh}>
               <NumInput min={0} className="input" value={form.minWh} onChange={(e) => setF("minWh", e.target.value)} placeholder={S.phMinWh} />
             </Field>
@@ -1953,7 +2231,7 @@ export default function Inventory() {
           <Field label={S.txTypeLbl}>
             <div className="flex gap-2">
               {(["in", "out"] as const).map((k) => (
-                <button key={k} onClick={() => setMoveKind(k)}
+                <button key={k} onClick={() => setMoveKind(k)} title={grGiTip(k === "in" ? "Penerimaan" : "Pengeluaran", locale)}
                   className={`flex-1 rounded-xl border px-3 py-2 text-sm font-medium ${moveKind === k ? "border-navy-700 bg-navy-700 text-white" : "border-steel-200 text-steel-600"}`}>
                   {k === "in" ? S.txIn : S.txOut}
                 </button>
@@ -2171,6 +2449,9 @@ export default function Inventory() {
               ))}
             </div>
             <p className="mt-2 font-mono text-xs tracking-widest text-navy-900">{labelItem.sku}</p>
+            <div className="mt-3 flex justify-center" title={S.qrTitle}>
+              <QRCodeSVG value={qrPayloadOf(labelItem) || String(labelItem.id)} size={120} level="M" />
+            </div>
             <p className="mt-1 font-mono text-[11px] text-steel-500" title={S.qrTitle}>QR: {qrPayloadOf(labelItem)}</p>
           </div>
         )}
@@ -2181,8 +2462,10 @@ export default function Inventory() {
         {freshDetail && (
           <dl className="dl-div text-sm">
             {freshDetail.photoUrl ? (
-              <img src={String(freshDetail.photoUrl)} alt={String(freshDetail.name)} className="h-32 w-full rounded-xl border border-steel-200 object-cover" />
-            ) : null}
+              <SecureImg src={String(freshDetail.photoUrl)} alt={String(freshDetail.name)} name={String(freshDetail.name)} className="h-32 w-full rounded-xl border border-steel-200 object-cover" />
+            ) : (
+              <SecureImg src="" alt={String(freshDetail.name)} name={String(freshDetail.name)} className="h-16 w-16 rounded-full" />
+            )}
             {([
               [S.catLbl, freshDetail.category],
               [S.dlWh, rackText(freshDetail)],

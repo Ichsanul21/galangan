@@ -101,17 +101,22 @@ export default function Drydock() {
   const [selected, setSelected] = useState<string | null>(null);
 
   const [showBook, setShowBook] = useState(false);
-  const [bookForm, setBookForm] = useState({ dockId: "DD-1", project: "", from: "1", to: "30", priority: "Normal", ratePerDay: "0", dsRef: "", vessel2: "", startDate: "" });
+  const [bookForm, setBookForm] = useState({ dockId: "DD-1", project: "", from: "1", to: "30", priority: "Normal", ratePerDay: "0", dsRef: "", vessel2: "", startDate: "", area: "" });
   const [bookError, setBookError] = useState<string | null>(null);
   const [deleting, setDeleting] = useState<StoreItem | null>(null);
   const [moveTarget, setMoveTarget] = useState<StoreItem | null>(null);
-  const [moveForm, setMoveForm] = useState({ dockId: "DD-1", from: "", to: "" });
+  const [moveForm, setMoveForm] = useState({ dockId: "DD-1", from: "", to: "", area: "" });
   const [moveError, setMoveError] = useState<string | null>(null);
   const [wide, setWide] = useState(false);
   const [statusFilter, setStatusFilter] = useState("Semua");
+  const [areaFilter, setAreaFilter] = useState("Semua");
+  const [posFilter, setPosFilter] = useState("Semua");
   const [sort, setSort] = useState<SortState>({ key: null, dir: "asc" });
   const [picModal, setPicModal] = useState<StoreItem | null>(null);
   const [picDraft, setPicDraft] = useState("");
+  const [areaModal, setAreaModal] = useState<StoreItem | null>(null);
+  const [areaDraft, setAreaDraft] = useState("");
+  const [slotAreaDraft, setSlotAreaDraft] = useState("");
   const [showMaint, setShowMaint] = useState(false);
   const [maintForm, setMaintForm] = useState({ dockId: "DD-1", from: "1", to: "7", reason: "" });
 
@@ -132,6 +137,41 @@ export default function Drydock() {
   const openSlot = (s: StoreItem) => {
     setSelected(s.id);
     setUtilDraft({ power: String(s.powerKwh ?? ""), water: String(s.waterM3 ?? "") });
+    setSlotAreaDraft(String(s.area ?? ""));
+  };
+
+  /* Area efektif slot: area slot sendiri, fallback ke area fasilitasnya. */
+  const dockAreaOf = (dockId: string): string =>
+    String(drydocks.find((d) => d.id === dockId)?.area ?? "").trim();
+  const slotAreaOf = (s: StoreItem): string =>
+    String(s.area ?? "").trim() || dockAreaOf(String(s.dockId ?? ""));
+  const areaOptions = [...new Set([
+    ...drydocks.map((d) => String(d.area ?? "").trim()).filter(Boolean),
+    ...dockSlots.map((s) => String(s.area ?? "").trim()).filter(Boolean),
+  ])].sort((a, b) => a.localeCompare(b));
+
+  const saveArea = async () => {
+    if (!areaModal) return;
+    try {
+      await update("drydocks", areaModal.id, { area: areaDraft.trim() });
+      log("menetapkan area dock", `${areaModal.name} · ${areaDraft.trim() || "-"}`, "Drydock");
+      toast(S.tAreaSaved.replace("{a}", areaModal.name));
+      setAreaModal(null);
+      setAreaDraft("");
+    } catch (e) {
+      toast(e instanceof Error ? e.message : S.saveFail, "info");
+    }
+  };
+
+  const saveSlotArea = async () => {
+    if (!sel) return;
+    try {
+      await update("dockSlots", sel.id, { area: slotAreaDraft.trim() });
+      log("menetapkan area slot", `${sel.id} · ${slotAreaDraft.trim() || "-"}`, "Drydock");
+      toast(S.tAreaSaved.replace("{a}", String(sel.id)));
+    } catch (e) {
+      toast(e instanceof Error ? e.message : S.saveFail, "info");
+    }
   };
 
   const saveUtility = async () => {
@@ -314,10 +354,15 @@ export default function Drydock() {
   const selLoa = selProj ? vesselLoa(selProj.vessel, data.vessels) : null;
   const selCap = selDock ? dockLengthM(selDock.capacity) : null;
 
-  const filteredSlots = statusFilter === "Semua"
-    ? dockSlots
-    : dockSlots.filter((s) => slotStatus(s, data.projects) === statusFilter);
-  const sortedSlots = useMemo(() => sortRows(filteredSlots, sort, (s: StoreItem, k) => k === "days" ? Number(slotDays(s)) : k === "status" ? String(slotStatus(s, data.projects)) : k === "facility" ? String(drydocks.find((d) => d.id === s.dockId)?.name ?? s.dockId) : String((s as unknown as Record<string, unknown>)[k] ?? "")), [filteredSlots, sort, data.projects, drydocks]);
+  const filteredSlots = dockSlots.filter((s) => {
+    if (statusFilter !== "Semua" && slotStatus(s, data.projects) !== statusFilter) return false;
+    /* Positioning: Masuk = Terjadwal (akan masuk dock), Keluar = Selesai (sudah keluar). */
+    if (posFilter === "Masuk" && slotStatus(s, data.projects) !== "Terjadwal") return false;
+    if (posFilter === "Keluar" && slotStatus(s, data.projects) !== "Selesai") return false;
+    if (areaFilter !== "Semua" && slotAreaOf(s) !== areaFilter) return false;
+    return true;
+  });
+  const sortedSlots = useMemo(() => sortRows(filteredSlots, sort, (s: StoreItem, k) => k === "days" ? Number(slotDays(s)) : k === "status" ? String(slotStatus(s, data.projects)) : k === "area" ? String(s.area ?? "") : k === "facility" ? String(drydocks.find((d) => d.id === s.dockId)?.name ?? s.dockId) : String((s as unknown as Record<string, unknown>)[k] ?? "")), [filteredSlots, sort, data.projects, drydocks]);
   const pager = usePager(filteredSlots.length);
   const pickNotif = (rowId: string) => {
     const key = String(rowId);
@@ -325,9 +370,11 @@ export default function Drydock() {
     if (idx >= 0) { flash.pick(key, idx, pager.go, pager.size); return; }
     const found = dockSlots.find((s) => String(s.id) === key);
     if (!found || statusFilter === "Semua") { flash.pick(key, -1, () => {}, 100); return; }
-    const fullSorted = sortRows(dockSlots, sort, (s: StoreItem, k) => k === "days" ? Number(slotDays(s)) : k === "status" ? String(slotStatus(s, data.projects)) : k === "facility" ? String(drydocks.find((d) => d.id === s.dockId)?.name ?? s.dockId) : String((s as unknown as Record<string, unknown>)[k] ?? ""));
+    const fullSorted = sortRows(dockSlots, sort, (s: StoreItem, k) => k === "days" ? Number(slotDays(s)) : k === "status" ? String(slotStatus(s, data.projects)) : k === "area" ? String(s.area ?? "") : k === "facility" ? String(drydocks.find((d) => d.id === s.dockId)?.name ?? s.dockId) : String((s as unknown as Record<string, unknown>)[k] ?? ""));
     const fullIdx = fullSorted.findIndex((s) => String(s.id) === key);
     setStatusFilter("Semua");
+    setAreaFilter("Semua");
+    setPosFilter("Semua");
     window.setTimeout(() => {
       if (fullIdx >= 0) flash.pick(key, fullIdx, pager.go, pager.size);
       else flash.pick(key, -1, () => {}, 100);
@@ -336,7 +383,7 @@ export default function Drydock() {
   useEffect(() => {
     pager.reset();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [statusFilter]);
+  }, [statusFilter, areaFilter, posFilter]);
 
   const saveBooking = async () => {
     const proj = data.projects.find((p) => p.id === bookForm.project);
@@ -369,6 +416,7 @@ export default function Drydock() {
         dockId: bookForm.dockId, project: proj.id, vessel: vesselFull, from, to,
         priority: bookForm.priority, ratePerDay, dsRef,
         startDate: bookForm.startDate || undefined,
+        area: bookForm.area.trim(),
         color: SLOT_COLORS[dockSlots.length % SLOT_COLORS.length],
       }, { action: "membooking slot", target: `${bookForm.dockId} · ${vesselFull} · ${bookForm.priority}`, module: "Drydock" });
       /* Sinkron status kapal: masuk dock → Dalam Docking (status sebelumnya disimpan di slot). */
@@ -386,7 +434,7 @@ export default function Drydock() {
       }
       await update("dockSlots", created.id, { prevVesselStatus: prevMap });
       toast(S.tBooked.replace("{a}", created.id).replace("{b}", bookForm.priority).replace("{c}", dsRef));
-      setBookForm({ dockId: "DD-1", project: "", from: "1", to: "30", priority: "Normal", ratePerDay: "0", dsRef: "", vessel2: "", startDate: "" });
+      setBookForm({ dockId: "DD-1", project: "", from: "1", to: "30", priority: "Normal", ratePerDay: "0", dsRef: "", vessel2: "", startDate: "", area: "" });
       setShowBook(false);
       setBookError(null);
     } catch (e) {
@@ -439,7 +487,7 @@ export default function Drydock() {
      validasi sama dengan booking baru (abaikan slot sendiri). */
   const openMove = (s: StoreItem) => {
     setMoveTarget(s);
-    setMoveForm({ dockId: String(s.dockId ?? "DD-1"), from: String(s.from ?? ""), to: String(s.to ?? "") });
+    setMoveForm({ dockId: String(s.dockId ?? "DD-1"), from: String(s.from ?? ""), to: String(s.to ?? ""), area: String(s.area ?? "") });
     setMoveError(null);
   };
 
@@ -465,7 +513,7 @@ export default function Drydock() {
       return;
     }
     try {
-      await update("dockSlots", moveTarget.id, { dockId: moveForm.dockId, from, to });
+      await update("dockSlots", moveTarget.id, { dockId: moveForm.dockId, from, to, area: moveForm.area.trim() });
       log("memindah slot", `${moveTarget.id} → ${moveForm.dockId} hari ${from}-${to}`, "Drydock");
       toast(S.tMoved.replace("{a}", String(moveTarget.id)).replace("{b}", String(from)).replace("{c}", String(to)));
       setMoveTarget(null);
@@ -578,14 +626,25 @@ export default function Drydock() {
       <div className="mt-5 grid grid-cols-1 gap-5">
         <Card>
           <CardHeader title={S.cardSlots} subtitle={S.cardSlotsSub} action={
-            <select className="input text-xs" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} aria-label={S.filterStatusAria}>
-              {STATUS_FILTERS.map((s) => <option key={s}>{s}</option>)}
-            </select>
+            <div className="flex flex-wrap items-center gap-1.5">
+              <select className="input text-xs" value={areaFilter} onChange={(e) => setAreaFilter(e.target.value)} aria-label={S.filterAreaAria}>
+                <option value="Semua">{S.areaLabel}: Semua</option>
+                {areaOptions.map((a) => <option key={a} value={a}>{a}</option>)}
+              </select>
+              <select className="input text-xs" value={posFilter} onChange={(e) => setPosFilter(e.target.value)} aria-label={S.filterPosAria}>
+                <option value="Semua">Positioning: Semua</option>
+                <option value="Masuk">{S.posMasuk}</option>
+                <option value="Keluar">{S.posKeluar}</option>
+              </select>
+              <select className="input text-xs" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} aria-label={S.filterStatusAria}>
+                {STATUS_FILTERS.map((s) => <option key={s}>{s}</option>)}
+              </select>
+            </div>
           } />
           <div className="overflow-x-auto">
             <table className="w-full">
               <thead className="sticky top-0 z-10 bg-surface">
-                <tr><SortTh label={S.colFacility} sortKey="facility" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.colProject} sortKey="vessel" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.colDuration} sortKey="days" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.colPriority} sortKey="priority" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.colStatus} sortKey="status" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><th className="th">{S.colAction}</th></tr>
+                <tr><SortTh label={S.colFacility} sortKey="facility" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.areaLabel} sortKey="area" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.colProject} sortKey="vessel" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.colDuration} sortKey="days" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.colPriority} sortKey="priority" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.colStatus} sortKey="status" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><th className="th">{S.colAction}</th></tr>
               </thead>
               <tbody className="divide-y divide-steel-100">
                 {pager.slice(sortedSlots).map((s) => {
@@ -594,6 +653,7 @@ export default function Drydock() {
                   return (
                     <tr key={s.id} id={notifRowId(String(s.id))} className={`hover:bg-surface ${isCrit ? "bg-rose-50" : ""} ${flash.flashId === String(s.id) ? "notif-hl notif-flash" : (notified.has(String(s.id)) ? "notif-hl" : "")}`}>
                       <td className="td text-steel-600">{drydocks.find((d) => d.id === s.dockId)?.name}</td>
+                      <td className="td text-steel-600" title={slotAreaOf(s) || S.noArea}>{String(s.area ?? "").trim() || <span className="text-steel-400">—</span>}</td>
                       <td className="td">
                         <p className="font-medium text-navy-900">{s.vessel}</p>
                         <p className="text-xs font-mono text-steel-500">{s.project}</p>
@@ -624,14 +684,53 @@ export default function Drydock() {
                     </tr>
                   );
                 })}
-                {filteredSlots.length === 0 && <tr><td colSpan={6} className="td text-center text-steel-400">{S.emptySlots}</td></tr>}
+                {filteredSlots.length === 0 && <tr><td colSpan={7} className="td text-center text-steel-400">{S.emptySlots}</td></tr>}
               </tbody>
             </table>
             {pager.bar}
           </div>
         </Card>
 
-      <Card>
+      <Card className="mt-5">
+        <CardHeader title={S.mappingTitle} subtitle={S.mappingSub} />
+        <div className="space-y-4 p-4 pt-0">
+          {(() => {
+            const groups = new Map<string, StoreItem[]>();
+            for (const s of filteredSlots) {
+              const key = slotAreaOf(s) || S.noArea;
+              if (!groups.has(key)) groups.set(key, []);
+              groups.get(key)!.push(s);
+            }
+            const entries = [...groups.entries()].sort((a, b) => a[0].localeCompare(b[0]));
+            if (entries.length === 0) return <p className="text-sm text-steel-400">{S.emptySlots}</p>;
+            return entries.map(([area, slots]) => (
+              <div key={area} className="rounded-xl border border-steel-100 bg-surface p-3">
+                <div className="mb-2 flex items-center justify-between">
+                  <p className="text-sm font-semibold text-navy-900">{area}</p>
+                  <Badge tone="navy">{slots.length}</Badge>
+                </div>
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-3">
+                  {slots.map((s) => (
+                    <button
+                      key={s.id}
+                      onClick={() => openSlot(s)}
+                      className="rounded-lg border border-steel-200 bg-white px-3 py-2 text-left transition-colors hover:border-ocean-400"
+                      title={`${s.vessel} · ${s.project}`}
+                    >
+                      <p className="truncate text-sm font-semibold text-navy-900">{s.vessel}</p>
+                      <p className="font-mono text-[11px] text-steel-500">{s.id} · {drydocks.find((d) => d.id === s.dockId)?.name ?? s.dockId}</p>
+                      <p className="mt-1 text-[11px] text-steel-500">{fmtRentang(dayToISO(Number(s.from)), dayToISO(Number(s.to)))}</p>
+                      <span className="mt-1 inline-block"><StatusBadge status={slotStatus(s, data.projects)} /></span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ));
+          })()}
+        </div>
+      </Card>
+
+      <Card className="mt-5">
         <CardHeader
           title={S.ganttTitle}
           subtitle={S.ganttSub}
@@ -680,6 +779,8 @@ export default function Drydock() {
                       <p className="text-sm font-semibold text-navy-900">{dock.name}</p>
                       <span className="inline-flex items-center gap-1 text-xs text-steel-500"><User className="h-3 w-3" /> {S.picLabel.replace("{a}", String(dock.pic ?? S.picFallback))}</span>
                       <button className="btn-secondary text-xs" onClick={() => { setPicModal(dock); setPicDraft(String(dock.pic ?? "")); }}>{S.btnPic}</button>
+                      <Badge tone="teal">{String(dock.area ?? "").trim() || S.noArea}</Badge>
+                      <button className="btn-secondary text-xs" onClick={() => { setAreaModal(dock); setAreaDraft(String(dock.area ?? "")); }}>{S.areaLabel}</button>
                     </div>
                     <Badge tone={dock.status === "Terpakai" ? "blue" : "green"}>{dock.status}</Badge>
                   </div>
@@ -764,6 +865,10 @@ export default function Drydock() {
           <div>
           <dl className="dl-div text-sm">
             <div className="flex justify-between"><dt className="text-steel-500">{S.colFacility}</dt><dd className="font-medium">{drydocks.find((d) => d.id === sel.dockId)?.name}</dd></div>
+            <div className="flex items-center justify-between gap-2"><dt className="text-steel-500">{S.areaLabel}</dt><dd className="flex items-center gap-1.5">
+              <input className="input w-36 py-1 text-xs" value={slotAreaDraft} onChange={(e) => setSlotAreaDraft(e.target.value)} placeholder={S.areaPh} aria-label={S.areaLabel} />
+              <button className="btn-secondary px-2 py-1 text-xs" onClick={() => void saveSlotArea()}>{S.saveShort}</button>
+            </dd></div>
             <div className="flex justify-between"><dt className="text-steel-500">{S.colDuration}</dt><dd className="font-medium">{fmtRentang(dayToISO(sel.from), dayToISO(sel.to))} ({S.durationDays.replace("{n}", String(slotDays(sel)))})</dd></div>
             <div className="flex justify-between"><dt className="text-steel-500">{S.colPriority}</dt><dd className="font-medium">{sel.priority ?? "Normal"}</dd></div>
             <div className="flex justify-between"><dt className="text-steel-500">{S.lblRate}</dt><dd className="font-medium">{S.perDay.replace("{a}", fmtRupiah(Number(sel.ratePerDay || 0)))}</dd></div>
@@ -826,6 +931,9 @@ export default function Drydock() {
               {drydocks.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
             </select>
           </Field>
+          <Field label={S.areaLabel}>
+            <input className="input" value={moveForm.area} onChange={(e) => setMoveForm({ ...moveForm, area: e.target.value })} placeholder={S.areaPh} />
+          </Field>
           <FormGrid>
             <Field label={S.lblStartDay.replace("{n}", String(DAYS))}><NumInput min={0} max={DAYS} className="input" value={moveForm.from} onChange={(e) => setMoveForm({ ...moveForm, from: e.target.value })} /></Field>
             <Field label={S.lblEndDay.replace("{n}", String(DAYS))}><NumInput min={1} max={DAYS} className="input" value={moveForm.to} onChange={(e) => setMoveForm({ ...moveForm, to: e.target.value })} /></Field>
@@ -869,6 +977,9 @@ export default function Drydock() {
             <Field label={S.lblCalDate} hint={S.hintCalDate}>
               <input type="date" className="input" value={bookForm.startDate} onChange={(e) => setBookForm({ ...bookForm, startDate: e.target.value })} />
             </Field>
+            <Field label={S.areaLabel}>
+              <input className="input" value={bookForm.area} onChange={(e) => setBookForm({ ...bookForm, area: e.target.value })} placeholder={S.areaPh} />
+            </Field>
           </FormGrid>
           <p className="rounded-lg bg-surface px-3 py-2 text-xs text-steel-600">
             {S.costEstimate.replace("{a}", String(Math.max(0, Number(bookForm.to || 0) - Number(bookForm.from || 0)))).replace("{b}", fmtRupiah(Number(bookForm.ratePerDay || 0))).replace("{c}", fmtRupiah(Math.max(0, Number(bookForm.to || 0) - Number(bookForm.from || 0)) * Math.max(0, Number(bookForm.ratePerDay || 0))))}
@@ -906,6 +1017,14 @@ export default function Drydock() {
         footer={<><button className="btn-secondary" onClick={() => setPicModal(null)}>{S.cancelBtn}</button><button className="btn-primary" onClick={savePic}>{S.btnSavePic}</button></>}>
         <Field label={S.lblPic} hint={S.hintPic}>
           <input className="input" value={picDraft} onChange={(e) => setPicDraft(e.target.value)} placeholder={S.phPic} />
+        </Field>
+      </Modal>
+
+      {/* Modal area dock (teks bebas) */}
+      <Modal open={areaModal !== null} onClose={() => setAreaModal(null)} title={`${S.areaLabel} - ${areaModal?.name ?? ""}`}
+        footer={<><button className="btn-secondary" onClick={() => setAreaModal(null)}>{S.cancelBtn}</button><button className="btn-primary" onClick={saveArea}>{S.btnSaveArea}</button></>}>
+        <Field label={S.areaLabel}>
+          <input className="input" value={areaDraft} onChange={(e) => setAreaDraft(e.target.value)} placeholder={S.areaPh} />
         </Field>
       </Modal>
 

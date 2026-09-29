@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import type { CSSProperties } from "react";
 import { useDraftState } from "../../utils/draft";
 import { FileText } from "lucide-react";
 import { Card, CardHeader, PageHeader, StatusBadge, Badge, KpiCard, EmptyState, ProgressBar, Donut, toast } from "../../components/ui";
@@ -15,6 +16,12 @@ type Mode = "Mingguan" | "Bulanan" | "Per Proyek";
 
 const num = (v: unknown): number => Number(v) || 0;
 const inRange = (d: string, a: string, b: string): boolean => d >= a && d <= b;
+
+/* Gap data tampil jujur "—": JANGAN angka palsu (cth 0%/Rp 0) saat sumber kosong. */
+const dashIf = (has: boolean, text: string): string => (has ? text : "—");
+
+/* Hindari section cetak terpotong / blank di tengah halaman PDF. */
+const printAvoid: CSSProperties = { breakInside: "avoid", pageBreakInside: "avoid" };
 
 function toISODate(d: Date): string {
   return d.toISOString().slice(0, 10);
@@ -372,7 +379,7 @@ export default function Laporan() {
       </div>
 
       <div id="laporan-konten">
-        <div style={{ textAlign: "center", borderBottom: "3px solid #0B3A63", paddingBottom: 12, marginBottom: 16 }}>
+        <div style={{ textAlign: "center", borderBottom: "3px solid #0B3A63", paddingBottom: 12, marginBottom: 16, breakInside: "avoid", pageBreakInside: "avoid" }}>
           <p style={{ fontWeight: 800, fontSize: 18, color: "#0B3A63", margin: 0 }}>{SB_KOP.name}</p>
           <p style={{ fontSize: 11, color: "#33475B", margin: 0 }}>{SB_KOP.line1}</p>
           <p style={{ fontSize: 10, color: "#52697C", margin: 0 }}>{SB_KOP.hq} · {SB_KOP.addr1}</p>
@@ -381,12 +388,13 @@ export default function Laporan() {
         {mode === "Mingguan" && (
           <div className="space-y-4">
             <p className="text-sm text-steel-500">{S.weekRangeProjects.replace("{a}", fmtTanggal(week0)).replace("{b}", fmtTanggal(week1)).replace("{n}", fmtJumlah(weekly.projects.length))}</p>
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-              <KpiCard label={S.kpiActiveProject} value={fmtJumlah(weekly.projects.length)} hint={S.avgProgressHint.replace("{n}", String(Math.round(weekly.avgProgress)))} chip="navy" />
-              <KpiCard label={S.kpiInvoiceIssuedPaid} value={`${fmtJumlah(weekly.invTerbit.length)} / ${fmtJumlah(weekly.invLunas.length)}`} hint={fmtRupiah(weekly.invLunasVal)} chip="teal" />
-              <KpiCard label={S.kpiPoIssued} value={fmtJumlah(weekly.po.length)} hint={fmtRupiah(weekly.poVal)} chip="amber" />
-              <KpiCard label={S.kpiAttendance} value={`${Math.round(weekly.hadirPct)}%`} hint={S.attendanceHint.replace("{a}", fmtJumlah(weekly.hadir)).replace("{b}", fmtJumlah(weekly.att.length))} chip="violet" />
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4" style={printAvoid}>
+              <KpiCard label={S.kpiActiveProject} value={fmtJumlah(weekly.projects.length)} hint={dashIf(weekly.projects.length > 0, S.avgProgressHint.replace("{n}", String(Math.round(weekly.avgProgress))))} chip="navy" />
+              <KpiCard label={S.kpiInvoiceIssuedPaid} value={`${fmtJumlah(weekly.invTerbit.length)} / ${fmtJumlah(weekly.invLunas.length)}`} hint={dashIf(weekly.invTerbit.length + weekly.invLunas.length > 0, fmtRupiah(weekly.invLunasVal))} chip="teal" />
+              <KpiCard label={S.kpiPoIssued} value={fmtJumlah(weekly.po.length)} hint={dashIf(weekly.po.length > 0, fmtRupiah(weekly.poVal))} chip="amber" />
+              <KpiCard label={S.kpiAttendance} value={dashIf(weekly.att.length > 0, `${Math.round(weekly.hadirPct)}%`)} hint={dashIf(weekly.att.length > 0, S.attendanceHint.replace("{a}", fmtJumlah(weekly.hadir)).replace("{b}", fmtJumlah(weekly.att.length)))} chip="violet" />
             </div>
+            <div style={printAvoid}>
             <Card className="p-4">
               <CardHeader title={S.compareLastWeek} subtitle={`${fmtTanggal(weekPrev0)} → ${fmtTanggal(weekPrev1)}`} />
               <div className="grid grid-cols-1 gap-2 px-5 pb-5 text-sm sm:grid-cols-3">
@@ -396,6 +404,7 @@ export default function Laporan() {
               </div>
               <p className="px-5 pb-5 text-[11px] text-steel-400">Kas: Lunas − (AP Lunas + Payroll Dibayar)</p>
             </Card>
+            </div>
             <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
               <Card className="p-4">
                 <CardHeader title={S.projectProgress} subtitle={S.activeThisWeek} />
@@ -458,12 +467,13 @@ export default function Laporan() {
 
         {mode === "Bulanan" && (
           <div className="space-y-4">
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-              <KpiCard label={S.revenueMonth.replace("{n}", month)} value={fmtMiliar(monthly.revenue)} hint={S.invoicePaidCount.replace("{n}", fmtJumlah(monthly.invLunas.length))} chip="teal" />
-              <KpiCard label={S.costApPayroll} value={fmtMiliar(monthly.cost)} hint={S.payrollAmount.replace("{n}", fmtMiliar(monthly.payrollTotal))} chip="navy" />
-              <KpiCard label={S.netProfit} value={fmtMiliar(monthly.laba)} hint={monthly.laba >= 0 ? S.surplusLabel : S.deficitLabel} chip="violet" />
-              <KpiCard label={S.pph21Label} value={fmtRupiah(monthly.pph21)} hint={monthly.taxRow ? S.periodStatus.replace("{n}", String(monthly.taxRow.status)) : S.noPeriod} chip="amber" />
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4" style={printAvoid}>
+              <KpiCard label={S.revenueMonth.replace("{n}", month)} value={dashIf(monthly.invLunas.length > 0, fmtMiliar(monthly.revenue))} hint={S.invoicePaidCount.replace("{n}", fmtJumlah(monthly.invLunas.length))} chip="teal" />
+              <KpiCard label={S.costApPayroll} value={dashIf(monthly.apLunas.length + monthly.payRows.length > 0, fmtMiliar(monthly.cost))} hint={dashIf(monthly.payRows.length > 0, S.payrollAmount.replace("{n}", fmtMiliar(monthly.payrollTotal)))} chip="navy" />
+              <KpiCard label={S.netProfit} value={dashIf(monthly.invLunas.length + monthly.apLunas.length + monthly.payRows.length > 0, fmtMiliar(monthly.laba))} hint={monthly.invLunas.length + monthly.apLunas.length + monthly.payRows.length > 0 ? (monthly.laba >= 0 ? S.surplusLabel : S.deficitLabel) : "—"} chip="violet" />
+              <KpiCard label={S.pph21Label} value={dashIf(monthly.payRows.length > 0, fmtRupiah(monthly.pph21))} hint={monthly.taxRow ? S.periodStatus.replace("{n}", String(monthly.taxRow.status)) : S.noPeriod} chip="amber" />
             </div>
+            <div style={printAvoid}>
             <Card className="p-4">
               <CardHeader title={S.compareLastMonth.replace("{n}", prevMonth)} subtitle={S.deltaRevCostProfit} />
               <div className="grid grid-cols-1 gap-2 px-5 pb-5 text-sm sm:grid-cols-3">
@@ -472,23 +482,24 @@ export default function Laporan() {
                 <div className="flex justify-between"><span className="text-steel-500">{S.profitDelta}</span><span className="font-semibold">{fmtRupiah(monthly.laba - monthlyPrev.laba)}</span></div>
               </div>
             </Card>
-            <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+            </div>
+            <div className="grid grid-cols-1 gap-4 lg:grid-cols-2" style={printAvoid}>
               <Card className="p-4">
                 <CardHeader title={S.pnlBrief} subtitle={S.pnlSub} />
                 <div className="space-y-1.5 px-5 pb-5 text-sm">
-                  <div className="flex justify-between"><span className="text-steel-500">{S.revenueLabel}</span><span className="font-semibold">{fmtRupiah(monthly.revenue)}</span></div>
-                  <div className="flex justify-between"><span className="text-steel-500">{S.costLabel}</span><span className="font-semibold">{fmtRupiah(monthly.cost)}</span></div>
-                  <div className="flex justify-between border-t border-steel-100 pt-2"><span className="text-steel-500">{S.profitLabel}</span><span className="font-bold text-navy-900">{fmtRupiah(monthly.laba)}</span></div>
+                  <div className="flex justify-between"><span className="text-steel-500">{S.revenueLabel}</span><span className="font-semibold">{dashIf(monthly.invLunas.length > 0, fmtRupiah(monthly.revenue))}</span></div>
+                  <div className="flex justify-between"><span className="text-steel-500">{S.costLabel}</span><span className="font-semibold">{dashIf(monthly.apLunas.length + monthly.payRows.length > 0, fmtRupiah(monthly.cost))}</span></div>
+                  <div className="flex justify-between border-t border-steel-100 pt-2"><span className="text-steel-500">{S.profitLabel}</span><span className="font-bold text-navy-900">{dashIf(monthly.invLunas.length + monthly.apLunas.length + monthly.payRows.length > 0, fmtRupiah(monthly.laba))}</span></div>
                   <p className="pt-1 text-[11px] text-steel-400">Kas: Lunas − (AP Lunas + Payroll Dibayar)</p>
                 </div>
               </Card>
               <Card className="p-4">
                 <CardHeader title={S.taxThisMonth} subtitle={S.taxSub} />
                 <div className="space-y-1.5 px-5 pb-5 text-sm">
-                  <div className="flex justify-between"><span className="text-steel-500">{S.ppnOut}</span><span className="font-semibold">{fmtRupiah(monthly.ppnKeluar)}</span></div>
-                  <div className="flex justify-between"><span className="text-steel-500">{S.ppnIn}</span><span className="font-semibold">{fmtRupiah(monthly.ppnMasuk)}</span></div>
-                  <div className="flex justify-between"><span className="text-steel-500">{S.pph23Label}</span><span className="font-semibold">{fmtRupiah(monthly.pph23)}</span></div>
-                  <div className="flex justify-between"><span className="text-steel-500">{S.pph21Label}</span><span className="font-semibold">{fmtRupiah(monthly.pph21)}</span></div>
+                  <div className="flex justify-between"><span className="text-steel-500">{S.ppnOut}</span><span className="font-semibold">{dashIf(monthly.invLunas.length > 0, fmtRupiah(monthly.ppnKeluar))}</span></div>
+                  <div className="flex justify-between"><span className="text-steel-500">{S.ppnIn}</span><span className="font-semibold">{dashIf(monthly.apLunas.length > 0, fmtRupiah(monthly.ppnMasuk))}</span></div>
+                  <div className="flex justify-between"><span className="text-steel-500">{S.pph23Label}</span><span className="font-semibold">{dashIf(monthly.apLunas.length > 0, fmtRupiah(monthly.pph23))}</span></div>
+                  <div className="flex justify-between"><span className="text-steel-500">{S.pph21Label}</span><span className="font-semibold">{dashIf(monthly.payRows.length > 0, fmtRupiah(monthly.pph21))}</span></div>
                   {monthly.taxRow && <p className="text-xs text-steel-400">{S.taxPeriodDetail.replace("{a}", String(monthly.taxRow.period)).replace("{b}", String(monthly.taxRow.status)).replace("{c}", fmtTanggal(String(monthly.taxRow.reportedAt ?? "")))}</p>}
                 </div>
               </Card>
@@ -501,11 +512,11 @@ export default function Laporan() {
             <EmptyState title={S.emptyProjects} subtitle={S.pickOtherBranch} />
           ) : (
             <div className="space-y-4">
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4" style={printAvoid}>
                 <KpiCard label={S.budgetVsActual} value={fmtMiliar(num(project.actual))} hint={S.fromAmount.replace("{n}", fmtMiliar(num(project.budget)))} chip="navy" />
                 <KpiCard label={S.progressLabel} value={`${num(project.progress)}%`} hint={String(project.status ?? "")} chip="teal" />
-                <KpiCard label={S.boqTotal} value={fmtMiliar(boqTotal)} hint={S.itemCountSuffix.replace("{n}", fmtJumlah(boqRows.length))} chip="violet" />
-                <KpiCard label={S.invoiceLabel} value={fmtMiliar(projInvTotal)} hint={S.invoiceCount.replace("{n}", fmtJumlah(projInvoices.length))} chip="amber" />
+                <KpiCard label={S.boqTotal} value={dashIf(boqRows.length > 0, fmtMiliar(boqTotal))} hint={S.itemCountSuffix.replace("{n}", fmtJumlah(boqRows.length))} chip="violet" />
+                <KpiCard label={S.invoiceLabel} value={dashIf(projInvoices.length > 0, fmtMiliar(projInvTotal))} hint={S.invoiceCount.replace("{n}", fmtJumlah(projInvoices.length))} chip="amber" />
               </div>
               <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
                 <Card className="p-4">
@@ -550,7 +561,7 @@ export default function Laporan() {
             </div>
           )
         )}
-        <div className="mt-4 rounded-xl border border-steel-100 bg-surface p-4 text-sm">
+        <div className="mt-4 rounded-xl border border-steel-100 bg-surface p-4 text-sm" style={printAvoid}>
           <p className="font-semibold text-navy-900">{S.endorsement}</p>
           {sigName.trim() ? (
             <p className="mt-1 text-steel-600">{S.endorsedBy.replace("{a}", sigName.trim()).replace("{b}", sigRole.trim() ? S.endorsedRoleSuffix.replace("{n}", sigRole.trim()) : "").replace("{c}", fmtTanggal(sigDate))}</p>

@@ -84,8 +84,7 @@ function nextVersion(v: string): string {
   return "v1.1";
 }
 
-function daysUntil(iso: string | null | undefined): number | null {
-  if (!iso || iso === "-") return null;
+function daysUntil(iso: string | null | undefined): number | null {  if (!iso || iso === "-") return null;
   const raw = String(iso).length === 7 ? `${iso}-01` : String(iso);
   const t = new Date(`${raw}T00:00:00`).getTime();
   if (Number.isNaN(t)) return null;
@@ -95,6 +94,21 @@ function daysUntil(iso: string | null | undefined): number | null {
 }
 
 const emptyForm = { title: "", type: "Laporan", project: "", vessel: "", owner: "", berlakuHingga: "", revNote: "", fileUrl: "" };
+
+/* Teks cari mencakup owner / tipe / OCR / URL lampiran, bukan cuma judul. */
+function docHay(d: StoreItem): string {
+  return `${d.title ?? ""} ${d.id ?? ""} ${d.project ?? ""} ${d.vessel ?? ""} ${d.owner ?? ""} ${d.type ?? ""} ${d.ocrText ?? ""} ${d.fileUrl ?? ""}`.toLowerCase();
+}
+
+/* Jenis pratinjau inline dari ekstensi URL lampiran. */
+function previewKind(url: string): "image" | "pdf" | "text" | "other" | "none" {
+  if (!url) return "none";
+  const clean = url.split("?")[0].split("#")[0].toLowerCase();
+  if (/\.(png|jpe?g|gif|webp|svg|bmp)$/.test(clean)) return "image";
+  if (/\.pdf$/.test(clean)) return "pdf";
+  if (/\.(csv|txt)$/.test(clean)) return "text";
+  return "other";
+}
 
 export default function Documents() {
   const { data, add, update, remove, log, branch, inBranch } = useStore();
@@ -117,6 +131,41 @@ export default function Documents() {
   const [relSel, setRelSel] = useState<string[]>([]);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [uploadingFile, setUploadingFile] = useState(false);
+  const [distTo, setDistTo] = useState("");
+  const [fileText, setFileText] = useState<string | null>(null);
+  const [fileTextFail, setFileTextFail] = useState(false);
+
+  /* Reset + muat isi berkas teks (csv/txt) tiap ganti dokumen di modal detail. */
+  const detailId = detail?.id;
+  useEffect(() => {
+    setFileText(null);
+    setFileTextFail(false);
+    setDistTo("");
+    if (!detail || previewKind(String(detail.fileUrl ?? "")) !== "text") return;
+    let alive = true;
+    fetch(String(detail.fileUrl))
+      .then((r) => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.text(); })
+      .then((t) => { if (alive) setFileText(t.slice(0, 8000)); })
+      .catch(() => { if (alive) setFileTextFail(true); });
+    return () => { alive = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [detailId]);
+
+  const distLog = (Array.isArray(detail?.distribusi) ? detail.distribusi : []) as { to: string; at: string; by?: string }[];
+
+  const sendDist = async () => {
+    if (!detail) return;
+    if (!distTo.trim()) { toast(S.tDistToReq, "info"); return; }
+    const entry = { to: distTo.trim(), at: todayISO(), by: String(detail.owner ?? "") };
+    const next = [...distLog, entry];
+    try {
+      await update("documents", detail.id, { distribusi: next, updated: todayISO() });
+      log(`mendistribusikan dokumen ke ${entry.to}`, String(detail.id), "Dokumen");
+      toast(S.tDistSent.replace("{a}", String(detail.id)).replace("{b}", entry.to));
+      setDetail((cur) => (cur && cur.id === detail.id ? { ...cur, distribusi: next, updated: todayISO() } : cur));
+      setDistTo("");
+    } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); }
+  };
 
   const docPreview = nextDocId(form.type, data.documents);
 
@@ -124,7 +173,7 @@ export default function Documents() {
   const archived = inBranch(data.documents.filter((d) => d.archived));
 
   const list = (type === "Arsip" ? archived : active.filter((d) => type === "Semua" || d.type === type)).filter((d) => {
-    return `${d.title} ${d.id} ${d.project} ${d.vessel}`.toLowerCase().includes(q.toLowerCase());
+    return docHay(d).includes(q.toLowerCase());
   });
   const sortedDocs = useMemo(() => sortRows(list, sort, (d, key) =>
     key === "dokumen" ? String(d.title ?? "") : key === "tipe" ? String(d.type ?? "") : key === "proyek" ? String(d.project ?? "") : key === "versi" ? String(d.version ?? "") : key === "status" ? String(d.status ?? "") : String(d.updated ?? "")
@@ -140,7 +189,7 @@ export default function Documents() {
     if (type === target) { flash.pick(key, -1, () => {}, 100); return; }
     const targetBase = target === "Arsip" ? archived : active;
     const targetSorted = sortRows(
-      targetBase.filter((d) => `${d.title} ${d.id} ${d.project} ${d.vessel}`.toLowerCase().includes(q.toLowerCase())),
+      targetBase.filter((d) => docHay(d).includes(q.toLowerCase())),
       sort,
       (d, k) => k === "dokumen" ? String(d.title ?? "") : k === "tipe" ? String(d.type ?? "") : k === "proyek" ? String(d.project ?? "") : k === "versi" ? String(d.version ?? "") : k === "status" ? String(d.status ?? "") : String(d.updated ?? ""),
     );
@@ -580,6 +629,20 @@ export default function Documents() {
                 <dd><Badge tone={String(detail.docCopy ?? "Terkendali") === "Salinan" ? "amber" : "teal"}>{String(detail.docCopy ?? "Terkendali")}</Badge></dd>
               </div>
             </dl>
+            <h4 className="mb-2 mt-4 text-sm font-semibold text-navy-900">{S.previewTitle}</h4>
+            {(() => {
+              const url = String(detail.fileUrl ?? "");
+              const kind = previewKind(url);
+              if (kind === "none") return <p className="text-xs text-steel-400">-</p>;
+              if (kind === "image") return <img src={url} alt={String(detail.title)} className="max-h-72 w-full rounded-xl border border-steel-200 object-contain bg-surface" loading="lazy" />;
+              if (kind === "pdf") return <iframe src={url} title={String(detail.title)} className="h-72 w-full rounded-xl border border-steel-200 bg-white" />;
+              if (kind === "text") {
+                if (fileTextFail) return <p className="text-xs text-steel-400">{S.previewLoadFail}</p>;
+                if (fileText === null) return <p className="text-xs text-steel-400">{S.previewLoading}</p>;
+                return <pre className="max-h-72 overflow-auto whitespace-pre-wrap rounded-xl border border-steel-200 bg-surface p-3 font-mono text-xs text-steel-700">{fileText}</pre>;
+              }
+              return <p className="text-xs text-steel-400">{S.previewUnsupported}</p>;
+            })()}
             <div className="mt-3 flex flex-wrap gap-2">
               <button className="btn-secondary text-xs" onClick={() => toggleCopy(detail)}>
                 {String(detail.docCopy ?? "Terkendali") === "Salinan" ? S.toControlled : S.toCopy}
@@ -636,6 +699,21 @@ export default function Documents() {
                 </div>
               ))}
               {((detail.revisions ?? []) as unknown[]).length === 0 && <p className="text-xs text-steel-400">{S.noHistory}</p>}
+            </div>
+            <h4 className="mb-1 mt-4 text-sm font-semibold text-navy-900">{S.distTitle}</h4>
+            <p className="mb-2 text-xs text-steel-400">{S.distSub}</p>
+            <div className="flex gap-2">
+              <input className="input flex-1" value={distTo} onChange={(e) => setDistTo(e.target.value)} placeholder={S.distToPh} aria-label={S.distToLabel} />
+              <button className="btn-primary shrink-0 text-xs" onClick={() => void sendDist()}>{S.distSendBtn}</button>
+            </div>
+            <div className="mt-2 space-y-1.5 text-sm">
+              {distLog.map((g, i) => (
+                <div key={`${g.to}-${g.at}-${i}`} className="flex items-center justify-between gap-2 rounded-lg bg-surface px-3 py-2">
+                  <span className="truncate font-medium text-navy-900" title={g.to}>{g.to}</span>
+                  <span className="whitespace-nowrap text-xs text-steel-500">{fmtTanggal(g.at)}{g.by ? ` · ${g.by}` : ""}</span>
+                </div>
+              ))}
+              {distLog.length === 0 && <p className="text-xs text-steel-400">{S.distEmpty}</p>}
             </div>
           </div>
         )}

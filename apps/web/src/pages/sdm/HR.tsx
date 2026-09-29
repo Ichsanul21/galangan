@@ -21,6 +21,8 @@ import {
   toggleSort,
   usePager,
   NumInput,
+  FileUploadButton,
+  SecureImg,
 } from "../../components/ui";
 import type { SortState } from "../../components/ui";
 import { FilterPopover } from "../../components/FilterPopover";
@@ -215,7 +217,7 @@ export default function HR() {
 
   /* ---------- cuti ---------- */
   const [showLeave, setShowLeave] = useState(false);
-  const [leaveForm, setLeaveForm] = useState({ employeeId: "", type: "Tahunan", from: todayISO(), to: todayISO(), note: "" });
+  const [leaveForm, setLeaveForm] = useState({ employeeId: "", type: "Tahunan", from: todayISO(), to: todayISO(), note: "", fileUrl: "" });
   const [rejectTarget, setRejectTarget] = useState<StoreItem | null>(null);
 
   /* ---------- mutasi ---------- */
@@ -233,6 +235,7 @@ export default function HR() {
   const [showSurat, setShowSurat] = useState(false);
   const [suratForm, setSuratForm] = useState({ employeeId: "", jenis: "SP 1", isi: "", tanggal: todayISO() });
   const [arsipSurat, setArsipSurat] = useDraftState<StoreItem[]>("isms.draft.hr.arsipSurat", []);
+  const [suratPreviewFor, setSuratPreviewFor] = useState<StoreItem | null>(null);
 
   /* ---------- impor massal ---------- */
   const [importReport, setImportReport] = useState<{ ok: number; gagal: string[] } | null>(null);
@@ -564,12 +567,13 @@ export default function HR() {
         days: leaveDays,
         status: "Diajukan",
         note: leaveForm.note.trim(),
+        ...(leaveForm.fileUrl.trim() ? { fileUrl: leaveForm.fileUrl.trim() } : {}),
       },
       { action: "mengajukan cuti", module: "SDM" },
     );
     toast(S.tLeaveOk.replace("{n}", created.id).replace("{a}", String(leaveDays)));
     setShowLeave(false);
-    setLeaveForm({ employeeId: "", type: "Tahunan", from: todayISO(), to: todayISO(), note: "" });
+    setLeaveForm({ employeeId: "", type: "Tahunan", from: todayISO(), to: todayISO(), note: "", fileUrl: "" });
     } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); }
   };
 
@@ -733,13 +737,30 @@ export default function HR() {
   };
 
   /* ---------- surat peringatan / mutasi ---------- */
+  /* Nomor resmi SRT-YYYYMMDD-NNN: urut per tanggal, anti-tabrakan bila arsip dihapus. */
+  const nextSuratId = (tanggal: string): string => {
+    const head = `SRT-${tanggal.replace(/-/g, "")}-`;
+    let max = 0;
+    for (const s of arsipSurat) {
+      const m = String(s.id ?? "").match(new RegExp(`^${head}(\\d+)$`));
+      if (m) max = Math.max(max, Number(m[1]) || 0);
+    }
+    let id = `${head}${String(max + 1).padStart(3, "0")}`;
+    let bump = 1;
+    while (arsipSurat.some((s) => String(s.id) === id)) {
+      bump += 1;
+      id = `${head}${String(max + bump).padStart(3, "0")}`;
+    }
+    return id;
+  };
+
   const suratEmp = data.employees.find((e) => e.id === suratForm.employeeId);
   const suratPreview = suratEmp
     ? [
         `SURAT ${suratForm.jenis.toUpperCase()}`,
         `PT Syukur Bersaudara`,
         ``,
-        `Nomor: ___/HR/${suratForm.tanggal.slice(0, 4)}`,
+        `Nomor: ${nextSuratId(suratForm.tanggal || todayISO())}`,
         `Tanggal: ${fmtTanggal(suratForm.tanggal)}`,
         ``,
         `Kepada Yth. ${suratEmp.name} (${empNik(suratEmp)})`,
@@ -763,7 +784,7 @@ export default function HR() {
       return;
     }
     const entry: StoreItem = {
-      id: `SRT-${suratForm.tanggal.replace(/-/g, "")}-${String(arsipSurat.length + 1).padStart(3, "0")}`,
+      id: nextSuratId(suratForm.tanggal),
       employeeId: suratEmp.id,
       nama: String(suratEmp.name),
       jenis: suratForm.jenis,
@@ -1024,8 +1045,13 @@ export default function HR() {
                         {empPager.slice(sortedEmps).map((e) => (
                           <tr key={e.id} className="hover:bg-surface">
                             <td className="td">
-                              <p className="font-medium text-navy-900">{e.name}</p>
-                              <p className="text-xs text-steel-500 font-mono">{e.id} · {e.dept}</p>
+                              <div className="flex items-center gap-2.5">
+                                <SecureImg src={e.photo} alt={String(e.name)} name={String(e.name)} className="h-8 w-8 shrink-0 rounded-full object-cover text-[10px]" />
+                                <div className="min-w-0">
+                                  <p className="font-medium text-navy-900">{e.name}</p>
+                                  <p className="text-xs text-steel-500 font-mono">{e.id} · {e.dept}</p>
+                                </div>
+                              </div>
                             </td>
                             <td className="td font-mono text-steel-600" title="NIK = username login karyawan">{empNik(e)}</td>
                             <td className="td text-steel-600 max-w-[160px] truncate" title={String(e.role)}>{e.role}</td>
@@ -1114,6 +1140,7 @@ export default function HR() {
                     <SortTh label={S.thHari} sortKey="days" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} />
                     <SortTh label={S.thSaldoSisa} sortKey="saldo" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} />
                     <SortTh label={S.dlStatus} sortKey="status" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} />
+                    <SortTh label={locale === "en" ? "Attachment" : "Lampiran"} sortKey="lampiran" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} />
                     <th className="th">{S.thAksi}</th>
                   </tr>
                 </thead>
@@ -1128,6 +1155,7 @@ export default function HR() {
                       case "days": return Number(l.days ?? 0);
                       case "saldo": return String(l.type) === "Tahunan" ? Number(saldoCuti(String(l.employeeId ?? ""))) : Number(-1);
                       case "status": return String(l.status ?? "");
+                      case "lampiran": return String(l.fileUrl ?? "");
                       default: return "";
                     }
                   }).map((l) => (
@@ -1139,6 +1167,15 @@ export default function HR() {
                       <td className="td font-semibold">{S.daysN.replace("{n}", String(l.days))}</td>
                       <td className="td text-steel-600">{l.type === "Tahunan" ? S.daysN.replace("{n}", String(saldoCuti(String(l.employeeId)))) : "-"}</td>
                       <td className="td"><StatusBadge status={String(l.status)} /></td>
+                      <td className="td">
+                        {String(l.status) === "Disetujui" && l.fileUrl ? (
+                          <a className="text-sm font-semibold text-ocean-600 underline" href={String(l.fileUrl)} target="_blank" rel="noreferrer" title={String(l.fileUrl)}>
+                            {locale === "en" ? "Preview" : "Pratinjau"}
+                          </a>
+                        ) : (
+                          <span className="text-xs text-steel-400">-</span>
+                        )}
+                      </td>
                       <td className="td">
                         {l.status === "Diajukan" ? (
                           <div className="flex items-center gap-2 whitespace-nowrap">
@@ -1300,9 +1337,14 @@ export default function HR() {
                 </div>
                 <div className="mt-3 space-y-2.5">
                   {arsipSurat.map((s) => (
-                    <div key={s.id} className="rounded-lg bg-surface p-2.5 text-sm">
-                      <p className="font-medium text-navy-900">{s.jenis} · {s.nama}</p>
-                      <p className="text-xs text-steel-500">{s.id} · {fmtTanggal(String(s.tanggal))}</p>
+                    <div key={s.id} className="flex items-start justify-between gap-2 rounded-lg bg-surface p-2.5 text-sm">
+                      <div className="min-w-0">
+                        <p className="font-medium text-navy-900">{s.jenis} · {s.nama}</p>
+                        <p className="font-mono text-xs text-steel-500">{s.id} · {fmtTanggal(String(s.tanggal))}</p>
+                      </div>
+                      <button className="shrink-0 text-xs font-semibold text-ocean-600 underline" onClick={() => setSuratPreviewFor(s)}>
+                        {locale === "en" ? "Preview" : "Pratinjau"}
+                      </button>
                     </div>
                   ))}
                   {arsipSurat.length === 0 && <p className="text-xs text-steel-400">{S.emptyArsip}</p>}
@@ -1437,6 +1479,12 @@ export default function HR() {
             <Field label={S.fSampai}><input type="date" className="input" value={leaveForm.to} onChange={(e) => setLeaveForm({ ...leaveForm, to: e.target.value })} /></Field>
           </FormGrid>
           <Field label={S.fKet}><input className="input" value={leaveForm.note} onChange={(e) => setLeaveForm({ ...leaveForm, note: e.target.value })} placeholder={S.phKeperluan} /></Field>
+          <Field label={locale === "en" ? "Attachment URL (e.g. doctor note)" : "URL lampiran (mis. surat dokter)"} hint={locale === "en" ? "Shown after approval" : "Tampil setelah Disetujui"}>
+            <div className="flex flex-wrap items-center gap-2">
+              <input className="input flex-1 font-mono" value={leaveForm.fileUrl} onChange={(e) => setLeaveForm({ ...leaveForm, fileUrl: e.target.value })} placeholder="https://…" />
+              <FileUploadButton label={locale === "en" ? "Upload" : "Unggah"} onUploaded={(url) => setLeaveForm((f) => ({ ...f, fileUrl: url }))} />
+            </div>
+          </Field>
         </div>
       </Modal>
 
@@ -1589,6 +1637,30 @@ export default function HR() {
             </div>
           )}
         </div>
+      </Modal>
+
+      {/* ---------- modal pratinjau isi surat di arsip ---------- */}
+      <Modal
+        open={suratPreviewFor !== null}
+        onClose={() => setSuratPreviewFor(null)}
+        title={suratPreviewFor ? String(suratPreviewFor.jenis) : ""}
+        subtitle={suratPreviewFor ? `${String(suratPreviewFor.id)} · ${String(suratPreviewFor.nama)}` : ""}
+      >
+        {suratPreviewFor && (
+          <pre className="whitespace-pre-wrap rounded-xl bg-surface p-3 text-sm text-navy-900">
+            {[
+              `${String(suratPreviewFor.jenis ?? "").toUpperCase()}`,
+              `PT Syukur Bersaudara`,
+              ``,
+              `Nomor: ${String(suratPreviewFor.id)}`,
+              `Tanggal: ${fmtTanggal(String(suratPreviewFor.tanggal))}`,
+              ``,
+              `Kepada Yth. ${String(suratPreviewFor.nama ?? "")}`,
+              ``,
+              String(suratPreviewFor.isi ?? ""),
+            ].join("\n")}
+          </pre>
+        )}
       </Modal>
     </div>
   );

@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Plus, ShieldCheck, AlertTriangle, Siren, Award, Send, Search } from "lucide-react";
 import { ComposedChart, Line, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 import { Card, CardHeader, PageHeader, Badge, KpiCard, Tabs, StatusBadge, Donut, ChartTooltip, Modal, Field, FormGrid, ConfirmModal, SortTh, toggleSort, sortRows, usePager, toast,
-  NumInput,
+  NumInput, FlowStrip, SecureImg, FileUploadButton,
 } from "../../components/ui";
 import type { SortState } from "../../components/ui";
 import { useStore, type StoreItem } from "../../data/store";
@@ -97,6 +97,21 @@ function nextRev(rev: string): string {
   return `${r}-R1`;
 }
 
+const QC_ID_MON = ["Jan", "Feb", "Mar", "Apr", "Mei", "Jun", "Jul", "Agu", "Sep", "Okt", "Nov", "Des"];
+const QC_EN_MON = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+/* Label "Mon YYYY" untuk deret statis, bulan berjalan terakhir. */
+function qcTrailingLabels(n: number, locale: string): string[] {
+  const now = new Date();
+  const M = locale === "en" ? QC_EN_MON : QC_ID_MON;
+  const out: string[] = [];
+  for (let i = n - 1; i >= 0; i--) {
+    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+    out.push(`${M[d.getMonth()]} ${d.getFullYear()}`);
+  }
+  return out;
+}
+
 export default function QCSafety() {
   const { data, add, update, remove, log, branch, inBranch } = useStore();
   const modAlert = useModuleAlert("qc");
@@ -181,8 +196,10 @@ export default function QCSafety() {
 
   // Drawing
   const [showDrw, setShowDrw] = useState(false);
-  const [drwForm, setDrwForm] = useState({ project: "", title: "", holder: "", branch: "" });
+  const [drwForm, setDrwForm] = useState({ project: "", title: "", holder: "", branch: "", fileUrl: "" });
   const [expandedDrw, setExpandedDrw] = useState<string | null>(null);
+  const [drwPreview, setDrwPreview] = useState<StoreItem | null>(null);
+  const [certPreview, setCertPreview] = useState<{ vessel: string; name: string; expires: string; days: number | null } | null>(null);
   const [showTransmit, setShowTransmit] = useState(false);
   const [transmitForm, setTransmitForm] = useState({ to: "", date: todayISO(), ids: [] as string[] });
 
@@ -212,6 +229,18 @@ export default function QCSafety() {
 
   // Biaya rework per NCR (draft per detail)
   const [reworkDraft, setReworkDraft] = useState({ hours: "", rate: "", material: "" });
+
+  /* Chart ITP: label bulan+tahun, bulan berjalan terakhir. */
+  const itpChart = useMemo(() => {
+    const labels = qcTrailingLabels(inspectionTrend.length, locale);
+    return inspectionTrend.map((d, i) => ({ ...d, label: labels[i] ?? d.month }));
+  }, [locale]);
+
+  /* Posisi alur NCR terjauh untuk strip alur. */
+  const furthestNcr = useMemo(() => {
+    const max = ncrList.reduce((m, n) => Math.max(m, NCR_FLOW.indexOf(String(n.status ?? ""))), -1);
+    return max >= 0 ? NCR_FLOW[max] : NCR_FLOW[0];
+  }, [ncrList]);
 
   const openNcr = ncrList.filter((n) => n.status !== "Tertutup").length;
   const criticalOpen = ncrList.filter((n) => n.severity === "Critical" && n.status !== "Tertutup").length;
@@ -557,11 +586,12 @@ export default function QCSafety() {
       project: drwForm.project, title: drwForm.title.trim(), revision: "A",
       status: "Diajukan", updated: todayISO(), holder: drwForm.holder.trim(),
       branch: branchOf(drwForm.branch),
+      ...(drwForm.fileUrl.trim() ? { fileUrl: drwForm.fileUrl.trim() } : {}),
       history: [{ revision: "A", date: todayISO(), holder: drwForm.holder.trim(), status: "Diajukan" }],
     }, { action: "meregistrasi drawing", module: "QC" });
     toast(S.tDrwDaftar.replace("{n}", created.id));
     setShowDrw(false);
-    setDrwForm({ project: "", title: "", holder: "", branch: "" });
+    setDrwForm({ project: "", title: "", holder: "", branch: "", fileUrl: "" });
     } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); }
   };
 
@@ -824,9 +854,9 @@ export default function QCSafety() {
                   <CardHeader title={S.cardInspT} subtitle={S.cardInspS} />
                   <div className="h-44 p-4 pt-0">
                     <ResponsiveContainer width="100%" height="100%">
-                      <ComposedChart data={inspectionTrend} margin={{ top: 5, right: 5, left: -20, bottom: 0 }}>
+                      <ComposedChart data={itpChart} margin={{ top: 5, right: 5, left: -20, bottom: 0 }}>
                         <CartesianGrid strokeDasharray="3 3" stroke="#e9eff4" vertical={false} />
-                        <XAxis dataKey="month" stroke="#8aa2b6" axisLine={false} tickLine={false} />
+                        <XAxis dataKey="label" stroke="#8aa2b6" axisLine={false} tickLine={false} tick={{ fontSize: 10 }} />
                         <YAxis stroke="#8aa2b6" axisLine={false} tickLine={false} />
                         <Tooltip content={<ChartTooltip />} />
                         <Bar dataKey="inspeksi" name="Inspeksi" fill="#8cc9e8" radius={[4, 4, 0, 0]} barSize={18} />
@@ -841,6 +871,9 @@ export default function QCSafety() {
 
           {tab === "NCR" && (
             <div className="space-y-3">
+              <div className="rounded-xl bg-surface p-2.5">
+                <FlowStrip steps={NCR_FLOW} current={furthestNcr} ariaLabel={locale === "en" ? "NCR flow" : "Alur NCR"} />
+              </div>
               <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-surface px-3 py-2 text-sm">
                 <p className="text-steel-600">
                   {S.reworkTotal.split("{a}")[0]}<span className="font-semibold text-navy-900">{fmtRupiah(totalRework)}</span>{S.reworkTotal.split("{a}")[1]}
@@ -899,6 +932,19 @@ export default function QCSafety() {
                       </div>
                       <p className="mt-1 text-sm text-steel-700">{d.title}</p>
                       <p className="text-xs text-steel-500 mt-0.5">{S.drawingMeta.replace("{a}", String(d.project)).replace("{b}", String(d.holder)).replace("{c}", fmtTanggal(String(d.updated)))}</p>
+                      {d.fileUrl ? (
+                        <div className="mt-1.5 flex flex-wrap items-center gap-2">
+                          {/\.(png|jpe?g|gif|webp)(\?|$)/i.test(String(d.fileUrl)) && (
+                            <SecureImg src={String(d.fileUrl)} alt={String(d.title)} name={String(d.title)} className="h-12 w-16 rounded-lg border border-steel-200 object-cover" />
+                          )}
+                          <button className="text-xs font-semibold text-ocean-600 underline" onClick={() => setDrwPreview(d)}>
+                            {locale === "en" ? "Preview document" : "Pratinjau dokumen"}
+                          </button>
+                          <a className="max-w-64 truncate font-mono text-[11px] text-steel-400 underline" href={String(d.fileUrl)} target="_blank" rel="noreferrer" title={String(d.fileUrl)}>
+                            {String(d.fileUrl)}
+                          </a>
+                        </div>
+                      ) : null}
                     </div>
                     <div className="flex flex-wrap items-center gap-2">
                       <button className="btn-secondary text-xs" onClick={() => setExpandedDrw(expandedDrw === d.id ? null : d.id)}>
@@ -1109,7 +1155,7 @@ export default function QCSafety() {
                 <div className="mt-2 space-y-2 text-sm">
                   {certAttention.map((c) => (
                     <div key={`${c.vessel}-${c.name}`} className="flex items-center justify-between gap-2">
-                      <span className="truncate text-steel-600" title={`${c.name} - ${c.vessel} · berlaku hingga ${fmtTanggal(c.expires)}`}>{c.name} - {c.vessel}</span>
+                      <button className="truncate text-left font-medium text-ocean-600 hover:underline" title={`${c.name} - ${c.vessel} · berlaku hingga ${fmtTanggal(c.expires)}`} onClick={() => setCertPreview(c)}>{c.name} - {c.vessel}</button>
                       <Badge tone={(c.days as number) < 0 ? "red" : "amber"}>
                         {(c.days as number) < 0 ? S.badgeLewat.replace("{n}", String(Math.abs(c.days as number))) : S.badgeSisaN.replace("{n}", String(c.days))}
                       </Badge>
@@ -1129,7 +1175,12 @@ export default function QCSafety() {
                         <Card key={c.name} className="p-3">
                           <p className="truncate text-sm font-medium text-navy-900" title={c.name}>{c.name}</p>
                           <p className="text-xs text-steel-500">{S.berlakuHingga.replace("{n}", fmtTanggal(c.expires))}{left !== null && left >= 0 ? S.sisaHariDot.replace("{n}", String(left)) : ""}</p>
-                          <Badge tone={tone as "green" | "amber" | "red" | "gray"} className="mt-1">{tone === "green" ? "Berlaku" : tone === "amber" ? "Hampir Expire" : tone === "red" ? "Kedaluwarsa" : "Tanpa tanggal"}</Badge>
+                          <div className="mt-1 flex items-center justify-between gap-2">
+                            <Badge tone={tone as "green" | "amber" | "red" | "gray"}>{tone === "green" ? "Berlaku" : tone === "amber" ? "Hampir Expire" : tone === "red" ? "Kedaluwarsa" : "Tanpa tanggal"}</Badge>
+                            <button className="text-xs font-semibold text-ocean-600 underline" onClick={() => setCertPreview({ vessel: v.name, name: c.name, expires: c.expires, days: left })}>
+                              {locale === "en" ? "Preview" : "Pratinjau"}
+                            </button>
+                          </div>
                         </Card>
                       );
                     })}
@@ -1273,9 +1324,19 @@ export default function QCSafety() {
             <div className="mt-3 border-t border-steel-100 pt-3">
               <p className="text-xs font-semibold text-steel-500">Bukti & CAPA (wajib saat Dalam Perbaikan)</p>
               <dl className="dl-div mt-1 text-sm">
-                {([["Tindakan korektif", ncrDetail.corrective || "-"], ["PIC perbaikan", ncrDetail.capaPic || "-"], ["Foto/bukti URL", ncrDetail.photoUrl || "-"], ["Penerima (owner)", ncrDetail.penerima || "-"]] as [string, string][]).map(([k, v]) => (
+                {([["Tindakan korektif", ncrDetail.corrective || "-"], ["PIC perbaikan", ncrDetail.capaPic || "-"], ["Penerima (owner)", ncrDetail.penerima || "-"]] as [string, string][]).map(([k, v]) => (
                   <div key={k} className="flex justify-between gap-4"><dt className="shrink-0 text-steel-500">{k}</dt><dd className="break-all text-right font-medium text-navy-900">{v}</dd></div>
                 ))}
+                <div className="flex justify-between gap-4">
+                  <dt className="shrink-0 text-steel-500">Foto/bukti URL</dt>
+                  <dd className="break-all text-right font-medium text-navy-900">
+                    {ncrDetail.photoUrl ? (
+                      <a className="text-ocean-600 underline" href={String(ncrDetail.photoUrl)} target="_blank" rel="noreferrer" title={String(ncrDetail.photoUrl)}>
+                        {locale === "en" ? "Preview evidence" : "Pratinjau bukti"}
+                      </a>
+                    ) : "-"}
+                  </dd>
+                </div>
               </dl>
               {ncrDetail.status !== "Tertutup" && (!ncrDetail.corrective || !ncrDetail.capaPic) && (
                 <button className="btn-secondary mt-2 text-xs" onClick={() => { setCapaFor(ncrDetail); setCapaForm({ corrective: String(ncrDetail.corrective ?? ""), pic: String(ncrDetail.capaPic ?? ""), photoUrl: String(ncrDetail.photoUrl ?? "") }); }}>Lengkapi bukti/CAPA</button>
@@ -1394,7 +1455,21 @@ export default function QCSafety() {
           <Field label="Tindakan korektif (corrective)"><textarea className="input" rows={3} value={capaForm.corrective} onChange={(e) => setCapaForm({ ...capaForm, corrective: e.target.value })} placeholder="Cth: gerinda ulang + las ulang seam 4, WPS-07" /></Field>
           <FormGrid>
             <Field label="PIC perbaikan"><input className="input" value={capaForm.pic} onChange={(e) => setCapaForm({ ...capaForm, pic: e.target.value })} placeholder="Nama PIC" /></Field>
-            <Field label="Foto/bukti URL (opsional)"><input className="input font-mono" value={capaForm.photoUrl} onChange={(e) => setCapaForm({ ...capaForm, photoUrl: e.target.value })} placeholder="https://…" /></Field>
+            <Field label="Foto/bukti URL (opsional)">
+              <div className="flex flex-wrap items-center gap-2">
+                <input className="input flex-1 font-mono" value={capaForm.photoUrl} onChange={(e) => setCapaForm({ ...capaForm, photoUrl: e.target.value })} placeholder="https://…" />
+                <FileUploadButton label={locale === "en" ? "Upload" : "Unggah"} onUploaded={(url) => setCapaForm((f) => ({ ...f, photoUrl: url }))} />
+              </div>
+              {capaForm.photoUrl.trim() ? (
+                <span className="mt-1.5 block">
+                  {/\.(png|jpe?g|gif|webp)(\?|$)/i.test(capaForm.photoUrl.trim()) ? (
+                    <SecureImg src={capaForm.photoUrl.trim()} alt="Bukti CAPA" name="CAPA" className="h-20 w-28 rounded-lg border border-steel-200 object-cover" />
+                  ) : (
+                    <a className="text-xs font-semibold text-ocean-600 underline" href={capaForm.photoUrl.trim()} target="_blank" rel="noreferrer">{locale === "en" ? "Preview file" : "Pratinjau berkas"}</a>
+                  )}
+                </span>
+              ) : null}
+            </Field>
           </FormGrid>
         </div>
       </Modal>
@@ -1469,6 +1544,12 @@ export default function QCSafety() {
           </Field>
           <Field label={S.fJudulDrw}><input className="input" value={drwForm.title} onChange={(e) => setDrwForm({ ...drwForm, title: e.target.value })} placeholder={S.phJudulDrw} /></Field>
           <Field label={S.fHolder}><input className="input" value={drwForm.holder} onChange={(e) => setDrwForm({ ...drwForm, holder: e.target.value })} placeholder={S.phHolder} /></Field>
+          <Field label={locale === "en" ? "Document file URL" : "URL file dokumen"} hint={locale === "en" ? "Optional — drawing / PDF" : "Opsional — gambar / PDF"}>
+            <div className="flex flex-wrap items-center gap-2">
+              <input className="input flex-1 font-mono" value={drwForm.fileUrl} onChange={(e) => setDrwForm({ ...drwForm, fileUrl: e.target.value })} placeholder="https://…" />
+              <FileUploadButton label={locale === "en" ? "Upload" : "Unggah"} onUploaded={(url) => setDrwForm((f) => ({ ...f, fileUrl: url }))} />
+            </div>
+          </Field>
           <Field label={S.fCabang} hint={S.hintIkutGlobal.replace("{n}", branch)}>
             <select className="input" value={drwForm.branch} onChange={(e) => setDrwForm({ ...drwForm, branch: e.target.value })}>
               <option value="">{S.optIkutGlobal}</option>
@@ -1583,6 +1664,36 @@ export default function QCSafety() {
             </select>
           </Field>
         </div>
+      </Modal>
+
+      {/* Modal pratinjau dokumen drawing */}
+      <Modal open={drwPreview !== null} onClose={() => setDrwPreview(null)} title={drwPreview ? String(drwPreview.title) : ""} subtitle={drwPreview ? `${String(drwPreview.id)} · Rev ${String(drwPreview.revision)} · ${String(drwPreview.status)}` : ""}>
+        {drwPreview?.fileUrl ? (
+          <div className="space-y-2">
+            {/\.(png|jpe?g|gif|webp)(\?|$)/i.test(String(drwPreview.fileUrl)) ? (
+              <SecureImg src={String(drwPreview.fileUrl)} alt={String(drwPreview.title)} name={String(drwPreview.title)} className="max-h-96 w-full rounded-xl border border-steel-200 object-contain" />
+            ) : (
+              <iframe title={String(drwPreview.title)} src={String(drwPreview.fileUrl)} className="h-96 w-full rounded-xl border border-steel-200" />
+            )}
+            <a className="block truncate text-xs font-semibold text-ocean-600 underline" href={String(drwPreview.fileUrl)} target="_blank" rel="noreferrer">{String(drwPreview.fileUrl)}</a>
+          </div>
+        ) : (
+          <p className="text-sm text-steel-400">-</p>
+        )}
+      </Modal>
+
+      {/* Modal pratinjau sertifikat */}
+      <Modal open={certPreview !== null} onClose={() => setCertPreview(null)} title={certPreview?.name ?? ""} subtitle={certPreview ? `${certPreview.vessel}` : ""}>
+        {certPreview && (
+          <dl className="dl-div text-sm">
+            <div className="flex justify-between gap-4"><dt className="shrink-0 text-steel-500">{S.berlakuHingga.replace("{n}", "")}</dt><dd className="text-right font-medium text-navy-900">{fmtTanggal(certPreview.expires)}</dd></div>
+            <div className="flex justify-between gap-4"><dt className="shrink-0 text-steel-500">Status</dt><dd>
+              <Badge tone={certPreview.days === null ? "gray" : certPreview.days < 0 ? "red" : certPreview.days <= CERT_WINDOW ? "amber" : "green"}>
+                {certPreview.days === null ? "-" : certPreview.days < 0 ? S.badgeLewat.replace("{n}", String(Math.abs(certPreview.days))) : certPreview.days <= CERT_WINDOW ? S.badgeSisaN.replace("{n}", String(certPreview.days)) : S.berlakuHingga.replace("{n}", fmtTanggal(certPreview.expires))}
+              </Badge>
+            </dd></div>
+          </dl>
+        )}
       </Modal>
 
       {/* Modal hapus jadwal audit internal (daftar pemakai + blokir bila dipakai) */}

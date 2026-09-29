@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { Activity, AlertTriangle, FileDown, Search } from "lucide-react";
 import {
@@ -50,6 +50,18 @@ export default function Monitoring() {
   const [branchFilter, setBranchFilter] = useState("Semua");
   const [q, setQ] = useState("");
   const [mode, setMode] = useState<"Semua" | "Perhatian">("Semua");
+  /* Scrollbar horizontal sticky: bar bawah (position sticky bottom) tersinkron
+     dengan scroll kolom kanban - tetap terjangkau saat daftar kolom panjang. */
+  const topScrollRef = useRef<HTMLDivElement | null>(null);
+  const barScrollRef = useRef<HTMLDivElement | null>(null);
+  const syncingRef = useRef(false);
+  const syncScroll = (src: HTMLDivElement | null, dst: HTMLDivElement | null) => {
+    if (!src || !dst || syncingRef.current) return;
+    syncingRef.current = true;
+    dst.scrollLeft = src.scrollLeft;
+    requestAnimationFrame(() => { syncingRef.current = false; });
+  };
+  const kanbanWidth = TAHAP.length * 272;
 
   const branchCities = data.branches.length > 0
     ? data.branches.map((b) => String(b.city))
@@ -175,7 +187,8 @@ export default function Monitoring() {
         </div>
       </Card>
 
-      <div className="flex gap-4 overflow-x-auto pb-2">
+      <div>
+      <div ref={topScrollRef} onScroll={() => syncScroll(topScrollRef.current, barScrollRef.current)} className="flex gap-4 overflow-x-auto pb-2">
         {TAHAP.map((t) => {
           const cols = pipeline.filter((p) => tahapOf(p) === t);
           return (
@@ -220,6 +233,16 @@ export default function Monitoring() {
             </div>
           );
         })}
+      </div>
+      <div
+        ref={barScrollRef}
+        onScroll={() => syncScroll(barScrollRef.current, topScrollRef.current)}
+        className="overflow-x-auto rounded-lg border border-steel-200 bg-white"
+        style={{ position: "sticky", bottom: 0, height: 14 }}
+        aria-hidden="true"
+      >
+        <div style={{ width: kanbanWidth, height: 1 }} />
+      </div>
       </div>
     </div>
   );

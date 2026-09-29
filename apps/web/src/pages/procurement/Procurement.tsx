@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Plus, Factory, ShoppingCart, ClipboardList, Check, X, Undo2, Printer, Pencil, Send, Star, Wallet, Umbrella, Search } from "lucide-react";
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 import { Card, CardHeader, PageHeader, Badge, KpiCard, Tabs, StatusBadge, Donut, ChartTooltip, Modal, Field, FormGrid, ConfirmModal, toast, EmptyState, SortTh, toggleSort, sortRows, usePager,
-  NumInput,
+  NumInput, FlowStrip,
 } from "../../components/ui";
 import type { SortState } from "../../components/ui";
 import { useStore, type StoreItem } from "../../data/store";
@@ -20,10 +20,13 @@ import { useT } from "../../i18n/LanguageContext";
 import { n_proc } from "../../i18n/n_proc";
 import { FilterPopover } from "../../components/FilterPopover";
 
-interface POLine { name: string; qty: number; unit: string; price: number }
+/* Baris PO string-state (pola smallForm): simpan string, Number() saat validasi. */
+interface POLine { name: string; qty: string; unit: string; price: string }
 interface Quote { vendor: string; price: number; eta: string }
 interface Approval { level: string; by: string; date: string }
 interface VendorScore { po: string; q: number; d: number; p: number; score: number; date: string }
+
+const VENDOR_CATS = ["Baja & Struktur", "Mesin & Engine", "Cat & Coating", "Rigging & Wire", "Listrik", "Jasa"];
 
 /* Status kanonis PO Besar + pemetaan status seed lama. */
 const PO_NEXT: Record<string, string[]> = {
@@ -73,7 +76,7 @@ const RFQ_NEXT: Record<string, string[]> = {
 
 const PR_PENDING = ["Draft", "Menunggu Approval", "RFQ", "Diajukan"];
 
-const lineTotal = (lines: POLine[]): number =>
+const lineTotal = (lines: { qty: string | number; price: string | number }[]): number =>
   lines.reduce((s, l) => s + Number(l.qty || 0) * Number(l.price || 0), 0);
 
 const poLines = (po: StoreItem): POLine[] => (Array.isArray(po.lines) ? (po.lines as POLine[]) : []);
@@ -186,7 +189,9 @@ export default function Procurement() {
   /* ---- PO Besar ---- */
   const [showBig, setShowBig] = useState(false);
   const [bigForm, setBigForm] = useState({ tujuan: "kapal" as "kapal" | "stok", prId: "", itemId: "", vendor: "", project: "", vessel: "", eta: "", includePpn: true, override: false, overrideReason: "" });
-  const [bigLines, setBigLines] = useDraftState<POLine[]>("isms.draft.procurement.bigLines", [{ name: "", qty: 1, unit: "pcs", price: 0 }]);
+  const [bigLines, setBigLines] = useDraftState<POLine[]>("isms.draft.procurement.bigLines", [{ name: "", qty: "1", unit: "pcs", price: "" }]);
+  const [vCatF, setVCatF] = useState("Semua");
+  const [poDetail, setPoDetail] = useState<StoreItem | null>(null);
 
   /* ---- PO Kecil ---- */
   const [showSmall, setShowSmall] = useState(false);
@@ -261,7 +266,24 @@ export default function Procurement() {
   const smallShown = smallList.filter((po) => matchProc(`${po.id} ${po.item} ${po.vendor}`, String(normPo(po.status))));
   const rfqShown = rfqs.filter((r) => matchProc(`${r.id} ${r.item} ${r.prId} ${(Array.isArray(r.vendors) ? r.vendors as string[] : []).join(" ")}`, String(r.status)));
   const prShown = requisitions.filter((r) => matchProc(`${r.id} ${r.item} ${r.by}`, String(r.status)));
-  const vendorShown = vendors.filter((v) => matchProc(`${v.name} ${v.cat}`, String(v.status ?? "Aktif")));
+  const vendorShown = vendors.filter((v) => matchProc(`${v.name} ${v.cat}`, String(v.status ?? "Aktif")) && (vCatF === "Semua" || String(v.cat ?? "") === vCatF));
+
+  /* Vendor terfilter kategori — dipakai SEMUA select vendor + tab Vendor. */
+  const vendByCat = useMemo(() => vendors.filter((v) => vCatF === "Semua" || String(v.cat ?? "") === vCatF), [vendors, vCatF]);
+  const venCatPick = (id: string) => (
+    <select
+      id={id}
+      className="input w-auto py-1.5 text-xs"
+      value={vCatF}
+      aria-label={locale === "en" ? "Vendor category" : "Kategori vendor"}
+      title={locale === "en" ? "Vendor category" : "Kategori vendor"}
+      onChange={(e) => setVCatF(e.target.value)}
+    >
+      <option value="Semua">{locale === "en" ? "All categories" : "Semua kategori"}</option>
+      {VENDOR_CATS.map((c) => <option key={c} value={c}>{c}</option>)}
+    </select>
+  );
+  const venCatOf = (name: string): string => String(vendors.find((v) => sameName(v.name, name))?.cat ?? "");
 
   const sortedBig = useMemo(() => sortRows(bigShown, sort, (po, k) => {
     if (k === "nilai") return Number(po.amount || 0);
@@ -277,10 +299,12 @@ export default function Procurement() {
     if (k === "nilai") return Number(po.amount || 0);
     if (k === "kebutuhan") return String(po.item ?? "");
     if (k === "workshop") return String(po.workshop ?? "");
+    if (k === "level") return String(levelOf(Number(po.amount || 0), APPROVE_PO_LIMIT));
     if (k === "eta") return String(po.eta ?? "");
+    if (k === "revisi") return String(po.revisi || "R0");
     if (k === "status") return String(normPo(String(po.status ?? "")));
     return String(po.id ?? "");
-  }), [smallShown, sort2]);
+  }), [smallShown, sort2, APPROVE_PO_LIMIT]);
   const sortedPr = useMemo(() => sortRows(prShown, sort4, (r, k) => {
     if (k === "nilai") return Number(r.amount || 0);
     if (k === "item") return String(r.item ?? "");
@@ -420,7 +444,7 @@ export default function Procurement() {
     toast(S.tBigCreated.replace("{a}", created.id).replace("{b}", docNo));
     setShowBig(false);
     setBigForm({ tujuan: "kapal", prId: "", itemId: "", vendor: "", project: "", vessel: "", eta: "", includePpn: true, override: false, overrideReason: "" });
-    setBigLines([{ name: "", qty: 1, unit: "pcs", price: 0 }]);
+    setBigLines([{ name: "", qty: "1", unit: "pcs", price: "" }]);
     } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); }
   };
 
@@ -663,7 +687,7 @@ export default function Procurement() {
     const n = cur.startsWith("R") ? Number(cur.slice(1)) + 1 : 1;
     const revisi = `R${n}`;
     const newLine = { name: amendForm.name.trim(), qty, unit: amendForm.unit, price };
-    const lines = [...poLines(amendPo), newLine];
+    const lines = [...poLines(amendPo).map((l) => ({ name: l.name, qty: Number(l.qty) || 0, unit: l.unit, price: Number(l.price) || 0 })), newLine];
     const amendments = [...(Array.isArray(amendPo.amendments) ? amendPo.amendments : []), { note: amendForm.note.trim(), date: todayISO(), revisi }];
     await update("purchaseOrders", amendPo.id, { lines, amendments, revisi, amount: lineTotal(lines) });
     log("amandemen PO", `${amendPo.id} ${revisi}: ${amendForm.note.trim()}`, "Procurement");
@@ -847,6 +871,7 @@ export default function Procurement() {
     const nx = po.poType === "Kecil" ? null : nextLevel(po, APPROVE_PO_LIMIT);
     return (
       <div className="flex flex-wrap gap-1.5">
+        <button className="btn-secondary text-xs" onClick={() => setPoDetail(po)}>{locale === "en" ? "Detail" : "Detail"}</button>
         {st === "Draft" && <button className="btn-secondary text-xs" onClick={() => doPoStatus(po, "Diajukan")}>{S.btnAjukan}</button>}
         {st === "Diajukan" && po.poType === "Kecil" && (
           <>
@@ -921,6 +946,20 @@ export default function Procurement() {
       </div>
 
       <div className="mt-4 card">
+        {tab !== "Vendor" && (
+          <div className="border-b border-steel-200 px-4 pt-3">
+            <FlowStrip
+              steps={["PR", "RFQ", "PO", "GR"]}
+              current={tab === "PR" ? "PR" : tab === "RFQ" ? "RFQ" : "PO"}
+              ariaLabel={locale === "en" ? "Procurement flow" : "Alur pengadaan"}
+            />
+            <p className="py-1.5 text-[11px] text-steel-500">
+              {locale === "en"
+                ? "Flow: PR → RFQ → PO → GR (GR = goods received on PO receipt)"
+                : "Alur: PR → RFQ → PO → GR (GR = barang masuk saat penerimaan PO)"}
+            </p>
+          </div>
+        )}
         <Tabs tabs={["PR", "RFQ", "PO Besar (Kantor)", "PO Kecil (Workshop)", "Vendor"]} active={tab} onChange={setTab} labels={{ PR: S.tabPr, RFQ: S.tabRfq, "PO Besar (Kantor)": S.tabBig, "PO Kecil (Workshop)": S.tabSmall, Vendor: S.tabVendor }} />
         <div className="p-4">
           <div className="mb-3 flex flex-wrap items-center gap-2">
@@ -1077,11 +1116,13 @@ export default function Procurement() {
                 <div className="overflow-x-auto">
                   <table className="w-full">
                     <thead className="bg-surface sticky top-0 z-10">
-                      <tr><SortTh label={S.po} sortKey="po" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} /><SortTh label={S.kebutuhan} sortKey="kebutuhan" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} /><SortTh label={S.workshop} sortKey="workshop" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} /><SortTh label={S.nilai} sortKey="nilai" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} /><SortTh label={S.eta} sortKey="eta" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} /><SortTh label={S.status} sortKey="status" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} /><th className="th">{S.aksi}</th></tr>
+                      <tr><SortTh label={S.po} sortKey="po" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} /><SortTh label={S.kebutuhan} sortKey="kebutuhan" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} /><SortTh label={S.workshop} sortKey="workshop" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} /><SortTh label={S.nilai} sortKey="nilai" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} /><SortTh label={S.level} sortKey="level" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} /><SortTh label={S.eta} sortKey="eta" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} /><SortTh label={S.revisi} sortKey="revisi" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} /><SortTh label={S.status} sortKey="status" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} /><th className="th">{S.aksi}</th></tr>
                     </thead>
                     <tbody className="divide-y divide-steel-100">
                       {smallPager.slice(sortedSmall).map((po) => {
                         const st = normPo(po.status);
+                        const need = needLevels(Number(po.amount || 0), APPROVE_PO_LIMIT);
+                        const done = apprOf(po);
                         return (
                           <tr key={po.id} id={notifRowId(String(po.id))} className={flash.flashId === String(po.id) ? "notif-hl notif-flash hover:bg-surface" : (notified.has(String(po.id)) ? "notif-hl hover:bg-surface" : "hover:bg-surface")}>
                           <td className="td font-mono font-medium text-navy-900">{po.id}
@@ -1100,10 +1141,15 @@ export default function Procurement() {
                             </td>
                             <td className="td text-steel-600 truncate" title={String(po.workshop ?? "-")}>{po.workshop ?? "-"}</td>
                             <td className="td font-semibold">{fmtRupiah(po.amount)}</td>
+                            <td className="td">
+                              <Badge tone="navy">{levelOf(Number(po.amount || 0), APPROVE_PO_LIMIT)}</Badge>
+                              <p className="mt-0.5 text-xs text-steel-400">{S.tahap.replace("{a}", String(done.length)).replace("{b}", String(need.length))}</p>
+                            </td>
                             <td className="td text-steel-600">
                               {po.eta ? fmtTanggal(po.eta) : "-"}
                               {isLate(po) && <span className="ml-1.5"><Badge tone="red">{S.terlambat}</Badge></span>}
                             </td>
+                            <td className="td text-steel-600 font-mono text-xs">{po.revisi || "R0"}</td>
                             <td className="td"><Badge tone={poStatus[st] ?? "gray"}>{st}</Badge></td>
                             <td className="td">{poAksi(po)}</td>
                           </tr>
@@ -1203,9 +1249,10 @@ export default function Procurement() {
                       ))}
                       <FormGrid>
                         <Field label={S.fVendorGab}>
+                          <div className="mb-1.5 flex justify-end">{venCatPick("vcat-kons")}</div>
                           <select className="input" value={konsVendor} onChange={(e) => setKonsVendor(e.target.value)}>
                             <option value="">{S.optPilihVendor}</option>
-                            {vendors.map((v) => <option key={v.id} value={v.name}>{v.name}</option>)}
+                            {vendByCat.map((v) => <option key={v.id} value={v.name}>{v.name} · {v.cat}</option>)}
                           </select>
                         </Field>
                         <Field label={S.proyek}>
@@ -1288,7 +1335,8 @@ export default function Procurement() {
 
           {tab === "Vendor" && (
             <div>
-              <div className="mb-3 flex justify-end">
+              <div className="mb-3 flex flex-wrap items-center justify-end gap-2">
+                {venCatPick("vcat-tab")}
                 <button className="btn-secondary text-xs" onClick={() => setShowVendor(true)}><Plus className="h-3.5 w-3.5" /> {S.btnTambahVendor}</button>
               </div>
               <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
@@ -1347,6 +1395,59 @@ export default function Procurement() {
         </div>
       </div>
 
+      {/* Drawer detail PO: lines + kebutuhan + PR link */}
+      <Modal open={poDetail !== null} onClose={() => setPoDetail(null)} title={poDetail ? `${poDetail.id} · ${normPo(poDetail.status)}` : ""} subtitle={poDetail ? `${String(poDetail.vendor ?? "-")} · ${fmtRupiah(Number(poDetail.amount || 0))}${poDetail.docNo ? ` · ${String(poDetail.docNo)}` : ""}` : ""} wide>
+        {poDetail && (
+          <div className="space-y-4">
+            <div>
+              <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-steel-500">{locale === "en" ? "Lines" : "Rincian baris"}</p>
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead className="bg-surface"><tr><th className="th">{S.item}</th><th className="th">{S.qty}</th><th className="th">{S.satuan}</th><th className="th">{S.harga}</th><th className="th">{S.nilai}</th></tr></thead>
+                  <tbody className="divide-y divide-steel-100">
+                    {poLines(poDetail).map((l, i) => (
+                      <tr key={i}>
+                        <td className="td font-medium text-navy-900">{l.name}</td>
+                        <td className="td">{fmtJumlah(Number(l.qty || 0))}</td>
+                        <td className="td text-steel-600">{l.unit}</td>
+                        <td className="td text-steel-600">{fmtRupiah(Number(l.price || 0))}</td>
+                        <td className="td font-semibold">{fmtRupiah(Number(l.qty || 0) * Number(l.price || 0))}</td>
+                      </tr>
+                    ))}
+                    {poLines(poDetail).length === 0 && <tr><td colSpan={5} className="td text-center text-steel-400">-</td></tr>}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+            <div>
+              <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-steel-500">{locale === "en" ? "Requirement" : "Kebutuhan"}</p>
+              <dl className="dl-div text-sm">
+                <div className="flex justify-between gap-4"><dt className="shrink-0 text-steel-500">{S.kebutuhan}</dt><dd className="text-right font-medium text-navy-900">{String(poDetail.item ?? "-")} · {fmtJumlah(Number(poDetail.qty || 0))} {String(poDetail.unit ?? "")}</dd></div>
+                {poDetail.workshop && <div className="flex justify-between gap-4"><dt className="shrink-0 text-steel-500">{S.workshop}</dt><dd className="text-right font-medium text-navy-900">{String(poDetail.workshop)}</dd></div>}
+                {poDetail.requester && <div className="flex justify-between gap-4"><dt className="shrink-0 text-steel-500">{S.peminta}</dt><dd className="text-right font-medium text-navy-900">{String(poDetail.requester)}</dd></div>}
+                <div className="flex justify-between gap-4"><dt className="shrink-0 text-steel-500">{S.proyek}</dt><dd className="text-right font-medium text-navy-900">{String(poDetail.project ?? "-")}{poDetail.vessel ? ` · ${String(poDetail.vessel)}` : ""}</dd></div>
+              </dl>
+            </div>
+            <div>
+              <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-steel-500">PR</p>
+              <div className="flex flex-wrap gap-1.5">
+                {(Array.isArray(poDetail.prIds) && poDetail.prIds.length > 0
+                  ? (poDetail.prIds as string[])
+                  : String(poDetail.req ?? "").split(",").map((s) => s.trim()).filter(Boolean)
+                ).map((id) => (
+                  <button key={id} className="btn-secondary text-xs" onClick={() => { setPoDetail(null); setTab("PR"); setPq(id); }}>
+                    {locale === "en" ? "View PR" : "Lihat PR"} {id}
+                  </button>
+                ))}
+                {String(poDetail.req ?? "-") === "-" && (!Array.isArray(poDetail.prIds) || poDetail.prIds.length === 0) && (
+                  <span className="text-xs text-steel-400">-</span>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+      </Modal>
+
       {/* Modal PO Besar */}
       <Modal open={showBig} onClose={() => setShowBig(false)} title={S.mBigT} subtitle={S.mBigS}
         wide footer={<><button className="btn-secondary" onClick={() => setShowBig(false)}>{S.btnBatal}</button><button className="btn-primary" onClick={saveBig}>{S.btnSimpanBig}</button></>}>
@@ -1375,9 +1476,10 @@ export default function Procurement() {
           </FormGrid>
           <FormGrid>
             <Field label={S.vendor}>
+              <div className="mb-1.5 flex justify-end">{venCatPick("vcat-big")}</div>
               <select className="input" value={bigForm.vendor} onChange={(e) => setBigForm({ ...bigForm, vendor: e.target.value })}>
                 <option value="">{S.optPilihVendor}</option>
-                {vendors.map((v) => <option key={v.id} value={v.name}>{v.name}{payungOf(v) ? ` (Payung: ${fmtRupiah(payungOf(v)!.plafon)})` : ""}</option>)}
+                {vendByCat.map((v) => <option key={v.id} value={v.name}>{v.name} · {v.cat}{payungOf(v) ? ` (Payung: ${fmtRupiah(payungOf(v)!.plafon)})` : ""}</option>)}
               </select>
             </Field>
             <Field label={S.proyekBudget} hint={bigForm.tujuan === "kapal" ? S.hintWajibKapal : S.hintStokAuto}>
@@ -1404,16 +1506,16 @@ export default function Procurement() {
               {bigLines.map((l, idx) => (
                 <div key={idx} className="grid grid-cols-12 gap-2">
                   <input className="input col-span-5" placeholder={S.phNamaBaris} value={l.name} onChange={(e) => setBigLines((s) => s.map((x, i) => (i === idx ? { ...x, name: e.target.value } : x)))} />
-                  <NumInput min={1} className="input col-span-2" placeholder={S.qty} value={l.qty} onChange={(e) => setBigLines((s) => s.map((x, i) => (i === idx ? { ...x, qty: Number(e.target.value) } : x)))} />
+                  <NumInput min={1} className="input col-span-2" placeholder={S.qty} value={l.qty} onChange={(e) => setBigLines((s) => s.map((x, i) => (i === idx ? { ...x, qty: e.target.value } : x)))} />
                   <select className="input col-span-2" value={l.unit} onChange={(e) => setBigLines((s) => s.map((x, i) => (i === idx ? { ...x, unit: e.target.value } : x)))}>
                     {["pcs", "kg", "liter", "meter", "batang", "unit", "roll"].map((u) => <option key={u}>{u}</option>)}
                   </select>
-                  <NumInput min={0} className="input col-span-2" placeholder={S.harga} value={l.price} onChange={(e) => setBigLines((s) => s.map((x, i) => (i === idx ? { ...x, price: Number(e.target.value) } : x)))} />
+                  <NumInput min={0} className="input col-span-2" placeholder={S.harga} value={l.price} onChange={(e) => setBigLines((s) => s.map((x, i) => (i === idx ? { ...x, price: e.target.value } : x)))} />
                   <button className="btn-secondary col-span-1 text-xs" aria-label={S.ariaHapusBaris.replace("{n}", String(idx + 1))} onClick={() => setBigLines((s) => s.filter((_, i) => i !== idx))}><X className="h-3.5 w-3.5" /></button>
                 </div>
               ))}
             </div>
-            <button className="btn-secondary mt-2 text-xs" onClick={() => setBigLines((s) => [...s, { name: "", qty: 1, unit: "pcs", price: 0 }])}><Plus className="h-3.5 w-3.5" /> {S.btnTambahBaris}</button>
+            <button className="btn-secondary mt-2 text-xs" onClick={() => setBigLines((s) => [...s, { name: "", qty: "1", unit: "pcs", price: "" }])}><Plus className="h-3.5 w-3.5" /> {S.btnTambahBaris}</button>
             <p className="mt-2 text-sm font-semibold text-navy-900">{S.totalLevel.replace("{a}", fmtRupiah(bigTotal)).replace("{b}", levelOf(bigTotal, APPROVE_PO_LIMIT))}</p>
           </div>
           {bigOver && bigBudget && (
@@ -1476,13 +1578,15 @@ export default function Procurement() {
       <Modal open={rfqPr !== null} onClose={() => setRfqPr(null)} title={S.mRfqT.replace("{n}", rfqPr?.id ?? "")} subtitle={S.mRfqS.replace("{a}", rfqPr?.item ?? "")}
         footer={<><button className="btn-secondary" onClick={() => setRfqPr(null)}>{S.btnBatal}</button><button className="btn-primary" onClick={saveRfq}>{S.btnBuatRfqDraf}</button></>}>
         <div className="space-y-2">
-          {vendors.map((v) => (
+          <div className="flex justify-end">{venCatPick("vcat-rfq")}</div>
+          {vendByCat.map((v) => (
             <label key={v.id} className="flex items-center gap-3 rounded-xl border border-steel-200 px-3 py-2 text-sm">
               <input type="checkbox" checked={rfqVendors.includes(v.name)} onChange={(e) => setRfqVendors((s) => (e.target.checked ? [...s, v.name] : s.filter((x) => x !== v.name)))} aria-label={S.ariaRfqKe.replace("{n}", String(v.name))} />
               <span className="truncate font-medium text-navy-900" title={v.name}>{v.name}</span>
               <span className="ml-auto text-xs text-steel-400">{v.cat}</span>
             </label>
           ))}
+          {vendByCat.length === 0 && <p className="text-xs text-steel-400">{locale === "en" ? "No vendors in this category." : "Tidak ada vendor pada kategori ini."}</p>}
         </div>
       </Modal>
 
@@ -1493,7 +1597,7 @@ export default function Procurement() {
           <Field label={S.vendor}>
             <select className="input" value={quoteForm.vendor} onChange={(e) => setQuoteForm({ ...quoteForm, vendor: e.target.value })}>
               <option value="">{S.optPilihVendor}</option>
-              {((quoteRfq?.vendors as string[]) ?? []).map((v) => <option key={v} value={v}>{v}</option>)}
+              {((quoteRfq?.vendors as string[]) ?? []).map((v) => <option key={v} value={v}>{v}{venCatOf(v) ? ` · ${venCatOf(v)}` : ""}</option>)}
             </select>
           </Field>
           <FormGrid>

@@ -4,7 +4,7 @@ import { useT } from "../../i18n/LanguageContext";
 import { n_prj } from "../../i18n/n_prj";
 import { useAuth, canSetTarget } from "../../auth/auth";
 import { Card, Modal, Field, FormGrid, toast, EmptyState, StatusBadge, Badge, SortTh, toggleSort, sortRows,
-  NumInput,
+  NumInput, FlowStrip, SecureImg, FileUploadButton,
 } from "../../components/ui";
 import type { SortState } from "../../components/ui";
 import { Plus, FileDown } from "lucide-react";
@@ -21,7 +21,12 @@ const STATUS_FLOW: Record<string, string[]> = {
 };
 
 interface PriceHist { old: number; new: number; reason: string; date: string; by: string; }
-type BoQExt = BoQItem & { priceHistory?: PriceHist[] };
+type BoQExt = BoQItem & { priceHistory?: PriceHist[]; fileUrl?: string };
+
+/* Alur kanonis ID (nilai tersimpan EN legacy): Draf=Draft, Diajukan=Pending, Disetujui=Approved, Selesai=Completed. */
+const BOQ_FLOW_ID = ["Draf", "Diajukan", "Disetujui", "Selesai"];
+const boqFlowId = (s: string): string =>
+  s === "Draft" ? "Draf" : s === "Pending" ? "Diajukan" : s === "Approved" ? "Disetujui" : s === "Completed" ? "Selesai" : s;
 
 const CATEGORIES = ["Mechanical", "Paint", "Survey", "Fabrikasi", "Electrical", "Piping", "Rigging"];
 
@@ -73,7 +78,7 @@ export default function BoQSection({ projectId }: Props) {
   const { user } = useAuth();
   const items = ((data.boq ?? []) as BoQExt[]).filter((b) => b.projectId === projectId);
   const [showAdd, setShowAdd] = useState(false);
-  const [form, setForm] = useState({ name: "", description: "", quantity: "", unit: "pcs", unitPrice: "", category: "Mechanical", status: "Draft" as BoQItem["status"] });
+  const [form, setForm] = useState({ name: "", description: "", quantity: "", unit: "pcs", unitPrice: "", category: "Mechanical", status: "Draft" as BoQItem["status"], fileUrl: "" });
   const [q, setQ] = useState("");
   const [catF, setCatF] = useState("Semua");
   const [stF, setStF] = useState("Semua");
@@ -82,6 +87,8 @@ export default function BoQSection({ projectId }: Props) {
   const [revisiPrice, setRevisiPrice] = useState("");
   const [revisiReason, setRevisiReason] = useState("");
   const [histFor, setHistFor] = useState<BoQExt | null>(null);
+  const [logFor, setLogFor] = useState<BoQExt | null>(null);
+  const [previewFor, setPreviewFor] = useState<BoQExt | null>(null);
   const [presetCat, setPresetCat] = useState("Mechanical");
   const [presetIdx, setPresetIdx] = useState("0");
 
@@ -99,6 +106,18 @@ export default function BoQSection({ projectId }: Props) {
   const totalApproved = useMemo(() => items.filter((b) => ["Approved", "Completed"].includes(b.status)).reduce((s, b) => s + b.totalPrice, 0), [items]);
   const totalCompleted = useMemo(() => items.filter((b) => b.status === "Completed").reduce((s, b) => s + b.totalPrice, 0), [items]);
   const progress = totalBoq > 0 ? Math.round((totalCompleted / totalBoq) * 100) : 0;
+
+  /* Posisi alur terjauh item proyek ini (untuk strip alur header). */
+  const furthestFlow = useMemo(() => {
+    const pos = (s: string): number => (s === "Draft" ? 0 : s === "Pending" ? 1 : s === "Approved" ? 2 : s === "Completed" ? 3 : -1);
+    const max = items.reduce((m, b) => Math.max(m, pos(String(b.status))), -1);
+    return max >= 0 ? BOQ_FLOW_ID[max] : "";
+  }, [items]);
+
+  const logOf = (id: string): { time: string; text: string }[] =>
+    (data.activities ?? [])
+      .filter((a) => String(a.target ?? "") === String(id))
+      .map((a) => ({ time: String(a.time ?? "-"), text: `${String(a.actor ?? "")} ${String(a.action ?? "")}` }));
 
   const nextStatus = (current: string): string[] => STATUS_FLOW[current] ?? [];
 
@@ -118,10 +137,11 @@ export default function BoQSection({ projectId }: Props) {
       category: form.category,
       status: "Draft",
       requestedBy: "Anda",
+      ...(form.fileUrl.trim() ? { fileUrl: form.fileUrl.trim() } : {}),
     }, { action: "menambahkan BoQ item", module: "BoQ" });
     toast(S.boqToastAdded);
     setShowAdd(false);
-    setForm({ name: "", description: "", quantity: "", unit: "pcs", unitPrice: "", category: "Mechanical", status: "Draft" });
+    setForm({ name: "", description: "", quantity: "", unit: "pcs", unitPrice: "", category: "Mechanical", status: "Draft", fileUrl: "" });
   };
 
   const changeStatus = async (id: string, newStatus: string) => {
@@ -237,7 +257,17 @@ export default function BoQSection({ projectId }: Props) {
 
         {items.length === 0 ? (
           <EmptyState icon={<FileDown className="h-6 w-6" />} title={S.boqEmptyTitle} subtitle={S.boqEmptySub} />
-        ) : filtered.length === 0 ? (
+        ) : (
+        <div className="space-y-3">
+          <div className="rounded-xl bg-surface p-2.5">
+            <FlowStrip steps={BOQ_FLOW_ID} current={furthestFlow || BOQ_FLOW_ID[0]} ariaLabel={locale === "en" ? "BoQ status flow" : "Alur status BoQ"} />
+            <p className="mt-1.5 text-[11px] text-steel-500">
+              {locale === "en"
+                ? "Draft → Proposed → Approved → Completed (each transition has its own button + activity log)"
+                : "Draf → Diajukan → Disetujui → Selesai (tiap transisi ada tombol + tercatat di log)"}
+            </p>
+          </div>
+        {filtered.length === 0 ? (
           <p className="py-6 text-center text-sm text-steel-400">{S.boqNoMatch}</p>
         ) : (
           <div className="overflow-x-auto">
@@ -253,11 +283,12 @@ export default function BoQSection({ projectId }: Props) {
                   <SortTh label={S.colTotal} sortKey="totalPrice" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} />
                   <SortTh label={S.statusLabel} sortKey="status" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} />
                   <SortTh label={S.colRevision} sortKey="revised" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} />
+                  <SortTh label={locale === "en" ? "Document" : "Dokumen"} sortKey="dokumen" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} />
                   <th className="th">{S.actionTh}</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-steel-100">
-                {sortRows(filtered, sort, (b: BoQExt, k) => k === "quantity" ? Number(b.quantity) : k === "unitPrice" ? Number(b.unitPrice) : k === "totalPrice" ? Number(b.totalPrice) : k === "revised" ? Number((b.priceHistory ?? []).length) : String((b as unknown as Record<string, unknown>)[k] ?? "")).map((b) => (
+                {sortRows(filtered, sort, (b: BoQExt, k) => k === "quantity" ? Number(b.quantity) : k === "unitPrice" ? Number(b.unitPrice) : k === "totalPrice" ? Number(b.totalPrice) : k === "revised" ? Number((b.priceHistory ?? []).length) : k === "dokumen" ? String(b.fileUrl ?? "") : String((b as unknown as Record<string, unknown>)[k] ?? "")).map((b) => (
                   <tr key={b.id}>
                     <td className="td font-mono text-xs">{b.id}</td>
                     <td className="td font-medium text-navy-900">{b.name}</td>
@@ -266,11 +297,28 @@ export default function BoQSection({ projectId }: Props) {
                     <td className="td">{b.unit}</td>
                     <td className="td font-mono text-sm">{fmtRupiah(b.unitPrice)}</td>
                     <td className="td font-mono text-sm font-semibold">{fmtRupiah(b.totalPrice)}</td>
-                    <td className="td"><StatusBadge status={b.status} label={STATUS_BOQ_ID[b.status] ?? b.status} /></td>
+                    <td className="td"><StatusBadge status={b.status} label={STATUS_BOQ_ID[b.status] ?? b.status} />
+                      <span className="mt-1 block text-[11px] text-steel-400">
+                        {BOQ_FLOW_ID.map((s) => (
+                          <span key={s} className={boqFlowId(String(b.status)) === s ? "font-bold text-navy-700" : undefined}>
+                            {s}{s === "Selesai" ? "" : " → "}
+                          </span>
+                        ))}
+                      </span>
+                    </td>
                     <td className="td">
                       {(b.priceHistory ?? []).length > 0 ? (
                           <button className="btn-secondary text-xs" onClick={() => setHistFor(b)}>
                           <Badge tone="amber">{(b.priceHistory ?? []).length}x</Badge> {S.boqHistoryBtn}
+                        </button>
+                      ) : (
+                        <span className="text-xs text-steel-400">-</span>
+                      )}
+                    </td>
+                    <td className="td">
+                      {b.fileUrl ? (
+                        <button className="font-medium text-ocean-600 underline" onClick={() => setPreviewFor(b)} title={String(b.fileUrl)}>
+                          {locale === "en" ? "Preview" : "Pratinjau"}
                         </button>
                       ) : (
                         <span className="text-xs text-steel-400">-</span>
@@ -300,6 +348,12 @@ export default function BoQSection({ projectId }: Props) {
                         >
                           {S.boqRevise}
                         </button>
+                        <button
+                          className="rounded bg-steel-100 px-2 py-0.5 text-xs font-semibold text-steel-600 transition-colors hover:bg-steel-200"
+                          onClick={() => setLogFor(b)}
+                        >
+                          Log
+                        </button>
                       </div>
                     </td>
                   </tr>
@@ -307,6 +361,8 @@ export default function BoQSection({ projectId }: Props) {
               </tbody>
             </table>
           </div>
+        )}
+        </div>
         )}
       </Card>
 
@@ -327,6 +383,12 @@ export default function BoQSection({ projectId }: Props) {
               {CATEGORIES.map((c) => <option key={c}>{c}</option>)}
             </select></Field>
           </FormGrid>
+          <Field label={locale === "en" ? "Supporting document URL" : "URL dokumen pendukung"} hint={locale === "en" ? "Optional — RAB / drawing / quotation" : "Opsional — RAB / gambar / penawaran"}>
+            <div className="flex flex-wrap items-center gap-2">
+              <input className="input flex-1 font-mono" value={form.fileUrl} onChange={(e) => setForm({ ...form, fileUrl: e.target.value })} placeholder="https://…" />
+              <FileUploadButton label={locale === "en" ? "Upload" : "Unggah"} onUploaded={(url) => setForm((f) => ({ ...f, fileUrl: url }))} />
+            </div>
+          </Field>
         </div>
       </Modal>
 
@@ -348,6 +410,35 @@ export default function BoQSection({ projectId }: Props) {
             </div>
           ))}
           {(histFor?.priceHistory ?? []).length === 0 && <p className="text-sm text-steel-400">{S.boqNoHist}</p>}
+        </div>
+      </Modal>
+
+      <Modal open={previewFor !== null} onClose={() => setPreviewFor(null)} title={previewFor?.name ?? ""} subtitle={previewFor?.id}>
+        {previewFor?.fileUrl ? (
+          <div className="space-y-2">
+            {/\.(png|jpe?g|gif|webp)(\?|$)/i.test(String(previewFor.fileUrl)) ? (
+              <SecureImg src={previewFor.fileUrl} alt={String(previewFor.name)} name={String(previewFor.name)} className="max-h-96 w-full rounded-xl border border-steel-200 object-contain" />
+            ) : (
+              <iframe title={String(previewFor.name)} src={String(previewFor.fileUrl)} className="h-96 w-full rounded-xl border border-steel-200" />
+            )}
+            <a className="block truncate text-xs font-semibold text-ocean-600 underline" href={String(previewFor.fileUrl)} target="_blank" rel="noreferrer">{String(previewFor.fileUrl)}</a>
+          </div>
+        ) : (
+          <p className="text-sm text-steel-400">-</p>
+        )}
+      </Modal>
+
+      <Modal open={logFor !== null} onClose={() => setLogFor(null)} title={`Log — ${logFor?.name ?? ""}`} subtitle={logFor?.id}>
+        <div className="space-y-2">
+          {logFor && logOf(logFor.id).map((l, i) => (
+            <div key={i} className="rounded-xl border border-steel-100 p-2.5 text-sm">
+              <p className="font-medium text-navy-900">{l.text}</p>
+              <p className="text-xs text-steel-500">{l.time}</p>
+            </div>
+          ))}
+          {(!logFor || logOf(logFor.id).length === 0) && (
+            <p className="text-sm text-steel-400">{locale === "en" ? "No status transitions recorded yet." : "Belum ada transisi status tercatat."}</p>
+          )}
         </div>
       </Modal>
     </div>

@@ -1014,7 +1014,7 @@ export function usePager(total: number, defaultSize = 100): {
           aria-label="Baris per halaman"
           onChange={(e) => { setSize(Number(e.target.value)); setPage(1); }}
         >
-          {[50, 100, 200].map((n) => (
+          {[10, 25, 50, 100, 200].map((n) => (
             <option key={n} value={n}>{n}/hal</option>
           ))}
         </select>
@@ -1053,6 +1053,124 @@ export function NumInput({ integer = false, allowNegative = false, onKeyDown, in
 /* ============ F I L E U P L O A D B U T T O N ============ */
 
 import { uploadFile } from "../services/upload";
+import { BASE, getJwt } from "../services/http";
+
+/** Normalisasi URL lama relatif (/files/...) → absolut terhadap BASE backend.
+ *  URL absolut / blob: / object-URL dikembalikan apa adanya. */
+export function absUrl(url: unknown): string {
+  const u = String(url ?? "").trim();
+  if (!u) return "";
+  if (/^(https?:|blob:|data:)/i.test(u)) return u;
+  if (!BASE) return u;
+  return `${BASE}${u.startsWith("/") ? u : `/${u}`}`;
+}
+
+/** Gambar dengan inisial bila tanpa foto + loader JWT (fetch blob → object URL).
+ *  Cocok untuk foto yang dilindungi auth backend; URL lama relatif dinormalisasi. */
+export function SecureImg({
+  src,
+  alt,
+  name,
+  className = "",
+}: {
+  src?: unknown;
+  alt: string;
+  name?: string;
+  className?: string;
+}) {
+  const raw = absUrl(src);
+  const [obj, setObj] = useState<string | null>(null);
+  const [failed, setFailed] = useState(false);
+  useEffect(() => {
+    setFailed(false);
+    setObj(null);
+    if (!raw || /^(blob:|data:)/i.test(raw)) return;
+    // URL absolut same-origin / backend ber-JWT → ambil via fetch blob.
+    let revoke = "";
+    let cancelled = false;
+    const needsJwt = !/^https?:/i.test(raw) || (BASE && raw.startsWith(BASE));
+    if (!needsJwt) return;
+    void (async () => {
+      try {
+        const jwt = getJwt();
+        const res = await fetch(raw, { headers: jwt ? { Authorization: `Bearer ${jwt}` } : {} });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const blob = await res.blob();
+        if (cancelled) return;
+        revoke = URL.createObjectURL(blob);
+        setObj(revoke);
+      } catch {
+        if (!cancelled) setFailed(true);
+      }
+    })();
+    return () => {
+      cancelled = true;
+      if (revoke) URL.revokeObjectURL(revoke);
+    };
+  }, [raw]);
+  if (!raw) {
+    return <Avatar name={name ?? alt} className={className} />;
+  }
+  if (failed) {
+    return (
+      <a href={raw} target="_blank" rel="noreferrer" title={raw} className={`inline-flex items-center justify-center rounded-xl border border-steel-200 bg-surface text-xs font-semibold text-ocean-600 underline ${className}`}>
+        Lihat file
+      </a>
+    );
+  }
+  const shown = obj ?? (/^(blob:|data:|https?:)/i.test(raw) ? raw : raw);
+  if (!obj && (BASE && raw.startsWith(BASE))) {
+    return (
+      <span className={`inline-flex items-center justify-center rounded-xl bg-steel-100 text-steel-400 ${className}`} aria-label={`Memuat ${alt}`}>
+        <Loader2 className="h-5 w-5 animate-spin" />
+      </span>
+    );
+  }
+  return <img src={shown} alt={alt} className={className} loading="lazy" onError={() => setFailed(true)} />;
+}
+
+/** Strip alur status generik: langkah selesai / aktif / berikutnya. */
+export function FlowStrip({
+  steps,
+  current,
+  ariaLabel,
+}: {
+  steps: string[];
+  current: string;
+  ariaLabel?: string;
+}) {
+  const idx = steps.indexOf(current);
+  return (
+    <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label={ariaLabel ?? "Alur status"}>
+      {steps.map((s, i) => {
+        const done = idx >= 0 && i < idx;
+        const on = s === current;
+        return (
+          <span key={s} className="flex items-center gap-1.5">
+            <span
+              className={`rounded-lg px-2.5 py-1 text-xs font-semibold ${
+                on
+                  ? "bg-navy-700 text-white"
+                  : done
+                    ? "bg-emerald-100 text-emerald-700"
+                    : "bg-steel-100 text-steel-500"
+              }`}
+              aria-current={on ? "step" : undefined}
+            >
+              {i + 1}. {s}
+            </span>
+            {i < steps.length - 1 && (
+              <span aria-hidden className="text-steel-300">→</span>
+            )}
+          </span>
+        );
+      })}
+      {idx < 0 && (
+        <span className="text-xs text-steel-400">Status “{current}” di luar alur baku</span>
+      )}
+    </div>
+  );
+}
 
 /** Tombol upload file generik: spinner saat unggah, toast pesan backend,
  * mode lokal biarkan input URL manual (fallback di luar komponen ini). */

@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Plus, HardHat, FileSignature, Star, Search } from "lucide-react";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from "recharts";
 import { Card, CardHeader, PageHeader, Badge, KpiCard, Tabs, ProgressBar, ChartTooltip, Modal, Field, FormGrid, ConfirmModal, SortTh, toggleSort, sortRows, usePager, toast,
-  NumInput,
+  NumInput, FlowStrip,
 } from "../../components/ui";
 import type { SortState } from "../../components/ui";
 import { useStore, type StoreItem } from "../../data/store";
@@ -12,7 +12,7 @@ import { fmtRupiah, fmtMiliar, fmtTanggal, todayISO } from "../../utils/format";
 import { sameName } from "../../utils/names";
 import { AlertBannerView, notifRowId, useModuleAlert, useNotifFlash } from "../../components/AlertBanner";
 import { getSetting } from "../../utils/settings";
-import { subcontractorScore, subActiveTrend, subContractTrend, woTrend, ratingTrend } from "../../data";
+import { subActiveTrend, subContractTrend, woTrend, ratingTrend } from "../../data";
 import { FilterPopover } from "../../components/FilterPopover";
 import { useT } from "../../i18n/LanguageContext";
 import { n_crm } from "../../i18n/n_crm";
@@ -106,6 +106,22 @@ function milestonesOf(s: StoreItem): Milestone[] {
   return Array.isArray(s.milestones) ? s.milestones as Milestone[] : [];
 }
 
+/* Konversi nilai K3 → angka untuk grafik evaluasi (skor aktual). */
+function k3Score(k3: unknown): number {
+  const v = String(k3 ?? "").trim().toUpperCase();
+  if (v === "A+") return 95;
+  if (v === "A") return 90;
+  if (v === "B+") return 82;
+  if (v === "B") return 78;
+  if (v === "C") return 65;
+  return 60;
+}
+
+function shortSub(name: unknown): string {
+  const s = String(name ?? "");
+  return s.replace(/^(PT|CV)\s+/i, "").split(" ").slice(0, 2).join(" ");
+}
+
 export default function Subcontractor() {
   const { data, add, update, log, branch } = useStore();
   const { locale } = useT();
@@ -134,9 +150,9 @@ export default function Subcontractor() {
   const [showWo, setShowWo] = useState(false);
   const [woForm, setWoForm] = useState({ sub: "", project: "", scope: "", targetDate: "", penaltyPct: "0.1" });
   const [woProg, setWoProg] = useState<StoreItem | null>(null);
-  const [progVal, setProgVal] = useState("");
+  const [progMs, setProgMs] = useState<string[]>([]);
   const [progNote, setProgNote] = useState("");
-  const [confirmFinish, setConfirmFinish] = useState<{ id: string; v: number; note: string } | null>(null);
+  const [confirmFinish, setConfirmFinish] = useState<{ id: string; v: number; note: string; ms: string[] } | null>(null);
   const [showTerm, setShowTerm] = useState(false);
   const [termForm, setTermForm] = useState({ sub: "", wo: "", milestone: "", amount: "", pphPct: "0.5", retPct: "5" });
   const [termPay, setTermPay] = useState<StoreItem | null>(null);
@@ -183,10 +199,23 @@ export default function Subcontractor() {
     flash.pick(rowId, -1, () => {}, 100);
   };
 
+  /* Progres WO = jumlah bobot milestone termin yang selesai (sinkron dua arah
+     dengan status termin; tanpa milestone → progres tersimpan legacy). */
+  const doneMsOf = (w: StoreItem): string[] =>
+    Array.isArray(w.doneMs) ? (w.doneMs as unknown[]).map((x) => String(x)) : [];
+  const effProgress = (wo: StoreItem | null | undefined): number => {
+    if (!wo) return 0;
+    const sub = subcontractors.find((s) => sameName(s.name, String(wo.sub ?? "")));
+    const ms = sub ? milestonesOf(sub) : [];
+    if (ms.length === 0) return Number(wo.progress || 0);
+    const done = doneMsOf(wo);
+    return Math.min(100, ms.filter((m) => done.includes(m.title)).reduce((s, m) => s + Number(m.pct || 0), 0));
+  };
+
   const termWoOptions = workOrders.filter((w) => termForm.sub && sameName(w.sub, termForm.sub));
   const termWo = workOrders.find((w) => w.id === termForm.wo) ?? null;
   const termSub = subcontractors.find((s) => s.name === termForm.sub) ?? null;
-  const termCap = termSub && termWo ? Number(termSub.contract || 0) * Number(termWo.progress || 0) / 100 : 0;
+  const termCap = termSub && termWo ? Number(termSub.contract || 0) * effProgress(termWo) / 100 : 0;
   const termUsed = termForm.wo
     ? payments.filter((t) => t.woId === termForm.wo && t.status !== "Ditolak").reduce((s, t) => s + Number(t.amount || 0), 0)
     : 0;
@@ -205,6 +234,13 @@ export default function Subcontractor() {
 
   const hoursByWo = (woId: string): number =>
     timesheets.filter((t) => t.woId === woId).reduce((s, t) => s + Number(t.hours || 0), 0);
+
+  /* Posisi alur termin terjauh (untuk strip alur header tab Termin). */
+  const furthestTermin = useMemo(() => {
+    const order = ["Draf", "Diajukan", "Disetujui", "Lunas", "Retensi Released"];
+    const max = payments.reduce((m, t) => Math.max(m, order.indexOf(normTerm(String(t.status ?? "")))), -1);
+    return max >= 0 ? order[max] : order[0];
+  }, [payments]);
 
   // Cabang global sebagai fallback bila lookup proyek/karyawan tidak punya cabang.
   const globalBranch = branch === "SEMUA" ? "" : branch;
@@ -298,9 +334,17 @@ export default function Subcontractor() {
     } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); }
   };
 
-  const applyWoProgress = async (id: string, v: number, note: string) => {
+  /* Grafik evaluasi dari skor aktual (rating + konversi K3 per subkontraktor). */
+  const evalChart = subcontractors.map((s) => ({
+    name: shortSub(s.name),
+    full: String(s.name ?? ""),
+    rating: Number(s.rating || 0),
+    k3: k3Score(s.k3),
+  }));
+
+  const applyWoProgress = async (id: string, v: number, note: string, doneMs?: string[]) => {
     try {
-    await update("workOrders", id, { progress: v, status: v >= 100 ? "Selesai" : "Dalam Proses" });
+    await update("workOrders", id, { progress: v, status: v >= 100 ? "Selesai" : "Dalam Proses", ...(doneMs ? { doneMs } : {}) });
     log("mengupdate progres", `${id} → ${v}%${note ? ` - ${note}` : ""}`, "Subkontraktor");
     toast(S.tProgressTo.replace("{a}", id).replace("{b}", String(v)));
     } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); }
@@ -308,17 +352,26 @@ export default function Subcontractor() {
 
   const saveWoProgress = () => {
     if (!woProg) return;
-    const v = Math.min(100, Math.max(0, Number(progVal) || 0));
-    if (v < Number(woProg.progress) && !progNote.trim()) {
+    const sub = subcontractors.find((s) => sameName(s.name, String(woProg.sub ?? "")));
+    const ms = sub ? milestonesOf(sub) : [];
+    if (ms.length === 0) {
+      toast(locale === "en" ? "No SOW milestones yet - add milestones first" : "Belum ada milestone SOW - tambah milestone dulu", "info");
+      return;
+    }
+    const known = ms.map((m) => m.title);
+    const checked = progMs.filter((t) => known.includes(t));
+    const v = Math.min(100, ms.filter((m) => checked.includes(m.title)).reduce((s, m) => s + Number(m.pct || 0), 0));
+    if (v < effProgress(woProg) && !progNote.trim()) {
       toast(S.tProgressNoteRequired, "info");
       return;
     }
     if (v >= 100) {
-      setConfirmFinish({ id: woProg.id, v, note: progNote.trim() });
+      setConfirmFinish({ id: woProg.id, v, note: progNote.trim(), ms: checked });
       return;
     }
-    applyWoProgress(woProg.id, v, progNote.trim());
+    applyWoProgress(woProg.id, v, progNote.trim(), checked);
     setWoProg(null);
+    setProgMs([]);
     setProgNote("");
   };
 
@@ -336,10 +389,10 @@ export default function Subcontractor() {
       return;
     }
     const sub = subcontractors.find((s) => s.name === termForm.sub);
-    const cap = sub ? Number(sub.contract || 0) * Number(wo.progress || 0) / 100 : 0;
+    const cap = sub ? Number(sub.contract || 0) * effProgress(wo) / 100 : 0;
     const used = payments.filter((t) => t.woId === wo.id && t.status !== "Ditolak").reduce((s, t) => s + Number(t.amount || 0), 0);
     if (used + amount > cap) {
-      toast(S.tTermOverCap.replace("{a}", fmtRupiah(cap)).replace("{b}", fmtRupiah(Number(sub?.contract || 0))).replace("{c}", String(wo.progress)).replace("{d}", fmtRupiah(used)), "info");
+      toast(S.tTermOverCap.replace("{a}", fmtRupiah(cap)).replace("{b}", fmtRupiah(Number(sub?.contract || 0))).replace("{c}", String(effProgress(wo))).replace("{d}", fmtRupiah(used)), "info");
       return;
     }
     const msList = sub ? milestonesOf(sub) : [];
@@ -462,6 +515,17 @@ export default function Subcontractor() {
         : `Hutang termin ${termId} gagal dicatat (${cause}) - status ${reverted ? `dikembalikan ke ${prevStatus || "semula"}` : "GAGAL dikembalikan, periksa manual"}`, "info");
       return;
     }
+    /* Sinkron dua arah termin→WO: milestone yang Lunas menandai milestone WO selesai. */
+    if (termPay.woId && termPay.milestone) {
+      const wo = workOrders.find((w) => w.id === termPay.woId);
+      const tSub = subcontractors.find((s) => sameName(s.name, String(termPay.sub ?? "")));
+      const tMs = tSub ? milestonesOf(tSub).find((m) => m.title === String(termPay.milestone)) : undefined;
+      if (wo && tMs && !doneMsOf(wo).includes(tMs.title)) {
+        const done = [...doneMsOf(wo), tMs.title];
+        const v = Math.min(100, milestonesOf(tSub as StoreItem).filter((m) => done.includes(m.title)).reduce((s, m) => s + Number(m.pct || 0), 0));
+        await update("workOrders", wo.id, { doneMs: done, progress: v, status: v >= 100 ? "Selesai" : "Dalam Proses" });
+      }
+    }
     log("melunasi termin", `${termPay.id} via ${proof.method} ${proof.ref.trim()} · PPh ${pphOf(termPay, pphDefault)}% = ${fmtRupiah(pphAmt)} · hutang ${poNeto} ${fmtRupiah(netoPayable)}${retAmt > 0 ? ` + retensi ${fmtRupiah(retAmt)} ditahan` : ""}`, "Subkontraktor");
     toast(S.tTermPaid.replace("{a}", termPay.id).replace("{b}", fmtRupiah(pphAmt)).replace("{c}", fmtRupiah(netoPayable)));
     setTermPay(null);
@@ -566,19 +630,22 @@ export default function Subcontractor() {
                 <CardHeader title={S.evalTitle} subtitle={S.evalSub} />
                 <div className="h-52 p-4 pt-0 sm:h-60">
                   <ResponsiveContainer width="100%" height="100%">
-                    <BarChart data={subcontractorScore} margin={{ top: 10, right: 10, left: -15, bottom: 0 }}>
+                    <BarChart data={evalChart} margin={{ top: 10, right: 10, left: -15, bottom: 0 }}>
                       <CartesianGrid strokeDasharray="3 3" stroke="#e9eff4" vertical={false} />
                       <XAxis dataKey="name" tick={{ fontSize: 10 }} stroke="#8aa2b6" axisLine={false} tickLine={false} interval={0} />
-                      <YAxis domain={[70, 100]} stroke="#8aa2b6" axisLine={false} tickLine={false} />
+                      <YAxis domain={[0, 100]} stroke="#8aa2b6" axisLine={false} tickLine={false} />
                       <Tooltip content={<ChartTooltip formatter={(v) => `${v}`} />} />
                       <Legend wrapperStyle={{ fontSize: 12 }} />
-                      <Bar dataKey="cost" name="Biaya" fill="#2e9ad4" radius={[3, 3, 0, 0]} barSize={14} />
-                      <Bar dataKey="quality" name="Kualitas" fill="#0b3a63" radius={[3, 3, 0, 0]} barSize={14} />
-                      <Bar dataKey="delivery" name="Ketepatan" fill="#0d9488" radius={[3, 3, 0, 0]} barSize={14} />
-                      <Bar dataKey="safety" name="K3" fill="#f59e0b" radius={[3, 3, 0, 0]} barSize={14} />
+                      <Bar dataKey="rating" name={locale === "en" ? "Actual rating" : "Rating aktual"} fill="#0b3a63" radius={[3, 3, 0, 0]} barSize={16} />
+                      <Bar dataKey="k3" name="K3" fill="#f59e0b" radius={[3, 3, 0, 0]} barSize={16} />
                     </BarChart>
                   </ResponsiveContainer>
                 </div>
+                <p className="px-4 pb-3 text-[11px] text-steel-500">
+                  {locale === "en"
+                    ? "Formula: bars use actual scores — rating = subcontractor rating, K3 converted (A+ 95 · A 90 · B+ 82 · B 78 · C 65)."
+                    : "Rumus: batang memakai skor aktual — rating = rating subkontraktor, K3 dikonversi (A+ 95 · A 90 · B+ 82 · B 78 · C 65)."}
+                </p>
               </Card>
               <div className="mb-3 flex flex-wrap items-center gap-2">
                 <div className="relative min-w-52 flex-1 sm:max-w-xs">
@@ -713,12 +780,12 @@ export default function Subcontractor() {
                       </div>
                       <div className="flex items-center gap-4">
                         <div className="flex items-center gap-2">
-                          <ProgressBar value={w.progress} className="w-24" tone={w.status === "Selesai" ? "green" : "navy"} />
-                          <span className="text-xs font-medium">{w.progress}%</span>
+                          <ProgressBar value={effProgress(w)} className="w-24" tone={w.status === "Selesai" ? "green" : "navy"} />
+                          <span className="text-xs font-medium">{effProgress(w)}%</span>
                         </div>
                         <Badge tone={toneMap[w.status] ?? "gray"}>{w.status}</Badge>
                         {w.status !== "Selesai" && (
-                          <button className="btn-secondary text-xs" aria-label={S.updateProgAria.replace("{n}", w.id)} onClick={() => { setWoProg(w); setProgVal(String(w.progress)); setProgNote(""); }}>{S.updateBtn}</button>
+                          <button className="btn-secondary text-xs" aria-label={S.updateProgAria.replace("{n}", w.id)} onClick={() => { setWoProg(w); setProgMs(doneMsOf(w)); setProgNote(""); }}>{S.updateBtn}</button>
                         )}
                         {Number(w.progress || 0) < 100 && w.targetDate && daysLate(String(w.targetDate)) > 0 && !w.penaltyAt && (
                           <button className="btn-secondary text-xs" aria-label={S.logPenaltyAria.replace("{n}", w.id)} onClick={() => recordPenalty(w)}>{S.logPenaltyBtn}</button>
@@ -735,6 +802,14 @@ export default function Subcontractor() {
 
           {tab === "Termin & Pembayaran" && (
             <div>
+              <div className="mb-3 rounded-xl bg-surface p-2.5">
+                <FlowStrip steps={["Draf", "Diajukan", "Disetujui", "Lunas", "Retensi Released"]} current={furthestTermin} ariaLabel={locale === "en" ? "Termin flow" : "Alur termin"} />
+                <p className="mt-1.5 text-[11px] text-steel-500">
+                  {locale === "en"
+                    ? "Flow: Draft → Proposed → Approved → Paid → Retention Released (Rejected branches off)."
+                    : "Alur: Draf → Diajukan → Disetujui → Lunas → Retensi Released (Ditolak di luar alur)."}
+                </p>
+              </div>
               <div className="mb-3 flex justify-end">
                 <button className="btn-secondary text-xs" onClick={() => setShowTerm(true)}><Plus className="h-3.5 w-3.5" /> {S.proposeTerminBtn}</button>
               </div>
@@ -866,6 +941,14 @@ export default function Subcontractor() {
 
           {tab === "Kepatuhan K3" && (
             <div className="space-y-3">
+              <div className="rounded-xl bg-surface p-2.5">
+                <FlowStrip steps={["Kualifikasi", "Aktif"]} current="Aktif" ariaLabel={locale === "en" ? "Compliance flow" : "Alur kepatuhan"} />
+                <p className="mt-1.5 text-[11px] text-steel-500">
+                  {locale === "en"
+                    ? "Flow: Qualification → Active (Blacklisted is off-flow, needs coaching). Per-card strip shows each sub's position."
+                    : "Alur: Kualifikasi → Aktif (Blacklist di luar alur, perlu pembinaan). Strip per kartu menunjukkan posisi tiap subkontraktor."}
+                </p>
+              </div>
               {subcontractors.map((s) => {
                 const list = incidentsOfSub(s.name);
                 const comp = complianceOf(s.k3);
@@ -877,6 +960,15 @@ export default function Subcontractor() {
                         <p className="text-xs text-steel-500 mt-0.5">{S.k3WoRating.replace("{a}", String(woOfSub(s.name).length)).replace("{b}", String(s.k3))}</p>
                       </div>
                       <Badge tone={comp.tone}>{comp.label} · {list.length} insiden</Badge>
+                    </div>
+                    <div className="mt-2">
+                      {normSub(s.status) === "Blacklist" ? (
+                        <p className="text-xs text-steel-500">
+                          <Badge tone="red">Blacklist</Badge> <span className="ml-1">{locale === "en" ? "off-flow — coaching required" : "di luar alur — perlu pembinaan"}</span>
+                        </p>
+                      ) : (
+                        <FlowStrip steps={["Kualifikasi", "Aktif"]} current={normSub(s.status)} ariaLabel={locale === "en" ? "Subcontractor status" : "Status subkontraktor"} />
+                      )}
                     </div>
                     <div className="mt-2 space-y-1">
                       {list.map((i) => (
@@ -983,13 +1075,46 @@ export default function Subcontractor() {
         </div>
       </Modal>
 
-      {/* Modal progres WO */}
+      {/* Modal progres WO = checklist milestone termin (sinkron dua arah, tanpa slider) */}
       <Modal open={woProg !== null} onClose={() => setWoProg(null)} title={S.progTitle.replace("{n}", woProg?.id ?? "")}
         footer={<><button className="btn-secondary" onClick={() => setWoProg(null)}>{S.cancelBtn}</button><button className="btn-primary" onClick={saveWoProgress}>{S.saveBtn}</button></>}>
         <div className="space-y-3">
-          <Field label={S.progFieldLabel.replace("{a}", progVal).replace("{b}", String(woProg?.progress ?? 0))}>
-            <input type="range" min={0} max={100} value={Number(progVal) || 0} onChange={(e) => setProgVal(e.target.value)} className="w-full" />
-          </Field>
+          {(() => {
+            const sub = woProg ? subcontractors.find((s) => sameName(s.name, String(woProg.sub ?? ""))) : undefined;
+            const ms = sub ? milestonesOf(sub) : [];
+            if (ms.length === 0) {
+              return <p className="text-sm text-steel-500">{locale === "en" ? "No SOW milestones for this subcontractor yet." : "Subkontraktor ini belum punya milestone SOW."}</p>;
+            }
+            const total = ms.filter((m) => progMs.includes(m.title)).reduce((s, m) => s + Number(m.pct || 0), 0);
+            return (
+              <>
+                <div className="space-y-1.5">
+                  {ms.map((m) => {
+                    const paid = payments.some((t) => t.woId === woProg?.id && t.milestone === m.title && normTerm(t.status) === "Lunas");
+                    return (
+                      <label key={m.title} className="flex cursor-pointer items-center gap-2.5 rounded-lg border border-steel-100 px-3 py-2 text-sm hover:bg-surface">
+                        <input
+                          type="checkbox"
+                          checked={progMs.includes(m.title)}
+                          onChange={(e) => setProgMs((prev) => e.target.checked ? [...prev, m.title] : prev.filter((t) => t !== m.title))}
+                        />
+                        <span className="min-w-0 flex-1">
+                          <span className="block font-medium text-navy-900">{m.title}</span>
+                          <span className="block text-xs text-steel-500">{m.pct}% · due {fmtTanggal(m.due)}{paid ? (locale === "en" ? " · term Paid" : " · termin Lunas") : ""}</span>
+                        </span>
+                        {paid && <Badge tone="green">Lunas</Badge>}
+                      </label>
+                    );
+                  })}
+                </div>
+                <p className="rounded-lg bg-surface px-3 py-2 text-xs text-steel-600">
+                  {locale === "en"
+                    ? `Progress = sum of completed milestone weights = ${Math.min(100, total)}% (two-way synced with Paid terms)`
+                    : `Progres = jumlah bobot milestone selesai = ${Math.min(100, total)}% (sinkron dua arah dengan termin Lunas)`}
+                </p>
+              </>
+            );
+          })()}
           <Field label={S.noteLabel} hint={S.progNoteHint}>
             <input className="input" value={progNote} onChange={(e) => setProgNote(e.target.value)} placeholder={S.progNotePh} />
           </Field>
@@ -1003,7 +1128,7 @@ export default function Subcontractor() {
         desc={S.finishDesc}
         confirmLabel={S.finishConfirmBtn}
         onCancel={() => setConfirmFinish(null)}
-        onConfirm={() => { if (confirmFinish) applyWoProgress(confirmFinish.id, confirmFinish.v, confirmFinish.note); setConfirmFinish(null); setWoProg(null); setProgNote(""); }}
+        onConfirm={() => { if (confirmFinish) applyWoProgress(confirmFinish.id, confirmFinish.v, confirmFinish.note, confirmFinish.ms); setConfirmFinish(null); setWoProg(null); setProgMs([]); setProgNote(""); }}
       />
 
       {/* Modal termin */}
@@ -1020,7 +1145,7 @@ export default function Subcontractor() {
             <Field label={S.woLabel}>
               <select className="input" value={termForm.wo} onChange={(e) => setTermForm({ ...termForm, wo: e.target.value })} disabled={!termForm.sub}>
                 <option value="">{termForm.sub ? S.pickWoOpt : S.pickSubFirst}</option>
-                {termWoOptions.map((w) => <option key={w.id} value={w.id}>{w.id} ({w.progress}%)</option>)}
+                {termWoOptions.map((w) => <option key={w.id} value={w.id}>{w.id} ({effProgress(w)}%)</option>)}
               </select>
             </Field>
             <Field label={S.msSowBtn} hint={S.msHint}>

@@ -131,6 +131,10 @@ export const n_roles = {
     toggle3dHint: "Matikan untuk menyembunyikan modul 3D Viewer",
     otherGroup: "Lainnya",
     activeState: "aktif",
+    bizConsts: "Konstanta Bisnis",
+    bizConstsSub: "Angka yang dipakai rumus aplikasi - ubah hati-hati",
+    adminOps: "Operasi Admin",
+    adminOpsSub: "Token backend & impor seed awal (bukan konstanta bisnis)",
   },
   en: {
     title: "Roles & Access",
@@ -264,5 +268,9 @@ export const n_roles = {
     toggle3dHint: "Turn off to hide the 3D Viewer module",
     otherGroup: "Others",
     activeState: "active",
+    bizConsts: "Business Constants",
+    bizConstsSub: "Numbers used by app formulas - change carefully",
+    adminOps: "Admin Operations",
+    adminOpsSub: "Backend token & initial seed import (not business constants)",
   },
 };

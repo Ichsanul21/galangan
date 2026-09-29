@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import type { CSSProperties } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import {
   Anchor,
@@ -52,8 +53,9 @@ import { useStore } from "../data/store";
 import type { StoreItem } from "../data/store";
 import { getSetting } from "../utils/settings";
 import { useAuth, canSetTarget } from "../auth/auth";
-import { exportExcel } from "../utils/export";
-import { todayISO } from "../utils/format";
+import { exportPDF } from "../utils/export";
+import { fmtTanggal, todayISO } from "../utils/format";
+import { SB_KOP } from "../utils/sb";
 import { scopeNames } from "../utils/scope";
 import {
   revenueSeries,
@@ -138,13 +140,10 @@ export default function Dashboard() {
   const seaTrialVessel =
     projects.find((p) => p.status !== "Selesai" && scopeNames(p.scope).includes("Sea Trial"))?.vessel ?? "-";
 
+  /* Tombol ekspor = PDF ringkas portofolio via section cetak tersembunyi. */
   const exportSummary = () => {
-    const rows: (string | number)[][] = [
-      ["ID Proyek", "Kapal", "Progres (%)", "Anggaran (Rp)", "Realisasi (Rp)"],
-      ...projects.map((p) => [p.id, p.vessel, Number(p.progress || 0), Number(p.budget || 0), Number(p.actual || 0)]),
-    ];
-    exportExcel(rows, "Ringkasan Portofolio");
-    toast(S.tPortfolioExported);
+    exportPDF("dashboard-pdf", `Ringkasan-Portofolio-${todayISO()}`);
+    toast(S.tPortfolioPdfExported);
   };
 
   const tgt = targets[branch] ?? { revenue: 0, projects: 0 };
@@ -260,8 +259,7 @@ export default function Dashboard() {
     (i) => i.status !== "Lunas" && i.status !== "Draft" && String(i.due) < today
   );
   const overdueDays = (due: string) => Math.floor((todayMs - Date.parse(String(due))) / 86400000);
-  const overdue730 = overdueInvoices.filter((i) => overdueDays(String(i.due)) >= 30);
-  const overdue14 = overdueInvoices.filter((i) => { const d = overdueDays(String(i.due)); return d >= 14 && d < 30; });
+  const overdue730 = overdueInvoices.filter((i) => overdueDays(String(i.due)) >= 30);  const overdue14 = overdueInvoices.filter((i) => { const d = overdueDays(String(i.due)); return d >= 14 && d < 30; });
   const overdue7 = overdueInvoices.filter((i) => { const d = overdueDays(String(i.due)); return d >= 7 && d < 14; });
   const latestIncident = [...data.incidents].sort((a, b) => String(b.date).localeCompare(String(a.date)))[0];
   const delayedProjects = branchProjects.filter((p) => p.status === "Terlambat");
@@ -301,6 +299,9 @@ export default function Dashboard() {
       ? [{ icon: AlertTriangle, text: S.attDelayed.replace("{n}", String(delayedProjects.length)).replace("{b}", String(delayedProjects[0].id)), to: "/proyek", tone: "bg-rose-50 text-rose-600" }]
       : []),
   ];
+
+  const pdfTh: CSSProperties = { border: "1px solid #999", padding: "4px 6px", background: "#eee", textAlign: "left", fontSize: 11 };
+  const pdfTd: CSSProperties = { border: "1px solid #999", padding: "4px 6px", fontSize: 11 };
 
   return (
     <Stagger className="space-y-5">
@@ -704,6 +705,32 @@ export default function Dashboard() {
             </div>
           </Card>
         </StaggerItem>
+      </div>
+
+      {/* Section cetak PDF tersembunyi: kop + KPI + tabel proyek (tanpa chart). */}
+      <div id="dashboard-pdf" style={{ position: "absolute", left: -9999, top: 0, width: 1000, background: "#ffffff", padding: 24, fontSize: 12, color: "#000" }}>
+        <div style={{ textAlign: "center", borderBottom: "3px solid #0B3A63", paddingBottom: 12, marginBottom: 12, breakInside: "avoid", pageBreakInside: "avoid" }}>
+          <p style={{ fontWeight: 800, fontSize: 18, color: "#0B3A63", margin: 0 }}>{SB_KOP.name}</p>
+          <p style={{ fontSize: 11, color: "#33475B", margin: 0 }}>{SB_KOP.line1}</p>
+          <p style={{ fontSize: 10, color: "#52697C", margin: 0 }}>{SB_KOP.hq} · {SB_KOP.addr1}</p>
+          <p style={{ fontSize: 12, fontWeight: 700, color: "#0B3A63", marginTop: 8 }}>Ringkasan Portofolio · {fmtTanggal(today)}</p>
+        </div>
+        <div style={{ breakInside: "avoid", pageBreakInside: "avoid" }}>
+          <p style={{ fontSize: 11 }}>
+            {S.kpiActiveProjects}: {totalActive} ({S.delayedSuffix.replace("{n}", String(delayed))}) ·{" "}
+            {S.kpiRevenue12}: {totalRevenueLabel} ·{" "}
+            {S.kpiGrossMargin}: {lastMargin.margin.toLocaleString("id-ID", { maximumFractionDigits: 1 })}% ·{" "}
+            {S.stockValueLabel}: {fmtMiliar(stockValue)} · {S.openNcrLabel}: {openNcr}
+          </p>
+        </div>
+        <table style={{ width: "100%", borderCollapse: "collapse", marginTop: 6 }}>
+          <thead><tr><th style={pdfTh}>ID Proyek</th><th style={pdfTh}>Kapal</th><th style={pdfTh}>Status</th><th style={pdfTh}>Progres (%)</th><th style={pdfTh}>Anggaran (Rp)</th><th style={pdfTh}>Realisasi (Rp)</th></tr></thead>
+          <tbody>
+            {projects.map((p) => (
+              <tr key={p.id}><td style={pdfTd}>{p.id}</td><td style={pdfTd}>{p.vessel}</td><td style={pdfTd}>{p.status}</td><td style={pdfTd}>{Number(p.progress || 0)}</td><td style={pdfTd}>{Number(p.budget || 0).toLocaleString("id-ID")}</td><td style={pdfTd}>{Number(p.actual || 0).toLocaleString("id-ID")}</td></tr>
+            ))}
+          </tbody>
+        </table>
       </div>
 
     </Stagger>

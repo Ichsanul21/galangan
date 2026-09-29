@@ -1,4 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
+import type { ReactNode } from "react";
+import { Link } from "react-router-dom";
 import { Plus, Cpu, Wrench, AlertTriangle, Gauge, CheckCircle2, Download, Search } from "lucide-react";
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 import { Card, CardHeader, PageHeader, Badge, KpiCard, Tabs, ProgressBar, ChartTooltip, RadialGauge, Modal, Field, FormGrid, EmptyState, ConfirmModal, StatusBadge, toast, SortTh, toggleSort, sortRows, usePager,
@@ -18,6 +20,22 @@ import { n_eqp } from "../../i18n/n_eqp";
 
 const BOOK_PRIORITIES = ["Normal", "Tinggi", "Kritis"];
 const TARGET_HOURS = 176;
+const EQ_CATS = ["Pengangkat", "Pengelasan", "Tenaga", "Transportasi", "Pengecatan", "Lainnya"];
+
+const ID_MON = ["Jan", "Feb", "Mar", "Apr", "Mei", "Jun", "Jul", "Agu", "Sep", "Okt", "Nov", "Des"];
+const EN_MON = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+/* Label "Mon YYYY" untuk N titik terakhir, bulan berjalan terakhir. */
+function trailingMonthLabels(n: number, locale: string): string[] {
+  const now = new Date();
+  const M = locale === "en" ? EN_MON : ID_MON;
+  const out: string[] = [];
+  for (let i = n - 1; i >= 0; i--) {
+    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+    out.push(`${M[d.getMonth()]} ${d.getFullYear()}`);
+  }
+  return out;
+}
 
 function toMinutes(t: string): number | null {
   const m = /^(\d{1,2}):(\d{2})$/.exec(t.trim());
@@ -78,6 +96,20 @@ function depreciationOf(e: StoreItem): { annual: number; book: number } | null {
   return { annual, book: Math.max(0, cost - annual) };
 }
 
+/* Indikator baik/buruk utilisasi: <40% rendah, 40–85% baik, >85% over. */
+function utilGrade(v: number, en: boolean): { label: string; tone: "green" | "amber" | "red"; desc: string } {
+  if (v > 85) return { label: en ? "Poor · over" : "Buruk · over", tone: "red", desc: en ? "over-utilized (>85%) — add units / reschedule" : "over-utilized (>85%) — tambah unit / reschedule" };
+  if (v >= 40) return { label: en ? "Good" : "Baik", tone: "green", desc: en ? "healthy load (40–85%)" : "beban sehat (40–85%)" };
+  return { label: en ? "Poor · low" : "Buruk · rendah", tone: "amber", desc: en ? "under-utilized (<40%)" : "kurang produktif (<40%)" };
+}
+
+/* Indikator baik/buruk OEE: ≥70% baik, 40–70% cukup, <40% buruk. */
+function oeeGrade(v: number, en: boolean): { label: string; tone: "green" | "amber" | "red" } {
+  if (v >= 0.7) return { label: en ? "Good" : "Baik", tone: "green" };
+  if (v >= 0.4) return { label: en ? "Fair" : "Cukup", tone: "amber" };
+  return { label: en ? "Poor" : "Buruk", tone: "red" };
+}
+
 export default function EquipmentPage() {
   const { data, add, update, remove, log, branch } = useStore();
   const { locale } = useT();
@@ -100,7 +132,7 @@ export default function EquipmentPage() {
   const [sort4, setSort4] = useState<SortState>({ key: null, dir: "asc" });
 
   const [showAdd, setShowAdd] = useState(false);
-  const [form, setForm] = useState({ name: "", category: "Pengangkat", code: "", serial: "", branch: "Samarinda", model: "", pic: "", util: "50", rate: "", fuelPrice: "0", acquisitionCost: "", usefulLife: "" });
+  const [form, setForm] = useState({ name: "", category: "Pengangkat", categoryCustom: "", code: "", serial: "", branch: "Samarinda", model: "", pic: "", util: "50", rate: "", fuelPrice: "0", acquisitionCost: "", usefulLife: "" });
   const [showService, setShowService] = useState(false);
   const [svcDate, setSvcDate] = useState("");
   const [svcTarget, setSvcTarget] = useState("");
@@ -159,6 +191,33 @@ export default function EquipmentPage() {
   };
   const dispUtil = (eq: StoreItem): number =>
     (eq.utilManual ?? true) ? Number(eq.util || 0) : autoUtilOf(eq);
+
+  /* Kategori custom ikut filter: gabungan baku + kategori tersimpan. */
+  const allCats = useMemo(() => {
+    const extra = equipment.map((e) => String(e.category ?? "").trim()).filter((c) => c && !EQ_CATS.includes(c));
+    return [...EQ_CATS, ...Array.from(new Set(extra)).sort()];
+  }, [equipment]);
+
+  /* Chart jam/bulan: label "Mon YYYY", bulan berjalan terakhir. */
+  const hoursChart = useMemo(() => {
+    const labels = trailingMonthLabels(equipmentHours.length, locale);
+    return equipmentHours.map((d, i) => ({ ...d, label: labels[i] ?? d.month }));
+  }, [locale]);
+
+  /* Nama proyek booking → link detail + nama kapal. */
+  const projOf = (id: unknown): StoreItem | undefined =>
+    (data.projects ?? []).find((p) => String(p.id) === String(id));
+  const projCell = (id: unknown): ReactNode => {
+    const p = projOf(id);
+    const key = String(id ?? "-");
+    if (!p) return <span className="font-mono text-xs text-steel-500">{key}</span>;
+    return (
+      <Link to={`/proyek/${p.id}`} className="font-medium text-ocean-600 hover:underline" title={String(p.vessel ?? p.id)}>
+        {String(p.vessel ?? p.id)}
+        <span className="ml-1 font-mono text-[11px] font-normal text-steel-400">{p.id}</span>
+      </Link>
+    );
+  };
 
   const statusTone: Record<string, "green" | "blue" | "amber" | "gray"> = {
     Tersedia: "green",
@@ -277,6 +336,9 @@ export default function EquipmentPage() {
     if (equipment.some((e) => String(e.code).toUpperCase() === code)) { toast(S.eqCodeUsed.replace("{a}", code), "info"); return; }
     if (!form.serial.trim()) { toast(S.eqSerialReq, "info"); return; }
     if (!form.pic.trim()) { toast(S.eqPicReq, "info"); return; }
+    /* Kategori "Lainnya" → teks custom wajib, tersimpan sebagai kategori + ikut filter. */
+    const category = form.category === "Lainnya" ? form.categoryCustom.trim() : form.category;
+    if (!category) { toast(locale === "en" ? "Custom category is required" : "Kategori kustom wajib diisi", "info"); return; }
     const util = Number(form.util);
     if (!Number.isFinite(util) || util < 0 || util > 100) { toast(S.eqUtilRange, "info"); return; }
     const rate = Number(form.rate || 0);
@@ -290,13 +352,13 @@ export default function EquipmentPage() {
       return;
     }
     const created = await add("equipment", {
-      name: form.name.trim(), category: form.category, code, serial: form.serial.trim(), branch: form.branch,
+      name: form.name.trim(), category, code, serial: form.serial.trim(), branch: form.branch,
       status: "Tersedia", util, utilManual: true, nextService: "-", lastHours: 0, model: form.model.trim() || "-",
       pic: form.pic.trim(), rate, fuelPrice, acquisitionCost, usefulLife,
     }, { action: "mendaftarkan equipment", module: "Equipment" });
     toast(S.eqAdded.replace("{a}", created.id));
     setShowAdd(false);
-    setForm({ name: "", category: "Pengangkat", code: "", serial: "", branch: "Samarinda", model: "", pic: "", util: "50", rate: "", fuelPrice: "0", acquisitionCost: "", usefulLife: "" });
+    setForm({ name: "", category: "Pengangkat", categoryCustom: "", code: "", serial: "", branch: "Samarinda", model: "", pic: "", util: "50", rate: "", fuelPrice: "0", acquisitionCost: "", usefulLife: "" });
     } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); }
   };
 
@@ -657,7 +719,7 @@ export default function EquipmentPage() {
                       </Field>
                       <Field label={S.thCategory}>
                         <select className="input w-full" value={draft.kategori} onChange={(e) => setDraft({ ...draft, kategori: e.target.value })}>
-                          {["Semua", "Pengangkat", "Pengelasan", "Tenaga", "Transportasi", "Pengecatan", "Lainnya"].map((c) => <option key={c} value={c}>{c === "Semua" ? S.eqAllCat : c}</option>)}
+                          {["Semua", ...allCats].map((c) => <option key={c} value={c}>{c === "Semua" ? S.eqAllCat : c}</option>)}
                         </select>
                       </Field>
                     </div>
@@ -756,7 +818,7 @@ export default function EquipmentPage() {
                     <div key={b.id} className="flex items-center justify-between gap-2 border-b border-steel-100 py-2 text-sm">
                       <div className="min-w-0">
                         <p className="truncate font-medium text-navy-900" title={equipLabel(b.equip)}>{equipLabel(b.equip)}</p>
-                        <p className="text-xs text-steel-500">{b.proyek} · {b.jam} · {fmtTanggal(String(b.date))} · {b.priority ?? "Normal"}</p>
+                        <p className="text-xs text-steel-500">{projCell(b.proyek)} · {b.jam} · {fmtTanggal(String(b.date))} · {b.priority ?? "Normal"}</p>
                       </div>
                       <div className="flex shrink-0 items-center gap-2">
                         <Badge tone={b.status === "Terpakai" ? "blue" : "gray"}>{b.status}</Badge>
@@ -909,7 +971,7 @@ export default function EquipmentPage() {
                         return String(proj ?? "");
                       }).map(([proj, v]) => (
                         <tr key={proj} className="hover:bg-surface">
-                          <td className="td font-mono font-medium text-navy-900">{proj}</td>
+                          <td className="td font-medium text-navy-900">{projCell(proj)}</td>
                           <td className="td text-steel-600">{fmtJumlah(v.hours)} jam</td>
                           <td className="td text-steel-600">{fmtJumlah(v.downtime)} jam</td>
                           <td className="td font-semibold">{fmtRupiah(v.cost)}</td>
@@ -928,7 +990,7 @@ export default function EquipmentPage() {
                     <div key={b.id} className="flex flex-wrap items-center justify-between gap-2 border-b border-steel-100 py-2 text-sm">
                       <div>
                         <p className="font-medium text-navy-900">{equipLabel(b.equip)} <span className="font-mono text-xs text-steel-500">· {b.id}</span></p>
-                        <p className="text-xs text-steel-500">{b.proyek} · {fmtTanggal(String(b.date))} · {b.hours ?? 0} jam · downtime {b.downtime ?? 0} jam · BBM {fmtJumlah(Number(b.fuelLiters || 0))} L</p>
+                        <p className="text-xs text-steel-500">{projCell(b.proyek)} · {fmtTanggal(String(b.date))} · {b.hours ?? 0} jam · downtime {b.downtime ?? 0} jam · BBM {fmtJumlah(Number(b.fuelLiters || 0))} L</p>
                       </div>
                       <Badge tone="green">{fmtRupiah(Number(b.cost || 0))}</Badge>
                     </div>
@@ -971,8 +1033,12 @@ export default function EquipmentPage() {
               <Card className="p-5">
                 <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
                   <h3 className="text-sm font-semibold text-navy-900">{S.eqOeeTitle} <span className="text-xs font-normal text-steel-500">{S.eqOeeHint.replace("{a}", String(TARGET_HOURS))}</span></h3>
-                  <Badge tone="navy">{S.eqAvgOee.replace("{a}", avgOee !== null ? `${Math.round(avgOee * 100)}%` : "-")}</Badge>
+                  <span className="flex items-center gap-1.5">
+                    <Badge tone="navy">{S.eqAvgOee.replace("{a}", avgOee !== null ? `${Math.round(avgOee * 100)}%` : "-")}</Badge>
+                    {avgOee !== null && (() => { const g = oeeGrade(avgOee, locale === "en"); return <Badge tone={g.tone}>{g.label}</Badge>; })()}
+                  </span>
                 </div>
+                <p className="mb-3 text-xs text-steel-500">{locale === "en" ? "Good ≥70% · Fair 40–70% · Poor <40% (availability × performance)" : "Baik ≥70% · Cukup 40–70% · Buruk <40% (availability × performance)"}</p>
                 <div className="space-y-2.5">
                   {equipment.map((e) => {
                     const v = oeeOf(e.name);
@@ -986,7 +1052,7 @@ export default function EquipmentPage() {
                       <div key={e.id}>
                         <div className="mb-1 flex justify-between text-sm">
                           <span className="text-steel-600">{e.name} <span className="text-xs text-steel-400">(A {Math.round(v.avail * 100)}% × P {Math.round(v.perf * 100)}%)</span></span>
-                          <span className="font-semibold text-navy-900">{Math.round(v.oee * 100)}%</span>
+                          <span className="flex items-center gap-1.5 font-semibold text-navy-900">{Math.round(v.oee * 100)}% <Badge tone={oeeGrade(v.oee, locale === "en").tone}>{oeeGrade(v.oee, locale === "en").label}</Badge></span>
                         </div>
                         <ProgressBar value={Math.round(v.oee * 100)} tone={v.oee < 0.4 ? "red" : v.oee < 0.7 ? "amber" : "green"} />
                       </div>
@@ -1000,16 +1066,21 @@ export default function EquipmentPage() {
                   <div className="flex items-center justify-center">
                     <RadialGauge value={avgUtil} label={S.thEquipment} size={140} />
                   </div>
-                  <p className="mt-2 text-center text-xs text-steel-500">{S.eqOverallUtilCap}</p>
+                  {(() => { const g = utilGrade(avgUtil, locale === "en"); return (
+                    <p className="mt-2 flex items-center justify-center gap-1.5 text-center text-xs text-steel-500">
+                      <Badge tone={g.tone}>{g.label}</Badge> {g.desc}
+                    </p>
+                  ); })()}
+                  <p className="mt-1 text-center text-xs text-steel-500">{S.eqOverallUtilCap}</p>
                 </Card>
                 <Card className="lg:col-span-2">
                   <CardHeader title={S.eqHoursPerMonth} subtitle={S.eqHoursPerMonthSub} />
                   <div className="h-52 p-4 pt-0">
                     <ResponsiveContainer width="100%" height="100%">
-                      <AreaChart data={equipmentHours} margin={{ top: 5, right: 5, left: -15, bottom: 0 }}>
+                      <AreaChart data={hoursChart} margin={{ top: 5, right: 5, left: -15, bottom: 0 }}>
                         <defs><linearGradient id="eqGrad" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="#2e9ad4" stopOpacity={0.35} /><stop offset="95%" stopColor="#2e9ad4" stopOpacity={0} /></linearGradient></defs>
                         <CartesianGrid strokeDasharray="3 3" stroke="#e9eff4" vertical={false} />
-                        <XAxis dataKey="month" stroke="#8aa2b6" axisLine={false} tickLine={false} />
+                        <XAxis dataKey="label" stroke="#8aa2b6" axisLine={false} tickLine={false} tick={{ fontSize: 10 }} />
                         <YAxis stroke="#8aa2b6" axisLine={false} tickLine={false} tickFormatter={(v) => `${Math.round(Number(v) / 1000)}rb`} />
                         <Tooltip content={<ChartTooltip formatter={(v) => `${fmtJumlah(Number(v))} jam`} />} />
                         <Area type="monotone" dataKey="jam" stroke="#2e9ad4" strokeWidth={2.5} fill="url(#eqGrad)" />
@@ -1072,9 +1143,14 @@ export default function EquipmentPage() {
             <Field label={S.eqCodeField}><input className="input font-mono" value={form.code} onChange={(e) => setForm({ ...form, code: e.target.value })} placeholder={S.eqCodePh} /></Field>
             <Field label={S.thCategory}>
               <select className="input" value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })}>
-                {["Pengangkat", "Pengelasan", "Tenaga", "Transportasi", "Pengecatan", "Lainnya"].map((c) => <option key={c}>{c}</option>)}
+                {EQ_CATS.map((c) => <option key={c}>{c}</option>)}
               </select>
             </Field>
+            {form.category === "Lainnya" && (
+              <Field label={locale === "en" ? "Custom category" : "Kategori kustom"} hint={locale === "en" ? "Saved as the equipment category and included in filters" : "Disimpan sebagai kategori + ikut filter"}>
+                <input className="input" value={form.categoryCustom} onChange={(e) => setForm({ ...form, categoryCustom: e.target.value })} placeholder={locale === "en" ? "e.g.: Survey" : "cth: Survei"} />
+              </Field>
+            )}
             <Field label={S.eqBranchField}>
               <select className="input" value={form.branch} onChange={(e) => setForm({ ...form, branch: e.target.value })}>
                 {data.branches.map((b) => <option key={b.id} value={String(b.city)}>{String(b.city)}</option>)}
