@@ -11,6 +11,7 @@ import { fmtTanggal, todayISO } from "../../utils/format";
 import { AlertBannerView, notifRowId, useModuleAlert, useNotifFlash } from "../../components/AlertBanner";
 import { sbDsNumber, sbSjNumber, sbTtNumber, maxSeq, parseSjSeq } from "../../utils/sb";
 import { exportExcel } from "../../utils/export";
+import { findUsages } from "../../utils/usages";
 import { n_dry } from "../../i18n/n_dry";
 import { useT } from "../../i18n/LanguageContext";
 
@@ -299,6 +300,11 @@ export default function Documents() {
 
   const confirmDelete = async () => {
     if (!deleting) return;
+    const usedBy = findUsages(data, "documents", String(deleting.id));
+    if (usedBy.length > 0) {
+      toast(`Hapus diblokir - ${deleting.id} dipakai di: ${usedBy.join(", ")}`, "info");
+      return;
+    }
     try {
       await remove("documents", deleting.id);
       log("menghapus permanen dokumen", deleting.id, "Dokumen");
@@ -647,9 +653,13 @@ export default function Documents() {
       <ConfirmModal
         open={deleting !== null}
         title={S.deleteTitle.replace("{a}", deleting?.id ?? "")}
-        desc={S.deleteDesc}
-        confirmLabel={S.confirmDeletePerm}
+        desc={(() => {
+          const used = deleting ? findUsages(data, "documents", String(deleting.id)) : [];
+          return used.length > 0 ? `${S.deleteDesc} Dipakai di: ${used.join(", ")}. Penghapusan diblokir.` : S.deleteDesc;
+        })()}
+        confirmLabel={deleting && findUsages(data, "documents", String(deleting.id)).length > 0 ? "Diblokir - masih dipakai" : S.confirmDeletePerm}
         danger
+        confirmDisabled={deleting ? findUsages(data, "documents", String(deleting.id)).length > 0 : false}
         onCancel={() => setDeleting(null)}
         onConfirm={confirmDelete}
       />

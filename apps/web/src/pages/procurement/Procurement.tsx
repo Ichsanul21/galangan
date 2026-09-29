@@ -6,6 +6,8 @@ import { Card, CardHeader, PageHeader, Badge, KpiCard, Tabs, StatusBadge, Donut,
 } from "../../components/ui";
 import type { SortState } from "../../components/ui";
 import { useStore, type StoreItem } from "../../data/store";
+import { remoteRepository } from "../../services/repositories";
+import { getJwt, isBackendConfigured } from "../../services/http";
 import { fmtRupiah, fmtJumlah, fmtTanggal, todayISO } from "../../utils/format";
 import { sameName } from "../../utils/names";
 import { AlertBannerView, notifRowId, useModuleAlert, useNotifFlash } from "../../components/AlertBanner";
@@ -131,6 +133,20 @@ function lateDaysOf(po: StoreItem): number {
   const t = Date.parse(String(po.eta));
   if (Number.isNaN(t)) return 0;
   return Math.max(0, Math.floor((Date.parse(todayISO()) - t) / 86400000));
+}
+
+/* Baca ulang payables segar (bukan snapshot render): mode remote → list BE,
+   gagal/lokal → fallback snapshot. Pemanggil wajib filter cocok persis. */
+async function freshPayables(fallback: StoreItem[]): Promise<StoreItem[]> {
+  try {
+    if (isBackendConfigured() && getJwt()) {
+      const rows = await remoteRepository("payables").list();
+      if (Array.isArray(rows)) return rows;
+    }
+  } catch {
+    /* abaikan - pakai fallback lokal */
+  }
+  return fallback;
 }
 
 export default function Procurement() {
@@ -724,15 +740,21 @@ export default function Procurement() {
       tglFaktur: recvTglFaktur,
       dendaRp,
     });
-    /* Auto-AP dari GR (3-way match PO-GR-Invoice): hutang vendor terbentuk saat terima. */
-    const apExists = (data.payables ?? []).some((a) => String(a.po ?? "") === String(recvPo.id));
+    /* Auto-AP dari GR (3-way match PO-GR-Invoice): hutang vendor terbentuk saat terima.
+       Idempoten: kunci po PERSIS sama dengan yang ditulis ("ID / docNo"), dicek ke
+       payables segar; sudah ada → toast info + lewati insert. */
+    const poKey = recvPo.docNo ? `${recvPo.id} / ${recvPo.docNo}` : String(recvPo.id);
+    const apExists = (await freshPayables(data.payables ?? [])).some((a) => String(a.po ?? "") === poKey);
+    if (apExists && Number(recvPo.amount || 0) > 0) {
+      toast(locale === "en" ? `Payable ${poKey} already exists - skipping duplicate entry` : `Hutang ${poKey} sudah ada - lewati pencatatan ganda`, "info");
+    }
     if (!apExists && Number(recvPo.amount || 0) > 0) {
       const poAmount = Number(recvPo.amount || 0);
       const apAmt = orderedQty > 0 ? Math.round((poAmount * qty) / orderedQty) : poAmount;
       const apTotal = apAmt + dendaRp;
       await add("payables", {
         v: String(recvPo.vendor ?? ""), kodePembantu: String(recvPo.vendor ?? ""),
-        po: recvPo.docNo ? `${recvPo.id} / ${recvPo.docNo}` : String(recvPo.id),
+        po: poKey,
         openAwal: 0, amt: apTotal, due: recvPo.eta || todayISO(),
         pph: "2%", st: "Belum Dibayar", vessel: String(recvPo.vessel ?? ""),
         item: String(recvPo.item ?? ""), pay1: 0, pay2: 0,

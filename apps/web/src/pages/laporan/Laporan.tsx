@@ -104,6 +104,8 @@ export default function Laporan() {
     const invTerbit = (data.invoices ?? []).filter((i) => inRange(String(i.due ?? ""), week0, week1) && matchProject(String(i.project ?? "")));
     const invLunas = (data.invoices ?? []).filter((i) => i.status === "Lunas" && inRange(String(i.paidAt ?? i.due ?? ""), week0, week1) && matchProject(String(i.project ?? "")));
     const po = (data.purchaseOrders ?? []).filter((p) => inRange(String(p.date ?? ""), week0, week1) && matchBr(p));
+    const apLunas = (data.payables ?? []).filter((a) => a.st === "Lunas" && inRange(String(a.paidAt ?? a.due ?? ""), week0, week1));
+    const payPaid = (data.payroll ?? []).filter((p) => p.status === "Dibayar" && inRange(String(p.paidAt ?? ""), week0, week1) && matchBr(p));
     const ncr = (data.ncr ?? []).filter((n) => inRange(String(n.raised ?? ""), week0, week1) && matchProject(String(n.project ?? "")));
     const att = (data.attendance ?? []).filter((a) => inRange(String(a.date ?? ""), week0, week1) && matchBr(a));
     const hadir = att.filter((a) => a.status === "Hadir").length;
@@ -114,6 +116,8 @@ export default function Laporan() {
       invTerbit, invTerbitVal: invTerbit.reduce((s, i) => s + num(i.amount), 0),
       invLunas, invLunasVal: invLunas.reduce((s, i) => s + num(i.amount), 0),
       po, poVal: po.reduce((s, p) => s + num(p.amount), 0),
+      apLunas, apLunasVal: apLunas.reduce((s, a) => s + num(a.amt), 0),
+      payPaid, payrollPaidVal: payPaid.reduce((s, p) => s + (num(p.net) || num(p.basic) + num(p.allowances) + num(p.overtimePay) - num(p.deductions)), 0),
       ncr, att, hadir, hadirPct, incidents,
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -123,7 +127,7 @@ export default function Laporan() {
     const inv = (data.invoices ?? []).filter((i) => String(i.due ?? "").slice(0, 7) === month && matchProject(String(i.project ?? "")));
     const invLunas = (data.invoices ?? []).filter((i) => i.status === "Lunas" && String(i.paidAt ?? i.due ?? "").slice(0, 7) === month && matchProject(String(i.project ?? "")));
     const apLunas = (data.payables ?? []).filter((a) => a.st === "Lunas" && String(a.paidAt ?? a.due ?? "").slice(0, 7) === month);
-    const payRows = (data.payroll ?? []).filter((p) => String(p.period ?? "") === month && matchBr(p));
+    const payRows = (data.payroll ?? []).filter((p) => p.status === "Dibayar" && String(p.period ?? "") === month && matchBr(p));
     const revenue = invLunas.reduce((s, i) => s + num(i.amount), 0);
     const apCost = apLunas.reduce((s, a) => s + num(a.amt), 0);
     const payrollTotal = payRows.reduce((s, p) => s + (num(p.net) || num(p.basic) + num(p.allowances) + num(p.overtimePay) - num(p.deductions)), 0);
@@ -155,7 +159,7 @@ export default function Laporan() {
   const monthlyPrev = useMemo(() => {
     const invLunas = (data.invoices ?? []).filter((i) => i.status === "Lunas" && String(i.paidAt ?? i.due ?? "").slice(0, 7) === prevMonth && matchProject(String(i.project ?? "")));
     const apLunas = (data.payables ?? []).filter((a) => a.st === "Lunas" && String(a.paidAt ?? a.due ?? "").slice(0, 7) === prevMonth);
-    const payRows = (data.payroll ?? []).filter((p) => String(p.period ?? "") === prevMonth && matchBr(p));
+    const payRows = (data.payroll ?? []).filter((p) => p.status === "Dibayar" && String(p.period ?? "") === prevMonth && matchBr(p));
     const revenue = invLunas.reduce((s, i) => s + num(i.amount), 0);
     const cost = apLunas.reduce((s, a) => s + num(a.amt), 0) + payRows.reduce((s, p) => s + (num(p.net) || num(p.basic) + num(p.allowances) + num(p.overtimePay) - num(p.deductions)), 0);
     return { revenue, cost, laba: revenue - cost };
@@ -166,14 +170,15 @@ export default function Laporan() {
   const weekPrev1 = addDays(week0, -1);
   const weeklyPrev = useMemo(() => {
     const invLunas = (data.invoices ?? []).filter((i) => i.status === "Lunas" && inRange(String(i.paidAt ?? i.due ?? ""), weekPrev0, weekPrev1) && matchProject(String(i.project ?? "")));
-    const po = (data.purchaseOrders ?? []).filter((p) => inRange(String(p.date ?? ""), weekPrev0, weekPrev1) && matchBr(p));
+    const apLunas = (data.payables ?? []).filter((a) => a.st === "Lunas" && inRange(String(a.paidAt ?? a.due ?? ""), weekPrev0, weekPrev1));
+    const payPaid = (data.payroll ?? []).filter((p) => p.status === "Dibayar" && inRange(String(p.paidAt ?? ""), weekPrev0, weekPrev1) && matchBr(p));
     const revenue = invLunas.reduce((s, i) => s + num(i.amount), 0);
-    const cost = po.reduce((s, p) => s + num(p.amount), 0);
+    const cost = apLunas.reduce((s, a) => s + num(a.amt), 0) + payPaid.reduce((s, p) => s + (num(p.net) || num(p.basic) + num(p.allowances) + num(p.overtimePay) - num(p.deductions)), 0);
     return { revenue, cost, laba: revenue - cost };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [data, weekPrev0, weekPrev1, branch, brF]);
   const weeklyRev = weekly.invLunasVal;
-  const weeklyCost = weekly.poVal;
+  const weeklyCost = weekly.apLunasVal + weekly.payrollPaidVal;
   const weeklyLaba = weeklyRev - weeklyCost;
 
   const sigRows = (): unknown[][] => (
@@ -225,7 +230,7 @@ export default function Laporan() {
       ["NCR baru", fmtJumlah(weekly.ncr.length)],
       ["Kehadiran", `${fmtJumlah(weekly.hadir)}/${fmtJumlah(weekly.att.length)} (${Math.round(weekly.hadirPct)}%)`],
       ["Insiden", fmtJumlah(weekly.incidents.length)],
-      ["Pembanding minggu lalu (lunas / PO / laba)", `${fmtRupiah(weeklyPrev.revenue)} / ${fmtRupiah(weeklyPrev.cost)} / ${fmtRupiah(weeklyPrev.laba)}`],
+      ["Pembanding minggu lalu (lunas / AP Lunas+payroll / laba)", `${fmtRupiah(weeklyPrev.revenue)} / ${fmtRupiah(weeklyPrev.cost)} / ${fmtRupiah(weeklyPrev.laba)}`],
       ...sigRows(),
     ];
     void exportExcel(rows, `Laporan-Mingguan-${week0}`);
@@ -389,6 +394,7 @@ export default function Laporan() {
                 <div className="flex justify-between"><span className="text-steel-500">{S.poDelta}</span><span className="font-semibold">{fmtRupiah(weeklyCost - weeklyPrev.cost)}</span></div>
                 <div className="flex justify-between"><span className="text-steel-500">{S.profitDelta}</span><span className="font-semibold">{fmtRupiah(weeklyLaba - weeklyPrev.laba)}</span></div>
               </div>
+              <p className="px-5 pb-5 text-[11px] text-steel-400">Kas: Lunas − (AP Lunas + Payroll Dibayar)</p>
             </Card>
             <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
               <Card className="p-4">
@@ -473,6 +479,7 @@ export default function Laporan() {
                   <div className="flex justify-between"><span className="text-steel-500">{S.revenueLabel}</span><span className="font-semibold">{fmtRupiah(monthly.revenue)}</span></div>
                   <div className="flex justify-between"><span className="text-steel-500">{S.costLabel}</span><span className="font-semibold">{fmtRupiah(monthly.cost)}</span></div>
                   <div className="flex justify-between border-t border-steel-100 pt-2"><span className="text-steel-500">{S.profitLabel}</span><span className="font-bold text-navy-900">{fmtRupiah(monthly.laba)}</span></div>
+                  <p className="pt-1 text-[11px] text-steel-400">Kas: Lunas − (AP Lunas + Payroll Dibayar)</p>
                 </div>
               </Card>
               <Card className="p-4">

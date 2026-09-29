@@ -11,6 +11,7 @@ import { fmtJumlah, fmtRupiah, fmtTanggal, fmtRentang } from "../../utils/format
 import { sbDsNumber, maxSeq } from "../../utils/sb";
 import { AlertBannerView, notifRowId, useModuleAlert, useNotifFlash } from "../../components/AlertBanner";
 import { exportExcel } from "../../utils/export";
+import { findUsages } from "../../utils/usages";
 import { n_dry } from "../../i18n/n_dry";
 import { useT } from "../../i18n/LanguageContext";
 
@@ -361,6 +362,11 @@ export default function Drydock() {
   };
 
   const confirmDelete = async () => {    if (!deleting) return;
+    const usedBy = findUsages(data, "dockSlots", String(deleting.id));
+    if (usedBy.length > 0) {
+      toast(`Hapus diblokir - ${deleting.id} dipakai di: ${usedBy.join(", ")}`, "info");
+      return;
+    }
     const proj = data.projects.find((p) => p.id === deleting.project);
     if (proj && proj.status !== "Selesai") {
       toast(S.tDeleteBlocked.replace("{a}", String(deleting.id)).replace("{b}", proj.id).replace("{c}", String(proj.status)), "info");
@@ -775,8 +781,13 @@ export default function Drydock() {
         </Field>
       </Modal>
 
-      <ConfirmModal open={deleting !== null} title={S.delTitle.replace("{a}", deleting?.id ?? "")} desc={S.delDesc.replace("{a}", String(deleting?.vessel ?? ""))}
-        confirmLabel={S.confirmDelete} danger onCancel={() => setDeleting(null)}
+      <ConfirmModal open={deleting !== null} title={S.delTitle.replace("{a}", deleting?.id ?? "")} desc={(() => {
+        const base = S.delDesc.replace("{a}", String(deleting?.vessel ?? ""));
+        const used = deleting ? findUsages(data, "dockSlots", String(deleting.id)) : [];
+        return used.length > 0 ? `${base} Dipakai di: ${used.join(", ")}. Penghapusan diblokir.` : base;
+      })()}
+        confirmLabel={deleting && findUsages(data, "dockSlots", String(deleting.id)).length > 0 ? "Diblokir - masih dipakai" : S.confirmDelete} danger onCancel={() => setDeleting(null)}
+        confirmDisabled={deleting ? findUsages(data, "dockSlots", String(deleting.id)).length > 0 : false}
         onConfirm={confirmDelete} />
     </div>
   );

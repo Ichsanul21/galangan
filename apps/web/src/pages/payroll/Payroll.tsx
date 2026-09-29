@@ -25,6 +25,7 @@ import { fmtBulan, fmtRupiah, fmtTanggal, todayISO } from "../../utils/format";
 import { AlertBannerView, notifRowId, useModuleAlert, useNotifFlash } from "../../components/AlertBanner";
 import { getSetting } from "../../utils/settings";
 import { exportExcel } from "../../utils/export";
+import { findUsages } from "../../utils/usages";
 import { kasKodeOf, postCashJournal } from "../../services/autoJournal";
 import { n_dry } from "../../i18n/n_dry";
 import { useT } from "../../i18n/LanguageContext";
@@ -286,6 +287,9 @@ export default function Payroll() {
   const [thrStage, setThrStage] = useState<string>("Semua");
   const [slipTarget, setSlipTarget] = useState<StoreItem | null>(null);
   const [slipSign, setSlipSign] = useState({ received: false, date: todayISO() });
+  // Hapus THR/bonus & kasbon via ConfirmModal + daftar pemakai (blokir bila dipakai).
+  const [delPay, setDelPay] = useState<StoreItem | null>(null);
+  const [delKasbon, setDelKasbon] = useState<{ e: StoreItem; kasbonId: string } | null>(null);
   const [sort, setSort] = useState<SortState>({ key: null, dir: "asc" });
   const [sort2, setSort2] = useState<SortState>({ key: null, dir: "asc" });
   const [sort3, setSort3] = useState<SortState>({ key: null, dir: "asc" });
@@ -1033,7 +1037,7 @@ export default function Payroll() {
                             )}
                             <button className="text-sm font-semibold text-navy-700 hover:underline" onClick={() => openSlip(p)}>{S.btnSlip}</button>
                             {p.status === "Draft" && (
-                              <button className="text-sm font-semibold text-rose-600 hover:underline" title={S.delTitleAttr} onClick={() => removeRow(p)}>{S.btnDelete}</button>
+                              <button className="text-sm font-semibold text-rose-600 hover:underline" title={S.delTitleAttr} onClick={() => setDelPay(p)}>{S.btnDelete}</button>
                             )}
                           </div>
                         </td>
@@ -1109,7 +1113,7 @@ export default function Payroll() {
                           <td className="td text-steel-600">{fmtRupiah(k.cicilan)}</td>
                           <td className="td font-bold text-navy-900">{fmtRupiah(Math.max(0, k.sisa))}</td>
                           <td className="td">
-                            <button className="text-sm font-semibold text-rose-600 hover:underline" onClick={() => removeKasbon(e, k.id)}>{S.btnDelete}</button>
+                            <button className="text-sm font-semibold text-rose-600 hover:underline" onClick={() => setDelKasbon({ e, kasbonId: k.id })}>{S.btnDelete}</button>
                           </td>
                         </tr>
                       ))}
@@ -1296,6 +1300,44 @@ export default function Payroll() {
         confirmLabel={confirmAdv ? advLabel[String(confirmAdv.status)] ?? S.advContinue : S.advContinue}
         onCancel={() => setConfirmAdv(null)}
         onConfirm={() => void doAdvance()}
+      />
+      <ConfirmModal
+        open={delPay !== null}
+        title={delPay ? `Hapus ${rowType(delPay)} ${delPay.id}?` : ""}
+        desc={(() => {
+          const used = delPay ? findUsages(data, "payroll", String(delPay.id)) : [];
+          const base = delPay ? `${rowType(delPay)} ${empNameOf(String(delPay.employeeId))} · ${fmtBulan(period)} · ${fmtRupiah(Number(delPay.net || 0))} akan dihapus permanen.` : "";
+          return used.length > 0 ? `${base} Dipakai di: ${used.join(", ")}. Penghapusan diblokir.` : base;
+        })()}
+        confirmLabel={delPay && findUsages(data, "payroll", String(delPay.id)).length > 0 ? "Diblokir - masih dipakai" : S.btnDelete}
+        danger
+        confirmDisabled={delPay ? findUsages(data, "payroll", String(delPay.id)).length > 0 : false}
+        onCancel={() => setDelPay(null)}
+        onConfirm={async () => {
+          if (!delPay) return;
+          const usedBy = findUsages(data, "payroll", String(delPay.id));
+          if (usedBy.length > 0) { toast(`Hapus diblokir - ${delPay.id} dipakai di: ${usedBy.join(", ")}`, "info"); return; }
+          await removeRow(delPay);
+          setDelPay(null);
+        }}
+      />
+      <ConfirmModal
+        open={delKasbon !== null}
+        title={delKasbon ? `Hapus kasbon ${delKasbon.kasbonId}?` : ""}
+        desc={(() => {
+          if (!delKasbon) return "";
+          const entry = normKasbon(delKasbon.e).find((x) => x.id === delKasbon.kasbonId);
+          const base = `${String(delKasbon.e.name ?? delKasbon.e.id)} · ${delKasbon.kasbonId}${entry ? ` · sisa ${fmtRupiah(Math.max(0, entry.sisa))}` : ""} akan dihapus permanen.`;
+          return base;
+        })()}
+        confirmLabel={S.btnDelete}
+        danger
+        onCancel={() => setDelKasbon(null)}
+        onConfirm={async () => {
+          if (!delKasbon) return;
+          await removeKasbon(delKasbon.e, delKasbon.kasbonId);
+          setDelKasbon(null);
+        }}
       />
     </div>
   );

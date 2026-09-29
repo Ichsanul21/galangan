@@ -46,6 +46,7 @@ import { exportExcel } from "../../utils/export";
 import { kasKodeOf, postCashJournal } from "../../services/autoJournal";
 import { FilterPopover } from "../../components/FilterPopover";
 import { AlertBannerView, notifRowId, useModuleAlert, useNotifFlash } from "../../components/AlertBanner";
+import { findUsages } from "../../utils/usages";
 import {
   COA_EXCEL,
   NL_EXCEL,
@@ -528,6 +529,9 @@ export default function Finance() {
   // Aset (sheet Aset): tambah harta baru, susut GL otomatis.
   const [showAst, setShowAst] = useState(false);
   const [astForm, setAstForm] = useState({ nama: "", kelompok: "2", bulan: "", tahun: "", nilai: "", metode: "GL" });
+  // Hapus via ConfirmModal + daftar pemakai (blokir bila dipakai).
+  const [delCoa, setDelCoa] = useState<StoreItem | null>(null);
+  const [delAsset, setDelAsset] = useState<StoreItem | null>(null);
 
   const KAS_REKENING = coaRows.filter((c) => /^(1-11|1-12)/.test(String(c.kode)) && String(c.dk) !== "-");
   const kasSaldo = useMemo(() => {
@@ -1740,7 +1744,7 @@ export default function Finance() {
                                   <div className="flex gap-1.5">
                                     <button className="btn-secondary px-2 py-1 text-[11px]" onClick={() => { setCoaTarget(c); setCoaForm({ kode: String(c.kode), nama: String(c.nama), dk: String(c.dk) === "-" ? "D" : String(c.dk), nrlr: String(c.nrlr) === "-" ? "NR" : String(c.nrlr) }); setShowCoa(true); }}>{S.editBtn}</button>
                                     {!header && (
-                                      <button className="btn-secondary px-2 py-1 text-[11px] text-rose-600" onClick={async () => { try { await remove("coa", String(c.id)); log("menghapus akun", String(c.kode), "Keuangan"); toast(S.coaDeleted.replace("{a}", String(c.kode))); } catch (e) { toast(e instanceof Error ? e.message : S.coaDeleteFail, "info"); } }}>{S.deleteBtn}</button>
+                                      <button className="btn-secondary px-2 py-1 text-[11px] text-rose-600" onClick={() => setDelCoa(c)}>{S.deleteBtn}</button>
                                     )}
                                   </div>
                                 </td>
@@ -2663,7 +2667,7 @@ export default function Finance() {
                         <td className="td font-mono text-[11px] text-steel-600">{akum}</td>
                         <td className="td">
                           {!seed && (
-                            <button className="btn-secondary px-2 py-1 text-[11px] text-rose-600" onClick={async () => { try { await remove("assets", String(a.id)); log("menghapus aset", String(a.nama), "Keuangan"); toast(S.assetDeleted.replace("{a}", String(a.nama))); } catch (e) { toast(e instanceof Error ? e.message : S.assetDeleteFail, "info"); } }}>{S.deleteBtn}</button>
+                            <button className="btn-secondary px-2 py-1 text-[11px] text-rose-600" onClick={() => setDelAsset(a)}>{S.deleteBtn}</button>
                           )}
                         </td>
                       </tr>
@@ -3308,6 +3312,48 @@ export default function Finance() {
         danger
         onCancel={() => setConfirmWriteOff(false)}
         onConfirm={doWriteOff}
+      />
+
+      <ConfirmModal
+        open={delCoa !== null}
+        title={delCoa ? `Hapus akun ${String(delCoa.kode ?? delCoa.id)}?` : ""}
+        desc={(() => {
+          const used = delCoa ? findUsages(data, "coa", String(delCoa.id)) : [];
+          const base = delCoa ? `Akun ${String(delCoa.kode ?? "")} · ${String(delCoa.nama ?? "")} akan dihapus permanen.` : "";
+          return used.length > 0 ? `${base} Dipakai di: ${used.join(", ")}. Penghapusan diblokir.` : base;
+        })()}
+        confirmLabel={delCoa && findUsages(data, "coa", String(delCoa.id)).length > 0 ? "Diblokir - masih dipakai" : S.deleteBtn}
+        danger
+        confirmDisabled={delCoa ? findUsages(data, "coa", String(delCoa.id)).length > 0 : false}
+        onCancel={() => setDelCoa(null)}
+        onConfirm={async () => {
+          if (!delCoa) return;
+          const usedBy = findUsages(data, "coa", String(delCoa.id));
+          if (usedBy.length > 0) { toast(`Hapus diblokir - ${delCoa.kode} dipakai di: ${usedBy.join(", ")}`, "info"); return; }
+          try { await remove("coa", String(delCoa.id)); log("menghapus akun", String(delCoa.kode), "Keuangan"); toast(S.coaDeleted.replace("{a}", String(delCoa.kode))); setDelCoa(null); }
+          catch (e) { toast(e instanceof Error ? e.message : S.coaDeleteFail, "info"); }
+        }}
+      />
+
+      <ConfirmModal
+        open={delAsset !== null}
+        title={delAsset ? `Hapus aset ${String(delAsset.nama ?? delAsset.id)}?` : ""}
+        desc={(() => {
+          const used = delAsset ? findUsages(data, "assets", String(delAsset.id)) : [];
+          const base = delAsset ? `Aset ${String(delAsset.nama ?? "")} akan dihapus permanen.` : "";
+          return used.length > 0 ? `${base} Dipakai di: ${used.join(", ")}. Penghapusan diblokir.` : base;
+        })()}
+        confirmLabel={delAsset && findUsages(data, "assets", String(delAsset.id)).length > 0 ? "Diblokir - masih dipakai" : S.deleteBtn}
+        danger
+        confirmDisabled={delAsset ? findUsages(data, "assets", String(delAsset.id)).length > 0 : false}
+        onCancel={() => setDelAsset(null)}
+        onConfirm={async () => {
+          if (!delAsset) return;
+          const usedBy = findUsages(data, "assets", String(delAsset.id));
+          if (usedBy.length > 0) { toast(`Hapus diblokir - ${delAsset.nama} dipakai di: ${usedBy.join(", ")}`, "info"); return; }
+          try { await remove("assets", String(delAsset.id)); log("menghapus aset", String(delAsset.nama), "Keuangan"); toast(S.assetDeleted.replace("{a}", String(delAsset.nama))); setDelAsset(null); }
+          catch (e) { toast(e instanceof Error ? e.message : S.assetDeleteFail, "info"); }
+        }}
       />
     </div>
   );

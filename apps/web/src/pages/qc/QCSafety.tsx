@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Plus, ShieldCheck, AlertTriangle, Siren, Award, Send, Search } from "lucide-react";
 import { ComposedChart, Line, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
-import { Card, CardHeader, PageHeader, Badge, KpiCard, Tabs, StatusBadge, Donut, ChartTooltip, Modal, Field, FormGrid, SortTh, toggleSort, sortRows, usePager, toast,
+import { Card, CardHeader, PageHeader, Badge, KpiCard, Tabs, StatusBadge, Donut, ChartTooltip, Modal, Field, FormGrid, ConfirmModal, SortTh, toggleSort, sortRows, usePager, toast,
   NumInput,
 } from "../../components/ui";
 import type { SortState } from "../../components/ui";
@@ -12,6 +12,7 @@ import { sameName } from "../../utils/names";
 import { getSetting } from "../../utils/settings";
 import { AlertBannerView, notifRowId, useModuleAlert, useNotifFlash } from "../../components/AlertBanner";
 import { exportExcel } from "../../utils/export";
+import { findUsages } from "../../utils/usages";
 import { useAuth, canSetTarget } from "../../auth/auth";
 import { FilterPopover } from "../../components/FilterPopover";
 import { useT } from "../../i18n/LanguageContext";
@@ -200,6 +201,7 @@ export default function QCSafety() {
   // Audit internal (terpisah dari checklist Audit HSE di atas)
   const [showAuditPlan, setShowAuditPlan] = useState(false);
   const [auditForm, setAuditForm] = useState({ date: todayISO(), area: "", auditor: "", findings: "0", ncrId: "" });
+  const [delAudit, setDelAudit] = useState<StoreItem | null>(null);
 
   // Verifikasi lanjutan CAPA H+30
   const [followUpNcr, setFollowUpNcr] = useState<StoreItem | null>(null);
@@ -1013,7 +1015,7 @@ export default function QCSafety() {
                     <div key={a.id} className="rounded-lg border border-steel-100 p-3 text-sm">
                       <div className="flex flex-wrap items-center justify-between gap-2">
                         <p className="font-medium text-navy-900">{a.area} <span className="font-mono text-xs text-steel-500">· {a.id}</span></p>
-                        <button className="btn-secondary text-xs" onClick={async () => { try { await remove("auditPlans", String(a.id)); } catch (e) { toast(e instanceof Error ? e.message : S.tJadwalHapus, "info"); } }}>{S.btnHapus}</button>
+                        <button className="btn-secondary text-xs" onClick={() => setDelAudit(a)}>{S.btnHapus}</button>
                       </div>
                       <p className="mt-1 text-xs text-steel-600">{S.planMeta.replace("{a}", fmtTanggal(a.date)).replace("{b}", String(a.auditor)).replace("{n}", String(a.findings))}{a.ncrId ? S.terkaitN.replace("{n}", String(a.ncrId)) : ""}</p>
                     </div>
@@ -1480,6 +1482,28 @@ export default function QCSafety() {
           </Field>
         </div>
       </Modal>
+
+      {/* Modal hapus jadwal audit internal (daftar pemakai + blokir bila dipakai) */}
+      <ConfirmModal
+        open={delAudit !== null}
+        title={delAudit ? `Hapus jadwal audit ${delAudit.id}?` : ""}
+        desc={(() => {
+          const used = delAudit ? findUsages(data, "auditPlans", String(delAudit.id)) : [];
+          const base = delAudit ? `Area ${String(delAudit.area ?? "")} · ${String(delAudit.id ?? "")} akan dihapus permanen.` : "";
+          return used.length > 0 ? `${base} Dipakai di: ${used.join(", ")}. Penghapusan diblokir.` : base;
+        })()}
+        confirmLabel={delAudit && findUsages(data, "auditPlans", String(delAudit.id)).length > 0 ? "Diblokir - masih dipakai" : S.btnHapus}
+        danger
+        confirmDisabled={delAudit ? findUsages(data, "auditPlans", String(delAudit.id)).length > 0 : false}
+        onCancel={() => setDelAudit(null)}
+        onConfirm={async () => {
+          if (!delAudit) return;
+          const usedBy = findUsages(data, "auditPlans", String(delAudit.id));
+          if (usedBy.length > 0) { toast(`Hapus diblokir - ${delAudit.id} dipakai di: ${usedBy.join(", ")}`, "info"); return; }
+          try { await remove("auditPlans", String(delAudit.id)); setDelAudit(null); }
+          catch (e) { toast(e instanceof Error ? e.message : S.tJadwalHapus, "info"); }
+        }}
+      />
     </div>
   );
 }

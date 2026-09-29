@@ -824,6 +824,7 @@ export function ConfirmModal({
   desc,
   confirmLabel = "Ya, lanjutkan",
   danger = false,
+  confirmDisabled = false,
   onCancel,
   onConfirm,
 }: {
@@ -832,6 +833,7 @@ export function ConfirmModal({
   desc: string;
   confirmLabel?: string;
   danger?: boolean;
+  confirmDisabled?: boolean;
   onCancel: () => void;
   onConfirm: () => void;
 }) {
@@ -845,7 +847,7 @@ export function ConfirmModal({
           <button className="btn-secondary" onClick={onCancel}>
             Batal
           </button>
-          <button className={danger ? "btn-danger" : "btn-primary"} onClick={onConfirm}>
+          <button className={danger ? "btn-danger" : "btn-primary"} disabled={confirmDisabled} title={confirmDisabled ? "Diblokir - masih dipakai" : undefined} onClick={onConfirm}>
             {confirmLabel}
           </button>
         </>

@@ -141,7 +141,7 @@ function vesselToForm(v: StoreItem): VesselForm {
 }
 
 export default function Vessels() {
-  const { data, add, update } = useStore();
+  const { data, add, update, log } = useStore();
   const { locale } = useT();
   const S = n_eqp[locale];
   const modAlert = useModuleAlert("kapal");
@@ -215,8 +215,34 @@ export default function Vessels() {
     if (!editingId) return;
     const err = validateForm(editForm, vessels, editingId, S);
     if (err) { toast(err, "info"); return; }
+    const prev = vessels.find((v) => v.id === editingId);
+    const oldName = String(prev?.name ?? "");
+    const newName = editForm.name.trim();
     await update("vessels", editingId, formToPayload(editForm));
-    toast(S.vsUpdated);
+    // CASCADE RENAME: nama kapal → projects/surveys/dockSlots/warranties (trim-case-insensitive).
+    if (!sameName(oldName, newName)) {
+      let n = 0;
+      for (const p of data.projects.filter((x) => sameName(x.vessel, oldName))) {
+        await update("projects", p.id, { vessel: newName });
+        n += 1;
+      }
+      for (const s of data.surveys.filter((x) => sameName(x.vessel, oldName))) {
+        await update("surveys", s.id, { vessel: newName });
+        n += 1;
+      }
+      for (const s of data.dockSlots.filter((x) => sameName(x.vessel, oldName))) {
+        await update("dockSlots", s.id, { vessel: newName });
+        n += 1;
+      }
+      for (const w of (data.warranties ?? []).filter((x: StoreItem) => sameName(x.vessel, oldName))) {
+        await update("warranties", w.id, { vessel: newName });
+        n += 1;
+      }
+      log("rename kapal", `${oldName} → ${newName} · ${n} referensi ikut berubah`, "Kapal");
+      toast(`${S.vsUpdated} · ${n} referensi ikut berubah`);
+    } else {
+      toast(S.vsUpdated);
+    }
     setEditingId(null);
     } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); }
   };

@@ -6,6 +6,8 @@ import { Card, CardHeader, PageHeader, Badge, KpiCard, Tabs, ProgressBar, ChartT
 } from "../../components/ui";
 import type { SortState } from "../../components/ui";
 import { useStore, type StoreItem } from "../../data/store";
+import { remoteRepository } from "../../services/repositories";
+import { getJwt, isBackendConfigured } from "../../services/http";
 import { fmtRupiah, fmtMiliar, fmtTanggal, todayISO } from "../../utils/format";
 import { sameName } from "../../utils/names";
 import { AlertBannerView, notifRowId, useModuleAlert, useNotifFlash } from "../../components/AlertBanner";
@@ -62,6 +64,20 @@ const pphOf = (p: StoreItem, fallback = 2): number => Number(p.pphPct ?? fallbac
 const retOf = (p: StoreItem): number => Number(p.retPct ?? 5);
 const potonganOf = (p: StoreItem, pphFallback = 2): number => Number(p.amount || 0) * (pphOf(p, pphFallback) + retOf(p)) / 100;
 const netoOf = (p: StoreItem, pphFallback = 2): number => Number(p.amount || 0) - potonganOf(p, pphFallback);
+
+/* Baca ulang payables segar (bukan snapshot render): mode remote → list BE,
+   gagal/lokal → fallback snapshot. Pemanggil wajib filter cocok persis. */
+async function freshPayables(fallback: StoreItem[]): Promise<StoreItem[]> {
+  try {
+    if (isBackendConfigured() && getJwt()) {
+      const rows = await remoteRepository("payables").list();
+      if (Array.isArray(rows)) return rows;
+    }
+  } catch {
+    /* abaikan - pakai fallback lokal */
+  }
+  return fallback;
+}
 
 function complianceOf(k3: unknown): { label: string; tone: "green" | "amber" | "red" } {
   const v = String(k3 ?? "");
@@ -374,6 +390,7 @@ export default function Subcontractor() {
       return;
     }
     const termId = termPay.id;
+    const prevStatus = String(termPay.status ?? "");
     try {
     // PPh variatif RawData (cth PAK YUSUF 0.5%): potong saat bayar + simpan bukti potong.
     const pphAmt = Math.round(Number(termPay.amount || 0) * pphOf(termPay, pphDefault) / 100);
@@ -387,11 +404,14 @@ export default function Subcontractor() {
       ...(needsTermDirector(termPay) ? { directorApproved: termDirName.trim() } : {}),
     });
     // Termin Lunas → hutang usaha: 1 baris neto (Belum Dibayar, denda mengurangi neto)
-    // + 1 baris retensi (Ditahan, dirilis setelah WO Selesai). Cek duplikat via kunci po.
+    // + 1 baris retensi (Ditahan, dirilis setelah WO Selesai). Idempoten: baca ulang
+    // payables segar lalu cocokkan po PERSIS dengan yang akan ditulis; sudah ada →
+    // toast info + lewati. Gagal catat setelah Lunas → kompensasi status semula.
     const poNeto = `TERM-${termPay.id}`;
     const poRet = `TERM-${termPay.id}-R`;
-    const existingPo = new Set((data.payables ?? []).map((a) => String(a.po ?? "")));
     const vesselProj = String(wo?.project ?? "");
+    try {
+    const existingPo = new Set((await freshPayables(data.payables ?? [])).map((a) => String(a.po ?? "")));
     if (!existingPo.has(poNeto)) {
       await add("payables", {
         v: String(termPay.sub ?? ""), kodePembantu: String(termPay.sub ?? ""),
@@ -403,6 +423,8 @@ export default function Subcontractor() {
         note: `Termin ${termPay.id} neto; PPh ${fmtRupiah(pphAmt)}; retensi ${fmtRupiah(retAmt)} ditahan; denda ${fmtRupiah(penalty)}`,
         terminId: termPay.id,
       }, { action: "mencatat hutang termin", module: "Subkontraktor" });
+    } else {
+      toast(locale === "en" ? `Payable ${poNeto} already exists - skipping duplicate entry` : `Hutang ${poNeto} sudah ada - lewati pencatatan ganda`, "info");
     }
     if (retAmt > 0 && !existingPo.has(poRet)) {
       await add("payables", {
@@ -415,6 +437,30 @@ export default function Subcontractor() {
         note: `Retensi termin ${termPay.id} - rilis setelah WO Selesai`,
         terminId: termPay.id,
       }, { action: "menahan retensi termin", module: "Subkontraktor" });
+    } else if (retAmt > 0) {
+      toast(locale === "en" ? `Payable ${poRet} already exists - skipping duplicate entry` : `Hutang ${poRet} sudah ada - lewati pencatatan ganda`, "info");
+    }
+    } catch (payErr) {
+      // Kompensasi atomik: kembalikan termin ke status + bukti semula agar tak
+      // tertinggal Lunas tanpa hutang. Modal dibiarkan terbuka agar bisa coba lagi.
+      let reverted = false;
+      try {
+        await update("termins", termId, {
+          status: prevStatus,
+          paidAt: termPay.paidAt, paidMethod: termPay.paidMethod, paidRef: termPay.paidRef,
+          pphAmt: termPay.pphAmt, retAmt: termPay.retAmt, penaltyApplied: termPay.penaltyApplied,
+          withholdingRef: termPay.withholdingRef,
+          ...(needsTermDirector(termPay) ? { directorApproved: termPay.directorApproved } : {}),
+        });
+        reverted = true;
+      } catch {
+        /* kompensasi gagal - sampaikan eksplisit di toast */
+      }
+      const cause = payErr instanceof Error ? payErr.message : S.saveFail;
+      toast(locale === "en"
+        ? `Failed to record payable for term ${termId} (${cause}) - status ${reverted ? `reverted to ${prevStatus || "previous"}` : "NOT reverted, check manually"}`
+        : `Hutang termin ${termId} gagal dicatat (${cause}) - status ${reverted ? `dikembalikan ke ${prevStatus || "semula"}` : "GAGAL dikembalikan, periksa manual"}`, "info");
+      return;
     }
     log("melunasi termin", `${termPay.id} via ${proof.method} ${proof.ref.trim()} · PPh ${pphOf(termPay, pphDefault)}% = ${fmtRupiah(pphAmt)} · hutang ${poNeto} ${fmtRupiah(netoPayable)}${retAmt > 0 ? ` + retensi ${fmtRupiah(retAmt)} ditahan` : ""}`, "Subkontraktor");
     toast(S.tTermPaid.replace("{a}", termPay.id).replace("{b}", fmtRupiah(pphAmt)).replace("{c}", fmtRupiah(netoPayable)));
