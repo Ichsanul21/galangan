@@ -33,8 +33,9 @@ import { fmtMiliar, fmtTanggal, fmtRentang, fmtBulan } from "../../data";
 import { fmtRupiah, todayISO } from "../../utils/format";
 import { sameName } from "../../utils/names";
 import { scopeList } from "../../utils/scope";
-import { TAHAP, tahapOf } from "./Projects";
+import { TAHAP, tahapOf, hasContract, isOverdue } from "./Projects";
 import { getSetting } from "../../utils/settings";
+import { sbInvoiceMath, PPN_INVOICE_DEFAULT, PPH_JASA_DEFAULT } from "../../utils/sb";
 import { exportExcel } from "../../utils/export";
 
 const STATUS = ["Dalam Proses", "Sedang Berjalan", "Terlambat", "Tertunda", "Selesai"];
@@ -94,7 +95,13 @@ export default function ProjectDetail() {
   /* Ganti status kaku: konfirmasi + alasan wajib (NCR gate tetap untuk Selesai). */
   const askStatus = (next: string) => {
     if (next === project.status) return;
+    // Terlambat hanya via keterlambatan nyata (otomatis dari due) - bukan flag manual.
+    if (next === "Terlambat") { toast("Status Terlambat otomatis dari jatuh tempo - tidak bisa diisi manual", "info"); return; }
     if (next === "Selesai" && project.status !== "Selesai") {
+      // Aturan silang tahap×status: Selesai wajib tahap Handover.
+      if (tahapOf(project) !== "Handover") { toast("Proyek hanya bisa Selesai pada tahap Handover", "info"); return; }
+      const block = closeBlockReason();
+      if (block) { toast(`Tutup proyek ditolak: ${block}`, "info"); return; }
       const openNcr = (data.ncr ?? []).filter((n) => n.project === pid && n.status !== "Tertutup");
       if (openNcr.length > 0) { toast(S.detToastNcrOpen.replace("{n}", String(openNcr.length)), "info"); return; }
       const itpHold = (data.inspections ?? []).filter((i) => i.project === pid && i.status === "NCR");
@@ -144,13 +151,25 @@ export default function ProjectDetail() {
         const ca = stages.find((s) => s.name === "Class Approval");
         if (!ca || ca.status !== "Disetujui") { toast(S.detToastGate, "info"); return; }
       }
+      // Gate kontrak: tahap awal dikunci bila proyek hasil konversi belum punya kontrak.
+      if (idx <= 2 && project.quotationId && !hasContract(project, data.contracts ?? [])) {
+        toast(`Tahap ${from} dikunci - buat kontrak untuk quotation ${project.quotationId} dulu`, "info");
+        return;
+      }
+      // Aturan silang tahap×status: masuk Handover wajib lolos cek tutup proyek,
+      // lalu status otomatis ikut Selesai (Handover wajib status Selesai).
+      if (to === "Handover") {
+        const block = closeBlockReason();
+        if (block) { toast(`Masuk Handover ditolak: ${block}`, "info"); return; }
+      }
     }
     try {
       await update("projects", pid, {
         tahap: to,
+        ...(to === "Handover" && tahapMove.dir === 1 ? { status: "Selesai" } : {}),
         tahapLog: [...(project.tahapLog ?? []), { from: tahapOf(project), to, date: todayISO(), by: "Anda", reason: tahapReason.trim() }],
       });
-      log(tahapMove.dir === 1 ? "memajukan tahap" : "menurunkan tahap", `${pid} → ${to} (alasan: ${tahapReason.trim()})`, "Proyek");
+      log(tahapMove.dir === 1 ? "memajukan tahap" : "menurunkan tahap", `${pid} → ${to} (alasan: ${tahapReason.trim()})${to === "Handover" && tahapMove.dir === 1 ? " + status Selesai" : ""}`, "Proyek");
       toast(S.detToastStage.replace("{a}", pid).replace("{b}", to));
       setTahapMove(null);
       setTahapReason("");
@@ -215,6 +234,18 @@ export default function ProjectDetail() {
       update("projects", project.id, { progress: newProgress });
     }
   }, [data.projects]);
+
+  // Terlambat otomatis dari due (menggantikan flag manual).
+  useEffect(() => {
+    if (!project) return;
+    if (
+      (project.status === "Dalam Proses" || project.status === "Sedang Berjalan" || project.status === "Tertunda") &&
+      isOverdue(project, todayISO())
+    ) {
+      void update("projects", project.id, { status: "Terlambat" }).catch(() => {});
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [project?.status, project?.end, project?.progress]);
 
   if (!project) return <p className="text-sm text-steel-500">{S.detNotFound}</p>;
   const pid = project.id;
@@ -359,6 +390,35 @@ export default function ProjectDetail() {
   const bastList = (data.bast ?? []).filter((b) => b.projectId === pid);
   const boqTotal = (data.boq ?? []).filter((b) => b.projectId === pid).reduce((s, b) => s + Number(b.totalPrice || 0), 0);
 
+  // SATU angka grand invoice: grandTotal bila ada, else amount dikurangi retensi.
+  const invGrand = (i: StoreItem): number => {
+    const g = Number(i.grandTotal) || 0;
+    if (g > 0) return g;
+    return Math.max(0, (Number(i.amount) || 0) - (Number(i.retentionAmt) || 0));
+  };
+
+  // Kontrak proyek ini (via quotationId hasil konversi, atau link projectId langsung).
+  const contractOf = (data.contracts ?? []).find((c) =>
+    (project.quotationId && String(c.quotationId ?? "") === String(project.quotationId)) ||
+    String(c.projectId ?? "") === pid
+  );
+  const contractValue = Number(contractOf?.value) || 0;
+  const bastApprovedSum = bastList
+    .filter((b) => String(b.status) === "Disetujui")
+    .reduce((s, b) => s + Number(b.amount || 0), 0);
+  // Nominal default BAST = sisa kontrak (bukan BoQ buta); tanpa kontrak fallback ke BoQ.
+  const sisaKontrak = contractValue > 0 ? Math.max(0, contractValue - bastApprovedSum) : boqTotal;
+
+  // Tutup proyek cek: WBS 100% + BAST Disetujui + invoice Lunas (NCR dicek terpisah).
+  const closeBlockReason = (): string | null => {
+    if (weightedProgress(wbs) !== 100) return `WBS belum 100% (progres ${weightedProgress(wbs)}%)`;
+    if (!bastList.some((b) => String(b.status) === "Disetujui")) return "belum ada BAST yang Disetujui";
+    if (invoices.length === 0) return "belum ada invoice";
+    const open = invoices.filter((i) => String(i.status) !== "Lunas");
+    if (open.length > 0) return `${open.length} invoice belum Lunas (${open.map((i) => String(i.id)).join(", ")})`;
+    return null;
+  };
+
   const nextBastId = (tanggalISO: string): string => {
     const year = (tanggalISO || todayISO()).slice(0, 4);
     const prefix = `BAST-SMD-${year}-`;
@@ -370,9 +430,32 @@ export default function ProjectDetail() {
     return `${prefix}${String(max + 1).padStart(3, "0")}`;
   };
 
+  // Nomor invoice tunggal format Finance (INV/<TIPE>-SMD-YYYY-NNN).
+  const nextMilestoneInvId = (tanggalISO: string): string => {
+    const year = (tanggalISO || todayISO()).slice(0, 4);
+    const head = `INV/MS-SMD-${year}-`;
+    let max = 0;
+    for (const i of (data.invoices ?? [])) {
+      const id = String(i.id ?? "");
+      if (id.startsWith(head)) {
+        const n = Number(id.slice(head.length));
+        if (Number.isFinite(n) && n > max) max = n;
+      }
+    }
+    let invId = `${head}${String(max + 1).padStart(3, "0")}`;
+    let bump = 1;
+    while ((data.invoices ?? []).some((i) => String(i.id) === invId)) {
+      bump += 1;
+      invId = `${head}${String(max + bump).padStart(3, "0")}`;
+    }
+    return invId;
+  };
+
+  // Gate anti-bypass: milestone BAST wajib cocok persis dengan satu task WBS.
+  // Tanpa kecocokan (tanpa fuzzy) → tolak.
   const findLinkedWbs = (milestone: string): WbsExt | undefined => {
     const ms = String(milestone ?? "");
-    return wbs.find((t) => t.task === ms || ms.startsWith(t.task) || ms.includes(t.task));
+    return wbs.find((t) => t.task === ms);
   };
 
   const saveBast = async () => {
@@ -381,12 +464,16 @@ export default function ProjectDetail() {
     if (!bastForm.signer.trim()) { toast(S.detToastBastSigner, "info"); return; }
     const amt = bastForm.amount === "" ? 0 : Number(bastForm.amount);
     if (bastForm.amount !== "" && (!Number.isFinite(amt) || amt < 0)) { toast(S.detToastAmount, "info"); return; }
+    if (!wbs.some((t) => t.task === bastForm.milestone)) {
+      toast(`BAST ditolak: milestone tidak cocok dengan WBS mana pun`, "info");
+      return;
+    }
     const id = nextBastId(bastForm.tanggal);
     try {
       await add("bast", {
         id, projectId: pid, milestone: bastForm.milestone, tanggal: bastForm.tanggal,
         penandatangan: bastForm.signer.trim(), lampiran: bastForm.lampiran.trim(),
-        amount: amt > 0 ? amt : boqTotal, status: "Draft",
+        amount: amt > 0 ? amt : sisaKontrak, status: "Draft",
       }, { action: "membuat BAST", target: `${id} · ${bastForm.milestone}`, module: "Proyek" });
       toast(S.detToastBastMade.replace("{a}", id));
       setBastForm({ milestone: "", tanggal: todayISO(), signer: "", lampiran: "", amount: "" });
@@ -401,23 +488,29 @@ export default function ProjectDetail() {
     const curIdx = order.indexOf(String(b.status));
     const nextIdx = order.indexOf(next);
     if (nextIdx !== curIdx + 1) { toast(S.detToastBastFlow.replace("{a}", order.join(" → ")), "info"); return; }
-    if (next === "Disetujui") {
-      const linked = findLinkedWbs(String(b.milestone ?? ""));
-      if (linked && Number(linked.progress) !== 100) {
-        toast(S.detToastBastProg.replace("{a}", linked.task).replace("{b}", String(linked.progress)), "info");
-        return;
-      }
+    const linked = findLinkedWbs(String(b.milestone ?? ""));
+    if (!linked) {
+      toast(`BAST ${String(b.id)} ditolak: milestone tidak cocok dengan WBS mana pun`, "info");
+      return;
+    }
+    if (next === "Disetujui" && Number(linked.progress) !== 100) {
+      toast(S.detToastBastProg.replace("{a}", linked.task).replace("{b}", String(linked.progress)), "info");
+      return;
     }
     try {
       if (next === "Disetujui") {
-        const amount = Number(b.amount) > 0 ? Number(b.amount) : boqTotal;
-        const baseId = `INV/${String(b.id)}`;
-        let invId = baseId;
-        let bump = 1;
-        while ((data.invoices ?? []).some((i) => String(i.id) === invId)) {
-          bump += 1;
-          invId = `${baseId}-${bump}`;
+        const amount = Number(b.amount) > 0 ? Number(b.amount) : sisaKontrak;
+        // Cegah tagih ganda manual-vs-auto per BAST: satu BAST satu invoice.
+        const existing = (data.invoices ?? []).find((i) =>
+          String(i.milestoneRef ?? "") === `BAST ${String(b.id)}` || String(i.bastId ?? "") === String(b.id)
+        );
+        if (existing) {
+          await update("bast", String(b.id), { status: next, invoiceId: String(existing.id) });
+          log("menyetujui BAST (invoice sudah ada)", `${String(b.id)} → ${String(existing.id)}`, "Proyek");
+          toast(`BAST disetujui - memakai invoice ${String(existing.id)} yang sudah ada`);
+          return;
         }
+        const invId = nextMilestoneInvId(String(b.tanggal ?? todayISO()));
         let due = String(b.tanggal ?? todayISO());
         const d = new Date(`${due}T00:00:00`);
         if (!Number.isNaN(d.getTime())) {
@@ -426,19 +519,30 @@ export default function ProjectDetail() {
         } else {
           due = todayISO();
         }
+        // Pajak/retensi ikut aturan Finance (sbInvoiceMath, tarif tidak ditulis ulang):
+        // jasa = nominal BAST, retensi milestone 5%.
+        const ppnRateUsed = getSetting(data, "PPN_INVOICE_RATE", PPN_INVOICE_DEFAULT);
+        const pphRateUsed = getSetting(data, "PPH_JASA_RATE", PPH_JASA_DEFAULT);
+        const sb = sbInvoiceMath({
+          jasa: amount, material: 0,
+          ppnRate: ppnRateUsed, pphRate: pphRateUsed,
+          skdt: false, dpApplied: 0, retentionPct: 5,
+        });
         try {
           await add("invoices", {
             id: invId, client: project.client, project: pid, amount,
             due, status: "Draft", paymentTerm: `Termin ${String(b.milestone)}`,
             billingType: "Milestone", type: "Milestone", milestoneRef: `BAST ${String(b.id)}`,
+            bastId: String(b.id),
             dunning: "Belum Ditagih",
-            // Rincian pajak diisi saat invoice dirinci di Keuangan; tarif saat
-            // terbit disimpan agar laporan tak menghitung ulang bila tarif berubah.
-            jasaTotal: 0, matTotal: 0, dpp: 0, ppnAmt: 0, pphAmt: 0,
-            ppnRate: getSetting(data, "PPN_INVOICE_RATE", 12),
-            pphRate: getSetting(data, "PPH_JASA_RATE", 2),
+            jasaTotal: sb.jasa, matTotal: 0, dpp: sb.dpp, ppnAmt: sb.ppn, pphAmt: sb.pph,
+            ppnRate: ppnRateUsed, pphRate: pphRateUsed, dpApplied: 0,
+            grandTotal: sb.grand,
+            retentionPct: 5, retentionAmt: sb.retentionAmt,
+            retentionStatus: sb.retentionAmt > 0 ? "Ditahan" : "-",
             skdt: false,
           }, { action: "menerbitkan invoice milestone (BAST)", target: `${invId} ← ${String(b.id)}`, module: "Keuangan" });
+          await update("bast", String(b.id), { status: next, invoiceId: invId });
           log("menyetujui BAST + auto-invoice", `${String(b.id)} → ${invId}`, "Proyek");
           toast(S.detToastBastInv.replace("{a}", invId));
         } catch {
@@ -448,8 +552,8 @@ export default function ProjectDetail() {
       } else {
         log("mengajukan BAST", `${String(b.id)} → ${next}`, "Proyek");
         toast(S.detToastBastStatus.replace("{a}", next.toLowerCase()));
+        await update("bast", String(b.id), { status: next });
       }
-      await update("bast", String(b.id), { status: next });
     } catch (e) {
       toast(e instanceof Error ? e.message : S.saveFail, "info");
     }
@@ -514,10 +618,15 @@ export default function ProjectDetail() {
     try {
       if (hasil === "Lolos") {
         const bastId = nextBastId(String(t.tanggal ?? todayISO()));
+        // Milestone BAST wajib cocok persis dengan WBS (gate anti-bypass):
+        // pakai task Trial bila ada, else string Sea Trial (persetujuan akan menolak
+        // bila tak cocok sampai milestone diselaraskan ke WBS).
+        const exactTrial = `Sea Trial - ${String(t.parameter ?? "")}`;
+        const trialTask = wbs.find((w) => w.task === exactTrial) ?? wbs.find((w) => /trial/i.test(w.task));
         await add("bast", {
-          id: bastId, projectId: pid, milestone: `Sea Trial - ${String(t.parameter ?? "")}`,
+          id: bastId, projectId: pid, milestone: trialTask ? trialTask.task : exactTrial,
           tanggal: String(t.tanggal ?? todayISO()), penandatangan: "", lampiran: String(t.punchList ?? ""),
-          amount: boqTotal, status: "Draft",
+          amount: sisaKontrak, status: "Draft",
         }, { action: "membuat BAST draft dari trial", target: `${bastId} ← ${String(t.id)}`, module: "Proyek" });
         toast(S.detToastTrialPass.replace("{a}", bastId));
       } else {
@@ -620,8 +729,9 @@ export default function ProjectDetail() {
               className="input w-auto py-1.5 text-sm"
               value={project.status}
               onChange={(e) => askStatus(e.target.value)}
+              title="Terlambat terisi otomatis dari jatuh tempo"
             >
-              {STATUS.map((s) => <option key={s}>{s}</option>)}
+              {STATUS.map((s) => <option key={s} value={s} disabled={s === "Terlambat"}>{s === "Terlambat" ? "Terlambat (otomatis)" : s}</option>)}
             </select>
             <StatusBadge status={project.status} />
           </div>
@@ -647,6 +757,15 @@ export default function ProjectDetail() {
           <button className="btn-secondary px-2 py-1 text-xs" disabled={TAHAP.indexOf(tahapOf(project)) <= 0} onClick={() => { setTahapMove({ dir: -1 }); setTahapReason(""); }}>{S.detTahapBack}</button>
           <button className="btn-secondary px-2 py-1 text-xs" disabled={TAHAP.indexOf(tahapOf(project)) >= TAHAP.length - 1} onClick={() => { setTahapMove({ dir: 1 }); setTahapReason(""); }}>{S.detTahapNext}</button>
         </span>
+        <span className="ml-2 text-xs font-medium text-steel-500">
+          Posisi tahap {TAHAP.indexOf(tahapOf(project)) + 1}/{TAHAP.length}: {tahapOf(project)} · Status {project.status}
+        </span>
+        {project.quotationId && !hasContract(project, data.contracts ?? []) ? (
+          <Badge tone="amber">Belum ada kontrak</Badge>
+        ) : null}
+        {contractOf && (Number(contractOf.value) || 0) !== (Number(project.budget) || 0) ? (
+          <Badge tone="red">Kontrak ≠ budget</Badge>
+        ) : null}
       </div>
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
@@ -910,7 +1029,7 @@ export default function ProjectDetail() {
                   {invoices.map((i) => (
                     <div key={i.id} className="flex items-center justify-between text-sm">
                       <span className="font-mono text-navy-900">{i.id}</span>
-                      <span className="text-steel-600">{fmtMiliar(i.amount)}</span>
+                      <span className="text-steel-600">{fmtMiliar(invGrand(i))}</span>
                       <StatusBadge status={i.status} />
                     </div>
                   ))}
@@ -1200,8 +1319,8 @@ export default function ProjectDetail() {
           </Field>
           <FormGrid>
             <Field label={S.dateField}><input type="date" className="input" value={bastForm.tanggal} onChange={(e) => setBastForm({ ...bastForm, tanggal: e.target.value })} /></Field>
-            <Field label={S.detAmountField} hint={boqTotal > 0 ? S.detAmountHintBoq.replace("{a}", fmtRupiah(boqTotal)) : S.detAmountHintPlain}>
-              <NumInput min={0} className="input" value={bastForm.amount} onChange={(e) => setBastForm({ ...bastForm, amount: e.target.value })} placeholder={boqTotal > 0 ? String(boqTotal) : S.detAmountPh} />
+            <Field label={S.detAmountField} hint={contractValue > 0 ? `Sisa kontrak ${fmtRupiah(sisaKontrak)}` : (boqTotal > 0 ? S.detAmountHintBoq.replace("{a}", fmtRupiah(boqTotal)) : S.detAmountHintPlain)}>
+              <NumInput min={0} className="input" value={bastForm.amount} onChange={(e) => setBastForm({ ...bastForm, amount: e.target.value })} placeholder={contractValue > 0 ? String(sisaKontrak) : (boqTotal > 0 ? String(boqTotal) : S.detAmountPh)} />
             </Field>
           </FormGrid>
           <Field label={S.detSignerField}><input className="input" value={bastForm.signer} onChange={(e) => setBastForm({ ...bastForm, signer: e.target.value })} placeholder={S.detSignerPh} /></Field>

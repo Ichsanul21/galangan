@@ -41,6 +41,7 @@ import type { StoreItem } from "../../data/store";
 import { fmtRupiah, fmtMiliar, fmtTanggal, fmtJumlah, todayISO } from "../../utils/format";
 import { getSetting } from "../../utils/settings";
 import { useDraftState } from "../../utils/draft";
+import { sameName } from "../../utils/names";
 import { sbInvoiceMath, maxSeq, PPN_INVOICE_DEFAULT, PPH_JASA_DEFAULT } from "../../utils/sb";
 import { exportExcel } from "../../utils/export";
 import { kasKodeOf, postCashJournal } from "../../services/autoJournal";
@@ -61,7 +62,8 @@ const INV_NEXT: Record<string, string[]> = {
   Draft: ["Diajukan"],
   Diajukan: ["Disetujui", "Ditolak"],
   Disetujui: ["Belum Dibayar"],
-  "Belum Dibayar": ["Lunas", "Terlambat"],
+  // Terlambat bukan transisi manual - terisi otomatis dari due (efek di bawah).
+  "Belum Dibayar": ["Lunas"],
   Terlambat: ["Lunas"],
   Ditolak: ["Draft"],
   Lunas: [],
@@ -450,7 +452,7 @@ export default function Finance() {
   const sortedInv = useMemo(() => sortRows(filteredInvoices, invSort, (inv, k) =>
     k === "tipe" ? String(inv.billingType ?? inv.paymentTerm ?? "") : k === "lines" ? (Array.isArray(inv.lines) ? inv.lines.length : 1) :
     k === "retensi" ? num(inv.retentionAmt) : k === "efaktur" ? String(inv.nsfp ?? inv.noFaktur ?? "") :
-    k === "amount" ? num(inv.amount) : k === "status" ? String(inv.status) : String(inv.id)), [filteredInvoices, invSort]);
+    k === "amount" ? invNeto(inv) : k === "status" ? String(inv.status) : String(inv.id)), [filteredInvoices, invSort]);
   const sortedAr = useMemo(() => sortRows(invoices, arSort, (inv, k) =>
     k === "id" ? String(inv.id) : k === "kode" ? String(inv.kodePembantu ?? inv.client ?? "") : k === "project" ? String(inv.project ?? "") :
     k === "openAwal" ? num(inv.openAwal) : k === "amount" ? num(inv.amount) : k === "due" ? String(inv.due ?? "") :
@@ -477,6 +479,22 @@ export default function Finance() {
     juPager.reset();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tab]);
+
+  // Terlambat otomatis dari due (menggantikan flag manual): invoice Belum Dibayar
+  // yang lewat jatuh tempo otomatis berstatus Terlambat. ageDays sudah ada.
+  useEffect(() => {
+    const rows = (data.invoices ?? []).filter(
+      (i) => String(i.status) === "Belum Dibayar" && ageDays(i.due, today) > 0
+    );
+    for (const r of rows) {
+      void update("invoices", r.id, { status: "Terlambat" })
+        .then(() => {
+          log("invoice jatuh tempo otomatis", `${r.id} → Terlambat`, "Keuangan");
+        })
+        .catch(() => {});
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [data.invoices]);
 
   const pickNotif = (rowId: string) => {
     const idxInv = sortedInv.findIndex((r) => String(r.id) === rowId);
@@ -717,12 +735,16 @@ export default function Finance() {
   }, [payables, arOpen, today]);
   const schedTotal = schedItems.filter((r) => schedSel.includes(r.key)).reduce((s, r) => s + r.amount, 0);
 
-  // 5. Pemetaan biaya ke proyek
+  // 5. Pemetaan biaya ke proyek (kunci AP "ID / docNo" -> split ambil ID)
+  const poIdOf = (poRef: unknown): string => String(poRef ?? "").split(" / ")[0].trim();
   const poProject = useMemo(() => {
     const m: Record<string, string> = {};
     for (const po of data.purchaseOrders ?? []) {
       const proj = po.project ?? po.projectId ?? po.proyek;
-      if (po.id && proj) m[String(po.id)] = String(proj);
+      if (po.id && proj) {
+        m[String(po.id)] = String(proj);
+        if (po.docNo) m[`${po.id} / ${po.docNo}`] = String(proj);
+      }
     }
     return m;
   }, [data.purchaseOrders]);
@@ -756,7 +778,7 @@ export default function Finance() {
     let unallocPayable = 0;
     for (const a of data.payables ?? []) {
       if (a.st !== "Lunas") continue;
-      const proj = poProject[String(a.po ?? "")];
+      const proj = poProject[poIdOf(a.po)] ?? poProject[String(a.po ?? "")];
       if (proj === profitPid) costPayable += num(a.amt);
       else if (!proj) unallocPayable += num(a.amt);
     }
@@ -994,6 +1016,27 @@ export default function Finance() {
       const po = (data.clientPos ?? []).find((p) => String(p.no ?? "") === invForm.clientPO || String(p.id ?? "") === invForm.clientPO);
       if (!po) { toast(S.poUnknown, "info"); return; }
       if (po.projectId && String(po.projectId) !== proj.id) { toast(S.poMismatch.replace("{a}", String(po.projectId)).replace("{b}", proj.id), "info"); return; }
+    }
+    // Cegah tagih ganda manual-vs-auto per BAST: satu milestone satu invoice per proyek.
+    if (invForm.billingType === "Milestone" && invForm.milestoneRef.trim()) {
+      const ref = invForm.milestoneRef.trim();
+      const dupRef = (data.invoices ?? []).some(
+        (i) => String(i.project ?? "") === proj.id && String(i.milestoneRef ?? "") === ref
+      );
+      if (dupRef) { toast(`Milestone ${ref} proyek ${proj.id} sudah ditagih - tolak tagih ganda`, "info"); return; }
+      const bastHit = (data.bast ?? []).find(
+        (b) => String(b.projectId ?? "") === proj.id &&
+          (String(b.milestone ?? "") === ref || `BAST ${String(b.id)}` === ref)
+      );
+      if (bastHit) {
+        const billed =
+          Boolean(bastHit.invoiceId) ||
+          (data.invoices ?? []).some(
+            (i) => String(i.milestoneRef ?? "") === `BAST ${String(bastHit.id)}` ||
+              String(i.bastId ?? "") === String(bastHit.id)
+          );
+        if (billed) { toast(`BAST ${String(bastHit.id)} sudah ditagih - tolak tagih ganda`, "info"); return; }
+      }
     }
     const total = validLines.reduce((s, l) => s + lineAmount(l, isTMForm), 0);
     const pct = invForm.billingType === "Uang Muka" || invForm.billingType === "T&M" ? 0 : num(invForm.retentionPct);
@@ -1385,6 +1428,74 @@ export default function Finance() {
     } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); }
   };
 
+  // Lunas mengalir balik: projects.actual (+status bila syarat tutup terpenuhi),
+  // bast (invoiceId + paidAt), contracts (paidTotal), clients.creditLimit.
+  const afterInvoicePaid = async (inv: StoreItem, paidDate: string, paidRef: string): Promise<void> => {
+    try {
+      const grand = invNeto(inv);
+      const pid = String(inv.project ?? "");
+      if (pid) {
+        const mine = (data.invoices ?? []).filter((i) => String(i.project ?? "") === pid);
+        const actual = mine.reduce(
+          (s, i) => s + (String(i.id) === String(inv.id) ? grand : (String(i.status) === "Lunas" ? invNeto(i) : 0)),
+          0
+        );
+        const patch: Record<string, unknown> = { actual };
+        const proj = projectById[pid];
+        if (proj) {
+          const rest = mine.filter((i) => String(i.id) !== String(inv.id) && String(i.status) !== "Lunas");
+          const bastOk = (data.bast ?? []).some(
+            (b) => String(b.projectId ?? "") === pid && String(b.status) === "Disetujui"
+          );
+          const wbs = (data.wbsByProject ?? {})[pid] ?? [];
+          const totalW = wbs.reduce((s, w) => s + Number(w.weight || 0), 0);
+          const wProg = totalW > 0
+            ? Math.round(wbs.reduce((s, w) => s + Number(w.progress || 0) * Number(w.weight || 0), 0) / totalW)
+            : 0;
+          if (rest.length === 0 && String(proj.tahap) === "Handover" && bastOk && wProg === 100) {
+            patch.status = "Selesai";
+          }
+        }
+        await update("projects", pid, patch);
+        log("akumulasi realisasi dari pelunasan", `${pid} → ${fmtRupiah(actual)}`, "Keuangan");
+        const proj2 = projectById[pid];
+        const contract = (data.contracts ?? []).find((c) =>
+          String(c.projectId ?? "") === pid ||
+          (proj2?.quotationId && String(c.quotationId ?? "") === String(proj2.quotationId))
+        );
+        if (contract) {
+          const paidTotal = (data.invoices ?? [])
+            .filter((i) => String(i.project ?? "") === pid &&
+              (String(i.id) === String(inv.id) || String(i.status) === "Lunas"))
+            .reduce((s, i) => s + (String(i.id) === String(inv.id) ? grand : invNeto(i)), 0);
+          await update("contracts", contract.id, { paidTotal, lastPaidAt: paidDate, lastPaidRef: paidRef });
+          log("akumulasi pembayaran kontrak", `${contract.id} → ${fmtRupiah(paidTotal)}`, "Keuangan");
+        }
+      }
+      // BAST yang ditagih invoice ini: simpan invoiceId balik + catat pelunasan.
+      const ref = String(inv.milestoneRef ?? "");
+      const bastId = String(inv.bastId ?? "") || (ref.startsWith("BAST ") ? ref.slice(5).trim() : "");
+      if (bastId) {
+        const b = (data.bast ?? []).find((x) => String(x.id) === bastId);
+        if (b) {
+          await update("bast", b.id, { invoiceId: String(inv.id), paidAt: paidDate, paidRef });
+          log("pelunasan invoice BAST", `${bastId} ← ${String(inv.id)} Lunas`, "Keuangan");
+        }
+      }
+      // Plafon kredit klien dipulihkan sebesar grand yang dilunasi.
+      const client = (data.clients ?? []).find((c) => sameName(c.name, inv.client));
+      if (client && grand > 0) {
+        await update("clients", client.id, {
+          creditLimit: num(client.creditLimit) + grand,
+          lastPaidAt: paidDate,
+        });
+        log("pemulihan limit kredit", `${String(client.name)} +${fmtRupiah(grand)}`, "Keuangan");
+      }
+    } catch {
+      /* backflow best-effort - pelunasan inti sudah tersimpan */
+    }
+  };
+
   const confirmBuktiInv = async () => {
     if (!payTarget) return;
     if (!proof.date) { toast(S.payDateRequired, "info"); return; }
@@ -1403,6 +1514,7 @@ export default function Finance() {
         kr: "1-130",
         amount: invNeto(payTarget),
       });
+      await afterInvoicePaid(payTarget, proof.date, proof.ref.trim());
       toast(S.paidRecorded.replace("{a}", payTarget.id) + (jurnalOk ? S.paidWithJournal : ""));
       setPayTarget(null);
     } catch {
@@ -1478,7 +1590,10 @@ export default function Finance() {
         if (r.kind === "AP") {
         const ap = (data.payables ?? []).find((a) => String(a.id) === String(r.id));
         const sisaAp = ap ? Math.max(0, num(ap.amt) - num(ap.pay1) - num(ap.pay2)) : num(r.amount);
-        await update("payables", r.id, { st: "Lunas", paidAt: batchProof.date, paidMethod: batchProof.method, paidRef: batchProof.ref.trim() });
+        const prevP1 = num(ap?.pay1);
+        await update("payables", r.id, prevP1 > 0
+          ? { pay2: num(ap?.pay2) + sisaAp, pay2date: batchProof.date, pay2ref: batchProof.ref.trim(), pay2method: batchProof.method, st: "Lunas", paidAt: batchProof.date, paidMethod: batchProof.method, paidRef: batchProof.ref.trim() }
+          : { pay1: sisaAp, pay1date: batchProof.date, pay1ref: batchProof.ref.trim(), pay1method: batchProof.method, st: "Lunas", paidAt: batchProof.date, paidMethod: batchProof.method, paidRef: batchProof.ref.trim() });
         log("melunasi hutang massal", `${r.ref} via ${batchProof.method} ${batchProof.ref.trim()}`, "Keuangan");
         await postAutoJournal({
           dokumen: `PAY-${r.id}-B`,
@@ -1499,6 +1614,8 @@ export default function Finance() {
           kr: "1-130",
           amount: r.amount,
         });
+        const full = (data.invoices ?? []).find((i) => String(i.id) === String(r.id));
+        if (full) await afterInvoicePaid(full, batchProof.date, batchProof.ref.trim());
         }
       } catch {
         batchFail++;
@@ -2234,8 +2351,12 @@ export default function Finance() {
                           ) : <span className="text-steel-400">-</span>}
                         </td>
                         <td className="td font-mono text-[11px] text-steel-600">{inv.nsfp || inv.noFaktur ? `${inv.nsfp || "-"} / ${inv.noFaktur || "-"}` : "-"}</td>
-                        <td className="td font-semibold">{fmtRupiah(num(inv.amount))}</td>
-                        <td className="td"><StatusBadge status={String(inv.status)} /></td>
+                        <td className="td font-semibold">{fmtRupiah(invNeto(inv))}
+                          {needsDirector(inv) && <span className="ml-2 inline-block"><Badge tone="amber">{S.needDirector}</Badge></span>}
+                        </td>
+                        <td className="td"><StatusBadge status={String(inv.status)} />
+                          {inv.directorApproved && <p className="mt-1 text-[11px] text-steel-500">Dir: {String(inv.directorName ?? "")}</p>}
+                        </td>
                       </tr>
                     ))}
                   </tbody>

@@ -154,7 +154,11 @@ export default function QuotationDetail() {
       setConvertOpen(false);
       return;
     }
-    if (quotation.stage === "Terkonversi" || data.projects.some((p) => p.vessel === quotation.vessel)) {
+    if (
+      quotation.stage === "Terkonversi" ||
+      data.projects.some((p) => String(p.quotationId ?? "") === quotation.id) ||
+      data.projects.some((p) => String(p.vessel) === String(quotation.vessel) && sameName(p.client, quotation.client))
+    ) {
       toast(S.tAlreadyConverted, "info");
       setConvertOpen(false);
       return;

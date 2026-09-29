@@ -35,6 +35,22 @@ export function tahapOf(p: StoreItem): string {
   return TAHAP.includes(p.tahap) ? p.tahap : "Produksi";
 }
 
+// Kontrak wajib terisi sebelum proyek hasil konversi bisa jalan: tahap awal
+// (Inquiry/Quotation/Kontrak) dikunci bila belum ada kontrak untuk quotationId itu.
+export function hasContract(p: StoreItem, contracts: StoreItem[]): boolean {
+  if (!p.quotationId) return true;
+  return contracts.some(
+    (c) => String(c.quotationId ?? "") === String(p.quotationId) || String(c.projectId ?? "") === String(p.id)
+  );
+}
+
+export function isOverdue(p: StoreItem, today: string): boolean {
+  if (!p.end || p.end === "-") return false;
+  if (String(p.status) === "Selesai") return false;
+  if (Number(p.progress || 0) >= 100) return false;
+  return String(p.end) < today;
+}
+
 const filters = ["Semua", "New Build", "Repair", "Retrofit"];
 const statusOptions = ["Semua", "Dalam Proses", "Sedang Berjalan", "Terlambat", "Selesai", "Tertunda"];
 const branchOptions = ["Samarinda", "Balikpapan", "Banjarmasin"];
@@ -78,6 +94,21 @@ export default function Projects() {
   const [mundurReason, setMundurReason] = useState("");
   const [majuFor, setMajuFor] = useState<StoreItem | null>(null);
   const [majuReason, setMajuReason] = useState("");
+
+  // Terlambat otomatis dari due (menggantikan flag manual): proyek berjalan yang
+  // lewat tanggal selesai & progres < 100% otomatis berstatus Terlambat.
+  useEffect(() => {
+    const today = todayISO();
+    for (const p of projects) {
+      if (
+        (p.status === "Dalam Proses" || p.status === "Sedang Berjalan" || p.status === "Tertunda") &&
+        isOverdue(p, today)
+      ) {
+        void update("projects", p.id, { status: "Terlambat" }).catch(() => {});
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [projects]);
 
   const pmOptions = [...new Set(projects.map((p) => String(p.manager ?? "")).filter(Boolean))].sort();
   const resetFilters = () => { setFilter("Semua"); setStatusFilter("Semua"); setTahapFilter("Semua"); setBranchFilter("Semua"); setPrioritasFilter("Semua"); setPmFilter("Semua"); setQ(""); };
@@ -126,12 +157,20 @@ export default function Projects() {
         return;
       }
     }
+    // Gate kontrak: tahap awal dikunci bila proyek hasil konversi belum punya kontrak.
+    if (idx <= 2 && majuFor.quotationId && !hasContract(majuFor, data.contracts ?? [])) {
+      toast(`Tahap ${from} dikunci - buat kontrak untuk quotation ${majuFor.quotationId} dulu`, "info");
+      return;
+    }
     try {
-      await update("projects", majuFor.id, {
+      // Aturan silang tahap×status: masuk Handover berarti selesai.
+      const patch: Record<string, unknown> = {
         tahap: to,
         tahapLog: [...(majuFor.tahapLog ?? []), { from: tahapOf(majuFor), to, date: todayISO(), by: "Anda", reason: majuReason.trim() }],
-      });
-      log("memajukan tahap", `${majuFor.id} → ${to} (alasan: ${majuReason.trim()})`, "Proyek");
+        ...(to === "Handover" ? { status: "Selesai" } : {}),
+      };
+      await update("projects", majuFor.id, patch);
+      log("memajukan tahap", `${majuFor.id} → ${to} (alasan: ${majuReason.trim()})${to === "Handover" ? " + status Selesai" : ""}`, "Proyek");
       toast(S.prjToastAdvance.replace("{a}", majuFor.id).replace("{b}", to));
       setMajuFor(null);
       setMajuReason("");

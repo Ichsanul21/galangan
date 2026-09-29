@@ -46,6 +46,7 @@ const STAGE_TONE: Record<string, "gray" | "amber" | "violet" | "green" | "teal" 
 
 const isTerminal = (stage: string) => TERMINAL.includes(stage);
 const num = (v: unknown): number => Number(v) || 0;
+const PREFIX_TIPE: Record<string, string> = { "New Build": "NB", Repair: "RP", Retrofit: "RF" };
 
 const PROB: Record<string, number> = { Lead: 0.1, Penawaran: 0.3, Negosiasi: 0.6, Menang: 1 };
 const HO_ITEMS = ["Dokumen kontrak tersedia", "Scope pekerjaan jelas", "Jadwal disepakati", "PIC client ditetapkan"];
@@ -79,6 +80,9 @@ export default function CRM() {
   const [qForm, setQForm] = useState({ client: "", vessel: "", type: "New Build", value: "", stage: "Lead", date: todayISO() });
   const [showClient, setShowClient] = useState(false);
   const [convertTarget, setConvertTarget] = useState<StoreItem | null>(null);
+  const [convManager, setConvManager] = useState("");
+  const [convStart, setConvStart] = useState(todayISO());
+  const [convEnd, setConvEnd] = useState("");
   const [sendTarget, setSendTarget] = useState<StoreItem | null>(null);
   const [sendEmail, setSendEmail] = useState("");
   const [sendMsg, setSendMsg] = useState("");
@@ -119,6 +123,29 @@ export default function CRM() {
   const clients = data.clients ?? [];
   const communications = data.communications ?? [];
   const contracts = data.contracts ?? [];
+
+  const pmCandidates = useMemo(() => (
+    (data.employees ?? [])
+      .filter((e) => String(e.dept) === "Proyek" || String(e.role ?? "").includes("Manager"))
+      .map((e) => String(e.name))
+  ), [data.employees]);
+
+  const projectById = useMemo(() => {
+    const m: Record<string, StoreItem> = {};
+    for (const p of data.projects ?? []) m[String(p.id)] = p;
+    return m;
+  }, [data.projects]);
+
+  const nextProjectCode = (type: string, start: string): string => {
+    const prefix = PREFIX_TIPE[type] ?? "PRJ";
+    const year = start.match(/^(\d{4})/)?.[1] ?? String(new Date().getFullYear());
+    let max = 0;
+    for (const p of data.projects ?? []) {
+      const m = String(p.id).match(new RegExp(`^${prefix}-(\\d{4})-(\\d+)$`));
+      if (m && m[1] === year) max = Math.max(max, Number(m[2]));
+    }
+    return `${prefix}-${year}-${String(max + 1).padStart(3, "0")}`;
+  };
 
   const activeQuotes = quotations.filter((q) => !isTerminal(String(q.stage)));
   const pipelineTotal = activeQuotes.reduce((s, q) => s + num(q.value), 0);
@@ -164,18 +191,41 @@ export default function CRM() {
   const confirmConvert = async () => {
     const q = convertTarget;
     if (!q) return;
-    if (q.stage === "Terkonversi" || data.projects.some((p) => p.vessel === q.vessel)) {
+    if (q.stage !== "Menang") {
+      toast(S.tOnlyWonConvert ?? "Hanya quotation Menang yang bisa dikonversi", "info");
+      setConvertTarget(null);
+      return;
+    }
+    // Guard duplikat: longgar ke vessel+client (bukan vessel saja) + quotationId yang sama.
+    if (
+      q.stage === "Terkonversi" ||
+      data.projects.some((p) => String(p.quotationId ?? "") === String(q.id)) ||
+      data.projects.some((p) => String(p.vessel) === String(q.vessel) && sameName(p.client, q.client))
+    ) {
       toast(S.tConvertRejected, "info");
       setConvertTarget(null);
       return;
     }
     if (hoChecks.some((c) => !c)) { toast(S.hoIncomplete, "info"); return; }
     if (!hoBy.trim()) { toast(S.handoverByRequired, "info"); return; }
+    if (num(q.value) <= 0) { toast(S.tQuoteValuePositive, "info"); return; }
+    if (!convManager.trim() || convManager.trim() === "Belum ditentukan") { toast(S.tPickPm ?? "Pilih PM dulu", "info"); return; }
+    if (!convStart || !convEnd) { toast(S.tPlanDatesRequired ?? "Tanggal rencana mulai & selesai wajib diisi", "info"); return; }
+    if (convEnd < convStart) { toast(S.tEndBeforeStart ?? "Tanggal selesai sebelum mulai", "info"); return; }
+    // SATU jalur konversi (sama dengan QuotationDetail): PM + tanggal + kode +
+    // tahap Kontrak + branch dari client (tanpa hardcode cabang tertentu).
+    const client = (data.clients ?? []).find((c) => sameName(c.name, q.client));
+    const branchOf = String(client?.branch ?? q.branch ?? (branch !== "SEMUA" ? branch : ""));
+    if (!branchOf) { toast("Cabang klien belum terisi - lengkapi data klien dulu", "info"); return; }
+    const code = nextProjectCode(String(q.type ?? "New Build"), convStart);
     try {
       const created = await add("projects", {
+        id: code,
         vessel: q.vessel, type: q.type, client: q.client, status: "Dalam Proses",
-        branch: "Samarinda", start: todayISO(), end: "-", progress: 0,
-        budget: num(q.value), actual: 0, manager: "Belum ditentukan", scope: [q.type],
+        tahap: "Kontrak",
+        tahapLog: [{ from: "-", to: "Kontrak", date: todayISO(), by: hoBy.trim(), reason: `Konversi ${q.id}` }],
+        branch: branchOf, start: convStart, end: convEnd, progress: 0,
+        budget: num(q.value), actual: 0, manager: convManager.trim(), scope: [q.type],
         quotationId: q.id,
         handover: { date: todayISO(), by: hoBy.trim(), items: [...HO_ITEMS] },
       }, { action: "mengkonversi quotation", target: `${q.id} → proyek`, module: "CRM" });
@@ -244,14 +294,26 @@ export default function CRM() {
     if (q.stage !== "Menang" && q.stage !== "Terkonversi") { toast(S.tOnlyWonQuote, "info"); return; }
     if (contracts.some((c) => c.quotationId === q.id)) { toast(S.tQuoteHasContract, "info"); return; }
     if (!contractForm.signedAt) { toast(S.tSignDateRequired, "info"); return; }
+    const value = num(contractForm.value) || num(q.value);
+    if (value <= 0) { toast(S.tQuoteValuePositive, "info"); return; }
+    const linked = contractForm.projectId ? projectById[contractForm.projectId] : undefined;
+    if (contractForm.projectId && !linked) { toast("Proyek tidak dikenal", "info"); return; }
+    // contract.value dikunci ke project.budget saat kontrak dibuat; peringatkan bila beda.
+    if (linked && num(linked.budget) !== value) {
+      toast(`Nilai kontrak (${value.toLocaleString("id-ID")}) beda dengan budget proyek ${linked.id} - budget disinkronkan`, "info");
+    }
     const created = await add("contracts", {
       quotationId: q.id,
       client: q.client,
-      value: num(contractForm.value) || num(q.value),
+      value,
       signedAt: contractForm.signedAt,
       status: "Aktif",
       ...(contractForm.projectId ? { projectId: contractForm.projectId } : {}),
     }, { action: "membuat kontrak", target: q.id, module: "CRM" });
+    if (linked) {
+      await update("projects", linked.id, { budget: value });
+      log("sinkron budget proyek dari kontrak", `${linked.id} → ${value.toLocaleString("id-ID")}`, "CRM");
+    }
     toast(S.tContractCreated.replace("{n}", created.id));
     setContractForm({ quotationId: "", value: "", signedAt: todayISO(), projectId: "" });
     } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); }
@@ -331,10 +393,27 @@ export default function CRM() {
   const saveClientPo = async () => {
     try {
     if (!poForm.contractId) { toast(S.tPickContractFirst, "info"); return; }
+    if (!poForm.projectId) { toast("PO klien wajib memilih proyek", "info"); return; }
     if (!poForm.no.trim()) { toast(S.tPoNoRequired, "info"); return; }
     if (clientPos.some((p) => String(p.no ?? "") === poForm.no.trim())) { toast(S.tPoNoUsed, "info"); return; }
     if (num(poForm.amount) <= 0) { toast(S.tPoPositive, "info"); return; }
     if (!poForm.date) { toast(S.tPoDateRequired, "info"); return; }
+    // PO klien wajib memilih kontrak + proyek yang cocok satu sama lain.
+    const contract = contracts.find((c) => String(c.id) === poForm.contractId);
+    const project = projectById[poForm.projectId];
+    if (!contract || !project) { toast("Kontrak / proyek PO tidak dikenal", "info"); return; }
+    if (contract.projectId && String(contract.projectId) !== String(project.id)) {
+      toast(`Kontrak ${contract.id} milik proyek ${contract.projectId} - tidak cocok dengan ${project.id}`, "info");
+      return;
+    }
+    if (contract.quotationId && project.quotationId && String(contract.quotationId) !== String(project.quotationId)) {
+      toast(`Kontrak ${contract.id} (quotation ${contract.quotationId}) tidak cocok dengan proyek ${project.id}`, "info");
+      return;
+    }
+    if (!sameName(contract.client, project.client)) {
+      toast(`Klien kontrak (${contract.client}) beda dengan klien proyek (${project.client})`, "info");
+      return;
+    }
     const created = await add("clientPos", {
       contractId: poForm.contractId, ...(poForm.projectId ? { projectId: poForm.projectId } : {}),
       no: poForm.no.trim(), amount: num(poForm.amount), date: poForm.date,
@@ -397,6 +476,9 @@ export default function CRM() {
   const openConvert = (q: StoreItem) => {
     setHoChecks([false, false, false, false]);
     setHoBy("Tim Commercial");
+    setConvManager(String(q.pic ?? q.manager ?? ""));
+    setConvStart(todayISO());
+    setConvEnd("");
     setConvertTarget(q);
   };
 
@@ -750,7 +832,11 @@ export default function CRM() {
                           <tr key={k.id} id={notifRowId(String(k.id))} className={flash.flashId === String(k.id) ? "notif-hl notif-flash hover:bg-surface" : (notified.has(String(k.id)) ? "notif-hl hover:bg-surface" : "hover:bg-surface")}>
                             <td className="td font-mono text-xs font-semibold text-navy-900">{k.id}<span className="block font-sans text-[11px] font-normal text-steel-500">{String(k.client ?? "")}</span></td>
                             <td className="td font-mono text-xs"><Link to={`/crm/quotation/${k.quotationId}`} className="text-ocean-600">{String(k.quotationId)}</Link>{k.projectId ? <Link to={`/proyek/${k.projectId}`} className="block text-[11px] text-teal-600">{String(k.projectId)}</Link> : null}</td>
-                            <td className="td text-xs font-semibold">{fmtRupiah(num(k.value))}</td>
+                            <td className="td text-xs font-semibold">{fmtRupiah(num(k.value))}
+                              {k.projectId && projectById[String(k.projectId)] && num(projectById[String(k.projectId)].budget) !== num(k.value) ? (
+                                <span className="mt-1 block"><Badge tone="red">Beda budget proyek</Badge></span>
+                              ) : null}
+                            </td>
                             <td className="td text-xs text-steel-600">{fmtTanggal(String(k.signedAt ?? ""))}</td>
                             <td className="td"><StatusBadge status={String(k.status ?? "Aktif")} /></td>
                           </tr>
@@ -972,6 +1058,16 @@ export default function CRM() {
               </label>
             ))}
           </div>
+          <FormGrid>
+            <Field label="PM Proyek">
+              <select className="input" value={convManager} onChange={(e) => setConvManager(e.target.value)}>
+                <option value="">Pilih PM</option>
+                {pmCandidates.map((n) => <option key={n} value={n}>{n}</option>)}
+              </select>
+            </Field>
+            <Field label="Rencana mulai"><input type="date" className="input" value={convStart} onChange={(e) => setConvStart(e.target.value)} /></Field>
+          </FormGrid>
+          <Field label="Rencana selesai"><input type="date" className="input" value={convEnd} onChange={(e) => setConvEnd(e.target.value)} /></Field>
         </div>
       </Modal>
     </div>

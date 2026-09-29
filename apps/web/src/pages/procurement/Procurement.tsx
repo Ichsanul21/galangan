@@ -203,7 +203,7 @@ export default function Procurement() {
 
   /* ---- PR ---- */
   const [showPr, setShowPr] = useState(false);
-  const [prForm, setPrForm] = useState({ item: "", by: "", amount: "" });
+  const [prForm, setPrForm] = useState({ item: "", by: "", amount: "", qty: "1", unit: "pcs", project: "" });
   const [konsIds, setKonsIds] = useState<string[]>([]);
   const [konsVendor, setKonsVendor] = useState("");
   const [konsProject, setKonsProject] = useState("");
@@ -248,7 +248,7 @@ export default function Procurement() {
     "PO Besar (Kantor)": ["Semua", "Draft", "Diajukan", "Disetujui", "Dikirim", "Diterima Sebagian", "Diterima", "Ditolak"],
     "PO Kecil (Workshop)": ["Semua", "Diajukan", "Disetujui", "Diterima", "Ditolak"],
     RFQ: ["Semua", "Draf", "Draft", "Terkirim", "Evaluasi", "Diputuskan"],
-    PR: ["Semua", "Draft", "Menunggu Approval", "RFQ", "Diajukan", "Disetujui", "Ditolak"],
+    PR: ["Semua", "Draft", "Menunggu Approval", "RFQ", "Diajukan", "Disetujui", "Sudah PO", "Ditolak"],
     Vendor: ["Semua", "Aktif", "Nonaktif", "Blacklist"],
   };
   const matchProc = (hay: string, st: string): boolean => {
@@ -488,7 +488,11 @@ export default function Procurement() {
   const saveRfq = async () => {
     try {
     if (!rfqPr) return;
-    if (rfqVendors.length < 3) { toast(S.tRfqMin3, "info"); return; }
+    if (rfqVendors.length === 0) { toast(S.tRfqMin3, "info"); return; }
+    if (rfqVendors.length < 3) {
+      const lanjut = window.confirm(locale === "en" ? `Continue with ${rfqVendors.length} vendor(s)? (minimum 3)` : `Lanjut dengan ${rfqVendors.length} vendor? (minimal 3)`);
+      if (!lanjut) return;
+    }
     await add("rfqs", {
       prId: rfqPr.id, item: rfqPr.item, vendors: rfqVendors, quotes: [],
       status: "Draf", winner: "",
@@ -507,6 +511,11 @@ export default function Procurement() {
     const price = Number(quoteForm.price);
     if (!price || price <= 0) { toast(S.tHargaQuote, "info"); return; }
     if (!quoteForm.eta) { toast(S.tEtaWajib, "info"); return; }
+    const prPagu = requisitions.find((r) => r.id === quoteRfq.prId);
+    const pagu = prPagu ? Number(prPagu.amount || 0) : 0;
+    if (pagu > 0 && price > pagu * 1.2) {
+      toast(locale === "en" ? `Quote ${fmtRupiah(price)} is >20% above PR ceiling ${fmtRupiah(pagu)}` : `Quote ${fmtRupiah(price)} >20% di atas pagu PR ${fmtRupiah(pagu)}`, "info");
+    }
     const cur = (Array.isArray(quoteRfq.quotes) ? quoteRfq.quotes : []) as Quote[];
     const next = [...cur.filter((x) => x.vendor !== quoteForm.vendor), { vendor: quoteForm.vendor, price, eta: quoteForm.eta }];
     const nextStatus = quoteRfq.status === "Terkirim" ? "Evaluasi" : quoteRfq.status;
@@ -527,13 +536,19 @@ export default function Procurement() {
     if (plafon && !plafon.ok) { toast(S.tPlafon.replace("{a}", fmtRupiah(plafon.pakai)).replace("{b}", fmtRupiah(plafon.plafon)), "info"); return; }
     try {
       await update("rfqs", winRfq.id, { winner: winVendor, status: "Diputuskan" });
-      const match = invList.find((i) => i.name.toLowerCase().includes(String(winRfq.item).toLowerCase().split(" ")[0] ?? ""));
+      const prWin = requisitions.find((r) => r.id === winRfq.prId);
+      const wQty = Number(prWin?.qty || 0) > 0 ? Number(prWin?.qty) : 1;
+      const wUnit = String(prWin?.unit || "pcs");
+      const wProject = String(prWin?.project || "-");
+      const wVessel = String(prWin?.vessel || data.projects.find((p) => p.id === String(prWin?.project || ""))?.vessel || "");
+      const exact = invList.find((i) => String(i.name).toLowerCase() === String(winRfq.item).toLowerCase());
       const created = await add("purchaseOrders", {
-        poType: "Besar", item: winRfq.item, itemId: match?.id ?? "", vendor: winVendor,
-        req: winRfq.prId, amount: win.price, qty: 1,
-        lines: [{ name: winRfq.item, qty: 1, unit: "pcs", price: win.price }],
-        project: "-", eta: win.eta, receivedQty: 0, returnedQty: 0,
-        status: "Diajukan", date: todayISO(), revisi: "", amendments: [], approvals: [],
+        poType: "Besar", item: winRfq.item, itemId: exact?.id ?? "", vendor: winVendor,
+        req: winRfq.prId, prIds: [winRfq.prId], rfqId: winRfq.id, amount: win.price, qty: wQty,
+        lines: [{ name: winRfq.item, qty: wQty, unit: wUnit, price: wQty > 0 ? Math.round((Number(win.price) / wQty) * 100) / 100 : Number(win.price) }],
+        project: wProject, vessel: wVessel, eta: win.eta, receivedQty: 0, returnedQty: 0,
+        docNo: sbPoNumber(nextPoSeq()),
+        status: "Draft", date: todayISO(), revisi: "", amendments: [], approvals: [],
       }, { action: "memenangkan RFQ", target: `${winRfq.id} → ${winVendor}`, module: "Procurement" });
       const pr = requisitions.find((r) => r.id === winRfq.prId);
       if (pr) await update("requisitions", pr.id, { status: "Sudah PO" });
@@ -551,7 +566,10 @@ export default function Procurement() {
     if (!konsVendor) { toast(S.tVendorWajib, "info"); return; }
     const prs = requisitions.filter((r) => konsIds.includes(r.id));
     if (prs.some((r) => r.status !== "Disetujui")) { toast(S.tKonsStatus, "info"); return; }
-    const lines = prs.map((r) => ({ name: r.item, qty: 1, unit: "pcs", price: Number(r.amount) || 0 }));
+    const lines = prs.map((r) => {
+      const q = Number(r.qty || 0) > 0 ? Number(r.qty) : 1;
+      return { name: r.item, qty: q, unit: String(r.unit || "pcs"), price: Math.round((Number(r.amount || 0) / q) * 100) / 100 };
+    });
     const total = lineTotal(lines);
     if (konsProject) {
       const info = budgetInfo(konsProject, total);
@@ -562,8 +580,9 @@ export default function Procurement() {
     try {
       const created = await add("purchaseOrders", {
         poType: "Besar", item: `Konsolidasi ${prs.length} PR`, itemId: "",
-        vendor: konsVendor, req: prs.map((r) => r.id).join(", "), amount: total, qty: prs.length,
-        lines, project: konsProject || "-", eta: konsEta || "",
+        vendor: konsVendor, req: prs.map((r) => r.id).join(", "), prIds: prs.map((r) => r.id), amount: total, qty: lines.reduce((s, l) => s + Number(l.qty || 0), 0),
+        lines, project: konsProject || String(prs.map((r) => r.project).find(Boolean) || "-"), vessel: String(prs.map((r) => r.vessel).find(Boolean) || ""), eta: konsEta || "",
+        docNo: sbPoNumber(nextPoSeq()),
         receivedQty: 0, returnedQty: 0, status: "Draft", date: todayISO(), revisi: "", amendments: [], approvals: [],
       }, { action: "konsolidasi PR ke PO", target: prs.map((r) => r.id).join(", "), module: "Procurement" });
       for (const r of prs) {
@@ -714,22 +733,30 @@ export default function Procurement() {
     if (isBig && (!recvNoFaktur.trim() || !recvTglFaktur)) { toast(S.tFakturWajib, "info"); return; }
     if (!isBig && !recvNoFaktur.trim()) { toast(S.tNotaWajib, "info"); return; }
     const invItem = invList.find((i) => i.id === recvItem);
-    if (!isBig && !invItem) { toast(S.tKecilItem, "info"); return; }
-    if (recvItem && !invItem) { toast(S.tPilihItem, "info"); return; }
+    if (!invItem) { toast(isBig ? S.tPilihItem : S.tKecilItem, "info"); return; }
     try {
       if (invItem) {
-      await update("inventory", invItem.id, { stock: Number(invItem.stock) + qty });
+      const unitPrice = orderedQty > 0 ? Number(recvPo.amount || 0) / orderedQty : 0;
+      const oldStock = Number(invItem.stock || 0);
+      const oldAvg = Number(invItem.avgCost) > 0 ? Number(invItem.avgCost) : Number(invItem.cost || 0);
+      const invPatch: Record<string, unknown> = { stock: oldStock + qty };
+      if (unitPrice > 0 && oldStock + qty > 0) {
+        invPatch.avgCost = Math.round(((oldStock * oldAvg + qty * unitPrice) / (oldStock + qty)) * 100) / 100;
+      }
+      await update("inventory", invItem.id, invPatch);
       await add("movements", {
         item: invItem.name, itemId: invItem.id, type: "Penerimaan", qty, by: recvPo.id, date: todayISO(), tone: "in",
       }, { action: "menerima barang", target: `${invItem.name} × ${qty} (${recvPo.id})`, module: "Procurement" });
     }
     /* Denda: hari telat × % per hari dari nilai PO, dibatasi 5%. */
-    let dendaRp = Number(recvPo.dendaRp || 0);
+    const prevDenda = Number(recvPo.dendaRp || 0);
+    let dendaRp = prevDenda;
     const late = lateDaysOf(recvPo);
     const pct = Math.min(5, Math.max(0, Number(recvDendaPct) || 0));
-    if (late > 0 && pct > 0) {
+    if (prevDenda <= 0 && late > 0 && pct > 0) {
       dendaRp = Math.round(Math.min(Number(recvPo.amount || 0) * 0.05, Number(recvPo.amount || 0) * (pct / 100) * late));
     }
+    const dendaBaru = Math.max(0, dendaRp - prevDenda);
     await update("purchaseOrders", recvPo.id, {
       itemId: invItem ? invItem.id : recvPo.itemId,
       item: invItem ? invItem.name : recvPo.item,
@@ -751,11 +778,16 @@ export default function Procurement() {
     if (!apExists && Number(recvPo.amount || 0) > 0) {
       const poAmount = Number(recvPo.amount || 0);
       const apAmt = orderedQty > 0 ? Math.round((poAmount * qty) / orderedQty) : poAmount;
-      const apTotal = apAmt + dendaRp;
+      const apTotal = apAmt + dendaBaru;
+      const dueDate = (() => {
+        const t = Date.parse(recvTglFaktur || todayISO());
+        if (Number.isNaN(t)) return todayISO();
+        return new Date(t + 30 * 86400000).toISOString().slice(0, 10);
+      })();
       await add("payables", {
         v: String(recvPo.vendor ?? ""), kodePembantu: String(recvPo.vendor ?? ""),
         po: poKey,
-        openAwal: 0, amt: apTotal, due: recvPo.eta || todayISO(),
+        openAwal: 0, amt: apTotal, due: dueDate,
         pph: "2%", st: "Belum Dibayar", vessel: String(recvPo.vessel ?? ""),
         item: String(recvPo.item ?? ""), pay1: 0, pay2: 0,
         noFaktur: recvNoFaktur.trim(), tglFaktur: recvTglFaktur,
@@ -824,9 +856,13 @@ export default function Procurement() {
         )}
         {st === "Diajukan" && po.poType !== "Kecil" && (
           <>
-            {nx
-              ? <button className="btn-primary text-xs" onClick={() => doApproveLevel(po)}><Check className="h-3.5 w-3.5" /> {S.btnSetujuiNx.replace("{n}", nx)}</button>
-              : <span className="text-xs text-steel-400">{S.menungguTahap}</span>}
+            {(() => {
+              const need = needLevels(Number(po.amount || 0), APPROVE_PO_LIMIT);
+              const done = apprOf(po);
+              return nx
+                ? <button className="btn-primary text-xs" onClick={() => doApproveLevel(po)}><Check className="h-3.5 w-3.5" /> {S.btnSetujuiNx.replace("{n}", nx)} · {done.length + 1}/{need.length}</button>
+                : <span className="text-xs text-steel-400">{S.menungguTahap}</span>;
+            })()}
             <button className="btn-secondary text-xs text-rose-600" aria-label={S.ariaTolakN.replace("{n}", po.id)} onClick={() => setConfirmRejectPo(po)}><X className="h-3.5 w-3.5" /> {S.btnTolak}</button>
           </>
         )}
@@ -930,7 +966,9 @@ export default function Procurement() {
                       const payung = vendors.some((v) => sameName(v.name, po.vendor) && payungOf(v));
                       return (
                         <tr key={po.id} id={notifRowId(String(po.id))} className={flash.flashId === String(po.id) ? "notif-hl notif-flash hover:bg-surface" : (notified.has(String(po.id)) ? "notif-hl hover:bg-surface" : "hover:bg-surface")}>
-                          <td className="td font-mono font-medium text-navy-900">{po.id}</td>
+                          <td className="td font-mono font-medium text-navy-900">{po.id}
+                            {po.docNo && <p className="text-xs font-normal text-steel-400">{String(po.docNo)}</p>}
+                          </td>
                           <td className="td text-steel-600">
                             <p className="truncate" title={String(po.item)}>{po.item}</p>
                             {(po.qty || po.receivedQty) && (
@@ -1136,6 +1174,10 @@ export default function Procurement() {
                         }}>{S.btnWin}</button>
                       )}
                       {r.winner && <Badge tone="green">{S.winnerN.replace("{n}", String(r.winner))}</Badge>}
+                      {r.status === "Diputuskan" && (() => {
+                        const linked = purchaseOrders.find((p) => String(p.rfqId ?? "") === String(r.id));
+                        return linked ? <button className="btn-secondary text-xs" onClick={() => { setTab("PO Besar (Kantor)"); setPq(linked.id); }}>{locale === "en" ? "View PO" : "Lihat PO"} {linked.id}</button> : null;
+                      })()}
                     </div>
                   </Card>
                 );
@@ -1191,7 +1233,12 @@ export default function Procurement() {
                       {prPager.slice(sortedPr).map((r) => (
                         <tr key={r.id} id={notifRowId(String(r.id))} className={flash.flashId === String(r.id) ? "notif-hl notif-flash hover:bg-surface" : (notified.has(String(r.id)) ? "notif-hl hover:bg-surface" : "hover:bg-surface")}>
                           <td className="td font-mono font-medium text-navy-900">{r.id}</td>
-                          <td className="td text-steel-600 truncate" title={String(r.item)}>{r.item}</td>
+                          <td className="td text-steel-600">
+                            <p className="truncate" title={String(r.item)}>{r.item}</p>
+                            {(r.qty || r.unit || r.project) && (
+                              <p className="text-xs text-steel-400">{fmtJumlah(Number(r.qty || 0))} {String(r.unit || "pcs")}{r.project ? ` · ${String(r.project)}` : ""}</p>
+                            )}
+                          </td>
                           <td className="td text-steel-600">{r.by}</td>
                           <td className="td font-semibold">{fmtRupiah(r.amount)}</td>
                           <td className="td"><StatusBadge status={r.status} /></td>
@@ -1212,7 +1259,21 @@ export default function Procurement() {
                               {r.status === "Ditolak" && (
                                 <button className="btn-secondary text-xs" onClick={async () => { try { await update("requisitions", r.id, { status: "Menunggu Approval" }); } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); } }}>{S.btnAjukanUlang}</button>
                               )}
-                              {(r.status === "Sudah PO" || r.status === "RFQ") && <span className="text-xs text-steel-400">-</span>}
+                              {(r.status === "Sudah PO" || r.status === "RFQ") && (() => {
+                                const rfq = rfqs.find((x) => String(x.prId) === String(r.id));
+                                const pos = purchaseOrders.filter((p) => {
+                                  const ids = Array.isArray(p.prIds) ? (p.prIds as string[]) : [];
+                                  const reqIds = String(p.req ?? "").split(",").map((s) => s.trim());
+                                  return ids.includes(String(r.id)) || reqIds.includes(String(r.id));
+                                });
+                                return (
+                                  <>
+                                    {rfq && <button className="btn-secondary text-xs" onClick={() => { setTab("RFQ"); setPq(rfq.id); }}>{locale === "en" ? "View RFQ" : "Lihat RFQ"} {rfq.id}</button>}
+                                    {pos.map((p) => <button key={p.id} className="btn-secondary text-xs" onClick={() => { setTab("PO Besar (Kantor)"); setPq(p.id); }}>{locale === "en" ? "View PO" : "Lihat PO"} {p.id}</button>)}
+                                    {!rfq && pos.length === 0 && <span className="text-xs text-steel-400">-</span>}
+                                  </>
+                                );
+                              })()}
                             </div>
                           </td>
                         </tr>
@@ -1600,9 +1661,12 @@ export default function Procurement() {
           try {
           if (!prForm.item.trim()) { toast(S.tItemWajib, "info"); return; }
           if (!Number(prForm.amount) || Number(prForm.amount) <= 0) { toast(S.tEstPos, "info"); return; }
-          const created = await add("requisitions", { item: prForm.item.trim(), by: prForm.by.trim() || "Anda", amount: Number(prForm.amount), status: "Menunggu Approval" },
+          const prQty = Number(prForm.qty || 0);
+          if (!prQty || prQty <= 0) { toast(S.tQtyPos, "info"); return; }
+          if (!prForm.unit.trim()) { toast(S.tSatuan, "info"); return; }
+          const created = await add("requisitions", { item: prForm.item.trim(), by: prForm.by.trim() || "Anda", amount: Number(prForm.amount), qty: prQty, unit: prForm.unit.trim(), project: prForm.project || "-", vessel: prForm.project ? String(data.projects.find((p) => p.id === prForm.project)?.vessel || "") : "", status: "Menunggu Approval" },
             { action: "mengajukan PR", module: "Procurement" });
-          toast(S.tPrDiajukan.replace("{n}", created.id)); setShowPr(false); setPrForm({ item: "", by: "", amount: "" });
+          toast(S.tPrDiajukan.replace("{n}", created.id)); setShowPr(false); setPrForm({ item: "", by: "", amount: "", qty: "1", unit: "pcs", project: "" });
           } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); }
         }}>{S.btnAjukan}</button></>}>
         <div className="space-y-3">
@@ -1611,6 +1675,20 @@ export default function Procurement() {
             <Field label={S.pemohon}><input className="input" value={prForm.by} onChange={(e) => setPrForm({ ...prForm, by: e.target.value })} placeholder={S.phPeminta} /></Field>
             <Field label={S.estNilai}><NumInput min={0} className="input" value={prForm.amount} onChange={(e) => setPrForm({ ...prForm, amount: e.target.value })} /></Field>
           </FormGrid>
+          <FormGrid>
+            <Field label={S.qty}><NumInput min={1} className="input" value={prForm.qty} onChange={(e) => setPrForm({ ...prForm, qty: e.target.value })} /></Field>
+            <Field label={S.satuan}>
+              <select className="input" value={prForm.unit} onChange={(e) => setPrForm({ ...prForm, unit: e.target.value })}>
+                {["pcs", "kg", "liter", "meter", "batang", "unit", "roll", "set", "pak"].map((u) => <option key={u}>{u}</option>)}
+              </select>
+            </Field>
+          </FormGrid>
+          <Field label={S.proyek}>
+            <select className="input" value={prForm.project} onChange={(e) => setPrForm({ ...prForm, project: e.target.value })}>
+              <option value="">{S.optTanpaProyek}</option>
+              {data.projects.map((p) => <option key={p.id} value={p.id}>{p.id} - {p.vessel}</option>)}
+            </select>
+          </Field>
         </div>
       </Modal>
 
