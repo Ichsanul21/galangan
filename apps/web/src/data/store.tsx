@@ -294,24 +294,27 @@ const STORE_KEY = "isms.store.v4";
 const LEGACY_KEYS = ["isms.store.v3", "isms.store.v2", "isms.store.v1"];
 const BRANCH_KEY = "isms.branch";
 /* Sinkronisasi offline yang diperkeras: dirty set + tombstone delete dipersist
-   agar selamat dari reload. Format: { savedAt, entries }. Cap 500 + TTL 7 hari. */
+   agar selamat dari reload.
+   PENTING: tidak ada TTL. Dulu entri yang "diam" > 7 hari dihapus, sehingga
+   resync menimpa edit offline secara permanen. Dirty set hanya berisi nama
+   koleksi (maks 54) jadi tidak perlu kedaluwarsa sama sekali. */
 const DIRTY_KEY = "isms.dirty";
 const TOMBSTONES_KEY = "isms.tombstones";
-const SYNC_TTL_MS = 7 * 24 * 60 * 60 * 1000;
-const SYNC_CAP = 500;
+/* Cap tombstone PER KOLEKSI (bukan global) supaya satu koleksi besar tidak
+   membuang seluruh koleksi lain. */
+const TOMBSTONE_CAP_PER_COL = 500;
+/* Cap konsisten untuk log aktivitas (dulu 30 di tulis vs 100 di resync ->
+   resync mengisi 100 lalu add pertama memotong balik jadi 30). */
+const ACTIVITIES_CAP = 100;
 
 function loadDirtyPersisted(): string[] {
   try {
     const raw = localStorage.getItem(DIRTY_KEY);
     if (!raw) return [];
-    const parsed = JSON.parse(raw) as { savedAt?: number; entries?: unknown };
+    const parsed = JSON.parse(raw) as { entries?: unknown };
     if (!parsed || typeof parsed !== "object") return [];
-    if (typeof parsed.savedAt === "number" && Date.now() - parsed.savedAt > SYNC_TTL_MS) {
-      try { localStorage.removeItem(DIRTY_KEY); } catch { /* abaikan */ }
-      return [];
-    }
     const entries = Array.isArray(parsed.entries) ? parsed.entries : [];
-    return entries.filter((e): e is string => typeof e === "string").slice(0, SYNC_CAP);
+    return entries.filter((e): e is string => typeof e === "string");
   } catch {
     return [];
   }
@@ -319,9 +322,9 @@ function loadDirtyPersisted(): string[] {
 
 function saveDirtyPersisted(cols: string[]): void {
   try {
-    localStorage.setItem(DIRTY_KEY, JSON.stringify({ savedAt: Date.now(), entries: cols.slice(0, SYNC_CAP) }));
+    localStorage.setItem(DIRTY_KEY, JSON.stringify({ savedAt: Date.now(), entries: cols }));
   } catch {
-    /* storage penuh - abaikan */
+    notifyStorageFull("Antrean sinkronisasi gagal disimpan (penyimpanan penuh)");
   }
 }
 
@@ -330,25 +333,15 @@ function loadTombstonesPersisted(): Map<string, Set<string>> {
   try {
     const raw = localStorage.getItem(TOMBSTONES_KEY);
     if (!raw) return map;
-    const parsed = JSON.parse(raw) as { savedAt?: number; entries?: unknown };
+    const parsed = JSON.parse(raw) as { entries?: unknown };
     if (!parsed || typeof parsed !== "object") return map;
-    if (typeof parsed.savedAt === "number" && Date.now() - parsed.savedAt > SYNC_TTL_MS) {
-      try { localStorage.removeItem(TOMBSTONES_KEY); } catch { /* abaikan */ }
-      return map;
-    }
     const rec = (parsed.entries ?? {}) as Record<string, unknown>;
-    let total = 0;
     for (const [col, ids] of Object.entries(rec)) {
       if (!Array.isArray(ids)) continue;
-      const set = new Set<string>();
-      for (const id of ids) {
-        if (typeof id !== "string") continue;
-        if (total >= SYNC_CAP) break;
-        set.add(id);
-        total += 1;
-      }
-      if (set.size > 0) map.set(col, set);
-      if (total >= SYNC_CAP) break;
+      /* Cap per koleksi: ambil N terakhir (paling baru), bukan N pertama. */
+      const valid = ids.filter((id): id is string => typeof id === "string");
+      if (valid.length === 0) continue;
+      map.set(col, new Set(valid.slice(-TOMBSTONE_CAP_PER_COL)));
     }
   } catch {
     /* abaikan - mulai kosong */
@@ -359,30 +352,25 @@ function loadTombstonesPersisted(): Map<string, Set<string>> {
 function saveTombstonesPersisted(map: Map<string, Set<string>>): void {
   try {
     const entries: Record<string, string[]> = {};
-    let total = 0;
     for (const [col, set] of map) {
-      const ids: string[] = [];
-      for (const id of set) {
-        if (total >= SYNC_CAP) break;
-        ids.push(id);
-        total += 1;
-      }
-      if (ids.length > 0) entries[col] = ids;
-      if (total >= SYNC_CAP) break;
+      const ids = [...set];
+      if (ids.length > 0) entries[col] = ids.slice(-TOMBSTONE_CAP_PER_COL);
     }
     localStorage.setItem(TOMBSTONES_KEY, JSON.stringify({ savedAt: Date.now(), entries }));
   } catch {
-    /* storage penuh - abaikan */
+    notifyStorageFull("Antrean hapus offline gagal disimpan (penyimpanan penuh)");
   }
 }
 
 /* Backup snapshot sebelum resync menimpa koleksi bersih: satu slot per koleksi
-   (isms.backup.<col>, capped last 1). Dipakai pemulihan manual bila BE menimpa. */
+   (isms.backup.<col>, capped last 1). Dipakai pemulihan manual bila BE menimpa.
+   Kegagalan menulis HARUS terlihat - kalau diam-diam, localStorage penuh
+   berarti tidak ada backup sama sekali lalu resync menimpa tanpa jejak. */
 function saveBackup(col: string, rows: StoreItem[]): void {
   try {
     localStorage.setItem(`isms.backup.${col}`, JSON.stringify({ savedAt: Date.now(), rows }));
   } catch {
-    /* storage penuh - abaikan */
+    notifyStorageFull(`Cadangan data ${col} gagal disimpan (penyimpanan penuh) - data lokal bisa tertimpa saat sinkronisasi`);
   }
 }
 const PREFIX: Record<string, string> = {
@@ -582,6 +570,19 @@ function notifyConflict(message: string): void {
   }
 }
 
+/* Toast penyimpanan penuh. Dulu diam-dian (try/catch kosong) - padahal justru
+   saat kuota localStorage habis-lah data lokal hilang tanpa jejak. */
+let storageFullToasted = false;
+function notifyStorageFull(message: string): void {
+  try {
+    window.dispatchEvent(new CustomEvent("isms:toast", { detail: { message, tone: "info" } }));
+    storageFullToasted = true;
+  } catch {
+    /* abaikan */
+  }
+}
+void storageFullToasted;
+
 /* Remote dipakai bila backend dikonfigurasi DAN ada JWT - seluruh CRUD BE wajib
    auth. Tanpa JWT (belum login) operasi berjalan lokal senyap, tanpa semburan 401. */
 function remoteActive(): boolean {
@@ -660,6 +661,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [pendingSync, setPendingSync] = useState<string[]>(() => [...dirtyRef.current]);
   const dataRef = useRef(data);
   dataRef.current = data;
+  /* Re-entrancy guard pushPending: tanpa ini tombol "Sinkronkan" + interval
+     bisa menjalankan dua push bersamaan dan saling menghapus flag. */
+  const pushingRef = useRef(false);
 
   const markDirty = useCallback((col: string) => {
     if (!isBackendConfigured()) return;
@@ -667,10 +671,22 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       dirtyRef.current.add(col);
       setPendingSync([...dirtyRef.current]);
       saveDirtyPersisted([...dirtyRef.current]);
+    } else {
+      /* Sudah dirty. Tetap perbarui persisted: menjamin tidak ada perubahan
+         yang hilang dari localStorage. */
+      saveDirtyPersisted([...dirtyRef.current]);
     }
   }, []);
 
-  const clearDirty = useCallback((col: string) => {
+  /* Hanya bersihkan bila flag TIDAK di-set ulang selama push berjalan.
+     Versi lama clearDirty(col) tanpa snapshot bisa menghapus edit kedua
+     user saat push pertama masih jalan -> lost update permanen. */
+  const clearDirty = useCallback((col: string, sentSnapshot?: Set<string>) => {
+    if (sentSnapshot && dirtyRef.current.has(col) && !sentSnapshot.has(col)) {
+      /* ada perubahan baru selama push - biarkan dirty, jangan bersihkan */
+      saveDirtyPersisted([...dirtyRef.current]);
+      return;
+    }
     if (dirtyRef.current.delete(col)) {
       setPendingSync([...dirtyRef.current]);
       saveDirtyPersisted([...dirtyRef.current]);
@@ -678,12 +694,21 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   }, []);
   /* Tombstone delete: col → Set<id> yang dihapus lokal saat fallback.
      Dipakai pushPending untuk memancarkan DELETE sebelum POST/PATCH.
-     Dipersist ke localStorage (isms.tombstones); cap 500 + TTL 7 hari. */
+     Dipersist ke localStorage (isms.tombstones), cap per koleksi (tanpa TTL). */
   const tombstonesRef = useRef<Map<string, Set<string>>>(loadTombstonesPersisted());
-  const clearTombstones = useCallback((col: string) => {
-    if (tombstonesRef.current.delete(col)) {
-      saveTombstonesPersisted(tombstonesRef.current);
+  const clearTombstones = useCallback((col: string, sentSnapshot?: Set<string>) => {
+    const set = tombstonesRef.current.get(col);
+    /* Hapus hanya id yang benar-benar terkirim; id baru yang masuk saat push
+       berjalan harus tetap tersimpan agar DELETE-nya tidak hilang. */
+    if (set) {
+      if (sentSnapshot) {
+        for (const id of [...set]) if (sentSnapshot.has(id)) set.delete(id);
+      } else {
+        set.clear();
+      }
+      if (set.size === 0) tombstonesRef.current.delete(col);
     }
+    saveTombstonesPersisted(tombstonesRef.current);
   }, []);
   const [branch, setBranchState] = useState<string>(() => {
     // Cabang global di localStorage (migrasi dari sessionStorage, kunci sama).
@@ -763,7 +788,22 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       if (serverActivities !== undefined) {
         const local = prev.activities ?? [];
         const seen = new Set(local.map((r) => r.id));
-        next.activities = [...local, ...serverActivities.filter((r) => !seen.has(r.id))].slice(0, 100);
+        next.activities = [...local, ...serverActivities.filter((r) => !seen.has(r.id))].slice(0, ACTIVITIES_CAP);
+      }
+      /* Buang wbs/team yatim: proyek dihapus di server tidak boleh meninggalkan
+         cache selamanya (versi lama hanya menambah, tidak pernah menghapus). */
+      const liveProjects = new Set(((pulled.projects as StoreItem[] | undefined) ?? []).map((p) => String(p.id)));
+      if (liveProjects.size > 0 && pulled.projects !== undefined) {
+        const wbsNext: Record<string, WbsItem[]> = {};
+        for (const [pid, rows] of Object.entries(prev.wbsByProject ?? {})) {
+          if (liveProjects.has(pid) || dirty.has(`wbs:${pid}`) || dirty.has("wbsByProject")) wbsNext[pid] = rows;
+        }
+        next.wbsByProject = wbsNext;
+        const teamNext: Record<string, string[]> = {};
+        for (const [pid, ids] of Object.entries(prev.teamByProject ?? {})) {
+          if (liveProjects.has(pid) || dirty.has(`team:${pid}`) || dirty.has("teamByProject")) teamNext[pid] = ids;
+        }
+        next.teamByProject = teamNext;
       }
       return next;
     });
@@ -802,14 +842,28 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
   /* Dorong perubahan lokal yang tertunda ke backend: DELETE tombstone dulu,
      lalu tiap baris coba POST, bila 409 (sudah ada) coba PATCH.
-     Bersihkan tombstones+dirty per koleksi bila sukses. */
+     Bersihkan tombstones+dirty per koleksi bila sukses.
+
+     Dua pengaman data-loss:
+     1) Batas BARIS_PER_RUN. Dulu seluruh koleksi di-POST; koleksi >300 baris
+        kena rate-limit 300/menit, retry menumpuk, koleksi tidak pernah keluar
+        dari dirty. Sekarang dipotong dan sisanya dilanjutkan run berikutnya.
+     2) Snapshot tombstone per run: id yang masuk SETELAH run dimulai tidak
+        ikut dihapus, jadi DELETE baru tidak hilang. */
+  const PUSH_ROWS_PER_RUN = 200;
   const pushPending = useCallback(async (): Promise<void> => {
     if (!remoteActive()) return;
     if (!(await isApiCompatible())) return;
+    if (pushingRef.current) return;
+    pushingRef.current = true;
     const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
     const cols = [...dirtyRef.current];
+    try {
     for (const col of cols) {
       try {
+        /* Snapshot flag dirty SEBELUM push: dipakai clearDirty agar edit baru
+           yang masuk saat loop berjalan tidak ikut terhapus. */
+        const dirtyAtStart = new Set(cols);
         if (col === "wbsByProject" || col.startsWith("wbs:")) {
           const entries = Object.entries(dataRef.current.wbsByProject ?? {});
           const targets =
@@ -822,7 +876,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
               body: JSON.stringify({ wbs }),
             });
           }
-          clearDirty(col);
+          clearDirty(col, dirtyAtStart);
           setBackendError(null);
           continue;
         }
@@ -838,21 +892,25 @@ export function StoreProvider({ children }: { children: ReactNode }) {
               body: JSON.stringify({ memberIds }),
             });
           }
-          clearDirty(col);
+          clearDirty(col, dirtyAtStart);
           setBackendError(null);
           continue;
         }
         let ok = true;
-        /* DELETEs dulu agar hapus lokal terpropagasi sebelum upsert survivor. */
+        /* DELETEs dulu agar hapus lokal terpropagasi sebelum upsert survivor.
+           Snapshot id di awal run: id yang masuk setelah ini TIDAK ikut
+           dihapus (memakai set terpisah), agar DELETE baru tidak hilang. */
         const tombstones = tombstonesRef.current.get(col);
+        const sentTombstones = new Set<string>();
         if (tombstones && tombstones.size > 0) {
           for (const id of [...tombstones]) {
             try {
               await remoteRepository(col).remove(id);
             } catch (err) {
-              /* 404 = sudah hilang di BE → anggap sukses; selain itu gagal. */
+              /* 404 = sudah hilang di BE -> anggap sukses; selain itu gagal. */
               if (err instanceof ApiError && err.status === 404) {
                 tombstones.delete(id);
+                sentTombstones.add(id);
                 continue;
               }
               // 409 REFERENCED = server menang (masih dipakai) - lepas
@@ -861,17 +919,25 @@ export function StoreProvider({ children }: { children: ReactNode }) {
               if (err instanceof ApiError && err.status === 409) {
                 notifyConflict(err.message);
                 tombstones.delete(id);
+                sentTombstones.add(id);
                 continue;
               }
               ok = false;
               break;
             }
             tombstones.delete(id);
+            sentTombstones.add(id);
           }
           saveTombstonesPersisted(tombstonesRef.current);
           if (!ok) continue;
         }
-        const rows = ((dataRef.current as unknown as Record<string, StoreItem[]>)[col] ?? []) as StoreItem[];
+        const allRows = ((dataRef.current as unknown as Record<string, StoreItem[]>)[col] ?? []) as StoreItem[];
+        /* Batasi baris per run. Koleksi besar (>300 baris) akan kena rate-limit
+           300/menit; versi lama mengirim SELURUH koleksi lalu retry menumpuk
+           sehingga koleksi tidak pernah keluar dari dirty. Sisa dilanjutkan
+           run berikutnya dan koleksi sengaja TIDAK dibersihkan bila terpotong. */
+        const rows = allRows.slice(0, PUSH_ROWS_PER_RUN);
+        const truncated = allRows.length > rows.length;
         for (const row of rows) {
           const attemptCreate = async (retried: boolean): Promise<"ok" | "stale" | "fail"> => {
             try {
@@ -928,21 +994,48 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           }
         }
         if (ok) {
-          clearTombstones(col);
-          clearDirty(col);
-          setBackendError(null);
+          clearTombstones(col, sentTombstones);
+          /* Koleksi terpotong tetap dirty agar sisa baris dikirim run berikutnya. */
+          if (!truncated) {
+            clearDirty(col, dirtyAtStart);
+            setBackendError(null);
+          }
         }
       } catch {
         /* koleksi ini tetap dirty - coba lagi nanti */
       }
     }
+    } finally {
+      pushingRef.current = false;
+    }
   }, [clearDirty, clearTombstones]);
 
   /* Boot backend-first: bila backend dikonfigurasi dan sudah login (JWT),
-     tarik semua koleksi dari BE; tiap koleksi yang gagal → biarkan seed lokal. */
+     tarik semua koleksi dari BE; tiap koleksi yang gagal → biarkan seed lokal.
+    Jwala boot: coba sinkronkan antrean offline, lalu interval berkala.
+     Dulu hanya tombol manual di AppShell - antrean bisa mengendap lalu hilang. */
   useEffect(() => {
     void resync();
   }, [resync]);
+
+  useEffect(() => {
+    if (backendMode !== "remote") return;
+    if (dirtyRef.current.size === 0) return;
+    /* Jangan tumbles bootstrap: tunggu agar resync awal selesai dulu. */
+    const boot = window.setTimeout(() => { void pushPending(); }, 2500);
+    const onOnline = () => { void pushPending(); };
+    window.addEventListener("online", onOnline);
+    const timer = window.setInterval(() => {
+      if (dirtyRef.current.size === 0) return;
+      if (document.hidden) return;
+      void pushPending();
+    }, 45000);
+    return () => {
+      window.clearTimeout(boot);
+      window.clearInterval(timer);
+      window.removeEventListener("online", onOnline);
+    };
+  }, [backendMode, pushPending]);
 
   const api = useMemo<StoreCtx>(() => {
     const buildActivity = (action: string, target: string, module: string): StoreItem => ({
@@ -956,16 +1049,27 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     });
 
     const pushEntry = (prev: StoreShape, entry: StoreItem): StoreItem[] =>
-      [entry, ...prev.activities].slice(0, 30);
+      [entry, ...prev.activities].slice(0, ACTIVITIES_CAP);
 
     /* Gagal remote → fallback lokal + tandai error + toast sekali per sesi.
        Khusus 403 (mis. butuh peran Direktur): JANGAN tulis lokal / tandai dirty,
        cukup toast alasan dari backend. Kembalikan true bila 403. */
+    /* Klasifikasi error backend.
+       - "recoverable" (false): error jaringan/401/429 →ezi ditulis lokal, nanti disinkron.
+       - "permanent" (true): 403/400/409/422 → TIDAK BOLEH ditulis lokal, dan pemanggil
+         harus diberi tahu (throw) supaya tidak menampilkan "sukses" palsu. */
     const degrade = (err: unknown): boolean => {
       if (err instanceof ApiError && err.status === 403) {
         const reason = err.message || "Akses ditolak - butuh peran yang sesuai";
         setBackendError(reason);
         notifyForbidden(reason);
+        return true;
+      }
+      /* 400/409/422 = validasi/ konstrain/referensi: permanen. Menulis lokal hanya
+         akan menghasilkan data rusak yang memblokir sinkronisasi selamanya. */
+      if (err instanceof ApiError && (err.status === 400 || err.status === 409 || err.status === 422)) {
+        setBackendError(err.message || "Data ditolak server");
+        notifyConflict(err.message || "Data ditolak server");
         return true;
       }
       if (err instanceof ApiError && err.status === 401) {
@@ -1097,7 +1201,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
               notifyConflict(err.message);
               throw err;
             }
-            if (degrade(err)) return;
+            /* 403 = permanen (hak akses). Lempar juga: tanpa ini update() diam-diam
+               kembali tanpa menulis, sementara caller menampilkan "sukses". */
+            if (degrade(err)) throw err;
           }
         }
         markDirty(col as string);
@@ -1123,7 +1229,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
               notifyConflict(err.message);
               throw err;
             }
-            if (degrade(err)) return;
+            /* 403 = permanen. Lempar agar caller tidak menampilkan "hapus berhasil". */
+            if (degrade(err)) throw err;
           }
         }
         /* Fallback lokal: catat tombstone agar DELETE terpropagasi via pushPending. */
@@ -1139,7 +1246,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       },
       log: (action, target, module) => {
         const entry = buildActivity(action, target, module);
-        setData((prev) => ({ ...prev, activities: [entry, ...prev.activities].slice(0, 30) }));
+        setData((prev) => ({ ...prev, activities: [entry, ...prev.activities].slice(0, ACTIVITIES_CAP) }));
         if (remoteActive()) {
           // Best-effort mirror tanpa await - langsung via HTTP (bukan add())
           // agar tidak terjadi rekursi; gagal → tandai dirty agar tidak ter-wipe resync.
