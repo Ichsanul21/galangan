@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
-import { Plus, Factory, ShoppingCart, ClipboardList, Check, X, Undo2, Printer, Pencil, Send, Star, Wallet, Umbrella, Search } from "lucide-react";
+import { Plus, Factory, ShoppingCart, ClipboardList, Check, X, Printer, Send, Star, Wallet, Umbrella, Search } from "lucide-react";
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 import { Card, CardHeader, PageHeader, Badge, KpiCard, Tabs, StatusBadge, Donut, ChartTooltip, Modal, Field, FormGrid, ConfirmModal, toast, EmptyState, SortTh, toggleSort, sortRows, usePager,
-  NumInput, FlowStrip,
+  NumInput,
 } from "../../components/ui";
 import type { SortState } from "../../components/ui";
 import { useBusy } from "../../components/ui";
@@ -877,19 +877,16 @@ export default function Procurement() {
     const st = normPo(po.status);
     const nx = po.poType === "Kecil" ? null : nextLevel(po, APPROVE_PO_LIMIT);
     return (
-      <div className="flex flex-wrap gap-1.5">
+      <div className="flex flex-wrap items-center gap-1.5">
         <button className="btn-secondary text-xs" onClick={() => setPoDetail(po)}>{locale === "en" ? "Detail" : "Detail"}</button>
-        {st === "Draft" && <button className="btn-secondary text-xs" onClick={() => doPoStatus(po, "Diajukan")}>{S.btnAjukan}</button>}
+        {st === "Draft" && <button className="btn-primary text-xs" onClick={() => doPoStatus(po, "Diajukan")}>{S.btnAjukan} - {locale === "en" ? "next" : "lanjut"}</button>}
         {st === "Draft" && (
           <button className="btn-secondary text-xs text-rose-600" aria-label={`${locale === "en" ? "Delete" : "Hapus"} ${po.id}`} onClick={() => setDelPo(po)}>
             {locale === "en" ? "Delete" : "Hapus"}
           </button>
         )}
         {st === "Diajukan" && po.poType === "Kecil" && (
-          <>
-            <button className="btn-secondary text-xs" onClick={() => setConfirmApprove(po)}><Check className="h-3.5 w-3.5" /> {S.btnSetujui}</button>
-            <button className="btn-secondary text-xs text-rose-600" aria-label={S.ariaTolakN.replace("{n}", po.id)} onClick={() => setConfirmRejectPo(po)}><X className="h-3.5 w-3.5" /> {S.btnTolak}</button>
-          </>
+          <button className="btn-primary text-xs" onClick={() => setConfirmApprove(po)}><Check className="h-3.5 w-3.5" /> {S.btnSetujui}</button>
         )}
         {st === "Diajukan" && po.poType !== "Kecil" && (
           <>
@@ -897,38 +894,45 @@ export default function Procurement() {
               const need = needLevels(Number(po.amount || 0), APPROVE_PO_LIMIT);
               const done = apprOf(po);
               return nx
-                ? <button className="btn-primary text-xs" onClick={() => void busy.run(`approve-${po.id}`, () => doApproveLevel(po))} disabled={busy.isBusy(`approve-${po.id}`)}><Check className="h-3.5 w-3.5" /> {S.btnSetujuiNx.replace("{n}", nx)} · {done.length + 1}/{need.length}</button>
+                ? <button className="btn-primary text-xs" onClick={() => void busy.run(`approve-${po.id}`, () => doApproveLevel(po))} disabled={busy.isBusy(`approve-${po.id}`)}><Check className="h-3.5 w-3.5" /> {S.btnSetujuiNx.replace("{n}", nx)} - {done.length + 1}/{need.length}</button>
                 : <span className="text-xs text-steel-400">{S.menungguTahap}</span>;
             })()}
-            <button className="btn-secondary text-xs text-rose-600" aria-label={S.ariaTolakN.replace("{n}", po.id)} onClick={() => setConfirmRejectPo(po)}><X className="h-3.5 w-3.5" /> {S.btnTolak}</button>
           </>
         )}
         {st === "Disetujui" && (
-          <button className="btn-secondary text-xs" onClick={() => doPoStatus(po, "Dikirim")}><Send className="h-3.5 w-3.5" /> {S.btnKirim}</button>
+          <button className="btn-primary text-xs" onClick={() => doPoStatus(po, "Dikirim")}><Send className="h-3.5 w-3.5" /> {S.btnKirim} - {locale === "en" ? "next" : "lanjut"}</button>
         )}
         {(st === "Dikirim" || st === "Diterima Sebagian") && (
-          <>
-            <button className="btn-primary text-xs" onClick={() => openRecv(po)}>{S.btnTerima}</button>
-            {st === "Dikirim" && <button className="btn-secondary text-xs" onClick={() => openRecv(po)}>{S.btnTerimaSebagian}</button>}
-          </>
-        )}
-        {(st === "Disetujui" || st === "Dikirim") && (
-          <button className="btn-secondary text-xs" aria-label={S.ariaAmandemen.replace("{n}", po.id)} onClick={() => { setAmendPo(po); setAmendForm({ name: "", qty: "1", unit: "pcs", price: "", note: "" }); }}>
-            <Pencil className="h-3.5 w-3.5" /> {S.btnAmandemen}
-          </button>
+          <button className="btn-primary text-xs" onClick={() => openRecv(po)}>{S.btnTerima} - {locale === "en" ? "stock in" : "stok masuk"}</button>
         )}
         {st === "Diterima" && !po.evaluated && (
-          <button className="btn-secondary text-xs" aria-label={S.ariaNilaiVendor.replace("{n}", po.id)} onClick={() => { setEvalPo(po); setEvalQ(""); setEvalD(""); setEvalP(""); }}>
+          <button className="btn-primary text-xs" aria-label={S.ariaNilaiVendor.replace("{n}", po.id)} onClick={() => { setEvalPo(po); setEvalQ(""); setEvalD(""); setEvalP(""); }}>
             <Star className="h-3.5 w-3.5" /> {S.btnNilai}
           </button>
         )}
-        {st === "Diterima" && (
-          <button className="btn-secondary text-xs" aria-label={S.ariaRetur.replace("{n}", po.id)} onClick={() => { setRetPo(po); setRetQty(""); setRetNote(""); }}>
-            <Undo2 className="h-3.5 w-3.5" /> {S.btnRetur}
-          </button>
-        )}
-        <button className="btn-secondary text-xs" aria-label={S.ariaCetak.replace("{n}", po.id)} onClick={() => cetakPo(po)}><Printer className="h-3.5 w-3.5" /> {S.btnCetak}</button>
-        {poNext(po.status).length === 0 && st !== "Diterima" && <span className="text-xs text-steel-400">-</span>}
+        <details className="relative">
+          <summary className="btn-secondary cursor-pointer list-none text-xs">{locale === "en" ? "More" : "Lainnya"}</summary>
+          <div className="absolute right-0 z-20 mt-1 flex w-40 flex-col gap-1 rounded-xl border border-steel-200 bg-white p-1.5 shadow-lift">
+            {(st === "Diajukan") && (
+              <button className="rounded-lg px-2 py-1.5 text-left text-xs text-rose-600 hover:bg-steel-50" aria-label={S.ariaTolakN.replace("{n}", po.id)} onClick={() => setConfirmRejectPo(po)}><X className="mr-1 inline h-3.5 w-3.5" />{S.btnTolak}</button>
+            )}
+            {(st === "Dikirim") && (
+              <button className="rounded-lg px-2 py-1.5 text-left text-xs text-steel-600 hover:bg-steel-50" onClick={() => openRecv(po)}>{S.btnTerimaSebagian}</button>
+            )}
+            {(st === "Disetujui" || st === "Dikirim") && (
+              <button className="rounded-lg px-2 py-1.5 text-left text-xs text-steel-600 hover:bg-steel-50" aria-label={S.ariaAmandemen.replace("{n}", po.id)} onClick={() => { setAmendPo(po); setAmendForm({ name: "", qty: "1", unit: "pcs", price: "", note: "" }); }}>
+                {S.btnAmandemen}
+              </button>
+            )}
+            {st === "Diterima" && (
+              <button className="rounded-lg px-2 py-1.5 text-left text-xs text-steel-600 hover:bg-steel-50" aria-label={S.ariaRetur.replace("{n}", po.id)} onClick={() => { setRetPo(po); setRetQty(""); setRetNote(""); }}>
+                {S.btnRetur}
+              </button>
+            )}
+            <button className="rounded-lg px-2 py-1.5 text-left text-xs text-steel-600 hover:bg-steel-50" aria-label={S.ariaCetak.replace("{n}", po.id)} onClick={() => cetakPo(po)}>{S.btnCetak}</button>
+          </div>
+        </details>
+        {poNext(po.status).length === 0 && st !== "Diterima" && st !== "Ditolak" && <span className="text-xs text-steel-400">-</span>}
       </div>
     );
   };
@@ -941,9 +945,19 @@ export default function Procurement() {
         icon={<ShoppingCart className="h-5 w-5" />}
         actions={
           <div className="flex items-center gap-2">
-            {tab === "PO Kecil (Workshop)"
-              ? <button className="btn-primary-gradient" onClick={() => setShowSmall(true)}><Plus className="h-4 w-4" /> {S.btnCreateSmall}</button>
-              : <button className="btn-primary-gradient" onClick={() => { setShowBig(true); }}><Plus className="h-4 w-4" /> {S.btnCreateBig}</button>}
+            {tab === "Vendor" ? (
+              <button className="btn-primary-gradient" onClick={() => setShowVendor(true)}><Plus className="h-4 w-4" /> {S.btnTambahVendor}</button>
+            ) : (
+              <>
+                <button className="btn-primary-gradient" onClick={() => setShowPr(true)}><Plus className="h-4 w-4" /> {locale === "en" ? "Request goods" : "Minta Barang"}</button>
+                {tab === "PO Besar (Kantor)" && (
+                  <button className="btn-secondary text-xs" onClick={() => setShowBig(true)}>{S.btnCreateBig}</button>
+                )}
+                {tab === "PO Kecil (Workshop)" && (
+                  <button className="btn-secondary text-xs" onClick={() => setShowSmall(true)}>{S.btnCreateSmall}</button>
+                )}
+              </>
+            )}
           </div>
         }
       />
@@ -960,15 +974,41 @@ export default function Procurement() {
       <div className="mt-4 card">
         {tab !== "Vendor" && (
           <div className="border-b border-steel-200 px-4 pt-3">
-            <FlowStrip
-              steps={["PR", "RFQ", "PO", "GR"]}
-              current={tab === "PR" ? "PR" : tab === "RFQ" ? "RFQ" : "PO"}
-              ariaLabel={locale === "en" ? "Procurement flow" : "Alur pengadaan"}
-            />
+            <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label={locale === "en" ? "Procurement flow" : "Alur pengadaan"}>
+              {[
+                { id: "PR", no: "1", label: locale === "en" ? "Request" : "Minta", hint: locale === "en" ? "what is needed" : "apa yang dibutuhkan" },
+                { id: "RFQ", no: "2", label: locale === "en" ? "Compare" : "Banding harga", hint: locale === "en" ? "optional under limit" : "opsional di bawah batas" },
+                { id: "PO", no: "3", label: locale === "en" ? "Order" : "Pesan", hint: locale === "en" ? "office / workshop" : "kantor / workshop" },
+                { id: "GR", no: "4", label: locale === "en" ? "Receive" : "Terima", hint: locale === "en" ? "inside Order table" : "di tabel Pesan" },
+              ].map((s, i, arr) => {
+                const active = (tab === "PR" && s.id === "PR") || (tab === "RFQ" && s.id === "RFQ") || ((tab === "PO Besar (Kantor)" || tab === "PO Kecil (Workshop)") && (s.id === "PO" || s.id === "GR"));
+                const go = s.id === "PR" ? "PR" : s.id === "RFQ" ? "RFQ" : s.id === "PO" ? "PO Besar (Kantor)" : "PO Besar (Kantor)";
+                return (
+                  <span key={s.id} className="flex items-center gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => { if (s.id !== "GR") setTab(go); else { setTab("PO Besar (Kantor)"); } }}
+                      aria-current={active ? "step" : undefined}
+                      title={`${s.no}. ${s.label} - ${s.hint}`}
+                      className={`rounded-lg px-2.5 py-1 text-xs font-semibold ${active ? "bg-navy-700 text-white" : "bg-steel-100 text-steel-500 hover:bg-steel-200"}`}
+                    >
+                      {s.no}. {s.label}
+                    </button>
+                    {i < arr.length - 1 && <span aria-hidden className="text-steel-300">→</span>}
+                  </span>
+                );
+              })}
+            </div>
             <p className="py-1.5 text-[11px] text-steel-500">
-              {locale === "en"
-                ? "Flow: PR → RFQ → PO → GR (GR = goods received on PO receipt)"
-                : "Alur: PR → RFQ → PO → GR (GR = barang masuk saat penerimaan PO)"}
+              {tab === "PR" && (locale === "en"
+                ? "Step 1: write what you need. Next: approve, then compare prices or order directly."
+                : "Langkah 1: tulis apa yang dibutuhkan. Berikutnya: setujui, lalu bandingkan harga atau langsung pesan.")}
+              {tab === "RFQ" && (locale === "en"
+                ? "Step 2: collect 3+ vendor quotes. Next: award one winner, a draft order is created automatically."
+                : "Langkah 2: kumpulkan 3+ penawaran vendor. Berikutnya: menangkan satu, draf pesanan dibuat otomatis.")}
+              {(tab === "PO Besar (Kantor)" || tab === "PO Kecil (Workshop)") && (locale === "en"
+                ? "Steps 3-4: approve, send, then click Receive here. Receiving adds stock and records the payable."
+                : "Langkah 3-4: setujui, kirim, lalu klik Terima di tabel ini. Terima menambah stok dan mencatat hutang.")}
             </p>
           </div>
         )}
@@ -1003,7 +1043,7 @@ export default function Procurement() {
           </div>
           {tab === "PO Besar (Kantor)" && (
             <div className="space-y-4">
-              <p className="rounded-lg bg-steel-50 px-3 py-2 text-xs text-steel-500">{S.bigInfo}</p>
+              <p className="rounded-lg bg-steel-50 px-3 py-2 text-xs text-steel-500">{S.bigInfo.replace("{n}", fmtRupiah(PO_KECIL_LIMIT))}</p>
               <div className="overflow-x-auto">
                 <table className="w-full">
                   <thead className="bg-surface sticky top-0 z-10">
@@ -1099,7 +1139,9 @@ export default function Procurement() {
 
           {tab === "PO Kecil (Workshop)" && (
             <div className="space-y-4">
-              <Card className="p-5">
+              <details>
+                <summary className="cursor-pointer rounded-lg bg-steel-50 px-3 py-2 text-xs font-semibold text-steel-600 hover:bg-steel-100">{S.kasT} - {locale === "en" ? "session helper, click to open" : "alat bantu sesi, klik untuk buka"}</summary>
+              <Card className="mt-2 p-5">
                 <CardHeader title={S.kasT} subtitle={S.kasS} />
                 <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-4">
                   <Field label={S.kasSaldo.replace("{n}", bulanIni)}>
@@ -1120,10 +1162,8 @@ export default function Procurement() {
                   </div>
                 </div>
               </Card>
+              </details>
               <div>
-                <div className="mb-3 flex justify-end">
-                  <button className="btn-secondary text-xs" onClick={() => setShowSmall(true)}><Plus className="h-3.5 w-3.5" /> {S.btnCreateSmall}</button>
-                </div>
                 <p className="mb-3 rounded-lg bg-steel-50 px-3 py-2 text-xs text-steel-500">{S.smallInfo.replace("{n}", fmtRupiah(PO_KECIL_LIMIT))}</p>
                 <div className="overflow-x-auto">
                   <table className="w-full">
@@ -1221,8 +1261,8 @@ export default function Procurement() {
                         </table>
                       )}
                     <div className="mt-3 flex flex-wrap gap-1.5">
-                      {(RFQ_NEXT[r.status] ?? []).map((n) => (
-                        <button key={n} className="btn-secondary text-xs" onClick={async () => { try { await update("rfqs", r.id, { status: n }); toast(S.tArrow.replace("{a}", r.id).replace("{b}", n)); } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); } }}>{n}</button>
+                      {(RFQ_NEXT[r.status] ?? []).map((n, i) => (
+                        <button key={n} className={i === 0 ? "btn-primary text-xs" : "btn-secondary text-xs"} onClick={async () => { try { await update("rfqs", r.id, { status: n }); toast(S.tArrow.replace("{a}", r.id).replace("{b}", n)); } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); } }}>{i === 0 ? `${n} - ${locale === "en" ? "next" : "lanjut"}` : n}</button>
                       ))}
                       <button className="btn-secondary text-xs" onClick={() => { setQuoteRfq(r); setQuoteForm({ vendor: "", price: "", eta: "" }); }}>{S.btnInputQuote}</button>
                       {r.status === "Evaluasi" && quotes.length > 0 && (
@@ -1313,7 +1353,7 @@ export default function Procurement() {
                               )}
                               {PR_PENDING.includes(r.status) && (
                                 <>
-                                  <button className="btn-secondary text-xs" onClick={() => approvePr(r, true)}><Check className="h-3.5 w-3.5" /> {S.btnSetujui}</button>
+                                  <button className="btn-primary text-xs" onClick={() => approvePr(r, true)}><Check className="h-3.5 w-3.5" /> {S.btnSetujui}</button>
                                   <button className="btn-secondary text-xs text-rose-600" aria-label={S.ariaTolakN.replace("{n}", r.id)} onClick={() => approvePr(r, false)}><X className="h-3.5 w-3.5" /> {S.btnTolak}</button>
                                 </>
                               )}
