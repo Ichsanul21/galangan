@@ -493,7 +493,17 @@ export default function Finance() {
         .then(() => {
           log("invoice jatuh tempo otomatis", `${r.id} → Terlambat`, "Keuangan");
         })
-        .catch(() => {});
+        /* .catch(() => {}) menelan kegagalan: invoice tetap "Belum Dibayar"
+           padahal sudah lewat jatuh tempo, dan tidak ada yang tahu kenapa
+           saat backend menolak (403) atau sedang offline. Dicatat agar
+           bisa ditindaklanjuti. */
+        .catch((err) => {
+          log(
+            "gagal menandai invoice terlambat",
+            `${r.id} · ${err instanceof Error ? err.message : String(err)}`,
+            "Keuangan",
+          );
+        });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [data.invoices]);
