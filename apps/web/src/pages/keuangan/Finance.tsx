@@ -34,6 +34,7 @@ import {
   NumInput,
 } from "../../components/ui";
 import type { SortState } from "../../components/ui";
+import { useBusy } from "../../components/ui";
 import { n_fin } from "../../i18n/n_fin";
 import { useT } from "../../i18n/LanguageContext";
 import { useStore } from "../../data/store";
@@ -298,6 +299,7 @@ const COA = (rows: StoreItem[]): { kode: string; akun: string; tipe: string; dk:
 const nlOf = (kode: string): { d: number; k: number } => NL_EXCEL[kode] ?? { d: 0, k: 0 };
 
 export default function Finance() {
+  const busy = useBusy();
   const { data, add, update, remove, log, branch, inBranch } = useStore();
   const { locale } = useT();
   const S = n_fin[locale];
@@ -550,6 +552,9 @@ export default function Finance() {
   // Hapus via ConfirmModal + daftar pemakai (blokir bila dipakai).
   const [delCoa, setDelCoa] = useState<StoreItem | null>(null);
   const [delAsset, setDelAsset] = useState<StoreItem | null>(null);
+  // Hapus jurnal Draft + ubah aset (susut dihitung ulang dgn tarif fiskal yg sama).
+  const [delJu, setDelJu] = useState<StoreItem | null>(null);
+  const [astEdit, setAstEdit] = useState<StoreItem | null>(null);
 
   const KAS_REKENING = coaRows.filter((c) => /^(1-11|1-12)/.test(String(c.kode)) && String(c.dk) !== "-");
   const kasSaldo = useMemo(() => {
@@ -1379,6 +1384,44 @@ export default function Finance() {
     } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); }
   };
 
+  // --- Aset: ubah harta (nama/kelompok/periode/nilai/metode), susut dihitung ulang ---
+  const openAstEdit = (a: StoreItem) => {
+    setAstEdit(a);
+    setAstForm({
+      nama: String(a.nama ?? ""),
+      kelompok: String(a.kelompok ?? "2"),
+      bulan: String(a.bulan ?? ""),
+      tahun: String(a.tahun ?? ""),
+      nilai: String(a.nilai ?? ""),
+      metode: String(a.metode ?? "GL"),
+    });
+    setShowAst(true);
+  };
+
+  const closeAst = () => {
+    setShowAst(false);
+    setAstEdit(null);
+    setAstForm({ nama: "", kelompok: "2", bulan: "", tahun: "", nilai: "", metode: "GL" });
+  };
+
+  const saveAstEdit = async () => {
+    if (!astEdit) return;
+    if (!astForm.nama.trim()) { toast(S.assetNameRequired, "info"); return; }
+    if (!num(astForm.nilai) || num(astForm.nilai) <= 0) { toast(S.assetValuePositive, "info"); return; }
+    const tarif = AST_TARIF[astForm.kelompok] ?? 12.5;
+    const susutTahun = Math.round((num(astForm.nilai) * tarif) / 100);
+    try {
+      await update("assets", String(astEdit.id), {
+        nama: astForm.nama.trim(), kelompok: astForm.kelompok, bulan: astForm.bulan.trim() || "-",
+        tahun: astForm.tahun.trim() || today.slice(0, 4), nilai: num(astForm.nilai),
+        sisaAwal: num(astForm.nilai), susutTahun, metode: astForm.metode || "GL",
+      });
+      log("mengubah aset", `${astEdit.id} · ${astForm.nama.trim()}`, "Keuangan");
+      toast(S.assetAdded.replace("{a}", astForm.nama.trim()).replace("{b}", String(tarif)));
+      closeAst();
+    } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); }
+  };
+
   // --- Laba Rugi ala sheet LR: kelompok dari NL per kode akun ---
   const lrRows = useMemo(() => {
     const amtD = (kode: string): number => nlOf(kode).d;
@@ -1957,7 +2000,7 @@ export default function Finance() {
                                       : next === "Disetujui" ? S.approveNote
                                       : S.moveTo.replace("{a}", next)
                                     }
-                                    onClick={() => stepInvoice(inv, next)}
+                                    onClick={() => void busy.run(`stepInvoice-${inv.id}-${next}`, () => stepInvoice(inv, next))} disabled={busy.isBusy(`stepInvoice-${inv.id}-${next}`)}
                                   >
                                     {next === "Lunas" ? S.markPaid : next}
                                   </button>
@@ -2761,7 +2804,7 @@ export default function Finance() {
               <CardHeader
                 title={S.assetTitle}
                 subtitle={S.assetSub}
-                action={<button className="btn-primary text-xs" onClick={() => setShowAst(true)}>{S.addAset}</button>}
+                action={<button className="btn-primary text-xs" onClick={() => { setAstEdit(null); setAstForm({ nama: "", kelompok: "2", bulan: "", tahun: "", nilai: "", metode: "GL" }); setShowAst(true); }}>{S.addAset}</button>}
               />
               <div className="overflow-x-auto">
                 <table className="w-full">
@@ -2805,7 +2848,10 @@ export default function Finance() {
                         <td className="td font-mono text-[11px] text-steel-600">{akum}</td>
                         <td className="td">
                           {!seed && (
-                            <button className="btn-secondary px-2 py-1 text-[11px] text-rose-600" onClick={() => setDelAsset(a)}>{S.deleteBtn}</button>
+                            <div className="flex gap-1">
+                              <button className="btn-secondary px-2 py-1 text-[11px]" onClick={() => openAstEdit(a)}>{S.editBtn}</button>
+                              <button className="btn-secondary px-2 py-1 text-[11px] text-rose-600" onClick={() => setDelAsset(a)}>{S.deleteBtn}</button>
+                            </div>
                           )}
                         </td>
                       </tr>
@@ -2855,6 +2901,9 @@ export default function Finance() {
                         <td className="td">
                           {String(j.status) !== "Void" && (
                             <button className="btn-secondary px-2 py-1 text-[11px] text-rose-600" onClick={async () => { try { await update("journals", String(j.id), { status: "Void" }); log("mem-void jurnal", String(j.id), "Keuangan"); toast(S.voided.replace("{a}", j.id)); } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); } }}>{S.voidBtn}</button>
+                          )}
+                          {String(j.status) === "Draft" && (
+                            <button className="btn-secondary ml-1 px-2 py-1 text-[11px] text-rose-600" onClick={() => setDelJu(j)}>{S.deleteBtn}</button>
                           )}
                         </td>
                       </tr>
@@ -2981,7 +3030,7 @@ export default function Finance() {
       </div>
 
       <Modal open={showInv} onClose={() => setShowInv(false)} title={S.createInvoice} subtitle={S.newInvoiceSub} wide
-        footer={<><button className="btn-secondary" onClick={() => setShowInv(false)}>{S.cancelBtn}</button><button className="btn-primary" onClick={saveInvoice}>{S.publishDraft}</button></>}>
+        footer={<><button className="btn-secondary" onClick={() => setShowInv(false)}>{S.cancelBtn}</button><button className="btn-primary" onClick={() => void busy.run("saveInvoice", saveInvoice)} disabled={busy.isBusy("saveInvoice")}>{S.publishDraft}</button></>}>
         <div className="space-y-3">
           <p className="rounded-lg bg-surface px-3 py-2 text-xs text-steel-600">{S.previewNo} <strong className="font-mono text-navy-900">{invPreview}</strong> {S.previewType.replace("{a}", invForm.billingType)}{invTotal > approveThreshold ? <span className="ml-2"><Badge tone="amber">{S.needDirectorApprove}</Badge></span> : ""}</p>
           <FormGrid>
@@ -3113,7 +3162,7 @@ export default function Finance() {
       </Modal>
 
       <Modal open={payTarget !== null} onClose={() => setPayTarget(null)} title={S.markPaidTitle.replace("{a}", payTarget?.id ?? "")} subtitle={`${String(payTarget?.client ?? "")} · ${fmtRupiah(num(payTarget?.amount))}`}
-        footer={<><button className="btn-secondary" onClick={() => setPayTarget(null)}>{S.cancelBtn}</button><button className="btn-primary" onClick={confirmBuktiInv}>{S.saveProofPaid}</button></>}>
+        footer={<><button className="btn-secondary" onClick={() => setPayTarget(null)}>{S.cancelBtn}</button><button className="btn-primary" onClick={() => void busy.run("confirmBuktiInv", confirmBuktiInv)} disabled={busy.isBusy("confirmBuktiInv")}>{S.saveProofPaid}</button></>}>
         <div className="space-y-3">
           <FormGrid>
             <Field label={S.fPayDate}><input type="date" required className="input" value={proof.date} onChange={(e) => setProofField("date", e.target.value)} /></Field>
@@ -3139,7 +3188,7 @@ export default function Finance() {
       />
 
       <Modal open={apTarget !== null} onClose={() => setApTarget(null)} title={S.apPayTitle.replace("{a}", !num(apTarget?.pay1) ? "I" : "II").replace("{b}", String(apTarget?.po ?? ""))} subtitle={S.apPaySub.replace("{a}", String(apTarget?.v ?? "")).replace("{b}", fmtRupiah(Math.max(0, num(apTarget?.amt) - num(apTarget?.pay1) - num(apTarget?.pay2))))}
-        footer={<><button className="btn-secondary" onClick={() => setApTarget(null)}>{S.cancelBtn}</button><button className="btn-primary" onClick={confirmBuktiAp}>{S.saveProofPay}</button></>}>
+        footer={<><button className="btn-secondary" onClick={() => setApTarget(null)}>{S.cancelBtn}</button><button className="btn-primary" onClick={() => void busy.run("confirmBuktiAp", confirmBuktiAp)} disabled={busy.isBusy("confirmBuktiAp")}>{S.saveProofPay}</button></>}>
         <div className="space-y-3">
           <Field label={S.fStageAmount} hint={!num(apTarget?.pay1) ? S.apPhase1 : S.apPhase2.replace("{a}", fmtRupiah(num(apTarget?.pay1)))}>
             <NumInput min={0} className="input" value={apPayAmt} onChange={(e) => setApPayAmt(e.target.value)} placeholder={S.stagePh} />
@@ -3400,8 +3449,8 @@ export default function Finance() {
         </div>
       </Modal>
 
-      <Modal open={showAst} onClose={() => setShowAst(false)} title={S.astTitle} subtitle={S.astSub}
-        footer={<><button className="btn-secondary" onClick={() => setShowAst(false)}>{S.cancelBtn}</button><button className="btn-primary" onClick={saveAst}>{S.saveBtn}</button></>}>
+      <Modal open={showAst} onClose={closeAst} title={astEdit ? `${S.editBtn} ${String(astEdit.nama ?? astEdit.id)}` : S.astTitle} subtitle={S.astSub}
+        footer={<><button className="btn-secondary" onClick={closeAst}>{S.cancelBtn}</button><button className="btn-primary" onClick={astEdit ? saveAstEdit : saveAst}>{S.saveBtn}</button></>}>
         <div className="space-y-3">
           <FormGrid>
             <Field label={S.fAssetName}><input className="input" value={astForm.nama} onChange={(e) => setAstForm({ ...astForm, nama: e.target.value })} placeholder={S.assetNamePh} /></Field>
@@ -3491,6 +3540,28 @@ export default function Finance() {
           if (usedBy.length > 0) { toast(`Hapus diblokir - ${delAsset.nama} dipakai di: ${usedBy.join(", ")}`, "info"); return; }
           try { await remove("assets", String(delAsset.id)); log("menghapus aset", String(delAsset.nama), "Keuangan"); toast(S.assetDeleted.replace("{a}", String(delAsset.nama))); setDelAsset(null); }
           catch (e) { toast(e instanceof Error ? e.message : S.assetDeleteFail, "info"); }
+        }}
+      />
+
+      <ConfirmModal
+        open={delJu !== null}
+        title={delJu ? `Hapus jurnal ${String(delJu.dokumen ?? delJu.id)}?` : ""}
+        desc={(() => {
+          const used = delJu ? findUsages(data, "journals", String(delJu.id)) : [];
+          const base = delJu ? `Jurnal ${String(delJu.dokumen ?? "")} · ${String(delJu.uraian ?? "")} status Draft akan dihapus permanen.` : "";
+          return used.length > 0 ? `${base} Dipakai di: ${used.join(", ")}. Penghapusan diblokir.` : base;
+        })()}
+        confirmLabel={delJu && findUsages(data, "journals", String(delJu.id)).length > 0 ? "Diblokir - masih dipakai" : S.deleteBtn}
+        danger
+        confirmDisabled={delJu ? findUsages(data, "journals", String(delJu.id)).length > 0 : false}
+        onCancel={() => setDelJu(null)}
+        onConfirm={async () => {
+          if (!delJu) return;
+          if (String(delJu.status) !== "Draft") { toast("Hanya jurnal Draft yang bisa dihapus", "info"); return; }
+          const usedBy = findUsages(data, "journals", String(delJu.id));
+          if (usedBy.length > 0) { toast(`Hapus diblokir - dipakai di: ${usedBy.join(", ")}`, "info"); return; }
+          try { await remove("journals", String(delJu.id)); log("menghapus jurnal", String(delJu.dokumen ?? delJu.id), "Keuangan"); toast(`Jurnal ${String(delJu.dokumen ?? delJu.id)} dihapus`); setDelJu(null); }
+          catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); }
         }}
       />
     </div>

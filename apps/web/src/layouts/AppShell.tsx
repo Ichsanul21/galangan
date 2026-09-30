@@ -1,5 +1,5 @@
-import { useState, useMemo, useEffect, type ComponentType } from "react";
-import { NavLink, Outlet, Link, useNavigate } from "react-router-dom";
+import { useState, useMemo, useEffect, useRef, type ComponentType } from "react";
+import { NavLink, Outlet, Link, useNavigate, useLocation } from "react-router-dom";
 import {
   LayoutDashboard,
   Anchor,
@@ -49,7 +49,7 @@ import { getJwt, isBackendConfigured } from "../services/http";
 export default function AppShell() {
   const { user, logout } = useAuth();
   const { t, locale, setLocale } = useT();
-  const { data, reset, branch, setBranch, backendMode, backendError, pendingSync, pushPending } = useStore();
+  const { data, reset, branch, setBranch, backendMode, backendError, pendingSync, pushPending, resync } = useStore();
   const S = n_misc[locale];
   const navigate = useNavigate();
 
@@ -353,6 +353,27 @@ export default function AppShell() {
   }, [query, data.projects, data.vessels, data.invoices, data.purchaseOrders, data.quotations, data.employees]);
 
   const hits: Hit[] = remoteSearchable && remoteHits !== null ? remoteHits : localHits;
+
+  /* Refetch per modul: tiap pindah route, tarik ulang dari backend bila online
+     dan resync terakhir >60 dtk. Dilewati saat mengetik di pencarian global,
+     saat modal/dropdown terbuka, atau tab tersembunyi - resync menimpa draft
+     tabel. Throttle via ref timestamp. */
+  const location = useLocation();
+  const lastResyncRef = useRef(0);
+  const qRef = useRef(q);
+  qRef.current = q;
+  const modalOpenRef = useRef(false);
+  modalOpenRef.current = profileOpen || notifOpen || userOpen;
+  useEffect(() => {
+    if (document.hidden) return;
+    if (backendMode !== "remote") return;
+    if (qRef.current.trim() !== "") return;
+    if (modalOpenRef.current) return;
+    const now = Date.now();
+    if (now - lastResyncRef.current < 60000) return;
+    lastResyncRef.current = now;
+    void resync();
+  }, [location.pathname, backendMode, resync]);
 
   const renderSidebar = (mini: boolean) => (
     <div className="flex h-full flex-col bg-navy-900 text-white">

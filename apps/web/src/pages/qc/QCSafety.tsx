@@ -181,6 +181,10 @@ export default function QCSafety() {
   const [inspDetail, setInspDetail] = useState<StoreItem | null>(null);
   const [ncrDetail, setNcrDetail] = useState<StoreItem | null>(null);
   const [dueDraft, setDueDraft] = useState("");
+  // Ubah uraian NCR (Terbuka saja) + ubah drawing (title/holder).
+  const [issueDraft, setIssueDraft] = useState("");
+  const [drwEdit, setDrwEdit] = useState<StoreItem | null>(null);
+  const [drwEditForm, setDrwEditForm] = useState({ title: "", holder: "" });
   const [showNcr, setShowNcr] = useState(false);
   const [ncrForm, setNcrForm] = useState({ project: "", vessel: "", type: "Pengelasan", severity: "Minor", issue: "", due: "", causeCat: "Manusia", causeNote: "", branch: "", penerima: "" });
   const [capaFor, setCapaFor] = useState<StoreItem | null>(null);
@@ -510,6 +514,7 @@ export default function QCSafety() {
   const openDetail = (n: StoreItem) => {
     setNcrDetail(n);
     setDueDraft(String(n.due ?? ""));
+    setIssueDraft(String(n.issue ?? ""));
     setReworkDraft({ hours: String(n.reworkHours ?? ""), rate: String(n.reworkRate ?? ""), material: String(n.reworkMaterial ?? "") });
   };
 
@@ -571,11 +576,42 @@ export default function QCSafety() {
   const saveDue = async () => {
     try {
     if (!ncrDetail) return;
+    if (String(ncrDetail.status) !== "Terbuka") { toast(locale === "en" ? "Only Open NCRs can change due date" : "Hanya NCR Terbuka yang bisa ubah tenggat", "info"); return; }
     if (!dueDraft) { toast(S.tCapaWajib, "info"); return; }
     await update("ncr", ncrDetail.id, { due: dueDraft });
     log("memperbarui tenggat CAPA", ncrDetail.id, "QC");
     setNcrDetail({ ...ncrDetail, due: dueDraft });
     toast(S.tCapaUpdate);
+    } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); }
+  };
+
+  // Ubah uraian NCR — HANYA bila status Terbuka.
+  const saveIssue = async () => {
+    try {
+    if (!ncrDetail) return;
+    if (String(ncrDetail.status) !== "Terbuka") { toast(locale === "en" ? "Only Open NCRs can be edited" : "Hanya NCR Terbuka yang bisa diubah", "info"); return; }
+    if (!issueDraft.trim()) { toast(S.tNcrWajib, "info"); return; }
+    await update("ncr", ncrDetail.id, { issue: issueDraft.trim() });
+    log("mengubah uraian NCR", ncrDetail.id, "QC");
+    setNcrDetail({ ...ncrDetail, issue: issueDraft.trim() });
+    toast(S.tCapaUpdate);
+    } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); }
+  };
+
+  // Ubah drawing: title + holder (revisi/status tetap lewat alur).
+  const openDrwEdit = (d: StoreItem) => {
+    setDrwEdit(d);
+    setDrwEditForm({ title: String(d.title ?? ""), holder: String(d.holder ?? "") });
+  };
+
+  const saveDrwEdit = async () => {
+    try {
+    if (!drwEdit) return;
+    if (!drwEditForm.title.trim() || !drwEditForm.holder.trim()) { toast(S.tDrwWajib, "info"); return; }
+    await update("drawings", drwEdit.id, { title: drwEditForm.title.trim(), holder: drwEditForm.holder.trim(), updated: todayISO() });
+    log("mengubah drawing", `${drwEdit.id} · ${drwEditForm.title.trim()} · ${drwEditForm.holder.trim()}`, "QC");
+    toast(S.tDrwDaftar.replace("{n}", drwEdit.id));
+    setDrwEdit(null);
     } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); }
   };
 
@@ -950,6 +986,7 @@ export default function QCSafety() {
                       <button className="btn-secondary text-xs" onClick={() => setExpandedDrw(expandedDrw === d.id ? null : d.id)}>
                         {expandedDrw === d.id ? S.btnTutupRiwayat : S.btnRiwayat}
                       </button>
+                      <button className="btn-secondary text-xs" onClick={() => openDrwEdit(d)}>{S.btnEdit}</button>
                       <button className="btn-secondary text-xs" onClick={() => reviseDrawing(d)}>{S.revisiKe.replace("{n}", nextRev(String(d.revision ?? "A")))}</button>
                       {DRAW_FLOW[DRAW_FLOW.indexOf(String(d.status)) + 1] && (
                         <button className="btn-primary text-xs" onClick={() => stepDrawing(d, DRAW_FLOW[DRAW_FLOW.indexOf(String(d.status)) + 1])}>
@@ -1344,7 +1381,7 @@ export default function QCSafety() {
             </div>
             <div className="mt-3 border-t border-steel-100 pt-3">
               <div className="flex items-center justify-between gap-2">
-                <p className="text-xs font-semibold text-steel-500">Owner acceptance</p>
+                <p className="text-xs font-semibold text-steel-500">{S.ownerAcceptTitle}</p>
                 {ncrDetail.acceptedAt ? <Badge tone="green">Diterima {String(ncrDetail.acceptedBy ?? "")} · {fmtTanggal(String(ncrDetail.acceptedAt))}</Badge> : <Badge tone="gray">Belum diterima</Badge>}
               </div>
               {!ncrDetail.acceptedAt && isClient && (
@@ -1371,7 +1408,15 @@ export default function QCSafety() {
                 );
               })()}
             </div>
-            {ncrDetail.status !== "Tertutup" && (
+            {ncrDetail.status === "Terbuka" && (
+              <div className="mt-3 space-y-2">
+                <Field label={S.dlUraian}>
+                  <textarea className="input" rows={3} value={issueDraft} onChange={(e) => setIssueDraft(e.target.value)} />
+                </Field>
+                <button className="btn-secondary text-xs whitespace-nowrap" onClick={saveIssue}>{locale === "en" ? "Save description" : "Simpan uraian"}</button>
+              </div>
+            )}
+            {ncrDetail.status === "Terbuka" && (
               <div className="mt-3 flex gap-2">
                 <input type="date" className="input flex-1" value={dueDraft} onChange={(e) => setDueDraft(e.target.value)} aria-label={S.ariaTenggat} />
                 <button className="btn-secondary text-xs whitespace-nowrap" onClick={saveDue}>{S.btnSimpanTenggat}</button>
@@ -1452,7 +1497,7 @@ export default function QCSafety() {
       <Modal open={capaFor !== null} onClose={() => setCapaFor(null)} title={capaFor ? `CAPA ${String(capaFor.id)}` : ""} subtitle="Wajib: tindakan korektif + PIC (foto URL opsional)"
         footer={<><button className="btn-secondary" onClick={() => setCapaFor(null)}>{S.btnBatal}</button><button className="btn-primary" onClick={saveCapa}>Simpan & Proses ke Dalam Perbaikan</button></>}>
         <div className="space-y-3">
-          <Field label="Tindakan korektif (corrective)"><textarea className="input" rows={3} value={capaForm.corrective} onChange={(e) => setCapaForm({ ...capaForm, corrective: e.target.value })} placeholder="Cth: gerinda ulang + las ulang seam 4, WPS-07" /></Field>
+          <Field label={S.fCorrective}><textarea className="input" rows={3} value={capaForm.corrective} onChange={(e) => setCapaForm({ ...capaForm, corrective: e.target.value })} placeholder="Cth: gerinda ulang + las ulang seam 4, WPS-07" /></Field>
           <FormGrid>
             <Field label="PIC perbaikan"><input className="input" value={capaForm.pic} onChange={(e) => setCapaForm({ ...capaForm, pic: e.target.value })} placeholder="Nama PIC" /></Field>
             <Field label="Foto/bukti URL (opsional)">
@@ -1556,6 +1601,15 @@ export default function QCSafety() {
               {branchCities.map((c) => <option key={c} value={c}>{c}</option>)}
             </select>
           </Field>
+        </div>
+      </Modal>
+
+      {/* Modal ubah drawing (title + holder) */}
+      <Modal open={drwEdit !== null} onClose={() => setDrwEdit(null)} title={drwEdit ? `${S.btnEdit} ${drwEdit.id}` : ""} subtitle={drwEdit ? `${locale === "en" ? "Rev" : "Rev"} ${String(drwEdit.revision)}` : ""}
+        footer={<><button className="btn-secondary" onClick={() => setDrwEdit(null)}>{S.btnBatal}</button><button className="btn-primary" onClick={saveDrwEdit}>{S.btnSimpan}</button></>}>
+        <div className="space-y-3">
+          <Field label={S.fJudulDrw}><input className="input" value={drwEditForm.title} onChange={(e) => setDrwEditForm({ ...drwEditForm, title: e.target.value })} placeholder={S.phJudulDrw} /></Field>
+          <Field label={S.fHolder}><input className="input" value={drwEditForm.holder} onChange={(e) => setDrwEditForm({ ...drwEditForm, holder: e.target.value })} placeholder={S.phHolder} /></Field>
         </div>
       </Modal>
 

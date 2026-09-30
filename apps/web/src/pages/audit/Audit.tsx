@@ -41,7 +41,7 @@ interface StoreItemLike {
 
 export default function Audit() {
   const { data } = useStore();
-  const { locale } = useT();
+  const { t, locale } = useT();
   const S = n_misc[locale];
   const [params] = useSearchParams();
   const [q, setQ] = useState(() => params.get("actor") ?? "");
@@ -141,7 +141,7 @@ export default function Audit() {
   return (
     <div>
       <PageHeader
-        title="Audit Trail"
+        title={t.nav.audit}
         subtitle={sumber === "Server" && remote ? S.auSubtitleServer : S.auSubtitleLocal}
         icon={<History className="h-5 w-5" />}
         actions={

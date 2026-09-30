@@ -20,6 +20,7 @@ import {
 import type { SortState } from "../../components/ui";
 import { FilterPopover } from "../../components/FilterPopover";
 import { useStore } from "../../data/store";
+import { findUsages } from "../../utils/usages";
 import type { StoreItem } from "../../data/store";
 import { fmtJumlah, fmtTanggal, todayISO } from "../../utils/format";
 import { useT } from "../../i18n/LanguageContext";
@@ -67,7 +68,7 @@ function otStatusOf(a: StoreItem): string {
 }
 
 export default function Absensi() {
-  const { data, add, update, log, branch, setBranch, inBranch } = useStore();
+  const { data, add, update, remove, log, branch, setBranch, inBranch } = useStore();
   const { locale } = useT();
   const S = n_misc[locale];
   const [tab, setTab] = useState("Catat");
@@ -78,6 +79,8 @@ export default function Absensi() {
   const [rows, setRows] = useState<Record<string, CatatRow>>({});
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [dupeCount, setDupeCount] = useState(0);
+  // Hapus baris absensi via ConfirmModal + daftar pemakai.
+  const [delAtt, setDelAtt] = useState<StoreItem | null>(null);
 
   /* ---------- rekap ---------- */
   const [month, setMonth] = useState(todayISO().slice(0, 7));
@@ -480,6 +483,7 @@ export default function Absensi() {
                         <SortTh label={S.sortOvertimeShort} sortKey="lembur" sort={sort3} onSort={(k) => setSort3((s) => toggleSort(s, k))} />
                         <SortTh label={S.sortApproval} sortKey="ot" sort={sort3} onSort={(k) => setSort3((s) => toggleSort(s, k))} />
                         <SortTh label={S.sortNote} sortKey="ket" sort={sort3} onSort={(k) => setSort3((s) => toggleSort(s, k))} />
+                        <th className="th">{locale === "en" ? "Actions" : "Aksi"}</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-steel-100">
@@ -522,6 +526,11 @@ export default function Absensi() {
                           <td className="td">
                             {a.status === "Hadir" && isLate(String(a.checkIn), String(a.shift ?? "")) ? <Badge tone="red">{S.lateBadge}</Badge> : <span className="text-xs text-steel-400">-</span>}
                           </td>
+                          <td className="td">
+                            <button className="text-sm font-semibold text-rose-600 hover:underline" onClick={() => setDelAtt(a)}>
+                              {locale === "en" ? "Delete" : "Hapus"}
+                            </button>
+                          </td>
                         </tr>
                       ))}
                     </tbody>
@@ -541,6 +550,37 @@ export default function Absensi() {
         confirmLabel={S.confirmUpdate}
         onCancel={() => setConfirmOpen(false)}
         onConfirm={() => void persist(true)}
+      />
+      <ConfirmModal
+        open={delAtt !== null}
+        title={delAtt ? (locale === "en" ? `Delete attendance ${delAtt.id}?` : `Hapus absensi ${delAtt.id}?`) : ""}
+        desc={(() => {
+          if (!delAtt) return "";
+          const used = findUsages(data, "attendance", String(delAtt.id));
+          const base = locale === "en"
+            ? `Attendance ${empNameOf(String(delAtt.employeeId))} · ${fmtTanggal(String(delAtt.date))} · ${String(delAtt.shift)} (${String(delAtt.status)}) will be permanently deleted.`
+            : `Absensi ${empNameOf(String(delAtt.employeeId))} · ${fmtTanggal(String(delAtt.date))} · ${String(delAtt.shift)} (${String(delAtt.status)}) akan dihapus permanen.`;
+          return used.length > 0
+            ? (locale === "en" ? `${base} Used in: ${used.join(", ")}. Deletion blocked.` : `${base} Dipakai di: ${used.join(", ")}. Penghapusan diblokir.`)
+            : base;
+        })()}
+        confirmLabel={delAtt && findUsages(data, "attendance", String(delAtt.id)).length > 0
+          ? (locale === "en" ? "Blocked - still in use" : "Diblokir - masih dipakai")
+          : (locale === "en" ? "Delete" : "Hapus")}
+        danger
+        confirmDisabled={delAtt ? findUsages(data, "attendance", String(delAtt.id)).length > 0 : false}
+        onCancel={() => setDelAtt(null)}
+        onConfirm={async () => {
+          if (!delAtt) return;
+          const usedBy = findUsages(data, "attendance", String(delAtt.id));
+          if (usedBy.length > 0) { toast(locale === "en" ? `Delete blocked - used in: ${usedBy.join(", ")}` : `Hapus diblokir - dipakai di: ${usedBy.join(", ")}`, "info"); return; }
+          try {
+            await remove("attendance", String(delAtt.id));
+            log("menghapus absensi", `${delAtt.id}`, "Absensi");
+            toast(locale === "en" ? `Attendance ${delAtt.id} deleted` : `Absensi ${delAtt.id} dihapus`);
+          } catch (e) { toast(e instanceof Error ? e.message : (locale === "en" ? "Delete failed" : "Gagal menghapus"), "info"); }
+          setDelAtt(null);
+        }}
       />
     </div>
   );

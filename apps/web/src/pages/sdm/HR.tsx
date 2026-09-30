@@ -25,8 +25,10 @@ import {
   SecureImg,
 } from "../../components/ui";
 import type { SortState } from "../../components/ui";
+import { useBusy } from "../../components/ui";
 import { FilterPopover } from "../../components/FilterPopover";
 import { useStore } from "../../data/store";
+import { findUsages } from "../../utils/usages";
 import type { StoreItem } from "../../data/store";
 import { activeEmployeeTrend, certifiedTrend, certExpireTrend, employeeTrend } from "../../data";
 import { fmtTanggal, todayISO } from "../../utils/format";
@@ -194,7 +196,8 @@ const emptyEmpForm = () => ({
 });
 
 export default function HR() {
-  const { data, add, update, log, branch, setBranch, inBranch } = useStore();
+  const busy = useBusy();
+  const { data, add, update, remove, log, branch, setBranch, inBranch } = useStore();
   const { locale } = useT();
   const S = n_qc[locale];
   const modAlert = useModuleAlert("sdm");
@@ -217,6 +220,7 @@ export default function HR() {
 
   /* ---------- cuti ---------- */
   const [showLeave, setShowLeave] = useState(false);
+  const [leaveEditId, setLeaveEditId] = useState<string | null>(null);
   const [leaveForm, setLeaveForm] = useState({ employeeId: "", type: "Tahunan", from: todayISO(), to: todayISO(), note: "", fileUrl: "" });
   const [rejectTarget, setRejectTarget] = useState<StoreItem | null>(null);
 
@@ -236,6 +240,10 @@ export default function HR() {
   const [suratForm, setSuratForm] = useState({ employeeId: "", jenis: "SP 1", isi: "", tanggal: todayISO() });
   const [arsipSurat, setArsipSurat] = useDraftState<StoreItem[]>("isms.draft.hr.arsipSurat", []);
   const [suratPreviewFor, setSuratPreviewFor] = useState<StoreItem | null>(null);
+  // Hapus karyawan via ConfirmModal + daftar pemakai (blokir bila dipakai slip/absensi/cuti).
+  const [delEmp, setDelEmp] = useState<StoreItem | null>(null);
+  // Hapus arsip surat lokal (draft) via ConfirmModal.
+  const [delSurat, setDelSurat] = useState<StoreItem | null>(null);
 
   /* ---------- impor massal ---------- */
   const [importReport, setImportReport] = useState<{ ok: number; gagal: string[] } | null>(null);
@@ -578,6 +586,62 @@ export default function HR() {
   };
 
   // Cuti 2 tingkat: Diajukan → Disetujui Atasan → Disetujui (final HRD).
+  // Ubah cuti HANYA bila status Diajukan (guard di tombol).
+  const openLeaveEdit = (l: StoreItem) => {
+    setLeaveEditId(String(l.id));
+    setLeaveForm({
+      employeeId: String(l.employeeId ?? ""),
+      type: String(l.type ?? "Tahunan"),
+      from: String(l.from ?? todayISO()),
+      to: String(l.to ?? todayISO()),
+      note: String(l.note ?? ""),
+      fileUrl: String(l.fileUrl ?? ""),
+    });
+    setShowLeave(true);
+  };
+
+  const closeLeaveModal = () => {
+    setShowLeave(false);
+    setLeaveEditId(null);
+    setLeaveForm({ employeeId: "", type: "Tahunan", from: todayISO(), to: todayISO(), note: "", fileUrl: "" });
+  };
+
+  const updateLeave = async () => {
+    if (!leaveEditId) return;
+    if (!leaveForm.employeeId) { toast(S.tPilihKaryawan, "info"); return; }
+    if (leaveDays <= 0) { toast(S.tCutiRange, "info"); return; }
+    if (leaveForm.type === "Tahunan" && saldoCuti(leaveForm.employeeId) < leaveDays) {
+      toast(S.tSaldoKurang, "info");
+      return;
+    }
+    const overlap = data.leaves.some(
+      (l) =>
+        String(l.id) !== leaveEditId &&
+        String(l.employeeId) === leaveForm.employeeId &&
+        String(l.status) !== "Ditolak" &&
+        String(l.from) <= leaveForm.to &&
+        leaveForm.from <= String(l.to),
+    );
+    if (overlap) { toast(S.tOverlap, "info"); return; }
+    if (!leaveForm.note.trim() && (leaveForm.type === "Sakit" || leaveForm.type === "Unpaid")) {
+      toast(S.tKetSakit, "info");
+      return;
+    }
+    try {
+      await update("leaves", leaveEditId, {
+        employeeId: leaveForm.employeeId,
+        type: leaveForm.type,
+        from: leaveForm.from,
+        to: leaveForm.to,
+        days: leaveDays,
+        note: leaveForm.note.trim(),
+        fileUrl: leaveForm.fileUrl.trim(),
+      });
+      log("mengubah cuti", `${leaveEditId} · ${leaveDays} hari`, "SDM");
+      toast(S.tLeaveOk.replace("{n}", leaveEditId).replace("{a}", String(leaveDays)));
+      closeLeaveModal();
+    } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); }
+  };
   const approveSupervisor = async (l: StoreItem) => {
     try {
     await update("leaves", l.id, { status: "Disetujui Atasan" });
@@ -951,7 +1015,7 @@ export default function HR() {
               <Plus className="h-4 w-4" /> {S.btnTambahKaryawan}
             </button>
           ) : tab === "Cuti & Izin" ? (
-            <button className="btn-primary-gradient" onClick={() => setShowLeave(true)}>
+            <button className="btn-primary-gradient" onClick={() => { setLeaveEditId(null); setLeaveForm({ employeeId: "", type: "Tahunan", from: todayISO(), to: todayISO(), note: "", fileUrl: "" }); setShowLeave(true); }}>
               <Plus className="h-4 w-4" /> {S.btnAjukanCuti}
             </button>
           ) : tab === "Mutasi" ? (
@@ -1078,6 +1142,7 @@ export default function HR() {
                               <div className="flex items-center gap-2 whitespace-nowrap">
                                 <Link to={`/sdm/karyawan/${e.id}`} className="text-sm font-semibold text-ocean-600 hover:underline">{S.btnDetail}</Link>
                                 <button className="text-sm font-semibold text-navy-700 hover:underline" onClick={() => openEdit(e)}>{S.btnEdit}</button>
+                                <button className="text-sm font-semibold text-rose-600 hover:underline" onClick={() => setDelEmp(e)}>{S.btnHapus}</button>
                               </div>
                             </td>
                           </tr>
@@ -1180,6 +1245,7 @@ export default function HR() {
                         {l.status === "Diajukan" ? (
                           <div className="flex items-center gap-2 whitespace-nowrap">
                             <button className="text-sm font-semibold text-emerald-600 hover:underline" onClick={() => approveSupervisor(l)}>{S.btnSetujuiAtasan}</button>
+                            <button className="text-sm font-semibold text-navy-700 hover:underline" onClick={() => openLeaveEdit(l)}>{S.btnEdit}</button>
                             <button className="text-sm font-semibold text-rose-600 hover:underline" onClick={() => setRejectTarget(l)}>{S.btnTolak}</button>
                           </div>
                         ) : l.status === "Disetujui Atasan" ? (
@@ -1342,9 +1408,14 @@ export default function HR() {
                         <p className="font-medium text-navy-900">{s.jenis} · {s.nama}</p>
                         <p className="font-mono text-xs text-steel-500">{s.id} · {fmtTanggal(String(s.tanggal))}</p>
                       </div>
-                      <button className="shrink-0 text-xs font-semibold text-ocean-600 underline" onClick={() => setSuratPreviewFor(s)}>
-                        {locale === "en" ? "Preview" : "Pratinjau"}
-                      </button>
+                      <div className="flex shrink-0 items-center gap-2">
+                        <button className="text-xs font-semibold text-ocean-600 underline" onClick={() => setSuratPreviewFor(s)}>
+                          {locale === "en" ? "Preview" : "Pratinjau"}
+                        </button>
+                        <button className="text-xs font-semibold text-rose-600 underline" onClick={() => setDelSurat(s)}>
+                          {S.btnHapus}
+                        </button>
+                      </div>
                     </div>
                   ))}
                   {arsipSurat.length === 0 && <p className="text-xs text-steel-400">{S.emptyArsip}</p>}
@@ -1365,7 +1436,7 @@ export default function HR() {
                       className="hidden"
                       onChange={(e) => {
                         const f = e.target.files?.[0];
-                        if (f) importCSV(f);
+                        if (f) void busy.run("importCSV", () => importCSV(f));
                         e.target.value = "";
                       }}
                     />
@@ -1397,7 +1468,7 @@ export default function HR() {
         footer={
           <>
             <button className="btn-secondary" onClick={() => setShowForm(false)}>{S.btnBatal}</button>
-            <button className="btn-primary" onClick={saveEmployee}>{S.btnSimpan}</button>
+            <button className="btn-primary" onClick={() => void busy.run("saveEmployee", saveEmployee)} disabled={busy.isBusy("saveEmployee")}>{S.btnSimpan}</button>
           </>
         }
       >
@@ -1449,13 +1520,17 @@ export default function HR() {
       {/* ---------- modal cuti ---------- */}
       <Modal
         open={showLeave}
-        onClose={() => setShowLeave(false)}
-        title={S.mLeaveT}
+        onClose={closeLeaveModal}
+        title={leaveEditId ? `${S.btnEdit} ${leaveEditId}` : S.mLeaveT}
         subtitle={S.mLeaveS.replace("{n}", String(jatahCuti))}
         footer={
           <>
-            <button className="btn-secondary" onClick={() => setShowLeave(false)}>{S.btnBatal}</button>
-            <button className="btn-primary" onClick={saveLeave}>{S.btnSimpanPengajuan}</button>
+            <button className="btn-secondary" onClick={closeLeaveModal}>{S.btnBatal}</button>
+            {leaveEditId ? (
+              <button className="btn-primary" onClick={updateLeave}>{S.btnSimpan}</button>
+            ) : (
+              <button className="btn-primary" onClick={saveLeave}>{S.btnSimpanPengajuan}</button>
+            )}
           </>
         }
       >
@@ -1662,6 +1737,57 @@ export default function HR() {
           </pre>
         )}
       </Modal>
+
+      <ConfirmModal
+        open={delEmp !== null}
+        title={delEmp ? (locale === "en" ? `Delete employee ${delEmp.name}?` : `Hapus karyawan ${delEmp.name}?`) : ""}
+        desc={(() => {
+          if (!delEmp) return "";
+          const used = findUsages(data, "employees", String(delEmp.id));
+          const base = locale === "en"
+            ? `Employee ${delEmp.name} (${delEmp.id}) will be permanently deleted.`
+            : `Karyawan ${delEmp.name} (${delEmp.id}) akan dihapus permanen.`;
+          return used.length > 0
+            ? (locale === "en" ? `${base} Used in: ${used.join(", ")}. Deletion blocked.` : `${base} Dipakai di: ${used.join(", ")}. Penghapusan diblokir.`)
+            : base;
+        })()}
+        confirmLabel={delEmp && findUsages(data, "employees", String(delEmp.id)).length > 0
+          ? (locale === "en" ? "Blocked - still in use" : "Diblokir - masih dipakai")
+          : S.btnHapus}
+        danger
+        confirmDisabled={delEmp ? findUsages(data, "employees", String(delEmp.id)).length > 0 : false}
+        onCancel={() => setDelEmp(null)}
+        onConfirm={async () => {
+          if (!delEmp) return;
+          const usedBy = findUsages(data, "employees", String(delEmp.id));
+          if (usedBy.length > 0) { toast(locale === "en" ? `Delete blocked - used in: ${usedBy.join(", ")}` : `Hapus diblokir - dipakai di: ${usedBy.join(", ")}`, "info"); return; }
+          try {
+            await remove("employees", String(delEmp.id));
+            log("menghapus karyawan", `${delEmp.id} · ${delEmp.name}`, "SDM");
+            toast(locale === "en" ? `Employee ${delEmp.id} deleted` : `Karyawan ${delEmp.id} dihapus`);
+          } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); }
+          setDelEmp(null);
+        }}
+      />
+      <ConfirmModal
+        open={delSurat !== null}
+        title={delSurat ? (locale === "en" ? `Delete letter ${delSurat.id}?` : `Hapus arsip surat ${delSurat.id}?`) : ""}
+        desc={delSurat
+          ? (locale === "en"
+            ? `${delSurat.jenis} for ${delSurat.nama} will be removed from the archive.`
+            : `${delSurat.jenis} untuk ${delSurat.nama} akan dihapus dari arsip.`)
+          : ""}
+        confirmLabel={S.btnHapus}
+        danger
+        onCancel={() => setDelSurat(null)}
+        onConfirm={() => {
+          if (!delSurat) return;
+          setArsipSurat((prev) => prev.filter((s) => String(s.id) !== String(delSurat.id)));
+          log("menghapus arsip surat", String(delSurat.id), "SDM");
+          toast(locale === "en" ? `Letter ${delSurat.id} deleted` : `Arsip surat ${delSurat.id} dihapus`);
+          setDelSurat(null);
+        }}
+      />
     </div>
   );
 }

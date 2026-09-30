@@ -3,10 +3,11 @@ import { useStore } from "../../data/store";
 import { useT } from "../../i18n/LanguageContext";
 import { n_prj } from "../../i18n/n_prj";
 import { useAuth, canSetTarget } from "../../auth/auth";
-import { Card, Modal, Field, FormGrid, toast, EmptyState, StatusBadge, Badge, SortTh, toggleSort, sortRows,
+import { Card, Modal, Field, FormGrid, toast, EmptyState, StatusBadge, Badge, SortTh, toggleSort, sortRows, ConfirmModal,
   NumInput, FlowStrip, SecureImg, FileUploadButton,
 } from "../../components/ui";
 import type { SortState } from "../../components/ui";
+import { findUsages } from "../../utils/usages";
 import { Plus, FileDown } from "lucide-react";
 import { exportExcel, fmtRupiah } from "../../utils/export";
 import { SATUAN, STATUS_BOQ_ID } from "../../utils/format";
@@ -74,7 +75,7 @@ interface Props {
 export default function BoQSection({ projectId }: Props) {
   const { locale } = useT();
   const S = n_prj[locale];
-  const { data, update, add, log } = useStore();
+  const { data, update, add, remove, log } = useStore();
   const { user } = useAuth();
   const items = ((data.boq ?? []) as BoQExt[]).filter((b) => b.projectId === projectId);
   const [showAdd, setShowAdd] = useState(false);
@@ -91,6 +92,11 @@ export default function BoQSection({ projectId }: Props) {
   const [previewFor, setPreviewFor] = useState<BoQExt | null>(null);
   const [presetCat, setPresetCat] = useState("Mechanical");
   const [presetIdx, setPresetIdx] = useState("0");
+  // Ubah qty/harga (Draft/Pending saja) + hapus (Draft saja) via ConfirmModal.
+  const [editFor, setEditFor] = useState<BoQExt | null>(null);
+  const [editQty, setEditQty] = useState("");
+  const [editPrice, setEditPrice] = useState("");
+  const [delBoq, setDelBoq] = useState<BoQExt | null>(null);
 
   const filtered = useMemo(() => {
     const list = items.filter((b) => {
@@ -166,6 +172,34 @@ export default function BoQSection({ projectId }: Props) {
     setRevisiFor(null);
     setRevisiPrice("");
     setRevisiReason("");
+  };
+
+  // Ubah qty & harga satuan (Draft/Pending saja; Approved/Completed terkunci alur).
+  const openEdit = (b: BoQExt) => {
+    setEditFor(b);
+    setEditQty(String(b.quantity));
+    setEditPrice(String(b.unitPrice));
+  };
+
+  const saveEditQty = async () => {
+    if (!editFor) return;
+    if (String(editFor.status) !== "Draft" && String(editFor.status) !== "Pending") {
+      toast(locale === "en" ? "Only Draft/Proposed items can be edited" : "Hanya item Draf/Diajukan yang bisa diubah", "info");
+      return;
+    }
+    const qty = Number(editQty);
+    const price = Number(editPrice);
+    if (!Number.isFinite(qty) || qty <= 0) { toast(S.boqToastQty, "info"); return; }
+    if (!Number.isFinite(price) || price <= 0) { toast(S.boqToastPrice, "info"); return; }
+    try {
+      const hist: PriceHist[] = price !== Number(editFor.unitPrice)
+        ? [...(editFor.priceHistory ?? []), { old: Number(editFor.unitPrice), new: price, reason: locale === "en" ? "Edit qty/price" : "Ubah qty/harga", date: todayISO(), by: "Anda" }]
+        : [...(editFor.priceHistory ?? [])];
+      await update("boq", editFor.id, { quantity: qty, unitPrice: price, totalPrice: qty * price, priceHistory: hist });
+      log("mengubah qty/harga BoQ", `${editFor.id} · qty ${qty} · ${fmtRupiah(price)}`, "BoQ");
+      toast(S.boqToastRevised.replace("{a}", editFor.id));
+      setEditFor(null);
+    } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); }
   };
 
   const importPreset = async () => {
@@ -348,6 +382,24 @@ export default function BoQSection({ projectId }: Props) {
                         >
                           {S.boqRevise}
                         </button>
+                        {(b.status === "Draft" || b.status === "Pending") && (
+                          <button
+                            aria-label={`${locale === "en" ? "Edit" : "Ubah"} ${b.name}`}
+                            className="rounded bg-ocean-100 px-2 py-0.5 text-xs font-semibold text-ocean-700 transition-colors hover:bg-ocean-200"
+                            onClick={() => openEdit(b)}
+                          >
+                            {locale === "en" ? "Edit" : "Ubah"}
+                          </button>
+                        )}
+                        {b.status === "Draft" && (
+                          <button
+                            aria-label={`${locale === "en" ? "Delete" : "Hapus"} ${b.name}`}
+                            className="rounded bg-rose-100 px-2 py-0.5 text-xs font-semibold text-rose-700 transition-colors hover:bg-rose-200"
+                            onClick={() => setDelBoq(b)}
+                          >
+                            {locale === "en" ? "Delete" : "Hapus"}
+                          </button>
+                        )}
                         <button
                           className="rounded bg-steel-100 px-2 py-0.5 text-xs font-semibold text-steel-600 transition-colors hover:bg-steel-200"
                           onClick={() => setLogFor(b)}
@@ -441,6 +493,54 @@ export default function BoQSection({ projectId }: Props) {
           )}
         </div>
       </Modal>
+
+      <Modal open={editFor !== null} onClose={() => setEditFor(null)}
+        title={editFor ? `${locale === "en" ? "Edit" : "Ubah"} ${editFor.name}` : ""}
+        subtitle={editFor?.id}
+        footer={<><button className="btn-secondary" onClick={() => setEditFor(null)}>{S.cancelBtn}</button><button className="btn-primary" onClick={saveEditQty}>{S.saveBtn}</button></>}>
+        <div className="space-y-3">
+          <FormGrid>
+            <Field label={S.colQty}><NumInput min={0} className="input" value={editQty} onChange={(e) => setEditQty(e.target.value)} /></Field>
+            <Field label={S.colUnitPrice}><NumInput min={0} className="input" value={editPrice} onChange={(e) => setEditPrice(e.target.value)} /></Field>
+          </FormGrid>
+          <p className="text-xs text-steel-500">
+            {locale === "en" ? "New total" : "Total baru"}: {Number(editQty) > 0 && Number(editPrice) > 0 ? fmtRupiah(Number(editQty) * Number(editPrice)) : "-"}
+          </p>
+        </div>
+      </Modal>
+
+      <ConfirmModal
+        open={delBoq !== null}
+        title={delBoq ? (locale === "en" ? `Delete BoQ item ${delBoq.id}?` : `Hapus item BoQ ${delBoq.id}?`) : ""}
+        desc={(() => {
+          if (!delBoq) return "";
+          const used = findUsages(data, "boq", String(delBoq.id));
+          const base = locale === "en"
+            ? `BoQ item ${delBoq.name} (Draft) will be permanently deleted.`
+            : `Item BoQ ${delBoq.name} (Draf) akan dihapus permanen.`;
+          return used.length > 0
+            ? (locale === "en" ? `${base} Used in: ${used.join(", ")}. Deletion blocked.` : `${base} Dipakai di: ${used.join(", ")}. Penghapusan diblokir.`)
+            : base;
+        })()}
+        confirmLabel={delBoq && findUsages(data, "boq", String(delBoq.id)).length > 0
+          ? (locale === "en" ? "Blocked - still in use" : "Diblokir - masih dipakai")
+          : (locale === "en" ? "Delete" : "Hapus")}
+        danger
+        confirmDisabled={delBoq ? findUsages(data, "boq", String(delBoq.id)).length > 0 : false}
+        onCancel={() => setDelBoq(null)}
+        onConfirm={async () => {
+          if (!delBoq) return;
+          if (String(delBoq.status) !== "Draft") { toast(locale === "en" ? "Only Draft items can be deleted" : "Hanya item Draf yang bisa dihapus", "info"); return; }
+          const usedBy = findUsages(data, "boq", String(delBoq.id));
+          if (usedBy.length > 0) { toast(locale === "en" ? `Delete blocked - used in: ${usedBy.join(", ")}` : `Hapus diblokir - dipakai di: ${usedBy.join(", ")}`, "info"); return; }
+          try {
+            await remove("boq", String(delBoq.id));
+            log("menghapus item BoQ", `${delBoq.id} · ${delBoq.name}`, "BoQ");
+            toast(locale === "en" ? `BoQ item ${delBoq.id} deleted` : `Item BoQ ${delBoq.id} dihapus`);
+          } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); }
+          setDelBoq(null);
+        }}
+      />
     </div>
   );
 }

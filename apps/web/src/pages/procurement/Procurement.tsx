@@ -5,7 +5,9 @@ import { Card, CardHeader, PageHeader, Badge, KpiCard, Tabs, StatusBadge, Donut,
   NumInput, FlowStrip,
 } from "../../components/ui";
 import type { SortState } from "../../components/ui";
+import { useBusy } from "../../components/ui";
 import { useStore, type StoreItem } from "../../data/store";
+import { findUsages } from "../../utils/usages";
 import { remoteRepository } from "../../services/repositories";
 import { getJwt, isBackendConfigured } from "../../services/http";
 import { fmtRupiah, fmtJumlah, fmtTanggal, todayISO } from "../../utils/format";
@@ -153,7 +155,8 @@ async function freshPayables(fallback: StoreItem[]): Promise<StoreItem[]> {
 }
 
 export default function Procurement() {
-  const { data, add, update, log, inBranch } = useStore();
+  const busy = useBusy();
+  const { data, add, update, remove, log, inBranch } = useStore();
   const { locale } = useT();
   const S = n_proc[locale];
   const modAlert = useModuleAlert("procurement");
@@ -238,6 +241,10 @@ export default function Procurement() {
   const [evalD, setEvalD] = useState("");
   const [evalP, setEvalP] = useState("");
   const [unblockVendor, setUnblockVendor] = useState<StoreItem | null>(null);
+  // Hapus PO/PR (Draft saja) & vendor via ConfirmModal + daftar pemakai.
+  const [delPo, setDelPo] = useState<StoreItem | null>(null);
+  const [delPr, setDelPr] = useState<StoreItem | null>(null);
+  const [delVendor, setDelVendor] = useState<StoreItem | null>(null);
 
   /* ---- Kontrak payung ---- */
   const [payungVendor, setPayungVendor] = useState<StoreItem | null>(null);
@@ -873,6 +880,11 @@ export default function Procurement() {
       <div className="flex flex-wrap gap-1.5">
         <button className="btn-secondary text-xs" onClick={() => setPoDetail(po)}>{locale === "en" ? "Detail" : "Detail"}</button>
         {st === "Draft" && <button className="btn-secondary text-xs" onClick={() => doPoStatus(po, "Diajukan")}>{S.btnAjukan}</button>}
+        {st === "Draft" && (
+          <button className="btn-secondary text-xs text-rose-600" aria-label={`${locale === "en" ? "Delete" : "Hapus"} ${po.id}`} onClick={() => setDelPo(po)}>
+            {locale === "en" ? "Delete" : "Hapus"}
+          </button>
+        )}
         {st === "Diajukan" && po.poType === "Kecil" && (
           <>
             <button className="btn-secondary text-xs" onClick={() => setConfirmApprove(po)}><Check className="h-3.5 w-3.5" /> {S.btnSetujui}</button>
@@ -885,7 +897,7 @@ export default function Procurement() {
               const need = needLevels(Number(po.amount || 0), APPROVE_PO_LIMIT);
               const done = apprOf(po);
               return nx
-                ? <button className="btn-primary text-xs" onClick={() => doApproveLevel(po)}><Check className="h-3.5 w-3.5" /> {S.btnSetujuiNx.replace("{n}", nx)} · {done.length + 1}/{need.length}</button>
+                ? <button className="btn-primary text-xs" onClick={() => void busy.run(`approve-${po.id}`, () => doApproveLevel(po))} disabled={busy.isBusy(`approve-${po.id}`)}><Check className="h-3.5 w-3.5" /> {S.btnSetujuiNx.replace("{n}", nx)} · {done.length + 1}/{need.length}</button>
                 : <span className="text-xs text-steel-400">{S.menungguTahap}</span>;
             })()}
             <button className="btn-secondary text-xs text-rose-600" aria-label={S.ariaTolakN.replace("{n}", po.id)} onClick={() => setConfirmRejectPo(po)}><X className="h-3.5 w-3.5" /> {S.btnTolak}</button>
@@ -1263,7 +1275,7 @@ export default function Procurement() {
                         </Field>
                       </FormGrid>
                       <Field label={S.eta}><input type="date" className="input" value={konsEta} onChange={(e) => setKonsEta(e.target.value)} /></Field>
-                      <button className="btn-primary text-xs" onClick={saveKonsolidasi}>{S.btnKons}</button>
+                      <button className="btn-primary text-xs" onClick={() => void busy.run("saveKonsolidasi", saveKonsolidasi)} disabled={busy.isBusy("saveKonsolidasi")}>{S.btnKons}</button>
                     </div>
                   )}
               </Card>
@@ -1293,6 +1305,11 @@ export default function Procurement() {
                             <div className="flex flex-wrap gap-1.5">
                               {(r.status === "Draft" || r.status === "Draf") && (
                                 <button className="btn-primary text-xs" onClick={async () => { try { await update("requisitions", r.id, { status: "Diajukan" }); log("mengajukan PR", r.id, "Procurement"); toast(S.tPrRowDiajukan.replace("{n}", r.id)); } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); } }}>{S.btnAjukan}</button>
+                              )}
+                              {(r.status === "Draft" || r.status === "Draf") && (
+                                <button className="btn-secondary text-xs text-rose-600" aria-label={`${locale === "en" ? "Delete" : "Hapus"} ${r.id}`} onClick={() => setDelPr(r)}>
+                                  {locale === "en" ? "Delete" : "Hapus"}
+                                </button>
                               )}
                               {PR_PENDING.includes(r.status) && (
                                 <>
@@ -1385,6 +1402,9 @@ export default function Procurement() {
                         {isBlack && (
                           <button className="btn-secondary text-xs text-rose-600" onClick={() => setUnblockVendor(v)}>{S.btnBukaBlokir}</button>
                         )}
+                        <button className="btn-secondary text-xs text-rose-600" aria-label={`${locale === "en" ? "Delete" : "Hapus"} ${v.name}`} onClick={() => setDelVendor(v)}>
+                          {locale === "en" ? "Delete" : "Hapus"}
+                        </button>
                       </div>
                     </Card>
                   );
@@ -1450,7 +1470,7 @@ export default function Procurement() {
 
       {/* Modal PO Besar */}
       <Modal open={showBig} onClose={() => setShowBig(false)} title={S.mBigT} subtitle={S.mBigS}
-        wide footer={<><button className="btn-secondary" onClick={() => setShowBig(false)}>{S.btnBatal}</button><button className="btn-primary" onClick={saveBig}>{S.btnSimpanBig}</button></>}>
+        wide footer={<><button className="btn-secondary" onClick={() => setShowBig(false)}>{S.btnBatal}</button><button className="btn-primary" onClick={() => void busy.run("saveBig", saveBig)} disabled={busy.isBusy("saveBig")}>{S.btnSimpanBig}</button></>}>
         <div className="space-y-3">
           <div className="flex flex-wrap gap-2" role="radiogroup" aria-label={S.ariaTujuan}>
             {(["kapal", "stok"] as const).map((t) => (
@@ -1532,7 +1552,7 @@ export default function Procurement() {
 
       {/* Modal PO Kecil */}
       <Modal open={showSmall} onClose={() => setShowSmall(false)} title={S.mSmallT} subtitle={S.mSmallS}
-        footer={<><button className="btn-secondary" onClick={() => setShowSmall(false)}>{S.btnBatal}</button><button className="btn-primary" onClick={saveSmall}>{S.btnSimpanSmall}</button></>}>
+        footer={<><button className="btn-secondary" onClick={() => setShowSmall(false)}>{S.btnBatal}</button><button className="btn-primary" onClick={() => void busy.run("saveSmall", saveSmall)} disabled={busy.isBusy("saveSmall")}>{S.btnSimpanSmall}</button></>}>
         <div className="space-y-3">
           <FormGrid>
             <Field label={S.workshop}><input className="input" value={smallForm.workshop} onChange={(e) => setSmallForm({ ...smallForm, workshop: e.target.value })} placeholder={S.phWorkshop} /></Field>
@@ -1576,7 +1596,7 @@ export default function Procurement() {
 
       {/* Modal buat RFQ */}
       <Modal open={rfqPr !== null} onClose={() => setRfqPr(null)} title={S.mRfqT.replace("{n}", rfqPr?.id ?? "")} subtitle={S.mRfqS.replace("{a}", rfqPr?.item ?? "")}
-        footer={<><button className="btn-secondary" onClick={() => setRfqPr(null)}>{S.btnBatal}</button><button className="btn-primary" onClick={saveRfq}>{S.btnBuatRfqDraf}</button></>}>
+        footer={<><button className="btn-secondary" onClick={() => setRfqPr(null)}>{S.btnBatal}</button><button className="btn-primary" onClick={() => void busy.run("saveRfq", saveRfq)} disabled={busy.isBusy("saveRfq")}>{S.btnBuatRfqDraf}</button></>}>
         <div className="space-y-2">
           <div className="flex justify-end">{venCatPick("vcat-rfq")}</div>
           {vendByCat.map((v) => (
@@ -1592,7 +1612,7 @@ export default function Procurement() {
 
       {/* Modal input penawaran */}
       <Modal open={quoteRfq !== null} onClose={() => setQuoteRfq(null)} title={S.mQuoteT.replace("{n}", quoteRfq?.id ?? "")} subtitle={S.mQuoteS}
-        footer={<><button className="btn-secondary" onClick={() => setQuoteRfq(null)}>{S.btnBatal}</button><button className="btn-primary" onClick={saveQuote}>{S.btnSimpanQuote}</button></>}>
+        footer={<><button className="btn-secondary" onClick={() => setQuoteRfq(null)}>{S.btnBatal}</button><button className="btn-primary" onClick={() => void busy.run("saveQuote", saveQuote)} disabled={busy.isBusy("saveQuote")}>{S.btnSimpanQuote}</button></>}>
         <div className="space-y-3">
           <Field label={S.vendor}>
             <select className="input" value={quoteForm.vendor} onChange={(e) => setQuoteForm({ ...quoteForm, vendor: e.target.value })}>
@@ -1629,8 +1649,8 @@ export default function Procurement() {
       <Modal open={recvPo !== null} onClose={() => setRecvPo(null)} title={S.mRecvT.replace("{n}", recvPo?.id ?? "")} subtitle={S.mRecvS}
         footer={<>
           <button className="btn-secondary" onClick={() => setRecvPo(null)}>{S.btnBatal}</button>
-          <button className="btn-secondary" onClick={() => confirmRecv("sebagian")}>{S.btnTerimaSebagian}</button>
-          <button className="btn-primary" onClick={() => confirmRecv("penuh")}>{S.btnTerimaPenuh}</button>
+          <button className="btn-secondary" onClick={() => void busy.run("confirmRecv-sebagian", () => confirmRecv("sebagian"))} disabled={busy.isBusy("confirmRecv-sebagian")}>{S.btnTerimaSebagian}</button>
+          <button className="btn-primary" onClick={() => void busy.run("confirmRecv-penuh", () => confirmRecv("penuh"))} disabled={busy.isBusy("confirmRecv-penuh")}>{S.btnTerimaPenuh}</button>
         </>}>
         <div className="space-y-3">
           <Field label={S.itemTujuan} hint={recvPo?.poType === "Kecil" ? S.hintKecilOps : undefined}>
@@ -1663,7 +1683,7 @@ export default function Procurement() {
 
       {/* Modal retur */}
       <Modal open={retPo !== null} onClose={() => setRetPo(null)} title={S.mRetT.replace("{n}", retPo?.id ?? "")} subtitle={retPo ? S.mRetS.replace("{n}", fmtJumlah(maxRet(retPo))) : ""}
-        footer={<><button className="btn-secondary" onClick={() => setRetPo(null)}>{S.btnBatal}</button><button className="btn-primary" onClick={confirmRetur}>{S.btnSimpanRetur}</button></>}>
+        footer={<><button className="btn-secondary" onClick={() => setRetPo(null)}>{S.btnBatal}</button><button className="btn-primary" onClick={() => void busy.run("confirmRetur", confirmRetur)} disabled={busy.isBusy("confirmRetur")}>{S.btnSimpanRetur}</button></>}>
         <div className="space-y-3">
           <FormGrid>
             <Field label={S.qtyRetur}><NumInput min={0} className="input" value={retQty} onChange={(e) => setRetQty(e.target.value)} /></Field>
@@ -1738,6 +1758,84 @@ export default function Procurement() {
           }
           setUnblockVendor(null);
           } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); }
+        }}
+      />
+      {/* Hapus PO (Draft saja, tanpa referensi anak yang dikenal). */}
+      <ConfirmModal
+        open={delPo !== null}
+        title={delPo ? (locale === "en" ? `Delete PO ${delPo.id}?` : `Hapus PO ${delPo.id}?`) : ""}
+        desc={delPo
+          ? (locale === "en"
+            ? `PO ${delPo.id} (${delPo.vendor ?? "-"}) in Draft will be permanently deleted.`
+            : `PO ${delPo.id} (${delPo.vendor ?? "-"}) status Draft akan dihapus permanen.`)
+          : ""}
+        confirmLabel={locale === "en" ? "Delete" : "Hapus"}
+        danger
+        onCancel={() => setDelPo(null)}
+        onConfirm={async () => {
+          if (!delPo) return;
+          if (normPo(String(delPo.status)) !== "Draft") { toast(locale === "en" ? "Only Draft PO can be deleted" : "Hanya PO Draft yang bisa dihapus", "info"); return; }
+          try {
+            await remove("purchaseOrders", String(delPo.id));
+            log("menghapus PO", String(delPo.id), "Procurement");
+            toast(locale === "en" ? `PO ${delPo.id} deleted` : `PO ${delPo.id} dihapus`);
+          } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); }
+          setDelPo(null);
+        }}
+      />
+      {/* Hapus PR (Draft/Draf saja). */}
+      <ConfirmModal
+        open={delPr !== null}
+        title={delPr ? (locale === "en" ? `Delete PR ${delPr.id}?` : `Hapus PR ${delPr.id}?`) : ""}
+        desc={delPr
+          ? (locale === "en"
+            ? `PR ${delPr.id} (${delPr.item ?? "-"}) in Draft will be permanently deleted.`
+            : `PR ${delPr.id} (${delPr.item ?? "-"}) status Draft akan dihapus permanen.`)
+          : ""}
+        confirmLabel={locale === "en" ? "Delete" : "Hapus"}
+        danger
+        onCancel={() => setDelPr(null)}
+        onConfirm={async () => {
+          if (!delPr) return;
+          if (String(delPr.status) !== "Draft" && String(delPr.status) !== "Draf") { toast(locale === "en" ? "Only Draft PR can be deleted" : "Hanya PR Draft yang bisa dihapus", "info"); return; }
+          try {
+            await remove("requisitions", String(delPr.id));
+            log("menghapus PR", String(delPr.id), "Procurement");
+            toast(locale === "en" ? `PR ${delPr.id} deleted` : `PR ${delPr.id} dihapus`);
+          } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); }
+          setDelPr(null);
+        }}
+      />
+      {/* Hapus vendor (blokir bila dipakai PO/hutang). */}
+      <ConfirmModal
+        open={delVendor !== null}
+        title={delVendor ? (locale === "en" ? `Delete vendor ${delVendor.name}?` : `Hapus vendor ${delVendor.name}?`) : ""}
+        desc={(() => {
+          if (!delVendor) return "";
+          const used = findUsages(data, "vendors", String(delVendor.id));
+          const base = locale === "en"
+            ? `Vendor ${delVendor.name} will be permanently deleted.`
+            : `Vendor ${delVendor.name} akan dihapus permanen.`;
+          return used.length > 0
+            ? (locale === "en" ? `${base} Used in: ${used.join(", ")}. Deletion blocked.` : `${base} Dipakai di: ${used.join(", ")}. Penghapusan diblokir.`)
+            : base;
+        })()}
+        confirmLabel={delVendor && findUsages(data, "vendors", String(delVendor.id)).length > 0
+          ? (locale === "en" ? "Blocked - still in use" : "Diblokir - masih dipakai")
+          : (locale === "en" ? "Delete" : "Hapus")}
+        danger
+        confirmDisabled={delVendor ? findUsages(data, "vendors", String(delVendor.id)).length > 0 : false}
+        onCancel={() => setDelVendor(null)}
+        onConfirm={async () => {
+          if (!delVendor) return;
+          const usedBy = findUsages(data, "vendors", String(delVendor.id));
+          if (usedBy.length > 0) { toast(locale === "en" ? `Delete blocked - used in: ${usedBy.join(", ")}` : `Hapus diblokir - dipakai di: ${usedBy.join(", ")}`, "info"); return; }
+          try {
+            await remove("vendors", String(delVendor.id));
+            log("menghapus vendor", String(delVendor.name), "Procurement");
+            toast(locale === "en" ? `Vendor ${delVendor.id} deleted` : `Vendor ${delVendor.id} dihapus`);
+          } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); }
+          setDelVendor(null);
         }}
       />
 

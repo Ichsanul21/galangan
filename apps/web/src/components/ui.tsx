@@ -22,33 +22,9 @@ import {
   PieChart,
   Pie,
   Cell,
-  Bar,
-  BarChart,
 } from "recharts";
 
 /* ============ M O T I O N   H E L P E R S ============ */
-
-export function FadeIn({
-  children,
-  delay = 0,
-  className = "",
-}: {
-  children: ReactNode;
-  delay?: number;
-  className?: string;
-}) {
-  return (
-    <motion.div
-      className={className}
-      initial={{ opacity: 0, y: 16 }}
-      whileInView={{ opacity: 1, y: 0 }}
-      viewport={{ once: true, margin: "-40px" }}
-      transition={{ duration: 0.5, delay, ease: "easeOut" }}
-    >
-      {children}
-    </motion.div>
-  );
-}
 
 export function Stagger({
   children,
@@ -332,54 +308,6 @@ export function KpiCard({
 }
 
 /* ============ M I N I   C H A R T S ============ */
-
-export function Sparkline({
-  data,
-  color = "#2e9ad4",
-  height = 40,
-}: {
-  data: { name: string; v: number }[];
-  color?: string;
-  height?: number;
-}) {
-  return (
-    <div style={{ height }}>
-      <ResponsiveContainer width="100%" height="100%">
-        <AreaChart data={data} margin={{ top: 0, right: 0, left: 0, bottom: 0 }}>
-          <defs>
-            <linearGradient id={`sp-${color.replace('#','')}`} x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%" stopColor={color} stopOpacity={0.35} />
-              <stop offset="100%" stopColor={color} stopOpacity={0} />
-            </linearGradient>
-          </defs>
-          <Area type="monotone" dataKey="v" stroke={color} strokeWidth={2} fill={`url(#sp-${color.replace('#','')})`} />
-        </AreaChart>
-      </ResponsiveContainer>
-    </div>
-  );
-}
-
-export function MiniBarChart({
-  data,
-  color = "#2e9ad4",
-  height = 48,
-  dataKey = "v",
-}: {
-  data: { name: string; v: number }[];
-  color?: string;
-  height?: number;
-  dataKey?: string;
-}) {
-  return (
-    <div style={{ height }}>
-      <ResponsiveContainer width="100%" height="100%">
-        <BarChart data={data} margin={{ top: 0, right: 0, left: 0, bottom: 0 }}>
-          <Bar dataKey={dataKey} fill={color} radius={[3, 3, 0, 0]} />
-        </BarChart>
-      </ResponsiveContainer>
-    </div>
-  );
-}
 
 export function Donut({
   data,
@@ -699,14 +627,6 @@ export function Skeleton({ className = "" }: { className?: string }) {
   return <div className={`animate-pulse rounded-xl bg-steel-100 ${className}`} aria-hidden="true" />;
 }
 
-export function SectionLink({ to, label }: { to: string; label: string }) {
-  return (
-    <a href={to} className="inline-flex items-center gap-1 text-sm font-semibold text-ocean-600 hover:text-ocean-500">
-      {label} <ChevronRight className="h-4 w-4" />
-    </a>
-  );
-}
-
 export { Tooltip };
 
 /* ============ M O D A L / P O P U P ============ */
@@ -977,6 +897,28 @@ export function Accordion({
       {open && <div className="border-t border-steel-100">{children}</div>}
     </div>
   );
+}
+
+/* ============ B U S Y   M A P ============ */
+
+/** Guard proses berat: cegah double-submit + disable tombol saat aksi berjalan.
+ *  Pola: `const busy = useBusy();` lalu
+ *  `onClick={() => void busy.run("saveBig", saveBig)}` + `disabled={busy.isBusy("saveBig")}`. */
+export function useBusy(): {
+  isBusy: (k: string) => boolean;
+  run: <T>(key: string, fn: () => Promise<T> | T) => Promise<T | void>;
+} {
+  const [busyMap, setBusyMap] = useState<Record<string, boolean>>({});
+  const run = async <T,>(key: string, fn: () => Promise<T> | T): Promise<T | void> => {
+    if (busyMap[key]) return;
+    setBusyMap((m) => ({ ...m, [key]: true }));
+    try {
+      return await fn();
+    } finally {
+      setBusyMap((m) => ({ ...m, [key]: false }));
+    }
+  };
+  return { isBusy: (k: string) => !!busyMap[k], run };
 }
 
 /* ============ P A G E R ============ */

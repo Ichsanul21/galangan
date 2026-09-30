@@ -4,6 +4,7 @@ import { Card, CardHeader, PageHeader, Badge, KpiCard, ProgressBar, Modal, Field
   NumInput,
 } from "../../components/ui";
 import type { SortState } from "../../components/ui";
+import { useBusy } from "../../components/ui";
 import { useStore } from "../../data/store";
 import type { StoreItem } from "../../data/store";
 import { dockUtilTrend, slotTrend } from "../../data";
@@ -89,6 +90,7 @@ function undockList(s: StoreItem): boolean[] {
 }
 
 export default function Drydock() {
+  const busy = useBusy();
   const { data, add, update, remove, log } = useStore();
   const { locale } = useT();
   const S = n_dry[locale];
@@ -923,7 +925,7 @@ export default function Drydock() {
 
       {/* Modal geser/pindah slot (tindak lanjut konflik) */}
       <Modal open={moveTarget !== null} onClose={() => { setMoveTarget(null); setMoveError(null); }} title={S.moveSlotTitle.replace("{a}", moveTarget?.id ?? "")} subtitle={S.moveSlotSub}
-        footer={<><button className="btn-secondary" onClick={() => { setMoveTarget(null); setMoveError(null); }}>{S.cancelBtn}</button><button className="btn-primary" onClick={() => void saveMove()}>{S.btnSaveMove}</button></>}>
+        footer={<><button className="btn-secondary" onClick={() => { setMoveTarget(null); setMoveError(null); }}>{S.cancelBtn}</button><button className="btn-primary" onClick={() => void busy.run("saveMove", saveMove)} disabled={busy.isBusy("saveMove")}>{S.btnSaveMove}</button></>}>
         <div className="space-y-3">
           {moveError && <p className="rounded-lg bg-rose-50 px-3 py-2 text-xs font-medium text-rose-700">{moveError}</p>}
           <Field label={S.lblTargetFacility}>
@@ -944,7 +946,7 @@ export default function Drydock() {
 
       {/* Modal booking */}
       <Modal open={showBook} onClose={() => { setShowBook(false); setBookError(null); }} title={S.bookTitle} subtitle={S.bookSub}
-        footer={<><button className="btn-secondary" onClick={() => { setShowBook(false); setBookError(null); }}>{S.cancelBtn}</button><button className="btn-primary" onClick={saveBooking}>{S.btnSaveBook}</button></>}>
+        footer={<><button className="btn-secondary" onClick={() => { setShowBook(false); setBookError(null); }}>{S.cancelBtn}</button><button className="btn-primary" onClick={() => void busy.run("saveBooking", saveBooking)} disabled={busy.isBusy("saveBooking")}>{S.btnSaveBook}</button></>}>
         <div className="space-y-3">
           <FormGrid>
             <Field label={S.colFacility}>

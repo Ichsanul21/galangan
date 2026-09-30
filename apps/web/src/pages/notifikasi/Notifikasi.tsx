@@ -262,7 +262,7 @@ export default function Notifikasi() {
             >
               {(draft, setDraft) => (
                 <div className="space-y-3">
-                  <Field label="Severity">
+                  <Field label={S.ntSeverityLabel}>
                     <select className="input w-full" aria-label={S.ntSeverityFilterAria} value={draft.severity} onChange={(e) => setDraft({ ...draft, severity: e.target.value })}>
                       <option value="Semua">{S.ntAllSeverities}</option>
                       <option value="Merah">{S.ntRedCritical}</option>

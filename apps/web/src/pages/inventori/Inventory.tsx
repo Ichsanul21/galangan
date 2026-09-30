@@ -20,6 +20,7 @@ import {
   Download,
   Camera,
   History,
+  Trash2,
 } from "lucide-react";
 import {
   AreaChart,
@@ -31,11 +32,13 @@ import {
   ResponsiveContainer,
 } from "recharts";
 import { QRCodeSVG } from "qrcode.react";
-import { Card, CardHeader, PageHeader, Badge, KpiCard, Tabs, ChartTooltip, Modal, Field, FormGrid, toast, EmptyState, ProgressBar, SortTh, toggleSort, sortRows, usePager, useDebouncedValue,
+import { Card, CardHeader, PageHeader, Badge, KpiCard, Tabs, ChartTooltip, Modal, Field, FormGrid, toast, EmptyState, ProgressBar, SortTh, toggleSort, sortRows, usePager, useDebouncedValue, ConfirmModal,
   NumInput, SecureImg,
 } from "../../components/ui";
 import type { SortState } from "../../components/ui";
+import { useBusy } from "../../components/ui";
 import { useStore, type StoreItem } from "../../data/store";
+import { findUsages } from "../../utils/usages";
 import { sameName } from "../../utils/names";
 import { isBackendConfigured } from "../../services/http";
 import { uploadFile } from "../../services/upload";
@@ -333,9 +336,10 @@ function agingBucket(days: number): string {
 const AGING_BUCKETS = ["0-30 hari", "31-90 hari", "91-180 hari", ">180 hari", "Belum ada GR"];
 
 export default function Inventory() {
+  const busy = useBusy();
   const { locale } = useT();
   const S = n_inv[locale];
-  const { data, add, update, log, branch } = useStore();
+  const { data, add, update, remove, log, branch } = useStore();
   // Cabang movement: dari proyek tertaut (cocokkan teks ke id/vessel) atau fallback global.
   const moveBranch = (hay: string): string => String(
     (data.projects ?? []).find((p) => hay.includes(String(p.id)) || (p.vessel && hay.includes(String(p.vessel))))?.branch
@@ -364,6 +368,8 @@ export default function Inventory() {
   const [form, setForm] = useState(emptyForm);
   const [editing, setEditing] = useState<StoreItem | null>(null);
   const [detail, setDetail] = useState<StoreItem | null>(null);
+  // Hapus item via ConfirmModal + daftar pemakai (blokir bila dipakai mutasi/PO).
+  const [delInv, setDelInv] = useState<StoreItem | null>(null);
   const [labelItem, setLabelItem] = useState<StoreItem | null>(null);
   const [moveTarget, setMoveTarget] = useState<StoreItem | null>(null);
   const [moveKind, setMoveKind] = useState<"in" | "out">("in");
@@ -1593,6 +1599,7 @@ export default function Inventory() {
                               <button className="rounded-lg p-1.5 text-steel-500 hover:bg-steel-100" title={S.actLabel} aria-label={S.actLabelAria.replace("{n}", i.name)} onClick={() => setLabelItem(i)}><Barcode className="h-4 w-4" /></button>
                               <button className="rounded-lg p-1.5 text-amber-600 hover:bg-amber-50" title={S.reservBtn} aria-label={S.actReservAria.replace("{n}", i.name)} onClick={() => { setReservTarget(i); setReservProject(""); setReservQtyInput(""); }}><BookmarkPlus className="h-4 w-4" /></button>
                               <Link to={`/inventori/bom/${i.id}`} className="rounded-lg p-1.5 text-ocean-600 hover:bg-steel-100" title="BOM" aria-label={S.actBomAria.replace("{n}", i.name)}>BOM</Link>
+                              <button className="rounded-lg p-1.5 text-rose-600 hover:bg-rose-50" title={locale === "en" ? "Delete" : "Hapus"} aria-label={`${locale === "en" ? "Delete" : "Hapus"} ${i.name}`} onClick={() => setDelInv(i)}><Trash2 className="h-4 w-4" /></button>
                             </div>
                           </td>
                         </tr>
@@ -2121,7 +2128,7 @@ export default function Inventory() {
       {/* Modal tambah/ubah material */}
       <Modal open={showAdd || editing !== null} onClose={() => { setShowAdd(false); setEditing(null); }}
         title={editing ? S.editTitle.replace("{n}", editing.id) : S.btnNew} subtitle={S.modalSavedSub}
-        wide footer={<><button className="btn-secondary" onClick={() => { setShowAdd(false); setEditing(null); }}>{S.cancelBtn}</button><button className="btn-primary" onClick={save}>{S.saveBtn}</button></>}>
+        wide footer={<><button className="btn-secondary" onClick={() => { setShowAdd(false); setEditing(null); }}>{S.cancelBtn}</button><button className="btn-primary" onClick={() => void busy.run("save", save)} disabled={busy.isBusy("save")}>{S.saveBtn}</button></>}>
         <div className="space-y-3">
           <FormGrid>
             <Field label={S.nameLbl}><input className="input" value={form.name} onChange={(e) => setF("name", e.target.value)} placeholder={S.phName} /></Field>
@@ -2211,7 +2218,7 @@ export default function Inventory() {
                     if (!isBackendConfigured()) { toast(S.localPhotoUrl, "info"); return; }
                     photoInputRef.current?.click();
                   }}>
-                  <Upload className="h-4 w-4" /> {uploadingPhoto ? S.uploading : "Upload"}
+                  <Upload className="h-4 w-4" /> {uploadingPhoto ? S.uploading : S.uploadBtn}
                 </button>
               </div>
             </Field>
@@ -2226,7 +2233,7 @@ export default function Inventory() {
       {/* Modal GR/GI */}
       <Modal open={moveTarget !== null} onClose={closeMove} title={(moveKind === "in" ? S.moveTitleIn : S.moveTitleOut).replace("{n}", moveTarget?.name ?? "")}
         subtitle={moveFresh ? S.moveSub.replace("{a}", fmtJumlah(Number(moveFresh.stock))).replace("{b}", `${fmtJumlah(availOf(moveFresh))} ${moveFresh.unit}${hasUom2(moveFresh) ? ` (≈ ${fmtJumlah(qtyInUom2(moveFresh))} ${uom2Of(moveFresh)})` : ""}`) : ""}
-        footer={<><button className="btn-secondary" onClick={closeMove}>{S.cancelBtn}</button><button className="btn-primary" onClick={saveMove}>{S.btnSaveTx}</button></>}>
+        footer={<><button className="btn-secondary" onClick={closeMove}>{S.cancelBtn}</button><button className="btn-primary" onClick={() => void busy.run("saveMove", saveMove)} disabled={busy.isBusy("saveMove")}>{S.btnSaveTx}</button></>}>
         <div className="space-y-3">
           <Field label={S.txTypeLbl}>
             <div className="flex gap-2">
@@ -2310,7 +2317,7 @@ export default function Inventory() {
 
       {/* Modal opname */}
       <Modal open={showOpname} onClose={() => setShowOpname(false)} title={S.opnameT} subtitle={S.opSub}
-        footer={<><button className="btn-secondary" onClick={() => setShowOpname(false)}>{S.cancelBtn}</button><button className="btn-primary" onClick={saveOpname}>{S.btnSaveOp}</button></>}>
+        footer={<><button className="btn-secondary" onClick={() => setShowOpname(false)}>{S.cancelBtn}</button><button className="btn-primary" onClick={() => void busy.run("saveOpname", saveOpname)} disabled={busy.isBusy("saveOpname")}>{S.btnSaveOp}</button></>}>
         <div className="space-y-3">
           <Field label={S.itemLbl}>
             <select className="input" value={opItem} onChange={(e) => setOpItem(e.target.value)}>
@@ -2331,7 +2338,7 @@ export default function Inventory() {
 
       {/* Modal transfer gudang */}
       <Modal open={showTransfer} onClose={() => setShowTransfer(false)} title={S.btnTransfer} subtitle={S.trSub}
-        footer={<><button className="btn-secondary" onClick={() => setShowTransfer(false)}>{S.cancelBtn}</button><button className="btn-primary" onClick={saveTransfer}>{S.btnSaveTr}</button></>}>
+        footer={<><button className="btn-secondary" onClick={() => setShowTransfer(false)}>{S.cancelBtn}</button><button className="btn-primary" onClick={() => void busy.run("saveTransfer", saveTransfer)} disabled={busy.isBusy("saveTransfer")}>{S.btnSaveTr}</button></>}>
         <div className="space-y-3">
           <Field label={S.itemLbl}>
             <select className="input" value={trItem} onChange={(e) => setTrItem(e.target.value)}>
@@ -2506,6 +2513,38 @@ export default function Inventory() {
           onDetect={(v) => { setQ(v); setShowScan(false); toast(S.scanResult.replace("{n}", v)); }}
         />
       )}
+
+      <ConfirmModal
+        open={delInv !== null}
+        title={delInv ? (locale === "en" ? `Delete item ${delInv.id}?` : `Hapus item ${delInv.id}?`) : ""}
+        desc={(() => {
+          if (!delInv) return "";
+          const used = findUsages(data, "inventory", String(delInv.id));
+          const base = locale === "en"
+            ? `Item ${delInv.name} (${delInv.sku ?? delInv.id}) will be permanently deleted.`
+            : `Item ${delInv.name} (${delInv.sku ?? delInv.id}) akan dihapus permanen.`;
+          return used.length > 0
+            ? (locale === "en" ? `${base} Used in: ${used.join(", ")}. Deletion blocked.` : `${base} Dipakai di: ${used.join(", ")}. Penghapusan diblokir.`)
+            : base;
+        })()}
+        confirmLabel={delInv && findUsages(data, "inventory", String(delInv.id)).length > 0
+          ? (locale === "en" ? "Blocked - still in use" : "Diblokir - masih dipakai")
+          : (locale === "en" ? "Delete" : "Hapus")}
+        danger
+        confirmDisabled={delInv ? findUsages(data, "inventory", String(delInv.id)).length > 0 : false}
+        onCancel={() => setDelInv(null)}
+        onConfirm={async () => {
+          if (!delInv) return;
+          const usedBy = findUsages(data, "inventory", String(delInv.id));
+          if (usedBy.length > 0) { toast(locale === "en" ? `Delete blocked - used in: ${usedBy.join(", ")}` : `Hapus diblokir - dipakai di: ${usedBy.join(", ")}`, "info"); return; }
+          try {
+            await remove("inventory", String(delInv.id));
+            log("menghapus item inventori", `${delInv.id} · ${delInv.name}`, "Inventori");
+            toast(locale === "en" ? `Item ${delInv.id} deleted` : `Item ${delInv.id} dihapus`);
+          } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); }
+          setDelInv(null);
+        }}
+      />
     </div>
   );
 }

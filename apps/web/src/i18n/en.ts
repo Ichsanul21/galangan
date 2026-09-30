@@ -88,6 +88,8 @@ export const en: Dict = {
     title: "Welcome aboard",
     subtitle: "Access the yard control center with your crew account.",
     continue: "Sign in to continue",
+    tagline: "Shipyard Management System",
+    usernamePh: "e.g. demo@galangan.com / 6474010101000001",
     passwordPh: "Enter password",
     demoTitle: "Demo access - one click sign in",
     asUser: "Signed in as",

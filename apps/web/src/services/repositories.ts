@@ -10,8 +10,7 @@
 // - DELETE /api/<table>/:id → { id, deleted: true }
 
 import type { StoreItem } from "../data/store";
-import { apiFetch, isBackendConfigured } from "./http";
-import { newId } from "./ids";
+import { apiFetch } from "./http";
 
 export interface ListFilter {
   q?: string;
@@ -30,44 +29,6 @@ export interface Repository {
 export interface Snapshot {
   load(): StoreItem[];
   save(rows: StoreItem[]): void;
-}
-
-/** Adapter lokal: baca/tulis snapshot (sessionStorage) dengan API async. */
-export function localRepository(prefix: string, snapshot: Snapshot, onWrite?: () => void): Repository {
-  return {
-    async list() {
-      return snapshot.load();
-    },
-    async listFiltered(opts) {
-      const rows = snapshot.load();
-      const needle = (opts?.q ?? "").trim().toLowerCase();
-      const branch = (opts?.branch ?? "").trim();
-      return rows.filter((r) => {
-        if (branch && (r as StoreItem).branch !== branch) return false;
-        if (!needle) return true;
-        return JSON.stringify(r).toLowerCase().includes(needle);
-      });
-    },
-    async create(item) {
-      const rows = snapshot.load();
-      const full: StoreItem = { ...item, id: item.id || newId(prefix) };
-      snapshot.save([full, ...rows]);
-      onWrite?.();
-      return full;
-    },
-    async patch(id, patch) {
-      const rows = snapshot.load().map((r) => (r.id === id ? { ...r, ...patch } : r));
-      snapshot.save(rows);
-      onWrite?.();
-      const found = rows.find((r) => r.id === id);
-      if (!found) throw new Error(`Record ${id} tidak ditemukan`);
-      return found;
-    },
-    async remove(id) {
-      snapshot.save(snapshot.load().filter((r) => r.id !== id));
-      onWrite?.();
-    },
-  };
 }
 
 /* ============ PEMETAAN BARIS BACKEND ⇄ StoreItem ============ */
@@ -195,9 +156,4 @@ export function remoteRepository(resource: string): Repository {
       await apiFetch<unknown>(`${base}/${encodeURIComponent(id)}`, { method: "DELETE" });
     },
   };
-}
-
-export function pickRepository(resource: string, prefix: string, snapshot: Snapshot, onWrite?: () => void): Repository {
-  if (isBackendConfigured()) return remoteRepository(resource);
-  return localRepository(prefix, snapshot, onWrite);
 }

@@ -5,6 +5,7 @@ import { Card, CardHeader, PageHeader, Badge, KpiCard, Tabs, ProgressBar, ChartT
   NumInput, FlowStrip,
 } from "../../components/ui";
 import type { SortState } from "../../components/ui";
+import { useBusy } from "../../components/ui";
 import { useStore, type StoreItem } from "../../data/store";
 import { remoteRepository } from "../../services/repositories";
 import { getJwt, isBackendConfigured } from "../../services/http";
@@ -123,6 +124,7 @@ function shortSub(name: unknown): string {
 }
 
 export default function Subcontractor() {
+  const busy = useBusy();
   const { data, add, update, log, branch } = useStore();
   const { locale } = useT();
   const S = n_crm[locale];
@@ -152,6 +154,11 @@ export default function Subcontractor() {
   const [woProg, setWoProg] = useState<StoreItem | null>(null);
   const [progMs, setProgMs] = useState<string[]>([]);
   const [progNote, setProgNote] = useState("");
+  // Ubah WO (scope/target) + ubah termin Draf (milestone/amount).
+  const [woEdit, setWoEdit] = useState<StoreItem | null>(null);
+  const [woEditForm, setWoEditForm] = useState({ scope: "", targetDate: "" });
+  const [termEdit, setTermEdit] = useState<StoreItem | null>(null);
+  const [termEditForm, setTermEditForm] = useState({ milestone: "", amount: "" });
   const [confirmFinish, setConfirmFinish] = useState<{ id: string; v: number; note: string; ms: string[] } | null>(null);
   const [showTerm, setShowTerm] = useState(false);
   const [termForm, setTermForm] = useState({ sub: "", wo: "", milestone: "", amount: "", pphPct: "0.5", retPct: "5" });
@@ -331,6 +338,45 @@ export default function Subcontractor() {
     await update("workOrders", w.id, { penaltyDays: late, penaltyAmount: Math.round(amount), penaltyAt: todayISO() });
     log("mencatat denda keterlambatan", `${w.id} · telat ${late} hari · ${fmtRupiah(Math.round(amount))}`, "Subkontraktor");
     toast(S.tPenaltyLogged.replace("{a}", w.id).replace("{b}", fmtRupiah(Math.round(amount))));
+    } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); }
+  };
+
+  // Ubah WO: scope + target (WO berjalan saja, bukan Selesai).
+  const openWoEdit = (w: StoreItem) => {
+    setWoEdit(w);
+    setWoEditForm({ scope: String(w.scope ?? ""), targetDate: String(w.targetDate ?? "") });
+  };
+
+  const saveWoEdit = async () => {
+    if (!woEdit) return;
+    if (String(woEdit.status) === "Selesai") { toast(locale === "en" ? "Finished WO cannot be edited" : "WO Selesai tidak bisa diubah", "info"); return; }
+    if (!woEditForm.scope.trim()) { toast(S.tWoFieldsRequired, "info"); return; }
+    if (!woEditForm.targetDate) { toast(S.tWoTargetRequired, "info"); return; }
+    try {
+      await update("workOrders", woEdit.id, { scope: woEditForm.scope.trim(), targetDate: woEditForm.targetDate });
+      log("mengubah WO", `${woEdit.id} · scope/target`, "Subkontraktor");
+      toast(S.tProgressTo.replace("{a}", woEdit.id).replace("{b}", String(effProgress(woEdit))));
+      setWoEdit(null);
+    } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); }
+  };
+
+  // Ubah termin Draf: milestone + amount (aliran Draf→… terkunci setelah Diajukan).
+  const openTermEdit = (p: StoreItem) => {
+    setTermEdit(p);
+    setTermEditForm({ milestone: String(p.milestone ?? ""), amount: String(p.amount ?? "") });
+  };
+
+  const saveTermEdit = async () => {
+    if (!termEdit) return;
+    if (normTerm(String(termEdit.status)) !== "Draf") { toast(locale === "en" ? "Only Draft terms can be edited" : "Hanya termin Draf yang bisa diubah", "info"); return; }
+    const amount = Number(termEditForm.amount);
+    if (!termEditForm.milestone.trim()) { toast(S.tMsTitleRequired, "info"); return; }
+    if (!Number.isFinite(amount) || amount <= 0) { toast(S.tQuoteValuePositive ?? "Nominal harus > 0", "info"); return; }
+    try {
+      await update("termins", termEdit.id, { milestone: termEditForm.milestone.trim(), amount });
+      log("mengubah termin", `${termEdit.id} · ${termEditForm.milestone.trim()} · ${fmtRupiah(amount)}`, "Subkontraktor");
+      toast(locale === "en" ? `Term ${termEdit.id} updated` : `Termin ${termEdit.id} diubah`);
+      setTermEdit(null);
     } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); }
   };
 
@@ -787,6 +833,9 @@ export default function Subcontractor() {
                         {w.status !== "Selesai" && (
                           <button className="btn-secondary text-xs" aria-label={S.updateProgAria.replace("{n}", w.id)} onClick={() => { setWoProg(w); setProgMs(doneMsOf(w)); setProgNote(""); }}>{S.updateBtn}</button>
                         )}
+                        {w.status !== "Selesai" && (
+                          <button className="btn-secondary text-xs" aria-label={`${locale === "en" ? "Edit" : "Ubah"} ${w.id}`} onClick={() => openWoEdit(w)}>{locale === "en" ? "Edit" : "Ubah"}</button>
+                        )}
                         {Number(w.progress || 0) < 100 && w.targetDate && daysLate(String(w.targetDate)) > 0 && !w.penaltyAt && (
                           <button className="btn-secondary text-xs" aria-label={S.logPenaltyAria.replace("{n}", w.id)} onClick={() => recordPenalty(w)}>{S.logPenaltyBtn}</button>
                         )}
@@ -853,6 +902,11 @@ export default function Subcontractor() {
                             {canRelease && (
                               <button className="btn-primary text-xs" aria-label={S.releaseRetAria.replace("{n}", p.id)} onClick={() => { setReleaseTerm(p); setReleaseForm({ date: todayISO(), ba: "" }); }}>
                                 {S.releaseRetBtn}
+                              </button>
+                            )}
+                            {normTerm(String(p.status)) === "Draf" && (
+                              <button className="btn-secondary text-xs" aria-label={`${locale === "en" ? "Edit" : "Ubah"} ${p.id}`} onClick={() => openTermEdit(p)}>
+                                {locale === "en" ? "Edit" : "Ubah"}
                               </button>
                             )}
                             {termNext(p.status).length === 0 && !canRelease && <span className="text-xs text-steel-400">-</span>}
@@ -1075,6 +1129,24 @@ export default function Subcontractor() {
         </div>
       </Modal>
 
+      {/* Modal ubah WO (scope + target) */}
+      <Modal open={woEdit !== null} onClose={() => setWoEdit(null)} title={woEdit ? `${locale === "en" ? "Edit WO" : "Ubah WO"} ${woEdit.id}` : ""}
+        footer={<><button className="btn-secondary" onClick={() => setWoEdit(null)}>{S.cancelBtn}</button><button className="btn-primary" onClick={saveWoEdit}>{S.saveBtn}</button></>}>
+        <div className="space-y-3">
+          <Field label={S.scopeJobLabel}><input className="input" value={woEditForm.scope} onChange={(e) => setWoEditForm({ ...woEditForm, scope: e.target.value })} placeholder={S.scopeJobPh} /></Field>
+          <Field label={S.targetDoneLabel}><input type="date" className="input" value={woEditForm.targetDate} onChange={(e) => setWoEditForm({ ...woEditForm, targetDate: e.target.value })} /></Field>
+        </div>
+      </Modal>
+
+      {/* Modal ubah termin Draf (milestone + amount) */}
+      <Modal open={termEdit !== null} onClose={() => setTermEdit(null)} title={termEdit ? `${locale === "en" ? "Edit term" : "Ubah termin"} ${termEdit.id}` : ""}
+        footer={<><button className="btn-secondary" onClick={() => setTermEdit(null)}>{S.cancelBtn}</button><button className="btn-primary" onClick={saveTermEdit}>{S.saveBtn}</button></>}>
+        <div className="space-y-3">
+          <Field label={S.msNameLabel}><input className="input" value={termEditForm.milestone} onChange={(e) => setTermEditForm({ ...termEditForm, milestone: e.target.value })} placeholder={S.pickMsOpt} /></Field>
+          <Field label={S.amountLabel}><NumInput min={0} className="input" value={termEditForm.amount} onChange={(e) => setTermEditForm({ ...termEditForm, amount: e.target.value })} /></Field>
+        </div>
+      </Modal>
+
       {/* Modal progres WO = checklist milestone termin (sinkron dua arah, tanpa slider) */}
       <Modal open={woProg !== null} onClose={() => setWoProg(null)} title={S.progTitle.replace("{n}", woProg?.id ?? "")}
         footer={<><button className="btn-secondary" onClick={() => setWoProg(null)}>{S.cancelBtn}</button><button className="btn-primary" onClick={saveWoProgress}>{S.saveBtn}</button></>}>
@@ -1177,7 +1249,7 @@ export default function Subcontractor() {
 
       {/* Modal bukti bayar termin */}
       <Modal open={termPay !== null} onClose={() => setTermPay(null)} title={S.payTermTitle.replace("{n}", termPay?.id ?? "")} subtitle={S.payTermSub.replace("{a}", termPay?.sub ?? "").replace("{b}", fmtRupiah(termPay ? netoOf(termPay) : 0)).replace("{c}", needsTermDirector(termPay) ? S.directorNeeded.replace("{n}", fmtRupiah(terminThreshold)) : "")}
-        footer={<><button className="btn-secondary" onClick={() => setTermPay(null)}>{S.cancelBtn}</button><button className="btn-primary" disabled={needsTermDirector(termPay) && (!termDirCheck || !termDirName.trim())} onClick={confirmBuktiTerm}>{S.saveProofBtn}</button></>}>
+        footer={<><button className="btn-secondary" onClick={() => setTermPay(null)}>{S.cancelBtn}</button><button className="btn-primary" disabled={(needsTermDirector(termPay) && (!termDirCheck || !termDirName.trim())) || busy.isBusy("confirmBuktiTerm")} onClick={() => void busy.run("confirmBuktiTerm", confirmBuktiTerm)}>{S.saveProofBtn}</button></>}>
         <div className="space-y-3">
           <FormGrid>
             <Field label={S.payDateLabel}><input type="date" required className="input" value={proof.date} onChange={(e) => setProof({ ...proof, date: e.target.value })} /></Field>

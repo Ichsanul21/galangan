@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { Plus, Search, Ship, Anchor, FileCheck2, Pencil } from "lucide-react";
-import { Card, CardHeader, PageHeader, Badge, KpiCard, Modal, Field, FormGrid, toast, SortTh, toggleSort, sortRows, usePager,
+import { Plus, Search, Ship, Anchor, FileCheck2, Pencil, Trash2 } from "lucide-react";
+import { Card, CardHeader, PageHeader, Badge, KpiCard, Modal, Field, FormGrid, toast, SortTh, toggleSort, sortRows, usePager, ConfirmModal,
   NumInput,
 } from "../../components/ui";
 import type { SortState } from "../../components/ui";
 import { useStore } from "../../data/store";
+import { findUsages } from "../../utils/usages";
 import type { StoreItem } from "../../data/store";
 import { fleetTrend, dockingTrend, buildTrend, certTrend } from "../../data";
 import { fmtRupiah, fmtTanggal, todayISO } from "../../utils/format";
@@ -141,7 +142,7 @@ function vesselToForm(v: StoreItem): VesselForm {
 }
 
 export default function Vessels() {
-  const { data, add, update, log } = useStore();
+  const { data, add, update, remove, log } = useStore();
   const { locale } = useT();
   const S = n_eqp[locale];
   const modAlert = useModuleAlert("kapal");
@@ -155,6 +156,8 @@ export default function Vessels() {
   const [form, setForm] = useState(emptyForm);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editForm, setEditForm] = useState<VesselForm>(emptyForm);
+  // Hapus kapal via ConfirmModal + daftar pemakai (blokir bila dipakai proyek/survei/dock/garansi).
+  const [deleting, setDeleting] = useState<StoreItem | null>(null);
 
   const nowMonth = todayISO().slice(0, 7);
   const list = vessels.filter((v) => {
@@ -344,6 +347,7 @@ export default function Vessels() {
                         <p className="text-xs text-steel-500 font-mono">{v.imo}{v.mmsi ? ` · MMSI ${v.mmsi}` : ""}</p>
                       </div>
                     </div>
+                    <div className="flex items-center gap-1">
                     <button
                       className="rounded-lg border border-steel-200 p-1.5 text-steel-500 hover:border-ocean-400 hover:text-ocean-600"
                       aria-label={S.vsEditAria.replace("{a}", v.name)}
@@ -351,6 +355,14 @@ export default function Vessels() {
                     >
                       <Pencil className="h-3.5 w-3.5" />
                     </button>
+                    <button
+                      className="rounded-lg border border-steel-200 p-1.5 text-steel-500 hover:border-rose-400 hover:text-rose-600"
+                      aria-label={`${S.delBtn} ${v.name}`}
+                      onClick={(e) => { e.preventDefault(); setDeleting(v); }}
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </button>
+                    </div>
                   </div>
                 </Link>
                 <div className="mt-3 flex items-center justify-between">
@@ -439,6 +451,38 @@ export default function Vessels() {
         wide footer={<><button className="btn-secondary" onClick={() => setEditingId(null)}>{S.cancelBtn}</button><button className="btn-primary" onClick={saveEdit}>{S.saveBtn}</button></>}>
         {renderFormFields(editForm, setEditForm)}
       </Modal>
+
+      <ConfirmModal
+        open={deleting !== null}
+        title={deleting ? (locale === "en" ? `Delete vessel ${deleting.name}?` : `Hapus kapal ${deleting.name}?`) : ""}
+        desc={(() => {
+          if (!deleting) return "";
+          const used = findUsages(data, "vessels", String(deleting.id));
+          const base = locale === "en"
+            ? `Vessel ${deleting.name} (${deleting.id}) will be permanently deleted.`
+            : `Kapal ${deleting.name} (${deleting.id}) akan dihapus permanen.`;
+          return used.length > 0
+            ? (locale === "en" ? `${base} Used in: ${used.join(", ")}. Deletion blocked.` : `${base} Dipakai di: ${used.join(", ")}. Penghapusan diblokir.`)
+            : base;
+        })()}
+        confirmLabel={deleting && findUsages(data, "vessels", String(deleting.id)).length > 0
+          ? (locale === "en" ? "Blocked - still in use" : "Diblokir - masih dipakai")
+          : S.delBtn}
+        danger
+        confirmDisabled={deleting ? findUsages(data, "vessels", String(deleting.id)).length > 0 : false}
+        onCancel={() => setDeleting(null)}
+        onConfirm={async () => {
+          if (!deleting) return;
+          const usedBy = findUsages(data, "vessels", String(deleting.id));
+          if (usedBy.length > 0) { toast(locale === "en" ? `Delete blocked - used in: ${usedBy.join(", ")}` : `Hapus diblokir - dipakai di: ${usedBy.join(", ")}`, "info"); return; }
+          try {
+            await remove("vessels", String(deleting.id));
+            log("menghapus kapal", `${deleting.id} · ${deleting.name}`, "Kapal");
+            toast(locale === "en" ? `Vessel ${deleting.id} deleted` : `Kapal ${deleting.id} dihapus`);
+          } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); }
+          setDeleting(null);
+        }}
+      />
     </div>
   );
 }

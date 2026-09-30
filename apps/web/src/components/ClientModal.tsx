@@ -5,6 +5,8 @@ import { Field, Modal, toast,
   NumInput,
 } from "./ui";
 import { useStore } from "../data/store";
+import { useT } from "../i18n/LanguageContext";
+import { n_crm } from "../i18n/n_crm";
 
 export default function ClientModal({
   open,
@@ -16,6 +18,8 @@ export default function ClientModal({
   onSaved: (name: string) => void;
 }) {
   const { add } = useStore();
+  const { locale } = useT();
+  const S = n_crm[locale];
   const [form, setForm] = useState({
     name: "",
     fleet: "1",
@@ -62,8 +66,8 @@ export default function ClientModal({
     <Modal
       open={open}
       onClose={onClose}
-      title="Tambah Klien"
-      subtitle="Klasifikasi, credit limit IDR, dan payment terms"
+      title={S.addClientBtn}
+      subtitle={S.clientModalSub}
       footer={
         <>
           <button className="btn-secondary" onClick={onClose}>
@@ -95,10 +99,10 @@ export default function ClientModal({
         <Field label="Cabang (opsional)">
           <input className="input" value={form.branch} onChange={(e) => setF("branch", e.target.value)} placeholder="Samarinda" />
         </Field>
-        <Field label="Credit limit (Rp, IDR)">
+        <Field label={`${S.creditLimitLabel} (Rp)`}>
           <NumInput min={0} className="input" value={form.creditLimit} onChange={(e) => setF("creditLimit", e.target.value)} />
         </Field>
-        <Field label="Payment terms">
+        <Field label={S.paymentTermsLabel}>
           <select className="input" value={form.paymentTerms} onChange={(e) => setF("paymentTerms", e.target.value)}>
             {["NET 14", "NET 30", "NET 45", "NET 60", "Termin"].map((t) => (
               <option key={t}>{t}</option>

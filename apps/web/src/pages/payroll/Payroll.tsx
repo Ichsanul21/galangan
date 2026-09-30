@@ -19,6 +19,7 @@ import {
   NumInput,
 } from "../../components/ui";
 import type { SortState } from "../../components/ui";
+import { useBusy } from "../../components/ui";
 import { useStore } from "../../data/store";
 import type { StoreItem } from "../../data/store";
 import { fmtBulan, fmtRupiah, fmtTanggal, todayISO } from "../../utils/format";
@@ -252,6 +253,7 @@ function calcPesangon(masaKerja: number, upah: number): { pesMonths: number; pes
 }
 
 export default function Payroll() {
+  const busy = useBusy();
   const { data, add, update, remove, log, inBranch } = useStore();
   const { locale } = useT();
   const S = n_dry[locale];
@@ -298,6 +300,9 @@ export default function Payroll() {
 
   /* ---------- THR & bonus ---------- */
   const [bonusForm, setBonusForm] = useState({ employeeId: "", nominal: "", keterangan: "" });
+  // Ubah THR/bonus HANYA bila Draft: nominal+keterangan (Bonus) / keterangan (THR, nominal turunan basis×masa).
+  const [bonusEdit, setBonusEdit] = useState<StoreItem | null>(null);
+  const [bonusEditForm, setBonusEditForm] = useState({ nominal: "", keterangan: "" });
 
   /* ---------- pesangon ---------- */
   const [showPesangon, setShowPesangon] = useState(false);
@@ -729,6 +734,36 @@ export default function Payroll() {
     } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); }
   };
 
+  const openBonusEdit = (p: StoreItem) => {
+    setBonusEdit(p);
+    setBonusEditForm({
+      nominal: String(Number(p.net || 0) + Number(p.pph21 || 0)),
+      keterangan: String(p.bonusNote ?? ""),
+    });
+  };
+
+  const saveBonusEdit = async () => {
+    if (!bonusEdit) return;
+    if (String(bonusEdit.status) !== "Draft") { toast(locale === "en" ? "Only Draft rows can be edited" : "Hanya baris Draft yang bisa diubah", "info"); return; }
+    const emp = empOf(String(bonusEdit.employeeId));
+    if (!emp) { toast(S.tPickEmp, "info"); return; }
+    const note = bonusEditForm.keterangan.trim() || "Bonus";
+    try {
+      if (rowType(bonusEdit) === "Bonus") {
+        const nominal = Number(bonusEditForm.nominal);
+        if (!Number.isFinite(nominal) || nominal <= 0) { toast(S.tBonusInvalid, "info"); return; }
+        const bonusBase = Number(emp.basic || 0) + sumAllowances(emp.allowances);
+        const pphBonus = calcPphIrregular(bonusBase, nominal, emp, rates);
+        await update("payroll", bonusEdit.id, { pph21: pphBonus, net: Math.round(nominal) - pphBonus, bonusNote: note });
+      } else {
+        await update("payroll", bonusEdit.id, { bonusNote: note });
+      }
+      log("mengubah THR/bonus", `${bonusEdit.id} · ${note}`, "Payroll");
+      toast(S.tUpdated.replace("{a}", String(bonusEdit.id)).replace("{b}", fmtRupiah(Number(bonusEdit.net || 0))));
+      setBonusEdit(null);
+    } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); }
+  };
+
   /* ---------- kasbon ---------- */
   const saveKasbon = async () => {
     const emp = empOf(kasbonForm.employeeId);
@@ -892,7 +927,7 @@ export default function Payroll() {
               <button className="btn-secondary" onClick={exportRekap}>
                 <Download className="h-4 w-4" /> {S.btnExportRekap}
               </button>
-              <button className="btn-primary-gradient" onClick={generate}>{S.btnGenerate.replace("{a}", fmtBulan(period))}</button>
+              <button className="btn-primary-gradient" onClick={() => void busy.run("generate", generate)} disabled={busy.isBusy("generate")}>{S.btnGenerate.replace("{a}", fmtBulan(period))}</button>
             </>
           ) : tab === "THR & Bonus" ? (
             <>
@@ -1107,6 +1142,9 @@ export default function Payroll() {
                             {p.status === "Draft" && (
                               <button className="text-sm font-semibold text-rose-600 hover:underline" title={S.delTitleAttr} onClick={() => setDelPay(p)}>{S.btnDelete}</button>
                             )}
+                            {p.status === "Draft" && (
+                              <button className="text-sm font-semibold text-navy-700 hover:underline" title={S.btnEdit} onClick={() => openBonusEdit(p)}>{S.btnEdit}</button>
+                            )}
                           </div>
                         </td>
                       </tr>
@@ -1231,6 +1269,36 @@ export default function Payroll() {
         </div>
       </Modal>
 
+      {/* ---------- modal ubah THR/bonus Draft ---------- */}
+      <Modal
+        open={bonusEdit !== null}
+        onClose={() => setBonusEdit(null)}
+        title={bonusEdit ? `${S.btnEdit} ${rowType(bonusEdit)} ${bonusEdit.id}` : ""}
+        subtitle={bonusEdit ? `${empNameOf(String(bonusEdit.employeeId))} · ${fmtBulan(period)}` : ""}
+        footer={
+          <>
+            <button className="btn-secondary" onClick={() => setBonusEdit(null)}>{S.cancelBtn}</button>
+            <button className="btn-primary" onClick={saveBonusEdit}>{S.saveShort}</button>
+          </>
+        }
+      >
+        <div className="space-y-3">
+          {bonusEdit && rowType(bonusEdit) === "Bonus" && (
+            <Field label={S.phBonusNominal}>
+              <NumInput min="0" className="input" value={bonusEditForm.nominal} onChange={(e) => setBonusEditForm({ ...bonusEditForm, nominal: e.target.value })} placeholder={S.phBonusNominal} />
+            </Field>
+          )}
+          {bonusEdit && rowType(bonusEdit) === "THR" && (
+            <p className="rounded-lg bg-surface px-3 py-2 text-xs text-steel-600">
+              {S.thrBasis.replace("{a}", fmtRupiah(Number(bonusEdit.thrBase || 0))).replace("{b}", String(Number(bonusEdit.masaBulan || 0)))}
+            </p>
+          )}
+          <Field label={locale === "en" ? "Note" : "Keterangan"}>
+            <input className="input" value={bonusEditForm.keterangan} onChange={(e) => setBonusEditForm({ ...bonusEditForm, keterangan: e.target.value })} placeholder={S.phBonusNote} />
+          </Field>
+        </div>
+      </Modal>
+
       {/* ---------- modal bayar ---------- */}
       <Modal
         open={payTarget !== null}
@@ -1240,7 +1308,7 @@ export default function Payroll() {
         footer={
           <>
             <button className="btn-secondary" onClick={() => setPayTarget(null)}>{S.cancelBtn}</button>
-            <button className="btn-primary" onClick={confirmPay}>{S.btnConfirmPay}</button>
+            <button className="btn-primary" onClick={() => void busy.run("confirmPay", confirmPay)} disabled={busy.isBusy("confirmPay")}>{S.btnConfirmPay}</button>
           </>
         }
       >

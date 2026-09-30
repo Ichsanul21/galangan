@@ -86,6 +86,8 @@ export const id: Dict = {
     title: "Selamat datang kembali",
     subtitle: "Masuk ke pusat kendali galangan dengan akun kru Anda.",
     continue: "Masuk untuk melanjutkan",
+    tagline: "Sistem Manajemen Galangan",
+    usernamePh: "cth: demo@galangan.com / 6474010101000001",
     passwordPh: "Masukkan password",
     demoTitle: "Akses demo - masuk satu klik",
     asUser: "Masuk sebagai",

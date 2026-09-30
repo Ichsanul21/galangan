@@ -303,6 +303,9 @@ export default function Peran() {
   const [form, setForm] = useState({ username: "", name: "", role: "Manager", password: "", email: "", employeeId: "" });
   const [pwTarget, setPwTarget] = useState<ManagedUser | null>(null);
   const [pwValue, setPwValue] = useState("");
+  // Ubah user: nama + peran + email via PATCH.
+  const [editUser, setEditUser] = useState<ManagedUser | null>(null);
+  const [editUserForm, setEditUserForm] = useState({ name: "", role: "Manager", email: "" });
   const [confirmTarget, setConfirmTarget] = useState<ManagedUser | null>(null);
   const navigate = useNavigate();
   const [linkTarget, setLinkTarget] = useState<ManagedUser | null>(null);
@@ -387,6 +390,34 @@ export default function Peran() {
       setPwValue("");
     } catch (e) {
       toast(errMsg(e, S.failResetPw), "info");
+    }
+  };
+
+  const openEditUser = (u: ManagedUser) => {
+    setEditUser(u);
+    setEditUserForm({ name: u.name ?? "", role: u.role ?? "Manager", email: u.email ?? "" });
+  };
+
+  const doUpdateUser = async () => {
+    if (!editUser) return;
+    if (!editUserForm.name.trim()) {
+      toast(S.formIncomplete, "info");
+      return;
+    }
+    try {
+      await apiFetch(`/api/users/${editUser.id}`, {
+        method: "PATCH",
+        body: JSON.stringify({
+          name: editUserForm.name.trim(),
+          role: editUserForm.role,
+          email: editUserForm.email.trim(),
+        }),
+      });
+      toast(S.savedKey.replace("{n}", editUser.username));
+      setEditUser(null);
+      await loadUsers();
+    } catch (e) {
+      toast(errMsg(e, S.saveFail), "info");
     }
   };
 
@@ -584,6 +615,12 @@ export default function Peran() {
                     </td>
                     <td className="px-3 py-2">
                       <div className="flex justify-end gap-1.5">
+                        <button
+                          className="btn-secondary px-2 py-1 text-xs"
+                          onClick={() => openEditUser(u)}
+                        >
+                          {locale === "en" ? "Edit" : "Ubah"}
+                        </button>
                         <button
                           className="btn-secondary px-2 py-1 text-xs"
                           onClick={() => { setLinkTarget(u); setLinkValue(u.employeeId ?? ""); }}
@@ -902,6 +939,34 @@ export default function Peran() {
         onCancel={() => setConfirmTarget(null)}
         onConfirm={() => { const t = confirmTarget; if (t) void doToggleActive(t); }}
       />
+
+      <Modal
+        open={editUser !== null}
+        onClose={() => setEditUser(null)}
+        title={editUser ? `${locale === "en" ? "Edit user" : "Ubah pengguna"} ${editUser.username}` : ""}
+        footer={
+          <>
+            <button className="btn-secondary" onClick={() => setEditUser(null)}>{S.cancel}</button>
+            <button className="btn-primary" onClick={() => void doUpdateUser()}>{S.save}</button>
+          </>
+        }
+      >
+        <div className="grid gap-3">
+          <Field label={S.thName}>
+            <input className="input" value={editUserForm.name} onChange={(e) => setEditUserForm((f) => ({ ...f, name: e.target.value }))} placeholder={S.namePh} />
+          </Field>
+          <Field label={S.thRole}>
+            <select className="input" value={editUserForm.role} onChange={(e) => setEditUserForm((f) => ({ ...f, role: e.target.value }))}>
+              {ROLES.map((r) => (
+                <option key={r} value={r}>{r}</option>
+              ))}
+            </select>
+          </Field>
+          <Field label={S.emailOptional}>
+            <input type="email" className="input" value={editUserForm.email} onChange={(e) => setEditUserForm((f) => ({ ...f, email: e.target.value }))} placeholder={S.emailPh} />
+          </Field>
+        </div>
+      </Modal>
     </div>
   );
 }

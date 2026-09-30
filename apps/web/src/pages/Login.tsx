@@ -280,7 +280,7 @@ export default function Login() {
             </div>
             <div>
               <p className="font-bold text-navy-900">ISMS Galangan</p>
-              <p className="text-[11px] uppercase tracking-wider text-steel-500">Shipyard Management System</p>
+              <p className="text-[11px] uppercase tracking-wider text-steel-500">{t.auth.tagline}</p>
             </div>
           </div>
 
@@ -307,7 +307,7 @@ export default function Login() {
                 <User className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-steel-400" />
                 <input
                   className="input pl-9"
-                  placeholder="e.g. demo@galangan.com / 6474010101000001"
+                  placeholder={t.auth.usernamePh}
                   value={username}
                   onChange={(e) => setUsername(e.target.value)}
                   autoComplete="username"

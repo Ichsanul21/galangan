@@ -13,9 +13,12 @@ import {
   toggleSort,
   sortRows,
   usePager,
+  ConfirmModal,
+  toast,
 } from "../../components/ui";
 import type { SortState } from "../../components/ui";
 import { useStore } from "../../data/store";
+import { findUsages } from "../../utils/usages";
 import type { StoreItem } from "../../data/store";
 import { useT } from "../../i18n/LanguageContext";
 import { n_prj } from "../../i18n/n_prj";
@@ -61,7 +64,7 @@ const prioritasTone: Record<string, "gray" | "blue" | "amber" | "red"> = {
 export default function Projects() {
   const { locale } = useT();
   const S = n_prj[locale];
-  const { data, add, update, inBranch } = useStore();
+  const { data, add, update, remove, inBranch } = useStore();
   const modAlert = useModuleAlert("proyek");
   const flash = useNotifFlash();
   const notified = useMemo(() => new Set(modAlert.items.map((a) => a.rowId)), [modAlert.items]);
@@ -76,6 +79,8 @@ export default function Projects() {
   const [q, setQ] = useState("");
   const [sort, setSort] = useState<SortState>({ key: null, dir: "asc" });
   const [showAdd, setShowAdd] = useState(false);
+  // Hapus proyek via ConfirmModal + daftar pemakai (blokir bila dirujuk PO/invoice/WBS).
+  const [delProject, setDelProject] = useState<StoreItem | null>(null);
   const [searchParams, setSearchParams] = useSearchParams();
 
   // Alur dari Dashboard: /proyek?create=1 langsung buka form tambah proyek.
@@ -255,6 +260,7 @@ export default function Projects() {
                 <SortTh label={S.colBudget} sortKey="budget" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} />
                 <SortTh label={S.colActual} sortKey="actual" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} />
                 <SortTh label={S.colPm} sortKey="manager" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} />
+                <th className="th">{S.actionTh}</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-steel-100">
@@ -308,6 +314,15 @@ export default function Projects() {
                     <td className="td font-medium text-navy-900">{fmtMiliar(p.budget)}</td>
                     <td className="td text-steel-600">{fmtMiliar(p.actual)}</td>
                     <td className="td text-steel-600">{p.manager}</td>
+                    <td className="td" onClick={(e) => e.stopPropagation()}>
+                      <button
+                        className="text-xs font-semibold text-rose-600 hover:underline"
+                        aria-label={`${locale === "en" ? "Delete" : "Hapus"} ${p.id}`}
+                        onClick={() => setDelProject(p)}
+                      >
+                        {locale === "en" ? "Delete" : "Hapus"}
+                      </button>
+                    </td>
                   </tr>
                 );
               })}
@@ -328,6 +343,37 @@ export default function Projects() {
         clients={data.clients}
         employees={data.employees}
         add={add}
+      />
+
+      <ConfirmModal
+        open={delProject !== null}
+        title={delProject ? (locale === "en" ? `Delete project ${delProject.id}?` : `Hapus proyek ${delProject.id}?`) : ""}
+        desc={(() => {
+          if (!delProject) return "";
+          const used = findUsages(data, "projects", String(delProject.id));
+          const base = locale === "en"
+            ? `Project ${delProject.id} (${String(delProject.vessel)}) will be permanently deleted.`
+            : `Proyek ${delProject.id} (${String(delProject.vessel)}) akan dihapus permanen.`;
+          return used.length > 0
+            ? (locale === "en" ? `${base} Referenced in: ${used.join(", ")}. Deletion blocked.` : `${base} Dirujuk di: ${used.join(", ")}. Penghapusan diblokir.`)
+            : base;
+        })()}
+        confirmLabel={delProject && findUsages(data, "projects", String(delProject.id)).length > 0
+          ? (locale === "en" ? "Blocked - still in use" : "Diblokir - masih dipakai")
+          : (locale === "en" ? "Delete" : "Hapus")}
+        danger
+        confirmDisabled={delProject ? findUsages(data, "projects", String(delProject.id)).length > 0 : false}
+        onCancel={() => setDelProject(null)}
+        onConfirm={async () => {
+          if (!delProject) return;
+          const usedBy = findUsages(data, "projects", String(delProject.id));
+          if (usedBy.length > 0) { toast(locale === "en" ? `Delete blocked - referenced in: ${usedBy.join(", ")}` : `Hapus diblokir - dirujuk di: ${usedBy.join(", ")}`, "info"); return; }
+          try {
+            await remove("projects", String(delProject.id));
+            toast(locale === "en" ? `Project ${delProject.id} deleted` : `Proyek ${delProject.id} dihapus`);
+          } catch (e) { toast(e instanceof Error ? e.message : (locale === "en" ? "Delete failed" : "Gagal menghapus"), "info"); }
+          setDelProject(null);
+        }}
       />
     </div>
   );

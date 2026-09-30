@@ -7,6 +7,7 @@ import { Card, CardHeader, PageHeader, Badge, KpiCard, Tabs, ProgressBar, ChartT
   NumInput,
 } from "../../components/ui";
 import type { SortState } from "../../components/ui";
+import { useBusy } from "../../components/ui";
 import { useStore } from "../../data/store";
 import type { StoreItem } from "../../data/store";
 import { equipmentHours, sparkUtil, equipTotalTrend, maintTrend, serviceDueTrend } from "../../data";
@@ -111,6 +112,7 @@ function oeeGrade(v: number, en: boolean): { label: string; tone: "green" | "amb
 }
 
 export default function EquipmentPage() {
+  const busy = useBusy();
   const { data, add, update, remove, log, branch } = useStore();
   const { locale } = useT();
   const S = n_eqp[locale];
@@ -604,7 +606,7 @@ export default function EquipmentPage() {
     try {
     if (!finishingCal) return;
     if (!calCert.trim()) { toast(S.eqCertReq, "info"); return; }
-    if (!calDoneDate) { toast("Tanggal pelaksanaan kalibrasi wajib diisi (boleh backdate)", "info"); return; }
+    if (!calDoneDate) { toast(S.calDoneReq, "info"); return; }
     const interval = Math.max(1, Math.floor(Number(calInterval) || 12));
     const nextDue = addMonthsISO(calDoneDate, interval);
     const passed = calResult === "Lulus";
@@ -1234,7 +1236,7 @@ export default function EquipmentPage() {
 
       {/* Modal booking */}
       <Modal open={showBook} onClose={() => { setShowBook(false); setBookError(null); }} title={S.eqBookTitle} subtitle={S.eqBookSub}
-        footer={<><button className="btn-secondary" onClick={() => { setShowBook(false); setBookError(null); }}>{S.cancelBtn}</button><button className="btn-primary" onClick={saveBooking}>{S.eqSaveBooking}</button></>}>
+        footer={<><button className="btn-secondary" onClick={() => { setShowBook(false); setBookError(null); }}>{S.cancelBtn}</button><button className="btn-primary" onClick={() => void busy.run("saveBooking", saveBooking)} disabled={busy.isBusy("saveBooking")}>{S.eqSaveBooking}</button></>}>
         <div className="space-y-3">
           <FormGrid>
             <Field label={S.thEquipment}>
@@ -1277,7 +1279,7 @@ export default function EquipmentPage() {
 
       {/* Modal selesaikan booking */}
       <Modal open={finishing !== null} onClose={() => setFinishing(null)} title={S.eqFinishBookTitle.replace("{a}", finishing ? equipLabel(finishing.equip) : "")} subtitle={finishing ? `${finishing.proyek} · ${finishing.jam} · ${fmtTanggal(String(finishing.date))}` : ""}
-        footer={<><button className="btn-secondary" onClick={() => setFinishing(null)}>{S.cancelBtn}</button><button className="btn-primary" onClick={confirmFinish}>{S.finishBtn}</button></>}>
+        footer={<><button className="btn-secondary" onClick={() => setFinishing(null)}>{S.cancelBtn}</button><button className="btn-primary" onClick={() => void busy.run("confirmFinish", confirmFinish)} disabled={busy.isBusy("confirmFinish")}>{S.finishBtn}</button></>}>
         <div className="space-y-3">
           <Field label={S.eqActualHours} hint={S.eqActualHoursHint}>
             <NumInput min={0} step={0.5} className="input" value={finishHours} onChange={(e) => setFinishHours(e.target.value)} />
@@ -1311,7 +1313,7 @@ export default function EquipmentPage() {
         footer={<><button className="btn-secondary" onClick={() => setFinishingCal(null)}>{S.cancelBtn}</button><button className="btn-primary" onClick={confirmCalFinish}>{S.finishBtn}</button></>}>
         <div className="space-y-3">
           <FormGrid>
-            <Field label="Tanggal pelaksanaan" hint="Boleh backdate (pencatatan susulan)">
+            <Field label="Tanggal pelaksanaan" hint={S.calBackdateHint}>
               <input type="date" className="input" value={calDoneDate} onChange={(e) => setCalDoneDate(e.target.value)} />
             </Field>
             <Field label="Hasil kalibrasi">

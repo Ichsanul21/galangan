@@ -1,12 +1,14 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { Plus, Send, Users2, Star, Handshake, ArrowRight, Search } from "lucide-react";
-import { Card, CardHeader, PageHeader, Badge, KpiCard, Tabs, Donut, Modal, Field, FormGrid, StatusBadge, EmptyState, SortTh, toggleSort, sortRows, toast, usePager,
+import { Card, CardHeader, PageHeader, Badge, KpiCard, Tabs, Donut, Modal, Field, FormGrid, StatusBadge, ConfirmModal, EmptyState, SortTh, toggleSort, sortRows, toast, usePager,
   NumInput,
 } from "../../components/ui";
 import ClientModal from "../../components/ClientModal";
 import type { SortState } from "../../components/ui";
+import { useBusy } from "../../components/ui";
 import { useStore } from "../../data/store";
+import { findUsages } from "../../utils/usages";
 import type { StoreItem } from "../../data/store";
 import { fmtMiliar, fmtRupiah, fmtTanggal, todayISO } from "../../utils/format";
 import { sameName } from "../../utils/names";
@@ -61,7 +63,8 @@ function umurHari(dateStr: string | null | undefined): number | null {
 }
 
 export default function CRM() {
-  const { data, add, update, log, branch, inBranch } = useStore();
+  const busy = useBusy();
+  const { data, add, update, remove, log, branch, inBranch } = useStore();
   const { locale } = useT();
   const S = n_crm[locale];
   const modAlert = useModuleAlert("crm");
@@ -92,6 +95,34 @@ export default function CRM() {
   const [showReq, setShowReq] = useState(false);
   const [reqForm, setReqForm] = useState({ vessel: "", client: "", kind: "Repair Request", scope: "", value: "", date: todayISO() });
   const [poForm, setPoForm] = useState({ contractId: "", projectId: "", no: "", amount: "", date: todayISO() });
+  // Hapus quotation (Lead saja) / request (Baru saja) / kontrak (belum link proyek)
+  // via ConfirmModal + findUsages + cek relasi lokal.
+  const [delQuote, setDelQuote] = useState<StoreItem | null>(null);
+  const [delReq, setDelReq] = useState<StoreItem | null>(null);
+  const [delContract, setDelContract] = useState<StoreItem | null>(null);
+
+  // Relasi lokal di luar findUsages: quotation←projects/contracts, request←quotations, contract←projects/clientPos.
+  const quoteBlockers = (q: StoreItem): string[] => {
+    const out = [...findUsages(data, "quotations", String(q.id))];
+    if (String(q.stage) !== "Lead") out.push(`Stage ${String(q.stage)}`);
+    if (data.projects.some((p) => String(p.quotationId ?? "") === String(q.id))) out.push("1 Proyek");
+    if ((data.contracts ?? []).some((c) => String(c.quotationId ?? "") === String(q.id))) out.push("1 Kontrak");
+    return out;
+  };
+  const reqBlockers = (r: StoreItem): string[] => {
+    const out = [...findUsages(data, "requests", String(r.id))];
+    if (String(r.status) !== "Baru") out.push(`Status ${String(r.status)}`);
+    const nq = (data.quotations ?? []).filter((q) => String(q.requestId ?? "") === String(r.id)).length;
+    if (nq > 0) out.push(`${nq} Penawaran`);
+    return out;
+  };
+  const contractBlockers = (k: StoreItem): string[] => {
+    const out = [...findUsages(data, "contracts", String(k.id))];
+    if (String(k.status) !== "Draft" && String(k.projectId ?? "")) out.push("1 Proyek");
+    const npo = (clientPos ?? []).filter((p) => String(p.contractId ?? "") === String(k.id)).length;
+    if (npo > 0) out.push(`${npo} PO Klien`);
+    return out;
+  };
 
   const clientByName = useMemo(() => {
     const m: Record<string, StoreItem> = {};
@@ -717,6 +748,7 @@ export default function CRM() {
                       <button className="btn-secondary text-xs" onClick={() => openSend(q)}><Send className="h-3.5 w-3.5" /> {S.sendBtn}</button>
                       {!isTerminal(String(q.stage)) && q.stage !== "Menang" && <button className="btn-secondary text-xs" onClick={() => advance(q)}>{S.advanceBtn}</button>}
                       {!isTerminal(String(q.stage)) && q.stage === "Menang" && <button className="btn-primary text-xs" onClick={() => openConvert(q)}>{S.toProjectBtn}</button>}
+                      {String(q.stage) === "Lead" && <button className="btn-secondary text-xs text-rose-600" onClick={() => setDelQuote(q)}>{S.deleteBtn}</button>}
                     </div>
                   </div>
                   {!isTerminal(String(q.stage)) && (
@@ -755,6 +787,7 @@ export default function CRM() {
                     </div>
                     <div className="mt-2 flex flex-wrap gap-1.5">
                       {String(r.status) === "Baru" && <button className="btn-secondary text-xs" onClick={() => advanceRequest(r, "Disurvei")}>Disurvei</button>}
+                      {String(r.status) === "Baru" && <button className="btn-secondary text-xs text-rose-600" onClick={() => setDelReq(r)}>{S.deleteBtn}</button>}
                       {String(r.status) === "Disurvei" && <button className="btn-secondary text-xs" onClick={() => advanceRequest(r, "Diajukan")}>Diajukan</button>}
                       {String(r.status) === "Diajukan" && (<>
                         <button className="btn-secondary text-xs" onClick={() => advanceRequest(r, "Disetujui")}>Disetujui</button>
@@ -827,7 +860,7 @@ export default function CRM() {
                   <div className="overflow-x-auto">
                     <table className="w-full">
                       <thead className="bg-surface sticky top-0 z-10">
-                        <tr><SortTh label={S.sortContract} sortKey="kontrak" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.sortQuotation} sortKey="quotation" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.sortValue} sortKey="nilai" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.sortSign} sortKey="sign" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.sortStatus} sortKey="status" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /></tr>
+                        <tr><SortTh label={S.sortContract} sortKey="kontrak" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.sortQuotation} sortKey="quotation" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.sortValue} sortKey="nilai" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.sortSign} sortKey="sign" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.sortStatus} sortKey="status" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><th className="th">{locale === "en" ? "Actions" : "Aksi"}</th></tr>
                       </thead>
                       <tbody className="divide-y divide-steel-100">
                         {contractPager.slice(sortedContracts).map((k) => (
@@ -841,6 +874,11 @@ export default function CRM() {
                             </td>
                             <td className="td text-xs text-steel-600">{fmtTanggal(String(k.signedAt ?? ""))}</td>
                             <td className="td"><StatusBadge status={String(k.status ?? "Aktif")} /></td>
+                            <td className="td">
+                              {!String(k.projectId ?? "") && (
+                                <button className="btn-secondary text-xs text-rose-600" onClick={() => setDelContract(k)}>{S.deleteBtn}</button>
+                              )}
+                            </td>
                           </tr>
                         ))}
                       </tbody>
@@ -976,7 +1014,7 @@ export default function CRM() {
       </Card>
 
       <Modal open={showQ} onClose={() => setShowQ(false)} title={S.newQuotation} subtitle={S.newQuoteSub}
-        wide footer={<><button className="btn-secondary" onClick={() => setShowQ(false)}>{S.cancelBtn}</button><button className="btn-primary" onClick={saveQuotation}>{S.saveQuoteBtn}</button></>}>
+        wide footer={<><button className="btn-secondary" onClick={() => setShowQ(false)}>{S.cancelBtn}</button><button className="btn-primary" onClick={() => void busy.run("saveQuotation", saveQuotation)} disabled={busy.isBusy("saveQuotation")}>{S.saveQuoteBtn}</button></>}>
         <div className="space-y-3">
           <FormGrid>
             <Field label={S.clientLabel}>
@@ -1053,7 +1091,7 @@ export default function CRM() {
         onClose={() => setConvertTarget(null)}
         title={S.convertTitle.replace("{n}", convertTarget?.id ?? "")}
         subtitle={S.convertSubCrm}
-        footer={<><button className="btn-secondary" onClick={() => setConvertTarget(null)}>{S.cancelBtn}</button><button className="btn-primary" onClick={confirmConvert}>{S.convertConfirmCrm}</button></>}
+        footer={<><button className="btn-secondary" onClick={() => setConvertTarget(null)}>{S.cancelBtn}</button><button className="btn-primary" onClick={() => void busy.run("confirmConvert", confirmConvert)} disabled={busy.isBusy("confirmConvert")}>{S.convertConfirmCrm}</button></>}
       >
         <div className="space-y-3">
           <p className="text-sm text-steel-600">{S.convertBodyCrm}</p>
@@ -1078,6 +1116,100 @@ export default function CRM() {
           <Field label="Rencana selesai"><input type="date" className="input" value={convEnd} onChange={(e) => setConvEnd(e.target.value)} /></Field>
         </div>
       </Modal>
+
+      <ConfirmModal
+        open={delQuote !== null}
+        title={delQuote ? (locale === "en" ? `Delete quotation ${delQuote.id}?` : `Hapus penawaran ${delQuote.id}?`) : ""}
+        desc={(() => {
+          if (!delQuote) return "";
+          const used = quoteBlockers(delQuote);
+          const base = locale === "en"
+            ? `Quotation ${delQuote.id} (${String(delQuote.vessel)}) in Lead stage will be permanently deleted.`
+            : `Penawaran ${delQuote.id} (${String(delQuote.vessel)}) tahap Lead akan dihapus permanen.`;
+          return used.length > 0
+            ? (locale === "en" ? `${base} Blocked by: ${used.join(", ")}.` : `${base} Terhalang: ${used.join(", ")}. Penghapusan diblokir.`)
+            : base;
+        })()}
+        confirmLabel={delQuote && quoteBlockers(delQuote).length > 0
+          ? (locale === "en" ? "Blocked - still in use" : "Diblokir - masih dipakai")
+          : S.deleteBtn}
+        danger
+        confirmDisabled={delQuote ? quoteBlockers(delQuote).length > 0 : false}
+        onCancel={() => setDelQuote(null)}
+        onConfirm={async () => {
+          if (!delQuote) return;
+          const usedBy = quoteBlockers(delQuote);
+          if (usedBy.length > 0) { toast(locale === "en" ? `Delete blocked: ${usedBy.join(", ")}` : `Hapus diblokir: ${usedBy.join(", ")}`, "info"); return; }
+          try {
+            await remove("quotations", String(delQuote.id));
+            log("menghapus penawaran", String(delQuote.id), "CRM");
+            toast(locale === "en" ? `Quotation ${delQuote.id} deleted` : `Penawaran ${delQuote.id} dihapus`);
+          } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); }
+          setDelQuote(null);
+        }}
+      />
+      <ConfirmModal
+        open={delReq !== null}
+        title={delReq ? (locale === "en" ? `Delete request ${delReq.id}?` : `Hapus request ${delReq.id}?`) : ""}
+        desc={(() => {
+          if (!delReq) return "";
+          const used = reqBlockers(delReq);
+          const base = locale === "en"
+            ? `Request ${delReq.id} (${String(delReq.vessel)}) with status Baru will be permanently deleted.`
+            : `Request ${delReq.id} (${String(delReq.vessel)}) status Baru akan dihapus permanen.`;
+          return used.length > 0
+            ? (locale === "en" ? `${base} Blocked by: ${used.join(", ")}.` : `${base} Terhalang: ${used.join(", ")}. Penghapusan diblokir.`)
+            : base;
+        })()}
+        confirmLabel={delReq && reqBlockers(delReq).length > 0
+          ? (locale === "en" ? "Blocked - still in use" : "Diblokir - masih dipakai")
+          : S.deleteBtn}
+        danger
+        confirmDisabled={delReq ? reqBlockers(delReq).length > 0 : false}
+        onCancel={() => setDelReq(null)}
+        onConfirm={async () => {
+          if (!delReq) return;
+          const usedBy = reqBlockers(delReq);
+          if (usedBy.length > 0) { toast(locale === "en" ? `Delete blocked: ${usedBy.join(", ")}` : `Hapus diblokir: ${usedBy.join(", ")}`, "info"); return; }
+          try {
+            await remove("requests", String(delReq.id));
+            log("menghapus request", String(delReq.id), "CRM");
+            toast(locale === "en" ? `Request ${delReq.id} deleted` : `Request ${delReq.id} dihapus`);
+          } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); }
+          setDelReq(null);
+        }}
+      />
+      <ConfirmModal
+        open={delContract !== null}
+        title={delContract ? (locale === "en" ? `Delete contract ${delContract.id}?` : `Hapus kontrak ${delContract.id}?`) : ""}
+        desc={(() => {
+          if (!delContract) return "";
+          const used = contractBlockers(delContract);
+          const base = locale === "en"
+            ? `Contract ${delContract.id} (not linked to a project) will be permanently deleted.`
+            : `Kontrak ${delContract.id} (belum di-link ke proyek) akan dihapus permanen.`;
+          return used.length > 0
+            ? (locale === "en" ? `${base} Blocked by: ${used.join(", ")}.` : `${base} Terhalang: ${used.join(", ")}. Penghapusan diblokir.`)
+            : base;
+        })()}
+        confirmLabel={delContract && contractBlockers(delContract).length > 0
+          ? (locale === "en" ? "Blocked - still in use" : "Diblokir - masih dipakai")
+          : S.deleteBtn}
+        danger
+        confirmDisabled={delContract ? contractBlockers(delContract).length > 0 : false}
+        onCancel={() => setDelContract(null)}
+        onConfirm={async () => {
+          if (!delContract) return;
+          const usedBy = contractBlockers(delContract);
+          if (usedBy.length > 0) { toast(locale === "en" ? `Delete blocked: ${usedBy.join(", ")}` : `Hapus diblokir: ${usedBy.join(", ")}`, "info"); return; }
+          try {
+            await remove("contracts", String(delContract.id));
+            log("menghapus kontrak", String(delContract.id), "CRM");
+            toast(locale === "en" ? `Contract ${delContract.id} deleted` : `Kontrak ${delContract.id} dihapus`);
+          } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); }
+          setDelContract(null);
+        }}
+      />
     </div>
   );
 }
