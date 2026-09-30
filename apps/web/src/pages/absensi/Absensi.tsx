@@ -382,7 +382,7 @@ export default function Absensi() {
               <Card>
                 <div className="overflow-x-auto p-2">
                   <table className="w-full">
-                    <thead className="bg-surface sticky top-14 z-10">
+                    <thead className="bg-surface sticky top-0 z-10">
                       <tr>
                         <SortTh label={S.sortEmployee} sortKey="emp" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} />
                         <SortTh label={S.sortStatus} sortKey="status" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} />
@@ -532,7 +532,7 @@ export default function Absensi() {
               <Card>
                 <div className="overflow-x-auto p-2">
                   <table className="w-full">
-                    <thead className="bg-surface sticky top-14 z-10">
+                    <thead className="bg-surface sticky top-0 z-10">
                       <tr>
                         <SortTh label={S.sortEmployee} sortKey="emp" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} />
                         <SortTh label="H" sortKey="h" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} />
@@ -570,7 +570,7 @@ export default function Absensi() {
               <Card>
                 <div className="overflow-x-auto p-2">
                   <table className="w-full">
-                    <thead className="bg-surface sticky top-14 z-10">
+                    <thead className="bg-surface sticky top-0 z-10">
                       <tr>
                         <SortTh label={S.sortDate} sortKey="date" sort={sort3} onSort={(k) => setSort3((s) => toggleSort(s, k))} />
                         <SortTh label={S.sortEmployee} sortKey="emp" sort={sort3} onSort={(k) => setSort3((s) => toggleSort(s, k))} />

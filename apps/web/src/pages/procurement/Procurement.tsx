@@ -1010,42 +1010,6 @@ export default function Procurement() {
       </div>
 
       <div className="mt-4 card">
-        {tab !== "Vendor" && (
-          <div className="border-b border-steel-200 px-4 pt-3">
-            <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label={locale === "en" ? "Procurement flow" : "Alur pengadaan"}>
-              {[
-                { id: "PR", no: "1", label: locale === "en" ? "Request" : "Minta", hint: locale === "en" ? "what is needed" : "apa yang dibutuhkan" },
-                { id: "RFQ", no: "2", label: locale === "en" ? "Compare" : "Banding harga", hint: locale === "en" ? "optional under limit" : "opsional di bawah batas" },
-                { id: "PO", no: "3", label: locale === "en" ? "Order" : "Pesan", hint: locale === "en" ? "office / workshop" : "kantor / workshop" },
-                { id: "GR", no: "4", label: locale === "en" ? "Receive" : "Terima", hint: locale === "en" ? "stock + payable" : "tambah stok + hutang" },
-                { id: "BAYAR", no: "5", label: locale === "en" ? "Pay" : "Bayar", hint: locale === "en" ? "settle payable" : "selesai hutang di Finance" },
-              ].map((s, i, arr) => {
-                const active = (tab === "PR" && s.id === "PR") || (tab === "RFQ" && s.id === "RFQ") || ((tab === "PO Besar (Kantor)" || tab === "PO Kecil (Workshop)") && (s.id === "PO" || s.id === "GR"));
-                const go = s.id === "PR" ? "PR" : s.id === "RFQ" ? "RFQ" : "PO Besar (Kantor)";
-                return (
-                  <span key={s.id} className="flex items-center gap-1.5">
-                    <button
-                      type="button"
-                      onClick={() => setTab(go)}
-                      aria-current={active ? "step" : undefined}
-                      title={`${s.no}. ${s.label} - ${s.hint}`}
-                      className={`rounded-lg px-2.5 py-1 text-xs font-semibold ${active ? "bg-navy-700 text-white" : "bg-steel-100 text-steel-500 hover:bg-steel-200"}`}
-                      disabled={s.id === "BAYAR"}
-                    >
-                      {s.no}. {s.label}
-                    </button>
-                    {i < arr.length - 1 && <span aria-hidden className="text-steel-300">→</span>}
-                  </span>
-                );
-              })}
-            </div>
-            <p className="py-1.5 text-[11px] text-steel-500">
-              {locale === "en"
-                ? `Alur: Kebutuhan (PR) → Penawaran (RFQ) → PO → Penerimaan (stok + hutang) → Pembayaran.${tab === "PR" ? " Anda di langkah 1: tulis kebutuhan." : tab === "RFQ" ? " Anda di langkah 2: bandingkan 3+ penawaran vendor." : " Anda di langkah 3-4: setujui, kirim, lalu klik Terima."}`
-                : `Alur: Kebutuhan (PR) → Penawaran (RFQ) → PO → Penerimaan (stok + hutang) → Pembayaran.${tab === "PR" ? " Anda di langkah 1: tulis kebutuhan." : tab === "RFQ" ? " Anda di langkah 2: bandingkan 3+ penawaran vendor." : " Anda di langkah 3-4: setujui, kirim, lalu klik Terima."}`}
-            </p>
-          </div>
-        )}
         <Tabs tabs={["PR", "RFQ", "PO Besar (Kantor)", "PO Kecil (Workshop)", "Vendor"]} active={tab} onChange={setTab} labels={{ PR: S.tabPr, RFQ: S.tabRfq, "PO Besar (Kantor)": S.tabBig, "PO Kecil (Workshop)": S.tabSmall, Vendor: S.tabVendor }} />
         <div className="p-4">
           <div className="mb-3 flex flex-wrap items-center gap-2">
@@ -1095,7 +1059,7 @@ export default function Procurement() {
               <p className="rounded-lg bg-steel-50 px-3 py-2 text-xs text-steel-500">{S.bigInfo.replace("{n}", fmtRupiah(PO_KECIL_LIMIT))}</p>
               <div className="overflow-x-auto">
                 <table className="w-full">
-                  <thead className="bg-surface sticky top-14 z-10">
+                  <thead className="bg-surface sticky top-0 z-10">
                     <tr><SortTh label={S.po} sortKey="po" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.item} sortKey="item" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.vendor} sortKey="vendor" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.nilai} sortKey="nilai" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.level} sortKey="level" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.eta} sortKey="eta" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.revisi} sortKey="revisi" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.status} sortKey="status" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><th className="th">{S.aksi}</th></tr>
                   </thead>
                   <tbody className="divide-y divide-steel-100">
@@ -1195,7 +1159,7 @@ export default function Procurement() {
           {tab === "PO Kecil (Workshop)" && (
             <div className="space-y-4">
               <details>
-                <summary className="cursor-pointer rounded-lg bg-steel-50 px-3 py-2 text-xs font-semibold text-steel-600 hover:bg-steel-100">{S.kasT} - {locale === "en" ? "session helper, click to open" : "alat bantu sesi, klik untuk buka"}</summary>
+                <summary className="cursor-pointer rounded-lg bg-steel-50 px-3 py-2 text-xs font-semibold text-steel-600 hover:bg-steel-100">{S.kasT}</summary>
               <Card className="mt-2 p-5">
                 <CardHeader title={S.kasT} subtitle={S.kasS} />
                 <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-4">
@@ -1222,7 +1186,7 @@ export default function Procurement() {
                 <p className="mb-3 rounded-lg bg-steel-50 px-3 py-2 text-xs text-steel-500">{S.smallInfo.replace("{n}", fmtRupiah(PO_KECIL_LIMIT))}</p>
                 <div className="overflow-x-auto">
                   <table className="w-full">
-                    <thead className="bg-surface sticky top-14 z-10">
+                    <thead className="bg-surface sticky top-0 z-10">
                       <tr><SortTh label={S.po} sortKey="po" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} /><SortTh label={S.kebutuhan} sortKey="kebutuhan" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} /><SortTh label={S.vendor} sortKey="vendor" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} /><SortTh label={S.nilai} sortKey="nilai" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} /><SortTh label={S.level} sortKey="level" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} /><SortTh label={S.eta} sortKey="eta" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} /><SortTh label={S.revisi} sortKey="revisi" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} /><SortTh label={S.status} sortKey="status" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} /><th className="th">{S.aksi}</th></tr>
                     </thead>
                     <tbody className="divide-y divide-steel-100">
@@ -1435,7 +1399,7 @@ export default function Procurement() {
                 </div>
                 <div className="overflow-x-auto">
                   <table className="w-full">
-                    <thead className="bg-surface sticky top-14 z-10">
+                    <thead className="bg-surface sticky top-0 z-10">
                       <tr><SortTh label={S.pr} sortKey="pr" sort={sort4} onSort={(k) => setSort4((s) => toggleSort(s, k))} /><SortTh label={S.item} sortKey="item" sort={sort4} onSort={(k) => setSort4((s) => toggleSort(s, k))} /><SortTh label={S.oleh} sortKey="oleh" sort={sort4} onSort={(k) => setSort4((s) => toggleSort(s, k))} /><SortTh label={S.nilai} sortKey="nilai" sort={sort4} onSort={(k) => setSort4((s) => toggleSort(s, k))} /><SortTh label={S.status} sortKey="status" sort={sort4} onSort={(k) => setSort4((s) => toggleSort(s, k))} /><th className="th">{S.aksi}</th></tr>
                     </thead>
                     <tbody className="divide-y divide-steel-100">

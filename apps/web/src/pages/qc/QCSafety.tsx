@@ -918,7 +918,7 @@ export default function QCSafety() {
               </div>
               <div className="overflow-x-auto">
                 <table className="w-full">
-                  <thead className="bg-surface sticky top-14 z-10">
+                  <thead className="bg-surface sticky top-0 z-10">
                     <tr><SortTh label={S.thInspeksi} sortKey="inspeksi" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.thProyek} sortKey="proyek" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.thTitik} sortKey="titik" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.thItp} sortKey="itp" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.thHold} sortKey="hold" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.thNde} sortKey="nde" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.thSampel} sortKey="sampel" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.thInspector} sortKey="inspector" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.thTanggal} sortKey="tanggal" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.thHasil} sortKey="hasil" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><th className="th">{S.thAksi}</th></tr>
                   </thead>
                   <tbody className="divide-y divide-steel-100">

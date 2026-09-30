@@ -261,7 +261,7 @@ export default function Projects() {
       <Card>
         <div className="overflow-x-auto">
           <table className="w-full">
-            <thead className="sticky top-14 z-10 bg-surface">
+            <thead className="sticky top-0 z-10 bg-surface">
               <tr>
                 <SortTh label={S.colProject} sortKey="vessel" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} />
                 <SortTh label={S.colClient} sortKey="client" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} />

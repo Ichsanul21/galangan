@@ -462,7 +462,7 @@ export default function Documents() {
       <Card>
         <div className="overflow-x-auto">
           <table className="w-full">
-            <thead className="bg-surface sticky top-14 z-10">
+            <thead className="bg-surface sticky top-0 z-10">
               <tr><SortTh label={S.colDoc} sortKey="dokumen" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.colType} sortKey="tipe" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><th className="th">Pratinjau</th><SortTh label={S.colProjectShip} sortKey="proyek" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.colVersion} sortKey="versi" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.colStatus} sortKey="status" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.colUpdated} sortKey="diperbarui" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><th className="th">{S.colAction}</th></tr>
             </thead>
             <tbody className="divide-y divide-steel-100">

@@ -632,7 +632,7 @@ export default function Drydock() {
           <CardHeader title="Slot per Area" subtitle="Grup Area · Slot · Status · Kapal · Masuk–Keluar (ikut filter bar di bawah)" />
           <div className="overflow-x-auto">
             <table className="w-full">
-              <thead className="sticky top-14 z-10 bg-surface">
+              <thead className="sticky top-0 z-10 bg-surface">
                 <tr><th className="th">Area</th><th className="th">Slot</th><th className="th">Status</th><th className="th">Kapal</th><th className="th">Masuk–Keluar</th></tr>
               </thead>
               <tbody className="divide-y divide-steel-100">
@@ -680,7 +680,7 @@ export default function Drydock() {
           } />
           <div className="overflow-x-auto">
             <table className="w-full">
-              <thead className="sticky top-14 z-10 bg-surface">
+              <thead className="sticky top-0 z-10 bg-surface">
                 <tr><SortTh label={S.colFacility} sortKey="facility" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.areaLabel} sortKey="area" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.colProject} sortKey="vessel" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.colDuration} sortKey="days" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.colPriority} sortKey="priority" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.colStatus} sortKey="status" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><th className="th">{S.colAction}</th></tr>
               </thead>
               <tbody className="divide-y divide-steel-100">

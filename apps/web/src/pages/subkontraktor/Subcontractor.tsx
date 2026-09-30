@@ -690,11 +690,6 @@ export default function Subcontractor() {
                     </BarChart>
                   </ResponsiveContainer>
                 </div>
-                <p className="px-4 pb-3 text-[11px] text-steel-500">
-                  {locale === "en"
-                    ? "How to read: actual rating vs K3 (0-100). Target 80. Click a bar for detail. Higher is better. Formula: bars use actual scores — rating = subcontractor rating, K3 converted (A+ 95 · A 90 · B+ 82 · B 78 · C 65)."
-                    : "Rating aktual vs K3 (0-100). Target 80. Klik bar untuk detail. Makin tinggi makin baik. Rumus: batang memakai skor aktual — rating = rating subkontraktor, K3 dikonversi (A+ 95 · A 90 · B+ 82 · B 78 · C 65)."}
-                </p>
               </Card>
               <div className="mb-3 flex flex-wrap items-center gap-2">
                 <div className="relative min-w-52 flex-1 sm:max-w-xs">
@@ -867,7 +862,7 @@ export default function Subcontractor() {
               </div>
               <div className="overflow-x-auto">
                 <table className="w-full">
-                  <thead className="bg-surface sticky top-14 z-10">
+                  <thead className="bg-surface sticky top-0 z-10">
                     <tr><SortTh label={S.sortTermin} sortKey="termin" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.sortSub} sortKey="sub" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.sortWoProg} sortKey="wo" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.sortValue} sortKey="nilai" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.sortPph} sortKey="pph" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.sortRetensi} sortKey="retensi" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.sortNeto} sortKey="neto" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.dateLabel} sortKey="tanggal" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.sortStatus} sortKey="status" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><th className="th">{S.actionLabel}</th></tr>
                   </thead>
                   <tbody className="divide-y divide-steel-100">
@@ -984,7 +979,7 @@ export default function Subcontractor() {
               </Card>
               <div className="overflow-x-auto">
                 <table className="w-full">
-                  <thead className="bg-surface sticky top-14 z-10">
+                  <thead className="bg-surface sticky top-0 z-10">
                     <tr><SortTh label={S.sortId} sortKey="id" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} /><SortTh label={S.sortWo} sortKey="wo" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} /><SortTh label={S.projectLabel} sortKey="proyek" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} /><SortTh label={S.employeeLabel} sortKey="karyawan" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} /><SortTh label={S.dateLabel} sortKey="tanggal" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} /><SortTh label={S.sortHours} sortKey="jam" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} /><SortTh label={S.sortCost} sortKey="biaya" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} /><SortTh label={S.sortStatus} sortKey="status" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} /><SortTh label={S.sortNote} sortKey="catatan" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} /><th className="th">{S.actionLabel}</th></tr>
                   </thead>
                   <tbody className="divide-y divide-steel-100">

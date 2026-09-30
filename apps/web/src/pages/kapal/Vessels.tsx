@@ -424,7 +424,7 @@ export default function Vessels() {
           <CardHeader title={S.vsSurveyTitle} subtitle={S.vsSurveySub} />
           <div className="overflow-x-auto">
             <table className="w-full">
-              <thead className="sticky top-14 z-10 bg-surface">
+              <thead className="sticky top-0 z-10 bg-surface">
                 <tr><SortTh label={S.thVessel} sortKey="vessel" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.thSurveyType} sortKey="type" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.thSurveyor} sortKey="classSurveyor" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.dateLabel} sortKey="date" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.thStatus} sortKey="status" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /></tr>
               </thead>
               <tbody className="divide-y divide-steel-100">
