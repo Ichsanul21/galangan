@@ -553,7 +553,6 @@ export default function Finance() {
   const [delCoa, setDelCoa] = useState<StoreItem | null>(null);
   const [delAsset, setDelAsset] = useState<StoreItem | null>(null);
   // Hapus jurnal Draft + ubah aset (susut dihitung ulang dgn tarif fiskal yg sama).
-  const [delJu, setDelJu] = useState<StoreItem | null>(null);
   const [astEdit, setAstEdit] = useState<StoreItem | null>(null);
 
   const KAS_REKENING = coaRows.filter((c) => /^(1-11|1-12)/.test(String(c.kode)) && String(c.dk) !== "-");
@@ -1972,9 +1971,8 @@ export default function Finance() {
                               <p className="text-[11px] text-steel-400">{String(inv.billingType ?? inv.paymentTerm ?? "")}{inv.milestoneRef ? ` · ${inv.milestoneRef}` : ""}</p>
                               {needsDirector(inv) && <span className="mt-1 inline-block"><Badge tone="amber">{S.needDirector}</Badge></span>}
                             </td>
-                            <td className="td text-steel-600 font-mono text-xs truncate" title={String(inv.project)}>{inv.project}</td>
                             <td className="td text-steel-600 font-mono text-xs truncate" title={String(inv.kodePembantu ?? inv.client ?? "")}>{String(inv.kodePembantu ?? inv.client ?? "")}{inv.nonPpn ? " · Non-PPn" : ""}</td>
-                            <td className="td text-steel-600 font-mono text-xs truncate" title={String(inv.project)}>{inv.project || "-"}</td>
+                            <td className="td text-steel-600 font-mono text-xs truncate" title={String(inv.project ?? "-")}>{inv.project || "-"}</td>
                             <td className="td text-xs text-steel-500">{num(inv.openAwal) ? fmtRupiah(num(inv.openAwal)) : "-"}</td>
                             <td className="td font-semibold text-navy-900">{fmtRupiah(num(inv.amount))}</td>
                             <td className="td text-steel-600">{fmtTanggal(String(inv.due ?? ""))}</td>
@@ -1983,7 +1981,7 @@ export default function Finance() {
                               {open ? (
                                 <span className="flex items-center gap-1.5">
                                   <StatusBadge status={dun} />
-                                  <button className="btn-secondary px-2 py-1 text-[11px]" onClick={() => advanceDunning(inv)}>{S.dunningNext.replace("{a}", nextDun)}</button>
+                                  <button className="btn-secondary px-2 py-1 text-[11px]" onClick={() => void busy.run(`dun-${inv.id}`, () => advanceDunning(inv))} disabled={busy.isBusy(`dun-${inv.id}`)}>{S.dunningNext.replace("{a}", nextDun)}</button>
                                 </span>
                               ) : <span className="text-xs text-steel-400">-</span>}
                             </td>
@@ -2282,7 +2280,7 @@ export default function Finance() {
                 subtitle={S.schedSub}
                 action={
                   <div className="flex gap-2">
-                    <button className="btn-secondary text-xs" onClick={exportJadwal}>{S.exportExcelBtn}</button>
+                    <button className="btn-secondary text-xs" onClick={() => void busy.run("exportJadwal", exportJadwal)} disabled={busy.isBusy("exportJadwal")}>{S.exportExcelBtn}</button>
                     <button className="btn-primary text-xs" disabled={schedSel.length === 0} onClick={() => { setBatchProof(emptyProof()); setShowBatch(true); }}>
                       {S.batchPay.replace("{n}", fmtJumlah(schedSel.length)).replace("{a}", fmtRupiah(schedTotal))}
                     </button>
@@ -2598,7 +2596,7 @@ export default function Finance() {
                         <Field label={S.overheadPctLabel}>
                           <NumInput min={0} max={100} className="input w-24" value={overheadPct} onChange={(e) => setOverheadPct(e.target.value)} />
                         </Field>
-                        <button className="btn-secondary text-xs" onClick={saveOverhead}>{S.saveBtn}</button>
+                        <button className="btn-secondary text-xs" onClick={() => void busy.run("saveOverhead", saveOverhead)} disabled={busy.isBusy("saveOverhead")}>{S.saveBtn}</button>
                       </div>
                     }
                   />
@@ -2747,25 +2745,32 @@ export default function Finance() {
                   </select>
                 </Field>
                 <Field label={S.newPeriodLabel}>
-                  <input className="input font-mono" placeholder="2026-09" value={newPeriod} onChange={(e) => setNewPeriod(e.target.value)} />
+                  <input className="input font-mono" placeholder="2026-09" inputMode="numeric" maxLength={7} value={newPeriod} onChange={(e) => setNewPeriod(e.target.value)} />
                 </Field>
                 <button
                   className="btn-secondary text-xs"
-                  onClick={async () => {
-                    if (!/^\d{4}-\d{2}$/.test(newPeriod.trim())) { toast(S.periodFormat, "info"); return; }
-                    if (taxPeriods.some((t) => t.period === newPeriod.trim())) { toast(S.periodExists, "info"); return; }
+                  disabled={busy.isBusy("newTaxPeriod")}
+                  onClick={() => void busy.run("newTaxPeriod", async () => {
+                    const p = newPeriod.trim();
+                    if (!/^\d{4}-\d{2}$/.test(p)) { toast(S.periodFormat, "info"); return; }
+                    /* Validasi RENTANG bulan: regex saja menerima "2026-00"/"2026-13".
+                       Periode seperti itu tak akan pernah cocok dengan paidAt mana pun
+                       sehingga seluruh tab Pajak diam-diam menampilkan nol. */
+                    const mm = Number(p.slice(5, 7));
+                    if (mm < 1 || mm > 12) { toast(S.periodFormat, "info"); return; }
+                    if (taxPeriods.some((t) => t.period === p)) { toast(S.periodExists, "info"); return; }
                     try {
-                    const created = await add("taxPeriods", { period: newPeriod.trim(), ppnKeluar: 0, ppnMasuk: 0, pph23: 0, pph21: 0, status: "Draft" }, { action: "membuat periode pajak", module: "Pajak" });
+                    const created = await add("taxPeriods", { period: p, ppnKeluar: 0, ppnMasuk: 0, pph23: 0, pph21: 0, status: "Draft" }, { action: "membuat periode pajak", module: "Pajak" });
                     setTaxId(created.id);
                     setNewPeriod("");
                     toast(S.periodCreated.replace("{a}", String(created.period)));
                     } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); }
-                  }}
+                  })}
                 >{S.newPeriodBtn}</button>
                 <div className="ml-auto flex gap-2">
-                  <button className="btn-secondary text-xs" onClick={exportEfaktur}>{S.exportEfaktur}</button>
-                  <button className="btn-secondary text-xs" onClick={exportSpt}>{S.exportSpt}</button>
-                  <button className="btn-primary text-xs" disabled={taxLocked} onClick={markTaxLapor}>
+                  <button className="btn-secondary text-xs" onClick={() => void busy.run("exportEfaktur", exportEfaktur)} disabled={busy.isBusy("exportEfaktur")}>{S.exportEfaktur}</button>
+                  <button className="btn-secondary text-xs" onClick={() => void busy.run("exportSpt", exportSpt)} disabled={busy.isBusy("exportSpt")}>{S.exportSpt}</button>
+                  <button className="btn-primary text-xs" disabled={taxLocked || busy.isBusy("markTaxLapor")} onClick={() => void busy.run("markTaxLapor", markTaxLapor)}>
                     {taxLocked ? S.alreadyReported : S.markReported}
                   </button>
                 </div>
@@ -2900,11 +2905,15 @@ export default function Finance() {
                         <td className="td"><StatusBadge status={String(j.status ?? "Posted")} /></td>
                         <td className="td">
                           {String(j.status) !== "Void" && (
-                            <button className="btn-secondary px-2 py-1 text-[11px] text-rose-600" onClick={async () => { try { await update("journals", String(j.id), { status: "Void" }); log("mem-void jurnal", String(j.id), "Keuangan"); toast(S.voided.replace("{a}", j.id)); } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); } }}>{S.voidBtn}</button>
+                            <button className="btn-secondary px-2 py-1 text-[11px] text-rose-600" disabled={busy.isBusy(`voidJu-${j.id}`)} onClick={() => void busy.run(`voidJu-${j.id}`, async () => { try { await update("journals", String(j.id), { status: "Void" }); log("mem-void jurnal", String(j.id), "Keuangan"); toast(S.voided.replace("{a}", String(j.id))); } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); } })}>{S.voidBtn}</button>
                           )}
-                          {String(j.status) === "Draft" && (
-                            <button className="btn-secondary ml-1 px-2 py-1 text-[11px] text-rose-600" onClick={() => setDelJu(j)}>{S.deleteBtn}</button>
-                          )}
+                          {/*
+                            Tombol hapus jurnal sengaja DIHAPUS: hanya muncul untuk
+                            status "Draft", dan tidak ada satu pun jalur kode yang
+                            membuat jurnal Draft (saveJu/saveMut/autoJournal semuanya
+                            "Posted"). Jadi tombol ini dead code - user tidak pernah
+                            bisa menghapusnya. Jurnal koreksi lewat Void.
+                          */}
                         </td>
                       </tr>
                     ))}
@@ -3106,7 +3115,7 @@ export default function Finance() {
             <div className="mb-2 flex items-center justify-between">
               <p className="label">{S.linesTotal.replace("{a}", fmtRupiah(invTotal))}{retentionAmtPreview > 0 ? S.retentionSuffix.replace("{a}", fmtRupiah(retentionAmtPreview)) : ""}</p>              <div className="flex gap-2">
                 {isTMForm && (
-                  <button className="btn-secondary px-2 py-1 text-xs" onClick={pullTimesheetLines}>{S.pullTimesheet}</button>
+                  <button className="btn-secondary px-2 py-1 text-xs" onClick={() => void busy.run("pullTimesheet", pullTimesheetLines)} disabled={busy.isBusy("pullTimesheet")}>{S.pullTimesheet}</button>
                 )}
                 <button className="btn-secondary px-2 py-1 text-xs" onClick={() => setInvLines((ls) => [...ls, emptyLine()])}>
                   <Plus className="h-3.5 w-3.5" /> {S.addRow}
@@ -3184,7 +3193,17 @@ export default function Finance() {
         desc={S.rejectDesc}
         confirmLabel={S.confirmReject}
         onCancel={() => setRejectInv(null)}
-        onConfirm={async () => { if (rejectInv) { try { await update("invoices", rejectInv.id, { status: "Ditolak" }); toast(S.rejected.replace("{a}", rejectInv.id)); } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); } } setRejectInv(null); }}
+        onConfirm={async () => {
+          if (!rejectInv) return;
+          try {
+            await update("invoices", rejectInv.id, { status: "Ditolak" });
+            /* Reject invoice sebelumnya TIDAK punya log() sama sekali - satu-satunya
+               transisi status invoice yang hilang jejaknya di audit trail. */
+            log("menolak invoice", `${rejectInv.id} · ${String(rejectInv.client ?? "")}`, "Keuangan");
+            toast(S.rejected.replace("{a}", rejectInv.id));
+          } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); }
+          finally { setRejectInv(null); }
+        }}
       />
 
       <Modal open={apTarget !== null} onClose={() => setApTarget(null)} title={S.apPayTitle.replace("{a}", !num(apTarget?.pay1) ? "I" : "II").replace("{b}", String(apTarget?.po ?? ""))} subtitle={S.apPaySub.replace("{a}", String(apTarget?.v ?? "")).replace("{b}", fmtRupiah(Math.max(0, num(apTarget?.amt) - num(apTarget?.pay1) - num(apTarget?.pay2))))}
@@ -3208,7 +3227,7 @@ export default function Finance() {
       </Modal>
 
       <Modal open={showAp} onClose={() => setShowAp(false)} title={S.apNewTitle}
-        footer={<><button className="btn-secondary" onClick={() => setShowAp(false)}>{S.cancelBtn}</button><button className="btn-primary" onClick={saveAp}>{S.saveBtn}</button></>}>
+        footer={<><button className="btn-secondary" onClick={() => setShowAp(false)}>{S.cancelBtn}</button><button className="btn-primary" onClick={() => void busy.run("saveAp", saveAp)} disabled={busy.isBusy("saveAp")}>{S.saveBtn}</button></>}>
         <div className="space-y-3">
           <FormGrid>
             <Field label={S.colVendor}><input className="input" value={apForm.v} onChange={(e) => setApForm({ ...apForm, v: e.target.value })} /></Field>
@@ -3228,7 +3247,7 @@ export default function Finance() {
       </Modal>
 
       <Modal open={apEdit !== null} onClose={() => setApEdit(null)} title={S.editApTitle.replace("{a}", String(apEdit?.po ?? apEdit?.id ?? ""))} subtitle={String(apEdit?.v ?? "")}
-        footer={<><button className="btn-secondary" onClick={() => setApEdit(null)}>{S.cancelBtn}</button><button className="btn-primary" onClick={saveApEdit}>{S.saveChanges}</button></>}>
+        footer={<><button className="btn-secondary" onClick={() => setApEdit(null)}>{S.cancelBtn}</button><button className="btn-primary" onClick={() => void busy.run("saveApEdit", saveApEdit)} disabled={busy.isBusy("saveApEdit")}>{S.saveChanges}</button></>}>
         <div className="space-y-3">
           <FormGrid>
             <Field label={S.colVendor}><input className="input" value={apEditForm.v} onChange={(e) => setApEditForm({ ...apEditForm, v: e.target.value })} /></Field>
@@ -3247,7 +3266,7 @@ export default function Finance() {
       </Modal>
 
       <Modal open={releaseTarget !== null} onClose={() => setReleaseTarget(null)} title={S.relTitle.replace("{a}", releaseTarget?.id ?? "")} subtitle={S.relSub.replace("{a}", fmtRupiah(num(releaseTarget?.retentionAmt)))}
-        footer={<><button className="btn-secondary" onClick={() => setReleaseTarget(null)}>{S.cancelBtn}</button><button className="btn-primary" onClick={confirmRelease}>{S.releaseRetensiBtn}</button></>}>
+        footer={<><button className="btn-secondary" onClick={() => setReleaseTarget(null)}>{S.cancelBtn}</button><button className="btn-primary" onClick={() => void busy.run("confirmRelease", confirmRelease)} disabled={busy.isBusy("confirmRelease")}>{S.releaseRetensiBtn}</button></>}>
         <div className="space-y-3">
           <FormGrid>
             <Field label={S.fReleaseDate}><input type="date" required className="input" value={releaseForm.date} onChange={(e) => setReleaseForm({ ...releaseForm, date: e.target.value })} /></Field>
@@ -3265,7 +3284,7 @@ export default function Finance() {
       </Modal>
 
       <Modal open={showBatch} onClose={() => setShowBatch(false)} title={S.batchTitle.replace("{n}", fmtJumlah(schedSel.length))} subtitle={S.batchSub.replace("{a}", fmtRupiah(schedTotal))}
-        footer={<><button className="btn-secondary" onClick={() => setShowBatch(false)}>{S.cancelBtn}</button><button className="btn-primary" onClick={confirmBatch}>{S.settleAll}</button></>}>
+        footer={<><button className="btn-secondary" onClick={() => setShowBatch(false)}>{S.cancelBtn}</button><button className="btn-primary" onClick={() => void busy.run("confirmBatch", confirmBatch)} disabled={busy.isBusy("confirmBatch")}>{S.settleAll}</button></>}>
         <div className="space-y-3">
           <FormGrid>
             <Field label={S.fPayDate}><input type="date" required className="input" value={batchProof.date} onChange={(e) => setBatchProof({ ...batchProof, date: e.target.value })} /></Field>
@@ -3282,7 +3301,7 @@ export default function Finance() {
       </Modal>
 
       <Modal open={allocTarget !== null} onClose={() => setAllocTarget(null)} title={S.allocTitle.replace("{a}", allocTarget?.id ?? "")} subtitle={S.allocSub}
-        footer={<><button className="btn-secondary" onClick={() => setAllocTarget(null)}>{S.cancelBtn}</button><button className="btn-primary" onClick={saveAlloc}>{S.saveAlloc}</button></>}>
+        footer={<><button className="btn-secondary" onClick={() => setAllocTarget(null)}>{S.cancelBtn}</button><button className="btn-primary" onClick={() => void busy.run("saveAlloc", saveAlloc)} disabled={busy.isBusy("saveAlloc")}>{S.saveAlloc}</button></>}>
         <div className="space-y-3">
           {(() => {
             // Saran proyek = proyek tersering karyawan ini di timesheet (petunjuk saja, simpan tetap manual).
@@ -3350,7 +3369,7 @@ export default function Finance() {
       </Modal>
 
       <Modal open={showJu} onClose={() => setShowJu(false)} title={S.juNewTitle} subtitle={S.juNewSub}
-        footer={<><button className="btn-secondary" onClick={() => setShowJu(false)}>{S.cancelBtn}</button><button className="btn-primary" onClick={saveJu}>{S.juSave}</button></>}>
+        footer={<><button className="btn-secondary" onClick={() => setShowJu(false)}>{S.cancelBtn}</button><button className="btn-primary" onClick={() => void busy.run("saveJu", saveJu)} disabled={busy.isBusy("saveJu")}>{S.juSave}</button></>}>
         <div className="space-y-3">
           <FormGrid>
             <Field label={S.colTanggal}><input type="date" required className="input" value={juForm.date} onChange={(e) => setJuForm({ ...juForm, date: e.target.value })} /></Field>
@@ -3403,7 +3422,7 @@ export default function Finance() {
       </Modal>
 
       <Modal open={showMut} onClose={() => setShowMut(false)} title={S.mutTitle} subtitle={S.mutSub}
-        footer={<><button className="btn-secondary" onClick={() => setShowMut(false)}>{S.cancelBtn}</button><button className="btn-primary" onClick={saveMut}>{S.saveBtn}</button></>}>
+        footer={<><button className="btn-secondary" onClick={() => setShowMut(false)}>{S.cancelBtn}</button><button className="btn-primary" onClick={() => void busy.run("saveMut", saveMut)} disabled={busy.isBusy("saveMut")}>{S.saveBtn}</button></>}>
         <div className="space-y-3">
           <FormGrid>
             <Field label={S.colTanggal}><input type="date" required className="input" value={mutForm.date} onChange={(e) => setMutForm({ ...mutForm, date: e.target.value })} /></Field>
@@ -3435,7 +3454,7 @@ export default function Finance() {
       </Modal>
 
       <Modal open={invEdit !== null} onClose={() => setInvEdit(null)} title={S.editInvTitle.replace("{a}", invEdit?.id ?? "")} subtitle={S.editInvSub}
-        footer={<><button className="btn-secondary" onClick={() => setInvEdit(null)}>{S.cancelBtn}</button><button className="btn-primary" onClick={saveInvEdit}>{S.saveChanges}</button></>}>
+        footer={<><button className="btn-secondary" onClick={() => setInvEdit(null)}>{S.cancelBtn}</button><button className="btn-primary" onClick={() => void busy.run("saveInvEdit", saveInvEdit)} disabled={busy.isBusy("saveInvEdit")}>{S.saveChanges}</button></>}>
         <div className="space-y-3">
           <FormGrid>
             <Field label={S.colCustomer}><input className="input" value={invEditForm.client} onChange={(e) => setInvEditForm({ ...invEditForm, client: e.target.value })} /></Field>
@@ -3450,7 +3469,7 @@ export default function Finance() {
       </Modal>
 
       <Modal open={showAst} onClose={closeAst} title={astEdit ? `${S.editBtn} ${String(astEdit.nama ?? astEdit.id)}` : S.astTitle} subtitle={S.astSub}
-        footer={<><button className="btn-secondary" onClick={closeAst}>{S.cancelBtn}</button><button className="btn-primary" onClick={astEdit ? saveAstEdit : saveAst}>{S.saveBtn}</button></>}>
+        footer={<><button className="btn-secondary" onClick={closeAst}>{S.cancelBtn}</button><button className="btn-primary" onClick={() => void busy.run(`saveAst-${astEdit?.id ?? "new"}`, astEdit ? saveAstEdit : saveAst)} disabled={busy.isBusy(`saveAst-${astEdit?.id ?? "new"}`)}>{S.saveBtn}</button></>}>
         <div className="space-y-3">
           <FormGrid>
             <Field label={S.fAssetName}><input className="input" value={astForm.nama} onChange={(e) => setAstForm({ ...astForm, nama: e.target.value })} placeholder={S.assetNamePh} /></Field>
@@ -3543,27 +3562,6 @@ export default function Finance() {
         }}
       />
 
-      <ConfirmModal
-        open={delJu !== null}
-        title={delJu ? `Hapus jurnal ${String(delJu.dokumen ?? delJu.id)}?` : ""}
-        desc={(() => {
-          const used = delJu ? findUsages(data, "journals", String(delJu.id)) : [];
-          const base = delJu ? `Jurnal ${String(delJu.dokumen ?? "")} · ${String(delJu.uraian ?? "")} status Draft akan dihapus permanen.` : "";
-          return used.length > 0 ? `${base} Dipakai di: ${used.join(", ")}. Penghapusan diblokir.` : base;
-        })()}
-        confirmLabel={delJu && findUsages(data, "journals", String(delJu.id)).length > 0 ? "Diblokir - masih dipakai" : S.deleteBtn}
-        danger
-        confirmDisabled={delJu ? findUsages(data, "journals", String(delJu.id)).length > 0 : false}
-        onCancel={() => setDelJu(null)}
-        onConfirm={async () => {
-          if (!delJu) return;
-            if (String(delJu.status) !== "Draft") { toast("Hanya jurnal Draft yang bisa dihapus", "info"); log("gagal hapus jurnal", `${delJu.dokumen ?? delJu.id} · status ${String(delJu.status)} (hanya Draft bisa dihapus)`, "Keuangan"); return; }
-            const usedBy = findUsages(data, "journals", String(delJu.id));
-            if (usedBy.length > 0) { toast(`Hapus diblokir - dipakai di: ${usedBy.join(", ")}`, "info"); log("gagal hapus jurnal", `${delJu.dokumen ?? delJu.id} · masih dipakai di: ${usedBy.join(", ")}`, "Keuangan"); return; }
-          try { await remove("journals", String(delJu.id)); log("menghapus jurnal", String(delJu.dokumen ?? delJu.id), "Keuangan"); toast(`Jurnal ${String(delJu.dokumen ?? delJu.id)} dihapus`); setDelJu(null); }
-          catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); }
-        }}
-      />
     </div>
   );
 }
