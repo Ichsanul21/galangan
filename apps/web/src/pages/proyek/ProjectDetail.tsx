@@ -35,7 +35,8 @@ import { n_prj } from "../../i18n/n_prj";
 import { fmtMiliar, fmtTanggal, fmtRentang, fmtBulan } from "../../data";
 import { fmtRupiah, todayISO } from "../../utils/format";
 import { sameName } from "../../utils/names";
-import { scopeList } from "../../utils/scope";
+import { canonPrioritas, scopeList } from "../../utils/scope";
+import { PRIORITAS } from "./Projects";
 import { TAHAP, tahapOf, hasContract, isOverdue } from "./Projects";
 import { getSetting } from "../../utils/settings";
 import { sbInvoiceMath, PPN_INVOICE_DEFAULT, PPH_JASA_DEFAULT } from "../../utils/sb";
@@ -186,6 +187,18 @@ export default function ProjectDetail() {
     }
     setStatusPending(next);
     setStatusReason("");
+  };
+
+  /* Prioritas proyek: dulu write-once (hanya ditulis ProjectAddModal), tidak
+     bisa diubah di halaman mana pun padahal tampil sebagai badge & bisa difilter. */
+  const savePrioritas = async (next: string) => {
+    const cur = canonPrioritas(project.prioritas);
+    if (next === cur) return;
+    try {
+      await update("projects", pid, { prioritas: next });
+      log("mengubah prioritas proyek", `${pid} · ${cur} → ${next}`, "Proyek");
+      toast(`${S.prjFieldPrioritas}: ${cur} → ${next}`);
+    } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); }
   };
 
   const confirmStatus = async () => {
@@ -801,7 +814,22 @@ export default function ProjectDetail() {
         title={project.vessel}
         subtitle={`${project.id} · ${project.type} · ${project.client}`}
         actions={
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
+            {/* Prioritas sebelumnya write-once: hanya ditulis saat proyek dibuat,
+                tidak bisa diubah di halaman mana pun padahal ditampilkan sebagai
+                badge & bisa difilter. */}
+            <label className="flex items-center gap-1.5">
+              <span className="text-xs text-steel-500">{S.prjFieldPrioritas}</span>
+              <select
+                className="input w-auto py-1.5 text-sm"
+                value={canonPrioritas(project.prioritas)}
+                onChange={(e) => void savePrioritas(e.target.value)}
+                disabled={busy.isBusy("savePrioritas")}
+                aria-label={S.prjFieldPrioritas}
+              >
+                {PRIORITAS.map((r) => <option key={r} value={r}>{r}</option>)}
+              </select>
+            </label>
             <select
               className="input w-auto py-1.5 text-sm"
               value={project.status}

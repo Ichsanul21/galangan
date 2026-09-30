@@ -85,6 +85,10 @@ export default function SparepartServiceSection({ projectId, vesselId, view = "a
     });
   };
 
+  /* Edit service BATAL: JANGAN dipaksa jadi "Scheduled".
+     Versi lama memaksa status saat membuka form, lalu saveService menulis ulang
+     payload itu - sehingga menyimpan service yang dibatalkan diam-diam
+     mengembalikannya ke "Dijadwalkan" dan membukanya lagi di timeline. */
   const openEditSvc = (s: SvcExt) => {
     setEditSvc(s);
     setSvcForm({
@@ -95,6 +99,22 @@ export default function SparepartServiceSection({ projectId, vesselId, view = "a
       cost: String(s.cost ?? ""),
       status: (s.status === "Batal" ? "Scheduled" : s.status) as ServiceRecord["status"],
     });
+  };
+
+  const EMPTY_SP = { name: "", partNumber: "", category: "Mechanical", status: "Akan" as "Akan" | "Sedang" | "Selesai", cost: "", notes: "", technician: "", usedDate: "", warrantyUntil: "" };
+  const EMPTY_SVC = { type: "Repair" as ServiceRecord["type"], description: "", date: new Date().toISOString().slice(0, 10), technician: "", cost: "", status: "Scheduled" as ServiceRecord["status"] };
+
+  /* Tombol "Tambah" harus membuka form KOSONG. Versi lama memakai state form
+     yang sama dengan form edit, jadi data item terakhir ikut terbawa. */
+  const openAddSp = () => {
+    setForm(EMPTY_SP);
+    setEditSp(null);
+    setShowAdd(true);
+  };
+  const openAddSvc = () => {
+    setSvcForm(EMPTY_SVC);
+    setEditSvc(null);
+    setShowAddSvc(true);
   };
 
   const confirmDelSp = async () => {
@@ -248,7 +268,10 @@ export default function SparepartServiceSection({ projectId, vesselId, view = "a
 
   const saveSparepart = async () => {
     if (!form.name.trim()) { toast(S.spsToastSpName, "info"); return; }
-    if (!projectId) { toast(S.spsToastSpCtx, "info"); return; }
+    /* Halaman Kapal mengirim vesselId tanpa projectId. Versi lama menolak, jadi
+       tombol "Tambah" di tab Service/Sparepart kapal SELALU gagal. Cukup salah
+       satu konteks (proyek ATAU kapal) untuk menyimpan. */
+    if (!projectId && !vesselId) { toast(S.spsToastSpCtx, "info"); return; }
     const payload = {
       name: form.name.trim(),
       partNumber: form.partNumber.trim() || "-",
@@ -269,18 +292,20 @@ export default function SparepartServiceSection({ projectId, vesselId, view = "a
     }
     await add("spareparts", {
       ...payload,
-      projectId,
-      vesselId,
+      /* Kosongkan konteks yang tidak dipakai, bukan undefined: filter membandingkan
+         dengan === sehingga undefined tidak pernah sama dengan id kapal. */
+      projectId: projectId ?? "",
+      vesselId: vesselId ?? "",
       requestDate: new Date().toISOString().slice(0, 10),
     }, { action: "menambahkan sparepart", module: "Sparepart" });
     toast(S.spsToastSpAdd);
     setShowAdd(false);
-    setForm({ name: "", partNumber: "", category: "Mechanical", status: "Akan", cost: "", notes: "", technician: "", usedDate: "", warrantyUntil: "" });
+    setForm(EMPTY_SP);
   };
 
   const saveService = async () => {
     if (!svcForm.description.trim()) { toast(S.spsToastSvcDesc, "info"); return; }
-    if (!projectId && !editSvc) { toast(S.spsToastSvcCtx, "info"); return; }
+    if (!projectId && !vesselId && !editSvc) { toast(S.spsToastSvcCtx, "info"); return; }
     const payload = {
       date: svcForm.date,
       type: svcForm.type,
@@ -290,13 +315,17 @@ export default function SparepartServiceSection({ projectId, vesselId, view = "a
       cost: Number(svcForm.cost) || 0,
     };
     if (editSvc) {
-      await update("services", editSvc.id, payload);
+      /* Bila status awal "Batal", JANGAN ubah status saat edit -
+         membatalkan service tak sengaja adalah bug integritas data nyata. */
+      const wasCancelled = String(editSvc.status) === "Batal";
+      const patch = wasCancelled ? { ...payload, status: "Batal" as const } : payload;
+      await update("services", editSvc.id, patch);
       log("mengubah service", `${editSvc.id} · ${payload.description}`, "Service");
       toast(locale === "en" ? "Service updated" : "Service diperbarui");
       setEditSvc(null);
       return;
     }
-    await add("services", { projectId, vesselId, ...payload }, { action: "menambahkan service", module: "Service" });
+    await add("services", { projectId: projectId ?? "", vesselId: vesselId ?? "", ...payload }, { action: "menambahkan service", module: "Service" });
     toast(S.spsToastSvcAdd);
     setShowAddSvc(false);
     setSvcForm({ type: "Repair", description: "", date: new Date().toISOString().slice(0, 10), technician: "", cost: "", status: "Scheduled" });
@@ -343,7 +372,7 @@ export default function SparepartServiceSection({ projectId, vesselId, view = "a
     <Card className="p-4">
       <div className="mb-3 flex items-center justify-between">
         <h3 className="text-sm font-semibold text-navy-900 flex items-center gap-2"><Package className="h-4 w-4" /> {S.spsSpTitle.replace("{a}", String(items.length)).replace("{b}", spTab !== "Semua" ? S.spsSpSuffix.replace("{n}", String(allSpareparts.length)) : "")}</h3>
-        <button className="btn-secondary text-xs" onClick={() => setShowAdd(true)}><Plus className="h-3.5 w-3.5" /> {S.addBtn}</button>
+        <button className="btn-secondary text-xs" onClick={openAddSp}><Plus className="h-3.5 w-3.5" /> {S.addBtn}</button>
       </div>
       <div className="flex gap-1 flex-wrap mb-3">
         {STS.map((s) => (
@@ -388,7 +417,7 @@ export default function SparepartServiceSection({ projectId, vesselId, view = "a
         <h3 className="text-sm font-semibold text-navy-900 flex items-center gap-2"><Wrench className="h-4 w-4" /> {S.spsSvcTitle.replace("{a}", String(svcFiltered.length)).replace("{b}", svcFiltered.length !== svcItems.length ? S.spsSpSuffix.replace("{n}", String(svcItems.length)) : "")}</h3>
         <div className="flex gap-2">
           <button className="btn-secondary text-xs" onClick={() => void busy.run("exportSvc", exportSvc)} disabled={busy.isBusy("exportSvc")}><FileDown className="h-3.5 w-3.5" /> {S.exportExcelBtn}</button>
-          <button className="btn-secondary text-xs" onClick={() => setShowAddSvc(true)}><Plus className="h-3.5 w-3.5" /> {S.spsSvcAdd}</button>
+          <button className="btn-secondary text-xs" onClick={openAddSvc}><Plus className="h-3.5 w-3.5" /> {S.spsSvcAdd}</button>
         </div>
       </div>
       <div className="mb-3 flex flex-wrap items-center gap-2">

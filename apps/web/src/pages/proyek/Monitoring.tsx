@@ -15,7 +15,7 @@ import { useT } from "../../i18n/LanguageContext";
 import { n_prj } from "../../i18n/n_prj";
 import { fmtBulan, fmtMiliar, fmtRupiah, todayISO } from "../../utils/format";
 import { exportExcel } from "../../utils/export";
-import { TAHAP, tahapOf } from "./Projects";
+import { TAHAP, tahapOf, isOverdue } from "./Projects";
 import { canonPrioritas } from "../../utils/scope";
 
 const prioritasTone: Record<string, "gray" | "blue" | "amber" | "red"> = {
@@ -85,8 +85,14 @@ export default function Monitoring() {
     data.changeOrders.filter((c) => c.project === pid && c.status === "Diajukan");
 
   const attention: AttentionItem[] = [];
+  /* Terlambat dihitung LOKAL dari tanggal selesai + progres.
+     Versi lama hanya membaca p.status === "Terlambat", dan flag itu hanya
+     di-set oleh useEffect di halaman Proyek/Detail Proyek. Jadi Monitoring
+     (halaman yang justru dipakai untuk memantau) buta terhadap keterlambatan
+     sampai user kebetulan membuka halaman lain. */
+  const isLate = (p: StoreItem): boolean => p.status === "Terlambat" || isOverdue(p, todayISO());
   for (const p of filtered) {
-    if (p.status === "Terlambat") {
+    if (isLate(p)) {
       attention.push({ group: "Terlambat", title: `${p.id} · ${p.vessel}`, desc: S.monLateDesc.replace("{n}", String(p.progress)), pid: p.id });
     }
     if (Number(p.actual) > Number(p.budget)) {
@@ -113,7 +119,7 @@ export default function Monitoring() {
   const pipeline = mode === "Semua" ? filtered : filtered.filter((p) => attentionPids.has(p.id));
 
   const delayDaysOf = (p: StoreItem): number | null => {
-    if (p.status !== "Terlambat") return null;
+    if (!isLate(p)) return null;
     const d = endInDays(String(p.end ?? ""));
     if (d === null) return null;
     return Math.max(0, -d);
@@ -168,7 +174,7 @@ export default function Monitoring() {
             </button>
           ))}
         </div>
-        <p className="ml-auto text-xs text-steel-500">{S.monCount.replace("{a}", String(pipeline.length)).replace("{b}", String(attention.length))}</p>
+        <p className="ml-auto text-xs text-steel-500">{S.monCount.replace("{a}", String(pipeline.length)).replace("{b}", String(attentionPids.size))}</p>
       </div>
 
       <Card className="mb-4 p-5">
@@ -195,14 +201,16 @@ export default function Monitoring() {
 
       <div>
       <div className="mb-2 flex items-center gap-2">
-        <button className="btn-secondary px-2 py-1 text-xs" onClick={() => scrollKanbanBy(-320)} aria-label="Geser kanban ke kiri">←</button>
-        <button className="btn-secondary px-2 py-1 text-xs" onClick={() => scrollKanbanBy(320)} aria-label="Geser kanban ke kanan">→</button>
-        <span className="text-[11px] text-steel-400">Geser kanban ±320px</span>
+        <button className="btn-secondary px-2 py-1 text-xs" onClick={() => scrollKanbanBy(-320)} aria-label={locale === "en" ? "Scroll kanban left" : "Geser kanban ke kiri"}>&larr;</button>
+        <button className="btn-secondary px-2 py-1 text-xs" onClick={() => scrollKanbanBy(320)} aria-label={locale === "en" ? "Scroll kanban right" : "Geser kanban ke kanan"}>&rarr;</button>
+        <span className="text-[11px] text-steel-400">{locale === "en" ? "Scroll kanban horizontally" : "Geser kanban ke samping"}</span>
       </div>
       <div
         ref={topBarRef}
         onScroll={() => syncScroll(topBarRef.current, topScrollRef.current, barScrollRef.current)}
-        className="sticky top-0 z-10 overflow-x-auto rounded-lg border border-steel-200 bg-white"
+        /* top-14 z-30: sebelumnya top-0 z-10 sehingga scrollbar ini tertutup
+           header aplikasi (sticky top-0 z-20 h-14) saat halaman di-scroll. */
+        className="sticky top-14 z-30 overflow-x-auto rounded-lg border border-steel-200 bg-white"
         style={{ height: 14 }}
         aria-hidden="true"
       >
