@@ -3,6 +3,7 @@ import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { comparePassword, hashPassword, requireAuth } from "../auth.js";
 import { requireManageUsers } from "../rbac.js";
+import { requestActor, requestIp, writeAudit } from "../audit.js";
 import { exec, q } from "../db.js";
 import { fail, ok } from "../envelope.js";
 
@@ -59,7 +60,9 @@ const CreateSchema = z.object({
   name: z.string().min(1).max(128),
   role: z.string().min(1).max(64),
   email: z.string().max(256).optional().default(""),
-  password: z.string().min(6).max(72),
+    /* 6 karakter terlalu lemah untuk akun yang bisa mengubah jurnal, CoA,
+       dan struktur organisasi. Batas atas 72 tetap (bcrypt). */
+    password: z.string().min(8, "Password minimal 8 karakter").max(72),
   employeeId: z.string().max(128).optional().default(""),
 });
 
@@ -83,7 +86,7 @@ const PatchSchema = z
 
 const PasswordSchema = z.object({
   oldPassword: z.string().optional(),
-  newPassword: z.string().min(6).max(72),
+  newPassword: z.string().min(8, "Password minimal 8 karakter").max(72),
 });
 
 const SELECT_COLS = "id, username, pass_hash, name, role, email, is_active, employee_id FROM users";
@@ -117,6 +120,18 @@ export function registerUserRoutes(app: FastifyInstance): void {
       isActive: true,
       employeeId: parsed.data.employeeId || null,
     };
+    /* Akun + peran adalah permukaan paling sensitif di aplikasi. Tanpa baris
+       ini, pembuatan akun/eskalasi peran/reset password tidak pernah muncul
+       di audit_log karena routes/users.ts sama sekali tidak memanggil
+       writeAudit. Password SENGAJA tidak ikut dicatat. */
+    await writeAudit({
+      actor: requestActor(req),
+      action: "create",
+      table: "users",
+      rowId: id,
+      diff: { username: created.username, name: created.name, role: created.role, email: created.email },
+      ip: requestIp(req),
+    });
     return reply.status(201).send(ok(created));
   });
 
@@ -163,6 +178,21 @@ export function registerUserRoutes(app: FastifyInstance): void {
       nextEmployeeId,
       current.id,
     ]);
+    await writeAudit({
+      actor: requestActor(req),
+      action: "update",
+      table: "users",
+      rowId: current.id,
+      diff: {
+        ...(current.name !== next.name ? { name: { before: current.name, after: next.name } } : {}),
+        ...(current.role !== next.role ? { role: { before: current.role, after: next.role } } : {}),
+        ...(current.email !== next.email ? { email: { before: current.email, after: next.email } } : {}),
+        ...((current.is_active ?? 1) !== 0 !== next.isActive
+          ? { isActive: { before: (current.is_active ?? 1) !== 0, after: next.isActive } }
+          : {}),
+      },
+      ip: requestIp(req),
+    });
     return ok({ id: current.id, username: current.username, employeeId: nextEmployeeId, ...next });
   });
 
@@ -192,6 +222,16 @@ export function registerUserRoutes(app: FastifyInstance): void {
       await hashPassword(parsed.data.newPassword),
       target.id,
     ]);
+    /* Reset password orang lain = Inbound break-glass: wajib tercatat,
+       termasuk apakah pelakunya pemilik akun itu sendiri. */
+    await writeAudit({
+      actor: requestActor(req),
+      action: "password_change",
+      table: "users",
+      rowId: target.id,
+      diff: { username: target.username, self, verifiedOldPassword: self && !privileged },
+      ip: requestIp(req),
+    });
     return ok({ id: target.id, updated: true });
   });
 
@@ -205,6 +245,14 @@ export function registerUserRoutes(app: FastifyInstance): void {
       return reply.status(400).send(fail("Tidak dapat menonaktifkan akun sendiri", "VALIDATION_ERROR"));
     }
     await exec("UPDATE users SET is_active = 0 WHERE id = ?", [target.id]);
+    await writeAudit({
+      actor: requestActor(req),
+      action: "deactivate",
+      table: "users",
+      rowId: target.id,
+      diff: { username: target.username, isActive: false },
+      ip: requestIp(req),
+    });
     return ok({ id: target.id, isActive: false });
   });
 }

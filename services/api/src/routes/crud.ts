@@ -92,7 +92,9 @@ const CreateSchema = z.object({
 
 const PatchSchema = z.object({
   branch: z.string().max(64).optional(),
-  data: z.record(z.unknown()).optional(),
+  data: z.record(z.unknown()).refine((v) => Object.keys(v).length > 0, {
+    message: "data kosong tidak mengubah apa pun",
+  }).optional(),
   baseUpdatedAt: z.string().optional(),
 }).refine((v) => v.branch !== undefined || v.data !== undefined, {
   message: "Nothing to update",
@@ -266,6 +268,12 @@ export function registerCrud(app: FastifyInstance, table: string): void {
     const merged = parsed.data.data ? { ...oldData, ...parsed.data.data } : oldData;
     const branch = parsed.data.branch ?? current.branch;
     const now = new Date().toISOString();
+    /* PATCH juga wajib menjaga field kunci. checkRefs() sengaja MENGLEWATI
+       nilai kosong/null (kolom opsional boleh kosong), jadi tanpa baris ini
+       PATCH {vessel:""} pada sebuah proyek lolos begitu saja dan barisnya
+       jadi tidak valid - padahal POST kekotak yang sama ditolak 422. */
+    const domainError = assertDomain(table, merged);
+    if (domainError) return reply.status(422).send(fail(domainError, "UNPROCESSABLE"));
     const refError = await checkRefs(table, merged);
     if (refError) return reply.status(422).send(fail(refError, "UNPROCESSABLE"));
     await exec(`UPDATE ${table} SET branch = ?, data = ?, updated_at = ? WHERE id = ?`, [
@@ -302,7 +310,11 @@ export function registerCrud(app: FastifyInstance, table: string): void {
       action: "delete",
       table,
       rowId: id,
-      diff: { branch: doomed.branch, data: JSON.parse(doomed.data) as unknown },
+      /* Baris sudah terhapus sebelum audit ditulis; JSON.parse tanpa
+         try/catch di sini membuat DELETE kelihatan gagal (500) padahal
+         datanya SUDAH hilang, lalu FE mencoba ulang dan mendapat 404.
+         toJson() sudah menangani JSON korup - pakai helper yang sama. */
+      diff: { branch: doomed.branch, data: toJson(doomed).data },
       ip: requestIp(req),
     });
     return ok({ id, deleted: true });
