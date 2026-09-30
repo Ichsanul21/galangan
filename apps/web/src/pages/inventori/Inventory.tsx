@@ -12,6 +12,7 @@ import {
   Pencil,
   ClipboardCheck,
   Repeat,
+  RefreshCw,
   Barcode,
   BookmarkPlus,
   ListChecks,
@@ -54,13 +55,13 @@ import { stockTrend, itemTrend, lowStockTrend, stockValueTrend, warehouseTrend }
 const emptyForm = { name: "", category: "Baja", sku: "", warehouse: "Gudang Baja A", rack: "", bin: "", stock: "0", minStock: "0", unit: "pcs", cost: "0", volume: "0", batch: "", uom2: "", konversi: "", minWh: "", photoUrl: "", matType: "habis-pakai" };
 
 /* Jenis material: habis-pakai | retur | service. */
-const MAT_TYPES = ["habis-pakai", "retur", "service"] as const;
+const MAT_TYPES = ["habis-pakai", "retur", "service", "eceran"] as const;
 function matTypeOf(it: StoreItem): string {
   const v = String(it.matType ?? "habis-pakai").trim().toLowerCase();
   return (MAT_TYPES as readonly string[]).includes(v) ? v : "habis-pakai";
 }
-function matTone(t: string): "gray" | "blue" | "teal" {
-  return t === "retur" ? "blue" : t === "service" ? "teal" : "gray";
+function matTone(t: string): "gray" | "blue" | "teal" | "violet" {
+  return t === "retur" ? "blue" : t === "service" ? "teal" : t === "eceran" ? "violet" : "gray";
 }
 
 const INV_ID_MON = ["Jan", "Feb", "Mar", "Apr", "Mei", "Jun", "Jul", "Agu", "Sep", "Okt", "Nov", "Des"];
@@ -339,7 +340,7 @@ export default function Inventory() {
   const busy = useBusy();
   const { locale } = useT();
   const S = n_inv[locale];
-  const { data, add, update, remove, log, branch } = useStore();
+  const { data, add, update, remove, log, branch, resync } = useStore();
   // Cabang movement: dari proyek tertaut (cocokkan teks ke id/vessel) atau fallback global.
   const moveBranch = (hay: string): string => String(
     (data.projects ?? []).find((p) => hay.includes(String(p.id)) || (p.vessel && hay.includes(String(p.vessel))))?.branch
@@ -370,6 +371,12 @@ export default function Inventory() {
   const [detail, setDetail] = useState<StoreItem | null>(null);
   // Hapus item via ConfirmModal + daftar pemakai (blokir bila dipakai mutasi/PO).
   const [delInv, setDelInv] = useState<StoreItem | null>(null);
+  /* Ubah movement HANYA metadata (tanggal/referensi/supplier/purpose/PIC) - qty/tipe/item
+     TIDAK bisa diubah agar stok tak perlu dikoreksi (rumus bisnis tidak disentuh). */
+  const [moveEdit, setMoveEdit] = useState<StoreItem | null>(null);
+  const [moveEditForm, setMoveEditForm] = useState({ date: "", by: "", supplier: "", purpose: "", pic: "" });
+  /* Hapus movement = hapus catatan SAJA, stok TIDAK dikoreksi (dengan toast peringatan). */
+  const [delMove, setDelMove] = useState<StoreItem | null>(null);
   const [labelItem, setLabelItem] = useState<StoreItem | null>(null);
   const [moveTarget, setMoveTarget] = useState<StoreItem | null>(null);
   const [moveKind, setMoveKind] = useState<"in" | "out">("in");
@@ -451,6 +458,11 @@ export default function Inventory() {
   const [doSjId, setDoSjId] = useState("");
   const [doDriver, setDoDriver] = useState("");
   const [doItems, setDoItems] = useState<{ name: string; qty: string }[]>([{ name: "", qty: "" }]);
+  /* Ubah DO terbit via update documents (tanpa ubah rumus stok/reservasi). */
+  const [doEdit, setDoEdit] = useState<StoreItem | null>(null);
+  const [doEditForm, setDoEditForm] = useState({ to: "", date: todayISO(), driver: "", sjId: "", items: [{ name: "", qty: "" }] as { name: string; qty: string }[] });
+  /* Batalkan DO = hapus dokumen + kembalikan reservasi yang merujuk DO bila ada. */
+  const [delDo, setDelDo] = useState<StoreItem | null>(null);
   const doDocs = useMemo(
     () => (data.documents ?? []).filter((d) => d.type === "Delivery Order"),
     [data.documents],
@@ -472,6 +484,43 @@ export default function Inventory() {
     ], `DO-${String(d.sbRef ?? d.id).replaceAll("/", "-")}`, "Delivery Order").catch(() => toast(S.saveFail, "info"));
     toast(locale === "en" ? `DO ${String(d.sbRef ?? d.id)} printed` : `DO ${String(d.sbRef ?? d.id)} dicetak`);
   };
+
+  const openDoEdit = (d: StoreItem) => {
+    setDoEdit(d);
+    const items = (Array.isArray(d.doItems) ? d.doItems : []) as { name: string; qty: string }[];
+    setDoEditForm({
+      to: String(d.doTo ?? d.vessel ?? ""),
+      date: String(d.doDate ?? d.updated ?? todayISO()),
+      driver: String(d.doDriver ?? ""),
+      sjId: String(d.doSjId ?? ""),
+      items: items.length > 0 ? items.map((x) => ({ name: String(x.name ?? ""), qty: String(x.qty ?? "") })) : [{ name: "", qty: "" }],
+    });
+  };
+
+  const saveDoEdit = async () => {
+    if (!doEdit) return;
+    const items = doEditForm.items.filter((x) => x.name.trim() && x.qty.trim());
+    if (!doEditForm.to.trim() || items.length === 0) { toast(S.sjNeedDest, "info"); return; }
+    const sj = sjDocs.find((d) => String(d.id) === doEditForm.sjId);
+    try {
+      await update("documents", doEdit.id, {
+        doTo: doEditForm.to.trim(),
+        vessel: doEditForm.to.trim(),
+        doDate: doEditForm.date,
+        updated: todayISO(),
+        doDriver: doEditForm.driver.trim(),
+        doSjId: doEditForm.sjId,
+        doSjRef: sj ? String(sj.sbRef || sj.id) : "",
+        doItems: items.map((x) => ({ name: x.name.trim(), qty: x.qty.trim() })),
+        related: doEditForm.sjId ? [doEditForm.sjId] : [],
+      });
+      log("mengubah delivery order", `${String(doEdit.sbRef ?? doEdit.id)} → ${doEditForm.to.trim()}`, "Inventori");
+      toast(locale === "en" ? `DO ${String(doEdit.sbRef ?? doEdit.id)} updated` : `DO ${String(doEdit.sbRef ?? doEdit.id)} diubah`);
+      setDoEdit(null);
+    } catch (e) {
+      toast(e instanceof Error ? e.message : S.saveFail, "info");
+    }
+  };
   const [showPick, setShowPick] = useState(false);
   const [pickProject, setPickProject] = useState("");
   const [pickSel, setPickSel] = useState<string[]>([]);
@@ -486,6 +535,9 @@ export default function Inventory() {
     const labels = invTrailingLabels(stockTrend.length, locale);
     return stockTrend.map((d, i) => ({ ...d, label: labels[i] ?? d.month }));
   }, [locale]);
+  const [trendYear, setTrendYear] = useState("Semua");
+  const trendYears = useMemo(() => Array.from(new Set(invTrend.map((d) => String(d.label).slice(-4)))).sort(), [invTrend]);
+  const trendShown = useMemo(() => (trendYear === "Semua" ? invTrend : invTrend.filter((d) => String(d.label).endsWith(trendYear))), [invTrend, trendYear]);
 
   /* Kapasitas gudang dari Settings key WAREHOUSE_CAP = JSON {nama: kapasitas}. */
   const warehouseCap = useMemo(() => {
@@ -529,8 +581,14 @@ export default function Inventory() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }), [list, sort, abc]);
   const pager = usePager(list.length);
-  const movPager = usePager(movements.length);
-  const movSorted = useMemo(() => sortRows(movements, sort3, (m, k) => {
+  const [movWh, setMovWh] = useState("Semua");
+  const movFiltered = useMemo(() => (movWh === "Semua" ? movements : movements.filter((m) => whFlowOf(m).includes(movWh))), [movements, movWh]);
+  const movPager = usePager(movFiltered.length);
+  useEffect(() => {
+    movPager.reset();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [movWh]);
+  const movSorted = useMemo(() => sortRows(movFiltered, sort3, (m, k) => {
     if (k === "jumlah") return Number(m.qty || 0);
     if (k === "total") return Number(m.total || 0);
     if (k === "item") return String(m.item ?? "");
@@ -540,7 +598,7 @@ export default function Inventory() {
     if (k === "info") return String(`${m.supplier ?? ""} ${m.purpose ?? ""} ${m.pic ?? ""}`);
     if (k === "tanggal") return String(m.date ?? "");
     return String(m.id ?? "");
-  }), [movements, sort3]);
+  }), [movFiltered, sort3]);
   useEffect(() => {
     pager.reset();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -608,7 +666,7 @@ export default function Inventory() {
     }
     return Array.from(map.entries()).sort((a, b) => b[1].length - a[1].length);
   }, [lowStock]);
-  const categories = useMemo(() => ["Semua", ...Array.from(new Set(inventory.map((i) => i.category)))], [inventory]);
+  const categories = useMemo(() => ["Semua", ...Array.from(new Set(inventory.map((i) => String(i.category ?? "").trim()).filter((c) => c && c !== "Semua")))], [inventory]);
   const totalValue = useMemo(() => inventory.reduce((s, i) => s + Number(i.stock || 0) * effCost(i), 0), [inventory]);
   const warehouses = useMemo(() => Array.from(new Set(inventory.map((i) => i.warehouse))), [inventory]);
 
@@ -905,6 +963,37 @@ export default function Inventory() {
       closeMove();
     } catch {
       toast(S.moveFailed.replace("{n}", moveKind === "in" ? "GR" : "GI"), "info");
+    }
+  };
+
+  const openMoveEdit = (m: StoreItem) => {
+    setMoveEdit(m);
+    setMoveEditForm({
+      date: String(m.date ?? todayISO()),
+      by: String(m.by ?? ""),
+      supplier: String(m.supplier ?? ""),
+      purpose: String(m.purpose ?? ""),
+      pic: String(m.pic ?? ""),
+    });
+  };
+
+  /* Simpan ubah movement: metadata saja, stok/item/qty/tipe tidak disentuh. */
+  const saveMoveEdit = async () => {
+    if (!moveEdit) return;
+    if (!moveEditForm.date) { toast(locale === "en" ? "Date is required" : "Tanggal wajib diisi", "info"); return; }
+    try {
+      await update("movements", moveEdit.id, {
+        date: moveEditForm.date,
+        by: moveEditForm.by.trim(),
+        supplier: moveEditForm.supplier.trim(),
+        purpose: moveEditForm.purpose.trim(),
+        pic: moveEditForm.pic.trim(),
+      });
+      log("mengubah movement", `${moveEdit.id} · ${String(moveEdit.item ?? "")} (metadata saja, stok tidak diubah)`, "Inventori");
+      toast(locale === "en" ? `Movement ${moveEdit.id} updated (stock untouched)` : `Movement ${moveEdit.id} diubah (stok tidak diubah)`);
+      setMoveEdit(null);
+    } catch (e) {
+      toast(e instanceof Error ? e.message : S.saveFail, "info");
     }
   };
 
@@ -1442,7 +1531,8 @@ export default function Inventory() {
         icon={<Warehouse className="h-5 w-5" />}
         actions={
           <div className="flex items-center gap-2">
-            <button className="btn-secondary" onClick={openPick}><ListChecks className="h-4 w-4" /> Pick List</button>
+            <button className="btn-secondary" title={locale === "en" ? "Reload data from backend" : "Muat ulang data dari backend"} onClick={() => void busy.run("resync", async () => { await resync(); toast(locale === "en" ? "Data refreshed" : "Data dimuat ulang"); })} disabled={busy.isBusy("resync")}><RefreshCw className="h-4 w-4" /> {locale === "en" ? "Refresh" : "Muat ulang"}</button>
+            <button className="btn-secondary" onClick={openPick}><ListChecks className="h-4 w-4" /> {S.pickTitle}</button>
             <button className="btn-primary-gradient" onClick={() => { setForm(emptyForm); setShowAdd(true); }}><Plus className="h-4 w-4" /> {S.btnNew}</button>
           </div>
         }
@@ -1772,10 +1862,15 @@ export default function Inventory() {
           {tab === "Pergerakan" && (
             <div className="space-y-4">
               <Card>
-                <CardHeader title={S.trendT} subtitle={S.trendS} />
+                <CardHeader title={S.trendT} subtitle={S.trendS} action={
+                  <select className="input w-auto py-1.5 text-xs" value={trendYear} onChange={(e) => setTrendYear(e.target.value)} aria-label={locale === "en" ? "Filter year" : "Filter tahun"}>
+                    <option value="Semua">{locale === "en" ? "All years" : "Semua tahun"}</option>
+                    {trendYears.map((y) => <option key={y} value={y}>{y}</option>)}
+                  </select>
+                } />
                 <div className="h-44 p-4 pt-0">
                   <ResponsiveContainer width="100%" height="100%">
-                    <AreaChart data={invTrend} margin={{ top: 5, right: 5, left: -15, bottom: 0 }}>
+                    <AreaChart data={trendShown} margin={{ top: 5, right: 5, left: -15, bottom: 0 }}>
                       <defs><linearGradient id="invGrad" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="#0b3a63" stopOpacity={0.3} /><stop offset="95%" stopColor="#0b3a63" stopOpacity={0} /></linearGradient></defs>
                       <CartesianGrid strokeDasharray="3 3" stroke="#e9eff4" vertical={false} />
                       <XAxis dataKey="label" stroke="#8aa2b6" axisLine={false} tickLine={false} tick={{ fontSize: 10 }} />
@@ -1789,10 +1884,17 @@ export default function Inventory() {
               <p className="rounded-lg bg-steel-50 px-3 py-2 text-xs text-steel-500" title={locale === "en" ? "GR = goods received, GI = goods issued" : "GR = barang masuk (Goods Receive), GI = barang keluar (Goods Issue)"}>
                 {locale === "en" ? "GR = goods in (Goods Receive) · GI = goods out (Goods Issue)" : "GR = barang masuk (Goods Receive) · GI = barang keluar (Goods Issue)"}
               </p>
+              <div className="flex flex-wrap items-center gap-2">
+                <label className="text-xs font-medium text-steel-600" htmlFor="mov-wh">{locale === "en" ? "Warehouse" : "Gudang"}</label>
+                <select id="mov-wh" className="input w-auto py-1.5 text-xs" value={movWh} onChange={(e) => setMovWh(e.target.value)}>
+                  <option value="Semua">{locale === "en" ? "All warehouses" : "Semua gudang"}</option>
+                  {warehouses.map((w) => <option key={w} value={w}>{w}</option>)}
+                </select>
+              </div>
               <div className="overflow-x-auto">
                 <table className="w-full">
                   <thead className="bg-surface sticky top-0 z-10">
-                    <tr><SortTh label={S.thTx} sortKey="transaksi" sort={sort3} onSort={(k) => setSort3((s) => toggleSort(s, k))} /><SortTh label={S.itemLbl} sortKey="item" sort={sort3} onSort={(k) => setSort3((s) => toggleSort(s, k))} /><SortTh label={S.thType} sortKey="tipe" sort={sort3} onSort={(k) => setSort3((s) => toggleSort(s, k))} /><SortTh label={S.jumlahLbl} sortKey="jumlah" sort={sort3} onSort={(k) => setSort3((s) => toggleSort(s, k))} /><SortTh label={S.thRef} sortKey="referensi" sort={sort3} onSort={(k) => setSort3((s) => toggleSort(s, k))} /><SortTh label={S.thInfo} sortKey="info" sort={sort3} onSort={(k) => setSort3((s) => toggleSort(s, k))} /><SortTh label={locale === "en" ? "Warehouse from/to" : "Gudang asal/tujuan"} sortKey="gudang" sort={sort3} onSort={(k) => setSort3((s) => toggleSort(s, k))} /><SortTh label={S.thTotalCol} sortKey="total" sort={sort3} onSort={(k) => setSort3((s) => toggleSort(s, k))} /><SortTh label={S.dateLbl} sortKey="tanggal" sort={sort3} onSort={(k) => setSort3((s) => toggleSort(s, k))} /></tr>
+                    <tr><SortTh label={S.thTx} sortKey="transaksi" sort={sort3} onSort={(k) => setSort3((s) => toggleSort(s, k))} /><SortTh label={S.itemLbl} sortKey="item" sort={sort3} onSort={(k) => setSort3((s) => toggleSort(s, k))} /><SortTh label={S.thType} sortKey="tipe" sort={sort3} onSort={(k) => setSort3((s) => toggleSort(s, k))} /><SortTh label={S.jumlahLbl} sortKey="jumlah" sort={sort3} onSort={(k) => setSort3((s) => toggleSort(s, k))} /><SortTh label={S.thRef} sortKey="referensi" sort={sort3} onSort={(k) => setSort3((s) => toggleSort(s, k))} /><SortTh label={S.thInfo} sortKey="info" sort={sort3} onSort={(k) => setSort3((s) => toggleSort(s, k))} /><SortTh label={locale === "en" ? "Warehouse from/to" : "Gudang asal/tujuan"} sortKey="gudang" sort={sort3} onSort={(k) => setSort3((s) => toggleSort(s, k))} /><SortTh label={S.thTotalCol} sortKey="total" sort={sort3} onSort={(k) => setSort3((s) => toggleSort(s, k))} /><SortTh label={S.dateLbl} sortKey="tanggal" sort={sort3} onSort={(k) => setSort3((s) => toggleSort(s, k))} /><th className="th">{S.thAksi}</th></tr>
                   </thead>
                   <tbody className="divide-y divide-steel-100">
                     {movPager.slice(movSorted).map((m) => (
@@ -1817,6 +1919,12 @@ export default function Inventory() {
                         <td className="td text-xs text-steel-600 truncate" title={whFlowOf(m)}>{whFlowOf(m)}</td>
                         <td className="td text-xs font-semibold">{Number(m.total) ? fmtRupiah(Number(m.total)) : "-"}</td>
                         <td className="td text-steel-600">{fmtTanggal(m.date)}</td>
+                        <td className="td">
+                          <div className="flex gap-1">
+                            <button className="rounded-lg p-1.5 text-steel-500 hover:bg-steel-100" title={locale === "en" ? "Edit movement (info only, stock untouched)" : "Ubah movement (info saja, stok tidak diubah)"} aria-label={`${locale === "en" ? "Edit movement" : "Ubah movement"} ${m.id}`} onClick={() => openMoveEdit(m)}><Pencil className="h-4 w-4" /></button>
+                            <button className="rounded-lg p-1.5 text-rose-600 hover:bg-rose-50" title={locale === "en" ? "Delete movement only (stock NOT adjusted)" : "Hapus movement saja (stok TIDAK dikoreksi)"} aria-label={`${locale === "en" ? "Delete movement" : "Hapus movement"} ${m.id}`} onClick={() => setDelMove(m)}><Trash2 className="h-4 w-4" /></button>
+                          </div>
+                        </td>
                       </tr>
                     ))}
                   </tbody>
@@ -2024,7 +2132,7 @@ export default function Inventory() {
               </Card>
             </div>
             <Card className="mt-4 p-5">
-              <CardHeader title={locale === "en" ? "Issued DOs" : "DO Terbit"} subtitle={locale === "en" ? "Print + linked Surat Jalan" : "Cetak + Surat Jalan tertaut"} />
+              <CardHeader title={locale === "en" ? "Issued DOs" : "DO Terbit"} subtitle={locale === "en" ? "Print + linked delivery note" : "Cetak + Surat Jalan tertaut"} />
               <div className="mt-2 space-y-2">
                 {doDocs.map((d) => (
                   <div key={String(d.id)} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-steel-100 px-3 py-2 text-sm">
@@ -2039,6 +2147,8 @@ export default function Inventory() {
                         </Link>
                       ) : null}
                       <button className="btn-secondary text-xs" onClick={() => printDo(d)}><Printer className="h-3.5 w-3.5" /> {S.printBtn}</button>
+                      <button className="btn-secondary text-xs" onClick={() => openDoEdit(d)}>{locale === "en" ? "Edit" : "Ubah"}</button>
+                      <button className="btn-secondary text-xs text-rose-600" onClick={() => setDelDo(d)}>{locale === "en" ? "Cancel DO" : "Batalkan"}</button>
                     </div>
                   </div>
                 ))}
@@ -2065,7 +2175,7 @@ export default function Inventory() {
                           <p className="truncate font-medium text-navy-900" title={String(i.name)}>{i.name}</p>
                           <p className="text-xs text-steel-400">Terakhir keluar {fmtTanggal(lastOutOf(i))}</p>
                         </div>
-                        <Badge tone="amber">Slow</Badge>
+                        <Badge tone="amber">{locale === "en" ? "Slow" : "Lambat"}</Badge>
                       </div>
                     ))}
                   </div>
@@ -2085,7 +2195,7 @@ export default function Inventory() {
                           <p className="text-xs text-steel-400">Stok {fmtJumlah(Number(i.stock))} {i.unit} · {fmtRupiah(Number(i.stock) * effCost(i))}</p>
                         </div>
                         <span className="flex shrink-0 flex-col items-end gap-1">
-                          <Badge tone="red">Dead</Badge>
+                          <Badge tone="red">{locale === "en" ? "Dead" : "Mati"}</Badge>
                           <span className="text-[11px] text-steel-500">{deadReason(i)}</span>
                         </span>
                       </div>
@@ -2543,6 +2653,107 @@ export default function Inventory() {
             toast(locale === "en" ? `Item ${delInv.id} deleted` : `Item ${delInv.id} dihapus`);
           } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); }
           setDelInv(null);
+        }}
+      />
+
+      {/* Modal ubah movement: metadata saja (tanggal/referensi/supplier/purpose/PIC).
+          Qty/tipe/item dikunci agar stok tak perlu dikoreksi. */}
+      <Modal open={moveEdit !== null} onClose={() => setMoveEdit(null)}
+        title={moveEdit ? (locale === "en" ? `Edit movement ${moveEdit.id}` : `Ubah movement ${moveEdit.id}`) : ""}
+        subtitle={locale === "en" ? "Info only - stock is NOT recalculated" : "Info saja - stok TIDAK dihitung ulang"}
+        footer={<><button className="btn-secondary" onClick={() => setMoveEdit(null)}>{S.cancelBtn}</button><button className="btn-primary" onClick={() => void busy.run("saveMoveEdit", saveMoveEdit)} disabled={busy.isBusy("saveMoveEdit")}>{S.saveBtn}</button></>}>
+        <div className="space-y-3">
+          <FormGrid>
+            <Field label={S.dateLbl}><input type="date" className="input" value={moveEditForm.date} onChange={(e) => setMoveEditForm((f) => ({ ...f, date: e.target.value }))} /></Field>
+            <Field label={S.refLbl}><input className="input font-mono" value={moveEditForm.by} onChange={(e) => setMoveEditForm((f) => ({ ...f, by: e.target.value }))} /></Field>
+            <Field label={S.supplierLbl}><input className="input" value={moveEditForm.supplier} onChange={(e) => setMoveEditForm((f) => ({ ...f, supplier: e.target.value }))} /></Field>
+            <Field label={S.picLbl}><input className="input" value={moveEditForm.pic} onChange={(e) => setMoveEditForm((f) => ({ ...f, pic: e.target.value }))} /></Field>
+          </FormGrid>
+          <Field label={S.purposeLbl}><input className="input" value={moveEditForm.purpose} onChange={(e) => setMoveEditForm((f) => ({ ...f, purpose: e.target.value }))} /></Field>
+        </div>
+      </Modal>
+
+      <ConfirmModal
+        open={delMove !== null}
+        title={delMove ? (locale === "en" ? `Delete movement ${delMove.id}?` : `Hapus movement ${delMove.id}?`) : ""}
+        desc={delMove ? (locale === "en"
+          ? `Record ${moveLabel(String(delMove.type ?? ""))} ${String(delMove.item ?? "")} x ${fmtJumlah(Number(delMove.qty ?? 0))} (${String(delMove.by ?? "")}) will be deleted. STOCK IS NOT ADJUSTED - use Opname if stock needs correction.`
+          : `Catatan ${moveLabel(String(delMove.type ?? ""))} ${String(delMove.item ?? "")} x ${fmtJumlah(Number(delMove.qty ?? 0))} (${String(delMove.by ?? "")}) akan dihapus. STOK TIDAK DIKOREKSI - gunakan Opname bila stok perlu disesuaikan.`) : ""}
+        confirmLabel={locale === "en" ? "Delete without stock correction" : "Hapus tanpa koreksi stok"}
+        danger
+        onCancel={() => setDelMove(null)}
+        onConfirm={async () => {
+          if (!delMove) return;
+          const mid = String(delMove.id);
+          const summary = `${moveLabel(String(delMove.type ?? ""))} ${String(delMove.item ?? "")} x ${fmtJumlah(Number(delMove.qty ?? 0))}`;
+          try {
+            await remove("movements", mid);
+            log("menghapus movement (tanpa koreksi stok)", `${mid} · ${summary}`, "Inventori");
+            toast(locale === "en"
+              ? `Movement ${mid} deleted - STOCK NOT adjusted. Use Opname if correction is needed.`
+              : `Movement ${mid} dihapus - STOK TIDAK diubah. Gunakan Opname bila perlu koreksi.`, "info");
+          } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); }
+          setDelMove(null);
+        }}
+      />
+
+      {/* Modal ubah DO terbit */}
+      <Modal open={doEdit !== null} onClose={() => setDoEdit(null)}
+        title={doEdit ? (locale === "en" ? `Edit DO ${String(doEdit.sbRef ?? doEdit.id)}` : `Ubah DO ${String(doEdit.sbRef ?? doEdit.id)}`) : ""}
+        subtitle={locale === "en" ? "Number stays the same" : "Nomor DO tetap sama"}
+        wide footer={<><button className="btn-secondary" onClick={() => setDoEdit(null)}>{S.cancelBtn}</button><button className="btn-primary" onClick={() => void busy.run("saveDoEdit", saveDoEdit)} disabled={busy.isBusy("saveDoEdit")}>{S.saveBtn}</button></>}>
+        <div className="space-y-3">
+          <FormGrid>
+            <Field label={S.dateLbl}><input type="date" className="input" value={doEditForm.date} onChange={(e) => setDoEditForm((f) => ({ ...f, date: e.target.value }))} /></Field>
+            <Field label={S.fDest}><input className="input" value={doEditForm.to} onChange={(e) => setDoEditForm((f) => ({ ...f, to: e.target.value }))} /></Field>
+            <Field label={S.driverLbl}><input className="input" value={doEditForm.driver} onChange={(e) => setDoEditForm((f) => ({ ...f, driver: e.target.value }))} /></Field>
+            <Field label={S.linkedSjLbl}><select className="input" value={doEditForm.sjId} onChange={(e) => setDoEditForm((f) => ({ ...f, sjId: e.target.value }))}>
+              <option value="">{S.noSj}</option>
+              {sjDocs.map((d) => <option key={String(d.id)} value={String(d.id)}>{String(d.sbRef || d.id)} · {String(d.title)}</option>)}
+            </select></Field>
+          </FormGrid>
+          {doEditForm.items.map((it, idx) => (
+            <div key={idx} className="grid grid-cols-12 gap-2">
+              <input className="input col-span-8" placeholder={S.itemPh.replace("{n}", String(idx + 1))} value={it.name} onChange={(e) => setDoEditForm((f) => ({ ...f, items: f.items.map((x, i) => (i === idx ? { ...x, name: e.target.value } : x)) }))} />
+              <input className="input col-span-3" placeholder={S.jumlahLbl} value={it.qty} onChange={(e) => setDoEditForm((f) => ({ ...f, items: f.items.map((x, i) => (i === idx ? { ...x, qty: e.target.value } : x)) }))} />
+              <button className="btn-secondary col-span-1 text-xs" aria-label={S.delSjRow.replace("{n}", String(idx + 1))} onClick={() => setDoEditForm((f) => ({ ...f, items: f.items.filter((_, i) => i !== idx) }))}>×</button>
+            </div>
+          ))}
+          <button className="btn-secondary text-xs" onClick={() => setDoEditForm((f) => ({ ...f, items: [...f.items, { name: "", qty: "" }] }))}>{S.addRow}</button>
+        </div>
+      </Modal>
+
+      <ConfirmModal
+        open={delDo !== null}
+        title={delDo ? (locale === "en" ? `Cancel DO ${String(delDo.sbRef ?? delDo.id)}?` : `Batalkan DO ${String(delDo.sbRef ?? delDo.id)}?`) : ""}
+        desc={delDo ? (locale === "en"
+          ? `DO ${String(delDo.sbRef ?? delDo.id)} (${String(delDo.title ?? "")}) will be cancelled. Linked reservations, if any, will be released back.`
+          : `DO ${String(delDo.sbRef ?? delDo.id)} (${String(delDo.title ?? "")}) akan dibatalkan. Reservasi yang merujuk DO ini, bila ada, akan dikembalikan.`) : ""}
+        confirmLabel={locale === "en" ? "Cancel DO" : "Batalkan DO"}
+        danger
+        onCancel={() => setDelDo(null)}
+        onConfirm={async () => {
+          if (!delDo) return;
+          const doId = String(delDo.id);
+          const doRef = String(delDo.sbRef ?? "");
+          try {
+            /* Kembalikan reservasi yang merujuk DO ini (pembuatan DO tidak
+               menyentuh stok, jadi pembatalan pun tidak menyentuh stok). */
+            let released = 0;
+            for (const it of inventory) {
+              const cur = reservedOf(it);
+              if (!cur.some((r) => r.project === doId || (doRef !== "" && r.project === doRef))) continue;
+              const next = cur.filter((r) => r.project !== doId && (doRef === "" || r.project !== doRef));
+              await update("inventory", it.id, { reserved: next });
+              released += cur.length - next.length;
+            }
+            await remove("documents", doId);
+            log("membatalkan delivery order", `${doRef || doId} · reservasi kembali: ${released}`, "Inventori");
+            toast(locale === "en"
+              ? `DO ${doRef || doId} cancelled${released > 0 ? ` - ${released} reservation(s) released` : " - no linked reservations"}`
+              : `DO ${doRef || doId} dibatalkan${released > 0 ? ` - ${released} reservasi dikembalikan` : " - tanpa reservasi terkait"}`);
+          } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); }
+          setDelDo(null);
         }}
       />
     </div>

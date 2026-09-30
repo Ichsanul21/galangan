@@ -136,8 +136,9 @@ export default function EquipmentPage() {
   const [showAdd, setShowAdd] = useState(false);
   const [form, setForm] = useState({ name: "", category: "Pengangkat", categoryCustom: "", code: "", serial: "", branch: "Samarinda", model: "", pic: "", util: "50", rate: "", fuelPrice: "0", acquisitionCost: "", usefulLife: "" });
   const [showService, setShowService] = useState(false);
-  const [svcDate, setSvcDate] = useState("");
   const [svcTarget, setSvcTarget] = useState("");
+  const [schedForm, setSchedForm] = useState({ tanggal: todayISO(), teknisi: "", hours: "", next: "", catatan: "" });
+  const [schedMats, setSchedMats] = useState<{ itemId: string; qty: string }[]>([]);
 
   const [showBook, setShowBook] = useState(false);
   const [bookForm, setBookForm] = useState({ equip: "", proyek: "", date: todayISO(), mulai: "", selesai: "", priority: "Normal" });
@@ -156,6 +157,9 @@ export default function EquipmentPage() {
   const [recording, setRecording] = useState<StoreItem | null>(null);
   const [woForm, setWoForm] = useState({ tanggal: todayISO(), teknisi: "", catatan: "", hours: "", next: "" });
   const [svcMats, setSvcMats] = useState<{ itemId: string; qty: string }[]>([]);
+  const [editHist, setEditHist] = useState<StoreItem | null>(null);
+  const [editHistMats, setEditHistMats] = useState<{ itemId: string; qty: string }[]>([]);
+  const [delHist, setDelHist] = useState<StoreItem | null>(null);
 
   const [showCal, setShowCal] = useState(false);
   const [calForm, setCalForm] = useState({ equipmentId: "", item: "", due: "" });
@@ -366,14 +370,93 @@ export default function EquipmentPage() {
 
   const saveService = async () => {
     try {
-    if (!svcTarget || !svcDate) { toast(S.eqSvcReq, "info"); return; }
+    if (!svcTarget || !schedForm.tanggal || !schedForm.teknisi.trim() || !schedForm.hours) { toast(S.eqRecordReq, "info"); return; }
+    const hours = Number(schedForm.hours);
+    if (!Number.isFinite(hours) || hours < 0) { toast(S.eqHoursInvalid, "info"); return; }
     const target = equipment.find((e) => e.id === svcTarget);
-    await update("equipment", svcTarget, { nextService: svcDate });
-    log("menjadwalkan servis", `${target?.name ?? svcTarget} · ${fmtTanggal(svcDate)}`, "Equipment");
+    /* Kebutuhan material jadwal: validasi qty positif + item dikenal saja.
+       Stok TIDAK dipotong di sini (catat servis sudah potong saat eksekusi) — hindari ganda. */
+    const mats = schedMats.filter((m) => m.itemId);
+    for (const m of mats) {
+      const it = (data.inventory ?? []).find((x) => x.id === m.itemId);
+      const q = Number(m.qty);
+      if (!it) { toast("Material servis tidak dikenal", "info"); return; }
+      if (!Number.isFinite(q) || q <= 0) { toast(`Qty material ${it.name} harus positif`, "info"); return; }
+    }
+    const matSummary = mats.map((m) => {
+      const it = (data.inventory ?? []).find((x) => x.id === m.itemId);
+      return { itemId: m.itemId, name: String(it?.name ?? m.itemId), qty: Number(m.qty) || 0, unit: String(it?.unit ?? ""), cost: (Number(m.qty) || 0) * (it ? invCost(it) : 0) };
+    });
+    const matCost = Math.round(matSummary.reduce((s, m) => s + m.cost, 0));
+    const nextVal = schedForm.next || schedForm.tanggal;
+    await update("equipment", svcTarget, {
+      nextService: nextVal,
+      scheduledService: {
+        tanggal: schedForm.tanggal, teknisi: schedForm.teknisi.trim(), hours,
+        next: schedForm.next, catatan: schedForm.catatan.trim(),
+        materials: matSummary, cost: matCost,
+      },
+      ...(matSummary.length > 0 ? { scheduledServiceMaterials: matSummary, scheduledServiceCost: matCost } : {}),
+    });
+    log("menjadwalkan servis", `${target?.name ?? svcTarget} · ${fmtTanggal(schedForm.tanggal)} · teknisi ${schedForm.teknisi.trim()} · ${fmtJumlah(hours)} jam${schedForm.catatan.trim() ? ` · ${schedForm.catatan.trim()}` : ""}${matSummary.length > 0 ? ` · kebutuhan ${matSummary.map((m) => `${m.name} × ${m.qty}`).join("; ")} (${fmtRupiah(matCost)}, stok tidak dipotong)` : ""}`, "Equipment");
     toast(S.eqSvcUpdated);
     setShowService(false);
-    setSvcDate("");
     setSvcTarget("");
+    setSchedForm({ tanggal: todayISO(), teknisi: "", hours: "", next: "", catatan: "" });
+    setSchedMats([]);
+    } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); }
+  };
+
+  const schedMatsCost = schedMats.reduce((s, m) => {
+    const it = (data.inventory ?? []).find((x) => x.id === m.itemId);
+    return s + (Number(m.qty) || 0) * (it ? invCost(it) : 0);
+  }, 0);
+
+  const openEditHist = (eq: StoreItem) => {
+    setEditHist(eq);
+    const cur = (Array.isArray(eq.lastServiceMaterials) ? eq.lastServiceMaterials : []) as { itemId?: string; name?: string; qty: number }[];
+    setEditHistMats(cur.map((m) => {
+      const byId = (data.inventory ?? []).find((x) => x.id === m.itemId);
+      const byName = !byId ? (data.inventory ?? []).find((x) => String(x.name ?? "").toLowerCase() === String(m.name ?? "").toLowerCase()) : undefined;
+      return { itemId: String(m.itemId ?? byId?.id ?? byName?.id ?? ""), qty: String(m.qty ?? "") };
+    }));
+  };
+
+  const saveEditHist = async () => {
+    try {
+    if (!editHist) return;
+    const mats = editHistMats.filter((m) => m.itemId);
+    for (const m of mats) {
+      const it = (data.inventory ?? []).find((x) => x.id === m.itemId);
+      const q = Number(m.qty);
+      if (!it) { toast("Material servis tidak dikenal", "info"); return; }
+      if (!Number.isFinite(q) || q <= 0) { toast(`Qty material ${it.name} harus positif`, "info"); return; }
+    }
+    const matSummary = mats.map((m) => {
+      const it = (data.inventory ?? []).find((x) => x.id === m.itemId);
+      return { itemId: m.itemId, name: String(it?.name ?? m.itemId), qty: Number(m.qty) || 0, unit: String(it?.unit ?? ""), cost: (Number(m.qty) || 0) * (it ? invCost(it) : 0) };
+    });
+    const matCost = Math.round(matSummary.reduce((s, m) => s + m.cost, 0));
+    /* Edit riwayat: hanya perbarui tampilan record, stok TIDAK diubah (sudah dipotong saat catat). */
+    await update("equipment", editHist.id, {
+      lastServiceMaterials: matSummary,
+      lastServiceCost: matCost,
+    });
+    log("memperbarui riwayat servis", `${editHist.name} · ${matSummary.length > 0 ? matSummary.map((m) => `${m.name} × ${m.qty}`).join("; ") : "tanpa material"} (stok tidak diubah)`, "Equipment");
+    toast("Riwayat servis diperbarui");
+    setEditHist(null);
+    setEditHistMats([]);
+    } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); }
+  };
+
+  const confirmDelHist = async () => {
+    try {
+    if (!delHist) return;
+    /* Hapus riwayat: hanya bersihkan tampilan record, stok TIDAK dikembalikan. */
+    await update("equipment", delHist.id, { lastServiceMaterials: [], lastServiceCost: 0 });
+    log("menghapus riwayat servis", `${delHist.name} (stok tidak dikembalikan)`, "Equipment");
+    toast("Riwayat servis dihapus");
+    setDelHist(null);
     } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); }
   };
 
@@ -889,10 +972,28 @@ export default function EquipmentPage() {
                             : Array.isArray(e.lastServiceMaterials) && e.lastServiceMaterials.length > 0
                               ? `Servis terakhir: ${(e.lastServiceMaterials as { name: string; qty: number; unit: string }[]).map((m) => `${m.name} × ${m.qty} ${m.unit ?? ""}`).join("; ")} (${fmtRupiah(Number(e.lastServiceCost || 0))})`
                               : <span className="text-steel-400">-</span>}
+                          {(() => {
+                            const sched = (e.scheduledService ?? null) as { tanggal?: string; teknisi?: string; materials?: { name: string; qty: number; unit?: string }[] } | null;
+                            const schedMats = (Array.isArray(e.scheduledServiceMaterials) ? e.scheduledServiceMaterials : sched?.materials ?? []) as { name: string; qty: number; unit?: string }[];
+                            if (!sched && schedMats.length === 0) return null;
+                            return (
+                              <span className="mt-1 block text-[11px] text-steel-500">
+                                Jadwal{sched?.tanggal ? ` ${fmtTanggal(String(sched.tanggal))}` : ""}{sched?.teknisi ? ` · ${sched.teknisi}` : ""}{schedMats.length > 0 ? ` · butuh ${schedMats.map((m) => `${m.name} × ${m.qty}`).join("; ")} (stok tidak dipotong)` : ""}
+                              </span>
+                            );
+                          })()}
                         </td>
                         <td className="td"><Badge tone={e.status === "Maintenance" ? "amber" : "green"}>{e.status === "Maintenance" ? S.eqInService : S.eqScheduled}</Badge></td>
                         <td className="td">
-                          <button className="btn-secondary text-xs" onClick={() => openRecord(e)}>{S.eqLogSvc}</button>
+                          <div className="flex flex-wrap gap-1.5">
+                            <button className="btn-secondary text-xs" onClick={() => openRecord(e)}>{S.eqLogSvc}</button>
+                            {Array.isArray(e.lastServiceMaterials) && e.lastServiceMaterials.length > 0 && (
+                              <>
+                                <button className="btn-secondary text-xs" onClick={() => openEditHist(e)}>Edit</button>
+                                <button className="btn-secondary text-xs" onClick={() => setDelHist(e)}>{S.delBtn}</button>
+                              </>
+                            )}
+                          </div>
                         </td>
                       </tr>
                     ))}
@@ -1180,7 +1281,41 @@ export default function EquipmentPage() {
               {equipment.map((e) => <option key={e.id} value={e.id}>{e.name} ({e.code})</option>)}
             </select>
           </Field>
-          <Field label={S.eqSvcDateField}><input type="date" className="input" value={svcDate} onChange={(e) => setSvcDate(e.target.value)} /></Field>
+          <FormGrid>
+            <Field label={S.eqSvcDateField}><input type="date" className="input" value={schedForm.tanggal} onChange={(e) => setSchedForm({ ...schedForm, tanggal: e.target.value })} /></Field>
+            <Field label={S.eqTechField}><input className="input" value={schedForm.teknisi} onChange={(e) => setSchedForm({ ...schedForm, teknisi: e.target.value })} placeholder={S.eqTechPh} /></Field>
+            <Field label="Hour meter (odometer)"><NumInput min={0} className="input" value={schedForm.hours} onChange={(e) => setSchedForm({ ...schedForm, hours: e.target.value })} /></Field>
+            <Field label={S.eqNextSvc}><input type="date" className="input" value={schedForm.next} onChange={(e) => setSchedForm({ ...schedForm, next: e.target.value })} /></Field>
+          </FormGrid>
+          <Field label={S.eqWorkNote}><input className="input" value={schedForm.catatan} onChange={(e) => setSchedForm({ ...schedForm, catatan: e.target.value })} placeholder={S.eqWorkNotePh} /></Field>
+          <div className="border-t border-steel-100 pt-3">
+            <div className="mb-2 flex items-center justify-between">
+              <p className="text-xs font-semibold text-steel-500">Kebutuhan material dari inventory (stok tidak dipotong)</p>
+              <button className="btn-secondary text-xs" onClick={() => setSchedMats((m) => [...m, { itemId: "", qty: "" }])}>+ Tambah material</button>
+            </div>
+            {schedMats.length === 0 && <p className="text-xs text-steel-400">Belum ada material — tambah bila servis terjadwal membutuhkan sparepart dari gudang.</p>}
+            {schedMats.map((m, idx) => {
+              const it = (data.inventory ?? []).find((x) => x.id === m.itemId);
+              return (
+                <div key={idx} className="mb-2 grid grid-cols-12 items-end gap-2">
+                  <div className="col-span-7">
+                    <p className="label">Item · gudang</p>
+                    <select className="input" value={m.itemId} onChange={(e) => setSchedMats((arr) => arr.map((x, i) => (i === idx ? { ...x, itemId: e.target.value } : x)))}>
+                      <option value="">— Pilih item —</option>
+                      {(data.inventory ?? []).map((x) => <option key={x.id} value={x.id}>{x.name} · {x.warehouse} · stok {fmtJumlah(Number(x.stock || 0))} {x.unit}</option>)}
+                    </select>
+                  </div>
+                  <div className="col-span-3">
+                    <p className="label">Qty{it ? ` (${it.unit})` : ""}</p>
+                    <NumInput min={0} className="input" value={m.qty} onChange={(e) => setSchedMats((arr) => arr.map((x, i) => (i === idx ? { ...x, qty: e.target.value } : x)))} />
+                  </div>
+                  <button className="btn-secondary col-span-2 text-xs" onClick={() => setSchedMats((arr) => arr.filter((_, i) => i !== idx))}>Hapus</button>
+                  {it && <p className="col-span-12 text-xs text-steel-500">≈ {fmtRupiah((Number(m.qty) || 0) * invCost(it))} · stok tersedia {fmtJumlah(Number(it.stock || 0))} {it.unit}</p>}
+                </div>
+              );
+            })}
+            {schedMats.length > 0 && <p className="text-right text-sm font-semibold text-navy-900">Total kebutuhan: {fmtRupiah(Math.round(schedMatsCost))} (tidak potong stok)</p>}
+          </div>
         </div>
       </Modal>
 
@@ -1275,6 +1410,48 @@ export default function EquipmentPage() {
         danger
         onCancel={() => setGusur(null)}
         onConfirm={confirmGusur}
+      />
+
+      {/* Edit riwayat servis terakhir (tampilan record saja, stok tidak diubah) */}
+      <Modal open={editHist !== null} onClose={() => setEditHist(null)} title={`Edit riwayat servis - ${editHist?.name ?? ""}`}
+        footer={<><button className="btn-secondary" onClick={() => setEditHist(null)}>{S.cancelBtn}</button><button className="btn-primary" onClick={saveEditHist}>{S.saveBtn}</button></>}>
+        <div className="space-y-3">
+          <div className="mb-2 flex items-center justify-between">
+            <p className="text-xs font-semibold text-steel-500">Material servis (stok tidak diubah)</p>
+            <button className="btn-secondary text-xs" onClick={() => setEditHistMats((m) => [...m, { itemId: "", qty: "" }])}>+ Tambah material</button>
+          </div>
+          {editHistMats.length === 0 && <p className="text-xs text-steel-400">Tanpa material.</p>}
+          {editHistMats.map((m, idx) => {
+            const it = (data.inventory ?? []).find((x) => x.id === m.itemId);
+            return (
+              <div key={idx} className="mb-2 grid grid-cols-12 items-end gap-2">
+                <div className="col-span-7">
+                  <p className="label">Item · gudang</p>
+                  <select className="input" value={m.itemId} onChange={(e) => setEditHistMats((arr) => arr.map((x, i) => (i === idx ? { ...x, itemId: e.target.value } : x)))}>
+                    <option value="">— Pilih item —</option>
+                    {(data.inventory ?? []).map((x) => <option key={x.id} value={x.id}>{x.name} · {x.warehouse} · stok {fmtJumlah(Number(x.stock || 0))} {x.unit}</option>)}
+                  </select>
+                </div>
+                <div className="col-span-3">
+                  <p className="label">Qty{it ? ` (${it.unit})` : ""}</p>
+                  <NumInput min={0} className="input" value={m.qty} onChange={(e) => setEditHistMats((arr) => arr.map((x, i) => (i === idx ? { ...x, qty: e.target.value } : x)))} />
+                </div>
+                <button className="btn-secondary col-span-2 text-xs" onClick={() => setEditHistMats((arr) => arr.filter((_, i) => i !== idx))}>Hapus</button>
+              </div>
+            );
+          })}
+        </div>
+      </Modal>
+
+      {/* Hapus riwayat servis terakhir */}
+      <ConfirmModal
+        open={delHist !== null}
+        title={`Hapus riwayat servis - ${delHist?.name ?? ""}`}
+        desc="Riwayat servis terakhir akan dihapus dari tampilan. Stok inventory tidak dikembalikan."
+        confirmLabel={S.delBtn}
+        danger
+        onCancel={() => setDelHist(null)}
+        onConfirm={confirmDelHist}
       />
 
       {/* Modal selesaikan booking */}

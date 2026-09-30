@@ -406,6 +406,7 @@ export default function Laporan() {
             </Card>
             </div>
             <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+              <div style={printAvoid}>
               <Card className="p-4">
                 <CardHeader title={S.projectProgress} subtitle={S.activeThisWeek} />
                 <div className="px-5 pb-2"><input className="input" value={weekProjQ} onChange={(e) => setWeekProjQ(e.target.value)} placeholder={S.cardSearchPh} aria-label={S.cardSearchPh} /></div>
@@ -419,6 +420,8 @@ export default function Laporan() {
                   {weekly.projects.length === 0 && <EmptyState title={S.emptyActiveProjects} />}
                 </div>
               </Card>
+              </div>
+              <div style={printAvoid}>
               <Card className="p-4">
                 <CardHeader title={S.ncrPlusIncident} subtitle={S.ncrIncidentCount.replace("{a}", fmtJumlah(weekly.ncr.length)).replace("{b}", fmtJumlah(weekly.incidents.length))} />
                 <div className="px-5 pb-2"><input className="input" value={weekFindQ} onChange={(e) => setWeekFindQ(e.target.value)} placeholder={S.cardSearchPh} aria-label={S.cardSearchPh} /></div>
@@ -440,6 +443,8 @@ export default function Laporan() {
                   {weekly.ncr.length === 0 && weekly.incidents.length === 0 && <p className="text-steel-400">{S.noFindingsWeek}</p>}
                 </div>
               </Card>
+              </div>
+              <div style={printAvoid}>
               <Card className="p-4">
                 <CardHeader title={S.compositionTitle} subtitle={S.issuedVsPaidVsPo} />
                 <div className="flex items-center gap-4 px-5 pb-5">
@@ -461,6 +466,7 @@ export default function Laporan() {
                   </div>
                 </div>
               </Card>
+              </div>
             </div>
           </div>
         )}
@@ -519,6 +525,7 @@ export default function Laporan() {
                 <KpiCard label={S.invoiceLabel} value={dashIf(projInvoices.length > 0, fmtMiliar(projInvTotal))} hint={S.invoiceCount.replace("{n}", fmtJumlah(projInvoices.length))} chip="amber" />
               </div>
               <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+                <div style={printAvoid}>
                 <Card className="p-4">
                   <CardHeader title={S.wbsTop} subtitle={S.top5Jobs} />
                   <div className="space-y-2 px-5 pb-5 text-xs">
@@ -531,6 +538,8 @@ export default function Laporan() {
                     {wbsTop.length === 0 && <p className="text-steel-400">{S.noWbs}</p>}
                   </div>
                 </Card>
+                </div>
+                <div style={printAvoid}>
                 <Card className="p-4">
                   <CardHeader title={S.projectNcr} subtitle={S.findingsCount.replace("{n}", fmtJumlah(projNcr.length))} />
                   <div className="px-5 pb-2"><input className="input" value={projNcrQ} onChange={(e) => setProjNcrQ(e.target.value)} placeholder={S.cardSearchPh} aria-label={S.cardSearchPh} /></div>
@@ -548,6 +557,8 @@ export default function Laporan() {
                     {projNcr.length === 0 && <p className="text-steel-400">{S.nihilNcr}</p>}
                   </div>
                 </Card>
+                </div>
+                <div style={printAvoid}>
                 <Card className="p-4">
                   <CardHeader title={S.lastActivities} subtitle={S.fromActivityFeed} />
                   <div className="space-y-2 px-5 pb-5 text-xs text-steel-600">
@@ -557,6 +568,7 @@ export default function Laporan() {
                     {projActivities.length === 0 && <p className="text-steel-400">{S.noRelatedActivity}</p>}
                   </div>
                 </Card>
+                </div>
               </div>
             </div>
           )

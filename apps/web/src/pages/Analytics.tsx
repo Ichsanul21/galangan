@@ -380,12 +380,21 @@ export default function Analytics() {
         [`Estimasi NCR (${openNcrProjects.size} proyek)`, Math.round(ncrEstimate)],
         ["Total rework", reworkCost],
       ];
+      /* Sheet Preskriptif = 4 rekomendasi yang tampil di tab Preskriptif. */
+      const rx: (string | number)[][] = [
+        ["Rekomendasi", "Detail", "Tindak lanjut"],
+        [S.allocDrydock, S.allocDrydockDesc, "/drydock"],
+        [S.reorderMaterial, S.reorderDesc.replace("{n}", String(lowStock.length)), "/procurement"],
+        [S.projectPriority, S.projectPriorityDesc.replace("{n}", String(atRisk)), "/proyek"],
+        [S.followUpNcr, S.followUpNcrDesc.replace("{n}", String(openNcr)), "/qc-safety"],
+      ];
       await writeXlsxFile([
         { data: kpi, sheet: "KPI" },
         { data: drill, sheet: "Drilldown" },
         { data: fc, sheet: "Forecast" },
         { data: sc, sheet: "Skenario" },
         { data: pf, sheet: "Profit" },
+        { data: rx, sheet: "Preskriptif" },
       ]).toFile(`Laporan-Analytics-${todayISO()}.xlsx`);
       toast(S.tAnalyticsExported);
     } catch {

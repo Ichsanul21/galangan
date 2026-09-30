@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useParams, Link } from "react-router-dom";
-import { ArrowLeft, Calendar, MapPin, Plus, Trash2, FileDown } from "lucide-react";
+import { ArrowLeft, Calendar, MapPin, Plus, Trash2, FileDown, Download } from "lucide-react";
 import {
   Card,
   PageHeader,
@@ -16,6 +16,7 @@ import {
   toast,
   Avatar,
   SecureImg,
+  absUrl,
   SortTh,
   toggleSort,
   sortRows,
@@ -50,6 +51,69 @@ const STATIONS = ["Cutting", "Bending", "Welding", "Panel", "Block", "Erection",
 
 type WbsExt = WbsItem & { predecessor?: string };
 interface WbsBaseline { at: string; wbs: WbsExt[]; }
+
+function docUrlOf(d: StoreItem): string {
+  const cands = [d.fileName, d.fileUrl, d.lampiran, d.url];
+  for (const c of cands) {
+    const s = String(c ?? "").trim();
+    if (s && s !== "-") return s;
+  }
+  return "";
+}
+
+function docBaseName(d: StoreItem, url: string): string {
+  const raw = String((d.fileName ?? "") as unknown as string).trim();
+  if (raw && raw !== "-" && !/^(https?:|blob:|data:|\/)/i.test(raw)) return raw;
+  const clean = url.split("?")[0].split("#")[0];
+  const base = clean.split("/").pop() ?? "";
+  if (base) return decodeURIComponent(base);
+  return String(d.title ?? d.id ?? "dokumen");
+}
+
+function docExtOf(url: string): string {
+  const clean = url.split("?")[0].split("#")[0];
+  const m = /\.([a-z0-9]+)$/i.exec(clean);
+  return (m?.[1] ?? "").toLowerCase();
+}
+
+function DocTextPreview({ url }: { url: string }) {
+  const [text, setText] = useState<string | null>(null);
+  const [err, setErr] = useState(false);
+  useEffect(() => {
+    let cancel = false;
+    setText(null);
+    setErr(false);
+    void (async () => {
+      try {
+        const res = await fetch(absUrl(url));
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const t = await res.text();
+        if (!cancel) setText(t.slice(0, 20000));
+      } catch {
+        if (!cancel) setErr(true);
+      }
+    })();
+    return () => { cancel = true; };
+  }, [url]);
+  if (err) return <p className="text-xs text-steel-400">Gagal memuat pratinjau teks.</p>;
+  if (text === null) return <p className="text-xs text-steel-400">Memuat pratinjau teks…</p>;
+  return <pre className="max-h-48 overflow-auto rounded-lg border border-steel-100 bg-surface p-2 text-[11px] text-steel-600">{text}</pre>;
+}
+
+function DocPreview({ url, title }: { url: string; title: string }) {
+  if (!url) return <p className="text-xs text-steel-400">Belum ada lampiran file.</p>;
+  const ext = docExtOf(url);
+  if (["png", "jpg", "jpeg", "gif", "webp", "bmp", "svg"].includes(ext)) {
+    return <SecureImg src={url} alt={title} name={title} className="max-h-48 w-full rounded-lg border border-steel-100 object-contain" />;
+  }
+  if (ext === "pdf") {
+    return <iframe src={absUrl(url)} title={title} className="h-64 w-full rounded-lg border border-steel-100" />;
+  }
+  if (ext === "csv" || ext === "txt") {
+    return <DocTextPreview url={url} />;
+  }
+  return <p className="text-xs text-steel-400">Pratinjau tidak tersedia untuk tipe file ini.</p>;
+}
 
 export default function ProjectDetail() {
   const busy = useBusy();
@@ -1072,26 +1136,39 @@ export default function ProjectDetail() {
 
           {tab === "Dokumen & Laporan" && (
             <div>
+              <style>{`@media print { .doc-card, .bast-card, .report-card { break-inside: avoid; page-break-inside: avoid; } table, thead, tbody, tr { break-inside: auto; page-break-inside: auto; } }`}</style>
               <h3 className="mb-2 text-sm font-semibold text-navy-900">{S.detDocTitle}</h3>
               <div className="mb-3 flex justify-end">
                 <button className="btn-secondary text-xs" onClick={() => setShowDoc(true)}><Plus className="h-3.5 w-3.5" /> {S.detAddDoc}</button>
               </div>
               <div className="space-y-2">
-                {docs.map((d) => (
-                  <div key={d.id} className="flex items-center justify-between rounded-xl border border-steel-100 p-3 text-sm">
-                    <div>
+                {docs.map((d) => {
+                  const url = docUrlOf(d);
+                  const fname = docBaseName(d, url);
+                  return (
+                  <div key={d.id} className="doc-card rounded-xl border border-steel-100 p-3 text-sm" style={{ breakInside: "avoid" }}>
+                    <div className="flex items-center justify-between gap-2">
+                    <div className="min-w-0">
                       <p className="font-medium text-navy-900">{d.title}</p>
                       <p className="text-xs text-steel-500">{d.id} · {d.type} · {d.version} · {d.updated}{d.fileName ? ` · lampiran: ${d.fileName}` : ""}</p>
                     </div>
-                    <div className="flex gap-2">
+                    <div className="flex shrink-0 flex-wrap items-center gap-2">
+                      {url && (
+                        <a className="btn-secondary text-xs" href={absUrl(url)} download={fname} target="_blank" rel="noreferrer"><Download className="h-3.5 w-3.5" /> Unduh</a>
+                      )}
                       <button className="btn-secondary text-xs" aria-label={S.detExportAria.replace("{a}", d.title)} onClick={() => {
                         void exportExcel([["Field", "Value"], ["ID", d.id], ["Judul", d.title], ["Tipe", d.type], ["Proyek", pid], ["Versi", d.version], ["Status", d.status], ["Diperbarui", d.updated], ["Owner", d.owner]], `${d.id}-ringkasan`).then(() => toast(S.detToastExported.replace("{a}", d.id))).catch(() => toast(S.saveFail, "info"));
                       }}><FileDown className="h-3.5 w-3.5" /> {S.excelBtn}</button>
                       <button className="btn-secondary text-xs" onClick={() => { setShareForm({ docId: String(d.id), to: "" }); setShowShare(true); }}>{S.detShareBtn}</button>
                       <StatusBadge status={d.status} />
                     </div>
+                    </div>
+                    <div className="mt-2">
+                      <DocPreview url={url} title={String(d.title ?? d.id)} />
+                    </div>
                   </div>
-                ))}
+                  );
+                })}
                 {docs.length === 0 && <p className="text-sm text-steel-400">{S.detNoDocs}</p>}
               </div>
               <div className="mt-6">
@@ -1103,7 +1180,7 @@ export default function ProjectDetail() {
                   {bastList.map((b) => {
                     const linked = findLinkedWbs(String(b.milestone ?? ""));
                     return (
-                      <div key={String(b.id)} className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-steel-100 p-3 text-sm">
+                      <div key={String(b.id)} className="bast-card flex flex-wrap items-center justify-between gap-2 rounded-xl border border-steel-100 p-3 text-sm" style={{ breakInside: "avoid" }}>
                         <div className="min-w-0">
                           <p className="font-medium text-navy-900">{String(b.id)} · {String(b.milestone)}</p>
                           <p className="text-xs text-steel-500">{fmtTanggal(String(b.tanggal))}{S.detBastSigner}{String(b.penandatangan ?? "-")}{b.lampiran ? `${S.detBastAttach}${String(b.lampiran)}` : ""} · {fmtRupiah(Number(b.amount || 0))}{linked ? S.detBastWbs.replace("{a}", linked.task).replace("{b}", String(linked.progress)) : ""}</p>
@@ -1296,7 +1373,7 @@ export default function ProjectDetail() {
             </div>
           )}
           {tab === "BoQ" && <BoQSection projectId={pid} />}
-          {tab === "Dokumen & Laporan" && <div className="mt-6"><ReportSection projectId={pid} /></div>}
+          {tab === "Dokumen & Laporan" && <div className="report-print mt-6" style={{ breakInside: "auto" }}><ReportSection projectId={pid} /></div>}
           {tab === "3D Viewer" && getSetting(data, "SHOW_3D_PROJECT", 0) === 1 && <SparepartServiceSection projectId={pid} view="3d" />}
           {tab === "Service" && <SparepartServiceSection projectId={pid} view="service" />}
           {tab === "Sparepart" && <SparepartServiceSection projectId={pid} view="sparepart" />}
@@ -1475,8 +1552,8 @@ export default function ProjectDetail() {
         <div className="space-y-3">
           <Field label={S.detStageName}><input className="input" value={wbsForm.task} onChange={(e) => setWbsForm({ ...wbsForm, task: e.target.value })} /></Field>
           <FormGrid>
-            <Field label={S.detStart}><input className="input" placeholder={S.detWbsStartPh} value={wbsForm.start} onChange={(e) => setWbsForm({ ...wbsForm, start: e.target.value })} /></Field>
-            <Field label={S.detEnd}><input className="input" placeholder={S.detWbsEndPh} value={wbsForm.end} onChange={(e) => setWbsForm({ ...wbsForm, end: e.target.value })} /></Field>
+            <Field label={S.detStart}><input type="month" className="input" placeholder={S.detWbsStartPh} value={wbsForm.start === "-" ? "" : wbsForm.start} onChange={(e) => setWbsForm({ ...wbsForm, start: e.target.value })} /></Field>
+            <Field label={S.detEnd}><input type="month" className="input" placeholder={S.detWbsEndPh} value={wbsForm.end === "-" ? "" : wbsForm.end} onChange={(e) => setWbsForm({ ...wbsForm, end: e.target.value })} /></Field>
             <Field label={S.detWeight}><NumInput className="input" value={wbsForm.weight} onChange={(e) => setWbsForm({ ...wbsForm, weight: e.target.value })} /></Field>
             <Field label={S.detProgField}><NumInput className="input" value={wbsForm.progress} onChange={(e) => setWbsForm({ ...wbsForm, progress: e.target.value })} /></Field>
           </FormGrid>
