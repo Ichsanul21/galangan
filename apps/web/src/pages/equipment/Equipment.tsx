@@ -1015,8 +1015,7 @@ export default function EquipmentPage() {
 
           {tab === "Maintenance" && (
             <div>
-              <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-                <p className="text-xs text-steel-500">Alur: Jadwalkan servis (rencana + kebutuhan material, stok belum dipotong) → Realisasikan (eksekusi + potong stok inventory). Edit/Hapus hanya untuk riwayat.</p>
+              <div className="mb-3 flex flex-wrap items-center justify-end gap-2">
                 <button className="btn-secondary text-xs" onClick={() => setShowService(true)}><Wrench className="h-3.5 w-3.5" /> Jadwalkan servis</button>
               </div>
               <div className="overflow-x-auto">

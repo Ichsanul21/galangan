@@ -851,11 +851,6 @@ export default function Subcontractor() {
             <div>
               <div className="mb-3 rounded-xl bg-surface p-2.5">
                 <FlowStrip steps={["Draf", "Diajukan", "Disetujui", "Lunas", "Retensi Released"]} current={furthestTermin} ariaLabel={locale === "en" ? "Termin flow" : "Alur termin"} />
-                <p className="mt-1.5 text-[11px] text-steel-500">
-                  {locale === "en"
-                    ? "Flow: Draft → Proposed → Approved → Paid → Retention Released (Rejected branches off)."
-                    : "Alur: Draf → Diajukan → Disetujui → Lunas → Retensi Released (Ditolak di luar alur)."}
-                </p>
               </div>
               <div className="mb-3 flex justify-end">
                 <button className="btn-secondary text-xs" onClick={() => setShowTerm(true)}><Plus className="h-3.5 w-3.5" /> {S.proposeTerminBtn}</button>
@@ -889,16 +884,11 @@ export default function Subcontractor() {
                               { label: "BAST", done: Boolean(p.bastNo ?? p.releaseBA) },
                               { label: "Bukti bayar", done: Boolean(p.paymentRef ?? p.paidRef ?? p.paidAt) },
                             ];
-                            const allDone = docs.every((d) => d.done);
-                            const terminal = normTerm(String(p.status)) === "Lunas" || String(p.status) === "Retensi Released";
                             return (
                               <div className="mt-1 space-y-0.5">
                                 {docs.map((d) => (
                                   <p key={d.label} className="text-[11px] text-steel-500">{d.done ? "✓" : "○"} {d.label}</p>
                                 ))}
-                                {!allDone && !terminal && (
-                                  <p className="text-[11px] text-steel-400">Lengkapi Invoice + BAST + Bukti bayar untuk ke status berikutnya</p>
-                                )}
                               </div>
                             );
                           })()}
@@ -1014,11 +1004,6 @@ export default function Subcontractor() {
             <div className="space-y-3">
               <div className="rounded-xl bg-surface p-2.5">
                 <FlowStrip steps={["Kualifikasi", "Aktif"]} current="Aktif" ariaLabel={locale === "en" ? "Compliance flow" : "Alur kepatuhan"} />
-                <p className="mt-1.5 text-[11px] text-steel-500">
-                  {locale === "en"
-                    ? "Flow: Qualification → Active (Blacklisted is off-flow, needs coaching). Per-card strip shows each sub's position."
-                    : "Alur: Kualifikasi → Aktif (Blacklist di luar alur, perlu pembinaan). Strip per kartu menunjukkan posisi tiap subkontraktor."}
-                </p>
               </div>
               {subcontractors.map((s) => {
                 const list = incidentsOfSub(s.name);

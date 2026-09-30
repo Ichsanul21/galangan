@@ -665,7 +665,7 @@ export default function Laporan() {
       </div>
 
       <Card className="mt-4 p-4">
-        <CardHeader title={S.archiveSent} subtitle={`${S.archiveSub} · Modul dicek: ${MODUL_DICEK.map((m) => m.modul).join(", ")}`} />
+        <CardHeader title={S.archiveSent} subtitle={S.archiveSub} />
         <div className="flex flex-wrap gap-1.5 px-5 pb-3 text-[11px]">
           {MODUL_DICEK.map((m) => (
             <Link key={m.modul} to={m.to} className="rounded-full bg-steel-100 px-2.5 py-1 font-semibold text-steel-600 hover:text-navy-800 hover:underline">

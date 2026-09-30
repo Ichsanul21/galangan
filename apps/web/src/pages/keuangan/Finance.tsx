@@ -76,65 +76,9 @@ const INV_NEXT: Record<string, string[]> = {
 
 const BILLING_TYPES = ["Milestone", "Progres", "Uang Muka", "Retensi", "T&M"] as const;
 
-/* Alur kaku Keuangan & Billing: 4 tahap berurutan. Strip di bawah
-   memetakan tiap tab ke tahapnya - klik chip langsung lompat ke tab. */
-const FIN_FLOW = [
-  { n: 1, label: "Master", desc: "Akun + Aset acuan", tabs: ["Akun", "Aset"] },
-  { n: 2, label: "Billing & Transaksi", desc: "Invoice → Piutang / Hutang → Kas → Jurnal", tabs: ["Invoice", "Piutang (AR)", "Hutang (AP)", "Jadwal Bayar", "Kas & Bank", "Jurnal"] },
-  { n: 3, label: "Laporan", desc: "Buku Besar → Laba Rugi → Neraca → P&L Proyek", tabs: ["Buku Besar", "Laba Rugi", "Neraca", "Project P&L"] },
-  { n: 4, label: "Pajak", desc: "Hitung → kunci periode → SPT", tabs: ["Pajak"] },
-];
-
 /* Pipeline invoice: Draft → Diajukan → Disetujui → Belum Dibayar → Lunas.
    Terlambat = cabang Belum Dibayar; Ditolak kembali ke Draft. */
 const INV_STAGES = ["Draft", "Diajukan", "Disetujui", "Belum Dibayar", "Terlambat", "Lunas", "Ditolak", "Dihapusbukukan"] as const;
-
-function FinFlowStrip({ tab, onPick }: { tab: string; onPick: (t: string) => void }) {
-  const { locale } = useT();
-  const S = n_fin[locale];
-  const FLOW_TXT: Record<number, { label: string; desc: string }> = {
-    1: { label: S.flowMaster, desc: S.flowMasterDesc },
-    2: { label: S.flowBilling, desc: S.flowBillingDesc },
-    3: { label: S.flowReport, desc: S.flowReportDesc },
-    4: { label: S.flowTax, desc: S.flowTaxDesc },
-  };
-  return (
-    <div className="mb-3 grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-4" role="group" aria-label={S.flowAria}>
-      {FIN_FLOW.map((st) => {
-        const has = st.tabs.includes(tab);
-        return (
-          <div key={st.n} className={`rounded-xl border p-3 ${has ? "border-navy-700 bg-navy-700 text-white" : "border-steel-200 bg-white"}`}>
-            <p className={`flex items-center gap-2 text-xs font-bold ${has ? "text-white" : "text-navy-900"}`}>
-              <span className={`flex h-5 w-5 items-center justify-center rounded-full text-[10px] ${has ? "bg-white/25 text-white" : "bg-surface text-navy-800"}`}>
-                {st.n}
-              </span>
-              {FLOW_TXT[st.n].label}
-            </p>
-            <p className={`mt-0.5 text-[11px] ${has ? "text-white/80" : "text-steel-500"}`}>{FLOW_TXT[st.n].desc}</p>
-            <div className="mt-2 flex flex-wrap gap-1">
-              {st.tabs.map((t) => (
-                <button
-                  key={t}
-                  onClick={() => onPick(t)}
-                  aria-current={t === tab ? "page" : undefined}
-                  className={`rounded-lg px-2 py-1 text-[11px] font-semibold transition-colors ${
-                    t === tab
-                      ? "bg-white text-navy-800"
-                      : has
-                        ? "bg-white/15 text-white hover:bg-white/25"
-                        : "border border-steel-200 text-steel-600 hover:border-navy-400"
-                  }`}
-                >
-                  {t}
-                </button>
-              ))}
-            </div>
-          </div>
-        );
-      })}
-    </div>
-  );
-}
 
 function InvStageStrip({ counts, active, onPick }: {
   counts: Record<string, number>;
@@ -1944,7 +1888,6 @@ export default function Finance() {
       <div className="mt-4 card">
         <Tabs tabs={["Akun", "Aset", "Invoice", "Piutang (AR)", "Hutang (AP)", "Jadwal Bayar", "Kas & Bank", "Jurnal", "Buku Besar", "Laba Rugi", "Neraca", "Project P&L", "Pajak"]} active={tab} onChange={setTab} />
         <div className="p-4">
-          <FinFlowStrip tab={tab} onPick={setTab} />
           {tab === "Akun" && (
             <div className="space-y-4">
               <CardHeader
