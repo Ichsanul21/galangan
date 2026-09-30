@@ -122,17 +122,54 @@ export default function Settings() {
     } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); }
   };
 
-  const isToggleKey = (key: string): boolean => key === "SHOW_3D_PROJECT" || key === "SHOW_3D_VESSEL";;
+  const isToggleKey = (key: string): boolean => key === "SHOW_3D_PROJECT" || key === "SHOW_3D_VESSEL";
+
+  /* Nilai konstanta non-numerik (JSON) perlu input teks, bukan NumInput, dan
+     tidak boleh diformat sebagai angka - Number("{}") = NaN tampil apa adanya. */
+  const isTextValue = (v: unknown): boolean => {
+    if (typeof v === "string") return v.trim() !== "" && !Number.isFinite(Number(v));
+    return false;
+  };
 
   const save = async (id: string, key: string) => {
     if (!canWrite) { toast(S.noWriteConst, "info"); return; }
     const raw = drafts[id];
     if (raw === undefined || raw.trim() === "") return;
-    const v = Number(raw);
+    const text = raw.trim();
+    /* Nilai konstanta bisa berupa TEKS, bukan angka. WAREHOUSE_CAP = JSON
+       {"Gudang":kapasitas}. Versi lama selalu Number(raw), jadi JSON itu
+       jadi NaN dan SELALU ditolak "minimal 0" - kapasitas gudang
+       jadi mustahil diubah dari Pengaturan sama sekali. */
+    const numeric = Number(text);
+    if (!Number.isFinite(numeric)) {
+      let parsed: unknown;
+      try {
+        parsed = JSON.parse(text);
+      } catch {
+        toast(locale === "en" ? "Value is neither a number nor valid JSON" : "Nilai bukan angka dan bukan JSON yang valid", "info");
+        return;
+      }
+      if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+        toast(locale === "en" ? "JSON must be an object, e.g. {Gudang: 1000}" : "JSON harus berupa objek, mis. {Gudang: 1000}", "info");
+        return;
+      }
+      try {
+        await update("settings", id, { value: text });
+        log("mengubah konstanta", `${key} → ${text}`, "Pengaturan");
+        toast(S.savedKey.replace("{n}", key));
+        setDrafts((d) => {
+          const n = { ...d };
+          delete n[id];
+          return n;
+        });
+      } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); }
+      return;
+    }
+    const v = numeric;
     const isWhatif = key.startsWith("WHATIF_");
     const min = isWhatif ? -20 : 0;
     const max = isWhatif ? 50 : Number.POSITIVE_INFINITY;
-    if (!Number.isFinite(v) || v < min || v > max) { toast(isWhatif ? S.whatifRange : S.minZero, "info"); return; }
+    if (v < min || v > max) { toast(isWhatif ? S.whatifRange : S.minZero, "info"); return; }
     try {
     await update("settings", id, { value: v });
     log("mengubah konstanta", `${key} → ${v}`, "Pengaturan");
@@ -215,17 +252,29 @@ export default function Settings() {
             ) : (
               <Field label={String(s.label ?? s.key)}>
                 <div className="flex gap-2">
-                  <NumInput
-                    min={String(s.key ?? "").startsWith("WHATIF_") ? -20 : 0}
-                    className="input"
-                    value={drafts[s.id] ?? String(s.value)}
-                    onChange={(e) => setDrafts((d) => ({ ...d, [s.id]: e.target.value }))}
-                  />
+                  {isTextValue(s.value) ? (
+                    /* Konstanta berbentuk JSON (mis. WAREHOUSE_CAP). NumInput
+                       memblokir karakter e/E/+/- sehingga JSON tidak bisa
+                       diketik, dan min=0 tidak relevan untuk teks. */
+                    <input
+                      type="text"
+                      className="input font-mono text-xs"
+                      value={drafts[s.id] ?? String(s.value)}
+                      onChange={(e) => setDrafts((d) => ({ ...d, [s.id]: e.target.value }))}
+                    />
+                  ) : (
+                    <NumInput
+                      min={String(s.key ?? "").startsWith("WHATIF_") ? -20 : 0}
+                      className="input"
+                      value={drafts[s.id] ?? String(s.value)}
+                      onChange={(e) => setDrafts((d) => ({ ...d, [s.id]: e.target.value }))}
+                    />
+                  )}
                   <button className="btn-secondary shrink-0 text-xs" disabled={!canWrite || busy.isBusy(`save-${s.id}`)} onClick={() => void busy.run(`save-${s.id}`, () => save(s.id, String(s.key)))}>{S.save}</button>
                 </div>
               </Field>
             )}
-            <p className="mt-1 font-mono text-[11px] text-steel-400">{String(s.key)} · {S.activeState}: {fmtJumlah(Number(s.value))}</p>
+            <p className="mt-1 font-mono text-[11px] text-steel-400">{String(s.key)} · {S.activeState}: {isTextValue(s.value) ? String(s.value) : fmtJumlah(Number(s.value))}</p>
             <p className="text-[11px] leading-relaxed text-steel-500">
               {(() => {
                 const info = CONST_INFO[String(s.key)];
