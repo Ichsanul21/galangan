@@ -385,7 +385,7 @@ export default function KaryawanDetail() {
               </div>
               <div className="max-h-96 overflow-auto">
               <table className="w-full">
-                <thead className="bg-surface sticky top-14 z-10">
+                <thead className="bg-surface sticky top-0 z-10">
                   <tr><SortTh label={S.thTanggal} sortKey="date" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} /><SortTh label={S.thShift} sortKey="shift" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} /><SortTh label={S.dlStatus} sortKey="status" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} /><SortTh label={S.thJam} sortKey="jam" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} /><SortTh label={S.thLembur} sortKey="lembur" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} /><SortTh label={S.thKet} sortKey="ket" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} /></tr>
                 </thead>
                 <tbody className="divide-y divide-steel-100">

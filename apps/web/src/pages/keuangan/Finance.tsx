@@ -2623,7 +2623,7 @@ export default function Finance() {
                 <div className="max-h-80 overflow-y-auto">
                 <div className="overflow-x-auto">
                   <table className="w-full">
-                    <thead className="bg-surface sticky top-14 z-10">
+                    <thead className="bg-surface sticky top-0 z-10">
                       <tr>
                         <SortTh label={S.colPayroll} sortKey="id" sort={alokasiSort} onSort={(k) => setAlokasiSort((s) => toggleSort(s, k))} />
                         <SortTh label={S.colKaryawan} sortKey="emp" sort={alokasiSort} onSort={(k) => setAlokasiSort((s) => toggleSort(s, k))} />
@@ -2790,7 +2790,7 @@ export default function Finance() {
                   <CardHeader title={S.subHutangTitle} subtitle={S.subHutangSub} />
                   <div className="max-h-72 overflow-y-auto">
                     <table className="w-full">
-                      <thead className="bg-surface sticky top-14 z-10"><tr>
+                      <thead className="bg-surface sticky top-0 z-10"><tr>
                         <SortTh label={S.colVendor} sortKey="v" sort={nrSort} onSort={(k) => setNrSort((s) => toggleSort(s, k))} />
                         <SortTh label={S.colAwal} sortKey="awal" sort={nrSort} onSort={(k) => setNrSort((s) => toggleSort(s, k))} />
                         <SortTh label={S.colAkhir} sortKey="akhir" sort={nrSort} onSort={(k) => setNrSort((s) => toggleSort(s, k))} />
@@ -2813,7 +2813,7 @@ export default function Finance() {
                   <CardHeader title={S.subPiutangTitle} subtitle={S.subPiutangSub} />
                   <div className="max-h-72 overflow-y-auto">
                     <table className="w-full">
-                      <thead className="bg-surface sticky top-14 z-10"><tr>
+                      <thead className="bg-surface sticky top-0 z-10"><tr>
                         <SortTh label={S.colCustomer} sortKey="c" sort={nrSort} onSort={(k) => setNrSort((s) => toggleSort(s, k))} />
                         <SortTh label={S.colAwal} sortKey="awal" sort={nrSort} onSort={(k) => setNrSort((s) => toggleSort(s, k))} />
                         <SortTh label={S.colAkhir} sortKey="akhir" sort={nrSort} onSort={(k) => setNrSort((s) => toggleSort(s, k))} />
@@ -3061,7 +3061,7 @@ export default function Finance() {
                     <div className="max-h-80 overflow-y-auto">
                     <div className="overflow-x-auto">
                       <table className="w-full">
-                        <thead className="bg-surface sticky top-14 z-10">
+                        <thead className="bg-surface sticky top-0 z-10">
                           <tr>
                             <SortTh label={S.colTanggal} sortKey="date" sort={juSort} onSort={(k) => setJuSort((s) => toggleSort(s, k))} />
                             <SortTh label={S.colRef} sortKey="ref" sort={juSort} onSort={(k) => setJuSort((s) => toggleSort(s, k))} />
