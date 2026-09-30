@@ -1188,7 +1188,7 @@ export default function Procurement() {
                 <div className="overflow-x-auto">
                   <table className="w-full">
                     <thead className="bg-surface sticky top-0 z-10">
-                      <tr><SortTh label={S.po} sortKey="po" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} /><SortTh label={S.kebutuhan} sortKey="kebutuhan" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} /><SortTh label={S.vendor} sortKey="vendor" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} /><SortTh label={S.workshop} sortKey="workshop" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} /><SortTh label={S.nilai} sortKey="nilai" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} /><SortTh label={S.level} sortKey="level" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} /><SortTh label={S.eta} sortKey="eta" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} /><SortTh label={S.revisi} sortKey="revisi" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} /><SortTh label={S.status} sortKey="status" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} /><th className="th">{S.aksi}</th></tr>
+                      <tr><SortTh label={S.po} sortKey="po" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} /><SortTh label={S.kebutuhan} sortKey="kebutuhan" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} /><SortTh label={S.vendor} sortKey="vendor" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} /><SortTh label={S.nilai} sortKey="nilai" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} /><SortTh label={S.level} sortKey="level" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} /><SortTh label={S.eta} sortKey="eta" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} /><SortTh label={S.revisi} sortKey="revisi" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} /><SortTh label={S.status} sortKey="status" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} /><th className="th">{S.aksi}</th></tr>
                     </thead>
                     <tbody className="divide-y divide-steel-100">
                       {smallPager.slice(sortedSmall).map((po) => {
@@ -1210,6 +1210,11 @@ export default function Procurement() {
                             <td className="td text-steel-600">
                               <p className="truncate" title={String(po.item)}>{po.item}</p>
                               <p className="text-xs text-steel-400">{S.qtyBy.replace("{a}", fmtJumlah(Number(po.qty || 0))).replace("{b}", String(po.requester ?? ""))}</p>
+                              {/* Workshop dipindah ke sini sebagai sub-teks supaya
+                                  kolom tabel PO Kecil sama persis dengan PO Besar
+                                  (keputusan client: tampilan disamakan, fungsi
+                                  dan modal tetap terpisah). */}
+                              {po.workshop && <p className="text-xs text-steel-400 truncate" title={String(po.workshop)}>{S.workshop}: {String(po.workshop)}</p>}
                               {poLines(po).some((l) => l.spec || l.need) && (
                                 <p className="text-xs text-steel-400 truncate" title={poLines(po).map((l) => [l.spec, l.need].filter(Boolean).join(" — ")).join("; ")}>
                                   {poLines(po).map((l) => [l.spec, l.need].filter(Boolean).join(" — ")).filter(Boolean).join("; ")}
@@ -1220,7 +1225,6 @@ export default function Procurement() {
                               <p className="truncate" title={String(po.vendor ?? "-")}>{po.vendor ?? "-"}</p>
                               {venCatOf(String(po.vendor ?? "")) !== "" && <p className="text-xs text-steel-400">{venCatOf(String(po.vendor ?? ""))}</p>}
                             </td>
-                            <td className="td text-steel-600 truncate" title={String(po.workshop ?? "-")}>{po.workshop ?? "-"}</td>
                             <td className="td font-semibold">{fmtRupiah(po.amount)}</td>
                             <td className="td">
                               <Badge tone="navy">{levelOf(Number(po.amount || 0), APPROVE_PO_LIMIT)}</Badge>

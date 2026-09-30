@@ -399,6 +399,7 @@ export default function Inventory() {
   const [showRetur, setShowRetur] = useState(false);
   const [retItem, setRetItem] = useState("");
   const [retQty, setRetQty] = useState("");
+  const [retUom, setRetUom] = useState("base");
   const [retVendor, setRetVendor] = useState("");
   const [retReason, setRetReason] = useState("");
 
@@ -1400,21 +1401,29 @@ export default function Inventory() {
   const saveRetur = async () => {
     const item = inventory.find((i) => i.id === retItem) ?? null;
     if (!item) { toast("Pilih item retur dulu", "info"); return; }
-    const qty = Number(retQty);
-    if (!qty || qty <= 0) { toast(S.qtyGtZero, "info"); return; }
+    const raw = Number(retQty);
+    if (!raw || raw <= 0) { toast(S.qtyGtZero, "info"); return; }
+    /* Retur mendukung UOM2, sama seperti barang masuk/keluar. Versi lama
+       memakai qty apa adanya, jadi retur 500 kg pada barang yang disimpan
+       per lbr (1 lbr = 1100 kg) mengurangi 500 LEBAR dari stok, dan koreksi
+       hutangnya ikut 500x lebih besar dari seharusnya. */
+    const useUom2 = hasUom2(item) && retUom === "uom2";
+    const qty = useUom2 ? raw / convOf(item) : raw;
     if (qty > Number(item.stock)) { toast(S.stockShort.replace("{n}", fmtJumlah(Number(item.stock))), "info"); return; }
     if (!retVendor.trim()) { toast("Vendor retur wajib diisi", "info"); return; }
     if (!retReason.trim()) { toast("Alasan retur wajib diisi", "info"); return; }
+    const vendorTrim = retVendor.trim();
+    const qtyNote = useUom2 ? `${fmtJumlah(raw)} ${uom2Of(item)} (${fmtJumlah(qty)} ${item.unit})` : fmtJumlah(qty);
     try {
       await update("inventory", item.id, { stock: Number(item.stock) - qty });
       await add("movements", {
         item: item.name, itemId: item.id, type: "Retur", qty,
-        by: `Retur ke ${retVendor.trim()} - ${retReason.trim()}`, date: todayISO(), tone: "out",
-        supplier: retVendor.trim(), purpose: retReason.trim(),
-        branch: moveBranch(`${retVendor} ${retReason}`),
-      }, { action: "meretur barang", target: `${item.name} × ${qty} (${retVendor.trim()})`, module: "Inventori" });
+        by: `Retur ke ${vendorTrim} - ${retReason.trim()}${useUom2 ? ` · input ${qtyNote}` : ""}`,
+        date: todayISO(), tone: "out",
+        supplier: vendorTrim, purpose: retReason.trim(),
+        branch: moveBranch(`${vendorTrim} ${retReason}`),
+      }, { action: "meretur barang", target: `${item.name} × ${qtyNote} (${vendorTrim})`, module: "Inventori" });
       /* Koreksi hutang: cari payable po/item/vendor terkait, kurangi amt proporsional. */
-      const vendorTrim = retVendor.trim();
       const cands = (data.payables ?? []).filter((a) => {
         const vendorOk = sameName(a.v ?? a.vendor, vendorTrim);
         const itemOk = sameName(a.item, item.name);
@@ -1430,15 +1439,15 @@ export default function Inventory() {
         const red = Math.min(amt, Math.round(qty * unitVal * 100) / 100);
         if (red <= 0) continue;
         await update("payables", a.id, { amt: Math.round((amt - red) * 100) / 100 });
-        log("koreksi hutang (retur)", `${a.id} · ${item.name} × ${qty} → -${fmtRupiah(red)} (sisa ${fmtRupiah(amt - red)})`, "Inventori");
+        log("koreksi hutang (retur)", `${a.id} · ${item.name} × ${qtyNote} → -${fmtRupiah(red)} (sisa ${fmtRupiah(amt - red)})`, "Inventori");
         corrected++;
       }
-      log("meretur barang", `${item.name} × ${qty} ke ${vendorTrim}: ${retReason.trim()}`, "Inventori");
+      log("meretur barang", `${item.name} × ${qtyNote} ke ${vendorTrim}: ${retReason.trim()}`, "Inventori");
       toast(corrected > 0
-        ? `Retur ${item.name} × ${qty} tersimpan + koreksi ${corrected} hutang`
-        : `Retur ${item.name} × ${qty} tersimpan (tanpa payable terkait)`);
+        ? `Retur ${item.name} × ${qtyNote} tersimpan + koreksi ${corrected} hutang`
+        : `Retur ${item.name} × ${qtyNote} tersimpan (tanpa payable terkait)`);
       setShowRetur(false);
-      setRetItem(""); setRetQty(""); setRetVendor(""); setRetReason("");
+      setRetItem(""); setRetQty(""); setRetVendor(""); setRetReason(""); setRetUom("base");
     } catch {
       toast(S.transferFailed.replace("{n}", item.name), "info");
     }
@@ -1811,7 +1820,7 @@ export default function Inventory() {
                   <button className="btn-primary w-full justify-center whitespace-nowrap py-5 text-base" title={grGiTip("Penerimaan", locale)} onClick={() => { const first = lowStock[0] ?? inventory[0]; if (first) openMove(first, "in"); }}><ArrowDownToLine className="h-4 w-4" /> {S.btnGr}</button>
                   <button className="btn-secondary w-full justify-center" title={grGiTip("Pengeluaran", locale)} onClick={() => { const first = inventory[0]; if (first) openMove(first, "out"); }}><ArrowUpFromLine className="h-4 w-4" /> {S.btnGi}</button>
                   <button className="btn-secondary w-full justify-center" onClick={() => setShowTransfer(true)}><Repeat className="h-4 w-4" /> {S.btnTransfer}</button>
-                  <button className="btn-secondary w-full justify-center" onClick={() => { setRetItem(""); setRetQty(""); setRetVendor(""); setRetReason(""); setShowRetur(true); }}><ArrowUpFromLine className="h-4 w-4" /> Retur ke Vendor</button>
+                  <button className="btn-secondary w-full justify-center" onClick={() => { setRetItem(""); setRetQty(""); setRetVendor(""); setRetReason(""); setRetUom("base"); setShowRetur(true); }}><ArrowUpFromLine className="h-4 w-4" /> Retur ke Vendor</button>
                   <button className="btn-secondary w-full justify-center" onClick={() => setShowOpname(true)}><ClipboardCheck className="h-4 w-4" /> {S.opnameT}</button>
                 </div>
               </Card>
@@ -2499,6 +2508,18 @@ export default function Inventory() {
               <input className="input" value={retVendor} onChange={(e) => setRetVendor(e.target.value)} placeholder="Nama vendor" />
             </Field>
           </FormGrid>
+          {(() => {
+            const sel = inventory.find((i) => i.id === retItem);
+            if (!sel || !hasUom2(sel)) return null;
+            return (
+              <Field label={S.inputUnitLbl} hint={S.inputUnitHint.replace("{a}", sel.unit).replace("{b}", `${fmtJumlah(convOf(sel))} ${uom2Of(sel)}`)}>
+                <select className="input" value={retUom} onChange={(e) => setRetUom(e.target.value)} aria-label={S.inputUnitAria}>
+                  <option value="base">{S.optBase.replace("{n}", sel.unit)}</option>
+                  <option value="uom2">{S.optUom2.replace("{n}", uom2Of(sel))}</option>
+                </select>
+              </Field>
+            );
+          })()}
           <Field label="Alasan retur" hint="Wajib diisi, dicatat di movement + log koreksi hutang">
             <input className="input" value={retReason} onChange={(e) => setRetReason(e.target.value)} placeholder="Cth: barang cacat / salah kirim" />
           </Field>
