@@ -2,8 +2,8 @@ import { useState, useMemo, useRef, useEffect } from "react";
 import { useStore } from "../../data/store";
 import { useT } from "../../i18n/LanguageContext";
 import { n_prj } from "../../i18n/n_prj";
-import { Card, StatusBadge, Modal, Field, FormGrid, toast, EmptyState, Badge,
-  NumInput,
+import { Card, StatusBadge, Modal, Field, FormGrid, toast, EmptyState, Badge, ConfirmModal,
+  NumInput, useBusy,
 } from "../../components/ui";
 import { Plus, Wrench, Package, Box, RotateCcw, FileDown } from "lucide-react";
 import { exportExcel, fmtRupiah } from "../../utils/export";
@@ -32,20 +32,89 @@ interface Props {
 }
 
 export default function SparepartServiceSection({ projectId, vesselId, view = "all" }: Props) {
+  const busy = useBusy();
   const { locale } = useT();
   const S = n_prj[locale];
-  const { data, add, update, log } = useStore();
+  const { data, add, update, remove, log } = useStore();
   const [spTab, setSpTab] = useState("Semua");
   const [showAdd, setShowAdd] = useState(false);
+  const [editSp, setEditSp] = useState<SpExt | null>(null);
+  const [delSp, setDelSp] = useState<SpExt | null>(null);
   const [form, setForm] = useState({ name: "", partNumber: "", category: "Mechanical", status: "Akan" as "Akan" | "Sedang" | "Selesai", cost: "", notes: "", technician: "", usedDate: "", warrantyUntil: "" });
 
   const [showAddSvc, setShowAddSvc] = useState(false);
+  const [editSvc, setEditSvc] = useState<SvcExt | null>(null);
+  const [delSvc, setDelSvc] = useState<SvcExt | null>(null);
   const [svcForm, setSvcForm] = useState({ type: "Repair" as ServiceRecord["type"], description: "", date: new Date().toISOString().slice(0, 10), technician: "", cost: "", status: "Scheduled" as ServiceRecord["status"] });
   const [svcStatus, setSvcStatus] = useState<string>("Semua");
   const [svcQ, setSvcQ] = useState("");
   const [cancelFor, setCancelFor] = useState<SvcExt | null>(null);
   const [cancelReason, setCancelReason] = useState("");
   const [modelPick, setModelPick] = useState("Tugboat");
+
+  const SP_CATS_ID: Record<string, string> = {
+    Mechanical: "Mekanis",
+    Electrical: "Listrik",
+    Hydraulic: "Hidrolik",
+    Safety: "Keselamatan",
+    Consumable: "Habis Pakai",
+    Other: "Lainnya",
+  };
+  const SVC_TYPE_ID: Record<string, string> = {
+    Overhaul: "Overhaul",
+    Inspection: "Inspeksi",
+    Repair: "Perbaikan",
+    Drydock: "Drydock",
+    Survey: "Survei",
+  };
+  const spCatLabel = (c: string): string => (locale === "en" ? c : SP_CATS_ID[c] ?? c);
+  const svcTypeLabel = (t: string): string => (locale === "en" ? t : SVC_TYPE_ID[t] ?? t);
+
+  const openEditSp = (sp: SpExt) => {
+    setEditSp(sp);
+    setForm({
+      name: String(sp.name ?? ""),
+      partNumber: String(sp.partNumber ?? ""),
+      category: String(sp.category ?? "Mechanical"),
+      status: (sp.status === "Sedang" || sp.status === "Selesai" ? sp.status : "Akan") as "Akan" | "Sedang" | "Selesai",
+      cost: String(sp.cost ?? ""),
+      notes: String(sp.notes ?? ""),
+      technician: String(sp.technician ?? ""),
+      usedDate: String(sp.usedDate ?? ""),
+      warrantyUntil: String(sp.warrantyUntil ?? ""),
+    });
+  };
+
+  const openEditSvc = (s: SvcExt) => {
+    setEditSvc(s);
+    setSvcForm({
+      type: s.type,
+      description: String(s.description ?? ""),
+      date: String(s.date ?? new Date().toISOString().slice(0, 10)),
+      technician: String(s.technician ?? ""),
+      cost: String(s.cost ?? ""),
+      status: (s.status === "Batal" ? "Scheduled" : s.status) as ServiceRecord["status"],
+    });
+  };
+
+  const confirmDelSp = async () => {
+    if (!delSp) return;
+    const id = delSp.id;
+    setDelSp(null);
+    await remove("spareparts", id);
+    log("menghapus sparepart", `${id} · ${delSp.name}`, "Sparepart");
+    toast(locale === "en" ? "Sparepart deleted" : "Sparepart dihapus");
+  };
+
+  const confirmDelSvc = async () => {
+    if (!delSvc) return;
+    const id = delSvc.id;
+    const desc = delSvc.description;
+    setDelSvc(null);
+    await remove("services", id);
+    log("menghapus service", `${id} · ${desc}`, "Service");
+    toast(locale === "en" ? "Service deleted" : "Service dihapus");
+  };
 
   const show3d = view === "3d" || view === "all";
   const showSparepart = view === "sparepart" || view === "all";
@@ -180,19 +249,29 @@ export default function SparepartServiceSection({ projectId, vesselId, view = "a
   const saveSparepart = async () => {
     if (!form.name.trim()) { toast(S.spsToastSpName, "info"); return; }
     if (!projectId) { toast(S.spsToastSpCtx, "info"); return; }
-    await add("spareparts", {
+    const payload = {
       name: form.name.trim(),
       partNumber: form.partNumber.trim() || "-",
       category: form.category,
-      projectId,
-      vesselId,
       status: form.status,
-      requestDate: new Date().toISOString().slice(0, 10),
       cost: Number(form.cost) || 0,
       notes: form.notes.trim(),
       technician: form.technician.trim() || "-",
       usedDate: form.usedDate || "-",
       warrantyUntil: form.warrantyUntil || "-",
+    };
+    if (editSp) {
+      await update("spareparts", editSp.id, payload);
+      log("mengubah sparepart", `${editSp.id} · ${payload.name}`, "Sparepart");
+      toast(locale === "en" ? "Sparepart updated" : "Sparepart diperbarui");
+      setEditSp(null);
+      return;
+    }
+    await add("spareparts", {
+      ...payload,
+      projectId,
+      vesselId,
+      requestDate: new Date().toISOString().slice(0, 10),
     }, { action: "menambahkan sparepart", module: "Sparepart" });
     toast(S.spsToastSpAdd);
     setShowAdd(false);
@@ -201,17 +280,23 @@ export default function SparepartServiceSection({ projectId, vesselId, view = "a
 
   const saveService = async () => {
     if (!svcForm.description.trim()) { toast(S.spsToastSvcDesc, "info"); return; }
-    if (!projectId) { toast(S.spsToastSvcCtx, "info"); return; }
-    await add("services", {
-      projectId,
-      vesselId,
+    if (!projectId && !editSvc) { toast(S.spsToastSvcCtx, "info"); return; }
+    const payload = {
       date: svcForm.date,
       type: svcForm.type,
       description: svcForm.description.trim(),
       status: svcForm.status,
       technician: svcForm.technician.trim() || "Belum ditentukan",
       cost: Number(svcForm.cost) || 0,
-    }, { action: "menambahkan service", module: "Service" });
+    };
+    if (editSvc) {
+      await update("services", editSvc.id, payload);
+      log("mengubah service", `${editSvc.id} · ${payload.description}`, "Service");
+      toast(locale === "en" ? "Service updated" : "Service diperbarui");
+      setEditSvc(null);
+      return;
+    }
+    await add("services", { projectId, vesselId, ...payload }, { action: "menambahkan service", module: "Service" });
     toast(S.spsToastSvcAdd);
     setShowAddSvc(false);
     setSvcForm({ type: "Repair", description: "", date: new Date().toISOString().slice(0, 10), technician: "", cost: "", status: "Scheduled" });
@@ -272,17 +357,23 @@ export default function SparepartServiceSection({ projectId, vesselId, view = "a
       ) : (
         <div className="space-y-2 max-h-80 overflow-y-auto">
           {items.map((sp) => (
-            <div key={sp.id} className="flex items-center justify-between rounded-lg border border-steel-100 p-3 text-sm">
-              <div>
+            <div key={sp.id} className="flex items-center justify-between gap-3 rounded-lg border border-steel-100 p-3 text-sm">
+              <div className="min-w-0">
                 <p className="font-medium text-navy-900">{sp.name}</p>
-                <p className="text-xs text-steel-500">{S.spsSpMeta.replace("{a}", sp.partNumber).replace("{b}", sp.category).replace("{c}", sp.requestDate)}</p>
+                <p className="text-xs text-steel-500">{S.spsSpMeta.replace("{a}", sp.partNumber).replace("{b}", spCatLabel(String(sp.category))).replace("{c}", sp.requestDate)}</p>
                 <p className="text-xs text-steel-500">
                   {S.spsUsedLbl}{sp.usedDate && sp.usedDate !== "-" ? sp.usedDate : "-"}{S.spsTechLbl}{sp.technician || "-"}{S.spsWarrantyLbl}{sp.warrantyUntil && sp.warrantyUntil !== "-" ? sp.warrantyUntil : "-"}
                 </p>
               </div>
-              <div className="text-right">
-                <StatusBadge status={sp.status === "Akan" ? "Tertunda" : sp.status === "Sedang" ? "Dalam Proses" : "Selesai"} />
-                <p className="text-xs text-steel-500 mt-1">{fmtRupiah(sp.cost)}</p>
+              <div className="flex shrink-0 items-center gap-2">
+                <div className="text-right">
+                  <StatusBadge status={sp.status === "Akan" ? "Tertunda" : sp.status === "Sedang" ? "Dalam Proses" : "Selesai"} />
+                  <p className="text-xs text-steel-500 mt-1">{fmtRupiah(sp.cost)}</p>
+                </div>
+                <div className="flex flex-col gap-1">
+                  <button className="btn-secondary px-2 py-1 text-xs" onClick={() => openEditSp(sp)}>{locale === "en" ? "Edit" : "Ubah"}</button>
+                  <button className="btn-secondary px-2 py-1 text-xs text-rose-600" onClick={() => setDelSp(sp)}>{locale === "en" ? "Delete" : "Hapus"}</button>
+                </div>
               </div>
             </div>
           ))}
@@ -296,7 +387,7 @@ export default function SparepartServiceSection({ projectId, vesselId, view = "a
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
         <h3 className="text-sm font-semibold text-navy-900 flex items-center gap-2"><Wrench className="h-4 w-4" /> {S.spsSvcTitle.replace("{a}", String(svcFiltered.length)).replace("{b}", svcFiltered.length !== svcItems.length ? S.spsSpSuffix.replace("{n}", String(svcItems.length)) : "")}</h3>
         <div className="flex gap-2">
-          <button className="btn-secondary text-xs" onClick={exportSvc}><FileDown className="h-3.5 w-3.5" /> {S.exportExcelBtn}</button>
+          <button className="btn-secondary text-xs" onClick={() => void busy.run("exportSvc", exportSvc)} disabled={busy.isBusy("exportSvc")}><FileDown className="h-3.5 w-3.5" /> {S.exportExcelBtn}</button>
           <button className="btn-secondary text-xs" onClick={() => setShowAddSvc(true)}><Plus className="h-3.5 w-3.5" /> {S.spsSvcAdd}</button>
         </div>
       </div>
@@ -328,8 +419,12 @@ export default function SparepartServiceSection({ projectId, vesselId, view = "a
               </div>
               <div className="pb-1 flex-1">
                 <div className="flex flex-wrap items-center justify-between gap-2">
-                  <p className="text-sm font-semibold text-navy-900">{s.type}: {s.description}</p>
-                  <Badge tone={s.status === "Done" ? "green" : s.status === "In Progress" ? "blue" : s.status === "Batal" ? "red" : "gray"}>{svcLbl[s.status] ?? s.status}</Badge>
+                  <p className="text-sm font-semibold text-navy-900">{svcTypeLabel(s.type)}: {s.description}</p>
+                  <div className="flex items-center gap-1.5">
+                    <Badge tone={s.status === "Done" ? "green" : s.status === "In Progress" ? "blue" : s.status === "Batal" ? "red" : "gray"}>{svcLbl[s.status] ?? s.status}</Badge>
+                    <button className="btn-secondary px-2 py-1 text-xs" onClick={() => openEditSvc(s)}>{locale === "en" ? "Edit" : "Ubah"}</button>
+                    <button className="btn-secondary px-2 py-1 text-xs text-rose-600" onClick={() => setDelSvc(s)}>{locale === "en" ? "Delete" : "Hapus"}</button>
+                  </div>
                 </div>
                 <p className="text-xs text-steel-500">{s.date} · {s.technician} · {fmtRupiah(s.cost)}</p>
                 {s.status === "Batal" && s.cancelReason && (
@@ -372,15 +467,16 @@ export default function SparepartServiceSection({ projectId, vesselId, view = "a
         </>
       )}
 
-      <Modal open={showAdd} onClose={() => setShowAdd(false)} title={S.spsSpModal}
-        footer={<><button className="btn-secondary" onClick={() => setShowAdd(false)}>{S.cancelBtn}</button><button className="btn-primary" onClick={saveSparepart}>{S.saveBtn}</button></>}>
+      <Modal open={showAdd || editSp !== null} onClose={() => { setShowAdd(false); setEditSp(null); }}
+        title={editSp ? (locale === "en" ? `Edit sparepart ${editSp.id}` : `Ubah sparepart ${editSp.id}`) : S.spsSpModal}
+        footer={<><button className="btn-secondary" onClick={() => { setShowAdd(false); setEditSp(null); }}>{S.cancelBtn}</button><button className="btn-primary" onClick={() => void busy.run("saveSparepart", saveSparepart)} disabled={busy.isBusy("saveSparepart")}>{S.saveBtn}</button></>}>
         <div className="space-y-3">
           <Field label={S.spsSpName}><input className="input" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder={S.spsSpNamePh} /></Field>
           <Field label={S.spsPartNo}><input className="input" value={form.partNumber} onChange={(e) => setForm({ ...form, partNumber: e.target.value })} /></Field>
           <FormGrid>
             <Field label={S.boqCategory}>
               <select className="input" value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })}>
-                {["Mechanical", "Hydraulic", "Electrical", "Insulation", "Paint", "Rigging", "Piping"].map((c) => <option key={c}>{c}</option>)}
+                {["Mechanical", "Hydraulic", "Electrical", "Insulation", "Paint", "Rigging", "Piping"].map((c) => <option key={c} value={c}>{spCatLabel(c)}</option>)}
               </select>
             </Field>
             <Field label={S.statusLabel}>
@@ -401,13 +497,14 @@ export default function SparepartServiceSection({ projectId, vesselId, view = "a
         </div>
       </Modal>
 
-      <Modal open={showAddSvc} onClose={() => setShowAddSvc(false)} title={S.spsSvcAdd}
-        footer={<><button className="btn-secondary" onClick={() => setShowAddSvc(false)}>{S.cancelBtn}</button><button className="btn-primary" onClick={saveService}>{S.saveBtn}</button></>}>
+      <Modal open={showAddSvc || editSvc !== null} onClose={() => { setShowAddSvc(false); setEditSvc(null); }}
+        title={editSvc ? (locale === "en" ? `Edit service ${editSvc.id}` : `Ubah service ${editSvc.id}`) : S.spsSvcAdd}
+        footer={<><button className="btn-secondary" onClick={() => { setShowAddSvc(false); setEditSvc(null); }}>{S.cancelBtn}</button><button className="btn-primary" onClick={() => void busy.run("saveService", saveService)} disabled={busy.isBusy("saveService")}>{S.saveBtn}</button></>}>
         <div className="space-y-3">
           <FormGrid>
             <Field label={S.detDocType}>
               <select className="input" value={svcForm.type} onChange={(e) => setSvcForm({ ...svcForm, type: e.target.value as ServiceRecord["type"] })}>
-                {["Overhaul", "Inspection", "Repair", "Drydock", "Survey"].map((t) => <option key={t}>{t}</option>)}
+                {["Overhaul", "Inspection", "Repair", "Drydock", "Survey"].map((t) => <option key={t} value={t}>{svcTypeLabel(t)}</option>)}
               </select>
             </Field>
             <Field label={S.statusLabel}>
@@ -428,11 +525,33 @@ export default function SparepartServiceSection({ projectId, vesselId, view = "a
       </Modal>
 
       <Modal open={cancelFor !== null} onClose={() => setCancelFor(null)} title={S.spsCancelTitle.replace("{a}", cancelFor?.description ?? "")} subtitle={cancelFor?.id}
-        footer={<><button className="btn-secondary" onClick={() => setCancelFor(null)}>{S.spsBackBtn}</button><button className="btn-primary" onClick={confirmCancel}>{S.spsConfirmCancel}</button></>}>
+        footer={<><button className="btn-secondary" onClick={() => setCancelFor(null)}>{S.spsBackBtn}</button><button className="btn-primary" onClick={() => void busy.run("confirmCancel", confirmCancel)} disabled={busy.isBusy("confirmCancel")}>{S.spsConfirmCancel}</button></>}>
         <Field label={S.spsCancelField} hint={S.spsCancelHint}>
           <textarea className="input" rows={3} value={cancelReason} onChange={(e) => setCancelReason(e.target.value)} placeholder={S.spsCancelPh} />
         </Field>
       </Modal>
+
+      <ConfirmModal
+        open={delSp !== null}
+        title={locale === "en" ? "Delete sparepart?" : "Hapus sparepart?"}
+        desc={delSp ? `${delSp.name} · ${delSp.partNumber}` : ""}
+        confirmLabel={locale === "en" ? "Delete" : "Hapus"}
+        danger
+        onCancel={() => setDelSp(null)}
+        onConfirm={() => void busy.run("delSp", confirmDelSp)}
+        confirmDisabled={busy.isBusy("delSp")}
+      />
+
+      <ConfirmModal
+        open={delSvc !== null}
+        title={locale === "en" ? "Delete service?" : "Hapus service?"}
+        desc={delSvc ? `${svcTypeLabel(delSvc.type)}: ${delSvc.description}` : ""}
+        confirmLabel={locale === "en" ? "Delete" : "Hapus"}
+        danger
+        onCancel={() => setDelSvc(null)}
+        onConfirm={() => void busy.run("delSvc", confirmDelSvc)}
+        confirmDisabled={busy.isBusy("delSvc")}
+      />
     </div>
   );
 }

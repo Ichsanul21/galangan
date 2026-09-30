@@ -2,7 +2,7 @@ import { useState, useMemo } from "react";
 import { useStore } from "../../data/store";
 import { useT } from "../../i18n/LanguageContext";
 import { n_prj } from "../../i18n/n_prj";
-import { Card, StatusBadge, Modal, Field, toast, Badge, ProgressBar, KpiCard, EmptyState } from "../../components/ui";
+import { Card, StatusBadge, Modal, Field, toast, Badge, ProgressBar, KpiCard, EmptyState, useBusy } from "../../components/ui";
 import { Send, CheckCircle2, XCircle, FileDown, FileText } from "lucide-react";
 import { exportPDF, exportExcel, fmtRupiah, fmtRentang } from "../../utils/export";
 import { STATUS_BOQ_ID } from "../../utils/format";
@@ -13,6 +13,7 @@ interface Props {
 }
 
 export default function ReportSection({ projectId }: Props) {
+  const busy = useBusy();
   const { locale } = useT();
   const S = n_prj[locale];
   const { data, update, log, wbsFor } = useStore();
@@ -61,8 +62,35 @@ export default function ReportSection({ projectId }: Props) {
   };
 
   const handleExportPDF = () => {
-    exportPDF(`report-summary-${projectId}`, `Report-${projectId}`);
-    toast(S.repToastPdf);
+    // Anti-potong: kembangkan container scroll (max-h/overflow-y-auto) sebelum
+    // html2pdf memotret, lalu kembalikan. Chart (recharts SVG) tidak selalu
+    // ikut ter-render di kanvas — fallback teks KPI/tabel di bawah memastikan
+    // PDF tidak blank walau SVG gagal di-capture.
+    const elementId = `report-summary-${projectId}`;
+    const el = document.getElementById(elementId);
+    const touched: { node: HTMLElement; overflow: string; maxHeight: string }[] = [];
+    try {
+      if (el) {
+        el.classList.add("print-expand");
+        const nodes = el.querySelectorAll<HTMLElement>(".overflow-y-auto, [style*='max-h'], [style*='max-height']");
+        nodes.forEach((n) => {
+          touched.push({ node: n, overflow: n.style.overflow, maxHeight: n.style.maxHeight });
+          n.style.overflow = "visible";
+          n.style.maxHeight = "none";
+        });
+      }
+      void exportPDF(elementId, `Report-${projectId}`)
+        .then(() => toast(S.repToastPdf))
+        .catch(() => toast(S.saveFail, "info"))
+        .finally(() => {
+          touched.forEach((t) => { t.node.style.overflow = t.overflow; t.node.style.maxHeight = t.maxHeight; });
+          el?.classList.remove("print-expand");
+        });
+    } catch {
+      touched.forEach((t) => { t.node.style.overflow = t.overflow; t.node.style.maxHeight = t.maxHeight; });
+      el?.classList.remove("print-expand");
+      toast(S.saveFail, "info");
+    }
   };
 
   const handleExportExcel = () => {
@@ -104,6 +132,7 @@ export default function ReportSection({ projectId }: Props) {
 
   return (
     <div className="space-y-4">
+      <style>{`@media print { #report-summary-${projectId}, #report-summary-${projectId} .print-expand { overflow: visible !important; max-height: none !important; } #report-summary-${projectId} .overflow-y-auto { overflow: visible !important; max-height: none !important; } .report-card, .doc-card { break-inside: avoid; page-break-inside: avoid; } table, thead, tbody, tr { break-inside: auto; page-break-inside: auto; } } .print-expand .overflow-y-auto { overflow: visible !important; max-height: none !important; }`}</style>
       <div id={`report-summary-${projectId}`}>
         <Card className="p-4">
           <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
@@ -112,8 +141,8 @@ export default function ReportSection({ projectId }: Props) {
               <p className="text-xs text-steel-500">{projectId} · {project?.type ?? "-"} · {project?.client ?? "-"} · {project?.manager ?? "-"} · {fmtRentang(project?.start, project?.end)}</p>
             </div>
             <div className="flex gap-2">
-              <button className="btn-secondary text-xs" onClick={handleExportPDF}><FileText className="h-3.5 w-3.5" /> {S.repPdf}</button>
-              <button className="btn-secondary text-xs" onClick={handleExportExcel}><FileDown className="h-3.5 w-3.5" /> {S.excelBtn}</button>
+              <button className="btn-secondary text-xs" onClick={() => void busy.run("handleExportPDF", handleExportPDF)} disabled={busy.isBusy("handleExportPDF")}><FileText className="h-3.5 w-3.5" /> {S.repPdf}</button>
+              <button className="btn-secondary text-xs" onClick={() => void busy.run("handleExportExcel", handleExportExcel)} disabled={busy.isBusy("handleExportExcel")}><FileDown className="h-3.5 w-3.5" /> {S.excelBtn}</button>
             </div>
           </div>
 
@@ -220,7 +249,7 @@ export default function ReportSection({ projectId }: Props) {
                   </div>
                 </div>
                 <div className="mt-2 flex items-center gap-3">
-                  <StatusBadge status={d.approvalStatus === "Approved" ? "Selesai" : d.approvalStatus === "Submitted" ? "Dalam Proses" : "Draft"} />
+                  <StatusBadge status={d.approvalStatus === "Approved" ? "Selesai" : d.approvalStatus === "Submitted" ? "Sedang Berjalan" : "Draft"} />
                   {d.approvalStatus === "Submitted" && (
                     <div className="flex gap-1">
                       <button className="rounded bg-green-100 px-2 py-0.5 text-xs font-semibold text-green-700 hover:bg-green-200" onClick={() => submitReport(d.id, "approve")}><CheckCircle2 className="h-3 w-3 inline" /> {S.detApproveBtn}</button>
@@ -235,7 +264,7 @@ export default function ReportSection({ projectId }: Props) {
       </Card>
 
       <Modal open={showShare} onClose={() => setShowShare(false)} title={S.detShareModal}
-        footer={<><button className="btn-secondary" onClick={() => setShowShare(false)}>{S.cancelBtn}</button><button className="btn-primary" onClick={submitShare}>{S.detSendBtn}</button></>}>
+        footer={<><button className="btn-secondary" onClick={() => setShowShare(false)}>{S.cancelBtn}</button><button className="btn-primary" onClick={() => void busy.run("submitShare", submitShare)} disabled={busy.isBusy("submitShare")}>{S.detSendBtn}</button></>}>
         <div className="space-y-3">
           <Field label={S.detDocField}>
             <select className="input" value={shareForm.docId} onChange={(e) => setShareForm({ ...shareForm, docId: e.target.value })}>

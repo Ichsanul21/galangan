@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { CSSProperties } from "react";
 import { Link } from "react-router-dom";
 import {
@@ -39,6 +39,7 @@ import {
   toggleSort,
   sortRows,
   toast,
+  useBusy,
 } from "../components/ui";
 import type { SortState } from "../components/ui";
 import { useStore } from "../data/store";
@@ -147,12 +148,14 @@ function exportChartPNG(chartId: string, filename: string): void {
 }
 
 export default function Analytics() {
+  const busy = useBusy();
   const { locale } = useT();
   const S = n_misc[locale];
   const [tab, setTab] = useState("Deskriptif");
   const [sort, setSort] = useState<SortState>({ key: null, dir: "asc" });
   const [sort2, setSort2] = useState<SortState>({ key: null, dir: "asc" });
-  const { data, update, log } = useStore();
+  const { data, update, log, resync } = useStore();
+  useEffect(() => { void resync().catch(() => undefined); }, [resync]);
   /* What-if dikendalikan dari Pengaturan (grup Analytics) - otomatis dipakai forecast. */
   const growth = getSetting(data, "WHATIF_GROWTH", 0);
   const costAdj = getSetting(data, "WHATIF_COST", 0);
@@ -266,6 +269,7 @@ export default function Analytics() {
     const next = [sc, ...scenarios.filter((s) => s.name !== sc.name)].slice(0, 20);
     setScenarios(next);
     try { localStorage.setItem("isms.scenario", JSON.stringify(next)); } catch { /* abaikan */ }
+    log("menyimpan skenario what-if", `${sc.name} (growth ${sc.growth} · biaya ${sc.costAdj} · progres ${sc.progAdj})`, "Analytics");
     toast(S.tScenarioSaved.replace("{n}", sc.name));
     setScName("");
   };
@@ -288,6 +292,7 @@ export default function Analytics() {
     const next = scenarios.filter((s) => s.name !== name);
     setScenarios(next);
     try { localStorage.setItem("isms.scenario", JSON.stringify(next)); } catch { /* abaikan */ }
+    log("menghapus skenario what-if", name, "Analytics");
     toast(S.tScenarioDeleted.replace("{n}", name), "info");
   };
 
@@ -296,14 +301,17 @@ export default function Analytics() {
     const next = { ...notes, [tab]: [...(notes[tab] ?? []), noteInput.trim()].slice(0, 20) };
     setNotes(next);
     try { localStorage.setItem("isms.notes", JSON.stringify(next)); } catch { /* abaikan */ }
+    log("menyimpan catatan insight", `${tab}: ${noteInput.trim().slice(0, 80)}`, "Analytics");
     setNoteInput("");
     toast(S.tInsightSaved);
   };
 
   const delNote = (idx: number) => {
+    const teks = (notes[tab] ?? [])[idx] ?? "";
     const next = { ...notes, [tab]: (notes[tab] ?? []).filter((_, i) => i !== idx) };
     setNotes(next);
     try { localStorage.setItem("isms.notes", JSON.stringify(next)); } catch { /* abaikan */ }
+    log("menghapus catatan insight", `${tab}: ${teks.slice(0, 80)}`, "Analytics");
   };
 
   const profitByType = (["New Build", "Repair", "Retrofit"] as const).map((t) => {
@@ -388,6 +396,31 @@ export default function Analytics() {
         [S.projectPriority, S.projectPriorityDesc.replace("{n}", String(atRisk)), "/proyek"],
         [S.followUpNcr, S.followUpNcrDesc.replace("{n}", String(openNcr)), "/qc-safety"],
       ];
+      /* Sheet Utilisasi: gabungan equipment (jam operasi + %) + jam booking bila ada. */
+      const bookingJamByEquip = new Map<string, string>();
+      for (const b of data.bookings ?? []) {
+        const key = String(b.equip ?? b.equipment ?? b.name ?? "");
+        const jam = String(b.jam ?? b.hours ?? b.jadwal ?? "");
+        if (key && jam && !bookingJamByEquip.has(key)) bookingJamByEquip.set(key, jam);
+      }
+      const util: (string | number)[][] = [
+        ["Nama Alat", "Jam Operasi", "Utilisasi (%)", "Jadwal Booking"],
+        ...(data.equipment ?? []).map((e) => {
+          const name = String(e.name ?? e.id ?? "-");
+          const jam = Number(e.lastHours ?? e.hours ?? 0);
+          const pct = Number(e.util ?? e.utilisasi ?? 0);
+          return [name, jam, pct, bookingJamByEquip.get(name) ?? "-"] as (string | number)[];
+        }),
+      ];
+      /* Sheet Inventory: stok + nilai persediaan. */
+      const inv: (string | number)[][] = [
+        ["Nama Barang", "Stok", "Satuan", "Nilai (Rp)"],
+        ...(data.inventory ?? []).map((i) => {
+          const stock = Number(i.stock ?? 0);
+          const cost = Number(i.cost ?? i.unitPrice ?? 0);
+          return [String(i.name ?? i.id ?? "-"), stock, String(i.unit ?? "-"), Math.round(stock * cost)] as (string | number)[];
+        }),
+      ];
       await writeXlsxFile([
         { data: kpi, sheet: "KPI" },
         { data: drill, sheet: "Drilldown" },
@@ -395,6 +428,8 @@ export default function Analytics() {
         { data: sc, sheet: "Skenario" },
         { data: pf, sheet: "Profit" },
         { data: rx, sheet: "Preskriptif" },
+        { data: util, sheet: "Utilisasi" },
+        { data: inv, sheet: "Inventory" },
       ]).toFile(`Laporan-Analytics-${todayISO()}.xlsx`);
       toast(S.tAnalyticsExported);
     } catch {
@@ -403,8 +438,14 @@ export default function Analytics() {
   };
 
   const exportPdfReport = () => {
-    exportPDF("analytics-pdf", `Laporan-Analytics-${todayISO()}`);
-    toast(S.tAnalyticsPdfExported);
+    void busy.run("export", async () => {
+      try {
+        await exportPDF("analytics-pdf", `Laporan-Analytics-${todayISO()}`);
+        toast(S.tAnalyticsPdfExported);
+      } catch {
+        toast(S.tChartExportFailed, "info");
+      }
+    });
   };
 
   // Style print-friendly untuk section PDF tersembunyi (tabel polos, tanpa chart).
@@ -415,13 +456,13 @@ export default function Analytics() {
   return (
     <div>
       <PageHeader
-        title="Analytics #ISMS"
+        title="Analitik"
         subtitle={S.anSubtitle}
         icon={<BarChart3 className="h-5 w-5" />}
         actions={
           <span style={{ display: "flex", gap: 8 }}>
-            <button className="btn-primary-gradient" onClick={exportReport}>{S.exportReportBtn}</button>
-            <button className="btn-secondary" onClick={exportPdfReport}>{S.pdfReportBtn}</button>
+            <button className="btn-primary-gradient" disabled={busy.isBusy("export")} onClick={() => void busy.run("export", exportReport)}>{S.exportReportBtn}</button>
+            <button className="btn-secondary" disabled={busy.isBusy("export")} onClick={exportPdfReport}>{S.pdfReportBtn}</button>
           </span>
         }
       />
@@ -440,7 +481,7 @@ export default function Analytics() {
 
             <div className="grid grid-cols-1 gap-5 lg:grid-cols-3">
               <Card className="lg:col-span-2">
-                <CardHeader title={S.revenueVsCost} subtitle={S.last12Months} action={<button className="btn-secondary px-2 py-1 text-xs" onClick={() => exportChartPNG("chart-rev", "pendapatan-vs-biaya")}>{S.exportPngBtn}</button>} />
+                <CardHeader title={S.revenueVsCost} subtitle={`${S.last12Months} · Bulan berjalan paling kanan`} action={<button className="btn-secondary px-2 py-1 text-xs" onClick={() => exportChartPNG("chart-rev", "pendapatan-vs-biaya")}>{S.exportPngBtn}</button>} />
                 <div id="chart-rev" className="h-60 p-4 pt-0 sm:h-72">
                   <ResponsiveContainer width="100%" height="100%">
                     <BarChart data={revDisp} margin={{ top: 10, right: 10, left: -15, bottom: 0 }}>
@@ -480,7 +521,7 @@ export default function Analytics() {
             </div>
 
             <Card>
-              <CardHeader title={S.marginVsInspection} subtitle={S.marginQcTrend} />
+              <CardHeader title={S.marginVsInspection} subtitle={`${S.marginQcTrend} · Bulan berjalan paling kanan`} />
               <div className="grid grid-cols-1 gap-4 p-4 pt-0 lg:grid-cols-2">
                 <div className="h-56">
                   <ResponsiveContainer width="100%" height="100%">
@@ -533,7 +574,7 @@ export default function Analytics() {
                 </div>
               </Card>
               <Card>
-                <CardHeader title={S.monthlyBudgetVariance} subtitle={S.varianceVsAvg} />
+                <CardHeader title={S.monthlyBudgetVariance} subtitle={`${S.varianceVsAvg} · Bulan berjalan paling kanan`} />
                 <div className="h-64 p-4 pt-0">
                   <ResponsiveContainer width="100%" height="100%">
                     <BarChart data={variance} margin={{ top: 10, right: 10, left: -15, bottom: 0 }}>
@@ -709,7 +750,7 @@ export default function Analytics() {
               )}
             </Card>
             <Card>
-              <CardHeader title={S.forecastRevenue} subtitle={S.forecastBand} action={<span className="flex gap-1.5"><Badge tone="blue">{S.aiPrediction}</Badge><button className="btn-secondary px-2 py-1 text-xs" onClick={() => exportChartPNG("chart-forecast", "forecast-pendapatan")}>{S.exportPngBtn}</button></span>} />
+              <CardHeader title={S.forecastRevenue} subtitle={`${S.forecastBand} · Bulan berjalan paling kanan`} action={<span className="flex gap-1.5"><Badge tone="blue">{S.aiPrediction}</Badge><button className="btn-secondary px-2 py-1 text-xs" onClick={() => exportChartPNG("chart-forecast", "forecast-pendapatan")}>{S.exportPngBtn}</button></span>} />
               <div id="chart-forecast" className="h-60 p-4 pt-0 sm:h-72">
                 <ResponsiveContainer width="100%" height="100%">
                   <ComposedChart data={forecastAdj} margin={{ top: 10, right: 10, left: -15, bottom: 0 }}>
@@ -837,7 +878,7 @@ export default function Analytics() {
           <p style={{ fontSize: 10, color: "#52697C", margin: 0 }}>KANTOR PUSAT SAMARINDA - KALIMANTAN TIMUR</p>
         </div>
         <div style={{ breakInside: "avoid", pageBreakInside: "avoid" }}>
-          <h1 style={{ fontSize: 18, fontWeight: 700 }}>ISMS Galangan - Laporan Analytics</h1>
+          <h1 style={{ fontSize: 18, fontWeight: 700 }}>ISMS Galangan - Laporan Analitik</h1>
           <p style={{ fontSize: 11 }}>{fmtTanggal(todayISO())}</p>
         </div>
 
@@ -859,6 +900,36 @@ export default function Analytics() {
             ))}
           </tbody>
         </table>
+
+        {/* Grafik untuk PDF: exportPDF meraster SVG -> PNG, jadi chart ikut terbawa. */}
+        <div style={{ breakInside: "avoid", pageBreakInside: "avoid", marginTop: 8 }}>
+          <h3 style={{ fontSize: 12, fontWeight: 700, margin: "0 0 4px" }}>Grafik pendapatan & margin per bulan (bulan berjalan paling kanan)</h3>
+          <div style={{ width: "100%", height: 220 }}>
+            <ResponsiveContainer width="100%" height="100%">
+              <ComposedChart data={revDisp} margin={{ top: 5, right: 10, left: -15, bottom: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#e9eff4" vertical={false} />
+                <XAxis dataKey="bln" tick={{ fontSize: 9 }} stroke="#8aa2b6" axisLine={false} tickLine={false} />
+                <YAxis tick={{ fontSize: 9 }} stroke="#8aa2b6" axisLine={false} tickLine={false} />
+                <Bar dataKey="revenue" name="Pendapatan (M Rp)" fill="#0b3a63" barSize={14} radius={[3, 3, 0, 0]} />
+                <Line type="monotone" dataKey="cost" name="Biaya (M Rp)" stroke="#f59e0b" strokeWidth={2} />
+              </ComposedChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+        <div style={{ breakInside: "avoid", pageBreakInside: "avoid", marginTop: 8 }}>
+          <h3 style={{ fontSize: 12, fontWeight: 700, margin: "0 0 4px" }}>Grafik margin (%) & inspeksi lulus</h3>
+          <div style={{ width: "100%", height: 200 }}>
+            <ResponsiveContainer width="100%" height="100%">
+              <LineChart data={marDisp} margin={{ top: 5, right: 10, left: -15, bottom: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#e9eff4" vertical={false} />
+                <XAxis dataKey="bln" tick={{ fontSize: 9 }} stroke="#8aa2b6" axisLine={false} tickLine={false} />
+                <YAxis tick={{ fontSize: 9 }} stroke="#8aa2b6" axisLine={false} tickLine={false} />
+                <Line type="monotone" dataKey="margin" name="Margin (%)" stroke="#1f9d55" strokeWidth={2} dot={false} />
+                <ReferenceLine y={0} stroke="#cbd5e1" />
+              </LineChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
 
         <h2 style={{ fontSize: 14, fontWeight: 700, marginTop: 16, breakAfter: "avoid", pageBreakAfter: "avoid" }}>{S.tabDiagnostic}</h2>
         <table style={pdfTable}>

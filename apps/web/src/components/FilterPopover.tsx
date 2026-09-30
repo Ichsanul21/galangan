@@ -29,7 +29,7 @@ export function FilterPopover<T extends Record<string, string>>({
   }, [open, initial]);
 
   return (
-    <div className="relative">
+    <div className="relative max-w-full">
       <button
         className="btn-secondary relative"
         onClick={() => setOpen((v) => !v)}

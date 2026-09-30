@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Plus, Search, ScrollText, FileText, Eye, Pencil, Trash2, Archive, RotateCcw, Download, Upload } from "lucide-react";
-import { Card, PageHeader, Badge, KpiCard, Modal, Field, FormGrid, ConfirmModal, SortTh, toggleSort, sortRows, toast, StatusBadge, usePager } from "../../components/ui";
+import { Card, PageHeader, Badge, KpiCard, Modal, Field, FormGrid, ConfirmModal, SortTh, toggleSort, sortRows, toast, StatusBadge, usePager, useBusy } from "../../components/ui";
 import type { SortState } from "../../components/ui";
 import { FilterPopover } from "../../components/FilterPopover";
 import { useStore, type StoreItem } from "../../data/store";
@@ -111,12 +111,14 @@ function previewKind(url: string): "image" | "pdf" | "text" | "other" | "none" {
 }
 
 export default function Documents() {
-  const { data, add, update, remove, log, branch, inBranch } = useStore();
+  const busy = useBusy();
+  const { data, add, update, remove, log, branch, inBranch, resync } = useStore();
   const { locale } = useT();
   const S = n_dry[locale];
   const modAlert = useModuleAlert("dokumen");
   const flash = useNotifFlash();
   const notified = useMemo(() => new Set(modAlert.items.map((a) => a.rowId)), [modAlert.items]);
+  useEffect(() => { void resync().catch(() => undefined); }, [resync]);
   const [q, setQ] = useState("");
   const [sort, setSort] = useState<SortState>({ key: null, dir: "asc" });
   const [type, setType] = useState("Semua");
@@ -349,11 +351,12 @@ export default function Documents() {
 
   const confirmDelete = async () => {
     if (!deleting) return;
-    const usedBy = findUsages(data, "documents", String(deleting.id));
-    if (usedBy.length > 0) {
-      toast(`Hapus diblokir - ${deleting.id} dipakai di: ${usedBy.join(", ")}`, "info");
-      return;
-    }
+      const usedBy = findUsages(data, "documents", String(deleting.id));
+      if (usedBy.length > 0) {
+        toast(`Hapus diblokir - ${deleting.id} dipakai di: ${usedBy.join(", ")}`, "info");
+        log("gagal hapus dokumen", `${deleting.id} · masih dipakai di: ${usedBy.join(", ")}`, "Dokumen");
+        return;
+      }
     try {
       await remove("documents", deleting.id);
       log("menghapus permanen dokumen", deleting.id, "Dokumen");
@@ -396,7 +399,7 @@ export default function Documents() {
         icon={<ScrollText className="h-5 w-5" />}
         actions={
           <>
-            <button className="btn-secondary" onClick={doExport}><Download className="h-4 w-4" /> {S.exportExcelBtn}</button>
+            <button className="btn-secondary" onClick={() => void busy.run("doExport", doExport)} disabled={busy.isBusy("doExport")}><Download className="h-4 w-4" /> {S.exportExcelBtn}</button>
             <button className="btn-primary-gradient" onClick={openAdd}><Plus className="h-4 w-4" /> {S.btnArchiveDoc}</button>
           </>
         }
@@ -460,7 +463,7 @@ export default function Documents() {
         <div className="overflow-x-auto">
           <table className="w-full">
             <thead className="bg-surface sticky top-0 z-10">
-              <tr><SortTh label={S.colDoc} sortKey="dokumen" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.colType} sortKey="tipe" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.colProjectShip} sortKey="proyek" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.colVersion} sortKey="versi" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.colStatus} sortKey="status" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.colUpdated} sortKey="diperbarui" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><th className="th">{S.colAction}</th></tr>
+              <tr><SortTh label={S.colDoc} sortKey="dokumen" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.colType} sortKey="tipe" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><th className="th">Pratinjau</th><SortTh label={S.colProjectShip} sortKey="proyek" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.colVersion} sortKey="versi" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.colStatus} sortKey="status" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.colUpdated} sortKey="diperbarui" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><th className="th">{S.colAction}</th></tr>
             </thead>
             <tbody className="divide-y divide-steel-100">
               {docPager.slice(sortedDocs).map((d) => (
@@ -474,6 +477,16 @@ export default function Documents() {
                     </div>
                   </td>
                   <td className="td"><Badge tone="navy">{d.type}</Badge></td>
+                  <td className="td">
+                    {(() => {
+                      const url = String(d.fileUrl ?? "");
+                      const kind = previewKind(url);
+                      if (kind === "image") return <button onClick={() => setDetail(d)} title="Klik untuk pratinjau"><img src={url} alt={String(d.title)} className="h-12 w-16 rounded-lg border border-steel-200 object-cover" loading="lazy" /></button>;
+                      if (kind === "pdf") return <button onClick={() => setDetail(d)} className="rounded-lg bg-rose-50 px-2 py-1 text-[11px] font-bold text-rose-600 hover:bg-rose-100" title="Klik untuk pratinjau">PDF — klik untuk pratinjau</button>;
+                      if (!url) return <span className="text-xs text-steel-400">-</span>;
+                      return <a className="btn-secondary px-2 py-1 text-xs" href={url} target="_blank" rel="noreferrer" download><Download className="h-3.5 w-3.5" /> Unduh</a>;
+                    })()}
+                  </td>
                   <td className="td text-steel-600 text-xs font-mono max-w-[180px] truncate" title={`${String(d.project)} · ${String(d.vessel)}`}>{d.project} · {d.vessel}</td>
                   <td className="td text-steel-600">{d.version}</td>
                   <td className="td"><StatusBadge status={d.status} /></td>
@@ -513,7 +526,7 @@ export default function Documents() {
         footer={
           <>
             <button className="btn-secondary" onClick={() => { setShowAdd(false); setEditing(null); }}>{S.cancelBtn}</button>
-            <button className="btn-primary" onClick={save}>{S.btnSaveDoc}</button>
+            <button className="btn-primary" onClick={() => void busy.run("save", save)} disabled={busy.isBusy("save")}>{S.btnSaveDoc}</button>
           </>
         }
       >

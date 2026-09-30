@@ -197,12 +197,13 @@ const emptyEmpForm = () => ({
 
 export default function HR() {
   const busy = useBusy();
-  const { data, add, update, remove, log, branch, setBranch, inBranch } = useStore();
+  const { data, add, update, remove, log, branch, setBranch, inBranch, resync } = useStore();
   const { locale } = useT();
   const S = n_qc[locale];
   const modAlert = useModuleAlert("sdm");
   const flash = useNotifFlash();
   const notified = useMemo(() => new Set(modAlert.items.map((a) => a.rowId)), [modAlert.items]);
+  useEffect(() => { void resync().catch(() => undefined); }, [resync]);
   const [tab, setTab] = useState("Karyawan");
   const [sort, setSort] = useState<SortState>({ key: null, dir: "asc" });
   const [sort2, setSort2] = useState<SortState>({ key: null, dir: "asc" });
@@ -223,6 +224,7 @@ export default function HR() {
   const [leaveEditId, setLeaveEditId] = useState<string | null>(null);
   const [leaveForm, setLeaveForm] = useState({ employeeId: "", type: "Tahunan", from: todayISO(), to: todayISO(), note: "", fileUrl: "" });
   const [rejectTarget, setRejectTarget] = useState<StoreItem | null>(null);
+  const [delLeave, setDelLeave] = useState<StoreItem | null>(null);
 
   /* ---------- mutasi ---------- */
   const [showMutasi, setShowMutasi] = useState(false);
@@ -237,7 +239,7 @@ export default function HR() {
 
   /* ---------- surat ---------- */
   const [showSurat, setShowSurat] = useState(false);
-  const [suratForm, setSuratForm] = useState({ employeeId: "", jenis: "SP 1", isi: "", tanggal: todayISO() });
+  const [suratForm, setSuratForm] = useState({ employeeId: "", jenis: "SP 1", isi: "", tanggal: todayISO(), fileUrl: "" });
   const [arsipSurat, setArsipSurat] = useDraftState<StoreItem[]>("isms.draft.hr.arsipSurat", []);
   const [suratPreviewFor, setSuratPreviewFor] = useState<StoreItem | null>(null);
   // Hapus karyawan via ConfirmModal + daftar pemakai (blokir bila dipakai slip/absensi/cuti).
@@ -854,12 +856,13 @@ export default function HR() {
       jenis: suratForm.jenis,
       tanggal: suratForm.tanggal,
       isi: suratForm.isi.trim(),
+      ...(suratForm.fileUrl.trim() ? { fileUrl: suratForm.fileUrl.trim() } : {}),
     };
     setArsipSurat((prev) => [entry, ...prev]);
     log("membuat surat", `${entry.id} · ${suratForm.jenis} → ${suratEmp.name}`, "SDM");
     toast(S.tSuratOk.replace("{n}", entry.id));
     setShowSurat(false);
-    setSuratForm({ employeeId: "", jenis: "SP 1", isi: "", tanggal: todayISO() });
+    setSuratForm({ employeeId: "", jenis: "SP 1", isi: "", tanggal: todayISO(), fileUrl: "" });
   };
 
   const exportArsipSurat = () => {
@@ -1233,10 +1236,20 @@ export default function HR() {
                       <td className="td text-steel-600">{l.type === "Tahunan" ? S.daysN.replace("{n}", String(saldoCuti(String(l.employeeId)))) : "-"}</td>
                       <td className="td"><StatusBadge status={String(l.status)} /></td>
                       <td className="td">
-                        {String(l.status) === "Disetujui" && l.fileUrl ? (
-                          <a className="text-sm font-semibold text-ocean-600 underline" href={String(l.fileUrl)} target="_blank" rel="noreferrer" title={String(l.fileUrl)}>
-                            {locale === "en" ? "Preview" : "Pratinjau"}
-                          </a>
+                        {l.fileUrl ? (
+                          /\.pdf(\?|#|$)/i.test(String(l.fileUrl)) ? (
+                            <a className="text-sm font-semibold text-ocean-600 underline" href={String(l.fileUrl)} target="_blank" rel="noreferrer" title={String(l.fileUrl)}>
+                              Lihat PDF
+                            </a>
+                          ) : /\.(png|jpe?g|gif|webp|svg|bmp)(\?|#|$)/i.test(String(l.fileUrl)) ? (
+                            <a href={String(l.fileUrl)} target="_blank" rel="noreferrer" title={String(l.fileUrl)}>
+                              <img src={String(l.fileUrl)} alt={`Lampiran ${String(l.id)}`} className="h-12 w-16 rounded-lg border border-steel-200 object-cover" loading="lazy" />
+                            </a>
+                          ) : (
+                            <a className="text-sm font-semibold text-ocean-600 underline" href={String(l.fileUrl)} target="_blank" rel="noreferrer" title={String(l.fileUrl)}>
+                              {locale === "en" ? "Preview" : "Pratinjau"}
+                            </a>
+                          )
                         ) : (
                           <span className="text-xs text-steel-400">-</span>
                         )}
@@ -1247,6 +1260,7 @@ export default function HR() {
                             <button className="text-sm font-semibold text-emerald-600 hover:underline" onClick={() => approveSupervisor(l)}>{S.btnSetujuiAtasan}</button>
                             <button className="text-sm font-semibold text-navy-700 hover:underline" onClick={() => openLeaveEdit(l)}>{S.btnEdit}</button>
                             <button className="text-sm font-semibold text-rose-600 hover:underline" onClick={() => setRejectTarget(l)}>{S.btnTolak}</button>
+                            <button className="text-sm font-semibold text-rose-600 hover:underline" onClick={() => setDelLeave(l)}>{S.btnHapus}</button>
                           </div>
                         ) : l.status === "Disetujui Atasan" ? (
                           <div className="flex items-center gap-2 whitespace-nowrap">
@@ -1582,6 +1596,25 @@ export default function HR() {
         }}
       />
 
+      <ConfirmModal
+        open={delLeave !== null}
+        title={delLeave ? (locale === "en" ? `Delete leave ${delLeave.id}?` : `Hapus cuti ${delLeave.id}?`) : ""}
+        desc={delLeave ? (locale === "en" ? `Leave ${delLeave.id} (Diajukan) will be permanently deleted.` : `Cuti ${delLeave.id} (Diajukan) akan dihapus permanen.`) : ""}
+        confirmLabel={S.btnHapus}
+        danger
+        onCancel={() => setDelLeave(null)}
+        onConfirm={async () => {
+          if (!delLeave) return;
+          if (String(delLeave.status) !== "Diajukan") { toast(locale === "en" ? "Only Diajukan can be deleted" : "Hanya status Diajukan yang bisa dihapus", "info"); setDelLeave(null); return; }
+          try {
+            await remove("leaves", String(delLeave.id));
+            log("menghapus cuti", String(delLeave.id), "SDM");
+            toast(locale === "en" ? `Leave ${delLeave.id} deleted` : `Cuti ${delLeave.id} dihapus`);
+          } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); }
+          setDelLeave(null);
+        }}
+      />
+
       {/* ---------- modal mutasi ---------- */}
       <Modal
         open={showMutasi}
@@ -1705,6 +1738,9 @@ export default function HR() {
             <Field label={S.thTanggal}><input type="date" className="input" value={suratForm.tanggal} onChange={(e) => setSuratForm({ ...suratForm, tanggal: e.target.value })} /></Field>
           </FormGrid>
           <Field label={S.fIsi}><textarea className="input" rows={4} value={suratForm.isi} onChange={(e) => setSuratForm({ ...suratForm, isi: e.target.value })} placeholder={S.phSurat} /></Field>
+          <Field label={locale === "en" ? "Scan URL (optional)" : "URL file scan (opsional)"} hint={locale === "en" ? "PDF/image shown side-by-side" : "PDF/gambar tampil berdampingan"}>
+            <input className="input font-mono" value={suratForm.fileUrl} onChange={(e) => setSuratForm({ ...suratForm, fileUrl: e.target.value })} placeholder="https://…" />
+          </Field>
           {suratPreview && (
             <div>
               <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-steel-500">{S.lblPratinjau}</p>
@@ -1722,6 +1758,7 @@ export default function HR() {
         subtitle={suratPreviewFor ? `${String(suratPreviewFor.id)} · ${String(suratPreviewFor.nama)}` : ""}
       >
         {suratPreviewFor && (
+          <div className={suratPreviewFor.fileUrl ? "grid grid-cols-1 gap-3 md:grid-cols-2" : ""}>
           <pre className="whitespace-pre-wrap rounded-xl bg-surface p-3 text-sm text-navy-900">
             {[
               `${String(suratPreviewFor.jenis ?? "").toUpperCase()}`,
@@ -1735,6 +1772,14 @@ export default function HR() {
               String(suratPreviewFor.isi ?? ""),
             ].join("\n")}
           </pre>
+          {suratPreviewFor.fileUrl ? (
+            /\.pdf(\?|#|$)/i.test(String(suratPreviewFor.fileUrl)) ? (
+              <iframe src={String(suratPreviewFor.fileUrl)} title={`Scan ${String(suratPreviewFor.id)}`} className="h-72 w-full rounded-xl border border-steel-200 bg-white" />
+            ) : (
+              <img src={String(suratPreviewFor.fileUrl)} alt={`Scan ${String(suratPreviewFor.id)}`} className="max-h-72 w-full rounded-xl border border-steel-200 object-contain bg-surface" loading="lazy" />
+            )
+          ) : null}
+          </div>
         )}
       </Modal>
 

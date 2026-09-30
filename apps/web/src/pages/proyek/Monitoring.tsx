@@ -50,16 +50,22 @@ export default function Monitoring() {
   const [branchFilter, setBranchFilter] = useState("Semua");
   const [q, setQ] = useState("");
   const [mode, setMode] = useState<"Semua" | "Perhatian">("Semua");
-  /* Scrollbar horizontal sticky: bar bawah (position sticky bottom) tersinkron
-     dengan scroll kolom kanban - tetap terjangkau saat daftar kolom panjang. */
+  /* Scrollbar horizontal atas + bawah: mirror tersinkron dua arah dengan
+     scroll kolom kanban - tetap terjangkau saat daftar kolom panjang. */
   const topScrollRef = useRef<HTMLDivElement | null>(null);
   const barScrollRef = useRef<HTMLDivElement | null>(null);
+  const topBarRef = useRef<HTMLDivElement | null>(null);
   const syncingRef = useRef(false);
-  const syncScroll = (src: HTMLDivElement | null, dst: HTMLDivElement | null) => {
-    if (!src || !dst || syncingRef.current) return;
+  const syncScroll = (src: HTMLDivElement | null, ...dsts: (HTMLDivElement | null)[]) => {
+    if (!src || syncingRef.current) return;
     syncingRef.current = true;
-    dst.scrollLeft = src.scrollLeft;
+    for (const dst of dsts) {
+      if (dst) dst.scrollLeft = src.scrollLeft;
+    }
     requestAnimationFrame(() => { syncingRef.current = false; });
+  };
+  const scrollKanbanBy = (dx: number) => {
+    topScrollRef.current?.scrollBy({ left: dx, behavior: "smooth" });
   };
   const kanbanWidth = TAHAP.length * 272;
 
@@ -188,7 +194,21 @@ export default function Monitoring() {
       </Card>
 
       <div>
-      <div ref={topScrollRef} onScroll={() => syncScroll(topScrollRef.current, barScrollRef.current)} className="flex gap-4 overflow-x-auto pb-2">
+      <div className="mb-2 flex items-center gap-2">
+        <button className="btn-secondary px-2 py-1 text-xs" onClick={() => scrollKanbanBy(-320)} aria-label="Geser kanban ke kiri">←</button>
+        <button className="btn-secondary px-2 py-1 text-xs" onClick={() => scrollKanbanBy(320)} aria-label="Geser kanban ke kanan">→</button>
+        <span className="text-[11px] text-steel-400">Geser kanban ±320px</span>
+      </div>
+      <div
+        ref={topBarRef}
+        onScroll={() => syncScroll(topBarRef.current, topScrollRef.current, barScrollRef.current)}
+        className="sticky top-0 z-10 overflow-x-auto rounded-lg border border-steel-200 bg-white"
+        style={{ height: 14 }}
+        aria-hidden="true"
+      >
+        <div style={{ width: kanbanWidth, height: 1 }} />
+      </div>
+      <div ref={topScrollRef} onScroll={() => syncScroll(topScrollRef.current, topBarRef.current, barScrollRef.current)} className="flex gap-4 overflow-x-auto pb-2">
         {TAHAP.map((t) => {
           const cols = pipeline.filter((p) => tahapOf(p) === t);
           return (
@@ -236,7 +256,7 @@ export default function Monitoring() {
       </div>
       <div
         ref={barScrollRef}
-        onScroll={() => syncScroll(barScrollRef.current, topScrollRef.current)}
+        onScroll={() => syncScroll(barScrollRef.current, topBarRef.current, topScrollRef.current)}
         className="overflow-x-auto rounded-lg border border-steel-200 bg-white"
         style={{ position: "sticky", bottom: 0, height: 14 }}
         aria-hidden="true"

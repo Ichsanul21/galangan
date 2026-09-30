@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { Plus, Search, Ship, Anchor, FileCheck2, Pencil, Trash2 } from "lucide-react";
 import { Card, CardHeader, PageHeader, Badge, KpiCard, Modal, Field, FormGrid, toast, SortTh, toggleSort, sortRows, usePager, ConfirmModal,
   NumInput,
+  useBusy,
 } from "../../components/ui";
 import type { SortState } from "../../components/ui";
 import { useStore } from "../../data/store";
@@ -142,6 +143,7 @@ function vesselToForm(v: StoreItem): VesselForm {
 }
 
 export default function Vessels() {
+  const busy = useBusy();
   const { data, add, update, remove, log } = useStore();
   const { locale } = useT();
   const S = n_eqp[locale];
@@ -443,12 +445,12 @@ export default function Vessels() {
       </div>
 
       <Modal open={showAdd} onClose={() => setShowAdd(false)} title={S.vsAddTitle}
-        wide footer={<><button className="btn-secondary" onClick={() => setShowAdd(false)}>{S.cancelBtn}</button><button className="btn-primary" onClick={save}>{S.vsAddBtn}</button></>}>
+        wide footer={<><button className="btn-secondary" onClick={() => setShowAdd(false)}>{S.cancelBtn}</button><button className="btn-primary" onClick={() => void busy.run("save", save)} disabled={busy.isBusy("save")}>{S.vsAddBtn}</button></>}>
         {renderFormFields(form, setForm)}
       </Modal>
 
       <Modal open={editingId !== null} onClose={() => setEditingId(null)} title={S.vsEditTitle}
-        wide footer={<><button className="btn-secondary" onClick={() => setEditingId(null)}>{S.cancelBtn}</button><button className="btn-primary" onClick={saveEdit}>{S.saveBtn}</button></>}>
+        wide footer={<><button className="btn-secondary" onClick={() => setEditingId(null)}>{S.cancelBtn}</button><button className="btn-primary" onClick={() => void busy.run("saveEdit", saveEdit)} disabled={busy.isBusy("saveEdit")}>{S.saveBtn}</button></>}>
         {renderFormFields(editForm, setEditForm)}
       </Modal>
 

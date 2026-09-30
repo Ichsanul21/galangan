@@ -52,16 +52,23 @@ import { n_inv } from "../../i18n/n_inv";
 import { AlertBannerView, notifRowId, useModuleAlert, useNotifFlash } from "../../components/AlertBanner";
 import { stockTrend, itemTrend, lowStockTrend, stockValueTrend, warehouseTrend } from "../../data";
 
-const emptyForm = { name: "", category: "Baja", sku: "", warehouse: "Gudang Baja A", rack: "", bin: "", stock: "0", minStock: "0", unit: "pcs", cost: "0", volume: "0", batch: "", uom2: "", konversi: "", minWh: "", photoUrl: "", matType: "habis-pakai" };
+const emptyForm = { name: "", category: "Baja", sku: "", warehouse: "Gudang Baja A", rack: "", bin: "", stock: "0", minStock: "0", unit: "pcs", cost: "0", volume: "0", batch: "", uom2: "", konversi: "", minWh: "", photoUrl: "", matType: "habis-pakai", eceran: false as boolean | string };
 
-/* Jenis material: habis-pakai | retur | service. */
-const MAT_TYPES = ["habis-pakai", "retur", "service", "eceran"] as const;
+/* Jenis material: habis-pakai | retur | service. Eceran = flag terpisah (konversi satuan). */
+const MAT_TYPES = ["habis-pakai", "retur", "service"] as const;
+function isEceran(it: StoreItem): boolean {
+  return it.eceran === true || String((it as Record<string, unknown>).eceran ?? "").toLowerCase() === "true";
+}
 function matTypeOf(it: StoreItem): string {
   const v = String(it.matType ?? "habis-pakai").trim().toLowerCase();
+  if (v === "eceran") return "habis-pakai";
   return (MAT_TYPES as readonly string[]).includes(v) ? v : "habis-pakai";
 }
-function matTone(t: string): "gray" | "blue" | "teal" | "violet" {
-  return t === "retur" ? "blue" : t === "service" ? "teal" : t === "eceran" ? "violet" : "gray";
+function matTone(t: string): "gray" | "blue" | "teal" {
+  return t === "retur" ? "blue" : t === "service" ? "teal" : "gray";
+}
+function matLabel(t: string): string {
+  return t === "retur" ? "Retur (bisa kembali)" : t === "service" ? "Service (jasa)" : "Habis pakai";
 }
 
 const INV_ID_MON = ["Jan", "Feb", "Mar", "Apr", "Mei", "Jun", "Jul", "Agu", "Sep", "Okt", "Nov", "Des"];
@@ -96,14 +103,14 @@ const BOM_NEEDS = [
 ];
 
 function moveLabel(type: string): string {
-  if (type === "Penerimaan") return "GR";
-  if (type === "Pengeluaran") return "GI";
+  if (type === "Penerimaan") return "Barang Masuk";
+  if (type === "Pengeluaran") return "Barang Keluar";
   if (type === "Selisih Opname") return "Opname";
   if (type === "Transfer") return "Transfer";
   if (type === "Retur") return "Retur";
   return type;
 }
-/* Gudang asal/tujuan pergerakan: transfer dari by ("A → B"), GR dari supplier, GI ke purpose. */
+/* Gudang asal/tujuan pergerakan: transfer dari by ("A → B"), barang masuk dari supplier, barang keluar ke tujuan. */
 function whFlowOf(m: StoreItem): string {
   if (String(m.type ?? "") === "Transfer") return String(m.by ?? "-");
   const parts: string[] = [];
@@ -112,8 +119,8 @@ function whFlowOf(m: StoreItem): string {
   return parts.length > 0 ? parts.join(" · ") : "-";
 }
 function grGiTip(type: string, locale: string): string {
-  if (type === "Penerimaan") return locale === "en" ? "GR = goods in (Goods Receive)" : "GR = barang masuk (Goods Receive)";
-  if (type === "Pengeluaran") return locale === "en" ? "GI = goods out (Goods Issue)" : "GI = barang keluar (Goods Issue)";
+  if (type === "Penerimaan") return locale === "en" ? "Goods in" : "Barang Masuk";
+  if (type === "Pengeluaran") return locale === "en" ? "Goods out" : "Barang Keluar";
   return String(type);
 }
 
@@ -129,19 +136,7 @@ function moveTone(type: string, tone: string): "green" | "amber" | "blue" | "nav
 interface Reservation { project: string; qty: number }
 interface BatchRow { batch: string; qty: number; date: string }
 
-/* Pola batang barcode CSS Dorn: bit 1 = batang hitam, bit 0 = spasi. */
-function barcodeBits(sku: string): boolean[] {
-  const s = sku || "X";
-  let h = 0;
-  for (let i = 0; i < s.length; i++) h = ((h * 31 + s.charCodeAt(i)) >>> 0);
-  const bits: boolean[] = [];
-  for (let i = 0; i < 56; i++) {
-    const c = s.charCodeAt(i % s.length);
-    bits.push((((c >> (i % 5)) ^ (h >> (i % 7))) & 1) === 1);
-  }
-  return bits;
-}
-
+/* QR-only: barcode CSS lama dihapus, label memakai QRCodeSVG. */
 function binOf(it: StoreItem): string {
   return String(it.bin ?? "").trim();
 }
@@ -334,7 +329,7 @@ function agingBucket(days: number): string {
   return ">180 hari";
 }
 
-const AGING_BUCKETS = ["0-30 hari", "31-90 hari", "91-180 hari", ">180 hari", "Belum ada GR"];
+const AGING_BUCKETS = ["0-30 hari", "31-90 hari", "91-180 hari", ">180 hari", "Belum ada barang masuk"];
 
 export default function Inventory() {
   const busy = useBusy();
@@ -580,10 +575,10 @@ export default function Inventory() {
     return String(i.name ?? "");
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }), [list, sort, abc]);
-  const pager = usePager(list.length);
+  const pager = usePager(list.length, 25);
   const [movWh, setMovWh] = useState("Semua");
   const movFiltered = useMemo(() => (movWh === "Semua" ? movements : movements.filter((m) => whFlowOf(m).includes(movWh))), [movements, movWh]);
-  const movPager = usePager(movFiltered.length);
+  const movPager = usePager(movFiltered.length, 25);
   useEffect(() => {
     movPager.reset();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -648,11 +643,14 @@ export default function Inventory() {
   const lastInOf = (it: StoreItem): string | null =>
     moveIdx.inn.get(String(it.id)) ?? moveIdx.inn.get(String(it.name)) ?? null;
 
-  /* Alasan dead stock: stok nol | tak pernah GR | >180 hari tanpa keluar. */
+  /* Alasan dead stock: pilih penyebab agar jelas tindak lanjutnya. */
+  const DEAD_REASONS = ["Overstock", "Salah spesifikasi", "Proyek batal", "Tidak dipakai >180 hari", "Stok nol", "Belum pernah masuk"] as const;
   const deadReason = (it: StoreItem): string => {
-    if (Number(it.stock || 0) <= 0) return locale === "en" ? "zero stock" : "stok nol";
-    if (!lastInOf(it)) return locale === "en" ? "never GR" : "tak pernah GR";
-    return locale === "en" ? "no issue >180 days" : ">180 hari tanpa keluar";
+    const manual = String((it as Record<string, unknown>).deadReason ?? "").trim();
+    if (manual) return manual;
+    if (Number(it.stock || 0) <= 0) return locale === "en" ? "zero stock" : "Stok nol";
+    if (!lastInOf(it)) return locale === "en" ? "never received" : "Belum pernah masuk";
+    return locale === "en" ? "no issue >180 days" : "Tidak dipakai >180 hari";
   };
 
   const lowStock = useMemo(() => inventory.filter((i) => i.stock <= i.minStock), [inventory]);
@@ -697,7 +695,7 @@ export default function Inventory() {
   const agingRows = useMemo(() => inventory.map((i) => {
     const lastIn = lastInOf(i);
     const age = lastIn ? daysSince(lastIn) : 9999;
-    return { item: i, lastIn, age, bucket: lastIn ? agingBucket(age) : "Belum ada GR" };
+    return { item: i, lastIn, age, bucket: lastIn ? agingBucket(age) : "Belum ada barang masuk" };
   }), [inventory, moveIdx]);
 
   // Analisis + BOM + Stok: search PER CARD (bukan global), tanpa potong jumlah.
@@ -753,7 +751,7 @@ export default function Inventory() {
     ? inventory.filter((i) => reservedOf(i).some((r) => r.project === pickProject))
     : [];
 
-  const setF = (k: string, v: string) => setForm((f) => ({ ...f, [k]: v }));
+  const setF = (k: string, v: string | boolean) => setForm((f) => ({ ...f, [k]: v }));
 
   /* Upload foto ke backend (/api/files); mode lokal tetap pakai URL manual. */
   const onPhotoFile = async (f: File | undefined) => {
@@ -808,7 +806,7 @@ export default function Inventory() {
       rack: String(i.rack ?? i.location ?? ""), bin: binOf(i), stock: String(i.stock), minStock: String(i.minStock),
       unit: i.unit, cost: String(i.cost), volume: String(i.volume ?? 0), batch: String(i.batch ?? ""),
       uom2: uom2Of(i), konversi: convOf(i) > 0 ? String(i.konversi) : "",
-      minWh: String(minWhOf(i)), photoUrl: String(i.photoUrl ?? ""), matType: matTypeOf(i),
+      minWh: String(minWhOf(i)), photoUrl: String(i.photoUrl ?? ""), matType: matTypeOf(i), eceran: isEceran(i),
     });
   };
 
@@ -834,6 +832,9 @@ export default function Inventory() {
     const rack = form.rack.trim();
     const bin = form.bin.trim();
     const matType = (MAT_TYPES as readonly string[]).includes(String(form.matType ?? "").trim()) ? String(form.matType).trim() : "habis-pakai";
+    const eceran = (form as Record<string, unknown>).eceran === true || String((form as Record<string, unknown>).eceran ?? "") === "true";
+    if (eceran && (!uom2 || konv <= 0)) { toast(locale === "en" ? "Retail needs UOM2 + conversion" : "Eceran wajib isi satuan eceran + konversi", "info"); return; }
+    if (!eceran && (uom2 || konv > 0)) { toast(locale === "en" ? "Turn on retail to use conversion" : "Aktifkan eceran untuk memakai konversi", "info"); return; }
     const prevMap = (editing?.minStockByWarehouse as Record<string, number> | undefined) ?? {};
     const minWhMap = { ...prevMap };
     if (form.minWh.trim() !== "") minWhMap[form.warehouse] = Number(form.minWh) || 0;
@@ -845,7 +846,7 @@ export default function Inventory() {
           name: form.name.trim(), category: form.category, sku: form.sku.trim(), warehouse: form.warehouse,
           rack, bin, location: rack, minStock: numMin, unit: form.unit,
           cost: numCost, volume: volume || 0, batch: form.batch.trim(),
-          uom2, konversi: konv, minStockByWarehouse: minWhMap, photoUrl: form.photoUrl.trim(), matType,
+          uom2: eceran ? uom2 : "", konversi: eceran ? konv : 0, minStockByWarehouse: minWhMap, photoUrl: form.photoUrl.trim(), matType, eceran,
         });
         toast(S.updatedId.replace("{n}", editing.id));
         setEditing(null);
@@ -861,7 +862,7 @@ export default function Inventory() {
           name: form.name.trim(), category: form.category, sku: form.sku.trim(), warehouse: form.warehouse,
           rack, bin, stock, minStock: numMin, unit: form.unit,
           cost: numCost, location: rack, volume: volume || 0, batch,
-          uom2, konversi: konv, minStockByWarehouse: minWhMap, photoUrl: form.photoUrl.trim(), avgCost: 0, matType,
+          uom2: eceran ? uom2 : "", konversi: eceran ? konv : 0, minStockByWarehouse: minWhMap, photoUrl: form.photoUrl.trim(), avgCost: 0, matType, eceran,
           batches: batch ? [{ batch, qty: stock, date: todayISO() }] : [],
           reserved: [],
         }, { action: "mendaftarkan material", module: "Inventori" });
@@ -921,7 +922,7 @@ export default function Inventory() {
         ? [...batchesOf(fresh), { batch: b, qty, date: todayISO() }]
         : batchesOf(fresh);
       if (b && !fresh.batch) patch.batch = b;
-      /* Average cost: (nilai lama + qty × harga) / stok baru, hanya saat GR ber-harga. */
+      /* Average cost: (nilai lama + qty × harga) / stok baru, hanya saat barang masuk ber-harga. */
       const price = Number(movePrice);
       if (movePrice.trim() !== "" && (!price || price <= 0)) { toast(S.grPriceInvalid, "info"); return; }
       if (price > 0) {
@@ -931,8 +932,8 @@ export default function Inventory() {
       }
     }
     const refBase = moveKind === "in"
-      ? [movePo.trim(), moveRef.trim()].filter(Boolean).join(" · ") || "GR manual · tanpa PO"
-      : (moveRef.trim() || "GI manual");
+      ? [movePo.trim(), moveRef.trim()].filter(Boolean).join(" · ") || "Barang masuk manual · tanpa PO"
+      : (moveRef.trim() || "Barang keluar manual");
     const refNote = useUom2 ? `${refBase} · ${fmtJumlah(raw)} ${uom2Of(fresh)}` : refBase;
     const priceExcl = Number(movePrice) || 0;
     const taxAmt = Number(moveTax) || 0;
@@ -959,10 +960,10 @@ export default function Inventory() {
         // Cabang dari proyek tertaut (cocokkan purpose/ref ke id/vessel proyek) atau fallback global.
         branch: moveBranch(`${movePurpose} ${refNote}`),
       }, { action: moveKind === "in" ? "menerima barang" : "mengeluarkan barang", target: `${fresh.name} × ${qty}`, module: "Inventori" });
-      toast(S.moveSaved.replace("{a}", moveKind === "in" ? "GR" : "GI").replace("{b}", fresh.name).replace("{n}", fmtJumlah(qty)));
+      toast(S.moveSaved.replace("{a}", moveKind === "in" ? "Barang Masuk" : "Barang Keluar").replace("{b}", fresh.name).replace("{n}", fmtJumlah(qty)));
       closeMove();
     } catch {
-      toast(S.moveFailed.replace("{n}", moveKind === "in" ? "GR" : "GI"), "info");
+      toast(S.moveFailed.replace("{n}", moveKind === "in" ? "Barang Masuk" : "Barang Keluar"), "info");
     }
   };
 
@@ -1139,7 +1140,7 @@ export default function Inventory() {
             batch: String(item.batch ?? ""), date, tone: "in",
             supplier, priceExcl: price, tax, total, purpose, pic,
             branch: moveBranch(`${purpose} ${supplier}`),
-          }, { action: "mengimpor GR", target: `${item.name} × ${qty}`, module: "Inventori" });
+          }, { action: "mengimpor barang masuk", target: `${item.name} x ${qty}`, module: "Inventori" });
           ok++;
         } catch (e) {
           fails.push(e instanceof Error ? e.message : S.saveFail);
@@ -1223,7 +1224,7 @@ export default function Inventory() {
             by: ket || `${purpose} (Impor OUT)`, batch: String(item.batch ?? ""),
             date, tone: "out", supplier: "", priceExcl: 0, tax: 0, total: 0, purpose, pic,
             branch: moveBranch(`${purpose} ${ket}`),
-          }, { action: "mengimpor GI", target: `${item.name} × ${qty}`, module: "Inventori" });
+          }, { action: "mengimpor barang keluar", target: `${item.name} x ${qty}`, module: "Inventori" });
           ok++;
         } catch (e) {
           fails.push(e instanceof Error ? e.message : S.saveFail);
@@ -1585,19 +1586,20 @@ export default function Inventory() {
                 >
                   {(draft, setDraft) => (
                     <div className="space-y-3">
-                      <Field label={S.whLbl}>
+                      <Field label={locale === "en" ? "Warehouse (Semua gudang)" : "Gudang (Semua gudang)"}>
                         <select className="input w-full" value={draft.wh} onChange={(e) => setDraft({ ...draft, wh: e.target.value })} aria-label={S.whAria}>
-                          {["Semua", ...warehouses].map((w) => <option key={w} value={w}>{w === "Semua" ? S.allWh : w}</option>)}
+                          {["Semua", ...warehouses].map((w) => <option key={w} value={w}>{w === "Semua" ? "Semua gudang" : w}</option>)}
                         </select>
                       </Field>
-                      <Field label={S.abcLbl}>
+                      <Field label={locale === "en" ? "ABC class (Semua kelas)" : "Kelas ABC (Semua kelas) — A: 70% nilai, B: 20%, C: 10%"}>
                         <select className="input w-full" value={draft.abc} onChange={(e) => setDraft({ ...draft, abc: e.target.value })} aria-label={S.abcAria}>
-                          {["Semua", "A", "B", "C"].map((a) => <option key={a} value={a}>{a === "Semua" ? S.abcAll : S.kelasAbc.replace("{n}", a)}</option>)}
+                          {["Semua", "A", "B", "C"].map((a) => <option key={a} value={a}>{a === "Semua" ? "Semua kelas" : `Kelas ${a}`}</option>)}
                         </select>
                       </Field>
-                      <Field label={locale === "en" ? "Material type" : "Jenis material"}>
+                      <Field label={locale === "en" ? "Material type (All types)" : "Jenis material (Semua jenis)"}>
                         <select className="input w-full" value={draft.mat ?? "Semua"} onChange={(e) => setDraft({ ...draft, mat: e.target.value })}>
-                          {["Semua", ...MAT_TYPES].map((m) => <option key={m} value={m}>{m}</option>)}
+                          <option value="Semua">Semua jenis</option>
+                          {[...MAT_TYPES].map((m) => <option key={m} value={m}>{matLabel(m)}</option>)}
                         </select>
                       </Field>
                       <div>
@@ -1668,7 +1670,7 @@ export default function Inventory() {
                             {reserved > 0 && <p className="text-xs text-amber-600">Reservasi {fmtJumlah(reserved)} {i.unit}</p>}
                           </td>
                           <td className="td"><Badge tone="gray">{i.category}</Badge></td>
-                          <td className="td"><Badge tone={matTone(matTypeOf(i))}>{matTypeOf(i)}</Badge></td>
+                          <td className="td"><Badge tone={matTone(matTypeOf(i))}>{matLabel(matTypeOf(i))}{isEceran(i) ? " · Eceran" : ""}</Badge></td>
                           <td className="td font-semibold text-navy-900">
                             {fmtJumlah(Number(i.stock))} <span className="font-normal text-steel-400">{i.unit}</span>
                             {hasUom2(i) && <p className="text-xs font-normal text-steel-400">≈ {fmtJumlah(qtyInUom2(i))} {u2} (1 {i.unit} = {fmtJumlah(conv)} {u2})</p>}
@@ -1881,8 +1883,8 @@ export default function Inventory() {
                   </ResponsiveContainer>
                 </div>
               </Card>
-              <p className="rounded-lg bg-steel-50 px-3 py-2 text-xs text-steel-500" title={locale === "en" ? "GR = goods received, GI = goods issued" : "GR = barang masuk (Goods Receive), GI = barang keluar (Goods Issue)"}>
-                {locale === "en" ? "GR = goods in (Goods Receive) · GI = goods out (Goods Issue)" : "GR = barang masuk (Goods Receive) · GI = barang keluar (Goods Issue)"}
+              <p className="rounded-lg bg-steel-50 px-3 py-2 text-xs text-steel-500" title={locale === "en" ? "Goods in = stock received · Goods out = stock issued" : "Barang masuk = stok diterima · Barang keluar = stok dikeluarkan"}>
+                {locale === "en" ? "Goods in = stock received · Goods out = stock issued" : "Barang masuk = stok diterima · Barang keluar = stok dikeluarkan"}
               </p>
               <div className="flex flex-wrap items-center gap-2">
                 <label className="text-xs font-medium text-steel-600" htmlFor="mov-wh">{locale === "en" ? "Warehouse" : "Gudang"}</label>
@@ -2083,7 +2085,7 @@ export default function Inventory() {
                 </div>
               </Card>
               <Card className="p-5">
-                <CardHeader title={locale === "en" ? "Delivery Order (DO)" : "Delivery Order (DO)"} subtitle={locale === "en" ? "Number nn/DO-SB/SMD/m/yyyy · print · link to Surat Jalan" : "Nomor nn/DO-SB/SMD/m/yyyy · cetak · taut ke Surat Jalan"} />
+                <CardHeader title={locale === "en" ? "Pick List / Delivery Order" : "Pick List / Delivery Order"} subtitle={locale === "en" ? "Pick = take stock · DO number nn/DO-SB/SMD/m/yyyy · print · link to Surat Jalan" : "Pick = ambil stok · DO nomor nn/DO-SB/SMD/m/yyyy · cetak · taut ke Surat Jalan"} />
                 <div className="mt-3 space-y-3">
                   <FormGrid>
                     <Field label={S.dateLbl}><input type="date" className="input" value={doDate} onChange={(e) => setDoDate(e.target.value)} /></Field>
@@ -2181,7 +2183,7 @@ export default function Inventory() {
                   </div>
                 </Card>
                 <Card className="p-5">
-                  <CardHeader title={S.deadT} subtitle={S.deadS} />
+                  <CardHeader title={locale === "en" ? "Dead stock + reason" : "Dead stock + alasan"} subtitle={locale === "en" ? "Why dead: pick a reason per item" : "Kenapa mati: pilih alasan per item"} />
                   <div className="relative mt-2">
                     <Search className="absolute left-2.5 top-2 h-3.5 w-3.5 text-steel-400" />
                     <input className="input pl-8 !py-1.5 text-xs" placeholder={S.anSearchPh} aria-label={S.anSearchPh} value={deadQ} onChange={(e) => setDeadQ(e.target.value)} />
@@ -2196,7 +2198,10 @@ export default function Inventory() {
                         </div>
                         <span className="flex shrink-0 flex-col items-end gap-1">
                           <Badge tone="red">{locale === "en" ? "Dead" : "Mati"}</Badge>
-                          <span className="text-[11px] text-steel-500">{deadReason(i)}</span>
+                          <select className="input !w-auto !py-1 text-[11px]" value={String((i as Record<string, unknown>).deadReason ?? deadReason(i))} onChange={(e) => { void update("inventory", i.id, { deadReason: e.target.value }); }} aria-label={`Alasan dead stock ${i.name}`}>
+                            {DEAD_REASONS.map((r) => <option key={r} value={r}>{r}</option>)}
+                            {![...DEAD_REASONS].includes(String((i as Record<string, unknown>).deadReason ?? "") as never) && String((i as Record<string, unknown>).deadReason ?? "") ? <option value={String((i as Record<string, unknown>).deadReason)}>{String((i as Record<string, unknown>).deadReason)}</option> : null}
+                          </select>
                         </span>
                       </div>
                     ))}
@@ -2222,7 +2227,7 @@ export default function Inventory() {
                       <div className="min-w-0">
                         <p className="truncate font-medium text-navy-900" title={String(r.item.name)}>{r.item.name}</p>
                         <p className="text-xs text-steel-400">
-                          {r.lastIn ? `GR terakhir ${fmtTanggal(r.lastIn)} · ${r.age} hari lalu` : "Belum pernah ada GR"} · Stok {fmtJumlah(Number(r.item.stock))} {r.item.unit}
+                          {r.lastIn ? `Barang masuk terakhir ${fmtTanggal(r.lastIn)} · ${r.age} hari lalu` : "Belum pernah ada barang masuk"} · Stok {fmtJumlah(Number(r.item.stock))} {r.item.unit}
                         </p>
                       </div>
                       <Badge tone={r.bucket === "0-30 hari" ? "green" : r.bucket === "31-90 hari" ? "blue" : r.bucket === "91-180 hari" ? "amber" : "red"}>{r.bucket}</Badge>
@@ -2250,7 +2255,13 @@ export default function Inventory() {
             </Field>
             <Field label={locale === "en" ? "Material type" : "Jenis material"}>
               <select className="input" value={form.matType} onChange={(e) => setF("matType", e.target.value)}>
-                {MAT_TYPES.map((m) => <option key={m} value={m}>{m}</option>)}
+                {[...MAT_TYPES].map((m) => <option key={m} value={m}>{matLabel(m)}</option>)}
+              </select>
+            </Field>
+            <Field label={locale === "en" ? "Sold retail (conversion)?" : "Dijual eceran (konversi)?"} hint={locale === "en" ? "If yes, fill UOM2 + conversion below" : "Jika ya, isi satuan eceran + konversi di bawah"}>
+              <select className="input" value={String((form as Record<string, unknown>).eceran ?? "false")} onChange={(e) => setF("eceran", e.target.value === "true")}>
+                <option value="false">Tidak — satuan tunggal</option>
+                <option value="true">Ya — eceran + konversi</option>
               </select>
             </Field>
             <Field label={S.whLbl}>
@@ -2340,7 +2351,7 @@ export default function Inventory() {
         </div>
       </Modal>
 
-      {/* Modal GR/GI */}
+      {/* Modal Barang Masuk / Barang Keluar */}
       <Modal open={moveTarget !== null} onClose={closeMove} title={(moveKind === "in" ? S.moveTitleIn : S.moveTitleOut).replace("{n}", moveTarget?.name ?? "")}
         subtitle={moveFresh ? S.moveSub.replace("{a}", fmtJumlah(Number(moveFresh.stock))).replace("{b}", `${fmtJumlah(availOf(moveFresh))} ${moveFresh.unit}${hasUom2(moveFresh) ? ` (≈ ${fmtJumlah(qtyInUom2(moveFresh))} ${uom2Of(moveFresh)})` : ""}`) : ""}
         footer={<><button className="btn-secondary" onClick={closeMove}>{S.cancelBtn}</button><button className="btn-primary" onClick={() => void busy.run("saveMove", saveMove)} disabled={busy.isBusy("saveMove")}>{S.btnSaveTx}</button></>}>
@@ -2402,7 +2413,7 @@ export default function Inventory() {
             </Field>
           )}
           {moveKind === "in" && (
-            <Field label="PO terkait (opsional)" hint="Pilih PO terbuka agar GR terhubung ke PO. Kosong = dicatat tanpa PO.">
+            <Field label="PO terkait (opsional)" hint="Pilih PO terbuka agar penerimaan terhubung ke PO. Kosong = dicatat tanpa PO.">
               <select className="input" value={movePo} onChange={(e) => setMovePo(e.target.value)}>
                 <option value="">— Tanpa PO —</option>
                 {(data.purchaseOrders ?? [])
@@ -2552,7 +2563,7 @@ export default function Inventory() {
         </div>
       </Modal>
 
-      {/* Modal label barcode */}
+      {/* Modal label QR */}
       <Modal open={labelItem !== null} onClose={() => setLabelItem(null)} title={S.labelTitle.replace("{n}", labelItem?.name ?? "")} subtitle={labelItem ? `${labelItem.id} · ${labelItem.sku}` : ""}
         footer={<><button className="btn-secondary" onClick={() => setLabelItem(null)}>{S.closeBtn}</button><button className="btn-primary" onClick={() => window.print()}><Printer className="h-4 w-4" /> {S.printBtn}</button></>}>
         {labelItem && (
@@ -2560,16 +2571,11 @@ export default function Inventory() {
             <p className="text-sm font-bold text-navy-900">{labelItem.name}</p>
             <p className="font-mono text-xs text-steel-500">{labelItem.sku}</p>
             <p className="font-mono text-xs text-steel-500">{rackText(labelItem)}{binOf(labelItem) ? ` · Bin ${binOf(labelItem)}` : ""}</p>
-            <div className="mt-3 flex h-12 items-stretch justify-center gap-0 overflow-hidden" aria-hidden="true">
-              {barcodeBits(String(labelItem.sku)).map((b, idx) => (
-                <div key={idx} style={{ width: b ? 3 : 2, background: b ? "#0b1e33" : "#ffffff" }} />
-              ))}
-            </div>
-            <p className="mt-2 font-mono text-xs tracking-widest text-navy-900">{labelItem.sku}</p>
             <div className="mt-3 flex justify-center" title={S.qrTitle}>
-              <QRCodeSVG value={qrPayloadOf(labelItem) || String(labelItem.id)} size={120} level="M" />
+              <QRCodeSVG value={qrPayloadOf(labelItem) || String(labelItem.id)} size={140} level="M" />
             </div>
             <p className="mt-1 font-mono text-[11px] text-steel-500" title={S.qrTitle}>QR: {qrPayloadOf(labelItem)}</p>
+            <p className="mt-1 text-[11px] text-steel-400">Pindai QR untuk buka detail material</p>
           </div>
         )}
       </Modal>

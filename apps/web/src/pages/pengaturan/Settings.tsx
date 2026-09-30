@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Settings as SettingsIcon, Loader2 } from "lucide-react";
-import { Card, PageHeader, Field, toast } from "../../components/ui";
+import { Card, PageHeader, Field, Tabs, toast, NumInput, useBusy } from "../../components/ui";
 import { useStore } from "../../data/store";
 import { useT } from "../../i18n/LanguageContext";
 import { n_roles } from "../../i18n/n_roles";
@@ -52,6 +52,7 @@ const CONST_INFO: Record<string, ConstInfo> = {
 };
 
 export default function Settings() {
+  const busy = useBusy();
   const { locale } = useT();
   const S = n_roles[locale];
   const { data, update, log, backendMode, backendError, resync } = useStore();
@@ -63,6 +64,21 @@ export default function Settings() {
   const [setupToken, setSetupToken] = useState("");
   const [seeding, setSeeding] = useState(false);
   const [seedSecs, setSeedSecs] = useState(0);
+  const [tab, setTab] = useState("Umum");
+
+  /* Regroup bertab berdasarkan prefix key (abaikan group bawaan):
+     WAREHOUSE/CAP/GUDANG → Gudang & Kapasitas;
+     PPN/PPh/TAX/HARGA/RATE → Pajak & Angka;
+     WHATIF_* → Lanjutan; sisanya → Umum. */
+  const tabFor = (key: string): string => {
+    const k = String(key ?? "").toUpperCase();
+    if (k.startsWith("WHATIF_")) return "Lanjutan";
+    if (k.startsWith("WAREHOUSE") || k.startsWith("CAP") || k.startsWith("GUDANG")) return "Gudang & Kapasitas";
+    if (k.startsWith("PPN") || k.startsWith("PPH") || k.startsWith("TAX") || k.startsWith("HARGA") || k.startsWith("RATE")) return "Pajak & Angka";
+    return "Umum";
+  };
+  const TABS = ["Umum", "Gudang & Kapasitas", "Pajak & Angka", "Lanjutan"] as const;
+  const rowsFor = (t: string) => (data.settings ?? []).filter((s) => tabFor(String(s.key ?? "")) === t);
 
   // Timer jujur: endpoint one-shot tanpa progress event, jadi tampilkan
   // spinner + detik berjalan (BUKAN persen palsu).
@@ -91,8 +107,6 @@ export default function Settings() {
       setSeeding(false);
     }
   };
-
-  const groups = [...new Set((data.settings ?? []).map((s) => String(s.group ?? S.otherGroup)))]
 
   const saveToggle = async (id: string, key: string, on: boolean) => {
     if (!canWrite) { toast(S.noWriteConst, "info"); return; }
@@ -177,57 +191,81 @@ export default function Settings() {
         <h2 className="text-base font-bold text-navy-900">{S.bizConsts}</h2>
         <p className="text-xs text-steel-500">{S.bizConstsSub}</p>
       </div>
-      {groups.map((g) => (
-        <Card key={g} className="mb-4 p-4">
-          <h3 className="mb-3 text-sm font-semibold text-navy-900">{g}</h3>
-          {g === "Pajak" && (
+      <Tabs tabs={[...TABS]} active={tab} onChange={setTab} />
+      {(() => {
+        const rows = rowsFor(tab);
+        const isLanjutan = tab === "Lanjutan";
+        const normal = rows.filter((s) => !String(s.key ?? "").startsWith("WHATIF_"));
+        const advanced = rows.filter((s) => String(s.key ?? "").startsWith("WHATIF_"));
+        const renderRow = (s: (typeof rows)[number]) => (
+          <div key={s.id} className="rounded-xl border border-steel-100 p-3">
+            {isToggleKey(String(s.key)) ? (
+              <Field label={String(s.label ?? s.key)} hint={S.toggle3dHint}>
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={Number(s.value) === 1}
+                  disabled={!canWrite || busy.isBusy(`tgl-${s.id}`)}
+                  onClick={() => void busy.run(`tgl-${s.id}`, () => saveToggle(String(s.id), String(s.key), Number(s.value) !== 1))}
+                  className={`relative h-6 w-11 shrink-0 rounded-full transition-colors ${Number(s.value) === 1 ? "bg-ocean-500" : "bg-steel-200"}`}
+                >
+                  <span className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-all ${Number(s.value) === 1 ? "left-[22px]" : "left-0.5"}`} />
+                </button>
+              </Field>
+            ) : (
+              <Field label={String(s.label ?? s.key)}>
+                <div className="flex gap-2">
+                  <NumInput
+                    min={String(s.key ?? "").startsWith("WHATIF_") ? -20 : 0}
+                    className="input"
+                    value={drafts[s.id] ?? String(s.value)}
+                    onChange={(e) => setDrafts((d) => ({ ...d, [s.id]: e.target.value }))}
+                  />
+                  <button className="btn-secondary shrink-0 text-xs" disabled={!canWrite || busy.isBusy(`save-${s.id}`)} onClick={() => void busy.run(`save-${s.id}`, () => save(s.id, String(s.key)))}>{S.save}</button>
+                </div>
+              </Field>
+            )}
+            <p className="mt-1 font-mono text-[11px] text-steel-400">{String(s.key)} · {S.activeState}: {fmtJumlah(Number(s.value))}</p>
+            <p className="text-[11px] leading-relaxed text-steel-500">
+              {(() => {
+                const info = CONST_INFO[String(s.key)];
+                if (!info) return locale === "en" ? "Business constant used by app formulas." : "Konstanta bisnis yang dipakai rumus aplikasi.";
+                return locale === "en" ? `${info.impact} ${info.example}` : `${info.dampak} ${info.contoh}`;
+              })()}
+            </p>
+          </div>
+        );
+        return (
+        <Card className="mb-4 mt-3 p-4">
+          <h3 className="mb-1 text-sm font-semibold text-navy-900">{tab} ({rows.length})</h3>
+          {tab === "Pajak & Angka" && (
             <p className="mb-3 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800">
               {S.taxNote}
             </p>
           )}
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
-            {(data.settings ?? []).filter((s) => String(s.group ?? S.otherGroup) === g).map((s) => (
-              <div key={s.id} className="rounded-xl border border-steel-100 p-3">
-                {isToggleKey(String(s.key)) ? (
-                  <Field label={String(s.label ?? s.key)} hint={S.toggle3dHint}>
-                    <button
-                      type="button"
-                      role="switch"
-                      aria-checked={Number(s.value) === 1}
-                      disabled={!canWrite}
-                      onClick={() => saveToggle(String(s.id), String(s.key), Number(s.value) !== 1)}
-                      className={`relative h-6 w-11 shrink-0 rounded-full transition-colors ${Number(s.value) === 1 ? "bg-ocean-500" : "bg-steel-200"}`}
-                    >
-                      <span className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-all ${Number(s.value) === 1 ? "left-[22px]" : "left-0.5"}`} />
-                    </button>
-                  </Field>
-                ) : (
-                <Field label={String(s.label ?? s.key)}>
-                  <div className="flex gap-2">
-                    <input
-                      type="number"
-                      min={0}
-                      className="input"
-                      value={drafts[s.id] ?? String(s.value)}
-                      onChange={(e) => setDrafts((d) => ({ ...d, [s.id]: e.target.value }))}
-                    />
-                    <button className="btn-secondary shrink-0 text-xs" disabled={!canWrite} onClick={() => save(s.id, String(s.key))}>{S.save}</button>
-                  </div>
-                </Field>
-                )}
-                <p className="mt-1 font-mono text-[11px] text-steel-400">{String(s.key)} · {S.activeState}: {fmtJumlah(Number(s.value))}</p>
-                <p className="mt-1 text-[11px] leading-relaxed text-steel-500">
-                  {(() => {
-                    const info = CONST_INFO[String(s.key)];
-                    if (!info) return locale === "en" ? "Business constant used by app formulas." : "Konstanta bisnis yang dipakai rumus aplikasi.";
-                    return locale === "en" ? `${info.impact} ${info.example}` : `${info.dampak} ${info.contoh}`;
-                  })()}
-                </p>
+          {rows.length === 0 && (
+            <p className="text-xs text-steel-400">
+              {locale === "en" ? "No constants in this group yet." : "Belum ada konstanta di grup ini."}
+            </p>
+          )}
+          {normal.length > 0 && (
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
+              {normal.map(renderRow)}
+            </div>
+          )}
+          {advanced.length > 0 && (
+            <details className="mt-3 rounded-xl border border-steel-200 bg-surface px-3 py-2" open={isLanjutan}>
+              <summary className="cursor-pointer text-xs font-semibold text-navy-900">
+                {locale === "en" ? "Advanced mode" : "Mode Advanced"} ({advanced.length} {locale === "en" ? "WHATIF constants" : "konstanta simulasi WHATIF"})
+              </summary>
+              <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                {advanced.map(renderRow)}
               </div>
-            ))}
-          </div>
+            </details>
+          )}
         </Card>
-      ))}
+        );
+      })()}
     </div>
   );
 }

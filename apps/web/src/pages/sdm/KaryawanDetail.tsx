@@ -17,6 +17,7 @@ import {
   toggleSort,
   SecureImg,
   FileUploadButton,
+  useBusy,
 } from "../../components/ui";
 import type { SortState } from "../../components/ui";
 import { useStore } from "../../data/store";
@@ -104,6 +105,7 @@ function normCerts(e: StoreItem): EmpCert[] {
 }
 
 export default function KaryawanDetail() {
+  const busy = useBusy();
   const { id } = useParams();
   const { data, add, update, log } = useStore();
   const { locale } = useT();
@@ -289,7 +291,7 @@ export default function KaryawanDetail() {
           </div>
           <div className="mt-3 flex gap-2">
             <input className="input flex-1" value={skillInput} onChange={(e) => setSkillInput(e.target.value)} placeholder={S.phSkill} />
-            <button className="btn-secondary whitespace-nowrap text-xs" onClick={saveSkill}>{S.btnTambah}</button>
+            <button className="btn-secondary whitespace-nowrap text-xs" onClick={() => void busy.run("saveSkill", saveSkill)} disabled={busy.isBusy("saveSkill")}>{S.btnTambah}</button>
           </div>
         </Card>
 
@@ -508,7 +510,7 @@ export default function KaryawanDetail() {
         footer={
           <>
             <button className="btn-secondary" onClick={() => setShowCert(false)}>{S.btnBatal}</button>
-            <button className="btn-primary" onClick={saveCert}>{S.btnSimpan}</button>
+            <button className="btn-primary" onClick={() => void busy.run("saveCert", saveCert)} disabled={busy.isBusy("saveCert")}>{S.btnSimpan}</button>
           </>
         }
       >
@@ -525,7 +527,7 @@ export default function KaryawanDetail() {
         footer={
           <>
             <button className="btn-secondary" onClick={() => setShowDoc(false)}>{S.btnBatal}</button>
-            <button className="btn-primary" onClick={saveDoc}>{S.btnSimpan}</button>
+            <button className="btn-primary" onClick={() => void busy.run("saveDoc", saveDoc)} disabled={busy.isBusy("saveDoc")}>{S.btnSimpan}</button>
           </>
         }
       >

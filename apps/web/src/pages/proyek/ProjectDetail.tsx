@@ -41,7 +41,7 @@ import { getSetting } from "../../utils/settings";
 import { sbInvoiceMath, PPN_INVOICE_DEFAULT, PPH_JASA_DEFAULT } from "../../utils/sb";
 import { exportExcel } from "../../utils/export";
 
-const STATUS = ["Dalam Proses", "Sedang Berjalan", "Terlambat", "Tertunda", "Selesai"];
+const STATUS = ["Sedang Berjalan", "Tertunda", "Batal", "Selesai", "Terlambat"];
 const RISK_LEVEL = ["Rendah", "Sedang", "Tinggi"];
 const RISK_STATUS = ["Aktif", "Dipantau", "Tertutup"];
 const DESIGN_STAGE_NAMES = ["Basic Design", "Detail Design", "Class Approval", "Production Drawing"];
@@ -63,11 +63,18 @@ function docUrlOf(d: StoreItem): string {
 
 function docBaseName(d: StoreItem, url: string): string {
   const raw = String((d.fileName ?? "") as unknown as string).trim();
-  if (raw && raw !== "-" && !/^(https?:|blob:|data:|\/)/i.test(raw)) return raw;
+  const urlExt = docExtOf(url);
+  const withExt = (name: string): string => {
+    if (!urlExt) return name;
+    // Pertahankan ekstensi asli: bila nama tanpa ekstensi, tempel dari URL.
+    if (/\.[a-z0-9]+$/i.test(name)) return name;
+    return `${name}.${urlExt}`;
+  };
+  if (raw && raw !== "-" && !/^(https?:|blob:|data:|\/)/i.test(raw)) return withExt(raw);
   const clean = url.split("?")[0].split("#")[0];
   const base = clean.split("/").pop() ?? "";
   if (base) return decodeURIComponent(base);
-  return String(d.title ?? d.id ?? "dokumen");
+  return withExt(String(d.title ?? d.id ?? "dokumen"));
 }
 
 function docExtOf(url: string): string {
@@ -104,10 +111,12 @@ function DocPreview({ url, title }: { url: string; title: string }) {
   if (!url) return <p className="text-xs text-steel-400">Belum ada lampiran file.</p>;
   const ext = docExtOf(url);
   if (["png", "jpg", "jpeg", "gif", "webp", "bmp", "svg"].includes(ext)) {
-    return <SecureImg src={url} alt={title} name={title} className="max-h-48 w-full rounded-lg border border-steel-100 object-contain" />;
+    // Thumbnail inline di list: image max-h-24.
+    return <SecureImg src={url} alt={title} name={title} className="max-h-24 w-full rounded-lg border border-steel-100 object-contain" />;
   }
   if (ext === "pdf") {
-    return <iframe src={absUrl(url)} title={title} className="h-64 w-full rounded-lg border border-steel-100" />;
+    // Thumbnail inline di list: pdf iframe h-32 (bukan hanya di modal).
+    return <iframe src={absUrl(url)} title={title} className="h-32 w-full rounded-lg border border-steel-100" />;
   }
   if (ext === "csv" || ext === "txt") {
     return <DocTextPreview url={url} />;
@@ -120,8 +129,9 @@ export default function ProjectDetail() {
   const { locale } = useT();
   const S = n_prj[locale];
   const { id } = useParams();
-  const { data, update, add, wbsFor, setWbs, teamFor, setTeam, log } = useStore();
+  const { data, update, add, wbsFor, setWbs, teamFor, setTeam, log, resync } = useStore();
   const project = data.projects.find((p) => p.id === id) ?? data.projects[0];
+  useEffect(() => { void resync().catch(() => undefined); }, [resync]);
   const [tab, setTab] = useState("Ringkasan");
 
   const [showScope, setShowScope] = useState(false);
@@ -1552,8 +1562,8 @@ export default function ProjectDetail() {
         <div className="space-y-3">
           <Field label={S.detStageName}><input className="input" value={wbsForm.task} onChange={(e) => setWbsForm({ ...wbsForm, task: e.target.value })} /></Field>
           <FormGrid>
-            <Field label={S.detStart}><input type="month" className="input" placeholder={S.detWbsStartPh} value={wbsForm.start === "-" ? "" : wbsForm.start} onChange={(e) => setWbsForm({ ...wbsForm, start: e.target.value })} /></Field>
-            <Field label={S.detEnd}><input type="month" className="input" placeholder={S.detWbsEndPh} value={wbsForm.end === "-" ? "" : wbsForm.end} onChange={(e) => setWbsForm({ ...wbsForm, end: e.target.value })} /></Field>
+            <Field label={S.detStart}><input type="date" className="input" placeholder={S.detWbsStartPh} value={wbsForm.start === "-" ? "" : wbsForm.start} onChange={(e) => setWbsForm({ ...wbsForm, start: e.target.value })} /></Field>
+            <Field label={S.detEnd}><input type="date" className="input" placeholder={S.detWbsEndPh} value={wbsForm.end === "-" ? "" : wbsForm.end} onChange={(e) => setWbsForm({ ...wbsForm, end: e.target.value })} /></Field>
             <Field label={S.detWeight}><NumInput className="input" value={wbsForm.weight} onChange={(e) => setWbsForm({ ...wbsForm, weight: e.target.value })} /></Field>
             <Field label={S.detProgField}><NumInput className="input" value={wbsForm.progress} onChange={(e) => setWbsForm({ ...wbsForm, progress: e.target.value })} /></Field>
           </FormGrid>
@@ -1612,6 +1622,12 @@ export default function ProjectDetail() {
             <input className="input" value={docFile} onChange={(e) => setDocFile(e.target.value)} placeholder={S.detDocFilePh} />
           </Field>
           <FileUploadButton label={S.detAttachUpload} onUploaded={(url) => setDocFile(url)} />
+          {docFile.trim() !== "" && (
+            <div className="rounded-xl border border-steel-100 bg-surface p-2">
+              <p className="mb-1 text-[11px] font-semibold text-steel-500">Pratinjau sebelum simpan</p>
+              <DocPreview url={docFile.trim()} title={docTitle.trim() || "dokumen-baru"} />
+            </div>
+          )}
         </div>
       </Modal>
 

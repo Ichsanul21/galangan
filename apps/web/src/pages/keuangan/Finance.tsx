@@ -3516,7 +3516,7 @@ export default function Finance() {
         onConfirm={async () => {
           if (!delCoa) return;
           const usedBy = findUsages(data, "coa", String(delCoa.id));
-          if (usedBy.length > 0) { toast(`Hapus diblokir - ${delCoa.kode} dipakai di: ${usedBy.join(", ")}`, "info"); return; }
+            if (usedBy.length > 0) { toast(`Hapus diblokir - ${delCoa.kode} dipakai di: ${usedBy.join(", ")}`, "info"); log("gagal hapus akun", `${delCoa.kode} · masih dipakai di: ${usedBy.join(", ")}`, "Keuangan"); return; }
           try { await remove("coa", String(delCoa.id)); log("menghapus akun", String(delCoa.kode), "Keuangan"); toast(S.coaDeleted.replace("{a}", String(delCoa.kode))); setDelCoa(null); }
           catch (e) { toast(e instanceof Error ? e.message : S.coaDeleteFail, "info"); }
         }}
@@ -3537,7 +3537,7 @@ export default function Finance() {
         onConfirm={async () => {
           if (!delAsset) return;
           const usedBy = findUsages(data, "assets", String(delAsset.id));
-          if (usedBy.length > 0) { toast(`Hapus diblokir - ${delAsset.nama} dipakai di: ${usedBy.join(", ")}`, "info"); return; }
+            if (usedBy.length > 0) { toast(`Hapus diblokir - ${delAsset.nama} dipakai di: ${usedBy.join(", ")}`, "info"); log("gagal hapus aset", `${delAsset.nama} · masih dipakai di: ${usedBy.join(", ")}`, "Keuangan"); return; }
           try { await remove("assets", String(delAsset.id)); log("menghapus aset", String(delAsset.nama), "Keuangan"); toast(S.assetDeleted.replace("{a}", String(delAsset.nama))); setDelAsset(null); }
           catch (e) { toast(e instanceof Error ? e.message : S.assetDeleteFail, "info"); }
         }}
@@ -3557,9 +3557,9 @@ export default function Finance() {
         onCancel={() => setDelJu(null)}
         onConfirm={async () => {
           if (!delJu) return;
-          if (String(delJu.status) !== "Draft") { toast("Hanya jurnal Draft yang bisa dihapus", "info"); return; }
-          const usedBy = findUsages(data, "journals", String(delJu.id));
-          if (usedBy.length > 0) { toast(`Hapus diblokir - dipakai di: ${usedBy.join(", ")}`, "info"); return; }
+            if (String(delJu.status) !== "Draft") { toast("Hanya jurnal Draft yang bisa dihapus", "info"); log("gagal hapus jurnal", `${delJu.dokumen ?? delJu.id} · status ${String(delJu.status)} (hanya Draft bisa dihapus)`, "Keuangan"); return; }
+            const usedBy = findUsages(data, "journals", String(delJu.id));
+            if (usedBy.length > 0) { toast(`Hapus diblokir - dipakai di: ${usedBy.join(", ")}`, "info"); log("gagal hapus jurnal", `${delJu.dokumen ?? delJu.id} · masih dipakai di: ${usedBy.join(", ")}`, "Keuangan"); return; }
           try { await remove("journals", String(delJu.id)); log("menghapus jurnal", String(delJu.dokumen ?? delJu.id), "Keuangan"); toast(`Jurnal ${String(delJu.dokumen ?? delJu.id)} dihapus`); setDelJu(null); }
           catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); }
         }}

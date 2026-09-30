@@ -939,10 +939,10 @@ export function usePager(total: number, defaultSize = 100): {
   const slice = <T,>(rows: T[]): T[] => rows.slice((safe - 1) * size, safe * size);
   const reset = () => setPage(1);
   const go = (p: number) => setPage(Math.min(Math.max(1, p), pages));
-  const bar = total <= size ? null : (
+  const bar = (
     <div className="flex flex-wrap items-center gap-2 py-2 text-xs text-steel-500">
       <span>
-        {(safe - 1) * size + 1}-{Math.min(safe * size, total)} dari {total}
+        {total === 0 ? "0 dari 0" : `${(safe - 1) * size + 1}-${Math.min(safe * size, total)} dari ${total}`}
       </span>
       <span className="ml-auto flex items-center gap-1">
         <button className="btn-secondary px-2 py-1" disabled={safe <= 1} onClick={() => go(1)}>«</button>
@@ -968,9 +968,18 @@ export function usePager(total: number, defaultSize = 100): {
 
 /* ============ N U M I N P U T ============ */
 
+/** Buang nol di depan agar tidak nyangkut: "0" → "" (user ketik ulang bersih),
+ *  "007" → "7". Desimal ("0.5") tetap utuh. */
+function stripLeadingZero(v: string): string {
+  if (!v) return v;
+  if (v === "0") return "";
+  if (v.includes(".")) return v;
+  return v.replace(/^0+(?=\d)/, "");
+}
+
 /** Input angka terkunci: blokir e/E/+/- di keyboard (+ titik/koma bila integer).
- * Validasi Number() di handler tetap sebagai jaring kedua. */
-export function NumInput({ integer = false, allowNegative = false, onKeyDown, inputMode, ...rest }: InputHTMLAttributes<HTMLInputElement> & { integer?: boolean; allowNegative?: boolean }) {
+ * Nol di depan dibersihkan otomatis. Validasi Number() di handler tetap jaring kedua. */
+export function NumInput({ integer = false, allowNegative = false, onKeyDown, onChange, inputMode, ...rest }: InputHTMLAttributes<HTMLInputElement> & { integer?: boolean; allowNegative?: boolean }) {
   const block = (e: ReactKeyboardEvent<HTMLInputElement>) => {
     if (["e", "E", "+", "-"].includes(e.key) && !(e.key === "-" && allowNegative)) {
       e.preventDefault();
@@ -982,11 +991,18 @@ export function NumInput({ integer = false, allowNegative = false, onKeyDown, in
     }
     onKeyDown?.(e);
   };
+  const clean = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const el = e.currentTarget;
+    const next = stripLeadingZero(el.value);
+    if (next !== el.value) el.value = next;
+    onChange?.(e);
+  };
   return (
     <input
       type="number"
       inputMode={inputMode ?? (integer ? "numeric" : "decimal")}
       onKeyDown={block}
+      onChange={clean}
       {...rest}
     />
   );

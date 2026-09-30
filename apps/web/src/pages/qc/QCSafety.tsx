@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Plus, ShieldCheck, AlertTriangle, Siren, Award, Send, Search } from "lucide-react";
 import { ComposedChart, Line, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 import { Card, CardHeader, PageHeader, Badge, KpiCard, Tabs, StatusBadge, Donut, ChartTooltip, Modal, Field, FormGrid, ConfirmModal, SortTh, toggleSort, sortRows, usePager, toast,
-  NumInput, FlowStrip, SecureImg, FileUploadButton,
+  NumInput, FlowStrip, SecureImg, FileUploadButton, useBusy,
 } from "../../components/ui";
 import type { SortState } from "../../components/ui";
 import { useStore, type StoreItem } from "../../data/store";
@@ -113,11 +113,13 @@ function qcTrailingLabels(n: number, locale: string): string[] {
 }
 
 export default function QCSafety() {
-  const { data, add, update, remove, log, branch, inBranch } = useStore();
+  const busy = useBusy();
+  const { data, add, update, remove, log, branch, inBranch, resync } = useStore();
   const modAlert = useModuleAlert("qc");
   const flash = useNotifFlash();
   const notified = useMemo(() => new Set(modAlert.items.map((a) => a.rowId)), [modAlert.items]);
   const { user } = useAuth();
+  useEffect(() => { void resync().catch(() => undefined); }, [resync]);
   const { locale } = useT();
   const S = n_qc[locale];
   const ncrList = inBranch(data.ncr);
@@ -200,10 +202,12 @@ export default function QCSafety() {
 
   // Drawing
   const [showDrw, setShowDrw] = useState(false);
-  const [drwForm, setDrwForm] = useState({ project: "", title: "", holder: "", branch: "", fileUrl: "" });
+  const [drwForm, setDrwForm] = useState({ project: "", title: "", holder: "", branch: "", fileUrl: "", kind: "Shop Drawing" });
   const [expandedDrw, setExpandedDrw] = useState<string | null>(null);
+  const [drwStatusF, setDrwStatusF] = useState("Semua");
+  const [drwKindF, setDrwKindF] = useState("Semua");
   const [drwPreview, setDrwPreview] = useState<StoreItem | null>(null);
-  const [certPreview, setCertPreview] = useState<{ vessel: string; name: string; expires: string; days: number | null } | null>(null);
+  const [certPreview, setCertPreview] = useState<{ vessel: string; name: string; expires: string; days: number | null; fileUrl?: string } | null>(null);
   const [showTransmit, setShowTransmit] = useState(false);
   const [transmitForm, setTransmitForm] = useState({ to: "", date: todayISO(), ids: [] as string[] });
 
@@ -256,11 +260,12 @@ export default function QCSafety() {
   ).map(([name, value], i) => ({ name, value, color: NCR_COLORS[i % NCR_COLORS.length] }));
 
   const vesselCerts = vessels.flatMap((v) =>
-    (v.certificates ?? []).map((c: { name: string; expires: string }) => ({
+    (v.certificates ?? []).map((c: { name: string; expires: string; fileUrl?: string }) => ({
       vessel: String(v.name),
       name: String(c.name),
       expires: String(c.expires),
       days: daysUntil(c.expires),
+      fileUrl: c.fileUrl ? String(c.fileUrl) : undefined,
     })),
   );
   const certAttention = vesselCerts
@@ -621,13 +626,13 @@ export default function QCSafety() {
     const created = await add("drawings", {
       project: drwForm.project, title: drwForm.title.trim(), revision: "A",
       status: "Diajukan", updated: todayISO(), holder: drwForm.holder.trim(),
-      branch: branchOf(drwForm.branch),
+      branch: branchOf(drwForm.branch), kind: drwForm.kind,
       ...(drwForm.fileUrl.trim() ? { fileUrl: drwForm.fileUrl.trim() } : {}),
       history: [{ revision: "A", date: todayISO(), holder: drwForm.holder.trim(), status: "Diajukan" }],
     }, { action: "meregistrasi drawing", module: "QC" });
     toast(S.tDrwDaftar.replace("{n}", created.id));
     setShowDrw(false);
-    setDrwForm({ project: "", title: "", holder: "", branch: "", fileUrl: "" });
+    setDrwForm({ project: "", title: "", holder: "", branch: "", fileUrl: "", kind: "Shop Drawing" });
     } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); }
   };
 
@@ -887,7 +892,7 @@ export default function QCSafety() {
                   </div>
                 </Card>
                 <Card className="lg:col-span-2">
-                  <CardHeader title={S.cardInspT} subtitle={S.cardInspS} />
+                  <CardHeader title={S.cardInspT} subtitle={`${S.cardInspS} · Per bulan (cth Sep 2026) — bulan berjalan paling kanan`} />
                   <div className="h-44 p-4 pt-0">
                     <ResponsiveContainer width="100%" height="100%">
                       <ComposedChart data={itpChart} margin={{ top: 5, right: 5, left: -20, bottom: 0 }}>
@@ -909,6 +914,7 @@ export default function QCSafety() {
             <div className="space-y-3">
               <div className="rounded-xl bg-surface p-2.5">
                 <FlowStrip steps={NCR_FLOW} current={furthestNcr} ariaLabel={locale === "en" ? "NCR flow" : "Alur NCR"} />
+                <p className="mt-1.5 text-[11px] text-steel-500">Untuk ke Tertutup butuh: CAPA + PIC + Due + Verifier (jika Critical)</p>
               </div>
               <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-surface px-3 py-2 text-sm">
                 <p className="text-steel-600">
@@ -939,7 +945,7 @@ export default function QCSafety() {
                       <Badge tone={ncrTone[n.status] ?? "gray"}>{n.status}</Badge>
                       <button className="btn-secondary text-xs" onClick={() => openDetail(n)}>{S.btnDetail}</button>
                       {n.status !== "Tertutup" ? (
-                        <button className="btn-primary text-xs" onClick={() => advanceNcr(n)}>{S.btnProses}</button>
+                        <button className="btn-primary text-xs" onClick={() => void busy.run(`ncr-${n.id}`, () => advanceNcr(n))} disabled={busy.isBusy(`ncr-${n.id}`)}>{S.btnProses}</button>
                       ) : (
                         <button className="btn-secondary text-xs" onClick={() => { setReopenNcr(n); setReopenReason(""); }}>{S.btnBukaKembali}</button>
                       )}
@@ -953,34 +959,61 @@ export default function QCSafety() {
 
           {tab === "Drawing" && (
             <div className="space-y-3">
-              <div className="flex flex-wrap justify-end gap-2">
-                <button className="btn-secondary text-xs" onClick={() => setShowTransmit(true)}><Send className="h-3.5 w-3.5" /> {S.btnTransmittal}</button>
-                <button className="btn-secondary text-xs" onClick={() => setShowDrw(true)}><Plus className="h-3.5 w-3.5" /> {S.btnRegister}</button>
+              <div className="flex flex-wrap items-center gap-2">
+                <label className="flex items-center gap-1.5 text-xs text-steel-500">
+                  <span className="whitespace-nowrap">Status:</span>
+                  <select className="input w-auto py-1.5 text-xs" value={drwStatusF} onChange={(e) => setDrwStatusF(e.target.value)}>
+                    {["Semua", "Diajukan", "Disetujui", "Distribusi"].map((s) => <option key={s} value={s}>{s === "Semua" ? "Semua status" : s}</option>)}
+                  </select>
+                </label>
+                <label className="flex items-center gap-1.5 text-xs text-steel-500">
+                  <span className="whitespace-nowrap">Jenis:</span>
+                  <select className="input w-auto py-1.5 text-xs" value={drwKindF} onChange={(e) => setDrwKindF(e.target.value)}>
+                    <option value="Semua">Semua jenis</option>
+                    {["Shop Drawing", "As-Built Drawing", "Class Submission"].map((k) => <option key={k} value={k}>{k}</option>)}
+                  </select>
+                </label>
+                <span className="ml-auto flex flex-wrap gap-2">
+                  <button className="btn-secondary text-xs" onClick={() => setShowTransmit(true)}><Send className="h-3.5 w-3.5" /> {S.btnTransmittal}</button>
+                  <button className="btn-secondary text-xs" onClick={() => setShowDrw(true)}><Plus className="h-3.5 w-3.5" /> {S.btnRegister}</button>
+                </span>
               </div>
-              {drawings.map((d) => (
+              {drawings.filter((d) => (drwStatusF === "Semua" || String(d.status) === drwStatusF) && (drwKindF === "Semua" || String(d.kind ?? "Shop Drawing") === drwKindF)).length === 0 && (
+                <p className="rounded-lg bg-steel-50 px-3 py-2 text-xs text-steel-500">Tidak ada drawing pada filter ini.</p>
+              )}
+              {drawings.filter((d) => (drwStatusF === "Semua" || String(d.status) === drwStatusF) && (drwKindF === "Semua" || String(d.kind ?? "Shop Drawing") === drwKindF)).map((d) => (
                 <Card key={d.id} className="p-4">
                   <div className="flex flex-wrap items-start justify-between gap-2">
                     <div className="min-w-0">
                       <div className="flex flex-wrap items-center gap-2">
                         <p className="font-semibold text-navy-900 font-mono">{d.id}</p>
                         <Badge tone="navy">{S.revN.replace("{n}", String(d.revision))}</Badge>
+                        <Badge tone="blue">{String(d.kind ?? "Shop Drawing")}</Badge>
                         <StatusBadge status={String(d.status)} />
                       </div>
                       <p className="mt-1 text-sm text-steel-700">{d.title}</p>
                       <p className="text-xs text-steel-500 mt-0.5">{S.drawingMeta.replace("{a}", String(d.project)).replace("{b}", String(d.holder)).replace("{c}", fmtTanggal(String(d.updated)))}</p>
                       {d.fileUrl ? (
-                        <div className="mt-1.5 flex flex-wrap items-center gap-2">
-                          {/\.(png|jpe?g|gif|webp)(\?|$)/i.test(String(d.fileUrl)) && (
-                            <SecureImg src={String(d.fileUrl)} alt={String(d.title)} name={String(d.title)} className="h-12 w-16 rounded-lg border border-steel-200 object-cover" />
+                        <div className="mt-1.5 space-y-1.5">
+                          {/\.(png|jpe?g|gif|webp)(\?|$)/i.test(String(d.fileUrl)) ? (
+                            <button type="button" className="block" onClick={() => setDrwPreview(d)} aria-label={`Pratinjau dokumen ${String(d.title)}`}>
+                              <SecureImg src={String(d.fileUrl)} alt={String(d.title)} name={String(d.title)} className="h-28 w-full max-w-sm rounded-lg border border-steel-200 object-contain" />
+                            </button>
+                          ) : /\.pdf(\?|$)/i.test(String(d.fileUrl)) ? (
+                            <iframe title={`Dokumen ${String(d.title)}`} src={String(d.fileUrl)} className="h-40 w-full max-w-lg rounded-lg border border-steel-200" />
+                          ) : (
+                            <p className="text-[11px] text-steel-400">Pratinjau hanya untuk PDF/gambar — format lain: unduh file.</p>
                           )}
-                          <button className="text-xs font-semibold text-ocean-600 underline" onClick={() => setDrwPreview(d)}>
-                            {locale === "en" ? "Preview document" : "Pratinjau dokumen"}
-                          </button>
-                          <a className="max-w-64 truncate font-mono text-[11px] text-steel-400 underline" href={String(d.fileUrl)} target="_blank" rel="noreferrer" title={String(d.fileUrl)}>
-                            {String(d.fileUrl)}
-                          </a>
+                          <div className="flex flex-wrap items-center gap-2">
+                            <button className="text-xs font-semibold text-ocean-600 underline" onClick={() => setDrwPreview(d)}>
+                              {locale === "en" ? "Preview document" : "Pratinjau dokumen"}
+                            </button>
+                            <a className="text-xs font-semibold text-steel-500 underline" href={String(d.fileUrl)} target="_blank" rel="noreferrer">Unduh</a>
+                          </div>
                         </div>
-                      ) : null}
+                      ) : (
+                        <p className="mt-1 text-[11px] text-steel-400">Belum ada dokumen — tekan Edit lalu unggah PDF/gambar.</p>
+                      )}
                     </div>
                     <div className="flex flex-wrap items-center gap-2">
                       <button className="btn-secondary text-xs" onClick={() => setExpandedDrw(expandedDrw === d.id ? null : d.id)}>
@@ -1086,7 +1119,7 @@ export default function QCSafety() {
                   ))}
                 </div>
                 <p className="mt-2 text-xs text-steel-500">{S.ppeLengkap.replace("{a}", String(PPE_ITEMS.filter((i) => ppeChecked[i]).length)).replace("{b}", String(PPE_ITEMS.length))}</p>
-                <button className="btn-primary mt-2 text-xs" onClick={savePpeCheck}>{S.btnSimpanPpe}</button>
+                <button className="btn-primary mt-2 text-xs" onClick={() => void busy.run("savePpeCheck", savePpeCheck)} disabled={busy.isBusy("savePpeCheck")}>{S.btnSimpanPpe}</button>
               </Card>
 
               <Card className="p-4">
@@ -1119,7 +1152,7 @@ export default function QCSafety() {
                   ))}
                 </div>
                 <p className="mt-2 text-sm text-steel-600">{S.auditSkor.split("{a}%")[0]}<span className="font-semibold text-navy-900">{auditScore}%</span>{S.auditSkor.split("{a}%")[1].replace("{b}", String(auditChecked.filter(Boolean).length)).replace("{c}", String(AUDIT_ITEMS.length))}</p>
-                <button className="btn-primary mt-2 text-xs" onClick={saveAudit}>{S.btnSimpanAudit}</button>
+                <button className="btn-primary mt-2 text-xs" onClick={() => void busy.run("saveAudit", saveAudit)} disabled={busy.isBusy("saveAudit")}>{S.btnSimpanAudit}</button>
                 <div className="mt-3 border-t border-steel-100 pt-2">
                   <p className="text-xs font-semibold text-steel-500">{S.riwayatAudit}</p>
                   <div className="relative mt-1">
@@ -1205,7 +1238,7 @@ export default function QCSafety() {
                 <div key={v.id}>
                   <h3 className="mb-2 text-sm font-semibold text-navy-900">{v.name}</h3>
                   <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
-                    {(v.certificates ?? []).map((c: { name: string; expires: string }) => {
+                    {(v.certificates ?? []).map((c: { name: string; expires: string; fileUrl?: string }) => {
                       const left = daysUntil(c.expires);
                       const tone = left === null ? "gray" : left < 0 ? "red" : left <= CERT_WINDOW ? "amber" : "green";
                       return (
@@ -1214,7 +1247,7 @@ export default function QCSafety() {
                           <p className="text-xs text-steel-500">{S.berlakuHingga.replace("{n}", fmtTanggal(c.expires))}{left !== null && left >= 0 ? S.sisaHariDot.replace("{n}", String(left)) : ""}</p>
                           <div className="mt-1 flex items-center justify-between gap-2">
                             <Badge tone={tone as "green" | "amber" | "red" | "gray"}>{tone === "green" ? "Berlaku" : tone === "amber" ? "Hampir Expire" : tone === "red" ? "Kedaluwarsa" : "Tanpa tanggal"}</Badge>
-                            <button className="text-xs font-semibold text-ocean-600 underline" onClick={() => setCertPreview({ vessel: v.name, name: c.name, expires: c.expires, days: left })}>
+                            <button className="text-xs font-semibold text-ocean-600 underline" onClick={() => setCertPreview({ vessel: v.name, name: c.name, expires: c.expires, days: left, fileUrl: c.fileUrl ? String(c.fileUrl) : undefined })}>
                               {locale === "en" ? "Preview" : "Pratinjau"}
                             </button>
                           </div>
@@ -1232,7 +1265,7 @@ export default function QCSafety() {
 
       {/* Modal inspeksi */}
       <Modal open={showInsp} onClose={() => setShowInsp(false)} title={S.mInspT} subtitle={S.mInspS}
-        wide footer={<><button className="btn-secondary" onClick={() => setShowInsp(false)}>{S.btnBatal}</button><button className="btn-primary" onClick={saveInspection}>{S.btnSimpanInsp}</button></>}>
+        wide footer={<><button className="btn-secondary" onClick={() => setShowInsp(false)}>{S.btnBatal}</button><button className="btn-primary" onClick={() => void busy.run("saveInspection", saveInspection)} disabled={busy.isBusy("saveInspection")}>{S.btnSimpanInsp}</button></>}>
         <div className="space-y-3">
           <FormGrid>
             <Field label={S.thProyek}>
@@ -1303,7 +1336,7 @@ export default function QCSafety() {
 
       {/* Modal NCR */}
       <Modal open={showNcr} onClose={() => setShowNcr(false)} title={S.mNcrT} subtitle={S.mNcrS}
-        wide footer={<><button className="btn-secondary" onClick={() => setShowNcr(false)}>{S.btnBatal}</button><button className="btn-primary" onClick={saveNcr}>{S.btnTerbitkan}</button></>}>
+        wide footer={<><button className="btn-secondary" onClick={() => setShowNcr(false)}>{S.btnBatal}</button><button className="btn-primary" onClick={() => void busy.run("saveNcr", saveNcr)} disabled={busy.isBusy("saveNcr")}>{S.btnTerbitkan}</button></>}>
         <div className="space-y-3">
           <FormGrid>
             <Field label={S.thProyek}>
@@ -1349,7 +1382,7 @@ export default function QCSafety() {
 
       {/* Modal detail NCR */}
       <Modal open={ncrDetail !== null} onClose={() => setNcrDetail(null)} title={ncrDetail ? String(ncrDetail.id) : ""} subtitle={S.mNcrDetailS}
-        footer={ncrDetail && ncrDetail.status !== "Tertutup" ? <button className="btn-primary" onClick={() => { if (ncrDetail) void advanceNcr(ncrDetail); }}>{S.btnProsesNext}</button> : undefined}>
+        footer={ncrDetail && ncrDetail.status !== "Tertutup" ? <button className="btn-primary" onClick={() => { if (ncrDetail) void busy.run("advanceNcrDetail", () => advanceNcr(ncrDetail)); }} disabled={busy.isBusy("advanceNcrDetail")}>{S.btnProsesNext}</button> : undefined}>
         {ncrDetail && (
           <div>
             <dl className="dl-div text-sm">
@@ -1413,13 +1446,13 @@ export default function QCSafety() {
                 <Field label={S.dlUraian}>
                   <textarea className="input" rows={3} value={issueDraft} onChange={(e) => setIssueDraft(e.target.value)} />
                 </Field>
-                <button className="btn-secondary text-xs whitespace-nowrap" onClick={saveIssue}>{locale === "en" ? "Save description" : "Simpan uraian"}</button>
+                <button className="btn-secondary text-xs whitespace-nowrap" onClick={() => void busy.run("saveIssue", saveIssue)} disabled={busy.isBusy("saveIssue")}>{locale === "en" ? "Save description" : "Simpan uraian"}</button>
               </div>
             )}
             {ncrDetail.status === "Terbuka" && (
               <div className="mt-3 flex gap-2">
                 <input type="date" className="input flex-1" value={dueDraft} onChange={(e) => setDueDraft(e.target.value)} aria-label={S.ariaTenggat} />
-                <button className="btn-secondary text-xs whitespace-nowrap" onClick={saveDue}>{S.btnSimpanTenggat}</button>
+                <button className="btn-secondary text-xs whitespace-nowrap" onClick={() => void busy.run("saveDue", saveDue)} disabled={busy.isBusy("saveDue")}>{S.btnSimpanTenggat}</button>
               </div>
             )}
             <div className="mt-3 border-t border-steel-100 pt-3">
@@ -1431,7 +1464,7 @@ export default function QCSafety() {
               </div>
               <div className="mt-2 flex items-center justify-between gap-2">
                 <p className="text-sm text-steel-600">{S.totalN.split("{n}")[0]}<span className="font-semibold text-navy-900">{fmtRupiah((Number(reworkDraft.hours) || 0) * (Number(reworkDraft.rate) || 0) + (Number(reworkDraft.material) || 0))}</span>{S.totalN.split("{n}")[1]}</p>
-                <button className="btn-secondary text-xs" onClick={saveRework}>{S.btnSimpanRework}</button>
+                <button className="btn-secondary text-xs" onClick={() => void busy.run("saveRework", saveRework)} disabled={busy.isBusy("saveRework")}>{S.btnSimpanRework}</button>
               </div>
             </div>
             <div className="mt-3 border-t border-steel-100 pt-3">
@@ -1486,7 +1519,7 @@ export default function QCSafety() {
 
       {/* Modal verifikasi lanjutan CAPA H+30 */}
       <Modal open={followUpNcr !== null} onClose={() => setFollowUpNcr(null)} title={followUpNcr ? S.mFollowT.replace("{n}", String(followUpNcr.id)) : ""} subtitle={S.mFollowS}
-        footer={<><button className="btn-secondary" onClick={() => setFollowUpNcr(null)}>{S.btnBatal}</button><button className="btn-primary" onClick={confirmFollowUp}>{S.btnSimpanVerif}</button></>}>
+        footer={<><button className="btn-secondary" onClick={() => setFollowUpNcr(null)}>{S.btnBatal}</button><button className="btn-primary" onClick={() => void busy.run("confirmFollowUp", confirmFollowUp)} disabled={busy.isBusy("confirmFollowUp")}>{S.btnSimpanVerif}</button></>}>
         <div className="space-y-3">
           <Field label={S.fTglVerif}><input type="date" className="input" value={followUpForm.date} onChange={(e) => setFollowUpForm({ ...followUpForm, date: e.target.value })} /></Field>
           <Field label={S.fCatVerif}><textarea className="input" rows={3} value={followUpForm.note} onChange={(e) => setFollowUpForm({ ...followUpForm, note: e.target.value })} placeholder={S.phFollow} /></Field>
@@ -1495,7 +1528,7 @@ export default function QCSafety() {
 
       {/* Modal bukti/CAPA wajib (masuk Dalam Perbaikan) */}
       <Modal open={capaFor !== null} onClose={() => setCapaFor(null)} title={capaFor ? `CAPA ${String(capaFor.id)}` : ""} subtitle="Wajib: tindakan korektif + PIC (foto URL opsional)"
-        footer={<><button className="btn-secondary" onClick={() => setCapaFor(null)}>{S.btnBatal}</button><button className="btn-primary" onClick={saveCapa}>Simpan & Proses ke Dalam Perbaikan</button></>}>
+        footer={<><button className="btn-secondary" onClick={() => setCapaFor(null)}>{S.btnBatal}</button><button className="btn-primary" onClick={() => void busy.run("saveCapa", saveCapa)} disabled={busy.isBusy("saveCapa")}>Simpan & Proses ke Dalam Perbaikan</button></>}>
         <div className="space-y-3">
           <Field label={S.fCorrective}><textarea className="input" rows={3} value={capaForm.corrective} onChange={(e) => setCapaForm({ ...capaForm, corrective: e.target.value })} placeholder="Cth: gerinda ulang + las ulang seam 4, WPS-07" /></Field>
           <FormGrid>
@@ -1521,7 +1554,7 @@ export default function QCSafety() {
 
       {/* Modal tutup NCR */}
       <Modal open={closingNcr !== null} onClose={() => setClosingNcr(null)} title={closingNcr ? S.mCloseT.replace("{n}", String(closingNcr.id)) : ""} subtitle={closingNcr?.severity === "Critical" ? S.mCloseCrit : S.mCloseS}
-        footer={<><button className="btn-secondary" onClick={() => setClosingNcr(null)}>{S.btnBatal}</button><button className="btn-primary" onClick={confirmClose}>{S.btnTutupNcr}</button></>}>
+        footer={<><button className="btn-secondary" onClick={() => setClosingNcr(null)}>{S.btnBatal}</button><button className="btn-primary" onClick={() => void busy.run("confirmClose", confirmClose)} disabled={busy.isBusy("confirmClose")}>{S.btnTutupNcr}</button></>}>
         <div className="space-y-3">
           {closingNcr?.severity === "Critical" && (
             <Field label={S.fVerifikator}><input className="input" value={verifier} onChange={(e) => setVerifier(e.target.value)} placeholder={S.phVerifikator} /></Field>
@@ -1532,7 +1565,7 @@ export default function QCSafety() {
 
       {/* Modal buka kembali NCR */}
       <Modal open={reopenNcr !== null} onClose={() => setReopenNcr(null)} title={reopenNcr ? S.mReopenT.replace("{n}", String(reopenNcr.id)) : ""} subtitle={S.mReopenS}
-        footer={<><button className="btn-secondary" onClick={() => setReopenNcr(null)}>{S.btnBatal}</button><button className="btn-primary" onClick={confirmReopen}>{S.btnBukaKembali}</button></>}>
+        footer={<><button className="btn-secondary" onClick={() => setReopenNcr(null)}>{S.btnBatal}</button><button className="btn-primary" onClick={() => void busy.run("confirmReopen", confirmReopen)} disabled={busy.isBusy("confirmReopen")}>{S.btnBukaKembali}</button></>}>
         <Field label={S.fAlasanReopen}><textarea className="input" rows={3} value={reopenReason} onChange={(e) => setReopenReason(e.target.value)} placeholder={S.phReopen} /></Field>
       </Modal>
 
@@ -1579,7 +1612,7 @@ export default function QCSafety() {
 
       {/* Modal register drawing */}
       <Modal open={showDrw} onClose={() => setShowDrw(false)} title={S.mDrwT} subtitle={S.mDrwS}
-        footer={<><button className="btn-secondary" onClick={() => setShowDrw(false)}>{S.btnBatal}</button><button className="btn-primary" onClick={saveDrawing}>{S.btnDaftarkan}</button></>}>
+        footer={<><button className="btn-secondary" onClick={() => setShowDrw(false)}>{S.btnBatal}</button><button className="btn-primary" onClick={() => void busy.run("saveDrawing", saveDrawing)} disabled={busy.isBusy("saveDrawing")}>{S.btnDaftarkan}</button></>}>
         <div className="space-y-3">
           <Field label={S.thProyek}>
             <select className="input" value={drwForm.project} onChange={(e) => setDrwForm({ ...drwForm, project: e.target.value })}>
@@ -1587,13 +1620,22 @@ export default function QCSafety() {
               {data.projects.map((p) => <option key={p.id} value={p.id}>{p.id} · {p.vessel}</option>)}
             </select>
           </Field>
-          <Field label={S.fJudulDrw}><input className="input" value={drwForm.title} onChange={(e) => setDrwForm({ ...drwForm, title: e.target.value })} placeholder={S.phJudulDrw} /></Field>
+          <Field label={S.fJudulDrw}><input className="input" value={drwForm.title} onChange={(e) => setDrwForm({ ...drwForm, title: e.target.value })} placeholder={S.phJudulDrw} /></Field>          <Field label="Jenis dokumen" hint="Shop = gambar kerja · As-Built = gambar aktual · Class = untuk approval kelas">
+            <select className="input" value={drwForm.kind} onChange={(e) => setDrwForm({ ...drwForm, kind: e.target.value })}>
+              {["Shop Drawing", "As-Built Drawing", "Class Submission"].map((k) => <option key={k} value={k}>{k}</option>)}
+            </select>
+          </Field>
           <Field label={S.fHolder}><input className="input" value={drwForm.holder} onChange={(e) => setDrwForm({ ...drwForm, holder: e.target.value })} placeholder={S.phHolder} /></Field>
-          <Field label={locale === "en" ? "Document file URL" : "URL file dokumen"} hint={locale === "en" ? "Optional — drawing / PDF" : "Opsional — gambar / PDF"}>
+          <Field label={locale === "en" ? "Document file URL" : "URL file dokumen"} hint={locale === "en" ? "Optional - drawing / PDF" : "Opsional - gambar / PDF"}>
             <div className="flex flex-wrap items-center gap-2">
               <input className="input flex-1 font-mono" value={drwForm.fileUrl} onChange={(e) => setDrwForm({ ...drwForm, fileUrl: e.target.value })} placeholder="https://…" />
               <FileUploadButton label={locale === "en" ? "Upload" : "Unggah"} onUploaded={(url) => setDrwForm((f) => ({ ...f, fileUrl: url }))} />
             </div>
+            {drwForm.fileUrl.trim() !== "" && (
+              /\.pdf(\?|$)/i.test(drwForm.fileUrl)
+                ? <iframe title="Pratinjau dokumen drawing" src={drwForm.fileUrl} className="mt-2 h-40 w-full rounded-lg border border-steel-200" />
+                : <SecureImg src={drwForm.fileUrl} alt="Pratinjau dokumen drawing" name="drawing" className="mt-2 h-28 w-full max-w-sm rounded-lg border border-steel-200 object-contain" />
+            )}
           </Field>
           <Field label={S.fCabang} hint={S.hintIkutGlobal.replace("{n}", branch)}>
             <select className="input" value={drwForm.branch} onChange={(e) => setDrwForm({ ...drwForm, branch: e.target.value })}>
@@ -1606,7 +1648,7 @@ export default function QCSafety() {
 
       {/* Modal ubah drawing (title + holder) */}
       <Modal open={drwEdit !== null} onClose={() => setDrwEdit(null)} title={drwEdit ? `${S.btnEdit} ${drwEdit.id}` : ""} subtitle={drwEdit ? `${locale === "en" ? "Rev" : "Rev"} ${String(drwEdit.revision)}` : ""}
-        footer={<><button className="btn-secondary" onClick={() => setDrwEdit(null)}>{S.btnBatal}</button><button className="btn-primary" onClick={saveDrwEdit}>{S.btnSimpan}</button></>}>
+        footer={<><button className="btn-secondary" onClick={() => setDrwEdit(null)}>{S.btnBatal}</button><button className="btn-primary" onClick={() => void busy.run("saveDrwEdit", saveDrwEdit)} disabled={busy.isBusy("saveDrwEdit")}>{S.btnSimpan}</button></>}>
         <div className="space-y-3">
           <Field label={S.fJudulDrw}><input className="input" value={drwEditForm.title} onChange={(e) => setDrwEditForm({ ...drwEditForm, title: e.target.value })} placeholder={S.phJudulDrw} /></Field>
           <Field label={S.fHolder}><input className="input" value={drwEditForm.holder} onChange={(e) => setDrwEditForm({ ...drwEditForm, holder: e.target.value })} placeholder={S.phHolder} /></Field>
@@ -1615,7 +1657,7 @@ export default function QCSafety() {
 
       {/* Modal transmittal */}
       <Modal open={showTransmit} onClose={() => setShowTransmit(false)} title={S.mTrT} subtitle={S.mTrS}
-        wide footer={<><button className="btn-secondary" onClick={() => setShowTransmit(false)}>{S.btnBatal}</button><button className="btn-primary" onClick={saveTransmittal}><Send className="h-4 w-4" /> {S.btnKirimEkspor}</button></>}>
+        wide footer={<><button className="btn-secondary" onClick={() => setShowTransmit(false)}>{S.btnBatal}</button><button className="btn-primary" onClick={() => void busy.run("saveTransmittal", saveTransmittal)} disabled={busy.isBusy("saveTransmittal")}><Send className="h-4 w-4" /> {S.btnKirimEkspor}</button></>}>
         <div className="space-y-3">
           <FormGrid>
             <Field label={S.fKepada}><input className="input" value={transmitForm.to} onChange={(e) => setTransmitForm({ ...transmitForm, to: e.target.value })} placeholder={S.phKepada} /></Field>
@@ -1639,7 +1681,7 @@ export default function QCSafety() {
 
       {/* Modal JSA */}
       <Modal open={showJsa} onClose={() => setShowJsa(false)} title={S.mJsaT} subtitle={S.mJsaS}
-        wide footer={<><button className="btn-secondary" onClick={() => setShowJsa(false)}>{S.btnBatal}</button><button className="btn-primary" onClick={saveJsa}>{S.btnSimpanJsa}</button></>}>
+        wide footer={<><button className="btn-secondary" onClick={() => setShowJsa(false)}>{S.btnBatal}</button><button className="btn-primary" onClick={() => void busy.run("saveJsa", saveJsa)} disabled={busy.isBusy("saveJsa")}>{S.btnSimpanJsa}</button></>}>
         <div className="space-y-3">
           <FormGrid>
             <Field label={S.thProyek}>
@@ -1665,7 +1707,7 @@ export default function QCSafety() {
 
       {/* Modal toolbox */}
       <Modal open={showTbm} onClose={() => setShowTbm(false)} title={S.mTbmT}
-        footer={<><button className="btn-secondary" onClick={() => setShowTbm(false)}>{S.btnBatal}</button><button className="btn-primary" onClick={saveToolbox}>{S.btnSimpan}</button></>}>
+        footer={<><button className="btn-secondary" onClick={() => setShowTbm(false)}>{S.btnBatal}</button><button className="btn-primary" onClick={() => void busy.run("saveToolbox", saveToolbox)} disabled={busy.isBusy("saveToolbox")}>{S.btnSimpan}</button></>}>
         <div className="space-y-3">
           <FormGrid>
             <Field label={S.thProyek}>
@@ -1690,7 +1732,7 @@ export default function QCSafety() {
 
       {/* Modal safety walk */}
       <Modal open={showWalk} onClose={() => setShowWalk(false)} title={S.mWalkT}
-        footer={<><button className="btn-secondary" onClick={() => setShowWalk(false)}>{S.btnBatal}</button><button className="btn-primary" onClick={saveWalk}>{S.btnSimpan}</button></>}>
+        footer={<><button className="btn-secondary" onClick={() => setShowWalk(false)}>{S.btnBatal}</button><button className="btn-primary" onClick={() => void busy.run("saveWalk", saveWalk)} disabled={busy.isBusy("saveWalk")}>{S.btnSimpan}</button></>}>
         <div className="space-y-3">
           <FormGrid>
             <Field label={S.thTanggal}><input type="date" className="input" value={walkForm.date} onChange={(e) => setWalkForm({ ...walkForm, date: e.target.value })} /></Field>
@@ -1703,7 +1745,7 @@ export default function QCSafety() {
 
       {/* Modal jadwal audit internal */}
       <Modal open={showAuditPlan} onClose={() => setShowAuditPlan(false)} title={S.mPlanT} subtitle={S.mPlanS}
-        footer={<><button className="btn-secondary" onClick={() => setShowAuditPlan(false)}>{S.btnBatal}</button><button className="btn-primary" onClick={saveAuditPlan}>{S.btnSimpanJadwal}</button></>}>
+        footer={<><button className="btn-secondary" onClick={() => setShowAuditPlan(false)}>{S.btnBatal}</button><button className="btn-primary" onClick={() => void busy.run("saveAuditPlan", saveAuditPlan)} disabled={busy.isBusy("saveAuditPlan")}>{S.btnSimpanJadwal}</button></>}>
         <div className="space-y-3">
           <FormGrid>
             <Field label={S.thTanggal}><input type="date" className="input" value={auditForm.date} onChange={(e) => setAuditForm({ ...auditForm, date: e.target.value })} /></Field>
@@ -1739,6 +1781,7 @@ export default function QCSafety() {
       {/* Modal pratinjau sertifikat */}
       <Modal open={certPreview !== null} onClose={() => setCertPreview(null)} title={certPreview?.name ?? ""} subtitle={certPreview ? `${certPreview.vessel}` : ""}>
         {certPreview && (
+          <div className="space-y-3">
           <dl className="dl-div text-sm">
             <div className="flex justify-between gap-4"><dt className="shrink-0 text-steel-500">{S.berlakuHingga.replace("{n}", "")}</dt><dd className="text-right font-medium text-navy-900">{fmtTanggal(certPreview.expires)}</dd></div>
             <div className="flex justify-between gap-4"><dt className="shrink-0 text-steel-500">Status</dt><dd>
@@ -1747,6 +1790,24 @@ export default function QCSafety() {
               </Badge>
             </dd></div>
           </dl>
+          {certPreview.fileUrl ? (
+            /\.(png|jpe?g|gif|webp)(\?|#|$)/i.test(certPreview.fileUrl) ? (
+              <img src={certPreview.fileUrl} alt={certPreview.name} className="max-h-96 w-full rounded-xl border border-steel-200 object-contain" />
+            ) : /\.pdf(\?|#|$)/i.test(certPreview.fileUrl) ? (
+              <iframe title={certPreview.name} src={certPreview.fileUrl} className="h-96 w-full rounded-xl border border-steel-200" />
+            ) : (
+              <div className="space-y-1">
+                <p className="text-xs text-steel-500">Pratinjau hanya untuk PDF/gambar — unduh file untuk lainnya</p>
+                <a className="text-xs font-semibold text-ocean-600 underline" href={certPreview.fileUrl} target="_blank" rel="noreferrer">Unduh</a>
+              </div>
+            )
+          ) : (
+            <p className="text-xs text-steel-500">Belum ada file — hubungi QA</p>
+          )}
+          {certPreview.fileUrl && (
+            <a className="block truncate text-xs font-semibold text-ocean-600 underline" href={certPreview.fileUrl} target="_blank" rel="noreferrer">Unduh</a>
+          )}
+          </div>
         )}
       </Modal>
 
@@ -1766,7 +1827,7 @@ export default function QCSafety() {
         onConfirm={async () => {
           if (!delAudit) return;
           const usedBy = findUsages(data, "auditPlans", String(delAudit.id));
-          if (usedBy.length > 0) { toast(`Hapus diblokir - ${delAudit.id} dipakai di: ${usedBy.join(", ")}`, "info"); return; }
+            if (usedBy.length > 0) { toast(`Hapus diblokir - ${delAudit.id} dipakai di: ${usedBy.join(", ")}`, "info"); log("gagal hapus rencana audit", `${delAudit.id} · masih dipakai di: ${usedBy.join(", ")}`, "QC"); return; }
           try { await remove("auditPlans", String(delAudit.id)); setDelAudit(null); }
           catch (e) { toast(e instanceof Error ? e.message : S.tJadwalHapus, "info"); }
         }}

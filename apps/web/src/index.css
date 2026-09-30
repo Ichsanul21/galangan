@@ -96,6 +96,8 @@
   /* Highlight lembut permanen untuk SEMUA baris ternotif (tidak mencolok:
      background tipis saja, tanpa outline). Yang diklik dapat .notif-flash
      di atasnya (jauh lebih mencolok) lalu kembali ke lembut. */
+  /* Hindari chart recharts terpotong / blank saat cetak PDF (html2canvas pagebreak). */
+  .recharts-wrapper { break-inside: avoid; page-break-inside: avoid; }
   .notif-hl {
     background-color: rgba(255, 251, 235, 0.6);
   }

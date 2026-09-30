@@ -91,12 +91,13 @@ function undockList(s: StoreItem): boolean[] {
 
 export default function Drydock() {
   const busy = useBusy();
-  const { data, add, update, remove, log } = useStore();
+  const { data, add, update, remove, log, resync } = useStore();
   const { locale } = useT();
   const S = n_dry[locale];
   const modAlert = useModuleAlert("drydock");
   const flash = useNotifFlash();
   const notified = useMemo(() => new Set(modAlert.items.map((a) => a.rowId)), [modAlert.items]);
+  useEffect(() => { void resync().catch(() => undefined); }, [resync]);
   const drydocks = data.drydocks;
   const dockSlots = data.dockSlots;
   const projectOptions = data.projects;
@@ -526,11 +527,12 @@ export default function Drydock() {
   };
 
   const confirmDelete = async () => {    if (!deleting) return;
-    const usedBy = findUsages(data, "dockSlots", String(deleting.id));
-    if (usedBy.length > 0) {
-      toast(`Hapus diblokir - ${deleting.id} dipakai di: ${usedBy.join(", ")}`, "info");
-      return;
-    }
+      const usedBy = findUsages(data, "dockSlots", String(deleting.id));
+      if (usedBy.length > 0) {
+        toast(`Hapus diblokir - ${deleting.id} dipakai di: ${usedBy.join(", ")}`, "info");
+        log("gagal hapus slot docking", `${deleting.id} · masih dipakai di: ${usedBy.join(", ")}`, "Drydock");
+        return;
+      }
     const proj = data.projects.find((p) => p.id === deleting.project);
     if (proj && proj.status !== "Selesai") {
       toast(S.tDeleteBlocked.replace("{a}", String(deleting.id)).replace("{b}", proj.id).replace("{c}", String(proj.status)), "info");
@@ -626,6 +628,39 @@ export default function Drydock() {
         </Card>
 
       <div className="mt-5 grid grid-cols-1 gap-5">
+        <Card>
+          <CardHeader title="Slot per Area" subtitle="Grup Area · Slot · Status · Kapal · Masuk–Keluar (ikut filter bar di bawah)" />
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead className="sticky top-0 z-10 bg-surface">
+                <tr><th className="th">Area</th><th className="th">Slot</th><th className="th">Status</th><th className="th">Kapal</th><th className="th">Masuk–Keluar</th></tr>
+              </thead>
+              <tbody className="divide-y divide-steel-100">
+                {(() => {
+                  const groups = new Map<string, StoreItem[]>();
+                  for (const s of filteredSlots) {
+                    const key = slotAreaOf(s) || S.noArea;
+                    if (!groups.has(key)) groups.set(key, []);
+                    groups.get(key)!.push(s);
+                  }
+                  const entries = [...groups.entries()].sort((a, b) => a[0].localeCompare(b[0]));
+                  if (entries.length === 0) return <tr><td colSpan={5} className="td text-center text-steel-400">{S.emptySlots}</td></tr>;
+                  return entries.flatMap(([area, slots]) =>
+                    slots.map((s, i) => (
+                      <tr key={s.id} className="hover:bg-surface">
+                        {i === 0 ? <td className="td font-semibold text-navy-900" rowSpan={slots.length}>{area}</td> : null}
+                        <td className="td font-mono text-xs text-steel-600">{String(s.id)}</td>
+                        <td className="td"><StatusBadge status={slotStatus(s, data.projects)} /></td>
+                        <td className="td text-steel-600">{String(s.vessel ?? "-")}</td>
+                        <td className="td text-steel-600">{fmtRentang(dayToISO(Number(s.from)), dayToISO(Number(s.to)))}</td>
+                      </tr>
+                    ))
+                  );
+                })()}
+              </tbody>
+            </table>
+          </div>
+        </Card>
         <Card>
           <CardHeader title={S.cardSlots} subtitle={S.cardSlotsSub} action={
             <div className="flex flex-wrap items-center gap-1.5">

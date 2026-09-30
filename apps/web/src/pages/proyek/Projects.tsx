@@ -53,7 +53,9 @@ export function isOverdue(p: StoreItem, today: string): boolean {
 }
 
 const filters = ["Semua", "New Build", "Repair", "Retrofit"];
-const statusOptions = ["Semua", "Dalam Proses", "Sedang Berjalan", "Terlambat", "Selesai", "Tertunda"];
+/* Label tampilan tipe proyek (ID); value backend tetap EN. */
+const TYPE_ID: Record<string, string> = { "New Build": "Bangun Baru", Repair: "Reparasi", Retrofit: "Retrofit / Modifikasi" };
+const statusOptions = ["Semua", "Sedang Berjalan", "Tertunda", "Batal", "Terlambat", "Selesai"];
 const branchOptions = ["Samarinda", "Balikpapan", "Banjarmasin"];
 const prioritasTone: Record<string, "gray" | "blue" | "amber" | "red"> = {
   Rendah: "gray",
@@ -64,7 +66,7 @@ const prioritasTone: Record<string, "gray" | "blue" | "amber" | "red"> = {
 export default function Projects() {
   const { locale } = useT();
   const S = n_prj[locale];
-  const { data, add, update, remove, inBranch } = useStore();
+  const { data, add, update, remove, inBranch, resync } = useStore();
   const modAlert = useModuleAlert("proyek");
   const flash = useNotifFlash();
   const notified = useMemo(() => new Set(modAlert.items.map((a) => a.rowId)), [modAlert.items]);
@@ -82,6 +84,7 @@ export default function Projects() {
   // Hapus proyek via ConfirmModal + daftar pemakai (blokir bila dirujuk PO/invoice/WBS).
   const [delProject, setDelProject] = useState<StoreItem | null>(null);
   const [searchParams, setSearchParams] = useSearchParams();
+  useEffect(() => { void resync().catch(() => undefined); }, [resync]);
 
   // Alur dari Dashboard: /proyek?create=1 langsung buka form tambah proyek.
   useEffect(() => {
@@ -196,7 +199,7 @@ export default function Projects() {
         >
           {(draft, setDraft) => (
             <div className="space-y-3">
-              <div className="flex gap-1">
+              <div className="flex flex-wrap gap-1">
                 {filters.map((f) => (
                   <button
                     key={f}
@@ -205,7 +208,7 @@ export default function Projects() {
                       draft.type === f ? "bg-navy-700 text-white" : "bg-white border border-steel-200 text-steel-600 hover:bg-steel-100"
                     }`}
                   >
-                    {f}
+                    {f === "Semua" ? "Semua tipe" : TYPE_ID[f] ?? f}
                   </button>
                 ))}
               </div>
@@ -285,13 +288,14 @@ export default function Projects() {
                     <td className="td text-steel-600">{p.client}</td>
                     <td className="td">
                       <Badge tone={p.type === "New Build" ? "navy" : p.type === "Repair" ? "cyan" : "violet"}>
-                        {p.type}
+                        {TYPE_ID[String(p.type)] ?? p.type}
                       </Badge>
                     </td>
                     <td className="td">
-                      <div className="flex items-center gap-1">
+                      <div className="flex items-center gap-1" title="Edit hanya di detail">
                         <Badge tone="navy">{tahapOf(p)}</Badge>
                         <span className="text-[11px] text-steel-400">{tahapIdx + 1}/{TAHAP.length}</span>
+                        <span className="cursor-not-allowed text-[11px] text-steel-400" title="Edit hanya di detail" aria-disabled="true">Edit hanya di detail</span>
                         <Link
                           to={`/proyek/${p.id}`}
                           onClick={(e) => e.stopPropagation()}

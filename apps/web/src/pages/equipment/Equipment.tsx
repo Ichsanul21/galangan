@@ -97,11 +97,12 @@ function depreciationOf(e: StoreItem): { annual: number; book: number } | null {
   return { annual, book: Math.max(0, cost - annual) };
 }
 
-/* Indikator baik/buruk utilisasi: <40% rendah, 40–85% baik, >85% over. */
+/* Indikator utilisasi (global): <40% rendah-nganggur, 40–85% optimal, >85% overuse.
+   Target global 176 jam/bulan. Makin tinggi belum tentu baik — >85% berarti butuh maintenance/reschedule. */
 function utilGrade(v: number, en: boolean): { label: string; tone: "green" | "amber" | "red"; desc: string } {
-  if (v > 85) return { label: en ? "Poor · over" : "Buruk · over", tone: "red", desc: en ? "over-utilized (>85%) — add units / reschedule" : "over-utilized (>85%) — tambah unit / reschedule" };
-  if (v >= 40) return { label: en ? "Good" : "Baik", tone: "green", desc: en ? "healthy load (40–85%)" : "beban sehat (40–85%)" };
-  return { label: en ? "Poor · low" : "Buruk · rendah", tone: "amber", desc: en ? "under-utilized (<40%)" : "kurang produktif (<40%)" };
+  if (v > 85) return { label: en ? "Overuse · perlu maintenance" : "Overuse · butuh maintenance", tone: "red", desc: en ? "over 85% — schedule maintenance / add unit" : ">85% — jadwalkan maintenance / tambah unit" };
+  if (v >= 40) return { label: en ? "Optimal" : "Optimal", tone: "green", desc: en ? "healthy load 40–85% (booking ÷ 176h)" : "beban sehat 40–85% (jam booking ÷ 176)" };
+  return { label: en ? "Rendah · nganggur" : "Rendah · nganggur", tone: "amber", desc: en ? "under 40% — unit idle" : "<40% — alat nganggur" };
 }
 
 /* Indikator baik/buruk OEE: ≥70% baik, 40–70% cukup, <40% buruk. */
@@ -113,12 +114,13 @@ function oeeGrade(v: number, en: boolean): { label: string; tone: "green" | "amb
 
 export default function EquipmentPage() {
   const busy = useBusy();
-  const { data, add, update, remove, log, branch } = useStore();
+  const { data, add, update, remove, log, branch, resync } = useStore();
   const { locale } = useT();
   const S = n_eqp[locale];
   const modAlert = useModuleAlert("equipment");
   const flash = useNotifFlash();
   const notified = useMemo(() => new Set(modAlert.items.map((a) => a.rowId)), [modAlert.items]);
+  useEffect(() => { void resync().catch(() => undefined); }, [resync]);
   const equipment = data.equipment;
   const bookings = data.bookings;
   const calibrations = data.calibrations;
@@ -187,7 +189,8 @@ export default function EquipmentPage() {
     const a = Number(it.avgCost);
     return a > 0 ? a : Number(it.cost || 0);
   };
-  /* Utilisasi hybrid: manual bila flag utilManual (default true utk data lama), else auto. */
+  /* Utilisasi Auto global: jam booking Selesai bulan berjalan ÷ 176 × 100%.
+     Default Auto; Manual hanya bila dikunci eksplisit (utilManual === true). */
   const autoUtilOf = (eq: StoreItem): number => {
     const month = today.slice(0, 7);
     const hours = bookings
@@ -195,8 +198,14 @@ export default function EquipmentPage() {
       .reduce((s, b) => s + Number(b.hours || 0), 0);
     return Math.min(100, Math.round((hours / TARGET_HOURS) * 100));
   };
+  const autoHoursOf = (eq: StoreItem): number => {
+    const month = today.slice(0, 7);
+    return bookings
+      .filter((b) => b.status === "Selesai" && equipKey(b.equip) === String(eq.id) && String(b.date ?? "").slice(0, 7) === month)
+      .reduce((s, b) => s + Number(b.hours || 0), 0);
+  };
   const dispUtil = (eq: StoreItem): number =>
-    (eq.utilManual ?? true) ? Number(eq.util || 0) : autoUtilOf(eq);
+    (eq.utilManual === true) ? Number(eq.util || 0) : autoUtilOf(eq);
 
   /* Kategori custom ikut filter: gabungan baku + kategori tersimpan. */
   const allCats = useMemo(() => {
@@ -289,7 +298,7 @@ export default function EquipmentPage() {
     return `${e.name ?? ""} ${e.code ?? ""} ${e.model ?? ""}`.toLowerCase().includes(needle);
   });
   const regSorted = useMemo(() => sortRows(regFiltered, sort, (e, k) => {
-    if (k === "utilisasi") return Number(e.util || 0);
+    if (k === "utilisasi") return (e.utilManual === true) ? Number(e.util || 0) : autoUtilOf(e);
     if (k === "jam") return Number(e.lastHours || 0);
     if (k === "tarif") return Number(e.rate || 0);
     if (k === "nilaibuku") return Number(depreciationOf(e)?.book ?? -1);
@@ -297,7 +306,7 @@ export default function EquipmentPage() {
     if (k === "model") return String(e.model ?? "");
     if (k === "status") return String(e.status ?? "");
     return String(e.name ?? "");
-  }), [regFiltered, sort]);
+  }), [regFiltered, sort, bookings, today]);
   const regPager = usePager(regFiltered.length);
   const pickNotif = (rowId: string) => {
     const key = String(rowId);
@@ -359,7 +368,7 @@ export default function EquipmentPage() {
     }
     const created = await add("equipment", {
       name: form.name.trim(), category, code, serial: form.serial.trim(), branch: form.branch,
-      status: "Tersedia", util, utilManual: true, nextService: "-", lastHours: 0, model: form.model.trim() || "-",
+      status: "Tersedia", util: 0, utilManual: false, nextService: "-", lastHours: 0, model: form.model.trim() || "-",
       pic: form.pic.trim(), rate, fuelPrice, acquisitionCost, usefulLife,
     }, { action: "mendaftarkan equipment", module: "Equipment" });
     toast(S.eqAdded.replace("{a}", created.id));
@@ -844,10 +853,11 @@ export default function EquipmentPage() {
                       </td>
                       <td className="td">
                         <div className="flex items-center gap-2">
-                          <ProgressBar value={dispUtil(e)} className="w-20" tone={dispUtil(e) > 75 ? "amber" : "navy"} />
+                          <ProgressBar value={dispUtil(e)} className="w-20" tone={dispUtil(e) > 85 ? "red" : dispUtil(e) >= 40 ? "green" : "amber"} />
                           <span className="text-xs font-medium">{dispUtil(e)}%</span>
-                          <Badge tone={(e.utilManual ?? true) ? "gray" : "blue"}>{(e.utilManual ?? true) ? "Manual" : "Auto"}</Badge>
+                          <Badge tone={(e.utilManual === true) ? "gray" : "blue"}>{(e.utilManual === true) ? "Manual" : "Auto"}</Badge>
                         </div>
+                        <p className="mt-0.5 text-[11px] text-steel-400">{autoHoursOf(e)} jam ÷ 176 · {utilGrade(dispUtil(e), locale === "en").label}</p>
                       </td>
                       <td className="td text-steel-600 font-mono text-xs">{fmtJumlah(Number(e.lastHours || 0))} jam</td>
                       <td className="td text-steel-600 text-xs">
@@ -948,8 +958,9 @@ export default function EquipmentPage() {
 
           {tab === "Maintenance" && (
             <div>
-              <div className="mb-3 flex justify-end">
-                <button className="btn-secondary text-xs" onClick={() => setShowService(true)}><Wrench className="h-3.5 w-3.5" /> {S.eqSchedSvc}</button>
+              <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                <p className="text-xs text-steel-500">Alur: Jadwalkan servis (rencana + kebutuhan material, stok belum dipotong) → Realisasikan (eksekusi + potong stok inventory). Edit/Hapus hanya untuk riwayat.</p>
+                <button className="btn-secondary text-xs" onClick={() => setShowService(true)}><Wrench className="h-3.5 w-3.5" /> Jadwalkan servis</button>
               </div>
               <div className="overflow-x-auto">
                 <table className="w-full">
@@ -986,11 +997,11 @@ export default function EquipmentPage() {
                         <td className="td"><Badge tone={e.status === "Maintenance" ? "amber" : "green"}>{e.status === "Maintenance" ? S.eqInService : S.eqScheduled}</Badge></td>
                         <td className="td">
                           <div className="flex flex-wrap gap-1.5">
-                            <button className="btn-secondary text-xs" onClick={() => openRecord(e)}>{S.eqLogSvc}</button>
+                            <button className="btn-secondary text-xs" onClick={() => openRecord(e)}>Realisasikan</button>
                             {Array.isArray(e.lastServiceMaterials) && e.lastServiceMaterials.length > 0 && (
                               <>
-                                <button className="btn-secondary text-xs" onClick={() => openEditHist(e)}>Edit</button>
-                                <button className="btn-secondary text-xs" onClick={() => setDelHist(e)}>{S.delBtn}</button>
+                                <button className="btn-secondary text-xs" onClick={() => openEditHist(e)}>Edit riwayat</button>
+                                <button className="btn-secondary text-xs" onClick={() => setDelHist(e)}>Hapus riwayat</button>
                               </>
                             )}
                           </div>
@@ -1125,12 +1136,12 @@ export default function EquipmentPage() {
           {tab === "Utilisasi" && (
             <div className="space-y-4">
               <Card className="p-5">
-                <h3 className="mb-2 text-sm font-semibold text-navy-900">Cara baca utilisasi (hybrid)</h3>
+                <h3 className="mb-2 text-sm font-semibold text-navy-900">Cara baca utilisasi (otomatis)</h3>
                 <ul className="list-disc space-y-1 pl-5 text-xs text-steel-600">
-                  <li>Rumus auto: (total jam booking <b>Selesai</b> bulan berjalan ÷ 176 jam) × 100%. Agregasi per equipment dari modul Booking.</li>
-                  <li>Ambang: &gt;85% = over-utilized (bar merah) — pertimbangkan tambah unit / reschedule.</li>
-                  <li>Mode Auto mengikuti booking; mode Manual mengunci angka (flag utilManual) — input manual tetap tersedia per baris di bawah.</li>
-                  <li>Modul terkait: Alokasi/Booking (sumber jam) · Maintenance (downtime menekan availability) · Biaya (tarif × jam) · Kalibrasi (alat ukur kedaluwarsa menolak booking).</li>
+                  <li>Rumus: (total jam booking <b>Selesai</b> bulan berjalan ÷ 176 jam) × 100%. Bulan berjalan selalu di kanan grafik.</li>
+                  <li><b className="text-amber-600">Rendah &lt;40%</b> = alat nganggur. <b className="text-green-700">Optimal 40–85%</b> = beban sehat. <b className="text-rose-600">Overuse &gt;85%</b> = butuh maintenance / tambah unit — makin tinggi makin berisiko.</li>
+                  <li>Mode Auto mengikuti booking. Kunci Manual hanya untuk koreksi — badge menunjukkan sumber angka.</li>
+                  <li>Terkait: Alokasi/Booking (sumber jam) · Maintenance (jadwal → realisasi potong stok) · Biaya per proyek (jam × tarif) · Kalibrasi.</li>
                 </ul>
               </Card>
               <Card className="p-5">
@@ -1177,7 +1188,7 @@ export default function EquipmentPage() {
                   <p className="mt-1 text-center text-xs text-steel-500">{S.eqOverallUtilCap}</p>
                 </Card>
                 <Card className="lg:col-span-2">
-                  <CardHeader title={S.eqHoursPerMonth} subtitle={S.eqHoursPerMonthSub} />
+                  <CardHeader title={S.eqHoursPerMonth} subtitle="Per bulan (cth Sep 2026) — bulan berjalan paling kanan" />
                   <div className="h-52 p-4 pt-0">
                     <ResponsiveContainer width="100%" height="100%">
                       <AreaChart data={hoursChart} margin={{ top: 5, right: 5, left: -15, bottom: 0 }}>
@@ -1203,17 +1214,18 @@ export default function EquipmentPage() {
                     if (!needle) return true;
                     return `${e.name ?? ""} ${e.code ?? ""}`.toLowerCase().includes(needle);
                   }).map((e) => {
-                    const manual = e.utilManual ?? true;
+                    const manual = e.utilManual === true;
                     const auto = autoUtilOf(e);
                     const disp = manual ? Number(e.util || 0) : auto;
+                    const g = utilGrade(disp, locale === "en");
                     return (
                     <div key={e.id} className="rounded-xl border border-steel-100 p-3">
                       <div className="mb-1 flex justify-between gap-2 text-sm">
                         <span className="text-steel-600">{e.name} <span className="font-mono text-xs text-steel-400">{e.code}</span></span>
                         <span className="flex shrink-0 items-center gap-1.5 font-semibold text-navy-900">{disp}% <Badge tone={manual ? "gray" : "blue"}>{manual ? "Manual" : "Auto"}</Badge></span>
                       </div>
-                      <ProgressBar value={disp} tone={disp > 85 ? "red" : disp > 60 ? "amber" : "green"} />
-                      <p className="mt-1 text-xs text-steel-500">Auto bulan ini: {auto}% (jam Selesai ÷ 176)</p>
+                      <ProgressBar value={disp} tone={g.tone} />
+                      <p className="mt-1 text-xs text-steel-500"><Badge tone={g.tone}>{g.label}</Badge> <span className="ml-1">Auto bulan ini: {auto}% ({autoHoursOf(e)} jam ÷ 176)</span></p>
                       <div className="mt-2 flex flex-wrap items-center gap-2">
                         <select className="input w-auto py-1 text-xs" value={manual ? "Manual" : "Auto"} onChange={(ev) => { if (ev.target.value === "Auto") void saveUtilOverride(e, false); else setUtilDraft((m) => ({ ...m, [e.id]: String(e.util ?? 0) })); }} aria-label={`Mode utilisasi ${e.name}`}>
                           <option value="Auto">Auto</option>
@@ -1239,7 +1251,7 @@ export default function EquipmentPage() {
 
       {/* Modal tambah */}
       <Modal open={showAdd} onClose={() => setShowAdd(false)} title={S.eqAdd}
-        wide footer={<><button className="btn-secondary" onClick={() => setShowAdd(false)}>{S.cancelBtn}</button><button className="btn-primary" onClick={saveAdd}>{S.saveBtn}</button></>}>
+        wide footer={<><button className="btn-secondary" onClick={() => setShowAdd(false)}>{S.cancelBtn}</button><button className="btn-primary" onClick={() => void busy.run("saveAdd", saveAdd)} disabled={busy.isBusy("saveAdd")}>{S.saveBtn}</button></>}>
         <div className="space-y-3">
           <FormGrid>
             <Field label={S.eqNameField}><input className="input" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder={S.eqNamePh} /></Field>
@@ -1273,7 +1285,7 @@ export default function EquipmentPage() {
 
       {/* Modal servis */}
       <Modal open={showService} onClose={() => setShowService(false)} title={S.eqSchedSvc}
-        footer={<><button className="btn-secondary" onClick={() => setShowService(false)}>{S.cancelBtn}</button><button className="btn-primary" onClick={saveService}>{S.saveBtn}</button></>}>
+        footer={<><button className="btn-secondary" onClick={() => setShowService(false)}>{S.cancelBtn}</button><button className="btn-primary" onClick={() => void busy.run("saveService", saveService)} disabled={busy.isBusy("saveService")}>{S.saveBtn}</button></>}>
         <div className="space-y-3">
           <Field label={S.thEquipment}>
             <select className="input" value={svcTarget} onChange={(e) => setSvcTarget(e.target.value)}>
@@ -1320,7 +1332,7 @@ export default function EquipmentPage() {
       </Modal>
 
       <Modal open={recording !== null} onClose={() => setRecording(null)} title={S.eqRecordTitle.replace("{a}", recording?.name ?? "")} subtitle={S.eqRecordSub}
-        footer={<><button className="btn-secondary" onClick={() => setRecording(null)}>{S.cancelBtn}</button><button className="btn-primary" onClick={saveRecord}>{S.eqSaveSvc}</button></>}>
+        footer={<><button className="btn-secondary" onClick={() => setRecording(null)}>{S.cancelBtn}</button><button className="btn-primary" onClick={() => void busy.run("saveRecord", saveRecord)} disabled={busy.isBusy("saveRecord")}>{S.eqSaveSvc}</button></>}>
         <div className="space-y-3">
           <FormGrid>
             <Field label={S.eqSvcDateField}><input type="date" className="input" value={woForm.tanggal} onChange={(e) => setWoForm({ ...woForm, tanggal: e.target.value })} /></Field>
@@ -1331,7 +1343,7 @@ export default function EquipmentPage() {
           <Field label={S.eqWorkNote}><input className="input" value={woForm.catatan} onChange={(e) => setWoForm({ ...woForm, catatan: e.target.value })} placeholder={S.eqWorkNotePh} /></Field>
           <div className="border-t border-steel-100 pt-3">
             <div className="mb-2 flex items-center justify-between">
-              <p className="text-xs font-semibold text-steel-500">Material servis dari inventory (potong stok/GI)</p>
+              <p className="text-xs font-semibold text-steel-500">Material servis dari inventory (potong stok / barang keluar)</p>
               <button className="btn-secondary text-xs" onClick={() => setSvcMats((m) => [...m, { itemId: "", qty: "" }])}>+ Tambah material</button>
             </div>
             {svcMats.length === 0 && <p className="text-xs text-steel-400">Belum ada material — tambah bila servis memakai sparepart dari gudang.</p>}
@@ -1387,8 +1399,8 @@ export default function EquipmentPage() {
               </select>
             </Field>
             <Field label={S.dateLabel}><input type="date" className="input" value={bookForm.date} onChange={(e) => setBookForm({ ...bookForm, date: e.target.value })} /></Field>
-            <Field label={S.eqStartField}><input type="time" className="input" value={bookForm.mulai} onChange={(e) => setBookForm({ ...bookForm, mulai: e.target.value })} /></Field>
-            <Field label={S.eqEndField}><input type="time" className="input" value={bookForm.selesai} onChange={(e) => setBookForm({ ...bookForm, selesai: e.target.value })} /></Field>
+            <Field label={S.eqStartField} hint="Format 24 jam (cth 14:00)"><input type="time" className="input" value={bookForm.mulai} onChange={(e) => setBookForm({ ...bookForm, mulai: e.target.value })} /></Field>
+            <Field label={S.eqEndField} hint="Format 24 jam (cth 17:30)"><input type="time" className="input" value={bookForm.selesai} onChange={(e) => setBookForm({ ...bookForm, selesai: e.target.value })} /></Field>
             <Field label={S.eqPriorityField}>
               <select className="input" value={bookForm.priority} onChange={(e) => setBookForm({ ...bookForm, priority: e.target.value })}>
                 {BOOK_PRIORITIES.map((p) => <option key={p}>{p}</option>)}

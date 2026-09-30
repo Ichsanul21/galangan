@@ -71,8 +71,8 @@ function sevOf(tone: Tone): "Merah" | "Kuning" | "Biru" {
   return "Biru";
 }
 
-/* Satu grup hari tampil penuh + scroll internal (search global di atas tetap
-   berlaku); markGroup tetap per grup penuh. */
+/* Satu grup hari tampil penuh tanpa scroll internal (scroll di container
+   terluar max-h-[70vh]); markGroup tetap per grup penuh. */
 function NotifGroup({ g, renderRow, markGroup, markGroupRead }: {
   g: { group: DayGroup; rows: NotifItem[] };
   renderRow: (i: NotifItem) => ReactNode;
@@ -92,7 +92,7 @@ function NotifGroup({ g, renderRow, markGroup, markGroupRead }: {
           <Check className="h-3 w-3" /> {markGroupRead}
         </button>
       </div>
-      <div className="max-h-96 divide-y divide-steel-50 overflow-y-auto rounded-xl border border-steel-100">
+      <div className="divide-y divide-steel-50 rounded-xl border border-steel-100">
         {g.rows.map((i) => renderRow(i))}
       </div>
     </div>
@@ -298,6 +298,7 @@ export default function Notifikasi() {
               subtitle={t.notif.emptyHint}
             />
           )}
+          <div className="max-h-[70vh] overflow-y-auto pr-1">
           {grouped.map((g) => (
             <NotifGroup
               key={g.group}
@@ -348,6 +349,7 @@ export default function Notifikasi() {
               }}
             />
           ))}
+          </div>
         </div>
       </Card>
     </div>

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Plus, HardHat, FileSignature, Star, Search } from "lucide-react";
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from "recharts";
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, ReferenceLine } from "recharts";
 import { Card, CardHeader, PageHeader, Badge, KpiCard, Tabs, ProgressBar, ChartTooltip, Modal, Field, FormGrid, ConfirmModal, SortTh, toggleSort, sortRows, usePager, toast,
   NumInput, FlowStrip,
 } from "../../components/ui";
@@ -125,7 +125,7 @@ function shortSub(name: unknown): string {
 
 export default function Subcontractor() {
   const busy = useBusy();
-  const { data, add, update, log, branch } = useStore();
+  const { data, add, update, log, branch, resync } = useStore();
   const { locale } = useT();
   const S = n_crm[locale];
   const subcontractors = data.subcontractors;
@@ -143,6 +143,7 @@ export default function Subcontractor() {
   const modAlert = useModuleAlert("subkontraktor");
   const flash = useNotifFlash();
   const notified = useMemo(() => new Set(modAlert.items.map((a) => a.rowId)), [modAlert.items]);
+  useEffect(() => { void resync().catch(() => undefined); }, [resync]);
 
   const [showSub, setShowSub] = useState(false);
   const [subForm, setSubForm] = useState({ name: "", services: "", contract: "", k3: "A", contractType: "Borongan", payScheme: "unit", noBG: "", bgExpiry: "", bgValue: "" });
@@ -682,15 +683,16 @@ export default function Subcontractor() {
                       <YAxis domain={[0, 100]} stroke="#8aa2b6" axisLine={false} tickLine={false} />
                       <Tooltip content={<ChartTooltip formatter={(v) => `${v}`} />} />
                       <Legend wrapperStyle={{ fontSize: 12 }} />
-                      <Bar dataKey="rating" name={locale === "en" ? "Actual rating" : "Rating aktual"} fill="#0b3a63" radius={[3, 3, 0, 0]} barSize={16} />
-                      <Bar dataKey="k3" name="K3" fill="#f59e0b" radius={[3, 3, 0, 0]} barSize={16} />
+                      <ReferenceLine y={80} stroke="#ef4444" strokeDasharray="5 5" label={{ value: "Target 80", position: "insideTopRight", fontSize: 10, fill: "#ef4444" }} />
+                      <Bar dataKey="rating" name={locale === "en" ? "Actual rating" : "Rating aktual"} fill="#0b3a63" radius={[3, 3, 0, 0]} barSize={16} onClick={(d) => { const pl = (d as unknown as { payload?: { full?: string; rating?: number; k3?: number } }).payload; if (pl?.full) toast(`${pl.full} — rating ${pl.rating}, K3 ${pl.k3}`); }} style={{ cursor: "pointer" }} />
+                      <Bar dataKey="k3" name="K3" fill="#f59e0b" radius={[3, 3, 0, 0]} barSize={16} onClick={(d) => { const pl = (d as unknown as { payload?: { full?: string; rating?: number; k3?: number } }).payload; if (pl?.full) toast(`${pl.full} — rating ${pl.rating}, K3 ${pl.k3}`); }} style={{ cursor: "pointer" }} />
                     </BarChart>
                   </ResponsiveContainer>
                 </div>
                 <p className="px-4 pb-3 text-[11px] text-steel-500">
                   {locale === "en"
-                    ? "Formula: bars use actual scores — rating = subcontractor rating, K3 converted (A+ 95 · A 90 · B+ 82 · B 78 · C 65)."
-                    : "Rumus: batang memakai skor aktual — rating = rating subkontraktor, K3 dikonversi (A+ 95 · A 90 · B+ 82 · B 78 · C 65)."}
+                    ? "How to read: actual rating vs K3 (0-100). Target 80. Click a bar for detail. Higher is better. Formula: bars use actual scores — rating = subcontractor rating, K3 converted (A+ 95 · A 90 · B+ 82 · B 78 · C 65)."
+                    : "Rating aktual vs K3 (0-100). Target 80. Klik bar untuk detail. Makin tinggi makin baik. Rumus: batang memakai skor aktual — rating = rating subkontraktor, K3 dikonversi (A+ 95 · A 90 · B+ 82 · B 78 · C 65)."}
                 </p>
               </Card>
               <div className="mb-3 flex flex-wrap items-center gap-2">
@@ -885,6 +887,25 @@ export default function Subcontractor() {
                         <td className="td text-steel-600">{fmtTanggal(p.date)}</td>
                         <td className="td">
                           <Badge tone={toneMap[normTerm(p.status)] ?? "gray"}>{normTerm(p.status)}</Badge>
+                          {(() => {
+                            const docs = [
+                              { label: "Invoice", done: Boolean(p.invoiceNo ?? p.withholdingRef) },
+                              { label: "BAST", done: Boolean(p.bastNo ?? p.releaseBA) },
+                              { label: "Bukti bayar", done: Boolean(p.paymentRef ?? p.paidRef ?? p.paidAt) },
+                            ];
+                            const allDone = docs.every((d) => d.done);
+                            const terminal = normTerm(String(p.status)) === "Lunas" || String(p.status) === "Retensi Released";
+                            return (
+                              <div className="mt-1 space-y-0.5">
+                                {docs.map((d) => (
+                                  <p key={d.label} className="text-[11px] text-steel-500">{d.done ? "✓" : "○"} {d.label}</p>
+                                ))}
+                                {!allDone && !terminal && (
+                                  <p className="text-[11px] text-steel-400">Lengkapi Invoice + BAST + Bukti bayar untuk ke status berikutnya</p>
+                                )}
+                              </div>
+                            );
+                          })()}
                           {p.status === "Retensi Released" && p.releasedAt && <p className="mt-1 text-xs text-steel-500">{S.baInfo.replace("{a}", String(p.releaseBA)).replace("{b}", fmtTanggal(p.releasedAt))}</p>}
                         </td>
                         <td className="td">
@@ -1184,6 +1205,7 @@ export default function Subcontractor() {
                     ? `Progress = sum of completed milestone weights = ${Math.min(100, total)}% (two-way synced with Paid terms)`
                     : `Progres = jumlah bobot milestone selesai = ${Math.min(100, total)}% (sinkron dua arah dengan termin Lunas)`}
                 </p>
+                <p className="text-[11px] text-steel-500">Progress dari checklist milestone berbobot, otomatis jadi %. Sinkron ke termin.</p>
               </>
             );
           })()}

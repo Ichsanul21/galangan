@@ -360,6 +360,7 @@ export default function AppShell() {
      tabel. Throttle via ref timestamp. */
   const location = useLocation();
   const lastResyncRef = useRef(0);
+  const lastPathRef = useRef("");
   const qRef = useRef(q);
   qRef.current = q;
   const modalOpenRef = useRef(false);
@@ -369,8 +370,12 @@ export default function AppShell() {
     if (backendMode !== "remote") return;
     if (qRef.current.trim() !== "") return;
     if (modalOpenRef.current) return;
+    /* Pindah modul/halaman = WAJIB data baru. Throttle 60 dtk hanya untuk
+       render ulang pada path yang sama (bukan perpindahan modul). */
+    const pathChanged = location.pathname !== lastPathRef.current;
     const now = Date.now();
-    if (now - lastResyncRef.current < 60000) return;
+    if (!pathChanged && now - lastResyncRef.current < 60000) return;
+    lastPathRef.current = location.pathname;
     lastResyncRef.current = now;
     void resync();
   }, [location.pathname, backendMode, resync]);

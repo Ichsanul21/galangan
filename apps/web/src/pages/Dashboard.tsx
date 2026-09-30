@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { CSSProperties } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import {
@@ -48,6 +48,7 @@ import {
   Field,
   toast,
   NumInput,
+  useBusy,
 } from "../components/ui";
 import { useStore } from "../data/store";
 import type { StoreItem } from "../data/store";
@@ -74,6 +75,22 @@ import { n_misc } from "../i18n/n_misc";
 
 const RANGES = ["6B", "12B"] as const;
 
+const MON_ID = ["Jan", "Feb", "Mar", "Apr", "Mei", "Jun", "Jul", "Ags", "Sep", "Okt", "Nov", "Des"];
+
+/* Label sumbu "MMM YYYY" + putar series agar bulan berjalan paling kanan. */
+function withMonthLabels<T extends { month: string }>(arr: T[]): (T & { bln: string })[] {
+  const now = new Date();
+  const cur = now.getMonth();
+  const pos = arr.findIndex((d) => d.month === MON_ID[cur]);
+  const rot = pos >= 0 ? [...arr.slice(pos + 1), ...arr.slice(0, pos + 1)] : [...arr];
+  const y = now.getFullYear();
+  return rot.map((d) => {
+    const mi = MON_ID.indexOf(d.month);
+    const yy = mi < 0 ? y : mi <= cur ? y : y - 1;
+    return { ...d, bln: `${d.month} ${yy}` };
+  });
+}
+
 interface BranchTarget { revenue: number; projects: number }
 
 function loadTargets(): Record<string, BranchTarget> {
@@ -85,7 +102,9 @@ function loadTargets(): Record<string, BranchTarget> {
 }
 
 export default function Dashboard() {
-  const { data, wbsFor, branch } = useStore();
+  const busy = useBusy();
+  const { data, wbsFor, branch, resync } = useStore();
+  useEffect(() => { void resync().catch(() => undefined); }, [resync]);
   const { locale } = useT();
   const S = n_misc[locale];
   const { user } = useAuth();
@@ -124,8 +143,10 @@ export default function Dashboard() {
     : 0;
   const utilEquipment = Math.round(utilSeries[utilSeries.length - 1].equipment);
 
-  const chartData =
-    range === "12B" ? revenueSeries : revenueSeries.slice(-6);
+  const chartData = useMemo(() => {
+    const base = range === "12B" ? revenueSeries : revenueSeries.slice(-6);
+    return withMonthLabels(base);
+  }, [range]);
 
   const lastRev = revenueSeries[revenueSeries.length - 1];
   const prevRev = revenueSeries[revenueSeries.length - 2];
@@ -140,10 +161,16 @@ export default function Dashboard() {
   const seaTrialVessel =
     projects.find((p) => p.status !== "Selesai" && scopeNames(p.scope).includes("Sea Trial"))?.vessel ?? "-";
 
-  /* Tombol ekspor = PDF ringkas portofolio via section cetak tersembunyi. */
+  /* Tombol ekspor = PDF ringkas portofolio via section cetak tersembunyi (tabel KPI, tanpa chart blank). */
   const exportSummary = () => {
-    exportPDF("dashboard-pdf", `Ringkasan-Portofolio-${todayISO()}`);
-    toast(S.tPortfolioPdfExported);
+    void busy.run("export", async () => {
+      try {
+        await exportPDF("dashboard-pdf", `Ringkasan-Portofolio-${todayISO()}`);
+        toast(S.tPortfolioPdfExported);
+      } catch {
+        toast("Ekspor PDF gagal", "info");
+      }
+    });
   };
 
   const tgt = targets[branch] ?? { revenue: 0, projects: 0 };
@@ -315,7 +342,7 @@ export default function Dashboard() {
               <button className="btn-secondary" onClick={togglePresent} title={isFs ? S.exitFullscreen : S.presentBtn}>
                 {isFs ? <Minimize className="h-4 w-4" /> : <Maximize className="h-4 w-4" />} {isFs ? S.exitFullscreen : S.presentBtn}
               </button>
-              <button className="btn-secondary" onClick={exportSummary}>
+              <button className="btn-secondary" disabled={busy.isBusy("export")} onClick={exportSummary}>
                 <Download className="h-4 w-4" /> {S.exportBtn}
               </button>
               <button className="btn-primary-gradient" onClick={() => navigate("/proyek?create=1&alert=proyek")}>
@@ -571,7 +598,7 @@ export default function Dashboard() {
           <Card>
             <CardHeader
               title={S.revenueVsVolume}
-              subtitle={S.trend12Months}
+              subtitle={`${S.trend12Months} · Bulan berjalan paling kanan`}
               action={
                 <div className="flex items-center gap-1 rounded-lg border border-steel-200 bg-surface p-0.5">
                   {RANGES.map((r) => (
@@ -598,7 +625,7 @@ export default function Dashboard() {
                     </linearGradient>
                   </defs>
                   <CartesianGrid strokeDasharray="3 3" stroke="#e9eff4" vertical={false} />
-                  <XAxis dataKey="month" tick={{ fontSize: 12 }} stroke="#8aa2b6" axisLine={false} tickLine={false} />
+                  <XAxis dataKey="bln" tick={{ fontSize: 12 }} stroke="#8aa2b6" axisLine={false} tickLine={false} />
                   <YAxis yAxisId="rev" tick={{ fontSize: 12 }} stroke="#8aa2b6" axisLine={false} tickLine={false} />
                   <YAxis yAxisId="proj" orientation="right" tick={{ fontSize: 12 }} stroke="#8aa2b6" axisLine={false} tickLine={false} />
                   <Tooltip content={<ChartTooltip formatter={(v) => (typeof v === "number" ? `Rp ${v} M` : v)} />} />

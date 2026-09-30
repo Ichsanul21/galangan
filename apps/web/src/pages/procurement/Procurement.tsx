@@ -23,7 +23,7 @@ import { n_proc } from "../../i18n/n_proc";
 import { FilterPopover } from "../../components/FilterPopover";
 
 /* Baris PO string-state (pola smallForm): simpan string, Number() saat validasi. */
-interface POLine { name: string; qty: string; unit: string; price: string }
+interface POLine { name: string; qty: string; unit: string; price: string; spec?: string; need?: string }
 interface Quote { vendor: string; price: number; eta: string }
 interface Approval { level: string; by: string; date: string }
 interface VendorScore { po: string; q: number; d: number; p: number; score: number; date: string }
@@ -156,12 +156,13 @@ async function freshPayables(fallback: StoreItem[]): Promise<StoreItem[]> {
 
 export default function Procurement() {
   const busy = useBusy();
-  const { data, add, update, remove, log, inBranch } = useStore();
+  const { data, add, update, remove, log, inBranch, resync } = useStore();
   const { locale } = useT();
   const S = n_proc[locale];
   const modAlert = useModuleAlert("procurement");
   const flash = useNotifFlash();
   const notified = useMemo(() => new Set(modAlert.items.map((a) => a.rowId)), [modAlert.items]);
+  useEffect(() => { void resync().catch(() => undefined); }, [resync]);
   const purchaseOrders = inBranch(data.purchaseOrders);
   const requisitions = data.requisitions;
   const vendors = data.vendors;
@@ -192,13 +193,13 @@ export default function Procurement() {
   /* ---- PO Besar ---- */
   const [showBig, setShowBig] = useState(false);
   const [bigForm, setBigForm] = useState({ tujuan: "kapal" as "kapal" | "stok", prId: "", itemId: "", vendor: "", project: "", vessel: "", eta: "", includePpn: true, override: false, overrideReason: "" });
-  const [bigLines, setBigLines] = useDraftState<POLine[]>("isms.draft.procurement.bigLines", [{ name: "", qty: "1", unit: "pcs", price: "" }]);
+  const [bigLines, setBigLines] = useDraftState<POLine[]>("isms.draft.procurement.bigLines", [{ name: "", qty: "1", unit: "pcs", price: "", spec: "", need: "" }]);
   const [vCatF, setVCatF] = useState("Semua");
   const [poDetail, setPoDetail] = useState<StoreItem | null>(null);
 
   /* ---- PO Kecil ---- */
   const [showSmall, setShowSmall] = useState(false);
-  const [smallForm, setSmallForm] = useState({ workshop: "", requester: "", item: "", qty: "1", unit: "pcs", price: "", eta: "", project: "", vessel: "", nota: "", override: false, overrideReason: "" });
+  const [smallForm, setSmallForm] = useState({ workshop: "", requester: "", item: "", spec: "", need: "", qty: "1", unit: "pcs", price: "", eta: "", project: "", vessel: "", nota: "", override: false, overrideReason: "" });
   const [kasAwal, setKasAwal] = useState("");
 
   /* ---- RFQ ---- */
@@ -269,8 +270,11 @@ export default function Procurement() {
     if (!q) return true;
     return hay.toLowerCase().includes(q);
   };
-  const bigShown = bigList.filter((po) => matchProc(`${po.id} ${po.item} ${po.vendor} ${poLines(po).map((l) => l.name).join(" ")}`, String(normPo(po.status))));
-  const smallShown = smallList.filter((po) => matchProc(`${po.id} ${po.item} ${po.vendor}`, String(normPo(po.status))));
+  const venCatOf = (name: string): string => String(vendors.find((v) => sameName(v.name, name))?.cat ?? "");
+  const bigShown = bigList.filter((po) => matchProc(`${po.id} ${po.item} ${po.vendor} ${poLines(po).map((l) => l.name).join(" ")}`, String(normPo(po.status)))
+    && (vCatF === "Semua" || venCatOf(String(po.vendor ?? "")) === vCatF));
+  const smallShown = smallList.filter((po) => matchProc(`${po.id} ${po.item} ${po.vendor} ${po.workshop ?? ""}`, String(normPo(po.status)))
+    && (vCatF === "Semua" || venCatOf(String(po.vendor ?? "")) === vCatF));
   const rfqShown = rfqs.filter((r) => matchProc(`${r.id} ${r.item} ${r.prId} ${(Array.isArray(r.vendors) ? r.vendors as string[] : []).join(" ")}`, String(r.status)));
   const prShown = requisitions.filter((r) => matchProc(`${r.id} ${r.item} ${r.by}`, String(r.status)));
   const vendorShown = vendors.filter((v) => matchProc(`${v.name} ${v.cat}`, String(v.status ?? "Aktif")) && (vCatF === "Semua" || String(v.cat ?? "") === vCatF));
@@ -290,8 +294,6 @@ export default function Procurement() {
       {VENDOR_CATS.map((c) => <option key={c} value={c}>{c}</option>)}
     </select>
   );
-  const venCatOf = (name: string): string => String(vendors.find((v) => sameName(v.name, name))?.cat ?? "");
-
   const sortedBig = useMemo(() => sortRows(bigShown, sort, (po, k) => {
     if (k === "nilai") return Number(po.amount || 0);
     if (k === "item") return String(po.item ?? "");
@@ -305,6 +307,7 @@ export default function Procurement() {
   const sortedSmall = useMemo(() => sortRows(smallShown, sort2, (po, k) => {
     if (k === "nilai") return Number(po.amount || 0);
     if (k === "kebutuhan") return String(po.item ?? "");
+    if (k === "vendor") return String(po.vendor ?? "");
     if (k === "workshop") return String(po.workshop ?? "");
     if (k === "level") return String(levelOf(Number(po.amount || 0), APPROVE_PO_LIMIT));
     if (k === "eta") return String(po.eta ?? "");
@@ -327,7 +330,7 @@ export default function Procurement() {
     smallPager.reset();
     prPager.reset();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pq, pStatus, tab]);
+  }, [pq, pStatus, vCatF, tab]);
 
   const pickNotif = (rowId: string) => {
     const idxBig = sortedBig.findIndex((r) => String(r.id) === rowId);
@@ -441,7 +444,7 @@ export default function Procurement() {
     const created = await add("purchaseOrders", {
       poType: "Besar", item: invItem.name, itemId: invItem.id, vendor: bigForm.vendor,
       req: bigForm.prId, amount: bigTotal, qty: bigLines.reduce((s, l) => s + Number(l.qty), 0),
-      lines: bigLines.map((l) => ({ name: l.name.trim(), qty: Number(l.qty), unit: l.unit, price: Number(l.price) })),
+      lines: bigLines.map((l) => ({ name: l.name.trim(), qty: Number(l.qty), unit: l.unit, price: Number(l.price), spec: (l.spec ?? "").trim(), need: (l.need ?? "").trim() })),
       project: isStok ? "-" : (bigForm.project || "-"), vessel: isStok ? "" : bigForm.vessel.trim(), eta: bigForm.eta || "",
       docNo, includePpn: bigForm.includePpn, tujuan: bigForm.tujuan,
       receivedQty: 0, returnedQty: 0, status: "Draft", date: todayISO(), revisi: "",
@@ -481,12 +484,12 @@ export default function Procurement() {
       date: todayISO(), eta: smallForm.eta || "", project: smallForm.project || "-",
       vessel: smallForm.vessel.trim(), nota: smallForm.nota.trim(),
       docNo: sbPoNumber(nextPoSeq()),
-      lines: [{ name: smallForm.item.trim(), qty, unit: smallForm.unit.trim(), price }],
+      lines: [{ name: smallForm.item.trim(), qty, unit: smallForm.unit.trim(), price, spec: smallForm.spec.trim(), need: smallForm.need.trim() }],
       revisi: "", amendments: [], overrideReason: smallOver ? smallForm.overrideReason.trim() : "",
     }, { action: "membuat PO Kecil", module: "Procurement" });
     toast(S.tSmallCreated);
     setShowSmall(false);
-    setSmallForm({ workshop: "", requester: "", item: "", qty: "1", unit: "pcs", price: "", eta: "", project: "", vessel: "", nota: "", override: false, overrideReason: "" });
+    setSmallForm({ workshop: "", requester: "", item: "", spec: "", need: "", qty: "1", unit: "pcs", price: "", eta: "", project: "", vessel: "", nota: "", override: false, overrideReason: "" });
     } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); }
   };
 
@@ -798,7 +801,7 @@ export default function Procurement() {
       tglFaktur: recvTglFaktur,
       dendaRp,
     });
-    /* Auto-AP dari GR (3-way match PO-GR-Invoice): hutang vendor terbentuk saat terima.
+    /* Auto-AP dari penerimaan (3-way match PO-terima-invoice): hutang vendor terbentuk saat terima.
        Idempoten: kunci po PERSIS sama dengan yang ditulis ("ID / docNo"), dicek ke
        payables segar; sudah ada → toast info + lewati insert. */
     const poKey = recvPo.docNo ? `${recvPo.id} / ${recvPo.docNo}` : String(recvPo.id);
@@ -822,8 +825,8 @@ export default function Procurement() {
         pph: "2%", st: "Belum Dibayar", vessel: String(recvPo.vessel ?? ""),
         item: String(recvPo.item ?? ""), pay1: 0, pay2: 0,
         noFaktur: recvNoFaktur.trim(), tglFaktur: recvTglFaktur,
-      }, { action: "auto-hutang dari GR", target: `${recvPo.id} (3-way match)`, module: "Procurement" });
-      log("auto-hutang GR", `${recvPo.id} → hutang ${recvPo.vendor} ${fmtRupiah(apTotal)}`, "Procurement");
+      }, { action: "auto-hutang dari penerimaan barang", target: `${recvPo.id} (3-way match)`, module: "Procurement" });
+      log("auto-hutang penerimaan barang", `${recvPo.id} → hutang ${recvPo.vendor} ${fmtRupiah(apTotal)}`, "Procurement");
     }
     if (late > 0 && dendaRp > 0) log("denda keterlambatan", `${recvPo.id}: telat ${late} hari → ${fmtRupiah(dendaRp)}`, "Procurement");
     toast(`${recvPo.id} ${mode === "penuh" ? S.tRecvPenuh : S.tRecvSebagian}${invItem ? S.tRecvStok.replace("{a}", invItem.name).replace("{b}", String(qty)) : ""}${dendaRp > 0 ? S.tRecvDenda.replace("{n}", fmtRupiah(dendaRp)) : ""}`);
@@ -979,18 +982,20 @@ export default function Procurement() {
                 { id: "PR", no: "1", label: locale === "en" ? "Request" : "Minta", hint: locale === "en" ? "what is needed" : "apa yang dibutuhkan" },
                 { id: "RFQ", no: "2", label: locale === "en" ? "Compare" : "Banding harga", hint: locale === "en" ? "optional under limit" : "opsional di bawah batas" },
                 { id: "PO", no: "3", label: locale === "en" ? "Order" : "Pesan", hint: locale === "en" ? "office / workshop" : "kantor / workshop" },
-                { id: "GR", no: "4", label: locale === "en" ? "Receive" : "Terima", hint: locale === "en" ? "inside Order table" : "di tabel Pesan" },
+                { id: "GR", no: "4", label: locale === "en" ? "Receive" : "Terima", hint: locale === "en" ? "stock + payable" : "tambah stok + hutang" },
+                { id: "BAYAR", no: "5", label: locale === "en" ? "Pay" : "Bayar", hint: locale === "en" ? "settle payable" : "selesai hutang di Finance" },
               ].map((s, i, arr) => {
                 const active = (tab === "PR" && s.id === "PR") || (tab === "RFQ" && s.id === "RFQ") || ((tab === "PO Besar (Kantor)" || tab === "PO Kecil (Workshop)") && (s.id === "PO" || s.id === "GR"));
-                const go = s.id === "PR" ? "PR" : s.id === "RFQ" ? "RFQ" : s.id === "PO" ? "PO Besar (Kantor)" : "PO Besar (Kantor)";
+                const go = s.id === "PR" ? "PR" : s.id === "RFQ" ? "RFQ" : "PO Besar (Kantor)";
                 return (
                   <span key={s.id} className="flex items-center gap-1.5">
                     <button
                       type="button"
-                      onClick={() => { if (s.id !== "GR") setTab(go); else { setTab("PO Besar (Kantor)"); } }}
+                      onClick={() => setTab(go)}
                       aria-current={active ? "step" : undefined}
                       title={`${s.no}. ${s.label} - ${s.hint}`}
                       className={`rounded-lg px-2.5 py-1 text-xs font-semibold ${active ? "bg-navy-700 text-white" : "bg-steel-100 text-steel-500 hover:bg-steel-200"}`}
+                      disabled={s.id === "BAYAR"}
                     >
                       {s.no}. {s.label}
                     </button>
@@ -1000,15 +1005,9 @@ export default function Procurement() {
               })}
             </div>
             <p className="py-1.5 text-[11px] text-steel-500">
-              {tab === "PR" && (locale === "en"
-                ? "Step 1: write what you need. Next: approve, then compare prices or order directly."
-                : "Langkah 1: tulis apa yang dibutuhkan. Berikutnya: setujui, lalu bandingkan harga atau langsung pesan.")}
-              {tab === "RFQ" && (locale === "en"
-                ? "Step 2: collect 3+ vendor quotes. Next: award one winner, a draft order is created automatically."
-                : "Langkah 2: kumpulkan 3+ penawaran vendor. Berikutnya: menangkan satu, draf pesanan dibuat otomatis.")}
-              {(tab === "PO Besar (Kantor)" || tab === "PO Kecil (Workshop)") && (locale === "en"
-                ? "Steps 3-4: approve, send, then click Receive here. Receiving adds stock and records the payable."
-                : "Langkah 3-4: setujui, kirim, lalu klik Terima di tabel ini. Terima menambah stok dan mencatat hutang.")}
+              {locale === "en"
+                ? `Alur: Kebutuhan (PR) → Penawaran (RFQ) → PO → Penerimaan (stok + hutang) → Pembayaran.${tab === "PR" ? " Anda di langkah 1: tulis kebutuhan." : tab === "RFQ" ? " Anda di langkah 2: bandingkan 3+ penawaran vendor." : " Anda di langkah 3-4: setujui, kirim, lalu klik Terima."}`
+                : `Alur: Kebutuhan (PR) → Penawaran (RFQ) → PO → Penerimaan (stok + hutang) → Pembayaran.${tab === "PR" ? " Anda di langkah 1: tulis kebutuhan." : tab === "RFQ" ? " Anda di langkah 2: bandingkan 3+ penawaran vendor." : " Anda di langkah 3-4: setujui, kirim, lalu klik Terima."}`}
             </p>
           </div>
         )}
@@ -1032,13 +1031,28 @@ export default function Procurement() {
                       {(STATUS_OPSI[tab] ?? ["Semua"]).map((s) => <option key={s} value={s}>{s === "Semua" ? S.allStatus : s}</option>)}
                     </select>
                   </Field>
+                  <Field label="Kategori vendor">
+                    <select className="input w-full" value={vCatF} onChange={(e) => setVCatF(e.target.value)}>
+                      <option value="Semua">Semua kategori</option>
+                      {VENDOR_CATS.map((c) => <option key={c} value={c}>{c}</option>)}
+                    </select>
+                  </Field>
                 </div>
               )}
             </FilterPopover>
-            {(pq.trim() !== "" || pStatus !== "Semua") && (
-              <span className="text-xs text-steel-400">
-                {S.filterActive.replace("{a}", tab).replace("{n}", String(tab === "PO Besar (Kantor)" ? bigShown.length : tab === "PO Kecil (Workshop)" ? smallShown.length : tab === "RFQ" ? rfqShown.length : tab === "PR" ? prShown.length : vendorShown.length))}
-              </span>
+            {(tab === "PO Besar (Kantor)" || tab === "PO Kecil (Workshop)" || tab === "Vendor") && (
+              <label className="flex items-center gap-1.5 text-xs text-steel-500">
+                <span className="whitespace-nowrap">Kategori vendor:</span>
+                <select className="input w-auto py-1.5 text-xs" value={vCatF} onChange={(e) => setVCatF(e.target.value)}>
+                  <option value="Semua">Semua kategori</option>
+                  {VENDOR_CATS.map((c) => <option key={c} value={c}>{c}</option>)}
+                </select>
+              </label>
+            )}
+            {(pq.trim() !== "" || pStatus !== "Semua" || vCatF !== "Semua") && (
+              <button className="btn-secondary text-xs" onClick={() => { setPq(""); setPStatus("Semua"); setVCatF("Semua"); }}>
+                {locale === "en" ? "Reset" : "Atur Ulang"}
+              </button>
             )}
           </div>
           {tab === "PO Besar (Kantor)" && (
@@ -1071,12 +1085,18 @@ export default function Procurement() {
                             {poLines(po).length > 0 && (
                               <p className="text-xs text-steel-400 truncate" title={poLines(po).map((l) => `${l.name} ×${l.qty}`).join("; ")}>{S.barisPr.replace("{n}", String(poLines(po).length)).replace("{a}", String(po.req ?? ""))}</p>
                             )}
+                            {poLines(po).some((l) => l.spec || l.need) && (
+                              <p className="text-xs text-steel-400 truncate" title={poLines(po).map((l) => [l.name, l.spec, l.need].filter(Boolean).join(" — ")).join("; ")}>
+                                {poLines(po).map((l) => [l.spec, l.need].filter(Boolean).join(" — ")).filter(Boolean).join("; ")}
+                              </p>
+                            )}
                             {po.noFaktur && (
                               <p className="text-xs text-steel-400 truncate" title={S.fakturN.replace("{n}", String(po.noFaktur))}>{S.fakturN.replace("{n}", String(po.noFaktur))}{po.tglFaktur ? S.dotN.replace("{n}", fmtTanggal(po.tglFaktur)) : ""}</p>
                             )}
                           </td>
                           <td className="td text-steel-600">
                             <p className="truncate" title={String(po.vendor)}>{po.vendor}</p>
+                            {venCatOf(String(po.vendor ?? "")) !== "" && <p className="text-xs text-steel-400">{venCatOf(String(po.vendor ?? ""))}</p>}
                             {payung && <span className="mt-0.5 inline-block"><Badge tone="navy">{S.payung}</Badge></span>}
                           </td>
                           <td className="td font-semibold">
@@ -1168,7 +1188,7 @@ export default function Procurement() {
                 <div className="overflow-x-auto">
                   <table className="w-full">
                     <thead className="bg-surface sticky top-0 z-10">
-                      <tr><SortTh label={S.po} sortKey="po" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} /><SortTh label={S.kebutuhan} sortKey="kebutuhan" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} /><SortTh label={S.workshop} sortKey="workshop" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} /><SortTh label={S.nilai} sortKey="nilai" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} /><SortTh label={S.level} sortKey="level" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} /><SortTh label={S.eta} sortKey="eta" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} /><SortTh label={S.revisi} sortKey="revisi" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} /><SortTh label={S.status} sortKey="status" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} /><th className="th">{S.aksi}</th></tr>
+                      <tr><SortTh label={S.po} sortKey="po" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} /><SortTh label={S.kebutuhan} sortKey="kebutuhan" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} /><SortTh label={S.vendor} sortKey="vendor" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} /><SortTh label={S.workshop} sortKey="workshop" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} /><SortTh label={S.nilai} sortKey="nilai" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} /><SortTh label={S.level} sortKey="level" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} /><SortTh label={S.eta} sortKey="eta" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} /><SortTh label={S.revisi} sortKey="revisi" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} /><SortTh label={S.status} sortKey="status" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} /><th className="th">{S.aksi}</th></tr>
                     </thead>
                     <tbody className="divide-y divide-steel-100">
                       {smallPager.slice(sortedSmall).map((po) => {
@@ -1190,6 +1210,15 @@ export default function Procurement() {
                             <td className="td text-steel-600">
                               <p className="truncate" title={String(po.item)}>{po.item}</p>
                               <p className="text-xs text-steel-400">{S.qtyBy.replace("{a}", fmtJumlah(Number(po.qty || 0))).replace("{b}", String(po.requester ?? ""))}</p>
+                              {poLines(po).some((l) => l.spec || l.need) && (
+                                <p className="text-xs text-steel-400 truncate" title={poLines(po).map((l) => [l.spec, l.need].filter(Boolean).join(" — ")).join("; ")}>
+                                  {poLines(po).map((l) => [l.spec, l.need].filter(Boolean).join(" — ")).filter(Boolean).join("; ")}
+                                </p>
+                              )}
+                            </td>
+                            <td className="td text-steel-600">
+                              <p className="truncate" title={String(po.vendor ?? "-")}>{po.vendor ?? "-"}</p>
+                              {venCatOf(String(po.vendor ?? "")) !== "" && <p className="text-xs text-steel-400">{venCatOf(String(po.vendor ?? ""))}</p>}
                             </td>
                             <td className="td text-steel-600 truncate" title={String(po.workshop ?? "-")}>{po.workshop ?? "-"}</td>
                             <td className="td font-semibold">{fmtRupiah(po.amount)}</td>
@@ -1564,18 +1593,25 @@ export default function Procurement() {
             <p className="label">{S.barisMin}</p>
             <div className="space-y-2">
               {bigLines.map((l, idx) => (
-                <div key={idx} className="grid grid-cols-12 gap-2">
-                  <input className="input col-span-5" placeholder={S.phNamaBaris} value={l.name} onChange={(e) => setBigLines((s) => s.map((x, i) => (i === idx ? { ...x, name: e.target.value } : x)))} />
-                  <NumInput min={1} className="input col-span-2" placeholder={S.qty} value={l.qty} onChange={(e) => setBigLines((s) => s.map((x, i) => (i === idx ? { ...x, qty: e.target.value } : x)))} />
-                  <select className="input col-span-2" value={l.unit} onChange={(e) => setBigLines((s) => s.map((x, i) => (i === idx ? { ...x, unit: e.target.value } : x)))}>
-                    {["pcs", "kg", "liter", "meter", "batang", "unit", "roll"].map((u) => <option key={u}>{u}</option>)}
-                  </select>
-                  <NumInput min={0} className="input col-span-2" placeholder={S.harga} value={l.price} onChange={(e) => setBigLines((s) => s.map((x, i) => (i === idx ? { ...x, price: e.target.value } : x)))} />
-                  <button className="btn-secondary col-span-1 text-xs" aria-label={S.ariaHapusBaris.replace("{n}", String(idx + 1))} onClick={() => setBigLines((s) => s.filter((_, i) => i !== idx))}><X className="h-3.5 w-3.5" /></button>
+                <div key={idx} className="rounded-xl border border-steel-200 p-2">
+                  <div className="grid grid-cols-12 gap-2">
+                    <input className="input col-span-4" placeholder={S.phNamaBaris} value={l.name} onChange={(e) => setBigLines((s) => s.map((x, i) => (i === idx ? { ...x, name: e.target.value } : x)))} />
+                    <input className="input col-span-3" placeholder="Spesifikasi (cth: MS 6x100)" value={l.spec ?? ""} onChange={(e) => setBigLines((s) => s.map((x, i) => (i === idx ? { ...x, spec: e.target.value } : x)))} />
+                    <NumInput min={0} className="input col-span-1" placeholder={S.qty} value={l.qty} onChange={(e) => setBigLines((s) => s.map((x, i) => (i === idx ? { ...x, qty: e.target.value } : x)))} />
+                    <select className="input col-span-1" value={l.unit} onChange={(e) => setBigLines((s) => s.map((x, i) => (i === idx ? { ...x, unit: e.target.value } : x)))}>
+                      {["pcs", "kg", "liter", "meter", "batang", "unit", "roll"].map((u) => <option key={u}>{u}</option>)}
+                    </select>
+                    <NumInput min={0} className="input col-span-2" placeholder={S.harga} value={l.price} onChange={(e) => setBigLines((s) => s.map((x, i) => (i === idx ? { ...x, price: e.target.value } : x)))} />
+                    <button className="btn-secondary col-span-1 text-xs" aria-label={S.ariaHapusBaris.replace("{n}", String(idx + 1))} onClick={() => setBigLines((s) => s.filter((_, i) => i !== idx))}><X className="h-3.5 w-3.5" /></button>
+                  </div>
+                  <input className="input mt-2 !py-1.5 text-xs" placeholder="Kebutuhan / untuk apa (cth: sheer bulkhead XV-42)" value={l.need ?? ""} onChange={(e) => setBigLines((s) => s.map((x, i) => (i === idx ? { ...x, need: e.target.value } : x)))} />
+                  <p className="mt-1 text-[11px] text-steel-500">
+                    {l.name.trim() || "Baris ini"} · {fmtJumlah(Number(l.qty || 0))} {l.unit} × {fmtRupiah(Number(l.price || 0))} = <b className="text-navy-900">{fmtRupiah(Number(l.qty || 0) * Number(l.price || 0))}</b>
+                  </p>
                 </div>
               ))}
             </div>
-            <button className="btn-secondary mt-2 text-xs" onClick={() => setBigLines((s) => [...s, { name: "", qty: "1", unit: "pcs", price: "" }])}><Plus className="h-3.5 w-3.5" /> {S.btnTambahBaris}</button>
+            <button className="btn-secondary mt-2 text-xs" onClick={() => setBigLines((s) => [...s, { name: "", qty: "1", unit: "pcs", price: "", spec: "", need: "" }])}><Plus className="h-3.5 w-3.5" /> {S.btnTambahBaris}</button>
             <p className="mt-2 text-sm font-semibold text-navy-900">{S.totalLevel.replace("{a}", fmtRupiah(bigTotal)).replace("{b}", levelOf(bigTotal, APPROVE_PO_LIMIT))}</p>
           </div>
           {bigOver && bigBudget && (
@@ -1599,6 +1635,10 @@ export default function Procurement() {
             <Field label={S.peminta}><input className="input" value={smallForm.requester} onChange={(e) => setSmallForm({ ...smallForm, requester: e.target.value })} placeholder={S.phPeminta} /></Field>
           </FormGrid>
           <Field label={S.itemBebas}><input className="input" value={smallForm.item} onChange={(e) => setSmallForm({ ...smallForm, item: e.target.value })} placeholder={S.phItemBebas} /></Field>
+          <FormGrid>
+            <Field label="Spesifikasi"><input className="input" value={smallForm.spec} onChange={(e) => setSmallForm({ ...smallForm, spec: e.target.value })} placeholder="cth: MS P/K 10x10" /></Field>
+            <Field label="Kebutuhan / untuk apa"><input className="input" value={smallForm.need} onChange={(e) => setSmallForm({ ...smallForm, need: e.target.value })} placeholder="cth: BPK deck 3" /></Field>
+          </FormGrid>
           <FormGrid>
             <Field label={S.qty}><NumInput min={1} className="input" value={smallForm.qty} onChange={(e) => setSmallForm({ ...smallForm, qty: e.target.value })} /></Field>
             <Field label={S.satuan}>

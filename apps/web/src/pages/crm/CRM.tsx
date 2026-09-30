@@ -64,9 +64,16 @@ function umurHari(dateStr: string | null | undefined): number | null {
 
 export default function CRM() {
   const busy = useBusy();
-  const { data, add, update, remove, log, branch, inBranch } = useStore();
+  const { data, add, update, remove, log, branch, inBranch, resync } = useStore();
   const { locale } = useT();
   const S = n_crm[locale];
+  /* Label tampilan: "Lead" → "Prospek" (ID saja); value backend tetap "Lead". */
+  const dispStage = (s: string): string => (s === "Lead" ? (locale === "en" ? "Lead" : "Prospek") : s);
+  /* Label tampilan tipe proyek & jenis request (ID); value backend tetap EN. */
+  const TYPE_ID: Record<string, string> = { "New Build": "Bangun Baru", Repair: "Reparasi", Retrofit: "Retrofit / Modifikasi" };
+  const dispType = (t: string): string => (locale === "en" ? t : TYPE_ID[t] ?? t);
+  const REQ_KIND_ID: Record<string, string> = { "Repair Request": "Permintaan Reparasi", "Technical Assessment": "Kaji Teknis" };
+  const dispReqKind = (k: string): string => (locale === "en" ? k : REQ_KIND_ID[k] ?? k);
   const modAlert = useModuleAlert("crm");
   const flash = useNotifFlash();
   const notified = useMemo(() => new Set(modAlert.items.map((a) => a.rowId)), [modAlert.items]);
@@ -500,6 +507,10 @@ export default function CRM() {
     flash.pick(key, -1, () => {}, 100);
   };
   useEffect(() => {
+    void resync();
+  }, [resync]);
+
+  useEffect(() => {
     quotPager.reset();
     reqPager.reset();
     contractPager.reset();
@@ -563,7 +574,7 @@ export default function CRM() {
                     <div className="space-y-3">
                       <Field label={S.stageLabel}>
                         <select className="input w-full" value={draft.stage} onChange={(e) => setDraft({ ...draft, stage: e.target.value })}>
-                          {["Semua", ...STAGES].map((s) => <option key={s} value={s}>{s === "Semua" ? S.allStages : s}</option>)}
+                          {["Semua", ...STAGES].map((s) => <option key={s} value={s}>{s === "Semua" ? S.allStages : dispStage(s)}</option>)}
                         </select>
                       </Field>
                     </div>
@@ -588,7 +599,7 @@ export default function CRM() {
                     {stageDist.map((d) => (
                       <div key={d.name} className="flex items-center gap-2 text-sm">
                         <span className="h-3 w-3 rounded-sm" style={{ background: d.color }} />
-                        <span className="truncate text-steel-600" title={d.name}>{d.name}</span>
+                        <span className="truncate text-steel-600" title={dispStage(d.name)}>{dispStage(d.name)}</span>
                         <span className="ml-auto font-semibold text-navy-900">{d.value}</span>
                       </div>
                     ))}
@@ -607,7 +618,7 @@ export default function CRM() {
                   return (
                     <div key={stage} className="rounded-xl bg-surface p-3">
                       <div className="mb-3 flex items-center justify-between">
-                        <h3 className="truncate text-sm font-semibold text-navy-900" title={stage}>{stage}</h3>
+                        <h3 className="truncate text-sm font-semibold text-navy-900" title={dispStage(stage)}>{dispStage(stage)}</h3>
                         <Badge tone="gray">{items.length}</Badge>
                       </div>
                       <div className="space-y-2.5">
@@ -726,7 +737,7 @@ export default function CRM() {
             <div className="space-y-3">
               <label className="flex items-center gap-2 text-sm text-steel-600">
                 <input type="checkbox" className="h-4 w-4" checked={oldOnly} onChange={(e) => setOldOnly(e.target.checked)} />
-                {S.oldLeadFilter.replace("{n}", String(oldLeads.length))}
+                {(locale === "en" ? S.oldLeadFilter : S.oldLeadFilter.replace(/lead/gi, "prospek")).replace("{n}", String(oldLeads.length))}
               </label>
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
               {quotPager.slice(penawaranList).map((q) => (
@@ -739,7 +750,7 @@ export default function CRM() {
                         <p className="mt-0.5 text-xs text-teal-600">{S.sentInfo.replace("{a}", fmtTanggal(String(q.sentAt ?? ""))).replace("{b}", String(q.sentTo ?? ""))}</p>
                       )}
                     </div>
-                    <Badge tone={STAGE_TONE[String(q.stage)] ?? "gray"}>{String(q.stage)}</Badge>
+                    <Badge tone={STAGE_TONE[String(q.stage)] ?? "gray"}>{dispStage(String(q.stage))}</Badge>
                   </div>
                   <div className="mt-3 flex items-center justify-between">
                     <span className="text-lg font-bold text-navy-900">{fmtMiliar(num(q.value))}</span>
@@ -962,9 +973,9 @@ export default function CRM() {
                       <div className="min-w-0 flex-1">
                         <p className="truncate font-semibold text-navy-900" title={String(c.name)}>{String(c.name)}</p>
                         <p className="text-xs text-steel-500">{S.satDetail.replace("{a}", String(Array.isArray(c.survei) ? c.survei.length : 0)).replace("{b}", surveyAvg(c) ? surveyAvg(c).toFixed(1) : "-")}</p>
-                        {String((Array.isArray(c.surveiCatatan) ? c.surveiCatatan : []).filter((x: unknown) => String(x ?? "").trim() !== "").slice(-1)[0] ?? "") !== "" && (
-                          <p className="mt-0.5 truncate text-xs italic text-steel-500" title={String((Array.isArray(c.surveiCatatan) ? c.surveiCatatan : []).slice(-1)[0] ?? "")}>“{String((Array.isArray(c.surveiCatatan) ? c.surveiCatatan : []).slice(-1)[0] ?? "")}”</p>
-                        )}
+                        {(Array.isArray(c.surveiCatatan) ? (c.surveiCatatan as unknown[]).map(String).filter((x) => x.trim() !== "").slice(-3) : []).map((note, i) => (
+                          <p key={i} className="mt-0.5 truncate text-xs italic text-steel-500" title={note}>“{note}”</p>
+                        ))}
                       </div>
                       <Badge tone={surveyAvg(c) >= 4 ? "green" : surveyAvg(c) >= 3 ? "amber" : "gray"}>
                         <Star className="h-3 w-3 mr-0.5" /> {surveyAvg(c) ? surveyAvg(c).toFixed(1) : "-"}
@@ -988,7 +999,7 @@ export default function CRM() {
                     </select>
                   </Field>
                   <Field label={S.descLabel}>
-                    <textarea className="input" rows={2} value={surveyForm.desc} onChange={(e) => setSurveyForm({ ...surveyForm, desc: e.target.value })} placeholder={S.surveyDescPh} />
+                    <textarea className="input" rows={2} value={surveyForm.desc} onChange={(e) => setSurveyForm({ ...surveyForm, desc: e.target.value })} placeholder="Ceritakan kecepatan respon, kualitas repair, komunikasi..." />
                   </Field>
                   <button className="btn-primary w-full justify-center" onClick={saveSurvey}>{S.saveSurveyBtn}</button>
                 </div>
@@ -1008,7 +1019,7 @@ export default function CRM() {
         </div>
         <div className="mt-2 flex flex-wrap gap-1.5">
           {forecastRows.map((r) => (
-            <Badge key={r.stage} tone="gray">{r.stage} {Math.round(r.prob * 100)}% · {r.count} · {fmtMiliar(r.weighted)}</Badge>
+            <Badge key={r.stage} tone="gray">{dispStage(r.stage)} {Math.round(r.prob * 100)}% · {r.count} · {fmtMiliar(r.weighted)}</Badge>
           ))}
         </div>
       </Card>
@@ -1026,12 +1037,12 @@ export default function CRM() {
             <Field label={S.vesselJobLabel}><input className="input" value={qForm.vessel} onChange={(e) => setQForm({ ...qForm, vessel: e.target.value })} placeholder={S.vesselJobPh} /></Field>
             <Field label={S.typeLabel}>
               <select className="input" value={qForm.type} onChange={(e) => setQForm({ ...qForm, type: e.target.value })}>
-                <option>New Build</option><option>Repair</option><option>Retrofit</option>
+                <option value="New Build">{dispType("New Build")}</option><option value="Repair">{dispType("Repair")}</option><option value="Retrofit">{dispType("Retrofit")}</option>
               </select>
             </Field>
             <Field label={S.initStageLabel}>
               <select className="input" value={qForm.stage} onChange={(e) => setQForm({ ...qForm, stage: e.target.value })}>
-                {FLOW.map((s) => <option key={s}>{s}</option>)}
+                {FLOW.map((s) => <option key={s} value={s}>{dispStage(s)}</option>)}
               </select>
             </Field>
           </FormGrid>
@@ -1057,7 +1068,7 @@ export default function CRM() {
             <Field label={S.reqVesselLabel}><input className="input" value={reqForm.vessel} onChange={(e) => setReqForm({ ...reqForm, vessel: e.target.value })} placeholder={S.reqVesselPh} /></Field>
             <Field label={S.typeLabel}>
               <select className="input" value={reqForm.kind} onChange={(e) => setReqForm({ ...reqForm, kind: e.target.value })}>
-                {REQ_KIND.map((k) => <option key={k}>{k}</option>)}
+                {REQ_KIND.map((k) => <option key={k} value={k}>{dispReqKind(k)}</option>)}
               </select>
             </Field>
             <Field label={S.dateLabel}><input type="date" className="input" value={reqForm.date} onChange={(e) => setReqForm({ ...reqForm, date: e.target.value })} /></Field>
@@ -1077,7 +1088,7 @@ export default function CRM() {
               <div className="mt-2 flex flex-wrap gap-x-6 gap-y-1">
                 <span className="text-steel-600">{S.previewValue} <strong className="text-navy-900">{fmtMiliar(num(sendTarget.value))}</strong></span>
                 <span className="text-steel-600">{S.previewDate} <strong className="text-navy-900">{fmtTanggal(String(sendTarget.date ?? ""))}</strong></span>
-                <span className="text-steel-600">{S.previewStage} <strong className="text-navy-900">{String(sendTarget.stage)}</strong></span>
+                <span className="text-steel-600">{S.previewStage} <strong className="text-navy-900">{dispStage(String(sendTarget.stage))}</strong></span>
               </div>
             </div>
             <Field label={S.emailToLabel}><input type="email" className="input" value={sendEmail} onChange={(e) => setSendEmail(e.target.value)} placeholder={S.emailToPh} /></Field>

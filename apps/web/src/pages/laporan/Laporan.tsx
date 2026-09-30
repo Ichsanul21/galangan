@@ -1,8 +1,9 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { CSSProperties } from "react";
+import { Link } from "react-router-dom";
 import { useDraftState } from "../../utils/draft";
 import { FileText } from "lucide-react";
-import { Card, CardHeader, PageHeader, StatusBadge, Badge, KpiCard, EmptyState, ProgressBar, Donut, toast } from "../../components/ui";
+import { Card, CardHeader, PageHeader, StatusBadge, Badge, KpiCard, EmptyState, ProgressBar, Donut, toast, useBusy } from "../../components/ui";
 import { useStore } from "../../data/store";
 import type { StoreItem } from "../../data/store";
 import { fmtTanggal, fmtRupiah, fmtMiliar, fmtJumlah, todayISO } from "../../utils/format";
@@ -19,6 +20,26 @@ const inRange = (d: string, a: string, b: string): boolean => d >= a && d <= b;
 
 /* Gap data tampil jujur "—": JANGAN angka palsu (cth 0%/Rp 0) saat sumber kosong. */
 const dashIf = (has: boolean, text: string): string => (has ? text : "—");
+
+/* Fallback jujur saat modul sumber kosong: sebut modul + link isi data. */
+function EmptyModul({ modul, to, label }: { modul: string; to: string; label: string }) {
+  return (
+    <p className="text-xs text-steel-400">
+      Belum ada data di modul {modul} — isi dulu di{" "}
+      <Link to={to} className="font-semibold text-ocean-600 hover:underline">{label}</Link>
+    </p>
+  );
+}
+
+/* Modul yang dicek arsip laporan — tampil di header arsip agar jujur. */
+const MODUL_DICEK: { modul: string; to: string; label: string }[] = [
+  { modul: "Proyek", to: "/proyek", label: "Proyek" },
+  { modul: "Inventori", to: "/inventori", label: "Inventori" },
+  { modul: "QC & Safety", to: "/qc-safety", label: "QC & Safety" },
+  { modul: "Keuangan", to: "/keuangan", label: "Keuangan" },
+  { modul: "Procurement", to: "/procurement", label: "Procurement" },
+  { modul: "SDM & Payroll", to: "/sdm", label: "SDM" },
+];
 
 /* Hindari section cetak terpotong / blank di tengah halaman PDF. */
 const printAvoid: CSSProperties = { breakInside: "avoid", pageBreakInside: "avoid" };
@@ -68,7 +89,9 @@ function loadArc(): ReportArc[] {
 }
 
 export default function Laporan() {
-  const { data, branch, inBranch, wbsFor, log } = useStore();
+  const busy = useBusy();
+  const { data, branch, inBranch, wbsFor, log, resync } = useStore();
+  useEffect(() => { void resync().catch(() => undefined); }, [resync]);
   const { locale } = useT();
   const S = n_misc[locale];
   const [mode, setMode] = useState<Mode>("Mingguan");
@@ -206,6 +229,7 @@ export default function Laporan() {
     const next = [tpl, ...tpls.filter((t) => t.name !== tpl.name)].slice(0, 20);
     setTpls(next);
     try { localStorage.setItem("isms.reportTpl", JSON.stringify(next)); } catch { /* abaikan */ }
+    log("menyimpan template laporan", `${tpl.name} · ${tpl.mode}`, "Laporan");
     toast(S.tTemplateSaved.replace("{n}", tpl.name));
     setTplName("");
   };
@@ -215,6 +239,7 @@ export default function Laporan() {
     setWeekStart(t.weekStart);
     setMonth(t.month);
     setProjectId(t.projectId);
+    log("menerapkan template laporan", `${t.name} · ${t.mode}`, "Laporan");
     toast(S.tTemplateUsed.replace("{n}", t.name));
   };
 
@@ -222,6 +247,7 @@ export default function Laporan() {
     const next = tpls.filter((t) => t.name !== name);
     setTpls(next);
     try { localStorage.setItem("isms.reportTpl", JSON.stringify(next)); } catch { /* abaikan */ }
+    log("menghapus template laporan", name, "Laporan");
     toast(S.tTemplateDeleted.replace("{n}", name), "info");
   };
 
@@ -286,9 +312,15 @@ export default function Laporan() {
 
   const pdfName = mode === "Mingguan" ? `Laporan-Mingguan-${week0}` : mode === "Bulanan" ? `Laporan-Bulanan-${month}` : `Laporan-${activeProjectId}`;
   const exportPDFLogged = () => {
-    exportPDF("laporan-konten", pdfName);
-    pushArc(pdfName, mode === "Per Proyek" ? String(project?.vessel ?? "") : mode === "Bulanan" ? month : `${fmtTanggal(week0)} - ${fmtTanggal(week1)}`, mode);
-    toast(S.tPdfArchived);
+    void busy.run("export", async () => {
+      try {
+        await exportPDF("laporan-konten", pdfName);
+        pushArc(pdfName, mode === "Per Proyek" ? String(project?.vessel ?? "") : mode === "Bulanan" ? month : `${fmtTanggal(week0)} - ${fmtTanggal(week1)}`, mode);
+        toast(S.tPdfArchived);
+      } catch {
+        toast("Ekspor PDF gagal", "info");
+      }
+    });
   };
 
   return (
@@ -299,10 +331,10 @@ export default function Laporan() {
         icon={<FileText className="h-5 w-5" />}
         actions={
           mode === "Mingguan"
-            ? <><button className="btn-secondary" onClick={exportWeek}>{S.exportExcelBtn}</button><button className="btn-primary" onClick={exportPDFLogged}>{S.pdfReportBtn}</button></>
+            ? <><button className="btn-secondary" disabled={busy.isBusy("export")} onClick={() => void busy.run("export", async () => exportWeek())}>{S.exportExcelBtn}</button><button className="btn-primary" disabled={busy.isBusy("export")} onClick={exportPDFLogged}>{S.pdfReportBtn}</button></>
             : mode === "Bulanan"
-              ? <><button className="btn-secondary" onClick={exportMonth}>{S.exportExcelBtn}</button><button className="btn-primary" onClick={exportPDFLogged}>{S.pdfReportBtn}</button></>
-              : <><button className="btn-secondary" onClick={exportProject}>{S.exportExcelBtn}</button><button className="btn-primary" onClick={exportPDFLogged}>{S.pdfReportBtn}</button></>
+              ? <><button className="btn-secondary" disabled={busy.isBusy("export")} onClick={() => void busy.run("export", async () => exportMonth())}>{S.exportExcelBtn}</button><button className="btn-primary" disabled={busy.isBusy("export")} onClick={exportPDFLogged}>{S.pdfReportBtn}</button></>
+              : <><button className="btn-secondary" disabled={busy.isBusy("export")} onClick={() => void busy.run("export", async () => exportProject())}>{S.exportExcelBtn}</button><button className="btn-primary" disabled={busy.isBusy("export")} onClick={exportPDFLogged}>{S.pdfReportBtn}</button></>
         }
       />
 
@@ -389,18 +421,18 @@ export default function Laporan() {
           <div className="space-y-4">
             <p className="text-sm text-steel-500">{S.weekRangeProjects.replace("{a}", fmtTanggal(week0)).replace("{b}", fmtTanggal(week1)).replace("{n}", fmtJumlah(weekly.projects.length))}</p>
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4" style={printAvoid}>
-              <KpiCard label={S.kpiActiveProject} value={fmtJumlah(weekly.projects.length)} hint={dashIf(weekly.projects.length > 0, S.avgProgressHint.replace("{n}", String(Math.round(weekly.avgProgress))))} chip="navy" />
-              <KpiCard label={S.kpiInvoiceIssuedPaid} value={`${fmtJumlah(weekly.invTerbit.length)} / ${fmtJumlah(weekly.invLunas.length)}`} hint={dashIf(weekly.invTerbit.length + weekly.invLunas.length > 0, fmtRupiah(weekly.invLunasVal))} chip="teal" />
-              <KpiCard label={S.kpiPoIssued} value={fmtJumlah(weekly.po.length)} hint={dashIf(weekly.po.length > 0, fmtRupiah(weekly.poVal))} chip="amber" />
+              <KpiCard label={S.kpiActiveProject} value={dashIf(true, fmtJumlah(weekly.projects.length))} hint={dashIf(weekly.projects.length > 0, S.avgProgressHint.replace("{n}", String(Math.round(weekly.avgProgress))))} chip="navy" />
+              <KpiCard label={S.kpiInvoiceIssuedPaid} value={dashIf(true, `${fmtJumlah(weekly.invTerbit.length)} / ${fmtJumlah(weekly.invLunas.length)}`)} hint={dashIf(weekly.invTerbit.length + weekly.invLunas.length > 0, fmtRupiah(weekly.invLunasVal))} chip="teal" />
+              <KpiCard label={S.kpiPoIssued} value={dashIf(true, fmtJumlah(weekly.po.length))} hint={dashIf(weekly.po.length > 0, fmtRupiah(weekly.poVal))} chip="amber" />
               <KpiCard label={S.kpiAttendance} value={dashIf(weekly.att.length > 0, `${Math.round(weekly.hadirPct)}%`)} hint={dashIf(weekly.att.length > 0, S.attendanceHint.replace("{a}", fmtJumlah(weekly.hadir)).replace("{b}", fmtJumlah(weekly.att.length)))} chip="violet" />
             </div>
             <div style={printAvoid}>
             <Card className="p-4">
               <CardHeader title={S.compareLastWeek} subtitle={`${fmtTanggal(weekPrev0)} → ${fmtTanggal(weekPrev1)}`} />
               <div className="grid grid-cols-1 gap-2 px-5 pb-5 text-sm sm:grid-cols-3">
-                <div className="flex justify-between"><span className="text-steel-500">{S.paidDelta}</span><span className="font-semibold">{fmtRupiah(weeklyRev - weeklyPrev.revenue)}</span></div>
-                <div className="flex justify-between"><span className="text-steel-500">{S.poDelta}</span><span className="font-semibold">{fmtRupiah(weeklyCost - weeklyPrev.cost)}</span></div>
-                <div className="flex justify-between"><span className="text-steel-500">{S.profitDelta}</span><span className="font-semibold">{fmtRupiah(weeklyLaba - weeklyPrev.laba)}</span></div>
+                <div className="flex justify-between"><span className="text-steel-500">{S.paidDelta}</span><span className="font-semibold">{dashIf(true, fmtRupiah(weeklyRev - weeklyPrev.revenue))}</span></div>
+                <div className="flex justify-between"><span className="text-steel-500">{S.poDelta}</span><span className="font-semibold">{dashIf(true, fmtRupiah(weeklyCost - weeklyPrev.cost))}</span></div>
+                <div className="flex justify-between"><span className="text-steel-500">{S.profitDelta}</span><span className="font-semibold">{dashIf(true, fmtRupiah(weeklyLaba - weeklyPrev.laba))}</span></div>
               </div>
               <p className="px-5 pb-5 text-[11px] text-steel-400">Kas: Lunas − (AP Lunas + Payroll Dibayar)</p>
             </Card>
@@ -417,7 +449,12 @@ export default function Laporan() {
                       <ProgressBar value={num(p.progress)} className="mt-1" />
                     </div>
                   ))}
-                  {weekly.projects.length === 0 && <EmptyState title={S.emptyActiveProjects} />}
+                  {weekly.projects.length === 0 && (
+                    <div className="space-y-2">
+                      <EmptyState title={S.emptyActiveProjects} />
+                      <EmptyModul modul="Proyek" to="/proyek" label="Proyek" />
+                    </div>
+                  )}
                 </div>
               </Card>
               </div>
@@ -440,7 +477,12 @@ export default function Laporan() {
                       <span className="ml-auto text-steel-500">{fmtTanggal(String(x.date ?? ""))}</span>
                     </div>
                   ))}
-                  {weekly.ncr.length === 0 && weekly.incidents.length === 0 && <p className="text-steel-400">{S.noFindingsWeek}</p>}
+                  {weekly.ncr.length === 0 && weekly.incidents.length === 0 && (
+                    <div className="space-y-2">
+                      <p className="text-steel-400">{S.noFindingsWeek}</p>
+                      <EmptyModul modul="QC & Safety" to="/qc-safety" label="QC & Safety" />
+                    </div>
+                  )}
                 </div>
               </Card>
               </div>
@@ -483,9 +525,9 @@ export default function Laporan() {
             <Card className="p-4">
               <CardHeader title={S.compareLastMonth.replace("{n}", prevMonth)} subtitle={S.deltaRevCostProfit} />
               <div className="grid grid-cols-1 gap-2 px-5 pb-5 text-sm sm:grid-cols-3">
-                <div className="flex justify-between"><span className="text-steel-500">{S.revDeltaVsMonth}</span><span className="font-semibold">{fmtRupiah(monthly.revenue - monthlyPrev.revenue)}</span></div>
-                <div className="flex justify-between"><span className="text-steel-500">{S.costDeltaVsMonth}</span><span className="font-semibold">{fmtRupiah(monthly.cost - monthlyPrev.cost)}</span></div>
-                <div className="flex justify-between"><span className="text-steel-500">{S.profitDelta}</span><span className="font-semibold">{fmtRupiah(monthly.laba - monthlyPrev.laba)}</span></div>
+                <div className="flex justify-between"><span className="text-steel-500">{S.revDeltaVsMonth}</span><span className="font-semibold">{dashIf(true, fmtRupiah(monthly.revenue - monthlyPrev.revenue))}</span></div>
+                <div className="flex justify-between"><span className="text-steel-500">{S.costDeltaVsMonth}</span><span className="font-semibold">{dashIf(true, fmtRupiah(monthly.cost - monthlyPrev.cost))}</span></div>
+                <div className="flex justify-between"><span className="text-steel-500">{S.profitDelta}</span><span className="font-semibold">{dashIf(true, fmtRupiah(monthly.laba - monthlyPrev.laba))}</span></div>
               </div>
             </Card>
             </div>
@@ -515,15 +557,24 @@ export default function Laporan() {
 
         {mode === "Per Proyek" && (
           !project ? (
-            <EmptyState title={S.emptyProjects} subtitle={S.pickOtherBranch} />
+            <div className="space-y-2">
+              <EmptyState title={S.emptyProjects} subtitle={S.pickOtherBranch} />
+              <EmptyModul modul="Proyek" to="/proyek" label="Proyek" />
+            </div>
           ) : (
             <div className="space-y-4">
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4" style={printAvoid}>
-                <KpiCard label={S.budgetVsActual} value={fmtMiliar(num(project.actual))} hint={S.fromAmount.replace("{n}", fmtMiliar(num(project.budget)))} chip="navy" />
-                <KpiCard label={S.progressLabel} value={`${num(project.progress)}%`} hint={String(project.status ?? "")} chip="teal" />
+                <KpiCard label={S.budgetVsActual} value={dashIf(num(project.budget) + num(project.actual) > 0, fmtMiliar(num(project.actual)))} hint={dashIf(num(project.budget) > 0, S.fromAmount.replace("{n}", fmtMiliar(num(project.budget))))} chip="navy" />
+                <KpiCard label={S.progressLabel} value={dashIf(true, `${num(project.progress)}%`)} hint={dashIf(!!project.status, String(project.status ?? ""))} chip="teal" />
                 <KpiCard label={S.boqTotal} value={dashIf(boqRows.length > 0, fmtMiliar(boqTotal))} hint={S.itemCountSuffix.replace("{n}", fmtJumlah(boqRows.length))} chip="violet" />
                 <KpiCard label={S.invoiceLabel} value={dashIf(projInvoices.length > 0, fmtMiliar(projInvTotal))} hint={S.invoiceCount.replace("{n}", fmtJumlah(projInvoices.length))} chip="amber" />
               </div>
+              {(boqRows.length === 0 || projInvoices.length === 0) && (
+                <div className="flex flex-wrap gap-x-6 gap-y-1 text-xs">
+                  {boqRows.length === 0 && <EmptyModul modul="Inventori (BoQ)" to="/inventori" label="Inventori" />}
+                  {projInvoices.length === 0 && <EmptyModul modul="Keuangan (Invoice)" to="/keuangan" label="Keuangan" />}
+                </div>
+              )}
               <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
                 <div style={printAvoid}>
                 <Card className="p-4">
@@ -535,7 +586,12 @@ export default function Laporan() {
                         <ProgressBar value={num(w.progress)} className="mt-1" />
                       </div>
                     ))}
-                    {wbsTop.length === 0 && <p className="text-steel-400">{S.noWbs}</p>}
+                    {wbsTop.length === 0 && (
+                      <div className="space-y-2">
+                        <p className="text-steel-400">{S.noWbs}</p>
+                        <EmptyModul modul="Proyek (WBS)" to="/proyek" label="Proyek" />
+                      </div>
+                    )}
                   </div>
                 </Card>
                 </div>
@@ -554,7 +610,12 @@ export default function Laporan() {
                       </div>
                       );
                     })}
-                    {projNcr.length === 0 && <p className="text-steel-400">{S.nihilNcr}</p>}
+                    {projNcr.length === 0 && (
+                      <div className="space-y-2">
+                        <p className="text-steel-400">{S.nihilNcr}</p>
+                        <EmptyModul modul="QC & Safety (NCR)" to="/qc-safety" label="QC & Safety" />
+                      </div>
+                    )}
                   </div>
                 </Card>
                 </div>
@@ -565,7 +626,12 @@ export default function Laporan() {
                     {projActivities.map((a) => (
                       <p key={a.id}><strong className="text-navy-900">{String(a.actor)}</strong> {String(a.action)} <span className="font-mono">{String(a.target)}</span></p>
                     ))}
-                    {projActivities.length === 0 && <p className="text-steel-400">{S.noRelatedActivity}</p>}
+                    {projActivities.length === 0 && (
+                      <div className="space-y-2">
+                        <p className="text-steel-400">{S.noRelatedActivity}</p>
+                        <EmptyModul modul="Proyek (Aktivitas)" to="/proyek" label="Proyek" />
+                      </div>
+                    )}
                   </div>
                 </Card>
                 </div>
@@ -584,7 +650,14 @@ export default function Laporan() {
       </div>
 
       <Card className="mt-4 p-4">
-        <CardHeader title={S.archiveSent} subtitle={S.archiveSub} />
+        <CardHeader title={S.archiveSent} subtitle={`${S.archiveSub} · Modul dicek: ${MODUL_DICEK.map((m) => m.modul).join(", ")}`} />
+        <div className="flex flex-wrap gap-1.5 px-5 pb-3 text-[11px]">
+          {MODUL_DICEK.map((m) => (
+            <Link key={m.modul} to={m.to} className="rounded-full bg-steel-100 px-2.5 py-1 font-semibold text-steel-600 hover:text-navy-800 hover:underline">
+              {m.label}
+            </Link>
+          ))}
+        </div>
         <div className="space-y-1.5 px-5 pb-5 text-sm">
           {arc.map((a, i) => (
             <div key={`${a.name}-${i}`} className="flex items-center gap-2 rounded-xl bg-surface px-3 py-2">

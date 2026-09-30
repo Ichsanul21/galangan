@@ -91,6 +91,7 @@ export default function Audit() {
     for (const a of base ?? []) {
       if (a.module) set.add(String(a.module));
     }
+    for (const m of ["Equipment", "Inventori", "Subkontraktor", "QC", "Proyek"]) set.add(m);
     return [...set].sort();
   }, [base]);
 
@@ -150,6 +151,8 @@ export default function Audit() {
           </button>
         }
       />
+
+      <p className="mb-4 text-xs text-steel-500">Mencatat create/edit/delete/gagal-hapus. Aksi localStorage (skenario/template) tetap dicatat.</p>
 
       <div className="mb-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
         <KpiCard label={S.auTotalTrails} value={String((base ?? []).length)} hint={S.auTotalHint} chip="navy" icon={<History className="h-5 w-5" />} />
