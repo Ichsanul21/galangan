@@ -658,33 +658,36 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   /* Anti-clobber: koleksi yang diubah lokal saat fallback tidak boleh ditimpa resync.
      Dipersist ke localStorage (isms.dirty) agar selamat dari reload; TTL 7 hari. */
   const dirtyRef = useRef<Set<string>>(new Set<string>(loadDirtyPersisted()));
+  /* Generasi per koleksi: naik setiap markDirty. Dipakai pushPending untuk
+     KNOW bahwa flag dirty masih milik perubahan yang sudah dikirim, bukan
+     milik edit yang terjadi SAAH push berjalan. Tanpa ini, edit kedua pada
+     koleksi yang sama ikut terhapus => lost update. */
+  const dirtyGenRef = useRef<Map<string, number>>(new Map());
   const [pendingSync, setPendingSync] = useState<string[]>(() => [...dirtyRef.current]);
   const dataRef = useRef(data);
   dataRef.current = data;
   /* Re-entrancy guard pushPending: tanpa ini tombol "Sinkronkan" + interval
      bisa menjalankan dua push bersamaan dan saling menghapus flag. */
   const pushingRef = useRef(false);
+  /* Posisi jendela baris per koleksi untuk pushPending (lihat pushPending). */
+  const pushCursorRef = useRef<Map<string, number>>(new Map());
 
   const markDirty = useCallback((col: string) => {
     if (!isBackendConfigured()) return;
+    dirtyGenRef.current.set(col, (dirtyGenRef.current.get(col) ?? 0) + 1);
     if (!dirtyRef.current.has(col)) {
       dirtyRef.current.add(col);
       setPendingSync([...dirtyRef.current]);
-      saveDirtyPersisted([...dirtyRef.current]);
-    } else {
-      /* Sudah dirty. Tetap perbarui persisted: menjamin tidak ada perubahan
-         yang hilang dari localStorage. */
-      saveDirtyPersisted([...dirtyRef.current]);
     }
+    saveDirtyPersisted([...dirtyRef.current]);
   }, []);
 
-  /* Hanya bersihkan bila flag TIDAK di-set ulang selama push berjalan.
-     Versi lama clearDirty(col) tanpa snapshot bisa menghapus edit kedua
-     user saat push pertama masih jalan -> lost update permanen. */
-  const clearDirty = useCallback((col: string, sentSnapshot?: Set<string>) => {
-    if (sentSnapshot && dirtyRef.current.has(col) && !sentSnapshot.has(col)) {
-      /* ada perubahan baru selama push - biarkan dirty, jangan bersihkan */
-      saveDirtyPersisted([...dirtyRef.current]);
+  /* Bersihkan flag HANYA bila generasi tidak berubah sejak snapshot push.
+     Versi lama menerima Set<nama koleksi> yang isinya sudah dirty saat push
+     dimulai, sehingga check "!sentSnapshot.has(col)" selalu SALAH untuk
+     koleksi yang sedang dikirim dan edit kedua ikut terhapus. */
+  const clearDirty = useCallback((col: string, sentGen?: number) => {
+    if (sentGen !== undefined && (dirtyGenRef.current.get(col) ?? 0) !== sentGen) {
       return;
     }
     if (dirtyRef.current.delete(col)) {
@@ -859,11 +862,13 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
     const cols = [...dirtyRef.current];
     try {
+    /* Generasi dirty per koleksi di-SAAT push dimulai. clearDirty hanya
+       membersihkan bila generasi masih sama, jadi edit yang masuk saat loop
+       push berjalan tetap tersimpan untuk push berikutnya. */
+    const sentGen = new Map<string, number>();
+    for (const col of cols) sentGen.set(col, dirtyGenRef.current.get(col) ?? 0);
     for (const col of cols) {
       try {
-        /* Snapshot flag dirty SEBELUM push: dipakai clearDirty agar edit baru
-           yang masuk saat loop berjalan tidak ikut terhapus. */
-        const dirtyAtStart = new Set(cols);
         if (col === "wbsByProject" || col.startsWith("wbs:")) {
           const entries = Object.entries(dataRef.current.wbsByProject ?? {});
           const targets =
@@ -876,7 +881,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
               body: JSON.stringify({ wbs }),
             });
           }
-          clearDirty(col, dirtyAtStart);
+          clearDirty(col, sentGen.get(col));
           setBackendError(null);
           continue;
         }
@@ -892,7 +897,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
               body: JSON.stringify({ memberIds }),
             });
           }
-          clearDirty(col, dirtyAtStart);
+          clearDirty(col, sentGen.get(col));
           setBackendError(null);
           continue;
         }
@@ -934,10 +939,14 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         const allRows = ((dataRef.current as unknown as Record<string, StoreItem[]>)[col] ?? []) as StoreItem[];
         /* Batasi baris per run. Koleksi besar (>300 baris) akan kena rate-limit
            300/menit; versi lama mengirim SELURUH koleksi lalu retry menumpuk
-           sehingga koleksi tidak pernah keluar dari dirty. Sisa dilanjutkan
-           run berikutnya dan koleksi sengaja TIDAK dibersihkan bila terpotong. */
-        const rows = allRows.slice(0, PUSH_ROWS_PER_RUN);
-        const truncated = allRows.length > rows.length;
+           sehingga koleksi tidak pernah keluar dari dirty.
+           Jendela BERJALAN lewat cursor per koleksi: versi lama selalu
+           slice(0, N) sehingga baris setelah N tidak pernah terkirim sama sekali
+           dan koleksi tersebut macet permanen. Cursor dilepas setelah satu
+           putaran penuh, lalu koleksi boleh dibersihkan. */
+        const start = pushCursorRef.current.get(col) ?? 0;
+        const rows = allRows.slice(start, start + PUSH_ROWS_PER_RUN);
+        const truncated = start + rows.length < allRows.length;
         for (const row of rows) {
           const attemptCreate = async (retried: boolean): Promise<"ok" | "stale" | "fail"> => {
             try {
@@ -996,8 +1005,11 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         if (ok) {
           clearTombstones(col, sentTombstones);
           /* Koleksi terpotong tetap dirty agar sisa baris dikirim run berikutnya. */
-          if (!truncated) {
-            clearDirty(col, dirtyAtStart);
+          if (truncated) {
+            pushCursorRef.current.set(col, start + rows.length);
+          } else {
+            pushCursorRef.current.delete(col);
+            clearDirty(col, sentGen.get(col));
             setBackendError(null);
           }
         }
