@@ -640,7 +640,7 @@ export default function VesselDetail() {
                 <p className="mt-0.5 text-xs text-steel-500">{S.vdPlanSub}</p>
                 <div className="mt-3 overflow-x-auto">
                   <table className="w-full">
-                    <thead className="sticky top-0 z-10 bg-surface">
+                    <thead className="sticky top-14 z-10 bg-surface">
                       <tr><SortTh label={S.thYear} sortKey="year" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.thAuto} sortKey="auto" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.thManual} sortKey="manual" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /></tr>
                     </thead>
                     <tbody className="divide-y divide-steel-100">

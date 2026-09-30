@@ -192,7 +192,7 @@ export default function BomDetail() {
                 : (
                   <div className="overflow-x-auto">
                     <table className="w-full">
-                      <thead className="bg-surface sticky top-0 z-10">
+                      <thead className="bg-surface sticky top-14 z-10">
                         <tr><SortTh label={S.thTx} sortKey="id" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.thType} sortKey="type" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.jumlahLbl} sortKey="qty" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.thRef} sortKey="by" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.dateLbl} sortKey="date" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /></tr>
                       </thead>
                       <tbody className="divide-y divide-steel-100">

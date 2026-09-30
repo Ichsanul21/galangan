@@ -1919,7 +1919,7 @@ export default function Finance() {
                   <Accordion key={g.tipe} title={g.tipe} subtitle={g.tipe === "Header" ? S.headerLockNote : S.countAkun.replace("{n}", String(g.rows.length))} count={g.rows.length} defaultOpen={coaGroups.length === 1 || g.tipe === "Aset"}>
                     <div className="overflow-x-auto">
                       <table className="w-full">
-                        <thead className="bg-surface sticky top-0 z-10">
+                        <thead className="bg-surface sticky top-14 z-10">
                           <tr>
                             <SortTh label={S.colNoAkun} sortKey="kode" sort={akunSort} onSort={(k) => setAkunSort((s) => toggleSort(s, k))} />
                             <SortTh label={S.colNamaAkun} sortKey="nama" sort={akunSort} onSort={(k) => setAkunSort((s) => toggleSort(s, k))} />
@@ -1964,7 +1964,7 @@ export default function Finance() {
                 <CardHeader title={S.invListTitle} subtitle={S.arSub} />
                 <div className="overflow-x-auto">
                   <table className="w-full">
-                    <thead className="bg-surface sticky top-0 z-10">
+                    <thead className="bg-surface sticky top-14 z-10">
                       <tr>
                         <SortTh label={S.colInvoice} sortKey="id" sort={arSort} onSort={(k) => setArSort((s) => toggleSort(s, k))} />
                         <SortTh label={S.colKodePembantu} sortKey="kode" sort={arSort} onSort={(k) => setArSort((s) => toggleSort(s, k))} />
@@ -2053,7 +2053,7 @@ export default function Finance() {
                   <CardHeader title={S.agingTitle} subtitle={S.agingSub} />
                   <div className="overflow-x-auto px-5 pb-5">
                     <table className="w-full">
-                      <thead className="bg-surface sticky top-0 z-10">
+                      <thead className="bg-surface sticky top-14 z-10">
                         <tr>
                           <SortTh label={S.colBucket} sortKey="name" sort={arSort} onSort={(k) => setArSort((s) => toggleSort(s, k))} />
                           <SortTh label={S.colJumlah} sortKey="count" sort={arSort} onSort={(k) => setArSort((s) => toggleSort(s, k))} />
@@ -2133,7 +2133,7 @@ export default function Finance() {
               />
               <div className="overflow-x-auto">
                 <table className="w-full">
-                  <thead className="bg-surface sticky top-0 z-10">
+                  <thead className="bg-surface sticky top-14 z-10">
                     <tr>
                       <SortTh label={S.colVendor} sortKey="v" sort={apSort} onSort={(k) => setApSort((s) => toggleSort(s, k))} />
                       <SortTh label={S.colKodePembantu} sortKey="kode" sort={apSort} onSort={(k) => setApSort((s) => toggleSort(s, k))} />
@@ -2228,7 +2228,7 @@ export default function Finance() {
               />
               <div className="overflow-x-auto">
                 <table className="w-full">
-                  <thead className="bg-surface sticky top-0 z-10">
+                  <thead className="bg-surface sticky top-14 z-10">
                     <tr>
                       <SortTh label={S.colKode} sortKey="kode" sort={kasSort} onSort={(k) => setKasSort((s) => toggleSort(s, k))} />
                       <SortTh label={S.colRekening} sortKey="nama" sort={kasSort} onSort={(k) => setKasSort((s) => toggleSort(s, k))} />
@@ -2264,7 +2264,7 @@ export default function Finance() {
                 <CardHeader title={S.adjTitle} subtitle={S.adjSub} />
                 <div className="overflow-x-auto px-1 pb-3">
                   <table className="w-full">
-                    <thead className="bg-surface sticky top-0 z-10">
+                    <thead className="bg-surface sticky top-14 z-10">
                       <tr>
                         <SortTh label={S.colTanggal} sortKey="tgl" sort={kasSort} onSort={(k) => setKasSort((s) => toggleSort(s, k))} />
                         <SortTh label={S.colUraian} sortKey="uraian" sort={kasSort} onSort={(k) => setKasSort((s) => toggleSort(s, k))} />
@@ -2313,7 +2313,7 @@ export default function Finance() {
               ) : (
                 <div className="overflow-x-auto">
                   <table className="w-full">
-                    <thead className="bg-surface sticky top-0 z-10">
+                    <thead className="bg-surface sticky top-14 z-10">
                       <tr>
                         <th className="th"><input type="checkbox" aria-label={S.selectAll} checked={schedSel.length === schedItems.length} onChange={() => setSchedSel((prev) => (prev.length === schedItems.length ? [] : schedItems.map((r) => r.key)))} /></th>
                         <SortTh label={S.colJenis} sortKey="kind" sort={jadwalSort} onSort={(k) => setJadwalSort((s) => toggleSort(s, k))} />
@@ -2405,7 +2405,7 @@ export default function Finance() {
               </div>
               <div className="overflow-x-auto">
                 <table className="w-full">
-                  <thead className="bg-surface sticky top-0 z-10">
+                  <thead className="bg-surface sticky top-14 z-10">
                     <tr>
                       <SortTh label={S.colInvoice} sortKey="id" sort={invSort} onSort={(k) => setInvSort((s) => toggleSort(s, k))} />
                       <SortTh label={S.colTipe} sortKey="tipe" sort={invSort} onSort={(k) => setInvSort((s) => toggleSort(s, k))} />
@@ -2458,7 +2458,7 @@ export default function Finance() {
               </div>
               <div className="overflow-x-auto">
                 <table className="w-full">
-                  <thead className="bg-surface sticky top-0 z-10">
+                  <thead className="bg-surface sticky top-14 z-10">
                     <tr>
                       <SortTh label={S.colKode} sortKey="kode" sort={bbSort} onSort={(k) => setBbSort((s) => toggleSort(s, k))} rowSpan={2} />
                       <SortTh label={S.colNamaAkun} sortKey="nama" sort={bbSort} onSort={(k) => setBbSort((s) => toggleSort(s, k))} rowSpan={2} />
@@ -2509,7 +2509,7 @@ export default function Finance() {
               </div>
               <div className="overflow-x-auto">
                 <table className="w-full">
-                  <thead className="bg-surface sticky top-0 z-10">
+                  <thead className="bg-surface sticky top-14 z-10">
                     <tr>
                       <SortTh label={S.colNoAkun} sortKey="kode" sort={lrSort} onSort={(k) => setLrSort((s) => toggleSort(s, k))} />
                       <SortTh label={S.colPos} sortKey="pos" sort={lrSort} onSort={(k) => setLrSort((s) => toggleSort(s, k))} />
@@ -2578,7 +2578,7 @@ export default function Finance() {
                 <div className="max-h-80 overflow-y-auto">
                 <div className="overflow-x-auto">
                   <table className="w-full">
-                    <thead className="bg-surface sticky top-0 z-10">
+                    <thead className="bg-surface sticky top-14 z-10">
                       <tr>
                         <SortTh label={S.colPayroll} sortKey="id" sort={alokasiSort} onSort={(k) => setAlokasiSort((s) => toggleSort(s, k))} />
                         <SortTh label={S.colKaryawan} sortKey="emp" sort={alokasiSort} onSort={(k) => setAlokasiSort((s) => toggleSort(s, k))} />
@@ -2623,7 +2623,7 @@ export default function Finance() {
                   />
                   <div className="overflow-x-auto">
                     <table className="w-full">
-                      <thead className="bg-surface sticky top-0 z-10">
+                      <thead className="bg-surface sticky top-14 z-10">
                         <tr><th className="th">{S.colElemen}</th><th className="th">{S.colNilai}</th><th className="th">{S.colCatatan}</th></tr>
                       </thead>
                       <tbody className="divide-y divide-steel-100">
@@ -2645,7 +2645,7 @@ export default function Finance() {
                 <CardHeader title={S.plMonthlyTitle} subtitle={S.plMonthlySub} />
                 <div className="overflow-x-auto">
                   <table className="w-full">
-                    <thead className="bg-surface sticky top-0 z-10">
+                    <thead className="bg-surface sticky top-14 z-10">
                       <tr>
                         <SortTh label={S.colPeriode} sortKey="period" sort={pajakSort} onSort={(k) => setPajakSort((s) => toggleSort(s, k))} />
                         <SortTh label={S.colPendapatan} sortKey="revenue" sort={pajakSort} onSort={(k) => setPajakSort((s) => toggleSort(s, k))} />
@@ -2691,7 +2691,7 @@ export default function Finance() {
                 <CardHeader title={S.reTitle} subtitle={S.reSub} />
                 <div className="overflow-x-auto px-1 pb-3">
                   <table className="w-full">
-                    <thead className="bg-surface sticky top-0 z-10">
+                    <thead className="bg-surface sticky top-14 z-10">
                       <tr><th className="th">{S.colNoAkun}</th><th className="th">{S.colPos}</th><th className="th">{S.colNilai}</th></tr>
                     </thead>
                     <tbody className="divide-y divide-steel-100">
@@ -2707,7 +2707,7 @@ export default function Finance() {
                   <CardHeader title={S.subHutangTitle} subtitle={S.subHutangSub} />
                   <div className="max-h-72 overflow-y-auto">
                     <table className="w-full">
-                      <thead className="bg-surface sticky top-0 z-10"><tr>
+                      <thead className="bg-surface sticky top-14 z-10"><tr>
                         <SortTh label={S.colVendor} sortKey="v" sort={nrSort} onSort={(k) => setNrSort((s) => toggleSort(s, k))} />
                         <SortTh label={S.colAwal} sortKey="awal" sort={nrSort} onSort={(k) => setNrSort((s) => toggleSort(s, k))} />
                         <SortTh label={S.colAkhir} sortKey="akhir" sort={nrSort} onSort={(k) => setNrSort((s) => toggleSort(s, k))} />
@@ -2730,7 +2730,7 @@ export default function Finance() {
                   <CardHeader title={S.subPiutangTitle} subtitle={S.subPiutangSub} />
                   <div className="max-h-72 overflow-y-auto">
                     <table className="w-full">
-                      <thead className="bg-surface sticky top-0 z-10"><tr>
+                      <thead className="bg-surface sticky top-14 z-10"><tr>
                         <SortTh label={S.colCustomer} sortKey="c" sort={nrSort} onSort={(k) => setNrSort((s) => toggleSort(s, k))} />
                         <SortTh label={S.colAwal} sortKey="awal" sort={nrSort} onSort={(k) => setNrSort((s) => toggleSort(s, k))} />
                         <SortTh label={S.colAkhir} sortKey="akhir" sort={nrSort} onSort={(k) => setNrSort((s) => toggleSort(s, k))} />
@@ -2834,7 +2834,7 @@ export default function Finance() {
               />
               <div className="overflow-x-auto">
                 <table className="w-full">
-                  <thead className="bg-surface sticky top-0 z-10">
+                  <thead className="bg-surface sticky top-14 z-10">
                     <tr>
                       <SortTh label={S.colNo} sortKey="no" sort={asetSort} onSort={(k) => setAsetSort((s) => toggleSort(s, k))} />
                       <SortTh label={S.colNamaHarta} sortKey="nama" sort={asetSort} onSort={(k) => setAsetSort((s) => toggleSort(s, k))} />
@@ -2898,7 +2898,7 @@ export default function Finance() {
               />
               <div className="overflow-x-auto">
                 <table className="w-full">
-                  <thead className="bg-surface sticky top-0 z-10">
+                  <thead className="bg-surface sticky top-14 z-10">
                     <tr>
                       <SortTh label={S.colTanggal} sortKey="date" sort={juSort} onSort={(k) => setJuSort((s) => toggleSort(s, k))} />
                       <SortTh label={S.colKodePembantu} sortKey="kode" sort={juSort} onSort={(k) => setJuSort((s) => toggleSort(s, k))} />
@@ -2978,7 +2978,7 @@ export default function Finance() {
                     <div className="max-h-80 overflow-y-auto">
                     <div className="overflow-x-auto">
                       <table className="w-full">
-                        <thead className="bg-surface sticky top-0 z-10">
+                        <thead className="bg-surface sticky top-14 z-10">
                           <tr>
                             <SortTh label={S.colTanggal} sortKey="date" sort={juSort} onSort={(k) => setJuSort((s) => toggleSort(s, k))} />
                             <SortTh label={S.colRef} sortKey="ref" sort={juSort} onSort={(k) => setJuSort((s) => toggleSort(s, k))} />
@@ -3024,7 +3024,7 @@ export default function Finance() {
                 <CardHeader title={S.plJuTitle} subtitle={S.plJuSub} />
                 <div className="overflow-x-auto">
                   <table className="w-full">
-                    <thead className="bg-surface sticky top-0 z-10">
+                    <thead className="bg-surface sticky top-14 z-10">
                       <tr>
                         <SortTh label={S.colPeriode} sortKey="period" sort={pajakSort} onSort={(k) => setPajakSort((s) => toggleSort(s, k))} />
                         <SortTh label={S.colPendapatan} sortKey="revenue" sort={pajakSort} onSort={(k) => setPajakSort((s) => toggleSort(s, k))} />

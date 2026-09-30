@@ -853,7 +853,7 @@ export default function EquipmentPage() {
               </div>
             <div className="overflow-x-auto">
               <table className="w-full">
-                <thead className="sticky top-0 z-10 bg-surface">
+                <thead className="sticky top-14 z-10 bg-surface">
                   <tr><SortTh label={S.thEquipment} sortKey="equipment" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.thCategory} sortKey="kategori" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.thModel} sortKey="model" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.thStatus} sortKey="status" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.thUtil} sortKey="utilisasi" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.thHours} sortKey="jam" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.thRate} sortKey="tarif" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.thBookVal} sortKey="nilaibuku" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><th className="th">{S.thAction}</th></tr>
                 </thead>
                 <tbody className="divide-y divide-steel-100">
@@ -986,7 +986,7 @@ export default function EquipmentPage() {
               </div>
               <div className="overflow-x-auto">
                 <table className="w-full">
-                  <thead className="sticky top-0 z-10 bg-surface">
+                  <thead className="sticky top-14 z-10 bg-surface">
                     <tr><SortTh label={S.thEquipment} sortKey="equipment" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} /><SortTh label={S.thSchedule} sortKey="jadwal" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} /><SortTh label={S.thNoteEta} sortKey="catatan" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} /><SortTh label={S.thStatus} sortKey="status" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} /><th className="th">{S.thAction}</th></tr>
                   </thead>
                   <tbody className="divide-y divide-steel-100">
@@ -1043,7 +1043,7 @@ export default function EquipmentPage() {
               </div>
               <div className="overflow-x-auto">
                 <table className="w-full">
-                  <thead className="sticky top-0 z-10 bg-surface">
+                  <thead className="sticky top-14 z-10 bg-surface">
                     <tr><SortTh label={S.thId} sortKey="id" sort={sort3} onSort={(k) => setSort3((s) => toggleSort(s, k))} /><SortTh label={S.thEquipment} sortKey="equipment" sort={sort3} onSort={(k) => setSort3((s) => toggleSort(s, k))} /><SortTh label={S.thMeasure} sortKey="item" sort={sort3} onSort={(k) => setSort3((s) => toggleSort(s, k))} /><SortTh label={S.thDue} sortKey="due" sort={sort3} onSort={(k) => setSort3((s) => toggleSort(s, k))} /><SortTh label={S.thCert} sortKey="sertifikat" sort={sort3} onSort={(k) => setSort3((s) => toggleSort(s, k))} /><SortTh label={S.thStatus} sortKey="status" sort={sort3} onSort={(k) => setSort3((s) => toggleSort(s, k))} /><th className="th">{S.thAction}</th></tr>
                   </thead>
                   <tbody className="divide-y divide-steel-100">
@@ -1096,7 +1096,7 @@ export default function EquipmentPage() {
                 </div>
                 <div className="overflow-x-auto">
                   <table className="w-full">
-                    <thead className="sticky top-0 z-10 bg-surface">
+                    <thead className="sticky top-14 z-10 bg-surface">
                       <tr><SortTh label={S.thProject} sortKey="proyek" sort={sort4} onSort={(k) => setSort4((s) => toggleSort(s, k))} /><SortTh label={S.thHours} sortKey="jam" sort={sort4} onSort={(k) => setSort4((s) => toggleSort(s, k))} /><SortTh label={S.thDowntime} sortKey="downtime" sort={sort4} onSort={(k) => setSort4((s) => toggleSort(s, k))} /><SortTh label={S.thCost} sortKey="biaya" sort={sort4} onSort={(k) => setSort4((s) => toggleSort(s, k))} /></tr>
                     </thead>
                     <tbody className="divide-y divide-steel-100">

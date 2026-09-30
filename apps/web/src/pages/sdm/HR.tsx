@@ -1096,7 +1096,7 @@ export default function HR() {
                 <Card className="xl:col-span-2">
                   <div className="overflow-x-auto p-2">
                     <table className="w-full">
-                      <thead className="bg-surface sticky top-0 z-10">
+                      <thead className="bg-surface sticky top-14 z-10">
                         <tr>
                           <SortTh label={S.thKaryawan} sortKey="name" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} />
                           <SortTh label={S.thNik} sortKey="nik" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} />
@@ -1199,7 +1199,7 @@ export default function HR() {
           {tab === "Cuti & Izin" && (
             <div className="overflow-x-auto">
               <table className="w-full">
-                <thead className="bg-surface sticky top-0 z-10">
+                <thead className="bg-surface sticky top-14 z-10">
                   <tr>
                     <SortTh label={S.thId} sortKey="id" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} />
                     <SortTh label={S.thKaryawan} sortKey="emp" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} />
@@ -1353,7 +1353,7 @@ export default function HR() {
           {tab === "Training" && (
             <div className="overflow-x-auto">
               <table className="w-full">
-                <thead className="bg-surface sticky top-0 z-10">
+                <thead className="bg-surface sticky top-14 z-10">
                   <tr>
                     <SortTh label={S.thId} sortKey="id" sort={sort3} onSort={(k) => setSort3((s) => toggleSort(s, k))} />
                     <SortTh label={S.thJudul} sortKey="title" sort={sort3} onSort={(k) => setSort3((s) => toggleSort(s, k))} />

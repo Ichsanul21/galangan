@@ -333,7 +333,7 @@ export default function KaryawanDetail() {
         {docs.length > 0 ? (
           <div className="mt-3 overflow-x-auto">
             <table className="w-full">
-              <thead className="bg-surface sticky top-0 z-10">
+              <thead className="bg-surface sticky top-14 z-10">
                 <tr><SortTh label={S.thId} sortKey="id" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.thJudul} sortKey="title" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.thTipe} sortKey="type" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.dlStatus} sortKey="status" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.thUpdated} sortKey="updated" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={locale === "en" ? "File" : "Berkas"} sortKey="file" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /></tr>
               </thead>
               <tbody className="divide-y divide-steel-100">
@@ -385,7 +385,7 @@ export default function KaryawanDetail() {
               </div>
               <div className="max-h-96 overflow-auto">
               <table className="w-full">
-                <thead className="bg-surface sticky top-0 z-10">
+                <thead className="bg-surface sticky top-14 z-10">
                   <tr><SortTh label={S.thTanggal} sortKey="date" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} /><SortTh label={S.thShift} sortKey="shift" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} /><SortTh label={S.dlStatus} sortKey="status" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} /><SortTh label={S.thJam} sortKey="jam" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} /><SortTh label={S.thLembur} sortKey="lembur" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} /><SortTh label={S.thKet} sortKey="ket" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} /></tr>
                 </thead>
                 <tbody className="divide-y divide-steel-100">
@@ -423,7 +423,7 @@ export default function KaryawanDetail() {
           {tab === "Payroll" && (
             <div className="overflow-x-auto">
               <table className="w-full">
-                <thead className="bg-surface sticky top-0 z-10">
+                <thead className="bg-surface sticky top-14 z-10">
                   <tr><SortTh label={S.thPeriode} sortKey="period" sort={sort3} onSort={(k) => setSort3((s) => toggleSort(s, k))} /><SortTh label={S.thPokok} sortKey="basic" sort={sort3} onSort={(k) => setSort3((s) => toggleSort(s, k))} /><SortTh label={S.thTunjangan} sortKey="allow" sort={sort3} onSort={(k) => setSort3((s) => toggleSort(s, k))} /><SortTh label={S.thLembur} sortKey="overtime" sort={sort3} onSort={(k) => setSort3((s) => toggleSort(s, k))} /><SortTh label={S.thNet} sortKey="net" sort={sort3} onSort={(k) => setSort3((s) => toggleSort(s, k))} /><SortTh label={S.dlStatus} sortKey="status" sort={sort3} onSort={(k) => setSort3((s) => toggleSort(s, k))} /><SortTh label={S.thDibayar} sortKey="paid" sort={sort3} onSort={(k) => setSort3((s) => toggleSort(s, k))} /></tr>
                 </thead>
                 <tbody className="divide-y divide-steel-100">
@@ -460,7 +460,7 @@ export default function KaryawanDetail() {
           {tab === "Cuti" && (
             <div className="overflow-x-auto">
               <table className="w-full">
-                <thead className="bg-surface sticky top-0 z-10">
+                <thead className="bg-surface sticky top-14 z-10">
                   <tr><SortTh label={S.thId} sortKey="id" sort={sort4} onSort={(k) => setSort4((s) => toggleSort(s, k))} /><SortTh label={S.thTipe} sortKey="type" sort={sort4} onSort={(k) => setSort4((s) => toggleSort(s, k))} /><SortTh label={S.thPeriode} sortKey="period" sort={sort4} onSort={(k) => setSort4((s) => toggleSort(s, k))} /><SortTh label={S.thHari} sortKey="days" sort={sort4} onSort={(k) => setSort4((s) => toggleSort(s, k))} /><SortTh label={S.dlStatus} sortKey="status" sort={sort4} onSort={(k) => setSort4((s) => toggleSort(s, k))} /><SortTh label={S.thCatatan} sortKey="note" sort={sort4} onSort={(k) => setSort4((s) => toggleSort(s, k))} /><SortTh label={locale === "en" ? "Attachment" : "Lampiran"} sortKey="file" sort={sort4} onSort={(k) => setSort4((s) => toggleSort(s, k))} /></tr>
                 </thead>
                 <tbody className="divide-y divide-steel-100">

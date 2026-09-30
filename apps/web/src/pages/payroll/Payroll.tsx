@@ -968,7 +968,7 @@ export default function Payroll() {
               <StageStrip counts={stageCounts(gajiRows)} active={gajiStage} onPick={setGajiStage} prefix="gaji" />
               <div className="overflow-x-auto p-2">
                 <table className="w-full">
-                  <thead className="bg-surface sticky top-0 z-10">
+                  <thead className="bg-surface sticky top-14 z-10">
                     <tr>
                       <SortTh label={S.colId} sortKey="id" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} />
                       <SortTh label={S.colEmployee} sortKey="emp" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} />
@@ -1083,7 +1083,7 @@ export default function Payroll() {
               </Card>
               <div className="overflow-x-auto p-2">
                 <table className="w-full">
-                  <thead className="bg-surface sticky top-0 z-10">
+                  <thead className="bg-surface sticky top-14 z-10">
                     <tr>
                       <SortTh label={S.colId} sortKey="id" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} />
                       <SortTh label={S.colEmployee} sortKey="emp" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} />
@@ -1187,7 +1187,7 @@ export default function Payroll() {
               </Card>
               <div className="overflow-x-auto p-2">
                 <table className="w-full">
-                  <thead className="bg-surface sticky top-0 z-10">
+                  <thead className="bg-surface sticky top-14 z-10">
                     <tr>
                       <SortTh label={S.colEmployee} sortKey="emp" sort={sort3} onSort={(k) => setSort3((s) => toggleSort(s, k))} />
                       <SortTh label={S.colId} sortKey="id" sort={sort3} onSort={(k) => setSort3((s) => toggleSort(s, k))} />

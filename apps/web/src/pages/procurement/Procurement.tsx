@@ -1060,7 +1060,7 @@ export default function Procurement() {
               <p className="rounded-lg bg-steel-50 px-3 py-2 text-xs text-steel-500">{S.bigInfo.replace("{n}", fmtRupiah(PO_KECIL_LIMIT))}</p>
               <div className="overflow-x-auto">
                 <table className="w-full">
-                  <thead className="bg-surface sticky top-0 z-10">
+                  <thead className="bg-surface sticky top-14 z-10">
                     <tr><SortTh label={S.po} sortKey="po" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.item} sortKey="item" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.vendor} sortKey="vendor" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.nilai} sortKey="nilai" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.level} sortKey="level" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.eta} sortKey="eta" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.revisi} sortKey="revisi" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.status} sortKey="status" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><th className="th">{S.aksi}</th></tr>
                   </thead>
                   <tbody className="divide-y divide-steel-100">
@@ -1187,7 +1187,7 @@ export default function Procurement() {
                 <p className="mb-3 rounded-lg bg-steel-50 px-3 py-2 text-xs text-steel-500">{S.smallInfo.replace("{n}", fmtRupiah(PO_KECIL_LIMIT))}</p>
                 <div className="overflow-x-auto">
                   <table className="w-full">
-                    <thead className="bg-surface sticky top-0 z-10">
+                    <thead className="bg-surface sticky top-14 z-10">
                       <tr><SortTh label={S.po} sortKey="po" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} /><SortTh label={S.kebutuhan} sortKey="kebutuhan" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} /><SortTh label={S.vendor} sortKey="vendor" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} /><SortTh label={S.nilai} sortKey="nilai" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} /><SortTh label={S.level} sortKey="level" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} /><SortTh label={S.eta} sortKey="eta" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} /><SortTh label={S.revisi} sortKey="revisi" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} /><SortTh label={S.status} sortKey="status" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} /><th className="th">{S.aksi}</th></tr>
                     </thead>
                     <tbody className="divide-y divide-steel-100">
@@ -1268,7 +1268,7 @@ export default function Procurement() {
                       ? <div className="mt-2"><EmptyState title={S.emptyQuoteT} subtitle={S.emptyQuoteS} /></div>
                       : (
                         <table className="mt-3 w-full">
-                          <thead className="bg-surface sticky top-0 z-10">
+                          <thead className="bg-surface sticky top-14 z-10">
                             <tr><SortTh label={S.vendor} sortKey="vendor" sort={sort3} onSort={(k) => setSort3((s) => toggleSort(s, k))} /><SortTh label={S.harga} sortKey="harga" sort={sort3} onSort={(k) => setSort3((s) => toggleSort(s, k))} /><SortTh label={S.eta} sortKey="eta" sort={sort3} onSort={(k) => setSort3((s) => toggleSort(s, k))} /><SortTh label={S.komparasi} sortKey="komparasi" sort={sort3} onSort={(k) => setSort3((s) => toggleSort(s, k))} /></tr>
                           </thead>
                           <tbody className="divide-y divide-steel-100">
@@ -1358,7 +1358,7 @@ export default function Procurement() {
                 </div>
                 <div className="overflow-x-auto">
                   <table className="w-full">
-                    <thead className="bg-surface sticky top-0 z-10">
+                    <thead className="bg-surface sticky top-14 z-10">
                       <tr><SortTh label={S.pr} sortKey="pr" sort={sort4} onSort={(k) => setSort4((s) => toggleSort(s, k))} /><SortTh label={S.item} sortKey="item" sort={sort4} onSort={(k) => setSort4((s) => toggleSort(s, k))} /><SortTh label={S.oleh} sortKey="oleh" sort={sort4} onSort={(k) => setSort4((s) => toggleSort(s, k))} /><SortTh label={S.nilai} sortKey="nilai" sort={sort4} onSort={(k) => setSort4((s) => toggleSort(s, k))} /><SortTh label={S.status} sortKey="status" sort={sort4} onSort={(k) => setSort4((s) => toggleSort(s, k))} /><th className="th">{S.aksi}</th></tr>
                     </thead>
                     <tbody className="divide-y divide-steel-100">
