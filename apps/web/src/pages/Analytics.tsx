@@ -213,6 +213,111 @@ export default function Analytics() {
 
   const variance = revDisp.map((d) => ({ n: d.bln, v: Math.round((d.revenue - avgRevenue) * 1000) }));
 
+  /* ===== Portfolio dari data nyata =====
+     Semua angka di bawah dihitung dari koleksi store (projects, invoices,
+     payables), bukan dari deret mock. Label bulan dibangun dari tanggal
+     data sehingga tidak bisa bergeser seperti label hardcode. */
+
+  const numOf = (v: unknown): number => Number(v) || 0;
+
+  /* 1. Komposisi tipe proyek (New Build / Repair / Retrofit). */
+  const projectTypeDist = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const p of data.projects) {
+      const k = String(p.type ?? "-").trim() || "-";
+      m.set(k, (m.get(k) ?? 0) + 1);
+    }
+    const C = ["#0b3a63", "#2e9ad4", "#22c55e", "#f59e0b", "#8b5cf6"];
+    return [...m.entries()]
+      .sort((a, b) => b[1] - a[1])
+      .map(([name, value], i) => ({ name, value, color: C[i % C.length] }));
+  }, [data.projects]);
+
+  /* 2. Pendapatan per cabang: invoice dikelompokkan lewat project -> branch,
+        jadi angka mengikuti cabang yang benar-benar ada di data. */
+  const branchOfProject = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const p of data.projects) m.set(String(p.id), String(p.branch ?? "-"));
+    return m;
+  }, [data.projects]);
+  const revenueByBranch = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const i of data.invoices) {
+      const b = branchOfProject.get(String(i.project ?? "")) ?? "-";
+      m.set(b, (m.get(b) ?? 0) + numOf(i.amount));
+    }
+    const C = ["#0b3a63", "#2e9ad4", "#0d9488", "#f59e0b", "#8b5cf6", "#f43f5e"];
+    return [...m.entries()]
+      .sort((a, b) => b[1] - a[1])
+      .map(([name, value], i) => ({ name, value, color: C[i % C.length] }));
+  }, [data.invoices, branchOfProject]);
+
+  /* 3. Tren 12 bulan: pendapatan, AP, dan kas masuk dari dokumen nyata. */
+  const monthlyReal = useMemo(() => {
+    const now = new Date();
+    const keys: string[] = [];
+    const buckets = new Map<string, { rev: number; ap: number; cash: number }>();
+    for (let k = 11; k >= 0; k -= 1) {
+      const d = new Date(now.getFullYear(), now.getMonth() - k, 1);
+      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+      keys.push(key);
+      buckets.set(key, { rev: 0, ap: 0, cash: 0 });
+    }
+    for (const i of data.invoices) {
+      const b = buckets.get(String(i.date ?? "").slice(0, 7));
+      if (b) b.rev += numOf(i.amount);
+    }
+    for (const a of data.payables) {
+      const b = buckets.get(String(a.due ?? "").slice(0, 7));
+      if (b) b.ap += numOf(a.amt);
+    }
+    for (const i of data.invoices) {
+      const b = buckets.get(String(i.paidAt ?? "").slice(0, 7));
+      if (b && String(i.status ?? "") === "Lunas") b.cash += numOf(i.amount);
+    }
+    const MON = locale === "en"
+      ? ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"]
+      : ["Jan","Feb","Mar","Apr","Mei","Jun","Jul","Ags","Sep","Okt","Nov","Des"];
+    return keys.map((key) => {
+      const v = buckets.get(key) ?? { rev: 0, ap: 0, cash: 0 };
+      const d = new Date(`${key}-01T00:00:00`);
+      return {
+        bln: `${MON[d.getMonth()]} ${String(d.getFullYear()).slice(2)}`,
+        revenue: round1(v.rev / 1e9),
+        ap: round1(v.ap / 1e9),
+        cash: round1(v.cash / 1e9),
+      };
+    });
+  }, [data.invoices, data.payables, locale]);
+  const monthlyHasData = monthlyReal.some((d) => d.revenue > 0 || d.ap > 0 || d.cash > 0);
+
+  /* 4. Pipeline per kuartal: won = quotation stage Menang/Terkonversi,
+        pipeline = masih berjalan, target = total per kuartal. */
+  const projectPipeline = useMemo(() => {
+    const q = (d: Date): number => Math.floor(d.getMonth() / 3) + 1;
+    const m = new Map<number, { won: number; pipeline: number; wonVal: number; pipeVal: number }>();
+    for (const x of data.quotations) {
+      const d = new Date(String(x.date ?? "").slice(0, 10) + "T00:00:00");
+      if (Number.isNaN(d.getTime())) continue;
+      const k = q(d);
+      const cur = m.get(k) ?? { won: 0, pipeline: 0, wonVal: 0, pipeVal: 0 };
+      const st = String(x.stage ?? "");
+      if (st === "Menang" || st === "Terkonversi") { cur.won += 1; cur.wonVal += numOf(x.value); }
+      else { cur.pipeline += 1; cur.pipeVal += numOf(x.value); }
+      m.set(k, cur);
+    }
+    return [...m.entries()]
+      .sort((a, b) => a[0] - b[0])
+      .map(([quarter, v]) => ({
+        name: `Q${quarter}`,
+        won: v.won,
+        pipeline: v.pipeline,
+        target: v.won + v.pipeline,
+        wonVal: v.wonVal,
+        pipeVal: v.pipeVal,
+      }));
+  }, [data.quotations]);
+
   const ncrTotal = data.ncr.length || 1;
   const ncrByType = new Map<string, number>();
   for (const n of data.ncr) {
@@ -549,6 +654,125 @@ export default function Analytics() {
                 </div>
               </div>
             </Card>
+
+            {/* ===== Portfolio: semua dihitung dari data store nyata ===== */}
+            <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
+              <Card>
+                <CardHeader
+                  title={locale === "en" ? "Project mix by type" : "Komposisi Proyek per Tipe"}
+                  subtitle={locale === "en"
+                    ? "Counted from real project records (p.type)"
+                    : "Dihitung dari baris proyek nyata (p.type)"}
+                />
+                <div className="flex flex-wrap items-center gap-5 p-4 pt-0">
+                  <Donut
+                    data={projectTypeDist}
+                    colors={projectTypeDist.map((d) => d.color)}
+                    size={150}
+                    thickness={20}
+                    centerValue={String(data.projects.length)}
+                    centerLabel={locale === "en" ? "Projects" : "Proyek"}
+                  />
+                  <div className="min-w-40 flex-1 space-y-1.5">
+                    {projectTypeDist.length === 0 && (
+                      <p className="text-sm text-steel-400">{locale === "en" ? "No project yet." : "Belum ada proyek."}</p>
+                    )}
+                    {projectTypeDist.map((d) => (
+                      <div key={d.name} className="flex items-center gap-2 text-sm">
+                        <span className="h-3 w-3 rounded-sm" style={{ background: d.color }} />
+                        <span className="truncate text-steel-600">{d.name}</span>
+                        <span className="ml-auto font-semibold text-navy-900">{d.value}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </Card>
+
+              <Card>
+                <CardHeader
+                  title={locale === "en" ? "Revenue by branch" : "Pendapatan per Cabang"}
+                  subtitle={locale === "en"
+                    ? "Invoices grouped through project to branch, from real records"
+                    : "Invoice dikelompokkan lewat project ke cabang, dari data nyata"}
+                />
+                <div className="flex flex-wrap items-center gap-5 p-4 pt-0">
+                  <Donut
+                    data={revenueByBranch}
+                    colors={revenueByBranch.map((d) => d.color)}
+                    size={150}
+                    thickness={20}
+                    centerValue={`Rp ${round1(revenueByBranch.reduce((s, d) => s + d.value, 0) / 1e9)}`}
+                    centerLabel="M"
+                  />
+                  <div className="min-w-40 flex-1 space-y-1.5">
+                    {revenueByBranch.length === 0 && (
+                      <p className="text-sm text-steel-400">{locale === "en" ? "No invoice yet." : "Belum ada invoice."}</p>
+                    )}
+                    {revenueByBranch.map((d) => (
+                      <div key={d.name} className="flex items-center gap-2 text-sm">
+                        <span className="h-3 w-3 rounded-sm" style={{ background: d.color }} />
+                        <span className="truncate text-steel-600">{d.name}</span>
+                        <span className="ml-auto font-semibold text-navy-900">{fmtMiliar(d.value)}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </Card>
+            </div>
+
+            {monthlyHasData && (
+              <Card>
+                <CardHeader
+                  title={locale === "en" ? "Revenue / AP / cash-in (12 months)" : "Pendapatan / AP / Kas Masuk (12 bulan)"}
+                  subtitle={locale === "en"
+                    ? "From real invoices and payables, in billions of rupiah"
+                    : "Dari invoice dan payable nyata, dalam miliar rupiah"}
+                  action={<button className="btn-secondary px-2 py-1 text-xs" onClick={() => exportChartPNG("chart-real", "revenue-ap-cash")}>{S.exportPngBtn}</button>}
+                />
+                <div id="chart-real" className="h-64 p-4 pt-0 sm:h-72">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <ComposedChart data={monthlyReal} margin={{ top: 10, right: 10, left: -18, bottom: 0 }}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#e9eff4" vertical={false} />
+                      <XAxis dataKey="bln" tick={{ fontSize: 11 }} stroke="#8aa2b6" axisLine={false} tickLine={false} />
+                      <YAxis tick={{ fontSize: 11 }} stroke="#8aa2b6" axisLine={false} tickLine={false} unit=" M" />
+                      <Tooltip content={<ChartTooltip formatter={(v) => `Rp ${v} M`} />} />
+                      <Legend wrapperStyle={{ fontSize: 12 }} />
+                      <Bar dataKey="revenue" name={locale === "en" ? "Revenue" : "Pendapatan"} fill="#0b3a63" radius={[4, 4, 0, 0]} isAnimationActive={chartAnim()} />
+                      <Bar dataKey="ap" name="AP" fill="#8cc9e8" radius={[4, 4, 0, 0]} isAnimationActive={chartAnim()} />
+                      <Line type="monotone" dataKey="cash" name={locale === "en" ? "Cash in" : "Kas masuk"} stroke="#0d9488" strokeWidth={2.5} dot={{ r: 3 }} isAnimationActive={chartAnim()} />
+                    </ComposedChart>
+                  </ResponsiveContainer>
+                </div>
+              </Card>
+            )}
+
+            {projectPipeline.length > 0 && (
+              <Card>
+                <CardHeader
+                  title={locale === "en" ? "Pipeline per quarter" : "Pipeline per Kuartal"}
+                  subtitle={locale === "en"
+                    ? "Won vs open quotations from real records, in billions"
+                    : "Menang vs masih berjalan dari quotation nyata, dalam miliar"}
+                />
+                <div className="space-y-2.5 p-4 pt-0">
+                  {projectPipeline.map((q) => {
+                    const max = Math.max(...projectPipeline.map((x) => x.target), 1);
+                    return (
+                      <div key={q.name} className="flex items-center gap-2.5 text-sm">
+                        <span className="w-9 shrink-0 font-semibold text-navy-900">{q.name}</span>
+                        <span className="flex h-5 w-full max-w-md overflow-hidden rounded bg-steel-100">
+                          <span className="h-full bg-ocean-600" style={{ width: `${(q.won / max) * 100}%` }} title={`${q.won} won`} />
+                          <span className="h-full bg-ocean-200" style={{ width: `${(q.pipeline / max) * 100}%` }} title={`${q.pipeline} open`} />
+                        </span>
+                        <span className="ml-auto w-40 text-right text-xs text-steel-500">
+                          {locale === "en" ? "won" : "menang"} {q.won} · {locale === "en" ? "open" : "jalan"} {q.pipeline} · {fmtMiliar(q.wonVal + q.pipeVal)}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </Card>
+            )}
           </div>
         )}
 

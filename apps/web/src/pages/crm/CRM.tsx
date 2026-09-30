@@ -198,6 +198,22 @@ export default function CRM() {
     color: STAGE_COLORS[s] ?? "#94a3b8",
   }));
 
+  /* Funnel penjualan: jumlah & nilai quotation per tahap, dari quotation nyata.
+     Distribusi di atas cuma menghitung JUMLAH per tahap, jadi user tidak
+     bisa melihat berapa nilai yang tersangkut di tiap tahap - 15 quotation
+     "Penawaran" bisa 3 M atau 30 M dan tampilannya sama saja. */
+  const crmFunnel = STAGES.map((s) => {
+    const rows = quotations.filter((q) => q.stage === s);
+    return {
+      stage: dispStage(s),
+      rawStage: s,
+      count: rows.length,
+      value: rows.reduce((a, q) => a + num(q.value), 0),
+      color: STAGE_COLORS[s] ?? "#94a3b8",
+    };
+  });
+  const funnelMax = crmFunnel.reduce((m, f) => Math.max(m, f.count), 0);
+
   const surveyAvg = (c: StoreItem): number => {
     const arr = Array.isArray(c.survei) ? c.survei.map(num) : [];
     if (arr.length === 0) return 0;
@@ -604,6 +620,49 @@ export default function CRM() {
                       </div>
                     ))}
                   </div>
+                </div>
+              </Card>
+              <Card>
+                <CardHeader
+                  title={locale === "en" ? "Funnel per stage" : "Funnel per Tahap"}
+                  subtitle={locale === "en"
+                    ? "Count and value of real quotations per stage"
+                    : "Jumlah dan nilai quotation nyata per tahap"}
+                />
+                <div className="space-y-2 p-4 pt-0">
+                  {funnelMax === 0 && (
+                    <p className="text-sm text-steel-400">
+                      {locale === "en" ? "No quotation yet." : "Belum ada quotation."}
+                    </p>
+                  )}
+                  {crmFunnel.map((f, i) => {
+                    const prev = i > 0 ? crmFunnel[i - 1] : null;
+                    const conv = prev && prev.count > 0 ? Math.round((f.count / prev.count) * 100) : null;
+                    return (
+                      <div key={f.rawStage} className="rounded-lg border border-steel-100 p-2.5">
+                        <div className="flex items-baseline gap-2 text-sm">
+                          <span className="h-2.5 w-2.5 shrink-0 rounded-sm" style={{ background: f.color }} />
+                          <span className="truncate font-medium text-navy-900">{f.stage}</span>
+                          {conv !== null && (
+                            <span className="text-[11px] text-steel-400">
+                              {locale === "en" ? "from prev" : "dari tahap sebelum"} {conv}%
+                            </span>
+                          )}
+                          <span className="ml-auto font-semibold text-navy-900">{f.count}</span>
+                          <span className="w-24 text-right text-xs text-steel-500">{fmtMiliar(f.value)}</span>
+                        </div>
+                        <div className="mt-1.5 h-1.5 w-full overflow-hidden rounded-full bg-steel-100">
+                          <div
+                            className="h-full rounded-full"
+                            style={{
+                              width: `${funnelMax > 0 ? (f.count / funnelMax) * 100 : 0}%`,
+                              background: f.color,
+                            }}
+                          />
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
               </Card>
               <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">

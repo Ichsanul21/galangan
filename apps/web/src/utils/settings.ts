@@ -8,3 +8,7 @@ export function getSetting(data: StoreShape, key: string, fallback: number): num
   const v = Number(row?.value);
   return Number.isFinite(v) ? v : fallback;
 }
+
+export function settingLabel(data: StoreShape, key: string): string {
+  return String((data.settings ?? []).find((s: StoreItem) => s.key === key)?.label ?? key);
+}

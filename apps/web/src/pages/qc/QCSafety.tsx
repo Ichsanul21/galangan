@@ -238,11 +238,50 @@ export default function QCSafety() {
   // Biaya rework per NCR (draft per detail)
   const [reworkDraft, setReworkDraft] = useState({ hours: "", rate: "", material: "" });
 
-  /* Chart ITP: label bulan+tahun, bulan berjalan terakhir. */
+  /* Chart ITP: label bulan+tahun. inspectionTrend berlabel tetap "Sep".."Ags"
+     sementara qcTrailingLabels() menghitung ulang 12 bulan terakhir dari
+     tanggal hari ini lalu menempelkannya POSISIONAL ke data. Akibatnya titik
+     "Ags" tampil sebagai "Sep 2026" dan seluruh grafik bergeser satu bulan
+     tiap pergantian bulan. Sekarang data diputar mengikuti jendela label, sama
+     seperti alignToTrailingMonths() di Equipment. */
   const itpChart = useMemo(() => {
     const labels = qcTrailingLabels(inspectionTrend.length, locale);
-    return inspectionTrend.map((d, i) => ({ ...d, label: labels[i] ?? d.month }));
+    const M = locale === "en" ? QC_EN_MON : QC_ID_MON;
+    const cur = new Date().getMonth();
+    const curName = M[cur];
+    const pos = inspectionTrend.findIndex((d) => d.month === curName);
+    const rot = pos >= 0
+      ? [...inspectionTrend.slice(pos + 1), ...inspectionTrend.slice(0, pos + 1)]
+      : [...inspectionTrend];
+    return rot.map((d, i) => ({
+      ...d,
+      label: labels[labels.length - rot.length + i] ?? d.month,
+    }));
   }, [locale]);
+
+  /* Statistik NCR dari baris NCR nyata: jumlah per jenis pekerjaan + per
+     severity.mock ncrStats (Pengelasan/Pengecatan/...) dibuat dari
+     data mock dan tidak pernah dipakai; di sini jenis diambil dari
+     n.type sehingga daftar ini ikut berubah saat user menambah NCR. */
+  const ncrByType = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const n of ncrList) {
+      const k = String(n.type ?? "-").trim() || "-";
+      m.set(k, (m.get(k) ?? 0) + 1);
+    }
+    return [...m.entries()]
+      .sort((a, b) => b[1] - a[1])
+      .map(([name, value], i) => ({ name, value, color: NCR_COLORS[i % NCR_COLORS.length] }));
+  }, [ncrList]);
+  const ncrBySeverity = useMemo(
+    () =>
+      (["Critical", "Major", "Minor"] as const).map((s) => ({
+        name: s,
+        value: ncrList.filter((n) => String(n.severity ?? "") === s).length,
+        open: ncrList.filter((n) => String(n.severity ?? "") === s && n.status !== "Tertutup").length,
+      })),
+    [ncrList],
+  );
 
   /* Posisi alur NCR terjauh untuk strip alur. */
   const furthestNcr = useMemo(() => {
@@ -271,6 +310,35 @@ export default function QCSafety() {
   const certAttention = vesselCerts
     .filter((c) => c.days !== null && (c.days as number) <= CERT_WINDOW)
     .sort((a, b) => (a.days as number) - (b.days as number));
+
+  /* Kesehatan sertifikat per jenis, dari baris sertifikat nyata.
+    uhl selama ini hanya menampilkan daftar sertifikat yang perlu
+     perhatian - tidak ada angka "seberapa banyak yang sehat", jadi
+     tidak bisa lihat apakah masalahnya terkonsentrasi di satu jenis
+     (mis. semua Radio License akan kedaluwarsa bulan depan).
+     Nilai = % sertifikat yang masih valid (lebih dari CERT_WINDOW). */
+  const certHealth = useMemo(() => {
+    const m = new Map<string, { total: number; ok: number; soon: number; expired: number }>();
+    for (const c of vesselCerts) {
+      const cur = m.get(c.name) ?? { total: 0, ok: 0, soon: 0, expired: 0 };
+      cur.total += 1;
+      if (c.days === null) cur.ok += 1;
+      else if (c.days < 0) cur.expired += 1;
+      else if (c.days <= CERT_WINDOW) cur.soon += 1;
+      else cur.ok += 1;
+      m.set(c.name, cur);
+    }
+    return [...m.entries()]
+      .map(([name, v]) => ({
+        name,
+        total: v.total,
+        value: v.total > 0 ? Math.round((v.ok / v.total) * 100) : 0,
+        soon: v.soon,
+        expired: v.expired,
+        tone: v.expired > 0 ? ("red" as const) : v.soon > 0 ? ("amber" as const) : ("green" as const),
+      }))
+      .sort((a, b) => a.value - b.value);
+  }, [vesselCerts, CERT_WINDOW]);
 
   const auditHistory = data.activities.filter((a) => String(a.action ?? "").toLowerCase().includes("audit hse"));
   const auditScore = Math.round((auditChecked.filter(Boolean).length / AUDIT_ITEMS.length) * 100);
@@ -912,6 +980,55 @@ export default function QCSafety() {
 
           {tab === "NCR" && (
             <div className="space-y-3">
+              {(ncrByType.length > 0 || ncrBySeverity.some((s) => s.value > 0)) && (
+                <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+                  <Card className="p-5" data-export-hide>
+                    <CardHeader
+                      title={locale === "en" ? "NCR by work type" : "NCR per Jenis Pekerjaan"}
+                      subtitle={locale === "en"
+                        ? "Counted from real NCR records (n.type)"
+                        : "Dihitung dari baris NCR nyata (n.type)"}
+                    />
+                    <div className="mt-3 space-y-1.5">
+                      {ncrByType.length === 0 && (
+                        <p className="text-sm text-steel-400">{locale === "en" ? "No NCR yet." : "Belum ada NCR."}</p>
+                      )}
+                      {ncrByType.map((d) => {
+                        const max = ncrByType[0]?.value || 1;
+                        return (
+                          <div key={d.name} className="flex items-center gap-2 text-sm">
+                            <span className="h-2.5 w-2.5 shrink-0 rounded-sm" style={{ background: d.color }} />
+                            <span className="truncate text-steel-600" title={d.name}>{d.name}</span>
+                            <span className="ml-auto font-semibold text-navy-900">{d.value}</span>
+                            <span className="h-1.5 w-20 overflow-hidden rounded-full bg-steel-100">
+                              <span className="block h-full rounded-full" style={{ width: `${(d.value / max) * 100}%`, background: d.color }} />
+                            </span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </Card>
+                  <Card className="p-5" data-export-hide>
+                    <CardHeader
+                      title={locale === "en" ? "NCR by severity" : "NCR per Severity"}
+                      subtitle={locale === "en"
+                        ? "Total and still-open, from real NCR records"
+                        : "Total dan yang masih terbuka, dari baris NCR nyata"}
+                    />
+                    <div className="mt-3 space-y-2">
+                      {ncrBySeverity.map((s) => (
+                        <div key={s.name} className="flex items-center gap-2 text-sm">
+                          <Badge tone={ncrTone[s.name] ?? "gray"}>{s.name}</Badge>
+                          <span className="ml-auto font-semibold text-navy-900">{s.value}</span>
+                          <span className="w-28 text-right text-xs text-steel-500">
+                            {locale === "en" ? `${s.open} open` : `${s.open} terbuka`}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </Card>
+                </div>
+              )}
               <div className="rounded-xl bg-surface p-2.5">
                 <FlowStrip steps={NCR_FLOW} current={furthestNcr} ariaLabel={locale === "en" ? "NCR flow" : "Alur NCR"} />
                 <p className="mt-1.5 text-[11px] text-steel-500">Untuk ke Tertutup butuh: CAPA + PIC + Due + Verifier (jika Critical)</p>
@@ -1220,6 +1337,35 @@ export default function QCSafety() {
 
           {tab === "Sertifikat" && (
             <div className="space-y-4">
+              {certHealth.length > 0 && (
+                <Card className="p-5" data-export-hide>
+                  <CardHeader
+                    title={locale === "en" ? "Certificate health by type" : "Kesehatan Sertifikat per Jenis"}
+                    subtitle={locale === "en"
+                      ? "Share still valid beyond the alert window, from real certificate records"
+                      : "Porsi masih berlaku di luar ambang peringatan, dari baris sertifikat nyata"}
+                  />
+                  <div className="mt-3 space-y-2.5">
+                    {certHealth.map((c) => (
+                      <div key={c.name} className="flex items-center gap-2.5 text-sm">
+                        <span className="w-44 shrink-0 truncate font-medium text-navy-900" title={c.name}>{c.name}</span>
+                        <span className="h-2 flex-1 overflow-hidden rounded-full bg-steel-100">
+                          <span
+                            className={`block h-full rounded-full ${c.tone === "red" ? "bg-rose-500" : c.tone === "amber" ? "bg-amber-500" : "bg-emerald-500"}`}
+                            style={{ width: `${c.value}%` }}
+                          />
+                        </span>
+                        <span className="w-12 text-right font-semibold text-navy-900">{c.value}%</span>
+                        <span className="w-28 text-right text-[11px] text-steel-500">
+                          {locale === "en"
+                            ? `${c.total} total · ${c.expired} expired`
+                            : `${c.total} total · ${c.expired} kedaluwarsa`}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </Card>
+              )}
               <Card className="p-4">
                 <h3 className="text-sm font-semibold text-navy-900">{S.certAttentionT.replace("{n}", String(CERT_WINDOW))}</h3>
                 <div className="mt-2 space-y-2 text-sm">

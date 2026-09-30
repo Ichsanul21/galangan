@@ -52,6 +52,10 @@ function loadSession(): Session | null {
 
 /* Role sesi saat ini (null bila belum login). Perilaku: baca sesi yang sama
    dengan yang dipakai AuthProvider - tidak mengubah kebiasaan rolecheck. */
+export function getRole(): string | null {
+  return loadSession()?.role ?? null;
+}
+
 function initialsOf(name: string): string {
   const parts = name.trim().split(/\s+/).filter(Boolean);
   if (parts.length === 0) return "?";
