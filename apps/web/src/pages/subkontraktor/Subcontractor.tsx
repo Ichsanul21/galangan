@@ -13,6 +13,7 @@ import { fmtRupiah, fmtMiliar, fmtTanggal, todayISO } from "../../utils/format";
 import { sameName } from "../../utils/names";
 import { AlertBannerView, notifRowId, useModuleAlert, useNotifFlash } from "../../components/AlertBanner";
 import { getSetting } from "../../utils/settings";
+import { PPH_SUBKON_OPTIONS } from "../../utils/sb";
 import { subActiveTrend, subContractTrend, woTrend, ratingTrend } from "../../data";
 import { FilterPopover } from "../../components/FilterPopover";
 import { useT } from "../../i18n/LanguageContext";
@@ -1260,8 +1261,14 @@ export default function Subcontractor() {
           <FormGrid>
             <Field label={S.pphLabel}>
               <select className="input" value={termForm.pphPct} onChange={(e) => setTermForm({ ...termForm, pphPct: e.target.value })}>
-                <option value="0.5">0.5% Final (cth Pak Yusuf)</option>
-                <option value="2">2% PPh 23</option>
+                {/* Sumber tarif dari PPH_SUBKON_OPTIONS. Versi lama menulis
+                    0.5 dan 2 langsung di sini, jadi konstantanya mati dan
+                    kalau tarifnya berubah keduanya bisa berbeda. */}
+                {PPH_SUBKON_OPTIONS.map((rate) => (
+                  <option key={rate} value={String(rate)}>
+                    {rate}%{rate === 0.5 ? " Final (cth Pak Yusuf)" : " PPh 23"}
+                  </option>
+                ))}
               </select>
             </Field>
             <Field label={S.retensiLabel}><NumInput min={0} max={100} className="input" value={termForm.retPct} onChange={(e) => setTermForm({ ...termForm, retPct: e.target.value })} /></Field>

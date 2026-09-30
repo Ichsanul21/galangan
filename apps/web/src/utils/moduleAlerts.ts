@@ -21,22 +21,6 @@ export interface ModuleAlertItem {
   detail: string;
 }
 
-export const MODULE_ALERT_TO: Record<ModuleAlertKey, string> = {
-  proyek: "/proyek",
-  drydock: "/drydock",
-  inventori: "/inventori",
-  equipment: "/equipment",
-  subkontraktor: "/subkontraktor",
-  qc: "/qc-safety",
-  crm: "/crm",
-  procurement: "/procurement",
-  keuangan: "/keuangan",
-  sdm: "/sdm",
-  payroll: "/payroll",
-  kapal: "/kapal",
-  dokumen: "/dokumen",
-};
-
 const num = (v: unknown): number => Number(v) || 0;
 
 function daysUntil(iso: string | null | undefined): number | null {

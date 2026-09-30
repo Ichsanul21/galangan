@@ -445,28 +445,6 @@ export function Avatar({
   );
 }
 
-export function StatDelta({
-  value,
-  direction = "up",
-}: {
-  value: string;
-  direction?: "up" | "down" | "flat";
-}) {
-  const cls =
-    direction === "up"
-      ? "text-emerald-600"
-      : direction === "down"
-      ? "text-rose-600"
-      : "text-steel-500";
-  return (
-    <span className={`inline-flex items-center gap-0.5 text-xs font-semibold ${cls}`}>
-      {direction === "up" && <ArrowUpRight className="h-3 w-3" />}
-      {direction === "down" && <ArrowDownRight className="h-3 w-3" />}
-      {value}
-    </span>
-  );
-}
-
 export function PageHeader({
   title,
   subtitle,
