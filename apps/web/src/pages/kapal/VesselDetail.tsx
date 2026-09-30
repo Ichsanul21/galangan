@@ -15,6 +15,8 @@ import {
   toggleSort,
   sortRows,
   NumInput,
+  useBusy,
+  ConfirmModal,
 } from "../../components/ui";
 import type { SortState } from "../../components/ui";
 import SparepartServiceSection from "../proyek/SparepartServiceSection";
@@ -27,8 +29,9 @@ import { useT } from "../../i18n/LanguageContext";
 import { n_eqp } from "../../i18n/n_eqp";
 
 function monthDiff(expires: string, base: string): number | null {
-  const m1 = /^(\d{4})-(\d{2})$/.exec(expires ?? "");
-  const m2 = /^(\d{4})-(\d{2})$/.exec(base ?? "");
+  /* Terima YYYY-MM maupun YYYY-MM-DD (sertifikat kini diisi type="date"). */
+  const m1 = /^(\d{4})-(\d{2})/.exec(expires ?? "");
+  const m2 = /^(\d{4})-(\d{2})/.exec(base ?? "");
   if (!m1 || !m2) return null;
   return (Number(m1[1]) - Number(m2[1])) * 12 + (Number(m1[2]) - Number(m2[2]));
 }
@@ -80,12 +83,17 @@ const PLAN_TYPES = ["Annual Survey", "Intermediate Survey", "Special Survey", "D
 
 export default function VesselDetail() {
   const { id } = useParams();
-  const { data, update, add, log } = useStore();
+  const busy = useBusy();
+ const { data, update, add, log } = useStore();
   const { locale } = useT();
   const S = n_eqp[locale];
-  const v = data.vessels.find((x) => x.id === id) ?? data.vessels[0];
+  /* JANGAN fallback ke vessels[0]: kalau id tidak match (kapal dihapus, URL
+     basi, id salah ketik) halaman akan menampilkan kapal LAIN dan setiap
+     update("vessels", v.id, ...) menulis ke kapal yang salah. */
+  const v = data.vessels.find((x) => x.id === id);
 
   const [showCert, setShowCert] = useState(false);
+  const [delCert, setDelCert] = useState<string | null>(null);
   const [certForm, setCertForm] = useState({ name: "", issued: monthISO(), expires: "" });
   const [showSurvey, setShowSurvey] = useState(false);
   const [surveyForm, setSurveyForm] = useState({ type: "Annual Survey", date: "", status: "Terjadwal", linkedTrial: "" });
@@ -104,7 +112,17 @@ export default function VesselDetail() {
   const [showIns, setShowIns] = useState(false);
   const [sort, setSort] = useState<SortState>({ key: null, dir: "asc" });
 
-  if (!v) return <p className="text-sm text-steel-500">{S.vdNotFound}</p>;
+  if (!v) {
+    return (
+      <div className="card p-6 text-center">
+        <p className="text-sm font-semibold text-navy-900">{S.vdNotFound}</p>
+        <p className="mt-1 text-xs text-steel-500">
+          {locale === "en" ? `No vessel with id "${id}". It may have been deleted.` : `Tidak ada kapal dengan id "${id}". Mungkin sudah dihapus.`}
+        </p>
+        <Link to="/kapal" className="btn-secondary mt-3 text-xs">{locale === "en" ? "Back to vessels" : "Kembali ke daftar kapal"}</Link>
+      </div>
+    );
+  }
 
   const nowMonth = todayISO().slice(0, 7);
   const projects = data.projects.filter((p) => sameName(p.vessel, v.name));
@@ -151,11 +169,29 @@ export default function VesselDetail() {
   const saveCert = async () => {
     try {
     if (!certForm.name.trim() || !certForm.issued || !certForm.expires) { toast(S.vdCertReq, "info"); return; }
+    if (certs.some((c) => c.name === certForm.name.trim())) { toast(locale === "en" ? "Certificate name already exists" : "Nama sertifikat sudah ada", "info"); return; }
     await update("vessels", v.id, { certificates: [...certs, { name: certForm.name.trim(), issued: certForm.issued, expires: certForm.expires }] });
+    log("menambah sertifikat kapal", `${v.name} · ${certForm.name.trim()} · berlaku s.d. ${certForm.expires}`, "Kapal");
     toast(S.vdCertAdded.replace("{a}", v.name));
     setShowCert(false);
     setCertForm({ name: "", issued: monthISO(), expires: "" });
     } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); }
+  };
+
+  /* Hapus sertifikat: dulu hanya bisa tambah (append-only) sehingga salah
+     ketik nama permanen dan key={c.name} bentrok saat nama dobel. */
+  const confirmDelCert = async () => {
+    const name = delCert;
+    if (!name) return;
+    setDelCert(null);
+    try {
+      const next = (data.vessels.find((x) => x.id === id)?.certificates ?? certs) as { name: string; issued: string; expires: string }[];
+      await update("vessels", v.id, { certificates: next.filter((c) => c.name !== name) });
+      log("menghapus sertifikat kapal", `${v.name} · ${name}`, "Kapal");
+      toast(locale === "en" ? "Certificate deleted" : "Sertifikat dihapus");
+    } catch (e) {
+      toast(e instanceof Error ? e.message : S.saveFail, "info");
+    }
   };
 
   const saveSurvey = async () => {
@@ -201,17 +237,22 @@ export default function VesselDetail() {
     } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); }
   };
 
+  /* Sinkronkan perubahan kepatuhan SEBELUM patch lain.
+     Versi lama membaca v.compliance dari closure, jadi perubahan kedua pada
+     baris lain menimpa perubahan pertama (lost update). */
   const setCompliance = async (name: string, patch: { status?: string; date?: string }) => {
     try {
-    const current = ((v.compliance ?? []) as { name: string; status: string; date: string }[]).slice();
-    const idx = current.findIndex((r) => r.name === name);
-    if (idx >= 0) {
-      current[idx] = { ...current[idx], ...patch };
-    } else {
-      current.push({ name, status: patch.status ?? "", date: patch.date ?? "" });
-    }
-    await update("vessels", v.id, { compliance: current });
-    } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); }
+      const fresh = (data.vessels.find((x) => x.id === id)?.compliance ?? v.compliance ?? []) as { name: string; status: string; date: string }[];
+      const current = fresh.map((r) => ({ ...r }));
+      const idx = current.findIndex((r) => r.name === name);
+      if (idx >= 0) {
+        current[idx] = { ...current[idx], ...patch };
+      } else {
+        current.push({ name, status: patch.status ?? "", date: patch.date ?? "" });
+      }
+      await update("vessels", v.id, { compliance: current });
+      log("mengubah kepatuhan kapal", `${v.name} · ${name} → ${patch.status ?? current[idx]?.status ?? ""}`, "Kapal");
+      } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); }
   };
 
   const savePsc = async () => {
@@ -385,10 +426,10 @@ export default function VesselDetail() {
               <div className="flex items-center gap-2">
                 <Badge tone={String(w.status) === "Aktif" ? "green" : String(w.status) === "Klaim" ? "amber" : "gray"}>{w.status}</Badge>
                 {String(w.status) === "Aktif" && (
-                  <button className="btn-secondary text-xs" onClick={() => claimWarranty(w)}>{S.vdClaim}</button>
+                  <button className="btn-secondary text-xs" onClick={() => void busy.run(`warranty-claim-${w.id}`, () => claimWarranty(w))} disabled={busy.isBusy(`warranty-claim-${w.id}`)}>{S.vdClaim}</button>
                 )}
                 {String(w.status) === "Klaim" && (
-                  <button className="btn-secondary text-xs" onClick={() => closeWarranty(w)}>{S.finishBtn}</button>
+                  <button className="btn-secondary text-xs" onClick={() => void busy.run(`warranty-close-${w.id}`, () => closeWarranty(w))} disabled={busy.isBusy(`warranty-close-${w.id}`)}>{S.finishBtn}</button>
                 )}
               </div>
             </div>
@@ -408,12 +449,23 @@ export default function VesselDetail() {
                   <button className="btn-secondary text-xs" aria-label={S.vdAddCertAria} onClick={() => setShowCert(true)}><Plus className="h-3.5 w-3.5" /></button>
                 </div>
                 <div className="space-y-2.5">
-                  {certs.map((c) => {
+                  {certs.map((c, ci) => {
                     const tone = certTone(c.expires, nowMonth);
                     return (
-                      <div key={c.name} className="rounded-lg border border-steel-100 p-3">
-                        <p className="text-sm font-medium text-navy-900">{c.name}</p>
-                        <p className="text-xs text-steel-500">{S.vdCertMeta.replace("{a}", fmtBulan(c.issued)).replace("{b}", fmtBulan(c.expires))}</p>
+                      <div key={`${c.name}-${ci}`} className="rounded-lg border border-steel-100 p-3">
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="min-w-0">
+                            <p className="truncate text-sm font-medium text-navy-900" title={c.name}>{c.name}</p>
+                            <p className="text-xs text-steel-500">{S.vdCertMeta.replace("{a}", fmtBulan(c.issued)).replace("{b}", fmtBulan(c.expires))}</p>
+                          </div>
+                          <button
+                            className="btn-secondary shrink-0 px-2 py-1 text-xs text-rose-600"
+                            aria-label={`${locale === "en" ? "Delete" : "Hapus"} ${c.name}`}
+                            onClick={() => setDelCert(c.name)}
+                          >
+                            {S.delBtn}
+                          </button>
+                        </div>
                         <Badge tone={tone} className="mt-1">
                           {tone === "green" ? S.vdCertValid : tone === "amber" ? S.vdCertSoon : S.vdCertExpired}
                         </Badge>
@@ -610,7 +662,7 @@ export default function VesselDetail() {
                               {manual.map((m) => (
                                 <p key={m.idx} className="flex flex-wrap items-center justify-between gap-2">
                                   <span>{m.type}{m.note ? ` - ${m.note}` : ""}</span>
-                                  <button className="btn-secondary text-xs" onClick={() => removePlan(m.idx)}>{S.delBtn}</button>
+                                  <button className="btn-secondary text-xs" onClick={() => void busy.run(`plan-del-${m.idx}`, () => removePlan(m.idx))} disabled={busy.isBusy(`plan-del-${m.idx}`)}>{S.delBtn}</button>
                                 </p>
                               ))}
                             </td>
@@ -632,7 +684,7 @@ export default function VesselDetail() {
                     </select>
                   </Field>
                   <Field label={S.vdNoteField}><input className="input" value={planForm.note} onChange={(e) => setPlanForm({ ...planForm, note: e.target.value })} placeholder={S.vdNotePh} /></Field>
-                  <div className="flex items-end"><button className="btn-secondary text-xs" onClick={savePlan}><Plus className="h-3.5 w-3.5" /> {S.vdAddPlan}</button></div>
+                  <div className="flex items-end"><button className="btn-secondary text-xs" onClick={() => void busy.run("savePlan", savePlan)} disabled={busy.isBusy("savePlan")}><Plus className="h-3.5 w-3.5" /> {S.vdAddPlan}</button></div>
                 </div>
               </Card>
 
@@ -663,7 +715,7 @@ export default function VesselDetail() {
                     <Field label={S.vdQtyField}><NumInput min={0} className="input" value={bunkerForm.qty} onChange={(e) => setBunkerForm({ ...bunkerForm, qty: e.target.value })} placeholder={S.vdQtyPh} /></Field>
                     <Field label={S.vdUnitField}><input className="input" value={bunkerForm.satuan} onChange={(e) => setBunkerForm({ ...bunkerForm, satuan: e.target.value })} placeholder={S.vdUnitPh} /></Field>
                   </div>
-                  <button className="btn-secondary mt-2 text-xs" onClick={saveBunker}><Plus className="h-3.5 w-3.5" /> {S.vdAddBunker}</button>
+                  <button className="btn-secondary mt-2 text-xs" onClick={() => void busy.run("saveBunker", saveBunker)} disabled={busy.isBusy("saveBunker")}><Plus className="h-3.5 w-3.5" /> {S.vdAddBunker}</button>
                 </Card>
 
                 <div className="space-y-5">
@@ -676,7 +728,7 @@ export default function VesselDetail() {
                             <p className="font-medium text-navy-900">{c.name}</p>
                             <p className="text-xs text-steel-500">{c.role}</p>
                           </div>
-                          <button className="btn-secondary text-xs" onClick={() => removeCrew(i)}>{S.delBtn}</button>
+                          <button className="btn-secondary text-xs" onClick={() => void busy.run(`crew-del-${i}`, () => removeCrew(i))} disabled={busy.isBusy(`crew-del-${i}`)}>{S.delBtn}</button>
                         </div>
                       ))}
                       {crewRows.length === 0 && <p className="text-xs text-steel-400">{S.vdNoCrew}</p>}
@@ -685,7 +737,7 @@ export default function VesselDetail() {
                       <Field label={S.vdCrewName}><input className="input" value={crewForm.name} onChange={(e) => setCrewForm({ ...crewForm, name: e.target.value })} placeholder={S.vdCrewNamePh} /></Field>
                       <Field label={S.vdCrewRole}><input className="input" value={crewForm.role} onChange={(e) => setCrewForm({ ...crewForm, role: e.target.value })} placeholder={S.vdCrewRolePh} /></Field>
                     </div>
-                    <button className="btn-secondary mt-2 text-xs" onClick={saveCrew}><Plus className="h-3.5 w-3.5" /> {S.vdAddCrew}</button>
+                    <button className="btn-secondary mt-2 text-xs" onClick={() => void busy.run("saveCrew", saveCrew)} disabled={busy.isBusy("saveCrew")}><Plus className="h-3.5 w-3.5" /> {S.vdAddCrew}</button>
                   </Card>
 
                   <Card className="p-5">
@@ -715,18 +767,18 @@ export default function VesselDetail() {
       </div>
 
       <Modal open={showCert} onClose={() => setShowCert(false)} title={S.vdAddCertTitle.replace("{a}", v.name)}
-        footer={<><button className="btn-secondary" onClick={() => setShowCert(false)}>{S.cancelBtn}</button><button className="btn-primary" onClick={saveCert}>{S.saveBtn}</button></>}>
+        footer={<><button className="btn-secondary" onClick={() => setShowCert(false)}>{S.cancelBtn}</button><button className="btn-primary" onClick={() => void busy.run("saveCert", saveCert)} disabled={busy.isBusy("saveCert")}>{S.saveBtn}</button></>}>
         <div className="space-y-3">
           <Field label={S.vdCertName}><input className="input" value={certForm.name} onChange={(e) => setCertForm({ ...certForm, name: e.target.value })} placeholder={S.vdCertNamePh} /></Field>
           <FormGrid>
-            <Field label={S.vdIssued}><input type="month" className="input" value={certForm.issued} onChange={(e) => setCertForm({ ...certForm, issued: e.target.value })} /></Field>
-            <Field label={S.vdValidUntil}><input type="month" className="input" value={certForm.expires} onChange={(e) => setCertForm({ ...certForm, expires: e.target.value })} /></Field>
+            <Field label={S.vdIssued}><input type="date" className="input" value={certForm.issued} onChange={(e) => setCertForm({ ...certForm, issued: e.target.value })} /></Field>
+            <Field label={S.vdValidUntil}><input type="date" className="input" value={certForm.expires} onChange={(e) => setCertForm({ ...certForm, expires: e.target.value })} /></Field>
           </FormGrid>
         </div>
       </Modal>
 
       <Modal open={showSurvey} onClose={() => setShowSurvey(false)} title={S.vdSurveyModalTitle.replace("{a}", v.name)} subtitle={S.vdSurveySub}
-        footer={<><button className="btn-secondary" onClick={() => setShowSurvey(false)}>{S.cancelBtn}</button><button className="btn-primary" onClick={saveSurvey}>{S.vdScheduleBtn}</button></>}>
+        footer={<><button className="btn-secondary" onClick={() => setShowSurvey(false)}>{S.cancelBtn}</button><button className="btn-primary" onClick={() => void busy.run("saveSurvey", saveSurvey)} disabled={busy.isBusy("saveSurvey")}>{S.vdScheduleBtn}</button></>}>
         <div className="space-y-3">
           <FormGrid>
             <Field label={S.vdSurveyTypeField}>
@@ -751,7 +803,7 @@ export default function VesselDetail() {
       </Modal>
 
       <Modal open={showSpec} onClose={() => setShowSpec(false)} title={S.vdSpecModalTitle.replace("{a}", v.name)}
-        footer={<><button className="btn-secondary" onClick={() => setShowSpec(false)}>{S.cancelBtn}</button><button className="btn-primary" onClick={saveSpec}>{S.saveBtn}</button></>}>
+        footer={<><button className="btn-secondary" onClick={() => setShowSpec(false)}>{S.cancelBtn}</button><button className="btn-primary" onClick={() => void busy.run("saveSpec", saveSpec)} disabled={busy.isBusy("saveSpec")}>{S.saveBtn}</button></>}>
         <FormGrid>
           <Field label={S.vsMmsiField}><input className="input font-mono" value={specForm.mmsi} onChange={(e) => setSpecForm({ ...specForm, mmsi: e.target.value })} placeholder={S.vsMmsiPh} /></Field>
           <Field label={S.vsEngineField}><input className="input" value={specForm.engineType} onChange={(e) => setSpecForm({ ...specForm, engineType: e.target.value })} placeholder={S.vsEnginePh} /></Field>
@@ -762,7 +814,7 @@ export default function VesselDetail() {
       </Modal>
 
       <Modal open={showPsc} onClose={() => setShowPsc(false)} title={S.vdPscModalTitle.replace("{a}", v.name)}
-        footer={<><button className="btn-secondary" onClick={() => setShowPsc(false)}>{S.cancelBtn}</button><button className="btn-primary" onClick={savePsc}>{S.saveBtn}</button></>}>
+        footer={<><button className="btn-secondary" onClick={() => setShowPsc(false)}>{S.cancelBtn}</button><button className="btn-primary" onClick={() => void busy.run("savePsc", savePsc)} disabled={busy.isBusy("savePsc")}>{S.saveBtn}</button></>}>
         <div className="space-y-3">
           <FormGrid>
             <Field label={S.dateLabel}><input type="date" className="input" value={pscForm.date} onChange={(e) => setPscForm({ ...pscForm, date: e.target.value })} /></Field>
@@ -778,7 +830,7 @@ export default function VesselDetail() {
       </Modal>
 
       <Modal open={showDock} onClose={() => setShowDock(false)} title={editingDock === null ? S.vdDockAddTitle.replace("{a}", v.name) : S.vdDockEditTitle.replace("{a}", v.name)} subtitle={S.vdDockSub}
-        footer={<><button className="btn-secondary" onClick={() => setShowDock(false)}>{S.cancelBtn}</button><button className="btn-primary" onClick={saveDock}>{S.saveBtn}</button></>}>
+        footer={<><button className="btn-secondary" onClick={() => setShowDock(false)}>{S.cancelBtn}</button><button className="btn-primary" onClick={() => void busy.run("saveDock", saveDock)} disabled={busy.isBusy("saveDock")}>{S.saveBtn}</button></>}>
         <div className="space-y-3">
           <FormGrid>
             <Field label={S.dateLabel}><input type="date" className="input" value={dockForm.date} onChange={(e) => setDockForm({ ...dockForm, date: e.target.value })} /></Field>
@@ -791,7 +843,7 @@ export default function VesselDetail() {
       </Modal>
 
       <Modal open={showIns} onClose={() => setShowIns(false)} title={S.vdInsModalTitle.replace("{a}", v.name)} subtitle={S.vdInsSub}
-        footer={<><button className="btn-secondary" onClick={() => setShowIns(false)}>{S.cancelBtn}</button><button className="btn-primary" onClick={saveIns}>{S.saveBtn}</button></>}>
+        footer={<><button className="btn-secondary" onClick={() => setShowIns(false)}>{S.cancelBtn}</button><button className="btn-primary" onClick={() => void busy.run("saveIns", saveIns)} disabled={busy.isBusy("saveIns")}>{S.saveBtn}</button></>}>
         <div className="space-y-3">
           <Field label={S.vdPolisNo}><input className="input font-mono" value={insForm.polis} onChange={(e) => setInsForm({ ...insForm, polis: e.target.value })} placeholder={S.vdPolisPh} /></Field>
           <FormGrid>
@@ -800,6 +852,17 @@ export default function VesselDetail() {
           </FormGrid>
         </div>
       </Modal>
+
+      <ConfirmModal
+        open={delCert !== null}
+        title={locale === "en" ? "Delete certificate?" : "Hapus sertifikat?"}
+        desc={delCert ?? ""}
+        confirmLabel={locale === "en" ? "Delete" : "Hapus"}
+        danger
+        onCancel={() => setDelCert(null)}
+        onConfirm={() => void busy.run("delCert", confirmDelCert)}
+        confirmDisabled={busy.isBusy("delCert")}
+      />
     </div>
   );
 }
