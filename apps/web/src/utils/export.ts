@@ -81,9 +81,6 @@ export interface ExportPDFOptions {
    atau belum tergambar. Versi lama menyelesaikannya dengan mematikan
    animasi permanen di tiap chart, jadi grafik selalu diam. */
 let pdfExporting = false;
-export function isPdfExporting(): boolean {
-  return pdfExporting;
-}
 
 /* Nilai untuk prop isAnimationActive recharts: aktif normal, mati saat export. */
 export function chartAnim(): boolean {
