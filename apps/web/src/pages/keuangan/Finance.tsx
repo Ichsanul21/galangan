@@ -3,6 +3,9 @@ import { Wallet, ArrowDownToLine, FileText, Receipt, TrendingUp, Plus, Trash2, S
 import {
   AreaChart,
   Area,
+  Bar,
+  ComposedChart,
+  Legend,
   XAxis,
   YAxis,
   CartesianGrid,
@@ -44,7 +47,7 @@ import { getSetting } from "../../utils/settings";
 import { useDraftState } from "../../utils/draft";
 import { sameName } from "../../utils/names";
 import { sbInvoiceMath, maxSeq, PPN_INVOICE_DEFAULT, PPH_JASA_DEFAULT } from "../../utils/sb";
-import { exportExcel } from "../../utils/export";
+import { chartAnim, exportExcel } from "../../utils/export";
 import { kasKodeOf, postCashJournal } from "../../services/autoJournal";
 import { FilterPopover } from "../../components/FilterPopover";
 import { AlertBannerView, notifRowId, useModuleAlert, useNotifFlash } from "../../components/AlertBanner";
@@ -982,6 +985,38 @@ export default function Finance() {
       .sort()
       .map((period) => ({ period, ...agg[period], laba: agg[period].revenue - agg[period].costProj - agg[period].salary - agg[period].writeoff }));
   }, [data.invoices, data.payables, data.payroll]);
+
+  /* EBITDA 12 bulan, dihitung dari dokumen nyata.
+     Laba (plMonthly) subtracting D&A dan bunga - barang yang tidak ada di
+     data modul ini, sehingga laba di bawah bukan EBITDA dan tidak bisa
+     dibandingkan ke EBITDA. Yang bisa dihitung dari data yang ada:
+     EBITDA = pendapatan - biaya proyek - gaji - hapus buku.
+     Dihitung eksplisit dari dokumen, BUKAN dari mock ebitdaReal, dan
+     hanya bulan yang punya dokumen nyata yang ditampilkan. */
+  const ebitdaRows = useMemo(() => {
+    const now = new Date();
+    const keys: string[] = [];
+    for (let k = 11; k >= 0; k -= 1) {
+      const d = new Date(now.getFullYear(), now.getMonth() - k, 1);
+      keys.push(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`);
+    }
+    const MON = ["Jan", "Feb", "Mar", "Apr", "Mei", "Jun", "Jul", "Ags", "Sep", "Okt", "Nov", "Des"];
+    return keys.map((key) => {
+      const row = plMonthly.find((p) => p.period === key);
+      const revenue = row?.revenue ?? 0;
+      const ebitda = revenue - (row?.costProj ?? 0) - (row?.salary ?? 0) - (row?.writeoff ?? 0);
+      const d = new Date(`${key}-01T00:00:00`);
+      return {
+        period: key,
+        name: `${MON[d.getMonth()]} ${String(d.getFullYear()).slice(2)}`,
+        revenue,
+        ebitda,
+        margin: revenue > 0 ? Math.round((ebitda / revenue) * 1000) / 10 : null,
+        adaData: row !== undefined,
+      };
+    });
+  }, [plMonthly]);
+  const ebitdaReal = ebitdaRows.filter((d) => d.adaData);
 
   const labaLast = plMonthly.length ? plMonthly[plMonthly.length - 1].laba : LAPORAN_EXCEL.labaBersih;
   const labaPrev = plMonthly.length > 1 ? plMonthly[plMonthly.length - 2].laba : 0;
@@ -2685,6 +2720,44 @@ export default function Finance() {
                   </table>
                 </div>
               </Card>
+
+              {ebitdaReal.length > 0 && (
+                <Card className="p-5" data-export-hide>
+                  <CardHeader
+                    title="EBITDA 12 bulan"
+                    subtitle="Pendapatan - biaya proyek - gaji - hapus buku, dari invoice/payable/payroll nyata"
+                    action={<Badge tone={ebitdaReal[ebitdaReal.length - 1].margin !== null && ebitdaReal[ebitdaReal.length - 1].margin! >= 0 ? "green" : "rose"}>
+                      {ebitdaReal[ebitdaReal.length - 1].margin !== null
+                        ? `margin ${ebitdaReal[ebitdaReal.length - 1].margin}%`
+                        : "-"}
+                    </Badge>}
+                  />
+                  <div className="mt-3 h-64">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <ComposedChart data={ebitdaReal} margin={{ top: 8, right: 10, left: -18, bottom: 0 }}>
+                        <defs>
+                          <linearGradient id="ebitdaGrad" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="0%" stopColor="#0d9488" stopOpacity={0.32} />
+                            <stop offset="100%" stopColor="#0d9488" stopOpacity={0.02} />
+                          </linearGradient>
+                        </defs>
+                        <CartesianGrid strokeDasharray="3 3" stroke="#e9eff4" vertical={false} />
+                        <XAxis dataKey="name" tick={{ fontSize: 11 }} stroke="#8aa2b6" axisLine={false} tickLine={false} />
+                        <YAxis tick={{ fontSize: 11 }} stroke="#8aa2b6" axisLine={false} tickLine={false} />
+                        <Tooltip content={<ChartTooltip formatter={(v) => `Rp ${v} jt`} />} />
+                        <Legend wrapperStyle={{ fontSize: 12 }} />
+                        <Bar dataKey="revenue" name="Pendapatan" fill="#0b3a63" radius={[4, 4, 0, 0]} isAnimationActive={chartAnim()} />
+                        <Area type="monotone" dataKey="ebitda" name="EBITDA" stroke="#0d9488" strokeWidth={2.5} fill="url(#ebitdaGrad)" dot={{ r: 3 }} isAnimationActive={chartAnim()} />
+                      </ComposedChart>
+                    </ResponsiveContainer>
+                  </div>
+                  <p className="mt-2 text-[11px] text-steel-400">
+                    {locale === "en"
+                      ? "Note: D&A and interest are not available in this module, so this is EBITDA before depreciation, not a full income-statement EBITDA."
+                      : "Catatan: D&A dan bunga tidak tersedia di modul ini, jadi ini EBITDA sebelum penyusutan - bukan laba bersih final."}
+                  </p>
+                </Card>
+              )}
             </div>
           )}
 

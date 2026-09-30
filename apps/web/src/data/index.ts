@@ -587,15 +587,6 @@ export const quotations = [
   { id: "QT-SB-001", client: "PT PELAYARAN KARTIKA SAMUDRA ADIJAYA", vessel: "BG RMN 3324", type: "Repair", value: 1671211310, stage: "Menang", date: "2026-07-28", requestId: "REQ-SB-002" },
 ];
 
-export const monthlyRevenue = [
-  { month: "Jan", value: 5.2 },
-  { month: "Feb", value: 6.1 },
-  { month: "Mar", value: 4.8 },
-  { month: "Apr", value: 7.4 },
-  { month: "Mei", value: 6.9 },
-  { month: "Jun", value: 8.2 },
-  { month: "Jul", value: 9.1 },
-];
 
 export { fmtRupiah, fmtMiliar, fmtJumlah, fmtPersen, fmtTanggal, fmtBulan, fmtRentang, todayISO, monthISO, SATUAN, STATUS_BOQ_ID, STATUS_SVC_ID } from "../utils/format";
 
@@ -661,22 +652,8 @@ export const utilSeries = [
   { month: "Ags", drydock: 92, equipment: 81 },
 ];
 
-export const projectTypeDist = [
-  { name: "New Build", value: 8, color: "#0b3a63" },
-  { name: "Repair", value: 5, color: "#2e9ad4" },
-  { name: "Retrofit", value: 4, color: "#22c55e" },
-  { name: "Drydocking", value: 3, color: "#f59e0b" },
-];
 
-export const revenueByBranch = [
-  { name: "Samarinda", value: 100, color: "#0b3a63" },
-];
 
-export const projectPipeline = [
-  { name: "Q1", won: 4, pipeline: 9, target: 7 },
-  { name: "Q2", won: 5, pipeline: 11, target: 8 },
-  { name: "Q3", won: 6, pipeline: 12, target: 9 },
-];
 
 /* ====== KPI spark data ====== */
 
@@ -739,13 +716,6 @@ export const insights = [
 
 /* ====== ATTENDANCE / SDM EXTENSIONS ====== */
 
-export const deptDistribution = [
-  { name: "Produksi", value: 132, color: "#0b3a63" },
-  { name: "Proyek", value: 48, color: "#2e9ad4" },
-  { name: "QC & HSE", value: 24, color: "#22c55e" },
-  { name: "Finance", value: 16, color: "#f59e0b" },
-  { name: "Support", value: 30, color: "#8b5cf6" },
-];
 
 export const attendanceSeries = [
   { month: "Sep", tingkat: 96.2 },
@@ -779,13 +749,6 @@ export const employeeTrend = [
 
 /* ====== EQUIPMENT HEATMAP (jam per hari, sumbu hari x hari) ====== */
 
-export const equipmentHeatmap = [
-  { day: "Sen", senin: 4, selasa: 6, rabu: 7, kamis: 8, jumat: 7, sabtu: 5, minggu: 2 },
-  { day: "Sel", senin: 6, selasa: 7, rabu: 8, kamis: 7, jumat: 6, sabtu: 4, minggu: 1 },
-  { day: "Rab", senin: 7, selasa: 8, rabu: 6, kamis: 8, jumat: 5, sabtu: 3, minggu: 2 },
-  { day: "Kam", senin: 5, selasa: 7, rabu: 8, kamis: 9, jumat: 7, sabtu: 4, minggu: 2 },
-  { day: "Jum", senin: 6, selasa: 5, rabu: 7, kamis: 8, jumat: 8, sabtu: 5, minggu: 1 },
-];
 
 export const equipmentHours = [
   { month: "Sep", jam: 18200 },
@@ -843,21 +806,9 @@ export const drydockLoad = [
 
 /* ====== SUBCONTRACTOR EVALUATION ====== */
 
-export const subcontractorScore = [
-  { name: "PT Baja Utama Steel", cost: 88, quality: 92, delivery: 90, safety: 94 },
-  { name: "PT Mesinindo Perkasa", cost: 84, quality: 90, delivery: 86, safety: 91 },
-  { name: "CV Pengecatan Marine", cost: 82, quality: 85, delivery: 88, safety: 84 },
-  { name: "CV Scaffold Aman", cost: 90, quality: 91, delivery: 93, safety: 96 },
-];
 
 /* ====== QC ITP / NCR STATS ====== */
 
-export const ncrStats = [
-  { name: "Pengelasan", value: 12, color: "#0b3a63" },
-  { name: "Pengecatan", value: 8, color: "#2e9ad4" },
-  { name: "Kelistrikan", value: 6, color: "#f59e0b" },
-  { name: "Mesin", value: 5, color: "#8b5cf6" },
-];
 
 export const inspectionTrend = [
   { month: "Sep", inspeksi: 142, lulus: 138 },
@@ -901,36 +852,13 @@ export const procurementTrend = [
 
 /* ====== CRM FUNNEL ====== */
 
-export const crmFunnel = [
-  { stage: "Lead", count: 24, value: 98 },
-  { stage: "Penawaran", count: 15, value: 61 },
-  { stage: "Negosiasi", count: 8, value: 33 },
-  { stage: "Menang", count: 12, value: 49 },
-];
 
-export const quotationStageDist = [
-  { name: "Lead", value: 9, color: "#2e9ad4" },
-  { name: "Penawaran", value: 12, color: "#f59e0b" },
-  { name: "Negosiasi", value: 7, color: "#8b5cf6" },
-  { name: "Menang", value: 6, color: "#22c55e" },
-];
 
 /* ====== PAYABLES / AGING ====== */
 
-export const agingBuckets = [
-  { name: "0-30 hari", value: 8.2, color: "#22c55e" },
-  { name: "31-60 hari", value: 5.6, color: "#f59e0b" },
-  { name: "61-90 hari", value: 3.4, color: "#f97316" },
-  { name: ">90 hari", value: 2.1, color: "#ef4444" },
-];
 
 /* ====== P&L ====== */
 
-export const plSummary = [
-  { month: "Kuartal 1", revenue: 17.7, cost: 13.2, gross: 4.5, ebitda: 3.9 },
-  { month: "Kuartal 2", revenue: 19.4, cost: 14.7, gross: 4.7, ebitda: 4.1 },
-  { month: "Kuartal 3", revenue: 22.0, cost: 16.3, gross: 5.7, ebitda: 5.0 },
-];
 
 /* ====== VESSEL ADD-ONS ====== */
 
@@ -940,12 +868,6 @@ export const surveyTimeline = [
   { id: "S-03", vessel: "TB Mitra Raya 09", type: "Docking Survey", status: "Selesai", date: "2026-07-30", classSurveyor: "BKI" },
 ];
 
-export const certHealth = [
-  { name: "Certificate of Class", value: 92, tone: "green" },
-  { name: "SOPEP", value: 100, tone: "green" },
-  { name: "Radio License", value: 88, tone: "amber" },
-  { name: "BWTS Compliance", value: 96, tone: "green" },
-];
 
 export interface BoQItem {
   id: string;
@@ -995,9 +917,6 @@ const mk = (vs: number[]) => M12.map((name, i) => ({ name, v: vs[i] ?? vs[vs.len
 export const activeProjectTrend = mk([6, 7, 6, 8, 7, 8, 6, 9, 8, 10, 10, 11]);
 export const contractValueTrend = mk([98, 104, 101, 112, 108, 115, 110, 121, 118, 126, 131, 138]);
 export const avgProgressTrend = mk([38, 40, 41, 43, 44, 47, 49, 52, 55, 58, 61, 63]);
-export const apTrend = mk([9.4, 9.8, 9.1, 10.2, 9.9, 10.6, 10.1, 11.0, 10.8, 11.4, 11.9, 12.3]);
-export const cashInTrend = cashflowSeries.map((d) => ({ name: d.month, v: d.masuk }));
-export const ebitdaTrend = mk([3.1, 3.3, 3.0, 3.6, 3.4, 3.8, 3.6, 4.0, 4.1, 4.4, 4.7, 5.0]);
 export const poCountTrend = procurementTrend.map((d) => ({ name: d.month, v: d.pengadaan }));
 export const poValueTrend = procurementTrend.map((d) => ({ name: d.month, v: d.pengeluaran }));
 export const prPendingTrend = mk([9, 8, 10, 7, 8, 6, 7, 5, 6, 5, 4, 4]);
