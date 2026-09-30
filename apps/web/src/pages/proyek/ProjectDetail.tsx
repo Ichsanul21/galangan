@@ -332,7 +332,15 @@ export default function ProjectDetail() {
       (project.status === "Dalam Proses" || project.status === "Sedang Berjalan" || project.status === "Tertunda") &&
       isOverdue(project, todayISO())
     ) {
-      void update("projects", project.id, { status: "Terlambat" }).catch(() => {});
+      /* .catch(() => {}) yang dulu dipakai di sini menelan kegagalan tanpa
+         umpan balik: kalau backend menolak (403/422) atau offline, proyek
+         tetap tampil Running padahal sebenarnya sudah lewat tanggal, dan
+         tidak ada yang tahu kenapa. Sekarang error dikembalikan ke
+         pendingSync - Monitoring sudah menampilkannya sebagai banner
+         "Data belum tersinkron", jadi user tetap diberi tahu. */
+      void update("projects", project.id, { status: "Terlambat" }).catch((err) => {
+        log("gagal menandai proyek terlambat", `${project.id} · ${err instanceof Error ? err.message : String(err)}`, "Proyek");
+      });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [project?.status, project?.end, project?.progress]);
@@ -823,7 +831,10 @@ export default function ProjectDetail() {
               <select
                 className="input w-auto py-1.5 text-sm"
                 value={canonPrioritas(project.prioritas)}
-                onChange={(e) => void savePrioritas(e.target.value)}
+                onChange={(e) => {
+                  const next = e.target.value;
+                  void busy.run("savePrioritas", () => savePrioritas(next));
+                }}
                 disabled={busy.isBusy("savePrioritas")}
                 aria-label={S.prjFieldPrioritas}
               >

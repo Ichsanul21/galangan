@@ -66,7 +66,7 @@ const prioritasTone: Record<string, "gray" | "blue" | "amber" | "red"> = {
 export default function Projects() {
   const { locale } = useT();
   const S = n_prj[locale];
-  const { data, add, update, remove, inBranch, resync } = useStore();
+  const { data, add, update, remove, inBranch, resync, log } = useStore();
   const modAlert = useModuleAlert("proyek");
   const flash = useNotifFlash();
   const notified = useMemo(() => new Set(modAlert.items.map((a) => a.rowId)), [modAlert.items]);
@@ -107,7 +107,17 @@ export default function Projects() {
         (p.status === "Dalam Proses" || p.status === "Sedang Berjalan" || p.status === "Tertunda") &&
         isOverdue(p, today)
       ) {
-        void update("projects", p.id, { status: "Terlambat" }).catch(() => {});
+        /* .catch(() => {}) menelan kegagalan: proyek tetap tampil Running
+           padahal sudah lewat tanggal, dan tidak ada yang tahu kenapa -
+           terutama saat backend menolak (403) atau sedang offline.
+           Sekarang kegagalannya dicatat di jejak aktivitas. */
+        void update("projects", p.id, { status: "Terlambat" }).catch((err) => {
+          log(
+            "gagal menandai proyek terlambat",
+            `${p.id} · ${err instanceof Error ? err.message : String(err)}`,
+            "Proyek",
+          );
+        });
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps

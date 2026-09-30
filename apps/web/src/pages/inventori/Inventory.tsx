@@ -526,10 +526,21 @@ export default function Inventory() {
   const dq = useDebouncedValue(q);
   const abc = useMemo(() => abcMap(inventory), [inventory]);
 
-  /* Tren nilai stok: label "Mon YYYY", bulan berjalan terakhir. */
+  /* Tren nilai stok: label "Mon YYYY". stockTrend berlabel tetap "Sep".."Ags"
+     sementara invTrailingLabels() menghitung ulang 12 bulan terakhir dari
+     tanggal hari ini lalu menempelkannya POSISIONAL ke data. Akibatnya titik
+     "Ags" tampil sebagai "Sep 2026" dan seluruh grafik bergeser satu bulan
+     tiap pergantian bulan, tanpa pernah memberi tahu. Sekarang data diputar
+     mengikuti jendela label - pola yang sama sudah dipakai Equipment dan QC. */
   const invTrend = useMemo(() => {
     const labels = invTrailingLabels(stockTrend.length, locale);
-    return stockTrend.map((d, i) => ({ ...d, label: labels[i] ?? d.month }));
+    const M = locale === "en" ? INV_EN_MON : INV_ID_MON;
+    const cur = new Date().getMonth();
+    const pos = stockTrend.findIndex((d) => String(d.month) === M[cur]);
+    const rot = pos >= 0
+      ? [...stockTrend.slice(pos + 1), ...stockTrend.slice(0, pos + 1)]
+      : [...stockTrend];
+    return rot.map((d, i) => ({ ...d, label: labels[labels.length - rot.length + i] ?? d.month }));
   }, [locale]);
   const [trendYear, setTrendYear] = useState("Semua");
   const trendYears = useMemo(() => Array.from(new Set(invTrend.map((d) => String(d.label).slice(-4)))).sort(), [invTrend]);
