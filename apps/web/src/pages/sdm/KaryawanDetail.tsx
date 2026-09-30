@@ -298,7 +298,7 @@ export default function KaryawanDetail() {
         <Card className="p-5">
           <div className="flex items-center justify-between">
             <h3 className="text-sm font-semibold text-navy-900">{S.cardCert}</h3>
-            <button className="btn-secondary text-xs" onClick={() => setShowCert(true)}><Plus className="h-3.5 w-3.5" /></button>
+            <button className="btn-secondary text-xs" onClick={() => setShowCert(true)} aria-label={S.cardCert}><Plus className="h-3.5 w-3.5" /></button>
           </div>
           <div className="mt-3 space-y-2">
             {certs.map((c) => {
