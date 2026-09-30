@@ -148,9 +148,9 @@ export const seedInvoices: StoreItem[] = [
   { id: "INV/OPEN-2026-037", client: "PT Saha Agropalm Mandiri", project: "", amount: 812692000, openAwal: 841370000, due: "2026-08-31", status: "Belum Dibayar", paymentTerm: "Saldo Awal Agu-2026", billingType: "Saldo Awal", dunning: "Belum Ditagih", nonPpn: false },
   // RawData Invoice/CONTOH INVOICE.xlsx - 4 pola Jasa+Material. Rumus: TOTAL=J+M,
   // DPP=TOTAL×11/12, PPN=12%×DPP, PPh=2%×Jasa, Grand=TOTAL+PPN-PPh-DP.
-  { id: "INV-SB-2026-058", client: "PT PELAYARAN KARTIKA SAMUDRA ADIJAYA", project: "RP-2026-006", noInv: "058/INV-SB/SMD/IX/2026", vessel: "BG RMN 3324", jasaTotal: 808550650, matTotal: 711613605, amount: 1520164255, dpp: 1393483901, ppnAmt: 167218068, pphAmt: 16171013, dpApplied: 0, grandTotal: 1671211310, skdt: false, ppnRate: 12, pphRate: 2, due: "2026-09-30", status: "Belum Dibayar", paymentTerm: "NET 30", billingType: "Milestone", milestoneRef: "Pelunasan Docking & Repair BG RMN 3324", dunning: "Ditagih", nonPpn: false, date: "2026-09-01" },
+  { id: "INV-SB-2026-058", client: "PT PELAYARAN KARTIKA SAMUDRA ADIJAYA", project: "RP-2026-006", noInv: "058/INV-SB/SMD/IX/2026", vessel: "BG RMN 3324", jasaTotal: 808550650, matTotal: 711613605, amount: 1520164255, dpp: 1393483900, ppnAmt: 167218068, pphAmt: 16171013, dpApplied: 0, grandTotal: 1671211310, skdt: false, ppnRate: 12, pphRate: 2, due: "2026-09-30", status: "Belum Dibayar", paymentTerm: "NET 30", billingType: "Milestone", milestoneRef: "Pelunasan Docking & Repair BG RMN 3324", dunning: "Ditagih", nonPpn: false, date: "2026-09-01" },
   { id: "INV-SB-2026-049", client: "PT PELAYARAN ROYLEA MARINE LINE", project: "RP-2026-007", noInv: "049/INV-SB/SMD/VII/2026", vessel: "AWB SEA HAVEN 2", jasaTotal: 1501469657, matTotal: 1357158023, amount: 2858627680, dpp: 2620408707, ppnAmt: 314449045, pphAmt: 30029393, dpApplied: 1098000000, dpRef: "045/INV-SB/SMD/VI/2026", grandTotal: 2045047332, skdt: false, ppnRate: 12, pphRate: 2, due: "2026-08-13", status: "Belum Dibayar", paymentTerm: "NET 30", billingType: "Milestone", milestoneRef: "Pelunasan V2 (potong DP-1)", dunning: "Ditagih", nonPpn: false, date: "2026-07-13" },
-  { id: "INV-SB-2026-037", client: "PT ALVI CIPTA SENTOSA", project: "RP-2026-008", noInv: "037/INV-SB/SMD/V/2026", vessel: "BG MHKL 35", jasaTotal: 184349645, matTotal: 543356806, amount: 727706451, dpp: 727706451, ppnAmt: 0, pphAmt: 3686993, dpApplied: 0, grandTotal: 724019458, skdt: true, ppnRate: 12, pphRate: 2, due: "2026-06-08", status: "Belum Dibayar", paymentTerm: "NET 30", billingType: "Milestone", milestoneRef: "Pelunasan BG MHKL 35 (SKDT, tanpa PPN)", dunning: "Ditagih", nonPpn: false, date: "2026-05-08" },
+  { id: "INV-SB-2026-037", client: "PT ALVI CIPTA SENTOSA", project: "RP-2026-008", noInv: "037/INV-SB/SMD/V/2026", vessel: "BG MHKL 35", jasaTotal: 184349645, matTotal: 543356806, amount: 727706451, dpp: 667064247, ppnAmt: 0, pphAmt: 3686993, dpApplied: 0, grandTotal: 724019458, skdt: true, ppnRate: 12, pphRate: 2, due: "2026-06-08", status: "Belum Dibayar", paymentTerm: "NET 30", billingType: "Milestone", milestoneRef: "Pelunasan BG MHKL 35 (SKDT, tanpa PPN)", dunning: "Ditagih", nonPpn: false, date: "2026-05-08" },
   { id: "INV-SB-2026-045", client: "PT PELAYARAN ROYLEA MARINE LINE", project: "RP-2026-007", noInv: "045/INV-SB/SMD/VI/2026", vessel: "AWB SEA HAVEN 2", jasaTotal: 600000000, matTotal: 400000000, amount: 1000000000, dpp: 916666667, ppnAmt: 110000000, pphAmt: 12000000, dpApplied: 0, grandTotal: 1098000000, skdt: false, ppnRate: 12, pphRate: 2, due: "2026-07-25", status: "Lunas", paymentTerm: "NET 30", billingType: "Uang Muka", milestoneRef: "DP-1 AWB SEA HAVEN 2", dunning: "Ditagih", nonPpn: false, date: "2026-06-25", paidAt: "2026-07-10" },
 ];
 
@@ -191,8 +191,15 @@ export const seedAttendance: StoreItem[] = [
 ];
 
 export const seedPayroll: StoreItem[] = [
-  { id: "PAY-202607-002", employeeId: "EMP-002", period: "2026-07", basic: 18000000, allowances: 4500000, overtimePay: 1200000, deductions: 500000, pph21: 1875000, bpjsKes: 540000, bpjsTk: 666000, net: 19569000, status: "Dibayar", paidAt: "2026-07-31" },
-  { id: "PAY-202607-004", employeeId: "EMP-004", period: "2026-07", basic: 12000000, allowances: 3000000, overtimePay: 800000, deductions: 200000, pph21: 950000, bpjsKes: 360000, bpjsTk: 444000, net: 13846000, status: "Dibayar", paidAt: "2026-07-31" },
+  /* Slip payroll harus PERSIS sama dengan hasil rumus Payroll.tsx
+     (basic * settings BPJS_KES_KAR=1% + basic * BPJS_TK_KAR=2%), kalau tidak
+     recompute slip menghasilkan angka berbeda dari yang tersimpan.
+     PAY-202607-002: bruto 23.700.000 - (500.000+1.875.000+180.000+360.000)
+     = 20.785.000. Sebelumnya net ditulis 19.569.000 (selisih 550.000) dan
+     BPJS 3%/3,7% sehingga tidak cocok dengan settings. */
+  { id: "PAY-202607-002", employeeId: "EMP-002", period: "2026-07", basic: 18000000, allowances: 4500000, overtimePay: 1200000, deductions: 500000, pph21: 1875000, bpjsKes: 180000, bpjsTk: 360000, net: 20785000, status: "Dibayar", paidAt: "2026-07-31" },
+  /* 15.800.000 - (200.000+950.000+120.000+240.000) = 14.290.000 */
+  { id: "PAY-202607-004", employeeId: "EMP-004", period: "2026-07", basic: 12000000, allowances: 3000000, overtimePay: 800000, deductions: 200000, pph21: 950000, bpjsKes: 120000, bpjsTk: 240000, net: 14290000, status: "Dibayar", paidAt: "2026-07-31" },
   { id: "PAY-202608-002", employeeId: "EMP-002", period: "2026-08", basic: 18000000, allowances: 4500000, overtimePay: 0, deductions: 0, pph21: 0, bpjsKes: 0, bpjsTk: 0, net: 0, status: "Draft", paidAt: "" },
 ];
 

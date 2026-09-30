@@ -38,6 +38,28 @@ function trailingMonthLabels(n: number, locale: string): string[] {
   return out;
 }
 
+/* Samakan deret data dengan jendela label bulan-berjalan.
+   Versi lama menempel label secara posisional: data equipmentHours berlabel
+   tetap "Sep".."Ags" sementara label dihitung ulang tiap bulan, sehingga
+   titik "Ags" tampil sebagai "Sep 2026" dan SELURUH grafik bergeser satu bulan
+   setiap pergantian bulan. Sekarang data diputar agar bulan pada datanya
+   sendiri yang jadi acuan, persis seperti withMonthLabels() di Analytics:
+   bulan berjalan benar-benar berada di titik terakhir. */
+function alignToTrailingMonths<T extends { month: string }>(arr: T[], locale: string): (T & { label: string })[] {
+  const now = new Date();
+  const cur = now.getMonth();
+  const curName = (locale === "en" ? EN_MON : ID_MON)[cur];
+  const labels = trailingMonthLabels(arr.length, locale);
+
+  const pos = arr.findIndex((d) => d.month === curName);
+  const rot = pos >= 0 ? [...arr.slice(pos + 1), ...arr.slice(0, pos + 1)] : [...arr];
+
+  return rot.map((d, i) => {
+    const label = labels[labels.length - rot.length + i] ?? d.month;
+    return { ...d, label };
+  });
+}
+
 function toMinutes(t: string): number | null {
   const m = /^(\d{1,2}):(\d{2})$/.exec(t.trim());
   if (!m) return null;
@@ -214,10 +236,10 @@ export default function EquipmentPage() {
   }, [equipment]);
 
   /* Chart jam/bulan: label "Mon YYYY", bulan berjalan terakhir. */
-  const hoursChart = useMemo(() => {
-    const labels = trailingMonthLabels(equipmentHours.length, locale);
-    return equipmentHours.map((d, i) => ({ ...d, label: labels[i] ?? d.month }));
-  }, [locale]);
+  const hoursChart = useMemo(
+    () => alignToTrailingMonths(equipmentHours, locale),
+    [locale],
+  );
 
   /* Nama proyek booking → link detail + nama kapal. */
   const projOf = (id: unknown): StoreItem | undefined =>

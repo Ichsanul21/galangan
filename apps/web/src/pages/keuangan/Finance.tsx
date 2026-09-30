@@ -928,7 +928,28 @@ export default function Finance() {
     }
     return rows.sort((a, b) => String(b.date).localeCompare(String(a.date)));
   }, [data.invoices, data.payables, data.payroll]);
-  const journalTotal = journals.reduce((s, j) => s + j.amount, 0);
+  /* Total jurnal = per DOKUMEN, bukan penjumlahan amount tiap baris.
+     Satu dokumen bisa punya banyak baris (JUM-0831 = 7 baris) dan tiap baris
+     menyimpan amount = dbAmt || krAmt, sehingga reduce() menjumlahkan
+     sisi debit DAN kredit -> total 1,84x nilai dokumen sebenarnya.
+     Jurnal berimbang: Σ debet = Σ kredit = nilai dokumen, jadi ambil yang
+     lebih besar per dokumen. */
+  const journalTotal = useMemo(() => {
+    type Jr = { db?: unknown; kr?: unknown; kode?: unknown; kodeAkun?: unknown; kodePembantu?: unknown; dokumen?: unknown; ref?: unknown; uraian?: unknown; desc?: unknown; description?: unknown };
+    const perDoc = new Map<string, { db: number; kr: number }>();
+    for (const j of journals as unknown as Jr[]) {
+      const doc = String(j.dokumen ?? j.ref ?? j.uraian ?? j.desc ?? j.description ?? "-");
+      const cur = perDoc.get(doc) ?? { db: 0, kr: 0 };
+      const db = num(j.db ?? j.kode ?? j.kodeAkun ?? j.kodePembantu);
+      const kr = num(j.kr ?? j.kode ?? j.kodeAkun ?? j.kodePembantu);
+      if (db) cur.db += db;
+      if (kr) cur.kr += kr;
+      perDoc.set(doc, cur);
+    }
+    let total = 0;
+    for (const { db, kr } of perDoc.values()) total += Math.max(db, kr);
+    return total;
+  }, [journals]);
 
   const plMonthly = useMemo(() => {
     const agg: Record<string, { revenue: number; costProj: number; salary: number; writeoff: number }> = {};
