@@ -11,6 +11,8 @@
     "seed": "tsx src/seed.ts",
     "seed:bulk": "tsx src/seedBulk.ts",
     "seed:mirror": "tsx src/seedMirror.ts",
+    "seed:docs": "tsx src/seed.ts && tsx src/seedBulk.ts",
+    "seed:whatif": "tsx src/seedWhatIf.ts",
     "backup": "tsx src/backup.ts",
     "restore": "tsx src/restore.ts"
   },
