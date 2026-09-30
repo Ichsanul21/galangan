@@ -54,7 +54,7 @@ import { useStore } from "../data/store";
 import type { StoreItem } from "../data/store";
 import { getSetting } from "../utils/settings";
 import { useAuth, canSetTarget } from "../auth/auth";
-import { exportPDF } from "../utils/export";
+import { chartAnim, exportPDF } from "../utils/export";
 import { fmtTanggal, todayISO } from "../utils/format";
 import { SB_KOP } from "../utils/sb";
 import { scopeNames } from "../utils/scope";
@@ -629,9 +629,9 @@ export default function Dashboard() {
                   <YAxis yAxisId="rev" tick={{ fontSize: 12 }} stroke="#8aa2b6" axisLine={false} tickLine={false} />
                   <YAxis yAxisId="proj" orientation="right" tick={{ fontSize: 12 }} stroke="#8aa2b6" axisLine={false} tickLine={false} />
                   <Tooltip content={<ChartTooltip formatter={(v) => (typeof v === "number" ? `Rp ${v} M` : v)} />} />
-                  <Area yAxisId="rev" type="monotone" dataKey="revenue" name={S.legendRevenue} stroke="#0b3a63" strokeWidth={2.5} fill="url(#revGrad)" />
-                  <Bar yAxisId="proj" dataKey="projects" name={S.legendProjectCount} fill="#8cc9e8" radius={[4, 4, 0, 0]} barSize={16} />
-                  <Line yAxisId="rev" type="monotone" dataKey="cost" name={S.legendCost} stroke="#e11d48" strokeWidth={2} strokeDasharray="6 3" dot={false} />
+                  <Area yAxisId="rev" type="monotone" dataKey="revenue" name={S.legendRevenue} stroke="#0b3a63" strokeWidth={2.5} fill="url(#revGrad)" isAnimationActive={chartAnim()} />
+                  <Bar yAxisId="proj" dataKey="projects" name={S.legendProjectCount} fill="#8cc9e8" radius={[4, 4, 0, 0]} barSize={16} isAnimationActive={chartAnim()} />
+                  <Line yAxisId="rev" type="monotone" dataKey="cost" name={S.legendCost} stroke="#e11d48" strokeWidth={2} strokeDasharray="6 3" dot={false} isAnimationActive={chartAnim()} />
                 </ComposedChart>
               </ResponsiveContainer>
             </div>
@@ -705,7 +705,7 @@ export default function Dashboard() {
                       <stop offset="100%" stopColor="#2e9ad4" stopOpacity={0} />
                     </linearGradient>
                   </defs>
-                  <Area type="monotone" dataKey="equipment" stroke="#2e9ad4" strokeWidth={2} fill="url(#utilGrad)" />
+                  <Area type="monotone" dataKey="equipment" stroke="#2e9ad4" strokeWidth={2} fill="url(#utilGrad)" isAnimationActive={chartAnim()} />
                 </AreaChart>
               </ResponsiveContainer>
             </div>

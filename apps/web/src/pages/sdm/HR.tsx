@@ -235,7 +235,7 @@ export default function HR() {
   const [showTraining, setShowTraining] = useState(false);
   const [trainingForm, setTrainingForm] = useState({ title: "", date: todayISO(), provider: "", participants: [] as string[] });
   const [certTarget, setCertTarget] = useState<StoreItem | null>(null);
-  const [certForm, setCertForm] = useState({ name: "", expires: todayISO().slice(0, 7) });
+  const [certForm, setCertForm] = useState({ name: "", expires: todayISO() });
 
   /* ---------- surat ---------- */
   const [showSurat, setShowSurat] = useState(false);
@@ -799,7 +799,7 @@ export default function HR() {
     log("menerapkan sertifikat training", `${certTarget.id} · ${certForm.name.trim()} → ${ids.length} peserta`, "SDM");
     toast(S.tCertOk.replace("{n}", String(ids.length)));
     setCertTarget(null);
-    setCertForm({ name: "", expires: todayISO().slice(0, 7) });
+    setCertForm({ name: "", expires: todayISO() });
   };
 
   /* ---------- surat peringatan / mutasi ---------- */
@@ -1702,7 +1702,7 @@ export default function HR() {
       >
         <div className="space-y-3">
           <Field label={S.fNamaCert}><input className="input" value={certForm.name} onChange={(e) => setCertForm({ ...certForm, name: e.target.value })} placeholder={S.phCert} /></Field>
-          <Field label={S.fBerlaku}><input type="month" className="input" value={certForm.expires} onChange={(e) => setCertForm({ ...certForm, expires: e.target.value })} /></Field>
+          <Field label={S.fBerlaku}><input type="date" className="input" value={certForm.expires} onChange={(e) => setCertForm({ ...certForm, expires: e.target.value })} /></Field>
         </div>
       </Modal>
 

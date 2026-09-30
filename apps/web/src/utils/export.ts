@@ -75,11 +75,32 @@ export interface ExportPDFOptions {
   format?: string;
 }
 
+/* Status "sedang export PDF". Chart harus animasi seperti biasa saat
+   aplikasi normal dipakai, tapi tidak boleh bergerak saat html2canvas
+   memotret - SVG yang diambil di tengah animasi menghasilkan garis terputus
+   atau belum tergambar. Versi lama menyelesaikannya dengan mematikan
+   animasi permanen di tiap chart, jadi grafik selalu diam. */
+let pdfExporting = false;
+export function isPdfExporting(): boolean {
+  return pdfExporting;
+}
+
+/* Nilai untuk prop isAnimationActive recharts: aktif normal, mati saat export. */
+export function chartAnim(): boolean {
+  return !pdfExporting;
+}
+
 export async function exportPDF(elementId: string, filename: string, options: ExportPDFOptions = {}): Promise<void> {
   const el = document.getElementById(elementId);
   if (!el) throw new Error(`Elemen #${elementId} tidak ditemukan`);
 
   const { charts = true, orientation = "landscape", format = "a4" } = options;
+
+  /* Bekukan animasi chart selama seluruh proses capture - berlaku juga saat
+     options.charts=false, karena html2canvas tetap memotret elemen yang
+     berisi SVG. Flag ini dibaca chartAnim() oleh tiap series recharts. */
+  pdfExporting = true;
+  await new Promise((r) => setTimeout(r, 60));
 
   /* 1. Buka semua area scroll supaya konten panjang tidak terpotong. */
   const opened: HTMLElement[] = [];
@@ -149,6 +170,7 @@ export async function exportPDF(elementId: string, filename: string, options: Ex
   try {
     await (html2pdf() as unknown as { set: (o: unknown) => { from: (e: HTMLElement) => { save: () => Promise<void> } } }).set(opts).from(el).save();
   } finally {
+    pdfExporting = false;
     /* 4. Kembalikan semua style & gambar. */
     imgSwaps.forEach(({ parent, next, img }) => {
       if (next && next.parentNode === parent) parent.replaceChild(next, img);

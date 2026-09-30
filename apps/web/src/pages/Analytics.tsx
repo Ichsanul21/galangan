@@ -44,7 +44,7 @@ import {
 import type { SortState } from "../components/ui";
 import { useStore } from "../data/store";
 import { getSetting } from "../utils/settings";
-import { exportPDF } from "../utils/export";
+import { chartAnim, exportPDF } from "../utils/export";
 import writeXlsxFile from "write-excel-file/browser";
 import { fmtTanggal, fmtMiliar, fmtRupiah, todayISO } from "../utils/format";
 import { useT } from "../i18n/LanguageContext";
@@ -490,8 +490,8 @@ export default function Analytics() {
                       <YAxis tick={{ fontSize: 12 }} stroke="#8aa2b6" axisLine={false} tickLine={false} />
                       <Tooltip content={<ChartTooltip formatter={(v) => `Rp ${v} M`} />} />
                       <Legend wrapperStyle={{ fontSize: 12 }} />
-                      <Bar dataKey="revenue" name={S.legendRevenue} fill="#0b3a63" radius={[4, 4, 0, 0]} isAnimationActive={false} />
-                      <Bar dataKey="cost" name={S.legendCost} fill="#8cc9e8" radius={[4, 4, 0, 0]} isAnimationActive={false} />
+                      <Bar dataKey="revenue" name={S.legendRevenue} fill="#0b3a63" radius={[4, 4, 0, 0]} isAnimationActive={chartAnim()} />
+                      <Bar dataKey="cost" name={S.legendCost} fill="#8cc9e8" radius={[4, 4, 0, 0]} isAnimationActive={chartAnim()} />
                     </BarChart>
                   </ResponsiveContainer>
                 </div>
@@ -530,7 +530,7 @@ export default function Analytics() {
                       <XAxis dataKey="bln" stroke="#8aa2b6" axisLine={false} tickLine={false} />
                       <YAxis domain={[15, 35]} stroke="#8aa2b6" axisLine={false} tickLine={false} />
                       <Tooltip content={<ChartTooltip formatter={(v) => `${v}%`} />} />
-                      <Line type="monotone" dataKey="margin" name={S.legendMargin} stroke="#0d9488" strokeWidth={2.5} dot={{ r: 3 }} isAnimationActive={false} />
+                      <Line type="monotone" dataKey="margin" name={S.legendMargin} stroke="#0d9488" strokeWidth={2.5} dot={{ r: 3 }} isAnimationActive={chartAnim()} />
                     </LineChart>
                   </ResponsiveContainer>
                 </div>
@@ -542,8 +542,8 @@ export default function Analytics() {
                       <YAxis stroke="#8aa2b6" axisLine={false} tickLine={false} />
                       <Tooltip />
                       <Legend wrapperStyle={{ fontSize: 12 }} />
-                      <Area type="monotone" dataKey="inspeksi" name={S.legendInspection} stroke="#2e9ad4" fill="#8cc9e8" fillOpacity={0.4} isAnimationActive={false} />
-                      <Line type="monotone" dataKey="lulus" name={S.legendPassed} stroke="#1f9d55" strokeWidth={2} dot={false} isAnimationActive={false} />
+                      <Area type="monotone" dataKey="inspeksi" name={S.legendInspection} stroke="#2e9ad4" fill="#8cc9e8" fillOpacity={0.4} isAnimationActive={chartAnim()} />
+                      <Line type="monotone" dataKey="lulus" name={S.legendPassed} stroke="#1f9d55" strokeWidth={2} dot={false} isAnimationActive={chartAnim()} />
                     </ComposedChart>
                   </ResponsiveContainer>
                 </div>

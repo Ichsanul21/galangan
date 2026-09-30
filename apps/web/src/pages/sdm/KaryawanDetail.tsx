@@ -113,7 +113,7 @@ export default function KaryawanDetail() {
   const [tab, setTab] = useState("Absensi");
   const [skillInput, setSkillInput] = useState("");
   const [showCert, setShowCert] = useState(false);
-  const [certForm, setCertForm] = useState({ name: "", expires: todayISO().slice(0, 7) });
+  const [certForm, setCertForm] = useState({ name: "", expires: todayISO() });
   const [showDoc, setShowDoc] = useState(false);
   const [docForm, setDocForm] = useState({ title: "", type: "Kontrak", status: "Berlaku", fileUrl: "" });
   const [docPreview, setDocPreview] = useState<StoreItem | null>(null);
@@ -209,7 +209,7 @@ export default function KaryawanDetail() {
     try {
     await update("employees", emp.id, { certs: next });
     log("menambah sertifikat karyawan", emp.id, "SDM");
-    setCertForm({ name: "", expires: todayISO().slice(0, 7) });
+    setCertForm({ name: "", expires: todayISO() });
     setShowCert(false);
     toast(S.tCertAdd);
     } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); }
@@ -516,7 +516,7 @@ export default function KaryawanDetail() {
       >
         <div className="space-y-3">
           <Field label={S.fNamaCert}><input className="input" value={certForm.name} onChange={(e) => setCertForm({ ...certForm, name: e.target.value })} placeholder={S.phNdt} /></Field>
-          <Field label={S.fBerlaku}><input type="month" className="input" value={certForm.expires} onChange={(e) => setCertForm({ ...certForm, expires: e.target.value })} /></Field>
+          <Field label={S.fBerlaku}><input type="date" className="input" value={certForm.expires} onChange={(e) => setCertForm({ ...certForm, expires: e.target.value })} /></Field>
         </div>
       </Modal>
 
