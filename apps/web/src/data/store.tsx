@@ -1,3 +1,4 @@
+import { idbAvailable, idbGetAll, idbPut, lsClearAll, lsGet, lsPut, type Row } from "./idb";
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { newId as newPrefixedId } from "../services/ids";
 import { ApiError, apiFetch, getJwt, isBackendConfigured } from "../services/http";
@@ -369,17 +370,14 @@ function saveTombstonesPersisted(map: Map<string, Set<string>>): void {
   }
 }
 
-/* Backup snapshot sebelum resync menimpa koleksi bersih: satu slot per koleksi
-   (isms.backup.<col>, capped last 1). Dipakai pemulihan manual bila BE menimpa.
-   Kegagalan menulis HARUS terlihat - kalau diam-diam, localStorage penuh
-   berarti tidak ada backup sama sekali lalu resync menimpa tanpa jejak. */
-function saveBackup(col: string, rows: StoreItem[]): void {
-  try {
-    localStorage.setItem(`isms.backup.${col}`, JSON.stringify({ savedAt: Date.now(), rows }));
-  } catch {
-    notifyStorageFull(`Cadangan data ${col} gagal disimpan (penyimpanan penuh) - data lokal bisa tertimpa saat sinkronisasi`);
-  }
-}
+/* saveBackup (isms.backup.<col>) DIHAPUS.
+   Komentarnya mengklaim "dipakai pemulihan manual bila BE menimpa", tapi
+   dicek ulang: tidak ada satu pun pembaca isms.backup.* di seluruh src.
+   Jadi fungsi ini cuma menulis salinan penuh setiap koleksi ke localStorage
+   - membakar kuota (yang justru penyebab toast "penyimpanan penuh") demi
+   kemampuan pemulihan yang tidak pernah dipakai. Persistensi offline yang
+   sebenarnya sekarang handled hydrateFromOfflineStore/persistCollections
+   lewat IndexedDB. */
 const PREFIX: Record<string, string> = {
   projects: "PRJ",
   vessels: "V",
@@ -465,6 +463,9 @@ function sanitizeStore(parsed: Partial<StoreShape>): StoreShape {
 
 function loadStore(): StoreShape {
   // Persistensi localStorage (migrasi dari sessionStorage: kunci sama, baca sesi lama sekali).
+  // CATATAN: kunci ini sudah TIDAK ditulis lagi (lihat persistEffect di bawah) -
+  // movements saja ~6 MB sedangkan kuota localStorage 5 MB, jadi tulisannya
+  // selalu gagal. Dibaca sekali untuk migrasi, lalu dihapus biar kuota bebas.
   const read = (storage: Storage, key: string): Partial<StoreShape> | null => {
     try {
       const raw = storage.getItem(key);
@@ -577,10 +578,17 @@ function notifyConflict(message: string): void {
   }
 }
 
-/* Toast penyimpanan penuh. Dulu diam-dian (try/catch kosong) - padahal justru
+/* Toast penyimpanan penuh. Dulu diam-diam (try/catch kosong) - padahal justru
    saat kuota localStorage habis-lah data lokal hilang tanpa jejak. */
 let storageFullToasted = false;
+const storageFullKeys = new Set<string>();
 function notifyStorageFull(message: string): void {
+  /* Dedup per kunci: resync jalan di setiap buka halaman, jadi tanpa dedup
+     user dibanjiri toast yang sama berulang. Flag lama hanya ditulis tapi
+     tidak pernah dibaca - itu bug. */
+  const key = message.slice(0, 60);
+  if (storageFullKeys.has(key) && storageFullToasted) return;
+  storageFullKeys.add(key);
   try {
     window.dispatchEvent(new CustomEvent("isms:toast", { detail: { message, tone: "info" } }));
     storageFullToasted = true;
@@ -588,7 +596,57 @@ function notifyStorageFull(message: string): void {
     /* abaikan */
   }
 }
-void storageFullToasted;
+
+/* Tulis koleksi ke IndexedDB; bila tidak tersedia, jatuh ke localStorage
+   dengan batas baris. Integritas > kelengkapan: lebih baik menyimpan 400
+   baris terakhir daripada diam-diam menyimpan nol. */
+async function persistCollections(src: Record<string, unknown>, cols: string[]): Promise<void> {
+  const useIdb = await idbAvailable();
+  let gagal = 0;
+  for (const col of cols) {
+    const rows = src[col];
+    if (!Array.isArray(rows)) continue;
+    const ok = useIdb ? await idbPut(col, rows as Row[]) : lsPut(col, rows as Row[]);
+    if (!ok) gagal += 1;
+  }
+  if (gagal > 0) {
+    notifyStorageFull(
+      `Penyimpanan browser gagal menyimpan ${gagal} koleksi - data offline bisa hilang saat reload`,
+    );
+  }
+}
+
+/* Koleksi yang dipersistensi. wbsByProject/teamByProject bukan array (object)
+   jadi ditangani terpisah. */
+const OFFLINE_COLLECTIONS: string[] = [
+  "projects", "vessels", "drydocks", "dockSlots", "inventory", "movements",
+  "equipment", "bookings", "subcontractors", "workOrders", "termins",
+  "employees", "invoices", "payables", "ncr", "incidents", "inspections",
+  "purchaseOrders", "requisitions", "vendors", "quotations", "clients",
+  "documents", "surveys", "activities", "services", "spareparts", "boq",
+  "branches", "attendance", "payroll", "taxPeriods", "rfqs", "changeOrders",
+  "risks", "leaves", "trainings", "timesheets", "drawings", "toolbox",
+  "warranties", "calibrations", "communications", "contracts", "bast",
+  "trials", "requests", "clientPos", "walks", "auditPlans", "settings", "coa", "journals", "assets",
+];
+
+/* Hidrasi cache offline dari IndexedDB saat boot. Berjalan sebelum resync
+   supaya server menimpa cache yang bersih, sementara koleksi dirty (yang
+   menyimpan edit offline) tetap aman karena resync melewatinya. */
+async function hydrateFromOfflineStore(apply: (rows: Record<string, Row[]>) => void): Promise<void> {
+  const all = await idbGetAll();
+  if (all && Object.keys(all).length > 0) {
+    apply(all);
+    return;
+  }
+  // Fallback: localStorage (dipakai hanya bila IndexedDB tidak tersedia)
+  const partial: Record<string, Row[]> = {};
+  for (const col of OFFLINE_COLLECTIONS) {
+    const rows = lsGet(col);
+    if (rows && rows.length > 0) partial[col] = rows;
+  }
+  if (Object.keys(partial).length > 0) apply(partial);
+}
 
 /* Remote dipakai bila backend dikonfigurasi DAN ada JWT - seluruh CRUD BE wajib
    auth. Tanpa JWT (belum login) operasi berjalan lokal senyap, tanpa semburan 401. */
@@ -743,20 +801,52 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const inBranch = (rows: StoreItem[]): StoreItem[] =>
     branch === "SEMUA" ? rows : rows.filter((r) => !r.branch || r.branch === branch);
 
+  /* Persistensi cache offline ke IndexedDB, bukan localStorage.
+     Alasannya terukur: movements produksi 18.937 baris (~6,02 MB JSON) dan
+     kuota localStorage hanya 5 MB - jadi satu koleksi saja tidak muat dan
+     SELURUH cache store tak pernah berhasil ditulis (error-nya ditelan
+     diam-diam). Akibatnya edit offline hilang saat reload, padahal antrean
+     dirty hanya menyimpan NAMA koleksi, bukan isi baris - jadi isinya benar
+     - benar satu-satunya tempat aman.
+     Ditulis per koleksi yang berubah saja (bandingkan identitas referensi),
+     dengan debounce supaya tidak menulis 6 MB tiap ketikan. */
+  const prevDataRef = useRef<StoreShape | null>(null);
   useEffect(() => {
-    try {
-      // Persistensi localStorage (migrasi dari sessionStorage, kunci sama).
-      localStorage.setItem(STORE_KEY, JSON.stringify(data));
-      for (const k of LEGACY_KEYS) {
-        if (k !== STORE_KEY) {
-          localStorage.removeItem(k);
-          sessionStorage.removeItem(k);
-        }
-      }
-    } catch {
-      /* storage penuh - abaikan */
+    const prev = prevDataRef.current;
+    prevDataRef.current = data;
+    if (prev === null) return; // boot, bukan perubahan
+    const cur = data as unknown as Record<string, unknown>;
+    const old = prev as unknown as Record<string, unknown>;
+    const changed: string[] = [];
+    for (const k of Object.keys(cur)) {
+      if (cur[k] !== old[k]) changed.push(k);
     }
+    if (changed.length === 0) return;
+    const t = window.setTimeout(() => {
+      void persistCollections(cur, changed);
+    }, 700);
+    return () => window.clearTimeout(t);
   }, [data]);
+
+  /* Buang kunci store lama dari localStorage sekaliXE saja: tidak ditulis
+     lagi, dan sebaliknya memakan kuota yang dibutuhkan antrean dirty,
+     tombstone, dan preferensi UI. */
+  const legacyClearedRef = useRef(false);
+  useEffect(() => {
+    if (legacyClearedRef.current) return;
+    legacyClearedRef.current = true;
+    let freed = 0;
+    for (const k of [STORE_KEY, ...LEGACY_KEYS]) {
+      try {
+        if (localStorage.getItem(k) !== null) freed += 1;
+        localStorage.removeItem(k);
+        sessionStorage.removeItem(k);
+      } catch {
+        /* abaikan */
+      }
+    }
+    if (freed > 0) lsClearAll();
+  }, []);
 
   /* Tarik ulang semua koleksi + WBS/team dari backend (dipakai saat boot dan
      tepat setelah login berhasil, karena JWT baru tersedia saat itu).
@@ -781,18 +871,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     );
     const serverActivities = (pulled as Partial<Record<string, StoreItem[]>>).activities;
     if (serverActivities !== undefined) delete (pulled as Partial<Record<string, StoreItem[]>>).activities;
-    try {
-      const cur = dataRef.current as unknown as Record<string, StoreItem[]>;
-      for (const key of Object.keys(pulled)) {
-        const rows = cur[key];
-        if (Array.isArray(rows)) saveBackup(key, rows);
-      }
-      if (serverActivities !== undefined && !dirty.has("activities") && Array.isArray(cur.activities)) {
-        saveBackup("activities", cur.activities);
-      }
-    } catch {
-      /* backup best-effort - lanjutkan resync */
-    }
+    /* Tidak ada lagi saveBackup di sini: cache offline yang benar sekarang
+       ditulis ke IndexedDB oleh persistCollections setiap kali data berubah,
+       jadi tidak perlu menyalin ulang sebelum resync - dan tidak ada lagi
+       salinan penuh yang menghabiskan kuota localStorage. */
     setData((prev) => {
       const next = { ...prev, ...pulled };
       if (serverActivities !== undefined) {
@@ -1034,7 +1116,22 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     Jwala boot: coba sinkronkan antrean offline, lalu interval berkala.
      Dulu hanya tombol manual di AppShell - antrean bisa mengendap lalu hilang. */
   useEffect(() => {
-    void resync();
+    /* Hidrasi cache offline DULU, baru resync dari server. Urutannya penting:
+       server harus menimpa cache yang bersih, sementara koleksi yang dirty
+       (pemegang edit offline) tetap aman karena resync melewatinya. */
+    void hydrateFromOfflineStore((cached) => {
+      setData((prev) => {
+        const next = { ...prev } as unknown as Record<string, unknown>;
+        let changed = false;
+        for (const [col, rows] of Object.entries(cached)) {
+          if (Array.isArray(rows) && rows.length > 0) {
+            next[col] = rows;
+            changed = true;
+          }
+        }
+        return changed ? sanitizeStore(next as unknown as Partial<StoreShape>) : prev;
+      });
+    }).then(() => resync());
   }, [resync]);
 
   useEffect(() => {
