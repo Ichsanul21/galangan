@@ -1,7 +1,6 @@
 export const n_proc = {
   id: {
     pageTitle: "Procurement & Purchasing",
-    pageSub: "Mulai dari Minta barang, bandingkan harga, pesan, lalu terima",
     btnCreateSmall: "Catat PO Kecil",
     btnCreateBig: "Buat PO Besar",
     kpiActive: "PO Aktif",
@@ -357,7 +356,6 @@ export const n_proc = {
   },
   en: {
     pageTitle: "Procurement & Purchasing",
-    pageSub: "Start from Request, compare quotes, order, then receive",
     btnCreateSmall: "Create Small PO",
     btnCreateBig: "Create Large PO",
     kpiActive: "Active POs",

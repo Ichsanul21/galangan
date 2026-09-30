@@ -256,7 +256,7 @@ export default function AppShell() {
       toast(S.tLocalPasswordInfo, "info");
       return;
     }
-    if (newPw.length < 6) {
+    if (newPw.length < 8) {
       toast(S.tNewPasswordMin, "info");
       return;
     }

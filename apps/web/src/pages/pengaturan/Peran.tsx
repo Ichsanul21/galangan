@@ -351,7 +351,7 @@ export default function Peran() {
   }, []);
 
   const doCreate = async () => {
-    if (!form.username.trim() || !form.name.trim() || form.password.length < 6) {
+    if (!form.username.trim() || !form.name.trim() || form.password.length < 8) {
       toast(S.formIncomplete, "info");
       return;
     }
@@ -377,7 +377,7 @@ export default function Peran() {
   };
 
   const doResetPassword = async () => {
-    if (!pwTarget || pwValue.length < 6) {
+    if (!pwTarget || pwValue.length < 8) {
       toast(S.pwTooShort, "info");
       return;
     }

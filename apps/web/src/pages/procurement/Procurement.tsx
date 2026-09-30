@@ -979,7 +979,6 @@ export default function Procurement() {
     <div>
       <PageHeader
         title={S.pageTitle}
-        subtitle={S.pageSub}
         icon={<ShoppingCart className="h-5 w-5" />}
         actions={
           <div className="flex items-center gap-2">
