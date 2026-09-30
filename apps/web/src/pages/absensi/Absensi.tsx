@@ -27,6 +27,7 @@ import { useStore } from "../../data/store";
 import { findUsages } from "../../utils/usages";
 import type { StoreItem } from "../../data/store";
 import { fmtJumlah, fmtTanggal, todayISO } from "../../utils/format";
+import { attendanceSeries } from "../../data";
 import { useT } from "../../i18n/LanguageContext";
 import { n_misc } from "../../i18n/n_misc";
 import { chartAnim, exportExcel } from "../../utils/export";
@@ -264,6 +265,13 @@ export default function Absensi() {
     });
   }, [data.attendance, locale]);
   const trenValid = attendanceTrend.some((d) => d.tingkat !== null);
+  /* Fallback ke data contoh HANYA saat belum ada satu pun catatan absensi
+     (mis. instalasi baru / demo). Fallback diberi penanda supaya UI bisa
+     menampilkannya sebagai data contoh - bukan menyamar sebagai angka asli. */
+  const trenSample = !trenValid && attendanceSeries.length > 0;
+  const trenShown = trenValid
+    ? attendanceTrend
+    : attendanceSeries.map((d) => ({ month: String(d.month), tingkat: Number(d.tingkat), catatan: 0 }));
 
   const exportRekap = () => {
     const head = ["Karyawan", "Hadir", "Izin", "Sakit", "Cuti", "Alpa", "Lembur (jam)", "Telat", "Kehadiran %"];
@@ -446,17 +454,21 @@ export default function Absensi() {
                 <KpiCard label={S.kpiTotalOvertime} value={`${fmtJumlah(Math.round(kpiLembur * 10) / 10)} jam`} hint={S.approvedOnlyPayroll} chip="amber" />
               </div>
 
-              {trenValid && (
+              {(trenValid || trenSample) && (
                 <Card className="mb-4 p-5" data-export-hide>
                   <CardHeader
                     title={locale === "en" ? "Attendance trend (12 months)" : "Tren Kehadiran (12 bulan)"}
-                    subtitle={locale === "en"
-                      ? "Attendance rate per month from real attendance records, not hardcoded"
-                      : "Tingkat kehadiran per bulan dari baris absensi nyata, bukan angka hardcode"}
+                    subtitle={trenSample
+                      ? (locale === "en"
+                        ? "SAMPLE DATA - no attendance record yet, showing reference figures"
+                        : "DATA CONTOH - belum ada catatan absensi, menampilkan angka referensi")
+                      : (locale === "en"
+                        ? "Attendance rate per month from real attendance records, not hardcoded"
+                        : "Tingkat kehadiran per bulan dari baris absensi nyata, bukan angka hardcode")}
                   />
                   <div className="mt-3 h-64">
                     <ResponsiveContainer width="100%" height="100%">
-                      <AreaChart data={attendanceTrend} margin={{ top: 5, right: 8, left: -18, bottom: 0 }}>
+                      <AreaChart data={trenShown} margin={{ top: 5, right: 8, left: -18, bottom: 0 }}>
                         <defs>
                           <linearGradient id="attGrad" x1="0" y1="0" x2="0" y2="1">
                             <stop offset="0%" stopColor="#0d9488" stopOpacity={0.35} />
@@ -471,7 +483,7 @@ export default function Absensi() {
                             <ChartTooltip
                               formatter={(v) => `${fmtJumlah(Number(v ?? 0))}%`}
                               labelFormatter={(l) => {
-                                const row = attendanceTrend.find((d) => d.month === l);
+                                const row = trenShown.find((d) => d.month === l);
                                 const n = row?.catatan ?? 0;
                                 return n > 0 ? `${l} · ${fmtJumlah(n)} ${locale === "en" ? "records" : "catatan"}` : l;
                               }}

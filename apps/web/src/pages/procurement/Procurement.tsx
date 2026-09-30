@@ -76,6 +76,15 @@ const RFQ_NEXT: Record<string, string[]> = {
   Diputuskan: [],
 };
 
+const RFQ_STAGES = ["Draf", "Draft", "Terkirim", "Evaluasi", "Diputuskan"];
+const RFQ_STAGE_COLOR: Record<string, string> = {
+  Draf: "#94a3b8",
+  Draft: "#94a3b8",
+  Terkirim: "#2e9ad4",
+  Evaluasi: "#f59e0b",
+  Diputuskan: "#0d9488",
+};
+
 const PR_PENDING = ["Draft", "Menunggu Approval", "RFQ", "Diajukan"];
 
 const lineTotal = (lines: { qty: string | number; price: string | number }[]): number =>
@@ -172,6 +181,32 @@ export default function Procurement() {
   const PO_KECIL_LIMIT = getSetting(data, "PO_KECIL_LIMIT", 50000000);
   const APPROVE_PO_LIMIT = getSetting(data, "APPROVE_PO", 1000000);
   const ppnRate = getSetting(data, "PPN_RATE", 12);
+
+  /* Distribusi tahap RFQ + jumlah per tahap. Halaman RFQ hanya menampilkan
+     daftar kartu per RFQ, jadi tidak ada angka agregat: user tidak bisa
+     melihat apakah 5 RFQ tersangkut di "Evaluasi" sementara yang lain sudah
+     "Terkirim". Dihitung dari baris RFQ nyata (r.status). */
+  const quotationStageDistReal = useMemo(() => {
+    const m = new Map<string, { count: number; nilai: number; minDays: number | null }>();
+    const now = new Date();
+    for (const r of rfqs) {
+      const st = String(r.status ?? "").trim() || "Draf";
+      const cur = m.get(st) ?? { count: 0, nilai: 0, minDays: null };
+      cur.count += 1;
+      cur.nilai += lineTotal(Array.isArray(r.quotes) ? r.quotes : []);
+      const raw = String(r.date ?? r.createdAt ?? "").slice(0, 10);
+      if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) {
+        const days = Math.floor((now.getTime() - new Date(`${raw}T00:00:00`).getTime()) / 86400000);
+        if (days >= 0 && (cur.minDays === null || days < cur.minDays)) cur.minDays = days;
+      }
+      m.set(st, cur);
+    }
+    return RFQ_STAGES.filter((s) => m.has(s)).map((s) => {
+      const v = m.get(s) as { count: number; nilai: number; minDays: number | null };
+      return { name: s, value: v.count, count: v.count, nilai: v.nilai, minDays: v.minDays, color: RFQ_STAGE_COLOR[s] ?? "#94a3b8" };
+    });
+  }, [rfqs]);
+  const rfqStuck = quotationStageDistReal.filter((d) => (d.minDays ?? 0) > 14);
 
   /* No. PO SB max+1: scan docNo tahun berjalan, parse leading (\d+)/. */
   const nextPoSeq = (): number => {
@@ -1251,6 +1286,48 @@ export default function Procurement() {
 
           {tab === "RFQ" && (
             <div className="space-y-4">
+              {quotationStageDistReal.length > 0 && (
+                <Card className="p-5" data-export-hide>
+                  <CardHeader
+                    title={locale === "en" ? "RFQ distribution by stage" : "Distribusi RFQ per Tahap"}
+                    subtitle={locale === "en"
+                      ? "Count and value from real RFQ records; flags stages older than 14 days"
+                      : "Jumlah dan nilai dari baris RFQ nyata; menandai tahap yang lewat 14 hari"}
+                  />
+                  <div className="mt-3 space-y-2">
+                    {quotationStageDistReal.map((d) => {
+                      const max = Math.max(...quotationStageDistReal.map((x) => x.count), 1);
+                      return (
+                        <div key={d.name} className="flex items-center gap-2.5 text-sm">
+                          <span className="h-2.5 w-2.5 shrink-0 rounded-sm" style={{ background: d.color }} />
+                          <span className="w-24 shrink-0 font-medium text-navy-900">{d.name}</span>
+                          <span className="h-2 flex-1 overflow-hidden rounded-full bg-steel-100">
+                            <span className="block h-full rounded-full" style={{ width: `${(d.count / max) * 100}%`, background: d.color }} />
+                          </span>
+                          <span className="w-8 text-right font-semibold text-navy-900">{d.count}</span>
+                          <span className="w-24 text-right text-xs text-steel-500">{fmtRupiah(d.nilai)}</span>
+                          <span className="w-28 text-right text-[11px]">
+                            {d.minDays !== null && d.minDays > 14 ? (
+                              <Badge tone="amber">
+                                {locale === "en" ? `${d.minDays}d oldest` : `terlama ${d.minDays} hr`}
+                              </Badge>
+                            ) : (
+                              <span className="text-steel-400">-</span>
+                            )}
+                          </span>
+                        </div>
+                      );
+                    })}
+                    {rfqStuck.length > 0 && (
+                      <p className="pt-1 text-[11px] text-amber-700">
+                        {locale === "en"
+                          ? `${rfqStuck.length} stage(s) hold RFQ older than 14 days - needs follow-up.`
+                          : `${rfqStuck.length} tahap menahan RFQ lebih dari 14 hari - perlu ditindaklanjuti.`}
+                      </p>
+                    )}
+                  </div>
+                </Card>
+              )}
               {rfqShown.map((r) => {
                 const quotes = (Array.isArray(r.quotes) ? r.quotes : []) as Quote[];
                 const minPrice = quotes.length > 0 ? Math.min(...quotes.map((x) => Number(x.price))) : 0;

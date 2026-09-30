@@ -260,10 +260,10 @@ export default function QCSafety() {
   }, [locale]);
 
   /* Statistik NCR dari baris NCR nyata: jumlah per jenis pekerjaan + per
-     severity.mock ncrStats (Pengelasan/Pengecatan/...) dibuat dari
+     severity.mock ncrStatsReal (Pengelasan/Pengecatan/...) dibuat dari
      data mock dan tidak pernah dipakai; di sini jenis diambil dari
      n.type sehingga daftar ini ikut berubah saat user menambah NCR. */
-  const ncrByType = useMemo(() => {
+  const ncrByTypeReal = useMemo(() => {
     const m = new Map<string, number>();
     for (const n of ncrList) {
       const k = String(n.type ?? "-").trim() || "-";
@@ -273,7 +273,7 @@ export default function QCSafety() {
       .sort((a, b) => b[1] - a[1])
       .map(([name, value], i) => ({ name, value, color: NCR_COLORS[i % NCR_COLORS.length] }));
   }, [ncrList]);
-  const ncrBySeverity = useMemo(
+  const ncrBySeverityReal = useMemo(
     () =>
       (["Critical", "Major", "Minor"] as const).map((s) => ({
         name: s,
@@ -317,7 +317,7 @@ export default function QCSafety() {
      tidak bisa lihat apakah masalahnya terkonsentrasi di satu jenis
      (mis. semua Radio License akan kedaluwarsa bulan depan).
      Nilai = % sertifikat yang masih valid (lebih dari CERT_WINDOW). */
-  const certHealth = useMemo(() => {
+  const certHealthReal = useMemo(() => {
     const m = new Map<string, { total: number; ok: number; soon: number; expired: number }>();
     for (const c of vesselCerts) {
       const cur = m.get(c.name) ?? { total: 0, ok: 0, soon: 0, expired: 0 };
@@ -980,7 +980,7 @@ export default function QCSafety() {
 
           {tab === "NCR" && (
             <div className="space-y-3">
-              {(ncrByType.length > 0 || ncrBySeverity.some((s) => s.value > 0)) && (
+              {(ncrByTypeReal.length > 0 || ncrBySeverityReal.some((s) => s.value > 0)) && (
                 <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
                   <Card className="p-5" data-export-hide>
                     <CardHeader
@@ -990,11 +990,11 @@ export default function QCSafety() {
                         : "Dihitung dari baris NCR nyata (n.type)"}
                     />
                     <div className="mt-3 space-y-1.5">
-                      {ncrByType.length === 0 && (
+                      {ncrByTypeReal.length === 0 && (
                         <p className="text-sm text-steel-400">{locale === "en" ? "No NCR yet." : "Belum ada NCR."}</p>
                       )}
-                      {ncrByType.map((d) => {
-                        const max = ncrByType[0]?.value || 1;
+                      {ncrByTypeReal.map((d) => {
+                        const max = ncrByTypeReal[0]?.value || 1;
                         return (
                           <div key={d.name} className="flex items-center gap-2 text-sm">
                             <span className="h-2.5 w-2.5 shrink-0 rounded-sm" style={{ background: d.color }} />
@@ -1016,7 +1016,7 @@ export default function QCSafety() {
                         : "Total dan yang masih terbuka, dari baris NCR nyata"}
                     />
                     <div className="mt-3 space-y-2">
-                      {ncrBySeverity.map((s) => (
+                      {ncrBySeverityReal.map((s) => (
                         <div key={s.name} className="flex items-center gap-2 text-sm">
                           <Badge tone={ncrTone[s.name] ?? "gray"}>{s.name}</Badge>
                           <span className="ml-auto font-semibold text-navy-900">{s.value}</span>
@@ -1337,7 +1337,7 @@ export default function QCSafety() {
 
           {tab === "Sertifikat" && (
             <div className="space-y-4">
-              {certHealth.length > 0 && (
+              {certHealthReal.length > 0 && (
                 <Card className="p-5" data-export-hide>
                   <CardHeader
                     title={locale === "en" ? "Certificate health by type" : "Kesehatan Sertifikat per Jenis"}
@@ -1346,7 +1346,7 @@ export default function QCSafety() {
                       : "Porsi masih berlaku di luar ambang peringatan, dari baris sertifikat nyata"}
                   />
                   <div className="mt-3 space-y-2.5">
-                    {certHealth.map((c) => (
+                    {certHealthReal.map((c) => (
                       <div key={c.name} className="flex items-center gap-2.5 text-sm">
                         <span className="w-44 shrink-0 truncate font-medium text-navy-900" title={c.name}>{c.name}</span>
                         <span className="h-2 flex-1 overflow-hidden rounded-full bg-steel-100">

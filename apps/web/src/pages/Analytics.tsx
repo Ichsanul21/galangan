@@ -221,7 +221,7 @@ export default function Analytics() {
   const numOf = (v: unknown): number => Number(v) || 0;
 
   /* 1. Komposisi tipe proyek (New Build / Repair / Retrofit). */
-  const projectTypeDist = useMemo(() => {
+  const projectTypeDistReal = useMemo(() => {
     const m = new Map<string, number>();
     for (const p of data.projects) {
       const k = String(p.type ?? "-").trim() || "-";
@@ -240,7 +240,7 @@ export default function Analytics() {
     for (const p of data.projects) m.set(String(p.id), String(p.branch ?? "-"));
     return m;
   }, [data.projects]);
-  const revenueByBranch = useMemo(() => {
+  const revenueByBranchReal = useMemo(() => {
     const m = new Map<string, number>();
     for (const i of data.invoices) {
       const b = branchOfProject.get(String(i.project ?? "")) ?? "-";
@@ -293,7 +293,7 @@ export default function Analytics() {
 
   /* 4. Pipeline per kuartal: won = quotation stage Menang/Terkonversi,
         pipeline = masih berjalan, target = total per kuartal. */
-  const projectPipeline = useMemo(() => {
+  const projectPipelineReal = useMemo(() => {
     const q = (d: Date): number => Math.floor(d.getMonth() / 3) + 1;
     const m = new Map<number, { won: number; pipeline: number; wonVal: number; pipeVal: number }>();
     for (const x of data.quotations) {
@@ -666,18 +666,18 @@ export default function Analytics() {
                 />
                 <div className="flex flex-wrap items-center gap-5 p-4 pt-0">
                   <Donut
-                    data={projectTypeDist}
-                    colors={projectTypeDist.map((d) => d.color)}
+                    data={projectTypeDistReal}
+                    colors={projectTypeDistReal.map((d) => d.color)}
                     size={150}
                     thickness={20}
                     centerValue={String(data.projects.length)}
                     centerLabel={locale === "en" ? "Projects" : "Proyek"}
                   />
                   <div className="min-w-40 flex-1 space-y-1.5">
-                    {projectTypeDist.length === 0 && (
+                    {projectTypeDistReal.length === 0 && (
                       <p className="text-sm text-steel-400">{locale === "en" ? "No project yet." : "Belum ada proyek."}</p>
                     )}
-                    {projectTypeDist.map((d) => (
+                    {projectTypeDistReal.map((d) => (
                       <div key={d.name} className="flex items-center gap-2 text-sm">
                         <span className="h-3 w-3 rounded-sm" style={{ background: d.color }} />
                         <span className="truncate text-steel-600">{d.name}</span>
@@ -697,18 +697,18 @@ export default function Analytics() {
                 />
                 <div className="flex flex-wrap items-center gap-5 p-4 pt-0">
                   <Donut
-                    data={revenueByBranch}
-                    colors={revenueByBranch.map((d) => d.color)}
+                    data={revenueByBranchReal}
+                    colors={revenueByBranchReal.map((d) => d.color)}
                     size={150}
                     thickness={20}
-                    centerValue={`Rp ${round1(revenueByBranch.reduce((s, d) => s + d.value, 0) / 1e9)}`}
+                    centerValue={`Rp ${round1(revenueByBranchReal.reduce((s, d) => s + d.value, 0) / 1e9)}`}
                     centerLabel="M"
                   />
                   <div className="min-w-40 flex-1 space-y-1.5">
-                    {revenueByBranch.length === 0 && (
+                    {revenueByBranchReal.length === 0 && (
                       <p className="text-sm text-steel-400">{locale === "en" ? "No invoice yet." : "Belum ada invoice."}</p>
                     )}
-                    {revenueByBranch.map((d) => (
+                    {revenueByBranchReal.map((d) => (
                       <div key={d.name} className="flex items-center gap-2 text-sm">
                         <span className="h-3 w-3 rounded-sm" style={{ background: d.color }} />
                         <span className="truncate text-steel-600">{d.name}</span>
@@ -746,7 +746,7 @@ export default function Analytics() {
               </Card>
             )}
 
-            {projectPipeline.length > 0 && (
+            {projectPipelineReal.length > 0 && (
               <Card>
                 <CardHeader
                   title={locale === "en" ? "Pipeline per quarter" : "Pipeline per Kuartal"}
@@ -755,8 +755,8 @@ export default function Analytics() {
                     : "Menang vs masih berjalan dari quotation nyata, dalam miliar"}
                 />
                 <div className="space-y-2.5 p-4 pt-0">
-                  {projectPipeline.map((q) => {
-                    const max = Math.max(...projectPipeline.map((x) => x.target), 1);
+                  {projectPipelineReal.map((q) => {
+                    const max = Math.max(...projectPipelineReal.map((x) => x.target), 1);
                     return (
                       <div key={q.name} className="flex items-center gap-2.5 text-sm">
                         <span className="w-9 shrink-0 font-semibold text-navy-900">{q.name}</span>

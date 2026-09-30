@@ -147,6 +147,41 @@ export default function EquipmentPage() {
   const bookings = data.bookings;
   const calibrations = data.calibrations;
   const [tab, setTab] = useState("Register");
+
+  /* Heatmap hari x jam dari booking nyata. Sumbu jam diambil dari jam
+     mulai booking (jam field "08:00-17:00"), jadi heatmap ikut bergerak
+     kalau jadwal kerja berubah - tidak seperti deret mock yang angkanya
+     tetap. Slot dengan 0 sengaja dibiarkan kosong, bukan dihitung 100%. */
+  const HOUR_COLS = [6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17];
+  const DAY_LABELS = locale === "en"
+    ? ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+    : ["Sen", "Sel", "Rab", "Kam", "Jum", "Sab", "Min"];
+  const equipmentHeatmapReal = useMemo(() => {
+    const grid = new Map<string, Map<number, number>>();
+    for (const b of bookings) {
+      const raw = String(b.date ?? "").slice(0, 10);
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(raw)) continue;
+      const d = new Date(`${raw}T00:00:00`);
+      if (Number.isNaN(d.getTime())) continue;
+      // getDay(): 0=Minggu -> indeks 6 supaya urut Sen..Min
+      const dayIdx = (d.getDay() + 6) % 7;
+      const hourMatch = /(\d{1,2}):/.exec(String(b.jam ?? ""));
+      const hour = hourMatch ? Number(hourMatch[1]) : 8;
+      if (!grid.has(DAY_LABELS[dayIdx])) grid.set(DAY_LABELS[dayIdx], new Map());
+      const rowMap = grid.get(DAY_LABELS[dayIdx]) as Map<number, number>;
+      rowMap.set(hour, (rowMap.get(hour) ?? 0) + 1);
+    }
+    return DAY_LABELS.map((day) => {
+      const cells: Record<number, number> = {};
+      for (const h of HOUR_COLS) cells[h] = grid.get(day)?.get(h) ?? 0;
+      return { day, cells };
+    });
+  }, [bookings, locale]);
+  const heatMax = Math.max(1, ...equipmentHeatmapReal.flatMap((r) => HOUR_COLS.map((h) => r.cells[h] ?? 0)));
+  const heatTotal = equipmentHeatmapReal.reduce(
+    (s, r) => s + HOUR_COLS.reduce((a, h) => a + (r.cells[h] ?? 0), 0),
+    0,
+  );
   const [eqQ, setEqQ] = useState("");
   const [utilQ, setUtilQ] = useState("");
   const [utilDraft, setUtilDraft] = useState<Record<string, string>>({});
@@ -1157,6 +1192,62 @@ export default function EquipmentPage() {
 
           {tab === "Utilisasi" && (
             <div className="space-y-4">
+              {/* Heatmap hari x jam, dihitung dari booking nyata. Sebelumnya
+                  halaman ini hanya menampilkan utilisasi bulanan per alat,
+                  jadi pola-jam sibuk (mis. Senin pagi penuh, Jumat sore
+                  kosong) tidak pernah terlihat padahal itu yang menentukan
+                  agregar unit. */}
+              {bookings.length > 0 && (
+                <Card className="p-5" data-export-hide>
+                  <CardHeader
+                    title={locale === "en" ? "Booking heatmap (day x hour)" : "Heatmap Booking (hari x jam)"}
+                    subtitle={locale === "en"
+                      ? "Counted from real booking records; darker means more units booked"
+                      : "Dihitung dari baris booking nyata; makin gelap makin banyak unit terpakai"}
+                  />
+                  <div className="mt-3 overflow-x-auto">
+                    <table className="w-full min-w-[520px] border-separate border-spacing-0.5 text-center">
+                      <thead>
+                        <tr>
+                          <th className="w-16 text-[11px] font-medium text-steel-500" />
+                          {HOUR_COLS.map((h) => (
+                            <th key={h} className="text-[11px] font-medium text-steel-500">{h}:00</th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {equipmentHeatmapReal.map((row) => (
+                          <tr key={row.day}>
+                            <th className="pr-2 text-right text-[11px] font-medium text-steel-600">{row.day}</th>
+                            {HOUR_COLS.map((h) => {
+                              const v = row.cells[h] ?? 0;
+                              return (
+                                <td key={h} className="p-0">
+                                  <span
+                                    className="flex h-7 items-center justify-center rounded text-[10px] font-semibold"
+                                    style={{
+                                      background: v === 0 ? "#f1f5f9" : `rgba(11,58,99,${0.12 + (v / heatMax) * 0.78})`,
+                                      color: v === 0 ? "#cbd5e1" : v / heatMax > 0.55 ? "#ffffff" : "#0b3a63",
+                                    }}
+                                    title={`${row.day} ${h}:00 · ${v}`}
+                                  >
+                                    {v > 0 ? v : ""}
+                                  </span>
+                                </td>
+                              );
+                            })}
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                    <p className="mt-2 text-[11px] text-steel-400">
+                      {locale === "en"
+                        ? `${heatTotal} bookings across ${heatMax} max per slot`
+                        : `${fmtJumlah(heatTotal)} booking, puncak ${fmtJumlah(heatMax)} per slot`}
+                    </p>
+                  </div>
+                </Card>
+              )}
               <Card className="p-5">
                 <h3 className="mb-2 text-sm font-semibold text-navy-900">Cara baca utilisasi (otomatis)</h3>
                 <ul className="list-disc space-y-1 pl-5 text-xs text-steel-600">

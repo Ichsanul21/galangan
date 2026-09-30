@@ -202,7 +202,7 @@ export default function CRM() {
      Distribusi di atas cuma menghitung JUMLAH per tahap, jadi user tidak
      bisa melihat berapa nilai yang tersangkut di tiap tahap - 15 quotation
      "Penawaran" bisa 3 M atau 30 M dan tampilannya sama saja. */
-  const crmFunnel = STAGES.map((s) => {
+  const crmFunnelReal = STAGES.map((s) => {
     const rows = quotations.filter((q) => q.stage === s);
     return {
       stage: dispStage(s),
@@ -212,7 +212,7 @@ export default function CRM() {
       color: STAGE_COLORS[s] ?? "#94a3b8",
     };
   });
-  const funnelMax = crmFunnel.reduce((m, f) => Math.max(m, f.count), 0);
+  const funnelMax = crmFunnelReal.reduce((m, f) => Math.max(m, f.count), 0);
 
   const surveyAvg = (c: StoreItem): number => {
     const arr = Array.isArray(c.survei) ? c.survei.map(num) : [];
@@ -635,8 +635,8 @@ export default function CRM() {
                       {locale === "en" ? "No quotation yet." : "Belum ada quotation."}
                     </p>
                   )}
-                  {crmFunnel.map((f, i) => {
-                    const prev = i > 0 ? crmFunnel[i - 1] : null;
+                  {crmFunnelReal.map((f, i) => {
+                    const prev = i > 0 ? crmFunnelReal[i - 1] : null;
                     const conv = prev && prev.count > 0 ? Math.round((f.count / prev.count) * 100) : null;
                     return (
                       <div key={f.rawStage} className="rounded-lg border border-steel-100 p-2.5">
