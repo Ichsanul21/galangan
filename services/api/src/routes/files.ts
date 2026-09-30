@@ -10,7 +10,7 @@ import { fail, ok } from "../envelope.js";
 const MAX_BYTES = 10 * 1024 * 1024;
 const ALLOWED_EXT = new Set([".png", ".jpg", ".jpeg", ".pdf", ".xlsx", ".xls", ".csv", ".txt"]);
 
-function hasMagic(buf: Buffer, ext: string): boolean {
+export function hasMagic(buf: Buffer, ext: string): boolean {
   if (ext === ".png") {
     return buf.length >= 4 && buf[0] === 0x89 && buf[1] === 0x50 && buf[2] === 0x4e && buf[3] === 0x47;
   }
@@ -44,7 +44,7 @@ function hasMagic(buf: Buffer, ext: string): boolean {
 
 /** Validasi ISI (bukan sekadar magic): skrip/injeksi/makro. null = bersih,
  * string = alasan penolakan (400). Tanpa dep baru, scan bytes cepat. */
-function scanContent(buf: Buffer, ext: string): string | null {
+export function scanContent(buf: Buffer, ext: string): string | null {
   const head = buf.subarray(0, 256 * 1024).toString("latin1");
   if (ext === ".csv" || ext === ".txt") {
     const lines = head.split(/\r?\n/).slice(0, 200);

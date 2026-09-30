@@ -12,10 +12,20 @@ import path from "node:path";
 import { randomUUID } from "node:crypto";
 import type { FastifyInstance } from "fastify";
 import { requireAuth } from "../auth.js";
+import { createRateLimiter, getClientIp } from "../rateLimit.js";
+import { requestActor, requestIp, writeAudit } from "../audit.js";
+import { hasMagic } from "./files.js";
 import { fail, ok } from "../envelope.js";
 
 const MAX_BYTES = 10 * 1024 * 1024;
 const ALLOWED_EXT = new Set([".png", ".jpg", ".jpeg"]);
+
+/* OCR menjalankan tesseract sebagai proses terpisah dengan timeout 60 dtk.
+   Pembatas tulis global 300/menit terlalu longgar untuk ini: 300 proses
+   tesseract yang berjalan bersamaan bisa menjatuhkan server. */
+const OCR_LIMIT = 10;
+const OCR_WINDOW_MS = 60_000;
+const ocrLimiter = createRateLimiter(OCR_LIMIT, OCR_WINDOW_MS);
 
 function extOf(name: string): string {
   const i = name.lastIndexOf(".");
@@ -51,6 +61,11 @@ export function registerOcrRoutes(app: FastifyInstance): void {
   });
 
   app.post("/api/ocr", { preHandler: [requireAuth] }, async (req, reply) => {
+    const limited = ocrLimiter(getClientIp(req));
+    if (!limited.allowed) {
+      reply.header("Retry-After", String(limited.retryAfterSec));
+      return reply.status(429).send(fail("Terlalu banyak permintaan OCR - coba lagi nanti", "RATE_LIMITED"));
+    }
     let part: Awaited<ReturnType<typeof req.file>>;
     try {
       part = await req.file();
@@ -71,11 +86,26 @@ export function registerOcrRoutes(app: FastifyInstance): void {
     }
     if (buf.length === 0) return reply.status(400).send(fail("Empty file", "VALIDATION_ERROR"));
     if (buf.length > MAX_BYTES) return reply.status(413).send(fail("File too large (max 10MB)", "PAYLOAD_TOO_LARGE"));
+    /* Validasi magic byte. Versi lama hanya memakai nama ekstensi, jadi file
+       apa pun yang di-rename jadi .png langsung ditulis ke file temp dan
+       diserahkan ke parser gambar tesseract. routes/files.ts sudah lama punya
+       cek ini - permukaannya sama, standarnya tidak boleh beda. */
+    if (!hasMagic(buf, ext)) {
+      return reply.status(400).send(fail("Isi file tidak cocok dengan ekstensi .png/.jpg", "VALIDATION_ERROR"));
+    }
     if (!(await tesseractAvailable())) {
       return reply.status(501).send(fail("OCR belum tersedia di server (apt install tesseract-ocr tesseract-ocr-ind)", "OCR_UNAVAILABLE"));
     }
     try {
       const text = await runOcr(buf, ext);
+      await writeAudit({
+        actor: requestActor(req),
+        action: "ocr",
+        table: "documents",
+        rowId: "-",
+        diff: { filename: part.filename ?? "", bytes: buf.length, chars: text.trim().length },
+        ip: requestIp(req),
+      });
       return ok({ text: text.trim(), chars: text.trim().length, filename: part.filename ?? "" });
     } catch {
       return reply.status(500).send(fail("OCR gagal memproses gambar", "OCR_FAILED"));
