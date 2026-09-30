@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { Activity, AlertTriangle, FileDown, Search } from "lucide-react";
 import {
@@ -68,6 +68,40 @@ export default function Monitoring() {
     topScrollRef.current?.scrollBy({ left: dx, behavior: "smooth" });
   };
   const kanbanWidth = TAHAP.length * 272;
+
+  /* Hanya SATU scrollbar kustom yang tampil pada satu waktu.
+     Area kanban punya dua: bar atas (sticky top) dan bar bawah (sticky
+     bottom). Kalau keduanya dibiarkan sticky, keduanya terlihat bersamaan
+     saat area kanban lebih tinggi dari viewport. Ditambah scrollbar native
+     container kolom jadi tiga scrollbar untuk satu aksi yang sama.
+     Aturannya: bar atas tampil hanya saat area kanban sudah ter-scroll
+     melewati bagian atasnya (bar atas sedang "nempel"); selama itu belum
+     terjadi, bar bawah yang dipakai. Hasilnya selalu tepat satu. */
+  const kanbanWrapRef = useRef<HTMLDivElement | null>(null);
+  const [topBarOn, setTopBarOn] = useState(false);
+  useEffect(() => {
+    const wrap = kanbanWrapRef.current;
+    if (!wrap) return;
+    let raf = 0;
+    const check = () => {
+      raf = 0;
+      const r = wrap.getBoundingClientRect();
+      // tinggi header aplikasi = 3.5rem (h-14)
+      setTopBarOn(r.top <= 56);
+    };
+    const schedule = () => {
+      if (raf) return;
+      raf = requestAnimationFrame(check);
+    };
+    check();
+    window.addEventListener("scroll", schedule, { passive: true });
+    window.addEventListener("resize", schedule);
+    return () => {
+      if (raf) cancelAnimationFrame(raf);
+      window.removeEventListener("scroll", schedule);
+      window.removeEventListener("resize", schedule);
+    };
+  }, []);
 
   const branchCities = data.branches.length > 0
     ? data.branches.map((b) => String(b.city))
@@ -199,12 +233,14 @@ export default function Monitoring() {
         </div>
       </Card>
 
-      <div>
+      <div ref={kanbanWrapRef}>
       <div className="mb-2 flex items-center gap-2">
         <button className="btn-secondary px-2 py-1 text-xs" onClick={() => scrollKanbanBy(-320)} aria-label={locale === "en" ? "Scroll kanban left" : "Geser kanban ke kiri"}>&larr;</button>
         <button className="btn-secondary px-2 py-1 text-xs" onClick={() => scrollKanbanBy(320)} aria-label={locale === "en" ? "Scroll kanban right" : "Geser kanban ke kanan"}>&rarr;</button>
         <span className="text-[11px] text-steel-400">{locale === "en" ? "Scroll kanban horizontally" : "Geser kanban ke samping"}</span>
       </div>
+      {/* Bar atas: tampil HANYA saat bar bawah tidak dipakai. */}
+      {topBarOn && (
       <div
         ref={topBarRef}
         onScroll={() => syncScroll(topBarRef.current, topScrollRef.current, barScrollRef.current)}
@@ -216,7 +252,11 @@ export default function Monitoring() {
       >
         <div style={{ width: kanbanWidth, height: 1 }} />
       </div>
-      <div ref={topScrollRef} onScroll={() => syncScroll(topScrollRef.current, topBarRef.current, barScrollRef.current)} className="flex gap-4 overflow-x-auto pb-2">
+      )}
+      {/* hide-native-bar: scrollbar bawaan container kolom disembunyikan
+          supaya tidak jadi baris ketiga; scrolling tetap jalan lewat roda,
+          swipe, tombol, dan bar kustom. */}
+      <div ref={topScrollRef} onScroll={() => syncScroll(topScrollRef.current, topBarRef.current, barScrollRef.current)} className="hide-native-bar flex gap-4 overflow-x-auto pb-2">
         {TAHAP.map((t) => {
           const cols = pipeline.filter((p) => tahapOf(p) === t);
           return (
@@ -262,6 +302,8 @@ export default function Monitoring() {
           );
         })}
       </div>
+      {/* Bar bawah: tampil HANYA saat bar atas tidak dipakai. */}
+      {!topBarOn && (
       <div
         ref={barScrollRef}
         onScroll={() => syncScroll(barScrollRef.current, topBarRef.current, topScrollRef.current)}
@@ -271,6 +313,7 @@ export default function Monitoring() {
       >
         <div style={{ width: kanbanWidth, height: 1 }} />
       </div>
+      )}
       </div>
     </div>
   );

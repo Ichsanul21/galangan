@@ -29,6 +29,19 @@
   ::-webkit-scrollbar-track {
     background: transparent;
   }
+  /* Sembunyikan scrollbar bawaan (isi & thumb) tapi tetap bisa di-scroll.
+     Dipakai Monitoring: kanban punya scrollbar kustom atas/bawah yang
+     saling bergantian, sehingga scrollbar native container kolom jadi
+     baris ketiga yang tidak perlu. */
+  .hide-native-bar {
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
+  .hide-native-bar::-webkit-scrollbar {
+    display: none;
+    width: none;
+    height: none;
+  }
 }
 
 @layer components {
