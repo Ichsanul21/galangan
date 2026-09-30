@@ -957,7 +957,10 @@ export interface BoQItem {
   unitPrice: number;
   totalPrice: number;
   category: string;
-  status: "Draft" | "Pending" | "Approved" | "Completed";
+  /* "Rejected" WAJIB ada di tipe: UI menulis & membacanya (STATUS_FLOW, filter,
+     badge). Sebelumnya tidak ada sehingga BoQSection harus cast paksa dan
+     TypeScript thinks perbandingan "Rejected" tidak mungkin terjadi. */
+  status: "Draft" | "Pending" | "Approved" | "Rejected" | "Completed";
   requestedBy?: string;
   approvedBy?: string;
   approvedAt?: string;

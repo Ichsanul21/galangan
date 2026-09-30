@@ -15,20 +15,27 @@ import { SATUAN, STATUS_BOQ_ID } from "../../utils/format";
 import { todayISO } from "../../utils/format";
 import type { BoQItem } from "../../data";
 
+/* Alur kanonis: Draf=Draft, Diajukan=Pending, Disetujui=Approved, Selesai=Completed.
+   "Rejected" (Ditolak) WAJIB punya jalan keluar — sebelumnya tidak ada entri
+   sehingga item yang ditolak tidak bisa diajukan ulang, tidak bisa diubah,
+   tidak bisa dihapus, dan tidak bisa maju: buntu permanen. */
 const STATUS_FLOW: Record<string, string[]> = {
   Draft: ["Pending"],
   Pending: ["Approved", "Rejected"],
   Approved: ["Completed"],
   Completed: [],
+  /* Ditolak -> bisa diajukan ulang (Pending) atau dibuang (Draft lalu Hapus). */
+  Rejected: ["Pending", "Draft"],
 };
 
 interface PriceHist { old: number; new: number; reason: string; date: string; by: string; }
 type BoQExt = BoQItem & { priceHistory?: PriceHist[]; fileUrl?: string };
 
-/* Alur kanonis ID (nilai tersimpan EN legacy): Draf=Draft, Diajukan=Pending, Disetujui=Approved, Selesai=Completed. */
+/* Alur kanonis ID (nilai tersimpan EN legacy). "Rejected" dipetakan ke
+   "Ditolak" supaya punya langkah yang ditebalkan di flow strip. */
 const BOQ_FLOW_ID = ["Draf", "Diajukan", "Disetujui", "Selesai"];
 const boqFlowId = (s: string): string =>
-  s === "Draft" ? "Draf" : s === "Pending" ? "Diajukan" : s === "Approved" ? "Disetujui" : s === "Completed" ? "Selesai" : s;
+  s === "Draft" ? "Draf" : s === "Pending" ? "Diajukan" : s === "Approved" ? "Disetujui" : s === "Completed" ? "Selesai" : s === "Rejected" ? "Ditolak" : s;
 
 const CATEGORIES = ["Mechanical", "Paint", "Survey", "Fabrikasi", "Electrical", "Piping", "Rigging"];
 
@@ -122,10 +129,17 @@ export default function BoQSection({ projectId }: Props) {
     return max >= 0 ? BOQ_FLOW_ID[max] : "";
   }, [items]);
 
-  const logOf = (id: string): { time: string; text: string }[] =>
+  /* Log BoQ: bandingkan PREFIX "id" lalu " · ", bukan exact match.
+     Semua caller menulis target berformat "<id> · <detail>" (revisi harga, edit
+     qty, hapus) sehingga exact match tidak pernah cocok dan modal Log hanya
+     menampilkan changeStatus. */
+  const logOf = (id: string): { time: string; text: string; target: string }[] =>
     (data.activities ?? [])
-      .filter((a) => String(a.target ?? "") === String(id))
-      .map((a) => ({ time: String(a.time ?? "-"), text: `${String(a.actor ?? "")} ${String(a.action ?? "")}` }));
+      .filter((a) => {
+        const t = String(a.target ?? "");
+        return t === String(id) || t.startsWith(`${id} ·`);
+      })
+      .map((a) => ({ time: String(a.time ?? "-"), text: `${String(a.actor ?? "")} ${String(a.action ?? "")}`, target: String(a.target ?? "") }));
 
   const nextStatus = (current: string): string[] => STATUS_FLOW[current] ?? [];
 
@@ -153,7 +167,9 @@ export default function BoQSection({ projectId }: Props) {
   };
 
   const changeStatus = async (id: string, newStatus: string) => {
-    if (newStatus === "Approved" && !canSetTarget(user?.role)) {
+    /* Approved & Completed mengubah KPI nilai & progres - wajib peran target.
+       Rejected juga butuh izin karena menolak item milik tim lain. */
+    if (newStatus !== "Draft" && newStatus !== "Pending" && !canSetTarget(user?.role)) {
       toast(S.boqToastRole, "info");
       return;
     }
@@ -162,8 +178,18 @@ export default function BoQSection({ projectId }: Props) {
     toast(S.boqToastStatus.replace("{a}", id).replace("{b}", newStatus));
   };
 
+  /* Revisi harga TIDAK BOLEH membuka kunci Approved/Completed.
+     Versi lama merender tombol ini tanpa syarat status & tanpa cek peran,
+     sehingga pembatalan locking di openEdit/saveEditQty bisa di bypass
+     lewat pintu belakang. */
+  const REVISI_LOCKED: string[] = ["Approved", "Completed"];
+
   const saveRevisi = async () => {
     if (!revisiFor) return;
+    if (REVISI_LOCKED.includes(String(revisiFor.status)) && !canSetTarget(user?.role)) {
+      toast(S.boqToastRole, "info");
+      return;
+    }
     const next = Number(revisiPrice);
     if (!Number.isFinite(next) || next <= 0) { toast(S.boqToastNewPrice, "info"); return; }
     if (!revisiReason.trim()) { toast(S.boqToastReason, "info"); return; }
@@ -358,10 +384,22 @@ export default function BoQSection({ projectId }: Props) {
                             <SecureImg src={String(b.fileUrl)} alt={String(b.name)} name={String(b.name)} className="max-h-24 w-full rounded-lg border border-steel-100 object-contain" />
                           ) : (/\.pdf(\?|#|$)/i.test(String(b.fileUrl)) ? (
                             <iframe title={String(b.name)} src={String(b.fileUrl)} className="h-32 w-full rounded-lg border border-steel-100" />
-                          ) : null)}
+                          ) : (
+                            /* xlsx/csv/txt/docx: TIDAK bisa dirender browser. Kalau
+                               tidak diberi tahu, user mengklik dan melihat iframe
+                               kosong tanpa penjelasan. */
+                            <span className="block text-[11px] text-steel-500">
+                              {locale === "en"
+                                ? "Office/CSV file - not previewable in browser"
+                                : "File Office/CSV — tidak bisa ditampilkan di browser"}
+                            </span>
+                          ))}
                           <button className="font-medium text-ocean-600 underline" onClick={() => setPreviewFor(b)} title={String(b.fileUrl)}>
                             {locale === "en" ? "Preview" : "Pratinjau"}
                           </button>
+                          <a className="block font-medium text-steel-500 underline" href={String(b.fileUrl)} target="_blank" rel="noreferrer">
+                            {locale === "en" ? "Download" : "Unduh"}
+                          </a>
                         </div>
                       ) : (
                         <span className="text-xs text-steel-400">-</span>
@@ -379,14 +417,30 @@ export default function BoQSection({ projectId }: Props) {
                               ns === "Completed" ? "bg-blue-100 text-blue-700 hover:bg-blue-200" :
                               "bg-steel-100 text-steel-600 hover:bg-steel-200"
                             }`}
-                            onClick={() => changeStatus(b.id, ns)}
+                            onClick={() => void busy.run(`boqStatus-${b.id}-${ns}`, () => changeStatus(b.id, ns))}
+                            disabled={busy.isBusy(`boqStatus-${b.id}-${ns}`)}
                           >
                             {ns === "Approved" ? S.detApproveBtn : ns === "Rejected" ? S.detRejectBtn : ns === "Completed" ? S.boqComplete : S.detProposeBtn}
                           </button>
                         ))}
+                        {/* Item Ditolak sebelumnya buntu: tidak bisa diajukan ulang,
+                            diubah, ATAU dihapus (hanya Draft boleh Hapus).
+                            Sekarang bisa_pending->Pending (Ajukan ulang) atau ->Draft. */}
+                        {b.status === "Rejected" && (
+                          <button
+                            aria-label={`${locale === "en" ? "Edit" : "Ubah"} ${b.name}`}
+                            className="rounded bg-ocean-100 px-2 py-0.5 text-xs font-semibold text-ocean-700 transition-colors hover:bg-ocean-200"
+                            onClick={() => openEdit(b)}
+                          >
+                            {locale === "en" ? "Edit" : "Ubah"}
+                          </button>
+                        )}
                         <button
                           aria-label={S.boqReviseAria.replace("{a}", b.name)}
                           className="rounded bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-700 transition-colors hover:bg-amber-200"
+                          title={REVISI_LOCKED.includes(String(b.status))
+                            ? (locale === "en" ? "Locked: needs approver role" : "Terkunci: butuh peran penyetuju")
+                            : undefined}
                           onClick={() => { setRevisiFor(b); setRevisiPrice(String(b.unitPrice)); setRevisiReason(""); }}
                         >
                           {S.boqRevise}
@@ -477,11 +531,24 @@ export default function BoQSection({ projectId }: Props) {
       <Modal open={previewFor !== null} onClose={() => setPreviewFor(null)} title={previewFor?.name ?? ""} subtitle={previewFor?.id}>
         {previewFor?.fileUrl ? (
           <div className="space-y-2">
-            {/\.(png|jpe?g|gif|webp)(\?|$)/i.test(String(previewFor.fileUrl)) ? (
+            {/\.(png|jpe?g|gif|webp|bmp|svg)(\?|#|$)/i.test(String(previewFor.fileUrl)) ? (
               <SecureImg src={previewFor.fileUrl} alt={String(previewFor.name)} name={String(previewFor.name)} className="max-h-96 w-full rounded-xl border border-steel-200 object-contain" />
-            ) : (
+            ) : (/\.pdf(\?|#|$)/i.test(String(previewFor.fileUrl)) ? (
               <iframe title={String(previewFor.name)} src={String(previewFor.fileUrl)} className="h-96 w-full rounded-xl border border-steel-200" />
-            )}
+            ) : (
+              /* xlsx/csv/txt/docx tidak bisa dirender browser. Versi lama
+                 menaruhnya di <iframe> -> bingkai kosong tanpa penjelasan. */
+              <div className="rounded-xl border border-dashed border-steel-300 bg-surface p-6 text-center">
+                <p className="text-sm text-steel-600">
+                  {locale === "en"
+                    ? "This file type cannot be previewed in the browser."
+                    : "Jenis file ini tidak bisa ditampilkan di browser."}
+                </p>
+                <p className="mt-1 text-xs text-steel-400">
+                  {locale === "en" ? "Use the download button below." : "Gunakan tombol unduh di bawah."}
+                </p>
+              </div>
+            ))}
             <a className="block truncate text-xs font-semibold text-ocean-600 underline" href={String(previewFor.fileUrl)} target="_blank" rel="noreferrer">{String(previewFor.fileUrl)}</a>
           </div>
         ) : (
@@ -495,10 +562,13 @@ export default function BoQSection({ projectId }: Props) {
             <div key={i} className="rounded-xl border border-steel-100 p-2.5 text-sm">
               <p className="font-medium text-navy-900">{l.text}</p>
               <p className="text-xs text-steel-500">{l.time}</p>
+              {l.target && l.target !== String(logFor.id) && (
+                <p className="mt-0.5 text-[11px] text-steel-400">{l.target}</p>
+              )}
             </div>
           ))}
           {(!logFor || logOf(logFor.id).length === 0) && (
-            <p className="text-sm text-steel-400">{locale === "en" ? "No status transitions recorded yet." : "Belum ada transisi status tercatat."}</p>
+            <p className="text-sm text-steel-400">{locale === "en" ? "No activity recorded yet." : "Belum ada aktivitas tercatat."}</p>
           )}
         </div>
       </Modal>

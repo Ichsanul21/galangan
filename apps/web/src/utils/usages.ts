@@ -23,7 +23,9 @@ function push(out: string[], n: number, label: string): void {
  * projects←purchaseOrders.project+invoices.project+wbs,
  * employees←payroll.employeeId+attendance+leaves,
  * inventory←movements.itemId+purchaseOrders.itemId.
- * Tambahan best-effort: documents←documents.related, coa←journals.db/kr.
+ * Tambahan best-effort: documents←documents.related, coa←journals.db/kr,
+ * boq←projects.approvedBoq, payables/invoices←saling po, workOrders←subcontractors.wo,
+ * ncr←inspections.ncrId.
  * Koleksi lain → [] (tidak ada relasi anak yang dikenal).
  */
 export function findUsages(data: StoreShape, collection: string, id: string): string[] {
@@ -97,6 +99,32 @@ export function findUsages(data: StoreShape, collection: string, id: string): st
         rowsOf(data, "journals").filter((j) => String(j.db ?? "") === kode || String(j.kr ?? "") === kode).length,
         "Jurnal",
       );
+      break;
+    }
+    /* Tanpa case "boq" findUsages selalu [] sehingga label "Diblokir - masih
+       dipakai" dan penguncian hapus BoQ TIDAK PERNAH bisa aktif (dead code). */
+    case "boq": {
+      push(out, rowsOf(data, "projects").filter((p) => String(p.approvedBoq ?? "") === key).length, "Proyek");
+      break;
+    }
+    /* Label dikembalikan ke ConfirmModal apa adanya. Karena dipakai di dialog
+       yang juga tampil saat locale=en, label harus netral/bilingual-safe. */
+    case "payables":
+    case "invoices": {
+      const isAp = collection === "payables";
+      push(
+        out,
+        rowsOf(data, isAp ? "invoices" : "payables").filter((x) => String(x.po ?? "") === key).length,
+        isAp ? "Invoice" : "Hutang",
+      );
+      break;
+    }
+    case "workOrders": {
+      push(out, rowsOf(data, "subcontractors").filter((s) => String(s.wo ?? "") === key).length, "Subkontraktor");
+      break;
+    }
+    case "ncr": {
+      push(out, rowsOf(data, "inspections").filter((i) => String(i.ncrId ?? "") === key).length, "Inspeksi");
       break;
     }
     default:
