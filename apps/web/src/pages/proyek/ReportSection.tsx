@@ -5,7 +5,7 @@ import { n_prj } from "../../i18n/n_prj";
 import { Card, StatusBadge, Modal, Field, toast, Badge, ProgressBar, KpiCard, EmptyState, useBusy } from "../../components/ui";
 import { Send, CheckCircle2, XCircle, FileDown, FileText } from "lucide-react";
 import { exportPDF, exportExcel, fmtRupiah, fmtRentang } from "../../utils/export";
-import { STATUS_BOQ_ID } from "../../utils/format";
+import { STATUS_BOQ_ID, fmtTanggal, todayISO } from "../../utils/format";
 import { fmtMiliar } from "../../data";
 
 interface Props {
@@ -52,13 +52,36 @@ export default function ReportSection({ projectId }: Props) {
   const [invQ, setInvQ] = useState("");
   const [ncrWoQ, setNcrWoQ] = useState("");
 
-  const submitReport = async (docId: string, action: "approve" | "reject") => {
+  /* Alur persetujuan dokumen.
+     VERSI LAMA membaca d.approvalStatus === "Submitted" - field itu TIDAK PERNAH
+     ditulis di mana pun (dokumen seed & ProjectDetail hanya menulis `status`),
+     sehingga tombol Setujui/Tolak tidak pernah muncul dan submitReport tak pernah
+     terpakai. Sekarang sumber kebenaran = `status` dokumen:
+       Draft -> Diajukan (tombol Ajukan) -> Disetujui / Ditolak. */
+  const DOC_FLOW: Record<string, string[]> = { Draft: ["Diajukan"], Diajukan: ["Disetujui", "Ditolak"] };
+
+  const docApprovalLabel = (status: string): string =>
+    status === "Disetujui" ? S.detApprovalApproved
+      : status === "Ditolak" ? S.detApprovalRejected
+      : status === "Diajukan" ? S.detApprovalPending
+      : S.detApprovalDraft;
+
+  const submitReport = async (docId: string, action: "submit" | "approve" | "reject") => {
+    const target = action === "submit" ? "Diajukan" : action === "approve" ? "Disetujui" : "Ditolak";
     await update("documents", docId, {
-      approvalStatus: action === "approve" ? "Approved" : "Rejected",
-      approvedBy: "Anda",
+      status: target,
+      /* Ditulis juga ke field lama agar data lama yang sudah punya approvalStatus
+         tidak bipolar. Sumber kebenaran tetap `status`. */
+      ...(action === "submit" ? { approvalStatus: "Submitted" } : { approvalStatus: action === "approve" ? "Approved" : "Rejected" }),
+      ...(action === "submit" ? {} : { approvedBy: "Anda", approvedAt: todayISO() }),
     });
-    log(`${action === "approve" ? "menyetujui" : "menolak"} laporan`, `${docId}`, "Dokumen");
-    toast(action === "approve" ? S.repToastApproved : S.repToastRejected);
+    const verb = action === "submit" ? "mengajukan laporan" : action === "approve" ? "menyetujui laporan" : "menolak laporan";
+    log(verb, `${docId}`, "Dokumen");
+    toast(
+      action === "submit" ? S.detApprovalSubmitted
+        : action === "approve" ? S.repToastApproved
+        : S.repToastRejected,
+    );
   };
 
   const handleExportPDF = () => {
@@ -140,7 +163,7 @@ export default function ReportSection({ projectId }: Props) {
               <h3 className="flex items-center gap-2 text-sm font-semibold text-navy-900"><FileText className="h-4 w-4" /> {S.repTitle.replace("{a}", project?.vessel ?? projectId)}</h3>
               <p className="text-xs text-steel-500">{projectId} · {project?.type ?? "-"} · {project?.client ?? "-"} · {project?.manager ?? "-"} · {fmtRentang(project?.start, project?.end)}</p>
             </div>
-            <div className="flex gap-2">
+            <div className="flex gap-2" data-export-hide>
               <button className="btn-secondary text-xs" onClick={() => void busy.run("handleExportPDF", handleExportPDF)} disabled={busy.isBusy("handleExportPDF")}><FileText className="h-3.5 w-3.5" /> {S.repPdf}</button>
               <button className="btn-secondary text-xs" onClick={() => void busy.run("handleExportExcel", handleExportExcel)} disabled={busy.isBusy("handleExportExcel")}><FileDown className="h-3.5 w-3.5" /> {S.excelBtn}</button>
             </div>
@@ -157,7 +180,7 @@ export default function ReportSection({ projectId }: Props) {
         <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-2">
           <Card className="p-4">
             <h4 className="mb-2 text-sm font-semibold text-navy-900">{S.repWbsTitle.replace("{a}", String(wbsDone)).replace("{b}", String(wbs.length))}</h4>
-            <input className="input mb-2" value={wbsQ} onChange={(e) => setWbsQ(e.target.value)} placeholder={S.cardSearchPh} aria-label={S.cardSearchPh} />
+            <input data-export-hide className="input mb-2" value={wbsQ} onChange={(e) => setWbsQ(e.target.value)} placeholder={S.cardSearchPh} aria-label={S.cardSearchPh} />
             {wbs.length === 0 ? (
               <p className="text-xs text-steel-400">{S.repNoWbs}</p>
             ) : (
@@ -173,7 +196,7 @@ export default function ReportSection({ projectId }: Props) {
           </Card>
           <Card className="p-4">
             <h4 className="mb-2 text-sm font-semibold text-navy-900">{S.repBoqTitle.replace("{n}", String(boq.length))}</h4>
-            <input className="input mb-2" value={boqQ} onChange={(e) => setBoqQ(e.target.value)} placeholder={S.cardSearchPh} aria-label={S.cardSearchPh} />
+            <input data-export-hide className="input mb-2" value={boqQ} onChange={(e) => setBoqQ(e.target.value)} placeholder={S.cardSearchPh} aria-label={S.cardSearchPh} />
             {boq.length === 0 ? (
               <p className="text-xs text-steel-400">{S.repNoBoq}</p>
             ) : (
@@ -193,7 +216,7 @@ export default function ReportSection({ projectId }: Props) {
         <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-3">
           <Card className="p-4">
             <h4 className="mb-2 text-sm font-semibold text-navy-900">{S.repInvTitle.replace("{n}", String(invoices.length))}</h4>
-            <input className="input mb-2" value={invQ} onChange={(e) => setInvQ(e.target.value)} placeholder={S.cardSearchPh} aria-label={S.cardSearchPh} />
+            <input data-export-hide className="input mb-2" value={invQ} onChange={(e) => setInvQ(e.target.value)} placeholder={S.cardSearchPh} aria-label={S.cardSearchPh} />
             {invoices.length === 0 ? <p className="text-xs text-steel-400">{S.repNoInv}</p> : <div className="max-h-64 overflow-y-auto pr-1">{invoices.filter((i) => !invQ.trim() || `${i.id ?? ""} ${i.status ?? ""}`.toLowerCase().includes(invQ.trim().toLowerCase())).map((i) => (
               <div key={i.id} className="flex items-center justify-between py-1 text-sm">
                 <span className="font-mono text-navy-900">{i.id}</span>
@@ -205,7 +228,7 @@ export default function ReportSection({ projectId }: Props) {
           <Card className="p-4">
             <h4 className="mb-2 text-sm font-semibold text-navy-900">{S.repNcrTitle}</h4>
             <p className="text-xs text-steel-500">{S.repNcrOpenLbl}<b>{openNcr}</b>{critNcr > 0 ? <> · <b className="text-rose-600">{S.repCritCount.replace("{n}", String(critNcr))}</b></> : null}{S.repWoLbl}<b>{wos.length}</b>{S.repDockLbl}<b>{slots.length}</b></p>
-            <input className="input mb-2 mt-2" value={ncrWoQ} onChange={(e) => setNcrWoQ(e.target.value)} placeholder={S.cardSearchPh} aria-label={S.cardSearchPh} />
+            <input data-export-hide className="input mb-2 mt-2" value={ncrWoQ} onChange={(e) => setNcrWoQ(e.target.value)} placeholder={S.cardSearchPh} aria-label={S.cardSearchPh} />
             <div className="mt-2 max-h-64 space-y-1 overflow-y-auto pr-1">
               {ncrs.filter((n) => !ncrWoQ.trim() || `${n.id ?? ""} ${n.status ?? ""}`.toLowerCase().includes(ncrWoQ.trim().toLowerCase())).map((n) => (
                 <div key={n.id} className="flex items-center justify-between text-sm"><span className="font-mono text-navy-900">{n.id}</span><StatusBadge status={n.status} /></div>
@@ -246,16 +269,33 @@ export default function ReportSection({ projectId }: Props) {
                   <div>
                     <p className="font-semibold text-navy-900">{d.title}</p>
                     <p className="text-xs text-steel-500">{d.id} · {d.type} · {d.version} · {d.updated} · {d.owner}</p>
+                  {/* sharedWith sebelumnya ditulis tapi TAK PERNAH dibaca di mana pun -
+                      aksi "Bagikan ke Atasan" jadi tanpa jejak sama sekali. */}
+                  {Array.isArray(d.sharedWith) && d.sharedWith.length > 0 && (
+                    <p className="mt-0.5 text-[11px] text-steel-500">
+                      {locale === "en" ? "Shared with" : "Dibagikan ke"}: {d.sharedWith.map((x: unknown) => String(x)).join(", ")}
+                    </p>
+                  )}
                   </div>
                 </div>
-                <div className="mt-2 flex items-center gap-3">
-                  <StatusBadge status={d.approvalStatus === "Approved" ? "Selesai" : d.approvalStatus === "Submitted" ? "Sedang Berjalan" : "Draft"} />
-                  {d.approvalStatus === "Submitted" && (
-                    <div className="flex gap-1">
-                      <button className="rounded bg-green-100 px-2 py-0.5 text-xs font-semibold text-green-700 hover:bg-green-200" onClick={() => submitReport(d.id, "approve")}><CheckCircle2 className="h-3 w-3 inline" /> {S.detApproveBtn}</button>
-                      <button className="rounded bg-rose-100 px-2 py-0.5 text-xs font-semibold text-rose-700 hover:bg-rose-200" onClick={() => submitReport(d.id, "reject")}><XCircle className="h-3 w-3 inline" /> {S.detRejectBtn}</button>
-                    </div>
+                <div className="mt-2 flex flex-wrap items-center gap-3">
+                  <StatusBadge status={docApprovalLabel(String(d.status ?? "Draft"))} />
+                  {d.approvedBy && (
+                    <span className="text-[11px] text-steel-500">
+                      {locale === "en" ? "by" : "oleh"} {String(d.approvedBy)}{d.approvedAt ? ` · ${fmtTanggal(String(d.approvedAt))}` : ""}
+                    </span>
                   )}
+                  {(DOC_FLOW[String(d.status ?? "Draft")] ?? []).map((next) => (
+                    <div key={next} className="flex gap-1">
+                      {next === "Diajukan" ? (
+                        <button className="rounded bg-steel-100 px-2 py-0.5 text-xs font-semibold text-steel-700 hover:bg-steel-200" disabled={busy.isBusy(`doc-${d.id}-${next}`)} onClick={() => void busy.run(`doc-${d.id}-${next}`, () => submitReport(d.id, "submit"))}>{S.detProposeBtn}</button>
+                      ) : next === "Disetujui" ? (
+                        <button className="rounded bg-green-100 px-2 py-0.5 text-xs font-semibold text-green-700 hover:bg-green-200" disabled={busy.isBusy(`doc-${d.id}-${next}`)} onClick={() => void busy.run(`doc-${d.id}-${next}`, () => submitReport(d.id, "approve"))}><CheckCircle2 className="h-3 w-3 inline" /> {S.detApproveBtn}</button>
+                      ) : (
+                        <button className="rounded bg-rose-100 px-2 py-0.5 text-xs font-semibold text-rose-700 hover:bg-rose-200" disabled={busy.isBusy(`doc-${d.id}-${next}`)} onClick={() => void busy.run(`doc-${d.id}-${next}`, () => submitReport(d.id, "reject"))}><XCircle className="h-3 w-3 inline" /> {S.detRejectBtn}</button>
+                      )}
+                    </div>
+                  ))}
                 </div>
               </div>
             ))}

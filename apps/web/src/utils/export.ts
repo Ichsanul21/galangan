@@ -95,6 +95,16 @@ export async function exportPDF(elementId: string, filename: string, options: Ex
       n.style.overflow = "visible";
     }
   });
+
+  /* 1b. Sembunyikan kontrol UI (input cari, tombol) saat capture.
+     Versi lama ikut memotretnya sehingga dokumen resmi memuat kotak berisi
+     kata kunci/URL yang tidak profesional. */
+  const hidden: HTMLElement[] = [];
+  el.querySelectorAll<HTMLElement>("[data-export-hide]").forEach((n) => {
+    hidden.push(n);
+    n.dataset.pdfPrevDisplay = n.style.display;
+    n.style.display = "none";
+  });
   const prevMaxh = el.style.maxHeight;
   const prevOvy = el.style.overflow;
   el.style.maxHeight = "none";
@@ -149,6 +159,10 @@ export async function exportPDF(elementId: string, filename: string, options: Ex
       n.style.overflowY = n.dataset.pdfPrevOvy ?? "";
       delete n.dataset.pdfPrevMaxh;
       delete n.dataset.pdfPrevOvy;
+    });
+    hidden.forEach((n) => {
+      n.style.display = n.dataset.pdfPrevDisplay ?? "";
+      delete n.dataset.pdfPrevDisplay;
     });
     el.style.maxHeight = prevMaxh;
     el.style.overflow = prevOvy;
