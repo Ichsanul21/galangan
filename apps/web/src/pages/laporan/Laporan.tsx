@@ -165,12 +165,21 @@ export default function Laporan() {
     const laba = revenue - cost;
     const ppnRate = getSetting(data, "PPN_RATE", 12) / 100;
     const pphRate = getSetting(data, "PPH23_RATE", 2) / 100;
-    const ppnKeluar = Math.round(revenue * ppnRate);
+    /* PPN keluaran: pakai ppnAmt yang tersimpan di invoice, bukan dihitung
+       ulang dari total. Rumus invoice sudah PPN = 12% x (total x 11/12),
+       jadi nilainya efektif 11% dari total. Menghitung total x 12% lewat
+       hidup membuat PPN keluaran ~9% lebih besar dari yang tercatat di
+       faktur. Fallback kept untuk invoice lawas tanpa ppnAmt. */
+    const ppnTersimpan = invLunas.reduce((s, i) => s + num(i.ppnAmt), 0);
+    const ppnKeluar = ppnTersimpan > 0 ? Math.round(ppnTersimpan) : Math.round(revenue * ppnRate);
+    const ppnKeluarEstimasi = ppnTersimpan <= 0;
+    /* PPN masukan tidak bisa dihitung akurat: payable tidak menyimpan
+       rincian PPN, hanya nilai nett dan PPh. Angka ini tetap estimasi. */
     const ppnMasuk = Math.round(apLunas.reduce((s, a) => s + num(a.amt), 0) * ppnRate);
     const pph23 = Math.round(apLunas.reduce((s, a) => s + num(a.amt), 0) * pphRate);
     const pph21 = payRows.reduce((s, p) => s + num(p.pph21), 0);
     const taxRow = (data.taxPeriods ?? []).find((t) => String(t.period) === month);
-    return { inv, invLunas, revenue, apLunas, payRows, payrollTotal, cost, laba, ppnKeluar, ppnMasuk, pph23, pph21, taxRow };
+    return { inv, invLunas, revenue, apLunas, payRows, payrollTotal, cost, laba, ppnKeluar, ppnMasuk, pph23, pph21, taxRow, ppnRate, ppnKeluarEstimasi, ppnMasukEstimasi: true };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [data, month, branch, brF]);
 
@@ -280,8 +289,11 @@ export default function Laporan() {
       ["Biaya (AP + payroll)", monthly.cost],
       ["Laba", monthly.laba],
       ["Payroll total", monthly.payrollTotal],
-      ["PPN Keluaran 11%", monthly.ppnKeluar],
-      ["PPN Masukan 11%", monthly.ppnMasuk],
+      /* Label tidak lagi hardcode "11%": invoice memakai 12% x DPP dengan
+         DPP = total x 11/12 (efektif 11%), dan setting PPN_RATE bisa diubah -
+         label lama jadi berbohong begitu rate diganti. */
+      [`PPN Keluaran${monthly.ppnKeluarEstimasi ? ` (estimasi ${Math.round(monthly.ppnRate * 100)}%)` : " (dari faktur)"}`, monthly.ppnKeluar],
+      [`PPN Masukan (estimasi ${Math.round(monthly.ppnRate * 100)}%)`, monthly.ppnMasuk],
       ["PPh 23 2%", monthly.pph23],
       ["PPh 21", monthly.pph21],
       ["Bulan lalu (revenue / cost / laba)", `${fmtRupiah(monthlyPrev.revenue)} / ${fmtRupiah(monthlyPrev.cost)} / ${fmtRupiah(monthlyPrev.laba)}`],
@@ -544,8 +556,11 @@ export default function Laporan() {
               <Card className="p-4">
                 <CardHeader title={S.taxThisMonth} subtitle={S.taxSub} />
                 <div className="space-y-1.5 px-5 pb-5 text-sm">
-                  <div className="flex justify-between"><span className="text-steel-500">{S.ppnOut}</span><span className="font-semibold">{dashIf(monthly.invLunas.length > 0, fmtRupiah(monthly.ppnKeluar))}</span></div>
-                  <div className="flex justify-between"><span className="text-steel-500">{S.ppnIn}</span><span className="font-semibold">{dashIf(monthly.apLunas.length > 0, fmtRupiah(monthly.ppnMasuk))}</span></div>
+                  <div className="flex justify-between"><span className="text-steel-500">{S.ppnOut}{monthly.ppnKeluarEstimasi ? ` (estimasi ${Math.round(monthly.ppnRate * 100)}%)` : ""}</span><span className="font-semibold">{dashIf(monthly.invLunas.length > 0, fmtRupiah(monthly.ppnKeluar))}</span></div>
+                  {/* Payable tidak menyimpan rincian PPN, jadi PPN masukan
+                      selalu estimasi gross-up dan tidak boleh ditampilkan
+                      seolah-olah angka final pelaporan. */}
+                  <div className="flex justify-between"><span className="text-steel-500">{S.ppnIn} (estimasi {Math.round(monthly.ppnRate * 100)}%)</span><span className="font-semibold">{dashIf(monthly.apLunas.length > 0, fmtRupiah(monthly.ppnMasuk))}</span></div>
                   <div className="flex justify-between"><span className="text-steel-500">{S.pph23Label}</span><span className="font-semibold">{dashIf(monthly.apLunas.length > 0, fmtRupiah(monthly.pph23))}</span></div>
                   <div className="flex justify-between"><span className="text-steel-500">{S.pph21Label}</span><span className="font-semibold">{dashIf(monthly.payRows.length > 0, fmtRupiah(monthly.pph21))}</span></div>
                   {monthly.taxRow && <p className="text-xs text-steel-400">{S.taxPeriodDetail.replace("{a}", String(monthly.taxRow.period)).replace("{b}", String(monthly.taxRow.status)).replace("{c}", fmtTanggal(String(monthly.taxRow.reportedAt ?? "")))}</p>}
