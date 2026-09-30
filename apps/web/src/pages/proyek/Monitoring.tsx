@@ -70,15 +70,20 @@ export default function Monitoring() {
   const kanbanWidth = TAHAP.length * 272;
 
   /* Hanya SATU scrollbar kustom yang tampil pada satu waktu.
-     Area kanban punya dua: bar atas (sticky top) dan bar bawah (sticky
-     bottom). Kalau keduanya dibiarkan sticky, keduanya terlihat bersamaan
-     saat area kanban lebih tinggi dari viewport. Ditambah scrollbar native
+     Area kanban punya dua: bar atas (sticky top-14) dan bar bawah (sticky
+     bottom-0). Kalau keduanya dibiarkan, keduanya terlihat bersamaan saat
+     area kanban lebih tinggi dari viewport - ditambah scrollbar native
      container kolom jadi tiga scrollbar untuk satu aksi yang sama.
-     Aturannya: bar atas tampil hanya saat area kanban sudah ter-scroll
-     melewati bagian atasnya (bar atas sedang "nempel"); selama itu belum
-     terjadi, bar bawah yang dipakai. Hasilnya selalu tepat satu. */
+
+     Yang menentukan adalah bar BAWAH: dia "muncul"/nempel justru ketika
+     area kanban masih melanjut ke bawah viewport. Selama itu terjadi bar
+     bawah dipakai; setelah area kanban sudah muat seluruhnya (tidak ada
+     yang perlu digulir ke bawah) bar bawah tidak berguna, jadi bar atas
+     yang dipakai. Dua-duanya saling meniadakan, hasilnya tepat satu.
+     Versi sebelumnya memakai kebalikan dari ini (r.top <= 56) sehingga
+     bar yang muncul justru kebalik dari yang diharapkan. */
   const kanbanWrapRef = useRef<HTMLDivElement | null>(null);
-  const [topBarOn, setTopBarOn] = useState(false);
+  const [bottomBarOn, setBottomBarOn] = useState(true);
   useEffect(() => {
     const wrap = kanbanWrapRef.current;
     if (!wrap) return;
@@ -86,8 +91,8 @@ export default function Monitoring() {
     const check = () => {
       raf = 0;
       const r = wrap.getBoundingClientRect();
-      // tinggi header aplikasi = 3.5rem (h-14)
-      setTopBarOn(r.top <= 56);
+      // melanjut ke bawah viewport 1px = bar bawah berfungsi
+      setBottomBarOn(r.bottom > window.innerHeight + 1);
     };
     const schedule = () => {
       if (raf) return;
@@ -239,8 +244,8 @@ export default function Monitoring() {
         <button className="btn-secondary px-2 py-1 text-xs" onClick={() => scrollKanbanBy(320)} aria-label={locale === "en" ? "Scroll kanban right" : "Geser kanban ke kanan"}>&rarr;</button>
         <span className="text-[11px] text-steel-400">{locale === "en" ? "Scroll kanban horizontally" : "Geser kanban ke samping"}</span>
       </div>
-      {/* Bar atas: tampil HANYA saat bar bawah tidak dipakai. */}
-      {topBarOn && (
+      {/* Bar atas: tampil HANYA saat bar bawah tidak berfungsi. */}
+      {!bottomBarOn && (
       <div
         ref={topBarRef}
         onScroll={() => syncScroll(topBarRef.current, topScrollRef.current, barScrollRef.current)}
@@ -302,8 +307,8 @@ export default function Monitoring() {
           );
         })}
       </div>
-      {/* Bar bawah: tampil HANYA saat bar atas tidak dipakai. */}
-      {!topBarOn && (
+      {/* Bar bawah: tampil HANYA saat area kanban masih melanjut ke bawah. */}
+      {bottomBarOn && (
       <div
         ref={barScrollRef}
         onScroll={() => syncScroll(barScrollRef.current, topBarRef.current, topScrollRef.current)}
