@@ -3,7 +3,7 @@ import { Link } from "react-router-dom";
 import { Plus, ShieldCheck, AlertTriangle, Siren, Award, Send, Search } from "lucide-react";
 import { ComposedChart, Line, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 import { Card, CardHeader, PageHeader, Badge, KpiCard, Tabs, StatusBadge, Donut, ChartTooltip, Modal, Field, FormGrid, ConfirmModal, SortTh, toggleSort, sortRows, usePager, toast,
-  NumInput, FlowStrip, SecureImg, FileUploadButton, useBusy, AsyncButton,
+  NumInput, FlowStrip, FileUploadButton, useBusy, AsyncButton,
 } from "../../components/ui";
 import type { SortState } from "../../components/ui";
 import { useStore, type StoreItem, type CollectionKey } from "../../data/store";
@@ -15,7 +15,7 @@ import { getSetting } from "../../utils/settings";
 import { useDeepLinkParams, useDeepLinkTarget } from "../../components/useDeepLink";
 import { AlertBannerView, notifRowId, useModuleAlert, useNotifFlash } from "../../components/AlertBanner";
 import { exportExcel } from "../../utils/export";
-import { DocumentPreviewCell, DocumentPreviewPanel } from "../../components/DocumentPreview";
+import { DocumentPreviewCell, DocumentPreviewPanel, InlineDocPreview } from "../../components/DocumentPreview";
 import { findUsages } from "../../utils/usages";
 import { useAuth, canSetTarget } from "../../auth/auth";
 import { FilterPopover } from "../../components/FilterPopover";
@@ -2060,9 +2060,7 @@ export default function QCSafety() {
               <FileUploadButton label={locale === "en" ? "Upload" : "Unggah"} onUploaded={(url) => setDrwForm((f) => ({ ...f, fileUrl: url }))} />
             </div>
             {drwForm.fileUrl.trim() !== "" && (
-              /\.pdf(\?|$)/i.test(drwForm.fileUrl)
-                ? <iframe title="Pratinjau dokumen drawing" src={drwForm.fileUrl} className="mt-2 h-40 w-full rounded-lg border border-steel-200" />
-                : <SecureImg src={drwForm.fileUrl} alt="Pratinjau dokumen drawing" name="drawing" className="mt-2 h-28 w-full max-w-sm rounded-lg border border-steel-200 object-contain" />
+              <InlineDocPreview url={drwForm.fileUrl} height={/\.pdf(\?|$)/i.test(drwForm.fileUrl) ? "h-40" : "h-28"} />
             )}
           </Field>
           <Field label={S.fCabang} hint={S.hintIkutGlobal.replace("{n}", branch)}>

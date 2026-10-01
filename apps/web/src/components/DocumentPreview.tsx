@@ -67,13 +67,17 @@ type ViewState =
   | { status: "unsupported"; ext: string }
   | { status: "error"; message: string };
 
-/** Panel aksi Pratinjau + Unduh dengan pemuatan malas.
- *  Bisa dipasang berdiri sendiri di dalam modal/detail apa pun. */
-export function DocumentPreviewPanel({ doc }: { doc: PreviewDoc }) {
+/** Panel aksi Pratinjau + Unduh.
+ *
+ *  Pratinjau dimuat OTOMATIS begitu panel ini tampil (autoLoad), jadi tidak
+ *  ada klik ganda: buka modal → dokumen sudah terlihat. Tombol yang tersisa
+ *  berfungsi untuk menyembunyikan/munculkan lagi pratinjau yang sama tanpa
+ *  mengunduh ulang. Unduh memuat ulang byte sendiri, jadi menyembunyikan
+ *  pratinjau tidak mengorbankan berkas. */
+export function DocumentPreviewPanel({ doc, autoLoad = true }: { doc: PreviewDoc; autoLoad?: boolean }) {
   const { locale } = useT();
   const T = locale === "en" ? L.en : L.id;
   const url = String(doc.fileUrl ?? "").trim();
-  const kind = fileKindOf(url);
   const [view, setView] = useState<ViewState>({ status: "idle" });
   const objectUrlRef = useRef<string | null>(null);
   const aliveRef = useRef(true);
@@ -100,18 +104,13 @@ export function DocumentPreviewPanel({ doc }: { doc: PreviewDoc }) {
     releaseObjectUrl();
   }, [url, releaseObjectUrl]);
 
-  const togglePreview = async (): Promise<void> => {
-    if (view.status === "loading") return;
-    if (view.status !== "idle") {
-      releaseObjectUrl();
-      setView({ status: "idle" });
-      return;
-    }
+  const load = useCallback(async (): Promise<void> => {
     if (!url) {
       setView({ status: "error", message: T.noFile });
       return;
     }
-    if (kind === "other") {
+    const k = fileKindOf(url);
+    if (k === "other") {
       setView({ status: "unsupported", ext: fileExtOf(url) || "?" });
       return;
     }
@@ -119,7 +118,7 @@ export function DocumentPreviewPanel({ doc }: { doc: PreviewDoc }) {
     try {
       const blob = await fetchFileBlob(url);
       if (!aliveRef.current) return;
-      if (kind === "text") {
+      if (k === "text") {
         setView({ status: "text", text: (await blob.text()).slice(0, TEXT_LIMIT) });
         return;
       }
@@ -130,12 +129,31 @@ export function DocumentPreviewPanel({ doc }: { doc: PreviewDoc }) {
       }
       releaseObjectUrl();
       objectUrlRef.current = objectUrl;
-      setView({ status: "media", kind, objectUrl });
+      setView({ status: "media", kind: k, objectUrl });
     } catch (e) {
       if (aliveRef.current) {
         setView({ status: "error", message: e instanceof Error ? e.message : T.loadFail });
       }
     }
+  }, [url, releaseObjectUrl, T.loadFail, T.noFile]);
+
+  /* Muat seketika saat panel tampil - inilah yang menghapus klik ganda. */
+  const startedRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!autoLoad || !url) return;
+    if (startedRef.current === url) return;
+    startedRef.current = url;
+    void load();
+  }, [autoLoad, url, load]);
+
+  const togglePreview = (): void => {
+    if (view.status === "loading") return;
+    if (view.status !== "idle") {
+      releaseObjectUrl();
+      setView({ status: "idle" });
+      return;
+    }
+    void load();
   };
 
   const onDownload = (): void => {
@@ -160,7 +178,7 @@ export function DocumentPreviewPanel({ doc }: { doc: PreviewDoc }) {
         <button
           type="button"
           className="btn-secondary text-xs"
-          onClick={() => void togglePreview()}
+          onClick={togglePreview}
           disabled={!url || view.status === "loading"}
           aria-expanded={open}
         >
@@ -233,6 +251,83 @@ export function DocumentPreviewModal({ doc, onClose }: { doc: PreviewDoc | null;
       {shown && <DocumentPreviewPanel doc={shown} />}
     </Modal>
   );
+}
+
+/** Pratinjau ringkas untuk form: gambar / PDF / teks yang langsung ikut
+ *  berubah saat URL diketik, tanpa tombol Pratinjau/Unduh.
+ *
+ *  Ini menutup celah JWT yang soal lama tinggalkan: <iframe src={fileUrl}>
+ *  dan <img src={fileUrl}> milik browser TIDAK mengirim header
+ *  Authorization, jadi berkas yang dilindungi backend muncul sebagai kotak
+ *  kosong atau 401. Yang dipakai di sini selalu blob hasil fetch ber-JWT,
+ *  persis seperti DocumentPreviewPanel. */
+export function InlineDocPreview({ url, height = "h-40" }: { url: string; height?: string }) {
+  const clean = String(url ?? "").trim();
+  const [state, setState] = useState<ViewState>({ status: "idle" });
+  const aliveRef = useRef(true);
+
+  useEffect(() => {
+    aliveRef.current = true;
+    return () => {
+      aliveRef.current = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!clean) {
+      setState({ status: "idle" });
+      return;
+    }
+    const kind = fileKindOf(clean);
+    if (kind === "other") {
+      setState({ status: "unsupported", ext: fileExtOf(clean) || "?" });
+      return;
+    }
+    let objectUrl: string | null = null;
+    setState({ status: "loading" });
+    void (async () => {
+      try {
+        const blob = await fetchFileBlob(clean);
+        if (!aliveRef.current) return;
+        if (kind === "text") {
+          setState({ status: "text", text: (await blob.text()).slice(0, TEXT_LIMIT) });
+          return;
+        }
+        objectUrl = URL.createObjectURL(blob);
+        setState({ status: "media", kind, objectUrl });
+      } catch {
+        if (aliveRef.current) setState({ status: "error", message: L.id.loadFail });
+      }
+    })();
+    return () => {
+      aliveRef.current = false;
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, [clean]);
+
+  if (!clean) return null;
+  const box = `mt-2 w-full rounded-lg border border-steel-200 ${height}`;
+  if (state.status === "loading") {
+    return (
+      <div className={`${box} flex items-center justify-center bg-surface text-xs text-steel-500`}>
+        <Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden /> {L.id.loadingFile}
+      </div>
+    );
+  }
+  if (state.status === "unsupported") return null;
+  if (state.status === "error") {
+    return <p className="mt-2 text-xs text-rose-600">{state.message}</p>;
+  }
+  if (state.status === "media" && state.kind === "image") {
+    return <img src={state.objectUrl} alt="Pratinjau dokumen" className={`${box} object-contain`} />;
+  }
+  if (state.status === "media" && state.kind === "pdf") {
+    return <iframe title="Pratinjau dokumen" src={state.objectUrl} className={`${box} bg-white`} />;
+  }
+  if (state.status === "text") {
+    return <pre className={`${box} overflow-auto whitespace-pre-wrap p-2 font-mono text-[11px] text-steel-700`}>{state.text}</pre>;
+  }
+  return null;
 }
 
 /** Sel tabel/kartu: HANYA ikon Pratinjau + Unduh (tanpa render file otomatis).

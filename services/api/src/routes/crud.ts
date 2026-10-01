@@ -150,30 +150,53 @@ interface Row {
 /* Koleksi yang field "name"-nya jadi kunci relasi (inventory.warehouse,
    movements.fromWh/toWh masih menyimpan NAMA, bukan id). Kalau dua gudang
    boleh bernama sama, kartu "Stok per Gudang" menggabung keduanya dan kolom
-   Dari/Ke Gudang jadi ambigu. Unik dicek di SQL (bukan di memori) supaya
-   konsisten meski dua klien menulis bersamaan; perbandingan longgar
-   (case-insensitive)via LOWER() supaya "gudang baja a" == "Gudang Baja A". */
-const UNIQUE_NAME: Record<string, { field: string; excludeSelf?: boolean }> = {
-  warehouses: { field: "name" },
+   "Dari Gudang" di mutasi menunjuk entri yang ambigu.
+   taxPeriods masuk daftar serupa dengan field "period": kolom "Bulan" di
+   laporan PPN menampilkan satu baris per nilai, dan periode ganda membuat
+   total PPN terhitung dua kali. */
+const UNIQUE_FIELD: Record<string, { field: string; label: string }> = {
+  warehouses: { field: "name", label: "nama" },
+  taxPeriods: { field: "period", label: "periode" },
 };
 
-async function checkNameUnique(
+/* Field unik ini hidup di dalam kolom `data` (TEXT berisi JSON), bukan sebagai
+   kolom nyata. Versi lama menulis "SELECT id FROM warehouses WHERE LOWER(name)
+   = ?". Kolom `name` tidak pernah ada di tabel mana pun - 001_init.sql dan
+   006_batch_akhir.sql sama-sama hanya punya id/branch/data/updated_at - jadi
+   MySQL selalu melempar Unknown column, dan catch lama menelan errornya lalu
+   mengembalikan null. Guard gudang itu karena itu tidak pernah menolak apa pun
+   di server; hanya pemeriksaan di FE yang bekerja, dan FE bisa dilewati lewat
+   API langsung.
+
+   Perbandingan sekarang dilakukan di JS dari `data` yang sudah di-parse, jadi
+   benar-benar bekerja pada MySQL maupun sqlite. Hanya untuk koleksi kecil
+   (gudang, periode pajak) - bukan untuk movements atau payroll yang berisi
+   ribuan baris. */
+async function checkUniqueField(
   table: string,
   field: string,
+  label: string,
   value: string,
   selfId: string | null,
 ): Promise<string | null> {
   const trimmed = value.trim();
   if (trimmed === "") return null;
+  const target = trimmed.toLowerCase();
   try {
-    const rows = await q<{ id: string }>(
-      `SELECT id FROM ${table} WHERE LOWER(${field}) = ? LIMIT 5`,
-      [trimmed.toLowerCase()],
-    );
-    const clash = rows.find((r) => String(r.id) !== String(selfId ?? ""));
-    if (clash) return `nama "${trimmed}" sudah dipakai gudang lain`;
-  } catch {
-    // kolom belum ada (DB lama) — jangan blokir tulis
+    const rows = await q<Row>(`SELECT id, branch, data, updated_at FROM ${table}`);
+    for (const r of rows) {
+      if (String(r.id) === String(selfId ?? "")) continue;
+      const parsed = toJson(r).data;
+      if (typeof parsed !== "object" || parsed === null) continue;
+      const current = String((parsed as Record<string, unknown>)[field] ?? "")
+        .trim()
+        .toLowerCase();
+      if (current === target) return `${label} "${trimmed}" sudah dipakai`;
+    }
+  } catch (e) {
+    /* Gagal membaca tabel tidak boleh memblokir penulisan. Aturan ini
+       safety net, bukan sumber kebenaran. */
+    console.error("[crud] unique check gagal:", e);
   }
   return null;
 }
@@ -267,12 +290,12 @@ export function registerCrud(app: FastifyInstance, table: string): void {
     const now = new Date().toISOString();
     const domainError = assertDomain(table, parsed.data.data);
     if (domainError) return reply.status(422).send(fail(domainError, "UNPROCESSABLE"));
-    const uniq = UNIQUE_NAME[table];
+    const uniq = UNIQUE_FIELD[table];
     if (uniq) {
-      const nameError = await checkNameUnique(
-        table, uniq.field, String((parsed.data.data as Record<string, unknown>)[uniq.field] ?? ""), null,
+      const fieldError = await checkUniqueField(
+        table, uniq.field, uniq.label, String((parsed.data.data as Record<string, unknown>)[uniq.field] ?? ""), null,
       );
-      if (nameError) return reply.status(409).send(fail(nameError, "CONFLICT"));
+      if (fieldError) return reply.status(409).send(fail(fieldError, "CONFLICT"));
     }
     const refError = await checkRefs(table, parsed.data.data as Record<string, unknown>);
     if (refError) return reply.status(422).send(fail(refError, "UNPROCESSABLE"));
@@ -320,12 +343,12 @@ export function registerCrud(app: FastifyInstance, table: string): void {
        jadi tidak valid - padahal POST kekotak yang sama ditolak 422. */
     const domainError = assertDomain(table, merged);
     if (domainError) return reply.status(422).send(fail(domainError, "UNPROCESSABLE"));
-    const uniq = UNIQUE_NAME[table];
+    const uniq = UNIQUE_FIELD[table];
     if (uniq) {
-      const nameError = await checkNameUnique(
-        table, uniq.field, String((merged as Record<string, unknown>)[uniq.field] ?? ""), id,
+      const fieldError = await checkUniqueField(
+        table, uniq.field, uniq.label, String((merged as Record<string, unknown>)[uniq.field] ?? ""), id,
       );
-      if (nameError) return reply.status(409).send(fail(nameError, "CONFLICT"));
+      if (fieldError) return reply.status(409).send(fail(fieldError, "CONFLICT"));
     }
     const refError = await checkRefs(table, merged);
     if (refError) return reply.status(422).send(fail(refError, "UNPROCESSABLE"));

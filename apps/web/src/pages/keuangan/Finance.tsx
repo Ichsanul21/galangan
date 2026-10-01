@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Wallet, ArrowDownToLine, FileText, Receipt, TrendingUp, Plus, Trash2, Search } from "lucide-react";
+import { openFileUrl } from "../../services/files";
 import {
   AreaChart,
   Area,
@@ -358,6 +359,12 @@ function arOutAsOf(list: StoreItem[], end: string): { c: string; total: number; 
 export default function Finance() {
   const busy = useBusy();
   const { data, add, update, remove, log, branch, inBranch } = useStore();
+
+  /* Buka bukti pembayaran di tab baru. window.open(url) biasa ada di sini
+     sebelumnya, tapi tab baru tidak membawa header Authorization sehingga
+     backend membalas 401 - pengguna melihat halaman login, bukan bukti.
+     openFileUrl membuka tab baru lewat blob ber-JWT. */
+  const openProof = (url: string): Promise<void> => openFileUrl(url);
   const { locale } = useT();
   const S = n_fin[locale];
   const modAlert = useModuleAlert("keuangan");
@@ -449,6 +456,12 @@ export default function Finance() {
   const [taxId, setTaxId] = useState("");
   /* Periode pajak "Lapor" sudah jadi SPT yang filed - tidak boleh hilang. */
   const [delTax, setDelTax] = useState<StoreItem | null>(null);
+  /* Menandai Lapor bersifat satu arah: periode terkunci, angka tidak bisa
+     diedit lagi, dan hutang pajak terbit sebagai payables. Tidak ada jalan
+     membatalkan dari halaman ini, jadi harus dikonfirmasi lebih dulu -
+     dan konfirmasinya menampilkan angkanya, bukan sekadar "Yakin?" karena
+     yang dikunci adalah angka yang tidak bisa dikoreksi lagi. */
+  const [confirmLapor, setConfirmLapor] = useState(false);
   const [newPeriod, setNewPeriod] = useState("");
 
   // 1. AR aging + dunning + hapus buku
@@ -2397,10 +2410,10 @@ export default function Finance() {
                         <td className="td text-xs text-steel-500">{num(a.openAwal) ? fmtRupiah(num(a.openAwal)) : "-"}</td>
                         <td className="td font-semibold">{fmtRupiah(num(a.amt))}</td>
                         <td className="td text-xs text-steel-600">{num(a.pay1) ? `${fmtRupiah(num(a.pay1))}${a.pay1date ? ` · ${fmtTanggal(String(a.pay1date))}` : ""}` : "-"}
-                          {String(a.pay1ProofUrl ?? "") && <button type="button" onClick={() => window.open(String(a.pay1ProofUrl), "_blank")} className="mt-1 block overflow-hidden rounded-lg border border-steel-200" title="Lihat bukti tahap I"><SecureImg src={String(a.pay1ProofUrl)} alt={`Bukti I ${String(a.po)}`} className="h-10 w-16 object-cover" /></button>}</td>
+                          {String(a.pay1ProofUrl ?? "") && <button type="button" onClick={() => void openProof(String(a.pay1ProofUrl))} className="mt-1 block overflow-hidden rounded-lg border border-steel-200" title="Lihat bukti tahap I"><SecureImg src={String(a.pay1ProofUrl)} alt={`Bukti I ${String(a.po)}`} className="h-10 w-16 object-cover" /></button>}</td>
                         <td className="td text-xs text-steel-600">{num(a.pay2) ? `${fmtRupiah(num(a.pay2))}${a.pay2date ? ` · ${fmtTanggal(String(a.pay2date))}` : ""}` : "-"}
-                          {String(a.pay2ProofUrl ?? "") && <button type="button" onClick={() => window.open(String(a.pay2ProofUrl), "_blank")} className="mt-1 block overflow-hidden rounded-lg border border-steel-200" title="Lihat bukti tahap II"><SecureImg src={String(a.pay2ProofUrl)} alt={`Bukti II ${String(a.po)}`} className="h-10 w-16 object-cover" /></button>}
-                          {String(a.buktiUrl ?? "") && !String(a.pay1ProofUrl ?? "") && !String(a.pay2ProofUrl ?? "") && <button type="button" onClick={() => window.open(String(a.buktiUrl), "_blank")} className="mt-1 block overflow-hidden rounded-lg border border-steel-200" title="Lihat bukti"><SecureImg src={String(a.buktiUrl)} alt={`Bukti ${String(a.po)}`} className="h-10 w-16 object-cover" /></button>}</td>
+                          {String(a.pay2ProofUrl ?? "") && <button type="button" onClick={() => void openProof(String(a.pay2ProofUrl))} className="mt-1 block overflow-hidden rounded-lg border border-steel-200" title="Lihat bukti tahap II"><SecureImg src={String(a.pay2ProofUrl)} alt={`Bukti II ${String(a.po)}`} className="h-10 w-16 object-cover" /></button>}
+                          {String(a.buktiUrl ?? "") && !String(a.pay1ProofUrl ?? "") && !String(a.pay2ProofUrl ?? "") && <button type="button" onClick={() => void openProof(String(a.buktiUrl))} className="mt-1 block overflow-hidden rounded-lg border border-steel-200" title="Lihat bukti"><SecureImg src={String(a.buktiUrl)} alt={`Bukti ${String(a.po)}`} className="h-10 w-16 object-cover" /></button>}</td>
                         <td className="td font-semibold text-navy-900">{fmtRupiah(Math.max(0, num(a.amt) - num(a.pay1) - num(a.pay2)))}</td>
                         <td className="td text-steel-600">{fmtTanggal(String(a.due ?? ""))}</td>
                         <td className="td text-steel-600">{String(a.pph ?? "2%")}</td>
@@ -3384,7 +3397,10 @@ export default function Finance() {
                 <div className="ml-auto flex gap-2">
                   <AsyncButton className="btn-secondary text-xs" onAction={exportEfaktur}>{S.exportEfaktur}</AsyncButton>
                   <AsyncButton className="btn-secondary text-xs" onAction={exportSpt}>{S.exportSpt}</AsyncButton>
-                  <AsyncButton className="btn-primary text-xs" disabled={taxLocked} onAction={markTaxLapor}>
+                  <AsyncButton className="btn-primary text-xs" disabled={taxLocked} onAction={async () => {
+                    if (!activeTax) { toast(S.pickPeriodFirst, "info"); return; }
+                    setConfirmLapor(true);
+                  }}>
                     {taxLocked ? S.alreadyReported : S.markReported}
                   </AsyncButton>
                 </div>
@@ -3827,6 +3843,24 @@ export default function Finance() {
       {/* Hapus invoice: hanya Draft / Ditolak. Invoice yang sudah terbit harus
           di-void atau dilunasi - menghapusnya menghapus piutang yang sudah
           diakui. Backend juga memblokir bila payables.invoice merujuk. */}
+      <ConfirmModal
+        open={confirmLapor}
+        title={locale === "en"
+          ? `File ${activeTax ? String(activeTax.period) : ""} as SPT?`
+          : `Tandai periode ${activeTax ? String(activeTax.period) : ""} sebagai Lapor?`}
+        desc={locale === "en"
+          ? `PPN payable ${fmtRupiah(Math.max(0, num(taxCalc.ppnKeluar) - num(taxCalc.ppnMasuk)))}, PPh23 ${fmtRupiah(Math.round(num(taxCalc.pph23)))}, PPh21 ${fmtRupiah(Math.round(num(taxCalc.pph21)))} will be locked and published as tax payables. Once filed, the period can no longer be edited.`
+          : `PPN terutang ${fmtRupiah(Math.max(0, num(taxCalc.ppnKeluar) - num(taxCalc.ppnMasuk)))}, PPh23 ${fmtRupiah(Math.round(num(taxCalc.pph23)))}, PPh21 ${fmtRupiah(Math.round(num(taxCalc.pph21)))} akan dikunci dan terbit sebagai hutang pajak. Setelah ditandai Lapor, angka periode ini tidak bisa diedit lagi.`}
+        confirmLabel={locale === "en" ? "File as SPT" : "Tandai Lapor"}
+        danger
+        confirmDisabled={!activeTax || taxLocked}
+        onCancel={() => setConfirmLapor(false)}
+        onConfirm={async () => {
+          setConfirmLapor(false);
+          await markTaxLapor();
+        }}
+      />
+
       <ConfirmModal
         open={delTax !== null}
         title={delTax ? (locale === "en" ? `Delete tax period ${String(delTax.period)}?` : `Hapus periode pajak ${String(delTax.period)}?`) : ""}
@@ -4339,7 +4373,7 @@ export default function Finance() {
                 <div className="rounded-xl border border-steel-200 p-3">
                   <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-steel-500">{S.detProof}</p>
                   {bukti ? (
-                    <button type="button" onClick={() => window.open(bukti, "_blank")} className="block w-full overflow-hidden rounded-lg border border-steel-200" title={S.detOpenFull}>
+                    <button type="button" onClick={() => void openProof(bukti)} className="block w-full overflow-hidden rounded-lg border border-steel-200" title={S.detOpenFull}>
                       <SecureImg src={bukti} alt={`Bukti ${invDetail.id}`} className="h-44 w-full object-contain bg-steel-50" />
                     </button>
                   ) : <p className="text-xs italic text-steel-400">{S.detNoProof}</p>}

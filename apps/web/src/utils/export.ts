@@ -143,6 +143,11 @@ export interface ExportPDFOptions {
    animasi permanen di tiap chart, jadi grafik selalu diam. */
 let pdfExporting = false;
 
+/* True selama satu proses ekspor sedang berjalan. exportPDF memeriksa flag ini
+   di awal dan menolak panggilan kedua - dua ekspor paralel saling merusak
+   karena sama-sama menulis style elemen yang sama. */
+let exportBusy = false;
+
 /* Nilai untuk prop isAnimationActive recharts: aktif normal, mati saat export. */
 export function chartAnim(): boolean {
   return !pdfExporting;
@@ -225,78 +230,96 @@ function captureElement(el: HTMLElement, scale: number): Promise<HTMLCanvasEleme
  *  Elemen boleh tersembunyi off-screen (section cetak khusus) maupun konten
  *  hidup; keduanya dipindahkan ke layar selama capture lalu dipulihkan. */
 export async function exportPDF(elementId: string, filename: string, options: ExportPDFOptions = {}): Promise<void> {
+  /* Mutex. Dua ekspor yang berjalan bersamaan saling merusak: yang pertama
+     mengubah style elemen (position fixed, lebar 1000px, seluruh area scroll
+     dibuka) dan menukar SVG recharts jadi <img>. Yang kedua yang mulai di tengah
+     proses itu memotret elemen yang sudah dibongkar, lalu ketika yang pertama
+     selesai keduanya mengembalikan style - hasil akhirnya PDF kosong atau
+     halaman hilang. Satu ekspor berjalan; klik kedua ditolak dengan pesan
+     yang jelas, bukan diam-diam menghasilkan berkas rusak. */
+  if (exportBusy) {
+    throw new Error("Ekspor PDF sedang berjalan - tunggu proses sebelumnya selesai.");
+  }
   const el = document.getElementById(elementId);
   if (!el) throw new Error(`Elemen #${elementId} tidak ditemukan`);
 
+  exportBusy = true;
   const { charts = true, orientation = "landscape", format = "a4", marginMm = 10, scale = 2 } = options;
 
-  /* Bekukan animasi chart selama seluruh proses capture - berlaku juga saat
-     options.charts=false, karena html2canvas tetap memotret elemen yang
-     berisi SVG. Flag ini dibaca chartAnim() oleh tiap series recharts. */
-  pdfExporting = true;
-  await new Promise((r) => setTimeout(r, 60));
-
-  /* 1. Buka semua area scroll supaya konten panjang tidak terpotong. */
   const opened: HTMLElement[] = [];
-  el.querySelectorAll<HTMLElement>("*").forEach((n) => {
-    const cs = getComputedStyle(n);
-    const scrollable = cs.overflowY === "auto" || cs.overflowY === "scroll"
-      || cs.overflowX === "auto" || cs.overflowX === "scroll" || cs.maxHeight !== "none";
-    if (scrollable) {
-      opened.push(n);
-      n.dataset.pdfPrevMaxh = n.style.maxHeight;
-      n.dataset.pdfPrevOvy = n.style.overflowY;
-      n.style.maxHeight = "none";
-      n.style.overflow = "visible";
-    }
-  });
-
-  /* 1b. Sembunyikan kontrol UI (input cari, tombol) saat capture.
-     Versi lama ikut memotretnya sehingga dokumen resmi memuat kotak berisi
-     kata kunci/URL yang tidak profesional. */
   const hidden: HTMLElement[] = [];
-  el.querySelectorAll<HTMLElement>("[data-export-hide]").forEach((n) => {
-    hidden.push(n);
-    n.dataset.pdfPrevDisplay = n.style.display;
-    n.style.display = "none";
-  });
-  const prevMaxh = el.style.maxHeight;
-  const prevOvy = el.style.overflow;
-  el.style.maxHeight = "none";
-  el.style.overflow = "visible";
-
-  /* 2. SVG recharts -> <img> supaya chart benar-benar masuk PDF. */
   const imgSwaps: { parent: Node; next: Node | null; img: HTMLImageElement }[] = [];
-  if (charts) {
-    const svgs = Array.from(el.querySelectorAll<SVGElement>("svg"));
-    for (const svg of svgs) {
-      const img = await svgToImg(svg);
-      if (!img) continue;
-      imgSwaps.push({ parent: svg.parentNode as Node, next: svg.nextSibling, img });
-      svg.parentNode?.replaceChild(img, svg);
+  const prevEl = {
+    position: el.style.position,
+    left: el.style.left,
+    top: el.style.top,
+    zIndex: el.style.zIndex,
+    background: el.style.background,
+    width: el.style.width,
+    maxHeight: el.style.maxHeight,
+    overflow: el.style.overflow,
+  };
+
+  /* Flag ini dibaca chartAnim() oleh tiap series recharts: chart harus diam
+     selama html2canvas memotret, atau garisnya terpotong. Berlaku juga saat
+     options.charts=false karena html2canvas tetap memotret elemen ber-SVG. */
+  pdfExporting = true;
+
+  try {
+    await new Promise((r) => setTimeout(r, 60));
+
+    /* 1. Buka semua area scroll supaya konten panjang tidak terpotong. */
+    el.querySelectorAll<HTMLElement>("*").forEach((n) => {
+      const cs = getComputedStyle(n);
+      const scrollable = cs.overflowY === "auto" || cs.overflowY === "scroll"
+        || cs.overflowX === "auto" || cs.overflowX === "scroll" || cs.maxHeight !== "none";
+      if (scrollable) {
+        opened.push(n);
+        n.dataset.pdfPrevMaxh = n.style.maxHeight;
+        n.dataset.pdfPrevOvy = n.style.overflowY;
+        n.style.maxHeight = "none";
+        n.style.overflow = "visible";
+      }
+    });
+
+    /* 1b. Sembunyikan kontrol UI (input cari, tombol) saat capture, supaya
+       dokumen resmi tidak memuat kotak berisi kata kunci/URL. */
+    el.querySelectorAll<HTMLElement>("[data-export-hide]").forEach((n) => {
+      hidden.push(n);
+      n.dataset.pdfPrevDisplay = n.style.display;
+      n.style.display = "none";
+    });
+    el.style.maxHeight = "none";
+    el.style.overflow = "visible";
+
+    /* 2. SVG recharts -> <img> supaya chart benar-benar masuk PDF. */
+    if (charts) {
+      const svgs = Array.from(el.querySelectorAll<SVGElement>("svg"));
+      for (const svg of svgs) {
+        const img = await svgToImg(svg);
+        if (!img) continue;
+        imgSwaps.push({ parent: svg.parentNode as Node, next: svg.nextSibling, img });
+        svg.parentNode?.replaceChild(img, svg);
+      }
     }
-  }
 
-  /* 3. Pindahkan ke layar agar html2canvas tidak menghasilkan halaman kosong. */
-  const prev = { position: el.style.position, left: el.style.left, top: el.style.top, zIndex: el.style.zIndex, background: el.style.background, width: el.style.width };
-  el.style.position = "fixed";
-  el.style.left = "0";
-  el.style.top = "0";
-  el.style.zIndex = "99999";
-  el.style.background = "#ffffff";
-  el.style.width = "1000px";
-  // Beri waktu font & layout settle sebelum raster.
-  try {
-    await document.fonts.ready;
-  } catch {
-    /* abaikan - font siap atau tidak, capture tetap jalan */
-  }
-  await new Promise((r) => requestAnimationFrame(() => r(undefined)));
-  await new Promise((r) => setTimeout(r, 120));
+    /* 3. Pindahkan ke layar agar html2canvas tidak menghasilkan halaman kosong. */
+    el.style.position = "fixed";
+    el.style.left = "0";
+    el.style.top = "0";
+    el.style.zIndex = "99999";
+    el.style.background = "#ffffff";
+    el.style.width = "1000px";
+    try {
+      await document.fonts.ready;
+    } catch {
+      /* abaikan - font siap atau tidak, capture tetap jalan */
+    }
+    await new Promise((r) => requestAnimationFrame(() => r(undefined)));
+    await new Promise((r) => setTimeout(r, 120));
 
-  try {
     /* 4. Raster penuh. Skala diturunkan bila tinggi konten melewati batas
-          kanvas browser - inilah akar bug "PDF blank" pada laporan panjang. */
+         kanvas browser - inilah akar bug "PDF blank" pada laporan panjang. */
     const heightPx = Math.max(1, el.scrollHeight);
     const safeScale = Math.max(0.5, Math.min(scale, MAX_CANVAS_SIDE / heightPx));
     let canvas = await captureElement(el, safeScale);
@@ -308,7 +331,7 @@ export async function exportPDF(elementId: string, filename: string, options: Ex
     }
 
     /* 5. Susun halaman: potong kanvas setinggi satu halaman isi, geser titik
-          potong ke celah bersih terdekat agar baris/teks tidak terpenggal. */
+         potong ke celah bersih terdekat agar baris/teks tidak terpenggal. */
     const pdf = new jsPDF({ unit: "mm", format, orientation, compress: true });
     const pageW = pdf.internal.pageSize.getWidth();
     const pageH = pdf.internal.pageSize.getHeight();
@@ -320,13 +343,17 @@ export async function exportPDF(elementId: string, filename: string, options: Ex
     if (!ctx) throw new Error("Canvas 2D tidak didukung browser ini");
     const slices = planSlices(ctx, canvas, pageSlicePx);
 
-    slices.forEach((s, i) => {
+    for (let i = 0; i < slices.length; i += 1) {
+      const s = slices[i];
       if (i > 0) pdf.addPage();
       const slice = document.createElement("canvas");
       slice.width = canvas.width;
       slice.height = s.h;
       const sctx = slice.getContext("2d");
-      if (!sctx) return;
+      /* Versi lama memakai `return` di dalam forEach, jadi halaman ini
+         dilewati tanpa satu pesan pun dan PDF terakhir kehilangan isi.
+         Sekarang kegagalan kanvas menghentikan ekspor dengan pesan. */
+      if (!sctx) throw new Error("Kanvas 2D tidak tersedia saat menyusun halaman PDF");
       sctx.fillStyle = "#ffffff";
       sctx.fillRect(0, 0, slice.width, slice.height);
       sctx.drawImage(canvas, 0, s.y, canvas.width, s.h, 0, 0, canvas.width, s.h);
@@ -335,13 +362,18 @@ export async function exportPDF(elementId: string, filename: string, options: Ex
       pdf.setFontSize(8);
       pdf.setTextColor(120, 130, 140);
       pdf.text(`Halaman ${i + 1} dari ${slices.length}`, pageW / 2, pageH - marginMm / 2, { align: "center" });
-    });
+    }
 
     /* 6. Unduh file langsung (bukan preview / tab baru). */
     pdf.save(`${filename}.pdf`);
   } finally {
+    /* Pemulihan ini WAJIB menutup seluruh fungsi, termasuk langkah 1-3.
+       Sebelumnya langkah 1-3 berada di luar try, sehingga satu kegagalan di
+       sana meninggalkan pdfExporting=true selamanya: seluruh grafik di
+       aplikasi ikut berhenti beranimasi sampai halaman dimuat ulang, dan
+       style elemen tetap terkunci. */
     pdfExporting = false;
-    /* 7. Kembalikan semua style & gambar. */
+    exportBusy = false;
     imgSwaps.forEach(({ parent, next, img }) => {
       if (next && next.parentNode === parent) parent.replaceChild(next, img);
       else parent.removeChild(img);
@@ -356,14 +388,14 @@ export async function exportPDF(elementId: string, filename: string, options: Ex
       n.style.display = n.dataset.pdfPrevDisplay ?? "";
       delete n.dataset.pdfPrevDisplay;
     });
-    el.style.maxHeight = prevMaxh;
-    el.style.overflow = prevOvy;
-    el.style.position = prev.position;
-    el.style.left = prev.left;
-    el.style.top = prev.top;
-    el.style.zIndex = prev.zIndex;
-    el.style.background = prev.background;
-    el.style.width = prev.width;
+    el.style.position = prevEl.position;
+    el.style.left = prevEl.left;
+    el.style.top = prevEl.top;
+    el.style.zIndex = prevEl.zIndex;
+    el.style.background = prevEl.background;
+    el.style.width = prevEl.width;
+    el.style.maxHeight = prevEl.maxHeight;
+    el.style.overflow = prevEl.overflow;
   }
 }
 

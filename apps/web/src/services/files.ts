@@ -92,6 +92,32 @@ function clickDownload(href: string, name: string): void {
   a.remove();
 }
 
+/** Buka berkas di tab baru SEDANG tetap membawa JWT.
+ *
+ *  `window.open(url)` biasa gagal untuk berkas yang dilindungi backend:
+ *  request tab baru tidak ikut membawa header Authorization, jadi server
+ *  membalas 401 dan pengguna melihat halaman login, bukan dokumennya.
+ *
+ *  Popup harus dibuka sinkron di dalam handler klik, kalau ditunggu sampai
+ *  fetch selesai browser akan memblokirnya. Jadi tabnya dibuka lebih dulu
+ *  (kosong), lalu lokasinya diisi object URL begitu byte asli tiba.
+ *  Gagal fetch → tab ditutup dan jaring.open dipanggil untuk URL asli. */
+export async function openFileUrl(url: string): Promise<void> {
+  const abs = toAbsoluteUrl(url);
+  if (!abs) throw new Error("URL berkas kosong.");
+  const tab = window.open("", "_blank", "noopener,noreferrer");
+  if (!tab) throw new Error("Pop-up diblokir browser - izinkan pop-up untuk situs ini.");
+  try {
+    const blob = await fetchFileBlob(abs);
+    const obj = URL.createObjectURL(blob);
+    tab.location.replace(obj);
+    /* Beri peramban waktu membaca blob sebelum dicabut. */
+    window.setTimeout(() => URL.revokeObjectURL(obj), 60000);
+  } catch {
+    tab.location.replace(abs);
+  }
+}
+
 /** Unduh berkas dengan format PERSIS seperti diunggah: byte asli diambil via
  *  fetch (ber-JWT bila backend), disimpan dengan nama + ekstensi aslinya.
  *  Gagal fetch (mis. URL eksternal tanpa CORS) → fallback tautan langsung. */
