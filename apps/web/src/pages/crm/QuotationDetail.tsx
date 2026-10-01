@@ -3,8 +3,8 @@ import { Link, useNavigate, useParams } from "react-router-dom";
 import { ArrowLeft, Send } from "lucide-react";
 import { Card, CardHeader, PageHeader, StatusBadge, Badge, Modal, Field, FormGrid, EmptyState, toast,
   NumInput,
+  AsyncButton,
 } from "../../components/ui";
-import { useBusy } from "../../components/ui";
 import { useStore } from "../../data/store";
 import type { StoreItem } from "../../data/store";
 import { fmtRupiah, fmtTanggal, todayISO } from "../../utils/format";
@@ -39,7 +39,6 @@ function initialLines(q: StoreItem): QLine[] {
 }
 
 export default function QuotationDetail() {
-  const busy = useBusy();
   const { id } = useParams();
   const navigate = useNavigate();
   const { data, add, update, log } = useStore();
@@ -392,7 +391,7 @@ export default function QuotationDetail() {
         onClose={() => setConvertOpen(false)}
         title={S.convertTitle.replace("{n}", quotation.id)}
         subtitle={S.convertSubQd}
-        footer={<><button className="btn-secondary" onClick={() => setConvertOpen(false)}>{S.cancelBtn}</button><button className="btn-primary" onClick={() => void busy.run("confirmConvert", confirmConvert)} disabled={busy.isBusy("confirmConvert")}>{S.convertConfirmQd}</button></>}
+        footer={<><button className="btn-secondary" onClick={() => setConvertOpen(false)}>{S.cancelBtn}</button><AsyncButton className="btn-primary" onAction={confirmConvert}>{S.convertConfirmQd}</AsyncButton></>}
       >
         <div className="space-y-3">
           <p className="text-sm text-steel-600">{S.convertBodyQd}</p>

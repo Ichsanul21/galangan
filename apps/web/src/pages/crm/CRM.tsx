@@ -6,7 +6,7 @@ import { Card, CardHeader, PageHeader, Badge, KpiCard, Tabs, Donut, Modal, Field
 } from "../../components/ui";
 import ClientModal from "../../components/ClientModal";
 import type { SortState } from "../../components/ui";
-import { useBusy } from "../../components/ui";
+import { AsyncButton } from "../../components/ui";
 import { useStore } from "../../data/store";
 import { useModuleSync } from "../../data/useModuleSync";
 import { findUsages } from "../../utils/usages";
@@ -67,7 +67,6 @@ function umurHari(dateStr: string | null | undefined): number | null {
 const CRM_COLS: CollectionKey[] = ["activities", "clientPos", "clients", "communications", "contracts", "employees", "projects", "quotations", "requests"];
 
 export default function CRM() {
-  const busy = useBusy();
   const { data, add, update, remove, log, branch, inBranch } = useStore();
   const { locale } = useT();
   const S = n_crm[locale];
@@ -1087,7 +1086,7 @@ export default function CRM() {
       </Card>
 
       <Modal open={showQ} onClose={() => setShowQ(false)} title={S.newQuotation} subtitle={S.newQuoteSub}
-        wide footer={<><button className="btn-secondary" onClick={() => setShowQ(false)}>{S.cancelBtn}</button><button className="btn-primary" onClick={() => void busy.run("saveQuotation", saveQuotation)} disabled={busy.isBusy("saveQuotation")}>{S.saveQuoteBtn}</button></>}>
+        wide footer={<><button className="btn-secondary" onClick={() => setShowQ(false)}>{S.cancelBtn}</button><AsyncButton className="btn-primary" onAction={saveQuotation}>{S.saveQuoteBtn}</AsyncButton></>}>
         <div className="space-y-3">
           <FormGrid>
             <Field label={S.clientLabel}>
@@ -1164,7 +1163,7 @@ export default function CRM() {
         onClose={() => setConvertTarget(null)}
         title={S.convertTitle.replace("{n}", convertTarget?.id ?? "")}
         subtitle={S.convertSubCrm}
-        footer={<><button className="btn-secondary" onClick={() => setConvertTarget(null)}>{S.cancelBtn}</button><button className="btn-primary" onClick={() => void busy.run("confirmConvert", confirmConvert)} disabled={busy.isBusy("confirmConvert")}>{S.convertConfirmCrm}</button></>}
+        footer={<><button className="btn-secondary" onClick={() => setConvertTarget(null)}>{S.cancelBtn}</button><AsyncButton className="btn-primary" onAction={confirmConvert}>{S.convertConfirmCrm}</AsyncButton></>}
       >
         <div className="space-y-3">
           <p className="text-sm text-steel-600">{S.convertBodyCrm}</p>

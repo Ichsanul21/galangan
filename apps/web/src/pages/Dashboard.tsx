@@ -48,7 +48,7 @@ import {
   Field,
   toast,
   NumInput,
-  useBusy,
+  AsyncButton,
 } from "../components/ui";
 import { useStore } from "../data/store";
 import type { StoreItem, CollectionKey } from "../data/store";
@@ -106,7 +106,7 @@ function loadTargets(): Record<string, BranchTarget> {
 const DB_COLS: CollectionKey[] = ["activities", "drydocks", "employees", "incidents", "inventory", "invoices", "ncr", "projects", "quotations", "vessels"];
 
 export default function Dashboard() {
-  const busy = useBusy();
+
   const { data, wbsFor, branch } = useStore();
   /* Fetch per-batch modul (pengganti resync penuh). */
   useModuleSync(DB_COLS);
@@ -167,15 +167,13 @@ export default function Dashboard() {
     projects.find((p) => p.status !== "Selesai" && scopeNames(p.scope).includes("Sea Trial"))?.vessel ?? "-";
 
   /* Tombol ekspor = PDF ringkas portofolio via section cetak tersembunyi (tabel KPI, tanpa chart blank). */
-  const exportSummary = () => {
-    void busy.run("export", async () => {
-      try {
-        await exportPDF("dashboard-pdf", `Ringkasan-Portofolio-${todayISO()}`);
-        toast(S.tPortfolioPdfExported);
-      } catch {
-        toast("Ekspor PDF gagal", "info");
-      }
-    });
+  const exportSummary = async () => {
+    try {
+      await exportPDF("dashboard-pdf", `Ringkasan-Portofolio-${todayISO()}`);
+      toast(S.tPortfolioPdfExported);
+    } catch {
+      toast("Ekspor PDF gagal", "info");
+    }
   };
 
   const tgt = targets[branch] ?? { revenue: 0, projects: 0 };
@@ -347,9 +345,9 @@ export default function Dashboard() {
               <button className="btn-secondary" onClick={togglePresent} title={isFs ? S.exitFullscreen : S.presentBtn}>
                 {isFs ? <Minimize className="h-4 w-4" /> : <Maximize className="h-4 w-4" />} {isFs ? S.exitFullscreen : S.presentBtn}
               </button>
-              <button className="btn-secondary" disabled={busy.isBusy("export")} onClick={exportSummary}>
+              <AsyncButton className="btn-secondary" onAction={exportSummary}>
                 <Download className="h-4 w-4" /> {S.exportBtn}
-              </button>
+              </AsyncButton>
               <button className="btn-primary-gradient" onClick={() => navigate("/proyek?create=1&alert=proyek")}>
                 <Plus className="h-4 w-4" /> {S.newProjectBtn}
               </button>

@@ -1002,6 +1002,122 @@ export function usePager(total: number, defaultSize = 100): {
   return { page: safe, size, pages, slice, reset, go, bar };
 }
 
+/* ============ S E R V E R   P A G E R ============ */
+
+/** Satu halaman data dari backend (lihat repositories.listPaged). */
+export interface ServerPage<T> {
+  rows: T[];
+  total: number;
+  page: number;
+  size: number;
+  pages: number;
+}
+
+/** Pager server-side dengan tampilan bilah yang sama seperti usePager.
+ *  `load(page, size)` menutup filter saat ini (boleh closure biasa - hook
+ *  memanggilnya lewat ref sehingga identitas closure tak memicu fetch ulang).
+ *  `filterKey` (mis. JSON.stringify(filter)) me-reset ke halaman 1 + fetch
+ *  ulang; `enabled=false` mematikan fetch (untuk mode ganda lokal/server).
+ *  Request basi diabaikan via token monotonik + flag cancel. */
+export function useServerPager<T>(
+  load: (page: number, size: number) => Promise<ServerPage<T>>,
+  filterKey: string,
+  defaultSize = 25,
+  enabled = true,
+): {
+  page: number;
+  size: number;
+  pages: number;
+  total: number;
+  rows: T[];
+  loading: boolean;
+  go: (p: number) => void;
+  bar: ReactNode;
+} {
+  const [page, setPage] = useState(1);
+  const [size, setSize] = useState(defaultSize);
+  const [total, setTotal] = useState(0);
+  const [rows, setRows] = useState<T[]>([]);
+  const [loading, setLoading] = useState(false);
+  const reqRef = useRef(0);
+  const loadRef = useRef(load);
+  loadRef.current = load;
+
+  /* Filter berubah → kembali ke halaman 1 sebelum fetch berikutnya. */
+  const [fk, setFk] = useState(filterKey);
+  if (enabled && fk !== filterKey) {
+    setFk(filterKey);
+    if (page !== 1) setPage(1);
+  }
+
+  const pages = Math.max(1, Math.ceil(total / size));
+  const safe = Math.min(Math.max(1, page), pages);
+
+  useEffect(() => {
+    if (!enabled) {
+      setRows([]);
+      setTotal(0);
+      setLoading(false);
+      return;
+    }
+    let cancelled = false;
+    const id = ++reqRef.current;
+    setLoading(true);
+    void loadRef.current(safe, size)
+      .then((res) => {
+        if (!cancelled && id === reqRef.current) {
+          setRows(Array.isArray(res.rows) ? res.rows : []);
+          setTotal(typeof res.total === "number" ? res.total : 0);
+        }
+      })
+      .catch(() => {
+        if (!cancelled && id === reqRef.current) {
+          setRows([]);
+          toast("Gagal memuat data dari server", "info");
+        }
+      })
+      .finally(() => {
+        if (!cancelled && id === reqRef.current) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [enabled, safe, size, filterKey]);
+
+  const go = (p: number) => setPage(Math.min(Math.max(1, p), pages));
+  const bar = (
+    <div className="flex flex-wrap items-center gap-2 py-2 text-xs text-steel-500">
+      <span>
+        {loading
+          ? "Memuat…"
+          : total === 0
+            ? "0 dari 0"
+            : `${(safe - 1) * size + 1}-${Math.min(safe * size, total)} dari ${total}`}
+      </span>
+      {loading && <Loader2 className="h-3.5 w-3.5 animate-spin text-ocean-500" aria-hidden />}
+      <span className="ml-auto flex items-center gap-1">
+        <button className="btn-secondary px-2 py-1" disabled={loading || safe <= 1} onClick={() => go(1)}>«</button>
+        <button className="btn-secondary px-2 py-1" disabled={loading || safe <= 1} onClick={() => go(safe - 1)}>‹</button>
+        <span className="px-1 font-semibold text-navy-900">{safe} / {pages}</span>
+        <button className="btn-secondary px-2 py-1" disabled={loading || safe >= pages} onClick={() => go(safe + 1)}>›</button>
+        <button className="btn-secondary px-2 py-1" disabled={loading || safe >= pages} onClick={() => go(pages)}>»</button>
+        <select
+          className="input ml-1 !w-auto px-1.5 py-1 text-xs"
+          value={size}
+          aria-label="Baris per halaman"
+          disabled={loading}
+          onChange={(e) => { setSize(Number(e.target.value)); setPage(1); }}
+        >
+          {[10, 25, 50, 100, 200].map((n) => (
+            <option key={n} value={n}>{n}/hal</option>
+          ))}
+        </select>
+      </span>
+    </div>
+  );
+  return { page: safe, size, pages, total, rows, loading, go, bar };
+}
+
 /* ============ N U M I N P U T ============ */
 
 /** Buang nol di depan agar tidak nyangkut: "0" → "" (user ketik ulang bersih),
@@ -1103,10 +1219,12 @@ export function SecureImg({
     return <Avatar name={name ?? alt} className={className} />;
   }
   if (failed) {
+    /* Tanpa tautan tab-baru: pratinjau/unduh file lewat DocumentPreviewCell
+       di lokasi pemakaian; thumb dekoratif cukup beri status gagal. */
     return (
-      <a href={raw} target="_blank" rel="noreferrer" title={raw} className={`inline-flex items-center justify-center rounded-xl border border-steel-200 bg-surface text-xs font-semibold text-ocean-600 underline ${className}`}>
-        Lihat file
-      </a>
+      <span title={raw} className={`inline-flex items-center justify-center rounded-xl border border-steel-200 bg-surface px-2 py-1 text-xs font-medium text-steel-400 ${className}`}>
+        File tak dapat dimuat
+      </span>
     );
   }
   const shown = obj ?? (/^(blob:|data:|https?:)/i.test(raw) ? raw : raw);

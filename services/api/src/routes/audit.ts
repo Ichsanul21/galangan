@@ -1,6 +1,6 @@
 import type { FastifyInstance } from "fastify";
 import { requireAuth } from "../auth.js";
-import { q } from "../db.js";
+import { getDialect, q } from "../db.js";
 import { ok } from "../envelope.js";
 
 interface AuditRow {
@@ -42,6 +42,20 @@ export function registerAuditRoutes(app: FastifyInstance): void {
     if (query.table !== undefined && query.table !== "") {
       where.push("table_name = ?");
       params.push(query.table);
+    }
+    /* Cari substring di aktor/aksi/row_id (pola sama seperti crud q). */
+    if (query.q !== undefined && query.q !== "") {
+      where.push(
+        getDialect() === "mysql"
+          ? "(LOCATE(?, actor) > 0 OR LOCATE(?, action) > 0 OR LOCATE(?, row_id) > 0)"
+          : "(instr(actor, ?) > 0 OR instr(action, ?) > 0 OR instr(row_id, ?) > 0)",
+      );
+      params.push(query.q, query.q, query.q);
+    }
+    /* created_at ISO (YYYY-MM-DDTHH:…) - cocokkan 10 karakter pertama. */
+    if (query.date !== undefined && query.date !== "") {
+      where.push(getDialect() === "mysql" ? "LEFT(created_at, 10) = ?" : "substr(created_at, 1, 10) = ?");
+      params.push(query.date);
     }
     const limit = parseLimit(query.limit);
     const offset = parseOffset(query.offset);

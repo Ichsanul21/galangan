@@ -34,10 +34,9 @@ import {
 } from "recharts";
 import { QRCodeSVG } from "qrcode.react";
 import { Card, CardHeader, PageHeader, Badge, KpiCard, Tabs, ChartTooltip, Modal, Field, FormGrid, toast, EmptyState, ProgressBar, SortTh, toggleSort, sortRows, usePager, useDebouncedValue, ConfirmModal,
-  NumInput, SecureImg,
+  NumInput, AsyncButton, SecureImg,
 } from "../../components/ui";
 import type { SortState } from "../../components/ui";
-import { useBusy } from "../../components/ui";
 import { useStore, type StoreItem } from "../../data/store";
 import { findUsages } from "../../utils/usages";
 import { sameName } from "../../utils/names";
@@ -332,7 +331,6 @@ function agingBucket(days: number): string {
 const AGING_BUCKETS = ["0-30 hari", "31-90 hari", "91-180 hari", ">180 hari", "Belum ada barang masuk"];
 
 export default function Inventory() {
-  const busy = useBusy();
   const { locale } = useT();
   const S = n_inv[locale];
   const { data, add, update, remove, log, branch, resync } = useStore();
@@ -1552,7 +1550,7 @@ export default function Inventory() {
         icon={<Warehouse className="h-5 w-5" />}
         actions={
           <div className="flex items-center gap-2">
-            <button className="btn-secondary" title={locale === "en" ? "Reload data from backend" : "Muat ulang data dari backend"} onClick={() => void busy.run("resync", async () => { await resync(); toast(locale === "en" ? "Data refreshed" : "Data dimuat ulang"); })} disabled={busy.isBusy("resync")}><RefreshCw className="h-4 w-4" /> {locale === "en" ? "Refresh" : "Muat ulang"}</button>
+            <AsyncButton className="btn-secondary" title={locale === "en" ? "Reload data from backend" : "Muat ulang data dari backend"} onAction={async () => { await resync(); toast(locale === "en" ? "Data refreshed" : "Data dimuat ulang"); }}><RefreshCw className="h-4 w-4" /> {locale === "en" ? "Refresh" : "Muat ulang"}</AsyncButton>
             <button className="btn-secondary" onClick={openPick}><ListChecks className="h-4 w-4" /> {S.pickTitle}</button>
             <button className="btn-primary-gradient" onClick={() => { setForm(emptyForm); setShowAdd(true); }}><Plus className="h-4 w-4" /> {S.btnNew}</button>
           </div>
@@ -2263,7 +2261,7 @@ export default function Inventory() {
       {/* Modal tambah/ubah material */}
       <Modal open={showAdd || editing !== null} onClose={() => { setShowAdd(false); setEditing(null); }}
         title={editing ? S.editTitle.replace("{n}", editing.id) : S.btnNew} subtitle={S.modalSavedSub}
-        wide footer={<><button className="btn-secondary" onClick={() => { setShowAdd(false); setEditing(null); }}>{S.cancelBtn}</button><button className="btn-primary" onClick={() => void busy.run("save", save)} disabled={busy.isBusy("save")}>{S.saveBtn}</button></>}>
+        wide footer={<><button className="btn-secondary" onClick={() => { setShowAdd(false); setEditing(null); }}>{S.cancelBtn}</button><AsyncButton className="btn-primary" onAction={save}>{S.saveBtn}</AsyncButton></>}>
         <div className="space-y-3">
           <FormGrid>
             <Field label={S.nameLbl}><input className="input" value={form.name} onChange={(e) => setF("name", e.target.value)} placeholder={S.phName} /></Field>
@@ -2374,7 +2372,7 @@ export default function Inventory() {
       {/* Modal Barang Masuk / Barang Keluar */}
       <Modal open={moveTarget !== null} onClose={closeMove} title={(moveKind === "in" ? S.moveTitleIn : S.moveTitleOut).replace("{n}", moveTarget?.name ?? "")}
         subtitle={moveFresh ? S.moveSub.replace("{a}", fmtJumlah(Number(moveFresh.stock))).replace("{b}", `${fmtJumlah(availOf(moveFresh))} ${moveFresh.unit}${hasUom2(moveFresh) ? ` (≈ ${fmtJumlah(qtyInUom2(moveFresh))} ${uom2Of(moveFresh)})` : ""}`) : ""}
-        footer={<><button className="btn-secondary" onClick={closeMove}>{S.cancelBtn}</button><button className="btn-primary" onClick={() => void busy.run("saveMove", saveMove)} disabled={busy.isBusy("saveMove")}>{S.btnSaveTx}</button></>}>
+        footer={<><button className="btn-secondary" onClick={closeMove}>{S.cancelBtn}</button><AsyncButton className="btn-primary" onAction={saveMove}>{S.btnSaveTx}</AsyncButton></>}>
         <div className="space-y-3">
           <Field label={S.txTypeLbl}>
             <div className="flex gap-2">
@@ -2458,7 +2456,7 @@ export default function Inventory() {
 
       {/* Modal opname */}
       <Modal open={showOpname} onClose={() => setShowOpname(false)} title={S.opnameT} subtitle={S.opSub}
-        footer={<><button className="btn-secondary" onClick={() => setShowOpname(false)}>{S.cancelBtn}</button><button className="btn-primary" onClick={() => void busy.run("saveOpname", saveOpname)} disabled={busy.isBusy("saveOpname")}>{S.btnSaveOp}</button></>}>
+        footer={<><button className="btn-secondary" onClick={() => setShowOpname(false)}>{S.cancelBtn}</button><AsyncButton className="btn-primary" onAction={saveOpname}>{S.btnSaveOp}</AsyncButton></>}>
         <div className="space-y-3">
           <Field label={S.itemLbl}>
             <select className="input" value={opItem} onChange={(e) => setOpItem(e.target.value)}>
@@ -2479,7 +2477,7 @@ export default function Inventory() {
 
       {/* Modal transfer gudang */}
       <Modal open={showTransfer} onClose={() => setShowTransfer(false)} title={S.btnTransfer} subtitle={S.trSub}
-        footer={<><button className="btn-secondary" onClick={() => setShowTransfer(false)}>{S.cancelBtn}</button><button className="btn-primary" onClick={() => void busy.run("saveTransfer", saveTransfer)} disabled={busy.isBusy("saveTransfer")}>{S.btnSaveTr}</button></>}>
+        footer={<><button className="btn-secondary" onClick={() => setShowTransfer(false)}>{S.cancelBtn}</button><AsyncButton className="btn-primary" onAction={saveTransfer}>{S.btnSaveTr}</AsyncButton></>}>
         <div className="space-y-3">
           <Field label={S.itemLbl}>
             <select className="input" value={trItem} onChange={(e) => setTrItem(e.target.value)}>
@@ -2699,7 +2697,7 @@ export default function Inventory() {
       <Modal open={moveEdit !== null} onClose={() => setMoveEdit(null)}
         title={moveEdit ? (locale === "en" ? `Edit movement ${moveEdit.id}` : `Ubah movement ${moveEdit.id}`) : ""}
         subtitle={locale === "en" ? "Info only - stock is NOT recalculated" : "Info saja - stok TIDAK dihitung ulang"}
-        footer={<><button className="btn-secondary" onClick={() => setMoveEdit(null)}>{S.cancelBtn}</button><button className="btn-primary" onClick={() => void busy.run("saveMoveEdit", saveMoveEdit)} disabled={busy.isBusy("saveMoveEdit")}>{S.saveBtn}</button></>}>
+        footer={<><button className="btn-secondary" onClick={() => setMoveEdit(null)}>{S.cancelBtn}</button><AsyncButton className="btn-primary" onAction={saveMoveEdit}>{S.saveBtn}</AsyncButton></>}>
         <div className="space-y-3">
           <FormGrid>
             <Field label={S.dateLbl}><input type="date" className="input" value={moveEditForm.date} onChange={(e) => setMoveEditForm((f) => ({ ...f, date: e.target.value }))} /></Field>
@@ -2739,7 +2737,7 @@ export default function Inventory() {
       <Modal open={doEdit !== null} onClose={() => setDoEdit(null)}
         title={doEdit ? (locale === "en" ? `Edit DO ${String(doEdit.sbRef ?? doEdit.id)}` : `Ubah DO ${String(doEdit.sbRef ?? doEdit.id)}`) : ""}
         subtitle={locale === "en" ? "Number stays the same" : "Nomor DO tetap sama"}
-        wide footer={<><button className="btn-secondary" onClick={() => setDoEdit(null)}>{S.cancelBtn}</button><button className="btn-primary" onClick={() => void busy.run("saveDoEdit", saveDoEdit)} disabled={busy.isBusy("saveDoEdit")}>{S.saveBtn}</button></>}>
+        wide footer={<><button className="btn-secondary" onClick={() => setDoEdit(null)}>{S.cancelBtn}</button><AsyncButton className="btn-primary" onAction={saveDoEdit}>{S.saveBtn}</AsyncButton></>}>
         <div className="space-y-3">
           <FormGrid>
             <Field label={S.dateLbl}><input type="date" className="input" value={doEditForm.date} onChange={(e) => setDoEditForm((f) => ({ ...f, date: e.target.value }))} /></Field>

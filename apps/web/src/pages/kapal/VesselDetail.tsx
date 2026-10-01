@@ -16,6 +16,7 @@ import {
   sortRows,
   NumInput,
   useBusy,
+  AsyncButton,
   ConfirmModal,
 } from "../../components/ui";
 import type { SortState } from "../../components/ui";
@@ -684,7 +685,7 @@ export default function VesselDetail() {
                     </select>
                   </Field>
                   <Field label={S.vdNoteField}><input className="input" value={planForm.note} onChange={(e) => setPlanForm({ ...planForm, note: e.target.value })} placeholder={S.vdNotePh} /></Field>
-                  <div className="flex items-end"><button className="btn-secondary text-xs" onClick={() => void busy.run("savePlan", savePlan)} disabled={busy.isBusy("savePlan")}><Plus className="h-3.5 w-3.5" /> {S.vdAddPlan}</button></div>
+                  <div className="flex items-end"><AsyncButton className="btn-secondary text-xs" onAction={savePlan}><Plus className="h-3.5 w-3.5" /> {S.vdAddPlan}</AsyncButton></div>
                 </div>
               </Card>
 
@@ -715,7 +716,7 @@ export default function VesselDetail() {
                     <Field label={S.vdQtyField}><NumInput min={0} className="input" value={bunkerForm.qty} onChange={(e) => setBunkerForm({ ...bunkerForm, qty: e.target.value })} placeholder={S.vdQtyPh} /></Field>
                     <Field label={S.vdUnitField}><input className="input" value={bunkerForm.satuan} onChange={(e) => setBunkerForm({ ...bunkerForm, satuan: e.target.value })} placeholder={S.vdUnitPh} /></Field>
                   </div>
-                  <button className="btn-secondary mt-2 text-xs" onClick={() => void busy.run("saveBunker", saveBunker)} disabled={busy.isBusy("saveBunker")}><Plus className="h-3.5 w-3.5" /> {S.vdAddBunker}</button>
+                  <AsyncButton className="btn-secondary mt-2 text-xs" onAction={saveBunker}><Plus className="h-3.5 w-3.5" /> {S.vdAddBunker}</AsyncButton>
                 </Card>
 
                 <div className="space-y-5">
@@ -737,7 +738,7 @@ export default function VesselDetail() {
                       <Field label={S.vdCrewName}><input className="input" value={crewForm.name} onChange={(e) => setCrewForm({ ...crewForm, name: e.target.value })} placeholder={S.vdCrewNamePh} /></Field>
                       <Field label={S.vdCrewRole}><input className="input" value={crewForm.role} onChange={(e) => setCrewForm({ ...crewForm, role: e.target.value })} placeholder={S.vdCrewRolePh} /></Field>
                     </div>
-                    <button className="btn-secondary mt-2 text-xs" onClick={() => void busy.run("saveCrew", saveCrew)} disabled={busy.isBusy("saveCrew")}><Plus className="h-3.5 w-3.5" /> {S.vdAddCrew}</button>
+                    <AsyncButton className="btn-secondary mt-2 text-xs" onAction={saveCrew}><Plus className="h-3.5 w-3.5" /> {S.vdAddCrew}</AsyncButton>
                   </Card>
 
                   <Card className="p-5">
@@ -767,7 +768,7 @@ export default function VesselDetail() {
       </div>
 
       <Modal open={showCert} onClose={() => setShowCert(false)} title={S.vdAddCertTitle.replace("{a}", v.name)}
-        footer={<><button className="btn-secondary" onClick={() => setShowCert(false)}>{S.cancelBtn}</button><button className="btn-primary" onClick={() => void busy.run("saveCert", saveCert)} disabled={busy.isBusy("saveCert")}>{S.saveBtn}</button></>}>
+        footer={<><button className="btn-secondary" onClick={() => setShowCert(false)}>{S.cancelBtn}</button><AsyncButton className="btn-primary" onAction={saveCert}>{S.saveBtn}</AsyncButton></>}>
         <div className="space-y-3">
           <Field label={S.vdCertName}><input className="input" value={certForm.name} onChange={(e) => setCertForm({ ...certForm, name: e.target.value })} placeholder={S.vdCertNamePh} /></Field>
           <FormGrid>
@@ -778,7 +779,7 @@ export default function VesselDetail() {
       </Modal>
 
       <Modal open={showSurvey} onClose={() => setShowSurvey(false)} title={S.vdSurveyModalTitle.replace("{a}", v.name)} subtitle={S.vdSurveySub}
-        footer={<><button className="btn-secondary" onClick={() => setShowSurvey(false)}>{S.cancelBtn}</button><button className="btn-primary" onClick={() => void busy.run("saveSurvey", saveSurvey)} disabled={busy.isBusy("saveSurvey")}>{S.vdScheduleBtn}</button></>}>
+        footer={<><button className="btn-secondary" onClick={() => setShowSurvey(false)}>{S.cancelBtn}</button><AsyncButton className="btn-primary" onAction={saveSurvey}>{S.vdScheduleBtn}</AsyncButton></>}>
         <div className="space-y-3">
           <FormGrid>
             <Field label={S.vdSurveyTypeField}>
@@ -803,7 +804,7 @@ export default function VesselDetail() {
       </Modal>
 
       <Modal open={showSpec} onClose={() => setShowSpec(false)} title={S.vdSpecModalTitle.replace("{a}", v.name)}
-        footer={<><button className="btn-secondary" onClick={() => setShowSpec(false)}>{S.cancelBtn}</button><button className="btn-primary" onClick={() => void busy.run("saveSpec", saveSpec)} disabled={busy.isBusy("saveSpec")}>{S.saveBtn}</button></>}>
+        footer={<><button className="btn-secondary" onClick={() => setShowSpec(false)}>{S.cancelBtn}</button><AsyncButton className="btn-primary" onAction={saveSpec}>{S.saveBtn}</AsyncButton></>}>
         <FormGrid>
           <Field label={S.vsMmsiField}><input className="input font-mono" value={specForm.mmsi} onChange={(e) => setSpecForm({ ...specForm, mmsi: e.target.value })} placeholder={S.vsMmsiPh} /></Field>
           <Field label={S.vsEngineField}><input className="input" value={specForm.engineType} onChange={(e) => setSpecForm({ ...specForm, engineType: e.target.value })} placeholder={S.vsEnginePh} /></Field>
@@ -814,7 +815,7 @@ export default function VesselDetail() {
       </Modal>
 
       <Modal open={showPsc} onClose={() => setShowPsc(false)} title={S.vdPscModalTitle.replace("{a}", v.name)}
-        footer={<><button className="btn-secondary" onClick={() => setShowPsc(false)}>{S.cancelBtn}</button><button className="btn-primary" onClick={() => void busy.run("savePsc", savePsc)} disabled={busy.isBusy("savePsc")}>{S.saveBtn}</button></>}>
+        footer={<><button className="btn-secondary" onClick={() => setShowPsc(false)}>{S.cancelBtn}</button><AsyncButton className="btn-primary" onAction={savePsc}>{S.saveBtn}</AsyncButton></>}>
         <div className="space-y-3">
           <FormGrid>
             <Field label={S.dateLabel}><input type="date" className="input" value={pscForm.date} onChange={(e) => setPscForm({ ...pscForm, date: e.target.value })} /></Field>
@@ -830,7 +831,7 @@ export default function VesselDetail() {
       </Modal>
 
       <Modal open={showDock} onClose={() => setShowDock(false)} title={editingDock === null ? S.vdDockAddTitle.replace("{a}", v.name) : S.vdDockEditTitle.replace("{a}", v.name)} subtitle={S.vdDockSub}
-        footer={<><button className="btn-secondary" onClick={() => setShowDock(false)}>{S.cancelBtn}</button><button className="btn-primary" onClick={() => void busy.run("saveDock", saveDock)} disabled={busy.isBusy("saveDock")}>{S.saveBtn}</button></>}>
+        footer={<><button className="btn-secondary" onClick={() => setShowDock(false)}>{S.cancelBtn}</button><AsyncButton className="btn-primary" onAction={saveDock}>{S.saveBtn}</AsyncButton></>}>
         <div className="space-y-3">
           <FormGrid>
             <Field label={S.dateLabel}><input type="date" className="input" value={dockForm.date} onChange={(e) => setDockForm({ ...dockForm, date: e.target.value })} /></Field>
@@ -843,7 +844,7 @@ export default function VesselDetail() {
       </Modal>
 
       <Modal open={showIns} onClose={() => setShowIns(false)} title={S.vdInsModalTitle.replace("{a}", v.name)} subtitle={S.vdInsSub}
-        footer={<><button className="btn-secondary" onClick={() => setShowIns(false)}>{S.cancelBtn}</button><button className="btn-primary" onClick={() => void busy.run("saveIns", saveIns)} disabled={busy.isBusy("saveIns")}>{S.saveBtn}</button></>}>
+        footer={<><button className="btn-secondary" onClick={() => setShowIns(false)}>{S.cancelBtn}</button><AsyncButton className="btn-primary" onAction={saveIns}>{S.saveBtn}</AsyncButton></>}>
         <div className="space-y-3">
           <Field label={S.vdPolisNo}><input className="input font-mono" value={insForm.polis} onChange={(e) => setInsForm({ ...insForm, polis: e.target.value })} placeholder={S.vdPolisPh} /></Field>
           <FormGrid>

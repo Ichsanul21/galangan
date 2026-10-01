@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Plus, ShieldCheck, AlertTriangle, Siren, Award, Send, Search } from "lucide-react";
 import { ComposedChart, Line, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 import { Card, CardHeader, PageHeader, Badge, KpiCard, Tabs, StatusBadge, Donut, ChartTooltip, Modal, Field, FormGrid, ConfirmModal, SortTh, toggleSort, sortRows, usePager, toast,
-  NumInput, FlowStrip, SecureImg, FileUploadButton, useBusy,
+  NumInput, FlowStrip, SecureImg, FileUploadButton, useBusy, AsyncButton,
 } from "../../components/ui";
 import type { SortState } from "../../components/ui";
 import { useStore, type StoreItem, type CollectionKey } from "../../data/store";
@@ -1233,7 +1233,7 @@ export default function QCSafety() {
                   ))}
                 </div>
                 <p className="mt-2 text-xs text-steel-500">{S.ppeLengkap.replace("{a}", String(PPE_ITEMS.filter((i) => ppeChecked[i]).length)).replace("{b}", String(PPE_ITEMS.length))}</p>
-                <button className="btn-primary mt-2 text-xs" onClick={() => void busy.run("savePpeCheck", savePpeCheck)} disabled={busy.isBusy("savePpeCheck")}>{S.btnSimpanPpe}</button>
+                <AsyncButton className="btn-primary mt-2 text-xs" onAction={savePpeCheck}>{S.btnSimpanPpe}</AsyncButton>
               </Card>
 
               <Card className="p-4">
@@ -1266,7 +1266,7 @@ export default function QCSafety() {
                   ))}
                 </div>
                 <p className="mt-2 text-sm text-steel-600">{S.auditSkor.split("{a}%")[0]}<span className="font-semibold text-navy-900">{auditScore}%</span>{S.auditSkor.split("{a}%")[1].replace("{b}", String(auditChecked.filter(Boolean).length)).replace("{c}", String(AUDIT_ITEMS.length))}</p>
-                <button className="btn-primary mt-2 text-xs" onClick={() => void busy.run("saveAudit", saveAudit)} disabled={busy.isBusy("saveAudit")}>{S.btnSimpanAudit}</button>
+                <AsyncButton className="btn-primary mt-2 text-xs" onAction={saveAudit}>{S.btnSimpanAudit}</AsyncButton>
                 <div className="mt-3 border-t border-steel-100 pt-2">
                   <p className="text-xs font-semibold text-steel-500">{S.riwayatAudit}</p>
                   <div className="relative mt-1">
@@ -1408,7 +1408,7 @@ export default function QCSafety() {
 
       {/* Modal inspeksi */}
       <Modal open={showInsp} onClose={() => setShowInsp(false)} title={S.mInspT} subtitle={S.mInspS}
-        wide footer={<><button className="btn-secondary" onClick={() => setShowInsp(false)}>{S.btnBatal}</button><button className="btn-primary" onClick={() => void busy.run("saveInspection", saveInspection)} disabled={busy.isBusy("saveInspection")}>{S.btnSimpanInsp}</button></>}>
+        wide footer={<><button className="btn-secondary" onClick={() => setShowInsp(false)}>{S.btnBatal}</button><AsyncButton className="btn-primary" onAction={saveInspection}>{S.btnSimpanInsp}</AsyncButton></>}>
         <div className="space-y-3">
           <FormGrid>
             <Field label={S.thProyek}>
@@ -1479,7 +1479,7 @@ export default function QCSafety() {
 
       {/* Modal NCR */}
       <Modal open={showNcr} onClose={() => setShowNcr(false)} title={S.mNcrT} subtitle={S.mNcrS}
-        wide footer={<><button className="btn-secondary" onClick={() => setShowNcr(false)}>{S.btnBatal}</button><button className="btn-primary" onClick={() => void busy.run("saveNcr", saveNcr)} disabled={busy.isBusy("saveNcr")}>{S.btnTerbitkan}</button></>}>
+        wide footer={<><button className="btn-secondary" onClick={() => setShowNcr(false)}>{S.btnBatal}</button><AsyncButton className="btn-primary" onAction={saveNcr}>{S.btnTerbitkan}</AsyncButton></>}>
         <div className="space-y-3">
           <FormGrid>
             <Field label={S.thProyek}>
@@ -1525,7 +1525,7 @@ export default function QCSafety() {
 
       {/* Modal detail NCR */}
       <Modal open={ncrDetail !== null} onClose={() => setNcrDetail(null)} title={ncrDetail ? String(ncrDetail.id) : ""} subtitle={S.mNcrDetailS}
-        footer={ncrDetail && ncrDetail.status !== "Tertutup" ? <button className="btn-primary" onClick={() => { if (ncrDetail) void busy.run("advanceNcrDetail", () => advanceNcr(ncrDetail)); }} disabled={busy.isBusy("advanceNcrDetail")}>{S.btnProsesNext}</button> : undefined}>
+        footer={ncrDetail && ncrDetail.status !== "Tertutup" ? <AsyncButton className="btn-primary" onAction={() => { if (ncrDetail) return advanceNcr(ncrDetail); }}>{S.btnProsesNext}</AsyncButton> : undefined}>
         {ncrDetail && (
           <div>
             <dl className="dl-div text-sm">
@@ -1542,12 +1542,13 @@ export default function QCSafety() {
                 ))}
                 <div className="flex justify-between gap-4">
                   <dt className="shrink-0 text-steel-500">Foto/bukti URL</dt>
-                  <dd className="break-all text-right font-medium text-navy-900">
-                    {ncrDetail.photoUrl ? (
-                      <a className="text-ocean-600 underline" href={String(ncrDetail.photoUrl)} target="_blank" rel="noreferrer" title={String(ncrDetail.photoUrl)}>
-                        {locale === "en" ? "Preview evidence" : "Pratinjau bukti"}
-                      </a>
-                    ) : "-"}
+                  <dd className="flex justify-end">
+                    <DocumentPreviewCell
+                      doc={ncrDetail.photoUrl ? {
+                        title: `Bukti ${String(ncrDetail.id)}`,
+                        fileUrl: String(ncrDetail.photoUrl),
+                      } : null}
+                    />
                   </dd>
                 </div>
               </dl>
@@ -1589,13 +1590,13 @@ export default function QCSafety() {
                 <Field label={S.dlUraian}>
                   <textarea className="input" rows={3} value={issueDraft} onChange={(e) => setIssueDraft(e.target.value)} />
                 </Field>
-                <button className="btn-secondary text-xs whitespace-nowrap" onClick={() => void busy.run("saveIssue", saveIssue)} disabled={busy.isBusy("saveIssue")}>{locale === "en" ? "Save description" : "Simpan uraian"}</button>
+                <AsyncButton className="btn-secondary text-xs whitespace-nowrap" onAction={saveIssue}>{locale === "en" ? "Save description" : "Simpan uraian"}</AsyncButton>
               </div>
             )}
             {ncrDetail.status === "Terbuka" && (
               <div className="mt-3 flex gap-2">
                 <input type="date" className="input flex-1" value={dueDraft} onChange={(e) => setDueDraft(e.target.value)} aria-label={S.ariaTenggat} />
-                <button className="btn-secondary text-xs whitespace-nowrap" onClick={() => void busy.run("saveDue", saveDue)} disabled={busy.isBusy("saveDue")}>{S.btnSimpanTenggat}</button>
+                <AsyncButton className="btn-secondary text-xs whitespace-nowrap" onAction={saveDue}>{S.btnSimpanTenggat}</AsyncButton>
               </div>
             )}
             <div className="mt-3 border-t border-steel-100 pt-3">
@@ -1607,7 +1608,7 @@ export default function QCSafety() {
               </div>
               <div className="mt-2 flex items-center justify-between gap-2">
                 <p className="text-sm text-steel-600">{S.totalN.split("{n}")[0]}<span className="font-semibold text-navy-900">{fmtRupiah((Number(reworkDraft.hours) || 0) * (Number(reworkDraft.rate) || 0) + (Number(reworkDraft.material) || 0))}</span>{S.totalN.split("{n}")[1]}</p>
-                <button className="btn-secondary text-xs" onClick={() => void busy.run("saveRework", saveRework)} disabled={busy.isBusy("saveRework")}>{S.btnSimpanRework}</button>
+                <AsyncButton className="btn-secondary text-xs" onAction={saveRework}>{S.btnSimpanRework}</AsyncButton>
               </div>
             </div>
             <div className="mt-3 border-t border-steel-100 pt-3">
@@ -1662,7 +1663,7 @@ export default function QCSafety() {
 
       {/* Modal verifikasi lanjutan CAPA H+30 */}
       <Modal open={followUpNcr !== null} onClose={() => setFollowUpNcr(null)} title={followUpNcr ? S.mFollowT.replace("{n}", String(followUpNcr.id)) : ""} subtitle={S.mFollowS}
-        footer={<><button className="btn-secondary" onClick={() => setFollowUpNcr(null)}>{S.btnBatal}</button><button className="btn-primary" onClick={() => void busy.run("confirmFollowUp", confirmFollowUp)} disabled={busy.isBusy("confirmFollowUp")}>{S.btnSimpanVerif}</button></>}>
+        footer={<><button className="btn-secondary" onClick={() => setFollowUpNcr(null)}>{S.btnBatal}</button><AsyncButton className="btn-primary" onAction={confirmFollowUp}>{S.btnSimpanVerif}</AsyncButton></>}>
         <div className="space-y-3">
           <Field label={S.fTglVerif}><input type="date" className="input" value={followUpForm.date} onChange={(e) => setFollowUpForm({ ...followUpForm, date: e.target.value })} /></Field>
           <Field label={S.fCatVerif}><textarea className="input" rows={3} value={followUpForm.note} onChange={(e) => setFollowUpForm({ ...followUpForm, note: e.target.value })} placeholder={S.phFollow} /></Field>
@@ -1671,7 +1672,7 @@ export default function QCSafety() {
 
       {/* Modal bukti/CAPA wajib (masuk Dalam Perbaikan) */}
       <Modal open={capaFor !== null} onClose={() => setCapaFor(null)} title={capaFor ? `CAPA ${String(capaFor.id)}` : ""} subtitle="Wajib: tindakan korektif + PIC (foto URL opsional)"
-        footer={<><button className="btn-secondary" onClick={() => setCapaFor(null)}>{S.btnBatal}</button><button className="btn-primary" onClick={() => void busy.run("saveCapa", saveCapa)} disabled={busy.isBusy("saveCapa")}>Simpan & Proses ke Dalam Perbaikan</button></>}>
+        footer={<><button className="btn-secondary" onClick={() => setCapaFor(null)}>{S.btnBatal}</button><AsyncButton className="btn-primary" onAction={saveCapa}>Simpan & Proses ke Dalam Perbaikan</AsyncButton></>}>
         <div className="space-y-3">
           <Field label={S.fCorrective}><textarea className="input" rows={3} value={capaForm.corrective} onChange={(e) => setCapaForm({ ...capaForm, corrective: e.target.value })} placeholder="Cth: gerinda ulang + las ulang seam 4, WPS-07" /></Field>
           <FormGrid>
@@ -1682,13 +1683,14 @@ export default function QCSafety() {
                 <FileUploadButton label={locale === "en" ? "Upload" : "Unggah"} onUploaded={(url) => setCapaForm((f) => ({ ...f, photoUrl: url }))} />
               </div>
               {capaForm.photoUrl.trim() ? (
-                <span className="mt-1.5 block">
-                  {/\.(png|jpe?g|gif|webp)(\?|$)/i.test(capaForm.photoUrl.trim()) ? (
-                    <SecureImg src={capaForm.photoUrl.trim()} alt="Bukti CAPA" name="CAPA" className="h-20 w-28 rounded-lg border border-steel-200 object-cover" />
-                  ) : (
-                    <a className="text-xs font-semibold text-ocean-600 underline" href={capaForm.photoUrl.trim()} target="_blank" rel="noreferrer">{locale === "en" ? "Preview file" : "Pratinjau berkas"}</a>
-                  )}
-                </span>
+                <div className="mt-1.5 rounded-xl border border-steel-100 bg-surface p-2">
+                  <DocumentPreviewPanel
+                    doc={{
+                      title: "Bukti CAPA",
+                      fileUrl: capaForm.photoUrl.trim(),
+                    }}
+                  />
+                </div>
               ) : null}
             </Field>
           </FormGrid>
@@ -1697,7 +1699,7 @@ export default function QCSafety() {
 
       {/* Modal tutup NCR */}
       <Modal open={closingNcr !== null} onClose={() => setClosingNcr(null)} title={closingNcr ? S.mCloseT.replace("{n}", String(closingNcr.id)) : ""} subtitle={closingNcr?.severity === "Critical" ? S.mCloseCrit : S.mCloseS}
-        footer={<><button className="btn-secondary" onClick={() => setClosingNcr(null)}>{S.btnBatal}</button><button className="btn-primary" onClick={() => void busy.run("confirmClose", confirmClose)} disabled={busy.isBusy("confirmClose")}>{S.btnTutupNcr}</button></>}>
+        footer={<><button className="btn-secondary" onClick={() => setClosingNcr(null)}>{S.btnBatal}</button><AsyncButton className="btn-primary" onAction={confirmClose}>{S.btnTutupNcr}</AsyncButton></>}>
         <div className="space-y-3">
           {closingNcr?.severity === "Critical" && (
             <Field label={S.fVerifikator}><input className="input" value={verifier} onChange={(e) => setVerifier(e.target.value)} placeholder={S.phVerifikator} /></Field>
@@ -1708,7 +1710,7 @@ export default function QCSafety() {
 
       {/* Modal buka kembali NCR */}
       <Modal open={reopenNcr !== null} onClose={() => setReopenNcr(null)} title={reopenNcr ? S.mReopenT.replace("{n}", String(reopenNcr.id)) : ""} subtitle={S.mReopenS}
-        footer={<><button className="btn-secondary" onClick={() => setReopenNcr(null)}>{S.btnBatal}</button><button className="btn-primary" onClick={() => void busy.run("confirmReopen", confirmReopen)} disabled={busy.isBusy("confirmReopen")}>{S.btnBukaKembali}</button></>}>
+        footer={<><button className="btn-secondary" onClick={() => setReopenNcr(null)}>{S.btnBatal}</button><AsyncButton className="btn-primary" onAction={confirmReopen}>{S.btnBukaKembali}</AsyncButton></>}>
         <Field label={S.fAlasanReopen}><textarea className="input" rows={3} value={reopenReason} onChange={(e) => setReopenReason(e.target.value)} placeholder={S.phReopen} /></Field>
       </Modal>
 
@@ -1755,7 +1757,7 @@ export default function QCSafety() {
 
       {/* Modal register drawing */}
       <Modal open={showDrw} onClose={() => setShowDrw(false)} title={S.mDrwT} subtitle={S.mDrwS}
-        footer={<><button className="btn-secondary" onClick={() => setShowDrw(false)}>{S.btnBatal}</button><button className="btn-primary" onClick={() => void busy.run("saveDrawing", saveDrawing)} disabled={busy.isBusy("saveDrawing")}>{S.btnDaftarkan}</button></>}>
+        footer={<><button className="btn-secondary" onClick={() => setShowDrw(false)}>{S.btnBatal}</button><AsyncButton className="btn-primary" onAction={saveDrawing}>{S.btnDaftarkan}</AsyncButton></>}>
         <div className="space-y-3">
           <Field label={S.thProyek}>
             <select className="input" value={drwForm.project} onChange={(e) => setDrwForm({ ...drwForm, project: e.target.value })}>
@@ -1791,7 +1793,7 @@ export default function QCSafety() {
 
       {/* Modal ubah drawing (title + holder) */}
       <Modal open={drwEdit !== null} onClose={() => setDrwEdit(null)} title={drwEdit ? `${S.btnEdit} ${drwEdit.id}` : ""} subtitle={drwEdit ? `${locale === "en" ? "Rev" : "Rev"} ${String(drwEdit.revision)}` : ""}
-        footer={<><button className="btn-secondary" onClick={() => setDrwEdit(null)}>{S.btnBatal}</button><button className="btn-primary" onClick={() => void busy.run("saveDrwEdit", saveDrwEdit)} disabled={busy.isBusy("saveDrwEdit")}>{S.btnSimpan}</button></>}>
+        footer={<><button className="btn-secondary" onClick={() => setDrwEdit(null)}>{S.btnBatal}</button><AsyncButton className="btn-primary" onAction={saveDrwEdit}>{S.btnSimpan}</AsyncButton></>}>
         <div className="space-y-3">
           <Field label={S.fJudulDrw}><input className="input" value={drwEditForm.title} onChange={(e) => setDrwEditForm({ ...drwEditForm, title: e.target.value })} placeholder={S.phJudulDrw} /></Field>
           <Field label={S.fHolder}><input className="input" value={drwEditForm.holder} onChange={(e) => setDrwEditForm({ ...drwEditForm, holder: e.target.value })} placeholder={S.phHolder} /></Field>
@@ -1800,7 +1802,7 @@ export default function QCSafety() {
 
       {/* Modal transmittal */}
       <Modal open={showTransmit} onClose={() => setShowTransmit(false)} title={S.mTrT} subtitle={S.mTrS}
-        wide footer={<><button className="btn-secondary" onClick={() => setShowTransmit(false)}>{S.btnBatal}</button><button className="btn-primary" onClick={() => void busy.run("saveTransmittal", saveTransmittal)} disabled={busy.isBusy("saveTransmittal")}><Send className="h-4 w-4" /> {S.btnKirimEkspor}</button></>}>
+        wide footer={<><button className="btn-secondary" onClick={() => setShowTransmit(false)}>{S.btnBatal}</button><AsyncButton className="btn-primary" onAction={saveTransmittal}><Send className="h-4 w-4" /> {S.btnKirimEkspor}</AsyncButton></>}>
         <div className="space-y-3">
           <FormGrid>
             <Field label={S.fKepada}><input className="input" value={transmitForm.to} onChange={(e) => setTransmitForm({ ...transmitForm, to: e.target.value })} placeholder={S.phKepada} /></Field>
@@ -1824,7 +1826,7 @@ export default function QCSafety() {
 
       {/* Modal JSA */}
       <Modal open={showJsa} onClose={() => setShowJsa(false)} title={S.mJsaT} subtitle={S.mJsaS}
-        wide footer={<><button className="btn-secondary" onClick={() => setShowJsa(false)}>{S.btnBatal}</button><button className="btn-primary" onClick={() => void busy.run("saveJsa", saveJsa)} disabled={busy.isBusy("saveJsa")}>{S.btnSimpanJsa}</button></>}>
+        wide footer={<><button className="btn-secondary" onClick={() => setShowJsa(false)}>{S.btnBatal}</button><AsyncButton className="btn-primary" onAction={saveJsa}>{S.btnSimpanJsa}</AsyncButton></>}>
         <div className="space-y-3">
           <FormGrid>
             <Field label={S.thProyek}>
@@ -1850,7 +1852,7 @@ export default function QCSafety() {
 
       {/* Modal toolbox */}
       <Modal open={showTbm} onClose={() => setShowTbm(false)} title={S.mTbmT}
-        footer={<><button className="btn-secondary" onClick={() => setShowTbm(false)}>{S.btnBatal}</button><button className="btn-primary" onClick={() => void busy.run("saveToolbox", saveToolbox)} disabled={busy.isBusy("saveToolbox")}>{S.btnSimpan}</button></>}>
+        footer={<><button className="btn-secondary" onClick={() => setShowTbm(false)}>{S.btnBatal}</button><AsyncButton className="btn-primary" onAction={saveToolbox}>{S.btnSimpan}</AsyncButton></>}>
         <div className="space-y-3">
           <FormGrid>
             <Field label={S.thProyek}>
@@ -1875,7 +1877,7 @@ export default function QCSafety() {
 
       {/* Modal safety walk */}
       <Modal open={showWalk} onClose={() => setShowWalk(false)} title={S.mWalkT}
-        footer={<><button className="btn-secondary" onClick={() => setShowWalk(false)}>{S.btnBatal}</button><button className="btn-primary" onClick={() => void busy.run("saveWalk", saveWalk)} disabled={busy.isBusy("saveWalk")}>{S.btnSimpan}</button></>}>
+        footer={<><button className="btn-secondary" onClick={() => setShowWalk(false)}>{S.btnBatal}</button><AsyncButton className="btn-primary" onAction={saveWalk}>{S.btnSimpan}</AsyncButton></>}>
         <div className="space-y-3">
           <FormGrid>
             <Field label={S.thTanggal}><input type="date" className="input" value={walkForm.date} onChange={(e) => setWalkForm({ ...walkForm, date: e.target.value })} /></Field>
@@ -1888,7 +1890,7 @@ export default function QCSafety() {
 
       {/* Modal jadwal audit internal */}
       <Modal open={showAuditPlan} onClose={() => setShowAuditPlan(false)} title={S.mPlanT} subtitle={S.mPlanS}
-        footer={<><button className="btn-secondary" onClick={() => setShowAuditPlan(false)}>{S.btnBatal}</button><button className="btn-primary" onClick={() => void busy.run("saveAuditPlan", saveAuditPlan)} disabled={busy.isBusy("saveAuditPlan")}>{S.btnSimpanJadwal}</button></>}>
+        footer={<><button className="btn-secondary" onClick={() => setShowAuditPlan(false)}>{S.btnBatal}</button><AsyncButton className="btn-primary" onAction={saveAuditPlan}>{S.btnSimpanJadwal}</AsyncButton></>}>
         <div className="space-y-3">
           <FormGrid>
             <Field label={S.thTanggal}><input type="date" className="input" value={auditForm.date} onChange={(e) => setAuditForm({ ...auditForm, date: e.target.value })} /></Field>

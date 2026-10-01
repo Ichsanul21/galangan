@@ -4,10 +4,9 @@ import { Link } from "react-router-dom";
 import { Plus, Cpu, Wrench, AlertTriangle, Gauge, CheckCircle2, Download, Search } from "lucide-react";
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 import { Card, CardHeader, PageHeader, Badge, KpiCard, Tabs, ProgressBar, ChartTooltip, RadialGauge, Modal, Field, FormGrid, EmptyState, ConfirmModal, StatusBadge, toast, SortTh, toggleSort, sortRows, usePager,
-  NumInput,
+  NumInput, AsyncButton,
 } from "../../components/ui";
 import type { SortState } from "../../components/ui";
-import { useBusy } from "../../components/ui";
 import { useStore } from "../../data/store";
 import type { StoreItem, CollectionKey } from "../../data/store";
 import { useModuleSync } from "../../data/useModuleSync";
@@ -139,7 +138,6 @@ function oeeGrade(v: number, en: boolean): { label: string; tone: "green" | "amb
 const EQ_COLS: CollectionKey[] = ["activities", "bookings", "branches", "calibrations", "equipment", "inventory", "projects"];
 
 export default function EquipmentPage() {
-  const busy = useBusy();
   const { data, add, update, remove, log, branch } = useStore();
   const { locale } = useT();
   const S = n_eqp[locale];
@@ -1360,7 +1358,7 @@ export default function EquipmentPage() {
 
       {/* Modal tambah */}
       <Modal open={showAdd} onClose={() => setShowAdd(false)} title={S.eqAdd}
-        wide footer={<><button className="btn-secondary" onClick={() => setShowAdd(false)}>{S.cancelBtn}</button><button className="btn-primary" onClick={() => void busy.run("saveAdd", saveAdd)} disabled={busy.isBusy("saveAdd")}>{S.saveBtn}</button></>}>
+        wide footer={<><button className="btn-secondary" onClick={() => setShowAdd(false)}>{S.cancelBtn}</button><AsyncButton className="btn-primary" onAction={saveAdd}>{S.saveBtn}</AsyncButton></>}>
         <div className="space-y-3">
           <FormGrid>
             <Field label={S.eqNameField}><input className="input" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder={S.eqNamePh} /></Field>
@@ -1394,7 +1392,7 @@ export default function EquipmentPage() {
 
       {/* Modal servis */}
       <Modal open={showService} onClose={() => setShowService(false)} title={S.eqSchedSvc}
-        footer={<><button className="btn-secondary" onClick={() => setShowService(false)}>{S.cancelBtn}</button><button className="btn-primary" onClick={() => void busy.run("saveService", saveService)} disabled={busy.isBusy("saveService")}>{S.saveBtn}</button></>}>
+        footer={<><button className="btn-secondary" onClick={() => setShowService(false)}>{S.cancelBtn}</button><AsyncButton className="btn-primary" onAction={saveService}>{S.saveBtn}</AsyncButton></>}>
         <div className="space-y-3">
           <Field label={S.thEquipment}>
             <select className="input" value={svcTarget} onChange={(e) => setSvcTarget(e.target.value)}>
@@ -1441,7 +1439,7 @@ export default function EquipmentPage() {
       </Modal>
 
       <Modal open={recording !== null} onClose={() => setRecording(null)} title={S.eqRecordTitle.replace("{a}", recording?.name ?? "")} subtitle={S.eqRecordSub}
-        footer={<><button className="btn-secondary" onClick={() => setRecording(null)}>{S.cancelBtn}</button><button className="btn-primary" onClick={() => void busy.run("saveRecord", saveRecord)} disabled={busy.isBusy("saveRecord")}>{S.eqSaveSvc}</button></>}>
+        footer={<><button className="btn-secondary" onClick={() => setRecording(null)}>{S.cancelBtn}</button><AsyncButton className="btn-primary" onAction={saveRecord}>{S.eqSaveSvc}</AsyncButton></>}>
         <div className="space-y-3">
           <FormGrid>
             <Field label={S.eqSvcDateField}><input type="date" className="input" value={woForm.tanggal} onChange={(e) => setWoForm({ ...woForm, tanggal: e.target.value })} /></Field>
@@ -1492,7 +1490,7 @@ export default function EquipmentPage() {
 
       {/* Modal booking */}
       <Modal open={showBook} onClose={() => { setShowBook(false); setBookError(null); }} title={S.eqBookTitle} subtitle={S.eqBookSub}
-        footer={<><button className="btn-secondary" onClick={() => { setShowBook(false); setBookError(null); }}>{S.cancelBtn}</button><button className="btn-primary" onClick={() => void busy.run("saveBooking", saveBooking)} disabled={busy.isBusy("saveBooking")}>{S.eqSaveBooking}</button></>}>
+        footer={<><button className="btn-secondary" onClick={() => { setShowBook(false); setBookError(null); }}>{S.cancelBtn}</button><AsyncButton className="btn-primary" onAction={saveBooking}>{S.eqSaveBooking}</AsyncButton></>}>
         <div className="space-y-3">
           <FormGrid>
             <Field label={S.thEquipment}>
@@ -1577,7 +1575,7 @@ export default function EquipmentPage() {
 
       {/* Modal selesaikan booking */}
       <Modal open={finishing !== null} onClose={() => setFinishing(null)} title={S.eqFinishBookTitle.replace("{a}", finishing ? equipLabel(finishing.equip) : "")} subtitle={finishing ? `${finishing.proyek} · ${finishing.jam} · ${fmtTanggal(String(finishing.date))}` : ""}
-        footer={<><button className="btn-secondary" onClick={() => setFinishing(null)}>{S.cancelBtn}</button><button className="btn-primary" onClick={() => void busy.run("confirmFinish", confirmFinish)} disabled={busy.isBusy("confirmFinish")}>{S.finishBtn}</button></>}>
+        footer={<><button className="btn-secondary" onClick={() => setFinishing(null)}>{S.cancelBtn}</button><AsyncButton className="btn-primary" onAction={confirmFinish}>{S.finishBtn}</AsyncButton></>}>
         <div className="space-y-3">
           <Field label={S.eqActualHours} hint={S.eqActualHoursHint}>
             <NumInput min={0} step={0.5} className="input" value={finishHours} onChange={(e) => setFinishHours(e.target.value)} />

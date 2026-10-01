@@ -4,7 +4,7 @@ import { useT } from "../../i18n/LanguageContext";
 import { n_prj } from "../../i18n/n_prj";
 import { useAuth, canSetTarget } from "../../auth/auth";
 import { Card, Modal, Field, FormGrid, toast, EmptyState, StatusBadge, Badge, SortTh, toggleSort, sortRows, ConfirmModal,
-  NumInput, FlowStrip, FileUploadButton,
+  NumInput, AsyncButton, FlowStrip, FileUploadButton,
   useBusy,
 } from "../../components/ui";
 import type { SortState } from "../../components/ui";
@@ -263,7 +263,7 @@ export default function BoQSection({ projectId }: Props) {
         <div className="mb-3 flex items-center justify-between">
           <h3 className="text-sm font-semibold text-navy-900 flex items-center gap-2"><FileDown className="h-4 w-4" /> {S.boqTitle.replace("{n}", String(items.length))}</h3>
           <div className="flex gap-2">
-            <button className="btn-secondary text-xs" onClick={() => void busy.run("handleExport", handleExport)} disabled={busy.isBusy("handleExport")}><FileDown className="h-3.5 w-3.5" /> {S.exportExcelBtn}</button>
+            <AsyncButton className="btn-secondary text-xs" onAction={handleExport}><FileDown className="h-3.5 w-3.5" /> {S.exportExcelBtn}</AsyncButton>
             <button className="btn-primary text-xs" onClick={() => setShowAdd(true)}><Plus className="h-3.5 w-3.5" /> {S.boqAddBtn}</button>
           </div>
         </div>
@@ -295,7 +295,7 @@ export default function BoQSection({ projectId }: Props) {
           <select className="input w-auto max-w-64 py-1.5 text-sm" aria-label={S.boqPresetItemAria} value={presetIdx} onChange={(e) => setPresetIdx(e.target.value)}>
             {(PRESET[presetCat] ?? []).map((p, i) => <option key={p.name} value={String(i)}>{p.name} · {p.unit} · {fmtRupiah(p.price)}</option>)}
           </select>
-          <button className="btn-secondary text-xs" onClick={() => void busy.run("importPreset", importPreset)} disabled={busy.isBusy("importPreset")}><Plus className="h-3.5 w-3.5" /> {S.boqPresetAdd}</button>
+          <AsyncButton className="btn-secondary text-xs" onAction={importPreset}><Plus className="h-3.5 w-3.5" /> {S.boqPresetAdd}</AsyncButton>
         </div>
 
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
@@ -463,7 +463,7 @@ export default function BoQSection({ projectId }: Props) {
       </Card>
 
       <Modal open={showAdd} onClose={() => setShowAdd(false)} title={S.boqAddTitle}
-        footer={<><button className="btn-secondary" onClick={() => setShowAdd(false)}>{S.cancelBtn}</button><button className="btn-primary" onClick={() => void busy.run("saveBoq", saveBoq)} disabled={busy.isBusy("saveBoq")}>{S.saveBtn}</button></>}>
+        footer={<><button className="btn-secondary" onClick={() => setShowAdd(false)}>{S.cancelBtn}</button><AsyncButton className="btn-primary" onAction={saveBoq}>{S.saveBtn}</AsyncButton></>}>
         <div className="space-y-3">
           <Field label={S.boqNameField}><input className="input" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder={S.boqNamePh} /></Field>
           <Field label={S.prjScopeDesc}><input className="input" value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} /></Field>
@@ -489,7 +489,7 @@ export default function BoQSection({ projectId }: Props) {
       </Modal>
 
       <Modal open={revisiFor !== null} onClose={() => setRevisiFor(null)} title={S.boqRevTitle.replace("{a}", revisiFor?.name ?? "")} subtitle={revisiFor?.id}
-        footer={<><button className="btn-secondary" onClick={() => setRevisiFor(null)}>{S.cancelBtn}</button><button className="btn-primary" onClick={() => void busy.run("saveRevisi", saveRevisi)} disabled={busy.isBusy("saveRevisi")}>{S.boqSaveRev}</button></>}>
+        footer={<><button className="btn-secondary" onClick={() => setRevisiFor(null)}>{S.cancelBtn}</button><AsyncButton className="btn-primary" onAction={saveRevisi}>{S.boqSaveRev}</AsyncButton></>}>
         <div className="space-y-3">
           <p className="text-xs text-steel-500">{S.boqRevInfo.replace("{a}", revisiFor ? fmtRupiah(revisiFor.unitPrice) : "").replace("{b}", revisiFor ? fmtRupiah(revisiFor.totalPrice) : "").replace("{c}", String(revisiFor?.quantity ?? "")).replace("{d}", String((revisiFor?.priceHistory ?? []).length))}</p>
           <Field label={S.boqNewPrice}><NumInput min={0} className="input" value={revisiPrice} onChange={(e) => setRevisiPrice(e.target.value)} placeholder={S.boqNewPricePh} /></Field>
@@ -529,7 +529,7 @@ export default function BoQSection({ projectId }: Props) {
       <Modal open={editFor !== null} onClose={() => setEditFor(null)}
         title={editFor ? `${locale === "en" ? "Edit" : "Ubah"} ${editFor.name}` : ""}
         subtitle={editFor?.id}
-        footer={<><button className="btn-secondary" onClick={() => setEditFor(null)}>{S.cancelBtn}</button><button className="btn-primary" onClick={() => void busy.run("saveEditQty", saveEditQty)} disabled={busy.isBusy("saveEditQty")}>{S.saveBtn}</button></>}>
+        footer={<><button className="btn-secondary" onClick={() => setEditFor(null)}>{S.cancelBtn}</button><AsyncButton className="btn-primary" onAction={saveEditQty}>{S.saveBtn}</AsyncButton></>}>
         <div className="space-y-3">
           <FormGrid>
             <Field label={S.colQty}><NumInput min={0} className="input" value={editQty} onChange={(e) => setEditQty(e.target.value)} /></Field>

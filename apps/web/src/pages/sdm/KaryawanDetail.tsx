@@ -17,11 +17,12 @@ import {
   toggleSort,
   SecureImg,
   FileUploadButton,
-  useBusy,
+  AsyncButton,
 } from "../../components/ui";
 import type { SortState } from "../../components/ui";
 import { useStore } from "../../data/store";
 import type { StoreItem } from "../../data/store";
+import { DocumentPreviewCell, DocumentPreviewModal } from "../../components/DocumentPreview";
 import { apiFetch, isBackendConfigured } from "../../services/http";
 import { fmtBulan, fmtRupiah, fmtTanggal, todayISO } from "../../utils/format";
 import { sameName } from "../../utils/names";
@@ -105,7 +106,6 @@ function normCerts(e: StoreItem): EmpCert[] {
 }
 
 export default function KaryawanDetail() {
-  const busy = useBusy();
   const { id } = useParams();
   const { data, add, update, log } = useStore();
   const { locale } = useT();
@@ -291,7 +291,7 @@ export default function KaryawanDetail() {
           </div>
           <div className="mt-3 flex gap-2">
             <input className="input flex-1" value={skillInput} onChange={(e) => setSkillInput(e.target.value)} placeholder={S.phSkill} />
-            <button className="btn-secondary whitespace-nowrap text-xs" onClick={() => void busy.run("saveSkill", saveSkill)} disabled={busy.isBusy("saveSkill")}>{S.btnTambah}</button>
+            <AsyncButton className="btn-secondary whitespace-nowrap text-xs" onAction={saveSkill}>{S.btnTambah}</AsyncButton>
           </div>
         </Card>
 
@@ -485,10 +485,13 @@ export default function KaryawanDetail() {
                       <td className="td"><StatusBadge status={String(l.status)} /></td>
                       <td className="td text-steel-600">{String(l.note || "-")}</td>
                       <td className="td">
-                        {String(l.status) === "Disetujui" && l.fileUrl ? (
-                          <a className="text-xs font-semibold text-ocean-600 underline" href={String(l.fileUrl)} target="_blank" rel="noreferrer" title={String(l.fileUrl)}>
-                            {locale === "en" ? "Preview" : "Pratinjau"}
-                          </a>
+                        {String(l.status) === "Disetujui" ? (
+                          <DocumentPreviewCell
+                            doc={l.fileUrl ? {
+                              title: `${String(l.type)} · ${String(l.id)}`,
+                              fileUrl: String(l.fileUrl),
+                            } : null}
+                          />
                         ) : (
                           <span className="text-xs text-steel-400">-</span>
                         )}
@@ -510,7 +513,7 @@ export default function KaryawanDetail() {
         footer={
           <>
             <button className="btn-secondary" onClick={() => setShowCert(false)}>{S.btnBatal}</button>
-            <button className="btn-primary" onClick={() => void busy.run("saveCert", saveCert)} disabled={busy.isBusy("saveCert")}>{S.btnSimpan}</button>
+            <AsyncButton className="btn-primary" onAction={saveCert}>{S.btnSimpan}</AsyncButton>
           </>
         }
       >
@@ -527,7 +530,7 @@ export default function KaryawanDetail() {
         footer={
           <>
             <button className="btn-secondary" onClick={() => setShowDoc(false)}>{S.btnBatal}</button>
-            <button className="btn-primary" onClick={() => void busy.run("saveDoc", saveDoc)} disabled={busy.isBusy("saveDoc")}>{S.btnSimpan}</button>
+            <AsyncButton className="btn-primary" onAction={saveDoc}>{S.btnSimpan}</AsyncButton>
           </>
         }
       >
@@ -559,25 +562,14 @@ export default function KaryawanDetail() {
         </div>
       </Modal>
 
-      <Modal
-        open={docPreview !== null}
+      <DocumentPreviewModal
+        doc={docPreview?.fileUrl ? {
+          title: String(docPreview.title),
+          fileUrl: String(docPreview.fileUrl),
+          subtitle: `${String(docPreview.id)} · ${String(docPreview.type)}`,
+        } : null}
         onClose={() => setDocPreview(null)}
-        title={docPreview ? String(docPreview.title) : ""}
-        subtitle={docPreview ? `${String(docPreview.id)} · ${String(docPreview.type)}` : ""}
-      >
-        {docPreview?.fileUrl ? (
-          <div className="space-y-2">
-            {/\.(png|jpe?g|gif|webp)(\?|$)/i.test(String(docPreview.fileUrl)) ? (
-              <SecureImg src={String(docPreview.fileUrl)} alt={String(docPreview.title)} name={String(docPreview.title)} className="max-h-96 w-full rounded-xl border border-steel-200 object-contain" />
-            ) : (
-              <iframe title={String(docPreview.title)} src={String(docPreview.fileUrl)} className="h-96 w-full rounded-xl border border-steel-200" />
-            )}
-            <a className="block truncate text-xs font-semibold text-ocean-600 underline" href={String(docPreview.fileUrl)} target="_blank" rel="noreferrer">{String(docPreview.fileUrl)}</a>
-          </div>
-        ) : (
-          <p className="text-sm text-steel-400">-</p>
-        )}
-      </Modal>
+      />
     </div>
   );
 }

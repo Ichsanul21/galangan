@@ -39,7 +39,7 @@ import {
   toggleSort,
   sortRows,
   toast,
-  useBusy,
+  AsyncButton,
 } from "../components/ui";
 import type { SortState } from "../components/ui";
 import { useStore } from "../data/store";
@@ -152,7 +152,7 @@ function exportChartPNG(chartId: string, filename: string): void {
 const AN_COLS: CollectionKey[] = ["activities", "bookings", "calibrations", "changeOrders", "dockSlots", "equipment", "incidents", "inspections", "inventory", "invoices", "ncr", "payables", "projects", "quotations", "settings", "vendors"];
 
 export default function Analytics() {
-  const busy = useBusy();
+
   const { locale } = useT();
   const S = n_misc[locale];
   const [tab, setTab] = useState("Deskriptif");
@@ -548,15 +548,13 @@ export default function Analytics() {
     }
   };
 
-  const exportPdfReport = () => {
-    void busy.run("export", async () => {
-      try {
-        await exportPDF("analytics-pdf", `Laporan-Analytics-${todayISO()}`);
-        toast(S.tAnalyticsPdfExported);
-      } catch {
-        toast(S.tChartExportFailed, "info");
-      }
-    });
+  const exportPdfReport = async () => {
+    try {
+      await exportPDF("analytics-pdf", `Laporan-Analytics-${todayISO()}`);
+      toast(S.tAnalyticsPdfExported);
+    } catch {
+      toast(S.tChartExportFailed, "info");
+    }
   };
 
   // Style print-friendly untuk section PDF tersembunyi (tabel polos, tanpa chart).
@@ -572,8 +570,8 @@ export default function Analytics() {
         icon={<BarChart3 className="h-5 w-5" />}
         actions={
           <span style={{ display: "flex", gap: 8 }}>
-            <button className="btn-primary-gradient" disabled={busy.isBusy("export")} onClick={() => void busy.run("export", exportReport)}>{S.exportReportBtn}</button>
-            <button className="btn-secondary" disabled={busy.isBusy("export")} onClick={exportPdfReport}>{S.pdfReportBtn}</button>
+            <AsyncButton className="btn-primary-gradient" onAction={exportReport}>{S.exportReportBtn}</AsyncButton>
+            <AsyncButton className="btn-secondary" onAction={exportPdfReport}>{S.pdfReportBtn}</AsyncButton>
           </span>
         }
       />

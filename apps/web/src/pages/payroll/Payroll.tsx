@@ -17,9 +17,9 @@ import {
   toast,
   toggleSort,
   NumInput,
+  AsyncButton,
 } from "../../components/ui";
 import type { SortState } from "../../components/ui";
-import { useBusy } from "../../components/ui";
 import { useStore } from "../../data/store";
 import type { StoreItem } from "../../data/store";
 import { fmtBulan, fmtRupiah, fmtTanggal, todayISO } from "../../utils/format";
@@ -253,7 +253,6 @@ function calcPesangon(masaKerja: number, upah: number): { pesMonths: number; pes
 }
 
 export default function Payroll() {
-  const busy = useBusy();
   const { data, add, update, remove, log, inBranch } = useStore();
   const { locale } = useT();
   const S = n_dry[locale];
@@ -927,7 +926,7 @@ export default function Payroll() {
               <button className="btn-secondary" onClick={exportRekap}>
                 <Download className="h-4 w-4" /> {S.btnExportRekap}
               </button>
-              <button className="btn-primary-gradient" onClick={() => void busy.run("generate", generate)} disabled={busy.isBusy("generate")}>{S.btnGenerate.replace("{a}", fmtBulan(period))}</button>
+              <AsyncButton className="btn-primary-gradient" onAction={generate}>{S.btnGenerate.replace("{a}", fmtBulan(period))}</AsyncButton>
             </>
           ) : tab === "THR & Bonus" ? (
             <>
@@ -1308,7 +1307,7 @@ export default function Payroll() {
         footer={
           <>
             <button className="btn-secondary" onClick={() => setPayTarget(null)}>{S.cancelBtn}</button>
-            <button className="btn-primary" onClick={() => void busy.run("confirmPay", confirmPay)} disabled={busy.isBusy("confirmPay")}>{S.btnConfirmPay}</button>
+            <AsyncButton className="btn-primary" onAction={confirmPay}>{S.btnConfirmPay}</AsyncButton>
           </>
         }
       >

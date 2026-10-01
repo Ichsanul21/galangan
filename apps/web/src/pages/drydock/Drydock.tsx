@@ -4,7 +4,7 @@ import { Card, CardHeader, PageHeader, Badge, KpiCard, ProgressBar, Modal, Field
   NumInput,
 } from "../../components/ui";
 import type { SortState } from "../../components/ui";
-import { useBusy } from "../../components/ui";
+import { AsyncButton } from "../../components/ui";
 import { useStore } from "../../data/store";
 import type { StoreItem, CollectionKey } from "../../data/store";
 import { useModuleSync } from "../../data/useModuleSync";
@@ -94,7 +94,6 @@ function undockList(s: StoreItem): boolean[] {
 const DRY_COLS: CollectionKey[] = ["activities", "dockSlots", "drydocks", "invoices", "ncr", "projects", "vessels"];
 
 export default function Drydock() {
-  const busy = useBusy();
   const { data, add, update, remove, log } = useStore();
   const { locale } = useT();
   const S = n_dry[locale];
@@ -965,7 +964,7 @@ export default function Drydock() {
 
       {/* Modal geser/pindah slot (tindak lanjut konflik) */}
       <Modal open={moveTarget !== null} onClose={() => { setMoveTarget(null); setMoveError(null); }} title={S.moveSlotTitle.replace("{a}", moveTarget?.id ?? "")} subtitle={S.moveSlotSub}
-        footer={<><button className="btn-secondary" onClick={() => { setMoveTarget(null); setMoveError(null); }}>{S.cancelBtn}</button><button className="btn-primary" onClick={() => void busy.run("saveMove", saveMove)} disabled={busy.isBusy("saveMove")}>{S.btnSaveMove}</button></>}>
+        footer={<><button className="btn-secondary" onClick={() => { setMoveTarget(null); setMoveError(null); }}>{S.cancelBtn}</button><AsyncButton className="btn-primary" onAction={saveMove}>{S.btnSaveMove}</AsyncButton></>}>
         <div className="space-y-3">
           {moveError && <p className="rounded-lg bg-rose-50 px-3 py-2 text-xs font-medium text-rose-700">{moveError}</p>}
           <Field label={S.lblTargetFacility}>
@@ -986,7 +985,7 @@ export default function Drydock() {
 
       {/* Modal booking */}
       <Modal open={showBook} onClose={() => { setShowBook(false); setBookError(null); }} title={S.bookTitle} subtitle={S.bookSub}
-        footer={<><button className="btn-secondary" onClick={() => { setShowBook(false); setBookError(null); }}>{S.cancelBtn}</button><button className="btn-primary" onClick={() => void busy.run("saveBooking", saveBooking)} disabled={busy.isBusy("saveBooking")}>{S.btnSaveBook}</button></>}>
+        footer={<><button className="btn-secondary" onClick={() => { setShowBook(false); setBookError(null); }}>{S.cancelBtn}</button><AsyncButton className="btn-primary" onAction={saveBooking}>{S.btnSaveBook}</AsyncButton></>}>
         <div className="space-y-3">
           <FormGrid>
             <Field label={S.colFacility}>

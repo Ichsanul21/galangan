@@ -34,7 +34,7 @@ import {
   sortRows,
   usePager,
   toast,
-  NumInput,
+  NumInput, AsyncButton,
 } from "../../components/ui";
 import type { SortState } from "../../components/ui";
 import { useBusy } from "../../components/ui";
@@ -2289,7 +2289,7 @@ export default function Finance() {
                 subtitle={S.schedSub}
                 action={
                   <div className="flex gap-2">
-                    <button className="btn-secondary text-xs" onClick={() => void busy.run("exportJadwal", exportJadwal)} disabled={busy.isBusy("exportJadwal")}>{S.exportExcelBtn}</button>
+                    <AsyncButton className="btn-secondary text-xs" onAction={exportJadwal}>{S.exportExcelBtn}</AsyncButton>
                     <button className="btn-primary text-xs" disabled={schedSel.length === 0} onClick={() => { setBatchProof(emptyProof()); setShowBatch(true); }}>
                       {S.batchPay.replace("{n}", fmtJumlah(schedSel.length)).replace("{a}", fmtRupiah(schedTotal))}
                     </button>
@@ -2605,7 +2605,7 @@ export default function Finance() {
                         <Field label={S.overheadPctLabel}>
                           <NumInput min={0} max={100} className="input w-24" value={overheadPct} onChange={(e) => setOverheadPct(e.target.value)} />
                         </Field>
-                        <button className="btn-secondary text-xs" onClick={() => void busy.run("saveOverhead", saveOverhead)} disabled={busy.isBusy("saveOverhead")}>{S.saveBtn}</button>
+                        <AsyncButton className="btn-secondary text-xs" onAction={saveOverhead}>{S.saveBtn}</AsyncButton>
                       </div>
                     }
                   />
@@ -2794,10 +2794,7 @@ export default function Finance() {
                 <Field label={S.newPeriodLabel}>
                   <input className="input font-mono" placeholder="2026-09" inputMode="numeric" maxLength={7} value={newPeriod} onChange={(e) => setNewPeriod(e.target.value)} />
                 </Field>
-                <button
-                  className="btn-secondary text-xs"
-                  disabled={busy.isBusy("newTaxPeriod")}
-                  onClick={() => void busy.run("newTaxPeriod", async () => {
+                <AsyncButton className="btn-secondary text-xs" onAction={async () => {
                     const p = newPeriod.trim();
                     if (!/^\d{4}-\d{2}$/.test(p)) { toast(S.periodFormat, "info"); return; }
                     /* Validasi RENTANG bulan: regex saja menerima "2026-00"/"2026-13".
@@ -2812,14 +2809,13 @@ export default function Finance() {
                     setNewPeriod("");
                     toast(S.periodCreated.replace("{a}", String(created.period)));
                     } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); }
-                  })}
-                >{S.newPeriodBtn}</button>
+                  }}>{S.newPeriodBtn}</AsyncButton>
                 <div className="ml-auto flex gap-2">
-                  <button className="btn-secondary text-xs" onClick={() => void busy.run("exportEfaktur", exportEfaktur)} disabled={busy.isBusy("exportEfaktur")}>{S.exportEfaktur}</button>
-                  <button className="btn-secondary text-xs" onClick={() => void busy.run("exportSpt", exportSpt)} disabled={busy.isBusy("exportSpt")}>{S.exportSpt}</button>
-                  <button className="btn-primary text-xs" disabled={taxLocked || busy.isBusy("markTaxLapor")} onClick={() => void busy.run("markTaxLapor", markTaxLapor)}>
+                  <AsyncButton className="btn-secondary text-xs" onAction={exportEfaktur}>{S.exportEfaktur}</AsyncButton>
+                  <AsyncButton className="btn-secondary text-xs" onAction={exportSpt}>{S.exportSpt}</AsyncButton>
+                  <AsyncButton className="btn-primary text-xs" disabled={taxLocked} onAction={markTaxLapor}>
                     {taxLocked ? S.alreadyReported : S.markReported}
-                  </button>
+                  </AsyncButton>
                 </div>
               </div>
               {!activeTax ? (
@@ -3086,7 +3082,7 @@ export default function Finance() {
       </div>
 
       <Modal open={showInv} onClose={() => setShowInv(false)} title={S.createInvoice} subtitle={S.newInvoiceSub} wide
-        footer={<><button className="btn-secondary" onClick={() => setShowInv(false)}>{S.cancelBtn}</button><button className="btn-primary" onClick={() => void busy.run("saveInvoice", saveInvoice)} disabled={busy.isBusy("saveInvoice")}>{S.publishDraft}</button></>}>
+        footer={<><button className="btn-secondary" onClick={() => setShowInv(false)}>{S.cancelBtn}</button><AsyncButton className="btn-primary" onAction={saveInvoice}>{S.publishDraft}</AsyncButton></>}>
         <div className="space-y-3">
           <p className="rounded-lg bg-surface px-3 py-2 text-xs text-steel-600">{S.previewNo} <strong className="font-mono text-navy-900">{invPreview}</strong> {S.previewType.replace("{a}", invForm.billingType)}{invTotal > approveThreshold ? <span className="ml-2"><Badge tone="amber">{S.needDirectorApprove}</Badge></span> : ""}</p>
           <FormGrid>
@@ -3162,7 +3158,7 @@ export default function Finance() {
             <div className="mb-2 flex items-center justify-between">
               <p className="label">{S.linesTotal.replace("{a}", fmtRupiah(invTotal))}{retentionAmtPreview > 0 ? S.retentionSuffix.replace("{a}", fmtRupiah(retentionAmtPreview)) : ""}</p>              <div className="flex gap-2">
                 {isTMForm && (
-                  <button className="btn-secondary px-2 py-1 text-xs" onClick={() => void busy.run("pullTimesheet", pullTimesheetLines)} disabled={busy.isBusy("pullTimesheet")}>{S.pullTimesheet}</button>
+                  <AsyncButton className="btn-secondary px-2 py-1 text-xs" onAction={pullTimesheetLines}>{S.pullTimesheet}</AsyncButton>
                 )}
                 <button className="btn-secondary px-2 py-1 text-xs" onClick={() => setInvLines((ls) => [...ls, emptyLine()])}>
                   <Plus className="h-3.5 w-3.5" /> {S.addRow}
@@ -3218,7 +3214,7 @@ export default function Finance() {
       </Modal>
 
       <Modal open={payTarget !== null} onClose={() => setPayTarget(null)} title={S.markPaidTitle.replace("{a}", payTarget?.id ?? "")} subtitle={`${String(payTarget?.client ?? "")} · ${fmtRupiah(num(payTarget?.amount))}`}
-        footer={<><button className="btn-secondary" onClick={() => setPayTarget(null)}>{S.cancelBtn}</button><button className="btn-primary" onClick={() => void busy.run("confirmBuktiInv", confirmBuktiInv)} disabled={busy.isBusy("confirmBuktiInv")}>{S.saveProofPaid}</button></>}>
+        footer={<><button className="btn-secondary" onClick={() => setPayTarget(null)}>{S.cancelBtn}</button><AsyncButton className="btn-primary" onAction={confirmBuktiInv}>{S.saveProofPaid}</AsyncButton></>}>
         <div className="space-y-3">
           <FormGrid>
             <Field label={S.fPayDate}><input type="date" required className="input" value={proof.date} onChange={(e) => setProofField("date", e.target.value)} /></Field>
@@ -3254,7 +3250,7 @@ export default function Finance() {
       />
 
       <Modal open={apTarget !== null} onClose={() => setApTarget(null)} title={S.apPayTitle.replace("{a}", !num(apTarget?.pay1) ? "I" : "II").replace("{b}", String(apTarget?.po ?? ""))} subtitle={S.apPaySub.replace("{a}", String(apTarget?.v ?? "")).replace("{b}", fmtRupiah(Math.max(0, num(apTarget?.amt) - num(apTarget?.pay1) - num(apTarget?.pay2))))}
-        footer={<><button className="btn-secondary" onClick={() => setApTarget(null)}>{S.cancelBtn}</button><button className="btn-primary" onClick={() => void busy.run("confirmBuktiAp", confirmBuktiAp)} disabled={busy.isBusy("confirmBuktiAp")}>{S.saveProofPay}</button></>}>
+        footer={<><button className="btn-secondary" onClick={() => setApTarget(null)}>{S.cancelBtn}</button><AsyncButton className="btn-primary" onAction={confirmBuktiAp}>{S.saveProofPay}</AsyncButton></>}>
         <div className="space-y-3">
           <Field label={S.fStageAmount} hint={!num(apTarget?.pay1) ? S.apPhase1 : S.apPhase2.replace("{a}", fmtRupiah(num(apTarget?.pay1)))}>
             <NumInput min={0} className="input" value={apPayAmt} onChange={(e) => setApPayAmt(e.target.value)} placeholder={S.stagePh} />
@@ -3274,7 +3270,7 @@ export default function Finance() {
       </Modal>
 
       <Modal open={showAp} onClose={() => setShowAp(false)} title={S.apNewTitle}
-        footer={<><button className="btn-secondary" onClick={() => setShowAp(false)}>{S.cancelBtn}</button><button className="btn-primary" onClick={() => void busy.run("saveAp", saveAp)} disabled={busy.isBusy("saveAp")}>{S.saveBtn}</button></>}>
+        footer={<><button className="btn-secondary" onClick={() => setShowAp(false)}>{S.cancelBtn}</button><AsyncButton className="btn-primary" onAction={saveAp}>{S.saveBtn}</AsyncButton></>}>
         <div className="space-y-3">
           <FormGrid>
             <Field label={S.colVendor}><input className="input" value={apForm.v} onChange={(e) => setApForm({ ...apForm, v: e.target.value })} /></Field>
@@ -3294,7 +3290,7 @@ export default function Finance() {
       </Modal>
 
       <Modal open={apEdit !== null} onClose={() => setApEdit(null)} title={S.editApTitle.replace("{a}", String(apEdit?.po ?? apEdit?.id ?? ""))} subtitle={String(apEdit?.v ?? "")}
-        footer={<><button className="btn-secondary" onClick={() => setApEdit(null)}>{S.cancelBtn}</button><button className="btn-primary" onClick={() => void busy.run("saveApEdit", saveApEdit)} disabled={busy.isBusy("saveApEdit")}>{S.saveChanges}</button></>}>
+        footer={<><button className="btn-secondary" onClick={() => setApEdit(null)}>{S.cancelBtn}</button><AsyncButton className="btn-primary" onAction={saveApEdit}>{S.saveChanges}</AsyncButton></>}>
         <div className="space-y-3">
           <FormGrid>
             <Field label={S.colVendor}><input className="input" value={apEditForm.v} onChange={(e) => setApEditForm({ ...apEditForm, v: e.target.value })} /></Field>
@@ -3313,7 +3309,7 @@ export default function Finance() {
       </Modal>
 
       <Modal open={releaseTarget !== null} onClose={() => setReleaseTarget(null)} title={S.relTitle.replace("{a}", releaseTarget?.id ?? "")} subtitle={S.relSub.replace("{a}", fmtRupiah(num(releaseTarget?.retentionAmt)))}
-        footer={<><button className="btn-secondary" onClick={() => setReleaseTarget(null)}>{S.cancelBtn}</button><button className="btn-primary" onClick={() => void busy.run("confirmRelease", confirmRelease)} disabled={busy.isBusy("confirmRelease")}>{S.releaseRetensiBtn}</button></>}>
+        footer={<><button className="btn-secondary" onClick={() => setReleaseTarget(null)}>{S.cancelBtn}</button><AsyncButton className="btn-primary" onAction={confirmRelease}>{S.releaseRetensiBtn}</AsyncButton></>}>
         <div className="space-y-3">
           <FormGrid>
             <Field label={S.fReleaseDate}><input type="date" required className="input" value={releaseForm.date} onChange={(e) => setReleaseForm({ ...releaseForm, date: e.target.value })} /></Field>
@@ -3331,7 +3327,7 @@ export default function Finance() {
       </Modal>
 
       <Modal open={showBatch} onClose={() => setShowBatch(false)} title={S.batchTitle.replace("{n}", fmtJumlah(schedSel.length))} subtitle={S.batchSub.replace("{a}", fmtRupiah(schedTotal))}
-        footer={<><button className="btn-secondary" onClick={() => setShowBatch(false)}>{S.cancelBtn}</button><button className="btn-primary" onClick={() => void busy.run("confirmBatch", confirmBatch)} disabled={busy.isBusy("confirmBatch")}>{S.settleAll}</button></>}>
+        footer={<><button className="btn-secondary" onClick={() => setShowBatch(false)}>{S.cancelBtn}</button><AsyncButton className="btn-primary" onAction={confirmBatch}>{S.settleAll}</AsyncButton></>}>
         <div className="space-y-3">
           <FormGrid>
             <Field label={S.fPayDate}><input type="date" required className="input" value={batchProof.date} onChange={(e) => setBatchProof({ ...batchProof, date: e.target.value })} /></Field>
@@ -3348,7 +3344,7 @@ export default function Finance() {
       </Modal>
 
       <Modal open={allocTarget !== null} onClose={() => setAllocTarget(null)} title={S.allocTitle.replace("{a}", allocTarget?.id ?? "")} subtitle={S.allocSub}
-        footer={<><button className="btn-secondary" onClick={() => setAllocTarget(null)}>{S.cancelBtn}</button><button className="btn-primary" onClick={() => void busy.run("saveAlloc", saveAlloc)} disabled={busy.isBusy("saveAlloc")}>{S.saveAlloc}</button></>}>
+        footer={<><button className="btn-secondary" onClick={() => setAllocTarget(null)}>{S.cancelBtn}</button><AsyncButton className="btn-primary" onAction={saveAlloc}>{S.saveAlloc}</AsyncButton></>}>
         <div className="space-y-3">
           {(() => {
             // Saran proyek = proyek tersering karyawan ini di timesheet (petunjuk saja, simpan tetap manual).
@@ -3416,7 +3412,7 @@ export default function Finance() {
       </Modal>
 
       <Modal open={showJu} onClose={() => setShowJu(false)} title={S.juNewTitle} subtitle={S.juNewSub}
-        footer={<><button className="btn-secondary" onClick={() => setShowJu(false)}>{S.cancelBtn}</button><button className="btn-primary" onClick={() => void busy.run("saveJu", saveJu)} disabled={busy.isBusy("saveJu")}>{S.juSave}</button></>}>
+        footer={<><button className="btn-secondary" onClick={() => setShowJu(false)}>{S.cancelBtn}</button><AsyncButton className="btn-primary" onAction={saveJu}>{S.juSave}</AsyncButton></>}>
         <div className="space-y-3">
           <FormGrid>
             <Field label={S.colTanggal}><input type="date" required className="input" value={juForm.date} onChange={(e) => setJuForm({ ...juForm, date: e.target.value })} /></Field>
@@ -3469,7 +3465,7 @@ export default function Finance() {
       </Modal>
 
       <Modal open={showMut} onClose={() => setShowMut(false)} title={S.mutTitle} subtitle={S.mutSub}
-        footer={<><button className="btn-secondary" onClick={() => setShowMut(false)}>{S.cancelBtn}</button><button className="btn-primary" onClick={() => void busy.run("saveMut", saveMut)} disabled={busy.isBusy("saveMut")}>{S.saveBtn}</button></>}>
+        footer={<><button className="btn-secondary" onClick={() => setShowMut(false)}>{S.cancelBtn}</button><AsyncButton className="btn-primary" onAction={saveMut}>{S.saveBtn}</AsyncButton></>}>
         <div className="space-y-3">
           <FormGrid>
             <Field label={S.colTanggal}><input type="date" required className="input" value={mutForm.date} onChange={(e) => setMutForm({ ...mutForm, date: e.target.value })} /></Field>
@@ -3501,7 +3497,7 @@ export default function Finance() {
       </Modal>
 
       <Modal open={invEdit !== null} onClose={() => setInvEdit(null)} title={S.editInvTitle.replace("{a}", invEdit?.id ?? "")} subtitle={S.editInvSub}
-        footer={<><button className="btn-secondary" onClick={() => setInvEdit(null)}>{S.cancelBtn}</button><button className="btn-primary" onClick={() => void busy.run("saveInvEdit", saveInvEdit)} disabled={busy.isBusy("saveInvEdit")}>{S.saveChanges}</button></>}>
+        footer={<><button className="btn-secondary" onClick={() => setInvEdit(null)}>{S.cancelBtn}</button><AsyncButton className="btn-primary" onAction={saveInvEdit}>{S.saveChanges}</AsyncButton></>}>
         <div className="space-y-3">
           <FormGrid>
             <Field label={S.colCustomer}><input className="input" value={invEditForm.client} onChange={(e) => setInvEditForm({ ...invEditForm, client: e.target.value })} /></Field>

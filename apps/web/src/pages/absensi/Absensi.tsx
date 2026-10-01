@@ -19,7 +19,7 @@ import {
   toggleSort,
   usePager,
   NumInput,
-  useBusy,
+  AsyncButton,
 } from "../../components/ui";
 import type { SortState } from "../../components/ui";
 import { FilterPopover } from "../../components/FilterPopover";
@@ -73,7 +73,6 @@ function otStatusOf(a: StoreItem): string {
 }
 
 export default function Absensi() {
-  const busy = useBusy();
   const { data, add, update, remove, log, branch, setBranch, inBranch } = useStore();
   const { locale } = useT();
   const S = n_misc[locale];
@@ -342,15 +341,15 @@ export default function Absensi() {
         actions={
           tab === "Catat" ? (
             <>
-              <button className="btn-secondary" onClick={() => void busy.run("markAllPresent", markAllPresent)} disabled={busy.isBusy("markAllPresent")}>{S.markAllPresentBtn}</button>
-              <button className="btn-primary-gradient" onClick={() => void busy.run("saveAll", saveAll)} disabled={busy.isBusy("saveAll")}>{S.saveAttendanceBtn}</button>
+              <AsyncButton className="btn-secondary" onAction={markAllPresent}>{S.markAllPresentBtn}</AsyncButton>
+              <AsyncButton className="btn-primary-gradient" onAction={saveAll}>{S.saveAttendanceBtn}</AsyncButton>
             </>
           ) : (
             <div className="flex items-center gap-2">
-              <button className="btn-secondary" onClick={() => void busy.run("approveAllOT", approveAllOT)} disabled={busy.isBusy("approveAllOT")}>{S.approveAllOtBtn}</button>
-              <button className="btn-secondary" onClick={() => void busy.run("exportRekap", exportRekap)} disabled={busy.isBusy("exportRekap")}>
+              <AsyncButton className="btn-secondary" onAction={approveAllOT}>{S.approveAllOtBtn}</AsyncButton>
+              <AsyncButton className="btn-secondary" onAction={exportRekap}>
                 <Download className="h-4 w-4" /> {S.exportExcelBtn}
-              </button>
+              </AsyncButton>
             </div>
           )
         }

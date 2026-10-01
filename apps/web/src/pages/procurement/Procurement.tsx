@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Plus, Factory, ShoppingCart, ClipboardList, Check, X, Printer, Send, Star, Wallet, Umbrella, Search } from "lucide-react";
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 import { Card, CardHeader, PageHeader, Badge, KpiCard, Tabs, StatusBadge, Donut, ChartTooltip, Modal, Field, FormGrid, ConfirmModal, toast, EmptyState, SortTh, toggleSort, sortRows, usePager,
-  NumInput,
+  NumInput, AsyncButton,
 } from "../../components/ui";
 import type { SortState } from "../../components/ui";
 import { useBusy } from "../../components/ui";
@@ -1393,7 +1393,7 @@ export default function Procurement() {
                         </Field>
                       </FormGrid>
                       <Field label={S.eta}><input type="date" className="input" value={konsEta} onChange={(e) => setKonsEta(e.target.value)} /></Field>
-                      <button className="btn-primary text-xs" onClick={() => void busy.run("saveKonsolidasi", saveKonsolidasi)} disabled={busy.isBusy("saveKonsolidasi")}>{S.btnKons}</button>
+                      <AsyncButton className="btn-primary text-xs" onAction={saveKonsolidasi}>{S.btnKons}</AsyncButton>
                     </div>
                   )}
               </Card>
@@ -1588,7 +1588,7 @@ export default function Procurement() {
 
       {/* Modal PO Besar */}
       <Modal open={showBig} onClose={() => setShowBig(false)} title={S.mBigT} subtitle={S.mBigS}
-        wide footer={<><button className="btn-secondary" onClick={() => setShowBig(false)}>{S.btnBatal}</button><button className="btn-primary" onClick={() => void busy.run("saveBig", saveBig)} disabled={busy.isBusy("saveBig")}>{S.btnSimpanBig}</button></>}>
+        wide footer={<><button className="btn-secondary" onClick={() => setShowBig(false)}>{S.btnBatal}</button><AsyncButton className="btn-primary" onAction={saveBig}>{S.btnSimpanBig}</AsyncButton></>}>
         <div className="space-y-3">
           <div className="flex flex-wrap gap-2" role="radiogroup" aria-label={S.ariaTujuan}>
             {(["kapal", "stok"] as const).map((t) => (
@@ -1677,7 +1677,7 @@ export default function Procurement() {
 
       {/* Modal PO Kecil */}
       <Modal open={showSmall} onClose={() => setShowSmall(false)} title={S.mSmallT} subtitle={S.mSmallS}
-        footer={<><button className="btn-secondary" onClick={() => setShowSmall(false)}>{S.btnBatal}</button><button className="btn-primary" onClick={() => void busy.run("saveSmall", saveSmall)} disabled={busy.isBusy("saveSmall")}>{S.btnSimpanSmall}</button></>}>
+        footer={<><button className="btn-secondary" onClick={() => setShowSmall(false)}>{S.btnBatal}</button><AsyncButton className="btn-primary" onAction={saveSmall}>{S.btnSimpanSmall}</AsyncButton></>}>
         <div className="space-y-3">
           <FormGrid>
             <Field label={S.workshop}><input className="input" value={smallForm.workshop} onChange={(e) => setSmallForm({ ...smallForm, workshop: e.target.value })} placeholder={S.phWorkshop} /></Field>
@@ -1725,7 +1725,7 @@ export default function Procurement() {
 
       {/* Modal buat RFQ */}
       <Modal open={rfqPr !== null} onClose={() => setRfqPr(null)} title={S.mRfqT.replace("{n}", rfqPr?.id ?? "")} subtitle={S.mRfqS.replace("{a}", rfqPr?.item ?? "")}
-        footer={<><button className="btn-secondary" onClick={() => setRfqPr(null)}>{S.btnBatal}</button><button className="btn-primary" onClick={() => void busy.run("saveRfq", saveRfq)} disabled={busy.isBusy("saveRfq")}>{S.btnBuatRfqDraf}</button></>}>
+        footer={<><button className="btn-secondary" onClick={() => setRfqPr(null)}>{S.btnBatal}</button><AsyncButton className="btn-primary" onAction={saveRfq}>{S.btnBuatRfqDraf}</AsyncButton></>}>
         <div className="space-y-2">
           <div className="flex justify-end">{venCatPick("vcat-rfq")}</div>
           {vendByCat.map((v) => (
@@ -1741,7 +1741,7 @@ export default function Procurement() {
 
       {/* Modal input penawaran */}
       <Modal open={quoteRfq !== null} onClose={() => setQuoteRfq(null)} title={S.mQuoteT.replace("{n}", quoteRfq?.id ?? "")} subtitle={S.mQuoteS}
-        footer={<><button className="btn-secondary" onClick={() => setQuoteRfq(null)}>{S.btnBatal}</button><button className="btn-primary" onClick={() => void busy.run("saveQuote", saveQuote)} disabled={busy.isBusy("saveQuote")}>{S.btnSimpanQuote}</button></>}>
+        footer={<><button className="btn-secondary" onClick={() => setQuoteRfq(null)}>{S.btnBatal}</button><AsyncButton className="btn-primary" onAction={saveQuote}>{S.btnSimpanQuote}</AsyncButton></>}>
         <div className="space-y-3">
           <Field label={S.vendor}>
             <select className="input" value={quoteForm.vendor} onChange={(e) => setQuoteForm({ ...quoteForm, vendor: e.target.value })}>
@@ -1778,8 +1778,8 @@ export default function Procurement() {
       <Modal open={recvPo !== null} onClose={() => setRecvPo(null)} title={S.mRecvT.replace("{n}", recvPo?.id ?? "")} subtitle={S.mRecvS}
         footer={<>
           <button className="btn-secondary" onClick={() => setRecvPo(null)}>{S.btnBatal}</button>
-          <button className="btn-secondary" onClick={() => void busy.run("confirmRecv-sebagian", () => confirmRecv("sebagian"))} disabled={busy.isBusy("confirmRecv-sebagian")}>{S.btnTerimaSebagian}</button>
-          <button className="btn-primary" onClick={() => void busy.run("confirmRecv-penuh", () => confirmRecv("penuh"))} disabled={busy.isBusy("confirmRecv-penuh")}>{S.btnTerimaPenuh}</button>
+          <AsyncButton className="btn-secondary" onAction={() => confirmRecv("sebagian")}>{S.btnTerimaSebagian}</AsyncButton>
+          <AsyncButton className="btn-primary" onAction={() => confirmRecv("penuh")}>{S.btnTerimaPenuh}</AsyncButton>
         </>}>
         <div className="space-y-3">
           <Field label={S.itemTujuan} hint={recvPo?.poType === "Kecil" ? S.hintKecilOps : undefined}>
@@ -1812,7 +1812,7 @@ export default function Procurement() {
 
       {/* Modal retur */}
       <Modal open={retPo !== null} onClose={() => setRetPo(null)} title={S.mRetT.replace("{n}", retPo?.id ?? "")} subtitle={retPo ? S.mRetS.replace("{n}", fmtJumlah(maxRet(retPo))) : ""}
-        footer={<><button className="btn-secondary" onClick={() => setRetPo(null)}>{S.btnBatal}</button><button className="btn-primary" onClick={() => void busy.run("confirmRetur", confirmRetur)} disabled={busy.isBusy("confirmRetur")}>{S.btnSimpanRetur}</button></>}>
+        footer={<><button className="btn-secondary" onClick={() => setRetPo(null)}>{S.btnBatal}</button><AsyncButton className="btn-primary" onAction={confirmRetur}>{S.btnSimpanRetur}</AsyncButton></>}>
         <div className="space-y-3">
           <FormGrid>
             <Field label={S.qtyRetur}><NumInput min={0} className="input" value={retQty} onChange={(e) => setRetQty(e.target.value)} /></Field>

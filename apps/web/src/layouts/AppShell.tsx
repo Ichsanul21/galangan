@@ -33,6 +33,7 @@ import {
   Settings as SettingsIcon,
   ChevronDown,
   PanelLeft,
+  Loader2,
 } from "lucide-react";
 import { useAuth } from "../auth/auth";
 import { useStore } from "../data/store";
@@ -44,7 +45,7 @@ import { buildModuleAlertItems, type ModuleAlertKey } from "../utils/moduleAlert
 import { useT } from "../i18n/LanguageContext";
 import { n_misc } from "../i18n/n_misc";
 import { remoteRepository } from "../services/repositories";
-import { recentModuleSync } from "../data/useModuleSync";
+import { recentModuleSync, useModuleSyncing } from "../data/useModuleSync";
 import { getJwt, isBackendConfigured } from "../services/http";
 
 export default function AppShell() {
@@ -53,6 +54,9 @@ export default function AppShell() {
   const { data, reset, branch, setBranch, backendMode, backendError, pendingSync, pushPending, resync } = useStore();
   const S = n_misc[locale];
   const navigate = useNavigate();
+  /* Badge global: tampil selama batch halaman mana pun (useModuleSync)
+     sedang berjalan - tak ada jeda tanpa umpan balik saat pindah modul. */
+  const moduleSyncing = useModuleSyncing();
 
   useEffect(() => {
     const onExpired = () => {
@@ -573,6 +577,12 @@ export default function AppShell() {
           </div>
 
           <div className="flex items-center gap-2">
+            {moduleSyncing && (
+              <span className="hidden items-center gap-1.5 rounded-full bg-ocean-50 px-2.5 py-1 text-[11px] font-semibold text-ocean-600 sm:inline-flex" role="status" aria-live="polite">
+                <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
+                {locale === "en" ? "Syncing…" : "Memuat…"}
+              </span>
+            )}
             <div className="relative">
               <button
                 onClick={() => setNotifOpen((v) => !v)}

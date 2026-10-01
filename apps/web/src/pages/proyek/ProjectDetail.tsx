@@ -21,6 +21,7 @@ import {
   sortRows,
   NumInput,
   FileUploadButton,
+  AsyncButton,
 } from "../../components/ui";
 import type { SortState } from "../../components/ui";
 import { useBusy } from "../../components/ui";
@@ -1410,7 +1411,7 @@ export default function ProjectDetail() {
 
       {/* Modal BAST */}
       <Modal open={showBast} onClose={() => setShowBast(false)} title={S.detCreateBast} subtitle={`${pid} · ${nextBastId(bastForm.tanggal || todayISO())}`}
-        footer={<><button className="btn-secondary" onClick={() => setShowBast(false)}>{S.cancelBtn}</button><button className="btn-primary" onClick={() => void busy.run("saveBast", saveBast)} disabled={busy.isBusy("saveBast")}>{S.detSaveDraft}</button></>}>
+        footer={<><button className="btn-secondary" onClick={() => setShowBast(false)}>{S.cancelBtn}</button><AsyncButton className="btn-primary" onAction={saveBast}>{S.detSaveDraft}</AsyncButton></>}>
         <div className="space-y-3">
           <Field label={S.detMileField} hint={S.detMileHint}>
             <select className="input" value={bastForm.milestone} onChange={(e) => setBastForm({ ...bastForm, milestone: e.target.value })}>
@@ -1432,7 +1433,7 @@ export default function ProjectDetail() {
 
       {/* Modal change order */}
       <Modal open={showCo} onClose={() => setShowCo(false)} title={S.detCoModal} subtitle={pid}
-        footer={<><button className="btn-secondary" onClick={() => setShowCo(false)}>{S.cancelBtn}</button><button className="btn-primary" onClick={() => void busy.run("saveCo", saveCo)} disabled={busy.isBusy("saveCo")}>{S.detProposeCo}</button></>}>
+        footer={<><button className="btn-secondary" onClick={() => setShowCo(false)}>{S.cancelBtn}</button><AsyncButton className="btn-primary" onAction={saveCo}>{S.detProposeCo}</AsyncButton></>}>
         <div className="space-y-3">
           <Field label={S.detCoTitleField}><input className="input" value={coForm.title} onChange={(e) => setCoForm({ ...coForm, title: e.target.value })} placeholder={S.detCoTitlePh} /></Field>
           <FormGrid>
@@ -1471,7 +1472,7 @@ export default function ProjectDetail() {
 
       {/* Modal catat realisasi (R2: tombol toast-only dijadikan tulis beneran) */}
       <Modal open={showActual} onClose={() => setShowActual(false)} title={S.detActualModal}
-        footer={<><button className="btn-secondary" onClick={() => setShowActual(false)}>{S.cancelBtn}</button><button className="btn-primary" onClick={() => void busy.run("saveActual", saveActual)} disabled={busy.isBusy("saveActual")}>{S.saveBtn}</button></>}>
+        footer={<><button className="btn-secondary" onClick={() => setShowActual(false)}>{S.cancelBtn}</button><AsyncButton className="btn-primary" onAction={saveActual}>{S.saveBtn}</AsyncButton></>}>
         <Field label={S.detActualAmount}>
           <NumInput min={0} className="input" value={actualVal} onChange={(e) => setActualVal(e.target.value)} placeholder={S.detActualPh} />
         </Field>
@@ -1480,7 +1481,7 @@ export default function ProjectDetail() {
 
       {/* Modal ubah status (kaku: konfirmasi + alasan wajib) */}
       <Modal open={statusPending !== null} onClose={() => { setStatusPending(null); setStatusReason(""); }} title={S.detStatusTitle.replace("{a}", statusPending ?? "")}
-        footer={<><button className="btn-secondary" onClick={() => { setStatusPending(null); setStatusReason(""); }}>{S.cancelBtn}</button><button className="btn-primary" onClick={() => void busy.run("confirmStatus", confirmStatus)} disabled={busy.isBusy("confirmStatus")}>{S.saveBtn}</button></>}>
+        footer={<><button className="btn-secondary" onClick={() => { setStatusPending(null); setStatusReason(""); }}>{S.cancelBtn}</button><AsyncButton className="btn-primary" onAction={confirmStatus}>{S.saveBtn}</AsyncButton></>}>
         <p className="text-sm text-steel-600">{project.id} · {project.status} → {statusPending}</p>
         <Field label={S.detStatusReason}>
           <textarea className="input" rows={3} value={statusReason} onChange={(e) => setStatusReason(e.target.value)} />
@@ -1489,7 +1490,7 @@ export default function ProjectDetail() {
 
       {/* Modal geser tahap (kaku: E1 gate + alasan wajib) */}
       <Modal open={tahapMove !== null} onClose={() => { setTahapMove(null); setTahapReason(""); }} title={S.detTahapTitle.replace("{a}", pid)}
-        footer={<><button className="btn-secondary" onClick={() => { setTahapMove(null); setTahapReason(""); }}>{S.cancelBtn}</button><button className="btn-primary" onClick={() => void busy.run("confirmTahapMove", confirmTahapMove)} disabled={busy.isBusy("confirmTahapMove")}>{S.saveBtn}</button></>}>
+        footer={<><button className="btn-secondary" onClick={() => { setTahapMove(null); setTahapReason(""); }}>{S.cancelBtn}</button><AsyncButton className="btn-primary" onAction={confirmTahapMove}>{S.saveBtn}</AsyncButton></>}>
         <p className="text-sm text-steel-600">{tahapOf(project)} → {tahapMove ? TAHAP[TAHAP.indexOf(tahapOf(project)) + tahapMove.dir] : "-"}</p>
         <Field label={S.detTahapReason}>
           <textarea className="input" rows={3} value={tahapReason} onChange={(e) => setTahapReason(e.target.value)} />
@@ -1524,7 +1525,7 @@ export default function ProjectDetail() {
 
       {/* Modal update WBS task */}
       <Modal open={wbsTaskUpdate !== null} onClose={() => setWbsTaskUpdate(null)} title={S.detWbsUpdateTitle.replace("{a}", wbsTaskUpdate ?? "")}
-        footer={<><button className="btn-secondary" onClick={() => setWbsTaskUpdate(null)}>{S.cancelBtn}</button><button className="btn-primary" onClick={() => void busy.run("saveWbsTask", saveWbsTask)} disabled={busy.isBusy("saveWbsTask")}>{S.saveBtn}</button></>}>
+        footer={<><button className="btn-secondary" onClick={() => setWbsTaskUpdate(null)}>{S.cancelBtn}</button><AsyncButton className="btn-primary" onAction={saveWbsTask}>{S.saveBtn}</AsyncButton></>}>
         <div className="space-y-3">
           <Field label={S.detProgField} hint={S.detProgHint}><NumInput min={0} max={100} className="input" value={wbsUpdateForm.progress} onChange={(e) => setWbsUpdateForm({ ...wbsUpdateForm, progress: e.target.value })} placeholder={S.detProgPh} /></Field>
           <FormGrid>
@@ -1544,7 +1545,12 @@ export default function ProjectDetail() {
             {wbsUpdateForm.photoUrl ? (
               <span className="flex flex-wrap items-center gap-2">
                 <SecureImg src={wbsUpdateForm.photoUrl} alt="Foto WBS" name="WBS" className="h-14 w-20 rounded-lg border border-steel-200 object-cover" />
-                <a className="text-xs font-semibold text-ocean-600 underline" href={wbsUpdateForm.photoUrl} target="_blank" rel="noreferrer">{S.detPhotoSee}</a>
+                <DocumentPreviewCell
+                  doc={{
+                    title: "Foto WBS",
+                    fileUrl: wbsUpdateForm.photoUrl,
+                  }}
+                />
               </span>
             ) : null}
           </div>

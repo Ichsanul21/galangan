@@ -3,7 +3,7 @@ import { useStore } from "../../data/store";
 import { useT } from "../../i18n/LanguageContext";
 import { n_prj } from "../../i18n/n_prj";
 import { Card, StatusBadge, Modal, Field, FormGrid, toast, EmptyState, Badge, ConfirmModal,
-  NumInput, useBusy,
+  NumInput, AsyncButton, useBusy,
 } from "../../components/ui";
 import { Plus, Wrench, Package, Box, RotateCcw, FileDown } from "lucide-react";
 import { exportExcel, fmtRupiah } from "../../utils/export";
@@ -416,7 +416,7 @@ export default function SparepartServiceSection({ projectId, vesselId, view = "a
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
         <h3 className="text-sm font-semibold text-navy-900 flex items-center gap-2"><Wrench className="h-4 w-4" /> {S.spsSvcTitle.replace("{a}", String(svcFiltered.length)).replace("{b}", svcFiltered.length !== svcItems.length ? S.spsSpSuffix.replace("{n}", String(svcItems.length)) : "")}</h3>
         <div className="flex gap-2">
-          <button className="btn-secondary text-xs" onClick={() => void busy.run("exportSvc", exportSvc)} disabled={busy.isBusy("exportSvc")}><FileDown className="h-3.5 w-3.5" /> {S.exportExcelBtn}</button>
+          <AsyncButton className="btn-secondary text-xs" onAction={exportSvc}><FileDown className="h-3.5 w-3.5" /> {S.exportExcelBtn}</AsyncButton>
           <button className="btn-secondary text-xs" onClick={openAddSvc}><Plus className="h-3.5 w-3.5" /> {S.spsSvcAdd}</button>
         </div>
       </div>
@@ -498,7 +498,7 @@ export default function SparepartServiceSection({ projectId, vesselId, view = "a
 
       <Modal open={showAdd || editSp !== null} onClose={() => { setShowAdd(false); setEditSp(null); }}
         title={editSp ? (locale === "en" ? `Edit sparepart ${editSp.id}` : `Ubah sparepart ${editSp.id}`) : S.spsSpModal}
-        footer={<><button className="btn-secondary" onClick={() => { setShowAdd(false); setEditSp(null); }}>{S.cancelBtn}</button><button className="btn-primary" onClick={() => void busy.run("saveSparepart", saveSparepart)} disabled={busy.isBusy("saveSparepart")}>{S.saveBtn}</button></>}>
+        footer={<><button className="btn-secondary" onClick={() => { setShowAdd(false); setEditSp(null); }}>{S.cancelBtn}</button><AsyncButton className="btn-primary" onAction={saveSparepart}>{S.saveBtn}</AsyncButton></>}>
         <div className="space-y-3">
           <Field label={S.spsSpName}><input className="input" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder={S.spsSpNamePh} /></Field>
           <Field label={S.spsPartNo}><input className="input" value={form.partNumber} onChange={(e) => setForm({ ...form, partNumber: e.target.value })} /></Field>
@@ -528,7 +528,7 @@ export default function SparepartServiceSection({ projectId, vesselId, view = "a
 
       <Modal open={showAddSvc || editSvc !== null} onClose={() => { setShowAddSvc(false); setEditSvc(null); }}
         title={editSvc ? (locale === "en" ? `Edit service ${editSvc.id}` : `Ubah service ${editSvc.id}`) : S.spsSvcAdd}
-        footer={<><button className="btn-secondary" onClick={() => { setShowAddSvc(false); setEditSvc(null); }}>{S.cancelBtn}</button><button className="btn-primary" onClick={() => void busy.run("saveService", saveService)} disabled={busy.isBusy("saveService")}>{S.saveBtn}</button></>}>
+        footer={<><button className="btn-secondary" onClick={() => { setShowAddSvc(false); setEditSvc(null); }}>{S.cancelBtn}</button><AsyncButton className="btn-primary" onAction={saveService}>{S.saveBtn}</AsyncButton></>}>
         <div className="space-y-3">
           <FormGrid>
             <Field label={S.detDocType}>
@@ -554,7 +554,7 @@ export default function SparepartServiceSection({ projectId, vesselId, view = "a
       </Modal>
 
       <Modal open={cancelFor !== null} onClose={() => setCancelFor(null)} title={S.spsCancelTitle.replace("{a}", cancelFor?.description ?? "")} subtitle={cancelFor?.id}
-        footer={<><button className="btn-secondary" onClick={() => setCancelFor(null)}>{S.spsBackBtn}</button><button className="btn-primary" onClick={() => void busy.run("confirmCancel", confirmCancel)} disabled={busy.isBusy("confirmCancel")}>{S.spsConfirmCancel}</button></>}>
+        footer={<><button className="btn-secondary" onClick={() => setCancelFor(null)}>{S.spsBackBtn}</button><AsyncButton className="btn-primary" onAction={confirmCancel}>{S.spsConfirmCancel}</AsyncButton></>}>
         <Field label={S.spsCancelField} hint={S.spsCancelHint}>
           <textarea className="input" rows={3} value={cancelReason} onChange={(e) => setCancelReason(e.target.value)} placeholder={S.spsCancelPh} />
         </Field>

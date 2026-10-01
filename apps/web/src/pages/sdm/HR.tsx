@@ -25,9 +25,10 @@ import {
   SecureImg,
 } from "../../components/ui";
 import type { SortState } from "../../components/ui";
-import { useBusy } from "../../components/ui";
+import { AsyncButton, useBusy } from "../../components/ui";
 import { FilterPopover } from "../../components/FilterPopover";
 import { useStore } from "../../data/store";
+import { DocumentPreviewCell } from "../../components/DocumentPreview";
 import { useModuleSync } from "../../data/useModuleSync";
 import { findUsages } from "../../utils/usages";
 import type { StoreItem, CollectionKey } from "../../data/store";
@@ -1241,23 +1242,12 @@ export default function HR() {
                       <td className="td text-steel-600">{l.type === "Tahunan" ? S.daysN.replace("{n}", String(saldoCuti(String(l.employeeId)))) : "-"}</td>
                       <td className="td"><StatusBadge status={String(l.status)} /></td>
                       <td className="td">
-                        {l.fileUrl ? (
-                          /\.pdf(\?|#|$)/i.test(String(l.fileUrl)) ? (
-                            <a className="text-sm font-semibold text-ocean-600 underline" href={String(l.fileUrl)} target="_blank" rel="noreferrer" title={String(l.fileUrl)}>
-                              Lihat PDF
-                            </a>
-                          ) : /\.(png|jpe?g|gif|webp|svg|bmp)(\?|#|$)/i.test(String(l.fileUrl)) ? (
-                            <a href={String(l.fileUrl)} target="_blank" rel="noreferrer" title={String(l.fileUrl)}>
-                              <img src={String(l.fileUrl)} alt={`Lampiran ${String(l.id)}`} className="h-12 w-16 rounded-lg border border-steel-200 object-cover" loading="lazy" />
-                            </a>
-                          ) : (
-                            <a className="text-sm font-semibold text-ocean-600 underline" href={String(l.fileUrl)} target="_blank" rel="noreferrer" title={String(l.fileUrl)}>
-                              {locale === "en" ? "Preview" : "Pratinjau"}
-                            </a>
-                          )
-                        ) : (
-                          <span className="text-xs text-steel-400">-</span>
-                        )}
+                        <DocumentPreviewCell
+                          doc={l.fileUrl ? {
+                            title: `${empNameOf(String(l.employeeId))} · ${String(l.type)} · ${String(l.id)}`,
+                            fileUrl: String(l.fileUrl),
+                          } : null}
+                        />
                       </td>
                       <td className="td">
                         {l.status === "Diajukan" ? (
@@ -1487,7 +1477,7 @@ export default function HR() {
         footer={
           <>
             <button className="btn-secondary" onClick={() => setShowForm(false)}>{S.btnBatal}</button>
-            <button className="btn-primary" onClick={() => void busy.run("saveEmployee", saveEmployee)} disabled={busy.isBusy("saveEmployee")}>{S.btnSimpan}</button>
+            <AsyncButton className="btn-primary" onAction={saveEmployee}>{S.btnSimpan}</AsyncButton>
           </>
         }
       >

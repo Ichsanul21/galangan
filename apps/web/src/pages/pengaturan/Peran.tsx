@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Download, KeyRound, Plus, RefreshCw, Search } from "lucide-react";
-import { Badge, Card, ConfirmModal, Field, KpiCard, Modal, PageHeader, SortTh, sortRows, toast, toggleSort, usePager, useBusy } from "../../components/ui";
+import { Badge, Card, ConfirmModal, Field, KpiCard, Modal, PageHeader, SortTh, sortRows, toast, toggleSort, usePager, AsyncButton } from "../../components/ui";
 import type { SortState } from "../../components/ui";
 import { canSetTarget, useAuth } from "../../auth/auth";
 import { useStore } from "../../data/store";
@@ -278,7 +278,6 @@ function errMsg(e: unknown, fallback: string): string {
 }
 
 export default function Peran() {
-  const busy = useBusy();
   const { locale } = useT();
   const S = n_roles[locale];
   const actionLabel: Record<RoleAction, string> = {
@@ -543,9 +542,9 @@ export default function Peran() {
         subtitle={S.subtitle}
         icon={<KeyRound className="h-5 w-5" />}
         actions={
-          <button className="btn-secondary text-xs" onClick={() => void busy.run("doExport", doExport)} disabled={busy.isBusy("doExport")}>
+          <AsyncButton className="btn-secondary text-xs" onAction={doExport}>
             <Download className="h-4 w-4" /> {S.exportBtn}
-          </button>
+          </AsyncButton>
         }
       />
 

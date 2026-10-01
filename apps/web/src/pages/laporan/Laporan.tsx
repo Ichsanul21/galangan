@@ -3,7 +3,7 @@ import type { CSSProperties } from "react";
 import { Link } from "react-router-dom";
 import { useDraftState } from "../../utils/draft";
 import { FileText } from "lucide-react";
-import { Card, CardHeader, PageHeader, StatusBadge, Badge, KpiCard, EmptyState, ProgressBar, Donut, toast, useBusy } from "../../components/ui";
+import { Card, CardHeader, PageHeader, StatusBadge, Badge, KpiCard, EmptyState, ProgressBar, Donut, toast, AsyncButton } from "../../components/ui";
 import { useStore } from "../../data/store";
 import type { StoreItem, CollectionKey } from "../../data/store";
 import { useModuleSync } from "../../data/useModuleSync";
@@ -93,7 +93,7 @@ function loadArc(): ReportArc[] {
 const LAP_COLS: CollectionKey[] = ["activities", "attendance", "boq", "branches", "incidents", "invoices", "ncr", "payables", "payroll", "projects", "purchaseOrders", "taxPeriods"];
 
 export default function Laporan() {
-  const busy = useBusy();
+
   const { data, branch, inBranch, wbsFor, log } = useStore();
   /* Fetch per-batch modul (pengganti resync penuh). */
   useModuleSync(LAP_COLS);
@@ -351,16 +351,14 @@ export default function Laporan() {
   };
 
   const pdfName = mode === "Mingguan" ? `Laporan-Mingguan-${week0}` : mode === "Bulanan" ? `Laporan-Bulanan-${month}` : `Laporan-${activeProjectId}`;
-  const exportPDFLogged = () => {
-    void busy.run("export", async () => {
-      try {
-        await exportPDF("laporan-konten", pdfName);
-        pushArc(pdfName, mode === "Per Proyek" ? String(project?.vessel ?? "") : mode === "Bulanan" ? month : `${fmtTanggal(week0)} - ${fmtTanggal(week1)}`, mode);
-        toast(S.tPdfArchived);
-      } catch {
-        toast("Ekspor PDF gagal", "info");
-      }
-    });
+  const exportPDFLogged = async () => {
+    try {
+      await exportPDF("laporan-konten", pdfName);
+      pushArc(pdfName, mode === "Per Proyek" ? String(project?.vessel ?? "") : mode === "Bulanan" ? month : `${fmtTanggal(week0)} - ${fmtTanggal(week1)}`, mode);
+      toast(S.tPdfArchived);
+    } catch {
+      toast("Ekspor PDF gagal", "info");
+    }
   };
 
   return (
@@ -371,10 +369,10 @@ export default function Laporan() {
         icon={<FileText className="h-5 w-5" />}
         actions={
           mode === "Mingguan"
-            ? <><button className="btn-secondary" disabled={busy.isBusy("export")} onClick={() => void busy.run("export", async () => exportWeek())}>{S.exportExcelBtn}</button><button className="btn-primary" disabled={busy.isBusy("export")} onClick={exportPDFLogged}>{S.pdfReportBtn}</button></>
+            ? <><AsyncButton className="btn-secondary" onAction={async () => exportWeek()}>{S.exportExcelBtn}</AsyncButton><AsyncButton className="btn-primary" onAction={exportPDFLogged}>{S.pdfReportBtn}</AsyncButton></>
             : mode === "Bulanan"
-              ? <><button className="btn-secondary" disabled={busy.isBusy("export")} onClick={() => void busy.run("export", async () => exportMonth())}>{S.exportExcelBtn}</button><button className="btn-primary" disabled={busy.isBusy("export")} onClick={exportPDFLogged}>{S.pdfReportBtn}</button></>
-              : <><button className="btn-secondary" disabled={busy.isBusy("export")} onClick={() => void busy.run("export", async () => exportProject())}>{S.exportExcelBtn}</button><button className="btn-primary" disabled={busy.isBusy("export")} onClick={exportPDFLogged}>{S.pdfReportBtn}</button></>
+              ? <><AsyncButton className="btn-secondary" onAction={async () => exportMonth()}>{S.exportExcelBtn}</AsyncButton><AsyncButton className="btn-primary" onAction={exportPDFLogged}>{S.pdfReportBtn}</AsyncButton></>
+              : <><AsyncButton className="btn-secondary" onAction={async () => exportProject()}>{S.exportExcelBtn}</AsyncButton><AsyncButton className="btn-primary" onAction={exportPDFLogged}>{S.pdfReportBtn}</AsyncButton></>
         }
       />
 

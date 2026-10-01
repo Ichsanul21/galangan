@@ -2,7 +2,7 @@ import { useState, useMemo } from "react";
 import { useStore } from "../../data/store";
 import { useT } from "../../i18n/LanguageContext";
 import { n_prj } from "../../i18n/n_prj";
-import { Card, StatusBadge, Modal, Field, toast, Badge, ProgressBar, KpiCard, EmptyState, useBusy } from "../../components/ui";
+import { Card, StatusBadge, Modal, Field, toast, Badge, ProgressBar, KpiCard, EmptyState, useBusy, AsyncButton } from "../../components/ui";
 import { Send, CheckCircle2, XCircle, FileDown, FileText } from "lucide-react";
 import { exportPDF, exportExcelSheets, fmtRupiah, fmtRentang } from "../../utils/export";
 import { STATUS_BOQ_ID, fmtTanggal, todayISO } from "../../utils/format";
@@ -138,8 +138,8 @@ export default function ReportSection({ projectId }: Props) {
               <p className="text-xs text-steel-500">{projectId} · {project?.type ?? "-"} · {project?.client ?? "-"} · {project?.manager ?? "-"} · {fmtRentang(project?.start, project?.end)}</p>
             </div>
             <div className="flex gap-2" data-export-hide>
-              <button className="btn-secondary text-xs" onClick={() => void busy.run("handleExportPDF", handleExportPDF)} disabled={busy.isBusy("handleExportPDF")}><FileText className="h-3.5 w-3.5" /> {S.repPdf}</button>
-              <button className="btn-secondary text-xs" onClick={() => void busy.run("handleExportExcel", handleExportExcel)} disabled={busy.isBusy("handleExportExcel")}><FileDown className="h-3.5 w-3.5" /> {S.excelBtn}</button>
+              <AsyncButton className="btn-secondary text-xs" onAction={handleExportPDF}><FileText className="h-3.5 w-3.5" /> {S.repPdf}</AsyncButton>
+              <AsyncButton className="btn-secondary text-xs" onAction={handleExportExcel}><FileDown className="h-3.5 w-3.5" /> {S.excelBtn}</AsyncButton>
             </div>
           </div>
 
@@ -278,7 +278,7 @@ export default function ReportSection({ projectId }: Props) {
       </Card>
 
       <Modal open={showShare} onClose={() => setShowShare(false)} title={S.detShareModal}
-        footer={<><button className="btn-secondary" onClick={() => setShowShare(false)}>{S.cancelBtn}</button><button className="btn-primary" onClick={() => void busy.run("submitShare", submitShare)} disabled={busy.isBusy("submitShare")}>{S.detSendBtn}</button></>}>
+        footer={<><button className="btn-secondary" onClick={() => setShowShare(false)}>{S.cancelBtn}</button><AsyncButton className="btn-primary" onAction={submitShare}>{S.detSendBtn}</AsyncButton></>}>
         <div className="space-y-3">
           <Field label={S.detDocField}>
             <select className="input" value={shareForm.docId} onChange={(e) => setShareForm({ ...shareForm, docId: e.target.value })}>

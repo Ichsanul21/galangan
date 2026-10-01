@@ -3,9 +3,8 @@
 // Logika + validasi pindahan utuh dari Projects.tsx (satu sumber).
 import { useState } from "react";
 import { Field, FormGrid, Modal, toast,
-  NumInput,
+  NumInput, AsyncButton,
 } from "./ui";
-import { useBusy } from "./ui";
 import type { StoreItem } from "../data/store";
 import { todayISO } from "../utils/format";
 import ClientModal from "./ClientModal";
@@ -44,7 +43,7 @@ export default function ProjectAddModal({ open, onClose, S, projects, vessels, c
   employees: StoreItem[];
   add: (collection: any, item: any, meta?: any) => Promise<StoreItem>;
 }) {
-  const busy = useBusy();
+
   const [form, setForm] = useState(emptyForm);
   const [scopeRows, setScopeRows] = useState([{ service: "", lokasi: "", deskripsi: "" }]);
   const [showClientModal, setShowClientModal] = useState(false);
@@ -161,7 +160,7 @@ export default function ProjectAddModal({ open, onClose, S, projects, vessels, c
         footer={
           <>
             <button className="btn-secondary" onClick={close}>{S.cancelBtn}</button>
-            <button className="btn-primary" onClick={() => void busy.run("save", save)} disabled={busy.isBusy("save")}>{S.prjSave}</button>
+            <AsyncButton className="btn-primary" onAction={save}>{S.prjSave}</AsyncButton>
           </>
         }
       >

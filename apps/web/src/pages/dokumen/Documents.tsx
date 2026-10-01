@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Plus, Search, ScrollText, FileText, Eye, Pencil, Trash2, Archive, RotateCcw, Download, Upload } from "lucide-react";
-import { Card, PageHeader, Badge, KpiCard, Modal, Field, FormGrid, ConfirmModal, SortTh, toggleSort, sortRows, toast, StatusBadge, usePager, useBusy } from "../../components/ui";
+import { Card, PageHeader, Badge, KpiCard, Modal, Field, FormGrid, ConfirmModal, SortTh, toggleSort, sortRows, toast, StatusBadge, usePager, AsyncButton } from "../../components/ui";
 import type { SortState } from "../../components/ui";
 import { FilterPopover } from "../../components/FilterPopover";
 import { useStore, type StoreItem, type CollectionKey } from "../../data/store";
@@ -106,7 +106,6 @@ function docHay(d: StoreItem): string {
 }
 
 export default function Documents() {
-  const busy = useBusy();
   const { data, add, update, remove, log, branch, inBranch } = useStore();
   const { locale } = useT();
   const S = n_dry[locale];
@@ -377,7 +376,7 @@ export default function Documents() {
         icon={<ScrollText className="h-5 w-5" />}
         actions={
           <>
-            <button className="btn-secondary" onClick={() => void busy.run("doExport", doExport)} disabled={busy.isBusy("doExport")}><Download className="h-4 w-4" /> {S.exportExcelBtn}</button>
+            <AsyncButton className="btn-secondary" onAction={doExport}><Download className="h-4 w-4" /> {S.exportExcelBtn}</AsyncButton>
             <button className="btn-primary-gradient" onClick={openAdd}><Plus className="h-4 w-4" /> {S.btnArchiveDoc}</button>
           </>
         }
@@ -503,7 +502,7 @@ export default function Documents() {
         footer={
           <>
             <button className="btn-secondary" onClick={() => { setShowAdd(false); setEditing(null); }}>{S.cancelBtn}</button>
-            <button className="btn-primary" onClick={() => void busy.run("save", save)} disabled={busy.isBusy("save")}>{S.btnSaveDoc}</button>
+            <AsyncButton className="btn-primary" onAction={save}>{S.btnSaveDoc}</AsyncButton>
           </>
         }
       >
@@ -599,9 +598,9 @@ export default function Documents() {
                 <dt className="text-steel-500">{S.lblAttachShort}</dt>
                 <dd className="max-w-[60%] truncate text-right">
                   {detail.fileUrl ? (
-                    <a className="font-medium text-navy-700 underline" href={String(detail.fileUrl)} target="_blank" rel="noreferrer" title={String(detail.fileUrl)}>
+                    <span className="break-all font-medium text-navy-700" title={String(detail.fileUrl)}>
                       {String(detail.fileUrl)}
-                    </a>
+                    </span>
                   ) : (
                     <span className="font-medium text-steel-400">-</span>
                   )}

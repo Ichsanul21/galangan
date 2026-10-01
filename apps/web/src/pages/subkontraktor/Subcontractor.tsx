@@ -3,9 +3,9 @@ import { Plus, HardHat, FileSignature, Star, Search } from "lucide-react";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, ReferenceLine } from "recharts";
 import { Card, CardHeader, PageHeader, Badge, KpiCard, Tabs, ProgressBar, ChartTooltip, Modal, Field, FormGrid, ConfirmModal, SortTh, toggleSort, sortRows, usePager, toast,
   NumInput, FlowStrip,
+  AsyncButton,
 } from "../../components/ui";
 import type { SortState } from "../../components/ui";
-import { useBusy } from "../../components/ui";
 import { useStore, type StoreItem, type CollectionKey } from "../../data/store";
 import { useModuleSync } from "../../data/useModuleSync";
 import { remoteRepository } from "../../services/repositories";
@@ -129,7 +129,6 @@ function shortSub(name: unknown): string {
 const SUB_COLS: CollectionKey[] = ["activities", "employees", "incidents", "payables", "projects", "subcontractors", "termins", "timesheets", "workOrders"];
 
 export default function Subcontractor() {
-  const busy = useBusy();
   const { data, add, update, log, branch } = useStore();
   const { locale } = useT();
   const S = n_crm[locale];
@@ -1263,7 +1262,7 @@ export default function Subcontractor() {
 
       {/* Modal bukti bayar termin */}
       <Modal open={termPay !== null} onClose={() => setTermPay(null)} title={S.payTermTitle.replace("{n}", termPay?.id ?? "")} subtitle={S.payTermSub.replace("{a}", termPay?.sub ?? "").replace("{b}", fmtRupiah(termPay ? netoOf(termPay) : 0)).replace("{c}", needsTermDirector(termPay) ? S.directorNeeded.replace("{n}", fmtRupiah(terminThreshold)) : "")}
-        footer={<><button className="btn-secondary" onClick={() => setTermPay(null)}>{S.cancelBtn}</button><button className="btn-primary" disabled={(needsTermDirector(termPay) && (!termDirCheck || !termDirName.trim())) || busy.isBusy("confirmBuktiTerm")} onClick={() => void busy.run("confirmBuktiTerm", confirmBuktiTerm)}>{S.saveProofBtn}</button></>}>
+        footer={<><button className="btn-secondary" onClick={() => setTermPay(null)}>{S.cancelBtn}</button><AsyncButton className="btn-primary" disabled={(needsTermDirector(termPay) && (!termDirCheck || !termDirName.trim()))} onAction={confirmBuktiTerm}>{S.saveProofBtn}</AsyncButton></>}>
         <div className="space-y-3">
           <FormGrid>
             <Field label={S.payDateLabel}><input type="date" required className="input" value={proof.date} onChange={(e) => setProof({ ...proof, date: e.target.value })} /></Field>

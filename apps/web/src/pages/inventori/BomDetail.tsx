@@ -3,7 +3,7 @@ import { Link, useParams } from "react-router-dom";
 import { ArrowLeft, Barcode, Package } from "lucide-react";
 import { Card, CardHeader, PageHeader, Badge, Modal, Field, FormGrid, Tabs, EmptyState, toast, SortTh, toggleSort, sortRows,
   NumInput,
-  useBusy,
+  AsyncButton,
 } from "../../components/ui";
 import type { SortState } from "../../components/ui";
 import { useT } from "../../i18n/LanguageContext";
@@ -61,7 +61,7 @@ function abcOf(all: StoreItem[], id: string): "A" | "B" | "C" {
 }
 
 export default function BomDetail() {
-  const busy = useBusy();
+
   const { locale } = useT();
   const S = n_inv[locale];
   const { id } = useParams();
@@ -233,7 +233,7 @@ export default function BomDetail() {
 
       <Modal open={showReserv} onClose={() => setShowReserv(false)} title={S.reservTitle.replace("{n}", item.name)}
         subtitle={S.tersediaSub.replace("{a}", fmtJumlah(tersedia)).replace("{b}", item.unit)}
-        footer={<><button className="btn-secondary" onClick={() => setShowReserv(false)}>{S.cancelBtn}</button><button className="btn-primary" onClick={() => void busy.run("saveReserv", saveReserv)} disabled={busy.isBusy("saveReserv")}>{S.btnSaveReserv}</button></>}>
+        footer={<><button className="btn-secondary" onClick={() => setShowReserv(false)}>{S.cancelBtn}</button><AsyncButton className="btn-primary" onAction={saveReserv}>{S.btnSaveReserv}</AsyncButton></>}>
         <div className="space-y-3">
           <Field label={S.proyekLbl}>
             <select className="input" value={reservProject} onChange={(e) => setReservProject(e.target.value)}>
@@ -247,7 +247,7 @@ export default function BomDetail() {
 
       <Modal open={showOpname} onClose={() => setShowOpname(false)} title={S.opnameTitle.replace("{n}", item.name)}
         subtitle={S.recordedSub.replace("{a}", fmtJumlah(Number(item.stock))).replace("{b}", item.unit)}
-        footer={<><button className="btn-secondary" onClick={() => setShowOpname(false)}>{S.cancelBtn}</button><button className="btn-primary" onClick={() => void busy.run("saveOpname", saveOpname)} disabled={busy.isBusy("saveOpname")}>{S.btnSaveOp}</button></>}>
+        footer={<><button className="btn-secondary" onClick={() => setShowOpname(false)}>{S.cancelBtn}</button><AsyncButton className="btn-primary" onAction={saveOpname}>{S.btnSaveOp}</AsyncButton></>}>
         <FormGrid>
           <Field label={S.countedLbl}><NumInput min={0} className="input" value={opCount} onChange={(e) => setOpCount(e.target.value)} /></Field>
         </FormGrid>

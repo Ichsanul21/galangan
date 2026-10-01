@@ -27,6 +27,32 @@ export function recentModuleSync(withinMs = 4000): boolean {
   return Date.now() - lastBatchSyncAt < withinMs;
 }
 
+/* Penghitung batch berjalan global: agar tak ada jeda tanpa umpan balik,
+   AppShell menampilkan badge topbar selama batch halaman mana pun berjalan. */
+let syncActiveCount = 0;
+const syncListeners = new Set<(active: boolean) => void>();
+
+function setSyncActive(delta: 1 | -1): void {
+  syncActiveCount = Math.max(0, syncActiveCount + delta);
+  const active = syncActiveCount > 0;
+  syncListeners.forEach((l) => l(active));
+}
+
+/** true bila ada batch modul yang sedang berjalan (semua halaman).
+ *  Dipakai AppShell untuk badge topbar; halaman juga bisa memakainya untuk
+ *  menonaktifkan tombol ekspor selama batch berjalan. */
+export function useModuleSyncing(): boolean {
+  const [active, setActive] = useState(syncActiveCount > 0);
+  useEffect(() => {
+    syncListeners.add(setActive);
+    setActive(syncActiveCount > 0);
+    return () => {
+      syncListeners.delete(setActive);
+    };
+  }, []);
+  return active;
+}
+
 export interface ModuleSync {
   /** Batch sedang berjalan - pakai untuk skeleton / disable tombol. */
   syncing: boolean;
@@ -54,11 +80,13 @@ export function useModuleSync(cols: CollectionKey[], deps: unknown[] = []): Modu
     if (!colsKey || runningRef.current) return;
     runningRef.current = true;
     lastBatchSyncAt = Date.now();
+    setSyncActive(1);
     setSyncing(true);
     void resyncCollections(colsKey.split("|") as CollectionKey[])
       .catch(() => undefined)
       .finally(() => {
         runningRef.current = false;
+        setSyncActive(-1);
         if (aliveRef.current) setSyncing(false);
       });
   }, [colsKey, resyncCollections]);
