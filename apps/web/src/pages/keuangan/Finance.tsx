@@ -1,5 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
-import { useSearchParams } from "react-router-dom";
+import { useEffect, useMemo, useState } from "react";
 import { Wallet, ArrowDownToLine, FileText, Receipt, TrendingUp, Plus, Trash2, Search } from "lucide-react";
 import {
   AreaChart,
@@ -52,6 +51,7 @@ import { chartAnim, exportExcel } from "../../utils/export";
 import { kasKodeOf, postCashJournal } from "../../services/autoJournal";
 import { FilterPopover } from "../../components/FilterPopover";
 import { AlertBannerView, notifRowId, useModuleAlert, useNotifFlash } from "../../components/AlertBanner";
+import { useDeepLinkParams, useDeepLinkTarget } from "../../components/useDeepLink";
 import { findUsages } from "../../utils/usages";
 import {
   COA_EXCEL,
@@ -362,8 +362,7 @@ export default function Finance() {
   const S = n_fin[locale];
   const modAlert = useModuleAlert("keuangan");
   const flash = useNotifFlash();
-  const [deepParams] = useSearchParams();
-  const deepHandled = useRef<string | null>(null);
+    const deepParams = useDeepLinkParams();
   const notified = useMemo(() => new Set(modAlert.items.map((a) => a.rowId)), [modAlert.items]);
   const [tab, setTab] = useState("Akun");
   const [retQ, setRetQ] = useState("");
@@ -598,42 +597,35 @@ export default function Finance() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [data.invoices]);
 
+  /* Tab "Invoice" dan "Piutang (AR)" membaca koleksi `invoices` yang sama,
+     jadi `sortedInv.findIndex` dulu selalu menangkap baris AR dan
+     menimpa tab tujuan. Karena itu tab yang diminta deep-link diperiksa
+     lebih dulu, baru urutan fallback. */
   const pickNotif = (rowId: string) => {
-    const idxInv = sortedInv.findIndex((r) => String(r.id) === rowId);
-    if (idxInv >= 0) {
-      if (tab === "Invoice") { flash.pick(rowId, idxInv, invPager.go, invPager.size); return; }
-      setTab("Invoice");
-      window.setTimeout(() => { flash.pick(rowId, idxInv, invPager.go, invPager.size); }, 250);
-      return;
-    }
-    const idxAp = sortedAp.findIndex((r) => String(r.id) === rowId);
-    if (idxAp >= 0) {
-      if (tab === "Hutang (AP)") { flash.pick(rowId, idxAp, apPager.go, apPager.size); return; }
-      setTab("Hutang (AP)");
-      window.setTimeout(() => { flash.pick(rowId, idxAp, apPager.go, apPager.size); }, 250);
-      return;
-    }
-    const idxAr = sortedAr.findIndex((r) => String(r.id) === rowId);
-    if (idxAr >= 0) {
-      if (tab === "Piutang (AR)") { flash.pick(rowId, idxAr, arPager.go, arPager.size); return; }
-      setTab("Piutang (AR)");
-      window.setTimeout(() => { flash.pick(rowId, idxAr, arPager.go, arPager.size); }, 250);
-      return;
-    }
+    const flashIn = (
+      list: StoreItem[],
+      pager: { go: (p: number) => void; size: number },
+      tabName: string,
+    ) => {
+      const idx = list.findIndex((r) => String(r.id) === rowId);
+      if (idx < 0) return false;
+      if (tab !== tabName) setTab(tabName);
+      window.setTimeout(() => { flash.pick(rowId, idx, pager.go, pager.size); }, tab === tabName ? 0 : 250);
+      return true;
+    };
+
+    if (tab === "Piutang (AR)" && flashIn(sortedAr, arPager, "Piutang (AR)")) return;
+    if (tab === "Hutang (AP)" && flashIn(sortedAp, apPager, "Hutang (AP)")) return;
+    if (tab === "Invoice" && flashIn(sortedInv, invPager, "Invoice")) return;
+
+    if (flashIn(sortedInv, invPager, "Invoice")) return;
+    if (flashIn(sortedAp, apPager, "Hutang (AP)")) return;
+    if (flashIn(sortedAr, arPager, "Piutang (AR)")) return;
     flash.pick(rowId, -1, () => {}, 100);
   };
 
   /* Deep-link Dashboard (?tab=Piutang (AR)&highlight=INV-..): pindah tab + flash. */
-  useEffect(() => {
-    const t = deepParams.get("tab");
-    const h = deepParams.get("highlight");
-    const key = `${t ?? ""}|${h ?? ""}`;
-    if ((!t && !h) || deepHandled.current === key) return;
-    deepHandled.current = key;
-    if (t) setTab(t);
-    if (h) window.setTimeout(() => pickNotif(h), t ? 350 : 100);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [deepParams]);
+  useDeepLinkTarget(deepParams.tab, deepParams.highlight, setTab, pickNotif);
   const coaTipeOf = (c: StoreItem): string => coaList.find((x) => x.kode === String(c.kode))?.tipe ?? "-";
   const TIPE_ORDER = ["Aset", "Liabilitas", "Ekuitas", "Pendapatan", "Beban", "Header"];
   const coaGroups = useMemo(() => {

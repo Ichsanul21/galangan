@@ -101,6 +101,20 @@ export default function Projects() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  /* Jalur sama untuk /proyek?status=<Status> yang dipakai kartu sebaran
+     status di Dashboard. Sebelumnya hanya `create` yang dibaca, jadi
+     clicking pil statusDiam-diam tidak melakukan apa-apa. */
+  useEffect(() => {
+    const want = searchParams.get("status");
+    if (!want) return;
+    const known = statusOptions.some((s) => s === want);
+    setStatusFilter(known ? want : "Semua");
+    const next = new URLSearchParams(searchParams);
+    next.delete("status");
+    setSearchParams(next, { replace: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   // Edit tahap HANYA via detail (stepper + modal alasan di ProjectDetail).
 
   // Terlambat otomatis dari due (menggantikan flag manual): proyek berjalan yang

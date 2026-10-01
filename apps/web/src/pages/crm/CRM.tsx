@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useRef, useState } from "react";
-import { Link, useSearchParams } from "react-router-dom";
+import { useEffect, useMemo, useState } from "react";
+import { Link } from "react-router-dom";
 import { Plus, Send, Users2, Star, Handshake, ArrowRight, Search } from "lucide-react";
 import { Card, CardHeader, PageHeader, Badge, KpiCard, Tabs, Donut, Modal, Field, FormGrid, StatusBadge, ConfirmModal, EmptyState, SortTh, toggleSort, sortRows, toast, usePager,
   NumInput,
@@ -14,6 +14,7 @@ import type { StoreItem, CollectionKey } from "../../data/store";
 import { fmtMiliar, fmtRupiah, fmtTanggal, todayISO } from "../../utils/format";
 import { sameName } from "../../utils/names";
 import { AlertBannerView, notifRowId, useModuleAlert, useNotifFlash } from "../../components/AlertBanner";
+import { useDeepLinkParams, useDeepLinkTarget } from "../../components/useDeepLink";
 import { exportExcel } from "../../utils/export";
 import { useDraftState } from "../../utils/draft";
 import { clientTrend, pipelineTrend, winRateTrend, wonTrend } from "../../data";
@@ -79,8 +80,7 @@ export default function CRM() {
   const dispReqKind = (k: string): string => (locale === "en" ? k : REQ_KIND_ID[k] ?? k);
   const modAlert = useModuleAlert("crm");
   const flash = useNotifFlash();
-  const [deepParams] = useSearchParams();
-  const deepHandled = useRef<string | null>(null);
+  const deepParams = useDeepLinkParams();
   const notified = useMemo(() => new Set(modAlert.items.map((a) => a.rowId)), [modAlert.items]);
   const [tab, setTab] = useState("Pipeline");
   const [sort, setSort] = useState<SortState>({ key: null, dir: "asc" });
@@ -624,6 +624,10 @@ export default function CRM() {
   const quotPager = usePager(penawaranList.length);
   const reqPager = usePager(requests.length);
   const contractPager = usePager(contracts.length);
+  /* Resolve baris yang harusnya disorot._setTab sudah dijalankan oleh
+     useDeepLinkTarget sebelum fungsi ini dipanggil pada tick berikutnya,
+     jadi cabang "tab === X" di bawah kini melihat tab yang benar dan tidak
+     menimpanya kembali. */
   const pickNotif = (rowId: string) => {
     const key = String(rowId);
     const reqIdx = requests.findIndex((r) => String(r.id) === key);
@@ -650,16 +654,7 @@ export default function CRM() {
     flash.pick(key, -1, () => {}, 100);
   };
   /* Deep-link Dashboard (?tab=Kontrak&highlight=QT-..): pindah tab + flash baris. */
-  useEffect(() => {
-    const t = deepParams.get("tab");
-    const h = deepParams.get("highlight");
-    const key = `${t ?? ""}|${h ?? ""}`;
-    if ((!t && !h) || deepHandled.current === key) return;
-    deepHandled.current = key;
-    if (t) setTab(t);
-    if (h) window.setTimeout(() => pickNotif(h), t ? 350 : 100);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [deepParams]);
+  useDeepLinkTarget(deepParams.tab, deepParams.highlight, setTab, pickNotif);
   /* Fetch per-batch modul (pengganti resync penuh). */
   useModuleSync(CRM_COLS);
 

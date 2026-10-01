@@ -13,8 +13,6 @@ import {
   Download,
   Calendar,
   AlertTriangle,
-  FileCheck2,
-  Clock,
   Maximize,
   Minimize,
 } from "lucide-react";
@@ -51,9 +49,68 @@ import {
   AsyncButton,
 } from "../components/ui";
 import { useStore } from "../data/store";
-import type { StoreItem, CollectionKey } from "../data/store";
+import type { CollectionKey } from "../data/store";
 import { useModuleSync } from "../data/useModuleSync";
-import { getSetting } from "../utils/settings";
+import {
+  MODULE_ALERT_TO,
+  buildModuleAlertItems,
+  type ModuleAlertItem,
+  type ModuleAlertKey,
+} from "../utils/moduleAlerts";
+
+/* Urutan modul untuk kartu "Perlu Perhatian". */
+const DASH_ALERT_KEYS: ModuleAlertKey[] = [
+  "proyek",
+  "drydock",
+  "equipment",
+  "qc",
+  "inventori",
+  "keuangan",
+  "crm",
+  "procurement",
+  "subkontraktor",
+  "kapal",
+  "sdm",
+  "payroll",
+  "dokumen",
+];
+
+/* Label modul untuk chip pengelompokan di kartu. */
+const DASH_ALERT_LABEL: Record<ModuleAlertKey, { id: string; en: string }> = {
+  proyek: { id: "Proyek", en: "Projects" },
+  drydock: { id: "Drydock", en: "Drydock" },
+  inventori: { id: "Inventori", en: "Inventory" },
+  equipment: { id: "Equipment", en: "Equipment" },
+  subkontraktor: { id: "Subkontraktor", en: "Subcontractors" },
+  qc: { id: "QC & Safety", en: "QC & Safety" },
+  crm: { id: "CRM", en: "CRM" },
+  procurement: { id: "Procurement", en: "Procurement" },
+  keuangan: { id: "Keuangan", en: "Finance" },
+  sdm: { id: "SDM", en: "HR" },
+  payroll: { id: "Payroll", en: "Payroll" },
+  kapal: { id: "Kapal", en: "Vessels" },
+  dokumen: { id: "Dokumen", en: "Documents" },
+};
+
+/* Nada chip per modul supaya kartu mudah dipindai sekilas. */
+const DASH_ALERT_TONE: Record<ModuleAlertKey, string> = {
+  proyek: "bg-navy-50 text-navy-700",
+  drydock: "bg-ocean-50 text-ocean-700",
+  inventori: "bg-amber-50 text-amber-700",
+  equipment: "bg-violet-50 text-violet-700",
+  subkontraktor: "bg-teal-50 text-teal-700",
+  qc: "bg-rose-50 text-rose-700",
+  crm: "bg-emerald-50 text-emerald-700",
+  procurement: "bg-indigo-50 text-indigo-700",
+  keuangan: "bg-amber-50 text-amber-700",
+  sdm: "bg-sky-50 text-sky-700",
+  payroll: "bg-lime-50 text-lime-700",
+  kapal: "bg-cyan-50 text-cyan-700",
+  dokumen: "bg-slate-100 text-slate-700",
+};
+
+/* Batas tampilan: kartu harus tetap ringkas. Sisanya ada di /notifikasi. */
+const DASH_ALERT_CAP = 12;
 import { useAuth, canSetTarget } from "../auth/auth";
 import { chartAnim, exportPDF } from "../utils/export";
 import { fmtTanggal, todayISO } from "../utils/format";
@@ -107,7 +164,8 @@ const DB_COLS: CollectionKey[] = ["activities", "drydocks", "employees", "incide
 
 export default function Dashboard() {
 
-  const { data, wbsFor, branch } = useStore();
+  const { data, branch, inBranch } = useStore();
+  const todayStr = todayISO();
   /* Fetch per-batch modul (pengganti resync penuh). */
   useModuleSync(DB_COLS);
   const { locale } = useT();
@@ -121,21 +179,26 @@ export default function Dashboard() {
     document.addEventListener("fullscreenchange", onFs);
     return () => document.removeEventListener("fullscreenchange", onFs);
   }, []);
-  const projects = data.projects;
-  const branchProjects = data.projects.filter((p) => branch === "SEMUA" || !p.branch || p.branch === branch);
+  const branchProjects = inBranch(data.projects);
+  const projects = branchProjects;
   const activities = data.activities;
   const [range, setRange] = useState<(typeof RANGES)[number]>("12B");
   const [targets, setTargets] = useState<Record<string, BranchTarget>>(() => loadTargets());
   const [showTarget, setShowTarget] = useState(false);
   const [tgtRev, setTgtRev] = useState("");
   const [tgtProj, setTgtProj] = useState("");
-  const totalActive = projects.filter((p) => p.status !== "Selesai").length;
-  const delayed = projects.filter((p) => p.status === "Terlambat").length;
-  const activeContracts = projects
+/* Hampir semua angka di Dashboard ini dulu dibaca dari `data.*` mentah,
+     sedangkan modul tujuan memakai inBranch(). Akibatnya di luar cabang
+     "SEMUA" kartu menampilkan angka global, tapi baris highlight-nya tidak
+     ada di daftar tujuan, jadi klik hanya diam-diam tidak terjadi.
+     Semua pembacaan di bawah sudah memakai inBranch. */
+  const totalActive = branchProjects.filter((p) => p.status !== "Selesai").length;
+  const delayed = branchProjects.filter((p) => p.status === "Terlambat").length;
+  const activeContracts = branchProjects
     .filter((p) => p.status !== "Selesai")
     .reduce((s, p) => s + Number(p.budget || 0), 0);
-  const drydocks = data.drydocks;
-  const openNcrList = data.ncr.filter((n) => n.status !== "Tertutup");
+  const drydocks = inBranch(data.drydocks);
+  const openNcrList = inBranch(data.ncr).filter((n) => n.status !== "Tertutup");
   const openNcr = openNcrList.length;
   const criticalOpenNcr = openNcrList.filter((n) => n.severity === "Critical").length;
   const firstOpenNcr = openNcrList.find((n) => n.severity === "Critical") ?? openNcrList[0];
@@ -148,25 +211,25 @@ export default function Dashboard() {
     navigate(`/qc-safety${q}`);
   };
   const goAR = () => {
-    const todayStr = todayISO();
-    const overdue = data.invoices.filter((i) => i.status !== "Lunas" && i.status !== "Draft" && String(i.due) < todayStr);
-    const first = overdue[0] ?? data.invoices.find((i) => i.status !== "Lunas" && i.status !== "Draft");
+    const invoices = inBranch(data.invoices);
+    const overdue = invoices.filter((i) => i.status !== "Lunas" && i.status !== "Draft" && String(i.due) < todayStr);
+    const first = overdue[0] ?? invoices.find((i) => i.status !== "Lunas" && i.status !== "Draft");
     const q = first ? `?alert=keuangan&tab=${encodeURIComponent("Piutang (AR)")}&highlight=${encodeURIComponent(String(first.id))}` : `?alert=keuangan&tab=${encodeURIComponent("Piutang (AR)")}`;
     navigate(`/keuangan${q}`);
   };
   const goKontrak = () => {
-    const wonList = data.quotations.filter((x) => x.stage === "Menang" || x.stage === "Terkonversi");
+    const wonList = inBranch(data.quotations).filter((x) => x.stage === "Menang" || x.stage === "Terkonversi");
     const first = wonList[0];
     const q = first ? `?alert=crm&tab=Kontrak&highlight=${encodeURIComponent(String(first.id))}` : "?alert=crm&tab=Kontrak";
     navigate(`/crm${q}`);
   };
   const goNotifikasi = () => navigate("/notifikasi");
-  const arOutstanding = data.invoices
+  const arOutstanding = inBranch(data.invoices)
     .filter((i) => i.status !== "Lunas" && i.status !== "Draft")
     .reduce((s, i) => s + Number(i.amount || 0), 0);
-  const lowStock = data.inventory.filter((i) => i.stock <= i.minStock);
-  const stockValue = data.inventory.reduce((s, i) => s + Number(i.stock || 0) * Number(i.cost || 0), 0);
-  const wonQuotes = data.quotations.filter((x) => x.stage === "Menang").reduce((s, x) => s + Number(x.value || 0), 0);
+  const lowStock = inBranch(data.inventory).filter((i) => i.stock <= i.minStock);
+  const stockValue = inBranch(data.inventory).reduce((s, i) => s + Number(i.stock || 0) * Number(i.cost || 0), 0);
+  const wonQuotes = inBranch(data.quotations).filter((x) => x.stage === "Menang").reduce((s, x) => s + Number(x.value || 0), 0);
   const utilDrydock = drydocks.length
     ? Math.round((drydocks.filter((d) => d.status === "Terpakai").length / drydocks.length) * 100)
     : 0;
@@ -186,7 +249,7 @@ export default function Dashboard() {
   const lastUtil = utilSeries[utilSeries.length - 1];
   const prevUtil = utilSeries[utilSeries.length - 2];
   const utilDiff = lastUtil && prevUtil ? lastUtil.equipment - prevUtil.equipment : 0;
-  const activeEmployees = data.employees.filter((e) => e.status === "Aktif").length;
+  const activeEmployees = inBranch(data.employees).filter((e) => e.status === "Aktif").length;
   const seaTrialVessel =
     projects.find((p) => p.status !== "Selesai" && scopeNames(p.scope).includes("Sea Trial"))?.vessel ?? "-";
 
@@ -239,123 +302,37 @@ export default function Dashboard() {
     value: projects.filter((p) => p.type === t).length,
     color: ["#0b3a63", "#2e9ad4", "#22c55e"][i],
   }));
-  const pipelineActive = data.quotations
+  const pipelineActive = inBranch(data.quotations)
     .filter((x) => x.stage !== "Menang")
     .reduce((s, x) => s + Number(x.value || 0), 0);
 
-  const today = todayISO();
-  const todayMs = Date.parse(today);
-  const msDays = getSetting(data, "ALERT_MILESTONE_DAYS", 7);
-  const cpDays = getSetting(data, "ALERT_CP_DAYS", 3);
-  const cert90 = getSetting(data, "ALERT_CERT_DAYS", 90);
-  const cert60 = getSetting(data, "ALERT_CERT_60", 60);
-  const cert30 = getSetting(data, "ALERT_CERT_30", 30);
-  const wbsEndMs = (end: string): number | null => {
-    const m = /^(\d{4})-(\d{2})/.exec(String(end ?? ""));
-    if (!m) {
-      const t = Date.parse(String(end ?? ""));
-      return Number.isNaN(t) ? null : t;
-    }
-    return new Date(Number(m[1]), Number(m[2]), 0).getTime();
-  };
-  const hasRealWbs = (pid: string): boolean => Boolean(data.wbsByProject?.[pid]?.length);
-  const staleMilestones = branchProjects.flatMap((p) =>
-    !hasRealWbs(p.id)
-      ? []
-      : wbsFor(p.id)
-      .filter((w) => Number(w.progress || 0) === 0)
-      .filter((w) => {
-        const t = wbsEndMs(w.end);
-        if (t === null) return false;
-        const diff = Math.ceil((t - todayMs) / 86400000);
-        return diff >= 0 && diff <= msDays;
-      })
-      .map((w) => ({ project: p.id, task: w.task }))
-  );
-  const cpDelayed = branchProjects.filter((p) =>
-    hasRealWbs(p.id) &&
-    wbsFor(p.id).some((w) => {
-      if (Number(w.progress || 0) !== 0) return false;
-      const t = wbsEndMs(w.end);
-      if (t === null) return false;
-      return Math.floor((todayMs - t) / 86400000) > cpDays;
-    })
-  );
-  const budgetTight = branchProjects.filter((p) => {
-    const b = Number(p.budget || 0);
-    if (!b) return false;
-    const r = Number(p.actual || 0) / b;
-    return r > 0.8 && r <= 1;
-  });
-  const overrun = branchProjects.filter((p) => Number(p.actual || 0) > Number(p.budget || 0));
-  const overrun10 = overrun.filter((p) => Number(p.actual || 0) > Number(p.budget || 0) * 1.1);
-  const certDaysUntil = (exp: string): number | null => {
-    const t = wbsEndMs(exp);
-    if (t === null) return null;
-    return Math.ceil((t - todayMs) / 86400000);
-  };
-  const vesselCertTier = (v: StoreItem): "crit" | "warn" | "info" | null => {
-    let best: number | null = null;
-    for (const c of (v.certificates ?? []) as { expires?: string }[]) {
-      const d = certDaysUntil(String(c.expires ?? ""));
-      if (d === null || d > cert90) continue;
-      if (best === null || d < best) best = d;
-    }
-    if (best === null) return null;
-    if (best <= cert30) return "crit";
-    if (best <= cert60) return "warn";
-    return "info";
-  };
-  const certCrit = data.vessels.filter((v) => vesselCertTier(v) === "crit");
-  const certWarn = data.vessels.filter((v) => vesselCertTier(v) === "warn");
-  const certInfo = data.vessels.filter((v) => vesselCertTier(v) === "info");
-  const overdueInvoices = data.invoices.filter(
-    (i) => i.status !== "Lunas" && i.status !== "Draft" && String(i.due) < today
-  );
-  const overdueDays = (due: string) => Math.floor((todayMs - Date.parse(String(due))) / 86400000);
-  const overdue730 = overdueInvoices.filter((i) => overdueDays(String(i.due)) >= 30);  const overdue14 = overdueInvoices.filter((i) => { const d = overdueDays(String(i.due)); return d >= 14 && d < 30; });
-  const overdue7 = overdueInvoices.filter((i) => { const d = overdueDays(String(i.due)); return d >= 7 && d < 14; });
-  const latestIncident = [...data.incidents].sort((a, b) => String(b.date).localeCompare(String(a.date)))[0];
-  const delayedProjects = branchProjects.filter((p) => p.status === "Terlambat");
-
-  const attention: { icon: typeof Boxes; text: string; to: string; tone: string }[] = [
-    ...(staleMilestones.length
-      ? [{ icon: AlertTriangle, text: S.attMilestone.replace("{n}", String(staleMilestones.length)).replace("{a}", String(msDays)).replace("{b}", String(staleMilestones[0].project)), to: "/proyek", tone: "bg-amber-50 text-amber-600" }]
-      : []),
-    ...(cpDelayed.length
-      ? [{ icon: Clock, text: S.attCriticalPath.replace("{n}", String(cpDelayed.length)).replace("{a}", String(cpDays)).replace("{b}", String(cpDelayed[0].id)), to: "/proyek/monitoring", tone: "bg-rose-50 text-rose-600" }]
-      : []),
-    ...(budgetTight.length
-      ? [{ icon: Wallet, text: S.attAbsorption.replace("{n}", String(budgetTight.length)).replace("{b}", String(budgetTight[0].id)), to: "/proyek", tone: "bg-amber-50 text-amber-600" }]
-      : []),
-    ...(overrun.length
-      ? [{ icon: AlertTriangle, text: S.attOverrun.replace("{n}", String(overrun.length)) + (overrun10.length ? S.attOverrunExtra.replace("{n}", String(overrun10.length)) : ""), to: "/keuangan", tone: "bg-rose-50 text-rose-600" }]
-      : []),
-    ...(lowStock.length
-      ? [{ icon: Boxes, text: S.attLowStock.replace("{n}", String(lowStock.length)), to: "/inventori", tone: "bg-amber-50 text-amber-600" }]
-      : []),
-    ...(certCrit.length
-      ? [{ icon: FileCheck2, text: S.attCertCrit.replace("{n}", String(certCrit.length)).replace("{a}", String(cert30)), to: "/kapal", tone: "bg-rose-50 text-rose-600" }]
-      : []),
-    ...(certWarn.length
-      ? [{ icon: FileCheck2, text: S.attCertWarn.replace("{n}", String(certWarn.length)).replace("{a}", String(cert60)), to: "/kapal", tone: "bg-amber-50 text-amber-600" }]
-      : []),
-    ...(certInfo.length
-      ? [{ icon: FileCheck2, text: S.attCertInfo.replace("{n}", String(certInfo.length)).replace("{a}", String(cert90)), to: "/kapal", tone: "bg-ocean-50 text-ocean-600" }]
-      : []),
-    ...(overdueInvoices.length
-      ? [{ icon: Wallet, text: S.attOverdue.replace("{n}", String(overdueInvoices.length)).replace("{a}", String(overdue7.length)).replace("{b}", String(overdue14.length)).replace("{c}", String(overdue730.length)), to: "/keuangan", tone: "bg-rose-50 text-rose-600" }]
-      : []),
-    ...(latestIncident
-      ? [{ icon: Clock, text: S.attLatestIncident.replace("{a}", String(latestIncident.id)).replace("{b}", String(latestIncident.desc)), to: "/qc-safety", tone: "bg-violet-50 text-violet-600" }]
-      : []),
-    ...(delayedProjects.length
-      ? [{ icon: AlertTriangle, text: S.attDelayed.replace("{n}", String(delayedProjects.length)).replace("{b}", String(delayedProjects[0].id)), to: "/proyek", tone: "bg-rose-50 text-rose-600" }]
-      : []),
-  ];
+  /* Ambang alert (ALERT_*) DIHAPUS dari Dashboard. Sekarang setiap kondisi
+     dihitung sekali di utils/moduleAlerts.ts, jadi-changing-the-setting
+     di Pengaturan tetap berlaku lewat satu jalur saja. */
 
   const pdfTh: CSSProperties = { border: "1px solid #999", padding: "4px 6px", background: "#eee", textAlign: "left", fontSize: 11 };
   const pdfTd: CSSProperties = { border: "1px solid #999", padding: "4px 6px", fontSize: 11 };
+
+  /* Daftar per-item dari sistem alert modul (utils/moduleAlerts.ts).
+     Sebelumnya kartu ini hanya menampilkan agregat jumlah yang ditulis
+     manual di dalam Dashboard, sedangkan data per-item yang sudah punya
+     rowId - dipakai sidebar badge dan AlertBanner di tiap modul - tidak
+     pernah sampai ke sini. Sekarang keduanya bersumber dari satu tempat:
+     klik item langsung melompat ke modul, tab, lalu baris yang DIPAKAI. */
+  const attentionItems = useMemo(() => {
+    const byKey = buildModuleAlertItems(data);
+    const out: { key: ModuleAlertKey; item: ModuleAlertItem }[] = [];
+    /* Urutan modul = urutan trademark kartu di bawah, jadi stable. */
+    for (const k of DASH_ALERT_KEYS) {
+      for (const item of byKey[k]) out.push({ key: k, item });
+    }
+    return out;
+  }, [data]);
+
+  const goAttentionItem = (key: ModuleAlertKey, rowId: string) => {
+    const q = `?alert=${encodeURIComponent(key)}&highlight=${encodeURIComponent(rowId)}`;
+    navigate(`${MODULE_ALERT_TO[key]}${q}`);
+  };
 
   return (
     <Stagger className="space-y-5">
@@ -548,30 +525,49 @@ export default function Dashboard() {
         </Card>
       </StaggerItem>
 
-      {/* PERLU PERHATIAN - klik header / kartu untuk ke /notifikasi */}
+      {/* PERLU PERHATIAN - klik item untuk ke modul + tab + baris yang DIPAKAI,
+          atau klik header untuk membuka daftar lengkap di /notifikasi. */}
       <StaggerItem>
         <Card className="p-4">
           <div className="mb-3 flex items-center gap-2 px-1">
             <button type="button" onClick={goNotifikasi} title="Buka semua notifikasi" className="flex items-center gap-2 rounded-lg px-1 py-0.5 text-left hover:bg-rose-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-rose-400">
               <AlertTriangle className="h-4 w-4 text-rose-500" />
-              <h3 className="text-sm font-semibold text-navy-900 underline-offset-2 hover:underline">{S.needAttention.replace("{n}", String(attention.length))} <span className="text-[11px] font-normal text-steel-400">→ Notifikasi</span></h3>
+              <h3 className="text-sm font-semibold text-navy-900 underline-offset-2 hover:underline">{S.needAttention.replace("{n}", String(attentionItems.length))} <span className="text-[11px] font-normal text-steel-400">→ Notifikasi</span></h3>
             </button>
             <span className="text-xs text-steel-400">{S.autoThreshold}</span>
             <button type="button" onClick={goNotifikasi} className="btn-secondary ml-auto px-2 py-1 text-[11px]">Lihat semua</button>
           </div>
-          {attention.length === 0 && (
+          {attentionItems.length === 0 && (
             <p className="px-1 text-sm text-steel-400">{S.allThresholdsSafe}</p>
           )}
-          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-4">
-            {attention.map((a, i) => (
-              <Link key={i} to={a.to} className="flex items-start gap-2.5 rounded-xl border border-steel-100 bg-surface p-3 hover:border-ocean-400">
-                <span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${a.tone}`}>
-                  <a.icon className="h-4 w-4" />
-                </span>
-                <span className="text-xs font-medium leading-relaxed text-navy-800">{a.text}</span>
-              </Link>
-            ))}
-          </div>
+          {attentionItems.length > 0 && (
+            <ul className="grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-3">
+              {attentionItems.slice(0, DASH_ALERT_CAP).map(({ key, item }) => (
+                <li key={`${key}:${item.id}`}>
+                  <button
+                    type="button"
+                    onClick={() => goAttentionItem(key, item.rowId)}
+                    className="flex h-full w-full flex-col items-start gap-1 rounded-xl border border-steel-100 bg-surface p-3 text-left hover:border-ocean-400 focus:outline-none focus-visible:ring-2 focus-visible:ring-ocean-400"
+                  >
+                    <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold ${DASH_ALERT_TONE[key]}`}>
+                      {DASH_ALERT_LABEL[key][locale === "en" ? "en" : "id"]}
+                    </span>
+                    <span className="text-xs font-medium leading-relaxed text-navy-800">{item.label}</span>
+                    {item.detail && (
+                      <span className="line-clamp-2 text-[11px] text-steel-500">{item.detail}</span>
+                    )}
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+          {attentionItems.length > DASH_ALERT_CAP && (
+            <p className="mt-3 px-1 text-xs text-steel-400">
+              {locale === "en"
+                ? `Showing ${DASH_ALERT_CAP} of ${attentionItems.length} - see all in Notifications.`
+                : `Menampilkan ${DASH_ALERT_CAP} dari ${attentionItems.length} - lihat semua di Notifikasi.`}
+            </p>
+          )}
         </Card>
       </StaggerItem>
 
@@ -799,7 +795,7 @@ export default function Dashboard() {
           <p style={{ fontWeight: 800, fontSize: 18, color: "#0B3A63", margin: 0 }}>{SB_KOP.name}</p>
           <p style={{ fontSize: 11, color: "#33475B", margin: 0 }}>{SB_KOP.line1}</p>
           <p style={{ fontSize: 10, color: "#52697C", margin: 0 }}>{SB_KOP.hq} · {SB_KOP.addr1}</p>
-          <p style={{ fontSize: 12, fontWeight: 700, color: "#0B3A63", marginTop: 8 }}>Ringkasan Portofolio · {fmtTanggal(today)}</p>
+          <p style={{ fontSize: 12, fontWeight: 700, color: "#0B3A63", marginTop: 8 }}>Ringkasan Portofolio · {fmtTanggal(todayStr)}</p>
         </div>
         <div style={{ breakInside: "avoid", pageBreakInside: "avoid" }}>
           <p style={{ fontSize: 11 }}>
