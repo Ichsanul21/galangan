@@ -126,15 +126,28 @@ function notifyAuthExpired(): void {
 /** Timeout default 20 dtk: jaringan mati total tidak boleh diam selamanya. */
 export const API_TIMEOUT_MS = 20000;
 
-export async function apiFetch<T>(path: string, init?: RequestInit & { timeoutMs?: number }): Promise<T> {
+export interface ApiFetchInit extends RequestInit {
+  timeoutMs?: number;
+  /** Permintaan latar (batch sync / polling). 401 pada permintaan ini TIDAK
+   *  mengakhiri sesi global: satu batch menarikpuluhan koleksi dan satu 401
+   *  sesaat (token kedaluwarsa di tengah jalan, proxy hiccup) akan memaksa
+   *  seluruh pengguna keluar dari aplikasi. Penulisan dari aksi pengguna
+   *  TETAP memakai jalur biasa sehingga 401 tetap mengakhiri sesi. */
+  background?: boolean;
+}
+
+export async function apiFetch<T>(path: string, init?: ApiFetchInit): Promise<T> {
   if (!isBackendConfigured()) throw new ApiNotConfigured();
   const jwt = getJwt();
+  /* timeoutMs/background adalah opsi kita sendiri, bukan fetch - buang
+     sebelum diteruskan supaya tidak ikut jadi RequestInit. */
+  const { timeoutMs, background, ...rest } = init ?? {};
   const ctrl = new AbortController();
-  const timer = window.setTimeout(() => ctrl.abort(), init?.timeoutMs ?? API_TIMEOUT_MS);
+  const timer = window.setTimeout(() => ctrl.abort(), timeoutMs ?? API_TIMEOUT_MS);
   let res: Response;
   try {
     res = await fetch(`${BASE}${path}`, {
-      ...init,
+      ...rest,
       signal: ctrl.signal,
       headers: {
         // Tanpa body (heartbeat/logout) jangan kirim Content-Type JSON -
@@ -160,7 +173,8 @@ export async function apiFetch<T>(path: string, init?: RequestInit & { timeoutMs
     json = null;
   }
   if (!res.ok) {
-    if (res.status === 401) notifyAuthExpired();
+    /* Lihat catatan `background` pada ApiFetchInit. */
+    if (res.status === 401 && !background) notifyAuthExpired();
     const retryAfter = Number(res.headers.get("Retry-After"));
     throw new ApiError(
       res.status,

@@ -124,6 +124,7 @@ export function remoteRepository(resource: string): Repository {
       for (;;) {
         const page = await apiFetch<BackendRow[] | BackendPage>(
           `${base}?limit=${limit}&offset=${offset}`,
+          { background: true },
         );
         if (Array.isArray(page)) return (page as BackendRow[]).map(rowToItem);
         if (!isBackendPage(page)) return [];
@@ -147,7 +148,7 @@ export function remoteRepository(resource: string): Repository {
         const params = new URLSearchParams(baseParams);
         params.set("limit", String(limit));
         params.set("offset", String(offset));
-        const page = await apiFetch<BackendRow[] | BackendPage>(`${base}?${params.toString()}`);
+        const page = await apiFetch<BackendRow[] | BackendPage>(`${base}?${params.toString()}`, { background: true });
         if (Array.isArray(page)) return (page as BackendRow[]).map(rowToItem);
         if (!isBackendPage(page)) return [];
         const rows = Array.isArray(page.rows) ? page.rows : [];
@@ -167,7 +168,7 @@ export function remoteRepository(resource: string): Repository {
       if (opts?.branch?.trim()) params.set("branch", opts.branch.trim());
       params.set("limit", String(size));
       params.set("offset", String((page - 1) * size));
-      const res = await apiFetch<BackendRow[] | BackendPage>(`${base}?${params.toString()}`);
+      const res = await apiFetch<BackendRow[] | BackendPage>(`${base}?${params.toString()}`, { background: true });
       /* BE lawas mengembalikan array polos tanpa total - anggap satu halaman. */
       if (Array.isArray(res)) {
         const rows = res.map(rowToItem);

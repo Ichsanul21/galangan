@@ -54,17 +54,53 @@ export function useModuleSyncing(): boolean {
   return active;
 }
 
+/* Koleksi yang gagal ditarik di batch modul mana pun. dulu kegagalan ini
+   ditelan tanpa jejak, jadi halaman menampilkan cache lokal seolah-olah itu
+   data server terkini dan pengguna tidak pernah diberi tahu.
+   Semuanya per-koleksi: batch yang sukses membersihkan entri koleksi itu,
+   jadi halaman A yang gagal tidak tertimpa halaman B yang sukses. */
+const failedCollections = new Set<string>();
+const failedListeners = new Set<(names: string[]) => void>();
+
+function publishFailed(batch: string[], failed: string[]): void {
+  for (const col of batch) failedCollections.delete(col);
+  for (const col of failed) failedCollections.add(col);
+  const snapshot = [...failedCollections];
+  failedListeners.forEach((l) => l(snapshot));
+}
+
+/** Nama koleksi yang gagal sync, digabung dari semua batch modul. */
+export function useFailedCollections(): string[] {
+  const [names, setNames] = useState<string[]>(() => [...failedCollections]);
+  useEffect(() => {
+    failedListeners.add(setNames);
+    setNames([...failedCollections]);
+    return () => {
+      failedListeners.delete(setNames);
+    };
+  }, []);
+  return names;
+}
+
 export interface ModuleSync {
   /** Batch sedang berjalan - pakai untuk skeleton / disable tombol. */
   syncing: boolean;
   /** Tarik ulang batch secara manual (tombol refresh). */
   refresh: () => void;
+  /** Koleksi pada batch terakhir yang GAGAL ditarik. Kosong = semua berhasil
+   *  atau belum ada percobaan. Sebelumnya kegagalan ditelan diam-diam sehingga
+   *  halaman menampilkan data seed/IndexedDB seolah-olah itu data terkini. */
+  failed: CollectionKey[];
+  /** Kapan batch terakhir selesai (epoch ms), 0 = belum pernah. */
+  lastSyncAt: number;
 }
 
 /** Tarik batch `cols` saat mount dan setiap `deps` berubah (mis. [tab]). */
 export function useModuleSync(cols: CollectionKey[], deps: unknown[] = []): ModuleSync {
   const { resyncCollections } = useStore();
   const [syncing, setSyncing] = useState(false);
+  const [failed, setFailed] = useState<CollectionKey[]>([]);
+  const [lastSyncAt, setLastSyncAt] = useState(0);
   const runningRef = useRef(false);
   const aliveRef = useRef(true);
   const colsKey = cols.join("|");
@@ -77,14 +113,35 @@ export function useModuleSync(cols: CollectionKey[], deps: unknown[] = []): Modu
     };
   }, []);
 
-  const refresh = useCallback(() => {
+const refresh = useCallback(() => {
     if (!colsKey || runningRef.current) return;
+    const batch = colsKey.split("|") as CollectionKey[];
     runningRef.current = true;
-    lastBatchSyncAt = Date.now();
     setSyncActive(1);
     setSyncing(true);
-    void resyncCollections(colsKey.split("|") as CollectionKey[])
-      .catch(() => undefined)
+    void resyncCollections(batch)
+      .then((bad) => {
+        if (aliveRef.current) {
+          setFailed(bad);
+          setLastSyncAt(Date.now());
+        }
+        publishFailed(colsKey.split("|"), bad);
+        /* lastBatchSyncAt dicetak SETELAH batch selesai, bukan sebelum.
+           Kalau dicetak sebelum dan batch GAGAL, recentModuleSync() tetap
+           mengembalikan true dan menahan full resync() yang jadi jaring
+           pengaman - jadi kegagalan justru mematikan pengamannya sendiri. */
+        lastBatchSyncAt = Date.now();
+      })
+      .catch(() => {
+        /* resyncCollections menolak hanya untuk kegagalan tak terduga
+           (mis. isApiCompatible). Tandai seluruh batch gagal agar UI
+           tidak mengklaim data sudah segar. */
+        if (aliveRef.current) {
+          setFailed(batch);
+          setLastSyncAt(Date.now());
+        }
+        publishFailed(colsKey.split("|"), colsKey.split("|"));
+      })
       .finally(() => {
         runningRef.current = false;
         setSyncActive(-1);
@@ -96,7 +153,7 @@ export function useModuleSync(cols: CollectionKey[], deps: unknown[] = []): Modu
     refresh();
   }, [refresh, depsKey]);
 
-  return { syncing, refresh };
+  return { syncing, refresh, failed, lastSyncAt };
 }
 
 /**

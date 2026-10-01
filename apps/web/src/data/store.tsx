@@ -521,7 +521,7 @@ interface StoreCtx {
   reset: () => void;
   resync: () => Promise<void>;
   /** Tarik batch koleksi tertentu saja (pola per modul/tab - useModuleSync). */
-  resyncCollections: (cols: CollectionKey[]) => Promise<void>;
+  resyncCollections: (cols: CollectionKey[]) => Promise<CollectionKey[]>;
   wbsFor: (projectId: string) => WbsItem[];
   setWbs: (projectId: string, wbs: WbsItem[]) => Promise<void>;
   teamFor: (projectId: string) => string[];
@@ -756,7 +756,11 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [data, setData] = useState<StoreShape>(() => loadStore());
   const [backendMode] = useState<BackendMode>(() => (isBackendConfigured() ? "remote" : "local"));
   const [backendError, setBackendError] = useState<string | null>(null);
-  const fallbackToasted = useRef(false);
+  /* Alasan fallback yang terakhir di-toast. Menyimpan STRING (bukan boolean)
+   supaya notifikasi yang sama tidak diulang setiap penulisan, tapi alasan
+   BERBEDA tetap sampai ke pengguna. Versi boolean sebelumnya membuat
+   kegagalan kedua yang berbeda jenisnyatidak sama sekali. */
+  const fallbackToasted = useRef<string>("");
   /* Anti-clobber: koleksi yang diubah lokal saat fallback tidak boleh ditimpa resync.
      Dipersist ke localStorage (isms.dirty) agar selamat dari reload; TTL 7 hari. */
   const dirtyRef = useRef<Set<string>>(new Set<string>(loadDirtyPersisted()));
@@ -981,12 +985,15 @@ export function StoreProvider({ children }: { children: ReactNode }) {
      selalu segar tanpa memuat ulang 50+ koleksi seperti resync() penuh.
      Koleksi dirty tetap dilewati agar edit offline tidak tertimpa, dan
      activities di-merge (bukan replace) seperti pada resync. */
-  const resyncCollections = useCallback(async (cols: CollectionKey[]): Promise<void> => {
-    if (!remoteActive()) return;
-    if (cols.length === 0) return;
-    if (!(await isApiCompatible())) return;
+  const resyncCollections = useCallback(async (cols: CollectionKey[]): Promise<CollectionKey[]> => {
+    if (!remoteActive()) return [];
+    if (cols.length === 0) return [];
+    if (!(await isApiCompatible())) return [];
     const dirty = dirtyRef.current;
     const pulled: Partial<Record<CollectionKey, StoreItem[]>> = {};
+    /* Koleksi yang gagal dicatat, bukan ditelan diam-diam. Tanpa ini halaman
+       menampilkan cache lokal seolah-olah itu data server terkini. */
+    const failed: CollectionKey[] = [];
     await Promise.all(
       cols.map(async (key) => {
         if (dirty.has(key as string)) return;
@@ -994,6 +1001,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           pulled[key] = await remoteRepository(key).list();
         } catch {
           /* koleksi ini tetap memakai cache lokal */
+          failed.push(key);
         }
       }),
     );
@@ -1008,6 +1016,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       }
       return next;
     });
+    return failed;
   }, []);
 
   /* Dorong perubahan lokal yang tertunda ke backend: DELETE tombstone dulu,
@@ -1215,14 +1224,22 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (backendMode !== "remote") return;
     if (dirtyRef.current.size === 0) return;
+    /* Pemanggilan pushPending tanpa await. Tanpa .catch di sini, penolakan
+       jadi unhandled rejection yang tidak terlihat - koleksi tetap dirty dan
+       akan dicoba lagi, jadi cukup dicatat agar bisa didiagnosis. */
+    const fireAndForget = () => {
+      void pushPending().catch((err: unknown) => {
+        console.warn("[store] pushPending gagal, akan dicoba lagi", err);
+      });
+    };
     /* Jangan tumbles bootstrap: tunggu agar resync awal selesai dulu. */
-    const boot = window.setTimeout(() => { void pushPending(); }, 2500);
-    const onOnline = () => { void pushPending(); };
+    const boot = window.setTimeout(fireAndForget, 2500);
+    const onOnline = () => fireAndForget();
     window.addEventListener("online", onOnline);
     const timer = window.setInterval(() => {
       if (dirtyRef.current.size === 0) return;
       if (document.hidden) return;
-      void pushPending();
+      fireAndForget();
     }, 45000);
     return () => {
       window.clearTimeout(boot);
@@ -1249,9 +1266,11 @@ export function StoreProvider({ children }: { children: ReactNode }) {
        Khusus 403 (mis. butuh peran Direktur): JANGAN tulis lokal / tandai dirty,
        cukup toast alasan dari backend. Kembalikan true bila 403. */
     /* Klasifikasi error backend.
-       - "recoverable" (false): error jaringan/401/429 →ezi ditulis lokal, nanti disinkron.
+       - "recoverable" (false): error jaringan/401/429 → ezi ditulis lokal, nanti disinkron.
        - "permanent" (true): 403/400/409/422 → TIDAK BOLEH ditulis lokal, dan pemanggil
-         harus diberi tahu (throw) supaya tidak menampilkan "sukses" palsu. */
+         harus diberi tahu (throw) supaya tidak menampilkan "sukses" palsu.
+       Notifikasi memakai alasan sebagai kunci, bukan boolean, supaya pesan
+       yang sama tidak diulang tapi alasan berbeda tetap terlihat. */
     const degrade = (err: unknown): boolean => {
       if (err instanceof ApiError && err.status === 403) {
         const reason = err.message || "Akses ditolak - butuh peran yang sesuai";
@@ -1259,7 +1278,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         notifyForbidden(reason);
         return true;
       }
-      /* 400/409/422 = validasi/ konstrain/referensi: permanen. Menulis lokal hanya
+      /* 400/409/422 = validasi/konstrain/referensi: permanen. Menulis lokal hanya
          akan menghasilkan data rusak yang memblokir sinkronisasi selamanya. */
       if (err instanceof ApiError && (err.status === 400 || err.status === 409 || err.status === 422)) {
         setBackendError(err.message || "Data ditolak server");
@@ -1268,24 +1287,24 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       }
       if (err instanceof ApiError && err.status === 401) {
         setBackendError("Sesi berakhir - login ulang; perubahan ditahan untuk sinkronisasi");
-        if (!fallbackToasted.current) {
-          fallbackToasted.current = true;
-          notifyBackendFallback();
+        if (fallbackToasted.current !== "401") {
+          fallbackToasted.current = "401";
+          notifyStore("Sesi berakhir - login ulang. Perubahan ditahan untuk sinkronisasi.");
         }
         return false;
       }
       if (err instanceof ApiError && err.status === 429) {
         const wait = err.retryAfterSec ? ` (coba lagi ${err.retryAfterSec} dtk)` : "";
         setBackendError(`Terlalu banyak permintaan${wait} - perubahan ditahan`);
-        if (!fallbackToasted.current) {
-          fallbackToasted.current = true;
-          notifyBackendFallback();
+        if (fallbackToasted.current !== "429") {
+          fallbackToasted.current = "429";
+          notifyStore(`Terlalu banyak permintaan${wait}. Perubahan ditahan untuk sinkronisasi.`);
         }
         return false;
       }
       setBackendError(err instanceof Error && err.message ? err.message : "Backend tak terjangkau - mode lokal");
-      if (!fallbackToasted.current) {
-        fallbackToasted.current = true;
+      if (fallbackToasted.current !== "network") {
+        fallbackToasted.current = "network";
         notifyBackendFallback();
       }
       return false;

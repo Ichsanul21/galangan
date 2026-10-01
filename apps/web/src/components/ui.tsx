@@ -580,7 +580,10 @@ interface ErrorBoundaryState {
   error: Error | null;
 }
 
-export class ErrorBoundary extends Component<{ children: ReactNode; title?: string }, ErrorBoundaryState> {
+export class ErrorBoundary extends Component<
+  { children: ReactNode; title?: string; backLabel?: string; onBack?: () => void },
+  ErrorBoundaryState
+> {
   state: ErrorBoundaryState = { error: null };
 
   static getDerivedStateFromError(error: Error): ErrorBoundaryState {
@@ -596,8 +599,28 @@ export class ErrorBoundary extends Component<{ children: ReactNode; title?: stri
       return (
         <div className="flex flex-col items-center justify-center rounded-2xl border border-steel-200 bg-white p-10 text-center">
           <p className="text-sm font-semibold text-navy-900">{this.props.title ?? "Bagian ini gagal dimuat"}</p>
-          <p className="mt-1 max-w-md text-xs text-steel-500">Terjadi galat saat merender. Coba muat ulang halaman atau kembali dan ulangi aksi terakhir.</p>
-          <button className="btn-secondary mt-4 text-xs" onClick={() => window.location.reload()}>Muat ulang halaman</button>
+          <p className="mt-1 max-w-md text-xs text-steel-500">
+            Terjadi galat saat merender. Coba muat ulang halaman atau kembali dan ulangi aksi terakhir.
+          </p>
+          <div className="mt-4 flex flex-wrap items-center justify-center gap-2">
+            {/* Coba lagi dulu tanpa memuat ulang seluruh aplikasi. Dulu satu-satunya
+                jalan keluar adalah window.location.reload() yang membuang seluruh
+                state in-memory: filter tab, posisi scroll, dan antrean sync. */}
+            {this.props.onBack && (
+              <button className="btn-primary text-xs" onClick={this.props.onBack}>
+                {this.props.backLabel ?? "Kembali"}
+              </button>
+            )}
+            <button
+              className="btn-secondary text-xs"
+              onClick={() => this.setState({ error: null })}
+            >
+              Coba lagi
+            </button>
+            <button className="btn-secondary text-xs" onClick={() => window.location.reload()}>
+              Muat ulang halaman
+            </button>
+          </div>
         </div>
       );
     }
@@ -944,20 +967,42 @@ export function AsyncButton({
   onAction,
   className = "btn-secondary",
   disabled = false,
+  onError,
   children,
   ...rest
 }: Omit<ButtonHTMLAttributes<HTMLButtonElement>, "onClick" | "disabled"> & {
   onAction: () => Promise<unknown> | unknown;
   disabled?: boolean;
+  /** Handler error opsional. Tanpa ini, penolakan onAction akan muncul
+   *  sebagai unhandled rejection karena pemanggil memakai `void run(...)`. */
+  onError?: (err: unknown) => void;
 }) {
   const { pending, run } = useAsyncAction();
+  const { locale } = useT();
   return (
     <button
       type="button"
       className={className}
       disabled={disabled || pending}
       aria-busy={pending || undefined}
-      onClick={() => void run(onAction)}
+      onClick={() => {
+        void run(onAction).catch((err: unknown) => {
+          if (onError) {
+            onError(err);
+            return;
+          }
+          /* Default: laporkan ke pengguna. Menelan error di sini berarti
+             tombol terlihat berhasil padahal aksinya gagal. */
+          const msg =
+            err instanceof Error && err.message
+              ? err.message
+              : locale === "en"
+                ? "Action failed"
+                : "Aksi gagal";
+          toast(msg, "info");
+          if (!(err instanceof Error)) console.error("[async-button]", err);
+        });
+      }}
       {...rest}
     >
       {pending && <Loader2 className="h-4 w-4 animate-spin" aria-hidden />}
