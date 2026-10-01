@@ -9,7 +9,8 @@ import { Card, CardHeader, PageHeader, Badge, KpiCard, Tabs, ProgressBar, ChartT
 import type { SortState } from "../../components/ui";
 import { useBusy } from "../../components/ui";
 import { useStore } from "../../data/store";
-import type { StoreItem } from "../../data/store";
+import type { StoreItem, CollectionKey } from "../../data/store";
+import { useModuleSync } from "../../data/useModuleSync";
 import { equipmentHours, sparkUtil, equipTotalTrend, maintTrend, serviceDueTrend } from "../../data";
 import { fmtTanggal, fmtJumlah, fmtRupiah, todayISO } from "../../utils/format";
 import { sameName } from "../../utils/names";
@@ -134,15 +135,19 @@ function oeeGrade(v: number, en: boolean): { label: string; tone: "green" | "amb
   return { label: en ? "Poor" : "Buruk", tone: "red" };
 }
 
+/* Batch koleksi modul Equipment untuk useModuleSync (pengganti resync penuh). */
+const EQ_COLS: CollectionKey[] = ["bookings", "branches", "calibrations", "equipment", "inventory", "projects"];
+
 export default function EquipmentPage() {
   const busy = useBusy();
-  const { data, add, update, remove, log, branch, resync } = useStore();
+  const { data, add, update, remove, log, branch } = useStore();
   const { locale } = useT();
   const S = n_eqp[locale];
   const modAlert = useModuleAlert("equipment");
   const flash = useNotifFlash();
   const notified = useMemo(() => new Set(modAlert.items.map((a) => a.rowId)), [modAlert.items]);
-  useEffect(() => { void resync().catch(() => undefined); }, [resync]);
+  /* Fetch per-batch modul (pengganti resync penuh). */
+  useModuleSync(EQ_COLS);
   const equipment = data.equipment;
   const bookings = data.bookings;
   const calibrations = data.calibrations;

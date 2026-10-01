@@ -18,8 +18,9 @@ import {
 } from "../../components/ui";
 import type { SortState } from "../../components/ui";
 import { useStore } from "../../data/store";
+import { useModuleSync } from "../../data/useModuleSync";
 import { findUsages } from "../../utils/usages";
-import type { StoreItem } from "../../data/store";
+import type { StoreItem, CollectionKey } from "../../data/store";
 import { useT } from "../../i18n/LanguageContext";
 import { n_prj } from "../../i18n/n_prj";
 import { fmtMiliar, sparkProjects, activeProjectTrend, contractValueTrend, avgProgressTrend } from "../../data";
@@ -63,10 +64,13 @@ const prioritasTone: Record<string, "gray" | "blue" | "amber" | "red"> = {
   Tinggi: "amber",
 };
 
+/* Batch koleksi modul Proyek untuk useModuleSync (pengganti resync penuh). */
+const PRJ_COLS: CollectionKey[] = ["clients", "employees", "projects", "vessels"];
+
 export default function Projects() {
   const { locale } = useT();
   const S = n_prj[locale];
-  const { data, add, update, remove, inBranch, resync, log } = useStore();
+  const { data, add, update, remove, inBranch, log } = useStore();
   const modAlert = useModuleAlert("proyek");
   const flash = useNotifFlash();
   const notified = useMemo(() => new Set(modAlert.items.map((a) => a.rowId)), [modAlert.items]);
@@ -84,7 +88,8 @@ export default function Projects() {
   // Hapus proyek via ConfirmModal + daftar pemakai (blokir bila dirujuk PO/invoice/WBS).
   const [delProject, setDelProject] = useState<StoreItem | null>(null);
   const [searchParams, setSearchParams] = useSearchParams();
-  useEffect(() => { void resync().catch(() => undefined); }, [resync]);
+  /* Fetch per-batch modul (pengganti resync penuh). */
+  useModuleSync(PRJ_COLS);
 
   // Alur dari Dashboard: /proyek?create=1 langsung buka form tambah proyek.
   useEffect(() => {

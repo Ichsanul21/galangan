@@ -6,7 +6,8 @@ import { Card, CardHeader, PageHeader, Badge, KpiCard, Tabs, ProgressBar, ChartT
 } from "../../components/ui";
 import type { SortState } from "../../components/ui";
 import { useBusy } from "../../components/ui";
-import { useStore, type StoreItem } from "../../data/store";
+import { useStore, type StoreItem, type CollectionKey } from "../../data/store";
+import { useModuleSync } from "../../data/useModuleSync";
 import { remoteRepository } from "../../services/repositories";
 import { getJwt, isBackendConfigured } from "../../services/http";
 import { fmtRupiah, fmtMiliar, fmtTanggal, todayISO } from "../../utils/format";
@@ -124,9 +125,12 @@ function shortSub(name: unknown): string {
   return s.replace(/^(PT|CV)\s+/i, "").split(" ").slice(0, 2).join(" ");
 }
 
+/* Batch koleksi modul Subkontraktor untuk useModuleSync (pengganti resync penuh). */
+const SUB_COLS: CollectionKey[] = ["employees", "incidents", "payables", "projects", "subcontractors", "termins", "timesheets", "workOrders"];
+
 export default function Subcontractor() {
   const busy = useBusy();
-  const { data, add, update, log, branch, resync } = useStore();
+  const { data, add, update, log, branch } = useStore();
   const { locale } = useT();
   const S = n_crm[locale];
   const subcontractors = data.subcontractors;
@@ -144,7 +148,8 @@ export default function Subcontractor() {
   const modAlert = useModuleAlert("subkontraktor");
   const flash = useNotifFlash();
   const notified = useMemo(() => new Set(modAlert.items.map((a) => a.rowId)), [modAlert.items]);
-  useEffect(() => { void resync().catch(() => undefined); }, [resync]);
+  /* Fetch per-batch modul (pengganti resync penuh). */
+  useModuleSync(SUB_COLS);
 
   const [showSub, setShowSub] = useState(false);
   const [subForm, setSubForm] = useState({ name: "", services: "", contract: "", k3: "A", contractType: "Borongan", payScheme: "unit", noBG: "", bgExpiry: "", bgValue: "" });

@@ -6,7 +6,8 @@ import { Card, CardHeader, PageHeader, Badge, KpiCard, ProgressBar, Modal, Field
 import type { SortState } from "../../components/ui";
 import { useBusy } from "../../components/ui";
 import { useStore } from "../../data/store";
-import type { StoreItem } from "../../data/store";
+import type { StoreItem, CollectionKey } from "../../data/store";
+import { useModuleSync } from "../../data/useModuleSync";
 import { dockUtilTrend, slotTrend } from "../../data";
 import { fmtJumlah, fmtRupiah, fmtTanggal, fmtRentang, todayISO } from "../../utils/format";
 import { getSetting } from "../../utils/settings";
@@ -89,15 +90,19 @@ function undockList(s: StoreItem): boolean[] {
   return UNDOCK_ITEMS.map((_, i) => raw[i] === true);
 }
 
+/* Batch koleksi modul Drydock untuk useModuleSync (pengganti resync penuh). */
+const DRY_COLS: CollectionKey[] = ["dockSlots", "drydocks", "invoices", "ncr", "projects", "vessels"];
+
 export default function Drydock() {
   const busy = useBusy();
-  const { data, add, update, remove, log, resync } = useStore();
+  const { data, add, update, remove, log } = useStore();
   const { locale } = useT();
   const S = n_dry[locale];
   const modAlert = useModuleAlert("drydock");
   const flash = useNotifFlash();
   const notified = useMemo(() => new Set(modAlert.items.map((a) => a.rowId)), [modAlert.items]);
-  useEffect(() => { void resync().catch(() => undefined); }, [resync]);
+  /* Fetch per-batch modul (pengganti resync penuh). */
+  useModuleSync(DRY_COLS);
   const drydocks = data.drydocks;
   const dockSlots = data.dockSlots;
   const projectOptions = data.projects;

@@ -28,8 +28,9 @@ import type { SortState } from "../../components/ui";
 import { useBusy } from "../../components/ui";
 import { FilterPopover } from "../../components/FilterPopover";
 import { useStore } from "../../data/store";
+import { useModuleSync } from "../../data/useModuleSync";
 import { findUsages } from "../../utils/usages";
-import type { StoreItem } from "../../data/store";
+import type { StoreItem, CollectionKey } from "../../data/store";
 import { activeEmployeeTrend, certifiedTrend, certExpireTrend, employeeTrend } from "../../data";
 import { fmtTanggal, todayISO } from "../../utils/format";
 import { AlertBannerView, notifRowId, useModuleAlert, useNotifFlash } from "../../components/AlertBanner";
@@ -195,15 +196,19 @@ const emptyEmpForm = () => ({
   dependents: "0",
 });
 
+/* Batch koleksi modul SDM untuk useModuleSync (pengganti resync penuh). */
+const HR_COLS: CollectionKey[] = ["activities", "attendance", "branches", "employees", "leaves", "trainings"];
+
 export default function HR() {
   const busy = useBusy();
-  const { data, add, update, remove, log, branch, setBranch, inBranch, resync } = useStore();
+  const { data, add, update, remove, log, branch, setBranch, inBranch } = useStore();
   const { locale } = useT();
   const S = n_qc[locale];
   const modAlert = useModuleAlert("sdm");
   const flash = useNotifFlash();
   const notified = useMemo(() => new Set(modAlert.items.map((a) => a.rowId)), [modAlert.items]);
-  useEffect(() => { void resync().catch(() => undefined); }, [resync]);
+  /* Fetch per-batch modul (pengganti resync penuh). */
+  useModuleSync(HR_COLS);
   const [tab, setTab] = useState("Karyawan");
   const [sort, setSort] = useState<SortState>({ key: null, dir: "asc" });
   const [sort2, setSort2] = useState<SortState>({ key: null, dir: "asc" });

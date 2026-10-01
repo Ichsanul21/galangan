@@ -4,13 +4,14 @@ import { useT } from "../../i18n/LanguageContext";
 import { n_prj } from "../../i18n/n_prj";
 import { useAuth, canSetTarget } from "../../auth/auth";
 import { Card, Modal, Field, FormGrid, toast, EmptyState, StatusBadge, Badge, SortTh, toggleSort, sortRows, ConfirmModal,
-  NumInput, FlowStrip, SecureImg, FileUploadButton,
+  NumInput, FlowStrip, FileUploadButton,
   useBusy,
 } from "../../components/ui";
 import type { SortState } from "../../components/ui";
 import { findUsages } from "../../utils/usages";
 import { Plus, FileDown } from "lucide-react";
 import { exportExcel, fmtRupiah } from "../../utils/export";
+import { DocumentPreviewCell } from "../../components/DocumentPreview";
 import { SATUAN, STATUS_BOQ_ID } from "../../utils/format";
 import { todayISO } from "../../utils/format";
 import type { BoQItem } from "../../data";
@@ -98,7 +99,6 @@ export default function BoQSection({ projectId }: Props) {
   const [revisiReason, setRevisiReason] = useState("");
   const [histFor, setHistFor] = useState<BoQExt | null>(null);
   const [logFor, setLogFor] = useState<BoQExt | null>(null);
-  const [previewFor, setPreviewFor] = useState<BoQExt | null>(null);
   const [presetCat, setPresetCat] = useState("Mechanical");
   const [presetIdx, setPresetIdx] = useState("0");
   // Ubah qty/harga (Draft/Pending saja) + hapus (Draft saja) via ConfirmModal.
@@ -378,32 +378,13 @@ export default function BoQSection({ projectId }: Props) {
                       )}
                     </td>
                     <td className="td">
-                      {b.fileUrl ? (
-                        <div className="max-w-48 space-y-1">
-                          {/(\.(png|jpe?g|gif|webp|bmp|svg))(\?|#|$)/i.test(String(b.fileUrl)) ? (
-                            <SecureImg src={String(b.fileUrl)} alt={String(b.name)} name={String(b.name)} className="max-h-24 w-full rounded-lg border border-steel-100 object-contain" />
-                          ) : (/\.pdf(\?|#|$)/i.test(String(b.fileUrl)) ? (
-                            <iframe title={String(b.name)} src={String(b.fileUrl)} className="h-32 w-full rounded-lg border border-steel-100" />
-                          ) : (
-                            /* xlsx/csv/txt/docx: TIDAK bisa dirender browser. Kalau
-                               tidak diberi tahu, user mengklik dan melihat iframe
-                               kosong tanpa penjelasan. */
-                            <span className="block text-[11px] text-steel-500">
-                              {locale === "en"
-                                ? "Office/CSV file - not previewable in browser"
-                                : "File Office/CSV — tidak bisa ditampilkan di browser"}
-                            </span>
-                          ))}
-                          <button className="font-medium text-ocean-600 underline" onClick={() => setPreviewFor(b)} title={String(b.fileUrl)}>
-                            {locale === "en" ? "Preview" : "Pratinjau"}
-                          </button>
-                          <a className="block font-medium text-steel-500 underline" href={String(b.fileUrl)} target="_blank" rel="noreferrer">
-                            {locale === "en" ? "Download" : "Unduh"}
-                          </a>
-                        </div>
-                      ) : (
-                        <span className="text-xs text-steel-400">-</span>
-                      )}
+                      <DocumentPreviewCell
+                        doc={b.fileUrl ? {
+                          title: String(b.name),
+                          fileUrl: String(b.fileUrl),
+                          subtitle: String(b.id),
+                        } : null}
+                      />
                     </td>
                     <td className="td">
                       <div className="flex flex-wrap gap-1">
@@ -526,34 +507,6 @@ export default function BoQSection({ projectId }: Props) {
           ))}
           {(histFor?.priceHistory ?? []).length === 0 && <p className="text-sm text-steel-400">{S.boqNoHist}</p>}
         </div>
-      </Modal>
-
-      <Modal open={previewFor !== null} onClose={() => setPreviewFor(null)} title={previewFor?.name ?? ""} subtitle={previewFor?.id}>
-        {previewFor?.fileUrl ? (
-          <div className="space-y-2">
-            {/\.(png|jpe?g|gif|webp|bmp|svg)(\?|#|$)/i.test(String(previewFor.fileUrl)) ? (
-              <SecureImg src={previewFor.fileUrl} alt={String(previewFor.name)} name={String(previewFor.name)} className="max-h-96 w-full rounded-xl border border-steel-200 object-contain" />
-            ) : (/\.pdf(\?|#|$)/i.test(String(previewFor.fileUrl)) ? (
-              <iframe title={String(previewFor.name)} src={String(previewFor.fileUrl)} className="h-96 w-full rounded-xl border border-steel-200" />
-            ) : (
-              /* xlsx/csv/txt/docx tidak bisa dirender browser. Versi lama
-                 menaruhnya di <iframe> -> bingkai kosong tanpa penjelasan. */
-              <div className="rounded-xl border border-dashed border-steel-300 bg-surface p-6 text-center">
-                <p className="text-sm text-steel-600">
-                  {locale === "en"
-                    ? "This file type cannot be previewed in the browser."
-                    : "Jenis file ini tidak bisa ditampilkan di browser."}
-                </p>
-                <p className="mt-1 text-xs text-steel-400">
-                  {locale === "en" ? "Use the download button below." : "Gunakan tombol unduh di bawah."}
-                </p>
-              </div>
-            ))}
-            <a className="block truncate text-xs font-semibold text-ocean-600 underline" href={String(previewFor.fileUrl)} target="_blank" rel="noreferrer">{String(previewFor.fileUrl)}</a>
-          </div>
-        ) : (
-          <p className="text-sm text-steel-400">-</p>
-        )}
       </Modal>
 
       <Modal open={logFor !== null} onClose={() => setLogFor(null)} title={`Log — ${logFor?.name ?? ""}`} subtitle={logFor?.id}>

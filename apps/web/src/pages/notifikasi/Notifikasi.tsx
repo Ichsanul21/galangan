@@ -298,7 +298,7 @@ export default function Notifikasi() {
               subtitle={t.notif.emptyHint}
             />
           )}
-          <div className="max-h-[70vh] overflow-y-auto pr-1">
+          <div className="max-h-[70vh] overflow-y-auto scroll-flush-5 pr-5">
           {grouped.map((g) => (
             <NotifGroup
               key={g.group}

@@ -6,7 +6,8 @@ import { Card, CardHeader, PageHeader, Badge, KpiCard, Tabs, StatusBadge, Donut,
 } from "../../components/ui";
 import type { SortState } from "../../components/ui";
 import { useBusy } from "../../components/ui";
-import { useStore, type StoreItem } from "../../data/store";
+import { useStore, type StoreItem, type CollectionKey } from "../../data/store";
+import { useModuleSync } from "../../data/useModuleSync";
 import { findUsages } from "../../utils/usages";
 import { remoteRepository } from "../../services/repositories";
 import { getJwt, isBackendConfigured } from "../../services/http";
@@ -163,15 +164,19 @@ async function freshPayables(fallback: StoreItem[]): Promise<StoreItem[]> {
   return fallback;
 }
 
+/* Batch koleksi modul Procurement untuk useModuleSync (pengganti resync penuh). */
+const PROC_COLS: CollectionKey[] = ["inventory", "payables", "projects", "purchaseOrders", "requisitions", "rfqs", "vendors"];
+
 export default function Procurement() {
   const busy = useBusy();
-  const { data, add, update, remove, log, inBranch, resync } = useStore();
+  const { data, add, update, remove, log, inBranch } = useStore();
   const { locale } = useT();
   const S = n_proc[locale];
   const modAlert = useModuleAlert("procurement");
   const flash = useNotifFlash();
   const notified = useMemo(() => new Set(modAlert.items.map((a) => a.rowId)), [modAlert.items]);
-  useEffect(() => { void resync().catch(() => undefined); }, [resync]);
+  /* Fetch per-batch modul (pengganti resync penuh). */
+  useModuleSync(PROC_COLS);
   const purchaseOrders = inBranch(data.purchaseOrders);
   const requisitions = data.requisitions;
   const vendors = data.vendors;

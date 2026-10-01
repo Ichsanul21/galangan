@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import type { CSSProperties } from "react";
 import { Link } from "react-router-dom";
 import {
@@ -43,6 +43,8 @@ import {
 } from "../components/ui";
 import type { SortState } from "../components/ui";
 import { useStore } from "../data/store";
+import type { CollectionKey } from "../data/store";
+import { useModuleSync } from "../data/useModuleSync";
 import { getSetting } from "../utils/settings";
 import { chartAnim, exportPDF } from "../utils/export";
 import writeXlsxFile from "write-excel-file/browser";
@@ -147,6 +149,9 @@ function exportChartPNG(chartId: string, filename: string): void {
   } catch { toast(S0.tChartExportFailed, "info"); }
 }
 
+/* Batch koleksi modul Analytics untuk useModuleSync (pengganti resync penuh). */
+const AN_COLS: CollectionKey[] = ["bookings", "calibrations", "changeOrders", "dockSlots", "equipment", "incidents", "inspections", "inventory", "invoices", "ncr", "payables", "projects", "quotations", "settings", "vendors"];
+
 export default function Analytics() {
   const busy = useBusy();
   const { locale } = useT();
@@ -154,8 +159,9 @@ export default function Analytics() {
   const [tab, setTab] = useState("Deskriptif");
   const [sort, setSort] = useState<SortState>({ key: null, dir: "asc" });
   const [sort2, setSort2] = useState<SortState>({ key: null, dir: "asc" });
-  const { data, update, log, resync } = useStore();
-  useEffect(() => { void resync().catch(() => undefined); }, [resync]);
+  const { data, update, log } = useStore();
+  /* Fetch per-batch modul (pengganti resync penuh). */
+  useModuleSync(AN_COLS);
   /* What-if dikendalikan dari Pengaturan (grup Analytics) - otomatis dipakai forecast. */
   const growth = getSetting(data, "WHATIF_GROWTH", 0);
   const costAdj = getSetting(data, "WHATIF_COST", 0);

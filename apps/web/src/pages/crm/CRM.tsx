@@ -8,8 +8,9 @@ import ClientModal from "../../components/ClientModal";
 import type { SortState } from "../../components/ui";
 import { useBusy } from "../../components/ui";
 import { useStore } from "../../data/store";
+import { useModuleSync } from "../../data/useModuleSync";
 import { findUsages } from "../../utils/usages";
-import type { StoreItem } from "../../data/store";
+import type { StoreItem, CollectionKey } from "../../data/store";
 import { fmtMiliar, fmtRupiah, fmtTanggal, todayISO } from "../../utils/format";
 import { sameName } from "../../utils/names";
 import { AlertBannerView, notifRowId, useModuleAlert, useNotifFlash } from "../../components/AlertBanner";
@@ -62,9 +63,12 @@ function umurHari(dateStr: string | null | undefined): number | null {
   return Math.max(0, Math.round((today - t) / 86400000));
 }
 
+/* Batch koleksi modul CRM untuk useModuleSync (pengganti resync penuh). */
+const CRM_COLS: CollectionKey[] = ["clientPos", "clients", "communications", "contracts", "employees", "projects", "quotations", "requests"];
+
 export default function CRM() {
   const busy = useBusy();
-  const { data, add, update, remove, log, branch, inBranch, resync } = useStore();
+  const { data, add, update, remove, log, branch, inBranch } = useStore();
   const { locale } = useT();
   const S = n_crm[locale];
   /* Label tampilan: "Lead" → "Prospek" (ID saja); value backend tetap "Lead". */
@@ -522,9 +526,8 @@ export default function CRM() {
     }
     flash.pick(key, -1, () => {}, 100);
   };
-  useEffect(() => {
-    void resync();
-  }, [resync]);
+  /* Fetch per-batch modul (pengganti resync penuh). */
+  useModuleSync(CRM_COLS);
 
   useEffect(() => {
     quotPager.reset();

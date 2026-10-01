@@ -506,6 +506,8 @@ interface StoreCtx {
   log: (action: string, target: string, module: string) => void;
   reset: () => void;
   resync: () => Promise<void>;
+  /** Tarik batch koleksi tertentu saja (pola per modul/tab - useModuleSync). */
+  resyncCollections: (cols: CollectionKey[]) => Promise<void>;
   wbsFor: (projectId: string) => WbsItem[];
   setWbs: (projectId: string, wbs: WbsItem[]) => Promise<void>;
   teamFor: (projectId: string) => string[];
@@ -930,6 +932,40 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         }
       }),
     );
+  }, []);
+
+  /* Pola standar fetch per-batch saat pindah modul/tab (lihat useModuleSync):
+     hanya koleksi yang dibutuhkan modul aktif yang ditarik, paralel - data
+     selalu segar tanpa memuat ulang 50+ koleksi seperti resync() penuh.
+     Koleksi dirty tetap dilewati agar edit offline tidak tertimpa, dan
+     activities di-merge (bukan replace) seperti pada resync. */
+  const resyncCollections = useCallback(async (cols: CollectionKey[]): Promise<void> => {
+    if (!remoteActive()) return;
+    if (cols.length === 0) return;
+    if (!(await isApiCompatible())) return;
+    const dirty = dirtyRef.current;
+    const pulled: Partial<Record<CollectionKey, StoreItem[]>> = {};
+    await Promise.all(
+      cols.map(async (key) => {
+        if (dirty.has(key as string)) return;
+        try {
+          pulled[key] = await remoteRepository(key).list();
+        } catch {
+          /* koleksi ini tetap memakai cache lokal */
+        }
+      }),
+    );
+    const serverActivities = pulled.activities;
+    if (serverActivities !== undefined) delete pulled.activities;
+    setData((prev) => {
+      const next = { ...prev, ...pulled };
+      if (serverActivities !== undefined) {
+        const local = prev.activities ?? [];
+        const seen = new Set(local.map((r) => r.id));
+        next.activities = [...local, ...serverActivities.filter((r) => !seen.has(r.id))].slice(0, ACTIVITIES_CAP);
+      }
+      return next;
+    });
   }, []);
 
   /* Dorong perubahan lokal yang tertunda ke backend: DELETE tombstone dulu,
@@ -1376,6 +1412,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         setData(buildSeeds());
       },
       resync,
+      resyncCollections,
       wbsFor: (projectId) => data.wbsByProject[projectId] ?? clone(wbsTemplate),
       setWbs: async (projectId, wbs) => {
         const prevWbs = dataRef.current.wbsByProject[projectId];
@@ -1436,7 +1473,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       setBranch,
       inBranch,
     };
-  }, [data, branch, inBranch, backendMode, backendError, resync, pendingSync, pushPending, markDirty]);
+  }, [data, branch, inBranch, backendMode, backendError, resync, resyncCollections, pendingSync, pushPending, markDirty]);
 
   return <Ctx.Provider value={api}>{children}</Ctx.Provider>;
 }

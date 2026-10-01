@@ -17,10 +17,28 @@ export interface ListFilter {
   branch?: string;
 }
 
+/** Query paginasi server-side (GET /api/<table>?limit=&offset=). */
+export interface PagedQuery extends ListFilter {
+  /** Halaman 1-based. Default 1. */
+  page?: number;
+  /** Baris per halaman (1..500). Default 100. */
+  size?: number;
+}
+
+export interface PagedResult {
+  rows: StoreItem[];
+  total: number;
+  page: number;
+  size: number;
+  pages: number;
+}
+
 export interface Repository {
   list(): Promise<StoreItem[]>;
   /** Filter server-side (q/branch) - opsional agar adapter lama tak rusak. */
   listFiltered?(opts?: ListFilter): Promise<StoreItem[]>;
+  /** Satu halaman data (limit/offset) + total - untuk tabel server-side paging. */
+  listPaged?(opts?: PagedQuery): Promise<PagedResult>;
   create(item: Omit<StoreItem, "id"> & { id?: string }): Promise<StoreItem>;
   patch(id: string, patch: Record<string, unknown>): Promise<StoreItem>;
   remove(id: string): Promise<void>;
@@ -140,6 +158,25 @@ export function remoteRepository(resource: string): Repository {
         offset += limit;
       }
       return all;
+    },
+    async listPaged(opts) {
+      const page = Math.max(1, Math.trunc(opts?.page ?? 1));
+      const size = Math.min(500, Math.max(1, Math.trunc(opts?.size ?? 100)));
+      const params = new URLSearchParams();
+      if (opts?.q?.trim()) params.set("q", opts.q.trim());
+      if (opts?.branch?.trim()) params.set("branch", opts.branch.trim());
+      params.set("limit", String(size));
+      params.set("offset", String((page - 1) * size));
+      const res = await apiFetch<BackendRow[] | BackendPage>(`${base}?${params.toString()}`);
+      /* BE lawas mengembalikan array polos tanpa total - anggap satu halaman. */
+      if (Array.isArray(res)) {
+        const rows = res.map(rowToItem);
+        return { rows, total: rows.length, page: 1, size, pages: 1 };
+      }
+      if (!isBackendPage(res)) return { rows: [], total: 0, page, size, pages: 1 };
+      const rows = (Array.isArray(res.rows) ? res.rows : []).map(rowToItem);
+      const total = typeof res.total === "number" ? res.total : rows.length;
+      return { rows, total, page, size, pages: Math.max(1, Math.ceil(total / size)) };
     },
     async create(item) {
       const row = await apiFetch<BackendRow>(base, { method: "POST", body: JSON.stringify(itemToCreateBody(item)) });

@@ -103,6 +103,14 @@
   .shadow-lift { box-shadow: 0 4px 8px rgba(11,58,99,0.06), 0 20px 40px -16px rgba(11,58,99,0.25); }
   .card-hover { @apply transition-all duration-300 hover:-translate-y-1 hover:shadow-lift; }
 
+  /* Scrollbar menempel tepat di ujung kanan card: container scroll direntangkan
+     melewati padding kanan card induk, sementara jarak isi ke scrollbar tetap
+     dijaga padding kanan container sendiri (pr-*). Pakai bersama overflow-y-auto.
+     .scroll-flush   → card induk ber-padding 1rem  (p-4 / px-4)
+     .scroll-flush-5 → card induk ber-padding 1.25rem (px-5) */
+  .scroll-flush { margin-right: -1rem; }
+  .scroll-flush-5 { margin-right: -1.25rem; }
+
   /* Watermark versi cetak (ikut tercetak ke PDF) */
   .isms-wm-print { display: none; }
 

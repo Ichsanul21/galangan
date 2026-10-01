@@ -89,7 +89,7 @@ export function AlertBannerView({ items, onPick }: { items: ModuleAlertItem[]; o
           </p>
           {!min && (
             <>
-              <ul className="mt-1 max-h-64 w-full space-y-1 overflow-y-auto" style={{ scrollbarGutter: "stable" }}>
+              <ul className="mt-1 max-h-64 w-full space-y-1 overflow-y-auto scroll-flush pr-4" style={{ scrollbarGutter: "stable" }}>
                 {shown.map((a) => (
                   <li key={a.id} className="flex items-start gap-1.5 text-xs" title={a.detail || a.label}>
                     <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-amber-500" />

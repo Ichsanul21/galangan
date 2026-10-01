@@ -1,5 +1,5 @@
-import type { ReactNode, InputHTMLAttributes, KeyboardEvent as ReactKeyboardEvent } from "react";
-import { useEffect, useId, useRef, useState, Component, type ErrorInfo } from "react";
+import type { ReactNode, InputHTMLAttributes, ButtonHTMLAttributes, KeyboardEvent as ReactKeyboardEvent } from "react";
+import { useCallback, useEffect, useId, useRef, useState, Component, type ErrorInfo } from "react";
 import { useT } from "../i18n/LanguageContext";
 import { statusLabel } from "../i18n/status";
 import { motion, AnimatePresence } from "framer-motion";
@@ -887,16 +887,74 @@ export function useBusy(): {
   run: <T>(key: string, fn: () => Promise<T> | T) => Promise<T | void>;
 } {
   const [busyMap, setBusyMap] = useState<Record<string, boolean>>({});
+  /* Guard ref sinkron: dua klik cepat pada tick yang sama membaca state lama
+     (false) sehingga guard state saja tetap meloloskan double-submit. */
+  const busyRef = useRef<Set<string>>(new Set());
   const run = async <T,>(key: string, fn: () => Promise<T> | T): Promise<T | void> => {
-    if (busyMap[key]) return;
+    if (busyRef.current.has(key)) return;
+    busyRef.current.add(key);
     setBusyMap((m) => ({ ...m, [key]: true }));
     try {
       return await fn();
     } finally {
+      busyRef.current.delete(key);
       setBusyMap((m) => ({ ...m, [key]: false }));
     }
   };
   return { isBusy: (k: string) => !!busyMap[k], run };
+}
+
+/* ============ A S Y N C   A C T I O N ============ */
+
+/** Guard satu aksi async: status pending otomatis (loading/disabled) dan
+ *  spam click diabaikan. Untuk banyak aksi ber-key dalam satu halaman tetap
+ *  pakai useBusy; untuk satu tombol/aksi pakai ini (atau AsyncButton). */
+export function useAsyncAction(): {
+  pending: boolean;
+  run: <T>(fn: () => Promise<T> | T) => Promise<T | undefined>;
+} {
+  const [pending, setPending] = useState(false);
+  const pendingRef = useRef(false);
+  const run = useCallback(async <T,>(fn: () => Promise<T> | T): Promise<T | undefined> => {
+    if (pendingRef.current) return undefined;
+    pendingRef.current = true;
+    setPending(true);
+    try {
+      return await fn();
+    } finally {
+      pendingRef.current = false;
+      setPending(false);
+    }
+  }, []);
+  return { pending, run };
+}
+
+/** Tombol yang otomatis disabled + spinner selama aksi async berjalan.
+ *  Pakai: `<AsyncButton className="btn-primary" onAction={save}>Simpan</AsyncButton>` */
+export function AsyncButton({
+  onAction,
+  className = "btn-secondary",
+  disabled = false,
+  children,
+  ...rest
+}: Omit<ButtonHTMLAttributes<HTMLButtonElement>, "onClick" | "disabled"> & {
+  onAction: () => Promise<unknown> | unknown;
+  disabled?: boolean;
+}) {
+  const { pending, run } = useAsyncAction();
+  return (
+    <button
+      type="button"
+      className={className}
+      disabled={disabled || pending}
+      aria-busy={pending || undefined}
+      onClick={() => void run(onAction)}
+      {...rest}
+    >
+      {pending && <Loader2 className="h-4 w-4 animate-spin" aria-hidden />}
+      {children}
+    </button>
+  );
 }
 
 /* ============ P A G E R ============ */
@@ -990,15 +1048,12 @@ export function NumInput({ integer = false, allowNegative = false, onKeyDown, on
 
 import { uploadFile } from "../services/upload";
 import { BASE, getJwt } from "../services/http";
+import { toAbsoluteUrl } from "../services/files";
 
 /** Normalisasi URL lama relatif (/files/...) → absolut terhadap BASE backend.
  *  URL absolut / blob: / object-URL dikembalikan apa adanya. */
 export function absUrl(url: unknown): string {
-  const u = String(url ?? "").trim();
-  if (!u) return "";
-  if (/^(https?:|blob:|data:)/i.test(u)) return u;
-  if (!BASE) return u;
-  return `${BASE}${u.startsWith("/") ? u : `/${u}`}`;
+  return toAbsoluteUrl(url);
 }
 
 /** Gambar dengan inisial bila tanpa foto + loader JWT (fetch blob → object URL).

@@ -1,11 +1,12 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import type { CSSProperties } from "react";
 import { Link } from "react-router-dom";
 import { useDraftState } from "../../utils/draft";
 import { FileText } from "lucide-react";
 import { Card, CardHeader, PageHeader, StatusBadge, Badge, KpiCard, EmptyState, ProgressBar, Donut, toast, useBusy } from "../../components/ui";
 import { useStore } from "../../data/store";
-import type { StoreItem } from "../../data/store";
+import type { StoreItem, CollectionKey } from "../../data/store";
+import { useModuleSync } from "../../data/useModuleSync";
 import { fmtTanggal, fmtRupiah, fmtMiliar, fmtJumlah, todayISO } from "../../utils/format";
 import { SB_KOP } from "../../utils/sb";
 import { getSetting } from "../../utils/settings";
@@ -88,10 +89,14 @@ function loadArc(): ReportArc[] {
   } catch { return []; }
 }
 
+/* Batch koleksi modul Laporan untuk useModuleSync (pengganti resync penuh). */
+const LAP_COLS: CollectionKey[] = ["activities", "attendance", "boq", "branches", "incidents", "invoices", "ncr", "payables", "payroll", "projects", "purchaseOrders", "taxPeriods"];
+
 export default function Laporan() {
   const busy = useBusy();
-  const { data, branch, inBranch, wbsFor, log, resync } = useStore();
-  useEffect(() => { void resync().catch(() => undefined); }, [resync]);
+  const { data, branch, inBranch, wbsFor, log } = useStore();
+  /* Fetch per-batch modul (pengganti resync penuh). */
+  useModuleSync(LAP_COLS);
   const { locale } = useT();
   const S = n_misc[locale];
   const [mode, setMode] = useState<Mode>("Mingguan");
@@ -454,7 +459,7 @@ export default function Laporan() {
               <Card className="p-4">
                 <CardHeader title={S.projectProgress} subtitle={S.activeThisWeek} />
                 <div className="px-5 pb-2"><input className="input" value={weekProjQ} onChange={(e) => setWeekProjQ(e.target.value)} placeholder={S.cardSearchPh} aria-label={S.cardSearchPh} /></div>
-                <div className="max-h-64 space-y-3 overflow-y-auto px-5 pb-5 pr-4">
+                <div className="max-h-64 space-y-3 overflow-y-auto scroll-flush px-5 pb-5 pr-4">
                   {weekly.projects.filter((p) => !weekProjQ.trim() || `${p.id ?? ""} ${num(p.progress)}`.toLowerCase().includes(weekProjQ.trim().toLowerCase())).map((p) => (
                     <div key={p.id}>
                       <div className="flex justify-between text-xs"><span className="font-mono font-semibold text-navy-900">{p.id}</span><span className="text-steel-500">{num(p.progress)}%</span></div>
@@ -614,7 +619,7 @@ export default function Laporan() {
                 <Card className="p-4">
                   <CardHeader title={S.projectNcr} subtitle={S.findingsCount.replace("{n}", fmtJumlah(projNcr.length))} />
                   <div className="px-5 pb-2"><input className="input" value={projNcrQ} onChange={(e) => setProjNcrQ(e.target.value)} placeholder={S.cardSearchPh} aria-label={S.cardSearchPh} /></div>
-                  <div className="max-h-64 space-y-2 overflow-y-auto px-5 pb-5 pr-4 text-xs">
+                  <div className="max-h-64 space-y-2 overflow-y-auto scroll-flush px-5 pb-5 pr-4 text-xs">
                     {projNcr.filter((n) => !projNcrQ.trim() || `${n.id ?? ""} ${n.severity ?? ""} ${n.type ?? ""} ${n.status ?? ""}`.toLowerCase().includes(projNcrQ.trim().toLowerCase())).map((n) => {
                       const sev = String(n.severity ?? n.type ?? "");
                       return (

@@ -44,6 +44,7 @@ import { buildModuleAlertItems, type ModuleAlertKey } from "../utils/moduleAlert
 import { useT } from "../i18n/LanguageContext";
 import { n_misc } from "../i18n/n_misc";
 import { remoteRepository } from "../services/repositories";
+import { recentModuleSync } from "../data/useModuleSync";
 import { getJwt, isBackendConfigured } from "../services/http";
 
 export default function AppShell() {
@@ -370,6 +371,9 @@ export default function AppShell() {
     if (backendMode !== "remote") return;
     if (qRef.current.trim() !== "") return;
     if (modalOpenRef.current) return;
+    /* Halaman baru saja menarik batch-nya sendiri (useModuleSync) → resync
+       penuh hanya mendobel request yang sama. */
+    if (recentModuleSync()) return;
     /* Pindah modul/halaman = WAJIB data baru. Throttle 60 dtk hanya untuk
        render ulang pada path yang sama (bukan perpindahan modul). */
     const pathChanged = location.pathname !== lastPathRef.current;
@@ -585,8 +589,8 @@ export default function AppShell() {
               {notifOpen && (
                 <>
                   <div className="fixed inset-0 z-10" onClick={() => { setNotifOpen(false); setBellExpanded(false); setBellMin(false); }} />
-                  <div className="absolute right-0 z-20 mt-2 max-h-96 w-80 overflow-y-auto rounded-xl border border-steel-200 bg-white shadow-lift">
-                    <div className="flex items-center justify-between border-b border-steel-100 px-4 py-2.5">
+                  <div className="absolute right-0 z-20 mt-2 flex max-h-96 w-80 flex-col overflow-hidden rounded-xl border border-steel-200 bg-white shadow-lift">
+                    <div className="flex shrink-0 items-center justify-between border-b border-steel-100 px-4 py-2.5">
                       <p className="text-sm font-semibold text-navy-900">
                         {t.notif.title}{unreadCount > 0 ? ` (${unreadCount} ${t.notif.unread})` : ""}
                       </p>
@@ -599,7 +603,7 @@ export default function AppShell() {
                       </button>
                     </div>
                     {!bellMin && (
-                      <>
+                      <div className="min-h-0 flex-1 overflow-y-auto">
                     {alerts.length > 0 && (
                       <>
                         <p className="border-b border-steel-100 px-4 py-2 text-xs font-bold uppercase tracking-wide text-steel-400">
@@ -645,12 +649,12 @@ export default function AppShell() {
                         <p className="mt-0.5 text-[10px] text-steel-400">{a.module} · {a.time}</p>
                       </Link>
                     ))}
-                      </>
+                      </div>
                     )}
                     <Link
                       to="/notifikasi"
                       onClick={() => { setNotifOpen(false); setBellExpanded(false); setBellMin(false); }}
-                      className="block px-4 py-2.5 text-center text-xs font-semibold text-ocean-600 hover:bg-surface"
+                      className="block shrink-0 border-t border-steel-100 px-4 py-2.5 text-center text-xs font-semibold text-ocean-600 hover:bg-surface"
                     >
                       {t.notif.seeAll}
                     </Link>

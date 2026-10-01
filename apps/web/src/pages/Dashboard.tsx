@@ -51,7 +51,8 @@ import {
   useBusy,
 } from "../components/ui";
 import { useStore } from "../data/store";
-import type { StoreItem } from "../data/store";
+import type { StoreItem, CollectionKey } from "../data/store";
+import { useModuleSync } from "../data/useModuleSync";
 import { getSetting } from "../utils/settings";
 import { useAuth, canSetTarget } from "../auth/auth";
 import { chartAnim, exportPDF } from "../utils/export";
@@ -101,10 +102,14 @@ function loadTargets(): Record<string, BranchTarget> {
   } catch { return {}; }
 }
 
+/* Batch koleksi modul Dashboard untuk useModuleSync (pengganti resync penuh). */
+const DB_COLS: CollectionKey[] = ["activities", "drydocks", "employees", "incidents", "inventory", "invoices", "ncr", "projects", "quotations", "vessels"];
+
 export default function Dashboard() {
   const busy = useBusy();
-  const { data, wbsFor, branch, resync } = useStore();
-  useEffect(() => { void resync().catch(() => undefined); }, [resync]);
+  const { data, wbsFor, branch } = useStore();
+  /* Fetch per-batch modul (pengganti resync penuh). */
+  useModuleSync(DB_COLS);
   const { locale } = useT();
   const S = n_misc[locale];
   const { user } = useAuth();
@@ -674,7 +679,7 @@ export default function Dashboard() {
                 <span className="text-3xl font-bold text-navy-900">{utilDrydock}%</span>
                 <span className="pb-1 text-xs text-steel-500">{S.facilitiesInstalled.replace("{n}", String(drydocks.length))}</span>
               </div>
-              <div className="max-h-64 space-y-3 overflow-y-auto pr-1">
+              <div className="max-h-64 space-y-3 overflow-y-auto scroll-flush pr-4">
                 {drydockLoad.map((d) => (
                   <div key={d.dock}>
                     <div className="mb-1 flex justify-between text-xs">

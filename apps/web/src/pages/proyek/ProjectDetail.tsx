@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useParams, Link } from "react-router-dom";
-import { ArrowLeft, Calendar, MapPin, Plus, Trash2, FileDown, Download } from "lucide-react";
+import { ArrowLeft, Calendar, MapPin, Plus, Trash2, FileDown } from "lucide-react";
 import {
   Card,
   PageHeader,
@@ -16,7 +16,6 @@ import {
   toast,
   Avatar,
   SecureImg,
-  absUrl,
   SortTh,
   toggleSort,
   sortRows,
@@ -29,7 +28,9 @@ import BoQSection from "./BoQSection";
 import ReportSection from "./ReportSection";
 import SparepartServiceSection from "./SparepartServiceSection";
 import { useStore } from "../../data/store";
-import type { StoreItem, WbsItem } from "../../data/store";
+import type { StoreItem, WbsItem, CollectionKey } from "../../data/store";
+import { useModuleSync } from "../../data/useModuleSync";
+import { DocumentPreviewCell, DocumentPreviewPanel } from "../../components/DocumentPreview";
 import { useT } from "../../i18n/LanguageContext";
 import { n_prj } from "../../i18n/n_prj";
 import { fmtMiliar, fmtTanggal, fmtRentang, fmtBulan } from "../../data";
@@ -84,55 +85,18 @@ function docExtOf(url: string): string {
   return (m?.[1] ?? "").toLowerCase();
 }
 
-function DocTextPreview({ url }: { url: string }) {
-  const [text, setText] = useState<string | null>(null);
-  const [err, setErr] = useState(false);
-  useEffect(() => {
-    let cancel = false;
-    setText(null);
-    setErr(false);
-    void (async () => {
-      try {
-        const res = await fetch(absUrl(url));
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const t = await res.text();
-        if (!cancel) setText(t.slice(0, 20000));
-      } catch {
-        if (!cancel) setErr(true);
-      }
-    })();
-    return () => { cancel = true; };
-  }, [url]);
-  if (err) return <p className="text-xs text-steel-400">Gagal memuat pratinjau teks.</p>;
-  if (text === null) return <p className="text-xs text-steel-400">Memuat pratinjau teks…</p>;
-  return <pre className="max-h-48 overflow-auto rounded-lg border border-steel-100 bg-surface p-2 text-[11px] text-steel-600">{text}</pre>;
-}
-
-function DocPreview({ url, title }: { url: string; title: string }) {
-  if (!url) return <p className="text-xs text-steel-400">Belum ada lampiran file.</p>;
-  const ext = docExtOf(url);
-  if (["png", "jpg", "jpeg", "gif", "webp", "bmp", "svg"].includes(ext)) {
-    // Thumbnail inline di list: image max-h-24.
-    return <SecureImg src={url} alt={title} name={title} className="max-h-24 w-full rounded-lg border border-steel-100 object-contain" />;
-  }
-  if (ext === "pdf") {
-    // Thumbnail inline di list: pdf iframe h-32 (bukan hanya di modal).
-    return <iframe src={absUrl(url)} title={title} className="h-32 w-full rounded-lg border border-steel-100" />;
-  }
-  if (ext === "csv" || ext === "txt") {
-    return <DocTextPreview url={url} />;
-  }
-  return <p className="text-xs text-steel-400">Pratinjau tidak tersedia untuk tipe file ini.</p>;
-}
+/* Batch koleksi halaman detail proyek untuk useModuleSync. */
+const PD_COLS: CollectionKey[] = ["projects", "documents"];
 
 export default function ProjectDetail() {
   const busy = useBusy();
   const { locale } = useT();
   const S = n_prj[locale];
   const { id } = useParams();
-  const { data, update, add, wbsFor, setWbs, teamFor, setTeam, log, resync } = useStore();
+  const { data, update, add, wbsFor, setWbs, teamFor, setTeam, log } = useStore();
   const project = data.projects.find((p) => p.id === id) ?? data.projects[0];
-  useEffect(() => { void resync().catch(() => undefined); }, [resync]);
+  /* Fetch per-batch halaman (pengganti resync penuh): proyek + dokumen. */
+  useModuleSync(PD_COLS);
   const [tab, setTab] = useState("Ringkasan");
 
   const [showScope, setShowScope] = useState(false);
@@ -1202,9 +1166,6 @@ export default function ProjectDetail() {
                       <p className="text-xs text-steel-500">{d.id} · {d.type} · {d.version} · {d.updated}{d.fileName ? ` · lampiran: ${d.fileName}` : ""}</p>
                     </div>
                     <div className="flex shrink-0 flex-wrap items-center gap-2">
-                      {url && (
-                        <a className="btn-secondary text-xs" href={absUrl(url)} download={fname} target="_blank" rel="noreferrer"><Download className="h-3.5 w-3.5" /> Unduh</a>
-                      )}
                       <button className="btn-secondary text-xs" aria-label={S.detExportAria.replace("{a}", d.title)} onClick={() => {
                         void exportExcel([["Field", "Value"], ["ID", d.id], ["Judul", d.title], ["Tipe", d.type], ["Proyek", pid], ["Versi", d.version], ["Status", d.status], ["Diperbarui", d.updated], ["Owner", d.owner]], `${d.id}-ringkasan`).then(() => toast(S.detToastExported.replace("{a}", d.id))).catch(() => toast(S.saveFail, "info"));
                       }}><FileDown className="h-3.5 w-3.5" /> {S.excelBtn}</button>
@@ -1213,7 +1174,14 @@ export default function ProjectDetail() {
                     </div>
                     </div>
                     <div className="mt-2">
-                      <DocPreview url={url} title={String(d.title ?? d.id)} />
+                      <DocumentPreviewCell
+                        doc={{
+                          title: String(d.title ?? d.id),
+                          fileUrl: url,
+                          subtitle: `${String(d.id)} · ${String(d.type)} · ${String(d.version)}`,
+                          fileName: fname !== "" ? fname : undefined,
+                        }}
+                      />
                     </div>
                   </div>
                   );
@@ -1664,7 +1632,12 @@ export default function ProjectDetail() {
           {docFile.trim() !== "" && (
             <div className="rounded-xl border border-steel-100 bg-surface p-2">
               <p className="mb-1 text-[11px] font-semibold text-steel-500">Pratinjau sebelum simpan</p>
-              <DocPreview url={docFile.trim()} title={docTitle.trim() || "dokumen-baru"} />
+              <DocumentPreviewPanel
+                doc={{
+                  title: docTitle.trim() || "dokumen-baru",
+                  fileUrl: docFile.trim(),
+                }}
+              />
             </div>
           )}
         </div>

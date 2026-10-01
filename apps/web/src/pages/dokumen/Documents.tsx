@@ -3,7 +3,9 @@ import { Plus, Search, ScrollText, FileText, Eye, Pencil, Trash2, Archive, Rotat
 import { Card, PageHeader, Badge, KpiCard, Modal, Field, FormGrid, ConfirmModal, SortTh, toggleSort, sortRows, toast, StatusBadge, usePager, useBusy } from "../../components/ui";
 import type { SortState } from "../../components/ui";
 import { FilterPopover } from "../../components/FilterPopover";
-import { useStore, type StoreItem } from "../../data/store";
+import { useStore, type StoreItem, type CollectionKey } from "../../data/store";
+import { useModuleSync } from "../../data/useModuleSync";
+import { DocumentPreviewCell, DocumentPreviewPanel } from "../../components/DocumentPreview";
 import { isBackendConfigured } from "../../services/http";
 import { ocrImageUrl } from "../../services/upload";
 import { uploadFile } from "../../services/upload";
@@ -17,6 +19,9 @@ import { useT } from "../../i18n/LanguageContext";
 
 const TYPES = ["Kontrak", "Drawing", "Prosedur", "Sertifikat", "Laporan", "Invoice", "NCR", "Penawaran", "Dock Space", "Surat Jalan", "Tanda Terima"];
 const FILTERS = ["Semua", ...TYPES, "Arsip"];
+
+/* Batch koleksi modul Dokumen untuk useModuleSync (pengganti resync penuh). */
+const DOC_COLS: CollectionKey[] = ["documents", "vessels", "projects"];
 const EXPIRY_WINDOW = 30;
 
 const DOC_MONTHS = ["Sep", "Okt", "Nov", "Des", "Jan", "Feb", "Mar", "Apr", "Mei", "Jun", "Jul", "Ags"];
@@ -100,25 +105,16 @@ function docHay(d: StoreItem): string {
   return `${d.title ?? ""} ${d.id ?? ""} ${d.project ?? ""} ${d.vessel ?? ""} ${d.owner ?? ""} ${d.type ?? ""} ${d.ocrText ?? ""} ${d.fileUrl ?? ""}`.toLowerCase();
 }
 
-/* Jenis pratinjau inline dari ekstensi URL lampiran. */
-function previewKind(url: string): "image" | "pdf" | "text" | "other" | "none" {
-  if (!url) return "none";
-  const clean = url.split("?")[0].split("#")[0].toLowerCase();
-  if (/\.(png|jpe?g|gif|webp|svg|bmp)$/.test(clean)) return "image";
-  if (/\.pdf$/.test(clean)) return "pdf";
-  if (/\.(csv|txt)$/.test(clean)) return "text";
-  return "other";
-}
-
 export default function Documents() {
   const busy = useBusy();
-  const { data, add, update, remove, log, branch, inBranch, resync } = useStore();
+  const { data, add, update, remove, log, branch, inBranch } = useStore();
   const { locale } = useT();
   const S = n_dry[locale];
   const modAlert = useModuleAlert("dokumen");
   const flash = useNotifFlash();
   const notified = useMemo(() => new Set(modAlert.items.map((a) => a.rowId)), [modAlert.items]);
-  useEffect(() => { void resync().catch(() => undefined); }, [resync]);
+  /* Fetch per-batch modul (pengganti resync penuh): dokumen + vessels + projects. */
+  useModuleSync(DOC_COLS);
   const [q, setQ] = useState("");
   const [sort, setSort] = useState<SortState>({ key: null, dir: "asc" });
   const [type, setType] = useState("Semua");
@@ -134,24 +130,6 @@ export default function Documents() {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [uploadingFile, setUploadingFile] = useState(false);
   const [distTo, setDistTo] = useState("");
-  const [fileText, setFileText] = useState<string | null>(null);
-  const [fileTextFail, setFileTextFail] = useState(false);
-
-  /* Reset + muat isi berkas teks (csv/txt) tiap ganti dokumen di modal detail. */
-  const detailId = detail?.id;
-  useEffect(() => {
-    setFileText(null);
-    setFileTextFail(false);
-    setDistTo("");
-    if (!detail || previewKind(String(detail.fileUrl ?? "")) !== "text") return;
-    let alive = true;
-    fetch(String(detail.fileUrl))
-      .then((r) => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.text(); })
-      .then((t) => { if (alive) setFileText(t.slice(0, 8000)); })
-      .catch(() => { if (alive) setFileTextFail(true); });
-    return () => { alive = false; };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [detailId]);
 
   const distLog = (Array.isArray(detail?.distribusi) ? detail.distribusi : []) as { to: string; at: string; by?: string }[];
 
@@ -478,14 +456,13 @@ export default function Documents() {
                   </td>
                   <td className="td"><Badge tone="navy">{d.type}</Badge></td>
                   <td className="td">
-                    {(() => {
-                      const url = String(d.fileUrl ?? "");
-                      const kind = previewKind(url);
-                      if (kind === "image") return <button onClick={() => setDetail(d)} title="Klik untuk pratinjau"><img src={url} alt={String(d.title)} className="h-12 w-16 rounded-lg border border-steel-200 object-cover" loading="lazy" /></button>;
-                      if (kind === "pdf") return <button onClick={() => setDetail(d)} className="rounded-lg bg-rose-50 px-2 py-1 text-[11px] font-bold text-rose-600 hover:bg-rose-100" title="Klik untuk pratinjau">PDF — klik untuk pratinjau</button>;
-                      if (!url) return <span className="text-xs text-steel-400">-</span>;
-                      return <a className="btn-secondary px-2 py-1 text-xs" href={url} target="_blank" rel="noreferrer" download><Download className="h-3.5 w-3.5" /> Unduh</a>;
-                    })()}
+                    <DocumentPreviewCell
+                      doc={{
+                        title: String(d.title),
+                        fileUrl: String(d.fileUrl ?? ""),
+                        subtitle: `${d.id} · ${d.type}`,
+                      }}
+                    />
                   </td>
                   <td className="td text-steel-600 text-xs font-mono max-w-[180px] truncate" title={`${String(d.project)} · ${String(d.vessel)}`}>{d.project} · {d.vessel}</td>
                   <td className="td text-steel-600">{d.version}</td>
@@ -603,7 +580,7 @@ export default function Documents() {
       </Modal>
 
       {/* Modal detail */}
-      <Modal open={detail !== null} onClose={() => { setDetail(null); setOcrText(""); }} title={detail ? String(detail.title) : ""} subtitle={detail ? `${detail.id} · ${detail.type}` : ""} wide>
+      <Modal open={detail !== null} onClose={() => { setDetail(null); setOcrText(""); setDistTo(""); }} title={detail ? String(detail.title) : ""} subtitle={detail ? `${detail.id} · ${detail.type}` : ""} wide>
         {detail && (
           <div>
             <dl className="dl-div text-sm">
@@ -643,19 +620,13 @@ export default function Documents() {
               </div>
             </dl>
             <h4 className="mb-2 mt-4 text-sm font-semibold text-navy-900">{S.previewTitle}</h4>
-            {(() => {
-              const url = String(detail.fileUrl ?? "");
-              const kind = previewKind(url);
-              if (kind === "none") return <p className="text-xs text-steel-400">-</p>;
-              if (kind === "image") return <img src={url} alt={String(detail.title)} className="max-h-72 w-full rounded-xl border border-steel-200 object-contain bg-surface" loading="lazy" />;
-              if (kind === "pdf") return <iframe src={url} title={String(detail.title)} className="h-72 w-full rounded-xl border border-steel-200 bg-white" />;
-              if (kind === "text") {
-                if (fileTextFail) return <p className="text-xs text-steel-400">{S.previewLoadFail}</p>;
-                if (fileText === null) return <p className="text-xs text-steel-400">{S.previewLoading}</p>;
-                return <pre className="max-h-72 overflow-auto whitespace-pre-wrap rounded-xl border border-steel-200 bg-surface p-3 font-mono text-xs text-steel-700">{fileText}</pre>;
-              }
-              return <p className="text-xs text-steel-400">{S.previewUnsupported}</p>;
-            })()}
+            <DocumentPreviewPanel
+              doc={{
+                title: String(detail.title),
+                fileUrl: String(detail.fileUrl ?? ""),
+                subtitle: `${detail.id} · ${detail.type}`,
+              }}
+            />
             <div className="mt-3 flex flex-wrap gap-2">
               <button className="btn-secondary text-xs" onClick={() => toggleCopy(detail)}>
                 {String(detail.docCopy ?? "Terkendali") === "Salinan" ? S.toControlled : S.toCopy}

@@ -5,13 +5,15 @@ import { Card, CardHeader, PageHeader, Badge, KpiCard, Tabs, StatusBadge, Donut,
   NumInput, FlowStrip, SecureImg, FileUploadButton, useBusy,
 } from "../../components/ui";
 import type { SortState } from "../../components/ui";
-import { useStore, type StoreItem } from "../../data/store";
+import { useStore, type StoreItem, type CollectionKey } from "../../data/store";
+import { useModuleSync } from "../../data/useModuleSync";
 import { inspectionTrend, ncrTrend, incidentTrend, hseTrend } from "../../data";
 import { fmtRupiah, fmtTanggal, todayISO } from "../../utils/format";
 import { sameName } from "../../utils/names";
 import { getSetting } from "../../utils/settings";
 import { AlertBannerView, notifRowId, useModuleAlert, useNotifFlash } from "../../components/AlertBanner";
 import { exportExcel } from "../../utils/export";
+import { DocumentPreviewCell, DocumentPreviewPanel } from "../../components/DocumentPreview";
 import { findUsages } from "../../utils/usages";
 import { useAuth, canSetTarget } from "../../auth/auth";
 import { FilterPopover } from "../../components/FilterPopover";
@@ -112,14 +114,18 @@ function qcTrailingLabels(n: number, locale: string): string[] {
   return out;
 }
 
+/* Batch koleksi modul QC & Safety untuk useModuleSync (pengganti resync penuh). */
+const QC_COLS: CollectionKey[] = ["activities", "auditPlans", "bast", "branches", "calibrations", "clients", "drawings", "employees", "equipment", "incidents", "inspections", "journals", "ncr", "projects", "toolbox", "vessels", "walks"];
+
 export default function QCSafety() {
   const busy = useBusy();
-  const { data, add, update, remove, log, branch, inBranch, resync } = useStore();
+  const { data, add, update, remove, log, branch, inBranch } = useStore();
   const modAlert = useModuleAlert("qc");
   const flash = useNotifFlash();
   const notified = useMemo(() => new Set(modAlert.items.map((a) => a.rowId)), [modAlert.items]);
   const { user } = useAuth();
-  useEffect(() => { void resync().catch(() => undefined); }, [resync]);
+  /* Fetch per-batch modul (pengganti resync penuh). */
+  useModuleSync(QC_COLS);
   const { locale } = useT();
   const S = n_qc[locale];
   const ncrList = inBranch(data.ncr);
@@ -206,7 +212,6 @@ export default function QCSafety() {
   const [expandedDrw, setExpandedDrw] = useState<string | null>(null);
   const [drwStatusF, setDrwStatusF] = useState("Semua");
   const [drwKindF, setDrwKindF] = useState("Semua");
-  const [drwPreview, setDrwPreview] = useState<StoreItem | null>(null);
   const [certPreview, setCertPreview] = useState<{ vessel: string; name: string; expires: string; days: number | null; fileUrl?: string } | null>(null);
   const [showTransmit, setShowTransmit] = useState(false);
   const [transmitForm, setTransmitForm] = useState({ to: "", date: todayISO(), ids: [] as string[] });
@@ -1111,22 +1116,14 @@ export default function QCSafety() {
                       <p className="mt-1 text-sm text-steel-700">{d.title}</p>
                       <p className="text-xs text-steel-500 mt-0.5">{S.drawingMeta.replace("{a}", String(d.project)).replace("{b}", String(d.holder)).replace("{c}", fmtTanggal(String(d.updated)))}</p>
                       {d.fileUrl ? (
-                        <div className="mt-1.5 space-y-1.5">
-                          {/\.(png|jpe?g|gif|webp)(\?|$)/i.test(String(d.fileUrl)) ? (
-                            <button type="button" className="block" onClick={() => setDrwPreview(d)} aria-label={`Pratinjau dokumen ${String(d.title)}`}>
-                              <SecureImg src={String(d.fileUrl)} alt={String(d.title)} name={String(d.title)} className="h-28 w-full max-w-sm rounded-lg border border-steel-200 object-contain" />
-                            </button>
-                          ) : /\.pdf(\?|$)/i.test(String(d.fileUrl)) ? (
-                            <iframe title={`Dokumen ${String(d.title)}`} src={String(d.fileUrl)} className="h-40 w-full max-w-lg rounded-lg border border-steel-200" />
-                          ) : (
-                            <p className="text-[11px] text-steel-400">Pratinjau hanya untuk PDF/gambar — format lain: unduh file.</p>
-                          )}
-                          <div className="flex flex-wrap items-center gap-2">
-                            <button className="text-xs font-semibold text-ocean-600 underline" onClick={() => setDrwPreview(d)}>
-                              {locale === "en" ? "Preview document" : "Pratinjau dokumen"}
-                            </button>
-                            <a className="text-xs font-semibold text-steel-500 underline" href={String(d.fileUrl)} target="_blank" rel="noreferrer">Unduh</a>
-                          </div>
+                        <div className="mt-1.5">
+                          <DocumentPreviewCell
+                            doc={{
+                              title: String(d.title),
+                              fileUrl: String(d.fileUrl),
+                              subtitle: `${String(d.id)} · Rev ${String(d.revision)} · ${String(d.status)}`,
+                            }}
+                          />
                         </div>
                       ) : (
                         <p className="mt-1 text-[11px] text-steel-400">Belum ada dokumen — tekan Edit lalu unggah PDF/gambar.</p>
@@ -1908,22 +1905,6 @@ export default function QCSafety() {
         </div>
       </Modal>
 
-      {/* Modal pratinjau dokumen drawing */}
-      <Modal open={drwPreview !== null} onClose={() => setDrwPreview(null)} title={drwPreview ? String(drwPreview.title) : ""} subtitle={drwPreview ? `${String(drwPreview.id)} · Rev ${String(drwPreview.revision)} · ${String(drwPreview.status)}` : ""}>
-        {drwPreview?.fileUrl ? (
-          <div className="space-y-2">
-            {/\.(png|jpe?g|gif|webp)(\?|$)/i.test(String(drwPreview.fileUrl)) ? (
-              <SecureImg src={String(drwPreview.fileUrl)} alt={String(drwPreview.title)} name={String(drwPreview.title)} className="max-h-96 w-full rounded-xl border border-steel-200 object-contain" />
-            ) : (
-              <iframe title={String(drwPreview.title)} src={String(drwPreview.fileUrl)} className="h-96 w-full rounded-xl border border-steel-200" />
-            )}
-            <a className="block truncate text-xs font-semibold text-ocean-600 underline" href={String(drwPreview.fileUrl)} target="_blank" rel="noreferrer">{String(drwPreview.fileUrl)}</a>
-          </div>
-        ) : (
-          <p className="text-sm text-steel-400">-</p>
-        )}
-      </Modal>
-
       {/* Modal pratinjau sertifikat */}
       <Modal open={certPreview !== null} onClose={() => setCertPreview(null)} title={certPreview?.name ?? ""} subtitle={certPreview ? `${certPreview.vessel}` : ""}>
         {certPreview && (
@@ -1937,21 +1918,15 @@ export default function QCSafety() {
             </dd></div>
           </dl>
           {certPreview.fileUrl ? (
-            /\.(png|jpe?g|gif|webp)(\?|#|$)/i.test(certPreview.fileUrl) ? (
-              <img src={certPreview.fileUrl} alt={certPreview.name} className="max-h-96 w-full rounded-xl border border-steel-200 object-contain" />
-            ) : /\.pdf(\?|#|$)/i.test(certPreview.fileUrl) ? (
-              <iframe title={certPreview.name} src={certPreview.fileUrl} className="h-96 w-full rounded-xl border border-steel-200" />
-            ) : (
-              <div className="space-y-1">
-                <p className="text-xs text-steel-500">Pratinjau hanya untuk PDF/gambar — unduh file untuk lainnya</p>
-                <a className="text-xs font-semibold text-ocean-600 underline" href={certPreview.fileUrl} target="_blank" rel="noreferrer">Unduh</a>
-              </div>
-            )
+            <DocumentPreviewPanel
+              doc={{
+                title: certPreview.name,
+                fileUrl: certPreview.fileUrl,
+                subtitle: certPreview.vessel,
+              }}
+            />
           ) : (
             <p className="text-xs text-steel-500">Belum ada file — hubungi QA</p>
-          )}
-          {certPreview.fileUrl && (
-            <a className="block truncate text-xs font-semibold text-ocean-600 underline" href={certPreview.fileUrl} target="_blank" rel="noreferrer">Unduh</a>
           )}
           </div>
         )}
