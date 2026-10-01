@@ -165,7 +165,7 @@ async function freshPayables(fallback: StoreItem[]): Promise<StoreItem[]> {
 }
 
 /* Batch koleksi modul Procurement untuk useModuleSync (pengganti resync penuh). */
-const PROC_COLS: CollectionKey[] = ["inventory", "payables", "projects", "purchaseOrders", "requisitions", "rfqs", "vendors"];
+const PROC_COLS: CollectionKey[] = ["activities", "inventory", "payables", "projects", "purchaseOrders", "requisitions", "rfqs", "vendors"];
 
 export default function Procurement() {
   const busy = useBusy();

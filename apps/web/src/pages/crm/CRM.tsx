@@ -64,7 +64,7 @@ function umurHari(dateStr: string | null | undefined): number | null {
 }
 
 /* Batch koleksi modul CRM untuk useModuleSync (pengganti resync penuh). */
-const CRM_COLS: CollectionKey[] = ["clientPos", "clients", "communications", "contracts", "employees", "projects", "quotations", "requests"];
+const CRM_COLS: CollectionKey[] = ["activities", "clientPos", "clients", "communications", "contracts", "employees", "projects", "quotations", "requests"];
 
 export default function CRM() {
   const busy = useBusy();

@@ -136,7 +136,7 @@ function oeeGrade(v: number, en: boolean): { label: string; tone: "green" | "amb
 }
 
 /* Batch koleksi modul Equipment untuk useModuleSync (pengganti resync penuh). */
-const EQ_COLS: CollectionKey[] = ["bookings", "branches", "calibrations", "equipment", "inventory", "projects"];
+const EQ_COLS: CollectionKey[] = ["activities", "bookings", "branches", "calibrations", "equipment", "inventory", "projects"];
 
 export default function EquipmentPage() {
   const busy = useBusy();

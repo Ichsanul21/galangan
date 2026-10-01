@@ -126,7 +126,7 @@ function shortSub(name: unknown): string {
 }
 
 /* Batch koleksi modul Subkontraktor untuk useModuleSync (pengganti resync penuh). */
-const SUB_COLS: CollectionKey[] = ["employees", "incidents", "payables", "projects", "subcontractors", "termins", "timesheets", "workOrders"];
+const SUB_COLS: CollectionKey[] = ["activities", "employees", "incidents", "payables", "projects", "subcontractors", "termins", "timesheets", "workOrders"];
 
 export default function Subcontractor() {
   const busy = useBusy();

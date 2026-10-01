@@ -149,7 +149,7 @@ function exportChartPNG(chartId: string, filename: string): void {
 }
 
 /* Batch koleksi modul Analytics untuk useModuleSync (pengganti resync penuh). */
-const AN_COLS: CollectionKey[] = ["bookings", "calibrations", "changeOrders", "dockSlots", "equipment", "incidents", "inspections", "inventory", "invoices", "ncr", "payables", "projects", "quotations", "settings", "vendors"];
+const AN_COLS: CollectionKey[] = ["activities", "bookings", "calibrations", "changeOrders", "dockSlots", "equipment", "incidents", "inspections", "inventory", "invoices", "ncr", "payables", "projects", "quotations", "settings", "vendors"];
 
 export default function Analytics() {
   const busy = useBusy();

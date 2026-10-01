@@ -21,7 +21,7 @@ const TYPES = ["Kontrak", "Drawing", "Prosedur", "Sertifikat", "Laporan", "Invoi
 const FILTERS = ["Semua", ...TYPES, "Arsip"];
 
 /* Batch koleksi modul Dokumen untuk useModuleSync (pengganti resync penuh). */
-const DOC_COLS: CollectionKey[] = ["documents", "vessels", "projects"];
+const DOC_COLS: CollectionKey[] = ["activities", "documents", "vessels", "projects"];
 const EXPIRY_WINDOW = 30;
 
 const DOC_MONTHS = ["Sep", "Okt", "Nov", "Des", "Jan", "Feb", "Mar", "Apr", "Mei", "Jun", "Jul", "Ags"];
