@@ -733,7 +733,7 @@ export function ConfirmModal({
   danger?: boolean;
   confirmDisabled?: boolean;
   onCancel: () => void;
-  onConfirm: () => void;
+  onConfirm: () => Promise<unknown> | unknown;
 }) {
   return (
     <Modal
@@ -745,9 +745,14 @@ export function ConfirmModal({
           <button className="btn-secondary" onClick={onCancel}>
             Batal
           </button>
-          <button className={danger ? "btn-danger" : "btn-primary"} disabled={confirmDisabled} title={confirmDisabled ? "Diblokir - masih dipakai" : undefined} onClick={onConfirm}>
+          <AsyncButton
+            className={danger ? "btn-danger" : "btn-primary"}
+            disabled={confirmDisabled}
+            title={confirmDisabled ? "Diblokir - masih dipakai" : undefined}
+            onAction={onConfirm}
+          >
             {confirmLabel}
-          </button>
+          </AsyncButton>
         </>
       }
     >

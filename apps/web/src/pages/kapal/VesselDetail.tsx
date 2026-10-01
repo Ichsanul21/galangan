@@ -861,8 +861,7 @@ export default function VesselDetail() {
         confirmLabel={locale === "en" ? "Delete" : "Hapus"}
         danger
         onCancel={() => setDelCert(null)}
-        onConfirm={() => void busy.run("delCert", confirmDelCert)}
-        confirmDisabled={busy.isBusy("delCert")}
+        onConfirm={confirmDelCert}
       />
     </div>
   );

@@ -3,7 +3,7 @@ import { useStore } from "../../data/store";
 import { useT } from "../../i18n/LanguageContext";
 import { n_prj } from "../../i18n/n_prj";
 import { Card, StatusBadge, Modal, Field, FormGrid, toast, EmptyState, Badge, ConfirmModal,
-  NumInput, AsyncButton, useBusy,
+  NumInput, AsyncButton,
 } from "../../components/ui";
 import { Plus, Wrench, Package, Box, RotateCcw, FileDown } from "lucide-react";
 import { exportExcel, fmtRupiah } from "../../utils/export";
@@ -32,7 +32,6 @@ interface Props {
 }
 
 export default function SparepartServiceSection({ projectId, vesselId, view = "all" }: Props) {
-  const busy = useBusy();
   const { locale } = useT();
   const S = n_prj[locale];
   const { data, add, update, remove, log } = useStore();
@@ -567,8 +566,7 @@ export default function SparepartServiceSection({ projectId, vesselId, view = "a
         confirmLabel={locale === "en" ? "Delete" : "Hapus"}
         danger
         onCancel={() => setDelSp(null)}
-        onConfirm={() => void busy.run("delSp", confirmDelSp)}
-        confirmDisabled={busy.isBusy("delSp")}
+        onConfirm={confirmDelSp}
       />
 
       <ConfirmModal
@@ -578,8 +576,7 @@ export default function SparepartServiceSection({ projectId, vesselId, view = "a
         confirmLabel={locale === "en" ? "Delete" : "Hapus"}
         danger
         onCancel={() => setDelSvc(null)}
-        onConfirm={() => void busy.run("delSvc", confirmDelSvc)}
-        confirmDisabled={busy.isBusy("delSvc")}
+        onConfirm={confirmDelSvc}
       />
     </div>
   );
