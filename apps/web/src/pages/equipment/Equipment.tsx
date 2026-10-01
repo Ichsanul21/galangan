@@ -470,6 +470,15 @@ export default function EquipmentPage() {
      `maintenances`; equipment yang belum punya siklus TIDAK ikut tampil
      (dulu tabelnya iterating equipment, sehingga "jadwal servis berikutnya"
      tercampur dengan riwayat servis laluRU). */
+  /* Tarif tenaga per hari dari settings. Harus DILETAKKAN DI ATAS maintRows:
+     useMemo menjalankan factory-nya saat render, jadi const yang dipanggil di
+     dalamnya belum boleh dideklarasikan setelahnya (TDZ). */
+  const laborRate = (): number => {
+    const row = data.settings.find((s) => String(s.key ?? "") === "EQUIP_LABOR_RATE_PER_DAY");
+    const n = Number(row?.value);
+    return Number.isFinite(n) && n > 0 ? n : DEFAULT_LABOR_RATE_PER_DAY;
+  };
+
   const maintRows = useMemo(() => {
     return maintenances.map((m) => {
       const st = statusOf(m);
@@ -763,12 +772,6 @@ export default function EquipmentPage() {
       });
     }
     return out;
-  };
-
-  const laborRate = (): number => {
-    const row = data.settings.find((s) => String(s.key ?? "") === "EQUIP_LABOR_RATE_PER_DAY");
-    const n = Number(row?.value);
-    return Number.isFinite(n) && n > 0 ? n : DEFAULT_LABOR_RATE_PER_DAY;
   };
 
   /** Buka form untuk equipment tertentu (dari tombol Jadwalkan). */

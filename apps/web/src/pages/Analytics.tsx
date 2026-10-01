@@ -169,6 +169,13 @@ const AN_COLS: CollectionKey[] = ["bookings", "calibrations", "changeOrders", "d
    titik, bulan berjalan selalu titik TERAKHIR (lihat utils/monthAxis.ts). */
 const MONTH_RANGES = [6, 12, 18, 24] as const;
 
+/* Angka dari field yang bisa null/"" - dipakai seluruh grafik Analytics.
+   WAJIB module scope: kalau dideklarasikan di dalam komponen, useMemo
+   yang memakainya menjalankan factory-nya saat render, yaitu SEBELUM baris
+   deklarasi dieksekusi, sehingga numOf masih berada di TDZ dan melempar
+   "Cannot access 'numOf' before initialization". */
+const numOf = (v: unknown): number => Number(v) || 0;
+
 export default function Analytics() {
 
   const { locale } = useT();
@@ -347,8 +354,6 @@ export default function Analytics() {
      Semua angka di bawah dihitung dari koleksi store (projects, invoices,
      payables), bukan dari deret mock. Label bulan dibangun dari tanggal
      data sehingga tidak bisa bergeser seperti label hardcode. */
-
-  const numOf = (v: unknown): number => Number(v) || 0;
 
   /* 1. Komposisi tipe proyek (New Build / Repair / Retrofit). */
   const projectTypeDistReal = useMemo(() => {
