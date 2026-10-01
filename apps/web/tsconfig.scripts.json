@@ -1,0 +1,10 @@
+{
+  /* Typecheck khusus untuk probe render (apps/web/scripts).
+     Sengaja terpisah dari tsconfig.json: probe adalah alat bantu, jadi
+     error di sini tidak boleh memblokir `npm run build` produksi. */
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": true
+  },
+  "include": ["scripts", "src"]
+}

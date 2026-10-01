@@ -6,7 +6,9 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "probe:render": "vite build --ssr scripts/ssr-probe.tsx --outDir node_modules/.cache/ssr-probe --emptyOutDir --logLevel error && node node_modules/.cache/ssr-probe/ssr-probe.js",
+    "check": "tsc --noEmit && tsc -p tsconfig.scripts.json --noEmit && npm run probe:render"
   },
   "devDependencies": {
     "autoprefixer": "^10.5.4",

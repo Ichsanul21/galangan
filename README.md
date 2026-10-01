@@ -107,6 +107,16 @@ Assessment → Proposal → Class Approval → Contract → Procurement → Inst
 - Pengguna dikelola di `/pengaturan/peran` (Direktur/Developer); audit backend di `/api/audit`.
 - Akun seed: `direktur@galangan.com/direktur123`, `manager@galangan.com/manager123`, `demo@galangan.com/password@123`, `dev@alk.id/KucingTerbang`.
 
+### Gerbang render (wajib sebelum deploy)
+
+`npm run check` di `apps/web` = `tsc --noEmit` + `npm run probe:render`.
+
+`probe:render` merender **28 halaman** lewat `react-dom/server` sehingga setiap factory `useMemo` benar-benar dieksekusi, lalu keluar dengan kode bukan 0 bila ada yang gagal. Ini menangkap kelas bug yang **tidak bisa** ditangkap `tsc` maupun `vite build`: temporal dead zone (`const` yang dibaca di dalam closure tapi dideklarasikan lebih bawah) yang lolos build lalu blank page di production — contoh nyata: `Cannot access 'numOf' before initialization` di `Analytics.tsx` dan `laborRate` di `Equipment.tsx`, keduanya commit `b8a22d0`.
+
+Kode artefak build probe masuk ke `node_modules/.cache/ssr-probe` (sudah di-gitignore). Shim browser untuk probe ada di `apps/web/scripts/browser-shims.ts` — sengaja tanpa jsdom.
+
+Jalankan `probe:render` sebelum deploy, bukan sesudah. `tsc` akan selalu hijau untuk kelas bug ini.
+
 ---
 
 ## Estimasi Proyek
