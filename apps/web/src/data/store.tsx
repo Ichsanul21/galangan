@@ -576,6 +576,27 @@ function notifyBackendFallback(): void {
   }
 }
 
+/* Toast generik dari store. Sumber bahasa dibaca langsung dari localStorage
+   agar store tidak perlu mengimpor LanguageContext (menghindari lingkaran
+   impor dengan komponen yang memakai store). */
+function notifyStore(message: string): void {
+  try {
+    window.dispatchEvent(
+      new CustomEvent("isms:toast", { detail: { message, tone: "info" } }),
+    );
+  } catch {
+    /* abaikan */
+  }
+}
+
+function storeLocale(): "id" | "en" {
+  try {
+    return localStorage.getItem("isms.locale") === "en" ? "en" : "id";
+  } catch {
+    return "id";
+  }
+}
+
 /* Toast alasan penolakan backend (mis. 403 "Butuh peran Direktur") - tiap kejadian. */
 function notifyForbidden(reason: string): void {
   try {
@@ -814,8 +835,15 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  const inBranch = (rows: StoreItem[]): StoreItem[] =>
-    branch === "SEMUA" ? rows : rows.filter((r) => !r.branch || r.branch === branch);
+  /* useCallback WAJIB: nilai `inBranch` masuk ke dep array memo konteks
+     (lihat baris deps di bawah). Kalau dibuat inline tiap render, identitasnya
+     selalu berubah sehingga memo tidak pernah hit dan seluruh komponen
+     useStore() ikut re-render di setiap render StoreProvider. */
+  const inBranch = useCallback(
+    (rows: StoreItem[]): StoreItem[] =>
+      branch === "SEMUA" ? rows : rows.filter((r) => !r.branch || r.branch === branch),
+    [branch],
+  );
 
   /* Persistensi cache offline ke IndexedDB, bukan localStorage.
      Alasannya terukur: movements produksi 18.937 baris (~6,02 MB JSON) dan
@@ -1423,6 +1451,27 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         }
       },
       reset: () => {
+        /* Reset ke seed HANYA aman kalau tidak ada antrean offline. Tanpa
+           guard ini, klik saat pendingSync != [] berakibat: setData
+           mengganti isi dengan seed, tapi dirty set + tombstone masih hidup,
+           jadi pushPending 45 detik kemudian POST seed menimpa data asli
+           server dan memutar ulang tombstone sebagai DELETE. */
+        const en = storeLocale() === "en";
+        if (dirtyRef.current.size > 0) {
+          notifyStore(
+            en
+              ? `${dirtyRef.current.size} collection(s) still have unsynced edits. Sync them before resetting to demo data.`
+              : `${dirtyRef.current.size} koleksi masih punya perubahan belum tersinkron. Sinkronkan dulu sebelum reset ke data demo.`,
+          );
+          return;
+        }
+        if (remoteActive()) {
+          notifyStore(
+            en
+              ? "Reset only clears local data. Server rows are untouched - reload to pull them back."
+              : "Reset hanya membersihkan data lokal. Data server tidak tersentuh - muat ulang untuk menariknya kembali.",
+          );
+        }
         setData(buildSeeds());
       },
       resync,
