@@ -588,6 +588,21 @@ export default function Dashboard() {
                 </Link>
               }
             />
+            <div className="flex flex-wrap gap-1.5 px-5 pb-3" role="group" aria-label="Distribusi status proyek aktif">
+              {(() => {
+                const groups: Record<string, number> = {};
+                for (const p of branchProjects) groups[String(p.status)] = (groups[String(p.status)] ?? 0) + 1;
+                const order = ["Sedang Berjalan", "Tertunda", "Terlambat", "Batal", "Selesai"];
+                const toneFor = (s: string): "blue" | "amber" | "red" | "gray" | "green" =>
+                  s === "Terlambat" ? "red" : s === "Selesai" ? "green" : s === "Tertunda" ? "amber" : s === "Batal" ? "gray" : "blue";
+                return order.filter((s) => (groups[s] ?? 0) > 0 || s !== "Selesai").map((s) => (
+                  <Link key={s} to={`/proyek?status=${encodeURIComponent(s)}`} className="inline-flex items-center gap-1.5 rounded-full border border-steel-200 px-2.5 py-1 text-xs font-semibold hover:border-ocean-400" title={`Filter proyek ${s}`}>
+                    <Badge tone={toneFor(s)}>{s === "Terlambat" ? "Proyek Terlambat" : s}</Badge>
+                    <span className="text-navy-900">{groups[s] ?? 0}</span>
+                  </Link>
+                ));
+              })()}
+            </div>
             <div className="max-h-80 divide-y divide-steel-100 overflow-y-auto">
               {branchProjects.map((p) => (
                 <Link
@@ -604,8 +619,8 @@ export default function Dashboard() {
                       <ProgressBar value={p.progress} tone={p.status === "Terlambat" ? "red" : "navy"} />
                       <p className="mt-1 text-right text-[11px] text-steel-500">{p.progress}%</p>
                     </div>
-                    <Badge tone={p.status === "Terlambat" ? "red" : p.status === "Selesai" ? "green" : "blue"}>
-                      {p.status}
+                    <Badge tone={p.status === "Terlambat" ? "red" : p.status === "Selesai" ? "green" : p.status === "Tertunda" ? "amber" : p.status === "Batal" ? "gray" : "blue"}>
+                      {p.status === "Terlambat" ? "Proyek Terlambat" : p.status}
                     </Badge>
                   </div>
                 </Link>

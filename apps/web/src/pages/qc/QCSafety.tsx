@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useSearchParams } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { Plus, ShieldCheck, AlertTriangle, Siren, Award, Send, Search } from "lucide-react";
 import { ComposedChart, Line, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 import { Card, CardHeader, PageHeader, Badge, KpiCard, Tabs, StatusBadge, Donut, ChartTooltip, Modal, Field, FormGrid, ConfirmModal, SortTh, toggleSort, sortRows, usePager, toast,
@@ -229,7 +229,11 @@ export default function QCSafety() {
   const [expandedDrw, setExpandedDrw] = useState<string | null>(null);
   const [drwStatusF, setDrwStatusF] = useState("Semua");
   const [drwKindF, setDrwKindF] = useState("Semua");
-  const [certPreview, setCertPreview] = useState<{ vessel: string; name: string; expires: string; days: number | null; fileUrl?: string } | null>(null);
+  const [certPreview, setCertPreview] = useState<{ vessel: string; name: string; expires: string; days: number | null; fileUrl?: string; projectId?: string } | null>(null);
+  const projectOfVessel = (vesselName: string): StoreItem | undefined =>
+    data.projects.find((p) => sameName(String(p.vessel ?? ""), vesselName));
+  const certDocsOfProject = (projectId: string | undefined): StoreItem[] =>
+    !projectId ? [] : (data.documents ?? []).filter((d) => String(d.project ?? "") === projectId && /sertifikat/i.test(String(d.type ?? "")));
   const [showTransmit, setShowTransmit] = useState(false);
   const [transmitForm, setTransmitForm] = useState({ to: "", date: todayISO(), ids: [] as string[] });
 
@@ -1053,7 +1057,15 @@ export default function QCSafety() {
               )}
               <div className="rounded-xl bg-surface p-2.5">
                 <FlowStrip steps={NCR_FLOW} current={furthestNcr} ariaLabel={locale === "en" ? "NCR flow" : "Alur NCR"} />
-                <p className="mt-1.5 text-[11px] text-steel-500">Untuk ke Tertutup butuh: CAPA + PIC + Due + Verifier (jika Critical)</p>
+                <div className="mt-1.5 flex flex-wrap gap-1.5 text-[11px]">
+                  {NCR_FLOW.map((s) => (
+                    <span key={s} className="inline-flex items-center gap-1 rounded-full border border-steel-200 bg-white px-2 py-0.5 font-semibold text-steel-600">
+                      <Badge tone={ncrTone[s] ?? "gray"}>{s}</Badge>
+                      {ncrList.filter((n) => String(n.status ?? "") === s).length}
+                    </span>
+                  ))}
+                  <span className="text-steel-400">Terbuka (isi CAPA+PIC+Due) → Dalam Perbaikan (verifikasi+close) → Tertutup (rework dijurnal, follow-up H+30)</span>
+                </div>
               </div>
               <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-surface px-3 py-2 text-sm">
                 <p className="text-steel-600">
@@ -1089,6 +1101,14 @@ export default function QCSafety() {
                         <button className="btn-secondary text-xs" onClick={() => { setReopenNcr(n); setReopenReason(""); }}>{S.btnBukaKembali}</button>
                       )}
                     </div>
+                  </div>
+                  <div className="mt-2 border-t border-steel-100 pt-2">
+                    <FlowStrip steps={NCR_FLOW} current={String(n.status ?? "Terbuka")} ariaLabel={`Alur ${String(n.id)}`} />
+                    <p className="mt-1 text-[11px] text-steel-500">
+                      {String(n.status) === "Terbuka" && (!n.due ? "Lengkapi tenggat CAPA dulu, lalu Proses → isi korektif + PIC." : "Siap diproses → isi tindakan korektif + PIC untuk ke Dalam Perbaikan.")}
+                      {String(n.status) === "Dalam Perbaikan" && (String(n.severity) === "Critical" ? "Penutupan Critical butuh verifier Direktur + catatan verifikasi." : "Penutupan butuh verifikasi (verifier + catatan), rework > 0 otomatis dijurnal.")}
+                      {String(n.status) === "Tertutup" && (!n.followUpDate ? "Tertutup — jadwalkan verifikasi lanjutan H+30 bila perlu." : `Follow-up ${fmtTanggal(String(n.followUpDate))} tercatat.`)}
+                    </p>
                   </div>
                 </Card>
               ))}
@@ -1385,7 +1405,7 @@ export default function QCSafety() {
                 <div className="mt-2 space-y-2 text-sm">
                   {certAttention.map((c) => (
                     <div key={`${c.vessel}-${c.name}`} className="flex items-center justify-between gap-2">
-                      <button className="truncate text-left font-medium text-ocean-600 hover:underline" title={`${c.name} - ${c.vessel} · berlaku hingga ${fmtTanggal(c.expires)}`} onClick={() => setCertPreview(c)}>{c.name} - {c.vessel}</button>
+                      <button className="truncate text-left font-medium text-ocean-600 hover:underline" title={`${c.name} - ${c.vessel} · berlaku hingga ${fmtTanggal(c.expires)}`} onClick={() => setCertPreview({ ...c, projectId: projectOfVessel(c.vessel)?.id ? String(projectOfVessel(c.vessel)?.id) : undefined })}>{c.name} - {c.vessel}</button>
                       <Badge tone={(c.days as number) < 0 ? "red" : "amber"}>
                         {(c.days as number) < 0 ? S.badgeLewat.replace("{n}", String(Math.abs(c.days as number))) : S.badgeSisaN.replace("{n}", String(c.days))}
                       </Badge>
@@ -1407,7 +1427,7 @@ export default function QCSafety() {
                           <p className="text-xs text-steel-500">{S.berlakuHingga.replace("{n}", fmtTanggal(c.expires))}{left !== null && left >= 0 ? S.sisaHariDot.replace("{n}", String(left)) : ""}</p>
                           <div className="mt-1 flex items-center justify-between gap-2">
                             <Badge tone={tone as "green" | "amber" | "red" | "gray"}>{tone === "green" ? "Berlaku" : tone === "amber" ? "Hampir Expire" : tone === "red" ? "Kedaluwarsa" : "Tanpa tanggal"}</Badge>
-                            <button className="text-xs font-semibold text-ocean-600 underline" onClick={() => setCertPreview({ vessel: v.name, name: c.name, expires: c.expires, days: left, fileUrl: c.fileUrl ? String(c.fileUrl) : undefined })}>
+                            <button className="text-xs font-semibold text-ocean-600 underline" onClick={() => setCertPreview({ vessel: String(v.name), name: c.name, expires: c.expires, days: left, fileUrl: c.fileUrl ? String(c.fileUrl) : undefined, projectId: projectOfVessel(String(v.name))?.id ? String(projectOfVessel(String(v.name))?.id) : undefined })}>
                               {locale === "en" ? "Preview" : "Pratinjau"}
                             </button>
                           </div>
@@ -1924,8 +1944,8 @@ export default function QCSafety() {
         </div>
       </Modal>
 
-      {/* Modal pratinjau sertifikat */}
-      <Modal open={certPreview !== null} onClose={() => setCertPreview(null)} title={certPreview?.name ?? ""} subtitle={certPreview ? `${certPreview.vessel}` : ""}>
+      {/* Modal pratinjau sertifikat — terhubung ke dokumen Sertifikat Manajemen Proyek */}
+      <Modal open={certPreview !== null} onClose={() => setCertPreview(null)} title={certPreview?.name ?? ""} subtitle={certPreview ? `${certPreview.vessel}${certPreview.projectId ? ` · proyek ${certPreview.projectId}` : ""}` : ""} wide>
         {certPreview && (
           <div className="space-y-3">
           <dl className="dl-div text-sm">
@@ -1935,17 +1955,37 @@ export default function QCSafety() {
                 {certPreview.days === null ? "-" : certPreview.days < 0 ? S.badgeLewat.replace("{n}", String(Math.abs(certPreview.days))) : certPreview.days <= CERT_WINDOW ? S.badgeSisaN.replace("{n}", String(certPreview.days)) : S.berlakuHingga.replace("{n}", fmtTanggal(certPreview.expires))}
               </Badge>
             </dd></div>
+            {certPreview.projectId && (
+              <div className="flex justify-between gap-4"><dt className="shrink-0 text-steel-500">Proyek terkait</dt><dd><Link to={`/proyek/${certPreview.projectId}`} className="font-semibold text-ocean-600 hover:underline">{certPreview.projectId} · {projectOfVessel(certPreview.vessel)?.vessel ?? certPreview.vessel}</Link></dd></div>
+            )}
           </dl>
           {certPreview.fileUrl ? (
             <DocumentPreviewPanel
               doc={{
                 title: certPreview.name,
                 fileUrl: certPreview.fileUrl,
-                subtitle: certPreview.vessel,
+                subtitle: `${certPreview.vessel}${certPreview.projectId ? ` · ${certPreview.projectId}` : ""}`,
               }}
             />
           ) : (
-            <p className="text-xs text-steel-500">Belum ada file — hubungi QA</p>
+            <p className="text-xs text-steel-500">Belum ada file kapal — hubungi QA</p>
+          )}
+          {certPreview.projectId && (
+            <div className="rounded-xl border border-steel-100 bg-surface p-3">
+              <p className="mb-1 text-xs font-semibold text-navy-900">Dokumen Sertifikat di Manajemen Proyek ({certPreview.projectId})</p>
+              {certDocsOfProject(certPreview.projectId).length === 0 ? (
+                <p className="text-xs text-steel-400">Belum ada dokumen bertipe Sertifikat pada proyek ini — unggah via ProjectDetail → Dokumen & Laporan.</p>
+              ) : (
+                <div className="space-y-1.5">
+                  {certDocsOfProject(certPreview.projectId).map((d) => (
+                    <div key={String(d.id)} className="flex items-center justify-between gap-2 rounded-lg bg-white px-2.5 py-1.5 text-sm">
+                      <span className="min-w-0 truncate font-medium text-navy-900" title={String(d.title)}>{String(d.title)} <span className="font-mono text-[11px] text-steel-400">{String(d.id)}</span></span>
+                      <DocumentPreviewCell doc={{ title: String(d.title ?? d.id), fileUrl: String(d.fileUrl ?? d.fileName ?? ""), subtitle: `${String(d.id)} · Sertifikat proyek` }} />
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
           )}
           </div>
         )}

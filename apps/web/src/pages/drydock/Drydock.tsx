@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Plus, Ship, CalendarRange, AlertTriangle, GripVertical, Trash2, Wrench, User } from "lucide-react";
 import { Card, CardHeader, PageHeader, Badge, KpiCard, ProgressBar, Modal, Field, FormGrid, ConfirmModal, StatusBadge, toast, SortTh, toggleSort, sortRows, usePager,
-  NumInput,
+  NumInput, FlowStrip,
 } from "../../components/ui";
 import type { SortState } from "../../components/ui";
 import { AsyncButton } from "../../components/ui";
@@ -118,6 +118,7 @@ export default function Drydock() {
   const [statusFilter, setStatusFilter] = useState("Semua");
   const [areaFilter, setAreaFilter] = useState("Semua");
   const [posFilter, setPosFilter] = useState("Semua");
+  const [showActiveOnly, setShowActiveOnly] = useState(false);
   const [sort, setSort] = useState<SortState>({ key: null, dir: "asc" });
   const [picModal, setPicModal] = useState<StoreItem | null>(null);
   const [picDraft, setPicDraft] = useState("");
@@ -361,14 +362,29 @@ export default function Drydock() {
   const selLoa = selProj ? vesselLoa(selProj.vessel, data.vessels) : null;
   const selCap = selDock ? dockLengthM(selDock.capacity) : null;
 
+  const isActiveSlot = (s: StoreItem): boolean => {
+    const st = slotStatus(s, data.projects);
+    return st === "Terjadwal" || st === "Berjalan";
+  };
   const filteredSlots = dockSlots.filter((s) => {
     if (statusFilter !== "Semua" && slotStatus(s, data.projects) !== statusFilter) return false;
     /* Positioning: Masuk = Terjadwal (akan masuk dock), Keluar = Selesai (sudah keluar). */
     if (posFilter === "Masuk" && slotStatus(s, data.projects) !== "Terjadwal") return false;
     if (posFilter === "Keluar" && slotStatus(s, data.projects) !== "Selesai") return false;
+    if (showActiveOnly && !isActiveSlot(s)) return false;
     if (areaFilter !== "Semua" && slotAreaOf(s) !== areaFilter) return false;
     return true;
   });
+  const activeByArea = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const s of dockSlots) {
+      if (!isActiveSlot(s)) continue;
+      const key = slotAreaOf(s) || S.noArea;
+      m.set(key, (m.get(key) ?? 0) + 1);
+    }
+    return m;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dockSlots, data.projects, drydocks]);
   const sortedSlots = useMemo(() => sortRows(filteredSlots, sort, (s: StoreItem, k) => k === "days" ? Number(slotDays(s)) : k === "status" ? String(slotStatus(s, data.projects)) : k === "area" ? String(s.area ?? "") : k === "facility" ? String(drydocks.find((d) => d.id === s.dockId)?.name ?? s.dockId) : String((s as unknown as Record<string, unknown>)[k] ?? "")), [filteredSlots, sort, data.projects, drydocks]);
   const pager = usePager(filteredSlots.length);
   const pickNotif = (rowId: string) => {
@@ -382,6 +398,7 @@ export default function Drydock() {
     setStatusFilter("Semua");
     setAreaFilter("Semua");
     setPosFilter("Semua");
+    setShowActiveOnly(false);
     window.setTimeout(() => {
       if (fullIdx >= 0) flash.pick(key, fullIdx, pager.go, pager.size);
       else flash.pick(key, -1, () => {}, 100);
@@ -390,7 +407,7 @@ export default function Drydock() {
   useEffect(() => {
     pager.reset();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [statusFilter, areaFilter, posFilter]);
+  }, [statusFilter, areaFilter, posFilter, showActiveOnly]);
 
   const saveBooking = async () => {
     const proj = data.projects.find((p) => p.id === bookForm.project);
@@ -669,17 +686,26 @@ export default function Drydock() {
           <CardHeader title={S.cardSlots} subtitle={S.cardSlotsSub} action={
             <div className="flex flex-wrap items-center gap-1.5">
               <select className="input text-xs" value={areaFilter} onChange={(e) => setAreaFilter(e.target.value)} aria-label={S.filterAreaAria}>
-                <option value="Semua">{S.areaLabel}: Semua</option>
-                {areaOptions.map((a) => <option key={a} value={a}>{a}</option>)}
+                <option value="Semua">{S.areaLabel}: Semua ({dockSlots.filter((s) => isActiveSlot(s)).length} aktif)</option>
+                {areaOptions.map((a) => <option key={a} value={a}>{a} ({activeByArea.get(a) ?? 0} aktif)</option>)}
               </select>
               <select className="input text-xs" value={posFilter} onChange={(e) => setPosFilter(e.target.value)} aria-label={S.filterPosAria}>
                 <option value="Semua">Positioning: Semua</option>
-                <option value="Masuk">{S.posMasuk}</option>
-                <option value="Keluar">{S.posKeluar}</option>
+                <option value="Masuk">↓ {S.posMasuk} (Terjadwal)</option>
+                <option value="Keluar">↑ {S.posKeluar} (Selesai)</option>
               </select>
               <select className="input text-xs" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} aria-label={S.filterStatusAria}>
                 {STATUS_FILTERS.map((s) => <option key={s}>{s}</option>)}
               </select>
+              <label className="flex items-center gap-1 rounded-lg border border-steel-200 bg-surface px-2 py-1 text-xs text-steel-600">
+                <input type="checkbox" checked={showActiveOnly} onChange={(e) => setShowActiveOnly(e.target.checked)} />
+                Aktif saja
+              </label>
+              {(areaFilter !== "Semua" || posFilter !== "Semua" || statusFilter !== "Semua" || showActiveOnly) && (
+                <button className="btn-secondary px-2 py-1 text-xs" onClick={() => { setAreaFilter("Semua"); setPosFilter("Semua"); setStatusFilter("Semua"); setShowActiveOnly(false); }}>
+                  Reset
+                </button>
+              )}
             </div>
           } />
           <div className="overflow-x-auto">
@@ -733,8 +759,26 @@ export default function Drydock() {
         </Card>
 
       <Card className="mt-5">
-        <CardHeader title={S.mappingTitle} subtitle={S.mappingSub} />
-        <div className="space-y-4 p-4 pt-0">
+        <CardHeader
+          title={S.mappingTitle}
+          subtitle={`${S.mappingSub} · Masuk (Terjadwal) → Berjalan → Keluar (Selesai)`}
+          action={<Badge tone="navy">{filteredSlots.length} slot{showActiveOnly ? " aktif" : ""}</Badge>}
+        />
+        <div className="px-4 pb-2">
+          <FlowStrip
+            steps={["Masuk", "Berjalan", "Keluar"]}
+            current={posFilter === "Masuk" ? "Masuk" : posFilter === "Keluar" ? "Keluar" : "Berjalan"}
+            ariaLabel="Alur positioning docking"
+          />
+          <div className="mt-1.5 flex flex-wrap items-center gap-1.5 text-[11px] text-steel-500">
+            <span className="inline-flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-steel-400" /> Terjadwal = ↓ Masuk</span>
+            <span className="inline-flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-ocean-500" /> Berjalan = docking</span>
+            <span className="inline-flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-emerald-500" /> Selesai = ↑ Keluar</span>
+            {areaFilter !== "Semua" && <Badge tone="teal">Area: {areaFilter}</Badge>}
+            {showActiveOnly && <Badge tone="blue">Slot aktif saja</Badge>}
+          </div>
+        </div>
+        <div className="space-y-4 p-4 pt-2">
           {(() => {
             const groups = new Map<string, StoreItem[]>();
             for (const s of filteredSlots) {
@@ -743,30 +787,61 @@ export default function Drydock() {
               groups.get(key)!.push(s);
             }
             const entries = [...groups.entries()].sort((a, b) => a[0].localeCompare(b[0]));
-            if (entries.length === 0) return <p className="text-sm text-steel-400">{S.emptySlots}</p>;
-            return entries.map(([area, slots]) => (
+            if (entries.length === 0) return (
+              <div className="rounded-xl border border-dashed border-steel-300 bg-surface p-6 text-center">
+                <p className="text-sm font-medium text-steel-600">{S.emptySlots}</p>
+                <p className="mt-1 text-xs text-steel-400">Coba ubah filter area / positioning / nonaktifkan &quot;Aktif saja&quot;.</p>
+                <button className="btn-secondary mt-2 text-xs" onClick={() => { setAreaFilter("Semua"); setPosFilter("Semua"); setStatusFilter("Semua"); setShowActiveOnly(false); }}>Tampilkan semua slot</button>
+              </div>
+            );
+            return entries.map(([area, slots]) => {
+              const nMasuk = slots.filter((s) => slotStatus(s, data.projects) === "Terjadwal").length;
+              const nJalan = slots.filter((s) => slotStatus(s, data.projects) === "Berjalan").length;
+              const nKeluar = slots.filter((s) => slotStatus(s, data.projects) === "Selesai").length;
+              return (
               <div key={area} className="rounded-xl border border-steel-100 bg-surface p-3">
-                <div className="mb-2 flex items-center justify-between">
+                <div className="mb-1 flex flex-wrap items-center justify-between gap-2">
                   <p className="text-sm font-semibold text-navy-900">{area}</p>
-                  <Badge tone="navy">{slots.length}</Badge>
+                  <span className="flex flex-wrap gap-1">
+                    <Badge tone="gray">↓ {nMasuk} masuk</Badge>
+                    <Badge tone="blue">● {nJalan} berjalan</Badge>
+                    <Badge tone="green">↑ {nKeluar} keluar</Badge>
+                    <Badge tone="navy">{slots.length} slot</Badge>
+                  </span>
+                </div>
+                <div className="mb-2 h-1.5 overflow-hidden rounded-full bg-steel-100">
+                  <div className="flex h-full">
+                    <span className="bg-steel-400" style={{ width: `${slots.length ? (nMasuk / slots.length) * 100 : 0}%` }} />
+                    <span className="bg-ocean-500" style={{ width: `${slots.length ? (nJalan / slots.length) * 100 : 0}%` }} />
+                    <span className="bg-emerald-500" style={{ width: `${slots.length ? (nKeluar / slots.length) * 100 : 0}%` }} />
+                  </div>
                 </div>
                 <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-3">
-                  {slots.map((s) => (
+                  {slots.map((s) => {
+                    const st = slotStatus(s, data.projects);
+                    return (
                     <button
                       key={s.id}
                       onClick={() => openSlot(s)}
-                      className="rounded-lg border border-steel-200 bg-white px-3 py-2 text-left transition-colors hover:border-ocean-400"
-                      title={`${s.vessel} · ${s.project}`}
+                      className={`rounded-lg border bg-white px-3 py-2 text-left transition-colors hover:border-ocean-400 ${st === "Berjalan" ? "border-ocean-400" : "border-steel-200"}`}
+                      title={`${s.vessel} · ${s.project} · ${st}`}
                     >
                       <p className="truncate text-sm font-semibold text-navy-900">{s.vessel}</p>
                       <p className="font-mono text-[11px] text-steel-500">{s.id} · {drydocks.find((d) => d.id === s.dockId)?.name ?? s.dockId}</p>
                       <p className="mt-1 text-[11px] text-steel-500">{fmtRentang(dayToISO(Number(s.from)), dayToISO(Number(s.to)))}</p>
-                      <span className="mt-1 inline-block"><StatusBadge status={slotStatus(s, data.projects)} /></span>
+                      <span className="mt-1 flex flex-wrap items-center gap-1">
+                        <StatusBadge status={st} />
+                        {st === "Terjadwal" && <Badge tone="gray">↓ Masuk</Badge>}
+                        {st === "Berjalan" && <Badge tone="blue">● Docking</Badge>}
+                        {st === "Selesai" && <Badge tone="green">↑ Keluar</Badge>}
+                      </span>
                     </button>
-                  ))}
+                    );
+                  })}
                 </div>
               </div>
-            ));
+              );
+            });
           })()}
         </div>
       </Card>

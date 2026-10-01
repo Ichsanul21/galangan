@@ -31,7 +31,7 @@ import SparepartServiceSection from "./SparepartServiceSection";
 import { useStore } from "../../data/store";
 import type { StoreItem, WbsItem, CollectionKey } from "../../data/store";
 import { useModuleSync } from "../../data/useModuleSync";
-import { DocumentPreviewCell, DocumentPreviewPanel } from "../../components/DocumentPreview";
+import { DocumentPreviewCell, DocumentPreviewModal, DocumentPreviewPanel } from "../../components/DocumentPreview";
 import { useT } from "../../i18n/LanguageContext";
 import { n_prj } from "../../i18n/n_prj";
 import { fmtMiliar, fmtTanggal, fmtRentang, fmtBulan } from "../../data";
@@ -121,6 +121,8 @@ export default function ProjectDetail() {
   };
   const [docTitle, setDocTitle] = useState("");
   const [docType, setDocType] = useState("Laporan");
+  const [lastUploadedId, setLastUploadedId] = useState<string | null>(null);
+  const [instantPreviewId, setInstantPreviewId] = useState<string | null>(null);
   const [delScope, setDelScope] = useState<number | null>(null);
   const [showWbs, setShowWbs] = useState(false);
   const [wbsForm, setWbsForm] = useState({ task: "", start: "", end: "", weight: "10", progress: "0", predecessor: "" });
@@ -1159,11 +1161,12 @@ export default function ProjectDetail() {
                 {docs.map((d) => {
                   const url = docUrlOf(d);
                   const fname = docBaseName(d, url);
+                  const isNew = lastUploadedId === String(d.id);
                   return (
-                  <div key={d.id} className="doc-card rounded-xl border border-steel-100 p-3 text-sm" style={{ breakInside: "avoid" }}>
+                  <div key={d.id} className={`doc-card rounded-xl border p-3 text-sm ${isNew ? "border-ocean-400 ring-2 ring-ocean-100" : "border-steel-100"}`} style={{ breakInside: "avoid" }}>
                     <div className="flex items-center justify-between gap-2">
                     <div className="min-w-0">
-                      <p className="font-medium text-navy-900">{d.title}</p>
+                      <p className="font-medium text-navy-900">{d.title} {isNew && <Badge tone="teal">Baru diunggah</Badge>}</p>
                       <p className="text-xs text-steel-500">{d.id} · {d.type} · {d.version} · {d.updated}{d.fileName ? ` · lampiran: ${d.fileName}` : ""}</p>
                     </div>
                     <div className="flex shrink-0 flex-wrap items-center gap-2">
@@ -1175,6 +1178,16 @@ export default function ProjectDetail() {
                     </div>
                     </div>
                     <div className="mt-2">
+                      {isNew ? (
+                        <DocumentPreviewPanel
+                          doc={{
+                            title: String(d.title ?? d.id),
+                            fileUrl: url,
+                            subtitle: `${String(d.id)} · ${String(d.type)} · ${String(d.version)} · hasil upload`,
+                            fileName: fname !== "" ? fname : undefined,
+                          }}
+                        />
+                      ) : (
                       <DocumentPreviewCell
                         doc={{
                           title: String(d.title ?? d.id),
@@ -1183,12 +1196,28 @@ export default function ProjectDetail() {
                           fileName: fname !== "" ? fname : undefined,
                         }}
                       />
+                      )}
                     </div>
                   </div>
                   );
                 })}
                 {docs.length === 0 && <p className="text-sm text-steel-400">{S.detNoDocs}</p>}
               </div>
+              <DocumentPreviewModal
+                doc={(() => {
+                  const d = docs.find((x) => String(x.id) === instantPreviewId);
+                  if (!d) return null;
+                  const url = docUrlOf(d);
+                  const fname = docBaseName(d, url);
+                  return {
+                    title: String(d.title ?? d.id),
+                    fileUrl: url,
+                    subtitle: `${String(d.id)} · ${String(d.type)} · hasil upload`,
+                    fileName: fname !== "" ? fname : undefined,
+                  };
+                })()}
+                onClose={() => setInstantPreviewId(null)}
+              />
               <div className="mt-6">
                 <div className="mb-2 flex items-center justify-between">
                   <h3 className="text-sm font-semibold text-navy-900">{S.detBastTitle.replace("{n}", String(bastList.length))}</h3>
@@ -1617,9 +1646,12 @@ export default function ProjectDetail() {
         footer={<><button className="btn-secondary" onClick={() => setShowDoc(false)}>{S.cancelBtn}</button><button className="btn-primary" onClick={async () => {
           if (!docTitle.trim()) { toast(S.detToastDocTitle, "info"); return; }
           try {
-            await add("documents", { title: docTitle.trim(), type: docType, project: pid, vessel: project.vessel, version: "v1.0", status: "Draft", updated: new Date().toISOString().slice(0, 10), owner: "Anda", sharedWith: [], approvalStatus: "Draft", fileName: docFile.trim() || "-" },
+            const created = await add("documents", { title: docTitle.trim(), type: docType, project: pid, vessel: project.vessel, version: "v1.0", status: "Draft", updated: new Date().toISOString().slice(0, 10), owner: "Anda", sharedWith: [], approvalStatus: "Draft", fileName: docFile.trim() || "-" },
               { action: "mengarsipkan dokumen", module: "Dokumen" });
             toast(S.detToastDocAdd); setShowDoc(false); setDocTitle(""); setDocFile("");
+            setLastUploadedId(String(created.id));
+            setInstantPreviewId(String(created.id));
+            setTab("Dokumen & Laporan");
           } catch (e) {
             toast(e instanceof Error ? e.message : S.saveFail, "info");
           }
