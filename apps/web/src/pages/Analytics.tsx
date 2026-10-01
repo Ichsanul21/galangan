@@ -46,8 +46,7 @@ import { useStore } from "../data/store";
 import type { CollectionKey } from "../data/store";
 import { useModuleSync } from "../data/useModuleSync";
 import { getSetting } from "../utils/settings";
-import { chartAnim, exportPDF } from "../utils/export";
-import writeXlsxFile from "write-excel-file/browser";
+import { chartAnim, exportExcelSheets, exportPDF } from "../utils/export";
 import { fmtTanggal, fmtMiliar, fmtRupiah, todayISO } from "../utils/format";
 import { useT } from "../i18n/LanguageContext";
 import { n_misc } from "../i18n/n_misc";
@@ -532,16 +531,17 @@ export default function Analytics() {
           return [String(i.name ?? i.id ?? "-"), stock, String(i.unit ?? "-"), Math.round(stock * cost)] as (string | number)[];
         }),
       ];
-      await writeXlsxFile([
-        { data: kpi, sheet: "KPI" },
-        { data: drill, sheet: "Drilldown" },
-        { data: fc, sheet: "Forecast" },
-        { data: sc, sheet: "Skenario" },
-        { data: pf, sheet: "Profit" },
-        { data: rx, sheet: "Preskriptif" },
-        { data: util, sheet: "Utilisasi" },
-        { data: inv, sheet: "Inventory" },
-      ]).toFile(`Laporan-Analytics-${todayISO()}.xlsx`);
+      /* Lewat util terpusat: sanitasi formula + lebar kolom otomatis + header menempel. */
+      await exportExcelSheets([
+        { name: "KPI", rows: kpi },
+        { name: "Drilldown", rows: drill },
+        { name: "Forecast", rows: fc },
+        { name: "Skenario", rows: sc },
+        { name: "Profit", rows: pf },
+        { name: "Preskriptif", rows: rx },
+        { name: "Utilisasi", rows: util },
+        { name: "Inventory", rows: inv },
+      ], `Laporan-Analytics-${todayISO()}`);
       toast(S.tAnalyticsExported);
     } catch {
       toast(S.tChartExportFailed, "info");
