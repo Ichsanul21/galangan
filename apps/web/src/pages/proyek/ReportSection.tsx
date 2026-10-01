@@ -4,7 +4,7 @@ import { useT } from "../../i18n/LanguageContext";
 import { n_prj } from "../../i18n/n_prj";
 import { Card, StatusBadge, Modal, Field, toast, Badge, ProgressBar, KpiCard, EmptyState, useBusy } from "../../components/ui";
 import { Send, CheckCircle2, XCircle, FileDown, FileText } from "lucide-react";
-import { exportPDF, exportExcel, fmtRupiah, fmtRentang } from "../../utils/export";
+import { exportPDF, exportExcelSheets, fmtRupiah, fmtRentang } from "../../utils/export";
 import { STATUS_BOQ_ID, fmtTanggal, todayISO } from "../../utils/format";
 import { fmtMiliar } from "../../data";
 
@@ -85,44 +85,20 @@ export default function ReportSection({ projectId }: Props) {
   };
 
   const handleExportPDF = () => {
-    // Anti-potong: kembangkan container scroll (max-h/overflow-y-auto) sebelum
-    // html2pdf memotret, lalu kembalikan. Chart (recharts SVG) tidak selalu
-    // ikut ter-render di kanvas — fallback teks KPI/tabel di bawah memastikan
-    // PDF tidak blank walau SVG gagal di-capture.
+    /* Pipeline exportPDF sudah membuka area scroll + meraster SVG sendiri;
+       cukup panggil dan biarkan restore-nya yang bekerja. */
     const elementId = `report-summary-${projectId}`;
-    const el = document.getElementById(elementId);
-    const touched: { node: HTMLElement; overflow: string; maxHeight: string }[] = [];
-    try {
-      if (el) {
-        el.classList.add("print-expand");
-        const nodes = el.querySelectorAll<HTMLElement>(".overflow-y-auto, [style*='max-h'], [style*='max-height']");
-        nodes.forEach((n) => {
-          touched.push({ node: n, overflow: n.style.overflow, maxHeight: n.style.maxHeight });
-          n.style.overflow = "visible";
-          n.style.maxHeight = "none";
-        });
-      }
-      void exportPDF(elementId, `Report-${projectId}`)
-        .then(() => toast(S.repToastPdf))
-        .catch(() => toast(S.saveFail, "info"))
-        .finally(() => {
-          touched.forEach((t) => { t.node.style.overflow = t.overflow; t.node.style.maxHeight = t.maxHeight; });
-          el?.classList.remove("print-expand");
-        });
-    } catch {
-      touched.forEach((t) => { t.node.style.overflow = t.overflow; t.node.style.maxHeight = t.maxHeight; });
-      el?.classList.remove("print-expand");
-      toast(S.saveFail, "info");
-    }
+    void exportPDF(elementId, `Report-${projectId}`)
+      .then(() => toast(S.repToastPdf))
+      .catch(() => toast(S.saveFail, "info"));
   };
 
   const handleExportExcel = () => {
-    const rows: any[][] = [
-      ["REPORT SUMMARY", project?.vessel ?? projectId, projectId],
-      ["Client", project?.client ?? "-", "Manager", project?.manager ?? "-"],
-      ["Periode", fmtRentang(project?.start, project?.end), "Status", project?.status ?? "-"],
-      [],
-      ["KPI", "Nilai"],
+    const ringkas: unknown[][] = [
+      ["Indikator", "Nilai"],
+      ["Proyek", `${String(project?.vessel ?? projectId)} · ${projectId}`],
+      ["Client / Manager", `${String(project?.client ?? "-")} / ${String(project?.manager ?? "-")}`],
+      ["Periode / Status", `${fmtRentang(project?.start, project?.end)} / ${String(project?.status ?? "-")}`],
       ["Anggaran", String(project?.budget ?? 0)],
       ["Realisasi", String(project?.actual ?? 0)],
       ["% Terpakai", `${budgetPct}%`],
@@ -132,14 +108,12 @@ export default function ReportSection({ projectId }: Props) {
       ["BoQ Approved+Completed", String(approvedBoq)],
       ["NCR terbuka", String(openNcr)],
       ["Invoice belum lunas", String(unpaidInv)],
-      [],
-      ["WBS", "Progres"],
-      ...wbs.map((w) => [w.task, `${w.progress}%`]),
-      [],
-      ["BoQ", "Qty", "Total", "Status"],
-      ...boq.map((b) => [b.name, String(b.quantity), String(b.totalPrice), b.status]),
     ];
-    exportExcel(rows, `Report-${projectId}`);
+    void exportExcelSheets([
+      { name: "Ringkasan", rows: ringkas },
+      { name: "WBS", rows: [["WBS", "Progres"], ...wbs.map((w) => [w.task, `${w.progress}%`])] },
+      { name: "BoQ", rows: [["BoQ", "Qty", "Total", "Status"], ...boq.map((b) => [b.name, String(b.quantity), String(b.totalPrice), b.status])] },
+    ], `Report-${projectId}`);
     toast(S.repToastExcel);
   };
 

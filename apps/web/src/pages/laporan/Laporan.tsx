@@ -12,7 +12,7 @@ import { SB_KOP } from "../../utils/sb";
 import { getSetting } from "../../utils/settings";
 import { useT } from "../../i18n/LanguageContext";
 import { n_misc } from "../../i18n/n_misc";
-import { exportExcel, exportPDF } from "../../utils/export";
+import { exportExcelSheets, exportPDF } from "../../utils/export";
 
 type Mode = "Mingguan" | "Bulanan" | "Per Proyek";
 
@@ -265,10 +265,10 @@ export default function Laporan() {
     toast(S.tTemplateDeleted.replace("{n}", name), "info");
   };
 
-  const exportWeek = () => {
-    const rows: unknown[][] = [
-      [`Laporan Mingguan ${fmtTanggal(week0)} - ${fmtTanggal(week1)}`],
+  const exportWeek = async () => {
+    const ringkas: unknown[][] = [
       ["Indikator", "Nilai"],
+      ["Periode", `${fmtTanggal(week0)} - ${fmtTanggal(week1)}`],
       ["Proyek aktif", fmtJumlah(weekly.projects.length)],
       ["Rata-rata progres (%)", Math.round(weekly.avgProgress)],
       ["Invoice terbit", `${fmtJumlah(weekly.invTerbit.length)} · ${fmtRupiah(weekly.invTerbitVal)}`],
@@ -280,15 +280,25 @@ export default function Laporan() {
       ["Pembanding minggu lalu (lunas / AP Lunas+payroll / laba)", `${fmtRupiah(weeklyPrev.revenue)} / ${fmtRupiah(weeklyPrev.cost)} / ${fmtRupiah(weeklyPrev.laba)}`],
       ...sigRows(),
     ];
-    void exportExcel(rows, `Laporan-Mingguan-${week0}`);
+    /* Gabung terbit+lunas tanpa dobel baris untuk sheet rincian. */
+    const invMap = new Map<string, StoreItem>();
+    [...weekly.invTerbit, ...weekly.invLunas].forEach((i) => { invMap.set(String(i.id), i); });
+    await exportExcelSheets([
+      { name: "Ringkasan", rows: ringkas },
+      { name: "Proyek", rows: [["ID", "Kapal", "Klien", "Progres %"], ...weekly.projects.map((p) => [p.id, p.vessel, p.client, Math.round(num(p.progress))])] },
+      { name: "Invoice", rows: [["ID", "Proyek", "Jumlah (Rp)", "Status", "Jatuh tempo"], ...[...invMap.values()].map((i) => [i.id, i.project, num(i.amount), i.status, i.due])] },
+      { name: "PO", rows: [["ID", "Item", "Vendor", "Jumlah (Rp)", "Tanggal"], ...weekly.po.map((p) => [p.id, p.item, p.vendor, num(p.amount), p.date])] },
+      { name: "NCR", rows: [["ID", "Proyek", "Status", "Tanggal"], ...weekly.ncr.map((n) => [n.id, n.project, n.status, n.raised])] },
+      { name: "Insiden", rows: [["ID", "Deskripsi", "Tanggal"], ...weekly.incidents.map((x) => [x.id, String(x.desc ?? x.type ?? ""), x.date])] },
+    ], `Laporan-Mingguan-${week0}`);
     pushArc(`Laporan-Mingguan-${week0}`, `${fmtTanggal(week0)} - ${fmtTanggal(week1)}`, "Mingguan");
     toast(S.tExcelWeekDownloaded);
   };
 
-  const exportMonth = () => {
-    const rows: unknown[][] = [
-      [`Laporan Bulanan ${month}`],
+  const exportMonth = async () => {
+    const ringkas: unknown[][] = [
       ["Indikator", "Nilai"],
+      ["Periode", month],
       ["Invoice terbit", `${fmtJumlah(monthly.inv.length)}`],
       ["Pendapatan (Lunas)", monthly.revenue],
       ["Biaya (AP + payroll)", monthly.cost],
@@ -304,16 +314,23 @@ export default function Laporan() {
       ["Bulan lalu (revenue / cost / laba)", `${fmtRupiah(monthlyPrev.revenue)} / ${fmtRupiah(monthlyPrev.cost)} / ${fmtRupiah(monthlyPrev.laba)}`],
       ...sigRows(),
     ];
-    void exportExcel(rows, `Laporan-Bulanan-${month}`);
+    const netPay = (p: StoreItem): number => num(p.net) || num(p.basic) + num(p.allowances) + num(p.overtimePay) - num(p.deductions);
+    await exportExcelSheets([
+      { name: "Ringkasan", rows: ringkas },
+      { name: "Invoice", rows: [["ID", "Proyek", "Jumlah (Rp)", "Status", "Jatuh tempo"], ...monthly.inv.map((i) => [i.id, i.project, num(i.amount), i.status, i.due])] },
+      { name: "Invoice Lunas", rows: [["ID", "Proyek", "Jumlah (Rp)", "Dibayar"], ...monthly.invLunas.map((i) => [i.id, i.project, num(i.amount), i.paidAt ?? i.due])] },
+      { name: "AP Lunas", rows: [["ID", "Jumlah (Rp)", "Dibayar"], ...monthly.apLunas.map((a) => [a.id, num(a.amt), a.paidAt ?? a.due])] },
+      { name: "Payroll", rows: [["ID", "Periode", "Bersih (Rp)", "Status"], ...monthly.payRows.map((p) => [p.id, p.period, netPay(p), p.status])] },
+    ], `Laporan-Bulanan-${month}`);
     pushArc(`Laporan-Bulanan-${month}`, month, "Bulanan");
     toast(S.tExcelMonthDownloaded);
   };
 
-  const exportProject = () => {
+  const exportProject = async () => {
     if (!project) { toast(S.tPickProjectFirst, "info"); return; }
-    const rows: unknown[][] = [
-      [`Laporan Proyek ${project.id} · ${String(project.vessel ?? "")}`],
+    const ringkas: unknown[][] = [
       ["Indikator", "Nilai"],
+      ["Proyek", `${project.id} · ${String(project.vessel ?? "")}`],
       ["Budget", num(project.budget)],
       ["Aktual", num(project.actual)],
       ["Progres", `${num(project.progress)}%`],
@@ -322,7 +339,13 @@ export default function Laporan() {
       ["NCR", fmtJumlah(projNcr.length)],
       ...sigRows(),
     ];
-    void exportExcel(rows, `Laporan-${project.id}`);
+    await exportExcelSheets([
+      { name: "Ringkasan", rows: ringkas },
+      { name: "WBS Teratas", rows: [["Tugas", "Progres %"], ...wbsTop.map((w) => [w.task, num(w.progress)])] },
+      { name: "BoQ", rows: [["ID", "Item", "Qty", "Satuan", "Harga Satuan (Rp)", "Total (Rp)", "Status"], ...boqRows.map((b) => [b.id, b.name, num(b.quantity), b.unit, num(b.unitPrice), num(b.totalPrice) || num(b.quantity) * num(b.unitPrice), b.status])] },
+      { name: "Invoice", rows: [["ID", "Jumlah (Rp)", "Status", "Jatuh tempo"], ...projInvoices.map((i) => [i.id, num(i.amount), i.status, i.due])] },
+      { name: "NCR", rows: [["ID", "Tingkat", "Status", "Tanggal"], ...projNcr.map((n) => [n.id, n.severity ?? n.type, n.status, n.raised])] },
+    ], `Laporan-${project.id}`);
     pushArc(`Laporan-${project.id}`, String(project.vessel ?? ""), "Per Proyek");
     toast(S.tExcelProjectDownloaded);
   };
