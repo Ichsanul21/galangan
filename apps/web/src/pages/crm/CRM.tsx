@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from "react";
-import { Link } from "react-router-dom";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { Link, useSearchParams } from "react-router-dom";
 import { Plus, Send, Users2, Star, Handshake, ArrowRight, Search } from "lucide-react";
 import { Card, CardHeader, PageHeader, Badge, KpiCard, Tabs, Donut, Modal, Field, FormGrid, StatusBadge, ConfirmModal, EmptyState, SortTh, toggleSort, sortRows, toast, usePager,
   NumInput,
@@ -79,6 +79,8 @@ export default function CRM() {
   const dispReqKind = (k: string): string => (locale === "en" ? k : REQ_KIND_ID[k] ?? k);
   const modAlert = useModuleAlert("crm");
   const flash = useNotifFlash();
+  const [deepParams] = useSearchParams();
+  const deepHandled = useRef<string | null>(null);
   const notified = useMemo(() => new Set(modAlert.items.map((a) => a.rowId)), [modAlert.items]);
   const [tab, setTab] = useState("Pipeline");
   const [sort, setSort] = useState<SortState>({ key: null, dir: "asc" });
@@ -110,6 +112,11 @@ export default function CRM() {
   const [delQuote, setDelQuote] = useState<StoreItem | null>(null);
   const [delReq, setDelReq] = useState<StoreItem | null>(null);
   const [delContract, setDelContract] = useState<StoreItem | null>(null);
+  /* Expand/Collapse deskripsi survei per klien: hemat ruang, teks panjang disembunyikan. */
+  const [expandedSurvey, setExpandedSurvey] = useState<Record<string, boolean>>({});
+  const toggleSurvey = (clientId: string) =>
+    setExpandedSurvey((p) => ({ ...p, [clientId]: !p[clientId] }));
+  const SURVEY_PREVIEW = 90;
 
   // Relasi lokal di luar findUsages: quotation←projects/contracts, request←quotations, contract←projects/clientPos.
   const quoteBlockers = (q: StoreItem): string[] => {
@@ -525,6 +532,17 @@ export default function CRM() {
     }
     flash.pick(key, -1, () => {}, 100);
   };
+  /* Deep-link Dashboard (?tab=Kontrak&highlight=QT-..): pindah tab + flash baris. */
+  useEffect(() => {
+    const t = deepParams.get("tab");
+    const h = deepParams.get("highlight");
+    const key = `${t ?? ""}|${h ?? ""}`;
+    if ((!t && !h) || deepHandled.current === key) return;
+    deepHandled.current = key;
+    if (t) setTab(t);
+    if (h) window.setTimeout(() => pickNotif(h), t ? 350 : 100);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [deepParams]);
   /* Fetch per-batch modul (pengganti resync penuh). */
   useModuleSync(CRM_COLS);
 
@@ -609,7 +627,9 @@ export default function CRM() {
                   </span>
                 )}
               </div>
-              <Card>
+              {/* Distribusi + Funnel berdampingan (kanan-kiri) di layar lebar. */}
+              <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+              <Card className="h-full">
                 <CardHeader title={S.distTitle} subtitle={S.distSub} />
                 <div className="flex flex-wrap items-center gap-6 p-4 pt-0">
                   <Donut data={stageDist} colors={stageDist.map((d) => d.color)} size={150} thickness={20} centerValue={String(quotations.length)} centerLabel="QT" />
@@ -624,14 +644,14 @@ export default function CRM() {
                   </div>
                 </div>
               </Card>
-              <Card>
+              <Card className="h-full">
                 <CardHeader
                   title={locale === "en" ? "Funnel per stage" : "Funnel per Tahap"}
                   subtitle={locale === "en"
                     ? "Count and value of real quotations per stage"
                     : "Jumlah dan nilai quotation nyata per tahap"}
                 />
-                <div className="space-y-2 p-4 pt-0">
+                <div className="max-h-80 space-y-2 overflow-y-auto p-4 pt-0">
                   {funnelMax === 0 && (
                     <p className="text-sm text-steel-400">
                       {locale === "en" ? "No quotation yet." : "Belum ada quotation."}
@@ -667,6 +687,7 @@ export default function CRM() {
                   })}
                 </div>
               </Card>
+              </div>
               <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
                 {STAGES.map((stage) => {
                   const items = quotations.filter((q) => {
@@ -1029,20 +1050,41 @@ export default function CRM() {
               <Card className="p-4 lg:col-span-2">
                 <CardHeader title={S.satTitle} subtitle={S.satSub.replace("{a}", globalSatisfaction ? globalSatisfaction.toFixed(1) : "-").replace("{b}", String(allSurveys.length))} />
                 <div className="space-y-2">
-                  {clients.map((c) => (
-                    <div key={c.id} className="flex items-center gap-3 rounded-xl bg-surface p-3 text-sm">
+                  {clients.map((c) => {
+                    const notes = (Array.isArray(c.surveiCatatan) ? (c.surveiCatatan as unknown[]).map(String).filter((x) => x.trim() !== "") : []).slice(-3);
+                    const open = !!expandedSurvey[String(c.id)];
+                    return (
+                    <div key={c.id} className="flex items-start gap-3 rounded-xl bg-surface p-3 text-sm">
                       <div className="min-w-0 flex-1">
                         <p className="truncate font-semibold text-navy-900" title={String(c.name)}>{String(c.name)}</p>
                         <p className="text-xs text-steel-500">{S.satDetail.replace("{a}", String(Array.isArray(c.survei) ? c.survei.length : 0)).replace("{b}", surveyAvg(c) ? surveyAvg(c).toFixed(1) : "-")}</p>
-                        {(Array.isArray(c.surveiCatatan) ? (c.surveiCatatan as unknown[]).map(String).filter((x) => x.trim() !== "").slice(-3) : []).map((note, i) => (
-                          <p key={i} className="mt-0.5 truncate text-xs italic text-steel-500" title={note}>“{note}”</p>
-                        ))}
+                        {notes.length === 0 && <p className="mt-0.5 text-xs italic text-steel-400">Belum ada deskripsi survei.</p>}
+                        {notes.map((note, i) => {
+                          const long = note.length > SURVEY_PREVIEW;
+                          const shown = open || !long ? note : `${note.slice(0, SURVEY_PREVIEW)}…`;
+                          return (
+                            <p key={i} className="mt-0.5 text-xs italic leading-relaxed text-steel-500" title={note}>
+                              “{shown}”
+                              {long && (
+                                <button type="button" onClick={() => toggleSurvey(String(c.id))} aria-expanded={open} className="ml-1.5 font-semibold not-italic text-ocean-600 hover:underline">
+                                  {open ? "Tutup" : "Lihat lengkap"}
+                                </button>
+                              )}
+                            </p>
+                          );
+                        })}
+                        {notes.length > 1 && (
+                          <button type="button" onClick={() => toggleSurvey(String(c.id))} aria-expanded={open} className="mt-1 text-[11px] font-semibold text-ocean-600 hover:underline">
+                            {open ? "Collapse semua" : `Expand semua (${notes.length})`}
+                          </button>
+                        )}
                       </div>
                       <Badge tone={surveyAvg(c) >= 4 ? "green" : surveyAvg(c) >= 3 ? "amber" : "gray"}>
                         <Star className="h-3 w-3 mr-0.5" /> {surveyAvg(c) ? surveyAvg(c).toFixed(1) : "-"}
                       </Badge>
                     </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </Card>
               <Card className="p-4">

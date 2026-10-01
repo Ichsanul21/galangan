@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { Plus, ShieldCheck, AlertTriangle, Siren, Award, Send, Search } from "lucide-react";
 import { ComposedChart, Line, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 import { Card, CardHeader, PageHeader, Badge, KpiCard, Tabs, StatusBadge, Donut, ChartTooltip, Modal, Field, FormGrid, ConfirmModal, SortTh, toggleSort, sortRows, usePager, toast,
@@ -122,6 +123,9 @@ export default function QCSafety() {
   const { data, add, update, remove, log, branch, inBranch } = useStore();
   const modAlert = useModuleAlert("qc");
   const flash = useNotifFlash();
+  // Deep-link dari Dashboard: ?tab=NCR&highlight=NCR-001 → pindah tab + flash baris.
+  const [deepParams] = useSearchParams();
+  const deepHandled = useRef<string | null>(null);
   const notified = useMemo(() => new Set(modAlert.items.map((a) => a.rowId)), [modAlert.items]);
   const { user } = useAuth();
   /* Fetch per-batch modul (pengganti resync penuh). */
@@ -183,6 +187,19 @@ export default function QCSafety() {
     }
     flash.pick(rowId, -1, () => {}, 100);
   };
+
+  /* Deep-link dari Dashboard (?tab=&highlight=): pindah tab lalu flash baris tujuan.
+     Dijalankan sekali per kombinasi params agar tidak loop. */
+  useEffect(() => {
+    const t = deepParams.get("tab");
+    const h = deepParams.get("highlight");
+    const key = `${t ?? ""}|${h ?? ""}`;
+    if ((!t && !h) || deepHandled.current === key) return;
+    deepHandled.current = key;
+    if (t) setTab(t);
+    if (h) window.setTimeout(() => pickNotif(h), t ? 350 : 100);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [deepParams]);
 
   const [showInsp, setShowInsp] = useState(false);
   const [inspForm, setInspForm] = useState({ project: "", point: "", status: "Terjadwal", date: todayISO(), holdType: "Witness", nde: "Tidak", ndeMethod: "UT", inspector: "", sampleSize: "", defectsAllowed: "0", defectsFound: "0", calTool: "", branch: "" });

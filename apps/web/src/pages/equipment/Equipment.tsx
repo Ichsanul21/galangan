@@ -60,8 +60,38 @@ function alignToTrailingMonths<T extends { month: string }>(arr: T[], locale: st
   });
 }
 
+/* Seluruh jam/input waktu memakai format 24 jam (00:00–23:59, tanpa AM/PM).
+   norm24() menormalkan data lama AM/PM ("02:00 PM" → "14:00") agar konsisten;
+   input memakai type="time" + step 5 menit + lang id-ID (render 24H di browser). */
+function norm24(t: unknown): string {
+  const s = String(t ?? "").trim();
+  if (!s) return "";
+  const m = /^(\d{1,2}):(\d{2})(?::\d{2})?\s*([AaPp])\.?\s?[Mm]\.?$/.exec(s);
+  if (m) {
+    let h = Number(m[1]) % 12;
+    if (/^[Pp]/.test(m[3])) h += 12;
+    return `${String(h).padStart(2, "0")}:${m[2]}`;
+  }
+  const m2 = /^(\d{1,2}):(\d{2})(?::\d{2})?$/.exec(s);
+  if (!m2) return s;
+  const h = Math.min(23, Math.max(0, Number(m2[1])));
+  const min = Math.min(59, Math.max(0, Number(m2[2])));
+  return `${String(h).padStart(2, "0")}:${String(min).padStart(2, "0")}`;
+}
+function fmtJam24(jam: unknown): string {
+  const parts = String(jam ?? "").split(/\s*[–—-]\s*/);
+  if (parts.length >= 2) {
+    const a = norm24(parts[0]);
+    const b = norm24(parts.slice(1).join("-"));
+    if (/^\d{2}:\d{2}$/.test(a) && /^\d{2}:\d{2}$/.test(b)) return `${a}–${b}`;
+  }
+  const single = norm24(jam);
+  return /^\d{2}:\d{2}$/.test(single) ? single : String(jam ?? "-");
+}
+
 function toMinutes(t: string): number | null {
-  const m = /^(\d{1,2}):(\d{2})$/.exec(t.trim());
+  const n = norm24(t);
+  const m = /^(\d{1,2}):(\d{2})$/.exec(n.trim());
   if (!m) return null;
   const h = Number(m[1]);
   const min = Number(m[2]);
@@ -70,9 +100,10 @@ function toMinutes(t: string): number | null {
 }
 
 function parseJam(jam: string): { mulai: string; selesai: string } | null {
-  const m = /(\d{1,2}:\d{2})\s*[–—-]\s*(\d{1,2}:\d{2})/.exec(jam ?? "");
+  const norm = String(jam ?? "").replace(/([AaPp])\.?\s?[Mm]\.?/g, (x) => ` ${x.toUpperCase()}`);
+  const m = /(\d{1,2}:\d{2}(?:\s*[AP]M)?)\s*[–—-]\s*(\d{1,2}:\d{2}(?:\s*[AP]M)?)/i.exec(norm);
   if (!m) return null;
-  return { mulai: m[1], selesai: m[2] };
+  return { mulai: norm24(m[1]), selesai: norm24(m[2]) };
 }
 
 function bookingRange(b: StoreItem): { mulai: number; selesai: number } | null {
@@ -617,10 +648,12 @@ export default function EquipmentPage() {
     });
 
   const persistBooking = async (priority: string) => {
-    const { equip, proyek, date, mulai, selesai } = bookForm;
+    const { equip, proyek, date } = bookForm;
+    const mulai = norm24(bookForm.mulai);
+    const selesai = norm24(bookForm.selesai);
     const eq = resolveEquip(equip);
     if (!eq) { setBookError(S.eqNotFound); return; }
-    const created = await add("bookings", { equip: eq.id, equipCode: eq.code, equipName: eq.name, proyek, jam: `${mulai}-${selesai}`, mulai, selesai, status: "Terjadwal", date, priority, branch: String((data.projects ?? []).find((p) => String(p.id) === String(proyek))?.branch ?? (branch !== "SEMUA" ? branch : "")) },
+    const created = await add("bookings", { equip: eq.id, equipCode: eq.code, equipName: eq.name, proyek, jam: `${mulai}–${selesai}`, mulai, selesai, status: "Terjadwal", date, priority, branch: String((data.projects ?? []).find((p) => String(p.id) === String(proyek))?.branch ?? (branch !== "SEMUA" ? branch : "")) },
       { action: "membooking equipment", target: `${eq.name} · ${priority}`, module: "Equipment" });
     await update("equipment", eq.id, { status: "Terpakai" });
     toast(S.eqBookingCreated.replace("{a}", created.id).replace("{b}", priority));
@@ -973,7 +1006,7 @@ export default function EquipmentPage() {
                     <div key={b.id} className="flex items-center justify-between gap-2 border-b border-steel-100 py-2 text-sm">
                       <div className="min-w-0">
                         <p className="truncate font-medium text-navy-900" title={equipLabel(b.equip)}>{equipLabel(b.equip)}</p>
-                        <p className="text-xs text-steel-500">{projCell(b.proyek)} · {b.jam} · {fmtTanggal(String(b.date))} · {b.priority ?? "Normal"}</p>
+                        <p className="text-xs text-steel-500">{projCell(b.proyek)} · <span className="font-mono" title="Jam 24 jam">{fmtJam24(b.jam)}</span> · {fmtTanggal(String(b.date))} · {b.priority ?? "Normal"}</p>
                       </div>
                       <div className="flex shrink-0 items-center gap-2">
                         <Badge tone={b.status === "Terpakai" ? "blue" : "gray"}>{b.status}</Badge>
@@ -1005,7 +1038,7 @@ export default function EquipmentPage() {
                       <div key={b.id} className="flex items-center justify-between rounded-lg border border-red-200 px-3 py-2 text-sm">
                         <div className="min-w-0">
                           <p className="truncate font-medium text-navy-900" title={`${equipLabel(b.equip)} · ${b.proyek}`}>{equipLabel(b.equip)} · {b.proyek}</p>
-                          <p className="text-xs text-steel-500">{b.jam} · {fmtTanggal(String(b.date))}</p>
+                          <p className="text-xs text-steel-500"><span className="font-mono" title="Jam 24 jam">{fmtJam24(b.jam)}</span> · {fmtTanggal(String(b.date))}</p>
                         </div>
                         <Badge tone="red">{S.eqClashBadge}</Badge>
                       </div>
@@ -1506,8 +1539,8 @@ export default function EquipmentPage() {
               </select>
             </Field>
             <Field label={S.dateLabel}><input type="date" className="input" value={bookForm.date} onChange={(e) => setBookForm({ ...bookForm, date: e.target.value })} /></Field>
-            <Field label={S.eqStartField} hint="Format 24 jam (cth 14:00)"><input type="time" className="input" value={bookForm.mulai} onChange={(e) => setBookForm({ ...bookForm, mulai: e.target.value })} /></Field>
-            <Field label={S.eqEndField} hint="Format 24 jam (cth 17:30)"><input type="time" className="input" value={bookForm.selesai} onChange={(e) => setBookForm({ ...bookForm, selesai: e.target.value })} /></Field>
+            <Field label={S.eqStartField} hint="24 jam · 00:00–23:59 tanpa AM/PM (cth 14:00)"><input type="time" lang="id-ID" step={300} className="input font-mono" value={norm24(bookForm.mulai)} onChange={(e) => setBookForm({ ...bookForm, mulai: norm24(e.target.value) })} /></Field>
+            <Field label={S.eqEndField} hint="24 jam · 00:00–23:59 tanpa AM/PM (cth 17:30)"><input type="time" lang="id-ID" step={300} className="input font-mono" value={norm24(bookForm.selesai)} onChange={(e) => setBookForm({ ...bookForm, selesai: norm24(e.target.value) })} /></Field>
             <Field label={S.eqPriorityField}>
               <select className="input" value={bookForm.priority} onChange={(e) => setBookForm({ ...bookForm, priority: e.target.value })}>
                 {BOOK_PRIORITIES.map((p) => <option key={p}>{p}</option>)}
@@ -1574,7 +1607,7 @@ export default function EquipmentPage() {
       />
 
       {/* Modal selesaikan booking */}
-      <Modal open={finishing !== null} onClose={() => setFinishing(null)} title={S.eqFinishBookTitle.replace("{a}", finishing ? equipLabel(finishing.equip) : "")} subtitle={finishing ? `${finishing.proyek} · ${finishing.jam} · ${fmtTanggal(String(finishing.date))}` : ""}
+      <Modal open={finishing !== null} onClose={() => setFinishing(null)} title={S.eqFinishBookTitle.replace("{a}", finishing ? equipLabel(finishing.equip) : "")} subtitle={finishing ? `${finishing.proyek} · ${fmtJam24(finishing.jam)} · ${fmtTanggal(String(finishing.date))}` : ""}
         footer={<><button className="btn-secondary" onClick={() => setFinishing(null)}>{S.cancelBtn}</button><AsyncButton className="btn-primary" onAction={confirmFinish}>{S.finishBtn}</AsyncButton></>}>
         <div className="space-y-3">
           <Field label={S.eqActualHours} hint={S.eqActualHoursHint}>

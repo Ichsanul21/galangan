@@ -135,8 +135,32 @@ export default function Dashboard() {
     .filter((p) => p.status !== "Selesai")
     .reduce((s, p) => s + Number(p.budget || 0), 0);
   const drydocks = data.drydocks;
-  const openNcr = data.ncr.filter((n) => n.status !== "Tertutup").length;
-  const criticalOpenNcr = data.ncr.filter((n) => n.status !== "Tertutup" && n.severity === "Critical").length;
+  const openNcrList = data.ncr.filter((n) => n.status !== "Tertutup");
+  const openNcr = openNcrList.length;
+  const criticalOpenNcr = openNcrList.filter((n) => n.severity === "Critical").length;
+  const firstOpenNcr = openNcrList.find((n) => n.severity === "Critical") ?? openNcrList[0];
+
+  /* Navigasi deep-link dari Dashboard: pindah modul + tab + highlight baris tujuan.
+     Target membaca ?tab= & ?highlight= lalu memakai flash.pick (notif-hl + notif-flash
+     2,6 dtk) + scrollIntoView center. Pola sama dengan AlertBanner. */
+  const goNcr = () => {
+    const q = firstOpenNcr ? `?alert=qc&tab=NCR&highlight=${encodeURIComponent(String(firstOpenNcr.id))}` : "?alert=qc&tab=NCR";
+    navigate(`/qc-safety${q}`);
+  };
+  const goAR = () => {
+    const todayStr = todayISO();
+    const overdue = data.invoices.filter((i) => i.status !== "Lunas" && i.status !== "Draft" && String(i.due) < todayStr);
+    const first = overdue[0] ?? data.invoices.find((i) => i.status !== "Lunas" && i.status !== "Draft");
+    const q = first ? `?alert=keuangan&tab=${encodeURIComponent("Piutang (AR)")}&highlight=${encodeURIComponent(String(first.id))}` : `?alert=keuangan&tab=${encodeURIComponent("Piutang (AR)")}`;
+    navigate(`/keuangan${q}`);
+  };
+  const goKontrak = () => {
+    const wonList = data.quotations.filter((x) => x.stage === "Menang" || x.stage === "Terkonversi");
+    const first = wonList[0];
+    const q = first ? `?alert=crm&tab=Kontrak&highlight=${encodeURIComponent(String(first.id))}` : "?alert=crm&tab=Kontrak";
+    navigate(`/crm${q}`);
+  };
+  const goNotifikasi = () => navigate("/notifikasi");
   const arOutstanding = data.invoices
     .filter((i) => i.status !== "Lunas" && i.status !== "Draft")
     .reduce((s, i) => s + Number(i.amount || 0), 0);
@@ -367,14 +391,28 @@ export default function Dashboard() {
               <span className="text-xs text-steel-400">{S.onlyDirectorManager}</span>
             )}
           </div>
+          {(!tgt.revenue || tgt.revenue <= 0) && (!tgt.projects || tgt.projects <= 0) && (
+            <div className="mx-1 mb-3 flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5" role="status">
+              <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
+              <div className="min-w-0 flex-1 text-xs leading-relaxed text-amber-800">
+                <p className="font-semibold">Belum ada target untuk cabang {branch}.</p>
+                <p className="text-amber-700">Aktual {fmtMiliar(aktualRev)} · {aktualProj} proyek aktif belum bisa dibandingkan. {allowedTarget ? "Klik Atur Target untuk mengisi." : "Minta Direktur/Manager mengisi target."}</p>
+              </div>
+              {allowedTarget && (
+                <button className="btn-secondary shrink-0 px-2 py-1 text-[11px]" onClick={openTargetModal}>Isi target</button>
+              )}
+            </div>
+          )}
           <div className="grid grid-cols-1 gap-3 px-1 sm:grid-cols-2">
             <div>
               <div className="mb-1 flex justify-between text-xs"><span className="text-steel-500">{S.revenueActualVsTarget}</span><span className="font-semibold text-navy-900">{fmtMiliar(aktualRev)} / {fmtMiliar(tgt.revenue)}</span></div>
               <ProgressBar value={tgt.revenue > 0 ? (aktualRev / tgt.revenue) * 100 : 0} tone="navy" />
+              {(!tgt.revenue || tgt.revenue <= 0) && <p className="mt-1 text-[11px] italic text-steel-400">Target pendapatan masih kosong</p>}
             </div>
             <div>
               <div className="mb-1 flex justify-between text-xs"><span className="text-steel-500">{S.projectActualVsTarget}</span><span className="font-semibold text-navy-900">{aktualProj} / {tgt.projects}</span></div>
               <ProgressBar value={tgt.projects > 0 ? (aktualProj / tgt.projects) * 100 : 0} tone="teal" />
+              {(!tgt.projects || tgt.projects <= 0) && <p className="mt-1 text-[11px] italic text-steel-400">Target proyek masih kosong</p>}
             </div>
           </div>
         </Card>
@@ -494,29 +532,32 @@ export default function Dashboard() {
             </div>
           </div>
           <div className="mt-3 grid grid-cols-1 gap-4 border-t border-steel-100 pt-3 sm:grid-cols-3">
-            <div className="flex items-center justify-between text-sm">
-              <span className="text-steel-500">{S.openNcrLabel}</span>
-              <Link to="/qc-safety" className="font-bold text-rose-600 hover:underline" title={criticalOpenNcr > 0 ? S.criticalCount.replace("{n}", String(criticalOpenNcr)) : S.nihilCritical}>{criticalOpenNcr > 0 ? S.ncrCasesCritical.replace("{n}", String(openNcr)).replace("{a}", String(criticalOpenNcr)) : S.ncrCases.replace("{n}", String(openNcr))}</Link>
-            </div>
-            <div className="flex items-center justify-between text-sm">
-              <span className="text-steel-500">{S.arLabel}</span>
-              <Link to="/keuangan" className="font-bold text-navy-900 hover:underline">{fmtMiliar(arOutstanding)}</Link>
-            </div>
-            <div className="flex items-center justify-between text-sm">
-              <span className="text-steel-500">{S.wonContractLabel}</span>
-              <Link to="/crm" className="font-bold text-navy-900 hover:underline">{fmtMiliar(wonQuotes)}</Link>
-            </div>
+            <button type="button" onClick={goNcr} title="Buka NCR terbuka di QC & Safety (tab NCR + highlight baris)" className="flex w-full items-center justify-between rounded-xl px-2 py-1.5 text-left text-sm transition-colors hover:bg-rose-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-rose-400">
+              <span className="text-steel-500">{S.openNcrLabel} <span className="ml-1 text-[11px] text-steel-400">→</span></span>
+              <span className="font-bold text-rose-600 hover:underline" title={criticalOpenNcr > 0 ? S.criticalCount.replace("{n}", String(criticalOpenNcr)) : S.nihilCritical}>{criticalOpenNcr > 0 ? S.ncrCasesCritical.replace("{n}", String(openNcr)).replace("{a}", String(criticalOpenNcr)) : S.ncrCases.replace("{n}", String(openNcr))}</span>
+            </button>
+            <button type="button" onClick={goAR} title="Buka piutang di Keuangan (tab Piutang AR + highlight invoice)" className="flex w-full items-center justify-between rounded-xl px-2 py-1.5 text-left text-sm transition-colors hover:bg-navy-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-navy-400">
+              <span className="text-steel-500">{S.arLabel} <span className="ml-1 text-[11px] text-steel-400">→</span></span>
+              <span className="font-bold text-navy-900 hover:underline">{fmtMiliar(arOutstanding)}</span>
+            </button>
+            <button type="button" onClick={goKontrak} title="Buka kontrak menang di CRM (tab Kontrak + highlight quotation)" className="flex w-full items-center justify-between rounded-xl px-2 py-1.5 text-left text-sm transition-colors hover:bg-emerald-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400">
+              <span className="text-steel-500">{S.wonContractLabel} <span className="ml-1 text-[11px] text-steel-400">→</span></span>
+              <span className="font-bold text-navy-900 hover:underline">{fmtMiliar(wonQuotes)}</span>
+            </button>
           </div>
         </Card>
       </StaggerItem>
 
-      {/* PERLU PERHATIAN */}
+      {/* PERLU PERHATIAN - klik header / kartu untuk ke /notifikasi */}
       <StaggerItem>
         <Card className="p-4">
           <div className="mb-3 flex items-center gap-2 px-1">
-            <AlertTriangle className="h-4 w-4 text-rose-500" />
-            <h3 className="text-sm font-semibold text-navy-900">{S.needAttention.replace("{n}", String(attention.length))}</h3>
+            <button type="button" onClick={goNotifikasi} title="Buka semua notifikasi" className="flex items-center gap-2 rounded-lg px-1 py-0.5 text-left hover:bg-rose-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-rose-400">
+              <AlertTriangle className="h-4 w-4 text-rose-500" />
+              <h3 className="text-sm font-semibold text-navy-900 underline-offset-2 hover:underline">{S.needAttention.replace("{n}", String(attention.length))} <span className="text-[11px] font-normal text-steel-400">→ Notifikasi</span></h3>
+            </button>
             <span className="text-xs text-steel-400">{S.autoThreshold}</span>
+            <button type="button" onClick={goNotifikasi} className="btn-secondary ml-auto px-2 py-1 text-[11px]">Lihat semua</button>
           </div>
           {attention.length === 0 && (
             <p className="px-1 text-sm text-steel-400">{S.allThresholdsSafe}</p>

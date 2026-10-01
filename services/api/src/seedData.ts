@@ -111,16 +111,31 @@ const COA: Array<[string, string, string, string]> = [
 // khusus backend saat ini.
 const EX: Array<[string, string, string, Record<string, unknown>]> = [];
 
-// Mirrors JU_PENYESUAIAN_EXCEL (financeExcel.ts) via seedJournals mapping:
-// id JU-EX-01.., dokumen JUM-0831, amount = dbAmt || krAmt.
-const JU_EX: Array<[string, string, string, number, string, number]> = [
-  ["2026-08-31","Penyesuaian PPN Agustus","2-120",455632169.08,"1-170",73753513.46],
-  ["2026-08-31","Penyesuaian PPN Agustus","",0,"2-234",381878655.62],
-  ["2026-08-31","Penyesuaian Beban Penyusutan Aktiva","6-021",15499343.09,"1-280",15499343.09],
-  ["2026-08-31","Penyesuaian Beban Penyusutan Aktiva","6-021 A",42105958.33,"1-281",42105958.33],
-  ["2026-08-31","Penyesuaian Beban Penyusutan Aktiva","6-021 B",44471008.25,"1-282",44471008.25],
-  ["2026-08-31","Penyesuaian Beban Penyusutan Aktiva","6-021 C",6250000,"1-270",6250000],
-  ["2026-08-31","Penyesuaian Beban Penyusutan Aktiva","6-022",19893258.33,"1-290",19893258.33],
+// Mirrors JU_PENYESUAIAN_EXCEL (financeExcel.ts) — URUTAN SAMA PERSIS
+// (Agustus, Juni, Juli) agar id JU-EX-01.. identik dengan FE lokal.
+// Tiap baris bertanggal (tgl) + dokumen voucher per periode month-end.
+const JU_EX: Array<[string, string, string, string, number, string, number]> = [
+  ["2026-08-31","JUM-0831","Penyesuaian PPN Agustus","2-120",455632169.08,"1-170",73753513.46],
+  ["2026-08-31","JUM-0831","Penyesuaian PPN Agustus","",0,"2-234",381878655.62],
+  ["2026-08-31","JUM-0831","Penyesuaian Beban Penyusutan Aktiva","6-021",15499343.09,"1-280",15499343.09],
+  ["2026-08-31","JUM-0831","Penyesuaian Beban Penyusutan Aktiva","6-021 A",42105958.33,"1-281",42105958.33],
+  ["2026-08-31","JUM-0831","Penyesuaian Beban Penyusutan Aktiva","6-021 B",44471008.25,"1-282",44471008.25],
+  ["2026-08-31","JUM-0831","Penyesuaian Beban Penyusutan Aktiva","6-021 C",6250000,"1-270",6250000],
+  ["2026-08-31","JUM-0831","Penyesuaian Beban Penyusutan Aktiva","6-022",19893258.33,"1-290",19893258.33],
+  ["2026-06-30","JUM-0630","Penyesuaian PPN Juni","2-120",373618378.65,"1-170",60477881.04],
+  ["2026-06-30","JUM-0630","Penyesuaian PPN Juni","",0,"2-234",313140497.61],
+  ["2026-06-30","JUM-0630","Penyesuaian Beban Penyusutan Aktiva","6-021",12709461.33,"1-280",12709461.33],
+  ["2026-06-30","JUM-0630","Penyesuaian Beban Penyusutan Aktiva","6-021 A",34526885.83,"1-281",34526885.83],
+  ["2026-06-30","JUM-0630","Penyesuaian Beban Penyusutan Aktiva","6-021 B",36466226.77,"1-282",36466226.77],
+  ["2026-06-30","JUM-0630","Penyesuaian Beban Penyusutan Aktiva","6-021 C",5125000.0,"1-270",5125000.0],
+  ["2026-06-30","JUM-0630","Penyesuaian Beban Penyusutan Aktiva","6-022",16312471.83,"1-290",16312471.83],
+  ["2026-07-31","JUM-0731","Penyesuaian PPN Juli","2-120",414625273.86,"1-170",67115697.25],
+  ["2026-07-31","JUM-0731","Penyesuaian PPN Juli","",0,"2-234",347509576.61],
+  ["2026-07-31","JUM-0731","Penyesuaian Beban Penyusutan Aktiva","6-021",14104402.21,"1-280",14104402.21],
+  ["2026-07-31","JUM-0731","Penyesuaian Beban Penyusutan Aktiva","6-021 A",38316422.08,"1-281",38316422.08],
+  ["2026-07-31","JUM-0731","Penyesuaian Beban Penyusutan Aktiva","6-021 B",40468617.51,"1-282",40468617.51],
+  ["2026-07-31","JUM-0731","Penyesuaian Beban Penyusutan Aktiva","6-021 C",5687500.0,"1-270",5687500.0],
+  ["2026-07-31","JUM-0731","Penyesuaian Beban Penyusutan Aktiva","6-022",18102865.08,"1-290",18102865.08],
 ];
 
 // Mirrors ASET_EXCEL (financeExcel.ts) via seedAssets mapping:
@@ -168,9 +183,9 @@ export function buildSeedRows(): SeedRow[] {
   for (const [kode, nama, dk, nrlr] of COA) {
     rows.push({ table: "coa", id: `COA-${kode}`, branch: "", data: { kode, nama, dk, nrlr } });
   }
-  JU_EX.forEach(([tgl, uraian, db, dbAmt, kr, krAmt], i) => {
+  JU_EX.forEach(([tgl, dokumen, uraian, db, dbAmt, kr, krAmt], i) => {
     rows.push({ table: "journals", id: `JU-EX-${String(i + 1).padStart(2, "0")}`, branch: "",
-      data: { date: tgl, kodePembantu: "", dokumen: "JUM-0831", uraian, db, kr, amount: dbAmt || krAmt, sumber: "JU", status: "Posted" } });
+      data: { date: tgl, kodePembantu: "", dokumen, uraian, db, kr, amount: dbAmt || krAmt, sumber: "JU", status: "Posted" } });
   });
   ASET_EX.forEach(([gol, perolehan, sisaAwal, susut], i) => {
     rows.push({ table: "assets", id: `AST-EX-0${i + 1}`, branch: "",

@@ -127,12 +127,13 @@ const seedCoa: StoreItem[] = COA_EXCEL.map((c) => ({
   nrlr: c.nrlr,
 }));
 
-/* Seed dari sheet JU - jurnal penyesuaian Agustus 2026 (sudah posted, berimbang). */
+/* Seed dari sheet JU - jurnal penyesuaian per periode (sudah posted, berimbang).
+   Voucher month-end diturunkan dari tgl (JUM-0630/0731/0831) - sama dengan backend. */
 const seedJournals: StoreItem[] = JU_PENYESUAIAN_EXCEL.map((j, i) => ({
   id: `JU-EX-${String(i + 1).padStart(2, "0")}`,
   date: j.tgl,
   kodePembantu: "",
-  dokumen: "JUM-0831",
+  dokumen: `JUM-${String(j.tgl ?? "").slice(5, 7)}${String(j.tgl ?? "").slice(8, 10)}`,
   uraian: j.uraian,
   db: j.db,
   kr: j.kr,

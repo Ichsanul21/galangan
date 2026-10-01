@@ -164,6 +164,47 @@ async function freshPayables(fallback: StoreItem[]): Promise<StoreItem[]> {
   return fallback;
 }
 
+/* Grafik ringkasan bersama PO Besar & PO Kecil: visual & tata letak IDENTIK
+   (Donut belanja + Area tren). Satu komponen agar tidak divergen lagi. */
+function PoSummaryCharts({ spendTitle, spendSub, trenTitle, trenSub, chartKeluar, chartRpM }: {
+  spendTitle: string; spendSub: string; trenTitle: string; trenSub: string; chartKeluar: string; chartRpM: (n: string) => string;
+}) {
+  return (
+    <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+      <Card>
+        <CardHeader title={spendTitle} subtitle={spendSub} />
+        <div className="flex items-center gap-4 p-4 pt-0">
+          <Donut data={spendByCategory} colors={spendByCategory.map((d) => d.color)} size={130} thickness={18} centerValue="100" centerLabel="%" />
+          <div className="flex-1 space-y-1.5">
+            {spendByCategory.map((d) => (
+              <div key={d.name} className="flex items-center gap-2 text-sm">
+                <span className="h-3 w-3 rounded-sm" style={{ background: d.color }} />
+                <span className="truncate text-steel-600" title={d.name}>{d.name}</span>
+                <span className="ml-auto font-semibold text-navy-900">{d.value}%</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      </Card>
+      <Card className="lg:col-span-2">
+        <CardHeader title={trenTitle} subtitle={trenSub} />
+        <div className="h-44 p-4 pt-0">
+          <ResponsiveContainer width="100%" height="100%">
+            <AreaChart data={procurementTrend} margin={{ top: 5, right: 5, left: -20, bottom: 0 }}>
+              <defs><linearGradient id="procGrad" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="#0d9488" stopOpacity={0.3} /><stop offset="95%" stopColor="#0d9488" stopOpacity={0} /></linearGradient></defs>
+              <CartesianGrid strokeDasharray="3 3" stroke="#e9eff4" vertical={false} />
+              <XAxis dataKey="month" stroke="#8aa2b6" axisLine={false} tickLine={false} />
+              <YAxis stroke="#8aa2b6" axisLine={false} tickLine={false} />
+              <Tooltip content={<ChartTooltip formatter={(v) => (typeof v === "number" ? chartRpM(String(v)) : v)} />} />
+              <Area type="monotone" dataKey="pengeluaran" name={chartKeluar} stroke="#0d9488" strokeWidth={2.5} fill="url(#procGrad)" />
+            </AreaChart>
+          </ResponsiveContainer>
+        </div>
+      </Card>
+    </div>
+  );
+}
+
 /* Batch koleksi modul Procurement untuk useModuleSync (pengganti resync penuh). */
 const PROC_COLS: CollectionKey[] = ["activities", "inventory", "payables", "projects", "purchaseOrders", "requisitions", "rfqs", "vendors"];
 
@@ -319,21 +360,9 @@ export default function Procurement() {
   const prShown = requisitions.filter((r) => matchProc(`${r.id} ${r.item} ${r.by}`, String(r.status)));
   const vendorShown = vendors.filter((v) => matchProc(`${v.name} ${v.cat}`, String(v.status ?? "Aktif")) && (vCatF === "Semua" || String(v.cat ?? "") === vCatF));
 
-  /* Vendor terfilter kategori — dipakai SEMUA select vendor + tab Vendor. */
-  const vendByCat = useMemo(() => vendors.filter((v) => vCatF === "Semua" || String(v.cat ?? "") === vCatF), [vendors, vCatF]);
-  const venCatPick = (id: string) => (
-    <select
-      id={id}
-      className="input w-auto py-1.5 text-xs"
-      value={vCatF}
-      aria-label={locale === "en" ? "Vendor category" : "Kategori vendor"}
-      title={locale === "en" ? "Vendor category" : "Kategori vendor"}
-      onChange={(e) => setVCatF(e.target.value)}
-    >
-      <option value="Semua">{locale === "en" ? "All categories" : "Semua kategori"}</option>
-      {VENDOR_CATS.map((c) => <option key={c} value={c}>{c}</option>)}
-    </select>
-  );
+  /* Daftar vendor untuk select form (TANPA filter global — filter kategori
+     hanya 1 tempat di FilterPopover tabel). Form menampilkan semua vendor
+     agar pilihan tidak ikut berubah saat filter tabel diganti. */
   const sortedBig = useMemo(() => sortRows(bigShown, sort, (po, k) => {
     if (k === "nilai") return Number(po.amount || 0);
     if (k === "item") return String(po.item ?? "");
@@ -1021,11 +1050,12 @@ export default function Procurement() {
               <Search className="absolute left-3 top-2.5 h-4 w-4 text-steel-400" />
               <input className="input pl-9 w-full" placeholder={S.searchPh} aria-label={S.searchAria} value={pq} onChange={(e) => setPq(e.target.value)} />
             </div>
+            {/* Satu-satunya filter kategori vendor: di dalam FilterPopover (tanpa duplikat di luar). */}
             <FilterPopover
-              activeCount={[pStatus !== "Semua"].filter(Boolean).length}
-              initial={{ status: pStatus }}
-              onReset={() => { setPq(""); setPStatus("Semua"); }}
-              onApply={(d) => { setPStatus(d.status); }}
+              activeCount={[pStatus !== "Semua", vCatF !== "Semua"].filter(Boolean).length}
+              initial={{ status: pStatus, kategori: vCatF }}
+              onReset={() => { setPq(""); setPStatus("Semua"); setVCatF("Semua"); }}
+              onApply={(d) => { setPStatus(d.status); setVCatF(d.kategori ?? "Semua"); }}
             >
               {(draft, setDraft) => (
                 <div className="space-y-3">
@@ -1035,7 +1065,7 @@ export default function Procurement() {
                     </select>
                   </Field>
                   <Field label="Kategori vendor">
-                    <select className="input w-full" value={vCatF} onChange={(e) => setVCatF(e.target.value)}>
+                    <select className="input w-full" value={draft.kategori ?? "Semua"} onChange={(e) => setDraft({ ...draft, kategori: e.target.value })}>
                       <option value="Semua">Semua kategori</option>
                       {VENDOR_CATS.map((c) => <option key={c} value={c}>{c}</option>)}
                     </select>
@@ -1043,14 +1073,11 @@ export default function Procurement() {
                 </div>
               )}
             </FilterPopover>
-            {(tab === "PO Besar (Kantor)" || tab === "PO Kecil (Workshop)" || tab === "Vendor") && (
-              <label className="flex items-center gap-1.5 text-xs text-steel-500">
-                <span className="whitespace-nowrap">Kategori vendor:</span>
-                <select className="input w-auto py-1.5 text-xs" value={vCatF} onChange={(e) => setVCatF(e.target.value)}>
-                  <option value="Semua">Semua kategori</option>
-                  {VENDOR_CATS.map((c) => <option key={c} value={c}>{c}</option>)}
-                </select>
-              </label>
+            {vCatF !== "Semua" && (
+              <span className="inline-flex items-center gap-1.5 rounded-full bg-navy-50 px-2.5 py-1 text-[11px] font-semibold text-navy-700">
+                Kategori: {vCatF}
+                <button type="button" aria-label="Hapus filter kategori" onClick={() => setVCatF("Semua")} className="font-bold hover:text-rose-600">×</button>
+              </span>
             )}
             {(pq.trim() !== "" || pStatus !== "Semua" || vCatF !== "Semua") && (
               <button className="btn-secondary text-xs" onClick={() => { setPq(""); setPStatus("Semua"); setVCatF("Semua"); }}>
@@ -1124,38 +1151,7 @@ export default function Procurement() {
                 </table>
                 {bigShown.length === 0 && <EmptyState title={S.emptyBigT} subtitle={S.emptyBigS} />}
                 {bigPager.bar}
-              <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
-                <Card>
-                  <CardHeader title={S.cardSpendT} subtitle={S.cardSpendS} />
-                  <div className="flex items-center gap-4 p-4 pt-0">
-                    <Donut data={spendByCategory} colors={spendByCategory.map((d) => d.color)} size={130} thickness={18} centerValue="100" centerLabel="%" />
-                    <div className="flex-1 space-y-1.5">
-                      {spendByCategory.map((d) => (
-                        <div key={d.name} className="flex items-center gap-2 text-sm">
-                          <span className="h-3 w-3 rounded-sm" style={{ background: d.color }} />
-                          <span className="truncate text-steel-600" title={d.name}>{d.name}</span>
-                          <span className="ml-auto font-semibold text-navy-900">{d.value}%</span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                </Card>
-                <Card className="lg:col-span-2">
-                  <CardHeader title={S.cardTrenT} subtitle={S.cardTrenS} />
-                  <div className="h-44 p-4 pt-0">
-                    <ResponsiveContainer width="100%" height="100%">
-                      <AreaChart data={procurementTrend} margin={{ top: 5, right: 5, left: -20, bottom: 0 }}>
-                        <defs><linearGradient id="procGrad" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="#0d9488" stopOpacity={0.3} /><stop offset="95%" stopColor="#0d9488" stopOpacity={0} /></linearGradient></defs>
-                        <CartesianGrid strokeDasharray="3 3" stroke="#e9eff4" vertical={false} />
-                        <XAxis dataKey="month" stroke="#8aa2b6" axisLine={false} tickLine={false} />
-                        <YAxis stroke="#8aa2b6" axisLine={false} tickLine={false} />
-                        <Tooltip content={<ChartTooltip formatter={(v) => (typeof v === "number" ? S.chartRpM.replace("{n}", String(v)) : v)} />} />
-                        <Area type="monotone" dataKey="pengeluaran" name={S.chartKeluar} stroke="#0d9488" strokeWidth={2.5} fill="url(#procGrad)" />
-                      </AreaChart>
-                    </ResponsiveContainer>
-                  </div>
-                </Card>
-              </div>
+              <PoSummaryCharts spendTitle={S.cardSpendT} spendSub={S.cardSpendS} trenTitle={S.cardTrenT} trenSub={S.cardTrenS} chartKeluar={S.chartKeluar} chartRpM={(n) => S.chartRpM.replace("{n}", n)} />
               </div>
             </div>
           )}
@@ -1249,6 +1245,8 @@ export default function Procurement() {
                   {smallPager.bar}
                 </div>
               </div>
+              {/* Samakan dengan PO Besar: grafik Donut + tren yang sama persis di bawah tabel. */}
+              <PoSummaryCharts spendTitle={S.cardSpendT} spendSub={S.cardSpendS} trenTitle={S.cardTrenT} trenSub={S.cardTrenS} chartKeluar={S.chartKeluar} chartRpM={(n) => S.chartRpM.replace("{n}", n)} />
             </div>
           )}
 
@@ -1379,10 +1377,9 @@ export default function Procurement() {
                       ))}
                       <FormGrid>
                         <Field label={S.fVendorGab}>
-                          <div className="mb-1.5 flex justify-end">{venCatPick("vcat-kons")}</div>
                           <select className="input" value={konsVendor} onChange={(e) => setKonsVendor(e.target.value)}>
                             <option value="">{S.optPilihVendor}</option>
-                            {vendByCat.map((v) => <option key={v.id} value={v.name}>{v.name} · {v.cat}</option>)}
+                            {vendors.map((v) => <option key={v.id} value={v.name}>{v.name} · {v.cat}</option>)}
                           </select>
                         </Field>
                         <Field label={S.proyek}>
@@ -1471,7 +1468,6 @@ export default function Procurement() {
           {tab === "Vendor" && (
             <div>
               <div className="mb-3 flex flex-wrap items-center justify-end gap-2">
-                {venCatPick("vcat-tab")}
                 <button className="btn-secondary text-xs" onClick={() => setShowVendor(true)}><Plus className="h-3.5 w-3.5" /> {S.btnTambahVendor}</button>
               </div>
               <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
@@ -1614,10 +1610,9 @@ export default function Procurement() {
           </FormGrid>
           <FormGrid>
             <Field label={S.vendor}>
-              <div className="mb-1.5 flex justify-end">{venCatPick("vcat-big")}</div>
               <select className="input" value={bigForm.vendor} onChange={(e) => setBigForm({ ...bigForm, vendor: e.target.value })}>
                 <option value="">{S.optPilihVendor}</option>
-                {vendByCat.map((v) => <option key={v.id} value={v.name}>{v.name} · {v.cat}{payungOf(v) ? ` (Payung: ${fmtRupiah(payungOf(v)!.plafon)})` : ""}</option>)}
+                {vendors.map((v) => <option key={v.id} value={v.name}>{v.name} · {v.cat}{payungOf(v) ? ` (Payung: ${fmtRupiah(payungOf(v)!.plafon)})` : ""}</option>)}
               </select>
             </Field>
             <Field label={S.proyekBudget} hint={bigForm.tujuan === "kapal" ? S.hintWajibKapal : S.hintStokAuto}>
@@ -1727,15 +1722,14 @@ export default function Procurement() {
       <Modal open={rfqPr !== null} onClose={() => setRfqPr(null)} title={S.mRfqT.replace("{n}", rfqPr?.id ?? "")} subtitle={S.mRfqS.replace("{a}", rfqPr?.item ?? "")}
         footer={<><button className="btn-secondary" onClick={() => setRfqPr(null)}>{S.btnBatal}</button><AsyncButton className="btn-primary" onAction={saveRfq}>{S.btnBuatRfqDraf}</AsyncButton></>}>
         <div className="space-y-2">
-          <div className="flex justify-end">{venCatPick("vcat-rfq")}</div>
-          {vendByCat.map((v) => (
+          {vendors.map((v) => (
             <label key={v.id} className="flex items-center gap-3 rounded-xl border border-steel-200 px-3 py-2 text-sm">
               <input type="checkbox" checked={rfqVendors.includes(v.name)} onChange={(e) => setRfqVendors((s) => (e.target.checked ? [...s, v.name] : s.filter((x) => x !== v.name)))} aria-label={S.ariaRfqKe.replace("{n}", String(v.name))} />
               <span className="truncate font-medium text-navy-900" title={v.name}>{v.name}</span>
               <span className="ml-auto text-xs text-steel-400">{v.cat}</span>
             </label>
           ))}
-          {vendByCat.length === 0 && <p className="text-xs text-steel-400">{locale === "en" ? "No vendors in this category." : "Tidak ada vendor pada kategori ini."}</p>}
+          {vendors.length === 0 && <p className="text-xs text-steel-400">{locale === "en" ? "No vendors yet." : "Belum ada vendor."}</p>}
         </div>
       </Modal>
 

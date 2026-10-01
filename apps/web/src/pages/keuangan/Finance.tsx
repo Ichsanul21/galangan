@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { Wallet, ArrowDownToLine, FileText, Receipt, TrendingUp, Plus, Trash2, Search } from "lucide-react";
 import {
   AreaChart,
@@ -34,7 +35,7 @@ import {
   sortRows,
   usePager,
   toast,
-  NumInput, AsyncButton,
+  NumInput, AsyncButton, SecureImg, FileUploadButton,
 } from "../../components/ui";
 import type { SortState } from "../../components/ui";
 import { useBusy } from "../../components/ui";
@@ -60,7 +61,65 @@ import {
   KASBANK_EXCEL,
   JU_PENYESUAIAN_EXCEL,
   LAPORAN_EXCEL,
+  LATEST_SNAPSHOT,
 } from "../../data/financeExcel";
+
+/* Filter historikal Hari/Bulan/Tahun untuk Kas & Bank, Buku Besar, Neraca, Laba Rugi.
+   Satu struktur state per tab: { mode, hari (YYYY-MM-DD), bulan (YYYY-MM), tahun (YYYY) }.
+   matchHist() dipakai semua tabel bertanggal; tabel Excel statis diberi badge pembanding. */
+export type HistMode = "Semua" | "Hari" | "Bulan" | "Tahun";
+export interface HistFilter { mode: HistMode; hari: string; bulan: string; tahun: string }
+export const emptyHist = (): HistFilter => ({ mode: "Semua", hari: "", bulan: "", tahun: "" });
+export function matchHist(dateISO: unknown, f: HistFilter): boolean {
+  if (f.mode === "Semua") return true;
+  const s = String(dateISO ?? "").slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}/.test(s)) return false;
+  if (f.mode === "Hari") return !!f.hari && s === f.hari;
+  if (f.mode === "Bulan") return !!f.bulan && s.slice(0, 7) === f.bulan;
+  if (f.mode === "Tahun") return !!f.tahun && s.slice(0, 4) === f.tahun;
+  return true;
+}
+export function matchHistPeriod(periodYM: unknown, f: HistFilter): boolean {
+  if (f.mode === "Semua") return true;
+  const s = String(periodYM ?? "");
+  if (!/^\d{4}-\d{2}$/.test(s)) return false;
+  if (f.mode === "Hari") return !!f.hari && s === f.hari.slice(0, 7);
+  if (f.mode === "Bulan") return !!f.bulan && s === f.bulan;
+  if (f.mode === "Tahun") return !!f.tahun && s.slice(0, 4) === f.tahun;
+  return true;
+}
+/* Filter historikal: UTAMA per bulan (input month), opsi per tanggal spesifik.
+   Mode Tahun disengaja tidak ditampilkan (riwayat dibaca per bulan). */
+export function HistFilterBar({ value, onChange, idPrefix }: { value: HistFilter; onChange: (v: HistFilter) => void; idPrefix: string }) {
+  const { locale } = useT();
+  const T = n_fin[locale];
+  const modes: { id: HistMode; label: string }[] = [
+    { id: "Semua", label: T.histAll },
+    { id: "Bulan", label: T.histMonth },
+    { id: "Hari", label: T.histDay },
+  ];
+  return (
+    <div className="flex flex-wrap items-center gap-2 rounded-xl border border-steel-200 bg-surface px-3 py-2">
+      <span className="text-xs font-semibold text-steel-500">{T.histLabel}</span>
+      {modes.map((m) => (
+        <button key={m.id} type="button" onClick={() => onChange({ ...value, mode: m.id })}
+          aria-pressed={value.mode === m.id}
+          className={`rounded-lg px-2.5 py-1 text-xs font-semibold ${value.mode === m.id ? "bg-navy-700 text-white" : "bg-white text-steel-600 hover:bg-steel-100"}`}>
+          {m.label}
+        </button>
+      ))}
+      {value.mode === "Bulan" && (
+        <input id={`${idPrefix}-bulan`} type="month" className="input w-auto py-1.5 text-xs" value={value.bulan} onChange={(e) => onChange({ ...value, bulan: e.target.value })} aria-label={T.histMonthAria} />
+      )}
+      {value.mode === "Hari" && (
+        <input id={`${idPrefix}-hari`} type="date" className="input w-auto py-1.5 text-xs" value={value.hari} onChange={(e) => onChange({ ...value, hari: e.target.value })} aria-label={T.histDayAria} />
+      )}
+      {value.mode !== "Semua" && (
+        <button type="button" className="text-xs font-semibold text-ocean-600 hover:underline" onClick={() => onChange(emptyHist())}>{T.histReset}</button>
+      )}
+    </div>
+  );
+}
 
 const INV_NEXT: Record<string, string[]> = {
   Draft: ["Diajukan"],
@@ -242,8 +301,59 @@ const COA = (rows: StoreItem[]): { kode: string; akun: string; tipe: string; dk:
     nrlr: String(c.nrlr),
   }));
 
-// Saldo pembanding Excel (Neraca Saldo Agustus 2026) untuk rekonsiliasi opening balance.
+// Saldo pembanding Excel (Neraca Saldo Agustus 2026, satu-satunya snapshot audit).
+// Baris Kas/Hutang/Piutang membawa `periode` (YYYY-MM), jurnal membawa `tgl`.
+// SEMUA historikal lain DIHITUNG LIVE dari dokumen (jurnal, payables, invoices,
+// payroll) - tidak ada snapshot hardcode per bulan.
+/* Snapshot audit hanya ada untuk '2026-08'. */
+const isSnapMonth = (ym: string): boolean => ym === LATEST_SNAPSHOT;
 const nlOf = (kode: string): { d: number; k: number } => NL_EXCEL[kode] ?? { d: 0, k: 0 };
+/* Tanggal as-of (YYYY-MM-DD) dari filter: Hari -> hari itu; Bulan -> akhir bulan;
+   Tahun -> akhir tahun; Semua -> akhir Agustus 2026 (bulan audit). */
+function liveAsOf(f: HistFilter): string {
+  if (f.mode === "Hari" && /^\d{4}-\d{2}-\d{2}$/.test(f.hari)) return f.hari;
+  if (f.mode === "Bulan" && /^\d{4}-\d{2}$/.test(f.bulan)) return `${f.bulan}-31`;
+  if (f.mode === "Tahun" && /^\d{4}$/.test(f.tahun)) return `${f.tahun}-12-31`;
+  return "2026-08-31";
+}
+/* Sisa hutang per vendor AS-OF tanggal D, live dari koleksi payables:
+   amt tercatat - pembayaran bertanggal <= D (pay1/pay2 tanpa tanggal ikut terhitung). */
+function apOutAsOf(list: StoreItem[], end: string): { v: string; total: number; count: number }[] {
+  const m = new Map<string, { v: string; total: number; count: number }>();
+  for (const a of list) {
+    let paid = 0;
+    if (num(a.pay1) > 0 && (!a.pay1date || String(a.pay1date) <= end)) paid += num(a.pay1);
+    if (num(a.pay2) > 0 && (!a.pay2date || String(a.pay2date) <= end)) paid += num(a.pay2);
+    const out = Math.max(0, num(a.amt) - paid);
+    if (out <= 0) continue;
+    const v = String(a.v ?? "-");
+    const cur = m.get(v) ?? { v, total: 0, count: 0 };
+    cur.total += out;
+    cur.count += 1;
+    m.set(v, cur);
+  }
+  return [...m.values()].sort((x, y) => y.total - x.total);
+}
+/* Sisa piutang per customer AS-OF tanggal D, live dari koleksi invoices:
+   neto invoice yang belum lunas per D (Lunas tanpa paidAt dianggap lunas;
+   hapus buku hanya keluar bila writeOffAt <= D). */
+function arOutAsOf(list: StoreItem[], end: string): { c: string; total: number; count: number }[] {
+  const m = new Map<string, { c: string; total: number; count: number }>();
+  for (const i of list) {
+    const st = String(i.status ?? "");
+    if (st === "Draft") continue;
+    if (st === "Dihapusbukukan" && String(i.writeOffAt ?? "") <= end) continue;
+    if (st === "Lunas" && (!i.paidAt || String(i.paidAt) <= end)) continue;
+    const v = invNeto(i);
+    if (v <= 0) continue;
+    const c = String(i.client ?? "-");
+    const cur = m.get(c) ?? { c, total: 0, count: 0 };
+    cur.total += v;
+    cur.count += 1;
+    m.set(c, cur);
+  }
+  return [...m.values()].sort((x, y) => y.total - x.total);
+}
 
 export default function Finance() {
   const busy = useBusy();
@@ -252,6 +362,8 @@ export default function Finance() {
   const S = n_fin[locale];
   const modAlert = useModuleAlert("keuangan");
   const flash = useNotifFlash();
+  const [deepParams] = useSearchParams();
+  const deepHandled = useRef<string | null>(null);
   const notified = useMemo(() => new Set(modAlert.items.map((a) => a.rowId)), [modAlert.items]);
   const [tab, setTab] = useState("Akun");
   const [retQ, setRetQ] = useState("");
@@ -316,6 +428,18 @@ export default function Finance() {
   const [apTarget, setApTarget] = useState<StoreItem | null>(null);
   const [apPayAmt, setApPayAmt] = useState("");
   const [proof, setProof] = useState(emptyProof);
+  /* Lampiran gambar bukti pembayaran (satu state dipakai modal invoice & hutang). */
+  const [proofImg, setProofImg] = useState("");
+  /* Modal Detail Invoice (read-only + viewer bukti & jurnal). */
+  const [invDetail, setInvDetail] = useState<StoreItem | null>(null);
+  /* Filter historikal per tab laporan. */
+  const [kasHist, setKasHist] = useState<HistFilter>(emptyHist);
+  const [bbHist, setBbHist] = useState<HistFilter>(emptyHist);
+  const [lrHist, setLrHist] = useState<HistFilter>(emptyHist);
+  const [nrHist, setNrHist] = useState<HistFilter>(emptyHist);
+  /* Lampiran gambar jurnal manual. */
+  const [juImg, setJuImg] = useState("");
+  const [juViewer, setJuViewer] = useState<StoreItem | null>(null);
   const [rejectInv, setRejectInv] = useState<StoreItem | null>(null);
   const [showAp, setShowAp] = useState(false);
   const [apForm, setApForm] = useState({ v: "", kodePembantu: "", po: "", openAwal: "", amt: "", due: "", nonPpn: false, vessel: "", item: "" });
@@ -337,6 +461,8 @@ export default function Finance() {
   const [schedSel, setSchedSel] = useDraftState<string[]>("isms.draft.finance.schedSel", []);
   const [showBatch, setShowBatch] = useState(false);
   const [batchProof, setBatchProof] = useState(emptyProof);
+  /* Satu bukti gambar dipakai bersama untuk semua baris batch. */
+  const [batchImg, setBatchImg] = useState("");
 
   // 5/6. Profit + CBS per proyek
   const [profitProjectId, setProfitProjectId] = useState("");
@@ -373,6 +499,11 @@ export default function Finance() {
   const [invFQ, setInvFQ] = useState("");
   const [invFStatus, setInvFStatus] = useState("Semua");
   const [invFBilling, setInvFBilling] = useState("Semua");
+  /* Filter tanggal historikal (Hari/Bulan/Tahun) utk tab Invoice+AR (jatuh tempo),
+     Hutang (jatuh tempo), dan Jurnal (tanggal jurnal). */
+  const [invHist, setInvHist] = useState<HistFilter>(emptyHist);
+  const [apHist, setApHist] = useState<HistFilter>(emptyHist);
+  const [juHist, setJuHist] = useState<HistFilter>(emptyHist);
   const invStageCounts = useMemo(() => {
     const c: Record<string, number> = {};
     for (const st of INV_STAGES) c[st] = 0;
@@ -387,10 +518,20 @@ export default function Finance() {
     return invoices.filter((i) => {
       if (invFStatus !== "Semua" && String(i.status ?? "") !== invFStatus) return false;
       if (invFBilling !== "Semua" && String(i.billingType ?? i.paymentTerm ?? "") !== invFBilling) return false;
+      if (!matchHist(String(i.due ?? ""), invHist)) return false;
       if (needle && !`${i.id ?? ""} ${i.client ?? ""} ${i.project ?? ""}`.toLowerCase().includes(needle)) return false;
       return true;
     });
-  }, [invoices, invFQ, invFStatus, invFBilling]);
+  }, [invoices, invFQ, invFStatus, invFBilling, invHist]);
+  const filteredAr = useMemo(
+    () => invoices.filter((i) => matchHist(String(i.due ?? ""), invHist)),
+    [invoices, invHist]);
+  const filteredAp = useMemo(
+    () => payables.filter((a) => matchHist(String(a.due ?? ""), apHist)),
+    [payables, apHist]);
+  const filteredJu = useMemo(
+    () => manJournals.filter((j) => matchHist(String(j.date ?? ""), juHist)),
+    [manJournals, juHist]);
   const [bbSort, setBbSort] = useState<SortState>({ key: null, dir: "asc" });
   const [lrSort, setLrSort] = useState<SortState>({ key: null, dir: "asc" });
   const [nrSort, setNrSort] = useState<SortState>({ key: null, dir: "asc" });
@@ -402,32 +543,32 @@ export default function Finance() {
     k === "tipe" ? String(inv.billingType ?? inv.paymentTerm ?? "") : k === "lines" ? (Array.isArray(inv.lines) ? inv.lines.length : 1) :
     k === "retensi" ? num(inv.retentionAmt) : k === "efaktur" ? String(inv.nsfp ?? inv.noFaktur ?? "") :
     k === "amount" ? invNeto(inv) : k === "status" ? String(inv.status) : String(inv.id)), [filteredInvoices, invSort]);
-  const sortedAr = useMemo(() => sortRows(invoices, arSort, (inv, k) =>
+  const sortedAr = useMemo(() => sortRows(filteredAr, arSort, (inv, k) =>
     k === "id" ? String(inv.id) : k === "kode" ? String(inv.kodePembantu ?? inv.client ?? "") : k === "project" ? String(inv.project ?? "") :
     k === "openAwal" ? num(inv.openAwal) : k === "amount" ? num(inv.amount) : k === "due" ? String(inv.due ?? "") :
-    k === "age" ? ageDays(inv.due, today) : String(inv.status)), [invoices, arSort, today]);
-  const sortedAp = useMemo(() => sortRows(payables, apSort, (a, k) =>
+    k === "age" ? ageDays(inv.due, today) : String(inv.status)), [filteredAr, arSort, today]);
+  const sortedAp = useMemo(() => sortRows(filteredAp, apSort, (a, k) =>
     k === "v" ? String(a.v) : k === "kode" ? String(a.kodePembantu ?? a.v) : k === "po" ? String(a.po) :
     k === "vessel" ? String(a.vessel ?? "") : k === "openAwal" ? num(a.openAwal) : k === "amt" ? num(a.amt) :
-    k === "sisa" ? Math.max(0, num(a.amt) - num(a.pay1) - num(a.pay2)) : k === "due" ? String(a.due ?? "") : String(a.st)), [payables, apSort]);
-  const sortedJu = useMemo(() => sortRows(manJournals, juSort, (j, k) =>
+    k === "sisa" ? Math.max(0, num(a.amt) - num(a.pay1) - num(a.pay2)) : k === "due" ? String(a.due ?? "") : String(a.st)), [filteredAp, apSort]);
+  const sortedJu = useMemo(() => sortRows(filteredJu, juSort, (j, k) =>
     k === "kode" ? String(j.kodePembantu ?? "") : k === "dok" ? String(j.dokumen ?? "") : k === "uraian" ? String(j.uraian ?? "") :
     k === "db" ? String(j.db ?? "") : k === "kr" ? String(j.kr ?? "") : k === "amount" ? num(j.amount) :
-    k === "sumber" ? String(j.sumber ?? "") : k === "status" ? String(j.status ?? "") : String(j.date ?? "")), [manJournals, juSort]);
+    k === "sumber" ? String(j.sumber ?? "") : k === "status" ? String(j.status ?? "") : String(j.date ?? "")), [filteredJu, juSort]);
   const invPager = usePager(filteredInvoices.length);
-  const arPager = usePager(invoices.length);
-  const apPager = usePager(payables.length);
-  const juPager = usePager(manJournals.length);
+  const arPager = usePager(filteredAr.length);
+  const apPager = usePager(filteredAp.length);
+  const juPager = usePager(filteredJu.length);
   useEffect(() => {
     invPager.reset();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [invFQ, invFStatus, invFBilling, tab]);
+  }, [invFQ, invFStatus, invFBilling, invHist, tab]);
   useEffect(() => {
     arPager.reset();
     apPager.reset();
     juPager.reset();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tab]);
+  }, [invHist, apHist, juHist, tab]);
 
   // Terlambat otomatis dari due (menggantikan flag manual): invoice Belum Dibayar
   // yang lewat jatuh tempo otomatis berstatus Terlambat. ageDays sudah ada.
@@ -479,6 +620,18 @@ export default function Finance() {
     }
     flash.pick(rowId, -1, () => {}, 100);
   };
+
+  /* Deep-link Dashboard (?tab=Piutang (AR)&highlight=INV-..): pindah tab + flash. */
+  useEffect(() => {
+    const t = deepParams.get("tab");
+    const h = deepParams.get("highlight");
+    const key = `${t ?? ""}|${h ?? ""}`;
+    if ((!t && !h) || deepHandled.current === key) return;
+    deepHandled.current = key;
+    if (t) setTab(t);
+    if (h) window.setTimeout(() => pickNotif(h), t ? 350 : 100);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [deepParams]);
   const coaTipeOf = (c: StoreItem): string => coaList.find((x) => x.kode === String(c.kode))?.tipe ?? "-";
   const TIPE_ORDER = ["Aset", "Liabilitas", "Ekuitas", "Pendapatan", "Beban", "Header"];
   const coaGroups = useMemo(() => {
@@ -513,31 +666,57 @@ export default function Finance() {
   const [astEdit, setAstEdit] = useState<StoreItem | null>(null);
 
   const KAS_REKENING = coaRows.filter((c) => /^(1-11|1-12)/.test(String(c.kode)) && String(c.dk) !== "-");
+  /* Kas & Bank LIVE: mutasi per rekening dari jurnal Kas/Bank periode filter.
+     Snapshot audit (saldo awal/akhir Excel) hanya untuk Agu-2026. */
+  const kasAsOf = liveAsOf(kasHist);
+  const kasSnap = kasAsOf.slice(0, 7) === LATEST_SNAPSHOT;
+  const kasRows = useMemo(
+    () => KASBANK_EXCEL.filter((r) => (r.periode ?? LATEST_SNAPSHOT) === LATEST_SNAPSHOT),
+    []);
+  const kasInScope = (j: StoreItem): boolean =>
+    j.status !== "Void" && (j.sumber === "Kas" || j.sumber === "Bank") && matchHist(String(j.date ?? ""), kasHist);
   const kasSaldo = useMemo(() => {
     const m: Record<string, number> = {};
-    for (const r of KASBANK_EXCEL) m[r.kode] = r.awal;
+    if (kasSnap) for (const r of kasRows) m[r.kode] = r.awal;
     for (const j of manJournals) {
-      if (j.status === "Void") continue;
-      if (j.sumber !== "Kas" && j.sumber !== "Bank") continue;
+      if (!kasInScope(j)) continue;
       const amt = num(j.amount);
       if (String(j.db) in m) m[String(j.db)] += amt;
       if (String(j.kr) in m) m[String(j.kr)] -= amt;
     }
     return m;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [manJournals]);
+  }, [manJournals, kasRows, kasHist, kasSnap]);
 
-  const kasFlow = (kode: string): { masuk: number; keluar: number } => {
+  const kasFlow = (kode: string): { masuk: number; keluar: number; count: number } => {
     let masuk = 0;
     let keluar = 0;
+    let count = 0;
     for (const j of manJournals) {
-      if (j.status === "Void") continue;
-      if (j.sumber !== "Kas" && j.sumber !== "Bank") continue;
-      if (String(j.db) === kode) masuk += num(j.amount);
-      if (String(j.kr) === kode) keluar += num(j.amount);
+      if (!kasInScope(j)) continue;
+      if (String(j.db) === kode) { masuk += num(j.amount); count += 1; }
+      if (String(j.kr) === kode) { keluar += num(j.amount); count += 1; }
     }
-    return { masuk, keluar };
+    return { masuk, keluar, count };
   };
+  /* Rekap live per rekening (semua kode Kas/Bank yang muncul di jurnal periode ini). */
+  const kasLiveRows = useMemo(() => {
+    const order = new Map<string, { kode: string; nama: string; masuk: number; keluar: number; count: number }>();
+    const nameOf = (kode: string): string =>
+      String(coaRows.find((c) => String(c.kode) === kode)?.nama ?? KASBANK_EXCEL.find((r) => r.kode === kode)?.nama ?? kode);
+    for (const j of manJournals) {
+      if (!kasInScope(j)) continue;
+      for (const kode of [String(j.db ?? ""), String(j.kr ?? "")]) {
+        if (!kode || !/^(1-11|1-12)/.test(kode)) continue;
+        const cur = order.get(kode) ?? { kode, nama: nameOf(kode), masuk: 0, keluar: 0, count: 0 };
+        if (String(j.db) === kode) { cur.masuk += num(j.amount); cur.count += 1; }
+        if (String(j.kr) === kode) { cur.keluar += num(j.amount); cur.count += 1; }
+        order.set(kode, cur);
+      }
+    }
+    return [...order.values()].sort((a, b) => a.kode.localeCompare(b.kode));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [manJournals, kasHist, coaRows]);
 
   const isTMForm = invForm.billingType === "T&M";
   const invTotal = invLines.reduce((s, l) => s + lineAmount(l, isTMForm), 0);
@@ -599,13 +778,14 @@ export default function Finance() {
   );
   const agingDonutTotal = agingDonut.reduce((s, d) => s + d.value, 0);
 
-  // Kas & Bank dari Excel (sheet JU,Kas,Bank + BB) - bukan dummy.
-  const kasAwal = KASBANK_EXCEL.reduce((s, r) => s + r.awal, 0);
-  const kasAkhir = KASBANK_EXCEL.reduce((s, r) => s + r.akhir, 0);
+  // Kas & Bank per periode snapshot (sheet JU,Kas,Bank + BB) - bukan dummy.
+  const kasAwal = kasRows.reduce((s, r) => s + r.awal, 0);
+  const kasAkhir = kasRows.reduce((s, r) => s + r.akhir, 0);
   const kasDelta = kasAwal ? Math.round(((kasAkhir - kasAwal) / Math.abs(kasAwal)) * 100) : 0;
 
-  // Hutang Excel awal vs akhir untuk spark AP.
-  const apAwalExcel = HUTANG_EXCEL.reduce((s, h) => s + (h.awal || 0), 0);
+  // Hutang Excel awal periode terbaru untuk spark AP.
+  const apAwalExcel = HUTANG_EXCEL.filter((h) => (h.periode ?? LATEST_SNAPSHOT) === LATEST_SNAPSHOT)
+    .reduce((s, h) => s + (h.awal || 0), 0);
 
   const retentionTotal = invoices
     .filter((i) => num(i.retentionAmt) > 0 && i.retentionStatus !== "Released")
@@ -1278,6 +1458,7 @@ export default function Finance() {
           db: l.db, kr: l.kr, amount: num(l.amount),
           sumber: juForm.sumber, status: "Posted",
           branch: branch !== "SEMUA" ? branch : "",
+          ...(juImg ? { lampiranUrl: juImg, buktiUrl: juImg } : {}),
         }, { action: "mencatat jurnal", module: "Keuangan" });
       } catch (err) {
         toast(S.juRowFail.replace("{n}", String(i + 1)).replace("{a}", err instanceof Error ? err.message : S.backendUnreachable), "info");
@@ -1289,6 +1470,7 @@ export default function Finance() {
     setShowJu(false);
     setJuForm({ date: todayISO(), kodePembantu: "", dokumen: "", uraian: "", sumber: "JU" });
     setJuLines([{ db: "", kr: "", amount: "" }]);
+    setJuImg("");
   };
 
   // --- Kas & Bank: mutasi masuk/keluar per rekening ---
@@ -1431,7 +1613,7 @@ export default function Finance() {
     } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); }
   };
 
-  // --- Laba Rugi ala sheet LR: kelompok dari NL per kode akun ---
+  // --- Laba Rugi ala sheet LR: kelompok dari NL snapshot audit Agu-2026 ---
   const lrRows = useMemo(() => {
     const amtD = (kode: string): number => nlOf(kode).d;
     const amtK = (kode: string): number => nlOf(kode).k;
@@ -1445,10 +1627,19 @@ export default function Finance() {
     const sum = (re: RegExp): number => rows.filter((r) => re.test(r.kode)).reduce((s, r) => s + r.nilai, 0);
     return { rows, pend: sum(/^4-/), bebanPokok: sum(/^5-/), biayaUsaha: sum(/^6-/), lainMasuk: sum(/^7-[12]/), lainKeluar: sum(/^7-[34]/) };
   }, [coaRows]);
+  /* Agregat laba LIVE periode filter (dari dokumen nyata, bukan snapshot). */
+  const lrLive = useMemo(() => {
+    const rows = plMonthly.filter((p) => matchHistPeriod(p.period, lrHist));
+    return rows.reduce(
+      (s, p) => ({ revenue: s.revenue + p.revenue, costProj: s.costProj + p.costProj, salary: s.salary + p.salary, writeoff: s.writeoff + p.writeoff, laba: s.laba + p.laba, n: s.n + 1 }),
+      { revenue: 0, costProj: 0, salary: 0, writeoff: 0, laba: 0, n: 0 });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [plMonthly, lrHist]);
 
   const stepInvoice = async (inv: StoreItem, next: string) => {    if (next === "Lunas") {
       setPayTarget(inv);
       setProof(emptyProof());
+      setProofImg("");
       return;
     }
     if (next === "Ditolak") {
@@ -1560,6 +1751,7 @@ export default function Finance() {
     try {
       await update("invoices", payTarget.id, {
         status: "Lunas", paidAt: proof.date, paidMethod: proof.method, paidRef: proof.ref.trim(),
+        ...(proofImg ? { paidProofUrl: proofImg, buktiUrl: proofImg } : {}),
       });
       log("melunasi invoice", `${payTarget.id} via ${proof.method} ${proof.ref.trim()}`, "Keuangan");
       const kasKode = kasKodeOf(proof.method);
@@ -1574,6 +1766,7 @@ export default function Finance() {
       await afterInvoicePaid(payTarget, proof.date, proof.ref.trim());
       toast(S.paidRecorded.replace("{a}", payTarget.id) + (jurnalOk ? S.paidWithJournal : ""));
       setPayTarget(null);
+      setProofImg("");
     } catch {
       toast(S.paidFail.replace("{a}", payTarget.id), "info");
     }
@@ -1596,6 +1789,7 @@ export default function Finance() {
         pay1: bayar, pay1date: proof.date, pay1ref: proof.ref.trim(), pay1method: proof.method,
         st: sisa <= 0 ? "Lunas" : "Dibayar Sebagian",
         ...(sisa <= 0 ? { paidAt: proof.date, paidMethod: proof.method, paidRef: proof.ref.trim() } : {}),
+        ...(proofImg ? { pay1ProofUrl: proofImg, buktiUrl: proofImg } : {}),
       });
       log("membayar hutang tahap I", `${apTarget.po} ${fmtRupiah(bayar)} via ${proof.ref.trim()}`, "Keuangan");
       await postAutoJournal({
@@ -1614,6 +1808,7 @@ export default function Finance() {
         pay2: p2, pay2date: proof.date, pay2ref: proof.ref.trim(), pay2method: proof.method,
         st: sisa <= 0 ? "Lunas" : "Dibayar Sebagian",
         ...(sisa <= 0 ? { paidAt: proof.date, paidMethod: proof.method, paidRef: proof.ref.trim() } : {}),
+        ...(proofImg ? { pay2ProofUrl: proofImg, buktiUrl: proofImg } : {}),
       });
       log("membayar hutang tahap II", `${apTarget.po} ${fmtRupiah(bayar)} via ${proof.ref.trim()}`, "Keuangan");
       await postAutoJournal({
@@ -1628,6 +1823,7 @@ export default function Finance() {
       }
       setApTarget(null);
       setApPayAmt("");
+      setProofImg("");
     } catch {
       toast(S.apPayFail.replace("{a}", String(apTarget.po)), "info");
     }
@@ -1649,8 +1845,8 @@ export default function Finance() {
         const sisaAp = ap ? Math.max(0, num(ap.amt) - num(ap.pay1) - num(ap.pay2)) : num(r.amount);
         const prevP1 = num(ap?.pay1);
         await update("payables", r.id, prevP1 > 0
-          ? { pay2: num(ap?.pay2) + sisaAp, pay2date: batchProof.date, pay2ref: batchProof.ref.trim(), pay2method: batchProof.method, st: "Lunas", paidAt: batchProof.date, paidMethod: batchProof.method, paidRef: batchProof.ref.trim() }
-          : { pay1: sisaAp, pay1date: batchProof.date, pay1ref: batchProof.ref.trim(), pay1method: batchProof.method, st: "Lunas", paidAt: batchProof.date, paidMethod: batchProof.method, paidRef: batchProof.ref.trim() });
+          ? { pay2: num(ap?.pay2) + sisaAp, pay2date: batchProof.date, pay2ref: batchProof.ref.trim(), pay2method: batchProof.method, st: "Lunas", paidAt: batchProof.date, paidMethod: batchProof.method, paidRef: batchProof.ref.trim(), ...(batchImg ? { pay2ProofUrl: batchImg, buktiUrl: batchImg } : {}) }
+          : { pay1: sisaAp, pay1date: batchProof.date, pay1ref: batchProof.ref.trim(), pay1method: batchProof.method, st: "Lunas", paidAt: batchProof.date, paidMethod: batchProof.method, paidRef: batchProof.ref.trim(), ...(batchImg ? { pay1ProofUrl: batchImg, buktiUrl: batchImg } : {}) });
         log("melunasi hutang massal", `${r.ref} via ${batchProof.method} ${batchProof.ref.trim()}`, "Keuangan");
         await postAutoJournal({
           dokumen: `PAY-${r.id}-B`,
@@ -1661,7 +1857,7 @@ export default function Finance() {
           amount: sisaAp,
         });
       } else {
-        await update("invoices", r.id, { status: "Lunas", paidAt: batchProof.date, paidMethod: batchProof.method, paidRef: batchProof.ref.trim() });
+        await update("invoices", r.id, { status: "Lunas", paidAt: batchProof.date, paidMethod: batchProof.method, paidRef: batchProof.ref.trim(), ...(batchImg ? { paidProofUrl: batchImg, buktiUrl: batchImg } : {}) });
         log("melunasi invoice massal", `${r.id} via ${batchProof.method} ${batchProof.ref.trim()}`, "Keuangan");
         await postAutoJournal({
           dokumen: `CASH-${r.id}`,
@@ -1681,6 +1877,7 @@ export default function Finance() {
     toast(S.batchDone.replace("{n}", String(ordered.length - batchFail)) + (batchFail > 0 ? S.batchFailSuffix.replace("{n}", String(batchFail)) : ""));
     setSchedSel([]);
     setShowBatch(false);
+    setBatchImg("");
   };
 
   const exportJadwal = () => {
@@ -1950,6 +2147,10 @@ export default function Finance() {
             <div className="grid grid-cols-1 gap-5 lg:grid-cols-3">
               <div className="lg:col-span-2">
                 <CardHeader title={S.invListTitle} subtitle={S.arSub} />
+                <div className="mb-3 flex flex-wrap items-center gap-2 px-1">
+                  <HistFilterBar value={invHist} onChange={setInvHist} idPrefix="ar" />
+                  <span className="text-xs text-steel-400">{S.arCountFilt.replace("{n}", String(sortedAr.length))}</span>
+                </div>
                 <div className="overflow-x-auto">
                   <table className="w-full">
                     <thead className="bg-surface sticky top-0 z-10">
@@ -2035,7 +2236,7 @@ export default function Finance() {
                   </tbody>
                 </table>
               </div>
-                {invoices.length === 0 && <EmptyState title={S.emptyInvTitle} subtitle={S.emptyInvSub} />}
+                {sortedAr.length === 0 && <EmptyState title={S.emptyInvTitle} subtitle={S.emptyInvSub} />}
                 {arPager.bar}
                 <Card className="mt-4 p-4">
                   <CardHeader title={S.agingTitle} subtitle={S.agingSub} />
@@ -2106,7 +2307,7 @@ export default function Finance() {
                 </Card>
                 <p className="inline-flex items-center gap-1.5 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-700">
                   <Receipt className="h-3.5 w-3.5" /> {S.lateBanner.replace("{n}", String(lateCount))}
-                  <button className="font-semibold underline" onClick={() => { if (firstLate) { setPayTarget(firstLate); setProof(emptyProof()); } }}>{S.markPaidLink}</button>
+                  <button className="font-semibold underline" onClick={() => { if (firstLate) { setPayTarget(firstLate); setProof(emptyProof()); setProofImg(""); } }}>{S.markPaidLink}</button>
                 </p>
               </div>
             </div>
@@ -2119,6 +2320,10 @@ export default function Finance() {
                 subtitle={S.apSub}
                 action={<button className="btn-secondary text-xs" onClick={() => setShowAp(true)}>{S.addHutang}</button>}
               />
+              <div className="mb-3 flex flex-wrap items-center gap-2 px-1">
+                <HistFilterBar value={apHist} onChange={setApHist} idPrefix="ap" />
+                <span className="text-xs text-steel-400">{S.apCountFilt.replace("{n}", String(sortedAp.length))}</span>
+              </div>
               <div className="overflow-x-auto">
                 <table className="w-full">
                   <thead className="bg-surface sticky top-0 z-10">
@@ -2147,8 +2352,11 @@ export default function Finance() {
                         <td className="td text-xs text-steel-600 truncate" title={String(a.vessel ?? a.item ?? "")}>{String(a.vessel ?? "") || "-"}</td>
                         <td className="td text-xs text-steel-500">{num(a.openAwal) ? fmtRupiah(num(a.openAwal)) : "-"}</td>
                         <td className="td font-semibold">{fmtRupiah(num(a.amt))}</td>
-                        <td className="td text-xs text-steel-600">{num(a.pay1) ? `${fmtRupiah(num(a.pay1))}${a.pay1date ? ` · ${fmtTanggal(String(a.pay1date))}` : ""}` : "-"}</td>
-                        <td className="td text-xs text-steel-600">{num(a.pay2) ? `${fmtRupiah(num(a.pay2))}${a.pay2date ? ` · ${fmtTanggal(String(a.pay2date))}` : ""}` : "-"}</td>
+                        <td className="td text-xs text-steel-600">{num(a.pay1) ? `${fmtRupiah(num(a.pay1))}${a.pay1date ? ` · ${fmtTanggal(String(a.pay1date))}` : ""}` : "-"}
+                          {String(a.pay1ProofUrl ?? "") && <button type="button" onClick={() => window.open(String(a.pay1ProofUrl), "_blank")} className="mt-1 block overflow-hidden rounded-lg border border-steel-200" title="Lihat bukti tahap I"><SecureImg src={String(a.pay1ProofUrl)} alt={`Bukti I ${String(a.po)}`} className="h-10 w-16 object-cover" /></button>}</td>
+                        <td className="td text-xs text-steel-600">{num(a.pay2) ? `${fmtRupiah(num(a.pay2))}${a.pay2date ? ` · ${fmtTanggal(String(a.pay2date))}` : ""}` : "-"}
+                          {String(a.pay2ProofUrl ?? "") && <button type="button" onClick={() => window.open(String(a.pay2ProofUrl), "_blank")} className="mt-1 block overflow-hidden rounded-lg border border-steel-200" title="Lihat bukti tahap II"><SecureImg src={String(a.pay2ProofUrl)} alt={`Bukti II ${String(a.po)}`} className="h-10 w-16 object-cover" /></button>}
+                          {String(a.buktiUrl ?? "") && !String(a.pay1ProofUrl ?? "") && !String(a.pay2ProofUrl ?? "") && <button type="button" onClick={() => window.open(String(a.buktiUrl), "_blank")} className="mt-1 block overflow-hidden rounded-lg border border-steel-200" title="Lihat bukti"><SecureImg src={String(a.buktiUrl)} alt={`Bukti ${String(a.po)}`} className="h-10 w-16 object-cover" /></button>}</td>
                         <td className="td font-semibold text-navy-900">{fmtRupiah(Math.max(0, num(a.amt) - num(a.pay1) - num(a.pay2)))}</td>
                         <td className="td text-steel-600">{fmtTanggal(String(a.due ?? ""))}</td>
                         <td className="td text-steel-600">{String(a.pph ?? "2%")}</td>
@@ -2157,7 +2365,7 @@ export default function Finance() {
                           <div className="flex flex-wrap gap-1.5">
                             {a.st !== "Lunas" && (
                               <>
-                                <button className="btn-secondary text-xs" onClick={() => { setApTarget(a); setProof(emptyProof()); setApPayAmt(String(Math.max(0, num(a.amt) - num(a.pay1) - num(a.pay2)))); }}>
+                                <button className="btn-secondary text-xs" onClick={() => { setApTarget(a); setProof(emptyProof()); setProofImg(""); setApPayAmt(String(Math.max(0, num(a.amt) - num(a.pay1) - num(a.pay2)))); }}>
                                   {S.payStage.replace("{a}", num(a.pay1) ? " II" : " I")}
                                 </button>
                                 <button className="btn-secondary text-xs" onClick={() => {
@@ -2214,6 +2422,11 @@ export default function Finance() {
                 subtitle={S.kasSub}
                 action={<button className="btn-primary text-xs" onClick={() => setShowMut(true)}>{S.addMutasi}</button>}
               />
+              <HistFilterBar value={kasHist} onChange={setKasHist} idPrefix="kas" />
+              <p className="rounded-lg bg-ocean-50 px-3 py-2 text-xs text-ocean-700">
+                {S.kasLiveBadge.replace("{n}", String(kasLiveRows.reduce((s, r) => s + r.count, 0))).replace("{d}", kasAsOf).replace("{s}", kasSnap ? S.kasSnapSuffix : S.kasLiveSuffix)}
+              </p>
+              {kasSnap && (
               <div className="overflow-x-auto">
                 <table className="w-full">
                   <thead className="bg-surface sticky top-0 z-10">
@@ -2228,7 +2441,7 @@ export default function Finance() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-steel-100">
-                    {sortRows(KASBANK_EXCEL, kasSort, (r, k) =>
+                    {sortRows(kasRows, kasSort, (r, k) =>
                       k === "nama" ? String(r.nama) : k === "awal" ? Number(r.awal) : k === "masuk" ? kasFlow(r.kode).masuk :
                       k === "keluar" ? kasFlow(r.kode).keluar : k === "berjalan" ? (kasSaldo[r.kode] ?? r.awal) :
                       k === "akhir" ? Number(r.akhir) : String(r.kode)).map((r) => {
@@ -2248,6 +2461,32 @@ export default function Finance() {
                   </tbody>
                 </table>
               </div>
+              )}
+              <Card className="p-4">
+                <CardHeader title={S.kasRecapTitle.replace("{d}", kasAsOf.slice(0, 7))} subtitle={S.kasRecapSub} />
+                <div className="overflow-x-auto px-1 pb-3">
+                  <table className="w-full">
+                    <thead className="bg-surface sticky top-0 z-10">
+                      <tr><th className="th">{S.colKode}</th><th className="th">{S.colRekening}</th><th className="th">{S.colMasuk}</th><th className="th">{S.colKeluar}</th><th className="th">{S.kasNetCol}</th><th className="th">{S.kasJCol}</th></tr>
+                    </thead>
+                    <tbody className="divide-y divide-steel-100">
+                      {kasLiveRows.map((r) => (
+                        <tr key={r.kode} className="hover:bg-surface">
+                          <td className="td font-mono text-xs font-semibold text-navy-900">{r.kode}</td>
+                          <td className="td text-xs text-steel-600">{r.nama}</td>
+                          <td className="td text-xs text-emerald-600">{r.masuk ? fmtRupiah(r.masuk) : "-"}</td>
+                          <td className="td text-xs text-rose-600">{r.keluar ? fmtRupiah(r.keluar) : "-"}</td>
+                          <td className="td text-xs font-semibold">{fmtRupiah(r.masuk - r.keluar)}</td>
+                          <td className="td text-xs text-steel-500">{r.count}</td>
+                        </tr>
+                      ))}
+                      {kasLiveRows.length === 0 && (
+                        <tr><td className="td text-xs italic text-steel-400" colSpan={6}>{S.kasEmptyLive}</td></tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </Card>
               <Card className="p-4">
                 <CardHeader title={S.adjTitle} subtitle={S.adjSub} />
                 <div className="overflow-x-auto px-1 pb-3">
@@ -2263,7 +2502,7 @@ export default function Finance() {
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-steel-100">
-                      {sortRows(JU_PENYESUAIAN_EXCEL, kasSort, (j, k) =>
+                      {sortRows(JU_PENYESUAIAN_EXCEL.filter((j) => matchHist(String(j.tgl ?? ""), kasHist)), kasSort, (j, k) =>
                         k === "uraian" ? String(j.uraian) : k === "db" ? String(j.db) : k === "dbAmt" ? Number(j.dbAmt) :
                         k === "kr" ? String(j.kr) : k === "krAmt" ? Number(j.krAmt) : String(j.tgl)).map((j, i) => (
                         <tr key={i} className="hover:bg-surface">
@@ -2275,6 +2514,34 @@ export default function Finance() {
                           <td className="td text-xs">{fmtRupiah(j.krAmt)}</td>
                         </tr>
                       ))}
+                      {JU_PENYESUAIAN_EXCEL.filter((j) => matchHist(String(j.tgl ?? ""), kasHist)).length === 0 && (
+                        <tr><td className="td text-xs italic text-steel-400" colSpan={6}>{S.kasAdjEmpty}</td></tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </Card>
+              <Card className="p-4">
+                <CardHeader title={S.kasMutTitle} subtitle={S.kasMutSub} />
+                <div className="overflow-x-auto px-1 pb-3">
+                  <table className="w-full">
+                    <thead className="bg-surface sticky top-0 z-10">
+                      <tr><th className="th">Tanggal</th><th className="th">Dokumen</th><th className="th">Uraian</th><th className="th">DB</th><th className="th">KR</th><th className="th">Nominal</th></tr>
+                    </thead>
+                    <tbody className="divide-y divide-steel-100">
+                      {manJournals.filter((j) => (String(j.sumber) === "Kas" || String(j.sumber) === "Bank") && matchHist(String(j.date ?? ""), kasHist)).slice(0, 100).map((j) => (
+                        <tr key={String(j.id)} className="hover:bg-surface">
+                          <td className="td font-mono text-xs text-steel-600">{fmtTanggal(String(j.date ?? ""))}</td>
+                          <td className="td font-mono text-xs">{String(j.dokumen ?? "-")}</td>
+                          <td className="td max-w-56 truncate text-xs text-steel-600" title={String(j.uraian ?? "")}>{String(j.uraian ?? "")}</td>
+                          <td className="td font-mono text-xs">{String(j.db ?? "-")}</td>
+                          <td className="td font-mono text-xs">{String(j.kr ?? "-")}</td>
+                          <td className="td text-xs font-semibold">{fmtRupiah(num(j.amount))}</td>
+                        </tr>
+                      ))}
+                      {manJournals.filter((j) => (String(j.sumber) === "Kas" || String(j.sumber) === "Bank") && matchHist(String(j.date ?? ""), kasHist)).length === 0 && (
+                        <tr><td className="td text-xs italic text-steel-400" colSpan={6}>{S.kasMutEmpty}</td></tr>
+                      )}
                     </tbody>
                   </table>
                 </div>
@@ -2290,7 +2557,7 @@ export default function Finance() {
                 action={
                   <div className="flex gap-2">
                     <AsyncButton className="btn-secondary text-xs" onAction={exportJadwal}>{S.exportExcelBtn}</AsyncButton>
-                    <button className="btn-primary text-xs" disabled={schedSel.length === 0} onClick={() => { setBatchProof(emptyProof()); setShowBatch(true); }}>
+                    <button className="btn-primary text-xs" disabled={schedSel.length === 0} onClick={() => { setBatchProof(emptyProof()); setBatchImg(""); setShowBatch(true); }}>
                       {S.batchPay.replace("{n}", fmtJumlah(schedSel.length)).replace("{a}", fmtRupiah(schedTotal))}
                     </button>
                   </div>
@@ -2391,6 +2658,10 @@ export default function Finance() {
                 </FilterPopover>
                 <span className="ml-auto text-xs text-steel-400">{S.countInvoice.replace("{n}", String(filteredInvoices.length))}</span>
               </div>
+              <div className="mb-3 flex flex-wrap items-center gap-2">
+                <HistFilterBar value={invHist} onChange={setInvHist} idPrefix="inv" />
+                <span className="text-xs text-steel-400">{S.invDueNote}</span>
+              </div>
               <div className="overflow-x-auto">
                 <table className="w-full">
                   <thead className="bg-surface sticky top-0 z-10">
@@ -2402,10 +2673,13 @@ export default function Finance() {
                       <SortTh label={S.colEfaktur} sortKey="efaktur" sort={invSort} onSort={(k) => setInvSort((s) => toggleSort(s, k))} />
                       <SortTh label={S.colNilai} sortKey="amount" sort={invSort} onSort={(k) => setInvSort((s) => toggleSort(s, k))} />
                       <SortTh label={S.colStatus} sortKey="status" sort={invSort} onSort={(k) => setInvSort((s) => toggleSort(s, k))} />
+                      <th className="th">Detail</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-steel-100">
-                    {invPager.slice(sortedInv).map((inv) => (
+                    {invPager.slice(sortedInv).map((inv) => {
+                      const bukti = String(inv.paidProofUrl ?? inv.buktiUrl ?? "");
+                      return (
                       <tr key={inv.id} id={notifRowId(String(inv.id))} className={flash.flashId === String(inv.id) ? "notif-hl notif-flash hover:bg-surface" : (notified.has(String(inv.id)) ? "notif-hl hover:bg-surface" : "hover:bg-surface")}>
                         <td className="td font-mono text-xs font-semibold text-navy-900">{inv.id}<span className="block font-sans text-[11px] font-normal text-steel-500">{fmtTanggal(String(inv.due ?? ""))}</span></td>
                         <td className="td text-xs text-steel-600">{String(inv.billingType ?? inv.paymentTerm ?? "-")}{inv.serviceRef ? ` · ${inv.serviceRef}` : ""}</td>
@@ -2420,12 +2694,15 @@ export default function Finance() {
                         <td className="td font-mono text-[11px] text-steel-600">{inv.nsfp || inv.noFaktur ? `${inv.nsfp || "-"} / ${inv.noFaktur || "-"}` : "-"}</td>
                         <td className="td font-semibold">{fmtRupiah(invNeto(inv))}
                           {needsDirector(inv) && <span className="ml-2 inline-block"><Badge tone="amber">{S.needDirector}</Badge></span>}
+                          {bukti && <span className="ml-2 inline-block"><Badge tone="teal">{S.proofBadge}</Badge></span>}
                         </td>
                         <td className="td"><StatusBadge status={String(inv.status)} />
                           {inv.directorApproved && <p className="mt-1 text-[11px] text-steel-500">Dir: {String(inv.directorName ?? "")}</p>}
                         </td>
+                        <td className="td"><button type="button" className="btn-secondary px-2 py-1 text-[11px]" onClick={() => setInvDetail(inv)}>{S.detBtn}</button></td>
                       </tr>
-                    ))}
+                      );
+                    })}
                   </tbody>
                 </table>
                 {invPager.bar}
@@ -2433,17 +2710,45 @@ export default function Finance() {
             </div>
           )}
 
-          {tab === "Buku Besar" && (
+          {tab === "Buku Besar" ? (() => {
+            const bbAsOf = liveAsOf(bbHist);
+            const bbSnap = isSnapMonth(bbAsOf.slice(0, 7));
+            const bbLive = (() => {
+              const m = new Map<string, { kode: string; nama: string; d: number; k: number; n: number }>();
+              const nameOf = (kode: string): string => String(coaRows.find((c) => String(c.kode) === kode)?.nama ?? kode);
+              for (const j of manJournals) {
+                if (j.status === "Void") continue;
+                if (!matchHist(String(j.date ?? ""), bbHist)) continue;
+                for (const [kode, side] of [[String(j.db ?? ""), "d"], [String(j.kr ?? ""), "k"]] as const) {
+                  if (!kode) continue;
+                  const cur = m.get(kode) ?? { kode, nama: nameOf(kode), d: 0, k: 0, n: 0 };
+                  if (side === "d") cur.d += num(j.amount); else cur.k += num(j.amount);
+                  cur.n += 1;
+                  m.set(kode, cur);
+                }
+              }
+              return [...m.values()].sort((a, b) => a.kode.localeCompare(b.kode));
+            })();
+            const bbLiveD = bbLive.reduce((s, r) => s + r.d, 0);
+            const bbLiveK = bbLive.reduce((s, r) => s + r.k, 0);
+            return (
             <div className="space-y-4">
               <CardHeader
                 title={S.bbTitle}
                 subtitle={S.bbSub}
               />
+              <HistFilterBar value={bbHist} onChange={setBbHist} idPrefix="bb" />
+              <p className="rounded-lg bg-ocean-50 px-3 py-2 text-xs text-ocean-700">
+                {S.bbLiveBadge.replace("{n}", String(bbLive.reduce((s, r) => s + r.n, 0))).replace("{d}", bbAsOf).replace("{s}", bbSnap ? S.bbSnapSuffix : S.bbLiveSuffix)}
+              </p>
+              {bbSnap && (
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-                <Card className="p-4"><p className="text-xs text-steel-500">{S.bbRevTitle}</p><p className="mt-1 text-lg font-bold text-navy-900">{fmtRupiah(LAPORAN_EXCEL.totalPendapatan)}</p><p className="mt-1 text-[11px] text-steel-400">{S.bbRevNote}</p></Card>
-                <Card className="p-4"><p className="text-xs text-steel-500">{S.bbCostTitle}</p><p className="mt-1 text-lg font-bold text-navy-900">{fmtRupiah(LAPORAN_EXCEL.totalBebanPokok)}</p><p className="mt-1 text-[11px] text-steel-400">{S.bbCostNote}</p></Card>
-                <Card className="p-4"><p className="text-xs text-steel-500">{S.kpiLabaNet}</p><p className="mt-1 text-lg font-bold text-emerald-600">{fmtRupiah(LAPORAN_EXCEL.labaBersih)}</p><p className="mt-1 text-[11px] text-steel-400">{S.bbNetNote}</p></Card>
+                <Card className="p-4"><p className="text-xs text-steel-500">{S.bbRevTitle}</p><p className="mt-1 text-lg font-bold text-navy-900">{fmtRupiah(LAPORAN_EXCEL.totalPendapatan)}</p><p className="mt-1 text-[11px] text-steel-400">{S.bbRevNote} · {S.auditTag}</p></Card>
+                <Card className="p-4"><p className="text-xs text-steel-500">{S.bbCostTitle}</p><p className="mt-1 text-lg font-bold text-navy-900">{fmtRupiah(LAPORAN_EXCEL.totalBebanPokok)}</p><p className="mt-1 text-[11px] text-steel-400">{S.bbCostNote} · {S.auditTag}</p></Card>
+                <Card className="p-4"><p className="text-xs text-steel-500">{S.kpiLabaNet}</p><p className="mt-1 text-lg font-bold text-emerald-600">{fmtRupiah(LAPORAN_EXCEL.labaBersih)}</p><p className="mt-1 text-[11px] text-steel-400">{S.bbNetNote} · {S.auditTag}</p></Card>
               </div>
+              )}
+              {bbSnap && (
               <div className="overflow-x-auto">
                 <table className="w-full">
                   <thead className="bg-surface sticky top-0 z-10">
@@ -2479,21 +2784,88 @@ export default function Finance() {
                   </tbody>
                 </table>
               </div>
-              <p className="text-xs text-steel-500">{S.bbNote}</p>
+              )}
+              <Card className="p-4">
+                <CardHeader title={S.bbLiveTitle.replace("{d}", bbAsOf.slice(0, 7))} subtitle={S.bbLiveSub.replace("{a}", fmtMiliar(bbLiveD)).replace("{b}", fmtMiliar(bbLiveK)).replace("{c}", Math.abs(bbLiveD - bbLiveK) < 1 ? S.bbBalanced : S.bbUnbalanced)} />
+                <div className="overflow-x-auto px-1 pb-3">
+                  <table className="w-full">
+                    <thead className="bg-surface sticky top-0 z-10">
+                      <tr><th className="th">{S.colKode}</th><th className="th">{S.colNamaAkun}</th><th className="th">{S.colDebit}</th><th className="th">{S.colKredit}</th><th className="th">{S.bbNetCol}</th><th className="th">{S.bbRowsCol}</th></tr>
+                    </thead>
+                    <tbody className="divide-y divide-steel-100">
+                      {bbLive.map((r) => (
+                        <tr key={r.kode} className="hover:bg-surface">
+                          <td className="td font-mono text-xs font-semibold text-navy-900">{r.kode}</td>
+                          <td className="td text-xs text-steel-600">{r.nama}</td>
+                          <td className="td text-xs">{r.d ? fmtRupiah(r.d) : "-"}</td>
+                          <td className="td text-xs">{r.k ? fmtRupiah(r.k) : "-"}</td>
+                          <td className="td text-xs font-semibold">{fmtRupiah(r.d - r.k)}</td>
+                          <td className="td text-xs text-steel-500">{r.n}</td>
+                        </tr>
+                      ))}
+                      {bbLive.length === 0 && (
+                        <tr><td className="td text-xs italic text-steel-400" colSpan={6}>{S.bbEmptyLive}</td></tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </Card>
+              <p className="text-xs text-steel-500">{S.bbNote}{bbSnap ? S.bbSnapNote : ""}</p>
+              <Card className="p-4">
+                <CardHeader title={S.bbVoucherTitle.replace("{d}", bbAsOf.slice(0, 7))} subtitle={S.bbVoucherSub} />
+                <div className="overflow-x-auto px-1 pb-3">
+                  <table className="w-full">
+                    <thead className="bg-surface sticky top-0 z-10">
+                      <tr><th className="th">Tanggal</th><th className="th">Dokumen</th><th className="th">Uraian</th><th className="th">DB</th><th className="th">KR</th><th className="th">Nominal</th></tr>
+                    </thead>
+                    <tbody className="divide-y divide-steel-100">
+                      {manJournals.filter((j) => matchHist(String(j.date ?? ""), bbHist)).slice(0, 100).map((j) => (
+                        <tr key={String(j.id)} className="hover:bg-surface">
+                          <td className="td font-mono text-xs text-steel-600">{fmtTanggal(String(j.date ?? ""))}</td>
+                          <td className="td font-mono text-xs">{String(j.dokumen ?? "-")}</td>
+                          <td className="td max-w-56 truncate text-xs text-steel-600" title={String(j.uraian ?? "")}>{String(j.uraian ?? "")}</td>
+                          <td className="td font-mono text-xs">{String(j.db ?? "-")}</td>
+                          <td className="td font-mono text-xs">{String(j.kr ?? "-")}</td>
+                          <td className="td text-xs font-semibold">{fmtRupiah(num(j.amount))}</td>
+                        </tr>
+                      ))}
+                      {manJournals.filter((j) => matchHist(String(j.date ?? ""), bbHist)).length === 0 && (
+                        <tr><td className="td text-xs italic text-steel-400" colSpan={6}>{S.bbEmptyLive}</td></tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </Card>
             </div>
-          )}
+            );
+          })() : null}
 
-          {tab === "Laba Rugi" && (
+          {tab === "Laba Rugi" ? (() => {
+            const lrAsOf = liveAsOf(lrHist);
+            const lrSnap = isSnapMonth(lrAsOf.slice(0, 7));
+            return (
             <div className="space-y-4">
               <CardHeader
                 title={S.lrTitle}
                 subtitle={S.lrSub}
               />
+              <HistFilterBar value={lrHist} onChange={setLrHist} idPrefix="lr" />
+              <p className="rounded-lg bg-ocean-50 px-3 py-2 text-xs text-ocean-700">
+                {S.lrLiveBadge.replace("{n}", String(lrLive.n)).replace("{d}", lrAsOf).replace("{s}", lrSnap ? S.lrSnapSuffix : S.lrLiveSuffix)}
+              </p>
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-                <Card className="p-4"><p className="text-xs text-steel-500">{S.bbRevTitle}</p><p className="mt-1 text-lg font-bold text-navy-900">{fmtRupiah(lrRows.pend)}</p><p className="mt-1 text-[11px] text-steel-400">{S.lrRevNote}</p></Card>
-                <Card className="p-4"><p className="text-xs text-steel-500">{S.lrCostTitle}</p><p className="mt-1 text-lg font-bold text-navy-900">{fmtRupiah(lrRows.bebanPokok)}</p><p className="mt-1 text-[11px] text-steel-400">{S.lrCostNote}</p></Card>
-                <Card className="p-4"><p className="text-xs text-steel-500">{S.lrOpexTitle}</p><p className="mt-1 text-lg font-bold text-navy-900">{fmtRupiah(lrRows.biayaUsaha)}</p><p className="mt-1 text-[11px] text-steel-400">{S.lrOpexNote}</p></Card>
-                <Card className="p-4"><p className="text-xs text-steel-500">{S.kpiLabaNet}</p><p className="mt-1 text-lg font-bold text-emerald-600">{fmtRupiah(lrRows.pend - lrRows.bebanPokok - lrRows.biayaUsaha + lrRows.lainMasuk - lrRows.lainKeluar)}</p><p className="mt-1 text-[11px] text-steel-400">{S.lrOtherNet.replace("{a}", fmtRupiah(lrRows.lainMasuk - lrRows.lainKeluar))}</p></Card>
+                <Card className="p-4"><p className="text-xs text-steel-500">{S.bbRevTitle} {S.lrLiveTag}</p><p className="mt-1 text-lg font-bold text-navy-900">{fmtRupiah(lrLive.revenue)}</p><p className="mt-1 text-[11px] text-steel-400">{S.lrRevHint}</p></Card>
+                <Card className="p-4"><p className="text-xs text-steel-500">{S.lrCostTitle} {S.lrLiveTag}</p><p className="mt-1 text-lg font-bold text-navy-900">{fmtRupiah(lrLive.costProj)}</p><p className="mt-1 text-[11px] text-steel-400">{S.lrCostHint}</p></Card>
+                <Card className="p-4"><p className="text-xs text-steel-500">{S.lrOpexTitle} {S.lrLiveTag}</p><p className="mt-1 text-lg font-bold text-navy-900">{fmtRupiah(lrLive.salary + lrLive.writeoff)}</p><p className="mt-1 text-[11px] text-steel-400">{S.lrOpexHint}</p></Card>
+                <Card className="p-4"><p className="text-xs text-steel-500">{S.kpiLabaNet} {S.lrLiveTag}</p><p className="mt-1 text-lg font-bold text-emerald-600">{fmtRupiah(lrLive.laba)}</p><p className="mt-1 text-[11px] text-steel-400">{S.lrPeriodCount.replace("{n}", String(lrLive.n))}</p></Card>
+              </div>
+              {lrSnap && (
+              <>
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+                <Card className="p-4"><p className="text-xs text-steel-500">{S.bbRevTitle}</p><p className="mt-1 text-lg font-bold text-navy-900">{fmtRupiah(lrRows.pend)}</p><p className="mt-1 text-[11px] text-steel-400">{S.lrRevNote} · {S.auditTag}</p></Card>
+                <Card className="p-4"><p className="text-xs text-steel-500">{S.lrCostTitle}</p><p className="mt-1 text-lg font-bold text-navy-900">{fmtRupiah(lrRows.bebanPokok)}</p><p className="mt-1 text-[11px] text-steel-400">{S.lrCostNote} · {S.auditTag}</p></Card>
+                <Card className="p-4"><p className="text-xs text-steel-500">{S.lrOpexTitle}</p><p className="mt-1 text-lg font-bold text-navy-900">{fmtRupiah(lrRows.biayaUsaha)}</p><p className="mt-1 text-[11px] text-steel-400">{S.lrOpexNote} · {S.auditTag}</p></Card>
+                <Card className="p-4"><p className="text-xs text-steel-500">{S.kpiLabaNet}</p><p className="mt-1 text-lg font-bold text-emerald-600">{fmtRupiah(lrRows.pend - lrRows.bebanPokok - lrRows.biayaUsaha + lrRows.lainMasuk - lrRows.lainKeluar)}</p><p className="mt-1 text-[11px] text-steel-400">{S.lrOtherNet.replace("{a}", fmtRupiah(lrRows.lainMasuk - lrRows.lainKeluar))} · {S.auditTag}</p></Card>
               </div>
               <div className="overflow-x-auto">
                 <table className="w-full">
@@ -2515,8 +2887,35 @@ export default function Finance() {
                   </tbody>
                 </table>
               </div>
+              </>
+              )}
+              <Card className="p-4">
+                <CardHeader title={S.lrHistTitle} subtitle={S.lrHistSub} />
+                <div className="overflow-x-auto px-1 pb-3">
+                  <table className="w-full">
+                    <thead className="bg-surface sticky top-0 z-10">
+                      <tr><th className="th">Periode</th><th className="th">Pendapatan</th><th className="th">Beban Proyek</th><th className="th">Gaji</th><th className="th">Laba</th></tr>
+                    </thead>
+                    <tbody className="divide-y divide-steel-100">
+                      {plMonthly.filter((p) => matchHistPeriod(p.period, lrHist)).map((p) => (
+                        <tr key={p.period} className="hover:bg-surface">
+                          <td className="td font-medium text-navy-900">{p.period}</td>
+                          <td className="td">{fmtMiliar(p.revenue)}</td>
+                          <td className="td text-steel-600">{fmtMiliar(p.costProj)}</td>
+                          <td className="td text-steel-600">{fmtMiliar(p.salary)}</td>
+                          <td className="td font-semibold text-emerald-600">{fmtMiliar(p.laba)}</td>
+                        </tr>
+                      ))}
+                      {plMonthly.filter((p) => matchHistPeriod(p.period, lrHist)).length === 0 && (
+                        <tr><td className="td text-xs italic text-steel-400" colSpan={5}>{S.lrEmptyHist}</td></tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </Card>
             </div>
-          )}
+            );
+          })() : null}
 
           {tab === "Project P&L" && (
             <div className="space-y-5">
@@ -2704,14 +3103,34 @@ export default function Finance() {
             </div>
           )}
 
-          {tab === "Neraca" && (
+          {tab === "Neraca" ? (() => {
+            const nrAsOf = liveAsOf(nrHist);
+            const nrSnap = isSnapMonth(nrAsOf.slice(0, 7));
+            const hutLive = apOutAsOf(payables, nrAsOf);
+            const piuLive = arOutAsOf(invoices, nrAsOf);
+            const hutLiveTotal = hutLive.reduce((s, h) => s + h.total, 0);
+            const piuLiveTotal = piuLive.reduce((s, p) => s + p.total, 0);
+            const nrLabaLive = plMonthly.filter((p) => matchHistPeriod(p.period, nrHist)).reduce((s, p) => s + p.laba, 0);
+            return (
             <div className="space-y-4">
               <CardHeader title={S.nrTitle} subtitle={S.nrSub.replace("{a}", LAPORAN_EXCEL.neracaTotal.toLocaleString("id-ID"))} />
+              <HistFilterBar value={nrHist} onChange={setNrHist} idPrefix="nr" />
+              <p className="rounded-lg bg-ocean-50 px-3 py-2 text-xs text-ocean-700">
+                {S.nrLiveBadge.replace("{a}", nrAsOf).replace("{b}", fmtMiliar(hutLiveTotal)).replace("{c}", String(hutLive.length)).replace("{d}", fmtMiliar(piuLiveTotal)).replace("{e}", String(piuLive.length)).replace("{f}", fmtRupiah(nrLabaLive)).replace("{g}", nrSnap ? S.nrSnapSuffix : S.nrLiveSuffix)}
+              </p>
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-                <Card className="p-4"><p className="text-xs text-steel-500">{S.nrCurrentAsset}</p><p className="mt-1 text-lg font-bold text-navy-900">{fmtRupiah(LAPORAN_EXCEL.aktivaLancar)}</p><p className="mt-1 text-[11px] text-steel-400">{S.nrCurrentNote}</p></Card>
-                <Card className="p-4"><p className="text-xs text-steel-500">{S.nrFixedBook}</p><p className="mt-1 text-lg font-bold text-navy-900">{fmtRupiah(LAPORAN_EXCEL.bukuAktivaTetap)}</p><p className="mt-1 text-[11px] text-steel-400">{S.nrFixedNote}</p></Card>
-                <Card className="p-4"><p className="text-xs text-steel-500">{S.nrOpenTitle}</p><p className="mt-1 text-lg font-bold text-navy-900">{fmtRupiah(LAPORAN_EXCEL.labaDitahanAwal)}</p><p className="mt-1 text-[11px] text-steel-400">{S.nrOpenNote}</p></Card>
-                <Card className="p-4"><p className="text-xs text-steel-500">{S.nrCloseTitle}</p><p className="mt-1 text-lg font-bold text-emerald-600">{fmtRupiah(LAPORAN_EXCEL.labaDitahanAkhir)}</p><p className="mt-1 text-[11px] text-steel-400">{S.nrCloseNote.replace("{a}", fmtRupiah(LAPORAN_EXCEL.labaBerjalan))}</p></Card>
+                <Card className="p-4"><p className="text-xs text-steel-500">{S.nrApLive}</p><p className="mt-1 text-lg font-bold text-navy-900">{fmtRupiah(hutLiveTotal)}</p><p className="mt-1 text-[11px] text-steel-400">{S.nrVendorCount.replace("{n}", String(hutLive.length)).replace("{d}", nrAsOf)}</p></Card>
+                <Card className="p-4"><p className="text-xs text-steel-500">{S.nrArLive}</p><p className="mt-1 text-lg font-bold text-navy-900">{fmtRupiah(piuLiveTotal)}</p><p className="mt-1 text-[11px] text-steel-400">{S.nrCustCount.replace("{n}", String(piuLive.length)).replace("{d}", nrAsOf)}</p></Card>
+                <Card className="p-4"><p className="text-xs text-steel-500">{S.nrProfitLive}</p><p className="mt-1 text-lg font-bold text-navy-900">{fmtRupiah(nrLabaLive)}</p><p className="mt-1 text-[11px] text-steel-400">{S.nrProfitHint}</p></Card>
+                <Card className="p-4"><p className="text-xs text-steel-500">{S.nrCloseTitle} ({S.auditTag})</p><p className="mt-1 text-lg font-bold text-emerald-600">{fmtRupiah(LAPORAN_EXCEL.labaDitahanAkhir)}</p><p className="mt-1 text-[11px] text-steel-400">{S.nrCloseNote.replace("{a}", fmtRupiah(LAPORAN_EXCEL.labaBerjalan))} · 2026-08</p></Card>
+              </div>
+              {nrSnap && (
+              <>
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+                <Card className="p-4"><p className="text-xs text-steel-500">{S.nrCurrentAsset}</p><p className="mt-1 text-lg font-bold text-navy-900">{fmtRupiah(LAPORAN_EXCEL.aktivaLancar)}</p><p className="mt-1 text-[11px] text-steel-400">{S.nrCurrentNote} · {S.auditTag}</p></Card>
+                <Card className="p-4"><p className="text-xs text-steel-500">{S.nrFixedBook}</p><p className="mt-1 text-lg font-bold text-navy-900">{fmtRupiah(LAPORAN_EXCEL.bukuAktivaTetap)}</p><p className="mt-1 text-[11px] text-steel-400">{S.nrFixedNote} · {S.auditTag}</p></Card>
+                <Card className="p-4"><p className="text-xs text-steel-500">{S.nrOpenTitle}</p><p className="mt-1 text-lg font-bold text-navy-900">{fmtRupiah(LAPORAN_EXCEL.labaDitahanAwal)}</p><p className="mt-1 text-[11px] text-steel-400">{S.nrOpenNote} · {S.auditTag}</p></Card>
+                <Card className="p-4"><p className="text-xs text-steel-500">{S.nrCloseTitle}</p><p className="mt-1 text-lg font-bold text-navy-900">{fmtRupiah(LAPORAN_EXCEL.labaDitahanAkhir)}</p><p className="mt-1 text-[11px] text-steel-400">{S.nrCloseNote.replace("{a}", fmtRupiah(LAPORAN_EXCEL.labaBerjalan))} · {S.auditTag}</p></Card>
               </div>
               <Card className="p-4">
                 <CardHeader title={S.reTitle} subtitle={S.reSub} />
@@ -2721,16 +3140,69 @@ export default function Finance() {
                       <tr><th className="th">{S.colNoAkun}</th><th className="th">{S.colPos}</th><th className="th">{S.colNilai}</th></tr>
                     </thead>
                     <tbody className="divide-y divide-steel-100">
-                      <tr className="hover:bg-surface"><td className="td font-mono text-xs font-semibold text-navy-900">3-200</td><td className="td text-xs text-steel-600">{S.reTitle}</td><td className="td text-xs font-semibold">{fmtRupiah(LAPORAN_EXCEL.labaDitahanAwal)}</td></tr>
-                      <tr className="hover:bg-surface"><td className="td font-mono text-xs text-steel-400">-</td><td className="td text-xs text-steel-600">{S.reCurrentRow}</td><td className="td text-xs font-semibold">{fmtRupiah(labaLast)}</td></tr>
-                      <tr className="hover:bg-surface"><td className="td font-mono text-xs text-steel-400">-</td><td className="td text-xs font-bold text-navy-900">{S.reTotalRow}</td><td className="td text-xs font-bold text-navy-900">{fmtRupiah(LAPORAN_EXCEL.labaDitahanAwal + labaLast)}</td></tr>
+                      <tr className="hover:bg-surface"><td className="td font-mono text-xs font-semibold text-navy-900">3-200</td><td className="td text-xs text-steel-600">{S.reTitle} ({S.auditTag})</td><td className="td text-xs font-semibold">{fmtRupiah(LAPORAN_EXCEL.labaDitahanAwal)}</td></tr>
+                      <tr className="hover:bg-surface"><td className="td font-mono text-xs text-steel-400">live</td><td className="td text-xs text-steel-600">{S.reCurrentRow} {S.nrDocAsOf.replace("{d}", nrAsOf)}</td><td className="td text-xs font-semibold">{fmtRupiah(nrLabaLive)}</td></tr>
+                      <tr className="hover:bg-surface"><td className="td font-mono text-xs text-steel-400">-</td><td className="td text-xs font-bold text-navy-900">{S.reTotalRow} ({S.auditTag})</td><td className="td text-xs font-bold text-navy-900">{fmtRupiah(LAPORAN_EXCEL.labaDitahanAkhir)}</td></tr>
                     </tbody>
                   </table>
                 </div>
               </Card>
+              </>
+              )}
               <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
                 <Card className="p-4">
-                  <CardHeader title={S.subHutangTitle} subtitle={S.subHutangSub} />
+                  <CardHeader title={S.nrApLiveTitle.replace("{a}", S.subHutangTitle).replace("{d}", nrAsOf)} subtitle={S.nrApLiveSub} />
+                  <div className="max-h-72 overflow-y-auto">
+                    <table className="w-full">
+                      <thead className="bg-surface sticky top-0 z-10"><tr>
+                        <SortTh label={S.colVendor} sortKey="v" sort={nrSort} onSort={(k) => setNrSort((s) => toggleSort(s, k))} />
+                        <SortTh label={S.nrDocCol} sortKey="count" sort={nrSort} onSort={(k) => setNrSort((s) => toggleSort(s, k))} />
+                        <SortTh label={S.nrOutstandingCol} sortKey="total" sort={nrSort} onSort={(k) => setNrSort((s) => toggleSort(s, k))} />
+                      </tr></thead>
+                      <tbody className="divide-y divide-steel-100">
+                        {sortRows(hutLive, nrSort, (h, k) => k === "count" ? Number(h.count) : k === "total" ? Number(h.total) : String(h.v)).map((h) => (
+                          <tr key={h.v} className="hover:bg-surface">
+                            <td className="td text-xs font-medium text-navy-900">{h.v}</td>
+                            <td className="td text-xs text-steel-600">{h.count} AP</td>
+                            <td className="td text-xs font-semibold">{fmtRupiah(h.total)}</td>
+                          </tr>
+                        ))}
+                        {hutLive.length === 0 && (
+                          <tr><td className="td text-xs italic text-steel-400" colSpan={3}>{S.nrApEmpty.replace("{d}", nrAsOf)}</td></tr>
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </Card>
+                <Card className="p-4">
+                  <CardHeader title={S.nrArLiveTitle.replace("{a}", S.subPiutangTitle).replace("{d}", nrAsOf)} subtitle={S.nrArLiveSub} />
+                  <div className="max-h-72 overflow-y-auto">
+                    <table className="w-full">
+                      <thead className="bg-surface sticky top-0 z-10"><tr>
+                        <SortTh label={S.colCustomer} sortKey="c" sort={nrSort} onSort={(k) => setNrSort((s) => toggleSort(s, k))} />
+                        <SortTh label={S.nrDocCol} sortKey="count" sort={nrSort} onSort={(k) => setNrSort((s) => toggleSort(s, k))} />
+                        <SortTh label={S.nrOutstandingCol} sortKey="total" sort={nrSort} onSort={(k) => setNrSort((s) => toggleSort(s, k))} />
+                      </tr></thead>
+                      <tbody className="divide-y divide-steel-100">
+                        {sortRows(piuLive, nrSort, (p, k) => k === "count" ? Number(p.count) : k === "total" ? Number(p.total) : String(p.c)).map((p) => (
+                          <tr key={p.c} className="hover:bg-surface">
+                            <td className="td text-xs font-medium text-navy-900">{p.c}</td>
+                            <td className="td text-xs text-steel-600">{p.count} INV</td>
+                            <td className="td text-xs font-semibold">{fmtRupiah(p.total)}</td>
+                          </tr>
+                        ))}
+                        {piuLive.length === 0 && (
+                          <tr><td className="td text-xs italic text-steel-400" colSpan={3}>{S.nrArEmpty.replace("{d}", nrAsOf)}</td></tr>
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </Card>
+              </div>
+              {nrSnap && (
+              <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+                <Card className="p-4">
+                  <CardHeader title={S.nrApAuditTitle.replace("{a}", S.subHutangTitle)} subtitle={S.subHutangSub} />
                   <div className="max-h-72 overflow-y-auto">
                     <table className="w-full">
                       <thead className="bg-surface sticky top-0 z-10"><tr>
@@ -2753,7 +3225,7 @@ export default function Finance() {
                   </div>
                 </Card>
                 <Card className="p-4">
-                  <CardHeader title={S.subPiutangTitle} subtitle={S.subPiutangSub} />
+                  <CardHeader title={S.nrArAuditTitle.replace("{a}", S.subPiutangTitle)} subtitle={S.subPiutangSub} />
                   <div className="max-h-72 overflow-y-auto">
                     <table className="w-full">
                       <thead className="bg-surface sticky top-0 z-10"><tr>
@@ -2776,8 +3248,10 @@ export default function Finance() {
                   </div>
                 </Card>
               </div>
+              )}
             </div>
-          )}
+            );
+          })() : null}
 
           {tab === "Pajak" && (
             <div className="space-y-4">
@@ -2791,12 +3265,13 @@ export default function Finance() {
                     {taxPeriods.map((t) => <option key={t.id} value={t.id}>{t.period} · {t.status}</option>)}
                   </select>
                 </Field>
-                <Field label={S.newPeriodLabel}>
-                  <input className="input font-mono" placeholder="2026-09" inputMode="numeric" maxLength={7} value={newPeriod} onChange={(e) => setNewPeriod(e.target.value)} />
+                <Field label={S.newPeriodLabel} hint={S.taxDateHint}>
+                  <input type="date" className="input font-mono" value={newPeriod} onChange={(e) => setNewPeriod(e.target.value)} aria-label={S.newPeriodLabel} />
                 </Field>
                 <AsyncButton className="btn-secondary text-xs" onAction={async () => {
-                    const p = newPeriod.trim();
-                    if (!/^\d{4}-\d{2}$/.test(p)) { toast(S.periodFormat, "info"); return; }
+                    const raw = newPeriod.trim();
+                    if (!/^\d{4}-\d{2}-\d{2}$/.test(raw)) { toast(S.periodFormat, "info"); return; }
+                    const p = raw.slice(0, 7);
                     /* Validasi RENTANG bulan: regex saja menerima "2026-00"/"2026-13".
                        Periode seperti itu tak akan pernah cocok dengan paidAt mana pun
                        sehingga seluruh tab Pajak diam-diam menampilkan nol. */
@@ -2918,6 +3393,10 @@ export default function Finance() {
                 subtitle={S.juSub}
                 action={<button className="btn-primary text-xs" onClick={() => setShowJu(true)}>{S.addJurnal}</button>}
               />
+              <div className="mb-3 flex flex-wrap items-center gap-2 px-1">
+                <HistFilterBar value={juHist} onChange={setJuHist} idPrefix="ju" />
+                <span className="text-xs text-steel-400">{S.juCountFilt.replace("{n}", String(sortedJu.length))}</span>
+              </div>
               <div className="overflow-x-auto">
                 <table className="w-full">
                   <thead className="bg-surface sticky top-0 z-10">
@@ -2931,6 +3410,7 @@ export default function Finance() {
                       <SortTh label={S.colNominal} sortKey="amount" sort={juSort} onSort={(k) => setJuSort((s) => toggleSort(s, k))} />
                       <SortTh label={S.colSumber} sortKey="sumber" sort={juSort} onSort={(k) => setJuSort((s) => toggleSort(s, k))} />
                       <SortTh label={S.colStatus} sortKey="status" sort={juSort} onSort={(k) => setJuSort((s) => toggleSort(s, k))} />
+                      <th className="th">{S.juAttachCol}</th>
                       <th className="th">{S.actionTh}</th>
                     </tr>
                   </thead>
@@ -2947,6 +3427,13 @@ export default function Finance() {
                         <td className="td text-xs text-steel-500">{String(j.sumber ?? "JU")}</td>
                         <td className="td"><StatusBadge status={String(j.status ?? "Posted")} /></td>
                         <td className="td">
+                          {String(j.lampiranUrl ?? j.buktiUrl ?? "") ? (
+                            <button type="button" onClick={() => setJuViewer(j)} className="block overflow-hidden rounded-lg border border-steel-200" title="Lihat lampiran">
+                              <SecureImg src={String(j.lampiranUrl ?? j.buktiUrl)} alt={String(j.dokumen ?? j.id)} className="h-10 w-14 object-cover" />
+                            </button>
+                          ) : <span className="text-xs text-steel-300">-</span>}
+                        </td>
+                        <td className="td">
                           {String(j.status) !== "Void" && (
                             <button className="btn-secondary px-2 py-1 text-[11px] text-rose-600" disabled={busy.isBusy(`voidJu-${j.id}`)} onClick={() => void busy.run(`voidJu-${j.id}`, async () => { try { await update("journals", String(j.id), { status: "Void" }); log("mem-void jurnal", String(j.id), "Keuangan"); toast(S.voided.replace("{a}", String(j.id))); } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); } })}>{S.voidBtn}</button>
                           )}
@@ -2961,7 +3448,7 @@ export default function Finance() {
                       </tr>
                     ))}
                     {manJournals.length === 0 && (
-                      <tr><td className="td text-xs text-steel-400" colSpan={10}>{S.emptyJuManual}</td></tr>
+                      <tr><td className="td text-xs text-steel-400" colSpan={12}>{S.emptyJuManual}</td></tr>
                     )}
                   </tbody>
                 </table>
@@ -3213,8 +3700,8 @@ export default function Finance() {
         </div>
       </Modal>
 
-      <Modal open={payTarget !== null} onClose={() => setPayTarget(null)} title={S.markPaidTitle.replace("{a}", payTarget?.id ?? "")} subtitle={`${String(payTarget?.client ?? "")} · ${fmtRupiah(num(payTarget?.amount))}`}
-        footer={<><button className="btn-secondary" onClick={() => setPayTarget(null)}>{S.cancelBtn}</button><AsyncButton className="btn-primary" onAction={confirmBuktiInv}>{S.saveProofPaid}</AsyncButton></>}>
+      <Modal open={payTarget !== null} onClose={() => { setPayTarget(null); setProofImg(""); }} title={S.markPaidTitle.replace("{a}", payTarget?.id ?? "")} subtitle={`${String(payTarget?.client ?? "")} · ${fmtRupiah(num(payTarget?.amount))}`}
+        footer={<><button className="btn-secondary" onClick={() => { setPayTarget(null); setProofImg(""); }}>{S.cancelBtn}</button><AsyncButton className="btn-primary" onAction={confirmBuktiInv}>{S.saveProofPaid}</AsyncButton></>}>
         <div className="space-y-3">
           <FormGrid>
             <Field label={S.fPayDate}><input type="date" required className="input" value={proof.date} onChange={(e) => setProofField("date", e.target.value)} /></Field>
@@ -3226,6 +3713,17 @@ export default function Finance() {
           </FormGrid>
           <Field label={S.fRefNo} hint={S.refProofHint}>
             <input className="input font-mono" value={proof.ref} onChange={(e) => setProofField("ref", e.target.value)} placeholder={S.refProofPh} />
+          </Field>
+          <Field label={S.proofImgLabel} hint={S.proofImgHint}>
+            <div className="flex flex-wrap items-center gap-2">
+              <FileUploadButton accept=".png,.jpg,.jpeg" label={proofImg ? S.imgReplace : S.imgUpload} onUploaded={setProofImg} />
+              {proofImg && <button type="button" className="text-xs font-semibold text-rose-600 hover:underline" onClick={() => setProofImg("")}>{S.deleteBtn}</button>}
+            </div>
+            {proofImg && (
+              <div className="mt-2 overflow-hidden rounded-xl border border-steel-200">
+                <SecureImg src={proofImg} alt={`Bukti ${payTarget?.id ?? ""}`} className="h-40 w-full object-contain bg-steel-50" />
+              </div>
+            )}
           </Field>
         </div>
       </Modal>
@@ -3249,8 +3747,8 @@ export default function Finance() {
         }}
       />
 
-      <Modal open={apTarget !== null} onClose={() => setApTarget(null)} title={S.apPayTitle.replace("{a}", !num(apTarget?.pay1) ? "I" : "II").replace("{b}", String(apTarget?.po ?? ""))} subtitle={S.apPaySub.replace("{a}", String(apTarget?.v ?? "")).replace("{b}", fmtRupiah(Math.max(0, num(apTarget?.amt) - num(apTarget?.pay1) - num(apTarget?.pay2))))}
-        footer={<><button className="btn-secondary" onClick={() => setApTarget(null)}>{S.cancelBtn}</button><AsyncButton className="btn-primary" onAction={confirmBuktiAp}>{S.saveProofPay}</AsyncButton></>}>
+      <Modal open={apTarget !== null} onClose={() => { setApTarget(null); setProofImg(""); }} title={S.apPayTitle.replace("{a}", !num(apTarget?.pay1) ? "I" : "II").replace("{b}", String(apTarget?.po ?? ""))} subtitle={S.apPaySub.replace("{a}", String(apTarget?.v ?? "")).replace("{b}", fmtRupiah(Math.max(0, num(apTarget?.amt) - num(apTarget?.pay1) - num(apTarget?.pay2))))}
+        footer={<><button className="btn-secondary" onClick={() => { setApTarget(null); setProofImg(""); }}>{S.cancelBtn}</button><AsyncButton className="btn-primary" onAction={confirmBuktiAp}>{S.saveProofPay}</AsyncButton></>}>
         <div className="space-y-3">
           <Field label={S.fStageAmount} hint={!num(apTarget?.pay1) ? S.apPhase1 : S.apPhase2.replace("{a}", fmtRupiah(num(apTarget?.pay1)))}>
             <NumInput min={0} className="input" value={apPayAmt} onChange={(e) => setApPayAmt(e.target.value)} placeholder={S.stagePh} />
@@ -3265,6 +3763,17 @@ export default function Finance() {
           </FormGrid>
           <Field label={S.fRefNo} hint={S.refGiroHint}>
             <input className="input font-mono" value={proof.ref} onChange={(e) => setProofField("ref", e.target.value)} placeholder={S.refGiroPh} />
+          </Field>
+          <Field label={S.apProofLabel} hint={S.apProofHint}>
+            <div className="flex flex-wrap items-center gap-2">
+              <FileUploadButton accept=".png,.jpg,.jpeg" label={proofImg ? S.imgReplace : S.imgUpload} onUploaded={setProofImg} />
+              {proofImg && <button type="button" className="text-xs font-semibold text-rose-600 hover:underline" onClick={() => setProofImg("")}>{S.deleteBtn}</button>}
+            </div>
+            {proofImg && (
+              <div className="mt-2 overflow-hidden rounded-xl border border-steel-200">
+                <SecureImg src={proofImg} alt={`Bukti ${String(apTarget?.po ?? apTarget?.id ?? "")}`} className="h-40 w-full object-contain bg-steel-50" />
+              </div>
+            )}
           </Field>
         </div>
       </Modal>
@@ -3326,8 +3835,8 @@ export default function Finance() {
         </div>
       </Modal>
 
-      <Modal open={showBatch} onClose={() => setShowBatch(false)} title={S.batchTitle.replace("{n}", fmtJumlah(schedSel.length))} subtitle={S.batchSub.replace("{a}", fmtRupiah(schedTotal))}
-        footer={<><button className="btn-secondary" onClick={() => setShowBatch(false)}>{S.cancelBtn}</button><AsyncButton className="btn-primary" onAction={confirmBatch}>{S.settleAll}</AsyncButton></>}>
+      <Modal open={showBatch} onClose={() => { setShowBatch(false); setBatchImg(""); }} title={S.batchTitle.replace("{n}", fmtJumlah(schedSel.length))} subtitle={S.batchSub.replace("{a}", fmtRupiah(schedTotal))}
+        footer={<><button className="btn-secondary" onClick={() => { setShowBatch(false); setBatchImg(""); }}>{S.cancelBtn}</button><AsyncButton className="btn-primary" onAction={confirmBatch}>{S.settleAll}</AsyncButton></>}>
         <div className="space-y-3">
           <FormGrid>
             <Field label={S.fPayDate}><input type="date" required className="input" value={batchProof.date} onChange={(e) => setBatchProof({ ...batchProof, date: e.target.value })} /></Field>
@@ -3339,6 +3848,17 @@ export default function Finance() {
           </FormGrid>
           <Field label={S.fRefNo} hint={S.batchRefHint}>
             <input className="input font-mono" value={batchProof.ref} onChange={(e) => setBatchProof({ ...batchProof, ref: e.target.value })} placeholder={S.batchRefPh} />
+          </Field>
+          <Field label={S.batchProofLabel} hint={S.batchProofHint}>
+            <div className="flex flex-wrap items-center gap-2">
+              <FileUploadButton accept=".png,.jpg,.jpeg" label={batchImg ? S.imgReplace : S.imgUpload} onUploaded={setBatchImg} />
+              {batchImg && <button type="button" className="text-xs font-semibold text-rose-600 hover:underline" onClick={() => setBatchImg("")}>{S.deleteBtn}</button>}
+            </div>
+            {batchImg && (
+              <div className="mt-2 overflow-hidden rounded-xl border border-steel-200">
+                <SecureImg src={batchImg} alt="Bukti bayar massal" className="h-40 w-full object-contain bg-steel-50" />
+              </div>
+            )}
           </Field>
         </div>
       </Modal>
@@ -3425,6 +3945,17 @@ export default function Finance() {
             </Field>
           </FormGrid>
           <Field label={S.colUraian}><input className="input" value={juForm.uraian} onChange={(e) => setJuForm({ ...juForm, uraian: e.target.value })} placeholder={S.juDescPh} /></Field>
+          <Field label={S.juAttachLabel} hint={S.juAttachHint}>
+            <div className="flex flex-wrap items-center gap-2">
+              <FileUploadButton accept=".png,.jpg,.jpeg" label={juImg ? S.imgReplace : S.imgUpload} onUploaded={setJuImg} />
+              {juImg && <button type="button" className="text-xs font-semibold text-rose-600 hover:underline" onClick={() => setJuImg("")}>{S.deleteBtn}</button>}
+            </div>
+            {juImg && (
+              <div className="mt-2 overflow-hidden rounded-xl border border-steel-200">
+                <SecureImg src={juImg} alt={S.juAttachLabel} className="h-32 w-full object-contain bg-steel-50" />
+              </div>
+            )}
+          </Field>
           <div>
             <div className="mb-2 flex items-center justify-between">
               <p className="label">{S.juLinesTitle.replace("{a}", fmtRupiah(juLines.reduce((s, l) => s + num(l.amount), 0)))}</p>
@@ -3604,6 +4135,98 @@ export default function Finance() {
           catch (e) { toast(e instanceof Error ? e.message : S.assetDeleteFail, "info"); }
         }}
       />
+
+      {/* Modal Detail Invoice: ringkasan + baris + pajak + bukti & jurnal viewer. */}
+      <Modal open={invDetail !== null} onClose={() => setInvDetail(null)} title={invDetail ? S.detTitle.replace("{a}", invDetail.id) : S.detBtn}
+        subtitle={invDetail ? `${String(invDetail.client ?? "")} · ${String(invDetail.project ?? "")} · ${String(invDetail.status ?? "")}` : ""} wide
+        footer={<><button className="btn-secondary" onClick={() => setInvDetail(null)}>{S.cancelBtn}</button></>}>
+        {invDetail && (() => {
+          const bukti = String(invDetail.paidProofUrl ?? invDetail.buktiUrl ?? "");
+          const relJurnal = (manJournals ?? []).filter((j) => String(j.dokumen ?? "").includes(String(invDetail.id)));
+          const lines = Array.isArray(invDetail.lines) ? invDetail.lines : [];
+          return (
+            <div className="space-y-4">
+              <dl className="dl-div grid grid-cols-1 gap-x-6 text-sm sm:grid-cols-2">
+                <div className="flex justify-between gap-4"><dt className="shrink-0 text-steel-500">{S.detClientProject}</dt><dd className="text-right font-medium text-navy-900">{String(invDetail.client ?? "-")} / {String(invDetail.project ?? "-")}</dd></div>
+                <div className="flex justify-between gap-4"><dt className="shrink-0 text-steel-500">{S.detTypeTerm}</dt><dd className="text-right font-medium text-navy-900">{String(invDetail.billingType ?? invDetail.paymentTerm ?? "-")}{invDetail.milestoneRef ? ` · ${String(invDetail.milestoneRef)}` : ""}</dd></div>
+                <div className="flex justify-between gap-4"><dt className="shrink-0 text-steel-500">{S.dueLabel}</dt><dd className="text-right font-medium text-navy-900">{fmtTanggal(String(invDetail.due ?? ""))}</dd></div>
+                <div className="flex justify-between gap-4"><dt className="shrink-0 text-steel-500">{S.colStatus}</dt><dd className="text-right"><StatusBadge status={String(invDetail.status ?? "")} /></dd></div>
+                <div className="flex justify-between gap-4"><dt className="shrink-0 text-steel-500">{S.detTax}</dt><dd className="text-right font-medium text-navy-900">{fmtRupiah(num(invDetail.dpp))} / {fmtRupiah(num(invDetail.ppnAmt))} / {fmtRupiah(num(invDetail.pphAmt))}</dd></div>
+                <div className="flex justify-between gap-4"><dt className="shrink-0 text-steel-500">{S.detGrand}</dt><dd className="text-right font-bold text-navy-900">{fmtRupiah(invNeto(invDetail))}</dd></div>
+                {(invDetail.paidAt || invDetail.paidRef) && (
+                  <div className="flex justify-between gap-4"><dt className="shrink-0 text-steel-500">{S.detPaid}</dt><dd className="text-right font-medium text-navy-900">{invDetail.paidAt ? fmtTanggal(String(invDetail.paidAt)) : "-"} · {String(invDetail.paidMethod ?? "-")} · {String(invDetail.paidRef ?? "-")}</dd></div>
+                )}
+                {(invDetail.nsfp || invDetail.noFaktur) && (
+                  <div className="flex justify-between gap-4"><dt className="shrink-0 text-steel-500">{S.detEfaktur}</dt><dd className="text-right font-mono text-xs text-navy-900">{String(invDetail.nsfp ?? "-")} / {String(invDetail.noFaktur ?? "-")}</dd></div>
+                )}
+              </dl>
+              <div>
+                <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-steel-500">{S.detLines.replace("{n}", String(lines.length))}</p>
+                <div className="overflow-x-auto">
+                  <table className="w-full">
+                    <thead className="bg-surface"><tr><th className="th">{S.colUraian}</th><th className="th">{S.detQty}</th><th className="th">{S.detPrice}</th><th className="th">{S.detAmount}</th></tr></thead>
+                    <tbody className="divide-y divide-steel-100">
+                      {lines.map((l: unknown, i: number) => {
+                        const r = l as Record<string, unknown>;
+                        return (
+                          <tr key={i}>
+                            <td className="td font-medium text-navy-900">{String(r.desc ?? "-")}</td>
+                            <td className="td text-steel-600">{String(r.qty ?? r.hours ?? "-")} {String(r.unit ?? "")}</td>
+                            <td className="td text-steel-600">{fmtRupiah(num(r.price ?? r.rate))}</td>
+                            <td className="td font-semibold">{fmtRupiah(num(r.amount ?? num(r.qty) * num(r.price)))}</td>
+                          </tr>
+                        );
+                      })}
+                      {lines.length === 0 && <tr><td colSpan={4} className="td text-center text-steel-400">-</td></tr>}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <div className="rounded-xl border border-steel-200 p-3">
+                  <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-steel-500">{S.detProof}</p>
+                  {bukti ? (
+                    <button type="button" onClick={() => window.open(bukti, "_blank")} className="block w-full overflow-hidden rounded-lg border border-steel-200" title={S.detOpenFull}>
+                      <SecureImg src={bukti} alt={`Bukti ${invDetail.id}`} className="h-44 w-full object-contain bg-steel-50" />
+                    </button>
+                  ) : <p className="text-xs italic text-steel-400">{S.detNoProof}</p>}
+                </div>
+                <div className="rounded-xl border border-steel-200 p-3">
+                  <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-steel-500">{S.detJournals.replace("{n}", String(relJurnal.length))}</p>
+                  {relJurnal.length === 0 && <p className="text-xs italic text-steel-400">{S.detNoJournal}</p>}
+                  <div className="max-h-44 space-y-1.5 overflow-y-auto">
+                    {relJurnal.map((j) => {
+                      const lamp = String(j.lampiranUrl ?? j.buktiUrl ?? "");
+                      return (
+                        <div key={String(j.id)} className="flex items-center gap-2 rounded-lg bg-surface px-2 py-1.5 text-xs">
+                          <span className="font-mono font-semibold text-navy-900">{String(j.dokumen ?? j.id)}</span>
+                          <span className="truncate text-steel-500">{String(j.uraian ?? "")}</span>
+                          <span className="ml-auto font-semibold">{fmtRupiah(num(j.amount))}</span>
+                          {lamp && <button type="button" className="font-semibold text-ocean-600 hover:underline" onClick={() => setJuViewer(j)}>{S.viewBtn}</button>}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
+            </div>
+          );
+        })()}
+      </Modal>
+
+      {/* Viewer lampiran jurnal (gambar). */}
+      <Modal open={juViewer !== null} onClose={() => setJuViewer(null)} title={juViewer ? S.juViewTitle.replace("{a}", String(juViewer.dokumen ?? juViewer.id)) : S.juAttachLabel}
+        subtitle={juViewer ? String(juViewer.uraian ?? "") : ""}
+        footer={<><button className="btn-secondary" onClick={() => setJuViewer(null)}>{S.cancelBtn}</button></>}>
+        {juViewer && (() => {
+          const lamp = String(juViewer.lampiranUrl ?? juViewer.buktiUrl ?? "");
+          return lamp ? (
+            <div className="overflow-hidden rounded-xl border border-steel-200">
+              <SecureImg src={lamp} alt={String(juViewer.dokumen ?? juViewer.id)} className="max-h-96 w-full object-contain bg-steel-50" />
+            </div>
+          ) : <p className="text-sm italic text-steel-400">{S.juNoAttach}</p>;
+        })()}
+      </Modal>
 
     </div>
   );
