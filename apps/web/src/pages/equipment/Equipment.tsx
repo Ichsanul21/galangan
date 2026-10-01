@@ -469,7 +469,7 @@ export default function EquipmentPage() {
   /* Baris tabel maintenance. Satu siklus per baris dari koleksi
      `maintenances`; equipment yang belum punya siklus TIDAK ikut tampil
      (dulu tabelnya iterating equipment, sehingga "jadwal servis berikutnya"
-     tercampur dengan riwayat servis laluRU). */
+     tercampur dengan riwayat servis sebelumnya). */
   /* Tarif tenaga per hari dari settings. Harus DILETAKKAN DI ATAS maintRows:
      useMemo menjalankan factory-nya saat render, jadi const yang dipanggil di
      dalamnya belum boleh dideklarasikan setelahnya (TDZ). */

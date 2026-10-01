@@ -1026,7 +1026,7 @@ export default function Procurement() {
     /* Nominal approval bertingkat (SPV/Manager/Director) dihitung dari
        amount. Kalau amount ikut berubah, level yang sudah disetujui jadi
        tidak sah - jadi approval di-reset ke Draft supaya dihitung ulang.
-       Ini，bukan diam-diamnya approval lama berlaku lebih aman. */
+       Ini, bukan diam-diamnya approval lama berlaku lebih aman. */
     const amountBaru = poLines({ ...editPo, qty }).reduce(
       (s, l) => s + Number(l.qty || 0) * Number(l.price || 0),
       0,
