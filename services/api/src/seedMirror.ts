@@ -48,6 +48,12 @@ const MAP: Array<[string, string]> = [
   ["seedTrials", "trials"],
   ["seedRequests", "requests"],
   ["seedClientPos", "clientPos"],
+  /* Batch terakhir (migrations/006_batch_akhir.sql). Tanpa baris ini, gudang /
+     siklus maintenance / arsip surat hanya ada di browser - server tetap
+     kosong sehingga user lain tidak melihat data yang sama. */
+  ["seedWarehouses", "warehouses"],
+  ["seedMaintenances", "maintenances"],
+  ["seedLetters", "letters"],
 ];
 
 const INDEX_MAP: Array<[string, string]> = [

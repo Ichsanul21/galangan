@@ -1,5 +1,5 @@
 // GENERATED — jangan edit manual. Dibuat oleh `npm run seed:mirror`
-// dari apps/web/src/data/seeds.ts + data/index.ts (295 baris).
+// dari apps/web/src/data/seeds.ts + data/index.ts (307 baris).
 export interface MirrorRow {
   table: string;
   id: string;
@@ -466,7 +466,7 @@ export const FE_MIRROR_ROWS: MirrorRow[] = [
     "data": {
       "equip": "Mobile Crane 100T",
       "proyek": "NB-2025-012",
-      "jam": "08:00–17:00",
+      "jam": "08:00-17:00",
       "status": "Terpakai",
       "date": "2026-08-02"
     }
@@ -478,7 +478,7 @@ export const FE_MIRROR_ROWS: MirrorRow[] = [
     "data": {
       "equip": "Mesin Las MIG",
       "proyek": "RP-2026-003",
-      "jam": "07:00–16:00",
+      "jam": "07:00-16:00",
       "status": "Terpakai",
       "date": "2026-08-02"
     }
@@ -490,7 +490,7 @@ export const FE_MIRROR_ROWS: MirrorRow[] = [
     "data": {
       "equip": "Forklift 10T",
       "proyek": "RP-2026-005",
-      "jam": "09:00–15:00",
+      "jam": "09:00-15:00",
       "status": "Terpakai",
       "date": "2026-08-02"
     }
@@ -502,7 +502,7 @@ export const FE_MIRROR_ROWS: MirrorRow[] = [
     "data": {
       "equip": "Gantry Crane 50T",
       "proyek": "NB-2025-014",
-      "jam": "08:00–12:00",
+      "jam": "08:00-12:00",
       "status": "Terjadwal",
       "date": "2026-08-03"
     }
@@ -1579,7 +1579,7 @@ export const FE_MIRROR_ROWS: MirrorRow[] = [
       "jasaTotal": 808550650,
       "matTotal": 711613605,
       "amount": 1520164255,
-      "dpp": 1393483901,
+      "dpp": 1393483900,
       "ppnAmt": 167218068,
       "pphAmt": 16171013,
       "dpApplied": 0,
@@ -1640,7 +1640,7 @@ export const FE_MIRROR_ROWS: MirrorRow[] = [
       "jasaTotal": 184349645,
       "matTotal": 543356806,
       "amount": 727706451,
-      "dpp": 727706451,
+      "dpp": 667064247,
       "ppnAmt": 0,
       "pphAmt": 3686993,
       "dpApplied": 0,
@@ -1694,7 +1694,7 @@ export const FE_MIRROR_ROWS: MirrorRow[] = [
     "id": "DOC-001",
     "branch": "",
     "data": {
-      "title": "Kontrak NB-2025-012 — TB Samudra Jaya 07",
+      "title": "Kontrak NB-2025-012 - TB Samudra Jaya 07",
       "type": "Kontrak",
       "project": "NB-2025-012",
       "vessel": "TB Samudra Jaya 07",
@@ -1739,7 +1739,7 @@ export const FE_MIRROR_ROWS: MirrorRow[] = [
     "id": "DOC-004",
     "branch": "",
     "data": {
-      "title": "Certificate of Class — TB Karya Bahari 12",
+      "title": "Certificate of Class - TB Karya Bahari 12",
       "type": "Sertifikat",
       "project": "RP-2026-003",
       "vessel": "TB Karya Bahari 12",
@@ -1769,7 +1769,7 @@ export const FE_MIRROR_ROWS: MirrorRow[] = [
     "id": "DOC-006",
     "branch": "",
     "data": {
-      "title": "Kontrak NB-2025-014 — TB Nusantara 22",
+      "title": "Kontrak NB-2025-014 - TB Nusantara 22",
       "type": "Kontrak",
       "project": "NB-2025-014",
       "vessel": "TB Nusantara 22",
@@ -1829,7 +1829,7 @@ export const FE_MIRROR_ROWS: MirrorRow[] = [
     "id": "DOC-010",
     "branch": "",
     "data": {
-      "title": "Stability Booklet — TB Nusantara 22",
+      "title": "Stability Booklet - TB Nusantara 22",
       "type": "Drawing",
       "project": "NB-2025-014",
       "vessel": "TB Nusantara 22",
@@ -1874,7 +1874,7 @@ export const FE_MIRROR_ROWS: MirrorRow[] = [
     "id": "DS-SB-2026-001",
     "branch": "",
     "data": {
-      "title": "Dock Space — BG RMN 3324",
+      "title": "Dock Space - BG RMN 3324",
       "type": "Dock Space",
       "project": "RP-2026-006",
       "vessel": "BG RMN 3324",
@@ -1890,7 +1890,7 @@ export const FE_MIRROR_ROWS: MirrorRow[] = [
     "id": "SJ-SMD-2026-001",
     "branch": "",
     "data": {
-      "title": "Surat Jalan — Material BG RMN 3324",
+      "title": "Surat Jalan - Material BG RMN 3324",
       "type": "Surat Jalan",
       "project": "RP-2026-006",
       "vessel": "BG RMN 3324",
@@ -1906,7 +1906,7 @@ export const FE_MIRROR_ROWS: MirrorRow[] = [
     "id": "TT-SMD-2026-001",
     "branch": "",
     "data": {
-      "title": "Tanda Terima — BG RMN 3324",
+      "title": "Tanda Terima - BG RMN 3324",
       "type": "Tanda Terima",
       "project": "RP-2026-006",
       "vessel": "BG RMN 3324",
@@ -1922,7 +1922,7 @@ export const FE_MIRROR_ROWS: MirrorRow[] = [
     "id": "BR-01",
     "branch": "",
     "data": {
-      "name": "Samarinda — Kantor Pusat",
+      "name": "Samarinda - Kantor Pusat",
       "city": "Samarinda",
       "isHQ": true
     }
@@ -1932,7 +1932,7 @@ export const FE_MIRROR_ROWS: MirrorRow[] = [
     "id": "BR-02",
     "branch": "",
     "data": {
-      "name": "Balikpapan — Galangan",
+      "name": "Balikpapan - Galangan",
       "city": "Balikpapan",
       "isHQ": false
     }
@@ -1942,7 +1942,7 @@ export const FE_MIRROR_ROWS: MirrorRow[] = [
     "id": "BR-03",
     "branch": "",
     "data": {
-      "name": "Banjarmasin — Workshop",
+      "name": "Banjarmasin - Workshop",
       "city": "Banjarmasin",
       "isHQ": false
     }
@@ -2030,9 +2030,9 @@ export const FE_MIRROR_ROWS: MirrorRow[] = [
       "overtimePay": 1200000,
       "deductions": 500000,
       "pph21": 1875000,
-      "bpjsKes": 540000,
-      "bpjsTk": 666000,
-      "net": 19569000,
+      "bpjsKes": 180000,
+      "bpjsTk": 360000,
+      "net": 20785000,
       "status": "Dibayar",
       "paidAt": "2026-07-31"
     }
@@ -2049,9 +2049,9 @@ export const FE_MIRROR_ROWS: MirrorRow[] = [
       "overtimePay": 800000,
       "deductions": 200000,
       "pph21": 950000,
-      "bpjsKes": 360000,
-      "bpjsTk": 444000,
-      "net": 13846000,
+      "bpjsKes": 120000,
+      "bpjsTk": 240000,
+      "net": 14290000,
       "status": "Dibayar",
       "paidAt": "2026-07-31"
     }
@@ -2427,7 +2427,7 @@ export const FE_MIRROR_ROWS: MirrorRow[] = [
     "branch": "",
     "data": {
       "projectId": "NB-2025-012",
-      "milestone": "Hull Assembly — BG RMN 3324",
+      "milestone": "Hull Assembly - BG RMN 3324",
       "tanggal": "2026-08-02",
       "penandatangan": "Hendra Wijaya / Owner BG RMN 3324",
       "lampiran": "Checklist hull + foto section 4-7",
@@ -2441,7 +2441,7 @@ export const FE_MIRROR_ROWS: MirrorRow[] = [
     "branch": "",
     "data": {
       "projectId": "RP-2026-003",
-      "milestone": "Docking Completion — V2 AWB SEA HAVEN 2",
+      "milestone": "Docking Completion - V2 AWB SEA HAVEN 2",
       "tanggal": "2026-08-04",
       "penandatangan": "Rudi Hartono / Master V2 AWB SEA HAVEN 2",
       "lampiran": "Docking report + thickness report",
@@ -2528,6 +2528,299 @@ export const FE_MIRROR_ROWS: MirrorRow[] = [
       "no": "PO-KTR-001/SB/VIII/2026",
       "amount": 1671211310,
       "date": "2026-08-01"
+    }
+  },
+  {
+    "table": "warehouses",
+    "id": "GDG-001",
+    "branch": "",
+    "data": {
+      "name": "Gudang Baja A",
+      "type": "Baja & Struktur",
+      "capacity": 8000,
+      "lokasi": "Area A - Dek Kiri",
+      "pic": "Agus Setiawan",
+      "aktif": true
+    }
+  },
+  {
+    "table": "warehouses",
+    "id": "GDG-002",
+    "branch": "",
+    "data": {
+      "name": "Gudang B",
+      "type": "Baja & Struktur",
+      "capacity": 2000,
+      "lokasi": "Area B - Dek Kanan",
+      "pic": "Agus Setiawan",
+      "aktif": true
+    }
+  },
+  {
+    "table": "warehouses",
+    "id": "GDG-003",
+    "branch": "",
+    "data": {
+      "name": "Gudang Listrik",
+      "type": "Kelistrikan",
+      "capacity": 1800,
+      "lokasi": "Area C - Blok Listrik",
+      "pic": "Rudi Hartono",
+      "aktif": true
+    }
+  },
+  {
+    "table": "warehouses",
+    "id": "GDG-004",
+    "branch": "",
+    "data": {
+      "name": "Gudang Pipa",
+      "type": "Pipa & Fitting",
+      "capacity": 60,
+      "lokasi": "Area D - Pipa",
+      "pic": "Fajar N.",
+      "aktif": true
+    }
+  },
+  {
+    "table": "warehouses",
+    "id": "GDG-005",
+    "branch": "",
+    "data": {
+      "name": "Gudang Rig",
+      "type": "Rigging & Wire",
+      "capacity": 40,
+      "lokasi": "Area E - Rigging",
+      "pic": "Fajar N.",
+      "aktif": true
+    }
+  },
+  {
+    "table": "warehouses",
+    "id": "GDG-006",
+    "branch": "",
+    "data": {
+      "name": "Gudang Mesin",
+      "type": "Sparepart Mesin",
+      "capacity": 30,
+      "lokasi": "Area F - Ruang Mesin",
+      "pic": "Budi Santoso",
+      "aktif": true
+    }
+  },
+  {
+    "table": "warehouses",
+    "id": "GDG-007",
+    "branch": "",
+    "data": {
+      "name": "Gudang Santi",
+      "type": "Consumable & Cat",
+      "capacity": 40,
+      "lokasi": "Area G - Consumable",
+      "pic": "Budi Santoso",
+      "aktif": true
+    }
+  },
+  {
+    "table": "maintenances",
+    "id": "MTE-2026-031",
+    "branch": "",
+    "data": {
+      "equipmentId": "EQ-004",
+      "equipmentName": "Mesin Las SMAW",
+      "tanggal": "2026-09-18",
+      "jenis": "Korektif",
+      "status": "Sedang Proses",
+      "teknisi": "Budi Santoso",
+      "teknisiId": "EMP-002",
+      "mulai": "2026-09-18",
+      "selesai": "",
+      "eta": "2026-09-22",
+      "catatan": "Ganti nozzle & kawat las, lasan retak pada torch neck",
+      "projectId": "NB-2025-012",
+      "projectName": "NB-2025-012",
+      "hours": 4100,
+      "hoursAfter": 4100,
+      "materials": [
+        {
+          "itemId": "INV-EL-002",
+          "name": "Kawat Las SMAW E7018",
+          "qty": 4,
+          "unit": "kg",
+          "cost": 95000
+        },
+        {
+          "itemId": "INV-EL-005",
+          "name": "Nozzle Torch SMAW",
+          "qty": 2,
+          "unit": "pcs",
+          "cost": 145000
+        }
+      ],
+      "materialCost": 670000,
+      "downtimeHours": 18,
+      "costTotal": 670000,
+      "createdAt": "2026-09-16",
+      "createdBy": "Anda",
+      "history": [
+        {
+          "at": "2026-09-16 08:10",
+          "from": "-",
+          "to": "Terjadwal",
+          "by": "Anda",
+          "note": "Rencana overhaul torch SMAW #04"
+        },
+        {
+          "at": "2026-09-18 07:45",
+          "from": "Terjadwal",
+          "to": "Sedang Proses",
+          "by": "Budi Santoso",
+          "note": "Masuk workshop, unit dilepas dari Floor 3"
+        }
+      ]
+    }
+  },
+  {
+    "table": "maintenances",
+    "id": "MTE-2026-030",
+    "branch": "",
+    "data": {
+      "equipmentId": "EQ-002",
+      "equipmentName": "Mobile Crane 100T",
+      "tanggal": "2026-09-05",
+      "jenis": "Preventif",
+      "status": "Selesai",
+      "teknisi": "Rudi Hartono",
+      "teknisiId": "EMP-004",
+      "mulai": "2026-09-05",
+      "selesai": "2026-09-06",
+      "eta": "2026-09-06",
+      "catatan": "Grease seluruh sheave, cek tension wire rope, kalibrasi load cell",
+      "projectId": "RP-2026-003",
+      "projectName": "RP-2026-003",
+      "hours": 18290,
+      "hoursAfter": 18320,
+      "materials": [
+        {
+          "itemId": "INV-ME-003",
+          "name": "Grease Lithium EP2",
+          "qty": 6,
+          "unit": "kg",
+          "cost": 180000
+        },
+        {
+          "itemId": "INV-ME-007",
+          "name": "Bearing 6212 ZZ",
+          "qty": 4,
+          "unit": "pcs",
+          "cost": 95000
+        }
+      ],
+      "materialCost": 1460000,
+      "downtimeHours": 9,
+      "costTotal": 1460000,
+      "createdAt": "2026-09-01",
+      "createdBy": "Anda",
+      "history": [
+        {
+          "at": "2026-09-01 09:00",
+          "from": "-",
+          "to": "Terjadwal",
+          "by": "Anda",
+          "note": "Preventif 250 jam"
+        },
+        {
+          "at": "2026-09-05 08:00",
+          "from": "Terjadwal",
+          "to": "Sedang Proses",
+          "by": "Rudi Hartono",
+          "note": ""
+        },
+        {
+          "at": "2026-09-06 15:30",
+          "from": "Sedang Proses",
+          "to": "Selesai",
+          "by": "Rudi Hartono",
+          "note": "Semua poin checklist lulus, unit kembali Floor 2"
+        }
+      ]
+    }
+  },
+  {
+    "table": "maintenances",
+    "id": "MTE-2026-029",
+    "branch": "",
+    "data": {
+      "equipmentId": "EQ-008",
+      "equipmentName": "Generator Set 500kVA",
+      "tanggal": "2026-10-10",
+      "jenis": "Preventif",
+      "status": "Terjadwal",
+      "teknisi": "Budi Santoso",
+      "teknisiId": "EMP-002",
+      "mulai": "",
+      "selesai": "",
+      "eta": "2026-10-12",
+      "catatan": "Ganti filter oli & bahan bakar, uji beban 100% 2 jam",
+      "projectId": "",
+      "projectName": "",
+      "hours": 15600,
+      "hoursAfter": 15600,
+      "materials": [
+        {
+          "itemId": "INV-ME-001",
+          "name": "Filter Oil 908",
+          "qty": 2,
+          "unit": "pcs",
+          "cost": 220000
+        }
+      ],
+      "materialCost": 440000,
+      "downtimeHours": 0,
+      "costTotal": 440000,
+      "createdAt": "2026-10-01",
+      "createdBy": "Anda",
+      "history": [
+        {
+          "at": "2026-10-01 07:20",
+          "from": "-",
+          "to": "Terjadwal",
+          "by": "Anda",
+          "note": "Preventif triwulan Q4"
+        }
+      ]
+    }
+  },
+  {
+    "table": "letters",
+    "id": "SRT-20260905-001",
+    "branch": "",
+    "data": {
+      "employeeId": "EMP-005",
+      "nama": "Sari Wahyuni",
+      "jenis": "SP 1",
+      "tanggal": "2026-09-05",
+      "isi": "Dengan hormat, atas nama perusahaan kami menyatakan bahwa nama tersebut benar-benar karyawan tetap PT Syukur Bersaudara dengan masa kerja aktif.",
+      "fileUrl": "",
+      "fileName": "",
+      "createdBy": "Anda",
+      "createdAt": "2026-09-05 10:00"
+    }
+  },
+  {
+    "table": "letters",
+    "id": "SRT-20260812-001",
+    "branch": "",
+    "data": {
+      "employeeId": "EMP-004",
+      "nama": "Rudi Hartono",
+      "jenis": "SP 3",
+      "tanggal": "2026-08-12",
+      "isi": "Sehubungan dengan berakhirnya kontrak kerja, kami memberitahukan bahwa nama tersebut tidak lagi diperlukan pada PT Syukur Bersaudara terhitung mulai 01 September 2026. Terima kasih atas kerja samanya.",
+      "fileUrl": "",
+      "fileName": "",
+      "createdBy": "Anda",
+      "createdAt": "2026-08-12 14:20"
     }
   },
   {
@@ -3117,7 +3410,7 @@ export const FE_MIRROR_ROWS: MirrorRow[] = [
     "id": "DD-1",
     "branch": "",
     "data": {
-      "name": "Drydock 1 — Panjang 120m",
+      "name": "Drydock 1 - Panjang 120m",
       "capacity": "120m / 12m / 6m draft",
       "status": "Terpakai"
     }
@@ -3127,7 +3420,7 @@ export const FE_MIRROR_ROWS: MirrorRow[] = [
     "id": "DD-2",
     "branch": "",
     "data": {
-      "name": "Drydock 2 — Panjang 90m",
+      "name": "Drydock 2 - Panjang 90m",
       "capacity": "90m / 10m / 5m draft",
       "status": "Terpakai"
     }

@@ -129,7 +129,7 @@ function shortSub(name: unknown): string {
 const SUB_COLS: CollectionKey[] = ["activities", "employees", "incidents", "payables", "projects", "subcontractors", "termins", "timesheets", "workOrders"];
 
 export default function Subcontractor() {
-  const { data, add, update, log, branch } = useStore();
+  const { data, add, update, remove, log, branch } = useStore();
   const { locale } = useT();
   const S = n_crm[locale];
   const subcontractors = data.subcontractors;
@@ -179,6 +179,14 @@ export default function Subcontractor() {
   const [releaseForm, setReleaseForm] = useState({ date: todayISO(), ba: "" });
   const [showTs, setShowTs] = useState(false);
   const [tsForm, setTsForm] = useState({ wo: "", employee: "", date: todayISO(), hours: "", note: "" });
+  // Ubah / hapus timesheet & termin. Edit hanya boleh saat belum Disetujui.
+  const [tsEditId, setTsEditId] = useState<string | null>(null);
+  const [delTs, setDelTs] = useState<StoreItem | null>(null);
+  const [delTerm, setDelTerm] = useState<StoreItem | null>(null);
+  /* Subkontraktor & WO belum punya hapus. Keduanya jadi acuan record
+     keuangan, jadi hanya boleh dihapus kalau belum ada yang merujuk. */
+  const [delSub, setDelSub] = useState<StoreItem | null>(null);
+  const [delWo, setDelWo] = useState<StoreItem | null>(null);
   const [rateForm, setRateForm] = useState({ wo: "", rate: "" });
 
   const runningWo = workOrders.filter((w) => w.status !== "Selesai").length;
@@ -655,6 +663,88 @@ export default function Subcontractor() {
     }
   };
 
+  /* ==== HAPUS TERMIN ==== */
+  const confirmDelTerm = async () => {
+    if (!delTerm) return;
+    const p = delTerm;
+    const st = normTerm(String(p.status));
+    const ret = retOf(p);
+    /* Lunas dengan retensi belum dilepas = uang retensi masih
+       tertahan. Menghapus di titik ini menghapus jejaknya tanpa
+       bukti pelepasan, jadi tolak dengan pesan yang jelas. */
+    if (st === "Lunas" && ret > 0) {
+      toast(
+        locale === "en"
+          ? `Retention on termin ${String(p.id)} has not been released - issue the retention BA first.`
+          : `Retensi pada termin ${String(p.id)} belum dilepas - terbitkan BA retensi dulu.`,
+        "info",
+      );
+      setDelTerm(null);
+      return;
+    }
+    try {
+      await remove("termins", String(p.id));
+      log("menghapus termin", `${String(p.id)} - ${fmtRupiah(Number(p.amount || 0))}`, "Subkontraktor");
+      toast(locale === "en" ? `Termin ${String(p.id)} deleted` : `Termin ${String(p.id)} dihapus`);
+      setDelTerm(null);
+    } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); }
+  };
+
+  /* ==== HAPUS SUBKONTRAKTOR / WORK ORDER ==== */
+  const subUsages = (s: StoreItem): string[] => {
+    const name = String(s.name ?? "");
+    const out: string[] = [];
+    if (workOrders.some((w) => sameName(w.sub, name))) out.push("workOrders");
+    if (payments.some((t) => sameName(t.sub, name))) out.push("termins");
+    if (data.payables.some((p) => sameName(String(p.sub ?? ""), name))) out.push("payables");
+    if (data.activities.some((a) => sameName(String(a.sub ?? ""), name))) out.push("activities");
+    return out;
+  };
+
+  const woUsages = (w: StoreItem): string[] => {
+    const out: string[] = [];
+    if (timesheets.some((t) => String(t.woId ?? "") === String(w.id))) out.push("timesheets");
+    if (payments.some((t) => String(t.wo ?? t.woId ?? "") === String(w.id))) out.push("termins");
+    if (data.payables.some((p) => String(p.woId ?? "") === String(w.id))) out.push("payables");
+    return out;
+  };
+
+  const confirmDelSub = async () => {
+    if (!delSub) return;
+    const used = subUsages(delSub);
+    if (used.length > 0) {
+      toast(locale === "en"
+        ? `${delSub.name} is still referenced in ${used.join(", ")} - cancel those records first.`
+        : `${delSub.name} masih dirujuk di ${used.join(", ")} - batalkan record itu dulu.`, "info");
+      setDelSub(null);
+      return;
+    }
+    try {
+      await remove("subcontractors", String(delSub.id));
+      log("menghapus subkontraktor", `${String(delSub.id)} - ${String(delSub.name ?? "")}`, "Subkontraktor");
+      toast(locale === "en" ? `Subcontractor ${String(delSub.name ?? "")} deleted` : `Subkontraktor ${String(delSub.name ?? "")} dihapus`);
+      setDelSub(null);
+    } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); }
+  };
+
+  const confirmDelWo = async () => {
+    if (!delWo) return;
+    const used = woUsages(delWo);
+    if (used.length > 0) {
+      toast(locale === "en"
+        ? `Work order ${String(delWo.id)} is still referenced in ${used.join(", ")} - void those records first.`
+        : `Work order ${String(delWo.id)} masih dirujuk di ${used.join(", ")} - batalkan record itu dulu.`, "info");
+      setDelWo(null);
+      return;
+    }
+    try {
+      await remove("workOrders", String(delWo.id));
+      log("menghapus work order", `${String(delWo.id)} - ${String(delWo.sub ?? "")}`, "Subkontraktor");
+      toast(locale === "en" ? `Work order ${String(delWo.id)} deleted` : `Work order ${String(delWo.id)} dihapus`);
+      setDelWo(null);
+    } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); }
+  };
+
   const saveTimesheet = async () => {
     try {
     if (!tsForm.wo || !tsForm.employee || !tsForm.date) { toast(S.tTsFieldsRequired, "info"); return; }
@@ -663,14 +753,67 @@ export default function Subcontractor() {
     const wo = workOrders.find((w) => w.id === tsForm.wo);
     const projectId = String(wo?.project ?? "");
     const rate = Number(wo?.rate || 0);
-    const created = await add("timesheets", {
+    const payload = {
       woId: tsForm.wo, employeeId: tsForm.employee, date: tsForm.date, hours, note: tsForm.note.trim(),
-      projectId, rate, cost: Math.round(hours * rate), status: "Diajukan",
+      projectId, rate, cost: Math.round(hours * rate),
       branch: branchOfEmployee(tsForm.employee),
-    }, { action: "mencatat timesheet", module: "Subkontraktor" });
-    toast(S.tTsLogged.replace("{a}", created.id).replace("{b}", String(hours)));
+    };
+    if (tsEditId) {
+      /* Koreksi timesheet: biaya dihitung ULANG dari tarif WO saat ini.
+         Bila tarif berubah setelah pencatatan, angka kost ikut bergerak -
+         itu benar karena termin dihitung dari timesheet × tarif. */
+      const prev = timesheets.find((x) => String(x.id) === tsEditId);
+      if (String(prev?.status ?? "Diajukan") === "Disetujui") {
+        toast(
+          locale === "en"
+            ? `Timesheet ${tsEditId} is already approved - void it in the termin instead.`
+            : `Timesheet ${tsEditId} sudah disetujui - void di termin.`,
+          "info",
+        );
+        return;
+      }
+      await update("timesheets", tsEditId, { ...payload, status: String(prev?.status ?? "Diajukan") });
+      log("mengubah timesheet", `${tsEditId} - ${hours} jam`, "Subkontraktor");
+      toast(locale === "en" ? `Timesheet ${tsEditId} updated` : `Timesheet ${tsEditId} diperbarui`);
+      setTsEditId(null);
+    } else {
+      const created = await add("timesheets", { ...payload, status: "Diajukan" }, { action: "mencatat timesheet", module: "Subkontraktor" });
+      toast(S.tTsLogged.replace("{a}", created.id).replace("{b}", String(hours)));
+    }
     setShowTs(false);
     setTsForm({ wo: "", employee: "", date: todayISO(), hours: "", note: "" });
+    } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); }
+  };
+
+  /* ==== UBAH / HAPUS TIMESHEET ==== */
+  const openTsEdit = (t: StoreItem) => {
+    setTsEditId(String(t.id));
+    setTsForm({
+      wo: String(t.woId ?? ""),
+      employee: String(t.employeeId ?? ""),
+      date: String(t.date ?? todayISO()),
+      hours: String(Number(t.hours || 0)),
+      note: String(t.note ?? ""),
+    });
+    setShowTs(true);
+  };
+
+  const confirmDelTs = async () => {
+    if (!delTs) return;
+    if (String(delTs.status ?? "Diajukan") === "Disetujui") {
+      toast(
+        locale === "en"
+          ? `Timesheet ${delTs.id} is approved and already feeds the termin - void the termin instead.`
+          : `Timesheet ${delTs.id} sudah disetujui dan sudah jadi dasar termin - void terminnya.`,
+        "info",
+      );
+      return;
+    }
+    try {
+      await remove("timesheets", String(delTs.id));
+      log("menghapus timesheet", `${delTs.id} - ${String(delTs.hours ?? 0)} jam`, "Subkontraktor");
+      toast(locale === "en" ? `Timesheet ${delTs.id} deleted` : `Timesheet ${delTs.id} dihapus`);
+      setDelTs(null);
     } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); }
   };
 
@@ -825,6 +968,11 @@ export default function Subcontractor() {
                         {S.toNextBtn.replace("{n}", next)}
                       </button>
                     ))}
+                    {subUsages(s).length === 0 ? (
+                      <button className="btn-secondary text-xs text-rose-600" onClick={() => setDelSub(s)}>{locale === "en" ? "Delete" : "Hapus"}</button>
+                    ) : (
+                      <span className="text-xs text-steel-400" title={subUsages(s).join(", ")}>{locale === "en" ? "Locked" : "Terkunci"}</span>
+                    )}
                   </div>
                 </Card>
               ))}
@@ -880,6 +1028,11 @@ export default function Subcontractor() {
                         )}
                         {Number(w.progress || 0) < 100 && w.targetDate && daysLate(String(w.targetDate)) > 0 && !w.penaltyAt && (
                           <button className="btn-secondary text-xs" aria-label={S.logPenaltyAria.replace("{n}", w.id)} onClick={() => recordPenalty(w)}>{S.logPenaltyBtn}</button>
+                        )}
+                        {woUsages(w).length === 0 ? (
+                          <button className="btn-secondary text-xs text-rose-600" aria-label={`${locale === "en" ? "Delete" : "Hapus"} ${w.id}`} onClick={() => setDelWo(w)}>{locale === "en" ? "Delete" : "Hapus"}</button>
+                        ) : (
+                          <span className="text-xs text-steel-400" title={woUsages(w).join(", ")}>{locale === "en" ? "Locked" : "Terkunci"}</span>
                         )}
                       </div>
                     </div>
@@ -966,11 +1119,32 @@ export default function Subcontractor() {
                               </button>
                             )}
                             {normTerm(String(p.status)) === "Draf" && (
-                              <button className="btn-secondary text-xs" aria-label={`${locale === "en" ? "Edit" : "Ubah"} ${p.id}`} onClick={() => openTermEdit(p)}>
-                                {locale === "en" ? "Edit" : "Ubah"}
-                              </button>
+                              <>
+                                <button className="btn-secondary text-xs" aria-label={`${locale === "en" ? "Edit" : "Ubah"} ${p.id}`} onClick={() => openTermEdit(p)}>
+                                  {locale === "en" ? "Edit" : "Ubah"}
+                                </button>
+                                {/* Hapus termin hanya sah saat masih Draf. Modul ini
+                                    sebelumnya sama sekali tidak punya remove(), jadi
+                                    termin salah nominal pun nyangkut selamanya. Setelah
+                                    Disetujui termin sudah jadi dokumen pembayaran dan
+                                    tidak boleh hilang tanpa pembatalan. */}
+                                <button
+                                  className="btn-secondary text-xs text-rose-600"
+                                  aria-label={`${locale === "en" ? "Delete" : "Hapus"} ${p.id}`}
+                                  onClick={() => setDelTerm(p)}
+                                >
+                                  {locale === "en" ? "Delete" : "Hapus"}
+                                </button>
+                              </>
                             )}
-                            {termNext(p.status).length === 0 && !canRelease && <span className="text-xs text-steel-400">-</span>}
+                            {normTerm(String(p.status)) === "Lunas" && retOf(p) > 0 && (
+                              <span className="text-xs text-steel-400" title={locale === "en"
+                                ? `Retention of ${fmtRupiah(Number(p.amount || 0) * retOf(p) / 100)} is still held - release it before deleting.`
+                                : `Retensi ${fmtRupiah(Number(p.amount || 0) * retOf(p) / 100)} masih tertahan - lepaskan dulu sebelum menghapus.`}>
+                                {locale === "en" ? "Locked" : "Terkunci"}
+                              </span>
+                            )}
+                            {termNext(p.status).length === 0 && !canRelease && normTerm(String(p.status)) !== "Draf" && normTerm(String(p.status)) !== "Lunas" && <span className="text-xs text-steel-400">-</span>}
                           </div>
                         </td>
                       </tr>
@@ -1041,9 +1215,41 @@ export default function Subcontractor() {
                         <td className="td"><Badge tone={String(t.status ?? "Diajukan") === "Disetujui" ? "green" : "amber"}>{t.status ?? "Diajukan"}</Badge></td>
                         <td className="td text-steel-600 text-xs">{t.note ?? "-"}</td>
                         <td className="td">
-                          {String(t.status ?? "Diajukan") !== "Disetujui"
-                            ? <button className="btn-primary text-xs" aria-label={S.approveAria.replace("{n}", t.id)} onClick={() => approveTimesheet(t)}>{S.approveBtn}</button>
-                            : <span className="text-xs text-steel-400">-</span>}
+                          <div className="flex flex-wrap gap-1.5">
+                            {String(t.status ?? "Diajukan") !== "Disetujui"
+                              ? <button className="btn-primary text-xs" aria-label={S.approveAria.replace("{n}", t.id)} onClick={() => approveTimesheet(t)}>{S.approveBtn}</button>
+                              : null}
+                            {/* Ubah/Hapus timesheet. Dulu tabelnya hanya punya
+                                Setujui. Timesheet yang jamnya salah ketik (paling
+                                sering - workforce submits by paper) tidak bisa
+                                dikoreksi, dan yang sudah Disetujui sudah jadi
+                                dasar termin, jadi tidak bisa dihapus. */}
+                            {String(t.status ?? "Diajukan") !== "Disetujui" && (
+                              <>
+                                <button
+                                  className="btn-secondary text-xs"
+                                  aria-label={`${locale === "en" ? "Edit" : "Ubah"} ${String(t.id)}`}
+                                  onClick={() => openTsEdit(t)}
+                                >
+                                  {locale === "en" ? "Edit" : "Ubah"}
+                                </button>
+                                <button
+                                  className="btn-secondary text-xs text-rose-600"
+                                  aria-label={`${locale === "en" ? "Delete" : "Hapus"} ${String(t.id)}`}
+                                  onClick={() => setDelTs(t)}
+                                >
+                                  {locale === "en" ? "Delete" : "Hapus"}
+                                </button>
+                              </>
+                            )}
+                            {String(t.status ?? "Diajukan") === "Disetujui" && (
+                              <span className="text-xs text-steel-400" title={locale === "en"
+                                ? "Already approved - changes would invalidate the termin it feeds."
+                                : "Sudah disetujui - perubahan membatalkan termin yang turun dari timesheet ini."}>
+                                {locale === "en" ? "Locked" : "Terkunci"}
+                              </span>
+                            )}
+                          </div>
                         </td>
                       </tr>
                     ))}
@@ -1376,9 +1582,9 @@ export default function Subcontractor() {
         </div>
       </Modal>
 
-      {/* Modal timesheet */}
-      <Modal open={showTs} onClose={() => setShowTs(false)} title={S.tsTitle}
-        footer={<><button className="btn-secondary" onClick={() => setShowTs(false)}>{S.cancelBtn}</button><button className="btn-primary" onClick={saveTimesheet}>{S.saveBtn}</button></>}>
+      {/* Modal timesheet - dipakai untuk catat baru maupun koreksi */}
+      <Modal open={showTs} onClose={() => { setShowTs(false); setTsEditId(null); }} title={tsEditId ? `${locale === "en" ? "Edit" : "Ubah"} ${S.tsTitle}` : S.tsTitle}
+        footer={<><button className="btn-secondary" onClick={() => { setShowTs(false); setTsEditId(null); }}>{S.cancelBtn}</button><button className="btn-primary" onClick={saveTimesheet}>{S.saveBtn}</button></>}>
         <div className="space-y-3">
           <FormGrid>
             <Field label={S.woLabel}>
@@ -1404,6 +1610,69 @@ export default function Subcontractor() {
           <Field label={S.noteLabel}><input className="input" value={tsForm.note} onChange={(e) => setTsForm({ ...tsForm, note: e.target.value })} placeholder={S.notePhTs} /></Field>
         </div>
       </Modal>
+
+      <ConfirmModal
+        open={delSub !== null}
+        title={delSub ? (locale === "en" ? `Delete subcontractor ${String(delSub.name ?? "")}?` : `Hapus subkontraktor ${String(delSub.name ?? "")}?`) : ""}
+        desc={delSub ? (subUsages(delSub).length > 0
+          ? (locale === "en"
+            ? `Still referenced in ${subUsages(delSub).join(", ")} - deletion is blocked.`
+            : `Masih dirujuk di ${subUsages(delSub).join(", ")} - penghapusan diblokir.`)
+          : (locale === "en"
+            ? `${String(delSub.services ?? "")} with ${milestonesOf(delSub).length} milestone(s) will be removed.`
+            : `${String(delSub.services ?? "")} beserta ${milestonesOf(delSub).length} milestone akan dihapus.`)) : ""}
+        confirmLabel={locale === "en" ? "Delete" : "Hapus"}
+        danger
+        confirmDisabled={delSub ? subUsages(delSub).length > 0 : false}
+        onCancel={() => setDelSub(null)}
+        onConfirm={confirmDelSub}
+      />
+
+      <ConfirmModal
+        open={delWo !== null}
+        title={delWo ? (locale === "en" ? `Delete work order ${String(delWo.id)}?` : `Hapus work order ${String(delWo.id)}?`) : ""}
+        desc={delWo ? (woUsages(delWo).length > 0
+          ? (locale === "en"
+            ? `Still referenced in ${woUsages(delWo).join(", ")} - deletion is blocked.`
+            : `Masih dirujuk di ${woUsages(delWo).join(", ")} - penghapusan diblokir.`)
+          : (locale === "en"
+            ? `${String(delWo.scope ?? "")} at ${effProgress(delWo)}% progress will be removed.`
+            : `${String(delWo.scope ?? "")} dengan progres ${effProgress(delWo)}% akan dihapus.`)) : ""}
+        confirmLabel={locale === "en" ? "Delete" : "Hapus"}
+        danger
+        confirmDisabled={delWo ? woUsages(delWo).length > 0 : false}
+        onCancel={() => setDelWo(null)}
+        onConfirm={confirmDelWo}
+      />
+
+      {/* Konfirmasi hapus timesheet */}
+      <ConfirmModal
+        open={delTs !== null}
+        title={delTs ? `${locale === "en" ? "Delete timesheet" : "Hapus timesheet"} ${String(delTs.id)}?` : ""}
+        desc={delTs
+          ? (locale === "en"
+            ? `${String(delTs.hours ?? 0)}h on ${fmtTanggal(delTs.date)} will be removed and the termin estimate recalculated.`
+            : `${String(delTs.hours ?? 0)} jam pada ${fmtTanggal(delTs.date)} akan dihapus dan estimasi termin dihitung ulang.`)
+          : ""}
+        confirmLabel={locale === "en" ? "Delete" : "Hapus"}
+        danger
+        onCancel={() => setDelTs(null)}
+        onConfirm={confirmDelTs}
+      />
+
+      {/* Konfirmasi hapus termin */}
+      <ConfirmModal
+        open={delTerm !== null}
+        title={delTerm ? `${locale === "en" ? "Delete termin" : "Hapus termin"} ${String(delTerm.id)}?` : ""}
+        desc={delTerm ? (locale === "en"
+          ? `Termin ${String(delTerm.id)} for ${fmtRupiah(Number(delTerm.amount || 0))} is still a draft, so nothing has been paid against it yet.`
+          : `Termin ${String(delTerm.id)} senilai ${fmtRupiah(Number(delTerm.amount || 0))} masih draf, jadi belum ada pembayaran yang tercatat.`)
+          : ""}
+        confirmLabel={locale === "en" ? "Delete" : "Hapus"}
+        danger
+        onCancel={() => setDelTerm(null)}
+        onConfirm={confirmDelTerm}
+      />
     </div>
   );
 }

@@ -282,3 +282,104 @@ export const seedRequests: StoreItem[] = [
 export const seedClientPos: StoreItem[] = [
   { id: "CPO-SB-001", contractId: "KTR-SB-001", projectId: "RP-2026-006", no: "PO-KTR-001/SB/VIII/2026", amount: 1671211310, date: "2026-08-01" },
 ];
+
+/* ============ BATCH TERAKHIR: gudang · maintenance · surat ============ */
+
+/* Gudang. Kapasitas TIDAK dicampur satuan (satuan dicampur), jadi nilainya
+   batas perkiraan: dipakai sebagai pembatas progress bar di tab "Stok per
+   Gudang", bukan hitungan volume riil. Nilai awal disalin dari JSON lama
+   settings.WAREHOUSE_CAP supaya angka yang sudah biasa dibaca tidak berubah;
+   baris SET-WHCAP tetap ada sebagai fallback untuk gudang yang belum punya
+   baris di koleksi ini (lihat utils/warehouse.ts: capacityOf). */
+export const seedWarehouses: StoreItem[] = [
+  { id: "GDG-001", name: "Gudang Baja A", type: "Baja & Struktur", capacity: 8000, lokasi: "Area A - Dek Kiri", pic: "Agus Setiawan", aktif: true },
+  { id: "GDG-002", name: "Gudang B", type: "Baja & Struktur", capacity: 2000, lokasi: "Area B - Dek Kanan", pic: "Agus Setiawan", aktif: true },
+  { id: "GDG-003", name: "Gudang Listrik", type: "Kelistrikan", capacity: 1800, lokasi: "Area C - Blok Listrik", pic: "Rudi Hartono", aktif: true },
+  { id: "GDG-004", name: "Gudang Pipa", type: "Pipa & Fitting", capacity: 60, lokasi: "Area D - Pipa", pic: "Fajar N.", aktif: true },
+  { id: "GDG-005", name: "Gudang Rig", type: "Rigging & Wire", capacity: 40, lokasi: "Area E - Rigging", pic: "Fajar N.", aktif: true },
+  { id: "GDG-006", name: "Gudang Mesin", type: "Sparepart Mesin", capacity: 30, lokasi: "Area F - Ruang Mesin", pic: "Budi Santoso", aktif: true },
+  { id: "GDG-007", name: "Gudang Santi", type: "Consumable & Cat", capacity: 40, lokasi: "Area G - Consumable", pic: "Budi Santoso", aktif: true },
+];
+
+/* Siklus maintenance equipment. Dulu status hidup tersebar di nextService +
+   field equipment.{scheduledService,lastServiceMaterials}. Sekarang satu baris
+   per siklus dengan status berurutan (Dibatalkan juga sah):
+     Terjadwal -> Sedang Proses -> Selesai
+   materials[] sudah dinormalisasi (snapshot); baris REALISASI yang sudah
+   (status Selesai) owns data; utils/maintenance.ts: restoreStockOnUnrealize(). */
+export const seedMaintenances: StoreItem[] = [
+  {
+    id: "MTE-2026-031", equipmentId: "EQ-004", equipmentName: "Mesin Las SMAW",
+    tanggal: "2026-09-18", jenis: "Korektif", status: "Sedang Proses",
+    teknisi: "Budi Santoso", teknisiId: "EMP-002",
+    mulai: "2026-09-18", selesai: "", eta: "2026-09-22",
+    catatan: "Ganti nozzle & kawat las, lasan retak pada torch neck",
+    projectId: "NB-2025-012", projectName: "NB-2025-012",
+    hours: 4100, hoursAfter: 4100,
+    materials: [
+      { itemId: "INV-EL-002", name: "Kawat Las SMAW E7018", qty: 4, unit: "kg", cost: 95000 },
+      { itemId: "INV-EL-005", name: "Nozzle Torch SMAW", qty: 2, unit: "pcs", cost: 145000 },
+    ],
+    materialCost: 670000, downtimeHours: 18, costTotal: 670000,
+    createdAt: "2026-09-16", createdBy: "Anda",
+    history: [
+      { at: "2026-09-16 08:10", from: "-", to: "Terjadwal", by: "Anda", note: "Rencana overhaul torch SMAW #04" },
+      { at: "2026-09-18 07:45", from: "Terjadwal", to: "Sedang Proses", by: "Budi Santoso", note: "Masuk workshop, unit dilepas dari Floor 3" },
+    ],
+  },
+  {
+    id: "MTE-2026-030", equipmentId: "EQ-002", equipmentName: "Mobile Crane 100T",
+    tanggal: "2026-09-05", jenis: "Preventif", status: "Selesai",
+    teknisi: "Rudi Hartono", teknisiId: "EMP-004",
+    mulai: "2026-09-05", selesai: "2026-09-06", eta: "2026-09-06",
+    catatan: "Grease seluruh sheave, cek tension wire rope, kalibrasi load cell",
+    projectId: "RP-2026-003", projectName: "RP-2026-003",
+    hours: 18290, hoursAfter: 18320,
+    materials: [
+      { itemId: "INV-ME-003", name: "Grease Lithium EP2", qty: 6, unit: "kg", cost: 180000 },
+      { itemId: "INV-ME-007", name: "Bearing 6212 ZZ", qty: 4, unit: "pcs", cost: 95000 },
+    ],
+    materialCost: 1460000, downtimeHours: 9, costTotal: 1460000,
+    createdAt: "2026-09-01", createdBy: "Anda",
+    history: [
+      { at: "2026-09-01 09:00", from: "-", to: "Terjadwal", by: "Anda", note: "Preventif 250 jam" },
+      { at: "2026-09-05 08:00", from: "Terjadwal", to: "Sedang Proses", by: "Rudi Hartono", note: "" },
+      { at: "2026-09-06 15:30", from: "Sedang Proses", to: "Selesai", by: "Rudi Hartono", note: "Semua poin checklist lulus, unit kembali Floor 2" },
+    ],
+  },
+  {
+    id: "MTE-2026-029", equipmentId: "EQ-008", equipmentName: "Generator Set 500kVA",
+    tanggal: "2026-10-10", jenis: "Preventif", status: "Terjadwal",
+    teknisi: "Budi Santoso", teknisiId: "EMP-002",
+    mulai: "", selesai: "", eta: "2026-10-12",
+    catatan: "Ganti filter oli & bahan bakar, uji beban 100% 2 jam",
+    projectId: "", projectName: "",
+    hours: 15600, hoursAfter: 15600,
+    materials: [
+      { itemId: "INV-ME-001", name: "Filter Oil 908", qty: 2, unit: "pcs", cost: 220000 },
+    ],
+    materialCost: 440000, downtimeHours: 0, costTotal: 440000,
+    createdAt: "2026-10-01", createdBy: "Anda",
+    history: [
+      { at: "2026-10-01 07:20", from: "-", to: "Terjadwal", by: "Anda", note: "Preventif triwulan Q4" },
+    ],
+  },
+];
+
+/* Arsip surat SDM. Dulu useDraftState("isms.draft.hr.arsipSurat") - hilang
+   saat cache browser dibersihkan dan tidak pernah sampai ke server. */
+export const seedLetters: StoreItem[] = [
+  {
+    id: "SRT-20260905-001", employeeId: "EMP-005", nama: "Sari Wahyuni",
+    jenis: "SP 1", tanggal: "2026-09-05",
+    isi: "Dengan hormat, atas nama perusahaan kami menyatakan bahwa nama tersebut benar-benar karyawan tetap PT Syukur Bersaudara dengan masa kerja aktif.",
+    fileUrl: "", fileName: "", createdBy: "Anda", createdAt: "2026-09-05 10:00",
+  },
+  {
+    id: "SRT-20260812-001", employeeId: "EMP-004", nama: "Rudi Hartono",
+    jenis: "SP 3", tanggal: "2026-08-12",
+    isi: "Sehubungan dengan berakhirnya kontrak kerja, kami memberitahukan bahwa nama tersebut tidak lagi diperlukan pada PT Syukur Bersaudara terhitung mulai 01 September 2026. Terima kasih atas kerja samanya.",
+    fileUrl: "", fileName: "", createdBy: "Anda", createdAt: "2026-08-12 14:20",
+  },
+];
+

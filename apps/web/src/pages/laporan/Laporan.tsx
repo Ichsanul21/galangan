@@ -6,10 +6,11 @@ import { FileText } from "lucide-react";
 import { Card, CardHeader, PageHeader, StatusBadge, Badge, KpiCard, EmptyState, ProgressBar, Donut, toast, AsyncButton } from "../../components/ui";
 import { useStore } from "../../data/store";
 import type { StoreItem, CollectionKey } from "../../data/store";
-import { useModuleSync } from "../../data/useModuleSync";
-import { fmtTanggal, fmtRupiah, fmtMiliar, fmtJumlah, todayISO } from "../../utils/format";
+import { useModuleSync, useProjectWbsSync } from "../../data/useModuleSync";
+import { fmtTanggal, fmtRupiah, fmtMiliar, fmtJumlah, fmtBulan, todayISO } from "../../utils/format";
 import { SB_KOP } from "../../utils/sb";
 import { getSetting } from "../../utils/settings";
+import { equipmentCostSummary } from "../../utils/projectCost";
 import { useT } from "../../i18n/LanguageContext";
 import { n_misc } from "../../i18n/n_misc";
 import { exportExcelSheets, exportPDF } from "../../utils/export";
@@ -89,8 +90,10 @@ function loadArc(): ReportArc[] {
   } catch { return []; }
 }
 
-/* Batch koleksi modul Laporan untuk useModuleSync (pengganti resync penuh). */
-const LAP_COLS: CollectionKey[] = ["activities", "attendance", "boq", "branches", "incidents", "invoices", "ncr", "payables", "payroll", "projects", "purchaseOrders", "taxPeriods"];
+/* Batch koleksi modul Laporan untuk useModuleSync (pengganti resync penuh).
+   `equipment`, `bookings`, `maintenances`, `payables` ditambahkan supaya
+   kartu biaya equipment per proyek benar-benar terisi di mode remote. */
+const LAP_COLS: CollectionKey[] = ["activities", "attendance", "boq", "branches", "equipment", "bookings", "maintenances", "incidents", "invoices", "ncr", "payables", "payroll", "projects", "purchaseOrders", "taxPeriods"];
 
 export default function Laporan() {
 
@@ -191,12 +194,30 @@ export default function Laporan() {
   const projectsVisible = useMemo(() => inBranch(data.projects ?? []), [data.projects, branch]);
   const activeProjectId = projectId || projectsVisible[0]?.id || "";
   const project = projectsVisible.find((p) => p.id === activeProjectId);
-  const wbsTop = project && data.wbsByProject?.[project.id]?.length ? wbsFor(project.id).slice(0, 5) : [];
+  /* WBS: `wbsByProject` bukan koleksi array sehingga TIDAK bisa ikut
+     useModuleSync (lihat utils/useModuleSync.ts useProjectWbsSync).
+     Sebelum hook ini, kartu "WBS Teratas" + sheet Excel-nya hanya membaca
+     cache lokal - di mode remote selalu basi atau kosong untuk proyek yang
+     belum pernah dibuka halaman detail. */
+  const { syncing: wbsSyncing, byProject: wbsById } = useProjectWbsSync(
+    activeProjectId !== "" ? [activeProjectId] : [],
+  );
+  const wbsTop = project
+    ? (wbsById[project.id] ?? wbsFor(project.id)).slice(0, 5)
+    : [];
   const boqRows = (data.boq ?? []).filter((b) => String(b.projectId ?? b.project ?? "") === activeProjectId);
   const boqTotal = boqRows.reduce((s, b) => s + (num(b.totalPrice) || num(b.quantity) * num(b.unitPrice)), 0);
   const projInvoices = (data.invoices ?? []).filter((i) => String(i.project) === activeProjectId);
   const projInvTotal = projInvoices.reduce((s, i) => s + num(i.amount), 0);
   const projNcr = (data.ncr ?? []).filter((n) => String(n.project) === activeProjectId);
+  /* Biaya equipment proyek ini (sewa alokasi + material maintenance).
+     Sumber angka sama dengan ProjectDetail & modul Equipment. */
+  const equipCost = equipmentCostSummary(
+    activeProjectId,
+    inBranch(data.bookings ?? []),
+    inBranch(data.maintenances ?? []),
+    data.equipment ?? [],
+  );
   const projActivities = (data.activities ?? []).filter((a) => String(a.target ?? "").includes(activeProjectId)).slice(0, 5);
 
   const prevMonth = shiftMonth(month, -1);
@@ -459,18 +480,18 @@ export default function Laporan() {
           <div className="space-y-4">
             <p className="text-sm text-steel-500">{S.weekRangeProjects.replace("{a}", fmtTanggal(week0)).replace("{b}", fmtTanggal(week1)).replace("{n}", fmtJumlah(weekly.projects.length))}</p>
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4" style={printAvoid}>
-              <KpiCard label={S.kpiActiveProject} value={dashIf(true, fmtJumlah(weekly.projects.length))} hint={dashIf(weekly.projects.length > 0, S.avgProgressHint.replace("{n}", String(Math.round(weekly.avgProgress))))} chip="navy" />
-              <KpiCard label={S.kpiInvoiceIssuedPaid} value={dashIf(true, `${fmtJumlah(weekly.invTerbit.length)} / ${fmtJumlah(weekly.invLunas.length)}`)} hint={dashIf(weekly.invTerbit.length + weekly.invLunas.length > 0, fmtRupiah(weekly.invLunasVal))} chip="teal" />
-              <KpiCard label={S.kpiPoIssued} value={dashIf(true, fmtJumlah(weekly.po.length))} hint={dashIf(weekly.po.length > 0, fmtRupiah(weekly.poVal))} chip="amber" />
+              <KpiCard label={S.kpiActiveProject} value={dashIf(weekly.projects.length > 0, fmtJumlah(weekly.projects.length))} hint={dashIf(weekly.projects.length > 0, S.avgProgressHint.replace("{n}", String(Math.round(weekly.avgProgress))))} chip="navy" />
+              <KpiCard label={S.kpiInvoiceIssuedPaid} value={dashIf(weekly.invTerbit.length + weekly.invLunas.length > 0, `${fmtJumlah(weekly.invTerbit.length)} / ${fmtJumlah(weekly.invLunas.length)}`)} hint={dashIf(weekly.invTerbit.length + weekly.invLunas.length > 0, fmtRupiah(weekly.invLunasVal))} chip="teal" />
+              <KpiCard label={S.kpiPoIssued} value={dashIf(weekly.po.length > 0, fmtJumlah(weekly.po.length))} hint={dashIf(weekly.po.length > 0, fmtRupiah(weekly.poVal))} chip="amber" />
               <KpiCard label={S.kpiAttendance} value={dashIf(weekly.att.length > 0, `${Math.round(weekly.hadirPct)}%`)} hint={dashIf(weekly.att.length > 0, S.attendanceHint.replace("{a}", fmtJumlah(weekly.hadir)).replace("{b}", fmtJumlah(weekly.att.length)))} chip="violet" />
             </div>
             <div style={printAvoid}>
             <Card className="p-4">
               <CardHeader title={S.compareLastWeek} subtitle={`${fmtTanggal(weekPrev0)} → ${fmtTanggal(weekPrev1)}`} />
               <div className="grid grid-cols-1 gap-2 px-5 pb-5 text-sm sm:grid-cols-3">
-                <div className="flex justify-between"><span className="text-steel-500">{S.paidDelta}</span><span className="font-semibold">{dashIf(true, fmtRupiah(weeklyRev - weeklyPrev.revenue))}</span></div>
-                <div className="flex justify-between"><span className="text-steel-500">{S.poDelta}</span><span className="font-semibold">{dashIf(true, fmtRupiah(weeklyCost - weeklyPrev.cost))}</span></div>
-                <div className="flex justify-between"><span className="text-steel-500">{S.profitDelta}</span><span className="font-semibold">{dashIf(true, fmtRupiah(weeklyLaba - weeklyPrev.laba))}</span></div>
+                <div className="flex justify-between"><span className="text-steel-500">{S.paidDelta}</span><span className="font-semibold">{dashIf(weeklyRev > 0 || weeklyPrev.revenue > 0, fmtRupiah(weeklyRev - weeklyPrev.revenue))}</span></div>
+                <div className="flex justify-between"><span className="text-steel-500">{S.poDelta}</span><span className="font-semibold">{dashIf(weeklyCost > 0 || weeklyPrev.cost > 0, fmtRupiah(weeklyCost - weeklyPrev.cost))}</span></div>
+                <div className="flex justify-between"><span className="text-steel-500">{S.profitDelta}</span><span className="font-semibold">{dashIf(weeklyLaba !== 0 || weeklyPrev.laba !== 0, fmtRupiah(weeklyLaba - weeklyPrev.laba))}</span></div>
               </div>
               <p className="px-5 pb-5 text-[11px] text-steel-400">Kas: Lunas − (AP Lunas + Payroll Dibayar)</p>
             </Card>
@@ -529,14 +550,24 @@ export default function Laporan() {
                 <CardHeader title={S.compositionTitle} subtitle={S.issuedVsPaidVsPo} />
                 <div className="flex items-center gap-4 px-5 pb-5">
                   <Donut
-                    data={[
-                      { name: S.segIssued, value: weekly.invTerbit.length },
-                      { name: S.segPaid, value: weekly.invLunas.length },
-                      { name: S.segPo, value: weekly.po.length },
-                    ]}
+                    /* Irisan bersifat SALING LEBAR: invoice yang sudah
+                       terbit DAN lunas akan terhitung dua kali kalau
+                       potongannya begini, sehingga total di tengah lebih
+                       besar dari jumlah dokumen sebenarnya (ekspor Excel di
+                       baris ~284 memang sudah dedupe lewat invMap - donutnya
+                       tidak). Segmen "Belum Lunas" = terbit - lunas. */
+                    data={(() => {
+                      const sudahLunas = new Set(weekly.invLunas.map((i) => String(i.id)));
+                      const belumLunas = weekly.invTerbit.filter((i) => !sudahLunas.has(String(i.id)));
+                      return [
+                        { name: S.segPaid, value: weekly.invLunas.length },
+                        { name: locale === "en" ? "Unpaid" : "Belum Lunas", value: belumLunas.length },
+                        { name: S.segPo, value: weekly.po.length },
+                      ];
+                    })()}
                     size={130}
                     thickness={18}
-                    centerValue={fmtJumlah(weekly.invTerbit.length + weekly.invLunas.length + weekly.po.length)}
+                    centerValue={fmtJumlah(weekly.invTerbit.length + weekly.po.length)}
                     centerLabel={S.donutDocs}
                   />
                   <div className="text-xs text-steel-600">
@@ -554,18 +585,18 @@ export default function Laporan() {
         {mode === "Bulanan" && (
           <div className="space-y-4">
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4" style={printAvoid}>
-              <KpiCard label={S.revenueMonth.replace("{n}", month)} value={dashIf(monthly.invLunas.length > 0, fmtMiliar(monthly.revenue))} hint={S.invoicePaidCount.replace("{n}", fmtJumlah(monthly.invLunas.length))} chip="teal" />
+              <KpiCard label={S.revenueMonth.replace("{n}", fmtBulan(`${month}-01`))} value={dashIf(monthly.invLunas.length > 0, fmtMiliar(monthly.revenue))} hint={S.invoicePaidCount.replace("{n}", fmtJumlah(monthly.invLunas.length))} chip="teal" />
               <KpiCard label={S.costApPayroll} value={dashIf(monthly.apLunas.length + monthly.payRows.length > 0, fmtMiliar(monthly.cost))} hint={dashIf(monthly.payRows.length > 0, S.payrollAmount.replace("{n}", fmtMiliar(monthly.payrollTotal)))} chip="navy" />
               <KpiCard label={S.netProfit} value={dashIf(monthly.invLunas.length + monthly.apLunas.length + monthly.payRows.length > 0, fmtMiliar(monthly.laba))} hint={monthly.invLunas.length + monthly.apLunas.length + monthly.payRows.length > 0 ? (monthly.laba >= 0 ? S.surplusLabel : S.deficitLabel) : "—"} chip="violet" />
               <KpiCard label={S.pph21Label} value={dashIf(monthly.payRows.length > 0, fmtRupiah(monthly.pph21))} hint={monthly.taxRow ? S.periodStatus.replace("{n}", String(monthly.taxRow.status)) : S.noPeriod} chip="amber" />
             </div>
             <div style={printAvoid}>
             <Card className="p-4">
-              <CardHeader title={S.compareLastMonth.replace("{n}", prevMonth)} subtitle={S.deltaRevCostProfit} />
+              <CardHeader title={S.compareLastMonth.replace("{n}", fmtBulan(`${prevMonth}-01`))} subtitle={S.deltaRevCostProfit} />
               <div className="grid grid-cols-1 gap-2 px-5 pb-5 text-sm sm:grid-cols-3">
-                <div className="flex justify-between"><span className="text-steel-500">{S.revDeltaVsMonth}</span><span className="font-semibold">{dashIf(true, fmtRupiah(monthly.revenue - monthlyPrev.revenue))}</span></div>
-                <div className="flex justify-between"><span className="text-steel-500">{S.costDeltaVsMonth}</span><span className="font-semibold">{dashIf(true, fmtRupiah(monthly.cost - monthlyPrev.cost))}</span></div>
-                <div className="flex justify-between"><span className="text-steel-500">{S.profitDelta}</span><span className="font-semibold">{dashIf(true, fmtRupiah(monthly.laba - monthlyPrev.laba))}</span></div>
+                <div className="flex justify-between"><span className="text-steel-500">{S.revDeltaVsMonth}</span><span className="font-semibold">{dashIf(monthly.revenue > 0 || monthlyPrev.revenue > 0, fmtRupiah(monthly.revenue - monthlyPrev.revenue))}</span></div>
+                <div className="flex justify-between"><span className="text-steel-500">{S.costDeltaVsMonth}</span><span className="font-semibold">{dashIf(monthly.cost > 0 || monthlyPrev.cost > 0, fmtRupiah(monthly.cost - monthlyPrev.cost))}</span></div>
+                <div className="flex justify-between"><span className="text-steel-500">{S.profitDelta}</span><span className="font-semibold">{dashIf(monthly.laba !== 0 || monthlyPrev.laba !== 0, fmtRupiah(monthly.laba - monthlyPrev.laba))}</span></div>
               </div>
             </Card>
             </div>
@@ -606,9 +637,23 @@ export default function Laporan() {
             <div className="space-y-4">
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4" style={printAvoid}>
                 <KpiCard label={S.budgetVsActual} value={dashIf(num(project.budget) + num(project.actual) > 0, fmtMiliar(num(project.actual)))} hint={dashIf(num(project.budget) > 0, S.fromAmount.replace("{n}", fmtMiliar(num(project.budget))))} chip="navy" />
-                <KpiCard label={S.progressLabel} value={dashIf(true, `${num(project.progress)}%`)} hint={dashIf(!!project.status, String(project.status ?? ""))} chip="teal" />
+                <KpiCard label={S.progressLabel} value={dashIf(!!project, `${num(project.progress)}%`)} hint={dashIf(!!project.status, String(project.status ?? ""))} chip="teal" />
                 <KpiCard label={S.boqTotal} value={dashIf(boqRows.length > 0, fmtMiliar(boqTotal))} hint={S.itemCountSuffix.replace("{n}", fmtJumlah(boqRows.length))} chip="violet" />
                 <KpiCard label={S.invoiceLabel} value={dashIf(projInvoices.length > 0, fmtMiliar(projInvTotal))} hint={S.invoiceCount.replace("{n}", fmtJumlah(projInvoices.length))} chip="amber" />
+                {/* Biaya equipment yang dibebankan ke proyek ini. Angka yang sama
+                    dipakai ProjectDetail & tab Biaya modul Equipment
+                    (utils/projectCost.ts) - sebelumnya tidak muncul sama sekali
+                    di laporan, jadi HPP terlihat lebih murah dari kenyataan. */}
+                <KpiCard
+                  label={locale === "en" ? "Equipment cost (HPP)" : "Biaya Equipment (HPP)"}
+                  value={dashIf(equipCost.totalRealized > 0, fmtMiliar(equipCost.totalRealized))}
+                  hint={equipCost.totalRealized === 0
+                    ? (locale === "en" ? "No equipment cost booked" : "Belum ada biaya equipment")
+                    : (locale === "en"
+                      ? `${fmtRupiah(equipCost.rental)} rental + ${fmtRupiah(equipCost.maintenanceRealized)} maintenance`
+                      : `${fmtRupiah(equipCost.rental)} sewa + ${fmtRupiah(equipCost.maintenanceRealized)} maintenance`)}
+                  chip="rose"
+                />
               </div>
               {(boqRows.length === 0 || projInvoices.length === 0) && (
                 <div className="flex flex-wrap gap-x-6 gap-y-1 text-xs">
@@ -621,6 +666,11 @@ export default function Laporan() {
                 <Card className="p-4">
                   <CardHeader title={S.wbsTop} subtitle={S.top5Jobs} />
                   <div className="space-y-2 px-5 pb-5 text-xs">
+                    {wbsSyncing && (
+                      <p className="text-[11px] text-steel-400">
+                        {locale === "en" ? "Loading WBS from server..." : "Memuat WBS dari server..."}
+                      </p>
+                    )}
                     {wbsTop.map((w, i) => (
                       <div key={i}>
                         <div className="flex justify-between"><span className="truncate font-medium text-navy-900" title={w.task}>{w.task}</span><span className="text-steel-500">{w.progress}%</span></div>

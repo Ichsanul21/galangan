@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
 import { Link } from "react-router-dom";
-import { Plus, Cpu, Wrench, AlertTriangle, Gauge, CheckCircle2, Download, Search } from "lucide-react";
+import { Plus, Cpu, Pencil, Trash2, Wrench, AlertTriangle, Gauge, CheckCircle2, Download, Search } from "lucide-react";
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 import { Card, CardHeader, PageHeader, Badge, KpiCard, Tabs, ProgressBar, ChartTooltip, RadialGauge, Modal, Field, FormGrid, EmptyState, ConfirmModal, StatusBadge, toast, SortTh, toggleSort, sortRows, usePager,
   NumInput, AsyncButton,
@@ -13,6 +13,30 @@ import { useModuleSync } from "../../data/useModuleSync";
 import { equipmentHours, sparkUtil, equipTotalTrend, maintTrend, serviceDueTrend } from "../../data";
 import { fmtTanggal, fmtJumlah, fmtRupiah, todayISO } from "../../utils/format";
 import { sameName } from "../../utils/names";
+import {
+  MAINT_JENIS,
+  MAINT_STATUS,
+  MAINT_STATUS_TONE,
+  canRestoreStock,
+  canTransition,
+  costBreakdown,
+  historyOf,
+  isMaintStatus,
+  materialsCost,
+  materialsOf,
+  nextStatuses,
+  planShortages,
+  planStockCut,
+  statusOf,
+  workDaysOf,
+  type MaintHistoryEntry,
+  type MaintStatus,
+} from "../../utils/maintenance";
+import {
+  equipmentCostSummary,
+  maintenanceDowntimeHours,
+  type EquipmentCostSummary,
+} from "../../utils/projectCost";
 import { AlertBannerView, notifRowId, useModuleAlert, useNotifFlash } from "../../components/AlertBanner";
 import { exportExcel } from "../../utils/export";
 import { FilterPopover } from "../../components/FilterPopover";
@@ -25,6 +49,57 @@ const EQ_CATS = ["Pengangkat", "Pengelasan", "Tenaga", "Transportasi", "Pengecat
 
 const ID_MON = ["Jan", "Feb", "Mar", "Apr", "Mei", "Jun", "Jul", "Agu", "Sep", "Okt", "Nov", "Des"];
 const EN_MON = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+/* Tarif harian teknisi untuk hitung biaya tenaga servis.
+   DEFAULT ini hanya fallback - angka bisnis sebenarnya ada di settings
+   (EQUIP_LABOR_RATE_PER_DAY), dibaca saat siklus dibuat supaya tarif
+   tidak mengikat seluruh riwayat lampau yang sudah terpakai. */
+const DEFAULT_LABOR_RATE_PER_DAY = 750000;
+
+/* ================= FORM SIKLUS MAINTENANCE ================= */
+
+interface MaintForm {
+  equipmentId: string;
+  jenis: string;
+  tanggal: string;
+  eta: string;
+  teknisiId: string;
+  /** Proyek tempat biaya servis ini dibebankan (HPP proyek). */
+  projectId: string;
+  catatan: string;
+  /** Hour meter saat mulai & saat selesai (odometer tidak boleh mundur). */
+  hours: string;
+  hoursAfter: string;
+  downtimeHours: string;
+  /** Baris material: { itemId, qty } - qty masih string (input). */
+  mats: { itemId: string; qty: string }[];
+}
+
+function emptyMaintForm(): MaintForm {
+  return {
+    equipmentId: "",
+    jenis: MAINT_JENIS[0],
+    tanggal: todayISO(),
+    eta: "",
+    teknisiId: "",
+    projectId: "",
+    catatan: "",
+    hours: "",
+    hoursAfter: "",
+    downtimeHours: "0",
+    mats: [],
+  };
+}
+
+/** Label status siklus untuk UI (id/en). */
+function maintStatusLabel(s: MaintStatus, locale: string): string {
+  if (locale !== "en") return s;
+  return s === "Terjadwal" ? "Scheduled" : s === "Sedang Proses" ? "In Progress" : s === "Selesai" ? "Done" : "Cancelled";
+}
+
+function isMaintJenis(v: unknown): v is string {
+  return typeof v === "string" && (MAINT_JENIS as readonly string[]).includes(v);
+}
 
 /* Label "Mon YYYY" untuk N titik terakhir, bulan berjalan terakhir. */
 function trailingMonthLabels(n: number, locale: string): string[] {
@@ -166,7 +241,7 @@ function oeeGrade(v: number, en: boolean): { label: string; tone: "green" | "amb
 }
 
 /* Batch koleksi modul Equipment untuk useModuleSync (pengganti resync penuh). */
-const EQ_COLS: CollectionKey[] = ["activities", "bookings", "branches", "calibrations", "equipment", "inventory", "projects"];
+const EQ_COLS: CollectionKey[] = ["activities", "bookings", "branches", "calibrations", "equipment", "inventory", "projects", "maintenances", "employees", "movements", "settings"];
 
 export default function EquipmentPage() {
   const { data, add, update, remove, log, branch } = useStore();
@@ -180,6 +255,9 @@ export default function EquipmentPage() {
   const equipment = data.equipment;
   const bookings = data.bookings;
   const calibrations = data.calibrations;
+  const maintenances = data.maintenances;
+  const employees = data.employees;
+  const projects = data.projects;
   const [tab, setTab] = useState("Register");
 
   /* Heatmap hari x jam dari booking nyata. Sumbu jam diambil dari jam
@@ -227,11 +305,11 @@ export default function EquipmentPage() {
   const [sort4, setSort4] = useState<SortState>({ key: null, dir: "asc" });
 
   const [showAdd, setShowAdd] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [delEquip, setDelEquip] = useState<StoreItem | null>(null);
   const [form, setForm] = useState({ name: "", category: "Pengangkat", categoryCustom: "", code: "", serial: "", branch: "Samarinda", model: "", pic: "", util: "50", rate: "", fuelPrice: "0", acquisitionCost: "", usefulLife: "" });
   const [showService, setShowService] = useState(false);
-  const [svcTarget, setSvcTarget] = useState("");
-  const [schedForm, setSchedForm] = useState({ tanggal: todayISO(), teknisi: "", hours: "", next: "", catatan: "" });
-  const [schedMats, setSchedMats] = useState<{ itemId: string; qty: string }[]>([]);
+
 
   const [showBook, setShowBook] = useState(false);
   const [bookForm, setBookForm] = useState({ equip: "", proyek: "", date: todayISO(), mulai: "", selesai: "", priority: "Normal" });
@@ -243,19 +321,23 @@ export default function EquipmentPage() {
   const [finishDowntime, setFinishDowntime] = useState("0");
   const [finishFuel, setFinishFuel] = useState("0");
 
-  const [maintaining, setMaintaining] = useState<StoreItem | null>(null);
-  const [maintNote, setMaintNote] = useState("");
-  const [maintEta, setMaintEta] = useState("");
+  /* ================= SIKLUS MAINTENANCE (koleksi `maintenances`) =================
+     Alur: Terjadwal -> Sedang Proses -> Selesai, atau Dibatalkan dari mana saja
+     selain Selesai. Setiap transisi masuk ke maintenance.history[].
 
-  const [recording, setRecording] = useState<StoreItem | null>(null);
-  const [woForm, setWoForm] = useState({ tanggal: todayISO(), teknisi: "", catatan: "", hours: "", next: "" });
-  const [svcMats, setSvcMats] = useState<{ itemId: string; qty: string }[]>([]);
-  const [editHist, setEditHist] = useState<StoreItem | null>(null);
-  const [editHistMats, setEditHistMats] = useState<{ itemId: string; qty: string }[]>([]);
-  const [delHist, setDelHist] = useState<StoreItem | null>(null);
+     `maintenanceForm` dipakai untuk create (dari tombol Jadwalkan) maupun
+     update (dari tombol Ubah) - satu form, satu handler, supaya tidak ada
+     dua jalur tulis yang bisa berbedaivrsi. */
+  const [maintForm, setMaintForm] = useState<MaintForm>(emptyMaintForm());
+  const [maintEditingId, setMaintEditingId] = useState<string | null>(null);
+  const [delMaint, setDelMaint] = useState<StoreItem | null>(null);
+  const [histOf, setHistOf] = useState<StoreItem | null>(null);
 
   const [showCal, setShowCal] = useState(false);
   const [calForm, setCalForm] = useState({ equipmentId: "", item: "", due: "" });
+  /* id kalibrasi yang sedang diedit (null = jadwal baru). */
+  const [calEditId, setCalEditId] = useState<string | null>(null);
+  const [delCal, setDelCal] = useState<StoreItem | null>(null);
   const [finishingCal, setFinishingCal] = useState<StoreItem | null>(null);
   const [calCert, setCalCert] = useState("");
   const [calResult, setCalResult] = useState("Lulus");
@@ -381,6 +463,120 @@ export default function EquipmentPage() {
   });
   const costRows = Array.from(costByProject.entries());
   const totalCost = costRows.reduce((s, [, v]) => s + v.cost, 0);
+
+  /* ================= DERIVED: SIKLUS MAINTENANCE ================= */
+
+  /* Baris tabel maintenance. Satu siklus per baris dari koleksi
+     `maintenances`; equipment yang belum punya siklus TIDAK ikut tampil
+     (dulu tabelnya iterating equipment, sehingga "jadwal servis berikutnya"
+     tercampur dengan riwayat servis laluRU). */
+  const maintRows = useMemo(() => {
+    return maintenances.map((m) => {
+      const st = statusOf(m);
+      const materials = materialsOf(m);
+      const materialCost = materialsCost(materials);
+      const breakdown = costBreakdown(m, { laborRatePerDay: Number(m.laborRatePerDay ?? laborRate()) });
+      const eq = equipment.find((e) => String(e.id) === String(m.equipmentId));
+      const short = planShortages(planStockCut(m, data.inventory));
+      return {
+        raw: m,
+        id: String(m.id),
+        equipmentId: String(m.equipmentId ?? ""),
+        equipmentName: String(m.equipmentName ?? eq?.name ?? m.equipmentId ?? "-"),
+        jenis: String(m.jenis ?? ""),
+        tanggal: String(m.tanggal ?? ""),
+        eta: String(m.eta ?? ""),
+        status: st,
+        teknisi: String(m.teknisi ?? ""),
+        projectId: String(m.projectId ?? ""),
+        materials,
+        materialCost,
+        laborCost: breakdown.labor,
+        costTotal: st === "Selesai" ? breakdown.total : materialCost,
+        downtimeHours: maintenanceDowntimeHours(m),
+        workDays: workDaysOf(m),
+        deducted: canRestoreStock(m),
+        shortages: short,
+        history: historyOf(m),
+        /* Transisi berikutnya yang boleh diklik (dari utils/maintenance). */
+        next: nextStatuses(st),
+      };
+    });
+  }, [maintenances, equipment, data.inventory]);
+
+  const maintSorted = useMemo(() => sortRows(maintRows, sort2, (r, k) => {
+    if (k === "equipment") return r.equipmentName;
+    if (k === "jadwal") return r.tanggal;
+    if (k === "jenis") return r.jenis;
+    if (k === "status") return r.status;
+    if (k === "proyek") return r.projectId;
+    if (k === "biaya") return r.costTotal;
+    if (k === "catatan") return String(r.raw.catatan ?? "");
+    return r.id;
+  }), [maintRows, sort2]);
+
+  const maintPager = usePager(maintSorted.length, 15);
+  useEffect(() => { maintPager.reset(); }, [sort2, tab]);
+
+  const maintStats = useMemo(() => {
+    const byStatus: Record<MaintStatus, number> = { Terjadwal: 0, "Sedang Proses": 0, Selesai: 0, Dibatalkan: 0 };
+    let costRealized = 0;
+    let costCommitted = 0;
+    let downtime = 0;
+    for (const r of maintRows) {
+      byStatus[r.status] += 1;
+      if (r.status === "Selesai") {
+        costRealized += r.costTotal;
+        downtime += r.downtimeHours;
+      } else if (r.status !== "Dibatalkan") {
+        costCommitted += r.materialCost;
+      }
+    }
+    return { byStatus, costRealized, costCommitted, downtime };
+  }, [maintRows]);
+
+  /* Legacy: equipment.nextService yang belum punya baris maintenances.
+     Ditampilkan sebagai baris readonly supaya tidak ada jadwal yang hilang
+     setelah pindah ke koleksi baru. */
+  const legacyMaint = useMemo(() => {
+    const covered = new Set(maintenances.map((m) => String(m.equipmentId ?? "")));
+    return equipment.filter((e) => {
+      const ns = String(e.nextService ?? "");
+      return ns !== "" && ns !== "-" && !covered.has(String(e.id));
+    });
+  }, [equipment, maintenances]);
+
+  /* ================= DERIVED: BIAYA EQUIPMENT PER PROYEK (HPP) =================
+     Dipakai tab "Biaya" dan, yang lebih penting, diekspor ke
+     pages/proyek/ProjectDetail.tsx lewat utils/projectCost.ts supaya modul
+     Proyek menghitung HPP dari sumber angka yang sama. */
+  const projectCostSummaries = useMemo(() => {
+    const out = new Map<string, EquipmentCostSummary>();
+    for (const p of projects) {
+      const id = String(p.id);
+      out.set(id, equipmentCostSummary(id, bookings, maintenances, equipment));
+    }
+    return out;
+  }, [projects, bookings, maintenances, equipment]);
+
+  const projectCostRows = useMemo(() => Array.from(projectCostSummaries.entries())
+    .filter(([, s]) => s.totalRealized > 0 || s.totalCommitted > 0)
+    .map(([projectId, s]) => {
+      const proj = projects.find((p) => String(p.id) === projectId);
+      return {
+        projectId,
+        vessel: String(proj?.vessel ?? ""),
+        client: String(proj?.client ?? ""),
+        rental: s.rental,
+        fuel: s.fuel,
+        maintRealized: s.maintenanceRealized,
+        maintCommitted: s.maintenanceCommitted,
+        realized: s.totalRealized,
+        committed: s.totalCommitted,
+      };
+    })
+    .sort((a, b) => b.committed - a.committed), [projectCostSummaries, projects]);
+
   const regFiltered = equipment.filter((e) => {
     if (eqStatus !== "Semua" && String(e.status ?? "") !== eqStatus) return false;
     if (eqCat !== "Semua" && String(e.category ?? "") !== eqCat) return false;
@@ -434,6 +630,83 @@ export default function EquipmentPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [eqQ, eqStatus, eqCat, tab]);
 
+  /* ==== UBAH / HAPUS EQUIPMENT (tab Register) ====
+   Satu form dipakai untuk create & update supaya aturan validasi kode/serial/
+   tarif tidak bercabang. `saveAdd()` sudah menyimpan angka hasil validasi ke
+   state `form`; `saveEdit()` menuliskan patch yang sama minus field kunci
+   yang tidak boleh berubah (kode equipment = id bisnis, jadi terkunci). */
+  const openEdit = (e: StoreItem) => {
+    setEditingId(String(e.id));
+    setForm({
+      name: String(e.name ?? ""),
+      category: String(e.category ?? EQ_CATS[0]),
+      categoryCustom: "",
+      code: String(e.code ?? ""),
+      serial: String(e.serial ?? ""),
+      branch: String(e.branch ?? "Samarinda"),
+      model: String(e.model ?? ""),
+      pic: String(e.pic ?? ""),
+      util: String(e.util ?? 0),
+      rate: String(Number(e.rate ?? 0)),
+      fuelPrice: String(Number(e.fuelPrice ?? 0)),
+      acquisitionCost: String(Number(e.acquisitionCost ?? 0)),
+      usefulLife: String(Number(e.usefulLife ?? 0)),
+    });
+    setShowAdd(true);
+  };
+
+  const saveEdit = async () => {
+    if (!editingId) return;
+    const category = form.category === "Lainnya" ? form.categoryCustom.trim() : form.category;
+    if (!form.name.trim()) { toast(locale === "en" ? "Equipment name is required" : "Nama equipment wajib diisi", "info"); return; }
+    if (!category) { toast(locale === "en" ? "Custom category is required" : "Kategori kustom wajib diisi", "info"); return; }
+    if (!form.serial.trim()) { toast(locale === "en" ? "Serial number is required" : "Nomor seri wajib diisi", "info"); return; }
+    /* Kode equipment = identitas bisnis (dipakai label QR, booking, kontrak
+       sewa). Mengubahnya melenceng dari semua rujukan lama, jadi form ubah
+       sengaja tidak menyediakan kolom kode sama sekali. */
+    const rate = Number(form.rate || 0);
+    const fuelPrice = Number(form.fuelPrice || 0);
+    const acquisitionCost = Number(form.acquisitionCost || 0);
+    const usefulLife = Number(form.usefulLife || 0);
+    if (!Number.isFinite(rate) || rate < 0) { toast(S.eqRateMin, "info"); return; }
+    if (!Number.isFinite(fuelPrice) || fuelPrice < 0) { toast(S.eqFuelMin, "info"); return; }
+    if ((form.acquisitionCost && (!Number.isFinite(acquisitionCost) || acquisitionCost < 0))
+      || (form.usefulLife && (!Number.isFinite(usefulLife) || usefulLife <= 0))) {
+      toast(S.eqCostLife, "info");
+      return;
+    }
+    try {
+      await update("equipment", editingId, {
+        name: form.name.trim(),
+        category,
+        model: form.model.trim() || "-",
+        serial: form.serial.trim(),
+        branch: form.branch,
+        pic: form.pic.trim(),
+        rate: Math.round(rate),
+        fuelPrice: Math.round(fuelPrice),
+        acquisitionCost: Math.round(acquisitionCost),
+        usefulLife,
+      });
+      log("mengubah equipment", `${editingId} - ${form.name.trim()}`, "Equipment");
+      toast(locale === "en" ? `Equipment ${form.name.trim()} updated` : `Equipment ${form.name.trim()} diperbarui`);
+      setShowAdd(false);
+      setEditingId(null);
+    } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); }
+  };
+
+  /** Hapus equipment, diblokir bila masih punya booking / kalibrasi /
+      siklus maintenance - semuanya jadi yatim tanpa induknya. */
+  const confirmDelEquip = async () => {
+    if (!delEquip) return;
+    try {
+      await remove("equipment", String(delEquip.id));
+      log("menghapus equipment", `${delEquip.id} - ${delEquip.name ?? ""}`, "Equipment");
+      toast(locale === "en" ? `Equipment ${delEquip.id} deleted` : `Equipment ${delEquip.id} dihapus`);
+      setDelEquip(null);
+    } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); }
+  };
+
   const saveAdd = async () => {
     try {
     if (!form.name.trim() || !form.code.trim()) { toast(S.eqReqNameCode, "info"); return; }
@@ -468,177 +741,462 @@ export default function EquipmentPage() {
     } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); }
   };
 
-  const saveService = async () => {
-    try {
-    if (!svcTarget || !schedForm.tanggal || !schedForm.teknisi.trim() || !schedForm.hours) { toast(S.eqRecordReq, "info"); return; }
-    const hours = Number(schedForm.hours);
-    if (!Number.isFinite(hours) || hours < 0) { toast(S.eqHoursInvalid, "info"); return; }
-    const target = equipment.find((e) => e.id === svcTarget);
-    /* Kebutuhan material jadwal: validasi qty positif + item dikenal saja.
-       Stok TIDAK dipotong di sini (catat servis sudah potong saat eksekusi) — hindari ganda. */
-    const mats = schedMats.filter((m) => m.itemId);
-    for (const m of mats) {
-      const it = (data.inventory ?? []).find((x) => x.id === m.itemId);
-      const q = Number(m.qty);
-      if (!it) { toast("Material servis tidak dikenal", "info"); return; }
-      if (!Number.isFinite(q) || q <= 0) { toast(`Qty material ${it.name} harus positif`, "info"); return; }
-    }
-    const matSummary = mats.map((m) => {
-      const it = (data.inventory ?? []).find((x) => x.id === m.itemId);
-      return { itemId: m.itemId, name: String(it?.name ?? m.itemId), qty: Number(m.qty) || 0, unit: String(it?.unit ?? ""), cost: (Number(m.qty) || 0) * (it ? invCost(it) : 0) };
-    });
-    const matCost = Math.round(matSummary.reduce((s, m) => s + m.cost, 0));
-    const nextVal = schedForm.next || schedForm.tanggal;
-    await update("equipment", svcTarget, {
-      nextService: nextVal,
-      scheduledService: {
-        tanggal: schedForm.tanggal, teknisi: schedForm.teknisi.trim(), hours,
-        next: schedForm.next, catatan: schedForm.catatan.trim(),
-        materials: matSummary, cost: matCost,
-      },
-      ...(matSummary.length > 0 ? { scheduledServiceMaterials: matSummary, scheduledServiceCost: matCost } : {}),
-    });
-    log("menjadwalkan servis", `${target?.name ?? svcTarget} · ${fmtTanggal(schedForm.tanggal)} · teknisi ${schedForm.teknisi.trim()} · ${fmtJumlah(hours)} jam${schedForm.catatan.trim() ? ` · ${schedForm.catatan.trim()}` : ""}${matSummary.length > 0 ? ` · kebutuhan ${matSummary.map((m) => `${m.name} × ${m.qty}`).join("; ")} (${fmtRupiah(matCost)}, stok tidak dipotong)` : ""}`, "Equipment");
-    toast(S.eqSvcUpdated);
-    setShowService(false);
-    setSvcTarget("");
-    setSchedForm({ tanggal: todayISO(), teknisi: "", hours: "", next: "", catatan: "" });
-    setSchedMats([]);
-    } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); }
-  };
-
-  const schedMatsCost = schedMats.reduce((s, m) => {
-    const it = (data.inventory ?? []).find((x) => x.id === m.itemId);
-    return s + (Number(m.qty) || 0) * (it ? invCost(it) : 0);
-  }, 0);
-
-  const openEditHist = (eq: StoreItem) => {
-    setEditHist(eq);
-    const cur = (Array.isArray(eq.lastServiceMaterials) ? eq.lastServiceMaterials : []) as { itemId?: string; name?: string; qty: number }[];
-    setEditHistMats(cur.map((m) => {
-      const byId = (data.inventory ?? []).find((x) => x.id === m.itemId);
-      const byName = !byId ? (data.inventory ?? []).find((x) => String(x.name ?? "").toLowerCase() === String(m.name ?? "").toLowerCase()) : undefined;
-      return { itemId: String(m.itemId ?? byId?.id ?? byName?.id ?? ""), qty: String(m.qty ?? "") };
-    }));
-  };
-
-  const saveEditHist = async () => {
-    try {
-    if (!editHist) return;
-    const mats = editHistMats.filter((m) => m.itemId);
-    for (const m of mats) {
-      const it = (data.inventory ?? []).find((x) => x.id === m.itemId);
-      const q = Number(m.qty);
-      if (!it) { toast("Material servis tidak dikenal", "info"); return; }
-      if (!Number.isFinite(q) || q <= 0) { toast(`Qty material ${it.name} harus positif`, "info"); return; }
-    }
-    const matSummary = mats.map((m) => {
-      const it = (data.inventory ?? []).find((x) => x.id === m.itemId);
-      return { itemId: m.itemId, name: String(it?.name ?? m.itemId), qty: Number(m.qty) || 0, unit: String(it?.unit ?? ""), cost: (Number(m.qty) || 0) * (it ? invCost(it) : 0) };
-    });
-    const matCost = Math.round(matSummary.reduce((s, m) => s + m.cost, 0));
-    /* Edit riwayat: hanya perbarui tampilan record, stok TIDAK diubah (sudah dipotong saat catat). */
-    await update("equipment", editHist.id, {
-      lastServiceMaterials: matSummary,
-      lastServiceCost: matCost,
-    });
-    log("memperbarui riwayat servis", `${editHist.name} · ${matSummary.length > 0 ? matSummary.map((m) => `${m.name} × ${m.qty}`).join("; ") : "tanpa material"} (stok tidak diubah)`, "Equipment");
-    toast("Riwayat servis diperbarui");
-    setEditHist(null);
-    setEditHistMats([]);
-    } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); }
-  };
-
-  const confirmDelHist = async () => {
-    try {
-    if (!delHist) return;
-    /* Hapus riwayat: hanya bersihkan tampilan record, stok TIDAK dikembalikan. */
-    await update("equipment", delHist.id, { lastServiceMaterials: [], lastServiceCost: 0 });
-    log("menghapus riwayat servis", `${delHist.name} (stok tidak dikembalikan)`, "Equipment");
-    toast("Riwayat servis dihapus");
-    setDelHist(null);
-    } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); }
-  };
-
-  const openRecord = (eq: StoreItem) => {
-    setRecording(eq);
-    setWoForm({ tanggal: todayISO(), teknisi: "", catatan: "", hours: String(eq.lastHours ?? 0), next: typeof eq.nextService === "string" && eq.nextService !== "-" ? eq.nextService : "" });
-    setSvcMats([]);
-  };
-
-  const svcMatsCost = svcMats.reduce((s, m) => {
-    const it = (data.inventory ?? []).find((x) => x.id === m.itemId);
-    return s + (Number(m.qty) || 0) * (it ? invCost(it) : 0);
-  }, 0);
-
-  const saveRecord = async () => {
-    try {
-    if (!recording) return;
-    if (!woForm.tanggal || !woForm.teknisi.trim() || !woForm.hours) { toast(S.eqRecordReq, "info"); return; }
-    const hours = Number(woForm.hours);
-    if (!Number.isFinite(hours) || hours < 0) { toast(S.eqHoursInvalid, "info"); return; }
-    const fresh = equipment.find((e) => e.id === recording.id) ?? recording;
-    if (hours < Number(fresh.lastHours || 0)) { toast(`Hour meter ${fmtJumlah(hours)} di bawah catatan terakhir ${fmtJumlah(Number(fresh.lastHours || 0))} — odometer tidak boleh mundur`, "info"); return; }
-    /* Validasi material servis: qty positif & cukup stok. */
-    const mats = svcMats.filter((m) => m.itemId);
-    for (const m of mats) {
-      const it = (data.inventory ?? []).find((x) => x.id === m.itemId);
-      const q = Number(m.qty);
-      if (!it) { toast("Material servis tidak dikenal", "info"); return; }
-      if (!Number.isFinite(q) || q <= 0) { toast(`Qty material ${it.name} harus positif`, "info"); return; }
-      if (q > Number(it.stock || 0)) { toast(`Stok ${it.name} kurang (tersedia ${fmtJumlah(Number(it.stock || 0))} ${it.unit})`, "info"); return; }
-    }
-    const matCost = mats.reduce((s, m) => {
-      const it = (data.inventory ?? []).find((x) => x.id === m.itemId);
-      return s + (Number(m.qty) || 0) * (it ? invCost(it) : 0);
-    }, 0);
-    const matSummary = mats.map((m) => {
-      const it = (data.inventory ?? []).find((x) => x.id === m.itemId);
-      return { itemId: m.itemId, name: String(it?.name ?? m.itemId), qty: Number(m.qty) || 0, unit: String(it?.unit ?? ""), cost: (Number(m.qty) || 0) * (it ? invCost(it) : 0) };
-    });
-    await update("equipment", recording.id, {
-      lastHours: hours,
-      nextService: woForm.next || recording.nextService,
-      status: recording.status === "Maintenance" ? "Tersedia" : recording.status,
-      ...(matSummary.length > 0 ? { lastServiceMaterials: matSummary, lastServiceCost: Math.round(matCost) } : {}),
-    });
-    for (const m of matSummary) {
-      const it = (data.inventory ?? []).find((x) => x.id === m.itemId);
+  /* ================= SIKLUS MAINTENANCE ================= */
+  /** materialsOfRow -> array snapshot siap tulis, dari baris form. */
+  /**materialsOfRow -> array snapshot siap tulis, dari baris form. */
+  const matsFromForm = (rows: MaintForm["mats"]) => {
+    const out: { itemId: string; name: string; qty: number; unit: string; cost: number }[] = [];
+    for (const r of rows) {
+      if (!r.itemId) continue;
+      const q = Number(r.qty);
+      if (!Number.isFinite(q) || q <= 0) continue;
+      const it = data.inventory.find((x) => String(x.id) === r.itemId);
       if (!it) continue;
-      await update("inventory", it.id, { stock: Number(it.stock || 0) - m.qty });
-      await add("movements", {
-        item: it.name, itemId: it.id, type: "Pengeluaran", qty: m.qty,
-        by: `Servis ${recording.name} · ${fmtTanggal(woForm.tanggal)}`, date: woForm.tanggal, tone: "out",
-        purpose: `Servis ${recording.name}`, pic: woForm.teknisi.trim(),
-      }, { action: "material servis", target: `${it.name} × ${m.qty} (${recording.name})`, module: "Equipment" });
+      out.push({
+        itemId: String(it.id),
+        name: String(it.name ?? it.id),
+        qty: q,
+        unit: String(it.unit ?? ""),
+        /* Snapshot harga saat servis dicatat - harga beli bisa naik
+           di masa depan, tapi riwayat harus mencerminkan biaya saat itu. */
+        cost: invCost(it),
+      });
     }
-    log("mencatat servis", `${recording.name} · ${fmtTanggal(woForm.tanggal)}${woForm.catatan.trim() ? ` · ${woForm.catatan.trim()}` : ""}${matSummary.length > 0 ? ` · material ${matSummary.map((m) => `${m.name} × ${m.qty}`).join("; ")} (${fmtRupiah(Math.round(matCost))})` : ""}`, "Equipment");
-    toast(S.eqSvcRecorded.replace("{a}", recording.name));
-    setRecording(null);
-    setSvcMats([]);
-    } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); }
+    return out;
   };
 
-  const startMaintenance = async () => {
-    try {
-    if (!maintaining) return;
-    if (!maintNote.trim() || !maintEta) { toast(S.eqMaintReq, "info"); return; }
-    await update("equipment", maintaining.id, { status: "Maintenance", maintenanceNote: maintNote.trim(), maintenanceEta: maintEta });
-    log("memasukkan maintenance", `${maintaining.name} · selesai ${fmtTanggal(maintEta)}`, "Equipment");
-    toast(S.eqEnterMaint.replace("{a}", maintaining.name));
-    setMaintaining(null);
-    setMaintNote("");
-    setMaintEta("");
-    } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); }
+  const laborRate = (): number => {
+    const row = data.settings.find((s) => String(s.key ?? "") === "EQUIP_LABOR_RATE_PER_DAY");
+    const n = Number(row?.value);
+    return Number.isFinite(n) && n > 0 ? n : DEFAULT_LABOR_RATE_PER_DAY;
   };
 
-  const endMaintenance = async (eq: StoreItem) => {
-    try {
-    await update("equipment", eq.id, { status: "Tersedia", maintenanceNote: "", maintenanceEta: "" });
-    log("menyelesaikan maintenance", eq.name, "Equipment");
-    toast(S.eqBackAvail.replace("{a}", eq.name));
-    } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); }
+  /** Buka form untuk equipment tertentu (dari tombol Jadwalkan). */
+  const openMaintNew = (equipmentId?: string) => {
+    const id = equipmentId ?? equipment[0]?.id ?? "";
+    const eq = equipment.find((e) => String(e.id) === id);
+    setMaintEditingId(null);
+    setMaintForm({
+      ...emptyMaintForm(),
+      equipmentId: id,
+      /* Hour meter diisi dari odometer saat ini: kolom hours = sebelum,
+         hoursAfter = diisi teknisi saat pekerjaan selesai. */
+      hours: eq ? String(eq.lastHours ?? 0) : "",
+    });
+    setShowService(true);
   };
+
+  /** Buka form UBAH satu siklus yang sudah ada. */
+  const openMaintEdit = (m: StoreItem) => {
+    const mats = materialsOf(m);
+    const eq = equipment.find((e) => String(e.id) === String(m.equipmentId));
+    setMaintEditingId(String(m.id));
+    setMaintForm({
+      equipmentId: String(m.equipmentId ?? eq?.id ?? ""),
+      jenis: isMaintJenis(m.jenis) ? String(m.jenis) : MAINT_JENIS[0],
+      tanggal: String(m.tanggal ?? todayISO()),
+      eta: String(m.eta ?? ""),
+      teknisiId: String(m.teknisiId ?? ""),
+      projectId: String(m.projectId ?? ""),
+      catatan: String(m.catatan ?? ""),
+      hours: String(m.hours ?? eq?.lastHours ?? 0),
+      hoursAfter: String(m.hoursAfter ?? m.hours ?? eq?.lastHours ?? 0),
+      downtimeHours: String(m.downtimeHours ?? 0),
+      mats: mats.map((x) => ({ itemId: x.itemId, qty: String(x.qty) })),
+    });
+    setShowService(true);
+  };
+
+  const closeMaint = () => {
+    setShowService(false);
+    setMaintEditingId(null);
+    setMaintForm(emptyMaintForm());
+  };
+
+  /**
+   * Simpan siklus maintenance (create atau update).
+   *
+   * Pemotongan stok TIDAK dilakukan di sini - hanya saat siklus berstatus
+   * Selesai (lihat advanceMaintStatus). Ini penting supaya menjadwalkan
+   * servis tidak menahan stok, dan supaya material bisa diubah bebas
+   * selama pekerjaan belum terealisasi.
+   */
+  const saveMaint = async () => {
+    const form = maintForm;
+    const eqId = form.equipmentId.trim();
+    if (!eqId) { toast(locale === "en" ? "Pick an equipment" : "Pilih equipment", "info"); return; }
+    if (!form.tanggal) { toast(locale === "en" ? "Date is required" : "Tanggal wajib diisi", "info"); return; }
+    const eq = equipment.find((e) => String(e.id) === eqId);
+    if (!eq) { toast(locale === "en" ? "Unknown equipment" : "Equipment tidak dikenal", "info"); return; }
+
+    const hours = Number(form.hours || eq.lastHours || 0);
+    const hoursAfter = Number(form.hoursAfter || form.hours || eq.lastHours || 0);
+    if (!Number.isFinite(hours) || !Number.isFinite(hoursAfter) || hours < 0 || hoursAfter < 0) {
+      toast(locale === "en" ? "Hour meter must be a valid number" : "Hour meter harus angka valid", "info");
+      return;
+    }
+    if (hoursAfter < hours) {
+      toast(
+        locale === "en"
+          ? `Hour meter cannot go backwards (${fmtJumlah(hours)} -> ${fmtJumlah(hoursAfter)})`
+          : `Hour meter tidak boleh mundur (${fmtJumlah(hours)} → ${fmtJumlah(hoursAfter)})`,
+        "info",
+      );
+      return;
+    }
+
+    /* Validasi material: item harus dikenal & stok cukup. Divalidasi di sini
+       (bukan hanya saat Selesai) supaya planner tahu sooner dan tidak
+       discovering kekurangan saat pekerjaan sudah berjalan. */
+    const materials = matsFromForm(form.mats);
+    const draft = { ...(maintEditingId ? (data.maintenances.find((m) => m.id === maintEditingId) ?? {}) : {}), materials };
+    const short = planShortages(planStockCut(draft, data.inventory));
+    if (short.length > 0) {
+      toast(
+        locale === "en"
+          ? `Insufficient stock: ${short.map((s) => `${s.name} (need ${fmtJumlah(s.qty)}, have ${fmtJumlah(s.available)})`).join("; ")}`
+          : `Stok kurang: ${short.map((s) => `${s.name} (butuh ${fmtJumlah(s.qty)}, tersedia ${fmtJumlah(s.available)})`).join("; ")}`,
+        "info",
+      );
+      return;
+    }
+
+    const proj = projects.find((p) => String(p.id) === form.projectId);
+    const teknisi = employees.find((e) => String(e.id) === form.teknisiId);
+    const materialCost = materialsCost(materials);
+    /* Biaya tenaga dihitung dari hari kerja; saat baru dijadwalkan (belum
+       ada tanggal selesai) hari kerja 0, jadi total = material saja. */
+    const breakdown = costBreakdown(
+      { ...draft, mulai: form.tanggal, selesai: String(form.eta || "") },
+      { laborRatePerDay: laborRate() },
+    );
+
+    const row = {
+      equipmentId: eqId,
+      equipmentName: String(eq.name ?? eqId),
+      equipmentCode: String(eq.code ?? ""),
+      tanggal: form.tanggal,
+      jenis: form.jenis,
+      /* Status TIDAK bisa diubah lewat form ini - lewat advanceMaintStatus
+         supaya semua perpindahan status tercatat di history[]. */
+      status: maintEditingId
+        ? statusOf(data.maintenances.find((m) => m.id === maintEditingId) ?? {})
+        : "Terjadwal",
+      teknisiId: form.teknisiId,
+      teknisi: String(teknisi?.name ?? form.teknisiId ?? ""),
+      mulai: form.tanggal,
+      selesai: statusOf(data.maintenances.find((m) => m.id === maintEditingId) ?? {}) === "Selesai"
+        ? String(data.maintenances.find((m) => m.id === maintEditingId)?.selesai ?? "")
+        : "",
+      eta: form.eta,
+      catatan: form.catatan.trim(),
+      projectId: form.projectId,
+      projectName: String(proj?.id ?? ""),
+      hours,
+      hoursAfter,
+      materials,
+      materialCost,
+      downtimeHours: Number(form.downtimeHours || 0),
+      laborCost: breakdown.labor,
+      costTotal: breakdown.total,
+      laborRatePerDay: laborRate(),
+      branch: String(eq.branch ?? ""),
+    };
+
+    try {
+      if (maintEditingId) {
+        const prev = data.maintenances.find((m) => m.id === maintEditingId);
+        await update("maintenances", maintEditingId, {
+          ...row,
+          /* deducted TIDAK diubah di sini - siklus yang sudah Selesai punya
+             stok terpotong; ubah material-nya lewat adjustMaintMaterials
+             supaya delta stok dihitung, bukan dipotong ulang. */
+          deducted: canRestoreStock(prev ?? {}),
+        });
+        log("mengubah maintenance", `${maintEditingId} - ${eq.name} - ${fmtTanggal(form.tanggal)}`, "Equipment");
+      } else {
+        await add(
+          "maintenances",
+          {
+            ...row,
+            createdAt: todayISO(),
+            createdBy: "Anda",
+            deducted: false,
+            history: [
+              { at: `${todayISO()} ${new Date().toTimeString().slice(0, 5)}`, from: "-", to: "Terjadwal", by: "Anda", note: form.catatan.trim() },
+            ],
+          },
+          { action: "menjadwalkan maintenance", target: `${eq.name} - ${fmtTanggal(form.tanggal)}`, module: "Equipment" },
+        );
+        log("menjadwalkan maintenance", `${eq.name} - ${fmtTanggal(form.tanggal)}${materials.length > 0 ? ` - kebutuhan ${materials.map((m) => `${m.name} x ${m.qty}`).join("; ")}` : ""}`, "Equipment");
+      }
+      toast(maintEditingId ? (locale === "en" ? "Maintenance updated" : "Maintenance diperbarui") : (locale === "en" ? "Maintenance scheduled" : "Maintenance dijadwalkan"));
+      closeMaint();
+    } catch (e) {
+      toast(e instanceof Error ? e.message : S.saveFail, "info");
+    }
+  };
+
+  /**
+   * Ubah qty material pada siklus yang stoknya SUDAH terpotong.
+   * Dipakai tombol Ubah di baris berstatus Selesai: yang dihitung adalah
+   * DELTA (kurang/tambah), bukan jumlah baru - supaya adjusting tidak
+   * menggandakan atau mengembalikan seluruh stok.
+   */
+  const adjustMaintMaterials = async (m: StoreItem, next: { itemId: string; qty: string }[]) => {
+    const prevMats = materialsOf(m);
+    const nextMats = matsFromForm(next);
+    const delta = new Map<string, number>();
+    for (const x of nextMats) delta.set(x.itemId, (delta.get(x.itemId) ?? 0) + x.qty);
+    for (const x of prevMats) delta.set(x.itemId, (delta.get(x.itemId) ?? 0) - x.qty);
+
+    /* Simulasikan dulu seluruh delta, baru tulis. Menulis sambil loop
+       berarti kegagalan di tengah menyisakan stok setengah terpotong. */
+    const nextStock = new Map<string, number>();
+    for (const [itemId, d] of delta) {
+      if (d === 0) continue;
+      const it = data.inventory.find((x) => String(x.id) === itemId);
+      if (!it) { toast(locale === "en" ? "Unknown material" : "Material tidak dikenal", "info"); return; }
+      const cur = nextStock.get(itemId) ?? Number(it.stock || 0);
+      const after = cur - d;
+      if (after < 0) {
+        toast(
+          locale === "en"
+            ? `Not enough stock for ${it.name}: need ${fmtJumlah(-d)} more, have ${fmtJumlah(cur)}`
+            : `Stok ${it.name} tidak cukup: perlu ${fmtJumlah(-d)} lagi, tersedia ${fmtJumlah(cur)}`,
+          "info",
+        );
+        return;
+      }
+      nextStock.set(itemId, after);
+    }
+    try {
+      for (const [itemId, stock] of nextStock) {
+        await update("inventory", itemId, { stock });
+      }
+      const materialCost = materialsCost(nextMats);
+      await update("maintenances", String(m.id), {
+        materials: nextMats,
+        materialCost,
+        costTotal: materialCost + Number(m.laborCost ?? 0) + Number(m.otherCost ?? 0),
+      });
+      log(
+        "mengoreksi material maintenance",
+        `${m.id}${nextStock.size > 0 ? ` - ${[...nextStock].map(([id, s]) => `${id} -> ${fmtJumlah(s)}`).join("; ")}` : ""}`,
+        "Equipment",
+      );
+      toast(locale === "en" ? "Material corrected, stock adjusted" : "Material dikoreksi, stok disesuaikan");
+      closeMaint();
+    } catch (e) {
+      toast(e instanceof Error ? e.message : S.saveFail, "info");
+    }
+  };
+
+  /**
+   * Majukan/batalkan status satu siklus.
+   *
+   * Titik kritis: pemotongan stok terjadi TEPAT SEKALI saat masuk Selesai.
+   * Flag `deducted` yang menjaganya - tanpa itu, dua kali klik Selesai akan
+   * memotong stok dua kali. Membatalkan siklus yang sudah Selesai tidak
+   * lewat sini (status final) - pakai cancelMaint yang mengembalikan stok.
+   */
+  const advanceMaintStatus = async (m: StoreItem, to: MaintStatus, note?: string) => {
+    const from = statusOf(m);
+    if (!canTransition(from, to)) {
+      toast(
+        locale === "en"
+          ? `Cannot move from ${from} to ${to}`
+          : `Tidak bisa pindah dari ${maintStatusLabel(from, locale)} ke ${maintStatusLabel(to, locale)}`,
+        "info",
+      );
+      return;
+    }
+    const materials = materialsOf(m);
+    const patch: Record<string, unknown> = {
+      status: to,
+      history: [
+        ...historyOf(m),
+        {
+          at: `${todayISO()} ${new Date().toTimeString().slice(0, 5)}`,
+          from,
+          to,
+          by: "Anda",
+          note: note ?? "",
+        },
+      ],
+    };
+
+    try {
+      if (to === "Sedang Proses") {
+        patch.mulai = String(m.mulai || m.tanggal || todayISO());
+        /* Unit masuk workshop: equipment.status = Maintenance supaya tak bisa
+           dibooking lagi (saveBooking menolak status Maintenance). */
+        await update("maintenances", String(m.id), patch);
+        await update("equipment", String(m.equipmentId), {
+          status: "Maintenance",
+          maintenanceNote: String(m.catatan ?? ""),
+          maintenanceEta: String(m.eta ?? ""),
+        });
+      } else if (to === "Selesai") {
+        /* --- REALISASI: potong stok material (sekali) --- */
+        if (!canRestoreStock(m)) {
+          const short = planShortages(planStockCut({ ...m, materials }, data.inventory));
+          if (short.length > 0) {
+            toast(
+              locale === "en"
+                ? `Insufficient stock: ${short.map((s) => `${s.name} (need ${fmtJumlah(s.qty)}, have ${fmtJumlah(s.available)})`).join("; ")}`
+                : `Stok kurang: ${short.map((s) => `${s.name} (butuh ${fmtJumlah(s.qty)}, tersedia ${fmtJumlah(s.available)})`).join("; ")}`,
+              "info",
+            );
+            return;
+          }
+          for (const r of materials) {
+            if (r.itemId === "") continue;
+            const it = data.inventory.find((x) => String(x.id) === r.itemId);
+            if (!it) continue;
+            await update("inventory", r.itemId, { stock: Number(it.stock || 0) - r.qty });
+            await add(
+              "movements",
+              {
+                item: r.name || String(it.name ?? r.itemId),
+                itemId: r.itemId,
+                type: "Pengeluaran",
+                qty: r.qty,
+                by: `Servis ${String(m.equipmentName ?? m.equipmentId)} - ${fmtTanggal(String(m.tanggal ?? todayISO()))}`,
+                date: todayISO(),
+                tone: "out",
+                fromWh: String(it.warehouse ?? ""),
+                toWh: "",
+                purpose: `Servis ${String(m.equipmentName ?? m.equipmentId)}`,
+                pic: String(m.teknisi ?? ""),
+                projectId: String(m.projectId ?? ""),
+                keterangan: `Maintenance ${String(m.id)}`,
+              },
+              { action: "material servis", target: `${r.name} × ${r.qty} (${m.id})`, module: "Equipment" },
+            );
+          }
+          patch.deducted = true;
+        }
+        patch.selesai = todayISO();
+        patch.hoursAfter = String(m.hoursAfter || m.hours || 0);
+        /* equipment.nextService diisi dari siklus ini supaya tab Register
+           tetap menampilkan jadwal berikutnya (kolom legacy itu tetap
+           dibaca modul lain). */
+        await update("maintenances", String(m.id), patch);
+        await update("equipment", String(m.equipmentId), {
+          status: "Tersedia",
+          lastHours: Number(m.hoursAfter || m.hours || 0),
+          lastServiceMaterials: materials.length > 0 ? materials : undefined,
+          lastServiceCost: materialsCost(materials),
+          nextService: String(m.eta && m.eta !== "" ? m.eta : "-"),
+          maintenanceNote: "",
+          maintenanceEta: "",
+        });
+      } else if (to === "Dibatalkan") {
+        patch.selesai = todayISO();
+        await update("maintenances", String(m.id), patch);
+        await update("equipment", String(m.equipmentId), {
+          status: "Tersedia",
+          maintenanceNote: "",
+          maintenanceEta: "",
+        });
+      }
+      log(
+        to === "Selesai" ? "menyelesaikan maintenance" : to === "Dibatalkan" ? "membatalkan maintenance" : "memulai maintenance",
+        `${m.id} - ${String(m.equipmentName ?? m.equipmentId)}${note ? ` - ${note}` : ""}`,
+        "Equipment",
+      );
+      toast(
+        to === "Selesai"
+          ? (locale === "en" ? "Maintenance completed - stock deducted" : "Maintenance selesai - stok dipotong")
+          : to === "Dibatalkan"
+            ? (locale === "en" ? "Maintenance cancelled" : "Maintenance dibatalkan")
+            : (locale === "en" ? "Maintenance started" : "Maintenance dimulai"),
+      );
+    } catch (e) {
+      toast(e instanceof Error ? e.message : S.saveFail, "info");
+    }
+  };
+
+  /**
+   * Batalkan siklus yang SUDAH SELESAI (stok sudah terpotong).
+   * Stok dikembalikan DAN movements koreksi dicatat supaya nilai
+   * inventori tetap bisa ditelusuri, bukan hanya diubah diam-diam.
+   */
+  const cancelCompletedMaint = async (m: StoreItem) => {
+    if (!canRestoreStock(m)) return;
+    try {
+      for (const r of materialsOf(m)) {
+        if (r.itemId === "") continue;
+        const it = data.inventory.find((x) => String(x.id) === r.itemId);
+        if (!it) continue;
+        await update("inventory", r.itemId, { stock: Number(it.stock || 0) + r.qty });
+        await add(
+          "movements",
+          {
+            item: r.name || String(it.name ?? r.itemId),
+            itemId: r.itemId,
+            type: "Retur",
+            qty: r.qty,
+            by: `Pembatalan maintenance ${String(m.id)}`,
+            date: todayISO(),
+            tone: "in",
+            fromWh: "",
+            toWh: String(it.warehouse ?? ""),
+            supplier: `Servis ${String(m.equipmentName ?? m.equipmentId)}`,
+            pic: "Anda",
+            keterangan: `Maintenance ${String(m.id)} dibatalkan`,
+          },
+          { action: "koreksi material servis", target: `${r.name} × ${r.qty} (${m.id})`, module: "Equipment" },
+        );
+      }
+      const from = statusOf(m);
+      await update("maintenances", String(m.id), {
+        status: "Dibatalkan",
+        deducted: false,
+        selesai: todayISO(),
+        history: [
+          ...historyOf(m),
+          {
+            at: `${todayISO()} ${new Date().toTimeString().slice(0, 5)}`,
+            from,
+            to: "Dibatalkan",
+            by: "Anda",
+            note: "stok material dikembalikan",
+          },
+        ],
+      });
+      await update("equipment", String(m.equipmentId), { status: "Tersedia" });
+      log("membatalkan maintenance selesai", `${m.id} - stok dikembalikan`, "Equipment");
+      toast(locale === "en" ? "Cancelled - stock returned" : "Dibatalkan - stok dikembalikan");
+      setDelMaint(null);
+    } catch (e) {
+      toast(e instanceof Error ? e.message : S.saveFail, "info");
+    }
+  };
+
+  /** Hapus satu siklus. Stok dikembalikan bila siklus sudah memotong stok. */
+  const confirmDelMaint = async () => {
+    if (!delMaint) return;
+    const m = delMaint;
+    if (canRestoreStock(m)) {
+      await cancelCompletedMaint(m);
+      await remove("maintenances", String(m.id));
+      log("menghapus maintenance", `${m.id} - stok dikembalikan`, "Equipment");
+      toast(locale === "en" ? "Maintenance record deleted" : "Data maintenance dihapus");
+      setDelMaint(null);
+      return;
+    }
+    try {
+      await remove("maintenances", String(m.id));
+      log("menghapus maintenance", String(m.id), "Equipment");
+      toast(locale === "en" ? "Maintenance record deleted" : "Data maintenance dihapus");
+      setDelMaint(null);
+    } catch (e) {
+      toast(e instanceof Error ? e.message : S.saveFail, "info");
+    }
+  };
+
 
   const clashOf = (equip: string, date: string, a: number, b: number): StoreItem[] =>
     bookings.filter((o) => {
@@ -776,7 +1334,56 @@ export default function EquipmentPage() {
     }, { action: "menjadwalkan kalibrasi", target: `${eq?.name ?? calForm.equipmentId} · ${fmtTanggal(calForm.due)}`, module: "Equipment" });
     toast(S.eqCalScheduled.replace("{a}", created.id));
     setShowCal(false);
+    setCalEditId(null);
     setCalForm({ equipmentId: "", item: "", due: "" });
+    } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); }
+  };
+
+  /* ==== UBAH / HAPUS KALIBRASI ====
+     Tabel Kalibrasi hanya punya tombol Selesaikan. Kalibrasi Terjadwal yang
+     due-nya bentrok atau alat ukurnya salah tidak bisa dikoreksi; jadwal
+     dobel juga tidak bisa dihapus. */
+  const openCalEdit = (c: StoreItem) => {
+    setCalEditId(String(c.id));
+    setCalForm({
+      equipmentId: String(c.equipmentId ?? ""),
+      item: String(c.item ?? ""),
+      due: String(c.due ?? todayISO()),
+    });
+    setShowCal(true);
+  };
+
+  const saveCalEdit = async () => {
+    if (!calEditId) return;
+    if (!calForm.equipmentId || !calForm.item.trim() || !calForm.due) { toast(S.eqCalReq, "info"); return; }
+    const dupe = calibrations.some(
+      (c) => String(c.id) !== calEditId
+        && String(c.equipmentId) === calForm.equipmentId
+        && String(c.item).toLowerCase() === calForm.item.trim().toLowerCase()
+        && c.status !== "Selesai",
+    );
+    if (dupe) { toast(S.eqCalDupe, "info"); return; }
+    try {
+      await update("calibrations", calEditId, {
+        equipmentId: calForm.equipmentId,
+        item: calForm.item.trim(),
+        due: calForm.due,
+      });
+      log("mengubah kalibrasi", `${calEditId} - ${calForm.item.trim()} - ${fmtTanggal(calForm.due)}`, "Equipment");
+      toast(locale === "en" ? `Calibration ${calEditId} updated` : `Kalibrasi ${calEditId} diperbarui`);
+      setShowCal(false);
+      setCalEditId(null);
+      setCalForm({ equipmentId: "", item: "", due: "" });
+    } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); }
+  };
+
+  const confirmDelCal = async () => {
+    if (!delCal) return;
+    try {
+      await remove("calibrations", String(delCal.id));
+      log("menghapus kalibrasi", `${delCal.id} - ${delCal.item ?? ""}`, "Equipment");
+      toast(locale === "en" ? `Calibration ${delCal.id} deleted` : `Kalibrasi ${delCal.id} dihapus`);
+      setDelCal(null);
     } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); }
   };
 
@@ -970,19 +1577,59 @@ export default function EquipmentPage() {
                         })()}
                       </td>
                       <td className="td">
+                        <div className="flex flex-wrap items-center gap-1.5">
+                        {/* Aksi Register diarahkan ke ALUR SIKLUS, bukan lagi
+                            toggle status langsung. Mulai = buat siklus
+                            Terjadwal; Selesai = majukan siklus yang sedang
+                            berjalan (bukan cuma membalik status equipment),
+                            supaya material terpotong dan HPP proyek terisi. */}
                         {e.status === "Tersedia" && (
-                          <button className="btn-secondary text-xs" onClick={() => { setMaintaining(e); setMaintNote(""); setMaintEta(""); }}>
-                            <Wrench className="h-3.5 w-3.5" /> {S.eqTabMaint}
+                          <button className="btn-secondary text-xs" onClick={() => openMaintNew(String(e.id))}>
+                            <Wrench className="h-3.5 w-3.5" /> {locale === "en" ? "Schedule service" : "Jadwalkan Servis"}
                           </button>
                         )}
-                        {e.status === "Maintenance" && (
-                          <button className="btn-secondary text-xs" onClick={() => endMaintenance(e)}>
-                            <CheckCircle2 className="h-3.5 w-3.5" /> {S.eqBackAvailBtn}
-                          </button>
-                        )}
+                        {e.status === "Maintenance" && (() => {
+                          const cycle = maintRows.find((r) => r.equipmentId === String(e.id) && r.status === "Sedang Proses");
+                          if (!cycle) {
+                            return (
+                              <span className="text-xs text-steel-500" title={locale === "en" ? "Flagged as Maintenance but no active cycle found. Create one." : "Berstatus Maintenance tapi siklus aktif tidak ditemukan. Buat siklus."}>
+                                {locale === "en" ? "No active cycle" : "Tanpa siklus aktif"}
+                              </span>
+                            );
+                          }
+                          return (
+                            <button
+                              className="btn-primary text-xs"
+                              onClick={() => void advanceMaintStatus(cycle.raw, "Selesai")}
+                              title={locale === "en" ? "Complete the cycle and deduct material stock" : "Selesaikan siklus dan potong stok material"}
+                            >
+                              <CheckCircle2 className="h-3.5 w-3.5" /> {S.eqComplete}
+                            </button>
+                          );
+                        })()}
                         {e.status === "Terpakai" && (
                           <span className="text-xs text-steel-500">{S.eqBackToBooking}</span>
                         )}
+                        {/* Ubah/Hapus equipment. Dulu tabel Register tidak punya
+                            kolom aksi sama sekali selain lifecycle servis,
+                            sehingga equipment yang salah tarif/jangka tidak
+                            bisa dikoreksi dan equipment yang tak dipakai
+                            selamanya tidak bisa dihapus. */}
+                        <button
+                          className="btn-secondary text-xs"
+                          onClick={() => openEdit(e)}
+                          title={locale === "en" ? "Edit equipment" : "Ubah equipment"}
+                        >
+                          <Pencil className="h-3.5 w-3.5" /> {S.eqEdit}
+                        </button>
+                        <button
+                          className="btn-secondary text-xs text-rose-600"
+                          onClick={() => setDelEquip(e)}
+                          title={locale === "en" ? "Delete equipment" : "Hapus equipment"}
+                        >
+                          <Trash2 className="h-3.5 w-3.5" /> {S.delBtn}
+                        </button>
+                        </div>
                       </td>
                     </tr>
                     );
@@ -1049,67 +1696,212 @@ export default function EquipmentPage() {
             </div>
           )}
 
-          {tab === "Maintenance" && (
-            <div>
-              <div className="mb-3 flex flex-wrap items-center justify-end gap-2">
-                <button className="btn-secondary text-xs" onClick={() => setShowService(true)}><Wrench className="h-3.5 w-3.5" /> Jadwalkan servis</button>
-              </div>
+{tab === "Maintenance" && (
+            <div className="space-y-4">
+              {/* ==== ALUR SIKLUS MAINTENANCE ====
+                  Terjadwal -> Sedang Proses -> Selesai, atau Dibatalkan.
+                  Setiap transisi menyimpan jejak di maintenance.history[] dan
+                  memotong stok material TEPAT SEKALI saat masuk Selesai
+                  (dijaga flag `deducted`). Tombol "Catat Servis" yang dulu
+                  membuka form tanpa status kini berubah jadi tombol
+                  Ubah / Riwayat / Hapus di kolom Aksi. */}
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="flex flex-wrap items-center gap-2">
+                  {(MAINT_STATUS as readonly string[]).map((s) => (
+                    <span key={s} className="inline-flex items-center gap-1 rounded-full border border-steel-200 bg-white px-2 py-0.5 text-[11px]">
+                      <Badge tone={MAINT_STATUS_TONE[s as MaintStatus]}>{maintStatusLabel(s as MaintStatus, locale)}</Badge>
+                      <span className="font-semibold text-navy-900">{maintStats.byStatus[s as MaintStatus]}</span>
+                    </span>
+                  ))}
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <select
+                    className="input w-auto py-1.5 text-xs"
+                    aria-label={locale === "en" ? "Pick equipment to schedule" : "Pilih equipment untuk dijadwalkan"}
+                    value={maintForm.equipmentId}
+                    onChange={(e) => setMaintForm({ ...maintForm, equipmentId: e.target.value })}
+                  >
+                    <option value="">{locale === "en" ? "-- equipment --" : "-- pilih equipment --"}</option>
+                    {equipment.map((e) => <option key={e.id} value={e.id}>{e.name}</option>)}
+                  </select>
+                  <button className="btn-primary-gradient text-xs" onClick={() => openMaintNew(maintForm.equipmentId || equipment[0]?.id)}>
+                    <Wrench className="h-3.5 w-3.5" /> {locale === "en" ? "Schedule maintenance" : "Jadwalkan Maintenance"}
+                  </button>
+                </div>
+</div>
+
+              {/* ==== TABEL SIKLUS MAINTENANCE ==== */}
               <div className="overflow-x-auto">
                 <table className="w-full">
                   <thead className="sticky top-0 z-10 bg-surface">
-                    <tr><SortTh label={S.thEquipment} sortKey="equipment" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} /><SortTh label={S.thSchedule} sortKey="jadwal" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} /><SortTh label={S.thNoteEta} sortKey="catatan" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} /><SortTh label={S.thStatus} sortKey="status" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} /><th className="th">{S.thAction}</th></tr>
+                    <tr>
+                      <SortTh label={locale === "en" ? "Cycle" : "Siklus"} sortKey="id" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} />
+                      <SortTh label={S.thEquipment} sortKey="equipment" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} />
+                      <SortTh label={locale === "en" ? "Type" : "Jenis"} sortKey="jenis" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} />
+                      <SortTh label={locale === "en" ? "Scheduled" : "Jadwal"} sortKey="jadwal" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} />
+                      <SortTh label={locale === "en" ? "Project (HPP)" : "Proyek (HPP)"} sortKey="proyek" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} />
+                      <th className="th">{locale === "en" ? "Material usage" : "Penggunaan Material"}</th>
+                      <SortTh label={locale === "en" ? "Cost" : "Biaya"} sortKey="biaya" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} />
+                      <SortTh label={S.thStatus} sortKey="status" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} />
+                      <th className="th">{S.thAction}</th>
+                    </tr>
                   </thead>
                   <tbody className="divide-y divide-steel-100">
-                    {sortRows(equipment, sort2, (e, k) => {
-                      if (k === "jadwal") return String(e.nextService ?? "");
-                      if (k === "catatan") return String(`${e.maintenanceNote ?? ""} ${e.maintenanceEta ?? ""}`);
-                      if (k === "status") return String(e.status ?? "");
-                      return String(e.name ?? "");
-                    }).map((e) => (
-                      <tr key={e.id} className="hover:bg-surface">
-                        <td className="td font-medium text-navy-900">{e.name}</td>
-                        <td className="td text-steel-600">{fmtTanggal(typeof e.nextService === "string" ? e.nextService : "")}</td>
-                        <td className="td text-xs text-steel-600">
-                          {e.status === "Maintenance" && e.maintenanceNote
-                            ? `${e.maintenanceNote}${e.maintenanceEta ? ` · selesai ${fmtTanggal(String(e.maintenanceEta))}` : ""}`
-                            : Array.isArray(e.lastServiceMaterials) && e.lastServiceMaterials.length > 0
-                              ? `Servis terakhir: ${(e.lastServiceMaterials as { name: string; qty: number; unit: string }[]).map((m) => `${m.name} × ${m.qty} ${m.unit ?? ""}`).join("; ")} (${fmtRupiah(Number(e.lastServiceCost || 0))})`
-                              : <span className="text-steel-400">-</span>}
-                          {(() => {
-                            const sched = (e.scheduledService ?? null) as { tanggal?: string; teknisi?: string; materials?: { name: string; qty: number; unit?: string }[] } | null;
-                            const schedMats = (Array.isArray(e.scheduledServiceMaterials) ? e.scheduledServiceMaterials : sched?.materials ?? []) as { name: string; qty: number; unit?: string }[];
-                            if (!sched && schedMats.length === 0) return null;
-                            return (
-                              <span className="mt-1 block text-[11px] text-steel-500">
-                                Jadwal{sched?.tanggal ? ` ${fmtTanggal(String(sched.tanggal))}` : ""}{sched?.teknisi ? ` · ${sched.teknisi}` : ""}{schedMats.length > 0 ? ` · butuh ${schedMats.map((m) => `${m.name} × ${m.qty}`).join("; ")} (stok tidak dipotong)` : ""}
-                              </span>
-                            );
-                          })()}
+                    {maintPager.slice(maintSorted).map((r) => (
+                      <tr key={r.id} className="hover:bg-surface">
+                        <td className="td font-mono text-xs text-navy-900">{r.id}</td>
+                        <td className="td">
+                          <p className="font-medium text-navy-900 truncate" title={r.equipmentName}>{r.equipmentName}</p>
+                          {r.teknisi !== "" && <p className="text-[11px] text-steel-500 truncate">{r.teknisi}</p>}
                         </td>
-                        <td className="td"><Badge tone={e.status === "Maintenance" ? "amber" : "green"}>{e.status === "Maintenance" ? S.eqInService : S.eqScheduled}</Badge></td>
+                        <td className="td"><Badge tone="gray">{r.jenis || "-"}</Badge></td>
+                        <td className="td text-steel-600 text-xs">
+                          <p>{fmtTanggal(r.tanggal)}</p>
+                          {r.eta !== "" && (
+                            <p className="text-[11px] text-steel-400">ETA: {fmtTanggal(r.eta)}</p>
+                          )}
+                          {r.workDays > 0 && (
+                            <p className="text-[11px] text-steel-400">{r.workDays} {locale === "en" ? "day(s)" : "hari kerja"}</p>
+                          )}
+                        </td>
+                        <td className="td text-xs">
+                          {r.projectId !== "" ? (
+                            <Link to={`/proyek/${r.projectId}`} className="font-mono text-ocean-600 hover:underline">{r.projectId}</Link>
+                          ) : (
+                            <span className="text-steel-400" title={locale === "en" ? "Not charged to any project (overhead)" : "Tidak dibebankan ke proyek (overhead)"}>-</span>
+                          )}
+                        </td>
+                        <td className="td text-xs text-steel-600">
+                          {r.materials.length === 0 ? (
+                            <span className="text-steel-400">-</span>
+                          ) : (
+                            <>
+                              <ul className="space-y-0.5">
+                                {r.materials.map((mt) => (
+                                  <li key={`${mt.itemId}-${mt.qty}`} className="truncate" title={`${mt.name} x ${fmtJumlah(mt.qty)} ${mt.unit} = ${fmtRupiah(Math.round(mt.qty * mt.cost))}`}>
+                                    {mt.name} × {fmtJumlah(mt.qty)} {mt.unit}
+                                  </li>
+                                ))}
+                              </ul>
+                              <p className="mt-0.5 font-medium text-navy-900">{fmtRupiah(r.materialCost)}</p>
+                              {r.status === "Selesai" ? (
+                                <p className="text-[11px] text-emerald-600">
+                                  {locale === "en" ? "stock deducted" : "stok sudah dipotong"}
+                                </p>
+                              ) : r.shortages.length > 0 ? (
+                                <Badge tone="red" title={locale === "en" ? "Not enough stock at realization time" : "Stok tidak cukup saat pekerjaan diselesaikan"}>
+                                  {locale === "en" ? "stock short" : "stok kurang"}
+                                </Badge>
+                              ) : (
+                                <p className="text-[11px] text-steel-400">
+                                  {locale === "en" ? "not deducted yet" : "belum dipotong"}
+                                </p>
+                              )}
+                            </>
+                          )}
+                        </td>
+                        <td className="td text-xs">
+                          <p className="font-semibold text-navy-900">{fmtRupiah(r.costTotal)}</p>
+                          {r.laborCost > 0 && <p className="text-[11px] text-steel-400">{locale === "en" ? "incl. labor" : "incl. tenaga"}</p>}
+                          {r.status === "Selesai" && r.downtimeHours > 0 && (
+                            <p className="text-[11px] text-steel-400">
+                              {locale === "en" ? "downtime" : "downtime"} {fmtJumlah(r.downtimeHours)} {locale === "en" ? "h" : "jam"}
+                            </p>
+                          )}
+                        </td>
+                        <td className="td">
+                          <Badge tone={MAINT_STATUS_TONE[r.status]}>{maintStatusLabel(r.status, locale)}</Badge>
+                        </td>
                         <td className="td">
                           <div className="flex flex-wrap gap-1.5">
-                            <button className="btn-secondary text-xs" onClick={() => openRecord(e)}>Realisasikan</button>
-                            {Array.isArray(e.lastServiceMaterials) && e.lastServiceMaterials.length > 0 && (
-                              <>
-                                <button className="btn-secondary text-xs" onClick={() => openEditHist(e)}>Edit riwayat</button>
-                                <button className="btn-secondary text-xs" onClick={() => setDelHist(e)}>Hapus riwayat</button>
-                              </>
-                            )}
+                            {/* Transisi status berikutnya - hanya yang sah
+                                (dari utils/maintenance nextStatuses). */}
+                            {r.next.map((to) => (
+                              <button
+                                key={to}
+                                className={to === "Dibatalkan" ? "btn-secondary text-xs" : "btn-primary text-xs"}
+                                onClick={() => void advanceMaintStatus(r.raw, to)}
+                              >
+                                {to === "Sedang Proses"
+                                  ? (locale === "en" ? "Start" : "Mulai")
+                                  : to === "Selesai"
+                                    ? (locale === "en" ? "Record service" : "Catat Servis")
+                                    : (locale === "en" ? "Cancel" : "Batalkan")}
+                              </button>
+                            ))}
+                            {/* Kolom Aksi: Ubah / Riwayat / Hapus - inilah
+                                pengganti tombol "Catat Servis" tunggal yang
+                                dulu tidak bisa mengoreksi hasil servis. */}
+                            <button
+                              className="btn-secondary text-xs"
+                              onClick={() => openMaintEdit(r.raw)}
+                              title={r.status === "Selesai"
+                                ? (locale === "en" ? "Adjust materials - stock synced by delta" : "Koreksi material - stok disesuaikan by delta")
+                                : (locale === "en" ? "Edit schedule" : "Ubah jadwal")}
+                            >
+                              {S.eqEdit}
+                            </button>
+                            <button
+                              className="btn-secondary text-xs"
+                              onClick={() => setHistOf(r.raw)}
+                            >
+                              {S.eqHistory}
+                            </button>
+                            <button
+                              className="btn-secondary text-xs text-rose-600"
+                              onClick={() => setDelMaint(r.raw)}
+                            >
+                              {S.delBtn}
+                            </button>
                           </div>
                         </td>
                       </tr>
                     ))}
+                    {maintSorted.length === 0 && (
+                      <tr><td colSpan={9} className="px-3 py-8 text-center text-sm text-steel-400">
+                        {locale === "en"
+                          ? "No maintenance cycles yet. Schedule one to start the Terjadwal -> Sedang Proses -> Selesai flow."
+                          : "Belum ada siklus maintenance. Jadwalkan satu untuk memulai alur Terjadwal → Sedang Proses → Selesai."}
+                      </td></tr>
+                    )}
                   </tbody>
                 </table>
+                {maintPager.bar}
               </div>
+
+              {/* Baris legacy: equipment.nextService yang belum punya siklus.
+                  Ditampilkan supaya tidak ada jadwal yang hilang saat pindah
+                  ke koleksi maintenances. */}
+              {legacyMaint.length > 0 && (
+                <Card className="p-4">
+                  <CardHeader
+                    title={locale === "en" ? "Legacy next-service schedule" : "Jadwal Servis Legacy (belum ada siklus)"}
+                    subtitle={locale === "en"
+                      ? "These come from equipment.nextService only. Create a cycle to make them traceable."
+                      : "Berasal dari equipment.nextService saja. Buat siklus agar bisa dilacak."}
+                  />
+                  <div className="mt-2 space-y-1">
+                    {legacyMaint.map((e) => (
+                      <div key={e.id} className="flex items-center justify-between gap-2 border-b border-steel-100 py-1.5 text-sm">
+                        <span className="truncate text-navy-900">{e.name}</span>
+                        <span className="flex shrink-0 items-center gap-2">
+                          <span className="text-xs text-steel-500">{fmtTanggal(String(e.nextService))}</span>
+                          <button className="btn-secondary !py-0.5 text-[11px]" onClick={() => openMaintNew(String(e.id))}>
+                            {locale === "en" ? "Make cycle" : "Buat siklus"}
+                          </button>
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </Card>
+              )}
             </div>
           )}
 
           {tab === "Kalibrasi" && (
             <div>
               <div className="mb-3 flex justify-end">
-                <button className="btn-secondary text-xs" onClick={() => setShowCal(true)}><Plus className="h-3.5 w-3.5" /> {S.eqSchedCal}</button>
+                <button className="btn-secondary text-xs" onClick={() => { setCalEditId(null); setCalForm({ equipmentId: "", item: "", due: todayISO() }); setShowCal(true); }}><Plus className="h-3.5 w-3.5" /> {S.eqSchedCal}</button>
               </div>
               <div className="overflow-x-auto">
                 <table className="w-full">
@@ -1142,9 +1934,30 @@ export default function EquipmentPage() {
                             </div>
                           </td>
                           <td className="td">
-                            {c.status !== "Selesai" && c.status !== "Gagal" && (
-                              <button className="btn-secondary text-xs" onClick={() => { setFinishingCal(c); setCalCert(""); setCalResult("Lulus"); setCalDoneDate(todayISO()); setCalInterval("12"); }}>{S.finishBtn}</button>
-                            )}
+                            <div className="flex flex-wrap gap-1.5">
+                              {c.status !== "Selesai" && c.status !== "Gagal" && (
+                                <button className="btn-secondary text-xs" onClick={() => { setFinishingCal(c); setCalCert(""); setCalResult("Lulus"); setCalDoneDate(todayISO()); setCalInterval("12"); }}>{S.finishBtn}</button>
+                              )}
+                              {/* Kalibrasi yang sudah Terjadwal masih bisa
+                                  dikoreksi (tanggaldue / alat ukur sering
+                                  berubah karena jadwal clash), dan bisa dihapus
+                                  kalau dijadwalkan dobel. Dulu tidak ada
+                                  keduanya - hanya tombol Selesaikan. */}
+                              <button
+                                className="btn-secondary text-xs"
+                                onClick={() => openCalEdit(c)}
+                                title={locale === "en" ? "Edit calibration schedule" : "Ubah jadwal kalibrasi"}
+                              >
+                                <Pencil className="h-3.5 w-3.5" /> {S.eqEdit}
+                              </button>
+                              <button
+                                className="btn-secondary text-xs text-rose-600"
+                                onClick={() => setDelCal(c)}
+                                title={locale === "en" ? "Delete calibration" : "Hapus kalibrasi"}
+                              >
+                                <Trash2 className="h-3.5 w-3.5" /> {S.delBtn}
+                              </button>
+                            </div>
                           </td>
                         </tr>
                       );
@@ -1188,6 +2001,75 @@ export default function EquipmentPage() {
                   </table>
                 </div>
                 <p className="mt-2 text-right text-sm font-semibold text-navy-900">{S.eqTotal.replace("{a}", fmtRupiah(totalCost))}</p>
+              </Card>
+
+              {/* ==== HPP PROYEK DARI EQUIPMENT ====
+                  Tabel di atas hanya menjumlahkan booking selesai. Angka itu
+                  TIDAK pernah masuk ke modul Proyek, sehingga HPP proyek
+                  under-reported: sewa crane/genset dan material servis hilang
+                  dari margin. Card ini menjumlahkan keduanya dari sumber yang
+                  sama dengan utils/projectCost.ts (dipakai juga oleh
+                  pages/proyek/ProjectDetail.tsx), jadi modul Equipment dan
+                  modul Proyek tidak bisa lagi berbeda angka. */}
+              <Card className="p-5">
+                <CardHeader
+                  title={locale === "en" ? "Equipment cost charged to projects (HPP)" : "Biaya Equipment yang Dibebankan ke Proyek (HPP)"}
+                  subtitle={locale === "en"
+                    ? "Realised = finished bookings + completed maintenance. Committed = plus work still in progress."
+                    : "Terealisasi = booking selesai + maintenance selesai. Terkunci = ditambah pekerjaan yang masih berjalan."}
+                />
+                <div className="mt-3 overflow-x-auto">
+                  <table className="w-full">
+                    <thead className="sticky top-0 z-10 bg-surface">
+                      <tr>
+                        <SortTh label={S.thProject} sortKey="p" sort={sort3} onSort={(k) => setSort3((s) => toggleSort(s, k))} />
+                        <th className="th">{locale === "en" ? "Rental" : "Sewa"}</th>
+                        <th className="th">BBM</th>
+                        <th className="th">{locale === "en" ? "Maintenance (done)" : "Maintenance (selesai)"}</th>
+                        <SortTh label={locale === "en" ? "Realised" : "Terealisasi"} sortKey="r" sort={sort3} onSort={(k) => setSort3((s) => toggleSort(s, k))} />
+                        <SortTh label={locale === "en" ? "Committed" : "Terkunci"} sortKey="c" sort={sort3} onSort={(k) => setSort3((s) => toggleSort(s, k))} />
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-steel-100">
+                      {sortRows(projectCostRows, sort3, (r, k) => {
+                        if (k === "r") return r.realized;
+                        if (k === "c") return r.committed;
+                        return `${r.projectId} ${r.vessel}`;
+                      }).map((r) => (
+                        <tr key={r.projectId} className="hover:bg-surface">
+                          <td className="td">
+                            <p className="font-medium text-navy-900">{projCell(r.projectId)}</p>
+                            {r.vessel !== "" && <p className="text-xs text-steel-500 truncate" title={r.vessel}>{r.vessel}</p>}
+                          </td>
+                          <td className="td text-steel-600">{fmtRupiah(r.rental)}</td>
+                          <td className="td text-steel-600">{fmtRupiah(r.fuel)}</td>
+                          <td className="td text-steel-600">
+                            {fmtRupiah(r.maintRealized)}
+                            {r.maintCommitted > 0 && (
+                              <p className="text-[11px] text-amber-600">
+                                + {fmtRupiah(r.maintCommitted)} {locale === "en" ? "in progress" : "berjalan"}
+                              </p>
+                            )}
+                          </td>
+                          <td className="td font-semibold text-navy-900">{fmtRupiah(r.realized)}</td>
+                          <td className="td font-semibold">{fmtRupiah(r.committed)}</td>
+                        </tr>
+                      ))}
+                      {projectCostRows.length === 0 && (
+                        <tr><td colSpan={6} className="td text-center text-steel-400">
+                          {locale === "en"
+                            ? "No equipment cost booked to any project yet. Finish a booking or a maintenance cycle with a project selected."
+                            : "Belum ada biaya equipment yang dibebankan ke proyek. Selesaikan booking atau siklus maintenance dengan proyek terpilih."}
+                        </td></tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+                <p className="mt-2 text-xs text-steel-500">
+                  {locale === "en"
+                    ? "These figures are the same ones Project Detail uses for cost vs budget, so the two modules cannot drift apart."
+                    : "Angka ini sama dengan yang dipakai Project Detail untuk biaya vs anggaran, jadi kedua modul tidak bisa melenceng."}
+                </p>
               </Card>
               <Card className="p-5">
                 <h3 className="mb-2 text-sm font-semibold text-navy-900">{S.eqDoneHistory}</h3>
@@ -1389,9 +2271,17 @@ export default function EquipmentPage() {
         </div>
       </div>
 
-      {/* Modal tambah */}
-      <Modal open={showAdd} onClose={() => setShowAdd(false)} title={S.eqAdd}
-        wide footer={<><button className="btn-secondary" onClick={() => setShowAdd(false)}>{S.cancelBtn}</button><AsyncButton className="btn-primary" onAction={saveAdd}>{S.saveBtn}</AsyncButton></>}>
+      {/* Modal tambah / ubah equipment */}
+      <Modal
+        open={showAdd}
+        onClose={() => { setShowAdd(false); setEditingId(null); }}
+        title={editingId ? `${S.eqEdit} ${editingId}` : S.eqAdd}
+        wide
+        footer={<>
+          <button className="btn-secondary" onClick={() => { setShowAdd(false); setEditingId(null); }}>{S.cancelBtn}</button>
+          <AsyncButton className="btn-primary" onAction={editingId ? saveEdit : saveAdd}>{S.saveBtn}</AsyncButton>
+        </>}
+      >
         <div className="space-y-3">
           <FormGrid>
             <Field label={S.eqNameField}><input className="input" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder={S.eqNamePh} /></Field>
@@ -1424,102 +2314,224 @@ export default function EquipmentPage() {
       </Modal>
 
       {/* Modal servis */}
-      <Modal open={showService} onClose={() => setShowService(false)} title={S.eqSchedSvc}
-        footer={<><button className="btn-secondary" onClick={() => setShowService(false)}>{S.cancelBtn}</button><AsyncButton className="btn-primary" onAction={saveService}>{S.saveBtn}</AsyncButton></>}>
+      <Modal
+        open={showService}
+        onClose={closeMaint}
+        title={maintEditingId
+          ? (locale === "en" ? `Edit maintenance - ${maintEditingId}` : `Ubah Maintenance - ${maintEditingId}`)
+          : (locale === "en" ? "Schedule maintenance" : "Jadwalkan Maintenance")}
+        subtitle={locale === "en"
+          ? "Materials are planned here; stock is deducted once the cycle is completed."
+          : "Material direncanakan di sini; stok dipotong satu kali saat siklus diselesaikan."}
+        wide
+        footer={<><button className="btn-secondary" onClick={closeMaint}>{S.cancelBtn}</button><AsyncButton className="btn-primary" onAction={async () => {
+          /* Siklus yang SUDAH Selesai sudah memotong stok, jadi simpan biasa
+             akan memotong dua kali. Jalur itu harus lewat delta. */
+          if (maintEditingId) {
+            const prev = data.maintenances.find((m) => m.id === maintEditingId);
+            if (prev && canRestoreStock(prev)) {
+              await adjustMaintMaterials(prev, maintForm.mats);
+              return;
+            }
+          }
+          await saveMaint();
+        }}>{maintEditingId ? S.saveBtn : (locale === "en" ? "Schedule" : "Jadwalkan")}</AsyncButton></>}
+      >
         <div className="space-y-3">
-          <Field label={S.thEquipment}>
-            <select className="input" value={svcTarget} onChange={(e) => setSvcTarget(e.target.value)}>
-              <option value="">{S.eqChoose}</option>
-              {equipment.map((e) => <option key={e.id} value={e.id}>{e.name} ({e.code})</option>)}
-            </select>
+          <FormGrid>
+            <Field label={S.thEquipment}>
+              <select className="input" value={maintForm.equipmentId} onChange={(e) => setMaintForm({ ...maintForm, equipmentId: e.target.value })}>
+                <option value="">{S.eqChoose}</option>
+                {equipment.map((e) => <option key={e.id} value={e.id}>{e.name} ({e.code})</option>)}
+              </select>
+            </Field>
+            <Field label={locale === "en" ? "Work type" : "Jenis Pekerjaan"}>
+              <select className="input" value={maintForm.jenis} onChange={(e) => setMaintForm({ ...maintForm, jenis: e.target.value })}>
+                {MAINT_JENIS.map((j) => <option key={j} value={j}>{j}</option>)}
+              </select>
+            </Field>
+            <Field label={locale === "en" ? "Scheduled date" : "Tanggal Jadwal"}>
+              <input type="date" className="input" value={maintForm.tanggal} onChange={(e) => setMaintForm({ ...maintForm, tanggal: e.target.value })} />
+            </Field>
+            <Field label={locale === "en" ? "Estimated finish (ETA)" : "Estimasi Selesai"}>
+              <input type="date" className="input" value={maintForm.eta} onChange={(e) => setMaintForm({ ...maintForm, eta: e.target.value })} />
+            </Field>
+            <Field label={S.eqTechField} hint={locale === "en" ? "Linked employee, for costing" : "Terhubung ke karyawan, untuk hitung biaya"}>
+              <select className="input" value={maintForm.teknisiId} onChange={(e) => setMaintForm({ ...maintForm, teknisiId: e.target.value })}>
+                <option value="">{S.eqChoose}</option>
+                {employees.map((emp) => <option key={emp.id} value={emp.id}>{emp.name}</option>)}
+              </select>
+            </Field>
+            <Field
+              label={locale === "en" ? "Charged to project (HPP)" : "Dibebankan ke Proyek (HPP)"}
+              hint={locale === "en"
+                ? "Material + labour land in this project's cost. Leave empty for overhead."
+                : "Material + tenaga masuk biaya proyek ini. Kosongkan bila overhead."}
+            >
+              <select className="input" value={maintForm.projectId} onChange={(e) => setMaintForm({ ...maintForm, projectId: e.target.value })}>
+                <option value="">{locale === "en" ? "-- overhead --" : "-- overhead --"}</option>
+                {projects.map((p) => <option key={p.id} value={p.id}>{p.id} - {p.vessel}</option>)}
+              </select>
+            </Field>
+            <Field label={locale === "en" ? "Hour meter before" : "Hour Meter Awal"}>
+              <NumInput min={0} className="input" value={maintForm.hours} onChange={(e) => setMaintForm({ ...maintForm, hours: e.target.value })} />
+            </Field>
+            <Field
+              label={locale === "en" ? "Hour meter after" : "Hour Meter Akhir"}
+              hint={locale === "en" ? "Must not be lower than before" : "Tidak boleh lebih kecil dari awal"}
+            >
+              <NumInput min={0} className="input" value={maintForm.hoursAfter} onChange={(e) => setMaintForm({ ...maintForm, hoursAfter: e.target.value })} />
+            </Field>
+            <Field label={locale === "en" ? "Downtime (hours)" : "Downtime (jam)"}>
+              <NumInput min={0} className="input" value={maintForm.downtimeHours} onChange={(e) => setMaintForm({ ...maintForm, downtimeHours: e.target.value })} />
+            </Field>
+          </FormGrid>
+          <Field label={S.eqWorkNote}>
+            <input className="input" value={maintForm.catatan} onChange={(e) => setMaintForm({ ...maintForm, catatan: e.target.value })} placeholder={S.eqWorkNotePh} />
           </Field>
-          <FormGrid>
-            <Field label={S.eqSvcDateField}><input type="date" className="input" value={schedForm.tanggal} onChange={(e) => setSchedForm({ ...schedForm, tanggal: e.target.value })} /></Field>
-            <Field label={S.eqTechField}><input className="input" value={schedForm.teknisi} onChange={(e) => setSchedForm({ ...schedForm, teknisi: e.target.value })} placeholder={S.eqTechPh} /></Field>
-            <Field label="Hour meter (odometer)"><NumInput min={0} className="input" value={schedForm.hours} onChange={(e) => setSchedForm({ ...schedForm, hours: e.target.value })} /></Field>
-            <Field label={S.eqNextSvc}><input type="date" className="input" value={schedForm.next} onChange={(e) => setSchedForm({ ...schedForm, next: e.target.value })} /></Field>
-          </FormGrid>
-          <Field label={S.eqWorkNote}><input className="input" value={schedForm.catatan} onChange={(e) => setSchedForm({ ...schedForm, catatan: e.target.value })} placeholder={S.eqWorkNotePh} /></Field>
           <div className="border-t border-steel-100 pt-3">
             <div className="mb-2 flex items-center justify-between">
-              <p className="text-xs font-semibold text-steel-500">Kebutuhan material dari inventory (stok tidak dipotong)</p>
-              <button className="btn-secondary text-xs" onClick={() => setSchedMats((m) => [...m, { itemId: "", qty: "" }])}>+ Tambah material</button>
+              <p className="text-xs font-semibold text-steel-500">
+                {locale === "en" ? "Material usage from inventory" : "Penggunaan Material dari Inventory"}
+              </p>
+              <button className="btn-secondary text-xs" onClick={() => setMaintForm({ ...maintForm, mats: [...maintForm.mats, { itemId: "", qty: "" }] })}>
+                + {locale === "en" ? "Add material" : "Tambah Material"}
+              </button>
             </div>
-            {schedMats.length === 0 && <p className="text-xs text-steel-400">Belum ada material — tambah bila servis terjadwal membutuhkan sparepart dari gudang.</p>}
-            {schedMats.map((m, idx) => {
-              const it = (data.inventory ?? []).find((x) => x.id === m.itemId);
+            {maintForm.mats.length === 0 && (
+              <p className="text-xs text-steel-400">
+                {locale === "en"
+                  ? "No material yet. Add spare parts that this service will consume - stock is cut when the cycle is completed."
+                  : "Belum ada material. Tambahkan sparepart yang akan dipakai - stok dipotong saat siklus diselesaikan."}
+              </p>
+            )}
+            {maintForm.mats.map((m, idx) => {
+              const it = data.inventory.find((x) => String(x.id) === m.itemId);
+              const q = Number(m.qty) || 0;
+              const over = it !== undefined && q > Number(it.stock || 0);
               return (
                 <div key={idx} className="mb-2 grid grid-cols-12 items-end gap-2">
                   <div className="col-span-7">
-                    <p className="label">Item · gudang</p>
-                    <select className="input" value={m.itemId} onChange={(e) => setSchedMats((arr) => arr.map((x, i) => (i === idx ? { ...x, itemId: e.target.value } : x)))}>
-                      <option value="">— Pilih item —</option>
-                      {(data.inventory ?? []).map((x) => <option key={x.id} value={x.id}>{x.name} · {x.warehouse} · stok {fmtJumlah(Number(x.stock || 0))} {x.unit}</option>)}
+                    <p className="label">{locale === "en" ? "Item · warehouse" : "Item · Gudang"}</p>
+                    <select
+                      className="input"
+                      value={m.itemId}
+                      onChange={(e) => setMaintForm((f) => ({ ...f, mats: f.mats.map((x, i) => (i === idx ? { ...x, itemId: e.target.value } : x)) }))}
+                    >
+                      <option value="">{locale === "en" ? "-- pick item --" : "-- pilih item --"}</option>
+                      {data.inventory.map((x) => (
+                        <option key={x.id} value={x.id}>{x.name} · {x.warehouse} · stok {fmtJumlah(Number(x.stock || 0))} {x.unit}</option>
+                      ))}
                     </select>
                   </div>
                   <div className="col-span-3">
-                    <p className="label">Qty{it ? ` (${it.unit})` : ""}</p>
-                    <NumInput min={0} className="input" value={m.qty} onChange={(e) => setSchedMats((arr) => arr.map((x, i) => (i === idx ? { ...x, qty: e.target.value } : x)))} />
+                    <p className="label">{locale === "en" ? "Qty" : "Jumlah"}{it ? ` (${it.unit})` : ""}</p>
+                    <NumInput
+                      min={0}
+                      className="input"
+                      value={m.qty}
+                      onChange={(e) => setMaintForm((f) => ({ ...f, mats: f.mats.map((x, i) => (i === idx ? { ...x, qty: e.target.value } : x)) }))}
+                    />
                   </div>
-                  <button className="btn-secondary col-span-2 text-xs" onClick={() => setSchedMats((arr) => arr.filter((_, i) => i !== idx))}>Hapus</button>
-                  {it && <p className="col-span-12 text-xs text-steel-500">≈ {fmtRupiah((Number(m.qty) || 0) * invCost(it))} · stok tersedia {fmtJumlah(Number(it.stock || 0))} {it.unit}</p>}
+                  <button
+                    className="btn-secondary col-span-2 text-xs"
+                    onClick={() => setMaintForm((f) => ({ ...f, mats: f.mats.filter((_, i) => i !== idx) }))}
+                  >
+                    {locale === "en" ? "Remove" : "Hapus"}
+                  </button>
+                  {it && (
+                    <p className={`col-span-12 text-xs ${over ? "text-rose-600" : "text-steel-500"}`}>
+                      ≈ {fmtRupiah(Math.round(q * invCost(it)))} · {locale === "en" ? "available" : "tersedia"} {fmtJumlah(Number(it.stock || 0))} {it.unit}
+                      {over && ` (${locale === "en" ? "not enough" : "kurang"} ${fmtJumlah(q - Number(it.stock || 0))})`}
+                    </p>
+                  )}
                 </div>
               );
             })}
-            {schedMats.length > 0 && <p className="text-right text-sm font-semibold text-navy-900">Total kebutuhan: {fmtRupiah(Math.round(schedMatsCost))} (tidak potong stok)</p>}
+            {(() => {
+              const mats = matsFromForm(maintForm.mats);
+              const matCost = materialsCost(mats);
+              const wd = (() => {
+                if (!maintForm.tanggal || !maintForm.eta) return 0;
+                const a = new Date(`${maintForm.tanggal}T00:00:00`).getTime();
+                const b = new Date(`${maintForm.eta}T00:00:00`).getTime();
+                if (Number.isNaN(a) || Number.isNaN(b) || b < a) return 0;
+                return Math.round((b - a) / 86400000) + 1;
+              })();
+              const labor = wd * laborRate();
+              return mats.length > 0 || labor > 0 ? (
+                <div className="mt-1 space-y-0.5 text-right text-sm">
+                  {mats.length > 0 && <p className="text-steel-600">{locale === "en" ? "Material" : "Material"}: {fmtRupiah(matCost)}</p>}
+                  {labor > 0 && <p className="text-steel-600">{locale === "en" ? "Labour" : "Tenaga"}: {fmtRupiah(labor)} <span className="text-[11px] text-steel-400">({wd} {locale === "en" ? "days" : "hari"} × {fmtRupiah(laborRate())})</span></p>}
+                  <p className="font-semibold text-navy-900">{locale === "en" ? "Total" : "Total"}: {fmtRupiah(matCost + labor)}</p>
+                  <p className="text-[11px] text-steel-400">
+                    {locale === "en" ? "Stock is not deducted until the cycle is completed." : "Stok belum dipotong sampai siklus diselesaikan."}
+                  </p>
+                </div>
+              ) : null;
+            })()}
           </div>
         </div>
       </Modal>
 
-      <Modal open={recording !== null} onClose={() => setRecording(null)} title={S.eqRecordTitle.replace("{a}", recording?.name ?? "")} subtitle={S.eqRecordSub}
-        footer={<><button className="btn-secondary" onClick={() => setRecording(null)}>{S.cancelBtn}</button><AsyncButton className="btn-primary" onAction={saveRecord}>{S.eqSaveSvc}</AsyncButton></>}>
-        <div className="space-y-3">
-          <FormGrid>
-            <Field label={S.eqSvcDateField}><input type="date" className="input" value={woForm.tanggal} onChange={(e) => setWoForm({ ...woForm, tanggal: e.target.value })} /></Field>
-            <Field label={S.eqTechField}><input className="input" value={woForm.teknisi} onChange={(e) => setWoForm({ ...woForm, teknisi: e.target.value })} placeholder={S.eqTechPh} /></Field>
-            <Field label="Hour meter (odometer)" hint={`Angka odometer alat — bukan jam kerja. Terakhir: ${fmtJumlah(Number((equipment.find((e) => e.id === recording?.id) ?? recording)?.lastHours || 0))} — tidak boleh mundur.`}><NumInput min={0} className="input" value={woForm.hours} onChange={(e) => setWoForm({ ...woForm, hours: e.target.value })} /></Field>
-            <Field label={S.eqNextSvc}><input type="date" className="input" value={woForm.next} onChange={(e) => setWoForm({ ...woForm, next: e.target.value })} /></Field>
-          </FormGrid>
-          <Field label={S.eqWorkNote}><input className="input" value={woForm.catatan} onChange={(e) => setWoForm({ ...woForm, catatan: e.target.value })} placeholder={S.eqWorkNotePh} /></Field>
-          <div className="border-t border-steel-100 pt-3">
-            <div className="mb-2 flex items-center justify-between">
-              <p className="text-xs font-semibold text-steel-500">Material servis dari inventory (potong stok / barang keluar)</p>
-              <button className="btn-secondary text-xs" onClick={() => setSvcMats((m) => [...m, { itemId: "", qty: "" }])}>+ Tambah material</button>
-            </div>
-            {svcMats.length === 0 && <p className="text-xs text-steel-400">Belum ada material — tambah bila servis memakai sparepart dari gudang.</p>}
-            {svcMats.map((m, idx) => {
-              const it = (data.inventory ?? []).find((x) => x.id === m.itemId);
-              return (
-                <div key={idx} className="mb-2 grid grid-cols-12 items-end gap-2">
-                  <div className="col-span-7">
-                    <p className="label">Item · gudang</p>
-                    <select className="input" value={m.itemId} onChange={(e) => setSvcMats((arr) => arr.map((x, i) => (i === idx ? { ...x, itemId: e.target.value } : x)))}>
-                      <option value="">— Pilih item —</option>
-                      {(data.inventory ?? []).map((x) => <option key={x.id} value={x.id}>{x.name} · {x.warehouse} · stok {fmtJumlah(Number(x.stock || 0))} {x.unit}</option>)}
-                    </select>
+      {/* ==== MODAL RIWAYAT STATUS ==== */}
+      <Modal
+        open={histOf !== null}
+        onClose={() => setHistOf(null)}
+        title={histOf ? (locale === "en" ? `History - ${histOf.id}` : `Riwayat Status - ${histOf.id}`) : ""}
+        subtitle={histOf ? `${String(histOf.equipmentName ?? "")} · ${fmtTanggal(String(histOf.tanggal ?? ""))}` : ""}
+      >
+        {(() => {
+          const entries: MaintHistoryEntry[] = historyOf(histOf ?? {});
+          if (entries.length === 0) {
+            return <p className="text-sm text-steel-400">{locale === "en" ? "No status change recorded." : "Belum ada perubahan status tercatat."}</p>;
+          }
+          return (
+            <ol className="space-y-2">
+              {entries.map((h, i) => (
+                <li key={`${h.at}-${i}`} className="flex gap-3 border-l-2 border-steel-200 pl-3 text-sm">
+                  <div className="min-w-0 flex-1">
+                    <p className="text-xs text-steel-400">{h.at}</p>
+                    <p className="font-medium text-navy-900">
+                      {h.from} <span className="text-steel-400">→</span>{" "}
+                      <Badge tone={MAINT_STATUS_TONE[h.to as MaintStatus] ?? "gray"}>
+                        {isMaintStatus(h.to) ? maintStatusLabel(h.to, locale) : h.to}
+                      </Badge>
+                    </p>
+                    {h.note !== "" && <p className="text-xs text-steel-600">{h.note}</p>}
                   </div>
-                  <div className="col-span-3">
-                    <p className="label">Qty{it ? ` (${it.unit})` : ""}</p>
-                    <NumInput min={0} className="input" value={m.qty} onChange={(e) => setSvcMats((arr) => arr.map((x, i) => (i === idx ? { ...x, qty: e.target.value } : x)))} />
-                  </div>
-                  <button className="btn-secondary col-span-2 text-xs" onClick={() => setSvcMats((arr) => arr.filter((_, i) => i !== idx))}>Hapus</button>
-                  {it && <p className="col-span-12 text-xs text-steel-500">≈ {fmtRupiah((Number(m.qty) || 0) * invCost(it))} · stok tersedia {fmtJumlah(Number(it.stock || 0))} {it.unit}</p>}
-                </div>
-              );
-            })}
-            {svcMats.length > 0 && <p className="text-right text-sm font-semibold text-navy-900">Total material: {fmtRupiah(Math.round(svcMatsCost))} (masuk biaya servis)</p>}
-          </div>
-        </div>
+                  <p className="shrink-0 text-xs text-steel-500">{h.by}</p>
+                </li>
+              ))}
+            </ol>
+          );
+        })()}
       </Modal>
 
-      {/* Modal maintenance */}
-      <Modal open={maintaining !== null} onClose={() => setMaintaining(null)} title={S.eqMaintTitle.replace("{a}", maintaining?.name ?? "")}
-        footer={<><button className="btn-secondary" onClick={() => setMaintaining(null)}>{S.cancelBtn}</button><button className="btn-primary" onClick={startMaintenance}>{S.eqEnterMaintBtn}</button></>}>
-        <div className="space-y-3">
-          <Field label={S.eqDamageNote}><input className="input" value={maintNote} onChange={(e) => setMaintNote(e.target.value)} placeholder={S.eqDamageNotePh} /></Field>
-          <Field label={S.eqEtaField}><input type="date" className="input" value={maintEta} onChange={(e) => setMaintEta(e.target.value)} /></Field>
-        </div>
-      </Modal>
+      {/* ==== KONFIRMASI HAPUS SIKLUS ==== */}
+      <ConfirmModal
+        open={delMaint !== null}
+        title={delMaint ? (locale === "en" ? `Delete maintenance ${delMaint.id}?` : `Hapus maintenance ${delMaint.id}?`) : ""}
+        desc={delMaint ? (() => {
+          const st = statusOf(delMaint);
+          const mats = materialsOf(delMaint);
+          const name = String(delMaint.equipmentName ?? delMaint.equipmentId ?? "");
+          if (canRestoreStock(delMaint)) {
+            return locale === "en"
+              ? `This cycle already deducted ${mats.length} material line(s) from inventory. Deleting it will RETURN the stock and write correcting movements.`
+              : `Siklus ini sudah memotong ${mats.length} baris material dari inventory. Menghapus akan MENGEMBALIKAN stok dan mencatat movements koreksi.`;
+          }
+          return locale === "en"
+            ? `Maintenance cycle for ${name} (${st}) will be permanently deleted. No stock was deducted, so inventory is untouched.`
+            : `Siklus maintenance ${name} (${st}) akan dihapus permanen. Stok belum terpotong, jadi inventory tidak tersentuh.`;
+        })() : ""}
+        confirmLabel={locale === "en" ? "Delete" : "Hapus"}
+        danger
+        onCancel={() => setDelMaint(null)}
+        onConfirm={confirmDelMaint}
+      />
+
+
 
       {/* Modal booking */}
       <Modal open={showBook} onClose={() => { setShowBook(false); setBookError(null); }} title={S.eqBookTitle} subtitle={S.eqBookSub}
@@ -1553,6 +2565,48 @@ export default function EquipmentPage() {
         </div>
       </Modal>
 
+      {/* Konfirmasi hapus equipment. Backend memblokir via delete-guard
+          (409 REFERENCED) bila masih ada booking / kalibrasi / maintenance
+          yang menunjuk equipment ini, karena ketiganya punya
+          equipmentId/equip sebagai referensi. */}
+      <ConfirmModal
+        open={delEquip !== null}
+        title={delEquip ? (locale === "en" ? `Delete equipment ${delEquip.name}?` : `Hapus equipment ${delEquip.name}?`) : ""}
+        desc={(() => {
+          if (!delEquip) return "";
+          const id = String(delEquip.id);
+          const ref = String(delEquip.name);
+          const nBook = bookings.filter((b) => equipKey(b.equip) === equipKey(id)).length;
+          const cals = calibrations.filter((c) => String(c.equipmentId) === id).length;
+          const cycles = maintenances.filter((m) => String(m.equipmentId) === id).length;
+          const used: string[] = [];
+          if (nBook > 0) used.push(locale === "en" ? `${nBook} booking(s)` : `${nBook} booking`);
+          if (cals > 0) used.push(locale === "en" ? `${cals} calibration(s)` : `${cals} kalibrasi`);
+          if (cycles > 0) used.push(locale === "en" ? `${cycles} maintenance cycle(s)` : `${cycles} siklus maintenance`);
+          const base = locale === "en"
+            ? `Equipment ${ref} (${id}) will be permanently deleted.`
+            : `Equipment ${ref} (${id}) akan dihapus permanen.`;
+          return used.length > 0
+            ? (locale === "en"
+              ? `${base} Still referenced by: ${used.join(", ")}. Deletion blocked.`
+              : `${base} Masih dirujuk oleh: ${used.join(", ")}. Penghapusan diblokir.`)
+            : base;
+        })()}
+        confirmLabel={locale === "en" ? "Delete" : "Hapus"}
+        danger
+        confirmDisabled={(() => {
+          if (!delEquip) return true;
+          const id = String(delEquip.id);
+          return (
+            bookings.some((b) => equipKey(b.equip) === equipKey(id))
+            || calibrations.some((c) => String(c.equipmentId) === id)
+            || maintenances.some((m) => String(m.equipmentId) === id)
+          );
+        })()}
+        onCancel={() => setDelEquip(null)}
+        onConfirm={confirmDelEquip}
+      />
+
       {/* Konfirmasi gusur booking Kritis */}
       <ConfirmModal
         open={gusur !== null}
@@ -1564,47 +2618,6 @@ export default function EquipmentPage() {
         onConfirm={confirmGusur}
       />
 
-      {/* Edit riwayat servis terakhir (tampilan record saja, stok tidak diubah) */}
-      <Modal open={editHist !== null} onClose={() => setEditHist(null)} title={`Edit riwayat servis - ${editHist?.name ?? ""}`}
-        footer={<><button className="btn-secondary" onClick={() => setEditHist(null)}>{S.cancelBtn}</button><button className="btn-primary" onClick={saveEditHist}>{S.saveBtn}</button></>}>
-        <div className="space-y-3">
-          <div className="mb-2 flex items-center justify-between">
-            <p className="text-xs font-semibold text-steel-500">Material servis (stok tidak diubah)</p>
-            <button className="btn-secondary text-xs" onClick={() => setEditHistMats((m) => [...m, { itemId: "", qty: "" }])}>+ Tambah material</button>
-          </div>
-          {editHistMats.length === 0 && <p className="text-xs text-steel-400">Tanpa material.</p>}
-          {editHistMats.map((m, idx) => {
-            const it = (data.inventory ?? []).find((x) => x.id === m.itemId);
-            return (
-              <div key={idx} className="mb-2 grid grid-cols-12 items-end gap-2">
-                <div className="col-span-7">
-                  <p className="label">Item · gudang</p>
-                  <select className="input" value={m.itemId} onChange={(e) => setEditHistMats((arr) => arr.map((x, i) => (i === idx ? { ...x, itemId: e.target.value } : x)))}>
-                    <option value="">— Pilih item —</option>
-                    {(data.inventory ?? []).map((x) => <option key={x.id} value={x.id}>{x.name} · {x.warehouse} · stok {fmtJumlah(Number(x.stock || 0))} {x.unit}</option>)}
-                  </select>
-                </div>
-                <div className="col-span-3">
-                  <p className="label">Qty{it ? ` (${it.unit})` : ""}</p>
-                  <NumInput min={0} className="input" value={m.qty} onChange={(e) => setEditHistMats((arr) => arr.map((x, i) => (i === idx ? { ...x, qty: e.target.value } : x)))} />
-                </div>
-                <button className="btn-secondary col-span-2 text-xs" onClick={() => setEditHistMats((arr) => arr.filter((_, i) => i !== idx))}>Hapus</button>
-              </div>
-            );
-          })}
-        </div>
-      </Modal>
-
-      {/* Hapus riwayat servis terakhir */}
-      <ConfirmModal
-        open={delHist !== null}
-        title={`Hapus riwayat servis - ${delHist?.name ?? ""}`}
-        desc="Riwayat servis terakhir akan dihapus dari tampilan. Stok inventory tidak dikembalikan."
-        confirmLabel={S.delBtn}
-        danger
-        onCancel={() => setDelHist(null)}
-        onConfirm={confirmDelHist}
-      />
 
       {/* Modal selesaikan booking */}
       <Modal open={finishing !== null} onClose={() => setFinishing(null)} title={S.eqFinishBookTitle.replace("{a}", finishing ? equipLabel(finishing.equip) : "")} subtitle={finishing ? `${finishing.proyek} · ${fmtJam24(finishing.jam)} · ${fmtTanggal(String(finishing.date))}` : ""}
@@ -1622,9 +2635,16 @@ export default function EquipmentPage() {
         </div>
       </Modal>
 
-      {/* Modal jadwalkan kalibrasi */}
-      <Modal open={showCal} onClose={() => setShowCal(false)} title={S.eqSchedCal}
-        footer={<><button className="btn-secondary" onClick={() => setShowCal(false)}>{S.cancelBtn}</button><button className="btn-primary" onClick={saveCalibration}>{S.saveBtn}</button></>}>
+      {/* Modal jadwalkan / ubah kalibrasi */}
+      <Modal
+        open={showCal}
+        onClose={() => { setShowCal(false); setCalEditId(null); }}
+        title={calEditId ? `${S.eqEdit} ${calEditId}` : S.eqSchedCal}
+        footer={<>
+          <button className="btn-secondary" onClick={() => { setShowCal(false); setCalEditId(null); }}>{S.cancelBtn}</button>
+          <button className="btn-primary" onClick={calEditId ? saveCalEdit : saveCalibration}>{S.saveBtn}</button>
+        </>}
+      >
         <div className="space-y-3">
           <Field label={S.thEquipment}>
             <select className="input" value={calForm.equipmentId} onChange={(e) => setCalForm({ ...calForm, equipmentId: e.target.value })}>
@@ -1636,6 +2656,24 @@ export default function EquipmentPage() {
           <Field label={S.eqDueField}><input type="date" className="input" value={calForm.due} onChange={(e) => setCalForm({ ...calForm, due: e.target.value })} /></Field>
         </div>
       </Modal>
+
+      <ConfirmModal
+        open={delCal !== null}
+        title={delCal ? (locale === "en" ? `Delete calibration ${delCal.id}?` : `Hapus kalibrasi ${delCal.id}?`) : ""}
+        desc={delCal
+          ? (String(delCal.status) === "Selesai"
+            ? (locale === "en"
+              ? `This calibration is already completed with certificate "${String(delCal.cert ?? "-")}". Deleting it removes the traceability record.`
+              : `Kalibrasi ini sudah selesai dengan sertifikat "${String(delCal.cert ?? "-")}". Menghapus akan menghilangkan jejak keterlacakannya.`)
+            : (locale === "en"
+              ? `"${String(delCal.item)}" for ${String(delCal.equipmentId)} will be permanently deleted.`
+              : `"${String(delCal.item)}" untuk ${String(delCal.equipmentId)} akan dihapus permanen.`))
+          : ""}
+        confirmLabel={locale === "en" ? "Delete" : "Hapus"}
+        danger
+        onCancel={() => setDelCal(null)}
+        onConfirm={confirmDelCal}
+      />
 
       {/* Modal selesaikan kalibrasi */}
       <Modal open={finishingCal !== null} onClose={() => setFinishingCal(null)} title={S.eqCalDoneTitle.replace("{a}", finishingCal?.id ?? "")}

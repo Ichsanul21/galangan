@@ -326,7 +326,25 @@ export default function Procurement() {
   // Hapus PO/PR (Draft saja) & vendor via ConfirmModal + daftar pemakai.
   const [delPo, setDelPo] = useState<StoreItem | null>(null);
   const [delPr, setDelPr] = useState<StoreItem | null>(null);
+  /* RFQ tidak punya jalur hapus sama sekali. Yang sudah "Diputuskan" jadi
+     sumber PO, jadi kandidat hapus hanya RFQ yang belum punya PO turunan. */
+  const [delRfq, setDelRfq] = useState<StoreItem | null>(null);
   const [delVendor, setDelVendor] = useState<StoreItem | null>(null);
+  /* ==== UBAH PO / PR ====
+     Dulu tidak ada `update()` sama sekali untuk PO maupun PR: satu-satunya
+     koreksi adalah hapus (dan itu pun hanya saat masih Draft) lalu buat
+     ulang. Untuk PO yang sudah Diajukan/Dikirim, itu tidak mungkin sama
+     sekali - padahalqty/harga salah ketik adalah hal paling sering terjadi
+     di awal. Ubah HANYA tersedia sebelum PO Dikirim, karena setelah
+     pengiriman fisik daftar barisnya jadi acuan penerima barang. */
+  const [editPo, setEditPo] = useState<StoreItem | null>(null);
+  const [poEditForm, setPoEditForm] = useState<{ item: string; qty: string; unit: string; workshop: string; requester: string; project: string; itemId: string }>({
+    item: "", qty: "1", unit: "pcs", workshop: "", requester: "", project: "", itemId: "",
+  });
+  const [editPr, setEditPr] = useState<StoreItem | null>(null);
+  const [prEditForm, setPrEditForm] = useState<{ item: string; by: string; amount: string; need: string }>({
+    item: "", by: "", amount: "", need: "",
+  });
 
   /* ---- Kontrak payung ---- */
   const [payungVendor, setPayungVendor] = useState<StoreItem | null>(null);
@@ -626,6 +644,29 @@ export default function Procurement() {
     toast(S.tQuoteSaved.replace("{n}", quoteForm.vendor));
     setQuoteRfq(null);
     setQuoteForm({ vendor: "", price: "", eta: "" });
+    } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); }
+  };
+
+  /* RFQ yang sudah jadi PO turunan tidak boleh dihapus - PO itu menunjuk
+     rfqId, jadi menghapus RFQnya membuat PO menggantung tanpa sumber. */
+  const rfqLocked = (r: StoreItem): string | null => {
+    const po = purchaseOrders.find((p) => String(p.rfqId ?? "") === String(r.id));
+    return po
+      ? (locale === "en"
+        ? `Purchase order ${String(po.id)} was created from this RFQ - cancel the PO first.`
+        : `Purchase order ${String(po.id)} dibuat dari RFQ ini - batalkan PO-nya dulu.`)
+      : null;
+  };
+
+  const confirmDelRfq = async () => {
+    if (!delRfq) return;
+    const locked = rfqLocked(delRfq);
+    if (locked) { toast(locked, "info"); setDelRfq(null); return; }
+    try {
+      await remove("rfqs", String(delRfq.id));
+      log("menghapus RFQ", `${String(delRfq.id)} - ${String(delRfq.item ?? "")}`, "Procurement");
+      toast(locale === "en" ? `RFQ ${String(delRfq.id)} deleted` : `RFQ ${String(delRfq.id)} dihapus`);
+      setDelRfq(null);
     } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); }
   };
 
@@ -945,12 +986,133 @@ export default function Procurement() {
     } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); }
   };
 
+  /* ================= UBAH PO ================= */
+  const openPoEdit = (po: StoreItem) => {
+    setEditPo(po);
+    setPoEditForm({
+      item: String(po.item ?? ""),
+      qty: String(Number(po.qty || 1)),
+      unit: String(po.unit ?? "pcs"),
+      workshop: String(po.workshop ?? ""),
+      requester: String(po.requester ?? ""),
+      project: String(po.project ?? ""),
+      itemId: String(po.itemId ?? ""),
+    });
+  };
+
+  const savePoEdit = async () => {
+    if (!editPo) return;
+    const st = normPo(editPo.status);
+    /* Kunci status: setelah Dikirim, baris jadi acuan penerima barang dan
+       sudah bisa jadi hutang - mengubahnya berartiDisconnect riwayat. */
+    if (st === "Dikirim" || st === "Diterima Sebagian" || st === "Diterima" || st === "Ditolak") {
+      toast(
+        locale === "en"
+          ? `PO ${editPo.id} is already ${st} - use Amandemen or Retur instead.`
+          : `PO ${editPo.id} sudah ${st} - pakai Amandemen atau Retur.`,
+        "info",
+      );
+      return;
+    }
+    if (!poEditForm.item.trim()) {
+      toast(locale === "en" ? "Item is required" : "Nama barang wajib diisi", "info");
+      return;
+    }
+    const qty = Number(poEditForm.qty);
+    if (!Number.isFinite(qty) || qty <= 0) {
+      toast(locale === "en" ? "Qty must be positive" : "Jumlah harus positif", "info");
+      return;
+    }
+    /* Nominal approval bertingkat (SPV/Manager/Director) dihitung dari
+       amount. Kalau amount ikut berubah, level yang sudah disetujui jadi
+       tidak sah - jadi approval di-reset ke Draft supaya dihitung ulang.
+       Ini，bukan diam-diamnya approval lama berlaku lebih aman. */
+    const amountBaru = poLines({ ...editPo, qty }).reduce(
+      (s, l) => s + Number(l.qty || 0) * Number(l.price || 0),
+      0,
+    );
+    const levelBerubah = Math.abs(amountBaru - Number(editPo.amount || 0)) > 1;
+    try {
+      await update("purchaseOrders", String(editPo.id), {
+        item: poEditForm.item.trim(),
+        qty,
+        unit: poEditForm.unit,
+        workshop: poEditForm.workshop.trim(),
+        requester: poEditForm.requester.trim(),
+        project: poEditForm.project,
+        amount: amountBaru,
+        ...(levelBerubah
+          ? { status: "Draft", approvals: [], received: 0, receivedAt: "" }
+          : {}),
+      });
+      log(
+        "mengubah PO",
+        `${editPo.id} - ${poEditForm.item.trim()} x ${qty}${levelBerubah ? " - approval di-reset (nominal berubah)" : ""}`,
+        "Procurement",
+      );
+      toast(
+        levelBerubah
+          ? (locale === "en"
+            ? `PO ${editPo.id} updated - amount changed, approval reset to Draft`
+            : `PO ${editPo.id} diperbarui - nominal berubah, approval di-reset ke Draft`)
+          : (locale === "en" ? `PO ${editPo.id} updated` : `PO ${editPo.id} diperbarui`),
+      );
+      setEditPo(null);
+    } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); }
+  };
+
+  /* ================= UBAH PR ================= */
+  const openPrEdit = (r: StoreItem) => {
+    setEditPr(r);
+    setPrEditForm({
+      item: String(r.item ?? ""),
+      by: String(r.by ?? ""),
+      amount: String(Number(r.amount || 0)),
+      need: String(r.needDate ?? ""),
+    });
+  };
+
+  const savePrEdit = async () => {
+    if (!editPr) return;
+    if (!prEditForm.item.trim()) {
+      toast(locale === "en" ? "Item is required" : "Nama barang wajib diisi", "info");
+      return;
+    }
+    const amount = Number(prEditForm.amount);
+    if (!Number.isFinite(amount) || amount < 0) {
+      toast(locale === "en" ? "Amount must be a valid number" : "Nilai harus angka valid", "info");
+      return;
+    }
+    try {
+      await update("requisitions", String(editPr.id), {
+        item: prEditForm.item.trim(),
+        by: prEditForm.by.trim(),
+        amount,
+        ...(prEditForm.need !== "" ? { needDate: prEditForm.need } : {}),
+      });
+      log("mengubah PR", `${editPr.id} - ${prEditForm.item.trim()}`, "Procurement");
+      toast(locale === "en" ? `PR ${editPr.id} updated` : `PR ${editPr.id} diperbarui`);
+      setEditPr(null);
+    } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); }
+  };
+
   const poAksi = (po: StoreItem) => {
     const st = normPo(po.status);
     const nx = po.poType === "Kecil" ? null : nextLevel(po, APPROVE_PO_LIMIT);
     return (
       <div className="flex flex-wrap items-center gap-1.5">
         <button className="btn-secondary text-xs" onClick={() => setPoDetail(po)}>{locale === "en" ? "Detail" : "Detail"}</button>
+        {/* Ubah hanya sebelum Dikirim: sesudah itu baris PO adalah acuan
+            penerima barang dan sudah bisa jadi hutang. */}
+        {st !== "Dikirim" && st !== "Diterima Sebagian" && st !== "Diterima" && st !== "Ditolak" && (
+          <button
+            className="btn-secondary text-xs"
+            aria-label={`${locale === "en" ? "Edit" : "Ubah"} ${po.id}`}
+            onClick={() => openPoEdit(po)}
+          >
+            {locale === "en" ? "Edit" : "Ubah"}
+          </button>
+        )}
         {st === "Draft" && <button className="btn-primary text-xs" onClick={() => doPoStatus(po, "Diajukan")}>{S.btnAjukan} - {locale === "en" ? "next" : "lanjut"}</button>}
         {st === "Draft" && (
           <button className="btn-secondary text-xs text-rose-600" aria-label={`${locale === "en" ? "Delete" : "Hapus"} ${po.id}`} onClick={() => setDelPo(po)}>
@@ -1348,6 +1510,11 @@ export default function Procurement() {
                         }}>{S.btnWin}</button>
                       )}
                       {r.winner && <Badge tone="green">{S.winnerN.replace("{n}", String(r.winner))}</Badge>}
+                        {!rfqLocked(r) ? (
+                          <button className="btn-secondary text-xs text-rose-600" onClick={() => setDelRfq(r)}>{locale === "en" ? "Delete" : "Hapus"}</button>
+                        ) : (
+                          <span className="text-xs text-steel-400" title={rfqLocked(r) ?? ""}>{locale === "en" ? "Locked" : "Terkunci"}</span>
+                        )}
                       {r.status === "Diputuskan" && (() => {
                         const linked = purchaseOrders.find((p) => String(p.rfqId ?? "") === String(r.id));
                         return linked ? <button className="btn-secondary text-xs" onClick={() => { setTab("PO Besar (Kantor)"); setPq(linked.id); }}>{locale === "en" ? "View PO" : "Lihat PO"} {linked.id}</button> : null;
@@ -1418,6 +1585,19 @@ export default function Procurement() {
                           <td className="td"><StatusBadge status={r.status} /></td>
                           <td className="td">
                             <div className="flex flex-wrap gap-1.5">
+                              {/* PR bisa dikoreksi selama belum jadi PO. Setelah jadi PO, nilainya
+                                  sudah ikut ke dokumen PO + hutang, jadi
+                                  koreksi PR tidak lagi memperbaiki
+                                  realisasi. */}
+                              {String(r.poId ?? r.po ?? "").trim() === "" && (
+                                <button
+                                  className="btn-secondary text-xs"
+                                  aria-label={`${locale === "en" ? "Edit" : "Ubah"} ${r.id}`}
+                                  onClick={() => openPrEdit(r)}
+                                >
+                                  {locale === "en" ? "Edit" : "Ubah"}
+                                </button>
+                              )}
                               {(r.status === "Draft" || r.status === "Draf") && (
                                 <button className="btn-primary text-xs" onClick={async () => { try { await update("requisitions", r.id, { status: "Diajukan" }); log("mengajukan PR", r.id, "Procurement"); toast(S.tPrRowDiajukan.replace("{n}", r.id)); } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); } }}>{S.btnAjukan}</button>
                               )}
@@ -1528,6 +1708,85 @@ export default function Procurement() {
           )}
         </div>
       </div>
+
+      {/* ==== MODAL UBAH PO ====
+          Header: `amount` dihitung ulang dari lines × qty, dan kalau
+          nominalnya berubah maka approval bertingkat di-reset ke Draft -
+          level yang sudah ditandatangani SPV/Manager/Director tidak boleh
+          tetap sah untuk nominal yang berbeda. */}
+      <Modal
+        open={editPo !== null}
+        onClose={() => setEditPo(null)}
+        title={editPo ? (locale === "en" ? `Edit PO - ${editPo.id}` : `Ubah PO - ${editPo.id}`) : ""}
+        subtitle={editPo
+          ? (locale === "en"
+            ? "Only the need header changes here. Order lines use Amandemen."
+            : "Hanya header kebutuhan yang diubah di sini. Baris order pakai Amandemen.")
+          : ""}
+        footer={<>
+          <button className="btn-secondary" onClick={() => setEditPo(null)}>{locale === "en" ? "Cancel" : "Batal"}</button>
+          <AsyncButton className="btn-primary" onAction={savePoEdit}>{locale === "en" ? "Save" : "Simpan"}</AsyncButton>
+        </>}
+      >
+        <div className="space-y-3">
+          <Field label={S.item}>
+            <input className="input" value={poEditForm.item} onChange={(e) => setPoEditForm({ ...poEditForm, item: e.target.value })} />
+          </Field>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <Field label={S.qty}>
+              <NumInput min={0} className="input" value={poEditForm.qty} onChange={(e) => setPoEditForm({ ...poEditForm, qty: e.target.value })} />
+            </Field>
+            <Field label={S.satuan}>
+              <input className="input" value={poEditForm.unit} onChange={(e) => setPoEditForm({ ...poEditForm, unit: e.target.value })} />
+            </Field>
+            <Field label={S.workshop}>
+              <input className="input" value={poEditForm.workshop} onChange={(e) => setPoEditForm({ ...poEditForm, workshop: e.target.value })} />
+            </Field>
+            <Field label={S.peminta}>
+              <input className="input" value={poEditForm.requester} onChange={(e) => setPoEditForm({ ...poEditForm, requester: e.target.value })} />
+            </Field>
+            <Field label={S.proyek}>
+              <select className="input" value={poEditForm.project} onChange={(e) => setPoEditForm({ ...poEditForm, project: e.target.value })}>
+                <option value="">{locale === "en" ? "-- none --" : "-- tidak ada --"}</option>
+                {data.projects.map((p) => <option key={p.id} value={p.id}>{p.id} · {String(p.vessel ?? "")}</option>)}
+              </select>
+            </Field>
+          </div>
+          <p className="rounded-lg bg-steel-50 px-3 py-2 text-xs text-steel-500">
+            {locale === "en"
+              ? "Vendor, unit price and order lines are not editable here: once the PO is submitted the vendor and prices become a commitment. Use Amandemen for line changes."
+              : "Vendor, harga satuan, dan baris order tidak bisa diubah di sini: setelah PO diajukan, vendor dan harga sudah jadi komitmen. Pakai Amandemen untuk perubahan baris."}
+          </p>
+        </div>
+      </Modal>
+
+      {/* ==== MODAL UBAH PR ==== */}
+      <Modal
+        open={editPr !== null}
+        onClose={() => setEditPr(null)}
+        title={editPr ? (locale === "en" ? `Edit PR - ${editPr.id}` : `Ubah PR - ${editPr.id}`) : ""}
+        footer={<>
+          <button className="btn-secondary" onClick={() => setEditPr(null)}>{locale === "en" ? "Cancel" : "Batal"}</button>
+          <AsyncButton className="btn-primary" onAction={savePrEdit}>{locale === "en" ? "Save" : "Simpan"}</AsyncButton>
+        </>}
+      >
+        <div className="space-y-3">
+          <Field label={S.item}>
+            <input className="input" value={prEditForm.item} onChange={(e) => setPrEditForm({ ...prEditForm, item: e.target.value })} />
+          </Field>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <Field label={S.peminta}>
+              <input className="input" value={prEditForm.by} onChange={(e) => setPrEditForm({ ...prEditForm, by: e.target.value })} />
+            </Field>
+            <Field label={`${S.nilai} ${locale === "en" ? "(estimated)" : "(estimasi)"}`}>
+              <NumInput min={0} className="input" value={prEditForm.amount} onChange={(e) => setPrEditForm({ ...prEditForm, amount: e.target.value })} />
+            </Field>
+            <Field label={locale === "en" ? "Needed by" : "Dibutuhkan pada"}>
+              <input type="date" className="input" value={prEditForm.need} onChange={(e) => setPrEditForm({ ...prEditForm, need: e.target.value })} />
+            </Field>
+          </div>
+        </div>
+      </Modal>
 
       {/* Drawer detail PO: lines + kebutuhan + PR link */}
       <Modal open={poDetail !== null} onClose={() => setPoDetail(null)} title={poDetail ? `${poDetail.id} · ${normPo(poDetail.status)}` : ""} subtitle={poDetail ? `${String(poDetail.vendor ?? "-")} · ${fmtRupiah(Number(poDetail.amount || 0))}${poDetail.docNo ? ` · ${String(poDetail.docNo)}` : ""}` : ""} wide>
@@ -1749,6 +2008,20 @@ export default function Procurement() {
           </FormGrid>
         </div>
       </Modal>
+
+      {/* Konfirmasi hapus RFQ */}
+      <ConfirmModal
+        open={delRfq !== null}
+        title={delRfq ? (locale === "en" ? `Delete RFQ ${String(delRfq.id)}?` : `Hapus RFQ ${String(delRfq.id)}?`) : ""}
+        desc={delRfq ? (rfqLocked(delRfq) ?? (locale === "en"
+          ? `RFQ ${String(delRfq.id)} for ${String(delRfq.item ?? "")} and its ${(Array.isArray(delRfq.quotes) ? delRfq.quotes : []).length} vendor quote(s) will be removed.`
+          : `RFQ ${String(delRfq.id)} untuk ${String(delRfq.item ?? "")} beserta ${(Array.isArray(delRfq.quotes) ? delRfq.quotes : []).length} penawaran vendor akan dihapus.`)) : ""}
+        confirmLabel={locale === "en" ? "Delete" : "Hapus"}
+        danger
+        confirmDisabled={delRfq ? rfqLocked(delRfq) !== null : false}
+        onCancel={() => setDelRfq(null)}
+        onConfirm={confirmDelRfq}
+      />
 
       {/* Konfirmasi setujui / tolak PO (PO Kecil: setujui tunggal) */}
       <ConfirmModal

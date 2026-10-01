@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { Award, BadgeCheck, Network, Plus, Search, Users } from "lucide-react";
+import { Award, BadgeCheck, Eye, Lock, Network, Plus, Search, Users } from "lucide-react";
 import {
   Badge,
   Card,
@@ -28,7 +28,7 @@ import type { SortState } from "../../components/ui";
 import { AsyncButton, useBusy } from "../../components/ui";
 import { FilterPopover } from "../../components/FilterPopover";
 import { useStore } from "../../data/store";
-import { DocumentPreviewCell } from "../../components/DocumentPreview";
+import { DocumentPreviewCell, DocumentPreviewPanel } from "../../components/DocumentPreview";
 import { useModuleSync } from "../../data/useModuleSync";
 import { findUsages } from "../../utils/usages";
 import type { StoreItem, CollectionKey } from "../../data/store";
@@ -36,7 +36,6 @@ import { activeEmployeeTrend, certifiedTrend, certExpireTrend, employeeTrend } f
 import { fmtTanggal, todayISO } from "../../utils/format";
 import { AlertBannerView, notifRowId, useModuleAlert, useNotifFlash } from "../../components/AlertBanner";
 import { getSetting } from "../../utils/settings";
-import { useDraftState } from "../../utils/draft";
 import { exportExcel } from "../../utils/export";
 import { useT } from "../../i18n/LanguageContext";
 import { n_qc } from "../../i18n/n_qc";
@@ -198,7 +197,7 @@ const emptyEmpForm = () => ({
 });
 
 /* Batch koleksi modul SDM untuk useModuleSync (pengganti resync penuh). */
-const HR_COLS: CollectionKey[] = ["activities", "attendance", "branches", "employees", "leaves", "trainings"];
+const HR_COLS: CollectionKey[] = ["activities", "attendance", "branches", "employees", "leaves", "trainings", "letters"];
 
 export default function HR() {
   const busy = useBusy();
@@ -228,6 +227,8 @@ export default function HR() {
   /* ---------- cuti ---------- */
   const [showLeave, setShowLeave] = useState(false);
   const [leaveEditId, setLeaveEditId] = useState<string | null>(null);
+  /* true = mengoreksi cuti yang sudah disetujui (periode terkunci). */
+  const [leaveFinalEdit, setLeaveFinalEdit] = useState(false);
   const [leaveForm, setLeaveForm] = useState({ employeeId: "", type: "Tahunan", from: todayISO(), to: todayISO(), note: "", fileUrl: "" });
   const [rejectTarget, setRejectTarget] = useState<StoreItem | null>(null);
   const [delLeave, setDelLeave] = useState<StoreItem | null>(null);
@@ -240,21 +241,78 @@ export default function HR() {
   /* ---------- training ---------- */
   const [showTraining, setShowTraining] = useState(false);
   const [trainingForm, setTrainingForm] = useState({ title: "", date: todayISO(), provider: "", participants: [] as string[] });
+  const [trainingEditId, setTrainingEditId] = useState<string | null>(null);
+  const [delTraining, setDelTraining] = useState<StoreItem | null>(null);
   const [certTarget, setCertTarget] = useState<StoreItem | null>(null);
   const [certForm, setCertForm] = useState({ name: "", expires: todayISO() });
 
   /* ---------- surat ---------- */
   const [showSurat, setShowSurat] = useState(false);
   const [suratForm, setSuratForm] = useState({ employeeId: "", jenis: "SP 1", isi: "", tanggal: todayISO(), fileUrl: "" });
-  const [arsipSurat, setArsipSurat] = useDraftState<StoreItem[]>("isms.draft.hr.arsipSurat", []);
+  /* Arsip surat pindah dari useDraftState("isms.draft.hr.arsipSurat") ke
+     koleksi `letters`. Alasan: draft localStorage hilang saat cache browser
+     dibersihkan, tidak pernah sampai ke server (user lain tidak pernah
+     melihat surat yang sama), dan tidak bisa di-audit. Seed ada di
+     data/seeds.ts (seedLetters) supaya arsip awal tetap terlihat.
+     Migrasi sekali jalan: draft lama yang belum ada di store di-import. */
+  const arsipSurat = data.letters;
+  const [suratEditId, setSuratEditId] = useState<string | null>(null);
   const [suratPreviewFor, setSuratPreviewFor] = useState<StoreItem | null>(null);
-  // Hapus karyawan via ConfirmModal + daftar pemakai (blokir bila dipakai slip/absensi/cuti).
   const [delEmp, setDelEmp] = useState<StoreItem | null>(null);
-  // Hapus arsip surat lokal (draft) via ConfirmModal.
   const [delSurat, setDelSurat] = useState<StoreItem | null>(null);
+  const [lettersMigrated, setLettersMigrated] = useState(false);
 
   /* ---------- impor massal ---------- */
   const [importReport, setImportReport] = useState<{ ok: number; gagal: string[] } | null>(null);
+
+  /* Migrasi arsip surat SEKALI JALAN: draft localStorage yang belum ada di
+     koleksi `letters` di-import sebagai baris store asli. Tanpa ini, semua
+     surat yang sudah dibuat user sebelumnya lenyap saat pindah ke store. */
+  useEffect(() => {
+    if (lettersMigrated) return;
+    setLettersMigrated(true);
+    let legacy: StoreItem[] = [];
+    try {
+      const raw = localStorage.getItem("isms.draft.hr.arsipSurat");
+      const parsed: unknown = raw ? JSON.parse(raw) : [];
+      if (Array.isArray(parsed)) legacy = parsed as StoreItem[];
+    } catch {
+      legacy = [];
+    }
+    if (legacy.length === 0) return;
+    const known = new Set(arsipSurat.map((s) => String(s.id)));
+    const fresh = legacy.filter((s) => String(s.id ?? "") !== "" && !known.has(String(s.id)));
+    if (fresh.length === 0) return;
+    void (async () => {
+      let moved = 0;
+      for (const entry of fresh) {
+        try {
+          await add(
+            "letters",
+            {
+              ...entry,
+              fileUrl: String(entry.fileUrl ?? ""),
+              fileName: String(entry.fileName ?? ""),
+              createdBy: "Anda",
+              createdAt: String(entry.createdAt ?? entry.tanggal ?? ""),
+            },
+            { action: "memindahkan arsip surat ke arsip resmi", target: String(entry.id), module: "SDM" },
+          );
+          moved += 1;
+        } catch {
+          // Satu baris gagal tidak boleh menghentikan sisa impor.
+        }
+      }
+      if (moved > 0) {
+        toast(
+          locale === "en"
+            ? `${moved} letter(s) migrated from the old local archive`
+            : `${moved} surat dimindahkan dari arsip lokal lama`,
+        );
+      }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lettersMigrated]);
 
   const branchCities = useMemo(() => data.branches.map((b) => String(b.city)), [data.branches]);
   const scopedEmployees = useMemo(() => inBranch(data.employees as Branchable[]), [data.employees, inBranch]);
@@ -608,9 +666,37 @@ export default function HR() {
     setShowLeave(true);
   };
 
+  /**
+   * Ubah cuti yang sudah DISETUJUI.
+   *
+   * Keberadaan jalur ini penting: tanpa itu, satu kesalahan admin (tanggal
+   * salah, alasan keliru) pada cuti yang sudah final tidak bisa diperbaiki -
+   * tombol Edit sengaja disembunyikan untuk status final karena biasanya cuti
+   * yang sudah disetujui tidak boleh diubah.
+   *
+   * Yang dikunci di jalur ini: karyawan, periode, dan tipe - semuanya sudah
+   * memengaruhi rekap absensi yang tersinkron otomatis saat persetujuan. Yang
+   * boleh diubah: catatan dan lampiran, supaya data administratif tetap bisa
+   * dikoreksi tanpa merusak rekap absensi.
+   */
+  const openLeaveEditFinal = (l: StoreItem) => {
+    setLeaveFinalEdit(true);
+    setLeaveEditId(String(l.id));
+    setLeaveForm({
+      employeeId: String(l.employeeId ?? ""),
+      type: String(l.type ?? "Tahunan"),
+      from: String(l.from ?? todayISO()),
+      to: String(l.to ?? todayISO()),
+      note: String(l.note ?? ""),
+      fileUrl: String(l.fileUrl ?? ""),
+    });
+    setShowLeave(true);
+  };
+
   const closeLeaveModal = () => {
     setShowLeave(false);
     setLeaveEditId(null);
+    setLeaveFinalEdit(false);
     setLeaveForm({ employeeId: "", type: "Tahunan", from: todayISO(), to: todayISO(), note: "", fileUrl: "" });
   };
 
@@ -633,6 +719,19 @@ export default function HR() {
     if (overlap) { toast(S.tOverlap, "info"); return; }
     if (!leaveForm.note.trim() && (leaveForm.type === "Sakit" || leaveForm.type === "Unpaid")) {
       toast(S.tKetSakit, "info");
+      return;
+    }
+    /* Cuti yang sudah disetujui: hanya catatan + lampiran yang boleh diubah. */
+    if (leaveFinalEdit) {
+      try {
+        await update("leaves", leaveEditId, {
+          note: leaveForm.note.trim(),
+          fileUrl: leaveForm.fileUrl.trim(),
+        });
+        log("mengoreksi cuti disetujui", `${leaveEditId} - ${empNameOf(leaveForm.employeeId)}`, "SDM");
+        toast(locale === "en" ? "Approved leave corrected" : "Cuti disetujui dikoreksi");
+        closeLeaveModal();
+      } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); }
       return;
     }
     try {
@@ -748,6 +847,13 @@ export default function HR() {
     }));
   };
 
+  /* ==== TRAINING: form create + edit ==== */
+  const closeTrainingModal = () => {
+    setShowTraining(false);
+    setTrainingEditId(null);
+    setTrainingForm({ title: "", date: todayISO(), provider: "", participants: [] });
+  };
+
   const saveTraining = async () => {
     if (!trainingForm.title.trim()) {
       toast(S.tJudulTrain, "info");
@@ -774,18 +880,67 @@ export default function HR() {
       { action: "menjadwalkan training", module: "SDM" },
     );
     toast(S.tTrainOk.replace("{n}", created.id));
-    setShowTraining(false);
-    setTrainingForm({ title: "", date: todayISO(), provider: "", participants: [] });
+    closeTrainingModal();
     } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); }
   };
 
-  const finishTraining = async (t: StoreItem) => {
+const finishTraining = async (t: StoreItem) => {
     try {
     await update("trainings", t.id, { status: "Selesai" });
-    log("menyelesaikan training", `${t.id} · ${t.title}`, "SDM");
+    log("menyelesaikan training", `${t.id} - ${t.title}`, "SDM");
     toast(S.tTrainSelesai.replace("{n}", t.id));
     } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); }
   };
+
+  /* ==== UBAH / HAPUS TRAINING ====
+     Tabel training punya tombol Selesaikan & Terapkan saja. Training yang
+     salah judul/tanggal/peserta tidak bisa dikoreksi tanpa menghapus dan
+     membuat ulang - dan karena sertifikat sudah bisa diterbitkan dari
+     training Selesai, menghapus training yang sudah jadi Selesai berarti
+     sertifikat yang sudah terbit kehilangan jejaknya. */
+  const openTrainingEdit = (t: StoreItem) => {
+    setTrainingEditId(String(t.id));
+    setTrainingForm({
+      title: String(t.title ?? ""),
+      date: String(t.date ?? todayISO()),
+      provider: String(t.provider ?? ""),
+      participants: Array.isArray(t.participants) ? (t.participants as string[]).map(String) : [],
+    });
+    setShowTraining(true);
+  };
+
+  const saveTrainingEdit = async () => {
+    if (!trainingEditId) return;
+    if (!trainingForm.title.trim()) { toast(S.tJudulTrain, "info"); return; }
+    if (!trainingForm.date) { toast(S.tTglTrain, "info"); return; }
+    if (trainingForm.participants.length === 0) { toast(S.tPesertaMin, "info"); return; }
+    try {
+      await update("trainings", trainingEditId, {
+        title: trainingForm.title.trim(),
+        date: trainingForm.date,
+        participants: trainingForm.participants,
+        provider: trainingForm.provider.trim() || "-",
+      });
+      log("mengubah training", `${trainingEditId} - ${trainingForm.title.trim()}`, "SDM");
+      toast(S.tTrainOk.replace("{n}", trainingEditId));
+      closeTrainingModal();
+    } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); }
+  };
+
+  const confirmDelTraining = async () => {
+    if (!delTraining) return;
+    try {
+      await remove("trainings", String(delTraining.id));
+      log("menghapus training", `${delTraining.id} - ${delTraining.title ?? ""}`, "SDM");
+      toast(
+        locale === "en"
+          ? `Training ${delTraining.id} deleted`
+          : `Training ${delTraining.id} dihapus`,
+      );
+      setDelTraining(null);
+    } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); }
+  };
+
 
   const applyCert = async () => {
     if (!certTarget) return;
@@ -827,22 +982,63 @@ export default function HR() {
   };
 
   const suratEmp = data.employees.find((e) => e.id === suratForm.employeeId);
+  /** Nomor yang akan dipakai saat disimpan. Dipakai BERSAMA oleh preview dan
+   *  saveSurat supaya keduanya tidak pernah berbeda - versi lama memanggil
+   *  nextSuratId() di dalam suratPreview sehingga nomor yang tampil saat preview
+   *  tidak sama dengan nomor yang benar-benar terbit saat disimpan. */
+  const suratNomor = nextSuratId(suratForm.tanggal || todayISO());
+
+  /** Teks surat. SATU fungsi dipakai untuk preview di form, pratinjau arsip,
+   *  dan pratinjau teks - sebelumnya teks disusun ulang di tiga tempat
+   *  terpisah sehingga prone to drift. */
+  const suratText = (row: {
+    id?: unknown; jenis?: unknown; tanggal?: unknown; isi?: unknown;
+    nama?: unknown; nik?: unknown; role?: unknown; dept?: unknown; branch?: unknown;
+  }): string => {
+    const lines = [
+      `SURAT ${String(row.jenis ?? "").toUpperCase()}`,
+      "PT Syukur Bersaudara",
+      "",
+      `Nomor: ${String(row.id ?? "-")}`,
+      `Tanggal: ${fmtTanggal(String(row.tanggal ?? ""))}`,
+      "",
+      `Kepada Yth. ${String(row.nama ?? "-")}${row.nik ? ` (${String(row.nik)})` : ""}`,
+    ];
+    if (row.role || row.dept || row.branch) {
+      lines.push(`Jabatan: ${String(row.role ?? "-")} · Departemen: ${String(row.dept ?? "-")} · Cabang: ${String(row.branch ?? "-")}`);
+    }
+    lines.push("", String(row.isi ?? "").trim() || (locale === "en" ? "(Letter body not written yet)" : "(Isi surat belum ditulis)"));
+    return lines.join("\n");
+  };
+
   const suratPreview = suratEmp
-    ? [
-        `SURAT ${suratForm.jenis.toUpperCase()}`,
-        `PT Syukur Bersaudara`,
-        ``,
-        `Nomor: ${nextSuratId(suratForm.tanggal || todayISO())}`,
-        `Tanggal: ${fmtTanggal(suratForm.tanggal)}`,
-        ``,
-        `Kepada Yth. ${suratEmp.name} (${empNik(suratEmp)})`,
-        `Jabatan: ${suratEmp.role} · Departemen: ${suratEmp.dept} · Cabang: ${suratEmp.branch}`,
-        ``,
-        suratForm.isi.trim() || "(Isi surat belum ditulis)",
-      ].join("\n")
+    ? suratText({
+      id: suratNomor,
+      jenis: suratForm.jenis,
+      tanggal: suratForm.tanggal,
+      isi: suratForm.isi,
+      nama: suratEmp.name,
+      nik: empNik(suratEmp),
+      role: suratEmp.role,
+      dept: suratEmp.dept,
+      branch: suratEmp.branch,
+    })
     : "";
 
-  const saveSurat = () => {
+  /** Buka form UBAH surat yang sudah tersimpan. */
+  const openSuratEdit = (s: StoreItem) => {
+    setSuratEditId(String(s.id));
+    setSuratForm({
+      employeeId: String(s.employeeId ?? ""),
+      jenis: String(s.jenis ?? "SP 1"),
+      isi: String(s.isi ?? ""),
+      tanggal: String(s.tanggal ?? todayISO()),
+      fileUrl: String(s.fileUrl ?? ""),
+    });
+    setShowSurat(true);
+  };
+
+  const saveSurat = async () => {
     if (!suratEmp) {
       toast(S.tPilihKaryawan, "info");
       return;
@@ -855,20 +1051,36 @@ export default function HR() {
       toast(S.tTglSurat, "info");
       return;
     }
-    const entry: StoreItem = {
-      id: nextSuratId(suratForm.tanggal),
+    const url = suratForm.fileUrl.trim();
+    const patch = {
       employeeId: suratEmp.id,
       nama: String(suratEmp.name),
       jenis: suratForm.jenis,
       tanggal: suratForm.tanggal,
       isi: suratForm.isi.trim(),
-      ...(suratForm.fileUrl.trim() ? { fileUrl: suratForm.fileUrl.trim() } : {}),
+      fileUrl: url,
+      fileName: url !== "" ? `surat-${suratEditId ?? suratNomor}.pdf` : "",
     };
-    setArsipSurat((prev) => [entry, ...prev]);
-    log("membuat surat", `${entry.id} · ${suratForm.jenis} → ${suratEmp.name}`, "SDM");
-    toast(S.tSuratOk.replace("{n}", entry.id));
-    setShowSurat(false);
-    setSuratForm({ employeeId: "", jenis: "SP 1", isi: "", tanggal: todayISO(), fileUrl: "" });
+    try {
+      if (suratEditId) {
+        /* Ubah: id & nomor TIDAK berubah. Surat sudah terbit dengan nomor
+           resmi; mengacaknya sendiri membuat arsip dan rujukan (BAST,
+           kontrak) tidak cocok. */
+        await update("letters", suratEditId, patch);
+        log("mengubah surat", `${suratEditId} · ${patch.jenis} → ${patch.nama}`, "SDM");
+        toast(locale === "en" ? `Letter ${suratEditId} updated` : `Surat ${suratEditId} diperbarui`);
+        setSuratEditId(null);
+      } else {
+        await add(
+          "letters",
+          { id: suratNomor, ...patch, createdBy: "Anda", createdAt: `${todayISO()} ${new Date().toTimeString().slice(0, 5)}` },
+          { action: "membuat surat", target: `${suratNomor} · ${patch.jenis} → ${patch.nama}`, module: "SDM" },
+        );
+        toast(S.tSuratOk.replace("{n}", suratNomor));
+      }
+      setShowSurat(false);
+      setSuratForm({ employeeId: "", jenis: "SP 1", isi: "", tanggal: todayISO(), fileUrl: "" });
+    } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); }
   };
 
   const exportArsipSurat = () => {
@@ -876,8 +1088,10 @@ export default function HR() {
       toast(S.tArsipKosong, "info");
       return;
     }
-    const head = ["ID", "Karyawan", "Jenis", "Tanggal", "Isi"];
-    const body = arsipSurat.map((s) => [s.id, s.nama, s.jenis, fmtTanggal(String(s.tanggal)), s.isi]);
+    /* Kolom fileUrl ikut diekspor - versi lama membuangnya, sehingga arsip
+       Excel tidak bisa ditelusuri balik ke dokumennya. */
+    const head = ["ID", "Karyawan", "Jenis", "Tanggal", "Isi", "Lampiran"];
+    const body = arsipSurat.map((s) => [s.id, s.nama, s.jenis, fmtTanggal(String(s.tanggal)), s.isi, s.fileUrl ?? ""]);
     void exportExcel([head, ...body], "arsip-surat-sdm", "Arsip Surat");
     toast(S.tArsipUnduh);
   };
@@ -1242,12 +1456,42 @@ export default function HR() {
                       <td className="td text-steel-600">{l.type === "Tahunan" ? S.daysN.replace("{n}", String(saldoCuti(String(l.employeeId)))) : "-"}</td>
                       <td className="td"><StatusBadge status={String(l.status)} /></td>
                       <td className="td">
-                        <DocumentPreviewCell
-                          doc={l.fileUrl ? {
-                            title: `${empNameOf(String(l.employeeId))} · ${String(l.type)} · ${String(l.id)}`,
-                            fileUrl: String(l.fileUrl),
-                          } : null}
-                        />
+                        {/* Lampiran hanya dapat dipratinjau setelah pengajuan
+                            DISETUJUI final. Sebelumnya tombol preview muncul di
+                            SEMUA status, jadi surat dokter / bukti sakit yang
+                            masih menunggu atasan sudah bisa dibuka siapa pun -
+                            padahal isinya data medis karyawan. Sesuai copy di
+                            form pengajuan ("Tampil setelah Disetujui"). */}
+                        {(() => {
+                          const url = String(l.fileUrl ?? "");
+                          const approved = String(l.status ?? "") === "Disetujui";
+                          if (url === "") {
+                            return <span className="text-xs text-steel-400">-</span>;
+                          }
+                          if (!approved) {
+                            return (
+                              <span
+                                className="inline-flex items-center gap-1 text-xs text-steel-400"
+                                title={locale === "en"
+                                  ? "Attachment is hidden until the request is fully approved."
+                                  : "Lampiran disembunyikan sampai pengajuan disetujui final."}
+                              >
+                                <Lock className="h-3 w-3" />
+                                {locale === "en" ? "Hidden" : "Tertutup"}
+                              </span>
+                            );
+                          }
+                          return (
+                            <DocumentPreviewCell
+                              doc={{
+                                title: `${empNameOf(String(l.employeeId))} · ${String(l.type)} · ${String(l.id)}`,
+                                subtitle: `${fmtTanggal(String(l.from))} → ${fmtTanggal(String(l.to))} · ${String(l.note ?? "")}`,
+                                fileUrl: url,
+                                fileName: `lampiran-${String(l.id)}`,
+                              }}
+                            />
+                          );
+                        })()}
                       </td>
                       <td className="td">
                         {l.status === "Diajukan" ? (
@@ -1261,6 +1505,21 @@ export default function HR() {
                           <div className="flex items-center gap-2 whitespace-nowrap">
                             <button className="text-sm font-semibold text-emerald-600 hover:underline" onClick={() => approveHrd(l)}>{S.btnSetujuiHrd}</button>
                             <button className="text-sm font-semibold text-rose-600 hover:underline" onClick={() => setRejectTarget(l)}>{S.btnTolak}</button>
+                          </div>
+                        ) : String(l.status ?? "") === "Disetujui" ? (
+                          /* Edit/Hapus tetap ada setelah disetujui supaya data
+                             yang salah tidak terkunci permanen._edit ini
+                             membuka jalur koreksi: periode terkunci, catatan
+                             dan lampiran bebas. */
+                          <div className="flex items-center gap-2 whitespace-nowrap">
+                            <button
+                              className="text-sm font-semibold text-navy-700 hover:underline"
+                              onClick={() => openLeaveEditFinal(l)}
+                              title={locale === "en" ? "Correct note / attachment (period is locked)" : "Koreksi catatan / lampiran (periode terkunci)"}
+                            >
+                              {S.btnEdit}
+                            </button>
+                            <button className="text-sm font-semibold text-rose-600 hover:underline" onClick={() => setDelLeave(l)}>{S.btnHapus}</button>
                           </div>
                         ) : (
                           <span className="text-xs text-steel-400">-</span>
@@ -1383,12 +1642,21 @@ export default function HR() {
                         <td className="td"><StatusBadge status={String(t.status)} /></td>
                         <td className="td">
                           <div className="flex items-center gap-2 whitespace-nowrap">
-                            {t.status !== "Selesai" && (
+                            {String(t.status) !== "Selesai" && (
                               <button className="text-sm font-semibold text-emerald-600 hover:underline" onClick={() => finishTraining(t)}>{S.btnSelesai}</button>
                             )}
-                            {t.status === "Selesai" && (
+                            {String(t.status) === "Selesai" && (
                               <button className="text-sm font-semibold text-ocean-600 hover:underline" onClick={() => setCertTarget(t)}>{S.btnTerapkan}</button>
                             )}
+                            <button
+                              className="text-sm font-semibold text-navy-700 hover:underline"
+                              onClick={() => openTrainingEdit(t)}
+                            >
+                              {S.btnEdit}
+                            </button>
+                            <button className="text-sm font-semibold text-rose-600 hover:underline" onClick={() => setDelTraining(t)}>
+                              {S.btnHapus}
+                            </button>
                           </div>
                         </td>
                       </tr>
@@ -1407,19 +1675,36 @@ export default function HR() {
                   <h3 className="text-sm font-semibold text-navy-900">{S.arsipT}</h3>
                   <div className="flex items-center gap-2">
                     <button className="btn-secondary text-xs" onClick={exportArsipSurat}>{S.btnExport}</button>
-                    <button className="btn-primary text-xs" onClick={() => setShowSurat(true)}>{S.btnBuatSurat}</button>
+                    <button className="btn-primary text-xs" onClick={() => { setSuratEditId(null); setSuratForm({ employeeId: "", jenis: "SP 1", isi: "", tanggal: todayISO(), fileUrl: "" }); setShowSurat(true); }}>{S.btnBuatSurat}</button>
                   </div>
                 </div>
+                <p className="mt-1 text-xs text-steel-500">
+                  {locale === "en"
+                    ? `${arsipSurat.length} letter(s) in the shared archive. Each row can be previewed, edited and deleted.`
+                    : `${arsipSurat.length} surat di arsip bersama. Setiap baris bisa dipratinjau, diubah, dan dihapus.`}
+                </p>
                 <div className="mt-3 space-y-2.5">
                   {arsipSurat.map((s) => (
                     <div key={s.id} className="flex items-start justify-between gap-2 rounded-lg bg-surface p-2.5 text-sm">
                       <div className="min-w-0">
                         <p className="font-medium text-navy-900">{s.jenis} · {s.nama}</p>
                         <p className="font-mono text-xs text-steel-500">{s.id} · {fmtTanggal(String(s.tanggal))}</p>
+                        <p className="text-[11px] text-steel-400">
+                          {s.fileUrl
+                            ? (locale === "en" ? "scan attached" : "pindai terlampir")
+                            : (locale === "en" ? "no scan - text only" : "tanpa pindai - teks saja")}
+                        </p>
                       </div>
                       <div className="flex shrink-0 items-center gap-2">
                         <button className="text-xs font-semibold text-ocean-600 underline" onClick={() => setSuratPreviewFor(s)}>
                           {locale === "en" ? "Preview" : "Pratinjau"}
+                        </button>
+                        <button
+                          className="text-xs font-semibold text-navy-700 underline"
+                          onClick={() => openSuratEdit(s)}
+                          title={locale === "en" ? "Edit this letter" : "Ubah surat ini"}
+                        >
+                          {S.btnEdit}
                         </button>
                         <button className="text-xs font-semibold text-rose-600 underline" onClick={() => setDelSurat(s)}>
                           {S.btnHapus}
@@ -1530,8 +1815,14 @@ export default function HR() {
       <Modal
         open={showLeave}
         onClose={closeLeaveModal}
-        title={leaveEditId ? `${S.btnEdit} ${leaveEditId}` : S.mLeaveT}
-        subtitle={S.mLeaveS.replace("{n}", String(jatahCuti))}
+        title={leaveFinalEdit
+          ? (locale === "en" ? `Correct approved leave - ${leaveEditId}` : `Koreksi Cuti Disetujui - ${leaveEditId}`)
+          : leaveEditId ? `${S.btnEdit} ${leaveEditId}` : S.mLeaveT}
+        subtitle={leaveFinalEdit
+          ? (locale === "en"
+            ? "Period, type and employee are locked (attendance was already synced). Note and attachment stay editable."
+            : "Periode, tipe, dan karyawan terkunci (absensi sudah tersinkron). Catatan dan lampiran tetap bisa diubah.")
+          : S.mLeaveS.replace("{n}", String(jatahCuti))}
         footer={
           <>
             <button className="btn-secondary" onClick={closeLeaveModal}>{S.btnBatal}</button>
@@ -1545,7 +1836,12 @@ export default function HR() {
       >
         <div className="space-y-3">
           <Field label={S.fKaryawan}>
-            <select className="input" value={leaveForm.employeeId} onChange={(e) => setLeaveForm({ ...leaveForm, employeeId: e.target.value })}>
+            <select
+              className="input"
+              value={leaveForm.employeeId}
+              disabled={leaveFinalEdit}
+              onChange={(e) => setLeaveForm({ ...leaveForm, employeeId: e.target.value })}
+            >
               <option value="">{S.optPilih}</option>
               {scopedEmployees.map((e) => (
                 <option key={e.id} value={e.id}>{S.optSisa.replace("{a}", String(e.name)).replace("{n}", String(saldoCuti(e.id)))}</option>
@@ -1554,21 +1850,68 @@ export default function HR() {
           </Field>
           <FormGrid>
             <Field label={S.thTipe}>
-              <select className="input" value={leaveForm.type} onChange={(e) => setLeaveForm({ ...leaveForm, type: e.target.value })}>
+              <select
+                className="input"
+                value={leaveForm.type}
+                disabled={leaveFinalEdit}
+                onChange={(e) => setLeaveForm({ ...leaveForm, type: e.target.value })}
+              >
                 {LEAVE_TYPES.map((t) => <option key={t}>{t}</option>)}
               </select>
             </Field>
             <Field label={S.fDurasi}><input className="input" value={S.daysN.replace("{n}", String(leaveDays))} disabled /></Field>
-            <Field label={S.fDari}><input type="date" className="input" value={leaveForm.from} onChange={(e) => setLeaveForm({ ...leaveForm, from: e.target.value })} /></Field>
-            <Field label={S.fSampai}><input type="date" className="input" value={leaveForm.to} onChange={(e) => setLeaveForm({ ...leaveForm, to: e.target.value })} /></Field>
+            <Field label={S.fDari}>
+              <input
+                type="date"
+                className="input"
+                value={leaveForm.from}
+                disabled={leaveFinalEdit}
+                onChange={(e) => setLeaveForm({ ...leaveForm, from: e.target.value })}
+              />
+            </Field>
+            <Field label={S.fSampai}>
+              <input
+                type="date"
+                className="input"
+                value={leaveForm.to}
+                disabled={leaveFinalEdit}
+                onChange={(e) => setLeaveForm({ ...leaveForm, to: e.target.value })}
+              />
+            </Field>
           </FormGrid>
           <Field label={S.fKet}><input className="input" value={leaveForm.note} onChange={(e) => setLeaveForm({ ...leaveForm, note: e.target.value })} placeholder={S.phKeperluan} /></Field>
-          <Field label={locale === "en" ? "Attachment URL (e.g. doctor note)" : "URL lampiran (mis. surat dokter)"} hint={locale === "en" ? "Shown after approval" : "Tampil setelah Disetujui"}>
+          <Field
+            label={locale === "en" ? "Attachment URL (e.g. doctor note)" : "URL lampiran (mis. surat dokter)"}
+            hint={locale === "en"
+              ? "Preview becomes visible in the table once the request is fully approved."
+              : "Pratinjau baru tampil di tabel setelah pengajuan disetujui final."}
+          >
             <div className="flex flex-wrap items-center gap-2">
               <input className="input flex-1 font-mono" value={leaveForm.fileUrl} onChange={(e) => setLeaveForm({ ...leaveForm, fileUrl: e.target.value })} placeholder="https://…" />
               <FileUploadButton label={locale === "en" ? "Upload" : "Unggah"} onUploaded={(url) => setLeaveForm((f) => ({ ...f, fileUrl: url }))} />
             </div>
           </Field>
+          {/* Preview di dalam form: HR bisa memastikan berkas yang diunggah
+              benar SEBELUM menutup modal, bukan baru sadar saat pratinjau di
+              tabel (yang hanya muncul setelah disetujui). */}
+          {leaveForm.fileUrl.trim() !== "" && (
+            <div className="rounded-xl border border-steel-200 bg-steel-50 p-3">
+              <p className="mb-2 flex items-center gap-1.5 text-xs font-semibold text-navy-900">
+                <Eye className="h-3.5 w-3.5" />
+                {locale === "en" ? "Attachment preview" : "Pratinjau Lampiran"}
+              </p>
+              <DocumentPreviewPanel
+                doc={{
+                  title: `${empNameOf(leaveForm.employeeId)} · ${leaveForm.type}`,
+                  subtitle: leaveFinalEdit
+                    ? (locale === "en" ? "Approved leave - correction" : "Cuti disetujui - koreksi")
+                    : (locale === "en" ? "Visible in the table after approval" : "Tampil di tabel setelah disetujui"),
+                  fileUrl: leaveForm.fileUrl.trim(),
+                  fileName: `lampiran-${leaveEditId ?? "draft"}`,
+                }}
+              />
+            </div>
+          )}
         </div>
       </Modal>
 
@@ -1653,13 +1996,13 @@ export default function HR() {
       {/* ---------- modal training ---------- */}
       <Modal
         open={showTraining}
-        onClose={() => setShowTraining(false)}
-        title={S.mTrainT}
+        onClose={closeTrainingModal}
+        title={trainingEditId ? `${S.btnEdit} ${trainingEditId}` : S.mTrainT}
         wide
         footer={
           <>
-            <button className="btn-secondary" onClick={() => setShowTraining(false)}>{S.btnBatal}</button>
-            <button className="btn-primary" onClick={saveTraining}>{S.btnSimpanJadwal}</button>
+            <button className="btn-secondary" onClick={closeTrainingModal}>{S.btnBatal}</button>
+            <button className="btn-primary" onClick={trainingEditId ? saveTrainingEdit : saveTraining}>{S.btnSimpanJadwal}</button>
           </>
         }
       >
@@ -1683,6 +2026,26 @@ export default function HR() {
         </div>
       </Modal>
 
+      <ConfirmModal
+        open={delTraining !== null}
+        title={delTraining
+          ? (locale === "en" ? `Delete training ${delTraining.id}?` : `Hapus training ${delTraining.id}?`)
+          : ""}
+        desc={delTraining
+          ? (String(delTraining.status) === "Selesai"
+            ? (locale === "en"
+              ? `"${String(delTraining.title)}" is already completed. Certificates issued from it stay on the employee record, but this training record will be gone.`
+              : `"${String(delTraining.title)}" sudah selesai. Sertifikat yang sudah terbit tetap tersimpan di data karyawan, tetapi record training ini akan hilang.`)
+            : (locale === "en"
+              ? `"${String(delTraining.title)}" will be permanently deleted.`
+              : `"${String(delTraining.title)}" akan dihapus permanen.`))
+          : ""}
+        confirmLabel={S.btnHapus}
+        danger
+        onCancel={() => setDelTraining(null)}
+        onConfirm={confirmDelTraining}
+      />
+
       <Modal
         open={certTarget !== null}
         onClose={() => setCertTarget(null)}
@@ -1705,13 +2068,19 @@ export default function HR() {
       <Modal
         open={showSurat}
         onClose={() => setShowSurat(false)}
-        title={S.mSuratT}
-        subtitle={S.mSuratS}
+        title={suratEditId
+          ? (locale === "en" ? `Edit letter - ${suratEditId}` : `Ubah Surat - ${suratEditId}`)
+          : S.mSuratT}
+        subtitle={suratEditId
+          ? (locale === "en" ? "Letter number stays the same once issued." : "Nomor surat tetap sama setelah diterbitkan.")
+          : S.mSuratS}
         wide
         footer={
           <>
-            <button className="btn-secondary" onClick={() => setShowSurat(false)}>{S.btnBatal}</button>
-            <button className="btn-primary" onClick={saveSurat}>{S.btnArsip}</button>
+            <button className="btn-secondary" onClick={() => { setShowSurat(false); setSuratEditId(null); }}>{S.btnBatal}</button>
+            <button className="btn-primary" onClick={saveSurat}>
+              {suratEditId ? S.btnSimpan : S.btnArsip}
+            </button>
           </>
         }
       >
@@ -1733,13 +2102,36 @@ export default function HR() {
             <Field label={S.thTanggal}><input type="date" className="input" value={suratForm.tanggal} onChange={(e) => setSuratForm({ ...suratForm, tanggal: e.target.value })} /></Field>
           </FormGrid>
           <Field label={S.fIsi}><textarea className="input" rows={4} value={suratForm.isi} onChange={(e) => setSuratForm({ ...suratForm, isi: e.target.value })} placeholder={S.phSurat} /></Field>
-          <Field label={locale === "en" ? "Scan URL (optional)" : "URL file scan (opsional)"} hint={locale === "en" ? "PDF/image shown side-by-side" : "PDF/gambar tampil berdampingan"}>
-            <input className="input font-mono" value={suratForm.fileUrl} onChange={(e) => setSuratForm({ ...suratForm, fileUrl: e.target.value })} placeholder="https://…" />
+<Field label={locale === "en" ? "Scan / attachment (optional)" : "Pindai / Lampiran (opsional)"} hint={locale === "en" ? "PDF or image, shown side-by-side with the text" : "PDF atau gambar, tampil berdampingan dengan teks"}>
+            {/* Dulu hanya input URL tanpa tombol Unggah - padahal modul lain
+                (cuti) sudah punya FileUploadButton, jadi scanner/HP jadi satu
+               -satunya cara melampirkan pindai. */}
+            <div className="flex flex-wrap items-center gap-2">
+              <input className="input flex-1 font-mono" value={suratForm.fileUrl} onChange={(e) => setSuratForm({ ...suratForm, fileUrl: e.target.value })} placeholder="https://…" />
+              <FileUploadButton label={locale === "en" ? "Upload" : "Unggah"} onUploaded={(url) => setSuratForm((f) => ({ ...f, fileUrl: url }))} />
+            </div>
           </Field>
           {suratPreview && (
             <div>
               <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-steel-500">{S.lblPratinjau}</p>
               <pre className="whitespace-pre-wrap rounded-xl bg-surface p-3 text-sm text-navy-900">{suratPreview}</pre>
+            </div>
+          )}
+          {/* Preview pindai langsung di form lewat DocumentPreviewPanel
+              (JWT-aware) - <img src> mentah akan 401 untuk file ber-JWT. */}
+          {suratForm.fileUrl.trim() !== "" && (
+            <div>
+              <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-steel-500">
+                {locale === "en" ? "Scan preview" : "Pratinjau Pindai"}
+              </p>
+              <DocumentPreviewPanel
+                doc={{
+                  title: `${suratForm.jenis} · ${suratEmp?.name ?? ""}`,
+                  subtitle: suratEditId ?? suratNomor,
+                  fileUrl: suratForm.fileUrl.trim(),
+                  fileName: `surat-${suratEditId ?? suratNomor}`,
+                }}
+              />
             </div>
           )}
         </div>
@@ -1749,31 +2141,51 @@ export default function HR() {
       <Modal
         open={suratPreviewFor !== null}
         onClose={() => setSuratPreviewFor(null)}
+        wide
         title={suratPreviewFor ? String(suratPreviewFor.jenis) : ""}
-        subtitle={suratPreviewFor ? `${String(suratPreviewFor.id)} · ${String(suratPreviewFor.nama)}` : ""}
+        subtitle={suratPreviewFor ? `${String(suratPreviewFor.id)} - ${String(suratPreviewFor.nama)}` : ""}
       >
         {suratPreviewFor && (
           <div className={suratPreviewFor.fileUrl ? "grid grid-cols-1 gap-3 md:grid-cols-2" : ""}>
+          {/* Teks surat dibangun dari baris arsip memakai suratText() yang sama
+              dengan preview di form - dulu teks disusun ulang terpisah di sini
+              sehingga bisa berbeda dari yang dicetak. */}
           <pre className="whitespace-pre-wrap rounded-xl bg-surface p-3 text-sm text-navy-900">
-            {[
-              `${String(suratPreviewFor.jenis ?? "").toUpperCase()}`,
-              `PT Syukur Bersaudara`,
-              ``,
-              `Nomor: ${String(suratPreviewFor.id)}`,
-              `Tanggal: ${fmtTanggal(String(suratPreviewFor.tanggal))}`,
-              ``,
-              `Kepada Yth. ${String(suratPreviewFor.nama ?? "")}`,
-              ``,
-              String(suratPreviewFor.isi ?? ""),
-            ].join("\n")}
+            {(() => {
+              const emp = data.employees.find((e) => String(e.id) === String(suratPreviewFor.employeeId ?? ""));
+              return suratText({
+                id: suratPreviewFor.id,
+                jenis: suratPreviewFor.jenis,
+                tanggal: suratPreviewFor.tanggal,
+                isi: suratPreviewFor.isi,
+                nama: suratPreviewFor.nama,
+                nik: emp ? empNik(emp) : "",
+                role: emp?.role,
+                dept: emp?.dept,
+                branch: emp?.branch,
+              });
+            })()}
           </pre>
           {suratPreviewFor.fileUrl ? (
-            /\.pdf(\?|#|$)/i.test(String(suratPreviewFor.fileUrl)) ? (
-              <iframe src={String(suratPreviewFor.fileUrl)} title={`Scan ${String(suratPreviewFor.id)}`} className="h-72 w-full rounded-xl border border-steel-200 bg-white" />
-            ) : (
-              <img src={String(suratPreviewFor.fileUrl)} alt={`Scan ${String(suratPreviewFor.id)}`} className="max-h-72 w-full rounded-xl border border-steel-200 object-contain bg-surface" loading="lazy" />
-            )
-          ) : null}
+            /* DocumentPreviewPanel, BUKAN <iframe>/<img> mentah: file di
+               backend dilindungi JWT, jadi src="/files/..." akan 401 dan tampil
+               blank. Panel ini ambil lewat fetchFileBlob yang mengirim header
+               Authorization, sekaligus menyediakan tombol Unduh. */
+            <DocumentPreviewPanel
+              doc={{
+                title: `Lampiran ${String(suratPreviewFor.id)}`,
+                subtitle: String(suratPreviewFor.nama ?? ""),
+                fileUrl: String(suratPreviewFor.fileUrl),
+                fileName: String(suratPreviewFor.fileName ?? `surat-${String(suratPreviewFor.id)}`),
+              }}
+            />
+          ) : (
+            <p className="self-center rounded-lg bg-steel-50 px-3 py-3 text-xs text-steel-500">
+              {locale === "en"
+                ? "No scan attached. Use the Upload button in the letter form to attach one."
+                : "Belum ada pindai lampiran. Gunakan tombol Unggah di form surat untuk melampirkannya."}
+            </p>
+          )}
           </div>
         )}
       </Modal>
@@ -1820,12 +2232,14 @@ export default function HR() {
         confirmLabel={S.btnHapus}
         danger
         onCancel={() => setDelSurat(null)}
-        onConfirm={() => {
+        onConfirm={async () => {
           if (!delSurat) return;
-          setArsipSurat((prev) => prev.filter((s) => String(s.id) !== String(delSurat.id)));
-          log("menghapus arsip surat", String(delSurat.id), "SDM");
-          toast(locale === "en" ? `Letter ${delSurat.id} deleted` : `Arsip surat ${delSurat.id} dihapus`);
-          setDelSurat(null);
+          try {
+            await remove("letters", String(delSurat.id));
+            log("menghapus arsip surat", String(delSurat.id), "SDM");
+            toast(locale === "en" ? `Letter ${delSurat.id} deleted` : `Arsip surat ${delSurat.id} dihapus`);
+            setDelSurat(null);
+          } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); }
         }}
       />
     </div>

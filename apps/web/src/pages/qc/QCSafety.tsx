@@ -204,6 +204,9 @@ export default function QCSafety() {
   const [showInsp, setShowInsp] = useState(false);
   const [inspForm, setInspForm] = useState({ project: "", point: "", status: "Terjadwal", date: todayISO(), holdType: "Witness", nde: "Tidak", ndeMethod: "UT", inspector: "", sampleSize: "", defectsAllowed: "0", defectsFound: "0", calTool: "", branch: "" });
   const [inspDetail, setInspDetail] = useState<StoreItem | null>(null);
+  /* Ubah/hapus inspeksi: id baris yang sedang diedit, dan target hapus. */
+  const [inspEditId, setInspEditId] = useState<string | null>(null);
+  const [delInsp, setDelInsp] = useState<StoreItem | null>(null);
   const [ncrDetail, setNcrDetail] = useState<StoreItem | null>(null);
   const [dueDraft, setDueDraft] = useState("");
   // Ubah uraian NCR (Terbuka saja) + ubah drawing (title/holder).
@@ -256,6 +259,14 @@ export default function QCSafety() {
   const [showAuditPlan, setShowAuditPlan] = useState(false);
   const [auditForm, setAuditForm] = useState({ date: todayISO(), area: "", auditor: "", findings: "0", ncrId: "" });
   const [delAudit, setDelAudit] = useState<StoreItem | null>(null);
+  /* NCR dan drawing punya ubah + alur status, tapi tidak punya hapus sama
+     sekali. Yang sudahfinal (NCR Tertutup / drawing Terbit) sudah jadi
+     catatan mutu bertanda tangan, jadi tidak boleh hilang. */
+  const [delRec, setDelRec] = useState<{ kind: "ncr" | "drawings" | "toolbox" | "walks" | "incidents"; row: StoreItem } | null>(null);
+  /* Toolbox talk, safety walk, dan insiden dulu hanya bisa ditambah. */
+  const [tbmEditId, setTbmEditId] = useState<string | null>(null);
+  const [walkEditId, setWalkEditId] = useState<string | null>(null);
+  const [incEditId, setIncEditId] = useState<string | null>(null);
 
   // Verifikasi lanjutan CAPA H+30
   const [followUpNcr, setFollowUpNcr] = useState<StoreItem | null>(null);
@@ -468,6 +479,84 @@ export default function QCSafety() {
     } catch {
       toast(S.tInspGagal, "info");
     }
+  };
+  /* ==== UBAH / HAPUS INSPEKSI ====
+   Reuse form yang sama dengan create (satu form, satu handler) supaya aturan
+   validasi AQL/NDE tidak bercabang dua. Bedanya: `itp` TIDAK di-regenerate
+   saat ubah - nomor ITP sudah tercetak dan jadi rujukan dokumen onsite. */
+  const openInspEdit = (i: StoreItem) => {
+    setInspEditId(String(i.id));
+    setInspForm({
+      project: String(i.project ?? ""),
+      point: String(i.point ?? ""),
+      status: String(i.status ?? "Terjadwal"),
+      date: String(i.date ?? todayISO()),
+      holdType: String(i.holdType ?? "Witness"),
+      nde: String(i.nde ?? "Tidak"),
+      ndeMethod: String(i.ndeMethod ?? "UT"),
+      inspector: String(i.inspector ?? ""),
+      sampleSize: String(i.sampleSize ?? ""),
+      defectsAllowed: String(i.defectsAllowed ?? "0"),
+      defectsFound: String(i.defectsFound ?? "0"),
+      calTool: String(i.calTool ?? ""),
+      branch: String(i.branch ?? ""),
+    });
+    setShowInsp(true);
+  };
+
+  /* Tutup modal inspeksi dan reset form ke kondisi create. */
+  const closeInspModal = () => {
+    setShowInsp(false);
+    setInspEditId(null);
+    setInspForm({ project: "", point: "", status: "Terjadwal", date: todayISO(), holdType: "Witness", nde: "Tidak", ndeMethod: "UT", inspector: "", sampleSize: "", defectsAllowed: "0", defectsFound: "0", calTool: "", branch: "" });
+  };
+
+  const saveInspEdit = async () => {
+    if (!inspEditId) return;
+    if (!inspForm.project || !inspForm.point.trim()) { toast(S.tInspWajib, "info"); return; }
+    if (!inspForm.date) { toast(S.tTglInspWajib, "info"); return; }
+    if (!inspForm.inspector) { toast(S.tInspectorWajib, "info"); return; }
+    const sample = Number(inspForm.sampleSize);
+    const allowed = Number(inspForm.defectsAllowed);
+    const found = Number(inspForm.defectsFound);
+    if (!Number.isFinite(sample) || sample <= 0) { toast(S.tSampleWajib, "info"); return; }
+    if (!Number.isFinite(allowed) || allowed < 0 || !Number.isFinite(found) || found < 0) { toast(S.tDefectValid, "info"); return; }
+    if (inspForm.nde === "Ya" && !validCals.some((c) => c.id === inspForm.calTool)) {
+      toast(S.tAlatInvalid, "info");
+      return;
+    }
+    /* Status tidak boleh diubah lewat koreksi: perpindahan Lulus/NCR punya
+       efek samping (NCR otomatis saat AQL gagal) yang harus lewat alur
+       create, bukan lewat edit. Koreksi hanya untuk data ter-input. */
+    const prev = inspections.find((x) => String(x.id) === inspEditId);
+    try {
+      await update("inspections", inspEditId, {
+        point: inspForm.point.trim(),
+        date: inspForm.date,
+        holdType: inspForm.holdType,
+        nde: inspForm.nde,
+        ndeMethod: inspForm.nde === "Ya" ? inspForm.ndeMethod : "-",
+        calTool: inspForm.nde === "Ya" ? inspForm.calTool : "",
+        inspector: inspForm.inspector,
+        sampleSize: sample,
+        defectsAllowed: allowed,
+        defectsFound: found,
+        status: String(prev?.status ?? inspForm.status),
+      });
+      log("mengoreksi inspeksi", `${inspEditId} · ${inspForm.point.trim()}`, "QC");
+      toast(S.tInspJadwal.replace("{n}", inspEditId));
+      closeInspModal();
+    } catch (e) { toast(e instanceof Error ? e.message : S.tInspGagal, "info"); }
+  };
+
+  const confirmDelInsp = async () => {
+    if (!delInsp) return;
+    try {
+      await remove("inspections", String(delInsp.id));
+      log("menghapus inspeksi", `${delInsp.id} · ${delInsp.point ?? ""}`, "QC");
+      toast(S.tInspHapus.replace("{n}", String(delInsp.id)));
+      setDelInsp(null);
+    } catch (e) { toast(e instanceof Error ? e.message : S.tInspGagal, "info"); }
   };
 
   const saveNcr = async () => {
@@ -698,6 +787,50 @@ export default function QCSafety() {
   };
 
   // Ubah drawing: title + holder (revisi/status tetap lewat alur).
+  const drwLocked = (d: StoreItem): string | null => {
+    const st = String(d.status ?? "");
+    return st === "Terbit" || st === "Distribusi" || st === "As Built"
+      ? (locale === "en"
+        ? `Drawing ${String(d.id)} is already ${st} - it is an issued revision.`
+        : `Drawing ${String(d.id)} sudah ${st} - itu revisi yang sudah terbit.`)
+      : null;
+  };
+
+  const recLocked = (kind: string, row: StoreItem): string | null => {
+    if (kind === "ncr") {
+      return String(row.status ?? "") === "Tertutup"
+        ? (locale === "en"
+          ? `NCR ${String(row.id)} is closed - it carries the accepted CAPA and rework cost.`
+          : `NCR ${String(row.id)} sudah Tertutup - di situ ada CAPA diterima dan biaya rework.`)
+        : null;
+    }
+    if (kind === "drawings") return drwLocked(row);
+    /* incidentToNcr() menulis incidentId ke NCR, jadi insiden yang sudah
+       ditindaklanjuti tidak boleh dihapus - referensinya akan menggantung. */
+    if (kind === "incidents") {
+      const ncr = data.ncr.find((n) => String(n.incidentId ?? "") === String(row.id));
+      return ncr
+        ? (locale === "en"
+          ? `NCR ${String(ncr.id)} was raised from this incident - close the NCR first.`
+          : `NCR ${String(ncr.id)} diterbitkan dari insiden ini - selesaikan NCR-nya dulu.`)
+        : null;
+    }
+    return null;
+  };
+
+  const confirmDelRec = async () => {
+    if (!delRec) return;
+    const { kind, row } = delRec;
+    const locked = recLocked(kind, row);
+    if (locked) { toast(locked, "info"); setDelRec(null); return; }
+    try {
+      await remove(kind, String(row.id));
+      log(`menghapus ${kind}`, String(row.id), "QC");
+      toast(locale === "en" ? `${String(row.id)} deleted` : `${String(row.id)} dihapus`);
+      setDelRec(null);
+    } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); }
+  };
+
   const openDrwEdit = (d: StoreItem) => {
     setDrwEdit(d);
     setDrwEditForm({ title: String(d.title ?? ""), holder: String(d.holder ?? "") });
@@ -807,15 +940,36 @@ export default function QCSafety() {
   const saveToolbox = async () => {
     try {
     if (!tbmForm.project || !tbmForm.topic.trim() || !tbmForm.date || !tbmForm.pic.trim()) { toast(S.tTbmWajib, "info"); return; }
-    const created = await add("toolbox", {
+    const payload = {
       project: tbmForm.project, topic: tbmForm.topic.trim(), date: tbmForm.date,
       attendees: Number(tbmForm.attendees) || 0, pic: tbmForm.pic.trim(),
       branch: branchOf(tbmForm.branch),
-    }, { action: "mencatat toolbox talk", module: "Safety" });
-    toast(S.tTbmOk.replace("{n}", created.id));
+    };
+    if (tbmEditId) {
+      await update("toolbox", tbmEditId, payload);
+      log("mengubah toolbox talk", `${tbmEditId} - ${tbmForm.topic.trim()}`, "Safety");
+      toast(locale === "en" ? `Toolbox talk ${tbmEditId} updated` : `Toolbox talk ${tbmEditId} diperbarui`);
+      setTbmEditId(null);
+    } else {
+      const created = await add("toolbox", payload, { action: "mencatat toolbox talk", module: "Safety" });
+      toast(S.tTbmOk.replace("{n}", created.id));
+    }
     setShowTbm(false);
     setTbmForm({ project: "", topic: "", date: todayISO(), attendees: "", pic: "", branch: "" });
     } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); }
+  };
+
+  const openTbmEdit = (t: StoreItem) => {
+    setTbmEditId(String(t.id));
+    setTbmForm({
+      project: String(t.project ?? ""),
+      topic: String(t.topic ?? ""),
+      date: String(t.date ?? todayISO()),
+      attendees: String(Number(t.attendees || 0)),
+      pic: String(t.pic ?? ""),
+      branch: String(t.branch ?? ""),
+    });
+    setShowTbm(true);
   };
 
   const savePpeCheck = async () => {
@@ -841,14 +995,33 @@ export default function QCSafety() {
     try {
     if (!walkForm.date || !walkForm.area.trim() || !walkForm.pic.trim()) { toast(S.tWalkWajib, "info"); return; }
     const findings = Math.max(0, Number(walkForm.findings) || 0);
-    const created = await add("walks", {
+    const payload = {
       date: walkForm.date, area: walkForm.area.trim(), findings, pic: walkForm.pic.trim(),
       branch: globalBranch,
-    }, { action: "melakukan safety walk", target: walkForm.area.trim(), module: "Safety" });
-    toast(S.tWalkOk.replace("{n}", created.id));
+    };
+    if (walkEditId) {
+      await update("walks", walkEditId, payload);
+      log("mengubah safety walk", `${walkEditId} - ${walkForm.area.trim()}`, "Safety");
+      toast(locale === "en" ? `Safety walk ${walkEditId} updated` : `Safety walk ${walkEditId} diperbarui`);
+      setWalkEditId(null);
+    } else {
+      const created = await add("walks", payload, { action: "melakukan safety walk", target: walkForm.area.trim(), module: "Safety" });
+      toast(S.tWalkOk.replace("{n}", created.id));
+    }
     setShowWalk(false);
     setWalkForm({ date: todayISO(), area: "", findings: "0", pic: "" });
     } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); }
+  };
+
+  const openWalkEdit = (w: StoreItem) => {
+    setWalkEditId(String(w.id));
+    setWalkForm({
+      date: String(w.date ?? todayISO()),
+      area: String(w.area ?? ""),
+      findings: String(Number(w.findings || 0)),
+      pic: String(w.pic ?? ""),
+    });
+    setShowWalk(true);
   };
 
   const walkToNcr = async (w: StoreItem) => {    try {const created = await add("ncr", {
@@ -876,6 +1049,44 @@ export default function QCSafety() {
       incidentId: String(i.id), branch: globalBranch,
     }, { action: "menerbitkan NCR dari insiden", module: "QC" });
     toast(S.tNcrFromInc.replace("{n}", created.id).replace("{a}", String(i.id)));
+    } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); }
+  };
+
+  const openIncEdit = (i: StoreItem) => {
+    setIncEditId(String(i.id));
+    setIncForm({
+      type: String(i.type ?? "Near Miss"),
+      location: String(i.location ?? ""),
+      desc: String(i.desc ?? ""),
+      severity: String(i.severity ?? "Rendah"),
+      project: String(i.project ?? i.projectId ?? ""),
+      branch: String(i.branch ?? ""),
+    });
+    setShowInc(true);
+  };
+
+  const saveIncident = async () => {
+    if (!incForm.desc.trim() || !incForm.location.trim()) { toast(S.tLokasiWajib, "info"); return; }
+    if (!incForm.project) { toast(S.tProyekTerkait, "info"); return; }
+    /* Tanggal tidak bisa dikoreksi: insiden dicatat saat kejadian, dan
+       NCR turunannya memakai tanggal itu sebagai batas tenggat CAPA. */
+    const payload = {
+      type: incForm.type, location: incForm.location.trim(), desc: incForm.desc.trim(),
+      severity: incForm.severity, project: incForm.project, projectId: incForm.project,
+      branch: branchOf(incForm.branch),
+    };
+    try {
+      if (incEditId) {
+        await update("incidents", incEditId, payload);
+        log("mengubah insiden", incEditId, "Safety");
+        toast(locale === "en" ? `Incident ${incEditId} updated` : `Insiden ${incEditId} diperbarui`);
+        setIncEditId(null);
+      } else {
+        const created = await add("incidents", { ...payload, date: todayISO() }, { action: "mencatat insiden", module: "Safety" });
+        toast(S.tIncOk.replace("{n}", created.id));
+      }
+      setShowInc(false);
+      setIncForm({ type: "Near Miss", location: "", desc: "", severity: "Rendah", project: "", branch: "" });
     } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); }
   };
 
@@ -962,7 +1173,18 @@ export default function QCSafety() {
                         <td className="td text-steel-600 text-xs">{i.inspector ?? "-"}</td>
                         <td className="td text-steel-600">{fmtTanggal(i.date)}</td>
                         <td className="td"><StatusBadge status={i.status} /></td>
-                        <td className="td"><button className="btn-secondary text-xs" onClick={() => setInspDetail(i)}>{S.btnDetail}</button></td>
+                        <td className="td">
+                          <div className="flex flex-wrap gap-1">
+                            <button className="btn-secondary text-xs" onClick={() => setInspDetail(i)}>{S.btnDetail}</button>
+                            {/* Ubah/Hapus: dulu tabel inspeksi hanya punya
+                                tombol Detail, sehingga hasil inspeksi yang
+                                salah (mis. Hold terbalik, sampel terisi
+                                keliru) tidak bisa dikoreksi tanpa hapus
+                                & buat ulang baris + jejaknya. */}
+                            <button className="btn-secondary text-xs" onClick={() => openInspEdit(i)}>{S.btnEdit}</button>
+                            <button className="btn-secondary text-xs text-rose-600" onClick={() => setDelInsp(i)}>{S.btnHapus}</button>
+                          </div>
+                        </td>
                       </tr>
                     ))}
                   </tbody>
@@ -1100,6 +1322,12 @@ export default function QCSafety() {
                       ) : (
                         <button className="btn-secondary text-xs" onClick={() => { setReopenNcr(n); setReopenReason(""); }}>{S.btnBukaKembali}</button>
                       )}
+                      {!recLocked("ncr", n) && (
+                        <button className="btn-secondary text-xs text-rose-600" onClick={() => setDelRec({ kind: "ncr", row: n })}>{locale === "en" ? "Delete" : "Hapus"}</button>
+                      )}
+                      {recLocked("ncr", n) !== null && (
+                        <span className="text-xs text-steel-400" title={recLocked("ncr", n) ?? ""}>{locale === "en" ? "Locked" : "Terkunci"}</span>
+                      )}
                     </div>
                   </div>
                   <div className="mt-2 border-t border-steel-100 pt-2">
@@ -1172,6 +1400,11 @@ export default function QCSafety() {
                       </button>
                       <button className="btn-secondary text-xs" onClick={() => openDrwEdit(d)}>{S.btnEdit}</button>
                       <button className="btn-secondary text-xs" onClick={() => reviseDrawing(d)}>{S.revisiKe.replace("{n}", nextRev(String(d.revision ?? "A")))}</button>
+                      {!drwLocked(d) ? (
+                        <button className="btn-secondary text-xs text-rose-600" onClick={() => setDelRec({ kind: "drawings", row: d })}>{locale === "en" ? "Delete" : "Hapus"}</button>
+                      ) : (
+                        <span className="text-xs text-steel-400" title={drwLocked(d) ?? ""}>{locale === "en" ? "Locked" : "Terkunci"}</span>
+                      )}
                       {DRAW_FLOW[DRAW_FLOW.indexOf(String(d.status)) + 1] && (
                         <button className="btn-primary text-xs" onClick={() => stepDrawing(d, DRAW_FLOW[DRAW_FLOW.indexOf(String(d.status)) + 1])}>
                           {S.arrowN.replace("{n}", DRAW_FLOW[DRAW_FLOW.indexOf(String(d.status)) + 1])}
@@ -1231,7 +1464,11 @@ export default function QCSafety() {
                         <p className="truncate font-medium text-navy-900" title={String(t.topic)}>{t.topic}{t.employeeId ? <span className="ml-1 text-xs font-normal text-steel-500">· {t.employeeId}</span> : null}</p>
                         <p className="text-xs text-steel-500">{S.toolboxMeta.replace("{a}", String(t.project)).replace("{b}", fmtTanggal(String(t.date))).replace("{n}", String(t.attendees)).replace("{c}", String(t.pic))}</p>
                       </div>
-                      <span className="font-mono text-xs text-steel-400">{t.id}</span>
+                      <div className="flex items-center gap-2">
+                        <span className="font-mono text-xs text-steel-400">{t.id}</span>
+                        <button className="btn-secondary text-xs" onClick={() => openTbmEdit(t)}>{S.btnEdit}</button>
+                        <button className="btn-secondary text-xs text-rose-600" onClick={() => setDelRec({ kind: "toolbox", row: t })}>{locale === "en" ? "Delete" : "Hapus"}</button>
+                      </div>
                     </div>
                   ))}
                   {toolboxTalks.filter((t) => String(t.type ?? "") !== "JSA").length === 0 && <p className="text-xs text-steel-400">{S.emptyToolbox}</p>}
@@ -1286,6 +1523,8 @@ export default function QCSafety() {
                         <p className="text-xs text-steel-500">{S.walkMeta.replace("{a}", fmtTanggal(w.date)).replace("{n}", String(w.findings)).replace("{b}", String(w.pic))}</p>
                       </div>
                       {w.findings > 0 && <button className="btn-secondary text-xs" onClick={() => walkToNcr(w)}>{S.btnBuatkanNcr}</button>}
+                      <button className="btn-secondary text-xs" onClick={() => openWalkEdit(w)}>{S.btnEdit}</button>
+                      <button className="btn-secondary text-xs text-rose-600" onClick={() => setDelRec({ kind: "walks", row: w })}>{locale === "en" ? "Delete" : "Hapus"}</button>
                     </div>
                   ))}
                   {walks.length === 0 && <p className="text-xs text-steel-400">{S.emptyWalk}</p>}
@@ -1361,7 +1600,17 @@ export default function QCSafety() {
                         <p className="mt-1 text-sm text-steel-700">{i.desc}</p>
                         <p className="text-xs text-steel-500 mt-0.5">{S.incidentMeta.replace("{a}", fmtTanggal(i.date)).replace("{b}", String(i.project ?? i.projectId ?? "-")).replace("{c}", String(i.location)).replace("{d}", String(i.severity))}</p>
                       </div>
-                      <button className="btn-secondary shrink-0 text-xs" onClick={() => void incidentToNcr(i)}>{S.btnBuatkanNcr}</button>
+                      <div className="flex shrink-0 flex-col items-end gap-1.5">
+                        <button className="btn-secondary text-xs" onClick={() => void incidentToNcr(i)}>{S.btnBuatkanNcr}</button>
+                        <div className="flex gap-1.5">
+                          <button className="btn-secondary text-xs" onClick={() => openIncEdit(i)}>{S.btnEdit}</button>
+                          {!recLocked("incidents", i) ? (
+                            <button className="btn-secondary text-xs text-rose-600" onClick={() => setDelRec({ kind: "incidents", row: i })}>{locale === "en" ? "Delete" : "Hapus"}</button>
+                          ) : (
+                            <span className="text-xs text-steel-400" title={recLocked("incidents", i) ?? ""}>{locale === "en" ? "Locked" : "Terkunci"}</span>
+                          )}
+                        </div>
+                      </div>
                     </div>
                   </Card>
                 ))}
@@ -1443,9 +1692,22 @@ export default function QCSafety() {
         </div>
       </div>
 
-      {/* Modal inspeksi */}
-      <Modal open={showInsp} onClose={() => setShowInsp(false)} title={S.mInspT} subtitle={S.mInspS}
-        wide footer={<><button className="btn-secondary" onClick={() => setShowInsp(false)}>{S.btnBatal}</button><AsyncButton className="btn-primary" onAction={saveInspection}>{S.btnSimpanInsp}</AsyncButton></>}>
+      {/* Modal inspeksi (create + edit) */}
+      <Modal
+        open={showInsp}
+        onClose={closeInspModal}
+        title={inspEditId ? `${S.btnEdit} ${inspEditId}` : S.mInspT}
+        subtitle={inspEditId
+          ? (locale === "en" ? "Status is not editable here - use the QC flow." : "Status tidak bisa diubah di sini - lewat alur QC.")
+          : S.mInspS}
+        wide
+        footer={<>
+          <button className="btn-secondary" onClick={closeInspModal}>{S.btnBatal}</button>
+          <AsyncButton className="btn-primary" onAction={inspEditId ? saveInspEdit : saveInspection}>
+            {inspEditId ? S.btnSimpan : S.btnSimpanInsp}
+          </AsyncButton>
+        </>}
+      >
         <div className="space-y-3">
           <FormGrid>
             <Field label={S.thProyek}>
@@ -1751,17 +2013,10 @@ export default function QCSafety() {
         <Field label={S.fAlasanReopen}><textarea className="input" rows={3} value={reopenReason} onChange={(e) => setReopenReason(e.target.value)} placeholder={S.phReopen} /></Field>
       </Modal>
 
-      {/* Modal insiden */}
-      <Modal open={showInc} onClose={() => setShowInc(false)} title={S.mIncT}
-        footer={<><button className="btn-secondary" onClick={() => setShowInc(false)}>{S.btnBatal}</button><button className="btn-primary" onClick={async () => {
-          try {
-          if (!incForm.desc.trim() || !incForm.location.trim()) { toast(S.tLokasiWajib, "info"); return; }
-          if (!incForm.project) { toast(S.tProyekTerkait, "info"); return; }
-          const created = await add("incidents", { type: incForm.type, date: todayISO(), location: incForm.location.trim(), desc: incForm.desc.trim(), severity: incForm.severity, project: incForm.project, projectId: incForm.project, branch: branchOf(incForm.branch) },
-            { action: "mencatat insiden", module: "Safety" });
-          toast(S.tIncOk.replace("{n}", created.id)); setShowInc(false); setIncForm({ type: "Near Miss", location: "", desc: "", severity: "Rendah", project: "", branch: "" });
-          } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); }
-        }}>{S.btnSimpan}</button></>}>
+{/* Modal insiden - dipakai untuk catat baru maupun koreksi */}
+      <Modal open={showInc} onClose={() => { setShowInc(false); setIncEditId(null); }}
+        title={incEditId ? (locale === "en" ? `Edit incident ${incEditId}` : `Ubah insiden ${incEditId}`) : S.mIncT}
+        footer={<><button className="btn-secondary" onClick={() => { setShowInc(false); setIncEditId(null); }}>{S.btnBatal}</button><AsyncButton className="btn-primary" onAction={saveIncident}>{S.btnSimpan}</AsyncButton></>}>
         <div className="space-y-3">
           <FormGrid>
             <Field label={S.fProyekTerkait} hint={S.hintIncProyek}>
@@ -1888,8 +2143,9 @@ export default function QCSafety() {
       </Modal>
 
       {/* Modal toolbox */}
-      <Modal open={showTbm} onClose={() => setShowTbm(false)} title={S.mTbmT}
-        footer={<><button className="btn-secondary" onClick={() => setShowTbm(false)}>{S.btnBatal}</button><AsyncButton className="btn-primary" onAction={saveToolbox}>{S.btnSimpan}</AsyncButton></>}>
+      <Modal open={showTbm} onClose={() => { setShowTbm(false); setTbmEditId(null); }}
+        title={tbmEditId ? (locale === "en" ? `Edit toolbox talk ${tbmEditId}` : `Ubah toolbox talk ${tbmEditId}`) : S.mTbmT}
+        footer={<><button className="btn-secondary" onClick={() => { setShowTbm(false); setTbmEditId(null); }}>{S.btnBatal}</button><AsyncButton className="btn-primary" onAction={saveToolbox}>{S.btnSimpan}</AsyncButton></>}>
         <div className="space-y-3">
           <FormGrid>
             <Field label={S.thProyek}>
@@ -1913,8 +2169,9 @@ export default function QCSafety() {
       </Modal>
 
       {/* Modal safety walk */}
-      <Modal open={showWalk} onClose={() => setShowWalk(false)} title={S.mWalkT}
-        footer={<><button className="btn-secondary" onClick={() => setShowWalk(false)}>{S.btnBatal}</button><AsyncButton className="btn-primary" onAction={saveWalk}>{S.btnSimpan}</AsyncButton></>}>
+      <Modal open={showWalk} onClose={() => { setShowWalk(false); setWalkEditId(null); }}
+        title={walkEditId ? (locale === "en" ? `Edit safety walk ${walkEditId}` : `Ubah safety walk ${walkEditId}`) : S.mWalkT}
+        footer={<><button className="btn-secondary" onClick={() => { setShowWalk(false); setWalkEditId(null); }}>{S.btnBatal}</button><AsyncButton className="btn-primary" onAction={saveWalk}>{S.btnSimpan}</AsyncButton></>}>
         <div className="space-y-3">
           <FormGrid>
             <Field label={S.thTanggal}><input type="date" className="input" value={walkForm.date} onChange={(e) => setWalkForm({ ...walkForm, date: e.target.value })} /></Field>
@@ -1991,7 +2248,45 @@ export default function QCSafety() {
         )}
       </Modal>
 
+      {/* Modal hapus inspeksi (daftar pemakai: NCR yang merujuk ncrId). */}
+      <ConfirmModal
+        open={delInsp !== null}
+        title={delInsp ? (locale === "en" ? `Delete inspection ${delInsp.id}?` : `Hapus inspeksi ${delInsp.id}?`) : ""}
+        desc={(() => {
+          if (!delInsp) return "";
+          const used = findUsages(data, "inspections", String(delInsp.id));
+          const base = locale === "en"
+            ? `${String(delInsp.point ?? "")} on ${String(delInsp.project ?? "")} will be permanently deleted.`
+            : `${String(delInsp.point ?? "")} di ${String(delInsp.project ?? "")} akan dihapus permanen.`;
+          return used.length > 0
+            ? (locale === "en"
+              ? `${base} Referenced by: ${used.join(", ")}. Deletion blocked.`
+              : `${base} Dirujuk oleh: ${used.join(", ")}. Penghapusan diblokir.`)
+            : base;
+        })()}
+        confirmLabel={delInsp && findUsages(data, "inspections", String(delInsp.id)).length > 0
+          ? (locale === "en" ? "Blocked - still referenced" : "Diblokir - masih dirujuk")
+          : S.btnHapus}
+        danger
+        confirmDisabled={delInsp ? findUsages(data, "inspections", String(delInsp.id)).length > 0 : false}
+        onCancel={() => setDelInsp(null)}
+        onConfirm={confirmDelInsp}
+      />
+
       {/* Modal hapus jadwal audit internal (daftar pemakai + blokir bila dipakai) */}
+      <ConfirmModal
+        open={delRec !== null}
+        title={delRec ? (locale === "en" ? `Delete ${String(delRec.row.id)}?` : `Hapus ${String(delRec.row.id)}?`) : ""}
+        desc={delRec ? (recLocked(delRec.kind, delRec.row) ?? (locale === "en"
+          ? `${String(delRec.row.id)} and its revision/status history will be permanently removed.`
+          : `${String(delRec.row.id)} beserta riwayat revisi/statusnya akan dihapus permanen.`)) : ""}
+        confirmLabel={locale === "en" ? "Delete" : "Hapus"}
+        danger
+        confirmDisabled={delRec ? recLocked(delRec.kind, delRec.row) !== null : false}
+        onCancel={() => setDelRec(null)}
+        onConfirm={confirmDelRec}
+      />
+
       <ConfirmModal
         open={delAudit !== null}
         title={delAudit ? `Hapus jadwal audit ${delAudit.id}?` : ""}

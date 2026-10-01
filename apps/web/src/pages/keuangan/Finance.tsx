@@ -448,6 +448,8 @@ export default function Finance() {
   const [releaseTarget, setReleaseTarget] = useState<StoreItem | null>(null);
   const [releaseForm, setReleaseForm] = useState({ date: todayISO(), ba: "", warrantyId: "" });
   const [taxId, setTaxId] = useState("");
+  /* Periode pajak "Lapor" sudah jadi SPT yang filed - tidak boleh hilang. */
+  const [delTax, setDelTax] = useState<StoreItem | null>(null);
   const [newPeriod, setNewPeriod] = useState("");
 
   // 1. AR aging + dunning + hapus buku
@@ -655,6 +657,8 @@ export default function Finance() {
   // Piutang: ubah invoice yang belum lunas.
   const [invEdit, setInvEdit] = useState<StoreItem | null>(null);
   const [invEditForm, setInvEditForm] = useState({ client: "", kodePembantu: "", due: "", paymentTerm: "", milestoneRef: "", nsfp: "", noFaktur: "" });
+  /* Hapus invoice (belum ada di modul ini sama sekali). */
+  const [delInvoice, setDelInvoice] = useState<StoreItem | null>(null);
 
   // Aset (sheet Aset): tambah harta baru, susut GL otomatis.
   const [showAst, setShowAst] = useState(false);
@@ -842,6 +846,24 @@ export default function Finance() {
   }, [invoices, payables, data.payroll, data.settings, activePeriod]);
 
   const taxLocked = activeTax?.status === "Lapor";
+
+  const confirmDelTax = async () => {
+    if (!delTax) return;
+    if (String(delTax.status ?? "") === "Lapor") {
+      toast(locale === "en"
+        ? `Tax period ${String(delTax.period)} is already reported - a filed return cannot be deleted.`
+        : `Periode pajak ${String(delTax.period)} sudah Lapor - SPT yang sudah diajukan tidak bisa dihapus.`, "info");
+      setDelTax(null);
+      return;
+    }
+    try {
+      await remove("taxPeriods", String(delTax.id));
+      log("menghapus periode pajak", String(delTax.period), "Pajak");
+      if (taxId === String(delTax.id)) setTaxId("");
+      toast(locale === "en" ? `Tax period ${String(delTax.period)} deleted` : `Periode pajak ${String(delTax.period)} dihapus`);
+      setDelTax(null);
+    } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); }
+  };
   const taxShown = taxLocked
     ? { ppnKeluar: num(activeTax.ppnKeluar), ppnMasuk: num(activeTax.ppnMasuk), pph23: num(activeTax.pph23), pph21: num(activeTax.pph21) }
     : taxCalc;
@@ -1553,6 +1575,36 @@ export default function Finance() {
     log("mengubah invoice", invEdit.id, "Keuangan");
     toast(S.invUpdated.replace("{a}", invEdit.id));
     setInvEdit(null);
+    } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); }
+  };
+
+  /**
+   * Hapus invoice.
+   *
+   * Dibatasi ketat: invoice hanya boleh dihapus selama masih DRAFT atau
+   * DITOLAK. Setelah terbit (Lunas/Terlambat/Belum Dibayar) invoice sudah
+   * beruang dan menjadi acuan pelunasan - menghapusnya berarti menghapus
+   * piutang yang sudah diakui, bukan membatalkan salah input. Untuk invoice
+   * yang sudah terbit, jalur yang benarVOID/adjustment atau delete payables
+   * yang merujuknya, dan backend juga memblokir via delete-guard refs.
+   */
+  const confirmDelInvoice = async () => {
+    if (!delInvoice) return;
+    const st = String(delInvoice.status ?? "");
+    if (st !== "Draft" && st !== "Ditolak") {
+      toast(
+        locale === "en"
+          ? `Invoice ${delInvoice.id} is already issued (${st}) - void or settle it instead of deleting.`
+          : `Invoice ${delInvoice.id} sudah terbit (${st}) - void atau lunaskan, jangan dihapus.`,
+        "info",
+      );
+      return;
+    }
+    try {
+      await remove("invoices", String(delInvoice.id));
+      log("menghapus invoice", `${delInvoice.id} - ${st}`, "Keuangan");
+      toast(locale === "en" ? `Invoice ${delInvoice.id} deleted` : `Invoice ${delInvoice.id} dihapus`);
+      setDelInvoice(null);
     } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); }
   };
 
@@ -2699,7 +2751,51 @@ export default function Finance() {
                         <td className="td"><StatusBadge status={String(inv.status)} />
                           {inv.directorApproved && <p className="mt-1 text-[11px] text-steel-500">Dir: {String(inv.directorName ?? "")}</p>}
                         </td>
-                        <td className="td"><button type="button" className="btn-secondary px-2 py-1 text-[11px]" onClick={() => setInvDetail(inv)}>{S.detBtn}</button></td>
+                        <td className="td">
+                          <div className="flex flex-wrap gap-1">
+                            <button type="button" className="btn-secondary px-2 py-1 text-[11px]" onClick={() => setInvDetail(inv)}>{S.detBtn}</button>
+                            {/* Ubah invoice: modal edit SUDAH ada (dipakai tab
+                                Piutang AR) tapi hanya TER Wiring dari tabel
+                                Piutang dan hanya untuk status Draft/Ditolak.
+                                Tab Invoice sendiri tidak punya jalan ke sana,
+                                jadi invoice salah tanggal/pelanggan di sini
+                                tidak bisa dikoreksi. */}
+                            <button
+                              type="button"
+                              className="btn-secondary px-2 py-1 text-[11px]"
+                              title={S.editLockedNote}
+                              onClick={() => {
+                                setInvEdit(inv);
+                                setInvEditForm({
+                                  client: String(inv.client ?? ""),
+                                  kodePembantu: String(inv.kodePembantu ?? inv.client ?? ""),
+                                  due: String(inv.due ?? ""),
+                                  paymentTerm: String(inv.paymentTerm ?? ""),
+                                  milestoneRef: String(inv.milestoneRef ?? ""),
+                                  nsfp: String(inv.nsfp ?? ""),
+                                  noFaktur: String(inv.noFaktur ?? ""),
+                                });
+                              }}
+                            >
+                              {S.editBtn}
+                            </button>
+                            {/* Hapus invoice: TIDAK ADA sama sekali di modul ini
+                                walau tabel Invoice menampilkan semua invoice
+                                setiap hari. Invoice yang salah input (test,
+                                duplikat, salah periode) hanya bisa dibatalkan
+                                lewat adjustment - tidak bisa dihapus.
+                                Backend memblokir bila invoice sudah jadi acuan
+                                payables.invoice / sudah Lunas. */}
+                            <button
+                              type="button"
+                              className="btn-secondary px-2 py-1 text-[11px] text-rose-600"
+                              aria-label={`${S.deleteBtn} ${String(inv.id)}`}
+                              onClick={() => setDelInvoice(inv)}
+                            >
+                              {S.deleteBtn}
+                            </button>
+                          </div>
+                        </td>
                       </tr>
                       );
                     })}
@@ -3285,6 +3381,14 @@ export default function Finance() {
                     toast(S.periodCreated.replace("{a}", String(created.period)));
                     } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); }
                   }}>{S.newPeriodBtn}</AsyncButton>
+                {activeTax && !taxLocked && (
+                  <button className="btn-secondary text-xs text-rose-600" onClick={() => setDelTax(activeTax)}>{locale === "en" ? "Delete period" : "Hapus periode"}</button>
+                )}
+                {activeTax && taxLocked && (
+                  <span className="self-center text-xs text-steel-400" title={locale === "en" ? "Already filed as SPT" : "Sudah diajukan sebagai SPT"}>
+                    {locale === "en" ? "Reported - locked" : "Lapor - terkunci"}
+                  </span>
+                )}
                 <div className="ml-auto flex gap-2">
                   <AsyncButton className="btn-secondary text-xs" onAction={exportEfaktur}>{S.exportEfaktur}</AsyncButton>
                   <AsyncButton className="btn-secondary text-xs" onAction={exportSpt}>{S.exportSpt}</AsyncButton>
@@ -3727,6 +3831,63 @@ export default function Finance() {
           </Field>
         </div>
       </Modal>
+
+      {/* Hapus invoice: hanya Draft / Ditolak. Invoice yang sudah terbit harus
+          di-void atau dilunasi - menghapusnya menghapus piutang yang sudah
+          diakui. Backend juga memblokir bila payables.invoice merujuk. */}
+      <ConfirmModal
+        open={delTax !== null}
+        title={delTax ? (locale === "en" ? `Delete tax period ${String(delTax.period)}?` : `Hapus periode pajak ${String(delTax.period)}?`) : ""}
+        desc={delTax ? (locale === "en"
+          ? `Draft totals for ${String(delTax.period)} (PPN keluar ${fmtRupiah(Number(delTax.ppnKeluar || 0))}, PPN masuk ${fmtRupiah(Number(delTax.ppnMasuk || 0))}, PPh23 ${fmtRupiah(Number(delTax.pph23 || 0))}, PPh21 ${fmtRupiah(Number(delTax.pph21 || 0))}) will be removed.`
+          : `Nilai Draft periode ${String(delTax.period)} (PPN keluar ${fmtRupiah(Number(delTax.ppnKeluar || 0))}, PPN masuk ${fmtRupiah(Number(delTax.ppnMasuk || 0))}, PPh23 ${fmtRupiah(Number(delTax.pph23 || 0))}, PPh21 ${fmtRupiah(Number(delTax.pph21 || 0))}) akan dihapus.`) : ""}
+        confirmLabel={locale === "en" ? "Delete" : "Hapus"}
+        danger
+        confirmDisabled={delTax ? String(delTax.status ?? "") === "Lapor" : false}
+        onCancel={() => setDelTax(null)}
+        onConfirm={confirmDelTax}
+      />
+
+      <ConfirmModal
+        open={delInvoice !== null}
+        title={delInvoice ? (locale === "en" ? `Delete invoice ${delInvoice.id}?` : `Hapus invoice ${delInvoice.id}?`) : ""}
+        desc={(() => {
+          if (!delInvoice) return "";
+          const st = String(delInvoice.status ?? "");
+          const base = locale === "en"
+            ? `Invoice ${delInvoice.id} (${st}) will be permanently deleted.`
+            : `Invoice ${delInvoice.id} (${st}) akan dihapus permanen.`;
+          if (st !== "Draft" && st !== "Ditolak") {
+            return locale === "en"
+              ? `${base} This invoice is already issued, so deletion is blocked - void or settle it instead.`
+              : `${base} Invoice ini sudah terbit sehingga penghapusan diblokir - void atau lunaskan.`;
+          }
+          const used = findUsages(data, "invoices", String(delInvoice.id));
+          return used.length > 0
+            ? (locale === "en"
+              ? `${base} Referenced by: ${used.join(", ")}. Deletion blocked.`
+              : `${base} Dirujuk oleh: ${used.join(", ")}. Penghapusan diblokir.`)
+            : base;
+        })()}
+        confirmLabel={(() => {
+          if (!delInvoice) return S.deleteBtn;
+          const st = String(delInvoice.status ?? "");
+          const used = findUsages(data, "invoices", String(delInvoice.id));
+          if (st !== "Draft" && st !== "Ditolak") {
+            return locale === "en" ? "Blocked - already issued" : "Diblokir - sudah terbit";
+          }
+          if (used.length > 0) return locale === "en" ? "Blocked - still referenced" : "Diblokir - masih dirujuk";
+          return S.deleteBtn;
+        })()}
+        danger
+        confirmDisabled={(() => {
+          if (!delInvoice) return true;
+          const st = String(delInvoice.status ?? "");
+          return (st !== "Draft" && st !== "Ditolak") || findUsages(data, "invoices", String(delInvoice.id)).length > 0;
+        })()}
+        onCancel={() => setDelInvoice(null)}
+        onConfirm={confirmDelInvoice}
+      />
 
       <ConfirmModal
         open={rejectInv !== null}

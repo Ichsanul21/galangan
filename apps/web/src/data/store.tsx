@@ -32,6 +32,7 @@ import {
   seedRisks, seedLeaves, seedTrainings, seedTimesheets, seedDrawings,
   seedToolbox, seedCalibrations, seedCommunications, seedContracts, seedBast,
   seedTrials, seedRequests, seedClientPos,
+  seedWarehouses, seedMaintenances, seedLetters,
 } from "./seeds";
 
 /* ============ TIPE ============ */
@@ -109,6 +110,12 @@ export interface StoreShape {
   clientPos: StoreItem[];
   walks: StoreItem[];
   auditPlans: StoreItem[];
+  /* Koleksi batch terakhir (migrations/006_batch_akhir.sql). Semula hanya
+     hidup di memori FE: kapasitas gudang di JSON settings, siklus servis di
+     field equipment.*, arsip surat di localStorage draft. */
+  warehouses: StoreItem[];
+  maintenances: StoreItem[];
+  letters: StoreItem[];
   settings: StoreItem[];
   coa: StoreItem[];
   journals: StoreItem[];
@@ -288,6 +295,9 @@ function buildSeeds(): StoreShape {
         clientPos: clone(seedClientPos),
         walks: [],
         auditPlans: [],
+        warehouses: clone(seedWarehouses),
+        maintenances: clone(seedMaintenances),
+        letters: clone(seedLetters),
         settings: clone(seedSettings),
       coa: clone(seedCoa),
       journals: clone(seedJournals),
@@ -430,6 +440,9 @@ const PREFIX: Record<string, string> = {
   clientPos: "CPO",
   walks: "SW",
   auditPlans: "AUD",
+  warehouses: "GDG",
+  maintenances: "MTE",
+  letters: "SRT",
     settings: "SET",
     coa: "COA",
     journals: "JU",
@@ -445,7 +458,7 @@ const ARRAY_KEYS: (keyof StoreShape)[] = [
   "branches", "attendance", "payroll", "taxPeriods", "rfqs", "changeOrders",
   "risks", "leaves", "trainings", "timesheets", "drawings", "toolbox",
   "warranties",
-  "calibrations", "communications", "contracts", "bast", "trials", "requests", "clientPos", "walks", "auditPlans", "settings", "coa", "journals", "assets",
+  "calibrations", "communications", "contracts", "bast", "trials", "requests", "clientPos", "walks", "auditPlans", "warehouses", "maintenances", "letters", "settings", "coa", "journals", "assets",
 ];
 
 function sanitizeStore(parsed: Partial<StoreShape>): StoreShape {
@@ -630,7 +643,7 @@ const OFFLINE_COLLECTIONS: string[] = [
   "branches", "attendance", "payroll", "taxPeriods", "rfqs", "changeOrders",
   "risks", "leaves", "trainings", "timesheets", "drawings", "toolbox",
   "warranties", "calibrations", "communications", "contracts", "bast",
-  "trials", "requests", "clientPos", "walks", "auditPlans", "settings", "coa", "journals", "assets",
+  "trials", "requests", "clientPos", "walks", "auditPlans", "warehouses", "maintenances", "letters", "settings", "coa", "journals", "assets",
 ];
 
 /* Hidrasi cache offline dari IndexedDB saat boot. Berjalan sebelum resync

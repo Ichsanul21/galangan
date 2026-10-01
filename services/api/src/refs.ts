@@ -29,6 +29,16 @@ export const REFS: Record<string, Record<string, RefDef>> = {
   surveys: { linkedTrial: { target: "trials" } },
   timesheets: { woId: { target: "workOrders" }, employeeId: { target: "employees" } },
   calibrations: { equipmentId: { target: "equipment" } },
+  /* Batch terakhir — relasi yang dijaga:
+       maintenances.equipmentId  → equipment  (siklus servis equipment)
+       maintenances.projectId     → projects   (biaya servis masuk HPP proyek)
+       letters.employeeId         → employees  (surat SDM)
+     Gudang sengaja TIDAK lewat REFS: kolom inventory.warehouse masih berisi
+     NAMA gudang (bukan id) dan korpus seed ±19k baris movements + ±400 item
+     semuanya nama - relasi lewat id akan memblokir semua write lama.
+     Unik nama dijaga di sisi BE lewat checkNameUnique() (crud.ts). */
+  maintenances: { equipmentId: { target: "equipment" }, projectId: { target: "projects", allow: ["", "-"] } },
+  letters: { employeeId: { target: "employees" } },
   dockSlots: { project: { target: "projects" }, dockId: { target: "drydocks" } },
   documents: { project: { target: "projects", allow: ["-"] } },
   payroll: { employeeId: { target: "employees" } },
@@ -64,6 +74,10 @@ export const REFS: Record<string, Record<string, RefDef>> = {
   bast: { projectId: { target: "projects" } },
   trials: { projectId: { target: "projects" } },
   requests: {},
+  /* warehouses TIDAK punya relasi many2one: inventory.warehouse menyimpan
+     NAMA gudang (bukan id) - lihat catatan panjang di blok maintenances di
+     atas. Unik nama ditegakkan lewat checkNameUnique() di routes/crud.ts. */
+  warehouses: {},
   clientPos: { contractId: { target: "contracts" }, projectId: { target: "projects" } },
   settings: {},
   coa: {},

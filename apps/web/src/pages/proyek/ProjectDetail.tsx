@@ -38,6 +38,7 @@ import { fmtMiliar, fmtTanggal, fmtRentang, fmtBulan } from "../../data";
 import { fmtRupiah, todayISO } from "../../utils/format";
 import { sameName } from "../../utils/names";
 import { canonPrioritas, scopeList } from "../../utils/scope";
+import { equipmentCostSummary } from "../../utils/projectCost";
 import { PRIORITAS } from "./Projects";
 import { TAHAP, tahapOf, hasContract, isOverdue } from "./Projects";
 import { getSetting } from "../../utils/settings";
@@ -87,14 +88,14 @@ function docExtOf(url: string): string {
 }
 
 /* Batch koleksi halaman detail proyek untuk useModuleSync. */
-const PD_COLS: CollectionKey[] = ["activities", "projects", "documents"];
+const PD_COLS: CollectionKey[] = ["activities", "projects", "documents", "bookings", "equipment", "maintenances"];
 
 export default function ProjectDetail() {
   const busy = useBusy();
   const { locale } = useT();
   const S = n_prj[locale];
   const { id } = useParams();
-  const { data, update, add, wbsFor, setWbs, teamFor, setTeam, log } = useStore();
+  const { data, update, add, remove, wbsFor, setWbs, teamFor, setTeam, log } = useStore();
   const project = data.projects.find((p) => p.id === id) ?? data.projects[0];
   /* Fetch per-batch halaman (pengganti resync penuh): proyek + dokumen. */
   useModuleSync(PD_COLS);
@@ -124,6 +125,10 @@ export default function ProjectDetail() {
   const [lastUploadedId, setLastUploadedId] = useState<string | null>(null);
   const [instantPreviewId, setInstantPreviewId] = useState<string | null>(null);
   const [delScope, setDelScope] = useState<number | null>(null);
+  /* Risiko, change order, trial, dan BAST dulu hanya punya tambah + ubah -
+     tidak ada jalur hapus sama sekali, jadi record yang salah input (BAST
+     salah milestone, risk yang dobel) nyangkut permanen di proyek. */
+  const [delRec, setDelRec] = useState<{ kind: "risks" | "trials" | "changeOrders" | "bast"; row: StoreItem } | null>(null);
   const [showWbs, setShowWbs] = useState(false);
   const [wbsForm, setWbsForm] = useState({ task: "", start: "", end: "", weight: "10", progress: "0", predecessor: "" });
   const [showTeam, setShowTeam] = useState(false);
@@ -248,6 +253,8 @@ export default function ProjectDetail() {
   const [sort, setSort] = useState<SortState>({ key: null, dir: "asc" });
   const [sort2, setSort2] = useState<SortState>({ key: null, dir: "asc" });
   const [sort3, setSort3] = useState<SortState>({ key: null, dir: "asc" });
+  /* Tabel rincian biaya equipment (card HPP equipment). */
+  const [sort4, setSort4] = useState<SortState>({ key: null, dir: "asc" });
 
   const weightedProgress = (items: { progress: number; weight: number }[]): number => {
     const totalW = items.reduce((s, w) => s + Number(w.weight || 0), 0);
@@ -452,8 +459,62 @@ export default function ProjectDetail() {
     }
   };
 
+  /* Hapus risk / change order / trial / BAST. Tiga di antaranya sudah
+     appet jadi dokumen resmi proyek, jadi Record yang sudah disetujui
+     tidak boleh hilang diam-diam. */
+  const recLocked = (kind: string, row: StoreItem): string | null => {
+    if (kind === "bast" && String(row.status ?? "") === "Disetujui") {
+      return locale === "en"
+        ? "This BAST is approved - it already counts toward the contract balance and project closing. Create a correcting BAST instead."
+        : "BAST ini sudah Disetujui - sudah masuk sisa kontrak dan syarat tutup proyek. Buat BAST koreksi.";
+    }
+    if (kind === "changeOrders" && String(row.status ?? "") === "Diterapkan") {
+      return locale === "en"
+        ? "This change order is already applied to the contract value. Reverse it through a new change order."
+        : "Change order ini sudah Diterapkan ke nilai kontrak. Batalkan lewat change order baru.";
+    }
+    if (kind === "trials" && String(row.hasil ?? "") === "Lolos" && String(row.baRef ?? "") !== "") {
+      return locale === "en"
+        ? "This trial passed and is signed off (BA reference present) - it is a commissioning record."
+        : "Trial ini Lolos dan sudah ditandatangani (ada nomor BA) - itu record commissioning.";
+    }
+    return null;
+  };
+
+  const confirmDelRec = async () => {
+    if (!delRec) return;
+    const { kind, row } = delRec;
+    const locked = recLocked(kind, row);
+    if (locked) { toast(locked, "info"); setDelRec(null); return; }
+    try {
+      await remove(kind, String(row.id));
+      log(`menghapus ${kind}`, `${String(row.id)} - ${project.name}`, "Proyek");
+      toast(locale === "en" ? `${String(row.id)} deleted` : `${String(row.id)} dihapus`);
+      setDelRec(null);
+    } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); }
+  };
+
   const bastList = (data.bast ?? []).filter((b) => b.projectId === pid);
   const boqTotal = (data.boq ?? []).filter((b) => b.projectId === pid).reduce((s, b) => s + Number(b.totalPrice || 0), 0);
+
+  /* ================= BIAYA EQUIPMENT -> HPP PROYEK =================
+     Relasi ini SEBELUMNYA tidak ada di modul Proyek sama sekali: biaya
+     sewa equipment (booking selesai) dan material servis hanya tampil di
+     modul Equipment sebagai angka terpisah, tidak pernah masuk ke HPP.
+     Akibatnya CPI/EAC di bawah terlihat lebih baik dari kenyataan -
+     modal kerja crane/genset/sparepart hilang dari biaya.
+
+     equipmentCostSummary() adalah SATU sumber angka yang juga dipakai
+     tab "Biaya" modul Equipment, jadi kedua modul tidak bisa melenceng.
+     Yang dibebankan:
+       - rental  : hours × equipment.rate, dari booking Terpakai/Selesai
+       - fuel    : fuelLiters × equipment.fuelPrice
+       - maint.  : material maintenance yang statusnya sudah Selesai
+     Yang BELUM terealisasi (maintenance berjalan) ditampilkan terpisah
+     sebagai "committed" - bukan dicampur ke realized. */
+  const equipCost = equipmentCostSummary(pid, data.bookings, data.maintenances, data.equipment);
+  const equipHasCost = equipCost.totalRealized > 0 || equipCost.totalCommitted > 0;
+  const hppWithEquip = Number(project.actual ?? 0) + equipCost.totalRealized;
 
   // SATU angka grand invoice: grandTotal bila ada, else amount dikurangi retensi.
   const invGrand = (i: StoreItem): number => {
@@ -1120,6 +1181,123 @@ export default function ProjectDetail() {
                 </div>
               </Card>
             </div>
+
+            {/* ==== BIAYA EQUIPMENT YANG DIBEBANKAN KE HPP PROYEK ====
+                Booking equipment (alokasi) + material maintenanceequipment
+                ikut dibebankan ke HPP proyek ini. Sebelumnya tidak ada
+                sama sekali, sehingga EAC/CPI terlihat terlalu optimis. */}
+            <Card className="mt-4 p-5">
+              <h3 className="mb-1 text-sm font-semibold text-navy-900">
+                {locale === "en" ? "Equipment cost charged to this project (HPP)" : "Biaya Equipment yang Dibebankan ke Proyek Ini (HPP)"}
+              </h3>
+              <p className="text-xs text-steel-500">
+                {locale === "en"
+                  ? "From equipment allocation bookings and maintenance material. Same figures as the Equipment module, so the two cannot drift."
+                  : "Dari alokasi/booking equipment dan material maintenance. Angka sama dengan modul Equipment, jadi keduanya tidak bisa melenceng."}
+              </p>
+
+              {!equipHasCost ? (
+                <p className="mt-3 text-xs text-steel-400">
+                  {locale === "en"
+                    ? "No equipment cost booked to this project yet."
+                    : "Belum ada biaya equipment yang dibebankan ke proyek ini."}
+                </p>
+              ) : (
+                <>
+                  <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4">
+                    <div>
+                      <p className="text-[11px] text-steel-500">{locale === "en" ? "Rental" : "Sewa"}</p>
+                      <p className="text-sm font-semibold text-navy-900">{fmtRupiah(equipCost.rental)}</p>
+                    </div>
+                    <div>
+                      <p className="text-[11px] text-steel-500">{locale === "en" ? "Fuel" : "BBM"}</p>
+                      <p className="text-sm font-semibold text-navy-900">{fmtRupiah(equipCost.fuel)}</p>
+                    </div>
+                    <div>
+                      <p className="text-[11px] text-steel-500">{locale === "en" ? "Maintenance" : "Maintenance"}</p>
+                      <p className="text-sm font-semibold text-navy-900">{fmtRupiah(equipCost.maintenanceRealized)}</p>
+                      {equipCost.maintenanceCommitted > 0 && (
+                        <p className="text-[11px] text-amber-600">
+                          + {fmtRupiah(equipCost.maintenanceCommitted)} {locale === "en" ? "in progress" : "berjalan"}
+                        </p>
+                      )}
+                    </div>
+                    <div>
+                      <p className="text-[11px] text-steel-500">{locale === "en" ? "Charged to HPP" : "Dibebankan ke HPP"}</p>
+                      <p className="text-sm font-bold text-navy-900">{fmtRupiah(equipCost.totalRealized)}</p>
+                    </div>
+                  </div>
+
+                  {/* Rincian per booking - bisa diklik ke modul equipment. */}
+                  {equipCost.bookingRows.length > 0 && (
+                    <div className="mt-4 overflow-x-auto">
+                      <table className="w-full">
+                        <thead className="bg-surface">
+                          <tr>
+                            <SortTh label={locale === "en" ? "Booking" : "Booking"} sortKey="id" sort={sort4} onSort={(k) => setSort4((s) => toggleSort(s, k))} />
+                            <SortTh label={locale === "en" ? "Equipment" : "Equipment"} sortKey="eq" sort={sort4} onSort={(k) => setSort4((s) => toggleSort(s, k))} />
+                            <th className="th">{locale === "en" ? "Date" : "Tanggal"}</th>
+                            <SortTh label={locale === "en" ? "Hours" : "Jam"} sortKey="h" sort={sort4} onSort={(k) => setSort4((s) => toggleSort(s, k))} />
+                            <SortTh label={locale === "en" ? "Cost" : "Biaya"} sortKey="c" sort={sort4} onSort={(k) => setSort4((s) => toggleSort(s, k))} />
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-steel-100">
+                          {sortRows(equipCost.bookingRows, sort4, (r, k) => {
+                            if (k === "eq") return r.equipmentName;
+                            if (k === "h") return r.hours;
+                            if (k === "c") return r.cost;
+                            return r.id;
+                          }).map((r) => (
+                            <tr key={r.id} className="hover:bg-surface">
+                              <td className="td font-mono text-xs text-navy-900">{r.id}</td>
+                              <td className="td text-steel-600">{r.equipmentName}</td>
+                              <td className="td text-steel-600 text-xs">{fmtTanggal(r.date)}</td>
+                              <td className="td text-steel-600">{r.hours} jam</td>
+                              <td className="td font-semibold">{fmtRupiah(r.cost)}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+
+                  {/* Rincian per siklus maintenance yang diproyekkan. */}
+                  {equipCost.maintenanceRows.length > 0 && (
+                    <div className="mt-4 space-y-1.5">
+                      {equipCost.maintenanceRows.map((r) => (
+                        <div key={r.id} className="flex flex-wrap items-center justify-between gap-2 border-b border-steel-100 py-1.5 text-sm">
+                          <span className="min-w-0 truncate text-navy-900">
+                            <span className="font-mono text-xs text-steel-500">{r.id}</span>{" "}
+                            {r.equipmentName}
+                          </span>
+                          <span className="flex shrink-0 items-center gap-2">
+                            <Badge tone={r.realized ? "green" : "amber"}>
+                              {r.realized ? (locale === "en" ? "Charged" : "Terbebankan") : (locale === "en" ? "In progress" : "Berjalan")}
+                            </Badge>
+                            <span className="text-xs text-steel-500">{fmtTanggal(r.date)}</span>
+                            <span className="font-semibold">{fmtRupiah(r.material)}</span>
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Efek ke EAC: CPI dengan AC + equipment, bukan AC saja. */}
+                  <p className="mt-4 rounded-lg bg-steel-50 px-3 py-2 text-xs text-steel-600">
+                    {locale === "en"
+                      ? `Actual cost used in EVM: ${fmtRupiah(Number(project.actual ?? 0))} + equipment ${fmtRupiah(equipCost.totalRealized)} = ${fmtRupiah(hppWithEquip)}.`
+                      : `Biaya aktual dipakai untuk EVM: ${fmtRupiah(Number(project.actual ?? 0))} + equipment ${fmtRupiah(equipCost.totalRealized)} = ${fmtRupiah(hppWithEquip)}.`}
+                    {equipCost.maintenanceCommitted > 0 && (
+                      <span className="block text-amber-600">
+                        {locale === "en"
+                          ? `Plus ${fmtRupiah(equipCost.maintenanceCommitted)} committed but not yet realised.`
+                          : `Plus ${fmtRupiah(equipCost.maintenanceCommitted)} terkunci tapi belum terealisasi.`}
+                      </span>
+                    )}
+                  </p>
+                </>
+              )}
+            </Card>
             </div>
           )}
 
@@ -1240,6 +1418,14 @@ export default function ProjectDetail() {
                           {String(b.status) === "Diajukan" && (
                             <button className="btn-secondary text-xs" onClick={() => advanceBast(b, "Disetujui")}>{S.detApproveInvBtn}</button>
                           )}
+                          {String(b.status) === "Draft" && (
+                            <button className="btn-secondary text-xs text-rose-600" onClick={() => setDelRec({ kind: "bast", row: b })}>{locale === "en" ? "Delete" : "Hapus"}</button>
+                          )}
+                          {String(b.status) !== "Draft" && (
+                            <span className="text-xs text-steel-400" title={String(b.status) === "Disetujui" ? (locale === "en" ? "Approved BAST is a signed record" : "BAST Disetujui sudah jadi dokumen bertanda tangan") : (locale === "en" ? "Already submitted for approval" : "Sudah diajukan untuk persetujuan")}>
+                              {locale === "en" ? "Locked" : "Terkunci"}
+                            </span>
+                          )}
                         </div>
                       </div>
                     );
@@ -1279,6 +1465,14 @@ export default function ProjectDetail() {
                         )}
                         {c.status === "Disetujui" && (
                             <button className="btn-secondary text-xs" onClick={() => setCoStatus(c.id, "Diterapkan")}>{S.detApplyBtn}</button>
+                        )}
+                        {c.status !== "Diterapkan" && (
+                          <button className="btn-secondary text-xs text-rose-600" onClick={() => setDelRec({ kind: "changeOrders", row: c })}>{locale === "en" ? "Delete" : "Hapus"}</button>
+                        )}
+                        {c.status === "Diterapkan" && (
+                          <span className="text-xs text-steel-400" title={locale === "en" ? "Applied to contract value" : "Sudah masuk nilai kontrak"}>
+                            {locale === "en" ? "Locked" : "Terkunci"}
+                          </span>
                         )}
                       </div>
                     </div>
@@ -1329,6 +1523,7 @@ export default function ProjectDetail() {
                         <Badge tone={riskTone(riskScore(r))}>{r.likelihood} × {r.impact}</Badge>
                         <StatusBadge status={r.status} />
                         <button className="btn-secondary text-xs" onClick={() => openRiskEdit(r)}>{S.detEditBtn}</button>
+                        <button className="btn-secondary text-xs text-rose-600" onClick={() => setDelRec({ kind: "risks", row: r })}>{locale === "en" ? "Delete" : "Hapus"}</button>
                       </div>
                     </div>
                   ))}
@@ -1410,6 +1605,14 @@ export default function ProjectDetail() {
                       )}
                       {String(t.hasil) !== "Gagal" && (
                         <button className="btn-secondary text-xs" onClick={() => advanceTrial(t, "Gagal")}>{S.detTrialFailBtn}</button>
+                      )}
+                      {!t.baRef && (
+                        <button className="btn-secondary text-xs text-rose-600" onClick={() => setDelRec({ kind: "trials", row: t })}>{locale === "en" ? "Delete" : "Hapus"}</button>
+                      )}
+                      {String(t.baRef ?? "") !== "" && (
+                        <span className="text-xs text-steel-400" title={locale === "en" ? "Signed off with a BA reference" : "Sudah ditandatangani dengan nomor BA"}>
+                          {locale === "en" ? "Locked" : "Terkunci"}
+                        </span>
                       )}
                     </div>
                   </div>
@@ -1696,6 +1899,17 @@ export default function ProjectDetail() {
           </Field>
         </div>
       </Modal>
+      <ConfirmModal open={delRec !== null}
+        title={delRec ? (locale === "en" ? `Delete ${delRec.kind.slice(0, -1)} ${String(delRec.row.id)}?` : `Hapus ${delRec.row.id}?`) : ""}
+        desc={delRec ? (recLocked(delRec.kind, delRec.row) ?? (locale === "en"
+          ? "This record will be permanently removed from the project."
+          : "Record ini akan dihapus permanen dari proyek.")) : ""}
+        confirmLabel={S.detConfirmDelete} danger
+        confirmDisabled={delRec ? recLocked(delRec.kind, delRec.row) !== null : false}
+        onCancel={() => setDelRec(null)}
+        onConfirm={confirmDelRec}
+      />
+
       <ConfirmModal open={delScope !== null} title={S.detDelScopeTitle} desc={S.detDelScopeDesc}
         confirmLabel={S.detConfirmDelete} danger onCancel={() => setDelScope(null)}
         onConfirm={async () => {

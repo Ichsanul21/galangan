@@ -62,6 +62,9 @@ export const PREFIX: Record<string, string> = {
   clientPos: "CPO",
   walks: "SW",
   auditPlans: "AUD",
+  warehouses: "GDG",
+  maintenances: "MTE",
+  letters: "SRT",
   settings: "SET",
   coa: "COA",
   journals: "JU",
@@ -79,7 +82,7 @@ export const COLLECTIONS: string[] = [
   "branches", "attendance", "payroll", "taxPeriods", "rfqs", "changeOrders",
   "risks", "leaves", "trainings", "timesheets", "drawings", "toolbox",
   "warranties", "calibrations", "communications", "contracts", "bast",
-  "trials", "requests", "clientPos", "walks", "auditPlans", "settings", "coa", "journals", "assets",
+  "trials", "requests", "clientPos", "walks", "auditPlans", "warehouses", "maintenances", "letters", "settings", "coa", "journals", "assets",
 ];
 
 // Tulis settings/coa dibatasi di registerCrud (requireSettingsWrite).
@@ -116,6 +119,11 @@ const REQUIRED_DATA: Record<string, string[]> = {
   vendors: ["name"],
   clients: ["name"],
   quotations: ["client", "vessel"],
+  /* Koleksi batch terakhir. Wajib isi nama/tanggal supaya baris yang lolos
+     validasi tetap punya isi meaningful di UI (label kartu, sorting tanggal). */
+  warehouses: ["name"],
+  maintenances: ["equipmentId", "tanggal"],
+  letters: ["employeeId", "jenis", "tanggal"],
 };
 
 function assertDomain(table: string, data: unknown): string | null {
@@ -137,6 +145,37 @@ interface Row {
   branch: string;
   data: string;
   updated_at: string;
+}
+
+/* Koleksi yang field "name"-nya jadi kunci relasi (inventory.warehouse,
+   movements.fromWh/toWh masih menyimpan NAMA, bukan id). Kalau dua gudang
+   boleh bernama sama, kartu "Stok per Gudang" menggabung keduanya dan kolom
+   Dari/Ke Gudang jadi ambigu. Unik dicek di SQL (bukan di memori) supaya
+   konsisten meski dua klien menulis bersamaan; perbandingan longgar
+   (case-insensitive)via LOWER() supaya "gudang baja a" == "Gudang Baja A". */
+const UNIQUE_NAME: Record<string, { field: string; excludeSelf?: boolean }> = {
+  warehouses: { field: "name" },
+};
+
+async function checkNameUnique(
+  table: string,
+  field: string,
+  value: string,
+  selfId: string | null,
+): Promise<string | null> {
+  const trimmed = value.trim();
+  if (trimmed === "") return null;
+  try {
+    const rows = await q<{ id: string }>(
+      `SELECT id FROM ${table} WHERE LOWER(${field}) = ? LIMIT 5`,
+      [trimmed.toLowerCase()],
+    );
+    const clash = rows.find((r) => String(r.id) !== String(selfId ?? ""));
+    if (clash) return `nama "${trimmed}" sudah dipakai gudang lain`;
+  } catch {
+    // kolom belum ada (DB lama) — jangan blokir tulis
+  }
+  return null;
 }
 
 function toJson(row: Row): { id: string; branch: string; data: unknown; updated_at: string } {
@@ -228,6 +267,13 @@ export function registerCrud(app: FastifyInstance, table: string): void {
     const now = new Date().toISOString();
     const domainError = assertDomain(table, parsed.data.data);
     if (domainError) return reply.status(422).send(fail(domainError, "UNPROCESSABLE"));
+    const uniq = UNIQUE_NAME[table];
+    if (uniq) {
+      const nameError = await checkNameUnique(
+        table, uniq.field, String((parsed.data.data as Record<string, unknown>)[uniq.field] ?? ""), null,
+      );
+      if (nameError) return reply.status(409).send(fail(nameError, "CONFLICT"));
+    }
     const refError = await checkRefs(table, parsed.data.data as Record<string, unknown>);
     if (refError) return reply.status(422).send(fail(refError, "UNPROCESSABLE"));
     await exec(`INSERT INTO ${table} (id, branch, data, updated_at) VALUES (?, ?, ?, ?)`, [
@@ -274,6 +320,13 @@ export function registerCrud(app: FastifyInstance, table: string): void {
        jadi tidak valid - padahal POST kekotak yang sama ditolak 422. */
     const domainError = assertDomain(table, merged);
     if (domainError) return reply.status(422).send(fail(domainError, "UNPROCESSABLE"));
+    const uniq = UNIQUE_NAME[table];
+    if (uniq) {
+      const nameError = await checkNameUnique(
+        table, uniq.field, String((merged as Record<string, unknown>)[uniq.field] ?? ""), id,
+      );
+      if (nameError) return reply.status(409).send(fail(nameError, "CONFLICT"));
+    }
     const refError = await checkRefs(table, merged);
     if (refError) return reply.status(422).send(fail(refError, "UNPROCESSABLE"));
     await exec(`UPDATE ${table} SET branch = ?, data = ?, updated_at = ? WHERE id = ?`, [

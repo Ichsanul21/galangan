@@ -17,7 +17,8 @@
 //   dengan batch halaman yang baru saja jalan.
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useStore, type CollectionKey } from "./store";
+import { useStore, type CollectionKey, type WbsItem } from "./store";
+import { apiFetch } from "../services/http";
 
 let lastBatchSyncAt = 0;
 
@@ -96,4 +97,67 @@ export function useModuleSync(cols: CollectionKey[], deps: unknown[] = []): Modu
   }, [refresh, depsKey]);
 
   return { syncing, refresh };
+}
+
+/**
+ * Tarik WBS untuk sekumpulan proyek lalu simpan ke state lokal pemanggil.
+ *
+ * useModuleSync() hanya bisa menarik KOLEKSI ARRAY (resyncCollections ->
+ * remoteRepository(key).list()). wbsByProject adalah peta project_id -> baris,
+ * jadi TIDAK bisa ikut batch - harus lewat GET /api/projects/:id/wbs.
+ *
+ * Dampaknya nyata: Laporan merender kartu "WBS Teratas" + sheet Excel
+ * "WBS Teratas" dari wbsFor(), tapi wbsByProject tidak pernah masuk batch
+ * sync. Di mode remote kartu itu hanya menampilkan cache lokal yang basi,
+ * dan di proyek yang belum pernah dibuka halaman detail isinya kosong sama
+ * sekali. Hook ini menutup celah itu.
+ *
+ * Catatan: WBS TIDAK ditulis balik ke store lewat setWbs() karena itu akan
+ * meng-trigger PUSH (menimpa data server). Ini murni pembacaan.
+ *
+ * Return: { syncing, byProject } - `byProject` adalah peta id -> WbsItem[].
+ */
+export function useProjectWbsSync(
+  projectIds: string[],
+): { syncing: boolean; byProject: Record<string, WbsItem[]> } {
+  /* Kunci stabil: id unik + diurutkan supaya urutan berbeda tidak memicu
+     fetch ulang yang sama berulang kali. */
+  const key = [...new Set(projectIds.filter((id) => id !== ""))].sort().join("|");
+  const [syncing, setSyncing] = useState(false);
+  const [byProject, setByProject] = useState<Record<string, WbsItem[]>>({});
+  const runningRef = useRef(false);
+
+  useEffect(() => {
+    const ids = key === "" ? [] : key.split("|");
+    if (ids.length === 0) return;
+    if (runningRef.current) return;
+    runningRef.current = true;
+    lastBatchSyncAt = Date.now();
+    setSyncActive(1);
+    setSyncing(true);
+    void (async () => {
+      const found: Record<string, WbsItem[]> = {};
+      for (const projectId of ids) {
+        try {
+          const res = await apiFetch<{ projectId: string; wbs: WbsItem[] }>(
+            `/api/projects/${encodeURIComponent(projectId)}/wbs`,
+          );
+          if (Array.isArray(res.wbs)) found[projectId] = res.wbs;
+        } catch {
+          // Cache lokal / template store tetap dipakai untuk proyek ini.
+        }
+      }
+      if (Object.keys(found).length > 0) {
+        setByProject((prev) => ({ ...prev, ...found }));
+      }
+    })()
+      .catch(() => undefined)
+      .finally(() => {
+        runningRef.current = false;
+        setSyncActive(-1);
+        setSyncing(false);
+      });
+  }, [key]);
+
+  return { syncing, byProject };
 }

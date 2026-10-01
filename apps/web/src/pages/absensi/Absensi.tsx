@@ -86,6 +86,8 @@ export default function Absensi() {
   const [dupeCount, setDupeCount] = useState(0);
   // Hapus baris absensi via ConfirmModal + daftar pemakai.
   const [delAtt, setDelAtt] = useState<StoreItem | null>(null);
+  /* Target hapus dari grid harian (beda dari delAtt yang dipakai tab Rekap). */
+  const [delAttDay, setDelAttDay] = useState<StoreItem | null>(null);
 
   /* ---------- rekap ---------- */
   const [month, setMonth] = useState(todayISO().slice(0, 7));
@@ -169,6 +171,81 @@ export default function Absensi() {
       toast(S.tNoNewData, "info");
     }
     setConfirmOpen(false);
+  };
+
+  /* Simpan SATU karyawan, bukan seluruh shift. validateRows() memvalidasi
+     semua baris, jadi di sini validasinya diulang hanya untuk karyawan itu -
+     kalau tidak, satu baris lain yang belum lengkap akan memblokir koreksi. */
+  const saveRow = async (e: StoreItem) => {
+    if (!date) { toast(S.tDateRequired, "info"); return; }
+    const r = rowFor(String(e.id));
+    if (r.status === "Hadir" && (!r.checkIn || !r.checkOut)) {
+      toast(S.tTimeRequired.replace("{n}", String(e.name)), "info");
+      return;
+    }
+    const ot = r.status === "Hadir" ? Number(r.overtime || 0) : 0;
+    if (r.status === "Hadir" && (Number.isNaN(ot) || ot < 0 || ot > 8)) {
+      toast(S.tOvertimeRange.replace("{n}", String(e.name)), "info");
+      return;
+    }
+    try {
+      const payload = {
+        employeeId: String(e.id),
+        date,
+        shift,
+        status: r.status,
+        checkIn: r.status === "Hadir" ? r.checkIn : "",
+        checkOut: r.status === "Hadir" ? r.checkOut : "",
+        overtime: ot,
+        branch: String(e.branch ?? ""),
+      };
+      const existing = data.attendance.find((a) => String(a.employeeId) === String(e.id) && a.date === date && a.shift === shift);
+      if (existing) {
+        await update("attendance", String(existing.id), {
+          ...payload,
+          otStatus: ot > 0 ? String(existing.otStatus ?? "") || "Diajukan" : "",
+        });
+      } else {
+        await add("attendance", { ...payload, otStatus: ot > 0 ? "Diajukan" : "" }, undefined);
+      }
+      log("mencatat absensi (per baris)", `${date} shift ${shift} - ${String(e.name)}`, "Absensi");
+      toast(S.tAttendanceSaved.replace("{a}", existing ? "0" : "1").replace("{b}", existing ? "1" : "0"));
+    } catch (err) {
+      toast(S.tSaveFailed.replace("{a}", String(e.name)).replace("{b}", err instanceof Error ? err.message : "backend tak terjangkau"), "info");
+    }
+  };
+
+  /* Hapus record absensi satu karyawan pada tanggal+shift ini. Berbeda dari
+     hapus di tab Rekap: targetnya baris `attendance` yang sedang diedit. */
+  const confirmDelAttDay = async () => {
+    if (!delAttDay) return;
+    const emp = delAttDay;
+    const existing = data.attendance.find(
+      (a) => String(a.employeeId) === String(emp.id) && a.date === date && a.shift === shift,
+    );
+    if (!existing) {
+      toast(
+        locale === "en"
+          ? "No saved record for this employee on the selected date - nothing to delete."
+          : "Belum ada record tersimpan untuk karyawan ini di tanggal terpilih - tidak ada yang dihapus.",
+        "info",
+      );
+      setDelAttDay(null);
+      return;
+    }
+    try {
+      await remove("attendance", String(existing.id));
+      /* Buang juga draft lokal supaya baris tidak muncul lagi sebagai
+         "belum tersimpan" padahal sudah dihapus. */
+      setRows((prev) => {
+        const next = { ...prev };
+        delete next[String(emp.id)];
+        return next;
+      });
+      log("menghapus absensi", `${date} shift ${shift} - ${String(emp.name)}`, "Absensi");
+      toast(locale === "en" ? `Attendance for ${String(emp.name)} deleted` : `Absensi ${String(emp.name)} dihapus`);
+      setDelAttDay(null);
+    } catch (e) { toast(e instanceof Error ? e.message : S.tSaveFailed.replace("{a}", String(delAttDay?.name ?? "-")).replace("{b}", "-"), "info"); }
   };
 
   const saveAll = () => {
@@ -389,6 +466,7 @@ export default function Absensi() {
                         <SortTh label={S.sortOut} sortKey="out" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} />
                         <SortTh label={S.sortOvertime} sortKey="ot" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} />
                         <SortTh label={S.sortNote} sortKey="ket" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} />
+                        <th className="th">{locale === "en" ? "Actions" : "Aksi"}</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-steel-100">
@@ -429,6 +507,31 @@ export default function Absensi() {
                             </td>
                             <td className="td">
                               {hadir && isLate(r.checkIn, shift) ? <Badge tone="red">{S.lateBadge}</Badge> : <span className="text-xs text-steel-400">-</span>}
+                            </td>
+                            {/* Aksi per baris. Dulu grid ini hanya punya editor inline + tombol
+                                Simpan SEMUA, jadi satu karyawan yang absennya
+                                keliru harus mengoreksi seluruh absensi shift
+                                itu, dan baris yang sudah tercatat tidak bisa
+                                dihapus dari sini (hanya dari tab Rekap). */}
+                            <td className="td">
+                              <div className="flex flex-wrap gap-1">
+                                <button
+                                  className="btn-secondary px-2 py-1 text-[11px]"
+                                  onClick={() => void saveRow(e)}
+                                  title={locale === "en"
+                                    ? "Save this employee only"
+                                    : "Simpan karyawan ini saja"}
+                                >
+                                  {locale === "en" ? "Save" : "Simpan"}
+                                </button>
+                                <button
+                                  className="btn-secondary px-2 py-1 text-[11px] text-rose-600"
+                                  onClick={() => setDelAttDay(e)}
+                                  title={locale === "en" ? "Delete this record" : "Hapus record ini"}
+                                >
+                                  {locale === "en" ? "Delete" : "Hapus"}
+                                </button>
+                              </div>
                             </td>
                           </tr>
                         );
@@ -647,6 +750,24 @@ export default function Absensi() {
         onCancel={() => setConfirmOpen(false)}
         onConfirm={() => void persist(true)}
       />
+      <ConfirmModal
+        open={delAttDay !== null}
+        title={delAttDay
+          ? (locale === "en"
+            ? `Delete attendance for ${String(delAttDay.name)}?`
+            : `Hapus absensi ${String(delAttDay.name)}?`)
+          : ""}
+        desc={delAttDay
+          ? (locale === "en"
+            ? `The record for ${date} / shift ${shift} will be permanently deleted. The row goes back to "not saved" in this grid.`
+            : `Record ${date} / shift ${shift} akan dihapus permanen. Baris kembali menjadi "belum tersimpan" di grid ini.`)
+          : ""}
+        confirmLabel={locale === "en" ? "Delete" : "Hapus"}
+        danger
+        onCancel={() => setDelAttDay(null)}
+        onConfirm={confirmDelAttDay}
+      />
+
       <ConfirmModal
         open={delAtt !== null}
         title={delAtt ? (locale === "en" ? `Delete attendance ${delAtt.id}?` : `Hapus absensi ${delAtt.id}?`) : ""}

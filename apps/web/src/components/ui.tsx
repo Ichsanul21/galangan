@@ -134,13 +134,17 @@ export function Badge({
   children,
   tone = "gray",
   className = "",
+  title,
 }: {
   children: ReactNode;
   tone?: keyof typeof toneMap;
   className?: string;
+  /** Tooltip native. Dipakai badge status yang butuh penjelasan (mis. why this item is low). */
+  title?: string;
 }) {
   return (
     <span
+      title={title}
       className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs font-semibold ${toneMap[tone]} ${className}`}
     >
       {children}

@@ -40,9 +40,28 @@ import type { SortState } from "../../components/ui";
 import { useStore, type StoreItem } from "../../data/store";
 import { findUsages } from "../../utils/usages";
 import { sameName } from "../../utils/names";
+import { categoryWarnings, katalogBadge, warnLevelOf, warnRankOf, effectiveMinStock } from "../../utils/inventoryWarn";
+import {
+  DEAD_REASONS,
+  deadImpactTone,
+  deadPatch,
+  deadStockRows,
+  deadSummaryByReason,
+  type DeadReason,
+} from "../../utils/deadStock";
+import {
+  WAREHOUSE_TYPES,
+  allWarehouseNames,
+  movementFlow,
+  movementTouchesWh,
+  warehouseStockRows,
+  type WarehouseStock,
+} from "../../utils/warehouse";
+import { useModuleSync } from "../../data/useModuleSync";
+import type { CollectionKey } from "../../data/store";
 import { isBackendConfigured } from "../../services/http";
 import { uploadFile } from "../../services/upload";
-import { fmtJumlah, fmtRupiah, fmtMiliar, fmtTanggal, todayISO } from "../../utils/format";
+import { fmtJumlah, fmtRupiah, fmtMiliar, fmtPersen, fmtTanggal, todayISO } from "../../utils/format";
 import { exportExcel } from "../../utils/export";
 import { sbTonasePlat, sbSjNumber, sbTtNumber, maxSeq, parseSjSeq, SB_KOP } from "../../utils/sb";
 import { FilterPopover } from "../../components/FilterPopover";
@@ -52,6 +71,11 @@ import { AlertBannerView, notifRowId, useModuleAlert, useNotifFlash } from "../.
 import { stockTrend, itemTrend, lowStockTrend, stockValueTrend, warehouseTrend } from "../../data";
 
 const emptyForm = { name: "", category: "Baja", sku: "", warehouse: "Gudang Baja A", rack: "", bin: "", stock: "0", minStock: "0", unit: "pcs", cost: "0", volume: "0", batch: "", uom2: "", konversi: "", minWh: "", photoUrl: "", matType: "habis-pakai", eceran: false as boolean | string };
+
+/* Form gudang. `capacity` string (input angka) - dikonversi saat submit.
+   `aktif` boolean untuk menonaktifkan gudang tanpa menghapusnya (baris
+   historis movement tetap menunjuk nama yang sama). */
+const emptyWhForm = { name: "", type: "", capacity: "", lokasi: "", pic: "", aktif: true };
 
 /* Jenis material: habis-pakai | retur | service. Eceran = flag terpisah (konversi satuan). */
 const MAT_TYPES = ["habis-pakai", "retur", "service"] as const;
@@ -109,14 +133,13 @@ function moveLabel(type: string): string {
   if (type === "Retur") return "Retur";
   return type;
 }
-/* Gudang asal/tujuan pergerakan: transfer dari by ("A → B"), barang masuk dari supplier, barang keluar ke tujuan. */
-function whFlowOf(m: StoreItem): string {
-  if (String(m.type ?? "") === "Transfer") return String(m.by ?? "-");
-  const parts: string[] = [];
-  if (m.supplier) parts.push(`dari ${String(m.supplier)}`);
-  if (m.purpose) parts.push(`ke ${String(m.purpose)}`);
-  return parts.length > 0 ? parts.join(" · ") : "-";
-}
+/* whFlowOf() DIHAPUS. Fungsi ini menggabungkan asal+tujuan jadi satu string
+   ("dari X · ke Y"), yang tidak bisa dipakai untuk:
+     - memfilter per gudang (substring match bikin "Gudang B" kena "Gudang Baja A"),
+     - menyortir asal dan tujuan terpisah,
+     - menampilkan kolom Dari Gudang / Ke Gudang terpisah.
+   Penggantinya: movementFlow() di utils/warehouse.ts yang mengembalikan
+   { from, to, internal, kind } terstruktur. */
 function grGiTip(type: string, locale: string): string {
   if (type === "Penerimaan") return locale === "en" ? "Goods in" : "Barang Masuk";
   if (type === "Pengeluaran") return locale === "en" ? "Goods out" : "Barang Keluar";
@@ -334,6 +357,14 @@ export default function Inventory() {
   const { locale } = useT();
   const S = n_inv[locale];
   const { data, add, update, remove, log, branch, resync } = useStore();
+  /* Batch modul per tab: Inventory butuh 8 koleksi. Tanpa ini halaman ini
+     memanggil resync() penuh (50+ koleksi) tiap dibuka lewat tombol refresh
+     PageHeader, padahal isinya hanya butuh sebagian. */
+  const INV_COLS: CollectionKey[] = [
+    "inventory", "movements", "projects", "requisitions",
+    "documents", "settings", "purchaseOrders", "payables", "warehouses",
+  ];
+  useModuleSync(INV_COLS);
   // Cabang movement: dari proyek tertaut (cocokkan teks ke id/vessel) atau fallback global.
   const moveBranch = (hay: string): string => String(
     (data.projects ?? []).find((p) => hay.includes(String(p.id)) || (p.vessel && hay.includes(String(p.vessel))))?.branch
@@ -370,6 +401,14 @@ export default function Inventory() {
   const [moveEditForm, setMoveEditForm] = useState({ date: "", by: "", supplier: "", purpose: "", pic: "" });
   /* Hapus movement = hapus catatan SAJA, stok TIDAK dikoreksi (dengan toast peringatan). */
   const [delMove, setDelMove] = useState<StoreItem | null>(null);
+  /* ==== CRUD GUDANG (tab Stok per Gudang) ====
+     Sumber data: koleksi `warehouses`. inventory.warehouse tetap NAMA (lihat
+     utils/warehouse.ts), jadi nama jadi kunci - unik ditegakkan di backend
+     (checkNameUnique) dan dicek lagi di FE agar pesan error ramah. */
+  const [showWh, setShowWh] = useState(false);
+  const [whForm, setWhForm] = useState(emptyWhForm);
+  const [whEditing, setWhEditing] = useState<string | null>(null);
+  const [delWh, setDelWh] = useState<WarehouseStock | null>(null);
   const [labelItem, setLabelItem] = useState<StoreItem | null>(null);
   const [moveTarget, setMoveTarget] = useState<StoreItem | null>(null);
   const [moveKind, setMoveKind] = useState<"in" | "out">("in");
@@ -544,24 +583,21 @@ export default function Inventory() {
   const trendYears = useMemo(() => Array.from(new Set(invTrend.map((d) => String(d.label).slice(-4)))).sort(), [invTrend]);
   const trendShown = useMemo(() => (trendYear === "Semua" ? invTrend : invTrend.filter((d) => String(d.label).endsWith(trendYear))), [invTrend, trendYear]);
 
-  /* Kapasitas gudang dari Settings key WAREHOUSE_CAP = JSON {nama: kapasitas}. */
-  const warehouseCap = useMemo(() => {
-    try {
-      const row = (data.settings ?? []).find((s) => String(s.key ?? "") === "WAREHOUSE_CAP");
-      const raw = String(row?.value ?? "").trim();
-      if (!raw) return null;
-      const parsed = JSON.parse(raw) as Record<string, unknown>;
-      if (!parsed || typeof parsed !== "object") return null;
-      const map: Record<string, number> = {};
-      for (const [k, v] of Object.entries(parsed)) {
-        const n = Number(v);
-        if (Number.isFinite(n) && n > 0) map[k] = n;
-      }
-      return Object.keys(map).length > 0 ? map : null;
-    } catch {
-      return null;
-    }
-  }, [data.settings]);
+/* Gudang: koleksi `warehouses` (CRUD) + fallback settings.WAREHOUSE_CAP.
+     capacityOf() sudah menangani kedua sumber, jadi tab Stok per Gudang tetap
+     punya progress bar untuk instalasi lama yang belum punya baris gudang. */
+  const warehouseRows = useMemo(
+    () => warehouseStockRows(data.warehouses, inventory, data.settings),
+    [data.warehouses, inventory, data.settings],
+  );
+  const whSorted = useMemo(() => sortRows(warehouseRows, sort2, (row, k) => {
+    if (k === "nama") return row.name;
+    if (k === "jenis") return String(row.row?.type ?? "");
+    if (k === "item") return row.items.length;
+    if (k === "terisi") return row.used;
+    if (k === "kapasitas") return row.capacity;
+    return row.name;
+}), [warehouseRows, sort2]);
 
   const list = useMemo(() => inventory.filter((i) => {
     const matchQ = `${i.name} ${i.sku} ${binOf(i)}`.toLowerCase().includes(dq.toLowerCase());
@@ -578,8 +614,12 @@ export default function Inventory() {
     if (k === "total") return Number(i.stock || 0) * effCost(i);
     if (k === "kategori") return String(i.category ?? "");
     if (k === "abc") return String(abc[i.id] ?? "");
-    if (k === "mattype") return matTypeOf(i);
-    if (k === "status") return Number(i.stock) <= Number(i.minStock) ? "Menipis" : "Aman";
+if (k === "mattype") return matTypeOf(i);
+    /* Sort status memakai RANK dari utils/inventoryWarn (kritis > menipis >
+       berlebih > aman), bukan nama level - pengurutan alfabetis akan
+       menaruh "Aman" sebelum "Kritis". Dibalik (5 - rank) supaya saat
+       ascending, item yang paling mendesak muncul duluan. */
+    if (k === "status") return String(5 - warnRankOf(i));
     if (k === "rak") return String(rackText(i));
     if (k === "bin") return binOf(i);
     return String(i.name ?? "");
@@ -587,18 +627,26 @@ export default function Inventory() {
   }), [list, sort, abc]);
   const pager = usePager(list.length, 25);
   const [movWh, setMovWh] = useState("Semua");
-  const movFiltered = useMemo(() => (movWh === "Semua" ? movements : movements.filter((m) => whFlowOf(m).includes(movWh))), [movements, movWh]);
+  /* Filter gudang terstruktur: dulu `whFlowOf(m).includes(movWh)` - substring
+     pada string gabungan, jadi "Gudang B" ikut mencocokkan "Gudang Baja A",
+     dan transfer antar gudang tak bisa dibedakan. movementTouchesWh()
+     membandingkan endpoint dari/to satu per satu (longgar kapital/spasi). */
+  const movFiltered = useMemo(
+    () => (movWh === "Semua" ? movements : movements.filter((m) => movementTouchesWh(m, movWh))),
+    [movements, movWh],
+  );
   const movPager = usePager(movFiltered.length, 25);
   useEffect(() => {
     movPager.reset();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [movWh]);
   const movSorted = useMemo(() => sortRows(movFiltered, sort3, (m, k) => {
     if (k === "jumlah") return Number(m.qty || 0);
     if (k === "total") return Number(m.total || 0);
     if (k === "item") return String(m.item ?? "");
     if (k === "tipe") return String(m.type ?? "");
-    if (k === "gudang") return whFlowOf(m);
+    if (k === "dari") return movementFlow(m).from;
+    if (k === "ke") return movementFlow(m).to;
+    if (k === "gudang") return `${movementFlow(m).from} ${movementFlow(m).to}`;
     if (k === "referensi") return String(m.by ?? "");
     if (k === "info") return String(`${m.supplier ?? ""} ${m.purpose ?? ""} ${m.pic ?? ""}`);
     if (k === "tanggal") return String(m.date ?? "");
@@ -653,30 +701,35 @@ export default function Inventory() {
   const lastInOf = (it: StoreItem): string | null =>
     moveIdx.inn.get(String(it.id)) ?? moveIdx.inn.get(String(it.name)) ?? null;
 
-  /* Alasan dead stock: pilih penyebab agar jelas tindak lanjutnya. */
-  const DEAD_REASONS = ["Overstock", "Salah spesifikasi", "Proyek batal", "Tidak dipakai >180 hari", "Stok nol", "Belum pernah masuk"] as const;
-  const deadReason = (it: StoreItem): string => {
-    const manual = String((it as Record<string, unknown>).deadReason ?? "").trim();
-    if (manual) return manual;
-    if (Number(it.stock || 0) <= 0) return locale === "en" ? "zero stock" : "Stok nol";
-    if (!lastInOf(it)) return locale === "en" ? "never received" : "Belum pernah masuk";
-    return locale === "en" ? "no issue >180 days" : "Tidak dipakai >180 hari";
-  };
-
-  const lowStock = useMemo(() => inventory.filter((i) => i.stock <= i.minStock), [inventory]);
-  /* Warning dikelompokkan per kategori: 1 banner per category. */
-  const lowByCat = useMemo(() => {
-    const map = new Map<string, StoreItem[]>();
-    for (const i of lowStock) {
-      const c = String(i.category ?? "-");
-      if (!map.has(c)) map.set(c, []);
-      (map.get(c) as StoreItem[]).push(i);
-    }
-    return Array.from(map.entries()).sort((a, b) => b[1].length - a[1].length);
-  }, [lowStock]);
+  /* Warning inventory diklasifikasikan per kategori (utils/inventoryWarn).
+     Ambang TIDAK seragam: kategori lead-time panjang (baja/pipa) diberi
+     buffer lebih lebar, kategori jasa diabaikan karena tak punya stok fisik.
+     Lihat utils/inventoryWarn.ts untuk tabel alasannya. */
+  const lowStock = useMemo(
+    () => inventory.filter((i) => {
+      const lv = warnLevelOf(i).level;
+      return lv === "low" || lv === "critical";
+    }),
+    [inventory],
+  );
+  const overStock = useMemo(
+    () => inventory.filter((i) => warnLevelOf(i).level === "overstock"),
+    [inventory],
+  );
+  /* Dipakai untuk ringkasan per kategori di tab Analisis + filter cepat.
+     Banner besar di atas tabel Katalog DIHAPUS (lihat render katalogPrioritas). */
+  const warnByCat = useMemo(
+    () => categoryWarnings(inventory, { maxUrgentPerCategory: 4 }),
+    [inventory],
+  );
   const categories = useMemo(() => ["Semua", ...Array.from(new Set(inventory.map((i) => String(i.category ?? "").trim()).filter((c) => c && c !== "Semua")))], [inventory]);
   const totalValue = useMemo(() => inventory.reduce((s, i) => s + Number(i.stock || 0) * effCost(i), 0), [inventory]);
-  const warehouses = useMemo(() => Array.from(new Set(inventory.map((i) => i.warehouse))), [inventory]);
+  /* Daftar gudang: baris terdaftar + yang hanya muncul di inventory.
+     allWarehouseNames() sudah menyatukan keduanya (utils/warehouse.ts). */
+  const warehouses = useMemo(
+    () => allWarehouseNames(data.warehouses, inventory),
+    [data.warehouses, inventory],
+  );
 
   const bomRows = BOM_NEEDS.map((b) => {
     const item = inventory.find((i) => i.name.toLowerCase().includes(b.key.toLowerCase()));
@@ -696,11 +749,20 @@ export default function Inventory() {
     const days = daysSince(d);
     return days > 60 && days <= 180;
   }), [inventory, moveIdx]);
-  const deadItems = useMemo(() => inventory.filter((i) => {
-    const d = lastOutOf(i);
-    if (!d) return true;
-    return daysSince(d) > 180;
-  }), [inventory, moveIdx]);
+/* Dead stock: baris siap render (alasan ber-KODE + badge dampak nilai).
+     deadStockRows() sudah computing-dead sendiri dari moveIdx, jadi tidak
+     ada lagi daftar `deadItems` terpisah - dulu ada, sekarang duplikat. */
+  const deadRows = useMemo(
+    () => deadStockRows(inventory, {
+      hasOut: (item) => lastOutOf(item) !== null,
+      daysSinceLastOut: (item) => {
+        const d = lastOutOf(item);
+        return d ? daysSince(d) : 9999;
+      },
+    }),
+    [inventory, moveIdx],
+  );
+  const deadSummary = useMemo(() => deadSummaryByReason(deadRows), [deadRows]);
 
   const agingRows = useMemo(() => inventory.map((i) => {
     const lastIn = lastInOf(i);
@@ -721,8 +783,11 @@ export default function Inventory() {
   }, [slowItems, slowQ]);
   const deadShown = useMemo(() => {
     const nq = deadQ.trim().toLowerCase();
-    return nq ? deadItems.filter((i) => `${i.name} ${i.sku}`.toLowerCase().includes(nq)) : deadItems;
-  }, [deadItems, deadQ]);
+    if (!nq) return deadRows;
+    return deadRows.filter((r) =>
+      `${r.item.name} ${r.item.sku ?? ""} ${r.reason.label} ${r.note}`.toLowerCase().includes(nq),
+    );
+  }, [deadRows, deadQ]);
   const agingShown = useMemo(() => {
     const nq = agingQ.trim().toLowerCase();
     return nq ? agingRows.filter((r) => `${r.item.name} ${r.bucket}`.toLowerCase().includes(nq)) : agingRows;
@@ -960,6 +1025,11 @@ export default function Inventory() {
         batch: moveBatch.trim() || fresh.batch || "",
         date: todayISO(),
         tone: moveKind,
+        /* Gudang asal/tujuan TERSTRUKTUR (bukan hanya string gabungan) supaya
+           kolom Dari/Ke Gudang di tab Pergerakan bisa diisi langsung dan
+           filter per gudang jadi akurat. Lihat utils/warehouse.ts. */
+        fromWh: moveKind === "in" ? "" : String(fresh.warehouse ?? ""),
+        toWh: moveKind === "in" ? String(fresh.warehouse ?? "") : "",
         ...(moveKind === "in" && movePo.trim() ? { po: movePo.trim() } : {}),
         supplier: moveSupplier.trim(),
         priceExcl,
@@ -1299,6 +1369,10 @@ export default function Inventory() {
       await add("movements", {
         item: opTarget.name, itemId: opTarget.id, type: "Selisih Opname", qty: selisih,
         by: `Opname ${todayISO()}`, date: todayISO(), tone: selisih > 0 ? "in" : "out",
+        /* Opname terjadi di satu gudang - dari = ke = gudang tersebut, supaya
+           kolom Dari/Ke Gudang tidak kosong dan bisa difilter per gudang. */
+        fromWh: String(opTarget.warehouse ?? ""),
+        toWh: String(opTarget.warehouse ?? ""),
       }, { action: "stok opname", target: `${opTarget.name}: selisih ${selisih > 0 ? "+" : ""}${selisih}`, module: "Inventori" });
       log("stok opname", `${opTarget.name}: tercatat ${Number(opCount)}, selisih ${selisih > 0 ? "+" : ""}${selisih}`, "Inventori");
       toast(S.opSaved.replace("{a}", opTarget.name).replace("{b}", `${selisih > 0 ? "+" : ""}${selisih}`));
@@ -1394,7 +1468,12 @@ export default function Inventory() {
       }
       await add("movements", {
         item: trTarget.name, itemId: trTarget.id, type: "Transfer", qty,
-        by: `${from} → ${trDest}`, date: todayISO(), tone: "in",
+        /* `by` tetap diisi "A -> B" agar baris lama & laporan lama tetap
+           terbaca; fromWh/toWh sekarang jadi sumber terstruktur. */
+        by: `${from} → ${trDest}`,
+        fromWh: from,
+        toWh: trDest,
+        date: todayISO(), tone: "in",
       }, { action: "transfer gudang", target: `${trTarget.name} × ${qty}: ${from} → ${trDest}`, module: "Inventori" });
       log("transfer gudang", `${trTarget.name} × ${qty}: ${from} → ${trDest}`, "Inventori");
       toast(S.transferDone.replace("{a}", trTarget.name).replace("{n}", String(qty)).replace("{b}", trDest));
@@ -1486,6 +1565,149 @@ export default function Inventory() {
     }
   };
 
+  /* ================= CRUD GUDANG ================= */
+
+  /**
+   * Simpan alasan dead stock sebagai KODE + keterangan terpisah.
+   * Field `deadReason` lama ikut ditulis (isi = label baku) supaya laporan
+   * lama yang masih membacanya tidak kehilangan informasi.
+   */
+  const saveDeadReason = async (item: StoreItem, reason: DeadReason) => {
+    try {
+      await update("inventory", item.id, deadPatch(reason, String(item.deadNote ?? "")));
+      log(
+        "mengubah alasan dead stock",
+        `${item.name} · ${locale === "en" ? reason.labelEn : reason.label}`,
+        "Inventori",
+      );
+    } catch (e) {
+      toast(e instanceof Error ? e.message : S.saveFail, "info");
+    }
+  };
+
+  /** Buka form ubah. Gudang tanpa baris `warehouses` tetap bisa diisi
+      kapasitasnya - baris baru dibuat dengan nama yang sama. */
+  const openWhEdit = (row: { name: string; row?: StoreItem }) => {
+    const r = row.row;
+    setWhForm({
+      name: row.name,
+      type: String(r?.type ?? ""),
+      capacity: r && Number(r.capacity) > 0 ? String(Number(r.capacity)) : "",
+      lokasi: String(r?.lokasi ?? ""),
+      pic: String(r?.pic ?? ""),
+      aktif: r?.aktif === undefined || r?.aktif === null ? true : r.aktif !== false,
+    });
+    setWhEditing(r?.id ?? null);
+    setShowWh(true);
+  };
+
+  const closeWh = () => {
+    setShowWh(false);
+    setWhEditing(null);
+    setWhForm(emptyWhForm);
+  };
+
+  /**
+   * Simpan gudang (create atau update).
+   *
+   * Menolak nama duplikat DI SISI FE juga, karena nama adalah kunci relasi:
+   * dua gudang bernama sama akan menggabungkan kartu "Stok per Gudang" dan
+   * membuat kolom Dari/Ke Gudang ambigu. Pengecekan yang sama ada di backend
+   * (409) untuk menutup dua klien menulis bersamaan.
+   */
+  const saveWh = async () => {
+    const name = whForm.name.trim();
+    if (!name) {
+      toast(locale === "en" ? "Warehouse name is required" : "Nama gudang wajib diisi", "info");
+      return;
+    }
+    const cap = whForm.capacity.trim() === "" ? 0 : Number(whForm.capacity);
+    if (!Number.isFinite(cap) || cap < 0) {
+      toast(locale === "en" ? "Capacity must be a positive number" : "Kapasitas harus angka positif", "info");
+      return;
+    }
+    const dup = (data.warehouses ?? []).find(
+      (w) => sameName(w.name, name) && String(w.id) !== String(whEditing),
+    );
+    if (dup) {
+      toast(
+        locale === "en"
+          ? `Name "${name}" is already used by another warehouse`
+          : `Nama "${name}" sudah dipakai gudang lain`,
+        "info",
+      );
+      return;
+    }
+    try {
+      if (whEditing) {
+        await update("warehouses", whEditing, {
+          name,
+          type: whForm.type.trim(),
+          capacity: Math.round(cap),
+          lokasi: whForm.lokasi.trim(),
+          pic: whForm.pic.trim(),
+          aktif: whForm.aktif,
+        });
+        log("mengubah gudang", name, "Inventori");
+      } else {
+        await add(
+          "warehouses",
+          {
+            name,
+            type: whForm.type.trim(),
+            capacity: Math.round(cap),
+            lokasi: whForm.lokasi.trim(),
+            pic: whForm.pic.trim(),
+            aktif: whForm.aktif,
+          },
+          { action: "mendaftarkan gudang", target: name, module: "Inventori" },
+        );
+        log("mendaftarkan gudang", name, "Inventori");
+      }
+      toast(
+        locale === "en"
+          ? `Warehouse ${name} saved`
+          : `Gudang ${name} tersimpan`,
+      );
+      closeWh();
+    } catch (e) {
+      toast(e instanceof Error ? e.message : S.saveFail, "info");
+    }
+  };
+
+  /**
+   * Hapus gudang. Diblokir bila masih ada item yang tersimpan di sana:
+   * menghapus barisnya tidak menghapus barang, hanya membuat stok jadi
+   * tidak terlihat di tab Stok per Gudang. Saran: nonaktifkan (aktif=false)
+   * alih-alih menghapus.
+   */
+  const confirmDelWh = async () => {
+    if (!delWh) return;
+    const name = String(delWh?.name ?? "");
+    const items = inventory.filter((i) => sameName(i.warehouse, name));
+    const moves = movements.filter((m) => {
+      const f = movementFlow(m);
+      return sameName(f.from.replace(/^Supplier:\s*/i, ""), name) || sameName(f.to, name);
+    });
+    if (items.length > 0 || moves.length > 0) {
+      toast(
+        locale === "en"
+          ? `Cannot delete: ${items.length} item(s) and ${moves.length} movement(s) still reference this warehouse. Deactivate it instead.`
+          : `Tidak dapat hapus: masih ada ${items.length} item dan ${moves.length} mutasi yang menunjuk gudang ini. Nonaktifkan saja.`,
+        "info",
+      );
+      return;
+    }
+    try {
+      await remove("warehouses", String(delWh.row?.id ?? ""));
+      log("menghapus gudang", name, "Inventori");
+      toast(locale === "en" ? `Warehouse ${name} deleted` : `Gudang ${name} dihapus`);
+      setDelWh(null);
+    } catch (e) {
+      toast(e instanceof Error ? e.message : S.saveFail, "info");
+    }
+  };
+
   const openPick = () => {
     const first = projects[0]?.id ?? "";
     setPickProject(first);
@@ -1526,6 +1748,10 @@ export default function Inventory() {
         await add("movements", {
           item: it.name, itemId: it.id, type: "Pengeluaran", qty: want,
           by: `${pickProject} (Pick List)`, date: todayISO(), tone: "out",
+          fromWh: String(it.warehouse ?? ""),
+          toWh: String(pickProject),
+          purpose: String(pickProject),
+          pic: "Pick List",
           branch: moveBranch(String(pickProject)),
         }, { action: "pick list", target: `${it.name} × ${want} (${pickProject})`, module: "Inventori" });
         ok++;
@@ -1559,8 +1785,36 @@ export default function Inventory() {
 
       {modAlert.active && <AlertBannerView items={modAlert.items} onPick={pickNotif} />}
 
-      <div className="mb-4 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <KpiCard label={S.kpiItems} value={String(inventory.length)} icon={<Package className="h-5 w-5" />} chip="navy" spark={itemTrend} hint={S.kpiItemsHint} />        <KpiCard label={S.kpiLow} value={String(lowStock.length)} delta={S.kpiLowDelta} deltaDirection="down" icon={<AlertTriangle className="h-5 w-5" />} chip="rose" spark={lowStockTrend} />
+      <div className="mb-4 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-5">
+        <KpiCard label={S.kpiItems} value={String(inventory.length)} icon={<Package className="h-5 w-5" />} chip="navy" spark={itemTrend} hint={S.kpiItemsHint} />
+        {/* Angka di bawah memakai klasifikasi per kategori, bukan `stock <= minStock`.
+            `hint` menyebut jumlah item KRITIS supaya manajer tahu mana yang
+            harus/PR hari ini, bukan cuma total yang "menipis". */}
+        <KpiCard
+          label={S.kpiLow}
+          value={String(lowStock.length)}
+          delta={S.kpiLowDelta}
+          deltaDirection="down"
+          icon={<AlertTriangle className="h-5 w-5" />}
+          chip="rose"
+          spark={lowStockTrend}
+          hint={
+            warnByCat.reduce((s, c) => s + c.counts.critical, 0) > 0
+              ? (locale === "en"
+                ? `${warnByCat.reduce((s, c) => s + c.counts.critical, 0)} critical across ${warnByCat.filter((c) => c.counts.critical > 0).length} categories`
+                : `${warnByCat.reduce((s, c) => s + c.counts.critical, 0)} kritis di ${warnByCat.filter((c) => c.counts.critical > 0).length} kategori`)
+              : S.kpiLowDelta
+          }
+        />
+        <KpiCard
+          label={locale === "en" ? "Overstock items" : "Item Berlebih"}
+          value={String(overStock.length)}
+          icon={<Warehouse className="h-5 w-5" />}
+          chip="blue"
+          hint={locale === "en"
+            ? "Stock far above min. Ties up working capital."
+            : "Stok jauh di atas minimum. Mengikat modal kerja."}
+        />
         <KpiCard label={S.kpiValue} value={fmtMiliar(totalValue)} hint={S.kpiValueHint} icon={<Package className="h-5 w-5" />} chip="teal" spark={stockValueTrend} />
         <KpiCard label={S.whLbl} value={S.whCount.replace("{n}", String(warehouses.length))} hint={warehouses.slice(0, 3).join(", ")} chip="violet" spark={warehouseTrend} />
       </div>
@@ -1576,18 +1830,44 @@ export default function Inventory() {
                   ? "ABC formula: items ranked by stock value (stock × cost); cumulative ≤70% = A, ≤90% = B, rest = C."
                   : "Rumus ABC: item diurutkan berdasar nilai stok (stok × harga); kumulatif ≤70% = A, ≤90% = B, sisanya = C."}
               </p>
-              {lowByCat.length > 0 && (
-                <div className="mb-3 space-y-2">
-                  {lowByCat.map(([c, items]) => (
-                    <div key={c} className="flex flex-wrap items-center gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm">
-                      <AlertTriangle className="h-4 w-4 shrink-0 text-amber-600" />
-                      <p className="font-medium text-amber-800">
-                        {c}: {items.length} {locale === "en" ? "low item(s)" : "item menipis"}
-                      </p>
-                      <p className="w-full truncate text-xs text-amber-700" title={items.map((i) => String(i.name)).join(", ")}>
-                        {items.slice(0, 6).map((i) => String(i.name)).join(" · ")}{items.length > 6 ? " …" : ""}
-                      </p>
-                    </div>
+              {/* Warning notification tidak lagi berupa banner besar per kategori.
+                  Sebelumnya: satu blok amber muncul begitu ADA SATU item menyentuh
+                  minStok, sehingga 1 dari 400 item menghasilkan peringatan untuk
+                  kategori yang sebenarnya sehat - dan tidak ada yang bisa tahu
+                  item mana yang prioritas.
+
+                  Sekarang: BANNER DIHAPUS, diganti strip ringkas yang
+                  (a) hanya muncul bila ada item KRITIS,
+                  (b) dikelompokkan per kategori dengan ambang berbeda
+                      (utils/inventoryWarn.ts),
+                  (c) bisa diklik untuk memfilter tabel ke item-item itu.
+                  Detail lengkap ada di tab Analisis ("Warning per Kategori"). */}
+              {warnByCat.length > 0 && (
+                <div className="mb-3 flex flex-wrap items-center gap-2 rounded-xl border border-steel-200 bg-steel-50 px-3 py-2 text-xs">
+                  <AlertTriangle className="h-4 w-4 shrink-0 text-amber-600" />
+                  <span className="font-medium text-navy-900">
+                    {locale === "en" ? "Attention needed" : "Perlu perhatian"}
+                  </span>
+                  {warnByCat.map((c) => (
+                    <button
+                      key={c.category}
+                      type="button"
+                      title={
+                        locale === "en"
+                          ? `${c.category}: ${c.counts.critical} critical, ${c.counts.low} low, ${c.counts.overstock} overstock. Click to filter the catalog.`
+                          : `${c.category}: ${c.counts.critical} kritis, ${c.counts.low} menipis, ${c.counts.overstock} berlebih. Klik untuk memfilter katalog.`
+                      }
+                      onClick={() => {
+                        setCat(c.category);
+                        setTab("Katalog");
+                      }}
+                      className="inline-flex items-center gap-1.5 rounded-full border border-white bg-white px-2 py-0.5 font-medium shadow-sm hover:border-ocean-300"
+                    >
+                      <span className="text-navy-900">{c.category}</span>
+                      {c.counts.critical > 0 && <Badge tone="red">{c.counts.critical} {locale === "en" ? "critical" : "kritis"}</Badge>}
+                      {c.counts.low > 0 && <Badge tone="amber">{c.counts.low} {locale === "en" ? "low" : "menipis"}</Badge>}
+                      {c.counts.overstock > 0 && <Badge tone="blue">{c.counts.overstock} {locale === "en" ? "over" : "berlebih"}</Badge>}
+                    </button>
                   ))}
                 </div>
               )}
@@ -1675,9 +1955,15 @@ export default function Inventory() {
                     <tr><SortTh label={S.thMaterial} sortKey="material" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.catLbl} sortKey="kategori" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={locale === "en" ? "Type" : "Jenis"} sortKey="mattype" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.thQty} sortKey="qty" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.thVolume} sortKey="volume" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.thTotal} sortKey="total" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.thAbc} sortKey="abc" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.thStatus} sortKey="status" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.thRak} sortKey="rak" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.binLbl} sortKey="bin" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><th className="th">{S.thAksi}</th></tr>
                   </thead>
                   <tbody className="divide-y divide-steel-100">
-                    {pager.slice(sorted).map((i) => {
-                      const low = i.stock <= i.minStock;
-                      const reserved = reservedQty(i);
+{pager.slice(sorted).map((i) => {
+                       /* Badge status memakai klasifikasi per kategori, bukan
+                          `stock <= minStock` polos. Kategori lead-time panjang
+                          dapat lebih awal peringatan; kategori jasa (tanpa stok
+                          fisik) tidak pernah amber. */
+                       const warn = warnLevelOf(i);
+                       const badge = katalogBadge(i);
+                       const minWh = effectiveMinStock(i);
+                       const reserved = reservedQty(i);
                       const conv = convOf(i);
                       const u2 = uom2Of(i);
                       return (
@@ -1697,7 +1983,16 @@ export default function Inventory() {
                           <td className="td font-semibold text-navy-900">{fmtRupiah(Number(i.stock) * effCost(i))}</td>
                           <td className="td"><Badge tone={abc[i.id] === "A" ? "red" : abc[i.id] === "B" ? "amber" : "gray"}>{abc[i.id]}</Badge></td>
                           <td className="td">
-                            <Badge tone={low ? "red" : "green"}>{low ? "Menipis" : "Aman"}</Badge>
+                            <Badge tone={badge.tone} title={
+                              minWh <= 0
+                                ? (locale === "en" ? "No minimum set" : "Minimum stok belum diisi")
+                                : `${fmtJumlah(Number(i.stock))} ${String(i.unit ?? "")} dari minimum ${fmtJumlah(minWh)} ${String(i.unit ?? "")}`
+                            }>{locale === "en" ? badge.textEn : badge.text}</Badge>
+                            {warn.level === "critical" && (
+                              <p className="mt-0.5 text-[11px] text-rose-600">
+                                {locale === "en" ? "needs PR now" : "perlu PR sekarang"}
+                              </p>
+                            )}
                           </td>
                           <td className="td text-steel-600 font-mono text-xs truncate" title={rackText(i)}>{rackText(i)}</td>
                           <td className="td text-steel-600 font-mono text-xs truncate" title={binOf(i) || "-"}>{binOf(i) || "-"}</td>
@@ -1723,52 +2018,204 @@ export default function Inventory() {
             </>
           )}
 
-          {tab === "Stok per Gudang" && (
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
-              {warehouses.map((w) => {
-                const items = inventory.filter((i) => i.warehouse === w);
-                const gq = (gudangQ[w] ?? "").trim().toLowerCase();
+{tab === "Stok per Gudang" && (
+            <div className="space-y-4">
+              {/* ==== HEADER + CRUD GUDANG ====
+                  Dulunya tab ini hanya menampilkan kartu per gudang yang
+                  TERDAFTAR di inventory, sehingga:
+                    - gudang baru tidak bisa dibuat sebelum ada item di dalamnya,
+                    - kapasitas hanya bisa diisi lewat settings.WAREHOUSE_CAP
+                      (JSON mentah di halaman Pengaturan - tidak ada validasi),
+                    - tidak ada edit/hapus sama sekali.
+                  Sekarang baris `warehouses` (koleksi penuh, bukan JSON) jadi
+                  sumber utama; kartu di bawah membaca dari sana. */}
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div>
+                  <h3 className="text-sm font-semibold text-navy-900">
+                    {locale === "en" ? "Warehouse master & capacity" : "Data Gudang & Kapasitas"}
+                  </h3>
+                  <p className="text-xs text-steel-500">
+                    {locale === "en"
+                      ? "Capacity is a rough limit (mixed units). Set it here so utilisation can be tracked per warehouse."
+                      : "Kapasitas adalah batas perkiraan (satuan tercampur). Diisi di sini agar utilisasi tiap gudang bisa dilacak."}
+                  </p>
+                </div>
+                <button className="btn-primary-gradient" onClick={() => { setWhForm(emptyWhForm); setWhEditing(null); setShowWh(true); }}>
+                  <Plus className="h-4 w-4" /> {locale === "en" ? "New warehouse" : "Tambah Gudang"}
+                </button>
+              </div>
+
+              {/* ==== TABEL GUDANG (CRUD) ==== */}
+              <Card className="p-0">
+                <div className="overflow-x-auto">
+                  <table className="w-full">
+                    <thead>
+                      <tr>
+                        <SortTh label={locale === "en" ? "Warehouse" : "Gudang"} sortKey="nama" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} />
+                        <SortTh label={locale === "en" ? "Type" : "Jenis"} sortKey="jenis" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} />
+                        <th className="th">{locale === "en" ? "Location" : "Lokasi"}</th>
+                        <th className="th">{locale === "en" ? "PIC" : "Penanggung Jawab"}</th>
+                        <SortTh label={locale === "en" ? "Items" : "Item"} sortKey="item" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} />
+                        <SortTh label={locale === "en" ? "Used" : "Terisi"} sortKey="terisi" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} />
+                        <SortTh label={locale === "en" ? "Capacity" : "Kapasitas"} sortKey="kapasitas" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} />
+                        <th className="th">{locale === "en" ? "Utilisation" : "Utilisasi"}</th>
+                        <th className="th">{locale === "en" ? "Status" : "Status"}</th>
+                        <th className="th">{S.thAksi}</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-steel-100">
+                      {whSorted.map((row) => (
+                        <tr key={row.name} className={row.over ? "bg-rose-50/50 hover:bg-surface" : "hover:bg-surface"}>
+                          <td className="td">
+                            <p className="font-medium text-navy-900 truncate" title={row.name}>{row.name}</p>
+                            {row.row?.id && <p className="font-mono text-[11px] text-steel-400">{row.row.id}</p>}
+                          </td>
+                          <td className="td">
+                            {row.row?.type
+                              ? <Badge tone="gray">{String(row.row.type)}</Badge>
+                              : <span className="text-xs text-steel-400">{locale === "en" ? "not registered" : "belum terdaftar"}</span>}
+                          </td>
+                          <td className="td text-steel-600 text-xs truncate" title={String(row.row?.lokasi ?? "")}>{String(row.row?.lokasi ?? "-")}</td>
+                          <td className="td text-steel-600 text-xs truncate" title={String(row.row?.pic ?? "")}>{String(row.row?.pic ?? "-")}</td>
+                          <td className="td font-medium text-navy-900">{row.items.length}</td>
+                          <td className="td font-medium text-navy-900">{fmtJumlah(row.used)}</td>
+                          <td className="td font-medium text-navy-900">
+                            {row.capacity > 0 ? fmtJumlah(row.capacity) : <span className="text-xs text-steel-400">{locale === "en" ? "not set" : "belum diisi"}</span>}
+                          </td>
+                          <td className="td min-w-40">
+                            {row.pct === null ? (
+                              <p className="text-[11px] text-steel-400">{locale === "en" ? "No limit" : "Tanpa batas"}</p>
+                            ) : (
+                              <>
+                                <ProgressBar value={row.pct} tone={row.tone} />
+                                <p className="mt-1 text-[11px] text-steel-500">
+                                  {row.pct}%{row.over && (
+                                    <span className="ml-1 font-medium text-rose-600">
+                                      ({locale === "en" ? "over" : "melebihi"} {fmtJumlah(row.used - row.capacity)})
+                                    </span>
+                                  )}
+                                </p>
+                              </>
+                            )}
+                          </td>
+                          <td className="td">
+                            {row.row
+                              ? (row.row.aktif === false
+                                ? <Badge tone="gray">{locale === "en" ? "Inactive" : "Nonaktif"}</Badge>
+                                : <Badge tone="green">{locale === "en" ? "Active" : "Aktif"}</Badge>)
+                              : <Badge tone="amber">{locale === "en" ? "Unregistered" : "Belum daftar"}</Badge>}
+                          </td>
+                          <td className="td">
+                            <div className="flex gap-1">
+                              <button
+                                className="rounded-lg p-1.5 text-steel-500 hover:bg-steel-100"
+                                title={locale === "en" ? "Edit warehouse" : "Ubah gudang"}
+                                aria-label={`${locale === "en" ? "Edit" : "Ubah"} ${row.name}`}
+                                onClick={() => openWhEdit(row)}
+                              >
+                                <Pencil className="h-4 w-4" />
+                              </button>
+                              <button
+                                className="rounded-lg p-1.5 text-rose-600 hover:bg-rose-50"
+                                title={locale === "en" ? "Delete warehouse" : "Hapus gudang"}
+                                aria-label={`${locale === "en" ? "Delete" : "Hapus"} ${row.name}`}
+                                onClick={() => setDelWh(row)}
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                      {whSorted.length === 0 && (
+                        <tr><td colSpan={10} className="px-3 py-8 text-center text-sm text-steel-400">
+                          {locale === "en" ? "No warehouses yet. Add one to start tracking capacity." : "Belum ada gudang. Tambah dulu untuk mulai melacak kapasitas."}
+                        </td></tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </Card>
+
+              {/* ==== KARTU RINCIAN STOK PER GUDANG ==== */}
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
+              {warehouseRows.map((row) => {
+                const items = row.items;
+                const gq = (gudangQ[row.name] ?? "").trim().toLowerCase();
                 const shown = gq ? items.filter((i) => `${i.name} ${i.sku} ${binOf(i)}`.toLowerCase().includes(gq)) : items;
                 return (
-                  <Card key={w} className="p-4">
-                    <h3 className="mb-2 text-sm font-semibold text-navy-900 truncate" title={w}>{w}</h3>
-                    <p className="text-xs text-steel-500">{items.length} item · {fmtJumlah(items.reduce((s, i) => s + Number(i.stock || 0), 0))} unit</p>
-                    {warehouseCap?.[w] != null && (() => {
-                      const used = items.reduce((s, i) => s + Number(i.stock || 0), 0);
-                      const cap = Number(warehouseCap[w]);
-                      const pct = cap > 0 ? Math.min(100, Math.round((used / cap) * 100)) : 0;
-                      return (
-                        <div className="mt-2">
-                          <ProgressBar value={pct} tone={pct >= 90 ? "red" : pct >= 70 ? "amber" : "navy"} />
-                          <p className="mt-1 text-[11px] text-steel-500">
-                            {locale === "en" ? "Capacity" : "Kapasitas"}: {fmtJumlah(used)} / {fmtJumlah(cap)} ({pct}%)
-                          </p>
-                        </div>
-                      );
-                    })()}
+                  <Card key={row.name} className="p-4">
+                    <div className="flex items-start justify-between gap-2">
+                      <h3 className="text-sm font-semibold text-navy-900 truncate" title={row.name}>{row.name}</h3>
+                      <div className="flex shrink-0 gap-1">
+                        <button
+                          className="rounded-lg p-1 text-steel-400 hover:bg-steel-100 hover:text-navy-700"
+                          title={locale === "en" ? "Edit warehouse" : "Ubah gudang"}
+                          aria-label={`${locale === "en" ? "Edit" : "Ubah"} ${row.name}`}
+                          onClick={() => openWhEdit(row)}
+                        >
+                          <Pencil className="h-3.5 w-3.5" />
+                        </button>
+                        <button
+                          className="rounded-lg p-1 text-steel-400 hover:bg-rose-50 hover:text-rose-600"
+                          title={locale === "en" ? "Delete warehouse" : "Hapus gudang"}
+                          aria-label={`${locale === "en" ? "Delete" : "Hapus"} ${row.name}`}
+                          onClick={() => setDelWh(row)}
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
+                    </div>
+                    <p className="text-xs text-steel-500">{items.length} item · {fmtJumlah(row.used)} unit{row.row?.lokasi ? ` · ${String(row.row.lokasi)}` : ""}</p>
+                    {row.pct !== null && (
+                      <div className="mt-2">
+                        <ProgressBar value={row.pct} tone={row.tone} />
+                        <p className="mt-1 text-[11px] text-steel-500">
+                          {locale === "en" ? "Capacity" : "Kapasitas"}: {fmtJumlah(row.used)} / {fmtJumlah(row.capacity)} ({row.pct}%)
+                          {row.over && <span className="ml-1 font-medium text-rose-600">{locale === "en" ? "over limit" : "melebihi batas"}</span>}
+                        </p>
+                      </div>
+                    )}
+                    {row.pct === null && (
+                      <button className="btn-secondary mt-2 !py-1 text-[11px]" onClick={() => openWhEdit(row)}>
+                        {locale === "en" ? "Set capacity" : "Tentukan kapasitas"}
+                      </button>
+                    )}
                     <div className="relative mt-2">
                       <Search className="absolute left-2.5 top-2 h-3.5 w-3.5 text-steel-400" />
-                      <input className="input pl-8 !py-1.5 text-xs" placeholder={S.anSearchPh} aria-label={`${S.anSearchPh} ${w}`} value={gudangQ[w] ?? ""} onChange={(e) => setGudangQ((m) => ({ ...m, [w]: e.target.value }))} />
+                      <input className="input pl-8 !py-1.5 text-xs" placeholder={S.anSearchPh} aria-label={`${S.anSearchPh} ${row.name}`} value={gudangQ[row.name] ?? ""} onChange={(e) => setGudangQ((m) => ({ ...m, [row.name]: e.target.value }))} />
                     </div>
                     <div className="mt-3 max-h-64 space-y-1.5 overflow-y-auto pr-1">
                       {shown.map((i) => {
-                        const whMin = minWhOf(i, w);
-                        const thin = Number(i.stock) <= whMin;
+                        /* Badge memakai klasifikasi kategori (bukan stock<=min polos)
+                           dan minimum per-gudang bila tersedia. */
+                        const whMin = minWhOf(i, row.name);
+                        const lv = warnLevelOf(i, row.name).level;
                         return (
                           <div key={i.id} className="flex items-center justify-between gap-2 text-sm">
                             <span className="text-steel-600 truncate" title={`${String(i.name)} · rak ${rackText(i)} · bin ${binOf(i) || "-"} · min gudang ${fmtJumlah(whMin)}`}>{i.name}{binOf(i) ? <span className="font-mono text-xs text-steel-400"> · {binOf(i)}</span> : null}</span>
                             <span className="flex shrink-0 items-center gap-1.5 font-medium">
-                              {thin && <Badge tone="red">Menipis</Badge>}
+                              {(lv === "critical" || lv === "low") && (
+                                <Badge tone={lv === "critical" ? "red" : "amber"} title={locale === "en" ? `Minimum for this warehouse: ${whMin}` : `Minimum gudang ini: ${fmtJumlah(whMin)}`}>
+                                  {lv === "critical" ? (locale === "en" ? "Critical" : "Kritis") : (locale === "en" ? "Low" : "Menipis")}
+                                </Badge>
+                              )}
                               {fmtJumlah(Number(i.stock))}
                             </span>
                           </div>
                         );
                       })}
+                      {shown.length === 0 && (
+                        <p className="py-3 text-center text-xs text-steel-400">
+                          {gq ? (locale === "en" ? "No match" : "Tidak ada yang cocok") : (locale === "en" ? "No items stored" : "Belum ada barang")}
+                        </p>
+                      )}
                     </div>
                     {gq && <p className="mt-1 text-[11px] text-steel-400">{shown.length} / {items.length}</p>}
                   </Card>
                 );
               })}
+              </div>
             </div>
           )}
 
@@ -1914,29 +2361,74 @@ export default function Inventory() {
               <div className="overflow-x-auto">
                 <table className="w-full">
                   <thead className="bg-surface sticky top-0 z-10">
-                    <tr><SortTh label={S.thTx} sortKey="transaksi" sort={sort3} onSort={(k) => setSort3((s) => toggleSort(s, k))} /><SortTh label={S.itemLbl} sortKey="item" sort={sort3} onSort={(k) => setSort3((s) => toggleSort(s, k))} /><SortTh label={S.thType} sortKey="tipe" sort={sort3} onSort={(k) => setSort3((s) => toggleSort(s, k))} /><SortTh label={S.jumlahLbl} sortKey="jumlah" sort={sort3} onSort={(k) => setSort3((s) => toggleSort(s, k))} /><SortTh label={S.thRef} sortKey="referensi" sort={sort3} onSort={(k) => setSort3((s) => toggleSort(s, k))} /><SortTh label={S.thInfo} sortKey="info" sort={sort3} onSort={(k) => setSort3((s) => toggleSort(s, k))} /><SortTh label={locale === "en" ? "Warehouse from/to" : "Gudang asal/tujuan"} sortKey="gudang" sort={sort3} onSort={(k) => setSort3((s) => toggleSort(s, k))} /><SortTh label={S.thTotalCol} sortKey="total" sort={sort3} onSort={(k) => setSort3((s) => toggleSort(s, k))} /><SortTh label={S.dateLbl} sortKey="tanggal" sort={sort3} onSort={(k) => setSort3((s) => toggleSort(s, k))} /><th className="th">{S.thAksi}</th></tr>
+                    <tr><SortTh label={S.thTx} sortKey="transaksi" sort={sort3} onSort={(k) => setSort3((s) => toggleSort(s, k))} /><SortTh label={S.itemLbl} sortKey="item" sort={sort3} onSort={(k) => setSort3((s) => toggleSort(s, k))} /><SortTh label={S.thType} sortKey="tipe" sort={sort3} onSort={(k) => setSort3((s) => toggleSort(s, k))} /><SortTh label={S.jumlahLbl} sortKey="jumlah" sort={sort3} onSort={(k) => setSort3((s) => toggleSort(s, k))} /><SortTh label={locale === "en" ? "From warehouse" : "Dari Gudang"} sortKey="dari" sort={sort3} onSort={(k) => setSort3((s) => toggleSort(s, k))} /><SortTh label={locale === "en" ? "To warehouse" : "Ke Gudang"} sortKey="ke" sort={sort3} onSort={(k) => setSort3((s) => toggleSort(s, k))} /><SortTh label={locale === "en" ? "Detail" : "Detail Transaksi"} sortKey="info" sort={sort3} onSort={(k) => setSort3((s) => toggleSort(s, k))} /><SortTh label={S.thRef} sortKey="referensi" sort={sort3} onSort={(k) => setSort3((s) => toggleSort(s, k))} /><SortTh label={S.thTotalCol} sortKey="total" sort={sort3} onSort={(k) => setSort3((s) => toggleSort(s, k))} /><SortTh label={S.dateLbl} sortKey="tanggal" sort={sort3} onSort={(k) => setSort3((s) => toggleSort(s, k))} /><th className="th">{S.thAksi}</th></tr>
                   </thead>
                   <tbody className="divide-y divide-steel-100">
-                    {movPager.slice(movSorted).map((m) => (
+                    {movPager.slice(movSorted).map((m) => {
+                      /* Kolom "Dari Gudang" / "Ke Gudang" DIPISAH, bukan satu
+                         string gabungan. movementFlow() memecah baris mutasi
+                         jadi dua endpoint:
+                           - Barang Masuk  : dari = Supplier, ke = gudang tujuan
+                           - Barang Keluar : dari = gudang,        ke = tujuan pakai
+                           - Transfer     : dari = gudang asal,   ke = gudang tujuan
+                           - Opname       : dari = ke = gudang itu sendiri
+                         Supaya rekonsiliasi stok per gudang bisa dibaca langsung
+                         dari tabel tanpa perlu paham format "A -> B". */
+                      const flow = movementFlow(m);
+                      const tipe = String(m.type ?? "");
+                      const tipeLabel = moveLabel(m.type);
+                      return (
                       <tr key={m.id} className="hover:bg-surface">
                         <td className="td font-mono font-medium text-navy-900">{m.id}</td>
                         <td className="td text-steel-600 truncate" title={String(m.item)}>{m.item}</td>
                         <td className="td">
-                          <span title={grGiTip(String(m.type ?? ""), locale)}>
+                          <span title={grGiTip(tipe, locale)}>
                             <Badge tone={moveTone(m.type, m.tone)}>
-                              {moveLabel(m.type)}
+                              {tipeLabel}
                             </Badge>
                           </span>
                         </td>
                         <td className="td font-semibold">{fmtJumlah(Number(m.qty))}</td>
-                        <td className="td font-mono text-xs text-steel-600 truncate" title={String(m.by)}>{m.by}</td>
+                        {/* --- DARI GUDANG --- */}
+                        <td className="td text-xs">
+                          {flow.from !== "" ? (
+                            <>
+                              <p className="truncate font-medium text-navy-900" title={flow.from}>{flow.from}</p>
+                              {flow.from.startsWith("Supplier:") && (
+                                <p className="text-[11px] text-steel-400">{locale === "en" ? "external" : "eksternal"}</p>
+                              )}
+                            </>
+                          ) : (
+                            <span className="text-steel-400" title={locale === "en" ? "Not applicable for this movement type" : "Tidak berlaku untuk tipe mutasi ini"}>-</span>
+                          )}
+                        </td>
+                        {/* --- KE GUDANG --- */}
+                        <td className="td text-xs">
+                          {flow.to !== "" ? (
+                            <>
+                              <p className="truncate font-medium text-navy-900" title={flow.to}>{flow.to}</p>
+                              <p className="text-[11px] text-steel-400">
+                                {flow.internal
+                                  ? (locale === "en" ? "internal" : "internal")
+                                  : (locale === "en" ? "issued" : "keluar")}
+                              </p>
+                            </>
+                          ) : (
+                            <span className="text-steel-400" title={locale === "en" ? "Not recorded" : "Tidak tercatat"}>-</span>
+                          )}
+                        </td>
+                        {/* --- DETAIL TRANSAKSI --- */}
                         <td className="td text-xs text-steel-600">
-                          {m.supplier ? <p className="truncate" title={String(m.supplier)}>{m.supplier}</p> : null}
+                          <p className="font-medium text-navy-900" title={tipeLabel}>{tipeLabel}</p>
+                          {m.supplier ? <p className="truncate" title={String(m.supplier)}>{locale === "en" ? "Supplier" : "Supplier"}: {m.supplier}</p> : null}
                           {m.purpose ? <p className="truncate" title={String(m.purpose)}>U: {m.purpose}</p> : null}
                           {m.pic ? <p className="truncate" title={String(m.pic)}>PIC: {m.pic}</p> : null}
-                          {!m.supplier && !m.purpose && !m.pic ? "-" : null}
+                          {m.keterangan ? <p className="truncate italic" title={String(m.keterangan)}>{m.keterangan}</p> : null}
+                          {!m.supplier && !m.purpose && !m.pic && !m.keterangan ? (
+                            <span className="text-steel-400">-</span>
+                          ) : null}
                         </td>
-                        <td className="td text-xs text-steel-600 truncate" title={whFlowOf(m)}>{whFlowOf(m)}</td>
+                        <td className="td font-mono text-xs text-steel-600 truncate" title={String(m.by)}>{m.by}</td>
                         <td className="td text-xs font-semibold">{Number(m.total) ? fmtRupiah(Number(m.total)) : "-"}</td>
                         <td className="td text-steel-600">{fmtTanggal(m.date)}</td>
                         <td className="td">
@@ -1946,7 +2438,8 @@ export default function Inventory() {
                           </div>
                         </td>
                       </tr>
-                    ))}
+                      );
+                    })}
                   </tbody>
                 </table>
                 {movPager.bar}
@@ -2180,6 +2673,85 @@ export default function Inventory() {
 
           {tab === "Analisis" && (
             <div className="space-y-4">
+              {/* ==== KLASIFIKASI WARNING PER KATEGORI ====
+                  Pindah dari Katalog ke sini. Di Katalog hanya ada strip
+                  satu baris; daftar lengkap + alasan ambang per kategori ada
+                  di card ini, supaya alarm tidak lagi sekadar "ada satu item
+                  menipis" tapi "kategori Baja punya 3 kritis & 5 menipis
+                  karena lead time 45 hari". */}
+              <Card className="p-5">
+                <CardHeader
+                  title={locale === "en" ? "Warning by category" : "Warning per Kategori Barang"}
+                  subtitle={
+                    locale === "en"
+                      ? "Thresholds differ per category: long lead-time items warn earlier, service items are excluded (no physical stock)."
+                      : "Ambang berbeda per kategori: barang lead time panjang diperingatan lebih awal, kategori jasa dikecualikan (tanpa stok fisik)."
+                  }
+                />
+                {warnByCat.length === 0 ? (
+                  <p className="mt-3 rounded-lg bg-emerald-50 px-3 py-3 text-center text-sm text-emerald-700">
+                    {locale === "en"
+                      ? "All categories are within their thresholds. No warning."
+                      : "Semua kategori dalam ambang. Tidak ada warning."}
+                  </p>
+                ) : (
+                  <div className="mt-3 space-y-3">
+                    {warnByCat.map((c) => (
+                      <div key={c.category} className="rounded-xl border border-steel-200 p-3">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => { setCat(c.category); setTab("Katalog"); }}
+                            className="text-sm font-semibold text-navy-900 hover:underline"
+                          >
+                            {c.category}
+                          </button>
+                          <Badge tone={c.top === "critical" ? "red" : c.top === "low" ? "amber" : c.top === "overstock" ? "blue" : "gray"}>
+                            {locale === "en"
+                              ? `${c.counts.critical} critical / ${c.counts.low} low / ${c.counts.overstock} over`
+                              : `${c.counts.critical} kritis / ${c.counts.low} menipis / ${c.counts.overstock} berlebih`}
+                          </Badge>
+                          <span className="text-[11px] text-steel-400">
+                            {locale === "en"
+                              ? `lead time ${c.leadTimeDays}d · ${c.total} items total`
+                              : `lead time ${c.leadTimeDays} hari · total ${c.total} item`}
+                          </span>
+                        </div>
+                        <div className="mt-2 flex items-center gap-3">
+                          <ProgressBar
+                            value={Math.round((c.counts.critical / Math.max(1, c.total)) * 100)}
+                            tone={c.counts.critical > 0 ? "red" : "amber"}
+                            className="flex-1"
+                          />
+                          <span className="shrink-0 text-[11px] text-steel-500">
+                            {fmtPersen((c.counts.critical / Math.max(1, c.total)) * 100)}
+                          </span>
+                        </div>
+                        {c.urgent.length > 0 && (
+                          <ul className="mt-2 space-y-0.5">
+                            {c.urgent.map((it) => {
+                              const lv = warnLevelOf(it);
+                              return (
+                                <li key={it.id} className="flex items-center justify-between gap-2 text-xs">
+                                  <span className="truncate text-steel-600" title={String(it.name)}>{it.name}</span>
+                                  <span className="flex shrink-0 items-center gap-1.5">
+                                    <Badge tone={lv.tone}>
+                                      {locale === "en" ? lv.labelEn : lv.label}
+                                    </Badge>
+                                    <span className="text-steel-400">
+                                      {fmtJumlah(Number(it.stock))} / {fmtJumlah(effectiveMinStock(it))} {it.unit}
+                                    </span>
+                                  </span>
+                                </li>
+                              );
+                            })}
+                          </ul>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </Card>
               <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
                 <Card className="p-5">
                   <CardHeader title={S.slowT} subtitle={S.slowS} />
@@ -2201,28 +2773,89 @@ export default function Inventory() {
                   </div>
                 </Card>
                 <Card className="p-5">
-                  <CardHeader title={locale === "en" ? "Dead stock + reason" : "Dead stock + alasan"} subtitle={locale === "en" ? "Why dead: pick a reason per item" : "Kenapa mati: pilih alasan per item"} />
-                  <div className="relative mt-2">
+                  <CardHeader
+                    title={locale === "en" ? "Dead stock - reason label" : "Dead Stock - Badge Alasan"}
+                    subtitle={
+                      locale === "en"
+                        ? "Each item carries a coded reason badge with impact level and follow-up hint."
+                        : "Setiap item punya badge alasan berkode + tingkat dampak + saran tindak lanjut."
+                    }
+                  />
+                  {/* Ringkasan per alasan - ini yang membuat alasannya bisa
+                      dihitung ("5 item mati karena Proyek Dibatalkan"), bukan
+                      sekadar teks yang hilang setelah dibaca. */}
+                  {deadSummary.length > 0 && (
+                    <div className="mt-2 flex flex-wrap gap-1.5">
+                      {deadSummary.map((s) => (
+                        <span key={s.reason.code} className="inline-flex items-center gap-1.5 rounded-full border border-steel-200 bg-steel-50 px-2 py-0.5 text-[11px]">
+                          <Badge tone={deadImpactTone(s.reason.impact)}>{locale === "en" ? s.reason.labelEn : s.reason.label}</Badge>
+                          <span className="font-semibold text-navy-900">{s.count}</span>
+                          <span className="text-steel-400">·</span>
+                          <span className="text-steel-500">{fmtRupiah(s.value)}</span>
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                  <div className="relative mt-3">
                     <Search className="absolute left-2.5 top-2 h-3.5 w-3.5 text-steel-400" />
                     <input className="input pl-8 !py-1.5 text-xs" placeholder={S.anSearchPh} aria-label={S.anSearchPh} value={deadQ} onChange={(e) => setDeadQ(e.target.value)} />
                   </div>
                   <div className="mt-2 max-h-96 space-y-2 overflow-y-auto pr-1">
                     {deadShown.length === 0 && <p className="py-4 text-center text-sm text-steel-400">{S.deadEmpty}</p>}
-                    {deadShown.map((i) => (
-                      <div key={i.id} className="flex items-center justify-between gap-3 border-b border-steel-100 py-2 text-sm">
-                        <div className="min-w-0">
-                          <p className="truncate font-medium text-navy-900" title={String(i.name)}>{i.name}</p>
-                          <p className="text-xs text-steel-400">Stok {fmtJumlah(Number(i.stock))} {i.unit} · {fmtRupiah(Number(i.stock) * effCost(i))}</p>
+                    {deadShown.map((row) => {
+                      const it = row.item;
+                      return (
+                        <div key={it.id} className="flex items-start justify-between gap-3 border-b border-steel-100 py-2 text-sm">
+                          <div className="min-w-0">
+                            <p className="truncate font-medium text-navy-900" title={String(it.name)}>{it.name}</p>
+                            <p className="text-xs text-steel-400">
+                              {locale === "en" ? "Stock" : "Stok"} {fmtJumlah(Number(it.stock))} {it.unit} · {fmtRupiah(row.value)}
+                              {it.warehouse ? ` · ${it.warehouse}` : ""}
+                            </p>
+                            {row.note !== "" && (
+                              <p className="mt-0.5 text-xs italic text-steel-500" title={row.note}>
+                                {locale === "en" ? "Note" : "Ket"}: {row.note}
+                              </p>
+                            )}
+                          </div>
+                          <div className="flex shrink-0 flex-col items-end gap-1">
+                            {/* Badge alasan = classify, bukan teks polos.
+                                `title` memuat saran tindak lanjut supaya alasan
+                                itu punya konsekuensi, bukan sekadar label. */}
+                            <Badge
+                              tone={deadImpactTone(row.reason.impact)}
+                              title={
+                                locale === "en"
+                                  ? `${row.reason.hintEn} (${row.reason.action})`
+                                  : `${row.reason.hint} (${row.reason.action})`
+                              }
+                            >
+                              {locale === "en" ? row.reason.labelEn : row.reason.label}
+                            </Badge>
+                            {!row.manual && (
+                              <Badge tone="gray" title={locale === "en" ? "Reason derived from stock movement; override it if you know better." : "Alasan diturunkan dari mutasi stok. Ubah bila ada informasi lain."}>
+                                {locale === "en" ? "auto" : "otomatis"}
+                              </Badge>
+                            )}
+                            <select
+                              className="input !w-auto !py-1 text-[11px]"
+                              value={row.reason.code}
+                              onChange={(e) => {
+                                const picked = DEAD_REASONS.find((r) => r.code === e.target.value);
+                                if (picked) void saveDeadReason(it, picked);
+                              }}
+                              aria-label={`${locale === "en" ? "Dead stock reason" : "Alasan dead stock"} ${it.name}`}
+                            >
+                              {DEAD_REASONS.map((r) => (
+                                <option key={r.code} value={r.code}>
+                                  {locale === "en" ? r.labelEn : r.label}
+                                </option>
+                              ))}
+                            </select>
+                          </div>
                         </div>
-                        <span className="flex shrink-0 flex-col items-end gap-1">
-                          <Badge tone="red">{locale === "en" ? "Dead" : "Mati"}</Badge>
-                          <select className="input !w-auto !py-1 text-[11px]" value={String((i as Record<string, unknown>).deadReason ?? deadReason(i))} onChange={(e) => { void update("inventory", i.id, { deadReason: e.target.value }); }} aria-label={`Alasan dead stock ${i.name}`}>
-                            {DEAD_REASONS.map((r) => <option key={r} value={r}>{r}</option>)}
-                            {![...DEAD_REASONS].includes(String((i as Record<string, unknown>).deadReason ?? "") as never) && String((i as Record<string, unknown>).deadReason ?? "") ? <option value={String((i as Record<string, unknown>).deadReason)}>{String((i as Record<string, unknown>).deadReason)}</option> : null}
-                          </select>
-                        </span>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 </Card>
               </div>
@@ -2659,6 +3292,137 @@ export default function Inventory() {
           onDetect={(v) => { setQ(v); setShowScan(false); toast(S.scanResult.replace("{n}", v)); }}
         />
       )}
+
+      {/* ==== MODAL CRUD GUDANG ==== */}
+      <Modal
+        open={showWh}
+        onClose={closeWh}
+        title={
+          whEditing
+            ? (locale === "en" ? `Edit warehouse - ${whForm.name}` : `Ubah Gudang - ${whForm.name}`)
+            : (locale === "en" ? "New warehouse" : "Tambah Gudang")
+        }
+        subtitle={
+          locale === "en"
+            ? "Name is the key: inventory and movements reference warehouses by name."
+            : "Nama adalah kunci: item dan mutasi menunjuk gudang berdasarkan nama."
+        }
+        footer={
+          <>
+            <button className="btn-secondary" onClick={closeWh}>{locale === "en" ? "Cancel" : "Batal"}</button>
+            <AsyncButton className="btn-primary" onAction={saveWh}>
+              {locale === "en" ? "Save" : "Simpan"}
+            </AsyncButton>
+          </>
+        }
+      >
+        <div className="space-y-3">
+          <FormGrid>
+            <Field label={locale === "en" ? "Name" : "Nama Gudang"}>
+              <input
+                className="input"
+                value={whForm.name}
+                placeholder="Gudang Baja A"
+                onChange={(e) => setWhForm({ ...whForm, name: e.target.value })}
+              />
+            </Field>
+            <Field label={locale === "en" ? "Type" : "Jenis Barang"}>
+              <select
+                className="input"
+                value={whForm.type}
+                onChange={(e) => setWhForm({ ...whForm, type: e.target.value })}
+              >
+                <option value="">{locale === "en" ? "-- pick --" : "-- pilih --"}</option>
+                {WAREHOUSE_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
+              </select>
+            </Field>
+            <Field
+              label={locale === "en" ? "Capacity (mixed units)" : "Kapasitas (satuan tercampur)"}
+              hint={
+                locale === "en"
+                  ? "Leave 0 for no limit. Used only for the utilisation bar."
+                  : "Isi 0 bila tanpa batas. Dipakai hanya untuk bar utilisasi."
+              }
+            >
+              <NumInput
+                min={0}
+                className="input"
+                value={whForm.capacity}
+                placeholder="0"
+                onChange={(e) => setWhForm({ ...whForm, capacity: e.target.value })}
+              />
+            </Field>
+            <Field label={locale === "en" ? "Location" : "Lokasi"}>
+              <input
+                className="input"
+                value={whForm.lokasi}
+                placeholder="Area A - Dek Kiri"
+                onChange={(e) => setWhForm({ ...whForm, lokasi: e.target.value })}
+              />
+            </Field>
+            <Field label={locale === "en" ? "Person in charge" : "Penanggung Jawab"}>
+              <input
+                className="input"
+                value={whForm.pic}
+                placeholder="Agus Setiawan"
+                onChange={(e) => setWhForm({ ...whForm, pic: e.target.value })}
+              />
+            </Field>
+            <Field label={locale === "en" ? "Status" : "Status"}>
+              <label className="flex h-10 items-center gap-2 text-sm text-navy-900">
+                <input
+                  type="checkbox"
+                  checked={whForm.aktif}
+                  onChange={(e) => setWhForm({ ...whForm, aktif: e.target.checked })}
+                />
+                {locale === "en" ? "Active" : "Aktif"}
+              </label>
+            </Field>
+          </FormGrid>
+          <p className="rounded-lg bg-steel-50 px-3 py-2 text-xs text-steel-500">
+            {locale === "en"
+              ? "Changing the name does not move stored items. Items keep their own warehouse field; move them with Transfer first if you need to rename."
+              : "Mengubah nama tidak memindahkan barang tersimpan. Item tetap pada kolom gudangnya; pindahkan lewat Transfer bila perlu mengganti nama."}
+          </p>
+        </div>
+      </Modal>
+
+      <ConfirmModal
+        open={delWh !== null}
+        title={delWh ? (locale === "en" ? `Delete warehouse ${delWh.name}?` : `Hapus gudang ${delWh.name}?`) : ""}
+        desc={(() => {
+          if (!delWh) return "";
+          const name = String(delWh.name ?? "");
+          const items = inventory.filter((i) => sameName(i.warehouse, name));
+          const moves = movements.filter((m) => {
+            const f = movementFlow(m);
+            return sameName(f.from.replace(/^Supplier:\s*/i, ""), name) || sameName(f.to, name);
+          });
+          if (items.length > 0 || moves.length > 0) {
+            return locale === "en"
+              ? `Blocked: ${items.length} item(s) and ${moves.length} movement(s) still point at this warehouse. Deactivate it instead so history stays intact.`
+              : `Diblokir: masih ada ${items.length} item dan ${moves.length} mutasi yang menunjuk gudang ini. Nonaktifkan saja agar riwayat tetap utuh.`;
+          }
+          return locale === "en"
+            ? "The warehouse record will be permanently deleted."
+            : "Data gudang akan dihapus permanen.";
+        })()}
+        confirmLabel={locale === "en" ? "Delete" : "Hapus"}
+        danger
+        confirmDisabled={(() => {
+          if (!delWh) return true;
+          const name = String(delWh.name ?? "");
+          return (
+            inventory.some((i) => sameName(i.warehouse, name))
+            || movements.some((m) => {
+              const f = movementFlow(m);
+              return sameName(f.from.replace(/^Supplier:\s*/i, ""), name) || sameName(f.to, name);
+            })
+          );
+        })()}
+        onCancel={() => setDelWh(null)}
+        onConfirm={confirmDelWh}
+      />
 
       <ConfirmModal
         open={delInv !== null}

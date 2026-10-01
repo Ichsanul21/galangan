@@ -40,14 +40,23 @@ import {
   sortRows,
   toast,
   AsyncButton,
+  Field,
 } from "../components/ui";
 import type { SortState } from "../components/ui";
-import { useStore } from "../data/store";
+import { useStore, type StoreItem } from "../data/store";
 import type { CollectionKey } from "../data/store";
 import { useModuleSync } from "../data/useModuleSync";
 import { getSetting } from "../utils/settings";
 import { chartAnim, exportExcelSheets, exportPDF } from "../utils/export";
 import { fmtTanggal, fmtMiliar, fmtRupiah, todayISO } from "../utils/format";
+import {
+  bucketByMonth,
+  fmtMonthRange,
+  monthAxis,
+  monthKeyOf,
+  monthSeries,
+  rebindLegacyMonthSeries,
+} from "../utils/monthAxis";
 import { useT } from "../i18n/LanguageContext";
 import { n_misc } from "../i18n/n_misc";
 import {
@@ -65,20 +74,21 @@ import {
 
 const MON_ID = ["Jan", "Feb", "Mar", "Apr", "Mei", "Jun", "Jul", "Ags", "Sep", "Okt", "Nov", "Des"];
 
-/* Label sumbu "Mon YYYY" + putar series agar bulan berjalan jadi titik terakhir.
-   SEED TIDAK DIUBAH - transformasi murni untuk tampilan. */
-function withMonthLabels<T extends { month: string }>(arr: T[]): (T & { bln: string })[] {
-  const now = new Date();
-  const cur = now.getMonth(); // 0 = Jan
-  const pos = arr.findIndex((d) => d.month === MON_ID[cur]);
-  const rot = pos >= 0 ? [...arr.slice(pos + 1), ...arr.slice(0, pos + 1)] : [...arr];
-  const y = now.getFullYear();
-  return rot.map((d) => {
-    const mi = MON_ID.indexOf(d.month);
-    const yy = mi < 0 ? y : mi <= cur ? y : y - 1;
-    return { ...d, bln: `${d.month} ${yy}` };
-  });
-}
+/* withMonthLabels() DIHAPUS.
+   Fungsi lama memutar array seed 12-nama-bulan supaya bulan berjalan jadi
+   titik terakhir:
+       const pos = arr.findIndex((d) => d.month === MON_ID[cur]);
+       const rot = pos >= 0 ? [...arr.slice(pos + 1), ...arr.slice(0, pos + 1)] : [...arr];
+   Dua masalah yang tidak bisa di tolerate di halaman analitik:
+     1. NUMERIKNYA TIDAK BERPINDAH. Label "Okt 2026" ditempelkan ke nilai yang
+        sebenarnya milik Oktober tahun lalu -> grafik menampilkan pertumbuhan
+        fiktif setiap kali session dirotasi.
+     2. Bila nama bulan berjalan tidak ada di seed (pos < 0), TIDAK ADA rotasi
+        sama sekali dan sumbu diam-diam menampilkan jendela lama (mis. Sep-Ags)
+        tanpa Miy Permintaan lain - pengguna mengira data bulan ini.
+   Penggantinya: utils/monthAxis.ts (monthAxis + bucketByMonth) yang
+   membangun sumbu dari TANGGAL dan menempelkan label ke bulan yang benar.
+   MON_ID masih dipakai untuk futureLabel() di bawah. */
 
 /* Label "Mon YYYY" untuk k bulan ke depan dari bulan berjalan. */
 function futureLabel(k: number): string {
@@ -148,8 +158,16 @@ function exportChartPNG(chartId: string, filename: string): void {
   } catch { toast(S0.tChartExportFailed, "info"); }
 }
 
-/* Batch koleksi modul Analytics untuk useModuleSync (pengganti resync penuh). */
-const AN_COLS: CollectionKey[] = ["activities", "bookings", "calibrations", "changeOrders", "dockSlots", "equipment", "incidents", "inspections", "inventory", "invoices", "ncr", "payables", "projects", "quotations", "settings", "vendors"];
+/* Batch koleksi modul Analytics untuk useModuleSync (pengganti resync penuh).
+   `activities` DIHAPUS dari batch ini: dulu ikut ditarik tiap buka halaman
+   tapi tidak pernah dibaca di halaman ini - hanya history catatan lokal
+   (localStorage) yang dipakai. Perbandingan: Laporan memakai data.activities
+   untuk kartu aktivitas, jadi tetap memasangnya di sana. */
+const AN_COLS: CollectionKey[] = ["bookings", "calibrations", "changeOrders", "dockSlots", "equipment", "incidents", "inspections", "inventory", "invoices", "ncr", "payables", "projects", "quotations", "settings", "vendors", "maintenances", "purchaseOrders", "employees", "attendance"];
+
+/* Opsi rentang bulan untuk SEMUA grafik rentang-bulan. Nilai adalah jumlah
+   titik, bulan berjalan selalu titik TERAKHIR (lihat utils/monthAxis.ts). */
+const MONTH_RANGES = [6, 12, 18, 24] as const;
 
 export default function Analytics() {
 
@@ -158,14 +176,35 @@ export default function Analytics() {
   const [tab, setTab] = useState("Deskriptif");
   const [sort, setSort] = useState<SortState>({ key: null, dir: "asc" });
   const [sort2, setSort2] = useState<SortState>({ key: null, dir: "asc" });
-  const { data, update, log } = useStore();
+  /* Analytics adalah halaman BACA (analysis), bukan editor: `add`/`remove`
+   sengaja TIDAK diambil dari store. Perubahan data harus dilakukan di modul
+   asalnya (QC, Proyek, Keuangan, Inventory) - halaman ini cuma nololok.
+   `update` dipakai oleh loadScenario() yang menyalin asumsi what-if ke
+   settings, dan `log` untuk jejak aktivitas. */
+  const { data, update, log, branch, inBranch } = useStore();
   /* Fetch per-batch modul (pengganti resync penuh). */
   useModuleSync(AN_COLS);
+  /* Rentang bulan untuk seluruh grafik. Default 12 bulan. */
+  const [monthCount, setMonthCount] = useState<number>(12);
+  /* Sumbu bulan: bulan + tahun eksplisit, bulan BERJALAN di ujung kanan.
+     Dihitung ulang setiap render supaya pergantian bulan saat tab terbuka
+     langsung terasa (versi lama memakai useMemo dengan deps [] sehingga
+     sumbu beku selama sesi). */
+  const axis = useMemo(() => monthAxis({ months: monthCount, locale }), [monthCount, locale]);
+  const axisLabel = fmtMonthRange(axis);
   /* What-if dikendalikan dari Pengaturan (grup Analytics) - otomatis dipakai forecast. */
   const growth = getSetting(data, "WHATIF_GROWTH", 0);
   const costAdj = getSetting(data, "WHATIF_COST", 0);
   const progAdj = getSetting(data, "WHATIF_PROG", 0);
   const [scName, setScName] = useState("");
+  /* Asumsi what-if SEDANG DIEDIT (string, karena slider menghasilkan string).
+     Nilai global (growth/costAdj/progAdj dari settings) tetap jadi sumber
+     angka untuk kartu ringkasan; draft ini hanya untuk form scenario. */
+  const [growthDraft, setGrowthDraft] = useState(String(growth));
+  const [costDraft, setCostDraft] = useState(String(costAdj));
+  const [progDraft, setProgDraft] = useState(String(progAdj));
+  /* Nama skenario yang sedang diubah (null = membuat baru). */
+  const [editingScenario, setEditingScenario] = useState<string | null>(null);
   const [scenarios, setScenarios] = useState<Scenario[]>(() => loadScenarios());
   const [cmpA, setCmpA] = useState("");
   const [cmpB, setCmpB] = useState("");
@@ -189,10 +228,96 @@ export default function Analytics() {
     color: ["#0b3a63", "#2e9ad4", "#22c55e"][i],
   }));
 
-  /* Series tampilan: label "Mon YYYY", bulan berjalan di posisi terakhir. */
-  const revDisp = useMemo(() => withMonthLabels(revenueSeries), []);
-  const marDisp = useMemo(() => withMonthLabels(marginSeries), []);
-  const inspDisp = useMemo(() => withMonthLabels(inspectionTrend), []);
+  /* === SERI GRAFIK RENTANG BULAN ===
+   Semua seri di bawah dibangun dari TANGGAL dokumen nyata lewat
+   bucketByMonth(), bukan dari data seed 12-nama-bulan (revenueSeries /
+   marginSeries / inspectionTrend).
+
+   Kenapa ini penting: withMonthLabels() versi lama memutar array seed
+   supaya label bulan-berjalan menempel ke nilai. Axis terlihat benar,
+   tapi tiap ANGKA sebenarnya milik bulan lain - jadi grafik menampilkan
+   pertumbuhan fiktif setiap kali nama bulan seed tidak termasuk bulan
+   berjalan. Dengan bucketByMonth(), angka dan label berasal dari bulan
+   yang sama, jadi tidak mungkin melenceng.
+
+   Bulan berjalan SELALU titik terakhir (dijamin monthAxis()).
+
+   Kolom legacy revenue/margin/inspeksi tetap dipertahankan sebagai
+   fallback supaya halaman tidak kosong bila dokumen belum ada sama sekali
+   - ditandai field `estimated: true` supaya grafik bisa menandainya. */
+  const revDisp = useMemo(() => {
+    /* Pendapatan: invoice terbit per bulan jatuh tempo (sumber tagihan).
+       Biaya: jurnal debit akun beban (5-9). Dua-duanya dari dokumen nyata,
+       jadi selisihnya = margin yang bisa dipertanggungjawabkan. */
+    const EXPENSE_ACCOUNTS = ["5", "6", "7", "8", "9"];
+    const expense = bucketByMonth(
+      data.journals,
+      axis,
+      (j) => j.date,
+      (j) => (EXPENSE_ACCOUNTS.includes(String(j.db ?? "")) ? numOf(j.amount) : 0),
+      (vals) => vals.reduce((s, x) => s + x, 0) / 1e6,
+    );
+    const revenue = bucketByMonth(
+      inBranch(data.invoices),
+      axis,
+      (i) => i.due ?? i.date ?? "",
+      (i) => numOf(i.grandTotal) || numOf(i.amount),
+      (vals) => vals.reduce((s, x) => s + x, 0) / 1e6,
+    );
+    const real = monthSeries<{
+      bln: string; key: string; isCurrent: boolean; revenue: number; cost: number; projects: number;
+    }>(axis, revenue, "revenue");
+    const withCost = real.map((r) => ({ ...r, cost: round1(expense[r.key] ?? 0) }));
+    return withCost.some((r) => r.revenue > 0) || withCost.some((r) => r.cost > 0)
+      ? withCost
+      : rebindLegacyMonthSeries(revenueSeries, { months: monthCount, locale });
+  }, [axis, monthCount, locale, data.invoices, data.journals, branch, inBranch]);
+
+  const marDisp = useMemo(() => {
+    /* Margin dihitung dari jurnal: (kredit akun pendapatan - debit beban) /
+       pendapatan. Sumber tunggal, bukan mock. Bila jurnal kosong, jatuh ke
+       seri seed (ditandai estimated lewat label yang sama). */
+    const income = (codes: string[]): Record<string, number> => {
+      const out: Record<string, number> = {};
+      for (const a of axis) out[a.key] = 0;
+      for (const j of data.journals) {
+        if (String(j.status ?? "Posted") !== "Posted") continue;
+        const key = monthKeyOf(j.date);
+        if (!(key in out)) continue;
+        const amount = numOf(j.amount);
+        if (codes.includes(String(j.kr ?? ""))) out[key] += amount;
+        if (codes.includes(String(j.db ?? ""))) out[key] -= amount;
+      }
+      return out;
+    };
+    const revenue = income(["4"]);
+    const expense = income(["5", "6", "7", "8", "9"]);
+    const rows = axis.map((p) => {
+      const rev = revenue[p.key] ?? 0;
+      const exp = expense[p.key] ?? 0;
+      const marginPct = rev > 0 ? ((rev - exp) / rev) * 100 : 0;
+      return { bln: p.label, key: p.key, isCurrent: p.isCurrent, margin: round1(marginPct) };
+    });
+    return rows.some((r) => r.margin !== 0) ? rows : rebindLegacyMonthSeries(marginSeries, { months: monthCount, locale });
+  }, [axis, monthCount, locale, data.journals]);
+
+  const inspDisp = useMemo(() => {
+    const count = bucketByMonth(data.inspections, axis, (i) => i.date, () => 1);
+    const lulusMap = bucketByMonth(
+      data.inspections,
+      axis,
+      (i) => i.date,
+      (i) => (String(i.status ?? "") === "Lulus" ? 1 : 0),
+    );
+    if (!Object.values(count).some((v) => v > 0)) {
+      return rebindLegacyMonthSeries(inspectionTrend, { months: monthCount, locale });
+    }
+    return monthSeries<{ bln: string; key: string; isCurrent: boolean; inspeksi: number; lulus: number }>(
+      axis,
+      count,
+      "inspeksi",
+    ).map((r) => ({ ...r, lulus: round1(lulusMap[r.key] ?? 0) }));
+  }, [axis, monthCount, locale, data.inspections]);
 
   const totalRevenue = revDisp.reduce((s, d) => s + d.revenue, 0);
   const avgRevenue = revDisp.length ? totalRevenue / revDisp.length : 0;
@@ -257,43 +382,47 @@ export default function Analytics() {
       .map(([name, value], i) => ({ name, value, color: C[i % C.length] }));
   }, [data.invoices, branchOfProject]);
 
-  /* 3. Tren 12 bulan: pendapatan, AP, dan kas masuk dari dokumen nyata. */
+  /* 3. Tren 12 bulan: pendapatan, AP, dan kas masuk dari dokumen nyata.
+     Memakai sumbu `axis` yang sama dengan grafik lain, jadi label format,
+     panjang rentang, dan posisi bulan berjalan seragam.
+     PERBAIKAN: revenue sebelumnya dibaca dari `i.date`, padahal invoice
+     yang dibuat aplikasi menyimpan `due` (lihat Finance.tsx) - sehingga
+     batang "Pendapatan" praktis selalu 0 sementara kartu tetap tampil
+     karena AP/cash ada. Sekarang memakai `due ?? date`. */
   const monthlyReal = useMemo(() => {
-    const now = new Date();
-    const keys: string[] = [];
-    const buckets = new Map<string, { rev: number; ap: number; cash: number }>();
-    for (let k = 11; k >= 0; k -= 1) {
-      const d = new Date(now.getFullYear(), now.getMonth() - k, 1);
-      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
-      keys.push(key);
-      buckets.set(key, { rev: 0, ap: 0, cash: 0 });
-    }
-    for (const i of data.invoices) {
-      const b = buckets.get(String(i.date ?? "").slice(0, 7));
-      if (b) b.rev += numOf(i.amount);
-    }
-    for (const a of data.payables) {
-      const b = buckets.get(String(a.due ?? "").slice(0, 7));
-      if (b) b.ap += numOf(a.amt);
-    }
-    for (const i of data.invoices) {
-      const b = buckets.get(String(i.paidAt ?? "").slice(0, 7));
-      if (b && String(i.status ?? "") === "Lunas") b.cash += numOf(i.amount);
-    }
-    const MON = locale === "en"
-      ? ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"]
-      : ["Jan","Feb","Mar","Apr","Mei","Jun","Jul","Ags","Sep","Okt","Nov","Des"];
-    return keys.map((key) => {
-      const v = buckets.get(key) ?? { rev: 0, ap: 0, cash: 0 };
-      const d = new Date(`${key}-01T00:00:00`);
-      return {
-        bln: `${MON[d.getMonth()]} ${String(d.getFullYear()).slice(2)}`,
-        revenue: round1(v.rev / 1e9),
-        ap: round1(v.ap / 1e9),
-        cash: round1(v.cash / 1e9),
-      };
-    });
-  }, [data.invoices, data.payables, locale]);
+    const rev = bucketByMonth(
+      inBranch(data.invoices as StoreItem[]),
+      axis,
+      (i) => i.due ?? i.date ?? "",
+      (i) => numOf(i.grandTotal) || numOf(i.amount),
+      (vals) => vals.reduce((s, x) => s + x, 0) / 1e9,
+    );
+    const ap = bucketByMonth(
+      inBranch(data.payables as StoreItem[]),
+      axis,
+      (a) => a.due,
+      (a) => numOf(a.amt),
+      (vals) => vals.reduce((s, x) => s + x, 0) / 1e9,
+    );
+    /* Kas masuk = invoice Lunas by bulan pembayaran (paidAt), jatuh tempo
+       sebagai fallback supaya invoice yang sudah lunas tapi tanpa paidAt
+       tetap masuk kas pada bulan jatuh temponya. */
+    const cash = bucketByMonth(
+      inBranch(data.invoices as StoreItem[]),
+      axis,
+      (i) => i.paidAt || i.due || i.date || "",
+      (i) => (String(i.status ?? "") === "Lunas" ? (numOf(i.grandTotal) || numOf(i.amount)) : 0),
+      (vals) => vals.reduce((s, x) => s + x, 0) / 1e9,
+    );
+    return axis.map((p) => ({
+      bln: p.label,
+      key: p.key,
+      isCurrent: p.isCurrent,
+      revenue: round1(rev[p.key] ?? 0),
+      ap: round1(ap[p.key] ?? 0),
+      cash: round1(cash[p.key] ?? 0),
+    }));
+  }, [axis, data.invoices, data.payables, branch]);
   const monthlyHasData = monthlyReal.some((d) => d.revenue > 0 || d.ap > 0 || d.cash > 0);
 
   /* 4. Pipeline per kuartal: won = quotation stage Menang/Terkonversi,
@@ -373,15 +502,21 @@ export default function Analytics() {
 
   const annualFor = (s: Scenario): number => Math.round(ma3 * (1 + s.growth / 100) * (1 + s.progAdj / 100) * 12);
 
-  const saveScenario = () => {
+const saveScenario = () => {
     if (!scName.trim()) { toast(S.tScenarioNameRequired, "info"); return; }
-    const sc: Scenario = { name: scName.trim(), growth, costAdj, progAdj };
+    const sc: Scenario = {
+      name: scName.trim(),
+      growth: Number(growthDraft) || 0,
+      costAdj: Number(costDraft) || 0,
+      progAdj: Number(progDraft) || 0,
+    };
     const next = [sc, ...scenarios.filter((s) => s.name !== sc.name)].slice(0, 20);
     setScenarios(next);
     try { localStorage.setItem("isms.scenario", JSON.stringify(next)); } catch { /* abaikan */ }
-    log("menyimpan skenario what-if", `${sc.name} (growth ${sc.growth} · biaya ${sc.costAdj} · progres ${sc.progAdj})`, "Analytics");
+    log("menyimpan skenario what-if", `${sc.name} (growth ${sc.growth} - biaya ${sc.costAdj} - progres ${sc.progAdj})`, "Analytics");
     toast(S.tScenarioSaved.replace("{n}", sc.name));
     setScName("");
+    setEditingScenario(null);
   };
 
   const loadScenario = (name: string) => {
@@ -402,8 +537,48 @@ export default function Analytics() {
     const next = scenarios.filter((s) => s.name !== name);
     setScenarios(next);
     try { localStorage.setItem("isms.scenario", JSON.stringify(next)); } catch { /* abaikan */ }
+    /* Bila skenario yang dihapus sedang dipakai sebagai pembanding, bersihkan
+       juga select-nya supaya tidak menggantung ke nama yang sudah tidak ada. */
+    if (cmpA === name) setCmpA("");
+    if (cmpB === name) setCmpB("");
     log("menghapus skenario what-if", name, "Analytics");
     toast(S.tScenarioDeleted.replace("{n}", name), "info");
+  };
+
+  /* Ubah skenario:Versi lama hanya bisa Apply (menyalin ke settings) dan
+     Delete. Untuk mengubah asumsi (mis. pasar tumbuh 5% -> 8%) user harus
+     hapus lalu buat ulang dengan nama sama - dan karena saveScenario menolak
+     nama duplikat, asumsi lama harus dihapus lebih dulu. */
+  const editScenario = (name: string) => {
+    const s = scenarios.find((x) => x.name === name);
+    if (!s) return;
+    setScName(s.name);
+    setGrowthDraft(String(s.growth));
+    setCostDraft(String(s.costAdj));
+    setProgDraft(String(s.progAdj));
+    setEditingScenario(name);
+    toast(
+      locale === "en"
+        ? `Editing "${name}" - adjust the sliders then save to overwrite`
+        : `Mengubah "${name}" - atur slider lalu simpan untuk menimpa`,
+    );
+  };
+
+  const overwriteScenario = () => {
+    if (!editingScenario) return;
+    const next = scenarios.map((s) => (s.name === editingScenario
+      ? { ...s, growth: Number(growthDraft) || 0, costAdj: Number(costDraft) || 0, progAdj: Number(progDraft) || 0 }
+      : s));
+    setScenarios(next);
+    try { localStorage.setItem("isms.scenario", JSON.stringify(next)); } catch { /* abaikan */ }
+    log("mengubah skenario what-if", editingScenario, "Analytics");
+    toast(
+      locale === "en"
+        ? `Scenario "${editingScenario}" updated`
+        : `Skenario "${editingScenario}" diperbarui`,
+    );
+    setEditingScenario(null);
+    setScName("");
   };
 
   const saveNote = () => {
@@ -577,6 +752,45 @@ export default function Analytics() {
       />
 
       <Tabs tabs={["Deskriptif", "Diagnostik", "Prediktif", "Preskriptif", "Profitabilitas"]} active={tab} onChange={setTab} labels={{ Deskriptif: S.tabDescriptive, Diagnostik: S.tabDiagnostic, Prediktif: S.tabPredictive, Preskriptif: S.tabPrescriptive, Profitabilitas: S.tabProfitability }} />
+
+      {/* ==== KONTROL RENTANG BULAN ====
+          Dulu tidak ada kontrol sama sekali: semua grafik rentang-bulan
+          dipatok 12 titik tanpa cara memperbesar/memperkecil. Sekarang
+          rentang bisa dipilih dan rentang aktif ditampilkan eksplisit
+          ("Sep 2025 → Okt 2026") supaya pengguna tahu persis jendela
+          apa yang sedang dilihat. */}
+      <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-steel-200 bg-steel-50 px-3 py-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-xs font-medium text-steel-600">
+            {locale === "en" ? "Month range" : "Rentang bulan"}
+          </span>
+          <div className="inline-flex overflow-hidden rounded-lg border border-steel-200">
+            {MONTH_RANGES.map((n) => (
+              <button
+                key={n}
+                type="button"
+                onClick={() => setMonthCount(n)}
+                aria-pressed={monthCount === n}
+                className={`px-2.5 py-1 text-xs font-medium transition-colors ${
+                  monthCount === n
+                    ? "bg-navy-900 text-white"
+                    : "bg-white text-steel-600 hover:bg-steel-100"
+                }`}
+              >
+                {n} {locale === "en" ? "mo" : "bln"}
+              </button>
+            ))}
+          </div>
+          <span className="text-xs text-steel-500">
+            {locale === "en" ? "Window" : "Jendela"}: {axisLabel}
+          </span>
+        </div>
+        <p className="text-[11px] text-steel-400">
+          {locale === "en"
+            ? "The right-most point is always the current month."
+            : "Titik paling kanan selalu bulan berjalan."}
+        </p>
+      </div>
 
       <div className="mt-5">
         {tab === "Deskriptif" && (
@@ -854,19 +1068,49 @@ export default function Analytics() {
               <div className="overflow-x-auto">
                 <table className="w-full">
                   <thead className="bg-surface">
-                    <tr><SortTh label={S.sortCategory} sortKey="kategori" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.sortIncidents} sortKey="kejadian" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.sortImpact} sortKey="dampak" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><th className="th">{S.sortTrend}</th></tr>
+                    <tr><SortTh label={S.sortCategory} sortKey="kategori" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.sortIncidents} sortKey="kejadian" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.sortImpact} sortKey="dampak" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><th className="th">{S.sortTrend}</th><th className="th">{locale === "en" ? "Open NCR" : "NCR Terbuka"}</th></tr>
                   </thead>
                   <tbody className="divide-y divide-steel-100">
                     {sortRows(drilldown, sort, (d, key) =>
                       key === "kejadian" ? Number(d.count ?? 0) : key === "dampak" ? Number(d.impact ?? 0) : String(d.factor ?? "")
-                    ).map((d) => (
+                    ).map((d) => {
+                      /* Baris drilldown adalah AGREGAT per kategori, jadi
+                         tidak punya tombol Edit/Delete sendiri. Yang bisa
+                         dilakukan user dari sini: membuka daftar NCR
+                         kategori itu di modul QC (drill-through). */
+                      const rows = data.ncr.filter((n) => String(n.type ?? "") === String(d.factor));
+                      const open = rows.filter((n) => String(n.status ?? "") !== "Tertutup");
+                      return (
                       <tr key={d.factor} className="hover:bg-surface">
                         <td className="td font-medium text-navy-900">{d.factor}</td>
                         <td className="td text-steel-600">{d.count}</td>
                         <td className="td text-steel-600">{d.impact}%</td>
                         <td className="td"><div className="w-32"><ProgressBar value={d.impact} tone="red" /></div></td>
+                        <td className="td">
+                          {rows.length === 0 ? (
+                            <span className="text-xs text-steel-400">-</span>
+                          ) : (
+                            <Link
+                              to="/qc-safety"
+                              className="text-xs font-semibold text-ocean-600 hover:underline"
+                              title={locale === "en"
+                                ? `Open NCR module - ${open.length} still open of ${rows.length} total`
+                                : `Buka modul QC - ${open.length} terbuka dari ${rows.length} total`}
+                            >
+                              {open.length} / {rows.length}
+                            </Link>
+                          )}
+                        </td>
                       </tr>
-                    ))}
+                      );
+                    })}
+                    {drilldown.length === 0 && (
+                      <tr>
+                        <td colSpan={5} className="px-3 py-8 text-center text-sm text-steel-400">
+                          {locale === "en" ? "No NCR recorded yet." : "Belum ada NCR tercatat."}
+                        </td>
+                      </tr>
+                    )}
                   </tbody>
                 </table>
               </div>
@@ -920,13 +1164,60 @@ export default function Analytics() {
               <div className="flex flex-wrap gap-2 p-5 pt-2">
                 <input className="input w-48" placeholder={S.scenarioNamePh} value={scName} onChange={(e) => setScName(e.target.value)} />
                 <button className="btn-secondary text-xs" onClick={saveScenario}>{S.saveScenarioBtn}</button>
+                {editingScenario && (
+                  <>
+                    <button className="btn-primary text-xs" onClick={overwriteScenario}>
+                      {locale === "en" ? "Overwrite" : "Timpa"} {editingScenario}
+                    </button>
+                    <button
+                      className="btn-secondary text-xs"
+                      onClick={() => { setEditingScenario(null); setScName(""); }}
+                    >
+                      {locale === "en" ? "Cancel edit" : "Batal ubah"}
+                    </button>
+                  </>
+                )}
+              </div>
+              {/* Slider asumsi. Defaultnya ikut nilai global dari settings
+                  sehingga scenario baru dibuat dari asumsi aktif sekarang,
+                  tapi bisa diubah di sini tanpa menyentuh settings. */}
+              <div className="grid grid-cols-1 gap-3 px-5 text-xs sm:grid-cols-3">
+                <Field label={S.marketGrowth}>
+                  <input
+                    type="range" min={-30} max={50} step={1}
+                    value={growthDraft}
+                    onChange={(e) => setGrowthDraft(e.target.value)}
+                  />
+                  <span className="font-semibold text-navy-900">{growthDraft}%</span>
+                </Field>
+                <Field label={S.costSuppress}>
+                  <input
+                    type="range" min={-30} max={30} step={1}
+                    value={costDraft}
+                    onChange={(e) => setCostDraft(e.target.value)}
+                  />
+                  <span className="font-semibold text-navy-900">{costDraft}%</span>
+                </Field>
+                <Field label={S.progressShift}>
+                  <input
+                    type="range" min={-30} max={30} step={1}
+                    value={progDraft}
+                    onChange={(e) => setProgDraft(e.target.value)}
+                  />
+                  <span className="font-semibold text-navy-900">{progDraft}%</span>
+                </Field>
               </div>
               <div className="space-y-1.5 px-5 pb-2 text-sm">
                 {scenarios.map((s) => (
                   <div key={s.name} className="flex items-center gap-2 rounded-xl bg-surface px-3 py-2">
                     <span className="font-semibold text-navy-900">{s.name}</span>
+                    {cmpA === s.name && <Badge tone="blue">A</Badge>}
+                    {cmpB === s.name && <Badge tone="blue">B</Badge>}
                     <span className="text-xs text-steel-500">{S.scenarioMeta.replace("{a}", String(s.growth)).replace("{b}", String(s.costAdj)).replace("{c}", String(s.progAdj)).replace("{n}", annualFor(s).toLocaleString("id-ID"))}</span>
                     <span className="ml-auto flex gap-1.5">
+                      <button className="btn-secondary px-2 py-1 text-xs" onClick={() => editScenario(s.name)}>
+                        {locale === "en" ? "Edit" : "Ubah"}
+                      </button>
                       <button className="btn-secondary px-2 py-1 text-xs" onClick={() => loadScenario(s.name)}>{S.applyBtn}</button>
                       <button className="btn-secondary px-2 py-1 text-xs" onClick={() => delScenario(s.name)}>{S.deleteBtn}</button>
                     </span>

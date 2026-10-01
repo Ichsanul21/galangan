@@ -191,9 +191,33 @@ export default function Documents() {
 
   const openAdd = () => { setForm(emptyForm); setRelSel([]); setShowAdd(true); };
   const openEdit = (d: StoreItem) => {
+    /* Detail/Ubah/Arsip/Hapus semuanya dibuka dari baris tabel yang sama dan
+       berbagi overlay. Kalau tidak saling menutup, ketiganya bisa terbuka
+       bersamaan dan panel Detail tertinggal menampilkan dokumen yang baru
+       saja diarsipkan atau dihapus. */
+    setDetail(null); setArchiving(null); setDeleting(null);
+    setOcrText(""); setDistTo("");
     setEditing(d);
     setRelSel(Array.isArray(d.related) ? d.related.map(String) : []);
     setForm({ title: d.title, type: d.type, project: d.project, vessel: d.vessel ?? "", owner: d.owner, berlakuHingga: d.berlakuHingga ?? "", revNote: "", fileUrl: String(d.fileUrl ?? "") });
+  };
+
+  const openDetail = (d: StoreItem) => {
+    setEditing(null); setArchiving(null); setDeleting(null);
+    setOcrText(""); setDistTo("");
+    setDetail(d);
+  };
+
+  const openArchive = (d: StoreItem) => {
+    setEditing(null); setDetail(null); setDeleting(null);
+    setOcrText(""); setDistTo("");
+    setArchiving(d);
+  };
+
+  const openDelete = (d: StoreItem) => {
+    setEditing(null); setDetail(null); setArchiving(null);
+    setOcrText(""); setDistTo("");
+    setDeleting(d);
   };
 
   /* Upload lampiran ke backend (/api/files); mode lokal tetap pakai URL manual. */
@@ -322,6 +346,7 @@ export default function Documents() {
     await update("documents", archiving.id, { archived: true });
     log("mengarsipkan dokumen", archiving.id, "Dokumen");
     toast(S.tArchived.replace("{a}", String(archiving.id)), "info");
+    setDetail((cur) => (cur && String(cur.id) === String(archiving.id) ? null : cur));
     setArchiving(null);
     } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); }
   };
@@ -338,6 +363,7 @@ export default function Documents() {
       await remove("documents", deleting.id);
       log("menghapus permanen dokumen", deleting.id, "Dokumen");
       toast(S.tDeletedPerm.replace("{a}", String(deleting.id)), "info");
+      setDetail((cur) => (cur && String(cur.id) === String(deleting.id) ? null : cur));
       setDeleting(null);
     } catch (e) {
       toast(e instanceof Error ? e.message : S.tDeleteDocFail, "info");
@@ -469,16 +495,16 @@ export default function Documents() {
                   <td className="td text-steel-600">{fmtTanggal(d.updated)}</td>
                   <td className="td">
                     <div className="flex gap-1">
-                      <button className="rounded-lg p-1.5 text-steel-500 hover:bg-steel-100" title={S.detailBtn} aria-label={S.detailOf.replace("{a}", String(d.id))} onClick={() => setDetail(d)}><Eye className="h-4 w-4" /></button>
+                      <button className="rounded-lg p-1.5 text-steel-500 hover:bg-steel-100" title={S.detailBtn} aria-label={S.detailOf.replace("{a}", String(d.id))} onClick={() => openDetail(d)}><Eye className="h-4 w-4" /></button>
                       {type === "Arsip" ? (
                         <>
                           <button className="rounded-lg p-1.5 text-teal-600 hover:bg-teal-50" title={S.actRestore} aria-label={S.actRestoreOf.replace("{a}", String(d.id))} onClick={async () => { try { await update("documents", d.id, { archived: false }); log("memulihkan dokumen dari arsip", d.id, "Dokumen"); toast(S.tRestored.replace("{a}", String(d.id))); } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); } }}><RotateCcw className="h-4 w-4" /></button>
-                          <button className="rounded-lg p-1.5 text-rose-500 hover:bg-rose-50" title={S.actDeletePerm} aria-label={S.actDeletePermOf.replace("{a}", String(d.id))} onClick={() => setDeleting(d)}><Trash2 className="h-4 w-4" /></button>
+                          <button className="rounded-lg p-1.5 text-rose-500 hover:bg-rose-50" title={S.actDeletePerm} aria-label={S.actDeletePermOf.replace("{a}", String(d.id))} onClick={() => openDelete(d)}><Trash2 className="h-4 w-4" /></button>
                         </>
                       ) : (
                         <>
                           <button className="rounded-lg p-1.5 text-steel-500 hover:bg-steel-100" title={S.actEdit} aria-label={S.actEditOf.replace("{a}", String(d.id))} onClick={() => openEdit(d)}><Pencil className="h-4 w-4" /></button>
-                          <button className="rounded-lg p-1.5 text-steel-500 hover:bg-steel-100" title={S.actArchive} aria-label={S.actArchiveOf.replace("{a}", String(d.id))} onClick={() => setArchiving(d)}><Archive className="h-4 w-4" /></button>
+                          <button className="rounded-lg p-1.5 text-steel-500 hover:bg-steel-100" title={S.actArchive} aria-label={S.actArchiveOf.replace("{a}", String(d.id))} onClick={() => openArchive(d)}><Archive className="h-4 w-4" /></button>
                         </>
                       )}
                     </div>

@@ -159,6 +159,63 @@ export default function Vessels() {
   const [editForm, setEditForm] = useState<VesselForm>(emptyForm);
   // Hapus kapal via ConfirmModal + daftar pemakai (blokir bila dipakai proyek/survei/dock/garansi).
   const [deleting, setDeleting] = useState<StoreItem | null>(null);
+  /* ==== UBAH / HAPUS SURVEI ====
+     Tabel Survei (baris 427) tidak punya kolom aksi sama sekali - hanya
+     kartu kapal yang punya Ubah/Hapus. Survei yang tercatat untuk kapal yang
+     salah, atau tanggal/surveyor yang keliru, praktis tidak bisa dikoreksi. */
+  const [surveyEditId, setSurveyEditId] = useState<string | null>(null);
+  const [surveyForm, setSurveyForm] = useState({ vessel: "", type: "", classSurveyor: "", date: todayISO(), status: "Selesai" });
+  const [delSurvey, setDelSurvey] = useState<StoreItem | null>(null);
+
+  const openSurveyEdit = (s: StoreItem) => {
+    setSurveyEditId(String(s.id));
+    setSurveyForm({
+      vessel: String(s.vessel ?? ""),
+      type: String(s.type ?? ""),
+      classSurveyor: String(s.classSurveyor ?? ""),
+      date: String(s.date ?? todayISO()),
+      status: String(s.status ?? "Selesai"),
+    });
+  };
+
+  const closeSurveyModal = () => {
+    setSurveyEditId(null);
+    setSurveyForm({ vessel: "", type: "", classSurveyor: "", date: todayISO(), status: "Selesai" });
+  };
+
+  const saveSurveyEdit = async () => {
+    if (!surveyEditId) return;
+    if (!surveyForm.vessel.trim() || !surveyForm.type.trim()) {
+      toast(locale === "en" ? "Vessel and survey type are required" : "Kapal dan jenis survei wajib diisi", "info");
+      return;
+    }
+    if (!surveyForm.date) {
+      toast(locale === "en" ? "Date is required" : "Tanggal wajib diisi", "info");
+      return;
+    }
+    try {
+      await update("surveys", surveyEditId, {
+        vessel: surveyForm.vessel.trim(),
+        type: surveyForm.type.trim(),
+        classSurveyor: surveyForm.classSurveyor.trim() || "-",
+        date: surveyForm.date,
+        status: surveyForm.status,
+      });
+      log("mengubah survei", `${surveyEditId} - ${surveyForm.vessel.trim()} - ${surveyForm.type.trim()}`, "Kapal");
+      toast(locale === "en" ? `Survey ${surveyEditId} updated` : `Survei ${surveyEditId} diperbarui`);
+      closeSurveyModal();
+    } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); }
+  };
+
+  const confirmDelSurvey = async () => {
+    if (!delSurvey) return;
+    try {
+      await remove("surveys", String(delSurvey.id));
+      log("menghapus survei", `${delSurvey.id} - ${delSurvey.vessel ?? ""} - ${delSurvey.type ?? ""}`, "Kapal");
+      toast(locale === "en" ? `Survey ${delSurvey.id} deleted` : `Survei ${delSurvey.id} dihapus`);
+      setDelSurvey(null);
+    } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); }
+  };
 
   const nowMonth = todayISO().slice(0, 7);
   const list = vessels.filter((v) => {
@@ -424,7 +481,7 @@ export default function Vessels() {
           <div className="overflow-x-auto">
             <table className="w-full">
               <thead className="sticky top-0 z-10 bg-surface">
-                <tr><SortTh label={S.thVessel} sortKey="vessel" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.thSurveyType} sortKey="type" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.thSurveyor} sortKey="classSurveyor" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.dateLabel} sortKey="date" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.thStatus} sortKey="status" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /></tr>
+                <tr><SortTh label={S.thVessel} sortKey="vessel" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.thSurveyType} sortKey="type" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.thSurveyor} sortKey="classSurveyor" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.dateLabel} sortKey="date" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.thStatus} sortKey="status" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><th className="th">{S.thAction}</th></tr>
               </thead>
               <tbody className="divide-y divide-steel-100">
                 {surveyPager.slice(surveySorted).map((s) => (
@@ -434,6 +491,31 @@ export default function Vessels() {
                     <td className="td text-steel-600">{s.classSurveyor}</td>
                     <td className="td font-mono text-xs text-steel-600">{fmtTanggal(String(s.date))}</td>
                     <td className="td"><Badge tone={s.status === "Selesai" ? "green" : s.status === "Dalam Proses" ? "blue" : "gray"}>{s.status}</Badge></td>
+                    {/* Tabel survei TIDAK punya kolom aksi sama sekali - kartu
+                        kapal di atas punya Ubah/Hapus, tapi baris survei sendiri
+                        tidak. Survei yang tercatat salah kapal/tanggal/surveyor
+                        tidak bisa dikoreksi, dan tidak bisa dihapus saat kapal
+                        ternyata salah di-input. */}
+                    <td className="td">
+                      <div className="flex gap-1">
+                        <button
+                          className="rounded-lg p-1.5 text-steel-500 hover:bg-steel-100"
+                          title={locale === "en" ? "Edit survey" : "Ubah survei"}
+                          aria-label={`${locale === "en" ? "Edit" : "Ubah"} survei ${String(s.id)}`}
+                          onClick={() => openSurveyEdit(s)}
+                        >
+                          <Pencil className="h-3.5 w-3.5" />
+                        </button>
+                        <button
+                          className="rounded-lg p-1.5 text-rose-600 hover:bg-rose-50"
+                          title={locale === "en" ? "Delete survey" : "Hapus survei"}
+                          aria-label={`${locale === "en" ? "Delete" : "Hapus"} survei ${String(s.id)}`}
+                          onClick={() => setDelSurvey(s)}
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -452,6 +534,59 @@ export default function Vessels() {
         wide footer={<><button className="btn-secondary" onClick={() => setEditingId(null)}>{S.cancelBtn}</button><AsyncButton className="btn-primary" onAction={saveEdit}>{S.saveBtn}</AsyncButton></>}>
         {renderFormFields(editForm, setEditForm)}
       </Modal>
+
+      {/* ==== MODAL UBAH SURVEI ==== */}
+      <Modal
+        open={surveyEditId !== null}
+        onClose={closeSurveyModal}
+        title={surveyEditId ? `${S.saveBtn} ${surveyEditId}` : (locale === "en" ? "Edit survey" : "Ubah Survei")}
+        subtitle={locale === "en"
+          ? "Survey belongs to the vessel record; correcting it here updates the vessel's survey count too."
+          : "Survei milik record kapal; mengoreksinya di sini ikut memperbarui jumlah survei kapal tersebut."}
+        footer={<>
+          <button className="btn-secondary" onClick={closeSurveyModal}>{S.cancelBtn}</button>
+          <AsyncButton className="btn-primary" onAction={saveSurveyEdit}>{S.saveBtn}</AsyncButton>
+        </>}
+      >
+        <FormGrid>
+          <Field label={S.thVessel}>
+            <select className="input" value={surveyForm.vessel} onChange={(e) => setSurveyForm({ ...surveyForm, vessel: e.target.value })}>
+              <option value="">{locale === 'en' ? '-- pick --' : '-- pilih --'}</option>
+              {data.vessels.map((v) => <option key={v.id} value={String(v.name)}>{String(v.name)}</option>)}
+            </select>
+          </Field>
+          <Field label={S.thSurveyType}>
+            <input className="input" value={surveyForm.type} onChange={(e) => setSurveyForm({ ...surveyForm, type: e.target.value })} />
+          </Field>
+          <Field label={S.thSurveyor}>
+            <input className="input" value={surveyForm.classSurveyor} onChange={(e) => setSurveyForm({ ...surveyForm, classSurveyor: e.target.value })} />
+          </Field>
+          <Field label={S.dateLabel}>
+            <input type="date" className="input" value={surveyForm.date} onChange={(e) => setSurveyForm({ ...surveyForm, date: e.target.value })} />
+          </Field>
+          <Field label={S.thStatus}>
+            <select className="input" value={surveyForm.status} onChange={(e) => setSurveyForm({ ...surveyForm, status: e.target.value })}>
+              <option>Terjadwal</option>
+              <option>Dalam Proses</option>
+              <option>Selesai</option>
+            </select>
+          </Field>
+        </FormGrid>
+      </Modal>
+
+      <ConfirmModal
+        open={delSurvey !== null}
+        title={delSurvey ? (locale === "en" ? `Delete survey ${delSurvey.id}?` : `Hapus survei ${delSurvey.id}?`) : ""}
+        desc={delSurvey
+          ? (locale === "en"
+            ? `Survey "${String(delSurvey.type)}" on ${String(delSurvey.vessel)} will be permanently deleted.`
+            : `Survei "${String(delSurvey.type)}" pada ${String(delSurvey.vessel)} akan dihapus permanen.`)
+          : ""}
+        confirmLabel={S.delBtn}
+        danger
+        onCancel={() => setDelSurvey(null)}
+        onConfirm={confirmDelSurvey}
+      />
 
       <ConfirmModal
         open={deleting !== null}

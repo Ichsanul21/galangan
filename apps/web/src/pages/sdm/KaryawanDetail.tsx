@@ -4,6 +4,7 @@ import { ArrowLeft, Plus, Search, User } from "lucide-react";
 import {
   Badge,
   Card,
+  ConfirmModal,
   EmptyState,
   Field,
   FormGrid,
@@ -107,7 +108,7 @@ function normCerts(e: StoreItem): EmpCert[] {
 
 export default function KaryawanDetail() {
   const { id } = useParams();
-  const { data, add, update, log } = useStore();
+  const { data, add, update, remove, log } = useStore();
   const { locale } = useT();
   const S = n_qc[locale];
   const [tab, setTab] = useState("Absensi");
@@ -122,6 +123,21 @@ export default function KaryawanDetail() {
   const [sort3, setSort3] = useState<SortState>({ key: null, dir: "asc" });
   const [sort4, setSort4] = useState<SortState>({ key: null, dir: "asc" });
   const [attQ, setAttQ] = useState("");
+
+  /* ---- Ubah / hapus untuk 3 tabel store-record di halaman ini ----
+     Semuanya read-only sebelumnya: dokumen, absensi, cuti. Payroll tetap
+     read-only karena modul Payroll yang menghitung PPh21/BPJS-nya.
+     Aturannya mengikuti invariants yang sudah ada di modul asalnya:
+     - absensi: OT yang sudah disetujui tidak boleh diubah (nilainya sudah
+       masuk hitungan lembur payroll),
+     - cuti: "Disetujui" mengunci karyawan/periode/tipe (sudah disinkron
+       ke baris absensi) tapi note + lampiran tetap boleh dikoreksi. */
+  const [docEdit, setDocEdit] = useState<StoreItem | null>(null);
+  const [attEdit, setAttEdit] = useState<StoreItem | null>(null);
+  const [attForm, setAttForm] = useState({ date: "", shift: "Pagi", status: "Hadir", checkIn: "", checkOut: "", overtime: "0" });
+  const [leaveEdit, setLeaveEdit] = useState<StoreItem | null>(null);
+  const [leaveForm, setLeaveForm] = useState({ type: "", from: "", to: "", days: "", note: "", fileUrl: "" });
+  const [delRow, setDelRow] = useState<{ kind: "documents" | "attendance" | "leaves"; row: StoreItem } | null>(null);
 
   const emp = useMemo(() => data.employees.find((e) => e.id === id), [data.employees, id]);
 
@@ -242,6 +258,197 @@ export default function KaryawanDetail() {
     } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); }
   };
 
+  /* ================= UBAH / HAPUS: DOKUMEN ================= */
+  const openDocEdit = (d: StoreItem) => {
+    setDocEdit(d);
+    setShowDoc(true);
+    setDocForm({
+      title: String(d.title ?? ""),
+      type: String(d.type ?? "Kontrak"),
+      status: String(d.status ?? "Berlaku"),
+      fileUrl: String(d.fileUrl ?? ""),
+    });
+  };
+
+  const saveDocEdit = async () => {
+    if (!docEdit) return;
+    if (!docForm.title.trim()) { toast(S.tDocJudul, "info"); return; }
+    try {
+      await update("documents", String(docEdit.id), {
+        title: docForm.title.trim(),
+        type: docForm.type,
+        status: docForm.status,
+        updated: todayISO(),
+        /* File dikosongkan berarti berkas dilepas. Samakan dengan add():
+         spreading fileUrl:"" akan menyisakan berkas lama. */
+        fileUrl: docForm.fileUrl.trim(),
+      });
+      log("mengubah dokumen karyawan", `${String(docEdit.id)} - ${docForm.title.trim()}`, "SDM");
+      toast(locale === "en" ? `Document ${String(docEdit.id)} updated` : `Dokumen ${String(docEdit.id)} diperbarui`);
+      setShowDoc(false);
+      setDocEdit(null);
+      setDocForm({ title: "", type: "Kontrak", status: "Berlaku", fileUrl: "" });
+    } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); }
+  };
+
+  /* ================= UBAH / HAPUS: ABSENSI ================= */
+  const attOtApproved = (a: StoreItem): boolean => Number(a.overtime || 0) > 0 && String(a.otStatus ?? "") === "Disetujui";
+
+  const openAttEdit = (a: StoreItem) => {
+    if (attOtApproved(a)) {
+      toast(
+        locale === "en"
+          ? `Overtime on ${fmtTanggal(String(a.date))} is already approved and feeds payroll - void it there first.`
+          : `Lembur pada ${fmtTanggal(String(a.date))} sudah disetujui dan sudah masuk hitungan payroll - batalkan di modul lembur dulu.`,
+        "info",
+      );
+      return;
+    }
+    setAttEdit(a);
+    setAttForm({
+      date: String(a.date ?? todayISO()),
+      shift: String(a.shift ?? "Pagi"),
+      status: String(a.status ?? "Hadir"),
+      checkIn: String(a.checkIn ?? ""),
+      checkOut: String(a.checkOut ?? ""),
+      overtime: String(Number(a.overtime || 0)),
+    });
+  };
+
+  const saveAttEdit = async () => {
+    if (!attEdit) return;
+    if (!attForm.date) { toast(locale === "en" ? "Date required" : "Tanggal wajib diisi", "info"); return; }
+    const hadir = attForm.status === "Hadir";
+    if (hadir && (!attForm.checkIn || !attForm.checkOut)) {
+      toast(locale === "en" ? "Check-in and check-out are required when present" : "Jam masuk dan keluar wajib diisi saat status Hadir", "info");
+      return;
+    }
+    const ot = hadir ? Number(attForm.overtime || 0) : 0;
+    if (hadir && (Number.isNaN(ot) || ot < 0 || ot > 8)) {
+      toast(locale === "en" ? "Overtime must be between 0 and 8 hours" : "Lembur harus antara 0 dan 8 jam", "info");
+      return;
+    }
+    try {
+      await update("attendance", String(attEdit.id), {
+        date: attForm.date,
+        shift: attForm.shift,
+        status: attForm.status,
+        checkIn: hadir ? attForm.checkIn : "",
+        checkOut: hadir ? attForm.checkOut : "",
+        overtime: ot,
+        /* OT yang tadinya belum disetujui tetap belum disetujui setelah
+           koreksi - jangan mewarisi "Disetujui" ke angka jam yang baru. */
+        otStatus: ot > 0 ? String(attEdit.otStatus ?? "") || "Diajukan" : "",
+      });
+      log("mengubah absensi", `${String(attForm.date)} shift ${attForm.shift} - ${String(emp.name)}`, "SDM");
+      toast(locale === "en" ? "Attendance updated" : "Absensi diperbarui");
+      setAttEdit(null);
+    } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); }
+  };
+
+  /* Payroll sengaja TIDAK diedit dari sini. Modul Payroll menghitung ulang
+     PPh21 dan BPJS lewat buildComponents() dari dasar gaji + tunjangan +
+     lembur, jadi mengedit slip di sini hanya menghasilkan slip yang
+     tidak konsisten dengan mesin payroll. Tab ini jadi read-only. */
+
+  /* ================= UBAH / HAPUS: CUTI ================= */
+  const openLeaveEdit = (l: StoreItem) => {
+    setLeaveEdit(l);
+    setLeaveForm({
+      type: String(l.type ?? ""),
+      from: String(l.from ?? ""),
+      to: String(l.to ?? ""),
+      days: String(Number(l.days || 0)),
+      note: String(l.note ?? ""),
+      fileUrl: String(l.fileUrl ?? ""),
+    });
+  };
+
+  const saveLeaveEdit = async () => {
+    if (!leaveEdit) return;
+    const approved = String(leaveEdit.status ?? "") === "Disetujui";
+    try {
+      /* Cuti yang sudah Disetujui TIDAK boleh mengubah periode/tipe/hari:
+         HR.tsx sudah menyinkronkan baris absensi dari keputusan itu, jadi
+         mengedit tanggal di sini akan meninggalkan absensi yang tidak
+         cocok dengan cuti. Note + lampiran tetap boleh dikoreksi -
+         itu memang koreksi yang diizinkan HR. */
+      const payload = approved
+        ? { note: leaveForm.note.trim(), fileUrl: leaveForm.fileUrl.trim() }
+        : {
+            type: leaveForm.type,
+            from: leaveForm.from,
+            to: leaveForm.to,
+            days: Number(leaveForm.days || 0),
+            note: leaveForm.note.trim(),
+            fileUrl: leaveForm.fileUrl.trim(),
+          };
+      await update("leaves", String(leaveEdit.id), payload);
+      log("mengubah cuti", `${String(leaveEdit.id)}${approved ? " (koreksi catatan)" : ""}`, "SDM");
+      toast(approved
+        ? (locale === "en" ? "Note and attachment updated" : "Catatan dan lampiran diperbarui")
+        : (locale === "en" ? `Leave ${String(leaveEdit.id)} updated` : `Cuti ${String(leaveEdit.id)} diperbarui`));
+      setLeaveEdit(null);
+    } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); }
+  };
+
+  /* ================= HAPUS (semua 4 tabel) ================= */
+  const confirmDelRow = async () => {
+    if (!delRow) return;
+    const { kind, row } = delRow;
+    const id = String(row.id);
+    try {
+      if (kind === "attendance" && attOtApproved(row)) {
+        toast(
+          locale === "en"
+            ? `Attendance ${id} carries approved overtime - it cannot be deleted.`
+            : `Absensi ${id} memuat lembur yang sudah disetujui - tidak bisa dihapus.`,
+          "info",
+        );
+        setDelRow(null);
+        return;
+      }
+      if (kind === "leaves" && String(row.status ?? "") === "Disetujui") {
+        toast(
+          locale === "en"
+            ? `Leave ${id} is approved and already synced to attendance - reject it in SDM first.`
+            : `Cuti ${id} sudah disetujui dan sudah disinkron ke absensi - tolak di SDM dulu.`,
+          "info",
+        );
+        setDelRow(null);
+        return;
+      }
+      await remove(kind, id);
+      log("menghapus", `${kind} ${id} - ${String(emp.name)}`, "SDM");
+      toast(locale === "en" ? `${id} deleted` : `${id} dihapus`);
+      setDelRow(null);
+    } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); }
+  };
+
+  /* Deskripsi konfirmasi hapus - menyebut konsekuensi yang berbeda
+     per tabel supaya tidak ada tebakan. */
+  const delRowDesc = (): string => {
+    if (!delRow) return "";
+    const { kind, row } = delRow;
+    const id = String(row.id);
+    if (kind === "attendance") {
+      return locale === "en"
+        ? "This record feeds the monthly attendance recap and, if it carries overtime, the payroll slip."
+        : "Record ini masuk rekap absensi bulanan dan, bila punya lembur, jadi dasar slip payroll.";
+    }
+    if (kind === "leaves") {
+      return locale === "en"
+        ? "The leave balance returns and the synced attendance rows are left as they are - reject the leave in SDM instead."
+        : "Saldo cuti akan kembali dan baris absensi hasil sinkron tidak ikut berubah - lebih baik tolak cuti di SDM.";
+    }
+    if (kind === "documents") {
+      return locale === "en"
+        ? "The file link is removed from this employee profile."
+        : "Tautan berkas dilepas dari profil karyawan ini.";
+    }
+    return id;
+  };
+
   return (
     <div>
       <Link to="/sdm" className="mb-3 inline-flex items-center gap-1.5 text-sm font-medium text-ocean-600 hover:underline">
@@ -334,7 +541,7 @@ export default function KaryawanDetail() {
           <div className="mt-3 overflow-x-auto">
             <table className="w-full">
               <thead className="bg-surface sticky top-0 z-10">
-                <tr><SortTh label={S.thId} sortKey="id" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.thJudul} sortKey="title" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.thTipe} sortKey="type" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.dlStatus} sortKey="status" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.thUpdated} sortKey="updated" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={locale === "en" ? "File" : "Berkas"} sortKey="file" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /></tr>
+                <tr><SortTh label={S.thId} sortKey="id" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.thJudul} sortKey="title" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.thTipe} sortKey="type" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.dlStatus} sortKey="status" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.thUpdated} sortKey="updated" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={locale === "en" ? "File" : "Berkas"} sortKey="file" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><th className="th">{locale === "en" ? "Actions" : "Aksi"}</th></tr>
               </thead>
               <tbody className="divide-y divide-steel-100">
                 {sortRows(docs, sort, (row, k) => {
@@ -364,6 +571,16 @@ export default function KaryawanDetail() {
                         <span className="text-xs text-steel-400">-</span>
                       )}
                     </td>
+                    <td className="td">
+                      <div className="flex flex-wrap gap-1.5">
+                        <button className="btn-secondary text-xs" onClick={() => openDocEdit(d)} aria-label={`${locale === "en" ? "Edit" : "Ubah"} ${String(d.id)}`}>
+                          {locale === "en" ? "Edit" : "Ubah"}
+                        </button>
+                        <button className="btn-secondary text-xs text-rose-600" onClick={() => setDelRow({ kind: "documents", row: d })} aria-label={`${locale === "en" ? "Delete" : "Hapus"} ${String(d.id)}`}>
+                          {locale === "en" ? "Delete" : "Hapus"}
+                        </button>
+                      </div>
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -386,7 +603,7 @@ export default function KaryawanDetail() {
               <div className="max-h-96 overflow-auto">
               <table className="w-full">
                 <thead className="bg-surface sticky top-0 z-10">
-                  <tr><SortTh label={S.thTanggal} sortKey="date" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} /><SortTh label={S.thShift} sortKey="shift" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} /><SortTh label={S.dlStatus} sortKey="status" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} /><SortTh label={S.thJam} sortKey="jam" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} /><SortTh label={S.thLembur} sortKey="lembur" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} /><SortTh label={S.thKet} sortKey="ket" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} /></tr>
+                  <tr><SortTh label={S.thTanggal} sortKey="date" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} /><SortTh label={S.thShift} sortKey="shift" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} /><SortTh label={S.dlStatus} sortKey="status" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} /><SortTh label={S.thJam} sortKey="jam" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} /><SortTh label={S.thLembur} sortKey="lembur" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} /><SortTh label={S.thKet} sortKey="ket" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} /><th className="th">{locale === "en" ? "Actions" : "Aksi"}</th></tr>
                 </thead>
                 <tbody className="divide-y divide-steel-100">
                   {sortRows(attendanceAll.filter((a) => {
@@ -412,6 +629,24 @@ export default function KaryawanDetail() {
                       <td className="td text-steel-600">{a.checkIn && a.checkOut ? `${a.checkIn}-${a.checkOut}` : "-"}</td>
                       <td className="td text-steel-600">{S.jamN.replace("{n}", String(Number(a.overtime || 0)))}</td>
                       <td className="td">{a.status === "Hadir" && String(a.checkIn) > "08:00" ? <Badge tone="red">Telat</Badge> : <span className="text-xs text-steel-400">-</span>}</td>
+                      <td className="td">
+                        <div className="flex flex-wrap gap-1.5">
+                          {attOtApproved(a) ? (
+                            <span className="text-xs text-steel-400" title={locale === "en" ? "Overtime approved" : "Lembur sudah disetujui"}>
+                              {locale === "en" ? "Locked" : "Terkunci"}
+                            </span>
+                          ) : (
+                            <>
+                              <button className="btn-secondary text-xs" onClick={() => openAttEdit(a)} aria-label={`${locale === "en" ? "Edit" : "Ubah"} ${String(a.id)}`}>
+                                {locale === "en" ? "Edit" : "Ubah"}
+                              </button>
+                              <button className="btn-secondary text-xs text-rose-600" onClick={() => setDelRow({ kind: "attendance", row: a })} aria-label={`${locale === "en" ? "Delete" : "Hapus"} ${String(a.id)}`}>
+                                {locale === "en" ? "Delete" : "Hapus"}
+                              </button>
+                            </>
+                          )}
+                        </div>
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -461,7 +696,7 @@ export default function KaryawanDetail() {
             <div className="overflow-x-auto">
               <table className="w-full">
                 <thead className="bg-surface sticky top-0 z-10">
-                  <tr><SortTh label={S.thId} sortKey="id" sort={sort4} onSort={(k) => setSort4((s) => toggleSort(s, k))} /><SortTh label={S.thTipe} sortKey="type" sort={sort4} onSort={(k) => setSort4((s) => toggleSort(s, k))} /><SortTh label={S.thPeriode} sortKey="period" sort={sort4} onSort={(k) => setSort4((s) => toggleSort(s, k))} /><SortTh label={S.thHari} sortKey="days" sort={sort4} onSort={(k) => setSort4((s) => toggleSort(s, k))} /><SortTh label={S.dlStatus} sortKey="status" sort={sort4} onSort={(k) => setSort4((s) => toggleSort(s, k))} /><SortTh label={S.thCatatan} sortKey="note" sort={sort4} onSort={(k) => setSort4((s) => toggleSort(s, k))} /><SortTh label={locale === "en" ? "Attachment" : "Lampiran"} sortKey="file" sort={sort4} onSort={(k) => setSort4((s) => toggleSort(s, k))} /></tr>
+                  <tr><SortTh label={S.thId} sortKey="id" sort={sort4} onSort={(k) => setSort4((s) => toggleSort(s, k))} /><SortTh label={S.thTipe} sortKey="type" sort={sort4} onSort={(k) => setSort4((s) => toggleSort(s, k))} /><SortTh label={S.thPeriode} sortKey="period" sort={sort4} onSort={(k) => setSort4((s) => toggleSort(s, k))} /><SortTh label={S.thHari} sortKey="days" sort={sort4} onSort={(k) => setSort4((s) => toggleSort(s, k))} /><SortTh label={S.dlStatus} sortKey="status" sort={sort4} onSort={(k) => setSort4((s) => toggleSort(s, k))} /><SortTh label={S.thCatatan} sortKey="note" sort={sort4} onSort={(k) => setSort4((s) => toggleSort(s, k))} /><SortTh label={locale === "en" ? "Attachment" : "Lampiran"} sortKey="file" sort={sort4} onSort={(k) => setSort4((s) => toggleSort(s, k))} /><th className="th">{locale === "en" ? "Actions" : "Aksi"}</th></tr>
                 </thead>
                 <tbody className="divide-y divide-steel-100">
                   {sortRows(leaveRows, sort4, (row, k) => {
@@ -496,6 +731,24 @@ export default function KaryawanDetail() {
                           <span className="text-xs text-steel-400">-</span>
                         )}
                       </td>
+                      <td className="td">
+                        <div className="flex flex-wrap gap-1.5">
+                          <button className="btn-secondary text-xs" onClick={() => openLeaveEdit(l)} aria-label={`${locale === "en" ? "Edit" : "Ubah"} ${String(l.id)}`}>
+                            {locale === "en" ? "Edit" : "Ubah"}
+                          </button>
+                          {String(l.status) === "Disetujui" ? (
+                            <span className="text-xs text-steel-400" title={locale === "en"
+                              ? "Approved leave: only note and attachment can change. Reject it in SDM to delete."
+                              : "Cuti disetujui: hanya catatan & lampiran yang bisa berubah. Tolak di SDM untuk menghapus."}>
+                              {locale === "en" ? "Locked" : "Terkunci"}
+                            </span>
+                          ) : (
+                            <button className="btn-secondary text-xs text-rose-600" onClick={() => setDelRow({ kind: "leaves", row: l })} aria-label={`${locale === "en" ? "Delete" : "Hapus"} ${String(l.id)}`}>
+                              {locale === "en" ? "Delete" : "Hapus"}
+                            </button>
+                          )}
+                        </div>
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -525,12 +778,12 @@ export default function KaryawanDetail() {
 
       <Modal
         open={showDoc}
-        onClose={() => setShowDoc(false)}
-        title={S.mAddDocT}
+        onClose={() => { setShowDoc(false); setDocEdit(null); }}
+        title={docEdit ? `${locale === "en" ? "Edit" : "Ubah"} ${String(docEdit.id)}` : S.mAddDocT}
         footer={
           <>
-            <button className="btn-secondary" onClick={() => setShowDoc(false)}>{S.btnBatal}</button>
-            <AsyncButton className="btn-primary" onAction={saveDoc}>{S.btnSimpan}</AsyncButton>
+            <button className="btn-secondary" onClick={() => { setShowDoc(false); setDocEdit(null); }}>{S.btnBatal}</button>
+            <AsyncButton className="btn-primary" onAction={docEdit ? saveDocEdit : saveDoc}>{S.btnSimpan}</AsyncButton>
           </>
         }
       >
@@ -562,13 +815,118 @@ export default function KaryawanDetail() {
         </div>
       </Modal>
 
-      <DocumentPreviewModal
+<DocumentPreviewModal
         doc={docPreview?.fileUrl ? {
           title: String(docPreview.title),
           fileUrl: String(docPreview.fileUrl),
-          subtitle: `${String(docPreview.id)} · ${String(docPreview.type)}`,
+          subtitle: `${String(docPreview.id)} - ${String(docPreview.type)}`,
         } : null}
         onClose={() => setDocPreview(null)}
+      />
+
+      {/* ===== Ubah absensi ===== */}
+      <Modal
+        open={attEdit !== null}
+        onClose={() => setAttEdit(null)}
+        title={locale === "en" ? "Edit attendance" : "Ubah absensi"}
+        subtitle={attEdit ? `${fmtTanggal(String(attEdit.date))} - ${String(emp.name)}` : ""}
+        footer={<><button className="btn-secondary" onClick={() => setAttEdit(null)}>{S.btnBatal}</button><AsyncButton className="btn-primary" onAction={saveAttEdit}>{S.btnSimpan}</AsyncButton></>}
+      >
+        <div className="space-y-3">
+          <FormGrid>
+            <Field label={S.thTanggal}><input type="date" className="input" value={attForm.date} onChange={(e) => setAttForm({ ...attForm, date: e.target.value })} /></Field>
+            <Field label={S.thShift}>
+              <select className="input" value={attForm.shift} onChange={(e) => setAttForm({ ...attForm, shift: e.target.value })}>
+                <option>Pagi</option>
+                <option>Siang</option>
+                <option>Malam</option>
+              </select>
+            </Field>
+            <Field label={S.dlStatus}>
+              <select className="input" value={attForm.status} onChange={(e) => setAttForm({ ...attForm, status: e.target.value })}>
+                <option>Hadir</option>
+                <option>Izin</option>
+                <option>Sakit</option>
+                <option>Alpha</option>
+                <option>Cuti</option>
+              </select>
+            </Field>
+            <Field label={locale === "en" ? "Overtime (hours)" : "Lembur (jam)"}>
+              <input type="number" min={0} max={8} step={0.5} className="input" value={attForm.overtime} onChange={(e) => setAttForm({ ...attForm, overtime: e.target.value })} />
+            </Field>
+            <Field label={locale === "en" ? "Check in" : "Jam masuk"}>
+              <input type="time" className="input" value={attForm.checkIn} disabled={attForm.status !== "Hadir"} onChange={(e) => setAttForm({ ...attForm, checkIn: e.target.value })} />
+            </Field>
+            <Field label={locale === "en" ? "Check out" : "Jam keluar"}>
+              <input type="time" className="input" value={attForm.checkOut} disabled={attForm.status !== "Hadir"} onChange={(e) => setAttForm({ ...attForm, checkOut: e.target.value })} />
+            </Field>
+          </FormGrid>
+          <p className="text-xs text-steel-500">{locale === "en"
+            ? "Changing the hours sends the overtime back to unapproved so it must be re-approved."
+            : "Mengubah jam membuat lembur kembali belum disetujui sehingga harus disetujui ulang."}</p>
+        </div>
+      </Modal>
+
+      {/* Ubah cuti */}
+      <Modal
+        open={leaveEdit !== null}
+        onClose={() => setLeaveEdit(null)}
+        title={locale === "en" ? "Edit leave" : "Ubah cuti"}
+        subtitle={leaveEdit ? String(leaveEdit.id) : ""}
+        footer={<><button className="btn-secondary" onClick={() => setLeaveEdit(null)}>{S.btnBatal}</button><AsyncButton className="btn-primary" onAction={saveLeaveEdit}>{S.btnSimpan}</AsyncButton></>}
+      >
+        {(() => {
+          const approved = String(leaveEdit?.status ?? "") === "Disetujui";
+          return (
+            <div className="space-y-3">
+              {approved && (
+                <p className="rounded-md bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                  {locale === "en"
+                    ? "This leave is approved and already synced to attendance rows. Only the note and attachment can be corrected here - reject the leave in SDM to change the period."
+                    : "Cuti ini sudah disetujui dan sudah disinkron ke baris absensi. Hanya catatan dan lampiran yang bisa dikoreksi di sini - tolak cuti di SDM untuk mengubah periode."}
+                </p>
+              )}
+              <FormGrid>
+                <Field label={S.thTipe} hint={approved ? (locale === "en" ? "Locked" : "Terkunci") : undefined}>
+                  <select className="input" value={leaveForm.type} disabled={approved} onChange={(e) => setLeaveForm({ ...leaveForm, type: e.target.value })}>
+                    <option>Tahunan</option>
+                    <option>Sakit</option>
+                    <option>Izin</option>
+                    <option>Cuti Mellon</option>
+                    <option>Pengantin</option>
+                  </select>
+                </Field>
+                <Field label={locale === "en" ? "Days" : "Jumlah hari"} hint={approved ? (locale === "en" ? "Locked" : "Terkunci") : undefined}>
+                  <input type="number" min={0} className="input" value={leaveForm.days} disabled={approved} onChange={(e) => setLeaveForm({ ...leaveForm, days: e.target.value })} />
+                </Field>
+                <Field label={locale === "en" ? "From" : "Mulai"} hint={approved ? (locale === "en" ? "Locked" : "Terkunci") : undefined}>
+                  <input type="date" className="input" value={leaveForm.from} disabled={approved} onChange={(e) => setLeaveForm({ ...leaveForm, from: e.target.value })} />
+                </Field>
+                <Field label={locale === "en" ? "To" : "Selesai"} hint={approved ? (locale === "en" ? "Locked" : "Terkunci") : undefined}>
+                  <input type="date" className="input" value={leaveForm.to} disabled={approved} onChange={(e) => setLeaveForm({ ...leaveForm, to: e.target.value })} />
+                </Field>
+              </FormGrid>
+              <Field label={S.thCatatan}><input className="input" value={leaveForm.note} onChange={(e) => setLeaveForm({ ...leaveForm, note: e.target.value })} /></Field>
+              <Field label={locale === "en" ? "Attachment URL" : "URL lampiran"}>
+                <div className="flex flex-wrap items-center gap-2">
+                  <input className="input flex-1 font-mono" value={leaveForm.fileUrl} onChange={(e) => setLeaveForm({ ...leaveForm, fileUrl: e.target.value })} placeholder="https://." />
+                  <FileUploadButton label={locale === "en" ? "Upload" : "Unggah"} onUploaded={(url) => setLeaveForm((f) => ({ ...f, fileUrl: url }))} />
+                </div>
+              </Field>
+            </div>
+          );
+        })()}
+      </Modal>
+
+      {/* ===== Konfirmasi hapus (4 tabel) ===== */}
+      <ConfirmModal
+        open={delRow !== null}
+        title={delRow ? `${locale === "en" ? "Delete" : "Hapus"} ${String(delRow.row.id)}?` : ""}
+        desc={delRowDesc()}
+        confirmLabel={locale === "en" ? "Delete" : "Hapus"}
+        danger
+        onCancel={() => setDelRow(null)}
+        onConfirm={confirmDelRow}
       />
     </div>
   );

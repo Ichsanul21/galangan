@@ -103,10 +103,15 @@ export default function CRM() {
   const [sendMsg, setSendMsg] = useState("");
   const [commForm, setCommForm] = useState({ quotationId: "", channel: "Email", date: todayISO(), summary: "", by: "" });
   const [contractForm, setContractForm] = useState({ quotationId: "", value: "", signedAt: todayISO(), projectId: "" });
+  /* id kontrak yang sedang dikoreksi (null = membuat baru). */
+  const [contractEditId, setContractEditId] = useState<string | null>(null);
   const [surveyForm, setSurveyForm] = useState({ clientId: "", rating: "5", desc: "" });
   const [showReq, setShowReq] = useState(false);
   const [reqForm, setReqForm] = useState({ vessel: "", client: "", kind: "Repair Request", scope: "", value: "", date: todayISO() });
   const [poForm, setPoForm] = useState({ contractId: "", projectId: "", no: "", amount: "", date: todayISO() });
+  /* PO klien: tambah + ubah + hapus (kunci kalau kontrak sudah Terkonversi). */
+  const [clientPoEditId, setClientPoEditId] = useState<string | null>(null);
+  const [delClientPo, setDelClientPo] = useState<StoreItem | null>(null);
   // Hapus quotation (Lead saja) / request (Baru saja) / kontrak (belum link proyek)
   // via ConfirmModal + findUsages + cek relasi lokal.
   const [delQuote, setDelQuote] = useState<StoreItem | null>(null);
@@ -352,6 +357,72 @@ export default function CRM() {
     } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); }
   };
 
+  /* ==== UBAH KONTRAK ====
+   Tidak ada `update("contracts")` sama sekali di modul ini - nilai
+   kontrak, tanggal tanda tangan, dan proyek tertaut tidak bisa dikoreksi
+   padahal kontraklah sumber budget proyek (saveContract menyalin
+   contract.value ke projects.budget). Salah input di sini berarti budget
+   proyek salah sampai ada peninjauan manual. */
+  const openContractEdit = (k: StoreItem) => {
+    setContractEditId(String(k.id));
+    setContractForm({
+      quotationId: String(k.quotationId ?? ""),
+      value: String(num(k.value)),
+      signedAt: String(k.signedAt ?? todayISO()),
+      projectId: String(k.projectId ?? ""),
+    });
+  };
+
+  const closeContractModal = () => {
+    setContractEditId(null);
+    setContractForm({ quotationId: "", value: "", signedAt: todayISO(), projectId: "" });
+  };
+
+  const saveContractEdit = async () => {
+    if (!contractEditId) return;
+    const cur = contracts.find((c) => String(c.id) === contractEditId);
+    if (!cur) return;
+    const value = num(contractForm.value);
+    if (value <= 0) { toast(S.tQuoteValuePositive, "info"); return; }
+    if (!contractForm.signedAt) { toast(S.tSignDateRequired, "info"); return; }
+    const nextProjectId = contractForm.projectId;
+    if (nextProjectId && !projectById[nextProjectId]) {
+      toast(locale === "en" ? "Unknown project" : "Proyek tidak dikenal", "info");
+      return;
+    }
+    const prevProjectId = String(cur.projectId ?? "");
+    try {
+      await update("contracts", contractEditId, {
+        value,
+        signedAt: contractForm.signedAt,
+        status: String(cur.status ?? "Aktif"),
+        ...(nextProjectId ? { projectId: nextProjectId } : { projectId: "" }),
+      });
+      /* Budget proyek mengikuti nilai kontrak - sama seperti saat kontrak
+         dibuat. Kalau proyek ditukar / dilepas, budget proyek lama TIDAK
+         di-rollback: budget adalah angka negosiasi dengan klien, bukan
+         turunan kontrak, jadi menyentuh nilai lama bisa merusak.history
+         serapan. Yang disinkronkan hanya proyek yang masih tertaut. */
+      if (nextProjectId) {
+        await update("projects", nextProjectId, { budget: value });
+        log(
+          "sinkron budget proyek dari kontrak (koreksi)",
+          `${nextProjectId} - ${value.toLocaleString("id-ID")}`,
+          "CRM",
+        );
+      }
+      if (prevProjectId && prevProjectId !== nextProjectId) {
+        log(
+          "kontrak dilepas dari proyek",
+          `${contractEditId}: ${prevProjectId} - ${nextProjectId || "-"}`,
+          "CRM",
+        );
+      }
+      toast(locale === "en" ? `Contract ${contractEditId} updated` : `Kontrak ${contractEditId} diperbarui`);
+      closeContractModal();
+    } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); }
+  };
+
   const saveContract = async () => {
     try {
     const q = quotations.find((x) => x.id === contractForm.quotationId);
@@ -456,12 +527,38 @@ export default function CRM() {
     }
   };
 
+  /* PO klien dulu hanya bisa dicatat, tidak ada ubah/hapus. PO-nya relate ke
+     kontrak, jadi hanya PO dari kontrak yang belum Deal yang boleh diubah -
+     setelah kontrak Deal, PO-nya jadi bagian dari record penagihan. */
+  const clientPoLocked = (p: StoreItem): string | null => {
+    const c = contracts.find((x) => String(x.id) === String(p.contractId ?? ""));
+    const stage = String(c?.stage ?? "");
+    return stage === "Terkonversi" || TERMINAL.includes(stage)
+      ? (locale === "en"
+        ? `Contract ${String(c?.id)} is ${stage} - this PO belongs to the project billing record.`
+        : `Kontrak ${String(c?.id)} sudah ${stage} - PO ini bagian dari record penagihan proyek.`)
+      : null;
+  };
+
+  const openClientPoEdit = (p: StoreItem) => {
+    const locked = clientPoLocked(p);
+    if (locked) { toast(locked, "info"); return; }
+    setClientPoEditId(String(p.id));
+    setPoForm({
+      contractId: String(p.contractId ?? ""),
+      projectId: String(p.projectId ?? ""),
+      no: String(p.no ?? ""),
+      amount: String(num(p.amount)),
+      date: String(p.date ?? todayISO()),
+    });
+  };
+
   const saveClientPo = async () => {
     try {
     if (!poForm.contractId) { toast(S.tPickContractFirst, "info"); return; }
     if (!poForm.projectId) { toast("PO klien wajib memilih proyek", "info"); return; }
     if (!poForm.no.trim()) { toast(S.tPoNoRequired, "info"); return; }
-    if (clientPos.some((p) => String(p.no ?? "") === poForm.no.trim())) { toast(S.tPoNoUsed, "info"); return; }
+    if (clientPos.some((p) => String(p.no ?? "") === poForm.no.trim() && String(p.id) !== clientPoEditId)) { toast(S.tPoNoUsed, "info"); return; }
     if (num(poForm.amount) <= 0) { toast(S.tPoPositive, "info"); return; }
     if (!poForm.date) { toast(S.tPoDateRequired, "info"); return; }
     // PO klien wajib memilih kontrak + proyek yang cocok satu sama lain.
@@ -480,12 +577,32 @@ export default function CRM() {
       toast(`Klien kontrak (${contract.client}) beda dengan klien proyek (${project.client})`, "info");
       return;
     }
-    const created = await add("clientPos", {
-      contractId: poForm.contractId, ...(poForm.projectId ? { projectId: poForm.projectId } : {}),
+    const payload = {
+      contractId: poForm.contractId, projectId: poForm.projectId,
       no: poForm.no.trim(), amount: num(poForm.amount), date: poForm.date,
-    }, { action: "mencatat PO klien", target: poForm.no.trim(), module: "CRM" });
-    toast(S.tPoLogged.replace("{a}", created.id).replace("{b}", poForm.no.trim()));
+    };
+    if (clientPoEditId) {
+      await update("clientPos", clientPoEditId, payload);
+      log("mengubah PO klien", `${clientPoEditId} - ${payload.no}`, "CRM");
+      toast(locale === "en" ? `Client PO ${clientPoEditId} updated` : `PO klien ${clientPoEditId} diperbarui`);
+      setClientPoEditId(null);
+    } else {
+      const created = await add("clientPos", payload, { action: "mencatat PO klien", target: payload.no, module: "CRM" });
+      toast(S.tPoLogged.replace("{a}", created.id).replace("{b}", payload.no));
+    }
     setPoForm({ contractId: "", projectId: "", no: "", amount: "", date: todayISO() });
+    } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); }
+  };
+
+  const confirmDelClientPo = async () => {
+    if (!delClientPo) return;
+    const locked = clientPoLocked(delClientPo);
+    if (locked) { toast(locked, "info"); setDelClientPo(null); return; }
+    try {
+      await remove("clientPos", String(delClientPo.id));
+      log("menghapus PO klien", `${String(delClientPo.id)} - ${String(delClientPo.no ?? "")}`, "CRM");
+      toast(locale === "en" ? `Client PO ${String(delClientPo.no ?? "")} deleted` : `PO klien ${String(delClientPo.no ?? "")} dihapus`);
+      setDelClientPo(null);
     } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); }
   };
 
@@ -968,9 +1085,23 @@ export default function CRM() {
                             <td className="td text-xs text-steel-600">{fmtTanggal(String(k.signedAt ?? ""))}</td>
                             <td className="td"><StatusBadge status={String(k.status ?? "Aktif")} /></td>
                             <td className="td">
-                              {!String(k.projectId ?? "") && (
+                              <div className="flex gap-1.5">
+                                {/* Ubah: nilai kontrak, tanggal tanda tangan, dan
+                                    proyek tertaut TIDAK bisa dikoreksi tanpa
+                                    jalur ini - dan nilai kontrak disinkronkan
+                                    ke projects.budget saat dibuat, jadi
+                                    perubahan nilai harus menyinkronkan budget
+                                    juga (lihat saveContractEdit). */}
+                                <button className="btn-secondary text-xs" onClick={() => openContractEdit(k)}>
+                                  {locale === "en" ? "Edit" : "Ubah"}
+                                </button>
+                                {/* Hapus dulu hanya untuk kontrak yang BELUM
+                                    di-link ke proyek. Sekarang tersedia juga
+                                    untuk kontrak terpaut - konfirmasi akan
+                                    memblokir bila masih ada clientPos / 
+                                    invoice yang merujuk (contractBlockers). */}
                                 <button className="btn-secondary text-xs text-rose-600" onClick={() => setDelContract(k)}>{S.deleteBtn}</button>
-                              )}
+                              </div>
                             </td>
                           </tr>
                         ))}
@@ -981,11 +1112,24 @@ export default function CRM() {
                 )}
               </Card>
               <Card className="p-4">
-                <CardHeader title={S.createContractTitle} subtitle={S.createContractSub} />
+                <CardHeader
+                  title={contractEditId
+                    ? (locale === "en" ? `Edit contract - ${contractEditId}` : `Ubah Kontrak - ${contractEditId}`)
+                    : S.createContractTitle}
+                  subtitle={contractEditId
+                    ? (locale === "en"
+                      ? "Saving also syncs the linked project's budget to this value."
+                      : "Menyimpan juga menyinkronkan budget proyek tertaut ke nilai ini.")
+                    : S.createContractSub}
+                />
                 <div className="space-y-3 px-1 pb-1">
                   <Field label={S.contractQuoteLabel}>
+                    {/* Saat koreksi, penawaran TIDAK bisa diganti: kontrak
+                        sudah terbit dari penawaran tertentu, menukarnya
+                        mencabut jejak SPA dan RFQ-nya. */}
                     <select
                       className="input"
+                      disabled={contractEditId !== null}
                       value={contractForm.quotationId}
                       onChange={(e) => {
                         const q = quotations.find((x) => x.id === e.target.value);
@@ -1004,7 +1148,16 @@ export default function CRM() {
                       {data.projects.map((p) => <option key={p.id} value={p.id}>{p.id} · {String(p.vessel)}</option>)}
                     </select>
                   </Field>
-                  <button className="btn-primary w-full justify-center" onClick={saveContract}>{S.saveContractBtn}</button>
+                  <div className="flex gap-2">
+                    <button className="btn-primary flex-1 justify-center" onClick={contractEditId ? saveContractEdit : saveContract}>
+                      {contractEditId ? (locale === "en" ? "Save changes" : "Simpan Perubahan") : S.saveContractBtn}
+                    </button>
+                    {contractEditId && (
+                      <button className="btn-secondary" onClick={closeContractModal}>
+                        {locale === "en" ? "Cancel" : "Batal"}
+                      </button>
+                    )}
+                  </div>
                 </div>
               </Card>
             </div>
@@ -1019,6 +1172,10 @@ export default function CRM() {
                       <span className="font-mono font-semibold text-navy-900">{String(p.no)}</span>
                       <span className="text-xs text-steel-500">{S.poMeta.replace("{a}", String(p.contractId ?? "-")).replace("{b}", p.projectId ? S.poMetaProj.replace("{n}", String(p.projectId)) : "").replace("{c}", fmtTanggal(String(p.date ?? "")))}</span>
                       <span className="font-semibold text-navy-900">{fmtRupiah(num(p.amount))}</span>
+                      <div className="flex gap-1.5">
+                        <button className="btn-secondary text-xs" onClick={() => openClientPoEdit(p)}>{locale === "en" ? "Edit" : "Ubah"}</button>
+                        <button className="btn-secondary text-xs text-rose-600" onClick={() => setDelClientPo(p)}>{locale === "en" ? "Delete" : "Hapus"}</button>
+                      </div>
                     </div>
                   ))}
                 </div>
@@ -1040,7 +1197,12 @@ export default function CRM() {
                 <Field label={S.amountLabel}><NumInput min={0} className="input" value={poForm.amount} onChange={(e) => setPoForm({ ...poForm, amount: e.target.value })} /></Field>
                 <Field label={S.dateLabel}><input type="date" className="input" value={poForm.date} onChange={(e) => setPoForm({ ...poForm, date: e.target.value })} /></Field>
               </div>
-              <button className="btn-secondary mt-2 text-xs" onClick={saveClientPo}><Plus className="h-3.5 w-3.5" /> {S.logPoBtn}</button>
+              <button className="btn-secondary mt-2 text-xs" onClick={() => { setClientPoEditId(null); setPoForm({ contractId: "", projectId: "", no: "", amount: "", date: todayISO() }); void saveClientPo(); }}><Plus className="h-3.5 w-3.5" /> {clientPoEditId ? (locale === "en" ? "Update PO" : "Perbarui PO") : S.logPoBtn}</button>
+              {clientPoEditId && (
+                <button className="btn-secondary ml-2 mt-2 text-xs" onClick={() => { setClientPoEditId(null); setPoForm({ contractId: "", projectId: "", no: "", amount: "", date: todayISO() }); }}>
+                  {locale === "en" ? "Cancel" : "Batal"}
+                </button>
+              )}
             </Card>
             </div>
           )}
@@ -1232,6 +1394,19 @@ export default function CRM() {
       </Modal>
 
       <ConfirmModal
+        open={delClientPo !== null}
+        title={delClientPo ? (locale === "en" ? `Delete client PO ${String(delClientPo.no ?? "")}?` : `Hapus PO klien ${String(delClientPo.no ?? "")}?`) : ""}
+        desc={delClientPo ? (clientPoLocked(delClientPo) ?? (locale === "en"
+          ? `${fmtRupiah(num(delClientPo.amount))} dated ${fmtTanggal(String(delClientPo.date ?? ""))} will be removed.`
+          : `${fmtRupiah(num(delClientPo.amount))} bertanggal ${fmtTanggal(String(delClientPo.date ?? ""))} akan dihapus.`)) : ""}
+        confirmLabel={locale === "en" ? "Delete" : "Hapus"}
+        danger
+        confirmDisabled={delClientPo ? clientPoLocked(delClientPo) !== null : false}
+        onCancel={() => setDelClientPo(null)}
+        onConfirm={confirmDelClientPo}
+      />
+
+      <ConfirmModal
         open={delQuote !== null}
         title={delQuote ? (locale === "en" ? `Delete quotation ${delQuote.id}?` : `Hapus penawaran ${delQuote.id}?`) : ""}
         desc={(() => {
@@ -1300,11 +1475,14 @@ export default function CRM() {
           if (!delContract) return "";
           const used = contractBlockers(delContract);
           const base = locale === "en"
-            ? `Contract ${delContract.id} (not linked to a project) will be permanently deleted.`
-            : `Kontrak ${delContract.id} (belum di-link ke proyek) akan dihapus permanen.`;
+            ? `Contract ${delContract.id} will be permanently deleted.`
+            : `Kontrak ${delContract.id} akan dihapus permanen.`;
+          const linked = locale === "en"
+            ? ` It is linked to project ${String(delContract.projectId)} - that link will be broken (the project itself is kept).`
+            : ` Kontrak ini tertaut ke proyek ${String(delContract.projectId)} - tautan tersebut akan dilepas (proyeknya sendiri tetap ada).`;
           return used.length > 0
             ? (locale === "en" ? `${base} Blocked by: ${used.join(", ")}.` : `${base} Terhalang: ${used.join(", ")}. Penghapusan diblokir.`)
-            : base;
+            : `${base}${String(delContract.projectId ?? "") !== "" ? linked : ""}`;
         })()}
         confirmLabel={delContract && contractBlockers(delContract).length > 0
           ? (locale === "en" ? "Blocked - still in use" : "Diblokir - masih dipakai")

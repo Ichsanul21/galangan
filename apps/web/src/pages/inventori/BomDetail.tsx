@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { ArrowLeft, Barcode, Package } from "lucide-react";
-import { Card, CardHeader, PageHeader, Badge, Modal, Field, FormGrid, Tabs, EmptyState, toast, SortTh, toggleSort, sortRows,
+import { Card, CardHeader, PageHeader, Badge, Modal, Field, FormGrid, Tabs, EmptyState, ConfirmModal, toast, SortTh, toggleSort, sortRows,
   NumInput,
   AsyncButton,
 } from "../../components/ui";
@@ -65,7 +65,7 @@ export default function BomDetail() {
   const { locale } = useT();
   const S = n_inv[locale];
   const { id } = useParams();
-  const { data, add, update, log } = useStore();
+  const { data, add, update, remove, log } = useStore();
   const item = data.inventory.find((i) => i.id === id) ?? null;
   const [tab, setTab] = useState("Riwayat");
   const [sort, setSort] = useState<SortState>({ key: null, dir: "asc" });
@@ -74,6 +74,13 @@ export default function BomDetail() {
   const [reservQtyInput, setReservQtyInput] = useState("");
   const [showOpname, setShowOpname] = useState(false);
   const [opCount, setOpCount] = useState("");
+  /* Riwayat movement di halaman ini belum punya aksi apa pun, padahal tabel
+     yang sama di Inventori sudah bisa diubah/dihapus. Semuanya ikut aturan
+     di sana: qty/tipe/item terkunci sehingga stok tidak perlu dihitung ulang,
+     dan hapus movement = hapus catatan saja (koreksi stok lewat Opname). */
+  const [moveEdit, setMoveEdit] = useState<StoreItem | null>(null);
+  const [moveEditForm, setMoveEditForm] = useState({ date: "", by: "", purpose: "", supplier: "", pic: "" });
+  const [delMove, setDelMove] = useState<StoreItem | null>(null);
 
   if (!item) {
     return (
@@ -112,6 +119,50 @@ export default function BomDetail() {
     } catch (e) {
       toast(e instanceof Error ? e.message : S.saveFail, "info");
     }
+  };
+
+  const openMoveEdit = (m: StoreItem) => {
+    setMoveEdit(m);
+    setMoveEditForm({
+      date: String(m.date ?? todayISO()),
+      by: String(m.by ?? ""),
+      purpose: String(m.purpose ?? ""),
+      supplier: String(m.supplier ?? ""),
+      pic: String(m.pic ?? ""),
+    });
+  };
+
+  const saveMoveEdit = async () => {
+    if (!moveEdit) return;
+    if (!moveEditForm.date) { toast(locale === "en" ? "Date is required" : "Tanggal wajib diisi", "info"); return; }
+    try {
+      /* Sengaja TIDAK menyentuh qty/type/item: movement itu jejak audit dan
+         angkanya sudah ikut memotong/menambah stok. Koreksi jumlah dilakukan
+         lewat Opname supaya selisihnya tetap terlihat di riwayat. */
+      await update("movements", String(moveEdit.id), {
+        date: moveEditForm.date,
+        by: moveEditForm.by.trim(),
+        purpose: moveEditForm.purpose.trim(),
+        supplier: moveEditForm.supplier.trim(),
+        pic: moveEditForm.pic.trim(),
+      });
+      log("mengubah movement (tanpa koreksi stok)", `${String(moveEdit.id)} - ${item.name}`, "Inventori");
+      toast(locale === "en" ? `Movement ${String(moveEdit.id)} updated` : `Movement ${String(moveEdit.id)} diperbarui`);
+      setMoveEdit(null);
+    } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); }
+  };
+
+  const confirmDelMove = async () => {
+    if (!delMove) return;
+    const mid = String(delMove.id);
+    try {
+      await remove("movements", mid);
+      log("menghapus movement (tanpa koreksi stok)", `${mid} - ${item.name}`, "Inventori");
+      toast(locale === "en"
+        ? `Movement ${mid} deleted - STOCK NOT adjusted. Use Opname if a correction is needed.`
+        : `Movement ${mid} dihapus - STOK TIDAK diubah. Gunakan Opname bila perlu koreksi.`, "info");
+      setDelMove(null);
+    } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); }
   };
 
   const saveOpname = async () => {
@@ -193,7 +244,7 @@ export default function BomDetail() {
                   <div className="overflow-x-auto">
                     <table className="w-full">
                       <thead className="bg-surface sticky top-0 z-10">
-                        <tr><SortTh label={S.thTx} sortKey="id" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.thType} sortKey="type" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.jumlahLbl} sortKey="qty" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.thRef} sortKey="by" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.dateLbl} sortKey="date" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /></tr>
+                        <tr><SortTh label={S.thTx} sortKey="id" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.thType} sortKey="type" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.jumlahLbl} sortKey="qty" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.thRef} sortKey="by" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.dateLbl} sortKey="date" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><th className="th">{locale === "en" ? "Actions" : "Aksi"}</th></tr>
                       </thead>
                       <tbody className="divide-y divide-steel-100">
                         {sortRows(moves, sort, (m: StoreItem, k) => k === "qty" ? Number(m.qty) : String((m as unknown as Record<string, unknown>)[k] ?? "")).map((m) => (
@@ -203,6 +254,16 @@ export default function BomDetail() {
                             <td className="td font-semibold">{fmtJumlah(Number(m.qty))}</td>
                             <td className="td font-mono text-xs text-steel-600 truncate" title={String(m.by)}>{m.by}</td>
                             <td className="td text-steel-600">{fmtTanggal(m.date)}</td>
+                            <td className="td">
+                              <div className="flex flex-wrap gap-1.5">
+                                <button className="btn-secondary text-xs" onClick={() => openMoveEdit(m)} aria-label={`${locale === "en" ? "Edit" : "Ubah"} ${String(m.id)}`}>
+                                  {locale === "en" ? "Edit" : "Ubah"}
+                                </button>
+                                <button className="btn-secondary text-xs text-rose-600" onClick={() => setDelMove(m)} aria-label={`${locale === "en" ? "Delete" : "Hapus"} ${String(m.id)}`}>
+                                  {locale === "en" ? "Delete" : "Hapus"}
+                                </button>
+                              </div>
+                            </td>
                           </tr>
                         ))}
                       </tbody>
@@ -252,6 +313,42 @@ export default function BomDetail() {
           <Field label={S.countedLbl}><NumInput min={0} className="input" value={opCount} onChange={(e) => setOpCount(e.target.value)} /></Field>
         </FormGrid>
       </Modal>
+
+      <Modal open={moveEdit !== null} onClose={() => setMoveEdit(null)}
+        title={moveEdit ? (locale === "en" ? `Edit movement ${String(moveEdit.id)}` : `Ubah movement ${String(moveEdit.id)}`) : ""}
+        subtitle={locale === "en" ? "Info only - quantity is locked and stock is NOT recalculated" : "Info saja - jumlah terkunci dan stok TIDAK dihitung ulang"}
+        footer={<><button className="btn-secondary" onClick={() => setMoveEdit(null)}>{S.cancelBtn}</button><AsyncButton className="btn-primary" onAction={saveMoveEdit}>{S.saveBtn}</AsyncButton></>}>
+        <div className="space-y-3">
+          <FormGrid>
+            <Field label={S.dateLbl}><input type="date" className="input" value={moveEditForm.date} onChange={(e) => setMoveEditForm({ ...moveEditForm, date: e.target.value })} /></Field>
+            <Field label={S.thRef}><input className="input font-mono" value={moveEditForm.by} onChange={(e) => setMoveEditForm({ ...moveEditForm, by: e.target.value })} /></Field>
+          </FormGrid>
+          <Field label={S.purposeLbl ?? (locale === "en" ? "Purpose" : "Keperluan")}><input className="input" value={moveEditForm.purpose} onChange={(e) => setMoveEditForm({ ...moveEditForm, purpose: e.target.value })} /></Field>
+          <FormGrid>
+            <Field label={locale === "en" ? "Supplier" : "Pemasok"}><input className="input" value={moveEditForm.supplier} onChange={(e) => setMoveEditForm({ ...moveEditForm, supplier: e.target.value })} /></Field>
+            <Field label={locale === "en" ? "PIC" : "PIC"}><input className="input" value={moveEditForm.pic} onChange={(e) => setMoveEditForm({ ...moveEditForm, pic: e.target.value })} /></Field>
+          </FormGrid>
+          {moveEdit && (
+            <p className="text-xs text-steel-500">
+              {locale === "en"
+                ? `${String(moveEdit.type)} - ${fmtJumlah(Number(moveEdit.qty ?? 0))} ${item.unit} stays as recorded.`
+                : `${String(moveEdit.type)} - ${fmtJumlah(Number(moveEdit.qty ?? 0))} ${item.unit} tetap seperti tercatat.`}
+            </p>
+          )}
+        </div>
+      </Modal>
+
+      <ConfirmModal
+        open={delMove !== null}
+        title={delMove ? (locale === "en" ? `Delete movement ${String(delMove.id)}?` : `Hapus movement ${String(delMove.id)}?`) : ""}
+        desc={delMove ? (locale === "en"
+          ? `Record ${String(delMove.type)} ${fmtJumlah(Number(delMove.qty ?? 0))} ${item.unit} (${String(delMove.by)}) will be deleted. STOCK IS NOT ADJUSTED - use Opname if the count needs correcting.`
+          : `Catatan ${String(delMove.type)} ${fmtJumlah(Number(delMove.qty ?? 0))} ${item.unit} (${String(delMove.by)}) akan dihapus. STOK TIDAK dikoreksi - gunakan Opname bila hitungan perlu disesuaikan.`) : ""}
+        confirmLabel={locale === "en" ? "Delete without stock correction" : "Hapus tanpa koreksi stok"}
+        danger
+        onCancel={() => setDelMove(null)}
+        onConfirm={confirmDelMove}
+      />
     </div>
   );
 }
