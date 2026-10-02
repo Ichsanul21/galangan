@@ -37,6 +37,8 @@ import { fmtTanggal, todayISO } from "../../utils/format";
 import { AlertBannerView, notifRowId, useModuleAlert, useNotifFlash } from "../../components/AlertBanner";
 import { getSetting } from "../../utils/settings";
 import { exportExcel } from "../../utils/export";
+import { suratHrDoc } from "../../utils/pdfDocs";
+import { SB_KOP } from "../../utils/sb";
 import { useT } from "../../i18n/LanguageContext";
 import { n_qc } from "../../i18n/n_qc";
 
@@ -248,7 +250,7 @@ export default function HR() {
 
   /* ---------- surat ---------- */
   const [showSurat, setShowSurat] = useState(false);
-  const [suratForm, setSuratForm] = useState({ employeeId: "", jenis: "SP 1", isi: "", tanggal: todayISO(), fileUrl: "" });
+  const [suratForm, setSuratForm] = useState({ employeeId: "", jenis: "SP 1", isi: "", tanggal: todayISO(), fileUrl: "", approvedBy: "", approvedAt: "", sourceType: "", sourceId: "" });
   /* Arsip surat pindah dari useDraftState("isms.draft.hr.arsipSurat") ke
      koleksi `letters`. Alasan: draft localStorage hilang saat cache browser
      dibersihkan, tidak pernah sampai ke server (user lain tidak pernah
@@ -1034,8 +1036,48 @@ const finishTraining = async (t: StoreItem) => {
       isi: String(s.isi ?? ""),
       tanggal: String(s.tanggal ?? todayISO()),
       fileUrl: String(s.fileUrl ?? ""),
+      approvedBy: String(s.approvedBy ?? ""),
+      approvedAt: String(s.approvedAt ?? ""),
+      sourceType: String(s.sourceType ?? ""),
+      sourceId: String(s.sourceId ?? ""),
     });
     setShowSurat(true);
+  };
+
+  /* PDF resmi dari mesin teks (bukan pratinjau teks polos).
+     Nomor memakai suratNomor yang sama dengan simpan, jadi berkas yang
+     diunduh dan yang masuk arsip selalu bernomor sama. */
+  const printSuratPdf = () => {
+    if (!suratEmp) { toast(S.tPilihKaryawan, "info"); return; }
+    if (!suratForm.isi.trim()) { toast(S.tIsiSurat, "info"); return; }
+    try {
+      suratHrDoc({
+        nomor: suratEditId ?? suratNomor,
+        jenis: suratForm.jenis,
+        tanggal: suratForm.tanggal,
+        nama: String(suratEmp.name),
+        nik: String(suratEmp.nik ?? ""),
+        jabatan: String(suratEmp.role ?? ""),
+        departemen: String(suratEmp.dept ?? ""),
+        cabang: String(suratEmp.branch ?? ""),
+        isi: suratForm.isi.trim(),
+        approvedBy: suratForm.approvedBy.trim(),
+        approvedAt: suratForm.approvedAt,
+        labels: {
+          nomor: locale === "en" ? "Number" : "Nomor",
+          tanggal: locale === "en" ? "Date" : "Tanggal",
+          kepada: locale === "en" ? "To" : "Kepada Yth",
+          jabatan: locale === "en" ? "Position" : "Jabatan",
+          departemen: locale === "en" ? "Department" : "Departemen",
+          cabang: locale === "en" ? "Branch" : "Cabang",
+          disetujui: locale === "en" ? "Approved by" : "Disetujui oleh",
+          nama: locale === "en" ? "Name" : "Nama",
+        },
+      }).save(`surat-${suratEditId ?? suratNomor}`);
+      toast(S.tSuratPdfOk.replace("{n}", suratEditId ?? suratNomor));
+    } catch (e) {
+      toast(e instanceof Error ? e.message : S.saveFail, "info");
+    }
   };
 
   const saveSurat = async () => {
@@ -1052,6 +1094,10 @@ const finishTraining = async (t: StoreItem) => {
       return;
     }
     const url = suratForm.fileUrl.trim();
+    /* Field persetujuan. Ditambahkan karena SP1/SP2/SP3 tanpa nama dan
+       tanggal persetujuan tidak sah, dan arsip surat tidak bisa dibuka
+       ulang untuk membuktikan siapa yang menyetujuinya. Disimpan di record
+       yang sama supaya travels bersama suratnya, bukan di tempat lain. */
     const patch = {
       employeeId: suratEmp.id,
       nama: String(suratEmp.name),
@@ -1060,6 +1106,14 @@ const finishTraining = async (t: StoreItem) => {
       isi: suratForm.isi.trim(),
       fileUrl: url,
       fileName: url !== "" ? `surat-${suratEditId ?? suratNomor}.pdf` : "",
+      approvedBy: suratForm.approvedBy.trim(),
+      approvedAt: suratForm.approvedAt,
+      /* Asal dokumen, supaya surat yang lahir dari(hasil cuti yang
+         belum disetujui, atau mutasi) bisa ditelusuri balik ke
+         baris asalnya tanpa menebak dari isi teks. */
+      sourceType: suratForm.sourceType,
+      sourceId: suratForm.sourceId,
+      branch: String(suratEmp.branch ?? branch),
     };
     try {
       if (suratEditId) {
@@ -1079,7 +1133,7 @@ const finishTraining = async (t: StoreItem) => {
         toast(S.tSuratOk.replace("{n}", suratNomor));
       }
       setShowSurat(false);
-      setSuratForm({ employeeId: "", jenis: "SP 1", isi: "", tanggal: todayISO(), fileUrl: "" });
+      setSuratForm({ employeeId: "", jenis: "SP 1", isi: "", tanggal: todayISO(), fileUrl: "", approvedBy: "", approvedAt: "", sourceType: "", sourceId: "" });
     } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); }
   };
 
@@ -1675,7 +1729,7 @@ const finishTraining = async (t: StoreItem) => {
                   <h3 className="text-sm font-semibold text-navy-900">{S.arsipT}</h3>
                   <div className="flex items-center gap-2">
                     <button className="btn-secondary text-xs" onClick={exportArsipSurat}>{S.btnExport}</button>
-                    <button className="btn-primary text-xs" onClick={() => { setSuratEditId(null); setSuratForm({ employeeId: "", jenis: "SP 1", isi: "", tanggal: todayISO(), fileUrl: "" }); setShowSurat(true); }}>{S.btnBuatSurat}</button>
+                    <button className="btn-primary text-xs" onClick={() => { setSuratEditId(null); setSuratForm({ employeeId: "", jenis: "SP 1", isi: "", tanggal: todayISO(), fileUrl: "", approvedBy: "", approvedAt: "", sourceType: "", sourceId: "" }); setShowSurat(true); }}>{S.btnBuatSurat}</button>
                   </div>
                 </div>
                 <p className="mt-1 text-xs text-steel-500">
@@ -2111,6 +2165,22 @@ const finishTraining = async (t: StoreItem) => {
               <FileUploadButton label={locale === "en" ? "Upload" : "Unggah"} onUploaded={(url) => setSuratForm((f) => ({ ...f, fileUrl: url }))} />
             </div>
           </Field>
+          {/* Persetujuan. Wajib diisi karena blok ini ikut tercetak di PDF
+              dan tanpa nama penyetuju surat peringatan tidak sah. */}
+          <FormGrid>
+            <Field label={S.fDisetujuiOleh} hint={S.hDisetujuiOleh}>
+              <input className="input" value={suratForm.approvedBy} onChange={(e) => setSuratForm({ ...suratForm, approvedBy: e.target.value })} placeholder={SB_KOP.director} />
+            </Field>
+            <Field label={S.fDisetujuiPada}>
+              <input type="date" className="input font-mono" value={suratForm.approvedAt} onChange={(e) => setSuratForm({ ...suratForm, approvedAt: e.target.value })} aria-label={S.fDisetujuiPada} />
+            </Field>
+          </FormGrid>
+          <div className="flex flex-wrap items-center gap-2">
+            <button type="button" className="btn-secondary text-xs" onClick={printSuratPdf} disabled={!suratEmp || !suratForm.isi.trim()}>
+              {S.btnSuratPdf}
+            </button>
+            <span className="text-[11px] text-steel-400">{S.hSuratPdf}</span>
+          </div>
           {suratPreview && (
             <div>
               <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-steel-500">{S.lblPratinjau}</p>
