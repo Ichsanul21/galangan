@@ -1,5 +1,5 @@
 // GENERATED — jangan edit manual. Dibuat oleh `npm run seed:mirror`
-// dari apps/web/src/data/seeds.ts + data/index.ts (472 baris).
+// dari apps/web/src/data/seeds.ts + data/index.ts (473 baris).
 export interface MirrorRow {
   table: string;
   id: string;
@@ -2073,6 +2073,48 @@ export const FE_MIRROR_ROWS: MirrorRow[] = [
       "net": 0,
       "status": "Draft",
       "paidAt": ""
+    }
+  },
+  {
+    "table": "taxPeriods",
+    "id": "TAX-202607",
+    "branch": "",
+    "data": {
+      "period": "2026-07",
+      "ppnKeluar": 1056000000,
+      "ppnMasuk": 452000000,
+      "pph23": 124000000,
+      "pph21": 38500000,
+      "status": "Lapor",
+      "reportedAt": "2026-07-31",
+      "ppnTerutangAuto": 604000000,
+      "ppnTerutangFinal": 604000000,
+      "npwp": "01.234.567.8-901.000",
+      "klu": "30120",
+      "penanggungJawab": "H. Syarif Sarapping",
+      "telepon": "0811 552 4456",
+      "email": "syukurbersaudara@gmail.com",
+      "npwpPenyetor": "01.234.567.8-901.000",
+      "tanggalSetor": "2026-08-15",
+      "nomorFormulir": "1.1-08-000-1.2-23-24/07",
+      "bank": "Bank Syariah Indonesia",
+      "teller": "0119",
+      "kodeRetval": "1",
+      "pph22": 0,
+      "pph24": 0,
+      "pph25": 0,
+      "pph26": 0,
+      "dppKelDN": 880000000,
+      "dppKelLN": 0,
+      "ppnTerpotong": 0,
+      "dppMasDN": 376666666,
+      "dppMasLN": 0,
+      "ppnImpor": 0,
+      "ppnTidakDikreditkan": 0,
+      "ppnDikompensasikan": 0,
+      "ppnBM": 0,
+      "retensiWithhold": 0,
+      "ppnTerutangManual": ""
     }
   },
   {
