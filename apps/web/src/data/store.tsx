@@ -24,10 +24,11 @@ import {
   spareparts as seedSpareparts,
   seedBoq as seedBoq,
 } from "./index";
-import { COA_EXCEL, JU_PENYESUAIAN_EXCEL, ASET_EXCEL } from "./financeExcel";
+import { COA_EXCEL, ASET_EXCEL } from "./financeExcel";
 import {
   seedWorkOrders, seedTermins, seedVendors, seedRequisitions, seedInspections,
   seedBookings, seedPayables, seedInvoices, seedDocuments, seedBranches,
+  seedInvoicesHistory, seedBookingsHistory, seedInspectionsHistory, seedJournals,
   seedAttendance, seedPayroll, seedTaxPeriods, seedRfqs, seedChangeOrders,
   seedRisks, seedLeaves, seedTrainings, seedTimesheets, seedDrawings,
   seedToolbox, seedCalibrations, seedCommunications, seedContracts, seedBast,
@@ -136,18 +137,6 @@ const seedCoa: StoreItem[] = COA_EXCEL.map((c) => ({
 
 /* Seed dari sheet JU - jurnal penyesuaian per periode (sudah posted, berimbang).
    Voucher month-end diturunkan dari tgl (JUM-0630/0731/0831) - sama dengan backend. */
-const seedJournals: StoreItem[] = JU_PENYESUAIAN_EXCEL.map((j, i) => ({
-  id: `JU-EX-${String(i + 1).padStart(2, "0")}`,
-  date: j.tgl,
-  kodePembantu: "",
-  dokumen: `JUM-${String(j.tgl ?? "").slice(5, 7)}${String(j.tgl ?? "").slice(8, 10)}`,
-  uraian: j.uraian,
-  db: j.db,
-  kr: j.kr,
-  amount: j.dbAmt || j.krAmt,
-  sumber: "JU",
-  status: "Posted",
-}));
 
 /* Seed dari sheet Aset - ringkasan fiskal 2025 per golongan, metode garis lurus (GL). */
 const seedAssets: StoreItem[] = ASET_EXCEL.map((a, i) => ({
@@ -252,16 +241,16 @@ function buildSeeds(): StoreShape {
     inventory: clone(seedInventory) as StoreItem[],
     movements: clone(seedMovements) as StoreItem[],
     equipment: clone(seedEquipment) as StoreItem[],
-    bookings: clone(seedBookings),
+    bookings: [...clone(seedBookings), ...clone(seedBookingsHistory)],
     subcontractors: clone(seedSubcontractors) as StoreItem[],
     workOrders: clone(seedWorkOrders),
     termins: clone(seedTermins),
     employees: clone(seedEmployees) as StoreItem[],
-    invoices: clone(seedInvoices) as StoreItem[],
+    invoices: [...clone(seedInvoices), ...clone(seedInvoicesHistory)] as StoreItem[],
     payables: clone(seedPayables),
     ncr: clone(seedNcr) as StoreItem[],
     incidents: clone(seedIncidents) as StoreItem[],
-    inspections: clone(seedInspections),
+    inspections: [...clone(seedInspections), ...clone(seedInspectionsHistory)],
     purchaseOrders: clone(seedPO) as StoreItem[],
     requisitions: clone(seedRequisitions),
     vendors: clone(seedVendors),

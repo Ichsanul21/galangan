@@ -54,6 +54,21 @@ const MAP: Array<[string, string]> = [
   ["seedWarehouses", "warehouses"],
   ["seedMaintenances", "maintenances"],
   ["seedLetters", "letters"],
+  /* Riwayat 12 bulan. Tanpa baris ini, sumbu grafik yang sudah dibetulkan
+     (Dashboard revenue, Equipment jam, QC inspeksi) tetap kosong di server:
+     seed lamanya hanya September 2025 - Oktober 2026 dan fallback-nya
+     tetap dipakai. */
+  ["seedInvoicesHistory", "invoices"],
+  ["seedBookingsHistory", "bookings"],
+  ["seedInspectionsHistory", "inspections"],
+  /* Jurnal SEBELUMNYA tidak pernah masuk server sama sekali. Seed-nya
+     dibuat di store.tsx dari JU_PENYESUAIAN_EXCEL, bukan dari seeds.ts, jadi
+     tidak pernah ikut MAP dan tidak pernah di-mirror.
+
+     Akibatnya Analytics selalu jatuh ke fallback seed untuk grafik revenue
+     dan cost: kurvanya tetap tampil, hanya datanya yang bukan data
+     sebenarnya, dan tidak ada error apa pun yang menyinggungnya. */
+  ["seedJournals", "journals"],
 ];
 
 const INDEX_MAP: Array<[string, string]> = [

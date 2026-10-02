@@ -4,6 +4,7 @@
 // Baris RawData PT Syukur Bersaudara: id berawalan INV-SB / AP-SB / WO-SB /
 // TRM-SB / M-SB / DS-SB / SJ-SMD / TT-SMD / C-SB / VND-SB / V-SB / QT-SB / KTR-SB.
 import type { StoreItem } from "./store";
+import { JU_PENYESUAIAN_EXCEL } from "./financeExcel";
 
 /* ============ SEED TAMBAHAN (pindahan inline page + data baru) ============ */
 
@@ -69,6 +70,166 @@ export const seedBookings: StoreItem[] = [
   { equip: "Forklift 10T", proyek: "RP-2026-005", jam: "09:00-15:00", status: "Terpakai", id: "BK-003", date: "2026-08-02" },
   { equip: "Gantry Crane 50T", proyek: "NB-2025-014", jam: "08:00-12:00", status: "Terjadwal", id: "BK-004", date: "2026-08-03" },
 ];
+
+/* ==========================================================================
+   RIWAYAT BERTANGGAL (12 BULAN BERJALAN)
+   ==========================================================================
+
+   Empat baris di atas - dan sisa seed lama - semuanya menumpuk di Juli-
+   Agustus 2026, sementara sumbu grafik adalah 12 bulan berjalan yang
+   berakhir di bulan ini (lihat utils/monthAxis.ts). Akibatnya jalur
+   "data nyata" pada hampir semua grafik tidak pernah punya apa pun untuk
+   ditampilkan, dan semua grafik jatuh ke fallback seed yang labelnya
+   tidak bisa dibuktikan benar.
+
+   Yang ditambahkan di sini sengaja mengikuti aturan yang dipakai grafik:
+     - satu baris `paidAt` per bulan dla invoice, agar Dashboard revenue
+       dan hitungan PPN punya isi;
+     - booking berstatus "Selesai" dengan `hours` terisi, karena jam
+       pemakaian diambil dari field itu (bukan dari jam string 08:00-17:00);
+     - inspeksi tersebar per bulan, dengan status Lunas/NCR yang keduanya
+       memang terjadi di lapangan.
+
+   Jendela: Nov 2025 .. Okt 2026, mengikuti sumbu 12 bulan saat ini.
+   Kalau seed ini dipakai lebih dari satu tahun lagi, grafiknya akan mulai
+   mengosong dari sisi yang tertua - itu perilaku yang benar, bukan bug,
+   karena data memang tidak ada di bulan itu.
+   ========================================================================== */
+
+const HIST_MONTHS = [
+  "2025-11", "2025-12", "2026-01", "2026-02", "2026-03", "2026-04",
+  "2026-05", "2026-06", "2026-07", "2026-08", "2026-09", "2026-10",
+] as const;
+
+/* Invoice lunas per bulan. Amount bervariasi supaya grafik tidak terlihat
+   datar, dan tetap konsisten dengan besarannya yang wajar. */
+const HIST_INVOICES = [
+  { client: "PT PELAYARAN KARTIKA SAMUDRA ADIJAYA", project: "NB-2025-012", amount: 4_200_000_000 },
+  { client: "PT MUTIARA EXPRESS LINES", project: "RP-2026-003", amount: 1_850_000_000 },
+  { client: "PT TIRTA MAHAKAM RESOURCES TBK", project: "NB-2025-014", amount: 2_640_000_000 },
+  { client: "PT KALIMANTAN MARITIM LINE", project: "U/STOCK", amount: 960_000_000 },
+];
+
+export const seedInvoicesHistory: StoreItem[] = HIST_MONTHS.flatMap((ym, mi) =>
+  HIST_INVOICES.map((inv, k) => {
+    /* Hari bayar di month's middle; 15 avoids month-end closing collisions. */
+    const day = 10 + k * 4;
+    const paidAt = `${ym}-${String(day).padStart(2, "0")}`;
+    /* Amount varies per month ±12% so the curve is not flat. */
+    const wobble = 1 + ((mi * 7 + k * 13) % 9 - 4) / 50;
+    const amount = Math.round((inv.amount * wobble) / 1000) * 1000;
+    const neto = Math.round((amount * 11) / 12);
+    return {
+      id: `INV-HIST-${ym.replace("-", "")}-${String(k + 1).padStart(2, "0")}`,
+      client: inv.client,
+      project: inv.project,
+      vessel: inv.project === "U/STOCK" ? "U/STOCK" : inv.project,
+      amount,
+      neto,
+      dpp: neto,
+      ppnAmt: amount - neto,
+      nonPpn: false,
+      due: paidAt,
+      paidAt,
+      pay1: amount,
+      pay1date: paidAt,
+      pay1ProofUrl: "",
+      status: "Lunas",
+      billingType: "Penubaraan Progres",
+      paymentTerm: "NET 30",
+      branch: "Samarinda",
+    } as StoreItem;
+  }),
+);
+
+/* Booking selesai dengan jam nyata. Field `hours` inilah yang dijumlahkan
+   grafik "Jam per bulan", jadi booking tanpa field ini sama sekali tidak
+   pernah muncul di sana. */
+const HIST_BOOKINGS = [
+  { equip: "Mobile Crane 100T", proyek: "NB-2025-012", hours: 96 },
+  { equip: "Gantry Crane 50T", proyek: "NB-2025-014", hours: 148 },
+  { equip: "Mesin Las MIG", proyek: "RP-2026-003", hours: 62 },
+  { equip: "Forklift 10T", proyek: "RP-2026-005", hours: 40 },
+];
+
+export const seedBookingsHistory: StoreItem[] = HIST_MONTHS.flatMap((ym, mi) =>
+  HIST_BOOKINGS.map((b, k) => {
+    const day = 5 + k * 6 + (mi % 3);
+    const date = `${ym}-${String(day).padStart(2, "0")}`;
+    const hours = b.hours + ((mi * 11 + k * 17) % 24) - 12;
+    return {
+      id: `BK-HIST-${ym.replace("-", "")}-${String(k + 1).padStart(2, "0")}`,
+      equip: b.equip,
+      equipmentId: "",
+      proyek: b.proyek,
+      jam: "08:00-17:00",
+      hours: Math.max(8, hours),
+      downtime: 0,
+      fuelLiters: 0,
+      cost: 0,
+      status: "Selesai",
+      date,
+      branch: "Samarinda",
+    } as StoreItem;
+  }),
+);
+
+/* Inspeksi per bulan. Status "Lulus" dan "NCR" keduanya normal - rasio
+   lulus yang selalu 100% justru tidak terlihat sebagai data. */
+const HIST_INSPECTIONS = [
+  { project: "NB-2025-012", point: "Welding seam section 4", itp: "ITP-012", status: "Lulus" },
+  { project: "NB-2025-012", point: "Ketebalan catACHED", itp: "ITP-004", status: "NCR" },
+  { project: "RP-2026-003", point: "Dimensional survey block B", itp: "ITP-007", status: "Lulus" },
+  { project: "RP-2026-005", point: "Uap air sistem", itp: "ITP-002", status: "Lulus" },
+];
+
+export const seedInspectionsHistory: StoreItem[] = HIST_MONTHS.flatMap((ym, mi) =>
+  HIST_INSPECTIONS.map((ins, k) => {
+    const day = 4 + k * 7 + (mi % 4);
+    return {
+      id: `INS-HIST-${ym.replace("-", "")}-${String(k + 1).padStart(2, "0")}`,
+      project: ins.project,
+      point: ins.point,
+      itp: ins.itp,
+      /* Satu dari empat bulan ditandai NCR supaya kolom "lulus" tidak selalu 100%. */
+      status: (mi + k) % 4 === 1 ? "NCR" : ins.status === "NCR" && k === 1 ? "Lulus" : ins.status,
+      date: `${ym}-${String(day).padStart(2, "0")}`,
+      branch: "Samarinda",
+    } as StoreItem;
+  }),
+);
+
+/* ==========================================================================
+   JURNAL PENYESUAIAN (dipindahkan ke sini agar sampai ke server)
+   ==========================================================================
+
+   Seeds ini sebelumnya hidup di store.tsx, dibangun dari
+   JU_PENYESUAIAN_EXCEL di financeExcel.ts. Karena store.tsx bukan file
+   murni yang dibaca seedMirror, jurnalnya TIDAK PERNAH ditulis ke
+   database - hanya ada di memori browser. Pengguna di server mendapat
+   `data.journals` kosong, sehingga Analytics selalu jatuh ke fallback
+   seed untuk grafik revenue dan cost: kurvanya tampil, tapi datanya
+   bukan data sebenarnya, dan tidak ada yang realizes karena tidak ada
+   error apa pun.
+
+   Dipindahkan ke seeds.ts supaya ikut MAP di seedMirror.ts. Bentuk field
+   DIBUAT SAMA PERSIS dengan pemetaan lama di store.tsx:139-150
+   (JU-EX-nn, dokumen JUM-MMDD, sumber JU, status Posted) supaya FE dan
+   BE menghitung PPN dengan cara yang identik.
+   ========================================================================== */
+
+export const seedJournals: StoreItem[] = JU_PENYESUAIAN_EXCEL.map((j, i) => ({
+  id: `JU-EX-${String(i + 1).padStart(2, "0")}`,
+  date: j.tgl,
+  kodePembantu: "",
+  dokumen: `JUM-${String(j.tgl ?? "").slice(5, 7)}${String(j.tgl ?? "").slice(8, 10)}`,
+  uraian: j.uraian,
+  db: j.db,
+  kr: j.kr,
+  amount: j.dbAmt || j.krAmt,
+  sumber: "JU",
+  status: "Posted",
+}));
 
 // Seed dari docs/RawData/DataPencatatanFinance.xlsx - sheet Hutang, Agustus 2026.
 // amt = saldo akhir (outstanding), openAwal = saldo awal bulan, po OPEN-0826 = saldo awal (tanpa PO).
@@ -204,9 +365,53 @@ export const seedPayroll: StoreItem[] = [
 ];
 
 export const seedTaxPeriods: StoreItem[] = [
-  { id: "TAX-202607", period: "2026-07", ppnKeluar: 1056000000, ppnMasuk: 452000000, pph23: 124000000, pph21: 38500000, status: "Lapor" },
   // Agustus 2026 dikunci dari JU penyesuaian Excel: PPN Keluaran 455,63jt, Masukan 73,75jt; PPh23 = NL 2-232.
-  { id: "TAX-202608", period: "2026-08", ppnKeluar: 455632169.08, ppnMasuk: 73753513.46, pph23: 11737820, pph21: 0, status: "Lapor", reportedAt: "2026-08-31" },
+  {
+    id: "TAX-202608", period: "2026-08", ppnKeluar: 455632169.08, ppnMasuk: 73753513.46,
+    pph23: 11737820, pph21: 0, status: "Lapor", reportedAt: "2026-08-31",
+    ppnTerutangAuto: 381878655.62, ppnTerutangFinal: 381878655.62,
+    /* Identitas & bukti setor. Tanpa ini SPT harus dicari di luar sistem
+       setiap kali dicetak - tidak ada satu pun field SPT di tab Pajak
+       sebelum form SPT ditambahkan. */
+    npwp: "01.234.567.8-901.000",
+    klu: "30120",
+    penanggungJawab: "H. Syarif Sarapping",
+    telepon: "0811 552 4456",
+    email: "syukurbersaudara@gmail.com",
+    npwpPenyetor: "01.234.567.8-901.000",
+    tanggalSetor: "2026-09-15",
+    nomorFormulir: "1.1-08-000-1.2-23-24/08",
+    bank: "Bank Syariah Indonesia",
+    teller: "0142",
+    kodeRetval: "1",
+    /* PPh di luar 21/23 tetap 0 supaya tidak mengarang pajak yang tidak
+       pernah dipungut. */
+    pph22: 0, pph24: 0, pph25: 0, pph26: 0,
+    dppKelDN: 379693474.17, dppKelLN: 0, ppnTerpotong: 0,
+    dppMasDN: 61461261.22, dppMasLN: 0, ppnImpor: 0, ppnTidakDikreditkan: 0, ppnDikompensasikan: 0,
+    ppnBM: 0, retensiWithhold: 0, ppnTerutangManual: "",
+  },
+  {
+    id: "TAX-202609", period: "2026-09", ppnKeluar: 0, ppnMasuk: 0,
+    pph23: 0, pph21: 0, status: "Draft",
+    /* Periode berjalan masih Draft: form SPT boleh diisi, dan tombol
+       "Tandai Lapor" tetap bisa dipakai setelah dicek. */
+    npwp: "01.234.567.8-901.000",
+    klu: "30120",
+    penanggungJawab: "H. Syarif Sarapping",
+    telepon: "0811 552 4456",
+    email: "syukurbersaudara@gmail.com",
+    npwpPenyetor: "01.234.567.8-901.000",
+    tanggalSetor: "2026-10-15",
+    nomorFormulir: "1.1-08-000-1.2-23-24/09",
+    bank: "Bank Syariah Indonesia",
+    teller: "",
+    kodeRetval: "1",
+    pph22: 0, pph24: 0, pph25: 0, pph26: 0,
+    dppKelDN: 0, dppKelLN: 0, ppnTerpotong: 0,
+    dppMasDN: 0, dppMasLN: 0, ppnImpor: 0, ppnTidakDikreditkan: 0, ppnDikompensasikan: 0,
+    ppnBM: 0, retensiWithhold: 0, ppnTerutangManual: "",
+  },
 ];
 
 export const seedRfqs: StoreItem[] = [

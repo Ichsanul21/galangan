@@ -459,14 +459,38 @@ export const inventory: InventoryItem[] = [
 ];
 
 export const equipment = [
-  { id: "EQ-001", name: "Gantry Crane 50T", category: "Pengangkat", code: "CRN-50", branch: "Samarinda", status: "Tersedia", util: 68, nextService: "2026-09-15", lastHours: 12450, model: "DEMAG 50T" },
-  { id: "EQ-002", name: "Mobile Crane 100T", category: "Pengangkat", code: "MCR-100", branch: "Samarinda", status: "Terpakai", util: 82, nextService: "2026-08-05", lastHours: 18320, model: "Liebherr MK100" },
-  { id: "EQ-003", name: "Mesin Las MIG", category: "Pengelasan", code: "WLD-MIG-12", branch: "Samarinda", status: "Terpakai", util: 74, nextService: "2026-08-20", lastHours: 2500, model: "Fronius TPS 400i" },
-  { id: "EQ-004", name: "Mesin Las SMAW", category: "Pengelasan", code: "WLD-SMAW-05", branch: "Samarinda", status: "Maintenance", util: 45, nextService: "2026-07-30", lastHours: 4100, model: "Miller XMT" },
-  { id: "EQ-005", name: "Air Compressor", category: "Tenaga", code: "AIR-COMP-2", branch: "Samarinda", status: "Tersedia", util: 58, nextService: "2026-09-01", lastHours: 8900, model: "Atlas Copco" },
-  { id: "EQ-006", name: "Forklift 10T", category: "Transportasi", code: "FLT-10", branch: "Samarinda", status: "Terpakai", util: 71, nextService: "2026-08-12", lastHours: 7200, model: "Toyota 10FD" },
-  { id: "EQ-007", name: "Blast Machine", category: "Pengecatan", code: "BLST-01", branch: "Samarinda", status: "Tersedia", util: 63, nextService: "2026-09-10", lastHours: 3200, model: "Blastrac" },
-  { id: "EQ-008", name: "Generator Set 500kVA", category: "Tenaga", code: "GEN-500", branch: "Samarinda", status: "Tersedia", util: 52, nextService: "2026-10-01", lastHours: 15600, model: "Caterpillar" },
+  { id: "EQ-001", name: "Gantry Crane 50T", category: "Pengangkat", code: "CRN-50", branch: "Samarinda", status: "Tersedia", util: 68, nextService: "2026-09-15", lastHours: 12450, model: "DEMAG 50T",
+    serviceNotes: [
+      { at: "2026-07-14 09:20", by: "Bapak Hadi", text: "Tali hoist sudah mulai terlihat seratnya sendiri di Drum kanan. Kalau dipakai untuk beban berat, tali selalu keluar dari sheave atas.", fileUrl: "" },
+      { at: "2026-09-08 14:05", by: "Bapak Hadi", text: "Sheave sudah diganti. Uji beban 12 ton bersih, tidak ada getasan. Rem masih memakai komponen yang lama.", fileUrl: "" },
+    ] },
+  { id: "EQ-002", name: "Mobile Crane 100T", category: "Pengangkat", code: "MCR-100", branch: "Samarinda", status: "Terpakai", util: 82, nextService: "2026-08-05", lastHours: 18320, model: "Liebherr MK100",
+    serviceNotes: [
+      { at: "2026-06-19 10:30", by: "Sari Dewi", text: "Outrigger paling belakang harus dismoor dulu sebelum slew. Kalau tidak, landnya berbunyi dan unit tidak boleh dipakai di atas 60 ton.", fileUrl: "" },
+    ] },
+  { id: "EQ-003", name: "Mesin Las MIG", category: "Pengelasan", code: "WLD-MIG-12", branch: "Samarinda", status: "Terpakai", util: 74, nextService: "2026-08-20", lastHours: 2500, model: "Fronius TPS 400i",
+    serviceNotes: [
+      { at: "2026-05-11 08:45", by: "Andi", text: "Kawat 1,2 mm cocok untuk pipa. Jangan memakai kawat lebih tebal di bagian yang menipis, karena retaknya muncul di sambungan las.", fileUrl: "" },
+      { at: "2026-08-02 13:15", by: "Andi", text: "Nozzle-tip sudah aus dan sudah diganti. Posisi gas flow setter jangan diubah, karena hasil las keluar millih.", fileUrl: "" },
+    ] },
+  { id: "EQ-004", name: "Mesin Las SMAW", category: "Pengelasan", code: "WLD-SMAW-05", branch: "Samarinda", status: "Maintenance", util: 45, nextService: "2026-07-30", lastHours: 4100, model: "Miller XMT",
+    serviceNotes: [
+      { at: "2026-07-29 16:40", by: "Andi", text: "Kabel massa terkelupas di sambungan stick. Sudah dilaporkan ke bagian listrik tetapi belum diganti, jadi jangan dipakai dulu.", fileUrl: "" },
+    ] },
+  { id: "EQ-005", name: "Air Compressor", category: "Tenaga", code: "AIR-COMP-2", branch: "Samarinda", status: "Tersedia", util: 58, nextService: "2026-09-01", lastHours: 8900, model: "Atlas Copco",
+    serviceNotes: [
+      { at: "2026-04-22 11:10", by: "Bapak Hadi", text: "Drain air setiap selesai shift. Kalau dilewatkan, head cepat berkarat dan kompresor trips sendiri.", fileUrl: "" },
+    ] },
+  { id: "EQ-006", name: "Forklift 10T", category: "Transportasi", code: "FLT-10", branch: "Samarinda", status: "Terpakai", util: 71, nextService: "2026-08-12", lastHours: 7200, model: "Toyota 10FD",
+    serviceNotes: [] },
+  { id: "EQ-007", name: "Blast Machine", category: "Pengecatan", code: "BLST-01", branch: "Samarinda", status: "Tersedia", util: 63, nextService: "2026-09-10", lastHours: 3200, model: "Blastrac",
+    serviceNotes: [
+      { at: "2026-06-30 15:25", by: "Sari Dewi", text: "Nozzle brass sudah diganti dua kali bulan ini karena abrasive yang dipakai lebih kasar dari spesifikasi lama.", fileUrl: "" },
+    ] },
+  { id: "EQ-008", name: "Generator Set 500kVA", category: "Tenaga", code: "GEN-500", branch: "Samarinda", status: "Tersedia", util: 52, nextService: "2026-10-01", lastHours: 15600, model: "Caterpillar",
+    serviceNotes: [
+      { at: "2026-08-25 07:50", by: "Bapak Hadi", text: "Filter udara kabin sudah dibersihkan. Suara tidak knuckle lagi saat beban naik.", fileUrl: "" },
+    ] },
 ];
 
 export const subcontractors = [

@@ -1,5 +1,5 @@
 // GENERATED — jangan edit manual. Dibuat oleh `npm run seed:mirror`
-// dari apps/web/src/data/seeds.ts + data/index.ts (307 baris).
+// dari apps/web/src/data/seeds.ts + data/index.ts (472 baris).
 export interface MirrorRow {
   table: string;
   id: string;
@@ -2077,19 +2077,6 @@ export const FE_MIRROR_ROWS: MirrorRow[] = [
   },
   {
     "table": "taxPeriods",
-    "id": "TAX-202607",
-    "branch": "",
-    "data": {
-      "period": "2026-07",
-      "ppnKeluar": 1056000000,
-      "ppnMasuk": 452000000,
-      "pph23": 124000000,
-      "pph21": 38500000,
-      "status": "Lapor"
-    }
-  },
-  {
-    "table": "taxPeriods",
     "id": "TAX-202608",
     "branch": "",
     "data": {
@@ -2099,7 +2086,74 @@ export const FE_MIRROR_ROWS: MirrorRow[] = [
       "pph23": 11737820,
       "pph21": 0,
       "status": "Lapor",
-      "reportedAt": "2026-08-31"
+      "reportedAt": "2026-08-31",
+      "ppnTerutangAuto": 381878655.62,
+      "ppnTerutangFinal": 381878655.62,
+      "npwp": "01.234.567.8-901.000",
+      "klu": "30120",
+      "penanggungJawab": "H. Syarif Sarapping",
+      "telepon": "0811 552 4456",
+      "email": "syukurbersaudara@gmail.com",
+      "npwpPenyetor": "01.234.567.8-901.000",
+      "tanggalSetor": "2026-09-15",
+      "nomorFormulir": "1.1-08-000-1.2-23-24/08",
+      "bank": "Bank Syariah Indonesia",
+      "teller": "0142",
+      "kodeRetval": "1",
+      "pph22": 0,
+      "pph24": 0,
+      "pph25": 0,
+      "pph26": 0,
+      "dppKelDN": 379693474.17,
+      "dppKelLN": 0,
+      "ppnTerpotong": 0,
+      "dppMasDN": 61461261.22,
+      "dppMasLN": 0,
+      "ppnImpor": 0,
+      "ppnTidakDikreditkan": 0,
+      "ppnDikompensasikan": 0,
+      "ppnBM": 0,
+      "retensiWithhold": 0,
+      "ppnTerutangManual": ""
+    }
+  },
+  {
+    "table": "taxPeriods",
+    "id": "TAX-202609",
+    "branch": "",
+    "data": {
+      "period": "2026-09",
+      "ppnKeluar": 0,
+      "ppnMasuk": 0,
+      "pph23": 0,
+      "pph21": 0,
+      "status": "Draft",
+      "npwp": "01.234.567.8-901.000",
+      "klu": "30120",
+      "penanggungJawab": "H. Syarif Sarapping",
+      "telepon": "0811 552 4456",
+      "email": "syukurbersaudara@gmail.com",
+      "npwpPenyetor": "01.234.567.8-901.000",
+      "tanggalSetor": "2026-10-15",
+      "nomorFormulir": "1.1-08-000-1.2-23-24/09",
+      "bank": "Bank Syariah Indonesia",
+      "teller": "",
+      "kodeRetval": "1",
+      "pph22": 0,
+      "pph24": 0,
+      "pph25": 0,
+      "pph26": 0,
+      "dppKelDN": 0,
+      "dppKelLN": 0,
+      "ppnTerpotong": 0,
+      "dppMasDN": 0,
+      "dppMasLN": 0,
+      "ppnImpor": 0,
+      "ppnTidakDikreditkan": 0,
+      "ppnDikompensasikan": 0,
+      "ppnBM": 0,
+      "retensiWithhold": 0,
+      "ppnTerutangManual": ""
     }
   },
   {
@@ -2821,6 +2875,2838 @@ export const FE_MIRROR_ROWS: MirrorRow[] = [
       "fileName": "",
       "createdBy": "Anda",
       "createdAt": "2026-08-12 14:20"
+    }
+  },
+  {
+    "table": "invoices",
+    "id": "INV-HIST-202511-01",
+    "branch": "Samarinda",
+    "data": {
+      "client": "PT PELAYARAN KARTIKA SAMUDRA ADIJAYA",
+      "project": "NB-2025-012",
+      "vessel": "NB-2025-012",
+      "amount": 3864000000,
+      "neto": 3542000000,
+      "dpp": 3542000000,
+      "ppnAmt": 322000000,
+      "nonPpn": false,
+      "due": "2025-11-10",
+      "paidAt": "2025-11-10",
+      "pay1": 3864000000,
+      "pay1date": "2025-11-10",
+      "pay1ProofUrl": "",
+      "status": "Lunas",
+      "billingType": "Penubaraan Progres",
+      "paymentTerm": "NET 30"
+    }
+  },
+  {
+    "table": "invoices",
+    "id": "INV-HIST-202511-02",
+    "branch": "Samarinda",
+    "data": {
+      "client": "PT MUTIARA EXPRESS LINES",
+      "project": "RP-2026-003",
+      "vessel": "RP-2026-003",
+      "amount": 1850000000,
+      "neto": 1695833333,
+      "dpp": 1695833333,
+      "ppnAmt": 154166667,
+      "nonPpn": false,
+      "due": "2025-11-14",
+      "paidAt": "2025-11-14",
+      "pay1": 1850000000,
+      "pay1date": "2025-11-14",
+      "pay1ProofUrl": "",
+      "status": "Lunas",
+      "billingType": "Penubaraan Progres",
+      "paymentTerm": "NET 30"
+    }
+  },
+  {
+    "table": "invoices",
+    "id": "INV-HIST-202511-03",
+    "branch": "Samarinda",
+    "data": {
+      "client": "PT TIRTA MAHAKAM RESOURCES TBK",
+      "project": "NB-2025-014",
+      "vessel": "NB-2025-014",
+      "amount": 2851200000,
+      "neto": 2613600000,
+      "dpp": 2613600000,
+      "ppnAmt": 237600000,
+      "nonPpn": false,
+      "due": "2025-11-18",
+      "paidAt": "2025-11-18",
+      "pay1": 2851200000,
+      "pay1date": "2025-11-18",
+      "pay1ProofUrl": "",
+      "status": "Lunas",
+      "billingType": "Penubaraan Progres",
+      "paymentTerm": "NET 30"
+    }
+  },
+  {
+    "table": "invoices",
+    "id": "INV-HIST-202511-04",
+    "branch": "Samarinda",
+    "data": {
+      "client": "PT KALIMANTAN MARITIM LINE",
+      "project": "U/STOCK",
+      "vessel": "U/STOCK",
+      "amount": 940800000,
+      "neto": 862400000,
+      "dpp": 862400000,
+      "ppnAmt": 78400000,
+      "nonPpn": false,
+      "due": "2025-11-22",
+      "paidAt": "2025-11-22",
+      "pay1": 940800000,
+      "pay1date": "2025-11-22",
+      "pay1ProofUrl": "",
+      "status": "Lunas",
+      "billingType": "Penubaraan Progres",
+      "paymentTerm": "NET 30"
+    }
+  },
+  {
+    "table": "invoices",
+    "id": "INV-HIST-202512-01",
+    "branch": "Samarinda",
+    "data": {
+      "client": "PT PELAYARAN KARTIKA SAMUDRA ADIJAYA",
+      "project": "NB-2025-012",
+      "vessel": "NB-2025-012",
+      "amount": 4452000000,
+      "neto": 4081000000,
+      "dpp": 4081000000,
+      "ppnAmt": 371000000,
+      "nonPpn": false,
+      "due": "2025-12-10",
+      "paidAt": "2025-12-10",
+      "pay1": 4452000000,
+      "pay1date": "2025-12-10",
+      "pay1ProofUrl": "",
+      "status": "Lunas",
+      "billingType": "Penubaraan Progres",
+      "paymentTerm": "NET 30"
+    }
+  },
+  {
+    "table": "invoices",
+    "id": "INV-HIST-202512-02",
+    "branch": "Samarinda",
+    "data": {
+      "client": "PT MUTIARA EXPRESS LINES",
+      "project": "RP-2026-003",
+      "vessel": "RP-2026-003",
+      "amount": 1776000000,
+      "neto": 1628000000,
+      "dpp": 1628000000,
+      "ppnAmt": 148000000,
+      "nonPpn": false,
+      "due": "2025-12-14",
+      "paidAt": "2025-12-14",
+      "pay1": 1776000000,
+      "pay1date": "2025-12-14",
+      "pay1ProofUrl": "",
+      "status": "Lunas",
+      "billingType": "Penubaraan Progres",
+      "paymentTerm": "NET 30"
+    }
+  },
+  {
+    "table": "invoices",
+    "id": "INV-HIST-202512-03",
+    "branch": "Samarinda",
+    "data": {
+      "client": "PT TIRTA MAHAKAM RESOURCES TBK",
+      "project": "NB-2025-014",
+      "vessel": "NB-2025-014",
+      "amount": 2745600000,
+      "neto": 2516800000,
+      "dpp": 2516800000,
+      "ppnAmt": 228800000,
+      "nonPpn": false,
+      "due": "2025-12-18",
+      "paidAt": "2025-12-18",
+      "pay1": 2745600000,
+      "pay1date": "2025-12-18",
+      "pay1ProofUrl": "",
+      "status": "Lunas",
+      "billingType": "Penubaraan Progres",
+      "paymentTerm": "NET 30"
+    }
+  },
+  {
+    "table": "invoices",
+    "id": "INV-HIST-202512-04",
+    "branch": "Samarinda",
+    "data": {
+      "client": "PT KALIMANTAN MARITIM LINE",
+      "project": "U/STOCK",
+      "vessel": "U/STOCK",
+      "amount": 902400000,
+      "neto": 827200000,
+      "dpp": 827200000,
+      "ppnAmt": 75200000,
+      "nonPpn": false,
+      "due": "2025-12-22",
+      "paidAt": "2025-12-22",
+      "pay1": 902400000,
+      "pay1date": "2025-12-22",
+      "pay1ProofUrl": "",
+      "status": "Lunas",
+      "billingType": "Penubaraan Progres",
+      "paymentTerm": "NET 30"
+    }
+  },
+  {
+    "table": "invoices",
+    "id": "INV-HIST-202601-01",
+    "branch": "Samarinda",
+    "data": {
+      "client": "PT PELAYARAN KARTIKA SAMUDRA ADIJAYA",
+      "project": "NB-2025-012",
+      "vessel": "NB-2025-012",
+      "amount": 4284000000,
+      "neto": 3927000000,
+      "dpp": 3927000000,
+      "ppnAmt": 357000000,
+      "nonPpn": false,
+      "due": "2026-01-10",
+      "paidAt": "2026-01-10",
+      "pay1": 4284000000,
+      "pay1date": "2026-01-10",
+      "pay1ProofUrl": "",
+      "status": "Lunas",
+      "billingType": "Penubaraan Progres",
+      "paymentTerm": "NET 30"
+    }
+  },
+  {
+    "table": "invoices",
+    "id": "INV-HIST-202601-02",
+    "branch": "Samarinda",
+    "data": {
+      "client": "PT MUTIARA EXPRESS LINES",
+      "project": "RP-2026-003",
+      "vessel": "RP-2026-003",
+      "amount": 1702000000,
+      "neto": 1560166667,
+      "dpp": 1560166667,
+      "ppnAmt": 141833333,
+      "nonPpn": false,
+      "due": "2026-01-14",
+      "paidAt": "2026-01-14",
+      "pay1": 1702000000,
+      "pay1date": "2026-01-14",
+      "pay1ProofUrl": "",
+      "status": "Lunas",
+      "billingType": "Penubaraan Progres",
+      "paymentTerm": "NET 30"
+    }
+  },
+  {
+    "table": "invoices",
+    "id": "INV-HIST-202601-03",
+    "branch": "Samarinda",
+    "data": {
+      "client": "PT TIRTA MAHAKAM RESOURCES TBK",
+      "project": "NB-2025-014",
+      "vessel": "NB-2025-014",
+      "amount": 2640000000,
+      "neto": 2420000000,
+      "dpp": 2420000000,
+      "ppnAmt": 220000000,
+      "nonPpn": false,
+      "due": "2026-01-18",
+      "paidAt": "2026-01-18",
+      "pay1": 2640000000,
+      "pay1date": "2026-01-18",
+      "pay1ProofUrl": "",
+      "status": "Lunas",
+      "billingType": "Penubaraan Progres",
+      "paymentTerm": "NET 30"
+    }
+  },
+  {
+    "table": "invoices",
+    "id": "INV-HIST-202601-04",
+    "branch": "Samarinda",
+    "data": {
+      "client": "PT KALIMANTAN MARITIM LINE",
+      "project": "U/STOCK",
+      "vessel": "U/STOCK",
+      "amount": 1036800000,
+      "neto": 950400000,
+      "dpp": 950400000,
+      "ppnAmt": 86400000,
+      "nonPpn": false,
+      "due": "2026-01-22",
+      "paidAt": "2026-01-22",
+      "pay1": 1036800000,
+      "pay1date": "2026-01-22",
+      "pay1ProofUrl": "",
+      "status": "Lunas",
+      "billingType": "Penubaraan Progres",
+      "paymentTerm": "NET 30"
+    }
+  },
+  {
+    "table": "invoices",
+    "id": "INV-HIST-202602-01",
+    "branch": "Samarinda",
+    "data": {
+      "client": "PT PELAYARAN KARTIKA SAMUDRA ADIJAYA",
+      "project": "NB-2025-012",
+      "vessel": "NB-2025-012",
+      "amount": 4116000000,
+      "neto": 3773000000,
+      "dpp": 3773000000,
+      "ppnAmt": 343000000,
+      "nonPpn": false,
+      "due": "2026-02-10",
+      "paidAt": "2026-02-10",
+      "pay1": 4116000000,
+      "pay1date": "2026-02-10",
+      "pay1ProofUrl": "",
+      "status": "Lunas",
+      "billingType": "Penubaraan Progres",
+      "paymentTerm": "NET 30"
+    }
+  },
+  {
+    "table": "invoices",
+    "id": "INV-HIST-202602-02",
+    "branch": "Samarinda",
+    "data": {
+      "client": "PT MUTIARA EXPRESS LINES",
+      "project": "RP-2026-003",
+      "vessel": "RP-2026-003",
+      "amount": 1961000000,
+      "neto": 1797583333,
+      "dpp": 1797583333,
+      "ppnAmt": 163416667,
+      "nonPpn": false,
+      "due": "2026-02-14",
+      "paidAt": "2026-02-14",
+      "pay1": 1961000000,
+      "pay1date": "2026-02-14",
+      "pay1ProofUrl": "",
+      "status": "Lunas",
+      "billingType": "Penubaraan Progres",
+      "paymentTerm": "NET 30"
+    }
+  },
+  {
+    "table": "invoices",
+    "id": "INV-HIST-202602-03",
+    "branch": "Samarinda",
+    "data": {
+      "client": "PT TIRTA MAHAKAM RESOURCES TBK",
+      "project": "NB-2025-014",
+      "vessel": "NB-2025-014",
+      "amount": 2534400000,
+      "neto": 2323200000,
+      "dpp": 2323200000,
+      "ppnAmt": 211200000,
+      "nonPpn": false,
+      "due": "2026-02-18",
+      "paidAt": "2026-02-18",
+      "pay1": 2534400000,
+      "pay1date": "2026-02-18",
+      "pay1ProofUrl": "",
+      "status": "Lunas",
+      "billingType": "Penubaraan Progres",
+      "paymentTerm": "NET 30"
+    }
+  },
+  {
+    "table": "invoices",
+    "id": "INV-HIST-202602-04",
+    "branch": "Samarinda",
+    "data": {
+      "client": "PT KALIMANTAN MARITIM LINE",
+      "project": "U/STOCK",
+      "vessel": "U/STOCK",
+      "amount": 998400000,
+      "neto": 915200000,
+      "dpp": 915200000,
+      "ppnAmt": 83200000,
+      "nonPpn": false,
+      "due": "2026-02-22",
+      "paidAt": "2026-02-22",
+      "pay1": 998400000,
+      "pay1date": "2026-02-22",
+      "pay1ProofUrl": "",
+      "status": "Lunas",
+      "billingType": "Penubaraan Progres",
+      "paymentTerm": "NET 30"
+    }
+  },
+  {
+    "table": "invoices",
+    "id": "INV-HIST-202603-01",
+    "branch": "Samarinda",
+    "data": {
+      "client": "PT PELAYARAN KARTIKA SAMUDRA ADIJAYA",
+      "project": "NB-2025-012",
+      "vessel": "NB-2025-012",
+      "amount": 3948000000,
+      "neto": 3619000000,
+      "dpp": 3619000000,
+      "ppnAmt": 329000000,
+      "nonPpn": false,
+      "due": "2026-03-10",
+      "paidAt": "2026-03-10",
+      "pay1": 3948000000,
+      "pay1date": "2026-03-10",
+      "pay1ProofUrl": "",
+      "status": "Lunas",
+      "billingType": "Penubaraan Progres",
+      "paymentTerm": "NET 30"
+    }
+  },
+  {
+    "table": "invoices",
+    "id": "INV-HIST-202603-02",
+    "branch": "Samarinda",
+    "data": {
+      "client": "PT MUTIARA EXPRESS LINES",
+      "project": "RP-2026-003",
+      "vessel": "RP-2026-003",
+      "amount": 1887000000,
+      "neto": 1729750000,
+      "dpp": 1729750000,
+      "ppnAmt": 157250000,
+      "nonPpn": false,
+      "due": "2026-03-14",
+      "paidAt": "2026-03-14",
+      "pay1": 1887000000,
+      "pay1date": "2026-03-14",
+      "pay1ProofUrl": "",
+      "status": "Lunas",
+      "billingType": "Penubaraan Progres",
+      "paymentTerm": "NET 30"
+    }
+  },
+  {
+    "table": "invoices",
+    "id": "INV-HIST-202603-03",
+    "branch": "Samarinda",
+    "data": {
+      "client": "PT TIRTA MAHAKAM RESOURCES TBK",
+      "project": "NB-2025-014",
+      "vessel": "NB-2025-014",
+      "amount": 2428800000,
+      "neto": 2226400000,
+      "dpp": 2226400000,
+      "ppnAmt": 202400000,
+      "nonPpn": false,
+      "due": "2026-03-18",
+      "paidAt": "2026-03-18",
+      "pay1": 2428800000,
+      "pay1date": "2026-03-18",
+      "pay1ProofUrl": "",
+      "status": "Lunas",
+      "billingType": "Penubaraan Progres",
+      "paymentTerm": "NET 30"
+    }
+  },
+  {
+    "table": "invoices",
+    "id": "INV-HIST-202603-04",
+    "branch": "Samarinda",
+    "data": {
+      "client": "PT KALIMANTAN MARITIM LINE",
+      "project": "U/STOCK",
+      "vessel": "U/STOCK",
+      "amount": 960000000,
+      "neto": 880000000,
+      "dpp": 880000000,
+      "ppnAmt": 80000000,
+      "nonPpn": false,
+      "due": "2026-03-22",
+      "paidAt": "2026-03-22",
+      "pay1": 960000000,
+      "pay1date": "2026-03-22",
+      "pay1ProofUrl": "",
+      "status": "Lunas",
+      "billingType": "Penubaraan Progres",
+      "paymentTerm": "NET 30"
+    }
+  },
+  {
+    "table": "invoices",
+    "id": "INV-HIST-202604-01",
+    "branch": "Samarinda",
+    "data": {
+      "client": "PT PELAYARAN KARTIKA SAMUDRA ADIJAYA",
+      "project": "NB-2025-012",
+      "vessel": "NB-2025-012",
+      "amount": 4536000000,
+      "neto": 4158000000,
+      "dpp": 4158000000,
+      "ppnAmt": 378000000,
+      "nonPpn": false,
+      "due": "2026-04-10",
+      "paidAt": "2026-04-10",
+      "pay1": 4536000000,
+      "pay1date": "2026-04-10",
+      "pay1ProofUrl": "",
+      "status": "Lunas",
+      "billingType": "Penubaraan Progres",
+      "paymentTerm": "NET 30"
+    }
+  },
+  {
+    "table": "invoices",
+    "id": "INV-HIST-202604-02",
+    "branch": "Samarinda",
+    "data": {
+      "client": "PT MUTIARA EXPRESS LINES",
+      "project": "RP-2026-003",
+      "vessel": "RP-2026-003",
+      "amount": 1813000000,
+      "neto": 1661916667,
+      "dpp": 1661916667,
+      "ppnAmt": 151083333,
+      "nonPpn": false,
+      "due": "2026-04-14",
+      "paidAt": "2026-04-14",
+      "pay1": 1813000000,
+      "pay1date": "2026-04-14",
+      "pay1ProofUrl": "",
+      "status": "Lunas",
+      "billingType": "Penubaraan Progres",
+      "paymentTerm": "NET 30"
+    }
+  },
+  {
+    "table": "invoices",
+    "id": "INV-HIST-202604-03",
+    "branch": "Samarinda",
+    "data": {
+      "client": "PT TIRTA MAHAKAM RESOURCES TBK",
+      "project": "NB-2025-014",
+      "vessel": "NB-2025-014",
+      "amount": 2798400000,
+      "neto": 2565200000,
+      "dpp": 2565200000,
+      "ppnAmt": 233200000,
+      "nonPpn": false,
+      "due": "2026-04-18",
+      "paidAt": "2026-04-18",
+      "pay1": 2798400000,
+      "pay1date": "2026-04-18",
+      "pay1ProofUrl": "",
+      "status": "Lunas",
+      "billingType": "Penubaraan Progres",
+      "paymentTerm": "NET 30"
+    }
+  },
+  {
+    "table": "invoices",
+    "id": "INV-HIST-202604-04",
+    "branch": "Samarinda",
+    "data": {
+      "client": "PT KALIMANTAN MARITIM LINE",
+      "project": "U/STOCK",
+      "vessel": "U/STOCK",
+      "amount": 921600000,
+      "neto": 844800000,
+      "dpp": 844800000,
+      "ppnAmt": 76800000,
+      "nonPpn": false,
+      "due": "2026-04-22",
+      "paidAt": "2026-04-22",
+      "pay1": 921600000,
+      "pay1date": "2026-04-22",
+      "pay1ProofUrl": "",
+      "status": "Lunas",
+      "billingType": "Penubaraan Progres",
+      "paymentTerm": "NET 30"
+    }
+  },
+  {
+    "table": "invoices",
+    "id": "INV-HIST-202605-01",
+    "branch": "Samarinda",
+    "data": {
+      "client": "PT PELAYARAN KARTIKA SAMUDRA ADIJAYA",
+      "project": "NB-2025-012",
+      "vessel": "NB-2025-012",
+      "amount": 4368000000,
+      "neto": 4004000000,
+      "dpp": 4004000000,
+      "ppnAmt": 364000000,
+      "nonPpn": false,
+      "due": "2026-05-10",
+      "paidAt": "2026-05-10",
+      "pay1": 4368000000,
+      "pay1date": "2026-05-10",
+      "pay1ProofUrl": "",
+      "status": "Lunas",
+      "billingType": "Penubaraan Progres",
+      "paymentTerm": "NET 30"
+    }
+  },
+  {
+    "table": "invoices",
+    "id": "INV-HIST-202605-02",
+    "branch": "Samarinda",
+    "data": {
+      "client": "PT MUTIARA EXPRESS LINES",
+      "project": "RP-2026-003",
+      "vessel": "RP-2026-003",
+      "amount": 1739000000,
+      "neto": 1594083333,
+      "dpp": 1594083333,
+      "ppnAmt": 144916667,
+      "nonPpn": false,
+      "due": "2026-05-14",
+      "paidAt": "2026-05-14",
+      "pay1": 1739000000,
+      "pay1date": "2026-05-14",
+      "pay1ProofUrl": "",
+      "status": "Lunas",
+      "billingType": "Penubaraan Progres",
+      "paymentTerm": "NET 30"
+    }
+  },
+  {
+    "table": "invoices",
+    "id": "INV-HIST-202605-03",
+    "branch": "Samarinda",
+    "data": {
+      "client": "PT TIRTA MAHAKAM RESOURCES TBK",
+      "project": "NB-2025-014",
+      "vessel": "NB-2025-014",
+      "amount": 2692800000,
+      "neto": 2468400000,
+      "dpp": 2468400000,
+      "ppnAmt": 224400000,
+      "nonPpn": false,
+      "due": "2026-05-18",
+      "paidAt": "2026-05-18",
+      "pay1": 2692800000,
+      "pay1date": "2026-05-18",
+      "pay1ProofUrl": "",
+      "status": "Lunas",
+      "billingType": "Penubaraan Progres",
+      "paymentTerm": "NET 30"
+    }
+  },
+  {
+    "table": "invoices",
+    "id": "INV-HIST-202605-04",
+    "branch": "Samarinda",
+    "data": {
+      "client": "PT KALIMANTAN MARITIM LINE",
+      "project": "U/STOCK",
+      "vessel": "U/STOCK",
+      "amount": 883200000,
+      "neto": 809600000,
+      "dpp": 809600000,
+      "ppnAmt": 73600000,
+      "nonPpn": false,
+      "due": "2026-05-22",
+      "paidAt": "2026-05-22",
+      "pay1": 883200000,
+      "pay1date": "2026-05-22",
+      "pay1ProofUrl": "",
+      "status": "Lunas",
+      "billingType": "Penubaraan Progres",
+      "paymentTerm": "NET 30"
+    }
+  },
+  {
+    "table": "invoices",
+    "id": "INV-HIST-202606-01",
+    "branch": "Samarinda",
+    "data": {
+      "client": "PT PELAYARAN KARTIKA SAMUDRA ADIJAYA",
+      "project": "NB-2025-012",
+      "vessel": "NB-2025-012",
+      "amount": 4200000000,
+      "neto": 3850000000,
+      "dpp": 3850000000,
+      "ppnAmt": 350000000,
+      "nonPpn": false,
+      "due": "2026-06-10",
+      "paidAt": "2026-06-10",
+      "pay1": 4200000000,
+      "pay1date": "2026-06-10",
+      "pay1ProofUrl": "",
+      "status": "Lunas",
+      "billingType": "Penubaraan Progres",
+      "paymentTerm": "NET 30"
+    }
+  },
+  {
+    "table": "invoices",
+    "id": "INV-HIST-202606-02",
+    "branch": "Samarinda",
+    "data": {
+      "client": "PT MUTIARA EXPRESS LINES",
+      "project": "RP-2026-003",
+      "vessel": "RP-2026-003",
+      "amount": 1998000000,
+      "neto": 1831500000,
+      "dpp": 1831500000,
+      "ppnAmt": 166500000,
+      "nonPpn": false,
+      "due": "2026-06-14",
+      "paidAt": "2026-06-14",
+      "pay1": 1998000000,
+      "pay1date": "2026-06-14",
+      "pay1ProofUrl": "",
+      "status": "Lunas",
+      "billingType": "Penubaraan Progres",
+      "paymentTerm": "NET 30"
+    }
+  },
+  {
+    "table": "invoices",
+    "id": "INV-HIST-202606-03",
+    "branch": "Samarinda",
+    "data": {
+      "client": "PT TIRTA MAHAKAM RESOURCES TBK",
+      "project": "NB-2025-014",
+      "vessel": "NB-2025-014",
+      "amount": 2587200000,
+      "neto": 2371600000,
+      "dpp": 2371600000,
+      "ppnAmt": 215600000,
+      "nonPpn": false,
+      "due": "2026-06-18",
+      "paidAt": "2026-06-18",
+      "pay1": 2587200000,
+      "pay1date": "2026-06-18",
+      "pay1ProofUrl": "",
+      "status": "Lunas",
+      "billingType": "Penubaraan Progres",
+      "paymentTerm": "NET 30"
+    }
+  },
+  {
+    "table": "invoices",
+    "id": "INV-HIST-202606-04",
+    "branch": "Samarinda",
+    "data": {
+      "client": "PT KALIMANTAN MARITIM LINE",
+      "project": "U/STOCK",
+      "vessel": "U/STOCK",
+      "amount": 1017600000,
+      "neto": 932800000,
+      "dpp": 932800000,
+      "ppnAmt": 84800000,
+      "nonPpn": false,
+      "due": "2026-06-22",
+      "paidAt": "2026-06-22",
+      "pay1": 1017600000,
+      "pay1date": "2026-06-22",
+      "pay1ProofUrl": "",
+      "status": "Lunas",
+      "billingType": "Penubaraan Progres",
+      "paymentTerm": "NET 30"
+    }
+  },
+  {
+    "table": "invoices",
+    "id": "INV-HIST-202607-01",
+    "branch": "Samarinda",
+    "data": {
+      "client": "PT PELAYARAN KARTIKA SAMUDRA ADIJAYA",
+      "project": "NB-2025-012",
+      "vessel": "NB-2025-012",
+      "amount": 4032000000,
+      "neto": 3696000000,
+      "dpp": 3696000000,
+      "ppnAmt": 336000000,
+      "nonPpn": false,
+      "due": "2026-07-10",
+      "paidAt": "2026-07-10",
+      "pay1": 4032000000,
+      "pay1date": "2026-07-10",
+      "pay1ProofUrl": "",
+      "status": "Lunas",
+      "billingType": "Penubaraan Progres",
+      "paymentTerm": "NET 30"
+    }
+  },
+  {
+    "table": "invoices",
+    "id": "INV-HIST-202607-02",
+    "branch": "Samarinda",
+    "data": {
+      "client": "PT MUTIARA EXPRESS LINES",
+      "project": "RP-2026-003",
+      "vessel": "RP-2026-003",
+      "amount": 1924000000,
+      "neto": 1763666667,
+      "dpp": 1763666667,
+      "ppnAmt": 160333333,
+      "nonPpn": false,
+      "due": "2026-07-14",
+      "paidAt": "2026-07-14",
+      "pay1": 1924000000,
+      "pay1date": "2026-07-14",
+      "pay1ProofUrl": "",
+      "status": "Lunas",
+      "billingType": "Penubaraan Progres",
+      "paymentTerm": "NET 30"
+    }
+  },
+  {
+    "table": "invoices",
+    "id": "INV-HIST-202607-03",
+    "branch": "Samarinda",
+    "data": {
+      "client": "PT TIRTA MAHAKAM RESOURCES TBK",
+      "project": "NB-2025-014",
+      "vessel": "NB-2025-014",
+      "amount": 2481600000,
+      "neto": 2274800000,
+      "dpp": 2274800000,
+      "ppnAmt": 206800000,
+      "nonPpn": false,
+      "due": "2026-07-18",
+      "paidAt": "2026-07-18",
+      "pay1": 2481600000,
+      "pay1date": "2026-07-18",
+      "pay1ProofUrl": "",
+      "status": "Lunas",
+      "billingType": "Penubaraan Progres",
+      "paymentTerm": "NET 30"
+    }
+  },
+  {
+    "table": "invoices",
+    "id": "INV-HIST-202607-04",
+    "branch": "Samarinda",
+    "data": {
+      "client": "PT KALIMANTAN MARITIM LINE",
+      "project": "U/STOCK",
+      "vessel": "U/STOCK",
+      "amount": 979200000,
+      "neto": 897600000,
+      "dpp": 897600000,
+      "ppnAmt": 81600000,
+      "nonPpn": false,
+      "due": "2026-07-22",
+      "paidAt": "2026-07-22",
+      "pay1": 979200000,
+      "pay1date": "2026-07-22",
+      "pay1ProofUrl": "",
+      "status": "Lunas",
+      "billingType": "Penubaraan Progres",
+      "paymentTerm": "NET 30"
+    }
+  },
+  {
+    "table": "invoices",
+    "id": "INV-HIST-202608-01",
+    "branch": "Samarinda",
+    "data": {
+      "client": "PT PELAYARAN KARTIKA SAMUDRA ADIJAYA",
+      "project": "NB-2025-012",
+      "vessel": "NB-2025-012",
+      "amount": 3864000000,
+      "neto": 3542000000,
+      "dpp": 3542000000,
+      "ppnAmt": 322000000,
+      "nonPpn": false,
+      "due": "2026-08-10",
+      "paidAt": "2026-08-10",
+      "pay1": 3864000000,
+      "pay1date": "2026-08-10",
+      "pay1ProofUrl": "",
+      "status": "Lunas",
+      "billingType": "Penubaraan Progres",
+      "paymentTerm": "NET 30"
+    }
+  },
+  {
+    "table": "invoices",
+    "id": "INV-HIST-202608-02",
+    "branch": "Samarinda",
+    "data": {
+      "client": "PT MUTIARA EXPRESS LINES",
+      "project": "RP-2026-003",
+      "vessel": "RP-2026-003",
+      "amount": 1850000000,
+      "neto": 1695833333,
+      "dpp": 1695833333,
+      "ppnAmt": 154166667,
+      "nonPpn": false,
+      "due": "2026-08-14",
+      "paidAt": "2026-08-14",
+      "pay1": 1850000000,
+      "pay1date": "2026-08-14",
+      "pay1ProofUrl": "",
+      "status": "Lunas",
+      "billingType": "Penubaraan Progres",
+      "paymentTerm": "NET 30"
+    }
+  },
+  {
+    "table": "invoices",
+    "id": "INV-HIST-202608-03",
+    "branch": "Samarinda",
+    "data": {
+      "client": "PT TIRTA MAHAKAM RESOURCES TBK",
+      "project": "NB-2025-014",
+      "vessel": "NB-2025-014",
+      "amount": 2851200000,
+      "neto": 2613600000,
+      "dpp": 2613600000,
+      "ppnAmt": 237600000,
+      "nonPpn": false,
+      "due": "2026-08-18",
+      "paidAt": "2026-08-18",
+      "pay1": 2851200000,
+      "pay1date": "2026-08-18",
+      "pay1ProofUrl": "",
+      "status": "Lunas",
+      "billingType": "Penubaraan Progres",
+      "paymentTerm": "NET 30"
+    }
+  },
+  {
+    "table": "invoices",
+    "id": "INV-HIST-202608-04",
+    "branch": "Samarinda",
+    "data": {
+      "client": "PT KALIMANTAN MARITIM LINE",
+      "project": "U/STOCK",
+      "vessel": "U/STOCK",
+      "amount": 940800000,
+      "neto": 862400000,
+      "dpp": 862400000,
+      "ppnAmt": 78400000,
+      "nonPpn": false,
+      "due": "2026-08-22",
+      "paidAt": "2026-08-22",
+      "pay1": 940800000,
+      "pay1date": "2026-08-22",
+      "pay1ProofUrl": "",
+      "status": "Lunas",
+      "billingType": "Penubaraan Progres",
+      "paymentTerm": "NET 30"
+    }
+  },
+  {
+    "table": "invoices",
+    "id": "INV-HIST-202609-01",
+    "branch": "Samarinda",
+    "data": {
+      "client": "PT PELAYARAN KARTIKA SAMUDRA ADIJAYA",
+      "project": "NB-2025-012",
+      "vessel": "NB-2025-012",
+      "amount": 4452000000,
+      "neto": 4081000000,
+      "dpp": 4081000000,
+      "ppnAmt": 371000000,
+      "nonPpn": false,
+      "due": "2026-09-10",
+      "paidAt": "2026-09-10",
+      "pay1": 4452000000,
+      "pay1date": "2026-09-10",
+      "pay1ProofUrl": "",
+      "status": "Lunas",
+      "billingType": "Penubaraan Progres",
+      "paymentTerm": "NET 30"
+    }
+  },
+  {
+    "table": "invoices",
+    "id": "INV-HIST-202609-02",
+    "branch": "Samarinda",
+    "data": {
+      "client": "PT MUTIARA EXPRESS LINES",
+      "project": "RP-2026-003",
+      "vessel": "RP-2026-003",
+      "amount": 1776000000,
+      "neto": 1628000000,
+      "dpp": 1628000000,
+      "ppnAmt": 148000000,
+      "nonPpn": false,
+      "due": "2026-09-14",
+      "paidAt": "2026-09-14",
+      "pay1": 1776000000,
+      "pay1date": "2026-09-14",
+      "pay1ProofUrl": "",
+      "status": "Lunas",
+      "billingType": "Penubaraan Progres",
+      "paymentTerm": "NET 30"
+    }
+  },
+  {
+    "table": "invoices",
+    "id": "INV-HIST-202609-03",
+    "branch": "Samarinda",
+    "data": {
+      "client": "PT TIRTA MAHAKAM RESOURCES TBK",
+      "project": "NB-2025-014",
+      "vessel": "NB-2025-014",
+      "amount": 2745600000,
+      "neto": 2516800000,
+      "dpp": 2516800000,
+      "ppnAmt": 228800000,
+      "nonPpn": false,
+      "due": "2026-09-18",
+      "paidAt": "2026-09-18",
+      "pay1": 2745600000,
+      "pay1date": "2026-09-18",
+      "pay1ProofUrl": "",
+      "status": "Lunas",
+      "billingType": "Penubaraan Progres",
+      "paymentTerm": "NET 30"
+    }
+  },
+  {
+    "table": "invoices",
+    "id": "INV-HIST-202609-04",
+    "branch": "Samarinda",
+    "data": {
+      "client": "PT KALIMANTAN MARITIM LINE",
+      "project": "U/STOCK",
+      "vessel": "U/STOCK",
+      "amount": 902400000,
+      "neto": 827200000,
+      "dpp": 827200000,
+      "ppnAmt": 75200000,
+      "nonPpn": false,
+      "due": "2026-09-22",
+      "paidAt": "2026-09-22",
+      "pay1": 902400000,
+      "pay1date": "2026-09-22",
+      "pay1ProofUrl": "",
+      "status": "Lunas",
+      "billingType": "Penubaraan Progres",
+      "paymentTerm": "NET 30"
+    }
+  },
+  {
+    "table": "invoices",
+    "id": "INV-HIST-202610-01",
+    "branch": "Samarinda",
+    "data": {
+      "client": "PT PELAYARAN KARTIKA SAMUDRA ADIJAYA",
+      "project": "NB-2025-012",
+      "vessel": "NB-2025-012",
+      "amount": 4284000000,
+      "neto": 3927000000,
+      "dpp": 3927000000,
+      "ppnAmt": 357000000,
+      "nonPpn": false,
+      "due": "2026-10-10",
+      "paidAt": "2026-10-10",
+      "pay1": 4284000000,
+      "pay1date": "2026-10-10",
+      "pay1ProofUrl": "",
+      "status": "Lunas",
+      "billingType": "Penubaraan Progres",
+      "paymentTerm": "NET 30"
+    }
+  },
+  {
+    "table": "invoices",
+    "id": "INV-HIST-202610-02",
+    "branch": "Samarinda",
+    "data": {
+      "client": "PT MUTIARA EXPRESS LINES",
+      "project": "RP-2026-003",
+      "vessel": "RP-2026-003",
+      "amount": 1702000000,
+      "neto": 1560166667,
+      "dpp": 1560166667,
+      "ppnAmt": 141833333,
+      "nonPpn": false,
+      "due": "2026-10-14",
+      "paidAt": "2026-10-14",
+      "pay1": 1702000000,
+      "pay1date": "2026-10-14",
+      "pay1ProofUrl": "",
+      "status": "Lunas",
+      "billingType": "Penubaraan Progres",
+      "paymentTerm": "NET 30"
+    }
+  },
+  {
+    "table": "invoices",
+    "id": "INV-HIST-202610-03",
+    "branch": "Samarinda",
+    "data": {
+      "client": "PT TIRTA MAHAKAM RESOURCES TBK",
+      "project": "NB-2025-014",
+      "vessel": "NB-2025-014",
+      "amount": 2640000000,
+      "neto": 2420000000,
+      "dpp": 2420000000,
+      "ppnAmt": 220000000,
+      "nonPpn": false,
+      "due": "2026-10-18",
+      "paidAt": "2026-10-18",
+      "pay1": 2640000000,
+      "pay1date": "2026-10-18",
+      "pay1ProofUrl": "",
+      "status": "Lunas",
+      "billingType": "Penubaraan Progres",
+      "paymentTerm": "NET 30"
+    }
+  },
+  {
+    "table": "invoices",
+    "id": "INV-HIST-202610-04",
+    "branch": "Samarinda",
+    "data": {
+      "client": "PT KALIMANTAN MARITIM LINE",
+      "project": "U/STOCK",
+      "vessel": "U/STOCK",
+      "amount": 1036800000,
+      "neto": 950400000,
+      "dpp": 950400000,
+      "ppnAmt": 86400000,
+      "nonPpn": false,
+      "due": "2026-10-22",
+      "paidAt": "2026-10-22",
+      "pay1": 1036800000,
+      "pay1date": "2026-10-22",
+      "pay1ProofUrl": "",
+      "status": "Lunas",
+      "billingType": "Penubaraan Progres",
+      "paymentTerm": "NET 30"
+    }
+  },
+  {
+    "table": "bookings",
+    "id": "BK-HIST-202511-01",
+    "branch": "Samarinda",
+    "data": {
+      "equip": "Mobile Crane 100T",
+      "equipmentId": "",
+      "proyek": "NB-2025-012",
+      "jam": "08:00-17:00",
+      "hours": 84,
+      "downtime": 0,
+      "fuelLiters": 0,
+      "cost": 0,
+      "status": "Selesai",
+      "date": "2025-11-05"
+    }
+  },
+  {
+    "table": "bookings",
+    "id": "BK-HIST-202511-02",
+    "branch": "Samarinda",
+    "data": {
+      "equip": "Gantry Crane 50T",
+      "equipmentId": "",
+      "proyek": "NB-2025-014",
+      "jam": "08:00-17:00",
+      "hours": 153,
+      "downtime": 0,
+      "fuelLiters": 0,
+      "cost": 0,
+      "status": "Selesai",
+      "date": "2025-11-11"
+    }
+  },
+  {
+    "table": "bookings",
+    "id": "BK-HIST-202511-03",
+    "branch": "Samarinda",
+    "data": {
+      "equip": "Mesin Las MIG",
+      "equipmentId": "",
+      "proyek": "RP-2026-003",
+      "jam": "08:00-17:00",
+      "hours": 60,
+      "downtime": 0,
+      "fuelLiters": 0,
+      "cost": 0,
+      "status": "Selesai",
+      "date": "2025-11-17"
+    }
+  },
+  {
+    "table": "bookings",
+    "id": "BK-HIST-202511-04",
+    "branch": "Samarinda",
+    "data": {
+      "equip": "Forklift 10T",
+      "equipmentId": "",
+      "proyek": "RP-2026-005",
+      "jam": "08:00-17:00",
+      "hours": 31,
+      "downtime": 0,
+      "fuelLiters": 0,
+      "cost": 0,
+      "status": "Selesai",
+      "date": "2025-11-23"
+    }
+  },
+  {
+    "table": "bookings",
+    "id": "BK-HIST-202512-01",
+    "branch": "Samarinda",
+    "data": {
+      "equip": "Mobile Crane 100T",
+      "equipmentId": "",
+      "proyek": "NB-2025-012",
+      "jam": "08:00-17:00",
+      "hours": 95,
+      "downtime": 0,
+      "fuelLiters": 0,
+      "cost": 0,
+      "status": "Selesai",
+      "date": "2025-12-06"
+    }
+  },
+  {
+    "table": "bookings",
+    "id": "BK-HIST-202512-02",
+    "branch": "Samarinda",
+    "data": {
+      "equip": "Gantry Crane 50T",
+      "equipmentId": "",
+      "proyek": "NB-2025-014",
+      "jam": "08:00-17:00",
+      "hours": 140,
+      "downtime": 0,
+      "fuelLiters": 0,
+      "cost": 0,
+      "status": "Selesai",
+      "date": "2025-12-12"
+    }
+  },
+  {
+    "table": "bookings",
+    "id": "BK-HIST-202512-03",
+    "branch": "Samarinda",
+    "data": {
+      "equip": "Mesin Las MIG",
+      "equipmentId": "",
+      "proyek": "RP-2026-003",
+      "jam": "08:00-17:00",
+      "hours": 71,
+      "downtime": 0,
+      "fuelLiters": 0,
+      "cost": 0,
+      "status": "Selesai",
+      "date": "2025-12-18"
+    }
+  },
+  {
+    "table": "bookings",
+    "id": "BK-HIST-202512-04",
+    "branch": "Samarinda",
+    "data": {
+      "equip": "Forklift 10T",
+      "equipmentId": "",
+      "proyek": "RP-2026-005",
+      "jam": "08:00-17:00",
+      "hours": 42,
+      "downtime": 0,
+      "fuelLiters": 0,
+      "cost": 0,
+      "status": "Selesai",
+      "date": "2025-12-24"
+    }
+  },
+  {
+    "table": "bookings",
+    "id": "BK-HIST-202601-01",
+    "branch": "Samarinda",
+    "data": {
+      "equip": "Mobile Crane 100T",
+      "equipmentId": "",
+      "proyek": "NB-2025-012",
+      "jam": "08:00-17:00",
+      "hours": 106,
+      "downtime": 0,
+      "fuelLiters": 0,
+      "cost": 0,
+      "status": "Selesai",
+      "date": "2026-01-07"
+    }
+  },
+  {
+    "table": "bookings",
+    "id": "BK-HIST-202601-02",
+    "branch": "Samarinda",
+    "data": {
+      "equip": "Gantry Crane 50T",
+      "equipmentId": "",
+      "proyek": "NB-2025-014",
+      "jam": "08:00-17:00",
+      "hours": 151,
+      "downtime": 0,
+      "fuelLiters": 0,
+      "cost": 0,
+      "status": "Selesai",
+      "date": "2026-01-13"
+    }
+  },
+  {
+    "table": "bookings",
+    "id": "BK-HIST-202601-03",
+    "branch": "Samarinda",
+    "data": {
+      "equip": "Mesin Las MIG",
+      "equipmentId": "",
+      "proyek": "RP-2026-003",
+      "jam": "08:00-17:00",
+      "hours": 58,
+      "downtime": 0,
+      "fuelLiters": 0,
+      "cost": 0,
+      "status": "Selesai",
+      "date": "2026-01-19"
+    }
+  },
+  {
+    "table": "bookings",
+    "id": "BK-HIST-202601-04",
+    "branch": "Samarinda",
+    "data": {
+      "equip": "Forklift 10T",
+      "equipmentId": "",
+      "proyek": "RP-2026-005",
+      "jam": "08:00-17:00",
+      "hours": 29,
+      "downtime": 0,
+      "fuelLiters": 0,
+      "cost": 0,
+      "status": "Selesai",
+      "date": "2026-01-25"
+    }
+  },
+  {
+    "table": "bookings",
+    "id": "BK-HIST-202602-01",
+    "branch": "Samarinda",
+    "data": {
+      "equip": "Mobile Crane 100T",
+      "equipmentId": "",
+      "proyek": "NB-2025-012",
+      "jam": "08:00-17:00",
+      "hours": 93,
+      "downtime": 0,
+      "fuelLiters": 0,
+      "cost": 0,
+      "status": "Selesai",
+      "date": "2026-02-05"
+    }
+  },
+  {
+    "table": "bookings",
+    "id": "BK-HIST-202602-02",
+    "branch": "Samarinda",
+    "data": {
+      "equip": "Gantry Crane 50T",
+      "equipmentId": "",
+      "proyek": "NB-2025-014",
+      "jam": "08:00-17:00",
+      "hours": 138,
+      "downtime": 0,
+      "fuelLiters": 0,
+      "cost": 0,
+      "status": "Selesai",
+      "date": "2026-02-11"
+    }
+  },
+  {
+    "table": "bookings",
+    "id": "BK-HIST-202602-03",
+    "branch": "Samarinda",
+    "data": {
+      "equip": "Mesin Las MIG",
+      "equipmentId": "",
+      "proyek": "RP-2026-003",
+      "jam": "08:00-17:00",
+      "hours": 69,
+      "downtime": 0,
+      "fuelLiters": 0,
+      "cost": 0,
+      "status": "Selesai",
+      "date": "2026-02-17"
+    }
+  },
+  {
+    "table": "bookings",
+    "id": "BK-HIST-202602-04",
+    "branch": "Samarinda",
+    "data": {
+      "equip": "Forklift 10T",
+      "equipmentId": "",
+      "proyek": "RP-2026-005",
+      "jam": "08:00-17:00",
+      "hours": 40,
+      "downtime": 0,
+      "fuelLiters": 0,
+      "cost": 0,
+      "status": "Selesai",
+      "date": "2026-02-23"
+    }
+  },
+  {
+    "table": "bookings",
+    "id": "BK-HIST-202603-01",
+    "branch": "Samarinda",
+    "data": {
+      "equip": "Mobile Crane 100T",
+      "equipmentId": "",
+      "proyek": "NB-2025-012",
+      "jam": "08:00-17:00",
+      "hours": 104,
+      "downtime": 0,
+      "fuelLiters": 0,
+      "cost": 0,
+      "status": "Selesai",
+      "date": "2026-03-06"
+    }
+  },
+  {
+    "table": "bookings",
+    "id": "BK-HIST-202603-02",
+    "branch": "Samarinda",
+    "data": {
+      "equip": "Gantry Crane 50T",
+      "equipmentId": "",
+      "proyek": "NB-2025-014",
+      "jam": "08:00-17:00",
+      "hours": 149,
+      "downtime": 0,
+      "fuelLiters": 0,
+      "cost": 0,
+      "status": "Selesai",
+      "date": "2026-03-12"
+    }
+  },
+  {
+    "table": "bookings",
+    "id": "BK-HIST-202603-03",
+    "branch": "Samarinda",
+    "data": {
+      "equip": "Mesin Las MIG",
+      "equipmentId": "",
+      "proyek": "RP-2026-003",
+      "jam": "08:00-17:00",
+      "hours": 56,
+      "downtime": 0,
+      "fuelLiters": 0,
+      "cost": 0,
+      "status": "Selesai",
+      "date": "2026-03-18"
+    }
+  },
+  {
+    "table": "bookings",
+    "id": "BK-HIST-202603-04",
+    "branch": "Samarinda",
+    "data": {
+      "equip": "Forklift 10T",
+      "equipmentId": "",
+      "proyek": "RP-2026-005",
+      "jam": "08:00-17:00",
+      "hours": 51,
+      "downtime": 0,
+      "fuelLiters": 0,
+      "cost": 0,
+      "status": "Selesai",
+      "date": "2026-03-24"
+    }
+  },
+  {
+    "table": "bookings",
+    "id": "BK-HIST-202604-01",
+    "branch": "Samarinda",
+    "data": {
+      "equip": "Mobile Crane 100T",
+      "equipmentId": "",
+      "proyek": "NB-2025-012",
+      "jam": "08:00-17:00",
+      "hours": 91,
+      "downtime": 0,
+      "fuelLiters": 0,
+      "cost": 0,
+      "status": "Selesai",
+      "date": "2026-04-07"
+    }
+  },
+  {
+    "table": "bookings",
+    "id": "BK-HIST-202604-02",
+    "branch": "Samarinda",
+    "data": {
+      "equip": "Gantry Crane 50T",
+      "equipmentId": "",
+      "proyek": "NB-2025-014",
+      "jam": "08:00-17:00",
+      "hours": 136,
+      "downtime": 0,
+      "fuelLiters": 0,
+      "cost": 0,
+      "status": "Selesai",
+      "date": "2026-04-13"
+    }
+  },
+  {
+    "table": "bookings",
+    "id": "BK-HIST-202604-03",
+    "branch": "Samarinda",
+    "data": {
+      "equip": "Mesin Las MIG",
+      "equipmentId": "",
+      "proyek": "RP-2026-003",
+      "jam": "08:00-17:00",
+      "hours": 67,
+      "downtime": 0,
+      "fuelLiters": 0,
+      "cost": 0,
+      "status": "Selesai",
+      "date": "2026-04-19"
+    }
+  },
+  {
+    "table": "bookings",
+    "id": "BK-HIST-202604-04",
+    "branch": "Samarinda",
+    "data": {
+      "equip": "Forklift 10T",
+      "equipmentId": "",
+      "proyek": "RP-2026-005",
+      "jam": "08:00-17:00",
+      "hours": 38,
+      "downtime": 0,
+      "fuelLiters": 0,
+      "cost": 0,
+      "status": "Selesai",
+      "date": "2026-04-25"
+    }
+  },
+  {
+    "table": "bookings",
+    "id": "BK-HIST-202605-01",
+    "branch": "Samarinda",
+    "data": {
+      "equip": "Mobile Crane 100T",
+      "equipmentId": "",
+      "proyek": "NB-2025-012",
+      "jam": "08:00-17:00",
+      "hours": 102,
+      "downtime": 0,
+      "fuelLiters": 0,
+      "cost": 0,
+      "status": "Selesai",
+      "date": "2026-05-05"
+    }
+  },
+  {
+    "table": "bookings",
+    "id": "BK-HIST-202605-02",
+    "branch": "Samarinda",
+    "data": {
+      "equip": "Gantry Crane 50T",
+      "equipmentId": "",
+      "proyek": "NB-2025-014",
+      "jam": "08:00-17:00",
+      "hours": 147,
+      "downtime": 0,
+      "fuelLiters": 0,
+      "cost": 0,
+      "status": "Selesai",
+      "date": "2026-05-11"
+    }
+  },
+  {
+    "table": "bookings",
+    "id": "BK-HIST-202605-03",
+    "branch": "Samarinda",
+    "data": {
+      "equip": "Mesin Las MIG",
+      "equipmentId": "",
+      "proyek": "RP-2026-003",
+      "jam": "08:00-17:00",
+      "hours": 54,
+      "downtime": 0,
+      "fuelLiters": 0,
+      "cost": 0,
+      "status": "Selesai",
+      "date": "2026-05-17"
+    }
+  },
+  {
+    "table": "bookings",
+    "id": "BK-HIST-202605-04",
+    "branch": "Samarinda",
+    "data": {
+      "equip": "Forklift 10T",
+      "equipmentId": "",
+      "proyek": "RP-2026-005",
+      "jam": "08:00-17:00",
+      "hours": 49,
+      "downtime": 0,
+      "fuelLiters": 0,
+      "cost": 0,
+      "status": "Selesai",
+      "date": "2026-05-23"
+    }
+  },
+  {
+    "table": "bookings",
+    "id": "BK-HIST-202606-01",
+    "branch": "Samarinda",
+    "data": {
+      "equip": "Mobile Crane 100T",
+      "equipmentId": "",
+      "proyek": "NB-2025-012",
+      "jam": "08:00-17:00",
+      "hours": 89,
+      "downtime": 0,
+      "fuelLiters": 0,
+      "cost": 0,
+      "status": "Selesai",
+      "date": "2026-06-06"
+    }
+  },
+  {
+    "table": "bookings",
+    "id": "BK-HIST-202606-02",
+    "branch": "Samarinda",
+    "data": {
+      "equip": "Gantry Crane 50T",
+      "equipmentId": "",
+      "proyek": "NB-2025-014",
+      "jam": "08:00-17:00",
+      "hours": 158,
+      "downtime": 0,
+      "fuelLiters": 0,
+      "cost": 0,
+      "status": "Selesai",
+      "date": "2026-06-12"
+    }
+  },
+  {
+    "table": "bookings",
+    "id": "BK-HIST-202606-03",
+    "branch": "Samarinda",
+    "data": {
+      "equip": "Mesin Las MIG",
+      "equipmentId": "",
+      "proyek": "RP-2026-003",
+      "jam": "08:00-17:00",
+      "hours": 65,
+      "downtime": 0,
+      "fuelLiters": 0,
+      "cost": 0,
+      "status": "Selesai",
+      "date": "2026-06-18"
+    }
+  },
+  {
+    "table": "bookings",
+    "id": "BK-HIST-202606-04",
+    "branch": "Samarinda",
+    "data": {
+      "equip": "Forklift 10T",
+      "equipmentId": "",
+      "proyek": "RP-2026-005",
+      "jam": "08:00-17:00",
+      "hours": 36,
+      "downtime": 0,
+      "fuelLiters": 0,
+      "cost": 0,
+      "status": "Selesai",
+      "date": "2026-06-24"
+    }
+  },
+  {
+    "table": "bookings",
+    "id": "BK-HIST-202607-01",
+    "branch": "Samarinda",
+    "data": {
+      "equip": "Mobile Crane 100T",
+      "equipmentId": "",
+      "proyek": "NB-2025-012",
+      "jam": "08:00-17:00",
+      "hours": 100,
+      "downtime": 0,
+      "fuelLiters": 0,
+      "cost": 0,
+      "status": "Selesai",
+      "date": "2026-07-07"
+    }
+  },
+  {
+    "table": "bookings",
+    "id": "BK-HIST-202607-02",
+    "branch": "Samarinda",
+    "data": {
+      "equip": "Gantry Crane 50T",
+      "equipmentId": "",
+      "proyek": "NB-2025-014",
+      "jam": "08:00-17:00",
+      "hours": 145,
+      "downtime": 0,
+      "fuelLiters": 0,
+      "cost": 0,
+      "status": "Selesai",
+      "date": "2026-07-13"
+    }
+  },
+  {
+    "table": "bookings",
+    "id": "BK-HIST-202607-03",
+    "branch": "Samarinda",
+    "data": {
+      "equip": "Mesin Las MIG",
+      "equipmentId": "",
+      "proyek": "RP-2026-003",
+      "jam": "08:00-17:00",
+      "hours": 52,
+      "downtime": 0,
+      "fuelLiters": 0,
+      "cost": 0,
+      "status": "Selesai",
+      "date": "2026-07-19"
+    }
+  },
+  {
+    "table": "bookings",
+    "id": "BK-HIST-202607-04",
+    "branch": "Samarinda",
+    "data": {
+      "equip": "Forklift 10T",
+      "equipmentId": "",
+      "proyek": "RP-2026-005",
+      "jam": "08:00-17:00",
+      "hours": 47,
+      "downtime": 0,
+      "fuelLiters": 0,
+      "cost": 0,
+      "status": "Selesai",
+      "date": "2026-07-25"
+    }
+  },
+  {
+    "table": "bookings",
+    "id": "BK-HIST-202608-01",
+    "branch": "Samarinda",
+    "data": {
+      "equip": "Mobile Crane 100T",
+      "equipmentId": "",
+      "proyek": "NB-2025-012",
+      "jam": "08:00-17:00",
+      "hours": 87,
+      "downtime": 0,
+      "fuelLiters": 0,
+      "cost": 0,
+      "status": "Selesai",
+      "date": "2026-08-05"
+    }
+  },
+  {
+    "table": "bookings",
+    "id": "BK-HIST-202608-02",
+    "branch": "Samarinda",
+    "data": {
+      "equip": "Gantry Crane 50T",
+      "equipmentId": "",
+      "proyek": "NB-2025-014",
+      "jam": "08:00-17:00",
+      "hours": 156,
+      "downtime": 0,
+      "fuelLiters": 0,
+      "cost": 0,
+      "status": "Selesai",
+      "date": "2026-08-11"
+    }
+  },
+  {
+    "table": "bookings",
+    "id": "BK-HIST-202608-03",
+    "branch": "Samarinda",
+    "data": {
+      "equip": "Mesin Las MIG",
+      "equipmentId": "",
+      "proyek": "RP-2026-003",
+      "jam": "08:00-17:00",
+      "hours": 63,
+      "downtime": 0,
+      "fuelLiters": 0,
+      "cost": 0,
+      "status": "Selesai",
+      "date": "2026-08-17"
+    }
+  },
+  {
+    "table": "bookings",
+    "id": "BK-HIST-202608-04",
+    "branch": "Samarinda",
+    "data": {
+      "equip": "Forklift 10T",
+      "equipmentId": "",
+      "proyek": "RP-2026-005",
+      "jam": "08:00-17:00",
+      "hours": 34,
+      "downtime": 0,
+      "fuelLiters": 0,
+      "cost": 0,
+      "status": "Selesai",
+      "date": "2026-08-23"
+    }
+  },
+  {
+    "table": "bookings",
+    "id": "BK-HIST-202609-01",
+    "branch": "Samarinda",
+    "data": {
+      "equip": "Mobile Crane 100T",
+      "equipmentId": "",
+      "proyek": "NB-2025-012",
+      "jam": "08:00-17:00",
+      "hours": 98,
+      "downtime": 0,
+      "fuelLiters": 0,
+      "cost": 0,
+      "status": "Selesai",
+      "date": "2026-09-06"
+    }
+  },
+  {
+    "table": "bookings",
+    "id": "BK-HIST-202609-02",
+    "branch": "Samarinda",
+    "data": {
+      "equip": "Gantry Crane 50T",
+      "equipmentId": "",
+      "proyek": "NB-2025-014",
+      "jam": "08:00-17:00",
+      "hours": 143,
+      "downtime": 0,
+      "fuelLiters": 0,
+      "cost": 0,
+      "status": "Selesai",
+      "date": "2026-09-12"
+    }
+  },
+  {
+    "table": "bookings",
+    "id": "BK-HIST-202609-03",
+    "branch": "Samarinda",
+    "data": {
+      "equip": "Mesin Las MIG",
+      "equipmentId": "",
+      "proyek": "RP-2026-003",
+      "jam": "08:00-17:00",
+      "hours": 50,
+      "downtime": 0,
+      "fuelLiters": 0,
+      "cost": 0,
+      "status": "Selesai",
+      "date": "2026-09-18"
+    }
+  },
+  {
+    "table": "bookings",
+    "id": "BK-HIST-202609-04",
+    "branch": "Samarinda",
+    "data": {
+      "equip": "Forklift 10T",
+      "equipmentId": "",
+      "proyek": "RP-2026-005",
+      "jam": "08:00-17:00",
+      "hours": 45,
+      "downtime": 0,
+      "fuelLiters": 0,
+      "cost": 0,
+      "status": "Selesai",
+      "date": "2026-09-24"
+    }
+  },
+  {
+    "table": "bookings",
+    "id": "BK-HIST-202610-01",
+    "branch": "Samarinda",
+    "data": {
+      "equip": "Mobile Crane 100T",
+      "equipmentId": "",
+      "proyek": "NB-2025-012",
+      "jam": "08:00-17:00",
+      "hours": 85,
+      "downtime": 0,
+      "fuelLiters": 0,
+      "cost": 0,
+      "status": "Selesai",
+      "date": "2026-10-07"
+    }
+  },
+  {
+    "table": "bookings",
+    "id": "BK-HIST-202610-02",
+    "branch": "Samarinda",
+    "data": {
+      "equip": "Gantry Crane 50T",
+      "equipmentId": "",
+      "proyek": "NB-2025-014",
+      "jam": "08:00-17:00",
+      "hours": 154,
+      "downtime": 0,
+      "fuelLiters": 0,
+      "cost": 0,
+      "status": "Selesai",
+      "date": "2026-10-13"
+    }
+  },
+  {
+    "table": "bookings",
+    "id": "BK-HIST-202610-03",
+    "branch": "Samarinda",
+    "data": {
+      "equip": "Mesin Las MIG",
+      "equipmentId": "",
+      "proyek": "RP-2026-003",
+      "jam": "08:00-17:00",
+      "hours": 61,
+      "downtime": 0,
+      "fuelLiters": 0,
+      "cost": 0,
+      "status": "Selesai",
+      "date": "2026-10-19"
+    }
+  },
+  {
+    "table": "bookings",
+    "id": "BK-HIST-202610-04",
+    "branch": "Samarinda",
+    "data": {
+      "equip": "Forklift 10T",
+      "equipmentId": "",
+      "proyek": "RP-2026-005",
+      "jam": "08:00-17:00",
+      "hours": 32,
+      "downtime": 0,
+      "fuelLiters": 0,
+      "cost": 0,
+      "status": "Selesai",
+      "date": "2026-10-25"
+    }
+  },
+  {
+    "table": "inspections",
+    "id": "INS-HIST-202511-01",
+    "branch": "Samarinda",
+    "data": {
+      "project": "NB-2025-012",
+      "point": "Welding seam section 4",
+      "itp": "ITP-012",
+      "status": "Lulus",
+      "date": "2025-11-04"
+    }
+  },
+  {
+    "table": "inspections",
+    "id": "INS-HIST-202511-02",
+    "branch": "Samarinda",
+    "data": {
+      "project": "NB-2025-012",
+      "point": "Ketebalan catACHED",
+      "itp": "ITP-004",
+      "status": "NCR",
+      "date": "2025-11-11"
+    }
+  },
+  {
+    "table": "inspections",
+    "id": "INS-HIST-202511-03",
+    "branch": "Samarinda",
+    "data": {
+      "project": "RP-2026-003",
+      "point": "Dimensional survey block B",
+      "itp": "ITP-007",
+      "status": "Lulus",
+      "date": "2025-11-18"
+    }
+  },
+  {
+    "table": "inspections",
+    "id": "INS-HIST-202511-04",
+    "branch": "Samarinda",
+    "data": {
+      "project": "RP-2026-005",
+      "point": "Uap air sistem",
+      "itp": "ITP-002",
+      "status": "Lulus",
+      "date": "2025-11-25"
+    }
+  },
+  {
+    "table": "inspections",
+    "id": "INS-HIST-202512-01",
+    "branch": "Samarinda",
+    "data": {
+      "project": "NB-2025-012",
+      "point": "Welding seam section 4",
+      "itp": "ITP-012",
+      "status": "NCR",
+      "date": "2025-12-05"
+    }
+  },
+  {
+    "table": "inspections",
+    "id": "INS-HIST-202512-02",
+    "branch": "Samarinda",
+    "data": {
+      "project": "NB-2025-012",
+      "point": "Ketebalan catACHED",
+      "itp": "ITP-004",
+      "status": "Lulus",
+      "date": "2025-12-12"
+    }
+  },
+  {
+    "table": "inspections",
+    "id": "INS-HIST-202512-03",
+    "branch": "Samarinda",
+    "data": {
+      "project": "RP-2026-003",
+      "point": "Dimensional survey block B",
+      "itp": "ITP-007",
+      "status": "Lulus",
+      "date": "2025-12-19"
+    }
+  },
+  {
+    "table": "inspections",
+    "id": "INS-HIST-202512-04",
+    "branch": "Samarinda",
+    "data": {
+      "project": "RP-2026-005",
+      "point": "Uap air sistem",
+      "itp": "ITP-002",
+      "status": "Lulus",
+      "date": "2025-12-26"
+    }
+  },
+  {
+    "table": "inspections",
+    "id": "INS-HIST-202601-01",
+    "branch": "Samarinda",
+    "data": {
+      "project": "NB-2025-012",
+      "point": "Welding seam section 4",
+      "itp": "ITP-012",
+      "status": "Lulus",
+      "date": "2026-01-06"
+    }
+  },
+  {
+    "table": "inspections",
+    "id": "INS-HIST-202601-02",
+    "branch": "Samarinda",
+    "data": {
+      "project": "NB-2025-012",
+      "point": "Ketebalan catACHED",
+      "itp": "ITP-004",
+      "status": "Lulus",
+      "date": "2026-01-13"
+    }
+  },
+  {
+    "table": "inspections",
+    "id": "INS-HIST-202601-03",
+    "branch": "Samarinda",
+    "data": {
+      "project": "RP-2026-003",
+      "point": "Dimensional survey block B",
+      "itp": "ITP-007",
+      "status": "Lulus",
+      "date": "2026-01-20"
+    }
+  },
+  {
+    "table": "inspections",
+    "id": "INS-HIST-202601-04",
+    "branch": "Samarinda",
+    "data": {
+      "project": "RP-2026-005",
+      "point": "Uap air sistem",
+      "itp": "ITP-002",
+      "status": "NCR",
+      "date": "2026-01-27"
+    }
+  },
+  {
+    "table": "inspections",
+    "id": "INS-HIST-202602-01",
+    "branch": "Samarinda",
+    "data": {
+      "project": "NB-2025-012",
+      "point": "Welding seam section 4",
+      "itp": "ITP-012",
+      "status": "Lulus",
+      "date": "2026-02-07"
+    }
+  },
+  {
+    "table": "inspections",
+    "id": "INS-HIST-202602-02",
+    "branch": "Samarinda",
+    "data": {
+      "project": "NB-2025-012",
+      "point": "Ketebalan catACHED",
+      "itp": "ITP-004",
+      "status": "Lulus",
+      "date": "2026-02-14"
+    }
+  },
+  {
+    "table": "inspections",
+    "id": "INS-HIST-202602-03",
+    "branch": "Samarinda",
+    "data": {
+      "project": "RP-2026-003",
+      "point": "Dimensional survey block B",
+      "itp": "ITP-007",
+      "status": "NCR",
+      "date": "2026-02-21"
+    }
+  },
+  {
+    "table": "inspections",
+    "id": "INS-HIST-202602-04",
+    "branch": "Samarinda",
+    "data": {
+      "project": "RP-2026-005",
+      "point": "Uap air sistem",
+      "itp": "ITP-002",
+      "status": "Lulus",
+      "date": "2026-02-28"
+    }
+  },
+  {
+    "table": "inspections",
+    "id": "INS-HIST-202603-01",
+    "branch": "Samarinda",
+    "data": {
+      "project": "NB-2025-012",
+      "point": "Welding seam section 4",
+      "itp": "ITP-012",
+      "status": "Lulus",
+      "date": "2026-03-04"
+    }
+  },
+  {
+    "table": "inspections",
+    "id": "INS-HIST-202603-02",
+    "branch": "Samarinda",
+    "data": {
+      "project": "NB-2025-012",
+      "point": "Ketebalan catACHED",
+      "itp": "ITP-004",
+      "status": "NCR",
+      "date": "2026-03-11"
+    }
+  },
+  {
+    "table": "inspections",
+    "id": "INS-HIST-202603-03",
+    "branch": "Samarinda",
+    "data": {
+      "project": "RP-2026-003",
+      "point": "Dimensional survey block B",
+      "itp": "ITP-007",
+      "status": "Lulus",
+      "date": "2026-03-18"
+    }
+  },
+  {
+    "table": "inspections",
+    "id": "INS-HIST-202603-04",
+    "branch": "Samarinda",
+    "data": {
+      "project": "RP-2026-005",
+      "point": "Uap air sistem",
+      "itp": "ITP-002",
+      "status": "Lulus",
+      "date": "2026-03-25"
+    }
+  },
+  {
+    "table": "inspections",
+    "id": "INS-HIST-202604-01",
+    "branch": "Samarinda",
+    "data": {
+      "project": "NB-2025-012",
+      "point": "Welding seam section 4",
+      "itp": "ITP-012",
+      "status": "NCR",
+      "date": "2026-04-05"
+    }
+  },
+  {
+    "table": "inspections",
+    "id": "INS-HIST-202604-02",
+    "branch": "Samarinda",
+    "data": {
+      "project": "NB-2025-012",
+      "point": "Ketebalan catACHED",
+      "itp": "ITP-004",
+      "status": "Lulus",
+      "date": "2026-04-12"
+    }
+  },
+  {
+    "table": "inspections",
+    "id": "INS-HIST-202604-03",
+    "branch": "Samarinda",
+    "data": {
+      "project": "RP-2026-003",
+      "point": "Dimensional survey block B",
+      "itp": "ITP-007",
+      "status": "Lulus",
+      "date": "2026-04-19"
+    }
+  },
+  {
+    "table": "inspections",
+    "id": "INS-HIST-202604-04",
+    "branch": "Samarinda",
+    "data": {
+      "project": "RP-2026-005",
+      "point": "Uap air sistem",
+      "itp": "ITP-002",
+      "status": "Lulus",
+      "date": "2026-04-26"
+    }
+  },
+  {
+    "table": "inspections",
+    "id": "INS-HIST-202605-01",
+    "branch": "Samarinda",
+    "data": {
+      "project": "NB-2025-012",
+      "point": "Welding seam section 4",
+      "itp": "ITP-012",
+      "status": "Lulus",
+      "date": "2026-05-06"
+    }
+  },
+  {
+    "table": "inspections",
+    "id": "INS-HIST-202605-02",
+    "branch": "Samarinda",
+    "data": {
+      "project": "NB-2025-012",
+      "point": "Ketebalan catACHED",
+      "itp": "ITP-004",
+      "status": "Lulus",
+      "date": "2026-05-13"
+    }
+  },
+  {
+    "table": "inspections",
+    "id": "INS-HIST-202605-03",
+    "branch": "Samarinda",
+    "data": {
+      "project": "RP-2026-003",
+      "point": "Dimensional survey block B",
+      "itp": "ITP-007",
+      "status": "Lulus",
+      "date": "2026-05-20"
+    }
+  },
+  {
+    "table": "inspections",
+    "id": "INS-HIST-202605-04",
+    "branch": "Samarinda",
+    "data": {
+      "project": "RP-2026-005",
+      "point": "Uap air sistem",
+      "itp": "ITP-002",
+      "status": "NCR",
+      "date": "2026-05-27"
+    }
+  },
+  {
+    "table": "inspections",
+    "id": "INS-HIST-202606-01",
+    "branch": "Samarinda",
+    "data": {
+      "project": "NB-2025-012",
+      "point": "Welding seam section 4",
+      "itp": "ITP-012",
+      "status": "Lulus",
+      "date": "2026-06-07"
+    }
+  },
+  {
+    "table": "inspections",
+    "id": "INS-HIST-202606-02",
+    "branch": "Samarinda",
+    "data": {
+      "project": "NB-2025-012",
+      "point": "Ketebalan catACHED",
+      "itp": "ITP-004",
+      "status": "Lulus",
+      "date": "2026-06-14"
+    }
+  },
+  {
+    "table": "inspections",
+    "id": "INS-HIST-202606-03",
+    "branch": "Samarinda",
+    "data": {
+      "project": "RP-2026-003",
+      "point": "Dimensional survey block B",
+      "itp": "ITP-007",
+      "status": "NCR",
+      "date": "2026-06-21"
+    }
+  },
+  {
+    "table": "inspections",
+    "id": "INS-HIST-202606-04",
+    "branch": "Samarinda",
+    "data": {
+      "project": "RP-2026-005",
+      "point": "Uap air sistem",
+      "itp": "ITP-002",
+      "status": "Lulus",
+      "date": "2026-06-28"
+    }
+  },
+  {
+    "table": "inspections",
+    "id": "INS-HIST-202607-01",
+    "branch": "Samarinda",
+    "data": {
+      "project": "NB-2025-012",
+      "point": "Welding seam section 4",
+      "itp": "ITP-012",
+      "status": "Lulus",
+      "date": "2026-07-04"
+    }
+  },
+  {
+    "table": "inspections",
+    "id": "INS-HIST-202607-02",
+    "branch": "Samarinda",
+    "data": {
+      "project": "NB-2025-012",
+      "point": "Ketebalan catACHED",
+      "itp": "ITP-004",
+      "status": "NCR",
+      "date": "2026-07-11"
+    }
+  },
+  {
+    "table": "inspections",
+    "id": "INS-HIST-202607-03",
+    "branch": "Samarinda",
+    "data": {
+      "project": "RP-2026-003",
+      "point": "Dimensional survey block B",
+      "itp": "ITP-007",
+      "status": "Lulus",
+      "date": "2026-07-18"
+    }
+  },
+  {
+    "table": "inspections",
+    "id": "INS-HIST-202607-04",
+    "branch": "Samarinda",
+    "data": {
+      "project": "RP-2026-005",
+      "point": "Uap air sistem",
+      "itp": "ITP-002",
+      "status": "Lulus",
+      "date": "2026-07-25"
+    }
+  },
+  {
+    "table": "inspections",
+    "id": "INS-HIST-202608-01",
+    "branch": "Samarinda",
+    "data": {
+      "project": "NB-2025-012",
+      "point": "Welding seam section 4",
+      "itp": "ITP-012",
+      "status": "NCR",
+      "date": "2026-08-05"
+    }
+  },
+  {
+    "table": "inspections",
+    "id": "INS-HIST-202608-02",
+    "branch": "Samarinda",
+    "data": {
+      "project": "NB-2025-012",
+      "point": "Ketebalan catACHED",
+      "itp": "ITP-004",
+      "status": "Lulus",
+      "date": "2026-08-12"
+    }
+  },
+  {
+    "table": "inspections",
+    "id": "INS-HIST-202608-03",
+    "branch": "Samarinda",
+    "data": {
+      "project": "RP-2026-003",
+      "point": "Dimensional survey block B",
+      "itp": "ITP-007",
+      "status": "Lulus",
+      "date": "2026-08-19"
+    }
+  },
+  {
+    "table": "inspections",
+    "id": "INS-HIST-202608-04",
+    "branch": "Samarinda",
+    "data": {
+      "project": "RP-2026-005",
+      "point": "Uap air sistem",
+      "itp": "ITP-002",
+      "status": "Lulus",
+      "date": "2026-08-26"
+    }
+  },
+  {
+    "table": "inspections",
+    "id": "INS-HIST-202609-01",
+    "branch": "Samarinda",
+    "data": {
+      "project": "NB-2025-012",
+      "point": "Welding seam section 4",
+      "itp": "ITP-012",
+      "status": "Lulus",
+      "date": "2026-09-06"
+    }
+  },
+  {
+    "table": "inspections",
+    "id": "INS-HIST-202609-02",
+    "branch": "Samarinda",
+    "data": {
+      "project": "NB-2025-012",
+      "point": "Ketebalan catACHED",
+      "itp": "ITP-004",
+      "status": "Lulus",
+      "date": "2026-09-13"
+    }
+  },
+  {
+    "table": "inspections",
+    "id": "INS-HIST-202609-03",
+    "branch": "Samarinda",
+    "data": {
+      "project": "RP-2026-003",
+      "point": "Dimensional survey block B",
+      "itp": "ITP-007",
+      "status": "Lulus",
+      "date": "2026-09-20"
+    }
+  },
+  {
+    "table": "inspections",
+    "id": "INS-HIST-202609-04",
+    "branch": "Samarinda",
+    "data": {
+      "project": "RP-2026-005",
+      "point": "Uap air sistem",
+      "itp": "ITP-002",
+      "status": "NCR",
+      "date": "2026-09-27"
+    }
+  },
+  {
+    "table": "inspections",
+    "id": "INS-HIST-202610-01",
+    "branch": "Samarinda",
+    "data": {
+      "project": "NB-2025-012",
+      "point": "Welding seam section 4",
+      "itp": "ITP-012",
+      "status": "Lulus",
+      "date": "2026-10-07"
+    }
+  },
+  {
+    "table": "inspections",
+    "id": "INS-HIST-202610-02",
+    "branch": "Samarinda",
+    "data": {
+      "project": "NB-2025-012",
+      "point": "Ketebalan catACHED",
+      "itp": "ITP-004",
+      "status": "Lulus",
+      "date": "2026-10-14"
+    }
+  },
+  {
+    "table": "inspections",
+    "id": "INS-HIST-202610-03",
+    "branch": "Samarinda",
+    "data": {
+      "project": "RP-2026-003",
+      "point": "Dimensional survey block B",
+      "itp": "ITP-007",
+      "status": "NCR",
+      "date": "2026-10-21"
+    }
+  },
+  {
+    "table": "inspections",
+    "id": "INS-HIST-202610-04",
+    "branch": "Samarinda",
+    "data": {
+      "project": "RP-2026-005",
+      "point": "Uap air sistem",
+      "itp": "ITP-002",
+      "status": "Lulus",
+      "date": "2026-10-28"
+    }
+  },
+  {
+    "table": "journals",
+    "id": "JU-EX-01",
+    "branch": "",
+    "data": {
+      "date": "2026-08-31",
+      "kodePembantu": "",
+      "dokumen": "JUM-0831",
+      "uraian": "Penyesuaian PPN Agustus",
+      "db": "2-120",
+      "kr": "1-170",
+      "amount": 455632169.08,
+      "sumber": "JU",
+      "status": "Posted"
+    }
+  },
+  {
+    "table": "journals",
+    "id": "JU-EX-02",
+    "branch": "",
+    "data": {
+      "date": "2026-08-31",
+      "kodePembantu": "",
+      "dokumen": "JUM-0831",
+      "uraian": "Penyesuaian PPN Agustus",
+      "db": "",
+      "kr": "2-234",
+      "amount": 381878655.62,
+      "sumber": "JU",
+      "status": "Posted"
+    }
+  },
+  {
+    "table": "journals",
+    "id": "JU-EX-03",
+    "branch": "",
+    "data": {
+      "date": "2026-08-31",
+      "kodePembantu": "",
+      "dokumen": "JUM-0831",
+      "uraian": "Penyesuaian Beban Penyusutan Aktiva",
+      "db": "6-021",
+      "kr": "1-280",
+      "amount": 15499343.09,
+      "sumber": "JU",
+      "status": "Posted"
+    }
+  },
+  {
+    "table": "journals",
+    "id": "JU-EX-04",
+    "branch": "",
+    "data": {
+      "date": "2026-08-31",
+      "kodePembantu": "",
+      "dokumen": "JUM-0831",
+      "uraian": "Penyesuaian Beban Penyusutan Aktiva",
+      "db": "6-021 A",
+      "kr": "1-281",
+      "amount": 42105958.33,
+      "sumber": "JU",
+      "status": "Posted"
+    }
+  },
+  {
+    "table": "journals",
+    "id": "JU-EX-05",
+    "branch": "",
+    "data": {
+      "date": "2026-08-31",
+      "kodePembantu": "",
+      "dokumen": "JUM-0831",
+      "uraian": "Penyesuaian Beban Penyusutan Aktiva",
+      "db": "6-021 B",
+      "kr": "1-282",
+      "amount": 44471008.25,
+      "sumber": "JU",
+      "status": "Posted"
+    }
+  },
+  {
+    "table": "journals",
+    "id": "JU-EX-06",
+    "branch": "",
+    "data": {
+      "date": "2026-08-31",
+      "kodePembantu": "",
+      "dokumen": "JUM-0831",
+      "uraian": "Penyesuaian Beban Penyusutan Aktiva",
+      "db": "6-021 C",
+      "kr": "1-270",
+      "amount": 6250000,
+      "sumber": "JU",
+      "status": "Posted"
+    }
+  },
+  {
+    "table": "journals",
+    "id": "JU-EX-07",
+    "branch": "",
+    "data": {
+      "date": "2026-08-31",
+      "kodePembantu": "",
+      "dokumen": "JUM-0831",
+      "uraian": "Penyesuaian Beban Penyusutan Aktiva",
+      "db": "6-022",
+      "kr": "1-290",
+      "amount": 19893258.33,
+      "sumber": "JU",
+      "status": "Posted"
+    }
+  },
+  {
+    "table": "journals",
+    "id": "JU-EX-08",
+    "branch": "",
+    "data": {
+      "date": "2026-06-30",
+      "kodePembantu": "",
+      "dokumen": "JUM-0630",
+      "uraian": "Penyesuaian PPN Juni",
+      "db": "2-120",
+      "kr": "1-170",
+      "amount": 373618378.65,
+      "sumber": "JU",
+      "status": "Posted"
+    }
+  },
+  {
+    "table": "journals",
+    "id": "JU-EX-09",
+    "branch": "",
+    "data": {
+      "date": "2026-06-30",
+      "kodePembantu": "",
+      "dokumen": "JUM-0630",
+      "uraian": "Penyesuaian PPN Juni",
+      "db": "",
+      "kr": "2-234",
+      "amount": 313140497.61,
+      "sumber": "JU",
+      "status": "Posted"
+    }
+  },
+  {
+    "table": "journals",
+    "id": "JU-EX-10",
+    "branch": "",
+    "data": {
+      "date": "2026-06-30",
+      "kodePembantu": "",
+      "dokumen": "JUM-0630",
+      "uraian": "Penyesuaian Beban Penyusutan Aktiva",
+      "db": "6-021",
+      "kr": "1-280",
+      "amount": 12709461.33,
+      "sumber": "JU",
+      "status": "Posted"
+    }
+  },
+  {
+    "table": "journals",
+    "id": "JU-EX-11",
+    "branch": "",
+    "data": {
+      "date": "2026-06-30",
+      "kodePembantu": "",
+      "dokumen": "JUM-0630",
+      "uraian": "Penyesuaian Beban Penyusutan Aktiva",
+      "db": "6-021 A",
+      "kr": "1-281",
+      "amount": 34526885.83,
+      "sumber": "JU",
+      "status": "Posted"
+    }
+  },
+  {
+    "table": "journals",
+    "id": "JU-EX-12",
+    "branch": "",
+    "data": {
+      "date": "2026-06-30",
+      "kodePembantu": "",
+      "dokumen": "JUM-0630",
+      "uraian": "Penyesuaian Beban Penyusutan Aktiva",
+      "db": "6-021 B",
+      "kr": "1-282",
+      "amount": 36466226.77,
+      "sumber": "JU",
+      "status": "Posted"
+    }
+  },
+  {
+    "table": "journals",
+    "id": "JU-EX-13",
+    "branch": "",
+    "data": {
+      "date": "2026-06-30",
+      "kodePembantu": "",
+      "dokumen": "JUM-0630",
+      "uraian": "Penyesuaian Beban Penyusutan Aktiva",
+      "db": "6-021 C",
+      "kr": "1-270",
+      "amount": 5125000,
+      "sumber": "JU",
+      "status": "Posted"
+    }
+  },
+  {
+    "table": "journals",
+    "id": "JU-EX-14",
+    "branch": "",
+    "data": {
+      "date": "2026-06-30",
+      "kodePembantu": "",
+      "dokumen": "JUM-0630",
+      "uraian": "Penyesuaian Beban Penyusutan Aktiva",
+      "db": "6-022",
+      "kr": "1-290",
+      "amount": 16312471.83,
+      "sumber": "JU",
+      "status": "Posted"
+    }
+  },
+  {
+    "table": "journals",
+    "id": "JU-EX-15",
+    "branch": "",
+    "data": {
+      "date": "2026-07-31",
+      "kodePembantu": "",
+      "dokumen": "JUM-0731",
+      "uraian": "Penyesuaian PPN Juli",
+      "db": "2-120",
+      "kr": "1-170",
+      "amount": 414625273.86,
+      "sumber": "JU",
+      "status": "Posted"
+    }
+  },
+  {
+    "table": "journals",
+    "id": "JU-EX-16",
+    "branch": "",
+    "data": {
+      "date": "2026-07-31",
+      "kodePembantu": "",
+      "dokumen": "JUM-0731",
+      "uraian": "Penyesuaian PPN Juli",
+      "db": "",
+      "kr": "2-234",
+      "amount": 347509576.61,
+      "sumber": "JU",
+      "status": "Posted"
+    }
+  },
+  {
+    "table": "journals",
+    "id": "JU-EX-17",
+    "branch": "",
+    "data": {
+      "date": "2026-07-31",
+      "kodePembantu": "",
+      "dokumen": "JUM-0731",
+      "uraian": "Penyesuaian Beban Penyusutan Aktiva",
+      "db": "6-021",
+      "kr": "1-280",
+      "amount": 14104402.21,
+      "sumber": "JU",
+      "status": "Posted"
+    }
+  },
+  {
+    "table": "journals",
+    "id": "JU-EX-18",
+    "branch": "",
+    "data": {
+      "date": "2026-07-31",
+      "kodePembantu": "",
+      "dokumen": "JUM-0731",
+      "uraian": "Penyesuaian Beban Penyusutan Aktiva",
+      "db": "6-021 A",
+      "kr": "1-281",
+      "amount": 38316422.08,
+      "sumber": "JU",
+      "status": "Posted"
+    }
+  },
+  {
+    "table": "journals",
+    "id": "JU-EX-19",
+    "branch": "",
+    "data": {
+      "date": "2026-07-31",
+      "kodePembantu": "",
+      "dokumen": "JUM-0731",
+      "uraian": "Penyesuaian Beban Penyusutan Aktiva",
+      "db": "6-021 B",
+      "kr": "1-282",
+      "amount": 40468617.51,
+      "sumber": "JU",
+      "status": "Posted"
+    }
+  },
+  {
+    "table": "journals",
+    "id": "JU-EX-20",
+    "branch": "",
+    "data": {
+      "date": "2026-07-31",
+      "kodePembantu": "",
+      "dokumen": "JUM-0731",
+      "uraian": "Penyesuaian Beban Penyusutan Aktiva",
+      "db": "6-021 C",
+      "kr": "1-270",
+      "amount": 5687500,
+      "sumber": "JU",
+      "status": "Posted"
+    }
+  },
+  {
+    "table": "journals",
+    "id": "JU-EX-21",
+    "branch": "",
+    "data": {
+      "date": "2026-07-31",
+      "kodePembantu": "",
+      "dokumen": "JUM-0731",
+      "uraian": "Penyesuaian Beban Penyusutan Aktiva",
+      "db": "6-022",
+      "kr": "1-290",
+      "amount": 18102865.08,
+      "sumber": "JU",
+      "status": "Posted"
     }
   },
   {
@@ -3713,7 +6599,21 @@ export const FE_MIRROR_ROWS: MirrorRow[] = [
       "util": 68,
       "nextService": "2026-09-15",
       "lastHours": 12450,
-      "model": "DEMAG 50T"
+      "model": "DEMAG 50T",
+      "serviceNotes": [
+        {
+          "at": "2026-07-14 09:20",
+          "by": "Bapak Hadi",
+          "text": "Tali hoist sudah mulai terlihat seratnya sendiri di Drum kanan. Kalau dipakai untuk beban berat, tali selalu keluar dari sheave atas.",
+          "fileUrl": ""
+        },
+        {
+          "at": "2026-09-08 14:05",
+          "by": "Bapak Hadi",
+          "text": "Sheave sudah diganti. Uji beban 12 ton bersih, tidak ada getasan. Rem masih memakai komponen yang lama.",
+          "fileUrl": ""
+        }
+      ]
     }
   },
   {
@@ -3728,7 +6628,15 @@ export const FE_MIRROR_ROWS: MirrorRow[] = [
       "util": 82,
       "nextService": "2026-08-05",
       "lastHours": 18320,
-      "model": "Liebherr MK100"
+      "model": "Liebherr MK100",
+      "serviceNotes": [
+        {
+          "at": "2026-06-19 10:30",
+          "by": "Sari Dewi",
+          "text": "Outrigger paling belakang harus dismoor dulu sebelum slew. Kalau tidak, landnya berbunyi dan unit tidak boleh dipakai di atas 60 ton.",
+          "fileUrl": ""
+        }
+      ]
     }
   },
   {
@@ -3743,7 +6651,21 @@ export const FE_MIRROR_ROWS: MirrorRow[] = [
       "util": 74,
       "nextService": "2026-08-20",
       "lastHours": 2500,
-      "model": "Fronius TPS 400i"
+      "model": "Fronius TPS 400i",
+      "serviceNotes": [
+        {
+          "at": "2026-05-11 08:45",
+          "by": "Andi",
+          "text": "Kawat 1,2 mm cocok untuk pipa. Jangan memakai kawat lebih tebal di bagian yang menipis, karena retaknya muncul di sambungan las.",
+          "fileUrl": ""
+        },
+        {
+          "at": "2026-08-02 13:15",
+          "by": "Andi",
+          "text": "Nozzle-tip sudah aus dan sudah diganti. Posisi gas flow setter jangan diubah, karena hasil las keluar millih.",
+          "fileUrl": ""
+        }
+      ]
     }
   },
   {
@@ -3758,7 +6680,15 @@ export const FE_MIRROR_ROWS: MirrorRow[] = [
       "util": 45,
       "nextService": "2026-07-30",
       "lastHours": 4100,
-      "model": "Miller XMT"
+      "model": "Miller XMT",
+      "serviceNotes": [
+        {
+          "at": "2026-07-29 16:40",
+          "by": "Andi",
+          "text": "Kabel massa terkelupas di sambungan stick. Sudah dilaporkan ke bagian listrik tetapi belum diganti, jadi jangan dipakai dulu.",
+          "fileUrl": ""
+        }
+      ]
     }
   },
   {
@@ -3773,7 +6703,15 @@ export const FE_MIRROR_ROWS: MirrorRow[] = [
       "util": 58,
       "nextService": "2026-09-01",
       "lastHours": 8900,
-      "model": "Atlas Copco"
+      "model": "Atlas Copco",
+      "serviceNotes": [
+        {
+          "at": "2026-04-22 11:10",
+          "by": "Bapak Hadi",
+          "text": "Drain air setiap selesai shift. Kalau dilewatkan, head cepat berkarat dan kompresor trips sendiri.",
+          "fileUrl": ""
+        }
+      ]
     }
   },
   {
@@ -3788,7 +6726,8 @@ export const FE_MIRROR_ROWS: MirrorRow[] = [
       "util": 71,
       "nextService": "2026-08-12",
       "lastHours": 7200,
-      "model": "Toyota 10FD"
+      "model": "Toyota 10FD",
+      "serviceNotes": []
     }
   },
   {
@@ -3803,7 +6742,15 @@ export const FE_MIRROR_ROWS: MirrorRow[] = [
       "util": 63,
       "nextService": "2026-09-10",
       "lastHours": 3200,
-      "model": "Blastrac"
+      "model": "Blastrac",
+      "serviceNotes": [
+        {
+          "at": "2026-06-30 15:25",
+          "by": "Sari Dewi",
+          "text": "Nozzle brass sudah diganti dua kali bulan ini karena abrasive yang dipakai lebih kasar dari spesifikasi lama.",
+          "fileUrl": ""
+        }
+      ]
     }
   },
   {
@@ -3818,7 +6765,15 @@ export const FE_MIRROR_ROWS: MirrorRow[] = [
       "util": 52,
       "nextService": "2026-10-01",
       "lastHours": 15600,
-      "model": "Caterpillar"
+      "model": "Caterpillar",
+      "serviceNotes": [
+        {
+          "at": "2026-08-25 07:50",
+          "by": "Bapak Hadi",
+          "text": "Filter udara kabin sudah dibersihkan. Suara tidak knuckle lagi saat beban naik.",
+          "fileUrl": ""
+        }
+      ]
     }
   },
   {
