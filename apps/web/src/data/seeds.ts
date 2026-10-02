@@ -1,4 +1,4 @@
-// Sumber tunggal seed operasional (dipakai FE via store.tsx DAN dicerminkan ke
+﻿// Sumber tunggal seed operasional (dipakai FE via store.tsx DAN dicerminkan ke
 // backend via services/api script seed:mirror → seedFeMirror.ts).
 // Modul murni: tanpa impor React/browser agar bisa dimuat tsx maupun Vite.
 // Baris RawData PT Syukur Bersaudara: id berawalan INV-SB / AP-SB / WO-SB /
@@ -64,11 +64,16 @@ export const seedInspections: StoreItem[] = [
   { id: "INS-2026-122", project: "RP-2026-005", point: "Toleransi bearing overhaul", itp: "ITP-005", status: "NCR", date: "2026-07-25" },
 ];
 
+/* Booking aktif. hours/cost/fuelLiters diisi karena HPP proyek mengambil
+   biaya equipment dari sini (utils/projectCost.ts): dengan cost 0 seluruh
+   "Biaya Equipment yang Dibebankan ke Proyek" bernilai nol bukan karena alat
+   gratis, tetapi karena kolomnya belum diisi.
+   Tarif mengikuti equipment.rate di data/index.ts; BBM memakai fuelPrice. */
 export const seedBookings: StoreItem[] = [
-  { equip: "Mobile Crane 100T", proyek: "NB-2025-012", jam: "08:00-17:00", status: "Terpakai", id: "BK-001", date: "2026-08-02" },
-  { equip: "Mesin Las MIG", proyek: "RP-2026-003", jam: "07:00-16:00", status: "Terpakai", id: "BK-002", date: "2026-08-02" },
-  { equip: "Forklift 10T", proyek: "RP-2026-005", jam: "09:00-15:00", status: "Terpakai", id: "BK-003", date: "2026-08-02" },
-  { equip: "Gantry Crane 50T", proyek: "NB-2025-014", jam: "08:00-12:00", status: "Terjadwal", id: "BK-004", date: "2026-08-03" },
+  { equip: "Mobile Crane 100T", proyek: "NB-2025-012", jam: "08:00-17:00", status: "Terpakai", id: "BK-001", date: "2026-08-02", hours: 9, downtime: 0, fuelLiters: 40, cost: 22500000 },
+  { equip: "Mesin Las MIG", proyek: "RP-2026-003", jam: "07:00-16:00", status: "Terpakai", id: "BK-002", date: "2026-08-02", hours: 9, downtime: 0, fuelLiters: 0, cost: 2250000 },
+  { equip: "Forklift 10T", proyek: "RP-2026-005", jam: "09:00-15:00", status: "Terpakai", id: "BK-003", date: "2026-08-02", hours: 6, downtime: 0, fuelLiters: 12, cost: 2100000 },
+  { equip: "Gantry Crane 50T", proyek: "NB-2025-014", jam: "08:00-12:00", status: "Terjadwal", id: "BK-004", date: "2026-08-03", hours: 4, downtime: 0, fuelLiters: 0, cost: 4800000 },
 ];
 
 /* ==========================================================================
@@ -152,21 +157,52 @@ const HIST_BOOKINGS = [
   { equip: "Forklift 10T", proyek: "RP-2026-005", hours: 40 },
 ];
 
+/* Tarif per unit equipment (Rp/jam) & BBM (Rp/liter) - disalin dari
+   data/index.ts supaya riwayat 12 bulan bisa dihitung saat seed, bukan dari
+   angka tetap. Ditaruh di sini agar seeds.ts tetap modul murni tanpa import
+   (dipakai juga oleh services/api/src/seedMirror.ts). */
+const BOOKING_RATE: Record<string, { rate: number; fuel: number }> = {
+  "Gantry Crane 50T": { rate: 1200000, fuel: 0 },
+  "Mobile Crane 100T": { rate: 2500000, fuel: 13500 },
+  "Mesin Las MIG": { rate: 250000, fuel: 0 },
+  "Mesin Las SMAW": { rate: 220000, fuel: 0 },
+  "Air Compressor": { rate: 150000, fuel: 12500 },
+  "Forklift 10T": { rate: 350000, fuel: 11500 },
+  "Blast Machine": { rate: 400000, fuel: 0 },
+  "Generator Set 500kVA": { rate: 900000, fuel: 12500 },
+};
+/* Konsumsi BBM per jam kerja: alat berat ~0,45 L/jam, forklift ~0,3 L/jam.
+   Alat yang tidak memakai BBM (gantry, mesin las, blast) bernilai 0. */
+const BOOKING_FUEL_PER_HOUR: Record<string, number> = {
+  "Mobile Crane 100T": 0.45,
+  "Forklift 10T": 0.3,
+  "Air Compressor": 0.4,
+  "Generator Set 500kVA": 0.5,
+};
+
 export const seedBookingsHistory: StoreItem[] = HIST_MONTHS.flatMap((ym, mi) =>
   HIST_BOOKINGS.map((b, k) => {
     const day = 5 + k * 6 + (mi % 3);
     const date = `${ym}-${String(day).padStart(2, "0")}`;
     const hours = b.hours + ((mi * 11 + k * 17) % 24) - 12;
+    const usedHours = Math.max(8, hours);
+    const tar = BOOKING_RATE[b.equip] ?? { rate: 250000, fuel: 0 };
+    const fuelLiters = Math.round(usedHours * (BOOKING_FUEL_PER_HOUR[b.equip] ?? 0));
     return {
       id: `BK-HIST-${ym.replace("-", "")}-${String(k + 1).padStart(2, "0")}`,
       equip: b.equip,
       equipmentId: "",
       proyek: b.proyek,
       jam: "08:00-17:00",
-      hours: Math.max(8, hours),
+      hours: usedHours,
+      /* Downtime dibiarkan 0: riwayat seed ini adalah pemakaian normal, bukan
+           catatan incidents. Downtime nyata berasal dariEquipment.finishBooking. */
       downtime: 0,
-      fuelLiters: 0,
-      cost: 0,
+      fuelLiters,
+      /* Biaya = sewa (jam x tarif) + BBM (liter x harga BBM). Versi lama menulis
+         literal 0 di sini, jadi semua kartu "Biaya per Proyek" dan HPP modul
+         Equipment kosong padahal tarifnya sudah ada di master. */
+      cost: usedHours * tar.rate + fuelLiters * tar.fuel,
       status: "Selesai",
       date,
       branch: "Samarinda",
@@ -551,7 +587,7 @@ export const seedMaintenances: StoreItem[] = [
       { itemId: "INV-EL-002", name: "Kawat Las SMAW E7018", qty: 4, unit: "kg", cost: 95000 },
       { itemId: "INV-EL-005", name: "Nozzle Torch SMAW", qty: 2, unit: "pcs", cost: 145000 },
     ],
-    materialCost: 670000, downtimeHours: 18, costTotal: 670000,
+    materialCost: 670000, laborCost: 0, laborRatePerDay: 1100000, downtimeHours: 18, costTotal: 670000,
     createdAt: "2026-09-16", createdBy: "Anda",
     history: [
       { at: "2026-09-16 08:10", from: "-", to: "Terjadwal", by: "Anda", note: "Rencana overhaul torch SMAW #04" },
@@ -570,7 +606,7 @@ export const seedMaintenances: StoreItem[] = [
       { itemId: "INV-ME-003", name: "Grease Lithium EP2", qty: 6, unit: "kg", cost: 180000 },
       { itemId: "INV-ME-007", name: "Bearing 6212 ZZ", qty: 4, unit: "pcs", cost: 95000 },
     ],
-    materialCost: 1460000, downtimeHours: 9, costTotal: 1460000,
+    materialCost: 1460000, laborCost: 2200000, laborRatePerDay: 1100000, downtimeHours: 9, costTotal: 3660000,
     createdAt: "2026-09-01", createdBy: "Anda",
     history: [
       { at: "2026-09-01 09:00", from: "-", to: "Terjadwal", by: "Anda", note: "Preventif 250 jam" },
@@ -589,7 +625,7 @@ export const seedMaintenances: StoreItem[] = [
     materials: [
       { itemId: "INV-ME-001", name: "Filter Oil 908", qty: 2, unit: "pcs", cost: 220000 },
     ],
-    materialCost: 440000, downtimeHours: 0, costTotal: 440000,
+    materialCost: 440000, laborCost: 0, laborRatePerDay: 1100000, downtimeHours: 0, costTotal: 440000,
     createdAt: "2026-10-01", createdBy: "Anda",
     history: [
       { at: "2026-10-01 07:20", from: "-", to: "Terjadwal", by: "Anda", note: "Preventif triwulan Q4" },

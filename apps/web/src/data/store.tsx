@@ -187,6 +187,13 @@ const seedSettings: StoreItem[] = [
   { id: "SET-ALBUD", key: "ALERT_BUDGET_PCT", value: 80, label: "Alert serapan budget (%)", group: "Alert" },
   { id: "SET-ALOVR", key: "ALERT_OVERRUN_PCT", value: 10, label: "Alert overrun di atas (%)", group: "Alert" },
   { id: "SET-ALCERT", key: "ALERT_CERT_DAYS", value: 90, label: "Alert sertifikat H- (hari)", group: "Alert" },
+  /* Tarif mastery yang tadinya hanya fallback hardcode di dalam komponen.
+     Dipindah ke settings supaya (a) bisa diubah dari Pengaturan tanpa
+     menyentuh kode, dan (b) nilainya sama persis di FE dan BE - sebelumnya
+     Settings menampilkan fallback yang berbeda dari yang dipakai modul. */
+  { id: "SET-EQLAB", key: "EQUIP_LABOR_RATE_PER_DAY", value: 1100000, label: "Tarif tenaga servis / hari (Rp)", group: "Equipment" },
+  { id: "SET-TARIFKWH", key: "TARIF_LISTRIK_KWH", value: 1650, label: "Tarif listrik (Rp/kWh)", group: "Equipment" },
+  { id: "SET-TARIFAIR", key: "TARIF_AIR_M3", value: 15000, label: "Tarif air (Rp/m3)", group: "Equipment" },
   { id: "SET-ALCERT60", key: "ALERT_CERT_60", value: 60, label: "Alert sertifikat warning H- (hari)", group: "Alert" },
   { id: "SET-ALCERT30", key: "ALERT_CERT_30", value: 30, label: "Alert sertifikat critical H- (hari)", group: "Alert" },
   { id: "SET-ALMS", key: "ALERT_MILESTONE_DAYS", value: 7, label: "Alert milestone H- (hari)", group: "Alert" },

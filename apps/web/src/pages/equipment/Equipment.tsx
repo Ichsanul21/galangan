@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+﻿import { useEffect, useMemo, useState } from "react";
 import { bucketByMonth, monthAxis, rebindLegacyMonthSeries } from "../../utils/monthAxis";
 import type { ReactNode } from "react";
 import { Link } from "react-router-dom";
@@ -53,7 +53,11 @@ const EQ_CATS = ["Pengangkat", "Pengelasan", "Tenaga", "Transportasi", "Pengecat
    DEFAULT ini hanya fallback - angka bisnis sebenarnya ada di settings
    (EQUIP_LABOR_RATE_PER_DAY), dibaca saat siklus dibuat supaya tarif
    tidak mengikat seluruh riwayat lampau yang sudah terpakai. */
-const DEFAULT_LABOR_RATE_PER_DAY = 750000;
+/* Tarif tenaga servis per hari kerja. Angka lama 750.000 di bawah tarif
+   welder/mekanik 2026 setelah semua beban, dan membuat biaya tenaga servis
+   under-reported di HPP proyek. Nilai ini juga disimpan sebagai settings
+   EQUIP_LABOR_RATE_PER_DAY supaya bisa diubah dari Pengaturan. */
+const DEFAULT_LABOR_RATE_PER_DAY = 1100000;
 
 /* ================= FORM SIKLUS MAINTENANCE ================= */
 

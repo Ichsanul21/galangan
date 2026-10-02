@@ -1,4 +1,4 @@
-// Bulk-seed rows for POST /api/admin/seed dan npm run seed. Sumber:
+﻿// Bulk-seed rows for POST /api/admin/seed dan npm run seed. Sumber:
 // - settings: 36 baris (halaman Pengaturan membaca semuanya; JANGAN dikurangi)
 // - coa: apps/web/src/data/financeExcel.ts COA_EXCEL (98 akun, sama dengan FE)
 // - branches/journals/assets: sama dengan FE (financeExcel + seeds.ts)
@@ -53,6 +53,13 @@ const SETTINGS: SeedRow[] = [
   S("SET-WHATIF-P","WHATIF_PROG",0,"What-if progres, menggeser forecast (%)","Analytics"),
   S("SET-3D-PROJ","SHOW_3D_PROJECT",0,"Tampilkan 3D Viewer di modul Proyek (0/1)","Modul"),
   S("SET-3D-VES","SHOW_3D_VESSEL",0,"Tampilkan 3D Viewer di modul Kapal (0/1)","Modul"),
+  /* Tarif mastery yang tadinya hanya fallback hardcode di dalam komponen
+     Equipment.tsx dan Drydock.tsx. Wajib identik dengan store.tsx (FE) -
+     kedua daftar settings ini diduplikasi tangan, bukan dihasilkan, jadi
+     setiap penambahan harus dibuat dua kali. */
+  S("SET-EQLAB","EQUIP_LABOR_RATE_PER_DAY",1100000,"Tarif tenaga servis / hari (Rp)","Equipment"),
+  S("SET-TARIFKWH","TARIF_LISTRIK_KWH",1650,"Tarif listrik (Rp/kWh)","Equipment"),
+  S("SET-TARIFAIR","TARIF_AIR_M3",15000,"Tarif air (Rp/m3)","Equipment"),
 ];
 
 const COA: Array<[string, string, string, string]> = [

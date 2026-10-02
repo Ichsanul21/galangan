@@ -205,6 +205,10 @@ const AR_BUCKETS = [
   { name: ">120 hari", min: 121, max: Number.POSITIVE_INFINITY },
 ];
 
+/* Tarif default bila master equipment belum punya `rate`. Nilai INTI dulu
+   dipakai untuk semua alat sekaligus; sekarang tarifnya dibaca per unit dari
+   data/index.ts (lihat equipRateOf di bawah) dan konstanta ini hanya tersisa
+   sebagai jaring pengaman. */
 const EQUIP_RATE_PER_JAM = 1500000;
 
 interface InvLine {
@@ -1272,10 +1276,28 @@ const { data, add, update, remove, log, branch, inBranch } = useStore();
       if (terminProjectOf(t) === profitPid) subcon += num(t.amount);
     }
     let equipment = 0;
+    /* Tarif per jam diambil dari master equipment, bukan konstanta global.
+       Versi lama memakai EQUIP_RATE_PER_JAM = 1.500.000 untuk SEMUA alat:
+       mesin las streets Rp 250.000/jam jadi-biaya 6x lipat, forklift
+       Rp 350.000 jadi 4x lipat, dan tab Equipment menampilkan angka yang
+       berbeda dari kartu ini untuk baris yang sama. Plus kolom cost pada
+       booking yang sudah terisi hasil perhitungan jam x tarif - memakai
+      Angka itu membuat CBS ganda hitung. */
+    const equipRateOf = (row: StoreItem): number => {
+      const name = String(row.equipName ?? row.equip ?? "");
+      const code = String(row.equipCode ?? "");
+      const found =
+        (data.equipment ?? []).find((e) => String(e.id ?? "") === String(row.equipmentId ?? ""))
+        ?? (data.equipment ?? []).find((e) => String(e.code ?? "") === code)
+        ?? (data.equipment ?? []).find((e) => String(e.name ?? "").trim() === name.trim());
+      const rate = num(found?.rate);
+      return rate > 0 ? rate : EQUIP_RATE_PER_JAM;
+    };
     for (const b of data.bookings ?? []) {
       if (String(b.proyek ?? b.project ?? "") !== profitPid) continue;
       if (String(b.status ?? "") !== "Selesai") continue;
-      equipment += parseJamHours(b.jam) * EQUIP_RATE_PER_JAM;
+      const cost = num(b.cost);
+      equipment += cost > 0 ? cost : parseJamHours(b.jam) * equipRateOf(b);
     }
     const proj = projectById[profitPid];
     const ohPct = overheadPct === "" ? num(proj?.overheadPct) : num(overheadPct);

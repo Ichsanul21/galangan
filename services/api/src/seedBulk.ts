@@ -1,4 +1,4 @@
-import fs from "node:fs";
+﻿import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { exec, q, closeDb } from "./db.js";
@@ -104,6 +104,55 @@ async function main(): Promise<void> {
   const stockMap = new Map(stock.map((s) => [s.kode, s]));
   // File asli memakai ulang 31 kode untuk barang berbeda — kemunculan
   // ke-2+ diberi sufiks -2/-3 agar semua 4784 baris masuk persis dokumen.
+  // ---- 2. Kode barang -> inventory ----
+  // Harga TIDAK boleh 0. Versi lama menulis cost/avgCost/minStock = 0 untuk
+  // 4.784 baris, dan itu bukan data yang belum ada melainkan data yang belum
+  // diisi: akibatnya KPI "Nilai Stok" bernilai nol, klasifikasi ABC
+  // (`Inventory.tsx` cumulative/total guarded `total <= 0`) DROPS SEMUA barang
+  // ke kelas C, dan badge dead-stock tidak pernah punya nilai rupiah.
+  // Sumber harga: `warehouse_in.json` sudah memuat hargaNonPpn asli 2024 untuk
+  // 2.668 baris penerimaan. Barang tanpa penerimaan mewarisi harga median dari
+  // nama yang sama; sisa terakhir memakai default per kategori kata kunci.
+  const unitPrice = new Map<string, number>();
+  const byName = new Map<string, number[]>();
+  for (const m of win) {
+    const price = Number(m.hargaNonPpn ?? 0);
+    if (!Number.isFinite(price) || price <= 0) continue;
+    const name = String(m.nama ?? "").trim();
+    if (name === "") continue;
+    const list = byName.get(name) ?? [];
+    list.push(price);
+    byName.set(name, list);
+    if (!unitPrice.has(String(m.kode ?? ""))) unitPrice.set(String(m.kode ?? ""), price);
+  }
+  const medianOf = (values: number[]): number => {
+    if (values.length === 0) return 0;
+    const s = [...values].sort((a, b) => a - b);
+    return s[Math.floor(s.length / 2)] ?? 0;
+  };
+  // Default per kategori (Rp/unit) - semua diambil dari master FE
+  // data/index.ts yang sudah punya harga riil (Rp/kg baja, Rp/L cat, dll).
+  const CATEGORY_DEFAULT: Array<[RegExp, number]> = [
+    [/plat|baja|besi|siku|channel|\bms\b|pipa\s*(besi|karbon)/i, 14500],
+    [/^cat\b|epoxy|primer|topcoat|antifouling|hempalin/i, 95000],
+    [/kabel|nyny|cable/i, 185000],
+    [/pipa|\bpipe\b|flange|elbow|valve|tangkai/i, 780000],
+    [/hanrik|wire\s*rope|\btali\b/i, 3200000],
+    [/fastener|baut|mut|ring|washer|spring/i, 4500],
+    [/oli|lubrik|grease|hydraulic/i, 50000],
+    [/bearing|gear|seal|piston|rubber|blubber/i, 450000],
+    [/anoda|zink|sikam/i, 210000],
+    [/mesin|\bpom\b|engine|aux/i, 85000000],
+    [/cat\b.* thinner|pengencer/i, 60000],
+  ];
+  const defaultPriceFor = (name: string, category: string): number => {
+    for (const [re, price] of CATEGORY_DEFAULT) if (re.test(name)) return price;
+    if (/listrik|panel|lampu|switch/i.test(name) || /listrik/i.test(category)) return 185000;
+    if (/perlindungan|apd|helm|safety|life/i.test(name) || /perlindungan/i.test(category)) return 350000;
+    return 50000;
+  };
+  let priced = 0;
+  let fallbackPriced = 0;
   const usedInvIds = new Set<string>();
   for (const b of kode.barang) {
     const st = stockMap.get(b.kode);
@@ -114,22 +163,38 @@ async function main(): Promise<void> {
       invId = `${invId}-${k}`;
     }
     usedInvIds.add(invId);
+    const name = String(b.nama || b.kode);
+    let cost = unitPrice.get(String(b.kode ?? "")) ?? 0;
+    if (cost <= 0) {
+      cost = medianOf(byName.get(name.trim()) ?? []);
+      if (cost > 0) fallbackPriced += 1;
+    }
+    if (cost <= 0) {
+      cost = defaultPriceFor(name, "Warehouse 2024");
+      fallbackPriced += 1;
+    }
+    priced += 1;
+    const stock = st ? Number(st.akhir || 0) : 0;
     await put("inventory", invId, "", {
       id: invId,
-      name: b.nama || b.kode,
+      name,
       category: "Warehouse 2024",
       sku: b.kode,
       warehouse: "Gudang Santi",
-      stock: st ? Number(st.akhir || 0) : 0,
+      stock,
       stockAwal: st ? Number(st.awal || 0) : 0,
       stockMasuk: st ? Number(st.masuk || 0) : 0,
       stockKeluar: st ? Number(st.keluar || 0) : 0,
-      minStock: 0,
+      /* minStock 0 membuat SETIAP baris terbaca "di bawah minimum" dan badge
+         low-stock menyala untuk ribuan item tanpa arti. 20% dari stok saat ini
+         membulatkan ke atas minimal 1. */
+      minStock: Math.max(1, Math.round(stock * 0.2)),
       unit: "pcs",
-      cost: 0,
-      avgCost: 0,
+      cost,
+      avgCost: cost,
     }, now, ctr);
   }
+  console.log(`[seed:bulk] ${priced} baris inventory diberi harga (${fallbackPriced} dari fallback kategori/nama)`);
 
   // ---- 3. IN/OUT -> movements ----
   n = 0;
