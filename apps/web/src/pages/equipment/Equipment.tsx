@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { ID_MON as MONTH_ID } from "../../utils/monthAxis";
+import { bucketByMonth, monthAxis, rebindLegacyMonthSeries } from "../../utils/monthAxis";
 import type { ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { Plus, Cpu, Pencil, Trash2, Wrench, AlertTriangle, Gauge, CheckCircle2, Download, Search } from "lucide-react";
@@ -47,9 +47,6 @@ import { n_eqp } from "../../i18n/n_eqp";
 const BOOK_PRIORITIES = ["Normal", "Tinggi", "Kritis"];
 const TARGET_HOURS = 176;
 const EQ_CATS = ["Pengangkat", "Pengelasan", "Tenaga", "Transportasi", "Pengecatan", "Lainnya"];
-
-const ID_MON = MONTH_ID;
-const EN_MON = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
 /* Tarif harian teknisi untuk hitung biaya tenaga servis.
    DEFAULT ini hanya fallback - angka bisnis sebenarnya ada di settings
@@ -102,39 +99,20 @@ function isMaintJenis(v: unknown): v is string {
   return typeof v === "string" && (MAINT_JENIS as readonly string[]).includes(v);
 }
 
-/* Label "Mon YYYY" untuk N titik terakhir, bulan berjalan terakhir. */
-function trailingMonthLabels(n: number, locale: string): string[] {
-  const now = new Date();
-  const M = locale === "en" ? EN_MON : ID_MON;
-  const out: string[] = [];
-  for (let i = n - 1; i >= 0; i--) {
-    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
-    out.push(`${M[d.getMonth()]} ${d.getFullYear()}`);
-  }
-  return out;
-}
 
-/* Samakan deret data dengan jendela label bulan-berjalan.
-   Versi lama menempel label secara posisional: data equipmentHours berlabel
-   tetap "Sep".."Ags" sementara label dihitung ulang tiap bulan, sehingga
-   titik "Ags" tampil sebagai "Sep 2026" dan SELURUH grafik bergeser satu bulan
-   setiap pergantian bulan. Sekarang data diputar agar bulan pada datanya
-   sendiri yang jadi acuan, persis seperti withMonthLabels() di Analytics:
-   bulan berjalan benar-benar berada di titik terakhir. */
-function alignToTrailingMonths<T extends { month: string }>(arr: T[], locale: string): (T & { label: string })[] {
-  const now = new Date();
-  const cur = now.getMonth();
-  const curName = (locale === "en" ? EN_MON : ID_MON)[cur];
-  const labels = trailingMonthLabels(arr.length, locale);
 
-  const pos = arr.findIndex((d) => d.month === curName);
-  const rot = pos >= 0 ? [...arr.slice(pos + 1), ...arr.slice(0, pos + 1)] : [...arr];
+/* Chart jam/bulan memakai sumbu bulan berurutan dari utils/monthAxis.ts.
 
-  return rot.map((d, i) => {
-    const label = labels[labels.length - rot.length + i] ?? d.month;
-    return { ...d, label };
-  });
-}
+   alignToTrailingMonths() lama memutar seed equipmentHours dengan
+   findIndex(d.month === curName). Karena nama bulan berjalan hampir
+   selalu tidak ada di seed (jendelanya Sep..Ags), rotasi TIDAK terjadi
+   sama sekali: label dihitung ulang tiap bulan sementara datanya tetap,
+   sehingga seluruh grafik bergeser satu bulan setiap pergantian bulan
+   tanpa satu pun angka yang berubah.
+
+   Sekarang jam diambil dari booking yang benar-benar selesai - field
+   `hours` diisi saat booking diselesaikan (lihat confirmFinish) - lalu
+   di-bucket per bulan dari tanggal booking. */
 
 /* Seluruh jam/input waktu memakai format 24 jam (00:00–23:59, tanpa AM/PM).
    norm24() menormalkan data lama AM/PM ("02:00 PM" → "14:00") agar konsisten;
@@ -387,11 +365,31 @@ export default function EquipmentPage() {
     return [...EQ_CATS, ...Array.from(new Set(extra)).sort()];
   }, [equipment]);
 
-  /* Chart jam/bulan: label "Mon YYYY", bulan berjalan terakhir. */
-  const hoursChart = useMemo(
-    () => alignToTrailingMonths(equipmentHours, locale),
+  /* Chart jam/bulan: sumbu bulan berurutan, angka dari booking yang selesai.
+     Seed equipmentHours hanya dipakai kalau belum ada booking Selesai
+     sama sekali, supaya kurvanya tidak kosong di install baru. */
+  const hoursAxis = useMemo(
+    () => monthAxis({ months: 12, locale: locale as "id" | "en" }),
     [locale],
   );
+  const hoursChart = useMemo(() => {
+    const done = bookings.filter((b) => String(b.status ?? "") === "Selesai");
+    const bucket = bucketByMonth(
+      done,
+      hoursAxis,
+      (b) => b.date,
+      (b) => Number(b.hours || 0),
+      (vals) => vals.reduce((s, x) => s + x, 0),
+    );
+    const anyReal = Object.values(bucket).some((v) => v > 0);
+    if (!anyReal) {
+      return rebindLegacyMonthSeries(equipmentHours, { locale: locale as "id" | "en" }).map((r) => ({
+        label: r.bln,
+        jam: Number(r.jam || 0),
+      }));
+    }
+    return hoursAxis.map((pt) => ({ label: pt.label, jam: bucket[pt.key] ?? 0 }));
+  }, [bookings, hoursAxis, locale]);
 
   /* Nama proyek booking → link detail + nama kapal. */
   const projOf = (id: unknown): StoreItem | undefined =>
