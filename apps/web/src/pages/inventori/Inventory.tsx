@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ID_MON as MONTH_ID } from "../../utils/monthAxis";
-import { EN_MON as MONTH_EN } from "../../utils/monthAxis";
+import { rebindLegacyMonthSeries } from "../../utils/monthAxis";
 import { Link } from "react-router-dom";
 import {
   Plus,
@@ -103,20 +102,8 @@ function matLabel(t: string): string {
 const GOODS_NOTE_LABELS = (loc: "id" | "en"): GoodsNoteDocLabels => (loc === "en"
   ? { no: "No", namaBarang: "Item", jumlah: "Qty", tanggal: "Date", tujuan: "Destination", penerima: "Received by", penyerah: "Delivered by" }
   : { no: "No", namaBarang: "Nama Barang", jumlah: "Jumlah", tanggal: "Tanggal", tujuan: "Tujuan", penerima: "Yang Menerima", penyerah: "Yang Menyerahkan" });
-const INV_ID_MON = MONTH_ID;
-const INV_EN_MON = MONTH_EN;
 
 /* Label "Mon YYYY" untuk deret statis, bulan berjalan terakhir. */
-function invTrailingLabels(n: number, locale: string): string[] {
-  const now = new Date();
-  const M = locale === "en" ? INV_EN_MON : INV_ID_MON;
-  const out: string[] = [];
-  for (let i = n - 1; i >= 0; i--) {
-    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
-    out.push(`${M[d.getMonth()]} ${d.getFullYear()}`);
-  }
-  return out;
-}
 
 /* Nomor DO format RawData: nn/DO-SB/SMD/m/yyyy. */
 const ROMAWII = ["I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X", "XI", "XII"];
@@ -607,19 +594,35 @@ export default function Inventory() {
      "Ags" tampil sebagai "Sep 2026" dan seluruh grafik bergeser satu bulan
      tiap pergantian bulan, tanpa pernah memberi tahu. Sekarang data diputar
      mengikuti jendela label - pola yang sama sudah dipakai Equipment dan QC. */
-  const invTrend = useMemo(() => {
-    const labels = invTrailingLabels(stockTrend.length, locale);
-    const M = locale === "en" ? INV_EN_MON : INV_ID_MON;
-    const cur = new Date().getMonth();
-    const pos = stockTrend.findIndex((d) => String(d.month) === M[cur]);
-    const rot = pos >= 0
-      ? [...stockTrend.slice(pos + 1), ...stockTrend.slice(0, pos + 1)]
-      : [...stockTrend];
-    return rot.map((d, i) => ({ ...d, label: labels[labels.length - rot.length + i] ?? d.month }));
-  }, [locale]);
+  /* Nilai stok SENGAJA masih dari seed stockTrend.
+
+     Berbeda dari invoice/inspeksi/jam, nilai stok tidak punya riwayat
+     bertanggal di sistem: `inventory.stock` adalah kondisi saat ini, dan
+     tidak ada snapshot bulanan. Movement bisa dijumlahkan, tapi itu
+     mengubah nilai yang sama menjadi rekonstruksi, bukan data yang
+     tercatat - lebih buruk daripada jujur memakai seed.
+
+     Yang diperbaiki di sini adalah SUMBU dan FILTER TAHUN, bukan
+     angkanya. Sumbu sekarang berurutan dan berakhir di bulan berjalan
+     (monthAxis), dan label tidak lagi ditempel posisional ke seed yang tidak
+     bergerak - yang membuat seluruh kurva bergeser satu bulan tiap
+     pergantian bulan. Filter tahun memakai `key` YYYY-MM dari sumbu,
+     bukan memotong 4 karakter terakhir dari label yang sudah dirender:
+     begitu locale atau format label berubah, filternya ikut rusak. */
+  const invTrend = useMemo(
+    () => rebindLegacyMonthSeries(stockTrend, { locale: locale as "id" | "en" })
+      .map((r) => ({ label: r.bln, key: r.key, year: Number(r.key.slice(0, 4)), nilai: Number(r.nilai || 0) })),
+    [locale],
+  );
   const [trendYear, setTrendYear] = useState("Semua");
-  const trendYears = useMemo(() => Array.from(new Set(invTrend.map((d) => String(d.label).slice(-4)))).sort(), [invTrend]);
-  const trendShown = useMemo(() => (trendYear === "Semua" ? invTrend : invTrend.filter((d) => String(d.label).endsWith(trendYear))), [invTrend, trendYear]);
+  const trendYears = useMemo(
+    () => Array.from(new Set(invTrend.map((d) => d.year))).sort((a, b) => b - a),
+    [invTrend],
+  );
+  const trendShown = useMemo(
+    () => (trendYear === "Semua" ? invTrend : invTrend.filter((d) => d.year === Number(trendYear))),
+    [invTrend, trendYear],
+  );
 
 /* Gudang: koleksi `warehouses` (CRUD) + fallback settings.WAREHOUSE_CAP.
      capacityOf() sudah menangani kedua sumber, jadi tab Stok per Gudang tetap
