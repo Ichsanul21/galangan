@@ -15,6 +15,7 @@ import { fmtRupiah, fmtJumlah, fmtTanggal, todayISO } from "../../utils/format";
 import { sameName } from "../../utils/names";
 import { AlertBannerView, notifRowId, useModuleAlert, useNotifFlash } from "../../components/AlertBanner";
 import { getSetting } from "../../utils/settings";
+import { bucketByMonth, fmtMonthRange, monthAxis, rebindLegacyMonthSeries } from "../../utils/monthAxis";
 import { sbPoNumber, sbSplitIncludePpn, maxSeq, SB_KOP } from "../../utils/sb";
 import { spendByCategory, procurementTrend, poCountTrend, poValueTrend, prPendingTrend, vendorTrend } from "../../data";
 import { exportExcel } from "../../utils/export";
@@ -164,11 +165,49 @@ async function freshPayables(fallback: StoreItem[]): Promise<StoreItem[]> {
   return fallback;
 }
 
+/* Opsi rentang bulan - cerminan MONTH_RANGES di Analytics.tsx:170. */
+const MONTH_RANGES = [6, 12, 18, 24] as const;
+
 /* Grafik ringkasan bersama PO Besar & PO Kecil: visual & tata letak IDENTIK
    (Donut belanja + Area tren). Satu komponen agar tidak divergen lagi. */
-function PoSummaryCharts({ spendTitle, spendSub, trenTitle, trenSub, chartKeluar, chartRpM }: {
+function PoSummaryCharts({ spendTitle, spendSub, trenTitle, trenSub, chartKeluar, chartRpM, pos }: {
   spendTitle: string; spendSub: string; trenTitle: string; trenSub: string; chartKeluar: string; chartRpM: (n: string) => string;
+  pos: StoreItem[];
 }) {
+  const { locale } = useT();
+  /* Rentang bulan, mengikuti Analytics.tsx:767-798. Versi lama tidak punya
+     kontrol apa pun - sumbunya 12 titik dari seed tetap sepanjang apa pun
+     filter yang aktif, dan tabel di bawahnya bisa menampilkan 3 PO. */
+  const [monthCount, setMonthCount] = useState(12);
+
+  const axis = useMemo(() => monthAxis({ months: monthCount, locale }), [monthCount, locale]);
+
+  /* Sumbu + angka diturunkan dari purchaseOrders yang SUNGGUHNYA bertanggal.
+     Seed procurementTrend adalah jendela Sep..Ags tanpa tahun sama sekali,
+     jadi memakainya berarti setiap label bulan yang tampil adalah tebakan -
+     salah 11 dari 12 bulan dalam setahun. Invoice/journal sudah dibucket
+     begini di Analytics; PO punya kolom `date` yang sama rapinya.
+
+     Fallback ke seed hanya kalau benar-benar tidak ada PO bertanggal, supaya
+     tab tidak kosong pada install yang belum punya PO. */
+  const trend = useMemo(() => {
+    const spend = bucketByMonth(
+      pos,
+      axis,
+      (p) => p.date,
+      (p) => Number(p.amount || 0),
+      (vals) => Math.round((vals.reduce((s, x) => s + x, 0) / 1e9) * 10) / 10,
+    );
+    const anyReal = Object.values(spend).some((v) => v > 0);
+    const rows = anyReal
+      ? axis.map((pt) => ({ bln: pt.label, pengeluaran: spend[pt.key] ?? 0 }))
+      : rebindLegacyMonthSeries(
+        monthCount >= procurementTrend.length ? procurementTrend : procurementTrend.slice(-monthCount),
+        { locale },
+      );
+    return rows.map((r) => ({ bln: r.bln, pengeluaran: Number(r.pengeluaran || 0) }));
+  }, [axis, pos, monthCount, locale]);
+
   return (
     <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
       <Card>
@@ -187,13 +226,37 @@ function PoSummaryCharts({ spendTitle, spendSub, trenTitle, trenSub, chartKeluar
         </div>
       </Card>
       <Card className="lg:col-span-2">
-        <CardHeader title={trenTitle} subtitle={trenSub} />
+        <CardHeader
+          title={trenTitle}
+          subtitle={trenSub}
+          action={
+            <div className="flex flex-wrap items-center gap-1.5">
+              <span className="text-xs text-steel-500">{locale === "en" ? "Months" : "Rentang"}:</span>
+              <div className="inline-flex overflow-hidden rounded-lg border border-steel-200">
+                {MONTH_RANGES.map((n) => (
+                  <button
+                    key={n}
+                    type="button"
+                    onClick={() => setMonthCount(n)}
+                    aria-pressed={monthCount === n}
+                    className={`px-2 py-1 text-[11px] font-medium transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-navy-400 ${
+                      monthCount === n ? "bg-navy-900 text-white" : "bg-white text-steel-600 hover:bg-steel-100"
+                    }`}
+                  >
+                    {n}
+                  </button>
+                ))}
+              </div>
+              <span className="text-[11px] text-steel-400">{fmtMonthRange(axis)}</span>
+            </div>
+          }
+        />
         <div className="h-44 p-4 pt-0">
           <ResponsiveContainer width="100%" height="100%">
-            <AreaChart data={procurementTrend} margin={{ top: 5, right: 5, left: -20, bottom: 0 }}>
+            <AreaChart data={trend} margin={{ top: 5, right: 5, left: -20, bottom: 0 }}>
               <defs><linearGradient id="procGrad" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="#0d9488" stopOpacity={0.3} /><stop offset="95%" stopColor="#0d9488" stopOpacity={0} /></linearGradient></defs>
               <CartesianGrid strokeDasharray="3 3" stroke="#e9eff4" vertical={false} />
-              <XAxis dataKey="month" stroke="#8aa2b6" axisLine={false} tickLine={false} />
+              <XAxis dataKey="bln" stroke="#8aa2b6" axisLine={false} tickLine={false} tick={{ fontSize: 11 }} />
               <YAxis stroke="#8aa2b6" axisLine={false} tickLine={false} />
               <Tooltip content={<ChartTooltip formatter={(v) => (typeof v === "number" ? chartRpM(String(v)) : v)} />} />
               <Area type="monotone" dataKey="pengeluaran" name={chartKeluar} stroke="#0d9488" strokeWidth={2.5} fill="url(#procGrad)" />
@@ -1313,7 +1376,7 @@ export default function Procurement() {
                 </table>
                 {bigShown.length === 0 && <EmptyState title={S.emptyBigT} subtitle={S.emptyBigS} />}
                 {bigPager.bar}
-              <PoSummaryCharts spendTitle={S.cardSpendT} spendSub={S.cardSpendS} trenTitle={S.cardTrenT} trenSub={S.cardTrenS} chartKeluar={S.chartKeluar} chartRpM={(n) => S.chartRpM.replace("{n}", n)} />
+              <PoSummaryCharts spendTitle={S.cardSpendT} spendSub={S.cardSpendS} trenTitle={S.cardTrenT} trenSub={S.cardTrenS} chartKeluar={S.chartKeluar} chartRpM={(n) => S.chartRpM.replace("{n}", n)} pos={purchaseOrders} />
               </div>
             </div>
           )}
@@ -1408,7 +1471,7 @@ export default function Procurement() {
                 </div>
               </div>
               {/* Samakan dengan PO Besar: grafik Donut + tren yang sama persis di bawah tabel. */}
-              <PoSummaryCharts spendTitle={S.cardSpendT} spendSub={S.cardSpendS} trenTitle={S.cardTrenT} trenSub={S.cardTrenS} chartKeluar={S.chartKeluar} chartRpM={(n) => S.chartRpM.replace("{n}", n)} />
+              <PoSummaryCharts spendTitle={S.cardSpendT} spendSub={S.cardSpendS} trenTitle={S.cardTrenT} trenSub={S.cardTrenS} chartKeluar={S.chartKeluar} chartRpM={(n) => S.chartRpM.replace("{n}", n)} pos={purchaseOrders} />
             </div>
           )}
 

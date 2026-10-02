@@ -214,13 +214,29 @@ export function rebindLegacyMonthSeries<T extends { month: string }>(
   opts: MonthAxisOptions = {},
 ): (T & { bln: string; key: string; isCurrent: boolean })[] {
   const axis = monthAxis({ months: rows.length, ...opts });
-  const mon = monthsOf(opts.locale ?? "id");
-  const pointFor = (name: string, fallback: number): MonthPoint => {
-    const target = mon.findIndex((m) => m.toLowerCase() === name.trim().toLowerCase());
-    return axis[target >= 0 ? target : fallback] ?? axis[axis.length - 1] as MonthPoint;
-  };
+  /* Pencocokan POSISIONAL: baris ke-i menempel ke titik sumbu ke-i.
+   *
+   * Versi lama mencari posisi NAMA bulan di dalam sumbu
+   * (`mon.findIndex(name)`), lalu memakai hasilnya sebagai indeks sumbu.
+   * Itu mencampur dua koordinat yang tidak pernah sama: sumbu berisi N
+   * bulan BERURUTAN yang berakhir di bulan berjalan, sedangkan nama bulan
+   * selalu dihitung dari indeks kalender Jan..Des. Untuk seed berurutan
+   * Sep..Ags - yang dipakai SELURUH seri di data/index.ts - "Sep" punya
+   * findIndex 8, sehingga baris pertama dapat label "Jul 2026" sementara
+   * isinya milik September.
+   *
+   * Kebetulan keduanya sama hanya kalau seed berurutan Jan..Des, yang tidak
+   * pernah terjadi di repo ini. Posisiyonallah yang sesuai dengan kontrak
+   * fungsi ini: nilai tidak pernah dirotasi, dan baris terakhir selalu
+   * menjadi bulan berjalan.
+   *
+   * Batas yang jujur dan tidak bisa dielakkan: seed tanpa tanggal tidak
+   * pernah bisa dibuktikan tahun berapa pun isinya. Yang dijamin di sini
+   * hanya bentuk sumbu (berurutan, berakhir di bulan berjalan) - bukan
+   * bahwa angka seed benar-benar milik bulan itu. Untuk angka yang benar,
+   * pakai bucketByMonth() pada koleksi yang benar-benar bertanggal. */
   return rows.map((r, i) => {
-    const point = pointFor(r.month, i);
+    const point = axis[i] ?? axis[axis.length - 1] as MonthPoint;
     return { ...r, bln: point.label, key: point.key, isCurrent: point.isCurrent };
   });
 }
