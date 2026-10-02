@@ -29,12 +29,22 @@ import {
 export function Stagger({
   children,
   className = "",
+  id,
+  animate: withMotion = true,
 }: {
   children: ReactNode;
   className?: string;
+  id?: string;
+  /* false = div biasa tanpa framer-motion. Dipakai saat elemen ini jadi
+     target export PDF: motion.div menyimpan inline transform/opacity
+     hasil animasi, dan html2canvas memotret apa adanya - transform sisa
+     membuat konten bergeser atau transparan di dalam PDF. */
+  animate?: boolean;
 }) {
+  if (!withMotion) return <div id={id} className={className}>{children}</div>;
   return (
     <motion.div
+      id={id}
       className={className}
       initial="hidden"
       animate="show"

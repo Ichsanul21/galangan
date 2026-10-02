@@ -134,6 +134,14 @@ export interface ExportPDFOptions {
   marginMm?: number;
   /** Skala raster html2canvas (diturunkan otomatis bila kanvas terlalu tinggi). */
   scale?: number;
+  /** Elemen yang sedang jadi layout utama (bukan section cetak off-screen).
+   *  Versi lama selalu memindahkan target ke position:fixed left:0 top:0 agar
+   *  html2canvas tidak menghasilkan halaman kosong. Itu aman untuk section
+   *  tersembunyi, tapi untuk konten yang sedang tampil, elemen yang dikunci ke
+   *  viewport membuat sisa halaman runtuh -> posisi scroll meloncat dan
+   *  seluruh konten di bawahnya bergeser saat capture. Flag ini melewati
+   *  pemindahan itu; html2canvas tidak memerlukannya untuk elemen in-flow. */
+  inPlace?: boolean;
 }
 
 /* Status "sedang export PDF". Chart harus animasi seperti biasa saat
@@ -244,7 +252,7 @@ export async function exportPDF(elementId: string, filename: string, options: Ex
   if (!el) throw new Error(`Elemen #${elementId} tidak ditemukan`);
 
   exportBusy = true;
-  const { charts = true, orientation = "landscape", format = "a4", marginMm = 10, scale = 2 } = options;
+  const { charts = true, orientation = "landscape", format = "a4", marginMm = 10, scale = 2, inPlace = false } = options;
 
   /* Lebar capture diturunkan dari geometri halaman, bukan angka tetap.
      Versi lama memaksa width:1000px untuk semua orientasi. Itu kebetulan
@@ -318,11 +326,15 @@ export async function exportPDF(elementId: string, filename: string, options: Ex
       }
     }
 
-    /* 3. Pindahkan ke layar agar html2canvas tidak menghasilkan halaman kosong. */
-    el.style.position = "fixed";
-    el.style.left = "0";
-    el.style.top = "0";
-    el.style.zIndex = "99999";
+    /* 3. Pindahkan ke layar agar html2canvas tidak menghasilkan halaman kosong.
+         Lewati saat inPlace: elemen target sedang jadi layout utama, jadi
+         mengunci ke viewport akan membuat halaman sisanya runtuh. */
+    if (!inPlace) {
+      el.style.position = "fixed";
+      el.style.left = "0";
+      el.style.top = "0";
+      el.style.zIndex = "99999";
+    }
     el.style.background = "#ffffff";
     /* Lebar capture dari geometri halaman (lihat catatan di atas), bukan
      angka tetap 1000px yang membuat dokumen portrait mengecil tanpa alasan. */

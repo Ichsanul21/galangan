@@ -114,6 +114,64 @@ for (const { name, path, el } of PAGES) {
 }
 
 console.log(`\n${pass}/${PAGES.length} halaman render tanpa error.`);
+
+/* Target export PDF harus BENAR-BENAR membungkus dashboard, bukan ringkasan
+   yang ditulis tangan terpisah.
+
+   Bug yang paling mungkin berulang di sini: id="dashboard-pdf" dipindah ke
+   elemen lain - atau dipakai dua kali - tanpa ada yang gagal. exportPDF
+   tetap mengembalikan PDF yang valid, toast tetap hijau, dan tidak ada satu
+   pun gate yang protes; hanya isinya diam-diam jadi halaman lain. Karena
+   itu id-nya dikunci di sini, bukan cuma dipercaya.
+
+   Yang diperiksa: id itu ada tepat sekali di hasil render Dashboard, dan
+   ada DI DALAM-nya -_chart recharts_ dan lebih dari satu kartu. Kalau suatu
+   saat orang Collapse ke section_off-screen_, kartu hilang dari id itu dan
+   pemeriksa ini yang akan lebih dulu menyadarinya. */
+try {
+  const html = renderToString(
+    <LanguageProvider>
+      <StoreProvider>
+        <MemoryRouter initialEntries={["/dashboard"]}>
+          <Routes>
+            <Route path="/dashboard" element={<Dashboard />} />
+          </Routes>
+        </MemoryRouter>
+      </StoreProvider>
+    </LanguageProvider>,
+  );
+
+  const problems: string[] = [];
+  const occurrences = html.split('id="dashboard-pdf"').length - 1;
+  if (occurrences !== 1) {
+    problems.push(`id="dashboard-pdf" muncul ${occurrences}x, harus tepat 1`);
+  } else {
+    const start = html.indexOf('id="dashboard-pdf"');
+    /* Ambil sampai </div> penutup terluar seadanya: untuk keperluan ini
+       cukup memastikan ada isi substensial SETELAH id itu, bukan hanya
+       elemen kosong. */
+    const inner = html.slice(start, start + 400000);
+    const end = inner.lastIndexOf("</div>");
+    const body = end > 0 ? inner.slice(0, end) : inner;
+    if (!/recharts/i.test(body)) problems.push("tidak ada chart recharts di dalam target export");
+    const cards = (body.match(/class="[^"]*\bcard\b/g) ?? []).length;
+    if (cards < 5) problems.push(`hanya ${cards} kartu di dalam target export, dashboard punya 17`);
+  }
+
+  if (problems.length === 0) {
+    console.log("PASS  target export PDF membungkus dashboard utuh");
+    pass += 1;
+  } else {
+    console.log(`FAIL  target export PDF *** ${problems.join("; ")}`);
+    failures.push("target export PDF");
+  }
+} catch (e) {
+  const err = e as Error;
+  console.log(`FAIL  target export PDF *** ${err.message}`);
+  failures.push("target export PDF");
+}
+
+console.log(`\n${pass}/${PAGES.length + 1} pemeriksaan lolos.`);
 if (failures.length > 0) {
   console.log(`GAGAL: ${failures.join(", ")}`);
   process.exit(1);

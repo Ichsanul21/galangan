@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useState } from "react";
-import type { CSSProperties } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import {
   Anchor,
@@ -115,7 +114,7 @@ const DASH_ALERT_TONE: Record<ModuleAlertKey, string> = {
 const DASH_ALERT_CAP = 12;
 import { useAuth, canSetTarget } from "../auth/auth";
 import { chartAnim, exportPDF } from "../utils/export";
-import { fmtTanggal, todayISO } from "../utils/format";
+import { todayISO } from "../utils/format";
 import { SB_KOP } from "../utils/sb";
 import { scopeNames } from "../utils/scope";
 import {
@@ -171,6 +170,7 @@ export default function Dashboard() {
   const projects = branchProjects;
   const activities = data.activities;
   const [range, setRange] = useState<(typeof RANGES)[number]>("12B");
+const [pdfMode, setPdfMode] = useState(false);
   const [targets, setTargets] = useState<Record<string, BranchTarget>>(() => loadTargets());
   const [showTarget, setShowTarget] = useState(false);
   const [tgtRev, setTgtRev] = useState("");
@@ -305,14 +305,27 @@ export default function Dashboard() {
     projects.find((p) => p.status !== "Selesai" && scopeNames(p.scope).includes("Sea Trial"))?.vessel ?? "-";
 
   /* Tombol ekspor = PDF ringkas portofolio via section cetak tersembunyi (tabel KPI, tanpa chart blank). */
-  const exportSummary = async () => {
-    try {
-      await exportPDF("dashboard-pdf", `Ringkasan-Portofolio-${todayISO()}`);
-      toast(S.tPortfolioPdfExported);
-    } catch {
-      toast("Ekspor PDF gagal", "info");
-    }
-  };
+const exportSummary = async () => {
+  /* pdfMode menyalakan kop perusahaan di dalam DOM dashboard dan mematikan
+     motion, jadi yang ter-capture adalah dashboard utuh dengan kop resmi -
+     bukan ringkasan yang diketik ulang. finally WAJIB: kalau ekspor gagal,
+     pdfMode harus tetap mati, kalau tidak dashboard terkunci tanpa animasi
+     dan tanpa kop sampai halaman dimuat ulang. */
+  setPdfMode(true);
+  try {
+    /* Beri React chance commit + font/ layout settle. Tanpa jeda ini kop baru
+       belum selesai di-layout saat html2canvas memotret -> PDF keluar tanpa
+       kop, tanpa error apa pun. */
+    await new Promise((r) => requestAnimationFrame(() => r(undefined)));
+    await new Promise((r) => setTimeout(r, 150));
+    await exportPDF("dashboard-pdf", `Ringkasan-Portofolio-${todayISO()}`, { inPlace: true });
+    toast(S.tPortfolioPdfExported);
+  } catch {
+    toast("Ekspor PDF gagal", "info");
+  } finally {
+    setPdfMode(false);
+  }
+};
 
   const tgt = targets[branch] ?? { revenue: 0, projects: 0 };
   const aktualRev = branchProjects.reduce((s, p) => s + Number(p.budget || 0), 0);
@@ -361,9 +374,6 @@ export default function Dashboard() {
      dihitung sekali di utils/moduleAlerts.ts, jadi-changing-the-setting
      di Pengaturan tetap berlaku lewat satu jalur saja. */
 
-  const pdfTh: CSSProperties = { border: "1px solid #999", padding: "4px 6px", background: "#eee", textAlign: "left", fontSize: 11 };
-  const pdfTd: CSSProperties = { border: "1px solid #999", padding: "4px 6px", fontSize: 11 };
-
   /* Daftar per-item dari sistem alert modul (utils/moduleAlerts.ts).
      Sebelumnya kartu ini hanya menampilkan agregat jumlah yang ditulis
      manual di dalam Dashboard, sedangkan data per-item yang sudah punya
@@ -386,14 +396,38 @@ export default function Dashboard() {
   };
 
   return (
-    <Stagger className="space-y-5">
+    /* Target export PDF adalah DOM dashboard INI, bukan section cetak terpisah.
+       Versi lama mengekspor <div id="dashboard-pdf"> yang ditulis tangan di
+       bawah file: kop + satu paragraf KPI + tabel proyek. Duplikat itu tidak
+       punya apa pun yang mengikatnya ke dashboard, jadi setiap kartu, KPI, atau
+       chart yang ditambah di sini tidak akan pernah ikut ke PDF, dan tidak ada
+       yang memberi tahu - PDF tetap "berhasil" dengan isi yang basi. Menyebut
+       id yang sama persis di sini membuat PDF berisi dashboard utuh apa
+       adanya, dan mustahil lagi berdrift karena keduanya satu elemen.
+
+       animate={!pdfMode} mematikan framer-motion saat capture: motion.div
+       menyimpan inline transform/opacity sisa animasi yang kalau difoto
+       html2canvas akan muncul sebagai pergeseran/transparansi. */
+    <Stagger className="space-y-5" id="dashboard-pdf" animate={!pdfMode}>
+      {pdfMode && (
+        <div style={{ textAlign: "center", borderBottom: "3px solid #0B3A63", paddingBottom: 10, marginBottom: 4 }}>
+          <p style={{ fontWeight: 800, fontSize: 18, color: "#0B3A63", margin: 0 }}>{SB_KOP.name}</p>
+          <p style={{ fontSize: 11, color: "#33475B", margin: 0 }}>{SB_KOP.line1}</p>
+          <p style={{ fontSize: 10, color: "#52697C", margin: 0 }}>{SB_KOP.hq} - {SB_KOP.addr1}</p>
+          <p style={{ fontSize: 12, fontWeight: 700, color: "#0B3A63", marginTop: 8 }}>
+            Ringkasan Portofolio - {branch}
+          </p>
+        </div>
+      )}
       <StaggerItem>
         <PageHeader
           title={S.dashTitle}
           subtitle={S.dashSubtitle}
           icon={<TrendingUp className="h-5 w-5" />}
           actions={
-            <>
+            /* Filter, tombol presentasi, dan "Proyek Baru" adalah kontrol UI.
+               Fungsinya tidak ada di dokumen, jadi disembunyikan dari capture. */
+            <div className="flex items-center gap-2" data-export-hide>
               <button className="btn-secondary" onClick={togglePresent} title={isFs ? S.exitFullscreen : S.presentBtn}>
                 {isFs ? <Minimize className="h-4 w-4" /> : <Maximize className="h-4 w-4" />} {isFs ? S.exitFullscreen : S.presentBtn}
               </button>
@@ -403,7 +437,7 @@ export default function Dashboard() {
               <button className="btn-primary-gradient" onClick={() => navigate("/proyek?create=1&alert=proyek")}>
                 <Plus className="h-4 w-4" /> {S.newProjectBtn}
               </button>
-            </>
+            </div>
           }
         />
       </StaggerItem>
@@ -840,31 +874,6 @@ export default function Dashboard() {
         </StaggerItem>
       </div>
 
-      {/* Section cetak PDF tersembunyi: kop + KPI + tabel proyek (tanpa chart). */}
-      <div id="dashboard-pdf" style={{ position: "absolute", left: -9999, top: 0, width: 1000, background: "#ffffff", padding: 24, fontSize: 12, color: "#000" }}>
-        <div style={{ textAlign: "center", borderBottom: "3px solid #0B3A63", paddingBottom: 12, marginBottom: 12, breakInside: "avoid", pageBreakInside: "avoid" }}>
-          <p style={{ fontWeight: 800, fontSize: 18, color: "#0B3A63", margin: 0 }}>{SB_KOP.name}</p>
-          <p style={{ fontSize: 11, color: "#33475B", margin: 0 }}>{SB_KOP.line1}</p>
-          <p style={{ fontSize: 10, color: "#52697C", margin: 0 }}>{SB_KOP.hq} · {SB_KOP.addr1}</p>
-          <p style={{ fontSize: 12, fontWeight: 700, color: "#0B3A63", marginTop: 8 }}>Ringkasan Portofolio · {fmtTanggal(todayStr)}</p>
-        </div>
-        <div style={{ breakInside: "avoid", pageBreakInside: "avoid" }}>
-          <p style={{ fontSize: 11 }}>
-            {S.kpiActiveProjects}: {totalActive} ({S.delayedSuffix.replace("{n}", String(delayed))}) ·{" "}
-            {S.kpiRevenue12}: {totalRevenueLabel} ·{" "}
-            {S.kpiGrossMargin}: {lastMargin.margin.toLocaleString("id-ID", { maximumFractionDigits: 1 })}% ·{" "}
-            {S.stockValueLabel}: {fmtMiliar(stockValue)} · {S.openNcrLabel}: {openNcr}
-          </p>
-        </div>
-        <table style={{ width: "100%", borderCollapse: "collapse", marginTop: 6 }}>
-          <thead><tr><th style={pdfTh}>ID Proyek</th><th style={pdfTh}>Kapal</th><th style={pdfTh}>Status</th><th style={pdfTh}>Progres (%)</th><th style={pdfTh}>Anggaran (Rp)</th><th style={pdfTh}>Realisasi (Rp)</th></tr></thead>
-          <tbody>
-            {projects.map((p) => (
-              <tr key={p.id}><td style={pdfTd}>{p.id}</td><td style={pdfTd}>{p.vessel}</td><td style={pdfTd}>{p.status}</td><td style={pdfTd}>{Number(p.progress || 0)}</td><td style={pdfTd}>{Number(p.budget || 0).toLocaleString("id-ID")}</td><td style={pdfTd}>{Number(p.actual || 0).toLocaleString("id-ID")}</td></tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
 
     </Stagger>
   );
