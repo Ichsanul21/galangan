@@ -521,7 +521,7 @@ export default function Laporan() {
               <Card className="p-4">
                 <CardHeader title={S.ncrPlusIncident} subtitle={S.ncrIncidentCount.replace("{a}", fmtJumlah(weekly.ncr.length)).replace("{b}", fmtJumlah(weekly.incidents.length))} />
                 <div className="px-5 pb-2"><input className="input" value={weekFindQ} onChange={(e) => setWeekFindQ(e.target.value)} placeholder={S.cardSearchPh} aria-label={S.cardSearchPh} /></div>
-                <div className="max-h-64 space-y-2 overflow-y-auto px-5 pb-5 pr-4 text-xs">
+                <div className="max-h-64 space-y-2 overflow-y-auto scroll-flush-5 px-5 pb-5 pr-4 text-xs">
                   {weekly.ncr.filter((n) => !weekFindQ.trim() || `${n.id ?? ""} ${n.status ?? ""}`.toLowerCase().includes(weekFindQ.trim().toLowerCase())).map((n) => (
                     <div key={n.id} className="flex items-center gap-2">
                       <span className="font-mono font-semibold text-navy-900">{n.id}</span>

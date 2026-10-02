@@ -56,7 +56,11 @@ export function isOverdue(p: StoreItem, today: string): boolean {
 const filters = ["Semua", "New Build", "Repair", "Retrofit"];
 /* Label tampilan tipe proyek (ID); value backend tetap EN. */
 const TYPE_ID: Record<string, string> = { "New Build": "Bangun Baru", Repair: "Reparasi", Retrofit: "Retrofit / Modifikasi" };
-const statusOptions = ["Semua", "Sedang Berjalan", "Tertunda", "Batal", "Terlambat", "Selesai"];
+/* "Dalam Proses" WAJIB ada: itu status default proyek baru
+   (ProjectAddModal), jadi tanpa baris ini filter dari Dashboard menerima
+   ?status=Dalam Proses lalu ditolak `known` di bawah dan reset diam-diam ke
+   "Semua" - pill-nya terlihat berfungsi tapi tidak memfilter apa pun. */
+const statusOptions = ["Semua", "Sedang Berjalan", "Dalam Proses", "Tertunda", "Batal", "Terlambat", "Selesai"];
 const branchOptions = ["Samarinda", "Balikpapan", "Banjarmasin"];
 const prioritasTone: Record<string, "gray" | "blue" | "amber" | "red"> = {
   Rendah: "gray",

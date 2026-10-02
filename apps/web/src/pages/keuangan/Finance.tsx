@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type ReactElement } from "react";
+﻿import { useEffect, useMemo, useState, type ReactElement } from "react";
 import { Wallet, ArrowDownToLine, FileText, Receipt, TrendingUp, Plus, Trash2, Search } from "lucide-react";
 import { openFileUrl } from "../../services/files";
 import { sptDoc, type SptDocLabels } from "../../utils/pdfDocs";
@@ -2668,7 +2668,7 @@ const { data, add, update, remove, log, branch, inBranch } = useStore();
                   <CardHeader title={S.retentionTitle} subtitle={S.retentionSub} />
                   <p className="px-5 pb-2 text-2xl font-bold text-navy-900">{fmtRupiah(retentionTotal)}</p>
                   <div className="px-5 pb-2"><input className="input" value={retQ} onChange={(e) => setRetQ(e.target.value)} placeholder={S.cardSearchPh} aria-label={S.cardSearchPh} /></div>
-                  <div className="max-h-64 space-y-2 overflow-y-auto px-5 pb-5 pr-4">
+                  <div className="max-h-64 space-y-2 overflow-y-auto scroll-flush-5 px-5 pb-5 pr-4">
                     {invoices.filter((i) => num(i.retentionAmt) > 0).filter((i) => !retQ.trim() || `${i.id ?? ""} ${i.retentionStatus ?? ""}`.toLowerCase().includes(retQ.trim().toLowerCase())).map((i) => (
                       <div key={i.id} className="flex items-center gap-2 text-xs">
                         <span className="font-mono font-semibold text-navy-900">{i.id}</span>
@@ -3965,7 +3965,7 @@ const { data, add, update, remove, log, branch, inBranch } = useStore();
                 </div>
                 <Card className="p-4">
                   <CardHeader title={S.coaRefTitle} subtitle={S.countAkun.replace("{n}", String(coaList.length))} />
-                  <div className="max-h-96 space-y-1.5 overflow-y-auto px-5 pb-5 text-xs">
+                  <div className="max-h-96 space-y-1.5 overflow-y-auto scroll-flush-5 px-5 pb-5 text-xs">
                     {coaList.map((c) => (
                       <div key={c.kode} className="flex gap-2">
                         <span className="w-12 font-mono font-semibold text-navy-900">{c.kode}</span>

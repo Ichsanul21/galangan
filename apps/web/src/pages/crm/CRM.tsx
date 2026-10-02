@@ -1217,31 +1217,40 @@ export default function CRM() {
                 <CardHeader title={S.satTitle} subtitle={S.satSub.replace("{a}", globalSatisfaction ? globalSatisfaction.toFixed(1) : "-").replace("{b}", String(allSurveys.length))} />
                 <div className="space-y-2">
                   {clients.map((c) => {
-                    const notes = (Array.isArray(c.surveiCatatan) ? (c.surveiCatatan as unknown[]).map(String).filter((x) => x.trim() !== "") : []).slice(-3);
+                    /* Tidak ada lagi .slice(-3): tiga catatan terakhir tampil,
+                       sisanya tidak bisa dibaca di mana pun di aplikasi ini
+                       dan tidak ada tombol "lihat semua". Kolder membosankan
+                       bukan alasan menyembunyikan umpan balik pelanggan. */
+                    const notes = Array.isArray(c.surveiCatatan) ? (c.surveiCatatan as unknown[]).map(String).filter((x) => x.trim() !== "") : [];
                     const open = !!expandedSurvey[String(c.id)];
                     return (
                     <div key={c.id} className="flex items-start gap-3 rounded-xl bg-surface p-3 text-sm">
                       <div className="min-w-0 flex-1">
                         <p className="truncate font-semibold text-navy-900" title={String(c.name)}>{String(c.name)}</p>
                         <p className="text-xs text-steel-500">{S.satDetail.replace("{a}", String(Array.isArray(c.survei) ? c.survei.length : 0)).replace("{b}", surveyAvg(c) ? surveyAvg(c).toFixed(1) : "-")}</p>
-                        {notes.length === 0 && <p className="mt-0.5 text-xs italic text-steel-400">Belum ada deskripsi survei.</p>}
+                        {notes.length === 0 && <p className="mt-0.5 text-xs italic text-steel-400">{S.satNoNotes}</p>}
                         {notes.map((note, i) => {
-                          const long = note.length > SURVEY_PREVIEW;
-                          const shown = open || !long ? note : `${note.slice(0, SURVEY_PREVIEW)}…`;
+                          const shown = open || note.length <= SURVEY_PREVIEW ? note : `${note.slice(0, SURVEY_PREVIEW)}…`;
                           return (
-                            <p key={i} className="mt-0.5 text-xs italic leading-relaxed text-steel-500" title={note}>
+                            <p key={i} className="mt-0.5 text-xs italic leading-relaxed text-steel-500" title={open ? undefined : note}>
                               “{shown}”
-                              {long && (
-                                <button type="button" onClick={() => toggleSurvey(String(c.id))} aria-expanded={open} className="ml-1.5 font-semibold not-italic text-ocean-600 hover:underline">
-                                  {open ? "Tutup" : "Lihat lengkap"}
-                                </button>
-                              )}
                             </p>
                           );
                         })}
-                        {notes.length > 1 && (
+                        {/* Tombol expand/collapse SELALU ada untuk catatan
+                            yang ada - bukan hanya yang panjang. Versi lama
+                            memakai `long &&`, jadi catatan pendek tampil utuh
+                            tanpa tombol sama sekali, persis kebalikan dari
+                            permintaan "deskripsi jangan langsung ditampilkan".
+                            Saat tertutup deskripsi dipangkas; saat terbuka
+                            penuh. */}
+                        {notes.length > 0 && (
                           <button type="button" onClick={() => toggleSurvey(String(c.id))} aria-expanded={open} className="mt-1 text-[11px] font-semibold text-ocean-600 hover:underline">
-                            {open ? "Collapse semua" : `Expand semua (${notes.length})`}
+                            {open
+                              ? S.satCollapse
+                              : notes.length > 1
+                                ? S.satExpandMore.replace("{n}", String(notes.length))
+                                : S.satExpand}
                           </button>
                         )}
                       </div>

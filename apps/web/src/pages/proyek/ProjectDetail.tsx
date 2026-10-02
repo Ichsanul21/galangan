@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+﻿import { useState, useEffect } from "react";
 import { useParams, Link } from "react-router-dom";
 import { ArrowLeft, Calendar, MapPin, Plus, Trash2, FileDown, Eye } from "lucide-react";
 import {
@@ -46,7 +46,10 @@ import { getSetting } from "../../utils/settings";
 import { sbInvoiceMath, PPN_INVOICE_DEFAULT, PPH_JASA_DEFAULT } from "../../utils/sb";
 import { exportExcel } from "../../utils/export";
 
-const STATUS = ["Sedang Berjalan", "Tertunda", "Batal", "Selesai", "Terlambat"];
+/* "Dalam Proses" = status default proyek baru (ProjectAddModal). Tanpa baris
+   ini, <select> status tidak punya <option> yang cocok untuk proyek-proyek itu
+   dan merender kosong -pengguna tidak pernah melihat statusnya sendiri. */
+const STATUS = ["Sedang Berjalan", "Dalam Proses", "Tertunda", "Batal", "Selesai", "Terlambat"];
 const RISK_LEVEL = ["Rendah", "Sedang", "Tinggi"];
 const RISK_STATUS = ["Aktif", "Dipantau", "Tertutup"];
 const DESIGN_STAGE_NAMES = ["Basic Design", "Detail Design", "Class Approval", "Production Drawing"];

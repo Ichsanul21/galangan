@@ -1,4 +1,4 @@
-export const n_fin = {
+﻿export const n_fin = {
   id: {
     pageTitle: "Keuangan & Billing",
     pageSubtitle: "Piutang, hutang, invoice, retensi, pajak, dan jurnal",
@@ -320,7 +320,7 @@ export const n_fin = {
     colCustomer: "Customer",
     taxTitle: "Ringkasan Pajak per Periode",
     taxSub: "PPN Keluaran {a}% dari invoice Lunas periode (paidAt/due), PPN Masukan {a}% dari payable Lunas, PPh23 {b}% dari payable Lunas jasa, PPh21 total payroll periode.",
-    newPeriodLabel: "Periode baru (YYYY-MM)",
+    newPeriodLabel: "Periode baru (pilih tanggal)",
     newPeriodBtn: "Periode Baru",
     exportEfaktur: "Ekspor CSV e-Faktur",
     exportSpt: "Ekspor Excel SPT",
@@ -963,7 +963,7 @@ export const n_fin = {
     colCustomer: "Customer",
     taxTitle: "Tax Summary per Period",
     taxSub: "Output PPN {a}% from period Lunas invoices (paidAt/due), input PPN {a}% from Lunas payables, PPh23 {b}% from service Lunas payables, PPh21 total period payroll.",
-    newPeriodLabel: "New period (YYYY-MM)",
+    newPeriodLabel: "New period (pick a date)",
     newPeriodBtn: "New Period",
     exportEfaktur: "Export e-Faktur CSV",
     exportSpt: "Export SPT Excel",

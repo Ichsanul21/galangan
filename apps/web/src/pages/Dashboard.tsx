@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+﻿import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import {
   Anchor,
@@ -134,6 +134,21 @@ import { useT } from "../i18n/LanguageContext";
 import { n_misc } from "../i18n/n_misc";
 
 const RANGES = ["6B", "12B"] as const;
+
+/* Label status untuk card analisis status proyek yang sedang berjalan.
+   "Proyek Terlambat" dan "Proyek Tertunda" memakai awalan yang sama supaya
+   keduanya mudah dibandingkan berdampingan di strip distribusi - permintaan
+   eksplisit: label "tertunda" perlu ada selain "terlambat". Status lain sudah
+   berupa kalimat yang berdiri sendiri sehingga ditampilkan apa adanya.
+   Satu sumber untuk strip distribusi DAN badge per baris: sebelumnya keduanya
+   menulis pemetaan sendiri-sendiri dan mudah berbeda. */
+const STATUS_LABEL: Record<string, string> = {
+  Terlambat: "Proyek Terlambat",
+  Tertunda: "Proyek Tertunda",
+  Selesai: "Proyek Selesai",
+  Batal: "Proyek Dibatalkan",
+};
+const statusLabel = (s: string): string => STATUS_LABEL[s] ?? s;
 
 /* RANGES tetap: 6B = 6 bulan, 12B = 12 bulan. */
 
@@ -758,12 +773,12 @@ const exportSummary = async () => {
               {(() => {
                 const groups: Record<string, number> = {};
                 for (const p of branchProjects) groups[String(p.status)] = (groups[String(p.status)] ?? 0) + 1;
-                const order = ["Sedang Berjalan", "Tertunda", "Terlambat", "Batal", "Selesai"];
-                const toneFor = (s: string): "blue" | "amber" | "red" | "gray" | "green" =>
+                const order = ["Sedang Berjalan", "Dalam Proses", "Tertunda", "Terlambat", "Batal", "Selesai"];
+const toneFor = (s: string): "blue" | "amber" | "red" | "gray" | "green" =>
                   s === "Terlambat" ? "red" : s === "Selesai" ? "green" : s === "Tertunda" ? "amber" : s === "Batal" ? "gray" : "blue";
                 return order.filter((s) => (groups[s] ?? 0) > 0 || s !== "Selesai").map((s) => (
                   <Link key={s} to={`/proyek?status=${encodeURIComponent(s)}`} className="inline-flex items-center gap-1.5 rounded-full border border-steel-200 px-2.5 py-1 text-xs font-semibold hover:border-ocean-400" title={`Filter proyek ${s}`}>
-                    <Badge tone={toneFor(s)}>{s === "Terlambat" ? "Proyek Terlambat" : s}</Badge>
+                    <Badge tone={toneFor(s)}>{statusLabel(s)}</Badge>
                     <span className="text-navy-900">{groups[s] ?? 0}</span>
                   </Link>
                 ));
@@ -786,7 +801,7 @@ const exportSummary = async () => {
                       <p className="mt-1 text-right text-[11px] text-steel-500">{p.progress}%</p>
                     </div>
                     <Badge tone={p.status === "Terlambat" ? "red" : p.status === "Selesai" ? "green" : p.status === "Tertunda" ? "amber" : p.status === "Batal" ? "gray" : "blue"}>
-                      {p.status === "Terlambat" ? "Proyek Terlambat" : p.status}
+                      {statusLabel(String(p.status))}
                     </Badge>
                   </div>
                 </Link>

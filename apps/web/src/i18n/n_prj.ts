@@ -1,4 +1,4 @@
-export const n_prj = {
+﻿export const n_prj = {
   id: {
     cancelBtn: "Batal",
     saveBtn: "Simpan",
@@ -564,7 +564,7 @@ export const n_prj = {
     monSubtitle: "Pipeline tahap Inquiry hingga Handover lintas proyek",
     monCount: "{a} proyek · {b} perlu perhatian",
     monModeAria: "Mode tampilan pipeline",
-    monModeAtt: "Hanya Perhatian",
+    monModeAtt: "Proyek Butuh Perhatian",
     monAttTitle: "Perlu Perhatian ({n})",
     monAttEmpty: "Tidak ada item perhatian.",
     monLateDesc: "Status Terlambat · progres {n}%",
@@ -1148,7 +1148,7 @@ export const n_prj = {
     monSubtitle: "Inquiry-to-Handover pipeline across projects",
     monCount: "{a} projects · {b} need attention",
     monModeAria: "Pipeline view mode",
-    monModeAtt: "Needs Attention Only",
+    monModeAtt: "Projects Needing Attention",
     monAttTitle: "Needs Attention ({n})",
     monAttEmpty: "No attention items.",
     monLateDesc: "Terlambat status · {n}% progress",
