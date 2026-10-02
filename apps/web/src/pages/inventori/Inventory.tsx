@@ -2045,101 +2045,45 @@ if (k === "mattype") return matTypeOf(i);
                 </button>
               </div>
 
-              {/* ==== TABEL GUDANG (CRUD) ==== */}
-              <Card className="p-0">
-                <div className="overflow-x-auto">
-                  <table className="w-full">
-                    <thead>
-                      <tr>
-                        <SortTh label={locale === "en" ? "Warehouse" : "Gudang"} sortKey="nama" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} />
-                        <SortTh label={locale === "en" ? "Type" : "Jenis"} sortKey="jenis" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} />
-                        <th className="th">{locale === "en" ? "Location" : "Lokasi"}</th>
-                        <th className="th">{locale === "en" ? "PIC" : "Penanggung Jawab"}</th>
-                        <SortTh label={locale === "en" ? "Items" : "Item"} sortKey="item" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} />
-                        <SortTh label={locale === "en" ? "Used" : "Terisi"} sortKey="terisi" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} />
-                        <SortTh label={locale === "en" ? "Capacity" : "Kapasitas"} sortKey="kapasitas" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} />
-                        <th className="th">{locale === "en" ? "Utilisation" : "Utilisasi"}</th>
-                        <th className="th">{locale === "en" ? "Status" : "Status"}</th>
-                        <th className="th">{S.thAksi}</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-steel-100">
-                      {whSorted.map((row) => (
-                        <tr key={row.name} className={row.over ? "bg-rose-50/50 hover:bg-surface" : "hover:bg-surface"}>
-                          <td className="td">
-                            <p className="font-medium text-navy-900 truncate" title={row.name}>{row.name}</p>
-                            {row.row?.id && <p className="font-mono text-[11px] text-steel-400">{row.row.id}</p>}
-                          </td>
-                          <td className="td">
-                            {row.row?.type
-                              ? <Badge tone="gray">{String(row.row.type)}</Badge>
-                              : <span className="text-xs text-steel-400">{locale === "en" ? "not registered" : "belum terdaftar"}</span>}
-                          </td>
-                          <td className="td text-steel-600 text-xs truncate" title={String(row.row?.lokasi ?? "")}>{String(row.row?.lokasi ?? "-")}</td>
-                          <td className="td text-steel-600 text-xs truncate" title={String(row.row?.pic ?? "")}>{String(row.row?.pic ?? "-")}</td>
-                          <td className="td font-medium text-navy-900">{row.items.length}</td>
-                          <td className="td font-medium text-navy-900">{fmtJumlah(row.used)}</td>
-                          <td className="td font-medium text-navy-900">
-                            {row.capacity > 0 ? fmtJumlah(row.capacity) : <span className="text-xs text-steel-400">{locale === "en" ? "not set" : "belum diisi"}</span>}
-                          </td>
-                          <td className="td min-w-40">
-                            {row.pct === null ? (
-                              <p className="text-[11px] text-steel-400">{locale === "en" ? "No limit" : "Tanpa batas"}</p>
-                            ) : (
-                              <>
-                                <ProgressBar value={row.pct} tone={row.tone} />
-                                <p className="mt-1 text-[11px] text-steel-500">
-                                  {row.pct}%{row.over && (
-                                    <span className="ml-1 font-medium text-rose-600">
-                                      ({locale === "en" ? "over" : "melebihi"} {fmtJumlah(row.used - row.capacity)})
-                                    </span>
-                                  )}
-                                </p>
-                              </>
-                            )}
-                          </td>
-                          <td className="td">
-                            {row.row
-                              ? (row.row.aktif === false
-                                ? <Badge tone="gray">{locale === "en" ? "Inactive" : "Nonaktif"}</Badge>
-                                : <Badge tone="green">{locale === "en" ? "Active" : "Aktif"}</Badge>)
-                              : <Badge tone="amber">{locale === "en" ? "Unregistered" : "Belum daftar"}</Badge>}
-                          </td>
-                          <td className="td">
-                            <div className="flex gap-1">
-                              <button
-                                className="rounded-lg p-1.5 text-steel-500 hover:bg-steel-100"
-                                title={locale === "en" ? "Edit warehouse" : "Ubah gudang"}
-                                aria-label={`${locale === "en" ? "Edit" : "Ubah"} ${row.name}`}
-                                onClick={() => openWhEdit(row)}
-                              >
-                                <Pencil className="h-4 w-4" />
-                              </button>
-                              <button
-                                className="rounded-lg p-1.5 text-rose-600 hover:bg-rose-50"
-                                title={locale === "en" ? "Delete warehouse" : "Hapus gudang"}
-                                aria-label={`${locale === "en" ? "Delete" : "Hapus"} ${row.name}`}
-                                onClick={() => setDelWh(row)}
-                              >
-                                <Trash2 className="h-4 w-4" />
-                              </button>
-                            </div>
-                          </td>
-                        </tr>
-                      ))}
-                      {whSorted.length === 0 && (
-                        <tr><td colSpan={10} className="px-3 py-8 text-center text-sm text-steel-400">
-                          {locale === "en" ? "No warehouses yet. Add one to start tracking capacity." : "Belum ada gudang. Tambah dulu untuk mulai melacak kapasitas."}
-                        </td></tr>
-                      )}
-                    </tbody>
-                  </table>
-                </div>
-              </Card>
+              {/* ==== KARTU GUDANG (CRUD + KAPASITAS + RINCIAN STOK) ====
+                  Tabel master Gudang yang pernah ada di atas dihapus. Grid
+                  kartu ini sebenarnya sudah menampilkan gudang yang sama persis
+                  (whSorted = sortRows(warehouseRows), bukan daftar lain), jadi
+                  setiap gudang tampil DUA KALI: sekali sebagai baris 10 kolom,
+                  sekali lagi sebagai kartu di bawahnya. Baris tabelnya yang
+                  dipakai adalah kolom yang tidak ada di kartu - Jenis, PIC,
+                  Status Aktif, dan id - jadi kolom itu dipindahkan ke kartu,
+                  bukan dibuat presentasi ketiga. Utilisasi, item count, dan
+                  kapasitas sudah ada di kartu sejak awal.
 
-              {/* ==== KARTU RINCIAN STOK PER GUDANG ==== */}
+                  Konsekuensi yang disengaja: tabel tidak bisa diurutkan lewat
+                  klik header, jadi pengurut dipindah jadi <select> di header
+                  (pakai state sort2 yang sama). */}
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-xs text-steel-500">
+                  {locale === "en" ? "Sort" : "Urutkan"}:
+                </span>
+                <select
+                  className="input w-auto py-1.5 text-xs"
+                  value={`${sort2.key}:${sort2.dir}`}
+                  onChange={(e) => {
+                    const [key, dir] = e.target.value.split(":");
+                    setSort2({ key, dir: dir === "asc" ? "asc" : "desc" } as SortState);
+                  }}
+                  aria-label={locale === "en" ? "Sort warehouses" : "Urutkan gudang"}
+                >
+                  <option value="nama:asc">{locale === "en" ? "Name A-Z" : "Nama A-Z"}</option>
+                  <option value="nama:desc">{locale === "en" ? "Name Z-A" : "Nama Z-A"}</option>
+                  <option value="jenis:asc">{locale === "en" ? "Type" : "Jenis"}</option>
+                  <option value="item:desc">{locale === "en" ? "Most items" : "Paling banyak item"}</option>
+                  <option value="item:asc">{locale === "en" ? "Fewest items" : "Paling sedikit item"}</option>
+                  <option value="terisi:desc">{locale === "en" ? "Most filled" : "Paling terisi"}</option>
+                  <option value="kapasitas:desc">{locale === "en" ? "Largest capacity" : "Kapasitas terbesar"}</option>
+                </select>
+                <span className="text-xs text-steel-400">{whSorted.length} gudang</span>
+              </div>
               <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
-              {warehouseRows.map((row) => {
+              {whSorted.map((row) => {
                 const items = row.items;
                 const gq = (gudangQ[row.name] ?? "").trim().toLowerCase();
                 const shown = gq ? items.filter((i) => `${i.name} ${i.sku} ${binOf(i)}`.toLowerCase().includes(gq)) : items;
@@ -2167,6 +2111,24 @@ if (k === "mattype") return matTypeOf(i);
                       </div>
                     </div>
                     <p className="text-xs text-steel-500">{items.length} item · {fmtJumlah(row.used)} unit{row.row?.lokasi ? ` · ${String(row.row.lokasi)}` : ""}</p>
+                    {/* Kolom yang sebelumnya hanya ada di tabel master: Status
+                        daftar, Jenis, PIC, dan id. Dipindah ke kartu supaya
+                        tidak ada data gudang yang hanya terlihat di tabel. */}
+                    <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                      {row.row
+                        ? (row.row.aktif === false
+                          ? <Badge tone="gray">{locale === "en" ? "Inactive" : "Nonaktif"}</Badge>
+                          : <Badge tone="green">{locale === "en" ? "Active" : "Aktif"}</Badge>)
+                        : <Badge tone="amber">{locale === "en" ? "Unregistered" : "Belum daftar"}</Badge>}
+                      {row.row?.type ? <Badge tone="ocean">{String(row.row.type)}</Badge> : null}
+                      {row.row?.id && <span className="font-mono text-[11px] text-steel-400">{String(row.row.id)}</span>}
+                    </div>
+                    {row.row?.pic ? (
+                      <p className="mt-1.5 text-xs text-steel-600">
+                        <span className="text-steel-400">{locale === "en" ? "PIC" : "PIC"}: </span>
+                        {String(row.row.pic)}
+                      </p>
+                    ) : null}
                     {row.pct !== null && (
                       <div className="mt-2">
                         <ProgressBar value={row.pct} tone={row.tone} />
@@ -2215,6 +2177,21 @@ if (k === "mattype") return matTypeOf(i);
                   </Card>
                 );
               })}
+              {/* Empty state ikut pindah dari tabel yang dihapus - tanpa ini
+                  tab "Stok per Gudang" kosong tanpa penjelasan begitu
+                  pertama kali dibuka. */}
+              {whSorted.length === 0 && (
+                <div className="rounded-xl border border-dashed border-steel-300 bg-surface p-8 text-center md:col-span-2 lg:col-span-3">
+                  <p className="text-sm font-medium text-steel-600">
+                    {locale === "en" ? "No warehouses yet." : "Belum ada gudang."}
+                  </p>
+                  <p className="mt-1 text-xs text-steel-400">
+                    {locale === "en"
+                      ? "Add one to start tracking capacity."
+                      : "Tambah dulu untuk mulai melacak kapasitas."}
+                  </p>
+                </div>
+              )}
               </div>
             </div>
           )}
