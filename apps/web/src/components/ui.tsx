@@ -1292,36 +1292,54 @@ export function SecureImg({
   return <img src={shown} alt={alt} className={className} loading="lazy" onError={() => setFailed(true)} />;
 }
 
-/** Strip alur status generik: langkah selesai / aktif / berikutnya. */
+/** Strip alur status generik: langkah selesai / aktif / berikutnya.
+ *
+ *  Tanpa `onSelect` strip ini murni dekoratif (legenda warna). Dengan
+ *  `onSelect` tiap langkah jadi tombol filter sungguhan.
+ *
+ *  `current` boleh string kosong: itu berarti "tidak ada langkah yang
+ *  aktif". Pemakai lama selalu mengoper salah satu langkah sehingga
+ *  legenda ikut menyala padahal tidak ada filter yang aktif - pakai `""`
+ *  supaya tampilan jujur soal keadaan sebenarnya. */
 export function FlowStrip({
   steps,
   current,
+  onSelect,
   ariaLabel,
 }: {
   steps: string[];
   current: string;
+  onSelect?: (step: string) => void;
   ariaLabel?: string;
 }) {
   const idx = steps.indexOf(current);
+  const interactive = typeof onSelect === "function";
   return (
     <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label={ariaLabel ?? "Alur status"}>
       {steps.map((s, i) => {
         const done = idx >= 0 && i < idx;
         const on = s === current;
+        const tone = on
+          ? "bg-navy-700 text-white"
+          : done
+            ? "bg-emerald-100 text-emerald-700"
+            : "bg-steel-100 text-steel-500";
         return (
           <span key={s} className="flex items-center gap-1.5">
-            <span
-              className={`rounded-lg px-2.5 py-1 text-xs font-semibold ${
-                on
-                  ? "bg-navy-700 text-white"
-                  : done
-                    ? "bg-emerald-100 text-emerald-700"
-                    : "bg-steel-100 text-steel-500"
-              }`}
-              aria-current={on ? "step" : undefined}
-            >
-              {i + 1}. {s}
-            </span>
+            {interactive ? (
+              <button
+                type="button"
+                onClick={() => onSelect(s)}
+                aria-pressed={on}
+                className={`rounded-lg px-2.5 py-1 text-xs font-semibold transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-navy-400 ${tone} ${on ? "cursor-default" : "hover:bg-steel-200"}`}
+              >
+                {i + 1}. {s}
+              </button>
+            ) : (
+              <span className={`rounded-lg px-2.5 py-1 text-xs font-semibold ${tone}`} aria-current={on ? "step" : undefined}>
+                {i + 1}. {s}
+              </span>
+            )}
             {i < steps.length - 1 && (
               <span aria-hidden className="text-steel-300">→</span>
             )}

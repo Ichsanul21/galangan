@@ -368,9 +368,15 @@ export default function Drydock() {
   };
   const filteredSlots = dockSlots.filter((s) => {
     if (statusFilter !== "Semua" && slotStatus(s, data.projects) !== statusFilter) return false;
-    /* Positioning: Masuk = Terjadwal (akan masuk dock), Keluar = Selesai (sudah keluar). */
+    /* Positioning: Masuk = Terjadwal (akan masuk dock), Keluar = Selesai (sudah
+       keluar). "Berjalan" pernah hilang: FlowStrip menampilkannya sebagai
+       langkah aktif tetapi tidak ada cabang yang menanganinya, jadi tidak
+       ada cara memfilter docking yang sedang berjalan - dan karena
+       current selalu diisi salah satu langkah, legendanya terlihat seperti
+       filter yang aktif padahal posFilter masih "Semua". */
     if (posFilter === "Masuk" && slotStatus(s, data.projects) !== "Terjadwal") return false;
     if (posFilter === "Keluar" && slotStatus(s, data.projects) !== "Selesai") return false;
+    if (posFilter === "Berjalan" && slotStatus(s, data.projects) !== "Berjalan") return false;
     if (showActiveOnly && !isActiveSlot(s)) return false;
     if (areaFilter !== "Semua" && slotAreaOf(s) !== areaFilter) return false;
     return true;
@@ -692,6 +698,7 @@ export default function Drydock() {
               <select className="input text-xs" value={posFilter} onChange={(e) => setPosFilter(e.target.value)} aria-label={S.filterPosAria}>
                 <option value="Semua">Positioning: Semua</option>
                 <option value="Masuk">↓ {S.posMasuk} (Terjadwal)</option>
+                <option value="Berjalan">● Berjalan (docking)</option>
                 <option value="Keluar">↑ {S.posKeluar} (Selesai)</option>
               </select>
               <select className="input text-xs" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} aria-label={S.filterStatusAria}>
@@ -767,7 +774,8 @@ export default function Drydock() {
         <div className="px-4 pb-2">
           <FlowStrip
             steps={["Masuk", "Berjalan", "Keluar"]}
-            current={posFilter === "Masuk" ? "Masuk" : posFilter === "Keluar" ? "Keluar" : "Berjalan"}
+            current={posFilter === "Semua" ? "" : posFilter}
+            onSelect={(step) => setPosFilter((cur) => (cur === step ? "Semua" : step))}
             ariaLabel="Alur positioning docking"
           />
           <div className="mt-1.5 flex flex-wrap items-center gap-1.5 text-[11px] text-steel-500">
@@ -775,6 +783,8 @@ export default function Drydock() {
             <span className="inline-flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-ocean-500" /> Berjalan = docking</span>
             <span className="inline-flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-emerald-500" /> Selesai = ↑ Keluar</span>
             {areaFilter !== "Semua" && <Badge tone="teal">Area: {areaFilter}</Badge>}
+            {posFilter !== "Semua" && <Badge tone="navy">Positioning: {posFilter}</Badge>}
+            {statusFilter !== "Semua" && <Badge tone="slate">Status: {statusFilter}</Badge>}
             {showActiveOnly && <Badge tone="blue">Slot aktif saja</Badge>}
           </div>
         </div>
