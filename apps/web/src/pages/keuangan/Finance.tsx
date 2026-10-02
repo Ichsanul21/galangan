@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ReactElement } from "react";
 import { Wallet, ArrowDownToLine, FileText, Receipt, TrendingUp, Plus, Trash2, Search } from "lucide-react";
 import { openFileUrl } from "../../services/files";
 import { sptDoc, type SptDocLabels } from "../../utils/pdfDocs";
@@ -369,6 +369,252 @@ const SPT_LABELS: SptDocLabels = {
   tanggalSetor: "Tanggal Setor", formulir: "Nomor Formulir", bank: "Bank", teller: "Teller",
   period: "Masa Pajak",
 };
+/* ==========================================================================
+   FORM PENYETORAN PAJAK (SPT)
+   ==========================================================================
+
+   Tab Pajak sebelumnya tidak punya form sama sekali - hanya KPI turunan
+   hitungan dan tombol ekspor. Yang borrower cek keady tax adalah NPWP
+   perusahaan, kode retval, nomor formulir, dan bank penyetor; tidak satu
+   pun ada di aplikasi, jadi harus dicari di luar sistem setiap kali SPT
+   dicetak.
+
+   Kolom PPN/PPh TIDAK diketik manual. Angka itu turun dari invoice Lunas,
+   payable Lunas, payroll, dan termin - semuanya sudah dihitung taxCalc.
+   Yang diketik di sini adalah identitas dan bukti setor, yaitu hal yang
+   memang tidak bisa diturunkan dari data operasional.
+
+   PPN terutang tetap dibaca dari perhitungan, dengan override opsional
+   (`ppnTerutangManual`) untuk kasus ketika ada koreksi manual yang tidak
+   tercermin di jurnal. Kalau diisi, field itu yang dipakai SPT dan diberi
+   catatan supaya selisihnya terlihat, bukan tersembunyi. */
+
+type SptNumField =
+  | "npwp" | "npwpPenyetor" | "tanggalSetor" | "nomorFormulir" | "bank" | "teller"
+  | "kodeRetval" | "klu" | "penanggungJawab" | "telepon" | "email"
+  | "dppKelDN" | "dppKelLN" | "ppnTerpotong"
+  | "dppMasDN" | "dppMasLN" | "ppnImpor" | "ppnTidakDikreditkan" | "ppnDikompensasikan"
+  | "pph21" | "pph22" | "pph23" | "pph24" | "pph25" | "pph26"
+  | "ppnBM" | "retensiWithhold" | "ppnTerutangManual";
+
+const SPT_NUM_FIELDS: SptNumField[] = [
+  "npwp", "npwpPenyetor", "tanggalSetor", "nomorFormulir", "bank", "teller",
+  "kodeRetval", "klu", "penanggungJawab", "telepon", "email",
+  "dppKelDN", "dppKelLN", "ppnTerpotong",
+  "dppMasDN", "dppMasLN", "ppnImpor", "ppnTidakDikreditkan", "ppnDikompensasikan",
+  "pph21", "pph22", "pph23", "pph24", "pph25", "pph26",
+  "ppnBM", "retensiWithhold", "ppnTerutangManual",
+];
+
+const SPT_TEXT_FIELDS = ["npwp", "npwpPenyetor", "tanggalSetor", "nomorFormulir", "bank", "teller", "kodeRetval", "klu", "penanggungJawab", "telepon", "email"] as const;
+const SPT_AMOUNT_FIELDS = [
+  "dppKelDN", "dppKelLN", "ppnTerpotong",
+  "dppMasDN", "dppMasLN", "ppnImpor", "ppnTidakDikreditkan", "ppnDikompensasikan",
+  "pph21", "pph22", "pph23", "pph24", "pph25", "pph26",
+  "ppnBM", "retensiWithhold", "ppnTerutangManual",
+] as const;
+
+const sptNumOf = (v: unknown): number => {
+  const n = Number(v);
+  return Number.isFinite(n) ? n : 0;
+};
+
+function SptFilingForm({ period, locked, onSave }: {
+  period: StoreItem;
+  locked: boolean;
+  onSave: (patch: Record<string, unknown>) => Promise<void>;
+}) {
+  const { locale } = useT();
+  const [draft, setDraft] = useState<Record<string, string>>(() => {
+    const out: Record<string, string> = {};
+    for (const f of SPT_NUM_FIELDS) out[f] = String(period[f] ?? "");
+    return out;
+  });
+  const [dirty, setDirty] = useState(false);
+
+  /* Pindah periode -> muat ulang isinya. Tanpa ini form akan menampilkan
+     NPWP periode sebelumnya saat user mengganti select periode. */
+  useEffect(() => {
+    const next: Record<string, string> = {};
+    for (const f of SPT_NUM_FIELDS) next[f] = String(period[f] ?? "");
+    setDraft(next);
+    setDirty(false);
+  }, [period.id]);
+
+  const set = (f: SptNumField, v: string): void => {
+    setDraft((d) => ({ ...d, [f]: v }));
+    setDirty(true);
+  };
+
+  const save = async (): Promise<void> => {
+    const patch: Record<string, unknown> = {};
+    for (const f of SPT_TEXT_FIELDS) patch[f] = draft[f] ?? "";
+    for (const f of SPT_AMOUNT_FIELDS) patch[f] = sptNumOf(draft[f]);
+    await onSave(patch);
+    setDirty(false);
+  };
+
+  const txt = (f: SptNumField, label: string, ph = ""): ReactElement => (
+    <Field label={label}>
+      <input
+        className="input font-mono"
+        value={draft[f] ?? ""}
+        placeholder={ph}
+        disabled={locked}
+        onChange={(e) => set(f, e.target.value)}
+        aria-label={label}
+      />
+    </Field>
+  );
+  const amt = (f: SptNumField, label: string): ReactElement => (
+    <Field label={label}>
+      <input
+        className="input font-mono text-right"
+        inputMode="numeric"
+        value={draft[f] ?? ""}
+        placeholder="0"
+        disabled={locked}
+        onChange={(e) => set(f, e.target.value.replace(/[^\d]/g, ""))}
+        aria-label={label}
+      />
+    </Field>
+  );
+
+  const manual = sptNumOf(draft.ppnTerutangManual);
+  const auto = sptNumOf(period.ppnTerutangAuto);
+  const usingManual = manual > 0;
+
+  return (
+    <Card className="p-4">
+      <CardHeader
+        title={locale === "en" ? "Filing identity & payment" : "Identitas & Bukti Setor"}
+        subtitle={locale === "en"
+          ? "Figures come from the operational data. Only the identity and the payment proof are typed."
+          : "Angka berasal dari data operasional. Yang diketik hanya identitas dan bukti setor."}
+        action={
+          <div className="flex items-center gap-2">
+            {dirty && !locked && (
+              <button className="btn-primary text-xs" onClick={() => void save()}>
+                {locale === "en" ? "Save filing" : "Simpan data setor"}
+              </button>
+            )}
+            {locked && (
+              <Badge tone="green">{locale === "en" ? "Locked - filed" : "Terkunci - sudah lapor"}</Badge>
+            )}
+          </div>
+        }
+      />
+
+      <div className="mt-4 space-y-4">
+        <div>
+          <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-steel-500">
+            {locale === "en" ? "Company" : "Identitas perusahaan"}
+          </p>
+          <FormGrid>
+            {txt("npwp", locale === "en" ? "Company NPWP" : "NPWP perusahaan", "01.234.567.8-901.000")}
+            {txt("klu", locale === "en" ? "KLU (business classification)" : "KLU (klasifikasi usaha)", "45101")}
+            {txt("penanggungJawab", locale === "en" ? "Responsible person" : "Penanggung jawab")}
+            {txt("telepon", locale === "en" ? "Phone" : "Telepon")}
+            {txt("email", locale === "en" ? "Email" : "Surel")}
+          </FormGrid>
+        </div>
+
+        <div>
+          <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-steel-500">
+            {locale === "en" ? "Output VAT (PPN Keluaran)" : "PPN Keluaran"}
+          </p>
+          <FormGrid>
+            {amt("dppKelDN", locale === "en" ? "Domestic VAT base" : "DPP dalam negeri")}
+            {amt("dppKelLN", locale === "en" ? "Foreign VAT base" : "DPP luar negeri")}
+            {amt("ppnTerpotong", locale === "en" ? "VAT withheld (credit note)" : "PPN terpotong (kredit nota)")}
+          </FormGrid>
+        </div>
+
+        <div>
+          <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-steel-500">
+            {locale === "en" ? "Input VAT (PPN Masukan)" : "PPN Masukan"}
+          </p>
+          <FormGrid>
+            {amt("dppMasDN", locale === "en" ? "Domestic input base" : "DPP dalam negeri")}
+            {amt("dppMasLN", locale === "en" ? "Foreign input base" : "DPP luar negeri")}
+            {amt("ppnImpor", locale === "en" ? "Import VAT" : "PPN impor")}
+            {amt("ppnTidakDikreditkan", locale === "en" ? "VAT not creditable" : "PPN tidak dikreditkan")}
+            {amt("ppnDikompensasikan", locale === "en" ? "Carried forward" : "PPN dikompensasikan")}
+          </FormGrid>
+        </div>
+
+        <div>
+          <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-steel-500">
+            {locale === "en" ? "Income tax withheld (PPh)" : "PPh dipotong"}
+          </p>
+          <FormGrid>
+            {amt("pph21", "PPh 21")}
+            {amt("pph22", "PPh 22")}
+            {amt("pph23", "PPh 23")}
+            {amt("pph24", "PPh 24")}
+            {amt("pph25", "PPh 25")}
+            {amt("pph26", "PPh 26")}
+          </FormGrid>
+        </div>
+
+        <div>
+          <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-steel-500">
+            {locale === "en" ? "Other" : "Lainnya"}
+          </p>
+          <FormGrid>
+            {amt("ppnBM", locale === "en" ? "VAT base for luxury goods (PPnBM)" : "PPnBM")}
+            {amt("retensiWithhold", locale === "en" ? "Retention withheld" : "Retensi dipotong")}
+          </FormGrid>
+        </div>
+
+        <div className="rounded-xl border border-amber-200 bg-amber-50 p-3">
+          <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-amber-700">
+            {locale === "en" ? "VAT payable" : "PPN terutang"}
+          </p>
+          <p className="text-sm text-navy-900">
+            {locale === "en" ? "From operational data" : "Dari data operasional"}:{" "}
+            <span className="font-semibold">{fmtRupiah(auto)}</span>
+          </p>
+          <div className="mt-2 grid grid-cols-1 gap-3 sm:grid-cols-2">
+            {amt("ppnTerutangManual", locale === "en" ? "Manual override" : "Override manual")}
+            <Field label={locale === "en" ? "Used on SPT" : "Dipakai di SPT"}>
+              <div className="flex h-9 items-center gap-2">
+                <Badge tone={usingManual ? "amber" : "green"}>
+                  {usingManual
+                    ? (locale === "en" ? "Manual override" : "Override manual")
+                    : (locale === "en" ? "Automatic" : "Otomatis")}
+                </Badge>
+                <span className="font-semibold">{fmtRupiah(usingManual ? manual : auto)}</span>
+              </div>
+            </Field>
+          </div>
+          {usingManual && (
+            <p className="mt-2 text-[11px] text-amber-700">
+              {locale === "en"
+                ? `Manual override differs from the calculated figure by ${fmtRupiah(manual - auto)}. The override is what gets printed.`
+                : `Override manual berbeda dari angka perhitungan sebesar ${fmtRupiah(manual - auto)}. Angka override inilah yang dicetak.`}
+            </p>
+          )}
+        </div>
+
+        <div>
+          <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-steel-500">
+            {locale === "en" ? "Payment" : "Penyetoran"}
+          </p>
+          <FormGrid>
+            {txt("npwpPenyetor", locale === "en" ? "Depositor NPWP/NTWP" : "NPWP/NTWP penyetor")}
+            {txt("tanggalSetor", locale === "en" ? "Deposit date" : "Tanggal setor")}
+            {txt("nomorFormulir", locale === "en" ? "Form number" : "Nomor formulir", "1.1-08-000-1.2-23-24/26")}
+            {txt("bank", locale === "en" ? "Bank" : "Bank")}
+            {txt("teller", locale === "en" ? "Teller" : "Teller")}
+            {txt("kodeRetval", locale === "en" ? "Return code" : "Kode retval", "1")}
+          </FormGrid>
+        </div>
+      </div>
+    </Card>
+  );
+}
+
 const { data, add, update, remove, log, branch, inBranch } = useStore();
 
   /* Buka bukti pembayaran di tab baru. window.open(url) biasa ada di sini
@@ -2065,6 +2311,14 @@ const { data, add, update, remove, log, branch, inBranch } = useStore();
       pph23: taxCalc.pph23,
       pph21: taxCalc.pph21,
       reportedAt: todayISO(),
+      /* PPN terutang OTOMATIS disimpan terpisah dari override manual, supaya
+         saat periode terkunci masih kelihatan berapa yang dihitung sistem
+         dan berapa yang dikoreksi orang. Tanpa ini selisih koreksi hilang
+         begitu Lapor ditekan. */
+      ppnTerutangAuto: taxCalc.ppnKeluar - taxCalc.ppnMasuk,
+      ppnTerutangFinal: sptNumOf(activeTax.ppnTerutangManual) > 0
+        ? sptNumOf(activeTax.ppnTerutangManual)
+        : taxCalc.ppnKeluar - taxCalc.ppnMasuk,
     });
     // Kunci pajak menerbitkan hutang pajak (idempoten via po TAX-<periode>-*):
     // PPh 23 dan PPh 21 sebagai DUA baris terpisah.
@@ -2100,9 +2354,21 @@ const { data, add, update, remove, log, branch, inBranch } = useStore();
     }
   };
 
+/* PPN terutang: pakai override manual kalau ada, kalau tidak pakai
+     hitungan. Nilai final yang sudah dibekukan (ppnTerutangFinal) dipakai
+     untuk periode terkunci supaya angka di SPT tidak ikut berubah ketika
+     invoice periode lalu diedit. */
+  const sptPpnTerutang = (p: StoreItem, computed: number): number => {
+    const final = sptNumOf(p.ppnTerutangFinal);
+    if (final > 0) return final;
+    const manual = sptNumOf(p.ppnTerutangManual);
+    return manual > 0 ? manual : computed;
+  };
+
   const exportSptPdf = () => {
     if (!activeTax) return;
     const shown = taxShown;
+    const terutang = sptPpnTerutang(activeTax, shown.ppnKeluar - shown.ppnMasuk);
     try {
       sptDoc({
         period: String(activeTax.period),
@@ -2112,8 +2378,12 @@ const { data, add, update, remove, log, branch, inBranch } = useStore();
           { jenis: locale === "en" ? "Input VAT" : "PPN Masukan", dasar: pdfNum(taxCalc.apBase), tarif: `${taxCalc.ppnRate}%`, nilai: shown.ppnMasuk },
           { jenis: "PPh 23", dasar: pdfNum(taxCalc.apBase), tarif: `${taxCalc.pphRate}%`, nilai: shown.pph23 },
           { jenis: "PPh 21", dasar: locale === "en" ? "Total payroll" : "Total payroll", tarif: "-", nilai: shown.pph21 },
+          ...(sptNumOf(activeTax.pph22) > 0 ? [{ jenis: "PPh 22", dasar: "", tarif: "-", nilai: sptNumOf(activeTax.pph22) }] : []),
+          ...(sptNumOf(activeTax.pph24) > 0 ? [{ jenis: "PPh 24", dasar: "", tarif: "-", nilai: sptNumOf(activeTax.pph24) }] : []),
+          ...(sptNumOf(activeTax.pph25) > 0 ? [{ jenis: "PPh 25", dasar: "", tarif: "-", nilai: sptNumOf(activeTax.pph25) }] : []),
+          ...(sptNumOf(activeTax.pph26) > 0 ? [{ jenis: "PPh 26", dasar: "", tarif: "-", nilai: sptNumOf(activeTax.pph26) }] : []),
         ],
-        ppnTerutang: shown.ppnKeluar - shown.ppnMasuk,
+        ppnTerutang: terutang,
         npwp: String(activeTax.npwp ?? ""),
         npwpPenyetor: String(activeTax.npwpPenyetor ?? ""),
         tanggalSetor: String(activeTax.tanggalSetor ?? ""),
@@ -3445,6 +3715,18 @@ const { data, add, update, remove, log, branch, inBranch } = useStore();
                   </AsyncButton>
                 </div>
               </div>
+              {activeTax && <SptFilingForm
+                  period={activeTax}
+                  locked={taxLocked}
+                  onSave={async (patch) => {
+                    try {
+                      await update("taxPeriods", activeTax.id, patch);
+                      toast(S.sptSaved);
+                    } catch (e) {
+                      toast(e instanceof Error ? e.message : S.saveFail, "info");
+                    }
+                  }}
+                />}
               {!activeTax ? (
                 <EmptyState title={S.emptyTaxTitle} subtitle={S.emptyTaxSub} />
               ) : (
