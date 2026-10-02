@@ -35,6 +35,7 @@ import {
 import { PAGES, MARGIN_MM } from "../src/pdf/theme.js";
 import { niceScale, axisTicks } from "../src/pdf/chart.js";
 import type { ChartSpec } from "../src/pdf/chart.js";
+import { kwitansi as kwitansiDoc, ribu } from "../src/pdf/documents/kwitansi.js";
 
 let pass = 0;
 const failures: string[] = [];
@@ -252,6 +253,73 @@ geometryCheck(
 ok("niceScale membulatkan batas atas", niceScale(47321).max >= 47321 && niceScale(47321).max % 10000 === 0, `max=${niceScale(47321).max} step=${niceScale(47321).step}`);
 ok("niceScale menangani 0", niceScale(0).max === 1, `max=${niceScale(0).max}`);
 ok("axisTicks naik monoton", axisTicks(100, 25).every((v, i, a) => i === 0 || v > a[i - 1]!), axisTicks(100, 25).join(","));
+
+/* ==========================================================================
+   6. Factory dokumen + konsistensi KOP
+   ========================================================================== */
+
+/* KOP diduplikasi di services/api (rootDir "src" melarang import lintas
+   repo). Probe ini penjaganya: kalau salah satu side berubah tanpa yang
+   lain, dokumen resmi akan tercetak dengan kop yang berbeda dari yang
+   tampil di aplikasi. */
+{
+  const fe = await import("../../../apps/web/src/utils/sb.js");
+  const be = await import("../src/pdf/documents/shared.js");
+  const mismatched = (Object.keys(be.KOP_LINES) as Array<keyof typeof be.KOP_LINES>).filter((k) => {
+    const expected = (fe.SB_KOP as Record<string, unknown>)[k];
+    return String(expected ?? "").trim() !== be.KOP_LINES[k].trim();
+  });
+  ok("KOP server sama dengan KOP frontend", mismatched.length === 0, mismatched.length === 0 ? Object.keys(be.KOP_LINES).length + " baris" : `beda: ${mismatched.join(", ")}`);
+}
+
+/* Kwitansi: kasus yang dilaporkan client. Baris nominal memakai nilai penuh
+   (bukan ringkasan) supaya tidak terpotong, dan tabel punya baris pengurang
+   sehingga panjang dokumen naik seperti dokumen sebenarnya. */
+{
+  const breakdown = [
+    { label: "Nilai termin", value: 300_000_000 },
+    { label: "PPh dipotong (2%)", value: -6_000_000 },
+    { label: "Retensi ditahan (5%)", value: -15_000_000 },
+    { label: "Dibayar", value: 279_000_000 },
+  ];
+  const d = kwitansiDoc({
+    no: "KW/TRM-2026-001",
+    tanggal: "2026-10-02",
+    diterimaDari: "PT BANGUNAN PERMANEN NUSANTARA",
+    untuk: "TRM-2026-001 - Pekerjaan rangka kapal TB Nusantara 22",
+    breakdown,
+    netLabel: "Dibayar",
+    catatan: "Bukti potong PPh: 1.2-345/2026\nReferensi pembayaran: BCN-88213 (Transfer)",
+    locale: "id",
+  }, { compress: false });
+  const res = d.render();
+  const raw = Buffer.from(res.bytes).toString("latin1");
+  ok("kwitansi: nilai lengkap tercetak", raw.includes("279.000.000"), "279.000.000");
+  ok("kwitansi: nomor tercetak", raw.includes("KW/TRM-2026-001"));
+  ok("kwitansi: penerima tercetak", raw.includes("BANGUNAN PERMANEN"));
+  ok("kwitansi: kwitansi tidak terpotong", res.pages === 1, `${res.pages} halaman`);
+  const problems = checkGeometry(res, MARGIN_MM, { width: PAGES.a4.width, height: PAGES.a4.height });
+  ok("kwitansi: geometri", problems.length === 0, problems.length === 0 ? "semua tinta di dalam content box" : `${problems.length} pelanggaran`);
+
+  /* Nilai yang jauh lebih besar - nominal besar wajib tetap muat. */
+  const big = kwitansiDoc({
+    no: "KW/TRM-2026-999",
+    tanggal: "2026-10-02",
+    diterimaDari: "PT KONSTRUKSI REKAYASA INDUSTRI DAN PERTAHANAN NUSANTARA",
+    untuk: "TRM-2026-999 - PerbaikanAMC kapal",
+    breakdown: [{ label: "Nilai termin", value: 12_500_000_000 }, { label: "Dibayar", value: 12_500_000_000 }],
+    netLabel: "Dibayar",
+    locale: "id",
+  }, { compress: false });
+  const bigRes = big.render();
+  const bigProblems = checkGeometry(bigRes, MARGIN_MM, { width: PAGES.a4.width, height: PAGES.a4.height });
+  ok("kwitansi: nilai besar tetap di dalam halaman", bigProblems.length === 0, `${bigProblems.length} pelanggaran`);
+
+  /* Terbilang: nilai 279.000.000 harus jadi "dua ratus tujuh puluh sembilan juta". */
+  ok("terbilang benar", ribu(279_000_000).startsWith("dua ratus tujuh puluh sembilan juta"), ribu(279_000_000));
+  ok("terbilang nol", ribu(0) === "nol rupiah", ribu(0));
+  ok("terbilang miliar", ribu(1_500_000_000).startsWith("satu miliar"), ribu(1_500_000_000));
+}
 
 /* ==========================================================================
    Ringkasan

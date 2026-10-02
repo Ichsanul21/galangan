@@ -1,4 +1,4 @@
-import Fastify, { type FastifyInstance, type FastifyReply } from "fastify";
+﻿import Fastify, { type FastifyInstance, type FastifyReply } from "fastify";
 import fs from "node:fs";
 import path from "node:path";
 import { createRequire } from "node:module";
@@ -18,6 +18,7 @@ import { registerOcrRoutes } from "./routes/ocr.js";
 import { registerWbsRoutes } from "./routes/wbs.js";
 import { registerAdminRoutes } from "./routes/admin.js";
 import { registerUserRoutes } from "./routes/users.js";
+import { registerPdfRoutes } from "./routes/pdf.js";
 
 const LoginSchema = z.object({
   username: z.string().min(1),
@@ -331,6 +332,7 @@ export function buildApp(): FastifyInstance {
   registerWbsRoutes(app);
   registerAdminRoutes(app);
   registerUserRoutes(app);
+  registerPdfRoutes(app);
 
   app.setNotFoundHandler((_req, reply) => {
     return reply.status(404).send(fail("Not found", "NOT_FOUND"));

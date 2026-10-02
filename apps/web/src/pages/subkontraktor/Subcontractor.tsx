@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+﻿import { useEffect, useMemo, useState } from "react";
 import { Plus, HardHat, FileSignature, Star, Search, Receipt } from "lucide-react";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, ReferenceLine } from "recharts";
 import { Card, CardHeader, PageHeader, Badge, KpiCard, Tabs, ProgressBar, Modal, Field, FormGrid, ConfirmModal, SortTh, toggleSort, sortRows, usePager, toast,
@@ -18,6 +18,8 @@ import { AlertBannerView, notifRowId, useModuleAlert, useNotifFlash } from "../.
 import { getSetting } from "../../utils/settings";
 import { PPH_SUBKON_OPTIONS } from "../../utils/sb";
 import { kwitansiDoc } from "../../utils/pdfDocs";
+import { pdfServerReady } from "../../services/pdfClient";
+import { usePdfDoc } from "../../components/usePdfDoc";
 import { subActiveTrend, subContractTrend, woTrend, ratingTrend } from "../../data";
 import { FilterPopover } from "../../components/FilterPopover";
 import { useT } from "../../i18n/LanguageContext";
@@ -149,6 +151,9 @@ export default function Subcontractor() {
   const [subStatus, setSubStatus] = useState("Semua");
   const modAlert = useModuleAlert("subkontraktor");
   const flash = useNotifFlash();
+  /* Printer PDF: dipakai untuk kwitansi. Satu hook untuk seluruh halaman
+     supaya Blob URL hanya hidup selama satu dokumen sedang dipakai. */
+  const pdfDoc = usePdfDoc();
   const notified = useMemo(() => new Set(modAlert.items.map((a) => a.rowId)), [modAlert.items]);
   /* Fetch per-batch modul (pengganti resync penuh). */
   useModuleSync(SUB_COLS);
@@ -536,7 +541,29 @@ export default function Subcontractor() {
    diambil dari record termin yang sudah dibekukan saat pelunasan, bukan
    dari perhitungan ulang, supaya yang tercetak sama dengan yang tercatat
    di hutang usaha. */
-const printKwitansi = (p: StoreItem) => {
+/* Cetak kwitansi.
+   *
+   * Jalur utama: server merakit dokumen dari baris `termins` miliknya
+   * sendiri, jadi nominal, PPh, dan retensi pada kwitansi tidak bisa
+   * berbeda dari pembukuan - dan tidak bisa dimanipulasi dari browser.
+   * Jalur lokal (utils/pdfDocs) hanya dipakai bila backend belum
+   * dikonfigurasi, supaya mode demo lokal tetap bisa mencetak.
+   *
+   * Komplain lama "kwitansi kontennya terpotong" berasal dari mesin PDF
+   * client: align:'right' pada baris nominal menganchor tepi kanan baris di
+   * margin kiri, sehingga Rp 44.832.500 mulai dari x = -25 mm dan lebih dari
+   * separuhnya tercetak di luar kertas. Mesin server mengukur ulang nominal
+   * dari lebar kolom yang terukur, dan probe geometri menjaga hal itu. */
+  const printKwitansi = async (p: StoreItem): Promise<void> => {
+    const id = String(p.id);
+    if (pdfServerReady()) {
+      const done = await pdfDoc.request({ kind: "kwitansi", id, locale }, `Kwitansi-${id}`, false);
+      if (done) {
+        toast(locale === "en" ? `Receipt for ${id} printed` : `Kwitansi ${id} dicetak`);
+        return;
+      }
+      return;
+    }
     const amount = Number(p.amount || 0);
     const pph = Math.round(Number(p.pphAmt ?? 0));
     const ret = Math.round(Number(p.retAmt ?? 0));
@@ -1236,7 +1263,7 @@ const printKwitansi = (p: StoreItem) => {
                                 title={locale === "en"
                                   ? "Settlement statement with the PPh, retention, and penalty breakdown"
                                   : "Kuitansi dengan rincian PPh, retensi, dan denda"}
-                                onClick={() => printKwitansi(p)}
+                                onClick={() => void printKwitansi(p)}
                               >
                                 <Receipt className="h-3.5 w-3.5" /> {locale === "en" ? "Receipt" : "Kwitansi"}
                               </button>
