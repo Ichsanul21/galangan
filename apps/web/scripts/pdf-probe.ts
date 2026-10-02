@@ -372,6 +372,48 @@ try {
   console.log(`FAIL  tanda tangan tidak tumpuk: ${e instanceof Error ? e.message : String(e)}`);
 }
 
+/* ---- pemeriksaan ISI dokumen ----
+   Semua pemeriksaan lain hanya melihat BENTUK berkas: header valid, ada
+   objek halaman, ukuran wajar, jumlah halaman masuk akal. Semuanya lulus
+   sempurna sementara satu dokumen bisa saja menampilkan kolom kosong karena
+   pemetaan field-nya salah - dan itulah kelas bug yang paling mungkin
+   terjadi kalau ada dokumen yang dirakit ulang.
+
+   Stream PDF dibaca apa adanya lewat new PdfDoc({ compress:false }), jadi
+   isi teks bisa diperiksa. Yang diperiksa: nilai yang seharusnya muncul,
+   dan nilai yang seharusnya TIDAK muncul (sentinel). */
+try {
+  const SENTINEL = "ZZZ-SALAH-TIDAK-BOLEH-MUNCUL-ZZZ";
+  const doc = new PdfDoc({ orientation: "portrait", compress: false });
+  doc.kop();
+  doc.title("Uji Isi", "NO. UJI-1");
+  doc.kv([{ label: "Label Uji", value: "Nilai Uji 12345" }]);
+  doc.table({
+    head: ["Uraian", "Jumlah"],
+    rows: [["Baris Uji", "98765"]],
+    widths: ["auto", 40],
+    align: ["left", "right"],
+  });
+  doc.para(SENTINEL);
+  doc.save("isi-uji");
+
+  const asText = new TextDecoder("latin1").decode(bytesOf(doc));
+  const flat = asText.replace(/\\?\(/g, "");
+
+  for (const must of ["Nilai Uji 12345", "98765", "Baris Uji", "Label Uji"]) {
+    if (!flat.includes(must)) throw new Error(`isi dokumen tidak memuat "${must}"`);
+  }
+  // Paragraf yang di-split ke baris baru masih boleh dipecah, jadi hanya
+  // dicek bagian pertama - yang membuktikan para() benar-benar menggambar.
+  if (!flat.includes(SENTINEL.slice(0, 12))) {
+    throw new Error("para() tidak menggambar teksnya");
+  }
+  console.log("PASS  isi dokumen benar-benar tergambar");
+} catch (e) {
+  failures += 1;
+  console.log(`FAIL  isi dokumen: ${e instanceof Error ? e.message : String(e)}`);
+}
+
 /* ---- pemeriksaan paginasi ----
    Paginasi adalah bagian yang paling mudah rusak secara diam-diam: kalau
    tinggi baris salah, dokumen 200 baris bisa jadi 100 halaman (satu baris

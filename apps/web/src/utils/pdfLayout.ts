@@ -81,6 +81,10 @@ export interface PdfDocOptions {
   format?: string;
   marginMm?: number;
   fontSize?: number;
+  /** Rastra stream PDF. Default true (berkas jauh lebih kecil).
+   *  Set false kalau stream perlu dibaca manusia - dipakai probe untuk
+   *  memeriksa isi dokumen, bukan hanya bentuk berkasnya. */
+  compress?: boolean;
 }
 
 export type PdfCell = string | number | null | undefined;
@@ -148,8 +152,8 @@ export class PdfDoc {
   private pageCount = 0;
 
   constructor(opts: PdfDocOptions = {}) {
-    const { orientation = "portrait", format = "a4", marginMm = 15, fontSize = 9 } = opts;
-    this.pdf = new jsPDF({ unit: "mm", format, orientation, compress: true });
+    const { orientation = "portrait", format = "a4", marginMm = 15, fontSize = 9, compress = true } = opts;
+    this.pdf = new jsPDF({ unit: "mm", format, orientation, compress });
     this.marginMm = marginMm;
     this.defaultFontSize = fontSize;
     this.pageW = this.pdf.internal.pageSize.getWidth();
