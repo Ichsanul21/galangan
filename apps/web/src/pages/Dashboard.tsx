@@ -51,7 +51,7 @@ import {
 import { useStore } from "../data/store";
 import type { CollectionKey } from "../data/store";
 import { useModuleSync } from "../data/useModuleSync";
-import { ID_MON } from "../utils/monthAxis";
+import { bucketByMonth, monthAxis, monthKeyOf, rebindLegacyMonthSeries } from "../utils/monthAxis";
 import { warnLevelOf } from "../utils/inventoryWarn";
 import {
   MODULE_ALERT_TO,
@@ -135,23 +135,7 @@ import { n_misc } from "../i18n/n_misc";
 
 const RANGES = ["6B", "12B"] as const;
 
-/* widened ke readonly string[] supaya .indexOf(d.month) menerima string
-   apa pun; ID_MON as const hanya mau menerima union literal. */
-const MON_ID: readonly string[] = ID_MON;
-
-/* Label sumbu "MMM YYYY" + putar series agar bulan berjalan paling kanan. */
-function withMonthLabels<T extends { month: string }>(arr: T[]): (T & { bln: string })[] {
-  const now = new Date();
-  const cur = now.getMonth();
-  const pos = arr.findIndex((d) => d.month === MON_ID[cur]);
-  const rot = pos >= 0 ? [...arr.slice(pos + 1), ...arr.slice(0, pos + 1)] : [...arr];
-  const y = now.getFullYear();
-  return rot.map((d) => {
-    const mi = MON_ID.indexOf(d.month);
-    const yy = mi < 0 ? y : mi <= cur ? y : y - 1;
-    return { ...d, bln: `${d.month} ${yy}` };
-  });
-}
+/* RANGES tetap: 6B = 6 bulan, 12B = 12 bulan. */
 
 interface BranchTarget { revenue: number; projects: number }
 
@@ -242,15 +226,70 @@ export default function Dashboard() {
   });
   const stockValue = inBranch(data.inventory).reduce((s, i) => s + Number(i.stock || 0) * Number(i.cost || 0), 0);
   const wonQuotes = inBranch(data.quotations).filter((x) => x.stage === "Menang").reduce((s, x) => s + Number(x.value || 0), 0);
+  /* Sumbu + angka revenue dari invoice yang SUNGGUHNYA bertanggal.
+     withMonthLabels() lama memutar seed revenueSeries supaya bulan berjalan
+     jadi titik terakhir, padahal numeriknya tidak berpindah: label
+     "Okt 2026" menempel ke angka yang sebenarnya milik Oktober tahun lalu,
+     sehingga grafik menampilkan pertumbuhan fiktif. Analytics.tsx:78
+     mencatat pola ini sebagai "tidak bisa di tolerate" dan sudah
+     menghapusnya di sana; halaman ini adalah sisa satu-satunya yang masih memakainya.
+
+     Sekarang label dan angka berasal dari bulan yang sama lewat
+     bucketByMonth(). Seed hanya jadi fallback kalau tidak ada invoice
+     bertanggal sama sekali, supaya tab tidak kosong di install kosong.
+
+     `revenue` dalam miliar, `cost` = nilai neto invoice, `projects` =
+     jumlah proyek berbeda yang invoice di bulan itu. */
+  const monthCount = range === "6B" ? 6 : 12;
+  const revAxis = useMemo(() => monthAxis({ months: monthCount, locale }), [monthCount, locale]);
+
+  const chartData = useMemo(() => {
+    const invoices = inBranch(data.invoices);
+    const bucket = bucketByMonth(
+      invoices,
+      revAxis,
+      (i) => i.paidAt ?? i.date ?? i.due,
+      (i) => Number(i.amount ?? 0),
+      (vals) => Math.round((vals.reduce((s, x) => s + x, 0) / 1e9) * 100) / 100,
+    );
+    const anyReal = Object.values(bucket).some((v) => v > 0);
+    if (!anyReal) {
+      const base = monthCount >= revenueSeries.length ? revenueSeries : revenueSeries.slice(-monthCount);
+      return rebindLegacyMonthSeries(base, { locale }).map((r) => ({
+        bln: r.bln,
+        revenue: Number(r.revenue || 0),
+        cost: Number(r.cost || 0),
+        projects: Number(r.projects || 0),
+      }));
+    }
+    return revAxis.map((pt) => {
+      const month = invoices.filter(
+        (i) => monthKeyOf(i.paidAt ?? i.date ?? i.due) === pt.key,
+      );
+      const projects = new Set(month.map((i) => String(i.project ?? i.vessel ?? ""))).size;
+      return {
+        bln: pt.label,
+        revenue: bucket[pt.key] ?? 0,
+        cost: Math.round((month.reduce((s, i) => s + Number(i.neto ?? i.amount ?? 0), 0) / 1e9) * 100) / 100,
+        projects,
+      };
+    });
+  }, [data.invoices, branch, revAxis, monthCount, locale]);
   const utilDrydock = drydocks.length
     ? Math.round((drydocks.filter((d) => d.status === "Terpakai").length / drydocks.length) * 100)
     : 0;
   const utilEquipment = Math.round(utilSeries[utilSeries.length - 1].equipment);
 
-  const chartData = useMemo(() => {
-    const base = range === "12B" ? revenueSeries : revenueSeries.slice(-6);
-    return withMonthLabels(base);
-  }, [range]);
+  /* Sumbu + angka revenue dari invoice yang SUNGGUHNYA bertanggal.
+     withMonthLabels() lama memutar seed revenueSeries supaya bulan berjalan
+     jadi titik terakhir - numeriknya tidak berpindah, jadi label "Okt 2026"
+     menempel ke angka yang sebenarnya milik Oktober tahun lalu, dan grafik
+     menampilkan pertumbuhan fiktif. Sekarang label dan angka berasal dari
+     bulan yang sama lewat bucketByMonth(); seed hanya dipakai sebagai
+     fallback kalau tidak ada invoice bertanggal sama sekali.
+
+     `revenue` dalam miliar, `cost` = nilai_before_tax invoice, `projects`
+     = jumlah proyek berbeda di invoice bulan itu. */
 
   const lastRev = revenueSeries[revenueSeries.length - 1];
   const prevRev = revenueSeries[revenueSeries.length - 2];
