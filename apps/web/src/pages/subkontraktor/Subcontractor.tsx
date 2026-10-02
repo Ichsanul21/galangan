@@ -4,7 +4,9 @@ import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContaine
 import { Card, CardHeader, PageHeader, Badge, KpiCard, Tabs, ProgressBar, Modal, Field, FormGrid, ConfirmModal, SortTh, toggleSort, sortRows, usePager, toast,
   NumInput, FlowStrip,
   AsyncButton,
+  FileUploadButton,
 } from "../../components/ui";
+import { DocumentPreviewCell } from "../../components/DocumentPreview";
 import type { SortState } from "../../components/ui";
 import { useStore, type StoreItem, type CollectionKey } from "../../data/store";
 import { useModuleSync } from "../../data/useModuleSync";
@@ -171,6 +173,12 @@ export default function Subcontractor() {
   const [termForm, setTermForm] = useState({ sub: "", wo: "", milestone: "", amount: "", pphPct: "0.5", retPct: "5" });
   const [termPay, setTermPay] = useState<StoreItem | null>(null);
   const [proof, setProof] = useState({ date: todayISO(), method: "Transfer", ref: "" });
+  /* Bukti transfer sebagai berkas (foto Struk / PDF mutasi bank). Sebelumnya
+     form hanya menerima nomor referensi - kolom "Bukti bayar" di checklist
+     dokumen terpenuhi begitu ada ref dan tanggal, padahal tidak ada
+     berkas yang bisa diaudit. Sekarang bukti bisa dilampirkan; teks ref
+     tetap ada karena rekonsiliasi sering hanya punya nomor. */
+  const [proofUrl, setProofUrl] = useState("");
   const [withholdingRef, setWithholdingRef] = useState("");
   const [termDirCheck, setTermDirCheck] = useState(false);
   const [termDirName, setTermDirName] = useState("");
@@ -517,6 +525,7 @@ export default function Subcontractor() {
     if (next === "Lunas") {
       setTermPay(p);
       setProof({ date: todayISO(), method: "Transfer", ref: "" });
+      setProofUrl("");
       setWithholdingRef("");
       setTermDirCheck(false);
       setTermDirName("");
@@ -552,6 +561,7 @@ export default function Subcontractor() {
     const netoPayable = Math.max(0, Math.round(netoOf(termPay, pphDefault)) - penalty);
     await update("termins", termPay.id, {
       status: "Lunas", paidAt: proof.date, paidMethod: proof.method, paidRef: proof.ref.trim(),
+      proofUrl: proofUrl.trim(),
       pphAmt, retAmt, penaltyApplied: penalty, withholdingRef: withholdingRef.trim(),
       ...(needsTermDirector(termPay) ? { directorApproved: termDirName.trim() } : {}),
     });
@@ -1089,7 +1099,7 @@ export default function Subcontractor() {
                             const docs = [
                               { label: "Invoice", done: Boolean(p.invoiceNo ?? p.withholdingRef) },
                               { label: "BAST", done: Boolean(p.bastNo ?? p.releaseBA) },
-                              { label: "Bukti bayar", done: Boolean(p.paymentRef ?? p.paidRef ?? p.paidAt) },
+                              { label: "Bukti bayar", done: Boolean(p.proofUrl ?? p.paymentRef ?? p.paidRef ?? p.paidAt) },
                             ];
                             return (
                               <div className="mt-1 space-y-0.5">
@@ -1099,6 +1109,17 @@ export default function Subcontractor() {
                               </div>
                             );
                           })()}
+                          {String(p.proofUrl ?? "") !== "" && (
+                            <div className="mt-1">
+                              <DocumentPreviewCell
+                                doc={{
+                                  title: `${locale === "en" ? "Receipt" : "Bukti bayar"} ${p.id}`,
+                                  subtitle: p.paidRef ? String(p.paidRef) : undefined,
+                                  fileUrl: String(p.proofUrl),
+                                }}
+                              />
+                            </div>
+                          )}
                           {p.status === "Retensi Released" && p.releasedAt && <p className="mt-1 text-xs text-steel-500">{S.baInfo.replace("{a}", String(p.releaseBA)).replace("{b}", fmtTanggal(p.releasedAt))}</p>}
                         </td>
                         <td className="td">
@@ -1543,6 +1564,23 @@ export default function Subcontractor() {
           </FormGrid>
           <Field label={S.refNoLabel} hint={S.refNoHint}>
             <input className="input font-mono" value={proof.ref} onChange={(e) => setProof({ ...proof, ref: e.target.value })} placeholder={S.refNoPh} />
+          </Field>
+          <Field
+            label={locale === "en" ? "Payment receipt (file)" : "Bukti bayar (berkas)"}
+            hint={locale === "en"
+              ? "Optional - photo of the transfer slip or bank PDF. The reference above stays for reconciliation."
+              : "Opsional - foto struk transfer atau PDF mutasi bank. Nomor referensi di atas tetap dipakai untuk rekonsiliasi."}
+          >
+            <div className="flex flex-wrap items-center gap-2">
+              <FileUploadButton
+                label={locale === "en" ? "Upload receipt" : "Unggah bukti"}
+                accept=".png,.jpg,.jpeg,.pdf"
+                onUploaded={(u) => setProofUrl(u)}
+              />
+              {proofUrl.trim() !== "" && (
+                <DocumentPreviewCell doc={{ title: `${locale === "en" ? "Receipt" : "Bukti bayar"} ${termPay?.id ?? ""}`, fileUrl: proofUrl }} />
+              )}
+            </div>
           </Field>
           <Field label={S.withholdLabel} hint={S.withholdHint.replace("{a}", String(termPay ? pphOf(termPay, pphDefault) : "")).replace("{b}", fmtRupiah(termPay ? Math.round(Number(termPay.amount || 0) * pphOf(termPay, pphDefault) / 100) : 0))}>
             <input className="input font-mono" value={withholdingRef} onChange={(e) => setWithholdingRef(e.target.value)} placeholder={S.withholdPh} />
