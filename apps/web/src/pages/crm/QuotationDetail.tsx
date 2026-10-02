@@ -10,6 +10,7 @@ import type { StoreItem } from "../../data/store";
 import { fmtRupiah, fmtTanggal, todayISO } from "../../utils/format";
 import { sameName } from "../../utils/names";
 import { exportExcel } from "../../utils/export";
+import { kopPenawaranDoc } from "../../utils/pdfDocs";
 import { SB_KOP } from "../../utils/sb";
 import { useDraftState } from "../../utils/draft";
 import { useT } from "../../i18n/LanguageContext";
@@ -226,6 +227,42 @@ export default function QuotationDetail() {
     } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); }
   };
 
+  /* PDF resmi. Excel tetap ada sebagai tombol kedua. */
+  const cetakKopPdf = () => {
+    const client = (data.clients ?? []).find((c) => sameName(c.name, quotation.client));
+    const cabang = String(client?.branch ?? quotation.branch ?? "Samarinda");
+    const terms = String(client?.paymentTerms ?? quotation.paymentTerms ?? "NET 30");
+    try {
+      kopPenawaranDoc({
+        no: String(quotation.id),
+        version: String(version),
+        client: String(quotation.client),
+        vessel: String(quotation.vessel),
+        cabang,
+        tanggal: todayISO(),
+        lines: activeLines.map((l) => ({ desc: String(l.desc ?? ""), qty: num(l.qty), price: num(l.price) })),
+        total,
+        terms,
+        labels: {
+          no: locale === "en" ? "No" : "No",
+          desc: locale === "en" ? "Description" : "Deskripsi",
+          qty: locale === "en" ? "Qty" : "Qty",
+          harga: locale === "en" ? "Price (Rp)" : "Harga (Rp)",
+          jumlah: locale === "en" ? "Amount (Rp)" : "Jumlah (Rp)",
+          total: locale === "en" ? "Total" : "Total",
+          terms: locale === "en" ? "Payment terms" : "Syarat pembayaran",
+          cabang: locale === "en" ? "Branch" : "Cabang",
+          tanggal: locale === "en" ? "Date" : "Tanggal",
+          client: locale === "en" ? "Client" : "Client",
+          vessel: locale === "en" ? "Vessel" : "Kapal",
+        },
+      }).save(`Kop-${quotation.id}-v${version}`);
+      toast(S.tKopPdfDone.replace("{n}", String(quotation.id)));
+    } catch (e) {
+      toast(e instanceof Error ? e.message : S.saveFail, "info");
+    }
+  };
+
   const cetakKop = () => {
     const client = (data.clients ?? []).find((c) => sameName(c.name, quotation.client));
     const cabang = String(client?.branch ?? quotation.branch ?? "Samarinda");
@@ -256,7 +293,8 @@ export default function QuotationDetail() {
         actions={
           <>
             <button className="btn-secondary" onClick={() => navigate("/crm")}><ArrowLeft className="h-4 w-4" /> {S.backBtn}</button>
-            <button className="btn-secondary" onClick={cetakKop}>{S.printKopBtn}</button>
+            <button className="btn-secondary" onClick={cetakKopPdf}>{S.printKopPdfBtn}</button>
+            <button className="btn-secondary" onClick={cetakKop}>{S.printKopXlsxBtn}</button>
             <button className="btn-primary" onClick={openSend}><Send className="h-4 w-4" /> {S.sendBtn}</button>
           </>
         }

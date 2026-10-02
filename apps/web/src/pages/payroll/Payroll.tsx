@@ -26,6 +26,7 @@ import { fmtBulan, fmtRupiah, fmtTanggal, todayISO } from "../../utils/format";
 import { AlertBannerView, notifRowId, useModuleAlert, useNotifFlash } from "../../components/AlertBanner";
 import { getSetting } from "../../utils/settings";
 import { exportExcel } from "../../utils/export";
+import { slipGajiDoc } from "../../utils/pdfDocs";
 import { findUsages } from "../../utils/usages";
 import { kasKodeOf, postCashJournal } from "../../services/autoJournal";
 import { n_dry } from "../../i18n/n_dry";
@@ -868,6 +869,65 @@ export default function Payroll() {
     } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); }
   };
 
+  /* Slip gaji resmi sebagai PDF (mesin teks). Berkas ini diberikan ke
+     karyawan, jadi harus berupa teks yang bisa disalin ke sistem lain -
+     jalur lama menghasilkan xlsx yang isinya tabel tanpa kop. */
+  const exportSlipPdf = (p: StoreItem) => {
+    const b = bpjsKarOf(p);
+    const emp = empOf(String(p.employeeId));
+    const isHarian = String(emp?.tipe ?? "") === "Harian";
+    const sign = (p.slipSign ?? {}) as { received?: boolean; date?: string };
+    const rp = (n: unknown): string => fmtRupiah(Number(n || 0));
+    try {
+      slipGajiDoc({
+        id: String(p.id),
+        karyawan: empNameOf(String(p.employeeId)),
+        periode: fmtBulan(String(p.period)),
+        tipe: rowType(p),
+        rows: [
+          { komponen: isHarian ? (locale === "en" ? "Daily wage" : "Upah harian") : (locale === "en" ? "Basic salary" : "Gaji pokok"), nilai: rp(p.basic) },
+          ...normAllowances(p.allowances).map((l) => ({
+            komponen: `${locale === "en" ? "Allowance" : "Tunjangan"} - ${l.label}`,
+            nilai: rp(l.amount),
+          })),
+          { komponen: locale === "en" ? "Overtime pay" : "Upah lembur", nilai: rp(p.overtimePay) },
+          { komponen: locale === "en" ? "Advances" : "Cicilan kasbon", nilai: rp(p.kasbonPot) },
+          { komponen: locale === "en" ? "Manual deductions" : "Potongan manual", nilai: rp(Number(p.deductions || 0) - Number(p.kasbonPot || 0)) },
+          {
+            komponen: isHarian
+              ? (locale === "en" ? "Daily tax (5% above 450k per day present)" : "PPh harian (5% - kelebihan 450rb - hari hadir)")
+              : (locale === "en" ? "Income tax (annualised)" : "PPh 21 (progresif disetahunkan)"),
+            nilai: rp(p.pph21),
+          },
+          { komponen: `${locale === "en" ? "BPJS health" : "BPJS Kesehatan"} karyawan (${rates.bpjsKes}%)`, nilai: fmtRupiah(b.kes) },
+          { komponen: `${locale === "en" ? "BPJS employment JHT" : "BPJS Ketenagakerjaan"} JHT karyawan (${rates.bpjsTk}%)`, nilai: fmtRupiah(b.tk) },
+          { komponen: `${locale === "en" ? "BPJS health (company)" : "BPJS Kesehatan perusahaan"} (${rates.bpjsKesPer}%) - ${locale === "en" ? "info, does not deduct salary" : "info, tidak memotong gaji"}`, nilai: rp(p.bpjsKesPer) },
+        ],
+        netLabel: rowType(p) === "Gaji"
+          ? (locale === "en" ? "Net salary" : "Gaji bersih")
+          : (locale === "en" ? "Amount received" : "Nominal diterima"),
+        net: rp(p.net),
+        status: String(p.status),
+        tandaTerima: sign.received
+          ? `${locale === "en" ? "Received" : "Sudah diterima"} ${fmtTanggal(sign.date ?? "")}`
+          : (locale === "en" ? "Not received" : "Belum diterima"),
+        labels: {
+          komponen: locale === "en" ? "Component" : "Komponen",
+          nilai: locale === "en" ? "Amount" : "Nilai",
+          karyawan: locale === "en" ? "Employee" : "Karyawan",
+          periode: locale === "en" ? "Period" : "Periode",
+          tipe: locale === "en" ? "Type" : "Tipe",
+          id: "ID",
+          status: locale === "en" ? "Status" : "Status",
+          tandaTerima: locale === "en" ? "Receipt" : "Tanda terima",
+        },
+      }).save(`slip-${p.id}`);
+      toast(S.tSlipPdfDone.replace("{a}", String(p.id)));
+    } catch (e) {
+      toast(e instanceof Error ? e.message : S.saveFail, "info");
+    }
+  };
+
   const exportSlip = (p: StoreItem) => {
     const b = bpjsKarOf(p);
     const emp = empOf(String(p.employeeId));
@@ -1365,7 +1425,10 @@ export default function Payroll() {
         footer={
           <>
             <button className="btn-secondary" onClick={() => setSlipTarget(null)}>{S.closeBtn}</button>
-            <button className="btn-primary" onClick={() => slipTarget && exportSlip(slipTarget)}>
+            <button className="btn-secondary" onClick={() => slipTarget && exportSlip(slipTarget)}>
+              {locale === "en" ? "Excel" : "Excel"}
+            </button>
+            <button className="btn-primary" onClick={() => slipTarget && exportSlipPdf(slipTarget)}>
               <Download className="h-4 w-4" /> {S.btnDownloadSlip}
             </button>
           </>

@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { Wallet, ArrowDownToLine, FileText, Receipt, TrendingUp, Plus, Trash2, Search } from "lucide-react";
 import { openFileUrl } from "../../services/files";
+import { sptDoc, type SptDocLabels } from "../../utils/pdfDocs";
+import { pdfNum } from "../../utils/pdfLayout";
 import { ID_MON as MONTH_ID } from "../../utils/monthAxis";
 import {
   AreaChart,
@@ -359,7 +361,15 @@ function arOutAsOf(list: StoreItem[], end: string): { c: string; total: number; 
 
 export default function Finance() {
   const busy = useBusy();
-  const { data, add, update, remove, log, branch, inBranch } = useStore();
+  /* Judul kolom SPT. Dipisah dari kamus S.* karena blok ini juga dipakai
+   pdfLayout/pdfDocs yang butuh label netral apa pun locale-nya. */
+const SPT_LABELS: SptDocLabels = {
+  jenis: "Jenis", dasar: "Dasar Pengenaan", tarif: "Tarif", nilai: "Nilai (Rp)",
+  ppnTerutang: "PPN Terutang", npwp: "NPWP Perusahaan", npwpPenyetor: "NPWP Penyetor",
+  tanggalSetor: "Tanggal Setor", formulir: "Nomor Formulir", bank: "Bank", teller: "Teller",
+  period: "Masa Pajak",
+};
+const { data, add, update, remove, log, branch, inBranch } = useStore();
 
   /* Buka bukti pembayaran di tab baru. window.open(url) biasa ada di sini
      sebelumnya, tapi tab baru tidak membawa header Authorization sehingga
@@ -2090,6 +2100,34 @@ export default function Finance() {
     }
   };
 
+  const exportSptPdf = () => {
+    if (!activeTax) return;
+    const shown = taxShown;
+    try {
+      sptDoc({
+        period: String(activeTax.period),
+        status: String(activeTax.status),
+        rows: [
+          { jenis: locale === "en" ? "Output VAT" : "PPN Keluaran", dasar: pdfNum(taxCalc.invBase), tarif: `${taxCalc.ppnRate}%`, nilai: shown.ppnKeluar },
+          { jenis: locale === "en" ? "Input VAT" : "PPN Masukan", dasar: pdfNum(taxCalc.apBase), tarif: `${taxCalc.ppnRate}%`, nilai: shown.ppnMasuk },
+          { jenis: "PPh 23", dasar: pdfNum(taxCalc.apBase), tarif: `${taxCalc.pphRate}%`, nilai: shown.pph23 },
+          { jenis: "PPh 21", dasar: locale === "en" ? "Total payroll" : "Total payroll", tarif: "-", nilai: shown.pph21 },
+        ],
+        ppnTerutang: shown.ppnKeluar - shown.ppnMasuk,
+        npwp: String(activeTax.npwp ?? ""),
+        npwpPenyetor: String(activeTax.npwpPenyetor ?? ""),
+        tanggalSetor: String(activeTax.tanggalSetor ?? ""),
+        formulir: String(activeTax.nomorFormulir ?? ""),
+        bank: String(activeTax.bank ?? ""),
+        teller: String(activeTax.teller ?? ""),
+        labels: SPT_LABELS,
+      }).save(`SPT-${activeTax.period}`);
+      toast(S.sptPdfExported);
+    } catch (e) {
+      toast(e instanceof Error ? e.message : S.saveFail, "info");
+    }
+  };
+
   const exportSpt = () => {
     if (!activeTax) return;
     /* SPT dari snapshot kunci: nilai tampil (taxShown) dan ekspor SAMA.
@@ -3397,7 +3435,8 @@ export default function Finance() {
                 )}
                 <div className="ml-auto flex gap-2">
                   <AsyncButton className="btn-secondary text-xs" onAction={exportEfaktur}>{S.exportEfaktur}</AsyncButton>
-                  <AsyncButton className="btn-secondary text-xs" onAction={exportSpt}>{S.exportSpt}</AsyncButton>
+                  <AsyncButton className="btn-primary text-xs" onAction={exportSptPdf}>{S.exportSptPdf}</AsyncButton>
+                <AsyncButton className="btn-secondary text-xs" onAction={exportSpt}>{S.exportSpt}</AsyncButton>
                   <AsyncButton className="btn-primary text-xs" disabled={taxLocked} onAction={async () => {
                     if (!activeTax) { toast(S.pickPeriodFirst, "info"); return; }
                     setConfirmLapor(true);

@@ -66,6 +66,7 @@ import { uploadFile } from "../../services/upload";
 import { fmtJumlah, fmtRupiah, fmtMiliar, fmtPersen, fmtTanggal, todayISO } from "../../utils/format";
 import { exportExcel } from "../../utils/export";
 import { sbTonasePlat, sbSjNumber, sbTtNumber, maxSeq, parseSjSeq, SB_KOP } from "../../utils/sb";
+import { deliveryOrderDoc, goodsNoteDoc, type GoodsNoteDocLabels } from "../../utils/pdfDocs";
 import { FilterPopover } from "../../components/FilterPopover";
 import { useT } from "../../i18n/LanguageContext";
 import { n_inv } from "../../i18n/n_inv";
@@ -96,6 +97,12 @@ function matLabel(t: string): string {
   return t === "retur" ? "Retur (bisa kembali)" : t === "service" ? "Service (jasa)" : "Habis pakai";
 }
 
+/* Label tabel untuk surat jalan / tanda terima. Kedua dokumen ini memakai
+   satu fungsi pdf (goodsNoteDoc) karena bentuknya sama, jadi judul kolomnya
+   juga harus sama - sebelumnya ditulis dua kali dan bisa berbeda. */
+const GOODS_NOTE_LABELS = (loc: "id" | "en"): GoodsNoteDocLabels => (loc === "en"
+  ? { no: "No", namaBarang: "Item", jumlah: "Qty", tanggal: "Date", tujuan: "Destination", penerima: "Received by", penyerah: "Delivered by" }
+  : { no: "No", namaBarang: "Nama Barang", jumlah: "Jumlah", tanggal: "Tanggal", tujuan: "Tujuan", penerima: "Yang Menerima", penyerah: "Yang Menyerahkan" });
 const INV_ID_MON = MONTH_ID;
 const INV_EN_MON = MONTH_EN;
 
@@ -508,6 +515,35 @@ export default function Inventory() {
     const trail = maxSeq(doDocs.map((d) => String(d.id ?? "")), /(\d+)$/);
     return Math.max(lead, trail) + 1;
   };
+  /* PDF resmi (mesin teks). Excel tetap tersedia sebagai pilihan kedua. */
+  const printDoPdf = (d: StoreItem) => {
+    const items = (Array.isArray(d.doItems) ? d.doItems : []) as { name: string; qty: string }[];
+    try {
+      deliveryOrderDoc({
+        no: String(d.sbRef ?? d.id),
+        tanggal: String(d.doDate ?? d.updated ?? ""),
+        tujuan: String(d.doTo ?? d.vessel ?? "-"),
+        driver: String(d.doDriver ?? "-"),
+        suratJalan: String(d.doSjRef ?? d.doSjId ?? "-"),
+        items,
+        labels: {
+          tanggal: locale === "en" ? "Date" : "Tanggal",
+          tujuan: locale === "en" ? "Destination" : "Tujuan",
+          driver: locale === "en" ? "Driver" : "Driver",
+          suratJalan: locale === "en" ? "Delivery note" : "Surat Jalan",
+          no: "No",
+          namaBarang: locale === "en" ? "Item" : "Nama Barang",
+          jumlah: locale === "en" ? "Qty" : "Jumlah",
+        },
+      }).save(`DO-${String(d.sbRef ?? d.id).replaceAll("/", "-")}`);
+      toast(locale === "en"
+        ? `DO ${String(d.sbRef ?? d.id)} printed as PDF`
+        : `DO ${String(d.sbRef ?? d.id)} dicetak sebagai PDF`);
+    } catch (e) {
+      toast(e instanceof Error ? e.message : S.saveFail, "info");
+    }
+  };
+
   const printDo = (d: StoreItem) => {
     const items = (Array.isArray(d.doItems) ? d.doItems : []) as { name: string; qty: string }[];
     void exportExcel([
@@ -2497,6 +2533,23 @@ if (k === "mattype") return matTypeOf(i);
                         version: "v1.0", status: "Berlaku", updated: todayISO(), archived: false, docCopy: "Terkendali",
                         related: [], revisions: [{ version: "v1.0", at: todayISO(), by: sjGiver.trim() || "Anda", note: "Surat jalan diterbitkan" }],
                       }, { action: "menerbitkan surat jalan", target: no, module: "Inventori" });
+                      /* PDF resmi dibuat lebih dulu supaya berkas yang diarsipkan
+                         selalu ada; Excel tetap ditambahkan sebagai pilihan kedua. */
+                      goodsNoteDoc({
+                        title: "Surat Jalan",
+                        no,
+                        tanggal: sjDate,
+                        tujuan: sjTo.trim(),
+                        extra: [
+                          { label: locale === "en" ? "Vehicle" : "Kendaraan", value: sjVehicle.trim() },
+                          { label: locale === "en" ? "Plate no." : "No. Polisi", value: sjPlate.trim() },
+                          { label: locale === "en" ? "Driver" : "Driver", value: sjDriver.trim() },
+                        ],
+                        items: items.map((x) => ({ name: x.name.trim(), qty: x.qty.trim() })),
+                        receiver: sjReceiver.trim(),
+                        giver: sjGiver.trim(),
+                        labels: GOODS_NOTE_LABELS(locale),
+                      }).save(`SJ-${no.replaceAll("/", "-")}`);
                       void exportExcel([
                         [SB_KOP.line1, SB_KOP.name], [SB_KOP.hq, `HP ${SB_KOP.hp}`], [],
                         ["SURAT JALAN", `NO REF: ${no}`], ["Tanggal", sjDate], ["Tujuan", sjTo.trim()],
@@ -2556,6 +2609,17 @@ if (k === "mattype") return matTypeOf(i);
                         related: ttSjId ? [ttSjId] : [],
                         revisions: [{ version: "v1.0", at: todayISO(), by: ttGiver.trim() || "Anda", note: "Tanda terima diterbitkan" }],
                       }, { action: "menerbitkan tanda terima", target: no, module: "Inventori" });
+                      goodsNoteDoc({
+                        title: "Tanda Terima",
+                        no,
+                        tanggal: ttDate,
+                        tujuan: "",
+                        extra: [{ label: locale === "en" ? "Delivery note" : "Surat Jalan", value: sj ? String(sj.sbRef || sj.id) : "-" }],
+                        items: items.map((x) => ({ name: x.name.trim(), qty: x.qty.trim() })),
+                        receiver: ttReceiver.trim(),
+                        giver: ttGiver.trim(),
+                        labels: GOODS_NOTE_LABELS(locale),
+                      }).save(`TT-${no.replaceAll("/", "-")}`);
                       void exportExcel([
                         [SB_KOP.line1, SB_KOP.name], [SB_KOP.hq, `HP ${SB_KOP.hp}`], [],
                         ["TANDA TERIMA", `NO REF: ${no}`], ["Tanggal", ttDate],
@@ -2638,7 +2702,8 @@ if (k === "mattype") return matTypeOf(i);
                           {locale === "en" ? "Open Surat Jalan" : "Buka Surat Jalan"}
                         </Link>
                       ) : null}
-                      <button className="btn-secondary text-xs" onClick={() => printDo(d)}><Printer className="h-3.5 w-3.5" /> {S.printBtn}</button>
+                      <button className="btn-secondary text-xs" onClick={() => printDoPdf(d)}><Printer className="h-3.5 w-3.5" /> {S.printPdfBtn}</button>
+              <button className="btn-secondary text-xs" onClick={() => printDo(d)}>{S.printXlsxBtn}</button>
                       <button className="btn-secondary text-xs" onClick={() => openDoEdit(d)}>{locale === "en" ? "Edit" : "Ubah"}</button>
                       <button className="btn-secondary text-xs text-rose-600" onClick={() => setDelDo(d)}>{locale === "en" ? "Cancel DO" : "Batalkan"}</button>
                     </div>

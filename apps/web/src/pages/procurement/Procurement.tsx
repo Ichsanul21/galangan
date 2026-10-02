@@ -19,6 +19,7 @@ import { bucketByMonth, fmtMonthRange, monthAxis, rebindLegacyMonthSeries } from
 import { sbPoNumber, sbSplitIncludePpn, maxSeq, SB_KOP } from "../../utils/sb";
 import { spendByCategory, procurementTrend, poCountTrend, poValueTrend, prPendingTrend, vendorTrend } from "../../data";
 import { exportExcel } from "../../utils/export";
+import { poDoc } from "../../utils/pdfDocs";
 import { useDraftState } from "../../utils/draft";
 import { useT } from "../../i18n/LanguageContext";
 import { n_proc } from "../../i18n/n_proc";
@@ -882,6 +883,51 @@ export default function Procurement() {
   };
 
   /* ============ CETAK (kop SB + pecah DPP/PPN bila include) ============ */
+  /* PDF resmi (mesin teks, bukan hasil raster). Excel tetap tersedia
+     sebagai tombol kedua karena tim purchasing sering butuh lembarnya
+     untuk diolah lagi. */
+  const cetakPoPdf = (po: StoreItem) => {
+    const lines = poLines(po);
+    const ppnRate = getSetting(data, "PPN_RATE", 12);
+    const split = po.includePpn === false ? null : sbSplitIncludePpn(Number(po.amount || 0), ppnRate);
+    try {
+      poDoc({
+        no: po.docNo ? `${po.id} / ${po.docNo}` : String(po.id),
+        tipe: po.poType === "Kecil" ? S.tabSmall : S.tabBig,
+        vendor: String(po.vendor ?? "-"),
+        refPr: String(po.req ?? "-"),
+        project: String(po.project ?? "-"),
+        vessel: String(po.vessel ?? "-"),
+        tanggal: String(po.date ?? ""),
+        eta: String(po.eta ?? ""),
+        status: normPo(String(po.status ?? "")),
+        approvalLevel: levelOf(Number(po.amount || 0), APPROVE_PO_LIMIT),
+        approvals: apprOf(po).length > 0
+          ? apprOf(po).map((a) => S.apprJoin.replace("{n}", a.level).replace("{a}", a.by).replace("{b}", a.date)).join("; ")
+          : "-",
+        noFaktur: String(po.noFaktur ?? "-"),
+        tglFaktur: String(po.tglFaktur ?? ""),
+        denda: Number(po.dendaRp || 0),
+        lines: lines.map((l) => ({ name: l.name, qty: l.qty, unit: l.unit, price: l.price })),
+        total: Number(po.amount || lineTotal(lines)),
+        split: split ? { dpp: split.dpp, ppn: split.ppn } : null,
+        labels: {
+          tipe: S.xTipe, vendor: S.vendor, refPr: S.xRefPr, project: S.proyek,
+          vessel: S.xUtk, tanggal: S.xTgl, eta: S.eta, status: S.status,
+          approvalLevel: S.xLevelAppr, approvals: S.xAppr, noFaktur: S.noFaktur,
+          tglFaktur: S.tglFaktur, denda: S.xDenda, baris: S.xBaris, qty: S.qty,
+          satuan: S.satuan, harga: S.harga, subtotal: S.xSubtotal, total: S.xTotal,
+          dpp: S.xDpp.replace("{n}", String(ppnRate)), ppn: S.xPpn.replace("{n}", String(ppnRate)),
+          mengetahui: locale === "en" ? "Approved by" : "Mengetahui",
+          tandaTangan: locale === "en" ? "Signature" : "Tanda Tangan",
+        },
+      }).save(`PO-${po.id}`);
+      toast(S.tPoExportPdf.replace("{n}", String(po.id)));
+    } catch (e) {
+      toast(e instanceof Error ? e.message : S.saveFail, "info");
+    }
+  };
+
   const cetakPo = (po: StoreItem) => {
     const lines = poLines(po);
     const split = po.includePpn === false ? null : sbSplitIncludePpn(Number(po.amount || 0), getSetting(data, "PPN_RATE", 12));
@@ -1226,7 +1272,8 @@ export default function Procurement() {
                 {S.btnRetur}
               </button>
             )}
-            <button className="rounded-lg px-2 py-1.5 text-left text-xs text-steel-600 hover:bg-steel-50" aria-label={S.ariaCetak.replace("{n}", po.id)} onClick={() => cetakPo(po)}>{S.btnCetak}</button>
+            <button className="rounded-lg px-2 py-1.5 text-left text-xs text-steel-600 hover:bg-steel-50" aria-label={S.ariaCetak.replace("{n}", po.id)} onClick={() => cetakPoPdf(po)}>{S.btnCetakPdf}</button>
+            <button className="rounded-lg px-2 py-1.5 text-left text-xs text-steel-600 hover:bg-steel-50" aria-label={S.ariaCetak.replace("{n}", po.id)} onClick={() => cetakPo(po)}>{S.btnCetakXlsx}</button>
           </div>
         </details>
         {poNext(po.status).length === 0 && st !== "Diterima" && st !== "Ditolak" && <span className="text-xs text-steel-400">-</span>}

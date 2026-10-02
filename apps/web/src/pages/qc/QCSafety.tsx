@@ -17,6 +17,7 @@ import { getSetting } from "../../utils/settings";
 import { useDeepLinkParams, useDeepLinkTarget } from "../../components/useDeepLink";
 import { AlertBannerView, notifRowId, useModuleAlert, useNotifFlash } from "../../components/AlertBanner";
 import { exportExcel } from "../../utils/export";
+import { transmittalDoc } from "../../utils/pdfDocs";
 import { DocumentPreviewCell, DocumentPreviewPanel, InlineDocPreview } from "../../components/DocumentPreview";
 import { findUsages } from "../../utils/usages";
 import { useAuth, canSetTarget } from "../../auth/auth";
@@ -889,7 +890,25 @@ export default function QCSafety() {
     if (transmitForm.ids.length === 0) { toast(S.tTransmitPilih, "info"); return; }
     try {
       const rows = transmitForm.ids.map((id) => drawings.find((d) => d.id === id)).filter((d): d is StoreItem => !!d);
-    void exportExcel(
+      /* PDF resmi dibuat lebih dulu: dokumen ini yang dikirim ke BKI, dan
+         harus berupa teks yang bisa dibaca pihak luar tanpa aplikasi kita. */
+      transmittalDoc({
+        to: transmitForm.to.trim(),
+        date: transmitForm.date,
+        head: locale === "en"
+          ? ["ID", "Project", "Title", "Rev", "Status", "Holder", "Updated"]
+          : ["ID", "Proyek", "Judul", "Revisi", "Status", "Holder", "Diperbarui"],
+        drawings: rows.map((d) => ({
+          id: String(d.id),
+          project: String(d.project ?? "-"),
+          judul: String(d.title ?? "-"),
+          revisi: String(d.revision ?? "-"),
+          status: String(d.status ?? "-"),
+          holder: String(d.holder ?? "-"),
+          diperbarui: fmtTanggal(String(d.updated ?? "")),
+        })),
+      }).save(`Transmittal-${transmitForm.date}`);
+      void exportExcel(
       [["ID", "Proyek", "Judul", "Revisi", "Status", "Holder", "Diperbarui"],
         ...rows.map((d) => [d.id, d.project, d.title, d.revision, d.status, d.holder, fmtTanggal(String(d.updated))])],
       `Transmittal-${transmitForm.date}`,
