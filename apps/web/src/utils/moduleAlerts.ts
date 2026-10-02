@@ -4,6 +4,7 @@
 // Builder per modul agar hook halaman hanya hitung 1 modul (murah) -
 // buildModuleAlertItems (semua) dipertahankan untuk kompatibilitas.
 import type { StoreShape, StoreItem } from "../data/store";
+import { effectiveMinStock, ruleOf, warnLevelOf } from "./inventoryWarn";
 import { computeAlerts } from "./alerts";
 import { getSetting } from "./settings";
 
@@ -97,12 +98,28 @@ function buildDrydock(ctx: Ctx): ModuleAlertItem[] {
 
 function buildInventori(ctx: Ctx): ModuleAlertItem[] {
   const out: ModuleAlertItem[] = [];
+  /* Klasifikasi memakai warnLevelOf dari utils/inventoryWarn, bukan
+     `stock > minStock` telanjang seperti sebelumnya.
+
+     Aturan telanjang itu bertentangan dengan sengaja Designed di
+     inventoryWarn: kategori Service/Jasa tidak punya stok fisik sehingga
+     ignoresMin=true (stok 0 = belum ada paket jasa terjual, bukan barang
+     hilang), dan minStok per-gudang (minStockByWarehouse) menggeser
+     ambang per lokasi. Dengan aturan lama semua item jasa alarm terus
+     di sidebar, di kartu Dashboard, dan di /notifikasi - persis alert
+     palsu yang inventoryWarn dibuat untuk menghilangkannya.
+
+     Akibatnya katalog (pakai katalogBadge -> warnLevelOf) dan badge
+     sidebar (pakai buildInventori ini) bisa menampilkan level yang
+     berbeda untuk item yang sama. Sekarang keduanya satu sumber. */
   for (const i of ctx.list("inventory")) {
-    if (Number(i.stock) > Number(i.minStock)) continue;
+    const level = warnLevelOf(i).level;
+    if (level !== "critical" && level !== "low") continue;
     out.push({
       id: `mod-inv-${i.id}`, rowId: String(i.id),
-      label: `${i.name ?? i.id} menipis (${num(i.stock)} ${i.unit ?? ""} ≤ min ${num(i.minStock)})`,
-      detail: `Gudang: ${i.warehouse ?? "-"}`,
+      label: `${i.name ?? i.id} ${level === "critical" ? "kritis" : "menipis"} `
+        + `(${num(i.stock)} ${i.unit ?? ""} vs min ${num(effectiveMinStock(i))})`,
+      detail: `Gudang: ${i.warehouse ?? "-"} · ${ruleOf(i.category).key || "Umum"}`,
     });
   }
   return out;

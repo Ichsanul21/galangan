@@ -127,6 +127,14 @@ export interface MaintCostRow {
   status: string;
   date: string;
   material: number;
+  /** Biaya tenaga servis (tarif per hari x hari kerja).
+   *  SEBELUMNYA diabaikan di sini padahal sudah dihitung dan disimpan di
+   *  maintenance.laborCost - kartu Biaya di Equipment menampilkannya, tapi
+   *  HPP proyek hanya menjumlahkan material. Akibatnya HPP proyek
+   *  under-reported: biaya tenaga servis hilang dari laba proyek. */
+  labor: number;
+  /** Material + tenaga = yang benar-benar membebankan HPP. */
+  cost: number;
   downtimeHours: number;
   /** true = sudah membebankan HPP. */
   realized: boolean;
@@ -141,13 +149,17 @@ export function maintenanceCostRows(
     if (String(m.projectId ?? "") !== projectId) continue;
     const st = statusOf(m);
     if (st === "Dibatalkan") continue;
+    const material = materialsCost(materialsOf(m));
+    const labor = num(m.laborCost);
     out.push({
       id: String(m.id),
       maintenance: m,
       equipmentName: String(m.equipmentName ?? m.equipmentId ?? "-"),
       status: st,
       date: String(m.tanggal ?? ""),
-      material: materialsCost(materialsOf(m)),
+      material,
+      labor,
+      cost: material + labor,
       downtimeHours: num(m.downtimeHours),
       realized: st === "Selesai",
     });
@@ -173,9 +185,9 @@ export interface EquipmentCostSummary {
   rental: number;
   /** Σ bahan bakar. */
   fuel: number;
-  /** Σ material maintenance yang sudah selesai. */
+  /** Σ (material + tenaga) maintenance yang sudah selesai. */
   maintenanceRealized: number;
-  /** Σ material maintenance yang masih berjalan (komitmen). */
+  /** Σ (material + tenaga) maintenance yang masih berjalan (komitmen). */
   maintenanceCommitted: number;
   /** Σ biaya equipment yang membebankan HPP = rental+fuel+maintenanceRealized. */
   totalRealized: number;
@@ -195,8 +207,8 @@ export function equipmentCostSummary(
   const maintenanceRows = maintenanceCostRows(projectId, maintenances);
   const rental = bookingRows.reduce((s, r) => s + r.rental, 0);
   const fuel = bookingRows.reduce((s, r) => s + r.fuel, 0);
-  const maintenanceRealized = maintenanceRows.filter((r) => r.realized).reduce((s, r) => s + r.material, 0);
-  const maintenanceCommitted = maintenanceRows.filter((r) => !r.realized).reduce((s, r) => s + r.material, 0);
+  const maintenanceRealized = maintenanceRows.filter((r) => r.realized).reduce((s, r) => s + r.cost, 0);
+  const maintenanceCommitted = maintenanceRows.filter((r) => !r.realized).reduce((s, r) => s + r.cost, 0);
   const totalRealized = rental + fuel + maintenanceRealized;
   return {
     rental,

@@ -1275,7 +1275,14 @@ export default function ProjectDetail() {
                               {r.realized ? (locale === "en" ? "Charged" : "Terbebankan") : (locale === "en" ? "In progress" : "Berjalan")}
                             </Badge>
                             <span className="text-xs text-steel-500">{fmtTanggal(r.date)}</span>
-                            <span className="font-semibold">{fmtRupiah(r.material)}</span>
+                            {r.labor > 0 && (
+                              <span className="text-[11px] text-steel-400">
+                                {locale === "en"
+                                  ? `${fmtRupiah(r.material)} + ${fmtRupiah(r.labor)} labour`
+                                  : `${fmtRupiah(r.material)} + ${fmtRupiah(r.labor)} tenaga`}
+                              </span>
+                            )}
+                            <span className="font-semibold">{fmtRupiah(r.cost)}</span>
                           </span>
                         </div>
                       ))}

@@ -842,7 +842,22 @@ export default function EquipmentPage() {
       toast(
         locale === "en"
           ? `Hour meter cannot go backwards (${fmtJumlah(hours)} -> ${fmtJumlah(hoursAfter)})`
-          : `Hour meter tidak boleh mundur (${fmtJumlah(hours)} → ${fmtJumlah(hoursAfter)})`,
+          : `Hour meter tidak boleh mundur (${fmtJumlah(hours)} -> ${fmtJumlah(hoursAfter)})`,
+        "info",
+      );
+      return;
+    }
+
+    /* Downtime ikut menentukan HPP (maintenanceDowntimeHours dipakai untuk
+       mundur ke hitungan hari kerja saat field ini kosong), jadi harus
+       berupa angka >= 0. Nilai NaN/negatif yang lolos akan tersimpan
+       sebagai null di JSON dan menjatuhkan perhitungan biaya diam-diam. */
+    const downtimeHours = Number(form.downtimeHours || 0);
+    if (!Number.isFinite(downtimeHours) || downtimeHours < 0) {
+      toast(
+        locale === "en"
+          ? "Downtime hours must be a number of 0 or more"
+          : "Downtime harus angka 0 atau lebih",
         "info",
       );
       return;
@@ -899,7 +914,7 @@ export default function EquipmentPage() {
       hoursAfter,
       materials,
       materialCost,
-      downtimeHours: Number(form.downtimeHours || 0),
+      downtimeHours,
       laborCost: breakdown.labor,
       costTotal: breakdown.total,
       laborRatePerDay: laborRate(),

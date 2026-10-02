@@ -51,6 +51,7 @@ import {
 import { useStore } from "../data/store";
 import type { CollectionKey } from "../data/store";
 import { useModuleSync } from "../data/useModuleSync";
+import { warnLevelOf } from "../utils/inventoryWarn";
 import {
   MODULE_ALERT_TO,
   buildModuleAlertItems,
@@ -227,7 +228,15 @@ export default function Dashboard() {
   const arOutstanding = inBranch(data.invoices)
     .filter((i) => i.status !== "Lunas" && i.status !== "Draft")
     .reduce((s, i) => s + Number(i.amount || 0), 0);
-  const lowStock = inBranch(data.inventory).filter((i) => i.stock <= i.minStock);
+  /* Badge "stok menipis" memakai klasifikasi yang sama dengan Katalog dan
+     sidebar (inventoryWarn.warnLevelOf), bukan `stock <= minStock` telanjang.
+     Aturan telanjang ikut menghitung kategori Service/Jasa yang minStok-nya
+     memang tidak berlaku, sehingga badge ini pernah menampilkan angka yang
+     tidak cocok dengan jumlah alert di /notifikasi. */
+  const lowStock = inBranch(data.inventory).filter((i) => {
+    const lv = warnLevelOf(i).level;
+    return lv === "critical" || lv === "low";
+  });
   const stockValue = inBranch(data.inventory).reduce((s, i) => s + Number(i.stock || 0) * Number(i.cost || 0), 0);
   const wonQuotes = inBranch(data.quotations).filter((x) => x.stage === "Menang").reduce((s, x) => s + Number(x.value || 0), 0);
   const utilDrydock = drydocks.length
