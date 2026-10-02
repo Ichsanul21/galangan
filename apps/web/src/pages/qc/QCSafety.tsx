@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { ID_MON as MONTH_ID } from "../../utils/monthAxis";
-import { EN_MON as MONTH_EN } from "../../utils/monthAxis";
+import { bucketByMonth, monthAxis, monthKeyOf, rebindLegacyMonthSeries } from "../../utils/monthAxis";
 import { Link } from "react-router-dom";
 import { Plus, ShieldCheck, AlertTriangle, Siren, Award, Send, Search } from "lucide-react";
 import { ComposedChart, Line, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
@@ -104,20 +103,7 @@ function nextRev(rev: string): string {
   return `${r}-R1`;
 }
 
-const QC_ID_MON = MONTH_ID;
-const QC_EN_MON = MONTH_EN;
 
-/* Label "Mon YYYY" untuk deret statis, bulan berjalan terakhir. */
-function qcTrailingLabels(n: number, locale: string): string[] {
-  const now = new Date();
-  const M = locale === "en" ? QC_EN_MON : QC_ID_MON;
-  const out: string[] = [];
-  for (let i = n - 1; i >= 0; i--) {
-    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
-    out.push(`${M[d.getMonth()]} ${d.getFullYear()}`);
-  }
-  return out;
-}
 
 /* Batch koleksi modul QC & Safety untuk useModuleSync (pengganti resync penuh). */
 const QC_COLS: CollectionKey[] = ["activities", "auditPlans", "bast", "branches", "calibrations", "clients", "drawings", "employees", "equipment", "incidents", "inspections", "journals", "ncr", "projects", "toolbox", "vessels", "walks"];
@@ -269,26 +255,39 @@ export default function QCSafety() {
   // Biaya rework per NCR (draft per detail)
   const [reworkDraft, setReworkDraft] = useState({ hours: "", rate: "", material: "" });
 
-  /* Chart ITP: label bulan+tahun. inspectionTrend berlabel tetap "Sep".."Ags"
-     sementara qcTrailingLabels() menghitung ulang 12 bulan terakhir dari
-     tanggal hari ini lalu menempelkannya POSISIONAL ke data. Akibatnya titik
-     "Ags" tampil sebagai "Sep 2026" dan seluruh grafik bergeser satu bulan
-     tiap pergantian bulan. Sekarang data diputar mengikuti jendela label, sama
-     seperti alignToTrailingMonths() di Equipment. */
+  /* Chart ITP: jumlah inspeksi dan yang lulus per bulan.
+
+     Rotasi yang dipakai sebelumnya (cari posisi NAMA bulan di seed, lalu
+     putar) praktis tidak pernah terjadi karena seed-nya jendela Sep..Ags,
+     sedangkan qcTrailingLabels() tetap menghitung ulang label tiap bulan.
+     Akibatnya label berpindah tapi angka tidak: seluruh kurva bergeser satu
+     bulan setiap pergantian bulan tanpa data yang benar-benar berubah.
+
+     Sekarang dihitung dari `data.inspections` yang punya kolom `date`
+     sungguhan - di-bucket per bulan, jadi label dan angka berasal dari
+     bulan yang sama. Seed inspectionTrend hanya jadi fallback saat belum
+     ada inspeksi bertanggal, supaya grafiknya tidak kosong di install baru. */
+  const itpAxis = useMemo(() => monthAxis({ months: 12, locale: locale as "id" | "en" }), [locale]);
   const itpChart = useMemo(() => {
-    const labels = qcTrailingLabels(inspectionTrend.length, locale);
-    const M = locale === "en" ? QC_EN_MON : QC_ID_MON;
-    const cur = new Date().getMonth();
-    const curName = M[cur];
-    const pos = inspectionTrend.findIndex((d) => d.month === curName);
-    const rot = pos >= 0
-      ? [...inspectionTrend.slice(pos + 1), ...inspectionTrend.slice(0, pos + 1)]
-      : [...inspectionTrend];
-    return rot.map((d, i) => ({
-      ...d,
-      label: labels[labels.length - rot.length + i] ?? d.month,
-    }));
-  }, [locale]);
+    const rows = data.inspections ?? [];
+    const bucket = bucketByMonth(rows, itpAxis, (i) => i.date, () => 1, (vals) => vals.length);
+    const anyReal = Object.values(bucket).some((v) => v > 0);
+    if (!anyReal) {
+      return rebindLegacyMonthSeries(inspectionTrend, { locale: locale as "id" | "en" }).map((r) => ({
+        label: r.bln,
+        inspeksi: Number(r.inspeksi || 0),
+        lulus: Number(r.lulus || 0),
+      }));
+    }
+    return itpAxis.map((pt) => {
+      const month = rows.filter((i) => monthKeyOf(i.date) === pt.key);
+      return {
+        label: pt.label,
+        inspeksi: month.length,
+        lulus: month.filter((i) => String(i.status ?? "") === "Lulus").length,
+      };
+    });
+  }, [data.inspections, itpAxis, locale]);
 
   /* Statistik NCR dari baris NCR nyata: jumlah per jenis pekerjaan + per
      severity.mock ncrStatsReal (Pengelasan/Pengecatan/...) dibuat dari
