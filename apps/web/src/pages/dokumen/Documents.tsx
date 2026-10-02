@@ -16,6 +16,7 @@ import { exportExcel } from "../../utils/export";
 import { findUsages } from "../../utils/usages";
 import { n_dry } from "../../i18n/n_dry";
 import { useT } from "../../i18n/LanguageContext";
+import { monthAxis, monthKeyOf } from "../../utils/monthAxis";
 
 const TYPES = ["Kontrak", "Drawing", "Prosedur", "Sertifikat", "Laporan", "Invoice", "NCR", "Penawaran", "Dock Space", "Surat Jalan", "Tanda Terima"];
 const FILTERS = ["Semua", ...TYPES, "Arsip"];
@@ -24,8 +25,6 @@ const FILTERS = ["Semua", ...TYPES, "Arsip"];
 const DOC_COLS: CollectionKey[] = ["activities", "documents", "vessels", "projects"];
 const EXPIRY_WINDOW = 30;
 
-const DOC_MONTHS = ["Sep", "Okt", "Nov", "Des", "Jan", "Feb", "Mar", "Apr", "Mei", "Jun", "Jul", "Ags"];
-const DOC_MNUM = ["09", "10", "11", "12", "01", "02", "03", "04", "05", "06", "07", "08"];
 
 const FLOW_NEXT: Record<string, string[]> = {
   Draft: ["Diajukan"],
@@ -391,8 +390,31 @@ export default function Documents() {
 
   const setF = (k: string, v: string) => setForm((f) => ({ ...f, [k]: v }));
 
+  /* Tren dokumen SEBULAN-SETAHUN.
+
+   Versi lama memakai dua konstanta yang harus saling menjaga urutan:
+
+     DOC_MONTHS = ["Sep", "Okt", ... "Ags"]
+     DOC_MNUM   = ["09", "10", ... "08"]
+
+   lalu mencocokkan `d.updated.slice(5, 7)` - NOMOR BULAN SAJA, tanpa
+   tahun - ke DOC_MNUM. Dua akibat yang tidak terlihat dari grafiknya:
+
+   1. Jendelanya terkunci Sep..Ags tanpa tahun. Di luar Agustus, sumbu itu
+      bukan 12 bulan terakhir, jadi grafik menampilkan jendela yang sudah
+      lewat dan tidak akan berubah sampai tahun depan.
+   2. Pengelompokannya lintas tahun. Dokumen yang diperbarui 2025-09 dan
+      2026-09 masuk ke batang yang sama, karena "09" sama dengan "09".
+
+   Sekarang memakai monthAxis() (12 bulan berjalan, berurutan, berakhir di
+   bulan berjalan) dan monthKeyOf() yang membaca YYYY-MM lengkap. */
+  const docAxis = useMemo(() => monthAxis({ months: 12, locale: locale as "id" | "en" }), [locale]);
+
   const trendOf = (pred: (d: StoreItem) => boolean) =>
-    DOC_MONTHS.map((name, i) => ({ name, v: active.filter((d) => pred(d) && String(d.updated ?? "").slice(5, 7) === DOC_MNUM[i]).length }));
+    docAxis.map((pt) => ({
+      name: pt.label,
+      v: active.filter((d) => pred(d) && monthKeyOf(d.updated) === pt.key).length,
+    }));
 
   return (
     <div>
