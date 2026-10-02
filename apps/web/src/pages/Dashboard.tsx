@@ -51,6 +51,7 @@ import {
 import { useStore } from "../data/store";
 import type { CollectionKey } from "../data/store";
 import { useModuleSync } from "../data/useModuleSync";
+import { ID_MON } from "../utils/monthAxis";
 import { warnLevelOf } from "../utils/inventoryWarn";
 import {
   MODULE_ALERT_TO,
@@ -134,7 +135,9 @@ import { n_misc } from "../i18n/n_misc";
 
 const RANGES = ["6B", "12B"] as const;
 
-const MON_ID = ["Jan", "Feb", "Mar", "Apr", "Mei", "Jun", "Jul", "Ags", "Sep", "Okt", "Nov", "Des"];
+/* widened ke readonly string[] supaya .indexOf(d.month) menerima string
+   apa pun; ID_MON as const hanya mau menerima union literal. */
+const MON_ID: readonly string[] = ID_MON;
 
 /* Label sumbu "MMM YYYY" + putar series agar bulan berjalan paling kanan. */
 function withMonthLabels<T extends { month: string }>(arr: T[]): (T & { bln: string })[] {

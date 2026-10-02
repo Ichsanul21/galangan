@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { ID_MON } from "../../utils/monthAxis";
 import { CalendarCheck, Download } from "lucide-react";
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 import {
@@ -330,7 +331,7 @@ export default function Absensi() {
       if (a.status === "Hadir") b.hadir += 1;
     }
     const M = locale === "en" ? ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"]
-                              : ["Jan","Feb","Mar","Apr","Mei","Jun","Jul","Agt","Sep","Okt","Nov","Des"];
+                              : ID_MON;
     return [...buckets.entries()].map(([key, v]) => {
       const d = new Date(`${key}-01T00:00:00`);
       return {
@@ -802,3 +803,4 @@ export default function Absensi() {
     </div>
   );
 }
+

@@ -10,17 +10,25 @@
 //      series di-putar supaya label bulan-berjalan menempel ke nilai yang
   //      sebenarnya milik bulan lain. Nilai sudah benar tapi labelnya tidak -
 //      sehingga grafik menampilkan pertumbuhan fiktif.
-//   3. Moderna: label harus dihitung dari TANGGAL, bukan dari nama bulan
-//      di dalam data. Kalau nama bulan tidak ada di seri, sumbu lama
-  //   3. Modern: label dihitung dari TANGGAL, bukan dari nama bulan di data.
-  //      Kalau nama bulan tidak ada di seri, sumbu lama diam-diam fallback ke
-  //      array apa adanya - sehingga "bulan berjalan" hilang diam-diam.
+//   3. Modern: label harus dihitung dari TANGGAL, bukan dari nama bulan di data.
+//      Kalau nama bulan tidak ada di seri, sumbu lama diam-diam fallback ke
+//      array apa adanya - sehingga "bulan berjalan" hilang diam-diam.
 // Kontrak: monthAxis() mengembalikan N titik, KRONOLOGIS, dengan titik
 // terakhir = bulan berjalan. Nilai seri di-bucket oleh monthKeyOf(tanggal)
 // sehingga angka dan label selalu berasal dari bulan yang sama.
 
-const ID_MON = ["Jan", "Feb", "Mar", "Apr", "Mei", "Jun", "Jul", "Ags", "Sep", "Okt", "Nov", "Des"] as const;
-const EN_MON = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"] as const;
+/* Daftar bulan ini SATU-SATUNYA sumber kebenaran ejaan nama bulan.
+   Sebelumnya setiap modul punya salinan sendiri, dan August ditulis tiga
+   cara: "Ags" (Dashboard, Analytics, Finance, Documents), "Agu" (format.ts,
+   Inventory, Equipment, QCSafety, Drydock), dan "Agt" (Absensi).
+
+   Akibatnya helper rotasi seperti `arr.findIndex(d => d.month === M[cur])`
+   gagal match saat bulan berjalan adalah August, sehingga seri tidak
+   terotasi tanpa error - dan grafik tetap tampil meyakinkan dengan label
+   yang salah. Semua modul sekarang mengimpor dari sini; jangan deklarasikan
+   ulang daftar bulan di file lain. */
+export const ID_MON = ["Jan", "Feb", "Mar", "Apr", "Mei", "Jun", "Jul", "Ags", "Sep", "Okt", "Nov", "Des"] as const;
+export const EN_MON = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"] as const;
 
 export type Locale = "id" | "en";
 

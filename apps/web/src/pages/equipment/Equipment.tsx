@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { ID_MON as MONTH_ID } from "../../utils/monthAxis";
 import type { ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { Plus, Cpu, Pencil, Trash2, Wrench, AlertTriangle, Gauge, CheckCircle2, Download, Search } from "lucide-react";
@@ -47,7 +48,7 @@ const BOOK_PRIORITIES = ["Normal", "Tinggi", "Kritis"];
 const TARGET_HOURS = 176;
 const EQ_CATS = ["Pengangkat", "Pengelasan", "Tenaga", "Transportasi", "Pengecatan", "Lainnya"];
 
-const ID_MON = ["Jan", "Feb", "Mar", "Apr", "Mei", "Jun", "Jul", "Agu", "Sep", "Okt", "Nov", "Des"];
+const ID_MON = MONTH_ID;
 const EN_MON = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
 /* Tarif harian teknisi untuk hitung biaya tenaga servis.
@@ -2725,3 +2726,4 @@ function minutesToStr(total: number): string {
   const m = total % 60;
   return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
 }
+

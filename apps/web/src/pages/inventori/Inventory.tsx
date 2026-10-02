@@ -1,4 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { ID_MON as MONTH_ID } from "../../utils/monthAxis";
+import { EN_MON as MONTH_EN } from "../../utils/monthAxis";
 import { Link } from "react-router-dom";
 import {
   Plus,
@@ -94,8 +96,8 @@ function matLabel(t: string): string {
   return t === "retur" ? "Retur (bisa kembali)" : t === "service" ? "Service (jasa)" : "Habis pakai";
 }
 
-const INV_ID_MON = ["Jan", "Feb", "Mar", "Apr", "Mei", "Jun", "Jul", "Agu", "Sep", "Okt", "Nov", "Des"];
-const INV_EN_MON = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+const INV_ID_MON = MONTH_ID;
+const INV_EN_MON = MONTH_EN;
 
 /* Label "Mon YYYY" untuk deret statis, bulan berjalan terakhir. */
 function invTrailingLabels(n: number, locale: string): string[] {
@@ -3536,3 +3538,4 @@ if (k === "mattype") return matTypeOf(i);
     </div>
   );
 }
+

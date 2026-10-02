@@ -50,6 +50,7 @@ import { getSetting } from "../utils/settings";
 import { chartAnim, exportExcelSheets, exportPDF } from "../utils/export";
 import { fmtTanggal, fmtMiliar, fmtRupiah, todayISO } from "../utils/format";
 import {
+  ID_MON,
   bucketByMonth,
   fmtMonthRange,
   monthAxis,
@@ -72,7 +73,7 @@ import {
   inspectionTrend,
 } from "../data";
 
-const MON_ID = ["Jan", "Feb", "Mar", "Apr", "Mei", "Jun", "Jul", "Ags", "Sep", "Okt", "Nov", "Des"];
+const MON_ID = ID_MON;
 
 /* withMonthLabels() DIHAPUS.
    Fungsi lama memutar array seed 12-nama-bulan supaya bulan berjalan jadi

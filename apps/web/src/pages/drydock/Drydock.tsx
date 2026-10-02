@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { ID_MON as MONTH_ID } from "../../utils/monthAxis";
 import { Plus, Ship, CalendarRange, AlertTriangle, GripVertical, Trash2, Wrench, User } from "lucide-react";
 import { Card, CardHeader, PageHeader, Badge, KpiCard, ProgressBar, Modal, Field, FormGrid, ConfirmModal, StatusBadge, toast, SortTh, toggleSort, sortRows, usePager,
   NumInput, FlowStrip,
@@ -37,7 +38,7 @@ const SLOT_HEX: Record<string, string> = {
 const PRIORITIES = ["Normal", "Tinggi", "Kritis"];
 const STATUS_FILTERS = ["Semua", "Terjadwal", "Berjalan", "Selesai", "Maintenance"];
 const UNDOCK_ITEMS = ["Lambung bersih", "Katup laut tertutup", "Anoda terpasang", "Propeller terpasang", "Sea trial siap"];
-const MONTH_NAMES = ["Jan", "Feb", "Mar", "Apr", "Mei", "Jun", "Jul", "Agu", "Sep", "Okt", "Nov", "Des"];
+const MONTH_NAMES = MONTH_ID;
 
 function dayToISO(day: number): string {
   const d = new Date();
@@ -1170,3 +1171,4 @@ export default function Drydock() {
     </div>
   );
 }
+

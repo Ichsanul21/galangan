@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Wallet, ArrowDownToLine, FileText, Receipt, TrendingUp, Plus, Trash2, Search } from "lucide-react";
 import { openFileUrl } from "../../services/files";
+import { ID_MON as MONTH_ID } from "../../utils/monthAxis";
 import {
   AreaChart,
   Area,
@@ -1151,7 +1152,7 @@ export default function Finance() {
       const d = new Date(now.getFullYear(), now.getMonth() - k, 1);
       keys.push(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`);
     }
-    const MON = ["Jan", "Feb", "Mar", "Apr", "Mei", "Jun", "Jul", "Ags", "Sep", "Okt", "Nov", "Des"];
+    const MON = MONTH_ID;
     return keys.map((key) => {
       const row = plMonthly.find((p) => p.period === key);
       const revenue = row?.revenue ?? 0;
@@ -1183,7 +1184,7 @@ export default function Finance() {
   const labaSpark =
     plMonthly.length > 0
       ? plMonthly.map((p) => ({ name: p.period.slice(5), v: Math.round((p.laba / 1000000000) * 10) / 10 }))
-      : [{ name: "Agu", v: Math.round((LAPORAN_EXCEL.labaBersih / 1000000000) * 10) / 10 }];
+      : [{ name: "Ags", v: Math.round((LAPORAN_EXCEL.labaBersih / 1000000000) * 10) / 10 }];
   const arSpark = agingReal.map((b) => ({ name: b.name, v: Math.round((b.total / 1000000000) * 10) / 10 }));
   const apSpark = [
     { name: "Awal", v: Math.round((apAwalExcel / 1000000000) * 10) / 10 },

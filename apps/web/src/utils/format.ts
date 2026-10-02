@@ -1,7 +1,9 @@
 // Sistem format tunggal - semua tampilan tanggal/angka/uah lewat sini.
 // Data mentah tetap ISO (YYYY-MM-DD / YYYY-MM / "-"), UI selalu lokal id-ID.
 
-const BULAN = ["Jan", "Feb", "Mar", "Apr", "Mei", "Jun", "Jul", "Agu", "Sep", "Okt", "Nov", "Des"];
+import { ID_MON } from "./monthAxis";
+
+const BULAN = ID_MON;
 
 function parseISO(v: string | null | undefined): { y: string; m: string; d: string } | null {
   if (!v || v === "-") return null;

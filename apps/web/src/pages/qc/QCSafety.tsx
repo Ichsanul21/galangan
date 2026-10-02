@@ -1,4 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
+import { ID_MON as MONTH_ID } from "../../utils/monthAxis";
+import { EN_MON as MONTH_EN } from "../../utils/monthAxis";
 import { Link } from "react-router-dom";
 import { Plus, ShieldCheck, AlertTriangle, Siren, Award, Send, Search } from "lucide-react";
 import { ComposedChart, Line, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
@@ -101,8 +103,8 @@ function nextRev(rev: string): string {
   return `${r}-R1`;
 }
 
-const QC_ID_MON = ["Jan", "Feb", "Mar", "Apr", "Mei", "Jun", "Jul", "Agu", "Sep", "Okt", "Nov", "Des"];
-const QC_EN_MON = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+const QC_ID_MON = MONTH_ID;
+const QC_EN_MON = MONTH_EN;
 
 /* Label "Mon YYYY" untuk deret statis, bulan berjalan terakhir. */
 function qcTrailingLabels(n: number, locale: string): string[] {
@@ -2299,3 +2301,4 @@ export default function QCSafety() {
     </div>
   );
 }
+
