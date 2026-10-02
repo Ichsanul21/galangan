@@ -1,38 +1,41 @@
-{
-  "name": "isms-api",
-  "version": "0.2.0",
-  "private": true,
-  "type": "module",
-  "scripts": {
-    "dev": "tsx watch src/index.ts",
-    "build": "tsc",
-    "start": "node dist/index.js",
-    "migrate": "tsx src/migrate.ts",
-    "seed": "tsx src/seed.ts",
-    "seed:bulk": "tsx src/seedBulk.ts",
-    "seed:mirror": "tsx src/seedMirror.ts",
-    "audit:duplicates": "tsx src/auditDuplicates.ts",
-    "seed:docs": "tsx src/seed.ts && tsx src/seedBulk.ts",
-    "seed:whatif": "tsx src/seedWhatIf.ts",
-    "backup": "tsx src/backup.ts",
-    "restore": "tsx src/restore.ts"
-  },
-  "dependencies": {
-    "@fastify/multipart": "^10.1.2",
-    "@fastify/static": "^10.1.4",
-    "bcryptjs": "^3.0.2",
-    "better-sqlite3": "^12.2.0",
-    "fastify": "^5.0.0",
-    "jsonwebtoken": "^9.0.2",
-    "mysql2": "^3.11.0",
-    "zod": "^3.25.76"
-  },
-  "devDependencies": {
-    "@types/bcryptjs": "^2.4.6",
-    "@types/better-sqlite3": "^7.6.13",
-    "@types/jsonwebtoken": "^9.0.10",
-    "@types/node": "^22.7.0",
-    "tsx": "^4.19.2",
-    "typescript": "^5.6.3"
-  }
+﻿{
+    "name":  "isms-api",
+    "version":  "0.2.0",
+    "private":  true,
+    "type":  "module",
+    "scripts":  {
+                    "dev":  "tsx watch src/index.ts",
+                    "build":  "tsc",
+                    "start":  "node dist/index.js",
+                    "migrate":  "tsx src/migrate.ts",
+                    "seed":  "tsx src/seed.ts",
+                    "seed:bulk":  "tsx src/seedBulk.ts",
+                    "seed:mirror":  "tsx src/seedMirror.ts",
+                    "audit:duplicates":  "tsx src/auditDuplicates.ts",
+                    "seed:docs":  "tsx src/seed.ts \u0026\u0026 tsx src/seedBulk.ts",
+                    "seed:whatif":  "tsx src/seedWhatIf.ts",
+                    "backup":  "tsx src/backup.ts",
+                    "restore":  "tsx src/restore.ts",
+                    "probe:pdf":  "tsx scripts/pdf-probe.ts",
+                    "check":  "tsc --noEmit \u0026\u0026 npm run probe:pdf"
+                },
+    "dependencies":  {
+                         "@fastify/multipart":  "^10.1.2",
+                         "@fastify/static":  "^10.1.4",
+                         "bcryptjs":  "^3.0.2",
+                         "better-sqlite3":  "^12.2.0",
+                         "fastify":  "^5.0.0",
+                         "jsonwebtoken":  "^9.0.2",
+                         "jspdf":  "^4.2.1",
+                         "mysql2":  "^3.11.0",
+                         "zod":  "^3.25.76"
+                     },
+    "devDependencies":  {
+                            "@types/bcryptjs":  "^2.4.6",
+                            "@types/better-sqlite3":  "^7.6.13",
+                            "@types/jsonwebtoken":  "^9.0.10",
+                            "@types/node":  "^22.7.0",
+                            "tsx":  "^4.19.2",
+                            "typescript":  "^5.6.3"
+                        }
 }
