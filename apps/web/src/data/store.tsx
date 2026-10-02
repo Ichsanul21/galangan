@@ -1,4 +1,4 @@
-import { idbAvailable, idbGetAll, idbPut, lsClearAll, lsGet, lsPut, type Row } from "./idb";
+﻿import { idbAvailable, idbGetAll, idbPut, lsClearAll, lsGet, lsPut, type Row } from "./idb";
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { newId as newPrefixedId } from "../services/ids";
 import { ApiError, apiFetch, getJwt, isBackendConfigured } from "../services/http";
@@ -715,6 +715,45 @@ function acceptPull(key: CollectionKey, rows: StoreItem[]): boolean {
   return !NEVER_EMPTY_COLLECTIONS.has(key);
 }
 
+/**
+ * Gabung hasil tarikan dengan state lokal TANPA kehilangan baris lokal yang
+ * dibuat setelah request berangkat.
+ *
+ * Akar masalah "POST sukses lalu beberapa detik kemudian data hilang":
+ * tarikan berangkat pada t0, pengguna menyimpan pada t1, respons tiba pada t2.
+ * Snapshot t0 tidak mengenal perubahan t1, jadi `{...prev, ...pulled}` —
+ * yang dipakai versi lama — MENGHAPUS baris itu. Tidak ada error, tidak ada
+ * toast, tidak ada badge pending: koleksi pun tidak pernah ditandai dirty
+ * karena POST-nya sukses, jadi pencemaran tidak dikenali.
+ *
+ * Aturan gabung:
+ *   - id yang dikenal server  → versi server yang menang (server otoritatif)
+ *   - id hanya ada di lokal   → dipertahankan (ditulis setelah snapshot)
+ *   - urutan baris lokal     → dipertahankan (tidak ada lompatan urutan di UI)
+ *
+ * Panggil hanya untuk koleksi yang epoch-nya berubah saat request berjalan.
+ * Koleksi yang epoch-nya tidak berubah boleh replace: tidak ada yang bisa hilang.
+ */
+export function applyPulled<T extends { id: string }>(local: T[] | undefined, incoming: T[]): T[] {
+  const base = local ?? [];
+  if (base.length === 0) return incoming;
+  const byId = new Map<string, T>();
+  for (const r of base) byId.set(String(r.id), r);
+  for (const r of incoming) byId.set(String(r.id), r);
+  return Array.from(byId.values());
+}
+
+/**
+ * Koleksi mana yang tidak boleh di-replace apa adanya.
+ *
+ * True bila ada mutasi lokal selama request berjalan (epoch berubah) atau
+ * koleksi menjadi dirty di tengah jalan (tulis offline belum terkirim).
+ */
+function pullNeedsMerge(key: CollectionKey, epochAtStart: number, writeEpoch: Map<string, number>, dirty: Set<string>): boolean {
+  if (dirty.has(key as string)) return true;
+  return (writeEpoch.get(key as string) ?? 0) !== epochAtStart;
+}
+
 /* Contract version: cocok dengan services/api GET /api/version.
    Minor-tolerant - sinkronisasi diblokir bila MAJOR berbeda atau web minor
    di bawah minWeb server. */
@@ -793,6 +832,18 @@ export function StoreProvider({ children }: { children: ReactNode }) {
      milik edit yang terjadi SAAH push berjalan. Tanpa ini, edit kedua pada
      koleksi yang sama ikut terhapus => lost update. */
   const dirtyGenRef = useRef<Map<string, number>>(new Map());
+  /* Epoch tulis per koleksi: naik pada SETIAP mutasi lokal yang berhasil -
+     baik yang lolos ke server maupun yang jatuh ke fallback offline.
+     Berbeda dari dirtyGenRef (yang hanya naik saat markDirty), epoch ini
+     mencakup juga tulis yang SUDAH sukses di-POST.
+     Dipakai resync/resyncCollections untuk menentukan apakah sebuah tarikan
+     masih boleh menimpa: kalau epoch berubah selama request berjalan, snapshot
+     yang sedang tiba dibuat SEBELUM perubahan itu, sehingga replace menghapus
+     baris yang baru saja berhasil disimpan. */
+  const writeEpochRef = useRef<Map<string, number>>(new Map());
+  const bumpEpoch = useCallback((col: string) => {
+    writeEpochRef.current.set(col, (writeEpochRef.current.get(col) ?? 0) + 1);
+  }, []);
   const [pendingSync, setPendingSync] = useState<string[]>(() => [...dirtyRef.current]);
   const dataRef = useRef(data);
   dataRef.current = data;
@@ -930,16 +981,23 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     if (!(await isApiCompatible())) return;
     const dirty = dirtyRef.current;
     const pulled: Partial<Record<CollectionKey, StoreItem[]>> = {};
+    /* Lihat resyncCollections: epoch saat berangkat menentukan apakah hasil
+       tarikan boleh menimpa apa adanya. */
+    const epochAtStart: Record<string, number> = {};
     await Promise.all(
       ARRAY_KEYS.map(async (key) => {
         if (key === "wbsByProject" || key === "teamByProject") return;
+        epochAtStart[key as string] = writeEpochRef.current.get(key as string) ?? 0;
         if (dirty.has(key as string)) return;
         try {
           const rows = await remoteRepository(key).list();
           /* Hasil yang mengosongkan koleksi kode ditolak (lihat acceptPull). */
           if (acceptPull(key, rows)) pulled[key] = rows;
         } catch {
-          /* koleksi ini tetap memakai seed lokal */
+          /* Koleksi ini tetap memakai cache lokal. Kegagalan sengaja tidak
+             diynylagakan ke UI di sini: resync penuh dipanggil saat boot, dan
+             badge "offline" yang menyala karena satu koleksi gagal akan
+             menuduh jaringan padahal yang bermasalah hanya satu endpoint. */
         }
       }),
     );
@@ -951,10 +1009,21 @@ export function StoreProvider({ children }: { children: ReactNode }) {
        salinan penuh yang menghabiskan kuota localStorage. */
     setData((prev) => {
       const next = { ...prev, ...pulled };
+      for (const key of ARRAY_KEYS) {
+        if (key === "wbsByProject" || key === "teamByProject") continue;
+        const incoming = pulled[key as CollectionKey];
+        if (incoming === undefined) continue;
+        if (!pullNeedsMerge(key as CollectionKey, epochAtStart[key as string] ?? 0, writeEpochRef.current, dirtyRef.current)) {
+          continue;
+        }
+        (next as unknown as Record<string, unknown>)[key as string] = applyPulled(
+          (prev as unknown as Record<string, unknown>)[key as string] as StoreItem[] | undefined,
+          incoming,
+        );
+      }
       if (serverActivities !== undefined) {
         const local = prev.activities ?? [];
-        const seen = new Set(local.map((r) => r.id));
-        next.activities = [...local, ...serverActivities.filter((r) => !seen.has(r.id))].slice(0, ACTIVITIES_CAP);
+        next.activities = applyPulled(local, serverActivities).slice(0, ACTIVITIES_CAP);
       }
       /* Buang wbs/team yatim: proyek dihapus di server tidak boleh meninggalkan
          cache selamanya (versi lama hanya menambah, tidak pernah menghapus). */
@@ -1024,11 +1093,15 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     if (!(await isApiCompatible())) return [];
     const dirty = dirtyRef.current;
     const pulled: Partial<Record<CollectionKey, StoreItem[]>> = {};
+    /* Epoch tiap koleksi SAAT request berangkat. Hasil tarikan yang tiba
+       setelah epoch naik tidak boleh menimpa apa adanya - lihat applyPulled. */
+    const epochAtStart: Record<string, number> = {};
     /* Koleksi yang gagal dicatat, bukan ditelan diam-diam. Tanpa ini halaman
        menampilkan cache lokal seolah-olah itu data server terkini. */
     const failed: CollectionKey[] = [];
     await Promise.all(
       cols.map(async (key) => {
+        epochAtStart[key as string] = writeEpochRef.current.get(key as string) ?? 0;
         if (dirty.has(key as string)) return;
         try {
           const rows = await remoteRepository(key).list();
@@ -1051,10 +1124,18 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     if (serverActivities !== undefined) delete pulled.activities;
     setData((prev) => {
       const next = { ...prev, ...pulled };
+      /* Koleksi yang berubah saat request berjalan: server tetap jadi acuan
+         untuk id yang dia kenal, tapi baris lokal yang belum ada di snapshot
+         tidak boleh hilang. */
+      for (const key of cols) {
+        const incoming = pulled[key];
+        if (incoming === undefined) continue;
+        if (!pullNeedsMerge(key, epochAtStart[key as string] ?? 0, writeEpochRef.current, dirtyRef.current)) continue;
+        next[key] = applyPulled(prev[key] as StoreItem[] | undefined, incoming);
+      }
       if (serverActivities !== undefined) {
         const local = prev.activities ?? [];
-        const seen = new Set(local.map((r) => r.id));
-        next.activities = [...local, ...serverActivities.filter((r) => !seen.has(r.id))].slice(0, ACTIVITIES_CAP);
+        next.activities = applyPulled(local, serverActivities).slice(0, ACTIVITIES_CAP);
       }
       return next;
     });
@@ -1165,8 +1246,19 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         const start = pushCursorRef.current.get(col) ?? 0;
         const rows = allRows.slice(start, start + PUSH_ROWS_PER_RUN);
         const truncated = start + rows.length < allRows.length;
+        /* Baris yang gagal keras pada run ini. Versi lama memakai `break` pada
+           kegagalan pertama, jadi:
+             1) sisa baris tidak pernah terkirim,
+             2) flag dirty collection TIDAK pernah dibersihkan (karena `ok`
+                false) → semua tarikan berikutnya untuk koleksi itu DILEWATI →
+                perangkat selamanya menampilkan data basi tanpa tandanya,
+             3) culprit-nya satu baris yang selalu ditolak (mis. field wajib
+                hilang) membekukan koleksi seutuhnya.
+           Sekarang: continue + laporkan. Koleksi hanya dibersihkan bila
+           semua baris pada jendela ini benar-benar berhasil. */
+        const failedRows: string[] = [];
         for (const row of rows) {
-          const attemptCreate = async (retried: boolean): Promise<"ok" | "stale" | "fail"> => {
+          const attemptCreate = async (retried: boolean, staleBase?: string): Promise<"ok" | "stale" | "fail"> => {
             try {
               await remoteRepository(col).create(row);
               return "ok";
@@ -1174,7 +1266,12 @@ export function StoreProvider({ children }: { children: ReactNode }) {
               if (err instanceof ApiError && err.status === 409) {
                 try {
                   // Kirim baseUpdatedAt agar STALE terdeteksi, bukan timpa buta.
-                  const base = typeof row.updated_at === "string" ? row.updated_at : undefined;
+                  // staleBase dipakai saat percobaan ulang: `updated_at` yang
+                  // tersimpan di baris lokal bisa jadi basi (baris itu dibuat
+                  // berjam-jam lalu perangkat lama offline). Tanpa base yang
+                  // benar, push offline PASTI ditolak 409 STALE dan edit
+                  // pengguna hilang permanen.
+                  const base = staleBase ?? (typeof row.updated_at === "string" ? row.updated_at : undefined);
                   await remoteRepository(col).patch(
                     row.id,
                     (base ? { ...row, baseUpdatedAt: base } : row) as Record<string, unknown>,
@@ -1182,6 +1279,12 @@ export function StoreProvider({ children }: { children: ReactNode }) {
                   return "ok";
                 } catch (perr) {
                   if (perr instanceof ApiError && perr.status === 409 && perr.code === "STALE") return "stale";
+                  if (perr instanceof ApiError && perr.status === 429 && !retried) {
+                    const waitMs = Math.min(Math.max(perr.retryAfterSec ?? 5, 1), 30) * 1000;
+                    setBackendError(`Terlalu banyak permintaan - jeda ${Math.round(waitMs / 1000)} dtk lalu coba lagi`);
+                    await sleep(waitMs);
+                    return attemptCreate(true, staleBase);
+                  }
                   return "fail";
                 }
               }
@@ -1190,35 +1293,57 @@ export function StoreProvider({ children }: { children: ReactNode }) {
                 const waitMs = Math.min(Math.max(err.retryAfterSec ?? 5, 1), 30) * 1000;
                 setBackendError(`Terlalu banyak permintaan - jeda ${Math.round(waitMs / 1000)} dtk lalu coba lagi`);
                 await sleep(waitMs);
-                return attemptCreate(true);
+                return attemptCreate(true, staleBase);
               }
               return "fail";
             }
           };
-          const res = await attemptCreate(false);
+          let res = await attemptCreate(false);
           if (res === "stale") {
-            // Server menang - tarik versi server gantikan lokal.
+            /* Konflik versi: ambil updated_at server lalu PATCH sekali lagi
+               dengan base yang benar. Baris lokal TIDAK ditimpa - isinya
+               perubahan pengguna dan itu yang harus tersimpan. */
+            let freshBase: string | undefined;
             try {
-              const server = await apiFetch<{ id: string; branch: string; data: Record<string, unknown>; updated_at: string }>(
+              const server = await apiFetch<{ id: string; updated_at: string }>(
                 `/api/${col}/${encodeURIComponent(row.id)}`,
               );
-              setData((prev) => ({
-                ...prev,
-                [col]: (((prev as unknown as Record<string, StoreItem[]>)[col] ?? []) as StoreItem[]).map((r) =>
-                  r.id === row.id ? { ...(server.data ?? {}), id: server.id, branch: server.branch, updated_at: server.updated_at } : r,
-                ),
-              }));
+              freshBase = typeof server.updated_at === "string" ? server.updated_at : undefined;
+              /* Samakan base lokal supaya run berikutnya tidak menabrak STALE lagi. */
+              if (freshBase) {
+                setData((prev) => ({
+                  ...prev,
+                  [col]: (((prev as unknown as Record<string, StoreItem[]>)[col] ?? []) as StoreItem[]).map((r) =>
+                    r.id === row.id ? { ...r, updated_at: freshBase } : r,
+                  ),
+                }));
+                bumpEpoch(col as string);
+              }
             } catch {
-              ok = false;
-              break;
+              /* Tidak bisa ambil versi server - coba tanpa base (blind merge)
+                 lebih baik daripada membuang edit pengguna. */
+              freshBase = undefined;
             }
-            notifyConflict("Data server lebih baru - versi server dipakai. Ulangi perubahan Anda bila perlu.");
+            res = freshBase ? await attemptCreate(false, freshBase) : await attemptCreate(false);
+          }
+          if (res === "stale") {
+            /* Masih konflik setelah memakai base server: row lain perangkat
+               berubah bersamaan. Simpan sebagai pending, jangan dihapus. */
+            notifyConflict(
+              `"${String(row.title ?? row.id)}" sudah diubah pengguna lain saat offline. Perubahan Anda menunggu - buka lagi data tersebut dan ulangi.`,
+            );
+            failedRows.push(String(row.id));
             continue;
           }
           if (res !== "ok") {
-            ok = false;
-            break;
+            failedRows.push(String(row.id));
           }
+        }
+        if (failedRows.length > 0) {
+          ok = false;
+          notifyConflict(
+            `${failedRows.length} data belum tersimpan ke server (kemungkinan validasi). Data Anda tetap ada di perangkat ini dan akan dicoba lagi.`,
+          );
         }
         if (ok) {
           clearTombstones(col, sentTombstones);
@@ -1265,11 +1390,19 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (backendMode !== "remote") return;
-    if (dirtyRef.current.size === 0) return;
-    /* Pemanggilan pushPending tanpa await. Tanpa .catch di sini, penolakan
-       jadi unhandled rejection yang tidak terlihat - koleksi tetap dirty dan
-       akan dicoba lagi, jadi cukup dicatat agar bisa didiagnosis. */
+    /* BUG "HARUS LOGIN ULANG": versi lama memulai efek ini dengan
+       `if (dirtyRef.current.size === 0) return`. Effect hanya jalan SEKALI
+       per mount (deps stabil), jadi pada sesi yang dimulai dengan antrean
+       bersih - kondisi normal setelah sync terakhir - listener `online` dan
+       interval 45 dtk TIDAK PERNAH didaftarkan. Tulisan offline berikutnya
+       hanya jadi baris di IndexedDB + badge amber; tidak ada yang mendorongnya
+       ketika jaringan kembali. Satu-satunya jalan keluar adalah reload/re-login
+       persis seperti yang dilaporkan pengguna.
+       Sekarang: listener selalu terpasang. Pengecekan "ada yang perlu
+       didorong" tetap dilakukan di dalam interval dan sebelum boot push, jadi
+       tidak ada biaya sia-sia. */
     const fireAndForget = () => {
+      if (dirtyRef.current.size === 0) return;
       void pushPending().catch((err: unknown) => {
         console.warn("[store] pushPending gagal, akan dicoba lagi", err);
       });
@@ -1283,10 +1416,18 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       if (document.hidden) return;
       fireAndForget();
     }, 45000);
+    /* Fokus kembali ke tab = sinyal kuat bahwa perangkat ini mungkin baru
+       online lagi. Tanpa ini, tulisan yang gagal karena tablet kehilangan
+       sinyal baru menunggu 45 detik penuh. */
+    const onVisible = () => {
+      if (document.visibilityState === "visible") fireAndForget();
+    };
+    document.addEventListener("visibilitychange", onVisible);
     return () => {
       window.clearTimeout(boot);
       window.clearInterval(timer);
       window.removeEventListener("online", onOnline);
+      document.removeEventListener("visibilitychange", onVisible);
     };
   }, [backendMode, pushPending]);
 
@@ -1382,6 +1523,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
               [col]: [finalItem, ...((prev[col] as StoreItem[] | undefined) ?? [])],
               activities: entry ? pushEntry(prev, entry) : prev.activities,
             }));
+            bumpEpoch(col as string);
             if (entry) {
               /* Mirror aktivitas best-effort tanpa rekursi (langsung HTTP, bukan add()).
                  Gagal → tandai dirty agar pushPending/resync tidak menghilangkannya. */
@@ -1410,55 +1552,87 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           [col]: [full, ...((prev[col] as StoreItem[] | undefined) ?? [])],
           activities: fallbackEntry ? pushEntry(prev, fallbackEntry) : prev.activities,
         }));
+        bumpEpoch(col as string);
         return full;
       },
       update: async (col, id, patch) => {
         if (remoteActive()) {
-          try {
-            /* Optimistic concurrency: kirim updated_at terakhir sebagai
-               baseUpdatedAt; BE 409 STALE bila sudah diubah pengguna lain. */
-            const current = ((dataRef.current as unknown as Record<string, StoreItem[]>)[col as string] ?? []).find(
-              (r) => r.id === id,
-            );
-            const base = current?.updated_at;
-            const body = typeof base === "string" && base !== "" ? { ...patch, baseUpdatedAt: base } : patch;
-            const saved = await remoteRepository(col).patch(id, body);
-            setData((prev) => ({
-              ...prev,
-              [col]: ((prev[col] as StoreItem[] | undefined) ?? []).map((r) => (r.id === id ? saved : r)),
-            }));
-            setBackendError(null);
-            return;
-          } catch (err) {
-            // STALE: server menang - muat versi server + beri tahu eksplisit.
-            if (err instanceof ApiError && err.status === 409 && err.code === "STALE") {
-              const server = (err.data ?? {}) as { data?: Record<string, unknown>; branch?: string; updated_at?: string };
+          /* Satu percobaan ulang untuk konflik versi.
+             STALE berarti `baseUpdatedAt` yang kita kirim bukan `updated_at`
+             server terbaru. Penyebabnya di perangkat ini hampir selalu
+             snapshot lokal yang basi - jadi mencoba sekali lagi dengan base
+             yang benar memperbaiki banyak kasus tanpa campur tangan pengguna. */
+          let attempt = 0;
+          let lastStale: ApiError | null = null;
+          while (attempt < 2) {
+            attempt += 1;
+            try {
+              /* Optimistic concurrency: kirim updated_at terakhir sebagai
+                 baseUpdatedAt; BE 409 STALE bila sudah diubah pengguna lain. */
+              const current = ((dataRef.current as unknown as Record<string, StoreItem[]>)[col as string] ?? []).find(
+                (r) => r.id === id,
+              );
+              const base = current?.updated_at;
+              const body = typeof base === "string" && base !== "" ? { ...patch, baseUpdatedAt: base } : patch;
+              const saved = await remoteRepository(col).patch(id, body);
               setData((prev) => ({
                 ...prev,
-                [col]: ((prev[col] as StoreItem[] | undefined) ?? []).map((r) =>
-                  r.id === id
-                    ? {
-                        ...r,
-                        ...(typeof server.data === "object" && server.data !== null ? server.data : {}),
-                        ...(typeof server.branch === "string" ? { branch: server.branch } : {}),
-                        ...(typeof server.updated_at === "string" ? { updated_at: server.updated_at } : {}),
-                      }
-                    : r,
-                ),
+                [col]: ((prev[col] as StoreItem[] | undefined) ?? []).map((r) => (r.id === id ? saved : r)),
               }));
+              bumpEpoch(col as string);
               setBackendError(null);
-              notifyConflict("Data sudah diubah pengguna lain - versi server dimuat ulang. Ulangi perubahan Anda.");
               return;
+            } catch (err) {
+              /* STALE: server menang - muat versi server lalu coba ulang dengan
+                 base yang sudah benar.
+                 BUG YANG DITUTUP: versi lama melompat ke `return` di sini,
+                 sehingga update() RESOLVE NORMAL. Pemanggil (mis.
+                 Equipment.tsx advanceMaintStatus) lalu menampilkan toast
+                 "Maintenance dimulai" padahal status TIDAK berubah - persis
+                 gejala "perubahan status gagal di perangkat saya tapi berhasil
+                 di device lain". Sekarang percobaan kedua memakai versi server,
+                 dan kalau tetap konflik error dilempar supaya toast gagal. */
+              if (err instanceof ApiError && err.status === 409 && err.code === "STALE") {
+                lastStale = err;
+                const server = (err.data ?? {}) as {
+                  data?: Record<string, unknown>;
+                  branch?: string;
+                  updated_at?: string;
+                };
+                setData((prev) => ({
+                  ...prev,
+                  [col]: ((prev[col] as StoreItem[] | undefined) ?? []).map((r) =>
+                    r.id === id
+                      ? {
+                          ...r,
+                          ...(typeof server.data === "object" && server.data !== null ? server.data : {}),
+                          ...(typeof server.branch === "string" ? { branch: server.branch } : {}),
+                          ...(typeof server.updated_at === "string" ? { updated_at: server.updated_at } : {}),
+                        }
+                      : r,
+                  ),
+                }));
+                bumpEpoch(col as string);
+                continue;
+              }
+              // REFERENCED/VALIDATION/UNPROCESSABLE (+400 validasi): tampilkan
+              // alasan BE apa adanya + lempar agar caller toast gagal.
+              if (err instanceof ApiError && (err.status === 400 || err.status === 409 || err.status === 422)) {
+                notifyConflict(err.message);
+                throw err;
+              }
+              /* 403 = permanen (hak akses). Lempar juga: tanpa ini update() diam-diam
+                 kembali tanpa menulis, sementara caller menampilkan "sukses". */
+              if (degrade(err)) throw err;
+              /* Jaringan/timeout: jatuh ke jalur offline di bawah. */
+              break;
             }
-            // REFERENCED/VALIDATION/UNPROCESSABLE (+400 validasi): tampilkan
-            // alasan BE apa adanya + lempar agar caller toast gagal.
-            if (err instanceof ApiError && (err.status === 400 || err.status === 409 || err.status === 422)) {
-              notifyConflict(err.message);
-              throw err;
-            }
-            /* 403 = permanen (hak akses). Lempar juga: tanpa ini update() diam-diam
-               kembali tanpa menulis, sementara caller menampilkan "sukses". */
-            if (degrade(err)) throw err;
+          }
+          if (lastStale) {
+            notifyConflict(
+              "Data sudah diubah pengguna lain. Perubahan Anda tidak disimpan - buka ulang data lalu ulangi.",
+            );
+            throw lastStale;
           }
         }
         markDirty(col as string);
@@ -1466,6 +1640,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           ...prev,
           [col]: ((prev[col] as StoreItem[] | undefined) ?? []).map((r) => (r.id === id ? { ...r, ...patch } : r)),
         }));
+        bumpEpoch(col as string);
       },
       remove: async (col, id) => {
         if (remoteActive()) {
@@ -1475,6 +1650,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
               ...prev,
               [col]: ((prev[col] as StoreItem[] | undefined) ?? []).filter((r) => r.id !== id),
             }));
+            bumpEpoch(col as string);
             setBackendError(null);
             return;
           } catch (err) {

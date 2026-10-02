@@ -1,4 +1,4 @@
-/* Render probe: menjalankan SETIAP factory useMemo di seluruh halaman.
+﻿/* Render probe: menjalankan SETIAP factory useMemo di seluruh halaman.
  *
  * Kenapa ada: `tsc` dan `vite build` TIDAK bisa menangkap temporal dead zone
  * (const yang dibaca di dalam closure tapi dideklarasikan lebih bawah).
@@ -15,7 +15,7 @@ import type { ReactElement } from "react";
 import { renderToString } from "react-dom/server";
 import { MemoryRouter, Routes, Route } from "react-router-dom";
 import { LanguageProvider } from "../src/i18n/LanguageContext";
-import { StoreProvider } from "../src/data/store";
+import { StoreProvider, applyPulled } from "../src/data/store";
 import { projects, vessels, inventory, employees, quotations } from "../src/data/index";
 
 import Login from "../src/pages/Login";
@@ -171,7 +171,71 @@ try {
   failures.push("target export PDF");
 }
 
-console.log(`\n${pass}/${PAGES.length + 1} pemeriksaan lolos.`);
+/* Logika penggabungan hasil tarikan - akar-most dari "POST sukses lalu
+   beberapa detik kemudian data hilang".
+   Aturan yang diuji persis apa yang dijalankan resync/resyncCollections:
+   server jadi acuan untuk id yang dia kenal, baris lokal yang belum ada di
+   snapshot TIDAK BOLEH hilang.
+   Repo ini belum punya satu pun file test, jadi kasus ini dikunci di probe:
+   merge yang salah hanya muncul sebagai kehilangan data di lapangan, tidak
+   pernah sebagai error. */
+try {
+  const sync: string[] = [];
+  const row = (id: string, extra: Record<string, unknown> = {}) => ({ id, ...extra });
+
+  // 1. Baris yang dibuat SETELAH snapshot tiba harus bertahan.
+  {
+    const local = [row("A"), row("BARU")];
+    const incoming = [row("A"), row("B")];
+    const out = applyPulled(local, incoming);
+    const ids = out.map((r) => r.id);
+    if (!ids.includes("BARU")) sync.push("baris lokal yang dibuat setelah snapshot hilang");
+    if (!ids.includes("B")) sync.push("baris server tidak ikut masuk");
+    if (out.length !== 3) sync.push(`harus 3 baris, dapat ${out.length}`);
+  }
+
+  // 2. Id yang dikenal server: versi server yang menang (server otoritatif).
+  {
+    const out = applyPulled([row("A", { status: "lokal" })], [row("A", { status: "server" })]);
+    if (out.length !== 1) sync.push("id yang sama terduplikasi saat digabung");
+    if (String((out[0] as { status?: string }).status) !== "server") sync.push("server tidak menang untuk id yang sama");
+  }
+
+  // 3. Urutan lokal dipertahankan - tidak ada lompatan urutan di tabel UI.
+  {
+    const out = applyPulled([row("A"), row("B"), row("C")], [row("Z")]);
+    const ids = out.map((r) => r.id).join(",");
+    if (ids !== "A,B,C,Z") sync.push(`urutan berubah: ${ids}`);
+  }
+
+  // 4. Koleksi lokal kosong = tarikan menjadi acuan apa adanya.
+  {
+    const out = applyPulled(undefined, [row("X"), row("Y")]);
+    if (out.length !== 2) sync.push("koleksi lokal kosong tidak menerima hasil tarikan");
+  }
+
+  // 5. Dua perangkat: baris yang sama sama di kedua sisi tidak hilang.
+  {
+    const local = [row("MTE-1", { status: "Selesai", updated_at: "2026-10-02T10:00:00" })];
+    const incoming = [row("MTE-1", { status: "Berjalan" }), row("MTE-2")];
+    const out = applyPulled(local, incoming);
+    if (out.length !== 2) sync.push("baris perangkat lain hilang saat digabung");
+  }
+
+  if (sync.length === 0) {
+    console.log("PASS  penggabungan tarikan tidak kehilangan baris lokal");
+    pass += 1;
+  } else {
+    console.log(`FAIL  penggabungan tarikan *** ${sync.join("; ")}`);
+    failures.push("penggabungan tarikan");
+  }
+} catch (e) {
+  const err = e as Error;
+  console.log(`FAIL  penggabungan tarikan *** ${err.message}`);
+  failures.push("penggabungan tarikan");
+}
+
+console.log(`\n${pass}/${PAGES.length + 2} pemeriksaan lolos.`);
 if (failures.length > 0) {
   console.log(`GAGAL: ${failures.join(", ")}`);
   process.exit(1);

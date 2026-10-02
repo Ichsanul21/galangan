@@ -6,7 +6,7 @@ import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import { loadEnv } from "./env.js";
 import { fail, ok, registerErrorHandler } from "./envelope.js";
-import { createRateLimiter, getClientIp } from "./rateLimit.js";
+import { createRateLimiter, getClientIp, getWriteRateKey } from "./rateLimit.js";
 import { comparePassword, requireAuth, SEED_ACCOUNTS, signToken } from "./auth.js";
 import { getAuditErrorCount, requestIp, writeAudit } from "./audit.js";
 import { exec, q } from "./db.js";
@@ -179,10 +179,11 @@ export function buildApp(): FastifyInstance {
   // Contract version for FE sync gating (minor-tolerant: FE blocks on major mismatch only).
   app.get("/api/version", async () => ok({ api: getApiVersion(), minWeb: MIN_WEB_VERSION }));
 
-  // Pembatas ringan untuk semua rute tulis (300/mnt per IP) + header Retry-After saat 429.
+  // Pembatas ringan untuk semua rute tulis (300/mnt per identitas user, lihat
+// getWriteRateKey) + header Retry-After saat 429.
   app.addHook("onRequest", async (req, reply) => {
     if (!WRITE_METHODS.has(req.method)) return undefined;
-    const check = writeLimiter(getClientIp(req));
+    const check = writeLimiter(getWriteRateKey(req));
     if (!check.allowed) {
       return denyRateLimited(reply, check.retryAfterSec, "Too many requests, try again later");
     }

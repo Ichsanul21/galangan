@@ -116,6 +116,24 @@ function isBackendPage(v: unknown): v is BackendPage {
 /** Adapter HTTP: dipakai otomatis saat VITE_API_URL diisi. */
 export function remoteRepository(resource: string): Repository {
   const base = `/api/${resource}`;
+  /* Kumpulkan halaman sambil men-DE-DUP per id.
+     Paginasi OFFSET memang rapuh: kalau ada INSERT atau DELETE di tengah
+     pembacaan, satu baris bisa terlewat dan baris lain terambil dua kali.
+     Server sudah diurutkan stabil (updated_at, id) sehingga duplikat segera
+     hilang, tapi de-dup di sisi ini menutup kelas bug yang sama untuk server
+     lama yang belum diperbarui - dan menjaga React key tetap unik. */
+  const collect = (pages: StoreItem[], limit: number): StoreItem[] => {
+    const seen = new Set<string>();
+    const out: StoreItem[] = [];
+    for (const item of pages) {
+      const id = String(item.id ?? "");
+      if (id !== "" && seen.has(id)) continue;
+      if (id !== "") seen.add(id);
+      out.push(item);
+    }
+    void limit;
+    return out;
+  };
   return {
     async list() {
       const limit = 5000;
@@ -126,7 +144,7 @@ export function remoteRepository(resource: string): Repository {
           `${base}?limit=${limit}&offset=${offset}`,
           { background: true },
         );
-        if (Array.isArray(page)) return (page as BackendRow[]).map(rowToItem);
+        if (Array.isArray(page)) return collect((page as BackendRow[]).map(rowToItem), limit);
         if (!isBackendPage(page)) return [];
         const rows = Array.isArray(page.rows) ? page.rows : [];
         for (const row of rows) all.push(rowToItem(row));
@@ -135,7 +153,7 @@ export function remoteRepository(resource: string): Repository {
         if (all.length >= total) break;
         offset += limit;
       }
-      return all;
+      return collect(all, limit);
     },
     async listFiltered(opts) {
       const baseParams = new URLSearchParams();
@@ -149,7 +167,7 @@ export function remoteRepository(resource: string): Repository {
         params.set("limit", String(limit));
         params.set("offset", String(offset));
         const page = await apiFetch<BackendRow[] | BackendPage>(`${base}?${params.toString()}`, { background: true });
-        if (Array.isArray(page)) return (page as BackendRow[]).map(rowToItem);
+        if (Array.isArray(page)) return collect((page as BackendRow[]).map(rowToItem), limit);
         if (!isBackendPage(page)) return [];
         const rows = Array.isArray(page.rows) ? page.rows : [];
         for (const row of rows) all.push(rowToItem(row));
@@ -158,7 +176,7 @@ export function remoteRepository(resource: string): Repository {
         if (all.length >= total) break;
         offset += limit;
       }
-      return all;
+      return collect(all, limit);
     },
     async listPaged(opts) {
       const page = Math.max(1, Math.trunc(opts?.page ?? 1));

@@ -1,4 +1,4 @@
-// Pola standar fetch API per-batch saat perpindahan modul/tab.
+﻿// Pola standar fetch API per-batch saat perpindahan modul/tab.
 //
 // Masalah pola lama: setiap halaman memanggil resync() penuh (50+ koleksi +
 // WBS/team per proyek) tiap kali dibuka - lambat dan memboroskan bandwidth,
@@ -21,11 +21,22 @@ import { useStore, type CollectionKey, type WbsItem } from "./store";
 import { apiFetch } from "../services/http";
 
 let lastBatchSyncAt = 0;
+let batchInFlight = 0;
 
 /** true bila ada halaman yang baru saja menarik batch-nya sendiri (< withinMs).
- *  Dipakai AppShell untuk melewati resync penuh saat pindah route. */
+ *  Dipakai AppShell untuk melewati resync penuh saat pindah route.
+ *
+ *  Dua kondisi yang WAJIB ikut dicek, bukan hanya cap waktu:
+ *   - batch sedang berjalan: resync penuh menambah ~55 request sia-sia hanya
+ *     untuk mengambil data yang sedang dirakit. AppShell memanggil ini di
+ *     efek parent yang berjalan di commit yang SAMA dengan efek halaman, jadi
+ *     cap waktu "baru saja" belum pernah ditulis - hasilnya dua tarikan
+ *     paralel di setiap pindah rute, dan jendela "snapshot basi" yang
+ *     menimpa tulis lokal ikut memanjang.
+ *   - lebih dari satu batch jalan bersamaan: 15 modul bisa memicu
+ *     resyncCollections sekaligus; setiap Tarikan punya snapshot basi sendiri. */
 export function recentModuleSync(withinMs = 4000): boolean {
-  return Date.now() - lastBatchSyncAt < withinMs;
+  return batchInFlight > 0 || Date.now() - lastBatchSyncAt < withinMs;
 }
 
 /* Penghitung batch berjalan global: agar tak ada jeda tanpa umpan balik,
@@ -102,6 +113,9 @@ export function useModuleSync(cols: CollectionKey[], deps: unknown[] = []): Modu
   const [failed, setFailed] = useState<CollectionKey[]>([]);
   const [lastSyncAt, setLastSyncAt] = useState(0);
   const runningRef = useRef(false);
+  /* Satu re-run tertunda: permintaan yang masuk saat batch berjalan tidak
+     dibuang, tapi dijalankan setelahnya. */
+  const rerunRef = useRef(false);
   const aliveRef = useRef(true);
   const colsKey = cols.join("|");
   const depsKey = JSON.stringify(deps);
@@ -114,9 +128,18 @@ export function useModuleSync(cols: CollectionKey[], deps: unknown[] = []): Modu
   }, []);
 
 const refresh = useCallback(() => {
-    if (!colsKey || runningRef.current) return;
+    if (!colsKey) return;
+    /* Tidak membuang permintaan yang datang saat batch lain berjalan: antrekan
+       satu re-run. Versi lama `return` di sini, jadi perubahan tab yang cepat
+       membuat sinkronisasi hilang tanpa jejak - itulah complaints "delay"
+       yang tidak pernah bisa direproduksi. */
+    if (runningRef.current) {
+      rerunRef.current = true;
+      return;
+    }
     const batch = colsKey.split("|") as CollectionKey[];
     runningRef.current = true;
+    batchInFlight += 1;
     setSyncActive(1);
     setSyncing(true);
     void resyncCollections(batch)
@@ -144,8 +167,13 @@ const refresh = useCallback(() => {
       })
       .finally(() => {
         runningRef.current = false;
+        batchInFlight = Math.max(0, batchInFlight - 1);
         setSyncActive(-1);
         if (aliveRef.current) setSyncing(false);
+        if (rerunRef.current) {
+          rerunRef.current = false;
+          refresh();
+        }
       });
   }, [colsKey, resyncCollections]);
 

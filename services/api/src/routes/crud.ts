@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+﻿import { randomUUID } from "node:crypto";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { requireAuth } from "../auth.js";
@@ -258,8 +258,22 @@ export function registerCrud(app: FastifyInstance, table: string): void {
     const whereSql = where.length > 0 ? ` WHERE ${where.join(" AND ")}` : "";
     const countRows = await q<{ cnt: number }>(`SELECT COUNT(*) AS cnt FROM ${table}${whereSql}`, params);
     const total = Number((countRows[0] as { cnt: number } | undefined)?.cnt ?? 0);
+    /* Urutan WAJIB stabil DAN temporally koheren.
+     *
+     * Versi lama memakai `ORDER BY id ASC`. Id dibuat dari randomUUID8, jadi
+     * urutannya acak: saat ada INSERT di tengah paginasi OFFSET, satu baris
+     * bergeser melewati batas dan TIDAK PERNAH dikembalikan, sementara baris
+     * lain mengembalikan dua kali. Kerugiannya senyap - tidak ada error, hanya
+     * baris yang hilang di tengah-tengah proses sync. Dengan banyak pengguna
+     * menulis bersamaan, itu sering terjadi.
+     *
+     * `updated_at, id` memberi dua jaminan sekaligus: id sebagai tie-breaker
+     * membuat urutan deterministik (tidak ada baris yang hilang atau kembar), dan
+     * updated_at membuat baris yang baru diubah muncul dekat halaman depan.
+     * Kolom updated_at sudah dipakai sebagai concurrency token (PATCH) dan
+     * selalu terisi. */
     const sql = `SELECT id, branch, data, updated_at FROM ${table}${whereSql}` +
-      " ORDER BY id ASC LIMIT ? OFFSET ?";
+      " ORDER BY updated_at ASC, id ASC LIMIT ? OFFSET ?";
     const rows = await q<Row>(sql, [...params, limit, offset]);
     return ok({ rows: rows.map(toJson), total, limit, offset });
   });
