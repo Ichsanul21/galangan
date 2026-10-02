@@ -429,27 +429,25 @@ export class PdfDoc {
     const blockH = 8 + rows * 5.2;
     this.need(blockH);
 
-    let x = this.marginMm + colW / 2;
+    /* x DIPINDAH per kolom. Versi pertama tidak pernah menaikkan x, jadi
+       seluruh label dan nama menggambar di titik yang sama - dokumen
+       Surat Jalan men superimpose "Yang Menerima" dan "Yang Menyerahkan"
+       tepat di atas satu sama lain, dan tidak ada yang bisa mengetahuinya
+       dari ukuran berkas: PDF-nya tetap valid dan ukurannya tetap normal. */
+    const nameY = this.y + 6 + rows * 5.2;
     for (const s of sigs) {
+      const cx = this.marginMm + colW * (sigs.indexOf(s) + 0.5);
       this.setFont(fontSize, true);
-      this.pdf.text(sanitizePdf(s.role), x, this.y, { align: "center" });
-    }
-    let sy = this.y + 6;
-    for (let i = 0; i < rows; i += 1) {
-      sy += 5.2;
-    }
-    this.setFont(fontSize, false);
-    for (const s of sigs) {
+      this.pdf.text(sanitizePdf(s.role), cx, this.y, { align: "center" });
+      this.setFont(fontSize, false);
       const name = sanitizePdf(s.name || "-");
-      this.pdf.text(name, x, this.y + 6 + rows * 5.2, { align: "center" });
-      const nw = this.widthOf(name);
+      this.pdf.text(name, cx, nameY, { align: "center" });
+      const halfW = Math.max(18, this.widthOf(name) / 2 + 4);
       this.pdf.setDrawColor(...LINE);
-      this.pdf.line(x - Math.max(18, nw / 2 + 4), this.y + 6 + rows * 5.2 + 1, x + Math.max(18, nw / 2 + 4), this.y + 6 + rows * 5.2 + 1);
+      this.pdf.line(cx - halfW, nameY + 1, cx + halfW, nameY + 1);
     }
     this.y += blockH;
   }
-
-  
 
   /** Sisakan ruang kosong, pindah halaman bila perlu. */
   space(mm: number): void {

@@ -328,6 +328,50 @@ try {
   console.log(`FAIL  pdfDate / pdfNum: ${e instanceof Error ? e.message : String(e)}`);
 }
 
+/* ---- pemeriksaan tanda tangan tidak tumpuk ----
+   Tanda tangan digambar per kolom, jadi setiap label dan nama harus punya
+   posisi x yang BERBEDA. Bug nyata sudah pernah terjadi di sini: x tidak
+   pernah dinaikkan di loop, sehingga "Yang Menerima" dan "Yang
+   Menyerahkan" superimpose persis di atas satu sama lain.
+
+   Pemeriksaan ukuran berkas tidak bisa menangkapnya - PDF-nya tetap valid
+   dan ukurannya tetap normal, hanya isinya yang tidak terbaca. Yang
+   menangkap adalah koordinat gambarnya, jadi di sini pdf.text() dibungkus
+   sementara untuk merekam posisi. */
+
+try {
+  const doc = new PdfDoc({ orientation: "portrait" });
+  const raw = doc.raw() as unknown as { text: (...a: unknown[]) => unknown };
+  const seen: number[] = [];
+  const original = raw.text.bind(raw);
+  raw.text = (...a: unknown[]): unknown => {
+    const x = a[1];
+    if (typeof x === "number") seen.push(Math.round(x * 100) / 100);
+    return original(...a);
+  };
+
+  const sigs = [
+    { role: "Yang Menerima", name: "Budi Santoso" },
+    { role: "Yang Menyerahkan", name: "Siti Rahayu" },
+  ];
+  doc.signatures(sigs);
+
+  // 2 label + 2 nama = 4 operasi teks.
+  if (seen.length < sigs.length * 2) {
+    throw new Error(`hanya ${seen.length} operasi teks untuk ${sigs.length} tanda tangan`);
+  }
+  const distinct = new Set(seen).size;
+  if (distinct < sigs.length) {
+    throw new Error(
+      `${sigs.length} tanda tangan hanya memakai ${distinct} posisi x - ada yang superimpose`,
+    );
+  }
+  console.log(`PASS  tanda tangan tidak tumpuk  (${seen.length} draw, ${distinct} posisi x)`);
+} catch (e) {
+  failures += 1;
+  console.log(`FAIL  tanda tangan tidak tumpuk: ${e instanceof Error ? e.message : String(e)}`);
+}
+
 /* ---- pemeriksaan paginasi ----
    Paginasi adalah bagian yang paling mudah rusak secara diam-diam: kalau
    tinggi baris salah, dokumen 200 baris bisa jadi 100 halaman (satu baris
@@ -371,4 +415,4 @@ if (failures > 0) {
   console.log(`\n${failures} pemeriksaan gagal.`);
   process.exit(1);
 }
-console.log(`\n${CASES.length + 3} pemeriksaan lolos, tidak ada dokumen gagal.`);
+console.log(`\n${CASES.length + 4} pemeriksaan lolos, tidak ada dokumen gagal.`);
