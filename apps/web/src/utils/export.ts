@@ -246,6 +246,21 @@ export async function exportPDF(elementId: string, filename: string, options: Ex
   exportBusy = true;
   const { charts = true, orientation = "landscape", format = "a4", marginMm = 10, scale = 2 } = options;
 
+  /* Lebar capture diturunkan dari geometri halaman, bukan angka tetap.
+     Versi lama memaksa width:1000px untuk semua orientasi. Itu kebetulan
+     cocok untuk A4 landscape (277mm area isi ~ 1047px @96dpi), tapi saat
+     caller meminta portrait, 1000px dipaksa masuk ke area isi 190mm dan
+     seluruh dokumen diperkecil ~0,72x - teks jadi kecil tanpa alasan.
+
+     jsPDF harus dibuat DI SINI (bukan lagi di langkah 5) supaya ukuran
+     halaman diketahui sebelum capture. */
+  const probe = new jsPDF({ unit: "mm", format, orientation });
+  const pageW = probe.internal.pageSize.getWidth();
+  const pageH = probe.internal.pageSize.getHeight();
+  const contentW = pageW - marginMm * 2;
+  const contentH = pageH - marginMm * 2;
+  const captureW = Math.round((contentW * 96) / 25.4);
+
   const opened: HTMLElement[] = [];
   const hidden: HTMLElement[] = [];
   const imgSwaps: { parent: Node; next: Node | null; img: HTMLImageElement }[] = [];
@@ -309,7 +324,9 @@ export async function exportPDF(elementId: string, filename: string, options: Ex
     el.style.top = "0";
     el.style.zIndex = "99999";
     el.style.background = "#ffffff";
-    el.style.width = "1000px";
+    /* Lebar capture dari geometri halaman (lihat catatan di atas), bukan
+     angka tetap 1000px yang membuat dokumen portrait mengecil tanpa alasan. */
+    el.style.width = `${captureW}px`;
     try {
       await document.fonts.ready;
     } catch {
@@ -331,12 +348,12 @@ export async function exportPDF(elementId: string, filename: string, options: Ex
     }
 
     /* 5. Susun halaman: potong kanvas setinggi satu halaman isi, geser titik
-         potong ke celah bersih terdekat agar baris/teks tidak terpenggal. */
+         potong ke celah bersih terdekat agar baris/teks tidak terpenggal.
+         pageW/pageH/contentW/contentH sudah dihitung di atas (lewat `probe`)
+         supaya lebar capture dan pemotongan halaman memakai angka yang sama -
+         kalau dihitung ulang di sini, keduanya bisa berbeda dan satu halaman
+         berakhir exceeds area isi. */
     const pdf = new jsPDF({ unit: "mm", format, orientation, compress: true });
-    const pageW = pdf.internal.pageSize.getWidth();
-    const pageH = pdf.internal.pageSize.getHeight();
-    const contentW = pageW - marginMm * 2;
-    const contentH = pageH - marginMm * 2;
     const pxPerMm = canvas.width / contentW;
     const pageSlicePx = Math.max(1, Math.floor(contentH * pxPerMm));
     const ctx = canvas.getContext("2d", { willReadFrequently: true });

@@ -365,6 +365,32 @@ export const seedPayroll: StoreItem[] = [
 ];
 
 export const seedTaxPeriods: StoreItem[] = [
+  /* Juli 2026: dari JU penyesuaian. PENTING - jangan dihapus: guard
+     uniqueness taxPeriods.period menolak HANYA periode yang persis sama,
+     jadi 2026-07 tidak pernah bentrok dengan 2026-08 maupun 2026-09.
+     Periode ini dikunci dari data Excel asli dan membandingkan PPN periode
+     Augustus, jadi menghapusnya berarti menghapus angka pembanding yang
+     dibutuhkan saat rekonsiliasi. */
+  {
+    id: "TAX-202607", period: "2026-07", ppnKeluar: 1056000000, ppnMasuk: 452000000,
+    pph23: 124000000, pph21: 38500000, status: "Lapor", reportedAt: "2026-07-31",
+    ppnTerutangAuto: 604000000, ppnTerutangFinal: 604000000,
+    npwp: "01.234.567.8-901.000",
+    klu: "30120",
+    penanggungJawab: "H. Syarif Sarapping",
+    telepon: "0811 552 4456",
+    email: "syukurbersaudara@gmail.com",
+    npwpPenyetor: "01.234.567.8-901.000",
+    tanggalSetor: "2026-08-15",
+    nomorFormulir: "1.1-08-000-1.2-23-24/07",
+    bank: "Bank Syariah Indonesia",
+    teller: "0119",
+    kodeRetval: "1",
+    pph22: 0, pph24: 0, pph25: 0, pph26: 0,
+    dppKelDN: 880000000, dppKelLN: 0, ppnTerpotong: 0,
+    dppMasDN: 376666666, dppMasLN: 0, ppnImpor: 0, ppnTidakDikreditkan: 0, ppnDikompensasikan: 0,
+    ppnBM: 0, retensiWithhold: 0, ppnTerutangManual: "",
+  },
   // Agustus 2026 dikunci dari JU penyesuaian Excel: PPN Keluaran 455,63jt, Masukan 73,75jt; PPh23 = NL 2-232.
   {
     id: "TAX-202608", period: "2026-08", ppnKeluar: 455632169.08, ppnMasuk: 73753513.46,
