@@ -8,6 +8,7 @@ import { Card, CardHeader, PageHeader, Badge, KpiCard, Tabs, ProgressBar, ChartT
   NumInput, AsyncButton,
 } from "../../components/ui";
 import type { SortState } from "../../components/ui";
+import { ServiceNotesButton, ServiceNotesModal, notesOf } from "../../components/ServiceNotes";
 import { useStore } from "../../data/store";
 import type { StoreItem, CollectionKey } from "../../data/store";
 import { useModuleSync } from "../../data/useModuleSync";
@@ -1479,6 +1480,39 @@ export default function EquipmentPage() {
     toast(S.eqRegisterExported);
   };
 
+/* ---------- Catatan servis per unit ---------- */
+  const [noteEquip, setNoteEquip] = useState<StoreItem | null>(null);
+  const noteLabels = useMemo(() => ({
+    title: locale === "en" ? "Service notes - {a}" : "Catatan Servis - {a}",
+    subtitle: locale === "en"
+      ? "Cross-cycle observations. Kept separate from the note on each maintenance cycle."
+      : "Pengamatan lintas siklus. Dipisahkan dari catatan pada tiap siklus maintenance.",
+    observation: locale === "en" ? "Observation" : "Pengamatan",
+    observationPh: locale === "en"
+      ? "e.g. welding on this seam cracks again after the 3rd pass"
+      : "cth: las di sambungan ini retak lagi setelah lapis ke-3",
+    attachment: locale === "en" ? "Attachment (optional)" : "Lampiran (opsional)",
+    attachmentHint: locale === "en" ? "Photo or PDF of the report" : "Foto atau PDF laporan",
+    recorded: locale === "en" ? "Recorded ({n})" : "Tercatat ({n})",
+    empty: locale === "en"
+      ? "No notes yet. Maintenance cycle notes stay on each cycle."
+      : "Belum ada catatan. Catatan siklus maintenance tetap menempel pada siklusnya.",
+    save: locale === "en" ? "Save Note" : "Simpan Catatan",
+    close: locale === "en" ? "Close" : "Tutup",
+    delete: locale === "en" ? "Delete" : "Hapus",
+    deleteTitle: locale === "en" ? "Delete this note?" : "Hapus catatan ini?",
+    deleteDesc: locale === "en" ? "Deleted notes cannot be restored." : "Catatan yang dihapus tidak bisa dikembalikan.",
+    added: locale === "en" ? "Service note added" : "Catatan servis ditambahkan",
+    removed: locale === "en" ? "Service note removed" : "Catatan servis dihapus",
+    notes: locale === "en" ? "Notes" : "Catatan",
+    notesTitle: locale === "en"
+      ? "Service notes that outlive a single maintenance cycle"
+      : "Catatan servis yang bertahan melewati satu siklus maintenance",
+    emptyNote: locale === "en" ? "Note is empty" : "Catatan kosong",
+    saveFail: S.saveFail,
+    fmtDate: (v: unknown): string => fmtTanggal(String(v ?? "")),
+  }), [locale, S.saveFail]);
+
   return (
     <div>
       <PageHeader
@@ -1632,6 +1666,20 @@ export default function EquipmentPage() {
                             sehingga equipment yang salah tarif/jangka tidak
                             bisa dikoreksi dan equipment yang tak dipakai
                             selamanya tidak bisa dihapus. */}
+                        {/* Catatan servis lintas siklus: pengamatan seperti "titik
+                            las ini retak lagi" menempel pada unit, bukan pada satu
+                            siklus maintenance, jadi tidak ikut tertutup bersama
+                            arsip siklusnya. */}
+                        <ServiceNotesButton
+                          count={notesOf(e).length}
+                          labels={{
+                            notes: locale === "en" ? "Notes" : "Catatan",
+                            notesTitle: locale === "en"
+                              ? "Service notes that outlive a single maintenance cycle"
+                              : "Catatan servis yang bertahan melewati satu siklus maintenance",
+                          }}
+                          onClick={() => setNoteEquip(e)}
+                        />
                         <button
                           className="btn-secondary text-xs"
                           onClick={() => openEdit(e)}
@@ -2715,6 +2763,17 @@ export default function EquipmentPage() {
           </Field>
         </div>
       </Modal>
+
+      <ServiceNotesModal
+        equip={noteEquip}
+        labels={noteLabels}
+        onClose={() => setNoteEquip(null)}
+        onSave={async (id, next) => {
+          await update("equipment", id, { serviceNotes: next });
+          log("menulis catatan servis", `${id} (${next.length} catatan)`, "Equipment");
+          setNoteEquip((e) => (e ? { ...e, serviceNotes: next } : e));
+        }}
+      />
     </div>
   );
 }
