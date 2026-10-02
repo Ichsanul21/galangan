@@ -15,9 +15,9 @@ import { fmtRupiah, fmtJumlah, fmtTanggal, todayISO } from "../../utils/format";
 import { sameName } from "../../utils/names";
 import { AlertBannerView, notifRowId, useModuleAlert, useNotifFlash } from "../../components/AlertBanner";
 import { getSetting } from "../../utils/settings";
-import { bucketByMonth, fmtMonthRange, monthAxis, rebindLegacyMonthSeries } from "../../utils/monthAxis";
+import { bucketByMonth, fmtMonthRange, monthAxis, monthKeyOf, rebindLegacyMonthSeries } from "../../utils/monthAxis";
 import { sbPoNumber, sbSplitIncludePpn, maxSeq, SB_KOP } from "../../utils/sb";
-import { spendByCategory, procurementTrend, poCountTrend, poValueTrend, prPendingTrend, vendorTrend } from "../../data";
+import { spendByCategory, procurementTrend } from "../../data";
 import { exportExcel } from "../../utils/export";
 import { poDoc } from "../../utils/pdfDocs";
 import { useDraftState } from "../../utils/draft";
@@ -1281,6 +1281,52 @@ export default function Procurement() {
     );
   };
 
+/* Sparkline KPI.
+
+   Semuanya dulu menerima deret seed (poCountTrend, poValueTrend,
+   prPendingTrend, vendorTrend) - 12 angka karangan yang tidak terhubung
+   ke satu pun baris di layar ini. Angka KPI-nya sendiri nyata
+   (purchaseOrders.length, openPo, pendingPr, vendors.length), jadi
+   kurvanya terlihat mendukung angka yang ditampilkan padahal tidak.
+
+   Sekarang kurvanya dihitung dari koleksi yang sama dengan KPI-nya,
+   di-bucket per bulan lewat sumbu 12 bulan berjalan - sama dengan yang
+   dipakai grafik tren.
+
+   Catatan: KpiCard tidak merender XAxis sama sekali, jadi `name` di sini
+   tidak pernah tampil. Yang menentukan adalah urutan dan nilainya.
+
+   Requisition TIDAK punya kolom tanggal di seed mana pun, jadi jumlah PR
+   pending per bulan tidak bisa dihitung dengan jujur. Untuk kartu itu
+   sparkline sengaja dibuang (tidak ada prop spark) alih-alih menampilkan
+   kurva karangan yang terlihat meyakinkan. */
+const sparkAxis = useMemo(() => monthAxis({ months: 12, locale: locale as "id" | "en" }), [locale]);
+
+const sparkPos = useMemo(
+  () => bucketByMonth(purchaseOrders, sparkAxis, (p) => p.date, () => 1, (v) => v.length),
+  [purchaseOrders, sparkAxis],
+);
+const sparkValue = useMemo(
+  () => bucketByMonth(
+    purchaseOrders,
+    sparkAxis,
+    (p) => p.date,
+    (p) => Number(p.amount || 0),
+    (v) => Math.round(v.reduce((s, x) => s + x, 0) / 1e9),
+  ),
+  [purchaseOrders, sparkAxis],
+);
+const sparkVendors = useMemo(() => {
+  const seen = new Map<string, Set<string>>();
+  for (const v of vendors) {
+    const key = monthKeyOf(v.createdAt ?? v.addedAt ?? "");
+    if (key === "") continue;
+    const list = seen.get(key);
+    if (list) list.add(String(v.id));
+    else seen.set(key, new Set([String(v.id)]));
+  }
+  return sparkAxis.map((pt) => ({ name: pt.label, v: seen.get(pt.key)?.size ?? 0 }));
+}, [vendors, sparkAxis]);
   return (
     <div>
       <PageHeader
@@ -1308,10 +1354,10 @@ export default function Procurement() {
       {modAlert.active && <AlertBannerView items={modAlert.items} onPick={pickNotif} />}
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <KpiCard label={S.kpiActive} value={String(purchaseOrders.length)} icon={<ShoppingCart className="h-5 w-5" />} chip="navy" spark={poCountTrend} hint={S.kpiActiveHint} />
-        <KpiCard label={S.kpiOpen} value={fmtRupiah(openPo)} hint={S.kpiOpenHint} icon={<ShoppingCart className="h-5 w-5" />} chip="teal" spark={poValueTrend} />
-        <KpiCard label={S.kpiPending} value={S.pendingPrVal.replace("{n}", String(pendingPr))} hint={S.kpiPendingHint} icon={<ClipboardList className="h-5 w-5" />} chip="amber" spark={prPendingTrend} />
-        <KpiCard label={S.kpiVendor} value={String(vendors.length)} icon={<Factory className="h-5 w-5" />} chip="violet" hint={S.kpiVendorHint} spark={vendorTrend} />
+        <KpiCard label={S.kpiActive} value={String(purchaseOrders.length)} icon={<ShoppingCart className="h-5 w-5" />} chip="navy" spark={sparkAxis.map((pt) => ({ name: pt.label, v: sparkPos[pt.key] ?? 0 }))} hint={S.kpiActiveHint} />
+        <KpiCard label={S.kpiOpen} value={fmtRupiah(openPo)} hint={S.kpiOpenHint} icon={<ShoppingCart className="h-5 w-5" />} chip="teal" spark={sparkAxis.map((pt) => ({ name: pt.label, v: sparkValue[pt.key] ?? 0 }))} />
+        <KpiCard label={S.kpiPending} value={S.pendingPrVal.replace("{n}", String(pendingPr))} hint={S.kpiPendingHint} icon={<ClipboardList className="h-5 w-5" />} chip="amber" />
+        <KpiCard label={S.kpiVendor} value={String(vendors.length)} icon={<Factory className="h-5 w-5" />} chip="violet" hint={S.kpiVendorHint} spark={sparkVendors} />
       </div>
 
       <div className="mt-4 card">

@@ -941,10 +941,6 @@ const mk = (vs: number[]) => M12.map((name, i) => ({ name, v: vs[i] ?? vs[vs.len
 export const activeProjectTrend = mk([6, 7, 6, 8, 7, 8, 6, 9, 8, 10, 10, 11]);
 export const contractValueTrend = mk([98, 104, 101, 112, 108, 115, 110, 121, 118, 126, 131, 138]);
 export const avgProgressTrend = mk([38, 40, 41, 43, 44, 47, 49, 52, 55, 58, 61, 63]);
-export const poCountTrend = procurementTrend.map((d) => ({ name: d.month, v: d.pengadaan }));
-export const poValueTrend = procurementTrend.map((d) => ({ name: d.month, v: d.pengeluaran }));
-export const prPendingTrend = mk([9, 8, 10, 7, 8, 6, 7, 5, 6, 5, 4, 4]);
-export const vendorTrend = mk([18, 19, 19, 20, 21, 21, 22, 22, 23, 24, 24, 25]);
 export const itemTrend = mk([142, 145, 148, 152, 155, 159, 162, 166, 170, 174, 178, 182]);
 export const lowStockTrend = mk([9, 8, 8, 7, 7, 6, 6, 5, 5, 4, 4, 3]);
 export const warehouseTrend = mk([4, 4, 5, 5, 5, 6, 6, 6, 7, 7, 7, 8]);
