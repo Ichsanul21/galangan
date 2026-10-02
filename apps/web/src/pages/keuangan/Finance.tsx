@@ -2377,7 +2377,7 @@ const { data, add, update, remove, log, branch, inBranch } = useStore();
           { jenis: locale === "en" ? "Output VAT" : "PPN Keluaran", dasar: pdfNum(taxCalc.invBase), tarif: `${taxCalc.ppnRate}%`, nilai: shown.ppnKeluar },
           { jenis: locale === "en" ? "Input VAT" : "PPN Masukan", dasar: pdfNum(taxCalc.apBase), tarif: `${taxCalc.ppnRate}%`, nilai: shown.ppnMasuk },
           { jenis: "PPh 23", dasar: pdfNum(taxCalc.apBase), tarif: `${taxCalc.pphRate}%`, nilai: shown.pph23 },
-          { jenis: "PPh 21", dasar: locale === "en" ? "Total payroll" : "Total payroll", tarif: "-", nilai: shown.pph21 },
+          { jenis: "PPh 21", dasar: "Total payroll", tarif: "-", nilai: shown.pph21 },
           ...(sptNumOf(activeTax.pph22) > 0 ? [{ jenis: "PPh 22", dasar: "", tarif: "-", nilai: sptNumOf(activeTax.pph22) }] : []),
           ...(sptNumOf(activeTax.pph24) > 0 ? [{ jenis: "PPh 24", dasar: "", tarif: "-", nilai: sptNumOf(activeTax.pph24) }] : []),
           ...(sptNumOf(activeTax.pph25) > 0 ? [{ jenis: "PPh 25", dasar: "", tarif: "-", nilai: sptNumOf(activeTax.pph25) }] : []),
