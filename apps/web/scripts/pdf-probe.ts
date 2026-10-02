@@ -85,6 +85,7 @@ const LABELS_HR: SuratHrDocLabels = {
 const LABELS_KWIT: KwitansiDocLabels = {
   no: "No", tanggal: "Tanggal", diterimaDari: "Diterima dari", untuk: "Untuk",
   jumlah: "Jumlah", catatan: "Catatan", tandaTangan: "Tanda Tangan", penerima: "Penerima",
+  rincian: "Rincian", uraian: "Uraian",
 };
 
 /* manyLineages: dipakai untuk menguji paginasi - tabel harus pindah halaman
@@ -215,11 +216,21 @@ const CASES: { name: string; build: () => PdfDoc }[] = [
     }),
   },
   {
-    name: "Kwitansi",
+    name: "Kwitansi termin (dengan rincian potong)",
     build: () => kwitansiDoc({
-      no: "KW/2026/10/0091", tanggal: "2026-10-02",
-      diterimaDari: "PT Bahana Baja", untuk: "Pembayaran PO 114/PO-SB/SMD/X/2026",
-      jumlah: 4_120_000_000, catatan: "Transfer BCA 1234567890 a.n. PT Syukur Bersaudara",
+      no: "KW/TERM-2026-08-004",
+      tanggal: "2026-08-14",
+      diterimaDari: "CV KARYA BERSAMA",
+      untuk: "TERM-2026-08-004 - Pemeriksaan dan perbaikan hull section 12",
+      breakdown: [
+        { label: "Nilai termin", value: 48_500_000 },
+        { label: "PPh dipotong (0,5%)", value: -242_500 },
+        { label: "Retensi ditahan (5%)", value: -2_425_000 },
+        { label: "Denda keterlambatan", value: -1_000_000 },
+        { label: "Dibayar", value: 44_832_500 },
+      ],
+      netLabel: "Dibayar",
+      catatan: "Bukti potong PPh: 0.5/2026/000123\nReferensi pembayaran: TRF-778120 (Transfer)\nRetensi dilepas setelah work order selesai.",
       labels: LABELS_KWIT,
     }),
   },

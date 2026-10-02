@@ -31,8 +31,6 @@ export function L(l: DocLocale, en: "id" | "en"): string {
   return l[en];
 }
 
-/** Label netral untuk probe dan pemanggil tanpa kamus. */
-export const ID_LOCALE: DocLocale = { id: "id", en: "en" };
 
 /* ---------------------------------------------------------------- PO ----- */
 
@@ -492,6 +490,7 @@ export function suratHrDoc(input: SuratHrInput): PdfDoc {
 export interface KwitansiDocLabels {
   no: string; tanggal: string; diterimaDari: string; untuk: string;
   jumlah: string; catatan: string; tandaTangan: string; penerima: string;
+  rincian: string; uraian: string;
 }
 
 export interface KwitansiInput {
@@ -499,13 +498,24 @@ export interface KwitansiInput {
   tanggal: string;
   diterimaDari: string;
   untuk: string;
-  jumlah: number;
+  /** Baris rincian. Baris terakhir dianggap NETO dan otomatis ditebalkan
+   *  kalau `netLabel` diberikan - kwitansi tanpa rincian tidak bisa
+   *  dipertanggungjawabkan saat sengketa. */
+  breakdown: { label: string; value: number }[];
+  netLabel: string;
   catatan: string;
   labels: KwitansiDocLabels;
   signer?: string;
 }
 
-/** Kwitansi: satu blok label dan nominal yang ditebalkan di antara dua garis. */
+/**
+ * Kwitansi pembayaran.
+ *
+ * Rinciannya wajib berisi peng-potongan apa pun: PPh, retensi, dan denda.
+ * Menaruh hanya nominal bersih membuat subkontraktor menghitung ulang
+ * sendiri dari-diff, dan itu justru sumber paling sering sengketa. Jadi
+ * semua potongan ditampilkan di atas net, lalu net ditebalkan.
+ */
 export function kwitansiDoc(input: KwitansiInput): PdfDoc {
   const t = input.labels;
   const doc = new PdfDoc({ orientation: "portrait" });
@@ -515,13 +525,29 @@ export function kwitansiDoc(input: KwitansiInput): PdfDoc {
     { label: t.tanggal, value: pdfDate(input.tanggal) },
     { label: t.diterimaDari, value: input.diterimaDari },
     { label: t.untuk, value: input.untuk },
-    { label: t.catatan, value: input.catatan || "-" },
   ], { labelW: 42 });
 
-  doc.space(6);
+  const net = Number(input.breakdown[input.breakdown.length - 1]?.value ?? 0);
+
+  if (input.breakdown.length > 0) {
+    doc.table({
+      head: [t.uraian, t.jumlah],
+      rows: input.breakdown.map((b) => [b.label, pdfNum(b.value)]),
+      widths: ["auto", 46],
+      align: ["left", "right"],
+      totalRow: input.breakdown.length - 1,
+    });
+  }
+
+  doc.space(2);
   doc.rule(0.6);
-  doc.para(`${t.jumlah}: Rp ${pdfNum(input.jumlah)}`, { align: "right", fontSize: 11 });
+  doc.para(`${t.jumlah}: Rp ${pdfNum(net)}`, { align: "right", fontSize: 11 });
   doc.rule(0.6);
+
+  if (input.catatan.trim() !== "") {
+    doc.space(4);
+    doc.para(input.catatan, { fontSize: 8.5 });
+  }
 
   doc.space(10);
   doc.signatures([

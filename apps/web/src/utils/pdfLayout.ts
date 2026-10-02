@@ -449,10 +449,7 @@ export class PdfDoc {
     this.y += blockH;
   }
 
-  /** Pindah halaman eksplisit. */
-  pageBreak(): void {
-    this.newPage();
-  }
+  
 
   /** Sisakan ruang kosong, pindah halaman bila perlu. */
   space(mm: number): void {
