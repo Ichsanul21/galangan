@@ -14,6 +14,7 @@ import type { StoreItem, CollectionKey } from "../../data/store";
 import { fmtMiliar, fmtRupiah, fmtTanggal, todayISO } from "../../utils/format";
 import { sameName } from "../../utils/names";
 import { AlertBannerView, notifRowId, useModuleAlert, useNotifFlash } from "../../components/AlertBanner";
+import { rowHighlightClass } from "../../components/rowHighlight";
 import { useDeepLinkParams, useDeepLinkTarget } from "../../components/useDeepLink";
 import { exportExcel } from "../../utils/export";
 import { useDraftState } from "../../utils/draft";
@@ -624,37 +625,45 @@ export default function CRM() {
   const quotPager = usePager(penawaranList.length);
   const reqPager = usePager(requests.length);
   const contractPager = usePager(contracts.length);
-  /* Resolve baris yang harusnya disorot._setTab sudah dijalankan oleh
-     useDeepLinkTarget sebelum fungsi ini dipanggil pada tick berikutnya,
-     jadi cabang "tab === X" di bawah kini melihat tab yang benar dan tidak
-     menimpanya kembali. */
-  const pickNotif = (rowId: string) => {
-    const key = String(rowId);
-    const reqIdx = requests.findIndex((r) => String(r.id) === key);
-    if (reqIdx >= 0) {
-      if (tab === "Request") { flash.pick(key, reqIdx, reqPager.go, reqPager.size); return; }
-      setTab("Request");
-      window.setTimeout(() => { flash.pick(key, reqIdx, reqPager.go, reqPager.size); }, 250);
-      return;
-    }
-    const quotIdx = penawaranList.findIndex((q) => String(q.id) === key);
-    if (quotIdx >= 0) {
-      if (tab === "Penawaran") { flash.pick(key, quotIdx, quotPager.go, quotPager.size); return; }
-      setTab("Penawaran");
-      window.setTimeout(() => { flash.pick(key, quotIdx, quotPager.go, quotPager.size); }, 250);
-      return;
-    }
-    const conIdx = sortedContracts.findIndex((k) => String(k.id) === key);
-    if (conIdx >= 0) {
-      if (tab === "Kontrak") { flash.pick(key, conIdx, contractPager.go, contractPager.size); return; }
-      setTab("Kontrak");
-      window.setTimeout(() => { flash.pick(key, conIdx, contractPager.go, contractPager.size); }, 250);
-      return;
-    }
-    flash.pick(key, -1, () => {}, 100);
+  /* Terjemahkan sekumpulan id deep-link menjadi tab + sorotan. Satu id (klik
+     banner modul) dan banyak id (klik kartu Dashboard "Kontrak Menang",
+     yang mengirim seluruh won / terkonversi) memakai jalur yang sama. */
+  const pickNotifIds = (ids: string[]): void => {
+    if (ids.length === 0) return;
+    const mark = (index: number, pager: { go: (p: number) => void; size: number }): void => {
+      if (ids.length > 1) flash.pickMany(ids, index, pager.go, pager.size);
+      else flash.pick(ids[0] as string, index, pager.go, pager.size);
+    };
+    const toTab = (name: string, after: () => void): void => {
+      if (tab === name) { after(); return; }
+      setTab(name);
+      window.setTimeout(after, 250);
+    };
+
+    const reqIdx = requests.findIndex((r) => ids.includes(String(r.id)));
+    const quotIdx = penawaranList.findIndex((q) => ids.includes(String(q.id)));
+    const conIdx = sortedContracts.findIndex((k) => ids.includes(String(k.id)));
+
+    /* Tab yang DIMINTA diperiksa lebih dulu. Tanpa ini, id kontrak (tab
+       Kontrak) tidak akan pernah ditemukan karena `quotIdx` searched lebih
+       dulu dan langsung membuka tab Penawaran - menimpa tab yang justru
+       diminta pengguna. Finance sudah memakai urutan ini (lihat pickNotifIds
+       di Finance.tsx); di CRM urutannya terbalik. */
+    if (tab === "Kontrak" && conIdx >= 0) { mark(conIdx, contractPager); return; }
+    if (tab === "Penawaran" && quotIdx >= 0) { mark(quotIdx, quotPager); return; }
+    if (tab === "Request" && reqIdx >= 0) { mark(reqIdx, reqPager); return; }
+
+    if (reqIdx >= 0) { toTab("Request", () => mark(reqIdx, reqPager)); return; }
+    if (conIdx >= 0) { toTab("Kontrak", () => mark(conIdx, contractPager)); return; }
+    if (quotIdx >= 0) { toTab("Penawaran", () => mark(quotIdx, quotPager)); return; }
+    mark(-1, { go: () => {}, size: 100 });
   };
+
+  /* Satu id dari banner modul. */
+  const pickNotif = (rowId: string): void => pickNotifIds([rowId]);
+
   /* Deep-link Dashboard (?tab=Kontrak&highlight=QT-..): pindah tab + flash baris. */
-  useDeepLinkTarget(deepParams.tab, deepParams.highlight, setTab, pickNotif);
+  useDeepLinkTarget(deepParams.tab, deepParams.highlight, setTab, pickNotifIds);
   /* Fetch per-batch modul (pengganti resync penuh). */
   useModuleSync(CRM_COLS);
 
@@ -935,7 +944,7 @@ export default function CRM() {
               </label>
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
               {quotPager.slice(penawaranList).map((q) => (
-                <Card key={q.id} id={notifRowId(String(q.id))} className={`p-4 ${flash.flashId === String(q.id) ? "notif-hl notif-flash" : (notified.has(String(q.id)) ? "notif-hl" : "")}`}>
+                <Card key={q.id} id={notifRowId(String(q.id))} className={`p-4 ${rowHighlightClass({ id: String(q.id), flash, notified: notified.has(String(q.id)) })}`}>
                   <div className="flex justify-between gap-2">
                     <div className="min-w-0">
                       <p className="truncate font-semibold text-navy-900" title={String(q.vessel)}>{String(q.vessel)}</p>
@@ -977,7 +986,7 @@ export default function CRM() {
               </div>
               <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                 {reqPager.slice(requests).map((r) => (
-                  <Card key={r.id} id={notifRowId(String(r.id))} className={`p-4 ${flash.flashId === String(r.id) ? "notif-hl notif-flash" : (notified.has(String(r.id)) ? "notif-hl" : "")}`}>
+                  <Card key={r.id} id={notifRowId(String(r.id))} className={`p-4 ${rowHighlightClass({ id: String(r.id), flash, notified: notified.has(String(r.id)) })}`}>
                     <div className="flex justify-between gap-2">
                       <div className="min-w-0">
                         <p className="truncate font-semibold text-navy-900" title={String(r.vessel)}>{String(r.vessel)}</p>
@@ -1069,7 +1078,7 @@ export default function CRM() {
                       </thead>
                       <tbody className="divide-y divide-steel-100">
                         {contractPager.slice(sortedContracts).map((k) => (
-                          <tr key={k.id} id={notifRowId(String(k.id))} className={flash.flashId === String(k.id) ? "notif-hl notif-flash hover:bg-surface" : (notified.has(String(k.id)) ? "notif-hl hover:bg-surface" : "hover:bg-surface")}>
+                          <tr key={k.id} id={notifRowId(String(k.id))} className={rowHighlightClass({ id: String(k.id), flash, notified: notified.has(String(k.id)), base: "hover:bg-surface" })}>
                             <td className="td font-mono text-xs font-semibold text-navy-900">{k.id}<span className="block font-sans text-[11px] font-normal text-steel-500">{String(k.client ?? "")}</span></td>
                             <td className="td font-mono text-xs"><Link to={`/crm/quotation/${k.quotationId}`} className="text-ocean-600">{String(k.quotationId)}</Link>{k.projectId ? <Link to={`/proyek/${k.projectId}`} className="block text-[11px] text-teal-600">{String(k.projectId)}</Link> : null}</td>
                             <td className="td text-xs font-semibold">{fmtRupiah(num(k.value))}

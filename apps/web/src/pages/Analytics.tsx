@@ -58,6 +58,7 @@ import {
   monthSeries,
   rebindLegacyMonthSeries,
 } from "../utils/monthAxis";
+import { briefOf, lastPoint, numOf, prevPoint, safeText } from "../utils/series";
 import { useT } from "../i18n/LanguageContext";
 import { n_misc } from "../i18n/n_misc";
 import {
@@ -164,24 +165,41 @@ function exportChartPNG(chartId: string, filename: string): void {
    tapi tidak pernah dibaca di halaman ini - hanya history catatan lokal
    (localStorage) yang dipakai. Perbandingan: Laporan memakai data.activities
    untuk kartu aktivitas, jadi tetap memasangnya di sana. */
-const AN_COLS: CollectionKey[] = ["bookings", "calibrations", "changeOrders", "dockSlots", "equipment", "incidents", "inspections", "inventory", "invoices", "ncr", "payables", "projects", "quotations", "settings", "vendors", "maintenances", "purchaseOrders", "employees", "attendance"];
+/* Koleksi yang BENAR-BENAR dibaca halaman ini. `journals` pernah terlewat di
+   daftar lama padahal revDisp / marDisp / monthlyReal memakainya - hasilnya
+   grafik pendapatan & margin hanya tampak benar karena jatuh ke seed, bukan
+   karena datanya benar-benar terbaca. Sekarang eksplisit. `attendance` juga
+   dihapus karena tidak pernah dipakai di halaman ini. */
+const AN_COLS: CollectionKey[] = ["bookings", "calibrations", "changeOrders", "dockSlots", "employees", "equipment", "incidents", "inspections", "inventory", "invoices", "journals", "maintenances", "ncr", "payables", "projects", "purchaseOrders", "quotations", "settings", "vendors"];
 
 /* Opsi rentang bulan untuk SEMUA grafik rentang-bulan. Nilai adalah jumlah
    titik, bulan berjalan selalu titik TERAKHIR (lihat utils/monthAxis.ts). */
 const MONTH_RANGES = [6, 12, 18, 24] as const;
 
-/* Angka dari field yang bisa null/"" - dipakai seluruh grafik Analytics.
-   WAJIB module scope: kalau dideklarasikan di dalam komponen, useMemo
-   yang memakainya menjalankan factory-nya saat render, yaitu SEBELUM baris
-   deklarasi dieksekusi, sehingga numOf masih berada di TDZ dan melempar
+/* Angka dari field yang bisa null/"" DIHAPUS dari file ini dan diambil dari
+   utils/series.ts (numOf). Konsekuensinya hanya satu, bukan dua: versi lama di
+   sini memakai `Number(v) || 0` sementara versi di series.ts memakai
+   Number.isFinite - jadi angka yang sama bisa dihitung berbeda di dua halaman.
+
+   Catatan TDZ-nya tetap berlaku dan sekarang ditegakkan di satu tempat: numOf
+   WAJIB module scope. Kalau dideklarasikan di dalam komponen, useMemo yang
+   memakainya menjalankan factory-nya saat render, yaitu SEBELUM baris deklarasi
+   dieksekusi, sehingga numOf masih berada di TDZ dan melempar
    "Cannot access 'numOf' before initialization". */
-const numOf = (v: unknown): number => Number(v) || 0;
 
 export default function Analytics() {
 
   const { locale } = useT();
   const S = n_misc[locale];
   const [tab, setTab] = useState("Deskriptif");
+  /* Section cetak PDF hanya dirender saat benar-benar mengekspor.
+     Versi lama selalu memasangnya, termasuk 2 grafik recharts di dalam
+     kontainer `position:absolute; left:-9999`. Itu berarti setiap kali
+     Analytics dibuka ada 6 grafik tambahan yang diukur, dianimasikan, lalu
+     dibuang - padahal tidak ada yang sedang mengekspor. Lebih buruk,
+     ResponsiveContainer di dalam kontainer offscreen sering mengukur 0x0
+     sehingga grafiknya terpotong atau tidak muncul sama sekali di PDF. */
+  const [pdfOpen, setPdfOpen] = useState(false);
   const [sort, setSort] = useState<SortState>({ key: null, dir: "asc" });
   const [sort2, setSort2] = useState<SortState>({ key: null, dir: "asc" });
   /* Analytics adalah halaman BACA (analysis), bukan editor: `add`/`remove`
@@ -329,24 +347,42 @@ export default function Analytics() {
 
   const totalRevenue = revDisp.reduce((s, d) => s + d.revenue, 0);
   const avgRevenue = revDisp.length ? totalRevenue / revDisp.length : 0;
-  const lastRevPoint = revDisp[revDisp.length - 1];
-  const prevRevPoint = revDisp[revDisp.length - 2];
-  const revGrowth = prevRevPoint && prevRevPoint.revenue ? ((lastRevPoint.revenue - prevRevPoint.revenue) / prevRevPoint.revenue) * 100 : 0;
+  /* PENJAGA EKOR SERI.
+     `revDisp[revDisp.length - 1]` menghasilkan undefined saat seri kosong, dan
+     `lastRevPoint.bln` lalu melempar TypeError. TypeError di fase render
+     menjatuhkan seluruh pohon React, bukan hanya halaman ini - inilah gejala
+     "buka Analytics, semua modul ikut mati". Jalur kosongnya nyata: fallback
+     ke seed memakai rebindLegacyMonthSeries() yang mengembalikan rows.map(),
+     jadi begitu seed itu kosong, seri fallback ikut kosong.
+
+     Semua akses ekor / ekor-1 sekarang lewat helper lastPoint/prevPoint dari
+     utils/series.ts yang mengembalikan null, dan forecast di bawah dibangun
+     dari titik yang benar-benar ada. Bandingkan juga numOf di file ini: TDZ
+     karena deklarasi di bawah useMemo adalah kelas bug yang sama. */
+  const lastRevPoint = lastPoint(revDisp);
+  const prevRevPoint = prevPoint(revDisp);
+  const revGrowth = lastRevPoint && prevRevPoint && prevRevPoint.revenue !== 0
+    ? ((lastRevPoint.revenue - prevRevPoint.revenue) / prevRevPoint.revenue) * 100
+    : 0;
   const avgMargin = marDisp.length ? marDisp.reduce((s, d) => s + d.margin, 0) / marDisp.length : 0;
-  const lastMarginPoint = marDisp[marDisp.length - 1];
-  const prevMarginPoint = marDisp[marDisp.length - 2];
+  const lastMarginPoint = lastPoint(marDisp);
+  const prevMarginPoint = prevPoint(marDisp);
   const marginDiff = lastMarginPoint && prevMarginPoint ? lastMarginPoint.margin - prevMarginPoint.margin : 0;
 
   const last3 = revDisp.slice(-3);
   const ma3 = last3.length ? last3.reduce((s, d) => s + d.revenue, 0) / last3.length : 0;
-  const forecast = [
-    { name: lastRevPoint.bln, actual: round1(lastRevPoint.revenue), forecast: round1(lastRevPoint.revenue) },
-    ...[1, 2, 3, 4].map((k) => ({
-      name: futureLabel(k),
-      actual: null as number | null,
-      forecast: round1(ma3),
-    })),
-  ];
+  /* Tanpa titik terakhir yang nyata, seri forecast tidak boleh dibuat sama
+     sekali - nilai .bln yang rusak akan meracuni seluruh kartu Prediktif. */
+  const forecast = lastRevPoint
+    ? [
+      { name: lastRevPoint.bln, actual: round1(lastRevPoint.revenue), forecast: round1(lastRevPoint.revenue) },
+      ...[1, 2, 3, 4].map((k) => ({
+        name: futureLabel(k),
+        actual: null as number | null,
+        forecast: round1(ma3),
+      })),
+    ]
+    : [];
   const forecastAnnual = Math.round(ma3 * 12);
 
   const variance = revDisp.map((d) => ({ n: d.bln, v: Math.round((d.revenue - avgRevenue) * 1000) }));
@@ -485,13 +521,18 @@ export default function Analytics() {
   const topIncident = [...incidentByType.entries()].sort((a, b) => b[1] - a[1])[0];
   const topNcrType = drilldown[0]?.factor ?? "-";
   const failedInspections = data.inspections.filter((i) => i.status === "NCR");
-  const worstVendor = [...data.vendors].sort((a, b) => Number(a.onTime || 100) - Number(b.onTime || 100))[0];
+  const worstVendor = lastPoint([...data.vendors].sort((a, b) => Number(a.onTime || 100) - Number(b.onTime || 100)));
   const maintEquip = data.equipment.filter((e) => e.status === "Maintenance");
+  /* Nama barang/alat bisa kosong pada baris yang diimpor tanpa label, jadi
+     dirangkai lewat safeText - `String(undefined)` pernah menghasilkan teks
+     "undefined" yang ikut tampil di fishbone. */
+  const lowStockNames = lowStock.slice(0, 2).map((i) => safeText(i.name, "")).filter(Boolean).join("; ");
+  const maintNames = maintEquip.slice(0, 2).map((e) => safeText(e.name, "")).filter(Boolean).join("; ");
   const fishbones: { tulang: string; sebab: string[] }[] = [
     { tulang: S.boneMan, sebab: [topIncident ? S.fishTopIncident.replace("{a}", `${topIncident[0]} (${topIncident[1]} kejadian)`) : S.fishTopIncidentEmpty, S.fishNcrNeed.replace("{n}", topNcrType)] },
     { tulang: S.boneMethod, sebab: [S.fishFailedInspection.replace("{n}", String(failedInspections.length)), S.fishOpenNcr.replace("{n}", String(openNcr)).replace("{a}", String(drilldown.length))] },
-    { tulang: S.boneMaterial, sebab: [lowStock.slice(0, 2).map((i) => String(i.name)).join("; ") ? S.fishLowStock.replace("{n}", String(lowStock.length)).replace("{a}", lowStock.slice(0, 2).map((i) => String(i.name)).join("; ")) : S.fishLowStockEmpty.replace("{n}", String(lowStock.length)), worstVendor ? S.fishWorstVendor.replace("{a}", `${worstVendor.name} (${worstVendor.onTime}%)`) : S.fishWorstVendorEmpty] },
-    { tulang: S.boneMachine, sebab: [maintEquip.slice(0, 2).map((e) => String(e.name)).join("; ") ? S.fishMaintenance.replace("{n}", String(maintEquip.length)).replace("{a}", maintEquip.slice(0, 2).map((e) => String(e.name)).join("; ")) : S.fishMaintenanceEmpty.replace("{n}", String(maintEquip.length)), S.fishCalibration.replace("{n}", String(data.calibrations.filter((c) => c.status !== "Selesai").length))] },
+    { tulang: S.boneMaterial, sebab: [lowStockNames !== "" ? S.fishLowStock.replace("{n}", String(lowStock.length)).replace("{a}", lowStockNames) : S.fishLowStockEmpty.replace("{n}", String(lowStock.length)), worstVendor ? S.fishWorstVendor.replace("{a}", `${safeText(worstVendor.name)} (${worstVendor.onTime ?? 0}%)`) : S.fishWorstVendorEmpty] },
+    { tulang: S.boneMachine, sebab: [maintNames !== "" ? S.fishMaintenance.replace("{n}", String(maintEquip.length)).replace("{a}", maintNames) : S.fishMaintenanceEmpty.replace("{n}", String(maintEquip.length)), S.fishCalibration.replace("{n}", String(data.calibrations.filter((c) => c.status !== "Selesai").length))] },
   ];
 
   const revFactor = (1 + growth / 100) * (1 + progAdj / 100);
@@ -731,10 +772,35 @@ const saveScenario = () => {
 
   const exportPdfReport = async () => {
     try {
+      /* Section PDF harus ADA di DOM saat html2canvas memotret. Karena itu ia
+         dipasang dulu, lalu ditunggu sampai recharts sempat mengukur
+         kontainernya.
+
+         Dua frame, bukan satu: ResizeObserver memberi tahu di awal frame,
+         sementara ResponsiveContainer butuh commit React berikutnya sebelum
+         <svg>-nya punya ukuran. Satu rAF saja bisa menangkap area 0x0 dan PDF
+         keluar dengan grafik terpotong.
+
+         Timeout 400 ms sebagai jaring pengaman: kalau tab sedang di
+         background, rAF tidak pernah dipanggil dan ekspor akan menggantung
+         selamanya. */
+      setPdfOpen(true);
+      await new Promise((r) => {
+        const done = (): void => r(undefined);
+        const t = window.setTimeout(done, 400);
+        requestAnimationFrame(() => requestAnimationFrame(() => {
+          window.clearTimeout(t);
+          done();
+        }));
+      });
       await exportPDF("analytics-pdf", `Laporan-Analytics-${todayISO()}`);
       toast(S.tAnalyticsPdfExported);
     } catch {
       toast(S.tChartExportFailed, "info");
+    } finally {
+      /* WAJIB di finally: kalau ekspor gagal dan flag tidak diturunkan, section
+         offscreen ini akan tetap tertinggal dan ikut jadi screenshot berikutnya. */
+      setPdfOpen(false);
     }
   };
 
@@ -1147,7 +1213,7 @@ const saveScenario = () => {
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
               <KpiCard label={S.forecastAnnual} value={`Rp ${forecastAnnualAdj.toLocaleString("id-ID")} M`} delta={S.whatifDelta.replace("{n}", `${growth >= 0 ? "+" : ""}${growth}`)} deltaDirection={growth > 0 ? "up" : growth < 0 ? "down" : "flat"} icon={<TrendingUp className="h-5 w-5" />} chip="navy" spark={forecastAdj.map((f) => ({ name: f.name, v: f.forecast ?? 0 }))} />
               <KpiCard label={S.drydockConflict} value={dockConflict ? S.slotCount.replace("{n}", String(dockConflict)) : S.safeLabel} delta={dockConflict ? S.needFix : S.noOverlap} deltaDirection={dockConflict ? "down" : "up"} icon={<AlertTriangle className="h-5 w-5" />} chip="rose" spark={slotTrend} />
-              <KpiCard label={S.criticalStock} value={S.itemCount.replace("{n}", String(lowStock.length))} delta={lowStock.slice(0, 2).map((i) => i.name.split(" ").slice(0, 2).join(" ")).join(" · ") || S.allSafe} deltaDirection={lowStock.length ? "down" : "up"} icon={<AlertTriangle className="h-5 w-5" />} chip="amber" spark={lowStockTrend} />
+              <KpiCard label={S.criticalStock} value={S.itemCount.replace("{n}", String(lowStock.length))} delta={lowStock.slice(0, 2).map((i) => briefOf(i.name)).filter(Boolean).join(" · ") || S.allSafe} deltaDirection={lowStock.length ? "down" : "up"} icon={<AlertTriangle className="h-5 w-5" />} chip="amber" spark={lowStockTrend} />
               <KpiCard label={S.riskyProjects} value={S.riskyCount.replace("{n}", String(atRisk))} delta={S.lateOverBudget} deltaDirection={atRisk ? "down" : "up"} icon={<Clock className="h-5 w-5" />} chip="violet" spark={activeProjectTrend} />
             </div>
             <Card>
@@ -1394,8 +1460,12 @@ const saveScenario = () => {
         </Card>
       </div>
 
-      {/* Section cetak PDF tersembunyi: TANPA chart/grafik — SVG recharts berisiko
-          blank saat di-raster oleh html2canvas, jadi hanya KPI + tabel + list teks. */}
+      {/* Section cetak PDF. Hanya di-mount saat ekspor berjalan (lihat pdfOpen
+          di atas): html2canvas memang butuh elemen ini ada di DOM saat capture,
+          tapi 6 grafik recharts di dalamnya tidak boleh jadi beban setiap kali
+          Analytics dibuka. SVG recharts juga berisiko blank saat di-raster,
+          karena itu tabel tetap tanpa styling dashboard. */}
+      {pdfOpen && (
       <div id="analytics-pdf" style={{ position: "absolute", left: -9999, top: 0, width: 1000, background: "#ffffff", padding: 24, fontSize: 12, color: "#000" }}>
         <div style={{ textAlign: "center", borderBottom: "3px solid #0B3A63", paddingBottom: 12, marginBottom: 12, breakInside: "avoid", pageBreakInside: "avoid" }}>
           <p style={{ fontWeight: 800, fontSize: 18, color: "#0B3A63", margin: 0 }}>PT. SYUKUR BERSAUDARA</p>
@@ -1552,6 +1622,7 @@ const saveScenario = () => {
           </tbody>
         </table>
       </div>
+      )}
     </div>
   );
 }

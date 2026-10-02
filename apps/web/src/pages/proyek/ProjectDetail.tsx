@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useParams, Link } from "react-router-dom";
-import { ArrowLeft, Calendar, MapPin, Plus, Trash2, FileDown } from "lucide-react";
+import { ArrowLeft, Calendar, MapPin, Plus, Trash2, FileDown, Eye } from "lucide-react";
 import {
   Card,
   PageHeader,
@@ -31,7 +31,8 @@ import SparepartServiceSection from "./SparepartServiceSection";
 import { useStore } from "../../data/store";
 import type { StoreItem, WbsItem, CollectionKey } from "../../data/store";
 import { useModuleSync } from "../../data/useModuleSync";
-import { DocumentPreviewCell, DocumentPreviewModal, DocumentPreviewPanel } from "../../components/DocumentPreview";
+import { DocumentPreviewCell, DownloadFileButton, InlineDocPreview } from "../../components/DocumentPreview";
+import { docAttachment, looksLikeUrl } from "../../utils/docAttachment";
 import { useT } from "../../i18n/LanguageContext";
 import { n_prj } from "../../i18n/n_prj";
 import { fmtMiliar, fmtTanggal, fmtRentang, fmtBulan } from "../../data";
@@ -56,17 +57,20 @@ const STATIONS = ["Cutting", "Bending", "Welding", "Panel", "Block", "Erection",
 type WbsExt = WbsItem & { predecessor?: string };
 interface WbsBaseline { at: string; wbs: WbsExt[]; }
 
+/* Resolusi lampiran memakai utils/docAttachment (satu sumber untuk semua modul).
+   Versi lokal dulu mencoba `d.fileName` LEBIH DAHULU - padahal fileName itu
+   metadata nama berkas ("kontrak-kerja.pdf"), bukan URL. Akibatnya dokumen
+   yang lampirannya diisi manual meminta GET /kontrak-kerja.pdf, sementara
+   berkas di backend hanya dilayani di /files/*, jadi jawabannya 404 dan panel
+   pratinjau hanya menampilkan "gagal memuat" tanpa sebab yang jelas.
+   Sekarang kandidat URL dibaca lebih dulu, dan `looksLikeUrl` menolak nama
+   berkas polos agar tidak salah dikira URL lagi. */
 function docUrlOf(d: StoreItem): string {
-  const cands = [d.fileName, d.fileUrl, d.lampiran, d.url];
-  for (const c of cands) {
-    const s = String(c ?? "").trim();
-    if (s && s !== "-") return s;
-  }
-  return "";
+  return docAttachment(d).url;
 }
 
 function docBaseName(d: StoreItem, url: string): string {
-  const raw = String((d.fileName ?? "") as unknown as string).trim();
+  const raw = docAttachment(d).fileName;
   const urlExt = docExtOf(url);
   const withExt = (name: string): string => {
     if (!urlExt) return name;
@@ -123,7 +127,19 @@ export default function ProjectDetail() {
   const [docTitle, setDocTitle] = useState("");
   const [docType, setDocType] = useState("Laporan");
   const [lastUploadedId, setLastUploadedId] = useState<string | null>(null);
-  const [instantPreviewId, setInstantPreviewId] = useState<string | null>(null);
+  /* Id dokumen yang pratinjaunya sedang dibuka di dalam kartu. Menggantikan
+     `instantPreviewId` + DocumentPreviewModal: dulu mengunggah dokumen membuka
+     pop-up besar yang menutupi daftar, dan menutupnya adalah langkah wajib
+     sebelum bisa lanjut. Sekarang dokumen yang baru diunggah langsung tampil di
+     kartunya, dan ikon mata di baris lain cukup membuka/menutup di tempat. */
+  const [openDocId, setOpenDocId] = useState<string>("");
+  /* `lastUploadedId` juga harus DIBERSIHKAN saat pengguna menutup pratinjau.
+     Kalau tidak, isNew tetap true seumur hidup halaman, isOpen tidak pernah
+     false, dan ikon mata tidak pernah bisa menutup panelnya. */
+  const toggleDocPreview = (id: string): void => {
+    setOpenDocId((cur) => (cur === id ? "" : id));
+    if (openDocId === id) setLastUploadedId((cur) => (cur === id ? null : cur));
+  };
   const [delScope, setDelScope] = useState<number | null>(null);
   /* Risiko, change order, trial, dan BAST dulu hanya punya tambah + ubah -
      tidak ada jalur hapus sama sekali, jadi record yang salah input (BAST
@@ -1347,40 +1363,56 @@ export default function ProjectDetail() {
                   const url = docUrlOf(d);
                   const fname = docBaseName(d, url);
                   const isNew = lastUploadedId === String(d.id);
+                  /* Pratinjau inline, bukan modal: klik ikon mata (atau baru
+                     selesai diunggah) langsung memuat dokumen DI DALAM kartu
+                     ini. `instantPreviewId` + DocumentPreviewModal yang dulu
+                     dipakai untuk membuka pop-up otomatis setelah unggah
+                     dihapus - preview-nya sekarang muncul di tempat, jadi
+                     pengguna tidak perlu menutup apa pun untuk lanjut
+                     bekerja. */
+                  const isOpen = url !== "" && (isNew || openDocId === String(d.id));
                   return (
                   <div key={d.id} className={`doc-card rounded-xl border p-3 text-sm ${isNew ? "border-ocean-400 ring-2 ring-ocean-100" : "border-steel-100"}`} style={{ breakInside: "avoid" }}>
                     <div className="flex items-center justify-between gap-2">
                     <div className="min-w-0">
                       <p className="font-medium text-navy-900">{d.title} {isNew && <Badge tone="teal">Baru diunggah</Badge>}</p>
-                      <p className="text-xs text-steel-500">{d.id} · {d.type} · {d.version} · {d.updated}{d.fileName ? ` · lampiran: ${d.fileName}` : ""}</p>
+                      <p className="text-xs text-steel-500">{d.id} · {d.type} · {d.version} · {d.updated}{fname !== "" ? ` · lampiran: ${fname}` : ""}</p>
                     </div>
                     <div className="flex shrink-0 flex-wrap items-center gap-2">
                       <button className="btn-secondary text-xs" aria-label={S.detExportAria.replace("{a}", d.title)} onClick={() => {
-                        void exportExcel([["Field", "Value"], ["ID", d.id], ["Judul", d.title], ["Tipe", d.type], ["Proyek", pid], ["Versi", d.version], ["Status", d.status], ["Diperbarui", d.updated], ["Owner", d.owner]], `${d.id}-ringkasan`).then(() => toast(S.detToastExported.replace("{a}", d.id))).catch(() => toast(S.saveFail, "info"));
+                        void exportExcel([["Kolom", "Nilai"], ["ID", d.id], ["Judul", d.title], ["Tipe", d.type], ["Proyek", pid], ["Versi", d.version], ["Status", d.status], ["Diperbarui", d.updated], ["Pemilik", d.owner]], `${d.id}-ringkasan`).then(() => toast(S.detToastExported.replace("{a}", d.id))).catch(() => toast(S.saveFail, "info"));
                       }}><FileDown className="h-3.5 w-3.5" /> {S.excelBtn}</button>
                       <button className="btn-secondary text-xs" onClick={() => { setShareForm({ docId: String(d.id), to: "" }); setShowShare(true); }}>{S.detShareBtn}</button>
                       <StatusBadge status={d.status} />
                     </div>
                     </div>
                     <div className="mt-2">
-                      {isNew ? (
-                        <DocumentPreviewPanel
-                          doc={{
-                            title: String(d.title ?? d.id),
-                            fileUrl: url,
-                            subtitle: `${String(d.id)} · ${String(d.type)} · ${String(d.version)} · hasil upload`,
-                            fileName: fname !== "" ? fname : undefined,
-                          }}
-                        />
+                      {url === "" ? (
+                        <p className="text-xs text-steel-400">Belum ada lampiran file.</p>
                       ) : (
-                      <DocumentPreviewCell
-                        doc={{
-                          title: String(d.title ?? d.id),
-                          fileUrl: url,
-                          subtitle: `${String(d.id)} · ${String(d.type)} · ${String(d.version)}`,
-                          fileName: fname !== "" ? fname : undefined,
-                        }}
-                      />
+                        <>
+                          <div className="flex flex-wrap items-center gap-1.5">
+                            <button
+                              type="button"
+                              className="rounded-lg p-1.5 text-steel-500 hover:bg-steel-100 hover:text-ocean-600 focus:outline-none focus-visible:ring-2 focus-visible:ring-ocean-400"
+                              title={`Pratinjau: ${String(d.title ?? d.id)}`}
+                              aria-label={`Pratinjau: ${String(d.title ?? d.id)}`}
+                              aria-expanded={isOpen}
+                              onClick={() => toggleDocPreview(String(d.id))}
+                            >
+                              <Eye className="h-4 w-4" />
+                            </button>
+                            <DownloadFileButton url={url} fileName={fname !== "" ? fname : undefined} className="btn-secondary px-2 py-1 text-xs" />
+                          </div>
+                          {isOpen && (
+                            <div className="mt-2">
+                              <InlineDocPreview
+                                url={url}
+                                height={/\.pdf(\?|$)/i.test(url) ? "h-80" : "h-56"}
+                              />
+                            </div>
+                          )}
+                        </>
                       )}
                     </div>
                   </div>
@@ -1388,21 +1420,6 @@ export default function ProjectDetail() {
                 })}
                 {docs.length === 0 && <p className="text-sm text-steel-400">{S.detNoDocs}</p>}
               </div>
-              <DocumentPreviewModal
-                doc={(() => {
-                  const d = docs.find((x) => String(x.id) === instantPreviewId);
-                  if (!d) return null;
-                  const url = docUrlOf(d);
-                  const fname = docBaseName(d, url);
-                  return {
-                    title: String(d.title ?? d.id),
-                    fileUrl: url,
-                    subtitle: `${String(d.id)} · ${String(d.type)} · hasil upload`,
-                    fileName: fname !== "" ? fname : undefined,
-                  };
-                })()}
-                onClose={() => setInstantPreviewId(null)}
-              />
               <div className="mt-6">
                 <div className="mb-2 flex items-center justify-between">
                   <h3 className="text-sm font-semibold text-navy-900">{S.detBastTitle.replace("{n}", String(bastList.length))}</h3>
@@ -1856,11 +1873,30 @@ export default function ProjectDetail() {
         footer={<><button className="btn-secondary" onClick={() => setShowDoc(false)}>{S.cancelBtn}</button><button className="btn-primary" onClick={async () => {
           if (!docTitle.trim()) { toast(S.detToastDocTitle, "info"); return; }
           try {
-            const created = await add("documents", { title: docTitle.trim(), type: docType, project: pid, vessel: project.vessel, version: "v1.0", status: "Draft", updated: new Date().toISOString().slice(0, 10), owner: "Anda", sharedWith: [], approvalStatus: "Draft", fileName: docFile.trim() || "-" },
-              { action: "mengarsipkan dokumen", module: "Dokumen" });
+            /* Nilai yang diketik user disimpan sesuai sifatnya: kalau berbentuk
+               URL, ini lampiran yang bisa langsung dipratinjau; kalau hanya
+               nama berkas, itu metadata dan disimpan di `fileName`. Versi lama
+               selalu menulis ke `fileName`, jadi lampiran yang diketik sebagai
+               URL tidak pernah bisa dibuka. */
+            const typed = docFile.trim();
+            const created = await add("documents", {
+              title: docTitle.trim(),
+              type: docType,
+              project: pid,
+              vessel: project.vessel,
+              version: "v1.0",
+              status: "Draft",
+              updated: new Date().toISOString().slice(0, 10),
+              owner: "Anda",
+              sharedWith: [],
+              approvalStatus: "Draft",
+              ...(looksLikeUrl(typed) ? { fileUrl: typed } : { fileName: typed || "-" }),
+            }, { action: "mengarsipkan dokumen", module: "Dokumen" });
             toast(S.detToastDocAdd); setShowDoc(false); setDocTitle(""); setDocFile("");
             setLastUploadedId(String(created.id));
-            setInstantPreviewId(String(created.id));
+            /* Pratinjau langsung tampil di kartu dokumen yang baru dibuat
+               (lastUploadedId), tanpa membuka pop-up. */
+            setOpenDocId(String(created.id));
             setTab("Dokumen & Laporan");
           } catch (e) {
             toast(e instanceof Error ? e.message : S.saveFail, "info");
@@ -1877,17 +1913,22 @@ export default function ProjectDetail() {
             <input className="input" value={docFile} onChange={(e) => setDocFile(e.target.value)} placeholder={S.detDocFilePh} />
           </Field>
           <FileUploadButton label={S.detAttachUpload} onUploaded={(url) => setDocFile(url)} />
-          {docFile.trim() !== "" && (
+          {/* Pratinjau langsung muncul begitu ada URL di field di atas -_Unggah_
+              sudah mengisinya, dan mengetik URL juga langsung menambah pratinjau.
+              Tidak ada tombol "tampilkan pratinjau" terpisah. Kalau yang diketik
+              cuma nama berkas (bukan URL), panelnya sengaja tidak muncul dan
+              field-nya diberi catatan, karena tidak ada berkas yang bisa
+              diambil. */}
+          {looksLikeUrl(docFile) ? (
             <div className="rounded-xl border border-steel-100 bg-surface p-2">
               <p className="mb-1 text-[11px] font-semibold text-steel-500">Pratinjau sebelum simpan</p>
-              <DocumentPreviewPanel
-                doc={{
-                  title: docTitle.trim() || "dokumen-baru",
-                  fileUrl: docFile.trim(),
-                }}
-              />
+              <InlineDocPreview url={docFile.trim()} height={/\.pdf(\?|$)/i.test(docFile) ? "h-64" : "h-44"} />
             </div>
-          )}
+          ) : docFile.trim() !== "" ? (
+            <p className="text-[11px] text-amber-700">
+              &ldquo;{docFile.trim()}&rdquo; dibaca sebagai nama berkas, bukan URL, jadi tidak bisa dipratinjau. Gunakan tombol Unggah bila ingin melampirkan berkasnya.
+            </p>
+          ) : null}
         </div>
       </Modal>
 

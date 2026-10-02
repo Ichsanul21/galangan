@@ -1,7 +1,8 @@
-import { useMemo, useState, type ReactNode } from "react";
-import { Link } from "react-router-dom";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { Link, useSearchParams } from "react-router-dom";
 import { AlertTriangle, Bell, Check, CheckCheck, Download, Info, Search } from "lucide-react";
 import { Badge, Card, EmptyState, Field, KpiCard, PageHeader, Tabs, toast } from "../../components/ui";
+import { notifRowId } from "../../components/AlertBanner";
 import { FilterPopover } from "../../components/FilterPopover";
 import { useStore } from "../../data/store";
 import { useT } from "../../i18n/LanguageContext";
@@ -109,6 +110,7 @@ export default function Notifikasi() {
   const [q, setQ] = useState("");
   const [order, setOrder] = useState<"Terbaru" | "Terlama">("Terbaru");
   const [read, setRead] = useState<Set<string>>(() => loadNotifRead());
+  const [params] = useSearchParams();
 
   const alerts = useMemo(() => computeAlerts(data), [data]);
 
@@ -198,6 +200,40 @@ export default function Notifikasi() {
   const infoCount = items.filter((i) => i.kind === "info").length;
   const hasActiveFilter = filter !== "Semua" || sev !== "Semua" || mod !== "Semua" || q.trim() !== "" || order !== "Terbaru";
   const resetFilters = () => { setFilter("Semua"); setSev("Semua"); setMod("Semua"); setQ(""); setOrder("Terbaru"); };
+
+  /* Deep-link dari kartu "Perlu Perhatian" di Dashboard: /notifikasi?alert=1
+     membuka tab "Perlu Perhatian" lalu menyorot SEMUA baris alert yang tampil.
+
+     Yang dikirim bukan daftar id. Kartu itu menghitung dari engine
+     utils/moduleAlerts, sedangkan daftar ini memakai utils/alerts - dua skema
+     id yang berbeda dan tidak bisa dipetakan satu-satu. Perintah "tampilkan
+     semua alert" jauh lebih jujur daripada daftar id yang bisa meleset.
+
+     Efeknya dijalankan SATU KALI per URL. `items` dihitung ulang setiap kali
+     store berubah, dan store berubah beberapa kali saat AppShell melakukan
+     resync di tiap pindah rute - tanpa penjaga di bawah, efek ini akan
+     berulang: timer di-reset, jendela highlight terus meluncur, dan filter
+     yang sudah diubah pengguna diam-diam dikembalikan ke "Perlu Perhatian". */
+  const [flashAlertIds, setFlashAlertIds] = useState<ReadonlySet<string>>(() => new Set<string>());
+  const flashDoneRef = useRef<string>("");
+  useEffect(() => {
+    if (params.get("alert") !== "1") {
+      flashDoneRef.current = "";
+      return;
+    }
+    if (flashDoneRef.current === "alert") return;
+    flashDoneRef.current = "alert";
+    if (filter !== "Perlu Perhatian") setFilter("Perlu Perhatian");
+    const ids = items.filter((i) => i.kind === "alert").map((i) => i.id);
+    if (ids.length === 0) return;
+    const timer = window.setTimeout(() => {
+      setFlashAlertIds(new Set(ids));
+      document.getElementById(notifRowId(ids[0] as string))?.scrollIntoView({ block: "center", behavior: "smooth" });
+    }, 250);
+    const clear = window.setTimeout(() => setFlashAlertIds(new Set<string>()), 3400);
+    return () => { window.clearTimeout(timer); window.clearTimeout(clear); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [params, items]);
 
   const doExport = () => {
     const head = ["ID", "Jenis", "Isi", "Detail", "Modul", "Waktu", "Tautan", "Status"];
@@ -307,8 +343,17 @@ export default function Notifikasi() {
               markGroupRead={t.notif.markGroupRead}
               renderRow={(i) => {
                 const isRead = read.has(i.id);
+                /* Penanda kelompok dari kartu Dashboard. Ditumpuk di atas
+                   status baca, bukan menggantikannya: baris yang sudah dibaca
+                   tetap kelihatan "terbaca", tapi baris alert yang disorot juga
+                   terlihat. */
+                const isFlash = flashAlertIds.has(i.id);
                 return (
-                  <div key={i.id} className={`flex items-start gap-3 px-3 py-3 ${isRead ? "bg-white opacity-60" : "bg-ocean-50/40"}`}>
+                  <div
+                    key={i.id}
+                    id={notifRowId(i.id)}
+                    className={`flex items-start gap-3 px-3 py-3 ${isRead ? "bg-white opacity-60" : "bg-ocean-50/40"}${isFlash ? " notif-hl notif-flash-all" : ""}`}
+                  >
                     <div
                       className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-white ${
                         i.tone === "red" ? "bg-gradient-rose" : i.tone === "amber" ? "bg-gradient-amber" : "bg-gradient-hero"

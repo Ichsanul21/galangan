@@ -15,21 +15,51 @@ export function notifRowId(id: string): string {
 
 /** Kedip sesaat saat item banner diklik (pengganti highlight permanen).
  * pick(rowId, index, goToPage, size): index = posisi di list terurut halaman
- * (<0 bila tak ada pager); goToPage melompat ke halaman target dulu. */
+ * (<0 bila tak ada pager); goToPage melompat ke halaman target dulu.
+ *
+ * pickMany melakukan hal yang sama untuk SEKELOMPOK baris: dipakai kartu
+ * Dashboard bernama "NCR Terbuka" / "Piutang Tertagih" / "Kontrak Menang".
+ * Semula kartu itu hanya meneruskan satu id, sehingga dari lima NCR terbuka
+ * yang pengguna lihat hanya satu yang berkedip - padahal angka di kartu sudah
+ * menghitung semuanya. Sekarang semua id dalam kelompok itu ikut flashing,
+ * dan halaman tujuan tidak perlu tahu mana yang "utama".
+ *
+ * `flashIds` sengaja terpisah dari `flashId`: penanda kelompok memakai kelas
+ * CSS berbeda (.notif-flash-all) supaya jelas bedanya "kelompok baris ini yang
+ * saya maksud" dari "satu baris ini yang saya klik".
+ */
 export function useNotifFlash(): {
   flashId: string | null;
+  flashIds: ReadonlySet<string>;
   pick: (rowId: string, index: number, goToPage: (p: number) => void, size: number) => void;
+  pickMany: (rowIds: string[], index: number, goToPage: (p: number) => void, size: number) => void;
 } {
   const [flashId, setFlashId] = useState<string | null>(null);
+  const [flashIds, setFlashIds] = useState<ReadonlySet<string>>(() => new Set<string>());
   const timers = useRef<number[]>([]);
   useEffect(() => () => {
     timers.current.forEach((t) => window.clearTimeout(t));
     timers.current = [];
   }, []);
-  const pick = useCallback((rowId: string, index: number, goToPage: (p: number) => void, size: number) => {
+
+  const clearTimers = (): void => {
     timers.current.forEach((t) => window.clearTimeout(t));
     timers.current = [];
+  };
+
+  /** Ambil elemen baris pertama yang benar-benar ada di DOM. */
+  const firstPresent = (ids: string[]): HTMLElement | null => {
+    for (const id of ids) {
+      const el = document.getElementById(notifRowId(id));
+      if (el) return el;
+    }
+    return null;
+  };
+
+  const pick = useCallback((rowId: string, index: number, goToPage: (p: number) => void, size: number) => {
+    clearTimers();
     setFlashId(null);
+    setFlashIds(new Set<string>());
     if (index >= 0) {
       goToPage(Math.floor(index / Math.max(1, size)) + 1);
     }
@@ -41,7 +71,29 @@ export function useNotifFlash(): {
       setFlashId((cur) => (cur === rowId ? null : cur));
     }, 2600));
   }, []);
-  return { flashId, pick };
+
+  const pickMany = useCallback((rowIds: string[], index: number, goToPage: (p: number) => void, size: number) => {
+    const ids = [...new Set(rowIds.map((id) => String(id)).filter((id) => id !== ""))];
+    if (ids.length === 0) return;
+    clearTimers();
+    setFlashId(null);
+    setFlashIds(new Set<string>());
+    if (index >= 0) {
+      goToPage(Math.floor(index / Math.max(1, size)) + 1);
+    }
+    /* Scroll ke baris PERTAMA yang benar-benar ada: setelah pindah tab atau
+       berubah filter tidak semua id ikut tampil, dan melompat ke id yang tidak
+       ada membuat scrollIntoView diam-diam tidak terjadi. */
+    timers.current.push(window.setTimeout(() => {
+      firstPresent(ids)?.scrollIntoView({ block: "center", behavior: "smooth" });
+      setFlashIds(new Set(ids));
+    }, index >= 0 ? 200 : 0));
+    timers.current.push(window.setTimeout(() => {
+      setFlashIds(new Set<string>());
+    }, 3200));
+  }, []);
+
+  return { flashId, flashIds, pick, pickMany };
 }
 
 const PREVIEW_N = 5;
@@ -89,7 +141,13 @@ export function AlertBannerView({ items, onPick }: { items: ModuleAlertItem[]; o
           </p>
           {!min && (
             <>
-              <ul className="mt-1 max-h-64 w-full space-y-1 overflow-y-auto scroll-flush pr-4" style={{ scrollbarGutter: "stable" }}>
+              {/* `w-full` SENGAJA TIDAK dipakai di sini. Daftar ini memakai
+                  .scroll-flush supaya scrollbarnya menempel di ujung kanan card,
+                  dan margin-right negatif hanya berlaku bila width-nya auto;
+                  `w-full` mengunci width sehingga scrollbar terdorong ke dalam
+                  padding card. Padding dalam daftar (pr-3) tetap menjaga jarak
+                  teks ke scrollbar. */}
+              <ul className="mt-1 max-h-64 space-y-1 overflow-y-auto scroll-flush pr-3" style={{ scrollbarGutter: "stable" }}>
                 {shown.map((a) => (
                   <li key={a.id} className="flex items-start gap-1.5 text-xs" title={a.detail || a.label}>
                     <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-amber-500" />

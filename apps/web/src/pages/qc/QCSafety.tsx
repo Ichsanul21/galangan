@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { bucketByMonth, monthAxis, monthKeyOf, rebindLegacyMonthSeries } from "../../utils/monthAxis";
 import { Link } from "react-router-dom";
-import { Plus, ShieldCheck, AlertTriangle, Siren, Award, Send, Search } from "lucide-react";
+import { Plus, ShieldCheck, AlertTriangle, Siren, Award, Send, Search, Eye } from "lucide-react";
 import { ComposedChart, Line, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 import { Card, CardHeader, PageHeader, Badge, KpiCard, Tabs, StatusBadge, Donut, ChartTooltip, Modal, Field, FormGrid, ConfirmModal, SortTh, toggleSort, sortRows, usePager, toast,
   NumInput, FlowStrip, FileUploadButton, useBusy, AsyncButton,
@@ -15,9 +15,11 @@ import { sameName } from "../../utils/names";
 import { getSetting } from "../../utils/settings";
 import { useDeepLinkParams, useDeepLinkTarget } from "../../components/useDeepLink";
 import { AlertBannerView, notifRowId, useModuleAlert, useNotifFlash } from "../../components/AlertBanner";
+import { rowHighlightClass } from "../../components/rowHighlight";
 import { exportExcel } from "../../utils/export";
 import { transmittalDoc } from "../../utils/pdfDocs";
-import { DocumentPreviewCell, DocumentPreviewPanel, InlineDocPreview } from "../../components/DocumentPreview";
+import { DocumentPreviewCell, DocumentPreviewPanel, DownloadFileButton, InlineDocPreview } from "../../components/DocumentPreview";
+import { docAttachment, docFileNameOf, docUrlOf } from "../../utils/docAttachment";
 import { findUsages } from "../../utils/usages";
 import { useAuth, canSetTarget } from "../../auth/auth";
 import { FilterPopover } from "../../components/FilterPopover";
@@ -152,34 +154,45 @@ export default function QCSafety() {
     inspPager.reset();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [inspQ, inspStatus, tab]);
-  const pickNotif = (rowId: string) => {
-    const idx = sortedInsp.findIndex((r) => String(r.id) === rowId);
+  /* Terjemahkan sekumpulan id deep-link menjadi tab + sorotan.
+     Satu id (klik banner modul) dan banyak id (klik kartu Dashboard) memakai
+     jalur yang sama; hanya kelas CSS penandanya yang berbeda - satu baris
+     pakai .notif-flash, kelompok baris pakai .notif-flash-all. */
+  const pickNotifIds = (ids: string[]): void => {
+    if (ids.length === 0) return;
+    /* Satu id -> penanda tunggal; lebih dari satu -> penanda kelompok. */
+    const mark = (index: number, go: (p: number) => void, size: number): void => {
+      if (ids.length > 1) flash.pickMany(ids, index, go, size);
+      else flash.pick(ids[0] as string, index, go, size);
+    };
+    const toTab = (name: string, after: () => void): void => {
+      if (tab === name) { after(); return; }
+      setTab(name);
+      window.setTimeout(after, 250);
+    };
+
+    const idx = sortedInsp.findIndex((r) => ids.includes(String(r.id)));
     if (idx >= 0) {
-      if (tab === "Inspeksi (ITP)") { flash.pick(rowId, idx, inspPager.go, inspPager.size); return; }
-      setTab("Inspeksi (ITP)");
-      window.setTimeout(() => { flash.pick(rowId, idx, inspPager.go, inspPager.size); }, 250);
+      toTab("Inspeksi (ITP)", () => mark(idx, inspPager.go, inspPager.size));
       return;
     }
-    const nIdx = ncrList.findIndex((n) => String(n.id) === rowId);
-    if (nIdx >= 0) {
-      if (tab === "NCR") { flash.pick(rowId, -1, () => {}, 100); return; }
-      setTab("NCR");
-      window.setTimeout(() => { flash.pick(rowId, -1, () => {}, 100); }, 250);
+    if (ncrList.some((n) => ids.includes(String(n.id)))) {
+      toTab("NCR", () => mark(-1, () => {}, 100));
       return;
     }
-    const iIdx = incidents.findIndex((i) => String(i.id) === rowId);
-    if (iIdx >= 0) {
-      if (tab === "Insiden") { flash.pick(rowId, -1, () => {}, 100); return; }
-      setTab("Insiden");
-      window.setTimeout(() => { flash.pick(rowId, -1, () => {}, 100); }, 250);
+    if (incidents.some((i) => ids.includes(String(i.id)))) {
+      toTab("Insiden", () => mark(-1, () => {}, 100));
       return;
     }
-    flash.pick(rowId, -1, () => {}, 100);
+    mark(-1, () => {}, 100);
   };
+
+  /* Satu id dari banner modul. */
+  const pickNotif = (rowId: string): void => pickNotifIds([rowId]);
 
   /* Deep-link dari Dashboard (?tab=&highlight=): pindah tab lalu flash baris tujuan.
      Dijalankan sekali per kombinasi params agar tidak loop. */
-  useDeepLinkTarget(deepParams.tab, deepParams.highlight, setTab, pickNotif);
+  useDeepLinkTarget(deepParams.tab, deepParams.highlight, setTab, pickNotifIds);
 
   const [showInsp, setShowInsp] = useState(false);
   const [inspForm, setInspForm] = useState({ project: "", point: "", status: "Terjadwal", date: todayISO(), holdType: "Witness", nde: "Tidak", ndeMethod: "UT", inspector: "", sampleSize: "", defectsAllowed: "0", defectsFound: "0", calTool: "", branch: "" });
@@ -210,9 +223,38 @@ export default function QCSafety() {
   const [showDrw, setShowDrw] = useState(false);
   const [drwForm, setDrwForm] = useState({ project: "", title: "", holder: "", branch: "", fileUrl: "", kind: "Shop Drawing" });
   const [expandedDrw, setExpandedDrw] = useState<string | null>(null);
+  /* Drawing memakai pola yang sama dengan sertifikat: pratinjau INLINE di
+     dalam kartu, dibuka/tutup dari ikon mata. expandedDrw di atas untuk hal
+     lain (riwayat revisi), jadi state-nya sengaja dipisah - kalau dipakai
+     bersama, membuka riwayat akan ikut menutup pratinjau. */
+  const [openDrwId, setOpenDrwId] = useState<string>("");
+  const toggleDrwPreview = (id: string): void =>
+    setOpenDrwId((cur) => (cur === id ? "" : id));
   const [drwStatusF, setDrwStatusF] = useState("Semua");
   const [drwKindF, setDrwKindF] = useState("Semua");
-  const [certPreview, setCertPreview] = useState<{ vessel: string; name: string; expires: string; days: number | null; fileUrl?: string; projectId?: string } | null>(null);
+  /* Sertifikat: pratinjau INLINE, tanpa modal.
+     Semuanya memakai satu state `openCertKey` yang berisi kunci baris
+     ("vessel::nama"), bukan objek preview terpisah. Konsekuensinya:
+       - hanya satu sertifikat yang pratinjau terbuka pada satu waktu (dulu
+         tidak dijamin, sehingga dua modal bisa bertumpuk),
+       - menutupnya cukup mengosongkan string, dan tombol mati's aria-expanded
+         selalu jujur karena sumbernya sama dengan isi panel,
+       - tidak ada overlay yang menutupi daftar, jadi pengguna bisa membandingkan
+         tanggal kedaluwarsa sambil melihat dokumennya.
+
+     Kunci dibangun sebagai `vessel::nama` karena nama sertifikat bisa sama
+     di dua kapal berbeda. */
+/* Kunci unik satu baris sertifikat. Nama sertifikat bisa sama pada dua kapal
+     berbeda, jadi kapal ikut masuk - tanpa ini, membuka "Sertifikat
+     Keselamatan" di MT Blessing akan ikut membuka sertifikat bernama sama di
+     kapal lain. */
+  function certKeyOf(vessel: string, name: string): string {
+    return `${vessel}::${name}`;
+  }
+
+  const [openCertKey, setOpenCertKey] = useState<string>("");
+  const toggleCert = (key: string): void =>
+    setOpenCertKey((cur) => (cur === key ? "" : key));
   const projectOfVessel = (vesselName: string): StoreItem | undefined =>
     data.projects.find((p) => sameName(String(p.vessel ?? ""), vesselName));
   const certDocsOfProject = (projectId: string | undefined): StoreItem[] =>
@@ -732,7 +774,7 @@ export default function QCSafety() {
 
   const exportNcr = () => {
     void exportExcel(
-      [["NCR", "Proyek", "Severity", "Status", "Tenggat", "Ditutup", "Jam Rework", "Rate (Rp/jam)", "Material (Rp)", "Biaya Rework (Rp)", "Verifikasi Lanjutan"],
+      [["NCR", "Proyek", "Tingkat Keparahan", "Status", "Tenggat", "Ditutup", "Jam Rework", "Tarif (Rp/jam)", "Material (Rp)", "Biaya Rework (Rp)", "Verifikasi Lanjutan"],
         ...ncrList.map((n) => [n.id, n.project, n.severity, n.status, fmtTanggal(String(n.due ?? "")), fmtTanggal(String(n.closedAt ?? "")), Number(n.reworkHours || 0), Number(n.reworkRate || 0), Number(n.reworkMaterial || 0), reworkCost(n), n.followUpDate ? `${fmtTanggal(String(n.followUpDate))} - ${n.followUpNote ?? ""}` : "-"])],
       `NCR-Rework-${today}`,
       "NCR",
@@ -1171,7 +1213,7 @@ export default function QCSafety() {
                   </thead>
                   <tbody className="divide-y divide-steel-100">
                     {inspPager.slice(sortedInsp).map((i) => (
-                      <tr key={i.id} className="hover:bg-surface">
+                      <tr key={i.id} id={notifRowId(String(i.id))} className={rowHighlightClass({ id: String(i.id), flash, notified: notified.has(String(i.id)), base: "hover:bg-surface" })}>
                         <td className="td font-mono font-medium text-navy-900">{i.id}</td>
                         <td className="td text-steel-600 font-mono text-xs">{i.project}</td>
                         <td className="td text-steel-600 max-w-[240px] truncate" title={String(i.point)}>{i.point}</td>
@@ -1308,7 +1350,7 @@ export default function QCSafety() {
                 <button className="btn-secondary text-xs" onClick={exportNcr}>{S.btnEksporNcr}</button>
               </div>
               {ncrList.map((n) => (
-                <Card key={n.id} id={notifRowId(String(n.id))} className={`p-4 ${flash.flashId === String(n.id) ? "notif-hl notif-flash" : (notified.has(String(n.id)) ? "notif-hl" : "")}`}>
+                <Card key={n.id} id={notifRowId(String(n.id))} className={`p-4 ${rowHighlightClass({ id: String(n.id), flash, notified: notified.has(String(n.id)) })}`}>
                   <div className="flex flex-wrap items-start justify-between gap-2">
                     <div>
                       <div className="flex items-center gap-2">
@@ -1391,19 +1433,41 @@ export default function QCSafety() {
                       </div>
                       <p className="mt-1 text-sm text-steel-700">{d.title}</p>
                       <p className="text-xs text-steel-500 mt-0.5">{S.drawingMeta.replace("{a}", String(d.project)).replace("{b}", String(d.holder)).replace("{c}", fmtTanggal(String(d.updated)))}</p>
-                      {d.fileUrl ? (
-                        <div className="mt-1.5">
-                          <DocumentPreviewCell
-                            doc={{
-                              title: String(d.title),
-                              fileUrl: String(d.fileUrl),
-                              subtitle: `${String(d.id)} · Rev ${String(d.revision)} · ${String(d.status)}`,
-                            }}
-                          />
-                        </div>
-                      ) : (
-                        <p className="mt-1 text-[11px] text-steel-400">Belum ada dokumen — tekan Edit lalu unggah PDF/gambar.</p>
-                      )}
+                      {(() => {
+                        /* docAttachment dipindai sekali di sini lalu dipakai
+                           ulang di bawah. Semula docUrlOf(d) dipanggil lima kali
+                           untuk satu kartu, masing-masing memindai 9 field. */
+                        const att = docAttachment(d);
+                        const isOpen = openDrwId === String(d.id);
+                        if (att.url === "") {
+                          return <p className="mt-1 text-[11px] text-steel-400">Belum ada dokumen — tekan Ubah lalu unggah PDF/gambar.</p>;
+                        }
+                        return (
+                          <>
+                            <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+                              <button
+                                type="button"
+                                className="inline-flex items-center gap-1.5 rounded-lg px-1.5 py-1 text-xs font-semibold text-steel-500 hover:bg-steel-100 hover:text-ocean-600 focus:outline-none focus-visible:ring-2 focus-visible:ring-ocean-400"
+                                title={`Pratinjau: ${String(d.title)}`}
+                                aria-label={`Pratinjau: ${String(d.title)}`}
+                                aria-expanded={isOpen}
+                                onClick={() => toggleDrwPreview(String(d.id))}
+                              >
+                                <Eye className="h-4 w-4" aria-hidden /> {isOpen ? "Tutup pratinjau" : "Pratinjau"}
+                              </button>
+                              <DownloadFileButton url={att.url} fileName={att.fileName} className="btn-secondary px-2 py-1 text-xs" />
+                            </div>
+                            {/* Pratinjau langsung tampil di bawah tombolnya: tidak ada
+                                modal popup dan tidak ada tombol kedua untuk
+                                "menampilkan pratinjau". */}
+                            {isOpen && (
+                              <div className="mt-2">
+                                <InlineDocPreview url={att.url} height={/\.pdf(\?|$)/i.test(att.url) ? "h-72" : "h-48"} />
+                              </div>
+                            )}
+                          </>
+                        );
+                      })()}
                     </div>
                     <div className="flex flex-wrap items-center gap-2">
                       <button className="btn-secondary text-xs" onClick={() => setExpandedDrw(expandedDrw === d.id ? null : d.id)}>
@@ -1601,7 +1665,7 @@ export default function QCSafety() {
               </div>
               <div className="space-y-3">
                 {incidents.map((i) => (
-                  <Card key={i.id} id={notifRowId(String(i.id))} className={`p-4 ${flash.flashId === String(i.id) ? "notif-hl notif-flash" : (notified.has(String(i.id)) ? "notif-hl" : "")}`}>
+                  <Card key={i.id} id={notifRowId(String(i.id))} className={`p-4 ${rowHighlightClass({ id: String(i.id), flash, notified: notified.has(String(i.id)) })}`}>
                     <div className="flex items-start justify-between gap-2">
                       <div>
                         <div className="flex items-center gap-2">
@@ -1663,14 +1727,41 @@ export default function QCSafety() {
               <Card className="p-4">
                 <h3 className="text-sm font-semibold text-navy-900">{S.certAttentionT.replace("{n}", String(CERT_WINDOW))}</h3>
                 <div className="mt-2 space-y-2 text-sm">
-                  {certAttention.map((c) => (
-                    <div key={`${c.vessel}-${c.name}`} className="flex items-center justify-between gap-2">
-                      <button className="truncate text-left font-medium text-ocean-600 hover:underline" title={`${c.name} - ${c.vessel} · berlaku hingga ${fmtTanggal(c.expires)}`} onClick={() => setCertPreview({ ...c, projectId: projectOfVessel(c.vessel)?.id ? String(projectOfVessel(c.vessel)?.id) : undefined })}>{c.name} - {c.vessel}</button>
-                      <Badge tone={(c.days as number) < 0 ? "red" : "amber"}>
-                        {(c.days as number) < 0 ? S.badgeLewat.replace("{n}", String(Math.abs(c.days as number))) : S.badgeSisaN.replace("{n}", String(c.days))}
-                      </Badge>
-                    </div>
-                  ))}
+                  {certAttention.map((c) => {
+                    const key = certKeyOf(c.vessel, c.name);
+                    const url = c.fileUrl ?? "";
+                    const isOpen = openCertKey === key;
+                    return (
+                      <div key={`${c.vessel}-${c.name}`} className="rounded-xl border border-steel-100 bg-surface px-2.5 py-2">
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="min-w-0 truncate font-medium text-navy-900" title={`${c.name} - ${c.vessel} · berlaku hingga ${fmtTanggal(c.expires)}`}>{c.name} - {c.vessel}</span>
+                          <span className="flex shrink-0 items-center gap-1.5">
+                            <Badge tone={(c.days as number) < 0 ? "red" : "amber"}>
+                              {(c.days as number) < 0 ? S.badgeLewat.replace("{n}", String(Math.abs(c.days as number))) : S.badgeSisaN.replace("{n}", String(c.days))}
+                            </Badge>
+                            {url !== "" && (
+                              <button
+                                type="button"
+                                className="rounded-lg p-1.5 text-steel-500 hover:bg-steel-100 hover:text-ocean-600"
+                                title={`Pratinjau: ${c.name} - ${c.vessel}`}
+                                aria-label={`Pratinjau: ${c.name} - ${c.vessel}`}
+                                aria-expanded={isOpen}
+                                onClick={() => toggleCert(key)}
+                              >
+                                <Eye className="h-4 w-4" aria-hidden />
+                              </button>
+                            )}
+                          </span>
+                        </div>
+                        {isOpen && url !== "" && (
+                          <div className="mt-2 space-y-2">
+                            <InlineDocPreview url={url} height={/\.pdf(\?|$)/i.test(url) ? "h-56" : "h-40"} />
+                            <DownloadFileButton url={url} className="btn-secondary px-2 py-1 text-xs" />
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
                   {certAttention.length === 0 && <p className="text-xs text-steel-400">{S.emptyCert}</p>}
                 </div>
               </Card>
@@ -1678,19 +1769,86 @@ export default function QCSafety() {
                 <div key={v.id}>
                   <h3 className="mb-2 text-sm font-semibold text-navy-900">{v.name}</h3>
                   <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
-                    {(v.certificates ?? []).map((c: { name: string; expires: string; fileUrl?: string }) => {
+{(v.certificates ?? []).map((c: { name: string; expires: string; fileUrl?: string }) => {
                       const left = daysUntil(c.expires);
                       const tone = left === null ? "gray" : left < 0 ? "red" : left <= CERT_WINDOW ? "amber" : "green";
+                      const key = certKeyOf(String(v.name), c.name);
+                      const isOpen = openCertKey === key;
+                      const url = docUrlOf(c);
+                      const projectId = projectOfVessel(String(v.name))?.id;
+                      const certDocs = projectId ? certDocsOfProject(String(projectId)) : [];
                       return (
                         <Card key={c.name} className="p-3">
                           <p className="truncate text-sm font-medium text-navy-900" title={c.name}>{c.name}</p>
                           <p className="text-xs text-steel-500">{S.berlakuHingga.replace("{n}", fmtTanggal(c.expires))}{left !== null && left >= 0 ? S.sisaHariDot.replace("{n}", String(left)) : ""}</p>
                           <div className="mt-1 flex items-center justify-between gap-2">
                             <Badge tone={tone as "green" | "amber" | "red" | "gray"}>{tone === "green" ? "Berlaku" : tone === "amber" ? "Hampir Expire" : tone === "red" ? "Kedaluwarsa" : "Tanpa tanggal"}</Badge>
-                            <button className="text-xs font-semibold text-ocean-600 underline" onClick={() => setCertPreview({ vessel: String(v.name), name: c.name, expires: c.expires, days: left, fileUrl: c.fileUrl ? String(c.fileUrl) : undefined, projectId: projectOfVessel(String(v.name))?.id ? String(projectOfVessel(String(v.name))?.id) : undefined })}>
-                              {locale === "en" ? "Preview" : "Pratinjau"}
+                            {/* Tombolnya TETAP ada walau belum ada berkas, karena
+                                panel ini juga memuat daftar dokumen sertifikat di
+                                Manajemen Proyek - dan sebagian besar kapal di seed
+                                memang tidak punya fileUrl. Kalau tombolnya
+                                disembunyikan saat url kosong, daftar itu jadi mustahil
+                                dibuka sama sekali. */}
+                            <button
+                              type="button"
+                              className="inline-flex items-center gap-1.5 rounded-lg px-1.5 py-1 text-xs font-semibold text-steel-500 hover:bg-steel-100 hover:text-ocean-600 focus:outline-none focus-visible:ring-2 focus-visible:ring-ocean-400"
+                              title={`Pratinjau: ${c.name}`}
+                              aria-label={`Pratinjau: ${c.name}`}
+                              aria-expanded={isOpen}
+                              onClick={() => toggleCert(key)}
+                            >
+                              <Eye className="h-4 w-4" aria-hidden />
+                              {isOpen ? "Tutup" : "Pratinjau"}
                             </button>
                           </div>
+                          {/* Pratinjau langsung di dalam kartu, bukan modal popup:
+                              klik tombol -> dokumennya tampil di tempat, dan daftar
+                              sertifikat lain tetap terlihat. */}
+                          {isOpen && (
+                            <div className="mt-2 space-y-2">
+                              {url !== "" ? (
+                                <>
+                                  <InlineDocPreview url={url} height={/\.pdf(\?|$)/i.test(url) ? "h-56" : "h-40"} />
+                                  <DownloadFileButton url={url} fileName={docFileNameOf(c)} className="btn-secondary px-2 py-1 text-xs" />
+                                </>
+                              ) : (
+                                <p className="text-xs text-steel-500">Belum ada file sertifikat — hubungi QA.</p>
+                              )}
+                              {/* Tautan ke proyek terkait pindah ke panel inline, bukan
+                                  hilang bersama modal yang dihapus. */}
+                              {projectId && (
+                                <Link
+                                  to={`/proyek/${projectId}`}
+                                  className="block text-[11px] font-semibold text-ocean-600 hover:underline"
+                                >
+                                  Proyek terkait: {String(projectId)} · {String(v.name)}
+                                </Link>
+                              )}
+                              {projectId && (
+                                <details className="rounded-lg border border-steel-100 bg-surface p-2">
+                                  <summary className="cursor-pointer text-[11px] font-semibold text-navy-900">
+                                    Dokumen Sertifikat di Manajemen Proyek ({String(projectId)})
+                                  </summary>
+                                  {certDocs.length === 0 ? (
+                                    <p className="mt-1.5 text-[11px] text-steel-400">
+                                      Belum ada dokumen bertipe Sertifikat pada proyek ini — unggah lewat Detail Proyek → Dokumen &amp; Laporan.
+                                    </p>
+                                  ) : (
+                                    <div className="mt-1.5 space-y-1.5">
+                                      {certDocs.map((d) => (
+                                        <div key={String(d.id)} className="flex items-center justify-between gap-2 rounded-lg bg-white px-2.5 py-1.5 text-sm">
+                                          <span className="min-w-0 truncate font-medium text-navy-900" title={String(d.title)}>
+                                            {String(d.title)} <span className="font-mono text-[11px] text-steel-400">{String(d.id)}</span>
+                                          </span>
+                                          <DocumentPreviewCell doc={{ title: String(d.title ?? d.id), fileUrl: docUrlOf(d), fileName: docFileNameOf(d), subtitle: `${String(d.id)} · Sertifikat proyek` }} />
+                                        </div>
+                                      ))}
+                                    </div>
+                                  )}
+                                </details>
+                              )}
+                            </div>
+                          )}
                         </Card>
                       );
                     })}
@@ -2208,53 +2366,6 @@ export default function QCSafety() {
             </select>
           </Field>
         </div>
-      </Modal>
-
-      {/* Modal pratinjau sertifikat — terhubung ke dokumen Sertifikat Manajemen Proyek */}
-      <Modal open={certPreview !== null} onClose={() => setCertPreview(null)} title={certPreview?.name ?? ""} subtitle={certPreview ? `${certPreview.vessel}${certPreview.projectId ? ` · proyek ${certPreview.projectId}` : ""}` : ""} wide>
-        {certPreview && (
-          <div className="space-y-3">
-          <dl className="dl-div text-sm">
-            <div className="flex justify-between gap-4"><dt className="shrink-0 text-steel-500">{S.berlakuHingga.replace("{n}", "")}</dt><dd className="text-right font-medium text-navy-900">{fmtTanggal(certPreview.expires)}</dd></div>
-            <div className="flex justify-between gap-4"><dt className="shrink-0 text-steel-500">Status</dt><dd>
-              <Badge tone={certPreview.days === null ? "gray" : certPreview.days < 0 ? "red" : certPreview.days <= CERT_WINDOW ? "amber" : "green"}>
-                {certPreview.days === null ? "-" : certPreview.days < 0 ? S.badgeLewat.replace("{n}", String(Math.abs(certPreview.days))) : certPreview.days <= CERT_WINDOW ? S.badgeSisaN.replace("{n}", String(certPreview.days)) : S.berlakuHingga.replace("{n}", fmtTanggal(certPreview.expires))}
-              </Badge>
-            </dd></div>
-            {certPreview.projectId && (
-              <div className="flex justify-between gap-4"><dt className="shrink-0 text-steel-500">Proyek terkait</dt><dd><Link to={`/proyek/${certPreview.projectId}`} className="font-semibold text-ocean-600 hover:underline">{certPreview.projectId} · {projectOfVessel(certPreview.vessel)?.vessel ?? certPreview.vessel}</Link></dd></div>
-            )}
-          </dl>
-          {certPreview.fileUrl ? (
-            <DocumentPreviewPanel
-              doc={{
-                title: certPreview.name,
-                fileUrl: certPreview.fileUrl,
-                subtitle: `${certPreview.vessel}${certPreview.projectId ? ` · ${certPreview.projectId}` : ""}`,
-              }}
-            />
-          ) : (
-            <p className="text-xs text-steel-500">Belum ada file kapal — hubungi QA</p>
-          )}
-          {certPreview.projectId && (
-            <div className="rounded-xl border border-steel-100 bg-surface p-3">
-              <p className="mb-1 text-xs font-semibold text-navy-900">Dokumen Sertifikat di Manajemen Proyek ({certPreview.projectId})</p>
-              {certDocsOfProject(certPreview.projectId).length === 0 ? (
-                <p className="text-xs text-steel-400">Belum ada dokumen bertipe Sertifikat pada proyek ini — unggah via ProjectDetail → Dokumen & Laporan.</p>
-              ) : (
-                <div className="space-y-1.5">
-                  {certDocsOfProject(certPreview.projectId).map((d) => (
-                    <div key={String(d.id)} className="flex items-center justify-between gap-2 rounded-lg bg-white px-2.5 py-1.5 text-sm">
-                      <span className="min-w-0 truncate font-medium text-navy-900" title={String(d.title)}>{String(d.title)} <span className="font-mono text-[11px] text-steel-400">{String(d.id)}</span></span>
-                      <DocumentPreviewCell doc={{ title: String(d.title ?? d.id), fileUrl: String(d.fileUrl ?? d.fileName ?? ""), subtitle: `${String(d.id)} · Sertifikat proyek` }} />
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
-          </div>
-        )}
       </Modal>
 
       {/* Modal hapus inspeksi (daftar pemakai: NCR yang merujuk ncrId). */}

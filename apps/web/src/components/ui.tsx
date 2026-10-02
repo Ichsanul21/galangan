@@ -152,10 +152,17 @@ export function Badge({
   /** Tooltip native. Dipakai badge status yang butuh penjelasan (mis. why this item is low). */
   title?: string;
 }) {
+  /* Fallback ke abu-abu untuk nada yang tidak dikenal.
+     Nilai nada sering datang dari data (`a.tone as never` untuk aktivitas, atau
+     kolom enum di store) sehingga tipe bisa lolos ke compile tapi tidak ada
+     di toneMap. Tanpa fallback, toneMap[tone] bernilai undefined dan
+     className jadi "bg-... undefined" - kelas rusak yang tetap lolos ke DOM
+     tanpa error apa pun. */
+  const toneClass = toneMap[tone] ?? toneMap.gray;
   return (
     <span
       title={title}
-      className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs font-semibold ${toneMap[tone]} ${className}`}
+      className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs font-semibold ${toneClass} ${className}`}
     >
       {children}
     </span>
@@ -591,7 +598,14 @@ interface ErrorBoundaryState {
 }
 
 export class ErrorBoundary extends Component<
-  { children: ReactNode; title?: string; backLabel?: string; onBack?: () => void },
+  {
+    children: ReactNode;
+    title?: string;
+    backLabel?: string;
+    onBack?: () => void;
+    /** Nilai yang, kalau berubah, ME-RESET error yang tersimpan. */
+    resetKey?: string;
+  },
   ErrorBoundaryState
 > {
   state: ErrorBoundaryState = { error: null };
@@ -604,14 +618,41 @@ export class ErrorBoundary extends Component<
     console.error("ISMS ErrorBoundary:", error, info);
   }
 
+  /**
+   * Reset error saat `resetKey` berubah.
+   *
+   * BUG YANG DIPERBAIKI: tanpa ini, satu galat mengunci SELURUH pola rute
+   * berikutnya. React Router memakai instance React yang SAMA untuk
+   * /proyek/A dan /proyek/B (elemen `<Route path="/proyek/:id">` cuma berubah
+   * param), jadi boundary-nya tidak pernah di-unmount dan `state.error`
+   * tetap tidak null. Hasilnya proyek kedua yang benar-benar sehat ikut
+   * menampilkan layar galat - persis gejala "satu modul rusak, modul lain
+   * ikut crash". Tombol "Coba lagi" ada, tapi pengguna seharusnya perlu
+   * menemukannya.
+   *
+   * `componentDidUpdate` (bukan render) dipakai supaya tidak memanggil
+   * setState saat render.
+   */
+  componentDidUpdate(prev: { resetKey?: string }) {
+    if (prev.resetKey !== this.props.resetKey && this.state.error !== null) {
+      this.setState({ error: null });
+    }
+  }
+
   render() {
     if (this.state.error) {
       return (
         <div className="flex flex-col items-center justify-center rounded-2xl border border-steel-200 bg-white p-10 text-center">
           <p className="text-sm font-semibold text-navy-900">{this.props.title ?? "Bagian ini gagal dimuat"}</p>
           <p className="mt-1 max-w-md text-xs text-steel-500">
-            Terjadi galat saat merender. Coba muat ulang halaman atau kembali dan ulangi aksi terakhir.
+            Terjadi galat saat merender bagian ini. Data modul lain tidak
+            terpengaruh - coba lagi atau pindah modul.
           </p>
+          {this.state.error.message && (
+            <p className="mt-2 max-w-md break-words font-mono text-[11px] text-steel-400">
+              {this.state.error.message}
+            </p>
+          )}
           <div className="mt-4 flex flex-wrap items-center justify-center gap-2">
             {/* Coba lagi dulu tanpa memuat ulang seluruh aplikasi. Dulu satu-satunya
                 jalan keluar adalah window.location.reload() yang membuang seluruh

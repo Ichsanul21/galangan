@@ -5,7 +5,7 @@ import type { SortState } from "../../components/ui";
 import { FilterPopover } from "../../components/FilterPopover";
 import { useStore, type StoreItem, type CollectionKey } from "../../data/store";
 import { useModuleSync } from "../../data/useModuleSync";
-import { DocumentPreviewCell, DocumentPreviewPanel } from "../../components/DocumentPreview";
+import { DocumentPreviewCell, DocumentPreviewPanel, InlineDocPreview } from "../../components/DocumentPreview";
 import { isBackendConfigured } from "../../services/http";
 import { ocrImageUrl } from "../../services/upload";
 import { uploadFile } from "../../services/upload";
@@ -14,12 +14,19 @@ import { AlertBannerView, notifRowId, useModuleAlert, useNotifFlash } from "../.
 import { sbDsNumber, sbSjNumber, sbTtNumber, maxSeq, parseSjSeq } from "../../utils/sb";
 import { exportExcel } from "../../utils/export";
 import { findUsages } from "../../utils/usages";
+import { docAttachment, docFileNameOf, docUrlOf, looksLikeUrl } from "../../utils/docAttachment";
 import { n_dry } from "../../i18n/n_dry";
 import { useT } from "../../i18n/LanguageContext";
 import { monthAxis, monthKeyOf } from "../../utils/monthAxis";
 
 const TYPES = ["Kontrak", "Drawing", "Prosedur", "Sertifikat", "Laporan", "Invoice", "NCR", "Penawaran", "Dock Space", "Surat Jalan", "Tanda Terima"];
 const FILTERS = ["Semua", ...TYPES, "Arsip"];
+
+/* Tinggi pratinjau PDF perlu lebih lega daripada gambar supaya halaman pertama
+   terbaca tanpa perlu menggulir di dalam iframe. */
+const PDF_HEIGHT_RE = /\.pdf(\?|$)/i;
+/* OCR backend hanya menangani gambar, jadi tombolnya disembunyikan untuk PDF. */
+const IMAGE_URL_RE = /\.(png|jpe?g|webp|bmp)(\?|$)/i;
 
 /* Batch koleksi modul Dokumen untuk useModuleSync (pengganti resync penuh). */
 const DOC_COLS: CollectionKey[] = ["activities", "documents", "vessels", "projects"];
@@ -99,9 +106,26 @@ function daysUntil(iso: string | null | undefined): number | null {  if (!iso ||
 
 const emptyForm = { title: "", type: "Laporan", project: "", vessel: "", owner: "", berlakuHingga: "", revNote: "", fileUrl: "" };
 
-/* Teks cari mencakup owner / tipe / OCR / URL lampiran, bukan cuma judul. */
+/* Teks cari mencakup owner / tipe / OCR / lampiran, bukan cuma judul.
+   Lampiran dibaca lewat docAttachment supaya pencarian tetap menemukan dokumen
+   yang lampirannya hanya tersimpan di `fileName` (seed lama). */
 function docHay(d: StoreItem): string {
-  return `${d.title ?? ""} ${d.id ?? ""} ${d.project ?? ""} ${d.vessel ?? ""} ${d.owner ?? ""} ${d.type ?? ""} ${d.ocrText ?? ""} ${d.fileUrl ?? ""}`.toLowerCase();
+  const att = docAttachment(d);
+  return `${d.title ?? ""} ${d.id ?? ""} ${d.project ?? ""} ${d.vessel ?? ""} ${d.owner ?? ""} ${d.type ?? ""} ${d.ocrText ?? ""} ${att.url} ${att.fileName}`.toLowerCase();
+}
+
+/**
+ * Pisahkan nilai input lampiran sesuai sifatnya saat disimpan.
+ *
+ * Kalau nilainya URL, ia jadi `fileUrl` (bisa langsung dipratinjau/diunduh).
+ * Kalau hanya nama berkas, ia jadi `fileName` (metadata). Versi lama selalu
+ * menulis apa pun ke `fileUrl`, jadi mengetik "kontrak.pdf" menghasilkan
+ * dokumen yang tombol pratinjau-nya pasti 404 - dan tidak pernah bisa
+ * diperbaiki karena sumbernya sudah salah bentuk.
+ */
+function attachFields(typed: string): { fileUrl?: string; fileName?: string } {
+  if (typed === "") return {};
+  return looksLikeUrl(typed) ? { fileUrl: typed } : { fileName: typed };
 }
 
 export default function Documents() {
@@ -130,6 +154,9 @@ export default function Documents() {
   const [distTo, setDistTo] = useState("");
 
   const distLog = (Array.isArray(detail?.distribusi) ? detail.distribusi : []) as { to: string; at: string; by?: string }[];
+  /* Lampiran baris yang sedang dibuka detail, dihitung sekali supaya panel
+     pratinjau dan baris "Lampiran" di bawahnya tidak pernah berbeda pendapat. */
+  const detailAttach = useMemo(() => docAttachment(detail), [detail]);
 
   const sendDist = async () => {
     if (!detail) return;
@@ -198,7 +225,7 @@ export default function Documents() {
     setOcrText(""); setDistTo("");
     setEditing(d);
     setRelSel(Array.isArray(d.related) ? d.related.map(String) : []);
-    setForm({ title: d.title, type: d.type, project: d.project, vessel: d.vessel ?? "", owner: d.owner, berlakuHingga: d.berlakuHingga ?? "", revNote: "", fileUrl: String(d.fileUrl ?? "") });
+    setForm({ title: d.title, type: d.type, project: d.project, vessel: d.vessel ?? "", owner: d.owner, berlakuHingga: d.berlakuHingga ?? "", revNote: "", fileUrl: docUrlOf(d) || docFileNameOf(d) });
   };
 
   const openDetail = (d: StoreItem) => {
@@ -256,13 +283,13 @@ export default function Documents() {
     if (editing) {
       const dupe = data.documents.some((d) => d.id !== editing.id && d.type === form.type && String(d.title).toLowerCase() === form.title.trim().toLowerCase());
       if (dupe) { toast(S.tTitleDupe, "info"); return; }
-      const version = nextVersion(String(editing.version ?? "v1.0"));
+const version = nextVersion(String(editing.version ?? "v1.0"));
       const revisions = [...(editing.revisions ?? []), { version, at: todayISO(), by: form.owner.trim(), note: form.revNote.trim() }];
       await update("documents", editing.id, {
         title: form.title.trim(), type: form.type, project: form.project, vessel: form.vessel,
         owner: form.owner.trim(), berlakuHingga: form.berlakuHingga || undefined,
         version, revisions, updated: todayISO(), related: [...relSel],
-        fileUrl: form.fileUrl.trim(),
+        ...attachFields(form.fileUrl.trim()),
       });
       log(`merevisi dokumen ke ${version}`, editing.id, "Dokumen");
       toast(S.tVersionUp.replace("{a}", editing.id).replace("{b}", version));
@@ -277,7 +304,7 @@ export default function Documents() {
         owner: form.owner.trim(), berlakuHingga: form.berlakuHingga || undefined,
         version: "v1.0", status: "Draft", updated: todayISO(), archived: false, docCopy: "Terkendali",
         related: [...relSel],
-        fileUrl: form.fileUrl.trim(),
+        ...attachFields(form.fileUrl.trim()),
         branch: String(data.projects.find((p) => p.id === form.project)?.branch ?? (branch !== "SEMUA" ? branch : "")),
         // Ref format SB untuk arsip operasional (cth DS: 001/DS-SB/SMD/I/2024).
         sbRef: form.type === "Dock Space" ? sbDsNumber(sbSeq("Dock Space"))
@@ -293,7 +320,9 @@ export default function Documents() {
   };
 
   const runOcr = async (d: StoreItem) => {
-    const url = String(d.fileUrl ?? "");
+    /* URL lampiran resolved satu cara (docUrlOf), sama seperti pratinjaunya,
+       supaya OCR tidak pernah membaca field yang berbeda dari yang diunduh. */
+    const url = docUrlOf(d);
     if (!url) { toast(S.tNoImage, "info"); return; }
     setOcrBusy(true);
     try {
@@ -369,9 +398,12 @@ export default function Documents() {
     }
   };
 
-  const doExport = () => {
+const doExport = () => {
     const rows = list.map((d) => [d.id, d.title, d.type, d.project, d.version, d.status, d.owner, d.updated, d.berlakuHingga ?? "", Array.isArray(d.related) ? d.related.length : 0]);
-    exportExcel([["ID", "Judul", "Tipe", "Proyek", "Versi", "Status", "Owner", "Updated", "Berlaku Hingga", "Jml Terkait"], ...rows], `register-dokumen-${todayISO()}`);
+    /* Header Indonesian semua. Kolom "Owner" dan "Updated" sebelumnya tercampur
+       di antara Judul/Tipe/Proyek/Status, jadi sheet yang sama punya dua
+       gaya penamaan. */
+    exportExcel([["ID", "Judul", "Tipe", "Proyek", "Versi", "Status", "Pemilik", "Diperbarui", "Berlaku Hingga", "Jml Terkait"], ...rows], `register-dokumen-${todayISO()}`);
     toast(S.tExported.replace("{n}", String(rows.length)));
   };
 
@@ -488,7 +520,7 @@ export default function Documents() {
         <div className="overflow-x-auto">
           <table className="w-full">
             <thead className="bg-surface sticky top-0 z-10">
-              <tr><SortTh label={S.colDoc} sortKey="dokumen" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.colType} sortKey="tipe" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><th className="th">Pratinjau</th><SortTh label={S.colProjectShip} sortKey="proyek" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.colVersion} sortKey="versi" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.colStatus} sortKey="status" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.colUpdated} sortKey="diperbarui" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><th className="th">{S.colAction}</th></tr>
+              <tr><SortTh label={S.colDoc} sortKey="dokumen" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.colType} sortKey="tipe" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><th className="th">{locale === "en" ? "Preview" : "Pratinjau"}</th><SortTh label={S.colProjectShip} sortKey="proyek" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.colVersion} sortKey="versi" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.colStatus} sortKey="status" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.colUpdated} sortKey="diperbarui" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><th className="th">{S.colAction}</th></tr>
             </thead>
             <tbody className="divide-y divide-steel-100">
               {docPager.slice(sortedDocs).map((d) => (
@@ -503,10 +535,16 @@ export default function Documents() {
                   </td>
                   <td className="td"><Badge tone="navy">{d.type}</Badge></td>
                   <td className="td">
+                    {/* Resolusi lampiran lewat docAttachment, bukan `d.fileUrl`
+                        mentah. Seed lama menyimpan lampiran hanya di `fileName`,
+                        jadi kolom ini pernah menampilkan "-" dan tombol
+                        Pratinjau/Unduh hilang total - itu yang dibaca sebagai
+                        "tombolnya rusak". Lihat utils/docAttachment.ts. */}
                     <DocumentPreviewCell
                       doc={{
                         title: String(d.title),
-                        fileUrl: String(d.fileUrl ?? ""),
+                        fileUrl: docUrlOf(d),
+                        fileName: docFileNameOf(d),
                         subtitle: `${d.id} · ${d.type}`,
                       }}
                     />
@@ -610,6 +648,25 @@ export default function Documents() {
                 <Upload className="h-4 w-4" /> {uploadingFile ? S.uploadingNow : S.uploadBtn}
               </button>
             </div>
+            {/* Pratinjau langsung muncul begitu ada URL -_Unggah_ sudah
+                mengisi kolom di atas, dan mengetik URL juga langsung menambah
+                pratinjau. Tidak ada tombol "tampilkan pratinjau" tambahan.
+                InlineDocPreview mengambil berkasnya lewat fetch ber-JWT, jadi
+                <img>/<iframe> telanjang tidak akan tampil kosong untuk berkas
+                yang dilindungi backend. */}
+            {looksLikeUrl(form.fileUrl) ? (
+              <div className="mt-2 rounded-xl border border-steel-100 bg-surface p-2">
+                <p className="mb-1 text-[11px] font-semibold text-steel-500">{S.previewTitle}</p>
+                <InlineDocPreview url={form.fileUrl.trim()} height={PDF_HEIGHT_RE.test(form.fileUrl) ? "h-56" : "h-40"} />
+              </div>
+            ) : form.fileUrl.trim() !== "" ? (
+              /* Nilai non-URL (mis. hanya "kontrak.pdf") tidak bisa dipratinjau.
+                katakan begitu eksplisit - diam-diam menampilkan kotak 404 membuat
+                 pengguna mengira tombolnya rusak. */
+              <p className="mt-1.5 text-[11px] text-amber-700">
+                &ldquo;{form.fileUrl.trim()}&rdquo; dibaca sebagai nama berkas, bukan URL. Gunakan tombol Unggah untuk melampirkan berkasnya.
+              </p>
+            ) : null}
           </Field>
           <Field label={S.lblRelated} hint={S.hintRelated}>
             <select
@@ -645,9 +702,12 @@ export default function Documents() {
               <div className="flex justify-between gap-4">
                 <dt className="text-steel-500">{S.lblAttachShort}</dt>
                 <dd className="max-w-[60%] truncate text-right">
-                  {detail.fileUrl ? (
-                    <span className="break-all font-medium text-navy-700" title={String(detail.fileUrl)}>
-                      {String(detail.fileUrl)}
+                  {/* Nama berkas, bukan URL mentah. URL `/files/2026-10/uuid.pdf`
+                      tidak pernah berguna dibaca orang, dan menampilkan kolom
+                      kosong di sini padahal lampirannya ada. */}
+                  {detailAttach.fileName !== "" || detailAttach.url !== "" ? (
+                    <span className="break-all font-medium text-navy-700" title={detailAttach.url || detailAttach.fileName}>
+                      {detailAttach.fileName || detailAttach.url}
                     </span>
                   ) : (
                     <span className="font-medium text-steel-400">-</span>
@@ -670,7 +730,8 @@ export default function Documents() {
             <DocumentPreviewPanel
               doc={{
                 title: String(detail.title),
-                fileUrl: String(detail.fileUrl ?? ""),
+                fileUrl: docUrlOf(detail),
+                fileName: docFileNameOf(detail),
                 subtitle: `${detail.id} · ${detail.type}`,
               }}
             />
@@ -678,7 +739,7 @@ export default function Documents() {
               <button className="btn-secondary text-xs" onClick={() => toggleCopy(detail)}>
                 {String(detail.docCopy ?? "Terkendali") === "Salinan" ? S.toControlled : S.toCopy}
               </button>
-              {isBackendConfigured() && /\.(png|jpe?g)(\?|$)/i.test(String(detail.fileUrl ?? "")) && (
+              {isBackendConfigured() && IMAGE_URL_RE.test(detailAttach.url) && (
                 <button className="btn-secondary text-xs" disabled={ocrBusy} onClick={() => void runOcr(detail)}>
                   {ocrBusy ? S.ocrRunning : S.ocrExtract}
                 </button>

@@ -11,10 +11,26 @@ import type { SortState } from "../../components/ui";
 import { findUsages } from "../../utils/usages";
 import { Plus, FileDown } from "lucide-react";
 import { exportExcel, fmtRupiah } from "../../utils/export";
-import { DocumentPreviewCell } from "../../components/DocumentPreview";
+import { DocumentPreviewCell, InlineDocPreview, type PreviewDoc } from "../../components/DocumentPreview";
+import { docAttachment, looksLikeUrl } from "../../utils/docAttachment";
 import { SATUAN, STATUS_BOQ_ID } from "../../utils/format";
 import { todayISO } from "../../utils/format";
 import type { BoQItem } from "../../data";
+
+/* Dokumen pendukung satu item BoQ, atau null bila tidak ada lampiran.
+   URL-nya dibaca lewat docAttachment supaya item yang lampirannya disimpan di
+   field lain (mis. `fileName`) tetap bisa dipratinjau, bukan diam-diam
+   menampilkan "-" lalu dianggap tombolnya rusak. */
+function boqDocOf(b: BoQExt): PreviewDoc | null {
+  const att = docAttachment(b);
+  if (att.url === "") return null;
+  return {
+    title: String(b.name ?? b.id),
+    fileUrl: att.url,
+    fileName: att.fileName !== "" ? att.fileName : undefined,
+    subtitle: String(b.id),
+  };
+}
 
 /* Alur kanonis: Draf=Draft, Diajukan=Pending, Disetujui=Approved, Selesai=Completed.
    "Rejected" (Ditolak) WAJIB punya jalan keluar — sebelumnya tidak ada entri
@@ -350,7 +366,7 @@ export default function BoQSection({ projectId }: Props) {
                 </tr>
               </thead>
               <tbody className="divide-y divide-steel-100">
-                {sortRows(filtered, sort, (b: BoQExt, k) => k === "quantity" ? Number(b.quantity) : k === "unitPrice" ? Number(b.unitPrice) : k === "totalPrice" ? Number(b.totalPrice) : k === "revised" ? Number((b.priceHistory ?? []).length) : k === "dokumen" ? String(b.fileUrl ?? "") : String((b as unknown as Record<string, unknown>)[k] ?? "")).map((b) => (
+                {sortRows(filtered, sort, (b: BoQExt, k) => k === "quantity" ? Number(b.quantity) : k === "unitPrice" ? Number(b.unitPrice) : k === "totalPrice" ? Number(b.totalPrice) : k === "revised" ? Number((b.priceHistory ?? []).length) : k === "dokumen" ? docAttachment(b).url : String((b as unknown as Record<string, unknown>)[k] ?? "")).map((b) => (
                   <tr key={b.id}>
                     <td className="td font-mono text-xs">{b.id}</td>
                     <td className="td font-medium text-navy-900">{b.name}</td>
@@ -378,12 +394,13 @@ export default function BoQSection({ projectId }: Props) {
                       )}
                     </td>
                     <td className="td">
+                      {/* Klik ikon mata langsung memuat dokumennya di dalam
+                          panel (autoLoad), jadi tidak ada tombol kedua
+                          "tampilkan pratinjau". Baris tabel tetap memakai
+                          modal karena pratinjau inline di dalam <td> bikin
+                          tinggi baris melompat terus saat dipakai. */}
                       <DocumentPreviewCell
-                        doc={b.fileUrl ? {
-                          title: String(b.name),
-                          fileUrl: String(b.fileUrl),
-                          subtitle: String(b.id),
-                        } : null}
+                        doc={boqDocOf(b)}
                       />
                     </td>
                     <td className="td">
@@ -484,6 +501,16 @@ export default function BoQSection({ projectId }: Props) {
               <input className="input flex-1 font-mono" value={form.fileUrl} onChange={(e) => setForm({ ...form, fileUrl: e.target.value })} placeholder="https://…" />
               <FileUploadButton label={locale === "en" ? "Upload" : "Unggah"} onUploaded={(url) => setForm((f) => ({ ...f, fileUrl: url }))} />
             </div>
+            {/* Pratinjau langsung setelah Unggah (atau saat URL diketik) - tanpa
+                tombol "tampilkan pratinjau" tambahan. InlineDocPreview ambil
+                berkasnya lewat fetch ber-JWT, jadi PDF/gambar terproteksi tetap
+                tampil, tidak kotak kosong. */}
+            {looksLikeUrl(form.fileUrl) && (
+              <div className="mt-2 rounded-xl border border-steel-100 bg-surface p-2">
+                <p className="mb-1 text-[11px] font-semibold text-steel-500">{locale === "en" ? "Document preview" : "Pratinjau dokumen"}</p>
+                <InlineDocPreview url={form.fileUrl.trim()} height={/\.pdf(\?|$)/i.test(form.fileUrl) ? "h-56" : "h-40"} />
+              </div>
+            )}
           </Field>
         </div>
       </Modal>

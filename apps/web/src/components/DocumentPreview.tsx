@@ -1,13 +1,16 @@
 // Pratinjau dokumen universal (Dokumen / BoQ / Drawing / lampiran apa pun).
 // Prinsip:
-// 1. Baris tabel & kartu HANYA menampilkan tombol/ikon Pratinjau + Unduh -
-//    tidak ada iframe/gambar yang dirender otomatis (hemat bandwidth & RAM).
-// 2. Isi pratinjau baru dimuat SETELAH tombol Pratinjau diklik (lazy).
+// 1. Baris tabel & kartu hanya menampilkan ikon Pratinjau + Unduh - tidak ada
+//    iframe/gambar yang dirender otomatis (hemat bandwidth & RAM).
+// 2. Klik ikon Pratinjau = isi langsung tampil. TIDAK ada tombol kedua untuk
+//    "menampilkan pratinjau"; begitu panelterbuka, berkasnya sudah dimuat
+//    (lihat autoLoad di DocumentPreviewPanel). Ini yang diminta modul
+//    Proyek / BoQ / QC / Dokumen.
 // 3. Unduhan mempertahankan format file PERSIS seperti saat diunggah
 //    (byte asli + nama & ekstensi asli), bukan ekspor Excel/default lain.
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Download, Eye, EyeOff, FileText, Loader2 } from "lucide-react";
+import { Download, Eye, FileText, Loader2 } from "lucide-react";
 import { Modal, toast, useAsyncAction } from "./ui";
 import { useT } from "../i18n/LanguageContext";
 import {
@@ -30,7 +33,6 @@ export interface PreviewDoc {
 const L = {
   id: {
     preview: "Pratinjau",
-    hidePreview: "Sembunyikan pratinjau",
     download: "Unduh",
     loadingFile: "Memuat berkas…",
     downloading: "Mengunduh…",
@@ -43,7 +45,6 @@ const L = {
   },
   en: {
     preview: "Preview",
-    hidePreview: "Hide preview",
     download: "Download",
     loadingFile: "Loading file…",
     downloading: "Downloading…",
@@ -67,13 +68,16 @@ type ViewState =
   | { status: "unsupported"; ext: string }
   | { status: "error"; message: string };
 
-/** Panel aksi Pratinjau + Unduh.
+/** Panel pratinjau + Unduh.
  *
- *  Pratinjau dimuat OTOMATIS begitu panel ini tampil (autoLoad), jadi tidak
- *  ada klik ganda: buka modal → dokumen sudah terlihat. Tombol yang tersisa
- *  berfungsi untuk menyembunyikan/munculkan lagi pratinjau yang sama tanpa
- *  mengunduh ulang. Unduh memuat ulang byte sendiri, jadi menyembunyikan
- *  pratinjau tidak mengorbankan berkas. */
+ *  Pratinjau dimuat OTOMATIS begitu panel ini tampil (autoLoad), jadi begitu
+ *  ikon Pratinjau diklik dokumennya SUDAH terlihat - tidak ada langkah kedua.
+ *  Yang tersisa hanya tombol Unduh, yang memuat ulang byte sendiri sehingga
+ *  tidak perlu memuat ulang pratinjau untuk menyimpan berkas.
+ *
+ *  `autoLoad` tetap ada sebagai escape hatch: DocumentPreviewCell memasang
+ *  ulang `startedRef` saat dokumen berganti, sehingga panel yang dipakai ulang
+ *  untuk baris lain tidak menampilkan berkas baris sebelumnya. */
 export function DocumentPreviewPanel({ doc, autoLoad = true }: { doc: PreviewDoc; autoLoad?: boolean }) {
   const { locale } = useT();
   const T = locale === "en" ? L.en : L.id;
@@ -146,16 +150,6 @@ export function DocumentPreviewPanel({ doc, autoLoad = true }: { doc: PreviewDoc
     void load();
   }, [autoLoad, url, load]);
 
-  const togglePreview = (): void => {
-    if (view.status === "loading") return;
-    if (view.status !== "idle") {
-      releaseObjectUrl();
-      setView({ status: "idle" });
-      return;
-    }
-    void load();
-  };
-
   const onDownload = (): void => {
     void dl.run(async () => {
       if (!url) {
@@ -171,24 +165,15 @@ export function DocumentPreviewPanel({ doc, autoLoad = true }: { doc: PreviewDoc
     });
   };
 
-  const open = view.status !== "idle";
+  /* Tombol "Pratinjau"/"Sembunyikan pratinjau" DIHAPUS.
+     Panel ini sudah memuat berkas otomatis (autoLoad di atas), jadi tombol itu
+     hanya menampilkan "Sembunyikan pratinjau" - yaitu klik kedua yang sama
+     persis dengan ikon mata yang baru saja diklik pengguna. Empat modul
+     (Proyek, BoQ, QC, Dokumen) semuanya menumpang komponen ini, jadi satu
+     tombol di sini berarti empat tombol di layar. */
   return (
     <div className="space-y-2">
       <div className="flex flex-wrap items-center gap-2">
-        <button
-          type="button"
-          className="btn-secondary text-xs"
-          onClick={togglePreview}
-          disabled={!url || view.status === "loading"}
-          aria-expanded={open}
-        >
-          {view.status === "loading"
-            ? <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
-            : open
-              ? <EyeOff className="h-3.5 w-3.5" aria-hidden />
-              : <Eye className="h-3.5 w-3.5" aria-hidden />}
-          {view.status === "loading" ? T.loadingFile : open ? T.hidePreview : T.preview}
-        </button>
         <button type="button" className="btn-primary text-xs" onClick={onDownload} disabled={!url || dl.pending}>
           {dl.pending ? <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden /> : <Download className="h-3.5 w-3.5" aria-hidden />}
           {dl.pending ? T.downloading : T.download}
@@ -264,15 +249,15 @@ export function DocumentPreviewModal({ doc, onClose }: { doc: PreviewDoc | null;
 export function InlineDocPreview({ url, height = "h-40" }: { url: string; height?: string }) {
   const clean = String(url ?? "").trim();
   const [state, setState] = useState<ViewState>({ status: "idle" });
-  const aliveRef = useRef(true);
 
-  useEffect(() => {
-    aliveRef.current = true;
-    return () => {
-      aliveRef.current = false;
-    };
-  }, []);
-
+  /* Pembatal memakai closure LOKAL, bukan ref bersama.
+     Versi lama memakai `aliveRef` bersama yang di-set false pada cleanup
+     efek [clean]. Tapi efek yang menyalakannya lagi punya deps [], jadi
+     setelah URL pertama berubah ref itu TIDAK pernah true lagi: fetch yang
+     sedang berjalan dihentikan di `if (!aliveRef.current) return`, state
+     tidak pernah naik dari "loading", dan panelnya menggantung di spinner
+     selamanya. Itu persis yang terjadi begitu pengguna mengunggah file kedua
+     atau mengoreksi URL di form. */
   useEffect(() => {
     if (!clean) {
       setState({ status: "idle" });
@@ -283,12 +268,13 @@ export function InlineDocPreview({ url, height = "h-40" }: { url: string; height
       setState({ status: "unsupported", ext: fileExtOf(clean) || "?" });
       return;
     }
+    let cancelled = false;
     let objectUrl: string | null = null;
     setState({ status: "loading" });
     void (async () => {
       try {
         const blob = await fetchFileBlob(clean);
-        if (!aliveRef.current) return;
+        if (cancelled) return;
         if (kind === "text") {
           setState({ status: "text", text: (await blob.text()).slice(0, TEXT_LIMIT) });
           return;
@@ -296,11 +282,11 @@ export function InlineDocPreview({ url, height = "h-40" }: { url: string; height
         objectUrl = URL.createObjectURL(blob);
         setState({ status: "media", kind, objectUrl });
       } catch {
-        if (aliveRef.current) setState({ status: "error", message: L.id.loadFail });
+        if (!cancelled) setState({ status: "error", message: L.id.loadFail });
       }
     })();
     return () => {
-      aliveRef.current = false;
+      cancelled = true;
       if (objectUrl) URL.revokeObjectURL(objectUrl);
     };
   }, [clean]);
@@ -330,9 +316,62 @@ export function InlineDocPreview({ url, height = "h-40" }: { url: string; height
   return null;
 }
 
+/** Tombol Unduh mandiri untuk dipakai di samping InlineDocPreview.
+ *
+ *  InlineDocPreview sengaja tidak punya tombol apa pun (itu permintaan modul
+ *  QC & Dokumen), sehingga pratinjau inline menjadi satu-satunya jalan melihat
+ *  berkas tanpa opsi menyimpannya. Komponen ini menutup celah itu tanpa
+ *  menghidupkan kembali tombol "tampilkan pratinjau".
+ *
+ *  Galat TIDAK ditelan: downloadFileUrl sudah melempar untuk URL yang butuh
+ *  JWT, jadi toast di sini selalu berarti ada yang benar-benar salah.
+ */
+export function DownloadFileButton({
+  url,
+  fileName,
+  label,
+  className = "btn-secondary",
+}: {
+  url: string;
+  fileName?: string;
+  label?: string;
+  className?: string;
+}) {
+  const { locale } = useT();
+  const T = locale === "en" ? L.en : L.id;
+  const dl = useAsyncAction();
+  const clean = String(url ?? "").trim();
+  return (
+    <button
+      type="button"
+      className={className}
+      disabled={clean === "" || dl.pending}
+      aria-busy={dl.pending || undefined}
+      onClick={() =>
+        void dl.run(async () => {
+          if (clean === "") {
+            toast(T.noFile, "info");
+            return;
+          }
+          try {
+            await downloadFileUrl(clean, fileName);
+            toast(T.downloaded);
+          } catch (e) {
+            toast(e instanceof Error ? e.message : T.downloadFail, "info");
+          }
+        })
+      }
+    >
+      {dl.pending ? <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden /> : <Download className="h-3.5 w-3.5" aria-hidden />}
+      {dl.pending ? T.downloading : label ?? T.download}
+    </button>
+  );
+}
+
 /** Sel tabel/kartu: HANYA ikon Pratinjau + Unduh (tanpa render file otomatis).
- *  Klik Pratinjau membuka DocumentPreviewModal; Unduh langsung menyimpan file
- *  dengan format aslinya. `doc` null / tanpa fileUrl → tampil "-". */
+ *  Klik Pratinjau membuka DocumentPreviewModal yang isinya SUDAH termuat
+ *  (autoLoad) - tidak ada langkah kedua. Unduh langsung menyimpan file dengan
+ *  format aslinya. `doc` null / tanpa fileUrl -> tampil "-". */
 export function DocumentPreviewCell({ doc, className = "" }: { doc: PreviewDoc | null; className?: string }) {
   const [open, setOpen] = useState(false);
   const { locale } = useT();

@@ -680,6 +680,41 @@ function remoteActive(): boolean {
   return isBackendConfigured() && getJwt() !== null;
 }
 
+/* Koleksi yang isinya KODE, bukan data operasional: kalau server membalas
+   kosong, itu hampir pasti tabelnya belum dibuat atau belum diisi - bukan
+   "sudah tidak ada lagi". Menerima yang kosong berarti menghapus seluruh
+   konstanta bisnis (tarif pajak, ambang alert, batas PO, asumsi what-if), dan
+   setiap modul lalu diam-diam jatuh ke nilai default. `settings` satu-satunya
+   koleksi seperti ini, dan Analytics adalah modul yang menariknya lewat
+   useModuleSync(AN_COLS) - jadi bug ini muncul tepat saat Analytics dibuka.
+   Module scope, bukan di dalam provider: Set baru dialokasikan tiap render
+   kalau ditaruh di sana. */
+const NEVER_EMPTY_COLLECTIONS: ReadonlySet<string> = new Set(["settings"]);
+
+/**
+ * Terima hasil tarik server hanya kalau tidak merusak data lokal.
+ *
+ * BUG "DATA HILANG" yang ditutup: versi lama melakukan `{...prev, ...pulled}`
+ * tanpa syarat apa pun. Jadi satu respons kosong dari server langsung
+ * MENGHAPUS seluruh koleksi lokal. Untuk `settings` artinya semua tarif dan
+ * ambang hilang; untuk jurnal dan movements artinya laporan keuangan dan stok
+ * habis - dan tidak ada satu pun toast yang menyuruh pengguna tahu.
+ *
+ * Respons kosong tetap diterima untuk koleksi operasional, karena memang bisa
+ * sah menjadi kosong di server (semua proyek dihapus, dan lain-lain). Yang
+ * ditolak hanya koleksi kode.
+ *
+ * Nilai balik `false` berarti hasil tarik diabaikan dan koleksi lokal tetap
+ * dipakai. Sengaja TIDAK dilaporkan sebagai kegagalan sinkronisasi: server
+ * menjawab normal, hanya jawabannya tidak boleh dipakai, jadi badge "offline"
+ * di topbar akan menyala permanen untuk kondisi yang deterministik.
+ */
+function acceptPull(key: CollectionKey, rows: StoreItem[]): boolean {
+  const empty = !Array.isArray(rows) || rows.length === 0;
+  if (!empty) return true;
+  return !NEVER_EMPTY_COLLECTIONS.has(key);
+}
+
 /* Contract version: cocok dengan services/api GET /api/version.
    Minor-tolerant - sinkronisasi diblokir bila MAJOR berbeda atau web minor
    di bawah minWeb server. */
@@ -900,7 +935,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         if (key === "wbsByProject" || key === "teamByProject") return;
         if (dirty.has(key as string)) return;
         try {
-          pulled[key] = await remoteRepository(key).list();
+          const rows = await remoteRepository(key).list();
+          /* Hasil yang mengosongkan koleksi kode ditolak (lihat acceptPull). */
+          if (acceptPull(key, rows)) pulled[key] = rows;
         } catch {
           /* koleksi ini tetap memakai seed lokal */
         }
@@ -946,7 +983,13 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           const wbs = await apiFetch<{ projectId: string; wbs: WbsItem[] }>(
             `/api/projects/${encodeURIComponent(projectId)}/wbs`,
           );
-          if (Array.isArray(wbs.wbs)) {
+          /* WBS/team dikembalikan lewat endpoint per-proyek, bukan lewat
+     resyncCollections, jadi acceptPull() tidak menjangkau keduanya. Polanya
+     yang sama tetap perlu: `Array.isArray([])` bernilai true, jadi proyek yang
+     WBS-nya belum pernah dimigrasikan akan MENGHAPUS WBS dan tim yang
+     tersimpan di cache tanpa jejak apa pun. Respons kosong diperlakukan sebagai
+     "tidak ada data", bukan "hapus semua". */
+          if (Array.isArray(wbs.wbs) && wbs.wbs.length > 0) {
             const rows = wbs.wbs;
             setData((prev) => ({ ...prev, wbsByProject: { ...prev.wbsByProject, [projectId]: rows } }));
           }
@@ -958,7 +1001,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           const team = await apiFetch<{ projectId: string; memberIds: string[] }>(
             `/api/projects/${encodeURIComponent(projectId)}/team`,
           );
-          if (Array.isArray(team.memberIds)) {
+          if (Array.isArray(team.memberIds) && team.memberIds.length > 0) {
             const ids = team.memberIds;
             setData((prev) => ({ ...prev, teamByProject: { ...prev.teamByProject, [projectId]: ids } }));
           }
@@ -967,13 +1010,14 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         }
       }),
     );
-  }, []);
+}, []);
 
   /* Pola standar fetch per-batch saat pindah modul/tab (lihat useModuleSync):
-     hanya koleksi yang dibutuhkan modul aktif yang ditarik, paralel - data
-     selalu segar tanpa memuat ulang 50+ koleksi seperti resync() penuh.
-     Koleksi dirty tetap dilewati agar edit offline tidak tertimpa, dan
-     activities di-merge (bukan replace) seperti pada resync. */
+   hanya koleksi yang dibutuhkan modul aktif yang ditarik, paralel - data
+   selalu segar tanpa memuat ulang 50+ koleksi seperti resync() penuh.
+   Koleksi dirty tetap dilewati agar edit offline tidak tertimpa, hasil tarik
+   yang merusak data lokal ditolak lewat acceptPull(), dan activities di-merge
+   (bukan replace) seperti pada resync. */
   const resyncCollections = useCallback(async (cols: CollectionKey[]): Promise<CollectionKey[]> => {
     if (!remoteActive()) return [];
     if (cols.length === 0) return [];
@@ -987,7 +1031,16 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       cols.map(async (key) => {
         if (dirty.has(key as string)) return;
         try {
-          pulled[key] = await remoteRepository(key).list();
+          const rows = await remoteRepository(key).list();
+          if (!acceptPull(key, rows)) {
+            /* Server membalas kosong untuk koleksi kode: pertahankan yang lokal.
+               Sengaja TIDAK masuk daftar `failed` - "ditolak demi keamanan
+               data" bukan "server tak terjangkau", dan mencampur keduanya
+               membuat badge "offline" di topbar nyala permanen untuk kondisi
+               yang sebenarnya deterministik dan normal. */
+            return;
+          }
+          pulled[key] = rows;
         } catch {
           /* koleksi ini tetap memakai cache lokal */
           failed.push(key);

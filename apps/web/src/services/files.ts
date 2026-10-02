@@ -57,6 +57,22 @@ export function fileNameOf(url: string, fallback = "dokumen"): string {
   return fallback;
 }
 
+/** Galat HTTP dari server (404/401/403/5xx).
+ *
+ *  Dibedakan dari galat jaringan/CORS karena keduanya menuntut tindakan yang
+ *  BERLAINAN: galat HTTP berarti tautan apa pun ke URL itu akan gagal juga,
+ *  sedangkan galat CORS masih bisa dicoba lewat <a> yang tidak mengirim
+ *  header Authorization. Tanpa pemisahan ini, satu try/catch tidak bisa
+ *  memutuskan kapan aman jatuh ke tautan biasa. */
+export class FileHttpError extends Error {
+  readonly status: number;
+  constructor(status: number) {
+    super(`Gagal mengambil berkas (HTTP ${status}).`);
+    this.name = "FileHttpError";
+    this.status = status;
+  }
+}
+
 /** Ambil berkas sebagai Blob; kirim JWT bila ada (file backend terproteksi). */
 export async function fetchFileBlob(url: string): Promise<Blob> {
   const abs = toAbsoluteUrl(url);
@@ -78,7 +94,7 @@ export async function fetchFileBlob(url: string): Promise<Blob> {
   } finally {
     window.clearTimeout(timer);
   }
-  if (!res.ok) throw new Error(`Gagal mengambil berkas (HTTP ${res.status}).`);
+  if (!res.ok) throw new FileHttpError(res.status);
   return res.blob();
 }
 
@@ -101,7 +117,10 @@ function clickDownload(href: string, name: string): void {
  *  Popup harus dibuka sinkron di dalam handler klik, kalau ditunggu sampai
  *  fetch selesai browser akan memblokirnya. Jadi tabnya dibuka lebih dulu
  *  (kosong), lalu lokasinya diisi object URL begitu byte asli tiba.
- *  Gagal fetch → tab ditutup dan jaring.open dipanggil untuk URL asli. */
+ *
+ *  Galat HTTP TIDAK lagi dialihkan ke URL mentah: itu persis jebakan 401 yang
+ *  fungsi ini dibuat untuk dihindari. Tab yang sudah terlanjur terbuka
+ *  ditutup, lalu galatnya dilempar ke pemanggil. */
 export async function openFileUrl(url: string): Promise<void> {
   const abs = toAbsoluteUrl(url);
   if (!abs) throw new Error("URL berkas kosong.");
@@ -113,14 +132,41 @@ export async function openFileUrl(url: string): Promise<void> {
     tab.location.replace(obj);
     /* Beri peramban waktu membaca blob sebelum dicabut. */
     window.setTimeout(() => URL.revokeObjectURL(obj), 60000);
-  } catch {
+  } catch (err) {
+    /* Galat jaringan/CORS masih mungkin ditangani tab baru; galat HTTP tidak. */
+    if (err instanceof FileHttpError) {
+      tab.close();
+      throw err;
+    }
     tab.location.replace(abs);
   }
 }
 
 /** Unduh berkas dengan format PERSIS seperti diunggah: byte asli diambil via
  *  fetch (ber-JWT bila backend), disimpan dengan nama + ekstensi aslinya.
- *  Gagal fetch (mis. URL eksternal tanpa CORS) → fallback tautan langsung. */
+ *
+ *  BUG YANG DIPERBAIKI: fallback lama menelan galat lalu mengklik tautan
+ *  polos apa pun hasilnya. Untuk berkas backend hal itu MUSTAHIL bekerja:
+ *
+ *    1. request <a href> milik peramban TIDAK membawa header Authorization,
+ *       dan services/api/src/routes/files.ts memanggil requireAuth() untuk
+ *       GET /files/* -> 401. Browser diam-diam membuka halaman login di tab
+ *       baru; tidak ada berkas, tidak ada toast, tidak ada error.
+ *    2. route yang sama memasang `Content-Disposition: attachment`, jadi
+ *       hasilnya memaksa peramban mengunduh, bukan menampilkan.
+ *
+ *  Kapan fallback masih BOLEH dipakai? Hanya ketika fetch gagal karena
+ *  jaringan atau CORS - mis. berkas di origin lain tanpa header CORS.
+ *  Galat HTTP (401/403/404/5xx) berarti tautan apa pun ke URL itu akan gagal
+ *  dengan cara yang sama, jadi galatnya dilempar supaya pemanggil bisa
+ *  menampilkan toast yang jujur.
+ *
+ *  PENTING: batas TIDAK boleh memakai perbandingan origin. Backend pada
+ *  konfigurasi repo (apps/web/.env.example) berjalan di origin lain dari
+ *  aplikasinya sendiri (localhost:3000 vs localhost:5173), jadi backend kita
+ *  sendiri akan terbaca "origin lain" - persis kasus yang harus DITOLAK
+ *  fallbacknya.
+ */
 export async function downloadFileUrl(url: string, filename?: string): Promise<void> {
   const abs = toAbsoluteUrl(url);
   if (!abs) throw new Error("URL berkas kosong.");
@@ -130,14 +176,19 @@ export async function downloadFileUrl(url: string, filename?: string): Promise<v
     const obj = URL.createObjectURL(blob);
     clickDownload(obj, name);
     window.setTimeout(() => URL.revokeObjectURL(obj), 30000);
-  } catch {
-    const a = document.createElement("a");
-    a.href = abs;
-    a.download = name;
-    a.target = "_blank";
-    a.rel = "noreferrer";
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
+    return;
+  } catch (err) {
+    /* Galat HTTP = server menjawab, hanya menjawab "tidak boleh". <a> tidak
+       akan mengubah jawaban itu, jadi lempar. */
+    if (err instanceof FileHttpError) throw err;
+    /* Galat jaringan/CORS: <a> masih mungkin berhasil, jadi lanjut ke bawah. */
   }
+  const a = document.createElement("a");
+  a.href = abs;
+  a.download = name;
+  a.target = "_blank";
+  a.rel = "noreferrer";
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
 }

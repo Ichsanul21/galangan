@@ -55,6 +55,7 @@ import { chartAnim, exportExcel } from "../../utils/export";
 import { kasKodeOf, postCashJournal } from "../../services/autoJournal";
 import { FilterPopover } from "../../components/FilterPopover";
 import { AlertBannerView, notifRowId, useModuleAlert, useNotifFlash } from "../../components/AlertBanner";
+import { rowHighlightClass } from "../../components/rowHighlight";
 import { useDeepLinkParams, useDeepLinkTarget } from "../../components/useDeepLink";
 import { findUsages } from "../../utils/usages";
 import {
@@ -871,16 +872,25 @@ const { data, add, update, remove, log, branch, inBranch } = useStore();
      jadi `sortedInv.findIndex` dulu selalu menangkap baris AR dan
      menimpa tab tujuan. Karena itu tab yang diminta deep-link diperiksa
      lebih dulu, baru urutan fallback. */
-  const pickNotif = (rowId: string) => {
+  /* Terjemahkan sekumpulan id deep-link menjadi tab + sorotan. Satu id (klik
+     banner modul) dan banyak id (klik kartu Dashboard "Piutang Tertagih",
+     yang mengirim seluruh invoice belum tertagih) memakai jalur yang sama. */
+  const pickNotifIds = (ids: string[]): void => {
+    if (ids.length === 0) return;
+    const mark = (index: number, pager: { go: (p: number) => void; size: number }): void => {
+      if (ids.length > 1) flash.pickMany(ids, index, pager.go, pager.size);
+      else flash.pick(ids[0] as string, index, pager.go, pager.size);
+    };
     const flashIn = (
       list: StoreItem[],
       pager: { go: (p: number) => void; size: number },
       tabName: string,
     ) => {
-      const idx = list.findIndex((r) => String(r.id) === rowId);
+      /* Posisi baris PERTAMA yang ikut kelompok - itu yang digulir ke tengah. */
+      const idx = list.findIndex((r) => ids.includes(String(r.id)));
       if (idx < 0) return false;
       if (tab !== tabName) setTab(tabName);
-      window.setTimeout(() => { flash.pick(rowId, idx, pager.go, pager.size); }, tab === tabName ? 0 : 250);
+      window.setTimeout(() => mark(idx, pager), tab === tabName ? 0 : 250);
       return true;
     };
 
@@ -891,11 +901,14 @@ const { data, add, update, remove, log, branch, inBranch } = useStore();
     if (flashIn(sortedInv, invPager, "Invoice")) return;
     if (flashIn(sortedAp, apPager, "Hutang (AP)")) return;
     if (flashIn(sortedAr, arPager, "Piutang (AR)")) return;
-    flash.pick(rowId, -1, () => {}, 100);
+    mark(-1, { go: () => {}, size: 100 });
   };
 
+  /* Satu id dari banner modul. */
+  const pickNotif = (rowId: string): void => pickNotifIds([rowId]);
+
   /* Deep-link Dashboard (?tab=Piutang (AR)&highlight=INV-..): pindah tab + flash. */
-  useDeepLinkTarget(deepParams.tab, deepParams.highlight, setTab, pickNotif);
+  useDeepLinkTarget(deepParams.tab, deepParams.highlight, setTab, pickNotifIds);
   const coaTipeOf = (c: StoreItem): string => coaList.find((x) => x.kode === String(c.kode))?.tipe ?? "-";
   const TIPE_ORDER = ["Aset", "Liabilitas", "Ekuitas", "Pendapatan", "Beban", "Header"];
   const coaGroups = useMemo(() => {
@@ -2540,7 +2553,7 @@ const { data, add, update, remove, log, branch, inBranch } = useStore();
                         const nextDun = DUNNING_NEXT[dun] ?? "Ditagih";
                         const open = inv.status !== "Lunas" && inv.status !== "Draft" && inv.status !== "Dihapusbukukan";
                         return (
-                          <tr key={inv.id} id={notifRowId(String(inv.id))} className={flash.flashId === String(inv.id) ? "notif-hl notif-flash hover:bg-surface" : (notified.has(String(inv.id)) ? "notif-hl hover:bg-surface" : "hover:bg-surface")}>
+                          <tr key={inv.id} id={notifRowId(String(inv.id))} className={rowHighlightClass({ id: String(inv.id), flash, notified: notified.has(String(inv.id)), base: "hover:bg-surface" })}>
                             <td className="td">
                               <p className="font-medium text-navy-900 font-mono">{inv.id}</p>
                               <p className="text-xs text-steel-500 truncate" title={String(inv.client ?? "")}>{String(inv.client ?? "")}</p>
@@ -2711,7 +2724,7 @@ const { data, add, update, remove, log, branch, inBranch } = useStore();
                   </thead>
                   <tbody className="divide-y divide-steel-100">
                     {apPager.slice(sortedAp).map((a) => (
-                      <tr key={a.id} id={notifRowId(String(a.id))} className={flash.flashId === String(a.id) ? "notif-hl notif-flash hover:bg-surface" : (notified.has(String(a.id)) ? "notif-hl hover:bg-surface" : "hover:bg-surface")}>
+                      <tr key={a.id} id={notifRowId(String(a.id))} className={rowHighlightClass({ id: String(a.id), flash, notified: notified.has(String(a.id)), base: "hover:bg-surface" })}>
                         <td className="td font-medium text-navy-900 truncate" title={String(a.v)}>{String(a.v)}</td>
                         <td className="td font-mono text-xs text-steel-600 truncate" title={String(a.kodePembantu ?? a.v)}>{String(a.kodePembantu ?? a.v)}</td>
                         <td className="td font-mono text-xs text-steel-600">{String(a.po)}</td>
@@ -3046,7 +3059,7 @@ const { data, add, update, remove, log, branch, inBranch } = useStore();
                     {invPager.slice(sortedInv).map((inv) => {
                       const bukti = String(inv.paidProofUrl ?? inv.buktiUrl ?? "");
                       return (
-                      <tr key={inv.id} id={notifRowId(String(inv.id))} className={flash.flashId === String(inv.id) ? "notif-hl notif-flash hover:bg-surface" : (notified.has(String(inv.id)) ? "notif-hl hover:bg-surface" : "hover:bg-surface")}>
+                      <tr key={inv.id} id={notifRowId(String(inv.id))} className={rowHighlightClass({ id: String(inv.id), flash, notified: notified.has(String(inv.id)), base: "hover:bg-surface" })}>
                         <td className="td font-mono text-xs font-semibold text-navy-900">{inv.id}<span className="block font-sans text-[11px] font-normal text-steel-500">{fmtTanggal(String(inv.due ?? ""))}</span></td>
                         <td className="td text-xs text-steel-600">{String(inv.billingType ?? inv.paymentTerm ?? "-")}{inv.serviceRef ? ` · ${inv.serviceRef}` : ""}</td>
                         <td className="td text-xs text-steel-600">{S.linesCount.replace("{n}", String(Array.isArray(inv.lines) ? inv.lines.length : 1))}</td>

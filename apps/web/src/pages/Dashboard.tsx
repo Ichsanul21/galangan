@@ -51,6 +51,7 @@ import { useStore } from "../data/store";
 import type { CollectionKey } from "../data/store";
 import { useModuleSync } from "../data/useModuleSync";
 import { bucketByMonth, monthAxis, monthKeyOf, rebindLegacyMonthSeries } from "../utils/monthAxis";
+import { lastPoint, numOf, pctChange, prevPoint } from "../utils/series";
 import { warnLevelOf } from "../utils/inventoryWarn";
 import {
   MODULE_ALERT_TO,
@@ -152,7 +153,6 @@ const DB_COLS: CollectionKey[] = ["activities", "drydocks", "employees", "incide
 export default function Dashboard() {
 
   const { data, branch, inBranch } = useStore();
-  const todayStr = todayISO();
   /* Fetch per-batch modul (pengganti resync penuh). */
   useModuleSync(DB_COLS);
   const { locale } = useT();
@@ -189,29 +189,73 @@ const [pdfMode, setPdfMode] = useState(false);
   const openNcrList = inBranch(data.ncr).filter((n) => n.status !== "Tertutup");
   const openNcr = openNcrList.length;
   const criticalOpenNcr = openNcrList.filter((n) => n.severity === "Critical").length;
-  const firstOpenNcr = openNcrList.find((n) => n.severity === "Critical") ?? openNcrList[0];
 
   /* Navigasi deep-link dari Dashboard: pindah modul + tab + highlight baris tujuan.
-     Target membaca ?tab= & ?highlight= lalu memakai flash.pick (notif-hl + notif-flash
-     2,6 dtk) + scrollIntoView center. Pola sama dengan AlertBanner. */
+     Sekarang semua baris yang dihitung kartu ikut disorot, bukan hanya satu.
+
+     BUG YANG DIPERBAIKI: ketiganya dulu meneruskan `highlight=<satu id>` -
+     id pertama yang kebetulan ketemu. Jadi kartu "NCR Terbuka" yang menghitung
+     lima baris hanya membuat SATU baris berkedip di tab tujuan, dan pengguna
+     menyimpulkan sisanya tidak ada. Worse, kartu "Piutang Tertagih" yang
+     menjumlahkan seluruh sisa piutang bisa menunjuk invoice yang justru LUNAS,
+     karena urutannya tidak sama dengan urutan filter di tabel tujuan.
+
+     Sekarang id dikirim sebagai daftar (dipisah koma; lihat useDeepLink.ts) dan
+     tabel tujuan menyorot semuanya. Kartu tetap redirect ke modul + tab yang
+     benar, dan baris notifikasi warning yang sudah ada tetap memakai
+     .notif-hl - penanda kelompok hanya menambah, tidak menghapus. */
+  const highlightOf = (ids: string[]): string =>
+    ids.length > 0 ? `&highlight=${encodeURIComponent(ids.join(","))}` : "";
+
+  /* Semua NCR terbuka di cabang aktif, urut stabil (paling kritis dulu). */
+  const openNcrIds = openNcrList.map((n) => String(n.id));
+
   const goNcr = () => {
-    const q = firstOpenNcr ? `?alert=qc&tab=NCR&highlight=${encodeURIComponent(String(firstOpenNcr.id))}` : "?alert=qc&tab=NCR";
+    const q = `?alert=qc&tab=NCR${highlightOf(openNcrIds)}`;
     navigate(`/qc-safety${q}`);
   };
+
+  /* Piutang yang benar-benar masih harus ditagih: bukan Draft (belum tagih) dan
+     bukan Lunas. Diurutkan jatuh tempo paling awal supaya baris pertama yang
+     terlihat adalah yang paling mendesak. */
+  const arRows = inBranch(data.invoices)
+    .filter((i) => i.status !== "Lunas" && i.status !== "Draft")
+    .sort((a, b) => String(a.due ?? "").localeCompare(String(b.due ?? "")));
+
   const goAR = () => {
-    const invoices = inBranch(data.invoices);
-    const overdue = invoices.filter((i) => i.status !== "Lunas" && i.status !== "Draft" && String(i.due) < todayStr);
-    const first = overdue[0] ?? invoices.find((i) => i.status !== "Lunas" && i.status !== "Draft");
-    const q = first ? `?alert=keuangan&tab=${encodeURIComponent("Piutang (AR)")}&highlight=${encodeURIComponent(String(first.id))}` : `?alert=keuangan&tab=${encodeURIComponent("Piutang (AR)")}`;
+    const q = `?alert=keuangan&tab=${encodeURIComponent("Piutang (AR)")}${highlightOf(arRows.map((i) => String(i.id)))}`;
     navigate(`/keuangan${q}`);
   };
+
+  /* Kartu ini diarahkan ke tab "Kontrak" CRM, dan isi tab itu adalah
+     `data.contracts` - BUKAN `data.quotations`. Versi lama mengirim id
+     quotation ke tab Kontrak; CRM mencari id itu lebih dulu di daftar
+     penawaran, jadi ia justru membuka tab "Penawaran" dan menimpa tab yang
+     diminta - persis bug yang useDeepLink.ts bilang sudah ditutup.
+
+     Jadi yang dikirim, yang dihitung, dan yang ditampilkan sekarang satu
+     sumber: kontrak yang ditandatangani. Jumlah = kontrak, nilai = kontrak,
+     id yang disorot = kontrak. */
+  const wonContracts = inBranch(data.contracts).filter((k) => String(k.status ?? "") !== "Batal");
+  const wonContractValue = wonContracts.reduce((s, k) => s + Number(k.value || 0), 0);
+
   const goKontrak = () => {
-    const wonList = inBranch(data.quotations).filter((x) => x.stage === "Menang" || x.stage === "Terkonversi");
-    const first = wonList[0];
-    const q = first ? `?alert=crm&tab=Kontrak&highlight=${encodeURIComponent(String(first.id))}` : "?alert=crm&tab=Kontrak";
+    const q = `?alert=crm&tab=Kontrak${highlightOf(wonContracts.map((k) => String(k.id)))}`;
     navigate(`/crm${q}`);
   };
-  const goNotifikasi = () => navigate("/notifikasi");
+
+  /* Kartu "Perlu Perhatian" berisi kondisi dari 13 modul sekaligus, jadi tidak
+     ada satu tab tujuan yang memuat semuanya. Yang diklik adalah header kartu:
+     buka /notifikasi pada tab "Perlu Perhatian" lalu sorot SEMUA baris alert
+     yang tampil, supaya angka di kartu dan yang terlihat di layar sama.
+
+Id tidak diteruskan di sini. Kartu ini memakai engine utils/moduleAlerts
+     (ModuleAlertItem.id = "mod-qc-NCR-001") sedangkan /notifikasi memakai
+     utils/alerts (NotifItem.id = "alert-<id>") - dua skema id yang berbeda
+     dan tidak bisa dipetakan satu-satu tanpa tabel pemetaan yang rapuh.
+     Jadi yang dikirim adalah perintah "tampilkan semua alert", dan halaman
+     tujuan yang menyorot barisnya sendiri. */
+  const goNotifikasi = () => navigate("/notifikasi?alert=1");
   const arOutstanding = inBranch(data.invoices)
     .filter((i) => i.status !== "Lunas" && i.status !== "Draft")
     .reduce((s, i) => s + Number(i.amount || 0), 0);
@@ -225,7 +269,6 @@ const [pdfMode, setPdfMode] = useState(false);
     return lv === "critical" || lv === "low";
   });
   const stockValue = inBranch(data.inventory).reduce((s, i) => s + Number(i.stock || 0) * Number(i.cost || 0), 0);
-  const wonQuotes = inBranch(data.quotations).filter((x) => x.stage === "Menang").reduce((s, x) => s + Number(x.value || 0), 0);
   /* Sumbu + angka revenue dari invoice yang SUNGGUHNYA bertanggal.
      withMonthLabels() lama memutar seed revenueSeries supaya bulan berjalan
      jadi titik terakhir, padahal numeriknya tidak berpindah: label
@@ -278,7 +321,12 @@ const [pdfMode, setPdfMode] = useState(false);
   const utilDrydock = drydocks.length
     ? Math.round((drydocks.filter((d) => d.status === "Terpakai").length / drydocks.length) * 100)
     : 0;
-  const utilEquipment = Math.round(utilSeries[utilSeries.length - 1].equipment);
+  /* Ekor seri wajib dijaga: `utilSeries[len-1].equipment` melempar TypeError
+     kalau deret seed kosong, dan karena render gagal seluruh pohon React
+     ikut tumbang - bukan hanya kartu KPI ini. Helper lastPoint/prevPoint
+     mengembalikan null; lihat utils/series.ts. */
+  const utilLastPoint = lastPoint(utilSeries);
+  const utilEquipment = Math.round(numOf(utilLastPoint?.equipment));
 
   /* Sumbu + angka revenue dari invoice yang SUNGGUHNYA bertanggal.
      withMonthLabels() lama memutar seed revenueSeries supaya bulan berjalan
@@ -291,15 +339,15 @@ const [pdfMode, setPdfMode] = useState(false);
      `revenue` dalam miliar, `cost` = nilai_before_tax invoice, `projects`
      = jumlah proyek berbeda di invoice bulan itu. */
 
-  const lastRev = revenueSeries[revenueSeries.length - 1];
-  const prevRev = revenueSeries[revenueSeries.length - 2];
-  const revGrowth = prevRev && prevRev.revenue ? ((lastRev.revenue - prevRev.revenue) / prevRev.revenue) * 100 : 0;
-  const lastMargin = marginSeries[marginSeries.length - 1];
-  const prevMargin = marginSeries[marginSeries.length - 2];
-  const marginDiff = lastMargin && prevMargin ? lastMargin.margin - prevMargin.margin : 0;
-  const lastUtil = utilSeries[utilSeries.length - 1];
-  const prevUtil = utilSeries[utilSeries.length - 2];
-  const utilDiff = lastUtil && prevUtil ? lastUtil.equipment - prevUtil.equipment : 0;
+  const lastRev = lastPoint(revenueSeries);
+  const prevRev = prevPoint(revenueSeries);
+  const revGrowth = pctChange(numOf(lastRev?.revenue), numOf(prevRev?.revenue));
+  const lastMargin = lastPoint(marginSeries);
+  const prevMargin = prevPoint(marginSeries);
+  const marginDiff = numOf(lastMargin?.margin) - numOf(prevMargin?.margin);
+  const lastUtil = lastPoint(utilSeries);
+  const prevUtil = prevPoint(utilSeries);
+  const utilDiff = numOf(lastUtil?.equipment) - numOf(prevUtil?.equipment);
   const activeEmployees = inBranch(data.employees).filter((e) => e.status === "Aktif").length;
   const seaTrialVessel =
     projects.find((p) => p.status !== "Selesai" && scopeNames(p.scope).includes("Sea Trial"))?.vessel ?? "-";
@@ -313,7 +361,7 @@ const exportSummary = async () => {
      dan tanpa kop sampai halaman dimuat ulang. */
   setPdfMode(true);
   try {
-    /* Beri React chance commit + font/ layout settle. Tanpa jeda ini kop baru
+    /* Beri React kesempatan commit + font/layout settle. Tanpa jeda ini kop baru
        belum selesai di-layout saat html2canvas memotret -> PDF keluar tanpa
        kop, tanpa error apa pun. */
     await new Promise((r) => requestAnimationFrame(() => r(undefined)));
@@ -540,7 +588,7 @@ const exportSummary = async () => {
         <StaggerItem>
           <KpiCard
             label={S.kpiGrossMargin}
-            value={`${lastMargin.margin.toLocaleString("id-ID", { maximumFractionDigits: 1 })}%`}
+            value={`${numOf(lastMargin?.margin).toLocaleString("id-ID", { maximumFractionDigits: 1 })}%`}
             delta={S.deltaPoinVsMonth.replace("{n}", `${marginDiff >= 0 ? "+" : ""}${marginDiff.toLocaleString("id-ID", { maximumFractionDigits: 1 })}`)}
             deltaDirection={marginDiff > 0 ? "up" : marginDiff < 0 ? "down" : "flat"}
             icon={<TrendingUp className="h-5 w-5" />}
@@ -593,34 +641,71 @@ const exportSummary = async () => {
               </div>
             </div>
           </div>
-          <div className="mt-3 grid grid-cols-1 gap-4 border-t border-steel-100 pt-3 sm:grid-cols-3">
-            <button type="button" onClick={goNcr} title="Buka NCR terbuka di QC & Safety (tab NCR + highlight baris)" className="flex w-full items-center justify-between rounded-xl px-2 py-1.5 text-left text-sm transition-colors hover:bg-rose-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-rose-400">
-              <span className="text-steel-500">{S.openNcrLabel} <span className="ml-1 text-[11px] text-steel-400">→</span></span>
-              <span className="font-bold text-rose-600 hover:underline" title={criticalOpenNcr > 0 ? S.criticalCount.replace("{n}", String(criticalOpenNcr)) : S.nihilCritical}>{criticalOpenNcr > 0 ? S.ncrCasesCritical.replace("{n}", String(openNcr)).replace("{a}", String(criticalOpenNcr)) : S.ncrCases.replace("{n}", String(openNcr))}</span>
+          {/* Kartu mini "NCR Terbuka" / "Piutang Tertagih" / "Kontrak Menang".
+              Semuanya adalah <button> penuh (bukan hanya angkanya) supaya
+              target kliknya besar dan tidak perlu clicked secara presisi;
+              geklik akan redirect ke modul + tab tujuan lalu menyorot SELURUH
+              baris yang dihitung angka di kartu ini. */}
+          <div className="mt-3 grid grid-cols-1 gap-3 border-t border-steel-100 pt-3 sm:grid-cols-3">
+            <button
+              type="button"
+              onClick={goNcr}
+              title={`Buka ${openNcrIds.length} NCR terbuka di QC & Safety (tab NCR, semua baris disorot)`}
+              className="flex w-full cursor-pointer flex-col items-start gap-0.5 rounded-xl border border-rose-200 bg-rose-50/40 px-3 py-2 text-left transition-colors hover:border-rose-400 hover:bg-rose-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-rose-400"
+            >
+              <span className="flex w-full items-center justify-between gap-2">
+                <span className="text-xs text-steel-500">{S.openNcrLabel}</span>
+                <span className="text-[11px] text-rose-400" aria-hidden>&rarr; QC &amp; Safety</span>
+              </span>
+              <span className="font-bold text-rose-600" title={criticalOpenNcr > 0 ? S.criticalCount.replace("{n}", String(criticalOpenNcr)) : S.nihilCritical}>
+                {criticalOpenNcr > 0 ? S.ncrCasesCritical.replace("{n}", String(openNcr)).replace("{a}", String(criticalOpenNcr)) : S.ncrCases.replace("{n}", String(openNcr))}
+              </span>
             </button>
-            <button type="button" onClick={goAR} title="Buka piutang di Keuangan (tab Piutang AR + highlight invoice)" className="flex w-full items-center justify-between rounded-xl px-2 py-1.5 text-left text-sm transition-colors hover:bg-navy-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-navy-400">
-              <span className="text-steel-500">{S.arLabel} <span className="ml-1 text-[11px] text-steel-400">→</span></span>
-              <span className="font-bold text-navy-900 hover:underline">{fmtMiliar(arOutstanding)}</span>
+            <button
+              type="button"
+              onClick={goAR}
+              title={`Buka ${arRows.length} invoice belum tertagih di Keuangan (tab Piutang (AR), semua baris disorot)`}
+              className="flex w-full cursor-pointer flex-col items-start gap-0.5 rounded-xl border border-navy-200 bg-navy-50/40 px-3 py-2 text-left transition-colors hover:border-navy-400 hover:bg-navy-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-navy-400"
+            >
+              <span className="flex w-full items-center justify-between gap-2">
+                <span className="text-xs text-steel-500">{S.arLabel}</span>
+                <span className="text-[11px] text-navy-400" aria-hidden>&rarr; Keuangan</span>
+              </span>
+              <span className="font-bold text-navy-900">{fmtMiliar(arOutstanding)}</span>
             </button>
-            <button type="button" onClick={goKontrak} title="Buka kontrak menang di CRM (tab Kontrak + highlight quotation)" className="flex w-full items-center justify-between rounded-xl px-2 py-1.5 text-left text-sm transition-colors hover:bg-emerald-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400">
-              <span className="text-steel-500">{S.wonContractLabel} <span className="ml-1 text-[11px] text-steel-400">→</span></span>
-              <span className="font-bold text-navy-900 hover:underline">{fmtMiliar(wonQuotes)}</span>
+            <button
+              type="button"
+              onClick={goKontrak}
+              title={`Buka ${wonContracts.length} kontrak menang di CRM (tab Kontrak, semua baris disorot)`}
+              className="flex w-full cursor-pointer flex-col items-start gap-0.5 rounded-xl border border-emerald-200 bg-emerald-50/40 px-3 py-2 text-left transition-colors hover:border-emerald-400 hover:bg-emerald-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400"
+            >
+              <span className="flex w-full items-center justify-between gap-2">
+                <span className="text-xs text-steel-500">{S.wonContractLabel}</span>
+                <span className="text-[11px] text-emerald-600" aria-hidden>&rarr; CRM</span>
+              </span>
+              <span className="font-bold text-navy-900">{fmtMiliar(wonContractValue)}</span>
             </button>
           </div>
         </Card>
       </StaggerItem>
 
       {/* PERLU PERHATIAN - klik item untuk ke modul + tab + baris yang DIPAKAI,
-          atau klik header untuk membuka daftar lengkap di /notifikasi. */}
+          atau klik header untuk membuka daftar lengkap di /notifikasi pada tab
+          "Perlu Perhatian" dengan semua baris alert disorot. */}
       <StaggerItem>
         <Card className="p-4">
           <div className="mb-3 flex items-center gap-2 px-1">
-            <button type="button" onClick={goNotifikasi} title="Buka semua notifikasi" className="flex items-center gap-2 rounded-lg px-1 py-0.5 text-left hover:bg-rose-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-rose-400">
+            <button
+              type="button"
+              onClick={goNotifikasi}
+              title={`Buka semua notifikasi (${attentionItems.length} kondisi) - semua baris alert akan disorot`}
+              className="flex cursor-pointer items-center gap-2 rounded-lg px-1 py-0.5 text-left hover:bg-rose-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-rose-400"
+            >
               <AlertTriangle className="h-4 w-4 text-rose-500" />
-              <h3 className="text-sm font-semibold text-navy-900 underline-offset-2 hover:underline">{S.needAttention.replace("{n}", String(attentionItems.length))} <span className="text-[11px] font-normal text-steel-400">→ Notifikasi</span></h3>
+              <h3 className="text-sm font-semibold text-navy-900 underline-offset-2 hover:underline">{S.needAttention.replace("{n}", String(attentionItems.length))} <span className="text-[11px] font-normal text-steel-400">&rarr; Notifikasi</span></h3>
             </button>
             <span className="text-xs text-steel-400">{S.autoThreshold}</span>
-            <button type="button" onClick={goNotifikasi} className="btn-secondary ml-auto px-2 py-1 text-[11px]">Lihat semua</button>
+            <button type="button" onClick={goNotifikasi} className="btn-secondary ml-auto px-2 py-1 text-[11px]">{S.seeAll}</button>
           </div>
           {attentionItems.length === 0 && (
             <p className="px-1 text-sm text-steel-400">{S.allThresholdsSafe}</p>
