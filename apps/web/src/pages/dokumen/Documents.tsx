@@ -520,7 +520,7 @@ const doExport = () => {
         <div className="overflow-x-auto">
           <table className="w-full">
             <thead className="bg-surface sticky top-0 z-10">
-              <tr><SortTh label={S.colDoc} sortKey="dokumen" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.colType} sortKey="tipe" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><th className="th">{locale === "en" ? "Preview" : "Pratinjau"}</th><SortTh label={S.colProjectShip} sortKey="proyek" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.colVersion} sortKey="versi" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.colStatus} sortKey="status" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.colUpdated} sortKey="diperbarui" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><th className="th">{S.colAction}</th></tr>
+              <tr><SortTh label={S.colDoc} sortKey="dokumen" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.colType} sortKey="tipe" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.colProjectShip} sortKey="proyek" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.colVersion} sortKey="versi" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.colStatus} sortKey="status" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.colUpdated} sortKey="diperbarui" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><th className="th">{S.colAction}</th></tr>
             </thead>
             <tbody className="divide-y divide-steel-100">
               {docPager.slice(sortedDocs).map((d) => (
@@ -534,21 +534,6 @@ const doExport = () => {
                     </div>
                   </td>
                   <td className="td"><Badge tone="navy">{d.type}</Badge></td>
-                  <td className="td">
-                    {/* Resolusi lampiran lewat docAttachment, bukan `d.fileUrl`
-                        mentah. Seed lama menyimpan lampiran hanya di `fileName`,
-                        jadi kolom ini pernah menampilkan "-" dan tombol
-                        Pratinjau/Unduh hilang total - itu yang dibaca sebagai
-                        "tombolnya rusak". Lihat utils/docAttachment.ts. */}
-                    <DocumentPreviewCell
-                      doc={{
-                        title: String(d.title),
-                        fileUrl: docUrlOf(d),
-                        fileName: docFileNameOf(d),
-                        subtitle: `${d.id} · ${d.type}`,
-                      }}
-                    />
-                  </td>
                   <td className="td text-steel-600 text-xs font-mono max-w-[180px] truncate" title={`${String(d.project)} · ${String(d.vessel)}`}>{d.project} · {d.vessel}</td>
                   <td className="td text-steel-600">{d.version}</td>
                   <td className="td"><StatusBadge status={d.status} /></td>
@@ -556,6 +541,20 @@ const doExport = () => {
                   <td className="td">
                     <div className="flex gap-1">
                       <button className="rounded-lg p-1.5 text-steel-500 hover:bg-steel-100" title={S.detailBtn} aria-label={S.detailOf.replace("{a}", String(d.id))} onClick={() => openDetail(d)}><Eye className="h-4 w-4" /></button>
+                      {/* Pratinjau pindah ke dalam modal detail (item 12 revisi
+                          2 Oktober): kolom pratinjau dihapus, jadi tabel arsip
+                          tidak lagi punya kolom yang isinya cuma dua ikon.
+                          Lampiran tetap bisa dilihat dan diunduh - lewat
+                          docAttachment, yang juga menyelesaikan lampiran
+                          seed lama yang hanya tersimpan di `fileName`. */}
+                      <DocumentPreviewCell
+                        doc={{
+                          title: String(d.title),
+                          fileUrl: docUrlOf(d),
+                          fileName: docFileNameOf(d),
+                          subtitle: `${d.id} · ${d.type}`,
+                        }}
+                      />
                       {type === "Arsip" ? (
                         <>
                           <button className="rounded-lg p-1.5 text-teal-600 hover:bg-teal-50" title={S.actRestore} aria-label={S.actRestoreOf.replace("{a}", String(d.id))} onClick={async () => { try { await update("documents", d.id, { archived: false }); log("memulihkan dokumen dari arsip", d.id, "Dokumen"); toast(S.tRestored.replace("{a}", String(d.id))); } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); } }}><RotateCcw className="h-4 w-4" /></button>

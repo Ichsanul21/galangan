@@ -184,6 +184,11 @@ export default function Subcontractor() {
      berkas yang bisa diaudit. Sekarang bukti bisa dilampirkan; teks ref
      tetap ada karena rekonsiliasi sering hanya punya nomor. */
   const [proofUrl, setProofUrl] = useState("");
+  /* Nomor invoice & BAST wajib sebelum bayar (requirement 2 Oktober).
+     Bry很重要的 bukan formalitas: kwitansi mencantumkan keduanya, dan tanpa
+     nomor itu bukti pembayaran tidak bisa dicocokkan ke invoice mana pun -
+     sengketa pembayaran pertama yang muncul justru soal ini. */
+  const [proofDocs, setProofDocs] = useState({ invoiceNo: "", bastNo: "" });
   const [withholdingRef, setWithholdingRef] = useState("");
   const [termDirCheck, setTermDirCheck] = useState(false);
   const [termDirName, setTermDirName] = useState("");
@@ -568,6 +573,9 @@ const printSpk = async (w: StoreItem): Promise<void> => {
       setTermPay(p);
       setProof({ date: todayISO(), method: "Transfer", ref: "" });
       setProofUrl("");
+      /* Termin yang sudah punya nomor (diisi manual sebelumnya) tidak
+         dignorer: pem homebu form akan langsung menampilkan isinya. */
+      setProofDocs({ invoiceNo: String(p.invoiceNo ?? ""), bastNo: String(p.bastNo ?? "") });
       setWithholdingRef("");
       setTermDirCheck(false);
       setTermDirName("");
@@ -587,6 +595,13 @@ const printSpk = async (w: StoreItem): Promise<void> => {
     if (!termPay) return;
     if (!proof.date) { toast(S.tPayDateRequired, "info"); return; }
     if (!proof.ref.trim()) { toast(S.tRefRequired, "info"); return; }
+    /* Requirement client 2 Oktober: invoice dan BAST wajib ada sebelum bukti
+       bayar diterbitkan. Numeriknya disimpan di baris termin yang sama, dan
+       kwitansi membacanya dari sana - jadi kwitansi tidak bisa dicetak untuk
+       pembayaran yang tidak punya invoice/BAST, dan kalau nanti dicek,
+       jejaknya ada di pembukuan bukan hanya di kepala orang yang membayar. */
+    if (!proofDocs.invoiceNo.trim()) { toast(S.tInvoiceNoWajib, "info"); return; }
+    if (!proofDocs.bastNo.trim()) { toast(S.tBastNoWajib, "info"); return; }
     // Termin di atas ambang APPROVE_TERMIN wajib persetujuan Director (checkbox + nama).
     if (needsTermDirector(termPay) && (!termDirCheck || !termDirName.trim())) {
       toast(S.tDirectorRequired.replace("{n}", fmtRupiah(terminThreshold)), "info");
@@ -604,6 +619,8 @@ const printSpk = async (w: StoreItem): Promise<void> => {
     await update("termins", termPay.id, {
       status: "Lunas", paidAt: proof.date, paidMethod: proof.method, paidRef: proof.ref.trim(),
       proofUrl: proofUrl.trim(),
+      invoiceNo: proofDocs.invoiceNo.trim(),
+      bastNo: proofDocs.bastNo.trim(),
       pphAmt, retAmt, penaltyApplied: penalty, withholdingRef: withholdingRef.trim(),
       ...(needsTermDirector(termPay) ? { directorApproved: termDirName.trim() } : {}),
     });
@@ -652,6 +669,10 @@ const printSpk = async (w: StoreItem): Promise<void> => {
         await update("termins", termId, {
           status: prevStatus,
           paidAt: termPay.paidAt, paidMethod: termPay.paidMethod, paidRef: termPay.paidRef,
+          /* Nomor invoice/BAST ikut dikembalikan ke semula: Hutang gagal
+             tercatat berarti belum ada pembayaran yang terjadi, jadi jangan
+             meninggalkan dokumen yang menyatakan sebaliknya. */
+          invoiceNo: termPay.invoiceNo, bastNo: termPay.bastNo,
           pphAmt: termPay.pphAmt, retAmt: termPay.retAmt, penaltyApplied: termPay.penaltyApplied,
           withholdingRef: termPay.withholdingRef,
           ...(needsTermDirector(termPay) ? { directorApproved: termPay.directorApproved } : {}),
@@ -681,6 +702,7 @@ const printSpk = async (w: StoreItem): Promise<void> => {
     toast(S.tTermPaid.replace("{a}", termPay.id).replace("{b}", fmtRupiah(pphAmt)).replace("{c}", fmtRupiah(netoPayable)));
     setTermPay(null);
     setWithholdingRef("");
+    setProofDocs({ invoiceNo: "", bastNo: "" });
     setTermDirCheck(false);
     setTermDirName("");
     } catch {
@@ -1148,11 +1170,17 @@ const printSpk = async (w: StoreItem): Promise<void> => {
                           <div className="mb-1 max-w-44"><FlowStrip steps={["Draf", "Diajukan", "Disetujui", "Lunas"]} current={normTerm(p.status) === "Retensi Released" ? "Lunas" : normTerm(p.status)} ariaLabel={`Alur termin ${p.id}`} /></div>
                           <Badge tone={toneMap[normTerm(p.status)] ?? "gray"}>{normTerm(p.status)}</Badge>
                           {(() => {
-                            const docs = [
-                              { label: "Invoice", done: Boolean(p.invoiceNo ?? p.withholdingRef) },
-                              { label: "BAST", done: Boolean(p.bastNo ?? p.releaseBA) },
-                              { label: "Bukti bayar", done: Boolean(p.proofUrl ?? p.paymentRef ?? p.paidRef ?? p.paidAt) },
-                            ];
+/* Checklist dokumen pembayaran. Invoice & BAST dibaca dari field yang
+                               sama dengan yang dipakai form bayar - sebelumnya
+                               `withholdingRef` (bukti potong PPh) ikut
+                               dipakai sebagai penanda invoice ada, sehingga
+                               checklist hijau padahal invoice belum ada. */
+                             const docs = [
+                               { label: locale === "en" ? "Invoice" : "Invoice", done: String(p.invoiceNo ?? "").trim() !== "" },
+                               { label: "BAST", done: String(p.bastNo ?? "").trim() !== "" },
+                               { label: locale === "en" ? "Withholding proof" : "Bukti potong", done: String(p.withholdingRef ?? "").trim() !== "" },
+                               { label: locale === "en" ? "Payment receipt" : "Bukti bayar", done: String(p.proofUrl ?? "").trim() !== "" || String(p.paidAt ?? "").trim() !== "" },
+                             ];
                             return (
                               <div className="mt-1 space-y-0.5">
                                 {docs.map((d) => (
@@ -1634,6 +1662,14 @@ const printSpk = async (w: StoreItem): Promise<void> => {
           <Field label={S.refNoLabel} hint={S.refNoHint}>
             <input className="input font-mono" value={proof.ref} onChange={(e) => setProof({ ...proof, ref: e.target.value })} placeholder={S.refNoPh} />
           </Field>
+          <FormGrid>
+            <Field label={S.invoiceNoLabel} hint={S.invoiceNoHint}>
+              <input className="input font-mono" value={proofDocs.invoiceNo} onChange={(e) => setProofDocs({ ...proofDocs, invoiceNo: e.target.value })} placeholder={S.invoiceNoPh} />
+            </Field>
+            <Field label={S.bastNoLabel} hint={S.bastNoHint}>
+              <input className="input font-mono" value={proofDocs.bastNo} onChange={(e) => setProofDocs({ ...proofDocs, bastNo: e.target.value })} placeholder={S.bastNoPh} />
+            </Field>
+          </FormGrid>
           <Field
             label={locale === "en" ? "Payment receipt (file)" : "Bukti bayar (berkas)"}
             hint={locale === "en"
