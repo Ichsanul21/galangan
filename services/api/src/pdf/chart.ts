@@ -171,8 +171,12 @@ function drawXLabels(ctx: ChartCtx, labels: string[], plotX: number, plotW: numb
   const step = widest + 3 > slot ? Math.max(1, Math.ceil((widest + 3) / slot)) : 1;
   labels.forEach((label, i) => {
     if (i % step !== 0) return;
-    const cx = plotX + slot * i;
-    txt(ctx, label, cx - slot / 2, y, slot, { size, color: COLOR.axis, align: "center" });
+    /* Slot label dipusatkan pada titik data, jadi kotak label untuk data
+       pertama bisa mulai sebelum margin kiri - dan teksnya keluar dari kertas.
+       Kotak label dijepit ke area plot; perataan "center" tetap dipakai, jadi
+       label pertama cukup geser, bukan terpotong. */
+    const slotX = Math.max(plotX, Math.min(plotX + slot * i - slot / 2, plotX + plotW - slot));
+    txt(ctx, label, slotX, y, slot, { size, color: COLOR.axis, align: "center" });
   });
 }
 

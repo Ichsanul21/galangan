@@ -47,7 +47,16 @@ export class PdfRenderError extends Error {
  * setiap render menahan seluruh byte PDF di memori per Blob. Pola pemakaian
  * ada di `usePdfDoc`.
  */
-export async function renderPdf(req: { kind: string; id?: string; locale?: string }): Promise<PdfRenderResult> {
+export interface PdfRequest {
+  kind: string;
+  id?: string;
+  locale?: string;
+  /** Filter laporan: periode, mode, projectId, months. Server menghitung
+   *  angkanya sendiri - filter hanya memilih periode, tidak mengarang isi. */
+  filters?: Record<string, string | number>;
+}
+
+export async function renderPdf(req: PdfRequest): Promise<PdfRenderResult> {
   if (!isBackendConfigured()) {
     throw new PdfRenderError("Server PDF belum aktif - ekspor memakai mesin lokal.", 0);
   }

@@ -14,7 +14,7 @@
  * Waktu mesin lokal dipensiunkan, fallback ini ikut dihapus.
  */
 import { useCallback, useEffect, useRef, useState } from "react";
-import { renderPdf, reprintPdf, downloadBlobUrl, PdfRenderError } from "../services/pdfClient";
+import { renderPdf, reprintPdf, downloadBlobUrl, PdfRenderError, type PdfRequest } from "../services/pdfClient";
 import { toast } from "../components/ui";
 
 export interface PdfDocState {
@@ -35,7 +35,7 @@ const EMPTY: PdfDocState = { busy: false, error: "", url: "", filename: "", page
 export function usePdfDoc(): {
   state: PdfDocState;
   /** Minta dokumen; memunculkan popup bila `open` true. */
-  request: (req: { kind: string; id?: string; locale?: string }, filename: string, open: boolean) => Promise<boolean>;
+  request: (req: PdfRequest, filename: string, open: boolean) => Promise<boolean>;
   /** Cetak ulang snapshot sebelumnya; hasil tetap melewati popup/unduh yang sama. */
   reprint: (modelId: string, filename: string, open: boolean) => Promise<boolean>;
   download: (filename: string) => void;
@@ -71,7 +71,7 @@ export function usePdfDoc(): {
   }, []);
 
   const request = useCallback(
-    async (req: { kind: string; id?: string; locale?: string }, filename: string, open: boolean): Promise<boolean> => {
+    async (req: PdfRequest, filename: string, open: boolean): Promise<boolean> => {
       setState((s) => ({ ...s, busy: true, error: "" }));
       try {
         const res = await renderPdf(req);

@@ -1,4 +1,4 @@
-﻿/* Route PDF: server merakit dokumen resmi dari datanya sendiri.
+/* Route PDF: server merakit dokumen resmi dari datanya sendiri.
  *
  * Prinsip integritas - ini alasan kenapa PDF pindah ke server sama sekali:
  * kalau PDF dirakit di browser dari payload yang dikirim klien, siapa pun
@@ -25,6 +25,9 @@ interface RenderBody {
   kind?: string;
   id?: string;
   locale?: string;
+  /** Filter laporan: periode, mode, projectId, months. Tidak pernah berisi
+   *  nilai laporan - angka tetap dibaca server dari DB. */
+  filters?: Record<string, unknown>;
 }
 
 export function registerPdfRoutes(app: FastifyInstance): void {
@@ -51,6 +54,7 @@ export function registerPdfRoutes(app: FastifyInstance): void {
     const ctx: RenderContext = {
       locale: body.locale === "en" ? "en" : "id",
       branch: "SEMUA",
+      filters: readFilters(body.filters),
     };
 
     try {
@@ -127,7 +131,7 @@ export function registerPdfRoutes(app: FastifyInstance): void {
         },
       });
     }
-    const ctx: RenderContext = { locale: snap.locale === "en" ? "en" : "id", branch: snap.branch || "SEMUA" };
+    const ctx: RenderContext = { locale: snap.locale === "en" ? "en" : "id", branch: snap.branch || "SEMUA", filters: {} };
     try {
       const res = buildFromModel(recipe, snap.model, ctx).render();
       await writeAudit({
@@ -174,6 +178,35 @@ function sendPdf(
   reply.header("X-Doc-Model-Id", modelId ?? "");
   reply.header("Cache-Control", "no-store");
   return reply.send(Buffer.from(res.bytes));
+}
+
+/**
+ * Filter yang diterima server.
+ *
+ * Hanya daftar putih. Tanpa itu, klien bisa mengirim filter bertingkat
+ * bebas (deep object, array besar) yang nanti ikut disimpan ke snapshot dan
+ * membuat baris pdfDocs membengkak tanpa batas.
+ */
+const FILTER_KEYS = new Set([
+  "mode",
+  "period",
+  "projectId",
+  "months",
+  "scope",
+  "signatureName",
+  "signatureRole",
+  "signatureDate",
+]);
+
+function readFilters(raw: unknown): Record<string, unknown> {
+  if (typeof raw !== "object" || raw === null) return {};
+  const out: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(raw as Record<string, unknown>)) {
+    if (!FILTER_KEYS.has(k)) continue;
+    if (typeof v === "string") out[k] = v.slice(0, 64);
+    else if (typeof v === "number" && Number.isFinite(v)) out[k] = v;
+  }
+  return out;
 }
 
 function safeFileName(kind: string, id: string): string {

@@ -13,7 +13,9 @@ import { getSetting } from "../../utils/settings";
 import { equipmentCostSummary } from "../../utils/projectCost";
 import { useT } from "../../i18n/LanguageContext";
 import { n_misc } from "../../i18n/n_misc";
-import { exportExcelSheets, exportPDF } from "../../utils/export";
+import { exportExcelSheets } from "../../utils/export";
+import { pdfServerReady } from "../../services/pdfClient";
+import { usePdfDoc } from "../../components/usePdfDoc";
 
 type Mode = "Mingguan" | "Bulanan" | "Per Proyek";
 
@@ -98,6 +100,7 @@ const LAP_COLS: CollectionKey[] = ["activities", "attendance", "boq", "branches"
 export default function Laporan() {
 
   const { data, branch, inBranch, wbsFor, log } = useStore();
+  const pdfDoc = usePdfDoc();
   /* Fetch per-batch modul (pengganti resync penuh). */
   useModuleSync(LAP_COLS);
   const { locale } = useT();
@@ -372,14 +375,41 @@ export default function Laporan() {
   };
 
   const pdfName = mode === "Mingguan" ? `Laporan-Mingguan-${week0}` : mode === "Bulanan" ? `Laporan-Bulanan-${month}` : `Laporan-${activeProjectId}`;
+  /* Laporan kas (mingguan/bulanan) dan laporan proyek dirakit server dari baris
+     DB-nya sendiri. Versi lama memotret `#laporan-konten` dengan html2canvas,
+     sehingga angka di PDF bisa berbeda dari pembukuan dan grafiknya jadi gambar.
+     Filter yang dikirim hanya memilih periode/proyek - angkanya dihitung server,
+     jadi laporan yang diarsipkan tidak bisa berbeda dari pembukuan. */
   const exportPDFLogged = async () => {
-    try {
-      await exportPDF("laporan-konten", pdfName);
-      pushArc(pdfName, mode === "Per Proyek" ? String(project?.vessel ?? "") : mode === "Bulanan" ? month : `${fmtTanggal(week0)} - ${fmtTanggal(week1)}`, mode);
-      toast(S.tPdfArchived);
-    } catch {
+    if (!pdfServerReady()) {
       toast("Ekspor PDF gagal", "info");
+      return;
     }
+    const isProject = mode === "Per Proyek";
+    if (isProject && !activeProjectId) {
+      toast("Ekspor PDF gagal", "info");
+      return;
+    }
+    const done = await pdfDoc.request(
+      {
+        kind: isProject ? "laporanProyek" : "laporan",
+        id: isProject ? activeProjectId : undefined,
+        locale,
+        filters: {
+          mode,
+          period: mode === "Bulanan" ? month : week0,
+          projectId: activeProjectId,
+          signatureName: sigName.trim(),
+          signatureRole: sigRole.trim(),
+          signatureDate: sigDate,
+        },
+      },
+      pdfName,
+      false,
+    );
+    if (!done) return;
+    pushArc(pdfName, isProject ? String(project?.vessel ?? "") : mode === "Bulanan" ? month : `${fmtTanggal(week0)} - ${fmtTanggal(week1)}`, mode);
+    toast(S.tPdfArchived);
   };
 
   return (

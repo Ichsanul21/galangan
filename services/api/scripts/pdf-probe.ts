@@ -1,4 +1,4 @@
-﻿/* Probe mesin PDF - memeriksa GEOMETRI dan ISI, bukan bentuk berkasnya.
+/* Probe mesin PDF - memeriksa GEOMETRI dan ISI, bukan bentuk berkasnya.
  *
  * Probe lama (`apps/web/scripts/pdf-probe.ts`) memeriksa "%PDF- di awal",
  * jumlah halaman, dan ukuran minimum. Semua itu BUTA terhadap bug yang
@@ -173,7 +173,7 @@ geometryCheck("tabel sangat lebar", doc(DOC_OPTS).add(kopBlock({})).add(
   const res = d.render();
   ok("paginasi tabel 240 baris", res.pages >= 3, `${res.pages} halaman`);
   ok("footer terisi di semua halaman", res.pages >= 1);
-  const problems = checkGeometry(res, MARGIN_MM, { width: PAGES.a4.width, height: PAGES.a4.height });
+  const problems = checkGeometry(res, res.margin, { width: res.pageW, height: res.pageH });
   ok("geometri tabel panjang", problems.length === 0, `${problems.length} pelanggaran`);
 }
 
@@ -188,7 +188,7 @@ geometryCheck("tabel sangat lebar", doc(DOC_OPTS).add(kopBlock({})).add(
   const sigPage = res.records.filter((r) => r.kind === "text").map((r) => r.page);
   const lastPage = Math.max(...sigPage);
   ok("tanda tangan tidak terpisah", lastPage >= 1, `tanda tangan di halaman ${lastPage}/${res.pages}`);
-  const problems = checkGeometry(res, MARGIN_MM, { width: PAGES.a4.width, height: PAGES.a4.height });
+  const problems = checkGeometry(res, res.margin, { width: res.pageW, height: res.pageH });
   ok("geometri tabel + tanda tangan", problems.length === 0, `${problems.length} pelanggaran`);
 }
 
@@ -304,7 +304,7 @@ ok("axisTicks naik monoton", axisTicks(100, 25).every((v, i, a) => i === 0 || v 
   ok("kwitansi: nomor tercetak", raw.includes("KW/TRM-2026-001"));
   ok("kwitansi: penerima tercetak", raw.includes("BANGUNAN PERMANEN"));
   ok("kwitansi: kwitansi tidak terpotong", res.pages === 1, `${res.pages} halaman`);
-  const problems = checkGeometry(res, MARGIN_MM, { width: PAGES.a4.width, height: PAGES.a4.height });
+  const problems = checkGeometry(res, res.margin, { width: res.pageW, height: res.pageH });
   ok("kwitansi: geometri", problems.length === 0, problems.length === 0 ? "semua tinta di dalam content box" : `${problems.length} pelanggaran`);
 
   /* Nilai yang jauh lebih besar - nominal besar wajib tetap muat. */
@@ -318,7 +318,7 @@ ok("axisTicks naik monoton", axisTicks(100, 25).every((v, i, a) => i === 0 || v 
     locale: "id",
   }, { compress: false });
   const bigRes = big.render();
-  const bigProblems = checkGeometry(bigRes, MARGIN_MM, { width: PAGES.a4.width, height: PAGES.a4.height });
+  const bigProblems = checkGeometry(bigRes, bigRes.margin, { width: bigRes.pageW, height: bigRes.pageH });
   ok("kwitansi: nilai besar tetap di dalam halaman", bigProblems.length === 0, `${bigProblems.length} pelanggaran`);
 
   /* Terbilang: nilai 279.000.000 harus jadi "dua ratus tujuh puluh sembilan juta". */
@@ -570,6 +570,196 @@ const MODELS: Record<string, unknown> = {
     jabatanPenandatangan: "Direktur",
     locale: "id",
   },
+  /* Laporan: model sengaja dibuat paddle panjang supaya paginasi, grafik, dan
+     baris total ikut teruji - bukan dokumen satu halaman yang selalu aman. */
+  laporan: {
+    mode: "Mingguan",
+    periodLabel: "28 September 2026 - 4 Oktober 2026",
+    from: "2026-09-28",
+    to: "2026-10-04",
+    cash: {
+      from: "2026-09-28",
+      to: "2026-10-04",
+      invoiceIssued: 2_450_000_000,
+      invoiceIssuedCount: 7,
+      invoicePaid: 1_820_000_000,
+      invoicePaidCount: 5,
+      poIssued: 940_000_000,
+      poCount: 12,
+      apPaid: 610_000_000,
+      payrollPaid: 385_000_000,
+      payrollCount: 14,
+      profit: 825_000_000,
+      pph21: 42_300_000,
+      pph23: 18_800_000,
+      attendanceTotal: 96,
+      attendancePresent: 88,
+      attendancePct: 92,
+    },
+    prev: null,
+    kpi: [
+      { label: "Proyek aktif", value: "9", hint: "Progres rata-rata 61%" },
+      { label: "Invoice terbit / lunas", value: "7 / 5", hint: "Rp 1.820.000.000" },
+      { label: "PO terbit", value: "12", hint: "Rp 940.000.000" },
+      { label: "Kehadiran", value: "92%", hint: "88 dari 96" },
+    ],
+    compare: [
+      { label: "Pendapatan kas", value: "Rp 1.820.000.000 (Rp 120.000.000)" },
+      { label: "Biaya", value: "Rp 995.000.000 (Rp -40.000.000)" },
+      { label: "Laba", value: "Rp 825.000.000 (Rp 160.000.000)" },
+    ],
+    projects: Array.from({ length: 25 }, (_, i) => ({ id: `PRJ-${100 + i}`, vessel: `Km. Nusa Bahari ${i + 1}`, progress: 30 + i * 2, status: i % 4 === 0 ? "Terlambat" : "Dalam Proses" })),
+    findings: Array.from({ length: 18 }, (_, i) => ({ kind: i % 3 === 0 ? "NCR" : "Insiden", id: `${i % 3 === 0 ? "NCR" : "INC"}-${i + 1}`, status: "Terbuka", date: "2026-10-02", text: `Temuan lapangan nomor ${i + 1} - perluxkoreksi pada area dek danffdokumentasi ulang.`, severity: "Minor" })),
+    composition: [
+      { label: "Invoice lunas", value: 5 },
+      { label: "Invoice belum lunas", value: 2 },
+      { label: "PO", value: 12 },
+    ],
+    signature: { name: "H. Syarif Sarapping", role: "Direktur", date: "2026-10-05" },
+    locale: "id",
+  },
+  laporanProyek: {
+    report: {
+      id: "PRJ-2026-004",
+      vessel: "Km. Nyak Kopong",
+      client: "PT PELAYARAN NUSANTARA",
+      manager: "Budi Santoso",
+      type: "Repair",
+      status: "Dalam Proses",
+      start: "2026-06-01",
+      end: "2026-12-20",
+      budget: 2_500_000_000,
+      actual: 1_320_000_000,
+      progress: 62,
+      budgetPct: 53,
+      boqTotal: 2_450_000_000,
+      boqApproved: 1_800_000_000,
+      boqCount: 18,
+      invoiceTotal: 1_100_000_000,
+      invoiceUnpaid: 2,
+      openNcr: 3,
+      criticalNcr: 1,
+      woCount: 4,
+      wbsDone: 7,
+      wbsCount: 12,
+      equipmentRental: 210_000_000,
+      equipmentMaintenance: 88_000_000,
+      equipmentFuel: 22_000_000,
+      serviceCount: 6,
+      spareDone: 4,
+    },
+    wbs: Array.from({ length: 12 }, (_, i) => ({ task: `WBS ${i + 1} - Pekerjaan dek dan rnd anjang`, progress: Math.min(100, i * 9), status: i < 7 ? "Selesai" : "Berjalan" })),
+    boq: Array.from({ length: 18 }, (_, i) => ({ name: `Item BoQ ${i + 1} - baja ship's plate 10 mm`, qty: `${i + 2} lbr`, total: 120_000_000 + i * 1_000_000, status: "Approved" })),
+    invoices: Array.from({ length: 8 }, (_, i) => ({ id: `INV-2026-${100 + i}`, amount: 250_000_000, status: i < 6 ? "Lunas" : "Belum Lunas", due: "2026-10-05" })),
+    workOrders: Array.from({ length: 4 }, (_, i) => ({ id: `WO-2026-0${i + 1}`, sub: `PT SUBKONTRAKTOR ${i + 1}`, progress: 40 + i * 10 })),
+    findings: Array.from({ length: 5 }, (_, i) => ({ kind: "NCR", id: `NCR-2026-0${i + 1}`, status: i === 0 ? "Tertutup" : "Terbuka", date: "2026-09-20", text: `NCR ukuran ${i + 1}: las tidak memenuhi standar.`, severity: i === 0 ? "Minor" : "Critical" })),
+    activity: Array.from({ length: 6 }, (_, i) => ({ actor: "QA", action: "menguji", target: `las seam #${i + 1}`, date: "2026-10-01" })),
+    locale: "id",
+  },
+  analitik: {
+    scope: "Analytics",
+    periodLabel: "Okt 2025 - Okt 2026",
+    series: Array.from({ length: 13 }, (_, i) => ({
+      key: `2025-${String(10 + i).padStart(2, "0")}`.replace("2025-13", "2026-01"),
+      label: `Bulan ${i + 1}`,
+      revenue: 800 + i * 95 + (i % 3) * 40,
+      cost: 600 + i * 70,
+      margin: 12 + ((i * 7) % 18),
+      projects: 4 + (i % 5),
+    })),
+    kpi: {
+      totalProjects: 42,
+      activeProjects: 27,
+      lateProjects: 5,
+      totalBudget: 48_000_000_000,
+      totalActual: 31_500_000_000,
+      avgProgress: 63,
+      revenueYtd: 14_200,
+      marginAvg: 18.4,
+      openNcr: 11,
+      criticalNcr: 3,
+      activeEmployees: 128,
+      equipmentBusy: 34,
+      equipmentTotal: 52,
+      drydockUsed: 3,
+      drydockTotal: 5,
+      lowStock: 7,
+      unpaidInvoices: 9,
+      unpaidPayables: 6,
+    },
+    growth: { revenue: 6.4, margin: -1.2 },
+    ncrPareto: [
+      { factor: "Pengelasan", count: 18, impact: 45, cumulative: 45 },
+      { factor: "Dokumentasi", count: 12, impact: 30, cumulative: 75 },
+      { factor: "Material", count: 6, impact: 15, cumulative: 90 },
+      { factor: "Lainnya", count: 4, impact: 10, cumulative: 100 },
+    ],
+    profitByType: [
+      { key: "New Build", budget: 22_000_000_000, actual: 13_500_000_000, profit: 8_500_000_000, count: 9 },
+      { key: "Repair", budget: 18_000_000_000, actual: 12_800_000_000, profit: 5_200_000_000, count: 22 },
+      { key: "Retrofit", budget: 8_000_000_000, actual: 5_200_000_000, profit: 2_800_000_000, count: 11 },
+    ],
+    profitByBranch: [
+      { key: "Samarinda", budget: 30_000_000_000, actual: 19_000_000_000, profit: 11_000_000_000, count: 24 },
+      { key: "Balikpapan", budget: 18_000_000_000, actual: 12_500_000_000, profit: 5_500_000_000, count: 18 },
+    ],
+    rework: { negativeCo: 420_000_000, ncrEstimate: 640_000_000, total: 1_060_000_000 },
+    risk: {
+      dockConflicts: 2,
+      lowStock: [
+        { name: "Cat anti korosi 5 kg", stock: 12, minStock: 20 },
+        { name: "Kabel NYM 2x1,5 mm", stock: 40, minStock: 60 },
+      ],
+      atRiskProjects: [
+        { id: "PRJ-2026-004", vessel: "Km. Nyak Kopong", status: "Dalam Proses" },
+        { id: "PRJ-2026-009", vessel: "Km. Sepinggan", status: "Terlambat" },
+      ],
+      openNcr: 11,
+      maintenancePending: 4,
+      calibrationPending: 6,
+      worstVendor: { name: "PT SUMBER BAHAN BAKTI", onTime: 62 },
+    },
+    projectStatus: [
+      { label: "Dalam Proses", value: 18 },
+      { label: "Selesai", value: 15 },
+      { label: "Terlambat", value: 5 },
+      { label: "Tertunda", value: 4 },
+    ],
+    locale: "id",
+  },
+  rekapPayroll: {
+    mode: "Rekap",
+    period: "2026-09",
+    recap: {
+      period: "2026-09",
+      rows: Array.from({ length: 40 }, (_, i) => ({
+        id: `PAY-202609-${String(i + 1).padStart(3, "0")}`,
+        employee: `Karyawan Nomor ${i + 1}`,
+        basic: 8_000_000 + i * 150_000,
+        allowances: 2_500_000,
+        overtime: i % 3 === 0 ? 850_000 : 0,
+        loan: i % 7 === 0 ? 500_000 : 0,
+        otherDeduction: 0,
+        pph21: 420_000,
+        bpjsKes: 105_000,
+        bpjsTk: 210_000,
+        net: 9_000_000 + i * 150_000,
+        status: i % 4 === 0 ? "Dibayar" : "Disetujui",
+      })),
+      totals: { basic: 1_200_000_000, allowances: 200_000_000, overtime: 30_000_000, deduction: 12_000_000, pph21: 30_000_000, bpjs: 24_000_000, net: 1_400_000_000 },
+    },
+    thr: {
+      period: "2026-09",
+      rows: [
+        { id: "PAY-202609-THR-001", employee: "Suryanto", type: "THR", amount: 9_800_000, note: "Basis 39.200.000 x 3/12 bulan", status: "Dibayar" },
+        { id: "PAY-202609-BNS-001", employee: "Ahmad Hidayat", type: "Bonus", amount: 3_000_000, note: "Bonus kinerja semester", status: "Disetujui" },
+      ],
+      totalThr: 9_800_000,
+      totalBonus: 3_000_000,
+      totalNet: 12_800_000,
+    },
+    locale: "id",
+  },
 };
 
 function registryIntegrity(): void {
@@ -592,7 +782,7 @@ function registryIntegrity(): void {
       const res = d.render();
       const raw = Buffer.from(res.bytes).toString("latin1");
       ok(`registry: ${kind} merakit dari snapshot`, raw.startsWith("%PDF-"), `${res.pages} halaman, ${res.bytes.byteLength} B`);
-      const problems = checkGeometry(res, MARGIN_MM, { width: PAGES.a4.width, height: PAGES.a4.height });
+      const problems = checkGeometry(res, res.margin, { width: res.pageW, height: res.pageH });
       ok(`registry: ${kind} geometri snapshot`, problems.length === 0, problems.length === 0 ? "aman" : problems[0]?.reason ?? "");
     } catch (err) {
       ok(`registry: ${kind} merakit dari snapshot`, false, err instanceof Error ? err.message : String(err));

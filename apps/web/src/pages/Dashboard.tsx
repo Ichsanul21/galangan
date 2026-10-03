@@ -1,4 +1,4 @@
-﻿import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import {
   Anchor,
@@ -114,9 +114,10 @@ const DASH_ALERT_TONE: Record<ModuleAlertKey, string> = {
 /* Batas tampilan: kartu harus tetap ringkas. Sisanya ada di /notifikasi. */
 const DASH_ALERT_CAP = 12;
 import { useAuth, canSetTarget } from "../auth/auth";
-import { chartAnim, exportPDF } from "../utils/export";
+import { chartAnim } from "../utils/export";
+import { pdfServerReady } from "../services/pdfClient";
+import { usePdfDoc } from "../components/usePdfDoc";
 import { todayISO } from "../utils/format";
-import { SB_KOP } from "../utils/sb";
 import { scopeNames } from "../utils/scope";
 import {
   revenueSeries,
@@ -168,6 +169,7 @@ const DB_COLS: CollectionKey[] = ["activities", "drydocks", "employees", "incide
 export default function Dashboard() {
 
   const { data, branch, inBranch } = useStore();
+  const pdfDoc = usePdfDoc();
   /* Fetch per-batch modul (pengganti resync penuh). */
   useModuleSync(DB_COLS);
   const { locale } = useT();
@@ -185,7 +187,6 @@ export default function Dashboard() {
   const projects = branchProjects;
   const activities = data.activities;
   const [range, setRange] = useState<(typeof RANGES)[number]>("12B");
-const [pdfMode, setPdfMode] = useState(false);
   const [targets, setTargets] = useState<Record<string, BranchTarget>>(() => loadTargets());
   const [showTarget, setShowTarget] = useState(false);
   const [tgtRev, setTgtRev] = useState("");
@@ -367,27 +368,21 @@ Id tidak diteruskan di sini. Kartu ini memakai engine utils/moduleAlerts
   const seaTrialVessel =
     projects.find((p) => p.status !== "Selesai" && scopeNames(p.scope).includes("Sea Trial"))?.vessel ?? "-";
 
-  /* Tombol ekspor = PDF ringkas portofolio via section cetak tersembunyi (tabel KPI, tanpa chart blank). */
+  /* Ringkasan portofolio dicetak oleh server dari baris DB-nya sendiri.
+   Versi lama menangkap DOM (`exportPDF` + html2canvas), jadi angka di PDF bisa
+   berbeda dari pembukuan dan grafiknya jadi gambar. `monthCount` diteruskan
+   sebagai filter; server yang menghitung. */
 const exportSummary = async () => {
-  /* pdfMode menyalakan kop perusahaan di dalam DOM dashboard dan mematikan
-     motion, jadi yang ter-capture adalah dashboard utuh dengan kop resmi -
-     bukan ringkasan yang diketik ulang. finally WAJIB: kalau ekspor gagal,
-     pdfMode harus tetap mati, kalau tidak dashboard terkunci tanpa animasi
-     dan tanpa kop sampai halaman dimuat ulang. */
-  setPdfMode(true);
-  try {
-    /* Beri React kesempatan commit + font/layout settle. Tanpa jeda ini kop baru
-       belum selesai di-layout saat html2canvas memotret -> PDF keluar tanpa
-       kop, tanpa error apa pun. */
-    await new Promise((r) => requestAnimationFrame(() => r(undefined)));
-    await new Promise((r) => setTimeout(r, 150));
-    await exportPDF("dashboard-pdf", `Ringkasan-Portofolio-${todayISO()}`, { inPlace: true });
-    toast(S.tPortfolioPdfExported);
-  } catch {
-    toast("Ekspor PDF gagal", "info");
-  } finally {
-    setPdfMode(false);
+  if (!pdfServerReady()) {
+    toast(S.tPortfolioPdfExported, "info");
+    return;
   }
+  const done = await pdfDoc.request(
+    { kind: "analitik", locale, filters: { scope: "Dashboard", months: monthCount } },
+    `Ringkasan-Portofolio-${todayISO()}`,
+    false,
+  );
+  if (done) toast(S.tPortfolioPdfExported);
 };
 
   const tgt = targets[branch] ?? { revenue: 0, projects: 0 };
@@ -458,39 +453,19 @@ const exportSummary = async () => {
     navigate(`${MODULE_ALERT_TO[key]}${q}`);
   };
 
+  /* PDF sudah dibuat server dari baris DB (lihat exportSummary), jadi tidak
+     ada lagi area cetak tersembunyi, tidak ada kop HTML di dalam dashboard,
+     dan tidak ada mode yang mematikan animasi hanya untuk foto. */
   return (
-    /* Target export PDF adalah DOM dashboard INI, bukan section cetak terpisah.
-       Versi lama mengekspor <div id="dashboard-pdf"> yang ditulis tangan di
-       bawah file: kop + satu paragraf KPI + tabel proyek. Duplikat itu tidak
-       punya apa pun yang mengikatnya ke dashboard, jadi setiap kartu, KPI, atau
-       chart yang ditambah di sini tidak akan pernah ikut ke PDF, dan tidak ada
-       yang memberi tahu - PDF tetap "berhasil" dengan isi yang basi. Menyebut
-       id yang sama persis di sini membuat PDF berisi dashboard utuh apa
-       adanya, dan mustahil lagi berdrift karena keduanya satu elemen.
-
-       animate={!pdfMode} mematikan framer-motion saat capture: motion.div
-       menyimpan inline transform/opacity sisa animasi yang kalau difoto
-       html2canvas akan muncul sebagai pergeseran/transparansi. */
-    <Stagger className="space-y-5" id="dashboard-pdf" animate={!pdfMode}>
-      {pdfMode && (
-        <div style={{ textAlign: "center", borderBottom: "3px solid #0B3A63", paddingBottom: 10, marginBottom: 4 }}>
-          <p style={{ fontWeight: 800, fontSize: 18, color: "#0B3A63", margin: 0 }}>{SB_KOP.name}</p>
-          <p style={{ fontSize: 11, color: "#33475B", margin: 0 }}>{SB_KOP.line1}</p>
-          <p style={{ fontSize: 10, color: "#52697C", margin: 0 }}>{SB_KOP.hq} - {SB_KOP.addr1}</p>
-          <p style={{ fontSize: 12, fontWeight: 700, color: "#0B3A63", marginTop: 8 }}>
-            Ringkasan Portofolio - {branch}
-          </p>
-        </div>
-      )}
+    <Stagger className="space-y-5">
       <StaggerItem>
         <PageHeader
           title={S.dashTitle}
           subtitle={S.dashSubtitle}
           icon={<TrendingUp className="h-5 w-5" />}
           actions={
-            /* Filter, tombol presentasi, dan "Proyek Baru" adalah kontrol UI.
-               Fungsinya tidak ada di dokumen, jadi disembunyikan dari capture. */
-            <div className="flex items-center gap-2" data-export-hide>
+            /* Filter, tombol presentasi, dan "Proyek Baru" adalah kontrol UI. */
+            <div className="flex items-center gap-2">
               <button className="btn-secondary" onClick={togglePresent} title={isFs ? S.exitFullscreen : S.presentBtn}>
                 {isFs ? <Minimize className="h-4 w-4" /> : <Maximize className="h-4 w-4" />} {isFs ? S.exitFullscreen : S.presentBtn}
               </button>

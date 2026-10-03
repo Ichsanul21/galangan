@@ -47,6 +47,13 @@ export interface RenderResult {
   records: DrawRecord[];
   /** Font benar-benar ter-embed? */
   embeddedFont: boolean;
+  /** Ukur halaman dalam mm, sudah mengikuti orientasi. Pemeriksa geometri
+   *  membutuhkannya: laporan landscape punya content box lebih lebar dari A4
+   *  potret, jadi pemeriksaan yang memakai ukuran tetap akan menandai dokumen
+   *  yang sebenarnya benar sebagai pelanggaran. */
+  pageW: number;
+  pageH: number;
+  margin: number;
 }
 
 /** Dokumen PDF yang sedang disusun. */
@@ -242,6 +249,9 @@ export class Document {
       pages: total,
       records: this.opts.trace ? this.records : [],
       embeddedFont: this.embedded,
+      pageW: this.pageW,
+      pageH: this.pageH,
+      margin: this.margin,
     };
   }
 

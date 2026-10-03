@@ -1,4 +1,4 @@
-﻿/* Render probe: menjalankan SETIAP factory useMemo di seluruh halaman.
+/* Render probe: menjalankan SETIAP factory useMemo di seluruh halaman.
  *
  * Kenapa ada: `tsc` dan `vite build` TIDAK bisa menangkap temporal dead zone
  * (const yang dibaca di dalam closure tapi dideklarasikan lebih bawah).
@@ -115,19 +115,18 @@ for (const { name, path, el } of PAGES) {
 
 console.log(`\n${pass}/${PAGES.length} halaman render tanpa error.`);
 
-/* Target export PDF harus BENAR-BENAR membungkus dashboard, bukan ringkasan
-   yang ditulis tangan terpisah.
+/* Ringkasan portofolio TIDAK lagi dipotret dari DOM.
 
-   Bug yang paling mungkin berulang di sini: id="dashboard-pdf" dipindah ke
-   elemen lain - atau dipakai dua kali - tanpa ada yang gagal. exportPDF
-   tetap mengembalikan PDF yang valid, toast tetap hijau, dan tidak ada satu
-   pun gate yang protes; hanya isinya diam-diam jadi halaman lain. Karena
-   itu id-nya dikunci di sini, bukan cuma dipercaya.
+   dulu `exportPDF("dashboard-pdf", ...)` memotret elemen itu dengan
+   html2canvas, dan pemeriksaan ini mengunci `id="dashboard-pdf"` supaya
+   targetnya benar-benar membungkus dashboard utuh. Sekarang PDF-nya dirakit
+   server dari baris DB, jadi id itu sudah tidak ada - dan pemeriksa lama akan
+   gagal terus although tidak ada yang salah.
 
-   Yang diperiksa: id itu ada tepat sekali di hasil render Dashboard, dan
-   ada DI DALAM-nya -_chart recharts_ dan lebih dari satu kartu. Kalau suatu
-   saat orang Collapse ke section_off-screen_, kartu hilang dari id itu dan
-   pemeriksa ini yang akan lebih dulu menyadarinya. */
+   Yang dijaga di sini justru kebalikannya: tidak boleh ada area cetak
+   tersembunyi di dashboard, dan tidak boleh ada pemanggilan exportPDF. Kalau
+   salah satunya kembali, angka di PDF bisa lagi berbeda dari pembukuan karena
+   HTML sudah dirender ulang atau difilter berbeda dari data server. */
 try {
   const html = renderToString(
     <LanguageProvider>
@@ -142,24 +141,17 @@ try {
   );
 
   const problems: string[] = [];
-  const occurrences = html.split('id="dashboard-pdf"').length - 1;
-  if (occurrences !== 1) {
-    problems.push(`id="dashboard-pdf" muncul ${occurrences}x, harus tepat 1`);
-  } else {
-    const start = html.indexOf('id="dashboard-pdf"');
-    /* Ambil sampai </div> penutup terluar seadanya: untuk keperluan ini
-       cukup memastikan ada isi substensial SETELAH id itu, bukan hanya
-       elemen kosong. */
-    const inner = html.slice(start, start + 400000);
-    const end = inner.lastIndexOf("</div>");
-    const body = end > 0 ? inner.slice(0, end) : inner;
-    if (!/recharts/i.test(body)) problems.push("tidak ada chart recharts di dalam target export");
-    const cards = (body.match(/class="[^"]*\bcard\b/g) ?? []).length;
-    if (cards < 5) problems.push(`hanya ${cards} kartu di dalam target export, dashboard punya 17`);
-  }
+  /* Tidak boleh ada area cetak tersembunyi lagi: PDF-nya dirakit server, jadi
+     elemen yang dipotret hanya menambah satu sumber angka yang bisa berbeda. */
+  if (/id="dashboard-pdf"/.test(html)) problems.push('id="dashboard-pdf" masih ada - PDF tidak lagi dipotret dari DOM');
+  /* Sebaliknya, dashboard tetap harus utuh di layar: chart dan kartunya
+     tidak boleh ikut hilang saat area cetaknya dihapus. */
+  if (!/recharts/i.test(html)) problems.push("chart dashboard hilang");
+  const cards = (html.match(/class="[^"]*\bcard\b/g) ?? []).length;
+  if (cards < 5) problems.push(`hanya ${cards} kartu di dashboard`);
 
   if (problems.length === 0) {
-    console.log("PASS  target export PDF membungkus dashboard utuh");
+    console.log("PASS  ringkasan portofolio tidak punya area cetak DOM dan diminta ke server");
     pass += 1;
   } else {
     console.log(`FAIL  target export PDF *** ${problems.join("; ")}`);
@@ -170,6 +162,7 @@ try {
   console.log(`FAIL  target export PDF *** ${err.message}`);
   failures.push("target export PDF");
 }
+
 
 /* Logika penggabungan hasil tarikan - akar-most dari "POST sukses lalu
    beberapa detik kemudian data hilang".

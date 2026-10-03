@@ -4,7 +4,9 @@ import { useT } from "../../i18n/LanguageContext";
 import { n_prj } from "../../i18n/n_prj";
 import { Card, StatusBadge, Modal, Field, toast, Badge, ProgressBar, KpiCard, EmptyState, useBusy, AsyncButton } from "../../components/ui";
 import { Send, CheckCircle2, XCircle, FileDown, FileText } from "lucide-react";
-import { exportPDF, exportExcelSheets, fmtRupiah, fmtRentang } from "../../utils/export";
+import { exportExcelSheets, fmtRupiah, fmtRentang } from "../../utils/export";
+import { pdfServerReady } from "../../services/pdfClient";
+import { usePdfDoc } from "../../components/usePdfDoc";
 import { STATUS_BOQ_ID, fmtTanggal, todayISO } from "../../utils/format";
 import { fmtMiliar } from "../../data";
 
@@ -17,6 +19,7 @@ export default function ReportSection({ projectId }: Props) {
   const { locale } = useT();
   const S = n_prj[locale];
   const { data, update, log, wbsFor } = useStore();
+  const pdfDoc = usePdfDoc();
   const project = (data.projects ?? []).find((p: any) => p.id === projectId);
 
   const docs = useMemo(() => ((data.documents ?? []) as any[]).filter((d: any) => d.project === projectId), [data.documents, projectId]);
@@ -84,13 +87,22 @@ export default function ReportSection({ projectId }: Props) {
     );
   };
 
-  const handleExportPDF = () => {
-    /* Pipeline exportPDF sudah membuka area scroll + meraster SVG sendiri;
-       cukup panggil dan biarkan restore-nya yang bekerja. */
-    const elementId = `report-summary-${projectId}`;
-    void exportPDF(elementId, `Report-${projectId}`)
-      .then(() => toast(S.repToastPdf))
-      .catch(() => toast(S.saveFail, "info"));
+  /* Ringkasan proyek dirakit server dari baris DB-nya sendiri.
+   Versi lama memotret `#report-summary-<id>` dengan html2canvas: angka bisa
+   berbeda dari pembukuan, tabel panjang terpotong, dan grafik jadi gambar.
+   Server juga punya WBS (tabel `wbs_by_project`) yang tidak pernah ikut
+   terpotong. */
+  const handleExportPDF = async () => {
+    if (!pdfServerReady()) {
+      toast(S.saveFail, "info");
+      return;
+    }
+    const done = await pdfDoc.request(
+      { kind: "laporanProyek", id: projectId, locale },
+      `Report-${projectId}`,
+      false,
+    );
+    if (done) toast(S.repToastPdf);
   };
 
   const handleExportExcel = () => {

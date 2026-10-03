@@ -17,10 +17,12 @@ Audit: 5 auditor paralel read-only terhadap `apps/web` + `services/api` @ `1dd96
 | `c90dcef` | Route `POST /api/pdf/render`, factory kwitansi, klien + hook FE |
 | `e88b926`, `79b9882` | 13 factory dokumen resmi + registry tertutup |
 | `7cf924f`, `3ef3fd0` | Migrasi 10 pemanggil transaksional ke server-side rendering |
-| (batch ini) | Keselarasan entitas, snapshot model + cetak ulang, 3 pemanggil baru, 2 probe |
+| `9d6c00b` | Keselarasan entitas, snapshot model + cetak ulang, 3 pemanggil baru, 2 probe |
+| `f8d9729` | Slip gaji: nama field yang sebenarnya ditulis aplikasi |
+| (batch ini) | Report factory server (laporan/analitik/rekap) + 4 pemanggil dimigrasikan |
 
-Belum selesai: report factory (Dashboard/Analytics/Laporan/Rekap/THR), item
-modul & fitur 2 Oktober (lihat bagian bawah), penghapusan mesin PDF lama.
+Belum selesai: item modul & fitur 2 Oktober (lihat bagian bawah), penghapusan
+mesin PDF lama (`pdfLayout.ts`, `pdfDocs.ts`, `exportPDF`, html2canvas).
 
 ---
 

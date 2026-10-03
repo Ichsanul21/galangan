@@ -1,4 +1,4 @@
-﻿/* Registri dokumen PDF.
+/* Registri dokumen PDF.
  *
  * `kind` adalah enum TERTUTUP - server tidak menerima nama dokumen bebas dari
  * klien. Kalau klien boleh mengarang nama, dia juga boleh mengarang isi.
@@ -33,12 +33,59 @@ import { kopPenawaran, type KopPenawaranInput } from "./documents/kopPenawaran.j
 import { slipGaji, type SlipGajiInput } from "./documents/slipGaji.js";
 import { transmittal, type TransmittalInput } from "./documents/transmittal.js";
 import { spt, type SptInput } from "./documents/spt.js";
+import { cashReport, projectReport as projectReportDoc, analyticReport, payrollReport, type CashReportModel, type ProjectReportModel, type AnalyticModel, type PayrollReportModel, type Finding } from "./documents/laporan.js";
+import {
+  dockConflicts,
+  growthPct,
+  invoiceValue,
+  inRange as reportsInRange,
+  lowStockItems,
+  monthAxis,
+  monthLabel,
+  monthLabelLong,
+  monthlyFinance,
+  ncrPareto,
+  payrollRecap,
+  periodCash,
+  portfolioKpi,
+  profitBy,
+  projectReport,
+  reworkCost,
+  shiftMonth,
+  thrRecap,
+  worstVendor,
+  type Collections,
+} from "./reports.js";
+import { q } from "../db.js";
 import { loadEntity, loadMany, num, str, text, longDate, money, rupiah, qty, arr, itemRows, L, type Locale } from "./documents/shared.js";
+
+/** Filter laporan dari klien; klien memilih periode, bukan isi angka. */
+function filterText(ctx: RenderContext, key: string, fallback = ""): string {
+  const s = String(ctx.filters[key] ?? "").trim();
+  return s === "" ? fallback : s;
+}
+
+function filterNum(ctx: RenderContext, key: string, fallback: number): number {
+  const n = Number(ctx.filters[key]);
+  return Number.isFinite(n) && n > 0 ? n : fallback;
+}
+
+/** Batasi baris ke cabang; "SEMUA" berarti seluruh cabang. */
+function inCtx(ctx: RenderContext, rows: Record<string, unknown>[]): Record<string, unknown>[] {
+  if (!ctx.branch || ctx.branch === "SEMUA") return rows;
+  return rows.filter((r) => {
+    const b = str(r, "branch");
+    return b === "-" || b === ctx.branch;
+  });
+}
 
 export interface RenderContext {
   locale: Locale;
   /** Cabang pengguna; laporan dibatasi ke cabang ini. */
   branch: string;
+  /** Filter laporan (periode, mode, proyek, jumlah bulan). Klien boleh memilih,
+   *  TIDAK boleh menentukan isi - angka tetap dibaca dari DB. */
+  filters: Record<string, unknown>;
 }
 
 /** Definisi satu jenis dokumen. */
@@ -625,6 +672,306 @@ function docDate(row: Record<string, unknown>, field: string): string {
 }
 
 /* ==========================================================================
+   Laporan (data hidup - model disimpan, tapi isinya bukan kontrak)
+   ========================================================================== */
+
+/** Muat satu koleksi penuh untuk agregasi laporan. */
+async function loadAll(field: string): Promise<Record<string, unknown>[]> {
+  return loadMany({ field, prefix: field.slice(0, 3).toUpperCase() });
+}
+
+/** Koleksi laporan + penyaring cabang. */
+async function loadReportCols(ctx: RenderContext, fields: string[]): Promise<Collections> {
+  const out: Collections = {};
+  for (const f of fields) {
+    out[f as keyof Collections] = inCtx(ctx, await loadAll(f));
+  }
+  return out;
+}
+
+/** Temuan (NCR + insiden) untuk satu rentang tanggal. */
+function findingsIn(cols: Collections, from: string, to: string, projectId = ""): Finding[] {
+  const out: Finding[] = [];
+  for (const n of cols.ncr ?? []) {
+    if (!reportsInRange(n.raised, from, to)) continue;
+    if (projectId !== "" && str(n, "project") !== projectId) continue;
+    out.push({
+      kind: "NCR",
+      id: str(n, "id"),
+      status: str(n, "status"),
+      date: str(n, "raised"),
+      text: str(n, "issue", "description", "note"),
+      severity: str(n, "severity", "type"),
+    });
+  }
+  for (const i of cols.incidents ?? []) {
+    if (!reportsInRange(i.date, from, to)) continue;
+    out.push({
+      kind: "Insiden",
+      id: str(i, "id"),
+      status: str(i, "status"),
+      date: str(i, "date"),
+      text: str(i, "desc", "description", "type"),
+      severity: str(i, "severity", "type"),
+    });
+  }
+  return out.sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0)).slice(0, 40);
+}
+
+function findWbsRows(projectId: string): Promise<Array<{ data: unknown }>> {
+  /* WBS tidak koleksi: tabelnya `wbs_by_project(project_id, data)`. Kegagalan
+     baca tidak boleh menggagalkan laporan - proyek tanpa WBS tetap perlu
+     laporan BoQ/invoice-nya. */
+  return q<{ data: unknown }>("SELECT data FROM wbs_by_project WHERE project_id = ?", [projectId]).catch(() => []);
+}
+
+/** Senin minggu yang memuat tanggal ISO (identik `mondayOf` di Laporan.tsx). */
+function mondayOf(iso: string): string {
+  const d = new Date(`${iso.slice(0, 10)}T00:00:00`);
+  if (Number.isNaN(d.getTime())) return iso.slice(0, 10);
+  const dow = (d.getDay() + 6) % 7;
+  d.setDate(d.getDate() - dow);
+  return d.toISOString().slice(0, 10);
+}
+
+function addDays(iso: string, days: number): string {
+  const d = new Date(`${iso.slice(0, 10)}T00:00:00`);
+  d.setDate(d.getDate() + days);
+  return d.toISOString().slice(0, 10);
+}
+
+/* ---- Laporan kas mingguan / bulanan ---- */
+const REPORT_COLS = ["invoices", "journals", "projects", "ncr", "incidents", "payables", "payroll", "purchaseOrders", "attendance", "inventory", "equipment", "dockSlots", "vendors", "calibrations", "changeOrders", "employees", "inspections"];
+
+const laporan: Recipe<CashReportModel> = {
+  kind: "laporan",
+  title: "Laporan mingguan / bulanan",
+  report: true,
+  entity: { field: "projects", prefix: "PRJ" },
+  requiresEntity: false,
+  async prepare(_id, ctx) {
+    const cols = await loadReportCols(ctx, REPORT_COLS);
+    const mode = filterText(ctx, "mode") === "Bulanan" ? "Bulanan" : "Mingguan";
+    const todayIso = today();
+    let from: string;
+    let to: string;
+    let label: string;
+    if (mode === "Bulanan") {
+      const month = filterText(ctx, "period", todayIso.slice(0, 7));
+      from = `${month}-01`;
+      to = `${month}-31`;
+      label = monthLabelLong(month);
+    } else {
+      const weekStart = mondayOf(filterText(ctx, "period", todayIso));
+      from = weekStart;
+      to = addDays(weekStart, 6);
+      label = `${longDate(from)} - ${longDate(to)}`;
+    }
+    const cash = periodCash(cols, from, to);
+    const prev =
+      mode === "Bulanan"
+        ? periodCash(cols, `${shiftMonth(from.slice(0, 7), -1)}-01`, `${shiftMonth(from.slice(0, 7), -1)}-31`)
+        : periodCash(cols, addDays(from, -7), addDays(from, -1));
+    const projects = cols.projects
+      ?.filter((p) => str(p, "status") !== "Selesai")
+      .map((p) => ({ id: str(p, "id"), vessel: str(p, "vessel"), progress: num(p, "progress"), status: str(p, "status") }))
+      .sort((a, b) => b.progress - a.progress)
+      .slice(0, 25) ?? [];
+    const periodMonth = from.slice(0, 7);
+    const kpi = [
+      {
+        label: L(ctx.locale, "Proyek aktif", "Active projects"),
+        value: String(projects.length),
+        hint: L(ctx.locale, `Progres rata-rata ${projects.length === 0 ? 0 : Math.round(projects.reduce((s, p) => s + p.progress, 0) / projects.length)}%`, `Avg progress ${projects.length === 0 ? 0 : Math.round(projects.reduce((s, p) => s + p.progress, 0) / projects.length)}%`),
+      },
+      {
+        label: L(ctx.locale, "Invoice terbit / lunas", "Issued / paid"),
+        value: `${cash.invoiceIssuedCount} / ${cash.invoicePaidCount}`,
+        hint: rupiah(cash.invoicePaid),
+      },
+      {
+        label: L(ctx.locale, "PO terbit", "PO issued"),
+        value: String(cash.poCount),
+        hint: rupiah(cash.poIssued),
+      },
+      {
+        label: L(ctx.locale, "Kehadiran", "Attendance"),
+        value: `${cash.attendancePct}%`,
+        hint: L(ctx.locale, `${cash.attendancePresent} dari ${cash.attendanceTotal}`, `${cash.attendancePresent} of ${cash.attendanceTotal}`),
+      },
+    ];
+    if (mode === "Bulanan") {
+      const payrollRows = (cols.payroll ?? []).filter((p) => str(p, "period") === periodMonth && str(p, "status") === "Dibayar");
+      kpi[1] = {
+        label: L(ctx.locale, "Pendapatan kas", "Cash revenue"),
+        value: rupiah(cash.invoicePaid),
+        hint: L(ctx.locale, `${cash.invoicePaidCount} invoice lunas`, `${cash.invoicePaidCount} settled invoices`),
+      };
+      kpi[2] = {
+        label: L(ctx.locale, "Biaya (AP + payroll)", "Cost (AP + payroll)"),
+        value: rupiah(cash.apPaid + cash.payrollPaid),
+        hint: `${payrollRows.length} ${L(ctx.locale, "slip dibayar", "paid slips")}`,
+      };
+      kpi[3] = {
+        label: L(ctx.locale, "Laba bersih", "Net profit"),
+        value: rupiah(cash.profit),
+        hint: L(ctx.locale, `PPh 21 ${rupiah(cash.pph21)}`, `PPh 21 ${rupiah(cash.pph21)}`),
+      };
+    }
+    const compare = prev
+      ? [
+          { label: L(ctx.locale, "Pendapatan kas", "Cash revenue"), value: `${rupiah(cash.invoicePaid)} (${rupiah(cash.invoicePaid - prev.invoicePaid)})` },
+          { label: L(ctx.locale, "Biaya", "Cost"), value: `${rupiah(cash.apPaid + cash.payrollPaid)} (${rupiah(cash.apPaid + cash.payrollPaid - prev.apPaid - prev.payrollPaid)})` },
+          { label: L(ctx.locale, "Laba", "Profit"), value: `${rupiah(cash.profit)} (${rupiah(cash.profit - prev.profit)})` },
+        ]
+      : [];
+    return {
+      mode,
+      periodLabel: label,
+      from,
+      to,
+      cash,
+      prev,
+      kpi,
+      compare,
+      projects,
+      findings: findingsIn(cols, from, to),
+      composition: [
+        { label: L(ctx.locale, "Invoice lunas", "Settled invoices"), value: cash.invoicePaidCount },
+        { label: L(ctx.locale, "Invoice belum lunas", "Unsettled invoices"), value: Math.max(0, cash.invoiceIssuedCount - cash.invoicePaidCount) },
+        { label: L(ctx.locale, "PO", "PO"), value: cash.poCount },
+      ],
+      signature: {
+        name: filterText(ctx, "signatureName", "-"),
+        role: filterText(ctx, "signatureRole", "-"),
+        date: filterText(ctx, "signatureDate", todayIso),
+      },
+      locale: ctx.locale,
+    };
+  },
+  assemble: (input) => cashReport(input),
+};
+
+/* ---- Laporan per proyek ---- */
+const laporanProyek: Recipe<ProjectReportModel> = {
+  kind: "laporanProyek",
+  title: "Laporan ringkasan proyek",
+  report: true,
+  entity: { field: "projects", prefix: "PRJ" },
+  requiresEntity: false,
+  async prepare(id, ctx) {
+    const projectId = id !== "" ? id : filterText(ctx, "projectId");
+    if (projectId === "") throw new Error("Laporan proyek wajib menyertakan id proyek");
+    const cols = await loadReportCols(ctx, [...REPORT_COLS, "boq", "workOrders", "maintenances", "bookings", "services", "spareparts", "activities"]);
+    const wbsRows = await findWbsRows(projectId);
+    const wbs = wbsRows.flatMap((r) => {
+      let parsed: unknown = r.data;
+      if (typeof r.data === "string") {
+        try {
+          parsed = JSON.parse(r.data);
+        } catch {
+          parsed = [];
+        }
+      }
+      return Array.isArray(parsed) ? (parsed as Record<string, unknown>[]) : [];
+    });
+    const report = projectReport({ ...cols, wbs }, projectId);
+    if (!report) throw new Error(`Proyek ${projectId} tidak ditemukan`);
+    const from = "0000-01-01";
+    const to = "9999-12-31";
+    return {
+      report,
+      wbs: wbs.map((w) => ({ task: str(w, "task"), progress: num(w, "progress"), status: str(w, "status") })),
+      boq: (cols.boq ?? [])
+        .filter((b) => str(b, "projectId", "project") === projectId)
+        .map((b) => ({ name: str(b, "name"), qty: `${num(b, "quantity")} ${str(b, "unit")}`, total: num(b, "totalPrice") || num(b, "quantity") * num(b, "unitPrice"), status: str(b, "status") })),
+      invoices: (cols.invoices ?? [])
+        .filter((i) => str(i, "project") === projectId)
+        .map((i) => ({ id: str(i, "id"), amount: invoiceValue(i), status: str(i, "status"), due: str(i, "due", "date") })),
+      workOrders: (cols.workOrders ?? [])
+        .filter((w) => str(w, "project") === projectId)
+        .map((w) => ({ id: str(w, "id"), sub: str(w, "sub"), progress: num(w, "progress") })),
+      findings: findingsIn(cols, from, to, projectId),
+      activity: (cols.activities ?? [])
+        .filter((a) => str(a, "target").includes(projectId))
+        .slice(0, 8)
+        .map((a) => ({ actor: str(a, "actor"), action: str(a, "action"), target: str(a, "target"), date: str(a, "at", "createdAt", "date") })),
+      locale: ctx.locale,
+    };
+  },
+  /* Nama `projectReport` di file ini bentrok dengan fungsi agregasi yang sama
+   namanya di reports.ts - karena itu factory-nya dipanggil lewat alias. */
+  assemble: (input) => projectReportDoc(input),
+};
+
+/* ---- Analitik / ringkasan portofolio ---- */
+const analitik: Recipe<AnalyticModel> = {
+  kind: "analitik",
+  title: "Laporan analitik / ringkasan portofolio",
+  report: true,
+  entity: { field: "projects", prefix: "PRJ" },
+  requiresEntity: false,
+  async prepare(_id, ctx) {
+    const cols = await loadReportCols(ctx, REPORT_COLS);
+    const months = monthAxis(filterNum(ctx, "months", 12));
+    const series = monthlyFinance(cols, months);
+    const kpi = portfolioKpi(cols, series);
+    const statuses = new Map<string, number>();
+    for (const p of cols.projects ?? []) {
+      const key = str(p, "status");
+      statuses.set(key, (statuses.get(key) ?? 0) + 1);
+    }
+    return {
+      scope: filterText(ctx, "scope") === "Dashboard" ? "Dashboard" : "Analytics",
+      periodLabel: L(ctx.locale, `${monthLabel(months[0] ?? "")} - ${monthLabel(months[months.length - 1] ?? "")}`, `${monthLabel(months[0] ?? "")} - ${monthLabel(months[months.length - 1] ?? "")}`),
+      series,
+      kpi,
+      growth: { revenue: growthPct(series, "revenue"), margin: growthPct(series, "margin") },
+      ncrPareto: ncrPareto(cols),
+      profitByType: profitBy(cols, "type"),
+      profitByBranch: profitBy(cols, "branch"),
+      rework: reworkCost(cols),
+      risk: {
+        dockConflicts: dockConflicts(cols),
+        lowStock: lowStockItems(cols),
+        atRiskProjects: (cols.projects ?? [])
+          .filter((p) => str(p, "status") === "Terlambat" || num(p, "actual") > num(p, "budget"))
+          .map((p) => ({ id: str(p, "id"), vessel: str(p, "vessel"), status: str(p, "status") })),
+        openNcr: kpi.openNcr,
+        maintenancePending: (cols.equipment ?? []).filter((e) => str(e, "status") === "Maintenance").length,
+        calibrationPending: (cols.calibrations ?? []).filter((c) => str(c, "status") !== "Selesai").length,
+        worstVendor: worstVendor(cols),
+      },
+      projectStatus: Array.from(statuses.entries()).map(([label, value]) => ({ label, value })),
+      locale: ctx.locale,
+    };
+  },
+  assemble: (input) => analyticReport(input),
+};
+
+/* ---- Rekap gaji / THR ---- */
+const payrollReportRecipe: Recipe<PayrollReportModel> = {
+  kind: "rekapPayroll",
+  title: "Rekap gaji & THR",
+  report: true,
+  entity: { field: "payroll", prefix: "PAY" },
+  requiresEntity: false,
+  async prepare(_id, ctx) {
+    const cols = await loadReportCols(ctx, ["payroll", "employees"]);
+    const period = filterText(ctx, "period", today().slice(0, 7));
+    const mode = filterText(ctx, "mode") === "THR" ? "THR" : "Rekap";
+    return {
+      mode,
+      period,
+      recap: payrollRecap({ ...cols }, period, "Gaji"),
+      thr: thrRecap({ ...cols }, period),
+      locale: ctx.locale,
+    };
+  },
+  assemble: (input) => payrollReport(input),
+};
+
+/* ==========================================================================
    Registri
    ========================================================================== */
 
@@ -665,6 +1012,10 @@ const RECIPES: RecipeView[] = [
   view(slipGajiRecipe),
   view(transmittalRecipe),
   view(sptRecipe),
+  view(laporan),
+  view(laporanProyek),
+  view(analitik),
+  view(payrollReportRecipe),
 ];
 
 export const DOC_KINDS = RECIPES.map((r) => r.kind);
