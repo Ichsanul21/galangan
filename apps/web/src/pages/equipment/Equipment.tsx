@@ -1807,6 +1807,58 @@ export default function EquipmentPage() {
                   </div>
                 )}
               </Card>
+              {/* ==== RIWAYAT BOOKING ====
+                  Dipindah ke tab Alokasi (item 8c revisi 2 Oktober). Di tab
+                  Biaya, daftar ini tersembunyi di antara angka agregat: yang
+                  dicari "kapan alat ini dipakai dan berapa biayanya" selalu
+                  berakhir di tab yang tidak memuatnya. Rincian biaya per
+                  booking ikut dibawa ke sini karena itulah yang dicari
+                  bersama riwayatnya - total saja tidak bisa
+                  dipertanggungjawabkan. */}
+              <Card className="p-5">
+                <div className="mb-2 flex items-center justify-between gap-2">
+                  <h3 className="text-sm font-semibold text-navy-900">{S.eqDoneHistory}</h3>
+                  <span className="text-xs text-steel-500">{doneBookings.length} {locale === "en" ? "finished bookings" : "booking selesai"}</span>
+                </div>
+                <div className="space-y-2">
+                  {doneBookings.map((b) => {
+                    const eq = equipment.find((e) => equipKey(e.name) === equipKey(String(b.equip ?? "")));
+                    const hours = Number(b.hours || 0);
+                    const fuel = Number(b.fuelLiters || 0);
+                    const rental = hours * Number(eq?.rate || 0);
+                    const fuelCost = fuel * Number(eq?.fuelPrice || 0);
+                    const stored = Number(b.cost || 0);
+                    /* `cost` tersimpan boleh berbeda dari hitungan ulang
+                       (mis. tarif berubah setelah booking ditutup, atau ada
+                       penyesuaian manual), jadi selisihnya ditampilkan -
+                       bukan disembunyikan dengan memakai salah satu angka. */
+                    const breakdown = rental + fuelCost;
+                    const delta = stored - breakdown;
+                    return (
+                      <div key={b.id} className="border-b border-steel-100 py-2 text-sm">
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <div className="min-w-0">
+                            <p className="font-medium text-navy-900">{equipLabel(b.equip)} <span className="font-mono text-xs text-steel-500">· {b.id}</span></p>
+                            <p className="text-xs text-steel-500">{projCell(b.proyek)} · {fmtTanggal(String(b.date))} · {fmtJumlah(hours)} jam · downtime {fmtJumlah(Number(b.downtime || 0))} jam · BBM {fmtJumlah(fuel)} L</p>
+                          </div>
+                          <Badge tone="green">{fmtRupiah(stored)}</Badge>
+                        </div>
+                        {(rental > 0 || fuelCost > 0) && (
+                          <p className="mt-1 text-[11px] text-steel-500">
+                            {locale === "en" ? "rental" : "sewa"} {fmtRupiah(Math.round(rental))} · {locale === "en" ? "fuel" : "BBM"} {fmtRupiah(Math.round(fuelCost))}
+                            {delta !== 0 && (
+                              <span className="ml-1 font-semibold text-amber-600">
+                                ({delta > 0 ? "+" : ""}{fmtRupiah(Math.round(delta))} {locale === "en" ? "adjusted" : "penyesuaian"})
+                              </span>
+                            )}
+                          </p>
+                        )}
+                      </div>
+                    );
+                  })}
+                  {doneBookings.length === 0 && <p className="text-xs text-steel-400">{S.eqNoDoneBooking}</p>}
+                </div>
+              </Card>
             </div>
           )}
 
@@ -2202,21 +2254,6 @@ export default function EquipmentPage() {
                     ? "These figures are the same ones Project Detail uses for cost vs budget, so the two modules cannot drift apart."
                     : "Angka ini sama dengan yang dipakai Project Detail untuk biaya vs anggaran, jadi kedua modul tidak bisa melenceng."}
                 </p>
-              </Card>
-              <Card className="p-5">
-                <h3 className="mb-2 text-sm font-semibold text-navy-900">{S.eqDoneHistory}</h3>
-                <div className="space-y-2">
-                  {doneBookings.map((b) => (
-                    <div key={b.id} className="flex flex-wrap items-center justify-between gap-2 border-b border-steel-100 py-2 text-sm">
-                      <div>
-                        <p className="font-medium text-navy-900">{equipLabel(b.equip)} <span className="font-mono text-xs text-steel-500">· {b.id}</span></p>
-                        <p className="text-xs text-steel-500">{projCell(b.proyek)} · {fmtTanggal(String(b.date))} · {b.hours ?? 0} jam · downtime {b.downtime ?? 0} jam · BBM {fmtJumlah(Number(b.fuelLiters || 0))} L</p>
-                      </div>
-                      <Badge tone="green">{fmtRupiah(Number(b.cost || 0))}</Badge>
-                    </div>
-                  ))}
-                  {doneBookings.length === 0 && <p className="text-xs text-steel-400">{S.eqNoDoneBooking}</p>}
-                </div>
               </Card>
               <Card className="p-5">
                 <h3 className="mb-2 text-sm font-semibold text-navy-900">{S.eqFuelTitle} <span className="text-xs font-normal text-steel-500">{S.eqFuelHint}</span></h3>
