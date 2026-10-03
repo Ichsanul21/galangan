@@ -72,7 +72,9 @@ import {
 
 /* Filter historikal Hari/Bulan/Tahun untuk Kas & Bank, Buku Besar, Neraca, Laba Rugi.
    Satu struktur state per tab: { mode, hari (YYYY-MM-DD), bulan (YYYY-MM), tahun (YYYY) }.
-   matchHist() dipakai semua tabel bertanggal; tabel Excel statis diberi badge pembanding. */
+   matchHist() dipakai semua tabel bertanggal; tabel Excel statis diberi badge pembanding.
+   SALDO memakai helper as-of (kasAsOfReport / plMonthly s.d. tanggal), bukan
+   matchHist - lihat catatan di kasAsOfReport. */
 export type HistMode = "Semua" | "Hari" | "Bulan" | "Tahun";
 export interface HistFilter { mode: HistMode; hari: string; bulan: string; tahun: string }
 export const emptyHist = (): HistFilter => ({ mode: "Semua", hari: "", bulan: "", tahun: "" });
@@ -94,8 +96,11 @@ export function matchHistPeriod(periodYM: unknown, f: HistFilter): boolean {
   if (f.mode === "Tahun") return !!f.tahun && s.slice(0, 4) === f.tahun;
   return true;
 }
-/* Filter historikal: UTAMA per bulan (input month), opsi per tanggal spesifik.
-   Mode Tahun disengaja tidak ditampilkan (riwayat dibaca per bulan). */
+/* Filter historikal: UTAMA per bulan (input month), opsi per tanggal
+   spesifik atau per tahun. Mode Tahun sempat ada di matchHist dan
+   liveAsOf tapi tidak pernah ditampilkan - sekarang tampil, karena
+   pemanggil sudah mengimplementasikannya dan tombolnya dibuat-buat
+   menyimpan kode mati. */
 export function HistFilterBar({ value, onChange, idPrefix }: { value: HistFilter; onChange: (v: HistFilter) => void; idPrefix: string }) {
   const { locale } = useT();
   const T = n_fin[locale];
@@ -103,6 +108,7 @@ export function HistFilterBar({ value, onChange, idPrefix }: { value: HistFilter
     { id: "Semua", label: T.histAll },
     { id: "Bulan", label: T.histMonth },
     { id: "Hari", label: T.histDay },
+    { id: "Tahun", label: T.histYear },
   ];
   return (
     <div className="flex flex-wrap items-center gap-2 rounded-xl border border-steel-200 bg-surface px-3 py-2">
@@ -119,6 +125,14 @@ export function HistFilterBar({ value, onChange, idPrefix }: { value: HistFilter
       )}
       {value.mode === "Hari" && (
         <input id={`${idPrefix}-hari`} type="date" className="input w-auto py-1.5 text-xs" value={value.hari} onChange={(e) => onChange({ ...value, hari: e.target.value })} aria-label={T.histDayAria} />
+      )}
+      {value.mode === "Tahun" && (
+        /* type="number" karena <input type="number"> tidak punya validasi
+           tahun; min/max mencegah tahun 4 digit terpotong. */
+        <input id={`${idPrefix}-tahun`} type="number" inputMode="numeric" min={1000} max={9999} step={1}
+          className="input w-24 py-1.5 text-xs font-mono" value={value.tahun}
+          onChange={(e) => onChange({ ...value, tahun: e.target.value.replace(/\D/g, "").slice(0, 4) })}
+          aria-label={T.histYearAria} placeholder={LATEST_SNAPSHOT.slice(0, 4)} />
       )}
       {value.mode !== "Semua" && (
         <button type="button" className="text-xs font-semibold text-ocean-600 hover:underline" onClick={() => onChange(emptyHist())}>{T.histReset}</button>
@@ -321,12 +335,66 @@ const isSnapMonth = (ym: string): boolean => ym === LATEST_SNAPSHOT;
 const nlOf = (kode: string): { d: number; k: number } => NL_EXCEL[kode] ?? { d: 0, k: 0 };
 /* Tanggal as-of (YYYY-MM-DD) dari filter: Hari -> hari itu; Bulan -> akhir bulan;
    Tahun -> akhir tahun; Semua -> akhir Agustus 2026 (bulan audit). */
-function liveAsOf(f: HistFilter): string {
+/* Tanggal as-of (YYYY-MM-DD) dari filter: Hari -> hari itu; Bulan -> hari
+   TERAKHIR bulan itu; Tahun -> 31 Desember; Semua -> akhir Agustus 2026
+   (bulan audit). Versi lama memakai `${bulan}-31` untuk semua bulan, jadi
+   Juni jadi "2026-06-31" - tanggal yang tidak ada. Kebetulan perbandingan
+   leksikal tetap Kebetulan benar karena format ISO, tapi badge di UI
+   menampilkan tanggal yang tidak pernah ada. */
+function akhirBulan(ym: string): string {
+  const [y, m] = ym.split("-").map(Number);
+  if (!Number.isFinite(y) || !Number.isFinite(m)) return `${ym}-31`;
+  const last = new Date(Date.UTC(y, m, 0)).getUTCDate();
+  return `${ym}-${String(last).padStart(2, "0")}`;
+}
+export function liveAsOf(f: HistFilter): string {
   if (f.mode === "Hari" && /^\d{4}-\d{2}-\d{2}$/.test(f.hari)) return f.hari;
-  if (f.mode === "Bulan" && /^\d{4}-\d{2}$/.test(f.bulan)) return `${f.bulan}-31`;
+  if (f.mode === "Bulan" && /^\d{4}-\d{2}$/.test(f.bulan)) return akhirBulan(f.bulan);
   if (f.mode === "Tahun" && /^\d{4}$/.test(f.tahun)) return `${f.tahun}-12-31`;
   return "2026-08-31";
 }
+/* Saldo Kas/Bank AS-OF tanggal D plus mutasi periode filter, dalam satu
+   lintasan.
+
+   matchHist() hanya menyaring jurnal yang ADA DI DALAM window, jadi tidak
+   bisa dipakai untuk saldo: saldo Kas 1 Juni = saldo 31 Mei + mutasi Juni,
+   sedangkan mutasi Juni saja menghasilkan saldo yang kehilangan saldo awal.
+   Saldo awal dari snapshot Excel hanya dipakai kalau snapshot bulan itu
+   yang memang diminta; bulan lain dihitung dari nol. Pola kumulatif yang
+   sama sudah dipakai apOutAsOf/arOutAsOf untuk hutang & piutang - yang
+   hilang hanya versi jurnal. */
+export function kasAsOfReport(
+  list: StoreItem[],
+  end: string,
+  f: HistFilter,
+  opening: Record<string, number>,
+  kodeRe: RegExp,
+): { saldo: Record<string, number>; masuk: Record<string, number>; keluar: Record<string, number>; hitung: number } {
+  const saldo: Record<string, number> = { ...opening };
+  const masuk: Record<string, number> = {};
+  const keluar: Record<string, number> = {};
+  let hitung = 0;
+  for (const j of list) {
+    if (j.status === "Void") continue;
+    if (j.sumber !== "Kas" && j.sumber !== "Bank") continue;
+    const d = String(j.date ?? "").slice(0, 10);
+    const inPeriod = matchHist(d, f);
+    const amt = num(j.amount);
+    for (const [kode, side] of [[String(j.db ?? ""), 1], [String(j.kr ?? ""), -1]] as const) {
+      if (!kodeRe.test(kode)) continue;
+      if (d <= end) {
+        saldo[kode] = (saldo[kode] ?? 0) + side * amt;
+        if (inPeriod) {
+          hitung += 1;
+          const bucket = side > 0 ? masuk : keluar;
+          bucket[kode] = (bucket[kode] ?? 0) + amt;
+        }
+      }
+    }
+  }
+  return { saldo, masuk, keluar, hitung };
+}
+
 /* Sisa hutang per vendor AS-OF tanggal D, live dari koleksi payables:
    amt tercatat - pembayaran bertanggal <= D (pay1/pay2 tanpa tanggal ikut terhitung). */
 function apOutAsOf(list: StoreItem[], end: string): { v: string; total: number; count: number }[] {
@@ -947,8 +1015,10 @@ const { data, add, update, remove, log, branch, inBranch } = useStore();
   const [astEdit, setAstEdit] = useState<StoreItem | null>(null);
 
   const KAS_REKENING = coaRows.filter((c) => /^(1-11|1-12)/.test(String(c.kode)) && String(c.dk) !== "-");
-  /* Kas & Bank LIVE: mutasi per rekening dari jurnal Kas/Bank periode filter.
-     Snapshot audit (saldo awal/akhir Excel) hanya untuk Agu-2026. */
+  /* Kas & Bank LIVE: SALDO kumulatif s.d. tanggal filter, mutasi per rekening
+     hanya untuk periode filter. Versi lama menjumlahkan jurnal yang ada DI
+     DALAM window, jadi saldo awal hilang dan angka per bulan sebelum
+     Agu-2026 bukan saldo - saldo awal Excel hanya diisi saat isSnapMonth. */
   const kasAsOf = liveAsOf(kasHist);
   const kasSnap = kasAsOf.slice(0, 7) === LATEST_SNAPSHOT;
   const kasRows = useMemo(
@@ -956,29 +1026,22 @@ const { data, add, update, remove, log, branch, inBranch } = useStore();
     []);
   const kasInScope = (j: StoreItem): boolean =>
     j.status !== "Void" && (j.sumber === "Kas" || j.sumber === "Bank") && matchHist(String(j.date ?? ""), kasHist);
-  const kasSaldo = useMemo(() => {
+  const kasOpening = useMemo(() => {
     const m: Record<string, number> = {};
     if (kasSnap) for (const r of kasRows) m[r.kode] = r.awal;
-    for (const j of manJournals) {
-      if (!kasInScope(j)) continue;
-      const amt = num(j.amount);
-      if (String(j.db) in m) m[String(j.db)] += amt;
-      if (String(j.kr) in m) m[String(j.kr)] -= amt;
-    }
     return m;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [manJournals, kasRows, kasHist, kasSnap]);
+  }, [kasRows, kasSnap]);
+  const kasRep = useMemo(
+    () => kasAsOfReport(manJournals, kasAsOf, kasHist, kasOpening, /^(1-11|1-12)/),
+    [manJournals, kasAsOf, kasHist, kasOpening],
+  );
+  const kasSaldo = kasRep.saldo;
 
   const kasFlow = (kode: string): { masuk: number; keluar: number; count: number } => {
-    let masuk = 0;
-    let keluar = 0;
-    let count = 0;
-    for (const j of manJournals) {
-      if (!kasInScope(j)) continue;
-      if (String(j.db) === kode) { masuk += num(j.amount); count += 1; }
-      if (String(j.kr) === kode) { keluar += num(j.amount); count += 1; }
-    }
-    return { masuk, keluar, count };
+    const masuk = kasRep.masuk[kode] ?? 0;
+    const keluar = kasRep.keluar[kode] ?? 0;
+    const n = manJournals.filter((j) => kasInScope(j) && (String(j.db) === kode || String(j.kr) === kode)).length;
+    return { masuk, keluar, count: n };
   };
   /* Rekap live per rekening (semua kode Kas/Bank yang muncul di jurnal periode ini). */
   const kasLiveRows = useMemo(() => {
@@ -1974,12 +2037,22 @@ const { data, add, update, remove, log, branch, inBranch } = useStore();
     const sum = (re: RegExp): number => rows.filter((r) => re.test(r.kode)).reduce((s, r) => s + r.nilai, 0);
     return { rows, pend: sum(/^4-/), bebanPokok: sum(/^5-/), biayaUsaha: sum(/^6-/), lainMasuk: sum(/^7-[12]/), lainKeluar: sum(/^7-[34]/) };
   }, [coaRows]);
-  /* Agregat laba LIVE periode filter (dari dokumen nyata, bukan snapshot). */
+  /* Laba kumulatif s.d. tanggal as-of + mutasi periode filter. Versi lama
+     menjumlahkan hanya bulan-bulan yang lolos matchHistPeriod, sehingga
+     laba yang ditampilkan adalah laba bulan itu saja - bukan laba yang
+     dibukukan sampai tanggal itu. Neraca memakai angka yang sama, jadi
+     kedua laporan saling bertentangan. */
   const lrLive = useMemo(() => {
-    const rows = plMonthly.filter((p) => matchHistPeriod(p.period, lrHist));
-    return rows.reduce(
-      (s, p) => ({ revenue: s.revenue + p.revenue, costProj: s.costProj + p.costProj, salary: s.salary + p.salary, writeoff: s.writeoff + p.writeoff, laba: s.laba + p.laba, n: s.n + 1 }),
-      { revenue: 0, costProj: 0, salary: 0, writeoff: 0, laba: 0, n: 0 });
+    const asOf = liveAsOf(lrHist);
+    const upto = asOf.slice(0, 7);
+    const inPeriod = plMonthly.filter((p) => matchHistPeriod(p.period, lrHist));
+    const uptoRows = plMonthly.filter((p) => p.period <= upto);
+    const sum = (rows: typeof plMonthly): { revenue: number; costProj: number; salary: number; writeoff: number; laba: number; n: number } =>
+      rows.reduce(
+        (s, p) => ({ revenue: s.revenue + p.revenue, costProj: s.costProj + p.costProj, salary: s.salary + p.salary, writeoff: s.writeoff + p.writeoff, laba: s.laba + p.laba, n: s.n + 1 }),
+        { revenue: 0, costProj: 0, salary: 0, writeoff: 0, laba: 0, n: 0 },
+      );
+    return { ...sum(uptoRows), nPeriod: inPeriod.length, period: sum(inPeriod) };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [plMonthly, lrHist]);
 
@@ -3125,24 +3198,33 @@ const { data, add, update, remove, log, branch, inBranch } = useStore();
           {tab === "Buku Besar" ? (() => {
             const bbAsOf = liveAsOf(bbHist);
             const bbSnap = isSnapMonth(bbAsOf.slice(0, 7));
+            /* Debit/kredit kumulatif s.d. bbAsOf - saldo buku besar harus
+               mengandung transaksi SEJAK AWAL, bukan hanya periode yang
+               difilter. Yang period-scoped tetap kolom "mutasi periode ini". */
             const bbLive = (() => {
-              const m = new Map<string, { kode: string; nama: string; d: number; k: number; n: number }>();
+              const m = new Map<string, { kode: string; nama: string; d: number; k: number; n: number; dAll: number; kAll: number }>();
               const nameOf = (kode: string): string => String(coaRows.find((c) => String(c.kode) === kode)?.nama ?? kode);
               for (const j of manJournals) {
                 if (j.status === "Void") continue;
-                if (!matchHist(String(j.date ?? ""), bbHist)) continue;
+                const tgl = String(j.date ?? "").slice(0, 10);
+                const inPeriod = matchHist(tgl, bbHist);
+                if (tgl > bbAsOf && !inPeriod) continue;
                 for (const [kode, side] of [[String(j.db ?? ""), "d"], [String(j.kr ?? ""), "k"]] as const) {
                   if (!kode) continue;
-                  const cur = m.get(kode) ?? { kode, nama: nameOf(kode), d: 0, k: 0, n: 0 };
-                  if (side === "d") cur.d += num(j.amount); else cur.k += num(j.amount);
-                  cur.n += 1;
+                  const cur = m.get(kode) ?? { kode, nama: nameOf(kode), d: 0, k: 0, n: 0, dAll: 0, kAll: 0 };
+                  if (side === "d") { cur.dAll += num(j.amount); if (inPeriod) cur.d += num(j.amount); }
+                  else { cur.kAll += num(j.amount); if (inPeriod) cur.k += num(j.amount); }
+                  if (inPeriod) cur.n += 1;
                   m.set(kode, cur);
                 }
               }
               return [...m.values()].sort((a, b) => a.kode.localeCompare(b.kode));
             })();
-            const bbLiveD = bbLive.reduce((s, r) => s + r.d, 0);
-            const bbLiveK = bbLive.reduce((s, r) => s + r.k, 0);
+            /* Saldo kumulatif harus seimbang: total debit = total kredit
+               untuk semua akun. Kalau tidak, ada jurnal yang tanggalnya di
+               luar rentang as-of dan angka yang tampil bukan saldo. */
+            const bbDAll = bbLive.reduce((s, r) => s + r.dAll, 0);
+            const bbKAll = bbLive.reduce((s, r) => s + r.kAll, 0);
             return (
             <div className="space-y-4">
               <CardHeader
@@ -3170,7 +3252,9 @@ const { data, add, update, remove, log, branch, inBranch } = useStore();
                       <SortTh label="D/K" sortKey="dk" sort={bbSort} onSort={(k) => setBbSort((s) => toggleSort(s, k))} rowSpan={2} />
                       <th className="th" colSpan={2}>{S.bbTrial}</th><th className="th" colSpan={2}>{S.bbPL}</th><th className="th" colSpan={2}>{S.bbBalance}</th>
                     </tr>
-                    <tr><th className="th">{S.colDebit}</th><th className="th">{S.colKredit}</th><th className="th">{S.colDebit}</th><th className="th">{S.colKredit}</th><th className="th">{S.colDebit}</th><th className="th">{S.colKredit}</th></tr>
+                    <tr><th className="th">{S.colDebit}</th><th className="th">{S.colKredit}</th><th className="th">{S.colDebit}</th><th className="th">{S.colKredit}</th><th className="th" colSpan={2}>{S.bbPeriodCol}</th>
+                    </tr>
+                    <tr><th className="th">{S.colDebit}</th><th className="th">{S.colKredit}</th></tr>
                   </thead>
                   <tbody className="divide-y divide-steel-100">
                     {sortRows(coaRows.filter((c) => String(c.dk) !== "-"), bbSort, (c, k) =>
@@ -3198,25 +3282,27 @@ const { data, add, update, remove, log, branch, inBranch } = useStore();
               </div>
               )}
               <Card className="p-4">
-                <CardHeader title={S.bbLiveTitle.replace("{d}", bbAsOf.slice(0, 7))} subtitle={S.bbLiveSub.replace("{a}", fmtMiliar(bbLiveD)).replace("{b}", fmtMiliar(bbLiveK)).replace("{c}", Math.abs(bbLiveD - bbLiveK) < 1 ? S.bbBalanced : S.bbUnbalanced)} />
+                <CardHeader title={S.bbLiveTitle.replace("{d}", bbAsOf.slice(0, 7))} subtitle={S.bbLiveSub.replace("{a}", fmtMiliar(bbDAll)).replace("{b}", fmtMiliar(bbKAll)).replace("{c}", Math.abs(bbDAll - bbKAll) < 1 ? S.bbBalanced : S.bbUnbalanced)} />
                 <div className="overflow-x-auto px-1 pb-3">
                   <table className="w-full">
                     <thead className="bg-surface sticky top-0 z-10">
-                      <tr><th className="th">{S.colKode}</th><th className="th">{S.colNamaAkun}</th><th className="th">{S.colDebit}</th><th className="th">{S.colKredit}</th><th className="th">{S.bbNetCol}</th><th className="th">{S.bbRowsCol}</th></tr>
+                      <tr><th className="th">{S.colKode}</th><th className="th">{S.colNamaAkun}</th><th className="th">{S.bbCumDebit}</th><th className="th">{S.bbCumKredit}</th><th className="th">{S.bbSaldoCol}</th><th className="th" colSpan={2}>{S.bbPeriodCol}</th><th className="th">{S.bbRowsCol}</th></tr>
                     </thead>
                     <tbody className="divide-y divide-steel-100">
                       {bbLive.map((r) => (
                         <tr key={r.kode} className="hover:bg-surface">
                           <td className="td font-mono text-xs font-semibold text-navy-900">{r.kode}</td>
                           <td className="td text-xs text-steel-600">{r.nama}</td>
+                          <td className="td text-xs">{fmtRupiah(r.dAll)}</td>
+                          <td className="td text-xs">{fmtRupiah(r.kAll)}</td>
+                          <td className="td text-xs font-semibold">{fmtRupiah(r.dAll - r.kAll)}</td>
                           <td className="td text-xs">{r.d ? fmtRupiah(r.d) : "-"}</td>
                           <td className="td text-xs">{r.k ? fmtRupiah(r.k) : "-"}</td>
-                          <td className="td text-xs font-semibold">{fmtRupiah(r.d - r.k)}</td>
                           <td className="td text-xs text-steel-500">{r.n}</td>
                         </tr>
                       ))}
                       {bbLive.length === 0 && (
-                        <tr><td className="td text-xs italic text-steel-400" colSpan={6}>{S.bbEmptyLive}</td></tr>
+                        <tr><td className="td text-xs italic text-steel-400" colSpan={8}>{S.bbEmptyLive}</td></tr>
                       )}
                     </tbody>
                   </table>
@@ -3522,7 +3608,7 @@ const { data, add, update, remove, log, branch, inBranch } = useStore();
             const piuLive = arOutAsOf(invoices, nrAsOf);
             const hutLiveTotal = hutLive.reduce((s, h) => s + h.total, 0);
             const piuLiveTotal = piuLive.reduce((s, p) => s + p.total, 0);
-            const nrLabaLive = plMonthly.filter((p) => matchHistPeriod(p.period, nrHist)).reduce((s, p) => s + p.laba, 0);
+            const nrLabaLive = plMonthly.filter((p) => p.period <= nrAsOf.slice(0, 7)).reduce((s, p) => s + p.laba, 0);
             return (
             <div className="space-y-4">
               <CardHeader title={S.nrTitle} subtitle={S.nrSub.replace("{a}", LAPORAN_EXCEL.neracaTotal.toLocaleString("id-ID"))} />

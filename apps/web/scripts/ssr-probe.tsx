@@ -27,6 +27,7 @@ import Monitoring from "../src/pages/proyek/Monitoring";
 import Inventory from "../src/pages/inventori/Inventory";
 import BomDetail from "../src/pages/inventori/BomDetail";
 import Finance from "../src/pages/keuangan/Finance";
+import { kasAsOfReport, liveAsOf, matchHist } from "../src/pages/keuangan/Finance";
 import Payroll from "../src/pages/payroll/Payroll";
 import HR from "../src/pages/sdm/HR";
 import KaryawanDetail from "../src/pages/sdm/KaryawanDetail";
@@ -228,7 +229,82 @@ try {
   failures.push("penggabungan tarikan");
 }
 
-console.log(`\n${pass}/${PAGES.length + 2} pemeriksaan lolos.`);
+/* Invariant saldo historikal: saldo harus KUMULATIF s.d. tanggal yang
+   dipilih, sementara mutasi tetap period-scoped.
+   Bug yang dikunci di sini: Kas & Bank menjumlahkan jurnal yang ada di
+   dalam window filter, jadi memilih Juni hanya menjumlahkan mutasi Juni -
+   saldo awal Mei hilang dan angka yang tampil bukan saldo. Karena saldo
+   awal dari snapshot hanya tersedia untuk Agu-2026, setiap bulan lain
+   menampilkan angka yang salah tanpa error apa pun. */
+try {
+  const asof: string[] = [];
+  const KAS_BANK = /^(1-11|1-12)/;
+  const j = (date: string, db: string, kr: string, amount: number, sumber = "Kas") => ({
+    id: `J-${date}-${db}`, date, db, kr, amount, status: "Posted", sumber,
+  });
+  const journals = [
+    j("2026-05-10", "1-1101", "4-101", 500),
+    j("2026-05-20", "4-101", "1-1101", 200),
+    j("2026-06-05", "1-1101", "5-101", 300),
+  ];
+  const juni = { mode: "Bulan", hari: "", bulan: "2026-06", tahun: "" } as const;
+  const empty: Record<string, number> = {};
+
+  /* liveAsOf: akhir bulan yang BENAR - bukan tanggal 31 untuk semua bulan.
+     Juni hanya 30 hari, jadi `${bulan}-31` menghasilkan tanggal yang tidak
+     ada dan badge di UI menampilkannya ke pengguna. */
+  if (liveAsOf({ ...juni }) !== "2026-06-30") asof.push(`as-of bulan: ${liveAsOf({ ...juni })}`);
+  if (liveAsOf({ mode: "Bulan", hari: "", bulan: "2026-02", tahun: "" }) !== "2026-02-28") asof.push("as-of Februari tidak ikut tahun kabisat");
+  if (liveAsOf({ mode: "Bulan", hari: "", bulan: "2024-02", tahun: "" }) !== "2024-02-29") asof.push("as-of Februari 2024 bukan 29 (tahun kabisat)");
+  if (liveAsOf({ mode: "Tahun", hari: "", bulan: "", tahun: "2026" }) !== "2026-12-31") asof.push("as-of tahun bukan 31 Desember");
+
+  /* matchHist tetap period-scoped - itu memang Behavior yang benar untuk
+     kolom mutasi, dan harus terus begitu. */
+  if (!matchHist("2026-06-05", juni)) asof.push("mutasi Juni tidak masuk periode Juni");
+  if (matchHist("2026-05-10", juni)) asof.push("mutasi Mei ikut terhitung di periode Juni");
+
+  const rep = kasAsOfReport(journals as never, liveAsOf({ ...juni }), { ...juni }, empty, KAS_BANK);
+  /* Saldo kumulatif 1-1101 = +500 -200 +300 = 600. Kalau hanya mutasi
+     Juni yang dijumlahkan, hasilnya 300 - dan itulah bug aslinya. */
+  if (Math.abs((rep.saldo["1-1101"] ?? 0) - 600) > 0.5) asof.push(`saldo kumulatif: dapat ${rep.saldo["1-1101"] ?? 0}, harus 600`);
+  /* Mutasi periode hanya Juni: masuk 300, keluar 0. */
+  if ((rep.masuk["1-1101"] ?? 0) !== 300) asof.push(`mutasi masuk Juni: dapat ${rep.masuk["1-1101"] ?? 0}, harus 300`);
+  if ((rep.keluar["1-1101"] ?? 0) !== 0) asof.push(`mutasi keluar Juni: dapat ${rep.keluar["1-1101"] ?? 0}, harus 0`);
+  if (rep.hitung !== 1) asof.push(`baris terhitung: dapat ${rep.hitung}, harus 1 (hanya Juni)`);
+
+  /* Saldo benar-benar bergerak seiring tanggal: Mei lebih kecil dari Juni. */
+  const mei = kasAsOfReport(journals as never, liveAsOf({ mode: "Bulan", hari: "", bulan: "2026-05", tahun: "" }), { mode: "Bulan", hari: "", bulan: "2026-05", tahun: "" }, empty, KAS_BANK);
+  if (!((mei.saldo["1-1101"] ?? 0) < (rep.saldo["1-1101"] ?? 0))) asof.push("saldo Mei tidak lebih kecil dari saldo Juni");
+
+  /* Opening balance snapshot hanya boleh dipakai untuk bulan snapshot. */
+  const withOpening = kasAsOfReport(journals as never, "2026-08-31", { mode: "Semua", hari: "", bulan: "", tahun: "" }, { "1-1101": 1000 }, KAS_BANK);
+  if (Math.abs((withOpening.saldo["1-1101"] ?? 0) - 1600) > 0.5) asof.push(`opening balance tidak ditambahkan: ${withOpening.saldo["1-1101"] ?? 0}`);
+
+  /* Jurnal Void tidak boleh mengubah saldo. */
+  const withVoid = kasAsOfReport([...journals, { ...j("2026-06-10", "1-1101", "5-101", 999), status: "Void" }] as never, "2026-06-30", { ...juni }, empty, KAS_BANK);
+  if (Math.abs((withVoid.saldo["1-1101"] ?? 0) - 600) > 0.5) asof.push("jurnal Void ikut mengubah saldo");
+
+  /* Jurnal setelah tanggal as-of tidak boleh ikut. */
+  const withFuture = kasAsOfReport([...journals, j("2026-07-15", "1-1101", "5-101", 7777)] as never, "2026-06-30", { ...juni }, empty, KAS_BANK);
+  if (Math.abs((withFuture.saldo["1-1101"] ?? 0) - 600) > 0.5) asof.push("jurnal setelah tanggal as-of ikut dihitung");
+
+  /* Rekening non-Kas tidak boleh masuk. */
+  if (Object.keys(rep.saldo).some((k) => !KAS_BANK.test(k))) asof.push("rekening selain Kas/Bank ikut terhitung");
+
+  if (asof.length === 0) {
+    console.log("PASS  saldo historikal kumulatif s.d. as-of, mutasi tetap period-scoped");
+    pass += 1;
+  } else {
+    console.log(`FAIL  saldo historikal *** ${asof.join("; ")}`);
+    failures.push("saldo historikal");
+  }
+} catch (e) {
+  const err = e as Error;
+  console.log(`FAIL  saldo historikal *** ${err.message}`);
+  failures.push("saldo historikal");
+}
+
+console.log(`\n${pass}/${PAGES.length + 3} pemeriksaan lolos.`);
 if (failures.length > 0) {
   console.log(`GAGAL: ${failures.join(", ")}`);
   process.exit(1);

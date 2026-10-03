@@ -188,7 +188,7 @@ export default function Subcontractor() {
      tetap ada karena rekonsiliasi sering hanya punya nomor. */
   const [proofUrl, setProofUrl] = useState("");
   /* Nomor invoice & BAST wajib sebelum bayar (requirement 2 Oktober).
-     Bry很重要的 bukan formalitas: kwitansi mencantumkan keduanya, dan tanpa
+     Ini bukan formalitas: kwitansi mencantumkan keduanya, dan tanpa
      nomor itu bukti pembayaran tidak bisa dicocokkan ke invoice mana pun -
      sengketa pembayaran pertama yang muncul justru soal ini. */
   const [proofDocs, setProofDocs] = useState({ invoiceNo: "", bastNo: "" });
