@@ -15,6 +15,31 @@
  */
 import { BASE, getJwt, isBackendConfigured } from "./http";
 
+/** Magic bytes PDF: "%PDF-". Panjang 5, DAN dariCharCode wajib 5 argumen. */
+const PDF_MAGIC = "%PDF-";
+
+/**
+ * True bila `head` diawali magic bytes PDF.
+ *
+ * Dipisah jadi fungsi sendiri supaya bisa diuji tanpa browser. Versi
+ * sebelumnya inline di dua tempat, dan di keduanya hanya 4 byte yang
+ * dirangkai (`head[0..3]`) lalu dibandingkan dengan literal 5 karakter
+ * ("%PDF-") - yang tidak akan pernah sama. Akibatnya SETIAP ekspor PDF
+ * gagal dengan "Respons server bukan berkas PDF" walaupun server
+ * mengirim PDF yang benar, di semua modul.
+ *
+ * Bugnya lolos karena tidak ada satu pun gate yang menjalankan kode ini:
+ * probe PDF ada di server (mesin vektor), probe render hanya SSR, dan
+ * keduanya tidak pernah memanggil fetch ke /api/pdf/render.
+ */
+export function isPdfHead(head: ArrayLike<number>): boolean {
+  if (head.length < PDF_MAGIC.length) return false;
+  for (let i = 0; i < PDF_MAGIC.length; i += 1) {
+    if (head[i] !== PDF_MAGIC.charCodeAt(i)) return false;
+  }
+  return true;
+}
+
 export interface PdfRenderResult {
   /** Object URL untuk <iframe>/<a download>. Caller harus meng-revoke-nya. */
   url: string;
@@ -98,9 +123,8 @@ export async function renderPdf(req: PdfRequest): Promise<PdfRenderResult> {
   /* Pemeriksaan magis: endpoint yang salah atau proxy yang mengembalikan
      HTML akan menghasilkan blob yang bukan PDF, dan UI akan menampilkan
      "pratinjau rusak" tanpa penjelasan apa pun. */
-  const head = new Uint8Array(await blob.slice(0, 5).arrayBuffer());
-  const magic = String.fromCharCode(head[0] ?? 0, head[1] ?? 0, head[2] ?? 0, head[3] ?? 0);
-  if (magic !== "%PDF-") {
+  const head = new Uint8Array(await blob.slice(0, PDF_MAGIC.length).arrayBuffer());
+  if (!isPdfHead(head)) {
     throw new PdfRenderError("Respons server bukan berkas PDF - periksa konfigurasi VITE_API_URL.", res.status);
   }
 
@@ -149,8 +173,8 @@ export async function reprintPdf(modelId: string): Promise<PdfRenderResult> {
     throw new PdfRenderError(message, res.status);
   }
   const blob = await res.blob();
-  const head = new Uint8Array(await blob.slice(0, 5).arrayBuffer());
-  if (String.fromCharCode(head[0] ?? 0, head[1] ?? 0, head[2] ?? 0, head[3] ?? 0) !== "%PDF-") {
+  const head = new Uint8Array(await blob.slice(0, PDF_MAGIC.length).arrayBuffer());
+  if (!isPdfHead(head)) {
     throw new PdfRenderError("Respons server bukan berkas PDF - periksa konfigurasi VITE_API_URL.", res.status);
   }
   return {

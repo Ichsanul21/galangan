@@ -18,6 +18,7 @@ import { LanguageProvider } from "../src/i18n/LanguageContext";
 import { StoreProvider, applyPulled } from "../src/data/store";
 import { projects, vessels, inventory, employees, quotations } from "../src/data/index";
 import { todayISO } from "../src/utils/format";
+import { isPdfHead } from "../src/services/pdfClient";
 
 import Login from "../src/pages/Login";
 import Dashboard from "../src/pages/Dashboard";
@@ -343,7 +344,38 @@ try {
   failures.push("saldo historikal");
 }
 
-console.log(`\n${pass}/${PAGES.length + 3} pemeriksaan lolos.`);
+/* Pemeriksaan magic bytes PDF.
+
+   Bug nyata di pdfClient.ts: 4 byte dirangkai ("%PDF") dibandingkan dengan
+   literal 5 karakter ("%PDF-"), jadi tidak akan pernah sama dan SETIAP
+   ekspor PDF gagal di semua modul - padahal server mengirim PDF yang
+   benar. Tidak ada gate yang menangkapnya: probe PDF berjalan di server
+   (mesin vektor), probe render hanya SSR, dan tidak ada yang pernah memanggil
+   fetch ke /api/pdf/render. Diuji di sini supaya kelas bug ini tertutup.
+
+   magic.pdf ini juga diberi tanda `pure` supaya tidak ikut ter-collect
+   sebagai halaman - ia fungsi, bukan komponen. */
+{
+  const enc = (s: string): Uint8Array => new TextEncoder().encode(s);
+  const sync: string[] = [];
+  if (!isPdfHead(new Uint8Array([0x25, 0x50, 0x44, 0x46, 0x2d]))) sync.push("5 byte magic PDF ditolak");
+  if (!isPdfHead(enc("%PDF-1.7"))) sync.push("PDF asli 6 byte ditolak");
+  /* 4 byte harus DITOLAK - inilah bug yang pernah ada. */
+  if (isPdfHead(enc("%PDF"))) sync.push("PDF 4 byte diterima: perbandingan magic salah panjang");
+  if (isPdfHead(enc(""))) sync.push("body kosong diterima sebagai PDF");
+  if (isPdfHead(enc("<!DOCTYPE html>"))) sync.push("HTML diterima sebagai PDF");
+  if (isPdfHead(enc("%PDG-"))) sync.push("magic mirip tapi salah diterima");
+
+  if (sync.length === 0) {
+    console.log("PASS  magic bytes PDF dikenali dan tidak salah panjang");
+    pass += 1;
+  } else {
+    console.log(`FAIL  magic bytes PDF *** ${sync.join("; ")}`);
+    failures.push("magic bytes PDF");
+  }
+}
+
+console.log(`\n${pass}/${PAGES.length + 4} pemeriksaan lolos.`);
 if (failures.length > 0) {
   console.log(`GAGAL: ${failures.join(", ")}`);
   process.exit(1);
