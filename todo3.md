@@ -275,33 +275,37 @@ dipakai `seedMirror.ts:10-13`):
 
 # ITEM MODUL PER REVISI 2 OKTOBER
 
-| # | Item | Status awal | Batch |
+Kolom **Status** sekarang mencerminkan keadaan SETELAH dikerjakan (sebelumnya
+menyalin kondisi awal, jadi banyak baris tertulis "belum" padahal sudah
+selesai dan jadi undone gate palsu). **Selesai** berarti item sudah ada di `main`; sisanya masih terbuka.
+
+| # | Item | Status | Batch |
 |---|---|---|---|
-| 1c | Highlight dari kartu dashboard ke 10 modul (hanya 3 modul baca `?highlight=`) | parsial | 5 |
-| 2 | CRM: deskripsi survei expand & collapse | parsial (`long &&` guard, `.slice(-3)`, label hardcoded) | 2 |
-| 3 | Dashboard PDF regenerate | html2canvas | 4 |
-| 4 | Finance: tanggal historikal di Kas&Bank, Buku Besar, Neraca, Laba Rugi | belum | 5 |
-| 5a | Label "Tertunda" di card analisis status proyek berjalan | belum | 2 |
-| 5b | Dokumen & Laporan: **hapus auto-preview**, ikon view → **modal pop up** + download | perlu dibalik | 5 |
-| 5c | Tombol Excel → **Detail** + modal | belum | 5 |
-| 5d | Tab baru: list equipment di-booking + dipakai untuk service | parsial | 6 |
-| 5e | Sub-tipe dokumen + link ke Sertifikat QC | belum | 6 |
-| 5 | Monitoring: "hanya perhatian" → "proyek butuh perhatian" | belum (`n_prj.ts:567`) | 2 |
-| 6 | Drydock: card mapping slot **grafis** (jumlah slot & kapal per area) | belum | 6 |
-| 7 | Inventory: tombol status `[jumlah][status]` → dropdown kategori | belum | 6 |
-| 8a | Equipment: "catat servis" → modal catatan | belum (`Equipment.tsx:1888`) | 5 |
-| 8b | 24H strict **semua browser & semua modul** | parsial | 5 |
-| 8c | Booking history di tab Alokasi; card Riwayat pindah dari Biaya | belum | 6 |
-| 8d | Biaya per Proyek: tombol Detail | belum | 6 |
-| 9a | Kwitansi PDF terpotong | **root cause P1** | 4 |
-| 9b | Requirement BAST, invoice, bukti bayar | belum (`Subcontractor.tsx:629`) | 5 |
-| 10 | QC Drawing: ikon view → modal pop up | perlu dibalik | 5 |
-| 11 | HR cuti: preview tetap otomatis, pending **terbuka**, surat persetujuan | sebagian | 5 |
-| 12 | HR surat: generate + preview PDF | belum (`<pre>` teks) | 4/5 |
-| 12 | Dokumen: **hapus kolom pratinjau**, pratinjau hanya di aksi | belum | 5 |
-| 13 | Analytics: Excel lengkap + PDF tidak terpotong + garis bold | sebagian | 4 |
-| 14 | Laporan: generate tampilan PDF baru | html2canvas | 4 |
-| ETC | Seeder harga 0 → nilai | belum | 3 |
+| 1c | Highlight dari kartu dashboard ke semua modul | selesai — `useDeepLinkTarget` 13/13 modul | 9 |
+| 2 | CRM: deskripsi survei expand & collapse | selesai | 2 |
+| 3 | Dashboard PDF regenerate | selesai — mesin vektor server | 4 |
+| 4 | Finance: tanggal historikal di Kas&Bank, Buku Besar, Neraca, Laba Rugi | selesai — saldo kumulatif s.d. as-of + mode Tahun | 2 + 10 |
+| 5a | Label "Tertunda" di card analisis status proyek berjalan | selesai | 2 |
+| 5b | Dokumen & Laporan: **hapus auto-preview**, ikon view → **modal pop up** + download | selesai | 5 |
+| 5c | Tombol Excel → **Detail** + modal | selesai (ProjectDetail, QC, Inventory, Procurement) | 5 + 6 |
+| 5d | Tab baru: list equipment di-booking + dipakai untuk service | selesai — tab "Sedang Dipakai" | 6 |
+| 5e | Sub-tipe dokumen + link ke Sertifikat QC | selesai | 6 |
+| 5 | Monitoring: "hanya perhatian" → "proyek butuh perhatian" | selesai | 2 |
+| 6 | Drydock: card mapping slot **grafis** (jumlah slot & kapal per area) | selesai | 6 |
+| 7 | Inventory: tombol status `[jumlah][status]` → dropdown kategori | selesai | 6 |
+| 8a | Equipment: "catat servis" → modal catatan | selesai | 5 |
+| 8b | 24H strict **semua browser & semua modul** | selesai — 6/6 input + helper di `utils/time24.ts` | 7 |
+| 8c | Booking history di tab Alokasi; card Riwayat pindah dari Biaya | selesai | 6 |
+| 8d | Biaya per Proyek: tombol Detail | selesai | 6 |
+| 9a | Kwitansi PDF terpotong | selesai — root cause P1 tertutup | 4 |
+| 9b | Requirement BAST, invoice, bukti bayar | selesai — termin wajib invoice + BAST | 5 |
+| 10 | QC Drawing: ikon view → modal pop up | selesai | 5 |
+| 11 | HR cuti: preview tetap otomatis, pending **terbuka**, surat persetujuan | selesai | 5 |
+| 12a | HR surat: generate + preview PDF | selesai — factory native server | 4/5 |
+| 12b | Dokumen: **hapus kolom pratinjau**, pratinjau hanya di aksi | selesai | 5 |
+| 13 | Analytics: Excel lengkap + PDF tidak terpotong + garis bold | selesai — workbook 17 sheet | 8 |
+| 14 | Laporan: generate tampilan PDF baru | selesai — mesin vektor server | 4 |
+| ETC | Seeder harga 0 → nilai | selesai — probe harga menguncinya | 3 |
 
 ---
 
@@ -315,6 +319,10 @@ dipakai `seedMirror.ts:10-13`):
 | **4** | Rewrite PDF server-side + 15 dokumen + hapus html2canvas | dependensi Batch 3 |
 | **5** | Item modul (modal pratinjau, detail, termin, QC, HR, 24H) | butuh PDF baru untuk preview |
 | **6** | Fitur baru (sub-tipe, drydock grafis, status inventori, booking history) | tidak bergantung Batch 4 |
+| **7** | 24H strict semua modul (helper jam jadi utils bersama) | helper terkunci di satu modul, harus dipindah dulu |
+| **8** | Excel Analytics lengkap | angka grafik sudah ada, cuma tidak pernah diekspor |
+| **9** | Highlight deep-link 13/13 modul | infrastruktur sudah ada, tinggal 10 halaman |
+| **10** | Finance as-of kumulatif + mode Tahun | batch terakhir karena mengubah definisi angka |
 
 ---
 
@@ -327,10 +335,14 @@ dipakai `seedMirror.ts:10-13`):
 | 3 | `seed:mirror` + `npm run seed` + cek invarian (totalPrice, grandTotal, PO↔AP) |
 | 4 | probe server `npm run probe:pdf` — **geometri** (semua tinta dalam content box) + **isi** + **struktur** (header berulang, blok taller dari halaman) + font ter-embed |
 | 5–6 | `npm run check` + probe |
+| 7–8 | `apps/web npm run check` |
+| 9 | `npm run check` + cek manual 3 halaman beresolusi tab kompleks (payroll, procurement, drydock) karena tidak bisa dibuktikan tanpa browser |
+| 10 | `npm run check` + probe as-of baru (saldo kumulatif, Void, jurnal setelah as-of, akhir bulan kabisat) |
 
 ## Yang tidak bisa dibuktikan tanpa browser
 Tampilan grafik vektor, kontras garis di layar, perilaku `DocumentPreviewModal`
-setelah pindah, dan unduhan di Safari.
+setelah pindah, scroll+flash `?highlight=` di 10 modul yang baru dipasang,
+dan unduhan di Safari.
 
 ---
 
