@@ -16,6 +16,9 @@ import { deliveryOrder } from "./documents/deliveryOrder.js";
 import { tandaTerima } from "./documents/tandaTerima.js";
 import { kopPenawaran } from "./documents/kopPenawaran.js";
 import { slipGaji } from "./documents/slipGaji.js";
+import { transmittal } from "./documents/transmittal.js";
+import { spt } from "./documents/spt.js";
+import { suratPersetujuanCutiDoc, suratHrDoc } from "./documents/hr.js";
 import { loadEntity, loadMany, num, str, text, longDate, money, rupiah, qty, L, type Locale } from "./documents/shared.js";
 
 export interface RenderContext {
@@ -296,6 +299,47 @@ async function slipGajiDoc(id: string, ctx: RenderContext): Promise<Document> {
   });
 }
 
+async function transmittalDoc(id: string, ctx: RenderContext): Promise<Document> {
+  const t = await loadEntity({ field: "transmittals", prefix: "TR" }, id);
+  if (!t) throw new Error(`Transmittal ${id} tidak ditemukan`);
+
+  return transmittal({
+    no: id,
+    tanggal: str(t, "date"),
+    projectName: str(t, "projectName"),
+    to: str(t, "to"),
+    attention: str(t, "attention"),
+    items: (t.items as Array<{ code: string; title: string; revision: string; status: string }>) || [],
+    notes: str(t, "notes"),
+    sender: str(t, "sender") || "H. Syarif Sarapping",
+    locale: ctx.locale,
+  });
+}
+
+async function sptDoc(id: string, ctx: RenderContext): Promise<Document> {
+  const t = await loadEntity({ field: "taxPeriods", prefix: "TAX" }, id);
+  if (!t) throw new Error(`Tax Period ${id} tidak ditemukan`);
+
+  return spt({
+    periode: str(t, "period"),
+    tanggal: str(t, "date") || new Date().toISOString().slice(0, 10),
+    jenisPajak: str(t, "type") || "PPN",
+    masaPajak: str(t, "period"),
+    npwp: str(t, "npwp") || "01.234.567.8-901.000",
+    namaWajibPajak: "PT. SYUKUR BERSAUDARA",
+    alamat: "Jl. Mulawarman No.23, Samarinda",
+    ppnKeluaran: num(t, "ppnKeluaran"),
+    ppnMasukan: num(t, "ppnMasukan"),
+    pphPotongan: num(t, "pphPotongan"),
+    pphSetoran: num(t, "pphSetoran"),
+    totalSetor: num(t, "totalSetor"),
+    buktiSetor: str(t, "buktiSetor"),
+    namaPenandatangan: "H. Syarif Sarapping",
+    jabatanPenandatangan: "Direktur",
+    locale: ctx.locale,
+  });
+}
+
 /* ==========================================================================
    Registri
    ========================================================================== */
@@ -311,6 +355,8 @@ const RECIPES: Recipe[] = [
   { kind: "tandaTerima", title: "Tanda Terima", entity: { field: "movements", prefix: "MV" }, requiresEntity: true, build: tandaTerimaDoc },
   { kind: "kopPenawaran", title: "Kop Penawaran", entity: { field: "quotations", prefix: "QT" }, requiresEntity: true, build: kopPenawaranDoc },
   { kind: "slipGaji", title: "Slip Gaji", entity: { field: "payroll", prefix: "PAY" }, requiresEntity: true, build: slipGajiDoc },
+  { kind: "transmittal", title: "Transmittal", entity: { field: "transmittals", prefix: "TR" }, requiresEntity: true, build: transmittalDoc },
+  { kind: "spt", title: "Surat Pemberitahuan Pajak", entity: { field: "taxPeriods", prefix: "TAX" }, requiresEntity: true, build: sptDoc },
 ];
 
 export const DOC_KINDS = RECIPES.map((r) => r.kind);
