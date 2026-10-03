@@ -10,3 +10,10 @@ summary-fitur-alur.pdf
 *.local
 *.log
 .DS_Store
+
+# Font PDF tidak pernah masuk repo.
+# Font berlisensi (Arial, Calibri, Segoe) tidak boleh disalin ke sini; README
+# di services/api/assets/fonts menjelaskan cara mengaktifkan embedding.
+services/api/assets/fonts/*.ttf
+services/api/assets/fonts/*.otf
+services/api/assets/fonts/*.ttc

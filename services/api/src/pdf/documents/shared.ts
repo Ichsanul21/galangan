@@ -149,6 +149,25 @@ export async function loadEntity(spec: RowSpec, id: string): Promise<Record<stri
   return first ? toItem(first) : null;
 }
 
+/** Cabang entitas saja, tanpa parses `data`.
+ *  Dipakai routes/pdf.ts untuk mengunci RenderContext.branch ke cabang dokumen
+ *  yang sedang dicetak, supaya isi PDF tidak bisa mencampur cabang. */
+export async function entityBranch(field: string, id: string): Promise<string | null> {
+  const rows = await q<{ branch: string }>(`SELECT branch FROM ${field} WHERE id = ?`, [id]);
+  const b = String(rows[0]?.branch ?? "");
+  return b === "" ? null : b;
+}
+
+/** Daftar cabang yang benar-benar ada di sistem.
+ *  Filter cabang dari klien hanya diterima kalau ada di sini - string
+ *  bebas bisa dipakai untuk memeriksa cabang mana yang punya data apa. */
+export async function knownBranches(): Promise<string[]> {
+  const rows = await q<{ branch: string }>(`SELECT DISTINCT branch FROM branches WHERE branch <> ''`, []);
+  const fromRows = rows.map((r) => String(r.branch));
+  const other = await q<{ branch: string }>(`SELECT DISTINCT branch FROM projects WHERE branch <> ''`, []);
+  return [...new Set([...fromRows, ...other.map((r) => String(r.branch))])].filter((b) => b !== "" && b !== "-");
+}
+
 /** Muat banyak entitas terfilter; dipakai dokumen yang butuh relasi. */
 export async function loadMany(
   spec: RowSpec,

@@ -844,7 +844,7 @@ const exportPdfReport = async () => {
       return;
     }
     const done = await pdfDoc.request(
-      { kind: "analitik", locale, filters: { scope: "Analytics", months: monthCount } },
+      { kind: "analitik", locale, branch, filters: { scope: "Analytics", months: monthCount } },
       `Laporan-Analytics-${todayISO()}`,
       false,
     );

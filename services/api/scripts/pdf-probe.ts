@@ -42,6 +42,13 @@ import { niceScale, axisTicks } from "../src/pdf/chart.js";
 import type { ChartSpec } from "../src/pdf/chart.js";
 import { kwitansi as kwitansiDoc, ribu } from "../src/pdf/documents/kwitansi.js";
 import { DOC_KINDS, findRecipe, buildFromModel } from "../src/pdf/registry.js";
+import { initFonts, fontsEmbedded } from "../src/pdf/font.js";
+
+/* Probe harus memakai konfigurasi font yang sama dengan server. Tanpa
+   initFonts() di sini, semua pemeriksaan font lulus hampa: yang diuji
+   adalah jalur standard-14, bukan jalur TTF yang dipakai produksi. */
+const FONTS_DIR = path.resolve(process.cwd(), process.env.PDF_FONTS_DIR ?? path.join("assets", "fonts"));
+initFonts(FONTS_DIR);
 
 let pass = 0;
 const failures: string[] = [];
@@ -829,4 +836,14 @@ if (failures.length > 0) {
   process.exit(1);
 }
 console.log(`${pass} pemeriksaan PDF lolos (geometri + isi + struktur).`);
+/* Status font sengaja dicetak apa adanya dan TIDAK menggagalkan probe:
+   tanpa TTF, dokumen tetap valid - hanya huruf di luar WinAnsi yang jadi
+   kotak. Yang tidak boleh terjadi adalah status ini tidak diketahui, seperti
+   sekarang: initFonts() tidak pernah dipanggil, jadi "lulus" tidak
+   berarti apa pun soal font. */
+console.log(
+  fontsEmbedded()
+    ? `Font: TTF ter-embed dari ${FONTS_DIR}`
+    : `Font: TIDAK ada TTF di ${FONTS_DIR} - standard-14 (huruf non-Latin jadi kotak). Set PDF_FONTS_DIR atau taruh regular/bold/italic.ttf di folder itu.`,
+);
 process.exit(0);

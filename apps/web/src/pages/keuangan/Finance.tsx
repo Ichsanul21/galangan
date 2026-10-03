@@ -51,8 +51,9 @@ import { getSetting } from "../../utils/settings";
 import { useDraftState } from "../../utils/draft";
 import { sameName } from "../../utils/names";
 import { sbInvoiceMath, maxSeq, PPN_INVOICE_DEFAULT, PPH_JASA_DEFAULT } from "../../utils/sb";
-import { exportExcel } from "../../utils/export";
+import { exportExcel, exportExcelSheets } from "../../utils/export";
 import { durasiJam, parseJam } from "../../utils/time24";
+import { useUrlParam, type UrlParamCodec } from "../../utils/urlParam";
 import { kasKodeOf, postCashJournal } from "../../services/autoJournal";
 import { FilterPopover } from "../../components/FilterPopover";
 import { AlertBannerView, notifRowId, useModuleAlert, useNotifFlash } from "../../components/AlertBanner";
@@ -78,6 +79,55 @@ import {
 export type HistMode = "Semua" | "Hari" | "Bulan" | "Tahun";
 export interface HistFilter { mode: HistMode; hari: string; bulan: string; tahun: string }
 export const emptyHist = (): HistFilter => ({ mode: "Semua", hari: "", bulan: "", tahun: "" });
+
+/** Encode/decode filter untuk URL: "bulan:2026-06", "tahun:2026", "hari:2026-06-15".
+ *  Tanpa ini, pilihan "Juni 2026" hilang saat reload dan tidak bisa dibagikan
+ *  ke orang lain - laporan yang sedang ditinjau jadi tidak bisa direferensikan. */
+export function histToParam(f: HistFilter): string {
+  if (f.mode === "Bulan" && /^\d{4}-\d{2}$/.test(f.bulan)) return `bulan:${f.bulan}`;
+  if (f.mode === "Tahun" && /^\d{4}$/.test(f.tahun)) return `tahun:${f.tahun}`;
+  if (f.mode === "Hari" && /^\d{4}-\d{2}-\d{2}$/.test(f.hari)) return `hari:${f.hari}`;
+  return "";
+}
+export function histFromParam(raw: string | null | undefined): HistFilter {
+  const s = String(raw ?? "").trim();
+  const [k, v = ""] = s.split(":");
+  /* Regex saja tidak cukup: "2026-13" lolos pola YYYY-MM dan "2026-02-30"
+     pola YYYY-MM-DD, padahal keduanya tanggal yang tidak ada. Filter dengan
+     tanggal acuan salah lebih berbahaya daripada filter kosong - angka yang
+     tampil terlihat sah, hanya bukan yang benar. */
+  if (k === "bulan" && bulanValid(v)) return { mode: "Bulan", hari: "", bulan: v, tahun: "" };
+  if (k === "tahun" && /^\d{4}$/.test(v)) return { mode: "Tahun", hari: "", bulan: "", tahun: v };
+  if (k === "hari" && hariValid(v)) return { mode: "Hari", hari: v, bulan: "", tahun: "" };
+  return emptyHist();
+}
+function bulanValid(v: string): boolean {
+  if (!/^\d{4}-\d{2}$/.test(v)) return false;
+  const m = Number(v.slice(5, 7));
+  return m >= 1 && m <= 12;
+}
+function hariValid(v: string): boolean {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(v)) return false;
+  const y = Number(v.slice(0, 4));
+  const m = Number(v.slice(5, 7));
+  const d = Number(v.slice(8, 10));
+  if (m < 1 || m > 12 || d < 1) return false;
+  return d <= new Date(Date.UTC(y, m, 0)).getUTCDate();
+}
+
+/* Kodec didefinisikan sekali di luar komponen: useUrlParam melakukan
+   memo pada identitas codec, jadi object yang dibuat inline setiap render
+   membuat hook menganggap nilai berubah terus-menerus. */
+const HIST_CODEC = {
+  parse: histFromParam,
+  format: (f: HistFilter): string => histToParam(f),
+} satisfies UrlParamCodec<HistFilter>;
+
+/** Filter historikal yang tersimpan di URL - survive reload & bisa dibagikan. */
+function useHistFilterParam(key: string): [HistFilter, (next: HistFilter) => void] {
+  return useUrlParam(key, HIST_CODEC);
+}
+
 export function matchHist(dateISO: unknown, f: HistFilter): boolean {
   if (f.mode === "Semua") return true;
   const s = String(dateISO ?? "").slice(0, 10);
@@ -333,25 +383,33 @@ const COA = (rows: StoreItem[]): { kode: string; akun: string; tipe: string; dk:
 /* Snapshot audit hanya ada untuk '2026-08'. */
 const isSnapMonth = (ym: string): boolean => ym === LATEST_SNAPSHOT;
 const nlOf = (kode: string): { d: number; k: number } => NL_EXCEL[kode] ?? { d: 0, k: 0 };
-/* Tanggal as-of (YYYY-MM-DD) dari filter: Hari -> hari itu; Bulan -> akhir bulan;
-   Tahun -> akhir tahun; Semua -> akhir Agustus 2026 (bulan audit). */
 /* Tanggal as-of (YYYY-MM-DD) dari filter: Hari -> hari itu; Bulan -> hari
-   TERAKHIR bulan itu; Tahun -> 31 Desember; Semua -> akhir Agustus 2026
-   (bulan audit). Versi lama memakai `${bulan}-31` untuk semua bulan, jadi
-   Juni jadi "2026-06-31" - tanggal yang tidak ada. Kebetulan perbandingan
-   leksikal tetap Kebetulan benar karena format ISO, tapi badge di UI
-   menampilkan tanggal yang tidak pernah ada. */
+   TERAKHIR bulan itu; Tahun -> 31 Desember; Semua -> TANGGAL TRANSAKSI
+   TERAKHIR yang ada di data, bukan konstanta.
+   Versi lama memakai `${bulan}-31` untuk semua bulan, jadi Juni jadi
+   '2026-06-31' - tanggal yang tidak ada. Kebetulan perbandingan leksikal
+   tetap benar karena format ISO, tapi badge di UI menampilkan tanggal yang
+   tidak pernah ada. */
 function akhirBulan(ym: string): string {
   const [y, m] = ym.split("-").map(Number);
   if (!Number.isFinite(y) || !Number.isFinite(m)) return `${ym}-31`;
   const last = new Date(Date.UTC(y, m, 0)).getUTCDate();
   return `${ym}-${String(last).padStart(2, "0")}`;
 }
-export function liveAsOf(f: HistFilter): string {
+export function liveAsOf(f: HistFilter, lastDate = ""): string {
   if (f.mode === "Hari" && /^\d{4}-\d{2}-\d{2}$/.test(f.hari)) return f.hari;
   if (f.mode === "Bulan" && /^\d{4}-\d{2}$/.test(f.bulan)) return akhirBulan(f.bulan);
   if (f.mode === "Tahun" && /^\d{4}$/.test(f.tahun)) return `${f.tahun}-12-31`;
-  return "2026-08-31";
+  /* Mode "Semua": memakai transaksi terakhir yang benar-benar ada. Damanya
+     konstanta "2026-08-31" yang tadinya ditulis di sini: data yang masuk
+     setelah Agustus 2026 tidak pernah ikut terhitung dan tidak ada yang
+     memberi tahu - angkanya terlihat masuk akal, hanya bukan yang sebenarnya. */
+  const s = String(lastDate ?? "").slice(0, 10);
+  return /^\d{4}-\d{2}-\d{2}$/.test(s) ? s : "";
+}
+/* As-of kosong (data belum ada) berarti "sampai hari ini". */
+export function asOfOrToday(f: HistFilter, lastDate = ""): string {
+  return liveAsOf(f, lastDate) || todayISO();
 }
 /* Saldo Kas/Bank AS-OF tanggal D plus mutasi periode filter, dalam satu
    lintasan.
@@ -767,10 +825,14 @@ const { data, add, update, remove, log, branch, inBranch } = useStore();
   /* Modal Detail Invoice (read-only + viewer bukti & jurnal). */
   const [invDetail, setInvDetail] = useState<StoreItem | null>(null);
   /* Filter historikal per tab laporan. */
-  const [kasHist, setKasHist] = useState<HistFilter>(emptyHist);
-  const [bbHist, setBbHist] = useState<HistFilter>(emptyHist);
-  const [lrHist, setLrHist] = useState<HistFilter>(emptyHist);
-  const [nrHist, setNrHist] = useState<HistFilter>(emptyHist);
+  /* Keempat filter historikal disimpan di URL (?kas=bulan:2026-06&nr=).
+   Tanpa itu, laporan yang sedang ditinjau hilang begitu halaman di-reload
+   dan tidak bisa dibagikan - "tolong cek Kas & Bank Juni 2026" jadi
+   kalimat yang tidak punya tautan. */
+  const [kasHist, setKasHist] = useHistFilterParam("kas");
+  const [bbHist, setBbHist] = useHistFilterParam("bb");
+  const [lrHist, setLrHist] = useHistFilterParam("lr");
+  const [nrHist, setNrHist] = useHistFilterParam("nr");
   /* Lampiran gambar jurnal manual. */
   const [juImg, setJuImg] = useState("");
   const [juViewer, setJuViewer] = useState<StoreItem | null>(null);
@@ -1015,11 +1077,39 @@ const { data, add, update, remove, log, branch, inBranch } = useStore();
   const [astEdit, setAstEdit] = useState<StoreItem | null>(null);
 
   const KAS_REKENING = coaRows.filter((c) => /^(1-11|1-12)/.test(String(c.kode)) && String(c.dk) !== "-");
+  /* Tanggal transaksi terakhir di SELURUH dokumen pembukuan. Dipakai sebagai
+     as-of mode "Semua": kalau tidak, "Semua" berarti "Agustus 2026" karena
+     konstanta, dan setiap transaksi setelahnya tidak pernah masuk hitungan
+     tanpa ada yang memberi tahu. */
+  const lastTxDate = useMemo(() => {
+    let max = "";
+    for (const j of data.journals ?? []) {
+      const d = String(j.date ?? "").slice(0, 10);
+      if (d > max) max = d;
+    }
+    for (const i of data.invoices ?? []) {
+      for (const k of ["date", "due", "paidAt"]) {
+        const d = String(i[k] ?? "").slice(0, 10);
+        if (d > max) max = d;
+      }
+    }
+    for (const a of data.payables ?? []) {
+      for (const k of ["date", "due", "paidAt"]) {
+        const d = String(a[k] ?? "").slice(0, 10);
+        if (d > max) max = d;
+      }
+    }
+    for (const p of data.payroll ?? []) {
+      const d = String(p.paidAt ?? p.period ?? "").slice(0, 10);
+      if (d > max) max = d;
+    }
+    return max;
+  }, [data.journals, data.invoices, data.payables, data.payroll]);
   /* Kas & Bank LIVE: SALDO kumulatif s.d. tanggal filter, mutasi per rekening
      hanya untuk periode filter. Versi lama menjumlahkan jurnal yang ada DI
      DALAM window, jadi saldo awal hilang dan angka per bulan sebelum
      Agu-2026 bukan saldo - saldo awal Excel hanya diisi saat isSnapMonth. */
-  const kasAsOf = liveAsOf(kasHist);
+  const kasAsOf = asOfOrToday(kasHist, lastTxDate);
   const kasSnap = kasAsOf.slice(0, 7) === LATEST_SNAPSHOT;
   const kasRows = useMemo(
     () => KASBANK_EXCEL.filter((r) => (r.periode ?? LATEST_SNAPSHOT) === LATEST_SNAPSHOT),
@@ -1061,6 +1151,114 @@ const { data, add, update, remove, log, branch, inBranch } = useStore();
     return [...order.values()].sort((a, b) => a.kode.localeCompare(b.kode));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [manJournals, kasHist, coaRows]);
+
+  /* === EXPORT 4 LAPORAN HISTORIKAL ===
+   *
+   * Angka as-of yang sudah diperbaiki tidak bisa diekspor kalau tidak ada
+   * jalurnya:(reportExcel hanya dipakai Jadwal Bayar dan SPT, jadi hasil
+   * koreksi saldo hanya bisa dibaca di layar lalu hilang begitu tab ditutup.
+   *
+   * Setiap sheet membawa baris "As-of" supaya angka bisa ditelusuri
+   * kembali - file Excel tanpa tanggal acuan tidak bisa dipertanggungjawabkan
+   * saat Someone membukanya enam bulan kemudian. */
+  const exportHist = async (which: "kas" | "bb" | "lr" | "nr"): Promise<void> => {
+    try {
+      if (which === "kas") {
+        await exportExcelSheets([
+          {
+            name: "Kas & Bank",
+            rows: [
+              ["Rekening", "Nama", "Saldo awal", "Masuk periode", "Keluar periode", "Saldo akhir"],
+              ...kasLiveRows.map((r) => [
+                r.kode, r.nama,
+                kasRep.saldo[r.kode] ?? 0,
+                kasRep.masuk[r.kode] ?? 0,
+                kasRep.keluar[r.kode] ?? 0,
+                kasRep.saldo[r.kode] ?? 0,
+              ] as (string | number)[]),
+              [],
+              ["As-of", kasAsOf],
+              ["Periode", kasHist.mode === "Semua" ? "Semua" : `${kasHist.mode} ${kasHist.bulan || kasHist.tahun || kasHist.hari}`],
+            ],
+          },
+          {
+            name: "Voucher",
+            rows: [
+              ["Tanggal", "Dokumen", "Uraian", "DB", "KR", "Nominal"],
+              ...manJournals
+                .filter((j) => j.status !== "Void" && (j.sumber === "Kas" || j.sumber === "Bank") && matchHist(String(j.date ?? ""), kasHist))
+                .map((j) => [String(j.date ?? ""), String(j.dokumen ?? "-"), String(j.uraian ?? ""), String(j.db ?? "-"), String(j.kr ?? "-"), num(j.amount)] as (string | number)[]),
+            ],
+          },
+        ], `Kas-Bank-${kasAsOf}`);
+      } else if (which === "bb") {
+        await exportExcelSheets([
+          {
+            name: "Buku Besar",
+            rows: [
+              ["Kode", "Nama akun", "Debit s.d. tanggal", "Kredit s.d. tanggal", "Saldo", "Debit periode", "Kredit periode", "Baris"],
+              ...bbLive.map((r) => [r.kode, r.nama, r.dAll, r.kAll, r.dAll - r.kAll, r.d, r.k, r.n] as (string | number)[]),
+              [],
+              ["As-of", bbAsOf],
+              ["Total debit", bbDAll],
+              ["Total kredit", bbKAll],
+              ["Selisih", bbDAll - bbKAll],
+            ],
+          },
+        ], `Buku-Besar-${bbAsOf}`);
+      } else if (which === "lr") {
+        await exportExcelSheets([
+          {
+            name: "Laba Rugi",
+            rows: [
+              ["Komponen", "Kumulatif s.d. as-of", "Periode ini"],
+              ["Pendapatan", lrLive.revenue, lrLive.period.revenue],
+              ["Beban pokok", lrLive.costProj, lrLive.period.costProj],
+              ["Gaji", lrLive.salary, lrLive.period.salary],
+              ["Write-off", lrLive.writeoff, lrLive.period.writeoff],
+              ["Laba bersih", lrLive.laba, lrLive.period.laba],
+              [],
+              ["As-of", lrAsOf],
+            ],
+          },
+        ], `Laba-Rugi-${lrAsOf}`);
+      } else {
+        await exportExcelSheets([
+          {
+            name: "Hutang",
+            rows: [
+              ["Vendor", "Sisa (Rp)", "Dokumen"],
+              ...hutLive.map((h) => [h.v, Math.round(h.total), h.count] as (string | number)[]),
+              [],
+              ["As-of", nrAsOf],
+            ],
+          },
+          {
+            name: "Piutang",
+            rows: [
+              ["Customer", "Sisa (Rp)", "Dokumen"],
+              ...piuLive.map((p) => [p.c, Math.round(p.total), p.count] as (string | number)[]),
+              [],
+              ["As-of", nrAsOf],
+            ],
+          },
+          {
+            name: "Ringkasan",
+            rows: [
+              ["Komponen", "Nilai"],
+              ["Total hutang", hutLiveTotal],
+              ["Total piutang", piuLiveTotal],
+              ["Laba kumulatif s.d. as-of", nrLabaLive],
+              ["As-of", nrAsOf],
+            ],
+          },
+        ], `Neraca-${nrAsOf}`);
+      }
+      toast(S.histExported, "info");
+    } catch (e) {
+      toast(`${S.histExportFailed} ${e instanceof Error ? e.message : String(e)}`, "info");
+    }
+  };
 
   const isTMForm = invForm.billingType === "T&M";
   const invTotal = invLines.reduce((s, l) => s + lineAmount(l, isTMForm), 0);
@@ -2043,7 +2241,7 @@ const { data, add, update, remove, log, branch, inBranch } = useStore();
      dibukukan sampai tanggal itu. Neraca memakai angka yang sama, jadi
      kedua laporan saling bertentangan. */
   const lrLive = useMemo(() => {
-    const asOf = liveAsOf(lrHist);
+    const asOf = asOfOrToday(lrHist, lastTxDate);
     const upto = asOf.slice(0, 7);
     const inPeriod = plMonthly.filter((p) => matchHistPeriod(p.period, lrHist));
     const uptoRows = plMonthly.filter((p) => p.period <= upto);
@@ -2055,6 +2253,52 @@ const { data, add, update, remove, log, branch, inBranch } = useStore();
     return { ...sum(uptoRows), nPeriod: inPeriod.length, period: sum(inPeriod) };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [plMonthly, lrHist]);
+
+  /* ============ NILAI BUKU BESAR, NERACA, LABA RUGI ============
+   * Taruh di luar render tab supaya layar dan tombol export memakai
+   * ANGKA YANG SAMA. Kalau masing-masing menghitung sendiri, keduanya bisa
+   * menyimpang tanpa ketahuan - dan angka yang diekspor seharusnya identik
+   * dengan yang di layar. */
+  const lrAsOf = asOfOrToday(lrHist, lastTxDate);
+  const lrSnap = isSnapMonth(lrAsOf.slice(0, 7));
+
+  const bbAsOf = asOfOrToday(bbHist, lastTxDate);
+  const bbSnap = isSnapMonth(bbAsOf.slice(0, 7));
+  /* Debit/kredit kumulatif s.d. bbAsOf - saldo buku besar harus mengandung
+     transaksi SEJAK AWAL, bukan hanya periode yang difilter. Yang
+     period-scoped tetap kolom "mutasi periode ini". */
+  const bbLive = useMemo(() => {
+    const m = new Map<string, { kode: string; nama: string; d: number; k: number; n: number; dAll: number; kAll: number }>();
+    const nameOf = (kode: string): string => String(coaRows.find((c) => String(c.kode) === kode)?.nama ?? kode);
+    for (const j of manJournals) {
+      if (j.status === "Void") continue;
+      const tgl = String(j.date ?? "").slice(0, 10);
+      const inPeriod = matchHist(tgl, bbHist);
+      if (tgl > bbAsOf && !inPeriod) continue;
+      for (const [kode, side] of [[String(j.db ?? ""), "d"], [String(j.kr ?? ""), "k"]] as const) {
+        if (!kode) continue;
+        const cur = m.get(kode) ?? { kode, nama: nameOf(kode), d: 0, k: 0, n: 0, dAll: 0, kAll: 0 };
+        if (side === "d") { cur.dAll += num(j.amount); if (inPeriod) cur.d += num(j.amount); }
+        else { cur.kAll += num(j.amount); if (inPeriod) cur.k += num(j.amount); }
+        if (inPeriod) cur.n += 1;
+        m.set(kode, cur);
+      }
+    }
+    return [...m.values()].sort((a, b) => a.kode.localeCompare(b.kode));
+  }, [manJournals, bbHist, bbAsOf, coaRows]);
+  /* Saldo kumulatif harus seimbang: total debit = total kredit untuk semua
+     akun. Kalau tidak, ada jurnal yang tanggalnya di luar rentang as-of dan
+     angka yang tampil bukan saldo. */
+  const bbDAll = bbLive.reduce((s, r) => s + r.dAll, 0);
+  const bbKAll = bbLive.reduce((s, r) => s + r.kAll, 0);
+
+  const nrAsOf = asOfOrToday(nrHist, lastTxDate);
+  const nrSnap = isSnapMonth(nrAsOf.slice(0, 7));
+  const hutLive = apOutAsOf(payables, nrAsOf);
+  const piuLive = arOutAsOf(invoices, nrAsOf);
+  const hutLiveTotal = hutLive.reduce((s, h) => s + h.total, 0);
+  const piuLiveTotal = piuLive.reduce((s, p) => s + p.total, 0);
+  const nrLabaLive = plMonthly.filter((p) => p.period <= nrAsOf.slice(0, 7)).reduce((s, p) => s + p.laba, 0);
 
   const stepInvoice = async (inv: StoreItem, next: string) => {    if (next === "Lunas") {
       setPayTarget(inv);
@@ -2861,7 +3105,7 @@ const { data, add, update, remove, log, branch, inBranch } = useStore();
               <CardHeader
                 title={S.kasTitle}
                 subtitle={S.kasSub}
-                action={<button className="btn-primary text-xs" onClick={() => setShowMut(true)}>{S.addMutasi}</button>}
+                action={<><button className="btn-secondary text-xs" onClick={() => { void exportHist("kas"); }} title={S.histExported}>{S.histExport}</button><button className="btn-primary text-xs" onClick={() => setShowMut(true)}>{S.addMutasi}</button></>}
               />
               <HistFilterBar value={kasHist} onChange={setKasHist} idPrefix="kas" />
               <p className="rounded-lg bg-ocean-50 px-3 py-2 text-xs text-ocean-700">
@@ -3196,40 +3440,12 @@ const { data, add, update, remove, log, branch, inBranch } = useStore();
           )}
 
           {tab === "Buku Besar" ? (() => {
-            const bbAsOf = liveAsOf(bbHist);
-            const bbSnap = isSnapMonth(bbAsOf.slice(0, 7));
-            /* Debit/kredit kumulatif s.d. bbAsOf - saldo buku besar harus
-               mengandung transaksi SEJAK AWAL, bukan hanya periode yang
-               difilter. Yang period-scoped tetap kolom "mutasi periode ini". */
-            const bbLive = (() => {
-              const m = new Map<string, { kode: string; nama: string; d: number; k: number; n: number; dAll: number; kAll: number }>();
-              const nameOf = (kode: string): string => String(coaRows.find((c) => String(c.kode) === kode)?.nama ?? kode);
-              for (const j of manJournals) {
-                if (j.status === "Void") continue;
-                const tgl = String(j.date ?? "").slice(0, 10);
-                const inPeriod = matchHist(tgl, bbHist);
-                if (tgl > bbAsOf && !inPeriod) continue;
-                for (const [kode, side] of [[String(j.db ?? ""), "d"], [String(j.kr ?? ""), "k"]] as const) {
-                  if (!kode) continue;
-                  const cur = m.get(kode) ?? { kode, nama: nameOf(kode), d: 0, k: 0, n: 0, dAll: 0, kAll: 0 };
-                  if (side === "d") { cur.dAll += num(j.amount); if (inPeriod) cur.d += num(j.amount); }
-                  else { cur.kAll += num(j.amount); if (inPeriod) cur.k += num(j.amount); }
-                  if (inPeriod) cur.n += 1;
-                  m.set(kode, cur);
-                }
-              }
-              return [...m.values()].sort((a, b) => a.kode.localeCompare(b.kode));
-            })();
-            /* Saldo kumulatif harus seimbang: total debit = total kredit
-               untuk semua akun. Kalau tidak, ada jurnal yang tanggalnya di
-               luar rentang as-of dan angka yang tampil bukan saldo. */
-            const bbDAll = bbLive.reduce((s, r) => s + r.dAll, 0);
-            const bbKAll = bbLive.reduce((s, r) => s + r.kAll, 0);
             return (
             <div className="space-y-4">
               <CardHeader
                 title={S.bbTitle}
                 subtitle={S.bbSub}
+                action={<button className="btn-secondary text-xs" onClick={() => { void exportHist("bb"); }} title={S.histExported}>{S.histExport}</button>}
               />
               <HistFilterBar value={bbHist} onChange={setBbHist} idPrefix="bb" />
               <p className="rounded-lg bg-ocean-50 px-3 py-2 text-xs text-ocean-700">
@@ -3339,13 +3555,12 @@ const { data, add, update, remove, log, branch, inBranch } = useStore();
           })() : null}
 
           {tab === "Laba Rugi" ? (() => {
-            const lrAsOf = liveAsOf(lrHist);
-            const lrSnap = isSnapMonth(lrAsOf.slice(0, 7));
             return (
             <div className="space-y-4">
               <CardHeader
                 title={S.lrTitle}
                 subtitle={S.lrSub}
+                action={<button className="btn-secondary text-xs" onClick={() => { void exportHist("lr"); }} title={S.histExported}>{S.histExport}</button>}
               />
               <HistFilterBar value={lrHist} onChange={setLrHist} idPrefix="lr" />
               <p className="rounded-lg bg-ocean-50 px-3 py-2 text-xs text-ocean-700">
@@ -3602,16 +3817,9 @@ const { data, add, update, remove, log, branch, inBranch } = useStore();
           )}
 
           {tab === "Neraca" ? (() => {
-            const nrAsOf = liveAsOf(nrHist);
-            const nrSnap = isSnapMonth(nrAsOf.slice(0, 7));
-            const hutLive = apOutAsOf(payables, nrAsOf);
-            const piuLive = arOutAsOf(invoices, nrAsOf);
-            const hutLiveTotal = hutLive.reduce((s, h) => s + h.total, 0);
-            const piuLiveTotal = piuLive.reduce((s, p) => s + p.total, 0);
-            const nrLabaLive = plMonthly.filter((p) => p.period <= nrAsOf.slice(0, 7)).reduce((s, p) => s + p.laba, 0);
             return (
             <div className="space-y-4">
-              <CardHeader title={S.nrTitle} subtitle={S.nrSub.replace("{a}", LAPORAN_EXCEL.neracaTotal.toLocaleString("id-ID"))} />
+              <CardHeader title={S.nrTitle} subtitle={S.nrSub.replace("{a}", LAPORAN_EXCEL.neracaTotal.toLocaleString("id-ID"))} action={<button className="btn-secondary text-xs" onClick={() => { void exportHist("nr"); }} title={S.histExported}>{S.histExport}</button>} />
               <HistFilterBar value={nrHist} onChange={setNrHist} idPrefix="nr" />
               <p className="rounded-lg bg-ocean-50 px-3 py-2 text-xs text-ocean-700">
                 {S.nrLiveBadge.replace("{a}", nrAsOf).replace("{b}", fmtMiliar(hutLiveTotal)).replace("{c}", String(hutLive.length)).replace("{d}", fmtMiliar(piuLiveTotal)).replace("{e}", String(piuLive.length)).replace("{f}", fmtRupiah(nrLabaLive)).replace("{g}", nrSnap ? S.nrSnapSuffix : S.nrLiveSuffix)}

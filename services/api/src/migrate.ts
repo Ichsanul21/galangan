@@ -116,7 +116,57 @@ export async function migrate(): Promise<void> {
       throw err;
     }
   }
+  await ensureWideJsonColumns();
   console.log("[migrate] done");
+}
+
+/**
+ * Kolom yang menyimpan JSON besar -> MEDIUMTEXT di MySQL.
+ *
+ * Kenapa perlu: MySQL `TEXT` batasnya 64 KB, sementara SQLite tidak punya
+ * batas panjang sama sekali. Skema yang sama jadi sedikit lebih lega di
+ * SQLite dan bisa gagal di MySQL tanpa terlihat.
+ *
+ * Yang terdampak nyata bukan hypothetis:
+ *   - `pdfDocs.model` = JSON hasil factory. Laporan analitik 12 bulan +
+ *     profit per tipe + per cabang + Pareto + fishbone easily melewati 64 KB.
+ *   - `audit_log.diff` = jejak render/reprint yang ikut menyimpan ringkasan.
+ *   - `documents.data` = payload transmittal/bukti.
+ *
+ * Dan kegagalannya SENGAJA tersembunyi: saveRenderModel() menangkap error
+ * tulis lalu hanya memberi tahu lewat console.warn, supaya snapshot yang
+ * gagal tidak membatalkan cetakan. Di MySQL itu artinya "cetak ulang" mati
+ * tanpa jejak di UI - penyebabnya cuma baris warning di log server.
+ *
+ * Idempoten: lebar kolom dibaca dari information_schema lebih dulu, jadi
+ * migrasi kedua tidak melakukan ALTER yang sama.
+ */
+const WIDE_JSON_COLUMNS: [string, string][] = [
+  ["pdfDocs", "model"],
+  ["audit_log", "diff"],
+  ["documents", "data"],
+];
+
+async function ensureWideJsonColumns(): Promise<void> {
+  if (getDialect() !== "mysql") {
+    /* SQLite: TEXT sudah menyimpan string sepanjang mungkin. Tidak ada yang
+       perlu diubah - dan ALTER COLUMN tidak ada artinya di SQLite. */
+    return;
+  }
+  const rows = await q<{ TABLE_NAME: string; COLUMN_NAME: string; COLUMN_TYPE: string }>(
+    "SELECT TABLE_NAME, COLUMN_NAME, COLUMN_TYPE FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE()",
+  );
+  const wide = new Set(
+    rows.filter((r) => /mediumtext|longtext/i.test(String(r.COLUMN_TYPE ?? ""))).map((r) => `${r.TABLE_NAME}.${r.COLUMN_NAME}`),
+  );
+  for (const [table, column] of WIDE_JSON_COLUMNS) {
+    if (wide.has(`${table}.${column}`)) {
+      console.log(`[migrate] ${table}.${column} sudah MEDIUMTEXT`);
+      continue;
+    }
+    await exec(`ALTER TABLE \`${table}\` MODIFY COLUMN \`${column}\` MEDIUMTEXT`);
+    console.log(`[migrate] ${table}.${column} -> MEDIUMTEXT`);
+  }
 }
 
 const entry = process.argv[1] ?? "";

@@ -3,7 +3,7 @@
  * KELAS BUG YANG DITUTUP: mesin lama punya `widthOf(text)` yang memanggil
  * `pdf.getTextWidth()` memakai font yang SEDANG AKTIF, dipanggil dari tempat
  * yang belum `setFont()` untuk font yang akan menggambar. Akibatnya teks
- * diukur dengan font berbeda dari yang dipakai menggambar: baris表格 bisa
+ * diukur dengan font berbeda dari yang dipakai menggambar: baris tabel bisa
  * 22 persen lebih lebar dari kolomnya dan keluar dari halaman tanpa error.
  *
  * Di sini pengukuran SELALU menerima (font, size) secara eksplisit dan hasilnya
@@ -63,7 +63,7 @@ export function ensureMetrics(pdf: jsPDF, weight: FontName, embedded: boolean, s
   return w;
 }
 
-/** Cache她了橋 */
+/** Cache hasil ukur per (teks, font, ukuran). */
 export function measure(
   pdf: jsPDF,
   text: string,

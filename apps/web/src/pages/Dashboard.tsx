@@ -378,7 +378,7 @@ const exportSummary = async () => {
     return;
   }
   const done = await pdfDoc.request(
-    { kind: "analitik", locale, filters: { scope: "Dashboard", months: monthCount } },
+    { kind: "analitik", locale, branch, filters: { scope: "Dashboard", months: monthCount } },
     `Ringkasan-Portofolio-${todayISO()}`,
     false,
   );

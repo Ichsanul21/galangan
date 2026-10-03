@@ -51,6 +51,12 @@ export interface PdfRequest {
   kind: string;
   id?: string;
   locale?: string;
+  /** Cabang untuk LAPORAN saja (dokumen tanpa entitas: ringkasan, analitik,
+   *  laporan proyek, rekap payroll). Server hanya menerima nilai yang
+   *  benar-benar ada di DB; string bebas ditolak 400.
+   *  Untuk dokumen resmi field ini DIABAIKAN server - cabang diambil dari
+   *  baris dokumennya, supaya isi PDF tidak mungkin mencampur cabang. */
+  branch?: string;
   /** Filter laporan: periode, mode, projectId, months. Server menghitung
    *  angkanya sendiri - filter hanya memilih periode, tidak mengarang isi. */
   filters?: Record<string, string | number>;

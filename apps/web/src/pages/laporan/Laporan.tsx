@@ -395,6 +395,7 @@ export default function Laporan() {
         kind: isProject ? "laporanProyek" : "laporan",
         id: isProject ? activeProjectId : undefined,
         locale,
+        branch,
         filters: {
           mode,
           period: mode === "Bulanan" ? month : week0,

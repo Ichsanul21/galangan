@@ -17,6 +17,7 @@ import { MemoryRouter, Routes, Route } from "react-router-dom";
 import { LanguageProvider } from "../src/i18n/LanguageContext";
 import { StoreProvider, applyPulled } from "../src/data/store";
 import { projects, vessels, inventory, employees, quotations } from "../src/data/index";
+import { todayISO } from "../src/utils/format";
 
 import Login from "../src/pages/Login";
 import Dashboard from "../src/pages/Dashboard";
@@ -27,7 +28,8 @@ import Monitoring from "../src/pages/proyek/Monitoring";
 import Inventory from "../src/pages/inventori/Inventory";
 import BomDetail from "../src/pages/inventori/BomDetail";
 import Finance from "../src/pages/keuangan/Finance";
-import { kasAsOfReport, liveAsOf, matchHist } from "../src/pages/keuangan/Finance";
+import { asOfOrToday, kasAsOfReport, liveAsOf, matchHist, histFromParam, histToParam } from "../src/pages/keuangan/Finance";
+import type { HistFilter } from "../src/pages/keuangan/Finance";
 import Payroll from "../src/pages/payroll/Payroll";
 import HR from "../src/pages/sdm/HR";
 import KaryawanDetail from "../src/pages/sdm/KaryawanDetail";
@@ -258,6 +260,38 @@ try {
   if (liveAsOf({ mode: "Bulan", hari: "", bulan: "2024-02", tahun: "" }) !== "2024-02-29") asof.push("as-of Februari 2024 bukan 29 (tahun kabisat)");
   if (liveAsOf({ mode: "Tahun", hari: "", bulan: "", tahun: "2026" }) !== "2026-12-31") asof.push("as-of tahun bukan 31 Desember");
 
+  /* Mode "Semua" TIDAK boleh memakai konstanta. Versi lama return
+     "2026-08-31" apa pun datanya, jadi transaksi setelah Agustus 2026 tidak
+     pernah ikut terhitung dan tidak ada yang memberi tahu. Sekarang
+     mengikuti transaksi terakhir yang benar-benar ada. */
+  const semua = { mode: "Semua", hari: "", bulan: "", tahun: "" } as const;
+  if (liveAsOf(semua) !== "") asof.push("mode Semua tanpa data seharusnya kosong, bukan konstanta");
+  if (liveAsOf(semua, "2026-11-14") !== "2026-11-14") asof.push(`mode Semua memakai data terakhir: dapat ${liveAsOf(semua, "2026-11-14")}`);
+  if (liveAsOf(semua, "bukan tanggal") !== "") asof.push("tanggal rusak tidak boleh jadi as-of");
+  /* Guard terakhir: transaksi setelah as-of tidak boleh masuk hitungan. */
+  const lewat = kasAsOfReport([...journals, j("2026-12-31", "1-1101", "5-101", 5000)] as never, liveAsOf(semua, "2026-06-30"), semua, empty, KAS_BANK);
+  if (Math.abs((lewat.saldo["1-1101"] ?? 0) - 600) > 0.5) asof.push("mode Semua mengabaikan batas transaksi terakhir");
+
+  /* Filter historikal harus survive reload -> harus bisa lewat URL.
+     Round-trip diuji karena tautan yang rusak_total justru lebih buruk:
+     penerima membuka halaman dengan angka orang lain tanpa sadar. */
+  const codec: [string, HistFilter][] = [
+    ["bulan:2026-06", { ...juni }],
+    ["tahun:2026", { mode: "Tahun", hari: "", bulan: "", tahun: "2026" }],
+    ["hari:2026-06-15", { mode: "Hari", hari: "2026-06-15", bulan: "", tahun: "" }],
+  ];
+  for (const [param, want] of codec) {
+    if (histToParam(want) !== param) asof.push(`encode ${param}: dapat ${histToParam(want)}`);
+    const back = histFromParam(param);
+    if (histToParam(back) !== param) asof.push(`round-trip ${param} rusak: kembali jadi ${histToParam(back)}`);
+  }
+  /* Parameter tak sah / dari luar harus jatuh ke default, bukan setengah
+     dipakai - filter dengan tanggal acuan salah lebih berbahaya daripada
+     filter kosong karena terlihat sah. */
+  for (const bad of ["", "bulan:", "bulan:2026-13", "hari:2026-02-30", "tahun:26", "../../etc", "bulan:2026-06&x"]) {
+    if (histToParam(histFromParam(bad)) !== "") asof.push(`parameter tak sah diterima: ${bad}`);
+  }
+
   /* matchHist tetap period-scoped - itu memang Behavior yang benar untuk
      kolom mutasi, dan harus terus begitu. */
   if (!matchHist("2026-06-05", juni)) asof.push("mutasi Juni tidak masuk periode Juni");
@@ -290,6 +324,11 @@ try {
 
   /* Rekening non-Kas tidak boleh masuk. */
   if (Object.keys(rep.saldo).some((k) => !KAS_BANK.test(k))) asof.push("rekening selain Kas/Bank ikut terhitung");
+
+  /* Data kosong tidak boleh meledak jadi as-of sekarang - asOfOrToday
+     sengaja memakai hari ini sebagai jaring pengaman, jadi yang diuji di
+     sini hanya konvensi itu, bukan kebenaran datanya. */
+  if (asOfOrToday(semua) !== todayISO()) asof.push("asOfOrToday tanpa data bukan hari ini");
 
   if (asof.length === 0) {
     console.log("PASS  saldo historikal kumulatif s.d. as-of, mutasi tetap period-scoped");

@@ -19,12 +19,16 @@ import { findRecipe, DOC_KINDS, buildFromModel, type RenderContext } from "../pd
 import { getDialect } from "../db.js";
 import { writeAudit, requestActor, requestIp } from "../audit.js";
 import { saveRenderModel, loadRenderModel } from "../pdf/renderStore.js";
+import { entityBranch, knownBranches } from "../pdf/documents/shared.js";
 import type { RenderResult } from "../pdf/document.js";
 
 interface RenderBody {
   kind?: string;
   id?: string;
   locale?: string;
+  /** Cabang untuk laporan (dokumen tanpa entitas). Untuk dokumen resmi
+   *  DIABAIKAN - cabang diambil dari baris dokumennya sendiri. */
+  branch?: string;
   /** Filter laporan: periode, mode, projectId, months. Tidak pernah berisi
    *  nilai laporan - angka tetap dibaca server dari DB. */
   filters?: Record<string, unknown>;
@@ -58,6 +62,39 @@ export function registerPdfRoutes(app: FastifyInstance): void {
     };
 
     try {
+      /* Cabang dokumen resmi Taken dari baris yang dicetak, BUKAN dari
+         filter klien. Sebelumnya ctx.branch selalu "SEMUA", jadi bagian
+         agregat dalam PDF (mis. rekap termin pada kwitansi) bisa
+         menjumlahkan cabang lain. Dengan dikunci ke cabang entitas,
+         menebak id milik cabang lain tidak menghasilkan dokumen campuran -
+         dokumen ikut cabang yang salah, atau gagal, bukan mencuri angka.
+
+         CATATAN jujur: tabel `users` tidak punya kolom branch sama sekali,
+         jadi "user ini berhak atas cabang mana" tidak bisa ditegakkan di
+         sini. Yang dikunci adalah konsistensi internal dokumen. Otorisasi
+         cabang per pengguna butuh kolom baru + UI 로그인, bukan perubahan
+         route. */
+      if (recipe.requiresEntity) {
+        const own = await entityBranch(recipe.entity.field, id);
+        ctx.branch = own ?? "SEMUA";
+      } else {
+        /* Laporan tidak punya entitas tunggal, jadi cabang diminta dari
+           klien - tapi hanya nilai yang benar-benar ada. "SEMUA" tetap
+           diperbolehkan dan sekarang tercatat di audit sebagai pilihan
+           eksplisit, bukan keputusan server yang diam-diam. */
+        const asked = String(body.branch ?? "").trim();
+        if (asked !== "" && asked !== "SEMUA") {
+          const known = await knownBranches();
+          if (!known.includes(asked)) {
+            return reply.status(400).send({
+              ok: false,
+              error: { message: `Cabang tidak dikenal: ${asked}`, code: "VALIDATION_ERROR" },
+            });
+          }
+          ctx.branch = asked;
+        }
+      }
+
       /* Tahap 1: model dibaca dari baris DB server. Snapshot ini yang
          disimpan - bukan byte PDF, dan bukan isi dari klien. */
       const model = await recipe.prepare(id, ctx);
@@ -90,6 +127,7 @@ export function registerPdfRoutes(app: FastifyInstance): void {
           bytes: res.bytes.byteLength,
           engine: "pdf-v2",
           font: res.embeddedFont ? "ttf" : "std14",
+          branch: ctx.branch,
           model: modelId ?? "-",
           dialect: getDialect(),
           at: new Date().toISOString(),
@@ -131,6 +169,10 @@ export function registerPdfRoutes(app: FastifyInstance): void {
         },
       });
     }
+    /* Cetak ulang memakai cabang yang TERSIMPAN di snapshot, bukan filter
+       klien saat ini. Kalau snapshot cetakan pertama sudah dibatasi ke satu
+       cabang, arsipnya harus tetap begitu - kalau tidak, dokumen lama bisa
+       "diperbaiki" isinya hanya dengan mencetaknya ulang. */
     const ctx: RenderContext = { locale: snap.locale === "en" ? "en" : "id", branch: snap.branch || "SEMUA", filters: {} };
     try {
       const res = buildFromModel(recipe, snap.model, ctx).render();
@@ -145,6 +187,7 @@ export function registerPdfRoutes(app: FastifyInstance): void {
           model: modelId,
           originalCreatedAt: snap.createdAt,
           originalActor: snap.actor,
+          branch: ctx.branch,
           pages: res.pages,
           bytes: res.bytes.byteLength,
           at: new Date().toISOString(),

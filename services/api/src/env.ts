@@ -1,3 +1,5 @@
+import path from "node:path";
+
 export interface Env {
   port: number;
   dialect: "sqlite" | "mysql";
@@ -9,6 +11,8 @@ export interface Env {
   allowSeedLogin: boolean;
   trustProxy: boolean;
   uploadsDir: string;
+  /** Folder TTF untuk embedding PDF. Kosong berarti tidak ada font lokal. */
+  fontsDir: string;
   nodeEnv: string;
 }
 
@@ -76,6 +80,15 @@ export function loadEnv(): Env {
     throw new Error('UPLOADS_DIR must not be empty (e.g. "./data/uploads").');
   }
 
+  /* Folder font PDF. Default `assets/fonts` relatif repo root, yaitu tempat
+     README font.ts menjelaskan letakkan regular/bold/italic.ttf. Env ini
+     ada supaya deployment tidak perlu menyalin font berlisensi ke dalam
+     repo - arahkan ke system font server (mis. /usr/share/fonts/galangan). */
+  const fontsDir = path.resolve(
+    process.cwd(),
+    process.env.PDF_FONTS_DIR ?? path.join("assets", "fonts"),
+  );
+
   const nodeEnvRaw = (process.env.NODE_ENV ?? "development").trim().toLowerCase();
   if (!["development", "test", "production"].includes(nodeEnvRaw)) {
     throw new Error(`NODE_ENV must be "development", "test", or "production" (got "${process.env.NODE_ENV}").`);
@@ -106,6 +119,7 @@ export function loadEnv(): Env {
     allowSeedLogin,
     trustProxy,
     uploadsDir,
+    fontsDir,
     nodeEnv,
   };
 }
