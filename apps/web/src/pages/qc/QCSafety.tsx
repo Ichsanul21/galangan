@@ -927,16 +927,56 @@ export default function QCSafety() {
     setTransmitForm((f) => ({ ...f, ids: f.ids.includes(id) ? f.ids.filter((x) => x !== id) : [...f.ids, id] }));
   };
 
+  /** Nomor transmittal berikutnya. Id harus unik: dua transmittal pada hari
+   *  yang sama dengan jumlah drawing sama dulu bisa menabrak. */
+  const nextTransmittalId = (): string => {
+    const stamp = transmitForm.date.replaceAll("-", "");
+    const trDocs = (data.documents ?? []).filter((d) => d.type === "Transmittal");
+    let seq = 1;
+    while (trDocs.some((d) => String(d.id) === `TR-${stamp}-${String(seq).padStart(3, "0")}`)) seq += 1;
+    return `TR-${stamp}-${String(seq).padStart(3, "0")}`;
+  };
+
   const saveTransmittal = async () => {
     if (!transmitForm.to.trim()) { toast(S.tTransmitTo, "info"); return; }
     if (!transmitForm.date) { toast(S.tTransmitDate, "info"); return; }
     if (transmitForm.ids.length === 0) { toast(S.tTransmitPilih, "info"); return; }
     try {
       const rows = transmitForm.ids.map((id) => drawings.find((d) => d.id === id)).filter((d): d is StoreItem => !!d);
+      /* Transmittal DIBERARKAN lebih dulu, baru PDF-nya. Urutan ini yang
+         membuat dokumen bisa dicetak ulang: PDF dirakit server dari baris
+         arsip, jadi kalau PDF dulu, isinya tidak ada di mana pun. */
+      const docId = nextTransmittalId();
+      const no = `TR/${docId.replaceAll("-", "/")}`;
+      const trItems = rows.map((d) => ({
+        code: String(d.id),
+        title: String(d.title ?? "-"),
+        revision: String(d.revision ?? "-"),
+        status: String(d.status ?? "-"),
+      }));
+      await add("documents", {
+        id: docId,
+        title: `Transmittal drawing ke ${transmitForm.to.trim()}`,
+        type: "Transmittal",
+        project: String(rows[0]?.project ?? "-"),
+        vessel: "-",
+        owner: String(user?.name ?? "Anda"),
+        sbRef: no,
+        trDate: transmitForm.date,
+        trTo: transmitForm.to.trim(),
+        trItems,
+        trSender: String(user?.name ?? "H. Syarif Sarapping"),
+        related: rows.map((d) => String(d.id)),
+        version: "v1.0",
+        status: "Terkirim",
+        updated: todayISO(),
+        archived: false,
+        docCopy: "Terkendali",
+        revisions: [{ version: "v1.0", at: todayISO(), by: String(user?.name ?? "Anda"), note: `Transmittal dikirim ke ${transmitForm.to.trim()}` }],
+      }, { action: "mengirim transmittal drawing", target: `${no} · ${rows.length} drawing`, module: "QC" });
       /* PDF resmi dibuat lebih dulu: dokumen ini yang dikirim ke BKI, dan
          harus berupa teks yang bisa dibaca pihak luar tanpa aplikasi kita. */
       if (pdfServerReady()) {
-        const docId = `TR-${transmitForm.date.replaceAll("-", "")}-${String(rows.length).padStart(3, "0")}`;
         const done = await pdfDoc.request({ kind: "transmittal", id: docId, locale }, `Transmittal-${transmitForm.date}`, false);
         if (!done) return;
       } else {

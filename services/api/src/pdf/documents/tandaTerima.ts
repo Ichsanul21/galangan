@@ -12,6 +12,9 @@ export interface TandaTerimaInput {
   tanggal: string;
   asal?: string;
   projectName?: string;
+  /* Baris tambahan sesuai konteks penerimaan (mis. nomor surat jalan yang
+     dilayani, nama kapal). */
+  extra?: Array<{ label: string; value: string }>;
   items: Array<{ name: string; qty: string }>;
   receiver: string;
   giver: string;
@@ -39,6 +42,9 @@ export function tandaTerima(input: TandaTerimaInput, opts: DocOptions = {}): Doc
   ];
   if (input.asal) pairs.push({ label: L(locale, "Dari", "From"), value: input.asal });
   if (input.projectName) pairs.push({ label: L(locale, "Proyek", "Project"), value: input.projectName });
+  for (const e of input.extra ?? []) {
+    if (e.value.trim() !== "") pairs.push({ label: e.label, value: e.value });
+  }
 
   d.add(keyValue({ labelW: 35, pairs }));
   d.add(spacer(2));

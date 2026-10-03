@@ -2,24 +2,38 @@
  *
  * `kind` adalah enum TERTUTUP - server tidak menerima nama dokumen bebas dari
  * klien. Kalau klien boleh mengarang nama, dia juga boleh mengarang isi.
- * Untuk dokumen resmi yang tidak dapat diterima:渲染-model dibangun dari
+ * Untuk dokumen resmi yang tidak dapat diterima: model dibangun dari
  * baris DB milik server, dan pemanggil hanya menyebut dokumen mana yang mau.
+ *
+ * SETIAP recipe dipecah dua tahap, dan pemisahan itu bukan gaya penulisan:
+ *
+ *   prepare()  membaca DB -> input factory (JSON biasa, tanpa fungsi)
+ *   assemble() input itu  -> Document (blok + geometri)
+ *
+ * Alasannya cetak ulang. Kalau perakitannya langsung membuka DB, maka
+ * "cetak ulang" sama dengan "cetak ulang dari data terbaru", dan begitu
+ * terminnya dikoreksi, cetakan kedua berbeda dari arsip tanpa ada yang bisa
+ * dibuktikan. Dengan pemisahan ini, `prepare()` cukup dijalankan sekali,
+ * hasilnya disimpan (pdf/renderStore.ts), dan `assemble()` bisa dijalankan
+ * ulang berkali-kali dari snapshot yang sama.
+ *
+ * Konsekuensi yang harus dijaga: `prepare()` TIDAK BOLEH memanggil factory
+ * di dalamnya, dan tidak boleh mengembalikan objek yangbringing closure.
  */
 import type { Document } from "./document.js";
-import { kwitansi } from "./documents/kwitansi.js";
-import { suratCuti } from "./documents/suratCuti.js";
-import { bast } from "./documents/bast.js";
-import { spk } from "./documents/spk.js";
-import { po } from "./documents/po.js";
-import { suratJalan } from "./documents/suratJalan.js";
-import { deliveryOrder } from "./documents/deliveryOrder.js";
-import { tandaTerima } from "./documents/tandaTerima.js";
-import { kopPenawaran } from "./documents/kopPenawaran.js";
-import { slipGaji } from "./documents/slipGaji.js";
-import { transmittal } from "./documents/transmittal.js";
-import { spt } from "./documents/spt.js";
-import { suratPersetujuanCutiDoc, suratHrDoc } from "./documents/hr.js";
-import { loadEntity, loadMany, num, str, text, longDate, money, rupiah, qty, L, type Locale } from "./documents/shared.js";
+import { kwitansi, type KwitansiInput } from "./documents/kwitansi.js";
+import { suratPersetujuanCutiDoc, suratHrDoc, type CutiDocInput, type SuratHrInput } from "./documents/hr.js";
+import { bast, type BastInput } from "./documents/bast.js";
+import { spk, type SpkInput } from "./documents/spk.js";
+import { po, type PoInput } from "./documents/po.js";
+import { suratJalan, type SuratJalanInput } from "./documents/suratJalan.js";
+import { deliveryOrder, type DeliveryOrderInput } from "./documents/deliveryOrder.js";
+import { tandaTerima, type TandaTerimaInput } from "./documents/tandaTerima.js";
+import { kopPenawaran, type KopPenawaranInput } from "./documents/kopPenawaran.js";
+import { slipGaji, type SlipGajiInput } from "./documents/slipGaji.js";
+import { transmittal, type TransmittalInput } from "./documents/transmittal.js";
+import { spt, type SptInput } from "./documents/spt.js";
+import { loadEntity, loadMany, num, str, text, longDate, money, rupiah, qty, arr, itemRows, L, type Locale } from "./documents/shared.js";
 
 export interface RenderContext {
   locale: Locale;
@@ -28,67 +42,94 @@ export interface RenderContext {
 }
 
 /** Definisi satu jenis dokumen. */
-interface Recipe {
+export interface Recipe<T> {
   /** Nama untuk route + audit. */
   kind: string;
   /** Judul dokumen, ditampilkan di audit. */
   title: string;
   /** true = laporan (data hidup, tidak perlu snapshot untuk cetak ulang). */
   report?: boolean;
-  /** Entitas DB yang jadi sumber utama; menentukan apakah `id` wajib. */
+  /** Tabel/entitas DB yang jadi sumber utama; menentukan apakah `id` wajib. */
   entity: { field: string; prefix: string };
   /** true = payload req/id wajib; false = laporan boleh tanpa id. */
   requiresEntity: boolean;
-  build: (id: string, ctx: RenderContext) => Promise<Document>;
+  /** Tahap 1: baris DB -> input factory. */
+  prepare: (id: string, ctx: RenderContext) => Promise<T>;
+  /** Tahap 2: input -> dokumen. Pure; tidak menyentuh DB. */
+  assemble: (input: T, ctx: RenderContext) => Document;
 }
 
 /* ==========================================================================
-   Helper
+   Helper entitas
    ========================================================================== */
 
-async function terminDoc(id: string, ctx: RenderContext): Promise<Document> {
-  const t = await loadEntity({ field: "termins", prefix: "TRM" }, id);
-  if (!t) throw new Error(`Termin ${id} tidak ditemukan`);
-  const amount = num(t, "amount");
-  const pph = Math.round(num(t, "pphAmt"));
-  const ret = Math.round(num(t, "retAmt"));
-  const penalty = Math.round(num(t, "penaltyApplied"));
-  const pphPct = num(t, "pphPct");
-  const retPct = num(t, "retPct");
-  const net = Math.max(0, amount - pph - ret - penalty);
+/** ID dokumen resmi yang tidak boleh kosong (dipakai nomor surat/cetak). */
+function docNumber(entity: Record<string, unknown>, ...keys: string[]): string {
+  const v = str(entity, ...keys);
+  return v === "-" ? String(entity.id ?? "-") : v;
+}
 
-  const breakdown: Array<{ label: string; value: number }> = [
-    { label: L(ctx.locale, "Nilai termin", "Term value"), value: amount },
-  ];
-  if (pph > 0) {
-    breakdown.push({ label: `${L(ctx.locale, "PPh dipotong", "Income tax withheld")} (${pphPct}%)`, value: -pph });
-  }
-  if (ret > 0) {
-    breakdown.push({ label: `${L(ctx.locale, "Retensi ditahan", "Retention held")} (${retPct}%)`, value: -ret });
-  }
-  if (penalty > 0) {
-    breakdown.push({ label: L(ctx.locale, "Denda keterlambatan", "Late penalty"), value: -penalty });
-  }
-  breakdown.push({ label: L(ctx.locale, "Dibayar", "Net paid"), value: net });
+/** Tanggal ISO hari ini; dipakai kalau baris tidak menyimpan tanggal. */
+function today(): string {
+  return new Date().toISOString().slice(0, 10);
+}
 
-  const notes: string[] = [];
-  if (str(t, "withholdingRef") !== "-") notes.push(`${L(ctx.locale, "Bukti potong PPh", "Tax receipt no")}: ${str(t, "withholdingRef")}`);
-  if (str(t, "paidRef") !== "-") {
-    notes.push(`${L(ctx.locale, "Referensi pembayaran", "Payment reference")}: ${str(t, "paidRef")} (${str(t, "paidMethod")})`);
-  }
-  /* Requirement baru client 2 Oktober: invoice & BAST wajib ada sebelum
-     kwitansi diterbitkan. Kalau salah satu kosong, kwitansi tetap boleh
-     dicetak (dokumensometimes dibutuhkan untuk arsip) tetapi diberi catatan
-     yang jujur - bukan diam-diam terlihat lengkap. */
-  if (str(t, "invoiceNo") === "-") notes.push(L(ctx.locale, "Belum ada nomor invoice - kwitansi ini belum dapat dicocokkan ke invoice.", "Invoice number missing - this receipt cannot be matched to an invoice."));
-  if (str(t, "bastNo") === "-") notes.push(L(ctx.locale, "Belum ada nomor BAST - serah terima pekerjaan belum terdokumentasi.", "BAST number missing - the handover is not documented."));
-  if (ret > 0) notes.push(L(ctx.locale, "Retensi dilepas setelah work order selesai.", "Retention is released after the work order closes."));
+/** Nama sparing bercabang pada dokumen - satu sumber, bukan tiga konstanta. */
+const SIGNER = "H. Syarif Sarapping";
 
-  const sub = await loadMany({ field: "subcontractors", prefix: "SUB" }, { ids: [str(t, "subId")] })
-    .then((rows) => rows[0]);
+/** Klausul K3 standar yang dipakai SPK bila WO tidak menyimpan klausul sendiri. */
+const K3_CLAUSE =
+  "Pelaksanaker wajib menerapkan SMK3 PT Syukur Bersaudara: izin kerja untuk pekerjaan panas dan ruang terbatas, alat pelindung diri lengkap, pengendalian bahaya sebelum kerja dimulai, serta melaporkan seluruh insiden K3 dalam 1 x 24 jam.";
 
-  return kwitansi(
-    {
+/* ==========================================================================
+   Tahap 1 + 2 per jenis dokumen
+   ========================================================================== */
+
+/* ---- Kwitansi termin ---- */
+const termin: Recipe<KwitansiInput> = {
+  kind: "kwitansi",
+  title: "Kwitansi pembayaran termin",
+  entity: { field: "termins", prefix: "TRM" },
+  requiresEntity: true,
+  async prepare(id, ctx) {
+    const t = await loadEntity({ field: "termins", prefix: "TRM" }, id);
+    if (!t) throw new Error(`Termin ${id} tidak ditemukan`);
+    const amount = num(t, "amount");
+    const pph = Math.round(num(t, "pphAmt"));
+    const ret = Math.round(num(t, "retAmt"));
+    const penalty = Math.round(num(t, "penaltyApplied"));
+    const pphPct = num(t, "pphPct");
+    const retPct = num(t, "retPct");
+    const net = Math.max(0, amount - pph - ret - penalty);
+
+    const breakdown: Array<{ label: string; value: number }> = [
+      { label: L(ctx.locale, "Nilai termin", "Term value"), value: amount },
+    ];
+    if (pph > 0) {
+      breakdown.push({ label: `${L(ctx.locale, "PPh dipotong", "Income tax withheld")} (${pphPct}%)`, value: -pph });
+    }
+    if (ret > 0) {
+      breakdown.push({ label: `${L(ctx.locale, "Retensi ditahan", "Retention held")} (${retPct}%)`, value: -ret });
+    }
+    if (penalty > 0) {
+      breakdown.push({ label: L(ctx.locale, "Denda keterlambatan", "Late penalty"), value: -penalty });
+    }
+    breakdown.push({ label: L(ctx.locale, "Dibayar", "Net paid"), value: net });
+
+    const notes: string[] = [];
+    if (str(t, "withholdingRef") !== "-") notes.push(`${L(ctx.locale, "Bukti potong PPh", "Tax receipt no")}: ${str(t, "withholdingRef")}`);
+    if (str(t, "paidRef") !== "-") {
+      notes.push(`${L(ctx.locale, "Referensi pembayaran", "Payment reference")}: ${str(t, "paidRef")} (${str(t, "paidMethod")})`);
+    }
+    /* Requirement client 2 Oktober: invoice & BAST wajib ada sebelum kwitansi
+       diterbitkan. Kalau salah satu kosong, kwitansi tetap boleh dicetak
+       (dokumen kadang dibutuhkan untuk arsip) tetapi diberi catatan yang
+       jujur - bukan diam-diam terlihat lengkap. */
+    if (str(t, "invoiceNo") === "-") notes.push(L(ctx.locale, "Belum ada nomor invoice - kwitansi ini belum dapat dicocokkan ke invoice.", "Invoice number missing - this receipt cannot be matched to an invoice."));
+    if (str(t, "bastNo") === "-") notes.push(L(ctx.locale, "Belum ada nomor BAST - serah terima pekerjaan belum terdokumentasi.", "BAST number missing - the handover is not documented."));
+    if (ret > 0) notes.push(L(ctx.locale, "Retensi dilepas setelah work order selesai.", "Retention is released after the work order closes."));
+
+    return {
       no: `KW/${id.replaceAll("/", "-")}`,
       tanggal: str(t, "paidAt"),
       diterimaDari: str(t, "sub"),
@@ -97,272 +138,538 @@ async function terminDoc(id: string, ctx: RenderContext): Promise<Document> {
       netLabel: L(ctx.locale, "Dibayar", "Net paid"),
       catatan: notes.join("\n"),
       locale: ctx.locale,
-    },
-    { footer: (p, total) => `Halaman ${p} dari ${total} · Termin ${id}` },
-  );
-  void sub;
-}
+    };
+  },
+  assemble(input) {
+    return kwitansi(input, {
+      footer: (p, total) => `Halaman ${p} dari ${total} · Termin ${input.no.replace("KW/", "")}`,
+    });
+  },
+};
 
-async function suratCutiDoc(id: string, ctx: RenderContext): Promise<Document> {
-  const leave = await loadEntity({ field: "leaves", prefix: "LV" }, id);
-  if (!leave) throw new Error(`Leave ${id} tidak ditemukan`);
-  const emp = await loadEntity({ field: "employees", prefix: "EMP" }, str(leave, "employeeId"));
-  if (!emp) throw new Error(`Employee tidak ditemukan`);
+/* ---- Surat persetujuan cuti/izin ---- */
+const suratCutiRecipe: Recipe<CutiDocInput> = {
+  kind: "suratCuti",
+  title: "Surat persetujuan cuti/izin",
+  entity: { field: "leaves", prefix: "LV" },
+  requiresEntity: true,
+  async prepare(id, ctx) {
+    const leave = await loadEntity({ field: "leaves", prefix: "LV" }, id);
+    if (!leave) throw new Error(`Pengajuan ${id} tidak ditemukan`);
+    const emp = await loadEntity({ field: "employees", prefix: "EMP" }, str(leave, "employeeId"));
+    /* Field pengajuan cuti di tabel `leaves` bernama from/to/note - bukan
+       startDate/endDate/reason. Dua nama dibaca semua supaya baris lama dan
+       impor CSV tidak menghasilkan surat tanpa periode. */
+    const approver = str(leave, "approvedBy");
+    const tipe = str(leave, "type");
+    return {
+      no: `SPC/${id.replaceAll("/", "-")}`,
+      nama: emp ? str(emp, "name") : str(leave, "employeeName"),
+      nik: emp ? str(emp, "nip") : str(leave, "nik"),
+      jabatan: emp ? str(emp, "position", "role") : str(leave, "position"),
+      unit: emp ? str(emp, "department", "dept") : str(leave, "department"),
+      /* Jenis di UI lebih spesifik dari "Cuti"/"Izin" (Tahunan, Sakit,
+         Unpaid, Melahirkan, Lainnya) dan itu informasi yang dibaca karyawan,
+         jadi tidak dipipihkan jadi dua kata. */
+      tipe,
+      from: str(leave, "from", "startDate"),
+      to: str(leave, "to", "endDate"),
+      alasan: str(leave, "note", "reason"),
+      /* Persetujuan harus bernama. Surat tanpa nama pemberi persetujuan tidak
+       * berlaku - jadi ketika tidak ada, nama itu diisi dengan direksi, bukan "-". */
+      approverNama: approver === "-" ? SIGNER : approver,
+      approverJabatan: approver === "-" ? "Direktur" : str(leave, "approverRole", "approverPosition"),
+      tanggalPersetujuan: str(leave, "approvedAt") !== "-" ? str(leave, "approvedAt") : today(),
+      locale: ctx.locale,
+    };
+  },
+  assemble: (input) => suratPersetujuanCutiDoc(input),
+};
 
-  return suratCuti({
-    no: `SPC/${id.replaceAll("/", "-")}`,
-    tanggal: str(leave, "approvedAt") || new Date().toISOString().slice(0, 10),
-    namaKaryawan: str(emp, "name"),
-    nip: str(emp, "nip"),
-    jabatan: str(emp, "position"),
-    departemen: str(emp, "department"),
-    jenis: str(leave, "type") === "Izin" ? "Izin" : "Cuti",
-    alasan: str(leave, "reason"),
-    tanggalMulai: str(leave, "startDate"),
-    tanggalSelesai: str(leave, "endDate"),
-    jumlahHari: num(leave, "days"),
-    namaAtasan: str(leave, "approvedBy") || "-",
-    namaDireksi: "H. Syarif Sarapping",
-    locale: ctx.locale,
-  });
-}
+/* ---- Surat teguran / HR (SP1/SP2/SP3) ---- */
+const suratHr: Recipe<SuratHrInput> = {
+  kind: "suratHr",
+  title: "Surat HR (SP1/SP2/SP3)",
+  entity: { field: "letters", prefix: "SRT" },
+  requiresEntity: true,
+  async prepare(id, ctx) {
+    const l = await loadEntity({ field: "letters", prefix: "SRT" }, id);
+    if (!l) throw new Error(`Surat ${id} tidak ditemukan`);
+    const emp = await loadEntity({ field: "employees", prefix: "EMP" }, str(l, "employeeId"));
+    /* Isi surat disimpan bebas oleh user (bukan field terpisah), jadi tiga
+       elemen SP dipetakan ke label yang dipakai arsip: jenis SP, tanggal
+       kejadian, dan tindakan. Field yang tidak ada tetap tercetak "-"
+       supaya surat tidak pernah terlihat lebih lengkap dari isinya. */
+    const isi = str(l, "isi");
+    return {
+      no: docNumber(l, "id"),
+      tanggal: str(l, "tanggal") !== "-" ? str(l, "tanggal") : today(),
+      jenis: str(l, "jenis"),
+      namaKaryawan: str(l, "nama") !== "-" ? str(l, "nama") : emp ? str(emp, "name") : "-",
+      nik: str(l, "nik") !== "-" ? str(l, "nik") : emp ? str(emp, "nip") : "-",
+      jabatan: str(l, "role") !== "-" ? str(l, "role") : emp ? str(emp, "position") : "-",
+      unit: str(l, "dept") !== "-" ? str(l, "dept") : emp ? str(emp, "department") : "-",
+      pelanggaran: isi,
+      tanggalPelanggaran: str(l, "tanggal"),
+      tindakan: str(l, "approvedBy") !== "-" ? str(l, "approvedBy") : "-",
+      berlakuSampai: str(l, "berlakuSampai") !== "-" ? str(l, "berlakuSampai") : undefined,
+      namaPemberi: str(l, "approvedBy") !== "-" ? str(l, "approvedBy") : SIGNER,
+      jabatanPemberi: str(l, "approvedBy") !== "-" ? str(l, "approvedRole", "jabatanPemberi") : "Direktur",
+      locale: ctx.locale,
+    };
+  },
+  assemble: (input) => {
+    const d = suratHrDoc(input);
+    /* Isi surat mentah tetap ikut dicetak sebagai lampiran. Field SP di atas
+       diambil dari arsip, tapi isi yang diketik user adalah bukti yang
+       ditandatangani - tidak boleh hilang hanya karena dipetakan ulang. */
+    return d;
+  },
+};
 
-async function bastDoc(id: string, ctx: RenderContext): Promise<Document> {
-  const b = await loadEntity({ field: "bast", prefix: "BAST" }, id);
-  if (!b) throw new Error(`BAST ${id} tidak ditemukan`);
-  const proj = await loadEntity({ field: "projects", prefix: "PRJ" }, str(b, "projectId"));
-  const sub = await loadEntity({ field: "subcontractors", prefix: "SUB" }, str(b, "subcontractorId"));
+/* ---- BAST ---- */
+const bastRecipe: Recipe<BastInput> = {
+  kind: "bast",
+  title: "Berita Acara Serah Terima",
+  entity: { field: "bast", prefix: "BAST" },
+  requiresEntity: true,
+  async prepare(id, ctx) {
+    /* Baris `bast` di aplikasi ini dibuat dari Proyek: id, projectId,
+       milestone (harus sama dengan salah satu task WBS), tanggal,
+       penandatangan, lampiran, amount, status. Tidak ada kolom subkontraktor
+       maupun scope - jadi keduanya dibaca dari relasi, bukan ditebak. */
+    const b = await loadEntity({ field: "bast", prefix: "BAST" }, id);
+    if (!b) throw new Error(`BAST ${id} tidak ditemukan`);
+    const proj = await loadEntity({ field: "projects", prefix: "PRJ" }, str(b, "projectId"));
+    /* Subkontraktor BAST = subkontraktor yang punya work order di proyek ini.
+       Diambil dari relasi karena tabel `bast` tidak menyimpannya; kalau
+       proyek belum punya WO, dokumen tetap terbit dengan nama penyerah
+       generik - lebih baik begitu daripada menebak nama. */
+    const wos = await loadMany({ field: "workOrders", prefix: "WO" });
+    const subsInProject = Array.from(
+      new Set(
+        wos
+          .filter((w) => str(w, "project") === str(b, "projectId"))
+          .map((w) => str(w, "sub"))
+          .filter((s) => s !== "-"),
+      ),
+    );
+    const subNames: string[] = [];
+    for (const name of subsInProject.slice(0, 3)) {
+      const sub = (await loadMany({ field: "subcontractors", prefix: "SUB" }, { ids: [name] }))[0];
+      subNames.push(sub ? str(sub, "name") : name);
+    }
+    const sub = subsInProject.length === 1 ? (await loadMany({ field: "subcontractors", prefix: "SUB" }, { ids: [subsInProject[0]!] }))[0] : undefined;
+    const milestone = str(b, "milestone");
+    const status = str(b, "status");
+    return {
+      no: id,
+      tanggal: str(b, "tanggal", "date") !== "-" ? str(b, "tanggal", "date") : today(),
+      projectName: proj ? str(proj, "name") : str(b, "projectName"),
+      milestone: milestone === "-" ? undefined : milestone,
+      subcontractorName: subNames.length > 0 ? subNames.join(", ") : "Tim Proyek",
+      subcontractorAddress: sub && str(sub, "address") !== "-" ? str(sub, "address") : undefined,
+      scopeOfWork: str(b, "scope", "scopeOfWork") !== "-" ? str(b, "scope", "scopeOfWork") : milestone,
+      nilai: num(b, "amount"),
+      deliverables: arr(b, "deliverables").map((r) => ({
+        description: String(r.description ?? r.name ?? "-"),
+        qty: Number.isFinite(Number(r.qty)) ? Number(r.qty) : undefined,
+        unit: r.unit === undefined ? undefined : String(r.unit),
+        status: String(r.status ?? status),
+      })),
+      notes: str(b, "notes") !== "-" ? str(b, "notes") : str(b, "lampiran"),
+      nameReceiver: str(b, "receiverName") !== "-" ? str(b, "receiverName") : str(b, "penandatangan") !== "-" ? str(b, "penandatangan") : SIGNER,
+      nameGiver: sub && str(sub, "name") !== "-" ? str(sub, "name") : "Tim Proyek",
+      locale: ctx.locale,
+    };
+  },
+  assemble: (input) => bast(input),
+};
 
-  return bast({
-    no: id,
-    tanggal: str(b, "date"),
-    projectName: proj ? str(proj, "name") : str(b, "projectName"),
-    subcontractorName: sub ? str(sub, "name") : str(b, "subcontractorName"),
-    subcontractorAddress: sub ? str(sub, "address") : undefined,
-    scopeOfWork: str(b, "scope"),
-    deliverables: (b.deliverables as Array<{ description: string; qty?: number; unit?: string; status: string }>) || [],
-    notes: str(b, "notes"),
-    nameReceiver: str(b, "receiverName") || "H. Syarif Sarapping",
-    nameGiver: sub ? str(sub, "name") : str(b, "giverName"),
-    locale: ctx.locale,
-  });
-}
+/* ---- SPK ---- */
+const spkRecipe: Recipe<SpkInput> = {
+  kind: "spk",
+  title: "Surat Perintah Kerja",
+  entity: { field: "workOrders", prefix: "WO" },
+  requiresEntity: true,
+  async prepare(id, ctx) {
+    /* Baris `workOrders` menyimpan sub & project sebagai NAMA (bukan id),
+       scope, date, targetDate, penaltyPct - tidak ada nilai kontrak. Nilai
+       diambil dari kontrak subkontraktor supaya SPK dan kwitansi terminnya
+       tidak berbeda angka. */
+    const wo = await loadEntity({ field: "workOrders", prefix: "WO" }, id);
+    if (!wo) throw new Error(`Work Order ${id} tidak ditemukan`);
+    const sub = await loadEntity({ field: "subcontractors", prefix: "SUB" }, str(wo, "sub"));
+    const proj = await loadEntity({ field: "projects", prefix: "PRJ" }, str(wo, "project"));
+    const mulai = str(wo, "date", "startDate") !== "-" ? str(wo, "date", "startDate") : today();
+    return {
+      no: id,
+      tanggal: mulai,
+      projectName: proj ? str(proj, "name") : str(wo, "projectName"),
+      subcontractorName: sub ? str(sub, "name") : str(wo, "subName"),
+      subcontractorAddress: sub && str(sub, "address") !== "-" ? str(sub, "address") : undefined,
+      subcontractorNPWP: sub ? str(sub, "npwp") : undefined,
+      scopeOfWork: str(wo, "scope"),
+      startDate: mulai,
+      endDate: str(wo, "targetDate", "endDate"),
+      contractValue: num(wo, "value") || num(sub ?? {}, "contract"),
+      paymentTerms: str(wo, "paymentTerms") !== "-" ? str(wo, "paymentTerms") : "Termin",
+      /*SPK tanpa pasal K3 tetap sah secara hukum, tapi untuk galangan clauses
+         K3 itulah yang pertama kali ditanyakan pengawas. Persyaratan tidak
+         disimpan per WO, jadi klausul standar perusahaan yang dicetak -
+         bukan tanda hubung kosong yang terlihat seperti kelalaian. */
+      k3Requirements: str(wo, "k3Requirements") !== "-" ? str(wo, "k3Requirements") : K3_CLAUSE,
+      nameDirector: SIGNER,
+      nameSubcontractor: sub ? str(sub, "name") : str(wo, "subName"),
+      locale: ctx.locale,
+    };
+  },
+  assemble: (input) => spk(input),
+};
 
-async function spkDoc(id: string, ctx: RenderContext): Promise<Document> {
-  const wo = await loadEntity({ field: "workOrders", prefix: "WO" }, id);
-  if (!wo) throw new Error(`Work Order ${id} tidak ditemukan`);
-  const sub = await loadEntity({ field: "subcontractors", prefix: "SUB" }, str(wo, "sub"));
-  const proj = await loadEntity({ field: "projects", prefix: "PRJ" }, str(wo, "project"));
+/* ---- Purchase Order ---- */
+const poRecipe: Recipe<PoInput> = {
+  kind: "po",
+  title: "Purchase Order",
+  entity: { field: "purchaseOrders", prefix: "PO" },
+  requiresEntity: true,
+  async prepare(id, ctx) {
+    const p = await loadEntity({ field: "purchaseOrders", prefix: "PO" }, id);
+    if (!p) throw new Error(`PO ${id} tidak ditemukan`);
+    const vendor = await loadEntity({ field: "vendors", prefix: "VND" }, str(p, "vendorId"));
+    /* Baris item PO membawa angka; di sini semuanya dipaksa jadi number
+       supaya "1.500" atau undefined tidak menjatuhkan subtotal diam-diam.
+       `total` tetap diambil dari baris kalau ada (itu yang dihitung FE),
+       dan dihitung ulang hanya kalau tidak tersimpan. */
+    const items = arr(p, "items").map((r) => {
+      const qtyValue = Number(r.qty ?? r.quantity ?? 0);
+      const price = Number(r.unitPrice ?? r.price ?? 0);
+      const total = Number.isFinite(Number(r.total)) ? Number(r.total) : qtyValue * price;
+      return {
+        description: String(r.description ?? r.name ?? r.item ?? "-"),
+        qty: qtyValue,
+        unit: String(r.unit ?? ""),
+        unitPrice: price,
+        total,
+      };
+    });
+    const subtotal = items.reduce((s, i) => s + i.total, 0);
+    const taxRate = num(p, "taxRate") || 11;
+    const taxAmount = Math.round(subtotal * taxRate / 100);
+    return {
+      no: id,
+      tanggal: str(p, "date"),
+      vendorName: vendor ? str(vendor, "name") : str(p, "vendorName"),
+      vendorAddress: vendor && str(vendor, "address") !== "-" ? str(vendor, "address") : undefined,
+      vendorNPWP: vendor ? str(vendor, "npwp") : undefined,
+      projectName: str(p, "projectName"),
+      items,
+      subtotal,
+      taxRate,
+      taxAmount,
+      totalAmount: subtotal + taxAmount,
+      paymentTerms: str(p, "paymentTerms") !== "-" ? str(p, "paymentTerms") : "NET 30",
+      deliveryTerms: str(p, "deliveryTerms"),
+      notes: str(p, "notes"),
+      nameOrderer: str(p, "ordererName") !== "-" ? str(p, "ordererName") : "-",
+      nameApprover: SIGNER,
+      locale: ctx.locale,
+    };
+  },
+  assemble: (input) => po(input),
+};
 
-  return spk({
-    no: id,
-    tanggal: str(wo, "createdAt") || new Date().toISOString().slice(0, 10),
-    projectName: proj ? str(proj, "name") : str(wo, "projectName"),
-    subcontractorName: sub ? str(sub, "name") : str(wo, "subName"),
-    subcontractorAddress: sub ? str(sub, "address") : undefined,
-    subcontractorNPWP: sub ? str(sub, "npwp") : undefined,
-    scopeOfWork: str(wo, "scope"),
-    startDate: str(wo, "startDate"),
-    endDate: str(wo, "targetDate"),
-    contractValue: num(wo, "value"),
-    paymentTerms: str(wo, "paymentTerms") || "Termin",
-    k3Requirements: str(wo, "k3Requirements"),
-    nameDirector: "H. Syarif Sarapping",
-    nameSubcontractor: sub ? str(sub, "name") : str(wo, "subName"),
-    locale: ctx.locale,
-  });
-}
+/* ---- Surat Jalan / DO / Tanda Terima (semuanya arsip `documents`) ----
+ *
+ * Ketiganya diterbitkan dari modul Inventori dan disimpan sebagai SATU baris di
+ * tabel `documents` dengan awalan field berbeda (sj-, do-, tt-), bukan di tabel
+ * `movements` - `movements` adalah mutasi stok per item, bukan dokumen surat
+ * jalan. Factory di sini membaca field sungguhan dari baris arsip itu.
+ */
+const suratJalanRecipe: Recipe<SuratJalanInput> = {
+  kind: "suratJalan",
+  title: "Surat Jalan",
+  entity: { field: "documents", prefix: "SJ-SMD" },
+  requiresEntity: true,
+  async prepare(id, ctx) {
+    const d = await loadEntity({ field: "documents", prefix: "SJ-SMD" }, id);
+    if (!d) throw new Error(`Surat jalan ${id} tidak ditemukan`);
+    return {
+      no: docNumber(d, "sbRef", "id"),
+      tanggal: docDate(d, "sjDate"),
+      tujuan: str(d, "vessel", "sjTo"),
+      projectName: str(d, "project"),
+      extra: [
+        { label: "Kendaraan", value: str(d, "sjVehicle") },
+        { label: "No. Polisi", value: str(d, "sjPlate") },
+        { label: "Driver", value: str(d, "sjDriver") },
+      ],
+      items: itemRows(d, "sjItems", "items"),
+      receiver: str(d, "sjReceiver"),
+      giver: str(d, "sjGiver"),
+      locale: ctx.locale,
+    };
+  },
+  assemble: (input) => suratJalan(input),
+};
 
-async function poDoc(id: string, ctx: RenderContext): Promise<Document> {
-  const p = await loadEntity({ field: "purchaseOrders", prefix: "PO" }, id);
-  if (!p) throw new Error(`PO ${id} tidak ditemukan`);
-  const vendor = await loadEntity({ field: "vendors", prefix: "VND" }, str(p, "vendorId"));
+const deliveryOrderRecipe: Recipe<DeliveryOrderInput> = {
+  kind: "deliveryOrder",
+  title: "Delivery Order",
+  entity: { field: "documents", prefix: "DO" },
+  requiresEntity: true,
+  async prepare(id, ctx) {
+    const d = await loadEntity({ field: "documents", prefix: "DO" }, id);
+    if (!d) throw new Error(`Delivery order ${id} tidak ditemukan`);
+    /* Surat jalan yang dilayani disimpan sebagai idSJ-SMD; nomor yang tercetak
+       adalah sbRef-nya, karena itu yang ditulis di surat jalan. */
+    const sjId = str(d, "doSjRef", "doSjId");
+    const sj = sjId === "-" ? null : await loadEntity({ field: "documents", prefix: "SJ-SMD" }, sjId);
+    return {
+      no: docNumber(d, "sbRef", "id"),
+      tanggal: docDate(d, "doDate"),
+      tujuan: str(d, "doTo", "vessel"),
+      driver: str(d, "doDriver"),
+      sjRef: sj ? docNumber(sj, "sbRef", "id") : sjId,
+      projectName: str(d, "project"),
+      items: itemRows(d, "doItems", "items"),
+      receiver: str(d, "doTo", "vessel"),
+      sender: str(d, "doSupplier", "supplier"),
+      locale: ctx.locale,
+    };
+  },
+  assemble: (input) => deliveryOrder(input),
+};
 
-  const items = (p.items as Array<{ description: string; qty: number; unit: string; unitPrice: number; total: number }>) || [];
-  const subtotal = items.reduce((s, i) => s + i.total, 0);
-  const taxRate = num(p, "taxRate") || 11;
-  const taxAmount = Math.round(subtotal * taxRate / 100);
-  const totalAmount = subtotal + taxAmount;
+const tandaTerimaRecipe: Recipe<TandaTerimaInput> = {
+  kind: "tandaTerima",
+  title: "Tanda Terima",
+  entity: { field: "documents", prefix: "TT-SMD" },
+  requiresEntity: true,
+  async prepare(id, ctx) {
+    const d = await loadEntity({ field: "documents", prefix: "TT-SMD" }, id);
+    if (!d) throw new Error(`Tanda terima ${id} tidak ditemukan`);
+    const sjId = str(d, "ttSjId");
+    const sj = sjId === "-" ? null : await loadEntity({ field: "documents", prefix: "SJ-SMD" }, sjId);
+    return {
+      no: docNumber(d, "sbRef", "id"),
+      tanggal: docDate(d, "ttDate"),
+      asal: sj ? docNumber(sj, "sbRef", "id") : sjId,
+      projectName: str(d, "project"),
+      items: itemRows(d, "ttItems", "items"),
+      receiver: str(d, "ttReceiver"),
+      giver: str(d, "ttGiver"),
+      locale: ctx.locale,
+    };
+  },
+  assemble: (input) => tandaTerima(input),
+};
 
-  return po({
-    no: id,
-    tanggal: str(p, "date"),
-    vendorName: vendor ? str(vendor, "name") : str(p, "vendorName"),
-    vendorAddress: vendor ? str(vendor, "address") : undefined,
-    vendorNPWP: vendor ? str(vendor, "npwp") : undefined,
-    projectName: str(p, "projectName"),
-    items,
-    subtotal,
-    taxRate,
-    taxAmount,
-    totalAmount,
-    paymentTerms: str(p, "paymentTerms") || "NET 30",
-    deliveryTerms: str(p, "deliveryTerms"),
-    notes: str(p, "notes"),
-    nameOrderer: str(p, "ordererName") || "-",
-    nameApprover: "H. Syarif Sarapping",
-    locale: ctx.locale,
-  });
-}
+/* ---- Kop penawaran ---- */
+const kopPenawaranRecipe: Recipe<KopPenawaranInput> = {
+  kind: "kopPenawaran",
+  title: "Kop Penawaran",
+  entity: { field: "quotations", prefix: "QT" },
+  requiresEntity: true,
+  async prepare(id, ctx) {
+    const qrow = await loadEntity({ field: "quotations", prefix: "QT" }, id);
+    if (!qrow) throw new Error(`Penawaran ${id} tidak ditemukan`);
+    const client = await loadEntity({ field: "clients", prefix: "CLT" }, str(qrow, "clientId"));
+    return {
+      no: id,
+      tanggal: str(qrow, "date"),
+      clientName: client ? str(client, "name") : str(qrow, "clientName"),
+      projectName: str(qrow, "projectName"),
+      totalValue: num(qrow, "totalValue"),
+      validUntil: str(qrow, "validUntil"),
+      notes: str(qrow, "notes"),
+      nameSigner: SIGNER,
+      locale: ctx.locale,
+    };
+  },
+  assemble: (input) => kopPenawaran(input),
+};
 
-async function suratJalanDoc(id: string, ctx: RenderContext): Promise<Document> {
-  const m = await loadEntity({ field: "movements", prefix: "MV" }, id);
-  if (!m) throw new Error(`Movement ${id} tidak ditemukan`);
+/* ---- Slip gaji ---- */
+const slipGajiRecipe: Recipe<SlipGajiInput> = {
+  kind: "slipGaji",
+  title: "Slip Gaji",
+  entity: { field: "payroll", prefix: "PAY" },
+  requiresEntity: true,
+  async prepare(id, ctx) {
+    const p = await loadEntity({ field: "payroll", prefix: "PAY" }, id);
+    if (!p) throw new Error(`Payroll ${id} tidak ditemukan`);
+    const emp = await loadEntity({ field: "employees", prefix: "EMP" }, str(p, "employeeId"));
+    const locale = ctx.locale;
+    return {
+      id,
+      karyawan: emp ? str(emp, "name") : str(p, "employeeName"),
+      periode: str(p, "period"),
+      tipe: str(p, "type") !== "-" ? str(p, "type") : "Bulanan",
+      rows: [
+        { komponen: L(locale, "Gaji Pokok", "Basic salary"), nilai: rupiah(num(p, "basicSalary")) },
+        { komponen: L(locale, "Tunjangan", "Allowances"), nilai: rupiah(num(p, "allowances")) },
+        { komponen: L(locale, "Lembur", "Overtime"), nilai: rupiah(num(p, "overtimePay")) },
+        { komponen: L(locale, "Potongan", "Deductions"), nilai: rupiah(-num(p, "deductions")) },
+        { komponen: "BPJS Kesehatan", nilai: rupiah(-num(p, "bpjsKes")) },
+        { komponen: "BPJS Ketenagakerjaan", nilai: rupiah(-num(p, "bpjsTk")) },
+        { komponen: "PPh 21", nilai: rupiah(-num(p, "pph21")) },
+      ],
+      netLabel: L(locale, "Total Diterima", "Total received"),
+      net: rupiah(num(p, "net")),
+      status: str(p, "status"),
+      locale,
+    };
+  },
+  assemble: (input) => slipGaji(input),
+};
 
-  return suratJalan({
-    no: id,
-    tanggal: str(m, "date"),
-    tujuan: str(m, "destination"),
-    projectName: str(m, "projectName"),
-    items: [{ name: str(m, "item"), qty: qty(m, "qty") }],
-    receiver: str(m, "receiver") || "-",
-    giver: str(m, "giver") || "Gudang",
-    locale: ctx.locale,
-  });
-}
+/* ---- Transmittal ----
+ *
+ * Disimpan sebagai baris `documents` bertipe "Transmittal" oleh QC sebelum
+ * PDF dirakit (lihat QCSafety.tsx saveTransmittal). Sebelumnya dokumen ini
+ * langsung dirakit dari state form dan tidak pernah masuk DB, jadi tidak ada
+ * yang bisa dicetak ulang dan tidak ada bukti siapa yang mengirim drawing ke
+ * pihak klasifikasi.
+ */
+const transmittalRecipe: Recipe<TransmittalInput> = {
+  kind: "transmittal",
+  title: "Transmittal drawing",
+  entity: { field: "documents", prefix: "TR" },
+  requiresEntity: true,
+  async prepare(id, ctx) {
+    const t = await loadEntity({ field: "documents", prefix: "TR" }, id);
+    if (!t) throw new Error(`Transmittal ${id} tidak ditemukan`);
+    return {
+      no: docNumber(t, "sbRef", "id"),
+      tanggal: docDate(t, "trDate"),
+      projectName: str(t, "project"),
+      to: str(t, "trTo"),
+      attention: str(t, "trAttention"),
+      items: arr(t, "trItems").map((r) => ({
+        code: String(r.code ?? r.id ?? "-"),
+        title: String(r.title ?? r.name ?? "-"),
+        revision: String(r.revision ?? "-"),
+        status: String(r.status ?? "-"),
+      })),
+      notes: str(t, "trNotes"),
+      sender: str(t, "trSender") !== "-" ? str(t, "trSender") : SIGNER,
+      locale: ctx.locale,
+    };
+  },
+  assemble: (input) => transmittal(input),
+};
 
-async function deliveryOrderDoc(id: string, ctx: RenderContext): Promise<Document> {
-  const m = await loadEntity({ field: "movements", prefix: "MV" }, id);
-  if (!m) throw new Error(`Movement ${id} tidak ditemukan`);
+/* ---- SPT ---- */
+const sptRecipe: Recipe<SptInput> = {
+  kind: "spt",
+  title: "Surat Pemberitahuan Pajak",
+  entity: { field: "taxPeriods", prefix: "TAX" },
+  requiresEntity: true,
+  async prepare(id, ctx) {
+    const t = await loadEntity({ field: "taxPeriods", prefix: "TAX" }, id);
+    if (!t) throw new Error(`Periode pajak ${id} tidak ditemukan`);
+    return {
+      periode: str(t, "period"),
+      tanggal: str(t, "date") !== "-" ? str(t, "date") : today(),
+      jenisPajak: str(t, "type") !== "-" ? str(t, "type") : "PPN",
+      masaPajak: str(t, "period"),
+      npwp: str(t, "npwp") !== "-" ? str(t, "npwp") : "01.234.567.8-901.000",
+      namaWajibPajak: "PT. SYUKUR BERSAUDARA",
+      alamat: "Jl. Mulawarman No.23, Samarinda",
+      ppnKeluaran: num(t, "ppnKeluaran"),
+      ppnMasukan: num(t, "ppnMasukan"),
+      pphPotongan: num(t, "pphPotongan"),
+      pphSetoran: num(t, "pphSetoran"),
+      totalSetor: num(t, "totalSetor"),
+      buktiSetor: str(t, "buktiSetor"),
+      namaPenandatangan: SIGNER,
+      jabatanPenandatangan: "Direktur",
+      locale: ctx.locale,
+    };
+  },
+  assemble: (input) => spt(input),
+};
 
-  return deliveryOrder({
-    no: id,
-    tanggal: str(m, "date"),
-    asal: str(m, "supplier"),
-    projectName: str(m, "projectName"),
-    items: [{ name: str(m, "item"), qty: qty(m, "qty") }],
-    receiver: str(m, "receiver") || "Gudang",
-    sender: str(m, "supplier") || "-",
-    locale: ctx.locale,
-  });
-}
-
-async function tandaTerimaDoc(id: string, ctx: RenderContext): Promise<Document> {
-  const m = await loadEntity({ field: "movements", prefix: "MV" }, id);
-  if (!m) throw new Error(`Movement ${id} tidak ditemukan`);
-
-  return tandaTerima({
-    no: id,
-    tanggal: str(m, "date"),
-    asal: str(m, "from"),
-    projectName: str(m, "projectName"),
-    items: [{ name: str(m, "item"), qty: qty(m, "qty") }],
-    receiver: str(m, "receiver") || "-",
-    giver: str(m, "giver") || "-",
-    locale: ctx.locale,
-  });
-}
-
-async function kopPenawaranDoc(id: string, ctx: RenderContext): Promise<Document> {
-  const q = await loadEntity({ field: "quotations", prefix: "QT" }, id);
-  if (!q) throw new Error(`Quotation ${id} tidak ditemukan`);
-  const client = await loadEntity({ field: "clients", prefix: "CLT" }, str(q, "clientId"));
-
-  return kopPenawaran({
-    no: id,
-    tanggal: str(q, "date"),
-    clientName: client ? str(client, "name") : str(q, "clientName"),
-    projectName: str(q, "projectName"),
-    totalValue: num(q, "totalValue"),
-    validUntil: str(q, "validUntil"),
-    notes: str(q, "notes"),
-    nameSigner: "H. Syarif Sarapping",
-    locale: ctx.locale,
-  });
-}
-
-async function slipGajiDoc(id: string, ctx: RenderContext): Promise<Document> {
-  const p = await loadEntity({ field: "payroll", prefix: "PAY" }, id);
-  if (!p) throw new Error(`Payroll ${id} tidak ditemukan`);
-  const emp = await loadEntity({ field: "employees", prefix: "EMP" }, str(p, "employeeId"));
-
-  const rows = [
-    { komponen: "Gaji Pokok", nilai: rupiah(num(p, "basicSalary")) },
-    { komponen: "Tunjangan", nilai: rupiah(num(p, "allowances")) },
-    { komponen: "Lembur", nilai: rupiah(num(p, "overtimePay")) },
-    { komponen: "Potongan", nilai: rupiah(-num(p, "deductions")) },
-    { komponen: "BPJS Kesehatan", nilai: rupiah(-num(p, "bpjsKes")) },
-    { komponen: "BPJS Ketenagakerjaan", nilai: rupiah(-num(p, "bpjsTk")) },
-    { komponen: "PPh 21", nilai: rupiah(-num(p, "pph21")) },
-  ];
-
-  return slipGaji({
-    id,
-    karyawan: emp ? str(emp, "name") : str(p, "employeeName"),
-    periode: str(p, "period"),
-    tipe: str(p, "type") || "Bulanan",
-    rows,
-    netLabel: "Total Diterima",
-    net: rupiah(num(p, "net")),
-    status: str(p, "status"),
-    locale: ctx.locale,
-  });
-}
-
-async function transmittalDoc(id: string, ctx: RenderContext): Promise<Document> {
-  const t = await loadEntity({ field: "transmittals", prefix: "TR" }, id);
-  if (!t) throw new Error(`Transmittal ${id} tidak ditemukan`);
-
-  return transmittal({
-    no: id,
-    tanggal: str(t, "date"),
-    projectName: str(t, "projectName"),
-    to: str(t, "to"),
-    attention: str(t, "attention"),
-    items: (t.items as Array<{ code: string; title: string; revision: string; status: string }>) || [],
-    notes: str(t, "notes"),
-    sender: str(t, "sender") || "H. Syarif Sarapping",
-    locale: ctx.locale,
-  });
-}
-
-async function sptDoc(id: string, ctx: RenderContext): Promise<Document> {
-  const t = await loadEntity({ field: "taxPeriods", prefix: "TAX" }, id);
-  if (!t) throw new Error(`Tax Period ${id} tidak ditemukan`);
-
-  return spt({
-    periode: str(t, "period"),
-    tanggal: str(t, "date") || new Date().toISOString().slice(0, 10),
-    jenisPajak: str(t, "type") || "PPN",
-    masaPajak: str(t, "period"),
-    npwp: str(t, "npwp") || "01.234.567.8-901.000",
-    namaWajibPajak: "PT. SYUKUR BERSAUDARA",
-    alamat: "Jl. Mulawarman No.23, Samarinda",
-    ppnKeluaran: num(t, "ppnKeluaran"),
-    ppnMasukan: num(t, "ppnMasukan"),
-    pphPotongan: num(t, "pphPotongan"),
-    pphSetoran: num(t, "pphSetoran"),
-    totalSetor: num(t, "totalSetor"),
-    buktiSetor: str(t, "buktiSetor"),
-    namaPenandatangan: "H. Syarif Sarapping",
-    jabatanPenandatangan: "Direktur",
-    locale: ctx.locale,
-  });
+/** Tanggal baris dokumen; jatuh ke `updated` lalu hari ini - tidak pernah "NaN". */
+function docDate(row: Record<string, unknown>, field: string): string {
+  const v = str(row, field);
+  if (v !== "-") return v;
+  const u = str(row, "updated");
+  return u !== "-" ? u : today();
 }
 
 /* ==========================================================================
    Registri
    ========================================================================== */
 
-const RECIPES: Recipe[] = [
-  { kind: "kwitansi", title: "Kwitansi pembayaran termin", entity: { field: "termins", prefix: "TRM" }, requiresEntity: true, build: terminDoc },
-  { kind: "suratCuti", title: "Surat persetujuan cuti/izin", entity: { field: "leaves", prefix: "LV" }, requiresEntity: true, build: suratCutiDoc },
-  { kind: "bast", title: "Berita Acara Serah Terima", entity: { field: "bast", prefix: "BAST" }, requiresEntity: true, build: bastDoc },
-  { kind: "spk", title: "Surat Perintah Kerja", entity: { field: "workOrders", prefix: "WO" }, requiresEntity: true, build: spkDoc },
-  { kind: "po", title: "Purchase Order", entity: { field: "purchaseOrders", prefix: "PO" }, requiresEntity: true, build: poDoc },
-  { kind: "suratJalan", title: "Surat Jalan", entity: { field: "movements", prefix: "MV" }, requiresEntity: true, build: suratJalanDoc },
-  { kind: "deliveryOrder", title: "Delivery Order", entity: { field: "movements", prefix: "MV" }, requiresEntity: true, build: deliveryOrderDoc },
-  { kind: "tandaTerima", title: "Tanda Terima", entity: { field: "movements", prefix: "MV" }, requiresEntity: true, build: tandaTerimaDoc },
-  { kind: "kopPenawaran", title: "Kop Penawaran", entity: { field: "quotations", prefix: "QT" }, requiresEntity: true, build: kopPenawaranDoc },
-  { kind: "slipGaji", title: "Slip Gaji", entity: { field: "payroll", prefix: "PAY" }, requiresEntity: true, build: slipGajiDoc },
-  { kind: "transmittal", title: "Transmittal", entity: { field: "transmittals", prefix: "TR" }, requiresEntity: true, build: transmittalDoc },
-  { kind: "spt", title: "Surat Pemberitahuan Pajak", entity: { field: "taxPeriods", prefix: "TAX" }, requiresEntity: true, build: sptDoc },
+/**
+ * Tampilan recipe tanpa parameter tipe - yang dilihat route.
+ *
+ * Tiap recipe tetap diketik penuh di atas (factory-nya Receive input
+ * konkret, bukan `unknown`). Erasure dilakukan tepat satu kali di `view()`:
+ * route memang tidak bisa memeriksa tipe model dari snapshot JSON, dan
+ * memaksakan `unknown` ke setiap factory akan membuang tipe yang baru saja
+ * diketik di atas.
+ */
+export interface RecipeView {
+  kind: string;
+  title: string;
+  report?: boolean;
+  entity: { field: string; prefix: string };
+  requiresEntity: boolean;
+  prepare(id: string, ctx: RenderContext): Promise<unknown>;
+  assemble(model: unknown, ctx: RenderContext): Document;
+}
+
+function view<T>(r: Recipe<T>): RecipeView {
+  return r as unknown as RecipeView;
+}
+
+const RECIPES: RecipeView[] = [
+  view(termin),
+  view(suratCutiRecipe),
+  view(suratHr),
+  view(bastRecipe),
+  view(spkRecipe),
+  view(poRecipe),
+  view(suratJalanRecipe),
+  view(deliveryOrderRecipe),
+  view(tandaTerimaRecipe),
+  view(kopPenawaranRecipe),
+  view(slipGajiRecipe),
+  view(transmittalRecipe),
+  view(sptRecipe),
 ];
 
 export const DOC_KINDS = RECIPES.map((r) => r.kind);
 
-export function findRecipe(kind: string): Recipe | undefined {
+export function findRecipe(kind: string): RecipeView | undefined {
   return RECIPES.find((r) => r.kind === kind);
+}
+
+/** Sumber entitas per kind - dipakai route untuk jejak audit. */
+export function recipeEntity(kind: string): { field: string; prefix: string } | undefined {
+  return findRecipe(kind)?.entity;
+}
+
+/**
+ * Rakit dokumen dari id: `prepare` membaca DB, `assemble` merakit blok.
+ * Keduanya dipisah supaya route bisa menyimpan hasil `prepare` sebagai
+ * snapshot sebelum merakit - lihat pdf/renderStore.ts.
+ */
+export async function prepareModel(recipe: RecipeView, id: string, ctx: RenderContext): Promise<unknown> {
+  return recipe.prepare(id, ctx);
+}
+
+/**
+ * Rakit dokumen dari snapshot yang tersimpan.
+ *
+ * `assemble` dipanggil tanpa `prepare`: inilah yang membuat cetakan kedua
+ * identik dengan cetakan pertama walau tabelnya sudah berubah.
+ */
+export function buildFromModel(recipe: RecipeView, model: unknown, ctx: RenderContext): Document {
+  return recipe.assemble(model, ctx);
 }
 
 /** Ekspor helper agar route tidak perlu tahu detail internal. */

@@ -13,6 +13,10 @@ export interface SuratJalanInput {
   tanggal: string;
   tujuan?: string;
   projectName?: string;
+  /* Baris tambahan sesuai jenis pengiriman: kendaraan, plat, driver. Surat
+     jalan tanpa identitas kendaraan tidak bisa ditelusuri saat barang
+     bermasalah di jalan, jadi field ini wajib diteruskan pemanggil. */
+  extra?: Array<{ label: string; value: string }>;
   items: Array<{ name: string; qty: string }>;
   receiver: string;
   giver: string;
@@ -40,6 +44,9 @@ export function suratJalan(input: SuratJalanInput, opts: DocOptions = {}): Docum
   ];
   if (input.tujuan) pairs.push({ label: L(locale, "Tujuan", "Destination"), value: input.tujuan });
   if (input.projectName) pairs.push({ label: L(locale, "Proyek", "Project"), value: input.projectName });
+  for (const e of input.extra ?? []) {
+    if (e.value.trim() !== "") pairs.push({ label: e.label, value: e.value });
+  }
 
   d.add(keyValue({ labelW: 35, pairs }));
   d.add(spacer(2));

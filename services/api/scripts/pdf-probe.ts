@@ -13,9 +13,14 @@
  *   3. STRUKTUR - tabel panjang jadi multi-halaman dengan header berulang,
  *                  blok tanda tangan tidak pernah terbelah
  *   4. TEKS PANJANG - token tanpa spasi dipotong, bukan meluber
+ *   5. REGISTRY  - setiap factory punya tabel nyata dan bisa dirakit ulang
+ *                  dari snapshot, dan setiap kind yang dipanggil FE terdaftar
  *
  * Jalankan: npm run probe:pdf
  */
+import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { doc, checkGeometry } from "../src/pdf/document.js";
 import {
   callout,
@@ -36,6 +41,7 @@ import { PAGES, MARGIN_MM } from "../src/pdf/theme.js";
 import { niceScale, axisTicks } from "../src/pdf/chart.js";
 import type { ChartSpec } from "../src/pdf/chart.js";
 import { kwitansi as kwitansiDoc, ribu } from "../src/pdf/documents/kwitansi.js";
+import { DOC_KINDS, findRecipe, buildFromModel } from "../src/pdf/registry.js";
 
 let pass = 0;
 const failures: string[] = [];
@@ -322,8 +328,301 @@ ok("axisTicks naik monoton", axisTicks(100, 25).every((v, i, a) => i === 0 || v 
 }
 
 /* ==========================================================================
+   Integritas registry - kelas bug yang tidak terlihat dari atas
+   ==========================================================================
+
+   Probe di atas memakai model yang dibuat sendiri di dalam probe, jadi ia
+   membuktikan mesin benar tapi TIDAK membuktikan registry benar. Dua kelas
+   bug yang lolos semua probe lama ada di sini:
+
+     1. Kind yang dipakai FE tapi tidak ada di registry. Pemanggil mengembalikan
+        PDF lokal karena fallback menutupi error server - dokumennya tercetak
+        dengan mesin yang berbeda, dan tidak ada yang diberi tahu.
+     2. Recipe yang menunjuk tabel tidak ada. `SELECT ... FROM transmittals`
+        gagal saat runtime; TypeScript tidak bisa melihatnya karena nama
+        tabelnya cuma string.
+
+   Ditambah Assemble dari snapshot, yang jalurnya sama dengan cetak ulang:
+   model -> dokumen -> PDF, tanpa menyentuh DB sama sekali.
+   -------------------------------------------------------------------------- */
+
+const REPO = path.resolve(fileURLToPath(new URL("../../..", import.meta.url)));
+
+/** Tabel yang benar-benar ada, dibaca dari berkas migrasi (sumber kebenaran). */
+function knownTables(): Set<string> {
+  const out = new Set<string>();
+  const dir = path.join(REPO, "services/api/migrations");
+  for (const file of fs.readdirSync(dir).filter((f) => f.endsWith(".sql"))) {
+    const raw = fs.readFileSync(path.join(dir, file), "utf8");
+    for (const m of raw.matchAll(/create\s+table\s+(?:if\s+not\s+exists\s+)?([A-Za-z_][A-Za-z0-9_]*)/gi)) {
+      out.add(String(m[1]));
+    }
+  }
+  return out;
+}
+
+/** Kind PDF yang benar-benar dipanggil di FE. */
+function frontendKinds(): Map<string, string> {
+  const found = new Map<string, string>();
+  const root = path.join(REPO, "apps/web/src");
+  const walk = (dir: string): void => {
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+      const full = path.join(dir, entry.name);
+      if (entry.isDirectory()) walk(full);
+      else if (/\.tsx?$/.test(entry.name)) {
+        const raw = fs.readFileSync(full, "utf8");
+        for (const m of raw.matchAll(/pdfDoc\.request\(\s*\{\s*kind:\s*"([A-Za-z0-9_]+)"/g)) {
+          found.set(String(m[1]), path.relative(REPO, full).replaceAll("\\", "/"));
+        }
+      }
+    }
+  };
+  walk(root);
+  return found;
+}
+
+/** Model minimal per kind - cukup panjang untuk menguji pagination. */
+const MODELS: Record<string, unknown> = {
+  kwitansi: {
+    no: "KW/TRM-2026-001",
+    tanggal: "2026-10-02",
+    diterimaDari: "PT KONSTRUKSI REKAYASA INDUSTRI DAN PERTAHANAN NUSANTARA",
+    untuk: "TRM-2026-001 - PerbaikanAMC kapal",
+    breakdown: [
+      { label: "Nilai termin", value: 279_000_000 },
+      { label: "PPh dipotong (2%)", value: -5_580_000 },
+      { label: "Retensi ditahan (5%)", value: -13_950_000 },
+      { label: "Dibayar", value: 259_470_000 },
+    ],
+    netLabel: "Dibayar",
+    catatan: "Retensi dilepas setelah work order selesai.",
+    locale: "id",
+  },
+  suratCuti: {
+    no: "SPC/CUT-2026-014",
+    nama: "Budi Santoso",
+    nik: "1234567890123456",
+    jabatan: "Welder Senior",
+    unit: "Produksi",
+    tipe: "Cuti",
+    from: "2026-10-02",
+    to: "2026-10-16",
+    alasan: "Urusan keluarga yang tidak bisa diundur",
+    approverNama: "Syarif Sarapping",
+    approverJabatan: "Direktur",
+    tanggalPersetujuan: "2026-10-01",
+    locale: "id",
+  },
+  suratHr: {
+    no: "SRT-2026-007",
+    tanggal: "2026-10-02",
+    jenis: "SP 2",
+    namaKaryawan: "Siti Aminah",
+    nik: "6543210987654321",
+    jabatan: "Operator CNC",
+    unit: "Produksi",
+    pelanggaran: "Absen tanpa keterangan selama tiga hari kerja berturut-turut.",
+    tanggalPelanggaran: "2026-09-20",
+    tindakan: "Pemberitahuran tertulis dan evaluar ulang selama satu bulan",
+    berlakuSampai: "2026-11-02",
+    namaPemberi: "H. Syarif Sarapping",
+    jabatanPemberi: "Direktur",
+    locale: "id",
+  },
+  bast: {
+    no: "BAST-2026-003",
+    tanggal: "2026-10-02",
+    projectName: "Repairs & Maintenance Km. Nyak Kopong",
+    subcontractorName: "PT KRI REKAYASA",
+    subcontractorAddress: "Jl.ymm Manunggal No.8, Balikpapan",
+    scopeOfWork: "Penggantianplat engine, overhaul pompa injeksi, dan perbaikan sistem hidrolik kontrol kemudi.",
+    deliverables: Array.from({ length: 24 }, (_, i) => ({ description: `Komponen pekerjaan nomor ${i + 1}`, qty: i + 1, unit: "unit", status: "Selesai" })),
+    notes: "Diterima tanpa catatanminor.",
+    nameReceiver: "H. Syarif Sarapping",
+    nameGiver: "PT KRI REKAYASA",
+    locale: "id",
+  },
+  spk: {
+    no: "WO-2026-021",
+    tanggal: "2026-10-02",
+    projectName: "Repairs & Maintenance Km. Nyak Kopong",
+    subcontractorName: "PT KRI REKAYASA",
+    subcontractorAddress: "Jl. Manunggal No.8, Balikpapan",
+    subcontractorNPWP: "01.234.567.8-901.000",
+    scopeOfWork: "Pekerjaan dock repair dan overhaul pompa injeksi sesuai catatan pekerjaan.",
+    startDate: "2026-10-05",
+    endDate: "2026-12-20",
+    contractValue: 750_000_000,
+    paymentTerms: "Termin 30/40/30",
+    k3Requirements: "Pakai alat pelindung diri lengkap; izin kerja panas untuk pekerjaan las.",
+    nameDirector: "H. Syarif Sarapping",
+    nameSubcontractor: "PT KRI REKAYASA",
+    locale: "id",
+  },
+  po: {
+    no: "PO/2026/10/0021",
+    tanggal: "2026-10-02",
+    vendorName: "PT SUMBER BAHAN BAKTI",
+    vendorAddress: "Jl. Ahmad Yani No.45, Samarinda",
+    vendorNPWP: "01.234.567.8-901.000",
+    projectName: "Repairs & Maintenance Km. Nyak Kopong",
+    items: Array.from({ length: 14 }, (_, i) => ({ description: `Bahan_${i + 1} - cat tembok galvanis 5 kg`, qty: 10 + i, unit: "tig", unitPrice: 150_000 + i * 1000, total: (10 + i) * (150_000 + i * 1000) })),
+    subtotal: 0,
+    taxRate: 11,
+    taxAmount: 0,
+    totalAmount: 0,
+    paymentTerms: "NET 30",
+    deliveryTerms: "DAP Samarinda",
+    notes: "Barang dikirim bertahap sesuai kebutuhan lapangan.",
+    nameOrderer: "H. Syarif Sarapping",
+    nameApprover: "H. Syarif Sarapping",
+    locale: "id",
+  },
+  suratJalan: {
+    no: "01/SJ/2026",
+    tanggal: "2026-10-02",
+    tujuan: "Kapres Km. Sepinggan -Repair",
+    projectName: "-",
+    extra: [{ label: "Kendaraan", value: "Mobil Pickup" }, { label: "No. Polisi", value: "KT 1234 XX" }, { label: "Driver", value: "Budi" }],
+    items: Array.from({ length: 12 }, (_, i) => ({ name: `Cat anti korosi 5 kg`, qty: String(i + 1) })),
+    receiver: "Suryanto",
+    giver: "Gudang",
+    locale: "id",
+  },
+  deliveryOrder: {
+    no: "DO/2026/10/0009",
+    tanggal: "2026-10-02",
+    tujuan: "Kapres Km. Sepinggan -Repair",
+    driver: "Budi",
+    sjRef: "01/SJ/2026",
+    projectName: "-",
+    items: [{ name: "Suku cadang pompa injeksi", qty: "4" }],
+    receiver: "Suryanto",
+    sender: "Gudang",
+    locale: "id",
+  },
+  tandaTerima: {
+    no: "02/TT/2026",
+    tanggal: "2026-10-02",
+    asal: "01/SJ/2026",
+    projectName: "-",
+    items: Array.from({ length: 8 }, (_, i) => ({ name: `Suku cadang_${i + 1}`, qty: String(i + 2) })),
+    receiver: "Gudang",
+    giver: "Suryanto",
+    locale: "id",
+  },
+  kopPenawaran: {
+    no: "QT-2026-011",
+    tanggal: "2026-10-02",
+    clientName: "PT PELAYARAN NUSANTARA",
+    projectName: "Repairs & Maintenance Km. Nyak Kopong",
+    totalValue: 1_250_000_000,
+    validUntil: "2026-10-30",
+    notes: "Harga belum termasuk GST danärtsmaterial approval.",
+    nameSigner: "H. Syarif Sarapping",
+    locale: "id",
+  },
+  slipGaji: {
+    id: "PAY-2026-09-EMP-012",
+    karyawan: "Ahmad Hidayat",
+    periode: "2026-09",
+    tipe: "Bulanan",
+    rows: [
+      { komponen: "Gaji Pokok", nilai: "Rp 7.000.000" },
+      { komponen: "Tunjangan", nilai: "Rp 1.500.000" },
+      { komponen: "Lembur", nilai: "Rp 650.000" },
+      { komponen: "Potongan", nilai: "(Rp 250.000)" },
+      { komponen: "BPJS Kesehatan", nilai: "(Rp 227.300)" },
+      { komponen: "BPJS Ketenagakerjaan", nilai: "(Rp 189.400)" },
+      { komponen: "PPh 21", nilai: "(Rp 78.400)" },
+    ],
+    netLabel: "Total Diterima",
+    net: "Rp 8.404.900",
+    status: "Dibayar",
+    locale: "id",
+  },
+  transmittal: {
+    no: "TR/2026/10/02/001",
+    tanggal: "2026-10-02",
+    projectName: "Repairs & Maintenance Km. Nyak Kopong",
+    to: "BKI (Badan Klasifikasi Indonesia)",
+    attention: "Surveyor kelas",
+    items: Array.from({ length: 18 }, (_, i) => ({ code: `DRW-${String(i + 1).padStart(3, "0")}`, title: `Shop Drawing_${i + 1}`, revision: String.fromCharCode(65 + (i % 4)), status: "Disetujui" })),
+    notes: "Mohon konfirmasi penerimaan dokumen ini.",
+    sender: "H. Syarif Sarapping",
+    locale: "id",
+  },
+  spt: {
+    periode: "2026-09",
+    tanggal: "2026-10-02",
+    jenisPajak: "PPN",
+    masaPajak: "2026-09",
+    npwp: "01.234.567.8-901.000",
+    namaWajibPajak: "PT. SYUKUR BERSAUDARA",
+    alamat: "Jl. Mulawarman No.23, Samarinda",
+    ppnKeluaran: 185_000_000,
+    ppnMasukan: 96_500_000,
+    pphPotongan: 4_250_000,
+    pphSetoran: 4_100_000,
+    totalSetor: 84_250_000,
+    buktiSetor: "NTPN-2026-09-000123",
+    namaPenandatangan: "H. Syarif Sarapping",
+    jabatanPenandatangan: "Direktur",
+    locale: "id",
+  },
+};
+
+function registryIntegrity(): void {
+  const tables = knownTables();
+  const kinds = new Set(DOC_KINDS);
+
+  for (const kind of DOC_KINDS) {
+    const recipe = findRecipe(kind);
+    ok(`registry: kind ${kind} terdaftar`, recipe !== undefined);
+    if (!recipe) continue;
+    ok(`registry: ${kind} menunjuk tabel nyata`, tables.has(recipe.entity.field), recipe.entity.field);
+    const model = MODELS[kind];
+    if (model === undefined) {
+      ok(`registry: ${kind} punya model probe`, false, "tidak ada model di probe");
+      continue;
+    }
+    /* Jalur yang sama dengan cetak ulang: model -> dokumen -> PDF. */
+    try {
+      const d = buildFromModel(recipe, JSON.parse(JSON.stringify(model)), { locale: "id", branch: "SEMUA" });
+      const res = d.render();
+      const raw = Buffer.from(res.bytes).toString("latin1");
+      ok(`registry: ${kind} merakit dari snapshot`, raw.startsWith("%PDF-"), `${res.pages} halaman, ${res.bytes.byteLength} B`);
+      const problems = checkGeometry(res, MARGIN_MM, { width: PAGES.a4.width, height: PAGES.a4.height });
+      ok(`registry: ${kind} geometri snapshot`, problems.length === 0, problems.length === 0 ? "aman" : problems[0]?.reason ?? "");
+    } catch (err) {
+      ok(`registry: ${kind} merakit dari snapshot`, false, err instanceof Error ? err.message : String(err));
+    }
+  }
+
+  /* Kind yang dipanggil FE harus ada. Ini yang dulu bocor: `suratHr` dipakai
+     HR.tsx tapi tidak pernah terdaftar, jadi PDF-nya gagal diam-diam. */
+  const used = frontendKinds();
+  for (const [kind, file] of used) {
+    ok(`call site ${kind} terdaftar di registry`, kinds.has(kind), file);
+  }
+  const unused = DOC_KINDS.filter((k) => !used.has(k));
+  if (unused.length > 0) {
+    console.log(`INFO  kind tanpa pemanggil FE (boleh - panggilan menyusul): ${unused.join(", ")}`);
+  }
+  ok("semua pemanggil PDF punya kind yang dikenal", used.size > 0, `${used.size} kind terpakai`);
+
+  /* Nama file yang dirakit harus aman untuk header HTTP. */
+  for (const kind of DOC_KINDS) {
+    const no = String((MODELS[kind] as { no?: string; id?: string } | undefined)?.no ?? (MODELS[kind] as { id?: string } | undefined)?.id ?? "");
+    ok(`nama berkas ${kind} aman`, !/["\r\n]/.test(`${kind}-${no.replaceAll("/", "-")}`));
+  }
+}
+
+/* ==========================================================================
    Ringkasan
    ========================================================================== */
+
+registryIntegrity();
 
 console.log("");
 if (failures.length > 0) {

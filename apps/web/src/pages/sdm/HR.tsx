@@ -36,6 +36,7 @@ import { activeEmployeeTrend, certifiedTrend, certExpireTrend, employeeTrend } f
 import { fmtTanggal, todayISO } from "../../utils/format";
 import { AlertBannerView, notifRowId, useModuleAlert, useNotifFlash } from "../../components/AlertBanner";
 import { getSetting } from "../../utils/settings";
+import { useAuth } from "../../auth/auth";
 import { exportExcel } from "../../utils/export";
 import { pdfServerReady } from "../../services/pdfClient";
 import { usePdfDoc } from "../../components/usePdfDoc";
@@ -207,6 +208,9 @@ export default function HR() {
   const { data, add, update, remove, log, branch, setBranch, inBranch } = useStore();
   const { locale } = useT();
   const S = n_qc[locale];
+  /* Nama penyetuju dicatat di baris cuti, bukan diasumsikan: surat persetujuan
+     ditandatangani atas nama orang tertentu, jadi "siapa" harus benar. */
+  const { user } = useAuth();
   const modAlert = useModuleAlert("sdm");
   const flash = useNotifFlash();
   const notified = useMemo(() => new Set(modAlert.items.map((a) => a.rowId)), [modAlert.items]);
@@ -755,7 +759,7 @@ export default function HR() {
   };
   const approveSupervisor = async (l: StoreItem) => {
     try {
-    await update("leaves", l.id, { status: "Disetujui Atasan" });
+    await update("leaves", l.id, { status: "Disetujui Atasan", supervisorApprovedBy: user?.name ?? "Atasan", supervisorApprovedAt: todayISO() });
     log("menyetujui cuti (atasan)", `${l.id} - ${empNameOf(l.employeeId)}`, "SDM");
     toast(S.tLeaveSup.replace("{n}", l.id));
     } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); }
@@ -763,7 +767,11 @@ export default function HR() {
 
   const approveHrd = async (l: StoreItem) => {
     try {
-    await update("leaves", l.id, { status: "Disetujui" });
+    /* Nama & tanggal persetuJUAN disimpan di baris yang sama, bukan
+       diasumsikan. Surat persetujuan cuti ditandatangani atas nama orang
+       tertentu; tanpa dua field ini, PDF-nya selalu mencantumkan direksi
+       walau yang menyetujui HRD. */
+    await update("leaves", l.id, { status: "Disetujui", approvedBy: user?.name ?? "HRD", approvedAt: todayISO() });
     log("menyetujui cuti final (HRD)", `${l.id} - ${empNameOf(l.employeeId)}`, "SDM");
     /* Cuti final otomatis sinkron ke absensi: buat baris baru (status Cuti/
        Sakit/Izin) per tanggal bila belum ada, atau perbarui baris yang sudah
@@ -1090,6 +1098,15 @@ const finishTraining = async (t: StoreItem) => {
     } catch (e) {
       toast(e instanceof Error ? e.message : S.saveFail, "info");
     }
+  };
+
+  /* Surat persetujuan cuti: dokumen resmi yang dibawa karyawan. Tidak ada
+     mesin lokal untuk ini - dokumen ini lahir bersama rewrite PDF, jadi satu-
+     satunya jalur yang benar adalah server yang merakitnya dari baris cuti. */
+  const printSuratCuti = async (l: StoreItem): Promise<void> => {
+    if (!pdfServerReady()) { toast(S.tPdfServerBelum, "info"); return; }
+    const okDone = await pdfDoc.request({ kind: "suratCuti", id: String(l.id), locale }, `Surat-${l.id}`, false);
+    if (okDone) toast(S.tSuratPdfOk.replace("{n}", `SPC/${String(l.id)}`));
   };
 
   const saveSurat = async () => {
@@ -1578,6 +1595,16 @@ const finishTraining = async (t: StoreItem) => {
                              membuka jalur koreksi: periode terkunci, catatan
                              dan lampiran bebas. */
                           <div className="flex items-center gap-2 whitespace-nowrap">
+                            {/* Surat persetujuan hanya sah setelah pengajuan
+                                disetujui - dicetak lebih awal hanya menghasilkan
+                                kertas tanpa dasar. */}
+                            <button
+                              className="text-sm font-semibold text-navy-700 hover:underline"
+                              onClick={() => void printSuratCuti(l)}
+                              title={locale === "en" ? "Print the approval letter issued to the employee" : "Cetak surat persetujuan untuk karyawan"}
+                            >
+                              {locale === "en" ? "Approval letter" : "Surat persetujuan"}
+                            </button>
                             <button
                               className="text-sm font-semibold text-navy-700 hover:underline"
                               onClick={() => openLeaveEditFinal(l)}

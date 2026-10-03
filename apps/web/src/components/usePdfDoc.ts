@@ -14,7 +14,7 @@
  * Waktu mesin lokal dipensiunkan, fallback ini ikut dihapus.
  */
 import { useCallback, useEffect, useRef, useState } from "react";
-import { renderPdf, downloadBlobUrl, PdfRenderError } from "../services/pdfClient";
+import { renderPdf, reprintPdf, downloadBlobUrl, PdfRenderError } from "../services/pdfClient";
 import { toast } from "../components/ui";
 
 export interface PdfDocState {
@@ -26,14 +26,18 @@ export interface PdfDocState {
   pages: number;
   /** true bila dibuat mesin lokal karena server tidak tersedia. */
   local: boolean;
+  /** Id snapshot server - sumber cetak ulang identik. */
+  modelId: string;
 }
 
-const EMPTY: PdfDocState = { busy: false, error: "", url: "", filename: "", pages: 0, local: false };
+const EMPTY: PdfDocState = { busy: false, error: "", url: "", filename: "", pages: 0, local: false, modelId: "" };
 
 export function usePdfDoc(): {
   state: PdfDocState;
   /** Minta dokumen; memunculkan popup bila `open` true. */
   request: (req: { kind: string; id?: string; locale?: string }, filename: string, open: boolean) => Promise<boolean>;
+  /** Cetak ulang snapshot sebelumnya; hasil tetap melewati popup/unduh yang sama. */
+  reprint: (modelId: string, filename: string, open: boolean) => Promise<boolean>;
   download: (filename: string) => void;
   close: () => void;
   reset: () => void;
@@ -80,6 +84,7 @@ export function usePdfDoc(): {
           filename,
           pages: res.pages,
           local: false,
+          modelId: res.modelId,
         });
         if (!open) downloadBlobUrl(res.url, filename);
         return true;
@@ -98,5 +103,33 @@ export function usePdfDoc(): {
     [download, release],
   );
 
-  return { state, request, download, close, reset };
+  const reprint = useCallback(
+    async (modelId: string, filename: string, open: boolean): Promise<boolean> => {
+      setState((s) => ({ ...s, busy: true, error: "" }));
+      try {
+        const res = await reprintPdf(modelId);
+        release();
+        urlRef.current = res.url;
+        setState({
+          busy: false,
+          error: "",
+          url: res.url,
+          filename,
+          pages: res.pages,
+          local: false,
+          modelId: res.modelId,
+        });
+        if (!open) downloadBlobUrl(res.url, filename);
+        return true;
+      } catch (e) {
+        const message = e instanceof Error ? e.message : "Gagal mencetak ulang";
+        setState((s) => ({ ...s, busy: false, error: message }));
+        toast(message, "info");
+        return false;
+      }
+    },
+    [download, release],
+  );
+
+  return { state, request, reprint, download, close, reset };
 }

@@ -194,6 +194,50 @@ export function text(v: unknown, fallback = "-"): string {
   return s === "" ? fallback : s;
 }
 
+/**
+ * Baca field berupa daftar objek.
+ *
+ * Field daftar di baris dokumen bisa datang dalam tiga bentuk: array objek
+ * (hasil simpan normal), JSON string (beberapa baris lama), atau object map.
+ * Ketiganya bercampur dalam satu tabel `documents` yang umurnya sudah beberapa
+ * kali, jadi pemanggil tidak boleh memakai `as Array<...>` telanjang - satu
+ * baris rusak akan membuat seluruh dokumen gagal dirakit.
+ */
+export function arr(src: Record<string, unknown>, ...keys: string[]): Record<string, unknown>[] {
+  for (const k of keys) {
+    const v = src[k];
+    if (Array.isArray(v)) {
+      return v.filter((x): x is Record<string, unknown> => typeof x === "object" && x !== null);
+    }
+    if (typeof v === "string" && v.trim().startsWith("[")) {
+      try {
+        const parsed = JSON.parse(v) as unknown;
+        if (Array.isArray(parsed)) {
+          return parsed.filter((x): x is Record<string, unknown> => typeof x === "object" && x !== null);
+        }
+      } catch {
+        /* bukan JSON -Fields lain yang dicoba. */
+      }
+    }
+  }
+  return [];
+}
+
+/** Baris "{ nama, qty }" untuk tabel goods note; qty boleh string atau angka. */
+export function itemRows(src: Record<string, unknown>, ...keys: string[]): Array<{ name: string; qty: string }> {
+  return arr(src, ...keys)
+    .map((r) => ({
+      name: String(r.name ?? r.item ?? r.title ?? "-").trim() || "-",
+      qty: String(r.qty ?? r.jumlah ?? r.quantity ?? "").trim(),
+    }))
+    .filter((r) => r.name !== "" || r.qty !== "");
+}
+
+/** Buang baris kosong di awal/akhir daftar barang. */
+export function trimItems(items: Array<{ name: string; qty: string }>): Array<{ name: string; qty: string }> {
+  return items.filter((i) => i.name.trim() !== "" || i.qty.trim() !== "");
+}
+
 /* ==========================================================================
    Kop dokumen
    ========================================================================== */

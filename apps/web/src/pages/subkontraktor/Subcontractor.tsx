@@ -554,6 +554,17 @@ export default function Subcontractor() {
    * margin kiri, sehingga Rp 44.832.500 mulai dari x = -25 mm dan lebih dari
    * separuhnya tercetak di luar kertas. Mesin server mengukur ulang nominal
    * dari lebar kolom yang terukur, dan probe geometri menjaga hal itu. */
+  /* SPK: perintah kerja resmi untuk subkontraktor. Tidak ada fallback lokal -
+     dokumen ini belum pernah ada di mesin lama, jadi kalau server tidak aktif
+     yang jujur dilakukan adalah memberi tahu, bukan mencetak versi seadanya. */
+const printSpk = async (w: StoreItem): Promise<void> => {
+    if (!pdfServerReady()) {
+      toast(locale === "en" ? "Official PDF needs the server - connect the backend first." : "PDF resmi perlu server aktif - hubungkan backend dulu.", "info");
+      return;
+    }
+    await pdfDoc.request({ kind: "spk", id: String(w.id), locale }, `SPK-${w.id}`, false);
+  };
+
   const printKwitansi = async (p: StoreItem): Promise<void> => {
     const id = String(p.id);
     if (pdfServerReady()) {
@@ -1142,6 +1153,16 @@ export default function Subcontractor() {
                           <span className="text-xs font-medium">{effProgress(w)}%</span>
                         </div>
                         <Badge tone={toneMap[w.status] ?? "gray"}>{w.status}</Badge>
+                        {/* SPK resmi. Hanya dari server: dokumen ini dirakit dari
+                            baris work order + kontrak subkontraktor, jadi mesin
+                            lokal lama tidak punya cacah untuk dokumen ini. */}
+                        <button
+                          className="btn-secondary text-xs"
+                          onClick={() => void printSpk(w)}
+                          title={locale === "en" ? "Print the work order (SPK)" : "Cetak Surat Perintah Kerja"}
+                        >
+                          {locale === "en" ? "SPK" : "SPK"}
+                        </button>
                         {w.status !== "Selesai" && (
                           <button className="btn-secondary text-xs" aria-label={S.updateProgAria.replace("{n}", w.id)} onClick={() => { setWoProg(w); setProgMs(doneMsOf(w)); setProgNote(""); setProgPct(String(effProgress(w))); }}>{S.updateBtn}</button>
                         )}

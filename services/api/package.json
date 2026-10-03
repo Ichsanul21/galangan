@@ -1,4 +1,4 @@
-﻿{
+{
     "name":  "isms-api",
     "version":  "0.2.0",
     "private":  true,
@@ -16,7 +16,9 @@
                     "seed:whatif":  "tsx src/seedWhatIf.ts",
                     "backup":  "tsx src/backup.ts",
                     "restore":  "tsx src/restore.ts",
+                    
                     "probe:pdf":  "tsx scripts/pdf-probe.ts",
+                    "probe:pdf-db":  "tsx scripts/pdf-db-probe.ts",
                     "check":  "tsc --noEmit \u0026\u0026 npm run probe:pdf"
                 },
     "dependencies":  {

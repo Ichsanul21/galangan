@@ -1,4 +1,4 @@
-﻿import { useState, useEffect } from "react";
+import { useState, useEffect } from "react";
 import { useParams, Link } from "react-router-dom";
 import { ArrowLeft, Calendar, MapPin, Plus, Trash2, FileDown, Eye } from "lucide-react";
 import {
@@ -38,6 +38,8 @@ import { n_prj } from "../../i18n/n_prj";
 import { fmtMiliar, fmtTanggal, fmtRentang, fmtBulan } from "../../data";
 import { fmtRupiah, todayISO } from "../../utils/format";
 import { sameName } from "../../utils/names";
+import { pdfServerReady } from "../../services/pdfClient";
+import { usePdfDoc } from "../../components/usePdfDoc";
 import { canonPrioritas, scopeList } from "../../utils/scope";
 import { equipmentCostSummary } from "../../utils/projectCost";
 import { PRIORITAS } from "./Projects";
@@ -103,6 +105,16 @@ export default function ProjectDetail() {
   const S = n_prj[locale];
   const { id } = useParams();
   const { data, update, add, remove, wbsFor, setWbs, teamFor, setTeam, log } = useStore();
+  /* Printer PDF: BAST disusun server dari baris `bast` + relasi proyek/WO,
+     jadi tidak ada jalur lokal untuk dokumen ini. */
+  const pdfDoc = usePdfDoc();
+  const printBastPdf = async (b: StoreItem): Promise<void> => {
+    if (!pdfServerReady()) {
+      toast(locale === "en" ? "Official PDF needs the server - connect the backend first." : "PDF resmi perlu server aktif - hubungkan backend dulu.", "info");
+      return;
+    }
+    await pdfDoc.request({ kind: "bast", id: String(b.id), locale }, `BAST-${b.id}`, false);
+  };
   const project = data.projects.find((p) => p.id === id) ?? data.projects[0];
   /* Fetch per-batch halaman (pengganti resync penuh): proyek + dokumen. */
   useModuleSync(PD_COLS);
@@ -1436,7 +1448,7 @@ export default function ProjectDetail() {
                         <div className="min-w-0">
                           <p className="font-medium text-navy-900">{String(b.id)} · {String(b.milestone)}</p>
                           <p className="text-xs text-steel-500">{fmtTanggal(String(b.tanggal))}{S.detBastSigner}{String(b.penandatangan ?? "-")}{b.lampiran ? `${S.detBastAttach}${String(b.lampiran)}` : ""} · {fmtRupiah(Number(b.amount || 0))}{linked ? S.detBastWbs.replace("{a}", linked.task).replace("{b}", String(linked.progress)) : ""}</p>
-                        </div>
+</div>
                         <div className="flex items-center gap-2">
                           <StatusBadge status={String(b.status)} />
                           {String(b.status) === "Draft" && (
@@ -1444,6 +1456,19 @@ export default function ProjectDetail() {
                           )}
                           {String(b.status) === "Diajukan" && (
                             <button className="btn-secondary text-xs" onClick={() => advanceBast(b, "Disetujui")}>{S.detApproveInvBtn}</button>
+                          )}
+                          {/* BAST boleh dicetak begitu sudah diajukan: suratnya
+                              sedang ditandatangani. Draft tidak - isinya belum
+                              pernah ditandatangani siapa pun, jadi salinannya
+                              tidak ada nilainya. */}
+                          {String(b.status) !== "Draft" && (
+                            <button
+                              className="btn-secondary text-xs"
+                              onClick={() => void printBastPdf(b)}
+                              title={locale === "en" ? "Print the handover certificate" : "Cetak Berita Acara Serah Terima"}
+                            >
+                              BAST PDF
+                            </button>
                           )}
                           {String(b.status) === "Draft" && (
                             <button className="btn-secondary text-xs text-rose-600" onClick={() => setDelRec({ kind: "bast", row: b })}>{locale === "en" ? "Delete" : "Hapus"}</button>

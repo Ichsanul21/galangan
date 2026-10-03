@@ -11,15 +11,19 @@
 import { Document, type DocOptions } from "../document.js";
 import { keyValue, paragraph, table, signatures, spacer, callout } from "../blocks.js";
 import { COLOR } from "../theme.js";
-import { companyKop, docTitle, longDate, L, loadEntity, str, num, type Locale } from "./shared.js";
+import { companyKop, docTitle, longDate, rupiah, L, type Locale } from "./shared.js";
 
 export interface BastInput {
   no: string;
   tanggal: string;
   projectName: string;
+  /** Milestone WBS yang diserahterimakan; dicetak sebagai uraian pekerjaan. */
+  milestone?: string;
   subcontractorName: string;
   subcontractorAddress?: string;
   scopeOfWork: string;
+  /** Nilai serah terima; boleh 0 (BAST tanpa nilai tetap sah). */
+  nilai?: number;
   deliverables: Array<{ description: string; qty?: number; unit?: string; status: string }>;
   notes?: string;
   nameReceiver: string;
@@ -60,8 +64,14 @@ export function bast(input: BastInput, opts: DocOptions = {}): Document {
       labelW: 40,
       pairs: [
         { label: L(locale, "Proyek", "Project"), value: input.projectName, bold: true },
+        ...(input.milestone ? [{ label: L(locale, "Milestone", "Milestone"), value: input.milestone }] : []),
         { label: L(locale, "Subkontraktor", "Subcontractor"), value: input.subcontractorName },
         { label: L(locale, "Alamat", "Address"), value: input.subcontractorAddress ?? "-" },
+        /* Nilai serah terima ikut tercetak: BAST tanpa nominal tidak bisa
+           dipertanggungjawabkan sebagai dasar terminated. */
+        ...(input.nilai !== undefined
+          ? [{ label: L(locale, "Nilai", "Value"), value: rupiah(input.nilai), bold: true }]
+          : []),
       ],
     }),
   );

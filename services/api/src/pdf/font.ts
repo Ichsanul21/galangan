@@ -48,7 +48,46 @@ const JS_STYLE: Record<FontName, string> = {
 };
 
 let fontsDir = "";
-let registered: Record<FontName, FontSpec> | null = null;
+/* Cache isi file TTF (bukan hasil registrasi). Penting: hasil registrasi
+   TIDAK boleh dipakai ulang antar dokumen, karena setiap `new jsPDF()` punya
+   daftar font sendiri. Cache dulu versi ini menyimpan nama font yang sudah
+   didaftarkan, sehingga dokumen kedua dan seterusnya memakai nama yang tidak
+   ada di instance-nya - semua teks jatuh ke font fallback tanpa error,
+   persis kelas bug yang paling mahal untuk ditemukan (dokumen tercetak, hanya
+   saja salah bentuk huruf). Yang dicache di sini hanya isi base64 file-nya;
+   mendaftarkannya ke setiap instance jauh lebih murah dibanding dokumen yang
+   diam-diam salah. */
+let fontFiles: Record<string, string | null> | null = null;
+let resolved: Record<FontName, FontSpec> | null = null;
+
+function loadFontFiles(): Record<string, string | null> {
+  if (fontFiles) return fontFiles;
+  const out: Record<string, string | null> = {};
+  for (const cand of Object.values(CANDIDATES)) {
+    let full = "";
+    if (fontsDir) {
+      const candidate = path.join(fontsDir, cand.file);
+      if (fs.existsSync(candidate)) full = candidate;
+    }
+    if (!full) {
+      out[cand.file] = null;
+      continue;
+    }
+    try {
+      out[cand.file] = fs.readFileSync(full).toString("base64");
+    } catch {
+      out[cand.file] = null;
+    }
+  }
+  fontFiles = out;
+  return out;
+}
+
+/** True bila ada file TTF yang bisa dipakai (tanpa menyentuh jsPDF). */
+export function fontFilesAvailable(): boolean {
+  const files = loadFontFiles();
+  return Object.values(files).some((v) => v !== null);
+}
 
 /* Peta karakter di luar WinAnsi ke ejaan yang setara. Standard-14 tidak punya
    tanda panah/bobot, dan dokumen resmi kita memakai beberapa (mis. "Resi →
@@ -93,28 +132,29 @@ export function safeText(s: unknown, spec?: FontSpec): string {
 /** Arahkan folder font (dipanggil sekali saat aplikasi boot). */
 export function initFonts(dir: string): void {
   fontsDir = dir;
-  registered = null;
+  fontFiles = null;
+  resolved = null;
 }
 
 /**
- * Daftarkan font ke dokumen. Idempoten per file jsPDF.
- * Mengembalikan peta font yang harus dipakai pemanggil.
+ * Daftarkan font ke SATU instance jsPDF.
+ *
+ * Setiap dokumen memanggilnya sekali, dan hasilnya di-cache per weight
+ * (nama font apa yang akhirnya terpakai). Pendaftaran sendiri selalu
+ * diulang per instance - itu yang membuat dokumen kedua tetap memakai TTF,
+ * bukan diam-diam jatuh ke Helvetica.
  */
 export function registerFonts(pdf: jsPDF): Record<FontName, FontSpec> {
-  if (registered) return registered;
   const out = {} as Record<FontName, FontSpec>;
+  const files = loadFontFiles();
   for (const [weight, cand] of Object.entries(CANDIDATES) as Array<[FontName, (typeof CANDIDATES)["regular"]]>) {
-    let file = "";
-    if (fontsDir) {
-      const full = path.join(fontsDir, cand.file);
-      if (fs.existsSync(full)) file = full;
-    }
-    if (!file) {
+    const base64 = files[cand.file];
+    if (!base64) {
       out[weight] = { name: cand.fallback, embedded: false };
       continue;
     }
     try {
-      pdf.addFileToVFS(cand.file, fs.readFileSync(file).toString("base64"));
+      pdf.addFileToVFS(cand.file, base64);
       /* Signature addFont(family, style, file, id). Style "normal" wajib ada:
          jsPDF memetakan (family, style) saat setFont dipanggil, dan font tanpa
          style tidak akan pernah ditemukan - document tetap jalan tapi semua
@@ -125,21 +165,25 @@ export function registerFonts(pdf: jsPDF): Record<FontName, FontSpec> {
       out[weight] = { name: cand.fallback, embedded: false };
     }
   }
-  registered = out;
+  /* Catatan: `out` disimpan supaya `safe()`/`fontName()` yang dipanggil dari
+     factory tidak perlu menerima spec setiap kali. Nilai simpanannya cuma
+     keputusan fallback/embed - font benar-benar didaftarkan ke `pdf` di atas,
+     bukan ke dokumen berikutnya. */
+  resolved = out;
   return out;
 }
 
-/** True bila font TTF benar-benar terpasang (berguna untuk diagnostics). */
+/** True bila font TTF benar-benar terpakai pada render terakhir. */
 export function fontsEmbedded(): boolean {
-  return registered?.regular.embedded === true;
+  return resolved?.regular.embedded === true;
 }
 
 /** Nama font untuk jsPDF. */
 export function fontName(weight: FontName): string {
-  return registered?.[weight]?.name ?? CANDIDATES[weight].fallback;
+  return resolved?.[weight]?.name ?? CANDIDATES[weight].fallback;
 }
 
 /** Bersihkan teks memakai font yang sedang aktif. */
 export function safe(text: unknown, weight: FontName): string {
-  return safeText(text, registered?.[weight]);
+  return safeText(text, resolved?.[weight]);
 }

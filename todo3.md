@@ -1,10 +1,26 @@
-﻿# TODO 3 — Revisi Client 2 Oktober: Sinkronisasi & Rewrite Modul PDF
+# TODO 3 — Revisi Client 2 Oktober: Sinkronisasi & Rewrite Modul PDF
 
-Status: rencana kerja. Referensi: `todo.md` (audit commit `1dd963a`),
+Status: **dalam pengerjaan**. Referensi: `todo.md` (audit commit `1dd963a`),
 `todo2.md` (revisi 02 September). Dokumen ini **menggantikan** sebagian
 rencana `todo2.md` yang arahnya sudah berubah.
 
 Audit: 5 auditor paralel read-only terhadap `apps/web` + `services/api` @ `1dd963a`.
+
+## Yang sudah selesai
+
+| Commit | Isi |
+|---|---|
+| `cfbab00` | Sinkronisasi: epoch merge, retry STALE, rate limit per user, pagination |
+| `58d873e` | Quick wins UI: label status, monitoring, survey collapse, scroll-flush |
+| `8909f39` | Seeder harga equipment/dock/booking/maintenance/inventory/settings |
+| `bdb02e4` | Mesin PDF server: theme/font/measure/blocks/chart/document + probe geometri |
+| `c90dcef` | Route `POST /api/pdf/render`, factory kwitansi, klien + hook FE |
+| `e88b926`, `79b9882` | 13 factory dokumen resmi + registry tertutup |
+| `7cf924f`, `3ef3fd0` | Migrasi 10 pemanggil transaksional ke server-side rendering |
+| (batch ini) | Keselarasan entitas, snapshot model + cetak ulang, 3 pemanggil baru, 2 probe |
+
+Belum selesai: report factory (Dashboard/Analytics/Laporan/Rekap/THR), item
+modul & fitur 2 Oktober (lihat bagian bawah), penghapusan mesin PDF lama.
 
 ---
 
@@ -13,9 +29,9 @@ Audit: 5 auditor paralel read-only terhadap `apps/web` + `services/api` @ `1dd96
 | # | Keputusan | Konsekuensi |
 |---|---|---|
 | 1 | **Mesin PDF di server** (`services/api/src/pdf/`) | FE kehilangan `jspdf` + `html2canvas`. Dokumen resmi dirakit dari DB server sehingga tidak bisa dipalsukan klien |
-| 2 | **PDF tidak pernah menyentuh disk** | Yang disimpan adalah *render model* (`blocks[]` JSON) untuk audit + cetak ulang identik |
-| 3 | **Font TTF di-subset** + CJK kondisional | ~10x lebih kecil; huruf Mandarin tetap aman |
-| 4 | **Sekaligus semua** | 1 branch, 11 checkpoint, hapus total metode lama |
+| 2 | **PDF tidak pernah menyentuh disk** | Yang disimpan adalah *model input* factory (bukan `blocks[]` yang tidak bisa diserialisasi) untuk audit + cetak ulang identik - lihat "Model penyimpanan" |
+| 3 | **Font TTF di-embed** + CJK kondisional | Font belum ada di repo; sampai masuk, mesin jatuh ke standard-14 |
+| 4 | **Sekaligus semua** | 1 branch, checkpoint per batch, hapus total metode lama |
 | 5 | Online tanpa jeda; offline optimistic + flush otomatis | Tidak ada jeda buatan saat online |
 
 ---
@@ -133,49 +149,79 @@ services/api/
 
 ## Model penyimpanan (tanpa ledakan storage)
 
-Server menyimpan **render model** (`blocks[]`), bukan PDF:
+Server **tidak** menyimpan PDF, dan **tidak** menyimpan `blocks[]` juga -
+`blocks[]` berisi closure `plan()`/`draw()`, jadi tidak bisa diserialisasi tanpa
+menjadi dokumen yang tidak lagi bisa dirakit ulang. Yang disimpan adalah
+**model input factory** setelah server membaca barisnya sendiri.
 
-| | Simpan PDF | Simpan blocks[] |
+Implementasinya (`pdf/registry.ts`): tiap recipe dipecah dua tahap.
+
+| Tahap | Fungsi | Hasil |
 |---|---|---|
-| Ukuran | 60–480 KB/dokumen | **2–15 KB/dokumen** |
-| Cetak ulang | perlu file | render ulang dari blocks, identik selama versi sama |
-| Jejak audit | file mengambang | query-able: siapa cetak apa, kapan, dari versi data berapa |
-| Storage/tahun | **~5 GB di disk** | **~50–120 MB di DB** |
+| 1 | `prepare(id, ctx)` | input factory: nomor, nama, nominal, item, tanggal - JSON biasa |
+| 2 | `assemble(model, ctx)` | `Document` (blok + geometri), tanpa menyentuh DB |
+
+Cetakan pertama: `prepare` → simpan model ke `pdfDocs` → `assemble`.
+Cetak ulang: `assemble` dari model tersimpan, **`prepare` tidak dijalankan lagi**.
+
+Konsekuensi yang dibayar dengan sengaja: kalau baris kwitansi dikoreksi setelah
+dicetak, cetakan ulang tetap berisi nominal yang benar-benar dibayarkan waktu itu,
+dan `prepare` ulang (render dari data terbaru) tetap tersedia untuk dokumen yang
+sudah dikoreksi - dua hal yang tidak bisa dibedakan tanpa menyimpan model.
+
+| | Simpan PDF | Simpan model input |
+|---|---|---|
+| Ukuran | 60-480 KB/dokumen | **2-15 KB/dokumen** |
+| Cetak ulang | perlu file | identik dengan cetakan pertama |
+| Jejak audit | file mengambang | query-able: siapa cetak apa, kapan, dari entitas mana, berisi apa |
+| Storage/tahun | **~5 GB di disk** | **~50-120 MB di DB** |
 
 - **Report** (Dashboard/Analytics/Laporan/Payroll/Proyek): tanpa snapshot, hanya
-  baris audit berisi `filters` + hash → **0 byte tersimpan**.
-- **Dokumen resmi**: `blocks[]` + `engineVersion` + `fontVersion` + `kind` +
-  `entityId` + `locale` + `issuedAt` + `issuedBy` + `contentHash` + `pages` +
-  `pinned`.
+  baris audit berisi `filters` + hash -> **0 byte tersimpan**.
+- **Dokumen resmi**: tabel `pdfDocs` = `id` + `kind` + `entity_field` +
+  `entity_id` + `locale` + `branch` + `model` + `pages` + `bytes` + `engine` +
+  `font` + `actor` + `created_at` (migrasi `007_pdf_docs.sql`).
 
-### Keputusan DB (menutup bug TEXT 64 KB)
+### Keputusan DB
 
-Semua 112 kolom `data` bertipe `TEXT` (`001_init.sql`). SQLite tak terbatas,
-tapi **MySQL `TEXT` = 65.535 byte**. Konsekuensi:
-- `documents.ocrText` yang >64 KB akan gagal/truncate di MySQL — **bug lama**.
-- Migrasi 007: koleksi baru `pdfDocs` memakai `payload MEDIUMTEXT` +
-  `blocks LONGTEXT`, dan **`documents.data` dinaikkan ke `MEDIUMTEXT`**.
+- `007_pdf_docs.sql`: `pdfDocs.model` = `TEXT`. Bentuknya berbeda per jenis
+  dokumen (kwitansi punya `breakdown`, surat jalan punya `sj*`), jadi kolom JSON
+  berskema akan memaksa semua factory memakai satu bentuk yang salah.
+- **BELUM dikerjakan**: menaikkan `documents.data` ke `MEDIUMTEXT`. MySQL
+  `TEXT` = 65.535 byte, jadi `documents.data` yang besar akan terpotong di
+  MySQL. `ALTER TABLE ... MODIFY` tidak portabel SQLite, jadi butuh cabang
+  per-dialek di `migrate.ts` - tidak diambil dengan jalan pintas di sini.
 
 ## Pipa font
 
-1. **Build step** `pyftsubset` atas Noto Sans → Latin + Latin-1 + Latin
-   Extended-A (Vietnam) + tanda baca. Hasil ~25 KB/weight, di-commit.
-2. **CJK kondisional** — `font.ts` mendeteksi codepoint CJK; tidak ada → subset
-   kecil; ada → tambahkan font CJK penuh ke dokumen itu saja.
+1. **TTF di-embed bila ada** di `services/api/assets/fonts/` (`regular.ttf`,
+   `bold.ttf`, `italic.ttf`). Tanpa file itu mesin jatuh ke standard-14 dengan
+   peta karakter di luar WinAnsi.
+2. Pendaftaran font **diulang per instance `jsPDF`**. Versi pertama menyimpan
+   hasil registrasi di modul-global, sehingga dokumen kedua dan seterusnya
+   memakai nama font yang tidak ada di instance-nya - semua teks jatuh ke
+   Helvetica tanpa satu pun galat (lihat `font.ts`).
+3. Font TTF **belum ada di repo**. Sampai file-nya masuk, dokumen resmi
+    - butiran huruf Mandarin dan simbol non-Latin akan tetap kotak kosong.
+4. CJK kondisional - `font.ts` mendeteksi codepoint CJK; tidak ada -> subset
+   kecil; ada -> tambahkan font CJK penuh ke dokumen itu saja.
 
 ## Kontrak API
 
 ```
-POST /api/pdf/render   { kind, id, filters?, locale? }
- → 200 application/pdf (stream)  header X-Doc-Id, X-Doc-Hash, X-Pages
-GET  /api/pdf/:id/print → PDF dari blocks tersimpan (cetak ulang, bukan regenerate)
-GET  /api/pdf/:id      → metadata + audit
-GET  /api/pdf/usage    → jumlah baris, ukuran snapshot, engine & font version
-POST /api/pdf/:id/pin  → kunci dokumen resmi
+POST /api/pdf/render            { kind, id, locale? }
+  -> 200 application/pdf (stream)
+     header X-Doc-Kind, X-Doc-Pages, X-Doc-Embedded-Font, X-Doc-Model-Id
+GET  /api/pdf/render/:modelId   -> PDF dari model tersimpan (cetak ulang, bukan regenerate)
+GET  /api/pdf/kinds             -> daftar kind yang didukung
 ```
 
-Server **tidak** menerima payload bebas — `kind` enum tertutup + `id` entitas,
+Server **tidak** menerima payload bebas - `kind` enum tertutup + `id` entitas,
 server memuat sendiri dari DB.
+
+`GET /api/pdf/:id/print` (rencana) menjadi `GET /api/pdf/render/:modelId`:
+kuncinya adalah id snapshot, bukan id entitas, karena dua cetakan atas satu
+entitas boleh berbeda isinya.
 
 ---
 
