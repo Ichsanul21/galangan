@@ -18,7 +18,7 @@ import { LanguageProvider } from "../src/i18n/LanguageContext";
 import { StoreProvider, applyPulled } from "../src/data/store";
 import { projects, vessels, inventory, employees, quotations } from "../src/data/index";
 import { todayISO } from "../src/utils/format";
-import { isPdfHead } from "../src/services/pdfClient";
+import { isPdfHead, renderPdfFrom } from "../src/services/pdfClient";
 
 import Login from "../src/pages/Login";
 import Dashboard from "../src/pages/Dashboard";
@@ -375,7 +375,105 @@ try {
   }
 }
 
-console.log(`\n${pass}/${PAGES.length + 4} pemeriksaan lolos.`);
+/* Uji jalur klien PDF sampai habis, dengan hanya transport yang dipalsukan.
+
+   Yang diuji adalah kode renderPdfFrom yang BENAR-BENAR dipakai aplikasi:
+   pembentukan URL, header, penanganan status non-2xx, res.blob(), dan
+   pemeriksaan magic bytes. Hanya `fetch` yang diganti, karena itu bagian
+   yang tidak pernah jadi penyebab bug dan butuh server nyala.
+
+   Ini menutup celah yang membuat ekspor PDF gagal 100% di semua modul
+   tanpa ada gate yang menyadarinya: probe PDF ada di server, probe render
+   hanya SSR, dan tidak ada yang pernah memanggil jalur klien ini. */
+{
+  const problems: string[] = [];
+  const realFetch = globalThis.fetch;
+  /* PDF sungguhan dari server dimulai "%PDF-1.3"; sisanya boleh apa saja
+     karena yang diperiksa hanya magic-nya. */
+  const pdfBytes = new Uint8Array([0x25, 0x50, 0x44, 0x46, 0x2d, 0x31, 0x2e, 0x33, 0x0a, 0x25, 0xe2, 0xe3]);
+
+  const stub = (body: BodyInit | null, status: number, headers: Record<string, string>): void => {
+    globalThis.fetch = (async () =>
+      new Response(body, { status, headers: { "Content-Type": "application/pdf", ...headers } })) as typeof fetch;
+  };
+
+  /* 1. PDF asli harus diterima, dan semua header harus terbaca. */
+  try {
+    stub(pdfBytes, 200, {
+      "X-Doc-Pages": "3",
+      "X-Doc-Embedded-Font": "1",
+      "X-Doc-Cjk": "4",
+      "X-Doc-Model-Id": "PDF-TEST-1",
+    });
+    const r = await renderPdfFrom("https://contoh.test", "jwt-token", { kind: "kwitansi", id: "TRM-001" });
+    if (!r.url.startsWith("blob:")) problems.push(`url bukan blob: ${r.url}`);
+    if (r.pages !== 3) problems.push(`pages: dapat ${r.pages}, harus 3`);
+    if (r.embeddedFont !== true) problems.push("embeddedFont tidak terbaca");
+    if (r.cjkChars !== 4) problems.push(`cjkChars: dapat ${r.cjkChars}, harus 4`);
+    if (r.modelId !== "PDF-TEST-1") problems.push(`modelId: dapat ${r.modelId}`);
+    if (r.bytes !== pdfBytes.length) problems.push(`bytes: dapat ${r.bytes}, harus ${pdfBytes.length}`);
+    URL.revokeObjectURL(r.url);
+  } catch (e) {
+    problems.push(`PDF asli ditolak: ${e instanceof Error ? e.message : String(e)}`);
+  }
+
+  /* 2. Header wajib ikut pada request - tanpa Authorization server akan 401. */
+  try {
+    let seenAuth = "";
+    globalThis.fetch = (async (_u: unknown, init?: RequestInit) => {
+      seenAuth = String((init?.headers as Record<string, string>)?.Authorization ?? "");
+      return new Response(pdfBytes, { status: 200 });
+    }) as typeof fetch;
+    await renderPdfFrom("https://contoh.test", "jwt-token", { kind: "kwitansi", id: "TRM-001" });
+    if (seenAuth !== "Bearer jwt-token") problems.push(`Authorization tidak dikirim: "${seenAuth}"`);
+  } catch (e) {
+    problems.push(`cek header gagal: ${e instanceof Error ? e.message : String(e)}`);
+  }
+
+  /* 3. Error server harus meneruskan pesannya, bukan "bukan berkas PDF".
+        Salah Label membuat orang dikirim ke arah yang salah. */
+  try {
+    stub(JSON.stringify({ ok: false, error: { message: "Termin TRM-001 tidak ditemukan" } }), 500, {
+      "Content-Type": "application/json",
+    });
+    await renderPdfFrom("https://contoh.test", "", { kind: "kwitansi", id: "TRM-001" });
+    problems.push("error 500 tidak melempar");
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    if (!msg.includes("tidak ditemukan")) problems.push(`pesan server hilang: "${msg}"`);
+    if (msg.includes("VITE_API_URL")) problems.push("error 500 salah dilabeli sebagai konfigurasi URL");
+  }
+
+  /* 4. Proxy yang membalas HTML harus ditolak - inilah pesan aslinya. */
+  try {
+    stub("<!DOCTYPE html><html>SPA fallback</html>", 200, { "Content-Type": "text/html" });
+    await renderPdfFrom("https://contoh.test", "", { kind: "kwitansi", id: "TRM-001" });
+    problems.push("HTML 200 diterima sebagai PDF");
+  } catch (e) {
+    if (!(e instanceof Error) || !e.message.includes("bukan berkas PDF")) problems.push("HTML ditolak dengan pesan yang salah");
+  }
+
+  /* 5. Body kosong harus ditolak, bukan dianggap PDF. */
+  try {
+    stub("", 200, {});
+    await renderPdfFrom("https://contoh.test", "", { kind: "kwitansi", id: "TRM-001" });
+    problems.push("body kosong diterima sebagai PDF");
+  } catch {
+    /* menolak = benar */
+  }
+
+  globalThis.fetch = realFetch;
+
+  if (problems.length === 0) {
+    console.log("PASS  jalur klien PDF: PDF diterima, header terbaca, error diteruskan");
+    pass += 1;
+  } else {
+    console.log(`FAIL  jalur klien PDF *** ${problems.join("; ")}`);
+    failures.push("jalur klien PDF");
+  }
+}
+
+console.log(`\n${pass}/${PAGES.length + 5} pemeriksaan lolos.`);
 if (failures.length > 0) {
   console.log(`GAGAL: ${failures.join(", ")}`);
   process.exit(1);

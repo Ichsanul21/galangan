@@ -89,17 +89,32 @@ export interface PdfRequest {
   filters?: Record<string, string | number>;
 }
 
-export async function renderPdf(req: PdfRequest): Promise<PdfRenderResult> {
-  if (!isBackendConfigured()) {
-    throw new PdfRenderError("Server PDF belum aktif - ekspor memakai mesin lokal.", 0);
-  }
+/**
+ * Inti dari renderPdf, dengan base URL dan access token disuntikkan.
+ *
+ * Dipisah supaya jalur klien bisa diuji tanpa browser dan tanpa server
+ * nyala. `renderPdf` di bawah hanya menambahkan dua hal: guard backend
+ * terkonfigurasi, dan BASE/JWT dari sessionStorage.
+ *
+ * Kenza pemisahan ini penting: bug magic bytes (4 byte dibandingkan
+ * literal 5 karakter) membuat SETIAP ekspor PDF gagal di semua modul,
+ * dan tidak ada satu pun gate yang menangkapnya karena
+ *   - probe PDF berjalan di server, tidak menyentuh kode klien
+ *   - probe render hanya SSR, tidak memanggil fetch ke /api/pdf/render
+ * Setiap regexp, perbandingan panjang, dan penanganan status di bawah ini
+ * sekarang punya test.
+ */
+export async function renderPdfFrom(
+  base: string,
+  jwt: string,
+  req: PdfRequest,
+): Promise<PdfRenderResult> {
   const headers: Record<string, string> = { "Content-Type": "application/json" };
-  const jwt = getJwt();
   if (jwt) headers.Authorization = `Bearer ${jwt}`;
 
   let res: Response;
   try {
-    res = await fetch(`${BASE}/api/pdf/render`, {
+    res = await fetch(`${base}/api/pdf/render`, {
       method: "POST",
       headers,
       body: JSON.stringify(req),
@@ -140,6 +155,14 @@ export async function renderPdf(req: PdfRequest): Promise<PdfRenderResult> {
     bytes: blob.size,
     modelId: res.headers.get("X-Doc-Model-Id") ?? "",
   };
+}
+
+/** Entry point yang dipakai aplikasi: guard backend + BASE/JWT dari sesi. */
+export function renderPdf(req: PdfRequest): Promise<PdfRenderResult> {
+  if (!isBackendConfigured()) {
+    return Promise.reject(new PdfRenderError("Server PDF belum aktif - ekspor memakai mesin lokal.", 0));
+  }
+  return renderPdfFrom(BASE, getJwt() ?? "", req);
 }
 
 /**
