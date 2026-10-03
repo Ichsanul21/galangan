@@ -19,7 +19,8 @@ import { bucketByMonth, fmtMonthRange, monthAxis, monthKeyOf, rebindLegacyMonthS
 import { sbPoNumber, sbSplitIncludePpn, maxSeq, SB_KOP } from "../../utils/sb";
 import { spendByCategory, procurementTrend } from "../../data";
 import { exportExcel } from "../../utils/export";
-import { poDoc } from "../../utils/pdfDocs";
+import { pdfServerReady } from "../../services/pdfClient";
+import { usePdfDoc } from "../../components/usePdfDoc";
 import { useDraftState } from "../../utils/draft";
 import { useT } from "../../i18n/LanguageContext";
 import { n_proc } from "../../i18n/n_proc";
@@ -334,6 +335,7 @@ export default function Procurement() {
   const [sort2, setSort2] = useState<SortState>({ key: null, dir: "asc" });
   const [sort3, setSort3] = useState<SortState>({ key: null, dir: "asc" });
   const [sort4, setSort4] = useState<SortState>({ key: null, dir: "asc" });
+  const pdfDoc = usePdfDoc();
 
   /* ---- PO Besar ---- */
   const [showBig, setShowBig] = useState(false);
@@ -882,17 +884,27 @@ export default function Procurement() {
     } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); }
   };
 
-  /* ============ CETAK (kop SB + pecah DPP/PPN bila include) ============ */
-  /* PDF resmi (mesin teks, bukan hasil raster). Excel tetap tersedia
-     sebagai tombol kedua karena tim purchasing sering butuh lembarnya
-     untuk diolah lagi. */
-  const cetakPoPdf = (po: StoreItem) => {
+  /* ============ CETAK (server-side PDF) ============ */
+  /* PDF resmi dirakit server dari data DB, bukan dari payload klien.
+     Ini menjamin integritas: nominal, vendor, dan item tidak bisa dimanipulasi
+     dari browser. Fallback ke mesin lokal hanya untuk mode demo tanpa backend. */
+  const cetakPoPdf = async (po: StoreItem) => {
+    const id = String(po.id);
+    if (pdfServerReady()) {
+      const done = await pdfDoc.request({ kind: "po", id, locale }, `PO-${id}`, false);
+      if (done) {
+        toast(S.tPoExportPdf.replace("{n}", id));
+      }
+      return;
+    }
+    /* Fallback: mesin lokal lama (akan dihapus setelah semua factory pindah). */
     const lines = poLines(po);
     const ppnRate = getSetting(data, "PPN_RATE", 12);
     const split = po.includePpn === false ? null : sbSplitIncludePpn(Number(po.amount || 0), ppnRate);
     try {
+      const { poDoc } = await import("../../utils/pdfDocs");
       poDoc({
-        no: po.docNo ? `${po.id} / ${po.docNo}` : String(po.id),
+        no: po.docNo ? `${po.id} / ${po.docNo}` : id,
         tipe: po.poType === "Kecil" ? S.tabSmall : S.tabBig,
         vendor: String(po.vendor ?? "-"),
         refPr: String(po.req ?? "-"),
@@ -921,8 +933,8 @@ export default function Procurement() {
           mengetahui: locale === "en" ? "Approved by" : "Mengetahui",
           tandaTangan: locale === "en" ? "Signature" : "Tanda Tangan",
         },
-      }).save(`PO-${po.id}`);
-      toast(S.tPoExportPdf.replace("{n}", String(po.id)));
+      }).save(`PO-${id}`);
+      toast(S.tPoExportPdf.replace("{n}", id));
     } catch (e) {
       toast(e instanceof Error ? e.message : S.saveFail, "info");
     }
