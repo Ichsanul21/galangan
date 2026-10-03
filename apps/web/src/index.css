@@ -1,6 +1,13 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+/* Tailwind v4: satu import, bukan tiga directive @tailwind. `source()`declare
+   where class is detected - v4 auto-detects source, tidak memakai array
+   `content` di config. `reference` menunjuk file config JS yang sudah ada
+   supaya palet navy/steel/ocean dan shadow kustom tidak hilang. */
+@import "tailwindcss" source(none);
+@source "../index.html";
+@source "./**/*.{ts,tsx}";
+@config "../tailwind.config.js";
+
+@custom-variant notif-flash-all (&.notif-flash-all);
 
 @layer base {
   html {
@@ -44,13 +51,20 @@
   }
 }
 
+/* `.btn` didefinisikan sebagai @utility, bukan kelas biasa di @layer
+   components, karena di v4 `@apply` tidak bisa mengambil kelas kustom dari
+   stylesheet yang sama - hanya utility yang didaftarkan lewat @utility.
+   Empat varian di bawah semuanya @apply btn, jadi tanpa ini build gagal
+   dengan "Cannot apply unknown utility class `btn`".
+   Nilai gaya-nya tidak berubah sama sekali dari versi v3. */
+@utility btn {
+  @apply inline-flex items-center gap-2 px-3.5 py-2 rounded-xl font-medium text-sm
+         transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-offset-1;
+}
+
 @layer components {
   .card {
     @apply bg-white rounded-2xl border border-steel-200 shadow-soft;
-  }
-  .btn {
-    @apply inline-flex items-center gap-2 px-3.5 py-2 rounded-xl font-medium text-sm
-           transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-offset-1;
   }
   .btn-primary {
     @apply btn bg-navy-700 text-white shadow-soft hover:bg-navy-800 hover:-translate-y-0.5 hover:shadow-lift focus:ring-ocean-400;
