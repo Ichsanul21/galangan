@@ -1,7 +1,9 @@
 ﻿import { useEffect, useMemo, useState, type ReactElement } from "react";
 import { Wallet, ArrowDownToLine, FileText, Receipt, TrendingUp, Plus, Trash2, Search } from "lucide-react";
 import { openFileUrl } from "../../services/files";
-import { sptDoc, type SptDocLabels } from "../../utils/pdfDocs";
+import type { SptDocLabels } from "../../utils/pdfDocs";
+import { pdfServerReady } from "../../services/pdfClient";
+import { usePdfDoc } from "../../components/usePdfDoc";
 import { pdfNum } from "../../utils/pdfLayout";
 import { ID_MON as MONTH_ID } from "../../utils/monthAxis";
 import {
@@ -631,6 +633,7 @@ const { data, add, update, remove, log, branch, inBranch } = useStore();
   const S = n_fin[locale];
   const modAlert = useModuleAlert("keuangan");
   const flash = useNotifFlash();
+  const pdfDoc = usePdfDoc();
     const deepParams = useDeepLinkParams();
   const notified = useMemo(() => new Set(modAlert.items.map((a) => a.rowId)), [modAlert.items]);
   const [tab, setTab] = useState("Akun");
@@ -2400,11 +2403,21 @@ const { data, add, update, remove, log, branch, inBranch } = useStore();
     return manual > 0 ? manual : computed;
   };
 
-  const exportSptPdf = () => {
+  const exportSptPdf = async (): Promise<void> => {
     if (!activeTax) return;
+    const id = String(activeTax.id);
+    if (pdfServerReady()) {
+      const done = await pdfDoc.request({ kind: "spt", id, locale }, `SPT-${activeTax.period}`, false);
+      if (done) {
+        toast(S.sptPdfExported);
+      }
+      return;
+    }
+    /* Fallback: mesin lokal lama (akan dihapus setelah semua factory pindah). */
     const shown = taxShown;
     const terutang = sptPpnTerutang(activeTax, shown.ppnKeluar - shown.ppnMasuk);
     try {
+      const { sptDoc } = await import("../../utils/pdfDocs");
       sptDoc({
         period: String(activeTax.period),
         status: String(activeTax.status),

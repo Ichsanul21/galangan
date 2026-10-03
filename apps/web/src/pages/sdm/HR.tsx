@@ -37,7 +37,8 @@ import { fmtTanggal, todayISO } from "../../utils/format";
 import { AlertBannerView, notifRowId, useModuleAlert, useNotifFlash } from "../../components/AlertBanner";
 import { getSetting } from "../../utils/settings";
 import { exportExcel } from "../../utils/export";
-import { suratHrDoc } from "../../utils/pdfDocs";
+import { pdfServerReady } from "../../services/pdfClient";
+import { usePdfDoc } from "../../components/usePdfDoc";
 import { SB_KOP } from "../../utils/sb";
 import { useT } from "../../i18n/LanguageContext";
 import { n_qc } from "../../i18n/n_qc";
@@ -209,6 +210,7 @@ export default function HR() {
   const modAlert = useModuleAlert("sdm");
   const flash = useNotifFlash();
   const notified = useMemo(() => new Set(modAlert.items.map((a) => a.rowId)), [modAlert.items]);
+  const pdfDoc = usePdfDoc();
   /* Fetch per-batch modul (pengganti resync penuh). */
   useModuleSync(HR_COLS);
   const [tab, setTab] = useState("Karyawan");
@@ -1047,12 +1049,22 @@ const finishTraining = async (t: StoreItem) => {
   /* PDF resmi dari mesin teks (bukan pratinjau teks polos).
      Nomor memakai suratNomor yang sama dengan simpan, jadi berkas yang
      diunduh dan yang masuk arsip selalu bernomor sama. */
-  const printSuratPdf = () => {
+  const printSuratPdf = async (): Promise<void> => {
     if (!suratEmp) { toast(S.tPilihKaryawan, "info"); return; }
     if (!suratForm.isi.trim()) { toast(S.tIsiSurat, "info"); return; }
+    const docId = suratEditId ?? suratNomor;
+    if (pdfServerReady()) {
+      const done = await pdfDoc.request({ kind: "suratHr", id: docId, locale }, `surat-${docId}`, false);
+      if (done) {
+        toast(S.tSuratPdfOk.replace("{n}", docId));
+      }
+      return;
+    }
+    /* Fallback: mesin lokal lama (akan dihapus setelah semua factory pindah). */
     try {
+      const { suratHrDoc } = await import("../../utils/pdfDocs");
       suratHrDoc({
-        nomor: suratEditId ?? suratNomor,
+        nomor: docId,
         jenis: suratForm.jenis,
         tanggal: suratForm.tanggal,
         nama: String(suratEmp.name),
@@ -1073,8 +1085,8 @@ const finishTraining = async (t: StoreItem) => {
           disetujui: locale === "en" ? "Approved by" : "Disetujui oleh",
           nama: locale === "en" ? "Name" : "Nama",
         },
-      }).save(`surat-${suratEditId ?? suratNomor}`);
-      toast(S.tSuratPdfOk.replace("{n}", suratEditId ?? suratNomor));
+      }).save(`surat-${docId}`);
+      toast(S.tSuratPdfOk.replace("{n}", docId));
     } catch (e) {
       toast(e instanceof Error ? e.message : S.saveFail, "info");
     }

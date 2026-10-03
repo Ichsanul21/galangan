@@ -10,7 +10,8 @@ import type { StoreItem } from "../../data/store";
 import { fmtRupiah, fmtTanggal, todayISO } from "../../utils/format";
 import { sameName } from "../../utils/names";
 import { exportExcel } from "../../utils/export";
-import { kopPenawaranDoc } from "../../utils/pdfDocs";
+import { pdfServerReady } from "../../services/pdfClient";
+import { usePdfDoc } from "../../components/usePdfDoc";
 import { SB_KOP } from "../../utils/sb";
 import { useDraftState } from "../../utils/draft";
 import { useT } from "../../i18n/LanguageContext";
@@ -45,6 +46,7 @@ export default function QuotationDetail() {
   const { data, add, update, log } = useStore();
   const { locale } = useT();
   const S = n_crm[locale];
+  const pdfDoc = usePdfDoc();
 
   const quotation = (data.quotations ?? []).find((q) => q.id === id);
   const seedLines = useMemo(() => (quotation ? initialLines(quotation) : []), [quotation?.id]);
@@ -228,13 +230,23 @@ export default function QuotationDetail() {
   };
 
   /* PDF resmi. Excel tetap ada sebagai tombol kedua. */
-  const cetakKopPdf = () => {
+  const cetakKopPdf = async (): Promise<void> => {
+    const id = String(quotation.id);
+    if (pdfServerReady()) {
+      const done = await pdfDoc.request({ kind: "kopPenawaran", id, locale }, `Kop-${id}-v${version}`, false);
+      if (done) {
+        toast(S.tKopPdfDone.replace("{n}", id));
+      }
+      return;
+    }
+    /* Fallback: mesin lokal lama (akan dihapus setelah semua factory pindah). */
     const client = (data.clients ?? []).find((c) => sameName(c.name, quotation.client));
     const cabang = String(client?.branch ?? quotation.branch ?? "Samarinda");
     const terms = String(client?.paymentTerms ?? quotation.paymentTerms ?? "NET 30");
     try {
+      const { kopPenawaranDoc } = await import("../../utils/pdfDocs");
       kopPenawaranDoc({
-        no: String(quotation.id),
+        no: id,
         version: String(version),
         client: String(quotation.client),
         vessel: String(quotation.vessel),
@@ -256,8 +268,8 @@ export default function QuotationDetail() {
           client: locale === "en" ? "Client" : "Client",
           vessel: locale === "en" ? "Vessel" : "Kapal",
         },
-      }).save(`Kop-${quotation.id}-v${version}`);
-      toast(S.tKopPdfDone.replace("{n}", String(quotation.id)));
+      }).save(`Kop-${id}-v${version}`);
+      toast(S.tKopPdfDone.replace("{n}", id));
     } catch (e) {
       toast(e instanceof Error ? e.message : S.saveFail, "info");
     }

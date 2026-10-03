@@ -65,7 +65,9 @@ import { uploadFile } from "../../services/upload";
 import { fmtJumlah, fmtRupiah, fmtMiliar, fmtPersen, fmtTanggal, todayISO } from "../../utils/format";
 import { exportExcel } from "../../utils/export";
 import { sbTonasePlat, sbSjNumber, sbTtNumber, maxSeq, parseSjSeq, SB_KOP } from "../../utils/sb";
-import { deliveryOrderDoc, goodsNoteDoc, type GoodsNoteDocLabels } from "../../utils/pdfDocs";
+import type { GoodsNoteDocLabels } from "../../utils/pdfDocs";
+import { pdfServerReady } from "../../services/pdfClient";
+import { usePdfDoc } from "../../components/usePdfDoc";
 import { FilterPopover } from "../../components/FilterPopover";
 import { useT } from "../../i18n/LanguageContext";
 import { n_inv } from "../../i18n/n_inv";
@@ -373,6 +375,7 @@ export default function Inventory() {
   const modAlert = useModuleAlert("inventori");
   const flash = useNotifFlash();
   const notified = useMemo(() => new Set(modAlert.items.map((a) => a.rowId)), [modAlert.items]);
+  const pdfDoc = usePdfDoc();
   const [tab, setTab] = useState("Katalog");
   const [bomProject, setBomProject] = useState("Semua proyek");
   const [q, setQ] = useState("");
@@ -503,9 +506,19 @@ export default function Inventory() {
     return Math.max(lead, trail) + 1;
   };
   /* PDF resmi (mesin teks). Excel tetap tersedia sebagai pilihan kedua. */
-  const printDoPdf = (d: StoreItem) => {
+  const printDoPdf = async (d: StoreItem) => {
+    const id = String(d.id);
+    if (pdfServerReady()) {
+      const done = await pdfDoc.request({ kind: "deliveryOrder", id, locale }, `DO-${id}`, false);
+      if (done) {
+        toast(locale === "en" ? `DO ${id} printed as PDF` : `DO ${id} dicetak sebagai PDF`);
+      }
+      return;
+    }
+    /* Fallback: mesin lokal lama (akan dihapus setelah semua factory pindah). */
     const items = (Array.isArray(d.doItems) ? d.doItems : []) as { name: string; qty: string }[];
     try {
+      const { deliveryOrderDoc } = await import("../../utils/pdfDocs");
       deliveryOrderDoc({
         no: String(d.sbRef ?? d.id),
         tanggal: String(d.doDate ?? d.updated ?? ""),
@@ -2538,21 +2551,28 @@ if (k === "mattype") return matTypeOf(i);
                       }, { action: "menerbitkan surat jalan", target: no, module: "Inventori" });
                       /* PDF resmi dibuat lebih dulu supaya berkas yang diarsipkan
                          selalu ada; Excel tetap ditambahkan sebagai pilihan kedua. */
-                      goodsNoteDoc({
-                        title: "Surat Jalan",
-                        no,
-                        tanggal: sjDate,
-                        tujuan: sjTo.trim(),
-                        extra: [
-                          { label: locale === "en" ? "Vehicle" : "Kendaraan", value: sjVehicle.trim() },
-                          { label: locale === "en" ? "Plate no." : "No. Polisi", value: sjPlate.trim() },
-                          { label: locale === "en" ? "Driver" : "Driver", value: sjDriver.trim() },
-                        ],
-                        items: items.map((x) => ({ name: x.name.trim(), qty: x.qty.trim() })),
-                        receiver: sjReceiver.trim(),
-                        giver: sjGiver.trim(),
-                        labels: GOODS_NOTE_LABELS(locale),
-                      }).save(`SJ-${no.replaceAll("/", "-")}`);
+                      if (pdfServerReady()) {
+                        const docId = `SJ-SMD-${sjYearOf(sjDate)}-${String(seq).padStart(3, "0")}`;
+                        const done = await pdfDoc.request({ kind: "suratJalan", id: docId, locale }, `SJ-${no.replaceAll("/", "-")}`, false);
+                        if (!done) return;
+                      } else {
+                        const { goodsNoteDoc } = await import("../../utils/pdfDocs");
+                        goodsNoteDoc({
+                          title: "Surat Jalan",
+                          no,
+                          tanggal: sjDate,
+                          tujuan: sjTo.trim(),
+                          extra: [
+                            { label: locale === "en" ? "Vehicle" : "Kendaraan", value: sjVehicle.trim() },
+                            { label: locale === "en" ? "Plate no." : "No. Polisi", value: sjPlate.trim() },
+                            { label: locale === "en" ? "Driver" : "Driver", value: sjDriver.trim() },
+                          ],
+                          items: items.map((x) => ({ name: x.name.trim(), qty: x.qty.trim() })),
+                          receiver: sjReceiver.trim(),
+                          giver: sjGiver.trim(),
+                          labels: GOODS_NOTE_LABELS(locale),
+                        }).save(`SJ-${no.replaceAll("/", "-")}`);
+                      }
                       void exportExcel([
                         [SB_KOP.line1, SB_KOP.name], [SB_KOP.hq, `HP ${SB_KOP.hp}`], [],
                         ["SURAT JALAN", `NO REF: ${no}`], ["Tanggal", sjDate], ["Tujuan", sjTo.trim()],
@@ -2612,17 +2632,24 @@ if (k === "mattype") return matTypeOf(i);
                         related: ttSjId ? [ttSjId] : [],
                         revisions: [{ version: "v1.0", at: todayISO(), by: ttGiver.trim() || "Anda", note: "Tanda terima diterbitkan" }],
                       }, { action: "menerbitkan tanda terima", target: no, module: "Inventori" });
-                      goodsNoteDoc({
-                        title: "Tanda Terima",
-                        no,
-                        tanggal: ttDate,
-                        tujuan: "",
-                        extra: [{ label: locale === "en" ? "Delivery note" : "Surat Jalan", value: sj ? String(sj.sbRef || sj.id) : "-" }],
-                        items: items.map((x) => ({ name: x.name.trim(), qty: x.qty.trim() })),
-                        receiver: ttReceiver.trim(),
-                        giver: ttGiver.trim(),
-                        labels: GOODS_NOTE_LABELS(locale),
-                      }).save(`TT-${no.replaceAll("/", "-")}`);
+                      if (pdfServerReady()) {
+                        const docId = `TT-SMD-${sjYearOf(ttDate)}-${String(seq).padStart(3, "0")}`;
+                        const done = await pdfDoc.request({ kind: "tandaTerima", id: docId, locale }, `TT-${no.replaceAll("/", "-")}`, false);
+                        if (!done) return;
+                      } else {
+                        const { goodsNoteDoc } = await import("../../utils/pdfDocs");
+                        goodsNoteDoc({
+                          title: "Tanda Terima",
+                          no,
+                          tanggal: ttDate,
+                          tujuan: "",
+                          extra: [{ label: locale === "en" ? "Delivery note" : "Surat Jalan", value: sj ? String(sj.sbRef || sj.id) : "-" }],
+                          items: items.map((x) => ({ name: x.name.trim(), qty: x.qty.trim() })),
+                          receiver: ttReceiver.trim(),
+                          giver: ttGiver.trim(),
+                          labels: GOODS_NOTE_LABELS(locale),
+                        }).save(`TT-${no.replaceAll("/", "-")}`);
+                      }
                       void exportExcel([
                         [SB_KOP.line1, SB_KOP.name], [SB_KOP.hq, `HP ${SB_KOP.hp}`], [],
                         ["TANDA TERIMA", `NO REF: ${no}`], ["Tanggal", ttDate],

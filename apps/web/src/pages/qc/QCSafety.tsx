@@ -17,7 +17,8 @@ import { useDeepLinkParams, useDeepLinkTarget } from "../../components/useDeepLi
 import { AlertBannerView, notifRowId, useModuleAlert, useNotifFlash } from "../../components/AlertBanner";
 import { rowHighlightClass } from "../../components/rowHighlight";
 import { exportExcel } from "../../utils/export";
-import { transmittalDoc } from "../../utils/pdfDocs";
+import { pdfServerReady } from "../../services/pdfClient";
+import { usePdfDoc } from "../../components/usePdfDoc";
 import { DocumentPreviewCell, DocumentPreviewPanel, DownloadFileButton, InlineDocPreview } from "../../components/DocumentPreview";
 import { docAttachment, docFileNameOf, docUrlOf } from "../../utils/docAttachment";
 import { findUsages } from "../../utils/usages";
@@ -115,6 +116,7 @@ export default function QCSafety() {
   const { data, add, update, remove, log, branch, inBranch } = useStore();
   const modAlert = useModuleAlert("qc");
   const flash = useNotifFlash();
+  const pdfDoc = usePdfDoc();
   // Deep-link dari Dashboard: ?tab=NCR&highlight=NCR-001 → pindah tab + flash baris.
   const deepParams = useDeepLinkParams();
   const notified = useMemo(() => new Set(modAlert.items.map((a) => a.rowId)), [modAlert.items]);
@@ -933,22 +935,29 @@ export default function QCSafety() {
       const rows = transmitForm.ids.map((id) => drawings.find((d) => d.id === id)).filter((d): d is StoreItem => !!d);
       /* PDF resmi dibuat lebih dulu: dokumen ini yang dikirim ke BKI, dan
          harus berupa teks yang bisa dibaca pihak luar tanpa aplikasi kita. */
-      transmittalDoc({
-        to: transmitForm.to.trim(),
-        date: transmitForm.date,
-        head: locale === "en"
-          ? ["ID", "Project", "Title", "Rev", "Status", "Holder", "Updated"]
-          : ["ID", "Proyek", "Judul", "Revisi", "Status", "Holder", "Diperbarui"],
-        drawings: rows.map((d) => ({
-          id: String(d.id),
-          project: String(d.project ?? "-"),
-          judul: String(d.title ?? "-"),
-          revisi: String(d.revision ?? "-"),
-          status: String(d.status ?? "-"),
-          holder: String(d.holder ?? "-"),
-          diperbarui: fmtTanggal(String(d.updated ?? "")),
-        })),
-      }).save(`Transmittal-${transmitForm.date}`);
+      if (pdfServerReady()) {
+        const docId = `TR-${transmitForm.date.replaceAll("-", "")}-${String(rows.length).padStart(3, "0")}`;
+        const done = await pdfDoc.request({ kind: "transmittal", id: docId, locale }, `Transmittal-${transmitForm.date}`, false);
+        if (!done) return;
+      } else {
+        const { transmittalDoc } = await import("../../utils/pdfDocs");
+        transmittalDoc({
+          to: transmitForm.to.trim(),
+          date: transmitForm.date,
+          head: locale === "en"
+            ? ["ID", "Project", "Title", "Rev", "Status", "Holder", "Updated"]
+            : ["ID", "Proyek", "Judul", "Revisi", "Status", "Holder", "Diperbarui"],
+          drawings: rows.map((d) => ({
+            id: String(d.id),
+            project: String(d.project ?? "-"),
+            judul: String(d.title ?? "-"),
+            revisi: String(d.revision ?? "-"),
+            status: String(d.status ?? "-"),
+            holder: String(d.holder ?? "-"),
+            diperbarui: fmtTanggal(String(d.updated ?? "")),
+          })),
+        }).save(`Transmittal-${transmitForm.date}`);
+      }
       void exportExcel(
       [["ID", "Proyek", "Judul", "Revisi", "Status", "Holder", "Diperbarui"],
         ...rows.map((d) => [d.id, d.project, d.title, d.revision, d.status, d.holder, fmtTanggal(String(d.updated))])],

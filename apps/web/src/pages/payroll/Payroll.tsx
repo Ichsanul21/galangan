@@ -26,7 +26,8 @@ import { fmtBulan, fmtRupiah, fmtTanggal, todayISO } from "../../utils/format";
 import { AlertBannerView, notifRowId, useModuleAlert, useNotifFlash } from "../../components/AlertBanner";
 import { getSetting } from "../../utils/settings";
 import { exportExcel } from "../../utils/export";
-import { slipGajiDoc } from "../../utils/pdfDocs";
+import { pdfServerReady } from "../../services/pdfClient";
+import { usePdfDoc } from "../../components/usePdfDoc";
 import { findUsages } from "../../utils/usages";
 import { kasKodeOf, postCashJournal } from "../../services/autoJournal";
 import { n_dry } from "../../i18n/n_dry";
@@ -295,6 +296,7 @@ export default function Payroll() {
   const [delPay, setDelPay] = useState<StoreItem | null>(null);
   const [delKasbon, setDelKasbon] = useState<{ e: StoreItem; kasbonId: string } | null>(null);
   const [sort, setSort] = useState<SortState>({ key: null, dir: "asc" });
+  const pdfDoc = usePdfDoc();
   const [sort2, setSort2] = useState<SortState>({ key: null, dir: "asc" });
   const [sort3, setSort3] = useState<SortState>({ key: null, dir: "asc" });
 
@@ -872,15 +874,25 @@ export default function Payroll() {
   /* Slip gaji resmi sebagai PDF (mesin teks). Berkas ini diberikan ke
      karyawan, jadi harus berupa teks yang bisa disalin ke sistem lain -
      jalur lama menghasilkan xlsx yang isinya tabel tanpa kop. */
-  const exportSlipPdf = (p: StoreItem) => {
+  const exportSlipPdf = async (p: StoreItem): Promise<void> => {
+    const id = String(p.id);
+    if (pdfServerReady()) {
+      const done = await pdfDoc.request({ kind: "slipGaji", id, locale }, `slip-${id}`, false);
+      if (done) {
+        toast(S.tSlipPdfDone.replace("{a}", id));
+      }
+      return;
+    }
+    /* Fallback: mesin lokal lama (akan dihapus setelah semua factory pindah). */
     const b = bpjsKarOf(p);
     const emp = empOf(String(p.employeeId));
     const isHarian = String(emp?.tipe ?? "") === "Harian";
     const sign = (p.slipSign ?? {}) as { received?: boolean; date?: string };
     const rp = (n: unknown): string => fmtRupiah(Number(n || 0));
     try {
+      const { slipGajiDoc } = await import("../../utils/pdfDocs");
       slipGajiDoc({
-        id: String(p.id),
+        id,
         karyawan: empNameOf(String(p.employeeId)),
         periode: fmtBulan(String(p.period)),
         tipe: rowType(p),
@@ -921,8 +933,8 @@ export default function Payroll() {
           status: locale === "en" ? "Status" : "Status",
           tandaTerima: locale === "en" ? "Receipt" : "Tanda terima",
         },
-      }).save(`slip-${p.id}`);
-      toast(S.tSlipPdfDone.replace("{a}", String(p.id)));
+      }).save(`slip-${id}`);
+      toast(S.tSlipPdfDone.replace("{a}", id));
     } catch (e) {
       toast(e instanceof Error ? e.message : S.saveFail, "info");
     }
