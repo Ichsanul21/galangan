@@ -1589,7 +1589,7 @@ export default function EquipmentPage() {
       </div>
 
       <div className="mt-4 card">
-        <Tabs tabs={["Register", "Alokasi / Booking", "Maintenance", "Kalibrasi", "Biaya", "Utilisasi"]} active={tab} onChange={setTab} labels={{ Register: S.eqTabRegister, "Alokasi / Booking": S.eqTabBooking, Maintenance: S.eqTabMaint, Kalibrasi: S.eqTabCal, Biaya: S.eqTabCost, Utilisasi: S.eqTabUtil }} />
+        <Tabs tabs={["Register", "Alokasi / Booking", "Sedang Dipakai", "Maintenance", "Kalibrasi", "Biaya", "Utilisasi"]} active={tab} onChange={setTab} labels={{ Register: S.eqTabRegister, "Alokasi / Booking": S.eqTabBooking, "Sedang Dipakai": S.eqTabInUse, Maintenance: S.eqTabMaint, Kalibrasi: S.eqTabCal, Biaya: S.eqTabCost, Utilisasi: S.eqTabUtil }} />
         <div className="p-4">
           {tab === "Register" && (
             <div>
@@ -1858,6 +1858,82 @@ export default function EquipmentPage() {
                   })}
                   {doneBookings.length === 0 && <p className="text-xs text-steel-400">{S.eqNoDoneBooking}</p>}
                 </div>
+              </Card>
+            </div>
+          )}
+
+{tab === "Sedang Dipakai" && (
+            /* Item 5d revisi 2 Oktober: daftar equipment yang sedang
+               di-booking DAN sedang dipakai untuk service. Sebelumnya
+               pengguna harus menggali Register (status), Alokasi (booking
+               berjalan), dan Maintenance (siklus berjalan) untuk tahu unit
+               mana yang tidak boleh dibooking lagi - ketiganya satu arti:
+               unit sedang terpakai. */
+            <div className="space-y-4">
+              <Card className="p-5">
+                <CardHeader title={S.eqInUseTitle} subtitle={S.eqInUseSub} />
+                {(() => {
+                  const workshop = equipment.filter((e) => e.status === "Maintenance");
+                  const booked = new Map<string, StoreItem[]>();
+                  for (const b of activeBookings) {
+                    const key = equipKey(String(b.equip ?? ""));
+                    if (!booked.has(key)) booked.set(key, []);
+                    booked.get(key)!.push(b);
+                  }
+                  const rows = [
+                    ...workshop.map((e) => ({
+                      id: String(e.id),
+                      name: equipLabel(e.name),
+                      code: String(e.code ?? ""),
+                      reason: S.eqInUseWorkshop,
+                      tone: "amber" as const,
+                      until: String(e.maintenanceEta ?? ""),
+                      detail: String(e.maintenanceNote ?? ""),
+                    })),
+                    ...Array.from(booked.entries()).map(([key, list]) => {
+                      const e = equipment.find((x) => equipKey(String(x.name ?? "")) === key);
+                      return {
+                        id: String(e?.id ?? key),
+                        name: equipLabel(e?.name ?? list[0]?.equip ?? key),
+                        code: String(e?.code ?? ""),
+                        reason: S.eqInUseBooking,
+                        tone: "blue" as const,
+                        until: String(list[0]?.date ?? ""),
+                        detail: list.map((b) => `${projCell(b.proyek)} · ${fmtTanggal(String(b.date))}`).join("; "),
+                      };
+                    }),
+                  ].sort((a, b) => a.name.localeCompare(b.name, "id"));
+                  if (rows.length === 0) {
+                    return <p className="text-xs text-steel-400">{S.eqInUseNone}</p>;
+                  }
+                  return (
+                    <div className="overflow-x-auto">
+                      <table className="w-full">
+                        <thead className="bg-surface">
+                          <tr>
+                            <th className="th">{S.thEquipment}</th>
+                            <th className="th">{S.eqInUseBooking}</th>
+                            <th className="th">{locale === "en" ? "Until" : "Sampai"}</th>
+                            <th className="th">{locale === "en" ? "Detail" : "Keterangan"}</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-steel-100">
+                          {rows.map((r) => (
+                            <tr key={`${r.reason}-${r.id}`} className="hover:bg-surface">
+                              <td className="td">
+                                <p className="font-medium text-navy-900">{r.name}</p>
+                                {r.code !== "" && <p className="font-mono text-[11px] text-steel-400">{r.code}</p>}
+                              </td>
+                              <td className="td"><Badge tone={r.tone}>{r.reason}</Badge></td>
+                              <td className="td text-steel-600">{r.until === "" ? "-" : fmtTanggal(r.until)}</td>
+                              <td className="td text-xs text-steel-600">{r.detail === "" ? "-" : r.detail}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  );
+                })()}
               </Card>
             </div>
           )}

@@ -656,6 +656,75 @@ export default function Drydock() {
         </Card>
 
       <div className="mt-5 grid grid-cols-1 gap-5">
+        {/* ==== PETA AREA (GRAFIK) ====
+            Item 6 revisi 2 Oktober. Tabel "Slot per Area" di bawahnya
+            menjawab "slot mana saja", tapi tidak menjawab pertanyaan yang
+            biasa ditanya_admin drydock: area mana yang sudah penuh, berapa
+            kapal yang menumpuk di sana, dan mana yang longgar. Kartu ini
+            menjawabnya lewat(isian per area, bukan baris per slot). */}
+        <Card>
+          <CardHeader
+            title={locale === "en" ? "Area capacity map" : "Peta Kapasitas Area"}
+            subtitle={locale === "en"
+              ? "One block per area, scaled by slot count. Fill = share of slots currently occupied."
+              : "Satu blok per area, discalakan menurut jumlah slot. Isian = porsi slot yang sedang terisi."}
+          />
+          {(() => {
+            const groups = new Map<string, StoreItem[]>();
+            for (const s of filteredSlots) {
+              const key = slotAreaOf(s) || S.noArea;
+              if (!groups.has(key)) groups.set(key, []);
+              groups.get(key)!.push(s);
+            }
+            /* Area tanpa slot pun dihitung, kalau tidak area yang kosong lenyap
+               dari peta - padahal justru itu yang perlu terlihat. */
+            for (const d of drydocks) {
+              const key = String(d.area ?? "").trim() || S.noArea;
+              if (!groups.has(key)) groups.set(key, []);
+            }
+            const entries = [...groups.entries()].sort((a, b) => b[1].length - a[1].length || a[0].localeCompare(b[0]));
+            const maxSlots = Math.max(1, ...entries.map(([, sl]) => sl.length));
+            if (entries.length === 0) {
+              return <p className="px-5 pb-5 text-xs text-steel-400">{S.emptySlots}</p>;
+            }
+            return (
+              <div className="grid grid-cols-1 gap-3 px-5 pb-5 sm:grid-cols-2 xl:grid-cols-3">
+                {entries.map(([area, slots]) => {
+                  const vessels = Array.from(new Set(slots.map((s) => String(s.vessel ?? "-")))).filter((v) => v !== "-");
+                  const occupied = slots.filter((s) => isActiveSlot(s)).length;
+                  const conflicts = slots.filter((s) => conflict.some((c) => c.id === s.id)).length;
+                  const fill = slots.length === 0 ? 0 : Math.round((occupied / slots.length) * 100);
+                  /* Lebar blok diskalakan jumlah slot supaya area besar langsung
+                     terlihat lebih besar - itu poin "grafis"nya; tabel tidak
+                     pernah bisa menunjukkan itu. */
+                  const scale = Math.round((slots.length / maxSlots) * 100);
+                  return (
+                    <div key={area} className="rounded-xl border border-steel-100 bg-surface p-3">
+                      <div className="flex items-baseline justify-between gap-2">
+                        <p className="truncate text-sm font-semibold text-navy-900" title={area}>{area}</p>
+                        <span className="shrink-0 text-xs text-steel-500">{locale === "en" ? `${slots.length} slots` : `${slots.length} slot`}</span>
+                      </div>
+                      <div className="mt-2 h-16 w-full overflow-hidden rounded-lg bg-steel-50 p-1" title={locale === "en" ? `Scale: ${scale}% of the largest area` : `Skala: ${scale}% dari area terbesar`}>
+                        <div
+                          className={`h-full rounded-md ${fill > 80 ? "bg-rose-400" : fill > 50 ? "bg-amber-400" : "bg-ocean-400"}`}
+                          style={{ width: `${Math.max(8, scale)}%` }}
+                        />
+                      </div>
+                      <div className="mt-2 flex flex-wrap items-center gap-1.5 text-[11px]">
+                        <Badge tone={occupied > 0 ? "blue" : "gray"}>{locale === "en" ? `${occupied} occupied` : `${occupied} terisi`}</Badge>
+                        <Badge tone="teal">{locale === "en" ? `${vessels.length} vessels` : `${vessels.length} kapal`}</Badge>
+                        {conflicts > 0 && <Badge tone="red">{locale === "en" ? `${conflicts} conflict` : `${conflicts} bentrok`}</Badge>}
+                      </div>
+                      {vessels.length > 0 && (
+                        <p className="mt-1 truncate text-[11px] text-steel-500" title={vessels.join(", ")}>{vessels.join(" · ")}</p>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            );
+          })()}
+        </Card>
         <Card>
           <CardHeader title="Slot per Area" subtitle="Grup Area · Slot · Status · Kapal · Masuk–Keluar (ikut filter bar di bawah)" />
           <div className="overflow-x-auto">

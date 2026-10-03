@@ -1867,31 +1867,55 @@ if (k === "mattype") return matTypeOf(i);
                   (c) bisa diklik untuk memfilter tabel ke item-item itu.
                   Detail lengkap ada di tab Analisis ("Warning per Kategori"). */}
               {warnByCat.length > 0 && (
+                /* Item 7 revisi 2 Oktober: baris tombol `[jumlah][status]`
+                   digantikan dropdown kategori. Tombolnya makan satu baris
+penuh per kategori - dengan 10 kategori berproblem, strip
+                   itu menutupi setengah katalog sebelum pengguna melihat satu
+                   pun barang. Dropdown memuat semua kategori (termasuk yang
+                   bersih) plus jumlahnya, jadi penyaringan per kategori jadi
+                   satu kontrol, bukan tombol yang menumpuk. */
                 <div className="mb-3 flex flex-wrap items-center gap-2 rounded-xl border border-steel-200 bg-steel-50 px-3 py-2 text-xs">
                   <AlertTriangle className="h-4 w-4 shrink-0 text-amber-600" />
-                  <span className="font-medium text-navy-900">
-                    {locale === "en" ? "Attention needed" : "Perlu perhatian"}
-                  </span>
+                  <label className="font-medium text-navy-900" htmlFor="inv-cat-warn">
+                    {locale === "en" ? "Category" : "Kategori"}
+                  </label>
+                  <select
+                    id="inv-cat-warn"
+                    className="input w-auto py-1 text-xs"
+                    value={cat}
+                    onChange={(e) => { setCat(e.target.value); setTab("Katalog"); }}
+                  >
+                    <option value="Semua">
+                      {locale === "en" ? "All categories" : "Semua kategori"} ({categories.length})
+                    </option>
+                    {categories.map((name) => {
+                      const w = warnByCat.find((c) => c.category === name);
+                      const total = w?.total ?? 0;
+                      const parts = [
+                        w && w.counts.critical > 0 ? `${w.counts.critical} ${locale === "en" ? "critical" : "kritis"}` : "",
+                        w && w.counts.low > 0 ? `${w.counts.low} ${locale === "en" ? "low" : "menipis"}` : "",
+                        w && w.counts.overstock > 0 ? `${w.counts.overstock} ${locale === "en" ? "over" : "berlebih"}` : "",
+                      ].filter(Boolean).join(", ");
+                      return (
+                        <option key={name} value={name}>
+                          {parts === "" ? `${name} (${total})` : `${name} — ${parts}`}
+                        </option>
+                      );
+                    })}
+                  </select>
                   {warnByCat.map((c) => (
-                    <button
+                    <span
                       key={c.category}
-                      type="button"
-                      title={
-                        locale === "en"
-                          ? `${c.category}: ${c.counts.critical} critical, ${c.counts.low} low, ${c.counts.overstock} overstock. Click to filter the catalog.`
-                          : `${c.category}: ${c.counts.critical} kritis, ${c.counts.low} menipis, ${c.counts.overstock} berlebih. Klik untuk memfilter katalog.`
-                      }
-                      onClick={() => {
-                        setCat(c.category);
-                        setTab("Katalog");
-                      }}
-                      className="inline-flex items-center gap-1.5 rounded-full border border-white bg-white px-2 py-0.5 font-medium shadow-sm hover:border-ocean-300"
+                      className="inline-flex items-center gap-1.5 rounded-full border border-white bg-white px-2 py-0.5 font-medium shadow-sm"
+                      title={locale === "en"
+                        ? `${c.category}: ${c.counts.critical} critical, ${c.counts.low} low, ${c.counts.overstock} overstock.`
+                        : `${c.category}: ${c.counts.critical} kritis, ${c.counts.low} menipis, ${c.counts.overstock} berlebih.`}
                     >
                       <span className="text-navy-900">{c.category}</span>
                       {c.counts.critical > 0 && <Badge tone="red">{c.counts.critical} {locale === "en" ? "critical" : "kritis"}</Badge>}
                       {c.counts.low > 0 && <Badge tone="amber">{c.counts.low} {locale === "en" ? "low" : "menipis"}</Badge>}
                       {c.counts.overstock > 0 && <Badge tone="blue">{c.counts.overstock} {locale === "en" ? "over" : "berlebih"}</Badge>}
-                    </button>
+                    </span>
                   ))}
                 </div>
               )}

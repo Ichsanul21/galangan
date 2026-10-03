@@ -22,6 +22,40 @@ import { monthAxis, monthKeyOf } from "../../utils/monthAxis";
 const TYPES = ["Kontrak", "Drawing", "Prosedur", "Sertifikat", "Laporan", "Invoice", "NCR", "Penawaran", "Dock Space", "Surat Jalan", "Tanda Terima"];
 const FILTERS = ["Semua", ...TYPES, "Arsip"];
 
+/* Item 5e revisi 2 Oktober: sub-tipe dokumen.
+ *
+ * Sebelumnya semua sertifikat tersimpan sebagai `Sertifikat` polos, sehingga
+ * "Sertifikat K3", "Sertifikat Kelas", dan "Sertifikat Otoritas" tidak bisa
+ * dibedakan: hitungan masa berlaku tetap benar, tapi sertifikat mana yang
+ * perlu dipesan ulang tidak jelas, dan arsip tidak bisa diaudit per jenis.
+ *
+ * `subType` disimpan sebagai field terpisah, BUKAN digabung ke `type` -
+ * karena `type` menentukan prefix nomor dokumen (PREFIX) dan masa retensi
+ * (RETENSI). Menggabungkannya akan mengganti CTR/SRT jadi "SRT-K3" dsb dan
+ * membuat nomor yang sudah terbit tidak lagi dikenali.
+ */
+export const SUB_TYPES: Record<string, string[]> = {
+  Sertifikat: ["Sertifikat K3", "Sertifikat Kelas", "Sertifikat Otoritas", "Sertifikat Kualifikasi", "Sertifikat Lainnya"],
+  Drawing: ["Shop Drawing", "As Built Drawing", "Gauss Drawing", "Drawing Lainnya"],
+  Prosedur: ["SOP Produksi", "SOP K3", "SOP_mutu", "SOP Pemeliharaan", "Prosedur Lainnya"],
+  Laporan: ["Laporan Progres", "Laporan Mutu", "Laporan K3", "Laporan Keuangan", "Laporan Lainnya"],
+  Kontrak: ["Kontrak Utama", "Addendum", "Perubahan Bright", "Kontrak Lainnya"],
+  Invoice: ["Invoice Progres", "Invoice Retensi", "Invoice Penutup"],
+};
+
+/** Sub-tipe yang berlaku untuk satu jenis dokumen. */
+export function subTypesOf(type: string): string[] {
+  return SUB_TYPES[type] ?? [];
+}
+
+/**
+ * Sertifikat yang wajib punya relasi ke dokumen Sertifikat QC di Proyek.
+ * Tanpa ini, "Sertifikat K3" bisa diterbitkan tanpa bukti bahwa tim QC
+ * pernah memeriksa - persis celah yang bikin audit menemukan sertifikat
+ * kedaluwarsa yang sebenarnya sudah ada berkasnya.
+ */
+const NEEDS_QC_LINK = new Set(subTypesOf("Sertifikat").filter((s) => s !== "Sertifikat Lainnya"));
+
 /* Tinggi pratinjau PDF perlu lebih lega daripada gambar supaya halaman pertama
    terbaca tanpa perlu menggulir di dalam iframe. */
 const PDF_HEIGHT_RE = /\.pdf(\?|$)/i;
@@ -104,7 +138,7 @@ function daysUntil(iso: string | null | undefined): number | null {  if (!iso ||
   return Math.round((t - today) / 86400000);
 }
 
-const emptyForm = { title: "", type: "Laporan", project: "", vessel: "", owner: "", berlakuHingga: "", revNote: "", fileUrl: "" };
+const emptyForm = { title: "", type: "Laporan", subType: "", project: "", vessel: "", owner: "", berlakuHingga: "", revNote: "", fileUrl: "", qcCertId: "" };
 
 /* Teks cari mencakup owner / tipe / OCR / lampiran, bukan cuma judul.
    Lampiran dibaca lewat docAttachment supaya pencarian tetap menemukan dokumen
@@ -148,6 +182,19 @@ export default function Documents() {
   const [archiving, setArchiving] = useState<StoreItem | null>(null);
   const [deleting, setDeleting] = useState<StoreItem | null>(null);
   const [form, setForm] = useState(emptyForm);
+
+  /* Dokumen Sertifikat yang boleh dipilih sebagai dasar QC untuk sertifikat
+     yang sedang dibuat. Hanya proyek yang sedang dikerjakan dan dokumen
+     bertipe Sertifikat - dua filter ini yang membuat tautan berarti: tanpa
+     itu, users bisa menautkan sertifikat K3 ke sertifikat palang kapal lain. */
+  const qcCertOptions = useMemo(
+    () => (data.documents ?? []).filter(
+      (d) => d.type === "Sertifikat"
+        && String(d.project ?? "") === form.project
+        && String(d.id) !== String(editing?.id ?? ""),
+    ),
+    [data.documents, form.project, editing?.id],
+  );
   const [relSel, setRelSel] = useState<string[]>([]);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [uploadingFile, setUploadingFile] = useState(false);
@@ -225,7 +272,7 @@ export default function Documents() {
     setOcrText(""); setDistTo("");
     setEditing(d);
     setRelSel(Array.isArray(d.related) ? d.related.map(String) : []);
-    setForm({ title: d.title, type: d.type, project: d.project, vessel: d.vessel ?? "", owner: d.owner, berlakuHingga: d.berlakuHingga ?? "", revNote: "", fileUrl: docUrlOf(d) || docFileNameOf(d) });
+    setForm({ title: d.title, type: d.type, subType: String(d.subType ?? ""), project: d.project, vessel: d.vessel ?? "", owner: d.owner, berlakuHingga: d.berlakuHingga ?? "", revNote: "", fileUrl: docUrlOf(d) || docFileNameOf(d), qcCertId: String(d.qcCertId ?? "") });
   };
 
   const openDetail = (d: StoreItem) => {
@@ -273,6 +320,13 @@ export default function Documents() {
       return false;
     }
     if (form.type === "Sertifikat" && !form.berlakuHingga) { toast(S.tCertExpiry, "info"); return false; }
+    /* Sertifikat wajib menunjuk dokumen Sertifikat QC-nya (item 5e). Tanpa
+       relasi ini, arsip tidak bisa membuktikan sertifikat pernah diperiksa
+       - dan tautan ke proyek yang salah sama saja tidak berguna. */
+    if (NEEDS_QC_LINK.has(form.subType) && !qcCertOptions.some((o) => o.id === form.qcCertId.trim())) {
+      toast(S.tQcCertLinkWajib, "info");
+      return false;
+    }
     if (editing && !form.revNote.trim()) { toast(S.tRevNoteReq, "info"); return false; }
     return true;
   };
@@ -286,8 +340,10 @@ export default function Documents() {
 const version = nextVersion(String(editing.version ?? "v1.0"));
       const revisions = [...(editing.revisions ?? []), { version, at: todayISO(), by: form.owner.trim(), note: form.revNote.trim() }];
       await update("documents", editing.id, {
-        title: form.title.trim(), type: form.type, project: form.project, vessel: form.vessel,
+        title: form.title.trim(), type: form.type, subType: form.subType || undefined,
+        project: form.project, vessel: form.vessel,
         owner: form.owner.trim(), berlakuHingga: form.berlakuHingga || undefined,
+        qcCertId: form.qcCertId.trim() || undefined,
         version, revisions, updated: todayISO(), related: [...relSel],
         ...attachFields(form.fileUrl.trim()),
       });
@@ -298,10 +354,12 @@ const version = nextVersion(String(editing.version ?? "v1.0"));
       const dupe = data.documents.some((d) => d.type === form.type && String(d.title).toLowerCase() === form.title.trim().toLowerCase());
       if (dupe) { toast(S.tTitleDupe, "info"); return; }
       if (data.documents.some((d) => d.id === docPreview)) { toast(S.tIdDupe, "info"); return; }
-      const created = await add("documents", {
+const created = await add("documents", {
         id: docPreview,
-        title: form.title.trim(), type: form.type, project: form.project, vessel: form.vessel,
+        title: form.title.trim(), type: form.type, subType: form.subType || undefined,
+        project: form.project, vessel: form.vessel,
         owner: form.owner.trim(), berlakuHingga: form.berlakuHingga || undefined,
+        qcCertId: form.qcCertId.trim() || undefined,
         version: "v1.0", status: "Draft", updated: todayISO(), archived: false, docCopy: "Terkendali",
         related: [...relSel],
         ...attachFields(form.fileUrl.trim()),
@@ -530,6 +588,8 @@ const doExport = () => {
                     <p className="font-mono text-xs text-steel-500">{d.id} · {d.owner}{d.berlakuHingga ? S.untilSuffix.replace("{a}", fmtTanggal(d.berlakuHingga)) : ""}</p>
                     <div className="mt-1 flex flex-wrap gap-1">
                       <Badge tone={String(d.docCopy ?? "Terkendali") === "Salinan" ? "amber" : "teal"}>{String(d.docCopy ?? "Terkendali")}</Badge>
+                      {d.subType ? <Badge tone="gray">{String(d.subType)}</Badge> : null}
+                      {d.qcCertId ? <Badge tone="blue">{locale === "en" ? "QC" : "QC"}: {String(d.qcCertId)}</Badge> : null}
                       {lewatRetensi(d) && <Badge tone="red">{S.overRetensi}</Badge>}
                     </div>
                   </td>
@@ -603,10 +663,18 @@ const doExport = () => {
           </Field>
           <FormGrid>
             <Field label={S.colType}>
-              <select className="input" value={form.type} onChange={(e) => setF("type", e.target.value)}>
+              <select className="input" value={form.type} onChange={(e) => { setF("type", e.target.value); setForm({ ...form, type: e.target.value, subType: "" }); }}>
                 {TYPES.map((t) => <option key={t}>{t}</option>)}
               </select>
             </Field>
+            {subTypesOf(form.type).length > 0 && (
+              <Field label={S.subTypeLbl}>
+                <select className="input" value={form.subType} onChange={(e) => setF("subType", e.target.value)}>
+                  <option value="">-</option>
+                  {subTypesOf(form.type).map((s) => <option key={s}>{s}</option>)}
+                </select>
+              </Field>
+            )}
             <Field label={S.lblRelProject}>
               <select className="input" value={form.project} onChange={(e) => setF("project", e.target.value)}>
                 <option value="">{S.optPickProject}</option>
@@ -624,9 +692,21 @@ const doExport = () => {
             <Field label={S.lblOwner}>
               <input className="input" placeholder={S.phOwner} value={form.owner} onChange={(e) => setF("owner", e.target.value)} />
             </Field>
-            <Field label={S.lblValidUntil}>
+<Field label={S.lblValidUntil}>
               <input type="date" className="input" value={form.berlakuHingga} onChange={(e) => setF("berlakuHingga", e.target.value)} />
             </Field>
+            {NEEDS_QC_LINK.has(form.subType) && (
+              <Field label={S.qcCertLinkLbl} hint={qcCertOptions.length === 0 ? S.qcCertNone : undefined}>
+                <select className="input" value={form.qcCertId} onChange={(e) => setF("qcCertId", e.target.value)}>
+                  <option value="">{S.optPickProject}</option>
+                  {qcCertOptions.map((o) => (
+                    <option key={String(o.id)} value={String(o.id)}>
+                      {String(o.id)} · {String(o.title)}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+            )}
             {editing && (
               <Field label={S.lblRevNote}>
                 <input className="input" placeholder={S.phRevNote} value={form.revNote} onChange={(e) => setF("revNote", e.target.value)} />
@@ -698,6 +778,27 @@ const doExport = () => {
                 <div key={k} className="flex justify-between gap-4"><dt className="text-steel-500">{k}</dt><dd className="font-medium text-navy-900">{v}</dd></div>
               ))}
               <div className="flex justify-between gap-4"><dt className="text-steel-500">{S.colStatus}</dt><dd><StatusBadge status={detail.status} /></dd></div>
+              {detail.subType ? (
+                <div className="flex justify-between gap-4"><dt className="text-steel-500">{S.subTypeLbl}</dt><dd><Badge tone="gray">{String(detail.subType)}</Badge></dd></div>
+              ) : null}
+              {detail.qcCertId ? (
+                /* Tautan ke dokumen Sertifikat QC harus bisa diklik: audit
+                   selalu berakhir di "mana berkas pemeriksaannya?". */
+                <div className="flex justify-between gap-4">
+                  <dt className="text-steel-500">{S.qcCertLinkLbl}</dt>
+                  <dd className="text-right">
+                    <button
+                      className="font-mono font-medium text-ocean-600 hover:underline"
+                      onClick={() => {
+                        const src = (data.documents ?? []).find((x) => String(x.id) === String(detail.qcCertId));
+                        if (src) openDetail(src);
+                      }}
+                    >
+                      {String(detail.qcCertId)}
+                    </button>
+                  </dd>
+                </div>
+              ) : null}
               <div className="flex justify-between gap-4">
                 <dt className="text-steel-500">{S.lblAttachShort}</dt>
                 <dd className="max-w-[60%] truncate text-right">
