@@ -1054,50 +1054,19 @@ const finishTraining = async (t: StoreItem) => {
     setShowSurat(true);
   };
 
-  /* PDF resmi dari mesin teks (bukan pratinjau teks polos).
-     Nomor memakai suratNomor yang sama dengan simpan, jadi berkas yang
-     diunduh dan yang masuk arsip selalu bernomor sama. */
+  /* Surat teguran dibuat server dari baris `letters` - isi, tanggal, dan
+     nama penyetuju dibaca dari arsip, bukan dari state form yang bisa sudah
+     berubah. Surat tanpa isi yang sudah disetujui berarti keputusan yang tidak
+     pernah ditandatangani. */
   const printSuratPdf = async (): Promise<void> => {
     if (!suratEmp) { toast(S.tPilihKaryawan, "info"); return; }
     if (!suratForm.isi.trim()) { toast(S.tIsiSurat, "info"); return; }
-    const docId = suratEditId ?? suratNomor;
-    if (pdfServerReady()) {
-      const done = await pdfDoc.request({ kind: "suratHr", id: docId, locale }, `surat-${docId}`, false);
-      if (done) {
-        toast(S.tSuratPdfOk.replace("{n}", docId));
-      }
-      return;
-    }
-    /* Fallback: mesin lokal lama (akan dihapus setelah semua factory pindah). */
-    try {
-      const { suratHrDoc } = await import("../../utils/pdfDocs");
-      suratHrDoc({
-        nomor: docId,
-        jenis: suratForm.jenis,
-        tanggal: suratForm.tanggal,
-        nama: String(suratEmp.name),
-        nik: String(suratEmp.nik ?? ""),
-        jabatan: String(suratEmp.role ?? ""),
-        departemen: String(suratEmp.dept ?? ""),
-        cabang: String(suratEmp.branch ?? ""),
-        isi: suratForm.isi.trim(),
-        approvedBy: suratForm.approvedBy.trim(),
-        approvedAt: suratForm.approvedAt,
-        labels: {
-          nomor: locale === "en" ? "Number" : "Nomor",
-          tanggal: locale === "en" ? "Date" : "Tanggal",
-          kepada: locale === "en" ? "To" : "Kepada Yth",
-          jabatan: locale === "en" ? "Position" : "Jabatan",
-          departemen: locale === "en" ? "Department" : "Departemen",
-          cabang: locale === "en" ? "Branch" : "Cabang",
-          disetujui: locale === "en" ? "Approved by" : "Disetujui oleh",
-          nama: locale === "en" ? "Name" : "Nama",
-        },
-      }).save(`surat-${docId}`);
-      toast(S.tSuratPdfOk.replace("{n}", docId));
-    } catch (e) {
-      toast(e instanceof Error ? e.message : S.saveFail, "info");
-    }
+    if (!pdfServerReady()) { toast(S.tPdfServerBelum, "info"); return; }
+    /* Surat yang belum disimpan tidak bisa dicetak: server membaca dari
+       arsip, dan isinya harus sama persis dengan yang disimpan. */
+    if (!suratEditId) { toast(S.tIsiSurat, "info"); return; }
+    const done = await pdfDoc.request({ kind: "suratHr", id: suratEditId, locale }, `surat-${suratEditId}`, false);
+    if (done) toast(S.tSuratPdfOk.replace("{n}", suratEditId));
   };
 
   /* Surat persetujuan cuti: dokumen resmi yang dibawa karyawan. Tidak ada
@@ -2215,10 +2184,10 @@ const finishTraining = async (t: StoreItem) => {
             </Field>
           </FormGrid>
           <div className="flex flex-wrap items-center gap-2">
-            <button type="button" className="btn-secondary text-xs" onClick={printSuratPdf} disabled={!suratEmp || !suratForm.isi.trim()}>
+            <button type="button" className="btn-secondary text-xs" onClick={printSuratPdf} disabled={!suratEmp || !suratForm.isi.trim() || !suratEditId}>
               {S.btnSuratPdf}
             </button>
-            <span className="text-[11px] text-steel-400">{S.hSuratPdf}</span>
+            <span className="text-[11px] text-steel-400">{suratEditId ? S.hSuratPdf : S.hSuratPdfBelumSimpan}</span>
           </div>
           {suratPreview && (
             <div>

@@ -19,10 +19,10 @@ Audit: 5 auditor paralel read-only terhadap `apps/web` + `services/api` @ `1dd96
 | `7cf924f`, `3ef3fd0` | Migrasi 10 pemanggil transaksional ke server-side rendering |
 | `9d6c00b` | Keselarasan entitas, snapshot model + cetak ulang, 3 pemanggil baru, 2 probe |
 | `f8d9729` | Slip gaji: nama field yang sebenarnya ditulis aplikasi |
-| (batch ini) | Report factory server (laporan/analitik/rekap) + 4 pemanggil dimigrasikan |
+| `055d560` | Report factory server (laporan/analitik/rekap) + 4 pemanggil dimigrasikan |
+| (batch ini) | PO/SPT/slip/HR ke field yang sebenarnya ditulis aplikasi; mesin PDF lama dihapus |
 
-Belum selesai: item modul & fitur 2 Oktober (lihat bagian bawah), penghapusan
-mesin PDF lama (`pdfLayout.ts`, `pdfDocs.ts`, `exportPDF`, html2canvas).
+Belum selesai: item modul & fitur 2 Oktober (lihat bagian bawah).
 
 ---
 

@@ -8,9 +8,8 @@
     "build": "tsc && vite build",
     "preview": "vite preview",
     "probe:render": "vite build --ssr scripts/ssr-probe.tsx --outDir node_modules/.cache/ssr-probe --emptyOutDir --logLevel error && node node_modules/.cache/ssr-probe/ssr-probe.js",
-    "probe:pdf": "vite build --ssr scripts/pdf-probe.ts --outDir node_modules/.cache/pdf-probe --emptyOutDir --logLevel error && node node_modules/.cache/pdf-probe/pdf-probe.js",
     "probe:price": "vite build --ssr scripts/price-probe.ts --outDir node_modules/.cache/price-probe --emptyOutDir --logLevel error && node node_modules/.cache/price-probe/price-probe.js",
-    "check": "tsc --noEmit && tsc -p tsconfig.scripts.json --noEmit && npm run probe:render && npm run probe:pdf && npm run probe:price"
+    "check": "tsc --noEmit && tsc -p tsconfig.scripts.json --noEmit && npm run probe:render && npm run probe:price"
   },
   "devDependencies": {
     "autoprefixer": "^10.5.4",
@@ -24,8 +23,6 @@
     "@types/react": "^19.2.18",
     "@types/react-dom": "^19.2.5",
     "framer-motion": "^13.1.1",
-    "html2canvas": "^1.4.1",
-    "jspdf": "^4.2.1",
     "lucide-react": "^1.37.0",
     "qrcode.react": "^4.2.0",
     "react": "^19.2.8",

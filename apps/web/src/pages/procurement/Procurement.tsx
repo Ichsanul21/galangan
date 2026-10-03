@@ -885,59 +885,17 @@ export default function Procurement() {
   };
 
   /* ============ CETAK (server-side PDF) ============ */
-  /* PDF resmi dirakit server dari data DB, bukan dari payload klien.
-     Ini menjamin integritas: nominal, vendor, dan item tidak bisa dimanipulasi
-     dari browser. Fallback ke mesin lokal hanya untuk mode demo tanpa backend. */
+  /* PO dirakit server dari baris `purchaseOrders`: item, harga, PPN, dan
+     approver dibaca dari data yang disimpan. Kalau dirakit di browser,
+     nominal dan isi PO bisa berbeda dari dokumen yang diterima vendor. */
   const cetakPoPdf = async (po: StoreItem) => {
     const id = String(po.id);
-    if (pdfServerReady()) {
-      const done = await pdfDoc.request({ kind: "po", id, locale }, `PO-${id}`, false);
-      if (done) {
-        toast(S.tPoExportPdf.replace("{n}", id));
-      }
+    if (!pdfServerReady()) {
+      toast(S.saveFail, "info");
       return;
     }
-    /* Fallback: mesin lokal lama (akan dihapus setelah semua factory pindah). */
-    const lines = poLines(po);
-    const ppnRate = getSetting(data, "PPN_RATE", 12);
-    const split = po.includePpn === false ? null : sbSplitIncludePpn(Number(po.amount || 0), ppnRate);
-    try {
-      const { poDoc } = await import("../../utils/pdfDocs");
-      poDoc({
-        no: po.docNo ? `${po.id} / ${po.docNo}` : id,
-        tipe: po.poType === "Kecil" ? S.tabSmall : S.tabBig,
-        vendor: String(po.vendor ?? "-"),
-        refPr: String(po.req ?? "-"),
-        project: String(po.project ?? "-"),
-        vessel: String(po.vessel ?? "-"),
-        tanggal: String(po.date ?? ""),
-        eta: String(po.eta ?? ""),
-        status: normPo(String(po.status ?? "")),
-        approvalLevel: levelOf(Number(po.amount || 0), APPROVE_PO_LIMIT),
-        approvals: apprOf(po).length > 0
-          ? apprOf(po).map((a) => S.apprJoin.replace("{n}", a.level).replace("{a}", a.by).replace("{b}", a.date)).join("; ")
-          : "-",
-        noFaktur: String(po.noFaktur ?? "-"),
-        tglFaktur: String(po.tglFaktur ?? ""),
-        denda: Number(po.dendaRp || 0),
-        lines: lines.map((l) => ({ name: l.name, qty: l.qty, unit: l.unit, price: l.price })),
-        total: Number(po.amount || lineTotal(lines)),
-        split: split ? { dpp: split.dpp, ppn: split.ppn } : null,
-        labels: {
-          tipe: S.xTipe, vendor: S.vendor, refPr: S.xRefPr, project: S.proyek,
-          vessel: S.xUtk, tanggal: S.xTgl, eta: S.eta, status: S.status,
-          approvalLevel: S.xLevelAppr, approvals: S.xAppr, noFaktur: S.noFaktur,
-          tglFaktur: S.tglFaktur, denda: S.xDenda, baris: S.xBaris, qty: S.qty,
-          satuan: S.satuan, harga: S.harga, subtotal: S.xSubtotal, total: S.xTotal,
-          dpp: S.xDpp.replace("{n}", String(ppnRate)), ppn: S.xPpn.replace("{n}", String(ppnRate)),
-          mengetahui: locale === "en" ? "Approved by" : "Mengetahui",
-          tandaTangan: locale === "en" ? "Signature" : "Tanda Tangan",
-        },
-      }).save(`PO-${id}`);
-      toast(S.tPoExportPdf.replace("{n}", id));
-    } catch (e) {
-      toast(e instanceof Error ? e.message : S.saveFail, "info");
-    }
+    const done = await pdfDoc.request({ kind: "po", id, locale }, `PO-${id}`, false);
+    if (done) toast(S.tPoExportPdf.replace("{n}", id));
   };
 
   const cetakPo = (po: StoreItem) => {

@@ -114,7 +114,7 @@ const DASH_ALERT_TONE: Record<ModuleAlertKey, string> = {
 /* Batas tampilan: kartu harus tetap ringkas. Sisanya ada di /notifikasi. */
 const DASH_ALERT_CAP = 12;
 import { useAuth, canSetTarget } from "../auth/auth";
-import { chartAnim } from "../utils/export";
+
 import { pdfServerReady } from "../services/pdfClient";
 import { usePdfDoc } from "../components/usePdfDoc";
 import { todayISO } from "../utils/format";
@@ -844,9 +844,9 @@ const toneFor = (s: string): "blue" | "amber" | "red" | "gray" | "green" =>
                   <YAxis yAxisId="rev" tick={{ fontSize: 12 }} stroke="#8aa2b6" axisLine={false} tickLine={false} />
                   <YAxis yAxisId="proj" orientation="right" tick={{ fontSize: 12 }} stroke="#8aa2b6" axisLine={false} tickLine={false} />
                   <Tooltip content={<ChartTooltip formatter={(v) => (typeof v === "number" ? `Rp ${v} M` : v)} />} />
-                  <Area yAxisId="rev" type="monotone" dataKey="revenue" name={S.legendRevenue} stroke="#0b3a63" strokeWidth={2.5} fill="url(#revGrad)" isAnimationActive={chartAnim()} />
-                  <Bar yAxisId="proj" dataKey="projects" name={S.legendProjectCount} fill="#8cc9e8" radius={[4, 4, 0, 0]} barSize={16} isAnimationActive={chartAnim()} />
-                  <Line yAxisId="rev" type="monotone" dataKey="cost" name={S.legendCost} stroke="#e11d48" strokeWidth={2} strokeDasharray="6 3" dot={false} isAnimationActive={chartAnim()} />
+                  <Area yAxisId="rev" type="monotone" dataKey="revenue" name={S.legendRevenue} stroke="#0b3a63" strokeWidth={2.5} fill="url(#revGrad)" isAnimationActive />
+                  <Bar yAxisId="proj" dataKey="projects" name={S.legendProjectCount} fill="#8cc9e8" radius={[4, 4, 0, 0]} barSize={16} isAnimationActive />
+                  <Line yAxisId="rev" type="monotone" dataKey="cost" name={S.legendCost} stroke="#e11d48" strokeWidth={2} strokeDasharray="6 3" dot={false} isAnimationActive />
                 </ComposedChart>
               </ResponsiveContainer>
             </div>
@@ -920,7 +920,7 @@ const toneFor = (s: string): "blue" | "amber" | "red" | "gray" | "green" =>
                       <stop offset="100%" stopColor="#2e9ad4" stopOpacity={0} />
                     </linearGradient>
                   </defs>
-                  <Area type="monotone" dataKey="equipment" stroke="#2e9ad4" strokeWidth={2} fill="url(#utilGrad)" isAnimationActive={chartAnim()} />
+                  <Area type="monotone" dataKey="equipment" stroke="#2e9ad4" strokeWidth={2} fill="url(#utilGrad)" isAnimationActive />
                 </AreaChart>
               </ResponsiveContainer>
             </div>

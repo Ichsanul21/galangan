@@ -171,6 +171,32 @@ async function probeDocuments(): Promise<void> {
     ok(`snapshot ${s.kind} terbaca`, snap !== null && snap.kind === s.kind, snap === null ? "-" : snap.entityId);
     if (!snap) continue;
 
+/* Dokumen resmi tidak boleh tercetak kosong. Baris DB nyata dipakai di sini,
+       jadi pemeriksaan ini menangkap factory yang membaca nama field yang
+       tidak pernah ditulis aplikasi - kelas bug yang menghasilkan dokumen
+       valid tapi tanpa isi (kwitansi nol, PO tanpa item, SPT tanpa pajak). */
+    {
+      const m = model as Record<string, unknown>;
+      const empties: string[] = [];
+      if (s.kind === "po") {
+        const its = (m.items ?? []) as unknown[];
+        if (its.length === 0) empties.push("tanpa item");
+        if (String(m.vendorName ?? "-") === "-") empties.push("tanpa vendor");
+        if (Number(m.totalAmount ?? 0) === 0) empties.push("total nol");
+      }
+      if (s.kind === "spt") {
+        const rows = (m.rows ?? []) as unknown[];
+        if (rows.length === 0) empties.push("tanpa rincian pajak");
+        if (Number(m.totalSetor ?? 0) === 0) empties.push("total setor nol");
+      }
+      if (s.kind === "kwitansi") {
+        const bd = (m.breakdown ?? []) as unknown[];
+        if (bd.length === 0) empties.push("tanpa rincian");
+        if (String(m.diterimaDari ?? "-") === "-") empties.push("tanpa penerima");
+      }
+      ok(`isi ${s.kind} bukan placeholder`, empties.length === 0, empties.length === 0 ? "terisi" : empties.join(", "));
+    }
+
     /* Cetak ulang dari snapshot harus identik (di luar stempel waktu). */
     const again = buildFromModel(recipe, snap.model, ctx).render().bytes;
     const same = samePdf(again, first);

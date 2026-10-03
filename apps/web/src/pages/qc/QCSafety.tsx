@@ -974,30 +974,15 @@ export default function QCSafety() {
         docCopy: "Terkendali",
         revisions: [{ version: "v1.0", at: todayISO(), by: String(user?.name ?? "Anda"), note: `Transmittal dikirim ke ${transmitForm.to.trim()}` }],
       }, { action: "mengirim transmittal drawing", target: `${no} · ${rows.length} drawing`, module: "QC" });
-      /* PDF resmi dibuat lebih dulu: dokumen ini yang dikirim ke BKI, dan
-         harus berupa teks yang bisa dibaca pihak luar tanpa aplikasi kita. */
-      if (pdfServerReady()) {
-        const done = await pdfDoc.request({ kind: "transmittal", id: docId, locale }, `Transmittal-${transmitForm.date}`, false);
-        if (!done) return;
-      } else {
-        const { transmittalDoc } = await import("../../utils/pdfDocs");
-        transmittalDoc({
-          to: transmitForm.to.trim(),
-          date: transmitForm.date,
-          head: locale === "en"
-            ? ["ID", "Project", "Title", "Rev", "Status", "Holder", "Updated"]
-            : ["ID", "Proyek", "Judul", "Revisi", "Status", "Holder", "Diperbarui"],
-          drawings: rows.map((d) => ({
-            id: String(d.id),
-            project: String(d.project ?? "-"),
-            judul: String(d.title ?? "-"),
-            revisi: String(d.revision ?? "-"),
-            status: String(d.status ?? "-"),
-            holder: String(d.holder ?? "-"),
-            diperbarui: fmtTanggal(String(d.updated ?? "")),
-          })),
-        }).save(`Transmittal-${transmitForm.date}`);
+      /* Transmittal ini dikirim ke BKI dan dibaca pihak luar, jadi isinya
+         harus persis seperti di arsip: server merakitnya dari baris yang
+         baru disimpan di atas, bukan dari state form. */
+      if (!pdfServerReady()) {
+        toast(S.saveFail, "info");
+        return;
       }
+      const done = await pdfDoc.request({ kind: "transmittal", id: docId, locale }, `Transmittal-${transmitForm.date}`, false);
+      if (!done) return;
       void exportExcel(
       [["ID", "Proyek", "Judul", "Revisi", "Status", "Holder", "Diperbarui"],
         ...rows.map((d) => [d.id, d.project, d.title, d.revision, d.status, d.holder, fmtTanggal(String(d.updated))])],

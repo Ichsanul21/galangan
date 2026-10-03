@@ -46,7 +46,7 @@ import { useStore, type StoreItem } from "../data/store";
 import type { CollectionKey } from "../data/store";
 import { useModuleSync } from "../data/useModuleSync";
 import { getSetting } from "../utils/settings";
-import { chartAnim, exportExcelSheets } from "../utils/export";
+import { exportExcelSheets } from "../utils/export";
 import { pdfServerReady } from "../services/pdfClient";
 import { usePdfDoc } from "../components/usePdfDoc";
 import { fmtTanggal, fmtMiliar, fmtRupiah, todayISO } from "../utils/format";
@@ -866,8 +866,8 @@ const exportPdfReport = async () => {
                       <YAxis tick={{ fontSize: 12 }} stroke="#8aa2b6" axisLine={false} tickLine={false} />
                       <Tooltip content={<ChartTooltip formatter={(v) => `Rp ${v} M`} />} />
                       <Legend wrapperStyle={{ fontSize: 12 }} />
-                      <Bar dataKey="revenue" name={S.legendRevenue} fill="#0b3a63" radius={[4, 4, 0, 0]} isAnimationActive={chartAnim()} />
-                      <Bar dataKey="cost" name={S.legendCost} fill="#8cc9e8" radius={[4, 4, 0, 0]} isAnimationActive={chartAnim()} />
+                      <Bar dataKey="revenue" name={S.legendRevenue} fill="#0b3a63" radius={[4, 4, 0, 0]} isAnimationActive />
+                      <Bar dataKey="cost" name={S.legendCost} fill="#8cc9e8" radius={[4, 4, 0, 0]} isAnimationActive />
                     </BarChart>
                   </ResponsiveContainer>
                 </div>
@@ -906,7 +906,7 @@ const exportPdfReport = async () => {
                       <XAxis dataKey="bln" stroke="#8aa2b6" axisLine={false} tickLine={false} />
                       <YAxis domain={[15, 35]} stroke="#8aa2b6" axisLine={false} tickLine={false} />
                       <Tooltip content={<ChartTooltip formatter={(v) => `${v}%`} />} />
-                      <Line type="monotone" dataKey="margin" name={S.legendMargin} stroke="#0d9488" strokeWidth={2.5} dot={{ r: 3 }} isAnimationActive={chartAnim()} />
+                      <Line type="monotone" dataKey="margin" name={S.legendMargin} stroke="#0d9488" strokeWidth={2.5} dot={{ r: 3 }} isAnimationActive />
                     </LineChart>
                   </ResponsiveContainer>
                 </div>
@@ -918,8 +918,8 @@ const exportPdfReport = async () => {
                       <YAxis stroke="#8aa2b6" axisLine={false} tickLine={false} />
                       <Tooltip />
                       <Legend wrapperStyle={{ fontSize: 12 }} />
-                      <Area type="monotone" dataKey="inspeksi" name={S.legendInspection} stroke="#2e9ad4" fill="#8cc9e8" fillOpacity={0.4} isAnimationActive={chartAnim()} />
-                      <Line type="monotone" dataKey="lulus" name={S.legendPassed} stroke="#1f9d55" strokeWidth={2} dot={false} isAnimationActive={chartAnim()} />
+                      <Area type="monotone" dataKey="inspeksi" name={S.legendInspection} stroke="#2e9ad4" fill="#8cc9e8" fillOpacity={0.4} isAnimationActive />
+                      <Line type="monotone" dataKey="lulus" name={S.legendPassed} stroke="#1f9d55" strokeWidth={2} dot={false} isAnimationActive />
                     </ComposedChart>
                   </ResponsiveContainer>
                 </div>
@@ -1008,9 +1008,9 @@ const exportPdfReport = async () => {
                       <YAxis tick={{ fontSize: 11 }} stroke="#8aa2b6" axisLine={false} tickLine={false} unit=" M" />
                       <Tooltip content={<ChartTooltip formatter={(v) => `Rp ${v} M`} />} />
                       <Legend wrapperStyle={{ fontSize: 12 }} />
-                      <Bar dataKey="revenue" name={locale === "en" ? "Revenue" : "Pendapatan"} fill="#0b3a63" radius={[4, 4, 0, 0]} isAnimationActive={chartAnim()} />
-                      <Bar dataKey="ap" name="AP" fill="#8cc9e8" radius={[4, 4, 0, 0]} isAnimationActive={chartAnim()} />
-                      <Line type="monotone" dataKey="cash" name={locale === "en" ? "Cash in" : "Kas masuk"} stroke="#0d9488" strokeWidth={2.5} dot={{ r: 3 }} isAnimationActive={chartAnim()} />
+                      <Bar dataKey="revenue" name={locale === "en" ? "Revenue" : "Pendapatan"} fill="#0b3a63" radius={[4, 4, 0, 0]} isAnimationActive />
+                      <Bar dataKey="ap" name="AP" fill="#8cc9e8" radius={[4, 4, 0, 0]} isAnimationActive />
+                      <Line type="monotone" dataKey="cash" name={locale === "en" ? "Cash in" : "Kas masuk"} stroke="#0d9488" strokeWidth={2.5} dot={{ r: 3 }} isAnimationActive />
                     </ComposedChart>
                   </ResponsiveContainer>
                 </div>

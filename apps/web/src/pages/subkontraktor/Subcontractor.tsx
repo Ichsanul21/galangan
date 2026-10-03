@@ -1,4 +1,4 @@
-﻿import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Plus, HardHat, FileSignature, Star, Search, Receipt } from "lucide-react";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, ReferenceLine } from "recharts";
 import { Card, CardHeader, PageHeader, Badge, KpiCard, Tabs, ProgressBar, Modal, Field, FormGrid, ConfirmModal, SortTh, toggleSort, sortRows, usePager, toast,
@@ -17,7 +17,6 @@ import { sameName } from "../../utils/names";
 import { AlertBannerView, notifRowId, useModuleAlert, useNotifFlash } from "../../components/AlertBanner";
 import { getSetting } from "../../utils/settings";
 import { PPH_SUBKON_OPTIONS } from "../../utils/sb";
-import { kwitansiDoc } from "../../utils/pdfDocs";
 import { pdfServerReady } from "../../services/pdfClient";
 import { usePdfDoc } from "../../components/usePdfDoc";
 import { subActiveTrend, subContractTrend, woTrend, ratingTrend } from "../../data";
@@ -527,36 +526,20 @@ export default function Subcontractor() {
     } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); }
   };
 
-  /* Kwitansi pembayaran termin.
-
-   Termin Lunas punya bukti bayar berupa berkas yang diunggah, tapi tidak
-   punya dokumen. Saat ada sengketa, berkas foto struk tidak bisa
-   dipertanggungjawabkan: nominal bersihnya tidak
-   tertulis.
-
-   Rincian yang ditampilkan sengaja memuat SELURUH pengurangan - PPh,
-   retensi, dan denda - bukan cuma netonya. Subkontraktor yang menerima
-   nominal bersih tanpa rincian akan menghitung ulang sendiri dari
-   diff, dan justru di situ sengketa paling sering muncul. Semua angka
-   diambil dari record termin yang sudah dibekukan saat pelunasan, bukan
-   dari perhitungan ulang, supaya yang tercetak sama dengan yang tercatat
-   di hutang usaha. */
 /* Cetak kwitansi.
    *
-   * Jalur utama: server merakit dokumen dari baris `termins` miliknya
-   * sendiri, jadi nominal, PPh, dan retensi pada kwitansi tidak bisa
-   * berbeda dari pembukuan - dan tidak bisa dimanipulasi dari browser.
-   * Jalur lokal (utils/pdfDocs) hanya dipakai bila backend belum
-   * dikonfigurasi, supaya mode demo lokal tetap bisa mencetak.
+   * Server merakit dokumen dari baris `termins` miliknya sendiri, jadi
+   * nominal, PPh, dan retensi pada kwitansi tidak bisa berbeda dari
+   * pembukuan - dan tidak bisa dimanipulasi dari browser.
    *
    * Komplain lama "kwitansi kontennya terpotong" berasal dari mesin PDF
    * client: align:'right' pada baris nominal menganchor tepi kanan baris di
    * margin kiri, sehingga Rp 44.832.500 mulai dari x = -25 mm dan lebih dari
    * separuhnya tercetak di luar kertas. Mesin server mengukur ulang nominal
    * dari lebar kolom yang terukur, dan probe geometri menjaga hal itu. */
-  /* SPK: perintah kerja resmi untuk subkontraktor. Tidak ada fallback lokal -
-     dokumen ini belum pernah ada di mesin lama, jadi kalau server tidak aktif
-     yang jujur dilakukan adalah memberi tahu, bukan mencetak versi seadanya. */
+/* SPK: perintah kerja resmi untuk subkontraktor. Tidak ada mesin lokal -
+      kalau server tidak aktif, yang jujur dilakukan adalah memberi tahu,
+      bukan mencetak versi seadanya. */
 const printSpk = async (w: StoreItem): Promise<void> => {
     if (!pdfServerReady()) {
       toast(locale === "en" ? "Official PDF needs the server - connect the backend first." : "PDF resmi perlu server aktif - hubungkan backend dulu.", "info");
@@ -565,83 +548,19 @@ const printSpk = async (w: StoreItem): Promise<void> => {
     await pdfDoc.request({ kind: "spk", id: String(w.id), locale }, `SPK-${w.id}`, false);
   };
 
+  /* Kwitansi dibuat server dari baris `termins`. Rinciannya memuat SELURUH
+     pengurangan - PPh, retensi, dan denda - bukan cuma netonya: subkontraktor
+     yang menerima nominal bersih tanpa rincian akan menghitung ulang sendiri
+     dari diff, dan justru di situ sengketa paling sering muncul. Semua angka
+     dibaca dari record termin yang sudah dibekukan saat pelunasan. */
   const printKwitansi = async (p: StoreItem): Promise<void> => {
     const id = String(p.id);
-    if (pdfServerReady()) {
-      const done = await pdfDoc.request({ kind: "kwitansi", id, locale }, `Kwitansi-${id}`, false);
-      if (done) {
-        toast(locale === "en" ? `Receipt for ${id} printed` : `Kwitansi ${id} dicetak`);
-        return;
-      }
+    if (!pdfServerReady()) {
+      toast(locale === "en" ? "Official PDF needs the server - connect the backend first." : "PDF resmi perlu server aktif - hubungkan backend dulu.", "info");
       return;
     }
-    const amount = Number(p.amount || 0);
-    const pph = Math.round(Number(p.pphAmt ?? 0));
-    const ret = Math.round(Number(p.retAmt ?? 0));
-    const penalty = Math.round(Number(p.penaltyApplied ?? 0));
-    const net = Math.max(0, amount - pph - ret - penalty);
-    const breakdown: { label: string; value: number }[] = [
-      { label: locale === "en" ? "Term value" : "Nilai termin", value: amount },
-    ];
-    if (pph > 0) {
-      breakdown.push({
-        label: `${locale === "en" ? "Income tax withheld" : "PPh dipotong"} (${pphOf(p, pphDefault)}%)`,
-        value: -pph,
-      });
-    }
-    if (ret > 0) {
-      breakdown.push({
-        label: `${locale === "en" ? "Retention held" : "Retensi ditahan"} (${retOf(p)}%)`,
-        value: -ret,
-      });
-    }
-    if (penalty > 0) {
-      breakdown.push({
-        label: locale === "en" ? "Late penalty" : "Denda keterlambatan",
-        value: -penalty,
-      });
-    }
-    breakdown.push({ label: locale === "en" ? "Net paid" : "Dibayar", value: net });
-
-    const notes: string[] = [];
-    if (String(p.withholdingRef ?? "").trim() !== "") {
-      notes.push(`${locale === "en" ? "Tax receipt no" : "Bukti potong PPh"}: ${String(p.withholdingRef).trim()}`);
-    }
-    if (String(p.paidRef ?? "").trim() !== "") {
-      notes.push(`${locale === "en" ? "Payment reference" : "Referensi pembayaran"}: ${String(p.paidRef).trim()} (${String(p.paidMethod ?? "-")})`);
-    }
-    if (ret > 0) {
-      notes.push(locale === "en"
-        ? "Retention is released after the work order closes."
-        : "Retensi dilepas setelah work order selesai.");
-    }
-
-    try {
-      kwitansiDoc({
-        no: `KW/${String(p.id).replaceAll("/", "-")}`,
-        tanggal: String(p.paidAt ?? ""),
-        diterimaDari: String(p.sub ?? "-"),
-        untuk: `${String(p.id)}${String(p.milestone ?? "").trim() !== "" ? ` - ${String(p.milestone).trim()}` : ""}`,
-        breakdown,
-        netLabel: locale === "en" ? "Net paid" : "Dibayar",
-        catatan: notes.join("\n"),
-        labels: {
-          no: locale === "en" ? "No" : "No",
-          tanggal: locale === "en" ? "Date" : "Tanggal",
-          diterimaDari: locale === "en" ? "Paid to" : "Dibayar kepada",
-          untuk: locale === "en" ? "For" : "Untuk",
-          jumlah: locale === "en" ? "Amount" : "Jumlah",
-          catatan: locale === "en" ? "Notes" : "Catatan",
-          tandaTangan: locale === "en" ? "For the company" : "Untuk perusahaan",
-          penerima: locale === "en" ? "Received by" : "Diterima oleh",
-          rincian: locale === "en" ? "Breakdown" : "Rincian",
-          uraian: locale === "en" ? "Description" : "Uraian",
-        },
-      }).save(`Kwitansi-${p.id}`);
-      toast(locale === "en" ? `Receipt for ${p.id} printed` : `Kwitansi ${p.id} dicetak`);
-    } catch (e) {
-      toast(e instanceof Error ? e.message : S.saveFail, "info");
-    }
+    const done = await pdfDoc.request({ kind: "kwitansi", id, locale }, `Kwitansi-${id}`, false);
+    if (done) toast(locale === "en" ? `Receipt for ${id} printed` : `Kwitansi ${id} dicetak`);
   };
 
   const stepTerm = async (p: StoreItem, next: string) => {

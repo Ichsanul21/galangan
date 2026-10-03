@@ -7,11 +7,10 @@
  * dan di ponsel galangan itu berarti tab mati. Pola revoke ini harus di satu
  * tempat supaya tidak ada pemanggil yang lupa.
  *
- * Fallback ke mesin LOKAL (pdfDocs lama di utils/pdfDocs.ts) sengaja
- * dipertahankan untuk dua kondisi:
- *   - backend belum dikonfigurasi (mode demo lokal)
- *   - server belum punya dokumen kind itu
- * Waktu mesin lokal dipensiunkan, fallback ini ikut dihapus.
+ * Tidak ada lagi mesin PDF lokal. Semua dokumen resmi dirakit server dari
+ * baris DB-nya sendiri, dan mesin html2canvas yang lama sudah dihapus: PDF
+ * yang dirakit dari DOM bisa berbeda dari pembukuan, dan tidak ada satu pun
+ * gate yang bisa menangkapnya.
  */
 import { useCallback, useEffect, useRef, useState } from "react";
 import { renderPdf, reprintPdf, downloadBlobUrl, PdfRenderError, type PdfRequest } from "../services/pdfClient";

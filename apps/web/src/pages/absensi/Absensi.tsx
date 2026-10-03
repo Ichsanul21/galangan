@@ -31,7 +31,7 @@ import { fmtJumlah, fmtTanggal, todayISO } from "../../utils/format";
 import { attendanceSeries } from "../../data";
 import { useT } from "../../i18n/LanguageContext";
 import { n_misc } from "../../i18n/n_misc";
-import { chartAnim, exportExcel } from "../../utils/export";
+import { exportExcel } from "../../utils/export";
 
 const SHIFTS = ["Pagi", "Siang", "Malam"];
 const STATUS = ["Hadir", "Izin", "Sakit", "Cuti", "Alpa"];
@@ -601,7 +601,7 @@ export default function Absensi() {
                           fill="url(#attGrad)"
                           connectNulls
                           dot={{ r: 3 }}
-                          isAnimationActive={chartAnim()}
+                          isAnimationActive
                         />
                       </AreaChart>
                     </ResponsiveContainer>

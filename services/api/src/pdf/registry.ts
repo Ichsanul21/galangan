@@ -32,7 +32,7 @@ import { tandaTerima, type TandaTerimaInput } from "./documents/tandaTerima.js";
 import { kopPenawaran, type KopPenawaranInput } from "./documents/kopPenawaran.js";
 import { slipGaji, type SlipGajiInput } from "./documents/slipGaji.js";
 import { transmittal, type TransmittalInput } from "./documents/transmittal.js";
-import { spt, type SptInput } from "./documents/spt.js";
+import { spt, type SptInput, type SptRow } from "./documents/spt.js";
 import { cashReport, projectReport as projectReportDoc, analyticReport, payrollReport, type CashReportModel, type ProjectReportModel, type AnalyticModel, type PayrollReportModel, type Finding } from "./documents/laporan.js";
 import {
   dockConflicts,
@@ -123,6 +123,10 @@ function today(): string {
 
 /** Nama sparing bercabang pada dokumen - satu sumber, bukan tiga konstanta. */
 const SIGNER = "H. Syarif Sarapping";
+
+/** Tarif PPN default. NilaiFinal ada di baris PO/Invoice; ini cuma dipakai
+ *  saat baris tidak menyimpannya, jadi harus sama dengan `PPN_RATE` FE. */
+const PPN_RATE = 12;
 
 /** Klausul K3 standar yang dipakai SPK bila WO tidak menyimpan klausul sendiri. */
 const K3_CLAUSE =
@@ -374,7 +378,14 @@ const spkRecipe: Recipe<SpkInput> = {
   assemble: (input) => spk(input),
 };
 
-/* ---- Purchase Order ---- */
+/* ---- Purchase Order ----
+ *
+ * Bentuk baris PO di aplikasi: `lines` berisi {name, qty, unit, price,
+ * spec, need}; `vendor` berupa NAMA (bukan vendorId); total disimpan di
+ * `amount`; `includePpn` menentukan apakah PPN ikut. Versi recipe sebelumnya
+ * membaca `items`, `vendorId`, `taxRate`, dan `projectName` - tidak satu pun
+ * ditulis modul Procurement, jadi PO yang tercetak tanpa item dan tanpa
+ * nama vendor yang benar. */
 const poRecipe: Recipe<PoInput> = {
   kind: "po",
   title: "Purchase Order",
@@ -383,43 +394,77 @@ const poRecipe: Recipe<PoInput> = {
   async prepare(id, ctx) {
     const p = await loadEntity({ field: "purchaseOrders", prefix: "PO" }, id);
     if (!p) throw new Error(`PO ${id} tidak ditemukan`);
-    const vendor = await loadEntity({ field: "vendors", prefix: "VND" }, str(p, "vendorId"));
-    /* Baris item PO membawa angka; di sini semuanya dipaksa jadi number
-       supaya "1.500" atau undefined tidak menjatuhkan subtotal diam-diam.
-       `total` tetap diambil dari baris kalau ada (itu yang dihitung FE),
-       dan dihitung ulang hanya kalau tidak tersimpan. */
-    const items = arr(p, "items").map((r) => {
+    const vendorName = str(p, "vendor");
+    const vendor = await loadMany({ field: "vendors", prefix: "VND" }, { ids: [vendorName] }).then((r) => r[0]);
+
+    /* PO lama dan baris seed tidak punya `lines` - hanya `item` dan `amount`.
+       Tanpa fallback itu, dokumen resmi tercetak dengan tabel kosong padahal
+       PO-nya nyata: lebih buruk daripada tidak ada item sama sekali. */
+    const rawLines = arr(p, "lines", "items");
+    const lineSource =
+      rawLines.length > 0
+        ? rawLines
+        : str(p, "item") !== "-"
+          ? [{ name: str(p, "item"), qty: num(p, "qty"), unit: str(p, "unit"), price: 0 }]
+          : [];
+    const items = lineSource.map((r) => {
       const qtyValue = Number(r.qty ?? r.quantity ?? 0);
-      const price = Number(r.unitPrice ?? r.price ?? 0);
+      const price = Number(r.price ?? r.unitPrice ?? 0);
       const total = Number.isFinite(Number(r.total)) ? Number(r.total) : qtyValue * price;
+      /* spec dan need disimpan terpisah di baris PO; keduanya bagian dari
+         barang yang dipesan dan harus ikut tercetak - tanpa keduanya, tim
+         gudang tidak tahu barang apa yang harus datang. */
+      const spec = String(r.spec ?? "").trim();
+      const need = String(r.need ?? "").trim();
+      const desc = [String(r.name ?? r.description ?? r.item ?? "-"), spec, need].filter((s) => s !== "").join(" - ");
       return {
-        description: String(r.description ?? r.name ?? r.item ?? "-"),
+        description: desc,
         qty: qtyValue,
         unit: String(r.unit ?? ""),
         unitPrice: price,
         total,
       };
     });
-    const subtotal = items.reduce((s, i) => s + i.total, 0);
-    const taxRate = num(p, "taxRate") || 11;
-    const taxAmount = Math.round(subtotal * taxRate / 100);
+    /* Subtotal dari item; kalau baris tidak punya lines (PO lama/seed),
+       `amount` yang dipakai. Pemisahan DPP/PPN mengikuti flag aplikasi. */
+    const fromItems = items.reduce((s, i) => s + i.total, 0);
+    const amount = num(p, "amount") || fromItems;
+    const includePpn = p.includePpn !== false;
+    const taxRate = includePpn ? PPN_RATE : 0;
+    /* PO menyimpan `amount` sebagai nilaiutto yang sudah termasuk PPN kalau
+       flag menyala - itu cara modul Procurement menghitungnya. Jadi DPP
+       diturunkan, bukan ditambah. */
+    const subtotal = includePpn ? Math.round((amount / (1 + taxRate / 100)) * 100) / 100 : amount;
+    const taxAmount = Math.round((amount - subtotal) * 100) / 100;
+    const approvals = arr(p, "approvals");
+    const eta = str(p, "eta");
+    const notes = [
+      str(p, "req") !== "-" ? `${L(ctx.locale, "Ref PR", "PR ref")}: ${str(p, "req")}` : "",
+      eta !== "-" ? `${L(ctx.locale, "ETA", "ETA")}: ${longDate(eta)}` : "",
+      str(p, "vessel") !== "-" ? `${L(ctx.locale, "Kapal", "Vessel")}: ${str(p, "vessel")}` : "",
+      p.poType ? `${L(ctx.locale, "Jenis PO", "PO type")}: ${str(p, "poType")}` : "",
+      approvals.length > 0
+        ? `${L(ctx.locale, "Disetujui", "Approved by")}: ${approvals.map((a) => `${str(a, "by")} (${str(a, "level")})`).join("; ")}`
+        : "",
+      arr(p, "amendments").length > 0 ? `${L(ctx.locale, "Amandemen", "Amendments")}: ${arr(p, "amendments").length}` : "",
+    ].filter((s) => s !== "").join("\n");
     return {
-      no: id,
-      tanggal: str(p, "date"),
-      vendorName: vendor ? str(vendor, "name") : str(p, "vendorName"),
+      no: str(p, "docNo") !== "-" ? `${id} / ${str(p, "docNo")}` : id,
+      tanggal: docDate(p, "date"),
+      vendorName,
       vendorAddress: vendor && str(vendor, "address") !== "-" ? str(vendor, "address") : undefined,
       vendorNPWP: vendor ? str(vendor, "npwp") : undefined,
-      projectName: str(p, "projectName"),
+      projectName: str(p, "project"),
       items,
       subtotal,
       taxRate,
       taxAmount,
-      totalAmount: subtotal + taxAmount,
+      totalAmount: amount,
       paymentTerms: str(p, "paymentTerms") !== "-" ? str(p, "paymentTerms") : "NET 30",
-      deliveryTerms: str(p, "deliveryTerms"),
-      notes: str(p, "notes"),
-      nameOrderer: str(p, "ordererName") !== "-" ? str(p, "ordererName") : "-",
-      nameApprover: SIGNER,
+      deliveryTerms: str(p, "deliveryTerms") !== "-" ? str(p, "deliveryTerms") : eta !== "-" ? eta : undefined,
+      notes,
+      nameOrderer: str(p, "ordererName", "requester") !== "-" ? str(p, "ordererName", "requester") : "-",
+      nameApprover: approvals.length > 0 ? str(approvals[approvals.length - 1], "by") : SIGNER,
       locale: ctx.locale,
     };
   },
@@ -632,7 +677,15 @@ const transmittalRecipe: Recipe<TransmittalInput> = {
   assemble: (input) => transmittal(input),
 };
 
-/* ---- SPT ---- */
+/* ---- SPT ----
+ *
+ * Modul Finance membekukan angka pajak saat tombol "Lapor" ditekan:
+ * ppnKeluar, ppnMasuk, pph21, pph23..pph26, ppnTerutangAuto, dan
+ * ppnTerutangFinal. SPT harus memakai angka-angka itu, bukan menghitung ulang
+ * dari invoice - kalau invoice periode lalu diedit, SPT yang sudah difiled
+ * akan ikut berubah tanpa jejak. */
+const SPT_POTONGAN = ["pph21", "pph22", "pph23", "pph24", "pph25", "pph26"];
+
 const sptRecipe: Recipe<SptInput> = {
   kind: "spt",
   title: "Surat Pemberitahuan Pajak",
@@ -641,20 +694,47 @@ const sptRecipe: Recipe<SptInput> = {
   async prepare(id, ctx) {
     const t = await loadEntity({ field: "taxPeriods", prefix: "TAX" }, id);
     if (!t) throw new Error(`Periode pajak ${id} tidak ditemukan`);
+    const ppnKeluar = num(t, "ppnKeluar", "ppnKeluaran");
+    const ppnMasuk = num(t, "ppnMasuk", "ppnMasukan");
+    /* Override manual menang atas hitungan otomatis, tapi nominal otomatisnya
+       ikut dicetak supaya selisih koreksi tetap terlihat di dokumen. */
+    const terutangAuto = num(t, "ppnTerutangAuto", "default") || ppnKeluar - ppnMasuk;
+    const manual = num(t, "ppnTerutangManual");
+    const final = num(t, "ppnTerutangFinal") || (manual > 0 ? manual : terutangAuto);
+    const rows: SptRow[] = [
+      { jenis: L(ctx.locale, "PPN Keluaran", "Output VAT"), nilai: ppnKeluar },
+      { jenis: L(ctx.locale, "PPN Masukan", "Input VAT"), nilai: -ppnMasuk },
+    ];
+    for (const key of SPT_POTONGAN) {
+      const v = num(t, key);
+      if (v === 0) continue;
+      rows.push({
+        jenis: key === "pph21" ? "PPh 21" : key.toUpperCase(),
+        /* PPh 21 dipotong dari payroll, bukan dari nilai invoice - jadi
+           pencetakannya memang tidak punya dasar pengenaan. */
+        dasar: key === "pph21" ? L(ctx.locale, "Total payroll", "Total payroll") : undefined,
+        tarif: key === "pph21" ? "-" : undefined,
+        nilai: v,
+      });
+    }
+    const pphTotal = SPT_POTONGAN.reduce((s, k) => s + num(t, k), 0);
     return {
       periode: str(t, "period"),
-      tanggal: str(t, "date") !== "-" ? str(t, "date") : today(),
+      tanggal: str(t, "reportedAt", "date") !== "-" ? str(t, "reportedAt", "date") : today(),
       jenisPajak: str(t, "type") !== "-" ? str(t, "type") : "PPN",
       masaPajak: str(t, "period"),
       npwp: str(t, "npwp") !== "-" ? str(t, "npwp") : "01.234.567.8-901.000",
+      npwpPenyetor: str(t, "npwpPenyetor"),
       namaWajibPajak: "PT. SYUKUR BERSAUDARA",
       alamat: "Jl. Mulawarman No.23, Samarinda",
-      ppnKeluaran: num(t, "ppnKeluaran"),
-      ppnMasukan: num(t, "ppnMasukan"),
-      pphPotongan: num(t, "pphPotongan"),
-      pphSetoran: num(t, "pphSetoran"),
-      totalSetor: num(t, "totalSetor"),
-      buktiSetor: str(t, "buktiSetor"),
+      rows,
+      ppnTerutang: final,
+      totalSetor: final + pphTotal,
+      buktiSetor: str(t, "buktiSetor", "nomorFormulir"),
+      tanggalSetor: str(t, "tanggalSetor") !== "-" ? str(t, "tanggalSetor") : undefined,
+      formulir: str(t, "nomorFormulir") !== "-" ? str(t, "nomorFormulir") : undefined,
+      bank: str(t, "bank") !== "-" ? str(t, "bank") : undefined,
+      teller: str(t, "teller") !== "-" ? str(t, "teller") : undefined,
       namaPenandatangan: SIGNER,
       jabatanPenandatangan: "Direktur",
       locale: ctx.locale,

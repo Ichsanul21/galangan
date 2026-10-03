@@ -229,50 +229,17 @@ export default function QuotationDetail() {
     } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); }
   };
 
-  /* PDF resmi. Excel tetap ada sebagai tombol kedua. */
+  /* Kop penawaran dibuat server dari baris `quotations`: nominal dan item
+     diambil dari data yang tersimpan, bukan dari state form - jadi dokumen
+     yang diarsipkan tidak bisa berbeda dari penawaran di pembukuan. */
   const cetakKopPdf = async (): Promise<void> => {
     const id = String(quotation.id);
-    if (pdfServerReady()) {
-      const done = await pdfDoc.request({ kind: "kopPenawaran", id, locale }, `Kop-${id}-v${version}`, false);
-      if (done) {
-        toast(S.tKopPdfDone.replace("{n}", id));
-      }
+    if (!pdfServerReady()) {
+      toast(S.saveFail, "info");
       return;
     }
-    /* Fallback: mesin lokal lama (akan dihapus setelah semua factory pindah). */
-    const client = (data.clients ?? []).find((c) => sameName(c.name, quotation.client));
-    const cabang = String(client?.branch ?? quotation.branch ?? "Samarinda");
-    const terms = String(client?.paymentTerms ?? quotation.paymentTerms ?? "NET 30");
-    try {
-      const { kopPenawaranDoc } = await import("../../utils/pdfDocs");
-      kopPenawaranDoc({
-        no: id,
-        version: String(version),
-        client: String(quotation.client),
-        vessel: String(quotation.vessel),
-        cabang,
-        tanggal: todayISO(),
-        lines: activeLines.map((l) => ({ desc: String(l.desc ?? ""), qty: num(l.qty), price: num(l.price) })),
-        total,
-        terms,
-        labels: {
-          no: locale === "en" ? "No" : "No",
-          desc: locale === "en" ? "Description" : "Deskripsi",
-          qty: locale === "en" ? "Qty" : "Qty",
-          harga: locale === "en" ? "Price (Rp)" : "Harga (Rp)",
-          jumlah: locale === "en" ? "Amount (Rp)" : "Jumlah (Rp)",
-          total: locale === "en" ? "Total" : "Total",
-          terms: locale === "en" ? "Payment terms" : "Syarat pembayaran",
-          cabang: locale === "en" ? "Branch" : "Cabang",
-          tanggal: locale === "en" ? "Date" : "Tanggal",
-          client: locale === "en" ? "Client" : "Client",
-          vessel: locale === "en" ? "Vessel" : "Kapal",
-        },
-      }).save(`Kop-${id}-v${version}`);
-      toast(S.tKopPdfDone.replace("{n}", id));
-    } catch (e) {
-      toast(e instanceof Error ? e.message : S.saveFail, "info");
-    }
+    const done = await pdfDoc.request({ kind: "kopPenawaran", id, locale }, `Kop-${id}-v${version}`, false);
+    if (done) toast(S.tKopPdfDone.replace("{n}", id));
   };
 
   const cetakKop = () => {

@@ -1,10 +1,8 @@
-﻿import { useEffect, useMemo, useState, type ReactElement } from "react";
+import { useEffect, useMemo, useState, type ReactElement } from "react";
 import { Wallet, ArrowDownToLine, FileText, Receipt, TrendingUp, Plus, Trash2, Search } from "lucide-react";
 import { openFileUrl } from "../../services/files";
-import type { SptDocLabels } from "../../utils/pdfDocs";
 import { pdfServerReady } from "../../services/pdfClient";
 import { usePdfDoc } from "../../components/usePdfDoc";
-import { pdfNum } from "../../utils/pdfLayout";
 import { ID_MON as MONTH_ID } from "../../utils/monthAxis";
 import {
   AreaChart,
@@ -53,7 +51,7 @@ import { getSetting } from "../../utils/settings";
 import { useDraftState } from "../../utils/draft";
 import { sameName } from "../../utils/names";
 import { sbInvoiceMath, maxSeq, PPN_INVOICE_DEFAULT, PPH_JASA_DEFAULT } from "../../utils/sb";
-import { chartAnim, exportExcel } from "../../utils/export";
+import { exportExcel } from "../../utils/export";
 import { kasKodeOf, postCashJournal } from "../../services/autoJournal";
 import { FilterPopover } from "../../components/FilterPopover";
 import { AlertBannerView, notifRowId, useModuleAlert, useNotifFlash } from "../../components/AlertBanner";
@@ -368,15 +366,10 @@ function arOutAsOf(list: StoreItem[], end: string): { c: string; total: number; 
 
 export default function Finance() {
   const busy = useBusy();
-  /* Judul kolom SPT. Dipisah dari kamus S.* karena blok ini juga dipakai
-   pdfLayout/pdfDocs yang butuh label netral apa pun locale-nya. */
-const SPT_LABELS: SptDocLabels = {
-  jenis: "Jenis", dasar: "Dasar Pengenaan", tarif: "Tarif", nilai: "Nilai (Rp)",
-  ppnTerutang: "PPN Terutang", npwp: "NPWP Perusahaan", npwpPenyetor: "NPWP Penyetor",
-  tanggalSetor: "Tanggal Setor", formulir: "Nomor Formulir", bank: "Bank", teller: "Teller",
-  period: "Masa Pajak",
-};
-/* ==========================================================================
+  /* Judul kolom SPT tidak ada lagi di FE: dokumennya dirakit server dari
+     baris `taxPeriods`, dan labelnya ikut dari factory yang sama. Satu tempat
+     lagi akan jadi tempat kedua yang bisa berbeda dari dokumen filed. */
+  /* ==========================================================================
    FORM PENYETORAN PAJAK (SPT)
    ==========================================================================
 
@@ -2392,58 +2385,17 @@ const { data, add, update, remove, log, branch, inBranch } = useStore();
     }
   };
 
-/* PPN terutang: pakai override manual kalau ada, kalau tidak pakai
-     hitungan. Nilai final yang sudah dibekukan (ppnTerutangFinal) dipakai
-     untuk periode terkunci supaya angka di SPT tidak ikut berubah ketika
-     invoice periode lalu diedit. */
-  const sptPpnTerutang = (p: StoreItem, computed: number): number => {
-    const final = sptNumOf(p.ppnTerutangFinal);
-    if (final > 0) return final;
-    const manual = sptNumOf(p.ppnTerutangManual);
-    return manual > 0 ? manual : computed;
-  };
-
+/* SPT dibuat server dari baris `taxPeriods` versi beku. Ini bukan sekadar
+     soal tampilan: SPT adalah dokumen pajak yang filed, jadi nominalnya harus
+     sama persis dengan yang tercatat, bukan hasil hit ulang dari state layar. */
   const exportSptPdf = async (): Promise<void> => {
     if (!activeTax) return;
-    const id = String(activeTax.id);
-    if (pdfServerReady()) {
-      const done = await pdfDoc.request({ kind: "spt", id, locale }, `SPT-${activeTax.period}`, false);
-      if (done) {
-        toast(S.sptPdfExported);
-      }
+    if (!pdfServerReady()) {
+      toast(S.saveFail, "info");
       return;
     }
-    /* Fallback: mesin lokal lama (akan dihapus setelah semua factory pindah). */
-    const shown = taxShown;
-    const terutang = sptPpnTerutang(activeTax, shown.ppnKeluar - shown.ppnMasuk);
-    try {
-      const { sptDoc } = await import("../../utils/pdfDocs");
-      sptDoc({
-        period: String(activeTax.period),
-        status: String(activeTax.status),
-        rows: [
-          { jenis: locale === "en" ? "Output VAT" : "PPN Keluaran", dasar: pdfNum(taxCalc.invBase), tarif: `${taxCalc.ppnRate}%`, nilai: shown.ppnKeluar },
-          { jenis: locale === "en" ? "Input VAT" : "PPN Masukan", dasar: pdfNum(taxCalc.apBase), tarif: `${taxCalc.ppnRate}%`, nilai: shown.ppnMasuk },
-          { jenis: "PPh 23", dasar: pdfNum(taxCalc.apBase), tarif: `${taxCalc.pphRate}%`, nilai: shown.pph23 },
-          { jenis: "PPh 21", dasar: "Total payroll", tarif: "-", nilai: shown.pph21 },
-          ...(sptNumOf(activeTax.pph22) > 0 ? [{ jenis: "PPh 22", dasar: "", tarif: "-", nilai: sptNumOf(activeTax.pph22) }] : []),
-          ...(sptNumOf(activeTax.pph24) > 0 ? [{ jenis: "PPh 24", dasar: "", tarif: "-", nilai: sptNumOf(activeTax.pph24) }] : []),
-          ...(sptNumOf(activeTax.pph25) > 0 ? [{ jenis: "PPh 25", dasar: "", tarif: "-", nilai: sptNumOf(activeTax.pph25) }] : []),
-          ...(sptNumOf(activeTax.pph26) > 0 ? [{ jenis: "PPh 26", dasar: "", tarif: "-", nilai: sptNumOf(activeTax.pph26) }] : []),
-        ],
-        ppnTerutang: terutang,
-        npwp: String(activeTax.npwp ?? ""),
-        npwpPenyetor: String(activeTax.npwpPenyetor ?? ""),
-        tanggalSetor: String(activeTax.tanggalSetor ?? ""),
-        formulir: String(activeTax.nomorFormulir ?? ""),
-        bank: String(activeTax.bank ?? ""),
-        teller: String(activeTax.teller ?? ""),
-        labels: SPT_LABELS,
-      }).save(`SPT-${activeTax.period}`);
-      toast(S.sptPdfExported);
-    } catch (e) {
-      toast(e instanceof Error ? e.message : S.saveFail, "info");
-    }
+    const done = await pdfDoc.request({ kind: "spt", id: String(activeTax.id), locale }, `SPT-${activeTax.period}`, false);
+    if (done) toast(S.sptPdfExported);
   };
 
   const exportSpt = () => {
@@ -3546,8 +3498,8 @@ const { data, add, update, remove, log, branch, inBranch } = useStore();
                         <YAxis tick={{ fontSize: 11 }} stroke="#8aa2b6" axisLine={false} tickLine={false} />
                         <Tooltip content={<ChartTooltip formatter={(v) => `Rp ${v} jt`} />} />
                         <Legend wrapperStyle={{ fontSize: 12 }} />
-                        <Bar dataKey="revenue" name="Pendapatan" fill="#0b3a63" radius={[4, 4, 0, 0]} isAnimationActive={chartAnim()} />
-                        <Area type="monotone" dataKey="ebitda" name="EBITDA" stroke="#0d9488" strokeWidth={2.5} fill="url(#ebitdaGrad)" dot={{ r: 3 }} isAnimationActive={chartAnim()} />
+                        <Bar dataKey="revenue" name="Pendapatan" fill="#0b3a63" radius={[4, 4, 0, 0]} isAnimationActive />
+                        <Area type="monotone" dataKey="ebitda" name="EBITDA" stroke="#0d9488" strokeWidth={2.5} fill="url(#ebitdaGrad)" dot={{ r: 3 }} isAnimationActive />
                       </ComposedChart>
                     </ResponsiveContainer>
                   </div>
