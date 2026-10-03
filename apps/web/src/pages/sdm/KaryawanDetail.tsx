@@ -27,6 +27,7 @@ import { DocumentPreviewCell, DocumentPreviewModal } from "../../components/Docu
 import { apiFetch, isBackendConfigured } from "../../services/http";
 import { fmtBulan, fmtRupiah, fmtTanggal, todayISO } from "../../utils/format";
 import { sameName } from "../../utils/names";
+import { cmpJam, fmtJam24, norm24 } from "../../utils/time24";
 import { useT } from "../../i18n/LanguageContext";
 import { n_qc } from "../../i18n/n_qc";
 
@@ -105,6 +106,11 @@ function normCerts(e: StoreItem): EmpCert[] {
   }
   return [];
 }
+
+/* Jam masuk acuan shift Pagi. Banding jam, bukan string: "8:05 AM"
+   pernah lolos ke store dan "8" > "0" secara leksikal membuatnya terbaca
+   tidak telat. */
+const isTelat = (checkIn: unknown): boolean => (cmpJam(checkIn, "08:00") ?? -1) > 0;
 
 export default function KaryawanDetail() {
   const { id } = useParams();
@@ -616,9 +622,9 @@ export default function KaryawanDetail() {
                       case "date": return String(a.date ?? "");
                       case "shift": return String(a.shift ?? "");
                       case "status": return String(a.status ?? "");
-                      case "jam": return String(a.checkIn ?? "") + "-" + String(a.checkOut ?? "");
+                      case "jam": return `${fmtJam24(a.checkIn)}-${fmtJam24(a.checkOut)}`;
                       case "lembur": return Number(a.overtime ?? 0);
-                      case "ket": return String(a.status) === "Hadir" && String(a.checkIn ?? "") > "08:00" ? "Telat" : "";
+                      case "ket": return String(a.status) === "Hadir" && isTelat(a.checkIn) ? "Telat" : "";
                       default: return "";
                     }
                   }).map((a) => (
@@ -626,9 +632,9 @@ export default function KaryawanDetail() {
                       <td className="td text-steel-600">{fmtTanggal(String(a.date))}</td>
                       <td className="td"><Badge tone="gray">{String(a.shift)}</Badge></td>
                       <td className="td"><StatusBadge status={String(a.status)} /></td>
-                      <td className="td text-steel-600">{a.checkIn && a.checkOut ? `${a.checkIn}-${a.checkOut}` : "-"}</td>
+                      <td className="td text-steel-600 font-mono text-xs">{a.checkIn && a.checkOut ? `${fmtJam24(a.checkIn)}-${fmtJam24(a.checkOut)}` : "-"}</td>
                       <td className="td text-steel-600">{S.jamN.replace("{n}", String(Number(a.overtime || 0)))}</td>
-                      <td className="td">{a.status === "Hadir" && String(a.checkIn) > "08:00" ? <Badge tone="red">Telat</Badge> : <span className="text-xs text-steel-400">-</span>}</td>
+                      <td className="td">{a.status === "Hadir" && isTelat(a.checkIn) ? <Badge tone="red">Telat</Badge> : <span className="text-xs text-steel-400">-</span>}</td>
                       <td className="td">
                         <div className="flex flex-wrap gap-1.5">
                           {attOtApproved(a) ? (
@@ -855,10 +861,10 @@ export default function KaryawanDetail() {
               <input type="number" min={0} max={8} step={0.5} className="input" value={attForm.overtime} onChange={(e) => setAttForm({ ...attForm, overtime: e.target.value })} />
             </Field>
             <Field label={locale === "en" ? "Check in" : "Jam masuk"}>
-              <input type="time" className="input" value={attForm.checkIn} disabled={attForm.status !== "Hadir"} onChange={(e) => setAttForm({ ...attForm, checkIn: e.target.value })} />
+              <input type="time" lang="id-ID" step={300} className="input font-mono" value={norm24(attForm.checkIn)} disabled={attForm.status !== "Hadir"} onChange={(e) => setAttForm({ ...attForm, checkIn: norm24(e.target.value) })} />
             </Field>
             <Field label={locale === "en" ? "Check out" : "Jam keluar"}>
-              <input type="time" className="input" value={attForm.checkOut} disabled={attForm.status !== "Hadir"} onChange={(e) => setAttForm({ ...attForm, checkOut: e.target.value })} />
+              <input type="time" lang="id-ID" step={300} className="input font-mono" value={norm24(attForm.checkOut)} disabled={attForm.status !== "Hadir"} onChange={(e) => setAttForm({ ...attForm, checkOut: norm24(e.target.value) })} />
             </Field>
           </FormGrid>
           <p className="text-xs text-steel-500">{locale === "en"

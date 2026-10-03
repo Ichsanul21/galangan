@@ -32,6 +32,7 @@ import { attendanceSeries } from "../../data";
 import { useT } from "../../i18n/LanguageContext";
 import { n_misc } from "../../i18n/n_misc";
 import { exportExcel } from "../../utils/export";
+import { cmpJam, fmtJam24, norm24 } from "../../utils/time24";
 
 const SHIFTS = ["Pagi", "Siang", "Malam"];
 const STATUS = ["Hadir", "Izin", "Sakit", "Cuti", "Alpa"];
@@ -61,9 +62,14 @@ const defaultRow = (shift = "Pagi"): CatatRow => ({
    intersection ini mempertahankan field sekaligus memuaskan constraint. */
 type Branchable = StoreItem & { branch?: string };
 
-function isLate(checkIn: string, shift = "Pagi"): boolean {
+/* Jam telat: banding jam, bukan banding string. Versi lama menulis
+   checkIn > "08:00" yang hanya benar selama kedua sisi sudah dipadatkan
+   2 digit - "8:05 AM" lolos ke store apa adanya lalu terbaca "tidak
+   telat" karena "8" > "0" secara leksikal. norm24() di input menjaga
+   data baru tetap 24H; cmpJam() menoleransi data warisan. */
+function isLate(checkIn: unknown, shift = "Pagi"): boolean {
   const start = SHIFT_START[shift] ?? "08:00";
-  return !!checkIn && checkIn > start;
+  return (cmpJam(checkIn, start) ?? -1) > 0;
 }
 
 /* Persetujuan lembur: baris lembur>0 default "Diajukan"; Payroll hanya menghitung yang "Disetujui". */
@@ -477,8 +483,8 @@ export default function Absensi() {
                         switch (k) {
                           case "emp": return String(e.name ?? "");
                           case "status": return String(r.status ?? "");
-                          case "in": return String(r.checkIn ?? "");
-                          case "out": return String(r.checkOut ?? "");
+                          case "in": return fmtJam24(r.checkIn);
+                          case "out": return fmtJam24(r.checkOut);
                           case "ot": return Number(r.overtime ?? 0);
                           case "ket": return String(r.status) === "Hadir" && isLate(String(r.checkIn ?? ""), shift) ? "Telat" : "";
                           default: return "";
@@ -498,10 +504,10 @@ export default function Absensi() {
                               </select>
                             </td>
                             <td className="td">
-                              <input type="time" className="input w-auto py-1.5 text-sm" value={r.checkIn} disabled={!hadir} onChange={(ev) => setRow(e.id, { checkIn: ev.target.value })} />
+                              <input type="time" lang="id-ID" step={300} className="input w-auto py-1.5 text-sm font-mono" value={norm24(r.checkIn)} disabled={!hadir} onChange={(ev) => setRow(e.id, { checkIn: norm24(ev.target.value) })} />
                             </td>
                             <td className="td">
-                              <input type="time" className="input w-auto py-1.5 text-sm" value={r.checkOut} disabled={!hadir} onChange={(ev) => setRow(e.id, { checkOut: ev.target.value })} />
+                              <input type="time" lang="id-ID" step={300} className="input w-auto py-1.5 text-sm font-mono" value={norm24(r.checkOut)} disabled={!hadir} onChange={(ev) => setRow(e.id, { checkOut: norm24(ev.target.value) })} />
                             </td>
                             <td className="td">
                               <NumInput min="0" max="8" step="0.5" className="input w-24 py-1.5 text-sm" value={r.overtime} disabled={!hadir} onChange={(ev) => setRow(e.id, { overtime: ev.target.value })} />
@@ -694,7 +700,7 @@ export default function Absensi() {
                           case "emp": return String(empNameOf(String(a.employeeId ?? "")));
                           case "shift": return String(a.shift ?? "");
                           case "status": return String(a.status ?? "");
-                          case "jam": return String(a.checkIn ?? "") + "-" + String(a.checkOut ?? "");
+                          case "jam": return [fmtJam24(a.checkIn), fmtJam24(a.checkOut)].join("-");
                           case "lembur": return Number(a.overtime ?? 0);
                           case "ot": return String(otStatusOf(a));
                           case "ket": return String(a.status) === "Hadir" && isLate(String(a.checkIn ?? ""), String(a.shift ?? "")) ? "Telat" : "";
@@ -706,7 +712,7 @@ export default function Absensi() {
                           <td className="td text-navy-900">{empNameOf(String(a.employeeId))}</td>
                           <td className="td"><Badge tone="gray">{a.shift}</Badge></td>
                           <td className="td"><StatusBadge status={String(a.status)} /></td>
-                          <td className="td text-steel-600">{a.checkIn && a.checkOut ? `${a.checkIn}-${a.checkOut}` : "-"}</td>
+                          <td className="td text-steel-600 font-mono text-xs">{a.checkIn && a.checkOut ? `${fmtJam24(a.checkIn)}-${fmtJam24(a.checkOut)}` : "-"}</td>
                           <td className="td text-steel-600">{Number(a.overtime || 0) > 0 ? S.hoursSuffix.replace("{n}", fmtJumlah(Number(a.overtime))) : "-"}</td>
                           <td className="td">
                             {Number(a.overtime || 0) > 0 ? (

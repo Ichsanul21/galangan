@@ -52,6 +52,7 @@ import { useDraftState } from "../../utils/draft";
 import { sameName } from "../../utils/names";
 import { sbInvoiceMath, maxSeq, PPN_INVOICE_DEFAULT, PPH_JASA_DEFAULT } from "../../utils/sb";
 import { exportExcel } from "../../utils/export";
+import { durasiJam, parseJam } from "../../utils/time24";
 import { kasKodeOf, postCashJournal } from "../../services/autoJournal";
 import { FilterPopover } from "../../components/FilterPopover";
 import { AlertBannerView, notifRowId, useModuleAlert, useNotifFlash } from "../../components/AlertBanner";
@@ -261,14 +262,15 @@ function ageDays(due: unknown, today: string): number {
   return Math.floor((t - d) / 86400000);
 }
 
+/* Lama pakai equipment dari rentang jam. Versi lama regex-nya tidak
+   punya cabang AM/PM, sehingga booking warisan "7:00 PM-6:00 AM"
+   menghasilkan selisih negatif yang dibuang jadi 0 jam - durasi
+   tengah malam hilang dari laporan. Sekarang lewat helper jam yang
+   sama dengan modul lain, dan rentang tengah malam dihitung 24 jam. */
 function parseJamHours(jam: unknown): number {
-  const s = String(jam ?? "");
-  const m = s.match(/(\d{1,2}):(\d{2})\s*[–\-—]\s*(\d{1,2}):(\d{2})/);
-  if (!m) return 0;
-  const a = num(m[1]) + num(m[2]) / 60;
-  const b = num(m[3]) + num(m[4]) / 60;
-  const h = b - a;
-  return h > 0 && h <= 24 ? h : 0;
+  const r = parseJam(jam);
+  if (!r) return 0;
+  return durasiJam(r.mulai, r.selesai);
 }
 
 function downloadCsv(filename: string, header: string[], rows: (string | number)[][]): void {

@@ -16,6 +16,7 @@ import { remoteRepository } from "../../services/repositories";
 import { getJwt, isBackendConfigured } from "../../services/http";
 import { equipmentHours, sparkUtil, equipTotalTrend, maintTrend, serviceDueTrend } from "../../data";
 import { fmtTanggal, fmtJumlah, fmtRupiah, todayISO } from "../../utils/format";
+import { durasiJam, fmtJam24, jamOf, jamOverlap, norm24, parseJam, toMinutes } from "../../utils/time24";
 import { sameName } from "../../utils/names";
 import {
   MAINT_JENIS,
@@ -139,71 +140,25 @@ async function freshMaintenances(fallback: StoreItem[]): Promise<StoreItem[]> {
    `hours` diisi saat booking diselesaikan (lihat confirmFinish) - lalu
    di-bucket per bulan dari tanggal booking. */
 
-/* Seluruh jam/input waktu memakai format 24 jam (00:00–23:59, tanpa AM/PM).
-   norm24() menormalkan data lama AM/PM ("02:00 PM" → "14:00") agar konsisten;
-   input memakai type="time" + step 5 menit + lang id-ID (render 24H di browser). */
-function norm24(t: unknown): string {
-  const s = String(t ?? "").trim();
-  if (!s) return "";
-  const m = /^(\d{1,2}):(\d{2})(?::\d{2})?\s*([AaPp])\.?\s?[Mm]\.?$/.exec(s);
-  if (m) {
-    let h = Number(m[1]) % 12;
-    if (/^[Pp]/.test(m[3])) h += 12;
-    return `${String(h).padStart(2, "0")}:${m[2]}`;
-  }
-  const m2 = /^(\d{1,2}):(\d{2})(?::\d{2})?$/.exec(s);
-  if (!m2) return s;
-  const h = Math.min(23, Math.max(0, Number(m2[1])));
-  const min = Math.min(59, Math.max(0, Number(m2[2])));
-  return `${String(h).padStart(2, "0")}:${String(min).padStart(2, "0")}`;
-}
-function fmtJam24(jam: unknown): string {
-  const parts = String(jam ?? "").split(/\s*[–—-]\s*/);
-  if (parts.length >= 2) {
-    const a = norm24(parts[0]);
-    const b = norm24(parts.slice(1).join("-"));
-    if (/^\d{2}:\d{2}$/.test(a) && /^\d{2}:\d{2}$/.test(b)) return `${a}–${b}`;
-  }
-  const single = norm24(jam);
-  return /^\d{2}:\d{2}$/.test(single) ? single : String(jam ?? "-");
-}
+/* Jam 24 jam (00:00-23:59, tanpa AM/PM) danDurasi/irisan rentang - helper
+   bersama di utils/time24.ts, dipakai juga Absensi, KaryawanDetail, dan
+   Finance. norm24() menolak nilai di luar rentang; Versi lama menjepit
+   "25:00" jadi "23:00" sehingga jam ngawur masuk tanpa jejak, dan
+   toMinutes() memanggil norm24() lebih dulu sehingga guard "h > 23"-
+   nya tidak pernah menyala. Input booking memakai type="time" + step 5
+   menit + lang id-ID (browser merender 24H). */
 
-function toMinutes(t: string): number | null {
-  const n = norm24(t);
-  const m = /^(\d{1,2}):(\d{2})$/.exec(n.trim());
-  if (!m) return null;
-  const h = Number(m[1]);
-  const min = Number(m[2]);
-  if (h > 23 || min > 59) return null;
-  return h * 60 + min;
-}
-
-function parseJam(jam: string): { mulai: string; selesai: string } | null {
-  const norm = String(jam ?? "").replace(/([AaPp])\.?\s?[Mm]\.?/g, (x) => ` ${x.toUpperCase()}`);
-  const m = /(\d{1,2}:\d{2}(?:\s*[AP]M)?)\s*[–—-]\s*(\d{1,2}:\d{2}(?:\s*[AP]M)?)/i.exec(norm);
-  if (!m) return null;
-  return { mulai: norm24(m[1]), selesai: norm24(m[2]) };
-}
-
+/* Booking lama hanya punya field `jam` ("08:00-17:00"); booking baru
+   menyimpan mulai/selesai terpisah. Dua-duanya dinormalkan di sini. */
 function bookingRange(b: StoreItem): { mulai: number; selesai: number } | null {
-  const rawMulai = typeof b.mulai === "string" && b.mulai ? b.mulai : parseJam(String(b.jam ?? ""))?.mulai;
-  const rawSelesai = typeof b.selesai === "string" && b.selesai ? b.selesai : parseJam(String(b.jam ?? ""))?.selesai;
+  const parsed = typeof b.mulai === "string" && b.mulai ? null : parseJam(String(b.jam ?? ""));
+  const rawMulai = typeof b.mulai === "string" && b.mulai ? b.mulai : parsed?.mulai;
+  const rawSelesai = typeof b.selesai === "string" && b.selesai ? b.selesai : parsed?.selesai;
   if (!rawMulai || !rawSelesai) return null;
   const a = toMinutes(rawMulai);
   const c = toMinutes(rawSelesai);
   if (a === null || c === null) return null;
   return { mulai: a, selesai: c };
-}
-
-function rangesOverlap(a0: number, a1: number, b0: number, b1: number): boolean {
-  return a0 < b1 && b0 < a1;
-}
-
-function durationHours(mulai: string, selesai: string): number {
-  const a = toMinutes(mulai);
-  const b = toMinutes(selesai);
-  if (a === null || b === null || b <= a) return 0;
-  return Math.round(((b - a) / 60) * 10) / 10;
 }
 
 function daysUntil(dateISO: string, today: string): number | null {
@@ -281,8 +236,10 @@ export default function EquipmentPage() {
       if (Number.isNaN(d.getTime())) continue;
       // getDay(): 0=Minggu -> indeks 6 supaya urut Sen..Min
       const dayIdx = (d.getDay() + 6) % 7;
-      const hourMatch = /(\d{1,2}):/.exec(String(b.jam ?? ""));
-      const hour = hourMatch ? Number(hourMatch[1]) : 8;
+      /* Jam mulai dibaca lewat jamOf() yang menormalkan AM/PM. Versi lama
+     parse "/(\d{1,2}):/" langsung dari b.jam, sehingga booking warisan
+     "7:00 PM" dihitung masuk kolom 7 - bukan 19. */
+      const hour = jamOf(typeof b.mulai === "string" && b.mulai ? b.mulai : parseJam(String(b.jam ?? ""))?.mulai) ?? 8;
       if (!grid.has(DAY_LABELS[dayIdx])) grid.set(DAY_LABELS[dayIdx], new Map());
       const rowMap = grid.get(DAY_LABELS[dayIdx]) as Map<number, number>;
       rowMap.set(hour, (rowMap.get(hour) ?? 0) + 1);
@@ -456,7 +413,7 @@ export default function EquipmentPage() {
       if (equipKey(a.equip) !== equipKey(b.equip) || a.date !== b.date) continue;
       const ra = bookingRange(a);
       const rb = bookingRange(b);
-      if (ra && rb && rangesOverlap(ra.mulai, ra.selesai, rb.mulai, rb.selesai)) {
+      if (ra && rb && jamOverlap(ra.mulai, ra.selesai, rb.mulai, rb.selesai)) {
         conflictIds.add(a.id);
         conflictIds.add(b.id);
       }
@@ -1269,7 +1226,7 @@ export default function EquipmentPage() {
     bookings.filter((o) => {
       if (equipKey(o.equip) !== equipKey(equip) || o.date !== date || o.status === "Selesai") return false;
       const r = bookingRange(o);
-      return r ? rangesOverlap(a, b, r.mulai, r.selesai) : false;
+      return r ? jamOverlap(a, b, r.mulai, r.selesai) : false;
     });
 
   const persistBooking = async (priority: string) => {
@@ -1291,6 +1248,13 @@ export default function EquipmentPage() {
     const { equip, proyek, date, mulai, selesai, priority } = bookForm;
     if (!equip || !proyek || !date || !mulai || !selesai) {
       setBookError(S.eqBookReq);
+      return;
+    }
+    /* Dua kegagalan dibedakan: jam di luar rentang (termasuk data warisan
+       AM/PM yang tak bisa dibaca) bukan "selesai lebih dulu", jadi pesan
+       error tidak_BOLEH menyesatkan. */
+    if (!norm24(mulai) || !norm24(selesai)) {
+      setBookError(S.eqBookTimeInvalid);
       return;
     }
     const a = toMinutes(mulai);
@@ -1357,7 +1321,7 @@ export default function EquipmentPage() {
   const openFinish = (b: StoreItem) => {
     const r = bookingRange(b);
     setFinishing(b);
-    setFinishHours(r ? String(durationHours(minutesToStr(r.mulai), minutesToStr(r.selesai))) : "");
+    setFinishHours(r ? String(durasiJam(minutesToStr(r.mulai), minutesToStr(r.selesai))) : "");
     setFinishDowntime(String(b.downtime ?? 0));
     setFinishFuel(String(b.fuelLiters ?? 0));
   };
