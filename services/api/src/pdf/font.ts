@@ -12,10 +12,11 @@
  * yang sama seperti sebelumnya, jadi tidak ada regresi.
  *
  * Embed TTF menaikkan ukuran berkas PDF beberapa ratus KB, karena program
- * font ikut masuk. Untukartefak arsip resmi itu trade-off yang sepadan; untuk
- * laporan yang diunduh berulang kali, jalankan `npm run fonts:subset`
- * (lihat README di folder ini) untuk memangkas font ke karakter yang benar-
- * benar dipakai.
+ * font ikut masuk. Untuk artefak arsip resmi itu trade-off yang sepadan;
+ * kalau ukuran jadi masalah, subset font lebih dulu sehingga hanya karakter
+ * yang benar-benar dipakai yang tertanam (subset perlu alat eksternal -
+ * pyftsubset dari fonttools - dan menghasilkan .ttf baru untuk ditaruh di
+ * folder ini).
  */
 import fs from "node:fs";
 import path from "node:path";
@@ -176,6 +177,34 @@ export function registerFonts(pdf: jsPDF): Record<FontName, FontSpec> {
 /** True bila font TTF benar-benar terpakai pada render terakhir. */
 export function fontsEmbedded(): boolean {
   return resolved?.regular.embedded === true;
+}
+
+/* Rentang codepoint CJK. Nama Mandarin/karyawan bisa muncul di dokumen
+   resmi (kwitansi ke vendor Mandarin, absensi karyawan Tionghoa), dan tanpa
+   font CJK karakter itu tercetak sebagai kotak TANPA ERROR - dokumen keluar
+   dari printer, ukurannya wajar, tidak ada yang gagal. Itu kelas kegagalan
+   yang paling mahal karena tidak terdeteksi. */
+const CJK_RANGES: [number, number][] = [
+  [0x3040, 0x30ff],   // Hiragana + Katakana
+  [0x3400, 0x4dbf],   // CJK Extension A
+  [0x4e00, 0x9fff],   // CJK Unified Ideographs
+  [0xf900, 0xfaff],   // CJK Compatibility Ideographs
+  [0xac00, 0xd7af],   // Hangul syllables
+];
+
+/** Huruf CJK yang ada di teks. */
+export function cjkChars(text: string): string[] {
+  const out = new Set<string>();
+  for (const ch of String(text ?? "")) {
+    const cp = ch.codePointAt(0) ?? 0;
+    if (CJK_RANGES.some(([lo, hi]) => cp >= lo && cp <= hi)) out.add(ch);
+  }
+  return [...out];
+}
+
+/** True bila teks memuat huruf CJK. */
+export function hasCjk(text: string): boolean {
+  return cjkChars(text).length > 0;
 }
 
 /** Nama font untuk jsPDF. */

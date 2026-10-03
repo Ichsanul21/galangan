@@ -39,6 +39,9 @@ export interface Session {
   initials: string;
   username: string;
   loginAt: string;
+  /** Cabang akun, dari claim JWT. "SEMUA" = tidak dibatasi.
+   *  Opsional karena sesi lokal (tanpa backend) tidak punya claim ini. */
+  branch?: string;
 }
 
 function loadSession(): Session | null {
@@ -70,6 +73,7 @@ interface BackendLoginUser {
   name?: string;
   role?: string;
   email?: string;
+  branch?: string;
 }
 
 interface AuthCtx {
@@ -100,6 +104,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           initials: initialsOf(bu.name || bu.username || uname),
           username: bu.username || uname,
           loginAt: new Date().toISOString(),
+          /* Disimpan di sessionStorage supaya dropdown cabang langsung
+             menyesuaikan tanpa menunggu /api/auth/me. "SEMUA" bila server
+             tidak mengirim claim (server versi lama). */
+          branch: String(bu.branch ?? "SEMUA") || "SEMUA",
         };
         sessionStorage.setItem(SESSION_KEY, JSON.stringify(session));
         setUser(session);

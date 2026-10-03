@@ -1,4 +1,4 @@
-﻿/* Document - mengorkestrasi blok menjadi PDF dengan paginasi dua fase.
+/* Document - mengorkestrasi blok menjadi PDF dengan paginasi dua fase.
  *
  * ALUR (satu-satunya di seluruh mesin):
  *   FASE 1  PLAN   : setiap blok di-`plan()` pada lebar final. Tidak ada
@@ -18,7 +18,7 @@
  */
 import { jsPDF } from "jspdf";
 import { COLOR, MARGIN_MM, PAGES, STROKE, TYPE, type RGB } from "./theme.js";
-import { fontName, registerFonts, safe } from "./font.js";
+import { cjkChars, fontName, registerFonts, safe } from "./font.js";
 import type { Block, Ctx, DrawRecord, Segment } from "./blocks.js";
 import { drawText, textWidth } from "./blocks.js";
 
@@ -47,6 +47,9 @@ export interface RenderResult {
   records: DrawRecord[];
   /** Font benar-benar ter-embed? */
   embeddedFont: boolean;
+  /** Huruf CJK yang muncul di dokumen. Panjang > 0 berarti ada karakter
+   *  yang kemungkinan tercetak sebagai kotak - lihat cjkChars di font.ts. */
+  cjkChars: string[];
   /** Ukur halaman dalam mm, sudah mengikuti orientasi. Pemeriksa geometri
    *  membutuhkannya: laporan landscape punya content box lebih lebar dari A4
    *  potret, jadi pemeriksaan yang memakai ukuran tetap akan menandai dokumen
@@ -244,11 +247,17 @@ export class Document {
     }
     const out = this.pdf.output("arraybuffer");
     const bytes = new Uint8Array(out);
+    /* Huruf CJK yang tidak punya glyph akan tercetak sebagai kotak tanpa
+       error. Ditandai di hasil render supaya route bisa memberitahu -
+       "kotak kosong" yang tidak dilaporkan artinya arsip resmi rusak tanpa
+       ada yang mengetahuinya. */
+    const cjk = cjkChars(this.records.map((r) => r.text).join(""));
     return {
       bytes,
       pages: total,
       records: this.opts.trace ? this.records : [],
       embeddedFont: this.embedded,
+      cjkChars: cjk,
       pageW: this.pageW,
       pageH: this.pageH,
       margin: this.margin,

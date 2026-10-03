@@ -8,6 +8,11 @@ export interface AuthUser {
   id: string;
   username: string;
   role: string;
+  /** Cabang user, dari employees.branch lewat users.employee_id.
+   *  "SEMUA" = tidak dibatasi. Ada di token supaya route PDF bisa menegakkan
+   *  batas tanpa query ulang - dan karena token sudah ditandatangani, klien
+   *  tidak bisa memperbesar haknya sendiri dengan mengubah claim. */
+  branch: string;
 }
 
 declare module "fastify" {
@@ -34,7 +39,33 @@ export function signToken(payload: AuthUser): string {
 }
 
 export function verifyToken(token: string): AuthUser {
-  return jwt.verify(token, getSecret()) as AuthUser;
+  const raw = jwt.verify(token, getSecret()) as Partial<AuthUser>;
+  /* Token yang dibuat sebelum claim `branch` ada tidak punya field itu.
+     Default "SEMUA" (= tidak dibatasi) dipilih karena itu perilaku lama:
+    Versi yang lebih ketat tiba-tiba lewat diam-diam. Batas yang lebih ketat
+     harus datang dari perubahan claim, bukan dari nilai yang hilang. */
+  return {
+    id: String(raw.id ?? ""),
+    username: String(raw.username ?? ""),
+    role: String(raw.role ?? ""),
+    branch: String(raw.branch ?? "SEMUA") || "SEMUA",
+  };
+}
+
+/**
+ * Cabang yang boleh diakses user. "SEMUA" berarti seluruh cabang.
+ *
+ * Spasi di kedua sisi dibersihkan tapi HURUF BESAR tetap ketat: spasi di
+ * nilai `employees.branch` itu mungkin terjadi dan tidak pernah bermakna,
+ * sedangkan perbedaan huruf besar menandakan data yang salah dan harus
+ * terlihat - bukan lolos diam-diam.
+ */
+export function branchAllowed(user: AuthUser | undefined, asked: string): boolean {
+  const norm = (v: unknown): string => String(v ?? "").trim();
+  const own = norm(user?.branch);
+  const want = norm(asked);
+  if (own === "" || own === "SEMUA") return true;
+  return own === want;
 }
 
 export async function requireAuth(req: FastifyRequest, reply: FastifyReply): Promise<void> {

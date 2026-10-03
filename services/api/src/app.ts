@@ -77,6 +77,35 @@ function getApiVersion(): string {
   return "0.2.0";
 }
 
+/**
+ * Cabang sebuah akun: employees.branch lewat users.employee_id.
+ *
+ * Sengaja TIDAK menambah kolom `branch` ke tabel users. Kolom itu tidak ada,
+ * dan menambahkannya berarti setiap akun lama mendapat nilai kosong yang
+ * maknanya ambigu - dan harus ada dua sumber kebenaran untuk hal yang sama.
+ * Dengan diambil dari karyawan, satu sumber kebenaran yang sudah dipakai di
+ * seluruh aplikasi.
+ *
+ * "SEMUA" bila akun tidak tertaut ke karyawan atau cabangnya kosong, jadi
+ * akun demo/developer tidak kehilangan akses apa pun. Mekanisme ini menambah
+ * batas, tidak pernah mengambil hak yang sudah ada - penting karena langsung
+ * berlaku saat server start.
+ */
+async function branchOfUser(user: { employee_id?: string | null }): Promise<string> {
+  const empId = String(user.employee_id ?? "").trim();
+  if (empId === "") return "SEMUA";
+  try {
+    const rows = await q<{ branch: string }>("SELECT branch FROM employees WHERE id = ?", [empId]);
+    const b = String(rows[0]?.branch ?? "").trim();
+    return b === "" || b === "-" ? "SEMUA" : b;
+  } catch {
+    /* Tabel employees belum ada atau tidak bisa dibaca. Jangan mengunci
+       akses karena kegagalan yang bukan penolakan - gagal membuka lebih
+       baik daripada gagal menutup. */
+    return "SEMUA";
+  }
+}
+
 export function buildApp(): FastifyInstance {
   const env = loadEnv();
   // Structured logs to stdout (default pino). Secrets are redacted before
@@ -259,7 +288,10 @@ export function buildApp(): FastifyInstance {
       diff: { username: user.username },
       ip: requestIp(req),
     });
-    const token = signToken({ id: user.id, username: user.username, role: user.role });
+    /* Cabang user ikut di-token supaya route PDF bisa menegakkan batas tanpa
+       query ulang, dan klien tidak bisa memperbesar haknya sendiri karena
+       claim ini sudah ditandatangani. */
+    const token = signToken({ id: user.id, username: user.username, role: user.role, branch: await branchOfUser(user) });
     // Sesi realtime: 1 baris aktif per user (last writer wins).
     try {
       const now = new Date().toISOString();

@@ -49,5 +49,13 @@ lisensi OFL, ~16 MB) - taruh di server lewat `PDF_FONTS_DIR`, jangan di repo.
 ## Ukuran berkas
 
 Embedding menambah beberapa ratus KB per PDF karena program font ikut
-masuk. Untuk laporan yang diunduh sering, jalankan subset lebih dulu sehingga
-hanya karakter yang benar-benar dipakai yang tertanam.
+masuk. Kalau itu terlalu besar untuk laporan yang diunduh sering, subset
+font dulu sehingga hanya karakter yang benar-benar dipakai yang tertanam:
+
+```bash
+pyftsubset NotoSans-Regular.ttf --text-file charset.txt \
+  --output-file=regular.ttf --flavor=ttf
+```
+
+Subset butuh `fonttools` (`pip install fonttools`). Hasilnya ditaruh di
+folder ini seperti biasa.

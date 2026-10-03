@@ -158,14 +158,43 @@ export async function entityBranch(field: string, id: string): Promise<string | 
   return b === "" ? null : b;
 }
 
-/** Daftar cabang yang benar-benar ada di sistem.
- *  Filter cabang dari klien hanya diterima kalau ada di sini - string
- *  bebas bisa dipakai untuk memeriksa cabang mana yang punya data apa. */
+/**
+ * Daftar cabang yang benar-benar ada di sistem.
+ *
+ * PENTING: kosakata cabang di aplikasi ini adalah NAMA KOTA
+ * ("Samarinda", "Balikpapan", "Banjarmasin"), bukan kode cabang dan bukan
+ * nilai kolom `branch`. Kolom itu hampir kosong - invoice dan jurnal punya
+ * `branch = ""`, hanya projects/employees yang mengisi - sedangkan nama
+ * kota disimpan di dalam JSON `data.city` pada koleksi `branches`.
+ *
+ * Versi pertama fungsi ini membaca kolom `branch` saja, jadi hanya
+ * mengembalikan ["Samarinda"]: memilih "Balikpapan" di dropdown cabang lalu
+ * ekspor laporan akan ditolak 400, padahal Balikpapan cabang yang sah.
+ * Karena itu tiga sumber ikut dibaca: kolom branch, city di branches, dan
+ * nama/id cabang sebagai cadangan.
+ */
 export async function knownBranches(): Promise<string[]> {
-  const rows = await q<{ branch: string }>(`SELECT DISTINCT branch FROM branches WHERE branch <> ''`, []);
-  const fromRows = rows.map((r) => String(r.branch));
-  const other = await q<{ branch: string }>(`SELECT DISTINCT branch FROM projects WHERE branch <> ''`, []);
-  return [...new Set([...fromRows, ...other.map((r) => String(r.branch))])].filter((b) => b !== "" && b !== "-");
+  const out = new Set<string>();
+  const add = (v: unknown): void => {
+    const s = String(v ?? "").trim();
+    /* "-" dan string kosong berarti "baris tidak punya cabang", bukan nama
+       cabang - menerimanya akan membuat filter yang tidak pernah menghasilkan
+       apa pun lolos validasi. */
+    if (s !== "" && s !== "-" && s !== "SEMUA") out.add(s);
+  };
+  for (const field of ["projects", "employees", "invoices"]) {
+    for (const r of await q<{ branch: string }>(`SELECT DISTINCT branch FROM ${field}`, [])) add(r.branch);
+  }
+  for (const r of await q<{ id: string; data: unknown }>("SELECT id, data FROM branches", [])) {
+    const raw: Record<string, unknown> = typeof r.data === "string"
+      ? JSON.parse(r.data) as Record<string, unknown>
+      : ((r.data ?? {}) as Record<string, unknown>);
+    /* Urutan sesuai select di FE: city, lalu name, lalu id. */
+    add(raw.city);
+    add(raw.name);
+    add(r.id);
+  }
+  return [...out].sort();
 }
 
 /** Muat banyak entitas terfilter; dipakai dokumen yang butuh relasi. */

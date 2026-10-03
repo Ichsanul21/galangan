@@ -53,12 +53,27 @@ export default function AppShell() {
   const { user, logout } = useAuth();
   const { t, locale, setLocale } = useT();
   const { data, reset, branch, setBranch, backendMode, backendError, pendingSync, pushPending, resync } = useStore();
+  /* Cabang yang boleh diakses akun ini, dari claim JWT (`/api/auth/me`).
+     "SEMUA" untuk akun demo/developer dan sesi lokal tanpa backend - mode
+     lokal tidak punya server yang bisa menolak, jadi tidak perlu dibatasi. */
+  const userBranch = String(user?.branch ?? "SEMUA") || "SEMUA";
   const S = n_misc[locale];
   const navigate = useNavigate();
   /* Badge global: tampil selama batch halaman mana pun (useModuleSync)
      sedang berjalan - tak ada jeda tanpa umpan balik saat pindah modul. */
   const moduleSyncing = useModuleSyncing();
   const failedSync = useFailedCollections();
+
+  /* Filter cabang global disimpan di localStorage, jadi bisa tertinggal
+     nilai yang tidak boleh dipakai akun ini - localStorage bisa diubah
+     dari sesi sebelumnya, atau sebelum akun dipindahkan ke cabang lain.
+     Efek ini memaksa kembali ke cabang sendiri. Tanpa itu layar menampilkan
+     angka cabang lain sementara ekspor PDF-nya 403: dua-duanya salah, dan
+     yang kedua baru ketahuan setelah pengguna menekan tombol. */
+  useEffect(() => {
+    if (userBranch === "SEMUA") return;
+    if (branch !== userBranch) setBranch(userBranch);
+  }, [userBranch, branch, setBranch]);
 
   useEffect(() => {
     const onExpired = () => {
@@ -530,11 +545,18 @@ export default function AppShell() {
                 value={branch}
                 aria-label={S.shPickBranchAria}
                 onChange={(e) => setBranch(e.target.value)}
+                /* Akun yang terikat satu cabang tidak boleh memilih
+                   "Semua Cabang": server akan menolak permintaan PDF-nya
+                   dengan 403 karena di luar cakupan. Menampilkan opsi yang
+                   pasti ditolak lebih buruk daripada menyembunyikannya. */
+                title={userBranch === "SEMUA" ? undefined : t.nav.lockedToBranch.replace("{a}", userBranch)}
               >
-                <option value="SEMUA">{t.nav.allBranches}</option>
-                {(data.branches ?? []).map((b) => (
-                  <option key={b.id} value={b.city}>{b.name}</option>
-                ))}
+                {userBranch === "SEMUA" && <option value="SEMUA">{t.nav.allBranches}</option>}
+                {(data.branches ?? [])
+                  .filter((b) => userBranch === "SEMUA" || String(b.city) === userBranch)
+                  .map((b) => (
+                    <option key={b.id} value={b.city}>{b.name}</option>
+                  ))}
               </select>
             </div>
           </div>

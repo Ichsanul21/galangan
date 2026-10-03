@@ -31,6 +31,12 @@ export interface PdfDocState {
 
 const EMPTY: PdfDocState = { busy: false, error: "", url: "", filename: "", pages: 0, local: false, modelId: "" };
 
+/* Satu tempat untuk pesan ini: render dan cetak ulang mengalami kondisi yang
+   sama, dan kalimat yang berbeda di dua jalur akan cepat tidak sinkron. */
+function cjkWarning(count: number): string {
+  return `Dokumen memuat ${count} huruf CJK yang font server tidak punya - kemungkinan tercetak sebagai kotak. Set PDF_FONTS_DIR ke font CJK (Noto Sans CJK) di server.`;
+}
+
 export function usePdfDoc(): {
   state: PdfDocState;
   /** Minta dokumen; memunculkan popup bila `open` true. */
@@ -86,6 +92,10 @@ export function usePdfDoc(): {
           modelId: res.modelId,
         });
         if (!open) downloadBlobUrl(res.url, filename);
+        /* Huruf CJK tanpa glyph tercetak sebagai kotak: dokumen tetap keluar
+           tanpa error, jadi tanpa peringatan ini pengguna baru menemukan
+           kotaknya setelah berkas dicetak dan ditandatangani. */
+        if (res.cjkChars > 0) toast(cjkWarning(res.cjkChars), "info");
         return true;
       } catch (e) {
         const message =
@@ -119,6 +129,7 @@ export function usePdfDoc(): {
           modelId: res.modelId,
         });
         if (!open) downloadBlobUrl(res.url, filename);
+        if (res.cjkChars > 0) toast(cjkWarning(res.cjkChars), "info");
         return true;
       } catch (e) {
         const message = e instanceof Error ? e.message : "Gagal mencetak ulang";

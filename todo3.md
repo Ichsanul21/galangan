@@ -22,7 +22,10 @@ Audit: 5 auditor paralel read-only terhadap `apps/web` + `services/api` @ `1dd96
 | `055d560` | Report factory server (laporan/analitik/rekap) + 4 pemanggil dimigrasikan |
 | (batch ini) | PO/SPT/slip/HR ke field yang sebenarnya ditulis aplikasi; mesin PDF lama dihapus |
 
-Belum selesai: item modul & fitur 2 Oktober (lihat bagian bawah).
+Semua item modul & fitur 2 Oktober sudah dikerjakan (lihat "ITEM MODUL PER
+REVISI 2 OKTOBER"). Sisa yang memang butuh keputusan client, bukan pekerjaan
+koding: font CJK harus disetor ke server, dan batas cabang per pengguna perlu
+ditetapkan secara bisnis (cabang mana untuk peran mana).
 
 ---
 
@@ -32,7 +35,7 @@ Belum selesai: item modul & fitur 2 Oktober (lihat bagian bawah).
 |---|---|---|
 | 1 | **Mesin PDF di server** (`services/api/src/pdf/`) | FE kehilangan `jspdf` + `html2canvas`. Dokumen resmi dirakit dari DB server sehingga tidak bisa dipalsukan klien |
 | 2 | **PDF tidak pernah menyentuh disk** | Yang disimpan adalah *model input* factory (bukan `blocks[]` yang tidak bisa diserialisasi) untuk audit + cetak ulang identik - lihat "Model penyimpanan" |
-| 3 | **Font TTF di-embed** + CJK kondisional | Font belum ada di repo; sampai masuk, mesin jatuh ke standard-14 |
+| 3 | **Font TTF di-embed** + deteksi CJK | Font tidak di-commit (lisensi); sampai `PDF_FONTS_DIR` diisi, mesin jatuh ke standard-14 - tapi sekarang **diberi tahu**, bukan diam-diam |
 | 4 | **Sekaligus semua** | 1 branch, checkpoint per batch, hapus total metode lama |
 | 5 | Online tanpa jeda; offline optimistic + flush otomatis | Tidak ada jeda buatan saat online |
 
@@ -189,24 +192,34 @@ sudah dikoreksi - dua hal yang tidak bisa dibedakan tanpa menyimpan model.
 - `007_pdf_docs.sql`: `pdfDocs.model` = `TEXT`. Bentuknya berbeda per jenis
   dokumen (kwitansi punya `breakdown`, surat jalan punya `sj*`), jadi kolom JSON
   berskema akan memaksa semua factory memakai satu bentuk yang salah.
-- **BELUM dikerjakan**: menaikkan `documents.data` ke `MEDIUMTEXT`. MySQL
-  `TEXT` = 65.535 byte, jadi `documents.data` yang besar akan terpotong di
-  MySQL. `ALTER TABLE ... MODIFY` tidak portabel SQLite, jadi butuh cabang
-  per-dialek di `migrate.ts` - tidak diambil dengan jalan pintas di sini.
+- **Sudah**: `pdfDocs.model`, `audit_log.diff`, dan `documents.data` dinaikkan
+  ke `MEDIUMTEXT` lewat `ensureWideJsonColumns()` di `migrate.ts` (idempoten:
+  lebar kolom dibaca dari `information_schema` dulu). Dipakai per-dialek
+  karena `ALTER TABLE ... MODIFY` tidak portabel SQLite.
+  Batas 64 KB MySQL ini bukan teoretis: `saveRenderModel` menangkap error
+  tulis lalu hanya memberi tahu lewat `console.warn`, jadi "cetak ulang" akan
+  mati tanpa jejak di UI - penyebabnya cuma baris warning di log server.
 
 ## Pipa font
 
-1. **TTF di-embed bila ada** di `services/api/assets/fonts/` (`regular.ttf`,
-   `bold.ttf`, `italic.ttf`). Tanpa file itu mesin jatuh ke standard-14 dengan
+1. **TTF di-embed bila ada** di folder font (lihat README di sana). Foldernya
+   bisa diarahkan ke luar repo lewat `PDF_FONTS_DIR`, jadi font berlisensi
+   tidak perlu ikut ter-commit. Tanpa TTF mesin jatuh ke standard-14 dengan
    peta karakter di luar WinAnsi.
 2. Pendaftaran font **diulang per instance `jsPDF`**. Versi pertama menyimpan
    hasil registrasi di modul-global, sehingga dokumen kedua dan seterusnya
    memakai nama font yang tidak ada di instance-nya - semua teks jatuh ke
    Helvetica tanpa satu pun galat (lihat `font.ts`).
-3. Font TTF **belum ada di repo**. Sampai file-nya masuk, dokumen resmi
-    - butiran huruf Mandarin dan simbol non-Latin akan tetap kotak kosong.
-4. CJK kondisional - `font.ts` mendeteksi codepoint CJK; tidak ada -> subset
-   kecil; ada -> tambahkan font CJK penuh ke dokumen itu saja.
+3. **Status font sekarang dilaporkan, bukan diam-diam.** Baris terakhir
+   `probe:pdf` mencetak apakah TTF benar-benar ter-embed. Sebelumnya
+   `initFonts()` tidak pernah dipanggil sama sekali, jadi "lulus" tidak
+   berarti apa pun soal font.
+4. **Font TTF belum ada di repo** (punya lisensi sumber). Karakter non-Latin
+   tetap jadi kotak sampai `PDF_FONTS_DIR` diarahkan ke font CJK. Karena itu
+   `font.ts` sekarang mendeteksi codepoint CJK, `Document.render()` mengembalikan
+   `cjkChars`, route mengirim header `X-Doc-Cjk`, dan FE memberi tahu pengguna
+   saat mencetak. Kotak yang tidak dilaporkan berarti arsip resmi rusak tanpa ada
+   yang mengetahuinya.
 
 ## Kontrak API
 

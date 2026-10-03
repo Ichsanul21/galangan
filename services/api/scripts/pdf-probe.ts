@@ -42,7 +42,9 @@ import { niceScale, axisTicks } from "../src/pdf/chart.js";
 import type { ChartSpec } from "../src/pdf/chart.js";
 import { kwitansi as kwitansiDoc, ribu } from "../src/pdf/documents/kwitansi.js";
 import { DOC_KINDS, findRecipe, buildFromModel } from "../src/pdf/registry.js";
-import { initFonts, fontsEmbedded } from "../src/pdf/font.js";
+import { initFonts, fontsEmbedded, cjkChars } from "../src/pdf/font.js";
+import { branchAllowed } from "../src/auth.js";
+import { knownBranches } from "../src/pdf/documents/shared.js";
 
 /* Probe harus memakai konfigurasi font yang sama dengan server. Tanpa
    initFonts() di sini, semua pemeriksaan font lulus hampa: yang diuji
@@ -319,7 +321,7 @@ ok("axisTicks naik monoton", axisTicks(100, 25).every((v, i, a) => i === 0 || v 
     no: "KW/TRM-2026-999",
     tanggal: "2026-10-02",
     diterimaDari: "PT KONSTRUKSI REKAYASA INDUSTRI DAN PERTAHANAN NUSANTARA",
-    untuk: "TRM-2026-999 - PerbaikanAMC kapal",
+    untuk: "TRM-2026-999 - Perbaikan AMC kapal",
     breakdown: [{ label: "Nilai termin", value: 12_500_000_000 }, { label: "Dibayar", value: 12_500_000_000 }],
     netLabel: "Dibayar",
     locale: "id",
@@ -394,7 +396,7 @@ const MODELS: Record<string, unknown> = {
     no: "KW/TRM-2026-001",
     tanggal: "2026-10-02",
     diterimaDari: "PT KONSTRUKSI REKAYASA INDUSTRI DAN PERTAHANAN NUSANTARA",
-    untuk: "TRM-2026-001 - PerbaikanAMC kapal",
+    untuk: "TRM-2026-001 - Perbaikan AMC kapal",
     breakdown: [
       { label: "Nilai termin", value: 279_000_000 },
       { label: "PPh dipotong (2%)", value: -5_580_000 },
@@ -442,7 +444,7 @@ const MODELS: Record<string, unknown> = {
     projectName: "Repairs & Maintenance Km. Nyak Kopong",
     subcontractorName: "PT KRI REKAYASA",
     subcontractorAddress: "Jl.ymm Manunggal No.8, Balikpapan",
-    scopeOfWork: "Penggantianplat engine, overhaul pompa injeksi, dan perbaikan sistem hidrolik kontrol kemudi.",
+    scopeOfWork: "Penggantian plat engine, overhaul pompa injeksi, dan perbaikan sistem hidrolik kontrol kemudi.",
     deliverables: Array.from({ length: 24 }, (_, i) => ({ description: `Komponen pekerjaan nomor ${i + 1}`, qty: i + 1, unit: "unit", status: "Selesai" })),
     notes: "Diterima tanpa catatanminor.",
     nameReceiver: "H. Syarif Sarapping",
@@ -825,25 +827,108 @@ function registryIntegrity(): void {
 }
 
 /* ==========================================================================
-   Ringkasan
+   Batas cabang
    ========================================================================== */
 
-registryIntegrity();
+/*
+ * Otorisasi cabang dijaga di sini karena dua-duanya bisa lolos tanpa error.
+ *
+ * 1. knownBranches() pernah membaca kolom `branch` saja, padahal kosakata
+ *    cabang aplikasi ini adalah NAMA KOTA dari `branches.data.city`. Kolom
+ *    branch nyaris kosong (invoice & jurnal punya branch = ""), jadi hasilnya
+ *    hanya ["Samarinda"] - memilih "Balikpapan" di dropdown lalu ekspor
+ *    laporan ditolak 400 padahal Balikpapan cabang yang sah.
+ * 2. branchAllowed() menentukan apakah akun boleh melihat cabang tertentu.
+ *    Salah di sini tidak error, hanya 403 yang salah sasaran.
+ */
+function branchAuthChecks(): void {
+  const semua = { id: "u1", username: "dev", role: "developer", branch: "SEMUA" };
+  const samarinda = { id: "u2", username: "mgr", role: "manager", branch: "Samarinda" };
+  const legacy = { id: "u3", username: "lama", role: "viewer" } as unknown as { branch?: string };
 
-console.log("");
-if (failures.length > 0) {
-  console.log(`GAGAL ${failures.length}/${pass + failures.length}: ${failures.join(" | ")}`);
-  process.exit(1);
+  ok("branch: akun tanpa batas boleh SEMUA", branchAllowed(semua, "SEMUA"));
+  ok("branch: akun tanpa batas boleh cabang tertentu", branchAllowed(semua, "Balikpapan"));
+  ok("branch: akun terikat boleh cabangnya sendiri", branchAllowed(samarinda, "Samarinda"));
+  ok("branch: akun terikat DITOLAK SEMUA", !branchAllowed(samarinda, "SEMUA"));
+  ok("branch: akun terikat DITOLAK cabang lain", !branchAllowed(samarinda, "Balikpapan"));
+  /* Token lama tidak punya claim branch. Default-nya harus tetap longgar,
+     kalau tidak otorisasi jadi lebih ketat tanpa disengaja saat deploy. */
+  ok("branch: token tanpa claim tidak terkunci", branchAllowed(legacy, "SEMUA"));
+  /* Spasi harus dibersihkan - kalau tidak, satu karakter spasi di
+     employees.branch membuat akun terkunci dari semua PDF tanpa jejak.
+     Huruf besar tetap ketat: itu tanda data salah, bukan variasi ejaan. */
+  ok("branch: spasi di cabang user diabaikan", branchAllowed({ ...samarinda, branch: " Samarinda " }, "Samarinda"));
+  ok("branch: huruf besar tetap ditolak", !branchAllowed(samarinda, "samarinda"));
+
+  /* CJK: huruf Mandarin tanpa glyph tercetak sebagai KOTAK, dan geometrinya
+     tetap normal - dokumen keluar dari printer tanpa error apa pun. Yang
+     membuat kelas kegagalan ini mahal adalah tidak ada yang gagal. */
+  const cjk = cjkChars("PT Samudera Mandarin 有限公司 张三");
+  ok("cjk: terdeteksi di dokumen Mandarin", cjk.length >= 3, `${cjk.length} huruf`);
+  ok("cjk: tidak salah tangkap huruf Latin", cjkChars("PT Samudera Nusantara 123").length === 0);
+  ok("cjk: tanda baca & simbol bukan CJK", cjkChars("Rp 1.500.000 (50%) - a/b").length === 0);
+  /* 6 karakter berbeda, bukan 2 kata: cjkChars mengembalikan karakter
+     unik, jadi "hiragana" (4) + "hangeul" (2). Menguji jumlah unik ini
+     yang penting - kalau rentang codepoint-nya tumpang tindih, satu huruf
+     bisa terhitung dua kali. */
+  ok("cjk: kana & hangul ikut terdeteksi", cjkChars("\u3072\u3089\u304c\u306a\uD55C\uAE00").length === 6);
+
+  /* Dokumen dengan huruf CJK harus melaporkan cjkChars lewat render, karena
+     di luar situ tidak ada yang bisa tahu. Nama field kwitansi adalah
+     `diterimaDari` - kalau salah nama, field-nya tidak terpakai dan dokumen
+     tetap keluar dengan CJK = 0, jadi pemeriksaan ini diam-diam tidak
+     menguji apa pun. Teks ditulis sebagai escape supaya berkas ini tetap
+     ASCII dan tidak bisa rusak saat ditulis ulang di editor. */
+  const dCjk = kwitansiDoc({
+    ...(MODELS.kwitansi as Record<string, unknown>),
+    diterimaDari: "\u5F20\u4F1F\u79D1\u6280",
+    breakdown: [{ label: "Nilai termin", value: 1_000_000 }],
+  } as never);
+  const rCjk = dCjk.render();
+  ok("render: dokumen CJK melaporkan cjkChars > 0", rCjk.cjkChars.length > 0, `${rCjk.cjkChars.length} huruf`);
+
+  /* Dokumen Latin biasa tidak boleh melaporkan CJK - kalau iya berarti
+     rentang codepoint-nya terlalu lebar dan setiap dokumen akan memicu
+     peringatan palsu. */
+  const dLat = kwitansiDoc(MODELS.kwitansi as never).render();
+  ok("render: dokumen Latin tidak dilaporkan punya CJK", dLat.cjkChars.length === 0);
+
+  knownBranches().then((known) => {
+    /* Nama kota wajib masuk daftar; tanpa ini ekspor laporan yang cabangnya
+       dipilih user akan ditolak 400. */
+    const wajib = ["Samarinda", "Balikpapan", "Banjarmasin"];
+    const kurang = wajib.filter((c) => !known.includes(c));
+    ok(`branch: daftar cabang memuat ${wajib.length} nama kota`, kurang.length === 0, kurang.length > 0 ? `hilang: ${kurang.join(", ")}` : "");
+    /* Nilai non-cabang harus disaring: "-" berarti "baris tanpa cabang" dan
+       "SEMUA" bukan nama cabang. Menerimanya membuat filter yang tidak pernah
+       menghasilkan apa pun lolos validasi. */
+    const sampah = known.filter((c) => c === "" || c === "-" || c === "SEMUA");
+    ok("branch: daftar cabang bebas nilai non-cabang", sampah.length === 0, sampah.length > 0 ? sampah.join(", ") : "");
+    ringkasan();
+  }).catch((err) => {
+    console.log(`FAIL  daftar cabang tidak terbaca *** ${err instanceof Error ? err.message : String(err)}`);
+    failures.push("daftar cabang tidak terbaca");
+    ringkasan();
+  });
 }
-console.log(`${pass} pemeriksaan PDF lolos (geometri + isi + struktur).`);
-/* Status font sengaja dicetak apa adanya dan TIDAK menggagalkan probe:
-   tanpa TTF, dokumen tetap valid - hanya huruf di luar WinAnsi yang jadi
-   kotak. Yang tidak boleh terjadi adalah status ini tidak diketahui, seperti
-   sekarang: initFonts() tidak pernah dipanggil, jadi "lulus" tidak
-   berarti apa pun soal font. */
-console.log(
-  fontsEmbedded()
-    ? `Font: TTF ter-embed dari ${FONTS_DIR}`
-    : `Font: TIDAK ada TTF di ${FONTS_DIR} - standard-14 (huruf non-Latin jadi kotak). Set PDF_FONTS_DIR atau taruh regular/bold/italic.ttf di folder itu.`,
-);
-process.exit(0);
+
+function ringkasan(): void {
+  console.log("");
+  if (failures.length > 0) {
+    console.log(`GAGAL ${failures.length}/${pass + failures.length}: ${failures.join(" | ")}`);
+    process.exit(1);
+  }
+  console.log(`${pass} pemeriksaan PDF lolos (geometri + isi + struktur + batas cabang).`);
+  /* Status font sengaja dicetak apa adanya dan TIDAK menggagalkan probe:
+     tanpa TTF, dokumen tetap valid - hanya huruf di luar WinAnsi yang jadi
+     kotak. Yang tidak boleh terjadi adalah status ini tidak diketahui. */
+  console.log(
+    fontsEmbedded()
+      ? `Font: TTF ter-embed dari ${FONTS_DIR}`
+      : `Font: TIDAK ada TTF di ${FONTS_DIR} - standard-14 (huruf non-Latin jadi kotak). Set PDF_FONTS_DIR atau taruh regular/bold/italic.ttf di folder itu.`,
+  );
+  process.exit(0);
+}
+
+registryIntegrity();
+branchAuthChecks();

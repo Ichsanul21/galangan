@@ -13,7 +13,7 @@
  * render (apa yang benar-benar tercetak) - lihat pdf/renderStore.ts.
  */
 import type { FastifyInstance } from "fastify";
-import { requireAuth } from "../auth.js";
+import { requireAuth, branchAllowed } from "../auth.js";
 import { ok } from "../envelope.js";
 import { findRecipe, DOC_KINDS, buildFromModel, type RenderContext } from "../pdf/registry.js";
 import { getDialect } from "../db.js";
@@ -62,27 +62,38 @@ export function registerPdfRoutes(app: FastifyInstance): void {
     };
 
     try {
-      /* Cabang dokumen resmi Taken dari baris yang dicetak, BUKAN dari
+      /* Cabang dokumen resmi diambil dari baris yang dicetak, BUKAN dari
          filter klien. Sebelumnya ctx.branch selalu "SEMUA", jadi bagian
          agregat dalam PDF (mis. rekap termin pada kwitansi) bisa
          menjumlahkan cabang lain. Dengan dikunci ke cabang entitas,
          menebak id milik cabang lain tidak menghasilkan dokumen campuran -
          dokumen ikut cabang yang salah, atau gagal, bukan mencuri angka.
 
-         CATATAN jujur: tabel `users` tidak punya kolom branch sama sekali,
-         jadi "user ini berhak atas cabang mana" tidak bisa ditegakkan di
-         sini. Yang dikunci adalah konsistensi internal dokumen. Otorisasi
-         cabang per pengguna butuh kolom baru + UI 로그인, bukan perubahan
-         route. */
+         Batas user ditegakkan di sini juga: kalau akun punya cabang,
+         meminta "SEMUA" berarti meminta seluruh perusahaan dan itu 403. */
       if (recipe.requiresEntity) {
         const own = await entityBranch(recipe.entity.field, id);
+        if (own !== null && !branchAllowed(req.user, own)) {
+          return reply.status(403).send({
+            ok: false,
+            error: { message: `Dokumen ini milik cabang ${own}, di luar cakupan akun Anda.`, code: "FORBIDDEN" },
+          });
+        }
         ctx.branch = own ?? "SEMUA";
       } else {
         /* Laporan tidak punya entitas tunggal, jadi cabang diminta dari
            klien - tapi hanya nilai yang benar-benar ada. "SEMUA" tetap
-           diperbolehkan dan sekarang tercatat di audit sebagai pilihan
-           eksplisit, bukan keputusan server yang diam-diam. */
+           diperbolehkan untuk akun tanpa batas cabang, dan sekarang
+           tercatat di audit sebagai pilihan eksplisit, bukan keputusan
+           server yang diam-diam. */
         const asked = String(body.branch ?? "").trim();
+        const target = asked === "" ? "SEMUA" : asked;
+        if (!branchAllowed(req.user, target)) {
+          return reply.status(403).send({
+            ok: false,
+            error: { message: `Cabang ${target} di luar cakupan akun Anda.`, code: "FORBIDDEN" },
+          });
+        }
         if (asked !== "" && asked !== "SEMUA") {
           const known = await knownBranches();
           if (!known.includes(asked)) {
@@ -173,7 +184,14 @@ export function registerPdfRoutes(app: FastifyInstance): void {
        klien saat ini. Kalau snapshot cetakan pertama sudah dibatasi ke satu
        cabang, arsipnya harus tetap begitu - kalau tidak, dokumen lama bisa
        "diperbaiki" isinya hanya dengan mencetaknya ulang. */
-    const ctx: RenderContext = { locale: snap.locale === "en" ? "en" : "id", branch: snap.branch || "SEMUA", filters: {} };
+    const snapBranch = snap.branch || "SEMUA";
+    if (!branchAllowed(req.user, snapBranch)) {
+      return reply.status(403).send({
+        ok: false,
+        error: { message: `Cetakan ini milik cabang ${snapBranch}, di luar cakupan akun Anda.`, code: "FORBIDDEN" },
+      });
+    }
+    const ctx: RenderContext = { locale: snap.locale === "en" ? "en" : "id", branch: snapBranch, filters: {} };
     try {
       const res = buildFromModel(recipe, snap.model, ctx).render();
       await writeAudit({
@@ -217,6 +235,11 @@ function sendPdf(
   reply.header("X-Doc-Kind", kind);
   reply.header("X-Doc-Pages", String(res.pages));
   reply.header("X-Doc-Embedded-Font", res.embeddedFont ? "1" : "0");
+  /* Huruf CJK yang tidak punya glyph tercetak sebagai kotak: dokumen tetap
+     keluar, ukurannya wajar, dan tidak ada error apa pun. Header ini
+    * Supaya FE bisa memberi tahu, bukan membiarkan arsip resmi berisi kotak
+     lolos tanpa keterangan. */
+  reply.header("X-Doc-Cjk", res.cjkChars.length > 0 ? String(res.cjkChars.length) : "0");
   /* Id snapshot: inilah yang dipakai endpoint cetak ulang. */
   reply.header("X-Doc-Model-Id", modelId ?? "");
   reply.header("Cache-Control", "no-store");

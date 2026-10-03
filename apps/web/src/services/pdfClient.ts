@@ -21,6 +21,8 @@ export interface PdfRenderResult {
   kind: string;
   pages: number;
   embeddedFont: boolean;
+  /** Jumlah huruf CJK yang tidak punya glyph. >0 = ada kotak di dokumen. */
+  cjkChars: number;
   bytes: number;
   /** Id snapshot model di server; dipakai untuk cetak ulang yang identik. */
   modelId: string;
@@ -107,6 +109,10 @@ export async function renderPdf(req: PdfRequest): Promise<PdfRenderResult> {
     kind: req.kind,
     pages: Number(res.headers.get("X-Doc-Pages") ?? 0),
     embeddedFont: res.headers.get("X-Doc-Embedded-Font") === "1",
+    /* Jumlah huruf CJK di dokumen. >0 berarti ada karakter yang kemungkinan
+       tercetak sebagai kotak karena font tidak punya glyph-nya. Dokumen tetap
+       keluar tanpa error, jadi ini satu-satunya cara mengetahuinya. */
+    cjkChars: Number(res.headers.get("X-Doc-Cjk") ?? 0),
     bytes: blob.size,
     modelId: res.headers.get("X-Doc-Model-Id") ?? "",
   };
@@ -152,6 +158,7 @@ export async function reprintPdf(modelId: string): Promise<PdfRenderResult> {
     kind: res.headers.get("X-Doc-Kind") ?? "",
     pages: Number(res.headers.get("X-Doc-Pages") ?? 0),
     embeddedFont: res.headers.get("X-Doc-Embedded-Font") === "1",
+    cjkChars: Number(res.headers.get("X-Doc-Cjk") ?? 0),
     bytes: blob.size,
     modelId,
   };

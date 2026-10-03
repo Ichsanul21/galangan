@@ -50,6 +50,11 @@ export interface DrawRecord {
   w: number;
   h: number;
   kind: "text" | "line" | "rect" | "image";
+  /** Isi teks yang digambar (hanya untuk kind "text").
+   *  traced saat opts.trace aktif. Dipakai untuk memeriksa glyph yang tidak
+   *  ada di font - huruf CJK tanpa font CJK tercetak sebagai kotak dan
+   *  geometrinya tetap normal, jadi kotak itu tidak terlihat dari koordinat. */
+  text?: string;
 }
 
 export interface TextOpts {
@@ -105,7 +110,19 @@ export function drawText(
   ctx.pdf.setFontSize(size);
   ctx.pdf.setTextColor(color[0], color[1], color[2]);
   ctx.pdf.text(safe(text, font), tx, yBaseline);
-  rec.push({ page: ctx.pdf.getCurrentPageInfo().pageNumber, x: tx, y: yBaseline, w, h: lineHeightFor(size), kind: "text" });
+  rec.push({
+    page: ctx.pdf.getCurrentPageInfo().pageNumber,
+    x: tx,
+    y: yBaseline,
+    w,
+    h: lineHeightFor(size),
+    kind: "text",
+    /* Teks ASLI, bukan hasil safe(): safe() membuang karakter yang tidak
+       terpetakan saat fallback standard-14, jadi memeriksa hasil safe()
+       tidak akan pernah menemukan huruf CJK - justru hilang dari sana.
+       Yang perlu diperiksa adalah apa yang PENGGUNA lihat di form. */
+    text: String(text ?? ""),
+  });
   ctx.pdf.setTextColor(0, 0, 0);
 }
 
