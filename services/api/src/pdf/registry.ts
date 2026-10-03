@@ -491,6 +491,17 @@ const kopPenawaranRecipe: Recipe<KopPenawaranInput> = {
 };
 
 /* ---- Slip gaji ---- */
+
+/** Total tunjangan: bentuk baru `[{label,amount}]`, bentuk lama satu angka. */
+function allowanceTotal(v: unknown): number {
+  const list = arr({ a: v }, "a");
+  if (list.length > 0) {
+    return list.reduce((s, r) => s + Number(r.amount ?? r.value ?? 0), 0);
+  }
+  const n = Number(v);
+  return Number.isFinite(n) ? n : 0;
+}
+
 const slipGajiRecipe: Recipe<SlipGajiInput> = {
   kind: "slipGaji",
   title: "Slip Gaji",
@@ -501,18 +512,32 @@ const slipGajiRecipe: Recipe<SlipGajiInput> = {
     if (!p) throw new Error(`Payroll ${id} tidak ditemukan`);
     const emp = await loadEntity({ field: "employees", prefix: "EMP" }, str(p, "employeeId"));
     const locale = ctx.locale;
+    /* Nama field yang dipakai modul Payroll harus dibaca apa adanya:
+       `basic`, tunjangan berupa daftar, `bpjsKesKar`/`bpjsTkKar`, `kasbonPot`.
+       Versi recipe sebelumnya membaca `basicSalary`, `allowances` tunggal, dan
+       `bpjsKes`/`bpjsTk` - tiga nama yang tidak pernah ditulis aplikasi,
+       sehingga semua slip gaji yang dicetak lewat server menunjukkan nominal
+       nol. Nama lama tetap diterima karena baris seed masih memakainya. */
+    const tunjangan = allowanceTotal(p.allowances);
+    const kasbon = num(p, "kasbonPot");
+    const potongLain = Math.max(0, num(p, "deductions") - kasbon);
+    const bpjsKes = num(p, "bpjsKesKar", "bpjsKes");
+    const bpjsTk = num(p, "bpjsTkKar", "bpjsTk");
     return {
       id,
       karyawan: emp ? str(emp, "name") : str(p, "employeeName"),
       periode: str(p, "period"),
       tipe: str(p, "type") !== "-" ? str(p, "type") : "Bulanan",
       rows: [
-        { komponen: L(locale, "Gaji Pokok", "Basic salary"), nilai: rupiah(num(p, "basicSalary")) },
-        { komponen: L(locale, "Tunjangan", "Allowances"), nilai: rupiah(num(p, "allowances")) },
+        { komponen: L(locale, "Gaji Pokok", "Basic salary"), nilai: rupiah(num(p, "basic", "basicSalary")) },
+        { komponen: L(locale, "Tunjangan", "Allowances"), nilai: rupiah(tunjangan) },
         { komponen: L(locale, "Lembur", "Overtime"), nilai: rupiah(num(p, "overtimePay")) },
-        { komponen: L(locale, "Potongan", "Deductions"), nilai: rupiah(-num(p, "deductions")) },
-        { komponen: "BPJS Kesehatan", nilai: rupiah(-num(p, "bpjsKes")) },
-        { komponen: "BPJS Ketenagakerjaan", nilai: rupiah(-num(p, "bpjsTk")) },
+        ...(potongLain > 0
+          ? [{ komponen: L(locale, "Potongan lain", "Other deductions"), nilai: rupiah(-potongLain) }]
+          : []),
+        ...(kasbon > 0 ? [{ komponen: L(locale, "Potongan kasbon", "Loan deduction"), nilai: rupiah(-kasbon) }] : []),
+        { komponen: "BPJS Kesehatan", nilai: rupiah(-bpjsKes) },
+        { komponen: "BPJS Ketenagakerjaan", nilai: rupiah(-bpjsTk) },
         { komponen: "PPh 21", nilai: rupiah(-num(p, "pph21")) },
       ],
       netLabel: L(locale, "Total Diterima", "Total received"),
