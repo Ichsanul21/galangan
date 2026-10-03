@@ -12,6 +12,8 @@ import { ServiceNotesButton, ServiceNotesModal, notesOf } from "../../components
 import { useStore } from "../../data/store";
 import type { StoreItem, CollectionKey } from "../../data/store";
 import { useModuleSync } from "../../data/useModuleSync";
+import { remoteRepository } from "../../services/repositories";
+import { getJwt, isBackendConfigured } from "../../services/http";
 import { equipmentHours, sparkUtil, equipTotalTrend, maintTrend, serviceDueTrend } from "../../data";
 import { fmtTanggal, fmtJumlah, fmtRupiah, todayISO } from "../../utils/format";
 import { sameName } from "../../utils/names";
@@ -102,6 +104,24 @@ function maintStatusLabel(s: MaintStatus, locale: string): string {
 
 function isMaintJenis(v: unknown): v is string {
   return typeof v === "string" && (MAINT_JENIS as readonly string[]).includes(v);
+}
+
+/* Baca ulang `maintenances` dari server, bukan dari snapshot render.
+   Dipakai setelah form hasil servis disimpan: transition ke "Selesai"
+   memotong stok dan menghitung bahan/biaya dari baris yang DIBACA, jadi
+   kalau baris di memori masih versi lama, pemotongan memakai angka lama.
+   Mode lokal / tanpa backend -> pakai snapshot, seperti helper sejenis di
+   modul Subkontraktor. */
+async function freshMaintenances(fallback: StoreItem[]): Promise<StoreItem[]> {
+  try {
+    if (isBackendConfigured() && getJwt()) {
+      const rows = await remoteRepository("maintenances").list();
+      if (Array.isArray(rows)) return rows;
+    }
+  } catch {
+    /* abaikan - pakai snapshot lokal */
+  }
+  return fallback;
 }
 
 
@@ -314,6 +334,9 @@ export default function EquipmentPage() {
      dua jalur tulis yang bisa berbedaivrsi. */
   const [maintForm, setMaintForm] = useState<MaintForm>(emptyMaintForm());
   const [maintEditingId, setMaintEditingId] = useState<string | null>(null);
+  /* true = form ini dibuka dari tombol "Catat Servis", jadi setelah hasil
+     servis tersimpan siklusnya langsung diselesaikan (lihat saveMaint). */
+  const [maintFinishOnSave, setMaintFinishOnSave] = useState(false);
   const [delMaint, setDelMaint] = useState<StoreItem | null>(null);
   const [histOf, setHistOf] = useState<StoreItem | null>(null);
 
@@ -793,11 +816,15 @@ export default function EquipmentPage() {
     setShowService(true);
   };
 
-  /** Buka form UBAH satu siklus yang sudah ada. */
-  const openMaintEdit = (m: StoreItem) => {
+  /** Buka form UBAH satu siklus yang sudah ada.
+   *  `finishOnSave` dipakai oleh tombol "Catat Servis": form ini bukan
+   *  koreksi data, tapi pengisian hasil servis, jadi setelah tersimpan
+   *  siklusnya langsung diselesaikan (lihat saveMaint). */
+  const openMaintEdit = (m: StoreItem, finishOnSave = false) => {
     const mats = materialsOf(m);
     const eq = equipment.find((e) => String(e.id) === String(m.equipmentId));
     setMaintEditingId(String(m.id));
+    setMaintFinishOnSave(finishOnSave);
     setMaintForm({
       equipmentId: String(m.equipmentId ?? eq?.id ?? ""),
       jenis: isMaintJenis(m.jenis) ? String(m.jenis) : MAINT_JENIS[0],
@@ -817,6 +844,7 @@ export default function EquipmentPage() {
   const closeMaint = () => {
     setShowService(false);
     setMaintEditingId(null);
+    setMaintFinishOnSave(false);
     setMaintForm(emptyMaintForm());
   };
 
@@ -954,6 +982,23 @@ export default function EquipmentPage() {
       }
       toast(maintEditingId ? (locale === "en" ? "Maintenance updated" : "Maintenance diperbarui") : (locale === "en" ? "Maintenance scheduled" : "Maintenance dijadwalkan"));
       closeMaint();
+      /* Jalur "Catat Servis": form ini dibuka dari tombol itu, jadi setelah
+         hasil servis tersimpan, siklusnya baru benar-benar diselesaikan -
+         lengkap dengan pemotongan stok dan pelepasan unit dari workshop.
+         Tanpa langkah ini, tombolnya hanya jadi "Ubah" yang tidak menutup
+         apa pun. */
+      if (maintFinishOnSave && maintEditingId) {
+        /* Baris dibaca ULANG dari server: `data.maintenances` di memori masih
+           versi sebelum form ini disimpan, jadi transition-nya akan menghitung
+           bahan dan biaya dari angka lama. */
+        const fresh = await freshMaintenances(data.maintenances);
+        const saved = fresh.find((m) => String(m.id) === String(maintEditingId));
+        if (!saved) {
+          toast(locale === "en" ? "Service record could not be re-read - finish it from the list" : "Data servis tidak terbaca ulang - selesaikan dari daftar", "info");
+          return;
+        }
+        await advanceMaintStatus(saved, "Selesai");
+      }
     } catch (e) {
       toast(e instanceof Error ? e.message : S.saveFail, "info");
     }
@@ -1889,11 +1934,29 @@ export default function EquipmentPage() {
                               <button
                                 key={to}
                                 className={to === "Dibatalkan" ? "btn-secondary text-xs" : "btn-primary text-xs"}
-                                onClick={() => void advanceMaintStatus(r.raw, to)}
+                                onClick={() =>
+                                  /* Catat Servis membuka modal hasil servis, bukan
+                                     langsung menutup siklus. Satu klik lama
+                                     menetapkan Selesai dengan jam, downtime, dan
+                                     bahan kosong - yang artinya biaya HPP proyek
+                                     masuk nol tanpa ada yang realizes. Isi dulu
+                                     (hour meter, downtime, bahan terpakai), baru
+                                     simpan; satu klik lagi dari modal yang sama
+                                     baru benar-benar menyelesaikan. */
+                                  to === "Selesai" ? openMaintEdit(r.raw, true) : void advanceMaintStatus(r.raw, to)
+                                }
                               >
                                 {to === "Sedang Proses"
                                   ? (locale === "en" ? "Start" : "Mulai")
                                   : to === "Selesai"
+                                    /* Catat Servis = MULAI(isian hasil servis),
+                                       bukan langsung menyelesaikan. Status
+                                       "Selesai" sendiri berarti pekerjaan sudah
+                                       tutup, jadi melompat ke sana dari daftar
+                                       hanya dengan satu klik berarti teknisi
+                                       tidak pernah mengisi jam, downtime, dan
+                                       bahan - tiga hal yang justru jadi dasar
+                                       biaya HPP proyek. Lihat isi modal. */
                                     ? (locale === "en" ? "Record service" : "Catat Servis")
                                     : (locale === "en" ? "Cancel" : "Batalkan")}
                               </button>

@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
 import { bucketByMonth, monthAxis, monthKeyOf, rebindLegacyMonthSeries } from "../../utils/monthAxis";
-import { Link } from "react-router-dom";
 import { Plus, ShieldCheck, AlertTriangle, Siren, Award, Send, Search, Eye } from "lucide-react";
 import { ComposedChart, Line, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 import { Card, CardHeader, PageHeader, Badge, KpiCard, Tabs, StatusBadge, Donut, ChartTooltip, Modal, Field, FormGrid, ConfirmModal, SortTh, toggleSort, sortRows, usePager, toast,
@@ -19,7 +18,7 @@ import { rowHighlightClass } from "../../components/rowHighlight";
 import { exportExcel } from "../../utils/export";
 import { pdfServerReady } from "../../services/pdfClient";
 import { usePdfDoc } from "../../components/usePdfDoc";
-import { DocumentPreviewCell, DocumentPreviewPanel, DownloadFileButton, InlineDocPreview } from "../../components/DocumentPreview";
+import { DocumentPreviewCell, DocumentPreviewModal, DocumentPreviewPanel, DownloadFileButton, InlineDocPreview, type PreviewDoc } from "../../components/DocumentPreview";
 import { docAttachment, docFileNameOf, docUrlOf } from "../../utils/docAttachment";
 import { findUsages } from "../../utils/usages";
 import { useAuth, canSetTarget } from "../../auth/auth";
@@ -225,38 +224,17 @@ export default function QCSafety() {
   const [showDrw, setShowDrw] = useState(false);
   const [drwForm, setDrwForm] = useState({ project: "", title: "", holder: "", branch: "", fileUrl: "", kind: "Shop Drawing" });
   const [expandedDrw, setExpandedDrw] = useState<string | null>(null);
-  /* Drawing memakai pola yang sama dengan sertifikat: pratinjau INLINE di
-     dalam kartu, dibuka/tutup dari ikon mata. expandedDrw di atas untuk hal
-     lain (riwayat revisi), jadi state-nya sengaja dipisah - kalau dipakai
-     bersama, membuka riwayat akan ikut menutup pratinjau. */
-  const [openDrwId, setOpenDrwId] = useState<string>("");
-  const toggleDrwPreview = (id: string): void =>
-    setOpenDrwId((cur) => (cur === id ? "" : id));
+  /* Pratinjau drawing & sertifikat: MODAL, bukan inline (revisi 2 Oktober).
+     Alasan yang sama seperti modul Dokumen: inline membuat daftar tetap
+     bisa melebar dan bergeser saat panel muncul, dan untuk dokumen
+     certificate yang berkasnya PDF A3 ukurannya tidak muat di kartu 1/3
+     lebar - pengguna harus menggulir ke dalam kolom yang sempit.
+     `expandedDrw` di atas untuk hal lain (riwayat revisi) dan tetap
+     dipisah, supaya membuka riwayat tidak menutup pratinjau. */
+  const [drwPreview, setDrwPreview] = useState<PreviewDoc | null>(null);
   const [drwStatusF, setDrwStatusF] = useState("Semua");
   const [drwKindF, setDrwKindF] = useState("Semua");
-  /* Sertifikat: pratinjau INLINE, tanpa modal.
-     Semuanya memakai satu state `openCertKey` yang berisi kunci baris
-     ("vessel::nama"), bukan objek preview terpisah. Konsekuensinya:
-       - hanya satu sertifikat yang pratinjau terbuka pada satu waktu (dulu
-         tidak dijamin, sehingga dua modal bisa bertumpuk),
-       - menutupnya cukup mengosongkan string, dan tombol mati's aria-expanded
-         selalu jujur karena sumbernya sama dengan isi panel,
-       - tidak ada overlay yang menutupi daftar, jadi pengguna bisa membandingkan
-         tanggal kedaluwarsa sambil melihat dokumennya.
-
-     Kunci dibangun sebagai `vessel::nama` karena nama sertifikat bisa sama
-     di dua kapal berbeda. */
-/* Kunci unik satu baris sertifikat. Nama sertifikat bisa sama pada dua kapal
-     berbeda, jadi kapal ikut masuk - tanpa ini, membuka "Sertifikat
-     Keselamatan" di MT Blessing akan ikut membuka sertifikat bernama sama di
-     kapal lain. */
-  function certKeyOf(vessel: string, name: string): string {
-    return `${vessel}::${name}`;
-  }
-
-  const [openCertKey, setOpenCertKey] = useState<string>("");
-  const toggleCert = (key: string): void =>
-    setOpenCertKey((cur) => (cur === key ? "" : key));
+  const [certPreview, setCertPreview] = useState<PreviewDoc | null>(null);
   const projectOfVessel = (vesselName: string): StoreItem | undefined =>
     data.projects.find((p) => sameName(String(p.vessel ?? ""), vesselName));
   const certDocsOfProject = (projectId: string | undefined): StoreItem[] =>
@@ -1472,34 +1450,22 @@ export default function QCSafety() {
                            ulang di bawah. Semula docUrlOf(d) dipanggil lima kali
                            untuk satu kartu, masing-masing memindai 9 field. */
                         const att = docAttachment(d);
-                        const isOpen = openDrwId === String(d.id);
                         if (att.url === "") {
                           return <p className="mt-1 text-[11px] text-steel-400">Belum ada dokumen — tekan Ubah lalu unggah PDF/gambar.</p>;
                         }
                         return (
-                          <>
-                            <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
-                              <button
-                                type="button"
-                                className="inline-flex items-center gap-1.5 rounded-lg px-1.5 py-1 text-xs font-semibold text-steel-500 hover:bg-steel-100 hover:text-ocean-600 focus:outline-none focus-visible:ring-2 focus-visible:ring-ocean-400"
-                                title={`Pratinjau: ${String(d.title)}`}
-                                aria-label={`Pratinjau: ${String(d.title)}`}
-                                aria-expanded={isOpen}
-                                onClick={() => toggleDrwPreview(String(d.id))}
-                              >
-                                <Eye className="h-4 w-4" aria-hidden /> {isOpen ? "Tutup pratinjau" : "Pratinjau"}
-                              </button>
-                              <DownloadFileButton url={att.url} fileName={att.fileName} className="btn-secondary px-2 py-1 text-xs" />
-                            </div>
-                            {/* Pratinjau langsung tampil di bawah tombolnya: tidak ada
-                                modal popup dan tidak ada tombol kedua untuk
-                                "menampilkan pratinjau". */}
-                            {isOpen && (
-                              <div className="mt-2">
-                                <InlineDocPreview url={att.url} height={/\.pdf(\?|$)/i.test(att.url) ? "h-72" : "h-48"} />
-                              </div>
-                            )}
-                          </>
+                          <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+                            <button
+                              type="button"
+                              className="inline-flex items-center gap-1.5 rounded-lg px-1.5 py-1 text-xs font-semibold text-steel-500 hover:bg-steel-100 hover:text-ocean-600 focus:outline-none focus-visible:ring-2 focus-visible:ring-ocean-400"
+                              title={`Pratinjau: ${String(d.title)}`}
+                              aria-label={`Pratinjau: ${String(d.title)}`}
+                              onClick={() => setDrwPreview({ title: String(d.title), fileUrl: att.url, fileName: att.fileName, subtitle: `${String(d.id)} · ${String(d.project)} · rev ${String(d.revision ?? "-")}` })}
+                            >
+                              <Eye className="h-4 w-4" aria-hidden /> Pratinjau
+                            </button>
+                            <DownloadFileButton url={att.url} fileName={att.fileName} className="btn-secondary px-2 py-1 text-xs" />
+                          </div>
                         );
                       })()}
                     </div>
@@ -1762,9 +1728,7 @@ export default function QCSafety() {
                 <h3 className="text-sm font-semibold text-navy-900">{S.certAttentionT.replace("{n}", String(CERT_WINDOW))}</h3>
                 <div className="mt-2 space-y-2 text-sm">
                   {certAttention.map((c) => {
-                    const key = certKeyOf(c.vessel, c.name);
                     const url = c.fileUrl ?? "";
-                    const isOpen = openCertKey === key;
                     return (
                       <div key={`${c.vessel}-${c.name}`} className="rounded-xl border border-steel-100 bg-surface px-2.5 py-2">
                         <div className="flex items-center justify-between gap-2">
@@ -1779,20 +1743,13 @@ export default function QCSafety() {
                                 className="rounded-lg p-1.5 text-steel-500 hover:bg-steel-100 hover:text-ocean-600"
                                 title={`Pratinjau: ${c.name} - ${c.vessel}`}
                                 aria-label={`Pratinjau: ${c.name} - ${c.vessel}`}
-                                aria-expanded={isOpen}
-                                onClick={() => toggleCert(key)}
+                                onClick={() => setCertPreview({ title: `${c.name} - ${c.vessel}`, fileUrl: url, subtitle: S.berlakuHingga.replace("{n}", fmtTanggal(c.expires)) })}
                               >
                                 <Eye className="h-4 w-4" aria-hidden />
                               </button>
                             )}
                           </span>
                         </div>
-                        {isOpen && url !== "" && (
-                          <div className="mt-2 space-y-2">
-                            <InlineDocPreview url={url} height={/\.pdf(\?|$)/i.test(url) ? "h-56" : "h-40"} />
-                            <DownloadFileButton url={url} className="btn-secondary px-2 py-1 text-xs" />
-                          </div>
-                        )}
                       </div>
                     );
                   })}
@@ -1806,8 +1763,6 @@ export default function QCSafety() {
 {(v.certificates ?? []).map((c: { name: string; expires: string; fileUrl?: string }) => {
                       const left = daysUntil(c.expires);
                       const tone = left === null ? "gray" : left < 0 ? "red" : left <= CERT_WINDOW ? "amber" : "green";
-                      const key = certKeyOf(String(v.name), c.name);
-                      const isOpen = openCertKey === key;
                       const url = docUrlOf(c);
                       const projectId = projectOfVessel(String(v.name))?.id;
                       const certDocs = projectId ? certDocsOfProject(String(projectId)) : [];
@@ -1828,60 +1783,41 @@ export default function QCSafety() {
                               className="inline-flex items-center gap-1.5 rounded-lg px-1.5 py-1 text-xs font-semibold text-steel-500 hover:bg-steel-100 hover:text-ocean-600 focus:outline-none focus-visible:ring-2 focus-visible:ring-ocean-400"
                               title={`Pratinjau: ${c.name}`}
                               aria-label={`Pratinjau: ${c.name}`}
-                              aria-expanded={isOpen}
-                              onClick={() => toggleCert(key)}
+                              onClick={() => setCertPreview({ title: String(c.name), fileUrl: url, fileName: docFileNameOf(c), subtitle: `${String(v.name)} · ${S.berlakuHingga.replace("{n}", fmtTanggal(c.expires))}` })}
                             >
                               <Eye className="h-4 w-4" aria-hidden />
-                              {isOpen ? "Tutup" : "Pratinjau"}
+                              {"Pratinjau"}
                             </button>
                           </div>
-                          {/* Pratinjau langsung di dalam kartu, bukan modal popup:
-                              klik tombol -> dokumennya tampil di tempat, dan daftar
-                              sertifikat lain tetap terlihat. */}
-                          {isOpen && (
-                            <div className="mt-2 space-y-2">
-                              {url !== "" ? (
-                                <>
-                                  <InlineDocPreview url={url} height={/\.pdf(\?|$)/i.test(url) ? "h-56" : "h-40"} />
-                                  <DownloadFileButton url={url} fileName={docFileNameOf(c)} className="btn-secondary px-2 py-1 text-xs" />
-                                </>
+                          {/* Dokumen sertifikat milik proyek TETAP tampil di
+                              kartu (bukan di modal): ini daftar rujukan,
+                              bukan pratinjau berkas kapal - hilangnya dari
+                              kartu akan memutus jalur ke dokumen QC. */}
+                          {url === "" && (
+                            <p className="mt-1.5 text-xs text-steel-500">Belum ada file sertifikat — hubungi QA.</p>
+                          )}
+                          {projectId && (
+                            <details className="mt-1.5 rounded-lg border border-steel-100 bg-surface p-2">
+                              <summary className="cursor-pointer text-[11px] font-semibold text-navy-900">
+                                Proyek {String(projectId)} · {String(v.name)}
+                              </summary>
+                              {certDocs.length === 0 ? (
+                                <p className="mt-1.5 text-[11px] text-steel-400">
+                                  Belum ada dokumen bertipe Sertifikat pada proyek ini — unggah lewat Detail Proyek → Dokumen &amp; Laporan.
+                                </p>
                               ) : (
-                                <p className="text-xs text-steel-500">Belum ada file sertifikat — hubungi QA.</p>
-                              )}
-                              {/* Tautan ke proyek terkait pindah ke panel inline, bukan
-                                  hilang bersama modal yang dihapus. */}
-                              {projectId && (
-                                <Link
-                                  to={`/proyek/${projectId}`}
-                                  className="block text-[11px] font-semibold text-ocean-600 hover:underline"
-                                >
-                                  Proyek terkait: {String(projectId)} · {String(v.name)}
-                                </Link>
-                              )}
-                              {projectId && (
-                                <details className="rounded-lg border border-steel-100 bg-surface p-2">
-                                  <summary className="cursor-pointer text-[11px] font-semibold text-navy-900">
-                                    Dokumen Sertifikat di Manajemen Proyek ({String(projectId)})
-                                  </summary>
-                                  {certDocs.length === 0 ? (
-                                    <p className="mt-1.5 text-[11px] text-steel-400">
-                                      Belum ada dokumen bertipe Sertifikat pada proyek ini — unggah lewat Detail Proyek → Dokumen &amp; Laporan.
-                                    </p>
-                                  ) : (
-                                    <div className="mt-1.5 space-y-1.5">
-                                      {certDocs.map((d) => (
-                                        <div key={String(d.id)} className="flex items-center justify-between gap-2 rounded-lg bg-white px-2.5 py-1.5 text-sm">
-                                          <span className="min-w-0 truncate font-medium text-navy-900" title={String(d.title)}>
-                                            {String(d.title)} <span className="font-mono text-[11px] text-steel-400">{String(d.id)}</span>
-                                          </span>
-                                          <DocumentPreviewCell doc={{ title: String(d.title ?? d.id), fileUrl: docUrlOf(d), fileName: docFileNameOf(d), subtitle: `${String(d.id)} · Sertifikat proyek` }} />
-                                        </div>
-                                      ))}
+                                <div className="mt-1.5 space-y-1.5">
+                                  {certDocs.map((d) => (
+                                    <div key={String(d.id)} className="flex items-center justify-between gap-2 rounded-lg bg-white px-2.5 py-1.5 text-sm">
+                                      <span className="min-w-0 truncate font-medium text-navy-900" title={String(d.title)}>
+                                        {String(d.title)} <span className="font-mono text-[11px] text-steel-400">{String(d.id)}</span>
+                                      </span>
+                                      <DocumentPreviewCell doc={{ title: String(d.title ?? d.id), fileUrl: docUrlOf(d), fileName: docFileNameOf(d), subtitle: `${String(d.id)} · Sertifikat proyek` }} />
                                     </div>
-                                  )}
-                                </details>
+                                  ))}
+                                </div>
                               )}
-                            </div>
+                            </details>
                           )}
                         </Card>
                       );
@@ -2294,6 +2230,10 @@ export default function QCSafety() {
       </Modal>
 
       {/* Modal transmittal */}
+      {/* Pratinjau drawing & sertifikat (revisi 2 Oktober: modal, bukan inline). */}
+      <DocumentPreviewModal doc={drwPreview} onClose={() => setDrwPreview(null)} />
+      <DocumentPreviewModal doc={certPreview} onClose={() => setCertPreview(null)} />
+
       <Modal open={showTransmit} onClose={() => setShowTransmit(false)} title={S.mTrT} subtitle={S.mTrS}
         wide footer={<><button className="btn-secondary" onClick={() => setShowTransmit(false)}>{S.btnBatal}</button><AsyncButton className="btn-primary" onAction={saveTransmittal}><Send className="h-4 w-4" /> {S.btnKirimEkspor}</AsyncButton></>}>
         <div className="space-y-3">
@@ -2464,4 +2404,3 @@ export default function QCSafety() {
     </div>
   );
 }
-
