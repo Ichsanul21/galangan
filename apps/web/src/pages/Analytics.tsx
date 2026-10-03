@@ -755,6 +755,55 @@ const saveScenario = () => {
           return [String(i.name ?? i.id ?? "-"), stock, String(i.unit ?? "-"), Math.round(stock * cost)] as (string | number)[];
         }),
       ];
+      /* Sheet RevBulanan: pendapatan vs biaya per bulan - angka yang sama
+         dengan grafik batang, jadi grafik bisa dicek ulang dari Excel
+         tanpaysz beim recalculate dari nol. */
+      const revBulanan: (string | number)[][] = [
+        ["Bulan", "Pendapatan (M Rp)", "Biaya (M Rp)", "Selisih (M Rp)", "Proyek"],
+        ...revDisp.map((d) => [d.bln, d.revenue, d.cost, round1(d.revenue - d.cost), d.projects] as (string | number)[]),
+      ];
+      const marBulanan: (string | number)[][] = [
+        ["Bulan", "Margin (%)"],
+        ...marDisp.map((d) => [d.bln, d.margin] as (string | number)[]),
+      ];
+      const trenBulanan: (string | number)[][] = [
+        ["Bulan", "Pendapatan lunas (M Rp)", "AP (M Rp)", "Kas masuk (M Rp)"],
+        ...monthlyReal.map((d) => [d.bln, d.revenue, d.ap, d.cash] as (string | number)[]),
+      ];
+      const inspeksiBulanan: (string | number)[][] = [
+        ["Bulan", "Inspeksi", "Lulus"],
+        ...inspDisp.map((d) => [d.bln, d.inspeksi, d.lulus] as (string | number)[]),
+      ];
+      /* Distribusi tipe: dipakai grafik donat. Versi lama hanya membawa
+         hitungan lewat grafik; sekarangikkanya ikut ter-export sehingga
+         angka donat bisa direkonsiliasi dengan KPI. */
+      const tipeProyek: (string | number)[][] = [
+        ["Tipe proyek", "Jumlah", "Porsi (%)"],
+        ...projectTypeDistReal.map((d) => [
+          d.name, d.value, projectTypeDistReal.length ? Math.round((d.value / projectTypeDistReal.reduce((s, x) => s + x.value, 0)) * 100) : 0,
+        ] as (string | number)[]),
+      ];
+      /* Pareto: kolom 'kum' sengaja ikut. Sheet Drilldown lama hanya
+         memuat count + impact, padahal silang grafik Pareto justru
+         dilakukan di titik kumulatif - jadi kumulatifnya hilang. */
+      const paretoSheet: (string | number)[][] = [
+        ["Kategori NCR", "Jumlah", "Kumulatif (%)"],
+        ...pareto.map((d) => [d.name, d.count, d.kum] as (string | number)[]),
+      ];
+      const pipelineKuartal: (string | number)[][] = [
+        ["Kuartal", "Menang", "Pipeline", "Target", "Nilai menang (Rp)", "Nilai pipeline (Rp)"],
+        ...projectPipelineReal.map((d) => [
+          d.name, d.won, d.pipeline, d.target, Math.round(d.wonVal), Math.round(d.pipeVal),
+        ] as (string | number)[]),
+      ];
+      const varianceSheet: (string | number)[][] = [
+        ["Bulan", "Selisih vs rata-rata (M Rp)"],
+        ...variance.map((d) => [d.n, round1(d.v / 1000)] as (string | number)[]),
+      ];
+      const fishboneSheet: (string | number)[][] = [
+        ["Tulang", "Sebab"],
+        ...fishbones.flatMap((f) => f.sebab.map((s) => [f.tulang, s] as (string | number)[])),
+      ];
       /* Lewat util terpusat: sanitasi formula + lebar kolom otomatis + header menempel. */
       await exportExcelSheets([
         { name: "KPI", rows: kpi },
@@ -765,10 +814,22 @@ const saveScenario = () => {
         { name: "Preskriptif", rows: rx },
         { name: "Utilisasi", rows: util },
         { name: "Inventory", rows: inv },
+        { name: "Rev Bulanan", rows: revBulanan },
+        { name: "Margin Bulanan", rows: marBulanan },
+        { name: "Tren Bulanan", rows: trenBulanan },
+        { name: "Inspeksi Bulanan", rows: inspeksiBulanan },
+        { name: "Tipe Proyek", rows: tipeProyek },
+        { name: "Pipeline Kuartal", rows: pipelineKuartal },
+        { name: "Variance", rows: varianceSheet },
+        { name: "Pareto NCR", rows: paretoSheet },
+        { name: "Fishbone", rows: fishboneSheet },
       ], `Laporan-Analytics-${todayISO()}`);
       toast(S.tAnalyticsExported);
-    } catch {
-      toast(S.tChartExportFailed, "info");
+    } catch (e) {
+      /* Pesan asli ditampilkan - export gagal karena apa pun (jumlah sheet
+         melebihi batas Excel, ekstensi memblokir, file terkunci) jauh lebih
+         berguna daripada "Export gagal" generik. */
+      toast(`${S.tChartExportFailed} ${e instanceof Error ? e.message : String(e)}`, "info");
     }
   };
 
