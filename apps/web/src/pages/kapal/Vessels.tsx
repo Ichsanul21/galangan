@@ -13,7 +13,9 @@ import { fleetTrend, dockingTrend, buildTrend, certTrend } from "../../data";
 import { fmtRupiah, fmtTanggal, todayISO } from "../../utils/format";
 import { FilterPopover } from "../../components/FilterPopover";
 import { sameName, vesselMatch } from "../../utils/names";
-import { AlertBannerView, notifRowId, useModuleAlert, useNotifFlash } from "../../components/AlertBanner";
+import { AlertBannerView, flashPick, notifRowId, useModuleAlert, useNotifFlash } from "../../components/AlertBanner";
+import { useDeepLinkParams, useDeepLinkTarget } from "../../components/useDeepLink";
+import { rowHighlightClass } from "../../components/rowHighlight";
 import { useT } from "../../i18n/LanguageContext";
 import { n_eqp } from "../../i18n/n_eqp";
 
@@ -148,6 +150,7 @@ export default function Vessels() {
   const S = n_eqp[locale];
   const modAlert = useModuleAlert("kapal");
   const flash = useNotifFlash();
+  const deepParams = useDeepLinkParams();
   const notified = useMemo(() => new Set(modAlert.items.map((a) => a.rowId)), [modAlert.items]);
   const vessels = data.vessels;
   const [q, setQ] = useState("");
@@ -229,14 +232,16 @@ export default function Vessels() {
   const cardPager = usePager(list.length);
   const surveySorted = useMemo(() => sortRows(data.surveys, sort, (s: StoreItem, k) => String((s as unknown as Record<string, unknown>)[k] ?? "")), [data.surveys, sort]);
   const surveyPager = usePager(data.surveys.length);
-  const pickNotif = (rowId: string) => {
-    const key = String(rowId);
-    const idx = list.findIndex((v) => String(v.id) === key);
-    if (idx >= 0) { flash.pick(key, idx, cardPager.go, cardPager.size); return; }
-    const sIdx = surveySorted.findIndex((s) => String(s.id) === key);
-    if (sIdx >= 0) { flash.pick(key, sIdx, surveyPager.go, surveyPager.size); return; }
-    flash.pick(key, -1, () => {}, 100);
+  const pickNotifIds = (ids: string[]): void => {
+    if (ids.length === 0) return;
+    const idx = list.findIndex((v) => ids.includes(String(v.id)));
+    if (idx >= 0) { flashPick(flash, ids, idx, cardPager.go, cardPager.size); return; }
+    const sIdx = surveySorted.findIndex((s) => ids.includes(String(s.id)));
+    if (sIdx >= 0) { flashPick(flash, ids, sIdx, surveyPager.go, surveyPager.size); return; }
+    flashPick(flash, ids, -1, () => {}, 100);
   };
+  const pickNotif = (rowId: string) => pickNotifIds([rowId]);
+  useDeepLinkTarget("", deepParams.highlight, () => {}, pickNotifIds);
   useEffect(() => {
     cardPager.reset();
     surveyPager.reset();
@@ -393,7 +398,7 @@ export default function Vessels() {
           {cardPager.slice(list).map((v) => {
             const comp = complianceSummary(v);
             return (
-              <Card key={v.id} id={notifRowId(String(v.id))} className={`p-5 hover:shadow-md transition-shadow ${flash.flashId === String(v.id) ? "notif-hl notif-flash" : (notified.has(String(v.id)) ? "notif-hl" : "")}`}>
+              <Card key={v.id} id={notifRowId(String(v.id))} className={`p-5 hover:shadow-md transition-shadow ${rowHighlightClass({ id: String(v.id), flash, notified: notified.has(String(v.id)) })}`}>
                 <Link to={`/kapal/${v.id}`}>
                   <div className="flex items-start justify-between">
                     <div className="flex items-center gap-2">

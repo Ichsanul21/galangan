@@ -42,7 +42,9 @@ import {
   maintenanceDowntimeHours,
   type EquipmentCostSummary,
 } from "../../utils/projectCost";
-import { AlertBannerView, notifRowId, useModuleAlert, useNotifFlash } from "../../components/AlertBanner";
+import { AlertBannerView, flashPick, notifRowId, useModuleAlert, useNotifFlash } from "../../components/AlertBanner";
+import { useDeepLinkParams, useDeepLinkTarget } from "../../components/useDeepLink";
+import { rowHighlightClass } from "../../components/rowHighlight";
 import { exportExcel } from "../../utils/export";
 import { FilterPopover } from "../../components/FilterPopover";
 import { useT } from "../../i18n/LanguageContext";
@@ -208,6 +210,7 @@ export default function EquipmentPage() {
   const S = n_eqp[locale];
   const modAlert = useModuleAlert("equipment");
   const flash = useNotifFlash();
+  const deepParams = useDeepLinkParams();
   const notified = useMemo(() => new Set(modAlert.items.map((a) => a.rowId)), [modAlert.items]);
   /* Fetch per-batch modul (pengganti resync penuh). */
   useModuleSync(EQ_COLS);
@@ -588,17 +591,17 @@ export default function EquipmentPage() {
     return String(e.name ?? "");
   }), [regFiltered, sort, bookings, today]);
   const regPager = usePager(regFiltered.length);
-  const pickNotif = (rowId: string) => {
-    const key = String(rowId);
-    const idx = regSorted.findIndex((e) => String(e.id) === key);
+  const pickNotifIds = (ids: string[]): void => {
+    if (ids.length === 0) return;
+    const idx = regSorted.findIndex((e) => ids.includes(String(e.id)));
     if (idx >= 0) {
-      if (tab === "Register") { flash.pick(key, idx, regPager.go, regPager.size); return; }
+      if (tab === "Register") { flashPick(flash, ids, idx, regPager.go, regPager.size); return; }
       setTab("Register");
-      window.setTimeout(() => { flash.pick(key, idx, regPager.go, regPager.size); }, 250);
+      window.setTimeout(() => flashPick(flash, ids, idx, regPager.go, regPager.size), 250);
       return;
     }
-    const found = equipment.find((e) => String(e.id) === key);
-    if (!found) { flash.pick(key, -1, () => {}, 100); return; }
+    const found = equipment.find((e) => ids.includes(String(e.id)));
+    if (!found) { flashPick(flash, ids, -1, () => {}, 100); return; }
     const fullSorted = sortRows(equipment, sort, (e, k) => {
       if (k === "utilisasi") return Number(e.util || 0);
       if (k === "jam") return Number(e.lastHours || 0);
@@ -609,15 +612,14 @@ export default function EquipmentPage() {
       if (k === "status") return String(e.status ?? "");
       return String(e.name ?? "");
     });
-    const fullIdx = fullSorted.findIndex((e) => String(e.id) === key);
+    const fullIdx = fullSorted.findIndex((e) => ids.includes(String(e.id)));
     setTab("Register");
     setEqStatus("Semua");
     setEqCat("Semua");
-    window.setTimeout(() => {
-      if (fullIdx >= 0) flash.pick(key, fullIdx, regPager.go, regPager.size);
-      else flash.pick(key, -1, () => {}, 100);
-    }, 250);
+    window.setTimeout(() => flashPick(flash, ids, fullIdx, regPager.go, regPager.size), 250);
   };
+  const pickNotif = (rowId: string) => pickNotifIds([rowId]);
+  useDeepLinkTarget(deepParams.tab, deepParams.highlight, setTab, pickNotifIds);
   useEffect(() => {
     regPager.reset();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1602,7 +1604,7 @@ export default function EquipmentPage() {
                   {regPager.slice(regSorted).map((e) => {
                     const expired = isCalExpired(e.id, calibrations, today);
                     return (
-                    <tr key={e.id} id={notifRowId(String(e.id))} className={flash.flashId === String(e.id) ? "notif-hl notif-flash hover:bg-surface" : (notified.has(String(e.id)) ? "notif-hl hover:bg-surface" : "hover:bg-surface")}>
+                    <tr key={e.id} id={notifRowId(String(e.id))} className={rowHighlightClass({ id: String(e.id), flash, notified: notified.has(String(e.id)), base: "hover:bg-surface" })}>
                       <td className="td">
                         <p className="font-medium text-navy-900">{e.name}</p>
                         <p className="text-xs text-steel-500 font-mono">{e.code}</p>

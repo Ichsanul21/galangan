@@ -34,7 +34,9 @@ import { findUsages } from "../../utils/usages";
 import type { StoreItem, CollectionKey } from "../../data/store";
 import { activeEmployeeTrend, certifiedTrend, certExpireTrend, employeeTrend } from "../../data";
 import { fmtTanggal, todayISO } from "../../utils/format";
-import { AlertBannerView, notifRowId, useModuleAlert, useNotifFlash } from "../../components/AlertBanner";
+import { AlertBannerView, flashPick, notifRowId, useModuleAlert, useNotifFlash } from "../../components/AlertBanner";
+import { useDeepLinkParams, useDeepLinkTarget } from "../../components/useDeepLink";
+import { rowHighlightClass } from "../../components/rowHighlight";
 import { getSetting } from "../../utils/settings";
 import { useAuth } from "../../auth/auth";
 import { exportExcel } from "../../utils/export";
@@ -213,6 +215,7 @@ export default function HR() {
   const { user } = useAuth();
   const modAlert = useModuleAlert("sdm");
   const flash = useNotifFlash();
+  const deepParams = useDeepLinkParams();
   const notified = useMemo(() => new Set(modAlert.items.map((a) => a.rowId)), [modAlert.items]);
   const pdfDoc = usePdfDoc();
   /* Fetch per-batch modul (pengganti resync penuh). */
@@ -376,24 +379,26 @@ export default function HR() {
     empPager.reset();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dept, q, contractSoonOnly, branch, tab]);
-  const pickNotif = (rowId: string) => {
-    const key = String(rowId);
-    const leaveIdx = data.leaves.findIndex((l) => String(l.id) === key);
+  const pickNotifIds = (ids: string[]): void => {
+    if (ids.length === 0) return;
+    const leaveIdx = data.leaves.findIndex((l) => ids.includes(String(l.id)));
     if (leaveIdx >= 0) {
-      if (tab === "Cuti & Izin") { flash.pick(key, -1, () => {}, 100); return; }
+      if (tab === "Cuti & Izin") { flashPick(flash, ids, -1, () => {}, 100); return; }
       setTab("Cuti & Izin");
-      window.setTimeout(() => { flash.pick(key, -1, () => {}, 100); }, 250);
+      window.setTimeout(() => flashPick(flash, ids, -1, () => {}, 100), 250);
       return;
     }
-    const idx = sortedEmps.findIndex((r) => String(r.id) === key);
+    const idx = sortedEmps.findIndex((r) => ids.includes(String(r.id)));
     if (idx >= 0) {
-      if (tab === "Karyawan") { flash.pick(key, idx, empPager.go, empPager.size); return; }
+      if (tab === "Karyawan") { flashPick(flash, ids, idx, empPager.go, empPager.size); return; }
       setTab("Karyawan");
-      window.setTimeout(() => { flash.pick(key, idx, empPager.go, empPager.size); }, 250);
+      window.setTimeout(() => flashPick(flash, ids, idx, empPager.go, empPager.size), 250);
       return;
     }
-    flash.pick(key, -1, () => {}, 100);
+    flashPick(flash, ids, -1, () => {}, 100);
   };
+  const pickNotif = (rowId: string) => pickNotifIds([rowId]);
+  useDeepLinkTarget(deepParams.tab, deepParams.highlight, setTab, pickNotifIds);
 
   const deptCounts = useMemo(() => {
     const m = new Map<string, number>();
@@ -1499,7 +1504,7 @@ const finishTraining = async (t: StoreItem) => {
                       default: return "";
                     }
                   }).map((l) => (
-                    <tr key={l.id} id={notifRowId(String(l.id))} className={flash.flashId === String(l.id) ? "notif-hl notif-flash hover:bg-surface" : (notified.has(String(l.id)) ? "notif-hl hover:bg-surface" : "hover:bg-surface")}>
+                    <tr key={l.id} id={notifRowId(String(l.id))} className={rowHighlightClass({ id: String(l.id), flash, notified: notified.has(String(l.id)), base: "hover:bg-surface" })}>
                       <td className="td font-mono text-steel-600">{l.id}</td>
                       <td className="td text-navy-900">{empNameOf(String(l.employeeId))}</td>
                       <td className="td"><Badge tone="gray">{l.type}</Badge></td>

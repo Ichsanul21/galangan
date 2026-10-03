@@ -10,7 +10,9 @@ import { isBackendConfigured } from "../../services/http";
 import { ocrImageUrl } from "../../services/upload";
 import { uploadFile } from "../../services/upload";
 import { fmtTanggal, todayISO } from "../../utils/format";
-import { AlertBannerView, notifRowId, useModuleAlert, useNotifFlash } from "../../components/AlertBanner";
+import { AlertBannerView, flashPick, notifRowId, useModuleAlert, useNotifFlash } from "../../components/AlertBanner";
+import { useDeepLinkParams, useDeepLinkTarget } from "../../components/useDeepLink";
+import { rowHighlightClass } from "../../components/rowHighlight";
 import { sbDsNumber, sbSjNumber, sbTtNumber, maxSeq, parseSjSeq } from "../../utils/sb";
 import { exportExcel } from "../../utils/export";
 import { findUsages } from "../../utils/usages";
@@ -168,6 +170,7 @@ export default function Documents() {
   const S = n_dry[locale];
   const modAlert = useModuleAlert("dokumen");
   const flash = useNotifFlash();
+  const deepParams = useDeepLinkParams();
   const notified = useMemo(() => new Set(modAlert.items.map((a) => a.rowId)), [modAlert.items]);
   /* Fetch per-batch modul (pengganti resync penuh): dokumen + vessels + projects. */
   useModuleSync(DOC_COLS);
@@ -231,27 +234,29 @@ export default function Documents() {
     key === "dokumen" ? String(d.title ?? "") : key === "tipe" ? String(d.type ?? "") : key === "proyek" ? String(d.project ?? "") : key === "versi" ? String(d.version ?? "") : key === "status" ? String(d.status ?? "") : String(d.updated ?? "")
   ), [list, sort]);
   const docPager = usePager(list.length);
-  const pickNotif = (rowId: string) => {
-    const key = String(rowId);
-    const idx = sortedDocs.findIndex((d) => String(d.id) === key);
-    if (idx >= 0) { flash.pick(key, idx, docPager.go, docPager.size); return; }
-    const doc = data.documents.find((d) => String(d.id) === key);
-    if (!doc) { flash.pick(key, -1, () => {}, 100); return; }
+  const pickNotifIds = (ids: string[]): void => {
+    if (ids.length === 0) return;
+    const idx = sortedDocs.findIndex((d) => ids.includes(String(d.id)));
+    if (idx >= 0) { flashPick(flash, ids, idx, docPager.go, docPager.size); return; }
+    const doc = data.documents.find((d) => ids.includes(String(d.id)));
+    if (!doc) { flashPick(flash, ids, -1, () => {}, 100); return; }
+    /* Arsip adalah tab terpisah: dokumen yang diarsipkan tidak mungkin
+       disorot dari tab aktif, jadi tab tujuan harus diganti lebih dulu. */
     const target = doc.archived ? "Arsip" : "Semua";
-    if (type === target) { flash.pick(key, -1, () => {}, 100); return; }
+    if (type === target) { flashPick(flash, ids, -1, () => {}, 100); return; }
     const targetBase = target === "Arsip" ? archived : active;
     const targetSorted = sortRows(
       targetBase.filter((d) => docHay(d).includes(q.toLowerCase())),
       sort,
       (d, k) => k === "dokumen" ? String(d.title ?? "") : k === "tipe" ? String(d.type ?? "") : k === "proyek" ? String(d.project ?? "") : k === "versi" ? String(d.version ?? "") : k === "status" ? String(d.status ?? "") : String(d.updated ?? ""),
     );
-    const targetIdx = targetSorted.findIndex((d) => String(d.id) === key);
+    const targetIdx = targetSorted.findIndex((d) => ids.includes(String(d.id)));
     setType(target);
-    window.setTimeout(() => {
-      if (targetIdx >= 0) flash.pick(key, targetIdx, docPager.go, docPager.size);
-      else flash.pick(key, -1, () => {}, 100);
-    }, 250);
+    window.setTimeout(() => flashPick(flash, ids, targetIdx, docPager.go, docPager.size), 250);
   };
+  const pickNotif = (rowId: string) => pickNotifIds([rowId]);
+  /* Filter `type` berperan seperti tab di modul lain (Semua / Arsip). */
+  useDeepLinkTarget("", deepParams.highlight, (next) => setType(next), pickNotifIds);
   useEffect(() => {
     docPager.reset();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -582,7 +587,7 @@ const doExport = () => {
             </thead>
             <tbody className="divide-y divide-steel-100">
               {docPager.slice(sortedDocs).map((d) => (
-                <tr key={d.id} id={notifRowId(String(d.id))} className={flash.flashId === String(d.id) ? "notif-hl notif-flash hover:bg-surface" : (notified.has(String(d.id)) ? "notif-hl hover:bg-surface" : "hover:bg-surface")}>
+                <tr key={d.id} id={notifRowId(String(d.id))} className={rowHighlightClass({ id: String(d.id), flash, notified: notified.has(String(d.id)), base: "hover:bg-surface" })}>
                   <td className="td max-w-[260px]">
                     <p className="truncate font-medium text-navy-900" title={String(d.title)}>{d.title}</p>
                     <p className="font-mono text-xs text-steel-500">{d.id} · {d.owner}{d.berlakuHingga ? S.untilSuffix.replace("{a}", fmtTanggal(d.berlakuHingga)) : ""}</p>

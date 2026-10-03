@@ -14,7 +14,9 @@ import { remoteRepository } from "../../services/repositories";
 import { getJwt, isBackendConfigured } from "../../services/http";
 import { fmtRupiah, fmtMiliar, fmtTanggal, todayISO } from "../../utils/format";
 import { sameName } from "../../utils/names";
-import { AlertBannerView, notifRowId, useModuleAlert, useNotifFlash } from "../../components/AlertBanner";
+import { AlertBannerView, flashPick, notifRowId, useModuleAlert, useNotifFlash } from "../../components/AlertBanner";
+import { useDeepLinkParams, useDeepLinkTarget } from "../../components/useDeepLink";
+import { rowHighlightClass } from "../../components/rowHighlight";
 import { getSetting } from "../../utils/settings";
 import { PPH_SUBKON_OPTIONS } from "../../utils/sb";
 import { pdfServerReady } from "../../services/pdfClient";
@@ -150,6 +152,7 @@ export default function Subcontractor() {
   const [subStatus, setSubStatus] = useState("Semua");
   const modAlert = useModuleAlert("subkontraktor");
   const flash = useNotifFlash();
+  const deepParams = useDeepLinkParams();
   /* Printer PDF: dipakai untuk kwitansi. Satu hook untuk seluruh halaman
      supaya Blob URL hanya hidup selama satu dokumen sedang dipakai. */
   const pdfDoc = usePdfDoc();
@@ -221,23 +224,26 @@ export default function Subcontractor() {
     woPager.reset();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tab]);
-  const pickNotif = (rowId: string) => {
-    const tIdx = payments.findIndex((t) => String(t.id) === rowId);
+  const pickNotifIds = (ids: string[]): void => {
+    if (ids.length === 0) return;
+    const tIdx = payments.findIndex((t) => ids.includes(String(t.id)));
     if (tIdx >= 0) {
-      if (tab === "Termin & Pembayaran") { flash.pick(rowId, -1, () => {}, 100); return; }
+      if (tab === "Termin & Pembayaran") { flashPick(flash, ids, -1, () => {}, 100); return; }
       setTab("Termin & Pembayaran");
-      window.setTimeout(() => { flash.pick(rowId, -1, () => {}, 100); }, 250);
+      window.setTimeout(() => flashPick(flash, ids, -1, () => {}, 100), 250);
       return;
     }
-    const idx = workOrders.findIndex((r) => String(r.id) === rowId);
+    const idx = workOrders.findIndex((r) => ids.includes(String(r.id)));
     if (idx >= 0) {
-      if (tab === "Work Order") { flash.pick(rowId, idx, woPager.go, woPager.size); return; }
+      if (tab === "Work Order") { flashPick(flash, ids, idx, woPager.go, woPager.size); return; }
       setTab("Work Order");
-      window.setTimeout(() => { flash.pick(rowId, idx, woPager.go, woPager.size); }, 250);
+      window.setTimeout(() => flashPick(flash, ids, idx, woPager.go, woPager.size), 250);
       return;
     }
-    flash.pick(rowId, -1, () => {}, 100);
+    flashPick(flash, ids, -1, () => {}, 100);
   };
+  const pickNotif = (rowId: string) => pickNotifIds([rowId]);
+  useDeepLinkTarget(deepParams.tab, deepParams.highlight, setTab, pickNotifIds);
 
   /* Progres WO = jumlah bobot milestone termin yang selesai (sinkron dua arah
      dengan status termin; tanpa milestone → progres tersimpan legacy). */
@@ -1157,7 +1163,7 @@ const printSpk = async (w: StoreItem): Promise<void> => {
                       const wo = workOrders.find((w) => w.id === p.woId);
                       const canRelease = normTerm(p.status) === "Lunas" && retOf(p) > 0 && wo?.status === "Selesai";
                       return (
-                      <tr key={p.id} id={notifRowId(String(p.id))} className={flash.flashId === String(p.id) ? "notif-hl notif-flash hover:bg-surface" : (notified.has(String(p.id)) ? "notif-hl hover:bg-surface" : "hover:bg-surface")}>
+                      <tr key={p.id} id={notifRowId(String(p.id))} className={rowHighlightClass({ id: String(p.id), flash, notified: notified.has(String(p.id)), base: "hover:bg-surface" })}>
                         <td className="td font-mono font-medium text-navy-900">{p.id}</td>
                         <td className="td text-steel-600 truncate" title={String(p.sub)}>{p.sub}</td>
                         <td className="td font-mono text-xs text-steel-500">{p.progress}{p.milestone ? <span className="block text-steel-400">{S.msPrefix.replace("{n}", String(p.milestone))}</span> : null}</td>

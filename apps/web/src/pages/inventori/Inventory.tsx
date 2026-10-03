@@ -70,7 +70,9 @@ import { usePdfDoc } from "../../components/usePdfDoc";
 import { FilterPopover } from "../../components/FilterPopover";
 import { useT } from "../../i18n/LanguageContext";
 import { n_inv } from "../../i18n/n_inv";
-import { AlertBannerView, notifRowId, useModuleAlert, useNotifFlash } from "../../components/AlertBanner";
+import { AlertBannerView, flashPick, notifRowId, useModuleAlert, useNotifFlash } from "../../components/AlertBanner";
+import { useDeepLinkParams, useDeepLinkTarget } from "../../components/useDeepLink";
+import { rowHighlightClass } from "../../components/rowHighlight";
 import { stockTrend, itemTrend, lowStockTrend, stockValueTrend, warehouseTrend } from "../../data";
 
 const emptyForm = { name: "", category: "Baja", sku: "", warehouse: "Gudang Baja A", rack: "", bin: "", stock: "0", minStock: "0", unit: "pcs", cost: "0", volume: "0", batch: "", uom2: "", konversi: "", minWh: "", photoUrl: "", matType: "habis-pakai", eceran: false as boolean | string };
@@ -370,6 +372,7 @@ export default function Inventory() {
   const requisitions = data.requisitions;
   const modAlert = useModuleAlert("inventori");
   const flash = useNotifFlash();
+  const deepParams = useDeepLinkParams();
   const notified = useMemo(() => new Set(modAlert.items.map((a) => a.rowId)), [modAlert.items]);
   const pdfDoc = usePdfDoc();
   const [tab, setTab] = useState("Katalog");
@@ -681,23 +684,26 @@ if (k === "mattype") return matTypeOf(i);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dq, cat, wh, abcF]);
 
-  const pickNotif = (rowId: string) => {
-    const idx = sorted.findIndex((r) => String(r.id) === rowId);
+  const pickNotifIds = (ids: string[]): void => {
+    if (ids.length === 0) return;
+    const idx = sorted.findIndex((r) => ids.includes(String(r.id)));
     if (idx >= 0) {
-      if (tab === "Katalog") { flash.pick(rowId, idx, pager.go, pager.size); return; }
+      if (tab === "Katalog") { flashPick(flash, ids, idx, pager.go, pager.size); return; }
       setTab("Katalog");
-      window.setTimeout(() => { flash.pick(rowId, idx, pager.go, pager.size); }, 250);
+      window.setTimeout(() => flashPick(flash, ids, idx, pager.go, pager.size), 250);
       return;
     }
-    const mIdx = movSorted.findIndex((m) => String(m.id) === rowId);
+    const mIdx = movSorted.findIndex((m) => ids.includes(String(m.id)));
     if (mIdx >= 0) {
-      if (tab === "Pergerakan") { flash.pick(rowId, mIdx, movPager.go, movPager.size); return; }
+      if (tab === "Pergerakan") { flashPick(flash, ids, mIdx, movPager.go, movPager.size); return; }
       setTab("Pergerakan");
-      window.setTimeout(() => { flash.pick(rowId, mIdx, movPager.go, movPager.size); }, 250);
+      window.setTimeout(() => flashPick(flash, ids, mIdx, movPager.go, movPager.size), 250);
       return;
     }
-    flash.pick(rowId, -1, () => {}, 100);
+    flashPick(flash, ids, -1, () => {}, 100);
   };
+  const pickNotif = (rowId: string) => pickNotifIds([rowId]);
+  useDeepLinkTarget(deepParams.tab, deepParams.highlight, setTab, pickNotifIds);
 
   // Indeks tanggal pergerakan per barang: 1x scan O(movements), lookup O(1).
   // Sebelumnya tiap barang memindai + sort seluruh movements tiap render.
@@ -2015,7 +2021,7 @@ penuh per kategori - dengan 10 kategori berproblem, strip
                       const conv = convOf(i);
                       const u2 = uom2Of(i);
                       return (
-                        <tr key={i.id} id={notifRowId(String(i.id))} className={flash.flashId === String(i.id) ? "notif-hl notif-flash hover:bg-surface" : (notified.has(String(i.id)) ? "notif-hl hover:bg-surface" : "hover:bg-surface")}>
+                        <tr key={i.id} id={notifRowId(String(i.id))} className={rowHighlightClass({ id: String(i.id), flash, notified: notified.has(String(i.id)), base: "hover:bg-surface" })}>
                           <td className="td">
                             <p className="font-medium text-navy-900 truncate" title={String(i.name)}>{i.name}</p>
                             <p className="text-xs text-steel-500 font-mono">{i.sku}</p>

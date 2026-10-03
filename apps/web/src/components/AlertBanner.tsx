@@ -96,6 +96,29 @@ export function useNotifFlash(): {
   return { flashId, flashIds, pick, pickMany };
 }
 
+/**
+ * Pilih satu ATAU sekumpulan baris dari hasil resolve deep-link modul.
+ *
+ * Setiap modul punya resolve-nya sendiri (tab mana, filter mana yang harus
+ * dibuka lebih dulu), tapi pemilihannya selalu dua kasus yang sama: satu id
+ * dari banner modul, atau daftar id dari kartu Dashboard yang menghitung
+ * kelompok. Cabang itu pernah ditulis ulang di CRM, Finance, dan QCSafety -
+ * tiga salinan yang bisa berbeda secara tidak sengaja. Dipusatkan di sini
+ * supaya modul yang ditambahkan berikutnya cukup memanggil satu fungsi.
+ */
+export function flashPick(
+  flash: Pick<ReturnType<typeof useNotifFlash>, "pick" | "pickMany">,
+  ids: string[],
+  index: number,
+  goToPage: (p: number) => void,
+  size: number,
+): void {
+  const list = ids.filter((id) => String(id) !== "");
+  if (list.length === 0) return;
+  if (list.length > 1) flash.pickMany(list, index, goToPage, size);
+  else flash.pick(list[0] as string, index, goToPage, size);
+}
+
 const PREVIEW_N = 5;
 const RENDER_CAP = 200;
 

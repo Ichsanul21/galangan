@@ -28,7 +28,9 @@ import { todayISO } from "../../utils/format";
 import { canonPrioritas } from "../../utils/scope";
 import ProjectAddModal from "../../components/ProjectAddModal";
 import { FilterPopover } from "../../components/FilterPopover";
-import { AlertBannerView, notifRowId, useModuleAlert, useNotifFlash } from "../../components/AlertBanner";
+import { AlertBannerView, flashPick, notifRowId, useModuleAlert, useNotifFlash } from "../../components/AlertBanner";
+import { useDeepLinkParams, useDeepLinkTarget } from "../../components/useDeepLink";
+import { rowHighlightClass } from "../../components/rowHighlight";
 
 export const TAHAP = ["Inquiry", "Quotation", "Kontrak", "Desain", "Produksi", "Trial", "Handover"];
 export const PRIORITAS = ["Rendah", "Sedang", "Tinggi"];
@@ -77,6 +79,7 @@ export default function Projects() {
   const { data, add, update, remove, inBranch, log } = useStore();
   const modAlert = useModuleAlert("proyek");
   const flash = useNotifFlash();
+  const deepParams = useDeepLinkParams();
   const notified = useMemo(() => new Set(modAlert.items.map((a) => a.rowId)), [modAlert.items]);
   const navigate = useNavigate();
   const projects = data.projects;
@@ -171,11 +174,13 @@ export default function Projects() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filter, statusFilter, tahapFilter, branchFilter, prioritasFilter, pmFilter, q]);
 
-  const pickNotif = (rowId: string) => {
-    const idx = sorted.findIndex((r) => String(r.id) === rowId);
-    if (idx >= 0) { flash.pick(rowId, idx, pager.go, pager.size); return; }
-    flash.pick(rowId, -1, () => {}, 100);
+  const pickNotifIds = (ids: string[]): void => {
+    if (ids.length === 0) return;
+    const idx = sorted.findIndex((r) => ids.includes(String(r.id)));
+    flashPick(flash, ids, idx, pager.go, pager.size);
   };
+  const pickNotif = (rowId: string) => pickNotifIds([rowId]);
+  useDeepLinkTarget("", deepParams.highlight, () => {}, pickNotifIds);
 
   return (
     <div>
@@ -306,7 +311,7 @@ export default function Projects() {
                   <tr
                     key={p.id}
                     id={notifRowId(String(p.id))}
-                    className={`cursor-pointer transition-colors hover:bg-surface ${flash.flashId === String(p.id) ? "notif-hl notif-flash" : (notified.has(String(p.id)) ? "notif-hl" : "")}`}
+                    className={`cursor-pointer transition-colors ${rowHighlightClass({ id: String(p.id), flash, notified: notified.has(String(p.id)), base: "hover:bg-surface" })}`}
                     onClick={() => navigate(`/proyek/${p.id}`)}
                     onKeyDown={(e) => { if (e.key === "Enter") navigate(`/proyek/${p.id}`); }}
                     tabIndex={0}

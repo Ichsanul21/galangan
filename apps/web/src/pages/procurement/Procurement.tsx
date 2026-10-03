@@ -13,7 +13,9 @@ import { remoteRepository } from "../../services/repositories";
 import { getJwt, isBackendConfigured } from "../../services/http";
 import { fmtRupiah, fmtJumlah, fmtTanggal, todayISO } from "../../utils/format";
 import { sameName } from "../../utils/names";
-import { AlertBannerView, notifRowId, useModuleAlert, useNotifFlash } from "../../components/AlertBanner";
+import { AlertBannerView, flashPick, notifRowId, useModuleAlert, useNotifFlash } from "../../components/AlertBanner";
+import { useDeepLinkParams, useDeepLinkTarget } from "../../components/useDeepLink";
+import { rowHighlightClass } from "../../components/rowHighlight";
 import { getSetting } from "../../utils/settings";
 import { bucketByMonth, fmtMonthRange, monthAxis, monthKeyOf, rebindLegacyMonthSeries } from "../../utils/monthAxis";
 import { sbPoNumber, sbSplitIncludePpn, maxSeq, SB_KOP } from "../../utils/sb";
@@ -280,6 +282,7 @@ export default function Procurement() {
   const S = n_proc[locale];
   const modAlert = useModuleAlert("procurement");
   const flash = useNotifFlash();
+  const deepParams = useDeepLinkParams();
   const notified = useMemo(() => new Set(modAlert.items.map((a) => a.rowId)), [modAlert.items]);
   /* Fetch per-batch modul (pengganti resync penuh). */
   useModuleSync(PROC_COLS);
@@ -485,30 +488,32 @@ export default function Procurement() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pq, pStatus, vCatF, tab]);
 
-  const pickNotif = (rowId: string) => {
-    const idxBig = sortedBig.findIndex((r) => String(r.id) === rowId);
-    if (idxBig >= 0) {
-      if (tab === "PO Besar (Kantor)") { flash.pick(rowId, idxBig, bigPager.go, bigPager.size); return; }
-      setTab("PO Besar (Kantor)");
-      window.setTimeout(() => { flash.pick(rowId, idxBig, bigPager.go, bigPager.size); }, 250);
+  /* Id PR dan id PO sama-sama bentuknya bebas, jadi tidak ada cara aman
+     menebak tab dari id. Yang dilakukan: tab yang sedang aktif diperiksa
+     dulu, baru daftar tab. Id yang tidak ada di tab tujuan tidak di-highlight
+     (pickMany hanya menandai yang benar-benar ada di DOM) - jadi daftar
+     campuran PR+PO dari kartu Dashboard tetap aman: tab pertama yang punya
+     salah satu id akan dibuka, sisanya dilewati diam-diam. */
+  const pickNotifIds = (ids: string[]): void => {
+    if (ids.length === 0) return;
+    const tabs: [string, StoreItem[], (p: number) => void, number][] = [
+      ["PO Besar (Kantor)", sortedBig, bigPager.go, bigPager.size],
+      ["PO Kecil (Workshop)", sortedSmall, smallPager.go, smallPager.size],
+      ["PR", sortedPr, prPager.go, prPager.size],
+    ];
+    const ordered = [...tabs].sort((a, b) => (a[0] === tab ? -1 : b[0] === tab ? 1 : 0));
+    for (const [name, list, go, size] of ordered) {
+      const idx = list.findIndex((r) => ids.includes(String(r.id)));
+      if (idx < 0) continue;
+      if (tab === name) { flashPick(flash, ids, idx, go, size); return; }
+      setTab(name);
+      window.setTimeout(() => flashPick(flash, ids, idx, go, size), 250);
       return;
     }
-    const idxSmall = sortedSmall.findIndex((r) => String(r.id) === rowId);
-    if (idxSmall >= 0) {
-      if (tab === "PO Kecil (Workshop)") { flash.pick(rowId, idxSmall, smallPager.go, smallPager.size); return; }
-      setTab("PO Kecil (Workshop)");
-      window.setTimeout(() => { flash.pick(rowId, idxSmall, smallPager.go, smallPager.size); }, 250);
-      return;
-    }
-    const idxPr = sortedPr.findIndex((r) => String(r.id) === rowId);
-    if (idxPr >= 0) {
-      if (tab === "PR") { flash.pick(rowId, idxPr, prPager.go, prPager.size); return; }
-      setTab("PR");
-      window.setTimeout(() => { flash.pick(rowId, idxPr, prPager.go, prPager.size); }, 250);
-      return;
-    }
-    flash.pick(rowId, -1, () => {}, 100);
+    flashPick(flash, ids, -1, () => {}, 100);
   };
+  const pickNotif = (rowId: string) => pickNotifIds([rowId]);
+  useDeepLinkTarget(deepParams.tab, deepParams.highlight, setTab, pickNotifIds);
 
   const openPo = purchaseOrders.filter((p) => normPo(p.status) !== "Diterima").reduce((s, p) => s + Number(p.amount || 0), 0);
   const pendingPr = requisitions.filter((r) => PR_PENDING.includes(r.status)).length;
@@ -1388,7 +1393,7 @@ const sparkVendors = useMemo(() => {
                       const done = apprOf(po);
                       const payung = vendors.some((v) => sameName(v.name, po.vendor) && payungOf(v));
                       return (
-                        <tr key={po.id} id={notifRowId(String(po.id))} className={flash.flashId === String(po.id) ? "notif-hl notif-flash hover:bg-surface" : (notified.has(String(po.id)) ? "notif-hl hover:bg-surface" : "hover:bg-surface")}>
+                        <tr key={po.id} id={notifRowId(String(po.id))} className={rowHighlightClass({ id: String(po.id), flash, notified: notified.has(String(po.id)), base: "hover:bg-surface" })}>
                           <td className="td font-mono font-medium text-navy-900">{po.id}
                             {po.docNo && <p className="text-xs font-normal text-steel-400">{String(po.docNo)}</p>}
                           </td>
@@ -1483,7 +1488,7 @@ const sparkVendors = useMemo(() => {
                         const need = needLevels(Number(po.amount || 0), APPROVE_PO_LIMIT);
                         const done = apprOf(po);
                         return (
-                          <tr key={po.id} id={notifRowId(String(po.id))} className={flash.flashId === String(po.id) ? "notif-hl notif-flash hover:bg-surface" : (notified.has(String(po.id)) ? "notif-hl hover:bg-surface" : "hover:bg-surface")}>
+                          <tr key={po.id} id={notifRowId(String(po.id))} className={rowHighlightClass({ id: String(po.id), flash, notified: notified.has(String(po.id)), base: "hover:bg-surface" })}>
                           <td className="td font-mono font-medium text-navy-900">{po.id}
                             {po.docNo && <p className="text-xs font-normal text-steel-400">{po.docNo}</p>}
                             {(() => {
@@ -1698,7 +1703,7 @@ const sparkVendors = useMemo(() => {
                     </thead>
                     <tbody className="divide-y divide-steel-100">
                       {prPager.slice(sortedPr).map((r) => (
-                        <tr key={r.id} id={notifRowId(String(r.id))} className={flash.flashId === String(r.id) ? "notif-hl notif-flash hover:bg-surface" : (notified.has(String(r.id)) ? "notif-hl hover:bg-surface" : "hover:bg-surface")}>
+                        <tr key={r.id} id={notifRowId(String(r.id))} className={rowHighlightClass({ id: String(r.id), flash, notified: notified.has(String(r.id)), base: "hover:bg-surface" })}>
                           <td className="td font-mono font-medium text-navy-900">{r.id}</td>
                           <td className="td text-steel-600">
                             <p className="truncate" title={String(r.item)}>{r.item}</p>

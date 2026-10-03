@@ -14,7 +14,9 @@ import { fmtJumlah, fmtRupiah, fmtTanggal, fmtRentang, todayISO } from "../../ut
 import { getSetting } from "../../utils/settings";
 import { sameName } from "../../utils/names";
 import { sbDsNumber, maxSeq } from "../../utils/sb";
-import { AlertBannerView, notifRowId, useModuleAlert, useNotifFlash } from "../../components/AlertBanner";
+import { AlertBannerView, flashPick, notifRowId, useModuleAlert, useNotifFlash } from "../../components/AlertBanner";
+import { useDeepLinkParams, useDeepLinkTarget } from "../../components/useDeepLink";
+import { rowHighlightClass } from "../../components/rowHighlight";
 import { exportExcel } from "../../utils/export";
 import { findUsages } from "../../utils/usages";
 import { n_dry } from "../../i18n/n_dry";
@@ -100,6 +102,7 @@ export default function Drydock() {
   const S = n_dry[locale];
   const modAlert = useModuleAlert("drydock");
   const flash = useNotifFlash();
+  const deepParams = useDeepLinkParams();
   const notified = useMemo(() => new Set(modAlert.items.map((a) => a.rowId)), [modAlert.items]);
   /* Fetch per-batch modul (pengganti resync penuh). */
   useModuleSync(DRY_COLS);
@@ -394,23 +397,27 @@ export default function Drydock() {
   }, [dockSlots, data.projects, drydocks]);
   const sortedSlots = useMemo(() => sortRows(filteredSlots, sort, (s: StoreItem, k) => k === "days" ? Number(slotDays(s)) : k === "status" ? String(slotStatus(s, data.projects)) : k === "area" ? String(s.area ?? "") : k === "facility" ? String(drydocks.find((d) => d.id === s.dockId)?.name ?? s.dockId) : String((s as unknown as Record<string, unknown>)[k] ?? "")), [filteredSlots, sort, data.projects, drydocks]);
   const pager = usePager(filteredSlots.length);
-  const pickNotif = (rowId: string) => {
-    const key = String(rowId);
-    const idx = sortedSlots.findIndex((s) => String(s.id) === key);
-    if (idx >= 0) { flash.pick(key, idx, pager.go, pager.size); return; }
-    const found = dockSlots.find((s) => String(s.id) === key);
-    if (!found || statusFilter === "Semua") { flash.pick(key, -1, () => {}, 100); return; }
+  /* Terjemahkan id deep-link menjadi sorotan baris. Satu id (banner modul)
+     dan daftar id (kartu Dashboard yang menghitung kelompok) memakai jalur
+     sama; hanya pemanggilan flash.pick vs pickMany yang berbeda. */
+  const pickNotifIds = (ids: string[]): void => {
+    if (ids.length === 0) return;
+    const idx = sortedSlots.findIndex((s) => ids.includes(String(s.id)));
+    if (idx >= 0) { flashPick(flash, ids, idx, pager.go, pager.size); return; }
+    const found = dockSlots.find((s) => ids.includes(String(s.id)));
+    if (!found || statusFilter === "Semua") { flashPick(flash, ids, -1, () => {}, 100); return; }
     const fullSorted = sortRows(dockSlots, sort, (s: StoreItem, k) => k === "days" ? Number(slotDays(s)) : k === "status" ? String(slotStatus(s, data.projects)) : k === "area" ? String(s.area ?? "") : k === "facility" ? String(drydocks.find((d) => d.id === s.dockId)?.name ?? s.dockId) : String((s as unknown as Record<string, unknown>)[k] ?? ""));
-    const fullIdx = fullSorted.findIndex((s) => String(s.id) === key);
+    const fullIdx = fullSorted.findIndex((s) => ids.includes(String(s.id)));
     setStatusFilter("Semua");
     setAreaFilter("Semua");
     setPosFilter("Semua");
     setShowActiveOnly(false);
-    window.setTimeout(() => {
-      if (fullIdx >= 0) flash.pick(key, fullIdx, pager.go, pager.size);
-      else flash.pick(key, -1, () => {}, 100);
-    }, 250);
+    window.setTimeout(() => flashPick(flash, ids, fullIdx, pager.go, pager.size), 250);
   };
+  const pickNotif = (rowId: string) => pickNotifIds([rowId]);
+  /* Halaman ini tidak bertab, jadi ?tab= dari Dashboard selalu kosong dan
+     setTab tidak pernah dipanggil - resolve cukup menyorot baris slot. */
+  useDeepLinkTarget("", deepParams.highlight, () => {}, pickNotifIds);
   useEffect(() => {
     pager.reset();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -795,7 +802,7 @@ export default function Drydock() {
                   const st = slotStatus(s, data.projects);
                   const isCrit = conflict.some((c) => c.id === s.id) && overlapsKritis(s);
                   return (
-                    <tr key={s.id} id={notifRowId(String(s.id))} className={`hover:bg-surface ${isCrit ? "bg-rose-50" : ""} ${flash.flashId === String(s.id) ? "notif-hl notif-flash" : (notified.has(String(s.id)) ? "notif-hl" : "")}`}>
+                    <tr key={s.id} id={notifRowId(String(s.id))} className={`${isCrit ? "bg-rose-50" : "hover:bg-surface"} ${rowHighlightClass({ id: String(s.id), flash, notified: notified.has(String(s.id)), base: isCrit ? "" : "hover:bg-surface" })}`}>
                       <td className="td text-steel-600">{drydocks.find((d) => d.id === s.dockId)?.name}</td>
                       <td className="td text-steel-600" title={slotAreaOf(s) || S.noArea}>{String(s.area ?? "").trim() || <span className="text-steel-400">—</span>}</td>
                       <td className="td">
@@ -1002,7 +1009,7 @@ export default function Drydock() {
                             key={s.id}
                             id={notifRowId(String(s.id))}
                             onClick={() => { if (isSel) setSelected(null); else openSlot(s); }}
-                            className={`absolute top-1/2 -translate-y-1/2 flex h-10 items-center justify-between rounded-md px-2 text-xs font-medium text-white shadow cursor-pointer transition ${isSel ? "ring-2 ring-navy-900" : "hover:brightness-110"} ${isCrit && !isSel ? "ring-4 ring-rose-800" : isConf && !isSel ? "ring-2 ring-rose-700" : ""} ${flash.flashId === String(s.id) ? "notif-hl notif-flash" : (notified.has(String(s.id)) ? "notif-hl" : "")}`}
+                            className={`absolute top-1/2 -translate-y-1/2 flex h-10 items-center justify-between rounded-md px-2 text-xs font-medium text-white shadow cursor-pointer transition ${isSel ? "ring-2 ring-navy-900" : "hover:brightness-110"} ${isCrit && !isSel ? "ring-4 ring-rose-800" : isConf && !isSel ? "ring-2 ring-rose-700" : ""} ${rowHighlightClass({ id: String(s.id), flash, notified: notified.has(String(s.id)) })}`}
                             style={{ left: `${leftPct}%`, width: `${widthPct}%`, backgroundColor: barBg }}
                             title={`${s.vessel} · ${s.project} · ${fmtRentang(dayToISO(s.from), dayToISO(s.to))}${s.priority ? ` · ${s.priority}` : ""}${isCrit ? S.tipCrit : isConf ? S.tipOverlap : ""}`}
                           >

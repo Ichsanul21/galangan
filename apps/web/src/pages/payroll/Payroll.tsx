@@ -23,7 +23,9 @@ import type { SortState } from "../../components/ui";
 import { useStore } from "../../data/store";
 import type { StoreItem } from "../../data/store";
 import { fmtBulan, fmtRupiah, fmtTanggal, todayISO } from "../../utils/format";
-import { AlertBannerView, notifRowId, useModuleAlert, useNotifFlash } from "../../components/AlertBanner";
+import { AlertBannerView, flashPick, notifRowId, useModuleAlert, useNotifFlash } from "../../components/AlertBanner";
+import { useDeepLinkParams, useDeepLinkTarget } from "../../components/useDeepLink";
+import { rowHighlightClass } from "../../components/rowHighlight";
 import { getSetting } from "../../utils/settings";
 import { exportExcel } from "../../utils/export";
 import { pdfServerReady } from "../../services/pdfClient";
@@ -261,25 +263,30 @@ export default function Payroll() {
   const advLabel: Record<string, string> = { Draft: S.advCalc, Dihitung: S.advApprove, Disetujui: S.advPay };
   const modAlert = useModuleAlert("payroll");
   const flash = useNotifFlash();
+  const deepParams = useDeepLinkParams();
+  const [tab, setTab] = useState("Gaji");
   const notified = useMemo(() => new Set(modAlert.items.map((a) => a.rowId)), [modAlert.items]);
-  const pickNotif = (rowId: string) => {
-    const key = String(rowId);
-    const row = data.payroll.find((p) => String(p.id) === key);
-    if (!row) { flash.pick(key, -1, () => {}, 100); return; }
+  /* Resolve id deep-link. Tab tujuan diturunkan dari rowType baris itu -
+     id payroll tidak pernah memberi tahu tabnya sendiri. */
+  const pickNotifIds = (ids: string[]): void => {
+    if (ids.length === 0) return;
+    const row = data.payroll.find((p) => ids.includes(String(p.id)));
+    if (!row) { flashPick(flash, ids, -1, () => {}, 100); return; }
     const targetTab = rowType(row) === "Gaji" ? "Gaji" : "THR & Bonus";
     const needTab = tab !== targetTab;
     const needStage = (targetTab === "Gaji" ? gajiStage : thrStage) !== "Semua";
     const needPeriod = String(row.period ?? "") !== "" && String(row.period) !== period;
-    if (!needTab && !needStage && !needPeriod) { flash.pick(key, -1, () => {}, 100); return; }
+    if (!needTab && !needStage && !needPeriod) { flashPick(flash, ids, -1, () => {}, 100); return; }
     if (needTab) setTab(targetTab);
     if (needStage) {
       if (targetTab === "Gaji") setGajiStage("Semua");
       else setThrStage("Semua");
     }
     if (needPeriod) setPeriod(String(row.period));
-    window.setTimeout(() => { flash.pick(key, -1, () => {}, 100); }, 250);
+    window.setTimeout(() => flashPick(flash, ids, -1, () => {}, 100), 250);
   };
-  const [tab, setTab] = useState("Gaji");
+  const pickNotif = (rowId: string) => pickNotifIds([rowId]);
+  useDeepLinkTarget(deepParams.tab, deepParams.highlight, setTab, pickNotifIds);
   const [period, setPeriod] = useState(todayISO().slice(0, 7));
   const [editTarget, setEditTarget] = useState<StoreItem | null>(null);
   const [editForm, setEditForm] = useState({ basic: "", overtimePay: "", deductions: "" });
@@ -1014,7 +1021,7 @@ export default function Payroll() {
                         default: return "";
                       }
                     }).map((p) => (
-                      <tr key={p.id} id={notifRowId(String(p.id))} className={flash.flashId === String(p.id) ? "notif-hl notif-flash hover:bg-surface" : (notified.has(String(p.id)) ? "notif-hl hover:bg-surface" : "hover:bg-surface")}>
+                      <tr key={p.id} id={notifRowId(String(p.id))} className={rowHighlightClass({ id: String(p.id), flash, notified: notified.has(String(p.id)), base: "hover:bg-surface" })}>
                         <td className="td font-mono text-steel-600">{p.id}</td>
                         <td className="td font-medium text-navy-900">{empNameOf(String(p.employeeId))}</td>
                         <td className="td text-steel-600">{fmtRupiah(Number(p.basic || 0))}</td>
@@ -1125,7 +1132,7 @@ export default function Payroll() {
                         default: return "";
                       }
                     }).map((p) => (
-                      <tr key={p.id} id={notifRowId(String(p.id))} className={flash.flashId === String(p.id) ? "notif-hl notif-flash hover:bg-surface" : (notified.has(String(p.id)) ? "notif-hl hover:bg-surface" : "hover:bg-surface")}>
+                      <tr key={p.id} id={notifRowId(String(p.id))} className={rowHighlightClass({ id: String(p.id), flash, notified: notified.has(String(p.id)), base: "hover:bg-surface" })}>
                         <td className="td font-mono text-steel-600">{p.id}</td>
                         <td className="td font-medium text-navy-900">{empNameOf(String(p.employeeId))}</td>
                         <td className="td"><Badge tone={rowType(p) === "THR" ? "amber" : "violet"}>{rowType(p)}</Badge></td>

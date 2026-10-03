@@ -448,6 +448,9 @@ const exportSummary = async () => {
     return out;
   }, [data]);
 
+  /* Banner "Perlu perhatian" mengirim SATU id. Modul tujuan membuka tab/
+     filter yang memuat baris itu lalu kedipkan - tidak perlu tab di URL
+     karena setiap modul sudah bisa menurunkan tab dari id-nya. */
   const goAttentionItem = (key: ModuleAlertKey, rowId: string) => {
     const q = `?alert=${encodeURIComponent(key)}&highlight=${encodeURIComponent(rowId)}`;
     navigate(`${MODULE_ALERT_TO[key]}${q}`);

@@ -64,11 +64,16 @@ type Ctx = {
 function buildProyek(ctx: Ctx): ModuleAlertItem[] {
   const out: ModuleAlertItem[] = [];
   // Reuse engine alerts yang mengarah ke /proyek* (bell ikut turun).
-  // rowId = id proyek (untuk highlight baris), kecuali agregat monitoring.
+  // rowId = id proyek (untuk highlight baris), KECUALI alert agregat yang
+  // tujuannya bukan satu proyek. Versi lama regexp-nya tanpa kecuali,
+  // sehingga `to: "/proyek/monitoring"` ikut terambil sebagai rowId
+  // "monitoring" - tidak ada baris bernama itu di tabel, jadi klik banner
+  // tidak pernah menyorot apa pun.
   for (const al of computeAlerts(ctx.data)) {
-    if (!al.to.startsWith("/proyek")) continue;
+    if (!al.to.startsWith("/proyek/")) continue;
     const m = /^\/proyek\/([^/]+)$/.exec(al.to);
-    out.push({ id: `alert-${al.id}`, rowId: m ? m[1] : "", label: al.text, detail: `Tujuan: ${al.to}` });
+    if (!m) continue;
+    out.push({ id: `alert-${al.id}`, rowId: m[1], label: al.text, detail: `Tujuan: ${al.to}` });
   }
   return out;
 }
