@@ -31,7 +31,7 @@ import SparepartServiceSection from "./SparepartServiceSection";
 import { useStore } from "../../data/store";
 import type { StoreItem, WbsItem, CollectionKey } from "../../data/store";
 import { useModuleSync } from "../../data/useModuleSync";
-import { DocumentPreviewCell, DownloadFileButton, InlineDocPreview } from "../../components/DocumentPreview";
+import { DocumentPreviewCell, DocumentPreviewPanel, DownloadFileButton, InlineDocPreview } from "../../components/DocumentPreview";
 import { docAttachment, looksLikeUrl } from "../../utils/docAttachment";
 import { useT } from "../../i18n/LanguageContext";
 import { n_prj } from "../../i18n/n_prj";
@@ -148,6 +148,11 @@ export default function ProjectDetail() {
      sebelum bisa lanjut. Sekarang dokumen yang baru diunggah langsung tampil di
      kartunya, dan ikon mata di baris lain cukup membuka/menutup di tempat. */
   const [openDocId, setOpenDocId] = useState<string>("");
+  /* Item 5c revisi 2 Oktober: tombol Excel per dokumen diganti Detail +
+     modal. Export Excel untuk SATU dokumen memaksa pengguna mengunduh
+     berkas 9 baris untuk hal yang sebenarnya bisa dibaca di layar - dan
+     spreadsheet tidak pernah jadi tempatanoralan riwayat revisi. */
+  const [docDetail, setDocDetail] = useState<StoreItem | null>(null);
   /* `lastUploadedId` juga harus DIBERSIHKAN saat pengguna menutup pratinjau.
      Kalau tidak, isNew tetap true seumur hidup halaman, isOpen tidak pernah
      false, dan ikon mata tidak pernah bisa menutup panelnya. */
@@ -1394,9 +1399,9 @@ export default function ProjectDetail() {
                       <p className="text-xs text-steel-500">{d.id} · {d.type} · {d.version} · {d.updated}{fname !== "" ? ` · lampiran: ${fname}` : ""}</p>
                     </div>
                     <div className="flex shrink-0 flex-wrap items-center gap-2">
-                      <button className="btn-secondary text-xs" aria-label={S.detExportAria.replace("{a}", d.title)} onClick={() => {
-                        void exportExcel([["Kolom", "Nilai"], ["ID", d.id], ["Judul", d.title], ["Tipe", d.type], ["Proyek", pid], ["Versi", d.version], ["Status", d.status], ["Diperbarui", d.updated], ["Pemilik", d.owner]], `${d.id}-ringkasan`).then(() => toast(S.detToastExported.replace("{a}", d.id))).catch(() => toast(S.saveFail, "info"));
-                      }}><FileDown className="h-3.5 w-3.5" /> {S.excelBtn}</button>
+                      <button className="btn-secondary text-xs" aria-label={`${locale === "en" ? "Detail" : "Detail"}: ${d.title}`} onClick={() => setDocDetail(d)}>
+                        <Eye className="h-3.5 w-3.5" /> {locale === "en" ? "Detail" : "Detail"}
+                      </button>
                       <button className="btn-secondary text-xs" onClick={() => { setShareForm({ docId: String(d.id), to: "" }); setShowShare(true); }}>{S.detShareBtn}</button>
                       <StatusBadge status={d.status} />
                     </div>
@@ -1782,6 +1787,84 @@ export default function ProjectDetail() {
       </Modal>
 
       {/* Modal share */}
+      <Modal open={docDetail !== null} onClose={() => setDocDetail(null)} wide
+        title={docDetail ? String(docDetail.title) : ""}
+        subtitle={docDetail ? `${String(docDetail.id)} · ${String(docDetail.type)} · ${String(docDetail.version)}` : undefined}
+        footer={<>
+          <button className="btn-secondary" onClick={() => setDocDetail(null)}>{S.cancelBtn}</button>
+          {docDetail && (
+            /* Excel tetap ada, tapi sebagai aksi kedua di dalam modal - bukan
+               satu-satunya jalan melihat isi dokumen. */
+            <button className="btn-primary" onClick={() => {
+              const d = docDetail;
+              void exportExcel(
+                [["Kolom", "Nilai"], ["ID", d.id], ["Judul", d.title], ["Tipe", d.type], ["Proyek", pid], ["Versi", d.version], ["Status", d.status], ["Diperbarui", d.updated], ["Pemilik", d.owner]],
+                `${d.id}-ringkasan`,
+              ).then(() => toast(S.detToastExported.replace("{a}", String(d.id)))).catch(() => toast(S.saveFail, "info"));
+            }}>
+              <FileDown className="h-3.5 w-3.5" /> {S.excelBtn}
+            </button>
+          )}
+        </>}
+      >
+        {docDetail && (() => {
+          const d = docDetail;
+          const att = docAttachment(d);
+          const revs = Array.isArray(d.revisions) ? (d.revisions as Array<Record<string, unknown>>) : [];
+          const fields: Array<[string, string]> = [
+            [locale === "en" ? "Document ID" : "ID dokumen", String(d.id)],
+            [locale === "en" ? "Title" : "Judul", String(d.title)],
+            [locale === "en" ? "Type" : "Tipe", String(d.type)],
+            [locale === "en" ? "Project" : "Proyek", pid],
+            [locale === "en" ? "Version" : "Versi", String(d.version)],
+            [locale === "en" ? "Status" : "Status", String(d.status)],
+            [locale === "en" ? "Owner" : "Pemilik", String(d.owner)],
+            [locale === "en" ? "Updated" : "Diperbarui", fmtTanggal(String(d.updated))],
+            [locale === "en" ? "Copy" : "Salinan", String(d.docCopy ?? "Terkendali")],
+          ];
+          const approval = [d.approvalStatus, d.approvedBy, d.approvedAt ? fmtTanggal(String(d.approvedAt)) : ""].filter((x) => x !== "" && x !== undefined && String(x) !== "-").map(String).join(" · ");
+          return (
+            <div className="space-y-4">
+              <dl className="grid gap-2 text-sm sm:grid-cols-2">
+                {fields.map(([k, v]) => (
+                  <div key={k} className="flex justify-between gap-3">
+                    <dt className="text-steel-500">{k}</dt>
+                    <dd className="text-right font-medium text-navy-900">{v}</dd>
+                  </div>
+                ))}
+                {approval !== "" && (
+                  <div className="flex justify-between gap-3">
+                    <dt className="text-steel-500">{locale === "en" ? "Approval" : "Persetujuan"}</dt>
+                    <dd className="text-right font-medium text-navy-900">{approval}</dd>
+                  </div>
+                )}
+              </dl>
+              {att.url !== "" && (
+                <div>
+                  <h4 className="mb-1 text-sm font-semibold text-navy-900">{locale === "en" ? "Attachment" : "Lampiran"}</h4>
+                  <DocumentPreviewPanel doc={{ title: String(d.title), fileUrl: att.url, fileName: att.fileName, subtitle: String(d.id) }} />
+                </div>
+              )}
+              {revs.length > 0 && (
+                <div>
+                  <h4 className="mb-1 text-sm font-semibold text-navy-900">{locale === "en" ? "Revision history" : "Riwayat revisi"}</h4>
+                  <div className="space-y-1 text-xs text-steel-600">
+                    {revs.map((r, i) => (
+                      <p key={`${String(r.version)}-${i}`}>
+                        <span className="font-mono text-navy-900">{String(r.version ?? "-")}</span>
+                        {" · "}{fmtTanggal(String(r.at ?? ""))}
+                        {" · "}{String(r.by ?? "-")}
+                        {r.note ? ` · ${String(r.note)}` : ""}
+                      </p>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          );
+        })()}
+      </Modal>
+
       <Modal open={showShare} onClose={() => setShowShare(false)} title={S.detShareModal}
         footer={<><button className="btn-secondary" onClick={() => setShowShare(false)}>{S.cancelBtn}</button><button className="btn-primary" onClick={async () => {
           if (!shareForm.docId || !shareForm.to) { toast(S.detToastPickDoc, "info"); return; }
