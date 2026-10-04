@@ -12,7 +12,8 @@
     "probe:foundation": "vite build --ssr scripts/foundation-probe.ts --outDir node_modules/.cache/foundation-probe --emptyOutDir --logLevel error && node node_modules/.cache/foundation-probe/foundation-probe.js",
     "probe:alert": "vite build --ssr scripts/alert-probe.ts --outDir node_modules/.cache/alert-probe --emptyOutDir --logLevel error && node node_modules/.cache/alert-probe/alert-probe.js",
     "probe:wo": "vite build --ssr scripts/wo-probe.ts --outDir node_modules/.cache/wo-probe --emptyOutDir --logLevel error && node node_modules/.cache/wo-probe/wo-probe.js",
-    "check": "tsc --noEmit && tsc -p tsconfig.scripts.json --noEmit && npm run probe:render && npm run probe:price && npm run probe:foundation && npm run probe:alert && npm run probe:wo"
+    "probe:table": "vite build --ssr scripts/table-probe.ts --outDir node_modules/.cache/table-probe --emptyOutDir --logLevel error && node node_modules/.cache/table-probe/table-probe.js",
+    "check": "tsc --noEmit && tsc -p tsconfig.scripts.json --noEmit && npm run probe:render && npm run probe:price && npm run probe:foundation && npm run probe:alert && npm run probe:wo && npm run probe:table"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4.3.3",

@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { Plus, Search, Ship, Anchor, FileCheck2, Pencil, Trash2 } from "lucide-react";
+import { Plus, Ship, Anchor, FileCheck2, Pencil, Trash2 } from "lucide-react";
 import { Card, CardHeader, PageHeader, Badge, KpiCard, Modal, Field, FormGrid, toast, SortTh, toggleSort, sortRows, usePager, ConfirmModal,
   NumInput,
   AsyncButton,
 } from "../../components/ui";
 import type { SortState } from "../../components/ui";
+import { rowMatches, SearchBox } from "../../components/ui";
 import { useStore } from "../../data/store";
 import { findUsages } from "../../utils/usages";
 import type { StoreItem } from "../../data/store";
@@ -227,7 +228,7 @@ export default function Vessels() {
       if (certFilter === "Perlu Perhatian" && !need) return false;
       if (certFilter === "Aman" && need) return false;
     }
-    return `${v.name} ${v.imo}`.toLowerCase().includes(q.toLowerCase());
+    return rowMatches(v, q, ["name", "imo", "flag", "type", "class", "owner", "built", "status", "id"]);
   });
   const cardPager = usePager(list.length);
   const surveySorted = useMemo(() => sortRows(data.surveys, sort, (s: StoreItem, k) => String((s as unknown as Record<string, unknown>)[k] ?? "")), [data.surveys, sort]);
@@ -368,10 +369,13 @@ export default function Vessels() {
 
       <div className="mt-4">
         <div className="mb-3 flex flex-wrap items-center gap-2">
-          <div className="relative">
-            <Search className="absolute left-3 top-2.5 h-4 w-4 text-steel-400" />
-            <input className="input pl-9 w-full sm:w-64" placeholder={S.vsSearchPh} aria-label={S.vsSearchAria} value={q} onChange={(e) => setQ(e.target.value)} />
-          </div>
+          <SearchBox
+            value={q}
+            onChange={setQ}
+            placeholder={S.vsSearchPh}
+            ariaLabel={S.vsSearchAria}
+            className="w-full sm:w-64"
+          />
           <FilterPopover
             activeCount={[certFilter !== "Semua"].filter(Boolean).length}
             initial={{ status: certFilter }}

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import { Download, History, Search } from "lucide-react";
-import { Badge, Card, EmptyState, Field, KpiCard, PageHeader, SortTh, toggleSort, sortRows, toast, usePager, useServerPager, AsyncButton } from "../../components/ui";
+import { Download, History } from "lucide-react";
+import { Badge, Card, EmptyState, Field, KpiCard, PageHeader, SortTh, toggleSort, sortRows, toast, usePager, useServerPager, AsyncButton, SearchBox, rowMatches } from "../../components/ui";
 import type { SortState } from "../../components/ui";
 import { FilterPopover } from "../../components/FilterPopover";
 import { useStore } from "../../data/store";
@@ -103,16 +103,13 @@ export default function Audit() {
   }, [localBase]);
 
   const localRows = useMemo(() => {
-    const query = q.trim().toLowerCase();
     return (localBase ?? []).filter((a) => {
       if (modul !== "SEMUA" && String(a.module ?? "") !== modul) return false;
       if (tanggal) {
         const iso = toISODateOrNull(a.time);
         if (iso !== tanggal) return false;
       }
-      if (!query) return true;
-      const hay = `${a.actor ?? ""} ${a.action ?? ""} ${a.target ?? ""} ${a.module ?? ""}`.toLowerCase();
-      return hay.includes(query);
+      return rowMatches(a, q, ["actor", "action", "target", "module"]);
     });
   }, [localBase, q, modul, tanggal]);
   /* Mode Server sudah terfilter dari backend; mode Perangkat disaring lokal. */
@@ -199,16 +196,13 @@ export default function Audit() {
       </div>
 
       <div className="mb-3 flex flex-wrap items-center gap-2">
-        <div className="relative min-w-52 flex-1 sm:max-w-xs">
-          <Search className="absolute left-3 top-2.5 h-4 w-4 text-steel-400" />
-          <input
-            className="input pl-9 w-full"
-            placeholder={S.auSearchPh}
-            aria-label={S.auSearchAria}
-            value={q}
-            onChange={(e) => setQ(e.target.value)}
-          />
-        </div>
+        <SearchBox
+          value={q}
+          onChange={setQ}
+          placeholder={S.auSearchPh}
+          ariaLabel={S.auSearchAria}
+          className="min-w-52 flex-1 sm:max-w-xs"
+        />
         <FilterPopover
           activeCount={[modul !== "SEMUA", tanggal !== "", sumber !== "Perangkat"].filter(Boolean).length}
           initial={{ modul, tanggal, sumber }}

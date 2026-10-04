@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Plus, Search, ScrollText, FileText, Eye, Pencil, Trash2, Archive, RotateCcw, Download, Upload } from "lucide-react";
-import { Card, PageHeader, Badge, KpiCard, Modal, Field, FormGrid, ConfirmModal, SortTh, toggleSort, sortRows, toast, StatusBadge, usePager, AsyncButton, EntityPicker } from "../../components/ui";
+import { Plus, ScrollText, FileText, Eye, Pencil, Trash2, Archive, RotateCcw, Download, Upload } from "lucide-react";
+import { Card, PageHeader, Badge, KpiCard, Modal, Field, FormGrid, ConfirmModal, SortTh, toggleSort, sortRows, toast, StatusBadge, usePager, AsyncButton, EntityPicker, SearchBox, rowMatches } from "../../components/ui";
 import type { SortState } from "../../components/ui";
 import { FilterPopover } from "../../components/FilterPopover";
 import { useStore, type StoreItem, type CollectionKey } from "../../data/store";
@@ -215,9 +215,20 @@ const qcCertOptions = useMemo(
   const active = inBranch(data.documents.filter((d) => !d.archived));
   const archived = inBranch(data.documents.filter((d) => d.archived));
 
-  const list = (type === "Arsip" ? archived : active.filter((d) => type === "Semua" || d.type === type)).filter((d) => {
-    return docHay(d).includes(q.toLowerCase());
-  });
+/* `docHay` masih dipakai untuk pencarian isi lampiran/OCR - field yang bukan
+       properti rekam. Pencarian properti memakai `rowMatches` supaya multi-kata
+       ("kontrak 2026") bisa dicocokkan lintas field, dan supaya field yang
+       tidak disebut tidak ikut terambil. */
+    const list = (type === "Arsip" ? archived : active.filter((d) => type === "Semua" || d.type === type)).filter((d) => {
+      if (q.trim() === "") return true;
+      const fields = ["id", "title", "project", "vessel", "owner", "type", "subType"];
+      if (rowMatches(d as unknown as Record<string, unknown>, q, fields)) return true;
+      /* Satu kata kunci = cocokkan juga isi lampiran/OCR, supaya "kontrak.pdf"
+         tetap ditemukan. Dua kata atau lebih TIDAK, karena itu akan membuat
+         dokumen yang hanya punya satu dari dua kata ikut cocok. */
+      const terms = q.trim().split(/\s+/);
+      return terms.length === 1 && docHay(d).includes(terms[0].toLowerCase());
+    });
   const sortedDocs = useMemo(() => sortRows(list, sort, (d, key) =>
     key === "dokumen" ? String(d.title ?? "") : key === "tipe" ? String(d.type ?? "") : key === "proyek" ? String(d.project ?? "") : key === "versi" ? String(d.version ?? "") : key === "status" ? String(d.status ?? "") : String(d.updated ?? "")
   ), [list, sort]);
@@ -543,10 +554,13 @@ const doExport = () => {
       )}
 
       <div className="mb-3 flex flex-wrap items-center gap-2">
-        <div className="relative min-w-52 flex-1 sm:max-w-xs">
-          <Search className="absolute left-3 top-2.5 h-4 w-4 text-steel-400" />
-          <input className="input pl-9 w-full" placeholder={S.searchPh} aria-label={S.searchAria} value={q} onChange={(e) => setQ(e.target.value)} />
-        </div>
+        <SearchBox
+          value={q}
+          onChange={setQ}
+          placeholder={S.searchPh}
+          ariaLabel={S.searchAria}
+          className="min-w-52 flex-1 sm:max-w-xs"
+        />
         <FilterPopover
           activeCount={[type !== "Semua"].filter(Boolean).length}
           initial={{ type }}

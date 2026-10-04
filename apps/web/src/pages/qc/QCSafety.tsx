@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
 import { bucketByMonth, monthAxis, monthKeyOf, rebindLegacyMonthSeries } from "../../utils/monthAxis";
-import { Plus, ShieldCheck, AlertTriangle, Siren, Award, Send, Search, Eye } from "lucide-react";
+import { Plus, ShieldCheck, AlertTriangle, Siren, Award, Send, Eye } from "lucide-react";
 import { ComposedChart, Line, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 import { Card, CardHeader, PageHeader, Badge, KpiCard, Tabs, StatusBadge, Donut, ChartTooltip, Modal, Field, FormGrid, ConfirmModal, SortTh, toggleSort, sortRows, usePager, toast,
-  NumInput, FlowStrip, FileUploadButton, useBusy, AsyncButton,
+  NumInput, FlowStrip, FileUploadButton, useBusy, AsyncButton, SearchBox, rowMatches,
 } from "../../components/ui";
 import type { SortState } from "../../components/ui";
 import { useStore, type StoreItem, type CollectionKey } from "../../data/store";
@@ -143,9 +143,7 @@ export default function QCSafety() {
   const [sort, setSort] = useState<SortState>({ key: null, dir: "asc" });
   const inspFiltered = inspections.filter((i) => {
     if (inspStatus !== "Semua" && String(i.status ?? "") !== inspStatus) return false;
-    const needle = inspQ.trim().toLowerCase();
-    if (!needle) return true;
-    return `${i.id ?? ""} ${i.project ?? ""} ${i.point ?? ""} ${i.itp ?? ""} ${i.inspector ?? ""}`.toLowerCase().includes(needle);
+    return rowMatches(i, inspQ, ["id", "project", "point", "itp", "inspector", "holdType", "nde", "status"]);
   });
   const sortedInsp = useMemo(() => sortRows(inspFiltered, sort, (i, key) =>
     key === "inspeksi" ? String(i.id ?? "") : key === "proyek" ? String(i.project ?? "") : key === "titik" ? String(i.point ?? "") : key === "itp" ? String(i.itp ?? "") : key === "hold" ? String(i.holdType ?? "") : key === "nde" ? String(i.nde ?? "") : key === "sampel" ? Number(i.sampleSize ?? 0) : key === "inspector" ? String(i.inspector ?? "") : key === "tanggal" ? String(i.date ?? "")     : String(i.status ?? "")
@@ -1192,10 +1190,13 @@ export default function QCSafety() {
           {tab === "Inspeksi (ITP)" && (
             <div className="space-y-4">
               <div className="mb-3 flex flex-wrap items-center gap-2">
-                <div className="relative min-w-52 flex-1 sm:max-w-xs">
-                  <Search className="absolute left-3 top-2.5 h-4 w-4 text-steel-400" />
-                  <input className="input pl-9 w-full" placeholder={S.searchInspPh} aria-label={S.searchInspAria} value={inspQ} onChange={(e) => setInspQ(e.target.value)} />
-                </div>
+                <SearchBox
+                  value={inspQ}
+                  onChange={setInspQ}
+                  placeholder={S.searchInspPh}
+                  ariaLabel={S.searchInspAria}
+                  className="min-w-52 flex-1 sm:max-w-xs"
+                />
                 <FilterPopover
                   activeCount={[inspStatus !== "Semua"].filter(Boolean).length}
                   initial={{ status: inspStatus }}
@@ -1620,16 +1621,17 @@ export default function QCSafety() {
                 <AsyncButton className="btn-primary mt-2 text-xs" onAction={saveAudit}>{S.btnSimpanAudit}</AsyncButton>
                 <div className="mt-3 border-t border-steel-100 pt-2">
                   <p className="text-xs font-semibold text-steel-500">{S.riwayatAudit}</p>
-                  <div className="relative mt-1">
-                    <Search className="absolute left-3 top-2.5 h-4 w-4 text-steel-400" />
-                    <input className="input pl-9 w-full text-xs" placeholder={S.cardSearchPh} aria-label={S.cardSearchPh} value={auditQ} onChange={(e) => setAuditQ(e.target.value)} />
-                  </div>
+                  <SearchBox
+                    value={auditQ}
+                    onChange={setAuditQ}
+                    placeholder={S.cardSearchPh}
+                    ariaLabel={S.cardSearchPh}
+                    className="mt-1 w-full text-xs"
+                  />
                   <div className="mt-1 max-h-64 space-y-1 overflow-y-auto pr-1">
-                    {auditHistory.filter((a) => {
-                      const needle = auditQ.trim().toLowerCase();
-                      if (!needle) return true;
-                      return `${a.action ?? ""} ${a.target ?? ""} ${a.time ?? ""}`.toLowerCase().includes(needle);
-                    }).map((a) => (
+                    {auditHistory.filter((a) =>
+                      rowMatches(a, auditQ, ["action", "target", "time"]),
+                    ).map((a) => (
                       <p key={a.id} className="text-xs text-steel-600">{a.action} - {a.target} <span className="text-steel-400">· {a.time}</span></p>
                     ))}
                     {auditHistory.length === 0 && <p className="text-xs text-steel-400">{S.emptyAudit}</p>}

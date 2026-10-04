@@ -3,7 +3,7 @@ import { useStore } from "../../data/store";
 import { useT } from "../../i18n/LanguageContext";
 import { n_prj } from "../../i18n/n_prj";
 import { Card, StatusBadge, Modal, Field, FormGrid, toast, EmptyState, Badge, ConfirmModal,
-  NumInput, AsyncButton,
+  NumInput, AsyncButton, SearchBox, rowMatches,
 } from "../../components/ui";
 import { Plus, Wrench, Package, Box, RotateCcw, FileDown } from "lucide-react";
 import { exportExcel, fmtRupiah } from "../../utils/export";
@@ -161,7 +161,7 @@ export default function SparepartServiceSection({ projectId, vesselId, view = "a
   const svcFiltered = useMemo(() => {
     return svcItems.filter((s) => {
       const matchSt = svcStatus === "Semua" || s.status === svcStatus;
-      const matchQ = `${s.description} ${s.type} ${s.technician}`.toLowerCase().includes(svcQ.toLowerCase());
+      const matchQ = rowMatches(s as unknown as Record<string, unknown>, svcQ, ["id", "type", "description", "technician", "status", "date"]);
       return matchSt && matchQ;
     });
   }, [svcItems, svcStatus, svcQ]);
@@ -420,12 +420,12 @@ export default function SparepartServiceSection({ projectId, vesselId, view = "a
         </div>
       </div>
       <div className="mb-3 flex flex-wrap items-center gap-2">
-        <input
-          className="input w-full sm:w-52"
-          placeholder={S.spsSvcSearchPh}
-          aria-label={S.spsSvcSearchAria}
+        <SearchBox
           value={svcQ}
-          onChange={(e) => setSvcQ(e.target.value)}
+          onChange={setSvcQ}
+          placeholder={S.spsSvcSearchPh}
+          ariaLabel={S.spsSvcSearchAria}
+          className="w-full sm:w-52"
         />
         <div className="flex flex-wrap gap-1">
           {SVC_FILTER.map((s) => (

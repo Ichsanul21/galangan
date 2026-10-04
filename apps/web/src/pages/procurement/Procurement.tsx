@@ -1,11 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
-import { Plus, Factory, ShoppingCart, ClipboardList, Check, X, Printer, Send, Star, Wallet, Umbrella, Search } from "lucide-react";
+import { Plus, Factory, ShoppingCart, ClipboardList, Check, X, Printer, Send, Star, Wallet, Umbrella } from "lucide-react";
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 import { Card, CardHeader, PageHeader, Badge, KpiCard, Tabs, StatusBadge, Donut, ChartTooltip, Modal, Field, FormGrid, ConfirmModal, toast, EmptyState, SortTh, toggleSort, sortRows, usePager,
   NumInput, AsyncButton,
 } from "../../components/ui";
 import type { SortState } from "../../components/ui";
-import { useBusy } from "../../components/ui";
+import { useBusy, SearchBox, rowMatches } from "../../components/ui";
 import { useStore, type StoreItem, type CollectionKey } from "../../data/store";
 import { useModuleSync } from "../../data/useModuleSync";
 import { findUsages } from "../../utils/usages";
@@ -432,20 +432,18 @@ export default function Procurement() {
     PR: ["Semua", "Draft", "Menunggu Approval", "RFQ", "Diajukan", "Disetujui", "Sudah PO", "Ditolak"],
     Vendor: ["Semua", "Aktif", "Nonaktif", "Blacklist"],
   };
-  const matchProc = (hay: string, st: string): boolean => {
+  const matchProc = (row: Record<string, unknown>, st: string, fields: readonly string[]): boolean => {
     if (pStatus !== "Semua" && normPo(st) !== pStatus && st !== pStatus) return false;
-    const q = pq.trim().toLowerCase();
-    if (!q) return true;
-    return hay.toLowerCase().includes(q);
+    return rowMatches(row, pq, fields as readonly string[]);
   };
   const venCatOf = (name: string): string => String(vendors.find((v) => sameName(v.name, name))?.cat ?? "");
-  const bigShown = bigList.filter((po) => matchProc(`${po.id} ${po.item} ${po.vendor} ${poLines(po).map((l) => l.name).join(" ")}`, String(normPo(po.status)))
+  const bigShown = bigList.filter((po) => matchProc(po, String(normPo(po.status)), ["id", "item", "vendor", "workshop", "status", "lines"])
     && (vCatF === "Semua" || venCatOf(String(po.vendor ?? "")) === vCatF));
-  const smallShown = smallList.filter((po) => matchProc(`${po.id} ${po.item} ${po.vendor} ${po.workshop ?? ""}`, String(normPo(po.status)))
+  const smallShown = smallList.filter((po) => matchProc(po, String(normPo(po.status)), ["id", "item", "vendor", "workshop", "status", "lines"])
     && (vCatF === "Semua" || venCatOf(String(po.vendor ?? "")) === vCatF));
-  const rfqShown = rfqs.filter((r) => matchProc(`${r.id} ${r.item} ${r.prId} ${(Array.isArray(r.vendors) ? r.vendors as string[] : []).join(" ")}`, String(r.status)));
-  const prShown = requisitions.filter((r) => matchProc(`${r.id} ${r.item} ${r.by}`, String(r.status)));
-  const vendorShown = vendors.filter((v) => matchProc(`${v.name} ${v.cat}`, String(v.status ?? "Aktif")) && (vCatF === "Semua" || String(v.cat ?? "") === vCatF));
+  const rfqShown = rfqs.filter((r) => matchProc(r, String(r.status), ["id", "item", "prId", "vendors", "quotes", "winner", "status"]));
+  const prShown = requisitions.filter((r) => matchProc(r, String(r.status), ["id", "item", "by", "status"]));
+  const vendorShown = vendors.filter((v) => matchProc(v, String(v.status ?? "Aktif"), ["name", "cat", "status", "id"]) && (vCatF === "Semua" || String(v.cat ?? "") === vCatF));
 
   /* Daftar vendor untuk select form (TANPA filter global — filter kategori
      hanya 1 tempat di FilterPopover tabel). Form menampilkan semua vendor
@@ -1339,10 +1337,13 @@ const sparkVendors = useMemo(() => {
         <Tabs tabs={["PR", "RFQ", "PO Besar (Kantor)", "PO Kecil (Workshop)", "Vendor"]} active={tab} onChange={setTab} labels={{ PR: S.tabPr, RFQ: S.tabRfq, "PO Besar (Kantor)": S.tabBig, "PO Kecil (Workshop)": S.tabSmall, Vendor: S.tabVendor }} />
         <div className="p-4">
           <div className="mb-3 flex flex-wrap items-center gap-2">
-            <div className="relative min-w-52 flex-1 sm:max-w-xs">
-              <Search className="absolute left-3 top-2.5 h-4 w-4 text-steel-400" />
-              <input className="input pl-9 w-full" placeholder={S.searchPh} aria-label={S.searchAria} value={pq} onChange={(e) => setPq(e.target.value)} />
-            </div>
+            <SearchBox
+              value={pq}
+              onChange={setPq}
+              placeholder={S.searchPh}
+              ariaLabel={S.searchAria}
+              className="min-w-52 flex-1 sm:max-w-xs"
+            />
             {/* Satu-satunya filter kategori vendor: di dalam FilterPopover (tanpa duplikat di luar). */}
             <FilterPopover
               activeCount={[pStatus !== "Semua", vCatF !== "Semua"].filter(Boolean).length}

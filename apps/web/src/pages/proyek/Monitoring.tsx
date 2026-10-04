@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
-import { Activity, AlertTriangle, FileDown, Search } from "lucide-react";
+import { Activity, AlertTriangle, FileDown } from "lucide-react";
 import {
   Badge,
   Card,
@@ -8,6 +8,8 @@ import {
   ProgressBar,
   StatusBadge,
   toast,
+  SearchBox,
+  rowMatches,
 } from "../../components/ui";
 import { useStore } from "../../data/store";
 import type { StoreItem } from "../../data/store";
@@ -114,7 +116,7 @@ export default function Monitoring() {
 
   const filtered = inBranch(projects).filter((p) => {
     const matchBranch = branchFilter === "Semua" || p.branch === branchFilter;
-    const matchQ = `${p.vessel} ${p.id} ${p.client}`.toLowerCase().includes(q.toLowerCase());
+    const matchQ = rowMatches(p as unknown as Record<string, unknown>, q, ["vessel", "id", "client", "status", "type", "manager"]);
     return matchBranch && matchQ;
   });
 
@@ -186,16 +188,13 @@ export default function Monitoring() {
       />
 
       <div className="mb-4 flex flex-wrap items-center gap-3">
-        <div className="relative">
-          <Search className="absolute left-3 top-2.5 h-4 w-4 text-steel-400" />
-          <input
-            className="input pl-9 w-full sm:w-64"
-            placeholder={S.searchProjectPh}
-            aria-label={S.searchProjectAria}
-            value={q}
-            onChange={(e) => setQ(e.target.value)}
-          />
-        </div>
+        <SearchBox
+          value={q}
+          onChange={setQ}
+          placeholder={S.searchProjectPh}
+          ariaLabel={S.searchProjectAria}
+          className="w-full sm:w-64"
+        />
         <select className="input w-auto py-1.5 text-sm" aria-label={S.prjFilterCabangAria} value={branchFilter} onChange={(e) => setBranchFilter(e.target.value)}>
           <option value="Semua">{S.prjAllCabang}</option>
           {branchCities.map((b) => <option key={b} value={b}>{b}</option>)}

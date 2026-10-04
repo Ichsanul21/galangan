@@ -64,6 +64,9 @@ export const n_inv = {
     thStatus: "Status",
     thRak: "Rak",
     thAksi: "Aksi",
+  /* Label kolom tanggal rekam. Master barang sering yang paling lama ada, jadi kolom ini dipakai untuk melihat data mana yang belum pernah ditata. */
+    colCreated: "Dibuat",
+    colUpdated: "Diubah",
     actDetail: "Detail",
     actDetailAria: "Detail {n}",
     actEdit: "Ubah",
@@ -420,6 +423,8 @@ export const n_inv = {
     thStatus: "Status",
     thRak: "Rack",
     thAksi: "Actions",
+    colCreated: "Created",
+    colUpdated: "Updated",
     actDetail: "Details",
     actDetailAria: "Details for {n}",
     actEdit: "Edit",

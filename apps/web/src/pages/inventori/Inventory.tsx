@@ -3,7 +3,6 @@ import { rebindLegacyMonthSeries } from "../../utils/monthAxis";
 import { Link } from "react-router-dom";
 import {
   Plus,
-  Search,
   Package,
   ArrowDownToLine,
   ArrowUpFromLine,
@@ -36,6 +35,7 @@ import {
 import { QRCodeSVG } from "qrcode.react";
 import { Card, CardHeader, PageHeader, Badge, KpiCard, Tabs, ChartTooltip, Modal, Field, FormGrid, toast, EmptyState, ProgressBar, SortTh, toggleSort, sortRows, usePager, useDebouncedValue, ConfirmModal,
   NumInput, AsyncButton, SecureImg,
+  SearchBox, rowMatches,
 } from "../../components/ui";
 import type { SortState } from "../../components/ui";
 import { useStore, type StoreItem } from "../../data/store";
@@ -63,6 +63,7 @@ import type { CollectionKey } from "../../data/store";
 import { isBackendConfigured } from "../../services/http";
 import { uploadFile } from "../../services/upload";
 import { fmtJumlah, fmtRupiah, fmtMiliar, fmtPersen, fmtTanggal, todayISO } from "../../utils/format";
+import { createdAtOf, lastTouchedAt } from "../../utils/timestamps";
 import { exportExcel } from "../../utils/export";
 import { sbTonasePlat, sbSjNumber, sbTtNumber, maxSeq, parseSjSeq, SB_KOP } from "../../utils/sb";
 import { pdfServerReady } from "../../services/pdfClient";
@@ -628,7 +629,7 @@ export default function Inventory() {
 }), [warehouseRows, sort2]);
 
   const list = useMemo(() => inventory.filter((i) => {
-    const matchQ = `${i.name} ${i.sku} ${binOf(i)}`.toLowerCase().includes(dq.toLowerCase());
+    const matchQ = rowMatches(i, dq, ["id", "name", "sku", "category", "matType", "warehouse", "rack", "bin"]);
     const matchCat = cat === "Semua" || i.category === cat;
     const matchWh = wh === "Semua" || i.warehouse === wh;
     const matchAbc = abcF === "Semua" || abc[i.id] === abcF;
@@ -655,6 +656,12 @@ if (k === "mattype") return matTypeOf(i);
     if (k === "status") return String(5 - warnRankOf(i));
     if (k === "rak") return String(rackText(i));
     if (k === "bin") return binOf(i);
+    /* Tanggal rekam lewat `createdAtOf`/`lastTouchedAt`, yang sudah
+       menormalkan ke ISO penuh. Field mentah tidak aman: `updated_at` server
+       bertanda jam sedangkan `createdAt` bisa "YYYY-MM-DD", dan campuran
+       keduanya dalam satu perbandingan teks mengurutkan tanggal terbalik. */
+    if (k === "createdAt") return createdAtOf(i) ?? "";
+    if (k === "updatedAt") return lastTouchedAt(i) ?? "";
     return String(i.name ?? "");
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }), [list, sort, abc]);
@@ -827,25 +834,22 @@ if (k === "mattype") return matTypeOf(i);
   const [gudangQ, setGudangQ] = useState<Record<string, string>>({});
   const [bomNeedQ, setBomNeedQ] = useState("");
   const [bomFcQ, setBomFcQ] = useState("");
-  const slowShown = useMemo(() => {
-    const nq = slowQ.trim().toLowerCase();
-    return nq ? slowItems.filter((i) => `${i.name} ${i.sku}`.toLowerCase().includes(nq)) : slowItems;
-  }, [slowItems, slowQ]);
-  const deadShown = useMemo(() => {
-    const nq = deadQ.trim().toLowerCase();
-    if (!nq) return deadRows;
-    return deadRows.filter((r) =>
-      `${r.item.name} ${r.item.sku ?? ""} ${r.reason.label} ${r.note}`.toLowerCase().includes(nq),
-    );
-  }, [deadRows, deadQ]);
-  const agingShown = useMemo(() => {
-    const nq = agingQ.trim().toLowerCase();
-    return nq ? agingRows.filter((r) => `${r.item.name} ${r.bucket}`.toLowerCase().includes(nq)) : agingRows;
-  }, [agingRows, agingQ]);
-  const bomNeedShown = useMemo(() => {
-    const nq = bomNeedQ.trim().toLowerCase();
-    return nq ? bomRows.filter((b) => `${b.key} ${b.item?.name ?? ""}`.toLowerCase().includes(nq)) : bomRows;
-  }, [bomRows, bomNeedQ]);
+  const slowShown = useMemo(
+    () => slowItems.filter((i) => rowMatches(i, slowQ, ["id", "name", "sku"])),
+    [slowItems, slowQ],
+  );
+  const deadShown = useMemo(
+    () => deadRows.filter((r) => rowMatches(r as unknown as Record<string, unknown>, deadQ, ["item", "reason", "note"])),
+    [deadRows, deadQ],
+  );
+  const agingShown = useMemo(
+    () => agingRows.filter((r) => rowMatches(r, agingQ, ["item", "lastIn"])),
+    [agingRows, agingQ],
+  );
+  const bomNeedShown = useMemo(
+    () => bomRows.filter((b) => rowMatches(b, bomNeedQ, ["key", "unit", "item"])),
+    [bomRows, bomNeedQ],
+  );
 
   const activeProjects = projects.filter((p) => String(p.status) !== "Selesai");
   const forecastRows = activeProjects.flatMap((p) =>
@@ -1980,10 +1984,13 @@ penuh per kategori - dengan 10 kategori berproblem, strip
                 </div>
               )}
               <div className="mb-3 flex flex-wrap gap-3">
-                <div className="relative min-w-52 flex-1 sm:max-w-xs">
-                  <Search className="absolute left-3 top-2.5 h-4 w-4 text-steel-400" />
-                  <input className="input pl-9 w-full" placeholder={S.searchPh} aria-label={S.searchAria} value={q} onChange={(e) => setQ(e.target.value)} />
-                </div>
+                <SearchBox
+                  value={q}
+                  onChange={setQ}
+                  placeholder={S.searchPh}
+                  ariaLabel={S.searchAria}
+                  className="min-w-52 flex-1 sm:max-w-xs"
+                />
                 <FilterPopover
                   activeCount={[cat !== "Semua", wh !== "Semua", abcF !== "Semua", matF !== "Semua"].filter(Boolean).length}
                   initial={{ cat, wh, abc: abcF, mat: matF }}
@@ -2060,7 +2067,7 @@ penuh per kategori - dengan 10 kategori berproblem, strip
               <div className="overflow-x-auto">
                 <table className="w-full">
                   <thead className="bg-surface sticky top-0 z-10">
-                    <tr><SortTh label={S.thMaterial} sortKey="material" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.catLbl} sortKey="kategori" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={locale === "en" ? "Type" : "Jenis"} sortKey="mattype" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.thQty} sortKey="qty" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.thVolume} sortKey="volume" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.thTotal} sortKey="total" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.thAbc} sortKey="abc" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.thStatus} sortKey="status" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.thRak} sortKey="rak" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.binLbl} sortKey="bin" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><th className="th">{S.thAksi}</th></tr>
+                    <tr><SortTh label={S.thMaterial} sortKey="material" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.catLbl} sortKey="kategori" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={locale === "en" ? "Type" : "Jenis"} sortKey="mattype" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.thQty} sortKey="qty" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.thVolume} sortKey="volume" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.thTotal} sortKey="total" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.thAbc} sortKey="abc" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.thStatus} sortKey="status" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.thRak} sortKey="rak" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.binLbl} sortKey="bin" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.colCreated} sortKey="createdAt" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.colUpdated} sortKey="updatedAt" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><th className="th">{S.thAksi}</th></tr>
                   </thead>
                   <tbody className="divide-y divide-steel-100">
 {pager.slice(sorted).map((i) => {
@@ -2104,6 +2111,8 @@ penuh per kategori - dengan 10 kategori berproblem, strip
                           </td>
                           <td className="td text-steel-600 font-mono text-xs truncate" title={rackText(i)}>{rackText(i)}</td>
                           <td className="td text-steel-600 font-mono text-xs truncate" title={binOf(i) || "-"}>{binOf(i) || "-"}</td>
+                          <td className="td text-xs text-steel-600">{createdAtOf(i) !== null ? fmtTanggal(createdAtOf(i)) : <span className="text-steel-400">-</span>}</td>
+                          <td className="td text-xs text-steel-600">{lastTouchedAt(i) !== null ? fmtTanggal(lastTouchedAt(i)) : <span className="text-steel-400">-</span>}</td>
                           <td className="td">
                             <div className="flex gap-1">
                               <button className="rounded-lg p-1.5 text-steel-500 hover:bg-steel-100" title={S.actDetail} aria-label={S.actDetailAria.replace("{n}", i.name)} onClick={() => setDetail(i)}><Eye className="h-4 w-4" /></button>
@@ -2194,7 +2203,7 @@ penuh per kategori - dengan 10 kategori berproblem, strip
               {whSorted.map((row) => {
                 const items = row.items;
                 const gq = (gudangQ[row.name] ?? "").trim().toLowerCase();
-                const shown = gq ? items.filter((i) => `${i.name} ${i.sku} ${binOf(i)}`.toLowerCase().includes(gq)) : items;
+                const shown = items.filter((i) => rowMatches(i, gudangQ[row.name] ?? "", ["id", "name", "sku", "bin"]));
                 return (
                   <Card key={row.name} className="p-4">
                     <div className="flex items-start justify-between gap-2">
@@ -2251,10 +2260,13 @@ penuh per kategori - dengan 10 kategori berproblem, strip
                         {locale === "en" ? "Set capacity" : "Tentukan kapasitas"}
                       </button>
                     )}
-                    <div className="relative mt-2">
-                      <Search className="absolute left-2.5 top-2 h-3.5 w-3.5 text-steel-400" />
-                      <input className="input pl-8 !py-1.5 text-xs" placeholder={S.anSearchPh} aria-label={`${S.anSearchPh} ${row.name}`} value={gudangQ[row.name] ?? ""} onChange={(e) => setGudangQ((m) => ({ ...m, [row.name]: e.target.value }))} />
-                    </div>
+                    <SearchBox
+                      value={gudangQ[row.name] ?? ""}
+                      onChange={(v) => setGudangQ((m) => ({ ...m, [row.name]: v }))}
+                      placeholder={S.anSearchPh}
+                      ariaLabel={`${S.anSearchPh} ${row.name}`}
+                      className="mt-2"
+                    />
                     <div className="mt-3 max-h-64 space-y-1.5 overflow-y-auto pr-1">
                       {shown.map((i) => {
                         /* Badge memakai klasifikasi kategori (bukan stock<=min polos)
@@ -2319,10 +2331,13 @@ penuh per kategori - dengan 10 kategori berproblem, strip
             <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
               <Card className="p-5 lg:col-span-2">
                 <CardHeader title={S.bomCardT} subtitle={S.bomCardS} />
-                <div className="relative mt-2">
-                  <Search className="absolute left-2.5 top-2 h-3.5 w-3.5 text-steel-400" />
-                  <input className="input pl-8 !py-1.5 text-xs" placeholder={S.anSearchPh} aria-label={S.anSearchPh} value={bomNeedQ} onChange={(e) => setBomNeedQ(e.target.value)} />
-                </div>
+                <SearchBox
+                  value={bomNeedQ}
+                  onChange={setBomNeedQ}
+                  placeholder={S.anSearchPh}
+                  ariaLabel={S.anSearchPh}
+                  className="mt-2"
+                />
                 <div className="mt-3 max-h-96 space-y-2 overflow-y-auto pr-1">
                   {bomNeedShown.map((b) => {
                     const kurang = Math.max(0, b.need - b.stock);
@@ -2367,10 +2382,13 @@ penuh per kategori - dengan 10 kategori berproblem, strip
               </Card>
               <Card className="p-5 lg:col-span-3">
                 <CardHeader title={S.fcT} subtitle={S.fcS} />
-                <div className="relative mt-2 max-w-xs">
-                  <Search className="absolute left-2.5 top-2 h-3.5 w-3.5 text-steel-400" />
-                  <input className="input pl-8 !py-1.5 text-xs" placeholder={S.anSearchPh} aria-label={S.anSearchPh} value={bomFcQ} onChange={(e) => setBomFcQ(e.target.value)} />
-                </div>
+                <SearchBox
+                  value={bomFcQ}
+                  onChange={setBomFcQ}
+                  placeholder={S.anSearchPh}
+                  ariaLabel={S.anSearchPh}
+                  className="mt-2 max-w-xs"
+                />
                 <div className="mt-3 max-h-96 overflow-y-auto">
                 <div className="overflow-x-auto">
                   <table className="w-full">
@@ -2378,11 +2396,7 @@ penuh per kategori - dengan 10 kategori berproblem, strip
                       <tr><SortTh label={S.thProyek} sortKey="proyek" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} /><SortTh label={S.thNeed} sortKey="kebutuhan" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} /><SortTh label={S.stockLbl} sortKey="stok" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} /><SortTh label={S.thNet} sortKey="bersih" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} /><th className="th">{S.thAksi}</th></tr>
                     </thead>
                     <tbody className="divide-y divide-steel-100">
-                      {sortRows(forecastBase.filter((f) => {
-                        const nq = bomFcQ.trim().toLowerCase();
-                        if (nq && !`${f.project} ${f.vessel} ${f.key} ${f.item?.name ?? ""}`.toLowerCase().includes(nq)) return false;
-                        return true;
-                      }), sort2, (f, k) => {
+                      {sortRows(forecastBase.filter((f) => rowMatches(f, bomFcQ, ["project", "vessel", "key", "unit", "item"])), sort2, (f, k) => {
                         if (k === "kebutuhan") return Number(f.need || 0);
                         if (k === "stok") return Number(f.stock || 0);
                         if (k === "bersih") return Number(f.net || 0);
@@ -2858,10 +2872,13 @@ penuh per kategori - dengan 10 kategori berproblem, strip
               <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
                 <Card className="p-5">
                   <CardHeader title={S.slowT} subtitle={S.slowS} />
-                  <div className="relative mt-2">
-                    <Search className="absolute left-2.5 top-2 h-3.5 w-3.5 text-steel-400" />
-                    <input className="input pl-8 !py-1.5 text-xs" placeholder={S.anSearchPh} aria-label={S.anSearchPh} value={slowQ} onChange={(e) => setSlowQ(e.target.value)} />
-                  </div>
+                  <SearchBox
+                    value={slowQ}
+                    onChange={setSlowQ}
+                    placeholder={S.anSearchPh}
+                    ariaLabel={S.anSearchPh}
+                    className="mt-2"
+                  />
                   <div className="mt-2 max-h-96 space-y-2 overflow-y-auto pr-1">
                     {slowShown.length === 0 && <p className="py-4 text-center text-sm text-steel-400">{S.slowEmpty}</p>}
                     {slowShown.map((i) => (
@@ -2899,10 +2916,13 @@ penuh per kategori - dengan 10 kategori berproblem, strip
                       ))}
                     </div>
                   )}
-                  <div className="relative mt-3">
-                    <Search className="absolute left-2.5 top-2 h-3.5 w-3.5 text-steel-400" />
-                    <input className="input pl-8 !py-1.5 text-xs" placeholder={S.anSearchPh} aria-label={S.anSearchPh} value={deadQ} onChange={(e) => setDeadQ(e.target.value)} />
-                  </div>
+                  <SearchBox
+                    value={deadQ}
+                    onChange={setDeadQ}
+                    placeholder={S.anSearchPh}
+                    ariaLabel={S.anSearchPh}
+                    className="mt-3"
+                  />
                   <div className="mt-2 max-h-96 space-y-2 overflow-y-auto pr-1">
                     {deadShown.length === 0 && <p className="py-4 text-center text-sm text-steel-400">{S.deadEmpty}</p>}
                     {deadShown.map((row) => {
@@ -2964,10 +2984,13 @@ penuh per kategori - dengan 10 kategori berproblem, strip
               </div>
               <Card className="p-5">
                 <CardHeader title={S.agingT} subtitle={S.agingS} />
-                <div className="relative mt-2 max-w-xs">
-                  <Search className="absolute left-2.5 top-2 h-3.5 w-3.5 text-steel-400" />
-                  <input className="input pl-8 !py-1.5 text-xs" placeholder={S.anSearchPh} aria-label={S.anSearchPh} value={agingQ} onChange={(e) => setAgingQ(e.target.value)} />
-                </div>
+                <SearchBox
+                  value={agingQ}
+                  onChange={setAgingQ}
+                  placeholder={S.anSearchPh}
+                  ariaLabel={S.anSearchPh}
+                  className="mt-2 max-w-xs"
+                />
                 <div className="mt-3 flex flex-wrap gap-2">
                   {AGING_BUCKETS.map((b) => (
                     <span key={b} className="rounded-lg bg-steel-50 px-3 py-1.5 text-xs font-medium text-steel-600">

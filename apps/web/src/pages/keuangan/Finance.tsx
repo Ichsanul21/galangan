@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, type ReactElement } from "react";
-import { Wallet, ArrowDownToLine, FileText, Receipt, TrendingUp, Plus, Trash2, Search } from "lucide-react";
+import { Wallet, ArrowDownToLine, FileText, Receipt, TrendingUp, Plus, Trash2 } from "lucide-react";
 import { openFileUrl } from "../../services/files";
 import { pdfServerReady } from "../../services/pdfClient";
 import { usePdfDoc } from "../../components/usePdfDoc";
@@ -39,6 +39,7 @@ import {
   usePager,
   toast,
   NumInput, AsyncButton, SecureImg, FileUploadButton,
+  SearchBox, rowMatches,
 } from "../../components/ui";
 import type { SortState } from "../../components/ui";
 import { useBusy } from "../../components/ui";
@@ -47,6 +48,7 @@ import { useT } from "../../i18n/LanguageContext";
 import { useStore } from "../../data/store";
 import type { StoreItem } from "../../data/store";
 import { fmtRupiah, fmtMiliar, fmtTanggal, fmtJumlah, todayISO } from "../../utils/format";
+import { createdAtOf, lastTouchedAt } from "../../utils/timestamps";
 import { getSetting } from "../../utils/settings";
 import { useDraftState } from "../../utils/draft";
 import { sameName } from "../../utils/names";
@@ -889,8 +891,7 @@ const { data, add, update, remove, log, branch, inBranch } = useStore();
   const coaFiltered = coaRows.filter((c) => {
     const tipe = coaList.find((x) => x.kode === String(c.kode))?.tipe ?? "";
     const matchT = coaTipe === "Semua" || tipe === coaTipe;
-    const needle = coaQ.trim().toLowerCase();
-    const matchQ = !needle || `${c.kode} ${c.nama}`.toLowerCase().includes(needle);
+    const matchQ = rowMatches(c, coaQ, ["kode", "nama", "dk", "nrlr", "id"]);
     return matchT && matchQ;
   });
   /* Sort per tabel - satu state per tabel agar tidak bentrok antar tab. */
@@ -918,12 +919,17 @@ const { data, add, update, remove, log, branch, inBranch } = useStore();
     return c;
   }, [invoices]);
   const filteredInvoices = useMemo(() => {
-    const needle = invFQ.trim().toLowerCase();
     return invoices.filter((i) => {
       if (invFStatus !== "Semua" && String(i.status ?? "") !== invFStatus) return false;
       if (invFBilling !== "Semua" && String(i.billingType ?? i.paymentTerm ?? "") !== invFBilling) return false;
       if (!matchHist(String(i.due ?? ""), invHist)) return false;
-      if (needle && !`${i.id ?? ""} ${i.client ?? ""} ${i.project ?? ""}`.toLowerCase().includes(needle)) return false;
+      /* `rowMatches` dengan field yang dinyatakan, bukan satu string gabungan.
+         Field yang tidak disebut tidak ikut dicari - dan itulah bug yang
+         membuat nomor invoice sulit ditemukan: `noInv` (nomor resmi yang
+         tercetak di kertas, mis. "058/INV-SB/SMD/IX/2026") TIDAK ada di
+         daftar field lama, padahal itu yang dicari akuntansi. `vessel` juga
+         tidak, padahal invoice selalu punya kapal. */
+      if (!rowMatches(i as unknown as Record<string, unknown>, invFQ, ["id", "noInv", "client", "project", "vessel", "status", "milestoneRef", "billingType", "paymentTerm"])) return false;
       return true;
     });
   }, [invoices, invFQ, invFStatus, invFBilling, invHist]);
@@ -946,7 +952,14 @@ const { data, add, update, remove, log, branch, inBranch } = useStore();
   const sortedInv = useMemo(() => sortRows(filteredInvoices, invSort, (inv, k) =>
     k === "tipe" ? String(inv.billingType ?? inv.paymentTerm ?? "") : k === "lines" ? (Array.isArray(inv.lines) ? inv.lines.length : 1) :
     k === "retensi" ? num(inv.retentionAmt) : k === "efaktur" ? String(inv.nsfp ?? inv.noFaktur ?? "") :
-    k === "amount" ? invNeto(inv) : k === "status" ? String(inv.status) : String(inv.id)), [filteredInvoices, invSort]);
+    k === "amount" ? invNeto(inv) : k === "status" ? String(inv.status) :
+    /* Tanggal lewat `createdAtOf`/`lastTouchedAt` yang sudah menormalkan ke ISO
+       penuh. Field mentah tidak aman: `updated_at` server bertanda jam
+       sedangkan `date` invoice cuma YYYY-MM-DD, dan campuran keduanya dalam
+       satu perbandingan teks mengurutkan tanggal terbalik. Yang tidak ada
+       tanggalnya -> string kosong, jadi mengurut ke akhir bukan ke depan. */
+    k === "createdAt" ? (createdAtOf(inv) ?? "") :
+    k === "updatedAt" ? (lastTouchedAt(inv) ?? "") : String(inv.id)), [filteredInvoices, invSort]);
   const sortedAr = useMemo(() => sortRows(filteredAr, arSort, (inv, k) =>
     k === "id" ? String(inv.id) : k === "kode" ? String(inv.kodePembantu ?? inv.client ?? "") : k === "project" ? String(inv.project ?? "") :
     k === "openAwal" ? num(inv.openAwal) : k === "amount" ? num(inv.amount) : k === "due" ? String(inv.due ?? "") :
@@ -2778,7 +2791,13 @@ const { data, add, update, remove, log, branch, inBranch } = useStore();
                 action={<button className="btn-primary text-xs" onClick={() => { setCoaTarget(null); setCoaForm({ kode: "", nama: "", dk: "D", nrlr: "NR" }); setShowCoa(true); }}>{S.addAkun}</button>}
               />
               <div className="flex flex-wrap items-center gap-2">
-                <input className="input w-56" placeholder={S.searchAkunPh} value={coaQ} onChange={(e) => setCoaQ(e.target.value)} aria-label={S.searchAkunAria} />
+                <SearchBox
+                  value={coaQ}
+                  onChange={setCoaQ}
+                  placeholder={S.searchAkunPh}
+                  ariaLabel={S.searchAkunAria}
+                  className="w-56"
+                />
                 <select className="input w-auto py-1.5 text-sm" value={coaTipe} onChange={(e) => setCoaTipe(e.target.value)} aria-label={S.filterTipeAria}>
                   {coaTipeOptions.map((t) => <option key={t} value={t}>{t === "Semua" ? S.allTypes : t}</option>)}
                 </select>
@@ -2973,9 +2992,9 @@ const { data, add, update, remove, log, branch, inBranch } = useStore();
                 <Card className="p-4">
                   <CardHeader title={S.retentionTitle} subtitle={S.retentionSub} />
                   <p className="px-5 pb-2 text-2xl font-bold text-navy-900">{fmtRupiah(retentionTotal)}</p>
-                  <div className="px-5 pb-2"><input className="input" value={retQ} onChange={(e) => setRetQ(e.target.value)} placeholder={S.cardSearchPh} aria-label={S.cardSearchPh} /></div>
+                  <div className="px-5 pb-2"><SearchBox value={retQ} onChange={setRetQ} placeholder={S.cardSearchPh} ariaLabel={S.cardSearchPh} /></div>
                   <div className="max-h-64 space-y-2 overflow-y-auto scroll-flush-5 px-5 pb-5 pr-4">
-                    {invoices.filter((i) => num(i.retentionAmt) > 0).filter((i) => !retQ.trim() || `${i.id ?? ""} ${i.retentionStatus ?? ""}`.toLowerCase().includes(retQ.trim().toLowerCase())).map((i) => (
+                    {invoices.filter((i) => num(i.retentionAmt) > 0).filter((i) => rowMatches(i, retQ, ["id", "noInv", "client", "retentionStatus"])).map((i) => (
                       <div key={i.id} className="flex items-center gap-2 text-xs">
                         <span className="font-mono font-semibold text-navy-900">{i.id}</span>
                         <span className="text-steel-500">{fmtRupiah(num(i.retentionAmt))}</span>
@@ -3316,10 +3335,13 @@ const { data, add, update, remove, log, branch, inBranch } = useStore();
               <CardHeader title={S.invListTitle} subtitle={S.invTableSub} />
               <InvStageStrip counts={invStageCounts} active={invFStatus} onPick={setInvFStatus} />
               <div className="mb-3 flex flex-wrap items-center gap-2">
-                <div className="relative min-w-52 flex-1 sm:max-w-xs">
-                  <Search className="absolute left-3 top-2.5 h-4 w-4 text-steel-400" />
-                  <input className="input pl-9 w-full" placeholder={S.searchInvPh} aria-label={S.searchInvAria} value={invFQ} onChange={(e) => setInvFQ(e.target.value)} />
-                </div>
+                <SearchBox
+                  value={invFQ}
+                  onChange={setInvFQ}
+                  placeholder={S.searchInvPh}
+                  ariaLabel={S.searchInvAria}
+                  className="min-w-52 flex-1 sm:max-w-xs"
+                />
                 <FilterPopover
                   activeCount={[invFStatus !== "Semua", invFBilling !== "Semua"].filter(Boolean).length}
                   initial={{ status: invFStatus, billing: invFBilling }}
@@ -3358,6 +3380,8 @@ const { data, add, update, remove, log, branch, inBranch } = useStore();
                       <SortTh label={S.colEfaktur} sortKey="efaktur" sort={invSort} onSort={(k) => setInvSort((s) => toggleSort(s, k))} />
                       <SortTh label={S.colNilai} sortKey="amount" sort={invSort} onSort={(k) => setInvSort((s) => toggleSort(s, k))} />
                       <SortTh label={S.colStatus} sortKey="status" sort={invSort} onSort={(k) => setInvSort((s) => toggleSort(s, k))} />
+                      <SortTh label={S.colCreated} sortKey="createdAt" sort={invSort} onSort={(k) => setInvSort((s) => toggleSort(s, k))} />
+                      <SortTh label={S.colUpdated} sortKey="updatedAt" sort={invSort} onSort={(k) => setInvSort((s) => toggleSort(s, k))} />
                       <th className="th">Detail</th>
                     </tr>
                   </thead>
@@ -3384,6 +3408,8 @@ const { data, add, update, remove, log, branch, inBranch } = useStore();
                         <td className="td"><StatusBadge status={String(inv.status)} />
                           {inv.directorApproved && <p className="mt-1 text-[11px] text-steel-500">Dir: {String(inv.directorName ?? "")}</p>}
                         </td>
+                        <td className="td text-xs text-steel-600">{createdAtOf(inv) !== null ? fmtTanggal(createdAtOf(inv)) : <span className="text-steel-400">-</span>}</td>
+                        <td className="td text-xs text-steel-600">{lastTouchedAt(inv) !== null ? fmtTanggal(lastTouchedAt(inv)) : <span className="text-steel-400">-</span>}</td>
                         <td className="td">
                           <div className="flex flex-wrap gap-1">
                             <button type="button" className="btn-secondary px-2 py-1 text-[11px]" onClick={() => setInvDetail(inv)}>{S.detBtn}</button>
@@ -3655,7 +3681,7 @@ const { data, add, update, remove, log, branch, inBranch } = useStore();
                 </div>
               )}
               <div className="grid max-h-80 grid-cols-1 gap-4 overflow-y-auto pr-1 lg:grid-cols-3">
-                {projectsVisible.filter((p) => !plQ.trim() || `${p.id ?? ""} ${p.vessel ?? ""}`.toLowerCase().includes(plQ.trim().toLowerCase())).map((p) => {
+                {projectsVisible.filter((p) => rowMatches(p, plQ, ["id", "vessel", "client", "status"])).map((p) => {
                   const rev = (data.invoices ?? []).filter((i) => i.project === p.id).reduce((s, i) => s + invNeto(i), 0);
                   const margin = rev - num(p.actual);
                   return (
@@ -3674,7 +3700,7 @@ const { data, add, update, remove, log, branch, inBranch } = useStore();
               </div>
               <Card>
                 <CardHeader title={S.allocTitle2} subtitle={S.allocSub2} />
-                <div className="px-5 pb-2"><input className="input" value={allocQ} onChange={(e) => setAllocQ(e.target.value)} placeholder={S.cardSearchPh} aria-label={S.cardSearchPh} /></div>
+                <div className="px-5 pb-2"><SearchBox value={allocQ} onChange={setAllocQ} placeholder={S.cardSearchPh} ariaLabel={S.cardSearchPh} /></div>
                 <div className="max-h-80 overflow-y-auto">
                 <div className="overflow-x-auto">
                   <table className="w-full">
@@ -3689,7 +3715,7 @@ const { data, add, update, remove, log, branch, inBranch } = useStore();
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-steel-100">
-                      {sortRows((data.payroll ?? []).filter((p) => p.status === "Dibayar").filter((p) => !allocQ.trim() || `${p.id ?? ""} ${p.employeeId ?? ""} ${p.period ?? ""} ${p.allocProject ?? ""}`.toLowerCase().includes(allocQ.trim().toLowerCase())), alokasiSort, (p, k) =>
+                      {sortRows((data.payroll ?? []).filter((p) => p.status === "Dibayar").filter((p) => rowMatches(p, allocQ, ["id", "employeeId", "period", "allocProject", "status"])), alokasiSort, (p, k) =>
                         k === "emp" ? String(p.employeeId ?? "") : k === "period" ? String(p.period ?? "") :
                         k === "net" ? payNet(p) :
                         k === "alloc" ? String(p.allocProject ?? "") : String(p.id)).map((p) => (
@@ -4213,7 +4239,7 @@ const { data, add, update, remove, log, branch, inBranch } = useStore();
                     <EmptyState title={S.emptyJuTitle} subtitle={S.emptyJuSub} />
                   ) : (
                     <div>
-                    <div className="mb-2"><input className="input" value={juListQ} onChange={(e) => setJuListQ(e.target.value)} placeholder={S.cardSearchPh} aria-label={S.cardSearchPh} /></div>
+                    <div className="mb-2"><SearchBox value={juListQ} onChange={setJuListQ} placeholder={S.cardSearchPh} ariaLabel={S.cardSearchPh} /></div>
                     <div className="max-h-80 overflow-y-auto">
                     <div className="overflow-x-auto">
                       <table className="w-full">
@@ -4227,7 +4253,7 @@ const { data, add, update, remove, log, branch, inBranch } = useStore();
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-steel-100">
-                          {sortRows(journals.filter((j) => !juListQ.trim() || `${j.ref ?? ""} ${j.desc ?? ""} ${j.debitAkun ?? ""} ${j.kreditAkun ?? ""}`.toLowerCase().includes(juListQ.trim().toLowerCase())), juSort, (j, k) =>
+                          {sortRows(journals.filter((j) => rowMatches(j as unknown as Record<string, unknown>, juListQ, ["date", "ref", "desc", "debitAkun", "kreditAkun"])), juSort, (j, k) =>
                             k === "ref" ? String(j.ref) : k === "db" ? String(j.debitAkun) : k === "kr" ? String(j.kreditAkun) :
                             k === "amount" ? Number(j.amount) : String(j.date)).map((j, idx) => (
                             <tr key={`${j.ref}-${idx}`} className="hover:bg-surface">

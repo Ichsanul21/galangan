@@ -66,9 +66,14 @@ const assert = (ok: boolean, label: string, detail = ""): void => {
 {
   const row = { id: "X-6", updated_at: "2026-05-05T00:00:00.000Z", updated: "2026-05-04" };
   assert(lastTouchedAt(row) === "2026-05-05T00:00:00.000Z", "lastTouchedAt memprioritaskan updatedAt di atas updated_at server");
+  /* Field `updated` lama hanya menyimpan YYYY-MM-DD. Nilai balik sudah
+     dinormalisasi ke ISO penuh supaya bisa diurutkan bersama `updated_at` yang
+     bertanda jam - assertion ini karena itu membandingkan tanggalnya, bukan
+     string persis. */
   assert(
-    lastTouchedAt({ id: "X-7", updated: "2026-05-04" }) === "2026-05-04",
+    (lastTouchedAt({ id: "X-7", updated: "2026-05-04" }) ?? "").startsWith("2026-05-04"),
     "lastTouchedAt jatuh ke field `updated` lama (YYYY-MM-DD)",
+    lastTouchedAt({ id: "X-7", updated: "2026-05-04" }) ?? "null",
   );
   assert(lastTouchedAt({ id: "X-8" }) === null, "lastTouchedAt null kalau tidak ada tanggal sama sekali");
 }

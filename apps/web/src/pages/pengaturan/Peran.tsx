@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Download, KeyRound, Plus, RefreshCw, Search } from "lucide-react";
-import { Badge, Card, ConfirmModal, Field, KpiCard, Modal, PageHeader, SortTh, sortRows, toast, toggleSort, usePager, AsyncButton } from "../../components/ui";
+import { Download, KeyRound, Plus, RefreshCw } from "lucide-react";
+import { Badge, Card, ConfirmModal, Field, KpiCard, Modal, PageHeader, SortTh, sortRows, toast, toggleSort, usePager, AsyncButton, SearchBox, rowMatches } from "../../components/ui";
 import type { SortState } from "../../components/ui";
 import { canSetTarget, useAuth } from "../../auth/auth";
 import { useStore } from "../../data/store";
@@ -756,11 +756,9 @@ export default function Peran() {
           const s = sessions.find((x) => String(x.user_id) === String(sessDetail.id)) ?? null;
           const online = s ? sessionOnline(s.last_seen_at) : false;
           const allActs = lastActByUser.get(sessDetail.username) ?? [];
-          const acts = allActs.filter((a) => {
-            const needle = sessActQ.trim().toLowerCase();
-            if (!needle) return true;
-            return `${a.action ?? ""} ${fmtDateTime(a.created_at)}`.toLowerCase().includes(needle);
-          });
+          const acts = allActs.filter((a) =>
+            rowMatches({ action: a.action ?? "", waktu: fmtDateTime(a.created_at) }, sessActQ, ["action", "waktu"]),
+          );
           return (
             <div className="space-y-3">
               <dl className="dl-div text-sm">
@@ -772,10 +770,13 @@ export default function Peran() {
                 {s && <div className="flex justify-between"><dt className="text-steel-500">User Agent</dt><dd className="max-w-[60%] truncate text-right font-medium" title={String(s.user_agent ?? "")}>{String(s.user_agent ?? "-")}</dd></div>}
               </dl>
               <p className="text-xs font-semibold text-steel-500">{S.detailActs}</p>
-              <div className="relative">
-                <Search className="absolute left-3 top-2.5 h-4 w-4 text-steel-400" />
-                <input className="input pl-9 w-full text-xs" placeholder={S.cardSearchPh} aria-label={S.cardSearchPh} value={sessActQ} onChange={(e) => setSessActQ(e.target.value)} />
-              </div>
+              <SearchBox
+                value={sessActQ}
+                onChange={setSessActQ}
+                placeholder={S.cardSearchPh}
+                ariaLabel={S.cardSearchPh}
+                className="w-full text-xs"
+              />
               {allActs.length === 0 ? (
                 <p className="text-xs text-steel-500">{S.detailNoActs}</p>
               ) : (

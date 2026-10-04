@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { Award, BadgeCheck, Download, Eye, Lock, Network, Plus, Search, Users } from "lucide-react";
+import { Award, BadgeCheck, Download, Eye, Lock, Network, Plus, Users } from "lucide-react";
 import {
   Badge,
   Card,
@@ -25,7 +25,7 @@ import {
   SecureImg,
 } from "../../components/ui";
 import type { SortState } from "../../components/ui";
-import { AsyncButton, useBusy } from "../../components/ui";
+import { AsyncButton, useBusy, SearchBox, rowMatches } from "../../components/ui";
 import { FilterPopover } from "../../components/FilterPopover";
 import { useStore } from "../../data/store";
 import { DocumentPreviewCell, DocumentPreviewPanel } from "../../components/DocumentPreview";
@@ -360,12 +360,7 @@ export default function HR() {
     () =>
       scopedEmployees.filter((e) => {
         const matchD = dept === "Semua" || e.dept === dept;
-        const needle = q.trim().toLowerCase();
-        const matchQ =
-          !needle ||
-          String(e.name).toLowerCase().includes(needle) ||
-          empNik(e).toLowerCase().includes(needle) ||
-          String(e.role ?? "").toLowerCase().includes(needle);
+        const matchQ = rowMatches(e, q, ["name", "role", "dept", "branch", "status", "certs", "id"]) || empNik(e).toLowerCase().includes(q.trim().toLowerCase());
         const cd = daysUntil(String(e.contractEnd ?? "") || null);
         const matchC = !contractSoonOnly || (cd !== null && cd >= 0 && cd <= 30);
         return matchD && matchQ && matchC;
@@ -1345,10 +1340,13 @@ const finishTraining = async (t: StoreItem) => {
           {tab === "Karyawan" && (
             <div>
               <div className="mb-3 flex flex-wrap items-center gap-2">
-                <div className="relative min-w-52 flex-1 sm:max-w-xs">
-                  <Search className="absolute left-3 top-2.5 h-4 w-4 text-steel-400" />
-                  <input className="input pl-9 w-full" placeholder={S.searchHrPh} aria-label={S.searchHrAria} value={q} onChange={(e) => setQ(e.target.value)} />
-                </div>
+                <SearchBox
+                  value={q}
+                  onChange={setQ}
+                  placeholder={S.searchHrPh}
+                  ariaLabel={S.searchHrAria}
+                  className="min-w-52 flex-1 sm:max-w-xs"
+                />
                 <FilterPopover
                   activeCount={[dept !== "Semua", branch !== "SEMUA", contractSoonOnly].filter(Boolean).length}
                   initial={{ dept, branch, kontrak: contractSoonOnly ? "1" : "0" }}
@@ -1620,16 +1618,15 @@ const finishTraining = async (t: StoreItem) => {
             <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
               <Card className="p-5">
                 <h3 className="text-sm font-semibold text-navy-900">{S.mutasiTerakhir}</h3>
-                <div className="relative mt-3">
-                  <Search className="absolute left-3 top-2.5 h-4 w-4 text-steel-400" />
-                  <input className="input pl-9 w-full" placeholder={S.cardSearchPh} aria-label={S.cardSearchPh} value={mutQ} onChange={(e) => setMutQ(e.target.value)} />
-                </div>
+                <SearchBox
+                  value={mutQ}
+                  onChange={setMutQ}
+                  placeholder={S.cardSearchPh}
+                  ariaLabel={S.cardSearchPh}
+                  className="mt-3 w-full"
+                />
                 <div className="mt-3 max-h-96 space-y-2.5 overflow-y-auto pr-1">
-                  {mutasiLog.filter((a) => {
-                    const needle = mutQ.trim().toLowerCase();
-                    if (!needle) return true;
-                    return `${a.action ?? ""} ${a.target ?? ""} ${a.time ?? ""}`.toLowerCase().includes(needle);
-                  }).map((a) => (
+                  {mutasiLog.filter((a) => rowMatches(a, mutQ, ["action", "target", "time"])).map((a) => (
                     <div key={a.id} className="rounded-lg bg-surface p-2.5 text-sm">
                       <p className="font-medium text-navy-900">{a.action}</p>
                       <p className="text-xs text-steel-500">{a.target} · {a.time}</p>

@@ -2,7 +2,7 @@ import { useState, useMemo } from "react";
 import { useStore } from "../../data/store";
 import { useT } from "../../i18n/LanguageContext";
 import { n_prj } from "../../i18n/n_prj";
-import { Card, StatusBadge, Modal, Field, toast, Badge, ProgressBar, KpiCard, EmptyState, useBusy, AsyncButton } from "../../components/ui";
+import { Card, StatusBadge, Modal, Field, toast, Badge, ProgressBar, KpiCard, EmptyState, useBusy, AsyncButton, rowMatches } from "../../components/ui";
 import { Send, CheckCircle2, XCircle, FileDown, FileText } from "lucide-react";
 import { exportExcelSheets, fmtRupiah, fmtRentang } from "../../utils/export";
 import { pdfServerReady } from "../../services/pdfClient";
@@ -171,7 +171,7 @@ export default function ReportSection({ projectId }: Props) {
               <p className="text-xs text-steel-400">{S.repNoWbs}</p>
             ) : (
               <div className="max-h-64 space-y-2 overflow-y-auto pr-1">
-                {wbs.filter((w) => !wbsQ.trim() || `${w.task ?? ""} ${w.progress ?? ""}`.toLowerCase().includes(wbsQ.trim().toLowerCase())).map((w) => (
+                {wbs.filter((w) => rowMatches(w as unknown as Record<string, unknown>, wbsQ, ["task", "station", "status", "materialUsed", "completedBy", "completionDate"])).map((w) => (
                   <div key={w.task}>
                     <div className="flex justify-between text-xs"><span className="font-medium text-navy-900">{w.task}</span><span className="text-steel-500">{w.progress}%</span></div>
                     <ProgressBar value={Number(w.progress) || 0} className="mt-1" tone={Number(w.progress) >= 100 ? "green" : "navy"} />
@@ -187,7 +187,7 @@ export default function ReportSection({ projectId }: Props) {
               <p className="text-xs text-steel-400">{S.repNoBoq}</p>
             ) : (
               <div className="max-h-64 space-y-1.5 overflow-y-auto pr-1">
-                {boq.filter((b) => !boqQ.trim() || `${b.name ?? ""} ${b.id ?? ""} ${b.status ?? ""}`.toLowerCase().includes(boqQ.trim().toLowerCase())).map((b) => (
+                {boq.filter((b) => rowMatches(b, boqQ, ["id", "name", "status", "unit", "spec"])).map((b) => (
                   <div key={b.id} className="flex items-center justify-between text-sm">
                     <span className="text-steel-700">{b.name} <span className="text-xs text-steel-400">× {b.quantity} {b.unit}</span></span>
                     <span className="flex items-center gap-2"><span className="font-mono text-xs">{fmtRupiah(Number(b.totalPrice || 0))}</span><StatusBadge status={b.status} label={STATUS_BOQ_ID[b.status] ?? b.status} /></span>
@@ -203,7 +203,7 @@ export default function ReportSection({ projectId }: Props) {
           <Card className="p-4">
             <h4 className="mb-2 text-sm font-semibold text-navy-900">{S.repInvTitle.replace("{n}", String(invoices.length))}</h4>
             <input data-export-hide className="input mb-2" value={invQ} onChange={(e) => setInvQ(e.target.value)} placeholder={S.cardSearchPh} aria-label={S.cardSearchPh} />
-            {invoices.length === 0 ? <p className="text-xs text-steel-400">{S.repNoInv}</p> : <div className="max-h-64 overflow-y-auto pr-1">{invoices.filter((i) => !invQ.trim() || `${i.id ?? ""} ${i.status ?? ""}`.toLowerCase().includes(invQ.trim().toLowerCase())).map((i) => (
+            {invoices.length === 0 ? <p className="text-xs text-steel-400">{S.repNoInv}</p> : <div className="max-h-64 overflow-y-auto pr-1">{invoices.filter((i) => rowMatches(i, invQ, ["id", "noInv", "client", "project", "vessel", "status"])).map((i) => (
               <div key={i.id} className="flex items-center justify-between py-1 text-sm">
                 <span className="font-mono text-navy-900">{i.id}</span>
                 <span className="text-steel-600">{fmtMiliar(Number(i.amount || 0))}</span>
@@ -216,10 +216,10 @@ export default function ReportSection({ projectId }: Props) {
             <p className="text-xs text-steel-500">{S.repNcrOpenLbl}<b>{openNcr}</b>{critNcr > 0 ? <> · <b className="text-rose-600">{S.repCritCount.replace("{n}", String(critNcr))}</b></> : null}{S.repWoLbl}<b>{wos.length}</b>{S.repDockLbl}<b>{slots.length}</b></p>
             <input data-export-hide className="input mb-2 mt-2" value={ncrWoQ} onChange={(e) => setNcrWoQ(e.target.value)} placeholder={S.cardSearchPh} aria-label={S.cardSearchPh} />
             <div className="mt-2 max-h-64 space-y-1 overflow-y-auto pr-1">
-              {ncrs.filter((n) => !ncrWoQ.trim() || `${n.id ?? ""} ${n.status ?? ""}`.toLowerCase().includes(ncrWoQ.trim().toLowerCase())).map((n) => (
+              {ncrs.filter((n) => rowMatches(n, ncrWoQ, ["id", "project", "vessel", "type", "status", "severity", "issue"])).map((n) => (
                 <div key={n.id} className="flex items-center justify-between text-sm"><span className="font-mono text-navy-900">{n.id}</span><StatusBadge status={n.status} /></div>
               ))}
-              {wos.filter((w) => !ncrWoQ.trim() || `${w.id ?? ""} ${w.sub ?? ""}`.toLowerCase().includes(ncrWoQ.trim().toLowerCase())).map((w) => (
+              {wos.filter((w) => rowMatches(w, ncrWoQ, ["id", "sub", "project", "scope", "status", "milestones"])).map((w) => (
                 <div key={w.id} className="flex items-center justify-between text-sm"><span className="text-steel-600">{w.id} · {w.sub}</span><Badge tone="blue">{w.progress}%</Badge></div>
               ))}
               {(ncrs.length === 0 && wos.length === 0) && <p className="text-xs text-steel-400">{S.repNoNcrWo}</p>}

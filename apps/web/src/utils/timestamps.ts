@@ -18,14 +18,60 @@ function isStamp(v: unknown): v is string {
   return typeof v === "string" && v !== "" && Number.isFinite(Date.parse(v));
 }
 
+/**
+ * Menyeragamkan bentuk tanggal supaya bisa diurutkan dengan perbandingan
+ * leksikografis.
+ *
+ * Tanpa ini, kolom tanggal yang bisa disortir diam-diam menampilkan urutan
+ * terbalik: `updated_at` dari server adalah ISO penuh
+ * ("2026-10-04T08:00:00.000Z") sementara `createdAt` bisa "2026-10-04" atau
+ * "2026-1-5". Dibandingkan sebagai teks, "2026-1-5" lebih kecil dari
+ * "2026-10-2" padahal Januari lebih dulu - jadi tanggal paling awal justru
+ * turun paling bawah. Semua bentuk yang bisa diparse diubah ke ISO penuh
+ * supaya urutannya benar.
+ */
+function asComparable(v: string | null): string | null {
+  if (v === null) return null;
+  const t = parseStamp(v);
+  return Number.isFinite(t) ? new Date(t).toISOString() : null;
+}
+
+/**
+ * Parse tanggal harus bebas zona waktu.
+ *
+ * `Date.parse` tidak konsisten untuk tanggal tanpa jam: "2026-01-05" dibaca
+ * sebagai UTC, tapi "2026-1-5" (tanpa nol di depan) dibaca sebagai waktu
+ * LOKAL. Di mesin UTC-8 hasilnya berbeda 8 jam - cukup untuk menggeser tanggal
+ * ke hari sebelumnya, jadi "2026-1-5" menjadi 4 Januari. Forma non-ISO
+ * diparse eksplisit sebagai UTC supaya semua bentuk tanggal bebas zona.
+ */
+function parseStamp(v: string): number {
+  const isoDateOnly = /^(\d{4})-(\d{1,2})-(\d{1,2})$/.exec(v.trim());
+  if (isoDateOnly) {
+    const [, y, mo, d] = isoDateOnly;
+    return Date.UTC(Number(y), Number(mo) - 1, Number(d));
+  }
+  return Date.parse(v);
+}
+
 /** Tanggal buat record, atau `null` untuk record lama yang belum di-backfill. */
 export function createdAtOf(row: Record<string, unknown> | null | undefined): string | null {
+  return asComparable(createdAtRaw(row));
+}
+
+/** Tanggal buat apa adanya, tanpa normalisasi. Untuk tampilan/ekspor. */
+export function createdAtRaw(row: Record<string, unknown> | null | undefined): string | null {
   const v = row?.[CREATED_FIELD];
   return isStamp(v) ? v : null;
 }
 
 /** Terakhir diubah oleh aksi pengguna. `null` = belum pernah diedit sejak dibuat. */
 export function updatedAtOf(row: Record<string, unknown> | null | undefined): string | null {
+  return asComparable(updatedAtRaw(row));
+}
+
+/** `updatedAt` apa adanya, tanpa normalisasi. Untuk tampilan/ekspor. */
+export function updatedAtRaw(row: Record<string, unknown> | null | undefined): string | null {
   const v = row?.[UPDATED_FIELD];
   return isStamp(v) ? v : null;
 }
@@ -57,7 +103,9 @@ export function lastTouchedAt(row: Record<string, unknown> | null | undefined): 
   const u = updatedAtOf(row);
   if (u !== null) return u;
   const legacy = row?.[UPDATED_FIELD] ?? row?.updated_at ?? row?.updated;
-  return typeof legacy === "string" && legacy !== "" && Number.isFinite(Date.parse(legacy)) ? legacy : null;
+  return typeof legacy === "string" && legacy !== "" && Number.isFinite(Date.parse(legacy))
+    ? asComparable(legacy)
+    : null;
 }
 
 /**

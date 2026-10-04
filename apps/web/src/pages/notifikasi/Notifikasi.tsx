@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Link, useSearchParams } from "react-router-dom";
-import { AlertTriangle, Bell, Check, CheckCheck, Download, Info, Search } from "lucide-react";
-import { Badge, Card, EmptyState, Field, KpiCard, PageHeader, Tabs, toast } from "../../components/ui";
+import { AlertTriangle, Bell, Check, CheckCheck, Download, Info } from "lucide-react";
+import { Badge, Card, EmptyState, Field, KpiCard, PageHeader, Tabs, toast, SearchBox, rowMatches } from "../../components/ui";
 import { notifRowId } from "../../components/AlertBanner";
 import { FilterPopover } from "../../components/FilterPopover";
 import { useStore } from "../../data/store";
@@ -172,13 +172,12 @@ export default function Notifikasi() {
   };
 
   const filtered = useMemo(() => {
-    const needle = q.trim().toLowerCase();
     const rows = items.filter((i) => {
       if (filter === "Perlu Perhatian" && i.kind !== "alert") return false;
       if (filter === "Aktivitas" && i.kind !== "info") return false;
       if (sev !== "Semua" && sevOf(i.tone) !== sev) return false;
       if (mod !== "Semua" && i.module !== mod) return false;
-      if (needle && !`${i.text} ${i.detail} ${i.module}`.toLowerCase().includes(needle)) return false;
+      if (!rowMatches({ text: i.text, detail: i.detail, module: i.module }, q, ["text", "detail", "module"])) return false;
       return true;
     });
     const dir = order === "Terbaru" ? 1 : -1;
@@ -280,16 +279,13 @@ export default function Notifikasi() {
         <div className="space-y-3 px-5 pt-4">
           <Tabs tabs={FILTERS} active={filter} onChange={setFilter} labels={{ Semua: t.common.all, "Perlu Perhatian": t.notif.attention, Aktivitas: t.notif.activities }} />
           <div className="flex flex-wrap items-center gap-2 pb-1">
-            <div className="relative">
-              <Search className="absolute left-3 top-2.5 h-4 w-4 text-steel-400" />
-              <input
-                className="input w-56 pl-9"
-                placeholder={S.ntSearchPh}
-                aria-label={S.ntSearchAria}
-                value={q}
-                onChange={(e) => setQ(e.target.value)}
-              />
-            </div>
+            <SearchBox
+              value={q}
+              onChange={setQ}
+              placeholder={S.ntSearchPh}
+              ariaLabel={S.ntSearchAria}
+              className="w-56"
+            />
             <FilterPopover
               activeCount={[sev !== "Semua", mod !== "Semua", order !== "Terbaru"].filter(Boolean).length}
               initial={{ severity: sev as string, modul: mod, urutan: order as string }}

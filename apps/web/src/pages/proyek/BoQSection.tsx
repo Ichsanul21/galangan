@@ -5,7 +5,7 @@ import { n_prj } from "../../i18n/n_prj";
 import { useAuth, canSetTarget } from "../../auth/auth";
 import { Card, Modal, Field, FormGrid, toast, EmptyState, StatusBadge, Badge, SortTh, toggleSort, sortRows, ConfirmModal,
   NumInput, AsyncButton, FlowStrip, FileUploadButton,
-  useBusy,
+  useBusy, SearchBox, rowMatches,
 } from "../../components/ui";
 import type { SortState } from "../../components/ui";
 import { findUsages } from "../../utils/usages";
@@ -125,7 +125,10 @@ export default function BoQSection({ projectId }: Props) {
 
   const filtered = useMemo(() => {
     const list = items.filter((b) => {
-      const matchQ = `${b.name} ${b.description}`.toLowerCase().includes(q.toLowerCase());
+      /* `rowMatches` dengan field yang dinyatakan. `id` ikut searched
+         duluan tidak - kata kunci "BQ-001" tidak menemukan baris
+         itu, padahal nomor item BoQ justru yang paling sering dicari. */
+      const matchQ = rowMatches(b as unknown as Record<string, unknown>, q, ["name", "description", "id", "category", "status"]);
       const matchCat = catF === "Semua" || b.category === catF;
       const matchSt = stF === "Semua" || b.status === stF;
       return matchQ && matchCat && matchSt;
@@ -285,13 +288,13 @@ export default function BoQSection({ projectId }: Props) {
         </div>
 
         <div className="mb-3 flex flex-wrap items-center gap-2">
-          <input
-            className="input w-full sm:w-52"
-            placeholder={S.boqSearchPh}
-            aria-label={S.boqSearchAria}
+          <SearchBox
             value={q}
-            onChange={(e) => setQ(e.target.value)}
-          />
+            onChange={setQ}
+            placeholder={S.boqSearchPh}
+            ariaLabel={S.boqSearchAria}
+    className="w-full sm:w-52"
+  />
           <select className="input w-auto py-1.5 text-sm" aria-label={S.boqCatAria} value={catF} onChange={(e) => setCatF(e.target.value)}>
             <option value="Semua">{S.boqAllCat}</option>
             {CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}

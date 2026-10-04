@@ -1,4 +1,4 @@
-﻿export const n_fin = {
+export const n_fin = {
   id: {
     pageTitle: "Keuangan & Billing",
     pageSubtitle: "Piutang, hutang, invoice, retensi, pajak, dan jurnal",
@@ -144,6 +144,9 @@
     colUmur: "Umur",
     colPenagihan: "Penagihan",
     colStatus: "Status",
+    /* Label kolom tanggal rekam, sama seperti di modul Proyek. "Dibuat" = saat baris masuk sistem, BUKAN tanggal invoice - tanggal invoice sudah ada di kolom sendiri, jadi mencampurkannya akan membingungkan. */
+    colCreated: "Dibuat",
+    colUpdated: "Diubah",
     needDirector: "Butuh Director",
     dunningNext: "→ {a}",
     settleViaModal: "Lunasi via modal bukti (kas + jurnal otomatis)",
@@ -796,6 +799,9 @@ histDay: "Per tanggal",
     colUmur: "Age",
     colPenagihan: "Collection",
     colStatus: "Status",
+    /* Label kolom tanggal rekam, sama seperti di modul Proyek. "Dibuat" = saat baris masuk sistem, BUKAN tanggal invoice - tanggal invoice sudah ada di kolom sendiri, jadi mencampurkannya akan membingungkan. */
+    colCreated: "Created",
+    colUpdated: "Updated",
     needDirector: "Needs Director",
     dunningNext: "→ {a}",
     settleViaModal: "Settle via proof modal (cash + auto journal)",

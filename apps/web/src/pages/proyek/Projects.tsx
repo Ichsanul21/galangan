@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useSearchParams, Link } from "react-router-dom";
-import { Plus, Search, Anchor, Wallet, TrendingUp, Clock } from "lucide-react";
+import { Plus, Anchor, Wallet, TrendingUp, Clock } from "lucide-react";
 import {
   Card,
   PageHeader,
@@ -15,6 +15,8 @@ import {
   usePager,
   ConfirmModal,
   toast,
+  SearchBox,
+  rowMatches,
 } from "../../components/ui";
 import type { SortState } from "../../components/ui";
 import { useStore } from "../../data/store";
@@ -24,7 +26,8 @@ import type { StoreItem, CollectionKey } from "../../data/store";
 import { useT } from "../../i18n/LanguageContext";
 import { n_prj } from "../../i18n/n_prj";
 import { fmtMiliar, sparkProjects, activeProjectTrend, contractValueTrend, avgProgressTrend } from "../../data";
-import { todayISO } from "../../utils/format";
+import { todayISO, fmtTanggal } from "../../utils/format";
+import { createdAtOf, lastTouchedAt } from "../../utils/timestamps";
 import { canonPrioritas } from "../../utils/scope";
 import ProjectAddModal from "../../components/ProjectAddModal";
 import { FilterPopover } from "../../components/FilterPopover";
@@ -159,7 +162,7 @@ export default function Projects() {
     const matchBranch = branchFilter === "Semua" || p.branch === branchFilter;
     const matchPrioritas = prioritasFilter === "Semua" || canonPrioritas(p.prioritas) === prioritasFilter;
     const matchPm = pmFilter === "Semua" || String(p.manager ?? "") === pmFilter;
-    const matchQ = `${p.vessel} ${p.id} ${p.client} ${p.manager ?? ""}`.toLowerCase().includes(q.toLowerCase());
+    const matchQ = rowMatches(p as unknown as Record<string, unknown>, q, ["vessel", "id", "client", "manager", "status", "type", "scope"]);
     return matchType && matchStatus && matchTahap && matchBranch && matchPrioritas && matchPm && matchQ;
   });
 
@@ -167,7 +170,21 @@ export default function Projects() {
   const inProgress = list.filter((p) => p.status !== "Selesai").length;
   const delayed = list.filter((p) => p.status === "Terlambat").length;
   const avgProgress = list.length ? Math.round(list.reduce((s, p) => s + Number(p.progress || 0), 0) / list.length) : 0;
-  const sorted = useMemo(() => sortRows(list, sort, (p: StoreItem, k) => k === "budget" ? Number(p.budget) : k === "actual" ? Number(p.actual) : k === "progress" ? Number(p.progress) : k === "tahap" ? String(tahapOf(p)) : String((p as StoreItem)[k] ?? "")), [list, sort]);
+  /* Pengurutan tanggal lewat `createdAtOf`/`lastTouchedAt`, bukan field mentah:
+     `updated_at` milik server adalah ISO penuh sementara `createdAt` bisa
+     "YYYY-MM-DD" saja. Dicampur dalam satu kolom, urutan leksikografis
+     mengurutkan "2026-1-5" sebelum "2026-10-2" - jadi keduanya dinormalkan
+     ke sumber yang sudah tervalidasi lebih dulu. Yang tidak ada tanggalnya
+     diberi string kosong supaya mengurut ke akhir, bukan ke awal. */
+  const sorted = useMemo(() => sortRows(list, sort, (p: StoreItem, k) => {
+    if (k === "budget") return Number(p.budget);
+    if (k === "actual") return Number(p.actual);
+    if (k === "progress") return Number(p.progress);
+    if (k === "tahap") return String(tahapOf(p));
+    if (k === "createdAt") return createdAtOf(p) ?? "";
+    if (k === "updatedAt") return lastTouchedAt(p) ?? "";
+    return String((p as StoreItem)[k] ?? "");
+  }), [list, sort]);
   const pager = usePager(list.length);
   useEffect(() => {
     pager.reset();
@@ -205,16 +222,13 @@ export default function Projects() {
       </div>
 
       <div className="mb-4 flex flex-wrap items-center gap-3">
-        <div className="relative min-w-52 flex-1 sm:max-w-xs">
-          <Search className="absolute left-3 top-2.5 h-4 w-4 text-steel-400" />
-          <input
-            className="input pl-9 w-full"
-            placeholder={S.searchProjectPh}
-            aria-label={S.searchProjectAria}
-            value={q}
-            onChange={(e) => setQ(e.target.value)}
-          />
-        </div>
+        <SearchBox
+          value={q}
+          onChange={setQ}
+          placeholder={S.searchProjectPh}
+          ariaLabel={S.searchProjectAria}
+          className="min-w-52 flex-1 sm:max-w-xs"
+        />
         <FilterPopover
           activeCount={[
             filter !== "Semua",
@@ -301,6 +315,13 @@ export default function Projects() {
                 <SortTh label={S.colBudget} sortKey="budget" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} />
                 <SortTh label={S.colActual} sortKey="actual" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} />
                 <SortTh label={S.colPm} sortKey="manager" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} />
+                {/* Tanggal rekam (F6). Kolom ini yang bikin tabel bisa
+                    diurutkan menurut umur data - tanpa itu, semua proyek
+                    terlihat sama saja sejak itu dibuat. Kosong = "—", bukan hari ini:
+                    data lama memang tidak punya tanggal buat, dan mengarang
+                    tanggal lebih buruk daripada membiarkan kosong. */}
+                <SortTh label={S.colCreated} sortKey="createdAt" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} />
+                <SortTh label={S.colUpdated} sortKey="updatedAt" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} />
                 <th className="th">{S.actionTh}</th>
               </tr>
             </thead>
@@ -356,6 +377,12 @@ export default function Projects() {
                     <td className="td font-medium text-navy-900">{fmtMiliar(p.budget)}</td>
                     <td className="td text-steel-600">{fmtMiliar(p.actual)}</td>
                     <td className="td text-steel-600">{p.manager}</td>
+                    <td className="td text-xs text-steel-600">
+                      {createdAtOf(p) !== null ? fmtTanggal(createdAtOf(p)) : <span className="text-steel-400">-</span>}
+                    </td>
+                    <td className="td text-xs text-steel-600">
+                      {lastTouchedAt(p) !== null ? fmtTanggal(lastTouchedAt(p)) : <span className="text-steel-400">-</span>}
+                    </td>
                     <td className="td" onClick={(e) => e.stopPropagation()}>
                       <button
                         className="text-xs font-semibold text-rose-600 hover:underline"

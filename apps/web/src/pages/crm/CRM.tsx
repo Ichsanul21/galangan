@@ -1,8 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { Plus, Send, Users2, Star, Handshake, ArrowRight, Search } from "lucide-react";
+import { Plus, Send, Users2, Star, Handshake, ArrowRight } from "lucide-react";
 import { Card, CardHeader, PageHeader, Badge, KpiCard, Tabs, Donut, Modal, Field, FormGrid, StatusBadge, ConfirmModal, EmptyState, SortTh, toggleSort, sortRows, toast, usePager,
   NumInput,
+  SearchBox,
+  rowMatches,
 } from "../../components/ui";
 import ClientModal from "../../components/ClientModal";
 import type { SortState } from "../../components/ui";
@@ -155,10 +157,7 @@ export default function CRM() {
 
   const visibleClients = useMemo(() => {
     const base = inBranch(data.clients ?? []);
-    const needle = crmQ.trim().toLowerCase();
-    const searched = needle
-      ? base.filter((c) => `${c.name ?? ""} ${c.id ?? ""}`.toLowerCase().includes(needle))
-      : base;
+    const searched = base.filter((c) => rowMatches(c, crmQ, ["id", "name", "klasifikasi", "branch", "currency", "paymentTerms", "since"]));
     if (klasFilter === "Semua") return searched;
     return searched.filter((c) => String(c.klasifikasi ?? "Regular") === klasFilter);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -717,10 +716,13 @@ export default function CRM() {
           {tab === "Pipeline" && (
             <div className="space-y-4">
               <div className="mb-3 flex flex-wrap items-center gap-2">
-                <div className="relative min-w-52 flex-1 sm:max-w-xs">
-                  <Search className="absolute left-3 top-2.5 h-4 w-4 text-steel-400" />
-                  <input className="input pl-9 w-full" placeholder={S.pipeSearchPh} aria-label={S.pipeSearchAria} value={crmQ} onChange={(e) => setCrmQ(e.target.value)} />
-                </div>
+                <SearchBox
+                  value={crmQ}
+                  onChange={setCrmQ}
+                  placeholder={S.pipeSearchPh}
+                  ariaLabel={S.pipeSearchAria}
+                  className="min-w-52 flex-1 sm:max-w-xs"
+                />
                 <FilterPopover
                   activeCount={[stageFilter !== "Semua"].filter(Boolean).length}
                   initial={{ stage: stageFilter }}
@@ -741,9 +743,7 @@ export default function CRM() {
                   <span className="text-xs text-steel-400">
                     {S.pipeFilterActive.replace("{n}", String(quotations.filter((q) => {
                       if (stageFilter !== "Semua" && String(q.stage) !== stageFilter) return false;
-                      const needle = crmQ.trim().toLowerCase();
-                      if (!needle) return true;
-                      return `${q.vessel ?? ""} ${q.client ?? ""} ${q.id ?? ""}`.toLowerCase().includes(needle);
+                      return rowMatches(q, crmQ, ["id", "vessel", "client", "type", "stage", "date", "value"]);
                     }).length))}
                   </span>
                 )}
@@ -814,9 +814,7 @@ export default function CRM() {
                   const items = quotations.filter((q) => {
                     if (q.stage !== stage) return false;
                     if (stageFilter !== "Semua" && String(q.stage) !== stageFilter) return false;
-                    const needle = crmQ.trim().toLowerCase();
-                    if (!needle) return true;
-                    return `${q.vessel ?? ""} ${q.client ?? ""} ${q.id ?? ""}`.toLowerCase().includes(needle);
+                    return rowMatches(q, crmQ, ["id", "vessel", "client", "type", "stage", "date", "value"]);
                   });
                   return (
                     <div key={stage} className="rounded-xl bg-surface p-3">
@@ -868,10 +866,13 @@ export default function CRM() {
           {tab === "Klien" && (
             <div className="space-y-3">
               <div className="flex flex-wrap items-center gap-2">
-                <div className="relative min-w-52 flex-1 sm:max-w-xs">
-                  <Search className="absolute left-3 top-2.5 h-4 w-4 text-steel-400" />
-                  <input className="input pl-9 w-full" placeholder={S.clientSearchPh} aria-label={S.clientSearchAria} value={crmQ} onChange={(e) => setCrmQ(e.target.value)} />
-                </div>
+                <SearchBox
+                  value={crmQ}
+                  onChange={setCrmQ}
+                  placeholder={S.clientSearchPh}
+                  ariaLabel={S.clientSearchAria}
+                  className="min-w-52 flex-1 sm:max-w-xs"
+                />
                 <FilterPopover
                   activeCount={[klasFilter !== "Semua"].filter(Boolean).length}
                   initial={{ klasifikasi: klasFilter }}

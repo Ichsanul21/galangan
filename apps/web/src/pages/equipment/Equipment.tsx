@@ -1,11 +1,13 @@
-﻿import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { bucketByMonth, monthAxis, rebindLegacyMonthSeries } from "../../utils/monthAxis";
 import type { ReactNode } from "react";
 import { Link } from "react-router-dom";
-import { Plus, Cpu, Pencil, Trash2, Wrench, AlertTriangle, Gauge, CheckCircle2, Download, Search } from "lucide-react";
+import { Plus, Cpu, Pencil, Trash2, Wrench, AlertTriangle, Gauge, CheckCircle2, Download } from "lucide-react";
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 import { Card, CardHeader, PageHeader, Badge, KpiCard, Tabs, ProgressBar, ChartTooltip, RadialGauge, Modal, Field, FormGrid, EmptyState, ConfirmModal, StatusBadge, toast, SortTh, toggleSort, sortRows, usePager,
   NumInput, AsyncButton,
+  SearchBox,
+  rowMatches,
 } from "../../components/ui";
 import type { SortState } from "../../components/ui";
 import { ServiceNotesButton, ServiceNotesModal, notesOf } from "../../components/ServiceNotes";
@@ -576,9 +578,7 @@ export default function EquipmentPage() {
   const regFiltered = equipment.filter((e) => {
     if (eqStatus !== "Semua" && String(e.status ?? "") !== eqStatus) return false;
     if (eqCat !== "Semua" && String(e.category ?? "") !== eqCat) return false;
-    const needle = eqQ.trim().toLowerCase();
-    if (!needle) return true;
-    return `${e.name ?? ""} ${e.code ?? ""} ${e.model ?? ""}`.toLowerCase().includes(needle);
+    return rowMatches(e, eqQ, ["id", "name", "code", "model", "category", "status", "lastHours", "rate"]);
   });
   const regSorted = useMemo(() => sortRows(regFiltered, sort, (e, k) => {
     if (k === "utilisasi") return (e.utilManual === true) ? Number(e.util || 0) : autoUtilOf(e);
@@ -1560,10 +1560,13 @@ export default function EquipmentPage() {
           {tab === "Register" && (
             <div>
               <div className="mb-3 flex flex-wrap items-center gap-2">
-                <div className="relative min-w-52 flex-1 sm:max-w-xs">
-                  <Search className="absolute left-3 top-2.5 h-4 w-4 text-steel-400" />
-                  <input className="input pl-9 w-full" placeholder={S.eqSearchPh} aria-label={S.eqSearchAria} value={eqQ} onChange={(e) => setEqQ(e.target.value)} />
-                </div>
+                <SearchBox
+                  value={eqQ}
+                  onChange={setEqQ}
+                  placeholder={S.eqSearchPh}
+                  ariaLabel={S.eqSearchAria}
+                  className="min-w-52 flex-1 sm:max-w-xs"
+                />
                 <FilterPopover
                   activeCount={[eqStatus !== "Semua", eqCat !== "Semua"].filter(Boolean).length}
                   initial={{ status: eqStatus, kategori: eqCat }}
@@ -2436,17 +2439,15 @@ export default function EquipmentPage() {
                   </div>
                 </Card>
               </div>
-              <div className="relative">
-                <Search className="absolute left-3 top-2.5 h-4 w-4 text-steel-400" />
-                <input className="input pl-9 w-full" placeholder={S.cardSearchPh} aria-label={S.cardSearchPh} value={utilQ} onChange={(e) => setUtilQ(e.target.value)} />
-              </div>
+              <SearchBox
+                value={utilQ}
+                onChange={setUtilQ}
+                placeholder={S.cardSearchPh}
+                ariaLabel={S.cardSearchPh}
+              />
               <div className="max-h-96 overflow-y-auto pr-1">
                 <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                  {equipment.filter((e) => {
-                    const needle = utilQ.trim().toLowerCase();
-                    if (!needle) return true;
-                    return `${e.name ?? ""} ${e.code ?? ""}`.toLowerCase().includes(needle);
-                  }).map((e) => {
+                  {equipment.filter((e) => rowMatches(e, utilQ, ["id", "name", "code", "category", "model", "status"])).map((e) => {
                     const manual = e.utilManual === true;
                     const auto = autoUtilOf(e);
                     const disp = manual ? Number(e.util || 0) : auto;

@@ -3,7 +3,7 @@ import type { CSSProperties } from "react";
 import { Link } from "react-router-dom";
 import { useDraftState } from "../../utils/draft";
 import { FileText } from "lucide-react";
-import { Card, CardHeader, PageHeader, StatusBadge, Badge, KpiCard, EmptyState, ProgressBar, Donut, toast, AsyncButton } from "../../components/ui";
+import { Card, CardHeader, PageHeader, StatusBadge, Badge, KpiCard, EmptyState, ProgressBar, Donut, toast, AsyncButton, rowMatches } from "../../components/ui";
 import { useStore } from "../../data/store";
 import type { StoreItem, CollectionKey } from "../../data/store";
 import { useModuleSync, useProjectWbsSync } from "../../data/useModuleSync";
@@ -533,7 +533,7 @@ export default function Laporan() {
                 <CardHeader title={S.projectProgress} subtitle={S.activeThisWeek} />
                 <div className="px-5 pb-2"><input className="input" value={weekProjQ} onChange={(e) => setWeekProjQ(e.target.value)} placeholder={S.cardSearchPh} aria-label={S.cardSearchPh} /></div>
                 <div className="max-h-64 space-y-3 overflow-y-auto scroll-flush px-5 pb-5 pr-4">
-                  {weekly.projects.filter((p) => !weekProjQ.trim() || `${p.id ?? ""} ${num(p.progress)}`.toLowerCase().includes(weekProjQ.trim().toLowerCase())).map((p) => (
+                  {weekly.projects.filter((p) => rowMatches(p, weekProjQ, ["id", "vessel", "client", "status", "type", "manager"])).map((p) => (
                     <div key={p.id}>
                       <div className="flex justify-between text-xs"><span className="font-mono font-semibold text-navy-900">{p.id}</span><span className="text-steel-500">{num(p.progress)}%</span></div>
                       <ProgressBar value={num(p.progress)} className="mt-1" />
@@ -553,14 +553,14 @@ export default function Laporan() {
                 <CardHeader title={S.ncrPlusIncident} subtitle={S.ncrIncidentCount.replace("{a}", fmtJumlah(weekly.ncr.length)).replace("{b}", fmtJumlah(weekly.incidents.length))} />
                 <div className="px-5 pb-2"><input className="input" value={weekFindQ} onChange={(e) => setWeekFindQ(e.target.value)} placeholder={S.cardSearchPh} aria-label={S.cardSearchPh} /></div>
                 <div className="max-h-64 space-y-2 overflow-y-auto scroll-flush-5 px-5 pb-5 pr-4 text-xs">
-                  {weekly.ncr.filter((n) => !weekFindQ.trim() || `${n.id ?? ""} ${n.status ?? ""}`.toLowerCase().includes(weekFindQ.trim().toLowerCase())).map((n) => (
+                  {weekly.ncr.filter((n) => rowMatches(n, weekFindQ, ["id", "project", "vessel", "type", "status", "severity", "issue"])).map((n) => (
                     <div key={n.id} className="flex items-center gap-2">
                       <span className="font-mono font-semibold text-navy-900">{n.id}</span>
                       <StatusBadge status={String(n.status)} />
                       <span className="ml-auto text-steel-500">{fmtTanggal(String(n.raised ?? ""))}</span>
                     </div>
                   ))}
-                  {weekly.incidents.filter((x) => !weekFindQ.trim() || `${x.id ?? ""} ${x.desc ?? ""} ${x.type ?? ""}`.toLowerCase().includes(weekFindQ.trim().toLowerCase())).map((x) => (
+                  {weekly.incidents.filter((x) => rowMatches(x, weekFindQ, ["id", "project", "vessel", "type", "status", "severity", "desc"])).map((x) => (
                     <div key={x.id} className="flex items-center gap-2">
                       <span className="font-mono font-semibold text-navy-900">{x.id}</span>
                       <span className="truncate text-steel-600">{String(x.desc ?? x.type ?? "")}</span>
@@ -722,7 +722,7 @@ export default function Laporan() {
                   <CardHeader title={S.projectNcr} subtitle={S.findingsCount.replace("{n}", fmtJumlah(projNcr.length))} />
                   <div className="px-5 pb-2"><input className="input" value={projNcrQ} onChange={(e) => setProjNcrQ(e.target.value)} placeholder={S.cardSearchPh} aria-label={S.cardSearchPh} /></div>
                   <div className="max-h-64 space-y-2 overflow-y-auto scroll-flush px-5 pb-5 pr-4 text-xs">
-                    {projNcr.filter((n) => !projNcrQ.trim() || `${n.id ?? ""} ${n.severity ?? ""} ${n.type ?? ""} ${n.status ?? ""}`.toLowerCase().includes(projNcrQ.trim().toLowerCase())).map((n) => {
+                    {projNcr.filter((n) => rowMatches(n, projNcrQ, ["id", "project", "vessel", "type", "status", "severity", "issue"])).map((n) => {
                       const sev = String(n.severity ?? n.type ?? "");
                       return (
                       <div key={n.id} className="flex items-center gap-2">

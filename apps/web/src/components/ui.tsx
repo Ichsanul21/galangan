@@ -870,6 +870,24 @@ export function FormGrid({ children }: { children: ReactNode }) {
  * tidak pernah menemukan "INV-001" dan nomor dokumen tidak bisa dicari sama
  * sekali - search-nya ada tapi tidak berguna.
  */
+/* Teks pencarian untuk satu nilai field. Array dan objek ikut diratakan supaya
+   field seperti `lines` atau `vendors` tetap bisa dicari isinya, bukan jadi
+   "[object Object]". Depth dibatasi supaya data bersarangtak abnormal tidak
+   membuat render lambat. */
+function searchText(value: unknown, depth = 0): string {
+  if (value === null || value === undefined) return "";
+  if (value instanceof Date) return value.toISOString();
+  if (depth >= 3) return "";
+  if (Array.isArray(value)) return value.map((v) => searchText(v, depth + 1)).filter(Boolean).join(" ");
+  if (typeof value === "object") {
+    return Object.values(value as Record<string, unknown>)
+      .map((v) => searchText(v, depth + 1))
+      .filter(Boolean)
+      .join(" ");
+  }
+  return String(value);
+}
+
 export function rowMatches<T extends Record<string, unknown>>(
   row: T,
   query: string,
@@ -880,10 +898,7 @@ export function rowMatches<T extends Record<string, unknown>>(
   return q
     .split(/\s+/)
     .every((term) =>
-      fields.some((f) => {
-        const v = row[f];
-        return v !== null && v !== undefined && String(v).toLowerCase().includes(term);
-      }),
+      fields.some((f) => searchText(row[f]).toLowerCase().includes(term)),
     );
 }
 
@@ -1146,18 +1161,44 @@ export function toggleSort(prev: SortState, key: string): SortState {
 }
 
 function cmpVal(a: string | number | null | undefined, b: string | number | null | undefined): number {
+  const aEmpty = a === null || a === undefined || a === "";
+  const bEmpty = b === null || b === undefined || b === "";
+  if (aEmpty && bEmpty) return 0;
   const an = typeof a === "number" ? a : Number(a);
   const bn = typeof b === "number" ? b : Number(b);
   const aNum = a !== "" && a !== null && a !== undefined && Number.isFinite(an);
   const bNum = b !== "" && b !== null && b !== undefined && Number.isFinite(bn);
   if (aNum && bNum) return an - bn;
-  return String(a ?? "").localeCompare(String(b ?? ""), "id-ID");
+  /* Perbandingan teks untuk nilai yang tidak bisa diparse sebagai angka.
+     `sortRows` sudah menyingkirkan nilai kosong sebelum memanggil sini,
+     jadi `a`/`b` dijamin bukan string kosong. */
+  return String(a).localeCompare(String(b), "id-ID");
 }
 
 export function sortRows<T>(rows: T[], sort: SortState, get: (row: T, key: string) => string | number | null | undefined): T[] {
   if (!sort.key) return rows;
+  const key = sort.key as string;
   const dir = sort.dir === "asc" ? 1 : -1;
-  return [...rows].sort((ra, rb) => cmpVal(get(ra, sort.key as string), get(rb, sort.key as string)) * dir);
+  /* "Tidak punya nilai" diperiksa sebelum arah pembalikan, bukan sesudahnya.
+     Kalau posisinya ikut dikalikan `dir`, mengurutkan menurun akan memindahkan
+     semua baris kosong ke PUNCAK daftar - persis kebalikan dari yang
+     diinginkan.
+
+     Sebelumnya nilai kosong jatuh ke `String(a ?? "")` yang dianggap lebih
+     kecil dari teks apa pun, jadi baris bertanggal kosong menduduki
+     posisi pertama setiap kali kolom tanggal diurutkan. */
+  const blank = (v: string | number | null | undefined): boolean => v === null || v === undefined || v === "";
+  return [...rows].sort((ra, rb) => {
+    const va = get(ra, key);
+    const vb = get(rb, key);
+    const ba = blank(va);
+    const bb = blank(vb);
+    if (ba || bb) {
+      if (ba && bb) return 0;
+      return ba ? 1 : -1;
+    }
+    return cmpVal(va, vb) * dir;
+  });
 }
 
 export function SortTh({
@@ -1188,7 +1229,7 @@ export function SortTh({
       >
         {label}
         <span className={`text-[10px] ${active ? "text-ocean-600" : "text-steel-300"}`} aria-hidden>
-          {active ? (sort.dir === "asc" ? "▲" : "▼") : "⇅"}
+          {active ? (sort.dir === "asc" ? "â–²" : "â–¼") : "â‡…"}
         </span>
       </button>
     </th>
@@ -1360,11 +1401,11 @@ export function usePager(total: number, defaultSize = 100): {
         {total === 0 ? "0 dari 0" : `${(safe - 1) * size + 1}-${Math.min(safe * size, total)} dari ${total}`}
       </span>
       <span className="ml-auto flex items-center gap-1">
-        <button className="btn-secondary px-2 py-1" disabled={safe <= 1} onClick={() => go(1)}>«</button>
-        <button className="btn-secondary px-2 py-1" disabled={safe <= 1} onClick={() => go(safe - 1)}>‹</button>
+        <button className="btn-secondary px-2 py-1" disabled={safe <= 1} onClick={() => go(1)}>Â«</button>
+        <button className="btn-secondary px-2 py-1" disabled={safe <= 1} onClick={() => go(safe - 1)}>â€¹</button>
         <span className="px-1 font-semibold text-navy-900">{safe} / {pages}</span>
-        <button className="btn-secondary px-2 py-1" disabled={safe >= pages} onClick={() => go(safe + 1)}>›</button>
-        <button className="btn-secondary px-2 py-1" disabled={safe >= pages} onClick={() => go(pages)}>»</button>
+        <button className="btn-secondary px-2 py-1" disabled={safe >= pages} onClick={() => go(safe + 1)}>â€º</button>
+        <button className="btn-secondary px-2 py-1" disabled={safe >= pages} onClick={() => go(pages)}>Â»</button>
         <select
           className="input ml-1 !w-auto px-1.5 py-1 text-xs"
           value={size}
@@ -1422,7 +1463,7 @@ export function useServerPager<T>(
   const loadRef = useRef(load);
   loadRef.current = load;
 
-  /* Filter berubah → kembali ke halaman 1 sebelum fetch berikutnya. */
+  /* Filter berubah â†’ kembali ke halaman 1 sebelum fetch berikutnya. */
   const [fk, setFk] = useState(filterKey);
   if (enabled && fk !== filterKey) {
     setFk(filterKey);
@@ -1468,18 +1509,18 @@ export function useServerPager<T>(
     <div className="flex flex-wrap items-center gap-2 py-2 text-xs text-steel-500">
       <span>
         {loading
-          ? "Memuat…"
+          ? "Memuatâ€¦"
           : total === 0
             ? "0 dari 0"
             : `${(safe - 1) * size + 1}-${Math.min(safe * size, total)} dari ${total}`}
       </span>
       {loading && <Loader2 className="h-3.5 w-3.5 animate-spin text-ocean-500" aria-hidden />}
       <span className="ml-auto flex items-center gap-1">
-        <button className="btn-secondary px-2 py-1" disabled={loading || safe <= 1} onClick={() => go(1)}>«</button>
-        <button className="btn-secondary px-2 py-1" disabled={loading || safe <= 1} onClick={() => go(safe - 1)}>‹</button>
+        <button className="btn-secondary px-2 py-1" disabled={loading || safe <= 1} onClick={() => go(1)}>Â«</button>
+        <button className="btn-secondary px-2 py-1" disabled={loading || safe <= 1} onClick={() => go(safe - 1)}>â€¹</button>
         <span className="px-1 font-semibold text-navy-900">{safe} / {pages}</span>
-        <button className="btn-secondary px-2 py-1" disabled={loading || safe >= pages} onClick={() => go(safe + 1)}>›</button>
-        <button className="btn-secondary px-2 py-1" disabled={loading || safe >= pages} onClick={() => go(pages)}>»</button>
+        <button className="btn-secondary px-2 py-1" disabled={loading || safe >= pages} onClick={() => go(safe + 1)}>â€º</button>
+        <button className="btn-secondary px-2 py-1" disabled={loading || safe >= pages} onClick={() => go(pages)}>Â»</button>
         <select
           className="input ml-1 !w-auto px-1.5 py-1 text-xs"
           value={size}
@@ -1499,8 +1540,8 @@ export function useServerPager<T>(
 
 /* ============ N U M I N P U T ============ */
 
-/** Buang nol di depan agar tidak nyangkut: "0" → "" (user ketik ulang bersih),
- *  "007" → "7". Desimal ("0.5") tetap utuh. */
+/** Buang nol di depan agar tidak nyangkut: "0" â†’ "" (user ketik ulang bersih),
+ *  "007" â†’ "7". Desimal ("0.5") tetap utuh. */
 function stripLeadingZero(v: string): string {
   if (!v) return v;
   if (v === "0") return "";
@@ -1545,13 +1586,13 @@ import { uploadFile } from "../services/upload";
 import { BASE, getJwt } from "../services/http";
 import { toAbsoluteUrl } from "../services/files";
 
-/** Normalisasi URL lama relatif (/files/...) → absolut terhadap BASE backend.
+/** Normalisasi URL lama relatif (/files/...) â†’ absolut terhadap BASE backend.
  *  URL absolut / blob: / object-URL dikembalikan apa adanya. */
 export function absUrl(url: unknown): string {
   return toAbsoluteUrl(url);
 }
 
-/** Gambar dengan inisial bila tanpa foto + loader JWT (fetch blob → object URL).
+/** Gambar dengan inisial bila tanpa foto + loader JWT (fetch blob â†’ object URL).
  *  Cocok untuk foto yang dilindungi auth backend; URL lama relatif dinormalisasi. */
 export function SecureImg({
   src,
@@ -1571,7 +1612,7 @@ export function SecureImg({
     setFailed(false);
     setObj(null);
     if (!raw || /^(blob:|data:)/i.test(raw)) return;
-    // URL absolut same-origin / backend ber-JWT → ambil via fetch blob.
+    // URL absolut same-origin / backend ber-JWT â†’ ambil via fetch blob.
     let revoke = "";
     let cancelled = false;
     const needsJwt = !/^https?:/i.test(raw) || (BASE && raw.startsWith(BASE));
@@ -1666,13 +1707,13 @@ export function FlowStrip({
               </span>
             )}
             {i < steps.length - 1 && (
-              <span aria-hidden className="text-steel-300">→</span>
+              <span aria-hidden className="text-steel-300">â†’</span>
             )}
           </span>
         );
       })}
       {idx < 0 && (
-        <span className="text-xs text-steel-400">Status “{current}” di luar alur baku</span>
+        <span className="text-xs text-steel-400">Status â€œ{current}â€ di luar alur baku</span>
       )}
     </div>
   );

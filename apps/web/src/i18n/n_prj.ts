@@ -43,6 +43,11 @@
     prjFieldPm: "Project manager",
     colType: "Jenis",
     colBudget: "Anggaran",
+  /* Label kolom tanggal rekam. "Dibuat" = saat baris masuk sistem, bukan
+     tanggal bisnis (mis. tanggal kontrak). Keduanya sengaja dibedakan supaya
+     tidak ada yang mengira tanggal dokumen sama dengan tanggal masuk. */
+  colCreated: "Dibuat",
+  colUpdated: "Diubah",
     colActual: "Realisasi",
     colPm: "PM",
     prjOpenRow: "Buka {a}",
@@ -628,6 +633,8 @@
     prjFieldPm: "Project manager",
     colType: "Type",
     colBudget: "Budget",
+  colCreated: "Created",
+  colUpdated: "Updated",
     colActual: "Actual",
     colPm: "PM",
     prjOpenRow: "Open {a}",

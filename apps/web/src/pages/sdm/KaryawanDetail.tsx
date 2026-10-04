@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
-import { ArrowLeft, Plus, Search, User } from "lucide-react";
+import { ArrowLeft, Plus, User } from "lucide-react";
 import {
   Badge,
   Card,
@@ -19,6 +19,8 @@ import {
   SecureImg,
   FileUploadButton,
   AsyncButton,
+  SearchBox,
+  rowMatches,
 } from "../../components/ui";
 import type { SortState } from "../../components/ui";
 import { useStore } from "../../data/store";
@@ -602,10 +604,13 @@ export default function KaryawanDetail() {
         <div className="p-4">
           {tab === "Absensi" && (
             <div>
-              <div className="relative mb-2">
-                <Search className="absolute left-3 top-2.5 h-4 w-4 text-steel-400" />
-                <input className="input pl-9 w-full" placeholder={S.cardSearchPh} aria-label={S.cardSearchPh} value={attQ} onChange={(e) => setAttQ(e.target.value)} />
-              </div>
+              <SearchBox
+                value={attQ}
+                onChange={setAttQ}
+                placeholder={S.cardSearchPh}
+                ariaLabel={S.cardSearchPh}
+                className="mb-2 w-full"
+              />
               <div className="max-h-96 overflow-auto">
               <table className="w-full">
                 <thead className="bg-surface sticky top-0 z-10">
@@ -613,9 +618,7 @@ export default function KaryawanDetail() {
                 </thead>
                 <tbody className="divide-y divide-steel-100">
                   {sortRows(attendanceAll.filter((a) => {
-                    const needle = attQ.trim().toLowerCase();
-                    if (!needle) return true;
-                    return `${a.date ?? ""} ${a.shift ?? ""} ${a.status ?? ""} ${a.checkIn ?? ""} ${a.checkOut ?? ""}`.toLowerCase().includes(needle);
+                    return rowMatches(a, attQ, ["date", "shift", "status", "checkIn", "checkOut", "ket"]);
                   }), sort2, (row, k) => {
                     const a = row as StoreItem;
                     switch (k) {

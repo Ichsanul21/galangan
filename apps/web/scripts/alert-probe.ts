@@ -24,7 +24,8 @@ import {
   type AlertLevel,
   type ModuleAlertItem,
 } from "../src/utils/moduleAlerts";
-import type { StoreShape } from "../src/data/store";
+import type { StoreShape, StoreItem } from "../src/data/store";
+import { createdAtOf } from "../src/utils/timestamps";
 
 declare const process: { exit(code: number): never };
 
@@ -262,6 +263,72 @@ const levelOf = (items: ModuleAlertItem[], idPart: string): AlertLevel | "HILANG
   const it = items[0];
   assert(it !== undefined, "alert tetap dibuat walau due tidak valid");
   assert(it.due === undefined, "due tidak valid dibuang (bukan 'Invalid Date')", String(it.due));
+}
+
+/* ---- rowMatches di tabel nyata: kolom tanggal harus bisa diurutkan ---- */
+{
+  /* Kolom "Dibuat"/"Diubah" tidak berguna kalau tidak bisa diurutkan. Yang
+     diuji di sini bukan komponennya, tapi BENTUK datanya: `updated_at` server
+     adalah ISO penuh ("2026-10-04T08:00:00.000Z") sementara `createdAt` bisa
+     "2026-10-04" saja. Dicampur dalam satu pengurutan leksikografis,
+     "2026-1-5" akan muncul SEBELUM "2026-10-2" - urutan tanggal terbalik
+     dan tidak ada yang melihatnya salah. */
+  const es = (d: string): StoreItem => ({ id: "P-1", createdAt: d });
+
+const created = [es("2026-1-5"), es("2026-10-2"), es("2026-2-20")];
+  /* Bukti masalahnya: pengurutan leksikografis MENTAH salah urutan tanggal. */
+  const mentah = [...created].sort((a, b) => String(a.createdAt).localeCompare(String(b.createdAt)));
+  assert(
+    mentah[0]?.createdAt !== "2026-01-05",
+    "localeCompare mentah memang salah urutan (tahap 5 didahului tahap 2)",
+    String(mentah.map((x) => x.createdAt).join(", ")),
+  );
+
+  /* Yang dipakai tabel: `createdAtOf` mengembalikan ISO penuh kalau bisa,
+     jadi kedua bentuk tanggal di atas jadi sama-sama bisa dibandingkan.
+     Panjang ISO berubah dari 10 karakter ("2026-01-05") jadi 24 - yang
+     diuji adalah AWALNYA sama dan panjangnya sama, bukan nilai harinya. */
+  const norm = (d: string): string => createdAtOf({ createdAt: d }) ?? "";
+  assert(norm("2026-1-5").startsWith("2026-01-05"), "createdAt singkat dinormalisasi ke ISO penuh", norm("2026-1-5"));
+  assert(norm("2026-10-2").startsWith("2026-10-02"), "createdAt 2 digit dinormalisasi", norm("2026-10-2"));
+  assert(
+    norm("2026-01-05").length === norm("2026-10-02").length,
+    "semua tanggal ternormalisasi ke panjang yang sama",
+  );
+  assert(
+    norm("2026-01-05") < norm("2026-10-02"),
+    "setelah normalisasi, urutan leksikografis = urutan waktu",
+  );
+
+  /* Baris tanpa tanggal harus mengurut ke akhir, bukan ke awal - kalau tidak,
+     data lama menduduki puncak daftar setiap kali kolom tanggal diurutkan. */
+  assert(createdAtOf({ createdAt: "bukan tanggal" }) === null, "tanggal rusak -> null, bukan string yang ikut terurut");
+  assert(
+    (createdAtOf({ createdAt: "bukan tanggal" }) ?? "") === "",
+    "nilai fallback untuk pengurutan adalah string kosong (mengurut ke akhir)",
+  );
+
+  /* BENTUK TANGGAL TANPA JAM HARUS BEBAS ZONA WAKTU. Ini bug nyata:
+     `Date.parse("2026-01-05")` dibaca UTC, tapi `Date.parse("2026-1-5")`
+     (tanpa nol di depan) dibaca sebagai waktu LOKAL. Di mesin UTC-8 hasilnya
+     berbeda 8 jam - cukup untuk menggeser tanggal ke hari sebelumnya, jadi
+     "2026-1-5" tampil jadi 4 Januari. Kolom tanggal yang salah sehari
+     dipakai buat filter dan sort, jadi ini bukan cosmetic. */
+  const a = createdAtOf({ createdAt: "2026-1-5" }) ?? "";
+  const b = createdAtOf({ createdAt: "2026-01-05" }) ?? "";
+  assert(a === b, "tanggal tanpa nol di depan = tanggal dengan nol di depan", `${a} vs ${b}`);
+  assert(a.startsWith("2026-01-05"), "tidak bergeser ke hari sebelumnya", a);
+  assert(
+    (createdAtOf({ createdAt: "2026-10-2" }) ?? "") === (createdAtOf({ createdAt: "2026-10-02" }) ?? ""),
+    "dua digit bulan/hari juga konsisten",
+    `${createdAtOf({ createdAt: "2026-10-2" })} vs ${createdAtOf({ createdAt: "2026-10-02" })}`,
+  );
+  /* Tanggal dengan jam tetap harus dihormati persis. */
+  assert(
+    (createdAtOf({ createdAt: "2026-01-05T08:30:00.000Z" }) ?? "").startsWith("2026-01-05T08:30"),
+    "tanggal bertanda jam tidak digeser atau dipotong",
+    createdAtOf({ createdAt: "2026-01-05T08:30:00.000Z" }) ?? "",
+  );
 }
 
 if (fail > 0) {

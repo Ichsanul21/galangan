@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
-import { Plus, HardHat, FileSignature, Star, Search, Receipt } from "lucide-react";
+import { Plus, HardHat, FileSignature, Star, Receipt } from "lucide-react";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, ReferenceLine } from "recharts";
-import { Card, CardHeader, PageHeader, Badge, KpiCard, Tabs, ProgressBar, Modal, Field, FormGrid, ConfirmModal, SortTh, toggleSort, sortRows, usePager, toast,
+import { Card, CardHeader, PageHeader, Badge, KpiCard, Tabs, ProgressBar, Modal, Field, FormGrid, ConfirmModal, SortTh, toggleSort, sortRows, usePager, toast, SearchBox, rowMatches,
   NumInput, FlowStrip,
   AsyncButton,
   FileUploadButton,
@@ -216,9 +216,7 @@ export default function Subcontractor() {
   const filteredSubs = subcontractors.filter((s) => {
     if (typeFilter !== "Semua" && String(s.contractType ?? "Borongan") !== typeFilter) return false;
     if (subStatus !== "Semua" && normSub(s.status) !== subStatus) return false;
-    const needle = subQ.trim().toLowerCase();
-    if (!needle) return true;
-    return `${s.name ?? ""} ${s.services ?? ""}`.toLowerCase().includes(needle);
+    return rowMatches(s, subQ, ["name", "services", "contractType", "status", "k3", "id"]);
   });
   const woPager = usePager(workOrders.length);
   useEffect(() => {
@@ -1016,10 +1014,13 @@ const printSpk = async (w: StoreItem): Promise<void> => {
                 <p className="px-4 pb-3 text-[11px] text-steel-400">Asal angka: bar navy = `rating` tersimpan per subkontraktor; bar amber = `k3Score(k3)` dari grade K3. Hover untuk kontrak, WO aktif & termin Lunas. Klik bar untuk rincian.</p>
               </Card>
               <div className="mb-3 flex flex-wrap items-center gap-2">
-                <div className="relative min-w-52 flex-1 sm:max-w-xs">
-                  <Search className="absolute left-3 top-2.5 h-4 w-4 text-steel-400" />
-                  <input className="input pl-9 w-full" placeholder={S.subSearchPh} aria-label={S.subSearchAria} value={subQ} onChange={(e) => setSubQ(e.target.value)} />
-                </div>
+                <SearchBox
+                  value={subQ}
+                  onChange={setSubQ}
+                  placeholder={S.subSearchPh}
+                  ariaLabel={S.subSearchAria}
+                  className="min-w-52 flex-1 sm:max-w-xs"
+                />
                 <FilterPopover
                   activeCount={[subStatus !== "Semua", typeFilter !== "Semua"].filter(Boolean).length}
                   initial={{ status: subStatus, tipe: typeFilter }}
