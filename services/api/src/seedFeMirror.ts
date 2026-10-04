@@ -16,8 +16,25 @@ export const FE_MIRROR_ROWS: MirrorRow[] = [
       "sub": "PT Baja Utama Steel",
       "project": "NB-2025-012",
       "scope": "Fabrikasi & blasting section 4-7",
-      "progress": 70,
-      "status": "Dalam Proses"
+      "status": "Dalam Proses",
+      "milestones": [
+        {
+          "title": "Material & marking",
+          "pct": 30,
+          "due": "2026-08-15",
+          "doneAt": "2026-08-07"
+        },
+        {
+          "title": "Fabrikasi section 4-6",
+          "pct": 40,
+          "due": "2026-09-30"
+        },
+        {
+          "title": "Blasting & painting handover",
+          "pct": 30,
+          "due": "2026-10-31"
+        }
+      ]
     }
   },
   {
@@ -27,9 +44,26 @@ export const FE_MIRROR_ROWS: MirrorRow[] = [
     "data": {
       "sub": "CV Pengecatan Marine",
       "project": "RP-2026-003",
-      "scope": "Coating lambung & deck",
-      "progress": 55,
-      "status": "Dalam Proses"
+      "scope": "Coating lambungnya & deck",
+      "status": "Dalam Proses",
+      "milestones": [
+        {
+          "title": "Surface preparation",
+          "pct": 25,
+          "due": "2026-08-20",
+          "doneAt": "2026-08-12"
+        },
+        {
+          "title": "Primer coating",
+          "pct": 35,
+          "due": "2026-09-15"
+        },
+        {
+          "title": "Topcoat & DFT check",
+          "pct": 40,
+          "due": "2026-10-20"
+        }
+      ]
     }
   },
   {
@@ -40,8 +74,25 @@ export const FE_MIRROR_ROWS: MirrorRow[] = [
       "sub": "PT Mesinindo Perkasa",
       "project": "RP-2026-005",
       "scope": "Overhaul main engine",
-      "progress": 40,
-      "status": "Dalam Proses"
+      "status": "Dalam Proses",
+      "milestones": [
+        {
+          "title": "Bearing overhaul",
+          "pct": 45,
+          "due": "2026-09-10",
+          "doneAt": "2026-09-02"
+        },
+        {
+          "title": "Alignment & trial run",
+          "pct": 35,
+          "due": "2026-10-05"
+        },
+        {
+          "title": "Handover & documents",
+          "pct": 20,
+          "due": "2026-10-20"
+        }
+      ]
     }
   },
   {
@@ -52,8 +103,21 @@ export const FE_MIRROR_ROWS: MirrorRow[] = [
       "sub": "CV Scaffold Aman",
       "project": "NB-2025-012",
       "scope": "Perancah hull assembly",
-      "progress": 100,
-      "status": "Selesai"
+      "status": "Selesai",
+      "milestones": [
+        {
+          "title": "Ereksi perancah",
+          "pct": 50,
+          "due": "2026-06-30",
+          "doneAt": "2026-06-22"
+        },
+        {
+          "title": "Pen dismantled",
+          "pct": 50,
+          "due": "2026-07-20",
+          "doneAt": "2026-07-12"
+        }
+      ]
     }
   },
   {
@@ -64,8 +128,25 @@ export const FE_MIRROR_ROWS: MirrorRow[] = [
       "sub": "PT Kelistrikan Bahari",
       "project": "RF-2026-001",
       "scope": "Instalasi panel & cabling",
-      "progress": 25,
-      "status": "Dalam Proses"
+      "status": "Dalam Proses",
+      "milestones": [
+        {
+          "title": "Panel delivery & setting",
+          "pct": 40,
+          "due": "2026-09-20",
+          "doneAt": "2026-09-12"
+        },
+        {
+          "title": "Cable pulling & termination",
+          "pct": 35,
+          "due": "2026-10-15"
+        },
+        {
+          "title": "Load test & certification",
+          "pct": 25,
+          "due": "2026-11-05"
+        }
+      ]
     }
   },
   {
@@ -76,9 +157,22 @@ export const FE_MIRROR_ROWS: MirrorRow[] = [
       "sub": "Pak Yusuf",
       "project": "RP-2026-006",
       "scope": "Outfitting Deck BG RMN 3324 (Ban Daprah, Tanda Selar, pressure test tank)",
-      "progress": 100,
       "status": "Selesai",
-      "date": "2026-08-20"
+      "date": "2026-08-20",
+      "milestones": [
+        {
+          "title": "Tanda selar & ban daprah",
+          "pct": 60,
+          "due": "2026-08-05",
+          "doneAt": "2026-07-28"
+        },
+        {
+          "title": "Pressure test tank",
+          "pct": 40,
+          "due": "2026-08-20",
+          "doneAt": "2026-08-12"
+        }
+      ]
     }
   },
   {
@@ -88,7 +182,7 @@ export const FE_MIRROR_ROWS: MirrorRow[] = [
     "data": {
       "sub": "PT Baja Utama Steel",
       "woId": "WO-2026-041",
-      "progress": "WO-2026-041 (70%)",
+      "milestone": "Material & marking",
       "amount": 2100000000,
       "pph23": "2%",
       "retention": "5%",
@@ -102,7 +196,7 @@ export const FE_MIRROR_ROWS: MirrorRow[] = [
     "data": {
       "sub": "PT Mesinindo Perkasa",
       "woId": "WO-2026-043",
-      "progress": "WO-2026-043 (40%)",
+      "milestone": "Bearing overhaul",
       "amount": 1568000000,
       "pph23": "2%",
       "retention": "5%",
@@ -116,7 +210,7 @@ export const FE_MIRROR_ROWS: MirrorRow[] = [
     "data": {
       "sub": "CV Scaffold Aman",
       "woId": "WO-2026-044",
-      "progress": "WO-2026-044 (100%)",
+      "milestone": "Pen dismantled",
       "amount": 450000000,
       "pph23": "2%",
       "retention": "5%",
@@ -130,7 +224,7 @@ export const FE_MIRROR_ROWS: MirrorRow[] = [
     "data": {
       "sub": "CV Pengecatan Marine",
       "woId": "WO-2026-042",
-      "progress": "WO-2026-042 (55%)",
+      "milestone": "Surface preparation",
       "amount": 940000000,
       "pph23": "2%",
       "retention": "5%",
@@ -144,8 +238,7 @@ export const FE_MIRROR_ROWS: MirrorRow[] = [
     "data": {
       "sub": "Pak Yusuf",
       "woId": "WO-SB-001",
-      "milestone": "Outfitting Deck BG RMN 3324",
-      "progress": "WO-SB-001 (100%)",
+      "milestone": "Pressure test tank",
       "amount": 300000,
       "pphPct": 0.5,
       "pphAmt": 1500,
@@ -2086,7 +2179,7 @@ export const FE_MIRROR_ROWS: MirrorRow[] = [
       "pph21": 0,
       "bpjsKes": 0,
       "bpjsTk": 0,
-      "net": 0,
+      "net": 22500000,
       "status": "Draft",
       "paidAt": ""
     }
@@ -2770,10 +2863,11 @@ export const FE_MIRROR_ROWS: MirrorRow[] = [
         }
       ],
       "materialCost": 670000,
-      "laborCost": 0,
-      "laborRatePerDay": 1100000,
+      "laborCost": 1244512,
+      "laborRatePerDay": 622256,
+      "laborDays": 2,
       "downtimeHours": 18,
-      "costTotal": 670000,
+      "costTotal": 1914512,
       "createdAt": "2026-09-16",
       "createdBy": "Anda",
       "history": [
@@ -2831,10 +2925,11 @@ export const FE_MIRROR_ROWS: MirrorRow[] = [
         }
       ],
       "materialCost": 1460000,
-      "laborCost": 2200000,
-      "laborRatePerDay": 1100000,
+      "laborCost": 1244512,
+      "laborRatePerDay": 622256,
+      "laborDays": 2,
       "downtimeHours": 9,
-      "costTotal": 3660000,
+      "costTotal": 2704512,
       "createdAt": "2026-09-01",
       "createdBy": "Anda",
       "history": [
@@ -2892,10 +2987,11 @@ export const FE_MIRROR_ROWS: MirrorRow[] = [
         }
       ],
       "materialCost": 440000,
-      "laborCost": 0,
-      "laborRatePerDay": 1100000,
+      "laborCost": 622256,
+      "laborRatePerDay": 622256,
+      "laborDays": 1,
       "downtimeHours": 0,
-      "costTotal": 440000,
+      "costTotal": 1062256,
       "createdAt": "2026-10-01",
       "createdBy": "Anda",
       "history": [
@@ -6003,7 +6099,7 @@ export const FE_MIRROR_ROWS: MirrorRow[] = [
       "scope": [
         "Docking",
         "Repair",
-        "DP-1 → Pelunasan V2"
+        "DP-1 â†’ Pelunasan V2"
       ]
     }
   },
@@ -6683,7 +6779,7 @@ export const FE_MIRROR_ROWS: MirrorRow[] = [
       "lastHours": 12450,
       "model": "DEMAG 50T",
       "rate": 1200000,
-      "fuelPrice": 0,
+      "fuelPrice": 18950,
       "acquisitionCost": 950000000,
       "usefulLife": 20,
       "serviceNotes": [
@@ -6716,7 +6812,7 @@ export const FE_MIRROR_ROWS: MirrorRow[] = [
       "lastHours": 18320,
       "model": "Liebherr MK100",
       "rate": 2500000,
-      "fuelPrice": 13500,
+      "fuelPrice": 18950,
       "acquisitionCost": 1650000000,
       "usefulLife": 15,
       "serviceNotes": [
@@ -6743,7 +6839,7 @@ export const FE_MIRROR_ROWS: MirrorRow[] = [
       "lastHours": 2500,
       "model": "Fronius TPS 400i",
       "rate": 250000,
-      "fuelPrice": 0,
+      "fuelPrice": 18950,
       "acquisitionCost": 62000000,
       "usefulLife": 10,
       "serviceNotes": [
@@ -6776,7 +6872,7 @@ export const FE_MIRROR_ROWS: MirrorRow[] = [
       "lastHours": 4100,
       "model": "Miller XMT",
       "rate": 220000,
-      "fuelPrice": 0,
+      "fuelPrice": 18950,
       "acquisitionCost": 45000000,
       "usefulLife": 10,
       "serviceNotes": [
@@ -6803,7 +6899,7 @@ export const FE_MIRROR_ROWS: MirrorRow[] = [
       "lastHours": 8900,
       "model": "Atlas Copco",
       "rate": 150000,
-      "fuelPrice": 12500,
+      "fuelPrice": 18950,
       "acquisitionCost": 180000000,
       "usefulLife": 12,
       "serviceNotes": [
@@ -6830,7 +6926,7 @@ export const FE_MIRROR_ROWS: MirrorRow[] = [
       "lastHours": 7200,
       "model": "Toyota 10FD",
       "rate": 350000,
-      "fuelPrice": 11500,
+      "fuelPrice": 18950,
       "acquisitionCost": 620000000,
       "usefulLife": 12,
       "serviceNotes": []
@@ -6850,7 +6946,7 @@ export const FE_MIRROR_ROWS: MirrorRow[] = [
       "lastHours": 3200,
       "model": "Blastrac",
       "rate": 400000,
-      "fuelPrice": 0,
+      "fuelPrice": 18950,
       "acquisitionCost": 95000000,
       "usefulLife": 8,
       "serviceNotes": [
@@ -6877,7 +6973,7 @@ export const FE_MIRROR_ROWS: MirrorRow[] = [
       "lastHours": 15600,
       "model": "Caterpillar",
       "rate": 900000,
-      "fuelPrice": 12500,
+      "fuelPrice": 18950,
       "acquisitionCost": 1150000000,
       "usefulLife": 15,
       "serviceNotes": [
@@ -7857,7 +7953,7 @@ export const FE_MIRROR_ROWS: MirrorRow[] = [
     "data": {
       "actor": "Budi Santoso",
       "action": "mengupdate progres",
-      "target": "NB-2025-014 → 41%",
+      "target": "NB-2025-014 â†’ 41%",
       "module": "Proyek",
       "time": "42 menit lalu",
       "tone": "violet"
@@ -7954,7 +8050,7 @@ export const FE_MIRROR_ROWS: MirrorRow[] = [
       "name": "Coating Lambung",
       "description": "Epoxy coating hull exterior",
       "quantity": 120,
-      "unit": "m²",
+      "unit": "mÂ²",
       "unitPrice": 850000,
       "totalPrice": 102000000,
       "category": "Paint",

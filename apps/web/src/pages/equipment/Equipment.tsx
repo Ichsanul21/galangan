@@ -18,6 +18,7 @@ import { remoteRepository } from "../../services/repositories";
 import { getJwt, isBackendConfigured } from "../../services/http";
 import { equipmentHours, sparkUtil, equipTotalTrend, maintTrend, serviceDueTrend } from "../../data";
 import { fmtTanggal, fmtJumlah, fmtRupiah, todayISO } from "../../utils/format";
+import { loadedLaborRatePerDay } from "../../utils/rates";
 import { createdAtOf, lastTouchedAt } from "../../utils/timestamps";
 import { durasiJam, fmtJam24, jamOf, jamOverlap, norm24, parseJam, toMinutes } from "../../utils/time24";
 import { sameName } from "../../utils/names";
@@ -60,12 +61,13 @@ const EQ_CATS = ["Pengangkat", "Pengelasan", "Tenaga", "Transportasi", "Pengecat
 /* Tarif harian teknisi untuk hitung biaya tenaga servis.
    DEFAULT ini hanya fallback - angka bisnis sebenarnya ada di settings
    (EQUIP_LABOR_RATE_PER_DAY), dibaca saat siklus dibuat supaya tarif
-   tidak mengikat seluruh riwayat lampau yang sudah terpakai. */
-/* Tarif tenaga servis per hari kerja. Angka lama 750.000 di bawah tarif
-   welder/mekanik 2026 setelah semua beban, dan membuat biaya tenaga servis
-   under-reported di HPP proyek. Nilai ini juga disimpan sebagai settings
-   EQUIP_LABOR_RATE_PER_DAY supaya bisa diubah dari Pengaturan. */
-const DEFAULT_LABOR_RATE_PER_DAY = 1100000;
+   tidak mengikat seluruh riwayat lampau yang sudah terpakai.
+
+   Angkanya diturunkan dari UMP Kalimantan Timur 2026 lewat utils/rates.ts
+   (beban BPJS + THR + pengawas + tools). Nilai lama 1.100.000 berdiri
+   sendiri tanpa bisa ditunjuk ke UMP mana pun, sehingga biaya tenaga servis
+   under-reported atau over-reported tanpa alasan yang bisa dibuktikan. */
+const DEFAULT_LABOR_RATE_PER_DAY = loadedLaborRatePerDay("welder");
 
 /* ================= FORM SIKLUS MAINTENANCE ================= */
 

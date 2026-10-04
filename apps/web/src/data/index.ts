@@ -1,5 +1,7 @@
-﻿// ===== Mock data ISMS Galangan =====
+// ===== Mock data ISMS Galangan =====
 // Data realistis untuk 13 modul; angka dalam Rupiah (IDR).
+
+import { fuelPricePerLiter } from "../utils/rates";
 
 export type ProjectStatus =
   | "Sedang Berjalan"
@@ -157,7 +159,7 @@ export const projects: Project[] = [
     manager: "Rudi Hartono",
     scope: ["Docking", "Pengecatan", "Rudder"],
   },
-  // RawData Invoice/CONTOH INVOICE.xlsx - rantai QT-SB-001 → KTR-SB-001 → invoice SB.
+  // RawData Invoice/CONTOH INVOICE.xlsx - rantai QT-SB-001 â†’ KTR-SB-001 â†’ invoice SB.
   {
     id: "RP-2026-006",
     vessel: "BG RMN 3324",
@@ -186,7 +188,7 @@ export const projects: Project[] = [
     budget: 3400000000,
     actual: 3100000000,
     manager: "Budi Santoso",
-    scope: ["Docking", "Repair", "DP-1 → Pelunasan V2"],
+    scope: ["Docking", "Repair", "DP-1 â†’ Pelunasan V2"],
   },
   {
     id: "RP-2026-008",
@@ -464,42 +466,48 @@ export const inventory: InventoryItem[] = [
   { id: "INV-SB-003", name: "PLAT 8MM 5x20", category: "Baja", sku: "EO0000LAT15", warehouse: "Gudang Santi", stock: 6, minStock: 4, unit: "LBR", cost: 6500000, location: "S-03" },
 ];
 
-/* `fuelPrice` = harga solar per liter. Empat unit pernah bernilai 0 karena
-   probe lama hanya mengecek `fuelPrice === undefined` (0 lolos). Angkanya
-   sementara: diambil dari nilai yang sudah ada di seed ini sendiri (11.500 /
-   12.500 / 13.500), BUKAN hasil riset pasar. F7 wajib menggantinya dengan
-   harga pasar yang tercatat sumbernya - sampai itu, angka 12.500 di bawah
-   hanyaffsafe place-holder yang bisa dipertanggungjawabkan ke data. */
+/* `fuelPrice` = harga solar per liter.
+   Angkanya sekarang referring ke utils/rates.ts (Bio Solar Industri B40,
+   Wilayah 2 Kalimantan, Rp 18.950/L periode September 2026), bukan lagi
+   angka tebakan 11.500-13.500 yang tidak bisa ditunjuk ke sumber apa pun.
+
+   Semua unit memakai harga yang sama karena semuanya beli BBM di satu lokasi
+   yang sama. Sebaiknya angka yang berbeda adalah tampilan, bukan data.
+
+   Catatan: 4 unit pernah bernilai 0 karena probe lama hanya mengecek
+   `fuelPrice === undefined` - 0 lolos. */
+const BBM_DERNIER = fuelPricePerLiter();
+
 export const equipment = [
-  { id: "EQ-001", name: "Gantry Crane 50T", category: "Pengangkat", code: "CRN-50", branch: "Samarinda", status: "Tersedia", util: 68, nextService: "2026-09-15", lastHours: 12450, model: "DEMAG 50T", rate: 1200000, fuelPrice: 12500, acquisitionCost: 950000000, usefulLife: 20,
+  { id: "EQ-001", name: "Gantry Crane 50T", category: "Pengangkat", code: "CRN-50", branch: "Samarinda", status: "Tersedia", util: 68, nextService: "2026-09-15", lastHours: 12450, model: "DEMAG 50T", rate: 1200000, fuelPrice: BBM_DERNIER, acquisitionCost: 950000000, usefulLife: 20,
     serviceNotes: [
       { at: "2026-07-14 09:20", by: "Bapak Hadi", text: "Tali hoist sudah mulai terlihat seratnya sendiri di Drum kanan. Kalau dipakai untuk beban berat, tali selalu keluar dari sheave atas.", fileUrl: "" },
       { at: "2026-09-08 14:05", by: "Bapak Hadi", text: "Sheave sudah diganti. Uji beban 12 ton bersih, tidak ada getasan. Rem masih memakai komponen yang lama.", fileUrl: "" },
     ] },
-  { id: "EQ-002", name: "Mobile Crane 100T", category: "Pengangkat", code: "MCR-100", branch: "Samarinda", status: "Terpakai", util: 82, nextService: "2026-08-05", lastHours: 18320, model: "Liebherr MK100", rate: 2500000, fuelPrice: 13500, acquisitionCost: 1650000000, usefulLife: 15,
+  { id: "EQ-002", name: "Mobile Crane 100T", category: "Pengangkat", code: "MCR-100", branch: "Samarinda", status: "Terpakai", util: 82, nextService: "2026-08-05", lastHours: 18320, model: "Liebherr MK100", rate: 2500000, fuelPrice: BBM_DERNIER, acquisitionCost: 1650000000, usefulLife: 15,
     serviceNotes: [
       { at: "2026-06-19 10:30", by: "Sari Dewi", text: "Outrigger paling belakang harus dismoor dulu sebelum slew. Kalau tidak, landnya berbunyi dan unit tidak boleh dipakai di atas 60 ton.", fileUrl: "" },
     ] },
-  { id: "EQ-003", name: "Mesin Las MIG", category: "Pengelasan", code: "WLD-MIG-12", branch: "Samarinda", status: "Terpakai", util: 74, nextService: "2026-08-20", lastHours: 2500, model: "Fronius TPS 400i", rate: 250000, fuelPrice: 12500, acquisitionCost: 62000000, usefulLife: 10,
+  { id: "EQ-003", name: "Mesin Las MIG", category: "Pengelasan", code: "WLD-MIG-12", branch: "Samarinda", status: "Terpakai", util: 74, nextService: "2026-08-20", lastHours: 2500, model: "Fronius TPS 400i", rate: 250000, fuelPrice: BBM_DERNIER, acquisitionCost: 62000000, usefulLife: 10,
     serviceNotes: [
       { at: "2026-05-11 08:45", by: "Andi", text: "Kawat 1,2 mm cocok untuk pipa. Jangan memakai kawat lebih tebal di bagian yang menipis, karena retaknya muncul di sambungan las.", fileUrl: "" },
       { at: "2026-08-02 13:15", by: "Andi", text: "Nozzle-tip sudah aus dan sudah diganti. Posisi gas flow setter jangan diubah, karena hasil las keluar millih.", fileUrl: "" },
     ] },
-  { id: "EQ-004", name: "Mesin Las SMAW", category: "Pengelasan", code: "WLD-SMAW-05", branch: "Samarinda", status: "Maintenance", util: 45, nextService: "2026-07-30", lastHours: 4100, model: "Miller XMT", rate: 220000, fuelPrice: 12500, acquisitionCost: 45000000, usefulLife: 10,
+  { id: "EQ-004", name: "Mesin Las SMAW", category: "Pengelasan", code: "WLD-SMAW-05", branch: "Samarinda", status: "Maintenance", util: 45, nextService: "2026-07-30", lastHours: 4100, model: "Miller XMT", rate: 220000, fuelPrice: BBM_DERNIER, acquisitionCost: 45000000, usefulLife: 10,
     serviceNotes: [
       { at: "2026-07-29 16:40", by: "Andi", text: "Kabel massa terkelupas di sambungan stick. Sudah dilaporkan ke bagian listrik tetapi belum diganti, jadi jangan dipakai dulu.", fileUrl: "" },
     ] },
-  { id: "EQ-005", name: "Air Compressor", category: "Tenaga", code: "AIR-COMP-2", branch: "Samarinda", status: "Tersedia", util: 58, nextService: "2026-09-01", lastHours: 8900, model: "Atlas Copco", rate: 150000, fuelPrice: 12500, acquisitionCost: 180000000, usefulLife: 12,
+  { id: "EQ-005", name: "Air Compressor", category: "Tenaga", code: "AIR-COMP-2", branch: "Samarinda", status: "Tersedia", util: 58, nextService: "2026-09-01", lastHours: 8900, model: "Atlas Copco", rate: 150000, fuelPrice: BBM_DERNIER, acquisitionCost: 180000000, usefulLife: 12,
     serviceNotes: [
       { at: "2026-04-22 11:10", by: "Bapak Hadi", text: "Drain air setiap selesai shift. Kalau dilewatkan, head cepat berkarat dan kompresor trips sendiri.", fileUrl: "" },
     ] },
-  { id: "EQ-006", name: "Forklift 10T", category: "Transportasi", code: "FLT-10", branch: "Samarinda", status: "Terpakai", util: 71, nextService: "2026-08-12", lastHours: 7200, model: "Toyota 10FD", rate: 350000, fuelPrice: 11500, acquisitionCost: 620000000, usefulLife: 12,
+  { id: "EQ-006", name: "Forklift 10T", category: "Transportasi", code: "FLT-10", branch: "Samarinda", status: "Terpakai", util: 71, nextService: "2026-08-12", lastHours: 7200, model: "Toyota 10FD", rate: 350000, fuelPrice: BBM_DERNIER, acquisitionCost: 620000000, usefulLife: 12,
     serviceNotes: [] },
-  { id: "EQ-007", name: "Blast Machine", category: "Pengecatan", code: "BLST-01", branch: "Samarinda", status: "Tersedia", util: 63, nextService: "2026-09-10", lastHours: 3200, model: "Blastrac", rate: 400000, fuelPrice: 12500, acquisitionCost: 95000000, usefulLife: 8,
+  { id: "EQ-007", name: "Blast Machine", category: "Pengecatan", code: "BLST-01", branch: "Samarinda", status: "Tersedia", util: 63, nextService: "2026-09-10", lastHours: 3200, model: "Blastrac", rate: 400000, fuelPrice: BBM_DERNIER, acquisitionCost: 95000000, usefulLife: 8,
     serviceNotes: [
       { at: "2026-06-30 15:25", by: "Sari Dewi", text: "Nozzle brass sudah diganti dua kali bulan ini karena abrasive yang dipakai lebih kasar dari spesifikasi lama.", fileUrl: "" },
     ] },
-  { id: "EQ-008", name: "Generator Set 500kVA", category: "Tenaga", code: "GEN-500", branch: "Samarinda", status: "Tersedia", util: 52, nextService: "2026-10-01", lastHours: 15600, model: "Caterpillar", rate: 900000, fuelPrice: 12500, acquisitionCost: 1150000000, usefulLife: 15,
+  { id: "EQ-008", name: "Generator Set 500kVA", category: "Tenaga", code: "GEN-500", branch: "Samarinda", status: "Tersedia", util: 52, nextService: "2026-10-01", lastHours: 15600, model: "Caterpillar", rate: 900000, fuelPrice: BBM_DERNIER, acquisitionCost: 1150000000, usefulLife: 15,
     serviceNotes: [
       { at: "2026-08-25 07:50", by: "Bapak Hadi", text: "Filter udara kabin sudah dibersihkan. Suara tidak knuckle lagi saat beban naik.", fileUrl: "" },
     ] },
@@ -619,7 +627,7 @@ export const quotations = [
   { id: "QT-2026-053", client: "PT Laut Timur Mandiri", vessel: "TB LT-06", type: "New Build", value: 45200000000, stage: "Penawaran", date: "2026-07-18" },
   { id: "QT-2026-054", client: "PT Mitra Samudra Raya", vessel: "Repair MR-02", type: "Repair", value: 3100000000, stage: "Menang", date: "2026-07-12" },
   { id: "QT-2026-055", client: "PT Pelayaran Nusantara Abadi", vessel: "TB PN-05 Retrofit", type: "Retrofit", value: 8200000000, stage: "Lead", date: "2026-07-25" },
-  // RawData: penawaran BG RMN 3324 → menang → KTR-SB-001 → RP-2026-006.
+  // RawData: penawaran BG RMN 3324 â†’ menang â†’ KTR-SB-001 â†’ RP-2026-006.
   { id: "QT-SB-001", client: "PT PELAYARAN KARTIKA SAMUDRA ADIJAYA", vessel: "BG RMN 3324", type: "Repair", value: 1671211310, stage: "Menang", date: "2026-07-28", requestId: "REQ-SB-002" },
 ];
 
@@ -713,7 +721,7 @@ export interface Activity {
 export const activities: Activity[] = [
   { id: "A1", actor: "Sari Wulandari", action: "menutup NCR", target: "NCR-2026-033", module: "QC", time: "2 menit lalu", tone: "teal" },
   { id: "A2", actor: "Fajar Nugroho", action: "mengajukan PO", target: "PO-2026-117", module: "Procurement", time: "18 menit lalu", tone: "navy" },
-  { id: "A3", actor: "Budi Santoso", action: "mengupdate progres", target: "NB-2025-014 → 41%", module: "Proyek", time: "42 menit lalu", tone: "violet" },
+  { id: "A3", actor: "Budi Santoso", action: "mengupdate progres", target: "NB-2025-014 â†’ 41%", module: "Proyek", time: "42 menit lalu", tone: "violet" },
   { id: "A4", actor: "Agus Setiawan", action: "mencatat incident", target: "INC-2026-010", module: "Safety", time: "1 jam lalu", tone: "rose" },
   { id: "A5", actor: "Dewi Lestari", action: "mengimpor saldo awal", target: "Piutang Excel Agu-2026 (37 customer)", module: "Keuangan", time: "2 jam lalu", tone: "amber" },
   { id: "A6", actor: "Rudi Hartono", action: "mengalokasikan dock", target: "DD-1 untuk RP-2026-003", module: "Drydock", time: "3 jam lalu", tone: "teal" },
@@ -927,7 +935,7 @@ export interface BoQItem {
 export const boqByProject: Record<string, BoQItem[]> = {
   "RP-2026-003": [
     { id: "BQ-001", projectId: "RP-2026-003", name: "Overhaul Main Engine", description: "Overhaul & replacement main engine bearing", quantity: 1, unit: "set", unitPrice: 480000000, totalPrice: 480000000, category: "Mechanical", status: "Pending", requestedBy: "Rudi Hartono" },
-    { id: "BQ-002", projectId: "RP-2026-003", name: "Coating Lambung", description: "Epoxy coating hull exterior", quantity: 120, unit: "m²", unitPrice: 850000, totalPrice: 102000000, category: "Paint", status: "Approved", requestedBy: "Sari Wulandari", approvedBy: "Andi Darman", approvedAt: "2026-07-20" },
+    { id: "BQ-002", projectId: "RP-2026-003", name: "Coating Lambung", description: "Epoxy coating hull exterior", quantity: 120, unit: "mÂ²", unitPrice: 850000, totalPrice: 102000000, category: "Paint", status: "Approved", requestedBy: "Sari Wulandari", approvedBy: "Andi Darman", approvedAt: "2026-07-20" },
     { id: "BQ-003", projectId: "RP-2026-003", name: "Inspection Docking", description: "Survey & inspection during drydock", quantity: 1, unit: "service", unitPrice: 150000000, totalPrice: 150000000, category: "Survey", status: "Completed", requestedBy: "Rudi Hartono", approvedBy: "Budi Santoso", approvedAt: "2026-07-05" },
   ],
   "NB-2025-012": [

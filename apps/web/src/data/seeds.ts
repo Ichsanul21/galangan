@@ -5,6 +5,15 @@
 // TRM-SB / M-SB / DS-SB / SJ-SMD / TT-SMD / C-SB / VND-SB / V-SB / QT-SB / KTR-SB.
 import type { StoreItem } from "./store";
 import { JU_PENYESUAIAN_EXCEL } from "./financeExcel";
+import { loadedLaborRatePerDay } from "../utils/rates";
+
+/* Tarif tenaga servis per hari kerja untuk pekerjaan maritim (welder/
+   fitter). Diturunkan dari UMP Kalimantan Timur 2026 lewat utils/rates.ts,
+   bukan angka lepas: angka lama 1.100.000 tidak bisa ditunjuk ke UMP mana pun
+   dan membuat biaya tenaga servis under-reported di HPP proyek.
+   Bisa diubah dari Pengaturan (SET-EQLAB). */
+const LABOR_WELDER = loadedLaborRatePerDay("welder");
+
 
 /* ============ SEED TAMBAHAN (pindahan inline page + data baru) ============ */
 
@@ -648,7 +657,7 @@ export const seedMaintenances: StoreItem[] = [
       { itemId: "INV-EL-002", name: "Kawat Las SMAW E7018", qty: 4, unit: "kg", cost: 95000 },
       { itemId: "INV-EL-005", name: "Nozzle Torch SMAW", qty: 2, unit: "pcs", cost: 145000 },
     ],
-    materialCost: 670000, laborCost: 2200000, laborRatePerDay: 1100000, downtimeHours: 18, costTotal: 2870000,
+    materialCost: 670000, laborCost: 1244512, laborRatePerDay: LABOR_WELDER, laborDays: 2, downtimeHours: 18, costTotal: 1914512,
     createdAt: "2026-09-16", createdBy: "Anda",
     history: [
       { at: "2026-09-16 08:10", from: "-", to: "Terjadwal", by: "Anda", note: "Rencana overhaul torch SMAW #04" },
@@ -667,7 +676,7 @@ export const seedMaintenances: StoreItem[] = [
       { itemId: "INV-ME-003", name: "Grease Lithium EP2", qty: 6, unit: "kg", cost: 180000 },
       { itemId: "INV-ME-007", name: "Bearing 6212 ZZ", qty: 4, unit: "pcs", cost: 95000 },
     ],
-    materialCost: 1460000, laborCost: 2200000, laborRatePerDay: 1100000, downtimeHours: 9, costTotal: 3660000,
+    materialCost: 1460000, laborCost: 1244512, laborRatePerDay: LABOR_WELDER, laborDays: 2, downtimeHours: 9, costTotal: 2704512,
     createdAt: "2026-09-01", createdBy: "Anda",
     history: [
       { at: "2026-09-01 09:00", from: "-", to: "Terjadwal", by: "Anda", note: "Preventif 250 jam" },
@@ -686,7 +695,7 @@ export const seedMaintenances: StoreItem[] = [
     materials: [
       { itemId: "INV-ME-001", name: "Filter Oil 908", qty: 2, unit: "pcs", cost: 220000 },
     ],
-    materialCost: 440000, laborCost: 1100000, laborRatePerDay: 1100000, downtimeHours: 0, costTotal: 1540000,
+    materialCost: 440000, laborCost: 622256, laborRatePerDay: LABOR_WELDER, laborDays: 1, downtimeHours: 0, costTotal: 1062256,
     createdAt: "2026-10-01", createdBy: "Anda",
     history: [
       { at: "2026-10-01 07:20", from: "-", to: "Terjadwal", by: "Anda", note: "Preventif triwulan Q4" },

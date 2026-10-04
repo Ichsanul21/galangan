@@ -4,6 +4,7 @@ import { newId as newPrefixedId } from "../services/ids";
 import { ApiError, apiFetch, getJwt, isBackendConfigured } from "../services/http";
 import { remoteRepository } from "../services/repositories";
 import { stampCreated, stampDerivedCreatedAt, stampUpdated } from "../utils/timestamps";
+import { loadedLaborRatePerDay } from "../utils/rates";
 import {
   projects as seedProjects,
   vessels as seedVessels,
@@ -192,7 +193,7 @@ const seedSettings: StoreItem[] = [
      Dipindah ke settings supaya (a) bisa diubah dari Pengaturan tanpa
      menyentuh kode, dan (b) nilainya sama persis di FE dan BE - sebelumnya
      Settings menampilkan fallback yang berbeda dari yang dipakai modul. */
-  { id: "SET-EQLAB", key: "EQUIP_LABOR_RATE_PER_DAY", value: 1100000, label: "Tarif tenaga servis / hari (Rp)", group: "Equipment" },
+  { id: "SET-EQLAB", key: "EQUIP_LABOR_RATE_PER_DAY", value: loadedLaborRatePerDay("welder"), label: "Tarif tenaga servis / hari (Rp)", group: "Equipment" },
   { id: "SET-TARIFKWH", key: "TARIF_LISTRIK_KWH", value: 1650, label: "Tarif listrik (Rp/kWh)", group: "Equipment" },
   { id: "SET-TARIFAIR", key: "TARIF_AIR_M3", value: 15000, label: "Tarif air (Rp/m3)", group: "Equipment" },
   { id: "SET-ALCERT60", key: "ALERT_CERT_60", value: 60, label: "Alert sertifikat warning H- (hari)", group: "Alert" },

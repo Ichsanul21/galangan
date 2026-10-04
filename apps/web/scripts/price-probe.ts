@@ -15,6 +15,17 @@
    Jalankan: npm run probe:price */
 import { equipment, dockSlots, inventory, boqByProject, purchaseOrders } from "../src/data/index";
 import { seedBookings, seedBookingsHistory, seedMaintenances, seedPayroll } from "../src/data/seeds";
+import {
+  LABOR_BURDEN,
+  MFO_LOW_SULPHUR,
+  SOLAR_INDUSTRI_B40,
+  UMP_KALIMANTAN_TIMUR,
+  WORK_DAYS_PER_MONTH,
+  billedLaborRatePerDay,
+  fuelPricePerLiter,
+  loadedLaborRatePerDay,
+  minimumDailyWage,
+} from "../src/utils/rates";
 
 /* Probe dijalankan sebagai skrip Node hasil bundling vite, bukan di dalam
    browser. `process` tidak ada di tipe DOM repo ini (types: vite/client),
@@ -26,6 +37,12 @@ const check = (label: string, value: number, min: number): void => {
   const ok = Number.isFinite(value) && value >= min;
   if (!ok) fail += 1;
   console.log(`${ok ? "PASS" : "FAIL"}  ${label} = ${value.toLocaleString("id-ID")}`);
+};
+
+/** Bentuk umum: predicated ya/tidak plus detail opsional. */
+const assert = (ok: boolean, label: string, detail = ""): void => {
+  if (!ok) fail += 1;
+  console.log(`${ok ? "PASS" : "FAIL"}  ${label}${detail !== "" ? ` -> ${detail}` : ""}`);
 };
 
 type Row = Record<string, unknown>;
@@ -183,6 +200,116 @@ check("nilai persediaan master", inventory.reduce((s, i) => s + Number(i.stock) 
   } else {
     console.log(`PASS  semua PO punya total atau amount (${po.length} PO)`);
   }
+}
+
+/* ---- Tarif pasar: angka seed harus bisa ditunjuk ke riset ----
+  Probe sebelumnya hanya bisa membuktikan harga "bukan 0". Itu terlalu lemah:
+  12.500 lolos, padahal harga solarindustri Kalimantan 2026reality 18.950.
+  Tidak ada error, tidak ada Impossible difference -Rp 6.450 per liter justru
+  membuat biaya BBM terlihat murah di HPP proyek.
+
+  Sekarang setiap tarif wajib punya sumber dan tanggal, dan angka di seed
+  harus sama dengan tarif itu - kalau ada yang mengetik ulang magic number,
+  probe ini gagal. */
+{
+  /* 1. Setiap tarif riset harus bisa ditelusuri: sumber dan tanggal wajib. */
+  for (const r of [SOLAR_INDUSTRI_B40, MFO_LOW_SULPHUR, UMP_KALIMANTAN_TIMUR]) {
+    assert(r.value > 0, `tarif ${r.unit} punya nilai positif`, String(r.value));
+    assert(r.source.trim().length > 10, `tarif ${r.unit} punya sumber yang bisa dicari`, r.source.slice(0, 48));
+    assert(/^\d{4}-\d{2}-\d{2}$/.test(r.effective), `tarif ${r.unit} punya tanggal berlaku ISO`, r.effective);
+  }
+
+  /* 2. Angka seed = angka riset, bukan tebakan yang kebetulan tidak nol. */
+  const eq = rows(equipment);
+  const salahFuel = eq.filter((e) => num(e, "fuelPrice") !== fuelPricePerLiter());
+  assert(
+    salahFuel.length === 0,
+    `semua equipment memakai fuelPrice = tarif riset (${fuelPricePerLiter()})`,
+    salahFuel.map((e) => `${id(e)}=${num(e, "fuelPrice")}`).join(", "),
+  );
+
+  /* 3. Biomassa lebih mahal dari MFO berarti upside, bukan data salah. */
+  assert(
+    SOLAR_INDUSTRI_B40.value > 15_000,
+    "harga solar industri di pita yang masuk akal untuk 2026",
+    `${SOLAR_INDUSTRI_B40.value.toLocaleString("id-ID")}/L (${SOLAR_INDUSTRI_B40.effective})`,
+  );
+  assert(
+    SOLAR_INDUSTRI_B40.value >= 15_000 && SOLAR_INDUSTRI_B40.value <= 40_000,
+    "harga solar industri berada dalam rentang yang masuk akal",
+    `${SOLAR_INDUSTRI_B40.value.toLocaleString("id-ID")}/L`,
+  );
+  assert(
+    UMP_KALIMANTAN_TIMUR.value >= 3_000_000 && UMP_KALIMANTAN_TIMUR.value <= 5_000_000,
+    "UMP Kalimantan Timur 2026 di pita yang masuk akal",
+    UMP_KALIMANTAN_TIMUR.value.toLocaleString("id-ID"),
+  );
+
+  /* 4. Turunan tenaga: tidak boleh lebih rendah dari upah minimum. */
+  const minDaily = minimumDailyWage();
+  assert(
+    minDaily === Math.round(UMP_KALIMANTAN_TIMUR.value / WORK_DAYS_PER_MONTH),
+    "upah minimum harian = UMP / hari kerja",
+    `${minDaily.toLocaleString("id-ID")}/hari dari ${WORK_DAYS_PER_MONTH} hari`,
+  );
+  for (const role of ["helper", "welder", "fitter", "painter", "supervisor"] as const) {
+    const loaded = loadedLaborRatePerDay(role);
+    assert(
+      loaded > minDaily,
+      `beban ${role} di atas upah minimum harian`,
+      `${loaded.toLocaleString("id-ID")} > ${minDaily.toLocaleString("id-ID")}`,
+    );
+    assert(
+      billedLaborRatePerDay(role) > loaded,
+      `tarif tagih ${role} di atas biaya bebannya (margin tidak ikut terbenam)`,
+      `${billedLaborRatePerDay(role).toLocaleString("id-ID")} > ${loaded.toLocaleString("id-ID")}`,
+    );
+  }
+  assert(
+    loadedLaborRatePerDay("supervisor") > loadedLaborRatePerDay("welder"),
+    "pengawas lebih mahal dari welder",
+  );
+  assert(loadedLaborRatePerDay("welder") > loadedLaborRatePerDay("helper"), "welder lebih mahal dari helper");
+  assert(LABOR_BURDEN > 0, "bebanmiscellaneous di atas upah bukan nol", String(LABOR_BURDEN));
+
+  /* 5. Seed maintenance harus benar-benar diturunkan dari tarif itu. */
+  const mtes = rows(seedMaintenances);
+  const takPunyaHari = mtes.filter((m) => !(num(m, "laborDays") > 0));
+  assert(
+    takPunyaHari.length === 0,
+    "setiap maintenance punya laborDays (sebelumnya jumlah hari tidak tercatat sama sekali)",
+    takPunyaHari.map((m) => id(m)).join(", "),
+  );
+  const salahTarif = mtes.filter((m) => num(m, "laborRatePerDay") !== loadedLaborRatePerDay("welder"));
+  assert(
+    salahTarif.length === 0,
+    "setiap maintenance memakai tarif dari utils/rates, bukan angka lepas",
+    salahTarif.map((m) => `${id(m)}=${num(m, "laborRatePerDay")}`).join(", "),
+  );
+  const salahTenaga = mtes.filter((m) => num(m, "laborCost") !== num(m, "laborRatePerDay") * num(m, "laborDays"));
+  assert(
+    salahTenaga.length === 0,
+    "laborCost = laborRatePerDay x laborDays",
+    salahTenaga.map((m) => `${id(m)} stored=${num(m, "laborCost")}`).join(", "),
+  );
+  const salahTotal = mtes.filter((m) => num(m, "costTotal") !== num(m, "materialCost") + num(m, "laborCost"));
+  assert(
+    salahTotal.length === 0,
+    "costTotal = materialCost + laborCost",
+    salahTotal.map((m) => `${id(m)} stored=${num(m, "costTotal")}`).join(", "),
+  );
+  /* materialCost harus cocok dengan penjumlahan baris material, kalau tidak
+     "hanya tidak nol" sama sekali tidak berarti. */
+  const salahMaterial = mtes.filter((m) => {
+    const lines = Array.isArray(m.materials) ? (m.materials as Row[]) : [];
+    const expected = lines.reduce((s, l) => s + num(l, "qty") * num(l, "cost"), 0);
+    return Math.abs(expected - num(m, "materialCost")) > 1;
+  });
+  assert(
+    salahMaterial.length === 0,
+    "materialCost = jumlah (qty x harga) baris material",
+    salahMaterial.map((m) => `${id(m)} stored=${num(m, "materialCost")}`).join(", "),
+  );
 }
 
 if (fail > 0) {
