@@ -1,13 +1,76 @@
 # TODO 4 — Audit 15 Sisa Requirement Client & Rencana Konsolidasi
 
-Status: **planning — belum ada implementasi**. Referensi: `todo.md` (audit
-`1dd963a`), `todo2.md` (revisi 02 September), `todo3.md` (revisi 2 Oktober +
-arsitektur PDF server-side). Dokumen ini **meneruskan** `todo3.md` dan
-membetulkan klaim "selesai" di sana yang ternyata tidak akurat.
+Status: **F0-F7 selesai. Semua fase sudah diimplementasi dan ter-push.**
+Referensi: `todo.md` (audit `1dd963a`), `todo2.md` (revisi 02 September),
+`todo3.md` (revisi 2 Oktober + arsitektur PDF server-side). Dokumen ini
+**meneruskan** `todo3.md` dan membetulkan klaim "selesai" di sana yang
+ternyata tidak akurat.
+
+Status per fase ada di tabel [STATUS FASE](#status-fase-terakhir-diperbarui).
+Bagian PETA STATUS 15 ITEM di bawah sengaja dibiarkan apa adanya: itu rekaman
+audit pada `9dd8d33`, bukan klaim status sekarang. Jangan dipakai sebagai
+acuan - gunakan tabel fase.
 
 Dasar: 4 auditor paralel read-only terhadap `apps/web` + `services/api`
 @ `9dd8d33`, lalu verifikasi ulang langsung terhadap kode untuk item yang
 statusnya beda.
+
+---
+
+# STATUS FASE (terakhir diperbarui)
+
+Semua baris di bawah diverifikasi lewat `npm run check`, bukan berdasarkan
+ingat. Probe yang disebut di setiap baris bisa gagal, dan setiap probe sudah
+diuji dengan mutasi supaya tidak hijau tanpa alasan.
+
+| Fase | Isi | Commit | Status |
+|---|---|---|---|
+| F0 | Fondasi: `SearchBox`, `EntityPicker`, `rowMatches`, timestamp sentral, tanggal hapus dari audit log, `utils/woMilestones.ts` | `2c4ceef` | selesai |
+| F1 | Notifikasi 3 tingkat + dismiss per severity (session-only) | `2c4ceef`, `6939222` | selesai |
+| F2 | Peta fasilitas drydock: skala panjang, pita kapal, outline merah | `b7e09ac` | selesai |
+| F3 | Item 12, 14, 6, 9, 5 + label EN, regresi item 3 | `2c4ceef` | selesai |
+| F4 | Item 8, 15, 13, 10, 7 | `2c4ceef` | selesai |
+| F5 | Item 11 - milestone benar-benar per WO | `2c4ceef` | selesai |
+| F6 | Search semua tabel + kolom tanggal 15 tabel utama | `9808097`, `9fa5c63` | selesai |
+| F7 | Item 1 - tarif dari riset pasar + probe ketat | `9f32be2` | selesai |
+
+## Gerbang verifikasi
+
+`npm run check` di `apps/web` (28/28 render, 35/35 pemeriksaan, 6 probe) dan
+`npm run build` di `services/api`.
+
+| Probe | Mengunci apa |
+|---|---|
+| `probe:render` | 28 halaman render + kesetaraan sel tabel dari HTML nyata + peta fasilitas benar-benar muncul |
+| `probe:price` | tarif seed persis sama dengan tarif riset; invarian biaya maintenance |
+| `probe:foundation` | timestamp, `rowMatches`, `docTypes`, QC |
+| `probe:alert` | severity + tutup banner per level, session-only |
+| `probe:wo` | integritas milestone WO + termin |
+| `probe:table` | urutan tanggal (kosong selalu di akhir), search nomor resmi, flatten array/objek |
+| `probe:facility` | skala tunggal, pita proporsional, batas tidak-mu-at, kapal slot ada di master |
+| `probe:pdf` + `probe:pdf-db` (API) | 161/161 dan 103/103 |
+
+## Yang berubah dari rencana awal
+
+- **F6 tanggal: 15 tabel, bukan +/-25.** Cakupan dikunci client sebagai
+  "tabel utama saja". Sub-tabel modal, tabel di balik tab (`PO Kecil`, `RFQ`,
+  `THR`), dan matriks izin Peran (selnya dari `.map()`) dikecualikan.
+  `BomDetail` dan `ProjectDetail` juga dilewati: keduanya drill-down di dalam
+  satu dokumen, semua baris dibuat bersamaan, jadi umur datanya tidak
+  membantu.
+- **`utils/computed.ts` tidak pernah dibuat.** Kebutuhan "nilai bisnis =
+  kalkulasi dari komponen" dipenuhi `utils/rates.ts` (F7) plus invarian yang
+  ditegakkan `probe:price`.
+- **F7 mengubah angka yang tampil.** `laborRatePerDay` turun dari 1.100.000 ke
+  622.256 (turunan UMP Kalimantan Timur 2026), jadi total biaya tenaga
+  maintenance turun dari 5.500.000 ke 3.111.280, dan angka HPP di kartu Biaya
+  serta PDF ikut turun. Kalau ternyata tidak sesuai, satu konstanta:
+  `SKILL_MULTIPLIER.welder` di `apps/web/src/utils/rates.ts`.
+- **F1 dismiss dirancang ulang dari rencana.** Rencana menyebut "dismiss session"
+  secara singkat; yang diimplementasikan per tingkat severity dan bisa dibuka
+  kembali, karena satu sakelar untuk seluruh banner akan menyembunyikan
+  `kritis` hanya karena pengguna menutup `info` yang panjang.
+
 
 ---
 
