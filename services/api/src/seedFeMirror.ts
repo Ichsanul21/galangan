@@ -6458,7 +6458,11 @@ export const FE_MIRROR_ROWS: MirrorRow[] = [
     "data": {
       "name": "Drydock 1 - Panjang 120m",
       "capacity": "120m / 12m / 6m draft",
-      "status": "Terpakai"
+      "status": "Terpakai",
+      "kind": "graving",
+      "lengthM": 120,
+      "widthM": 12,
+      "depthM": 6
     }
   },
   {
@@ -6468,7 +6472,11 @@ export const FE_MIRROR_ROWS: MirrorRow[] = [
     "data": {
       "name": "Drydock 2 - Panjang 90m",
       "capacity": "90m / 10m / 5m draft",
-      "status": "Terpakai"
+      "status": "Terpakai",
+      "kind": "graving",
+      "lengthM": 90,
+      "widthM": 10,
+      "depthM": 5
     }
   },
   {
@@ -6478,7 +6486,11 @@ export const FE_MIRROR_ROWS: MirrorRow[] = [
     "data": {
       "name": "Slipway 1",
       "capacity": "80m / bearer",
-      "status": "Tersedia"
+      "status": "Tersedia",
+      "kind": "slipway",
+      "lengthM": 80,
+      "widthM": 10,
+      "depthM": null
     }
   },
   {
@@ -6488,7 +6500,11 @@ export const FE_MIRROR_ROWS: MirrorRow[] = [
     "data": {
       "name": "Berth 1",
       "capacity": "New build assembly",
-      "status": "Terpakai"
+      "status": "Terpakai",
+      "kind": "berth",
+      "lengthM": 150,
+      "widthM": 30,
+      "depthM": 8
     }
   },
   {

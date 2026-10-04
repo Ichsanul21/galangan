@@ -16,6 +16,7 @@ import { getSetting } from "../../utils/settings";
 import { sameName } from "../../utils/names";
 import { sbDsNumber, maxSeq } from "../../utils/sb";
 import { AlertBannerView, flashPick, notifRowId, useModuleAlert, useNotifFlash } from "../../components/AlertBanner";
+import FacilityMap, { facilityRowsFor } from "../../components/FacilityMap";
 import { useDeepLinkParams, useDeepLinkTarget } from "../../components/useDeepLink";
 import { rowHighlightClass } from "../../components/rowHighlight";
 import { exportExcel } from "../../utils/export";
@@ -162,6 +163,15 @@ export default function Drydock() {
     ...drydocks.map((d) => String(d.area ?? "").trim()).filter(Boolean),
     ...dockSlots.map((s) => String(s.area ?? "").trim()).filter(Boolean),
   ])].sort((a, b) => a.localeCompare(b));
+
+  /* Baris siap gambar untuk Peta Fasilitas. Dibaca dari store (bukan seed)
+     supaya kapal yang baru ditambahkan atau dock yang ubah dimensi langsung
+     muncul di peta tanpa perlu seed baru. */
+  const facilityMapData = facilityRowsFor(
+    drydocks as unknown as Record<string, unknown>[],
+    dockSlots as unknown as Record<string, unknown>[],
+    (data.vessels ?? []) as unknown as Record<string, unknown>[],
+  );
 
   const saveArea = async () => {
     if (!areaModal) return;
@@ -610,8 +620,7 @@ export default function Drydock() {
       {modAlert.active && <AlertBannerView items={modAlert.items} onPick={pickNotif} dismiss={modAlert.dismiss} />}
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <KpiCard label={S.kpiUtil} value={`${util}%`} delta={S.kpiUtilDelta} deltaDirection="flat" icon={<Ship className="h-5 w-5" />} chip="navy" spark={dockUtilTrend} />
-        <KpiCard label={S.kpiSlots} value={S.kpiSlotsVal.replace("{n}", String(dockSlots.length))} hint={S.kpiSlotsHint} icon={<CalendarRange className="h-5 w-5" />} chip="teal" spark={slotTrend} />
+        <KpiCard label={S.kpiUtil} value={`${util}%`} delta={S.kpiUtilDelta} deltaDirection="flat" icon={<Ship className="h-5 w-5" />} chip="navy" spark={dockUtilTrend} />        <KpiCard label={S.kpiSlots} value={S.kpiSlotsVal.replace("{n}", String(dockSlots.length))} hint={S.kpiSlotsHint} icon={<CalendarRange className="h-5 w-5" />} chip="teal" spark={slotTrend} />
         <KpiCard
           label={S.kpiConflict}
           value={hasConflict ? String(conflict.length) : "0"}
@@ -639,6 +648,18 @@ export default function Drydock() {
           </div>
         </div>
       )}
+
+      {/* Peta fasilitas: satu skala panjang untuk semua baris, jadi drydock
+          120 m terlihat benar-benar lebih panjang dari slipway 80 m. Kapal
+          yang tidak muat dapat outline merah plus daftar alasannya - fasilitas
+          tidak diperbesar supaya accommodate. */}
+      <Card className="mb-4 p-5">
+        <h3 className="mb-1 text-sm font-semibold text-navy-900">Peta Fasilitas</h3>
+        <p className="mb-3 text-xs text-steel-500">
+          Panjang fasilitas dan kapal digambar pada skala yang sama. Pita merah menandai kapal yang melebihi ukuran fasilitas.
+        </p>
+        <FacilityMap {...facilityMapData} />
+      </Card>
 
       {criticalConflicts.length > 0 && (
         <div className="mb-4 rounded-lg border-2 border-rose-600 bg-rose-50 p-3 text-sm text-rose-800">

@@ -545,11 +545,36 @@ try {
   }
 }
 
+/* Peta fasilitas harus benar-benar MUNCUL di halaman Drydock.
+ *
+ * `FacilityMap` mengembalikan null kalau tidak ada fasilitas yang bisa
+ * digambar atau skalanya 0. Itu kondisi yang sangat mungkin terjadi setelah
+ * ada perubahan nama dock - dan gejalanya bukan error, hanya halaman yang
+ * jadi pelan. "28/28 render tanpa error" tidak akan menangkapnya, jadi yang
+ * mengikat di sini: peta harus ada di HTML hasil render. */
+{
+  const html = rendered.get("Drydock") ?? "";
+  const problems: string[] = [];
+  if (!html.includes("Peta Fasilitas")) problems.push('judul "Peta Fasilitas" tidak ada di HTML');
+  if (!/<svg[^>]*role="img"/.test(html)) problems.push("peta fasilitas tidak menghasilkan <svg>");
+  if (!/\d+\s*m<\/text>/.test(html)) problems.push("skala panjang tidak ter-render sebagai angka meter");
+  if (!html.includes("Drydock 1")) problems.push("baris fasilitas Drydock 1 tidak ada di peta");
+
+  if (problems.length === 0) {
+    console.log("PASS  peta fasilitas muncul di halaman Drydock dengan skala panjang");
+    pass += 1;
+  } else {
+    console.log(`FAIL  peta fasilitas: ${problems.join("; ")}`);
+    failures.push("peta fasilitas drydock");
+  }
+}
+
 /* Pemeriksaan di luar loop PAGES: (1) ringkasan portofolio tanpa area cetak
    DOM, (2) penggabungan tarikan, (3) saldo historikal as-of, (4) kesetaraan
-   sel tabel, (5) magic bytes PDF, (6) jalur klien PDF. Naikkan kalau menambah
-   pemeriksaan baru di sini, supaya penyebut tidak diam-diam salah. */
-const EXTRA_CHECKS = 6;
+   sel tabel, (5) peta fasilitas drydock, (6) magic bytes PDF, (7) jalur klien
+   PDF. Naikkan kalau menambah pemeriksaan baru di sini, supaya penyebut tidak
+   diam-diam salah. */
+const EXTRA_CHECKS = 7;
 
 console.log(`\n${pass}/${PAGES.length + EXTRA_CHECKS} pemeriksaan lolos.`);
 if (failures.length > 0) {

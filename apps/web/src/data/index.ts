@@ -414,11 +414,19 @@ export const vessels = [
   },
 ];
 
+/* Fasilitas dock. `lengthM`/`widthM`/`depthM` adalah angka yang dipakai peta
+   fasilitas; `capacity` tetap dipertahankan untuk tampilan karena sudah
+   dibaca di banyak tempat.
+
+   Peta TIDAK mengurai `capacity` sebagai sumber dimensinya._capacity itu
+   teks bebas ("80m / bearer", "New build assembly") dan facilityMap sengaja
+   menolak facilities yang panjangnya tidak terbaca - lebih baik tidak
+   menampilkan daripada menampilkan skala yang salah. */
 export const drydocks = [
-  { id: "DD-1", name: "Drydock 1 - Panjang 120m", capacity: "120m / 12m / 6m draft", status: "Terpakai" },
-  { id: "DD-2", name: "Drydock 2 - Panjang 90m", capacity: "90m / 10m / 5m draft", status: "Terpakai" },
-  { id: "SL-1", name: "Slipway 1", capacity: "80m / bearer", status: "Tersedia" },
-  { id: "BH-1", name: "Berth 1", capacity: "New build assembly", status: "Terpakai" },
+  { id: "DD-1", name: "Drydock 1 - Panjang 120m", capacity: "120m / 12m / 6m draft", status: "Terpakai", kind: "graving", lengthM: 120, widthM: 12, depthM: 6 },
+  { id: "DD-2", name: "Drydock 2 - Panjang 90m", capacity: "90m / 10m / 5m draft", status: "Terpakai", kind: "graving", lengthM: 90, widthM: 10, depthM: 5 },
+  { id: "SL-1", name: "Slipway 1", capacity: "80m / bearer", status: "Tersedia", kind: "slipway", lengthM: 80, widthM: 10, depthM: null },
+  { id: "BH-1", name: "Berth 1", capacity: "New build assembly", status: "Terpakai", kind: "berth", lengthM: 150, widthM: 30, depthM: 8 },
 ];
 
 /* Slot jadwal docking: id, dockId, project, vessel, from, to (day indexes
