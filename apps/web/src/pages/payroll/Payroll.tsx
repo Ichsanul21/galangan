@@ -23,6 +23,7 @@ import type { SortState } from "../../components/ui";
 import { useStore } from "../../data/store";
 import type { StoreItem } from "../../data/store";
 import { fmtBulan, fmtRupiah, fmtTanggal, todayISO } from "../../utils/format";
+import { createdAtOf, lastTouchedAt } from "../../utils/timestamps";
 import { AlertBannerView, flashPick, notifRowId, useModuleAlert, useNotifFlash } from "../../components/AlertBanner";
 import { useDeepLinkParams, useDeepLinkTarget } from "../../components/useDeepLink";
 import { rowHighlightClass } from "../../components/rowHighlight";
@@ -1002,6 +1003,8 @@ export default function Payroll() {
                       <SortTh label={S.colBpjs} sortKey="bpjs" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} />
                       <SortTh label={S.colNet} sortKey="net" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} />
                       <SortTh label={S.colStatus} sortKey="status" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} />
+                      <SortTh label={S.colCreated} sortKey="createdAt" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} />
+                      <SortTh label={S.colUpdated} sortKey="updatedAt" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} />
                       <th className="th">{S.colAction}</th>
                     </tr>
                   </thead>
@@ -1018,6 +1021,8 @@ export default function Payroll() {
                         case "bpjs": return Number(bpjsKarOf(p).kes + bpjsKarOf(p).tk);
                         case "net": return Number(p.net ?? 0);
                         case "status": return String(p.status ?? "");
+                        case "createdAt": return createdAtOf(p) ?? "";
+                        case "updatedAt": return lastTouchedAt(p) ?? "";
                         default: return "";
                       }
                     }).map((p) => (
@@ -1031,6 +1036,8 @@ export default function Payroll() {
                         <td className="td text-steel-600">{fmtRupiah(bpjsKarOf(p).kes + bpjsKarOf(p).tk)}</td>
                         <td className="td font-bold text-navy-900">{fmtRupiah(Number(p.net || 0))}</td>
                         <td className="td"><StatusBadge status={String(p.status)} /></td>
+                        <td className="td text-xs text-steel-600">{createdAtOf(p) !== null ? fmtTanggal(createdAtOf(p)) : <span className="text-steel-400">-</span>}</td>
+                        <td className="td text-xs text-steel-600">{lastTouchedAt(p) !== null ? fmtTanggal(lastTouchedAt(p)) : <span className="text-steel-400">-</span>}</td>
                         <td className="td">
                           <div className="flex items-center gap-2 whitespace-nowrap">
                             {p.status === "Draft" && (

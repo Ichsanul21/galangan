@@ -33,6 +33,7 @@ import { useT } from "../../i18n/LanguageContext";
 import { n_misc } from "../../i18n/n_misc";
 import { exportExcel } from "../../utils/export";
 import { cmpJam, fmtJam24, norm24 } from "../../utils/time24";
+import { createdAtOf, lastTouchedAt } from "../../utils/timestamps";
 
 const SHIFTS = ["Pagi", "Siang", "Malam"];
 const STATUS = ["Hadir", "Izin", "Sakit", "Cuti", "Alpa"];
@@ -473,6 +474,8 @@ export default function Absensi() {
                         <SortTh label={S.sortOut} sortKey="out" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} />
                         <SortTh label={S.sortOvertime} sortKey="ot" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} />
                         <SortTh label={S.sortNote} sortKey="ket" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} />
+                        <SortTh label={S.colCreated} sortKey="createdAt" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} />
+                        <SortTh label={S.colUpdated} sortKey="updatedAt" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} />
                         <th className="th">{locale === "en" ? "Actions" : "Aksi"}</th>
                       </tr>
                     </thead>
@@ -487,6 +490,8 @@ export default function Absensi() {
                           case "out": return fmtJam24(r.checkOut);
                           case "ot": return Number(r.overtime ?? 0);
                           case "ket": return String(r.status) === "Hadir" && isLate(String(r.checkIn ?? ""), shift) ? "Telat" : "";
+                          case "createdAt": return createdAtOf(e) ?? "";
+                          case "updatedAt": return lastTouchedAt(e) ?? "";
                           default: return "";
                         }
                       }).map((e: StoreItem) => {
@@ -515,6 +520,8 @@ export default function Absensi() {
                             <td className="td">
                               {hadir && isLate(r.checkIn, shift) ? <Badge tone="red">{S.lateBadge}</Badge> : <span className="text-xs text-steel-400">-</span>}
                             </td>
+                            <td className="td text-xs text-steel-600">{createdAtOf(e) !== null ? fmtTanggal(createdAtOf(e)) : <span className="text-steel-400">-</span>}</td>
+                            <td className="td text-xs text-steel-600">{lastTouchedAt(e) !== null ? fmtTanggal(lastTouchedAt(e)) : <span className="text-steel-400">-</span>}</td>
                             {/* Aksi per baris. Dulu grid ini hanya punya editor inline + tombol
                                 Simpan SEMUA, jadi satu karyawan yang absennya
                                 keliru harus mengoreksi seluruh absensi shift

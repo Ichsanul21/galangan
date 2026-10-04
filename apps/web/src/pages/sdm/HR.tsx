@@ -34,6 +34,7 @@ import { findUsages } from "../../utils/usages";
 import type { StoreItem, CollectionKey } from "../../data/store";
 import { activeEmployeeTrend, certifiedTrend, certExpireTrend, employeeTrend } from "../../data";
 import { fmtTanggal, todayISO } from "../../utils/format";
+import { createdAtOf, lastTouchedAt } from "../../utils/timestamps";
 import { AlertBannerView, flashPick, notifRowId, useModuleAlert, useNotifFlash } from "../../components/AlertBanner";
 import { useDeepLinkParams, useDeepLinkTarget } from "../../components/useDeepLink";
 import { rowHighlightClass } from "../../components/rowHighlight";
@@ -377,6 +378,8 @@ export default function HR() {
       case "contract": return String(e.contractEnd ?? "");
       case "saldo": return Number(saldoCuti(String(e.id)));
       case "status": return String(e.status ?? "");
+      case "createdAt": return createdAtOf(e) ?? "";
+      case "updatedAt": return lastTouchedAt(e) ?? "";
       default: return "";
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1392,6 +1395,8 @@ const finishTraining = async (t: StoreItem) => {
                           <SortTh label={S.thKontrak} sortKey="contract" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} />
                           <SortTh label={S.thSaldo} sortKey="saldo" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} />
                           <SortTh label={S.dlStatus} sortKey="status" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} />
+                          <SortTh label={S.colCreated} sortKey="createdAt" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} />
+                          <SortTh label={S.colUpdated} sortKey="updatedAt" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} />
                           <th className="th">{S.thAksi}</th>
                         </tr>
                       </thead>
@@ -1428,6 +1433,8 @@ const finishTraining = async (t: StoreItem) => {
                             </td>
                             <td className="td font-semibold text-navy-900">{S.daysN.replace("{n}", String(saldoCuti(e.id)))}</td>
                             <td className="td"><StatusBadge status={String(e.status)} /></td>
+                            <td className="td text-xs text-steel-600">{createdAtOf(e) !== null ? fmtTanggal(createdAtOf(e)) : <span className="text-steel-400">-</span>}</td>
+                            <td className="td text-xs text-steel-600">{lastTouchedAt(e) !== null ? fmtTanggal(lastTouchedAt(e)) : <span className="text-steel-400">-</span>}</td>
                             <td className="td">
                               <div className="flex items-center gap-2 whitespace-nowrap">
                                 <Link to={`/sdm/karyawan/${e.id}`} className="text-sm font-semibold text-ocean-600 hover:underline">{S.btnDetail}</Link>

@@ -10,6 +10,9 @@ export const n_eqp = {
     thModel: "Model",
     thStatus: "Status",
     thAction: "Aksi",
+    /* Label kolom tanggal rekam (F6): "Dibuat" = saat baris masuk sistem. */
+    colCreated: "Dibuat",
+    colUpdated: "Diubah",
     thProject: "Proyek",
     thHours: "Jam Pakai",
     thYear: "Tahun",
@@ -444,6 +447,8 @@ export const n_eqp = {
     thModel: "Model",
     thStatus: "Status",
     thAction: "Actions",
+    colCreated: "Created",
+    colUpdated: "Updated",
     thProject: "Project",
     thHours: "Usage Hours",
     thYear: "Year",

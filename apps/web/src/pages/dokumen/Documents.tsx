@@ -10,6 +10,7 @@ import { isBackendConfigured } from "../../services/http";
 import { ocrImageUrl } from "../../services/upload";
 import { uploadFile } from "../../services/upload";
 import { fmtTanggal, todayISO } from "../../utils/format";
+import { createdAtOf, lastTouchedAt } from "../../utils/timestamps";
 import { AlertBannerView, flashPick, notifRowId, useModuleAlert, useNotifFlash } from "../../components/AlertBanner";
 import { useDeepLinkParams, useDeepLinkTarget } from "../../components/useDeepLink";
 import { rowHighlightClass } from "../../components/rowHighlight";
@@ -229,9 +230,11 @@ const qcCertOptions = useMemo(
       const terms = q.trim().split(/\s+/);
       return terms.length === 1 && docHay(d).includes(terms[0].toLowerCase());
     });
-  const sortedDocs = useMemo(() => sortRows(list, sort, (d, key) =>
-    key === "dokumen" ? String(d.title ?? "") : key === "tipe" ? String(d.type ?? "") : key === "proyek" ? String(d.project ?? "") : key === "versi" ? String(d.version ?? "") : key === "status" ? String(d.status ?? "") : String(d.updated ?? "")
-  ), [list, sort]);
+  const sortedDocs = useMemo(() => sortRows(list, sort, (d, key) => {
+    if (key === "createdAt") return createdAtOf(d) ?? "";
+    if (key === "updatedAt") return lastTouchedAt(d) ?? "";
+    return key === "dokumen" ? String(d.title ?? "") : key === "tipe" ? String(d.type ?? "") : key === "proyek" ? String(d.project ?? "") : key === "versi" ? String(d.version ?? "") : key === "status" ? String(d.status ?? "") : String(d.updated ?? "");
+  }), [list, sort]);
   const docPager = usePager(list.length);
   const pickNotifIds = (ids: string[]): void => {
     if (ids.length === 0) return;
@@ -247,7 +250,11 @@ const qcCertOptions = useMemo(
     const targetSorted = sortRows(
       targetBase.filter((d) => docHay(d).includes(q.toLowerCase())),
       sort,
-      (d, k) => k === "dokumen" ? String(d.title ?? "") : k === "tipe" ? String(d.type ?? "") : k === "proyek" ? String(d.project ?? "") : k === "versi" ? String(d.version ?? "") : k === "status" ? String(d.status ?? "") : String(d.updated ?? ""),
+      (d, k) => {
+        if (k === "createdAt") return createdAtOf(d) ?? "";
+        if (k === "updatedAt") return lastTouchedAt(d) ?? "";
+        return k === "dokumen" ? String(d.title ?? "") : k === "tipe" ? String(d.type ?? "") : k === "proyek" ? String(d.project ?? "") : k === "versi" ? String(d.version ?? "") : k === "status" ? String(d.status ?? "") : String(d.updated ?? "");
+      },
     );
     const targetIdx = targetSorted.findIndex((d) => ids.includes(String(d.id)));
     setType(target);
@@ -589,7 +596,7 @@ const doExport = () => {
         <div className="overflow-x-auto">
           <table className="w-full">
             <thead className="bg-surface sticky top-0 z-10">
-              <tr><SortTh label={S.colDoc} sortKey="dokumen" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.colType} sortKey="tipe" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.colProjectShip} sortKey="proyek" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.colVersion} sortKey="versi" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.colStatus} sortKey="status" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.colUpdated} sortKey="diperbarui" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><th className="th">{S.colAction}</th></tr>
+              <tr><SortTh label={S.colDoc} sortKey="dokumen" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.colType} sortKey="tipe" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.colProjectShip} sortKey="proyek" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.colVersion} sortKey="versi" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.colStatus} sortKey="status" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.colRevUpdated} sortKey="diperbarui" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.colCreated} sortKey="createdAt" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.colUpdated} sortKey="updatedAt" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><th className="th">{S.colAction}</th></tr>
             </thead>
             <tbody className="divide-y divide-steel-100">
               {docPager.slice(sortedDocs).map((d) => (
@@ -609,6 +616,8 @@ const doExport = () => {
                   <td className="td text-steel-600">{d.version}</td>
                   <td className="td"><StatusBadge status={d.status} /></td>
                   <td className="td text-steel-600">{fmtTanggal(d.updated)}</td>
+                  <td className="td text-xs text-steel-600">{createdAtOf(d) !== null ? fmtTanggal(createdAtOf(d)) : <span className="text-steel-400">-</span>}</td>
+                  <td className="td text-xs text-steel-600">{lastTouchedAt(d) !== null ? fmtTanggal(lastTouchedAt(d)) : <span className="text-steel-400">-</span>}</td>
                   <td className="td">
                     <div className="flex gap-1">
                       <button className="rounded-lg p-1.5 text-steel-500 hover:bg-steel-100" title={S.detailBtn} aria-label={S.detailOf.replace("{a}", String(d.id))} onClick={() => openDetail(d)}><Eye className="h-4 w-4" /></button>
@@ -803,7 +812,7 @@ const doExport = () => {
                 [S.lblVessel, detail.vessel],
                 [S.colVersion, detail.version],
                 [S.lblValidUntil2, fmtTanggal(detail.berlakuHingga)],
-                [S.colUpdated, fmtTanggal(detail.updated)],
+                [S.colRevUpdated, fmtTanggal(detail.updated)],
                 [S.lblOwner, detail.owner],
               ].map(([k, v]) => (
                 <div key={k} className="flex justify-between gap-4"><dt className="text-steel-500">{k}</dt><dd className="font-medium text-navy-900">{v}</dd></div>

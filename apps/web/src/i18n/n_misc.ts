@@ -396,6 +396,9 @@ export const n_misc = {
     auSortTime: "Waktu",
     auSortActor: "Aktor",
     auSortAction: "Aksi",
+    /* Label kolom tanggal rekam (F6): "Dibuat" = saat baris masuk sistem. */
+    colCreated: "Dibuat",
+    colUpdated: "Diubah",
     auSortTarget: "Target",
     auEmptyTitle: "Tidak ada jejak yang cocok",
     auEmptySub: "Ubah kata kunci, modul, atau tanggal filter.",
@@ -885,6 +888,8 @@ export const n_misc = {
     auSortTime: "Time",
     auSortActor: "Actor",
     auSortAction: "Action",
+    colCreated: "Created",
+    colUpdated: "Updated",
     auSortTarget: "Target",
     auEmptyTitle: "No matching trails",
     auEmptySub: "Change keywords, module, or date filter.",

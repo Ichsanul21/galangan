@@ -12,6 +12,7 @@ import { findUsages } from "../../utils/usages";
 import type { StoreItem } from "../../data/store";
 import { fleetTrend, dockingTrend, buildTrend, certTrend } from "../../data";
 import { fmtRupiah, fmtTanggal, todayISO } from "../../utils/format";
+import { createdAtOf, lastTouchedAt } from "../../utils/timestamps";
 import { FilterPopover } from "../../components/FilterPopover";
 import { sameName, vesselMatch } from "../../utils/names";
 import { AlertBannerView, flashPick, notifRowId, useModuleAlert, useNotifFlash } from "../../components/AlertBanner";
@@ -231,7 +232,11 @@ export default function Vessels() {
     return rowMatches(v, q, ["name", "imo", "flag", "type", "class", "owner", "built", "status", "id"]);
   });
   const cardPager = usePager(list.length);
-  const surveySorted = useMemo(() => sortRows(data.surveys, sort, (s: StoreItem, k) => String((s as unknown as Record<string, unknown>)[k] ?? "")), [data.surveys, sort]);
+  const surveySorted = useMemo(() => sortRows(data.surveys, sort, (s: StoreItem, k) => {
+    if (k === "createdAt") return createdAtOf(s) ?? "";
+    if (k === "updatedAt") return lastTouchedAt(s) ?? "";
+    return String((s as unknown as Record<string, unknown>)[k] ?? "");
+  }), [data.surveys, sort]);
   const surveyPager = usePager(data.surveys.length);
   const pickNotifIds = (ids: string[]): void => {
     if (ids.length === 0) return;
@@ -490,7 +495,7 @@ export default function Vessels() {
           <div className="overflow-x-auto">
             <table className="w-full">
               <thead className="sticky top-0 z-10 bg-surface">
-                <tr><SortTh label={S.thVessel} sortKey="vessel" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.thSurveyType} sortKey="type" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.thSurveyor} sortKey="classSurveyor" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.dateLabel} sortKey="date" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.thStatus} sortKey="status" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><th className="th">{S.thAction}</th></tr>
+                <tr><SortTh label={S.thVessel} sortKey="vessel" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.thSurveyType} sortKey="type" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.thSurveyor} sortKey="classSurveyor" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.dateLabel} sortKey="date" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.thStatus} sortKey="status" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.colCreated} sortKey="createdAt" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.colUpdated} sortKey="updatedAt" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><th className="th">{S.thAction}</th></tr>
               </thead>
               <tbody className="divide-y divide-steel-100">
                 {surveyPager.slice(surveySorted).map((s) => (
@@ -500,6 +505,8 @@ export default function Vessels() {
                     <td className="td text-steel-600">{s.classSurveyor}</td>
                     <td className="td font-mono text-xs text-steel-600">{fmtTanggal(String(s.date))}</td>
                     <td className="td"><Badge tone={s.status === "Selesai" ? "green" : s.status === "Dalam Proses" ? "blue" : "gray"}>{s.status}</Badge></td>
+                    <td className="td text-xs text-steel-600">{createdAtOf(s) !== null ? fmtTanggal(createdAtOf(s)) : <span className="text-steel-400">-</span>}</td>
+                    <td className="td text-xs text-steel-600">{lastTouchedAt(s) !== null ? fmtTanggal(lastTouchedAt(s)) : <span className="text-steel-400">-</span>}</td>
                     {/* Tabel survei TIDAK punya kolom aksi sama sekali - kartu
                         kapal di atas punya Ubah/Hapus, tapi baris survei sendiri
                         tidak. Survei yang tercatat salah kapal/tanggal/surveyor

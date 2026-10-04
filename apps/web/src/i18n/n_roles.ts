@@ -26,6 +26,9 @@ export const n_roles = {
     thEmployee: "Karyawan",
     thStatus: "Status",
     thAction: "Aksi",
+    /* Label kolom tanggal rekam (F6): "Dibuat" = saat baris masuk sistem. */
+    colCreated: "Dibuat",
+    colUpdated: "Diubah",
     linkBtn: "Tautkan",
     resetPwBtn: "Reset password",
     deactivateBtn: "Nonaktifkan",
@@ -163,6 +166,8 @@ export const n_roles = {
     thEmployee: "Employee",
     thStatus: "Status",
     thAction: "Actions",
+    colCreated: "Created",
+    colUpdated: "Updated",
     linkBtn: "Link",
     resetPwBtn: "Reset password",
     deactivateBtn: "Deactivate",

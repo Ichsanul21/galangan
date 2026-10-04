@@ -34,6 +34,9 @@ export const n_qc = {
     thTanggal: "Tanggal",
     thHasil: "Hasil",
     thAksi: "Aksi",
+    /* Label kolom tanggal rekam (F6): "Dibuat" = saat baris masuk sistem. */
+    colCreated: "Dibuat",
+    colUpdated: "Diubah",
     btnDetail: "Detail",
     cardNcrDist: "Distribusi NCR",
     cardNcrDistS: "Per kategori kejadian",
@@ -589,6 +592,8 @@ export const n_qc = {
     thTanggal: "Date",
     thHasil: "Result",
     thAksi: "Actions",
+    colCreated: "Created",
+    colUpdated: "Updated",
     btnDetail: "Details",
     cardNcrDist: "NCR Distribution",
     cardNcrDistS: "Per incident category",

@@ -34,6 +34,9 @@ export const n_crm = {
     sortValue: "Nilai",
     sortStatus: "Status",
     actionLabel: "Aksi",
+    /* Label kolom tanggal rekam (F6): "Dibuat" = saat baris masuk sistem. */
+    colCreated: "Dibuat",
+    colUpdated: "Diubah",
     crmTitle: "CRM & Manajemen Klien",
     crmSubtitle: "Penawaran, pipeline penjualan, komunikasi, kontrak, dan kepuasan",
     newQuotation: "Penawaran Baru",
@@ -517,6 +520,8 @@ export const n_crm = {
     sortValue: "Amount",
     sortStatus: "Status",
     actionLabel: "Actions",
+    colCreated: "Created",
+    colUpdated: "Updated",
     crmTitle: "CRM & Client Management",
     crmSubtitle: "Quotations, sales pipeline, communications, contracts, and satisfaction",
     newQuotation: "New Quotation",

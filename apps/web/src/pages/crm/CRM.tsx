@@ -14,6 +14,7 @@ import { useModuleSync } from "../../data/useModuleSync";
 import { findUsages } from "../../utils/usages";
 import type { StoreItem, CollectionKey } from "../../data/store";
 import { fmtMiliar, fmtRupiah, fmtTanggal, todayISO } from "../../utils/format";
+import { createdAtOf, lastTouchedAt } from "../../utils/timestamps";
 import { sameName } from "../../utils/names";
 import { AlertBannerView, notifRowId, useModuleAlert, useNotifFlash } from "../../components/AlertBanner";
 import { rowHighlightClass } from "../../components/rowHighlight";
@@ -618,9 +619,11 @@ export default function CRM() {
     if (!oldOnly) return true;
     return (umurHari(String(q.date ?? "")) ?? 0) > 30;
   });
-  const sortedContracts = useMemo(() => sortRows(contracts, sort, (k, key) =>
-    key === "kontrak" ? String(k.id ?? "") : key === "quotation" ? String(k.quotationId ?? "") : key === "nilai" ? Number(k.value ?? 0) : key === "sign" ? String(k.signedAt ?? "") : String(k.status ?? "")
-  ), [contracts, sort]);
+  const sortedContracts = useMemo(() => sortRows(contracts, sort, (k, key) => {
+    if (key === "createdAt") return createdAtOf(k) ?? "";
+    if (key === "updatedAt") return lastTouchedAt(k) ?? "";
+    return key === "kontrak" ? String(k.id ?? "") : key === "quotation" ? String(k.quotationId ?? "") : key === "nilai" ? Number(k.value ?? 0) : key === "sign" ? String(k.signedAt ?? "") : String(k.status ?? "");
+  }), [contracts, sort]);
   const quotPager = usePager(penawaranList.length);
   const reqPager = usePager(requests.length);
   const contractPager = usePager(contracts.length);
@@ -1075,7 +1078,7 @@ export default function CRM() {
                   <div className="overflow-x-auto">
                     <table className="w-full">
                       <thead className="bg-surface sticky top-0 z-10">
-                        <tr><SortTh label={S.sortContract} sortKey="kontrak" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.sortQuotation} sortKey="quotation" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.sortValue} sortKey="nilai" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.sortSign} sortKey="sign" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.sortStatus} sortKey="status" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><th className="th">{locale === "en" ? "Actions" : "Aksi"}</th></tr>
+                        <tr><SortTh label={S.sortContract} sortKey="kontrak" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.sortQuotation} sortKey="quotation" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.sortValue} sortKey="nilai" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.sortSign} sortKey="sign" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.sortStatus} sortKey="status" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.colCreated} sortKey="createdAt" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.colUpdated} sortKey="updatedAt" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><th className="th">{locale === "en" ? "Actions" : "Aksi"}</th></tr>
                       </thead>
                       <tbody className="divide-y divide-steel-100">
                         {contractPager.slice(sortedContracts).map((k) => (
@@ -1089,6 +1092,8 @@ export default function CRM() {
                             </td>
                             <td className="td text-xs text-steel-600">{fmtTanggal(String(k.signedAt ?? ""))}</td>
                             <td className="td"><StatusBadge status={String(k.status ?? "Aktif")} /></td>
+                            <td className="td text-xs text-steel-600">{createdAtOf(k) !== null ? fmtTanggal(createdAtOf(k)) : <span className="text-steel-400">-</span>}</td>
+                            <td className="td text-xs text-steel-600">{lastTouchedAt(k) !== null ? fmtTanggal(lastTouchedAt(k)) : <span className="text-steel-400">-</span>}</td>
                             <td className="td">
                               <div className="flex gap-1.5">
                                 {/* Ubah: nilai kontrak, tanggal tanda tangan, dan

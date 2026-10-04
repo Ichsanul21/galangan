@@ -11,6 +11,7 @@ import type { StoreItem, CollectionKey } from "../../data/store";
 import { useModuleSync } from "../../data/useModuleSync";
 import { dockUtilTrend, slotTrend } from "../../data";
 import { fmtJumlah, fmtRupiah, fmtTanggal, fmtRentang, todayISO } from "../../utils/format";
+import { createdAtOf, lastTouchedAt } from "../../utils/timestamps";
 import { getSetting } from "../../utils/settings";
 import { sameName } from "../../utils/names";
 import { sbDsNumber, maxSeq } from "../../utils/sb";
@@ -395,7 +396,11 @@ export default function Drydock() {
     return m;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dockSlots, data.projects, drydocks]);
-  const sortedSlots = useMemo(() => sortRows(filteredSlots, sort, (s: StoreItem, k) => k === "days" ? Number(slotDays(s)) : k === "status" ? String(slotStatus(s, data.projects)) : k === "area" ? String(s.area ?? "") : k === "facility" ? String(drydocks.find((d) => d.id === s.dockId)?.name ?? s.dockId) : String((s as unknown as Record<string, unknown>)[k] ?? "")), [filteredSlots, sort, data.projects, drydocks]);
+  const sortedSlots = useMemo(() => sortRows(filteredSlots, sort, (s: StoreItem, k) => {
+    if (k === "createdAt") return createdAtOf(s) ?? "";
+    if (k === "updatedAt") return lastTouchedAt(s) ?? "";
+    return k === "days" ? Number(slotDays(s)) : k === "status" ? String(slotStatus(s, data.projects)) : k === "area" ? String(s.area ?? "") : k === "facility" ? String(drydocks.find((d) => d.id === s.dockId)?.name ?? s.dockId) : String((s as unknown as Record<string, unknown>)[k] ?? "");
+  }), [filteredSlots, sort, data.projects, drydocks]);
   const pager = usePager(filteredSlots.length);
   /* Terjemahkan id deep-link menjadi sorotan baris. Satu id (banner modul)
      dan daftar id (kartu Dashboard yang menghitung kelompok) memakai jalur
@@ -406,7 +411,11 @@ export default function Drydock() {
     if (idx >= 0) { flashPick(flash, ids, idx, pager.go, pager.size); return; }
     const found = dockSlots.find((s) => ids.includes(String(s.id)));
     if (!found || statusFilter === "Semua") { flashPick(flash, ids, -1, () => {}, 100); return; }
-    const fullSorted = sortRows(dockSlots, sort, (s: StoreItem, k) => k === "days" ? Number(slotDays(s)) : k === "status" ? String(slotStatus(s, data.projects)) : k === "area" ? String(s.area ?? "") : k === "facility" ? String(drydocks.find((d) => d.id === s.dockId)?.name ?? s.dockId) : String((s as unknown as Record<string, unknown>)[k] ?? ""));
+    const fullSorted = sortRows(dockSlots, sort, (s: StoreItem, k) => {
+      if (k === "createdAt") return createdAtOf(s) ?? "";
+      if (k === "updatedAt") return lastTouchedAt(s) ?? "";
+      return k === "days" ? Number(slotDays(s)) : k === "status" ? String(slotStatus(s, data.projects)) : k === "area" ? String(s.area ?? "") : k === "facility" ? String(drydocks.find((d) => d.id === s.dockId)?.name ?? s.dockId) : String((s as unknown as Record<string, unknown>)[k] ?? "");
+    });
     const fullIdx = fullSorted.findIndex((s) => ids.includes(String(s.id)));
     setStatusFilter("Semua");
     setAreaFilter("Semua");
@@ -795,7 +804,7 @@ export default function Drydock() {
           <div className="overflow-x-auto">
             <table className="w-full">
               <thead className="sticky top-0 z-10 bg-surface">
-                <tr><SortTh label={S.colFacility} sortKey="facility" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.areaLabel} sortKey="area" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.colProject} sortKey="vessel" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.colDuration} sortKey="days" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.colPriority} sortKey="priority" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.colStatus} sortKey="status" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><th className="th">{S.colAction}</th></tr>
+                <tr><SortTh label={S.colFacility} sortKey="facility" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.areaLabel} sortKey="area" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.colProject} sortKey="vessel" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.colDuration} sortKey="days" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.colPriority} sortKey="priority" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.colStatus} sortKey="status" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.colCreated} sortKey="createdAt" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.colUpdated} sortKey="updatedAt" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><th className="th">{S.colAction}</th></tr>
               </thead>
               <tbody className="divide-y divide-steel-100">
                 {pager.slice(sortedSlots).map((s) => {
@@ -818,6 +827,8 @@ export default function Drydock() {
                           : <Badge tone={s.priority === "Kritis" ? "red" : s.priority === "Tinggi" ? "amber" : "gray"}>{s.priority ?? "Normal"}</Badge>}
                       </td>
                       <td className="td"><StatusBadge status={st} /></td>
+                      <td className="td text-xs text-steel-600">{createdAtOf(s) !== null ? fmtTanggal(createdAtOf(s)) : <span className="text-steel-400">-</span>}</td>
+                      <td className="td text-xs text-steel-600">{lastTouchedAt(s) !== null ? fmtTanggal(lastTouchedAt(s)) : <span className="text-steel-400">-</span>}</td>
                       <td className="td">
                         <div className="flex gap-1.5">
                           <button className="btn-secondary text-xs" onClick={() => openSlot(s)}>{S.detailBtn}</button>
@@ -835,7 +846,7 @@ export default function Drydock() {
                     </tr>
                   );
                 })}
-                {filteredSlots.length === 0 && <tr><td colSpan={7} className="td text-center text-steel-400">{S.emptySlots}</td></tr>}
+                {filteredSlots.length === 0 && <tr><td colSpan={9} className="td text-center text-steel-400">{S.emptySlots}</td></tr>}
               </tbody>
             </table>
             {pager.bar}

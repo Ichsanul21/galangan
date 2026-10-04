@@ -92,9 +92,11 @@ const PAGES: { name: string; path: string; el: () => ReactElement }[] = [
 let pass = 0;
 const failures: string[] = [];
 
+const rendered = new Map<string, string>();
+
 for (const { name, path, el } of PAGES) {
   try {
-    renderToString(
+    const html = renderToString(
       <LanguageProvider>
         <StoreProvider>
           <MemoryRouter initialEntries={[path]}>
@@ -105,6 +107,7 @@ for (const { name, path, el } of PAGES) {
         </StoreProvider>
       </LanguageProvider>,
     );
+    rendered.set(name, html);
     console.log(`PASS  ${name}`);
     pass += 1;
   } catch (e) {
@@ -118,6 +121,75 @@ for (const { name, path, el } of PAGES) {
 }
 
 console.log(`\n${pass}/${PAGES.length} halaman render tanpa error.`);
+
+/* Keseimbangan sel tabel, diukur dari HTML yang benar-benar dirender.
+
+   Menambah kolom "Dibuat"/"Diubah" berarti menambah satu header dan satu sel
+   per baris. Salah hitung satu, seluruh baris bergeser satu kolom ke kanan:
+   tombol Aksi mendarat di kolom lain. Tidak ada error React, tidak ada log,
+   dan "halaman render tanpa error" tetap hijau - jadi kelas bug ini perlu
+   pemeriksaan sendiri.
+
+   Diperiksa dari HTML, bukan dari sumber JSX, karena baris tabel sering
+   dibangun dengan .map() sehingga jumlah selnya hanya diketahui saat render.
+   Di HTML, jumlah itu nyata.
+
+   Dua sah yang tetap diterima:
+   - baris empty-state: satu <td colspan="n"> dengan n = jumlah kolom;
+   - baris yang sebagian selnya masih dipakai baris di atasnya lewat rowSpan
+     (mis. kolom "Area" yang di-rowspan-kan per grup slot). */
+{
+  const cellProblems: string[] = [];
+  let tablesSeen = 0;
+  let rowsSeen = 0;
+
+  for (const [name, html] of rendered) {
+    for (const [i, table] of (html.match(/<table[\s\S]*?<\/table>/g) ?? []).entries()) {
+      tablesSeen += 1;
+      const head = table.match(/<thead[\s\S]*?<\/thead>/)?.[0];
+      const body = table.match(/<tbody[\s\S]*?<\/tbody>/)?.[0];
+      if (head === undefined || body === undefined) continue;
+
+      const cols = (head.match(/<th\b/g) ?? []).length;
+
+      /* Sisa rowSpan yang masih membentang ke baris berikutnya. Catatan:
+         React 19 menulis atributnya `rowSpan` (camelCase) di HTML hasil SSR,
+         bukan `rowspan` lowercase - makanya pola di sini case-insensitive. */
+      let pending: number[] = [];
+
+      for (const row of body.match(/<tr\b[\s\S]*?<\/tr>/g) ?? []) {
+        rowsSeen += 1;
+        const tds = (row.match(/<td\b/g) ?? []).length;
+        const effective = tds + pending.length;
+
+        const span = Number(/colspan="(\d+)"/i.exec(row)?.[1] ?? NaN);
+        const emptyState = tds === 1 && span === cols;
+        if (effective !== cols && !emptyState) {
+          cellProblems.push(`${name} tabel#${i + 1}: header ${cols} sel, baris ${effective} sel`);
+        }
+
+        /* Baris ini menurunkan sisa span lama, lalu menambah span baru. */
+        pending = pending.map((p) => p - 1).filter((p) => p > 0);
+        for (const m of row.match(/rowspan="(\d+)"/gi) ?? []) {
+          const n = Number(/\d+/.exec(m)![0]) - 1;
+          if (n > 0) pending.push(n);
+        }
+      }
+    }
+  }
+
+  const uniqProblems = [...new Set(cellProblems)];
+  if (uniqProblems.length === 0) {
+    console.log(
+      `PASS  ${tablesSeen} tabel / ${rowsSeen} baris: setiap baris punya jumlah sel sama dengan header`,
+    );
+    pass += 1;
+  } else {
+    console.log(`FAIL  ${uniqProblems.length} baris tabel tidak seimbang:`);
+    for (const p of uniqProblems.slice(0, 12)) console.log(`      ${p}`);
+    failures.push("keseimbangan sel tabel");
+  }
+}
 
 /* Ringkasan portofolio TIDAK lagi dipotret dari DOM.
 
@@ -473,7 +545,13 @@ try {
   }
 }
 
-console.log(`\n${pass}/${PAGES.length + 5} pemeriksaan lolos.`);
+/* Pemeriksaan di luar loop PAGES: (1) ringkasan portofolio tanpa area cetak
+   DOM, (2) penggabungan tarikan, (3) saldo historikal as-of, (4) kesetaraan
+   sel tabel, (5) magic bytes PDF, (6) jalur klien PDF. Naikkan kalau menambah
+   pemeriksaan baru di sini, supaya penyebut tidak diam-diam salah. */
+const EXTRA_CHECKS = 6;
+
+console.log(`\n${pass}/${PAGES.length + EXTRA_CHECKS} pemeriksaan lolos.`);
 if (failures.length > 0) {
   console.log(`GAGAL: ${failures.join(", ")}`);
   process.exit(1);

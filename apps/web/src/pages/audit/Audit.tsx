@@ -9,6 +9,8 @@ import { apiFetch, isBackendConfigured } from "../../services/http";
 import { useT } from "../../i18n/LanguageContext";
 import { n_misc } from "../../i18n/n_misc";
 import { exportExcel } from "../../utils/export";
+import { fmtTanggal } from "../../utils/format";
+import { createdAtOf, lastTouchedAt } from "../../utils/timestamps";
 
 /** Ambil YYYY-MM-DD dari string waktu bila bisa diparse; abaikan "baru saja" dan teks relatif. */
 function toISODateOrNull(v: unknown): string | null {
@@ -32,11 +34,13 @@ interface ServerAuditRow {
 
 interface StoreItemLike {
   id: string;
+  [key: string]: unknown;
   time?: unknown;
   actor?: unknown;
   action?: unknown;
   target?: unknown;
   module?: unknown;
+  createdAt?: unknown;
 }
 
 export default function Audit() {
@@ -67,6 +71,9 @@ export default function Audit() {
       action: String(r.action ?? "-"),
       target: String(r.row_id ?? "-"),
       module: String(r.table_name ?? "-"),
+      /* Jejak audit tidak pernah diedit, jadi `created_at` miliknya sendiri
+         yang jadi "dibuat" - tanpa ini kolom kosong di mode Server. */
+      createdAt: String(r.created_at ?? ""),
     };
   }
 
@@ -115,7 +122,7 @@ export default function Audit() {
   /* Mode Server sudah terfilter dari backend; mode Perangkat disaring lokal. */
   const displayRows = isServer ? auditServer.rows : localRows;
   const sortedAudits = useMemo(() => sortRows(displayRows, sort, (a, key) =>
-    key === "waktu" ? String(a.time ?? "") : key === "aktor" ? String(a.actor ?? "") : key === "aksi" ? String(a.action ?? "") : key === "target" ? String(a.target ?? "") : String(a.module ?? "")
+    key === "waktu" ? String(a.time ?? "") : key === "aktor" ? String(a.actor ?? "") : key === "aksi" ? String(a.action ?? "") : key === "target" ? String(a.target ?? "") : key === "createdAt" ? createdAtOf(a) ?? "" : key === "updatedAt" ? lastTouchedAt(a) ?? "" : String(a.module ?? "")
   ), [displayRows, sort]);
   const auditPager = usePager(localRows.length);
   useEffect(() => {
@@ -253,6 +260,8 @@ export default function Audit() {
                 <SortTh label={S.auSortAction} sortKey="aksi" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} />
                 <SortTh label={S.auSortTarget} sortKey="target" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} />
                 <SortTh label={S.auModuleLabel} sortKey="modul" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} />
+                <SortTh label={S.colCreated} sortKey="createdAt" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} />
+                <SortTh label={S.colUpdated} sortKey="updatedAt" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} />
               </tr>
             </thead>
             <tbody className="divide-y divide-steel-50">
@@ -265,6 +274,8 @@ export default function Audit() {
                   <td className="px-5 py-2.5">
                     <Badge tone="navy">{String(a.module ?? "-")}</Badge>
                   </td>
+                  <td className="whitespace-nowrap px-3 py-2.5 text-xs text-steel-600">{createdAtOf(a) !== null ? fmtTanggal(createdAtOf(a)) : <span className="text-steel-400">-</span>}</td>
+                  <td className="whitespace-nowrap px-3 py-2.5 text-xs text-steel-600">{lastTouchedAt(a) !== null ? fmtTanggal(lastTouchedAt(a)) : <span className="text-steel-400">-</span>}</td>
                 </tr>
               ))}
             </tbody>

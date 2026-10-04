@@ -30,6 +30,7 @@ import { apiFetch, isBackendConfigured } from "../../services/http";
 import { fmtBulan, fmtRupiah, fmtTanggal, todayISO } from "../../utils/format";
 import { sameName } from "../../utils/names";
 import { cmpJam, fmtJam24, norm24 } from "../../utils/time24";
+import { createdAtOf, lastTouchedAt } from "../../utils/timestamps";
 import { useT } from "../../i18n/LanguageContext";
 import { n_qc } from "../../i18n/n_qc";
 
@@ -614,7 +615,7 @@ export default function KaryawanDetail() {
               <div className="max-h-96 overflow-auto">
               <table className="w-full">
                 <thead className="bg-surface sticky top-0 z-10">
-                  <tr><SortTh label={S.thTanggal} sortKey="date" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} /><SortTh label={S.thShift} sortKey="shift" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} /><SortTh label={S.dlStatus} sortKey="status" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} /><SortTh label={S.thJam} sortKey="jam" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} /><SortTh label={S.thLembur} sortKey="lembur" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} /><SortTh label={S.thKet} sortKey="ket" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} /><th className="th">{locale === "en" ? "Actions" : "Aksi"}</th></tr>
+                  <tr><SortTh label={S.thTanggal} sortKey="date" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} /><SortTh label={S.thShift} sortKey="shift" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} /><SortTh label={S.dlStatus} sortKey="status" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} /><SortTh label={S.thJam} sortKey="jam" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} /><SortTh label={S.thLembur} sortKey="lembur" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} /><SortTh label={S.thKet} sortKey="ket" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} /><SortTh label={S.colCreated} sortKey="createdAt" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} /><SortTh label={S.colUpdated} sortKey="updatedAt" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} /><th className="th">{locale === "en" ? "Actions" : "Aksi"}</th></tr>
                 </thead>
                 <tbody className="divide-y divide-steel-100">
                   {sortRows(attendanceAll.filter((a) => {
@@ -628,6 +629,8 @@ export default function KaryawanDetail() {
                       case "jam": return `${fmtJam24(a.checkIn)}-${fmtJam24(a.checkOut)}`;
                       case "lembur": return Number(a.overtime ?? 0);
                       case "ket": return String(a.status) === "Hadir" && isTelat(a.checkIn) ? "Telat" : "";
+                      case "createdAt": return createdAtOf(a) ?? "";
+                      case "updatedAt": return lastTouchedAt(a) ?? "";
                       default: return "";
                     }
                   }).map((a) => (
@@ -638,6 +641,8 @@ export default function KaryawanDetail() {
                       <td className="td text-steel-600 font-mono text-xs">{a.checkIn && a.checkOut ? `${fmtJam24(a.checkIn)}-${fmtJam24(a.checkOut)}` : "-"}</td>
                       <td className="td text-steel-600">{S.jamN.replace("{n}", String(Number(a.overtime || 0)))}</td>
                       <td className="td">{a.status === "Hadir" && isTelat(a.checkIn) ? <Badge tone="red">Telat</Badge> : <span className="text-xs text-steel-400">-</span>}</td>
+                      <td className="td text-xs text-steel-600">{createdAtOf(a) !== null ? fmtTanggal(createdAtOf(a)) : <span className="text-steel-400">-</span>}</td>
+                      <td className="td text-xs text-steel-600">{lastTouchedAt(a) !== null ? fmtTanggal(lastTouchedAt(a)) : <span className="text-steel-400">-</span>}</td>
                       <td className="td">
                         <div className="flex flex-wrap gap-1.5">
                           {attOtApproved(a) ? (

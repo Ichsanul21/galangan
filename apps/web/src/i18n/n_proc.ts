@@ -36,6 +36,9 @@ export const n_proc = {
     eta: "ETA",
     revisi: "Revisi",
     aksi: "Aksi",
+    /* Label kolom tanggal rekam (F6): "Dibuat" = saat baris masuk sistem. */
+    colCreated: "Dibuat",
+    colUpdated: "Diubah",
     kebutuhan: "Kebutuhan",
     workshop: "Workshop",
     pr: "PR",
@@ -390,6 +393,8 @@ export const n_proc = {
     eta: "ETA",
     revisi: "Revision",
     aksi: "Actions",
+    colCreated: "Created",
+    colUpdated: "Updated",
     kebutuhan: "Requirement",
     workshop: "Workshop",
     pr: "PR",

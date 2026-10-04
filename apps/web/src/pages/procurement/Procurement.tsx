@@ -12,6 +12,7 @@ import { findUsages } from "../../utils/usages";
 import { remoteRepository } from "../../services/repositories";
 import { getJwt, isBackendConfigured } from "../../services/http";
 import { fmtRupiah, fmtJumlah, fmtTanggal, todayISO } from "../../utils/format";
+import { createdAtOf, lastTouchedAt } from "../../utils/timestamps";
 import { sameName } from "../../utils/names";
 import { AlertBannerView, flashPick, notifRowId, useModuleAlert, useNotifFlash } from "../../components/AlertBanner";
 import { useDeepLinkParams, useDeepLinkTarget } from "../../components/useDeepLink";
@@ -456,6 +457,8 @@ export default function Procurement() {
     if (k === "eta") return String(po.eta ?? "");
     if (k === "revisi") return String(po.revisi || "R0");
     if (k === "status") return String(normPo(String(po.status ?? "")));
+    if (k === "createdAt") return createdAtOf(po) ?? "";
+    if (k === "updatedAt") return lastTouchedAt(po) ?? "";
     return String(po.id ?? "");
   }), [bigShown, sort, APPROVE_PO_LIMIT]);
   const sortedSmall = useMemo(() => sortRows(smallShown, sort2, (po, k) => {
@@ -1385,7 +1388,7 @@ const sparkVendors = useMemo(() => {
               <div className="overflow-x-auto">
                 <table className="w-full">
                   <thead className="bg-surface sticky top-0 z-10">
-                    <tr><SortTh label={S.po} sortKey="po" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.item} sortKey="item" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.vendor} sortKey="vendor" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.nilai} sortKey="nilai" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.level} sortKey="level" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.eta} sortKey="eta" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.revisi} sortKey="revisi" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.status} sortKey="status" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><th className="th">{S.aksi}</th></tr>
+                    <tr><SortTh label={S.po} sortKey="po" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.item} sortKey="item" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.vendor} sortKey="vendor" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.nilai} sortKey="nilai" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.level} sortKey="level" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.eta} sortKey="eta" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.revisi} sortKey="revisi" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.status} sortKey="status" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.colCreated} sortKey="createdAt" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.colUpdated} sortKey="updatedAt" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><th className="th">{S.aksi}</th></tr>
                   </thead>
                   <tbody className="divide-y divide-steel-100">
                     {bigPager.slice(sortedBig).map((po) => {
@@ -1437,6 +1440,8 @@ const sparkVendors = useMemo(() => {
                           </td>
                           <td className="td text-steel-600 font-mono text-xs">{po.revisi || "R0"}</td>
                           <td className="td"><Badge tone={poStatus[po.status] ?? poStatus[st] ?? "gray"}>{st}</Badge></td>
+                          <td className="td text-xs text-steel-600">{createdAtOf(po) !== null ? fmtTanggal(createdAtOf(po)) : <span className="text-steel-400">-</span>}</td>
+                          <td className="td text-xs text-steel-600">{lastTouchedAt(po) !== null ? fmtTanggal(lastTouchedAt(po)) : <span className="text-steel-400">-</span>}</td>
                           <td className="td">{poAksi(po)}</td>
                         </tr>
                       );

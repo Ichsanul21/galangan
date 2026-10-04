@@ -15,6 +15,8 @@ import { DocumentPreviewCell, InlineDocPreview, type PreviewDoc } from "../../co
 import { docAttachment, looksLikeUrl } from "../../utils/docAttachment";
 import { SATUAN, STATUS_BOQ_ID } from "../../utils/format";
 import { todayISO } from "../../utils/format";
+import { fmtTanggal } from "../../utils/format";
+import { createdAtOf, lastTouchedAt } from "../../utils/timestamps";
 import type { BoQItem } from "../../data";
 
 /* Dokumen pendukung satu item BoQ, atau null bila tidak ada lampiran.
@@ -365,11 +367,13 @@ export default function BoQSection({ projectId }: Props) {
                   <SortTh label={S.statusLabel} sortKey="status" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} />
                   <SortTh label={S.colRevision} sortKey="revised" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} />
                   <SortTh label={locale === "en" ? "Document" : "Dokumen"} sortKey="dokumen" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} />
+                <SortTh label={S.colCreated} sortKey="createdAt" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} />
+                  <SortTh label={S.colUpdated} sortKey="updatedAt" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} />
                   <th className="th">{S.actionTh}</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-steel-100">
-                {sortRows(filtered, sort, (b: BoQExt, k) => k === "quantity" ? Number(b.quantity) : k === "unitPrice" ? Number(b.unitPrice) : k === "totalPrice" ? Number(b.totalPrice) : k === "revised" ? Number((b.priceHistory ?? []).length) : k === "dokumen" ? docAttachment(b).url : String((b as unknown as Record<string, unknown>)[k] ?? "")).map((b) => (
+                {sortRows(filtered, sort, (b: BoQExt, k) => k === "createdAt" ? (createdAtOf(b as unknown as Record<string, unknown>) ?? "") : k === "updatedAt" ? (lastTouchedAt(b as unknown as Record<string, unknown>) ?? "") : k === "quantity" ? Number(b.quantity) : k === "unitPrice" ? Number(b.unitPrice) : k === "totalPrice" ? Number(b.totalPrice) : k === "revised" ? Number((b.priceHistory ?? []).length) : k === "dokumen" ? docAttachment(b).url : String((b as unknown as Record<string, unknown>)[k] ?? "")).map((b) => (
                   <tr key={b.id}>
                     <td className="td font-mono text-xs">{b.id}</td>
                     <td className="td font-medium text-navy-900">{b.name}</td>
@@ -406,6 +410,8 @@ export default function BoQSection({ projectId }: Props) {
                         doc={boqDocOf(b)}
                       />
                     </td>
+                    <td className="td text-xs text-steel-600">{createdAtOf(b as unknown as Record<string, unknown>) !== null ? fmtTanggal(createdAtOf(b as unknown as Record<string, unknown>)) : <span className="text-steel-400">-</span>}</td>
+                    <td className="td text-xs text-steel-600">{lastTouchedAt(b as unknown as Record<string, unknown>) !== null ? fmtTanggal(lastTouchedAt(b as unknown as Record<string, unknown>)) : <span className="text-steel-400">-</span>}</td>
                     <td className="td">
                       <div className="flex flex-wrap gap-1">
                         {nextStatus(b.status).map((ns) => (

@@ -315,7 +315,7 @@ export default function Projects() {
                 <SortTh label={S.colBudget} sortKey="budget" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} />
                 <SortTh label={S.colActual} sortKey="actual" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} />
                 <SortTh label={S.colPm} sortKey="manager" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} />
-                {/* Tanggal rekam (F6). Kolom ini yang bikin tabel bisa
+{/* Tanggal rekam (F6). Kolom ini yang bikin tabel bisa
                     diurutkan menurut umur data - tanpa itu, semua proyek
                     terlihat sama saja sejak itu dibuat. Kosong = "—", bukan hari ini:
                     data lama memang tidak punya tanggal buat, dan mengarang
