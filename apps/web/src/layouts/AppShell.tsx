@@ -42,7 +42,7 @@ import { Badge, Modal, Field, Toaster, toast } from "../components/ui";
 import { apiFetch } from "../services/http";
 import { computeAlerts } from "../utils/alerts";
 import { loadNotifRead, saveNotifRead, loadModSeen } from "../utils/notifRead";
-import { buildModuleAlertItems, type ModuleAlertKey } from "../utils/moduleAlerts";
+import { buildModuleAlertItems, badgeCount, countByLevel, type ModuleAlertKey } from "../utils/moduleAlerts";
 import { useT } from "../i18n/LanguageContext";
 import { n_misc } from "../i18n/n_misc";
 import { remoteRepository } from "../services/repositories";
@@ -189,7 +189,11 @@ export default function AppShell() {
     const out = {} as Record<ModuleAlertKey, number>;
     (Object.keys(all) as ModuleAlertKey[]).forEach((k) => {
       const s = new Set(seen[k] ?? []);
-      out[k] = all[k].filter((a) => !s.has(a.id)).length;
+      /* Badge = KRITIS + PERHATIAN saja. `info` selalu tampil di banner,
+         jadi menghitungnya di sini hanya menambah angka yang tidak bisa
+         ditindaklanjuti - dan membuat badge jadi alasan menutup banner
+         yang isinya memang tidak perlu ditutup. */
+      out[k] = badgeCount(countByLevel(all[k].filter((a) => !s.has(a.id))));
     });
     return out;
     // eslint-disable-next-line react-hooks/exhaustive-deps

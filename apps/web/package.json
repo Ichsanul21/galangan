@@ -9,7 +9,10 @@
     "preview": "vite preview",
     "probe:render": "vite build --ssr scripts/ssr-probe.tsx --outDir node_modules/.cache/ssr-probe --emptyOutDir --logLevel error && node node_modules/.cache/ssr-probe/ssr-probe.js",
     "probe:price": "vite build --ssr scripts/price-probe.ts --outDir node_modules/.cache/price-probe --emptyOutDir --logLevel error && node node_modules/.cache/price-probe/price-probe.js",
-    "check": "tsc --noEmit && tsc -p tsconfig.scripts.json --noEmit && npm run probe:render && npm run probe:price"
+    "probe:foundation": "vite build --ssr scripts/foundation-probe.ts --outDir node_modules/.cache/foundation-probe --emptyOutDir --logLevel error && node node_modules/.cache/foundation-probe/foundation-probe.js",
+    "probe:alert": "vite build --ssr scripts/alert-probe.ts --outDir node_modules/.cache/alert-probe --emptyOutDir --logLevel error && node node_modules/.cache/alert-probe/alert-probe.js",
+    "probe:wo": "vite build --ssr scripts/wo-probe.ts --outDir node_modules/.cache/wo-probe --emptyOutDir --logLevel error && node node_modules/.cache/wo-probe/wo-probe.js",
+    "check": "tsc --noEmit && tsc -p tsconfig.scripts.json --noEmit && npm run probe:render && npm run probe:price && npm run probe:foundation && npm run probe:alert && npm run probe:wo"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4.3.3",

@@ -66,6 +66,16 @@ export function todayISO(): string {
   return new Date().toISOString().slice(0, 10);
 }
 
+/**
+ * Timestamp penuh ISO-8601 dengan milidetik. Dipakai untuk `createdAt`/
+ * `updatedAt`: urutan leksikografis sama dengan urutan waktu, jadi `sortRows`
+ * bisa mengurutkannya tanpa parsing. `todayISO()` hanya tanggal, tidak bisa
+ * membedakan dua edit di hari yang sama.
+ */
+export function nowIso(): string {
+  return new Date().toISOString();
+}
+
 export function monthISO(): string {
   return new Date().toISOString().slice(0, 7);
 }

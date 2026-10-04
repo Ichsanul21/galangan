@@ -14,6 +14,7 @@ import { remoteRepository } from "../../services/repositories";
 import { getJwt, isBackendConfigured } from "../../services/http";
 import { fmtRupiah, fmtMiliar, fmtTanggal, todayISO } from "../../utils/format";
 import { sameName } from "../../utils/names";
+import { woMilestonesOf, woProgressOf, terminMilestoneOptions } from "../../utils/woMilestones";
 import { AlertBannerView, flashPick, notifRowId, useModuleAlert, useNotifFlash } from "../../components/AlertBanner";
 import { useDeepLinkParams, useDeepLinkTarget } from "../../components/useDeepLink";
 import { rowHighlightClass } from "../../components/rowHighlight";
@@ -176,7 +177,7 @@ export default function Subcontractor() {
   const [woEditForm, setWoEditForm] = useState({ scope: "", targetDate: "" });
   const [termEdit, setTermEdit] = useState<StoreItem | null>(null);
   const [termEditForm, setTermEditForm] = useState({ milestone: "", amount: "" });
-  const [confirmFinish, setConfirmFinish] = useState<{ id: string; v: number; note: string; ms: string[] } | null>(null);
+  const [confirmFinish, setConfirmFinish] = useState<{ id: string; v: number; note: string; ms: string[]; milestones?: unknown[] } | null>(null);
   const [showTerm, setShowTerm] = useState(false);
   const [termForm, setTermForm] = useState({ sub: "", wo: "", milestone: "", amount: "", pphPct: "0.5", retPct: "5" });
   const [termPay, setTermPay] = useState<StoreItem | null>(null);
@@ -247,16 +248,28 @@ export default function Subcontractor() {
 
   /* Progres WO = jumlah bobot milestone termin yang selesai (sinkron dua arah
      dengan status termin; tanpa milestone → progres tersimpan legacy). */
-  const doneMsOf = (w: StoreItem): string[] =>
-    Array.isArray(w.doneMs) ? (w.doneMs as unknown[]).map((x) => String(x)) : [];
-  const effProgress = (wo: StoreItem | null | undefined): number => {
-    if (!wo) return 0;
-    const sub = subcontractors.find((s) => sameName(s.name, String(wo.sub ?? "")));
-    const ms = sub ? milestonesOf(sub) : [];
-    if (ms.length === 0) return Number(wo.progress || 0);
-    const done = doneMsOf(wo);
-    return Math.min(100, ms.filter((m) => done.includes(m.title)).reduce((s, m) => s + Number(m.pct || 0), 0));
+  /* Milestone yang ditandai selesai untuk sebuah WO.
+     Sumber kebenarannya `doneAt` di setiap milestone - field `doneMs` yang
+     lama hanya berisi judul, jadi tidak bisa membedakan "tahap 40% selesai"
+     dari "tahap 100% selesai". Pembacaan dua sumber ini selama migrasi
+     menjaga WO lama yang belum punya `milestones` tetap hidup. */
+  const doneMsOf = (w: StoreItem): string[] => {
+    const fromDoneAt = woMilestonesOf(w)
+      .filter((m) => m.doneAt !== "")
+      .map((m) => m.title);
+    if (fromDoneAt.length > 0) return fromDoneAt;
+    return Array.isArray(w.doneMs) ? (w.doneMs as unknown[]).map((x) => String(x)) : [];
   };
+
+  /* Progress WO = turunan dari milestone WO (item 11 revisi 2 Oktober).
+     Sebelumnya hanya membaca milestone SOW milik SUBKONTRAKTOR, jadi satu
+     subkontraktor dengan dua WO memakai bobot yang sama untuk keduanya -
+     "Fabrikasi 40%" milik WO A tercampur dengan "Coating 40%" milik WO B.
+
+     Pembagiannya total bobot milestone WO, bukan 100, supayauser yang hanya
+     mengisi tiga tahap 30/30/40 tidak melihat progres melompat ke 90% di
+     tahap kedua. Fungsi dan aturannya ada di `utils/woMilestones.ts`. */
+  const effProgress = (wo: StoreItem | null | undefined): number => woProgressOf(wo);
 
   const termWoOptions = workOrders.filter((w) => termForm.sub && sameName(w.sub, termForm.sub));
   const termWo = workOrders.find((w) => w.id === termForm.wo) ?? null;
@@ -271,7 +284,13 @@ export default function Subcontractor() {
   const termTsRef = termWo && Number(termWo.rate || 0) > 0 && termTsHours > 0
     ? termTsHours * Number(termWo.rate || 0)
     : 0;
-  const termMsList = termSub ? milestonesOf(termSub) : [];
+  /* Opsi milestone untuk form termin: milestone SOW subkontraktor DIGABUNG
+     dengan milestone WO yang dipilih (item 11). Digabung, bukan diganti:
+     termin yang sudah terbit merujuk milestone SOW, dan kalau diganti daftar
+     itu, cap termin lama ikut hilang dan nilainya tidak bisa diaudit lagi.
+     Judul yang sama digabung jadi satu opsi supaya cap-nya tidak terhitung
+     dua kali untuk tahap yang sama. */
+  const termMsList = terminMilestoneOptions(termSub, termWo);
   const termMs = termMsList.find((m) => m.title === termForm.milestone) ?? null;
   const termMsCap = termMs && termSub ? Number(termSub.contract || 0) * Number(termMs.pct || 0) / 100 : 0;
   const termMsUsed = termMs
@@ -458,40 +477,62 @@ export default function Subcontractor() {
     );
   };
 
-  const applyWoProgress = async (id: string, v: number, note: string, doneMs?: string[]) => {
+  const applyWoProgress = async (id: string, v: number, note: string, doneMs?: string[], milestones?: unknown[]) => {
     try {
-    await update("workOrders", id, { progress: v, status: v >= 100 ? "Selesai" : "Dalam Proses", ...(doneMs ? { doneMs } : {}) });
+    await update("workOrders", id, {
+      progress: v,
+      status: v >= 100 ? "Selesai" : "Dalam Proses",
+      ...(doneMs ? { doneMs } : {}),
+      ...(milestones ? { milestones } : {}),
+    });
     log("mengupdate progres", `${id} → ${v}%${note ? ` - ${note}` : ""}`, "Subkontraktor");
     toast(S.tProgressTo.replace("{a}", id).replace("{b}", String(v)));
     } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); }
   };
 
-  const saveWoProgress = () => {
+  const saveWoProgress = async () => {
     if (!woProg) return;
-    const sub = subcontractors.find((s) => sameName(s.name, String(woProg.sub ?? "")));
-    const ms = sub ? milestonesOf(sub) : [];
-    // Jalur numerik untuk sub tanpa SOW (legacy): input 0-100 terintegrasi ke termin cap & status WO.
+/* Milestone yang dipakai dialog progres = milestone milik WO itu sendiri
+       (item 11). Sebelumnya yang diambil adalah SOW subkontraktor, jadi satu
+       sub dengan dua WO menampilkan tahap yang sama untuk keduanya, dan
+       mencentangnya di satu WO ikut menaikkan progres WO lain.
+
+       Milestone SOW sub tetap dipakai sebagai OPSI termin di
+       `terminMilestoneOptions` - keduanya beda fungsi: SOW menyatakan apa yang
+       ditagih ke subkontraktor, milestone WO menyatakan pekerjaan yang sedang
+       dikerjakan. Menggabungkan keduanya jadi satu daftar akan membuat cap
+       termin ambigu. */
+    const ms = woMilestonesOf(woProg);
+    // Jalur numerik untuk WO tanpa milestone (legacy): input 0-100 terintegrasi ke termin cap & status WO.
     if (ms.length === 0) {
       const v = Math.max(0, Math.min(100, Math.round(Number(progPct))));
       if (progPct.trim() === "" || !Number.isFinite(v)) { toast(locale === "en" ? "Enter progress 0-100" : "Isi progres numerik 0-100", "info"); return; }
       if (v < effProgress(woProg) && !progNote.trim()) { toast(S.tProgressNoteRequired, "info"); return; }
-      if (v >= 100) { setConfirmFinish({ id: woProg.id, v, note: progNote.trim(), ms: [] }); return; }
+      /* Jalur numerik (WO tanpa milestone): tetap jadi 100%, jadi selesai. */
+    if (v >= 100) { setConfirmFinish({ id: woProg.id, v, note: progNote.trim(), ms: [] }); return; }
       applyWoProgress(woProg.id, v, progNote.trim());
       setWoProg(null); setProgMs([]); setProgNote(""); setProgPct("");
       return;
     }
-    const known = ms.map((m) => m.title);
+const known = ms.map((m) => m.title);
     const checked = progMs.filter((t) => known.includes(t));
-    const v = Math.min(100, ms.filter((m) => checked.includes(m.title)).reduce((s, m) => s + Number(m.pct || 0), 0));
+    /* Persentase dihitung `woProgressOf` dari milestone yang dicentang, bukan
+       dijumlahkan di sini. Kalau dua tempat menghitung sendiri, dialog ini
+       bisa menampilkan 100% sementara tabel WO tetap 60%. */
+    const staged = ms.map((m) => (checked.includes(m.title) ? { ...m, doneAt: todayISO() } : { ...m, doneAt: "" }));
+    const v = woProgressOf({ ...woProg, milestones: staged });
     if (v < effProgress(woProg) && !progNote.trim()) {
       toast(S.tProgressNoteRequired, "info");
       return;
     }
     if (v >= 100) {
-      setConfirmFinish({ id: woProg.id, v, note: progNote.trim(), ms: checked });
+      setConfirmFinish({ id: woProg.id, v, note: progNote.trim(), ms: checked, milestones: staged });
       return;
     }
-    applyWoProgress(woProg.id, v, progNote.trim(), checked);
+    /* `staged` menyimpan penanda selesai `doneAt` per milestone. Daftar judul
+       (`doneMs`) tidak bisa membedakan tahap 40% yang sudah selesai dari
+       tahap 100%, jadi bentuk lamanya hanya dipertahankan untuk WO lama. */
+    await applyWoProgress(woProg.id, v, progNote.trim(), checked, staged);
     setWoProg(null);
     setProgMs([]);
     setProgNote("");
@@ -696,12 +737,28 @@ const printSpk = async (w: StoreItem): Promise<void> => {
     /* Sinkron dua arah termin→WO: milestone yang Lunas menandai milestone WO selesai. */
     if (termPay.woId && termPay.milestone) {
       const wo = workOrders.find((w) => w.id === termPay.woId);
-      const tSub = subcontractors.find((s) => sameName(s.name, String(termPay.sub ?? "")));
-      const tMs = tSub ? milestonesOf(tSub).find((m) => m.title === String(termPay.milestone)) : undefined;
-      if (wo && tMs && !doneMsOf(wo).includes(tMs.title)) {
-        const done = [...doneMsOf(wo), tMs.title];
-        const v = Math.min(100, milestonesOf(tSub as StoreItem).filter((m) => done.includes(m.title)).reduce((s, m) => s + Number(m.pct || 0), 0));
-        await update("workOrders", wo.id, { doneMs: done, progress: v, status: v >= 100 ? "Selesai" : "Dalam Proses" });
+      const tMsTitle = String(termPay.milestone ?? "");
+      /* Milestone yang selesai dicatat dengan `doneAt` di milestone milik WO
+         itu sendiri. Versi lama menulis daftar judul ke `doneMs` dan memakai
+         bobot milestone SOW SUBKONTRAKTOR - jadi melunasi termin untuk satu WO
+         ikut menandai tahap dengan nama sama di WO lain milik subkontraktor
+         yang sama. Progress dihitung ulang oleh `woProgressOf`, jadi angka yang
+         disimpan selalu konsisten dengan milestone-nya. */
+      if (wo && tMsTitle !== "" && !doneMsOf(wo).includes(tMsTitle)) {
+        const own = woMilestonesOf(wo).find((m) => m.title === tMsTitle);
+        if (own) {
+          const today = todayISO();
+          const next = woMilestonesOf(wo).map((m) =>
+            m.title === tMsTitle ? { ...m, doneAt: today } : m,
+          );
+          const v = woProgressOf({ ...wo, milestones: next });
+          await update("workOrders", wo.id, {
+            milestones: next,
+            doneMs: next.filter((m) => m.doneAt !== "").map((m) => m.title),
+            progress: v,
+            status: v >= 100 ? "Selesai" : "Dalam Proses",
+          });
+        }
       }
     }
     log("melunasi termin", `${termPay.id} via ${proof.method} ${proof.ref.trim()} · PPh ${pphOf(termPay, pphDefault)}% = ${fmtRupiah(pphAmt)} · hutang ${poNeto} ${fmtRupiah(netoPayable)}${retAmt > 0 ? ` + retensi ${fmtRupiah(retAmt)} ditahan` : ""}`, "Subkontraktor");
@@ -1600,7 +1657,7 @@ const printSpk = async (w: StoreItem): Promise<void> => {
         desc={S.finishDesc}
         confirmLabel={S.finishConfirmBtn}
         onCancel={() => setConfirmFinish(null)}
-        onConfirm={() => { if (confirmFinish) applyWoProgress(confirmFinish.id, confirmFinish.v, confirmFinish.note, confirmFinish.ms); setConfirmFinish(null); setWoProg(null); setProgMs([]); setProgNote(""); setProgPct(""); }}
+        onConfirm={() => { if (confirmFinish) applyWoProgress(confirmFinish.id, confirmFinish.v, confirmFinish.note, confirmFinish.ms, confirmFinish.milestones); setConfirmFinish(null); setWoProg(null); setProgMs([]); setProgNote(""); setProgPct(""); }}
       />
 
       {/* Modal termin */}

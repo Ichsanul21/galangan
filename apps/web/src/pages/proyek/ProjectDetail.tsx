@@ -1,8 +1,10 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
+import { useAuth } from "../../auth/auth";
 import { useParams, Link } from "react-router-dom";
 import { ArrowLeft, Calendar, MapPin, Plus, Trash2, FileDown, Eye } from "lucide-react";
 import {
   Card,
+  CardHeader,
   PageHeader,
   StatusBadge,
   ProgressBar,
@@ -33,6 +35,7 @@ import type { StoreItem, WbsItem, CollectionKey } from "../../data/store";
 import { useModuleSync } from "../../data/useModuleSync";
 import { DocumentPreviewCell, DocumentPreviewPanel, DownloadFileButton, InlineDocPreview } from "../../components/DocumentPreview";
 import { docAttachment, looksLikeUrl } from "../../utils/docAttachment";
+import { DOC_TYPES, NEEDS_QC_LINK, qcCertCandidates, subTypesOf } from "../../utils/docTypes";
 import { useT } from "../../i18n/LanguageContext";
 import { n_prj } from "../../i18n/n_prj";
 import { fmtMiliar, fmtTanggal, fmtRentang, fmtBulan } from "../../data";
@@ -42,6 +45,7 @@ import { pdfServerReady } from "../../services/pdfClient";
 import { usePdfDoc } from "../../components/usePdfDoc";
 import { canonPrioritas, scopeList } from "../../utils/scope";
 import { equipmentCostSummary } from "../../utils/projectCost";
+import { EntityPicker } from "../../components/ui";
 import { PRIORITAS } from "./Projects";
 import { TAHAP, tahapOf, hasContract, isOverdue } from "./Projects";
 import { getSetting } from "../../utils/settings";
@@ -105,6 +109,7 @@ export default function ProjectDetail() {
   const S = n_prj[locale];
   const { id } = useParams();
   const { data, update, add, remove, wbsFor, setWbs, teamFor, setTeam, log } = useStore();
+  const { user: session } = useAuth();
   /* Printer PDF: BAST disusun server dari baris `bast` + relasi proyek/WO,
      jadi tidak ada jalur lokal untuk dokumen ini. */
   const pdfDoc = usePdfDoc();
@@ -141,6 +146,13 @@ export default function ProjectDetail() {
   };
   const [docTitle, setDocTitle] = useState("");
   const [docType, setDocType] = useState("Laporan");
+  const [docSubType, setDocSubType] = useState("");
+  const [docQcCertId, setDocQcCertId] = useState("");
+  /* Penanggung jawab dokumen. Default-nya nama pengguna yang sedang login.
+     Sebelumnya ditulis literal `"Anda"` - jadi semua dokumen yang dibuat dari
+     tab proyek tercatatatasnama "Anda", dan kolom penanggung jawab di arsip
+     tidak pernah menunjuk siapa pun. */
+  const [docOwner, setDocOwner] = useState("");
   const [lastUploadedId, setLastUploadedId] = useState<string | null>(null);
   /* Id dokumen yang pratinjaunya sedang dibuka di dalam kartu. Menggantikan
      `instantPreviewId` + DocumentPreviewModal: dulu mengunggah dokumen membuka
@@ -364,6 +376,29 @@ export default function ProjectDetail() {
   const vessel = data.vessels.find((v) => sameName(v.name, project.vessel));
   const invoices = data.invoices.filter((i) => i.project === pid);
   const ncrs = data.ncr.filter((n) => n.project === pid);
+
+  /* Kandidat rujukan QC untuk form dokumen proyek. Sumbernya `qcCertCandidates`
+     yang sama dengan modul Dokumen - sebelumnya form ini tidak punya cek
+     apa pun, jadi tidak ada cara menunjuk sertifikat mana yang sudah
+     diperiksa tim QC. */
+  const docQcOptions = useMemo(
+    () => qcCertCandidates(data.documents ?? [], pid, "", docSubType),
+    [data.documents, pid, docSubType],
+  );
+  const docNeedsQc = NEEDS_QC_LINK.has(docSubType);
+
+  /* Nama pengguna yang sedang login, dipakai sebagai penanggung jawab
+     bawaan. `name` bisa kosong di mode offline/lama, jadi ada fallback ke
+     username agar tidak pernah tersimpan string kosong. */
+  const sessionName = String(session?.name ?? "").trim() || String(session?.username ?? "").trim();
+  const docOwnerOptions = useMemo(
+    () => data.employees.map((e) => ({
+      value: String(e.name ?? "").trim(),
+      label: String(e.name ?? "").trim(),
+      hint: [String(e.role ?? "").trim(), String(e.id ?? "")].filter((x) => x !== "").join(" · "),
+    })).filter((o) => o.value !== ""),
+    [data.employees],
+  );
   const slots = data.dockSlots.filter((s) => s.project === pid);
   const docs = data.documents.filter((d) => d.project === pid);
   const wos = data.workOrders.filter((w) => w.project === pid);
@@ -549,6 +584,7 @@ export default function ProjectDetail() {
      Yang BELUM terealisasi (maintenance berjalan) ditampilkan terpisah
      sebagai "committed" - bukan dicampur ke realized. */
   const equipCost = equipmentCostSummary(pid, data.bookings, data.maintenances, data.equipment);
+  const [costDetail, setCostDetail] = useState(false);
   const equipHasCost = equipCost.totalRealized > 0 || equipCost.totalCommitted > 0;
   const hppWithEquip = Number(project.actual ?? 0) + equipCost.totalRealized;
 
@@ -956,7 +992,7 @@ export default function ProjectDetail() {
       </div>
 
       <div className="mt-5 card">
-        <Tabs tabs={["Ringkasan", "WBS & Anggaran", "BoQ", "Dokumen & Laporan", "Perubahan & Risiko", "Terkait", ...(getSetting(data, "SHOW_3D_PROJECT", 0) === 1 ? ["3D Viewer"] : []), "Service", "Sparepart", "Tim"]} active={tab} onChange={setTab} labels={{ Ringkasan: S.tabRingkasan, "WBS & Anggaran": S.tabWbs, BoQ: S.tabBoq, "Dokumen & Laporan": S.tabDocs, "Perubahan & Risiko": S.tabChange, Terkait: S.tabRelated, "3D Viewer": S.tabViewer, Service: S.tabService, Sparepart: S.tabSparepart, Tim: S.tabTeam }} />
+        <Tabs tabs={["Ringkasan", "WBS & Anggaran", "BoQ", "Dokumen & Laporan", "Equipment", "Perubahan & Risiko", "Terkait", ...(getSetting(data, "SHOW_3D_PROJECT", 0) === 1 ? ["3D Viewer"] : []), "Service", "Sparepart", "Tim"]} active={tab} onChange={setTab} labels={{ Ringkasan: S.tabRingkasan, "WBS & Anggaran": S.tabWbs, BoQ: S.tabBoq, "Dokumen & Laporan": S.tabDocs, Equipment: S.detEqTab, "Perubahan & Risiko": S.tabChange, Terkait: S.tabRelated, "3D Viewer": S.tabViewer, Service: S.tabService, Sparepart: S.tabSparepart, Tim: S.tabTeam }} />
         <div className="p-5">
           {tab === "Ringkasan" && (
             <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
@@ -1265,6 +1301,11 @@ export default function ProjectDetail() {
                   </div>
 
                   {/* Rincian per booking - bisa diklik ke modul equipment. */}
+                  <div className="mt-4 mb-2 flex justify-end">
+                    <button className="btn-secondary text-xs" onClick={() => setCostDetail(true)}>
+                      {locale === "en" ? "Detail" : "Detail"}
+                    </button>
+                  </div>
                   {equipCost.bookingRows.length > 0 && (
                     <div className="mt-4 overflow-x-auto">
                       <table className="w-full">
@@ -1383,19 +1424,31 @@ export default function ProjectDetail() {
                   const url = docUrlOf(d);
                   const fname = docBaseName(d, url);
                   const isNew = lastUploadedId === String(d.id);
-                  /* Pratinjau inline, bukan modal: klik ikon mata (atau baru
-                     selesai diunggah) langsung memuat dokumen DI DALAM kartu
-                     ini. `instantPreviewId` + DocumentPreviewModal yang dulu
-                     dipakai untuk membuka pop-up otomatis setelah unggah
-                     dihapus - preview-nya sekarang muncul di tempat, jadi
-                     pengguna tidak perlu menutup apa pun untuk lanjut
-                     bekerja. */
-                  const isOpen = url !== "" && (isNew || openDocId === String(d.id));
+                  /* Pratinjau inline, bukan modal: klik ikon mata langsung memuat
+                     dokumen DI DALAM kartu ini.
+
+                     `isOpen` HANYA bergantung pada `openDocId`. Sebelumnya
+                     ikut `isNew`, jadi dokumen yang baru diunggah langsung
+                     memuat dirinya ke dalam kartu tanpa diminta - dan karena
+                     `lastUploadedId` tidak pernah dibersihkan, semua dokumen
+                     yang pernah diunggah pada sesi itu ikut terbuka setiap
+                     kali tabel dirender ulang. `isNew` sekarang hanya
+                     memberi tanda "Baru diunggah" + sorotan tepi. */
+                  const isOpen = url !== "" && openDocId === String(d.id);
                   return (
                   <div key={d.id} className={`doc-card rounded-xl border p-3 text-sm ${isNew ? "border-ocean-400 ring-2 ring-ocean-100" : "border-steel-100"}`} style={{ breakInside: "avoid" }}>
                     <div className="flex items-center justify-between gap-2">
                     <div className="min-w-0">
                       <p className="font-medium text-navy-900">{d.title} {isNew && <Badge tone="teal">Baru diunggah</Badge>}</p>
+                      {/* Sub-tipe + rujukan QC ikut tampil di kartu. Tanpa ini
+                          data yang baru disimpan ada di DB tapi tidak pernah
+                          terlihat di halaman tempat user mengisinya. */}
+                      {(d.subType !== undefined || d.qcCertId !== undefined) && (
+                        <span className="mt-1 flex flex-wrap items-center gap-1.5">
+                          {d.subType !== undefined && <Badge tone="gray">{String(d.subType)}</Badge>}
+                          {d.qcCertId !== undefined && <Badge tone="blue">QC: {String(d.qcCertId)}</Badge>}
+                        </span>
+                      )}
                       <p className="text-xs text-steel-500">{d.id} · {d.type} · {d.version} · {d.updated}{fname !== "" ? ` · lampiran: ${fname}` : ""}</p>
                     </div>
                     <div className="flex shrink-0 flex-wrap items-center gap-2">
@@ -1490,6 +1543,96 @@ export default function ProjectDetail() {
                   {bastList.length === 0 && <p className="text-sm text-steel-400">{S.detNoBast}</p>}
                 </div>
               </div>
+            </div>
+          )}
+
+          {tab === "Equipment" && (
+            /* Item 5d revisi 2 Oktober: equipment yang dipakai PROYEK INI.
+               Modul Equipment punya tab "Sedang Dipakai", tapi isinya
+               seluruh yard - manajer proyek tidak bisa memilih unit
+               miliknya sendiri tanpa menyaring manual.
+               Sumbernya `equipCost`, yang sudah difilter per proyek, jadi
+               tidak ada perhitungan baru di sini dan angkanya tidak mungkin
+               berbeda dari kartu Biaya. */
+            <div className="space-y-4">
+              <Card>
+                <CardHeader
+                  title={locale === "en" ? "Equipment in use on this project" : "Equipment yang dipakai proyek ini"}
+                  subtitle={locale === "en"
+                    ? "Bookings and maintenance recorded against this project."
+                    : "Booking dan maintenance yang tercatat pada proyek ini."}
+                />
+                <div className="p-4">
+                  {equipCost.bookingRows.length === 0 && equipCost.maintenanceRows.length === 0 ? (
+                    <p className="py-6 text-center text-sm text-steel-400">
+                      {locale === "en" ? "No equipment used on this project yet." : "Belum ada equipment yang dipakai proyek ini."}
+                    </p>
+                  ) : (
+                    <div className="space-y-4">
+                      {equipCost.bookingRows.length > 0 && (
+                        <div className="overflow-x-auto">
+                          <table className="w-full">
+                            <thead className="bg-surface">
+                              <tr>
+                                <th className="th">{locale === "en" ? "Booking" : "Booking"}</th>
+                                <th className="th">{locale === "en" ? "Equipment" : "Equipment"}</th>
+                                <th className="th">{locale === "en" ? "Date" : "Tanggal"}</th>
+                                <th className="th text-right">{locale === "en" ? "Hours" : "Jam"}</th>
+                                <th className="th text-right">{locale === "en" ? "Cost" : "Biaya"}</th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-steel-100">
+                              {equipCost.bookingRows.map((r) => (
+                                <tr key={r.id} className="hover:bg-surface">
+                                  <td className="td font-mono text-xs text-navy-900">{r.id}</td>
+                                  <td className="td text-steel-600">{r.equipmentName}</td>
+                                  <td className="td text-steel-600 text-xs">{fmtTanggal(r.date)}</td>
+                                  <td className="td text-right">{r.hours}</td>
+                                  <td className="td text-right font-semibold">{fmtRupiah(r.cost)}</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      )}
+                      {equipCost.maintenanceRows.length > 0 && (
+                        <div className="overflow-x-auto">
+                          <table className="w-full">
+                            <thead className="bg-surface">
+                              <tr>
+                                <th className="th">{locale === "en" ? "Maintenance" : "Maintenance"}</th>
+                                <th className="th">{locale === "en" ? "Equipment" : "Equipment"}</th>
+                                <th className="th">{locale === "en" ? "Status" : "Status"}</th>
+                                <th className="th text-right">{locale === "en" ? "Cost" : "Biaya"}</th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-steel-100">
+                              {equipCost.maintenanceRows.map((r) => (
+                                <tr key={r.id} className="hover:bg-surface">
+                                  <td className="td font-mono text-xs text-navy-900">{r.id}</td>
+                                  <td className="td text-steel-600">{r.equipmentName}</td>
+                                  <td className="td"><StatusBadge status={r.status} /></td>
+                                  <td className="td text-right font-semibold">{fmtRupiah(r.material + r.labor)}</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      )}
+                      <div className="flex justify-end gap-4 border-t border-steel-100 pt-3">
+                        <div className="text-right">
+                          <p className="text-[11px] text-steel-500">{locale === "en" ? "Charged to COGS" : "Dibebankan ke HPP"}</p>
+                          <p className="text-sm font-bold text-navy-900">{fmtRupiah(equipCost.totalRealized)}</p>
+                        </div>
+                        <div className="text-right">
+                          <p className="text-[11px] text-steel-500">{locale === "en" ? "Incl. committed" : "Incl. komitmen"}</p>
+                          <p className="text-sm font-bold text-navy-900">{fmtRupiah(equipCost.totalCommitted)}</p>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </Card>
             </div>
           )}
 
@@ -1695,6 +1838,79 @@ export default function ProjectDetail() {
           <Field label={S.detParamField}><input className="input" value={trialForm.parameter} onChange={(e) => setTrialForm({ ...trialForm, parameter: e.target.value })} placeholder={S.detParamPh} /></Field>
           <Field label={S.detPunchField}><input className="input" value={trialForm.punchList} onChange={(e) => setTrialForm({ ...trialForm, punchList: e.target.value })} placeholder={S.detPunchPh} /></Field>
           <Field label={S.detBaField}><input className="input" value={trialForm.baRef} onChange={(e) => setTrialForm({ ...trialForm, baRef: e.target.value })} placeholder={S.detBaPh} /></Field>
+        </div>
+      </Modal>
+
+      {/* Modal Detail Biaya Equipment (item 8d revisi 2 Oktober).
+          Angkanya SAMA dengan kartu di atas - keduanya diambil dari
+          `equipCost`, jadi tidak mungkin melenceng. Yang ditambah di sini
+          adalah dua hal yang perlu dibuka: pekerjaan maintenance yang
+          dihitung sebagai komitmen, dan baris detail per maintenance yang
+          di halaman hanya diringkas jadi satu angka. */}
+      <Modal
+        open={costDetail}
+        onClose={() => setCostDetail(false)}
+        wide
+        title={locale === "en" ? "Equipment cost detail" : "Detail Biaya Equipment"}
+        subtitle={pid}
+        footer={<button className="btn-secondary" onClick={() => setCostDetail(false)}>{S.cancelBtn}</button>}
+      >
+        <div className="space-y-4">
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+            {([
+              { label: locale === "en" ? "Rental" : "Sewa", value: equipCost.rental, bold: false },
+              { label: locale === "en" ? "Fuel" : "BBM", value: equipCost.fuel, bold: false },
+              { label: locale === "en" ? "Maintenance (realized)" : "Maintenance (terealisasi)", value: equipCost.maintenanceRealized, bold: false },
+              { label: locale === "en" ? "Maintenance (committed)" : "Maintenance (komitmen)", value: equipCost.maintenanceCommitted, bold: false },
+              { label: locale === "en" ? "Charged to COGS" : "Dibebankan ke HPP", value: equipCost.totalRealized, bold: true },
+              { label: locale === "en" ? "Budget incl. committed" : "Anggaran incl. komitmen", value: equipCost.totalCommitted, bold: true },
+            ] as { label: string; value: number; bold: boolean }[]).map((k) => (
+                <div key={k.label} className="rounded-xl border border-steel-100 p-2.5">
+                  <p className="text-[11px] text-steel-500">{k.label}</p>
+                  <p className={`text-sm ${k.bold ? "font-bold" : "font-semibold"} text-navy-900`}>{fmtRupiah(k.value)}</p>
+                </div>
+              ))}
+          </div>
+
+          {equipCost.maintenanceRows.length > 0 && (
+            <div>
+              <p className="mb-1 text-xs font-semibold text-navy-900">
+                {locale === "en" ? "Maintenance breakdown" : "Rincian maintenance"}
+              </p>
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead className="bg-surface">
+                    <tr>
+                      <th className="th">{locale === "en" ? "ID" : "ID"}</th>
+                      <th className="th">{locale === "en" ? "Equipment" : "Equipment"}</th>
+                      <th className="th">{locale === "en" ? "Status" : "Status"}</th>
+                      <th className="th text-right">{locale === "en" ? "Material" : "Material"}</th>
+                      <th className="th text-right">{locale === "en" ? "Labor" : "Tenaga"}</th>
+                      <th className="th text-right">{locale === "en" ? "Total" : "Total"}</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-steel-100">
+                    {equipCost.maintenanceRows.map((r) => (
+                      <tr key={r.id} className="hover:bg-surface">
+                        <td className="td font-mono text-xs text-navy-900">{r.id}</td>
+                        <td className="td text-steel-600">{r.equipmentName}</td>
+                        <td className="td"><StatusBadge status={r.status} /></td>
+                        <td className="td text-right">{fmtRupiah(r.material)}</td>
+                        <td className="td text-right">{fmtRupiah(r.labor)}</td>
+                        <td className="td text-right font-semibold">{fmtRupiah(r.material + r.labor)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
+          <p className="text-[11px] text-steel-400">
+            {locale === "en"
+              ? "Realized figures are already charged to project COGS. Committed figures are ongoing work not yet charged."
+              : "Angka terealisasi sudah dibebankan ke HPP proyek. Angka komitmen adalah pekerjaan berjalan yang belum dibebankan."}
+          </p>
         </div>
       </Modal>
 
@@ -1993,21 +2209,30 @@ export default function ProjectDetail() {
             const created = await add("documents", {
               title: docTitle.trim(),
               type: docType,
+              ...(docSubType.trim() !== "" ? { subType: docSubType.trim() } : {}),
+              ...(docQcCertId.trim() !== "" ? { qcCertId: docQcCertId.trim() } : {}),
               project: pid,
               vessel: project.vessel,
               version: "v1.0",
               status: "Draft",
               updated: new Date().toISOString().slice(0, 10),
-              owner: "Anda",
+              owner: docOwner.trim() !== "" ? docOwner.trim() : sessionName,
               sharedWith: [],
               approvalStatus: "Draft",
               ...(looksLikeUrl(typed) ? { fileUrl: typed } : { fileName: typed || "-" }),
             }, { action: "mengarsipkan dokumen", module: "Dokumen" });
             toast(S.detToastDocAdd); setShowDoc(false); setDocTitle(""); setDocFile("");
+            /* Pratinjau TIDAK dibuka otomatis lagi (item 6 revisi 2 Oktober).
+               Sebelumnya `setOpenDocId` + `setLastUploadedId` langsung memuat
+               berkas di dalam kartu begitu disimpan, jadi pengguna tidak
+               pernah bisa menutup apa pun untuk melanjutkan pekerjaan - dan
+               modal yang baru saja ditutup ikut dibuka lagi dari bawah.
+
+               `lastUploadedId` tetap diisi: itu yang memberi ringkasan "Baru
+               diunggah" dan sorotan tepi pada kartu, jadi pengguna tahu
+               dokumen mana yang baru, tanpa isinya merebut layar. */
             setLastUploadedId(String(created.id));
-            /* Pratinjau langsung tampil di kartu dokumen yang baru dibuat
-               (lastUploadedId), tanpa membuka pop-up. */
-            setOpenDocId(String(created.id));
+            setOpenDocId("");
             setTab("Dokumen & Laporan");
           } catch (e) {
             toast(e instanceof Error ? e.message : S.saveFail, "info");
@@ -2015,10 +2240,60 @@ export default function ProjectDetail() {
         }} >{S.saveBtn}</button></>}>
         <div className="space-y-3">
           <Field label={S.detDocTitleField}><input className="input" value={docTitle} onChange={(e) => setDocTitle(e.target.value)} /></Field>
+          {/* Tipe + sub-tipe + rujukan QC (item 5e revisi 2 Oktober).
+              Ketiganya satu form yang sama dengan modul Dokumen: daftar tipe
+              dari `DOC_TYPES`, bukan 8 nilai yang ditulis manual di sini -
+              dokumen Penawaran/Dock Space/Surat Jalan/Tanda Terima tidak bisa
+              dibuat dari tab proyek sebelumnya. "Kontrak Kerja" kini sub-tipe
+              dari Kontrak, bukan tipe sendiri. */}
           <Field label={S.detDocType}>
-            <select className="input" value={docType} onChange={(e) => setDocType(e.target.value)}>
-              {["Laporan", "Kontrak", "Kontrak Kerja", "Drawing", "Prosedur", "Sertifikat", "Invoice", "NCR"].map((t) => <option key={t}>{t}</option>)}
+            <select
+              className="input"
+              value={docType}
+              onChange={(e) => { setDocType(e.target.value); setDocSubType(""); setDocQcCertId(""); }}
+            >
+              {DOC_TYPES.map((t) => <option key={t}>{t}</option>)}
             </select>
+          </Field>
+          {subTypesOf(docType).length > 0 && (
+            <Field label={locale === "en" ? "Sub-type" : "Sub-tipe"}>
+              <select className="input" value={docSubType} onChange={(e) => { setDocSubType(e.target.value); setDocQcCertId(""); }}>
+                <option value="">-</option>
+                {subTypesOf(docType).map((s) => <option key={s}>{s}</option>)}
+              </select>
+            </Field>
+          )}
+          {docNeedsQc && (
+            <Field
+              label={locale === "en" ? "QC certificate reference" : "Rujukan Sertifikat QC"}
+              hint={locale === "en"
+                ? "Required so the archive can prove QC inspected this."
+                : "Wajib diisi agar arsip bisa membuktikan tim QC sudah memeriksanya."}
+            >
+              <select className="input" value={docQcCertId} onChange={(e) => setDocQcCertId(e.target.value)}>
+                <option value="">-</option>
+                {docQcOptions.map((d) => (
+                  <option key={String(d.id)} value={String(d.id)}>{String(d.id)} · {String(d.title ?? "")}</option>
+                ))}
+              </select>
+              {docQcOptions.length === 0 && (
+                <p className="mt-1 text-[11px] text-amber-700">
+                  {locale === "en"
+                    ? "No QC certificate in this project yet."
+                    : "Belum ada Sertifikat QC di proyek ini."}
+                </p>
+              )}
+            </Field>
+          )}
+          <Field label={locale === "en" ? "Owner (person in charge)" : "Penanggung jawab"}>
+            <EntityPicker
+              value={docOwner}
+              onChange={setDocOwner}
+              options={docOwnerOptions}
+              placeholder={locale === "en" ? "Search employee..." : "Cari karyawan..."}
+              ariaLabel={locale === "en" ? "Owner" : "Penanggung jawab"}
+              emptyText={locale === "en" ? "No matching employee." : "Tidak ada karyawan yang cocok."}
+            />
           </Field>
           <Field label={S.detDocFile} hint={S.detDocFileHint}>
             <input className="input" value={docFile} onChange={(e) => setDocFile(e.target.value)} placeholder={S.detDocFilePh} />

@@ -43,6 +43,20 @@ export function registerAuditRoutes(app: FastifyInstance): void {
       where.push("table_name = ?");
       params.push(query.table);
     }
+    /* `action` dipakai untuk mengisolasi satu jenis kejadian - "kapan baris ini
+       DIHAPUS" butuh action=delete, bukan campur dengan create/update yang
+      happened pada hari yang sama. */
+    if (query.action !== undefined && query.action !== "") {
+      where.push("action = ?");
+      params.push(query.action);
+    }
+    /* `rowId` tepat. `q` di bawah tetap substring karena untuk kotak pencarian
+       umum itu memang yang diinginkan; untuk mengisi kolom "dihapus" pada satu
+       baris, substring berisiko salah: "INV-001" ikut cocok "INV-0012". */
+    if (query.rowId !== undefined && query.rowId !== "") {
+      where.push("row_id = ?");
+      params.push(query.rowId);
+    }
     /* Cari substring di aktor/aksi/row_id (pola sama seperti crud q). */
     if (query.q !== undefined && query.q !== "") {
       where.push(

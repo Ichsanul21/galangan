@@ -5,6 +5,10 @@ import type { Dict } from "./types";
 export const id: Dict = {
   common: {
     search: "Cari",
+    listSearchPh: "Cari di daftar ini...",
+    listSearchAria: "Cari di daftar ini",
+    listSearchEmpty: "Tidak ada baris yang cocok.",
+    listSearchCount: "{n} dari {total} baris",
     reset: "Reset",
     apply: "Terapkan",
     cancel: "Batal",
@@ -124,6 +128,16 @@ export const id: Dict = {
     markAllRead: "Tandai semua dibaca",
     markGroupRead: "Tandai grup dibaca",
     open: "Buka",
+    levelKritis: "Kritis",
+    levelPerhatian: "Perlu perhatian",
+    levelInfo: "Info",
+    /* Ditulis sebagai tiga bagian terpisah supaya kamus bahasa lain tidak
+       harus menentukan ulang kata sambung "atau"/"dan". */
+    summaryCounts: "{kritis} kritis · {perhatian} perlu perhatian · {info} info",
+    sinceDays: "{n} hari",
+    impactLabel: "Dampak",
+    dueLabel: "Tenggat",
+    moreHidden: "+{n} lainnya",
     persistsNote: "Notifikasi ini akan tetap muncul sampai kondisi sudah selesai.",
     cappedNote: "Menampilkan 200 pertama - saring tabel untuk sisanya.",
     jumpHint: "klik untuk lompat ke barisnya",

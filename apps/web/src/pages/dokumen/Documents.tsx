@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Plus, Search, ScrollText, FileText, Eye, Pencil, Trash2, Archive, RotateCcw, Download, Upload } from "lucide-react";
-import { Card, PageHeader, Badge, KpiCard, Modal, Field, FormGrid, ConfirmModal, SortTh, toggleSort, sortRows, toast, StatusBadge, usePager, AsyncButton } from "../../components/ui";
+import { Card, PageHeader, Badge, KpiCard, Modal, Field, FormGrid, ConfirmModal, SortTh, toggleSort, sortRows, toast, StatusBadge, usePager, AsyncButton, EntityPicker } from "../../components/ui";
 import type { SortState } from "../../components/ui";
 import { FilterPopover } from "../../components/FilterPopover";
 import { useStore, type StoreItem, type CollectionKey } from "../../data/store";
@@ -20,8 +20,9 @@ import { docAttachment, docFileNameOf, docUrlOf, looksLikeUrl } from "../../util
 import { n_dry } from "../../i18n/n_dry";
 import { useT } from "../../i18n/LanguageContext";
 import { monthAxis, monthKeyOf } from "../../utils/monthAxis";
+import { DOC_TYPES, NEEDS_QC_LINK, qcCertCandidates, subTypesOf } from "../../utils/docTypes";
 
-const TYPES = ["Kontrak", "Drawing", "Prosedur", "Sertifikat", "Laporan", "Invoice", "NCR", "Penawaran", "Dock Space", "Surat Jalan", "Tanda Terima"];
+const TYPES: readonly string[] = DOC_TYPES;
 const FILTERS = ["Semua", ...TYPES, "Arsip"];
 
 /* Item 5e revisi 2 Oktober: sub-tipe dokumen.
@@ -31,32 +32,11 @@ const FILTERS = ["Semua", ...TYPES, "Arsip"];
  * dibedakan: hitungan masa berlaku tetap benar, tapi sertifikat mana yang
  * perlu dipesan ulang tidak jelas, dan arsip tidak bisa diaudit per jenis.
  *
- * `subType` disimpan sebagai field terpisah, BUKAN digabung ke `type` -
- * karena `type` menentukan prefix nomor dokumen (PREFIX) dan masa retensi
- * (RETENSI). Menggabungkannya akan mengganti CTR/SRT jadi "SRT-K3" dsb dan
- * membuat nomor yang sudah terbit tidak lagi dikenali.
- */
-export const SUB_TYPES: Record<string, string[]> = {
-  Sertifikat: ["Sertifikat K3", "Sertifikat Kelas", "Sertifikat Otoritas", "Sertifikat Kualifikasi", "Sertifikat Lainnya"],
-  Drawing: ["Shop Drawing", "As Built Drawing", "Gauss Drawing", "Drawing Lainnya"],
-  Prosedur: ["SOP Produksi", "SOP K3", "SOP_mutu", "SOP Pemeliharaan", "Prosedur Lainnya"],
-  Laporan: ["Laporan Progres", "Laporan Mutu", "Laporan K3", "Laporan Keuangan", "Laporan Lainnya"],
-  Kontrak: ["Kontrak Utama", "Addendum", "Perubahan Bright", "Kontrak Lainnya"],
-  Invoice: ["Invoice Progres", "Invoice Retensi", "Invoice Penutup"],
-};
-
-/** Sub-tipe yang berlaku untuk satu jenis dokumen. */
-export function subTypesOf(type: string): string[] {
-  return SUB_TYPES[type] ?? [];
-}
-
-/**
- * Sertifikat yang wajib punya relasi ke dokumen Sertifikat QC di Proyek.
- * Tanpa ini, "Sertifikat K3" bisa diterbitkan tanpa bukti bahwa tim QC
- * pernah memeriksa - persis celah yang bikin audit menemukan sertifikat
- * kedaluwarsa yang sebenarnya sudah ada berkasnya.
- */
-const NEEDS_QC_LINK = new Set(subTypesOf("Sertifikat").filter((s) => s !== "Sertifikat Lainnya"));
+ * Definisi TYPES/SUB_TYPES/NEEDS_QC_LINK sekarang tinggal di
+ * `utils/docTypes.ts` supaya form dokumen di Detail Proyek memakai daftar yang
+ * sama - sebelumnya keduanya ditulis terpisah dan sudah berkhianat. Detail
+ * pemindahannya ada di sana. */
+export { SUB_TYPES, subTypesOf, NEEDS_QC_LINK } from "../../utils/docTypes";
 
 /* Tinggi pratinjau PDF perlu lebih lega daripada gambar supaya halaman pertama
    terbaca tanpa perlu menggulir di dalam iframe. */
@@ -190,13 +170,21 @@ export default function Documents() {
      yang sedang dibuat. Hanya proyek yang sedang dikerjakan dan dokumen
      bertipe Sertifikat - dua filter ini yang membuat tautan berarti: tanpa
      itu, users bisa menautkan sertifikat K3 ke sertifikat palang kapal lain. */
-  const qcCertOptions = useMemo(
-    () => (data.documents ?? []).filter(
-      (d) => d.type === "Sertifikat"
-        && String(d.project ?? "") === form.project
-        && String(d.id) !== String(editing?.id ?? ""),
-    ),
-    [data.documents, form.project, editing?.id],
+const qcCertOptions = useMemo(
+    () => qcCertCandidates(data.documents ?? [], form.project, String(editing?.id ?? ""), form.subType),
+    [data.documents, form.project, editing?.id, form.subType],
+  );
+
+  /* Penanggung jawab disimpan sebagai NAMA (bukan id) - `owner` sudah
+     tercetak di banyak dokumen dan seed lama semuanya berisi nama. Jadi nilai
+     picker = nama, sedangkan id employee dipakai sebagai hint pencarian. */
+  const ownerOptions = useMemo(
+    () => data.employees.map((e) => ({
+      value: String(e.name ?? "").trim(),
+      label: String(e.name ?? "").trim(),
+      hint: [String(e.role ?? "").trim(), String(e.nip ?? "").trim(), String(e.id ?? "")].filter((x) => x !== "").join(" · "),
+    })).filter((o) => o.value !== ""),
+    [data.employees],
   );
   const [relSel, setRelSel] = useState<string[]>([]);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -320,7 +308,11 @@ export default function Documents() {
     if (!form.type) { toast(S.tTypeReq, "info"); return false; }
     if (!form.project) { toast(S.tProjectReq, "info"); return false; }
     if (!form.owner.trim()) { toast(S.tOwnerReq, "info"); return false; }
-    if (!data.employees.some((e) => String(e.name).toLowerCase() === form.owner.trim().toLowerCase())) {
+    /* Nama harus salah satu karyawan terdaftar. Yang dicek di sini hanya
+       kasus data lama: dokumen tersimpan sebelum picker ini ada, atau nama
+       karyawan yang sudah dihapus. Form-nya sendiri tidak mungkin menyimpan
+       nama baru - `EntityPicker` hanya menawarkan pilihan dari daftar. */
+    if (!ownerOptions.some((o) => o.value === form.owner.trim())) {
       toast(S.tOwnerEmployee, "info");
       return false;
     }
@@ -606,13 +598,17 @@ const doExport = () => {
                   <td className="td">
                     <div className="flex gap-1">
                       <button className="rounded-lg p-1.5 text-steel-500 hover:bg-steel-100" title={S.detailBtn} aria-label={S.detailOf.replace("{a}", String(d.id))} onClick={() => openDetail(d)}><Eye className="h-4 w-4" /></button>
-                      {/* Pratinjau pindah ke dalam modal detail (item 12 revisi
-                          2 Oktober): kolom pratinjau dihapus, jadi tabel arsip
-                          tidak lagi punya kolom yang isinya cuma dua ikon.
-                          Lampiran tetap bisa dilihat dan diunduh - lewat
-                          docAttachment, yang juga menyelesaikan lampiran
-                          seed lama yang hanya tersimpan di `fileName`. */}
+                      {/* Sel aksi tabel arsip hanya punya Detail - tidak ada
+                          tombol Pratinjau lagi (item 14 revisi 2 Oktober).
+                          Sebelumnya `DocumentPreviewCell` menaruh Eye di sini
+                          juga, sehingga dua ikon mata berdiri bersebelahan
+                          tanpa bedanya jelas: yang satu membuka modal detail,
+                          yang satu membuka berkas. Pratinjau tetap ada di
+                          dalam modal Detail (`DocumentPreviewPanel`).
+                          Unduh sengaja TETAP ada - ia aksi berbeda: menyimpan
+                          berkas, bukan membuka pratinjau. */}
                       <DocumentPreviewCell
+                        preview={false}
                         doc={{
                           title: String(d.title),
                           fileUrl: docUrlOf(d),
@@ -694,9 +690,25 @@ const doExport = () => {
                 {data.vessels.map((v) => <option key={v.id} value={v.name}>{v.name}</option>)}
               </select>
             </Field>
-            <Field label={S.lblOwner}>
-              <input className="input" placeholder={S.phOwner} value={form.owner} onChange={(e) => setF("owner", e.target.value)} />
-            </Field>
+<Field label={S.lblOwner} hint={S.hintOwnerPick}>
+{/* Item 15 revisi 2 Oktober. Sebelumnya ini input teks bebas dengan
+              cek `e.name.toLowerCase() === owner.trim().toLowerCase()`, jadi
+              nama harus diketik persis - termasuk kapitalisasi dan spasi.
+              Dropdown memaksa pengguna menebak ejaan untuk memilih orang yang
+              sudah ada di sistem; picker membuat pilihan itu eksplisit dan
+              menyimpan nama yang persis sama dengan yang tercatat di
+              `employees`, sehingga pencocokan di tempat lain tidak goyah. */}
+          <EntityPicker
+            value={form.owner}
+            onChange={(v) => setF("owner", v)}
+            options={ownerOptions}
+            placeholder={S.phOwner}
+            ariaLabel={S.lblOwner}
+            emptyText={locale === "en" ? "No matching employee." : "Tidak ada karyawan yang cocok."}
+            required
+            invalid={form.owner.trim() !== "" && !ownerOptions.some((o) => o.value === form.owner.trim())}
+          />
+        </Field>
 <Field label={S.lblValidUntil}>
               <input type="date" className="input" value={form.berlakuHingga} onChange={(e) => setF("berlakuHingga", e.target.value)} />
             </Field>

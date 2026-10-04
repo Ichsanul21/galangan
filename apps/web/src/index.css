@@ -136,14 +136,23 @@
   /* Watermark versi cetak (ikut tercetak ke PDF) */
   .isms-wm-print { display: none; }
 
-  /* Highlight lembut permanen untuk SEMUA baris ternotif (tidak mencolok:
-     background tipis saja, tanpa outline). Yang diklik dapat .notif-flash
-     di atasnya (jauh lebih mencolok) lalu kembali ke lembut. */
+  /* Penanda baris notifikasi, PERMANEN dan sengaja tipis.
+     Versi lama memakai fill kuning penuh (rgba(255,251,235)) di seluruh lebar
+     baris. Kalau ada belasan baris notifikasi dalam satu tabel, yellow fill
+     sebesar itu bukan lagi penanda - ia berubah menjadi warna latar tabel,
+     sehingga baris yang SEBENARNYA perlu perhatian gagal menonjol di antara
+     baris lain yang sama kuningnya.
+     Sekarang penandanya = garis aksen 3px di tepi kiri + arsir sangat tipis. */
   /* Hindari chart recharts terpotong / blank saat cetak PDF (html2canvas pagebreak). */
-  .recharts-wrapper { break-inside: avoid; page-break-inside: avoid; }
+  .recharts-wrapper { break-inside: avoid; page-break-after: auto; page-break-before: auto; }
   .notif-hl {
-    background-color: rgba(255, 251, 235, 0.6);
+    box-shadow: inset 3px 0 0 rgba(245, 158, 11, 0.85);
+    background-color: rgba(255, 251, 235, 0.35);
   }
+  /* Baris tabel: <tr> tidak menerima background di semua browser, jadi aksen
+     pindah ke sel pertama. */
+  tr.notif-hl > td:first-child { box-shadow: inset 3px 0 0 rgba(245, 158, 11, 0.85); }
+  tr.notif-hl > td { background-color: rgba(255, 251, 235, 0.35); }
   /* Kedip sesaat baris notifikasi yang diklik dari banner (pengganti
      highlight permanen). Hormati prefers-reduced-motion. */
   @keyframes notif-flash {

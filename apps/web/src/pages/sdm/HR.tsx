@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { Award, BadgeCheck, Eye, Lock, Network, Plus, Search, Users } from "lucide-react";
+import { Award, BadgeCheck, Download, Eye, Lock, Network, Plus, Search, Users } from "lucide-react";
 import {
   Badge,
   Card,
@@ -269,6 +269,18 @@ export default function HR() {
   const arsipSurat = data.letters;
   const [suratEditId, setSuratEditId] = useState<string | null>(null);
   const [suratPreviewFor, setSuratPreviewFor] = useState<StoreItem | null>(null);
+  /* Pratinjau arsip dirender begitu modal dibuka, bukan setelah tombol ditekan:
+     tujuannya pratinjau berarti "beri saya lihat suratnya", dan meminta klik
+     tambahan sebelum melihat apa pun hanya satu langkah sia-sia. `usePdfDoc`
+     menyusun ulang request kalau surat yang sama dibuka lagi, dan melepas
+     Blob URL sebelumnya supaya tidak menumpuk di RAM. */
+  useEffect(() => {
+    const row = suratPreviewFor;
+    if (row === null) return;
+    if (!pdfServerReady()) return;
+    void pdfDoc.request({ kind: "suratHr", id: String(row.id ?? ""), locale }, `Surat-${String(row.id ?? "")}.pdf`, true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [suratPreviewFor]);
   const [delEmp, setDelEmp] = useState<StoreItem | null>(null);
   const [delSurat, setDelSurat] = useState<StoreItem | null>(null);
   const [lettersMigrated, setLettersMigrated] = useState(false);
@@ -1513,28 +1525,32 @@ const finishTraining = async (t: StoreItem) => {
                       <td className="td text-steel-600">{l.type === "Tahunan" ? S.daysN.replace("{n}", String(saldoCuti(String(l.employeeId)))) : "-"}</td>
                       <td className="td"><StatusBadge status={String(l.status)} /></td>
                       <td className="td">
-                        {/* Lampiran hanya dapat dipratinjau setelah pengajuan
-                            DISETUJUI final. Sebelumnya tombol preview muncul di
-                            SEMUA status, jadi surat dokter / bukti sakit yang
-                            masih menunggu atasan sudah bisa dibuka siapa pun -
-                            padahal isinya data medis karyawan. Sesuai copy di
-                            form pengajuan ("Tampil setelah Disetujui"). */}
+                        {/* Lampiran terbuka sejak pengajuan DIAJUKAN, bukan
+                            hanya setelah Disetujui. Dengan kunci lama, HR
+                            yang sedang menilai cuti tidak bisa melihat surat
+                            dokter/bukti sakit tanpa harus ask atasan -
+                            justru di saat paling butuh melihatnya. Yang
+                            masih terkunci adalah pengajuan yang DITOLAK:
+                            tidak ada yang perlu ditinjau lagi. Ini gate
+                            status, bukan gate hak akses - siapa yang boleh
+                            membuka modul HR tetap urusan peran. */}
+
                         {(() => {
                           const url = String(l.fileUrl ?? "");
-                          const approved = String(l.status ?? "") === "Disetujui";
+                          const rejected = String(l.status ?? "") === "Ditolak";
                           if (url === "") {
                             return <span className="text-xs text-steel-400">-</span>;
                           }
-                          if (!approved) {
+                          if (rejected) {
                             return (
                               <span
                                 className="inline-flex items-center gap-1 text-xs text-steel-400"
                                 title={locale === "en"
-                                  ? "Attachment is hidden until the request is fully approved."
-                                  : "Lampiran disembunyikan sampai pengajuan disetujui final."}
+                                  ? "Attachment is closed because the request was rejected."
+                                  : "Lampiran ditutup karena pengajuan ditolak."}
                               >
                                 <Lock className="h-3 w-3" />
-                                {locale === "en" ? "Hidden" : "Tertutup"}
+                                {locale === "en" ? "Closed" : "Tertutup"}
                               </span>
                             );
                           }
@@ -2220,55 +2236,86 @@ const finishTraining = async (t: StoreItem) => {
         </div>
       </Modal>
 
-      {/* ---------- modal pratinjau isi surat di arsip ---------- */}
+{/* ---------- modal pratinjau isi surat di arsip ----------
+          Pratinjau sekarang PDF yang dirakit server dari baris `letters`,
+          sama dengan yang akan dicetak/didownload. Sebelumnya teksnya
+          disusun ulang di browser memakai `suratText()` - jalur kedua yang
+          bisa BERBEDA dari factory server, jadi yang tampil di layar bukan
+          tentu yang keluar dari printer.
+
+          Preview di form (baris 2204) tetap teks dan itu memang benar:
+          suratnya belum punya baris di DB, jadi factory server tidak punya
+          apa pun untuk dirakit. */}
       <Modal
         open={suratPreviewFor !== null}
-        onClose={() => setSuratPreviewFor(null)}
+        onClose={() => { setSuratPreviewFor(null); pdfDoc.close(); }}
         wide
         title={suratPreviewFor ? String(suratPreviewFor.jenis) : ""}
         subtitle={suratPreviewFor ? `${String(suratPreviewFor.id)} - ${String(suratPreviewFor.nama)}` : ""}
       >
         {suratPreviewFor && (
-          <div className={suratPreviewFor.fileUrl ? "grid grid-cols-1 gap-3 md:grid-cols-2" : ""}>
-          {/* Teks surat dibangun dari baris arsip memakai suratText() yang sama
-              dengan preview di form - dulu teks disusun ulang terpisah di sini
-              sehingga bisa berbeda dari yang dicetak. */}
-          <pre className="whitespace-pre-wrap rounded-xl bg-surface p-3 text-sm text-navy-900">
-            {(() => {
-              const emp = data.employees.find((e) => String(e.id) === String(suratPreviewFor.employeeId ?? ""));
-              return suratText({
-                id: suratPreviewFor.id,
-                jenis: suratPreviewFor.jenis,
-                tanggal: suratPreviewFor.tanggal,
-                isi: suratPreviewFor.isi,
-                nama: suratPreviewFor.nama,
-                nik: emp ? empNik(emp) : "",
-                role: emp?.role,
-                dept: emp?.dept,
-                branch: emp?.branch,
-              });
-            })()}
-          </pre>
-          {suratPreviewFor.fileUrl ? (
-            /* DocumentPreviewPanel, BUKAN <iframe>/<img> mentah: file di
-               backend dilindungi JWT, jadi src="/files/..." akan 401 dan tampil
-               blank. Panel ini ambil lewat fetchFileBlob yang mengirim header
-               Authorization, sekaligus menyediakan tombol Unduh. */
-            <DocumentPreviewPanel
-              doc={{
-                title: `Lampiran ${String(suratPreviewFor.id)}`,
-                subtitle: String(suratPreviewFor.nama ?? ""),
-                fileUrl: String(suratPreviewFor.fileUrl),
-                fileName: String(suratPreviewFor.fileName ?? `surat-${String(suratPreviewFor.id)}`),
-              }}
-            />
-          ) : (
-            <p className="self-center rounded-lg bg-steel-50 px-3 py-3 text-xs text-steel-500">
-              {locale === "en"
-                ? "No scan attached. Use the Upload button in the letter form to attach one."
-                : "Belum ada pindai lampiran. Gunakan tombol Unggah di form surat untuk melampirkannya."}
-            </p>
-          )}
+          <div className="space-y-3">
+            {!pdfServerReady() && (
+              <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+                {locale === "en"
+                  ? "Official PDF needs the server - connect the backend first."
+                  : "PDF resmi perlu server aktif - hubungkan backend dulu."}
+              </div>
+            )}
+            {pdfServerReady() && (
+              <>
+                {pdfDoc.state.busy && (
+                  <p className="text-sm text-steel-500">
+                    {locale === "en" ? "Preparing PDF..." : "Menyiapkan PDF..."}
+                  </p>
+                )}
+                {pdfDoc.state.error !== "" && (
+                  <p className="text-sm text-rose-600">{pdfDoc.state.error}</p>
+                )}
+                {pdfDoc.state.url !== "" && (
+                  <>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <button className="btn-secondary" onClick={() => pdfDoc.download(`Surat-${String(suratPreviewFor.id)}.pdf`)}>
+                        <Download className="h-4 w-4" />
+                        {locale === "en" ? "Download PDF" : "Unduh PDF"}
+                      </button>
+                      {/* `state.url` adalah object URL dari Blob, bukan URL backend - jadi
+                          window.open biasa aman. openFileUrl() yang membawa
+                          JWT tidak diperlukan di sini (dan memang akan
+                          salah: ia mengambildari URL backend). */}
+                      <button className="btn-secondary" onClick={() => window.open(pdfDoc.state.url, "_blank", "noopener,noreferrer")}>
+                        {locale === "en" ? "Open in new tab" : "Buka di tab baru"}
+                      </button>
+                    </div>
+                    <iframe
+                      title={`Surat ${String(suratPreviewFor.id)}`}
+                      src={pdfDoc.state.url}
+                      className="h-[36rem] w-full rounded-xl border border-steel-200"
+                    />
+                  </>
+                )}
+              </>
+            )}
+            {suratPreviewFor.fileUrl ? (
+              /* DocumentPreviewPanel, BUKAN <iframe>/<img> mentah: file di
+                 backend dilindungi JWT, jadi src="/files/..." akan 401 dan
+                 tampil blank. Panel ini ambil lewat fetchFileBlob yang
+                 mengirim header Authorization, sekaligus menyediakan tombol
+                 Unduh. */
+              <div>
+                <p className="mb-1 text-[11px] font-semibold text-steel-500">
+                  {locale === "en" ? "Attached scan" : "Pindai terlampir"}
+                </p>
+                <DocumentPreviewPanel
+                  doc={{
+                    title: `Lampiran ${String(suratPreviewFor.id)}`,
+                    subtitle: String(suratPreviewFor.nama ?? ""),
+                    fileUrl: String(suratPreviewFor.fileUrl),
+                    fileName: String(suratPreviewFor.fileName ?? `surat-${String(suratPreviewFor.id)}`),
+                  }}
+                />
+              </div>
+            ) : null}
           </div>
         )}
       </Modal>

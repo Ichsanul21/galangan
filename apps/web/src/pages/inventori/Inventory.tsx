@@ -41,7 +41,7 @@ import type { SortState } from "../../components/ui";
 import { useStore, type StoreItem } from "../../data/store";
 import { findUsages } from "../../utils/usages";
 import { sameName } from "../../utils/names";
-import { categoryWarnings, katalogBadge, warnLevelOf, warnRankOf, effectiveMinStock } from "../../utils/inventoryWarn";
+import { categoryWarnings, katalogBadge, levelTally, warnLevelOf, warnRankOf, effectiveMinStock, type WarnLevel } from "../../utils/inventoryWarn";
 import {
   DEAD_REASONS,
   deadImpactTone,
@@ -380,6 +380,7 @@ export default function Inventory() {
   const [q, setQ] = useState("");
   const [showScan, setShowScan] = useState(false);
   const [cat, setCat] = useState("Semua");
+  const [warnF, setWarnF] = useState("Semua");
   const [wh, setWh] = useState("Semua");
   const [abcF, setAbcF] = useState("Semua");
   const [matF, setMatF] = useState("Semua");
@@ -632,9 +633,14 @@ export default function Inventory() {
     const matchWh = wh === "Semua" || i.warehouse === wh;
     const matchAbc = abcF === "Semua" || abc[i.id] === abcF;
     const matchMat = matF === "Semua" || matTypeOf(i) === matF;
-    return matchQ && matchCat && matchWh && matchAbc && matchMat;
+    /* Filter tingkat warning (item 7 revisi 2 Oktober). Memakai
+       `warnLevelOf` - sama dengan katalog badge dan banner modul, jadi
+       klasifikasinya tidak bisa berbeda antar tempat. Ambang dikunci per
+       kategori di `inventoryWarn`, bukan ditulis ulang di sini. */
+    const matchWarn = warnF === "Semua" || warnLevelOf(i, wh === "Semua" ? undefined : wh).level === warnF;
+    return matchQ && matchCat && matchWh && matchAbc && matchMat && matchWarn;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }), [inventory, dq, cat, wh, abcF, matF, abc]);
+  }), [inventory, dq, cat, wh, abcF, matF, abc, warnF]);
   const sorted = useMemo(() => sortRows(list, sort, (i, k) => {
     if (k === "qty") return Number(i.stock || 0);
     if (k === "volume") return Number(i.volume ?? 0);
@@ -752,6 +758,20 @@ if (k === "mattype") return matTypeOf(i);
     () => categoryWarnings(inventory, { maxUrgentPerCategory: 4 }),
     [inventory],
   );
+
+  /* Jumlah item per tingkat, untuk angka di dalam opsi dropdown filter. */
+  const warnByLevel = useMemo(() => levelTally(inventory, wh === "Semua" ? undefined : wh), [inventory, wh]);
+
+  /** Label dua bahasa per tingkat. Opsi `<option>` tidak bisa diberi warna,
+      jadi angkanya yang dipakai; badge warnanya sudah ada di baris tabel
+      lewat `katalogBadge`. */
+  const LEVEL_OPTIONS: { id: WarnLevel; label: string }[] = [
+    { id: "critical", label: locale === "en" ? "Critical" : "Kritis" },
+    { id: "low", label: locale === "en" ? "Low" : "Menipis" },
+    { id: "watch", label: locale === "en" ? "Watch" : "Waspada" },
+    { id: "overstock", label: locale === "en" ? "Overstock" : "Berlebih" },
+    { id: "none", label: locale === "en" ? "Healthy" : "Sehat" },
+  ];
   const categories = useMemo(() => ["Semua", ...Array.from(new Set(inventory.map((i) => String(i.category ?? "").trim()).filter((c) => c && c !== "Semua")))], [inventory]);
   const totalValue = useMemo(() => inventory.reduce((s, i) => s + Number(i.stock || 0) * effCost(i), 0), [inventory]);
   /* Daftar gudang: baris terdaftar + yang hanya muncul di inventory.
@@ -1909,6 +1929,40 @@ penuh per kategori - dengan 10 kategori berproblem, strip
                       );
                     })}
                   </select>
+                  {/* Filter TINGKAT warning, berdampingan dengan filter
+                      kategori di atasnya. Dua hal berbeda: kategori menjawab
+                      "barang apa", tingkat menjawab "yang bermasalah mana".
+                      Sebelumnya hanya ada kategori, jadi menemukan "stok
+                      kritis" dipaksa menelusuri kategori satu per satu -
+                      padahal angkanya sudah tersedia di `warnLevelOf`, yang
+                      juga dipakai katalog badge dan banner modul. */}
+                  <label className="font-medium text-navy-900" htmlFor="inv-warn-level">
+                    {locale === "en" ? "Status" : "Status"}
+                  </label>
+                  <select
+                    id="inv-warn-level"
+                    className="input w-auto py-1 text-xs"
+                    value={warnF}
+                    onChange={(e) => { setWarnF(e.target.value); setTab("Katalog"); }}
+                  >
+                    <option value="Semua">
+                      {locale === "en" ? "All statuses" : "Semua status"} ({inventory.length})
+                    </option>
+                    {LEVEL_OPTIONS.filter((o) => warnByLevel[o.id] > 0).map((o) => (
+                      <option key={o.id} value={o.id}>
+                        {o.label} ({warnByLevel[o.id]})
+                      </option>
+                    ))}
+                  </select>
+                  {warnF !== "Semua" && (
+                    <button
+                      type="button"
+                      className="rounded-md border border-white bg-white px-2 py-0.5 text-[11px] font-medium text-steel-600 shadow-sm hover:text-navy-900"
+                      onClick={() => setWarnF("Semua")}
+                    >
+                      {locale === "en" ? "Clear" : "Bersihkan"}
+                    </button>
+                  )}
                   {warnByCat.map((c) => (
                     <span
                       key={c.category}
@@ -2744,7 +2798,7 @@ penuh per kategori - dengan 10 kategori berproblem, strip
                       : "Semua kategori dalam ambang. Tidak ada warning."}
                   </p>
                 ) : (
-                  <div className="mt-3 space-y-3">
+<div className="mt-3 space-y-3">
                     {warnByCat.map((c) => (
                       <div key={c.category} className="rounded-xl border border-steel-200 p-3">
                         <div className="flex flex-wrap items-center gap-2">

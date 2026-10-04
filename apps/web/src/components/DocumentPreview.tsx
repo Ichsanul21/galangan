@@ -371,8 +371,22 @@ export function DownloadFileButton({
 /** Sel tabel/kartu: HANYA ikon Pratinjau + Unduh (tanpa render file otomatis).
  *  Klik Pratinjau membuka DocumentPreviewModal yang isinya SUDAH termuat
  *  (autoLoad) - tidak ada langkah kedua. Unduh langsung menyimpan file dengan
- *  format aslinya. `doc` null / tanpa fileUrl -> tampil "-". */
-export function DocumentPreviewCell({ doc, className = "" }: { doc: PreviewDoc | null; className?: string }) {
+ *  format aslinya. `doc` null / tanpa fileUrl -> tampil "-".
+ *
+ *  `preview={false}` menyisakan tombol Unduh saja. Dipakai di tabel yang
+ *  sudah punya tombol Detail sendiri: dua ikon mata bersebelahan di satu sel
+ *  itu membingungkan (yang mana "lihat" vs "detail"?), dan preview tetap
+ *  tersedia di dalam modal Detail. Unduh TIDAK ikut disembunyikan karena itu
+ *  aksi lain - ia menyimpan berkas, bukan membuka pratinjau. */
+export function DocumentPreviewCell({
+  doc,
+  className = "",
+  preview = true,
+}: {
+  doc: PreviewDoc | null;
+  className?: string;
+  preview?: boolean;
+}) {
   const [open, setOpen] = useState(false);
   const { locale } = useT();
   const T = locale === "en" ? L.en : L.id;
@@ -382,15 +396,17 @@ export function DocumentPreviewCell({ doc, className = "" }: { doc: PreviewDoc |
   const target: PreviewDoc = { title: doc.title, fileUrl: url, subtitle: doc.subtitle, fileName: doc.fileName };
   return (
     <span className={`inline-flex items-center gap-0.5 ${className}`}>
-      <button
-        type="button"
-        className="rounded-lg p-1.5 text-steel-500 hover:bg-steel-100 hover:text-ocean-600"
-        title={T.preview}
-        aria-label={`${T.preview}: ${target.title}`}
-        onClick={() => setOpen(true)}
-      >
-        <Eye className="h-4 w-4" />
-      </button>
+      {preview && (
+        <button
+          type="button"
+          className="rounded-lg p-1.5 text-steel-500 hover:bg-steel-100 hover:text-ocean-600"
+          title={T.preview}
+          aria-label={`${T.preview}: ${target.title}`}
+          onClick={() => setOpen(true)}
+        >
+          <Eye className="h-4 w-4" />
+        </button>
+      )}
       <button
         type="button"
         className="rounded-lg p-1.5 text-steel-500 hover:bg-steel-100 hover:text-emerald-600"

@@ -1,4 +1,4 @@
-﻿// Sumber tunggal seed operasional (dipakai FE via store.tsx DAN dicerminkan ke
+// Sumber tunggal seed operasional (dipakai FE via store.tsx DAN dicerminkan ke
 // backend via services/api script seed:mirror → seedFeMirror.ts).
 // Modul murni: tanpa impor React/browser agar bisa dimuat tsx maupun Vite.
 // Baris RawData PT Syukur Bersaudara: id berawalan INV-SB / AP-SB / WO-SB /
@@ -8,23 +8,78 @@ import { JU_PENYESUAIAN_EXCEL } from "./financeExcel";
 
 /* ============ SEED TAMBAHAN (pindahan inline page + data baru) ============ */
 
+/* Milestone milik WO (item 11 revisi 2 Oktober).
+ *
+ * Sebelumnya progress WO hanya satu angka manual, dan stage kerja dicatat
+ * sebagai `doneMs: [judul]` - daftar judul tanpa bobot. Akibatnya satu
+ * subkontraktor dengan dua WO memakai bobot SOW yang sama untuk keduanya:
+ * menandai "Dokumen" selesai di WO A ikut menaikkan progress WO B.
+ *
+ * Sekarang tiap WO punya tahap sendiri dengan `pct` (persen dari nilai
+ * kontrak subkontraktor, supaya bobotnya langsung bisa jadi cap termin) dan
+ * `doneAt` penanda selesai. `progress` di bawah DIHAPUS dari seed ini -
+ * nilainya diturunkan dari `milestones`, jadi tidak ada lagi dua sumber
+ * angka yang bisa berbeda. */
+type WoStage = [title: string, pct: number, due: string];
+const WO_MS = (...stages: WoStage[]) =>
+  stages.map((s) => ({ title: s[0], pct: s[1], due: s[2] }));
+
+/* Tahap yang SUDAH selesai per WO, supaya data demo tidak mulai dari nol.
+   Tanggal selesai dibuat mundur dari `due` weekday sebelumnya, jadi angkanya
+   masuk akal terhadap tanggal hari ini. */
+function seedDoneAt(due: string): string {
+  const d = new Date(`${due}T00:00:00`);
+  d.setDate(d.getDate() - 7);
+  return d.toISOString().slice(0, 10);
+}
+
 export const seedWorkOrders: StoreItem[] = [
-  { id: "WO-2026-041", sub: "PT Baja Utama Steel", project: "NB-2025-012", scope: "Fabrikasi & blasting section 4-7", progress: 70, status: "Dalam Proses" },
-  { id: "WO-2026-042", sub: "CV Pengecatan Marine", project: "RP-2026-003", scope: "Coating lambung & deck", progress: 55, status: "Dalam Proses" },
-  { id: "WO-2026-043", sub: "PT Mesinindo Perkasa", project: "RP-2026-005", scope: "Overhaul main engine", progress: 40, status: "Dalam Proses" },
-  { id: "WO-2026-044", sub: "CV Scaffold Aman", project: "NB-2025-012", scope: "Perancah hull assembly", progress: 100, status: "Selesai" },
-  { id: "WO-2026-045", sub: "PT Kelistrikan Bahari", project: "RF-2026-001", scope: "Instalasi panel & cabling", progress: 25, status: "Dalam Proses" },
+  {
+    id: "WO-2026-041", sub: "PT Baja Utama Steel", project: "NB-2025-012",
+    scope: "Fabrikasi & blasting section 4-7", status: "Dalam Proses",
+    milestones: WO_MS(["Material & marking", 30, "2026-08-15"], ["Fabrikasi section 4-6", 40, "2026-09-30"], ["Blasting & painting handover", 30, "2026-10-31"]).map((m, i) => (i === 0 ? { ...m, doneAt: seedDoneAt(m.due) } : m)),
+  },
+  {
+    id: "WO-2026-042", sub: "CV Pengecatan Marine", project: "RP-2026-003",
+    scope: "Coating lambungnya & deck", status: "Dalam Proses",
+    milestones: WO_MS(["Surface preparation", 25, "2026-08-20"], ["Primer coating", 35, "2026-09-15"], ["Topcoat & DFT check", 40, "2026-10-20"]).map((m, i) => (i === 0 ? { ...m, doneAt: seedDoneAt(m.due) } : m)),
+  },
+  {
+    id: "WO-2026-043", sub: "PT Mesinindo Perkasa", project: "RP-2026-005",
+    scope: "Overhaul main engine", status: "Dalam Proses",
+    milestones: WO_MS(["Bearing overhaul", 45, "2026-09-10"], ["Alignment & trial run", 35, "2026-10-05"], ["Handover & documents", 20, "2026-10-20"]).map((m, i) => (i === 0 ? { ...m, doneAt: seedDoneAt(m.due) } : m)),
+  },
+  {
+    id: "WO-2026-044", sub: "CV Scaffold Aman", project: "NB-2025-012",
+    scope: "Perancah hull assembly", status: "Selesai",
+    milestones: WO_MS(["Ereksi perancah", 50, "2026-06-30"], ["Pen dismantled", 50, "2026-07-20"]).map((m) => ({ ...m, doneAt: seedDoneAt(m.due) })),
+  },
+  {
+    id: "WO-2026-045", sub: "PT Kelistrikan Bahari", project: "RF-2026-001",
+    scope: "Instalasi panel & cabling", status: "Dalam Proses",
+    milestones: WO_MS(["Panel delivery & setting", 40, "2026-09-20"], ["Cable pulling & termination", 35, "2026-10-15"], ["Load test & certification", 25, "2026-11-05"]).map((m, i) => (i === 0 ? { ...m, doneAt: seedDoneAt(m.due) } : m)),
+  },
   // RawData INVOICE SUBKONTRAKTOR (Pak Yusuf, BG RMN 3324).
-  { id: "WO-SB-001", sub: "Pak Yusuf", project: "RP-2026-006", scope: "Outfitting Deck BG RMN 3324 (Ban Daprah, Tanda Selar, pressure test tank)", progress: 100, status: "Selesai", date: "2026-08-20" },
+  {
+    id: "WO-SB-001", sub: "Pak Yusuf", project: "RP-2026-006",
+    scope: "Outfitting Deck BG RMN 3324 (Ban Daprah, Tanda Selar, pressure test tank)", status: "Selesai", date: "2026-08-20",
+    milestones: WO_MS(["Tanda selar & ban daprah", 60, "2026-08-05"], ["Pressure test tank", 40, "2026-08-20"]).map((m) => ({ ...m, doneAt: seedDoneAt(m.due) })),
+  },
 ];
 
+/* `progress` di bawah tidak lagi diisi manual (item 11). Nilainya
+   diturunkan dari milestone WO, jadi cap termin dan angka progress di tabel
+   tidak mungkin berbeda. Sekalian `milestone` diisi supaya termin menunjuk
+   tahap yang benar-benar ada - dahulu TRM-SB-001 menunjuk
+   "Outfitting Deck BG RMN 3324" yang itu NAMA SCOPE WO, bukan tahap
+   pekerjaan, jadi cap terminnya tidak pernah bisa dihitung. */
 export const seedTermins: StoreItem[] = [
-  { id: "TRM-001", sub: "PT Baja Utama Steel", woId: "WO-2026-041", progress: "WO-2026-041 (70%)", amount: 2100000000, pph23: "2%", retention: "5%", status: "Belum Dibayar" },
-  { id: "TRM-002", sub: "PT Mesinindo Perkasa", woId: "WO-2026-043", progress: "WO-2026-043 (40%)", amount: 1568000000, pph23: "2%", retention: "5%", status: "Disetujui" },
-  { id: "TRM-003", sub: "CV Scaffold Aman", woId: "WO-2026-044", progress: "WO-2026-044 (100%)", amount: 450000000, pph23: "2%", retention: "5%", status: "Lunas" },
-  { id: "TRM-004", sub: "CV Pengecatan Marine", woId: "WO-2026-042", progress: "WO-2026-042 (55%)", amount: 940000000, pph23: "2%", retention: "5%", status: "Belum Dibayar" },
+  { id: "TRM-001", sub: "PT Baja Utama Steel", woId: "WO-2026-041", milestone: "Material & marking", amount: 2100000000, pph23: "2%", retention: "5%", status: "Belum Dibayar" },
+  { id: "TRM-002", sub: "PT Mesinindo Perkasa", woId: "WO-2026-043", milestone: "Bearing overhaul", amount: 1568000000, pph23: "2%", retention: "5%", status: "Disetujui" },
+  { id: "TRM-003", sub: "CV Scaffold Aman", woId: "WO-2026-044", milestone: "Pen dismantled", amount: 450000000, pph23: "2%", retention: "5%", status: "Lunas" },
+  { id: "TRM-004", sub: "CV Pengecatan Marine", woId: "WO-2026-042", milestone: "Surface preparation", amount: 940000000, pph23: "2%", retention: "5%", status: "Belum Dibayar" },
   // RawData: subtotal 300.000 - PPh 0,5% (1.500) = 298.500 lunas.
-  { id: "TRM-SB-001", sub: "Pak Yusuf", woId: "WO-SB-001", milestone: "Outfitting Deck BG RMN 3324", progress: "WO-SB-001 (100%)", amount: 300000, pphPct: 0.5, pphAmt: 1500, retPct: 0, retAmt: 0, status: "Lunas", date: "2026-09-01", paidAt: "2026-09-01", paidMethod: "Transfer BRI SB" },
+  { id: "TRM-SB-001", sub: "Pak Yusuf", woId: "WO-SB-001", milestone: "Pressure test tank", amount: 300000, pphPct: 0.5, pphAmt: 1500, retPct: 0, retAmt: 0, status: "Lunas", date: "2026-09-01", paidAt: "2026-09-01", paidMethod: "Transfer BRI SB" },
 ];
 
 export const seedVendors: StoreItem[] = [
@@ -397,7 +452,13 @@ export const seedPayroll: StoreItem[] = [
   { id: "PAY-202607-002", employeeId: "EMP-002", period: "2026-07", basic: 18000000, allowances: 4500000, overtimePay: 1200000, deductions: 500000, pph21: 1875000, bpjsKes: 180000, bpjsTk: 360000, net: 20785000, status: "Dibayar", paidAt: "2026-07-31" },
   /* 15.800.000 - (200.000+950.000+120.000+240.000) = 14.290.000 */
   { id: "PAY-202607-004", employeeId: "EMP-004", period: "2026-07", basic: 12000000, allowances: 3000000, overtimePay: 800000, deductions: 200000, pph21: 950000, bpjsKes: 120000, bpjsTk: 240000, net: 14290000, status: "Dibayar", paidAt: "2026-07-31" },
-  { id: "PAY-202608-002", employeeId: "EMP-002", period: "2026-08", basic: 18000000, allowances: 4500000, overtimePay: 0, deductions: 0, pph21: 0, bpjsKes: 0, bpjsTk: 0, net: 0, status: "Draft", paidAt: "" },
+  /* Draft Agustus: belum ada lembur dan belum ada potongan, jadi net = bruto.
+     Sebelumnya net ditulis 0 padahal basic + allowances = 22.500.000 - slip itu
+     tidak pernah dihitung, dan tabel Payroll menampilkan "Rp 0" untuk Agustus
+     tanpa error. Rumus yang sama sudah dipakai untuk PAY-202607-002 di atas;
+     yang ini terlewat karena probe lama tidak punya invarian rumus (lihat
+     scripts/price-probe.ts). */
+  { id: "PAY-202608-002", employeeId: "EMP-002", period: "2026-08", basic: 18000000, allowances: 4500000, overtimePay: 0, deductions: 0, pph21: 0, bpjsKes: 0, bpjsTk: 0, net: 22500000, status: "Draft", paidAt: "" },
 ];
 
 export const seedTaxPeriods: StoreItem[] = [
@@ -587,7 +648,7 @@ export const seedMaintenances: StoreItem[] = [
       { itemId: "INV-EL-002", name: "Kawat Las SMAW E7018", qty: 4, unit: "kg", cost: 95000 },
       { itemId: "INV-EL-005", name: "Nozzle Torch SMAW", qty: 2, unit: "pcs", cost: 145000 },
     ],
-    materialCost: 670000, laborCost: 0, laborRatePerDay: 1100000, downtimeHours: 18, costTotal: 670000,
+    materialCost: 670000, laborCost: 2200000, laborRatePerDay: 1100000, downtimeHours: 18, costTotal: 2870000,
     createdAt: "2026-09-16", createdBy: "Anda",
     history: [
       { at: "2026-09-16 08:10", from: "-", to: "Terjadwal", by: "Anda", note: "Rencana overhaul torch SMAW #04" },
@@ -625,7 +686,7 @@ export const seedMaintenances: StoreItem[] = [
     materials: [
       { itemId: "INV-ME-001", name: "Filter Oil 908", qty: 2, unit: "pcs", cost: 220000 },
     ],
-    materialCost: 440000, laborCost: 0, laborRatePerDay: 1100000, downtimeHours: 0, costTotal: 440000,
+    materialCost: 440000, laborCost: 1100000, laborRatePerDay: 1100000, downtimeHours: 0, costTotal: 1540000,
     createdAt: "2026-10-01", createdBy: "Anda",
     history: [
       { at: "2026-10-01 07:20", from: "-", to: "Terjadwal", by: "Anda", note: "Preventif triwulan Q4" },

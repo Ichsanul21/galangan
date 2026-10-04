@@ -33,6 +33,7 @@ import { kopPenawaran, type KopPenawaranInput } from "./documents/kopPenawaran.j
 import { slipGaji, type SlipGajiInput } from "./documents/slipGaji.js";
 import { transmittal, type TransmittalInput } from "./documents/transmittal.js";
 import { spt, type SptInput, type SptRow } from "./documents/spt.js";
+import { invoiceDoc, type InvoiceInput } from "./documents/invoice.js";
 import { cashReport, projectReport as projectReportDoc, analyticReport, payrollReport, type CashReportModel, type ProjectReportModel, type AnalyticModel, type PayrollReportModel, type Finding } from "./documents/laporan.js";
 import {
   dockConflicts,
@@ -131,6 +132,78 @@ const PPN_RATE = 12;
 /** Klausul K3 standar yang dipakai SPK bila WO tidak menyimpan klausul sendiri. */
 const K3_CLAUSE =
   "Pelaksanaker wajib menerapkan SMK3 PT Syukur Bersaudara: izin kerja untuk pekerjaan panas dan ruang terbatas, alat pelindung diri lengkap, pengendalian bahaya sebelum kerja dimulai, serta melaporkan seluruh insiden K3 dalam 1 x 24 jam.";
+
+/** Tarif PPh final default untuk tagihan; baris invoice menyimpannya sendiri. */
+const PPH_RATE = 2;
+
+/* ---- Invoice / tagihan ---- */
+const invoiceRecipe: Recipe<InvoiceInput> = {
+  kind: "invoice",
+  title: "Invoice",
+  entity: { field: "invoices", prefix: "INV" },
+  requiresEntity: true,
+  async prepare(id, ctx) {
+    const inv = await loadEntity({ field: "invoices", prefix: "INV" }, id);
+    if (!inv) throw new Error(`Invoice ${id} tidak ditemukan`);
+
+    /* Baris `lines` hanya ada untuk invoice yang dibuat di aplikasi Finance.
+       Invoice hasil impor Excel lama tidak punya rincian per pekerjaan, hanya
+       agregat - factory yang memutuskan cara menampilkannya. */
+    const rawLines = arr(inv, "lines");
+    const lines = rawLines.map((l) => {
+      const r = (l ?? {}) as Record<string, unknown>;
+      return {
+        desc: str(r, "desc"),
+        qty: str(r, "qty"),
+        unit: str(r, "unit"),
+        price: money(r.price),
+        hours: str(r, "hours"),
+        kategori: str(r, "kategori"),
+      };
+    });
+
+    /* Neto WAJIB mengikuti `invNeto()` di Finance.tsx persis: grandTotal
+       bila ada, kalau tidak amount dikurangi retensi. Kalau aturan ini
+       berbeda, angka di PDF dan angka di kartu invoice tidak akan sama
+       dan pembukuan tidak bisa diaudit. */
+    const grand = num(inv, "grandTotal");
+    const retentionAmt = num(inv, "retentionAmt");
+    const neto = grand > 0 ? grand : Math.max(0, num(inv, "amount") - retentionAmt);
+
+    return {
+      no: docNumber(inv, "noInv", "id"),
+      tanggal: str(inv, "date") !== "-" ? str(inv, "date") : today(),
+      client: str(inv, "client"),
+      project: str(inv, "project"),
+      vessel: str(inv, "vessel"),
+      paymentTerm: str(inv, "paymentTerm"),
+      billingType: str(inv, "billingType"),
+      milestoneRef: str(inv, "milestoneRef"),
+      due: str(inv, "due"),
+      status: str(inv, "status"),
+      lines,
+      jasaTotal: num(inv, "jasaTotal"),
+      matTotal: num(inv, "matTotal"),
+      amount: num(inv, "amount"),
+      dpp: num(inv, "dpp"),
+      ppnAmt: num(inv, "ppnAmt"),
+      pphAmt: num(inv, "pphAmt"),
+      ppnRate: num(inv, "ppnRate") || PPN_RATE,
+      pphRate: num(inv, "pphRate") || PPH_RATE,
+      dpApplied: num(inv, "dpApplied"),
+      dpRef: str(inv, "dpRef"),
+      retentionAmt,
+      grandTotal: grand,
+      neto,
+      skdt: inv.skdt === true,
+      paidAt: str(inv, "paidAt"),
+      paidRef: str(inv, "paidRef"),
+      signer: SIGNER,
+      locale: ctx.locale,
+    };
+  },
+  assemble: (input) => invoiceDoc(input),
+};
 
 /* ==========================================================================
    Tahap 1 + 2 per jenis dokumen
@@ -1079,6 +1152,7 @@ function view<T>(r: Recipe<T>): RecipeView {
 }
 
 const RECIPES: RecipeView[] = [
+  view(invoiceRecipe),
   view(termin),
   view(suratCutiRecipe),
   view(suratHr),

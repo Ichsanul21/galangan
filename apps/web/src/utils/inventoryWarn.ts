@@ -206,6 +206,27 @@ const EMPTY_COUNTS = (): Record<WarnLevel, number> => ({
 });
 
 /**
+ * Jumlah item per tingkat warning.
+ *
+ * Filter di UI sebelumnya hanya bisa memilih KATEGORI, padahal yang ingin
+ * dicari stirip actually "yang kritis" atau "yang berlebih" - dua hal yang
+ * tidak ada padanan kategori. Klasifikasinya sudah lengkap di `warnLevelOf`,
+ * jadi angka di sini dibaca dari situ, bukan dihitung ulang dengan ambang
+ * yang berbeda.
+ */
+export function levelTally(inventory: StoreItem[], warehouse?: string): Record<WarnLevel, number> {
+  const out = EMPTY_COUNTS();
+  for (const item of inventory) {
+    const lv = warnLevelOf(item, warehouse).level;
+    out[lv] += 1;
+  }
+  return out;
+}
+
+/** Tingkat yang layak masuk daftar prioritas (bukan "sehat"/"waspada"). */
+export const ACTION_LEVELS: readonly WarnLevel[] = ["critical", "low", "overstock"] as const;
+
+/**
  * Ringkasan warning PER KATEGORI - inilah yang menggantikan banner.
  * Urutan: kategori dengan item Kritis dulu, lalu jumlah item low, lalu nama.
  * Kategori yang bersih total TIDAK ikut ditampilkan (tidak ada yang perlu

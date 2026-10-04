@@ -4944,7 +4944,30 @@ const { data, add, update, remove, log, branch, inBranch } = useStore();
       {/* Modal Detail Invoice: ringkasan + baris + pajak + bukti & jurnal viewer. */}
       <Modal open={invDetail !== null} onClose={() => setInvDetail(null)} title={invDetail ? S.detTitle.replace("{a}", invDetail.id) : S.detBtn}
         subtitle={invDetail ? `${String(invDetail.client ?? "")} · ${String(invDetail.project ?? "")} · ${String(invDetail.status ?? "")}` : ""} wide
-        footer={<><button className="btn-secondary" onClick={() => setInvDetail(null)}>{S.cancelBtn}</button></>}>
+        footer={<>
+          <button className="btn-secondary" onClick={() => setInvDetail(null)}>{S.cancelBtn}</button>
+          <button
+            className="btn-primary"
+            disabled={pdfDoc.state.busy}
+            onClick={() => {
+              if (!pdfServerReady()) {
+                toast(locale === "en"
+                  ? "Official PDF needs the server - connect the backend first."
+                  : "PDF resmi perlu server aktif - hubungkan backend dulu.", "info");
+                return;
+              }
+              void pdfDoc.request(
+                { kind: "invoice", id: String(invDetail?.id ?? ""), locale },
+                `Invoice-${String(invDetail?.id ?? "")}.pdf`,
+                false,
+              );
+            }}
+          >
+            {pdfDoc.state.busy
+              ? (locale === "en" ? "Preparing..." : "Menyiapkan...")
+              : (locale === "en" ? "Print Invoice" : "Cetak Invoice")}
+          </button>
+        </>}>
         {invDetail && (() => {
           const bukti = String(invDetail.paidProofUrl ?? invDetail.buktiUrl ?? "");
           const relJurnal = (manJournals ?? []).filter((j) => String(j.dokumen ?? "").includes(String(invDetail.id)));

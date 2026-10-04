@@ -1,6 +1,7 @@
 import { createContext, useContext, useState, type ReactNode } from "react";
 import { Navigate, useLocation } from "react-router-dom";
 import { ApiError, ApiNotConfigured, apiFetch, clearJwt, getJwt, isBackendConfigured, setJwt } from "../services/http";
+import { forgetDeleteDates } from "../utils/audit";
 
 export interface DemoUser {
   username: string;
@@ -143,6 +144,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const logout = () => {
     clearJwt();
     sessionStorage.removeItem(SESSION_KEY);
+    /* Cache tanggal-hapus bersifat per-tab dan tidak tahu batas sesi. Tanpa
+       ini user berikutnya yang memakai tab sama bisa membaca tanggal hapus
+       milik user sebelumnya. */
+    forgetDeleteDates();
     setUser(null);
   };
 

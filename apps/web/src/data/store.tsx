@@ -3,6 +3,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import { newId as newPrefixedId } from "../services/ids";
 import { ApiError, apiFetch, getJwt, isBackendConfigured } from "../services/http";
 import { remoteRepository } from "../services/repositories";
+import { stampCreated, stampDerivedCreatedAt, stampUpdated } from "../utils/timestamps";
 import {
   projects as seedProjects,
   vessels as seedVessels,
@@ -240,7 +241,7 @@ function clone<T>(v: T): T {
 }
 
 function buildSeeds(): StoreShape {
-  return {
+    const shape: StoreShape = {
     projects: clone(seedProjects) as StoreItem[],
     vessels: clone(seedVessels) as StoreItem[],
     drydocks: clone(seedDrydocks) as StoreItem[],
@@ -298,9 +299,16 @@ function buildSeeds(): StoreShape {
       coa: clone(seedCoa),
       journals: clone(seedJournals),
       assets: clone(seedAssets),
-     wbsByProject: {},
+wbsByProject: {},
      teamByProject: clone(seedTeamByProject),
-  };
+   };
+   /* Stempel tanggal buat untuk SEED diturunkan dari field tanggal milik rekam
+      itu sendiri (lihat `deriveCreatedAt`). Rekam tanpa kandidat sengaja
+      dibiarkan tanpa `createdAt` supaya tabel menampilkan "—" daripada tanggal
+      karangan. One pass di akhir, bukan per koleksi, supaya koleksi baru tidak
+      lupa dipanggil. */
+   stampDerivedCreatedAt(shape as unknown as Record<string, unknown[]>);
+   return shape;
 }
 
 /* ============ CONTEXT ============ */
@@ -1508,6 +1516,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       pushPending,
       add: async (col, item, activity) => {
         const full: StoreItem = { ...item, id: item.id || newId(col) };
+        stampCreated(full);
         /* Branch fallback terpusat: baris baru tanpa branch mewarisi cabang global.
            "SEMUA" = semua cabang → biarkan kosong (terlihat di semua filter).
            Koleksi global-by-design (settings/coa/branches) disentuh tidak. */
@@ -1563,6 +1572,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         return full;
       },
       update: async (col, id, patch) => {
+        /* Di-stamp SEBELUM cabang remote/offline dan sekali saja: kalau di dalam
+           percobaan ulang STALE, updatedAt harus tetap menunjuk waktu aksi
+           pengguna, bukan waktu percobaan kedua. */
+        stampUpdated(patch);
         if (remoteActive()) {
           /* Satu percobaan ulang untuk konflik versi.
              STALE berarti `baseUpdatedAt` yang kita kirim bukan `updated_at`

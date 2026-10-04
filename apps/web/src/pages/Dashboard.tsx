@@ -54,8 +54,12 @@ import { bucketByMonth, monthAxis, monthKeyOf, rebindLegacyMonthSeries } from ".
 import { lastPoint, numOf, pctChange, prevPoint } from "../utils/series";
 import { warnLevelOf } from "../utils/inventoryWarn";
 import {
+  ALERT_LEVELS,
   MODULE_ALERT_TO,
   buildModuleAlertItems,
+  countByLevel,
+  groupByLevel,
+  type AlertLevel,
   type ModuleAlertItem,
   type ModuleAlertKey,
 } from "../utils/moduleAlerts";
@@ -113,6 +117,24 @@ const DASH_ALERT_TONE: Record<ModuleAlertKey, string> = {
 
 /* Batas tampilan: kartu harus tetap ringkas. Sisanya ada di /notifikasi. */
 const DASH_ALERT_CAP = 12;
+
+const DASH_LEVEL_KEY = {
+  kritis: "levelKritis",
+  perhatian: "levelPerhatian",
+  info: "levelInfo",
+} as const satisfies Record<AlertLevel, "levelKritis" | "levelPerhatian" | "levelInfo">;
+
+const DASH_LEVEL_BAR: Record<AlertLevel, string> = {
+  kritis: "bg-rose-500",
+  perhatian: "bg-amber-500",
+  info: "bg-ocean-400",
+};
+
+const DASH_LEVEL_HEAD: Record<AlertLevel, string> = {
+  kritis: "text-rose-900",
+  perhatian: "text-amber-900",
+  info: "text-ocean-800",
+};
 import { useAuth, canSetTarget } from "../auth/auth";
 
 import { pdfServerReady } from "../services/pdfClient";
@@ -132,6 +154,7 @@ import {
   fmtMiliar,
 } from "../data";
 import { useT } from "../i18n/LanguageContext";
+import type { Locale } from "../i18n/types";
 import { n_misc } from "../i18n/n_misc";
 
 const RANGES = ["6B", "12B"] as const;
@@ -141,15 +164,23 @@ const RANGES = ["6B", "12B"] as const;
    keduanya mudah dibandingkan berdampingan di strip distribusi - permintaan
    eksplisit: label "tertunda" perlu ada selain "terlambat". Status lain sudah
    berupa kalimat yang berdiri sendiri sehingga ditampilkan apa adanya.
-   Satu sumber untuk strip distribusi DAN badge per baris: sebelumnya keduanya
-   menulis pemetaan sendiri-sendiri dan mudah berbeda. */
-const STATUS_LABEL: Record<string, string> = {
-  Terlambat: "Proyek Terlambat",
-  Tertunda: "Proyek Tertunda",
-  Selesai: "Proyek Selesai",
-  Batal: "Proyek Dibatalkan",
+
+   Dua bahasa, bukan satu: kamus EN pernah dilewati di sini, jadi begitu
+   locale diubah ke Inggris seluruh label ini tetap Bahasa Indonesia -
+   satu-satunya bagian Dashboard yang tidak ikut `locale`.
+   Nilai status di DATA tetap Bahasa Indonesia (canonical), yang diterjemahkan
+   hanya label tampilannya - sama seperti `i18n/status.ts`. */
+const STATUS_LABEL: Record<string, { id: string; en: string }> = {
+  Terlambat: { id: "Proyek Terlambat", en: "Overdue Projects" },
+  Tertunda: { id: "Proyek Tertunda", en: "Pending Projects" },
+  Selesai: { id: "Proyek Selesai", en: "Completed Projects" },
+  Batal: { id: "Proyek Dibatalkan", en: "Cancelled Projects" },
 };
-const statusLabel = (s: string): string => STATUS_LABEL[s] ?? s;
+const statusLabel = (s: string, locale: Locale): string => {
+  const m = STATUS_LABEL[s];
+  if (!m) return s;
+  return locale === "en" ? m.en : m.id;
+};
 
 /* RANGES tetap: 6B = 6 bulan, 12B = 12 bulan. */
 
@@ -172,7 +203,7 @@ export default function Dashboard() {
   const pdfDoc = usePdfDoc();
   /* Fetch per-batch modul (pengganti resync penuh). */
   useModuleSync(DB_COLS);
-  const { locale } = useT();
+  const { locale, t } = useT();
   const S = n_misc[locale];
   const { user } = useAuth();
   const allowedTarget = canSetTarget(user?.role);
@@ -448,6 +479,22 @@ const exportSummary = async () => {
     return out;
   }, [data]);
 
+  /* Group per tingkat, cap PER TINGKAT. Cap global dulu disembunyikan semua
+     alert `info` begitu ada 12 `kritis` - padahal yang paling butuh dilihat
+     justru yang kritis itu. */
+  const attentionGroups = useMemo(() => {
+    const items = attentionItems.map(({ key, item }) => ({ key, item }));
+    return groupByLevel(
+      items.map((x) => x.item),
+      DASH_ALERT_CAP,
+    ).map((g) => ({
+      ...g,
+      entries: items.filter((x) => x.item.level === g.level),
+    }));
+  }, [attentionItems]);
+
+  const attentionCount = useMemo(() => countByLevel(attentionItems.map((x) => x.item)), [attentionItems]);
+
   /* Banner "Perlu perhatian" mengirim SATU id. Modul tujuan membuka tab/
      filter yang memuat baris itu lalu kedipkan - tidak perlu tab di URL
      karena setiap modul sudah bisa menurunkan tab dari id-nya. */
@@ -704,31 +751,65 @@ const exportSummary = async () => {
             <p className="px-1 text-sm text-steel-400">{S.allThresholdsSafe}</p>
           )}
           {attentionItems.length > 0 && (
-            <ul className="grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-3">
-              {attentionItems.slice(0, DASH_ALERT_CAP).map(({ key, item }) => (
-                <li key={`${key}:${item.id}`}>
-                  <button
-                    type="button"
-                    onClick={() => goAttentionItem(key, item.rowId)}
-                    className="flex h-full w-full flex-col items-start gap-1 rounded-xl border border-steel-100 bg-surface p-3 text-left hover:border-ocean-400 focus:outline-none focus-visible:ring-2 focus-visible:ring-ocean-400"
-                  >
-                    <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold ${DASH_ALERT_TONE[key]}`}>
-                      {DASH_ALERT_LABEL[key][locale === "en" ? "en" : "id"]}
+            <div className="space-y-4">
+              {/* Ringkasan per tingkat tetap tampil walau tiap grup sudah
+                  di-cap, jadi pengguna tahu ada yang belum terlihat. */}
+              <p className="flex flex-wrap items-center gap-2 px-1 text-[11px] text-steel-500">
+                {ALERT_LEVELS.map((lv) =>
+                  attentionCount[lv] > 0 ? (
+                    <span key={lv} className="rounded-md bg-steel-50 px-1.5 py-0.5 font-medium">
+                      {t.notif[DASH_LEVEL_KEY[lv]]}: {attentionCount[lv]}
                     </span>
-                    <span className="text-xs font-medium leading-relaxed text-navy-800">{item.label}</span>
-                    {item.detail && (
-                      <span className="line-clamp-2 text-[11px] text-steel-500">{item.detail}</span>
+                  ) : null,
+                )}
+              </p>
+              {attentionGroups.map((g) => (
+                <div key={g.level}>
+                  <div className="mb-1.5 flex items-center gap-2 px-1">
+                    <span className={`h-3 w-1 rounded-full ${DASH_LEVEL_BAR[g.level]}`} aria-hidden="true" />
+                    <span className={`text-xs font-semibold ${DASH_LEVEL_HEAD[g.level]}`}>
+                      {t.notif[DASH_LEVEL_KEY[g.level]]}
+                    </span>
+                    <span className="text-[11px] text-steel-400">{g.total}</span>
+                    {g.hidden > 0 && (
+                      <span className="text-[11px] text-steel-400">
+                        {locale === "en"
+                          ? `+${g.hidden} more`
+                          : `+${g.hidden} lainnya`}
+                      </span>
                     )}
-                  </button>
-                </li>
+                  </div>
+                  <ul className="grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-3">
+                    {g.entries.slice(0, DASH_ALERT_CAP).map(({ key, item }) => (
+                      <li key={`${key}:${item.id}`}>
+                        <button
+                          type="button"
+                          onClick={() => goAttentionItem(key, item.rowId)}
+                          className="flex h-full w-full flex-col items-start gap-1 rounded-xl border border-steel-100 bg-surface p-3 text-left hover:border-ocean-400 focus:outline-none focus-visible:ring-2 focus-visible:ring-ocean-400"
+                        >
+                          <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold ${DASH_ALERT_TONE[key]}`}>
+                            {DASH_ALERT_LABEL[key][locale === "en" ? "en" : "id"]}
+                          </span>
+                          <span className="text-xs font-medium leading-relaxed text-navy-800">{item.label}</span>
+                          {item.detail && (
+                            <span className="line-clamp-2 text-[11px] text-steel-500">{item.detail}</span>
+                          )}
+                          {item.impact && (
+                            <span className="mt-auto pt-1 text-[11px] font-medium text-steel-400">{item.impact}</span>
+                          )}
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
               ))}
-            </ul>
+            </div>
           )}
           {attentionItems.length > DASH_ALERT_CAP && (
             <p className="mt-3 px-1 text-xs text-steel-400">
               {locale === "en"
-                ? `Showing ${DASH_ALERT_CAP} of ${attentionItems.length} - see all in Notifications.`
-                : `Menampilkan ${DASH_ALERT_CAP} dari ${attentionItems.length} - lihat semua di Notifikasi.`}
+                ? `Showing up to ${DASH_ALERT_CAP} per level - see all in Notifications.`
+                : `Menampilkan hingga ${DASH_ALERT_CAP} per tingkat - lihat semua di Notifikasi.`}
             </p>
           )}
         </Card>
@@ -756,7 +837,7 @@ const toneFor = (s: string): "blue" | "amber" | "red" | "gray" | "green" =>
                   s === "Terlambat" ? "red" : s === "Selesai" ? "green" : s === "Tertunda" ? "amber" : s === "Batal" ? "gray" : "blue";
                 return order.filter((s) => (groups[s] ?? 0) > 0 || s !== "Selesai").map((s) => (
                   <Link key={s} to={`/proyek?status=${encodeURIComponent(s)}`} className="inline-flex items-center gap-1.5 rounded-full border border-steel-200 px-2.5 py-1 text-xs font-semibold hover:border-ocean-400" title={`Filter proyek ${s}`}>
-                    <Badge tone={toneFor(s)}>{statusLabel(s)}</Badge>
+                    <Badge tone={toneFor(s)}>{statusLabel(s, locale)}</Badge>
                     <span className="text-navy-900">{groups[s] ?? 0}</span>
                   </Link>
                 ));
@@ -779,7 +860,7 @@ const toneFor = (s: string): "blue" | "amber" | "red" | "gray" | "green" =>
                       <p className="mt-1 text-right text-[11px] text-steel-500">{p.progress}%</p>
                     </div>
                     <Badge tone={p.status === "Terlambat" ? "red" : p.status === "Selesai" ? "green" : p.status === "Tertunda" ? "amber" : p.status === "Batal" ? "gray" : "blue"}>
-                      {statusLabel(String(p.status))}
+                      {statusLabel(String(p.status), locale)}
                     </Badge>
                   </div>
                 </Link>

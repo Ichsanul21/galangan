@@ -464,8 +464,14 @@ export const inventory: InventoryItem[] = [
   { id: "INV-SB-003", name: "PLAT 8MM 5x20", category: "Baja", sku: "EO0000LAT15", warehouse: "Gudang Santi", stock: 6, minStock: 4, unit: "LBR", cost: 6500000, location: "S-03" },
 ];
 
+/* `fuelPrice` = harga solar per liter. Empat unit pernah bernilai 0 karena
+   probe lama hanya mengecek `fuelPrice === undefined` (0 lolos). Angkanya
+   sementara: diambil dari nilai yang sudah ada di seed ini sendiri (11.500 /
+   12.500 / 13.500), BUKAN hasil riset pasar. F7 wajib menggantinya dengan
+   harga pasar yang tercatat sumbernya - sampai itu, angka 12.500 di bawah
+   hanyaffsafe place-holder yang bisa dipertanggungjawabkan ke data. */
 export const equipment = [
-  { id: "EQ-001", name: "Gantry Crane 50T", category: "Pengangkat", code: "CRN-50", branch: "Samarinda", status: "Tersedia", util: 68, nextService: "2026-09-15", lastHours: 12450, model: "DEMAG 50T", rate: 1200000, fuelPrice: 0, acquisitionCost: 950000000, usefulLife: 20,
+  { id: "EQ-001", name: "Gantry Crane 50T", category: "Pengangkat", code: "CRN-50", branch: "Samarinda", status: "Tersedia", util: 68, nextService: "2026-09-15", lastHours: 12450, model: "DEMAG 50T", rate: 1200000, fuelPrice: 12500, acquisitionCost: 950000000, usefulLife: 20,
     serviceNotes: [
       { at: "2026-07-14 09:20", by: "Bapak Hadi", text: "Tali hoist sudah mulai terlihat seratnya sendiri di Drum kanan. Kalau dipakai untuk beban berat, tali selalu keluar dari sheave atas.", fileUrl: "" },
       { at: "2026-09-08 14:05", by: "Bapak Hadi", text: "Sheave sudah diganti. Uji beban 12 ton bersih, tidak ada getasan. Rem masih memakai komponen yang lama.", fileUrl: "" },
@@ -474,12 +480,12 @@ export const equipment = [
     serviceNotes: [
       { at: "2026-06-19 10:30", by: "Sari Dewi", text: "Outrigger paling belakang harus dismoor dulu sebelum slew. Kalau tidak, landnya berbunyi dan unit tidak boleh dipakai di atas 60 ton.", fileUrl: "" },
     ] },
-  { id: "EQ-003", name: "Mesin Las MIG", category: "Pengelasan", code: "WLD-MIG-12", branch: "Samarinda", status: "Terpakai", util: 74, nextService: "2026-08-20", lastHours: 2500, model: "Fronius TPS 400i", rate: 250000, fuelPrice: 0, acquisitionCost: 62000000, usefulLife: 10,
+  { id: "EQ-003", name: "Mesin Las MIG", category: "Pengelasan", code: "WLD-MIG-12", branch: "Samarinda", status: "Terpakai", util: 74, nextService: "2026-08-20", lastHours: 2500, model: "Fronius TPS 400i", rate: 250000, fuelPrice: 12500, acquisitionCost: 62000000, usefulLife: 10,
     serviceNotes: [
       { at: "2026-05-11 08:45", by: "Andi", text: "Kawat 1,2 mm cocok untuk pipa. Jangan memakai kawat lebih tebal di bagian yang menipis, karena retaknya muncul di sambungan las.", fileUrl: "" },
       { at: "2026-08-02 13:15", by: "Andi", text: "Nozzle-tip sudah aus dan sudah diganti. Posisi gas flow setter jangan diubah, karena hasil las keluar millih.", fileUrl: "" },
     ] },
-  { id: "EQ-004", name: "Mesin Las SMAW", category: "Pengelasan", code: "WLD-SMAW-05", branch: "Samarinda", status: "Maintenance", util: 45, nextService: "2026-07-30", lastHours: 4100, model: "Miller XMT", rate: 220000, fuelPrice: 0, acquisitionCost: 45000000, usefulLife: 10,
+  { id: "EQ-004", name: "Mesin Las SMAW", category: "Pengelasan", code: "WLD-SMAW-05", branch: "Samarinda", status: "Maintenance", util: 45, nextService: "2026-07-30", lastHours: 4100, model: "Miller XMT", rate: 220000, fuelPrice: 12500, acquisitionCost: 45000000, usefulLife: 10,
     serviceNotes: [
       { at: "2026-07-29 16:40", by: "Andi", text: "Kabel massa terkelupas di sambungan stick. Sudah dilaporkan ke bagian listrik tetapi belum diganti, jadi jangan dipakai dulu.", fileUrl: "" },
     ] },
@@ -489,7 +495,7 @@ export const equipment = [
     ] },
   { id: "EQ-006", name: "Forklift 10T", category: "Transportasi", code: "FLT-10", branch: "Samarinda", status: "Terpakai", util: 71, nextService: "2026-08-12", lastHours: 7200, model: "Toyota 10FD", rate: 350000, fuelPrice: 11500, acquisitionCost: 620000000, usefulLife: 12,
     serviceNotes: [] },
-  { id: "EQ-007", name: "Blast Machine", category: "Pengecatan", code: "BLST-01", branch: "Samarinda", status: "Tersedia", util: 63, nextService: "2026-09-10", lastHours: 3200, model: "Blastrac", rate: 400000, fuelPrice: 0, acquisitionCost: 95000000, usefulLife: 8,
+  { id: "EQ-007", name: "Blast Machine", category: "Pengecatan", code: "BLST-01", branch: "Samarinda", status: "Tersedia", util: 63, nextService: "2026-09-10", lastHours: 3200, model: "Blastrac", rate: 400000, fuelPrice: 12500, acquisitionCost: 95000000, usefulLife: 8,
     serviceNotes: [
       { at: "2026-06-30 15:25", by: "Sari Dewi", text: "Nozzle brass sudah diganti dua kali bulan ini karena abrasive yang dipakai lebih kasar dari spesifikasi lama.", fileUrl: "" },
     ] },
