@@ -982,7 +982,7 @@ const printSpk = async (w: StoreItem): Promise<void> => {
         actions={<button className="btn-primary-gradient" onClick={() => setShowSub(true)}><Plus className="h-4 w-4" /> {S.regSubBtn}</button>}
       />
 
-      {modAlert.active && <AlertBannerView items={modAlert.items} onPick={pickNotif} />}
+      {modAlert.active && <AlertBannerView items={modAlert.items} onPick={pickNotif} dismiss={modAlert.dismiss} />}
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <KpiCard label={S.kpiActiveSubs} value={String(subcontractors.filter((s) => s.status === "Aktif").length)} icon={<HardHat className="h-5 w-5" />} chip="navy" spark={subActiveTrend} hint={S.kpiActiveSubsHint} />

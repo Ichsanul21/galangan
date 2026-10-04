@@ -1176,7 +1176,7 @@ export default function QCSafety() {
         }
       />
 
-      {modAlert.active && <AlertBannerView items={modAlert.items} onPick={pickNotif} />}
+      {modAlert.active && <AlertBannerView items={modAlert.items} onPick={pickNotif} dismiss={modAlert.dismiss} />}
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <KpiCard label={S.kpiNcrTerbuka} value={String(openNcr)} delta={criticalOpen > 0 ? S.kpiCriticalN.replace("{n}", String(criticalOpen)) : S.kpiNihilCritical} deltaDirection={criticalOpen > 0 ? "down" : "up"} icon={<AlertTriangle className="h-5 w-5" />} chip="rose" spark={ncrTrend} />

@@ -535,7 +535,7 @@ const doExport = () => {
         }
       />
 
-      {modAlert.active && <AlertBannerView items={modAlert.items} onPick={pickNotif} />}
+      {modAlert.active && <AlertBannerView items={modAlert.items} onPick={pickNotif} dismiss={modAlert.dismiss} />}
 
       <div className="mb-4 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <KpiCard label={S.kpiTotal} value={String(active.length)} icon={<ScrollText className="h-5 w-5" />} chip="navy" hint={S.kpiTotalHint} spark={trendOf(() => true)} />

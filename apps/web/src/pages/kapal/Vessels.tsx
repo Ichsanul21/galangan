@@ -363,7 +363,7 @@ export default function Vessels() {
         actions={<button className="btn-primary-gradient" onClick={() => setShowAdd(true)}><Plus className="h-4 w-4" /> {S.vsAdd}</button>}
       />
 
-      {modAlert.active && <AlertBannerView items={modAlert.items} onPick={pickNotif} />}
+      {modAlert.active && <AlertBannerView items={modAlert.items} onPick={pickNotif} dismiss={modAlert.dismiss} />}
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <KpiCard label={S.vsKpiTotal} value={String(vessels.length)} icon={<Ship className="h-5 w-5" />} chip="navy" spark={fleetTrend} hint={S.vsKpiTotalHint} />

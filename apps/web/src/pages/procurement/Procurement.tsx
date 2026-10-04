@@ -1327,7 +1327,7 @@ const sparkVendors = useMemo(() => {
         }
       />
 
-      {modAlert.active && <AlertBannerView items={modAlert.items} onPick={pickNotif} />}
+      {modAlert.active && <AlertBannerView items={modAlert.items} onPick={pickNotif} dismiss={modAlert.dismiss} />}
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <KpiCard label={S.kpiActive} value={String(purchaseOrders.length)} icon={<ShoppingCart className="h-5 w-5" />} chip="navy" spark={sparkAxis.map((pt) => ({ name: pt.label, v: sparkPos[pt.key] ?? 0 }))} hint={S.kpiActiveHint} />

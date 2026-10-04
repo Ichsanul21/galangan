@@ -1,12 +1,24 @@
 // Banner notifikasi modul (tanpa badge sidebar, tanpa read-state).
-// Banner murni ikut KONDISI data: muncul selama kondisi ada.
+// Banner murni ikut KONDISI data: muncul selama kondisi ada, DAN selama
+// pengguna belum menutupnya untuk sesi ini (utils/bannerDismiss).
 // Klik item banner → lompat ke baris + kedip sesaat via useNotifFlash.
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import { Bell, ChevronDown, ChevronUp } from "lucide-react";
+import { Bell, ChevronDown, ChevronUp, X } from "lucide-react";
 import { useStore } from "../data/store";
 import { useT } from "../i18n/LanguageContext";
 import { loadModSeen, notifyModSeen, saveModSeen } from "../utils/notifRead";
+import {
+  BANNER_DISMISS_KEY,
+  dismissLevel as dismissLevelPure,
+  dismissedFor,
+  parseDismissed,
+  restoreAll as restoreAllPure,
+  restoreLevel as restoreLevelPure,
+  serializeDismissed,
+  visibleItems,
+  type DismissMap,
+} from "../utils/bannerDismiss";
 import { fmtTanggal } from "../utils/format";
 import {
   buildModuleAlertItemsFor,
@@ -136,6 +148,77 @@ function fill(tpl: string, vars: Record<string, string | number>): string {
   return tpl.replace(/\{(\w+)\}/g, (m, k: string) => (k in vars ? String(vars[k]) : m));
 }
 
+/** sessionStorage bisa menolak: mode privat, atau iframe tanpa storage. */
+function readDismissMap(): DismissMap {
+  try {
+    return parseDismissed(window.sessionStorage.getItem(BANNER_DISMISS_KEY));
+  } catch {
+    return {};
+  }
+}
+
+function writeDismissMap(map: DismissMap): void {
+  try {
+    window.sessionStorage.setItem(BANNER_DISMISS_KEY, serializeDismissed(map));
+  } catch {
+    /* abaikan: banner tetap tampil, hanya tidak bisa ditutup */
+  }
+}
+
+/** Kendali tutup-banner yang dipegang komponen banner. */
+export interface BannerDismiss {
+  key: string;
+  dismissed: readonly AlertLevel[];
+  dismiss: (level: AlertLevel) => void;
+  restore: (level: AlertLevel) => void;
+  restoreEvery: () => void;
+}
+
+/**
+ * useState + sessionStorage: state mengikuti render sekarang, storage hilang
+ * saat tab ditutup. Sifat "hanya sesi ini" itu disengaja - lihat
+ * utils/bannerDismiss.
+ */
+export function useBannerDismiss(moduleKey: string): BannerDismiss {
+  const [map, setMap] = useState<DismissMap>(() => readDismissMap());
+
+  /* Tab lain dalam sesi yang sama ikut berubah: user bisa membuka Finance di
+     dua tab, menutup banner di satu, dan tab satunya harus ikut bersih. */
+  useEffect(() => {
+    const onStorage = (e: StorageEvent): void => {
+      if (e.key !== null && e.key !== BANNER_DISMISS_KEY) return;
+      setMap(readDismissMap());
+    };
+    window.addEventListener("storage", onStorage);
+    return () => window.removeEventListener("storage", onStorage);
+  }, []);
+
+  const update = useCallback((next: (prev: DismissMap) => DismissMap): void => {
+    setMap((prev) => {
+      const applied = next(prev);
+      writeDismissMap(applied);
+      return applied;
+    });
+  }, []);
+
+  return {
+    key: moduleKey,
+    dismissed: dismissedFor(map, moduleKey),
+    dismiss: useCallback(
+      (level: AlertLevel) => update((prev) => dismissLevelPure(prev, moduleKey, level)),
+      [moduleKey, update],
+    ),
+    restore: useCallback(
+      (level: AlertLevel) => update((prev) => restoreLevelPure(prev, moduleKey, level)),
+      [moduleKey, update],
+    ),
+    restoreEvery: useCallback(
+      () => update((prev) => restoreAllPure(prev, moduleKey)),
+      [moduleKey, update],
+    ),
+  };
+}
+
 /**
  * Umur alert dalam hari. `since` sudah divalidasi di `normalizeItems`, jadi
  * di sini tidak mungkin NaN - tapi tetap dijaga, karena "NaN hari" lebih buruk
@@ -154,19 +237,54 @@ const LEVEL_STYLE: Record<AlertLevel, { bar: string; chip: string; dot: string; 
   info: { bar: "bg-ocean-400", chip: "bg-ocean-50 text-ocean-800", dot: "bg-ocean-400", head: "text-ocean-800", labelKey: "levelInfo" },
 };
 
-export function AlertBannerView({ items, onPick }: { items: ModuleAlertItem[]; onPick?: (rowId: string) => void }) {
+export function AlertBannerView({
+  items,
+  onPick,
+  dismiss,
+}: {
+  items: ModuleAlertItem[];
+  onPick?: (rowId: string) => void;
+  dismiss?: BannerDismiss;
+}) {
   const { t } = useT();
   const [min, setMin] = useState(false);
   /* Buka/tutup per level, bukan satu sakelar global: tiga group dengan jumlah
-     berbeda shouldn't ikut buka-tutup bersama - membuka `info` yang panjang
-     sambileto menutup `kritis` yang pendek. */
+     berbeda tidak ikut buka-tutup bersama - membuka `info` yang panjang
+     sambil tetap menutup `kritis` yang pendek. */
   const [openLevels, setOpenLevels] = useState<Record<string, boolean>>({});
 
-  const groups = useMemo(() => groupByLevel(items, PREVIEW_N), [items]);
-  const counts = useMemo(() => countByLevel(items), [items]);
+  const dismissed = dismiss === undefined ? [] : [...dismiss.dismissed];
+  /* Level yang ditutup dihitung dari `items` (kondisi nyata), bukan dari
+     tampilan: kalau kondisinya sudah selesai, tidak ada yang perlu
+     "dibuka kembali". */
+  const shown = useMemo(() => visibleItems(items, dismissed), [items, dismissed.join(",")]);
+  const hidden = items.length - shown.length;
+
+  const groups = useMemo(() => groupByLevel(shown, PREVIEW_N), [shown]);
+  const counts = useMemo(() => countByLevel(shown), [shown]);
   const worst = groups[0];
 
   if (items.length === 0) return null;
+
+  /* Semua level ditutup: banner tetap dirender sebagai baris tipis satu
+     tombol "tampilkan lagi". Kalau `return null` di sini, pengguna yang
+     tanpa sengaja menutup tidak punya jalan kembali selain reload. */
+  if (shown.length === 0 && dismiss !== undefined) {
+    return (
+      <div className="mb-4 flex items-center gap-3 rounded-xl border border-steel-200 bg-white px-4 py-2">
+        <Bell className="h-4 w-4 shrink-0 text-steel-400" aria-hidden="true" />
+        <p className="min-w-0 flex-1 text-xs text-steel-500">
+          {fill(t.notif.dismissedNote, { n: hidden })}
+        </p>
+        <button
+          className="shrink-0 rounded-lg px-2.5 py-1.5 text-xs font-semibold text-ocean-600 hover:bg-steel-100"
+          onClick={dismiss.restoreEvery}
+        >
+          {t.notif.restoreAll}
+        </button>
+      </div>
+    );
+  }
 
   const tone = worst === undefined ? LEVEL_STYLE.info : LEVEL_STYLE[worst.level];
 
@@ -205,9 +323,19 @@ export function AlertBannerView({ items, onPick }: { items: ModuleAlertItem[]; o
                           {fill(t.notif.moreHidden, { n: g.hidden })}
                         </button>
                       )}
+                      {dismiss !== undefined && (
+                        <button
+                          className={`shrink-0 rounded p-0.5 text-steel-400 hover:bg-steel-100 hover:text-steel-700 ${g.hidden > 0 ? "" : "ml-auto"}`}
+                          aria-label={fill(t.notif.dismissLevel, { level: t.notif[st.labelKey] })}
+                          title={fill(t.notif.dismissLevel, { level: t.notif[st.labelKey] })}
+                          onClick={() => dismiss.dismiss(g.level)}
+                        >
+                          <X className="h-3.5 w-3.5" />
+                        </button>
+                      )}
                     </div>
                     <ul className="space-y-1 px-2.5 pb-2">
-                      {(isOpen ? sortByLevel(items.filter((i) => i.level === g.level)).slice(0, RENDER_CAP) : g.items).map((a) => (
+                      {(isOpen ? sortByLevel(shown.filter((i) => i.level === g.level)).slice(0, RENDER_CAP) : g.items).map((a) => (
                         <AlertRow key={a.id} item={a} style={st} onPick={onPick} />
                       ))}
                     </ul>
@@ -224,9 +352,23 @@ export function AlertBannerView({ items, onPick }: { items: ModuleAlertItem[]; o
                   </div>
                 );
               })}
-              {items.length > RENDER_CAP && (
+              {shown.length > RENDER_CAP && (
                 <p className="text-[11px] text-steel-500">
                   {fill(t.notif.cappedNote ?? `Menampilkan ${RENDER_CAP} pertama - saring tabel untuk sisanya.`, { n: RENDER_CAP })}
+                </p>
+              )}
+              {dismiss !== undefined && hidden > 0 && (
+                <p className="flex flex-wrap items-center gap-2 pt-0.5 text-[11px] text-steel-500">
+                  <span>{fill(t.notif.dismissedNote, { n: hidden })}</span>
+                  {dismissed.map((lvl) => (
+                    <button
+                      key={lvl}
+                      className="font-semibold text-ocean-600 hover:underline"
+                      onClick={() => dismiss.restore(lvl)}
+                    >
+                      {fill(t.notif.restoreLevel, { level: t.notif[LEVEL_STYLE[lvl].labelKey] })}
+                    </button>
+                  ))}
                 </p>
               )}
             </div>
@@ -287,12 +429,14 @@ function AlertRow({
 export function useModuleAlert(key: ModuleAlertKey): {
   active: boolean;
   items: ModuleAlertItem[];
+  dismiss: BannerDismiss;
 } {
   const { data } = useStore();
   const [params] = useSearchParams();
   const active = params.get("alert") === key;
   // Hanya hitung 1 modul (murah) - bukan 13 modul sekaligus.
   const items = useMemo(() => buildModuleAlertItemsFor(data, key), [data, key]);
+  const dismiss = useBannerDismiss(key);
 
   // Badge sidebar "tampil sekali": modul dibuka (jalur mana pun) → id kondisi
   // saat ini dicatat sebagai seen (model timpa), badge modul itu nol.
@@ -307,5 +451,5 @@ export function useModuleAlert(key: ModuleAlertKey): {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key, items]);
 
-  return { active, items };
+  return { active, items, dismiss };
 }

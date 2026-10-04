@@ -26,6 +26,18 @@ import {
 } from "../src/utils/moduleAlerts";
 import type { StoreShape, StoreItem } from "../src/data/store";
 import { createdAtOf } from "../src/utils/timestamps";
+import {
+  BANNER_DISMISS_KEY,
+  dismissLevel,
+  dismissedFor,
+  hiddenCount,
+  parseDismissed,
+  restoreAll,
+  restoreLevel,
+  serializeDismissed,
+  visibleItems,
+  type DismissMap,
+} from "../src/utils/bannerDismiss";
 
 declare const process: { exit(code: number): never };
 
@@ -329,6 +341,100 @@ const created = [es("2026-1-5"), es("2026-10-2"), es("2026-2-20")];
     "tanggal bertanda jam tidak digeser atau dipotong",
     createdAtOf({ createdAt: "2026-01-05T08:30:00.000Z" }) ?? "",
   );
+}
+
+/* ---- Tutup banner: per severity, per modul, session-only ----
+  _two kelas kesalahan yang paling mungkin terjadi di sini:
+   1. Satu sakelar untuk seluruh banner. Menutup `info` yang panjang ikut
+      menyembunyikan `kritis` - persis kebalikan dari tujuan F1.
+   2. level yang ditutup ikut tersimpan permanen. Alert yang belum ditangani
+      hilang diam-diam dan tidak muncul lagi setelah browser ditutup. */
+{
+  const item = (level: AlertLevel, n: number): ModuleAlertItem => ({
+    id: `${level}-${n}`,
+    level,
+    label: `${level} ${n}`,
+    detail: "",
+    rowId: `row-${level}-${n}`,
+  });
+  const items: ModuleAlertItem[] = [
+    item("kritis", 1),
+    item("kritis", 2),
+    item("perhatian", 1),
+    item("info", 1),
+    item("info", 2),
+    item("info", 3),
+  ];
+
+  assert(visibleItems(items, []).length === 6, "tanpa ditutup, semua item terlihat");
+  assert(hiddenCount(items, []) === 0, "tanpa ditutup, tidak ada yang tersembunyi");
+
+  /* Menutup info TIDAK boleh menyentuh kritis. */
+  const afterInfo = dismissLevel({}, "qc", "info");
+  const visInfo = visibleItems(items, dismissedFor(afterInfo, "qc"));
+  assert(visInfo.length === 3, "menutup info menyisakan 3 item (2 kritis + 1 perhatian)", String(visInfo.length));
+  assert(visInfo.some((i) => i.level === "kritis"), "kritis tetap terlihat setelah info ditutup");
+  assert(visInfo.some((i) => i.level === "perhatian"), "perhatian tetap terlihat setelah info ditutup");
+  assert(!visInfo.some((i) => i.level === "info"), "info benar-benar tersembunyi");
+  assert(hiddenCount(items, ["info"]) === 3, "3 item info tercatat tersembunyi");
+
+  /* Menutup kritis juga tidak boleh menutup yang lain. */
+  const afterKritis = dismissLevel(afterInfo, "qc", "kritis");
+  const visKritis = visibleItems(items, dismissedFor(afterKritis, "qc"));
+  assert(visKritis.length === 1 && visKritis[0]?.level === "perhatian", "menutup kritis menyisakan hanya perhatian", visKritis.map((i) => i.level).join(","));
+
+  /* Modul lain tidak terpengaruh. */
+  assert(dismissedFor(afterKritis, "qc").length === 2, "qc punya 2 level tertutup");
+  assert(dismissedFor(afterKritis, "qc").includes("info") && dismissedFor(afterKritis, "qc").includes("kritis"), "qc menyimpan info + kritis");
+  assert(dismissedFor(afterKritis, "finance").length === 0, "modul lain tidak ikut tertutup");
+  assert(visibleItems(items, dismissedFor(afterKritis, "finance")).length === 6, "modul lain tetap menampilkan semua item");
+
+  /* Menutup level yang sama dua kali tidak menggandakan. */
+  const twice = dismissLevel(dismissLevel({}, "qc", "info"), "qc", "info");
+  assert(dismissedFor(twice, "qc").length === 1, "menutup level sama dua kali tetap satu");
+
+  /* Kembalikan satu level: level lain tetap tertutup. */
+  const backInfo = restoreLevel(afterKritis, "qc", "info");
+  assert(dismissedFor(backInfo, "qc").length === 1 && dismissedFor(backInfo, "qc")[0] === "kritis", "kembalikan info menyisakan kritis tertutup", dismissedFor(backInfo, "qc").join(","));
+  assert(visibleItems(items, dismissedFor(backInfo, "qc")).length === 4, "4 item kembali terlihat setelah info dibuka lagi");
+
+  const empty = restoreLevel({} as DismissMap, "qc", "info");
+  assert(dismissedFor(empty, "qc").length === 0, "kembalikan level yang tidak ditutup = tidak berubah");
+
+  /* Buka semua: key modul dihapus, bukan disimpan sebagai array kosong. */
+  const all = restoreAll(afterKritis, "qc");
+  assert(!("qc" in all), "buka semua menghapus key modul");
+  assert(dismissedFor(all, "qc").length === 0, "setelah buka semua, tidak ada level tertutup");
+  assert(JSON.stringify(all) === "{}", "map kosong tidak menyimpan sisa array kosong", JSON.stringify(all));
+
+  /* Sesi, bukan permanen: kuncinya dibedakan dari badge notifikasi. */
+  const dirty = parseDismissed('{"qc":["info","kritis","ngawur"],"x":"bukan-array"}');
+  assert(dismissedFor(dirty, "qc").length === 2, "level asing dibuang saat parse", dismissedFor(dirty, "qc").join(","));
+  assert(!("x" in dirty), "entri yang bukan array dibuang saat parse");
+
+  /* String rusak: storage penuh atau versi lama tidak boleh membuat app crash. */
+  for (const bad of ["", "   ", "{", "null", "[1,2]", '"teks"', "42"]) {
+    assert(Object.keys(parseDismissed(bad)).length === 0, `string rusak -> tidak ada yang ditutup: ${JSON.stringify(bad)}`);
+  }
+  assert(parseDismissed(null).constructor === Object, "null -> map kosong");
+
+  /* Putar-balik serialize/parse tidak boleh mengubah arti. */
+  const roundTrip = parseDismissed(serializeDismissed(afterKritis));
+  assert(
+    JSON.stringify(roundTrip) === JSON.stringify(afterKritis),
+    "serialize lalu parse menghasilkan map yang sama",
+    `${serializeDismissed(afterKritis)} -> ${JSON.stringify(roundTrip)}`,
+  );
+  assert(serializeDismissed({ qc: [] }) === "{}", "level kosong tidak disimpan", serializeDismissed({ qc: [] }));
+
+  /* Sesi, bukan permanen: kuncinya dibedakan dari badge notifikasi. */
+  assert(BANNER_DISMISS_KEY === "isms.bannerDismiss", "kunci tutup banner terpisah dari badge", BANNER_DISMISS_KEY);
+  /* Dibandingkan lewat variabel bertipe string: TypeScript melihat dua
+     literal yang berbeda lalu menandai perbandingannya mustahil - padahal
+     justru perbedaannya itu yang sedang diuji. */
+  const dismissKey: string = BANNER_DISMISS_KEY;
+  assert(dismissKey !== "isms.modSeen", "kunci tutup banner bukan kunci badge modul");
+  assert(dismissKey !== "isms.notifRead", "kunci tutup banner bukan kunci lonceng");
 }
 
 if (fail > 0) {

@@ -131,6 +131,11 @@ export const id: Dict = {
     levelKritis: "Kritis",
     levelPerhatian: "Perlu perhatian",
     levelInfo: "Info",
+    /* Tutup banner berlaku per tingkat severity dan hanya untuk sesi ini. */
+    dismissLevel: "Tutup {level} untuk sesi ini",
+    restoreLevel: "Tampilkan lagi {level}",
+    dismissedNote: "{n} notifikasi disembunyikan untuk sesi ini.",
+    restoreAll: "Tampilkan semua yang disembunyikan",
     /* Ditulis sebagai tiga bagian terpisah supaya kamus bahasa lain tidak
        harus menentukan ulang kata sambung "atau"/"dan". */
     summaryCounts: "{kritis} kritis · {perhatian} perlu perhatian · {info} info",
