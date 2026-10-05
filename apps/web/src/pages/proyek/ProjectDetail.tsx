@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo } from "react";
 import { useAuth } from "../../auth/auth";
 import { useParams, Link } from "react-router-dom";
-import { ArrowLeft, Calendar, MapPin, Plus, Trash2, FileDown, Eye } from "lucide-react";
+import { ArrowLeft, Calendar, MapPin, Plus, Trash2, FileDown, Eye, Pencil } from "lucide-react";
 import {
   Card,
   CardHeader,
@@ -24,6 +24,7 @@ import {
   NumInput,
   FileUploadButton,
   AsyncButton,
+  RowAction,
 } from "../../components/ui";
 import type { SortState } from "../../components/ui";
 import { useBusy } from "../../components/ui";
@@ -1119,7 +1120,12 @@ export default function ProjectDetail() {
                           </div>
                         </td>
                         <td className="td">
-                            <button className="btn-secondary text-xs" onClick={() => { setWbsTaskUpdate(w.task); setWbsUpdateForm({ hours: String(w.actualHours ?? ""), material: w.materialUsed ?? "", status: w.status === "Selesai" ? "Selesai" : "Sedang", progress: String(w.progress ?? 0), predecessor: w.predecessor ?? "", station: w.station ?? "", photoNote: w.photoNote ?? "", photoUrl: String(w.photoUrl ?? ""), dft: w.dft === undefined || w.dft === null ? "" : String(w.dft) }); }}>{S.detUpdateBtn}</button>
+                            <RowAction
+                              icon={Pencil}
+                              tone="neutral"
+                              label={`${S.detUpdateBtn} ${w.task}`}
+                              onClick={() => { setWbsTaskUpdate(w.task); setWbsUpdateForm({ hours: String(w.actualHours ?? ""), material: w.materialUsed ?? "", status: w.status === "Selesai" ? "Selesai" : "Sedang", progress: String(w.progress ?? 0), predecessor: w.predecessor ?? "", station: w.station ?? "", photoNote: w.photoNote ?? "", photoUrl: String(w.photoUrl ?? ""), dft: w.dft === undefined || w.dft === null ? "" : String(w.dft) }); }}
+                            />
                         </td>
                       </tr>
                     ))}
