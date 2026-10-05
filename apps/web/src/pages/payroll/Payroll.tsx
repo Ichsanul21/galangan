@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { Download, Wallet } from "lucide-react";
+import { Download, Wallet, Pencil, Trash2, Receipt } from "lucide-react";
 import {
   Badge,
   Card,
@@ -18,6 +18,7 @@ import {
   toggleSort,
   NumInput,
   AsyncButton,
+  RowAction,
 } from "../../components/ui";
 import type { SortState } from "../../components/ui";
 import { useStore } from "../../data/store";
@@ -1041,7 +1042,7 @@ export default function Payroll() {
                         <td className="td">
                           <div className="flex items-center gap-2 whitespace-nowrap">
                             {p.status === "Draft" && (
-                              <button className="text-sm font-semibold text-ocean-600 hover:underline" title={S.editTitleAttr} onClick={() => openEdit(p)}>{S.btnEdit}</button>
+                              <RowAction icon={Pencil} tone="neutral" label={S.editTitleAttr} onClick={() => openEdit(p)} />
                             )}
                             {NEXT_STATUS[String(p.status)] && (
                               <button
@@ -1061,9 +1062,9 @@ export default function Payroll() {
                                 Kembalikan ke Draft
                               </button>
                             )}
-                            <button className="text-sm font-semibold text-navy-700 hover:underline" onClick={() => openSlip(p)}>{S.btnSlip}</button>
+                            <RowAction icon={Receipt} tone="neutral" label={`${S.btnSlip} ${p.id}`} onClick={() => openSlip(p)} />
                             {p.status === "Draft" && (
-                              <button className="text-sm font-semibold text-rose-600 hover:underline" title={S.delTitleAttr} onClick={() => setDelPay(p)}>{S.btnDelete}</button>
+                              <RowAction icon={Trash2} tone="danger" label={S.delTitleAttr} onClick={() => setDelPay(p)} />
                             )}
                           </div>
                         </td>
@@ -1159,7 +1160,7 @@ export default function Payroll() {
                                 {advLabel[String(p.status)] ?? S.advFallback.replace("{a}", NEXT_STATUS[String(p.status)])}
                               </button>
                             )}
-                            <button className="text-sm font-semibold text-navy-700 hover:underline" onClick={() => openSlip(p)}>{S.btnSlip}</button>
+                            <RowAction icon={Receipt} tone="neutral" label={`${S.btnSlip} ${p.id}`} onClick={() => openSlip(p)} />
                             {PREV_TO_DRAFT.includes(String(p.status)) && (
                               <button
                                 className="text-sm font-semibold text-amber-600 hover:underline"
@@ -1170,10 +1171,10 @@ export default function Payroll() {
                               </button>
                             )}
                             {p.status === "Draft" && (
-                              <button className="text-sm font-semibold text-rose-600 hover:underline" title={S.delTitleAttr} onClick={() => setDelPay(p)}>{S.btnDelete}</button>
+                              <RowAction icon={Trash2} tone="danger" label={S.delTitleAttr} onClick={() => setDelPay(p)} />
                             )}
                             {p.status === "Draft" && (
-                              <button className="text-sm font-semibold text-navy-700 hover:underline" title={S.btnEdit} onClick={() => openBonusEdit(p)}>{S.btnEdit}</button>
+                              <RowAction icon={Pencil} tone="neutral" label={S.btnEdit} onClick={() => openBonusEdit(p)} />
                             )}
                           </div>
                         </td>
@@ -1249,7 +1250,7 @@ export default function Payroll() {
                           <td className="td text-steel-600">{fmtRupiah(k.cicilan)}</td>
                           <td className="td font-bold text-navy-900">{fmtRupiah(Math.max(0, k.sisa))}</td>
                           <td className="td">
-                            <button className="text-sm font-semibold text-rose-600 hover:underline" onClick={() => setDelKasbon({ e, kasbonId: k.id })}>{S.btnDelete}</button>
+                            <RowAction icon={Trash2} tone="danger" label={`${S.btnDelete} ${k.id}`} onClick={() => setDelKasbon({ e, kasbonId: k.id })} />
                           </td>
                         </tr>
                       ))}

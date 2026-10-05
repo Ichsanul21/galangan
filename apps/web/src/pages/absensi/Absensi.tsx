@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { ID_MON } from "../../utils/monthAxis";
-import { CalendarCheck, Download } from "lucide-react";
+import { CalendarCheck, Download, CircleCheck, Trash2 } from "lucide-react";
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 import {
   Badge,
@@ -21,6 +21,7 @@ import {
   usePager,
   NumInput,
   AsyncButton,
+  RowAction,
 } from "../../components/ui";
 import type { SortState } from "../../components/ui";
 import { FilterPopover } from "../../components/FilterPopover";
@@ -529,22 +530,18 @@ export default function Absensi() {
                                 dihapus dari sini (hanya dari tab Rekap). */}
                             <td className="td">
                               <div className="flex flex-wrap gap-1">
-                                <button
-                                  className="btn-secondary px-2 py-1 text-[11px]"
+                                <RowAction
+                                  icon={CircleCheck}
+                                  tone="success"
+                                  label={locale === "en" ? "Save this employee only" : "Simpan karyawan ini saja"}
                                   onClick={() => void saveRow(e)}
-                                  title={locale === "en"
-                                    ? "Save this employee only"
-                                    : "Simpan karyawan ini saja"}
-                                >
-                                  {locale === "en" ? "Save" : "Simpan"}
-                                </button>
-                                <button
-                                  className="btn-secondary px-2 py-1 text-[11px] text-rose-600"
+                                />
+                                <RowAction
+                                  icon={Trash2}
+                                  tone="danger"
+                                  label={locale === "en" ? "Delete this record" : "Hapus record ini"}
                                   onClick={() => setDelAttDay(e)}
-                                  title={locale === "en" ? "Delete this record" : "Hapus record ini"}
-                                >
-                                  {locale === "en" ? "Delete" : "Hapus"}
-                                </button>
+                                />
                               </div>
                             </td>
                           </tr>
@@ -740,9 +737,12 @@ export default function Absensi() {
                             {a.status === "Hadir" && isLate(String(a.checkIn), String(a.shift ?? "")) ? <Badge tone="red">{S.lateBadge}</Badge> : <span className="text-xs text-steel-400">-</span>}
                           </td>
                           <td className="td">
-                            <button className="text-sm font-semibold text-rose-600 hover:underline" onClick={() => setDelAtt(a)}>
-                              {locale === "en" ? "Delete" : "Hapus"}
-                            </button>
+                            <RowAction
+                              icon={Trash2}
+                              tone="danger"
+                              label={`${locale === "en" ? "Delete" : "Hapus"} ${empNameOf(String(a.employeeId))} ${fmtTanggal(a.date)}`}
+                              onClick={() => setDelAtt(a)}
+                            />
                           </td>
                         </tr>
                       ))}
