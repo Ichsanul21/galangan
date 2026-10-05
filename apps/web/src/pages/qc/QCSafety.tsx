@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
 import { bucketByMonth, monthAxis, monthKeyOf, rebindLegacyMonthSeries } from "../../utils/monthAxis";
-import { Plus, ShieldCheck, AlertTriangle, Siren, Award, Send, Eye } from "lucide-react";
+import { Plus, ShieldCheck, AlertTriangle, Siren, Award, Send, Eye, Pencil, Trash2 } from "lucide-react";
 import { ComposedChart, Line, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 import { Card, CardHeader, PageHeader, Badge, KpiCard, Tabs, StatusBadge, Donut, ChartTooltip, Modal, Field, FormGrid, ConfirmModal, SortTh, toggleSort, sortRows, usePager, toast,
   NumInput, FlowStrip, FileUploadButton, useBusy, AsyncButton, SearchBox, rowMatches,
+  RowAction,
 } from "../../components/ui";
 import type { SortState } from "../../components/ui";
 import { useStore, type StoreItem, type CollectionKey } from "../../data/store";
@@ -1244,14 +1245,14 @@ export default function QCSafety() {
                         <td className="td text-xs text-steel-600">{lastTouchedAt(i) !== null ? fmtTanggal(lastTouchedAt(i)) : <span className="text-steel-400">-</span>}</td>
                         <td className="td">
                           <div className="flex flex-wrap gap-1">
-                            <button className="btn-secondary text-xs" onClick={() => setInspDetail(i)}>{S.btnDetail}</button>
+                            <RowAction icon={Eye} tone="neutral" label={S.btnDetail} ariaLabel={`${S.btnDetail} ${String(i.id)}`} onClick={() => setInspDetail(i)} />
                             {/* Ubah/Hapus: dulu tabel inspeksi hanya punya
                                 tombol Detail, sehingga hasil inspeksi yang
                                 salah (mis. Hold terbalik, sampel terisi
                                 keliru) tidak bisa dikoreksi tanpa hapus
                                 & buat ulang baris + jejaknya. */}
-                            <button className="btn-secondary text-xs" onClick={() => openInspEdit(i)}>{S.btnEdit}</button>
-                            <button className="btn-secondary text-xs text-rose-600" onClick={() => setDelInsp(i)}>{S.btnHapus}</button>
+                            <RowAction icon={Pencil} tone="neutral" label={S.btnEdit} ariaLabel={`${S.btnEdit} ${String(i.id)}`} onClick={() => openInspEdit(i)} />
+                            <RowAction icon={Trash2} tone="danger" label={S.btnHapus} ariaLabel={`${S.btnHapus} ${String(i.id)}`} onClick={() => setDelInsp(i)} />
                           </div>
                         </td>
                       </tr>

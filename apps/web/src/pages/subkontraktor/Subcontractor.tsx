@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
-import { Plus, HardHat, FileSignature, Star, Receipt } from "lucide-react";
+import { Plus, HardHat, FileSignature, Star, Receipt, Pencil, Trash2 } from "lucide-react";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, ReferenceLine } from "recharts";
 import { Card, CardHeader, PageHeader, Badge, KpiCard, Tabs, ProgressBar, Modal, Field, FormGrid, ConfirmModal, SortTh, toggleSort, sortRows, usePager, toast, SearchBox, rowMatches,
   NumInput, FlowStrip,
   AsyncButton,
   FileUploadButton,
+  RowAction,
 } from "../../components/ui";
 import { DocumentPreviewCell } from "../../components/DocumentPreview";
 import type { SortState } from "../../components/ui";
@@ -1305,21 +1306,13 @@ const printSpk = async (w: StoreItem): Promise<void> => {
                             )}
                             {normTerm(String(p.status)) === "Draf" && (
                               <>
-                                <button className="btn-secondary text-xs" aria-label={`${locale === "en" ? "Edit" : "Ubah"} ${p.id}`} onClick={() => openTermEdit(p)}>
-                                  {locale === "en" ? "Edit" : "Ubah"}
-                                </button>
+                                <RowAction icon={Pencil} tone="neutral" label={locale === "en" ? "Edit" : "Ubah"} ariaLabel={`${locale === "en" ? "Edit" : "Ubah"} ${p.id}`} onClick={() => openTermEdit(p)} />
                                 {/* Hapus termin hanya sah saat masih Draf. Modul ini
                                     sebelumnya sama sekali tidak punya remove(), jadi
                                     termin salah nominal pun nyangkut selamanya. Setelah
                                     Disetujui termin sudah jadi dokumen pembayaran dan
                                     tidak boleh hilang tanpa pembatalan. */}
-                                <button
-                                  className="btn-secondary text-xs text-rose-600"
-                                  aria-label={`${locale === "en" ? "Delete" : "Hapus"} ${p.id}`}
-                                  onClick={() => setDelTerm(p)}
-                                >
-                                  {locale === "en" ? "Delete" : "Hapus"}
-                                </button>
+                                <RowAction icon={Trash2} tone="danger" label={locale === "en" ? "Delete" : "Hapus"} ariaLabel={`${locale === "en" ? "Delete" : "Hapus"} ${p.id}`} onClick={() => setDelTerm(p)} />
                               </>
                             )}
                             {normTerm(String(p.status)) === "Lunas" && retOf(p) > 0 && (
@@ -1411,20 +1404,8 @@ const printSpk = async (w: StoreItem): Promise<void> => {
                                 dasar termin, jadi tidak bisa dihapus. */}
                             {String(t.status ?? "Diajukan") !== "Disetujui" && (
                               <>
-                                <button
-                                  className="btn-secondary text-xs"
-                                  aria-label={`${locale === "en" ? "Edit" : "Ubah"} ${String(t.id)}`}
-                                  onClick={() => openTsEdit(t)}
-                                >
-                                  {locale === "en" ? "Edit" : "Ubah"}
-                                </button>
-                                <button
-                                  className="btn-secondary text-xs text-rose-600"
-                                  aria-label={`${locale === "en" ? "Delete" : "Hapus"} ${String(t.id)}`}
-                                  onClick={() => setDelTs(t)}
-                                >
-                                  {locale === "en" ? "Delete" : "Hapus"}
-                                </button>
+                                <RowAction icon={Pencil} tone="neutral" label={locale === "en" ? "Edit" : "Ubah"} ariaLabel={`${locale === "en" ? "Edit" : "Ubah"} ${String(t.id)}`} onClick={() => openTsEdit(t)} />
+                                <RowAction icon={Trash2} tone="danger" label={locale === "en" ? "Delete" : "Hapus"} ariaLabel={`${locale === "en" ? "Delete" : "Hapus"} ${String(t.id)}`} onClick={() => setDelTs(t)} />
                               </>
                             )}
                             {String(t.status ?? "Diajukan") === "Disetujui" && (

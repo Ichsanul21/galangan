@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { Plus, Send, Users2, Star, Handshake, ArrowRight } from "lucide-react";
+import { Plus, Send, Users2, Star, Handshake, ArrowRight, Pencil, Trash2 } from "lucide-react";
 import { Card, CardHeader, PageHeader, Badge, KpiCard, Tabs, Donut, Modal, Field, FormGrid, StatusBadge, ConfirmModal, EmptyState, SortTh, toggleSort, sortRows, toast, usePager,
   NumInput,
   SearchBox,
   rowMatches,
+  RowAction,
 } from "../../components/ui";
 import ClientModal from "../../components/ClientModal";
 import type { SortState } from "../../components/ui";
@@ -1102,15 +1103,13 @@ export default function CRM() {
                                     ke projects.budget saat dibuat, jadi
                                     perubahan nilai harus menyinkronkan budget
                                     juga (lihat saveContractEdit). */}
-                                <button className="btn-secondary text-xs" onClick={() => openContractEdit(k)}>
-                                  {locale === "en" ? "Edit" : "Ubah"}
-                                </button>
+                                <RowAction icon={Pencil} tone="neutral" label={locale === "en" ? "Edit" : "Ubah"} ariaLabel={`${locale === "en" ? "Edit" : "Ubah"} ${String(k.id)}`} onClick={() => openContractEdit(k)} />
                                 {/* Hapus dulu hanya untuk kontrak yang BELUM
                                     di-link ke proyek. Sekarang tersedia juga
                                     untuk kontrak terpaut - konfirmasi akan
                                     memblokir bila masih ada clientPos / 
                                     invoice yang merujuk (contractBlockers). */}
-                                <button className="btn-secondary text-xs text-rose-600" onClick={() => setDelContract(k)}>{S.deleteBtn}</button>
+                                <RowAction icon={Trash2} tone="danger" label={S.deleteBtn} ariaLabel={`${S.deleteBtn} ${String(k.id)}`} onClick={() => setDelContract(k)} />
                               </div>
                             </td>
                           </tr>

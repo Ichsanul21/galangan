@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
 import { ID_MON as MONTH_ID } from "../../utils/monthAxis";
-import { Plus, Ship, CalendarRange, AlertTriangle, GripVertical, Trash2, Wrench, User } from "lucide-react";
+import { Plus, Ship, CalendarRange, AlertTriangle, GripVertical, Trash2, Wrench, User, Eye, ArrowLeftRight } from "lucide-react";
 import { Card, CardHeader, PageHeader, Badge, KpiCard, ProgressBar, Modal, Field, FormGrid, ConfirmModal, StatusBadge, toast, SortTh, toggleSort, sortRows, usePager,
   NumInput, FlowStrip,
+  RowAction,
 } from "../../components/ui";
 import type { SortState } from "../../components/ui";
 import { AsyncButton } from "../../components/ui";
@@ -852,16 +853,15 @@ export default function Drydock() {
                       <td className="td text-xs text-steel-600">{lastTouchedAt(s) !== null ? fmtTanggal(lastTouchedAt(s)) : <span className="text-steel-400">-</span>}</td>
                       <td className="td">
                         <div className="flex gap-1.5">
-                          <button className="btn-secondary text-xs" onClick={() => openSlot(s)}>{S.detailBtn}</button>
-                          <button
-                            className="btn-secondary text-xs"
-                            title={conflict.some((c) => c.id === s.id) ? S.moveTitleConflict : S.moveTitlePlain}
-                            aria-label={S.moveAria.replace("{a}", String(s.id))}
+                          <RowAction icon={Eye} tone="neutral" label={S.detailBtn} ariaLabel={`${S.detailBtn} ${String(s.id)}`} onClick={() => openSlot(s)} />
+                          <RowAction
+                            icon={ArrowLeftRight}
+                            tone="neutral"
+                            label={conflict.some((c) => c.id === s.id) ? S.moveTitleConflict : S.moveTitlePlain}
+                            ariaLabel={S.moveAria.replace("{a}", String(s.id))}
                             onClick={() => openMove(s)}
-                          >
-                            {S.btnMove}
-                          </button>
-                          <button className="rounded-lg p-1.5 text-rose-500 hover:bg-rose-50" title={S.delSlotTitle.replace("{a}", String(s.id))} aria-label={S.delSlotTitle.replace("{a}", String(s.id))} onClick={() => setDeleting(s)}><Trash2 className="h-4 w-4" /></button>
+                          />
+                          <RowAction icon={Trash2} tone="danger" label={S.delSlotTitle.replace("{a}", String(s.id))} onClick={() => setDeleting(s)} />
                         </div>
                       </td>
                     </tr>

@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
-import { Plus, Factory, ShoppingCart, ClipboardList, Check, X, Printer, Send, Star, Wallet, Umbrella } from "lucide-react";
+import { Plus, Factory, ShoppingCart, ClipboardList, Check, X, Printer, Send, Star, Wallet, Umbrella, Pencil, Trash2, FileText } from "lucide-react";
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 import { Card, CardHeader, PageHeader, Badge, KpiCard, Tabs, StatusBadge, Donut, ChartTooltip, Modal, Field, FormGrid, ConfirmModal, toast, EmptyState, SortTh, toggleSort, sortRows, usePager,
-  NumInput, AsyncButton,
+  NumInput, AsyncButton, RowAction,
 } from "../../components/ui";
 import type { SortState } from "../../components/ui";
 import { useBusy, SearchBox, rowMatches } from "../../components/ui";
@@ -1727,21 +1727,13 @@ const sparkVendors = useMemo(() => {
                                   koreksi PR tidak lagi memperbaiki
                                   realisasi. */}
                               {String(r.poId ?? r.po ?? "").trim() === "" && (
-                                <button
-                                  className="btn-secondary text-xs"
-                                  aria-label={`${locale === "en" ? "Edit" : "Ubah"} ${r.id}`}
-                                  onClick={() => openPrEdit(r)}
-                                >
-                                  {locale === "en" ? "Edit" : "Ubah"}
-                                </button>
+                                <RowAction icon={Pencil} tone="neutral" label={locale === "en" ? "Edit" : "Ubah"} ariaLabel={`${locale === "en" ? "Edit" : "Ubah"} ${r.id}`} onClick={() => openPrEdit(r)} />
                               )}
                               {(r.status === "Draft" || r.status === "Draf") && (
                                 <button className="btn-primary text-xs" onClick={async () => { try { await update("requisitions", r.id, { status: "Diajukan" }); log("mengajukan PR", r.id, "Procurement"); toast(S.tPrRowDiajukan.replace("{n}", r.id)); } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); } }}>{S.btnAjukan}</button>
                               )}
                               {(r.status === "Draft" || r.status === "Draf") && (
-                                <button className="btn-secondary text-xs text-rose-600" aria-label={`${locale === "en" ? "Delete" : "Hapus"} ${r.id}`} onClick={() => setDelPr(r)}>
-                                  {locale === "en" ? "Delete" : "Hapus"}
-                                </button>
+                                <RowAction icon={Trash2} tone="danger" label={locale === "en" ? "Delete" : "Hapus"} ariaLabel={`${locale === "en" ? "Delete" : "Hapus"} ${r.id}`} onClick={() => setDelPr(r)} />
                               )}
                               {PR_PENDING.includes(r.status) && (
                                 <>
@@ -1750,7 +1742,7 @@ const sparkVendors = useMemo(() => {
                                 </>
                               )}
                               {r.status === "Disetujui" && (
-                                <button className="btn-primary text-xs" onClick={() => { setRfqPr(r); setRfqVendors([]); }}>{S.btnBuatRfq}</button>
+                                <RowAction icon={FileText} tone="primary" label={S.btnBuatRfq} ariaLabel={`${S.btnBuatRfq} ${r.id}`} onClick={() => { setRfqPr(r); setRfqVendors([]); }} />
                               )}
                               {r.status === "Ditolak" && (
                                 <button className="btn-secondary text-xs" onClick={async () => { try { await update("requisitions", r.id, { status: "Menunggu Approval" }); } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); } }}>{S.btnAjukanUlang}</button>
