@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
-import { useNavigate, useSearchParams, Link } from "react-router-dom";
-import { Plus, Anchor, Wallet, TrendingUp, Clock } from "lucide-react";
+import { useNavigate, useSearchParams } from "react-router-dom";
+import { Plus, Anchor, Wallet, TrendingUp, Clock, Trash2 } from "lucide-react";
 import {
   Card,
   PageHeader,
@@ -17,6 +17,7 @@ import {
   toast,
   SearchBox,
   rowMatches,
+  RowAction,
 } from "../../components/ui";
 import type { SortState } from "../../components/ui";
 import { useStore } from "../../data/store";
@@ -327,7 +328,6 @@ export default function Projects() {
             </thead>
             <tbody className="divide-y divide-steel-100">
               {pager.slice(sorted).map((p) => {
-                const tahapIdx = TAHAP.indexOf(tahapOf(p));
                 return (
                   <tr
                     key={p.id}
@@ -351,18 +351,11 @@ export default function Projects() {
                       </Badge>
                     </td>
                     <td className="td">
-                      <div className="flex items-center gap-1" title="Edit hanya di detail">
-                        <Badge tone="navy">{tahapOf(p)}</Badge>
-                        <span className="text-[11px] text-steel-400">{tahapIdx + 1}/{TAHAP.length}</span>
-                        <span className="cursor-not-allowed text-[11px] text-steel-400" title="Edit hanya di detail" aria-disabled="true">Edit hanya di detail</span>
-                        <Link
-                          to={`/proyek/${p.id}`}
-                          onClick={(e) => e.stopPropagation()}
-                          className="ml-1 whitespace-nowrap text-xs font-semibold text-ocean-600 hover:underline"
-                        >
-                          {locale === "en" ? "Manage in detail" : "Kelola di detail"}
-                        </Link>
-                      </div>
+                      {/* Edit tahap hanya lewat detail (stepper + modal alasan).
+                          Versi lama menempelkan teks "Edit hanya di detail" dan
+                          link "Kelola di detail" di sini; keduanya hilang dari
+                          layar dan baris tetap bisa diklik untuk masuk detail. */}
+                      <Badge tone="navy">{tahapOf(p)}</Badge>
                     </td>
                     <td className="td">
                       <Badge tone={prioritasTone[canonPrioritas(p.prioritas)] ?? "blue"}>{canonPrioritas(p.prioritas)}</Badge>
@@ -383,14 +376,13 @@ export default function Projects() {
                     <td className="td text-xs text-steel-600">
                       {lastTouchedAt(p) !== null ? fmtTanggal(lastTouchedAt(p)) : <span className="text-steel-400">-</span>}
                     </td>
-                    <td className="td" onClick={(e) => e.stopPropagation()}>
-                      <button
-                        className="text-xs font-semibold text-rose-600 hover:underline"
-                        aria-label={`${locale === "en" ? "Delete" : "Hapus"} ${p.id}`}
+                    <td className="td">
+                      <RowAction
+                        icon={Trash2}
+                        tone="danger"
+                        label={`${locale === "en" ? "Delete" : "Hapus"} ${p.id}`}
                         onClick={() => setDelProject(p)}
-                      >
-                        {locale === "en" ? "Delete" : "Hapus"}
-                      </button>
+                      />
                     </td>
                   </tr>
                 );
