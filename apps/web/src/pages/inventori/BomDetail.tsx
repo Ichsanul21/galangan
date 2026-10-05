@@ -1,9 +1,10 @@
 import { useState } from "react";
 import { Link, useParams } from "react-router-dom";
-import { ArrowLeft, Barcode, Package } from "lucide-react";
+import { ArrowLeft, Barcode, Package, Pencil, Trash2 } from "lucide-react";
 import { Card, CardHeader, PageHeader, Badge, Modal, Field, FormGrid, Tabs, EmptyState, ConfirmModal, toast, SortTh, toggleSort, sortRows,
   NumInput,
   AsyncButton,
+  RowAction,
 } from "../../components/ui";
 import type { SortState } from "../../components/ui";
 import { useT } from "../../i18n/LanguageContext";
@@ -256,12 +257,8 @@ export default function BomDetail() {
                             <td className="td text-steel-600">{fmtTanggal(m.date)}</td>
                             <td className="td">
                               <div className="flex flex-wrap gap-1.5">
-                                <button className="btn-secondary text-xs" onClick={() => openMoveEdit(m)} aria-label={`${locale === "en" ? "Edit" : "Ubah"} ${String(m.id)}`}>
-                                  {locale === "en" ? "Edit" : "Ubah"}
-                                </button>
-                                <button className="btn-secondary text-xs text-rose-600" onClick={() => setDelMove(m)} aria-label={`${locale === "en" ? "Delete" : "Hapus"} ${String(m.id)}`}>
-                                  {locale === "en" ? "Delete" : "Hapus"}
-                                </button>
+                                <RowAction icon={Pencil} tone="neutral" label={`${locale === "en" ? "Edit" : "Ubah"} ${String(m.id)}`} onClick={() => openMoveEdit(m)} />
+                                <RowAction icon={Trash2} tone="danger" label={`${locale === "en" ? "Delete" : "Hapus"} ${String(m.id)}`} onClick={() => setDelMove(m)} />
                               </div>
                             </td>
                           </tr>

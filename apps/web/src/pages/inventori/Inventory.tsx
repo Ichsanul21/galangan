@@ -11,6 +11,7 @@ import {
   Eye,
   Pencil,
   ClipboardCheck,
+  ClipboardList,
   Repeat,
   RefreshCw,
   Barcode,
@@ -36,6 +37,7 @@ import { QRCodeSVG } from "qrcode.react";
 import { Card, CardHeader, PageHeader, Badge, KpiCard, Tabs, ChartTooltip, Modal, Field, FormGrid, toast, EmptyState, ProgressBar, SortTh, toggleSort, sortRows, usePager, useDebouncedValue, ConfirmModal,
   NumInput, AsyncButton, SecureImg,
   SearchBox, rowMatches,
+  RowAction,
 } from "../../components/ui";
 import type { SortState } from "../../components/ui";
 import { useStore, type StoreItem } from "../../data/store";
@@ -2115,13 +2117,13 @@ penuh per kategori - dengan 10 kategori berproblem, strip
                           <td className="td text-xs text-steel-600">{lastTouchedAt(i) !== null ? fmtTanggal(lastTouchedAt(i)) : <span className="text-steel-400">-</span>}</td>
                           <td className="td">
                             <div className="flex gap-1">
-                              <button className="rounded-lg p-1.5 text-steel-500 hover:bg-steel-100" title={S.actDetail} aria-label={S.actDetailAria.replace("{n}", i.name)} onClick={() => setDetail(i)}><Eye className="h-4 w-4" /></button>
-                              <button className="rounded-lg p-1.5 text-steel-500 hover:bg-steel-100" title={S.actEdit} aria-label={S.actEditAria.replace("{n}", i.name)} onClick={() => openEdit(i)}><Pencil className="h-4 w-4" /></button>
-                              <button className="rounded-lg p-1.5 text-emerald-600 hover:bg-emerald-50" title={S.actGrgi} aria-label={S.actGrgiAria.replace("{n}", i.name)} onClick={() => openMove(i, moveKind)}><ArrowDownToLine className="h-4 w-4" /></button>
-                              <button className="rounded-lg p-1.5 text-steel-500 hover:bg-steel-100" title={S.actLabel} aria-label={S.actLabelAria.replace("{n}", i.name)} onClick={() => setLabelItem(i)}><Barcode className="h-4 w-4" /></button>
-                              <button className="rounded-lg p-1.5 text-amber-600 hover:bg-amber-50" title={S.reservBtn} aria-label={S.actReservAria.replace("{n}", i.name)} onClick={() => { setReservTarget(i); setReservProject(""); setReservQtyInput(""); }}><BookmarkPlus className="h-4 w-4" /></button>
-                              <Link to={`/inventori/bom/${i.id}`} className="rounded-lg p-1.5 text-ocean-600 hover:bg-steel-100" title="BOM" aria-label={S.actBomAria.replace("{n}", i.name)}>BOM</Link>
-                              <button className="rounded-lg p-1.5 text-rose-600 hover:bg-rose-50" title={locale === "en" ? "Delete" : "Hapus"} aria-label={`${locale === "en" ? "Delete" : "Hapus"} ${i.name}`} onClick={() => setDelInv(i)}><Trash2 className="h-4 w-4" /></button>
+                              <RowAction icon={Eye} tone="neutral" label={S.actDetail} ariaLabel={S.actDetailAria.replace("{n}", i.name)} onClick={() => setDetail(i)} />
+                              <RowAction icon={Pencil} tone="neutral" label={S.actEdit} ariaLabel={S.actEditAria.replace("{n}", i.name)} onClick={() => openEdit(i)} />
+                              <RowAction icon={ArrowDownToLine} tone="success" label={S.actGrgi} ariaLabel={S.actGrgiAria.replace("{n}", i.name)} onClick={() => openMove(i, moveKind)} />
+                              <RowAction icon={Barcode} tone="neutral" label={S.actLabel} ariaLabel={S.actLabelAria.replace("{n}", i.name)} onClick={() => setLabelItem(i)} />
+                              <RowAction icon={BookmarkPlus} tone="primary" label={S.reservBtn} ariaLabel={S.actReservAria.replace("{n}", i.name)} onClick={() => { setReservTarget(i); setReservProject(""); setReservQtyInput(""); }} />
+                              <Link to={`/inventori/bom/${i.id}`} className="relative inline-flex shrink-0 items-center justify-center rounded-lg p-1.5 text-ocean-600 transition-colors hover:bg-steel-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ocean-400 focus-visible:ring-offset-1 after:absolute after:-inset-1.5 after:content-['']" title="BOM" aria-label={S.actBomAria.replace("{n}", i.name)}><Package className="h-4 w-4" aria-hidden="true" /></Link>
+                              <RowAction icon={Trash2} tone="danger" label={locale === "en" ? "Delete" : "Hapus"} ariaLabel={`${locale === "en" ? "Delete" : "Hapus"} ${i.name}`} onClick={() => setDelInv(i)} />
                             </div>
                           </td>
                         </tr>
@@ -2410,7 +2412,7 @@ penuh per kategori - dengan 10 kategori berproblem, strip
                           <td className="td font-semibold text-navy-900">{fmtJumlah(f.net)} {f.unit}</td>
                           <td className="td">
                             {f.net > 0 && f.item
-                              ? <button className="btn-secondary text-xs" onClick={() => buatPRDraft(f.item!.name, f.net, f.net * Number(f.item!.cost || 0))}>{S.btnBuatPr}</button>
+                              ? <RowAction icon={ClipboardList} tone="primary" label={S.btnBuatPr} ariaLabel={`${S.btnBuatPr} ${String(f.item.name)}`} onClick={() => buatPRDraft(f.item!.name, f.net, f.net * Number(f.item!.cost || 0))} />
                               : <span className="text-xs text-steel-400">-</span>}
                           </td>
                         </tr>
@@ -2532,8 +2534,8 @@ penuh per kategori - dengan 10 kategori berproblem, strip
                         <td className="td text-steel-600">{fmtTanggal(m.date)}</td>
                         <td className="td">
                           <div className="flex gap-1">
-                            <button className="rounded-lg p-1.5 text-steel-500 hover:bg-steel-100" title={locale === "en" ? "Edit movement (info only, stock untouched)" : "Ubah movement (info saja, stok tidak diubah)"} aria-label={`${locale === "en" ? "Edit movement" : "Ubah movement"} ${m.id}`} onClick={() => openMoveEdit(m)}><Pencil className="h-4 w-4" /></button>
-                            <button className="rounded-lg p-1.5 text-rose-600 hover:bg-rose-50" title={locale === "en" ? "Delete movement only (stock NOT adjusted)" : "Hapus movement saja (stok TIDAK dikoreksi)"} aria-label={`${locale === "en" ? "Delete movement" : "Hapus movement"} ${m.id}`} onClick={() => setDelMove(m)}><Trash2 className="h-4 w-4" /></button>
+                            <RowAction icon={Pencil} tone="neutral" label={locale === "en" ? "Edit movement (info only, stock untouched)" : "Ubah movement (info saja, stok tidak diubah)"} ariaLabel={`${locale === "en" ? "Edit movement" : "Ubah movement"} ${m.id}`} onClick={() => openMoveEdit(m)} />
+                            <RowAction icon={Trash2} tone="danger" label={locale === "en" ? "Delete movement only (stock NOT adjusted)" : "Hapus movement saja (stok TIDAK dikoreksi)"} ariaLabel={`${locale === "en" ? "Delete movement" : "Hapus movement"} ${m.id}`} onClick={() => setDelMove(m)} />
                           </div>
                         </td>
                       </tr>

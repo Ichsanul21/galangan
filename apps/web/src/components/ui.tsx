@@ -1611,6 +1611,7 @@ const ROW_ACTION_TONE: Record<"neutral" | "danger" | "primary" | "success", stri
 export function RowAction({
   icon: Icon,
   label,
+  ariaLabel,
   tone = "neutral",
   onClick,
   disabled = false,
@@ -1618,8 +1619,10 @@ export function RowAction({
   className = "",
 }: {
   icon: LucideIcon;
-  /** Wajib: jadi nama yang terbaca screen reader dan isi tooltip. */
+  /** Wajib: jadi isi tooltip dan (kalau `ariaLabel` kosong) nama terbaca. */
   label: string;
+  /** Nama lebih panjang untuk screen reader, mis. "Ubah movement MOV-1". */
+  ariaLabel?: string;
   tone?: keyof typeof ROW_ACTION_TONE;
   onClick: () => void;
   disabled?: boolean;
@@ -1632,7 +1635,7 @@ export function RowAction({
       type="button"
       className={`relative inline-flex shrink-0 items-center justify-center rounded-lg p-1.5 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ocean-400 focus-visible:ring-offset-1 disabled:pointer-events-none disabled:opacity-40 after:absolute after:-inset-1.5 after:content-[''] ${ROW_ACTION_TONE[tone]} ${className}`}
       title={label}
-      aria-label={label}
+      aria-label={ariaLabel ?? label}
       disabled={disabled}
       onClick={(e) => {
         if (stopPropagation) e.stopPropagation();

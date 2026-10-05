@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useParams, Link } from "react-router-dom";
-import { ArrowLeft, Ship, FileCheck2, History, Plus, Pencil, ShieldCheck, ClipboardCheck, Anchor } from "lucide-react";
+import { ArrowLeft, Ship, FileCheck2, History, Plus, Pencil, ShieldCheck, ClipboardCheck, Anchor, Trash2 } from "lucide-react";
 import {
   Card,
   PageHeader,
@@ -18,6 +18,7 @@ import {
   useBusy,
   AsyncButton,
   ConfirmModal,
+  RowAction,
 } from "../../components/ui";
 import type { SortState } from "../../components/ui";
 import SparepartServiceSection from "../proyek/SparepartServiceSection";
@@ -663,7 +664,13 @@ export default function VesselDetail() {
                               {manual.map((m) => (
                                 <p key={m.idx} className="flex flex-wrap items-center justify-between gap-2">
                                   <span>{m.type}{m.note ? ` - ${m.note}` : ""}</span>
-                                  <button className="btn-secondary text-xs" onClick={() => void busy.run(`plan-del-${m.idx}`, () => removePlan(m.idx))} disabled={busy.isBusy(`plan-del-${m.idx}`)}>{S.delBtn}</button>
+                                  <RowAction
+                                    icon={Trash2}
+                                    tone="danger"
+                                    label={`${S.delBtn} ${m.type}`}
+                                    disabled={busy.isBusy(`plan-del-${m.idx}`)}
+                                    onClick={() => void busy.run(`plan-del-${m.idx}`, () => removePlan(m.idx))}
+                                  />
                                 </p>
                               ))}
                             </td>
