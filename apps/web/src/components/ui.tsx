@@ -3,6 +3,7 @@ import { useCallback, useEffect, useId, useMemo, useRef, useState, Component, ty
 import { useT } from "../i18n/LanguageContext";
 import { statusLabel } from "../i18n/status";
 import { motion, AnimatePresence } from "framer-motion";
+import type { LucideIcon } from "lucide-react";
 import {
   ArrowDownRight,
   ArrowUpRight,
@@ -1580,7 +1581,70 @@ export function NumInput({ integer = false, allowNegative = false, onKeyDown, on
   );
 }
 
-/* ============ F I L E U P L O A D B U T T O N ============ */
+/* ============ T O M B O L   A K S I   B A R I S ============ */
+
+/** Warna tombol ikon. Satu sumber, dipakai seluruh kolom Aksi. */
+const ROW_ACTION_TONE: Record<"neutral" | "danger" | "primary" | "success", string> = {
+  neutral: "text-steel-500 hover:bg-steel-100",
+  danger: "text-rose-600 hover:bg-rose-50",
+  primary: "text-ocean-600 hover:bg-ocean-50",
+  success: "text-emerald-600 hover:bg-emerald-50",
+};
+
+/**
+ * Tombol aksi tabel tanpa teks: ikon saja, label pindah ke `title` +
+ * `aria-label`.
+ *
+ * Dua alasan bentuknya begini. Pertama, lebar: tombol teks `.btn` punya
+ * `px-3.5`, jadi "Hapus" saja sudah 66px; kotak ikon ini 28px. Di sel yang
+ * punya sembilan aksi (HR daftar cuti) itu selisihnya 594px jadi 252px, dan
+ * Finance yang 28 kolomnya yang paling diuntungkan.
+ *
+ * Kedua, target sentuh: 28px terlalu kecil untuk jari, dan ikon tunggal tidak
+ * punya lebar label yang biasanya menopang area kliknya, jadi area klik
+ * diperbesar sampai 40px dengan `after` transparan. Visual tetap 28px dan
+ * layout tidak bergeser.
+ *
+ * Baris tabel bisa diklik navigasi, jadi klik defaultnya dihentikan supaya
+ * tombol ini tidak ikut memicu navigasi baris.
+ */
+export function RowAction({
+  icon: Icon,
+  label,
+  tone = "neutral",
+  onClick,
+  disabled = false,
+  stopPropagation = true,
+  className = "",
+}: {
+  icon: LucideIcon;
+  /** Wajib: jadi nama yang terbaca screen reader dan isi tooltip. */
+  label: string;
+  tone?: keyof typeof ROW_ACTION_TONE;
+  onClick: () => void;
+  disabled?: boolean;
+  /** Set false kalau pemanggil memang mau navigasi baris ikut jalan. */
+  stopPropagation?: boolean;
+  className?: string;
+}) {
+  return (
+    <button
+      type="button"
+      className={`relative inline-flex shrink-0 items-center justify-center rounded-lg p-1.5 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ocean-400 focus-visible:ring-offset-1 disabled:pointer-events-none disabled:opacity-40 after:absolute after:-inset-1.5 after:content-[''] ${ROW_ACTION_TONE[tone]} ${className}`}
+      title={label}
+      aria-label={label}
+      disabled={disabled}
+      onClick={(e) => {
+        if (stopPropagation) e.stopPropagation();
+        onClick();
+      }}
+    >
+      <Icon className="h-4 w-4" aria-hidden="true" />
+    </button>
+  );
+}
+
+/* ============ F I L E U P L O A D   B U T T O N ============ */
 
 import { uploadFile } from "../services/upload";
 import { BASE, getJwt } from "../services/http";
