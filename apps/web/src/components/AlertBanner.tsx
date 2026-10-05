@@ -140,7 +140,6 @@ export function flashPick(
   else flash.pick(list[0] as string, index, goToPage, size);
 }
 
-const PREVIEW_N = 5;
 const RENDER_CAP = 200;
 
 /** Isi `{n}`/`{kritis}` pada kunci kamus. */
@@ -231,10 +230,14 @@ function ageDays(since: string | undefined): number | null {
   return Math.max(0, Math.round((Date.now() - t) / 86400000));
 }
 
-const LEVEL_STYLE: Record<AlertLevel, { bar: string; chip: string; dot: string; head: string; labelKey: "levelKritis" | "levelPerhatian" | "levelInfo" }> = {
-  kritis: { bar: "bg-rose-500", chip: "bg-rose-100 text-rose-800", dot: "bg-rose-500", head: "text-rose-900", labelKey: "levelKritis" },
-  perhatian: { bar: "bg-amber-500", chip: "bg-amber-100 text-amber-900", dot: "bg-amber-500", head: "text-amber-900", labelKey: "levelPerhatian" },
-  info: { bar: "bg-ocean-400", chip: "bg-ocean-50 text-ocean-800", dot: "bg-ocean-400", head: "text-ocean-800", labelKey: "levelInfo" },
+/* `icon` dan `dot` sengaja dipisah. `dot` dipakai di elemen yang punya
+   background (titik bulat, garis aksen kiri); `icon` dipakai di glyph SVG yang
+   transparan. Dulunya keduanya memakai kelas yang sama, jadi lonceng rose
+   tampil sebagai kotak merah solid di belakang ikon, bukan ikon merah. */
+const LEVEL_STYLE: Record<AlertLevel, { bar: string; chip: string; dot: string; icon: string; head: string; labelKey: "levelKritis" | "levelPerhatian" | "levelInfo" }> = {
+  kritis: { bar: "bg-rose-500", chip: "bg-rose-100 text-rose-800", dot: "bg-rose-500", icon: "text-rose-500", head: "text-rose-900", labelKey: "levelKritis" },
+  perhatian: { bar: "bg-amber-500", chip: "bg-amber-100 text-amber-900", dot: "bg-amber-500", icon: "text-amber-500", head: "text-amber-900", labelKey: "levelPerhatian" },
+  info: { bar: "bg-ocean-400", chip: "bg-ocean-50 text-ocean-800", dot: "bg-ocean-400", icon: "text-ocean-500", head: "text-ocean-800", labelKey: "levelInfo" },
 };
 
 export function AlertBannerView({
@@ -260,7 +263,10 @@ export function AlertBannerView({
   const shown = useMemo(() => visibleItems(items, dismissed), [items, dismissed.join(",")]);
   const hidden = items.length - shown.length;
 
-  const groups = useMemo(() => groupByLevel(shown, PREVIEW_N), [shown]);
+  /* Cap bawaan groupByLevel (5 item) tidak lagi dipakai di sini: tiap
+     kategori tertutup sampai diklik, jadi yang dirender sudah daftar penuh.
+     Cap utilitarian tetap ada karena alert-probe mengujinya langsung. */
+  const groups = useMemo(() => groupByLevel(shown, shown.length), [shown]);
   const counts = useMemo(() => countByLevel(shown), [shown]);
   const worst = groups[0];
 
@@ -295,7 +301,7 @@ export function AlertBannerView({
     <div className="mb-4 overflow-hidden rounded-xl border border-steel-200 bg-white">
       <div className="flex items-start gap-3 px-4 py-3">
         <span className={`mt-1 h-8 w-1 shrink-0 rounded-full ${tone.bar}`} aria-hidden="true" />
-        <Bell className={`mt-1 h-4 w-4 shrink-0 ${tone.dot}`} aria-hidden="true" />
+        <Bell className={`mt-1 h-4 w-4 shrink-0 ${tone.icon}`} aria-hidden="true" />
         <div className="min-w-0 flex-1">
           <p className="text-sm font-semibold text-navy-900">
             {fill(t.notif.summaryCounts, counts)}
@@ -308,24 +314,33 @@ export function AlertBannerView({
                 const isOpen = openLevels[g.level] === true;
                 return (
                   <div key={g.level} className="rounded-lg border border-steel-100">
-                    <div className="flex items-center gap-2 px-2.5 py-1.5">
-                      <span className={`rounded-md px-1.5 py-0.5 text-[10px] font-bold uppercase ${st.chip}`}>
-                        {t.notif[st.labelKey]}
-                      </span>
-                      <span className="text-[11px] text-steel-500">
-                        {g.total} · {t.notif.title.toLowerCase()}
-                      </span>
-                      {g.hidden > 0 && (
-                        <button
-                          className="ml-auto text-[11px] font-semibold text-ocean-600 hover:underline"
-                          onClick={() => setOpenLevels((prev) => ({ ...prev, [g.level]: true }))}
-                        >
-                          {fill(t.notif.moreHidden, { n: g.hidden })}
-                        </button>
-                      )}
+                    {/* Baris kategori = satu tombol penuh. Tertutup sampai
+                        diklik: chip + jumlah saja yang terlihat, tanpa daftar
+                        item. Dulunya `<ul>` selalu dirender dengan 5 item
+                        pertama, jadi "buka" hanya menukar pratinjau dengan
+                        daftar penuh - kelihatan selalu terbuka. */}
+                    <div className="flex items-center gap-1 pr-2">
+                      <button
+                        type="button"
+                        className="flex min-w-0 flex-1 items-center gap-2 rounded-lg px-2.5 py-1.5 text-left transition-colors hover:bg-steel-50"
+                        aria-expanded={isOpen}
+                        onClick={() => setOpenLevels((prev) => ({ ...prev, [g.level]: !prev[g.level] }))}
+                      >
+                        <span className={`shrink-0 rounded-md px-1.5 py-0.5 text-[10px] font-bold uppercase ${st.chip}`}>
+                          {t.notif[st.labelKey]}
+                        </span>
+                        <span className="min-w-0 truncate text-[11px] text-steel-500">
+                          {g.total} · {t.notif.title.toLowerCase()}
+                        </span>
+                        <ChevronDown
+                          className={`ml-auto h-3.5 w-3.5 shrink-0 text-steel-400 transition-transform duration-200 ${isOpen ? "rotate-180" : ""}`}
+                          aria-hidden="true"
+                        />
+                      </button>
                       {dismiss !== undefined && (
                         <button
-                          className={`shrink-0 rounded p-0.5 text-steel-400 hover:bg-steel-100 hover:text-steel-700 ${g.hidden > 0 ? "" : "ml-auto"}`}
+                          type="button"
+                          className="shrink-0 rounded p-0.5 text-steel-400 hover:bg-steel-100 hover:text-steel-700"
                           aria-label={fill(t.notif.dismissLevel, { level: t.notif[st.labelKey] })}
                           title={fill(t.notif.dismissLevel, { level: t.notif[st.labelKey] })}
                           onClick={() => dismiss.dismiss(g.level)}
@@ -334,15 +349,16 @@ export function AlertBannerView({
                         </button>
                       )}
                     </div>
-                    <ul className="space-y-1 px-2.5 pb-2">
-                      {(isOpen ? sortByLevel(shown.filter((i) => i.level === g.level)).slice(0, RENDER_CAP) : g.items).map((a) => (
-                        <AlertRow key={a.id} item={a} style={st} onPick={onPick} />
-                      ))}
-                    </ul>
                     {isOpen && (
                       <div className="px-2.5 pb-2">
+                        <ul className="space-y-1">
+                          {sortByLevel(shown.filter((i) => i.level === g.level)).slice(0, RENDER_CAP).map((a) => (
+                            <AlertRow key={a.id} item={a} style={st} onPick={onPick} />
+                          ))}
+                        </ul>
                         <button
-                          className="text-[11px] font-semibold text-ocean-600 hover:underline"
+                          type="button"
+                          className="mt-1 text-[11px] font-semibold text-ocean-600 hover:underline"
                           onClick={() => setOpenLevels((prev) => ({ ...prev, [g.level]: false }))}
                         >
                           {t.notif.showLess}
