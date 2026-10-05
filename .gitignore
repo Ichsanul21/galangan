@@ -11,6 +11,14 @@ summary-fitur-alur.pdf
 *.log
 .DS_Store
 
+# tools/ = skrip sekali pakai yang menulis langsung ke file source
+# (regex/pengganti baris, extract blok, pindah komponen). Sekali dipakai lalu
+# dibuang; bentuknya bukan aset proyek dan tidak boleh dipakai ulang tanpa
+# baca dulu, karena bisa menimpa kode yang sudah berubah. Kalau butuh
+# pemeriksaan yang berulang, itu probe di apps/web/scripts/ atau
+# services/api/scripts/ - keduanya punya gate dan ikut `npm run check`.
+tools/
+
 # Font PDF tidak pernah masuk repo.
 # Font berlisensi (Arial, Calibri, Segoe) tidak boleh disalin ke sini; README
 # di services/api/assets/fonts menjelaskan cara mengaktifkan embedding.
