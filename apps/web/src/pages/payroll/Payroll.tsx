@@ -14,6 +14,8 @@ import {
   StatusBadge,
   Tabs,
   sortRows,
+  SearchBox,
+  rowMatches,
   toast,
   toggleSort,
   NumInput,
@@ -308,6 +310,12 @@ export default function Payroll() {
   const pdfDoc = usePdfDoc();
   const [sort2, setSort2] = useState<SortState>({ key: null, dir: "asc" });
   const [sort3, setSort3] = useState<SortState>({ key: null, dir: "asc" });
+  /* Search per tabel (A2). Ketiga tabel di modul ini bisa panjang sebanyak
+     jumlah karyawan, dan tanpa pencarian satu-satunya cara menemukan satu
+     baris adalah menggulir. */
+  const [gajiQ, setGajiQ] = useState("");
+  const [thrQ, setThrQ] = useState("");
+  const [kasbonQ, setKasbonQ] = useState("");
 
   /* ---------- THR & bonus ---------- */
   const [bonusForm, setBonusForm] = useState({ employeeId: "", nominal: "", keterangan: "" });
@@ -343,13 +351,15 @@ export default function Payroll() {
     return c;
   };
   const gajiShown = useMemo(
-    () => (gajiStage === "Semua" ? gajiRows : gajiRows.filter((p) => String(p.status) === gajiStage)),
-    [gajiRows, gajiStage],
+    () => (gajiStage === "Semua" ? gajiRows : gajiRows.filter((p) => String(p.status) === gajiStage))
+      .filter((p) => rowMatches(p as unknown as Record<string, unknown>, gajiQ, ["id", "employeeId", "period", "status"])),
+    [gajiRows, gajiStage, gajiQ],
   );
   const thrBonusAll = useMemo(() => [...thrRows, ...bonusRows], [thrRows, bonusRows]);
   const thrShown = useMemo(
-    () => (thrStage === "Semua" ? thrBonusAll : thrBonusAll.filter((p) => String(p.status) === thrStage)),
-    [thrBonusAll, thrStage],
+    () => (thrStage === "Semua" ? thrBonusAll : thrBonusAll.filter((p) => String(p.status) === thrStage))
+      .filter((p) => rowMatches(p as unknown as Record<string, unknown>, thrQ, ["id", "employeeId", "period", "status", "note", "bonusNote"])),
+    [thrBonusAll, thrStage, thrQ],
   );
 
   const rates: PayrollRates = {
@@ -991,6 +1001,9 @@ export default function Payroll() {
                 </span>
               </div>
               <StageStrip counts={stageCounts(gajiRows)} active={gajiStage} onPick={setGajiStage} prefix="gaji" />
+              <div className="mb-2 flex justify-end">
+                <SearchBox value={gajiQ} onChange={setGajiQ} className="w-full max-w-xs" placeholder={locale === "en" ? "Search payroll..." : "Cari gaji..."} ariaLabel={locale === "en" ? "Search payroll" : "Cari gaji"} />
+              </div>
               <div className="overflow-x-auto p-2">
                 <table className="w-full">
                   <thead className="bg-surface sticky top-0 z-10">
@@ -1112,6 +1125,9 @@ export default function Payroll() {
                   <button className="btn-primary" onClick={saveBonus}>{S.btnAddBonus}</button>
                 </div>
               </Card>
+              <div className="mb-2 flex justify-end px-2">
+                <SearchBox value={thrQ} onChange={setThrQ} className="w-full max-w-xs" placeholder={locale === "en" ? "Search THR / bonus..." : "Cari THR / bonus..."} ariaLabel={locale === "en" ? "Search THR and bonus" : "Cari THR dan bonus"} />
+              </div>
               <div className="overflow-x-auto p-2">
                 <table className="w-full">
                   <thead className="bg-surface sticky top-0 z-10">
@@ -1216,6 +1232,9 @@ export default function Payroll() {
                   <button className="btn-primary" onClick={saveKasbon}>{S.btnAddKasbon}</button>
                 </div>
               </Card>
+              <div className="mb-2 flex justify-end px-2">
+                <SearchBox value={kasbonQ} onChange={setKasbonQ} className="w-full max-w-xs" placeholder={locale === "en" ? "Search installments..." : "Cari kasbon..."} ariaLabel={locale === "en" ? "Search installments" : "Cari kasbon"} />
+              </div>
               <div className="overflow-x-auto p-2">
                 <table className="w-full">
                   <thead className="bg-surface sticky top-0 z-10">
@@ -1230,7 +1249,12 @@ export default function Payroll() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-steel-100">
-                    {sortRows(activeEmps.flatMap((e) => normKasbon(e).map((k) => ({ e, k }))), sort3, (row, key) => {
+                    {sortRows(activeEmps.flatMap((e) => normKasbon(e).map((k) => ({ e, k })))
+                      .filter(({ e, k }) => rowMatches(
+                        { id: String(k.id), employee: String(e.name ?? ""), total: Number(k.jumlah || 0), remaining: Number(k.sisa || 0), installment: Number(k.cicilan || 0), date: String(k.tanggal ?? "") } as unknown as Record<string, unknown>,
+                        kasbonQ,
+                        ["id", "employee", "total", "remaining", "installment", "date"],
+                      )), sort3, (row, key) => {
                       const { e, k } = row as { e: StoreItem; k: KasbonEntry };
                       switch (key) {
                         case "emp": return String(e.name ?? "");
