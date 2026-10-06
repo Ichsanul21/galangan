@@ -47,6 +47,13 @@ export function fmtRupiah(n: number): string {
   return "Rp " + Math.round(n).toLocaleString("id-ID");
 }
 
+/** Parser pembalik fmtRupiah: "1.000.000" → 1000000. */
+export function parseRupiah(input: string): number {
+  const cleaned = String(input ?? "").replace(/[^\d]/g, "");
+  if (cleaned === "") return 0;
+  return Number(cleaned);
+}
+
 export function fmtMiliar(n: number): string {
   if (!Number.isFinite(n)) return "Rp 0 M";
   return "Rp " + (n / 1_000_000_000).toLocaleString("id-ID", { maximumFractionDigits: 1 }) + " M";
