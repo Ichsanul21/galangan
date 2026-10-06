@@ -28,6 +28,8 @@ import { useT } from "../../i18n/LanguageContext";
 import { n_prj } from "../../i18n/n_prj";
 import { fmtMiliar, sparkProjects, activeProjectTrend, contractValueTrend, avgProgressTrend } from "../../data";
 import { todayISO, fmtTanggal } from "../../utils/format";
+import { getSetting } from "../../utils/settings";
+import { generateRisksFromWbs, generateRisksFromWo } from "../../utils/riskAuto";
 import { createdAtOf, lastTouchedAt } from "../../utils/timestamps";
 import { canonPrioritas } from "../../utils/scope";
 import ProjectAddModal from "../../components/ProjectAddModal";
@@ -153,6 +155,31 @@ export default function Projects() {
             "Proyek",
           );
         });
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [projects]);
+
+  // D8: risiko otomatis dari WBS dan milestone WO saat page load.
+  // Proyek yang punya WBS tersimpan dicek; milestone yang mendekati jatuh
+  // tempo atau terlambat otomatis menjadi risiko aktif.
+  useEffect(() => {
+    const today = todayISO();
+    const msDays = getSetting(data, "ALERT_MILESTONE_DAYS", 7);
+    for (const p of projects) {
+      const hasWbs = Boolean(data.wbsByProject?.[p.id]);
+      const wos = (data.workOrders ?? []).filter((w) => w.project === p.id);
+      if (!hasWbs && wos.length === 0) continue;
+      const existing = (data.risks ?? []).filter((r) => r.project === p.id);
+      const wbsResult = hasWbs
+        ? generateRisksFromWbs(p.id, data.wbsByProject[p.id], existing, today, msDays)
+        : { add: [], close: [] };
+      const woResult = generateRisksFromWo(p.id, wos, existing, today, msDays);
+      for (const draft of [...wbsResult.add, ...woResult.add]) {
+        void add("risks", draft, { action: "risiko otomatis dari WBS/WO", module: "Proyek" }).catch(() => {});
+      }
+      for (const id of [...wbsResult.close, ...woResult.close]) {
+        void update("risks", id, { status: "Tertutup" }).catch(() => {});
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps

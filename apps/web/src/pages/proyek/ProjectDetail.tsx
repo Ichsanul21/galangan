@@ -48,6 +48,7 @@ import { canonPrioritas, scopeList } from "../../utils/scope";
 import { equipmentCostSummary } from "../../utils/projectCost";
 import { employeeOptions } from "../../utils/employeeOptions";
 import { delayDaysOf } from "../../utils/projectDelay";
+import { generateRisksFromWbs, generateRisksFromWo } from "../../utils/riskAuto";
 import { EntityPicker, SearchBox, rowMatches } from "../../components/ui";
 import { PRIORITAS } from "./Projects";
 import { TAHAP, tahapOf, hasContract, isOverdue } from "./Projects";
@@ -60,7 +61,6 @@ import { exportExcel } from "../../utils/export";
    dan merender kosong -pengguna tidak pernah melihat statusnya sendiri. */
 const STATUS = ["Sedang Berjalan", "Dalam Proses", "Tertunda", "Batal", "Selesai", "Terlambat"];
 const RISK_LEVEL = ["Rendah", "Sedang", "Tinggi"];
-const RISK_STATUS = ["Aktif", "Dipantau", "Tertutup"];
 const DESIGN_STAGE_NAMES = ["Basic Design", "Detail Design", "Class Approval", "Production Drawing"];
 const DESIGN_STATUS = ["Belum", "Diajukan", "Disetujui"];
 const CLASS_SOCIETIES = ["BKI", "ABS", "DNV", "LR", "NK"];
@@ -292,9 +292,6 @@ export default function ProjectDetail() {
   };
   const [showCo, setShowCo] = useState(false);
   const [coForm, setCoForm] = useState({ title: "", impact: "", requestedBy: "", date: "" });
-  const [showRisk, setShowRisk] = useState(false);
-  const [riskEditId, setRiskEditId] = useState<string | null>(null);
-  const [riskForm, setRiskForm] = useState({ title: "", likelihood: "Sedang", impact: "Sedang", mitigation: "", status: "Aktif" });
   const [docFile, setDocFile] = useState("");
   const [showDelBaseline, setShowDelBaseline] = useState(false);
   const [showBast, setShowBast] = useState(false);
@@ -357,6 +354,20 @@ export default function ProjectDetail() {
     const newProgress = weightedProgress(wbs);
     if (newProgress !== project.progress) {
       update("projects", project.id, { progress: newProgress });
+    }
+    // D8: risiko otomatis dari WBS dan milestone WO.
+    // Dipanggil bersamaan dengan update progres karena keduanya membaca
+    // data WBS yang sama - satu kali baca, dua kali manfaat.
+    const today = todayISO();
+    const msDays = getSetting(data, "ALERT_MILESTONE_DAYS", 7);
+    const existingRisks = data.risks.filter((r) => r.project === project.id);
+    const wbsResult = generateRisksFromWbs(project.id, wbs, existingRisks, today, msDays);
+    const woResult = generateRisksFromWo(project.id, data.workOrders.filter((w) => w.project === project.id), existingRisks, today, msDays);
+    for (const draft of [...wbsResult.add, ...woResult.add]) {
+      void add("risks", draft, { action: "risiko otomatis dari WBS/WO", module: "Proyek" }).catch(() => {});
+    }
+    for (const id of [...wbsResult.close, ...woResult.close]) {
+      void update("risks", id, { status: "Tertutup" }).catch(() => {});
     }
   }, [data.projects]);
 
@@ -498,39 +509,6 @@ const docOwnerOptions = useMemo(() => employeeOptions(data.employees), [data.emp
         status: "Aktif", branch: String(project.branch ?? ""),
       }, { action: "membuat garansi/DLP", module: "Proyek" });
       toast(S.detToastWarranty.replace("{a}", created.id));
-    } catch (e) {
-      toast(e instanceof Error ? e.message : S.saveFail, "info");
-    }
-  };
-
-  const openRiskNew = () => {
-    setRiskEditId(null);
-    setRiskForm({ title: "", likelihood: "Sedang", impact: "Sedang", mitigation: "", status: "Aktif" });
-    setShowRisk(true);
-  };
-
-  const openRiskEdit = (r: StoreItem) => {
-    setRiskEditId(String(r.id));
-    setRiskForm({ title: String(r.title ?? ""), likelihood: String(r.likelihood ?? "Sedang"), impact: String(r.impact ?? "Sedang"), mitigation: String(r.mitigation ?? ""), status: String(r.status ?? "Aktif") });
-    setShowRisk(true);
-  };
-
-  const saveRisk = async () => {
-    if (!riskForm.title.trim()) { toast(S.detToastRiskTitle, "info"); return; }
-    try {
-      if (riskEditId) {
-        await update("risks", riskEditId, { title: riskForm.title.trim(), likelihood: riskForm.likelihood, impact: riskForm.impact, mitigation: riskForm.mitigation.trim(), status: riskForm.status });
-        log("memperbarui risiko", `${riskEditId} · ${riskForm.title.trim()}`, "Proyek");
-        toast(S.detToastRiskUpd);
-      } else {
-        await add("risks", {
-          project: pid, title: riskForm.title.trim(), likelihood: riskForm.likelihood,
-          impact: riskForm.impact, mitigation: riskForm.mitigation.trim(), status: riskForm.status,
-        }, { action: "mencatat risiko", module: "Proyek" });
-        toast(S.detToastRiskAdd);
-      }
-      setShowRisk(false);
-      setRiskEditId(null);
     } catch (e) {
       toast(e instanceof Error ? e.message : S.saveFail, "info");
     }
@@ -1732,8 +1710,8 @@ const docOwnerOptions = useMemo(() => employeeOptions(data.employees), [data.emp
               <div>
                 <div className="mb-2 flex items-center justify-between">
                   <h3 className="text-sm font-semibold text-navy-900">{S.detRiskTitle.replace("{n}", String(riskList.length))}</h3>
-                  <button className="btn-secondary text-xs" onClick={openRiskNew}><Plus className="h-3.5 w-3.5" /> {S.detAddRisk}</button>
                 </div>
+                <p className="mb-2 text-xs text-steel-400">{S.detRiskAutoNote}</p>
                 <div className="mb-3 overflow-x-auto">
                   <table className="w-full text-center text-xs">
                     <thead>
@@ -1770,7 +1748,6 @@ const docOwnerOptions = useMemo(() => employeeOptions(data.employees), [data.emp
                       <div className="flex items-center gap-2">
                         <Badge tone={riskTone(riskScore(r))}>{r.likelihood} × {r.impact}</Badge>
                         <StatusBadge status={r.status} />
-                        <button className="btn-secondary text-xs" onClick={() => openRiskEdit(r)}>{S.detEditBtn}</button>
                         <button className="btn-secondary text-xs text-rose-600" onClick={() => setDelRec({ kind: "risks", row: r })}>{locale === "en" ? "Delete" : "Hapus"}</button>
                       </div>
                     </div>
@@ -1996,33 +1973,10 @@ const docOwnerOptions = useMemo(() => employeeOptions(data.employees), [data.emp
           </FormGrid>
           <Field label={S.detRequester}><input className="input" value={coForm.requestedBy} onChange={(e) => setCoForm({ ...coForm, requestedBy: e.target.value })} placeholder={S.detRequesterPh} /></Field>
         </div>
-      </Modal>
+</Modal>
 
-      {/* Modal risiko */}
-      <Modal open={showRisk} onClose={() => setShowRisk(false)} title={riskEditId ? S.detRiskEdit : S.detAddRisk} subtitle={pid}
-        footer={<><button className="btn-secondary" onClick={() => setShowRisk(false)}>{S.cancelBtn}</button><button className="btn-primary" onClick={saveRisk}>{S.saveBtn}</button></>}>
-        <div className="space-y-3">
-          <Field label={S.detRiskTitleField}><input className="input" value={riskForm.title} onChange={(e) => setRiskForm({ ...riskForm, title: e.target.value })} placeholder={S.detRiskTitlePh} /></Field>
-          <FormGrid>
-            <Field label={S.detLikelihood}>
-              <select className="input" value={riskForm.likelihood} onChange={(e) => setRiskForm({ ...riskForm, likelihood: e.target.value })}>
-                {RISK_LEVEL.map((l) => <option key={l}>{l}</option>)}
-              </select>
-            </Field>
-            <Field label={S.detImpact}>
-              <select className="input" value={riskForm.impact} onChange={(e) => setRiskForm({ ...riskForm, impact: e.target.value })}>
-                {RISK_LEVEL.map((l) => <option key={l}>{l}</option>)}
-              </select>
-            </Field>
-          </FormGrid>
-          <Field label={S.detMitigationField}><input className="input" value={riskForm.mitigation} onChange={(e) => setRiskForm({ ...riskForm, mitigation: e.target.value })} placeholder={S.detMitigationPh} /></Field>
-          <Field label={S.statusLabel}>
-            <select className="input" value={riskForm.status} onChange={(e) => setRiskForm({ ...riskForm, status: e.target.value })}>
-              {RISK_STATUS.map((s) => <option key={s}>{s}</option>)}
-            </select>
-          </Field>
-        </div>
-      </Modal>
+      {/* Modal risiko dihapus (D8): risiko kini dihasilkan otomatis dari WBS
+          dan milestone WO. Form input manual tidak diperlukan lagi. */}
 
       {/* Modal catat realisasi (R2: tombol toast-only dijadikan tulis beneran) */}
       <Modal open={showActual} onClose={() => setShowActual(false)} title={S.detActualModal}
