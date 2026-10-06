@@ -833,8 +833,38 @@ async function isApiCompatible(): Promise<boolean> {
 
 export function StoreProvider({ children }: { children: ReactNode }) {
   const [data, setData] = useState<StoreShape>(() => loadStore());
-  const [backendMode] = useState<BackendMode>(() => (isBackendConfigured() ? "remote" : "local"));
+  /* `backendMode` berarti "backend ada DAN tokennya masih hidup", bukan hanya
+     "backend terkonfigurasi". Versi lama memakai `useState(() => isBackendConfigured())`
+     yang beku: JWT tinggal di sessionStorage, yang bisa hilang TANPA remount -
+     tab yang di-restore browser, eviction di Android/iOS, atau logout di tab
+     lain. Waktu itu `remoteActive()` sudah false (tulis jatuh ke lokal) tapi
+     badge topbar tetap hijau "terhubung ke server", dan antrean offline tidak
+     pernah didorong karena tidak ada yang tahu harus mendorong.
+     Itu persis gejala "tulisan berhasil tapi tidak muncul di perangkat lain".
+     Sekarang dihitung ulang dari token yang benar-benar ada, dan disegarkan
+     saat tab regain focus / storage berubah / tab jadi terlihat. */
+  const [remoteLive, setRemoteLive] = useState<boolean>(() => isBackendConfigured() && getJwt() !== null);
+  const backendMode: BackendMode = remoteLive ? "remote" : "local";
   const [backendError, setBackendError] = useState<string | null>(null);
+  /* Sesi bisa hilang atau kembali tanpa remount: login di tab lain, logout,
+     token kedaluwarsa lalu di-refresh. Backend tidak memberi tahu, jadi kita
+     yangVIDE|mListen ke sinyal yang menandai saatnya menilai ulang.
+     `storage` tidak menyala di tab yang mengubahnya sendiri - itu sebabnya
+     `focus` dan `visibilitychange` ikut dipasang, karena keduanya menyala
+     setiap kali pengguna kembali ke tab, dan itu justru kasus yang dilaporkan. */
+  useEffect(() => {
+    const recheck = (): void => {
+      setRemoteLive(isBackendConfigured() && getJwt() !== null);
+    };
+    window.addEventListener("focus", recheck);
+    window.addEventListener("storage", recheck);
+    document.addEventListener("visibilitychange", recheck);
+    return () => {
+      window.removeEventListener("focus", recheck);
+      window.removeEventListener("storage", recheck);
+      document.removeEventListener("visibilitychange", recheck);
+    };
+  }, []);
   /* Alasan fallback yang terakhir di-toast. Menyimpan STRING (bukan boolean)
    supaya notifikasi yang sama tidak diulang setiap penulisan, tapi alasan
    BERBEDA tetap sampai ke pengguna. Versi boolean sebelumnya membuat
@@ -1405,7 +1435,15 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   }, [resync]);
 
   useEffect(() => {
-    if (backendMode !== "remote") return;
+    /* Guard mode TIDAK lagi menghentikan pemasangan listener. Dulu
+       `if (backendMode !== "remote") return;` di baris pertama berarti: sesi
+       dibuka saat token sudah hilang -> listener tidak pernah terpasang, dan
+       karena `backendMode` beku, efek ini juga tidak pernah jalan lagi.
+       Login di tengah sesi tidak memulai apa pun - persis gejala "harus
+       login ulang" yang dilaporkan.
+       Sekarang listener selalu terpasang; `fireAndForget` sendiri yang menolak
+       saat mode bukan remote, jadi tidak ada request sia-sia dan tidak ada
+       keadaan "menunggu listener yang tidak pernah datang". */
     /* BUG "HARUS LOGIN ULANG": versi lama memulai efek ini dengan
        `if (dirtyRef.current.size === 0) return`. Effect hanya jalan SEKALI
        per mount (deps stabil), jadi pada sesi yang dimulai dengan antrean
@@ -1418,6 +1456,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
        didorong" tetap dilakukan di dalam interval dan sebelum boot push, jadi
        tidak ada biaya sia-sia. */
     const fireAndForget = () => {
+      if (backendMode !== "remote") return;
       if (dirtyRef.current.size === 0) return;
       void pushPending().catch((err: unknown) => {
         console.warn("[store] pushPending gagal, akan dicoba lagi", err);
@@ -1486,6 +1525,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       }
       if (err instanceof ApiError && err.status === 401) {
         setBackendError("Sesi berakhir - login ulang; perubahan ditahan untuk sinkronisasi");
+        /* 401 = token hilang atau expired. Mode ikut turun ke "local" supaya badge
+           tidak tetap hijau dan pushPending tahu tidak ada yang bisa
+           diteruskan. Antrean tetap aman di IndexedDB. */
+        setRemoteLive(false);
         if (fallbackToasted.current !== "401") {
           fallbackToasted.current = "401";
           notifyStore("Sesi berakhir - login ulang. Perubahan ditahan untuk sinkronisasi.");
