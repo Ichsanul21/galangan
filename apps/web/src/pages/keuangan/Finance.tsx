@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, type ReactElement } from "react";
-import { Wallet, ArrowDownToLine, FileText, Receipt, TrendingUp, Plus, Trash2 } from "lucide-react";
+import { Wallet, ArrowDownToLine, FileText, Receipt, TrendingUp, Plus, Trash2, Pencil, Eye, Boxes, Ban } from "lucide-react";
 import { openFileUrl } from "../../services/files";
 import { pdfServerReady } from "../../services/pdfClient";
 import { usePdfDoc } from "../../components/usePdfDoc";
@@ -40,6 +40,7 @@ import {
   toast,
   NumInput, AsyncButton, SecureImg, FileUploadButton,
   SearchBox, rowMatches,
+  RowAction,
 } from "../../components/ui";
 import type { SortState } from "../../components/ui";
 import { useBusy } from "../../components/ui";
@@ -2828,9 +2829,9 @@ const { data, add, update, remove, log, branch, inBranch } = useStore();
                                 <td className="td text-xs text-steel-500">{String(c.nrlr)}</td>
                                 <td className="td">
                                   <div className="flex gap-1.5">
-                                    <button className="btn-secondary px-2 py-1 text-[11px]" onClick={() => { setCoaTarget(c); setCoaForm({ kode: String(c.kode), nama: String(c.nama), dk: String(c.dk) === "-" ? "D" : String(c.dk), nrlr: String(c.nrlr) === "-" ? "NR" : String(c.nrlr) }); setShowCoa(true); }}>{S.editBtn}</button>
+                                    <RowAction icon={Pencil} tone="neutral" label={S.editBtn} ariaLabel={`${S.editBtn} ${String(c.kode)}`} onClick={() => { setCoaTarget(c); setCoaForm({ kode: String(c.kode), nama: String(c.nama), dk: String(c.dk) === "-" ? "D" : String(c.dk), nrlr: String(c.nrlr) === "-" ? "NR" : String(c.nrlr) }); setShowCoa(true); }} />
                                     {!header && (
-                                      <button className="btn-secondary px-2 py-1 text-[11px] text-rose-600" onClick={() => setDelCoa(c)}>{S.deleteBtn}</button>
+                                      <RowAction icon={Trash2} tone="danger" label={S.deleteBtn} ariaLabel={`${S.deleteBtn} ${String(c.kode)}`} onClick={() => setDelCoa(c)} />
                                     )}
                                   </div>
                                 </td>
@@ -3069,10 +3070,14 @@ const { data, add, update, remove, log, branch, inBranch } = useStore();
                           <div className="flex flex-wrap gap-1.5">
                             {a.st !== "Lunas" && (
                               <>
-                                <button className="btn-secondary text-xs" onClick={() => { setApTarget(a); setProof(emptyProof()); setProofImg(""); setApPayAmt(String(Math.max(0, num(a.amt) - num(a.pay1) - num(a.pay2)))); }}>
-                                  {S.payStage.replace("{a}", num(a.pay1) ? " II" : " I")}
-                                </button>
-                                <button className="btn-secondary text-xs" onClick={() => {
+                                <RowAction
+                                  icon={Wallet}
+                                  tone="success"
+                                  label={S.payStage.replace("{a}", num(a.pay1) ? " II" : " I")}
+                                  ariaLabel={`${S.payStage.replace("{a}", num(a.pay1) ? " II" : " I")} ${String(a.po)}`}
+                                  onClick={() => { setApTarget(a); setProof(emptyProof()); setProofImg(""); setApPayAmt(String(Math.max(0, num(a.amt) - num(a.pay1) - num(a.pay2)))); }}
+                                />
+                                <RowAction icon={Pencil} tone="neutral" label={S.editBtn} ariaLabel={`${S.editBtn} ${String(a.v)}`} onClick={() => {
                                   setApEdit(a);
                                   setApEditForm({
                                     v: String(a.v ?? ""), kodePembantu: String(a.kodePembantu ?? a.v ?? ""),
@@ -3080,7 +3085,7 @@ const { data, add, update, remove, log, branch, inBranch } = useStore();
                                     due: String(a.due ?? ""), nonPpn: String(a.pph ?? "") === "Non-PPn",
                                     vessel: String(a.vessel ?? ""), item: String(a.item ?? ""),
                                   });
-                                }}>{S.editBtn}</button>
+                                }} />
                               </>
                             )}
                           </div>
@@ -3412,17 +3417,18 @@ const { data, add, update, remove, log, branch, inBranch } = useStore();
                         <td className="td text-xs text-steel-600">{lastTouchedAt(inv) !== null ? fmtTanggal(lastTouchedAt(inv)) : <span className="text-steel-400">-</span>}</td>
                         <td className="td">
                           <div className="flex flex-wrap gap-1">
-                            <button type="button" className="btn-secondary px-2 py-1 text-[11px]" onClick={() => setInvDetail(inv)}>{S.detBtn}</button>
+                            <RowAction icon={Eye} tone="neutral" label={S.detBtn} ariaLabel={`${S.detBtn} ${String(inv.id)}`} onClick={() => setInvDetail(inv)} />
                             {/* Ubah invoice: modal edit SUDAH ada (dipakai tab
-                                Piutang AR) tapi hanya TER Wiring dari tabel
+                                Piutang AR) tapi hanya TER wiring dari tabel
                                 Piutang dan hanya untuk status Draft/Ditolak.
                                 Tab Invoice sendiri tidak punya jalan ke sana,
                                 jadi invoice salah tanggal/pelanggan di sini
                                 tidak bisa dikoreksi. */}
-                            <button
-                              type="button"
-                              className="btn-secondary px-2 py-1 text-[11px]"
-                              title={S.editLockedNote}
+                            <RowAction
+                              icon={Pencil}
+                              tone="neutral"
+                              label={S.editBtn}
+                              ariaLabel={`${S.editBtn} ${String(inv.id)}`}
                               onClick={() => {
                                 setInvEdit(inv);
                                 setInvEditForm({
@@ -3435,9 +3441,7 @@ const { data, add, update, remove, log, branch, inBranch } = useStore();
                                   noFaktur: String(inv.noFaktur ?? ""),
                                 });
                               }}
-                            >
-                              {S.editBtn}
-                            </button>
+                            />
                             {/* Hapus invoice: TIDAK ADA sama sekali di modul ini
                                 walau tabel Invoice menampilkan semua invoice
                                 setiap hari. Invoice yang salah input (test,
@@ -3445,14 +3449,13 @@ const { data, add, update, remove, log, branch, inBranch } = useStore();
                                 lewat adjustment - tidak bisa dihapus.
                                 Backend memblokir bila invoice sudah jadi acuan
                                 payables.invoice / sudah Lunas. */}
-                            <button
-                              type="button"
-                              className="btn-secondary px-2 py-1 text-[11px] text-rose-600"
-                              aria-label={`${S.deleteBtn} ${String(inv.id)}`}
+                            <RowAction
+                              icon={Trash2}
+                              tone="danger"
+                              label={S.deleteBtn}
+                              ariaLabel={`${S.deleteBtn} ${String(inv.id)}`}
                               onClick={() => setDelInvoice(inv)}
-                            >
-                              {S.deleteBtn}
-                            </button>
+                            />
                           </div>
                         </td>
                       </tr>
@@ -3725,7 +3728,7 @@ const { data, add, update, remove, log, branch, inBranch } = useStore();
                           <td className="td text-xs text-steel-600">{String(p.period ?? "")}</td>
                           <td className="td text-xs font-semibold">{fmtRupiah(payNet(p))}</td>
                           <td className="td text-xs text-steel-600">{p.allocProject ? `${p.allocProject} · ${p.allocPct}%` : S.unallocatedCell}</td>
-                          <td className="td"><button className="btn-secondary px-2 py-1 text-[11px]" onClick={() => { setAllocTarget(p); setAllocForm({ project: String(p.allocProject ?? profitPid), pct: String(p.allocPct ?? 100) }); }}>{S.colAlokasi}</button></td>
+                          <td className="td"><RowAction icon={Boxes} tone="primary" label={S.colAlokasi} ariaLabel={`${S.colAlokasi} ${String(p.id)}`} onClick={() => { setAllocTarget(p); setAllocForm({ project: String(p.allocProject ?? profitPid), pct: String(p.allocPct ?? 100) }); }} /></td>
                         </tr>
                       ))}
                     </tbody>
@@ -4128,8 +4131,8 @@ const { data, add, update, remove, log, branch, inBranch } = useStore();
                         <td className="td">
                           {!seed && (
                             <div className="flex gap-1">
-                              <button className="btn-secondary px-2 py-1 text-[11px]" onClick={() => openAstEdit(a)}>{S.editBtn}</button>
-                              <button className="btn-secondary px-2 py-1 text-[11px] text-rose-600" onClick={() => setDelAsset(a)}>{S.deleteBtn}</button>
+                              <RowAction icon={Pencil} tone="neutral" label={S.editBtn} ariaLabel={`${S.editBtn} ${String(a.id ?? a.nama ?? "")}`} onClick={() => openAstEdit(a)} />
+                              <RowAction icon={Trash2} tone="danger" label={S.deleteBtn} ariaLabel={`${S.deleteBtn} ${String(a.id ?? a.nama ?? "")}`} onClick={() => setDelAsset(a)} />
                             </div>
                           )}
                         </td>
@@ -4191,7 +4194,7 @@ const { data, add, update, remove, log, branch, inBranch } = useStore();
                         </td>
                         <td className="td">
                           {String(j.status) !== "Void" && (
-                            <button className="btn-secondary px-2 py-1 text-[11px] text-rose-600" disabled={busy.isBusy(`voidJu-${j.id}`)} onClick={() => void busy.run(`voidJu-${j.id}`, async () => { try { await update("journals", String(j.id), { status: "Void" }); log("mem-void jurnal", String(j.id), "Keuangan"); toast(S.voided.replace("{a}", String(j.id))); } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); } })}>{S.voidBtn}</button>
+                            <RowAction icon={Ban} tone="danger" label={S.voidBtn} ariaLabel={`${S.voidBtn} ${String(j.id)}`} disabled={busy.isBusy(`voidJu-${j.id}`)} onClick={() => void busy.run(`voidJu-${j.id}`, async () => { try { await update("journals", String(j.id), { status: "Void" }); log("mem-void jurnal", String(j.id), "Keuangan"); toast(S.voided.replace("{a}", String(j.id))); } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); } })} />
                           )}
                           {/*
                             Tombol hapus jurnal sengaja DIHAPUS: hanya muncul untuk

@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { bucketByMonth, monthAxis, rebindLegacyMonthSeries } from "../../utils/monthAxis";
 import type { ReactNode } from "react";
 import { Link } from "react-router-dom";
-import { Plus, Cpu, Pencil, Trash2, Wrench, AlertTriangle, Gauge, CheckCircle2, Download } from "lucide-react";
+import { Plus, Cpu, Pencil, Trash2, Wrench, AlertTriangle, Gauge, CheckCircle2, Download, History as HistoryIcon } from "lucide-react";
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 import { Card, CardHeader, PageHeader, Badge, KpiCard, Tabs, ProgressBar, ChartTooltip, RadialGauge, Modal, Field, FormGrid, EmptyState, ConfirmModal, StatusBadge, toast, SortTh, toggleSort, sortRows, usePager,
   NumInput, AsyncButton,
@@ -2073,27 +2073,17 @@ export default function EquipmentPage() {
                             {/* Kolom Aksi: Ubah / Riwayat / Hapus - inilah
                                 pengganti tombol "Catat Servis" tunggal yang
                                 dulu tidak bisa mengoreksi hasil servis. */}
-                            <button
-                              className="btn-secondary text-xs"
-                              onClick={() => openMaintEdit(r.raw)}
-                              title={r.status === "Selesai"
+                            <RowAction
+                              icon={Pencil}
+                              tone="neutral"
+                              label={r.status === "Selesai"
                                 ? (locale === "en" ? "Adjust materials - stock synced by delta" : "Koreksi material - stok disesuaikan by delta")
                                 : (locale === "en" ? "Edit schedule" : "Ubah jadwal")}
-                            >
-                              {S.eqEdit}
-                            </button>
-                            <button
-                              className="btn-secondary text-xs"
-                              onClick={() => setHistOf(r.raw)}
-                            >
-                              {S.eqHistory}
-                            </button>
-                            <button
-                              className="btn-secondary text-xs text-rose-600"
-                              onClick={() => setDelMaint(r.raw)}
-                            >
-                              {S.delBtn}
-                            </button>
+                              ariaLabel={`${S.eqEdit} ${String(r.raw.id ?? r.raw.equipmentId ?? "")}`}
+                              onClick={() => openMaintEdit(r.raw)}
+                            />
+                            <RowAction icon={HistoryIcon} tone="neutral" label={S.eqHistory} ariaLabel={`${S.eqHistory} ${String(r.raw.id ?? r.raw.equipmentId ?? "")}`} onClick={() => setHistOf(r.raw)} />
+                            <RowAction icon={Trash2} tone="danger" label={S.delBtn} ariaLabel={`${S.delBtn} ${String(r.raw.id ?? r.raw.equipmentId ?? "")}`} onClick={() => setDelMaint(r.raw)} />
                           </div>
                         </td>
                       </tr>

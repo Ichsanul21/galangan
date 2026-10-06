@@ -1293,16 +1293,15 @@ const printSpk = async (w: StoreItem): Promise<void> => {
                                 kwitansi saat itu akan bertanggal dengan angka yang
                                 belum final. */}
                             {normTerm(String(p.status)) === "Lunas" && (
-                              <button
-                                className="btn-secondary text-xs"
-                                aria-label={`${locale === "en" ? "Print receipt" : "Cetak kwitansi"} ${p.id}`}
-                                title={locale === "en"
+                              <RowAction
+                                icon={Receipt}
+                                tone="neutral"
+                                label={locale === "en"
                                   ? "Settlement statement with the PPh, retention, and penalty breakdown"
                                   : "Kuitansi dengan rincian PPh, retensi, dan denda"}
+                                ariaLabel={`${locale === "en" ? "Print receipt" : "Cetak kwitansi"} ${p.id}`}
                                 onClick={() => void printKwitansi(p)}
-                              >
-                                <Receipt className="h-3.5 w-3.5" /> {locale === "en" ? "Receipt" : "Kwitansi"}
-                              </button>
+                              />
                             )}
                             {normTerm(String(p.status)) === "Draf" && (
                               <>

@@ -5,11 +5,11 @@ import { n_prj } from "../../i18n/n_prj";
 import { useAuth, canSetTarget } from "../../auth/auth";
 import { Card, Modal, Field, FormGrid, toast, EmptyState, StatusBadge, Badge, SortTh, toggleSort, sortRows, ConfirmModal,
   NumInput, AsyncButton, FlowStrip, FileUploadButton,
-  useBusy, SearchBox, rowMatches,
+  useBusy, SearchBox, rowMatches, RowAction,
 } from "../../components/ui";
 import type { SortState } from "../../components/ui";
 import { findUsages } from "../../utils/usages";
-import { Plus, FileDown } from "lucide-react";
+import { Plus, FileDown, Pencil, Trash2, History } from "lucide-react";
 import { exportExcel, fmtRupiah } from "../../utils/export";
 import { DocumentPreviewCell, InlineDocPreview, type PreviewDoc } from "../../components/DocumentPreview";
 import { docAttachment, looksLikeUrl } from "../../utils/docAttachment";
@@ -434,41 +434,22 @@ export default function BoQSection({ projectId }: Props) {
                             diubah, ATAU dihapus (hanya Draft boleh Hapus).
                             Sekarang bisa_pending->Pending (Ajukan ulang) atau ->Draft. */}
                         {b.status === "Rejected" && (
-                          <button
-                            aria-label={`${locale === "en" ? "Edit" : "Ubah"} ${b.name}`}
-                            className="rounded bg-ocean-100 px-2 py-0.5 text-xs font-semibold text-ocean-700 transition-colors hover:bg-ocean-200"
-                            onClick={() => openEdit(b)}
-                          >
-                            {locale === "en" ? "Edit" : "Ubah"}
-                          </button>
+                          <RowAction icon={Pencil} tone="primary" label={locale === "en" ? "Edit" : "Ubah"} ariaLabel={`${locale === "en" ? "Edit" : "Ubah"} ${b.name}`} onClick={() => openEdit(b)} />
                         )}
-                        <button
-                          aria-label={S.boqReviseAria.replace("{a}", b.name)}
-                          className="rounded bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-700 transition-colors hover:bg-amber-200"
-                          title={REVISI_LOCKED.includes(String(b.status))
+                        <RowAction
+                          icon={History}
+                          tone={REVISI_LOCKED.includes(String(b.status)) ? "neutral" : "primary"}
+                          label={REVISI_LOCKED.includes(String(b.status))
                             ? (locale === "en" ? "Locked: needs approver role" : "Terkunci: butuh peran penyetuju")
-                            : undefined}
+                            : S.boqRevise}
+                          ariaLabel={S.boqReviseAria.replace("{a}", b.name)}
                           onClick={() => { setRevisiFor(b); setRevisiPrice(String(b.unitPrice)); setRevisiReason(""); }}
-                        >
-                          {S.boqRevise}
-                        </button>
+                        />
                         {(b.status === "Draft" || b.status === "Pending") && (
-                          <button
-                            aria-label={`${locale === "en" ? "Edit" : "Ubah"} ${b.name}`}
-                            className="rounded bg-ocean-100 px-2 py-0.5 text-xs font-semibold text-ocean-700 transition-colors hover:bg-ocean-200"
-                            onClick={() => openEdit(b)}
-                          >
-                            {locale === "en" ? "Edit" : "Ubah"}
-                          </button>
+                          <RowAction icon={Pencil} tone="primary" label={locale === "en" ? "Edit" : "Ubah"} ariaLabel={`${locale === "en" ? "Edit" : "Ubah"} ${b.name}`} onClick={() => openEdit(b)} />
                         )}
                         {b.status === "Draft" && (
-                          <button
-                            aria-label={`${locale === "en" ? "Delete" : "Hapus"} ${b.name}`}
-                            className="rounded bg-rose-100 px-2 py-0.5 text-xs font-semibold text-rose-700 transition-colors hover:bg-rose-200"
-                            onClick={() => setDelBoq(b)}
-                          >
-                            {locale === "en" ? "Delete" : "Hapus"}
-                          </button>
+                          <RowAction icon={Trash2} tone="danger" label={locale === "en" ? "Delete" : "Hapus"} ariaLabel={`${locale === "en" ? "Delete" : "Hapus"} ${b.name}`} onClick={() => setDelBoq(b)} />
                         )}
                         <button
                           className="rounded bg-steel-100 px-2 py-0.5 text-xs font-semibold text-steel-600 transition-colors hover:bg-steel-200"
