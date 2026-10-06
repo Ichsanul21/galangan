@@ -61,9 +61,6 @@ import { exportExcel } from "../../utils/export";
    dan merender kosong -pengguna tidak pernah melihat statusnya sendiri. */
 const STATUS = ["Sedang Berjalan", "Dalam Proses", "Tertunda", "Batal", "Selesai", "Terlambat"];
 const RISK_LEVEL = ["Rendah", "Sedang", "Tinggi"];
-const DESIGN_STAGE_NAMES = ["Basic Design", "Detail Design", "Class Approval", "Production Drawing"];
-const DESIGN_STATUS = ["Belum", "Diajukan", "Disetujui"];
-const CLASS_SOCIETIES = ["BKI", "ABS", "DNV", "LR", "NK"];
 const STATIONS = ["Cutting", "Bending", "Welding", "Panel", "Block", "Erection", "Alignment", "Launching"];
 
 type WbsExt = WbsItem & { predecessor?: string };
@@ -272,11 +269,19 @@ const confirmStatus = async () => {
     if (!to) { setTahapMove(null); return; }
     if (tahapMove.dir === 1) {
       const from = TAHAP[idx];
-      if (from === "Desain" && to === "Produksi") {
-        const stages = (project.designStages ?? []) as { name: string; status: string }[];
-        const ca = stages.find((s) => s.name === "Class Approval");
-        if (!ca || ca.status !== "Disetujui") { toast(S.detToastGate, "info"); return; }
-      }
+if (from === "Desain" && to === "Produksi") {
+          /* D1: gate Class Approval pindah ke Documents. Cek apakah ada
+             dokumen tipe Sertifikat + subType "Sertifikat Kelas" yang sudah
+             Disetujui untuk proyek ini. Fallback ke designStages lama untuk
+             data proyek yang belum punya dokumen Class Approval. */
+          const classDoc = data.documents.find(
+            (d) => d.project === pid && d.type === "Sertifikat" && d.subType === "Sertifikat Kelas" && d.status === "Disetujui",
+          );
+          const stages = (project.designStages ?? []) as { name: string; status: string }[];
+          const ca = stages.find((s) => s.name === "Class Approval");
+          const approved = Boolean(classDoc) || ca?.status === "Disetujui";
+          if (!approved) { toast(S.detToastGate, "info"); return; }
+        }
       // Gate kontrak: tahap awal dikunci bila proyek hasil konversi belum punya kontrak.
       if (idx <= 2 && project.quotationId && !hasContract(project, data.contracts ?? [])) {
         toast(`Tahap ${from} dikunci - buat kontrak untuk quotation ${project.quotationId} dulu`, "info");
@@ -758,23 +763,36 @@ const docOwnerOptions = useMemo(() => employeeOptions(data.employees), [data.emp
   };
 
   // E1: sub-stage desain + class approval, tersimpan di project.designStages.
+  // D1: blok edit dihapus; data tetap ada di store untuk backward compat.
+  // Gate kini membaca dokumen Sertifikat Kelas + fallback ke designStages.
   const designStages = (project.designStages ?? []) as { name: string; status: string; society: string; date: string; doc: string }[];
   const classApproval = designStages.find((s) => s.name === "Class Approval");
 
-  const saveDesignStage = async (name: string, patch: Record<string, string>) => {
-    const current = DESIGN_STAGE_NAMES.map((n) => {
-      const found = designStages.find((s) => s.name === n);
-      return found ?? { name: n, status: "Belum", society: "BKI", date: "", doc: "" };
-    });
-    const next = current.map((s) => (s.name === name ? { ...s, ...patch } : s));
-    try {
-      await update("projects", pid, { designStages: next });
-      log("memperbarui sub-stage desain", `${pid} · ${name}`, "Proyek");
-      toast(S.detToastStageUpd.replace("{a}", name));
-    } catch (e) {
-      toast(e instanceof Error ? e.message : S.saveFail, "info");
-    }
-  };
+  // D1: Class Approved = ada dokumen Sertifikat Kelas yang Disetujui,
+  // ATAU designStages lama yang statusnya Disetujui (backward compat).
+  const classDocApproved = data.documents.some(
+    (d) => d.project === pid && d.type === "Sertifikat" && d.subType === "Sertifikat Kelas" && d.status === "Disetujui",
+  );
+  const classApproved = classDocApproved || classApproval?.status === "Disetujui";
+
+  // D1: baris tabel Log Penawaran dan Tagihan.
+  // Sumber: quotation terkait project, contract terkait project, invoices.
+  interface LogRow { kind: "Penawaran" | "Kontrak" | "Tagihan"; id: string; date: string; ref: string; value: number; status: string; }
+  const quotation = data.quotations.find((q) => q.id === project.quotationId);
+  const contractsForProject = (data.contracts ?? []).filter(
+    (c) => (project.quotationId && String(c.quotationId ?? "") === String(project.quotationId)) || String(c.projectId ?? "") === pid,
+  );
+  const logRows: LogRow[] = [
+    ...(quotation ? [{ kind: "Penawaran" as const, id: String(quotation.id), date: String(quotation.date ?? ""), ref: String(quotation.id), value: Number(quotation.value ?? 0), status: String(quotation.stage ?? "Draft") }] : []),
+    ...contractsForProject.map((c) => ({ kind: "Kontrak" as const, id: String(c.id), date: String(c.signedAt ?? ""), ref: String(c.id), value: Number(c.value ?? 0), status: String(c.status ?? "Aktif") })),
+    ...invoices.map((i) => ({ kind: "Tagihan" as const, id: String(i.id), date: String(i.due ?? i.date ?? ""), ref: String(i.id), value: Number(i.grandTotal ?? i.amount ?? 0), status: String(i.status ?? "Draft") })),
+  ].sort((a, b) => String(a.date).localeCompare(String(b.date)));
+
+  /* saveDesignStage dihapus (D1): blok edit Desain & Class Approval sudah
+     diganti dengan tabel Log Penawaran dan Tagihan. Class Approval kini
+     diproses di modul Dokumen (tipe Sertifikat, subType Sertifikat Kelas).
+     Data designStages lama tetap ada di store untuk backward compat dan
+     masih dibaca sebagai fallback gate tahap. */
 
   // E4: trials (sea trial / commissioning) per proyek.
   const trialList = (data.trials ?? []).filter((t) => t.projectId === pid);
@@ -1042,29 +1060,42 @@ const docOwnerOptions = useMemo(() => employeeOptions(data.employees), [data.emp
                 </ul>
                 <div className="mt-6">
                   <div className="mb-2 flex items-center justify-between">
-                    <h3 className="text-sm font-semibold text-navy-900">{S.detDesignTitle}</h3>
-                    {classApproval?.status === "Disetujui"
+                    <h3 className="text-sm font-semibold text-navy-900">{S.detLogTitle}</h3>
+                    {classApproved
                       ? <Badge tone="green">{S.detClassOk}</Badge>
-                      : <Badge tone="amber">{S.detClassPending.replace("{a}", classApproval?.status ?? "Belum")}</Badge>}
+                      : <Badge tone="amber">{S.detClassPending.replace("{a}", "Belum")}</Badge>}
                   </div>
-                  <p className="mb-2 text-xs text-steel-500">{S.detDesignGate}</p>
-                  <div className="space-y-2">
-                    {DESIGN_STAGE_NAMES.map((name) => {
-                      const st = designStages.find((s) => s.name === name) ?? { name, status: "Belum", society: "BKI", date: "", doc: "" };
-                      return (
-                        <div key={name} className="flex flex-wrap items-center gap-2 rounded-xl border border-steel-100 p-2.5 text-sm">
-                          <span className="min-w-36 flex-1 font-medium text-navy-900">{name}</span>
-                          <select className="input w-auto py-1 text-xs" value={st.status} onChange={(e) => saveDesignStage(name, { status: e.target.value })} aria-label={S.detStatusAria.replace("{a}", name)}>
-                            {DESIGN_STATUS.map((s) => <option key={s}>{s}</option>)}
-                          </select>
-                          <select className="input w-auto py-1 text-xs" value={st.society || "BKI"} onChange={(e) => saveDesignStage(name, { society: e.target.value })} aria-label={S.detSocietyAria.replace("{a}", name)}>
-                            {CLASS_SOCIETIES.map((s) => <option key={s}>{s}</option>)}
-                          </select>
-                          <input type="date" className="input w-auto py-1 text-xs" value={st.date || ""} onChange={(e) => saveDesignStage(name, { date: e.target.value })} aria-label={S.detDateAria.replace("{a}", name)} />
-                          <input className="input w-36 py-1 text-xs" value={st.doc || ""} onChange={(e) => saveDesignStage(name, { doc: e.target.value })} placeholder={S.detDocNoPh} aria-label={S.detDocAria.replace("{a}", name)} />
-                        </div>
-                      );
-                    })}
+                  <p className="mb-2 text-xs text-steel-500">{S.detLogSubtitle}</p>
+                  <div className="overflow-x-auto">
+                    <table className="w-full">
+                      <thead className="bg-surface sticky top-0 z-10">
+                        <tr>
+                          <th className="th">{S.detLogNo}</th>
+                          <th className="th">{S.detLogDate}</th>
+                          <th className="th">{S.detLogType}</th>
+                          <th className="th">{S.detLogRef}</th>
+                          <th className="th text-right">{S.detLogValue}</th>
+                          <th className="th">{S.detLogStatus}</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-steel-100">
+                        {logRows.length === 0 && (
+                          <tr><td colSpan={6} className="td text-center text-steel-400">{S.detLogEmpty}</td></tr>
+                        )}
+                        {logRows.map((row, idx) => (
+                          <tr key={`${row.kind}-${row.id}-${idx}`} className="hover:bg-surface">
+                            <td className="td font-mono text-xs text-steel-500">{idx + 1}</td>
+                            <td className="td text-xs text-steel-600">{fmtTanggal(row.date)}</td>
+                            <td className="td text-xs">
+                              <Badge tone={row.kind === "Penawaran" ? "navy" : row.kind === "Kontrak" ? "teal" : "amber"}>{row.kind}</Badge>
+                            </td>
+                            <td className="td font-mono text-xs font-semibold text-navy-900">{row.ref}</td>
+                            <td className="td text-right text-xs font-semibold">{row.value > 0 ? fmtRupiah(row.value) : "-"}</td>
+                            <td className="td"><StatusBadge status={row.status} /></td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
                   </div>
                 </div>
                 <div className="mt-6">
