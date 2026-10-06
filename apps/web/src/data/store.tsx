@@ -898,6 +898,27 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const pushingRef = useRef(false);
   /* Posisi jendela baris per koleksi untuk pushPending (lihat pushPending). */
   const pushCursorRef = useRef<Map<string, number>>(new Map());
+  /* Baris racun: jumlah percobaan push per `koleksi:id`. Setelah
+     PUSH_MAX_ATTEMPTS kali, baris menyerah dan tidak dicoba lagi. Tanpa ini
+     satu baris yang selalu ditolak membekukan seluruh koleksi (cursor tidak
+     pernah maju) dan request yang sama diulang tiap 45 detik selamanya.
+     `pushGiveUpRef` menyimpan yang sudah menyerah supaya tidak dihitung lagi
+     dan tidak ikut menahan penanda dirty. */
+  const pushAttemptsRef = useRef<Map<string, number>>(new Map());
+  const pushGiveUpRef = useRef<Set<string>>(new Set());
+  /* Rotasi koleksi: indeks koleksi mana yang dilayani duluan pada run ini.
+     Dipakai supaya budget yang habis tidak selalu jatuh ke koleksi yang sama
+     dan tidak menyebabkan koleksi lain kelaparan. */
+  const pushColCursorRef = useRef<number>(0);
+  /* Trigger yang datang saat push sedang berjalan tidak boleh dibuang.
+     Versi lama `if (pushingRef.current) return` membuat edit yang masuk
+     di tengah push hilang tanpa jejak sampai run 45 detik berikutnya - dan
+     kalau tidak ada interval (mis. tab tidak pernah regain focus), tidak
+     pernah terkirim sama sekali. */
+  const pushAgainRef = useRef<boolean>(false);
+  /* Menunjuk fungsi push yang sedang didefinisikan, supaya blok `finally`
+     bisa menjadwalkan run lanjutan tanpa memanggil useCallback-nya sendiri. */
+  const pushPendingRef = useRef<(() => Promise<void>) | null>(null);
 
   const markDirty = useCallback((col: string) => {
     if (!isBackendConfigured()) return;
@@ -1198,7 +1219,15 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         dari dirty. Sekarang dipotong dan sisanya dilanjutkan run berikutnya.
      2) Snapshot tombstone per run: id yang masuk SETELAH run dimulai tidak
         ikut dihapus, jadi DELETE baru tidak hilang. */
-  const PUSH_ROWS_PER_RUN = 200;
+const PUSH_ROWS_PER_RUN = 200;
+/* Budget request tulis untuk SELURUH run, bukan per koleksi. WRITE_LIMIT di
+   server adalah 300 per menit; 250 memberi ruang untuk request lain dan retry
+   tanpa memicu 429. */
+const PUSH_BUDGET_PER_RUN = 250;
+/* Batas percobaan untuk satu baris yang selalu ditolak. Setelah ini baris
+   menyerah supaya tidak menguras rate limit dan tidak menahan koleksi lain. */
+const PUSH_MAX_ATTEMPTS = 5;
+
   /* "auth" = sesi hilang (401) atau hak akses ditolak (403). Berbeda dari
        "fail": ini bukan masalah baris itu, tapi SELURUH push tidak akan
        pernah berhasil sampai pengguna login ulang. Versi lama memperlakukannya
@@ -1210,7 +1239,15 @@ type PushOutcome = "ok" | "stale" | "fail" | "auth";
   const pushPending = useCallback(async (): Promise<void> => {
     if (!remoteActive()) return;
     if (!(await isApiCompatible())) return;
-    if (pushingRef.current) return;
+    if (pushingRef.current) {
+      /* Ada yang memicu saat push masih jalan. Jangan di-drop: tandai saja,
+         nanti run berikutnya menyusul begitu push yang sedang selesai. Tanpa
+         ini, edit yang masuk di tengah push hilang tanpa jejak - dan kalau
+         tidak ada interval (tab tidak pernah regain focus) tidak pernah
+         terkirim sama sekali. */
+      pushAgainRef.current = true;
+      return;
+    }
     pushingRef.current = true;
     const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
     const cols = [...dirtyRef.current];
@@ -1220,8 +1257,25 @@ type PushOutcome = "ok" | "stale" | "fail" | "auth";
        push berjalan tetap tersimpan untuk push berikutnya. */
     const sentGen = new Map<string, number>();
     for (const col of cols) sentGen.set(col, dirtyGenRef.current.get(col) ?? 0);
-    for (const col of cols) {
+    /* Budget GLOBAL per run, bukan per koleksi.
+     *
+     * Versi lama memberi kuota 200 baris ke SETIAP koleksi. Dengan 53
+     * koleksi dirty itu 10.800 request tulis dalam satu run, sedangkan
+     * WRITE_LIMIT hanya 300 per menit - jadi server menolak sisanya dengan
+     * 429, retry menumpuk, dan collections tetap dirty. Tidak ada yang pernah
+     * keluar dari antrean.
+     *
+     * Sekarang satu run memakai paling banyak PUSH_BUDGET_PER_RUN request di
+     * seluruh koleksi. Koleksi diputar lewat `pushColCursorRef` supaya yang
+     * tidak kebagian giliran run ini dilayani duluan di run berikutnya -
+     * tidak ada koleksi yang kelaparan. */
+    let budget = PUSH_BUDGET_PER_RUN;
+    /* Koleksi boleh dilompati kalau budget habis: `continue`, bukan `break`,
+       supaya DELETE tombstone dan wbs/team tetap sempat jalan. */
+    for (let ci = 0; ci < cols.length; ci += 1) {
+      const col = cols[(pushColCursorRef.current + ci) % cols.length] as string;
       try {
+        if (budget <= 0) break;
         if (col === "wbsByProject" || col.startsWith("wbs:")) {
           const entries = Object.entries(dataRef.current.wbsByProject ?? {});
           const targets =
@@ -1287,7 +1341,15 @@ type PushOutcome = "ok" | "stale" | "fail" | "auth";
             sentTombstones.add(id);
           }
           saveTombstonesPersisted(tombstonesRef.current);
-          if (!ok) continue;
+          /* Tombstone yang gagal TIDAK boleh menghentikan sisa tombstone
+             (atau sisa baris) koleksi ini. Versi lama `break` lalu
+             `continue`, jadi satu DELETE yang ditolak membekukan seluruh
+             koleksi untuk selamanya - termasuk baris yang tidak ada
+             hubungannya dengan DELETE itu. Continue saja: tombstone yang
+             gagal tetap ada di store dan akan dicoba lagi run berikutnya. */
+          if (!ok) {
+            notifyConflict("Sebagian data yang dihapus belum terkonfirmasi server. Perubahan tetap tersimpan di perangkat ini dan akan dicoba lagi.");
+          }
         }
         const allRows = ((dataRef.current as unknown as Record<string, StoreItem[]>)[col] ?? []) as StoreItem[];
         /* Batasi baris per run. Koleksi besar (>300 baris) akan kena rate-limit
@@ -1300,6 +1362,12 @@ type PushOutcome = "ok" | "stale" | "fail" | "auth";
         const start = pushCursorRef.current.get(col) ?? 0;
         const rows = allRows.slice(start, start + PUSH_ROWS_PER_RUN);
         const truncated = start + rows.length < allRows.length;
+        /* Budget dipotong per request nyata, bukan per baris yang dicoba:
+           satu baris bisa memakan dua request (create gagal 409 lalu patch),
+           dan itu harus ikut terhitung. */
+        const bolehKirim = Math.min(rows.length, budget);
+        if (bolehKirim <= 0) continue;
+        budget -= bolehKirim;
         /* Baris yang gagal keras pada run ini. Versi lama memakai `break` pada
            kegagalan pertama, jadi:
              1) sisa baris tidak pernah terkirim,
@@ -1311,7 +1379,7 @@ type PushOutcome = "ok" | "stale" | "fail" | "auth";
            Sekarang: continue + laporkan. Koleksi hanya dibersihkan bila
            semua baris pada jendela ini benar-benar berhasil. */
         const failedRows: string[] = [];
-        for (const row of rows) {
+        for (const row of rows.slice(0, bolehKirim)) {
           const attemptCreate = async (retried: boolean, staleBase?: string): Promise<PushOutcome> => {
             try {
               await remoteRepository(col).create(row);
@@ -1421,19 +1489,54 @@ type PushOutcome = "ok" | "stale" | "fail" | "auth";
           }
         }
         if (failedRows.length > 0) {
-          ok = false;
+          /* Baris racun tidak boleh membekukan koleksi.
+           *
+           * Perlakuan lama: `ok = false` membuat cursor tidak maju dan
+           * `clearDirty` tidak dipanggil. Satu baris yang selalu ditolak
+           * (mis. field wajib hilang) membuat semua baris setelah jendela itu
+           * tidak pernah terkirim, dan pengulangan itu berjalan tiap 45 detik
+           * selamanya tanpa ada yang memberitahukan pengguna.
+           *
+           * Sekarang: cursor selalu maju melewati jendela. Baris yang gagal
+           * dihitung percobaannya; setelah `PUSH_MAX_ATTEMPTS` kali ia
+           * menyerah dan diberi tahu sekali per baris. Better satu baris
+           * gagal dengan pesan jelas daripada satu baris membekukan koleksi. */
+          for (const id of failedRows) {
+            const key = `${col}:${id}`;
+            const n = (pushAttemptsRef.current.get(key) ?? 0) + 1;
+            pushAttemptsRef.current.set(key, n);
+            if (n >= PUSH_MAX_ATTEMPTS) pushGiveUpRef.current.add(key);
+          }
+          for (const id of failedRows) {
+            const key = `${col}:${id}`;
+            if (!pushGiveUpRef.current.has(key)) continue;
+            /* Beri tahu sekali per baris, bukan setiap 45 detik. */
+            if (fallbackToasted.current === key) continue;
+            fallbackToasted.current = key;
+            notifyConflict(
+              `"${id}" tidak bisa disimpan ke server setelah ${PUSH_MAX_ATTEMPTS} percobaan. Datanya tetap ada di perangkat ini, tapi tidak akan terkirim sampai diperbaiki.`,
+            );
+          }
           notifyConflict(
             `${failedRows.length} data belum tersimpan ke server (kemungkinan validasi). Data Anda tetap ada di perangkat ini dan akan dicoba lagi.`,
           );
         }
-        if (ok) {
-          clearTombstones(col, sentTombstones);
-          /* Koleksi terpotong tetap dirty agar sisa baris dikirim run berikutnya. */
-          if (truncated) {
-            pushCursorRef.current.set(col, start + rows.length);
-          } else {
-            pushCursorRef.current.delete(col);
-            clearDirty(col, sentGen.get(col));
+        /* Cursor SELALU maju melewati jendela ini, baik berhasil maupun gagal.
+           Koleksi yang terpotong tetap dirty supaya sisa baris dikirim pada run
+           berikutnya; kalau jendela terakhir sudah lewat, cursor dilepas.
+           Ini yang menutup livelock: versi lama hanya maju bila SEMUA baris
+           di jendela sukses, jadi satu baris racun membekukan seluruh koleksi
+           dan indeks setelah jendela itu tidak pernah terkirim. */
+        if (truncated) {
+          pushCursorRef.current.set(col, start + rows.length);
+          markDirty(col);
+        } else {
+          pushCursorRef.current.delete(col);
+          const gagalBelumMenyerah = failedRows.some((id) => !pushGiveUpRef.current.has(`${col}:${id}`));
+          if (gagalBelumMenyerah) markDirty(col);
+          else clearDirty(col, sentGen.get(col));
+          if (failedRows.length === 0) {
+            clearTombstones(col, sentTombstones);
             setBackendError(null);
           }
         }
@@ -1454,8 +1557,24 @@ type PushOutcome = "ok" | "stale" | "fail" | "auth";
     }
     } finally {
       pushingRef.current = false;
+      /* Koleksi berikutnya dilayani mulai dari tempat berhenti, supaya yang
+         tidak kebagian budget run ini dapat giliran pertama di run berikutnya. */
+      pushColCursorRef.current = (pushColCursorRef.current + 1) % Math.max(1, cols.length);
+      /* Ada trigger yang tertahan selama push ini berjalan: jalankan lagi
+         setelah jeda pendek supaya tidak menabrak rate limit, dan pastikan
+         penandanya dibersihkan lebih dulu supaya tidak berputar terus. */
+      if (pushAgainRef.current) {
+        pushAgainRef.current = false;
+        /* Jalankan ulang lewat ref, bukan memanggil pushPending langsung:
+           pemanggilan di dalam definition useCallback akan kena TDZ. Ref diisi
+           tepat setelah useCallback selesai dibuat. */
+        window.setTimeout(() => {
+          void pushPendingRef.current?.();
+        }, 1500);
+      }
     }
   }, [clearDirty, clearTombstones]);
+  pushPendingRef.current = pushPending;
 
   /* Boot backend-first: bila backend dikonfigurasi dan sudah login (JWT),
      tarik semua koleksi dari BE; tiap koleksi yang gagal → biarkan seed lokal.
