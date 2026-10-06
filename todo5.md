@@ -16,21 +16,25 @@ klarifikasi client.
 
 | Status | Jumlah |
 |---|---|
-| Selesai | 21 |
-| Sebagian | 17 |
+| Selesai | 24 |
+| Sebagian | 15 |
 | Belum | 30 |
 | Ambigu | 4 |
 | **Total item** | **72** |
+
+Perubahan dari audit awal (+3 Selesai, -2 Sebagian): S3b, H1b, dan DK2.
+Item C1-2 dan loop push 401 masuk C1 yang sudah dihitung SEBAGIAN, jadi
+tidak menambah baris baru - tapi QStringnya berubah, lihat CATATAN REVISI.
 
 ## Lima yang paling penting dan harus didahulukan
 
 | # | Item | Kenapa |
 |---|---|---|
-| 1 | **C1 sinkronisasi 2 device** | Client melaporkan data hilang setelah POST sukses. Ada 4 jalur kode yang masih bisa menghasilkan gejala persis itu |
+| 1 | **C1 sinkronisasi 2 device** | Client melaporkan data hilang setelah POST sukses. Jalur `backendMode` beku dan loop push 401 sudah ditutup di `ff28249` + `953a6d9`; pagination OFFSET dan token konkurensi masih terbuka |
 | 2 | **D5 BoQ per nomor surat** | Client tandai "sangat krusial". Butuh ubah skema + API + seed + PDF, bukan edit UI |
 | 3 | **I2 filter Inventory 2 tingkat** | Permintaan eksplisit yang sebelumnya dibalik secara sadar, dan alasan bisnisnya tidak tercatat |
 | 4 | **B2 format titik input harga** | 150 `NumInput` tanpa pemisah ribuan; `type="number"` tidak bisa menampilkan `1.000.000` |
-| 5 | **S3 modal milestone per WO** | Ada bug integritas: modal progres menampilkan SOW tapi memvalidasi WO |
+| 5 | ~~**S3 modal milestone per WO**~~ | **SELESAI** di `37321db` - modal kini memakai milestone WO, sama dengan sumber validasi |
 
 ---
 
@@ -270,7 +274,7 @@ download.
 | S1 | Kwitansi PDF konten terpotong | **SELESAI** | Akar masalah dihapus (`pdf/documents/kwitansi.ts:1-9`, anchor `align:"right"`), sekarang lewat kolom tabel (`:69`). Paginasi two-pass dengan header berulang (`pdf/blocks.ts:486-491,534-557`). Gate: `pdf-probe.ts:312-331`. |
 | S2 | Requirement BAST, invoice, dan bukti bayar | **SELESAI** | `Subcontractor.tsx:649-650` `invoiceNo` dan `bastNo` wajib, `proof.ref` wajib (`:643`). Catatan: keduanya berupa nomor teks, bukan unggah dokumen. Kalau maksud client melampirkan file, itu belum ada. |
 | S3 | Milestone per WO dengan popup modal | **SEBAGIAN** | Util lengkap (`utils/woMilestones.ts:21-27,73-136`), termin wajib milestone (`Subcontractor.tsx:561-569`), gate `wo-probe.ts:30-98`. Tapi tidak ada modal tambah milestone per WO. `saveMilestone` hanya tulis ke koleksi `subcontractors` (`:346-357`); WO baru dibuat tanpa `milestones` (`:379`). Milestone WO hanya bisa dari seed. |
-| S3b | Bug yang ditemukan audit | **BUG** | Modal progres ber-judul per-WO (`:1599`) tapi checklist-nya dirender dari `milestonesOf(sub)`, yaitu milestone SOW subkontraktor (`:1604-1605`), sementara `saveWoProgress` memvalidasi terhadap `woMilestonesOf(woProg)` (`:504,:516-517`). Kalau judul SOW beda dengan judul WO, centang diabaikan diam-diam dan progres tersimpan 0 persen. |
+| S3b | Bug yang ditemukan audit | **SELESAI** (`37321db`) | Modal progres ber-judul per-WO tapi checklist-nya dirender dari `milestonesOf(sub)` - milestone **SOW**, bukan milestone WO. `saveWoProgress` memvalidasi terhadap `woMilestonesOf(woProg)`. Kalau judul SOW beda, centang diabaikan diam-diam dan progres tersimpan 0 persen. Sekarang render memakai `woMilestonesOf(woProg)`, sama persis dengan sumber validasi; teks "SOW milestones" di modal ikut diselaraskan jadi "WO milestones". |
 | Q1 | Drawing view pakai modal popup | **SELESAI** | `QCSafety.tsx:1467` memanggil `setDrwPreview`, modal di `:2239`. Tidak ada preview inline. |
 | Q2 | Sub-tipe dokumen terhubung tab Sertifikat QC | **SEBAGIAN** | Sumber tunggal lengkap di `utils/docTypes.ts:50-118`, dipakai form Dokumen (`Documents.tsx:24,175,341,694-738`) dan form Proyek (`ProjectDetail.tsx:38,2258-2262`). Tapi tab Sertifikat di QC tidak menyentuh `docTypes.ts` sama sekali, hanya memfilter `/sertifikat/i` pada `d.type` lalu merender id dan judul. Keterkaitan satu arah saja. |
 | DOC1 | Kolom pratinjau dihapus, pratinjau hanya di Aksi | **SELESAI** | Header `Documents.tsx:599` berisi 9 kolom tanpa pratinjau. Sel Aksi `:621-641` hanya Detail plus `preview={false}`. |
@@ -282,7 +286,7 @@ download.
 | # | Permintaan | Status | Bukti dan Kekurangan |
 |---|---|---|---|
 | H1a | Preview lampiran tidak dikunci saat diajukan | **SEBAGIAN** | Gate lama dihapus di HR (`HR.tsx:1543-1572`), preview terbuka untuk semua status kecuali `Ditolak`. Tapi `KaryawanDetail.tsx:737-746` masih mengunci saat `status === "Disetujui"`; saat `Diajukan` sel menampilkan `-`. |
-| H1b | Auto-preview setelah upload | **SEBAGIAN** | `HR.tsx:1984-2001` mount panel otomatis saat `fileUrl` terisi. Tapi `KaryawanDetail.tsx:924-929` form ubah cuti tidak punya preview sama sekali. Hint `HR.tsx:1972-1974` masih berbunyi "Pratinjau baru tampil di tabel setelah pengajuan disetujui final", bertentangan dengan perilaku tabel. |
+| H1b | Auto-preview setelah upload | **SELESAI** (`b4f15d4`) | `HR.tsx` mount panel otomatis saat `fileUrl` terisi. `KaryawanDetail.tsx` form ubah cuti sebelumnya tidak punya preview sama sekali - sekarang memakai `DocumentPreviewPanel` dengan `autoLoad`. Hint di `HR.tsx` yang masih "Pratinjau baru tampil di tabel setelah pengajuan disetujui final" ikut diselaraskan: pratinjau terbuka begitu ada lampiran, hanya status Ditolak yang mengunci. |
 | H1c | Surat persetujuan cuti saat disetujui | **SEBAGIAN** | Recipe server lengkap (`pdf/registry.ts:275-311`, `pdf/documents/hr.ts:85-152`): nama, NIK, jabatan, unit, tipe, periode, durasi, alasan, tanda tangan. Tapi on-demand, bukan otomatis saat approval. `approveHrd` (`:783-831`) tidak membuat baris `letters`, tidak ada arsip atau thumbnail. PDF baru terbit saat tombol ditekan. |
 | H2 | Surat: preview PDF bukan teks | **SELESAI** | `HR.tsx:1786` memanggil `pdfDoc.request` dengan `kind:"suratHr"`, modal `<iframe>` di `:2269-2299` plus Unduh dan Buka di tab baru. Preview form yang belum disimpan masih `<pre>` (`:2217-2222`), bisa dipertanggungjawabkan karena baris belum ada. |
 | H3 | Penanggung jawab searchable dari data pegawai | **SEBAGIAN** | Hanya 2 field: `Documents.tsx:182-189,724-733` dan `ProjectDetail.tsx:394,2288-2296`. Masih teks bebas: PIC Equipment (`:2524`), Penanggung Jawab Gudang (`Inventory.tsx:3489`), PIC movement (`:3596`), PIC BOM (`BomDetail.tsx:329`), empat PIC QC (`:2122,2283,2311,2324`), PIC Dock (`Drydock.tsx:1016`). Masih `<select>` non-searchable: manager (`ProjectAddModal.tsx:220`), PIC negosiasi (`CRM.tsx:1404`, `QuotationDetail.tsx:426`), teknisi (`Equipment.tsx:2579`), inspector (`QCSafety.tsx:1884`). |
@@ -304,7 +308,7 @@ download.
 | # | Permintaan | Status | Bukti dan Kekurangan |
 |---|---|---|---|
 | DK1 | Card mapping slot area dibuat grafikal | **SELESAI** | `Drydock.tsx:702-764`: tile per area, lebar diskalakan per jumlah slot (`:723,:737,:747`), badge jumlah slot (`:742`), terisi (`:751`), kapal berbeda (`:752`), konflik (`:753`). Area tanpa slot tetap digambar (`:718-721`). |
-| DK2 | Peta fasilitas skala panjang (pekerjaan F2) | **SELESAI** | `components/FacilityMap.tsx` SVG skala tunggal, pita kapal, outline merah. Keterbatasan nyata: `FacilityMap.tsx:57` memakai `.find()` sehingga hanya kapal pertama per fasilitas yang digambar; fasilitas dengan dua slot atau lebih diam-diam membuang sisanya. |
+| DK2 | Peta fasilitas skala panjang (pekerjaan F2) | **SELESAI** (`48368f9`) | `components/FacilityMap.tsx` SVG skala tunggal, pita kapal, outline merah. Keterbatasan yang dulu tercatat - hanya kapal pertama per fasilitas yang digambar lewat `.find()` - sudah ditutup: semua kapal kini digambar satu jalur masing-masing, dan `problems` digabung dari seluruh kapal. Intinya dipindah ke `vesselsForFacility` di `utils/facilityMap.ts` supaya bisa diuji, dengan 8 assertion baru di `scripts/facility-probe.ts`. |
 | I1 | Filter "perlu perhatian" per status, bukan kategori | **SELESAI** | `Inventory.tsx:641` memakai `warnLevelOf(...).level === warnF`; select berlabel "Status" (`:1943-1960`) dengan hitungan live (`:770`); sort pakai `warnRankOf` (`:656`). |
 | I2 | Tombol [jumlah][status] membuka dropdown [jumlah][kategori] | **BELUM** | Nol tombol per-status. Yang ada: dua `<select>` terpisah (`Inventory.tsx:1907-1985`), yaitu Kategori dengan teks breakdown inline (`:1924-1932`), dan Status dengan hitungan (`:1946-1960`), plus chip non-klikabel (`:1970-1983`). Komentar `:1900-1906` menyatakan ini dibalik secara sadar: "baris tombol [jumlah][status] digantikan dropdown kategori". Alasan bisnisnya tidak tercatat. |
 | F1 | Semua tabel Finance dapat tanggal plus sort, dan tanggal hapus | **SEBAGIAN** | Sort sudah luas: 23 dari 28 tabel memakai `SortTh` (109 header sortable di `Finance.tsx`). Tapi kolom tanggal hanya ada di **satu** tabel: invoice (`:3383-3384`, `S.colCreated` dan `S.colUpdated`). 27 tabel lain tidak punya kolom tanggal per baris. Tanggal hapus nol di seluruh UI: pencarian `deletedAt` atau "dihapus pada" menghasilkan nol di `src`. Util `utils/audit.ts:58,77` plus API `routes/audit.ts:37-58` ada, tapi pemanggilnya nol di luar modul (hanya `forgetDeleteDates` saat logout, `auth.tsx:150`). Kemampuan baca tanggal hapus sudah dibangun tapi tidak pernah ditampilkan. |
@@ -327,18 +331,27 @@ download.
 
 # 8. URUTAN KERJA YANG DISARANKAN
 
-**Gelombang 1 - perbaikan bug (data salah, kecil):**
-1. S3b: modal progres Subkontraktor menampilkan SOW tapi memvalidasi WO (`Subcontractor.tsx:1604-1605` versus `:504`)
-2. C1-3: toast sukses palsu saat network, 401, atau 429 (`store.tsx:1646-1649`)
-3. C1-2: `backendMode` beku saat sessionStorage hilang (`store.tsx:836`)
-4. `FacilityMap` hanya menggambar kapal pertama per fasilitas (`FacilityMap.tsx:57`)
-5. H1: hint form cuti yang bertentangan dengan perilaku (`HR.tsx:1972-1974`)
+**Gelombang 1 - perbaikan bug (data salah, kecil) - SELESAI di `b4f15d4`:**
+1. [x] S3b: modal progres WO menampilkan SOW tapi memvalidasi WO - DIPERBAIKI
+   (`37321db`, render kini `woMilestonesOf(woProg)`, sama dengan validasi)
+2. [x] C1-3: "toast sukses palsu saat network/401/429" - **DIREVISI, bukan
+   diperbaiki apa adanya.** `degrade()` ternyata benar: menulis lokal + antre
+   saat offline-first memang disengaja, dan melempar error akan MENGHAPUS
+   pekerjaan offline pengguna. Akar masalahnya ada di C1-2 dan di loop push.
+3. [x] C1-2: `backendMode` beku saat sessionStorage hilang - DIPERBAIKI
+   (`ff28249`, nilai turunan + re-eval saat focus/storage/visibility)
+4. [x] Loop push mengulang 401 selamanya tanpa berhenti - DIPERBAIKI
+   (`953a6d9`, sinyal `"auth"` menghentikan seluruh loop + minta login ulang)
+5. [x] `FacilityMap` hanya menggambar kapal pertama per fasilitas - DIPERBAIKI
+   (`48368f9`, semua kapal digambar satu jalur masing-masing + 8 probe baru)
+6. [x] H1: hint form cuti bertentangan dengan perilaku - DIPERBAIKI
+   (`b4f15d4`, hint diselaraskan + form ubah cuti dapat auto-preview)
 
-**Gelombang 2 - integritas data sinkronisasi:**
-6. C1-1: pagination OFFSET di atas `updated_at` (`routes/crud.ts:275`)
-7. C2-4: livelock baris racun yang juga memicu badai 429 (`store.tsx:1358-1374`)
-8. C2-5: overrun 10.800 request per run plus trigger yang dibuang saat push berjalan (`store.tsx:1185,:1175`)
-9. C1-5: token konkurensi untuk WBS dan team (`routes/wbs.ts:44-77`)
+**Gelombang 2 - integritas data sinkronisasi (belum):**
+7. C1-1: pagination OFFSET di atas `updated_at` (`services/api/src/routes/crud.ts:275`)
+8. C2-4: livelock baris racun yang juga memicu badai 429 (`store.tsx`)
+9. C2-5: overrun 10.800 request per run plus trigger yang dibuang saat push berjalan
+10. C1-5: token konkurensi untuk WBS dan team (`services/api/src/routes/wbs.ts`)
 
 **Gelombang 3 - permintaan yang sudah jelas:**
 10. D9 (ganti string label), P1 (PREVIEW_N 3 plus label), P2 (nomor kolom), P6, P7, P9, P12, P13, P14
@@ -357,10 +370,41 @@ download.
 
 ---
 
+# CATATAN REVISI
+
+## Gelombang 1 dikerjakan di `b4f15d4`
+
+Lima item selesai. Dua di antaranya mengubahunderstanding awal:
+
+**1. "C1-3 toast sukses palsu" adalah salah diagnosis.** `degrade()`
+mengembalikan `false` untuk network/401/429 secara sengaja: data ditulis
+lokal, ditandai dirty, lalu didorong ulang nanti. Itu offline-first yang
+benar. Kalau `degrade` ikut melempar error, pekerjaan offline pengguna hilang
+saat jaringan mati - persis kebalikan dari yang dibutuhkan. Gejala "tulisan
+berhasil tapi tidak muncul di perangkat lain" punya akar di tempat lain:
+
+- `backendMode` beku: badge hijau padahal `remoteActive()` sudah false
+- loop push tidak membedakan 401 dari "baris ini gagal", jadi satu token
+  kedaluwarsa membuat antrean diulang tiap 45 detik selamanya tanpa pernah
+  memberi tahu pengguna harus login ulang
+
+**2. H1 ternyata punya dua bagian.** Selain hint yang salah, form ubah cuti
+di `KaryawanDetail` memang tidak punya pratinjau sama sekali - jadi H1b naik
+dari SEBAGIAN ke SELESAI.
+
+**Peringatan soal nomor baris:** dokumen ini diaudit terhadap `bd975c3`.
+Sejak itu ada beberapa commit yang menyentuh `store.tsx`, `HR.tsx`,
+`Subcontractor.tsx`, dan `FacilityMap.tsx`, jadi beberapa `file:line` di
+bagian 1-6 sudah bergeser. Rujukan yang ditulis sebagai `store.tsx` tanpa
+nomor baris sengaja dibiarkan begitu karena sudah tidak berlaku.
+
+---
+
 # CATATAN METODE
 
 - Audit read-only terhadap `bd975c3`. Tidak ada file aplikasi yang diubah saat
-  menyusun dokumen ini.
+  menyusun dokumen ini. Gelombang 1 baru dikerjakan setelah itu, pada
+  `37321db` sampai `b4f15d4` - lihat CATATAN REVISI.
 - Semua angka (jumlah tabel, jumlah call site, jumlah file) dihitung dengan
   enumerasi, bukan estimasi.
 - Probe tidak dijalankan selama audit karena butuh menulis build cache. Status
