@@ -8,6 +8,7 @@ import { Card, CardHeader, PageHeader, Badge, KpiCard, Tabs, ProgressBar, ChartT
   NumInput, AsyncButton,
   SearchBox,
   rowMatches,
+  RowAction,
 } from "../../components/ui";
 import type { SortState } from "../../components/ui";
 import { ServiceNotesButton, ServiceNotesModal, notesOf } from "../../components/ServiceNotes";
@@ -1660,9 +1661,13 @@ export default function EquipmentPage() {
                             berjalan (bukan cuma membalik status equipment),
                             supaya material terpotong dan HPP proyek terisi. */}
                         {e.status === "Tersedia" && (
-                          <button className="btn-secondary text-xs" onClick={() => openMaintNew(String(e.id))}>
-                            <Wrench className="h-3.5 w-3.5" /> {locale === "en" ? "Schedule service" : "Jadwalkan Servis"}
-                          </button>
+                          <RowAction
+                            icon={Wrench}
+                            tone="primary"
+                            label={locale === "en" ? "Schedule service" : "Jadwalkan Servis"}
+                            ariaLabel={`${locale === "en" ? "Schedule service" : "Jadwalkan Servis"} ${String(e.name ?? e.id)}`}
+                            onClick={() => openMaintNew(String(e.id))}
+                          />
                         )}
                         {e.status === "Maintenance" && (() => {
                           const cycle = maintRows.find((r) => r.equipmentId === String(e.id) && r.status === "Sedang Proses");
@@ -1705,20 +1710,20 @@ export default function EquipmentPage() {
                           }}
                           onClick={() => setNoteEquip(e)}
                         />
-                        <button
-                          className="btn-secondary text-xs"
+                        <RowAction
+                          icon={Pencil}
+                          tone="neutral"
+                          label={locale === "en" ? "Edit equipment" : "Ubah equipment"}
+                          ariaLabel={`${S.eqEdit} ${String(e.name ?? e.id)}`}
                           onClick={() => openEdit(e)}
-                          title={locale === "en" ? "Edit equipment" : "Ubah equipment"}
-                        >
-                          <Pencil className="h-3.5 w-3.5" /> {S.eqEdit}
-                        </button>
-                        <button
-                          className="btn-secondary text-xs text-rose-600"
+                        />
+                        <RowAction
+                          icon={Trash2}
+                          tone="danger"
+                          label={locale === "en" ? "Delete equipment" : "Hapus equipment"}
+                          ariaLabel={`${S.delBtn} ${String(e.name ?? e.id)}`}
                           onClick={() => setDelEquip(e)}
-                          title={locale === "en" ? "Delete equipment" : "Hapus equipment"}
-                        >
-                          <Trash2 className="h-3.5 w-3.5" /> {S.delBtn}
-                        </button>
+                        />
                         </div>
                       </td>
                     </tr>
@@ -2179,20 +2184,20 @@ export default function EquipmentPage() {
                                   berubah karena jadwal clash), dan bisa dihapus
                                   kalau dijadwalkan dobel. Dulu tidak ada
                                   keduanya - hanya tombol Selesaikan. */}
-                              <button
-                                className="btn-secondary text-xs"
+                              <RowAction
+                                icon={Pencil}
+                                tone="neutral"
+                                label={locale === "en" ? "Edit calibration schedule" : "Ubah jadwal kalibrasi"}
+                                ariaLabel={`${S.eqEdit} ${String(c.id ?? "")}`}
                                 onClick={() => openCalEdit(c)}
-                                title={locale === "en" ? "Edit calibration schedule" : "Ubah jadwal kalibrasi"}
-                              >
-                                <Pencil className="h-3.5 w-3.5" /> {S.eqEdit}
-                              </button>
-                              <button
-                                className="btn-secondary text-xs text-rose-600"
+                              />
+                              <RowAction
+                                icon={Trash2}
+                                tone="danger"
+                                label={locale === "en" ? "Delete calibration" : "Hapus kalibrasi"}
+                                ariaLabel={`${S.delBtn} ${String(c.id ?? "")}`}
                                 onClick={() => setDelCal(c)}
-                                title={locale === "en" ? "Delete calibration" : "Hapus kalibrasi"}
-                              >
-                                <Trash2 className="h-3.5 w-3.5" /> {S.delBtn}
-                              </button>
+                              />
                             </div>
                           </td>
                         </tr>

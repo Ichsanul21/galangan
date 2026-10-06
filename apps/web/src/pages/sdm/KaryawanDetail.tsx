@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
-import { ArrowLeft, Plus, User } from "lucide-react";
+import { ArrowLeft, Plus, User, Pencil, Trash2 } from "lucide-react";
 import {
   Badge,
   Card,
@@ -21,6 +21,7 @@ import {
   AsyncButton,
   SearchBox,
   rowMatches,
+  RowAction,
 } from "../../components/ui";
 import type { SortState } from "../../components/ui";
 import { useStore } from "../../data/store";
@@ -582,12 +583,8 @@ export default function KaryawanDetail() {
                     </td>
                     <td className="td">
                       <div className="flex flex-wrap gap-1.5">
-                        <button className="btn-secondary text-xs" onClick={() => openDocEdit(d)} aria-label={`${locale === "en" ? "Edit" : "Ubah"} ${String(d.id)}`}>
-                          {locale === "en" ? "Edit" : "Ubah"}
-                        </button>
-                        <button className="btn-secondary text-xs text-rose-600" onClick={() => setDelRow({ kind: "documents", row: d })} aria-label={`${locale === "en" ? "Delete" : "Hapus"} ${String(d.id)}`}>
-                          {locale === "en" ? "Delete" : "Hapus"}
-                        </button>
+                        <RowAction icon={Pencil} tone="neutral" label={locale === "en" ? "Edit" : "Ubah"} ariaLabel={`${locale === "en" ? "Edit" : "Ubah"} ${String(d.id)}`} onClick={() => openDocEdit(d)} />
+                        <RowAction icon={Trash2} tone="danger" label={locale === "en" ? "Delete" : "Hapus"} ariaLabel={`${locale === "en" ? "Delete" : "Hapus"} ${String(d.id)}`} onClick={() => setDelRow({ kind: "documents", row: d })} />
                       </div>
                     </td>
                   </tr>
@@ -651,12 +648,8 @@ export default function KaryawanDetail() {
                             </span>
                           ) : (
                             <>
-                              <button className="btn-secondary text-xs" onClick={() => openAttEdit(a)} aria-label={`${locale === "en" ? "Edit" : "Ubah"} ${String(a.id)}`}>
-                                {locale === "en" ? "Edit" : "Ubah"}
-                              </button>
-                              <button className="btn-secondary text-xs text-rose-600" onClick={() => setDelRow({ kind: "attendance", row: a })} aria-label={`${locale === "en" ? "Delete" : "Hapus"} ${String(a.id)}`}>
-                                {locale === "en" ? "Delete" : "Hapus"}
-                              </button>
+                              <RowAction icon={Pencil} tone="neutral" label={locale === "en" ? "Edit" : "Ubah"} ariaLabel={`${locale === "en" ? "Edit" : "Ubah"} ${String(a.id)}`} onClick={() => openAttEdit(a)} />
+                              <RowAction icon={Trash2} tone="danger" label={locale === "en" ? "Delete" : "Hapus"} ariaLabel={`${locale === "en" ? "Delete" : "Hapus"} ${String(a.id)}`} onClick={() => setDelRow({ kind: "attendance", row: a })} />
                             </>
                           )}
                         </div>
@@ -747,9 +740,7 @@ export default function KaryawanDetail() {
                       </td>
                       <td className="td">
                         <div className="flex flex-wrap gap-1.5">
-                          <button className="btn-secondary text-xs" onClick={() => openLeaveEdit(l)} aria-label={`${locale === "en" ? "Edit" : "Ubah"} ${String(l.id)}`}>
-                            {locale === "en" ? "Edit" : "Ubah"}
-                          </button>
+                          <RowAction icon={Pencil} tone="neutral" label={locale === "en" ? "Edit" : "Ubah"} ariaLabel={`${locale === "en" ? "Edit" : "Ubah"} ${String(l.id)}`} onClick={() => openLeaveEdit(l)} />
                           {String(l.status) === "Disetujui" ? (
                             <span className="text-xs text-steel-400" title={locale === "en"
                               ? "Approved leave: only note and attachment can change. Reject it in SDM to delete."
@@ -757,9 +748,7 @@ export default function KaryawanDetail() {
                               {locale === "en" ? "Locked" : "Terkunci"}
                             </span>
                           ) : (
-                            <button className="btn-secondary text-xs text-rose-600" onClick={() => setDelRow({ kind: "leaves", row: l })} aria-label={`${locale === "en" ? "Delete" : "Hapus"} ${String(l.id)}`}>
-                              {locale === "en" ? "Delete" : "Hapus"}
-                            </button>
+                            <RowAction icon={Trash2} tone="danger" label={locale === "en" ? "Delete" : "Hapus"} ariaLabel={`${locale === "en" ? "Delete" : "Hapus"} ${String(l.id)}`} onClick={() => setDelRow({ kind: "leaves", row: l })} />
                           )}
                         </div>
                       </td>

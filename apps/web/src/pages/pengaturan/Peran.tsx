@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Download, KeyRound, Plus, RefreshCw } from "lucide-react";
-import { Badge, Card, ConfirmModal, Field, KpiCard, Modal, PageHeader, SortTh, sortRows, toast, toggleSort, usePager, AsyncButton, SearchBox, rowMatches } from "../../components/ui";
+import { Download, KeyRound, Plus, RefreshCw, Pencil, Link2, UserX, UserCheck, Eye, History } from "lucide-react";
+import { Badge, Card, ConfirmModal, Field, KpiCard, Modal, PageHeader, SortTh, sortRows, toast, toggleSort, usePager, AsyncButton, SearchBox, rowMatches, RowAction } from "../../components/ui";
 import type { SortState } from "../../components/ui";
 import { canSetTarget, useAuth } from "../../auth/auth";
 import { useStore } from "../../data/store";
@@ -615,38 +615,13 @@ export default function Peran() {
                     </td>
                     <td className="px-3 py-2">
                       <div className="flex justify-end gap-1.5">
-                        <button
-                          className="btn-secondary px-2 py-1 text-xs"
-                          onClick={() => openEditUser(u)}
-                        >
-                          {locale === "en" ? "Edit" : "Ubah"}
-                        </button>
-                        <button
-                          className="btn-secondary px-2 py-1 text-xs"
-                          onClick={() => { setLinkTarget(u); setLinkValue(u.employeeId ?? ""); }}
-                        >
-                          {S.linkBtn}
-                        </button>
-                        <button
-                          className="btn-secondary px-2 py-1 text-xs"
-                          onClick={() => { setPwTarget(u); setPwValue(""); }}
-                        >
-                          {S.resetPwBtn}
-                        </button>
+                        <RowAction icon={Pencil} tone="neutral" label={locale === "en" ? "Edit" : "Ubah"} ariaLabel={`${locale === "en" ? "Edit" : "Ubah"} ${u.username}`} onClick={() => openEditUser(u)} />
+                        <RowAction icon={Link2} tone="neutral" label={S.linkBtn} ariaLabel={`${S.linkBtn} ${u.username}`} onClick={() => { setLinkTarget(u); setLinkValue(u.employeeId ?? ""); }} />
+                        <RowAction icon={KeyRound} tone="neutral" label={S.resetPwBtn} ariaLabel={`${S.resetPwBtn} ${u.username}`} onClick={() => { setPwTarget(u); setPwValue(""); }} />
                         {u.isActive ? (
-                          <button
-                            className="btn-secondary px-2 py-1 text-xs text-rose-600"
-                            onClick={() => setConfirmTarget(u)}
-                          >
-                            {S.deactivateBtn}
-                          </button>
+                          <RowAction icon={UserX} tone="danger" label={S.deactivateBtn} ariaLabel={`${S.deactivateBtn} ${u.username}`} onClick={() => setConfirmTarget(u)} />
                         ) : (
-                          <button
-                            className="btn-secondary px-2 py-1 text-xs"
-                            onClick={() => void doToggleActive(u)}
-                          >
-                            {S.activateBtn}
-                          </button>
+                          <RowAction icon={UserCheck} tone="success" label={S.activateBtn} ariaLabel={`${S.activateBtn} ${u.username}`} onClick={() => void doToggleActive(u)} />
                         )}
                       </div>
                     </td>
@@ -727,18 +702,8 @@ export default function Peran() {
                       </td>
                       <td className="px-3 py-2 text-right">
                         <div className="flex justify-end gap-1.5">
-                          <button
-                            className="btn-secondary px-2 py-1 text-xs"
-                            onClick={() => setSessDetail(u)}
-                          >
-                            {S.thDetail}
-                          </button>
-                          <button
-                            className="btn-secondary px-2 py-1 text-xs"
-                            onClick={() => navigate(`/audit?actor=${encodeURIComponent(u.username)}`)}
-                          >
-                            {S.viewLog}
-                          </button>
+                          <RowAction icon={Eye} tone="neutral" label={S.thDetail} ariaLabel={`${S.thDetail} ${u.username}`} onClick={() => setSessDetail(u)} />
+                          <RowAction icon={History} tone="neutral" label={S.viewLog} ariaLabel={`${S.viewLog} ${u.username}`} onClick={() => navigate(`/audit?actor=${encodeURIComponent(u.username)}`)} />
                         </div>
                       </td>
                     </tr>

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { Award, BadgeCheck, Download, Eye, Lock, Network, Plus, Users } from "lucide-react";
+import { Award, BadgeCheck, Download, Eye, Lock, Network, Plus, Users, Pencil, Trash2, Printer } from "lucide-react";
 import {
   Badge,
   Card,
@@ -25,7 +25,7 @@ import {
   SecureImg,
 } from "../../components/ui";
 import type { SortState } from "../../components/ui";
-import { AsyncButton, useBusy, SearchBox, rowMatches } from "../../components/ui";
+import { AsyncButton, useBusy, SearchBox, rowMatches, RowAction } from "../../components/ui";
 import { FilterPopover } from "../../components/FilterPopover";
 import { useStore } from "../../data/store";
 import { DocumentPreviewCell, DocumentPreviewPanel } from "../../components/DocumentPreview";
@@ -1437,9 +1437,9 @@ const finishTraining = async (t: StoreItem) => {
                             <td className="td text-xs text-steel-600">{lastTouchedAt(e) !== null ? fmtTanggal(lastTouchedAt(e)) : <span className="text-steel-400">-</span>}</td>
                             <td className="td">
                               <div className="flex items-center gap-2 whitespace-nowrap">
-                                <Link to={`/sdm/karyawan/${e.id}`} className="text-sm font-semibold text-ocean-600 hover:underline">{S.btnDetail}</Link>
-                                <button className="text-sm font-semibold text-navy-700 hover:underline" onClick={() => openEdit(e)}>{S.btnEdit}</button>
-                                <button className="text-sm font-semibold text-rose-600 hover:underline" onClick={() => setDelEmp(e)}>{S.btnHapus}</button>
+                                <Link to={`/sdm/karyawan/${e.id}`} className="relative inline-flex shrink-0 items-center justify-center rounded-lg p-1.5 text-ocean-600 transition-colors hover:bg-steel-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ocean-400 focus-visible:ring-offset-1 after:absolute after:-inset-1.5 after:content-['']" title={S.btnDetail} aria-label={`${S.btnDetail} ${String(e.name ?? e.id)}`}><Eye className="h-4 w-4" aria-hidden="true" /></Link>
+                                <RowAction icon={Pencil} tone="neutral" label={S.btnEdit} ariaLabel={`${S.btnEdit} ${String(e.name ?? e.id)}`} onClick={() => openEdit(e)} />
+                                <RowAction icon={Trash2} tone="danger" label={S.btnHapus} ariaLabel={`${S.btnHapus} ${String(e.name ?? e.id)}`} onClick={() => setDelEmp(e)} />
                               </div>
                             </td>
                           </tr>
@@ -1575,9 +1575,9 @@ const finishTraining = async (t: StoreItem) => {
                         {l.status === "Diajukan" ? (
                           <div className="flex items-center gap-2 whitespace-nowrap">
                             <button className="text-sm font-semibold text-emerald-600 hover:underline" onClick={() => approveSupervisor(l)}>{S.btnSetujuiAtasan}</button>
-                            <button className="text-sm font-semibold text-navy-700 hover:underline" onClick={() => openLeaveEdit(l)}>{S.btnEdit}</button>
+                            <RowAction icon={Pencil} tone="neutral" label={S.btnEdit} ariaLabel={`${S.btnEdit} ${String(l.id)}`} onClick={() => openLeaveEdit(l)} />
                             <button className="text-sm font-semibold text-rose-600 hover:underline" onClick={() => setRejectTarget(l)}>{S.btnTolak}</button>
-                            <button className="text-sm font-semibold text-rose-600 hover:underline" onClick={() => setDelLeave(l)}>{S.btnHapus}</button>
+                            <RowAction icon={Trash2} tone="danger" label={S.btnHapus} ariaLabel={`${S.btnHapus} ${String(l.id)}`} onClick={() => setDelLeave(l)} />
                           </div>
                         ) : l.status === "Disetujui Atasan" ? (
                           <div className="flex items-center gap-2 whitespace-nowrap">
@@ -1593,21 +1593,21 @@ const finishTraining = async (t: StoreItem) => {
                             {/* Surat persetujuan hanya sah setelah pengajuan
                                 disetujui - dicetak lebih awal hanya menghasilkan
                                 kertas tanpa dasar. */}
-                            <button
-                              className="text-sm font-semibold text-navy-700 hover:underline"
+                            <RowAction
+                              icon={Printer}
+                              tone="neutral"
+                              label={locale === "en" ? "Print the approval letter issued to the employee" : "Cetak surat persetujuan untuk karyawan"}
+                              ariaLabel={`${locale === "en" ? "Approval letter" : "Surat persetujuan"} ${String(l.id)}`}
                               onClick={() => void printSuratCuti(l)}
-                              title={locale === "en" ? "Print the approval letter issued to the employee" : "Cetak surat persetujuan untuk karyawan"}
-                            >
-                              {locale === "en" ? "Approval letter" : "Surat persetujuan"}
-                            </button>
-                            <button
-                              className="text-sm font-semibold text-navy-700 hover:underline"
+                            />
+                            <RowAction
+                              icon={Pencil}
+                              tone="neutral"
+                              label={locale === "en" ? "Correct note / attachment (period is locked)" : "Koreksi catatan / lampiran (periode terkunci)"}
+                              ariaLabel={`${S.btnEdit} ${String(l.id)}`}
                               onClick={() => openLeaveEditFinal(l)}
-                              title={locale === "en" ? "Correct note / attachment (period is locked)" : "Koreksi catatan / lampiran (periode terkunci)"}
-                            >
-                              {S.btnEdit}
-                            </button>
-                            <button className="text-sm font-semibold text-rose-600 hover:underline" onClick={() => setDelLeave(l)}>{S.btnHapus}</button>
+                            />
+                            <RowAction icon={Trash2} tone="danger" label={S.btnHapus} ariaLabel={`${S.btnHapus} ${String(l.id)}`} onClick={() => setDelLeave(l)} />
                           </div>
                         ) : (
                           <span className="text-xs text-steel-400">-</span>
@@ -1735,15 +1735,14 @@ const finishTraining = async (t: StoreItem) => {
                             {String(t.status) === "Selesai" && (
                               <button className="text-sm font-semibold text-ocean-600 hover:underline" onClick={() => setCertTarget(t)}>{S.btnTerapkan}</button>
                             )}
-                            <button
-                              className="text-sm font-semibold text-navy-700 hover:underline"
+                            <RowAction
+                              icon={Pencil}
+                              tone="neutral"
+                              label={S.btnEdit}
+                              ariaLabel={`${S.btnEdit} ${String(t.id)}`}
                               onClick={() => openTrainingEdit(t)}
-                            >
-                              {S.btnEdit}
-                            </button>
-                            <button className="text-sm font-semibold text-rose-600 hover:underline" onClick={() => setDelTraining(t)}>
-                              {S.btnHapus}
-                            </button>
+                            />
+                            <RowAction icon={Trash2} tone="danger" label={S.btnHapus} ariaLabel={`${S.btnHapus} ${String(t.id)}`} onClick={() => setDelTraining(t)} />
                           </div>
                         </td>
                       </tr>
