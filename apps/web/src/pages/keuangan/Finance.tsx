@@ -3258,6 +3258,9 @@ const { data, add, update, remove, log, branch, inBranch } = useStore();
               </Card>
               <Card className="p-4">
                 <CardHeader title={S.kasMutTitle} subtitle={S.kasMutSub} />
+                <div className="mb-2 flex justify-end">
+                  <SearchBox value={kasQ} onChange={setKasQ} className="max-w-xs" placeholder={locale === "en" ? "Search mutations..." : "Cari mutasi..."} ariaLabel={locale === "en" ? "Search cash mutations" : "Cari mutasi kas"} />
+                </div>
                 <div className="overflow-x-auto px-1 pb-3">
                   <table className="w-full">
                     <thead className="bg-surface sticky top-0 z-10">
@@ -3590,6 +3593,9 @@ const { data, add, update, remove, log, branch, inBranch } = useStore();
               <p className="text-xs text-steel-500">{S.bbNote}{bbSnap ? S.bbSnapNote : ""}</p>
               <Card className="p-4">
                 <CardHeader title={S.bbVoucherTitle.replace("{d}", bbAsOf.slice(0, 7))} subtitle={S.bbVoucherSub} />
+                <div className="mb-2 flex justify-end">
+                  <SearchBox value={bbQ} onChange={setBbQ} className="max-w-xs" placeholder={locale === "en" ? "Search vouchers..." : "Cari voucher..."} ariaLabel={locale === "en" ? "Search vouchers" : "Cari voucher buku besar"} />
+                </div>
                 <div className="overflow-x-auto px-1 pb-3">
                   <table className="w-full">
                     <thead className="bg-surface sticky top-0 z-10">
