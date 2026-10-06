@@ -45,6 +45,12 @@ export interface StoreItem {
   [key: string]: any;
 }
 
+export interface WbsPhoto {
+  url: string;
+  note: string;
+  date: string;
+}
+
 export interface WbsItem {
   task: string;
   start: string;
@@ -59,6 +65,9 @@ export interface WbsItem {
   station?: string;
   photoNote?: string;
   photoUrl?: string;
+  /** D3: array foto per WBS task. `photoUrl`/`photoNote` tetap ada
+      untuk backward compatibility dengan data lama. */
+  photos?: WbsPhoto[];
   dft?: number;
 }
 

@@ -900,8 +900,11 @@ const createWarranty = async (wbsTask?: string) => {
         ? {
             ...w, actualHours: hours, materialUsed: wbsUpdateForm.material, status, progress: prog, predecessor: pred || undefined,
             ...(wbsUpdateForm.station ? { station: wbsUpdateForm.station } : { station: undefined }),
-            ...(wbsUpdateForm.photoNote.trim() ? { photoNote: wbsUpdateForm.photoNote.trim() } : { photoNote: undefined }),
-            ...(wbsUpdateForm.photoUrl.trim() ? { photoUrl: wbsUpdateForm.photoUrl.trim() } : { photoUrl: undefined }),
+...(wbsUpdateForm.photoNote.trim() || wbsUpdateForm.photoUrl.trim()
+                ? { photos: [...(w.photos ?? []), ...(wbsUpdateForm.photoUrl.trim() ? [{ url: wbsUpdateForm.photoUrl.trim(), note: wbsUpdateForm.photoNote.trim(), date: todayISO() }] : [])] }
+                : {}),
+              ...(wbsUpdateForm.photoNote.trim() ? { photoNote: wbsUpdateForm.photoNote.trim() } : { photoNote: undefined }),
+              ...(wbsUpdateForm.photoUrl.trim() ? { photoUrl: wbsUpdateForm.photoUrl.trim() } : { photoUrl: undefined }),
             ...(dftNum !== undefined ? { dft: dftNum } : { dft: undefined }),
           }
         : w
@@ -1191,9 +1194,11 @@ try {
                   <tbody className="divide-y divide-steel-100">
                     {sortRows(wbs.filter((w) => rowMatches(w as unknown as Record<string, unknown>, wbsQ, ["task", "station", "dft", "predecessor"])), sort, (w: WbsExt, k) => k === "weight" ? Number(w.weight) : k === "progress" ? Number(w.progress) : String((w as unknown as Record<string, unknown>)[k] ?? "")).map((w) => (
                       <tr key={w.task}>
-                          <td className="td font-medium text-navy-900">{w.task}
+<td className="td font-medium text-navy-900">{w.task}
                             {w.station ? <span className="ml-2 rounded bg-navy-50 px-1.5 py-0.5 text-[11px] font-semibold text-navy-700">{w.station}</span> : null}
-                            {w.dft !== undefined && w.dft !== null && String(w.dft) !== "" ? <span className="ml-1 text-[11px] text-steel-500">DFT {String(w.dft)}µm</span> : null}
+                            {w.dft !== undefined && w.dft !== null && String(w.dft) !== "" ? <span className="ml-1 text-[11px] text-steel-400">DFT {w.dft}</span> : null}
+                            {/* D3: badge jumlah foto jika ada. */}
+                            {w.photos && w.photos.length > 0 && <span className="ml-1 rounded bg-ocean-50 px-1.5 py-0.5 text-[11px] font-semibold text-ocean-700">📷 {w.photos.length}</span>}
                           </td>
                          <td className="td font-mono text-xs text-steel-500">{fmtBulan(w.start)}</td>
                          <td className="td font-mono text-xs text-steel-500">{fmtBulan(w.end)}</td>
