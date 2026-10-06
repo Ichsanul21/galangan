@@ -109,10 +109,13 @@ biaya. Tabel Maintenance persis yang dikeluhkan client.
 Ketiganya akan jadi tidak benar kalau nanti berubah jadi daftar dinamis.
 
 **Finance dan Procurement belum tuntas.** Finance punya 28 tabel di 13 tab;
-tab yang sudah diberi search: Piutang (AR) dan Hutang (AP). Sisa yang belum:
-Kas & Bank, Jadwal Bayar, Buku Besar, Laba Rugi, Neraca, Pajak, Aset, dan
-Jurnal. Procurement belum diaudit per-tab. Klaim "semua tabel punya search"
-**tidak bisa dipertahankan** berdasarkan bukti yang ada.
+16 sudah diberi search (AR, AP, Kas & Bank utama + mutasi, Jadwal Bayar,
+Buku Besar snapshot + voucher, Laba Rugi, Neraca AP/AR live + audit, Aset,
+Jurnal). Sisa tanpa search: aging AR, kas recap, adjustments, LR histori,
+overhead, P&L bulanan, Neraca ringkasan, P&L jurnal - semuanya ringkasan
+pendek yang tidak mungkin panjang. Procurement belum diaudit per-tab.
+Klaim "semua tabel punya search" **tidak bisa dipertahankan** berdasarkan
+bukti yang ada, tapi celah yang tersisa bukan lagi tabel panjang.
 
 ## B1 - Filter cabang di top bar dihapus - **BELUM**
 
@@ -401,8 +404,10 @@ download.
 12. [x] H3 (EntityPicker ke 10 field PIC tersisa, 24 probe) - `016abab`
 13. [x] A2 parsial - `6b3786e` (WBS), `2eb1fdb` (Payroll 3), `fc56ad7`
     (Absensi 3), `1c66274` (Drydock 2), `8bd08af` (Analytics, BomDetail),
-    `f7fc243` (Finance AR + AP), `89c981f` (Equipment 6, ProjectDetail 5).
-    **Belum tuntas:** 8 tab Finance dan Procurement.
+    `f7fc243` (Finance AR + AP), `89c981f` (Equipment 6, ProjectDetail 5),
+    `44c42d8` + `cb2957b` (Finance 6 tab lagi: Kas & Bank, Jadwal Bayar,
+    Buku Besar, Laba Rugi, Neraca, Aset, Jurnal, mutasi kas, BB voucher).
+    **Belum tuntas:** Procurement per-tab; ringkasan pendek Finance.
 
 **Gelombang 4 - butuh keputusan client dulu:**
 14. D1, D8, P8, S2, I2
