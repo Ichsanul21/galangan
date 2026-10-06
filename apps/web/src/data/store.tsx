@@ -1199,6 +1199,14 @@ export function StoreProvider({ children }: { children: ReactNode }) {
      2) Snapshot tombstone per run: id yang masuk SETELAH run dimulai tidak
         ikut dihapus, jadi DELETE baru tidak hilang. */
   const PUSH_ROWS_PER_RUN = 200;
+  /* "auth" = sesi hilang (401) atau hak akses ditolak (403). Berbeda dari
+       "fail": ini bukan masalah baris itu, tapi SELURUH push tidak akan
+       pernah berhasil sampai pengguna login ulang. Versi lama memperlakukannya
+       sama dengan "fail", jadi satu baris beracun mengulang tiap 45 detik
+       selamanya, menyimpan flag dirty, dan tidak pernah memberi tahu
+       pengguna apa yang harus diperbaiki. */
+type PushOutcome = "ok" | "stale" | "fail" | "auth";
+
   const pushPending = useCallback(async (): Promise<void> => {
     if (!remoteActive()) return;
     if (!(await isApiCompatible())) return;
@@ -1304,11 +1312,12 @@ export function StoreProvider({ children }: { children: ReactNode }) {
            semua baris pada jendela ini benar-benar berhasil. */
         const failedRows: string[] = [];
         for (const row of rows) {
-          const attemptCreate = async (retried: boolean, staleBase?: string): Promise<"ok" | "stale" | "fail"> => {
+          const attemptCreate = async (retried: boolean, staleBase?: string): Promise<PushOutcome> => {
             try {
               await remoteRepository(col).create(row);
               return "ok";
             } catch (err) {
+              if (err instanceof ApiError && (err.status === 401 || err.status === 403)) return "auth";
               if (err instanceof ApiError && err.status === 409) {
                 try {
                   // Kirim baseUpdatedAt agar STALE terdeteksi, bukan timpa buta.
@@ -1324,6 +1333,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
                   );
                   return "ok";
                 } catch (perr) {
+                  if (perr instanceof ApiError && (perr.status === 401 || perr.status === 403)) return "auth";
                   if (perr instanceof ApiError && perr.status === 409 && perr.code === "STALE") return "stale";
                   if (perr instanceof ApiError && perr.status === 429 && !retried) {
                     const waitMs = Math.min(Math.max(perr.retryAfterSec ?? 5, 1), 30) * 1000;
@@ -1345,6 +1355,20 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             }
           };
           let res = await attemptCreate(false);
+          if (res === "auth") {
+            /* Sesi habis atau hak akses ditolak: hentikan SEGERA seluruh push.
+               Koleksi lain tidak akan berhasil juga, dan mencoba semua hanya
+               memperpanjang keadaan yang sama. Antrean sengaja dibiarkan dirty
+               supaya tidak ada yang hilang; yang perlu dilakukan pengguna hanya
+               login ulang, lalu `focus` memicu push lagi. */
+            setRemoteLive(false);
+            setBackendError("Sesi berakhir - login ulang; perubahan ditahan untuk sinkronisasi");
+            if (fallbackToasted.current !== "401") {
+              fallbackToasted.current = "401";
+              notifyStore("Sesi berakhir - login ulang. Perubahan ditahan untuk sinkronisasi.");
+            }
+            return;
+          }
           if (res === "stale") {
             /* Konflik versi: ambil updated_at server lalu PATCH sekali lagi
                dengan base yang benar. Baris lokal TIDAK ditimpa - isinya
@@ -1371,6 +1395,17 @@ export function StoreProvider({ children }: { children: ReactNode }) {
               freshBase = undefined;
             }
             res = freshBase ? await attemptCreate(false, freshBase) : await attemptCreate(false);
+          }
+          if (res === "auth") {
+            /* Percobaan ulang dengan base server juga ditolak karena sesi/role.
+               Perlakukan sama dengan kasus pertama: stop, jangan ulang. */
+            setRemoteLive(false);
+            setBackendError("Sesi berakhir - login ulang; perubahan ditahan untuk sinkronisasi");
+            if (fallbackToasted.current !== "401") {
+              fallbackToasted.current = "401";
+              notifyStore("Sesi berakhir - login ulang. Perubahan ditahan untuk sinkronisasi.");
+            }
+            return;
           }
           if (res === "stale") {
             /* Masih konflik setelah memakai base server: row lain perangkat
@@ -1402,8 +1437,19 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             setBackendError(null);
           }
         }
-      } catch {
-        /* koleksi ini tetap dirty - coba lagi nanti */
+      } catch (err) {
+        /* Koleksi ini tetap dirty - coba lagi nanti. Kecuali sesi habis:
+           itu bukan masalah koleksi, jadi hentikan seluruh push daripada
+           mengulang request yang pasti ditolak. Antrean tetap utuh. */
+        if (err instanceof ApiError && (err.status === 401 || err.status === 403)) {
+          setRemoteLive(false);
+          setBackendError("Sesi berakhir - login ulang; perubahan ditahan untuk sinkronisasi");
+          if (fallbackToasted.current !== "401") {
+            fallbackToasted.current = "401";
+            notifyStore("Sesi berakhir - login ulang. Perubahan ditahan untuk sinkronisasi.");
+          }
+          return;
+        }
       }
     }
     } finally {
