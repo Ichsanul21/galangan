@@ -769,6 +769,15 @@ const { data, add, update, remove, log, branch, inBranch } = useStore();
      punya search sendiri atau tabelnya pendek. */
   const [arQ, setArQ] = useState("");
   const [apQ, setApQ] = useState("");
+  /* Pencarian teks untuk Kas & Bank, Jadwal Bayar, Buku Besar, Laba Rugi,
+     Neraca, dan Aset. Tab Pajak sengaja tidak diberi search: isinya KPI cards,
+     bukan daftar panjang. Tabel pertama Jurnal sudah punya juListQ. */
+  const [kasQ, setKasQ] = useState("");
+  const [jadwalQ, setJadwalQ] = useState("");
+  const [bbQ, setBbQ] = useState("");
+  const [lrQ, setLrQ] = useState("");
+  const [nrQ, setNrQ] = useState("");
+  const [asetQ, setAsetQ] = useState("");
   const today = todayISO();
 
   const projectById = useMemo(() => {
@@ -3146,6 +3155,9 @@ const { data, add, update, remove, log, branch, inBranch } = useStore();
                 action={<><button className="btn-secondary text-xs" onClick={() => { void exportHist("kas"); }} title={S.histExported}>{S.histExport}</button><button className="btn-primary text-xs" onClick={() => setShowMut(true)}>{S.addMutasi}</button></>}
               />
               <HistFilterBar value={kasHist} onChange={setKasHist} idPrefix="kas" />
+              <div className="mb-2 flex justify-end">
+                <SearchBox value={kasQ} onChange={setKasQ} className="max-w-xs" placeholder={locale === "en" ? "Search cash/bank..." : "Cari kas/bank..."} ariaLabel={locale === "en" ? "Search cash and bank" : "Cari kas dan bank"} />
+              </div>
               <p className="rounded-lg bg-ocean-50 px-3 py-2 text-xs text-ocean-700">
                 {S.kasLiveBadge.replace("{n}", String(kasLiveRows.reduce((s, r) => s + r.count, 0))).replace("{d}", kasAsOf).replace("{s}", kasSnap ? S.kasSnapSuffix : S.kasLiveSuffix)}
               </p>
@@ -3164,7 +3176,7 @@ const { data, add, update, remove, log, branch, inBranch } = useStore();
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-steel-100">
-                    {sortRows(kasRows, kasSort, (r, k) =>
+                    {sortRows(kasRows.filter((r) => rowMatches(r as unknown as Record<string, unknown>, kasQ, ["kode", "nama"])), kasSort, (r, k) =>
                       k === "nama" ? String(r.nama) : k === "awal" ? Number(r.awal) : k === "masuk" ? kasFlow(r.kode).masuk :
                       k === "keluar" ? kasFlow(r.kode).keluar : k === "berjalan" ? (kasSaldo[r.kode] ?? r.awal) :
                       k === "akhir" ? Number(r.akhir) : String(r.kode)).map((r) => {
@@ -3193,7 +3205,7 @@ const { data, add, update, remove, log, branch, inBranch } = useStore();
                       <tr><th className="th">{S.colKode}</th><th className="th">{S.colRekening}</th><th className="th">{S.colMasuk}</th><th className="th">{S.colKeluar}</th><th className="th">{S.kasNetCol}</th><th className="th">{S.kasJCol}</th></tr>
                     </thead>
                     <tbody className="divide-y divide-steel-100">
-                      {kasLiveRows.map((r) => (
+                      {kasLiveRows.filter((r) => rowMatches(r as unknown as Record<string, unknown>, kasQ, ["kode", "nama"])).map((r) => (
                         <tr key={r.kode} className="hover:bg-surface">
                           <td className="td font-mono text-xs font-semibold text-navy-900">{r.kode}</td>
                           <td className="td text-xs text-steel-600">{r.nama}</td>
@@ -3203,7 +3215,7 @@ const { data, add, update, remove, log, branch, inBranch } = useStore();
                           <td className="td text-xs text-steel-500">{r.count}</td>
                         </tr>
                       ))}
-                      {kasLiveRows.length === 0 && (
+                      {kasLiveRows.filter((r) => rowMatches(r as unknown as Record<string, unknown>, kasQ, ["kode", "nama"])).length === 0 && (
                         <tr><td className="td text-xs italic text-steel-400" colSpan={6}>{S.kasEmptyLive}</td></tr>
                       )}
                     </tbody>
@@ -3289,7 +3301,9 @@ const { data, add, update, remove, log, branch, inBranch } = useStore();
               {schedItems.length === 0 ? (
                 <EmptyState title={S.emptySchedTitle} subtitle={S.emptySchedSub} />
               ) : (
-                <div className="overflow-x-auto">
+                <div>
+                  <SearchBox value={jadwalQ} onChange={setJadwalQ} className="mb-2 max-w-xs" placeholder={locale === "en" ? "Search payment schedule..." : "Cari jadwal bayar..."} ariaLabel={locale === "en" ? "Search payment schedule" : "Cari jadwal bayar"} />
+                  <div className="overflow-x-auto">
                   <table className="w-full">
                     <thead className="bg-surface sticky top-0 z-10">
                       <tr>
@@ -3303,7 +3317,7 @@ const { data, add, update, remove, log, branch, inBranch } = useStore();
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-steel-100">
-                      {sortRows(schedItems, jadwalSort, (r, k) =>
+                      {sortRows(schedItems.filter((r) => rowMatches(r as unknown as Record<string, unknown>, jadwalQ, ["kind", "id", "ref", "desc", "due"])), jadwalSort, (r, k) =>
                         k === "kind" ? String(r.kind) : k === "id" ? String(r.id) : k === "ref" ? String(r.ref) :
                         k === "desc" ? String(r.desc) : k === "due" ? String(r.due) : Number(r.amount)).map((r) => (
                         <tr key={r.key} className="hover:bg-surface">
@@ -3317,7 +3331,8 @@ const { data, add, update, remove, log, branch, inBranch } = useStore();
                         </tr>
                       ))}
                     </tbody>
-                  </table>
+                    </table>
+                  </div>
                 </div>
               )}
             </div>
@@ -3502,6 +3517,10 @@ const { data, add, update, remove, log, branch, inBranch } = useStore();
               </div>
               )}
               {bbSnap && (
+              <>
+              <div className="mb-2 flex justify-end">
+                <SearchBox value={bbQ} onChange={setBbQ} className="max-w-xs" placeholder={locale === "en" ? "Search ledger..." : "Cari buku besar..."} ariaLabel={locale === "en" ? "Search ledger" : "Cari buku besar"} />
+              </div>
               <div className="overflow-x-auto">
                 <table className="w-full">
                   <thead className="bg-surface sticky top-0 z-10">
@@ -3516,7 +3535,7 @@ const { data, add, update, remove, log, branch, inBranch } = useStore();
                     <tr><th className="th">{S.colDebit}</th><th className="th">{S.colKredit}</th></tr>
                   </thead>
                   <tbody className="divide-y divide-steel-100">
-                    {sortRows(coaRows.filter((c) => String(c.dk) !== "-"), bbSort, (c, k) =>
+                    {sortRows(coaRows.filter((c) => String(c.dk) !== "-").filter((c) => rowMatches(c as unknown as Record<string, unknown>, bbQ, ["kode", "nama", "dk"])), bbSort, (c, k) =>
                       k === "nama" ? String(c.nama) : k === "dk" ? String(c.dk) : String(c.kode)).map((c) => {
                       const kode = String(c.kode);
                       const isLR = String(c.nrlr) === "LR";
@@ -3539,6 +3558,7 @@ const { data, add, update, remove, log, branch, inBranch } = useStore();
                   </tbody>
                 </table>
               </div>
+              </>
               )}
               <Card className="p-4">
                 <CardHeader title={S.bbLiveTitle.replace("{d}", bbAsOf.slice(0, 7))} subtitle={S.bbLiveSub.replace("{a}", fmtMiliar(bbDAll)).replace("{b}", fmtMiliar(bbKAll)).replace("{c}", Math.abs(bbDAll - bbKAll) < 1 ? S.bbBalanced : S.bbUnbalanced)} />
@@ -3548,7 +3568,7 @@ const { data, add, update, remove, log, branch, inBranch } = useStore();
                       <tr><th className="th">{S.colKode}</th><th className="th">{S.colNamaAkun}</th><th className="th">{S.bbCumDebit}</th><th className="th">{S.bbCumKredit}</th><th className="th">{S.bbSaldoCol}</th><th className="th" colSpan={2}>{S.bbPeriodCol}</th><th className="th">{S.bbRowsCol}</th></tr>
                     </thead>
                     <tbody className="divide-y divide-steel-100">
-                      {bbLive.map((r) => (
+                      {bbLive.filter((r) => rowMatches(r as unknown as Record<string, unknown>, bbQ, ["kode", "nama"])).map((r) => (
                         <tr key={r.kode} className="hover:bg-surface">
                           <td className="td font-mono text-xs font-semibold text-navy-900">{r.kode}</td>
                           <td className="td text-xs text-steel-600">{r.nama}</td>
@@ -3623,6 +3643,9 @@ const { data, add, update, remove, log, branch, inBranch } = useStore();
                 <Card className="p-4"><p className="text-xs text-steel-500">{S.lrOpexTitle}</p><p className="mt-1 text-lg font-bold text-navy-900">{fmtRupiah(lrRows.biayaUsaha)}</p><p className="mt-1 text-[11px] text-steel-400">{S.lrOpexNote} · {S.auditTag}</p></Card>
                 <Card className="p-4"><p className="text-xs text-steel-500">{S.kpiLabaNet}</p><p className="mt-1 text-lg font-bold text-emerald-600">{fmtRupiah(lrRows.pend - lrRows.bebanPokok - lrRows.biayaUsaha + lrRows.lainMasuk - lrRows.lainKeluar)}</p><p className="mt-1 text-[11px] text-steel-400">{S.lrOtherNet.replace("{a}", fmtRupiah(lrRows.lainMasuk - lrRows.lainKeluar))} · {S.auditTag}</p></Card>
               </div>
+              <div className="mb-2 flex justify-end">
+                <SearchBox value={lrQ} onChange={setLrQ} className="max-w-xs" placeholder={locale === "en" ? "Search P&L..." : "Cari laba rugi..."} ariaLabel={locale === "en" ? "Search profit and loss" : "Cari laba rugi"} />
+              </div>
               <div className="overflow-x-auto">
                 <table className="w-full">
                   <thead className="bg-surface sticky top-0 z-10">
@@ -3633,7 +3656,7 @@ const { data, add, update, remove, log, branch, inBranch } = useStore();
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-steel-100">
-                    {sortRows(lrRows.rows, lrSort, (r, k) => k === "pos" ? String(r.pos) : k === "nilai" ? Number(r.nilai) : String(r.kode)).map((r) => (
+                    {sortRows(lrRows.rows.filter((r) => rowMatches(r as unknown as Record<string, unknown>, lrQ, ["kode", "pos"])), lrSort, (r, k) => k === "pos" ? String(r.pos) : k === "nilai" ? Number(r.nilai) : String(r.kode)).map((r) => (
                       <tr key={r.kode} className="hover:bg-surface">
                         <td className="td font-mono text-xs font-semibold text-navy-900">{r.kode}</td>
                         <td className="td text-xs text-steel-600">{r.pos}</td>
@@ -3899,8 +3922,11 @@ const { data, add, update, remove, log, branch, inBranch } = useStore();
               </>
               )}
               <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-                <Card className="p-4">
+<Card className="p-4">
                   <CardHeader title={S.nrApLiveTitle.replace("{a}", S.subHutangTitle).replace("{d}", nrAsOf)} subtitle={S.nrApLiveSub} />
+                  <div className="mb-2 flex justify-end">
+                    <SearchBox value={nrQ} onChange={setNrQ} className="max-w-xs" placeholder={locale === "en" ? "Search AP..." : "Cari piutang..."} ariaLabel={locale === "en" ? "Search payables" : "Cari utang"} />
+                  </div>
                   <div className="max-h-72 overflow-y-auto">
                     <table className="w-full">
                       <thead className="bg-surface sticky top-0 z-10"><tr>
@@ -3909,7 +3935,7 @@ const { data, add, update, remove, log, branch, inBranch } = useStore();
                         <SortTh label={S.nrOutstandingCol} sortKey="total" sort={nrSort} onSort={(k) => setNrSort((s) => toggleSort(s, k))} />
                       </tr></thead>
                       <tbody className="divide-y divide-steel-100">
-                        {sortRows(hutLive, nrSort, (h, k) => k === "count" ? Number(h.count) : k === "total" ? Number(h.total) : String(h.v)).map((h) => (
+                        {sortRows(hutLive.filter((h) => rowMatches(h as unknown as Record<string, unknown>, nrQ, ["v", "count", "total"])), nrSort, (h, k) => k === "count" ? Number(h.count) : k === "total" ? Number(h.total) : String(h.v)).map((h) => (
                           <tr key={h.v} className="hover:bg-surface">
                             <td className="td text-xs font-medium text-navy-900">{h.v}</td>
                             <td className="td text-xs text-steel-600">{h.count} AP</td>
@@ -3923,8 +3949,11 @@ const { data, add, update, remove, log, branch, inBranch } = useStore();
                     </table>
                   </div>
                 </Card>
-                <Card className="p-4">
+<Card className="p-4">
                   <CardHeader title={S.nrArLiveTitle.replace("{a}", S.subPiutangTitle).replace("{d}", nrAsOf)} subtitle={S.nrArLiveSub} />
+                  <div className="mb-2 flex justify-end">
+                    <SearchBox value={nrQ} onChange={setNrQ} className="max-w-xs" placeholder={locale === "en" ? "Search AR..." : "Cari piutang..."} ariaLabel={locale === "en" ? "Search receivables" : "Cari piutang"} />
+                  </div>
                   <div className="max-h-72 overflow-y-auto">
                     <table className="w-full">
                       <thead className="bg-surface sticky top-0 z-10"><tr>
@@ -3933,7 +3962,7 @@ const { data, add, update, remove, log, branch, inBranch } = useStore();
                         <SortTh label={S.nrOutstandingCol} sortKey="total" sort={nrSort} onSort={(k) => setNrSort((s) => toggleSort(s, k))} />
                       </tr></thead>
                       <tbody className="divide-y divide-steel-100">
-                        {sortRows(piuLive, nrSort, (p, k) => k === "count" ? Number(p.count) : k === "total" ? Number(p.total) : String(p.c)).map((p) => (
+                        {sortRows(piuLive.filter((p) => rowMatches(p as unknown as Record<string, unknown>, nrQ, ["c", "count", "total"])), nrSort, (p, k) => k === "count" ? Number(p.count) : k === "total" ? Number(p.total) : String(p.c)).map((p) => (
                           <tr key={p.c} className="hover:bg-surface">
                             <td className="td text-xs font-medium text-navy-900">{p.c}</td>
                             <td className="td text-xs text-steel-600">{p.count} INV</td>
@@ -4102,6 +4131,9 @@ const { data, add, update, remove, log, branch, inBranch } = useStore();
                 subtitle={S.assetSub}
                 action={<button className="btn-primary text-xs" onClick={() => { setAstEdit(null); setAstForm({ nama: "", kelompok: "2", bulan: "", tahun: "", nilai: "", metode: "GL" }); setShowAst(true); }}>{S.addAset}</button>}
               />
+              <div className="mb-2 flex justify-end">
+                <SearchBox value={asetQ} onChange={setAsetQ} className="max-w-xs" placeholder={locale === "en" ? "Search assets..." : "Cari aset..."} ariaLabel={locale === "en" ? "Search fixed assets" : "Cari aset tetap"} />
+              </div>
               <div className="overflow-x-auto">
                 <table className="w-full">
                   <thead className="bg-surface sticky top-0 z-10">
@@ -4121,7 +4153,7 @@ const { data, add, update, remove, log, branch, inBranch } = useStore();
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-steel-100">
-                    {sortRows(assetRows.map((a, i) => ({ a, i })), asetSort, ({ a }, k) =>
+                    {sortRows(assetRows.filter((a) => rowMatches(a as unknown as Record<string, unknown>, asetQ, ["nama", "kelompok", "bulan", "tahun", "metode"])).map((a, i) => ({ a, i })), asetSort, ({ a }, k) =>
                       k === "nama" ? String(a.nama ?? "") : k === "kel" ? String(a.kelompok ?? "") : k === "bulan" ? String(a.bulan ?? "") :
                       k === "tahun" ? String(a.tahun ?? "") : k === "nilai" ? num(a.nilai) : k === "metode" ? String(a.metode ?? "") :
                       k === "susut" ? num(a.susutTahun) : String(a.id ?? "")).map(({ a, i }) => {
@@ -4168,6 +4200,7 @@ const { data, add, update, remove, log, branch, inBranch } = useStore();
               />
               <div className="mb-3 flex flex-wrap items-center gap-2 px-1">
                 <HistFilterBar value={juHist} onChange={setJuHist} idPrefix="ju" />
+                <SearchBox value={juListQ} onChange={setJuListQ} className="max-w-xs" placeholder={locale === "en" ? "Search journal..." : "Cari jurnal..."} ariaLabel={locale === "en" ? "Search journals" : "Cari jurnal"} />
                 <span className="text-xs text-steel-400">{S.juCountFilt.replace("{n}", String(sortedJu.length))}</span>
               </div>
               <div className="overflow-x-auto">
