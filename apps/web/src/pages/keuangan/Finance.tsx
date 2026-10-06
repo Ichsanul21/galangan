@@ -38,7 +38,7 @@ import {
   sortRows,
   usePager,
   toast,
-  NumInput, AsyncButton, SecureImg, FileUploadButton,
+  NumInput, MoneyInput, AsyncButton, SecureImg, FileUploadButton,
   SearchBox, rowMatches,
   RowAction,
 } from "../../components/ui";
@@ -48,7 +48,7 @@ import { n_fin } from "../../i18n/n_fin";
 import { useT } from "../../i18n/LanguageContext";
 import { useStore } from "../../data/store";
 import type { StoreItem } from "../../data/store";
-import { fmtRupiah, fmtMiliar, fmtTanggal, fmtJumlah, todayISO } from "../../utils/format";
+import { fmtRupiah, fmtMiliar, fmtTanggal, fmtJumlah, parseRupiah, todayISO } from "../../utils/format";
 import { createdAtOf, lastTouchedAt } from "../../utils/timestamps";
 import { getSetting } from "../../utils/settings";
 import { useDraftState } from "../../utils/draft";
@@ -292,7 +292,12 @@ interface InvLine {
 const invNext = (s: string): string[] => INV_NEXT[s] ?? [];
 const emptyProof = () => ({ date: todayISO(), method: "Transfer", ref: "" });
 const emptyLine = (): InvLine => ({ desc: "", qty: "1", unit: "pcs", price: "", rate: "", hours: "", kategori: "Jasa" });
-const num = (v: unknown): number => Number(v) || 0;
+/* num(): parse angka dari input. Handle string berformat "1.000.000"
+     (hasil MoneyInput) dan number mentah. */
+  const num = (v: unknown): number => {
+    if (typeof v === "number") return Number.isFinite(v) ? v : 0;
+    return parseRupiah(String(v ?? ""));
+  };
 
 // Neto invoice: grandTotal bila ada, else amount dikurangi retensi yang ditahan.
 const invNeto = (inv: StoreItem): number => {
@@ -4488,7 +4493,7 @@ const { data, add, update, remove, log, branch, inBranch } = useStore();
                   )}
                   {isTMForm ? (
                     <>
-                      <div className="col-span-5 sm:col-span-3"><Field label={S.fRate}><NumInput min={0} className="input" value={l.rate} onChange={(e) => setLine(idx, "rate", e.target.value)} /></Field></div>
+                      <div className="col-span-5 sm:col-span-3"><Field label={S.fRate}><MoneyInput className="input" value={l.rate} onChange={(v) => setLine(idx, "rate", v)} /></Field></div>
                       <div className="col-span-5 sm:col-span-3"><Field label={S.fHours}><NumInput min={0} className="input" value={l.hours} onChange={(e) => setLine(idx, "hours", e.target.value)} /></Field></div>
                       <div className="col-span-2 sm:col-span-2">
                         <p className="text-xs font-semibold text-navy-900">{fmtRupiah(lineAmount(l, true))}</p>
@@ -4499,7 +4504,7 @@ const { data, add, update, remove, log, branch, inBranch } = useStore();
                     <>
                       <div className="col-span-3 sm:col-span-2"><Field label={S.fQty}><NumInput min={0} className="input" value={l.qty} onChange={(e) => setLine(idx, "qty", e.target.value)} /></Field></div>
                       <div className="col-span-3 sm:col-span-2"><Field label={S.fUnit}><input className="input" value={l.unit} onChange={(e) => setLine(idx, "unit", e.target.value)} /></Field></div>
-                      <div className="col-span-4 sm:col-span-3"><Field label={S.fPrice}><NumInput min={0} className="input" value={l.price} onChange={(e) => setLine(idx, "price", e.target.value)} /></Field></div>
+                      <div className="col-span-4 sm:col-span-3"><Field label={S.fPrice}><MoneyInput className="input" value={l.price} onChange={(v) => setLine(idx, "price", v)} /></Field></div>
                       <div className="col-span-2 sm:col-span-1">
                         <button className="text-rose-600" aria-label={S.delRow} onClick={() => setInvLines((ls) => ls.filter((_, i) => i !== idx))}><Trash2 className="h-4 w-4" /></button>
                       </div>
@@ -4638,7 +4643,7 @@ const { data, add, update, remove, log, branch, inBranch } = useStore();
         footer={<><button className="btn-secondary" onClick={() => { setApTarget(null); setProofImg(""); }}>{S.cancelBtn}</button><AsyncButton className="btn-primary" onAction={confirmBuktiAp}>{S.saveProofPay}</AsyncButton></>}>
         <div className="space-y-3">
           <Field label={S.fStageAmount} hint={!num(apTarget?.pay1) ? S.apPhase1 : S.apPhase2.replace("{a}", fmtRupiah(num(apTarget?.pay1)))}>
-            <NumInput min={0} className="input" value={apPayAmt} onChange={(e) => setApPayAmt(e.target.value)} placeholder={S.stagePh} />
+            <MoneyInput className="input" value={apPayAmt} onChange={(v) => setApPayAmt(v)} placeholder={S.stagePh} />
           </Field>
           <FormGrid>
             <Field label={S.fPayDate}><input type="date" required className="input" value={proof.date} onChange={(e) => setProofField("date", e.target.value)} /></Field>
@@ -4870,7 +4875,7 @@ const { data, add, update, remove, log, branch, inBranch } = useStore();
                     </Field>
                   </div>
                   <div className="col-span-10 sm:col-span-3">
-                    <Field label={S.fNominal}><NumInput min={0} className="input" value={l.amount} onChange={(e) => setJuLines((ls) => ls.map((x, i) => (i === idx ? { ...x, amount: e.target.value } : x)))} /></Field>
+                    <Field label={S.fNominal}><MoneyInput className="input" value={l.amount} onChange={(v) => setJuLines((ls) => ls.map((x, i) => (i === idx ? { ...x, amount: v } : x)))} /></Field>
                   </div>
                   <div className="col-span-2 sm:col-span-1">
                     <button className="text-rose-600" aria-label={S.delJuRow.replace("{n}", String(idx + 1))} onClick={() => setJuLines((ls) => (ls.length > 1 ? ls.filter((_, i) => i !== idx) : [{ db: "", kr: "", amount: "" }]))}><Trash2 className="h-4 w-4" /></button>
@@ -4910,7 +4915,7 @@ const { data, add, update, remove, log, branch, inBranch } = useStore();
             <Field label={S.fNoDoc} hint={S.noDocHint}><input className="input font-mono" value={mutForm.dokumen} onChange={(e) => setMutForm({ ...mutForm, dokumen: e.target.value })} /></Field>
           </FormGrid>
           <Field label={S.colUraian}><input className="input" value={mutForm.uraian} onChange={(e) => setMutForm({ ...mutForm, uraian: e.target.value })} placeholder={S.mutDescPh} /></Field>
-          <Field label={S.fNominal}><NumInput min={0} className="input" value={mutForm.amount} onChange={(e) => setMutForm({ ...mutForm, amount: e.target.value })} /></Field>
+          <Field label={S.fNominal}><MoneyInput className="input" value={mutForm.amount} onChange={(v) => setMutForm({ ...mutForm, amount: v })} /></Field>
         </div>
       </Modal>
 
@@ -4944,7 +4949,7 @@ const { data, add, update, remove, log, branch, inBranch } = useStore();
             </Field>
             <Field label={S.fAssetMonth} hint={S.assetMonthHint}><input className="input" value={astForm.bulan} onChange={(e) => setAstForm({ ...astForm, bulan: e.target.value })} /></Field>
             <Field label={S.fAssetYear}><input className="input font-mono" value={astForm.tahun} onChange={(e) => setAstForm({ ...astForm, tahun: e.target.value })} placeholder="2026" /></Field>
-            <Field label={S.fAssetValue}><NumInput min={0} className="input" value={astForm.nilai} onChange={(e) => setAstForm({ ...astForm, nilai: e.target.value })} /></Field>
+            <Field label={S.fAssetValue}><MoneyInput className="input" value={astForm.nilai} onChange={(v) => setAstForm({ ...astForm, nilai: v })} /></Field>
             <Field label={S.colMetode}>
               <select className="input" value={astForm.metode} onChange={(e) => setAstForm({ ...astForm, metode: e.target.value })}>
                 <option>GL</option>
