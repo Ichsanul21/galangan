@@ -62,7 +62,7 @@ export interface CashReportModel {
 export interface ProjectReportModel {
   report: ProjectReport;
   wbs: Array<{ task: string; progress: number; status: string }>;
-  boq: Array<{ name: string; qty: string; total: number; status: string }>;
+  boq: Array<{ suratNo: string; name: string; qty: string; total: number; status: string }>;
   invoices: Array<{ id: string; amount: number; status: string; due: string }>;
   workOrders: Array<{ id: string; sub: string; progress: number }>;
   findings: Finding[];
@@ -312,18 +312,27 @@ export function projectReport(input: ProjectReportModel, opts: DocOptions = {}):
 
   if (input.boq.length > 0) {
     d.add(sectionBlock(lt(locale, "BoQ", "Bill of quantities"), `${r.boqCount} item`));
-    /* Baris total adalah baris biasa yang diberi indeks `totalRow` - mesin
-       tabel menebalkannya. Menulisnya sebagai baris terpisah (bukan opsi
-       `totalRow: [...]`) karena `totalRow` berisi indeks, bukan isi. */
-    const rows = [
-      ...input.boq.map((b) => [b.name, b.qty, rupiah(b.total), b.status]),
-      [`${lt(locale, "TOTAL", "TOTAL")} (${r.boqCount})`, "", rupiah(r.boqTotal), ""],
-    ];
+    /* D5: kelompokkan per nomor surat. Satu surat = beberapa pekerjaan,
+       diakhiri baris subtotal surat, lalu TOTAL akhir. Baris TOTAL adalah
+       baris biasa yang diberi indeks `totalRow` - mesin tabel menebalkannya. */
+    const bySurat = new Map<string, typeof input.boq>();
+    for (const b of input.boq) {
+      const key = b.suratNo || "-";
+      if (!bySurat.has(key)) bySurat.set(key, []);
+      bySurat.get(key)!.push(b);
+    }
+    const rows: string[][] = [];
+    for (const [suratNo, list] of bySurat) {
+      for (const b of list) rows.push([suratNo, b.name, b.qty, rupiah(b.total), b.status]);
+      const sub = list.reduce((s, b) => s + b.total, 0);
+      rows.push([suratNo, lt(locale, "Subtotal surat", "Letter subtotal"), "", rupiah(sub), ""]);
+    }
+    rows.push(["", `${lt(locale, "TOTAL", "TOTAL")} (${r.boqCount})`, "", rupiah(r.boqTotal), ""]);
     d.add(
       table({
-        head: [lt(locale, "Item", "Item"), lt(locale, "Qty", "Qty"), lt(locale, "Total", "Total"), lt(locale, "Status", "Status")],
-        widths: ["auto", 26, 30, 24],
-        align: ["left", "right", "right", "left"],
+        head: [lt(locale, "No Surat", "Letter No"), lt(locale, "Item", "Item"), lt(locale, "Qty", "Qty"), lt(locale, "Total", "Total"), lt(locale, "Status", "Status")],
+        widths: [28, "auto", 24, 28, 20],
+        align: ["left", "left", "right", "right", "left"],
         rows,
         totalRow: rows.length - 1,
       }),

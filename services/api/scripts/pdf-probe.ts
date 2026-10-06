@@ -739,7 +739,7 @@ const MODELS: Record<string, unknown> = {
       spareDone: 4,
     },
     wbs: Array.from({ length: 12 }, (_, i) => ({ task: `WBS ${i + 1} - Pekerjaan dek dan rnd anjang`, progress: Math.min(100, i * 9), status: i < 7 ? "Selesai" : "Berjalan" })),
-    boq: Array.from({ length: 18 }, (_, i) => ({ name: `Item BoQ ${i + 1} - baja ship's plate 10 mm`, qty: `${i + 2} lbr`, total: 120_000_000 + i * 1_000_000, status: "Approved" })),
+    boq: Array.from({ length: 18 }, (_, i) => ({ suratNo: `SPK/PROBE/2026-${String(Math.floor(i / 6) + 1).padStart(2, "0")}`, name: `Item BoQ ${i + 1} - baja ship's plate 10 mm`, qty: `${i + 2} lbr`, total: 120_000_000 + i * 1_000_000, status: "Approved" })),
     invoices: Array.from({ length: 8 }, (_, i) => ({ id: `INV-2026-${100 + i}`, amount: 250_000_000, status: i < 6 ? "Lunas" : "Belum Lunas", due: "2026-10-05" })),
     workOrders: Array.from({ length: 4 }, (_, i) => ({ id: `WO-2026-0${i + 1}`, sub: `PT SUBKONTRAKTOR ${i + 1}`, progress: 40 + i * 10 })),
     findings: Array.from({ length: 5 }, (_, i) => ({ kind: "NCR", id: `NCR-2026-0${i + 1}`, status: i === 0 ? "Tertutup" : "Terbuka", date: "2026-09-20", text: `NCR ukuran ${i + 1}: las tidak memenuhi standar.`, severity: i === 0 ? "Minor" : "Critical" })),

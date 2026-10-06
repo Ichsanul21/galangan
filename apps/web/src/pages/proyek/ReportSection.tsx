@@ -124,7 +124,7 @@ export default function ReportSection({ projectId }: Props) {
     void exportExcelSheets([
       { name: "Ringkasan", rows: ringkas },
       { name: "WBS", rows: [["WBS", "Progres"], ...wbs.map((w) => [w.task, `${w.progress}%`])] },
-      { name: "BoQ", rows: [["BoQ", "Qty", "Total", "Status"], ...boq.map((b) => [b.name, String(b.quantity), String(b.totalPrice), b.status])] },
+      { name: "BoQ", rows: [["No Surat", "BoQ", "Qty", "Total", "Status"], ...boq.map((b) => [String(b.suratNo ?? "-"), b.name, String(b.quantity), String(b.totalPrice), b.status])] },
     ], `Report-${projectId}`);
     toast(S.repToastExcel);
   };

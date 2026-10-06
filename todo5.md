@@ -36,8 +36,10 @@ klarifikasi client).
 
 Perubahan dari Gelombang 5: D3, D10, D11, D12, D13, D15 naik ke SELESAI
 (masing-masing commit terpisah). B2 selesai untuk semua field money di 6
-file utama. D5 (BoQ per nomor surat) dan F1 (Finance tanggal) belum
-dikerjakan. I2 masih BELUM.
+file utama. D5 (BoQ per nomor surat) SELESAI di sesi lanjutan: skema
+`suratNo`, tabel grouped + expand, export Excel per surat, PDF
+`laporanProyek` per surat + subtotal. F1 (Finance tanggal) dan I2 masih
+belum/kurang jelas.
 
 Catatan: jumlah status di atas berjumlah 73, bukan 72. Selisih itu sudah ada
 sejak audit awal dan tidak ditutup dengan menebak - penyebabnya sepertinya satu
@@ -278,7 +280,7 @@ download.
 | D2 | Milestone menyeluruh, 7 hari jadi 1 bulan, list saja | **SEBAGIAN** | "List saja" sudah terpenuhi (`:1058-1069`). Masih H-7 hari (`:437`) dan nilai itu terikat ke setting global `ALERT_MILESTONE_DAYS`, jadi mengubahnya memengaruhi juga mesin alert. Milestone yang sudah selesai difilter (`:440`). |
 | D3 | Update progress WBS: material ikut inventori, histori, dan foto | **BELUM** | `saveWbsTask` (`:859-892`) hanya tulis WBS plus progress. Material masih input teks (`:2118`). Tidak ada baca `data.inventory`, tidak ada `add("movements")`. `WbsItem` hanya punya `photoUrl` dan `photoNote` tunggal yang ditimpa tiap simpan (`:876-877`) dan tidak pernah dirender di tabel WBS (`:1100-1127`). |
 | D4 | Gantt mini: detail bulan di bawah indikator | **SEBAGIAN** | Gantt mini ada (`:1129-1152`) dengan bar dan `progress%`. Tidak ada tick bulan sama sekali. `utils/monthAxis.ts` tidak di-import di ProjectDetail. |
-| D5 | **BoQ: satu nomor surat bisa beberapa pekerjaan, hanya total/status/dokumen/aksi, klik untuk detail** | **BELUM** (krusial) | Model data sekarang satu baris sama dengan satu pekerjaan (`BoQSection.tsx:108`). `BoQItem` di `data/index.ts:924-941` tidak punya field nomor surat maupun revisi. Server juga: `services/api/src/refs.ts:64` satu FK, tanpa dokumen induk. Tabel flat 13 kolom (`:356-484`), tanpa baris induk, expand, atau drawer. Fitur revisi yang ada adalah riwayat harga per baris (`:50,:394-402`), bukan status revisi per surat. Butuh ubah skema, API, seed, dan PDF. |
+| D5 | **BoQ: satu nomor surat bisa beberapa pekerjaan, hanya total/status/dokumen/aksi, klik untuk detail** | **SELESAI** | `BoQItem` punya `suratNo` (`data/index.ts`), seed per proyek dikelompokkan per SPK. `BoQSection.tsx`: tabel grouped per surat (total, status gabungan, badge revisi, dokumen), expand detail per item (ubah qty/harga, revisi harga, log, hapus Draft, tombol transisi status). Export Excel satu blok per surat + subtotal + TOTAL. PDF `laporanProyek` (`services/api/src/pdf`) tabel BoQ per No Surat + subtotal surat. API FK per-item masih ada (belum ada tabel induk surat) - grouping dihitung dari `suratNo`, bukan relasi DB baru. |
 | D6 | Dokumen BoQ masuk tab Dokumen dan Laporan | **SEBAGIAN** | Lampiran BoQ (`boq[].fileUrl`) hanya dirender di tab BoQ (`:409-411`), tidak masuk `data.documents`. Masalah tampilan lain: dokumen yang sama dirender dua kali di satu tab, yaitu daftar kartu (`:1422-1495`) lalu `ReportSection.tsx:252-287` yang menduplikasi dokumen sama dalam alur approval. |
 | D7 | Change Order harus lewat approval dulu dan terkoneksi BoQ | **SEBAGIAN** | Rantai approval ada: create dengan status `"Diajukan"` (`:462-465`), apply hanya dari `"Disetujui"` (`:1666-1668`). Tidak ada kaitan BoQ sama sekali. `setCoStatus` (`:474-482`) hanya tulis status, tidak membuat atau merevisi baris BoQ. "Diterapkan" juga tidak menyentuh budget atau nilai kontrak. |
 | D8 | Hapus table risiko (input manual → auto dari WBS/SOW) | **SELESAI** (`9fa8e55`) | Client mengonfirmasi: risiko harusnya sudah ada saat menambah WBS/SOW, jadi input manual dihapus dan diganti auto-generate. `utils/riskAuto.ts`: `generateRisksFromWbs` + `generateRisksFromWo`. Deduplikasi berbasis `source` + `wbsTask`. Task selesai → risiko lama ditutup otomatis. Trigger di ProjectDetail (useEffect WBS) dan Projects (page load). Form input manual dihapus; kartu risiko tetap ada. 24 pemeriksaan di `scripts/risk-auto-probe.ts`. |
@@ -433,7 +435,7 @@ download.
     [x] D12 (service referensi BoQ) - `a5c1eb4`
     [x] D13 (sparepart referensi PO) - `c6fc6ee`
     [x] D15 (tab Subkon di ProjectDetail) - `12da962`
-    [ ] D5 (BoQ per nomor surat, krusial) - belum dikerjakan
+    [x] D5 (BoQ per nomor surat, krusial) - sesi lanjutan: skema suratNo + UI grouped + Excel + PDF
 16. [x] B2 (MoneyInput + parseRupiah, ~36 field money di 6 file) - `6813df9` + `63dfdfd` + `53cc5d1` + `9043685` + `918e1b6` + `9755d50` + `223e8e5`
 17. [ ] F1 (27 tabel Finance + tanggal hapus) - belum dikerjakan
 

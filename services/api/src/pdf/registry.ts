@@ -1037,7 +1037,7 @@ const laporanProyek: Recipe<ProjectReportModel> = {
       wbs: wbs.map((w) => ({ task: str(w, "task"), progress: num(w, "progress"), status: str(w, "status") })),
       boq: (cols.boq ?? [])
         .filter((b) => str(b, "projectId", "project") === projectId)
-        .map((b) => ({ name: str(b, "name"), qty: `${num(b, "quantity")} ${str(b, "unit")}`, total: num(b, "totalPrice") || num(b, "quantity") * num(b, "unitPrice"), status: str(b, "status") })),
+        .map((b) => ({ suratNo: str(b, "suratNo") || "-", name: str(b, "name"), qty: `${num(b, "quantity")} ${str(b, "unit")}`, total: num(b, "totalPrice") || num(b, "quantity") * num(b, "unitPrice"), status: str(b, "status") })),
       invoices: (cols.invoices ?? [])
         .filter((i) => str(i, "project") === projectId)
         .map((i) => ({ id: str(i, "id"), amount: invoiceValue(i), status: str(i, "status"), due: str(i, "due", "date") })),

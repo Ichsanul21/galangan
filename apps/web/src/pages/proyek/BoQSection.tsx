@@ -1,22 +1,20 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, Fragment } from "react";
 import { useStore } from "../../data/store";
 import { useT } from "../../i18n/LanguageContext";
 import { n_prj } from "../../i18n/n_prj";
 import { useAuth, canSetTarget } from "../../auth/auth";
 import { Card, Modal, Field, FormGrid, toast, EmptyState, StatusBadge, Badge, SortTh, toggleSort, sortRows, ConfirmModal,
   NumInput, MoneyInput, AsyncButton, FlowStrip, FileUploadButton,
-  useBusy, SearchBox, rowMatches, RowAction,
+  SearchBox, rowMatches,
 } from "../../components/ui";
 import type { SortState } from "../../components/ui";
 import { findUsages } from "../../utils/usages";
-import { Plus, FileDown, Pencil, Trash2, History } from "lucide-react";
+import { Plus, FileDown, Pencil, Trash2, History, ChevronDown, ChevronRight, ScrollText } from "lucide-react";
 import { exportExcel, fmtRupiah } from "../../utils/export";
 import { DocumentPreviewCell, InlineDocPreview, type PreviewDoc } from "../../components/DocumentPreview";
 import { docAttachment, looksLikeUrl } from "../../utils/docAttachment";
 import { SATUAN, STATUS_BOQ_ID } from "../../utils/format";
 import { todayISO, parseRupiah } from "../../utils/format";
-import { fmtTanggal } from "../../utils/format";
-import { createdAtOf, lastTouchedAt } from "../../utils/timestamps";
 import type { BoQItem } from "../../data";
 
 /* Dokumen pendukung satu item BoQ, atau null bila tidak ada lampiran.
@@ -53,8 +51,6 @@ type BoQExt = BoQItem & { priceHistory?: PriceHist[]; fileUrl?: string };
 /* Alur kanonis ID (nilai tersimpan EN legacy). "Rejected" dipetakan ke
    "Ditolak" supaya punya langkah yang ditebalkan di flow strip. */
 const BOQ_FLOW_ID = ["Draf", "Diajukan", "Disetujui", "Selesai"];
-const boqFlowId = (s: string): string =>
-  s === "Draft" ? "Draf" : s === "Pending" ? "Diajukan" : s === "Approved" ? "Disetujui" : s === "Completed" ? "Selesai" : s === "Rejected" ? "Ditolak" : s;
 
 const CATEGORIES = ["Mechanical", "Paint", "Survey", "Fabrikasi", "Electrical", "Piping", "Rigging"];
 
@@ -100,16 +96,17 @@ interface Props {
 }
 
 export default function BoQSection({ projectId }: Props) {
-  const busy = useBusy();
   const { locale } = useT();
   const S = n_prj[locale];
   const { data, update, add, remove, log } = useStore();
   const { user } = useAuth();
   const items = ((data.boq ?? []) as BoQExt[]).filter((b) => b.projectId === projectId);
   const [showAdd, setShowAdd] = useState(false);
-  const [form, setForm] = useState({ name: "", description: "", quantity: "", unit: "pcs", unitPrice: "", category: "Mechanical", status: "Draft" as BoQItem["status"], fileUrl: "" });
+  const [form, setForm] = useState({ name: "", description: "", quantity: "", unit: "pcs", unitPrice: "", category: "Mechanical", status: "Draft" as BoQItem["status"], fileUrl: "", suratNo: "" });
   const [q, setQ] = useState("");
   const [catF, setCatF] = useState("Semua");
+  /* D5: state untuk expand/collapse detail pekerjaan per surat. */
+  const [expandedSurat, setExpandedSurat] = useState<string | null>(null);
   const [stF, setStF] = useState("Semua");
   const [sort, setSort] = useState<SortState>({ key: null, dir: "asc" });
   const [revisiFor, setRevisiFor] = useState<BoQExt | null>(null);
@@ -139,9 +136,48 @@ export default function BoQSection({ projectId }: Props) {
   }, [items, q, catF, stF]);
 
   const totalBoq = useMemo(() => items.reduce((s, b) => s + b.totalPrice, 0), [items]);
-  const totalApproved = useMemo(() => items.filter((b) => ["Approved", "Completed"].includes(b.status)).reduce((s, b) => s + b.totalPrice, 0), [items]);
-  const totalCompleted = useMemo(() => items.filter((b) => b.status === "Completed").reduce((s, b) => s + b.totalPrice, 0), [items]);
+  const totalApproved = useMemo(
+    () => items.filter((b) => ["Approved", "Completed"].includes(b.status)).reduce((s, b) => s + b.totalPrice, 0),
+    [items],
+  );
+  const totalCompleted = useMemo(
+    () => items.filter((b) => b.status === "Completed").reduce((s, b) => s + b.totalPrice, 0),
+    [items],
+  );
   const progress = totalBoq > 0 ? Math.round((totalCompleted / totalBoq) * 100) : 0;
+
+  /* D5: group by suratNo. Tabel utama menampilkan ringkasan per surat;
+     detail pekerjaan di bawah setiap baris (expand). */
+  interface SuratGroup {
+    suratNo: string;
+    items: BoQExt[];
+    total: number;
+    status: "Draft" | "Pending" | "Approved" | "Rejected" | "Completed";
+    hasRevisi: boolean;
+  }
+  const groupedBoqs = useMemo<SuratGroup[]>(() => {
+    const map = new Map<string, BoQExt[]>();
+    for (const b of filtered) {
+      const key = String(b.suratNo ?? "-");
+      if (!map.has(key)) map.set(key, []);
+      map.get(key)!.push(b);
+    }
+    const groups: SuratGroup[] = [];
+    for (const [suratNo, list] of map) {
+      const total = list.reduce((s, b) => s + b.totalPrice, 0);
+      const statuses = new Set(list.map((b) => b.status));
+      const status: SuratGroup["status"] =
+        statuses.size === 1 ? (list[0].status as SuratGroup["status"])
+        : statuses.has("Draft") ? "Draft"
+        : statuses.has("Pending") ? "Pending"
+        : statuses.has("Rejected") ? "Rejected"
+        : statuses.has("Approved") ? "Approved"
+        : "Completed";
+      const hasRevisi = list.some((b) => (b.priceHistory ?? []).length > 0);
+      groups.push({ suratNo, items: list, total, status, hasRevisi });
+    }
+    return groups.sort((a, b) => a.suratNo.localeCompare(b.suratNo));
+  }, [filtered]);
 
   /* Posisi alur terjauh item proyek ini (untuk strip alur header). */
   const furthestFlow = useMemo(() => {
@@ -171,6 +207,7 @@ if (!form.unitPrice || parseRupiah(form.unitPrice) <= 0) { toast(S.boqToastPrice
   const total = Number(form.quantity) * parseRupiah(form.unitPrice);
     await add("boq", {
       projectId,
+      suratNo: form.suratNo.trim() || "-",
       name: form.name.trim(),
       description: form.description.trim(),
       quantity: Number(form.quantity),
@@ -184,7 +221,7 @@ if (!form.unitPrice || parseRupiah(form.unitPrice) <= 0) { toast(S.boqToastPrice
     }, { action: "menambahkan BoQ item", module: "BoQ" });
     toast(S.boqToastAdded);
     setShowAdd(false);
-    setForm({ name: "", description: "", quantity: "", unit: "pcs", unitPrice: "", category: "Mechanical", status: "Draft", fileUrl: "" });
+    setForm({ name: "", description: "", quantity: "", unit: "pcs", unitPrice: "", category: "Mechanical", status: "Draft", fileUrl: "", suratNo: "" });
   };
 
   const changeStatus = async (id: string, newStatus: string) => {
@@ -257,6 +294,7 @@ if (!form.unitPrice || parseRupiah(form.unitPrice) <= 0) { toast(S.boqToastPrice
     if (!item) { toast(S.boqToastPreset, "info"); return; }
     await add("boq", {
       projectId,
+      suratNo: "-",
       name: item.name,
       description: `Impor preset ${presetCat}`,
       quantity: 1,
@@ -271,9 +309,15 @@ if (!form.unitPrice || parseRupiah(form.unitPrice) <= 0) { toast(S.boqToastPrice
   };
 
   const handleExport = () => {
-    const rows = [["No", "Nama Item", "Deskripsi", "Qty", "Unit", "Harga Satuan", "Total", "Status"]];
-    items.forEach((b, i) => rows.push([String(i + 1), b.name, b.description, String(b.quantity), b.unit, String(b.unitPrice), String(b.totalPrice), b.status]));
-    rows.push(["", "TOTAL", "", "", "", "", String(totalBoq), ""]);
+    /* Export mengikuti grouping D5: satu blok per nomor surat + subtotal,
+       bukan daftar datar. Kolom "No Surat" juga ada di tiap baris item
+       supaya filter Excel tetap jalan. */
+    const rows: string[][] = [["No Surat", "No", "Nama Item", "Deskripsi", "Qty", "Unit", "Harga Satuan", "Total", "Status"]];
+    for (const g of groupedBoqs) {
+      g.items.forEach((b, i) => rows.push([g.suratNo, String(i + 1), b.name, b.description, String(b.quantity), b.unit, String(b.unitPrice), String(b.totalPrice), b.status]));
+      rows.push([g.suratNo, "", `SUBTOTAL ${g.suratNo}`, "", "", "", "", String(g.total), ""]);
+    }
+    rows.push(["", "", "TOTAL", "", "", "", "", String(totalBoq), ""]);
     exportExcel(rows, `BoQ-${projectId}`);
     toast(S.boqToastExport);
   };
@@ -353,114 +397,120 @@ if (!form.unitPrice || parseRupiah(form.unitPrice) <= 0) { toast(S.boqToastPrice
         {filtered.length === 0 ? (
           <p className="py-6 text-center text-sm text-steel-400">{S.boqNoMatch}</p>
         ) : (
-          <div className="overflow-x-auto">
+<div className="overflow-x-auto">
+            {/* D5: tabel grouped by nomor surat. Kolom: Surat | Item | Total |
+                Status | Revisi | Dokumen | Aksi. Klik baris → expand detail. */}
             <table className="w-full">
               <thead className="bg-surface">
                 <tr>
-                  <SortTh label={S.colNo} sortKey="id" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} />
-                  <SortTh label={S.colItem} sortKey="name" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} />
-                  <SortTh label={S.prjScopeDesc} sortKey="description" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} />
-                  <SortTh label={S.colQty} sortKey="quantity" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} />
-                  <SortTh label={S.colUnit} sortKey="unit" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} />
-                  <SortTh label={S.colUnitPrice} sortKey="unitPrice" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} />
-                  <SortTh label={S.colTotal} sortKey="totalPrice" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} />
+                  <th className="th w-8" />
+                  <SortTh label={locale === "en" ? "Letter No" : "No. Surat"} sortKey="suratNo" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} />
+                  <SortTh label={locale === "en" ? "Items" : "Jumlah Item"} sortKey="items" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} />
+                  <SortTh label={S.colTotal} sortKey="total" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} />
                   <SortTh label={S.statusLabel} sortKey="status" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} />
-                  <SortTh label={S.colRevision} sortKey="revised" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} />
-                  <SortTh label={locale === "en" ? "Document" : "Dokumen"} sortKey="dokumen" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} />
-                <SortTh label={S.colCreated} sortKey="createdAt" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} />
-                  <SortTh label={S.colUpdated} sortKey="updatedAt" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} />
+                  <th className="th">{S.colRevision}</th>
+                  <th className="th">{locale === "en" ? "Document" : "Dokumen"}</th>
                   <th className="th">{S.actionTh}</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-steel-100">
-                {sortRows(filtered, sort, (b: BoQExt, k) => k === "createdAt" ? (createdAtOf(b as unknown as Record<string, unknown>) ?? "") : k === "updatedAt" ? (lastTouchedAt(b as unknown as Record<string, unknown>) ?? "") : k === "quantity" ? Number(b.quantity) : k === "unitPrice" ? Number(b.unitPrice) : k === "totalPrice" ? Number(b.totalPrice) : k === "revised" ? Number((b.priceHistory ?? []).length) : k === "dokumen" ? docAttachment(b).url : String((b as unknown as Record<string, unknown>)[k] ?? "")).map((b) => (
-                  <tr key={b.id}>
-                    <td className="td font-mono text-xs">{b.id}</td>
-                    <td className="td font-medium text-navy-900">{b.name}</td>
-                    <td className="td text-sm text-steel-600">{b.description}</td>
-                    <td className="td">{b.quantity}</td>
-                    <td className="td">{b.unit}</td>
-                    <td className="td font-mono text-sm">{fmtRupiah(b.unitPrice)}</td>
-                    <td className="td font-mono text-sm font-semibold">{fmtRupiah(b.totalPrice)}</td>
-                    <td className="td"><StatusBadge status={b.status} label={STATUS_BOQ_ID[b.status] ?? b.status} />
-                      <span className="mt-1 block text-[11px] text-steel-400">
-                        {BOQ_FLOW_ID.map((s) => (
-                          <span key={s} className={boqFlowId(String(b.status)) === s ? "font-bold text-navy-700" : undefined}>
-                            {s}{s === "Selesai" ? "" : " → "}
-                          </span>
-                        ))}
-                      </span>
-                    </td>
-                    <td className="td">
-                      {(b.priceHistory ?? []).length > 0 ? (
-                          <button className="btn-secondary text-xs" onClick={() => setHistFor(b)}>
-                          <Badge tone="amber">{(b.priceHistory ?? []).length}x</Badge> {S.boqHistoryBtn}
-                        </button>
-                      ) : (
-                        <span className="text-xs text-steel-400">-</span>
+                {sortRows(groupedBoqs, sort, (g: SuratGroup, k) => {
+                  if (k === "items") return g.items.length;
+                  if (k === "total") return g.total;
+                  if (k === "status") return g.status;
+                  return g.suratNo;
+                }).map((g) => {
+                  const isOpen = expandedSurat === g.suratNo;
+                  return (
+                    <Fragment key={g.suratNo}>
+                      <tr className={`cursor-pointer hover:bg-steel-50 ${isOpen ? "bg-ocean-50/30" : ""}`}
+                        onClick={() => setExpandedSurat(isOpen ? null : g.suratNo)}>
+                        <td className="td">
+                          {isOpen ? <ChevronDown className="h-4 w-4 text-steel-400" /> : <ChevronRight className="h-4 w-4 text-steel-400" />}
+                        </td>
+                        <td className="td font-mono text-xs font-semibold text-navy-900">{g.suratNo}</td>
+                        <td className="td text-xs text-steel-600">{g.items.length}</td>
+                        <td className="td text-sm font-semibold">{fmtRupiah(g.total)}</td>
+                        <td className="td"><StatusBadge status={g.status} label={STATUS_BOQ_ID[g.status] ?? g.status} /></td>
+                        <td className="td">
+                          {g.hasRevisi ? <Badge tone="amber">{locale === "en" ? "Revised" : "Revisi"}</Badge> : <span className="text-xs text-steel-400">-</span>}
+                        </td>
+                        <td className="td">
+                          {(() => {
+                            const doc = g.items.map(boqDocOf).find(Boolean) ?? null;
+                            return doc ? <DocumentPreviewCell doc={doc} /> : <span className="text-xs text-steel-400">-</span>;
+                          })()}
+                        </td>
+                        <td className="td" onClick={(e) => e.stopPropagation()}>
+                          <div className="flex gap-1">
+                            <button className="btn-secondary text-xs" onClick={() => setExpandedSurat(isOpen ? null : g.suratNo)}>
+                              {isOpen ? (locale === "en" ? "Hide" : "Tutup") : (locale === "en" ? "Detail" : "Detail")}
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                      {isOpen && (
+                        <tr>
+                          <td colSpan={8} className="td bg-steel-50/50 p-0">
+                            <div className="p-3">
+                              <table className="w-full">
+                                <thead className="bg-surface">
+                                  <tr>
+                                    <th className="th">{locale === "en" ? "Item" : "Nama Item"}</th>
+                                    <th className="th">{locale === "en" ? "Description" : "Deskripsi"}</th>
+                                    <th className="th">{S.colQty}</th>
+                                    <th className="th">{S.colUnit}</th>
+                                    <th className="th">{S.colUnitPrice}</th>
+                                    <th className="th">{S.colTotal}</th>
+                                    <th className="th">{S.statusLabel}</th>
+                                    <th className="th">{S.actionTh}</th>
+                                  </tr>
+                                </thead>
+                                <tbody className="divide-y divide-steel-100">
+                                  {g.items.map((b) => (
+                                    <tr key={b.id}>
+                                      <td className="td font-medium text-navy-900">{b.name}</td>
+                                      <td className="td text-sm text-steel-600">{b.description}</td>
+                                      <td className="td">{b.quantity}</td>
+                                      <td className="td">{b.unit}</td>
+                                      <td className="td font-mono text-sm">{fmtRupiah(b.unitPrice)}</td>
+                                      <td className="td font-mono text-sm font-semibold">{fmtRupiah(b.totalPrice)}</td>
+                                      <td className="td"><StatusBadge status={b.status} label={STATUS_BOQ_ID[b.status] ?? b.status} /></td>
+                                      <td className="td" onClick={(e) => e.stopPropagation()}>
+                                        <div className="flex flex-wrap items-center gap-1">
+                                          {nextStatus(String(b.status)).map((ns) => (
+                                            <button key={ns} className="btn-secondary text-xs" onClick={() => void changeStatus(b.id, ns)}>
+                                              {STATUS_BOQ_ID[ns] ?? ns}
+                                            </button>
+                                          ))}
+                                          <button className="btn-secondary text-xs" title={locale === "en" ? "Price history" : "Riwayat harga"} onClick={() => setHistFor(b)}>
+                                            <History className="h-3.5 w-3.5" />
+                                            {(b.priceHistory ?? []).length > 0 && <Badge tone="amber">{(b.priceHistory ?? []).length}x</Badge>}
+                                          </button>
+                                          <button className="btn-secondary text-xs" title={locale === "en" ? "Activity log" : "Log aktivitas"} onClick={() => setLogFor(b)}>
+                                            <ScrollText className="h-3.5 w-3.5" />
+                                          </button>
+                                          <button className="btn-secondary text-xs" onClick={() => openEdit(b)}>
+                                            <Pencil className="h-3.5 w-3.5" />
+                                          </button>
+                                          {String(b.status) === "Draft" && (
+                                            <button className="btn-secondary text-xs text-rose-600" title={locale === "en" ? "Delete" : "Hapus"} onClick={() => setDelBoq(b)}>
+                                              <Trash2 className="h-3.5 w-3.5" />
+                                            </button>
+                                          )}
+                                        </div>
+                                      </td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
+                            </div>
+                          </td>
+                        </tr>
                       )}
-                    </td>
-                    <td className="td">
-                      {/* Klik ikon mata langsung memuat dokumennya di dalam
-                          panel (autoLoad), jadi tidak ada tombol kedua
-                          "tampilkan pratinjau". Baris tabel tetap memakai
-                          modal karena pratinjau inline di dalam <td> bikin
-                          tinggi baris melompat terus saat dipakai. */}
-                      <DocumentPreviewCell
-                        doc={boqDocOf(b)}
-                      />
-                    </td>
-                    <td className="td text-xs text-steel-600">{createdAtOf(b as unknown as Record<string, unknown>) !== null ? fmtTanggal(createdAtOf(b as unknown as Record<string, unknown>)) : <span className="text-steel-400">-</span>}</td>
-                    <td className="td text-xs text-steel-600">{lastTouchedAt(b as unknown as Record<string, unknown>) !== null ? fmtTanggal(lastTouchedAt(b as unknown as Record<string, unknown>)) : <span className="text-steel-400">-</span>}</td>
-                    <td className="td">
-                      <div className="flex flex-wrap gap-1">
-                        {nextStatus(b.status).map((ns) => (
-                          <button
-                            key={ns}
-                            aria-label={S.boqChangeAria.replace("{a}", b.name).replace("{b}", STATUS_BOQ_ID[ns] ?? ns)}
-                            className={`rounded px-2 py-0.5 text-xs font-semibold transition-colors ${
-                              ns === "Approved" ? "bg-green-100 text-green-700 hover:bg-green-200" :
-                              ns === "Rejected" ? "bg-rose-100 text-rose-700 hover:bg-rose-200" :
-                              ns === "Completed" ? "bg-blue-100 text-blue-700 hover:bg-blue-200" :
-                              "bg-steel-100 text-steel-600 hover:bg-steel-200"
-                            }`}
-                            onClick={() => void busy.run(`boqStatus-${b.id}-${ns}`, () => changeStatus(b.id, ns))}
-                            disabled={busy.isBusy(`boqStatus-${b.id}-${ns}`)}
-                          >
-                            {ns === "Approved" ? S.detApproveBtn : ns === "Rejected" ? S.detRejectBtn : ns === "Completed" ? S.boqComplete : S.detProposeBtn}
-                          </button>
-                        ))}
-                        {/* Item Ditolak sebelumnya buntu: tidak bisa diajukan ulang,
-                            diubah, ATAU dihapus (hanya Draft boleh Hapus).
-                            Sekarang bisa_pending->Pending (Ajukan ulang) atau ->Draft. */}
-                        {b.status === "Rejected" && (
-                          <RowAction icon={Pencil} tone="primary" label={locale === "en" ? "Edit" : "Ubah"} ariaLabel={`${locale === "en" ? "Edit" : "Ubah"} ${b.name}`} onClick={() => openEdit(b)} />
-                        )}
-                        <RowAction
-                          icon={History}
-                          tone={REVISI_LOCKED.includes(String(b.status)) ? "neutral" : "primary"}
-                          label={REVISI_LOCKED.includes(String(b.status))
-                            ? (locale === "en" ? "Locked: needs approver role" : "Terkunci: butuh peran penyetuju")
-                            : S.boqRevise}
-                          ariaLabel={S.boqReviseAria.replace("{a}", b.name)}
-                          onClick={() => { setRevisiFor(b); setRevisiPrice(String(b.unitPrice)); setRevisiReason(""); }}
-                        />
-                        {(b.status === "Draft" || b.status === "Pending") && (
-                          <RowAction icon={Pencil} tone="primary" label={locale === "en" ? "Edit" : "Ubah"} ariaLabel={`${locale === "en" ? "Edit" : "Ubah"} ${b.name}`} onClick={() => openEdit(b)} />
-                        )}
-                        {b.status === "Draft" && (
-                          <RowAction icon={Trash2} tone="danger" label={locale === "en" ? "Delete" : "Hapus"} ariaLabel={`${locale === "en" ? "Delete" : "Hapus"} ${b.name}`} onClick={() => setDelBoq(b)} />
-                        )}
-                        <button
-                          className="rounded bg-steel-100 px-2 py-0.5 text-xs font-semibold text-steel-600 transition-colors hover:bg-steel-200"
-                          onClick={() => setLogFor(b)}
-                        >
-                          Log
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
+                    </Fragment>
+                  );
+                })}
               </tbody>
             </table>
           </div>
@@ -473,6 +523,9 @@ if (!form.unitPrice || parseRupiah(form.unitPrice) <= 0) { toast(S.boqToastPrice
         footer={<><button className="btn-secondary" onClick={() => setShowAdd(false)}>{S.cancelBtn}</button><AsyncButton className="btn-primary" onAction={saveBoq}>{S.saveBtn}</AsyncButton></>}>
         <div className="space-y-3">
           <Field label={S.boqNameField}><input className="input" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder={S.boqNamePh} /></Field>
+          <Field label={locale === "en" ? "Letter number" : "Nomor surat"} hint={locale === "en" ? "Items with the same letter number are grouped" : "Item dengan nomor surat sama dikelompokkan"}>
+            <input className="input font-mono" value={form.suratNo} onChange={(e) => setForm({ ...form, suratNo: e.target.value })} placeholder="SPK/XXX/2026-01" />
+          </Field>
           <Field label={S.prjScopeDesc}><input className="input" value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} /></Field>
           <FormGrid>
             <Field label={S.boqQty}><NumInput className="input" value={form.quantity} onChange={(e) => setForm({ ...form, quantity: e.target.value })} /></Field>
