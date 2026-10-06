@@ -765,6 +765,10 @@ const { data, add, update, remove, log, branch, inBranch } = useStore();
   const [plQ, setPlQ] = useState("");
   const [allocQ, setAllocQ] = useState("");
   const [juListQ, setJuListQ] = useState("");
+  /* Pencarian teks untuk Piutang (AR) dan Hutang (AP). Tab lain di modul ini
+     punya search sendiri atau tabelnya pendek. */
+  const [arQ, setArQ] = useState("");
+  const [apQ, setApQ] = useState("");
   const today = todayISO();
 
   const projectById = useMemo(() => {
@@ -935,14 +939,20 @@ const { data, add, update, remove, log, branch, inBranch } = useStore();
     });
   }, [invoices, invFQ, invFStatus, invFBilling, invHist]);
   const filteredAr = useMemo(
-    () => invoices.filter((i) => matchHist(String(i.due ?? ""), invHist)),
-    [invoices, invHist]);
+    () => invoices
+      .filter((i) => matchHist(String(i.due ?? ""), invHist))
+      .filter((i) => rowMatches(i as unknown as Record<string, unknown>, arQ, ["id", "client", "kodePembantu", "status", "po"])),
+    [invoices, invHist, arQ]);
   const filteredAp = useMemo(
-    () => payables.filter((a) => matchHist(String(a.due ?? ""), apHist)),
-    [payables, apHist]);
+    () => payables
+      .filter((a) => matchHist(String(a.due ?? ""), apHist))
+      .filter((a) => rowMatches(a as unknown as Record<string, unknown>, apQ, ["v", "kodePembantu", "po", "vessel", "item", "st"])),
+    [payables, apHist, apQ]);
   const filteredJu = useMemo(
-    () => manJournals.filter((j) => matchHist(String(j.date ?? ""), juHist)),
-    [manJournals, juHist]);
+    () => manJournals
+      .filter((j) => matchHist(String(j.date ?? ""), juHist))
+      .filter((j) => rowMatches(j as unknown as Record<string, unknown>, juListQ, ["id", "uraian", "db", "kr", "sumber", "status", "dokumen"])),
+    [manJournals, juHist, juListQ]);
   const [bbSort, setBbSort] = useState<SortState>({ key: null, dir: "asc" });
   const [lrSort, setLrSort] = useState<SortState>({ key: null, dir: "asc" });
   const [nrSort, setNrSort] = useState<SortState>({ key: null, dir: "asc" });
@@ -2852,6 +2862,9 @@ const { data, add, update, remove, log, branch, inBranch } = useStore();
             <div className="grid grid-cols-1 gap-5 lg:grid-cols-3">
               <div className="lg:col-span-2">
                 <CardHeader title={S.invListTitle} subtitle={S.arSub} />
+                <div className="px-5 pb-2">
+                  <SearchBox value={arQ} onChange={setArQ} placeholder={S.cardSearchPh} ariaLabel={locale === "en" ? "Search receivables" : "Cari piutang"} />
+                </div>
                 <div className="mb-3 flex flex-wrap items-center gap-2 px-1">
                   <HistFilterBar value={invHist} onChange={setInvHist} idPrefix="ar" />
                   <span className="text-xs text-steel-400">{S.arCountFilt.replace("{n}", String(sortedAr.length))}</span>
@@ -3027,6 +3040,7 @@ const { data, add, update, remove, log, branch, inBranch } = useStore();
               />
               <div className="mb-3 flex flex-wrap items-center gap-2 px-1">
                 <HistFilterBar value={apHist} onChange={setApHist} idPrefix="ap" />
+                <SearchBox value={apQ} onChange={setApQ} placeholder={S.cardSearchPh} ariaLabel={locale === "en" ? "Search payables" : "Cari utang"} className="max-w-xs" />
                 <span className="text-xs text-steel-400">{S.apCountFilt.replace("{n}", String(sortedAp.length))}</span>
               </div>
               <div className="overflow-x-auto">
