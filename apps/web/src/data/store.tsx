@@ -696,6 +696,21 @@ function remoteActive(): boolean {
   return isBackendConfigured() && getJwt() !== null;
 }
 
+/**
+ * String JSON -> nilai, untuk `baseData` compare-and-swap wbs/team.
+ * String rusak (cache lama, storage penuh) menghasilkan null, yang berarti
+ * "tidak ada base" - server lalu menerima penimpaan. Itu pilihan yang aman:
+ * lebih baik satu penimpaan buta daripada push yang macet karena base rusak.
+ */
+function parseMaybeJson(raw: string | undefined): unknown {
+  if (raw === undefined || raw === "") return undefined;
+  try {
+    return JSON.parse(raw);
+  } catch {
+    return undefined;
+  }
+}
+
 /* Koleksi yang isinya KODE, bukan data operasional: kalau server membalas
    kosong, itu hampir pasti tabelnya belum dibuat atau belum diisi - bukan
    "sudah tidak ada lagi". Menerima yang kosong berarti menghapus seluruh
@@ -906,6 +921,15 @@ export function StoreProvider({ children }: { children: ReactNode }) {
      dan tidak ikut menahan penanda dirty. */
   const pushAttemptsRef = useRef<Map<string, number>>(new Map());
   const pushGiveUpRef = useRef<Set<string>>(new Set());
+  /* Isi terakhir yang dibaca dari server untuk wbs/team per proyek.
+     Endpoint ini tidak punya concurrency token (tabelnya hanya project_id +
+     data), jadi klien harus ingat "apa yang masih ada di server" dan
+     mengirimkannya sebagai `baseData`. Tanpa ini, dua perangkat yang
+     sama-sama menyimpan WBS akan saling menimpa diam-diam - yang kalah
+     hilang tanpa error apa pun. Diisi saat pull, diperbarui setelah push
+     sukses supaya base berikutnya adalah versi server yang baru. */
+  const wbsBaseRef = useRef<Map<string, string>>(new Map());
+  const teamBaseRef = useRef<Map<string, string>>(new Map());
   /* Rotasi koleksi: indeks koleksi mana yang dilayani duluan pada run ini.
      Dipakai supaya budget yang habis tidak selalu jatuh ke koleksi yang sama
      dan tidak menyebabkan koleksi lain kelaparan. */
@@ -1127,6 +1151,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
      "tidak ada data", bukan "hapus semua". */
           if (Array.isArray(wbs.wbs) && wbs.wbs.length > 0) {
             const rows = wbs.wbs;
+            /* Catat isi server sebagai base untuk compare-and-swap saat push. */
+            wbsBaseRef.current.set(projectId, JSON.stringify(rows));
             setData((prev) => ({ ...prev, wbsByProject: { ...prev.wbsByProject, [projectId]: rows } }));
           }
         } catch {
@@ -1139,6 +1165,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           );
           if (Array.isArray(team.memberIds) && team.memberIds.length > 0) {
             const ids = team.memberIds;
+            teamBaseRef.current.set(projectId, JSON.stringify(ids));
             setData((prev) => ({ ...prev, teamByProject: { ...prev.teamByProject, [projectId]: ids } }));
           }
         } catch {
@@ -1285,8 +1312,10 @@ type PushOutcome = "ok" | "stale" | "fail" | "auth";
           for (const [projectId, wbs] of targets) {
             await apiFetch(`/api/projects/${encodeURIComponent(projectId)}/wbs`, {
               method: "PUT",
-              body: JSON.stringify({ wbs }),
+              body: JSON.stringify({ wbs, baseData: parseMaybeJson(wbsBaseRef.current.get(projectId)) }),
             });
+            /* Base jadi versi server yang baru saja kita tulis. */
+            wbsBaseRef.current.set(projectId, JSON.stringify(wbs));
           }
           clearDirty(col, sentGen.get(col));
           setBackendError(null);
@@ -1301,8 +1330,9 @@ type PushOutcome = "ok" | "stale" | "fail" | "auth";
           for (const [projectId, memberIds] of targets) {
             await apiFetch(`/api/projects/${encodeURIComponent(projectId)}/team`, {
               method: "PUT",
-              body: JSON.stringify({ memberIds }),
+              body: JSON.stringify({ memberIds, baseData: parseMaybeJson(teamBaseRef.current.get(projectId)) }),
             });
+            teamBaseRef.current.set(projectId, JSON.stringify(memberIds));
           }
           clearDirty(col, sentGen.get(col));
           setBackendError(null);
