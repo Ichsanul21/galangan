@@ -20,7 +20,8 @@
                     
                     "probe:pdf":  "tsx scripts/pdf-probe.ts",
                     "probe:pdf-db":  "tsx scripts/pdf-db-probe.ts",
-                    "check":  "tsc --noEmit \u0026\u0026 npm run probe:pdf"
+                    "probe:page":  "tsx scripts/page-probe.ts",
+                    "check":  "tsc --noEmit && npm run probe:pdf && npm run probe:page"
                 },
     "dependencies":  {
                          "@fastify/multipart":  "^10.1.2",

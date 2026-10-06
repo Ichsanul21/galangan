@@ -4,6 +4,7 @@ import { z } from "zod";
 import { requireAuth } from "../auth.js";
 import { requestActor, requestIp, shallowDiff, writeAudit } from "../audit.js";
 import { requireCollectionWrite, requireSettingsWrite } from "../rbac.js";
+import { cursorOf, parseCursor } from "./crudCursor.js";
 import { exec, getDialect, q } from "../db.js";
 import { checkRefs, findUsages } from "../refs.js";
 import { fail, ok } from "../envelope.js";
@@ -255,6 +256,16 @@ export function registerCrud(app: FastifyInstance, table: string): void {
     }
     const limit = parseLimit(query.limit);
     const offset = parseOffset(query.offset);
+    const cursor = parseCursor(query.after);
+    /* Cursor dan offset itu dua mode pagination yang BERBEDA, bukan dua cara
+       menulis hal yang sama. Cursor (keyset) wajib untuk sync: ia menandai
+       "sudah baca sampai baris ini", jadi baris yang diperbarui SAAT
+       pagination berjalan tidak pernah hopong melewati jendela dan hilang.
+       Offset tetap dipertahankan untuk pager UI yang 보여kan nomor halaman. */
+    if (cursor !== null) {
+      where.push("(updated_at > ? OR (updated_at = ? AND id > ?))");
+      params.push(cursor.updatedAt, cursor.updatedAt, cursor.id);
+    }
     const whereSql = where.length > 0 ? ` WHERE ${where.join(" AND ")}` : "";
     const countRows = await q<{ cnt: number }>(`SELECT COUNT(*) AS cnt FROM ${table}${whereSql}`, params);
     const total = Number((countRows[0] as { cnt: number } | undefined)?.cnt ?? 0);
@@ -272,10 +283,20 @@ export function registerCrud(app: FastifyInstance, table: string): void {
      * updated_at membuat baris yang baru diubah muncul dekat halaman depan.
      * Kolom updated_at sudah dipakai sebagai concurrency token (PATCH) dan
      * selalu terisi. */
-    const sql = `SELECT id, branch, data, updated_at FROM ${table}${whereSql}` +
-      " ORDER BY updated_at ASC, id ASC LIMIT ? OFFSET ?";
-    const rows = await q<Row>(sql, [...params, limit, offset]);
-    return ok({ rows: rows.map(toJson), total, limit, offset });
+    const sql = cursor !== null
+      ? `SELECT id, branch, data, updated_at FROM ${table}${whereSql} ORDER BY updated_at ASC, id ASC LIMIT ?`
+      : `SELECT id, branch, data, updated_at FROM ${table}${whereSql} ORDER BY updated_at ASC, id ASC LIMIT ? OFFSET ?`;
+    const rows = await q<Row>(sql, cursor !== null ? [...params, limit] : [...params, limit, offset]);
+    /* Cursor halaman berikutnya = baris terakhir yang benar-benar dikirim.
+       Kalau halaman kosong tidak ada cursor lanjutan - pemanggil berhenti. */
+    const last = rows[rows.length - 1];
+    return ok({
+      rows: rows.map(toJson),
+      total,
+      limit,
+      offset,
+      nextCursor: rows.length === limit && last !== undefined ? cursorOf(last) : null,
+    });
   });
 
   app.get(`${base}/:id`, { preHandler: [requireAuth] }, async (req, reply) => {
