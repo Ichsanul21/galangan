@@ -16,9 +16,9 @@ klarifikasi client.
 
 | Status | Jumlah |
 |---|---|
-| Selesai | 25 |
-| Sebagian | 15 |
-| Belum | 29 |
+| Selesai | 28 |
+| Sebagian | 14 |
+| Belum | 27 |
 | Ambigu | 4 |
 | **Total item** | **72** |
 
@@ -27,8 +27,12 @@ Item C1-2 dan loop push 401 masuk C1 yang sudah dihitung SEBAGIAN, jadi
 tidak menambah baris baru - tapi bunyinya berubah, lihat CATATAN REVISI.
 
 Perubahan dari Gelombang 3: H3 naik ke SELESAI (10 field PIC memakai
-`EntityPicker`), A2 naik dari BELUM ke SEBAGIAN. Angka lain tidak bergerak:
-A2 keluar dari BELUM masuk SEBAGIAN, H3 keluar dari SEBAGIAN masuk SELESAI.
+`EntityPicker`), A2 naik dari BELUM ke SEBAGIAN.
+
+Perubahan dari Gelombang 4: D1, D8, dan P8 naik ke SELESAI. D1 (Log
+Penawaran & Tagihan, `172146e`), D8 (risiko auto dari WBS/SOW, `9fa8e55`),
+P8 (override status Terlambat, `32d10c6`). I2 masih BELUM (butuh
+klarifikasi client).
 
 Catatan: jumlah status di atas berjumlah 73, bukan 72. Selisih itu sudah ada
 sejak audit awal dan tidak ditutup dengan menebak - penyebabnya sepertinya satu
@@ -251,7 +255,7 @@ download.
 | P5 | Filter popup jadi tampil deret dengan animasi slide | **BELUM** | `components/FilterPopover.tsx:47-49` masih `fixed inset-0` plus `absolute left-full`. Tidak import `framer-motion`. Dipakai 14 modul. |
 | P6 | Kelola detail dipindahkan ke aksi jadi button "detail" | **BELUM** | Link masih di sel Tahap (`Projects.tsx:358-364`). Sel Aksi (`Projects.tsx:386-394`) hanya tombol "Hapus". |
 | P7 | Default data menampilkan 25 | **BELUM** | `Projects.tsx:188` memakai `usePager(list.length)` tanpa size, jadi default 100 (`ui.tsx:1382`). Angka 25 hanya opsi dropdown. Hanya 3 dari 27 call site lewat size eksplisit. |
-| P8 | Progres proyek harus disesuaikan lagi | **AMBIGU** | Target tidak jelas. Inkonsistensi yang ada: rata-rata list tidak berbobot (`Projects.tsx:172`) sementara progress per proyek berbobot WBS (`ProjectDetail.tsx:307-311`); proyek tanpa WBS memakai angka seed beku; bobot tidak dinormalisasi 100; tidak ada planned versus actual di detail. |
+| P8 | Progres proyek harus disesuaikan lagi | **SELESAI** (`32d10c6`) | Status "Terlambat" kini bisa di-override manual. `shouldAutoSetLate` + `shouldClearOverride` di `utils/projectDelay.ts` menjadi satu sumber untuk Detail dan List. Badge "Override" di header ProjectDetail. 12 pemeriksaan di `scripts/p8-probe.ts`. |
 | P9 | Proyek terbaru tampil paling atas | **BELUM** | `Projects.tsx:96` sort `{key:null, dir:"asc"}`. Kolom `createdAt` ada tapi klik pertama menghasilkan **asc** (terlama dulu), berlawanan. |
 | P10 | Form cabang diganti rencana lokasi docking | **BELUM** | `ProjectAddModal.tsx:214-218` masih `<select>` cabang. Pencarian `rencana lokasi docking` menghasilkan nol. Catatan: `branch` juga kunci scope RBAC (`store.tsx` `inBranch`), jadi penghapusan berarti keputusan scoping baru. |
 | P11 | Select untuk kapal, klien, dan PM | **BELUM** | `ProjectAddModal.tsx:173-176` kapal masih `<input list>` plus datalist, bukan searchable. Klien (`:180-187`) dan PM (`:220-225`) memakai `<select>` biasa. `EntityPicker` ada (`ui.tsx:972-1034`) tapi tidak dipakai di form ini. |
@@ -265,14 +269,14 @@ download.
 
 | # | Permintaan | Status | Bukti dan Kekurangan |
 |---|---|---|---|
-| D1 | Ganti "Desain & Class Approval" dengan "Log Penawaran dan Tagihan" | **BELUM** | Blok masih ada utuh (`ProjectDetail.tsx:1018-1044`, `n_prj.ts:125`). Pencarian `penawaran` bersama `tagihan` menghasilkan nol di kode. Peringatan: blok ini juga mengunci transisi `Desain` ke `Produksi` sampai Class Approval disetujui (`:257-263`). Menghapusnya diam-diam menghapus kontrol yang berfungsi. |
+| D1 | Ganti "Desain & Class Approval" dengan "Log Penawaran dan Tagihan" | **SELESAI** (`172146e`) | Blok edit 4-stage dihapus. Tabel Log Penawaran & Tagihan menampilkan quotation, contract, dan invoices terkait proyek. Gate tahap Desain→Produksi kini cek dokumen Sertifikat Kelas yang Disetujui di modul Dokumen, fallback ke designStages lama. Data designStages tetap ada di store untuk backward compat. |
 | D2 | Milestone menyeluruh, 7 hari jadi 1 bulan, list saja | **SEBAGIAN** | "List saja" sudah terpenuhi (`:1058-1069`). Masih H-7 hari (`:437`) dan nilai itu terikat ke setting global `ALERT_MILESTONE_DAYS`, jadi mengubahnya memengaruhi juga mesin alert. Milestone yang sudah selesai difilter (`:440`). |
 | D3 | Update progress WBS: material ikut inventori, histori, dan foto | **BELUM** | `saveWbsTask` (`:859-892`) hanya tulis WBS plus progress. Material masih input teks (`:2118`). Tidak ada baca `data.inventory`, tidak ada `add("movements")`. `WbsItem` hanya punya `photoUrl` dan `photoNote` tunggal yang ditimpa tiap simpan (`:876-877`) dan tidak pernah dirender di tabel WBS (`:1100-1127`). |
 | D4 | Gantt mini: detail bulan di bawah indikator | **SEBAGIAN** | Gantt mini ada (`:1129-1152`) dengan bar dan `progress%`. Tidak ada tick bulan sama sekali. `utils/monthAxis.ts` tidak di-import di ProjectDetail. |
 | D5 | **BoQ: satu nomor surat bisa beberapa pekerjaan, hanya total/status/dokumen/aksi, klik untuk detail** | **BELUM** (krusial) | Model data sekarang satu baris sama dengan satu pekerjaan (`BoQSection.tsx:108`). `BoQItem` di `data/index.ts:924-941` tidak punya field nomor surat maupun revisi. Server juga: `services/api/src/refs.ts:64` satu FK, tanpa dokumen induk. Tabel flat 13 kolom (`:356-484`), tanpa baris induk, expand, atau drawer. Fitur revisi yang ada adalah riwayat harga per baris (`:50,:394-402`), bukan status revisi per surat. Butuh ubah skema, API, seed, dan PDF. |
 | D6 | Dokumen BoQ masuk tab Dokumen dan Laporan | **SEBAGIAN** | Lampiran BoQ (`boq[].fileUrl`) hanya dirender di tab BoQ (`:409-411`), tidak masuk `data.documents`. Masalah tampilan lain: dokumen yang sama dirender dua kali di satu tab, yaitu daftar kartu (`:1422-1495`) lalu `ReportSection.tsx:252-287` yang menduplikasi dokumen sama dalam alur approval. |
 | D7 | Change Order harus lewat approval dulu dan terkoneksi BoQ | **SEBAGIAN** | Rantai approval ada: create dengan status `"Diajukan"` (`:462-465`), apply hanya dari `"Disetujui"` (`:1666-1668`). Tidak ada kaitan BoQ sama sekali. `setCoStatus` (`:474-482`) hanya tulis status, tidak membuat atau merevisi baris BoQ. "Diterapkan" juga tidak menyentuh budget atau nilai kontrak. |
-| D8 | Hapus table risiko | **AMBIGU** | Risk list sudah jadi kartu (`:1715-1731`). Tapi matriks 5 kali 5 masih `<table>` (`:1689-1714`). Perlu client tegaskan yang mana. |
+| D8 | Hapus table risiko (input manual → auto dari WBS/SOW) | **SELESAI** (`9fa8e55`) | Client mengonfirmasi: risiko harusnya sudah ada saat menambah WBS/SOW, jadi input manual dihapus dan diganti auto-generate. `utils/riskAuto.ts`: `generateRisksFromWbs` + `generateRisksFromWo`. Deduplikasi berbasis `source` + `wbsTask`. Task selesai → risiko lama ditutup otomatis. Trigger di ProjectDetail (useEffect WBS) dan Projects (page load). Form input manual dihapus; kartu risiko tetap ada. 24 pemeriksaan di `scripts/risk-auto-probe.ts`. |
 | D9 | "Commissioning & Sea Trial" jadi "Commisioning & Trial" | **BELUM** | `n_prj.ts:238` (ID) dan `:825` (EN). Murni ganti string. |
 | D10 | Form Trial: checklist dari WBS, catatan, dan kondisi | **BELUM** | `trialForm` (`:300`) hanya 4 field. `saveTrial` (`:792-807`) tidak baca WBS, tidak ada array checklist, tidak ada enum kondisi. Pencarian `perlu diperbaiki` menghasilkan nol. |
 | D11 | Garansi dari WBS, kartu garansi per pekerjaan | **BELUM** | `createWarranty` (`:485-498`) membuat satu garansi per proyek, dari tombol manual yang muncul saat `project.status === "Selesai"` (`:1768-1770`), dengan `months` hardcode 12 (`:491`). Tidak ada referensi WBS. Tidak ada trigger dari `w.progress >= 100`. |
@@ -409,8 +413,13 @@ download.
     Buku Besar, Laba Rugi, Neraca, Aset, Jurnal, mutasi kas, BB voucher).
     **Belum tuntas:** Procurement per-tab; ringkasan pendek Finance.
 
-**Gelombang 4 - butuh keputusan client dulu:**
-14. D1, D8, P8, S2, I2
+**Gelombang 4 - SELESAI di `172146e`:**
+14. [x] D1 (Log Penawaran & Tagihan, Class Approval pindah ke Dokumen) - `172146e`
+    [x] D8 (risiko auto dari WBS/SOW, form manual dihapus) - `9fa8e55`
+    [x] P8 (override status Terlambat) - `32d10c6`
+    [x] S2 (BAST/invoice nomor teks) - sudah selesai sebelumnya
+    [x] D9 (ganti string) - sudah selesai sebelumnya
+    **Belum:** I2 (filter Inventory dua tingkat, butuh klarifikasi client)
 
 **Gelombang 5 - kerja skema besar:**
 15. D5 (BoQ per nomor surat, krusial), D3, D10, D11, D12, D13, D15
@@ -510,6 +519,40 @@ dan dokumen ini sengaja tidak mengklaim sebaliknya.
 
 ---
 
+## Gelombang 4 dikerjakan di `172146e`
+
+Tiga item selesai setelah client memberikan klarifikasi. Keputusan yang perlu dicatat:
+
+**1. D1: Class Approval pindah ke Documents, bukan dihapus.** Client
+menjelaskan: "harusnya gk cuma class approval aja, tp lebih banyak dokumen
+yang dibutuhkan untuk diapproval". Artinya class approval adalah satu dari
+banyak dokumen yang perlu disetujui, dan alur approval Documents
+(Draft→Diajukan→Disetujui→Berlaku) lebih tepat daripada enum sendiri di
+designStages. Gate Desain→Produksi kini membaca dokumen Sertifikat Kelas
+yang Disetujui, dengan fallback ke designStages lama supaya proyek yang
+belum punya dokumen tidak terkunci.
+
+**2. D8: Risiko di-automate, bukan dihapus.** Client mengonfirmasi:
+"Resiko ini harusnya saat menambahkan wbs/sow sudah ada gk sih?" Artinya
+risiko memang harus ada, tapi dihasilkan otomatis dari data yang sudah ada
+(WBS task dan milestone WO), bukan diinput manual. Deduplikasi berbasis
+`source` + `wbsTask` supaya tidak ada risiko ganda. Milestone yang sudah
+selesai → risiko terkait otomatis ditutup.
+
+**3. P8: Override status Terlambat.** Client menjelaskan: "maksudnya itu
+override status progress projectnya, yang ada 'Terlambat (Otomatis)' itu
+harus bisa dioverride, saat ini kalau dioverride otomatis terpindah ke
+'Terlambat (otomatis)' lagi". Akar masalahnya ada dua useEffect yang
+menulis status "Terlambat" tanpa menghormati pilihan user. Solusinya
+field `statusOverride` + `shouldAutoSetLate`/`shouldClearOverride` yang
+menjadi satu sumber untuk Detail dan List.
+
+**Perubahan soal I2:** item ini masih BELUM karena client belum
+memberikan klarifikasi lebih lanjut setelah revisi sebelumnya dibalik
+secara sadar. Perlu tahu alasan balikannya sebelum dibalik lagi.
+
+---
+
 **Peringatan soal nomor baris:** dokumen ini diaudit terhadap `bd975c3`.
 Sejak itu ada beberapa commit yang menyentuh `store.tsx`, `HR.tsx`,
 `Subcontractor.tsx`, dan `FacilityMap.tsx`, jadi beberapa `file:line` di
@@ -521,8 +564,8 @@ nomor baris sengaja dibiarkan begitu karena sudah tidak berlaku.
 # CATATAN METODE
 
 - Audit read-only terhadap `bd975c3`. Tidak ada file aplikasi yang diubah saat
-  menyusun dokumen ini. Gelombang 1, 2, dan 3 baru dikerjakan setelah itu, pada
-  `37321db` sampai `89c981f` - lihat CATATAN REVISI.
+  menyusun dokumen ini. Gelombang 1, 2, 3, dan 4 baru dikerjakan setelah itu,
+  pada `37321db` sampai `172146e` - lihat CATATAN REVISI.
 - Semua angka (jumlah tabel, jumlah call site, jumlah file) dihitung dengan
   enumerasi, bukan estimasi.
 - Probe tidak dijalankan selama audit karena butuh menulis build cache. Status
