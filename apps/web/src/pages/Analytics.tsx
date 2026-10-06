@@ -40,6 +40,8 @@ import {
   toast,
   AsyncButton,
   Field,
+  SearchBox,
+  rowMatches,
 } from "../components/ui";
 import type { SortState } from "../components/ui";
 import { useStore, type StoreItem } from "../data/store";
@@ -203,6 +205,7 @@ export default function Analytics() {
   
   const [sort, setSort] = useState<SortState>({ key: null, dir: "asc" });
   const [sort2, setSort2] = useState<SortState>({ key: null, dir: "asc" });
+  const [ncrQ, setNcrQ] = useState("");
   /* Analytics adalah halaman BACA (analysis), bukan editor: `add`/`remove`
    sengaja TIDAK diambil dari store. Perubahan data harus dilakukan di modul
    asalnya (QC, Proyek, Keuangan, Inventory) - halaman ini cuma nololok.
@@ -1179,13 +1182,19 @@ const exportPdfReport = async () => {
             </div>
             <Card>
               <CardHeader title={S.drilldownNcr} subtitle={S.drilldownSub.replace("{n}", fmtTanggal(todayISO()))} />
+              {/* Search (A2). Tabel perbandingan skenario di bawah TIDAK
+                  diberi search: isinya satu baris per parameter (~6 baris),
+                  sehingga kotak search hanya jadi hiasan. */}
+              <div className="mb-2 flex justify-end">
+                <SearchBox value={ncrQ} onChange={setNcrQ} className="w-full max-w-xs" placeholder={locale === "en" ? "Search NCR categories..." : "Cari kategori NCR..."} ariaLabel={locale === "en" ? "Search NCR categories" : "Cari kategori NCR"} />
+              </div>
               <div className="overflow-x-auto">
                 <table className="w-full">
                   <thead className="bg-surface">
                     <tr><SortTh label={S.sortCategory} sortKey="kategori" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.sortIncidents} sortKey="kejadian" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.sortImpact} sortKey="dampak" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><th className="th">{S.sortTrend}</th><th className="th">{locale === "en" ? "Open NCR" : "NCR Terbuka"}</th></tr>
                   </thead>
                   <tbody className="divide-y divide-steel-100">
-                    {sortRows(drilldown, sort, (d, key) =>
+                    {sortRows(drilldown.filter((d) => rowMatches(d as unknown as Record<string, unknown>, ncrQ, ["kategori"])), sort, (d, key) =>
                       key === "kejadian" ? Number(d.count ?? 0) : key === "dampak" ? Number(d.impact ?? 0) : String(d.factor ?? "")
                     ).map((d) => {
                       /* Baris drilldown adalah AGREGAT per kategori, jadi

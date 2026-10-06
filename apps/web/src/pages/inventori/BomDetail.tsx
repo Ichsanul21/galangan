@@ -3,7 +3,7 @@ import { Link, useParams } from "react-router-dom";
 import { ArrowLeft, Barcode, Package, Pencil, Trash2 } from "lucide-react";
 import { Card, CardHeader, PageHeader, Badge, Modal, Field, FormGrid, Tabs, EmptyState, ConfirmModal, toast, SortTh, toggleSort, sortRows,
   NumInput,
-  AsyncButton,
+  AsyncButton, SearchBox, rowMatches,
   RowAction,
 } from "../../components/ui";
 import type { SortState } from "../../components/ui";
@@ -94,6 +94,7 @@ export default function BomDetail() {
     );
   }
 
+  const [moveQ, setMoveQ] = useState("");
   const moves = data.movements.filter((m) => m.itemId === item.id || m.item === item.name);
   const projectIds = Array.from(new Set(moves.map((m) => String(m.by ?? "")).filter((b) => /^(NB|RP|RF|PRJ)-/i.test(b))));
   const usedProjects = data.projects.filter((p) => projectIds.includes(p.id));
@@ -238,34 +239,41 @@ export default function BomDetail() {
         <div className="card lg:col-span-2">
           <Tabs tabs={["Riwayat", "Kebutuhan Proyek"]} active={tab} onChange={setTab} labels={{ Riwayat: S.tabHistory, "Kebutuhan Proyek": S.tabNeeds }} />
           <div className="p-4">
-            {tab === "Riwayat" && (
+{tab === "Riwayat" && (
               moves.length === 0
                 ? <EmptyState title={S.emptyMovesT} subtitle={S.emptyMovesS} />
                 : (
-                  <div className="overflow-x-auto">
-                    <table className="w-full">
-                      <thead className="bg-surface sticky top-0 z-10">
-                        <tr><SortTh label={S.thTx} sortKey="id" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.thType} sortKey="type" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.jumlahLbl} sortKey="qty" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.thRef} sortKey="by" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.dateLbl} sortKey="date" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><th className="th">{locale === "en" ? "Actions" : "Aksi"}</th></tr>
-                      </thead>
-                      <tbody className="divide-y divide-steel-100">
-                        {sortRows(moves, sort, (m: StoreItem, k) => k === "qty" ? Number(m.qty) : String((m as unknown as Record<string, unknown>)[k] ?? "")).map((m) => (
-                          <tr key={m.id} className="hover:bg-surface">
-                            <td className="td font-mono font-medium text-navy-900">{m.id}</td>
-                            <td className="td text-steel-600">{m.type}</td>
-                            <td className="td font-semibold">{fmtJumlah(Number(m.qty))}</td>
-                            <td className="td font-mono text-xs text-steel-600 truncate" title={String(m.by)}>{m.by}</td>
-                            <td className="td text-steel-600">{fmtTanggal(m.date)}</td>
-                            <td className="td">
-                              <div className="flex flex-wrap gap-1.5">
-                                <RowAction icon={Pencil} tone="neutral" label={`${locale === "en" ? "Edit" : "Ubah"} ${String(m.id)}`} onClick={() => openMoveEdit(m)} />
-                                <RowAction icon={Trash2} tone="danger" label={`${locale === "en" ? "Delete" : "Hapus"} ${String(m.id)}`} onClick={() => setDelMove(m)} />
-                              </div>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
+                  <>
+                    {/* Search (A2): riwayat mutasi sebuah barang bisa berisi
+                        ratusan baris, dan mencarinya berarti menggulir. */}
+                    <div className="mb-2 flex justify-end">
+                      <SearchBox value={moveQ} onChange={setMoveQ} className="w-full max-w-xs" placeholder={locale === "en" ? "Search movements..." : "Cari mutasi..."} ariaLabel={locale === "en" ? "Search movements" : "Cari mutasi"} />
+                    </div>
+                    <div className="overflow-x-auto">
+                      <table className="w-full">
+                        <thead className="bg-surface sticky top-0 z-10">
+                          <tr><SortTh label={S.thTx} sortKey="id" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.thType} sortKey="type" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.jumlahLbl} sortKey="qty" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.thRef} sortKey="by" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.dateLbl} sortKey="date" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><th className="th">{locale === "en" ? "Actions" : "Aksi"}</th></tr>
+                        </thead>
+                        <tbody className="divide-y divide-steel-100">
+                          {sortRows(moves.filter((m) => rowMatches(m as unknown as Record<string, unknown>, moveQ, ["id", "type", "qty", "by", "date"])), sort, (m: StoreItem, k) => k === "qty" ? Number(m.qty) : String((m as unknown as Record<string, unknown>)[k] ?? "")).map((m) => (
+                            <tr key={m.id} className="hover:bg-surface">
+                              <td className="td font-mono font-medium text-navy-900">{m.id}</td>
+                              <td className="td text-steel-600">{m.type}</td>
+                              <td className="td font-semibold">{fmtJumlah(Number(m.qty))}</td>
+                              <td className="td font-mono text-xs text-steel-600 truncate" title={String(m.by)}>{String(m.by ?? "-")}</td>
+                              <td className="td text-steel-600">{fmtTanggal(m.date)}</td>
+                              <td className="td">
+                                <div className="flex flex-wrap gap-1.5">
+                                  <RowAction icon={Pencil} tone="neutral" label={`${locale === "en" ? "Edit" : "Ubah"} ${String(m.id)}`} onClick={() => openMoveEdit(m)} />
+                                  <RowAction icon={Trash2} tone="danger" label={`${locale === "en" ? "Delete" : "Hapus"} ${String(m.id)}`} onClick={() => setDelMove(m)} />
+                                </div>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </>
                 )
             )}
             {tab === "Kebutuhan Proyek" && (
