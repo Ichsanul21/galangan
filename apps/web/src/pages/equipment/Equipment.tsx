@@ -9,6 +9,7 @@ import { Card, CardHeader, PageHeader, Badge, KpiCard, Tabs, ProgressBar, ChartT
   SearchBox,
   rowMatches,
   RowAction,
+  TimeInput,
 } from "../../components/ui";
 import type { SortState } from "../../components/ui";
 import { ServiceNotesButton, ServiceNotesModal, notesOf } from "../../components/ServiceNotes";
@@ -148,13 +149,19 @@ async function freshMaintenances(fallback: StoreItem[]): Promise<StoreItem[]> {
    `hours` diisi saat booking diselesaikan (lihat confirmFinish) - lalu
    di-bucket per bulan dari tanggal booking. */
 
-/* Jam 24 jam (00:00-23:59, tanpa AM/PM) danDurasi/irisan rentang - helper
+/* Jam 24 jam (00:00-23:59, tanpa AM/PM) dan durasi/irisan rentang - helper
    bersama di utils/time24.ts, dipakai juga Absensi, KaryawanDetail, dan
-   Finance. norm24() menolak nilai di luar rentang; Versi lama menjepit
+   Finance. norm24() menolak nilai di luar rentang; versi lama menjepit
    "25:00" jadi "23:00" sehingga jam ngawur masuk tanpa jejak, dan
-   toMinutes() memanggil norm24() lebih dulu sehingga guard "h > 23"-
-   nya tidak pernah menyala. Input booking memakai type="time" + step 5
-   menit + lang id-ID (browser merender 24H). */
+   toMinutes() memanggil norm24() lebih dulu sehingga guard "h > 23"-nya
+   tidak pernah menyala.
+
+   Input jam memakai komponen `TimeInput`, bukan `type="time"`. Klaim lama
+   di sini bahwa `lang="id-ID"` membuat browser merender 24 jam SALAH: Chrome
+   dan Firefox memakai locale BROWSER untuk `input[type=time]`, bukan atribut
+   `lang`, jadi di tablet ber-locale Inggris jam sore tampil "5:00 PM".
+   `TimeInput` memakai `type=text` + masking, jadi 24 jam dijamin apa pun
+   locale perangkatnya. */
 
 /* Booking lama hanya punya field `jam` ("08:00-17:00"); booking baru
    menyimpan mulai/selesai terpisah. Dua-duanya dinormalkan di sini. */
@@ -2765,8 +2772,8 @@ export default function EquipmentPage() {
               </select>
             </Field>
             <Field label={S.dateLabel}><input type="date" className="input" value={bookForm.date} onChange={(e) => setBookForm({ ...bookForm, date: e.target.value })} /></Field>
-            <Field label={S.eqStartField} hint="24 jam · 00:00–23:59 tanpa AM/PM (cth 14:00)"><input type="time" lang="id-ID" step={300} className="input font-mono" value={norm24(bookForm.mulai)} onChange={(e) => setBookForm({ ...bookForm, mulai: norm24(e.target.value) })} /></Field>
-            <Field label={S.eqEndField} hint="24 jam · 00:00–23:59 tanpa AM/PM (cth 17:30)"><input type="time" lang="id-ID" step={300} className="input font-mono" value={norm24(bookForm.selesai)} onChange={(e) => setBookForm({ ...bookForm, selesai: norm24(e.target.value) })} /></Field>
+            <Field label={S.eqStartField} hint="24 jam · 00:00–23:59 tanpa AM/PM (cth 14:00)"><TimeInput value={norm24(bookForm.mulai)} ariaLabel={S.eqStartField} onChange={(v) => setBookForm({ ...bookForm, mulai: v })} /></Field>
+            <Field label={S.eqEndField} hint="24 jam · 00:00–23:59 tanpa AM/PM (cth 17:30)"><TimeInput value={norm24(bookForm.selesai)} ariaLabel={S.eqEndField} onChange={(v) => setBookForm({ ...bookForm, selesai: v })} /></Field>
             <Field label={S.eqPriorityField}>
               <select className="input" value={bookForm.priority} onChange={(e) => setBookForm({ ...bookForm, priority: e.target.value })}>
                 {BOOK_PRIORITIES.map((p) => <option key={p}>{p}</option>)}

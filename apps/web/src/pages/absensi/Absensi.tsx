@@ -22,6 +22,7 @@ import {
   NumInput,
   AsyncButton,
   RowAction,
+  TimeInput,
 } from "../../components/ui";
 import type { SortState } from "../../components/ui";
 import { FilterPopover } from "../../components/FilterPopover";
@@ -510,10 +511,10 @@ export default function Absensi() {
                               </select>
                             </td>
                             <td className="td">
-                              <input type="time" lang="id-ID" step={300} className="input w-auto py-1.5 text-sm font-mono" value={norm24(r.checkIn)} disabled={!hadir} onChange={(ev) => setRow(e.id, { checkIn: norm24(ev.target.value) })} />
+                              <TimeInput className="w-auto py-1.5 text-sm" value={norm24(r.checkIn)} disabled={!hadir} ariaLabel={`${S.sortIn} ${e.name}`} onChange={(v) => setRow(e.id, { checkIn: v })} />
                             </td>
                             <td className="td">
-                              <input type="time" lang="id-ID" step={300} className="input w-auto py-1.5 text-sm font-mono" value={norm24(r.checkOut)} disabled={!hadir} onChange={(ev) => setRow(e.id, { checkOut: norm24(ev.target.value) })} />
+                              <TimeInput className="w-auto py-1.5 text-sm" value={norm24(r.checkOut)} disabled={!hadir} ariaLabel={`${S.sortOut} ${e.name}`} onChange={(v) => setRow(e.id, { checkOut: v })} />
                             </td>
                             <td className="td">
                               <NumInput min="0" max="8" step="0.5" className="input w-24 py-1.5 text-sm" value={r.overtime} disabled={!hadir} onChange={(ev) => setRow(e.id, { overtime: ev.target.value })} />
