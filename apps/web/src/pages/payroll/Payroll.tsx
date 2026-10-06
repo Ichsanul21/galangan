@@ -18,14 +18,14 @@ import {
   rowMatches,
   toast,
   toggleSort,
-  NumInput,
+  NumInput, MoneyInput,
   AsyncButton,
   RowAction,
 } from "../../components/ui";
 import type { SortState } from "../../components/ui";
 import { useStore } from "../../data/store";
 import type { StoreItem } from "../../data/store";
-import { fmtBulan, fmtRupiah, fmtTanggal, todayISO } from "../../utils/format";
+import { fmtBulan, fmtRupiah, fmtTanggal, parseRupiah, todayISO } from "../../utils/format";
 import { createdAtOf, lastTouchedAt } from "../../utils/timestamps";
 import { AlertBannerView, flashPick, notifRowId, useModuleAlert, useNotifFlash } from "../../components/AlertBanner";
 import { useDeepLinkParams, useDeepLinkTarget } from "../../components/useDeepLink";
@@ -548,9 +548,9 @@ export default function Payroll() {
       toast(S.tEmpMissing, "info");
       return;
     }
-    const basic = Number(editForm.basic);
-    const overtimePay = Number(editForm.overtimePay);
-    const manualDed = Number(editForm.deductions);
+    const basic = parseRupiah(editForm.basic);
+    const overtimePay = parseRupiah(editForm.overtimePay);
+    const manualDed = parseRupiah(editForm.deductions);
     if ([basic, overtimePay, manualDed].some((n) => Number.isNaN(n) || n < 0)) {
       toast(S.tCompInvalid, "info");
       return;
@@ -719,7 +719,7 @@ export default function Payroll() {
       toast(S.tPickEmp, "info");
       return;
     }
-    const nominal = Number(bonusForm.nominal);
+    const nominal = parseRupiah(bonusForm.nominal);
     if (!Number.isFinite(nominal) || nominal <= 0) {
       toast(S.tBonusInvalid, "info");
       return;
@@ -771,7 +771,7 @@ export default function Payroll() {
     const note = bonusEditForm.keterangan.trim() || "Bonus";
     try {
       if (rowType(bonusEdit) === "Bonus") {
-        const nominal = Number(bonusEditForm.nominal);
+        const nominal = parseRupiah(bonusEditForm.nominal);
         if (!Number.isFinite(nominal) || nominal <= 0) { toast(S.tBonusInvalid, "info"); return; }
         const bonusBase = Number(emp.basic || 0) + sumAllowances(emp.allowances);
         const pphBonus = calcPphIrregular(bonusBase, nominal, emp, rates);
@@ -792,8 +792,8 @@ export default function Payroll() {
       toast(S.tPickEmp, "info");
       return;
     }
-    const jumlah = Number(kasbonForm.jumlah);
-    const cicilan = Number(kasbonForm.cicilan);
+    const jumlah = parseRupiah(kasbonForm.jumlah);
+    const cicilan = parseRupiah(kasbonForm.cicilan);
     if (!Number.isFinite(jumlah) || jumlah <= 0) {
       toast(S.tKasbonInvalid, "info");
       return;
@@ -933,12 +933,12 @@ export default function Payroll() {
   };
 
   /* ---------- pesangon ---------- */
-  const pesHitung = calcPesangon(Number(pesForm.masaKerja || 0), Number(pesForm.upah || 0));
+  const pesHitung = calcPesangon(Number(pesForm.masaKerja || 0), parseRupiah(pesForm.upah || "0"));
   const exportPesangon = () => {
     const head = ["Komponen", "Nilai"];
     const body = [
       ["Masa kerja (tahun)", Number(pesForm.masaKerja || 0)],
-      ["Upah bulanan", fmtRupiah(Number(pesForm.upah || 0))],
+      ["Upah bulanan", fmtRupiah(parseRupiah(pesForm.upah || "0"))],
       [`Pesangon (${pesHitung.pesMonths}× upah, maks 9)`, fmtRupiah(pesHitung.pesangon)],
       [`UPMK (${pesHitung.upmkMonths}× upah)`, fmtRupiah(pesHitung.upmk)],
       ["UPH (15% × pesangon+UPMK)", fmtRupiah(pesHitung.uph)],
@@ -1117,7 +1117,7 @@ export default function Payroll() {
                     </select>
                   </Field>
                   <Field label={S.lblNominal}>
-                    <NumInput min="0" className="input w-44" value={bonusForm.nominal} onChange={(e) => setBonusForm({ ...bonusForm, nominal: e.target.value })} placeholder={S.phBonusNominal} />
+                    <MoneyInput className="input w-44" value={bonusForm.nominal} onChange={(v) => setBonusForm({ ...bonusForm, nominal: v })} placeholder={S.phBonusNominal} />
                   </Field>
                   <Field label={S.lblNote}>
                     <input className="input w-56" value={bonusForm.keterangan} onChange={(e) => setBonusForm({ ...bonusForm, keterangan: e.target.value })} placeholder={S.phBonusNote} />
@@ -1224,10 +1224,10 @@ export default function Payroll() {
                     <input type="date" className="input w-auto" value={kasbonForm.tanggal} onChange={(e) => setKasbonForm({ ...kasbonForm, tanggal: e.target.value })} />
                   </Field>
                   <Field label={S.lblAmount}>
-                    <NumInput min="0" className="input w-44" value={kasbonForm.jumlah} onChange={(e) => setKasbonForm({ ...kasbonForm, jumlah: e.target.value })} placeholder={S.phKasbonAmount} />
+                    <MoneyInput className="input w-44" value={kasbonForm.jumlah} onChange={(v) => setKasbonForm({ ...kasbonForm, jumlah: v })} placeholder={S.phKasbonAmount} />
                   </Field>
                   <Field label={S.lblInstall}>
-                    <NumInput min="0" className="input w-44" value={kasbonForm.cicilan} onChange={(e) => setKasbonForm({ ...kasbonForm, cicilan: e.target.value })} placeholder={S.phKasbonInstall} />
+                    <MoneyInput className="input w-44" value={kasbonForm.cicilan} onChange={(v) => setKasbonForm({ ...kasbonForm, cicilan: v })} placeholder={S.phKasbonInstall} />
                   </Field>
                   <button className="btn-primary" onClick={saveKasbon}>{S.btnAddKasbon}</button>
                 </div>
@@ -1302,9 +1302,9 @@ export default function Payroll() {
         }
       >
         <FormGrid>
-          <Field label={S.lblBasic}><NumInput min="0" className="input" value={editForm.basic} onChange={(e) => setEditForm({ ...editForm, basic: e.target.value })} /></Field>
-          <Field label={S.lblOvertimePay}><NumInput min="0" className="input" value={editForm.overtimePay} onChange={(e) => setEditForm({ ...editForm, overtimePay: e.target.value })} /></Field>
-          <Field label={S.lblManualDed}><NumInput min="0" className="input" value={editForm.deductions} onChange={(e) => setEditForm({ ...editForm, deductions: e.target.value })} /></Field>
+          <Field label={S.lblBasic}><MoneyInput className="input" value={editForm.basic} onChange={(v) => setEditForm({ ...editForm, basic: v })} /></Field>
+          <Field label={S.lblOvertimePay}><MoneyInput className="input" value={editForm.overtimePay} onChange={(v) => setEditForm({ ...editForm, overtimePay: v })} /></Field>
+          <Field label={S.lblManualDed}><MoneyInput className="input" value={editForm.deductions} onChange={(v) => setEditForm({ ...editForm, deductions: v })} /></Field>
         </FormGrid>
         <div className="mt-3">
           <div className="mb-2 flex items-center justify-between">
@@ -1315,7 +1315,7 @@ export default function Payroll() {
             {editLines.map((l, i) => (
               <div key={i} className="flex items-center gap-2">
                 <input className="input flex-1" value={l.label} onChange={(e) => setEditLines((prev) => prev.map((x, j) => (j === i ? { ...x, label: e.target.value } : x)))} placeholder={S.phTransport} />
-                <NumInput min="0" className="input w-44" value={String(l.amount)} onChange={(e) => setEditLines((prev) => prev.map((x, j) => (j === i ? { ...x, amount: Number(e.target.value) } : x)))} placeholder={S.phNominal} />
+                <MoneyInput className="input w-44" value={String(l.amount)} onChange={(v) => setEditLines((prev) => prev.map((x, j) => (j === i ? { ...x, amount: parseRupiah(v) } : x)))} placeholder={S.phNominal} />
                 <button className="text-sm font-semibold text-rose-600 hover:underline" onClick={() => setEditLines((prev) => prev.filter((_, j) => j !== i))}>{S.btnDelete}</button>
               </div>
             ))}
@@ -1340,7 +1340,7 @@ export default function Payroll() {
         <div className="space-y-3">
           {bonusEdit && rowType(bonusEdit) === "Bonus" && (
             <Field label={S.phBonusNominal}>
-              <NumInput min="0" className="input" value={bonusEditForm.nominal} onChange={(e) => setBonusEditForm({ ...bonusEditForm, nominal: e.target.value })} placeholder={S.phBonusNominal} />
+              <MoneyInput className="input" value={bonusEditForm.nominal} onChange={(v) => setBonusEditForm({ ...bonusEditForm, nominal: v })} placeholder={S.phBonusNominal} />
             </Field>
           )}
           {bonusEdit && rowType(bonusEdit) === "THR" && (
@@ -1400,7 +1400,7 @@ export default function Payroll() {
         <div className="space-y-3">
           <FormGrid>
             <Field label={S.lblWorkYears}><NumInput min="0" step="0.5" className="input" value={pesForm.masaKerja} onChange={(e) => setPesForm({ ...pesForm, masaKerja: e.target.value })} /></Field>
-            <Field label={S.lblMonthlyWage}><NumInput min="0" className="input" value={pesForm.upah} onChange={(e) => setPesForm({ ...pesForm, upah: e.target.value })} /></Field>
+            <Field label={S.lblMonthlyWage}><MoneyInput className="input" value={pesForm.upah} onChange={(v) => setPesForm({ ...pesForm, upah: v })} /></Field>
           </FormGrid>
           <dl className="dl-div rounded-xl bg-surface p-3 text-sm">
             <div className="flex justify-between"><dt className="text-steel-500">{S.pesRow.replace("{a}", String(pesHitung.pesMonths))}</dt><dd className="font-medium">{fmtRupiah(pesHitung.pesangon)}</dd></div>
