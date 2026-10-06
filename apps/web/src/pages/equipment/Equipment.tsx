@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { bucketByMonth, monthAxis, rebindLegacyMonthSeries } from "../../utils/monthAxis";
 import type { ReactNode } from "react";
 import { Link } from "react-router-dom";
-import { Plus, Cpu, Pencil, Trash2, Wrench, AlertTriangle, Gauge, CheckCircle2, Download, History as HistoryIcon } from "lucide-react";
+import { Plus, Cpu, Pencil, Trash2, Wrench, AlertTriangle, Gauge, CheckCircle2, Download, Eye, History as HistoryIcon } from "lucide-react";
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 import { Card, CardHeader, PageHeader, Badge, KpiCard, Tabs, ProgressBar, ChartTooltip, RadialGauge, Modal, Field, FormGrid, EmptyState, ConfirmModal, StatusBadge, toast, SortTh, toggleSort, sortRows, usePager,
   NumInput, AsyncButton,
@@ -284,6 +284,12 @@ export default function EquipmentPage() {
   const [showAdd, setShowAdd] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [delEquip, setDelEquip] = useState<StoreItem | null>(null);
+  /* Proyek yang dirinci di modal "Detail biaya" (E5). Rinciannya sudah
+     ada - `equipmentCostSummary` mengembalikan `bookingRows` dan
+     `maintenanceRows` - tapi tidak pernah dirangkai jadi satu
+     tampilan, jadi angka HPP per proyek harus dibaca dari tabel angka yang
+     tidak bisa ditelusuri. */
+  const [costDetailFor, setCostDetailFor] = useState<string | null>(null);
   const [form, setForm] = useState({ name: "", category: "Pengangkat", categoryCustom: "", code: "", serial: "", branch: "Samarinda", model: "", pic: "", util: "50", rate: "", fuelPrice: "0", acquisitionCost: "", usefulLife: "" });
   const [showService, setShowService] = useState(false);
 
@@ -2266,6 +2272,7 @@ export default function EquipmentPage() {
                         <th className="th">{locale === "en" ? "Maintenance (done)" : "Maintenance (selesai)"}</th>
                         <SortTh label={locale === "en" ? "Realised" : "Terealisasi"} sortKey="r" sort={sort3} onSort={(k) => setSort3((s) => toggleSort(s, k))} />
                         <SortTh label={locale === "en" ? "Committed" : "Terkunci"} sortKey="c" sort={sort3} onSort={(k) => setSort3((s) => toggleSort(s, k))} />
+                        <th className="th">{S.colAction}</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-steel-100">
@@ -2291,10 +2298,19 @@ export default function EquipmentPage() {
                           </td>
                           <td className="td font-semibold text-navy-900">{fmtRupiah(r.realized)}</td>
                           <td className="td font-semibold">{fmtRupiah(r.committed)}</td>
+                          <td className="td">
+                            <RowAction
+                              icon={Eye}
+                              tone="neutral"
+                              label={S.btnDetail}
+                              ariaLabel={`${S.btnDetail} ${r.projectId}`}
+                              onClick={() => setCostDetailFor(r.projectId)}
+                            />
+                          </td>
                         </tr>
                       ))}
                       {projectCostRows.length === 0 && (
-                        <tr><td colSpan={6} className="td text-center text-steel-400">
+                        <tr><td colSpan={7} className="td text-center text-steel-400">
                           {locale === "en"
                             ? "No equipment cost booked to any project yet. Finish a booking or a maintenance cycle with a project selected."
                             : "Belum ada biaya equipment yang dibebankan ke proyek. Selesaikan booking atau siklus maintenance dengan proyek terpilih."}
@@ -2895,6 +2911,107 @@ export default function EquipmentPage() {
         onCancel={() => setDelCal(null)}
         onConfirm={confirmDelCal}
       />
+
+      {/* ===== Modal detail biaya per proyek (E5) =====
+          Angka di card HPP selalu bisa dibaca, tapi tidak bisa DITELUSURI:
+          modul ini tidak punya modal rincian sama sekali, sementara datanya
+          sudah ada (`equipmentCostSummary().bookingRows` / `.maintenanceRows`).
+          Modal ini hanya merangkai ulang data yang sudah dihitung di satu
+          tempat - tidak ada perhitungan baru di sini, jadi angka di modal
+          ini tidak mungkin berbeda dari angka di card. */}
+      <Modal
+        open={costDetailFor !== null}
+        onClose={() => setCostDetailFor(null)}
+        title={locale === "en" ? `Equipment cost detail - ${costDetailFor ?? ""}` : `Rincian biaya equipment - ${costDetailFor ?? ""}`}
+      >
+        {(() => {
+          const sum = costDetailFor === null ? undefined : projectCostSummaries.get(costDetailFor);
+          if (sum === undefined) {
+            return <p className="text-sm text-steel-500">{locale === "en" ? "No data." : "Tidak ada data."}</p>;
+          }
+          const proj = projects.find((p) => String(p.id) === costDetailFor);
+          return (
+            <div className="space-y-4">
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                <div><p className="text-[11px] text-steel-500">{locale === "en" ? "Vessel" : "Kapal"}</p><p className="text-sm font-semibold">{String(proj?.vessel ?? "-")}</p></div>
+                <div><p className="text-[11px] text-steel-500">{locale === "en" ? "Realised" : "Terealisasi"}</p><p className="text-sm font-semibold">{fmtRupiah(sum.totalRealized)}</p></div>
+                <div><p className="text-[11px] text-steel-500">{locale === "en" ? "Committed" : "Terkunci"}</p><p className="text-sm font-semibold">{fmtRupiah(sum.totalCommitted)}</p></div>
+                <div><p className="text-[11px] text-steel-500">{locale === "en" ? "Client" : "Klien"}</p><p className="text-sm font-semibold truncate">{String(proj?.client ?? "-")}</p></div>
+              </div>
+
+              <div>
+                <p className="mb-1.5 text-xs font-semibold uppercase tracking-wider text-steel-500">
+                  {locale === "en" ? "Bookings" : "Booking / sewa"}
+                </p>
+                {sum.bookingRows.length === 0 ? (
+                  <p className="text-xs text-steel-400">-</p>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="w-full">
+                      <thead><tr className="border-b border-steel-100">
+                        <th className="th">{locale === "en" ? "Equipment" : "Equipment"}</th>
+                        <th className="th">{locale === "en" ? "Date" : "Tanggal"}</th>
+                        <th className="th text-right">{locale === "en" ? "Hours" : "Jam"}</th>
+                        <th className="th text-right">{locale === "en" ? "Rental" : "Sewa"}</th>
+                        <th className="th text-right">BBM</th>
+                        <th className="th text-right">{locale === "en" ? "Total" : "Jumlah"}</th>
+                      </tr></thead>
+                      <tbody className="divide-y divide-steel-100">
+                        {sum.bookingRows.map((b) => (
+                          <tr key={b.id}>
+                            <td className="td text-xs">{b.equipmentName || b.id}</td>
+                            <td className="td text-xs text-steel-600">{fmtTanggal(b.date)}</td>
+                            <td className="td text-right text-xs">{b.hours}</td>
+                            <td className="td text-right text-xs">{fmtRupiah(b.rental)}</td>
+                            <td className="td text-right text-xs">{fmtRupiah(b.fuel)}</td>
+                            <td className="td text-right text-xs font-semibold">{fmtRupiah(b.cost)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+
+              <div>
+                <p className="mb-1.5 text-xs font-semibold uppercase tracking-wider text-steel-500">
+                  {locale === "en" ? "Maintenance" : "Maintenance"}
+                </p>
+                {sum.maintenanceRows.length === 0 ? (
+                  <p className="text-xs text-steel-400">-</p>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="w-full">
+                      <thead><tr className="border-b border-steel-100">
+                        <th className="th">Equipment</th>
+                        <th className="th">{locale === "en" ? "Date" : "Tanggal"}</th>
+                        <th className="th text-right">{locale === "en" ? "Material" : "Material"}</th>
+                        <th className="th text-right">{locale === "en" ? "Labor" : "Tenaga"}</th>
+                        <th className="th text-right">{locale === "en" ? "Total" : "Jumlah"}</th>
+                        <th className="th">{locale === "en" ? "Status" : "Status"}</th>
+                      </tr></thead>
+                      <tbody className="divide-y divide-steel-100">
+                        {sum.maintenanceRows.map((m) => (
+                          <tr key={m.id}>
+                            <td className="td text-xs">{m.equipmentName || m.id}</td>
+                            <td className="td text-xs text-steel-600">{fmtTanggal(m.date)}</td>
+                            <td className="td text-right text-xs">{fmtRupiah(m.material)}</td>
+                            <td className="td text-right text-xs">{fmtRupiah(m.labor)}</td>
+                            <td className="td text-right text-xs font-semibold">{fmtRupiah(m.cost)}</td>
+                            <td className="td text-xs">
+                              <Badge tone={m.realized ? "green" : "amber"}>{m.status}</Badge>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            </div>
+          );
+        })()}
+      </Modal>
 
       {/* Modal selesaikan kalibrasi */}
       <Modal open={finishingCal !== null} onClose={() => setFinishingCal(null)} title={S.eqCalDoneTitle.replace("{a}", finishingCal?.id ?? "")}

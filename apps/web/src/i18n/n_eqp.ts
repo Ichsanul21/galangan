@@ -1,6 +1,8 @@
 export const n_eqp = {
   id: {
     cancelBtn: "Batal",
+    btnDetail: "Detail",
+    colAction: "Aksi",
     saveBtn: "Simpan",
     finishBtn: "Selesaikan",
     delBtn: "Hapus",
@@ -438,6 +440,8 @@ export const n_eqp = {
   },
   en: {
     cancelBtn: "Cancel",
+    btnDetail: "Details",
+    colAction: "Actions",
     saveBtn: "Save",
     finishBtn: "Complete",
     delBtn: "Delete",
