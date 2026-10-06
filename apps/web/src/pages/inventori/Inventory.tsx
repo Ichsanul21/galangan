@@ -7,6 +7,7 @@ import {
   ArrowDownToLine,
   ArrowUpFromLine,
   AlertTriangle,
+  ChevronDown,
   Warehouse,
   Eye,
   Pencil,
@@ -386,6 +387,9 @@ export default function Inventory() {
   const [showScan, setShowScan] = useState(false);
   const [cat, setCat] = useState("Semua");
   const [warnF, setWarnF] = useState("Semua");
+  /* I2: state untuk flyout filter warning. "cat" = panel kategori,
+     "level" = panel status, null = tertutup. */
+  const [warnFilterOpen, setWarnFilterOpen] = useState<"cat" | "level" | null>(null);
   const [wh, setWh] = useState("Semua");
   const [abcF, setAbcF] = useState("Semua");
   const [matF, setMatF] = useState("Semua");
@@ -1904,72 +1908,92 @@ if (k === "mattype") return matTypeOf(i);
                       (utils/inventoryWarn.ts),
                   (c) bisa diklik untuk memfilter tabel ke item-item itu.
                   Detail lengkap ada di tab Analisis ("Warning per Kategori"). */}
-              {warnByCat.length > 0 && (
-                /* Item 7 revisi 2 Oktober: baris tombol `[jumlah][status]`
-                   digantikan dropdown kategori. Tombolnya makan satu baris
-penuh per kategori - dengan 10 kategori berproblem, strip
-                   itu menutupi setengah katalog sebelum pengguna melihat satu
-                   pun barang. Dropdown memuat semua kategori (termasuk yang
-                   bersih) plus jumlahnya, jadi penyaringan per kategori jadi
-                   satu kontrol, bukan tombol yang menumpuk. */
-                <div className="mb-3 flex flex-wrap items-center gap-2 rounded-xl border border-steel-200 bg-steel-50 px-3 py-2 text-xs">
+{warnByCat.length > 0 && (
+                /* I2: strip warning kini memakai tombol + panel flyout ke
+                   kanan (pola FilterPopover), bukan <select> native.
+                   Panel memuat daftar kategori dan status yang bisa diklik. */
+                <div className="mb-3 flex flex-wrap items-center gap-2 rounded-xl border border-steel-200 bg-steel-50 px-3 py-2">
                   <AlertTriangle className="h-4 w-4 shrink-0 text-amber-600" />
-                  <label className="font-medium text-navy-900" htmlFor="inv-cat-warn">
-                    {locale === "en" ? "Category" : "Kategori"}
-                  </label>
-                  <select
-                    id="inv-cat-warn"
-                    className="input w-auto py-1 text-xs"
-                    value={cat}
-                    onChange={(e) => { setCat(e.target.value); setTab("Katalog"); }}
-                  >
-                    <option value="Semua">
-                      {locale === "en" ? "All categories" : "Semua kategori"} ({categories.length})
-                    </option>
-                    {categories.map((name) => {
-                      const w = warnByCat.find((c) => c.category === name);
-                      const total = w?.total ?? 0;
-                      const parts = [
-                        w && w.counts.critical > 0 ? `${w.counts.critical} ${locale === "en" ? "critical" : "kritis"}` : "",
-                        w && w.counts.low > 0 ? `${w.counts.low} ${locale === "en" ? "low" : "menipis"}` : "",
-                        w && w.counts.overstock > 0 ? `${w.counts.overstock} ${locale === "en" ? "over" : "berlebih"}` : "",
-                      ].filter(Boolean).join(", ");
-                      return (
-                        <option key={name} value={name}>
-                          {parts === "" ? `${name} (${total})` : `${name} — ${parts}`}
-                        </option>
-                      );
-                    })}
-                  </select>
-                  {/* Filter TINGKAT warning, berdampingan dengan filter
-                      kategori di atasnya. Dua hal berbeda: kategori menjawab
-                      "barang apa", tingkat menjawab "yang bermasalah mana".
-                      Sebelumnya hanya ada kategori, jadi menemukan "stok
-                      kritis" dipaksa menelusuri kategori satu per satu -
-                      padahal angkanya sudah tersedia di `warnLevelOf`, yang
-                      juga dipakai katalog badge dan banner modul. */}
-                  <label className="font-medium text-navy-900" htmlFor="inv-warn-level">
-                    {locale === "en" ? "Status" : "Status"}
-                  </label>
-                  <select
-                    id="inv-warn-level"
-                    className="input w-auto py-1 text-xs"
-                    value={warnF}
-                    onChange={(e) => { setWarnF(e.target.value); setTab("Katalog"); }}
-                  >
-                    <option value="Semua">
-                      {locale === "en" ? "All statuses" : "Semua status"} ({inventory.length})
-                    </option>
-                    {LEVEL_OPTIONS.filter((o) => warnByLevel[o.id] > 0).map((o) => (
-                      <option key={o.id} value={o.id}>
-                        {o.label} ({warnByLevel[o.id]})
-                      </option>
-                    ))}
-                  </select>
+                  {/* Tombol filter kategori → flyout ke kanan */}
+                  <div className="relative">
+                    <button
+                      type="button"
+                      className="inline-flex items-center gap-1 rounded-lg border border-steel-200 bg-white px-2.5 py-1 text-xs font-medium text-navy-900 hover:bg-steel-50"
+                      onClick={() => setWarnFilterOpen(warnFilterOpen === "cat" ? null : "cat")}
+                    >
+                      <span className="text-steel-500">{locale === "en" ? "Category" : "Kategori"}:</span>
+                      <span className="font-semibold">{cat === "Semua" ? (locale === "en" ? "All" : "Semua") : cat}</span>
+                      <ChevronDown className="h-3 w-3 text-steel-400" />
+                    </button>
+                    {warnFilterOpen === "cat" && (
+                      <>
+                        <div className="fixed inset-0 z-10" onClick={() => setWarnFilterOpen(null)} />
+                        <div className="absolute left-full top-0 z-20 ml-2 max-h-[60vh] w-72 overflow-y-auto rounded-xl border border-steel-200 bg-white p-2 shadow-lift">
+                          {[{ name: "Semua", total: inventory.length, counts: { critical: 0, low: 0, overstock: 0 } }, ...categories.map((name) => {
+                            const w = warnByCat.find((c) => c.category === name);
+                            return { name, total: w?.total ?? 0, counts: w?.counts ?? { critical: 0, low: 0, overstock: 0 } };
+                          })].map((c) => (
+                            <button
+                              key={c.name}
+                              type="button"
+                              className={`flex w-full items-center justify-between rounded-lg px-2.5 py-1.5 text-left text-xs ${cat === c.name ? "bg-navy-700 text-white" : "text-steel-700 hover:bg-steel-50"}`}
+                              onClick={() => { setCat(c.name); setTab("Katalog"); setWarnFilterOpen(null); }}
+                            >
+                              <span className="font-medium">{c.name === "Semua" ? (locale === "en" ? "All categories" : "Semua kategori") : c.name}</span>
+                              <span className="flex items-center gap-1">
+                                {c.counts.critical > 0 && <Badge tone="red">{c.counts.critical}</Badge>}
+                                {c.counts.low > 0 && <Badge tone="amber">{c.counts.low}</Badge>}
+                                {c.counts.overstock > 0 && <Badge tone="blue">{c.counts.overstock}</Badge>}
+                                <span className={`text-[11px] ${cat === c.name ? "text-white/70" : "text-steel-400"}`}>{c.total}</span>
+                              </span>
+                            </button>
+                          ))}
+                        </div>
+                      </>
+                    )}
+                  </div>
+                  {/* Tombol filter status → flyout ke kanan */}
+                  <div className="relative">
+                    <button
+                      type="button"
+                      className="inline-flex items-center gap-1 rounded-lg border border-steel-200 bg-white px-2.5 py-1 text-xs font-medium text-navy-900 hover:bg-steel-50"
+                      onClick={() => setWarnFilterOpen(warnFilterOpen === "level" ? null : "level")}
+                    >
+                      <span className="text-steel-500">{locale === "en" ? "Status" : "Status"}:</span>
+                      <span className="font-semibold">{warnF === "Semua" ? (locale === "en" ? "All" : "Semua") : (LEVEL_OPTIONS.find((o) => o.id === warnF)?.label ?? warnF)}</span>
+                      <ChevronDown className="h-3 w-3 text-steel-400" />
+                    </button>
+                    {warnFilterOpen === "level" && (
+                      <>
+                        <div className="fixed inset-0 z-10" onClick={() => setWarnFilterOpen(null)} />
+                        <div className="absolute left-full top-0 z-20 ml-2 w-56 rounded-xl border border-steel-200 bg-white p-2 shadow-lift">
+                          <button
+                            type="button"
+                            className={`flex w-full items-center justify-between rounded-lg px-2.5 py-1.5 text-left text-xs ${warnF === "Semua" ? "bg-navy-700 text-white" : "text-steel-700 hover:bg-steel-50"}`}
+                            onClick={() => { setWarnF("Semua"); setTab("Katalog"); setWarnFilterOpen(null); }}
+                          >
+                            <span className="font-medium">{locale === "en" ? "All statuses" : "Semua status"}</span>
+                            <span className={`text-[11px] ${warnF === "Semua" ? "text-white/70" : "text-steel-400"}`}>{inventory.length}</span>
+                          </button>
+                          {LEVEL_OPTIONS.filter((o) => warnByLevel[o.id] > 0).map((o) => (
+                            <button
+                              key={o.id}
+                              type="button"
+                              className={`flex w-full items-center justify-between rounded-lg px-2.5 py-1.5 text-left text-xs ${warnF === o.id ? "bg-navy-700 text-white" : "text-steel-700 hover:bg-steel-50"}`}
+                              onClick={() => { setWarnF(o.id); setTab("Katalog"); setWarnFilterOpen(null); }}
+                            >
+                              <span className="font-medium">{o.label}</span>
+                              <span className={`text-[11px] ${warnF === o.id ? "text-white/70" : "text-steel-400"}`}>{warnByLevel[o.id]}</span>
+                            </button>
+                          ))}
+                        </div>
+                      </>
+                    )}
+                  </div>
                   {warnF !== "Semua" && (
                     <button
                       type="button"
-                      className="rounded-md border border-white bg-white px-2 py-0.5 text-[11px] font-medium text-steel-600 shadow-sm hover:text-navy-900"
+                      className="rounded-md border border-white bg-white px-2 py-0.5 text-[11px] font-medium text-steel-600 shadow-sm hover:bg-steel-100"
                       onClick={() => setWarnF("Semua")}
                     >
                       {locale === "en" ? "Clear" : "Bersihkan"}
@@ -1978,17 +2002,17 @@ penuh per kategori - dengan 10 kategori berproblem, strip
                   {warnByCat.map((c) => (
                     <span
                       key={c.category}
-                      className="inline-flex items-center gap-1.5 rounded-full border border-white bg-white px-2 py-0.5 font-medium shadow-sm"
+                      className="inline-flex items-center gap-1.5 rounded-full border border-white bg-white px-2 py-0.5 font-medium text-xs shadow-sm"
                       title={locale === "en"
-                        ? `${c.category}: ${c.counts.critical} critical, ${c.counts.low} low, ${c.counts.overstock} overstock.`
-                        : `${c.category}: ${c.counts.critical} kritis, ${c.counts.low} menipis, ${c.counts.overstock} berlebih.`}
+                        ? `${c.category}: ${c.counts.critical} critical, ${c.counts.low} low, ${c.counts.overstock} overstock`
+                        : `${c.category}: ${c.counts.critical} kritis, ${c.counts.low} menipis, ${c.counts.overstock} berlebih`}
                     >
                       <span className="text-navy-900">{c.category}</span>
                       {c.counts.critical > 0 && <Badge tone="red">{c.counts.critical} {locale === "en" ? "critical" : "kritis"}</Badge>}
                       {c.counts.low > 0 && <Badge tone="amber">{c.counts.low} {locale === "en" ? "low" : "menipis"}</Badge>}
                       {c.counts.overstock > 0 && <Badge tone="blue">{c.counts.overstock} {locale === "en" ? "over" : "berlebih"}</Badge>}
                     </span>
-                  ))}
+))}
                 </div>
               )}
               <div className="mb-3 flex flex-wrap gap-3">
