@@ -12,7 +12,7 @@ import type { ServiceRecord, Sparepart } from "../../data";
 export type SparepartServiceView = "3d" | "service" | "sparepart" | "all";
 
 type SvcExt = Omit<ServiceRecord, "status"> & { status: ServiceRecord["status"] | "Batal"; cancelReason?: string };
-type SpExt = Sparepart & { usedDate?: string; warrantyUntil?: string };
+type SpExt = Sparepart & { usedDate?: string; warrantyUntil?: string; poRef?: string };
 
 const SVC_FILTER = ["Semua", "Scheduled", "In Progress", "Done", "Batal"] as const;
 const SVC_LABEL: Record<string, string> = {
@@ -39,7 +39,7 @@ export default function SparepartServiceSection({ projectId, vesselId, view = "a
   const [showAdd, setShowAdd] = useState(false);
   const [editSp, setEditSp] = useState<SpExt | null>(null);
   const [delSp, setDelSp] = useState<SpExt | null>(null);
-  const [form, setForm] = useState({ name: "", partNumber: "", category: "Mechanical", status: "Akan" as "Akan" | "Sedang" | "Selesai", cost: "", notes: "", technician: "", usedDate: "", warrantyUntil: "" });
+  const [form, setForm] = useState({ name: "", partNumber: "", category: "Mechanical", status: "Akan" as "Akan" | "Sedang" | "Selesai", cost: "", notes: "", technician: "", usedDate: "", warrantyUntil: "", poRef: "" });
 
   const [showAddSvc, setShowAddSvc] = useState(false);
   const [editSvc, setEditSvc] = useState<SvcExt | null>(null);
@@ -81,6 +81,7 @@ export default function SparepartServiceSection({ projectId, vesselId, view = "a
       technician: String(sp.technician ?? ""),
       usedDate: String(sp.usedDate ?? ""),
       warrantyUntil: String(sp.warrantyUntil ?? ""),
+      poRef: String(sp.poRef ?? ""),
     });
   };
 
@@ -101,7 +102,7 @@ export default function SparepartServiceSection({ projectId, vesselId, view = "a
     });
   };
 
-  const EMPTY_SP = { name: "", partNumber: "", category: "Mechanical", status: "Akan" as "Akan" | "Sedang" | "Selesai", cost: "", notes: "", technician: "", usedDate: "", warrantyUntil: "" };
+  const EMPTY_SP = { name: "", partNumber: "", category: "Mechanical", status: "Akan" as "Akan" | "Sedang" | "Selesai", cost: "", notes: "", technician: "", usedDate: "", warrantyUntil: "", poRef: "" };
   const EMPTY_SVC = { type: "Repair" as ServiceRecord["type"], description: "", date: new Date().toISOString().slice(0, 10), technician: "", cost: "", status: "Scheduled" as ServiceRecord["status"], boqRef: "" };
 
   /* Tombol "Tambah" harus membuka form KOSONG. Versi lama memakai state form
@@ -282,6 +283,7 @@ export default function SparepartServiceSection({ projectId, vesselId, view = "a
       technician: form.technician.trim() || "-",
       usedDate: form.usedDate || "-",
       warrantyUntil: form.warrantyUntil || "-",
+      ...(form.poRef ? { poRef: form.poRef } : {}),
     };
     if (editSp) {
       await update("spareparts", editSp.id, payload);
@@ -524,6 +526,19 @@ const payload = {
             <Field label={S.spsUsedDate}><input type="date" className="input" value={form.usedDate} onChange={(e) => setForm({ ...form, usedDate: e.target.value })} /></Field>
           </FormGrid>
           <Field label={S.spsWarranty}><input type="date" className="input" value={form.warrantyUntil} onChange={(e) => setForm({ ...form, warrantyUntil: e.target.value })} /></Field>
+          {/* D13: referensi opsional ke PO yang sudah Disetujui. */}
+          {projectId && (() => {
+            const pos = (data.purchaseOrders ?? []).filter((po) => String(po.project ?? "") === projectId && String(po.status ?? "") === "Disetujui");
+            if (pos.length === 0) return null;
+            return (
+              <Field label={S.spsPoRef}>
+                <select className="input" value={form.poRef} onChange={(e) => setForm({ ...form, poRef: e.target.value })}>
+                  <option value="">{locale === "en" ? "-- none --" : "-- tidak ada --"}</option>
+                  {pos.map((po) => <option key={po.id} value={po.id}>{String(po.id)} - {String(po.item ?? "")}</option>)}
+                </select>
+              </Field>
+            );
+          })()}
         </div>
       </Modal>
 
