@@ -46,6 +46,7 @@ import { pdfServerReady } from "../../services/pdfClient";
 import { usePdfDoc } from "../../components/usePdfDoc";
 import { canonPrioritas, scopeList } from "../../utils/scope";
 import { equipmentCostSummary } from "../../utils/projectCost";
+import { employeeOptions } from "../../utils/employeeOptions";
 import { delayDaysOf } from "../../utils/projectDelay";
 import { EntityPicker, SearchBox, rowMatches } from "../../components/ui";
 import { PRIORITAS } from "./Projects";
@@ -394,14 +395,7 @@ export default function ProjectDetail() {
      bawaan. `name` bisa kosong di mode offline/lama, jadi ada fallback ke
      username agar tidak pernah tersimpan string kosong. */
   const sessionName = String(session?.name ?? "").trim() || String(session?.username ?? "").trim();
-  const docOwnerOptions = useMemo(
-    () => data.employees.map((e) => ({
-      value: String(e.name ?? "").trim(),
-      label: String(e.name ?? "").trim(),
-      hint: [String(e.role ?? "").trim(), String(e.id ?? "")].filter((x) => x !== "").join(" · "),
-    })).filter((o) => o.value !== ""),
-    [data.employees],
-  );
+const docOwnerOptions = useMemo(() => employeeOptions(data.employees), [data.employees]);
   const slots = data.dockSlots.filter((s) => s.project === pid);
   const docs = data.documents.filter((d) => d.project === pid);
   const wos = data.workOrders.filter((w) => w.project === pid);

@@ -38,11 +38,13 @@ import { Card, CardHeader, PageHeader, Badge, KpiCard, Tabs, ChartTooltip, Modal
   NumInput, AsyncButton, SecureImg,
   SearchBox, rowMatches,
   RowAction,
+  EntityPicker,
 } from "../../components/ui";
 import type { SortState } from "../../components/ui";
 import { useStore, type StoreItem } from "../../data/store";
 import { findUsages } from "../../utils/usages";
 import { sameName } from "../../utils/names";
+import { employeeOptions, isKnownEmployee } from "../../utils/employeeOptions";
 import { categoryWarnings, katalogBadge, levelTally, warnLevelOf, warnRankOf, effectiveMinStock, type WarnLevel } from "../../utils/inventoryWarn";
 import {
   DEAD_REASONS,
@@ -425,6 +427,10 @@ export default function Inventory() {
   const [moveTax, setMoveTax] = useState("");
   const [movePurpose, setMovePurpose] = useState("");
   const [movePic, setMovePic] = useState("");
+  /* Satu daftar pilihan untuk tiga field PIC di modul ini (mutasi, gudang,
+     edit mutasi). Sebelumnya ketiganya input teks bebas dengan nama contoh
+     yang berbeda-beda, jadi "Agus Setiawan" bisa tersimpan sebagai "agus". */
+  const picOptions = useMemo(() => employeeOptions(data.employees), [data.employees]);
   const [importReport, setImportReport] = useState<string[]>([]);
   const [importMode, setImportMode] = useState<"Katalog" | "IN" | "OUT">("Katalog");
 
@@ -3206,7 +3212,7 @@ penuh per kategori - dengan 10 kategori berproblem, strip
               <input className="input" value={movePurpose} onChange={(e) => setMovePurpose(e.target.value)} placeholder={S.phPurpose} />
             </Field>
             <Field label={S.picLbl} hint={S.hintPic}>
-              <input className="input" value={movePic} onChange={(e) => setMovePic(e.target.value)} placeholder={S.phPic} />
+              <EntityPicker value={movePic} onChange={setMovePic} options={picOptions} placeholder={S.phPic} ariaLabel={S.picLbl} emptyText={locale === "en" ? "No matching employee." : "Tidak ada karyawan yang cocok."} allowCustom invalid={movePic.trim() !== "" && !isKnownEmployee(data.employees, movePic)} />
             </Field>
           </FormGrid>
           <Field label={S.batchLbl} hint={S.hintMoveBatch}>
@@ -3489,11 +3495,15 @@ penuh per kategori - dengan 10 kategori berproblem, strip
               />
             </Field>
             <Field label={locale === "en" ? "Person in charge" : "Penanggung Jawab"}>
-              <input
-                className="input"
+              <EntityPicker
                 value={whForm.pic}
+                onChange={(v) => setWhForm({ ...whForm, pic: v })}
+                options={picOptions}
                 placeholder="Agus Setiawan"
-                onChange={(e) => setWhForm({ ...whForm, pic: e.target.value })}
+                ariaLabel={locale === "en" ? "Person in charge" : "Penanggung jawab"}
+                emptyText={locale === "en" ? "No matching employee." : "Tidak ada karyawan yang cocok."}
+                allowCustom
+                invalid={whForm.pic.trim() !== "" && !isKnownEmployee(data.employees, whForm.pic)}
               />
             </Field>
             <Field label={locale === "en" ? "Status" : "Status"}>
@@ -3595,7 +3605,7 @@ penuh per kategori - dengan 10 kategori berproblem, strip
             <Field label={S.dateLbl}><input type="date" className="input" value={moveEditForm.date} onChange={(e) => setMoveEditForm((f) => ({ ...f, date: e.target.value }))} /></Field>
             <Field label={S.refLbl}><input className="input font-mono" value={moveEditForm.by} onChange={(e) => setMoveEditForm((f) => ({ ...f, by: e.target.value }))} /></Field>
             <Field label={S.supplierLbl}><input className="input" value={moveEditForm.supplier} onChange={(e) => setMoveEditForm((f) => ({ ...f, supplier: e.target.value }))} /></Field>
-            <Field label={S.picLbl}><input className="input" value={moveEditForm.pic} onChange={(e) => setMoveEditForm((f) => ({ ...f, pic: e.target.value }))} /></Field>
+            <Field label={S.picLbl}><EntityPicker value={moveEditForm.pic} onChange={(v) => setMoveEditForm((f) => ({ ...f, pic: v }))} options={picOptions} ariaLabel={S.picLbl} emptyText={locale === "en" ? "No matching employee." : "Tidak ada karyawan yang cocok."} allowCustom invalid={moveEditForm.pic.trim() !== "" && !isKnownEmployee(data.employees, moveEditForm.pic)} /></Field>
           </FormGrid>
           <Field label={S.purposeLbl}><input className="input" value={moveEditForm.purpose} onChange={(e) => setMoveEditForm((f) => ({ ...f, purpose: e.target.value }))} /></Field>
         </div>

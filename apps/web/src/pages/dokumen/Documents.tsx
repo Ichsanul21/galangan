@@ -10,6 +10,7 @@ import { isBackendConfigured } from "../../services/http";
 import { ocrImageUrl } from "../../services/upload";
 import { uploadFile } from "../../services/upload";
 import { fmtTanggal, todayISO } from "../../utils/format";
+import { employeeOptions } from "../../utils/employeeOptions";
 import { createdAtOf, lastTouchedAt } from "../../utils/timestamps";
 import { AlertBannerView, flashPick, notifRowId, useModuleAlert, useNotifFlash } from "../../components/AlertBanner";
 import { useDeepLinkParams, useDeepLinkTarget } from "../../components/useDeepLink";
@@ -179,14 +180,7 @@ const qcCertOptions = useMemo(
   /* Penanggung jawab disimpan sebagai NAMA (bukan id) - `owner` sudah
      tercetak di banyak dokumen dan seed lama semuanya berisi nama. Jadi nilai
      picker = nama, sedangkan id employee dipakai sebagai hint pencarian. */
-  const ownerOptions = useMemo(
-    () => data.employees.map((e) => ({
-      value: String(e.name ?? "").trim(),
-      label: String(e.name ?? "").trim(),
-      hint: [String(e.role ?? "").trim(), String(e.nip ?? "").trim(), String(e.id ?? "")].filter((x) => x !== "").join(" · "),
-    })).filter((o) => o.value !== ""),
-    [data.employees],
-  );
+const ownerOptions = useMemo(() => employeeOptions(data.employees, { withNip: true }), [data.employees]);
   const [relSel, setRelSel] = useState<string[]>([]);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [uploadingFile, setUploadingFile] = useState(false);

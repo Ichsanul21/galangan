@@ -4,9 +4,11 @@ import { Plus, Ship, CalendarRange, AlertTriangle, GripVertical, Trash2, Wrench,
 import { Card, CardHeader, PageHeader, SearchBox, Badge, KpiCard, ProgressBar, Modal, Field, FormGrid, ConfirmModal, StatusBadge, toast, SortTh, toggleSort, sortRows, usePager,
   NumInput, FlowStrip,
   RowAction, rowMatches,
+  EntityPicker,
 } from "../../components/ui";
 import type { SortState } from "../../components/ui";
 import { AsyncButton } from "../../components/ui";
+import { employeeOptions, isKnownEmployee } from "../../utils/employeeOptions";
 import { useStore } from "../../data/store";
 import type { StoreItem, CollectionKey } from "../../data/store";
 import { useModuleSync } from "../../data/useModuleSync";
@@ -101,6 +103,7 @@ const DRY_COLS: CollectionKey[] = ["activities", "dockSlots", "drydocks", "invoi
 
 export default function Drydock() {
   const { data, add, update, remove, log } = useStore();
+  const picOptions = useMemo(() => employeeOptions(data.employees), [data.employees]);
   const { locale } = useT();
   const S = n_dry[locale];
   const modAlert = useModuleAlert("drydock");
@@ -1271,7 +1274,7 @@ export default function Drydock() {
       <Modal open={picModal !== null} onClose={() => setPicModal(null)} title={S.picTitle.replace("{a}", picModal?.name ?? "")}
         footer={<><button className="btn-secondary" onClick={() => setPicModal(null)}>{S.cancelBtn}</button><button className="btn-primary" onClick={savePic}>{S.btnSavePic}</button></>}>
         <Field label={S.lblPic} hint={S.hintPic}>
-          <input className="input" value={picDraft} onChange={(e) => setPicDraft(e.target.value)} placeholder={S.phPic} />
+          <EntityPicker value={picDraft} onChange={setPicDraft} options={picOptions} placeholder={S.phPic} ariaLabel={S.lblPic} emptyText={locale === "en" ? "No matching employee." : "Tidak ada karyawan yang cocok."} allowCustom invalid={picDraft.trim() !== "" && !isKnownEmployee(data.employees, picDraft)} />
         </Field>
       </Modal>
 

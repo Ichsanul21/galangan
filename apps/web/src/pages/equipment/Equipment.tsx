@@ -48,6 +48,8 @@ import {
   maintenanceDowntimeHours,
   type EquipmentCostSummary,
 } from "../../utils/projectCost";
+import { employeeOptions, isKnownEmployee } from "../../utils/employeeOptions";
+import { EntityPicker } from "../../components/ui";
 import { AlertBannerView, flashPick, notifRowId, useModuleAlert, useNotifFlash } from "../../components/AlertBanner";
 import { useDeepLinkParams, useDeepLinkTarget } from "../../components/useDeepLink";
 import { rowHighlightClass } from "../../components/rowHighlight";
@@ -290,6 +292,7 @@ export default function EquipmentPage() {
      tampilan, jadi angka HPP per proyek harus dibaca dari tabel angka yang
      tidak bisa ditelusuri. */
   const [costDetailFor, setCostDetailFor] = useState<string | null>(null);
+  const picOptions = useMemo(() => employeeOptions(data.employees), [data.employees]);
   const [form, setForm] = useState({ name: "", category: "Pengangkat", categoryCustom: "", code: "", serial: "", branch: "Samarinda", model: "", pic: "", util: "50", rate: "", fuelPrice: "0", acquisitionCost: "", usefulLife: "" });
   const [showService, setShowService] = useState(false);
 
@@ -2539,7 +2542,7 @@ export default function EquipmentPage() {
               </select>
             </Field>
             <Field label={S.eqSerialField} hint={S.eqSerialHint}><input className="input font-mono" value={form.serial} onChange={(e) => setForm({ ...form, serial: e.target.value })} placeholder={S.eqSerialPh} /></Field>
-            <Field label={S.eqPicField} hint={S.eqPicHint}><input className="input" value={form.pic} onChange={(e) => setForm({ ...form, pic: e.target.value })} placeholder={S.eqPicPh} /></Field>
+            <Field label={S.eqPicField} hint={S.eqPicHint}><EntityPicker value={form.pic} onChange={(v) => setForm({ ...form, pic: v })} options={picOptions} placeholder={S.eqPicPh} ariaLabel={S.eqPicField} emptyText={locale === "en" ? "No matching employee." : "Tidak ada karyawan yang cocok."} allowCustom invalid={form.pic.trim() !== "" && !isKnownEmployee(data.employees, form.pic)} /></Field>
             <Field label={S.thModel}><input className="input" value={form.model} onChange={(e) => setForm({ ...form, model: e.target.value })} /></Field>
             <Field label={S.eqUtilField}><NumInput className="input" value={form.util} onChange={(e) => setForm({ ...form, util: e.target.value })} /></Field>
             <Field label={S.eqRateField}><NumInput min={0} className="input" value={form.rate} onChange={(e) => setForm({ ...form, rate: e.target.value })} placeholder={S.eqRatePh} /></Field>

@@ -16,7 +16,8 @@
     "probe:facility": "vite build --ssr scripts/facility-probe.ts --outDir node_modules/.cache/facility-probe --emptyOutDir --logLevel error && node node_modules/.cache/facility-probe/facility-probe.js",
     "probe:push": "vite build --ssr scripts/push-probe.ts --outDir node_modules/.cache/push-probe --emptyOutDir --logLevel error && node node_modules/.cache/push-probe/push-probe.js",
     "probe:time": "vite build --ssr scripts/time-probe.ts --outDir node_modules/.cache/time-probe --emptyOutDir --logLevel error && node node_modules/.cache/time-probe/time-probe.js",
-    "check": "tsc --noEmit && tsc -p tsconfig.scripts.json --noEmit && npm run probe:render && npm run probe:price && npm run probe:foundation && npm run probe:alert && npm run probe:wo && npm run probe:table && npm run probe:facility && npm run probe:push && npm run probe:time"
+    "probe:employee": "vite build --ssr scripts/employee-probe.ts --outDir node_modules/.cache/employee-probe --emptyOutDir --logLevel error && node node_modules/.cache/employee-probe/employee-probe.js",
+    "check": "tsc --noEmit && tsc -p tsconfig.scripts.json --noEmit && npm run probe:render && npm run probe:price && npm run probe:foundation && npm run probe:alert && npm run probe:wo && npm run probe:table && npm run probe:facility && npm run probe:push && npm run probe:time && npm run probe:employee"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4.3.3",

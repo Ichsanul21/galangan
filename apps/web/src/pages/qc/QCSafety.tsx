@@ -5,8 +5,10 @@ import { ComposedChart, Line, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Respons
 import { Card, CardHeader, PageHeader, Badge, KpiCard, Tabs, StatusBadge, Donut, ChartTooltip, Modal, Field, FormGrid, ConfirmModal, SortTh, toggleSort, sortRows, usePager, toast,
   NumInput, FlowStrip, FileUploadButton, useBusy, AsyncButton, SearchBox, rowMatches,
   RowAction,
+  EntityPicker,
 } from "../../components/ui";
 import type { SortState } from "../../components/ui";
+import { employeeOptions, isKnownEmployee } from "../../utils/employeeOptions";
 import { useStore, type StoreItem, type CollectionKey } from "../../data/store";
 import { useModuleSync } from "../../data/useModuleSync";
 import { inspectionTrend, ncrTrend, incidentTrend, hseTrend } from "../../data";
@@ -115,6 +117,11 @@ const QC_COLS: CollectionKey[] = ["activities", "auditPlans", "bast", "branches"
 export default function QCSafety() {
   const busy = useBusy();
   const { data, add, update, remove, log, branch, inBranch } = useStore();
+  /* Tiga form (JSA, TBM, dan Patrol) punya field PIC dengan label sama
+     `S.fPic`; ketiganya satu daftar agar orang yang sama tidak ditulis
+     dengan ejaan berbeda di tiga tempat. */
+  const picOptions = useMemo(() => employeeOptions(data.employees), [data.employees]);
+  const picInvalid = (v: string) => v.trim() !== "" && !isKnownEmployee(data.employees, v);
   const modAlert = useModuleAlert("qc");
   const flash = useNotifFlash();
   const pdfDoc = usePdfDoc();
@@ -2281,7 +2288,7 @@ export default function QCSafety() {
               </select>
             </Field>
             <Field label={S.thTanggal}><input type="date" className="input" value={jsaForm.date} onChange={(e) => setJsaForm({ ...jsaForm, date: e.target.value })} /></Field>
-            <Field label={S.fPic}><input className="input" value={jsaForm.pic} onChange={(e) => setJsaForm({ ...jsaForm, pic: e.target.value })} placeholder={S.phPic} /></Field>
+            <Field label={S.fPic}><EntityPicker value={jsaForm.pic} onChange={(v) => setJsaForm({ ...jsaForm, pic: v })} options={picOptions} placeholder={S.phPic} ariaLabel={S.fPic} emptyText={locale === "en" ? "No matching employee." : "Tidak ada karyawan yang cocok."} allowCustom invalid={picInvalid(jsaForm.pic)} /></Field>
             <Field label={S.fPekerjaan}><input className="input" value={jsaForm.job} onChange={(e) => setJsaForm({ ...jsaForm, job: e.target.value })} placeholder={S.phPekerjaan} /></Field>
           </FormGrid>
           <Field label={S.fBahaya}><textarea className="input" rows={2} value={jsaForm.hazard} onChange={(e) => setJsaForm({ ...jsaForm, hazard: e.target.value })} /></Field>
@@ -2309,7 +2316,7 @@ export default function QCSafety() {
             </Field>
             <Field label={S.thTanggal}><input type="date" className="input" value={tbmForm.date} onChange={(e) => setTbmForm({ ...tbmForm, date: e.target.value })} /></Field>
             <Field label={S.fJmlPeserta}><NumInput min={0} className="input" value={tbmForm.attendees} onChange={(e) => setTbmForm({ ...tbmForm, attendees: e.target.value })} /></Field>
-            <Field label={S.fPic}><input className="input" value={tbmForm.pic} onChange={(e) => setTbmForm({ ...tbmForm, pic: e.target.value })} /></Field>
+            <Field label={S.fPic}><EntityPicker value={tbmForm.pic} onChange={(v) => setTbmForm({ ...tbmForm, pic: v })} options={picOptions} ariaLabel={S.fPic} emptyText={locale === "en" ? "No matching employee." : "Tidak ada karyawan yang cocok."} allowCustom invalid={picInvalid(tbmForm.pic)} /></Field>
           </FormGrid>
           <Field label={S.fTopik}><input className="input" value={tbmForm.topic} onChange={(e) => setTbmForm({ ...tbmForm, topic: e.target.value })} placeholder={S.phTopik} /></Field>
         </div>
@@ -2322,7 +2329,7 @@ export default function QCSafety() {
         <div className="space-y-3">
           <FormGrid>
             <Field label={S.thTanggal}><input type="date" className="input" value={walkForm.date} onChange={(e) => setWalkForm({ ...walkForm, date: e.target.value })} /></Field>
-            <Field label={S.fPic}><input className="input" value={walkForm.pic} onChange={(e) => setWalkForm({ ...walkForm, pic: e.target.value })} /></Field>
+            <Field label={S.fPic}><EntityPicker value={walkForm.pic} onChange={(v) => setWalkForm({ ...walkForm, pic: v })} options={picOptions} ariaLabel={S.fPic} emptyText={locale === "en" ? "No matching employee." : "Tidak ada karyawan yang cocok."} allowCustom invalid={picInvalid(walkForm.pic)} /></Field>
             <Field label={S.fArea}><input className="input" value={walkForm.area} onChange={(e) => setWalkForm({ ...walkForm, area: e.target.value })} placeholder={S.phArea} /></Field>
             <Field label={S.fJmlTemuan}><NumInput min={0} className="input" value={walkForm.findings} onChange={(e) => setWalkForm({ ...walkForm, findings: e.target.value })} /></Field>
           </FormGrid>

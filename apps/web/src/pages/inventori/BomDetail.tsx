@@ -1,12 +1,14 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { Link, useParams } from "react-router-dom";
 import { ArrowLeft, Barcode, Package, Pencil, Trash2 } from "lucide-react";
 import { Card, CardHeader, PageHeader, Badge, Modal, Field, FormGrid, Tabs, EmptyState, ConfirmModal, toast, SortTh, toggleSort, sortRows,
   NumInput,
   AsyncButton, SearchBox, rowMatches,
   RowAction,
+  EntityPicker,
 } from "../../components/ui";
 import type { SortState } from "../../components/ui";
+import { employeeOptions, isKnownEmployee } from "../../utils/employeeOptions";
 import { useT } from "../../i18n/LanguageContext";
 import { n_inv } from "../../i18n/n_inv";
 import { useStore, type StoreItem } from "../../data/store";
@@ -67,6 +69,7 @@ export default function BomDetail() {
   const S = n_inv[locale];
   const { id } = useParams();
   const { data, add, update, remove, log } = useStore();
+  const picOptions = useMemo(() => employeeOptions(data.employees), [data.employees]);
   const item = data.inventory.find((i) => i.id === id) ?? null;
   const [tab, setTab] = useState("Riwayat");
   const [sort, setSort] = useState<SortState>({ key: null, dir: "asc" });
@@ -331,7 +334,7 @@ export default function BomDetail() {
           <Field label={S.purposeLbl ?? (locale === "en" ? "Purpose" : "Keperluan")}><input className="input" value={moveEditForm.purpose} onChange={(e) => setMoveEditForm({ ...moveEditForm, purpose: e.target.value })} /></Field>
           <FormGrid>
             <Field label={locale === "en" ? "Supplier" : "Pemasok"}><input className="input" value={moveEditForm.supplier} onChange={(e) => setMoveEditForm({ ...moveEditForm, supplier: e.target.value })} /></Field>
-            <Field label={locale === "en" ? "PIC" : "PIC"}><input className="input" value={moveEditForm.pic} onChange={(e) => setMoveEditForm({ ...moveEditForm, pic: e.target.value })} /></Field>
+            <Field label={locale === "en" ? "PIC" : "PIC"}><EntityPicker value={moveEditForm.pic} onChange={(v) => setMoveEditForm({ ...moveEditForm, pic: v })} options={picOptions} ariaLabel={locale === "en" ? "PIC" : "PIC"} emptyText={locale === "en" ? "No matching employee." : "Tidak ada karyawan yang cocok."} allowCustom invalid={moveEditForm.pic.trim() !== "" && !isKnownEmployee(data.employees, moveEditForm.pic)} /></Field>
           </FormGrid>
           {moveEdit && (
             <p className="text-xs text-steel-500">
