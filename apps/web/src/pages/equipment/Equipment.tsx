@@ -5,7 +5,7 @@ import { Link } from "react-router-dom";
 import { Plus, Cpu, Pencil, Trash2, Wrench, AlertTriangle, Gauge, CheckCircle2, Download, Eye, History as HistoryIcon } from "lucide-react";
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 import { Card, CardHeader, PageHeader, Badge, KpiCard, Tabs, ProgressBar, ChartTooltip, RadialGauge, Modal, Field, FormGrid, EmptyState, ConfirmModal, StatusBadge, toast, SortTh, toggleSort, sortRows, usePager,
-  NumInput, AsyncButton,
+  NumInput, MoneyInput, AsyncButton,
   SearchBox,
   rowMatches,
   RowAction,
@@ -19,7 +19,7 @@ import { useModuleSync } from "../../data/useModuleSync";
 import { remoteRepository } from "../../services/repositories";
 import { getJwt, isBackendConfigured } from "../../services/http";
 import { equipmentHours, sparkUtil, equipTotalTrend, maintTrend, serviceDueTrend } from "../../data";
-import { fmtTanggal, fmtJumlah, fmtRupiah, todayISO } from "../../utils/format";
+import { fmtTanggal, fmtJumlah, fmtRupiah, parseRupiah, todayISO } from "../../utils/format";
 import { loadedLaborRatePerDay } from "../../utils/rates";
 import { createdAtOf, lastTouchedAt } from "../../utils/timestamps";
 import { durasiJam, fmtJam24, jamOf, jamOverlap, norm24, parseJam, toMinutes } from "../../utils/time24";
@@ -712,9 +712,9 @@ const projectCostRows = useMemo(() => Array.from(projectCostSummaries.entries())
     /* Kode equipment = identitas bisnis (dipakai label QR, booking, kontrak
        sewa). Mengubahnya melenceng dari semua rujukan lama, jadi form ubah
        sengaja tidak menyediakan kolom kode sama sekali. */
-    const rate = Number(form.rate || 0);
-    const fuelPrice = Number(form.fuelPrice || 0);
-    const acquisitionCost = Number(form.acquisitionCost || 0);
+    const rate = parseRupiah(form.rate || "0");
+    const fuelPrice = parseRupiah(form.fuelPrice || "0");
+    const acquisitionCost = parseRupiah(form.acquisitionCost || "0");
     const usefulLife = Number(form.usefulLife || 0);
     if (!Number.isFinite(rate) || rate < 0) { toast(S.eqRateMin, "info"); return; }
     if (!Number.isFinite(fuelPrice) || fuelPrice < 0) { toast(S.eqFuelMin, "info"); return; }
@@ -768,10 +768,10 @@ const projectCostRows = useMemo(() => Array.from(projectCostSummaries.entries())
     if (!category) { toast(locale === "en" ? "Custom category is required" : "Kategori kustom wajib diisi", "info"); return; }
     const util = Number(form.util);
     if (!Number.isFinite(util) || util < 0 || util > 100) { toast(S.eqUtilRange, "info"); return; }
-    const rate = Number(form.rate || 0);
+    const rate = parseRupiah(form.rate || "0");
     if (!Number.isFinite(rate) || rate < 0) { toast(S.eqRateMin, "info"); return; }
-    const fuelPrice = Number(form.fuelPrice || 0);
-    const acquisitionCost = Number(form.acquisitionCost || 0);
+    const fuelPrice = parseRupiah(form.fuelPrice || "0");
+    const acquisitionCost = parseRupiah(form.acquisitionCost || "0");
     const usefulLife = Number(form.usefulLife || 0);
     if (fuelPrice < 0 || !Number.isFinite(fuelPrice)) { toast(S.eqFuelMin, "info"); return; }
     if ((form.acquisitionCost && (!Number.isFinite(acquisitionCost) || acquisitionCost < 0)) || (form.usefulLife && (!Number.isFinite(usefulLife) || usefulLife <= 0))) {
@@ -2591,9 +2591,9 @@ const projectCostRows = useMemo(() => Array.from(projectCostSummaries.entries())
             <Field label={S.eqPicField} hint={S.eqPicHint}><EntityPicker value={form.pic} onChange={(v) => setForm({ ...form, pic: v })} options={picOptions} placeholder={S.eqPicPh} ariaLabel={S.eqPicField} emptyText={locale === "en" ? "No matching employee." : "Tidak ada karyawan yang cocok."} allowCustom invalid={form.pic.trim() !== "" && !isKnownEmployee(data.employees, form.pic)} /></Field>
             <Field label={S.thModel}><input className="input" value={form.model} onChange={(e) => setForm({ ...form, model: e.target.value })} /></Field>
             <Field label={S.eqUtilField}><NumInput className="input" value={form.util} onChange={(e) => setForm({ ...form, util: e.target.value })} /></Field>
-            <Field label={S.eqRateField}><NumInput min={0} className="input" value={form.rate} onChange={(e) => setForm({ ...form, rate: e.target.value })} placeholder={S.eqRatePh} /></Field>
-            <Field label={S.eqFuelField}><NumInput min={0} className="input" value={form.fuelPrice} onChange={(e) => setForm({ ...form, fuelPrice: e.target.value })} placeholder={S.eqFuelPh} /></Field>
-            <Field label={S.eqCostField}><NumInput min={0} className="input" value={form.acquisitionCost} onChange={(e) => setForm({ ...form, acquisitionCost: e.target.value })} placeholder={S.eqCostPh} /></Field>
+            <Field label={S.eqRateField}><MoneyInput className="input" value={form.rate} onChange={(v) => setForm({ ...form, rate: v })} placeholder={S.eqRatePh} /></Field>
+            <Field label={S.eqFuelField}><MoneyInput className="input" value={form.fuelPrice} onChange={(v) => setForm({ ...form, fuelPrice: v })} placeholder={S.eqFuelPh} /></Field>
+            <Field label={S.eqCostField}><MoneyInput className="input" value={form.acquisitionCost} onChange={(v) => setForm({ ...form, acquisitionCost: v })} placeholder={S.eqCostPh} /></Field>
             <Field label={S.eqLifeField}><NumInput min={0} className="input" value={form.usefulLife} onChange={(e) => setForm({ ...form, usefulLife: e.target.value })} placeholder={S.eqLifePh} /></Field>
           </FormGrid>
         </div>
