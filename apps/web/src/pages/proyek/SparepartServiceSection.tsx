@@ -44,7 +44,7 @@ export default function SparepartServiceSection({ projectId, vesselId, view = "a
   const [showAddSvc, setShowAddSvc] = useState(false);
   const [editSvc, setEditSvc] = useState<SvcExt | null>(null);
   const [delSvc, setDelSvc] = useState<SvcExt | null>(null);
-  const [svcForm, setSvcForm] = useState({ type: "Repair" as ServiceRecord["type"], description: "", date: new Date().toISOString().slice(0, 10), technician: "", cost: "", status: "Scheduled" as ServiceRecord["status"] });
+  const [svcForm, setSvcForm] = useState({ type: "Repair" as ServiceRecord["type"], description: "", date: new Date().toISOString().slice(0, 10), technician: "", cost: "", status: "Scheduled" as ServiceRecord["status"], boqRef: "" });
   const [svcStatus, setSvcStatus] = useState<string>("Semua");
   const [svcQ, setSvcQ] = useState("");
   const [cancelFor, setCancelFor] = useState<SvcExt | null>(null);
@@ -97,11 +97,12 @@ export default function SparepartServiceSection({ projectId, vesselId, view = "a
       technician: String(s.technician ?? ""),
       cost: String(s.cost ?? ""),
       status: (s.status === "Batal" ? "Scheduled" : s.status) as ServiceRecord["status"],
+      boqRef: String(s.boqRef ?? ""),
     });
   };
 
   const EMPTY_SP = { name: "", partNumber: "", category: "Mechanical", status: "Akan" as "Akan" | "Sedang" | "Selesai", cost: "", notes: "", technician: "", usedDate: "", warrantyUntil: "" };
-  const EMPTY_SVC = { type: "Repair" as ServiceRecord["type"], description: "", date: new Date().toISOString().slice(0, 10), technician: "", cost: "", status: "Scheduled" as ServiceRecord["status"] };
+  const EMPTY_SVC = { type: "Repair" as ServiceRecord["type"], description: "", date: new Date().toISOString().slice(0, 10), technician: "", cost: "", status: "Scheduled" as ServiceRecord["status"], boqRef: "" };
 
   /* Tombol "Tambah" harus membuka form KOSONG. Versi lama memakai state form
      yang sama dengan form edit, jadi data item terakhir ikut terbawa. */
@@ -305,14 +306,15 @@ export default function SparepartServiceSection({ projectId, vesselId, view = "a
   const saveService = async () => {
     if (!svcForm.description.trim()) { toast(S.spsToastSvcDesc, "info"); return; }
     if (!projectId && !vesselId && !editSvc) { toast(S.spsToastSvcCtx, "info"); return; }
-    const payload = {
-      date: svcForm.date,
-      type: svcForm.type,
-      description: svcForm.description.trim(),
-      status: svcForm.status,
-      technician: svcForm.technician.trim() || "Belum ditentukan",
-      cost: Number(svcForm.cost) || 0,
-    };
+const payload = {
+        date: svcForm.date,
+        type: svcForm.type,
+        description: svcForm.description.trim(),
+        status: svcForm.status,
+        technician: svcForm.technician.trim() || "Belum ditentukan",
+        cost: Number(svcForm.cost) || 0,
+        ...(svcForm.boqRef ? { boqRef: svcForm.boqRef } : {}),
+      };
     if (editSvc) {
       /* Bila status awal "Batal", JANGAN ubah status saat edit -
          membatalkan service tak sengaja adalah bug integritas data nyata. */
@@ -327,7 +329,7 @@ export default function SparepartServiceSection({ projectId, vesselId, view = "a
     await add("services", { projectId: projectId ?? "", vesselId: vesselId ?? "", ...payload }, { action: "menambahkan service", module: "Service" });
     toast(S.spsToastSvcAdd);
     setShowAddSvc(false);
-    setSvcForm({ type: "Repair", description: "", date: new Date().toISOString().slice(0, 10), technician: "", cost: "", status: "Scheduled" });
+    setSvcForm({ type: "Repair", description: "", date: new Date().toISOString().slice(0, 10), technician: "", cost: "", status: "Scheduled", boqRef: "" });
   };
 
   const modelCard = show3d ? (
@@ -549,6 +551,19 @@ export default function SparepartServiceSection({ projectId, vesselId, view = "a
             <Field label={S.spsSvcTech}><input className="input" value={svcForm.technician} onChange={(e) => setSvcForm({ ...svcForm, technician: e.target.value })} placeholder={S.spsTechPh} /></Field>
           </FormGrid>
           <Field label={S.spsSvcCost}><NumInput className="input" value={svcForm.cost} onChange={(e) => setSvcForm({ ...svcForm, cost: e.target.value })} /></Field>
+          {/* D12: referensi opsional ke item BoQ project ini. */}
+          {projectId && (() => {
+            const boqItems = (data.boq ?? []).filter((b) => String(b.projectId ?? "") === projectId);
+            if (boqItems.length === 0) return null;
+            return (
+              <Field label={S.spsSvcBoqRef}>
+                <select className="input" value={svcForm.boqRef} onChange={(e) => setSvcForm({ ...svcForm, boqRef: e.target.value })}>
+                  <option value="">{locale === "en" ? "-- none --" : "-- tidak ada --"}</option>
+                  {boqItems.map((b) => <option key={b.id} value={b.id}>{String(b.name ?? b.id)}</option>)}
+                </select>
+              </Field>
+            );
+          })()}
         </div>
       </Modal>
 

@@ -545,16 +545,18 @@ export const employees = [
 /* ====== SERVICE RECORD ====== */
 
 export interface ServiceRecord {
-  id: string;
-  projectId: string;
-  vesselId?: string;
-  date: string;
-  type: "Overhaul" | "Inspection" | "Repair" | "Drydock" | "Survey";
-  description: string;
-  status: "Done" | "In Progress" | "Scheduled";
-  technician: string;
-  cost: number;
-}
+    id: string;
+    projectId: string;
+    vesselId?: string;
+    date: string;
+    type: "Overhaul" | "Inspection" | "Repair" | "Drydock" | "Survey";
+    description: string;
+    status: "Done" | "In Progress" | "Scheduled";
+    technician: string;
+    cost: number;
+    /** D12: referensi opsional ke item BoQ project ini. */
+    boqRef?: string;
+  }
 
 export const services: ServiceRecord[] = [
   { id: "SRV-001", projectId: "RP-2026-003", vesselId: "V-002", date: "2026-07-01", type: "Drydock", description: "Inspection & repair kickoff", status: "Done", technician: "Rudi Hartono", cost: 150000000 },
