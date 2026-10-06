@@ -16,15 +16,25 @@ klarifikasi client.
 
 | Status | Jumlah |
 |---|---|
-| Selesai | 24 |
+| Selesai | 25 |
 | Sebagian | 15 |
-| Belum | 30 |
+| Belum | 29 |
 | Ambigu | 4 |
 | **Total item** | **72** |
 
 Perubahan dari audit awal (+3 Selesai, -2 Sebagian): S3b, H1b, dan DK2.
 Item C1-2 dan loop push 401 masuk C1 yang sudah dihitung SEBAGIAN, jadi
-tidak menambah baris baru - tapi QStringnya berubah, lihat CATATAN REVISI.
+tidak menambah baris baru - tapi bunyinya berubah, lihat CATATAN REVISI.
+
+Perubahan dari Gelombang 3: H3 naik ke SELESAI (10 field PIC memakai
+`EntityPicker`), A2 naik dari BELUM ke SEBAGIAN. Angka lain tidak bergerak:
+A2 keluar dari BELUM masuk SEBAGIAN, H3 keluar dari SEBAGIAN masuk SELESAI.
+
+Catatan: jumlah status di atas berjumlah 73, bukan 72. Selisih itu sudah ada
+sejak audit awal dan tidak ditutup dengan menebak - penyebabnya sepertinya satu
+item tercatat di dua bagian (C1-2 muncul di C1 dan juga disebut di C2), jadi
+tidak ada cara terbukti untuk menentukan item mana yang dobel.
+terbukti untuk menentukan item mana yang dobel.
 
 ## Lima yang paling penting dan harus didahulukan
 
@@ -64,37 +74,45 @@ rincian PPh 21 sampai 26 (18), rincian PPN (10), `retensi`, `bpjsKes`, `bpjsTk`,
 3. `seedReprice.ts` hanya menutup 4 koleksi. Invoice, PO, inventory, dan
    payroll tidak pernah di-reprice.
 
-## A2 - Search di seluruh tabel semua modul - **BELUM**
+## A2 - Search di seluruh tabel semua modul - **SEBAGIAN**
 
 **Terukur:** 81 elemen `<table>` di 22 file UI. Hitungan mentah 88, tapi 7 sisanya
 adalah komentar `<table>` di `services/http.ts` dan `services/repositories.ts`,
 bukan tabel.
 
-**Batas bawah yang pasti:** 7 file UI punya **nol** `SearchBox` sama sekali
-sehingga semua tabelnya tanpa search:
+**Tujuh file yang nol `SearchBox` sudah handled** (audit awal mencatat 19 tabel
+tanpa search di file-file ini):
 
-| File | Tabel tanpa search |
+| File | Tabel tanpa search (audit awal) | Status |
+|---|---|---|
+| `proyek/ProjectDetail.tsx` | 7 | 6 dari 7 sudah ada search |
+| `payroll/Payroll.tsx` | 3 | 3 dari 3 |
+| `absensi/Absensi.tsx` | 3 | 3 dari 3 |
+| `drydock/Drydock.tsx` | 2 | 2 dari 2 |
+| `Analytics.tsx` | 2 | 1 dari 2 |
+| `kapal/VesselDetail.tsx` | 1 | **sengaja tidak** - lihat bawah |
+| `inventori/BomDetail.tsx` | 1 | 1 dari 1 |
+
+**Gap Equipment sudah tertutup.** Audit awal mencatat hanya 2 dari 9 tabel yang
+tercakup; sekarang 8 dari 9. Yang ditambah: Maintenance, Kalibrasi, Sedang
+Dipakai, Biaya per proyek, HPP per proyek, dan dua sub-tabel di modal rincian
+biaya. Tabel Maintenance persis yang dikeluhkan client.
+
+**Tiga tabel yang sengaja dibiarkan tanpa search:**
+
+| Tabel | Alasan |
 |---|---|
-| `proyek/ProjectDetail.tsx` | 7 |
-| `payroll/Payroll.tsx` | 3 |
-| `absensi/Absensi.tsx` | 3 |
-| `drydock/Drydock.tsx` | 2 |
-| `Analytics.tsx` | 2 |
-| `kapal/VesselDetail.tsx` | 1 |
-| `inventori/BomDetail.tsx` | 1 |
-| **Total** | **19** |
+| `ProjectDetail` matriks risiko | Barisnya adalah lima level kemungkinan tetap, kolomnya lima level dampak. Sumbu kisi, bukan daftar - tidak ada "satu baris panjang" yang perlu dicari. Yang bisa dicari (judul, mitigasi) ada di daftar kartu tepat di bawahnya. |
+| `Equipment` heatmap booking | Kisi hari x jam dengan baris tetap. Sama: bukan daftar. |
+| `VesselDetail` rencana 5 tahun | `planYears` dihitung sebagai `[baseYear+1 .. baseYear+5]`, jadi **selalu tepat lima baris**. Menambah search di sini akan menambah kontrol untuk sesuatu yang tidak mungkin panjang. |
 
-**Gap per-tab yang sudah diverifikasi di Equipment** (file punya `SearchBox`,
-tapi hanya 2 dari 7 tabel yang tercakup): hanya Register (`:1568`, pakai `eqQ`)
-dan Utilisasi (`:2449`, pakai `utilQ`). Lima tabel tanpa search: Sedang Dipakai
-(`:1887`), **Maintenance (`:1953`)**, Kalibrasi (`:2143`), Biaya per proyek
-(`:2217`), Biaya riwayat booking (`:2258`). Tabel Maintenance persis yang
-dikeluhkan client, dan memang tidak punya filter query.
+Ketiganya akan jadi tidak benar kalau nanti berubah jadi daftar dinamis.
 
-**Tidak bisa dihitung otomatis:** di modul seperti Finance (28 tabel) dan
-Procurement (5 tabel), state search-hoisted dipakai ulang beberapa tabel, jadi
-cakupan per tabel harus dicek manual atau lewat browser. Klaim "semua tabel
-punya search" **tidak bisa dipertahankan** berdasarkan bukti yang ada.
+**Finance dan Procurement belum tuntas.** Finance punya 28 tabel di 13 tab;
+tab yang sudah diberi search: Piutang (AR) dan Hutang (AP). Sisa yang belum:
+Kas & Bank, Jadwal Bayar, Buku Besar, Laba Rugi, Neraca, Pajak, Aset, dan
+Jurnal. Procurement belum diaudit per-tab. Klaim "semua tabel punya search"
+**tidak bisa dipertahankan** berdasarkan bukti yang ada.
 
 ## B1 - Filter cabang di top bar dihapus - **BELUM**
 
@@ -289,7 +307,7 @@ download.
 | H1b | Auto-preview setelah upload | **SELESAI** (`b4f15d4`) | `HR.tsx` mount panel otomatis saat `fileUrl` terisi. `KaryawanDetail.tsx` form ubah cuti sebelumnya tidak punya preview sama sekali - sekarang memakai `DocumentPreviewPanel` dengan `autoLoad`. Hint di `HR.tsx` yang masih "Pratinjau baru tampil di tabel setelah pengajuan disetujui final" ikut diselaraskan: pratinjau terbuka begitu ada lampiran, hanya status Ditolak yang mengunci. |
 | H1c | Surat persetujuan cuti saat disetujui | **SEBAGIAN** | Recipe server lengkap (`pdf/registry.ts:275-311`, `pdf/documents/hr.ts:85-152`): nama, NIK, jabatan, unit, tipe, periode, durasi, alasan, tanda tangan. Tapi on-demand, bukan otomatis saat approval. `approveHrd` (`:783-831`) tidak membuat baris `letters`, tidak ada arsip atau thumbnail. PDF baru terbit saat tombol ditekan. |
 | H2 | Surat: preview PDF bukan teks | **SELESAI** | `HR.tsx:1786` memanggil `pdfDoc.request` dengan `kind:"suratHr"`, modal `<iframe>` di `:2269-2299` plus Unduh dan Buka di tab baru. Preview form yang belum disimpan masih `<pre>` (`:2217-2222`), bisa dipertanggungjawabkan karena baris belum ada. |
-| H3 | Penanggung jawab searchable dari data pegawai | **SEBAGIAN** | Hanya 2 field: `Documents.tsx:182-189,724-733` dan `ProjectDetail.tsx:394,2288-2296`. Masih teks bebas: PIC Equipment (`:2524`), Penanggung Jawab Gudang (`Inventory.tsx:3489`), PIC movement (`:3596`), PIC BOM (`BomDetail.tsx:329`), empat PIC QC (`:2122,2283,2311,2324`), PIC Dock (`Drydock.tsx:1016`). Masih `<select>` non-searchable: manager (`ProjectAddModal.tsx:220`), PIC negosiasi (`CRM.tsx:1404`, `QuotationDetail.tsx:426`), teknisi (`Equipment.tsx:2579`), inspector (`QCSafety.tsx:1884`). |
+| H3 | Penanggung jawab searchable dari data pegawai | **SELESAI** (`016abab`) | Dua field yang sudah ada sebelumnya (`Documents`, `ProjectDetail`) kini memakai `utils/employeeOptions.ts` yang sama - sebelumnya masing-masing membangun daftarnya sendiri dengan format hint berbeda. Sepuluh field teks bebas lain diubah ke `EntityPicker`: PIC Equipment, tiga PIC Inventory (mutasi, gudang, edit mutasi), PIC BOM, tiga PIC QC (JSA, TBM, Patrol), PIC Dock. 24 pemeriksaan di `scripts/employee-probe.ts`. Sisa `<select>` (manager proyek, PIC negosiasi, teknisi, inspector) **di purposely tidak diubah: sudah terbatas ke daftar karyawan/PM, jadi tidak bisa salah ketik. Catatan desain: `isKnownEmployee` dipakai sebagai peringatan visual (border + `aria-invalid`), bukan pemblokir simpan - berbeda dari `Documents` yang memang menolak nama di luar master karena kolom "oleh" di revisi dokumen adalah jawaban hukum. PIC bisa awak kapal atau subkontraktor yang tidak ada di master. |
 | C1 | Deskripsi survei expand dan collapse | **SELESAI** | `CRM.tsx:124-127,1231,1253-1261` dengan `aria-expanded`. Catatan: saat tertutup masih tampil dipangkas 90 karakter (`:1239`), bukan disembunyikan penuh. |
 | D1 | Dashboard PDF dari data, bukan tampilan | **SELESAI** | `Dashboard.tsx:406-417` memakai `kind:"analitik"`; server hitung ulang KPI dari baris DB (`pdf/registry.ts:1061-1103`). Kekurangan: saat backend tidak aktif tetap toast "PDF berhasil diekspor" tanpa mengunduh apa pun (`:407-410`). |
 | M1 | Filter "hanya perhatian" jadi "proyek butuh perhatian" | **SELESAI** | `Monitoring.tsx:211` plus `n_prj.ts:573` yang berisi "Proyek Butuh Perhatian". |
@@ -375,12 +393,16 @@ download.
    mengirimkannya; server membalas 409 STALE bila isinya sudah berbeda.
    `baseData` yang tidak dikirim tetap diterima agar klien lama tidak macet.
 
-**Gelombang 3 - permintaan yang sudah jelas:**
-10. D9 (ganti string label), P1 (PREVIEW_N 3 plus label), P2 (nomor kolom), P6, P7, P9, P12, P13, P14
-11. E5 (tombol detail biaya), E2 (komponen input jam bersama)
-12. H3 (lanjutkan EntityPicker ke 13 field tersisa)
-13. A2 (search untuk 19 tabel di 7 file yang nol search, plus 5 tabel Equipment
-    yang sudah teridentifikasi; cakupan Finance dan Procurement perlu dicek manual)
+**Gelombang 3 - permintaan yang sudah jelas - SELESAI di `89c981f`:**
+10. [x] D9 (ganti string label), P1 (PREVIEW_N 3 plus label), P2 (nomor kolom),
+    P6, P7, P9, P12, P13, P14 - `e0c4f2a`
+11. [x] E2 (komponen input jam bersama, 49 probe) - `2ecb039`;
+    E5 (tombol detail biaya) - `7006a0a`
+12. [x] H3 (EntityPicker ke 10 field PIC tersisa, 24 probe) - `016abab`
+13. [x] A2 parsial - `6b3786e` (WBS), `2eb1fdb` (Payroll 3), `fc56ad7`
+    (Absensi 3), `1c66274` (Drydock 2), `8bd08af` (Analytics, BomDetail),
+    `f7fc243` (Finance AR + AP), `89c981f` (Equipment 6, ProjectDetail 5).
+    **Belum tuntas:** 8 tab Finance dan Procurement.
 
 **Gelombang 4 - butuh keputusan client dulu:**
 14. D1, D8, P8, S2, I2
@@ -441,6 +463,48 @@ klien mereplay patch-nya di atas versi server (`store.tsx` sekitar `update()`),
 bukan menimpa lokal secara diam-diam. Menyelesaikan ini berarti merge
 per-field di server, dan itu pekerjaan tersendiri.
 
+## Gelombang 3 dikerjakan di `89c981f`
+
+Tujuh belas item selesai. Dua hal yang perlu dicatat karena keduanya menyangkut
+pertimbangan soal apa yang sebenarnya bermasalah:
+
+**1. H3 hanya field yang jelas-jelas salah yang ditutup.** Sepuluh field PIC
+diubah ke `EntityPicker`, tapi empat `<select>` lain dibiarkan: manager proyek,
+PIC negosiasi, teknisi, dan inspektur. Alasannya selektif, bukan lupa -
+semuanya sudah terbatas ke daftar karyawan atau PM, jadi tidak bisa salah ketik.
+Empat `select` yang tersisa bukan free-text; menjadikannya searchable hanya
+menambah kontrol tanpa menutup celah apa pun.
+
+Yang perlu dicatat: `isKnownEmployee` dipakai sebagai **peringatan**, bukan
+pemblokir simpan. `Documents` menolak nama di luar master karena kolom "oleh"
+di revisi dokumen adalah jawaban hukum; PIC maintenance dan PIC dock tidak
+seperti itu, orangnya bisa awak kapal atau subkontraktor yang tidak ada di
+master. Menghapus `allowCustom` akan membuat form tidak bisa dipakai di lapangan,
+dan itu kegagalan yang lebih buruk daripada nama yang salah eja.
+
+**2. Tiga tabel Equipment dan satu ProjectDetail sengaja dibiarkan tanpa
+search.** Untuk terlihat jelas, "19 tabel" di audit awal ternyata bukan 19
+tabel yang sama sifatnya. Heatmap booking adalah kisi hari x jam, matriks
+risiko adalah kisi 5 x 5, dan tabel rencana kapal adalah
+`[baseYear+1 .. baseYear+5]` - selalu lima baris, tidak mungkin jadi panjang.
+Menambah search di sana tidak memperbaiki apa pun; ia hanya menambah kontrol
+yang tidak punya yang mencari. Kalau salah satu berubah jadi daftar dinamis nanti,
+maka tiga tabel ini ikut salah dan perlu dikembalikan.
+
+Untuk Equipment dan ProjectDetail, ukuran yang sama berlaku pada tabel yang
+memang dinamis: semuanya diberi search, karena isinya bisa melebihi layar.
+Catatan teknis yang perlu diingat kalau tabel ini diubah lagi: pencarian HPP
+harus jalan di atas nama proyek, bukan `projectId` - kuncinya id sementara
+yang diketik orang namanya; tabel maintenance juga ikut mencocokkan catatan
+free-text; dan pager maintenance ikut mereset saat filter berubah, tanpa itu
+orang yang sedang di halaman 5 akan melihat halaman kosong begitu saja.
+
+**Finance masih setengah.** Piutang dan Hutang baru diberi search; delapan tab
+Finance lain belum. Klaim "semua tabel punya search" tetap tidak bisa dipertahankan,
+dan dokumen ini sengaja tidak mengklaim sebaliknya.
+
+---
+
 **Peringatan soal nomor baris:** dokumen ini diaudit terhadap `bd975c3`.
 Sejak itu ada beberapa commit yang menyentuh `store.tsx`, `HR.tsx`,
 `Subcontractor.tsx`, dan `FacilityMap.tsx`, jadi beberapa `file:line` di
@@ -452,8 +516,8 @@ nomor baris sengaja dibiarkan begitu karena sudah tidak berlaku.
 # CATATAN METODE
 
 - Audit read-only terhadap `bd975c3`. Tidak ada file aplikasi yang diubah saat
-  menyusun dokumen ini. Gelombang 1 dan 2 baru dikerjakan setelah itu, pada
-  `37321db` sampai `921fcac` - lihat CATATAN REVISI.
+  menyusun dokumen ini. Gelombang 1, 2, dan 3 baru dikerjakan setelah itu, pada
+  `37321db` sampai `89c981f` - lihat CATATAN REVISI.
 - Semua angka (jumlah tabel, jumlah call site, jumlah file) dihitung dengan
   enumerasi, bukan estimasi.
 - Probe tidak dijalankan selama audit karena butuh menulis build cache. Status
