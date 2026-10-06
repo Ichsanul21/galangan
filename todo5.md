@@ -16,9 +16,9 @@ klarifikasi client.
 
 | Status | Jumlah |
 |---|---|
-| Selesai | 28 |
-| Sebagian | 14 |
-| Belum | 27 |
+| Selesai | 34 |
+| Sebagian | 13 |
+| Belum | 22 |
 | Ambigu | 4 |
 | **Total item** | **72** |
 
@@ -33,6 +33,11 @@ Perubahan dari Gelombang 4: D1, D8, dan P8 naik ke SELESAI. D1 (Log
 Penawaran & Tagihan, `172146e`), D8 (risiko auto dari WBS/SOW, `9fa8e55`),
 P8 (override status Terlambat, `32d10c6`). I2 masih BELUM (butuh
 klarifikasi client).
+
+Perubahan dari Gelombang 5: D3, D10, D11, D12, D13, D15 naik ke SELESAI
+(masing-masing commit terpisah). B2 selesai untuk semua field money di 6
+file utama. D5 (BoQ per nomor surat) dan F1 (Finance tanggal) belum
+dikerjakan. I2 masih BELUM.
 
 Catatan: jumlah status di atas berjumlah 73, bukan 72. Selisih itu sudah ada
 sejak audit awal dan tidak ditutup dengan menebak - penyebabnya sepertinya satu
@@ -421,10 +426,16 @@ download.
     [x] D9 (ganti string) - sudah selesai sebelumnya
     **Belum:** I2 (filter Inventory dua tingkat, butuh klarifikasi client)
 
-**Gelombang 5 - kerja skema besar:**
-15. D5 (BoQ per nomor surat, krusial), D3, D10, D11, D12, D13, D15
-16. B2 (komponen input uang berformat titik, menyentuh sekitar 150 field)
-17. F1 (27 tabel Finance plus tanggal hapus di UI)
+**Gelombang 5 - kerja skema besar - SEBAGIAN:**
+15. [x] D3 (material WBS terhubung inventori + movements, foto array) - `68ec10d` + `0a65a8f`
+    [x] D10 (trial checklist dari WBS + kondisi) - `b03cc41`
+    [x] D11 (garansi per WBS task) - `2432cab`
+    [x] D12 (service referensi BoQ) - `a5c1eb4`
+    [x] D13 (sparepart referensi PO) - `c6fc6ee`
+    [x] D15 (tab Subkon di ProjectDetail) - `12da962`
+    [ ] D5 (BoQ per nomor surat, krusial) - belum dikerjakan
+16. [x] B2 (MoneyInput + parseRupiah, ~36 field money di 6 file) - `6813df9` + `63dfdfd` + `53cc5d1` + `9043685` + `918e1b6` + `9755d50` + `223e8e5`
+17. [ ] F1 (27 tabel Finance + tanggal hapus) - belum dikerjakan
 
 ---
 
