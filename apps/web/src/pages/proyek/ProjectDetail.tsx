@@ -109,6 +109,10 @@ export default function ProjectDetail() {
   const S = n_prj[locale];
   const { id } = useParams();
   const { data, update, add, remove, wbsFor, setWbs, teamFor, setTeam, log } = useStore();
+  /* D3: inventory diakses supaya material WBS bisa terhubung ke stok.
+     Saat save WBS task dengan material terpilih, stok berkurang dan
+     movement dicatat otomatis. */
+  const invList = data.inventory ?? [];
   const { user: session } = useAuth();
   /* Printer PDF: BAST disusun server dari baris `bast` + relasi proyek/WO,
      jadi tidak ada jalur lokal untuk dokumen ini. */
@@ -902,11 +906,27 @@ const createWarranty = async (wbsTask?: string) => {
           }
         : w
     );
-    try {
-      await setWbs(pid, updated);
-      await update("projects", pid, { progress: weightedProgress(updated) });
-      log("mengupdate progres WBS", `${wbsTaskUpdate} → ${prog}% (${status})`, "Proyek");
-      toast(S.detToastWbsProg);
+try {
+        await setWbs(pid, updated);
+        await update("projects", pid, { progress: weightedProgress(updated) });
+        /* D3: material terpilih → kurangi stok inventory + catat movement.
+           Tanpa pengurangan stok, WBS dan inventory akan divergensi. */
+        if (wbsUpdateForm.material) {
+          const invItem = invList.find((inv) => String(inv.name ?? "") === wbsUpdateForm.material);
+          if (invItem) {
+            const curStock = Number(invItem.stock ?? 0);
+            if (curStock > 0) {
+              await update("inventory", String(invItem.id), { stock: curStock - 1 });
+              await add("movements", {
+                item: String(invItem.name ?? ""), itemId: String(invItem.id),
+                type: "Pengeluaran", qty: 1, by: `WBS: ${wbsTaskUpdate}`,
+                date: todayISO(), tone: "out",
+              }, { action: "pemakaian material WBS", module: "Proyek" });
+            }
+          }
+        }
+        log("mengupdate progres WBS", `${wbsTaskUpdate} → ${prog}% (${status})`, "Proyek");
+        toast(S.detToastWbsProg);
       setWbsTaskUpdate(null);
       setWbsUpdateForm({ hours: "", material: "", status: "Sedang", progress: "", predecessor: "", station: "", photoNote: "", photoUrl: "", dft: "" });
     } catch (e) {
@@ -2246,7 +2266,16 @@ const createWarranty = async (wbsTask?: string) => {
             <Field label={S.detHours}><NumInput className="input" value={wbsUpdateForm.hours} onChange={(e) => setWbsUpdateForm({ ...wbsUpdateForm, hours: e.target.value })} placeholder={S.detHoursPh} /></Field>
             <Field label={S.detDft} hint={S.detDftHint}><NumInput min={0} className="input" value={wbsUpdateForm.dft} onChange={(e) => setWbsUpdateForm({ ...wbsUpdateForm, dft: e.target.value })} placeholder={S.detDftPh} /></Field>
           </FormGrid>
-          <Field label={S.detMaterial}><input className="input" value={wbsUpdateForm.material} onChange={(e) => setWbsUpdateForm({ ...wbsUpdateForm, material: e.target.value })} placeholder={S.detMaterialPh} /></Field>
+          <Field label={S.detMaterial}>
+            <select className="input" value={wbsUpdateForm.material} onChange={(e) => setWbsUpdateForm({ ...wbsUpdateForm, material: e.target.value })}>
+              <option value="">{locale === "en" ? "-- select material --" : "-- pilih material --"}</option>
+              {invList.map((inv) => (
+                <option key={inv.id} value={String(inv.name ?? "")}>
+                  {String(inv.name ?? "")} — stok: {String(inv.stock ?? 0)}
+                </option>
+              ))}
+            </select>
+          </Field>
           <Field label={S.detStation} hint={wbsTaskUpdate && /hull/i.test(wbsTaskUpdate) ? S.detStationReq : S.detStationOpt}>
             <select className="input" value={wbsUpdateForm.station} onChange={(e) => setWbsUpdateForm({ ...wbsUpdateForm, station: e.target.value })}>
               <option value="">{S.detPickStation}</option>
