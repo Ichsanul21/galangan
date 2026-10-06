@@ -273,8 +273,18 @@ export default function EquipmentPage() {
     (s, r) => s + HOUR_COLS.reduce((a, h) => a + (r.cells[h] ?? 0), 0),
     0,
   );
-  const [eqQ, setEqQ] = useState("");
-  const [utilQ, setUtilQ] = useState("");
+const [eqQ, setEqQ] = useState("");
+const [utilQ, setUtilQ] = useState("");
+  /* Enam tabel Equipment yang belum punya filter. Tabel Heatmap (hari x jam)
+     sengaja tidak diberi search: bukan daftar, dan "cari" tidak punya
+     arti pada kisi. Sisanya daftar panjang yang dicari per baris. */
+  const [inuseQ, setInuseQ] = useState("");
+  const [maintQ, setMaintQ] = useState("");
+  const [calQ, setCalQ] = useState("");
+  const [costQ, setCostQ] = useState("");
+  const [hppQ, setHppQ] = useState("");
+  const [bkCostQ, setBkCostQ] = useState("");
+  const [maintCostQ, setMaintCostQ] = useState("");
   const [utilDraft, setUtilDraft] = useState<Record<string, string>>({});
   const [eqStatus, setEqStatus] = useState("Semua");
   const [eqCat, setEqCat] = useState("Semua");
@@ -470,7 +480,10 @@ export default function EquipmentPage() {
     cur.cost += Number(b.cost || 0);
     costByProject.set(key, cur);
   });
-  const costRows = Array.from(costByProject.entries());
+  /* Kunci baris tabel Biaya adalah NAMA proyek (dari `b.proyek`), bukan id,
+     jadi pencarian harus jalan di atas nama itu - bukan `projectId`. */
+  const costRows = Array.from(costByProject.entries())
+    .filter(([proj]) => rowMatches({ proj }, costQ, ["proj"]));
   const totalCost = costRows.reduce((s, [, v]) => s + v.cost, 0);
 
   /* ================= DERIVED: SIKLUS MAINTENANCE ================= */
@@ -522,7 +535,18 @@ export default function EquipmentPage() {
     });
   }, [maintenances, equipment, data.inventory]);
 
-  const maintSorted = useMemo(() => sortRows(maintRows, sort2, (r, k) => {
+  /* Tabel Maintenance adalah tabel yang paling dikeluhkan client: satu baris
+     per siklus servis, bisa ratusan, dan tidak punya filter sama sekali.
+     `raw` sengaja ikut dicocokkan supaya catatan free-text yang diketik di
+     field  bisa dicari juga - user sering ingat "// ada gasket" lebih dulu
+     daripada nama equipment. */
+  const maintFiltered = useMemo(() => maintRows.filter((r) => rowMatches(
+    { ...r, catatan: String(r.raw.catatan ?? ""), proyekNama: r.projectId },
+    maintQ,
+    ["id", "equipmentId", "equipmentName", "jenis", "tanggal", "eta", "status", "teknisi", "projectId", "catatan"],
+  )), [maintRows, maintQ]);
+
+  const maintSorted = useMemo(() => sortRows(maintFiltered, sort2, (r, k) => {
     if (k === "equipment") return r.equipmentName;
     if (k === "jadwal") return r.tanggal;
     if (k === "jenis") return r.jenis;
@@ -531,10 +555,12 @@ export default function EquipmentPage() {
     if (k === "biaya") return r.costTotal;
     if (k === "catatan") return String(r.raw.catatan ?? "");
     return r.id;
-  }), [maintRows, sort2]);
+  }), [maintFiltered, sort2]);
 
   const maintPager = usePager(maintSorted.length, 15);
-  useEffect(() => { maintPager.reset(); }, [sort2, tab]);
+  /* Filter baru ikut mereset halaman; tanpa ini user yang sedang di halaman 5
+     tiba-tiba melihat "halaman kosong" begitu saja. */
+  useEffect(() => { maintPager.reset(); }, [sort2, tab, maintQ]);
 
   const maintStats = useMemo(() => {
     const byStatus: Record<MaintStatus, number> = { Terjadwal: 0, "Sedang Proses": 0, Selesai: 0, Dibatalkan: 0 };
@@ -577,23 +603,28 @@ export default function EquipmentPage() {
     return out;
   }, [projects, bookings, maintenances, equipment]);
 
-  const projectCostRows = useMemo(() => Array.from(projectCostSummaries.entries())
-    .filter(([, s]) => s.totalRealized > 0 || s.totalCommitted > 0)
-    .map(([projectId, s]) => {
-      const proj = projects.find((p) => String(p.id) === projectId);
-      return {
-        projectId,
-        vessel: String(proj?.vessel ?? ""),
-        client: String(proj?.client ?? ""),
-        rental: s.rental,
-        fuel: s.fuel,
-        maintRealized: s.maintenanceRealized,
-        maintCommitted: s.maintenanceCommitted,
-        realized: s.totalRealized,
-        committed: s.totalCommitted,
-      };
-    })
-    .sort((a, b) => b.committed - a.committed), [projectCostSummaries, projects]);
+const projectCostRows = useMemo(() => Array.from(projectCostSummaries.entries())
+      .filter(([, s]) => s.totalRealized > 0 || s.totalCommitted > 0)
+      .map(([projectId, s]) => {
+        const proj = projects.find((p) => String(p.id) === projectId);
+        return {
+          projectId,
+          projectName: String(proj?.name ?? ""),
+          vessel: String(proj?.vessel ?? ""),
+          client: String(proj?.client ?? ""),
+          rental: s.rental,
+          fuel: s.fuel,
+          maintRealized: s.maintenanceRealized,
+          maintCommitted: s.maintenanceCommitted,
+          realized: s.totalRealized,
+          committed: s.totalCommitted,
+        };
+      })
+      /* Pencarian applied setelah map, bukan sebelum filter biaya: nama
+         proyek hanya ada di `projects`, sedangkan kuncinya di sini id. Kalau
+         difilter lebih awal, `hppQ` tidak akan pernah cocok dengan nama. */
+      .filter((r) => rowMatches(r as unknown as Record<string, unknown>, hppQ, ["projectId", "projectName", "vessel", "client"]))
+      .sort((a, b) => b.committed - a.committed), [projectCostSummaries, projects, hppQ]);
 
   const regFiltered = equipment.filter((e) => {
     if (eqStatus !== "Semua" && String(e.status ?? "") !== eqStatus) return false;
@@ -1868,7 +1899,10 @@ export default function EquipmentPage() {
                unit sedang terpakai. */
             <div className="space-y-4">
               <Card className="p-5">
-                <CardHeader title={S.eqInUseTitle} subtitle={S.eqInUseSub} />
+                <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                  <CardHeader title={S.eqInUseTitle} subtitle={S.eqInUseSub} />
+                  <SearchBox value={inuseQ} onChange={setInuseQ} className="max-w-xs" placeholder={locale === "en" ? "Search in use..." : "Cari sedang dipakai..."} ariaLabel={locale === "en" ? "Search in-use units" : "Cari unit terpakai"} />
+                </div>
                 {(() => {
                   const workshop = equipment.filter((e) => e.status === "Maintenance");
                   const booked = new Map<string, StoreItem[]>();
@@ -1899,7 +1933,8 @@ export default function EquipmentPage() {
                         detail: list.map((b) => `${projCell(b.proyek)} · ${fmtTanggal(String(b.date))}`).join("; "),
                       };
                     }),
-                  ].sort((a, b) => a.name.localeCompare(b.name, "id"));
+                  ].filter((r) => rowMatches(r as unknown as Record<string, unknown>, inuseQ, ["id", "name", "code", "reason", "until", "detail"]))
+                    .sort((a, b) => a.name.localeCompare(b.name, "id"));
                   if (rows.length === 0) {
                     return <p className="text-xs text-steel-400">{S.eqInUseNone}</p>;
                   }
@@ -1953,7 +1988,8 @@ export default function EquipmentPage() {
                     </span>
                   ))}
                 </div>
-                <div className="flex flex-wrap gap-2">
+                <div className="flex flex-wrap items-center gap-2">
+                  <SearchBox value={maintQ} onChange={setMaintQ} className="max-w-xs" placeholder={locale === "en" ? "Search maintenance..." : "Cari maintenance..."} ariaLabel={locale === "en" ? "Search maintenance" : "Cari maintenance"} />
                   <select
                     className="input w-auto py-1.5 text-xs"
                     aria-label={locale === "en" ? "Pick equipment to schedule" : "Pilih equipment untuk dijadwalkan"}
@@ -2147,7 +2183,8 @@ export default function EquipmentPage() {
 
           {tab === "Kalibrasi" && (
             <div>
-              <div className="mb-3 flex justify-end">
+              <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                <SearchBox value={calQ} onChange={setCalQ} className="max-w-xs" placeholder={locale === "en" ? "Search calibration..." : "Cari kalibrasi..."} ariaLabel={locale === "en" ? "Search calibrations" : "Cari kalibrasi"} />
                 <button className="btn-secondary text-xs" onClick={() => { setCalEditId(null); setCalForm({ equipmentId: "", item: "", due: todayISO() }); setShowCal(true); }}><Plus className="h-3.5 w-3.5" /> {S.eqSchedCal}</button>
               </div>
               <div className="overflow-x-auto">
@@ -2156,7 +2193,14 @@ export default function EquipmentPage() {
                     <tr><SortTh label={S.thId} sortKey="id" sort={sort3} onSort={(k) => setSort3((s) => toggleSort(s, k))} /><SortTh label={S.thEquipment} sortKey="equipment" sort={sort3} onSort={(k) => setSort3((s) => toggleSort(s, k))} /><SortTh label={S.thMeasure} sortKey="item" sort={sort3} onSort={(k) => setSort3((s) => toggleSort(s, k))} /><SortTh label={S.thDue} sortKey="due" sort={sort3} onSort={(k) => setSort3((s) => toggleSort(s, k))} /><SortTh label={S.thCert} sortKey="sertifikat" sort={sort3} onSort={(k) => setSort3((s) => toggleSort(s, k))} /><SortTh label={S.thStatus} sortKey="status" sort={sort3} onSort={(k) => setSort3((s) => toggleSort(s, k))} /><th className="th">{S.thAction}</th></tr>
                   </thead>
                   <tbody className="divide-y divide-steel-100">
-                    {sortRows(calibrations, sort3, (c, k) => {
+                    {sortRows(calibrations.filter((c) => rowMatches(
+                    {
+                      ...(c as unknown as Record<string, unknown>),
+                      eqNama: String(equipment.find((e) => e.id === c.equipmentId)?.name ?? c.equipmentId ?? ""),
+                    } as Record<string, unknown>,
+                    calQ,
+                    ["id", "equipmentId", "eqNama", "item", "due", "cert", "status", "result"],
+                  )), sort3, (c, k) => {
                       if (k === "equipment") return String(equipment.find((e) => e.id === c.equipmentId)?.name ?? c.equipmentId ?? "");
                       if (k === "item") return String(c.item ?? "");
                       if (k === "due") return String(c.due ?? "");
@@ -2221,6 +2265,7 @@ export default function EquipmentPage() {
             <div className="space-y-4">
               <Card className="p-5">
                 <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                  <SearchBox value={costQ} onChange={setCostQ} className="max-w-xs" placeholder={locale === "en" ? "Search project..." : "Cari proyek..."} ariaLabel={locale === "en" ? "Search cost rows" : "Cari baris biaya"} />
                   <h3 className="text-sm font-semibold text-navy-900">{S.eqCostTitle} <span className="text-xs font-normal text-steel-500">{S.eqCostHint}</span></h3>
                   <button className="btn-secondary text-xs" onClick={exportCost}><Download className="h-3.5 w-3.5" /> {S.eqExportExcel}</button>
                 </div>
@@ -2259,6 +2304,7 @@ export default function EquipmentPage() {
                   pages/proyek/ProjectDetail.tsx), jadi modul Equipment dan
                   modul Proyek tidak bisa lagi berbeda angka. */}
               <Card className="p-5">
+                <SearchBox value={hppQ} onChange={setHppQ} className="mb-3 max-w-xs" placeholder={locale === "en" ? "Search HPP..." : "Cari HPP..."} ariaLabel={locale === "en" ? "Search HPP by project" : "Cari HPP per proyek"} />
                 <CardHeader
                   title={locale === "en" ? "Equipment cost charged to projects (HPP)" : "Biaya Equipment yang Dibebankan ke Proyek (HPP)"}
                   subtitle={locale === "en"
@@ -2933,6 +2979,12 @@ export default function EquipmentPage() {
             return <p className="text-sm text-steel-500">{locale === "en" ? "No data." : "Tidak ada data."}</p>;
           }
           const proj = projects.find((p) => String(p.id) === costDetailFor);
+          /* Satu set filter dipakai dua sub-tabel di modal ini. Dipisah
+             supaya "cari tidak ada hasil" hanya mengosongkan tabel yang
+             memang sedang dicari, bukan kedua-duanya - total di header
+             modal tetap angka sebenarnya. */
+          const bkCostRows = sum.bookingRows;
+          const maintCostRows = sum.maintenanceRows;
           return (
             <div className="space-y-4">
               <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
@@ -2946,7 +2998,8 @@ export default function EquipmentPage() {
                 <p className="mb-1.5 text-xs font-semibold uppercase tracking-wider text-steel-500">
                   {locale === "en" ? "Bookings" : "Booking / sewa"}
                 </p>
-                {sum.bookingRows.length === 0 ? (
+                <SearchBox value={bkCostQ} onChange={setBkCostQ} className="mb-2 max-w-xs" placeholder={locale === "en" ? "Search bookings..." : "Cari booking..."} ariaLabel={locale === "en" ? "Search bookings" : "Cari booking"} />
+                {bkCostRows.filter((b) => rowMatches(b as unknown as Record<string, unknown>, bkCostQ, ["id", "equipmentName", "date", "hours", "rental", "fuel", "cost"])).length === 0 ? (
                   <p className="text-xs text-steel-400">-</p>
                 ) : (
                   <div className="overflow-x-auto">
@@ -2960,7 +3013,7 @@ export default function EquipmentPage() {
                         <th className="th text-right">{locale === "en" ? "Total" : "Jumlah"}</th>
                       </tr></thead>
                       <tbody className="divide-y divide-steel-100">
-                        {sum.bookingRows.map((b) => (
+                        {bkCostRows.filter((b) => rowMatches(b as unknown as Record<string, unknown>, bkCostQ, ["id", "equipmentName", "date", "hours", "rental", "fuel", "cost"])).map((b) => (
                           <tr key={b.id}>
                             <td className="td text-xs">{b.equipmentName || b.id}</td>
                             <td className="td text-xs text-steel-600">{fmtTanggal(b.date)}</td>
@@ -2980,7 +3033,8 @@ export default function EquipmentPage() {
                 <p className="mb-1.5 text-xs font-semibold uppercase tracking-wider text-steel-500">
                   {locale === "en" ? "Maintenance" : "Maintenance"}
                 </p>
-                {sum.maintenanceRows.length === 0 ? (
+                <SearchBox value={maintCostQ} onChange={setMaintCostQ} className="mb-2 max-w-xs" placeholder={locale === "en" ? "Search maintenance..." : "Cari maintenance..."} ariaLabel={locale === "en" ? "Search maintenance" : "Cari maintenance"} />
+                {maintCostRows.filter((r) => rowMatches(r as unknown as Record<string, unknown>, maintCostQ, ["id", "equipmentName", "date", "material", "labor", "cost", "realized"])).length === 0 ? (
                   <p className="text-xs text-steel-400">-</p>
                 ) : (
                   <div className="overflow-x-auto">
@@ -2994,7 +3048,7 @@ export default function EquipmentPage() {
                         <th className="th">{locale === "en" ? "Status" : "Status"}</th>
                       </tr></thead>
                       <tbody className="divide-y divide-steel-100">
-                        {sum.maintenanceRows.map((m) => (
+                        {maintCostRows.filter((r) => rowMatches(r as unknown as Record<string, unknown>, maintCostQ, ["id", "equipmentName", "status", "date", "material", "labor", "cost", "realized"])).map((m) => (
                           <tr key={m.id}>
                             <td className="td text-xs">{m.equipmentName || m.id}</td>
                             <td className="td text-xs text-steel-600">{fmtTanggal(m.date)}</td>

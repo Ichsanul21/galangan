@@ -304,6 +304,15 @@ export default function ProjectDetail() {
   const [sort, setSort] = useState<SortState>({ key: null, dir: "asc" });
   const [sort2, setSort2] = useState<SortState>({ key: null, dir: "asc" });
   const [wbsQ, setWbsQ] = useState("");
+  /* Tiga tabel lain di halaman ini juga panjang: baseline WBS per tahap dan
+     rincian biaya equipment (booking + maintenance). Satu state per tabel
+     supaya mengetik di tabel A tidak menyaring tabel B yang kebetulan
+     terlihat di layar yang sama. */
+  const [baselineQ, setBaselineQ] = useState("");
+  const [detailBkQ, setDetailBkQ] = useState("");
+  const [cardBkQ, setCardBkQ] = useState("");
+  const [cardMaintQ, setCardMaintQ] = useState("");
+  const [breakdownMaintQ, setBreakdownMaintQ] = useState("");
   const [sort3, setSort3] = useState<SortState>({ key: null, dir: "asc" });
   /* Tabel rincian biaya equipment (card HPP equipment). */
   const [sort4, setSort4] = useState<SortState>({ key: null, dir: "asc" });
@@ -1190,13 +1199,17 @@ const docOwnerOptions = useMemo(() => employeeOptions(data.employees), [data.emp
                 {!baseline ? (
                   <p className="text-xs text-steel-400">{S.detBaselineEmpty}</p>
                 ) : (
-                  <div className="overflow-x-auto">
+                  <>
+                    <div className="mb-2 flex justify-end">
+                      <SearchBox value={baselineQ} onChange={setBaselineQ} className="max-w-xs" placeholder={locale === "en" ? "Search baseline..." : "Cari baseline..."} ariaLabel={locale === "en" ? "Search baseline WBS" : "Cari baseline WBS"} />
+                    </div>
+                    <div className="overflow-x-auto">
                     <table className="w-full">
                       <thead className="bg-surface">
                         <tr><SortTh label={S.colStageName} sortKey="task" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} /><SortTh label={S.detPlanBase} sortKey="planned" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} /><SortTh label={S.detActualCol} sortKey="actual" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} /><SortTh label={S.detDevCol} sortKey="dev" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} /></tr>
                       </thead>
                       <tbody className="divide-y divide-steel-100">
-                        {sortRows(wbs, sort2, (w: WbsExt, k) => { const base = baseline?.wbs.find((b) => b.task === w.task); const planned = base ? Number(base.progress) || 0 : 0; const actual = Number(w.progress) || 0; if (k === "planned") return planned; if (k === "actual") return actual; if (k === "dev") return actual - planned; return String(w.task); }).map((w) => {
+                        {sortRows(wbs.filter((w) => rowMatches(w as unknown as Record<string, unknown>, baselineQ, ["task", "station", "pic", "start", "end", "status", "progress", "catatan"])), sort2, (w: WbsExt, k) => { const base = baseline?.wbs.find((b) => b.task === w.task); const planned = base ? Number(base.progress) || 0 : 0; const actual = Number(w.progress) || 0; if (k === "planned") return planned; if (k === "actual") return actual; if (k === "dev") return actual - planned; return String(w.task); }).map((w) => {
                           const base = baseline.wbs.find((b) => b.task === w.task);
                           const planned = base ? Number(base.progress) || 0 : 0;
                           const actual = Number(w.progress) || 0;
@@ -1214,7 +1227,8 @@ const docOwnerOptions = useMemo(() => employeeOptions(data.employees), [data.emp
                         })}
                       </tbody>
                     </table>
-                  </div>
+                    </div>
+                  </>
                 )}
               </div>
             </div>
@@ -1328,7 +1342,8 @@ const docOwnerOptions = useMemo(() => employeeOptions(data.employees), [data.emp
                   </div>
 
                   {/* Rincian per booking - bisa diklik ke modul equipment. */}
-                  <div className="mt-4 mb-2 flex justify-end">
+                  <div className="mt-4 mb-2 flex flex-wrap items-center justify-end gap-2">
+                    <SearchBox value={detailBkQ} onChange={setDetailBkQ} className="max-w-xs" placeholder={locale === "en" ? "Search bookings..." : "Cari booking..."} ariaLabel={locale === "en" ? "Search bookings" : "Cari booking"} />
                     <button className="btn-secondary text-xs" onClick={() => setCostDetail(true)}>
                       {locale === "en" ? "Detail" : "Detail"}
                     </button>
@@ -1346,7 +1361,7 @@ const docOwnerOptions = useMemo(() => employeeOptions(data.employees), [data.emp
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-steel-100">
-                          {sortRows(equipCost.bookingRows, sort4, (r, k) => {
+                          {sortRows(equipCost.bookingRows.filter((r) => rowMatches(r as unknown as Record<string, unknown>, detailBkQ, ["id", "equipmentName", "date", "hours", "rental", "fuel", "cost"])), sort4, (r, k) => {
                             if (k === "eq") return r.equipmentName;
                             if (k === "h") return r.hours;
                             if (k === "c") return r.cost;
@@ -1597,8 +1612,10 @@ const docOwnerOptions = useMemo(() => employeeOptions(data.employees), [data.emp
                   ) : (
                     <div className="space-y-4">
                       {equipCost.bookingRows.length > 0 && (
-                        <div className="overflow-x-auto">
-                          <table className="w-full">
+                        <div>
+                          <SearchBox value={cardBkQ} onChange={setCardBkQ} className="mb-2 max-w-xs" placeholder={locale === "en" ? "Search bookings..." : "Cari booking..."} ariaLabel={locale === "en" ? "Search bookings" : "Cari booking"} />
+                          <div className="overflow-x-auto">
+                            <table className="w-full">
                             <thead className="bg-surface">
                               <tr>
                                 <th className="th">{locale === "en" ? "Booking" : "Booking"}</th>
@@ -1609,7 +1626,7 @@ const docOwnerOptions = useMemo(() => employeeOptions(data.employees), [data.emp
                               </tr>
                             </thead>
                             <tbody className="divide-y divide-steel-100">
-                              {equipCost.bookingRows.map((r) => (
+                              {equipCost.bookingRows.filter((r) => rowMatches(r as unknown as Record<string, unknown>, cardBkQ, ["id", "equipmentName", "date", "hours", "rental", "fuel", "cost"])).map((r) => (
                                 <tr key={r.id} className="hover:bg-surface">
                                   <td className="td font-mono text-xs text-navy-900">{r.id}</td>
                                   <td className="td text-steel-600">{r.equipmentName}</td>
@@ -1619,12 +1636,15 @@ const docOwnerOptions = useMemo(() => employeeOptions(data.employees), [data.emp
                                 </tr>
                               ))}
                             </tbody>
-                          </table>
+                            </table>
+                          </div>
                         </div>
                       )}
                       {equipCost.maintenanceRows.length > 0 && (
-                        <div className="overflow-x-auto">
-                          <table className="w-full">
+                        <div>
+                          <SearchBox value={cardMaintQ} onChange={setCardMaintQ} className="mb-2 max-w-xs" placeholder={locale === "en" ? "Search maintenance..." : "Cari maintenance..."} ariaLabel={locale === "en" ? "Search maintenance" : "Cari maintenance"} />
+                          <div className="overflow-x-auto">
+                            <table className="w-full">
                             <thead className="bg-surface">
                               <tr>
                                 <th className="th">{locale === "en" ? "Maintenance" : "Maintenance"}</th>
@@ -1634,8 +1654,8 @@ const docOwnerOptions = useMemo(() => employeeOptions(data.employees), [data.emp
                               </tr>
                             </thead>
                             <tbody className="divide-y divide-steel-100">
-                              {equipCost.maintenanceRows.map((r) => (
-                                <tr key={r.id} className="hover:bg-surface">
+{equipCost.maintenanceRows.filter((r) => rowMatches(r as unknown as Record<string, unknown>, cardMaintQ, ["id", "equipmentName", "status", "date", "material", "labor", "cost", "realized"])).map((r) => (
+                                  <tr key={r.id} className="hover:bg-surface">
                                   <td className="td font-mono text-xs text-navy-900">{r.id}</td>
                                   <td className="td text-steel-600">{r.equipmentName}</td>
                                   <td className="td"><StatusBadge status={r.status} /></td>
@@ -1644,6 +1664,7 @@ const docOwnerOptions = useMemo(() => employeeOptions(data.employees), [data.emp
                               ))}
                             </tbody>
                           </table>
+                          </div>
                         </div>
                       )}
                       <div className="flex justify-end gap-4 border-t border-steel-100 pt-3">
@@ -1904,6 +1925,7 @@ const docOwnerOptions = useMemo(() => employeeOptions(data.employees), [data.emp
               <p className="mb-1 text-xs font-semibold text-navy-900">
                 {locale === "en" ? "Maintenance breakdown" : "Rincian maintenance"}
               </p>
+              <SearchBox value={breakdownMaintQ} onChange={setBreakdownMaintQ} className="mb-2 max-w-xs" placeholder={locale === "en" ? "Search maintenance..." : "Cari maintenance..."} ariaLabel={locale === "en" ? "Search maintenance" : "Cari maintenance"} />
               <div className="overflow-x-auto">
                 <table className="w-full">
                   <thead className="bg-surface">
