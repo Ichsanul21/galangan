@@ -1581,18 +1581,26 @@ const printSpk = async (w: StoreItem): Promise<void> => {
         footer={<><button className="btn-secondary" onClick={() => setWoProg(null)}>{S.cancelBtn}</button><button className="btn-primary" onClick={saveWoProgress}>{S.saveBtn}</button></>}>
         <div className="space-y-3">
           {(() => {
+            /* Milestone yang dirender = milestone WO itu sendiri, sama persis
+               dengan yang divalidasi `saveWoProgress`. Versi lama memakai
+               `milestonesOf(sub)` (milestone SOW), jadi checklist yang tampil
+               bisa punya judul yang tidak ada di WO: centangnya tidak pernah
+               ikut dihitung dan progres tersimpan 0% tanpa pesan error.
+               Milestone SOW tetap dipakai sebagai opsi termin di
+               `terminMilestoneOptions` - dua hal berbeda. `sub` masih dipakai
+               di bawah untuk nilai kontrak pada jalur numerik. */
             const sub = woProg ? subcontractors.find((s) => sameName(s.name, String(woProg.sub ?? ""))) : undefined;
-            const ms = sub ? milestonesOf(sub) : [];
+            const ms = woProg ? woMilestonesOf(woProg) : [];
             const woHours = woProg ? hoursByWo(String(woProg.id)) : 0;
             const woRate = Number(woProg?.rate || 0);
             if (ms.length === 0) {
               return (
                 <>
-                  <Field label={locale === "en" ? "Actual progress (numeric 0-100)" : "Progres aktual (numerik 0-100)"} hint={locale === "en" ? `No SOW milestones — numeric feeds termin cap (${fmtRupiah(Number(sub?.contract || 0) * Number(progPct || 0) / 100)}) & WO status` : `Tanpa milestone SOW — angka ini mengisi cap termin (${fmtRupiah(Number(sub?.contract || 0) * Number(progPct || 0) / 100)}) & status WO`}>
+                  <Field label={locale === "en" ? "Actual progress (numeric 0-100)" : "Progres aktual (numerik 0-100)"} hint={locale === "en" ? `No WO milestones — numeric feeds termin cap (${fmtRupiah(Number(sub?.contract || 0) * Number(progPct || 0) / 100)}) & WO status` : `Tanpa milestone WO — angka ini mengisi cap termin (${fmtRupiah(Number(sub?.contract || 0) * Number(progPct || 0) / 100)}) & status WO`}>
                     <NumInput min={0} max={100} className="input" value={progPct} onChange={(e) => setProgPct(e.target.value)} placeholder="0-100" />
                   </Field>
                   <p className="rounded-lg bg-surface px-3 py-2 text-xs text-steel-600">
-                    {locale === "en" ? `Timesheet ${woHours}h${woRate > 0 ? ` × ${fmtRupiah(woRate)}` : ""} kept separate as cost reference; progress stays manual until SOW milestones exist.` : `Timesheet ${woHours} jam${woRate > 0 ? ` × ${fmtRupiah(woRate)}` : ""} tetap jadi referensi biaya; progres manual sampai milestone SOW dibuat.`}
+                    {locale === "en" ? `Timesheet ${woHours}h${woRate > 0 ? ` × ${fmtRupiah(woRate)}` : ""} kept separate as cost reference; progress stays manual until WO milestones exist.` : `Timesheet ${woHours} jam${woRate > 0 ? ` × ${fmtRupiah(woRate)}` : ""} tetap jadi referensi biaya; progres manual sampai milestone WO dibuat.`}
                   </p>
                 </>
               );
