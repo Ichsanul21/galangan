@@ -16,6 +16,8 @@ import {
   StatusBadge,
   Tabs,
   sortRows,
+  SearchBox,
+  rowMatches,
   toast,
   toggleSort,
   usePager,
@@ -104,6 +106,12 @@ export default function Absensi() {
   const [sort, setSort] = useState<SortState>({ key: null, dir: "asc" });
   const [sort2, setSort2] = useState<SortState>({ key: null, dir: "asc" });
   const [sort3, setSort3] = useState<SortState>({ key: null, dir: "asc" });
+  /* Search per tabel (A2). Ketiganya bisa panjang sebanyak jumlah karyawan
+     atau jumlah hari absensi, dan tanpa pencarian satu-satunya cara menemukan
+     satu baris adalah menggulir. */
+  const [catatQ, setCatatQ] = useState("");
+  const [rekapQ, setRekapQ] = useState("");
+  const [detailQ, setDetailQ] = useState("");
 
   const branchCities = useMemo(() => data.branches.map((b) => String(b.city)), [data.branches]);
   const activeEmps = useMemo(
@@ -294,7 +302,14 @@ export default function Absensi() {
       }),
     [activeEmps, monthRecords],
   );
-  const sortedRekap = useMemo(() => sortRows(summary, sort2, (row, k) => {
+  const sortedRekap = useMemo(() => sortRows(
+    summary.filter((row) => rowMatches(
+      { name: String(row.emp.name ?? ""), id: String(row.emp.id ?? ""), branch: String(row.emp.branch ?? "") } as unknown as Record<string, unknown>,
+      rekapQ,
+      ["name", "id", "branch"],
+    )),
+    sort2,
+    (row, k) => {
     const r = row as { emp: StoreItem; h: number; i: number; s: number; c: number; a: number; lembur: number; telat: number; pct: number };
     switch (k) {
       case "emp": return String(r.emp.name ?? "");
@@ -415,8 +430,19 @@ export default function Absensi() {
   };
 
   const detailRecords = useMemo(
-    () => [...monthRecords].sort((a, b) => String(b.date).localeCompare(String(a.date))),
-    [monthRecords],
+    () => [...monthRecords]
+      .filter((a) => rowMatches(
+        {
+          id: String(a.id ?? ""), employeeId: String(a.employeeId ?? ""),
+          employee: String(data.employees.find((e) => String(e.id) === String(a.employeeId))?.name ?? ""),
+          date: String(a.date ?? ""), shift: String(a.shift ?? ""), status: String(a.status ?? ""),
+          checkIn: String(a.checkIn ?? ""), checkOut: String(a.checkOut ?? ""),
+        } as unknown as Record<string, unknown>,
+        detailQ,
+        ["id", "employeeId", "employee", "date", "shift", "status", "checkIn", "checkOut"],
+      ))
+      .sort((a, b) => String(b.date).localeCompare(String(a.date))),
+    [monthRecords, detailQ, data.employees],
   );
 
   return (
@@ -464,7 +490,12 @@ export default function Absensi() {
                   {branchCities.map((c) => <option key={c} value={c}>{c}</option>)}
                 </select>
               </div>
-
+              {/* Search per tabel (A2). Ketiganya bisa panjang sebanyak jumlah
+                  karyawan atau jumlah hari absensi, dan tanpa pencarian
+                  satu-satunya cara menemukan satu baris adalah menggulir. */}
+              <div className="mb-2 flex justify-end px-2">
+                <SearchBox value={catatQ} onChange={setCatatQ} className="w-full max-w-xs" placeholder={locale === "en" ? "Search employees..." : "Cari karyawan..."} ariaLabel={locale === "en" ? "Search employees" : "Cari karyawan"} />
+              </div>
               <Card>
                 <div className="overflow-x-auto p-2">
                   <table className="w-full">
@@ -482,7 +513,11 @@ export default function Absensi() {
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-steel-100">
-                      {sortRows(activeEmps, sort, (row, k) => {
+                      {sortRows(activeEmps.filter((e) => rowMatches(
+                        { name: String(e.name ?? ""), id: String(e.id ?? ""), branch: String(e.branch ?? ""), role: String(e.role ?? "") } as unknown as Record<string, unknown>,
+                        catatQ,
+                        ["name", "id", "branch", "role"],
+                      )), sort, (row, k) => {
                         const e = row as StoreItem;
                         const r = rowFor(String(e.id));
                         switch (k) {
@@ -642,7 +677,9 @@ export default function Absensi() {
                   )}
                 </FilterPopover>
               </div>
-
+              <div className="mb-2 flex justify-end px-2">
+                <SearchBox value={rekapQ} onChange={setRekapQ} className="w-full max-w-xs" placeholder={locale === "en" ? "Search recap..." : "Cari rekap..."} ariaLabel={locale === "en" ? "Search recap" : "Cari rekap"} />
+              </div>
               <Card>
                 <div className="overflow-x-auto p-2">
                   <table className="w-full">
@@ -681,6 +718,9 @@ export default function Absensi() {
               </Card>
 
               <h3 className="mb-2 mt-5 text-sm font-semibold text-navy-900">{S.detailCurrentMonth}</h3>
+              <div className="mb-2 flex justify-end px-2">
+                <SearchBox value={detailQ} onChange={setDetailQ} className="w-full max-w-xs" placeholder={locale === "en" ? "Search records..." : "Cari catatan..."} ariaLabel={locale === "en" ? "Search attendance records" : "Cari catatan absensi"} />
+              </div>
               <Card>
                 <div className="overflow-x-auto p-2">
                   <table className="w-full">
