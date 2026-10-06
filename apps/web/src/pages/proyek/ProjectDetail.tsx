@@ -47,7 +47,7 @@ import { usePdfDoc } from "../../components/usePdfDoc";
 import { canonPrioritas, scopeList } from "../../utils/scope";
 import { equipmentCostSummary } from "../../utils/projectCost";
 import { delayDaysOf } from "../../utils/projectDelay";
-import { EntityPicker } from "../../components/ui";
+import { EntityPicker, SearchBox, rowMatches } from "../../components/ui";
 import { PRIORITAS } from "./Projects";
 import { TAHAP, tahapOf, hasContract, isOverdue } from "./Projects";
 import { getSetting } from "../../utils/settings";
@@ -302,6 +302,7 @@ export default function ProjectDetail() {
   const [trialForm, setTrialForm] = useState({ tanggal: todayISO(), parameter: "", punchList: "", hasil: "Lolos", baRef: "" });
   const [sort, setSort] = useState<SortState>({ key: null, dir: "asc" });
   const [sort2, setSort2] = useState<SortState>({ key: null, dir: "asc" });
+  const [wbsQ, setWbsQ] = useState("");
   const [sort3, setSort3] = useState<SortState>({ key: null, dir: "asc" });
   /* Tabel rincian biaya equipment (card HPP equipment). */
   const [sort4, setSort4] = useState<SortState>({ key: null, dir: "asc" });
@@ -1114,7 +1115,13 @@ export default function ProjectDetail() {
           {tab === "WBS & Anggaran" && (
             <div>
               <h3 className="mb-2 text-sm font-semibold text-navy-900">{S.detWbsTitle}</h3>
-              <div className="mb-3 flex justify-end">
+{/* Search WBS. Tabel lain di tab ini TIDAK diberi search dan itu disengaja:
+              tabel baseline dibatasi jumlah tahap, tabel booking/maintenance
+              sudah punya tombol Detail, dan matriks risiko 5x5 bukan daftar -
+              memberi kotak search di sana cuma menambah noise tanpa pernah
+              dipakai. Yang bisa tumbuh panjang tanpa batas adalah WBS. */}
+              <div className="mb-3 flex flex-wrap items-center justify-end gap-2">
+                <SearchBox value={wbsQ} onChange={setWbsQ} placeholder={locale === "en" ? "Search WBS..." : "Cari WBS..."} ariaLabel={locale === "en" ? "Search WBS" : "Cari WBS"} className="w-full max-w-xs" />
                 <button className="btn-secondary text-xs" onClick={() => setShowWbs(true)}><Plus className="h-3.5 w-3.5" /> {S.detAddStage}</button>
               </div>
               <div className="overflow-x-auto">
@@ -1123,7 +1130,7 @@ export default function ProjectDetail() {
                     <tr><SortTh label={S.colStageName} sortKey="task" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.detStart} sortKey="start" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.detEnd} sortKey="end" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.colWeight} sortKey="weight" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.colPred} sortKey="predecessor" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.progLabel} sortKey="progress" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><th className="th">{S.actionTh}</th></tr>
                   </thead>
                   <tbody className="divide-y divide-steel-100">
-                    {sortRows(wbs, sort, (w: WbsExt, k) => k === "weight" ? Number(w.weight) : k === "progress" ? Number(w.progress) : String((w as unknown as Record<string, unknown>)[k] ?? "")).map((w) => (
+                    {sortRows(wbs.filter((w) => rowMatches(w as unknown as Record<string, unknown>, wbsQ, ["task", "station", "dft", "predecessor"])), sort, (w: WbsExt, k) => k === "weight" ? Number(w.weight) : k === "progress" ? Number(w.progress) : String((w as unknown as Record<string, unknown>)[k] ?? "")).map((w) => (
                       <tr key={w.task}>
                           <td className="td font-medium text-navy-900">{w.task}
                             {w.station ? <span className="ml-2 rounded bg-navy-50 px-1.5 py-0.5 text-[11px] font-semibold text-navy-700">{w.station}</span> : null}
