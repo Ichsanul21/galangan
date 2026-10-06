@@ -23,6 +23,7 @@ import {
   ribbonFor,
   scaleFor,
   violations,
+  vesselsForFacility,
   type Facility,
   type VesselDim,
 } from "../src/utils/facilityMap";
@@ -199,6 +200,76 @@ const GRAVING: Facility = { id: "DD-1", name: "Drydock 1", kind: "graving", leng
   const dockIds = new Set(dockSlots.map((s) => String(s.dockId)));
   const takAda = [...dockIds].filter((id) => !byId.has(id));
   assert(takAda.length === 0, "setiap dockId di slot punya fasilitas", takAda.join(", "));
+
+  /*
+  Kapal kedua per fasilitas HARUS ikut terhitung. Dulu `.find()` hanya
+  mengambil kapal pertama, sehingga fasilitas dengan dua slot membuang sisanya
+  tanpa jejak - dan kalau kapal kedua tidak muat, pelanggaran yang seharusnya
+  terlihat hilang dari daftar. `vesselsForFacility` adalah inti fix-nya,
+  dipindah ke util murni supaya bisa diuji di sini tanpa browser. */
+  const dimMap = new Map<string, VesselDim>();
+  for (const v of vessels) {
+    dimMap.set(String(v.name).trim().toLowerCase(), {
+      name: String(v.name).trim(),
+      loa: Number(v.loa) > 0 ? Number(v.loa) : null,
+      beam: Number(v.beam) > 0 ? Number(v.beam) : null,
+      draft: Number(v.draft) > 0 ? Number(v.draft) : null,
+    });
+  }
+
+const A = String(vessels[0]?.name ?? "").trim();
+const B = String(vessels[1]?.name ?? "").trim();
+assert(A !== "" && B !== "" && A !== B, "seed punya minimal 2 kapal berbeda untuk uji multi-kapal", `${A} / ${B}`);
+
+const dua = vesselsForFacility([A, B], dimMap);
+assert(dua.length === 2, "fasilitas dengan 2 kapal mengembalikan keduanya, bukan hanya yang pertama", `${dua.length} kapal`);
+assert(
+  dua[0]?.name === A && dua[1]?.name === B,
+  "urutan kapal mengikuti urutan slot",
+  dua.map((v) => v.name).join(" -> "),
+);
+
+/* Urutan slot berisi kapal yang sama dua kali (mis. seed mengulang) tidak
+     boleh menggandakan pita. */
+const duplikat = vesselsForFacility([A, A], dimMap);
+assert(duplikat.length === 1, "kapal yang sama di slot ganda hanya digambar sekali", `${duplikat.length}`);
+
+/* Nama kapital/berbeda spasi harus tetap ketemu, konsisten dengan master. */
+const toleran = vesselsForFacility([`  ${A.toLowerCase()}  `], dimMap);
+assert(toleran.length === 1 && toleran[0]?.name === A, "cocok nama tahan spasi/kapital", toleran.map((v) => v.name).join(","));
+
+/* Slot menunjuk kapal yang tidak ada di master: dilewati, bukan error. */
+const hantu = vesselsForFacility(["TIDAK ADA DI MASTER", A], dimMap);
+assert(hantu.length === 1, "kapal yang tidak ada di master dilewati, sisanya tetap tampil", `${hantu.length}`);
+
+  /* Fasilitas kosong harus tetap aman. */
+  assert(vesselsForFacility([], dimMap).length === 0, "fasilitas tanpa slot -> tidak ada kapal");
+  assert(vesselsForFacility(["", "   "], dimMap).length === 0, "nama slot kosong diabaikan");
+
+  /* Dan yang paling penting: SEMUA kapal yang tidak muat di satu fasilitas
+     wajib muncul di daftar pelanggaran, bukan cuma kapal pertama. Ini yang
+     hilang dulu, dan hilang dengan cara yang berbahaya: kesalahan yang tidak
+     terlihat jauh lebih buruk daripada kesalahan yang terlihat. */
+  const sempit = { ...GRAVING, lengthM: 50, widthM: 10 };
+  const muatVessel = dim("muat", 40, 8, 3);
+  const lebihVessel = dim("lebih", 90, 8, 3);
+  const petaUji = new Map<string, VesselDim>([
+    [muatVessel.name.toLowerCase(), muatVessel],
+    [lebihVessel.name.toLowerCase(), lebihVessel],
+  ]);
+  const semua = vesselsForFacility([muatVessel.name, lebihVessel.name], petaUji);
+  assert(semua.length === 2, "kedua kapal terbaca pada fasilitas sempit", `${semua.length}`);
+  const masalah = semua.flatMap((v) => violations(sempit, v));
+  assert(
+    masalah.length > 0 && masalah.some((p) => p.message.includes(lebihVessel.loa?.toString() ?? "?")),
+    "kapal kedua yang tidak muat ikut memunculkan pelanggaran",
+    masalah.map((p) => p.message).join(" | ") || "tidak ada pelanggaran",
+  );
+  assert(
+    masalah.length === 1,
+    "kapal yang muat tidak ikut dilaporkan; hanya yang tidak muat",
+    masalah.map((p) => p.message).join(" | ") || "tidak ada pelanggaran",
+  );
 }
 
 if (fail > 0) {

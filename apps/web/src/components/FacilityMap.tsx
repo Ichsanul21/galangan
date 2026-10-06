@@ -6,6 +6,7 @@ import {
   ribbonFor,
   scaleFor,
   vesselDimOf,
+  vesselsForFacility,
   violations,
   type Facility,
   type VesselDim,
@@ -25,8 +26,10 @@ import {
 
 export interface FacilityMapRow {
   facility: Facility;
-  vessel: VesselDim | null;
-  ribbon: ReturnType<typeof ribbonFor>;
+  /** Semua kapal yang occupy fasilitas ini, bukan hanya yang pertama. */
+  vessels: VesselDim[];
+  /** Satu pita per kapal, sejajar dengan `vessels` lewat indeks. */
+  ribbons: ReturnType<typeof ribbonFor>[];
   problems: Violation[];
 }
 
@@ -39,9 +42,15 @@ const KIND_LABEL: Record<Facility["kind"], string> = {
 const PAD_L = 132;
 const PAD_R = 16;
 const ROW_H = 56;
+const LANE_H = 13;
 const BAR_H = 26;
 const MAP_W = 640;
 const SCALE_BAR_PX = 120;
+
+/** Tinggi baris: kotak fasilitas + satu jalur per kapal yang menghuni. */
+function rowHeightFor(vesselCount: number): number {
+  return ROW_H + Math.max(0, vesselCount - 1) * LANE_H;
+}
 
 /** Lebar piksel untuk seluruh baris: satu skala, bukan satu per baris. */
 function buildRows(
@@ -54,12 +63,14 @@ function buildRows(
 
   const rows = docks.map((facility) => {
     const names = slotsByDock.get(facility.id) ?? [];
-    const vessel = names.map((n) => vesselOfSlot.get(n.toLowerCase())).find((v) => v !== undefined) ?? null;
+    /* Semua kapal harus digambar - lihat vesselsForFacility. */
+    const vessels = vesselsForFacility(names, vesselOfSlot);
+    const ribbons = vessels.map((v) => ribbonFor(facility, v, scale));
     return {
       facility,
-      vessel,
-      ribbon: ribbonFor(facility, vessel ?? { name: "", loa: null, beam: null, draft: null }, scale),
-      problems: vessel === null ? [] : violations(facility, vessel),
+      vessels,
+      ribbons,
+      problems: vessels.flatMap((v) => violations(facility, v)),
     };
   });
 
@@ -84,9 +95,10 @@ export default function FacilityMap({
 
   if (docks.length === 0 || !(scale > 0)) return null;
 
-  const height = rows.length * ROW_H + 30;
+  const height = rows.reduce((sum, r) => sum + rowHeightFor(r.vessels.length), 0) + 30;
   const tickM = niceScaleDistance(SCALE_BAR_PX, scale);
   const problems = rows.flatMap((r) => r.problems);
+  let rowTop = 0;
 
   return (
     <div>
@@ -96,17 +108,14 @@ export default function FacilityMap({
         role="img"
         aria-label="Peta fasilitas drydock, skala panjang"
       >
-        {rows.map((row, i) => {
-          const y = i * ROW_H;
+        {rows.map((row) => {
+          const y = rowTop;
+          rowTop += rowHeightFor(row.vessels.length);
           const f = row.facility;
           const bad = row.problems.length > 0;
           const boxW = f.lengthM * scale;
           const boxH = Math.min(BAR_H, Math.max(12, f.widthM * scale));
           const top = y + (ROW_H - boxH) / 2;
-          /* Pita kapal digambar pada panjang aslinya; kalau lebih panjang dari
-             fasilitas, pita itu membanjiri ke kanan melewati ujung facilities. */
-          const ribbonW = row.ribbon.known ? Math.max(3, row.ribbon.widthPx) : 0;
-          const ribbonX = PAD_L + 2;
 
           return (
             <g key={f.id}>
@@ -115,9 +124,10 @@ export default function FacilityMap({
               </text>
               <text x={0} y={y + 26} className="fill-steel-400 text-[10px]">
                 {KIND_LABEL[f.kind]} · {f.lengthM} m{f.depthM === null ? "" : ` × ${f.depthM} m`}
+                {row.vessels.length > 1 ? ` · ${row.vessels.length} kapal` : ""}
               </text>
 
-              {/* Facilities */}
+              {/* Fasilitas */}
               <rect
                 x={PAD_L}
                 y={top}
@@ -128,20 +138,37 @@ export default function FacilityMap({
                 strokeWidth={bad ? 2 : 1}
               />
 
-              {/* Pita kapal */}
-              {ribbonW > 0 && (
-                <rect
-                  x={ribbonX}
-                  y={top + 4}
-                  width={ribbonW}
-                  height={Math.max(6, boxH - 8)}
-                  rx={2}
-                  className={bad ? "fill-rose-400/70 stroke-rose-600" : "fill-ocean-500/70 stroke-ocean-700"}
-                  strokeWidth={1}
-                />
-              )}
+              {/* Pita kapal: satu jalur per kapal, panjang sesuai aslinya. Kalau
+                  lebih panjang dari fasilitas, pita itu membanjiri ke kanan
+                  melewati ujung fasilitas. */}
+              {row.vessels.map((v, vi) => {
+                const ribbon = row.ribbons[vi];
+                if (ribbon === undefined) return null;
+                const laneTop = top + boxH + 6 + vi * LANE_H;
+                const ribbonW = ribbon.known ? Math.max(3, ribbon.widthPx) : 0;
+                return (
+                  <g key={`${v.name}-${vi}`}>
+                    {ribbonW > 0 && (
+                      <rect
+                        x={PAD_L + 2}
+                        y={laneTop}
+                        width={ribbonW}
+                        height={LANE_H - 3}
+                        rx={2}
+                        className={bad ? "fill-rose-400/70 stroke-rose-600" : "fill-ocean-500/70 stroke-ocean-700"}
+                        strokeWidth={1}
+                      />
+                    )}
+                    <text x={PAD_L} y={laneTop + LANE_H - 4} className="fill-steel-500 text-[10px]">
+                      {v.name || "?"}
+                      {v.loa === null ? " · LOA tidak diketahui" : ` · LOA ${v.loa} m`}
+                      {ribbon.overflowPx > 0 ? ` · mel-over ${(ribbon.overflowPx / scale).toFixed(1)} m` : ""}
+                    </text>
+                  </g>
+                );
+              })}
 
-              {/* Label panjang facilities di ujungnya */}
+              {/* Label panjang fasilitas di ujungnya */}
               <text
                 x={PAD_L + boxW + 6}
                 y={top + boxH / 2 + 3}
@@ -150,16 +177,9 @@ export default function FacilityMap({
                 {f.lengthM} m
               </text>
 
-              {row.vessel !== null && (
-                <text x={PAD_L} y={y + 50} className="fill-steel-500 text-[10px]">
-                  {row.vessel.name || "?"}
-                  {row.vessel.loa === null ? " · LOA tidak diketahui" : ` · LOA ${row.vessel.loa} m`}
-                  {row.ribbon.overflowPx > 0 ? ` · mel-over ${(row.ribbon.overflowPx / scale).toFixed(1)} m` : ""}
-                </text>
-              )}
-              {row.vessel === null && (
+              {row.vessels.length === 0 && (
                 <text x={PAD_L} y={y + 50} className="fill-steel-400 text-[10px]">
-                  Tidak ada kapal di slot facility
+                  Tidak ada kapal di slot fasilitas
                 </text>
               )}
             </g>

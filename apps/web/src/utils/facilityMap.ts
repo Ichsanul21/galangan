@@ -154,10 +154,34 @@ export function violations(facility: Facility, vessel: VesselDim): Violation[] {
 }
 
 /**
- * Panjang "bulat" untuk skala: 1, 2, atau 5 x 10^n yang paling pas untuk
- * lebar target dalam piksel. Tanpa ini, skalanya bisa jadi 37,4 m dan
- * angka di bawah peta tidak berarti apa-apa.
+ * Semua kapal yang menghuni satu fasilitas, urut seperti daftar slot.
+ *
+ * Fungsi ini dulu `.find()` di dalam komponen: hanya kapal PERTAMA yang
+ * digambar, dan sisanya dibuang tanpa jejak. Kalau kapal kedua justru tidak
+ * muat, row problems yang seharusnya tampil hilang dari daftar - masalah yang
+ * lebih berbahaya daripada tidak menampilkannya sama sekali.
+ *
+ * Murni (tanpa DOM/storage) supaya bisa diuji probe tanpa browser.
  */
+export function vesselsForFacility(
+  names: readonly string[],
+  vesselOfSlot: ReadonlyMap<string, VesselDim>,
+): VesselDim[] {
+  const out: VesselDim[] = [];
+  for (const raw of names) {
+    const key = String(raw ?? "").trim().toLowerCase();
+    if (key === "") continue;
+    const v = vesselOfSlot.get(key);
+    if (v === undefined) continue;
+    if (out.some((x) => x.name === v.name)) continue;
+    out.push(v);
+  }
+  return out;
+}
+
+/** Panjang "bulat" untuk skala: 1, 2, atau 5 x 10^n yang paling pas untuk
+ *  lebar target dalam piksel. Tanpa ini, skalanya bisa jadi 37,4 m dan
+ *  angka di bawah peta tidak berarti apa-apa. */
 export function niceScaleDistance(targetPx: number, scale: number): number {
   if (!(targetPx > 0) || !(scale > 0)) return 0;
   const raw = targetPx / scale;
