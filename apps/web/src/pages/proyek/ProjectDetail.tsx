@@ -442,6 +442,10 @@ const docOwnerOptions = useMemo(() => employeeOptions(data.employees), [data.emp
   const wos = data.workOrders.filter((w) => w.project === pid);
   const coList = data.changeOrders.filter((c) => c.project === pid);
   const riskList = data.risks.filter((r) => r.project === pid);
+  /* D15: data subkon untuk tab Subkon. WO sudah ada; subcontractors dan
+     termins perlu diakses dari store global. */
+  const subkonList = (data.subcontractors ?? []).filter((s) => wos.some((w) => String(w.sub ?? "") === String(s.name ?? "")));
+  const subkonTermins = (data.termins ?? []).filter((t) => wos.some((w) => String(w.id ?? "") === String(t.woId ?? "")));
   const warrantyList = (data.warranties ?? []).filter((w) => String(w.projectId ?? "") === pid);
   const coApproved = coList.filter((c) => c.status === "Disetujui" || c.status === "Diterapkan");
   const coApprovedImpact = coApproved.reduce((s, c) => s + Number(c.impact || 0), 0);
@@ -1036,7 +1040,7 @@ const createWarranty = async (wbsTask?: string) => {
       </div>
 
       <div className="mt-5 card">
-        <Tabs tabs={["Ringkasan", "WBS & Anggaran", "BoQ", "Dokumen & Laporan", "Equipment", "Perubahan & Risiko", "Terkait", ...(getSetting(data, "SHOW_3D_PROJECT", 0) === 1 ? ["3D Viewer"] : []), "Service", "Sparepart", "Tim"]} active={tab} onChange={setTab} labels={{ Ringkasan: S.tabRingkasan, "WBS & Anggaran": S.tabWbs, BoQ: S.tabBoq, "Dokumen & Laporan": S.tabDocs, Equipment: S.detEqTab, "Perubahan & Risiko": S.tabChange, Terkait: S.tabRelated, "3D Viewer": S.tabViewer, Service: S.tabService, Sparepart: S.tabSparepart, Tim: S.tabTeam }} />
+        <Tabs tabs={["Ringkasan", "WBS & Anggaran", "BoQ", "Dokumen & Laporan", "Equipment", "Perubahan & Risiko", "Subkon", "Terkait", ...(getSetting(data, "SHOW_3D_PROJECT", 0) === 1 ? ["3D Viewer"] : []), "Service", "Sparepart", "Tim"]} active={tab} onChange={setTab} labels={{ Ringkasan: S.tabRingkasan, "WBS & Anggaran": S.tabWbs, BoQ: S.tabBoq, "Dokumen & Laporan": S.tabDocs, Equipment: S.detEqTab, "Perubahan & Risiko": S.tabChange, Subkon: S.tabSubkon, Terkait: S.tabRelated, "3D Viewer": S.tabViewer, Service: S.tabService, Sparepart: S.tabSparepart, Tim: S.tabTeam }} />
         <div className="p-5">
           {tab === "Ringkasan" && (
             <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
@@ -1809,6 +1813,62 @@ const createWarranty = async (wbsTask?: string) => {
                   {riskList.length === 0 && <p className="text-sm text-steel-400">{S.detNoRisk}</p>}
                 </div>
               </div>
+            </div>
+          )}
+
+          {/* D15: tab Subkon — ringkasan subkontraktor, WO, dan termin per proyek. */}
+          {tab === "Subkon" && (
+            <div className="space-y-4">
+              <Card className="p-4">
+                <h3 className="mb-3 text-sm font-semibold text-navy-900">{S.detSubkonTitle.replace("{n}", String(subkonList.length))}</h3>
+                {subkonList.length === 0 ? (
+                  <p className="text-xs text-steel-400">{S.detNoSubkon}</p>
+                ) : (
+                  <div className="space-y-3">
+                    {subkonList.map((s) => {
+                      const subWos = wos.filter((w) => String(w.sub ?? "") === String(s.name ?? ""));
+                      const subTermins = subkonTermins.filter((t) => subWos.some((w) => String(w.id ?? "") === String(t.woId ?? "")));
+                      return (
+                        <div key={s.id} className="rounded-xl border border-steel-100 p-3">
+                          <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+                            <p className="font-medium text-navy-900">{String(s.name ?? "")}</p>
+                            <Badge tone={s.status === "Aktif" ? "green" : s.status === "Blacklist" ? "red" : "amber"}>{String(s.status ?? "-")}</Badge>
+                          </div>
+                          <p className="mb-2 text-xs text-steel-500">
+                            {S.detSubkonContract.replace("{a}", fmtRupiah(Number(s.contract ?? 0)))}
+                            {s.k3 ? ` · K3 ${String(s.k3)}` : ""}
+                          </p>
+                          <div className="space-y-1">
+                            {subWos.map((w) => {
+                              const woTerms = subTermins.filter((t) => String(t.woId ?? "") === String(w.id ?? ""));
+                              return (
+                                <div key={w.id} className="rounded-lg bg-steel-50 px-3 py-2">
+                                  <div className="flex flex-wrap items-center justify-between gap-2 text-sm">
+                                    <span className="font-mono text-xs font-semibold text-navy-900">{w.id}</span>
+                                    <span className="text-xs text-steel-600">{String(w.scope ?? "")}</span>
+                                    <Badge tone={w.status === "Selesai" ? "green" : "blue"}>{w.progress}%</Badge>
+                                  </div>
+                                  {woTerms.length > 0 && (
+                                    <div className="mt-1.5 space-y-0.5">
+                                      {woTerms.map((t) => (
+                                        <div key={t.id} className="flex flex-wrap items-center justify-between gap-2 text-xs text-steel-500">
+                                          <span>{String(t.milestone ?? "")}</span>
+                                          <span className="font-semibold">{fmtRupiah(Number(t.amount ?? 0))}</span>
+                                          <StatusBadge status={String(t.status ?? "Draf")} />
+                                        </div>
+                                      ))}
+                                    </div>
+                                  )}
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </Card>
             </div>
           )}
 
