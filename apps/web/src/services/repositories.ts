@@ -107,6 +107,8 @@ interface BackendPage {
   total: number;
   limit: number;
   offset: number;
+  /** Kursor untuk halaman berikutnya; null = ini halaman terakhir. */
+  nextCursor?: string | null;
 }
 
 function isBackendPage(v: unknown): v is BackendPage {
@@ -136,22 +138,37 @@ export function remoteRepository(resource: string): Repository {
   };
   return {
     async list() {
+      /* Keyset pagination, bukan OFFSET. OFFSET di atas `updated_at` yang
+         berubah-ubah berarti baris yang diperbarui saat pagination berjalan
+         melompati jendela OFFSET dan TIDAK PERNAH dikirim - itu penyebab
+         "data hilang setelah POST sukses" yang dilaporkan client: tidak ada
+         error, hanya baris yang tidak pernah sampai ke perangkat lain.
+         Cursor menandai "sudah baca sampai baris ini", jadi baris yang baru
+         diperbarui hanya tertunda ke tarikan berikutnya, tidak hilang. */
       const limit = 5000;
-      let offset = 0;
+      let cursor: string | null = null;
       const all: StoreItem[] = [];
       for (;;) {
-        const page = await apiFetch<BackendRow[] | BackendPage>(
-          `${base}?limit=${limit}&offset=${offset}`,
+        /* Anotasi eksplisit: `qs` dan `next` saling bergantung tipe
+         * (`cursor` <- `next` <- `page` <- `qs` <- `cursor`), dan tanpa
+         * anotasi TypeScript memberi TS7022 "implicitly any" padahal tidak
+         * ada `any` di mana pun. */
+        const qs: string = `limit=${limit}${cursor === null ? "" : `&after=${encodeURIComponent(cursor)}`}`;
+        const page: BackendRow[] | BackendPage = await apiFetch<BackendRow[] | BackendPage>(
+          `${base}?${qs}`,
           { background: true },
         );
         if (Array.isArray(page)) return collect((page as BackendRow[]).map(rowToItem), limit);
         if (!isBackendPage(page)) return [];
         const rows = Array.isArray(page.rows) ? page.rows : [];
         for (const row of rows) all.push(rowToItem(row));
-        const total = typeof page.total === "number" ? page.total : all.length;
         if (rows.length < limit) break;
-        if (all.length >= total) break;
-        offset += limit;
+        /* Server lama (belum punya nextCursor) tidak akan mengirim field ini.
+           Cursor jadi null -> berhenti daripada memutar tak hingga. Offset
+           sengaja TIDAK dipakai sebagai fallback: itu justru bug-nya. */
+        const next: string | null | undefined = page.nextCursor;
+        if (typeof next !== "string" || next === "" || next === cursor) break;
+        cursor = next;
       }
       return collect(all, limit);
     },
