@@ -520,20 +520,21 @@ const docOwnerOptions = useMemo(() => employeeOptions(data.employees), [data.emp
   };
 
   // Garansi/DLP: dibuat sekali saat proyek Selesai (pintasan di tab Terkait).
-  const createWarranty = async () => {
-    const year = todayISO().slice(0, 4);
-    const seq = (data.warranties ?? []).filter((w) => String(w.id ?? "").startsWith(`WRT-${year}-`)).length + 1;
-    try {
-      const created = await add("warranties", {
-        id: `WRT-${year}-${String(seq).padStart(3, "0")}`,
-        projectId: pid, vessel: project.vessel, start: todayISO(), months: 12,
-        status: "Aktif", branch: String(project.branch ?? ""),
-      }, { action: "membuat garansi/DLP", module: "Proyek" });
-      toast(S.detToastWarranty.replace("{a}", created.id));
-    } catch (e) {
-      toast(e instanceof Error ? e.message : S.saveFail, "info");
-    }
-  };
+const createWarranty = async (wbsTask?: string) => {
+      const year = todayISO().slice(0, 4);
+      const seq = (data.warranties ?? []).filter((w) => String(w.id ?? "").startsWith(`WRT-${year}-`)).length + 1;
+      try {
+        const created = await add("warranties", {
+          id: `WRT-${year}-${String(seq).padStart(3, "0")}`,
+          projectId: pid, vessel: project.vessel, start: todayISO(), months: 12,
+          status: "Aktif", branch: String(project.branch ?? ""),
+          ...(wbsTask ? { wbsTask } : {}),
+        }, { action: "membuat garansi/DLP", module: "Proyek" });
+        toast(S.detToastWarranty.replace("{a}", created.id));
+      } catch (e) {
+        toast(e instanceof Error ? e.message : S.saveFail, "info");
+      }
+    };
 
   /* Hapus risk / change order / trial / BAST. Tiga di antaranya sudah
      appet jadi dokumen resmi proyek, jadi Record yang sudah disetujui
@@ -1843,19 +1844,33 @@ const docOwnerOptions = useMemo(() => employeeOptions(data.employees), [data.emp
             <Card className="p-4">
               <div className="mb-2 flex items-center justify-between">
                 <h3 className="text-sm font-semibold text-navy-900">{S.detWarTitle.replace("{n}", String(warrantyList.length))}</h3>
-                {project.status === "Selesai" && (
-                  <button className="btn-secondary text-xs" onClick={createWarranty}><Plus className="h-3.5 w-3.5" /> {S.detCreateWar}</button>
+{project.status === "Selesai" && (
+                  <button className="btn-secondary text-xs" onClick={() => createWarranty()}><Plus className="h-3.5 w-3.5" /> {S.detCreateWar}</button>
                 )}
               </div>
               {project.status !== "Selesai" && (
                 <p className="mb-2 text-xs text-steel-500">{S.detWarHint}</p>
+              )}
+              {/* D11: garansi per WBS task yang sudah selesai. */}
+              {project.status === "Selesai" && wbs.some((w) => Number(w.progress ?? 0) >= 100) && (
+                <div className="mt-2">
+                  <p className="mb-1 text-xs font-medium text-steel-500">{S.detWarPerTask}</p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {wbs.filter((w) => Number(w.progress ?? 0) >= 100 && !warrantyList.some((wr) => String(wr.wbsTask ?? "") === w.task)).map((w) => (
+                      <button key={w.task} className="btn-secondary text-xs" onClick={() => createWarranty(w.task)}>
+                        <Plus className="h-3 w-3" /> {w.task}
+                      </button>
+                    ))}
+                  </div>
+                </div>
               )}
               <div className="space-y-2">
                 {warrantyList.map((w) => (
                   <div key={w.id} className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-steel-100 p-3 text-sm">
                     <div className="min-w-0">
                       <p className="font-medium text-navy-900 font-mono">{w.id}</p>
-                      <p className="text-xs text-steel-500">{S.detWarRow.replace("{a}", fmtTanggal(String(w.start ?? ""))).replace("{b}", String(w.months)).replace("{c}", String(w.vessel))}</p>
+                      {w.wbsTask && <p className="text-xs text-ocean-700">{w.wbsTask}</p>}
+                      <p className="text-xs text-steel-500">{S.detWarRow.replace("{a}", fmtTanggal(String(w.start ?? ""))).replace("{b}", String(w.months ?? 12)).replace("{c}", String(w.status ?? "Aktif"))}</p>
                     </div>
                     <StatusBadge status={String(w.status ?? "Aktif")} />
                   </div>
