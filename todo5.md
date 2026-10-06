@@ -30,7 +30,7 @@ tidak menambah baris baru - tapi QStringnya berubah, lihat CATATAN REVISI.
 
 | # | Item | Kenapa |
 |---|---|---|
-| 1 | **C1 sinkronisasi 2 device** | Client melaporkan data hilang setelah POST sukses. Jalur `backendMode` beku dan loop push 401 sudah ditutup di `ff28249` + `953a6d9`; pagination OFFSET dan token konkurensi masih terbuka |
+| 1 | **C1 sinkronisasi 2 device** | Client melaporkan data hilang setelah POST sukses. Semua jalur yang ditemukan sudah ditutup: `backendMode` beku, loop push 401, pagination OFFSET, livelock baris racun, overrun request, trigger dibuang, dan penimpaan diam-diam WBS/team. Sisa risiko: `PATCH` koleksi biasa masih shallow merge, jadi dua perangkat yang mengedit baris sama masih last-writer-wins |
 | 2 | **D5 BoQ per nomor surat** | Client tandai "sangat krusial". Butuh ubah skema + API + seed + PDF, bukan edit UI |
 | 3 | **I2 filter Inventory 2 tingkat** | Permintaan eksplisit yang sebelumnya dibalik secara sadar, dan alasan bisnisnya tidak tercatat |
 | 4 | **B2 format titik input harga** | 150 `NumInput` tanpa pemisah ribuan; `type="number"` tidak bisa menampilkan `1.000.000` |
@@ -347,11 +347,33 @@ download.
 6. [x] H1: hint form cuti bertentangan dengan perilaku - DIPERBAIKI
    (`b4f15d4`, hint diselaraskan + form ubah cuti dapat auto-preview)
 
-**Gelombang 2 - integritas data sinkronisasi (belum):**
-7. C1-1: pagination OFFSET di atas `updated_at` (`services/api/src/routes/crud.ts:275`)
-8. C2-4: livelock baris racun yang juga memicu badai 429 (`store.tsx`)
-9. C2-5: overrun 10.800 request per run plus trigger yang dibuang saat push berjalan
-10. C1-5: token konkurensi untuk WBS dan team (`services/api/src/routes/wbs.ts`)
+**Gelombang 2 - integritas data sinkronisasi - SELESAI di `921fcac`:**
+7. [x] C1-1: pagination OFFSET di atas `updated_at` - DIPERBAIKI
+   (`0fceaa1` + `8ec5042`). Server menambah mode keyset lewat parameter
+   `after=updated_at|id`; klien menarik halaman demi halaman memakai cursor,
+   bukan `OFFSET`. `services/api/src/routes/crudCursor.ts` +
+   `scripts/page-probe.ts` (18 pemeriksaan, termasuk bukti bahwa OFFSET lama
+   memang kehilangan baris dan keyset tidak).
+8. [x] C2-4: livelock baris racun - DIPERBAIKI (`fede89b`). Cursor selalu
+   maju melewati jendela meski ada baris gagal. Baris racun punya jatah 5
+   percobaan lalu menyerah dan diberi tahu sekali per baris, bukan diulang
+   tiap 45 detik selamanya. Jalur tombstone yang sebelumnya `break` +
+   `continue` ikut dibuka. `apps/web/scripts/push-probe.ts` (15 pemeriksaan).
+9. [x] C2-5: overrun 10.800 request per run - DIPERBAIKI (`fede89b`). Budget
+   jadi GLOBAL per run (`PUSH_BUDGET_PER_RUN = 250`, di bawah
+   `WRITE_LIMIT = 300`) bukan 200 per koleksi, dengan rotasi koleksi
+   (`pushColCursorRef`) supaya tidak ada yang kelaparan.
+10. [x] C2-5b: trigger yang dibuang saat push berjalan - DIPERBAIKI
+   (`fede89b`). `pushAgainRef` menahan trigger, lalu menjadwalkan run lanjutan
+   dari blok `finally` lewat `pushPendingRef`.
+11. [x] C1-5: token konkurensi WBS/team - DIPERBAIKI (`821e017` +
+   `921fcac`). Dipakai compare-and-swap lewat `baseData`, BUKAN menambah
+   kolom `updated_at` - tabel `wbs_by_project`/`team_by_project` hanya punya
+   `project_id` + `data`, dan menambah kolom berarti migrasi produksi saat
+   `005_sessions.sql` sudah punya selisih checksum. Klien menyimpan isi
+   terakhir yang dibaca dari server (`wbsBaseRef`/`teamBaseRef`) dan
+   mengirimkannya; server membalas 409 STALE bila isinya sudah berbeda.
+   `baseData` yang tidak dikirim tetap diterima agar klien lama tidak macet.
 
 **Gelombang 3 - permintaan yang sudah jelas:**
 10. D9 (ganti string label), P1 (PREVIEW_N 3 plus label), P2 (nomor kolom), P6, P7, P9, P12, P13, P14
@@ -392,6 +414,33 @@ berhasil tapi tidak muncul di perangkat lain" punya akar di tempat lain:
 di `KaryawanDetail` memang tidak punya pratinjau sama sekali - jadi H1b naik
 dari SEBAGIAN ke SELESAI.
 
+## Gelombang 2 dikerjakan di `921fcac`
+
+Empat item integritas data sinkronisasi selesai. Dua keputusan yang perlu
+dicatat karena mengubah cara berpikir soal "hemat perubahan":
+
+**1. Pagination OFFSET diganti keyset, bukan diperbaiki.** Menambah kolom
+`sort key` yang stabil tidak menyelesaikan masalah - selama sort key bisa
+berubah (dan `updated_at` memang berubah setiap penulisan), baris bisa
+melompati jendela. Satu-satunya pagination yang tidak bisa kehilangan baris adalah yang
+menandai posisi, bukan menghitung offset. `OFFSET` tetap dipertahankan untuk
+pager UI karena di sana nomor halaman memang dibutuhkan.
+
+**2. Token konkurensi WBS/team dibuat tanpa migrasi.** Tabel
+`wbs_by_project`/`team_by_project` hanya punya `project_id` + `data`. Menambah
+`updated_at` berarti migrasi produksi, dan `005_sessions.sql` sudah punya
+selisih checksum sehingga jalur migrasi tidak bisa dipercaya tanpa diperiksa
+dulu. Solusinya compare-and-swap: klien mengirim isi yang ia yakini masih ada
+di server, server menolak dengan 409 STALE kalau sudah berbeda. Butuh kolom
+nol dan tidak mengubah skema.
+
+**Risiko tersisa yang disengaja:** `PATCH` untuk koleksi biasa masih shallow
+merge tanpa merge per-field. Dua perangkat yang mengedit baris yang sama
+masih last-writer-wins - hanya saja sekarang keduanya tahu lewat toast, dan
+klien mereplay patch-nya di atas versi server (`store.tsx` sekitar `update()`),
+bukan menimpa lokal secara diam-diam. Menyelesaikan ini berarti merge
+per-field di server, dan itu pekerjaan tersendiri.
+
 **Peringatan soal nomor baris:** dokumen ini diaudit terhadap `bd975c3`.
 Sejak itu ada beberapa commit yang menyentuh `store.tsx`, `HR.tsx`,
 `Subcontractor.tsx`, dan `FacilityMap.tsx`, jadi beberapa `file:line` di
@@ -403,8 +452,8 @@ nomor baris sengaja dibiarkan begitu karena sudah tidak berlaku.
 # CATATAN METODE
 
 - Audit read-only terhadap `bd975c3`. Tidak ada file aplikasi yang diubah saat
-  menyusun dokumen ini. Gelombang 1 baru dikerjakan setelah itu, pada
-  `37321db` sampai `b4f15d4` - lihat CATATAN REVISI.
+  menyusun dokumen ini. Gelombang 1 dan 2 baru dikerjakan setelah itu, pada
+  `37321db` sampai `921fcac` - lihat CATATAN REVISI.
 - Semua angka (jumlah tabel, jumlah call site, jumlah file) dihitung dengan
   enumerasi, bukan estimasi.
 - Probe tidak dijalankan selama audit karena butuh menulis build cache. Status
