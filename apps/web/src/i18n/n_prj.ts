@@ -1,4 +1,4 @@
-﻿export const n_prj = {
+export const n_prj = {
   id: {
     cancelBtn: "Batal",
     saveBtn: "Simpan",
@@ -16,6 +16,7 @@
     colClient: "Klien",
     progLabel: "Progres",
     actionTh: "Aksi",
+    btnDetail: "Detail",
     prjTitle: "Manajemen Proyek",
     prjSubtitle: "New Build, Repair & Maintenance, Retrofit",
     prjNew: "Proyek Baru",
@@ -235,7 +236,7 @@
     detWarHint: "Pintasan buat garansi muncul setelah proyek Selesai.",
     detNoWar: "Belum ada garansi untuk proyek ini.",
     detWarRow: "Mulai {a} · {b} bulan · {c}",
-    detTrialTitle: "Trial - Commissioning & Sea Trial ({n})",
+    detTrialTitle: "Trial - Commisioning & Trial ({n})",
     detCreateTrial: "Buat Trial",
     detTrialHint: "Trial Lolos butuh Class Survey ter-link (modul Kapal) dan otomatis membuat BAST draft.",
     detTrialParam: "Parameter: ",
@@ -606,6 +607,7 @@
     colClient: "Client",
     progLabel: "Progress",
     actionTh: "Actions",
+    btnDetail: "Details",
     prjTitle: "Project Management",
     prjSubtitle: "New Build, Repair & Maintenance, Retrofit",
     prjNew: "New Project",
@@ -822,7 +824,7 @@
     detWarHint: "The warranty shortcut appears once the project is Selesai.",
     detNoWar: "No warranty for this project yet.",
     detWarRow: "From {a} · {b} months · {c}",
-    detTrialTitle: "Trials - Commissioning & Sea Trial ({n})",
+    detTrialTitle: "Trials - Commisioning & Trial ({n})",
     detCreateTrial: "New Trial",
     detTrialHint: "A Lolos trial needs a linked Class Survey (Vessel module) and auto-creates a BAST draft.",
     detTrialParam: "Parameters: ",

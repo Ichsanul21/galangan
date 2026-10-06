@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { Plus, Anchor, Wallet, TrendingUp, Clock, Trash2 } from "lucide-react";
+import { Plus, Anchor, Wallet, TrendingUp, Clock, Trash2, Eye } from "lucide-react";
 import {
   Card,
   PageHeader,
@@ -94,7 +94,12 @@ export default function Projects() {
   const [prioritasFilter, setPrioritasFilter] = useState("Semua");
   const [pmFilter, setPmFilter] = useState("Semua");
   const [q, setQ] = useState("");
-  const [sort, setSort] = useState<SortState>({ key: null, dir: "asc" });
+  /* Default: proyek terbaru paling atas (P9). Versi lama `key: null` dengan
+     `dir: "asc"` membuat daftar urut tak tertentu, dan kolom `createdAt`
+     yang diklik pertama kali menghasilkan ASC = terlama dulu, berlawanan
+     dengan yang diharapkan. Sekarang default-nya DESC di `createdAt`, jadi
+     baris pertama benar-benar proyek terbaru. */
+  const [sort, setSort] = useState<SortState>({ key: "createdAt", dir: "desc" });
   const [showAdd, setShowAdd] = useState(false);
   // Hapus proyek via ConfirmModal + daftar pemakai (blokir bila dirujuk PO/invoice/WBS).
   const [delProject, setDelProject] = useState<StoreItem | null>(null);
@@ -186,7 +191,9 @@ export default function Projects() {
     if (k === "updatedAt") return lastTouchedAt(p) ?? "";
     return String((p as StoreItem)[k] ?? "");
   }), [list, sort]);
-  const pager = usePager(list.length);
+  /* Default 25 baris (P7). Versi lama memakai default `usePager` yaitu 100,
+     jadi tabel proyek memuat empat halaman penuh sebelum sempat menekan "halaman berikutnya". */
+  const pager = usePager(list.length, 25);
   useEffect(() => {
     pager.reset();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -306,6 +313,11 @@ export default function Projects() {
           <table className="w-full">
             <thead className="sticky top-0 z-10 bg-surface">
               <tr>
+                {/* Nomor urut (P2). Angka ikutPagination: halaman 2 mulai
+                    dari 26, bukan mengulang dari 1 - kalau tidak, nomor ini
+                    tidak bisa dipakai rujukan ("proyek nomor 7") dan tidak
+                    cocok dengan yang terlihat di layar. */}
+                <th className="th w-10 text-center">{S.colNo}</th>
                 <SortTh label={S.colProject} sortKey="vessel" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} />
                 <SortTh label={S.colClient} sortKey="client" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} />
                 <SortTh label={S.colType} sortKey="type" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} />
@@ -327,7 +339,7 @@ export default function Projects() {
               </tr>
             </thead>
             <tbody className="divide-y divide-steel-100">
-              {pager.slice(sorted).map((p) => {
+              {pager.slice(sorted).map((p, rowIndex) => {
                 return (
                   <tr
                     key={p.id}
@@ -338,6 +350,9 @@ export default function Projects() {
                     tabIndex={0}
                     title={S.prjOpenRow.replace("{a}", p.id)}
                   >
+                    <td className="td text-center font-mono text-xs text-steel-400">
+                      {(pager.page - 1) * pager.size + rowIndex + 1}
+                    </td>
                     <td className="td">
                       <span className="block">
                         <p className="font-semibold text-navy-900">{p.vessel}</p>
@@ -377,12 +392,26 @@ export default function Projects() {
                       {lastTouchedAt(p) !== null ? fmtTanggal(lastTouchedAt(p)) : <span className="text-steel-400">-</span>}
                     </td>
                     <td className="td">
-                      <RowAction
-                        icon={Trash2}
-                        tone="danger"
-                        label={`${locale === "en" ? "Delete" : "Hapus"} ${p.id}`}
-                        onClick={() => setDelProject(p)}
-                      />
+                      <div className="flex items-center gap-1">
+                        {/* Detail pindah ke kolom Aksi (P6). Sebelumnya
+                            "Kelola di detail" menempel di sel Tahap, jauh dari
+                            kolom tempat pengguna mencari aksi, dan menambah
+                            teks pada kolom data yang seharusnya bersih. */}
+                        <RowAction
+                          icon={Eye}
+                          tone="neutral"
+                          label={S.btnDetail}
+                          ariaLabel={`${S.btnDetail} ${p.id}`}
+                          onClick={() => navigate(`/proyek/${p.id}`)}
+                        />
+                        <RowAction
+                          icon={Trash2}
+                          tone="danger"
+                          label={locale === "en" ? "Delete" : "Hapus"}
+                          ariaLabel={`${locale === "en" ? "Delete" : "Hapus"} ${p.id}`}
+                          onClick={() => setDelProject(p)}
+                        />
+                      </div>
                     </td>
                   </tr>
                 );

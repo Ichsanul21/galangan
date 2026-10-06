@@ -199,13 +199,12 @@ export default function ProjectAddModal({ open, onClose, S, projects, vessels, c
                 {TAHAP.map((t) => <option key={t}>{t}</option>)}
               </select>
             </Field>
-            <Field label={S.prjStatusField}>
-              <select className="input" value={form.status} onChange={(e) => setF("status", e.target.value)}>
-                <option>Dalam Proses</option>
-                <option>Sedang Berjalan</option>
-                <option>Tertunda</option>
-              </select>
-            </Field>
+            {/* Field status dihapus dari form proyek baru (P12): proyek yang baru dibuat
+                selalu mulai "Dalam Proses" - atau langsung "Sedang Berjalan"
+                kalau tahapnya sudah lanjut - dan status diubah dari halaman
+                detail.
+                Memilih "Tertunda" di awal hampir selalu salah, jadi lebih baik
+                tidak menawarkan pilihan itu sama sekali. */}
             <Field label={S.prjFieldPrioritas}>
               <select className="input" value={form.prioritas} onChange={(e) => setF("prioritas", e.target.value)}>
                 {PRIORITAS.map((r) => <option key={r}>{r}</option>)}

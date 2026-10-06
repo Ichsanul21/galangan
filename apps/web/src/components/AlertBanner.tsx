@@ -391,12 +391,18 @@ export function AlertBannerView({
           )}
         </div>
         <button
+          type="button"
           className="flex shrink-0 items-center gap-1 rounded-lg px-2.5 py-1.5 text-xs font-semibold text-steel-600 hover:bg-steel-100"
           onClick={() => setMin((v) => !v)}
           aria-expanded={!min}
         >
           {min ? <ChevronDown className="h-4 w-4" /> : <ChevronUp className="h-4 w-4" />}
-          {min ? t.common.show : t.notif.minimize}
+          {/* Tombol ini menutup/membuka SELURUH banner, bukan satu kategori.
+              Client meminta labelnya "Tampilkan semua" - bukan "Perkecil" -
+              karena yang mereka cari adalah jalan membuka semua notifikasi.
+              Dalam mode ini seluruh kategori sudah tertutup sampai diklik, jadi
+              "Tampilkan semua" memang menggambarkan aksinya dengan benar. */}
+          {min ? t.notif.showAll : t.notif.showLess}
         </button>
       </div>
     </div>

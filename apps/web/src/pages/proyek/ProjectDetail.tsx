@@ -46,6 +46,7 @@ import { pdfServerReady } from "../../services/pdfClient";
 import { usePdfDoc } from "../../components/usePdfDoc";
 import { canonPrioritas, scopeList } from "../../utils/scope";
 import { equipmentCostSummary } from "../../utils/projectCost";
+import { delayDaysOf } from "../../utils/projectDelay";
 import { EntityPicker } from "../../components/ui";
 import { PRIORITAS } from "./Projects";
 import { TAHAP, tahapOf, hasContract, isOverdue } from "./Projects";
@@ -948,7 +949,7 @@ export default function ProjectDetail() {
               onChange={(e) => askStatus(e.target.value)}
               title="Terlambat terisi otomatis dari jatuh tempo"
             >
-              {STATUS.map((s) => <option key={s} value={s} disabled={s === "Terlambat"}>{s === "Terlambat" ? "Terlambat (otomatis)" : s}</option>)}
+              {STATUS.map((s) => <option key={s} value={s} disabled={s === "Terlambat"}>{s}</option>)}
             </select>
             <StatusBadge status={project.status} />
           </div>
@@ -988,7 +989,26 @@ export default function ProjectDetail() {
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <KpiCard label={S.colBudget} value={fmtMiliar(project.budget)} hint={S.detKpiBudgetHint} icon={<Calendar className="h-5 w-5" />} />
         <KpiCard label={S.colActual} value={fmtMiliar(project.actual)} delta={S.detKpiUsed.replace("{a}", String(project.budget ? Math.round((project.actual / project.budget) * 100) : 0))} deltaDirection={project.actual > project.budget ? "down" : "flat"} hint={S.detKpiActualHint} />
-        <KpiCard label={S.progLabel} value={`${project.progress}%`} delta={project.status === "Terlambat" ? S.detKpiLate : S.detKpiOnTrack} deltaDirection={project.status === "Terlambat" ? "down" : "up"} hint={S.detKpiAvgHint} />
+        {/* Angka keterlambatan di card progres (P14). Versi lama hanya menulis
+            "Terlambat dari jadwal" tanpa angkanya, jadi pengguna harus pindah
+            ke Monitoring untuk tahu seberapa jauh. Monitoring sudah menghitung
+            ini; sekarang keduanya satu sumber (`utils/projectDelay`). */}
+        <KpiCard
+          label={S.progLabel}
+          value={`${project.progress}%`}
+          delta={project.status === "Terlambat" ? S.detKpiLate : S.detKpiOnTrack}
+          deltaDirection={project.status === "Terlambat" ? "down" : "up"}
+          hint={
+            project.status === "Terlambat"
+              ? (() => {
+                  const lateDays = delayDaysOf(project.end, todayISO(), true);
+                  return lateDays === null
+                    ? S.detKpiAvgHint
+                    : `${S.monDelayDays.replace("{n}", String(lateDays))} - ${S.detKpiAvgHint}`;
+                })()
+              : S.detKpiAvgHint
+          }
+        />
         <KpiCard label={S.detKpiPeriod} value={fmtRentang(project.start, project.end)} hint={project.branch} icon={<MapPin className="h-5 w-5" />} />
       </div>
 

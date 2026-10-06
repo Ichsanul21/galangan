@@ -34,14 +34,10 @@ interface AttentionItem {
 }
 
 function endInDays(end: string): number | null {
-  const m = String(end ?? "").match(/^(\d{4})-(\d{2})(?:-(\d{2}))?$/);
-  if (!m) return null;
-  const day = m[3]
-    ? new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]))
-    : new Date(Number(m[1]), Number(m[2]), 0);
-  const today = new Date(`${todayISO()}T00:00:00`);
-  return Math.round((day.getTime() - today.getTime()) / 86400000);
+  return endInDaysShared(end, todayISO());
 }
+
+import { delayDaysOf as delayDaysShared, endInDays as endInDaysShared } from "../../utils/projectDelay";
 
 export default function Monitoring() {
   const { locale } = useT();
@@ -159,12 +155,8 @@ export default function Monitoring() {
   const attentionPids = new Set(attention.map((a) => a.pid));
   const pipeline = mode === "Semua" ? filtered : filtered.filter((p) => attentionPids.has(p.id));
 
-  const delayDaysOf = (p: StoreItem): number | null => {
-    if (!isLate(p)) return null;
-    const d = endInDays(String(p.end ?? ""));
-    if (d === null) return null;
-    return Math.max(0, -d);
-  };
+  const delayDaysOf = (p: StoreItem): number | null =>
+    delayDaysShared(p.end, todayISO(), isLate(p));
 
   const exportRekap = () => {
     const rows: unknown[][] = [
