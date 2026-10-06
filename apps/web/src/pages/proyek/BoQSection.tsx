@@ -4,7 +4,7 @@ import { useT } from "../../i18n/LanguageContext";
 import { n_prj } from "../../i18n/n_prj";
 import { useAuth, canSetTarget } from "../../auth/auth";
 import { Card, Modal, Field, FormGrid, toast, EmptyState, StatusBadge, Badge, SortTh, toggleSort, sortRows, ConfirmModal,
-  NumInput, AsyncButton, FlowStrip, FileUploadButton,
+  NumInput, MoneyInput, AsyncButton, FlowStrip, FileUploadButton,
   useBusy, SearchBox, rowMatches, RowAction,
 } from "../../components/ui";
 import type { SortState } from "../../components/ui";
@@ -14,7 +14,7 @@ import { exportExcel, fmtRupiah } from "../../utils/export";
 import { DocumentPreviewCell, InlineDocPreview, type PreviewDoc } from "../../components/DocumentPreview";
 import { docAttachment, looksLikeUrl } from "../../utils/docAttachment";
 import { SATUAN, STATUS_BOQ_ID } from "../../utils/format";
-import { todayISO } from "../../utils/format";
+import { todayISO, parseRupiah } from "../../utils/format";
 import { fmtTanggal } from "../../utils/format";
 import { createdAtOf, lastTouchedAt } from "../../utils/timestamps";
 import type { BoQItem } from "../../data";
@@ -167,15 +167,15 @@ export default function BoQSection({ projectId }: Props) {
   const saveBoq = async () => {
     if (!form.name.trim()) { toast(S.boqToastName, "info"); return; }
     if (!form.quantity || Number(form.quantity) <= 0) { toast(S.boqToastQty, "info"); return; }
-    if (!form.unitPrice || Number(form.unitPrice) <= 0) { toast(S.boqToastPrice, "info"); return; }
-    const total = Number(form.quantity) * Number(form.unitPrice);
+if (!form.unitPrice || parseRupiah(form.unitPrice) <= 0) { toast(S.boqToastPrice, "info"); return; }
+  const total = Number(form.quantity) * parseRupiah(form.unitPrice);
     await add("boq", {
       projectId,
       name: form.name.trim(),
       description: form.description.trim(),
       quantity: Number(form.quantity),
       unit: form.unit,
-      unitPrice: Number(form.unitPrice),
+      unitPrice: parseRupiah(form.unitPrice),
       totalPrice: total,
       category: form.category,
       status: "Draft",
@@ -211,7 +211,7 @@ export default function BoQSection({ projectId }: Props) {
       toast(S.boqToastRole, "info");
       return;
     }
-    const next = Number(revisiPrice);
+    const next = parseRupiah(revisiPrice);
     if (!Number.isFinite(next) || next <= 0) { toast(S.boqToastNewPrice, "info"); return; }
     if (!revisiReason.trim()) { toast(S.boqToastReason, "info"); return; }
     const hist: PriceHist[] = [...(revisiFor.priceHistory ?? []), { old: revisiFor.unitPrice, new: next, reason: revisiReason.trim(), date: todayISO(), by: "Anda" }];
@@ -237,7 +237,7 @@ export default function BoQSection({ projectId }: Props) {
       return;
     }
     const qty = Number(editQty);
-    const price = Number(editPrice);
+    const price = parseRupiah(editPrice);
     if (!Number.isFinite(qty) || qty <= 0) { toast(S.boqToastQty, "info"); return; }
     if (!Number.isFinite(price) || price <= 0) { toast(S.boqToastPrice, "info"); return; }
     try {
@@ -481,7 +481,7 @@ export default function BoQSection({ projectId }: Props) {
             </select></Field>
           </FormGrid>
           <FormGrid>
-            <Field label={S.colUnitPrice}><NumInput className="input" value={form.unitPrice} onChange={(e) => setForm({ ...form, unitPrice: e.target.value })} /></Field>
+            <Field label={S.colUnitPrice}><MoneyInput className="input" value={form.unitPrice} onChange={(v) => setForm({ ...form, unitPrice: v })} /></Field>
             <Field label={S.boqCategory}><select className="input" value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })}>
               {CATEGORIES.map((c) => <option key={c}>{c}</option>)}
             </select></Field>
@@ -509,7 +509,7 @@ export default function BoQSection({ projectId }: Props) {
         footer={<><button className="btn-secondary" onClick={() => setRevisiFor(null)}>{S.cancelBtn}</button><AsyncButton className="btn-primary" onAction={saveRevisi}>{S.boqSaveRev}</AsyncButton></>}>
         <div className="space-y-3">
           <p className="text-xs text-steel-500">{S.boqRevInfo.replace("{a}", revisiFor ? fmtRupiah(revisiFor.unitPrice) : "").replace("{b}", revisiFor ? fmtRupiah(revisiFor.totalPrice) : "").replace("{c}", String(revisiFor?.quantity ?? "")).replace("{d}", String((revisiFor?.priceHistory ?? []).length))}</p>
-          <Field label={S.boqNewPrice}><NumInput min={0} className="input" value={revisiPrice} onChange={(e) => setRevisiPrice(e.target.value)} placeholder={S.boqNewPricePh} /></Field>
+          <Field label={S.boqNewPrice}><MoneyInput className="input" value={revisiPrice} onChange={(v) => setRevisiPrice(v)} placeholder={S.boqNewPricePh} /></Field>
           <Field label={S.boqRevReason} hint={S.boqRevHint}><textarea className="input" rows={3} value={revisiReason} onChange={(e) => setRevisiReason(e.target.value)} placeholder={S.boqRevPh} /></Field>
         </div>
       </Modal>
@@ -550,7 +550,7 @@ export default function BoQSection({ projectId }: Props) {
         <div className="space-y-3">
           <FormGrid>
             <Field label={S.colQty}><NumInput min={0} className="input" value={editQty} onChange={(e) => setEditQty(e.target.value)} /></Field>
-            <Field label={S.colUnitPrice}><NumInput min={0} className="input" value={editPrice} onChange={(e) => setEditPrice(e.target.value)} /></Field>
+            <Field label={S.colUnitPrice}><MoneyInput className="input" value={editPrice} onChange={(v) => setEditPrice(v)} /></Field>
           </FormGrid>
           <p className="text-xs text-steel-500">
             {locale === "en" ? "New total" : "Total baru"}: {Number(editQty) > 0 && Number(editPrice) > 0 ? fmtRupiah(Number(editQty) * Number(editPrice)) : "-"}
