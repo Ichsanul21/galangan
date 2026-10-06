@@ -18,7 +18,8 @@
     "probe:time": "vite build --ssr scripts/time-probe.ts --outDir node_modules/.cache/time-probe --emptyOutDir --logLevel error && node node_modules/.cache/time-probe/time-probe.js",
     "probe:employee": "vite build --ssr scripts/employee-probe.ts --outDir node_modules/.cache/employee-probe --emptyOutDir --logLevel error && node node_modules/.cache/employee-probe/employee-probe.js",
     "probe:risk": "vite build --ssr scripts/risk-auto-probe.ts --outDir node_modules/.cache/risk-auto-probe --emptyOutDir --logLevel error && node node_modules/.cache/risk-auto-probe/risk-auto-probe.js",
-    "check": "tsc --noEmit && tsc -p tsconfig.scripts.json --noEmit && npm run probe:render && npm run probe:price && npm run probe:foundation && npm run probe:alert && npm run probe:wo && npm run probe:table && npm run probe:facility && npm run probe:push && npm run probe:time && npm run probe:employee && npm run probe:risk"
+    "probe:p8": "vite build --ssr scripts/p8-probe.ts --outDir node_modules/.cache/p8-probe --emptyOutDir --logLevel error && node node_modules/.cache/p8-probe/p8-probe.js",
+    "check": "tsc --noEmit && tsc -p tsconfig.scripts.json --noEmit && npm run probe:render && npm run probe:price && npm run probe:foundation && npm run probe:alert && npm run probe:wo && npm run probe:table && npm run probe:facility && npm run probe:push && npm run probe:time && npm run probe:employee && npm run probe:risk && npm run probe:p8"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4.3.3",

@@ -31,3 +31,51 @@ export function delayDaysOf(end: unknown, today: string, isLate: boolean): numbe
   if (d === null) return null;
   return Math.max(0, -d);
 }
+
+/* Override status "Terlambat" (P8).
+ *
+ * Sebelumnya status "Terlambat" ditulis otomatis oleh dua useEffect
+ * (ProjectDetail dan Projects) tanpa jalan keluar: user yang mengubah status
+ * ke sesuatu yang lain akan melihatnya ditulis balik ke "Terlambat" oleh
+ * efek berikutnya. Client meminta status ini bisa di-override manual.
+ *
+ * Solusi: field `statusOverride` di project record. Kalau ada override dan
+ * override-nya bukan "Terlambat", auto-logic tidak menulis status.
+ * Override otomatis di-clear kalau proyek sudah tidak lagi overdue.
+ */
+
+interface StatusOverrideLike {
+  status?: string;
+  reason?: string;
+  at?: string;
+  by?: string;
+}
+
+/** Apakah auto-logic harus menulis status "Terlambat" ke proyek ini? */
+export function shouldAutoSetLate(
+  project: Record<string, unknown>,
+  today: string,
+  isOverdueFn: (p: Record<string, unknown>, today: string) => boolean,
+): boolean {
+  const status = String(project.status ?? "");
+  if (status !== "Dalam Proses" && status !== "Sedang Berjalan" && status !== "Tertunda") return false;
+  const override = project.statusOverride as StatusOverrideLike | undefined;
+  if (override && String(override.status ?? "") !== "Terlambat") return false;
+  return isOverdueFn(project, today);
+}
+
+/**
+ * Apakah `statusOverride` harus di-clear?
+ *
+ * True kalau override ada tapi proyek sudah tidak lagi overdue (mis. end
+ * diperbaiki atau progress mencapai 100%) — auto-logic tidak akan menulis
+ * "Terlambat" lagi, jadi override sudah tidak berguna.
+ */
+export function shouldClearOverride(
+  project: Record<string, unknown>,
+  today: string,
+  isOverdueFn: (p: Record<string, unknown>, today: string) => boolean,
+): boolean {
+  if (!project.statusOverride) return false;
+  return !isOverdueFn(project, today);
+}

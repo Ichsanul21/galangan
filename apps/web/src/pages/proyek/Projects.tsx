@@ -29,6 +29,7 @@ import { n_prj } from "../../i18n/n_prj";
 import { fmtMiliar, sparkProjects, activeProjectTrend, contractValueTrend, avgProgressTrend } from "../../data";
 import { todayISO, fmtTanggal } from "../../utils/format";
 import { getSetting } from "../../utils/settings";
+import { shouldAutoSetLate, shouldClearOverride } from "../../utils/projectDelay";
 import { generateRisksFromWbs, generateRisksFromWo } from "../../utils/riskAuto";
 import { createdAtOf, lastTouchedAt } from "../../utils/timestamps";
 import { canonPrioritas } from "../../utils/scope";
@@ -135,19 +136,16 @@ export default function Projects() {
   }, []);
   // Edit tahap HANYA via detail (stepper + modal alasan di ProjectDetail).
 
-  // Terlambat otomatis dari due (menggantikan flag manual): proyek berjalan yang
-  // lewat tanggal selesai & progres < 100% otomatis berstatus Terlambat.
+  // Terlambat otomatis dari due (P8: bisa di-override manual).
   useEffect(() => {
     const today = todayISO();
     for (const p of projects) {
-      if (
-        (p.status === "Dalam Proses" || p.status === "Sedang Berjalan" || p.status === "Tertunda") &&
-        isOverdue(p, today)
-      ) {
-        /* .catch(() => {}) menelan kegagalan: proyek tetap tampil Running
-           padahal sudah lewat tanggal, dan tidak ada yang tahu kenapa -
-           terutama saat backend menolak (403) atau sedang offline.
-           Sekarang kegagalannya dicatat di jejak aktivitas. */
+      // Override sudah tidak relevan → clear.
+      if (shouldClearOverride(p as Record<string, unknown>, today, isOverdue as (r: Record<string, unknown>, t: string) => boolean)) {
+        void update("projects", p.id, { statusOverride: null }).catch(() => {});
+      }
+      // Auto-logic hanya menulis "Terlambat" kalau tidak ada override aktif.
+      if (shouldAutoSetLate(p as Record<string, unknown>, today, isOverdue as (r: Record<string, unknown>, t: string) => boolean)) {
         void update("projects", p.id, { status: "Terlambat" }).catch((err) => {
           log(
             "gagal menandai proyek terlambat",

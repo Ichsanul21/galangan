@@ -47,7 +47,7 @@ import { usePdfDoc } from "../../components/usePdfDoc";
 import { canonPrioritas, scopeList } from "../../utils/scope";
 import { equipmentCostSummary } from "../../utils/projectCost";
 import { employeeOptions } from "../../utils/employeeOptions";
-import { delayDaysOf } from "../../utils/projectDelay";
+import { delayDaysOf, shouldAutoSetLate, shouldClearOverride } from "../../utils/projectDelay";
 import { generateRisksFromWbs, generateRisksFromWo } from "../../utils/riskAuto";
 import { EntityPicker, SearchBox, rowMatches } from "../../components/ui";
 import { PRIORITAS } from "./Projects";
@@ -193,11 +193,12 @@ export default function ProjectDetail() {
   const [tahapMove, setTahapMove] = useState<null | { dir: 1 | -1 }>(null);
   const [tahapReason, setTahapReason] = useState("");
 
-  /* Ganti status kaku: konfirmasi + alasan wajib (NCR gate tetap untuk Selesai). */
+  /* Ganti status kaku: konfirmasi + alasan wajib (NCR gate tetap untuk Selesai).
+     P8: "Terlambat" kini bisa di-override manual. User mengubah status dari
+     "Terlambat" ke sesuatu yang lain (atau ke "Terlambat" secara sadar) →
+     tulis statusOverride supaya auto-logic tidak menulis balik. */
   const askStatus = (next: string) => {
     if (next === project.status) return;
-    // Terlambat hanya via keterlambatan nyata (otomatis dari due) - bukan flag manual.
-    if (next === "Terlambat") { toast("Status Terlambat otomatis dari jatuh tempo - tidak bisa diisi manual", "info"); return; }
     if (next === "Selesai" && project.status !== "Selesai") {
       // Aturan silang tahap×status: Selesai wajib tahap Handover.
       if (tahapOf(project) !== "Handover") { toast("Proyek hanya bisa Selesai pada tahap Handover", "info"); return; }
@@ -224,29 +225,41 @@ export default function ProjectDetail() {
     } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); }
   };
 
-  const confirmStatus = async () => {
-    if (!statusPending) return;
-    if (!statusReason.trim()) { toast(S.detToastReasonReq, "info"); return; }
-    const next = statusPending;
-    try {
-      if (next === "Selesai" && project.status !== "Selesai") {
-        const vsl = data.vessels.find((x) => x.name === project.vessel);
-        if (vsl) {
-          await update("vessels", vsl.id, {
-            history: [...(vsl.history ?? []), { date: todayISO(), event: `Proyek ${pid} selesai - serah terima`, type: "Delivery" }],
-            dockHistory: [...(vsl.dockHistory ?? []), { date: todayISO(), dock: "Galangan", scope: `Penyelesaian proyek ${pid}`, result: "Selesai", nextDue: todayISO() }],
-          });
+const confirmStatus = async () => {
+      if (!statusPending) return;
+      if (!statusReason.trim()) { toast(S.detToastReasonReq, "info"); return; }
+      const next = statusPending;
+      try {
+        if (next === "Selesai" && project.status !== "Selesai") {
+          const vsl = data.vessels.find((x) => x.name === project.vessel);
+          if (vsl) {
+            await update("vessels", vsl.id, {
+              history: [...(vsl.history ?? []), { date: todayISO(), event: `Proyek ${pid} selesai - serah terima`, type: "Delivery" }],
+              dockHistory: [...(vsl.dockHistory ?? []), { date: todayISO(), dock: "Galangan", scope: `Penyelesaian proyek ${pid}`, result: "Selesai", nextDue: todayISO() }],
+            });
+          }
+          log("menyelesaikan proyek + history kapal", `${pid} · ${project.vessel} (alasan: ${statusReason.trim()})`, "Proyek");
+        } else {
+          log("mengubah status", `${pid} → ${next} (alasan: ${statusReason.trim()})`, "Proyek");
         }
-        log("menyelesaikan proyek + history kapal", `${pid} · ${project.vessel} (alasan: ${statusReason.trim()})`, "Proyek");
-      } else {
-        log("mengubah status", `${pid} → ${next} (alasan: ${statusReason.trim()})`, "Proyek");
-      }
-      await update("projects", pid, { status: next });
-      toast(S.detToastStatus.replace("{a}", next));
-      setStatusPending(null);
-      setStatusReason("");
-    } catch (e) {
-      toast(e instanceof Error ? e.message : S.saveFail, "info");
+        /* P8: override status. Kalau user memilih status berbeda dari yang
+           ditulis auto-logic (khususnya keluar dari "Terlambat"), tulis
+           statusOverride supaya useEffect tidak menulis balik. Override juga
+           ditulis saat user sadar memilih "Terlambat" secara manual. */
+        const wasLate = project.status === "Terlambat";
+        const willBeLate = next === "Terlambat";
+        const overridePatch: Record<string, unknown> = {};
+        if (wasLate !== willBeLate) {
+          overridePatch.statusOverride = { status: next, reason: statusReason.trim(), at: todayISO(), by: "Anda" };
+        } else if (willBeLate && !wasLate) {
+          overridePatch.statusOverride = { status: "Terlambat", reason: statusReason.trim(), at: todayISO(), by: "Anda" };
+        }
+        await update("projects", pid, { status: next, ...overridePatch });
+        toast(S.detToastStatus.replace("{a}", next));
+        setStatusPending(null);
+        setStatusReason("");
+      } catch (e) {
+        toast(e instanceof Error ? e.message : S.saveFail, "info");
     }
   };
 
@@ -371,25 +384,28 @@ export default function ProjectDetail() {
     }
   }, [data.projects]);
 
-  // Terlambat otomatis dari due (menggantikan flag manual).
-  useEffect(() => {
-    if (!project) return;
-    if (
-      (project.status === "Dalam Proses" || project.status === "Sedang Berjalan" || project.status === "Tertunda") &&
-      isOverdue(project, todayISO())
-    ) {
-      /* .catch(() => {}) yang dulu dipakai di sini menelan kegagalan tanpa
-         umpan balik: kalau backend menolak (403/422) atau offline, proyek
-         tetap tampil Running padahal sebenarnya sudah lewat tanggal, dan
-         tidak ada yang tahu kenapa. Sekarang error dikembalikan ke
-         pendingSync - Monitoring sudah menampilkannya sebagai banner
-         "Data belum tersinkron", jadi user tetap diberi tahu. */
-      void update("projects", project.id, { status: "Terlambat" }).catch((err) => {
-        log("gagal menandai proyek terlambat", `${project.id} · ${err instanceof Error ? err.message : String(err)}`, "Proyek");
-      });
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [project?.status, project?.end, project?.progress]);
+// Terlambat otomatis dari due (P8: bisa di-override manual).
+    useEffect(() => {
+      if (!project) return;
+      const today = todayISO();
+      // Override sudah tidak relevan (mis. end diperbaiki) → clear.
+      if (shouldClearOverride(project as Record<string, unknown>, today, isOverdue as (p: Record<string, unknown>, t: string) => boolean)) {
+        void update("projects", project.id, { statusOverride: null }).catch(() => {});
+      }
+      // Auto-logic hanya menulis "Terlambat" kalau tidak ada override aktif.
+      if (shouldAutoSetLate(project as Record<string, unknown>, today, isOverdue as (p: Record<string, unknown>, t: string) => boolean)) {
+        /* .catch(() => {}) yang dulu dipakai di sini menelan kegagalan tanpa
+           umpan balik: kalau backend menolak (403/422) atau offline, proyek
+           tetap tampil Running padahal sebenarnya sudah lewat tanggal, dan
+           tidak ada yang tahu kenapa. Sekarang error dikembalikan ke
+           pendingSync - Monitoring sudah menampilkannya sebagai banner
+           "Data belum tersinkron", jadi user tetap diberi tahu. */
+        void update("projects", project.id, { status: "Terlambat" }).catch((err) => {
+          log("gagal menandai proyek terlambat", `${project.id} · ${err instanceof Error ? err.message : String(err)}`, "Proyek");
+        });
+      }
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [project?.status, project?.end, project?.progress, project?.statusOverride]);
 
   if (!project) return <p className="text-sm text-steel-500">{S.detNotFound}</p>;
   const pid = project.id;
@@ -931,9 +947,15 @@ const docOwnerOptions = useMemo(() => employeeOptions(data.employees), [data.emp
               onChange={(e) => askStatus(e.target.value)}
               title="Terlambat terisi otomatis dari jatuh tempo"
             >
-              {STATUS.map((s) => <option key={s} value={s} disabled={s === "Terlambat"}>{s}</option>)}
+              {STATUS.map((s) => <option key={s} value={s}>{s}</option>)}
             </select>
             <StatusBadge status={project.status} />
+            {project.statusOverride && (
+              <span className="rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-medium text-amber-700"
+                title={`${locale === "en" ? "Manual override" : "Override manual"}: ${String(project.statusOverride.reason ?? "")} (${String(project.statusOverride.at ?? "")})`}>
+                {locale === "en" ? "Override" : "Override"}
+              </span>
+            )}
           </div>
         }
       />
