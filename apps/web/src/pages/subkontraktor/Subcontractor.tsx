@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Plus, HardHat, FileSignature, Star, Receipt, Pencil, Trash2 } from "lucide-react";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, ReferenceLine } from "recharts";
 import { Card, CardHeader, PageHeader, Badge, KpiCard, Tabs, ProgressBar, Modal, Field, FormGrid, ConfirmModal, SortTh, toggleSort, sortRows, usePager, toast, SearchBox, rowMatches,
-  NumInput, FlowStrip,
+  NumInput, MoneyInput, FlowStrip,
   AsyncButton,
   FileUploadButton,
   RowAction,
@@ -13,7 +13,7 @@ import { useStore, type StoreItem, type CollectionKey } from "../../data/store";
 import { useModuleSync } from "../../data/useModuleSync";
 import { remoteRepository } from "../../services/repositories";
 import { getJwt, isBackendConfigured } from "../../services/http";
-import { fmtRupiah, fmtMiliar, fmtTanggal, todayISO } from "../../utils/format";
+import { fmtRupiah, fmtMiliar, fmtTanggal, parseRupiah, todayISO } from "../../utils/format";
 import { createdAtOf, lastTouchedAt } from "../../utils/timestamps";
 import { sameName } from "../../utils/names";
 import { woMilestonesOf, woProgressOf, terminMilestoneOptions } from "../../utils/woMilestones";
@@ -329,11 +329,11 @@ export default function Subcontractor() {
   const saveSub = async () => {
     try {
     if (!subForm.name.trim()) { toast(S.tSubNameRequired, "info"); return; }
-    const bgValue = Number(subForm.bgValue || 0);
+    const bgValue = parseRupiah(subForm.bgValue || "0");
     if (subForm.bgValue && (!Number.isFinite(bgValue) || bgValue < 0)) { toast(S.tBgInvalid, "info"); return; }
     const created = await add("subcontractors", {
       name: subForm.name.trim(), services: subForm.services.trim() || "Umum",
-      rating: 80, active: 0, contract: Number(subForm.contract) || 0, status: "Kualifikasi", k3: subForm.k3,
+      rating: 80, active: 0, contract: parseRupiah(subForm.contract) || 0, status: "Kualifikasi", k3: subForm.k3,
       contractType: subForm.contractType, payScheme: subForm.payScheme,
       noBG: subForm.noBG.trim(), bgExpiry: subForm.bgExpiry, bgValue,
       milestones: [],
@@ -427,7 +427,7 @@ export default function Subcontractor() {
   const saveTermEdit = async () => {
     if (!termEdit) return;
     if (normTerm(String(termEdit.status)) !== "Draf") { toast(locale === "en" ? "Only Draft terms can be edited" : "Hanya termin Draf yang bisa diubah", "info"); return; }
-    const amount = Number(termEditForm.amount);
+    const amount = parseRupiah(termEditForm.amount);
     if (!termEditForm.milestone.trim()) { toast(S.tMsTitleRequired, "info"); return; }
     if (!Number.isFinite(amount) || amount <= 0) { toast(S.tQuoteValuePositive ?? "Nominal harus > 0", "info"); return; }
     try {
@@ -544,7 +544,7 @@ const known = ms.map((m) => m.title);
     if (!termForm.sub) { toast(S.tSubRequired, "info"); return; }
     const wo = workOrders.find((w) => w.id === termForm.wo && sameName(w.sub, termForm.sub));
     if (!wo) { toast(S.tWoBelongsSub, "info"); return; }
-    const amount = Number(termForm.amount);
+    const amount = parseRupiah(termForm.amount);
     if (!amount || amount <= 0) { toast(S.tTermPositive, "info"); return; }
     const pphPct = Number(termForm.pphPct);
     const retPct = Number(termForm.retPct);
@@ -965,7 +965,7 @@ const printSpk = async (w: StoreItem): Promise<void> => {
   const saveRate = async () => {
     try {
     if (!rateForm.wo) { toast(S.tPickWoFirst, "info"); return; }
-    const rate = Number(rateForm.rate);
+    const rate = parseRupiah(rateForm.rate);
     if (!Number.isFinite(rate) || rate < 0) { toast(S.tRateInvalid, "info"); return; }
     await update("workOrders", rateForm.wo, { rate });
     log("menetapkan rate WO", `${rateForm.wo} · ${fmtRupiah(rate)}/jam`, "Subkontraktor");
@@ -1367,7 +1367,7 @@ const printSpk = async (w: StoreItem): Promise<void> => {
                     </select>
                   </Field>
                   <Field label={S.rateLabel}>
-                    <NumInput min={0} className="input" value={rateForm.rate} onChange={(e) => setRateForm({ ...rateForm, rate: e.target.value })} placeholder={S.ratePh} />
+                    <MoneyInput className="input" value={rateForm.rate} onChange={(v) => setRateForm({ ...rateForm, rate: v })} placeholder={S.ratePh} />
                   </Field>
                   <button className="btn-secondary text-xs" onClick={saveRate}>{S.saveRateBtn}</button>
                 </div>
@@ -1473,7 +1473,7 @@ const printSpk = async (w: StoreItem): Promise<void> => {
           <Field label={S.companyNameLabel}><input className="input" value={subForm.name} onChange={(e) => setSubForm({ ...subForm, name: e.target.value })} placeholder={S.companyNamePh} /></Field>
           <Field label={S.servicesLabel}><input className="input" value={subForm.services} onChange={(e) => setSubForm({ ...subForm, services: e.target.value })} placeholder={S.servicesPh} /></Field>
           <FormGrid>
-            <Field label={S.contractAmountLabel}><NumInput min={0} className="input" value={subForm.contract} onChange={(e) => setSubForm({ ...subForm, contract: e.target.value })} /></Field>
+            <Field label={S.contractAmountLabel}><MoneyInput className="input" value={subForm.contract} onChange={(v) => setSubForm({ ...subForm, contract: v })} /></Field>
             <Field label={S.k3RatingLabel}>
               <select className="input" value={subForm.k3} onChange={(e) => setSubForm({ ...subForm, k3: e.target.value })}>
                 {["A+", "A", "B+", "B", "C"].map((k) => <option key={k}>{k}</option>)}
@@ -1491,7 +1491,7 @@ const printSpk = async (w: StoreItem): Promise<void> => {
             </Field>
             <Field label={S.bgNoLabel}><input className="input font-mono" value={subForm.noBG} onChange={(e) => setSubForm({ ...subForm, noBG: e.target.value })} placeholder={S.bgNoPh} /></Field>
             <Field label={S.bgExpiryLabel}><input type="date" className="input" value={subForm.bgExpiry} onChange={(e) => setSubForm({ ...subForm, bgExpiry: e.target.value })} /></Field>
-            <Field label={S.bgValueLabel}><NumInput min={0} className="input" value={subForm.bgValue} onChange={(e) => setSubForm({ ...subForm, bgValue: e.target.value })} placeholder={S.bgValuePh} /></Field>
+            <Field label={S.bgValueLabel}><MoneyInput className="input" value={subForm.bgValue} onChange={(v) => setSubForm({ ...subForm, bgValue: v })} placeholder={S.bgValuePh} /></Field>
           </FormGrid>
         </div>
       </Modal>
@@ -1571,7 +1571,7 @@ const printSpk = async (w: StoreItem): Promise<void> => {
         footer={<><button className="btn-secondary" onClick={() => setTermEdit(null)}>{S.cancelBtn}</button><button className="btn-primary" onClick={saveTermEdit}>{S.saveBtn}</button></>}>
         <div className="space-y-3">
           <Field label={S.msNameLabel}><input className="input" value={termEditForm.milestone} onChange={(e) => setTermEditForm({ ...termEditForm, milestone: e.target.value })} placeholder={S.pickMsOpt} /></Field>
-          <Field label={S.amountLabel}><NumInput min={0} className="input" value={termEditForm.amount} onChange={(e) => setTermEditForm({ ...termEditForm, amount: e.target.value })} /></Field>
+          <Field label={S.amountLabel}><MoneyInput className="input" value={termEditForm.amount} onChange={(v) => setTermEditForm({ ...termEditForm, amount: v })} /></Field>
         </div>
       </Modal>
 
@@ -1683,7 +1683,7 @@ const printSpk = async (w: StoreItem): Promise<void> => {
               {termTsRef > 0 ? S.tsRefInfo.replace("{a}", String(termTsHours)).replace("{b}", fmtRupiah(Number(termWo.rate))).replace("{c}", fmtRupiah(termTsRef)) : ""}
             </p>
           )}
-          <Field label={S.termAmountLabel}><NumInput min={0} className="input" value={termForm.amount} onChange={(e) => setTermForm({ ...termForm, amount: e.target.value })} /></Field>
+          <Field label={S.termAmountLabel}><MoneyInput className="input" value={termForm.amount} onChange={(v) => setTermForm({ ...termForm, amount: v })} /></Field>
           <FormGrid>
             <Field label={S.pphLabel}>
               <select className="input" value={termForm.pphPct} onChange={(e) => setTermForm({ ...termForm, pphPct: e.target.value })}>
