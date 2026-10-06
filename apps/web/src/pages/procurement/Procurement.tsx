@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Plus, Factory, ShoppingCart, ClipboardList, Check, X, Printer, Send, Star, Wallet, Umbrella, Pencil, Trash2, FileText } from "lucide-react";
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 import { Card, CardHeader, PageHeader, Badge, KpiCard, Tabs, StatusBadge, Donut, ChartTooltip, Modal, Field, FormGrid, ConfirmModal, toast, EmptyState, SortTh, toggleSort, sortRows, usePager,
-  NumInput, AsyncButton, RowAction,
+  NumInput, MoneyInput, AsyncButton, RowAction,
 } from "../../components/ui";
 import type { SortState } from "../../components/ui";
 import { useBusy, SearchBox, rowMatches } from "../../components/ui";
@@ -11,7 +11,7 @@ import { useModuleSync } from "../../data/useModuleSync";
 import { findUsages } from "../../utils/usages";
 import { remoteRepository } from "../../services/repositories";
 import { getJwt, isBackendConfigured } from "../../services/http";
-import { fmtRupiah, fmtJumlah, fmtTanggal, todayISO } from "../../utils/format";
+import { fmtRupiah, fmtJumlah, fmtTanggal, parseRupiah, todayISO } from "../../utils/format";
 import { createdAtOf, lastTouchedAt } from "../../utils/timestamps";
 import { sameName } from "../../utils/names";
 import { AlertBannerView, flashPick, notifRowId, useModuleAlert, useNotifFlash } from "../../components/AlertBanner";
@@ -547,7 +547,7 @@ export default function Procurement() {
   const bigTotal = lineTotal(bigLines);
   const bigBudget = budgetInfo(bigForm.project, bigTotal);
   const bigOver = bigBudget !== null && bigBudget.aktif + bigTotal > bigBudget.sisa;
-  const smallAmount = Number(smallForm.qty || 0) * Number(smallForm.price || 0);
+  const smallAmount = Number(smallForm.qty || 0) * parseRupiah(smallForm.price || "0");
   const smallBudget = budgetInfo(smallForm.project, smallAmount);
   const smallOver = smallBudget !== null && smallBudget.aktif + smallAmount > smallBudget.sisa;
 
@@ -624,7 +624,7 @@ export default function Procurement() {
     if (!smallForm.requester.trim()) { toast(S.tPeminta, "info"); return; }
     if (!smallForm.item.trim()) { toast(S.tItemButuh2, "info"); return; }
     const qty = Number(smallForm.qty);
-    const price = Number(smallForm.price);
+    const price = parseRupiah(smallForm.price);
     if (!qty || qty <= 0) { toast(S.tQtyPos, "info"); return; }
     if (!price || price <= 0) { toast(S.tEstHarga, "info"); return; }
     if (!smallForm.unit.trim()) { toast(S.tSatuan, "info"); return; }
@@ -701,7 +701,7 @@ export default function Procurement() {
     try {
     if (!quoteRfq) return;
     if (!quoteForm.vendor) { toast(S.tPilihVendor, "info"); return; }
-    const price = Number(quoteForm.price);
+    const price = parseRupiah(quoteForm.price);
     if (!price || price <= 0) { toast(S.tHargaQuote, "info"); return; }
     if (!quoteForm.eta) { toast(S.tEtaWajib, "info"); return; }
     const prPagu = requisitions.find((r) => r.id === quoteRfq.prId);
@@ -847,7 +847,7 @@ export default function Procurement() {
   const savePayung = async () => {
     try {
     if (!payungVendor) return;
-    const plafon = Number(payungPlafon);
+    const plafon = parseRupiah(payungPlafon);
     if (payungPlafon.trim() !== "" && (!plafon || plafon <= 0)) { toast(S.tPlafonPos, "info"); return; }
     if (payungPlafon.trim() === "") {
       await update("vendors", payungVendor.id, { payung: null });
@@ -872,7 +872,7 @@ export default function Procurement() {
     if (st !== "Disetujui" && st !== "Dikirim") { toast(S.tAmdOnly, "info"); return; }
     if (!amendForm.name.trim()) { toast(S.tAmdName, "info"); return; }
     const qty = Number(amendForm.qty);
-    const price = Number(amendForm.price);
+    const price = parseRupiah(amendForm.price);
     if (!qty || qty <= 0 || !price || price <= 0) { toast(S.tAmdQtyPrice, "info"); return; }
     if (!amendForm.note.trim()) { toast(S.tAmdNote, "info"); return; }
     const cur = (amendPo.revisi as string) || "";
@@ -1163,7 +1163,7 @@ export default function Procurement() {
       toast(locale === "en" ? "Item is required" : "Nama barang wajib diisi", "info");
       return;
     }
-    const amount = Number(prEditForm.amount);
+    const amount = parseRupiah(prEditForm.amount);
     if (!Number.isFinite(amount) || amount < 0) {
       toast(locale === "en" ? "Amount must be a valid number" : "Nilai harus angka valid", "info");
       return;
@@ -1908,7 +1908,7 @@ const sparkVendors = useMemo(() => {
               <input className="input" value={prEditForm.by} onChange={(e) => setPrEditForm({ ...prEditForm, by: e.target.value })} />
             </Field>
             <Field label={`${S.nilai} ${locale === "en" ? "(estimated)" : "(estimasi)"}`}>
-              <NumInput min={0} className="input" value={prEditForm.amount} onChange={(e) => setPrEditForm({ ...prEditForm, amount: e.target.value })} />
+              <MoneyInput className="input" value={prEditForm.amount} onChange={(v) => setPrEditForm({ ...prEditForm, amount: v })} />
             </Field>
             <Field label={locale === "en" ? "Needed by" : "Dibutuhkan pada"}>
               <input type="date" className="input" value={prEditForm.need} onChange={(e) => setPrEditForm({ ...prEditForm, need: e.target.value })} />
@@ -2080,7 +2080,7 @@ const sparkVendors = useMemo(() => {
             </Field>
           </FormGrid>
           <FormGrid>
-            <Field label={S.estHarga}><NumInput min={0} className="input" value={smallForm.price} onChange={(e) => setSmallForm({ ...smallForm, price: e.target.value })} /></Field>
+            <Field label={S.estHarga}><MoneyInput className="input" value={smallForm.price} onChange={(v) => setSmallForm({ ...smallForm, price: v })} /></Field>
             <Field label={S.nota}><input className="input" value={smallForm.nota} onChange={(e) => setSmallForm({ ...smallForm, nota: e.target.value })} placeholder={S.phNota} /></Field>
           </FormGrid>
           <FormGrid>
@@ -2132,7 +2132,7 @@ const sparkVendors = useMemo(() => {
             </select>
           </Field>
           <FormGrid>
-            <Field label={S.hargaRp}><NumInput min={0} className="input" value={quoteForm.price} onChange={(e) => setQuoteForm({ ...quoteForm, price: e.target.value })} /></Field>
+            <Field label={S.hargaRp}><MoneyInput className="input" value={quoteForm.price} onChange={(v) => setQuoteForm({ ...quoteForm, price: v })} /></Field>
             <Field label={S.eta}><input type="date" className="input" value={quoteForm.eta} onChange={(e) => setQuoteForm({ ...quoteForm, eta: e.target.value })} /></Field>
           </FormGrid>
         </div>
@@ -2231,7 +2231,7 @@ const sparkVendors = useMemo(() => {
           </FormGrid>
           <FormGrid>
             <Field label={S.qty}><NumInput min={1} className="input" value={amendForm.qty} onChange={(e) => setAmendForm({ ...amendForm, qty: e.target.value })} /></Field>
-            <Field label={S.hargaSatuan}><NumInput min={0} className="input" value={amendForm.price} onChange={(e) => setAmendForm({ ...amendForm, price: e.target.value })} /></Field>
+            <Field label={S.hargaSatuan}><MoneyInput className="input" value={amendForm.price} onChange={(v) => setAmendForm({ ...amendForm, price: v })} /></Field>
           </FormGrid>
           <Field label={S.catatanAmd}><input className="input" value={amendForm.note} onChange={(e) => setAmendForm({ ...amendForm, note: e.target.value })} placeholder={S.phCatatanAmd} /></Field>
         </div>
@@ -2372,7 +2372,7 @@ const sparkVendors = useMemo(() => {
             <input className="input" value={payungPeriode} onChange={(e) => setPayungPeriode(e.target.value)} placeholder={S.phPeriode} />
           </Field>
           <Field label={S.plafon} hint={S.hintPlafonKosong}>
-            <NumInput min={0} className="input" value={payungPlafon} onChange={(e) => setPayungPlafon(e.target.value)} placeholder={S.phPlafon} />
+            <MoneyInput className="input" value={payungPlafon} onChange={(v) => setPayungPlafon(v)} placeholder={S.phPlafon} />
           </Field>
           {payungVendor && (
             <p className="rounded-lg bg-steel-50 px-3 py-2 text-xs text-steel-600">
@@ -2387,11 +2387,11 @@ const sparkVendors = useMemo(() => {
         footer={<><button className="btn-secondary" onClick={() => setShowPr(false)}>{S.btnBatal}</button><button className="btn-primary" onClick={async () => {
           try {
           if (!prForm.item.trim()) { toast(S.tItemWajib, "info"); return; }
-          if (!Number(prForm.amount) || Number(prForm.amount) <= 0) { toast(S.tEstPos, "info"); return; }
+          if (!parseRupiah(prForm.amount) || parseRupiah(prForm.amount) <= 0) { toast(S.tEstPos, "info"); return; }
           const prQty = Number(prForm.qty || 0);
           if (!prQty || prQty <= 0) { toast(S.tQtyPos, "info"); return; }
           if (!prForm.unit.trim()) { toast(S.tSatuan, "info"); return; }
-          const created = await add("requisitions", { item: prForm.item.trim(), by: prForm.by.trim() || "Anda", amount: Number(prForm.amount), qty: prQty, unit: prForm.unit.trim(), project: prForm.project || "-", vessel: prForm.project ? String(data.projects.find((p) => p.id === prForm.project)?.vessel || "") : "", status: "Menunggu Approval" },
+          const created = await add("requisitions", { item: prForm.item.trim(), by: prForm.by.trim() || "Anda", amount: parseRupiah(prForm.amount), qty: prQty, unit: prForm.unit.trim(), project: prForm.project || "-", vessel: prForm.project ? String(data.projects.find((p) => p.id === prForm.project)?.vessel || "") : "", status: "Menunggu Approval" },
             { action: "mengajukan PR", module: "Procurement" });
           toast(S.tPrDiajukan.replace("{n}", created.id)); setShowPr(false); setPrForm({ item: "", by: "", amount: "", qty: "1", unit: "pcs", project: "" });
           } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); }
@@ -2400,7 +2400,7 @@ const sparkVendors = useMemo(() => {
           <Field label={S.itemButuh}><input className="input" value={prForm.item} onChange={(e) => setPrForm({ ...prForm, item: e.target.value })} /></Field>
           <FormGrid>
             <Field label={S.pemohon}><input className="input" value={prForm.by} onChange={(e) => setPrForm({ ...prForm, by: e.target.value })} placeholder={S.phPeminta} /></Field>
-            <Field label={S.estNilai}><NumInput min={0} className="input" value={prForm.amount} onChange={(e) => setPrForm({ ...prForm, amount: e.target.value })} /></Field>
+            <Field label={S.estNilai}><MoneyInput className="input" value={prForm.amount} onChange={(v) => setPrForm({ ...prForm, amount: v })} /></Field>
           </FormGrid>
           <FormGrid>
             <Field label={S.qty}><NumInput min={1} className="input" value={prForm.qty} onChange={(e) => setPrForm({ ...prForm, qty: e.target.value })} /></Field>
