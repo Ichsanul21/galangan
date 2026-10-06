@@ -319,7 +319,7 @@ if (from === "Desain" && to === "Produksi") {
   const [showBast, setShowBast] = useState(false);
   const [bastForm, setBastForm] = useState({ milestone: "", tanggal: todayISO(), signer: "", lampiran: "", amount: "" });
   const [showTrial, setShowTrial] = useState(false);
-  const [trialForm, setTrialForm] = useState({ tanggal: todayISO(), parameter: "", punchList: "", hasil: "Lolos", baRef: "" });
+  const [trialForm, setTrialForm] = useState({ tanggal: todayISO(), parameter: "", punchList: "", hasil: "Lolos", baRef: "", kondisi: "Baik" as "Baik" | "Perlu Perbaiki" | "Rusak", checklist: [] as { wbsTask: string; done: boolean; note: string }[] });
   const [sort, setSort] = useState<SortState>({ key: null, dir: "asc" });
   const [sort2, setSort2] = useState<SortState>({ key: null, dir: "asc" });
   const [wbsQ, setWbsQ] = useState("");
@@ -816,6 +816,17 @@ const createWarranty = async (wbsTask?: string) => {
     return `${prefix}${String(max + 1).padStart(3, "0")}`;
   };
 
+  /* D10: buka form trial dengan checklist otomatis dari WBS task yang
+     progress >= 100. User bisa centang/nota per task. */
+  const openTrialNew = () => {
+    const doneTasks = wbs.filter((w) => Number(w.progress ?? 0) >= 100);
+    setTrialForm({
+      tanggal: todayISO(), parameter: "", punchList: "", hasil: "Lolos", baRef: "", kondisi: "Baik",
+      checklist: doneTasks.map((w) => ({ wbsTask: w.task, done: false, note: "" })),
+    });
+    setShowTrial(true);
+  };
+
   const saveTrial = async () => {
     if (!trialForm.tanggal) { toast(S.detToastTrialDate, "info"); return; }
     if (!trialForm.parameter.trim()) { toast(S.detToastTrialParam, "info"); return; }
@@ -824,9 +835,11 @@ const createWarranty = async (wbsTask?: string) => {
       await add("trials", {
         id, projectId: pid, tanggal: trialForm.tanggal, parameter: trialForm.parameter.trim(),
         punchList: trialForm.punchList.trim(), hasil: "Berjalan", baRef: trialForm.baRef.trim(),
+        ...(trialForm.checklist.length > 0 ? { checklist: trialForm.checklist } : {}),
+        ...(trialForm.kondisi !== "Baik" ? { kondisi: trialForm.kondisi } : {}),
       }, { action: "membuat sea trial", target: `${id} · ${pid}`, module: "Proyek" });
       toast(S.detToastTrialMade.replace("{a}", id));
-      setTrialForm({ tanggal: todayISO(), parameter: "", punchList: "", hasil: "Lolos", baRef: "" });
+      setTrialForm({ tanggal: todayISO(), parameter: "", punchList: "", hasil: "Lolos", baRef: "", kondisi: "Baik", checklist: [] });
       setShowTrial(false);
     } catch (e) {
       toast(e instanceof Error ? e.message : S.saveFail, "info");
@@ -1966,7 +1979,7 @@ try {
             <Card className="p-4">
               <div className="mb-2 flex items-center justify-between">
                 <h3 className="text-sm font-semibold text-navy-900">{S.detTrialTitle.replace("{n}", String(trialList.length))}</h3>
-                <button className="btn-secondary text-xs" onClick={() => setShowTrial(true)}><Plus className="h-3.5 w-3.5" /> {S.detCreateTrial}</button>
+                <button className="btn-secondary text-xs" onClick={openTrialNew}><Plus className="h-3.5 w-3.5" /> {S.detCreateTrial}</button>
               </div>
               <p className="mb-2 text-xs text-steel-500">{S.detTrialHint}</p>
               <div className="space-y-2">
@@ -2016,6 +2029,36 @@ try {
           <Field label={S.detParamField}><input className="input" value={trialForm.parameter} onChange={(e) => setTrialForm({ ...trialForm, parameter: e.target.value })} placeholder={S.detParamPh} /></Field>
           <Field label={S.detPunchField}><input className="input" value={trialForm.punchList} onChange={(e) => setTrialForm({ ...trialForm, punchList: e.target.value })} placeholder={S.detPunchPh} /></Field>
           <Field label={S.detBaField}><input className="input" value={trialForm.baRef} onChange={(e) => setTrialForm({ ...trialForm, baRef: e.target.value })} placeholder={S.detBaPh} /></Field>
+          <Field label={S.detTrialKondisi}>
+            <select className="input" value={trialForm.kondisi} onChange={(e) => setTrialForm({ ...trialForm, kondisi: e.target.value as "Baik" | "Perlu Perbaiki" | "Rusak" })}>
+              <option value="Baik">{locale === "en" ? "Good" : "Baik"}</option>
+              <option value="Perlu Perbaiki">{locale === "en" ? "Needs Fixing" : "Perlu Perbaiki"}</option>
+              <option value="Rusak">{locale === "en" ? "Damaged" : "Rusak"}</option>
+            </select>
+          </Field>
+          {/* D10: checklist dari WBS task yang sudah selesai. */}
+          {trialForm.checklist.length > 0 && (
+            <div>
+              <p className="mb-1 text-xs font-medium text-steel-500">{S.detTrialChecklist}</p>
+              <div className="space-y-1.5">
+                {trialForm.checklist.map((item, idx) => (
+                  <div key={item.wbsTask} className="flex items-center gap-2 rounded-lg border border-steel-100 px-2.5 py-1.5">
+                    <input type="checkbox" checked={item.done} onChange={(e) => {
+                      const next = [...trialForm.checklist];
+                      next[idx] = { ...next[idx], done: e.target.checked };
+                      setTrialForm({ ...trialForm, checklist: next });
+                    }} />
+                    <span className="flex-1 text-xs font-medium text-navy-900">{item.wbsTask}</span>
+                    <input className="input max-w-40 !py-0.5 text-xs" value={item.note} placeholder={locale === "en" ? "Note" : "Catatan"} onChange={(e) => {
+                      const next = [...trialForm.checklist];
+                      next[idx] = { ...next[idx], note: e.target.value };
+                      setTrialForm({ ...trialForm, checklist: next });
+                    }} />
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       </Modal>
 
