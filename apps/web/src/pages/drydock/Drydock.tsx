@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
 import { ID_MON as MONTH_ID } from "../../utils/monthAxis";
 import { Plus, Ship, CalendarRange, AlertTriangle, GripVertical, Trash2, Wrench, User, Eye, ArrowLeftRight } from "lucide-react";
-import { Card, CardHeader, PageHeader, Badge, KpiCard, ProgressBar, Modal, Field, FormGrid, ConfirmModal, StatusBadge, toast, SortTh, toggleSort, sortRows, usePager,
+import { Card, CardHeader, PageHeader, SearchBox, Badge, KpiCard, ProgressBar, Modal, Field, FormGrid, ConfirmModal, StatusBadge, toast, SortTh, toggleSort, sortRows, usePager,
   NumInput, FlowStrip,
-  RowAction,
+  RowAction, rowMatches,
 } from "../../components/ui";
 import type { SortState } from "../../components/ui";
 import { AsyncButton } from "../../components/ui";
@@ -124,6 +124,7 @@ export default function Drydock() {
   const [wide, setWide] = useState(false);
   const [statusFilter, setStatusFilter] = useState("Semua");
   const [areaFilter, setAreaFilter] = useState("Semua");
+  const [slotQ, setSlotQ] = useState("");
   const [posFilter, setPosFilter] = useState("Semua");
   const [showActiveOnly, setShowActiveOnly] = useState(false);
   const [sort, setSort] = useState<SortState>({ key: null, dir: "asc" });
@@ -395,6 +396,18 @@ export default function Drydock() {
     if (posFilter === "Berjalan" && slotStatus(s, data.projects) !== "Berjalan") return false;
     if (showActiveOnly && !isActiveSlot(s)) return false;
     if (areaFilter !== "Semua" && slotAreaOf(s) !== areaFilter) return false;
+    /* Pencarian teks (A2). Disini, bukan di masing-masing tabel, karena kedua
+       tabel modul ini membaca `filteredSlots` yang sama - satu kotak pencarian
+       untuk keduanya, bukan dua. */
+    if (slotQ !== "" && !rowMatches(
+      {
+        area: String(slotAreaOf(s)), slot: String(s.slot ?? s.id ?? ""),
+        status: String(slotStatus(s, data.projects)),
+        project: String(data.projects.find((p) => String(p.id) === String(s.projectId ?? ""))?.vessel ?? s.projectId ?? ""),
+      } as unknown as Record<string, unknown>,
+      slotQ,
+      ["area", "slot", "status", "project"],
+    )) return false;
     return true;
   });
   const activeByArea = useMemo(() => {
@@ -640,8 +653,8 @@ export default function Drydock() {
         />
       </div>
 
-      {hasConflict && (
-        <div className="mb-4 flex items-start gap-3 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+{hasConflict && (
+        <div className="mb-4 flex items-start gap-3 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-rose-800">
           <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
           <div>
             <p className="font-semibold">{S.conflictTitle.replace("{n}", String(conflict.length))}</p>
@@ -649,6 +662,13 @@ export default function Drydock() {
           </div>
         </div>
       )}
+
+      {/* Satu kotak untuk kedua tabel modul ini (Slot per Area dan Fasilitas):
+          keduanya membaca `filteredSlots` yang sama, jadi dua kotak search
+          akan berarti mengetik dua kali untuk hasil yang sama. */}
+      <div className="mb-3 flex justify-end">
+        <SearchBox value={slotQ} onChange={setSlotQ} className="w-full max-w-xs" placeholder={locale === "en" ? "Search slots, projects, status..." : "Cari slot, proyek, status..."} ariaLabel={locale === "en" ? "Search dock slots" : "Cari slot drydock"} />
+      </div>
 
       {/* Peta fasilitas: satu skala panjang untuk semua baris, jadi drydock
           120 m terlihat benar-benar lebih panjang dari slipway 80 m. Kapal
