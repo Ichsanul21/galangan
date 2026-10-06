@@ -26,7 +26,7 @@ import {
 import type { SortState } from "../../components/ui";
 import { useStore } from "../../data/store";
 import type { StoreItem } from "../../data/store";
-import { DocumentPreviewCell, DocumentPreviewModal } from "../../components/DocumentPreview";
+import { DocumentPreviewCell, DocumentPreviewModal, DocumentPreviewPanel } from "../../components/DocumentPreview";
 import { apiFetch, isBackendConfigured } from "../../services/http";
 import { fmtBulan, fmtRupiah, fmtTanggal, todayISO } from "../../utils/format";
 import { sameName } from "../../utils/names";
@@ -916,6 +916,22 @@ export default function KaryawanDetail() {
                   <FileUploadButton label={locale === "en" ? "Upload" : "Unggah"} onUploaded={(url) => setLeaveForm((f) => ({ ...f, fileUrl: url }))} />
                 </div>
               </Field>
+              {/* Auto-preview begitu ada lampiran, sama seperti form cuti di HR.
+                  Sebelumnya form ini tidak punya pratinjau sama sekali, jadi
+                  salah unggah baru ketahuan setelah disimpan - dan pada cuti
+                  yang sudah disetujui periodenya terkunci, jadi koreksi jauh
+                  lebih merepotkan. */}
+              {leaveForm.fileUrl.trim() !== "" && (
+                <div className="rounded-xl border border-steel-200 bg-steel-50 p-3">
+                  <DocumentPreviewPanel
+                    doc={{
+                      title: `${locale === "en" ? "Leave attachment" : "Lampiran cuti"} ${emp?.name ?? ""}`.trim(),
+                      subtitle: leaveForm.note.trim() !== "" ? leaveForm.note.trim() : undefined,
+                      fileUrl: leaveForm.fileUrl.trim(),
+                    }}
+                  />
+                </div>
+              )}
             </div>
           );
         })()}

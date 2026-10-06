@@ -1969,17 +1969,19 @@ const finishTraining = async (t: StoreItem) => {
           <Field
             label={locale === "en" ? "Attachment URL (e.g. doctor note)" : "URL lampiran (mis. surat dokter)"}
             hint={locale === "en"
-              ? "Preview becomes visible in the table once the request is fully approved."
-              : "Pratinjau baru tampil di tabel setelah pengajuan disetujui final."}
+              ? "Preview shows here as soon as the attachment is uploaded, and stays open unless the request is rejected."
+              : "Pratinjau langsung muncul begitu lampiran diunggah, dan tetap terbuka kecuali pengajuan ditolak."}
           >
             <div className="flex flex-wrap items-center gap-2">
               <input className="input flex-1 font-mono" value={leaveForm.fileUrl} onChange={(e) => setLeaveForm({ ...leaveForm, fileUrl: e.target.value })} placeholder="https://…" />
               <FileUploadButton label={locale === "en" ? "Upload" : "Unggah"} onUploaded={(url) => setLeaveForm((f) => ({ ...f, fileUrl: url }))} />
             </div>
           </Field>
-          {/* Preview di dalam form: HR bisa memastikan berkas yang diunggah
-              benar SEBELUM menutup modal, bukan baru sadar saat pratinjau di
-              tabel (yang hanya muncul setelah disetujui). */}
+          {/* Preview di dalam form: HR bisa memastikan berkas yang diunggah benar
+              SEBELUM menutup modal. Ketentuan ini tidak bergantung status -
+              pratinjau terbuka begitu ada fileUrl, termasuk saat pengajuan
+              masih Diajukan. Yang mengunci hanya status Ditolak (lihat sel
+              lampiran di tabel). */}
           {leaveForm.fileUrl.trim() !== "" && (
             <div className="rounded-xl border border-steel-200 bg-steel-50 p-3">
               <p className="mb-2 flex items-center gap-1.5 text-xs font-semibold text-navy-900">
