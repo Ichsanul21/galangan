@@ -53,6 +53,16 @@ function dayToISO(day: number): string {
   return d.toISOString().slice(0, 10);
 }
 
+/** ISO tanggal → indeks hari relatif hari ini (0 = hari ini). */
+function isoToDay(iso: string): number | null {
+  if (!iso) return null;
+  const t = Date.parse(`${iso}T00:00:00`);
+  if (Number.isNaN(t)) return null;
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  return Math.round((t - today.getTime()) / 86400000);
+}
+
 function dockLengthM(capacity: unknown): number | null {
   const m = /(\d+(?:\.\d+)?)\s*m/i.exec(String(capacity ?? ""));
   return m ? Number(m[1]) : null;
@@ -118,7 +128,9 @@ export default function Drydock() {
   const [selected, setSelected] = useState<string | null>(null);
 
   const [showBook, setShowBook] = useState(false);
-  const [bookForm, setBookForm] = useState({ dockId: "DD-1", project: "", from: "1", to: "30", priority: "Normal", ratePerDay: "0", dsRef: "", vessel2: "", startDate: "", area: "" });
+  /* T6-DD4: booking pakai tanggal kalender; from/to tetap indeks hari untuk
+     gantt/overlap. fromIso/toIso adalah sumber input user. */
+  const [bookForm, setBookForm] = useState({ dockId: "DD-1", project: "", from: "1", to: "30", fromIso: dayToISO(1), toIso: dayToISO(30), priority: "Normal", ratePerDay: "0", dsRef: "", vessel2: "", startDate: "", area: "" });
   const [bookError, setBookError] = useState<string | null>(null);
   const [deleting, setDeleting] = useState<StoreItem | null>(null);
   const [moveTarget, setMoveTarget] = useState<StoreItem | null>(null);
@@ -137,7 +149,8 @@ export default function Drydock() {
   const [areaDraft, setAreaDraft] = useState("");
   const [slotAreaDraft, setSlotAreaDraft] = useState("");
   const [showMaint, setShowMaint] = useState(false);
-  const [maintForm, setMaintForm] = useState({ dockId: "DD-1", from: "1", to: "7", reason: "" });
+  /* T6-DD5: maintenance pakai tanggal kalender; alasan di bawah tanggal. */
+  const [maintForm, setMaintForm] = useState({ dockId: "DD-1", from: "1", to: "7", fromIso: dayToISO(1), toIso: dayToISO(7), reason: "" });
 
   /* No. DS SB max+1: scan dsRef DS-type saja, parse leading (\d+)/. */
   const nextDsSeq = (): number =>
@@ -381,6 +394,26 @@ export default function Drydock() {
   const selProj = data.projects.find((p) => p.id === bookForm.project);
   const selLoa = selProj ? vesselLoa(selProj.vessel, data.vessels) : null;
   const selCap = selDock ? dockLengthM(selDock.capacity) : null;
+  /* T6-DD4: daftar area dari slot/dock yang ada + input bebas via datalist. */
+  const dockAreaOptions = useMemo(() => {
+    const set = new Set<string>();
+    for (const s of dockSlots) {
+      const a = String(slotAreaOf(s) ?? "").trim();
+      if (a) set.add(a);
+    }
+    for (const d of drydocks) {
+      const a = String(d.area ?? "").trim();
+      if (a) set.add(a);
+    }
+    return Array.from(set).sort();
+  }, [dockSlots, drydocks]);
+  /* T6-DD3: waiting list = proyek aktif yang belum punya slot docking. */
+  const waitingList = useMemo(() => {
+    const scheduled = new Set(dockSlots.map((s) => String(s.project ?? "")));
+    return data.projects
+      .filter((p) => p.status !== "Selesai" && p.status !== "Batal" && !scheduled.has(String(p.id)))
+      .sort((a, b) => String(a.start ?? "").localeCompare(String(b.start ?? "")));
+  }, [data.projects, dockSlots]);
 
   const isActiveSlot = (s: StoreItem): boolean => {
     const st = slotStatus(s, data.projects);
@@ -462,8 +495,9 @@ export default function Drydock() {
   const saveBooking = async () => {
     const proj = data.projects.find((p) => p.id === bookForm.project);
     if (!proj) { setBookError(S.tPickProject); return; }
-    const from = Number(bookForm.from);
-    const to = Number(bookForm.to);
+    /* T6-DD4: sumber input = tanggal kalender; indeks hari dihitung dari sana. */
+    const from = isoToDay(bookForm.fromIso) ?? Number(bookForm.from);
+    const to = isoToDay(bookForm.toIso) ?? Number(bookForm.to);
     /* from=0 diizinkan: slot langsung Berjalan (hari ini). */
     if (!Number.isFinite(from) || !Number.isFinite(to) || to <= from || from < 0 || to > DAYS) { setBookError(S.rangeInvalid.replace("{n}", String(DAYS))); return; }
     if (overlap(bookForm.dockId, from, to)) {
@@ -508,7 +542,7 @@ export default function Drydock() {
       }
       await update("dockSlots", created.id, { prevVesselStatus: prevMap });
       toast(S.tBooked.replace("{a}", created.id).replace("{b}", bookForm.priority).replace("{c}", dsRef));
-      setBookForm({ dockId: "DD-1", project: "", from: "1", to: "30", priority: "Normal", ratePerDay: "0", dsRef: "", vessel2: "", startDate: "", area: "" });
+      setBookForm({ dockId: "DD-1", project: "", from: "1", to: "30", fromIso: dayToISO(1), toIso: dayToISO(30), priority: "Normal", ratePerDay: "0", dsRef: "", vessel2: "", startDate: "", area: "" });
       setShowBook(false);
       setBookError(null);
     } catch (e) {
@@ -517,8 +551,8 @@ export default function Drydock() {
   };
 
   const saveMaintBlock = async () => {
-    const from = Number(maintForm.from);
-    const to = Number(maintForm.to);
+    const from = isoToDay(maintForm.fromIso) ?? Number(maintForm.from);
+    const to = isoToDay(maintForm.toIso) ?? Number(maintForm.to);
     if (!Number.isFinite(from) || !Number.isFinite(to) || to <= from || from < 0 || to > DAYS) {
       toast(S.rangeInvalid.replace("{n}", String(DAYS)), "info");
       return;
@@ -537,7 +571,7 @@ export default function Drydock() {
       }, { action: "memblokir maintenance", target: `${maintForm.dockId} · ${fmtRentang(dayToISO(from), dayToISO(to))}`, module: "Drydock" });
       toast(S.tMaintSaved.replace("{a}", created.id).replace("{b}", dock?.name ?? maintForm.dockId));
       setShowMaint(false);
-      setMaintForm({ dockId: "DD-1", from: "1", to: "7", reason: "" });
+      setMaintForm({ dockId: "DD-1", from: "1", to: "7", fromIso: dayToISO(1), toIso: dayToISO(7), reason: "" });
     } catch (e) {
       toast(e instanceof Error ? e.message : S.saveFail, "info");
     }
@@ -1086,33 +1120,87 @@ export default function Drydock() {
 
       </div>
 
+      {/* T6-DD3: "Rencana docking tahunan" diganti Waiting List Dock. */}
       <Card className="mt-5">
         <CardHeader
-          title={S.annualTitle}
-          subtitle={S.annualSub}
+          title={locale === "en" ? "Dock Waiting List" : "Waiting List Dock"}
+          subtitle={locale === "en"
+            ? "Projects that still need a dock slot, then scheduled slots by month."
+            : "Proyek yang masih butuh slot docking, lalu slot terjadwal per bulan."}
           action={<button className="btn-secondary text-xs" onClick={exportAnnualPlan}>{S.exportExcelBtn}</button>}
         />
-        <div className="overflow-x-auto p-4 pt-0">
-          <div className="grid min-w-[1100px] grid-cols-12 gap-2">
-            {Array.from({ length: 12 }, (_, m) => {
-              const base = new Date();
-              const dt = new Date(base.getFullYear(), base.getMonth() + m, 1);
-              const key = `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, "0")}`;
-              const inMonth = dockSlots.filter((s) => dayToISO(Number(s.from)).slice(0, 7) === key || dayToISO(Number(s.to)).slice(0, 7) === key);
-              return (
-                <div key={key} className="rounded-lg border border-steel-100 bg-surface p-2">
-                  <p className="text-xs font-semibold text-navy-900">{MONTH_NAMES[dt.getMonth()]} {dt.getFullYear()}</p>
-                  <div className="mt-1.5 space-y-1">
-                    {inMonth.map((s) => (
-                      <button key={s.id} className="block w-full truncate rounded bg-white px-1.5 py-1 text-left text-[11px] text-steel-600 hover:text-navy-900" title={`${s.vessel} · ${fmtRentang(dayToISO(Number(s.from)), dayToISO(Number(s.to)))}`} onClick={() => openSlot(s)}>
-                        {s.vessel}
-                      </button>
-                    ))}
-                    {inMonth.length === 0 && <p className="text-[11px] text-steel-400">{S.monthEmpty}</p>}
+        <div className="space-y-4 p-4 pt-0">
+          {waitingList.length > 0 && (
+            <div>
+              <p className="mb-2 text-xs font-semibold text-navy-900">
+                {locale === "en" ? "Waiting (no slot yet)" : "Menunggu (belum ada slot)"}
+              </p>
+              <div className="space-y-1.5">
+                {waitingList.map((p) => (
+                  <div key={String(p.id)} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm">
+                    <div className="min-w-0">
+                      <p className="font-mono text-xs font-semibold text-navy-900">{String(p.id)}</p>
+                      <p className="truncate text-navy-900">{String(p.vessel)}</p>
+                      <p className="text-xs text-steel-500">
+                        {fmtTanggal(String(p.start ?? ""))} → {fmtTanggal(String(p.end ?? ""))}
+                      </p>
+                    </div>
+                    <button
+                      className="btn-primary text-xs"
+                      onClick={() => {
+                        setBookForm({
+                          dockId: bookForm.dockId,
+                          project: String(p.id),
+                          from: "1", to: "30",
+                          fromIso: dayToISO(1), toIso: dayToISO(30),
+                          priority: "Normal", ratePerDay: "0", dsRef: "",
+                          vessel2: "", startDate: String(p.start ?? ""), area: "",
+                        });
+                        /* Auto-fill dari jadwal proyek. */
+                        if (p.start && p.end) {
+                          const d0 = isoToDay(String(p.start));
+                          const d1 = isoToDay(String(p.end));
+                          if (d0 !== null && d1 !== null && d1 > d0) {
+                            const from = Math.max(0, Math.min(DAYS - 1, d0));
+                            const to = Math.max(from + 1, Math.min(DAYS, d1));
+                            setBookForm((f) => ({ ...f, from: String(from), to: String(to), fromIso: dayToISO(from), toIso: dayToISO(to) }));
+                          }
+                        }
+                        setShowBook(true);
+                      }}
+                    >
+                      {locale === "en" ? "Book slot" : "Booking slot"}
+                    </button>
                   </div>
-                </div>
-              );
-            })}
+                ))}
+              </div>
+            </div>
+          )}
+          <div>
+            <p className="mb-2 text-xs font-semibold text-navy-900">
+              {locale === "en" ? "Scheduled by month" : "Terjadwal per bulan"}
+            </p>
+            <div className="grid min-w-[1100px] grid-cols-12 gap-2 overflow-x-auto">
+              {Array.from({ length: 12 }, (_, m) => {
+                const base = new Date();
+                const dt = new Date(base.getFullYear(), base.getMonth() + m, 1);
+                const key = `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, "0")}`;
+                const inMonth = dockSlots.filter((s) => dayToISO(Number(s.from)).slice(0, 7) === key || dayToISO(Number(s.to)).slice(0, 7) === key);
+                return (
+                  <div key={key} className="rounded-lg border border-steel-100 bg-surface p-2">
+                    <p className="text-xs font-semibold text-navy-900">{MONTH_NAMES[dt.getMonth()]} {dt.getFullYear()}</p>
+                    <div className="mt-1.5 space-y-1">
+                      {inMonth.map((s) => (
+                        <button key={s.id} className="block w-full truncate rounded bg-white px-1.5 py-1 text-left text-[11px] text-steel-600 hover:text-navy-900" title={`${s.vessel} · ${fmtRentang(dayToISO(Number(s.from)), dayToISO(Number(s.to)))}`} onClick={() => openSlot(s)}>
+                          {s.vessel}
+                        </button>
+                      ))}
+                      {inMonth.length === 0 && <p className="text-[11px] text-steel-400">{S.monthEmpty}</p>}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
           </div>
         </div>
       </Card>
@@ -1211,13 +1299,41 @@ export default function Drydock() {
               </select>
             </Field>
             <Field label={S.colProject}>
-              <select className="input" value={bookForm.project} onChange={(e) => setBookForm({ ...bookForm, project: e.target.value })}>
+              <select className="input" value={bookForm.project} onChange={(e) => {
+                const pid = e.target.value;
+                const p = data.projects.find((x) => x.id === pid);
+                /* T6-DD4: auto-fill tanggal dari jadwal proyek (start/end).
+                   Bila tidak ada tanggal proyek, biarkan default hari ini+1..30. */
+                if (p?.start && p?.end) {
+                  const d0 = isoToDay(String(p.start));
+                  const d1 = isoToDay(String(p.end));
+                  if (d0 !== null && d1 !== null && d1 > d0) {
+                    const from = Math.max(0, Math.min(DAYS - 1, d0));
+                    const to = Math.max(from + 1, Math.min(DAYS, d1));
+                    setBookForm({ ...bookForm, project: pid, from: String(from), to: String(to), fromIso: dayToISO(from), toIso: dayToISO(to), startDate: String(p.start) });
+                    return;
+                  }
+                }
+                setBookForm({ ...bookForm, project: pid });
+              }}>
                 <option value="">{S.optPickProject}</option>
                 {projectOptions.filter((p) => p.status !== "Selesai").map((p) => <option key={p.id} value={p.id}>{p.id} · {p.vessel}</option>)}
               </select>
             </Field>
-            <Field label={S.lblStartAt}><NumInput min={0} max={90} className="input" value={bookForm.from} onChange={(e) => setBookForm({ ...bookForm, from: e.target.value })} /></Field>
-            <Field label={S.lblEndAt}><NumInput min={1} max={90} className="input" value={bookForm.to} onChange={(e) => setBookForm({ ...bookForm, to: e.target.value })} /></Field>
+            <Field label={locale === "en" ? "Start date" : "Tanggal mulai"}>
+              <input type="date" className="input" value={bookForm.fromIso} onChange={(e) => {
+                const iso = e.target.value;
+                const d = isoToDay(iso);
+                setBookForm({ ...bookForm, fromIso: iso, ...(d !== null ? { from: String(Math.max(0, Math.min(DAYS, d))) } : {}), startDate: iso });
+              }} />
+            </Field>
+            <Field label={locale === "en" ? "End date" : "Tanggal selesai"}>
+              <input type="date" className="input" value={bookForm.toIso} onChange={(e) => {
+                const iso = e.target.value;
+                const d = isoToDay(iso);
+                setBookForm({ ...bookForm, toIso: iso, ...(d !== null ? { to: String(Math.max(1, Math.min(DAYS, d))) } : {}) });
+              }} />
+            </Field>
             <Field label={S.colPriority}>
               <select className="input" value={bookForm.priority} onChange={(e) => setBookForm({ ...bookForm, priority: e.target.value })}>
                 {PRIORITIES.map((p) => <option key={p}>{p}</option>)}
@@ -1232,11 +1348,11 @@ export default function Drydock() {
             <Field label={S.lblPartner} hint={S.hintPartner}>
               <input className="input" value={bookForm.vessel2} onChange={(e) => setBookForm({ ...bookForm, vessel2: e.target.value })} placeholder={S.phPartner} />
             </Field>
-            <Field label={S.lblCalDate} hint={S.hintCalDate}>
-              <input type="date" className="input" value={bookForm.startDate} onChange={(e) => setBookForm({ ...bookForm, startDate: e.target.value })} />
-            </Field>
-            <Field label={S.areaLabel}>
-              <input className="input" value={bookForm.area} onChange={(e) => setBookForm({ ...bookForm, area: e.target.value })} placeholder={S.areaPh} />
+            <Field label={S.areaLabel} hint={locale === "en" ? "Pick existing area or type a new one" : "Pilih area yang ada atau ketik baru"}>
+              <input className="input" list="dock-area-list" value={bookForm.area} onChange={(e) => setBookForm({ ...bookForm, area: e.target.value })} placeholder={S.areaPh} />
+              <datalist id="dock-area-list">
+                {dockAreaOptions.map((a) => <option key={a} value={a} />)}
+              </datalist>
             </Field>
           </FormGrid>
           <p className="rounded-lg bg-surface px-3 py-2 text-xs text-steel-600">
@@ -1263,10 +1379,23 @@ export default function Drydock() {
                 {drydocks.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
               </select>
             </Field>
-            <Field label={S.lblReason}><input className="input" value={maintForm.reason} onChange={(e) => setMaintForm({ ...maintForm, reason: e.target.value })} placeholder={S.phReason} /></Field>
-            <Field label={S.lblFromDay}><NumInput min={0} max={90} className="input" value={maintForm.from} onChange={(e) => setMaintForm({ ...maintForm, from: e.target.value })} /></Field>
-            <Field label={S.lblToDay}><NumInput min={1} max={90} className="input" value={maintForm.to} onChange={(e) => setMaintForm({ ...maintForm, to: e.target.value })} /></Field>
+            <Field label={locale === "en" ? "Start date" : "Tanggal mulai"}>
+              <input type="date" className="input" value={maintForm.fromIso} onChange={(e) => {
+                const iso = e.target.value;
+                const d = isoToDay(iso);
+                setMaintForm({ ...maintForm, fromIso: iso, ...(d !== null ? { from: String(Math.max(0, Math.min(DAYS, d))) } : {}) });
+              }} />
+            </Field>
+            <Field label={locale === "en" ? "End date" : "Tanggal selesai"}>
+              <input type="date" className="input" value={maintForm.toIso} onChange={(e) => {
+                const iso = e.target.value;
+                const d = isoToDay(iso);
+                setMaintForm({ ...maintForm, toIso: iso, ...(d !== null ? { to: String(Math.max(1, Math.min(DAYS, d))) } : {}) });
+              }} />
+            </Field>
           </FormGrid>
+          {/* T6-DD5: alasan maintenance di paling bawah form. */}
+          <Field label={S.lblReason}><input className="input" value={maintForm.reason} onChange={(e) => setMaintForm({ ...maintForm, reason: e.target.value })} placeholder={S.phReason} /></Field>
         </div>
       </Modal>
 

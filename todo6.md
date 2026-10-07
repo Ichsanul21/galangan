@@ -96,9 +96,9 @@ Item baru memakai kode **T6-**. Item lama dirujuk ke todo5.
 |---|---|---|---|
 | T6-DD1 | Keterangan maks docking (ukuran) | **SELESAI** | `dock.capacity` di UI |
 | T6-DD2 | Mapping slot clickable → detail; hapus panel lama | **SEBAGIAN** | Modal slot ada; panel terpisah (utilisasi/slot per area) belum dihapus |
-| T6-DD3 | Rencana docking tahunan → waiting list dock | **BELUM** | Tidak ada "waiting list" |
-| T6-DD4 | Booking: date picker (bukan day-index); area selectable; auto-fill jadwal proyek | **BELUM** | `bookForm.from/to` masih `NumInput` 0–90 |
-| T6-DD5 | Maintenance: jadwalkan + date form; alasan di bawah | **BELUM** | `maintForm.from/to` masih day-index |
+| T6-DD3 | Rencana docking tahunan → waiting list dock | **SELESAI** | Card diganti **Waiting List Dock**: proyek tanpa slot + tombol booking auto-fill jadwal; grid bulanan tetap di bawah |
+| T6-DD4 | Booking: date picker (bukan day-index); area selectable; auto-fill jadwal proyek | **SELESAI** | Input tanggal mulai/selesai (kalender); `from/to` = indeks hari dari ISO; pilih proyek auto-fill start/end; area via datalist |
+| T6-DD5 | Maintenance: jadwalkan + date form; alasan di bawah | **SELESAI** | Tombol "Jadwalkan Maintenance"; tanggal kalender; alasan di field terakhir |
 
 ---
 
