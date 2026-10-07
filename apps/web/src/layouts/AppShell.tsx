@@ -38,6 +38,7 @@ import {
 } from "lucide-react";
 import { useAuth } from "../auth/auth";
 import { useStore } from "../data/store";
+import { ConflictResolver } from "../components/ConflictResolver";
 import { Badge, Modal, Field, Toaster, toast } from "../components/ui";
 import { apiFetch } from "../services/http";
 import { computeAlerts } from "../utils/alerts";
@@ -797,6 +798,9 @@ export default function AppShell() {
           <Outlet />
         </main>
       </div>
+
+      {/* C1: modal resolusi konflik field (dua device ubah field yang sama). */}
+      <ConflictResolver />
 
       {/* Modal profil */}
       <Modal open={profileOpen} onClose={() => setProfileOpen(false)} title={t.nav.profile} subtitle={t.session.demoSession}>

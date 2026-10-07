@@ -629,6 +629,25 @@ function notifyConflict(message: string): void {
   }
 }
 
+/* C1: bandingkan patch dengan data server - kembalikan field yang nilainya
+   berbeda di sisi server (perangkat lain mengubah field yang sama). */
+function diffFieldsAgainstServer(
+  slim: Record<string, unknown>,
+  serverData: Record<string, unknown> | null | undefined,
+): { key: string; mine: unknown; server: unknown }[] {
+  if (!serverData || typeof serverData !== "object") return [];
+  const out: { key: string; mine: unknown; server: unknown }[] = [];
+  for (const [k, v] of Object.entries(slim)) {
+    if (k === "updatedAt" || k === "updated_at" || k === "baseUpdatedAt") continue;
+    if (!(k in serverData)) continue;
+    const sv = serverData[k];
+    let same = false;
+    try { same = JSON.stringify(sv) === JSON.stringify(v); } catch { same = false; }
+    if (!same) out.push({ key: k, mine: v, server: sv });
+  }
+  return out;
+}
+
 /* Toast penyimpanan penuh. Dulu diam-diam (try/catch kosong) - padahal justru
    saat kuota localStorage habis-lah data lokal hilang tanpa jejak. */
 let storageFullToasted = false;
@@ -1907,6 +1926,9 @@ type PushOutcome = "ok" | "stale" | "fail" | "auth";
           let lastStale: ApiError | null = null;
           while (attempt < 2) {
             attempt += 1;
+            /* Slim dihitung di luar try supaya catch (STALE) masih bisa
+               membacanya untuk deteksi konflik field + force overwrite. */
+            let slim: Record<string, unknown> = {};
             try {
               /* Optimistic concurrency: kirim updated_at terakhir sebagai
                  baseUpdatedAt; BE 409 STALE bila sudah diubah pengguna lain. */
@@ -1918,7 +1940,7 @@ type PushOutcome = "ok" | "stale" | "fail" | "auth";
                  lokal. Form yang mengirim objek penuh tidak lagi menimpa field
                  yang tidak disentuh user (dan yang sudah berubah di device lain
                  lewat server). Field yang memang diubah tetap terkirim. */
-              const slim: Record<string, unknown> = {};
+              slim = {};
               for (const [k, v] of Object.entries(patch as Record<string, unknown>)) {
                 if (k === "baseUpdatedAt") continue;
                 if (k === "updatedAt" || k === "updated_at") { slim[k] = v; continue; }
@@ -1956,13 +1978,16 @@ type PushOutcome = "ok" | "stale" | "fail" | "auth";
                   branch?: string;
                   updated_at?: string;
                 };
+                const serverData = typeof server.data === "object" && server.data !== null
+                  ? server.data as Record<string, unknown>
+                  : null;
                 setData((prev) => ({
                   ...prev,
                   [col]: ((prev[col] as StoreItem[] | undefined) ?? []).map((r) =>
                     r.id === id
                       ? {
                           ...r,
-                          ...(typeof server.data === "object" && server.data !== null ? server.data : {}),
+                          ...(serverData ?? {}),
                           ...(typeof server.branch === "string" ? { branch: server.branch } : {}),
                           ...(typeof server.updated_at === "string" ? { updated_at: server.updated_at } : {}),
                         }
@@ -1970,6 +1995,40 @@ type PushOutcome = "ok" | "stale" | "fail" | "auth";
                   ),
                 }));
                 bumpEpoch(col as string);
+
+                /* C1: bila patch memuat field yang di server sudah berbeda,
+                   jangan diam-diam menimpa - minta user memilih. */
+                const fieldConflicts = diffFieldsAgainstServer(slim, serverData);
+                if (fieldConflicts.length > 0) {
+                  const { requestFieldConflict } = await import("../components/ConflictResolver");
+                  const choice = await requestFieldConflict({
+                    collection: String(col),
+                    rowId: id,
+                    label: `${String(col)} ${id}`,
+                    fields: fieldConflicts,
+                    onForce: async () => {
+                      const forced = await remoteRepository(col).patch(id, {
+                        ...slim,
+                        ...(typeof server.updated_at === "string" && server.updated_at !== ""
+                          ? { baseUpdatedAt: server.updated_at }
+                          : {}),
+                      });
+                      setData((prev) => ({
+                        ...prev,
+                        [col]: ((prev[col] as StoreItem[] | undefined) ?? []).map((r) => (r.id === id ? forced : r)),
+                      }));
+                      bumpEpoch(col as string);
+                    },
+                    onUseServer: () => { /* versi server sudah diterapkan di atas */ },
+                  });
+                  if (choice === "server") {
+                    notifyConflict("Menggunakan versi server - perubahan Anda untuk field yang bersengketa dibuang.");
+                    throw new ApiError(409, "Konflik field: menggunakan versi server", "CONFLICT");
+                  }
+                  /* Force sudah menulis via onForce; update() dianggap sukses. */
+                  setBackendError(null);
+                  return;
+                }
                 continue;
               }
               // REFERENCED/VALIDATION/UNPROCESSABLE (+400 validasi): tampilkan

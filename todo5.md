@@ -16,13 +16,13 @@ klarifikasi client.
 
 | Status | Jumlah |
 |---|---|
-| Selesai | 68 |
-| Sebagian | 1 |
+| Selesai | 69 |
+| Sebagian | 0 |
 | Belum | 0 |
 | **Total baris tabel** | **69** |
 
-Sisa SEBAGIAN: **C1** — UX resolusi kalau dua device mengedit **field yang
-sama** (slim-patch + toast STALE + etag/delta sudah ada).
+Semua baris tabel sudah SELESAI. Sisa residual non-tabel: deploy VPS + QA
+browser 2 device + `seed:reprice --apply` di produksi.
 
 Hitungan di atas dihitung ulang dari baris tabel aktual (bukan angka audit
 awal 72/73 yang sudah tidak konsisten - kemungkinan satu item tercatat dua
@@ -51,11 +51,10 @@ status tabel lama tidak pernah diperbarui - kini diselaraskan.
 
 | # | Item | Kenapa |
 |---|---|---|
-| 1 | **Deploy VPS + QA browser 2 device** | A1, C2 delta+etag, dan seluruh item client sudah diimplementasi; belum push/deploy/teruji. |
+| 1 | **Deploy VPS + QA browser 2 device** | Seluruh item tabel todo5 SELESAI; belum push/deploy/teruji di lapangan. |
 | 2 | **Jalankan seed:reprice --apply di VPS** | Tarif riset sudah di rates.ts; DB produksi perlu di-reprice (dry-run dulu). |
-| 3 | **C1 UX resolusi same-field conflict** | Slim-patch + STALE toast + etag/delta sudah ada; perlu dialog bila dua orang ubah field yang sama. |
-| 4 | **Browser QA sync 2 device** | Pull periodik + delta + etag + slim-patch perlu dibuktikan di lapangan. |
-| 5 | **Sisa minor** | Tombstone cap 500; koleksi dirty menunggu push sebelum pull. |
+| 3 | **Browser QA sync 2 device** | Pull periodik + delta + etag + slim-patch + modal konflik field perlu dibuktikan di lapangan. |
+| 4 | **Sisa minor** | Tombstone cap 500; koleksi dirty menunggu push sebelum pull; acceptPull settings-only. |
 
 ---
 
@@ -125,16 +124,19 @@ Subcontractor, Procurement, Payroll, Finance) sudah dialihkan - commit
 `6813df9`..`223e8e5`. Sisa `NumInput` non-uang (qty, persen, jam) sengaja
 tidak diubah.
 
-## C1 - Delay sinkronisasi data antar device - **SEBAGIAN** (penting)
+## C1 - Delay sinkronisasi data antar device - **SELESAI**
 
-**Sudah (termasuk sesi lanjutan):** applyPulled server-menang, bumpEpoch,
-backendMode re-eval, loop 401 berhenti, keyset pagination, token WBS/team,
-**slim patch** di `store.update` remote: field yang nilainya sama dengan
-salinan lokal tidak ikut terkirim - form objek penuh tidak lagi menimpa
-field yang tidak disentuh user. Server PATCH tetap `{...oldData, ...patch}`.
+**Sudah:** applyPulled server-menang, bumpEpoch, backendMode re-eval, loop
+401 berhenti, keyset pagination, token WBS/team, **slim patch** (field yang
+sama dengan salinan lokal tidak dikirim), **modal resolusi konflik field**
+(`ConflictResolver`): saat 409 STALE dan patch memuat field yang di server
+sudah berbeda, user memilih **"Gunakan versi server"** atau **"Timpa dengan
+perubahan saya"** (force patch memakai `baseUpdatedAt` server). Server PATCH
+tetap `{...oldData, ...patch}`.
 
-**Sisa:** edit field yang SAMA di dua device sekaligus masih
-last-writer-wins (toast STALE sudah memberi tahu). AcceptPull settings-only.
+**Catatan:** edit field yang SAMA di dua device kini tidak lagi last-writer-
+wins senyap - ada dialog pilihan. Etag/delta sync (C2) memperkecil kemungkinan
+STALE, tapi dialog tetap jadi jaring pengaman.
 
 ## C2 - Sinkronisasi offline/online - **SELESAI** (delta + etag)
 
