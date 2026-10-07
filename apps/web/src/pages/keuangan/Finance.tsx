@@ -48,6 +48,7 @@ import { n_fin } from "../../i18n/n_fin";
 import { useT } from "../../i18n/LanguageContext";
 import { useStore } from "../../data/store";
 import type { StoreItem } from "../../data/store";
+import { apiFetch, isBackendConfigured } from "../../services/http";
 import { fmtRupiah, fmtMiliar, fmtTanggal, fmtJumlah, parseRupiah, todayISO } from "../../utils/format";
 import { createdAtOf, lastTouchedAt } from "../../utils/timestamps";
 import { getSetting } from "../../utils/settings";
@@ -73,6 +74,29 @@ import {
   LAPORAN_EXCEL,
   LATEST_SNAPSHOT,
 } from "../../data/financeExcel";
+
+/* F1: kunci sort tanggal rekam. `createdAtOf`/`lastTouchedAt` sudah
+   menormalkan ke ISO penuh; string kosong mengurut ke akhir. */
+function tsSortKey(row: Record<string, unknown> | null | undefined, k: string): string {
+  if (k === "createdAt") return createdAtOf(row) ?? "";
+  if (k === "updatedAt") return lastTouchedAt(row) ?? "";
+  return "";
+}
+
+/** Dua sel Dibuat/Diubah. Pakai sebagai anak langsung `<tr>`. */
+function TsCells({ row }: { row: Record<string, unknown> }) {
+  const c = createdAtOf(row);
+  const u = lastTouchedAt(row);
+  return (
+    <>
+      <td className="td text-xs text-steel-600">{c !== null ? fmtTanggal(c) : <span className="text-steel-400">-</span>}</td>
+      <td className="td text-xs text-steel-600">{u !== null ? fmtTanggal(u) : <span className="text-steel-400">-</span>}</td>
+    </>
+  );
+}
+
+/** Tabel finance yang barisnya benar-benar record store (bukan agregat). */
+const FIN_DEL_TABLES = ["invoices", "payables", "journals", "assets", "payroll", "coa", "taxPeriods", "termins"] as const;
 
 /* Filter historikal Hari/Bulan/Tahun untuk Kas & Bank, Buku Besar, Neraca, Laba Rugi.
    Satu struktur state per tab: { mode, hari (YYYY-MM-DD), bulan (YYYY-MM), tahun (YYYY) }.
@@ -988,15 +1012,21 @@ const { data, add, update, remove, log, branch, inBranch } = useStore();
   const sortedAr = useMemo(() => sortRows(filteredAr, arSort, (inv, k) =>
     k === "id" ? String(inv.id) : k === "kode" ? String(inv.kodePembantu ?? inv.client ?? "") : k === "project" ? String(inv.project ?? "") :
     k === "openAwal" ? num(inv.openAwal) : k === "amount" ? num(inv.amount) : k === "due" ? String(inv.due ?? "") :
-    k === "age" ? ageDays(inv.due, today) : String(inv.status)), [filteredAr, arSort, today]);
+    k === "age" ? ageDays(inv.due, today) :
+    k === "createdAt" || k === "updatedAt" ? tsSortKey(inv as unknown as Record<string, unknown>, k) :
+    String(inv.status)), [filteredAr, arSort, today]);
   const sortedAp = useMemo(() => sortRows(filteredAp, apSort, (a, k) =>
     k === "v" ? String(a.v) : k === "kode" ? String(a.kodePembantu ?? a.v) : k === "po" ? String(a.po) :
     k === "vessel" ? String(a.vessel ?? "") : k === "openAwal" ? num(a.openAwal) : k === "amt" ? num(a.amt) :
-    k === "sisa" ? Math.max(0, num(a.amt) - num(a.pay1) - num(a.pay2)) : k === "due" ? String(a.due ?? "") : String(a.st)), [filteredAp, apSort]);
+    k === "sisa" ? Math.max(0, num(a.amt) - num(a.pay1) - num(a.pay2)) : k === "due" ? String(a.due ?? "") :
+    k === "createdAt" || k === "updatedAt" ? tsSortKey(a as unknown as Record<string, unknown>, k) :
+    String(a.st)), [filteredAp, apSort]);
   const sortedJu = useMemo(() => sortRows(filteredJu, juSort, (j, k) =>
     k === "kode" ? String(j.kodePembantu ?? "") : k === "dok" ? String(j.dokumen ?? "") : k === "uraian" ? String(j.uraian ?? "") :
     k === "db" ? String(j.db ?? "") : k === "kr" ? String(j.kr ?? "") : k === "amount" ? num(j.amount) :
-    k === "sumber" ? String(j.sumber ?? "") : k === "status" ? String(j.status ?? "") : String(j.date ?? "")), [filteredJu, juSort]);
+    k === "sumber" ? String(j.sumber ?? "") : k === "status" ? String(j.status ?? "") :
+    k === "createdAt" || k === "updatedAt" ? tsSortKey(j as unknown as Record<string, unknown>, k) :
+    String(j.date ?? "")), [filteredJu, juSort]);
   const invPager = usePager(filteredInvoices.length);
   const arPager = usePager(filteredAr.length);
   const apPager = usePager(filteredAp.length);
@@ -1463,21 +1493,101 @@ const { data, add, update, remove, log, branch, inBranch } = useStore();
   // 2. Jadwal bayar: payable + invoice jatuh tempo <= 30 hari, sort due
   const schedItems = useMemo(() => {
     const cutoff = Date.parse(today) + 30 * 86400000;
-    const rows: { key: string; kind: "AP" | "AR"; id: string; ref: string; desc: string; due: string; amount: number; age: number }[] = [];
+    const rows: { key: string; kind: "AP" | "AR"; id: string; ref: string; desc: string; due: string; amount: number; age: number; createdAt: string; updatedAt: string }[] = [];
     for (const a of payables) {
       if (a.st === "Lunas") continue;
       const dueMs = Date.parse(String(a.due ?? ""));
       if (!Number.isFinite(dueMs) || dueMs > cutoff) continue;
-      rows.push({ key: `AP:${a.id}`, kind: "AP", id: String(a.id), ref: String(a.po ?? "-"), desc: String(a.v ?? ""), due: String(a.due ?? ""), amount: num(a.amt), age: ageDays(a.due, today) });
+      rows.push({ key: `AP:${a.id}`, kind: "AP", id: String(a.id), ref: String(a.po ?? "-"), desc: String(a.v ?? ""), due: String(a.due ?? ""), amount: num(a.amt), age: ageDays(a.due, today), createdAt: createdAtOf(a as unknown as Record<string, unknown>) ?? "", updatedAt: lastTouchedAt(a as unknown as Record<string, unknown>) ?? "" });
     }
     for (const i of arOpen) {
       const dueMs = Date.parse(String(i.due ?? ""));
       if (!Number.isFinite(dueMs) || dueMs > cutoff) continue;
-      rows.push({ key: `AR:${i.id}`, kind: "AR", id: String(i.id), ref: String(i.project ?? ""), desc: String(i.client ?? ""), due: String(i.due ?? ""), amount: invNeto(i), age: ageDays(i.due, today) });
+      rows.push({ key: `AR:${i.id}`, kind: "AR", id: String(i.id), ref: String(i.project ?? ""), desc: String(i.client ?? ""), due: String(i.due ?? ""), amount: invNeto(i), age: ageDays(i.due, today), createdAt: createdAtOf(i as unknown as Record<string, unknown>) ?? "", updatedAt: lastTouchedAt(i as unknown as Record<string, unknown>) ?? "" });
     }
     return rows.sort((a, b) => String(a.due).localeCompare(String(b.due)));
   }, [payables, arOpen, today]);
   const schedTotal = schedItems.filter((r) => schedSel.includes(r.key)).reduce((s, r) => s + r.amount, 0);
+
+  /* F1: riwayat hapus dari audit log server + aktivitas lokal (offline).
+     Hard delete => baris hilang dari tabel utama; satu-satunya jejak waktu
+     hapus adalah audit_log. */
+  const [delHistRows, setDelHistRows] = useState<{ key: string; table: string; row_id: string; deleted_at: string; actor: string; source: "Server" | "Perangkat" }[]>([]);
+  const [delHistReady, setDelHistReady] = useState(false);
+  useEffect(() => {
+    if (tab !== "Riwayat Hapus" || delHistReady) return;
+    let cancelled = false;
+    void (async () => {
+      const out: { key: string; table: string; row_id: string; deleted_at: string; actor: string; source: "Server" | "Perangkat" }[] = [];
+      if (isBackendConfigured()) {
+        await Promise.all(FIN_DEL_TABLES.map(async (table) => {
+          try {
+            const res = await apiFetch<{ rows?: { id?: unknown; row_id?: unknown; created_at?: unknown; actor?: unknown; table_name?: unknown }[] } | { id?: unknown; row_id?: unknown; created_at?: unknown; actor?: unknown; table_name?: unknown }[]>(
+              `/api/audit?table=${encodeURIComponent(table)}&action=delete&limit=50`,
+              { background: true },
+            );
+            const list = Array.isArray(res) ? res : (res.rows ?? []);
+            for (const r of list) {
+              const rowId = String(r.row_id ?? "");
+              if (rowId === "") continue;
+              out.push({
+                key: `S:${table}:${rowId}:${String(r.created_at ?? "")}`,
+                table: String(r.table_name ?? table),
+                row_id: rowId,
+                deleted_at: String(r.created_at ?? ""),
+                actor: String(r.actor ?? "-"),
+                source: "Server",
+              });
+            }
+          } catch { /* audit offline: jatuh ke baris lokal */ }
+        }));
+      }
+      for (const a of data.activities ?? []) {
+        const action = String(a.action ?? "").toLowerCase();
+        const module = String(a.module ?? "");
+        if (!action.includes("hapus")) continue;
+        if (module !== "Keuangan" && module !== "Finance") continue;
+        const target = String(a.target ?? "");
+        const rowId = target.includes(" · ") ? target.split(" · ")[0] : target;
+        out.push({
+          key: `L:${String(a.id ?? target)}:${String(a.time ?? "")}`,
+          table: module,
+          row_id: rowId,
+          deleted_at: String(a.time ?? ""),
+          actor: String(a.actor ?? "-"),
+          source: "Perangkat",
+        });
+      }
+      out.sort((x, y) => String(y.deleted_at).localeCompare(String(x.deleted_at)));
+      if (!cancelled) {
+        setDelHistRows(out);
+        setDelHistReady(true);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [tab, delHistReady, data.activities]);
+
+  /* Timestamp rekam terbaru di seluruh sumber angka Finance. Dipakai tab
+     agregat (Kas/BB/Neraca/LR) yang barisnya bukan record - angkanya tetap
+     perlu jejak "kapan data terakhir berubah". */
+  const latestSrcTs = useMemo(() => {
+    let max = "";
+    const scan = (rows: readonly StoreItem[] | undefined) => {
+      for (const row of rows ?? []) {
+        const u = lastTouchedAt(row as unknown as Record<string, unknown>);
+        if (u !== null && u > max) max = u;
+        const c = createdAtOf(row as unknown as Record<string, unknown>);
+        if (c !== null && c > max) max = c;
+      }
+    };
+    scan(manJournals);
+    scan(payables);
+    scan(invoices);
+    scan(assetRows);
+    scan(data.payroll);
+    scan(data.coa);
+    return max;
+  }, [manJournals, payables, invoices, assetRows, data.payroll, data.coa]);
 
   // 5. Pemetaan biaya ke proyek (kunci AP "ID / docNo" -> split ambil ID)
   const poIdOf = (poRef: unknown): string => String(poRef ?? "").split(" / ")[0].trim();
@@ -2806,7 +2916,7 @@ const { data, add, update, remove, log, branch, inBranch } = useStore();
       </div>
 
       <div className="mt-4 card">
-        <Tabs tabs={["Akun", "Aset", "Invoice", "Piutang (AR)", "Hutang (AP)", "Jadwal Bayar", "Kas & Bank", "Jurnal", "Buku Besar", "Laba Rugi", "Neraca", "Project P&L", "Pajak"]} active={tab} onChange={setTab} />
+        <Tabs tabs={["Akun", "Aset", "Invoice", "Piutang (AR)", "Hutang (AP)", "Jadwal Bayar", "Kas & Bank", "Jurnal", "Buku Besar", "Laba Rugi", "Neraca", "Project P&L", "Pajak", "Riwayat Hapus"]} active={tab} onChange={setTab} />
         <div className="p-4">
           {tab === "Akun" && (
             <div className="space-y-4">
@@ -2896,6 +3006,8 @@ const { data, add, update, remove, log, branch, inBranch } = useStore();
                         <SortTh label={S.colUmur} sortKey="age" sort={arSort} onSort={(k) => setArSort((s) => toggleSort(s, k))} />
                         <th className="th">{S.colPenagihan}</th>
                         <SortTh label={S.colStatus} sortKey="status" sort={arSort} onSort={(k) => setArSort((s) => toggleSort(s, k))} />
+                        <SortTh label={S.colCreated} sortKey="createdAt" sort={arSort} onSort={(k) => setArSort((s) => toggleSort(s, k))} />
+                        <SortTh label={S.colUpdated} sortKey="updatedAt" sort={arSort} onSort={(k) => setArSort((s) => toggleSort(s, k))} />
                         <th className="th">{S.actionTh}</th>
                       </tr>
                     </thead>
@@ -2928,6 +3040,7 @@ const { data, add, update, remove, log, branch, inBranch } = useStore();
                               ) : <span className="text-xs text-steel-400">-</span>}
                             </td>
                             <td className="td"><StatusBadge status={String(inv.status)} /></td>
+                            <TsCells row={inv as unknown as Record<string, unknown>} />
                             <td className="td">
                               <div className="flex flex-wrap gap-1.5">
                                 {invNext(String(inv.status)).map((next) => (
@@ -3073,6 +3186,8 @@ const { data, add, update, remove, log, branch, inBranch } = useStore();
                       <SortTh label={S.colDue} sortKey="due" sort={apSort} onSort={(k) => setApSort((s) => toggleSort(s, k))} />
                       <th className="th">{S.pph23}</th>
                       <SortTh label={S.colStatus} sortKey="st" sort={apSort} onSort={(k) => setApSort((s) => toggleSort(s, k))} />
+                      <SortTh label={S.colCreated} sortKey="createdAt" sort={apSort} onSort={(k) => setApSort((s) => toggleSort(s, k))} />
+                      <SortTh label={S.colUpdated} sortKey="updatedAt" sort={apSort} onSort={(k) => setApSort((s) => toggleSort(s, k))} />
                       <th className="th">{S.actionTh}</th>
                     </tr>
                   </thead>
@@ -3094,6 +3209,7 @@ const { data, add, update, remove, log, branch, inBranch } = useStore();
                         <td className="td text-steel-600">{fmtTanggal(String(a.due ?? ""))}</td>
                         <td className="td text-steel-600">{String(a.pph ?? "2%")}</td>
                         <td className="td"><StatusBadge status={String(a.st)} /></td>
+                        <TsCells row={a as unknown as Record<string, unknown>} />
                         <td className="td">
                           <div className="flex flex-wrap gap-1.5">
                             {a.st !== "Lunas" && (
@@ -3204,6 +3320,7 @@ const { data, add, update, remove, log, branch, inBranch } = useStore();
               )}
               <Card className="p-4">
                 <CardHeader title={S.kasRecapTitle.replace("{d}", kasAsOf.slice(0, 7))} subtitle={S.kasRecapSub} />
+                <p className="mb-2 text-[11px] text-steel-500">{S.srcLatestNote.replace("{a}", latestSrcTs !== "" ? fmtTanggal(latestSrcTs) : "-")}</p>
                 <div className="overflow-x-auto px-1 pb-3">
                   <table className="w-full">
                     <thead className="bg-surface sticky top-0 z-10">
@@ -3269,10 +3386,23 @@ const { data, add, update, remove, log, branch, inBranch } = useStore();
                 <div className="overflow-x-auto px-1 pb-3">
                   <table className="w-full">
                     <thead className="bg-surface sticky top-0 z-10">
-                      <tr><th className="th">Tanggal</th><th className="th">Dokumen</th><th className="th">Uraian</th><th className="th">DB</th><th className="th">KR</th><th className="th">Nominal</th></tr>
+                      <tr>
+                        <th className="th">Tanggal</th><th className="th">Dokumen</th><th className="th">Uraian</th><th className="th">DB</th><th className="th">KR</th><th className="th">Nominal</th>
+                        <SortTh label={S.colCreated} sortKey="createdAt" sort={kasSort} onSort={(k) => setKasSort((s) => toggleSort(s, k))} />
+                        <SortTh label={S.colUpdated} sortKey="updatedAt" sort={kasSort} onSort={(k) => setKasSort((s) => toggleSort(s, k))} />
+                      </tr>
                     </thead>
                     <tbody className="divide-y divide-steel-100">
-                      {manJournals.filter((j) => (String(j.sumber) === "Kas" || String(j.sumber) === "Bank") && matchHist(String(j.date ?? ""), kasHist)).slice(0, 100).map((j) => (
+                      {manJournals.filter((j) => (String(j.sumber) === "Kas" || String(j.sumber) === "Bank") && matchHist(String(j.date ?? ""), kasHist))
+                        .sort((a, b) => {
+                          /* Sort mutasi: default tanggal jurnal; bila user klik
+                             Dibuat/Diubah, urutkan dari timestamp rekam. */
+                          if (kasSort.key === "createdAt") return String(createdAtOf(a as unknown as Record<string, unknown>) ?? "").localeCompare(String(createdAtOf(b as unknown as Record<string, unknown>) ?? ""));
+                          if (kasSort.key === "updatedAt") return String(lastTouchedAt(a as unknown as Record<string, unknown>) ?? "").localeCompare(String(lastTouchedAt(b as unknown as Record<string, unknown>) ?? ""));
+                          const dir = kasSort.dir === "desc" ? -1 : 1;
+                          return dir * String(a.date ?? "").localeCompare(String(b.date ?? ""));
+                        })
+                        .slice(0, 100).map((j) => (
                         <tr key={String(j.id)} className="hover:bg-surface">
                           <td className="td font-mono text-xs text-steel-600">{fmtTanggal(String(j.date ?? ""))}</td>
                           <td className="td font-mono text-xs">{String(j.dokumen ?? "-")}</td>
@@ -3280,10 +3410,11 @@ const { data, add, update, remove, log, branch, inBranch } = useStore();
                           <td className="td font-mono text-xs">{String(j.db ?? "-")}</td>
                           <td className="td font-mono text-xs">{String(j.kr ?? "-")}</td>
                           <td className="td text-xs font-semibold">{fmtRupiah(num(j.amount))}</td>
+                          <TsCells row={j as unknown as Record<string, unknown>} />
                         </tr>
                       ))}
                       {manJournals.filter((j) => (String(j.sumber) === "Kas" || String(j.sumber) === "Bank") && matchHist(String(j.date ?? ""), kasHist)).length === 0 && (
-                        <tr><td className="td text-xs italic text-steel-400" colSpan={6}>{S.kasMutEmpty}</td></tr>
+                        <tr><td className="td text-xs italic text-steel-400" colSpan={8}>{S.kasMutEmpty}</td></tr>
                       )}
                     </tbody>
                   </table>
@@ -3322,12 +3453,16 @@ const { data, add, update, remove, log, branch, inBranch } = useStore();
                         <SortTh label={S.colUraian} sortKey="desc" sort={jadwalSort} onSort={(k) => setJadwalSort((s) => toggleSort(s, k))} />
                         <SortTh label={S.colDue} sortKey="due" sort={jadwalSort} onSort={(k) => setJadwalSort((s) => toggleSort(s, k))} />
                         <SortTh label={S.colNilai} sortKey="amount" sort={jadwalSort} onSort={(k) => setJadwalSort((s) => toggleSort(s, k))} />
+                        <SortTh label={S.colCreated} sortKey="createdAt" sort={jadwalSort} onSort={(k) => setJadwalSort((s) => toggleSort(s, k))} />
+                        <SortTh label={S.colUpdated} sortKey="updatedAt" sort={jadwalSort} onSort={(k) => setJadwalSort((s) => toggleSort(s, k))} />
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-steel-100">
                       {sortRows(schedItems.filter((r) => rowMatches(r as unknown as Record<string, unknown>, jadwalQ, ["kind", "id", "ref", "desc", "due"])), jadwalSort, (r, k) =>
                         k === "kind" ? String(r.kind) : k === "id" ? String(r.id) : k === "ref" ? String(r.ref) :
-                        k === "desc" ? String(r.desc) : k === "due" ? String(r.due) : Number(r.amount)).map((r) => (
+                        k === "desc" ? String(r.desc) : k === "due" ? String(r.due) :
+                        k === "createdAt" || k === "updatedAt" ? String(r[k] ?? "") :
+                        Number(r.amount)).map((r) => (
                         <tr key={r.key} className="hover:bg-surface">
                           <td className="td"><input type="checkbox" aria-label={S.selectItem.replace("{a}", r.id)} checked={schedSel.includes(r.key)} onChange={() => toggleSched(r.key)} /></td>
                           <td className="td"><Badge tone={r.kind === "AP" ? "navy" : "amber"}>{r.kind}</Badge></td>
@@ -3336,6 +3471,8 @@ const { data, add, update, remove, log, branch, inBranch } = useStore();
                           <td className="td text-xs text-steel-600 truncate" title={r.desc}>{r.desc}</td>
                           <td className="td text-xs text-steel-600">{fmtTanggal(r.due)}{r.age > 0 ? S.ageLate.replace("{n}", fmtJumlah(r.age)) : ""}</td>
                           <td className="td text-xs font-semibold">{fmtRupiah(r.amount)}</td>
+                          <td className="td text-xs text-steel-600">{r.createdAt !== "" ? fmtTanggal(r.createdAt) : <span className="text-steel-400">-</span>}</td>
+                          <td className="td text-xs text-steel-600">{r.updatedAt !== "" ? fmtTanggal(r.updatedAt) : <span className="text-steel-400">-</span>}</td>
                         </tr>
                       ))}
                     </tbody>
@@ -3570,6 +3707,7 @@ const { data, add, update, remove, log, branch, inBranch } = useStore();
               )}
               <Card className="p-4">
                 <CardHeader title={S.bbLiveTitle.replace("{d}", bbAsOf.slice(0, 7))} subtitle={S.bbLiveSub.replace("{a}", fmtMiliar(bbDAll)).replace("{b}", fmtMiliar(bbKAll)).replace("{c}", Math.abs(bbDAll - bbKAll) < 1 ? S.bbBalanced : S.bbUnbalanced)} />
+                <p className="mb-2 px-1 text-[11px] text-steel-500">{S.srcLatestNote.replace("{a}", latestSrcTs !== "" ? fmtTanggal(latestSrcTs) : "-")}</p>
                 <div className="overflow-x-auto px-1 pb-3">
                   <table className="w-full">
                     <thead className="bg-surface sticky top-0 z-10">
@@ -3640,6 +3778,7 @@ const { data, add, update, remove, log, branch, inBranch } = useStore();
               <p className="rounded-lg bg-ocean-50 px-3 py-2 text-xs text-ocean-700">
                 {S.lrLiveBadge.replace("{n}", String(lrLive.n)).replace("{d}", lrAsOf).replace("{s}", lrSnap ? S.lrSnapSuffix : S.lrLiveSuffix)}
               </p>
+              <p className="text-[11px] text-steel-500">{S.srcLatestNote.replace("{a}", latestSrcTs !== "" ? fmtTanggal(latestSrcTs) : "-")}</p>
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
                 <Card className="p-4"><p className="text-xs text-steel-500">{S.bbRevTitle} {S.lrLiveTag}</p><p className="mt-1 text-lg font-bold text-navy-900">{fmtRupiah(lrLive.revenue)}</p><p className="mt-1 text-[11px] text-steel-400">{S.lrRevHint}</p></Card>
                 <Card className="p-4"><p className="text-xs text-steel-500">{S.lrCostTitle} {S.lrLiveTag}</p><p className="mt-1 text-lg font-bold text-navy-900">{fmtRupiah(lrLive.costProj)}</p><p className="mt-1 text-[11px] text-steel-400">{S.lrCostHint}</p></Card>
@@ -3762,6 +3901,8 @@ const { data, add, update, remove, log, branch, inBranch } = useStore();
                         <SortTh label={S.colPeriode} sortKey="period" sort={alokasiSort} onSort={(k) => setAlokasiSort((s) => toggleSort(s, k))} />
                         <SortTh label={S.colNet} sortKey="net" sort={alokasiSort} onSort={(k) => setAlokasiSort((s) => toggleSort(s, k))} />
                         <SortTh label={S.colAlokasi} sortKey="alloc" sort={alokasiSort} onSort={(k) => setAlokasiSort((s) => toggleSort(s, k))} />
+                        <SortTh label={S.colCreated} sortKey="createdAt" sort={alokasiSort} onSort={(k) => setAlokasiSort((s) => toggleSort(s, k))} />
+                        <SortTh label={S.colUpdated} sortKey="updatedAt" sort={alokasiSort} onSort={(k) => setAlokasiSort((s) => toggleSort(s, k))} />
                         <th className="th">{S.actionTh}</th>
                       </tr>
                     </thead>
@@ -3769,13 +3910,16 @@ const { data, add, update, remove, log, branch, inBranch } = useStore();
                       {sortRows((data.payroll ?? []).filter((p) => p.status === "Dibayar").filter((p) => rowMatches(p, allocQ, ["id", "employeeId", "period", "allocProject", "status"])), alokasiSort, (p, k) =>
                         k === "emp" ? String(p.employeeId ?? "") : k === "period" ? String(p.period ?? "") :
                         k === "net" ? payNet(p) :
-                        k === "alloc" ? String(p.allocProject ?? "") : String(p.id)).map((p) => (
+                        k === "alloc" ? String(p.allocProject ?? "") :
+                        k === "createdAt" || k === "updatedAt" ? tsSortKey(p as unknown as Record<string, unknown>, k) :
+                        String(p.id)).map((p) => (
                         <tr key={p.id} className="hover:bg-surface">
                           <td className="td font-mono text-xs font-semibold text-navy-900">{p.id}</td>
                           <td className="td font-mono text-xs text-steel-600">{String(p.employeeId ?? "")}</td>
                           <td className="td text-xs text-steel-600">{String(p.period ?? "")}</td>
                           <td className="td text-xs font-semibold">{fmtRupiah(payNet(p))}</td>
                           <td className="td text-xs text-steel-600">{p.allocProject ? `${p.allocProject} · ${p.allocPct}%` : S.unallocatedCell}</td>
+                          <TsCells row={p as unknown as Record<string, unknown>} />
                           <td className="td"><RowAction icon={Boxes} tone="primary" label={S.colAlokasi} ariaLabel={`${S.colAlokasi} ${String(p.id)}`} onClick={() => { setAllocTarget(p); setAllocForm({ project: String(p.allocProject ?? profitPid), pct: String(p.allocPct ?? 100) }); }} /></td>
                         </tr>
                       ))}
@@ -3901,6 +4045,7 @@ const { data, add, update, remove, log, branch, inBranch } = useStore();
               <p className="rounded-lg bg-ocean-50 px-3 py-2 text-xs text-ocean-700">
                 {S.nrLiveBadge.replace("{a}", nrAsOf).replace("{b}", fmtMiliar(hutLiveTotal)).replace("{c}", String(hutLive.length)).replace("{d}", fmtMiliar(piuLiveTotal)).replace("{e}", String(piuLive.length)).replace("{f}", fmtRupiah(nrLabaLive)).replace("{g}", nrSnap ? S.nrSnapSuffix : S.nrLiveSuffix)}
               </p>
+              <p className="text-[11px] text-steel-500">{S.srcLatestNote.replace("{a}", latestSrcTs !== "" ? fmtTanggal(latestSrcTs) : "-")}</p>
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
                 <Card className="p-4"><p className="text-xs text-steel-500">{S.nrApLive}</p><p className="mt-1 text-lg font-bold text-navy-900">{fmtRupiah(hutLiveTotal)}</p><p className="mt-1 text-[11px] text-steel-400">{S.nrVendorCount.replace("{n}", String(hutLive.length)).replace("{d}", nrAsOf)}</p></Card>
                 <Card className="p-4"><p className="text-xs text-steel-500">{S.nrArLive}</p><p className="mt-1 text-lg font-bold text-navy-900">{fmtRupiah(piuLiveTotal)}</p><p className="mt-1 text-[11px] text-steel-400">{S.nrCustCount.replace("{n}", String(piuLive.length)).replace("{d}", nrAsOf)}</p></Card>
@@ -4135,6 +4280,41 @@ const { data, add, update, remove, log, branch, inBranch } = useStore();
             </div>
           )}
 
+          {tab === "Riwayat Hapus" && (
+            <div className="space-y-4">
+              <CardHeader title={S.delHistTitle} subtitle={S.delHistSub} />
+              <p className="rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800">{S.delHistNote}</p>
+              {delHistRows.length === 0 ? (
+                <EmptyState title={S.delHistEmpty} subtitle={locale === "en" ? "Deletions appear here once audit log records them." : "Penghapusan akan muncul di sini setelah tercatat di audit log."} />
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full">
+                    <thead className="bg-surface sticky top-0 z-10">
+                      <tr>
+                        <th className="th">{locale === "en" ? "Table" : "Tabel"}</th>
+                        <th className="th">{locale === "en" ? "Row ID" : "ID Baris"}</th>
+                        <th className="th">{S.delHistWhen}</th>
+                        <th className="th">{locale === "en" ? "By" : "Oleh"}</th>
+                        <th className="th">{locale === "en" ? "Source" : "Sumber"}</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-steel-100">
+                      {delHistRows.map((r) => (
+                        <tr key={r.key} className="hover:bg-surface">
+                          <td className="td font-mono text-xs font-semibold text-navy-900">{r.table}</td>
+                          <td className="td font-mono text-xs text-steel-600">{r.row_id}</td>
+                          <td className="td text-xs text-steel-600">{r.deleted_at !== "" ? fmtTanggal(r.deleted_at) : <span className="text-steel-400">-</span>}</td>
+                          <td className="td text-xs text-steel-600">{r.actor}</td>
+                          <td className="td"><Badge tone={r.source === "Server" ? "blue" : "gray"}>{r.source}</Badge></td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          )}
+
           {tab === "Aset" && (
             <div className="space-y-4">
               <CardHeader
@@ -4160,6 +4340,8 @@ const { data, add, update, remove, log, branch, inBranch } = useStore();
                       <th className="th">{S.colSusutBln}</th>
                       <th className="th">{S.colAkunBeban}</th>
                       <th className="th">{S.colAkunAkum}</th>
+                      <SortTh label={S.colCreated} sortKey="createdAt" sort={asetSort} onSort={(k) => setAsetSort((s) => toggleSort(s, k))} />
+                      <SortTh label={S.colUpdated} sortKey="updatedAt" sort={asetSort} onSort={(k) => setAsetSort((s) => toggleSort(s, k))} />
                       <th className="th">{S.actionTh}</th>
                     </tr>
                   </thead>
@@ -4167,7 +4349,9 @@ const { data, add, update, remove, log, branch, inBranch } = useStore();
                     {sortRows(assetRows.filter((a) => rowMatches(a as unknown as Record<string, unknown>, asetQ, ["nama", "kelompok", "bulan", "tahun", "metode"])).map((a, i) => ({ a, i })), asetSort, ({ a }, k) =>
                       k === "nama" ? String(a.nama ?? "") : k === "kel" ? String(a.kelompok ?? "") : k === "bulan" ? String(a.bulan ?? "") :
                       k === "tahun" ? String(a.tahun ?? "") : k === "nilai" ? num(a.nilai) : k === "metode" ? String(a.metode ?? "") :
-                      k === "susut" ? num(a.susutTahun) : String(a.id ?? "")).map(({ a, i }) => {
+                      k === "susut" ? num(a.susutTahun) :
+                      k === "createdAt" || k === "updatedAt" ? tsSortKey(a as unknown as Record<string, unknown>, k) :
+                      String(a.id ?? "")).map(({ a, i }) => {
                       const gol = String(a.nama ?? "");
                       const beban = gol === "Bangunan" ? "6-021 C" : gol === "Alat Berat" ? "6-021 A" : gol === "Kendaraan" ? "6-021" : gol.includes("Mesin") ? "6-021 B" : "6-022";
                       const akum = gol === "Bangunan" ? "1-270" : gol === "Alat Berat" ? "1-281" : gol === "Kendaraan" ? "1-280" : gol.includes("Mesin") ? "1-282" : "1-290";
@@ -4185,6 +4369,7 @@ const { data, add, update, remove, log, branch, inBranch } = useStore();
                         <td className="td text-xs text-steel-600">{fmtRupiah(Math.round(num(a.susutTahun) / 12))}</td>
                         <td className="td font-mono text-[11px] text-steel-600">{beban}</td>
                         <td className="td font-mono text-[11px] text-steel-600">{akum}</td>
+                        <TsCells row={a as unknown as Record<string, unknown>} />
                         <td className="td">
                           {!seed && (
                             <div className="flex gap-1">
@@ -4227,6 +4412,8 @@ const { data, add, update, remove, log, branch, inBranch } = useStore();
                       <SortTh label={S.colNominal} sortKey="amount" sort={juSort} onSort={(k) => setJuSort((s) => toggleSort(s, k))} />
                       <SortTh label={S.colSumber} sortKey="sumber" sort={juSort} onSort={(k) => setJuSort((s) => toggleSort(s, k))} />
                       <SortTh label={S.colStatus} sortKey="status" sort={juSort} onSort={(k) => setJuSort((s) => toggleSort(s, k))} />
+                      <SortTh label={S.colCreated} sortKey="createdAt" sort={juSort} onSort={(k) => setJuSort((s) => toggleSort(s, k))} />
+                      <SortTh label={S.colUpdated} sortKey="updatedAt" sort={juSort} onSort={(k) => setJuSort((s) => toggleSort(s, k))} />
                       <th className="th">{S.juAttachCol}</th>
                       <th className="th">{S.actionTh}</th>
                     </tr>
@@ -4243,6 +4430,7 @@ const { data, add, update, remove, log, branch, inBranch } = useStore();
                         <td className="td text-xs font-semibold">{fmtRupiah(num(j.amount))}</td>
                         <td className="td text-xs text-steel-500">{String(j.sumber ?? "JU")}</td>
                         <td className="td"><StatusBadge status={String(j.status ?? "Posted")} /></td>
+                        <TsCells row={j as unknown as Record<string, unknown>} />
                         <td className="td">
                           {String(j.lampiranUrl ?? j.buktiUrl ?? "") ? (
                             <button type="button" onClick={() => setJuViewer(j)} className="block overflow-hidden rounded-lg border border-steel-200" title="Lihat lampiran">
@@ -4265,7 +4453,7 @@ const { data, add, update, remove, log, branch, inBranch } = useStore();
                       </tr>
                     ))}
                     {manJournals.length === 0 && (
-                      <tr><td className="td text-xs text-steel-400" colSpan={12}>{S.emptyJuManual}</td></tr>
+                      <tr><td className="td text-xs text-steel-400" colSpan={14}>{S.emptyJuManual}</td></tr>
                     )}
                   </tbody>
                 </table>

@@ -38,8 +38,9 @@ Perubahan dari Gelombang 5: D3, D10, D11, D12, D13, D15 naik ke SELESAI
 (masing-masing commit terpisah). B2 selesai untuk semua field money di 6
 file utama. D5 (BoQ per nomor surat) SELESAI di sesi lanjutan: skema
 `suratNo`, tabel grouped + expand, export Excel per surat, PDF
-`laporanProyek` per surat + subtotal. F1 (Finance tanggal) dan I2 masih
-belum/kurang jelas.
+`laporanProyek` per surat + subtotal. F1 (Finance tanggal) SELESAI:
+kolom Dibuat/Diubah di tabel record + tab Riwayat Hapus dari audit log.
+I2 masih butuh klarifikasi client.
 
 Catatan: jumlah status di atas berjumlah 73, bukan 72. Selisih itu sudah ada
 sejak audit awal dan tidak ditutup dengan menebak - penyebabnya sepertinya satu
@@ -343,7 +344,7 @@ download.
 | DK2 | Peta fasilitas skala panjang (pekerjaan F2) | **SELESAI** (`48368f9`) | `components/FacilityMap.tsx` SVG skala tunggal, pita kapal, outline merah. Keterbatasan yang dulu tercatat - hanya kapal pertama per fasilitas yang digambar lewat `.find()` - sudah ditutup: semua kapal kini digambar satu jalur masing-masing, dan `problems` digabung dari seluruh kapal. Intinya dipindah ke `vesselsForFacility` di `utils/facilityMap.ts` supaya bisa diuji, dengan 8 assertion baru di `scripts/facility-probe.ts`. |
 | I1 | Filter "perlu perhatian" per status, bukan kategori | **SELESAI** | `Inventory.tsx:641` memakai `warnLevelOf(...).level === warnF`; select berlabel "Status" (`:1943-1960`) dengan hitungan live (`:770`); sort pakai `warnRankOf` (`:656`). |
 | I2 | Tombol [jumlah][status] membuka dropdown [jumlah][kategori] | **BELUM** | Nol tombol per-status. Yang ada: dua `<select>` terpisah (`Inventory.tsx:1907-1985`), yaitu Kategori dengan teks breakdown inline (`:1924-1932`), dan Status dengan hitungan (`:1946-1960`), plus chip non-klikabel (`:1970-1983`). Komentar `:1900-1906` menyatakan ini dibalik secara sadar: "baris tombol [jumlah][status] digantikan dropdown kategori". Alasan bisnisnya tidak tercatat. |
-| F1 | Semua tabel Finance dapat tanggal plus sort, dan tanggal hapus | **SEBAGIAN** | Sort sudah luas: 23 dari 28 tabel memakai `SortTh` (109 header sortable di `Finance.tsx`). Tapi kolom tanggal hanya ada di **satu** tabel: invoice (`:3383-3384`, `S.colCreated` dan `S.colUpdated`). 27 tabel lain tidak punya kolom tanggal per baris. Tanggal hapus nol di seluruh UI: pencarian `deletedAt` atau "dihapus pada" menghasilkan nol di `src`. Util `utils/audit.ts:58,77` plus API `routes/audit.ts:37-58` ada, tapi pemanggilnya nol di luar modul (hanya `forgetDeleteDates` saat logout, `auth.tsx:150`). Kemampuan baca tanggal hapus sudah dibangun tapi tidak pernah ditampilkan. |
+| F1 | Semua tabel Finance dapat tanggal plus sort, dan tanggal hapus | **SELESAI** | Kolom Dibuat/Diubah + sort di tabel record: Invoice (sudah ada), Piutang AR, Hutang AP, Jurnal, Aset, Alokasi payroll, Jadwal bayar (dari source invoice/payable), Mutasi Kas. Tab agregat (Kas recap, Buku Besar, Laba Rugi, Neraca) menampilkan catatan sumber terakhir berubah (`latestSrcTs`) karena barisnya dihitung, bukan record. Tab baru **Riwayat Hapus**: daftar hard-delete dari audit log server (`/api/audit?action=delete` per tabel finance) + jejak lokal `activities` dengan aksi "hapus" modul Keuangan. |
 | F2 | Kas Bank, Buku Besar, Neraca, dan Laba Rugi tambah tanggal | **SEBAGIAN** | Keempat punya `HistFilterBar` (mode Semua, Per bulan, Per tanggal, Per tahun di `:156-194`) plus badge as-of (`:3129-3131`, `:3476-3478`, `:3849-3851`, `:3591-3593`). Tapi nol dari keempat punya kolom tanggal per baris di tabel utamanya. Saldo, trial balance, AP AR live, dan LR trial semuanya tanpa tanggal. Klien masih tidak bisa menelusuri satu baris ke tanggal asalnya. |
 
 ---
@@ -437,7 +438,7 @@ download.
     [x] D15 (tab Subkon di ProjectDetail) - `12da962`
     [x] D5 (BoQ per nomor surat, krusial) - sesi lanjutan: skema suratNo + UI grouped + Excel + PDF
 16. [x] B2 (MoneyInput + parseRupiah, ~36 field money di 6 file) - `6813df9` + `63dfdfd` + `53cc5d1` + `9043685` + `918e1b6` + `9755d50` + `223e8e5`
-17. [ ] F1 (27 tabel Finance + tanggal hapus) - belum dikerjakan
+17. [x] F1 (kolom tanggal Finance + Riwayat Hapus dari audit log) - sesi lanjutan
 
 ---
 
