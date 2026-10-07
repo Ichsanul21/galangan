@@ -242,7 +242,7 @@ export function registerCrud(app: FastifyInstance, table: string): void {
       ? [requireAuth, requireSettingsWrite()]
       : [requireAuth, requireCollectionWrite(table)];
 
-  app.get(base, { preHandler: [requireAuth] }, async (req) => {
+  app.get(base, { preHandler: [requireAuth] }, async (req, reply) => {
     const query = (req.query ?? {}) as Record<string, string | undefined>;
     const where: string[] = [];
     const params: unknown[] = [];
@@ -275,6 +275,34 @@ export function registerCrud(app: FastifyInstance, table: string): void {
       params.push(cursor.updatedAt, cursor.updatedAt, cursor.id);
     }
     const whereSql = where.length > 0 ? ` WHERE ${where.join(" AND ")}` : "";
+    /* C2 etag koleksi: COUNT + MAX(updated_at) seluruh baris tabel (tanpa
+       filter q/offset). Nilai berubah SETIAP kali ada INSERT/UPDATE/DELETE,
+       jadi cocok sebagai high-water untuk tarikan periodik. Client mengirim
+       `?etag=`; bila sama → balas notModified + rows kosong (bukan 304 polos,
+       karena apiFetch FE membaca envelope JSON). */
+    const statRows = await q<{ cnt: number; maxu: string | null }>(
+      `SELECT COUNT(*) AS cnt, MAX(updated_at) AS maxu FROM ${table}`,
+    );
+    const cnt = Number(statRows[0]?.cnt ?? 0);
+    const maxu = String(statRows[0]?.maxu ?? "");
+    const colEtag = `"${cnt}-${maxu}"`;
+    const reqEtag = typeof query.etag === "string" ? query.etag : null;
+    const ifNoneMatch = typeof req.headers["if-none-match"] === "string" ? req.headers["if-none-match"] : null;
+    const clientEtag = reqEtag ?? ifNoneMatch;
+    if (clientEtag !== null && clientEtag === colEtag) {
+      reply.header("ETag", colEtag);
+      return ok({
+        rows: [],
+        total: cnt,
+        limit,
+        offset,
+        since: since ?? undefined,
+        serverTime: new Date().toISOString(),
+        etag: colEtag,
+        notModified: true,
+        nextCursor: null,
+      });
+    }
     const countRows = await q<{ cnt: number }>(`SELECT COUNT(*) AS cnt FROM ${table}${whereSql}`, params);
     const total = Number((countRows[0] as { cnt: number } | undefined)?.cnt ?? 0);
     /* Urutan WAJIB stabil DAN temporally koheren.
@@ -298,6 +326,7 @@ export function registerCrud(app: FastifyInstance, table: string): void {
     /* Cursor halaman berikutnya = baris terakhir yang benar-benar dikirim.
        Kalau halaman kosong tidak ada cursor lanjutan - pemanggil berhenti. */
     const last = rows[rows.length - 1];
+    reply.header("ETag", colEtag);
     return ok({
       rows: rows.map(toJson),
       total,
@@ -306,6 +335,8 @@ export function registerCrud(app: FastifyInstance, table: string): void {
       since: since ?? undefined,
       /* High-water mark untuk delta sync berikutnya. */
       serverTime: new Date().toISOString(),
+      etag: colEtag,
+      notModified: false,
       nextCursor: rows.length === limit && last !== undefined ? cursorOf(last) : null,
     });
   });

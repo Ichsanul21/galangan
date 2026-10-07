@@ -2,7 +2,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { newId as newPrefixedId } from "../services/ids";
 import { ApiError, apiFetch, getJwt, isBackendConfigured } from "../services/http";
-import { remoteRepository } from "../services/repositories";
+import { remoteRepository, lastEtagOf } from "../services/repositories";
 import { stampCreated, stampDerivedCreatedAt, stampUpdated } from "../utils/timestamps";
 import { loadedLaborRatePerDay } from "../utils/rates";
 import {
@@ -1190,17 +1190,28 @@ export function StoreProvider({ children }: { children: ReactNode }) {
    Koleksi dirty tetap dilewati agar edit offline tidak tertimpa, hasil tarik
    yang merusak data lokal ditolak lewat acceptPull(), dan activities di-merge
    (bukan replace) seperti pada resync. */
-  /* High-water mark per koleksi untuk C2 delta sync. Dipersist ke localStorage
-     (isms.lastPullAt) supaya tarikan periodik hanya minta baris berubah. */
-  const lastPullAtRef = useRef<Record<string, string>>({});
+  /* High-water + etag per koleksi untuk C2 delta sync. Dipersist ke
+     localStorage (isms.lastPullAt) supaya tarikan periodik hanya minta baris
+     berubah, dan etag menolak tarikan yang tidak perlu sama sekali. */
+  type PullMark = { since: string; etag?: string };
+  const lastPullAtRef = useRef<Record<string, PullMark>>({});
   useEffect(() => {
     try {
       const raw = localStorage.getItem("isms.lastPullAt");
-      if (raw) lastPullAtRef.current = JSON.parse(raw) as Record<string, string>;
+      if (!raw) return;
+      const parsed = JSON.parse(raw) as Record<string, unknown>;
+      const next: Record<string, PullMark> = {};
+      for (const [k, v] of Object.entries(parsed)) {
+        if (typeof v === "string" && v !== "") next[k] = { since: v };
+        else if (v && typeof v === "object" && typeof (v as PullMark).since === "string") {
+          next[k] = v as PullMark;
+        }
+      }
+      lastPullAtRef.current = next;
     } catch { /* ignore corrupt payload */ }
   }, []);
-  const saveLastPullAt = useCallback((col: string, iso: string) => {
-    lastPullAtRef.current = { ...lastPullAtRef.current, [col]: iso };
+  const savePullMark = useCallback((col: string, mark: PullMark) => {
+    lastPullAtRef.current = { ...lastPullAtRef.current, [col]: mark };
     try { localStorage.setItem("isms.lastPullAt", JSON.stringify(lastPullAtRef.current)); } catch { /* quota */ }
   }, []);
 
@@ -1222,17 +1233,18 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         if (dirty.has(key as string)) return;
         try {
           const repo = remoteRepository(key);
-          const since = lastPullAtRef.current[key as string];
-          /* C2: bila punya high-water mark, tarik delta dulu. Bila server
-             lama (tanpa listSince) atau belum pernah pull, full list. */
-          if (since && since !== "" && typeof repo.listSince === "function") {
-            const delta = await repo.listSince(since);
-            saveLastPullAt(key as string, delta.serverTime);
-            /* Delta kosong = tidak ada yang berubah; jangan replace koleksi
-               lokal dengan []. */
-            if (delta.rows.length === 0) return;
-            /* ApplyPulled hanya untuk baris yang datang; id yang tidak ada
-               di delta TIDAK dihapus (bukan snapshot penuh). */
+          const mark = lastPullAtRef.current[key as string];
+          /* C2: bila punya high-water mark, tarik delta (+etag). Bila server
+             lama atau belum pernah pull, full list. */
+          if (mark?.since && typeof repo.listSince === "function") {
+            const delta = await repo.listSince(mark.since, mark.etag);
+            savePullMark(key as string, {
+              since: delta.serverTime || mark.since,
+              etag: delta.etag ?? mark.etag,
+            });
+            /* Etag sama / delta kosong = tidak ada yang berubah. */
+            if (delta.notModified === true || delta.rows.length === 0) return;
+            /* Apply hanya baris yang datang; id tidak ada di delta TIDAK dihapus. */
             setData((prev) => {
               if (!pullNeedsMerge(key, epochAtStart[key as string] ?? 0, writeEpochRef.current, dirtyRef.current)) return prev;
               const local = (prev[key] as StoreItem[] | undefined) ?? [];
@@ -1244,15 +1256,14 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           }
           const rows = await repo.list();
           {
-            /* Full pull pertama / tanpa delta: high-water = max updated_at
-               dari baris yang diterima (bukan Date.now - bisa melewatkan
-               tulisan yang terjadi di tengah pull). */
             let maxTs = "";
             for (const r of rows) {
               const u = String((r as { updated_at?: unknown }).updated_at ?? (r as { updatedAt?: unknown }).updatedAt ?? "");
               if (u > maxTs) maxTs = u;
             }
-            saveLastPullAt(key as string, maxTs || new Date().toISOString());
+            /* Simpan etag koleksi dari list() bila server sudah mengirim. */
+            const etag = lastEtagOf(String(key));
+            savePullMark(key as string, { since: maxTs || new Date().toISOString(), ...(etag ? { etag } : {}) });
           }
           if (!acceptPull(key, rows)) {
             /* Server membalas kosong untuk koleksi kode: pertahankan yang lokal.
@@ -1289,7 +1300,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       return next;
     });
     return failed;
-  }, [saveLastPullAt]);
+  }, [savePullMark]);
 
   /* Dorong perubahan lokal yang tertunda ke backend: DELETE tombstone dulu,
      lalu tiap baris coba POST, bila 409 (sudah ada) coba PATCH.

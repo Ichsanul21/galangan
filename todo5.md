@@ -16,14 +16,13 @@ klarifikasi client.
 
 | Status | Jumlah |
 |---|---|
-| Selesai | 67 |
-| Sebagian | 2 |
+| Selesai | 68 |
+| Sebagian | 1 |
 | Belum | 0 |
 | **Total baris tabel** | **69** |
 
-Sisa SEBAGIAN: **C1** edit field sama di 2 device (slim-patch + STALE toast
-sudah ada; UX resolusi conflict belum), **C2** etag per baris + dirty-queue
-pull (delta `since=` sudah ada).
+Sisa SEBAGIAN: **C1** — UX resolusi kalau dua device mengedit **field yang
+sama** (slim-patch + toast STALE + etag/delta sudah ada).
 
 Hitungan di atas dihitung ulang dari baris tabel aktual (bukan angka audit
 awal 72/73 yang sudah tidak konsisten - kemungkinan satu item tercatat dua
@@ -52,11 +51,11 @@ status tabel lama tidak pernah diperbarui - kini diselaraskan.
 
 | # | Item | Kenapa |
 |---|---|---|
-| 1 | **Deploy VPS + QA browser 2 device** | A1 + C2 delta sudah diimplementasi; belum push/deploy/teruji di lapangan. |
-| 2 | **Jalankan seed:reprice --apply di VPS** | Angka riset sudah di rates.ts + seed; DB produksi perlu di-reprice (dry-run dulu). |
-| 3 | **C1 UX resolusi same-field conflict** | Slim-patch + toast STALE sudah ada; perlu dialog bila dua orang ubah field yang sama. |
-| 4 | **C2 etag per baris** | Delta `since=` sudah jalan; etag menghemat lagi bandwidth. |
-| 5 | **Browser QA sync 2 device** | Pull periodik + delta + slim-patch perlu dibuktikan di lapangan. |
+| 1 | **Deploy VPS + QA browser 2 device** | A1, C2 delta+etag, dan seluruh item client sudah diimplementasi; belum push/deploy/teruji. |
+| 2 | **Jalankan seed:reprice --apply di VPS** | Tarif riset sudah di rates.ts; DB produksi perlu di-reprice (dry-run dulu). |
+| 3 | **C1 UX resolusi same-field conflict** | Slim-patch + STALE toast + etag/delta sudah ada; perlu dialog bila dua orang ubah field yang sama. |
+| 4 | **Browser QA sync 2 device** | Pull periodik + delta + etag + slim-patch perlu dibuktikan di lapangan. |
+| 5 | **Sisa minor** | Tombstone cap 500; koleksi dirty menunggu push sebelum pull. |
 
 ---
 
@@ -137,17 +136,17 @@ field yang tidak disentuh user. Server PATCH tetap `{...oldData, ...patch}`.
 **Sisa:** edit field yang SAMA di dua device sekaligus masih
 last-writer-wins (toast STALE sudah memberi tahu). AcceptPull settings-only.
 
-## C2 - Sinkronisasi offline/online - **SEBAGIAN**
+## C2 - Sinkronisasi offline/online - **SELESAI** (delta + etag)
 
 **Sudah:** dirty+tombstone, retry 429, cursor maju, budget push global,
-trigger ditahan, **tarikan periodik pull 90 detik** + catch-up
-`visibilitychange`, dan **C2 delta**: server `GET ?since=ISO` +
-`serverTime`; client `listSince` + high-water mark per koleksi
-(`isms.lastPullAt` di localStorage). Tarikan periodik kini hanya minta baris
-berubah; delta kosong tidak menimpa koleksi lokal.
+trigger ditahan, tarikan periodik pull 90 detik + catch-up visibility,
+**delta `?since=ISO`**, dan **etag koleksi** (`COUNT-MAX(updated_at)`):
+client kirim `?etag=`; bila sama server balas `notModified` + rows kosong
+(tidak memuat payload baris sama sekali). High-water + etag per koleksi di
+`isms.lastPullAt`.
 
-**Sisa:** etag/If-None-Match per baris; koleksi dirty menunggu push sebelum
-menerima update server; tombstone cap 500.
+**Sisa residual (opsional):** etag per baris (lebih halus dari koleksi);
+koleksi dirty menunggu push sebelum menerima update server; tombstone cap 500.
 
 ## C3 - Export PDF: langsung download - **SELESAI**
 

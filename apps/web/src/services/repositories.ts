@@ -36,7 +36,7 @@ export interface PagedResult {
 export interface Repository {
   list(): Promise<StoreItem[]>;
   /** C2 delta: hanya baris dengan updated_at > since (ISO). */
-  listSince?(since: string): Promise<{ rows: StoreItem[]; serverTime: string }>;
+  listSince?(since: string, etag?: string): Promise<{ rows: StoreItem[]; serverTime: string; etag?: string; notModified?: boolean }>;
   /** Filter server-side (q/branch) - opsional agar adapter lama tak rusak. */
   listFiltered?(opts?: ListFilter): Promise<StoreItem[]>;
   /** Satu halaman data (limit/offset) + total - untuk tabel server-side paging. */
@@ -44,6 +44,13 @@ export interface Repository {
   create(item: Omit<StoreItem, "id"> & { id?: string }): Promise<StoreItem>;
   patch(id: string, patch: Record<string, unknown>): Promise<StoreItem>;
   remove(id: string): Promise<void>;
+}
+
+/** ETag koleksi terakhir per resource - diisi oleh list()/listSince(). */
+const lastEtagByResource = new Map<string, string>();
+
+export function lastEtagOf(resource: string): string | undefined {
+  return lastEtagByResource.get(resource);
 }
 
 export interface Snapshot {
@@ -114,6 +121,9 @@ interface BackendPage {
   /** C2: high-water mark updated_at dari server. */
   serverTime?: string;
   since?: string;
+  /** C2: etag koleksi (COUNT-MAX(updated_at)). */
+  etag?: string;
+  notModified?: boolean;
 }
 
 function isBackendPage(v: unknown): v is BackendPage {
@@ -165,6 +175,7 @@ export function remoteRepository(resource: string): Repository {
         );
         if (Array.isArray(page)) return collect((page as BackendRow[]).map(rowToItem), limit);
         if (!isBackendPage(page)) return [];
+        if (typeof page.etag === "string" && page.etag !== "") lastEtagByResource.set(resource, page.etag);
         const rows = Array.isArray(page.rows) ? page.rows : [];
         for (const row of rows) all.push(rowToItem(row));
         if (rows.length < limit) break;
@@ -177,23 +188,35 @@ export function remoteRepository(resource: string): Repository {
       }
       return collect(all, limit);
     },
-    async listSince(since: string) {
-      /* C2 delta: tarikan partial memakai `?since=`. Server membalas
-         serverTime sebagai high-water mark berikutnya. */
+    async listSince(since: string, etag?: string) {
+      /* C2 delta + etag: `?since=` hanya baris berubah; `?etag=` bila sama
+         dengan etag koleksi server → notModified + rows kosong. */
       const limit = 5000;
       let cursor: string | null = null;
       const all: StoreItem[] = [];
       let serverTime = new Date().toISOString();
+      let outEtag = etag;
+      let notModified = false;
       for (;;) {
-        const qs: string = `limit=${limit}&since=${encodeURIComponent(since)}${cursor === null ? "" : `&after=${encodeURIComponent(cursor)}`}`;
+        const etagQs = etag && etag !== "" ? `&etag=${encodeURIComponent(etag)}` : "";
+        const qs: string = `limit=${limit}&since=${encodeURIComponent(since)}${etagQs}${cursor === null ? "" : `&after=${encodeURIComponent(cursor)}`}`;
         const page: BackendRow[] | BackendPage = await apiFetch<BackendRow[] | BackendPage>(
           `${base}?${qs}`,
           { background: true },
         );
         if (Array.isArray(page)) {
-          return { rows: collect((page as BackendRow[]).map(rowToItem), limit), serverTime };
+          return { rows: collect((page as BackendRow[]).map(rowToItem), limit), serverTime, etag: outEtag, notModified };
         }
-        if (!isBackendPage(page)) return { rows: [], serverTime };
+        if (!isBackendPage(page)) return { rows: [], serverTime, etag: outEtag, notModified };
+        if (typeof page.etag === "string" && page.etag !== "") {
+          outEtag = page.etag;
+          lastEtagByResource.set(resource, page.etag);
+        }
+        if (page.notModified === true) {
+          notModified = true;
+          if (typeof page.serverTime === "string" && page.serverTime !== "") serverTime = page.serverTime;
+          return { rows: [], serverTime, etag: outEtag, notModified };
+        }
         if (typeof page.serverTime === "string" && page.serverTime !== "") serverTime = page.serverTime;
         const rows = Array.isArray(page.rows) ? page.rows : [];
         for (const row of rows) all.push(rowToItem(row));
@@ -202,7 +225,7 @@ export function remoteRepository(resource: string): Repository {
         if (typeof next !== "string" || next === "" || next === cursor) break;
         cursor = next;
       }
-      return { rows: collect(all, limit), serverTime };
+      return { rows: collect(all, limit), serverTime, etag: outEtag, notModified };
     },
     async listFiltered(opts) {
       const baseParams = new URLSearchParams();
