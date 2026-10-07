@@ -36,7 +36,7 @@ import { attendanceSeries } from "../../data";
 import { useT } from "../../i18n/LanguageContext";
 import { n_misc } from "../../i18n/n_misc";
 import { exportExcel } from "../../utils/export";
-import { cmpJam, fmtJam24, norm24 } from "../../utils/time24";
+import { cmpJam, fmtJam24, norm24, toMinutes } from "../../utils/time24";
 import { createdAtOf, lastTouchedAt } from "../../utils/timestamps";
 
 const STATUS = ["Hadir", "Izin", "Sakit", "Cuti", "Alpa"];
@@ -121,7 +121,24 @@ export default function Absensi() {
 
   const rowFor = (id: string): CatatRow => rows[id] ?? defaultRow(shift);
   const setRow = (id: string, patch: Partial<CatatRow>) =>
-    setRows((prev) => ({ ...prev, [id]: { ...rowFor(id), ...patch } }));
+    setRows((prev) => {
+      const next = { ...prev, [id]: { ...rowFor(id), ...patch } };
+      /* T6-ABS5: lembur otomatis bila jam kerja melewati 8 jam.
+         User masih bisa menimpa manual (maks 12 jam). */
+      const r = next[id];
+      if (r.status === "Hadir" && r.checkIn && r.checkOut) {
+        const cin = toMinutes(r.checkIn);
+        const cout = toMinutes(r.checkOut);
+        if (cin !== null && cout !== null) {
+          const worked = (cout - cin + (cout < cin ? 24 * 60 : 0)) / 60;
+          const autoOt = Math.max(0, Math.round((worked - 8) * 2) / 2);
+          if (autoOt > 0 && (patch.overtime === undefined || Number(patch.overtime) === 0)) {
+            next[id] = { ...next[id], overtime: String(Math.min(12, autoOt)) };
+          }
+        }
+      }
+      return next;
+    });
 
   const markAllPresent = () => {
     const next: Record<string, CatatRow> = {};
@@ -284,9 +301,16 @@ export default function Absensi() {
   }; /* persist async, errors toast internal */
 
   /* ---------- rekap ---------- */
+  /* T6-ABS3: filter bulan + tahun. */
+  const [rekapYear, setRekapYear] = useState(() => String(new Date().getFullYear()));
   const monthRecords = useMemo(
-    () => inBranch(data.attendance.filter((a) => String(a.date).startsWith(month))),
-    [data.attendance, month, inBranch],
+    () => inBranch(data.attendance.filter((a) => {
+      const d = String(a.date ?? "");
+      if (!d.startsWith(month)) return false;
+      if (rekapYear !== "" && !d.startsWith(rekapYear)) return false;
+      return true;
+    })),
+    [data.attendance, month, rekapYear, inBranch],
   );
 
   const summary = useMemo(
@@ -549,7 +573,7 @@ export default function Absensi() {
                               <TimeInput className="w-auto py-1.5 text-sm" value={norm24(r.checkOut)} disabled={!hadir} ariaLabel={`${S.sortOut} ${e.name}`} onChange={(v) => setRow(e.id, { checkOut: v })} />
                             </td>
                             <td className="td">
-                              <NumInput min="0" max="8" step="0.5" className="input w-24 py-1.5 text-sm" value={r.overtime} disabled={!hadir} onChange={(ev) => setRow(e.id, { overtime: ev.target.value })} />
+                              <NumInput min="0" max="12" step="0.5" className="input w-24 py-1.5 text-sm" value={r.overtime} disabled={!hadir} onChange={(ev) => setRow(e.id, { overtime: ev.target.value })} title={locale === "en" ? "Auto after 8h work; max 12h manual" : "Otomatis setelah 8 jam kerja; maks manual 12 jam"} />
                             </td>
                             <td className="td">
                               {hadir && isLate(r.checkIn, shift) ? <Badge tone="red">{S.lateBadge}</Badge> : <span className="text-xs text-steel-400">-</span>}
@@ -655,15 +679,23 @@ export default function Absensi() {
 
               <div className="mb-3 flex flex-wrap items-center gap-2">
                 <FilterPopover
-                  activeCount={[month !== todayISO().slice(0, 7), branch !== "SEMUA"].filter(Boolean).length}
-                  initial={{ month, branch }}
-                  onReset={() => { setMonth(todayISO().slice(0, 7)); setBranch("SEMUA"); }}
-                  onApply={(d) => { setMonth(d.month); setBranch(d.branch); }}
+                  activeCount={[month !== todayISO().slice(0, 7) || rekapYear !== String(new Date().getFullYear()), branch !== "SEMUA"].filter(Boolean).length}
+                  initial={{ month, year: rekapYear, branch }}
+                  onReset={() => { setMonth(todayISO().slice(0, 7)); setRekapYear(String(new Date().getFullYear())); setBranch("SEMUA"); }}
+                  onApply={(d) => { setMonth(d.month); setRekapYear(d.year || String(new Date().getFullYear())); setBranch(d.branch); }}
                 >
                   {(draft, setDraft) => (
                     <div className="space-y-3">
+                      {/* T6-ABS3: filter bulan + tahun. */}
                       <Field label={S.monthFilterLabel}>
                         <input type="month" className="input w-full" value={draft.month} onChange={(e) => setDraft({ ...draft, month: e.target.value })} />
+                      </Field>
+                      <Field label={locale === "en" ? "Year" : "Tahun"}>
+                        <select className="input w-full" value={draft.year} onChange={(e) => setDraft({ ...draft, year: e.target.value })}>
+                          {["", ...Array.from(new Set(data.attendance.map((a) => String(a.date ?? "").slice(0, 4)).filter(Boolean))).sort().reverse()].map((y) => (
+                            <option key={y || "all"} value={y}>{y || (locale === "en" ? "All years" : "Semua tahun")}</option>
+                          ))}
+                        </select>
                       </Field>
                       <Field label={S.branchLabel}>
                         <select className="input w-full" value={draft.branch} onChange={(e) => setDraft({ ...draft, branch: e.target.value })} aria-label={S.branchFilterShortAria}>

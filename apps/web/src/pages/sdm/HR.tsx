@@ -48,7 +48,8 @@ import { useT } from "../../i18n/LanguageContext";
 import { n_qc } from "../../i18n/n_qc";
 
 const CERT_WINDOW = 90;
-const TIPE_KARYAWAN = ["Tetap", "Harian", "Kontrak", "Outsourcing"];
+const TIPE_KARYAWAN = ["Tetap", "Kontrak", "Outsourcing", "Training"];
+const JABATAN_OPTIONS = ["Operator", "Fitter", "Welder", "Painter", "Foreman", "Supervisor", "QC Inspector", "HSE Officer", "Admin", "Logistik", "Procurement", "Project Engineer", "Manager Proyek", "Lainnya"];
 const PTKP_STATUS = ["TK/0", "TK/1", "TK/2", "TK/3", "K/0", "K/1", "K/2", "K/3"];
 const SURAT_JENIS = ["SP 1", "SP 2", "SP 3", "Mutasi"];
 const IMPORT_HEADERS = ["NIK", "Nama", "Jabatan", "Departemen", "Cabang", "Status", "Tanggal Gabung (YYYY-MM-DD)", "Tipe", "Gaji Pokok", "PTKP Status", "Tanggungan", "Kontrak Berakhir (YYYY-MM-DD)"];
@@ -256,7 +257,7 @@ export default function HR() {
   const [trainingEditId, setTrainingEditId] = useState<string | null>(null);
   const [delTraining, setDelTraining] = useState<StoreItem | null>(null);
   const [certTarget, setCertTarget] = useState<StoreItem | null>(null);
-  const [certForm, setCertForm] = useState({ name: "", expires: todayISO() });
+  const [certForm, setCertForm] = useState({ name: "", expires: todayISO(), no: "", issued: "", fileUrl: "" });
 
   /* ---------- surat ---------- */
   const [showSurat, setShowSurat] = useState(false);
@@ -1022,14 +1023,20 @@ const finishTraining = async (t: StoreItem) => {
       try {
       const emp = data.employees.find((e) => e.id === empId);
       if (!emp) continue;
-      const next = [...normCerts(emp), { name: certForm.name.trim(), expires: certForm.expires }];
+      const next = [...normCerts(emp), {
+        name: certForm.name.trim(),
+        expires: certForm.expires,
+        ...(certForm.no.trim() ? { no: certForm.no.trim() } : {}),
+        ...(certForm.issued ? { issued: certForm.issued } : {}),
+        ...(certForm.fileUrl.trim() ? { fileUrl: certForm.fileUrl.trim() } : {}),
+      }];
       await update("employees", empId, { certs: next });
       } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); }
     }
     log("menerapkan sertifikat training", `${certTarget.id} · ${certForm.name.trim()} → ${ids.length} peserta`, "SDM");
     toast(S.tCertOk.replace("{n}", String(ids.length)));
     setCertTarget(null);
-    setCertForm({ name: "", expires: todayISO() });
+    setCertForm({ name: "", expires: todayISO(), no: "", issued: "", fileUrl: "" });
   };
 
   /* ---------- surat peringatan / mutasi ---------- */
@@ -1380,7 +1387,9 @@ const finishTraining = async (t: StoreItem) => {
       </div>
 
       <div className="mt-4 card">
-        <Tabs tabs={["Karyawan", "Cuti & Izin", "Mutasi", "Org Chart", "Training", "Surat & Impor"]} active={tab} onChange={setTab} labels={{ Karyawan: S.tabKaryawan, "Cuti & Izin": S.tabCuti, Mutasi: S.tabMutasi, "Org Chart": S.tabOrg, Training: S.tabTraining, "Surat & Impor": S.tabSurat }} />
+        {/* T6-SDM7: tab Mutasi & Org Chart dihapus dari UI (notes2).
+            Data tetap di store bila nanti dipakai lagi. */}
+        <Tabs tabs={["Karyawan", "Cuti & Izin", "Training", "Surat & Impor"]} active={tab} onChange={setTab} labels={{ Karyawan: S.tabKaryawan, "Cuti & Izin": S.tabCuti, Training: S.tabTraining, "Surat & Impor": S.tabSurat }} />
         <div className="p-4">
           {tab === "Karyawan" && (
             <div>
@@ -1437,8 +1446,8 @@ const finishTraining = async (t: StoreItem) => {
                           <SortTh label={S.thKontrak} sortKey="contract" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} />
                           <SortTh label={S.thSaldo} sortKey="saldo" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} />
                           <SortTh label={S.dlStatus} sortKey="status" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} />
-                          <SortTh label={S.colCreated} sortKey="createdAt" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} />
-                          <SortTh label={S.colUpdated} sortKey="updatedAt" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} />
+                          {/* T6-SDM4: kolom "Dibuat" dihapus; hanya "Terakhir diupdate". */}
+                          <SortTh label={locale === "en" ? "Last updated" : "Terakhir diupdate"} sortKey="updatedAt" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} />
                           <th className="th">{S.thAksi}</th>
                         </tr>
                       </thead>
@@ -1475,7 +1484,6 @@ const finishTraining = async (t: StoreItem) => {
                             </td>
                             <td className="td font-semibold text-navy-900">{S.daysN.replace("{n}", String(saldoCuti(e.id)))}</td>
                             <td className="td"><StatusBadge status={String(e.status)} /></td>
-                            <td className="td text-xs text-steel-600">{createdAtOf(e) !== null ? fmtTanggal(createdAtOf(e)) : <span className="text-steel-400">-</span>}</td>
                             <td className="td text-xs text-steel-600">{lastTouchedAt(e) !== null ? fmtTanggal(lastTouchedAt(e)) : <span className="text-steel-400">-</span>}</td>
                             <td className="td">
                               <div className="flex items-center gap-2 whitespace-nowrap">
@@ -1898,7 +1906,12 @@ const finishTraining = async (t: StoreItem) => {
           <FormGrid>
             <Field label={S.fNik} hint="NIK = username login karyawan (16 digit angka, dipakai untuk masuk aplikasi)."><input className="input" inputMode="numeric" pattern="[0-9]*" maxLength={16} value={form.nik} onChange={(e) => setForm({ ...form, nik: e.target.value.replace(/[^0-9]/g, "").slice(0, 16) })} placeholder={S.phNik} /></Field>
             <Field label={S.fNama}><input className="input" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder={S.phNamaHr} /></Field>
-            <Field label={S.thJabatan}><input className="input" value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value })} placeholder={S.phWelder} /></Field>
+            <Field label={S.thJabatan}>
+              {/* T6-SDM10: jabatan berupa pilihan (dropdown), bukan teks bebas. */}
+              <select className="input" value={JABATAN_OPTIONS.includes(form.role) ? form.role : "Lainnya"} onChange={(e) => setForm({ ...form, role: e.target.value })}>
+                {JABATAN_OPTIONS.map((r) => <option key={r} value={r}>{r}</option>)}
+              </select>
+            </Field>
             <Field label={S.fDept}>
               <select className="input" value={form.dept} onChange={(e) => setForm({ ...form, dept: e.target.value })}>
                 {DEPT_OPTIONS.map((d) => <option key={d}>{d}</option>)}

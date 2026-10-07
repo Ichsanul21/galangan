@@ -6,6 +6,7 @@ import { Card, PageHeader, Badge, KpiCard, Tabs, ProgressBar, Modal, Field, Form
   FileUploadButton,
   RowAction,
 } from "../../components/ui";
+import { useAuth, canSetTarget } from "../../auth/auth";
 import { DocumentPreviewCell } from "../../components/DocumentPreview";
 import type { SortState } from "../../components/ui";
 import { useStore, type StoreItem, type CollectionKey } from "../../data/store";
@@ -24,7 +25,6 @@ import { PPH_SUBKON_OPTIONS } from "../../utils/sb";
 import { pdfServerReady } from "../../services/pdfClient";
 import { usePdfDoc } from "../../components/usePdfDoc";
 import { subActiveTrend, subContractTrend, woTrend, ratingTrend } from "../../data";
-import { FilterPopover } from "../../components/FilterPopover";
 import { useT } from "../../i18n/LanguageContext";
 import { n_crm } from "../../i18n/n_crm";
 
@@ -144,7 +144,6 @@ export default function Subcontractor() {
   const [tab, setTab] = useState("Subkontraktor");
   const [sort, setSort] = useState<SortState>({ key: null, dir: "asc" });
   const [sort2, setSort2] = useState<SortState>({ key: null, dir: "asc" });
-  const [typeFilter, setTypeFilter] = useState("Semua");
   const [subQ, setSubQ] = useState("");
   const [subStatus, setSubStatus] = useState("Semua");
   const modAlert = useModuleAlert("subkontraktor");
@@ -168,6 +167,14 @@ export default function Subcontractor() {
   const [progMs, setProgMs] = useState<string[]>([]);
   const [progNote, setProgNote] = useState("");
   const [progPct, setProgPct] = useState("");
+  /* T6-SK4: foto progres WO + historikal edit sebelumnya. */
+  const [progPhotoUrl, setProgPhotoUrl] = useState("");
+  /* T6-SK5: ubah WO/SPK hanya procurement (dan peran target). */
+  const { user: sessionUser } = useAuth();
+  const canEditWo = (): boolean => {
+    const r = String(sessionUser?.role ?? "").toLowerCase();
+    return canSetTarget(sessionUser?.role) || r.includes("procurement") || r.includes("purchasing") || r.includes("logistik");
+  };
   // Ubah WO (scope/target) + ubah termin Draf (milestone/amount).
   const [woEdit, setWoEdit] = useState<StoreItem | null>(null);
   const [woEditForm, setWoEditForm] = useState({ scope: "", targetDate: "" });
@@ -180,7 +187,7 @@ export default function Subcontractor() {
   const [termEditForm, setTermEditForm] = useState({ milestone: "", amount: "" });
   const [confirmFinish, setConfirmFinish] = useState<{ id: string; v: number; note: string; ms: string[]; milestones?: unknown[] } | null>(null);
   const [showTerm, setShowTerm] = useState(false);
-  const [termForm, setTermForm] = useState({ sub: "", wo: "", milestone: "", amount: "", pphPct: "0.5", retPct: "5" });
+  const [termForm, setTermForm] = useState({ sub: "", wo: "", milestone: "", amount: "", pphPct: "0.5", retPct: "5", scheme: "Persentase" });
   const [termPay, setTermPay] = useState<StoreItem | null>(null);
   const [proof, setProof] = useState({ date: todayISO(), method: "Transfer", ref: "" });
   /* Bukti transfer sebagai berkas (foto Struk / PDF mutasi bank). Sebelumnya
@@ -217,8 +224,11 @@ export default function Subcontractor() {
 
   const runningWo = workOrders.filter((w) => w.status !== "Selesai").length;
   const avgRating = subcontractors.length ? Math.round(subcontractors.reduce((s, x) => s + Number(x.rating || 0), 0) / subcontractors.length) : 0;
+  /* T6-SK2: nama kapal dari proyek WO. */
+  const vesselOfProject = (projectId: string): string =>
+    String(data.projects.find((p) => String(p.id) === projectId)?.vessel ?? "-");
   const filteredSubs = subcontractors.filter((s) => {
-    if (typeFilter !== "Semua" && String(s.contractType ?? "Borongan") !== typeFilter) return false;
+    /* T6-SK3: tipe kontrak tidak lagi jadi filter utama; status saja + search. */
     if (subStatus !== "Semua" && normSub(s.status) !== subStatus) return false;
     return rowMatches(s, subQ, ["name", "services", "contractType", "status", "k3", "id"]);
   });
@@ -429,17 +439,37 @@ export default function Subcontractor() {
   };
 
   const openWoEdit = (w: StoreItem) => {
+    /* T6-SK5: SPK/WO tidak sembarang orang ubah. */
+    if (!canEditWo()) {
+      toast(locale === "en" ? "Only Procurement (or target roles) can edit WO/SPK" : "Hanya Procurement (atau peran target) yang bisa mengubah WO/SPK", "info");
+      return;
+    }
     setWoEdit(w);
     setWoEditForm({ scope: String(w.scope ?? ""), targetDate: String(w.targetDate ?? "") });
   };
 
   const saveWoEdit = async () => {
     if (!woEdit) return;
+    if (!canEditWo()) {
+      toast(locale === "en" ? "Only Procurement can edit WO/SPK" : "Hanya Procurement yang bisa mengubah WO/SPK", "info");
+      return;
+    }
     if (String(woEdit.status) === "Selesai") { toast(locale === "en" ? "Finished WO cannot be edited" : "WO Selesai tidak bisa diubah", "info"); return; }
     if (!woEditForm.scope.trim()) { toast(S.tWoFieldsRequired, "info"); return; }
     if (!woEditForm.targetDate) { toast(S.tWoTargetRequired, "info"); return; }
     try {
-      await update("workOrders", woEdit.id, { scope: woEditForm.scope.trim(), targetDate: woEditForm.targetDate });
+      const history = Array.isArray(woEdit.history) ? (woEdit.history as unknown[]) : [];
+      await update("workOrders", woEdit.id, {
+        scope: woEditForm.scope.trim(),
+        targetDate: woEditForm.targetDate,
+        history: [...history, {
+          at: todayISO(),
+          by: String(sessionUser?.name ?? "Anda"),
+          field: "scope/target",
+          from: `${String(woEdit.scope ?? "")} · ${String(woEdit.targetDate ?? "")}`,
+          to: `${woEditForm.scope.trim()} · ${woEditForm.targetDate}`,
+        }],
+      });
       log("mengubah WO", `${woEdit.id} · scope/target`, "Subkontraktor");
       toast(S.tProgressTo.replace("{a}", woEdit.id).replace("{b}", String(effProgress(woEdit))));
       setWoEdit(null);
@@ -471,14 +501,28 @@ export default function Subcontractor() {
 
   const applyWoProgress = async (id: string, v: number, note: string, doneMs?: string[], milestones?: unknown[]) => {
     try {
+    const prev = workOrders.find((w) => w.id === id);
+    /* T6-SK4: historikal progres + foto. */
+    const history = Array.isArray(prev?.history) ? (prev!.history as unknown[]) : [];
+    const histEntry = {
+      at: todayISO(),
+      by: String(sessionUser?.name ?? "Anda"),
+      progress: v,
+      note: note.trim(),
+      photoUrl: progPhotoUrl.trim() || undefined,
+      from: Number(prev?.progress ?? 0),
+    };
     await update("workOrders", id, {
       progress: v,
       status: v >= 100 ? "Selesai" : "Dalam Proses",
       ...(doneMs ? { doneMs } : {}),
       ...(milestones ? { milestones } : {}),
+      ...(progPhotoUrl.trim() ? { photoUrl: progPhotoUrl.trim() } : {}),
+      history: [...history, histEntry],
     });
-    log("mengupdate progres", `${id} → ${v}%${note ? ` - ${note}` : ""}`, "Subkontraktor");
+    log("mengupdate progres", `${id} → ${v}%${note ? ` - ${note}` : ""}${progPhotoUrl.trim() ? " · foto" : ""}`, "Subkontraktor");
     toast(S.tProgressTo.replace("{a}", id).replace("{b}", String(v)));
+    setProgPhotoUrl("");
     } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); }
   };
 
@@ -563,10 +607,11 @@ const known = ms.map((m) => m.title);
     const created = await add("termins", {
       sub: termForm.sub, woId: wo.id, milestone: ms.title, progress: `${wo.id} (${wo.progress}%)`, amount,
       pphPct, retPct, status: "Draf", date: todayISO(), branch: branchOfProject(String(wo.project ?? "")),
+      scheme: termForm.scheme,
     }, { action: "mengajukan termin", module: "Subkontraktor" });
     toast(S.tTermFiled.replace("{n}", created.id));
     setShowTerm(false);
-    setTermForm({ sub: "", wo: "", milestone: "", amount: "", pphPct: "0.5", retPct: "5" });
+    setTermForm({ sub: "", wo: "", milestone: "", amount: "", pphPct: "0.5", retPct: "5", scheme: "Persentase" });
     } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); }
   };
 
@@ -1004,28 +1049,11 @@ const printSpk = async (w: StoreItem): Promise<void> => {
                   ariaLabel={S.subSearchAria}
                   className="min-w-52 flex-1 sm:max-w-xs"
                 />
-                <FilterPopover
-                  activeCount={[subStatus !== "Semua", typeFilter !== "Semua"].filter(Boolean).length}
-                  initial={{ status: subStatus, tipe: typeFilter }}
-                  onReset={() => { setSubQ(""); setSubStatus("Semua"); setTypeFilter("Semua"); }}
-                  onApply={(d) => { setSubStatus(d.status); setTypeFilter(d.tipe); }}
-                >
-                  {(draft, setDraft) => (
-                    <div className="space-y-3">
-                      <Field label={S.statusLabel}>
-                        <select className="input w-full" value={draft.status} onChange={(e) => setDraft({ ...draft, status: e.target.value })}>
-                          {["Semua", "Aktif", "Kualifikasi", "Blacklist"].map((s) => <option key={s} value={s}>{s === "Semua" ? S.allStatus : s}</option>)}
-                        </select>
-                      </Field>
-                      <Field label={S.contractTypeLabel}>
-                        <select className="input w-full" value={draft.tipe} onChange={(e) => setDraft({ ...draft, tipe: e.target.value })}>
-                          {["Semua", ...CONTRACT_TYPES].map((t) => <option key={t} value={t}>{t === "Semua" ? S.allTypes : t}</option>)}
-                        </select>
-                      </Field>
-                    </div>
-                  )}
-                </FilterPopover>
-                {(subQ.trim() !== "" || subStatus !== "Semua" || typeFilter !== "Semua") && (
+                {/* T6-SK3: filter hanya status; semua status langsung tampil di select. */}
+                <select className="input w-auto py-1.5 text-sm" value={subStatus} onChange={(e) => setSubStatus(e.target.value)} aria-label={S.statusLabel}>
+                  {["Semua", "Aktif", "Kualifikasi", "Blacklist", "Nonaktif"].map((s) => <option key={s} value={s}>{s === "Semua" ? S.allStatus : s}</option>)}
+                </select>
+                {(subQ.trim() !== "" || subStatus !== "Semua") && (
                   <span className="text-xs text-steel-400">
                     {S.subFilterActive.replace("{n}", String(filteredSubs.length))}
                   </span>
@@ -1113,7 +1141,11 @@ const printSpk = async (w: StoreItem): Promise<void> => {
                       <div className="flex min-w-0 items-center gap-3">
                         <div className="font-mono text-sm font-semibold text-navy-900 shrink-0">{w.id}</div>
                         <div className="min-w-0 text-sm text-steel-600">
-                          <p className="truncate" title={`${w.sub} · ${w.project}`}>{w.sub} · {w.project}</p>
+                          {/* T6-SK2: detail WO = subkon + proyek + kapal. */}
+                          <p className="truncate font-medium text-navy-900" title={String(w.sub)}>{w.sub}</p>
+                          <p className="truncate text-xs" title={`${String(w.project)} · ${String(vesselOfProject(String(w.project)))}`}>
+                            {String(w.project)} · {String(vesselOfProject(String(w.project)))}
+                          </p>
                           <p className="text-xs text-steel-500 truncate" title={String(w.scope)}>{w.scope}</p>
                           {w.date && <p className="text-xs text-steel-400">{fmtTanggal(w.date)}</p>}
                           {w.targetDate && <p className="text-xs text-steel-500">{S.targetPenalty.replace("{a}", fmtTanggal(String(w.targetDate))).replace("{b}", String(Number(w.penaltyPct || 0)))}</p>}
@@ -1157,9 +1189,9 @@ const printSpk = async (w: StoreItem): Promise<void> => {
                           </button>
                         )}
                         {w.status !== "Selesai" && (
-                          <button className="btn-secondary text-xs" aria-label={S.updateProgAria.replace("{n}", w.id)} onClick={() => { setWoProg(w); setProgMs(doneMsOf(w)); setProgNote(""); setProgPct(String(effProgress(w))); }}>{S.updateBtn}</button>
+                          <button className="btn-secondary text-xs" aria-label={S.updateProgAria.replace("{n}", w.id)} onClick={() => { setWoProg(w); setProgMs(doneMsOf(w)); setProgNote(""); setProgPct(String(effProgress(w))); setProgPhotoUrl(String(w.photoUrl ?? "")); }}>{S.updateBtn}</button>
                         )}
-                        {w.status !== "Selesai" && (
+                        {w.status !== "Selesai" && canEditWo() && (
                           <button className="btn-secondary text-xs" aria-label={`${locale === "en" ? "Edit" : "Ubah"} ${w.id}`} onClick={() => openWoEdit(w)}>{locale === "en" ? "Edit" : "Ubah"}</button>
                         )}
                         {Number(w.progress || 0) < 100 && w.targetDate && daysLate(String(w.targetDate)) > 0 && !w.penaltyAt && (
@@ -1200,7 +1232,7 @@ const printSpk = async (w: StoreItem): Promise<void> => {
               <div className="overflow-x-auto">
                 <table className="w-full">
                   <thead className="bg-surface sticky top-0 z-10">
-                    <tr><SortTh label={S.sortTermin} sortKey="termin" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.sortSub} sortKey="sub" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.sortWoProg} sortKey="wo" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.sortValue} sortKey="nilai" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.sortPph} sortKey="pph" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.sortRetensi} sortKey="retensi" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.sortNeto} sortKey="neto" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.dateLabel} sortKey="tanggal" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.sortStatus} sortKey="status" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.colCreated} sortKey="createdAt" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.colUpdated} sortKey="updatedAt" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><th className="th">{S.actionLabel}</th></tr>
+                    <tr><SortTh label={locale === "en" ? "Project" : "Proyek"} sortKey="project" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.sortSub} sortKey="sub" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.sortWoProg} sortKey="wo" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.sortValue} sortKey="nilai" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.sortRetensi} sortKey="retensi" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.sortNeto} sortKey="neto" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.sortStatus} sortKey="status" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><th className="th">{S.actionLabel}</th></tr>
                   </thead>
                   <tbody className="divide-y divide-steel-100">
                     {sortRows(payments, sort, (p, key) =>
@@ -1208,18 +1240,17 @@ const printSpk = async (w: StoreItem): Promise<void> => {
                     ).map((p) => {
                       const wo = workOrders.find((w) => w.id === p.woId);
                       const canRelease = normTerm(p.status) === "Lunas" && retOf(p) > 0 && wo?.status === "Selesai";
+                      /* T6-SK6: kolom tabel termin disederhanakan.
+                         Proyek diambil dari WO bila ada. */
+                      const proj = wo ? String(wo.project ?? "") : String(p.project ?? "");
                       return (
                       <tr key={p.id} id={notifRowId(String(p.id))} className={rowHighlightClass({ id: String(p.id), flash, notified: notified.has(String(p.id)), base: "hover:bg-surface" })}>
-                        <td className="td font-mono font-medium text-navy-900">{p.id}</td>
+                        <td className="td font-mono text-xs text-steel-600 truncate" title={proj}>{proj || "-"}</td>
                         <td className="td text-steel-600 truncate" title={String(p.sub)}>{p.sub}</td>
                         <td className="td font-mono text-xs text-steel-500">{p.progress}{p.milestone ? <span className="block text-steel-400">{S.msPrefix.replace("{n}", String(p.milestone))}</span> : null}</td>
                         <td className="td font-semibold">{fmtMiliar(p.amount)}</td>
-                        <td className="td text-steel-600">{fmtRupiah(Number(p.amount || 0) * pphOf(p, pphDefault) / 100)} <span className="text-xs text-steel-400">({pphOf(p, pphDefault)}%)</span></td>
                         <td className="td text-steel-600">{fmtRupiah(Number(p.amount || 0) * retOf(p) / 100)} <span className="text-xs text-steel-400">({retOf(p)}%)</span></td>
                         <td className="td font-semibold text-emerald-600">{fmtRupiah(netoOf(p, pphDefault))}</td>
-                        <td className="td text-steel-600">{fmtTanggal(p.date)}</td>
-                        <td className="td text-xs text-steel-600">{createdAtOf(p) !== null ? fmtTanggal(createdAtOf(p)) : <span className="text-steel-400">-</span>}</td>
-                        <td className="td text-xs text-steel-600">{lastTouchedAt(p) !== null ? fmtTanggal(lastTouchedAt(p)) : <span className="text-steel-400">-</span>}</td>
                         <td className="td">
                           <div className="mb-1 max-w-44"><FlowStrip steps={["Draf", "Diajukan", "Disetujui", "Lunas"]} current={normTerm(p.status) === "Retensi Released" ? "Lunas" : normTerm(p.status)} ariaLabel={`Alur termin ${p.id}`} /></div>
                           <Badge tone={toneMap[normTerm(p.status)] ?? "gray"}>{normTerm(p.status)}</Badge>
@@ -1636,6 +1667,39 @@ const printSpk = async (w: StoreItem): Promise<void> => {
           <Field label={S.noteLabel} hint={S.progNoteHint}>
             <input className="input" value={progNote} onChange={(e) => setProgNote(e.target.value)} placeholder={S.progNotePh} />
           </Field>
+          {/* T6-SK4: foto progres WO. */}
+          <Field label={locale === "en" ? "Progress photo" : "Foto progres"}>
+            <div className="flex flex-wrap items-center gap-2">
+              <FileUploadButton
+                label={locale === "en" ? "Upload photo" : "Unggah foto"}
+                accept=".png,.jpg,.jpeg"
+                onUploaded={(u) => setProgPhotoUrl(u)}
+              />
+              {progPhotoUrl.trim() !== "" && (
+                <DocumentPreviewCell doc={{ title: locale === "en" ? "Progress photo" : "Foto progres", fileUrl: progPhotoUrl }} />
+              )}
+            </div>
+          </Field>
+          {/* T6-SK4: historikal edit progres sebelumnya. */}
+          {(() => {
+            const hist = Array.isArray(woProg?.history) ? (woProg!.history as Array<Record<string, unknown>>) : [];
+            if (hist.length === 0) return null;
+            return (
+              <div className="rounded-lg border border-steel-100 bg-surface p-2.5">
+                <p className="mb-1 text-[11px] font-semibold text-navy-900">
+                  {locale === "en" ? "Progress history" : "Historikal progres"}
+                </p>
+                <ul className="max-h-32 space-y-1 overflow-y-auto">
+                  {[...hist].reverse().map((h, i) => (
+                    <li key={i} className="text-[11px] text-steel-600">
+                      {fmtTanggal(String(h.at ?? ""))} · {String(h.by ?? "-")} · {String(h.from ?? "")}% → {String(h.progress ?? "")}%
+                      {h.note ? ` · ${String(h.note)}` : ""}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            );
+          })()}
         </div>
       </Modal>
 
@@ -1719,6 +1783,14 @@ const printSpk = async (w: StoreItem): Promise<void> => {
           )}
           <Field label={S.termAmountLabel}><MoneyInput className="input" value={termForm.amount} onChange={(v) => setTermForm({ ...termForm, amount: v })} /></Field>
           <FormGrid>
+            {/* T6-SK7: skema termin - persentase / DP-Termin / Kontan. */}
+            <Field label={locale === "en" ? "Payment scheme" : "Skema termin"}>
+              <select className="input" value={termForm.scheme} onChange={(e) => setTermForm({ ...termForm, scheme: e.target.value })}>
+                <option value="Persentase">{locale === "en" ? "Percentage" : "Persentase"}</option>
+                <option value="DP/Termin">DP / Termin</option>
+                <option value="Kontan">{locale === "en" ? "Cash" : "Kontan"}</option>
+              </select>
+            </Field>
             <Field label={locale === "en" ? "Tax (%)" : "Pajak (%)"}>
               <select className="input" value={termForm.pphPct} onChange={(e) => setTermForm({ ...termForm, pphPct: e.target.value })}>
                 {/* T6-SK8: label "Pajak" (client); nilai tetap pphPct di store. */}

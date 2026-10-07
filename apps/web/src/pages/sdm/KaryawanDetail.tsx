@@ -125,7 +125,7 @@ export default function KaryawanDetail() {
   const [tab, setTab] = useState("Absensi");
   const [skillInput, setSkillInput] = useState("");
   const [showCert, setShowCert] = useState(false);
-  const [certForm, setCertForm] = useState({ name: "", expires: todayISO() });
+  const [certForm, setCertForm] = useState({ name: "", expires: todayISO(), no: "", issued: "", fileUrl: "" });
   const [showDoc, setShowDoc] = useState(false);
   const [docForm, setDocForm] = useState({ title: "", type: "Kontrak", status: "Berlaku", fileUrl: "" });
   const [docPreview, setDocPreview] = useState<StoreItem | null>(null);
@@ -193,15 +193,24 @@ export default function KaryawanDetail() {
   const skills = getSkills(emp);
 
   const saveSkill = async () => {
-    const extra = skillInput.split(",").map((s) => s.trim()).filter(Boolean);
+    /* T6-SDM3: dukung "Nama" atau "Nama|80" (persentase skill). */
+    const extra = skillInput.split(",").map((s) => s.trim()).filter(Boolean)
+      .map((s) => {
+        const [n, p] = s.split("|").map((x) => x.trim());
+        if (!n) return "";
+        const pct = Number(p);
+        return Number.isFinite(pct) && pct > 0 ? `${n}|${Math.min(100, Math.round(pct))}` : n;
+      })
+      .filter(Boolean);
     if (extra.length === 0) {
       toast(S.tSkillIsi, "info");
       return;
     }
-    const lower = new Set(skills.map((s) => s.toLowerCase()));
+    const lower = new Set(skills.map((s) => s.split("|")[0].toLowerCase()));
     const merged = [...skills];
     for (const s of extra) {
-      if (!lower.has(s.toLowerCase())) { merged.push(s); lower.add(s.toLowerCase()); }
+      const key = s.split("|")[0].toLowerCase();
+      if (!lower.has(key)) { merged.push(s); lower.add(key); }
     }
     try {
     await update("employees", emp.id, { skills: merged });
@@ -213,7 +222,7 @@ export default function KaryawanDetail() {
 
   const delSkill = async (name: string) => {
     try {
-    await update("employees", emp.id, { skills: skills.filter((s) => s !== name) });
+    await update("employees", emp.id, { skills: skills.filter((s) => s !== name && s.split("|")[0] !== name) });
     log("menghapus skill karyawan", `${emp.id} · ${name}`, "SDM");
     toast(S.tSkillDel.replace("{n}", name), "info");
     } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); }
@@ -232,11 +241,18 @@ export default function KaryawanDetail() {
       toast(S.tCertWajib, "info");
       return;
     }
-    const next = [...certs, { name: certForm.name.trim(), expires: certForm.expires }];
+    /* T6-SDM5: sertifikat + nomor + berlaku + diterbitkan + file. */
+    const next = [...certs, {
+      name: certForm.name.trim(),
+      expires: certForm.expires,
+      ...(certForm.no.trim() ? { no: certForm.no.trim() } : {}),
+      ...(certForm.issued ? { issued: certForm.issued } : {}),
+      ...(certForm.fileUrl.trim() ? { fileUrl: certForm.fileUrl.trim() } : {}),
+    }];
     try {
     await update("employees", emp.id, { certs: next });
     log("menambah sertifikat karyawan", emp.id, "SDM");
-    setCertForm({ name: "", expires: todayISO() });
+    setCertForm({ name: "", expires: todayISO(), no: "", issued: "", fileUrl: "" });
     setShowCert(false);
     toast(S.tCertAdd);
     } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); }
@@ -499,16 +515,22 @@ export default function KaryawanDetail() {
         <Card className="p-5">
           <h3 className="text-sm font-semibold text-navy-900">{S.cardSkill}</h3>
           <div className="mt-3 flex flex-wrap gap-1.5">
-            {skills.map((s) => (
-              <span key={s} className="inline-flex items-center gap-1 rounded-full bg-navy-50 border border-navy-100 px-2.5 py-1 text-xs font-medium text-navy-800">
-                {s}
-                <button className="text-steel-400 hover:text-rose-600" aria-label={S.ariaHapusSkill.replace("{n}", s)} onClick={() => delSkill(s)}>×</button>
-              </span>
-            ))}
+            {skills.map((s) => {
+              /* T6-SDM3: skill mendukung persentase "Nama|80". */
+              const [skName, skPct] = String(s).split("|");
+              const pct = Number(skPct);
+              return (
+                <span key={s} className="inline-flex items-center gap-1 rounded-full bg-navy-50 border border-navy-100 px-2.5 py-1 text-xs font-medium text-navy-800">
+                  {skName}
+                  {Number.isFinite(pct) && pct > 0 ? <Badge tone={pct >= 70 ? "green" : pct >= 40 ? "amber" : "red"}>{pct}%</Badge> : null}
+                  <button className="text-steel-400 hover:text-rose-600" aria-label={S.ariaHapusSkill.replace("{n}", skName)} onClick={() => delSkill(s)}>×</button>
+                </span>
+              );
+            })}
             {skills.length === 0 && <span className="text-xs text-steel-400">{S.emptySkill}</span>}
           </div>
           <div className="mt-3 flex gap-2">
-            <input className="input flex-1" value={skillInput} onChange={(e) => setSkillInput(e.target.value)} placeholder={S.phSkill} />
+            <input className="input flex-1" value={skillInput} onChange={(e) => setSkillInput(e.target.value)} placeholder={locale === "en" ? "Skill or Skill|percent (e.g. Welding|80)" : "Skill atau Skill|persen (cth: Pengelasan|80)"} />
             <AsyncButton className="btn-secondary whitespace-nowrap text-xs" onAction={saveSkill}>{S.btnTambah}</AsyncButton>
           </div>
         </Card>
@@ -775,7 +797,24 @@ export default function KaryawanDetail() {
       >
         <div className="space-y-3">
           <Field label={S.fNamaCert}><input className="input" value={certForm.name} onChange={(e) => setCertForm({ ...certForm, name: e.target.value })} placeholder={S.phNdt} /></Field>
+          {/* T6-SDM5: nomor + tanggal terbit + berlaku + unggah file. */}
+          <FormGrid>
+            <Field label={locale === "en" ? "Certificate no." : "Nomor sertifikat"}>
+              <input className="input font-mono" value={certForm.no} onChange={(e) => setCertForm({ ...certForm, no: e.target.value })} placeholder="cth: SIO-12345" />
+            </Field>
+            <Field label={locale === "en" ? "Issued on" : "Sertifikat diterbitkan"}>
+              <input type="date" className="input" value={certForm.issued} onChange={(e) => setCertForm({ ...certForm, issued: e.target.value })} />
+            </Field>
+          </FormGrid>
           <Field label={S.fBerlaku}><input type="date" className="input" value={certForm.expires} onChange={(e) => setCertForm({ ...certForm, expires: e.target.value })} /></Field>
+          <Field label={locale === "en" ? "Certificate file" : "File sertifikat"}>
+            <div className="flex flex-wrap items-center gap-2">
+              <FileUploadButton label={locale === "en" ? "Upload" : "Unggah"} accept=".png,.jpg,.jpeg,.pdf" onUploaded={(u) => setCertForm({ ...certForm, fileUrl: u })} />
+              {certForm.fileUrl.trim() !== "" && (
+                <DocumentPreviewCell doc={{ title: certForm.name || "Sertifikat", fileUrl: certForm.fileUrl }} />
+              )}
+            </div>
+          </Field>
         </div>
       </Modal>
 

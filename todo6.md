@@ -136,12 +136,12 @@ Item baru memakai kode **T6-**. Item lama dirujuk ke todo5.
 | ID | Permintaan | Status | Bukti / gap |
 |---|---|---|---|
 | T6-SK1 | Hapus evaluasi kinerja | **SELESAI** | Card evalChart + EvalTooltip dihapus dari UI |
-| T6-SK2 | WO detail: proyek + kapal + subkon | **BELUM** | |
-| T6-SK3 | Filter hanya status; semua status tampil | **BELUM** | |
-| T6-SK4 | Update progress WO: foto + historikal | **BELUM** | |
-| T6-SK5 | SPK tidak bisa diubah (hanya procurement) | **BELUM** | Edit WO masih bisa (kecuali Selesai) |
-| T6-SK6 | Tabel termin: proyek, subkon, WO, nilai, retensi, neto, status | **SEBAGIAN** | Kolom pph/tanggal masih; nama proyek belum |
-| T6-SK7 | Skema termin (%, dp/termin, kontan) | **BELUM** | |
+| T6-SK2 | WO detail: proyek + kapal + subkon | **SELESAI** | Kartu WO tampilkan subkon · proyek · kapal (dari project.vessel) |
+| T6-SK3 | Filter hanya status; semua status tampil | **SELESAI** | Select status saja (Semua/Aktif/Kualifikasi/Blacklist/Nonaktif); tipe kontrak tidak lagi filter utama |
+| T6-SK4 | Update progress WO: foto + historikal | **SELESAI** | Modal progres: unggah foto + daftar historikal (progress before→after, note, by) |
+| T6-SK5 | SPK tidak bisa diubah (hanya procurement) | **SELESAI** | Tombol Ubah WO hanya untuk role target/procurement; saveWoEdit di-guard |
+| T6-SK6 | Tabel termin: proyek, subkon, WO, nilai, retensi, neto, status | **SELESAI** | Kolom: Proyek · Subkon · WO · Nilai · Retensi · Neto · Status · Aksi |
+| T6-SK7 | Skema termin (%, dp/termin, kontan) | **SELESAI** | Select skema di form termin (Persentase / DP-Termin / Kontan), disimpan di `termins.scheme` |
 | T6-SK8 | Field "pajak" (pilih %) ganti pph | **SELESAI** | Label form termin = "Pajak (%)"; nilai tetap `pphPct` di store |
 | T6-SK9 | Hapus tab Timesheet | **SELESAI** | Tabs tanpa Timesheet |
 
@@ -162,16 +162,16 @@ Item baru memakai kode **T6-**. Item lama dirujuk ke todo5.
 
 | ID | Permintaan | Status | Bukti / gap |
 |---|---|---|---|
-| T6-SDM1 | Edit baris: posisi tetap; tambah di bawah | **BELUM** | |
-| T6-SDM2 | Tipe karyawan: training/kontrak/tetap/outsourcing + kontrak terakhir | **SEBAGIAN** | TIPE_KARYAWAN ada Tanpa "Training"; kontrak terakhir belum |
-| T6-SDM3 | Skill matrix + persentase | **SEBAGIAN** | Skill = string array; % belum |
-| T6-SDM4 | Kolom "dibuat" → "terakhir diupdate" | **BELUM** | |
-| T6-SDM5 | Sertifikat: file, nomor, berlaku hingga, diterbitkan | **BELUM** | certForm hanya name+expires |
-| T6-SDM6 | Cuti/izin: form mandiri karyawan via barcode | **BELUM** | |
-| T6-SDM7 | Hapus tab Mutasi + Org Chart | **BELUM** | Kedua tab masih ada |
+| T6-SDM1 | Edit baris: posisi tetap; tambah di bawah | **BELUM** | Urutan tabel karyawan belum diubah |
+| T6-SDM2 | Tipe karyawan: training/kontrak/tetap/outsourcing + kontrak terakhir | **SELESAI** | TIPE_KARYAWAN = Tetap/Kontrak/Outsourcing/Training; kolom kontrak tetap |
+| T6-SDM3 | Skill matrix + persentase | **SELESAI** | Skill format `Nama\|80`; badge warna %; input placeholder mendukung |
+| T6-SDM4 | Kolom "dibuat" → "terakhir diupdate" | **SELESAI** | Tabel karyawan hanya kolom Terakhir diupdate |
+| T6-SDM5 | Sertifikat: file, nomor, berlaku hingga, diterbitkan | **SELESAI** | Form sertifikat: nomor, diterbitkan, berlaku, unggah file + preview |
+| T6-SDM6 | Cuti/izin: form mandiri karyawan via barcode | **BELUM** | Butuh spesifikasi alur barcode |
+| T6-SDM7 | Hapus tab Mutasi + Org Chart | **SELESAI** | Tabs: Karyawan, Cuti & Izin, Training, Surat & Impor |
 | T6-SDM8 | Surat: kontrak baru/perpanjang + historikal, SP, preview + kop | **BELUM** | SURAT_JENIS masih SP1/2/3/Mutasi |
-| T6-SDM9 | Foto karyawan, KTP, ijazah | **BELUM** | |
-| T6-SDM10 | Jabatan dropdown; pendidikan selectable; kawin/tanggungan/jk | **BELUM** | |
+| T6-SDM9 | Foto karyawan, KTP, ijazah | **SEBAGIAN** | Photo avatar ada; KTP/ijazah belum |
+| T6-SDM10 | Jabatan dropdown; pendidikan selectable; kawin/tanggungan/jk | **SEBAGIAN** | Jabatan = dropdown; pendidikan/kawin/jk belum |
 
 ---
 
@@ -181,9 +181,9 @@ Item baru memakai kode **T6-**. Item lama dirujuk ke todo5.
 |---|---|---|---|
 | T6-ABS1 | Status hari ini otomatisasi alat | **AMBIGU** | Integrasi alat absensi? |
 | T6-ABS2 | Rekap langsung sebulan | **SELESAI** | Tab Rekap bulanan ada |
-| T6-ABS3 | Filter bulan + tahun | **SEBAGIAN** | Filter bulan ada; tahun belum |
+| T6-ABS3 | Filter bulan + tahun | **SELESAI** | FilterPopover rekap: bulan + tahun (dropdown dari data attendance) |
 | T6-ABS4 | Hilangkan shift | **SELESAI** | Select shift dihapus; internal tetap "Pagi" |
-| T6-ABS5 | Lembur otomatis >8 jam + skema maksimal | **BELUM** | Sekarang manual, cap 8 jam |
+| T6-ABS5 | Lembur otomatis >8 jam + skema maksimal | **SELESAI** | setRow auto-hitung OT (worked−8, max 12); NumInput max 12 |
 | T6-ABS6 | Hapus tren kehadiran | **SELESAI** | Card tren di-hide dari render |
 
 ---
