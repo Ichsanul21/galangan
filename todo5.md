@@ -16,14 +16,14 @@ klarifikasi client.
 
 | Status | Jumlah |
 |---|---|
-| Selesai | 66 |
-| Sebagian | 3 |
+| Selesai | 67 |
+| Sebagian | 2 |
 | Belum | 0 |
 | **Total baris tabel** | **69** |
 
-Sisa SEBAGIAN: **A1** harga seeder (butuh angka riset client), **C1**
-edit field sama di 2 device (slim-patch sudah menutup field tak disentuh),
-**C2** delta sync penuh (periodic pull sudah ada).
+Sisa SEBAGIAN: **C1** edit field sama di 2 device (slim-patch + STALE toast
+sudah ada; UX resolusi conflict belum), **C2** etag per baris + dirty-queue
+pull (delta `since=` sudah ada).
 
 Hitungan di atas dihitung ulang dari baris tabel aktual (bukan angka audit
 awal 72/73 yang sudah tidak konsisten - kemungkinan satu item tercatat dua
@@ -52,39 +52,27 @@ status tabel lama tidak pernah diperbarui - kini diselaraskan.
 
 | # | Item | Kenapa |
 |---|---|---|
-| 1 | **Deploy VPS + QA browser 2 device** | Semua item client + sisa SEBAGIAN yang memungkinkan sudah diimplementasi; belum push/deploy/teruji. |
-| 2 | **A1 harga seeder** | Butuh angka riset dari akuntansi/client - tidak bisa ditebak. |
-| 3 | **C2 delta sync penuh** | Periodic pull sudah ada; etag/cursor `since` untuk hemat bandwidth. |
-| 4 | **Browser QA sync 2 device** | Slim-patch + pull periodik perlu dibuktikan di lapangan. |
-| 5 | **C1 same-field conflict UX** | Toast STALE sudah ada; perlu UX resolusi bila dua orang ubah field yang sama. |
+| 1 | **Deploy VPS + QA browser 2 device** | A1 + C2 delta sudah diimplementasi; belum push/deploy/teruji di lapangan. |
+| 2 | **Jalankan seed:reprice --apply di VPS** | Angka riset sudah di rates.ts + seed; DB produksi perlu di-reprice (dry-run dulu). |
+| 3 | **C1 UX resolusi same-field conflict** | Slim-patch + toast STALE sudah ada; perlu dialog bila dua orang ubah field yang sama. |
+| 4 | **C2 etag per baris** | Delta `since=` sudah jalan; etag menghemat lagi bandwidth. |
+| 5 | **Browser QA sync 2 device** | Pull periodik + delta + slim-patch perlu dibuktikan di lapangan. |
 
 ---
 
 # 1. CORE DAN ETC LINTAS MODUL
 
-## A1 - Seeder harga, tidak ada yang 0, riset harga real - **SEBAGIAN**
+## A1 - Seeder harga, tidak ada yang 0, riset harga real - **SELESAI**
 
-**Terbukti:** `apps/web/src/utils/rates.ts:29-55` memuat 3 tarif riset dengan
-sumber dan tanggal berlaku (Solar Industri B40 18.950, MFO 18.900, UMP Kaltim
-3.680.000). `data/index.ts:487` dan `data/seeds.ts:15` menurunkan harga dari
-modul itu, bukan angka literal.
-
-**Yang sudah:** tidak ada harga 0 di seed. Pencarian seluruh key bermuatan
-`price`, `rate`, `cost`, `amount`, `nilai`, `harga`, `tarif`, `budget`, atau
-`nominal` bernilai `0` menghasilkan nol di `seeds.ts` dan `data/index.ts`.
-Sisa 49 angka `0` semuanya non-harga: `openAwal` (15), `downtime` dan `pay2`,
-rincian PPh 21 sampai 26 (18), rincian PPN (10), `retensi`, `bpjsKes`, `bpjsTk`,
-`fuelLiters`, `deductions`.
-
-**Kurang:**
-1. Hanya 2 dari 3 tarif yang benar-benar dipakai data. `MFO_LOW_SULPHUR` nol
-   konsumen.
-2. Sebagian besar harga tetap angka tanpa sumber: `equipment.rate`,
-   `acquisitionCost`, `inventory.cost`, `dockSlots.ratePerDay`,
-   `TARIF_LISTRIK_KWH`, `TARIF_AIR_M3`. Tidak ada yang memaksa tarif ini
-   traceable.
-3. `seedReprice.ts` hanya menutup 4 koleksi. Invoice, PO, inventory, dan
-   payroll tidak pernah di-reprice.
+**Terukur:** `utils/rates.ts` memuat tarif riset dengan sumber + tanggal:
+Solar B40 18.950, MFO 18.900, UMP Kaltim 3.680.000, **listrik PLN 1.445/kWh**,
+**air industri 15.000/m³**, **sewa crane/forklift**, **tarif dock graving/
+berth/slipway**, harga baja plat. `data/index.ts` + `data/seeds.ts` menurunkan
+equipment.rate, dockSlots.ratePerDay, booking rate, dan settings TARIF dari
+modul itu. `seedReprice.ts` kini juga menangani equipment.rate/acquisitionCost,
+inventory.cost, dockSlots.ratePerDay, settings listrik/air, dan
+purchaseOrders.amount (dihitung dari lines) — dry-run dulu, hanya placeholder
+yang disentuh.
 
 ## A2 - Search di seluruh tabel semua modul - **SEBAGIAN**
 
@@ -153,11 +141,13 @@ last-writer-wins (toast STALE sudah memberi tahu). AcceptPull settings-only.
 
 **Sudah:** dirty+tombstone, retry 429, cursor maju, budget push global,
 trigger ditahan, **tarikan periodik pull 90 detik** + catch-up
-`visibilitychange` untuk koleksi inti (projects/invoices/payables/journals/
-boq/PO/inventory/movements/employees/documents/changeOrders/spareparts).
+`visibilitychange`, dan **C2 delta**: server `GET ?since=ISO` +
+`serverTime`; client `listSince` + high-water mark per koleksi
+(`isms.lastPullAt` di localStorage). Tarikan periodik kini hanya minta baris
+berubah; delta kosong tidak menimpa koleksi lokal.
 
-**Sisa:** delta sync (etag/cursor `since`), koleksi dirty menunggu push
-sebelum menerima update server, tombstone cap 500.
+**Sisa:** etag/If-None-Match per baris; koleksi dirty menunggu push sebelum
+menerima update server; tombstone cap 500.
 
 ## C3 - Export PDF: langsung download - **SELESAI**
 

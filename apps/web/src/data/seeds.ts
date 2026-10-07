@@ -5,7 +5,7 @@
 // TRM-SB / M-SB / DS-SB / SJ-SMD / TT-SMD / C-SB / VND-SB / V-SB / QT-SB / KTR-SB.
 import type { StoreItem } from "./store";
 import { JU_PENYESUAIAN_EXCEL } from "./financeExcel";
-import { loadedLaborRatePerDay } from "../utils/rates";
+import { loadedLaborRatePerDay, fuelPricePerLiter, SEWA_ALAT } from "../utils/rates";
 
 /* Tarif tenaga servis per hari kerja untuk pekerjaan maritim (welder/
    fitter). Diturunkan dari UMP Kalimantan Timur 2026 lewat utils/rates.ts,
@@ -13,6 +13,8 @@ import { loadedLaborRatePerDay } from "../utils/rates";
    dan membuat biaya tenaga servis under-reported di HPP proyek.
    Bisa diubah dari Pengaturan (SET-EQLAB). */
 const LABOR_WELDER = loadedLaborRatePerDay("welder");
+/* A1: BBM booking equipment memakai tarif riset yang sama dengan equipment. */
+const BBM_RATE = fuelPricePerLiter();
 
 
 /* ============ SEED TAMBAHAN (pindahan inline page + data baru) ============ */
@@ -226,14 +228,14 @@ const HIST_BOOKINGS = [
    angka tetap. Ditaruh di sini agar seeds.ts tetap modul murni tanpa import
    (dipakai juga oleh services/api/src/seedMirror.ts). */
 const BOOKING_RATE: Record<string, { rate: number; fuel: number }> = {
-  "Gantry Crane 50T": { rate: 1200000, fuel: 0 },
-  "Mobile Crane 100T": { rate: 2500000, fuel: 13500 },
+  "Gantry Crane 50T": { rate: SEWA_ALAT.crane50T.value, fuel: 0 },
+  "Mobile Crane 100T": { rate: SEWA_ALAT.crane100T.value, fuel: BBM_RATE },
   "Mesin Las MIG": { rate: 250000, fuel: 0 },
   "Mesin Las SMAW": { rate: 220000, fuel: 0 },
-  "Air Compressor": { rate: 150000, fuel: 12500 },
-  "Forklift 10T": { rate: 350000, fuel: 11500 },
+  "Air Compressor": { rate: 150000, fuel: BBM_RATE },
+  "Forklift 10T": { rate: SEWA_ALAT.forklift10T.value, fuel: BBM_RATE },
   "Blast Machine": { rate: 400000, fuel: 0 },
-  "Generator Set 500kVA": { rate: 900000, fuel: 12500 },
+  "Generator Set 500kVA": { rate: 900000, fuel: BBM_RATE },
 };
 /* Konsumsi BBM per jam kerja: alat berat ~0,45 L/jam, forklift ~0,3 L/jam.
    Alat yang tidak memakai BBM (gantry, mesin las, blast) bernilai 0. */

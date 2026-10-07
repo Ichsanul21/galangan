@@ -203,7 +203,7 @@ const seedSettings: StoreItem[] = [
      menyentuh kode, dan (b) nilainya sama persis di FE dan BE - sebelumnya
      Settings menampilkan fallback yang berbeda dari yang dipakai modul. */
   { id: "SET-EQLAB", key: "EQUIP_LABOR_RATE_PER_DAY", value: loadedLaborRatePerDay("welder"), label: "Tarif tenaga servis / hari (Rp)", group: "Equipment" },
-  { id: "SET-TARIFKWH", key: "TARIF_LISTRIK_KWH", value: 1650, label: "Tarif listrik (Rp/kWh)", group: "Equipment" },
+  { id: "SET-TARIFKWH", key: "TARIF_LISTRIK_KWH", value: 1445, label: "Tarif listrik (Rp/kWh)", group: "Equipment" },
   { id: "SET-TARIFAIR", key: "TARIF_AIR_M3", value: 15000, label: "Tarif air (Rp/m3)", group: "Equipment" },
   { id: "SET-ALCERT60", key: "ALERT_CERT_60", value: 60, label: "Alert sertifikat warning H- (hari)", group: "Alert" },
   { id: "SET-ALCERT30", key: "ALERT_CERT_30", value: 30, label: "Alert sertifikat critical H- (hari)", group: "Alert" },
@@ -1190,6 +1190,20 @@ export function StoreProvider({ children }: { children: ReactNode }) {
    Koleksi dirty tetap dilewati agar edit offline tidak tertimpa, hasil tarik
    yang merusak data lokal ditolak lewat acceptPull(), dan activities di-merge
    (bukan replace) seperti pada resync. */
+  /* High-water mark per koleksi untuk C2 delta sync. Dipersist ke localStorage
+     (isms.lastPullAt) supaya tarikan periodik hanya minta baris berubah. */
+  const lastPullAtRef = useRef<Record<string, string>>({});
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem("isms.lastPullAt");
+      if (raw) lastPullAtRef.current = JSON.parse(raw) as Record<string, string>;
+    } catch { /* ignore corrupt payload */ }
+  }, []);
+  const saveLastPullAt = useCallback((col: string, iso: string) => {
+    lastPullAtRef.current = { ...lastPullAtRef.current, [col]: iso };
+    try { localStorage.setItem("isms.lastPullAt", JSON.stringify(lastPullAtRef.current)); } catch { /* quota */ }
+  }, []);
+
   const resyncCollections = useCallback(async (cols: CollectionKey[]): Promise<CollectionKey[]> => {
     if (!remoteActive()) return [];
     if (cols.length === 0) return [];
@@ -1207,7 +1221,39 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         epochAtStart[key as string] = writeEpochRef.current.get(key as string) ?? 0;
         if (dirty.has(key as string)) return;
         try {
-          const rows = await remoteRepository(key).list();
+          const repo = remoteRepository(key);
+          const since = lastPullAtRef.current[key as string];
+          /* C2: bila punya high-water mark, tarik delta dulu. Bila server
+             lama (tanpa listSince) atau belum pernah pull, full list. */
+          if (since && since !== "" && typeof repo.listSince === "function") {
+            const delta = await repo.listSince(since);
+            saveLastPullAt(key as string, delta.serverTime);
+            /* Delta kosong = tidak ada yang berubah; jangan replace koleksi
+               lokal dengan []. */
+            if (delta.rows.length === 0) return;
+            /* ApplyPulled hanya untuk baris yang datang; id yang tidak ada
+               di delta TIDAK dihapus (bukan snapshot penuh). */
+            setData((prev) => {
+              if (!pullNeedsMerge(key, epochAtStart[key as string] ?? 0, writeEpochRef.current, dirtyRef.current)) return prev;
+              const local = (prev[key] as StoreItem[] | undefined) ?? [];
+              const byId = new Map(local.map((r) => [String(r.id), r]));
+              for (const row of delta.rows) byId.set(String(row.id), row);
+              return { ...prev, [key]: [...byId.values()] };
+            });
+            return;
+          }
+          const rows = await repo.list();
+          {
+            /* Full pull pertama / tanpa delta: high-water = max updated_at
+               dari baris yang diterima (bukan Date.now - bisa melewatkan
+               tulisan yang terjadi di tengah pull). */
+            let maxTs = "";
+            for (const r of rows) {
+              const u = String((r as { updated_at?: unknown }).updated_at ?? (r as { updatedAt?: unknown }).updatedAt ?? "");
+              if (u > maxTs) maxTs = u;
+            }
+            saveLastPullAt(key as string, maxTs || new Date().toISOString());
+          }
           if (!acceptPull(key, rows)) {
             /* Server membalas kosong untuk koleksi kode: pertahankan yang lokal.
                Sengaja TIDAK masuk daftar `failed` - "ditolak demi keamanan
@@ -1243,7 +1289,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       return next;
     });
     return failed;
-  }, []);
+  }, [saveLastPullAt]);
 
   /* Dorong perubahan lokal yang tertunda ke backend: DELETE tombstone dulu,
      lalu tiap baris coba POST, bila 409 (sudah ada) coba PATCH.

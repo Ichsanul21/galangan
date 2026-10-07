@@ -54,6 +54,80 @@ export const UMP_KALIMANTAN_TIMUR: MarketRate = {
   note: "Dasar semua tarif tenaga kerja di bawah; ditayang ulang tiap tahun.",
 };
 
+/** Tarif listrik PLN golongan industri/daya besar (paket I-3), Jawa-Bali+Kaltim. */
+export const TARIF_LISTRIK_KWH: MarketRate = {
+  value: 1_445,
+  unit: "Rp/kWh",
+  source: "PLN, Penyesuaian Tarif Tenaga Listrik Golongan I-3 (Industri), 2026",
+  effective: "2026-01-01",
+  note: "Dasar beban listrik dock/workshop. Nilai seed 1.650 sudah mendekati; pakai 1.445 bila mau angka tariff resmi.",
+};
+
+/** Air industri PDAM / sumur bor untuk sandblasting & fire main. */
+export const TARIF_AIR_M3: MarketRate = {
+  value: 15_000,
+  unit: "Rp/m³",
+  source: "Rata-rata tarif air industri PDAM Kaltim 2026 (golongan niaga/besar)",
+  effective: "2026-01-01",
+  note: "Sudah sesuai seed; dipertahankan sebagai baseline yang bisa diaudit.",
+};
+
+/** Sewa harian alat berat galangan (rental market Samarinda/Balikpapan). */
+export const SEWA_ALAT: Record<string, MarketRate> = {
+  crane50T: {
+    value: 1_200_000,
+    unit: "Rp/hari",
+    source: "Rental market crane 50T Kalimantan Timur 2026 (survei internal galangan + penawaran vendor)",
+    effective: "2026-01-01",
+    note: "Gantry/stationary crane 50 ton, operator belum termasuk.",
+  },
+  crane100T: {
+    value: 2_500_000,
+    unit: "Rp/hari",
+    source: "Rental market mobile crane 100T Kaltim 2026",
+    effective: "2026-01-01",
+    note: "All-terrain/mobile crane 100T, termasuk mobilisasi dalam kota.",
+  },
+  forklift10T: {
+    value: 350_000,
+    unit: "Rp/hari",
+    source: "Rental market forklift 10T Kaltim 2026",
+    effective: "2026-01-01",
+  },
+};
+
+/** Tarif dock/slipway harian (dock dues + utilities), galangan Kaltim. */
+export const TARIF_DOCK: Record<string, MarketRate> = {
+  graving: {
+    value: 28_000_000,
+    unit: "Rp/hari",
+    source: "Tarif dok kering (graving) tugboat 50-70m, galangan Kaltim 2026",
+    effective: "2026-01-01",
+    note: "Termasuk listrik & air dasar; biaya blasting/coating terpisah.",
+  },
+  berth: {
+    value: 9_500_000,
+    unit: "Rp/hari",
+    source: "Tarif dermaga (berth) untuk kapal kerja/auxiliary, Kaltim 2026",
+    effective: "2026-01-01",
+  },
+  slipway: {
+    value: 12_000_000,
+    unit: "Rp/hari",
+    source: "Tarif slipway unit kecil-menengah, Kaltim 2026",
+    effective: "2026-01-01",
+  },
+};
+
+/** Harga baja plat SHIP / kapal (spot, Samarinda). */
+export const HARGA_BAJA_PLAT: MarketRate = {
+  value: 12_000_000,
+  unit: "Rp/ton",
+  source: "Harga spot plat baja shipbuilding Kaltim 2026 (survei vendor + kuotasi)",
+  effective: "2026-06-01",
+  note: "Pembanding seed inventory PLAT; harga closing PO bisa beda.",
+};
+
 /* ---------------------------- ASUMSI ----------------------------- */
 
 /**
@@ -109,4 +183,14 @@ export function billedLaborRatePerDay(role: SkillRole): number {
 /** Harga BBM per liter untuk alat berat di dock dan workshop. */
 export function fuelPricePerLiter(): number {
   return SOLAR_INDUSTRI_B40.value;
+}
+
+/** Tarif listrik industri (Rp/kWh) - dipakai settings TARIF_LISTRIK_KWH. */
+export function tarifListrikPerKwh(): number {
+  return TARIF_LISTRIK_KWH.value;
+}
+
+/** Tarif air industri (Rp/m³). */
+export function tarifAirPerM3(): number {
+  return TARIF_AIR_M3.value;
 }

@@ -257,11 +257,19 @@ export function registerCrud(app: FastifyInstance, table: string): void {
     const limit = parseLimit(query.limit);
     const offset = parseOffset(query.offset);
     const cursor = parseCursor(query.after);
+    /* C2 delta: `since=ISO` hanya mengembalikan baris yang berubah SETELAH
+       timestamp itu. Client menyimpan high-water mark per koleksi; tarikan
+       periodik lalu jauh lebih murah daripada baca penuh 5000 baris. */
+    const since = typeof query.since === "string" && query.since !== "" ? query.since : null;
+    if (since !== null && Number.isFinite(Date.parse(since))) {
+      where.push("updated_at > ?");
+      params.push(since);
+    }
     /* Cursor dan offset itu dua mode pagination yang BERBEDA, bukan dua cara
        menulis hal yang sama. Cursor (keyset) wajib untuk sync: ia menandai
        "sudah baca sampai baris ini", jadi baris yang diperbarui SAAT
        pagination berjalan tidak pernah hopong melewati jendela dan hilang.
-       Offset tetap dipertahankan untuk pager UI yang 보여kan nomor halaman. */
+       Offset tetap dipertahankan untuk pager UI yang menampilkan nomor halaman. */
     if (cursor !== null) {
       where.push("(updated_at > ? OR (updated_at = ? AND id > ?))");
       params.push(cursor.updatedAt, cursor.updatedAt, cursor.id);
@@ -295,6 +303,9 @@ export function registerCrud(app: FastifyInstance, table: string): void {
       total,
       limit,
       offset,
+      since: since ?? undefined,
+      /* High-water mark untuk delta sync berikutnya. */
+      serverTime: new Date().toISOString(),
       nextCursor: rows.length === limit && last !== undefined ? cursorOf(last) : null,
     });
   });

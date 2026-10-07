@@ -1,7 +1,7 @@
 // ===== Mock data ISMS Galangan =====
 // Data realistis untuk 13 modul; angka dalam Rupiah (IDR).
 
-import { fuelPricePerLiter } from "../utils/rates";
+import { fuelPricePerLiter, SEWA_ALAT, TARIF_DOCK } from "../utils/rates";
 
 export type ProjectStatus =
   | "Sedang Berjalan"
@@ -434,16 +434,17 @@ export const drydocks = [
    ratePerDay/powerKwh/waterM3 TIDAK boleh kosong: tagihan drydock =
    (durasi x tarif harian) + listrik + air. Tanpa ketiganya seluruh tagihan
    drydock di sistem bernilai Rp 0 - bukan karena gratis, karena belum diisi.
-   Tarif memakai skala nyata Indonesia: drydock 120m berskala besar jauh lebih
-   mahal dari slipway, dan slipway lebih mahal dari berth per meter persegi. */
+   Tarif memakai rates.ts (sumber + tanggal) - A1. */
+const DOCK_GRAVING = TARIF_DOCK.graving.value;
+const DOCK_BERTH = TARIF_DOCK.berth.value;
+const DOCK_SLIPWAY = TARIF_DOCK.slipway.value;
 export const dockSlots = [
-  { id: "S1", dockId: "DD-1", project: "RP-2026-003", vessel: "TB Karya Bahari 12", from: 1, to: 35, color: "bg-ocean-500", ratePerDay: 28000000, powerKwh: 3200, waterM3: 6 },
-  { id: "S2", dockId: "DD-2", project: "RP-2026-005", vessel: "TB Samudra Jaya 04", from: 1, to: 22, color: "bg-amber-500", ratePerDay: 20000000, powerKwh: 2200, waterM3: 4 },
-  { id: "S3", dockId: "DD-1", project: "NB-2026-001", vessel: "TB Laut Timur 01", from: 44, to: 62, color: "bg-steel-400", ratePerDay: 28000000, powerKwh: 2000, waterM3: 4 },
-  { id: "S4", dockId: "BH-1", project: "NB-2025-012", vessel: "TB Samudra Jaya 07", from: 1, to: 90, color: "bg-navy-700", ratePerDay: 9500000, powerKwh: 3600, waterM3: 8 },
-  { id: "S5", dockId: "SL-1", project: "NB-2025-014", vessel: "TB Nusantara 22", from: 10, to: 90, color: "bg-ocean-500", ratePerDay: 12000000, powerKwh: 2400, waterM3: 5 },
-  // RawData 000-DOCK SPACE: BG RMN 3324 (28.5x8x3.8M), ref 000/DS-SB/SMD/VIII/2026.
-  { id: "DS-SB-001", dockId: "DD-1", project: "RP-2026-006", vessel: "BG RMN 3324", from: 40, to: 55, color: "bg-teal-500", dsRef: "000/DS-SB/SMD/VIII/2026", status: "Terjadwal", ratePerDay: 28000000, powerKwh: 2500, waterM3: 5 },
+  { id: "S1", dockId: "DD-1", project: "RP-2026-003", vessel: "TB Karya Bahari 12", from: 1, to: 35, color: "bg-ocean-500", ratePerDay: DOCK_GRAVING, powerKwh: 3200, waterM3: 6 },
+  { id: "S2", dockId: "DD-2", project: "RP-2026-005", vessel: "TB Samudra Jaya 04", from: 1, to: 22, color: "bg-amber-500", ratePerDay: DOCK_GRAVING, powerKwh: 2200, waterM3: 4 },
+  { id: "S3", dockId: "DD-1", project: "NB-2026-001", vessel: "TB Laut Timur 01", from: 44, to: 62, color: "bg-steel-400", ratePerDay: DOCK_GRAVING, powerKwh: 2000, waterM3: 4 },
+  { id: "S4", dockId: "BH-1", project: "NB-2025-012", vessel: "TB Samudra Jaya 07", from: 1, to: 90, color: "bg-navy-700", ratePerDay: DOCK_BERTH, powerKwh: 3600, waterM3: 8 },
+  { id: "S5", dockId: "SL-1", project: "NB-2025-014", vessel: "TB Nusantara 22", from: 10, to: 90, color: "bg-ocean-500", ratePerDay: DOCK_SLIPWAY, powerKwh: 2400, waterM3: 5 },
+  { id: "DS-SB-001", dockId: "DD-1", project: "RP-2026-006", vessel: "BG RMN 3324", from: 40, to: 55, color: "bg-teal-500", dsRef: "000/DS-SB/SMD/VIII/2026", status: "Terjadwal", ratePerDay: DOCK_GRAVING, powerKwh: 2500, waterM3: 5 },
 ];
 
 export interface InventoryItem {
@@ -485,14 +486,18 @@ export const inventory: InventoryItem[] = [
    Catatan: 4 unit pernah bernilai 0 karena probe lama hanya mengecek
    `fuelPrice === undefined` - 0 lolos. */
 const BBM_DERNIER = fuelPricePerLiter();
+/* A1: tarif sewa diambil dari rates.ts (sumber + tanggal), bukan angka lepas. */
+const SEWA_CRANE50 = SEWA_ALAT.crane50T.value;
+const SEWA_CRANE100 = SEWA_ALAT.crane100T.value;
+const SEWA_FORKLIFT = SEWA_ALAT.forklift10T.value;
 
 export const equipment = [
-  { id: "EQ-001", name: "Gantry Crane 50T", category: "Pengangkat", code: "CRN-50", branch: "Samarinda", status: "Tersedia", util: 68, nextService: "2026-09-15", lastHours: 12450, model: "DEMAG 50T", rate: 1200000, fuelPrice: BBM_DERNIER, acquisitionCost: 950000000, usefulLife: 20,
+  { id: "EQ-001", name: "Gantry Crane 50T", category: "Pengangkat", code: "CRN-50", branch: "Samarinda", status: "Tersedia", util: 68, nextService: "2026-09-15", lastHours: 12450, model: "DEMAG 50T", rate: SEWA_CRANE50, fuelPrice: BBM_DERNIER, acquisitionCost: 950000000, usefulLife: 20,
     serviceNotes: [
       { at: "2026-07-14 09:20", by: "Bapak Hadi", text: "Tali hoist sudah mulai terlihat seratnya sendiri di Drum kanan. Kalau dipakai untuk beban berat, tali selalu keluar dari sheave atas.", fileUrl: "" },
       { at: "2026-09-08 14:05", by: "Bapak Hadi", text: "Sheave sudah diganti. Uji beban 12 ton bersih, tidak ada getasan. Rem masih memakai komponen yang lama.", fileUrl: "" },
     ] },
-  { id: "EQ-002", name: "Mobile Crane 100T", category: "Pengangkat", code: "MCR-100", branch: "Samarinda", status: "Terpakai", util: 82, nextService: "2026-08-05", lastHours: 18320, model: "Liebherr MK100", rate: 2500000, fuelPrice: BBM_DERNIER, acquisitionCost: 1650000000, usefulLife: 15,
+  { id: "EQ-002", name: "Mobile Crane 100T", category: "Pengangkat", code: "MCR-100", branch: "Samarinda", status: "Terpakai", util: 82, nextService: "2026-08-05", lastHours: 18320, model: "Liebherr MK100", rate: SEWA_CRANE100, fuelPrice: BBM_DERNIER, acquisitionCost: 1650000000, usefulLife: 15,
     serviceNotes: [
       { at: "2026-06-19 10:30", by: "Sari Dewi", text: "Outrigger paling belakang harus dismoor dulu sebelum slew. Kalau tidak, landnya berbunyi dan unit tidak boleh dipakai di atas 60 ton.", fileUrl: "" },
     ] },
@@ -509,7 +514,7 @@ export const equipment = [
     serviceNotes: [
       { at: "2026-04-22 11:10", by: "Bapak Hadi", text: "Drain air setiap selesai shift. Kalau dilewatkan, head cepat berkarat dan kompresor trips sendiri.", fileUrl: "" },
     ] },
-  { id: "EQ-006", name: "Forklift 10T", category: "Transportasi", code: "FLT-10", branch: "Samarinda", status: "Terpakai", util: 71, nextService: "2026-08-12", lastHours: 7200, model: "Toyota 10FD", rate: 350000, fuelPrice: BBM_DERNIER, acquisitionCost: 620000000, usefulLife: 12,
+  { id: "EQ-006", name: "Forklift 10T", category: "Transportasi", code: "FLT-10", branch: "Samarinda", status: "Terpakai", util: 71, nextService: "2026-08-12", lastHours: 7200, model: "Toyota 10FD", rate: SEWA_FORKLIFT, fuelPrice: BBM_DERNIER, acquisitionCost: 620000000, usefulLife: 12,
     serviceNotes: [] },
   { id: "EQ-007", name: "Blast Machine", category: "Pengecatan", code: "BLST-01", branch: "Samarinda", status: "Tersedia", util: 63, nextService: "2026-09-10", lastHours: 3200, model: "Blastrac", rate: 400000, fuelPrice: BBM_DERNIER, acquisitionCost: 95000000, usefulLife: 8,
     serviceNotes: [

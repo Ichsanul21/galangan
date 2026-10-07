@@ -35,6 +35,8 @@ export interface PagedResult {
 
 export interface Repository {
   list(): Promise<StoreItem[]>;
+  /** C2 delta: hanya baris dengan updated_at > since (ISO). */
+  listSince?(since: string): Promise<{ rows: StoreItem[]; serverTime: string }>;
   /** Filter server-side (q/branch) - opsional agar adapter lama tak rusak. */
   listFiltered?(opts?: ListFilter): Promise<StoreItem[]>;
   /** Satu halaman data (limit/offset) + total - untuk tabel server-side paging. */
@@ -109,6 +111,9 @@ interface BackendPage {
   offset: number;
   /** Kursor untuk halaman berikutnya; null = ini halaman terakhir. */
   nextCursor?: string | null;
+  /** C2: high-water mark updated_at dari server. */
+  serverTime?: string;
+  since?: string;
 }
 
 function isBackendPage(v: unknown): v is BackendPage {
@@ -171,6 +176,33 @@ export function remoteRepository(resource: string): Repository {
         cursor = next;
       }
       return collect(all, limit);
+    },
+    async listSince(since: string) {
+      /* C2 delta: tarikan partial memakai `?since=`. Server membalas
+         serverTime sebagai high-water mark berikutnya. */
+      const limit = 5000;
+      let cursor: string | null = null;
+      const all: StoreItem[] = [];
+      let serverTime = new Date().toISOString();
+      for (;;) {
+        const qs: string = `limit=${limit}&since=${encodeURIComponent(since)}${cursor === null ? "" : `&after=${encodeURIComponent(cursor)}`}`;
+        const page: BackendRow[] | BackendPage = await apiFetch<BackendRow[] | BackendPage>(
+          `${base}?${qs}`,
+          { background: true },
+        );
+        if (Array.isArray(page)) {
+          return { rows: collect((page as BackendRow[]).map(rowToItem), limit), serverTime };
+        }
+        if (!isBackendPage(page)) return { rows: [], serverTime };
+        if (typeof page.serverTime === "string" && page.serverTime !== "") serverTime = page.serverTime;
+        const rows = Array.isArray(page.rows) ? page.rows : [];
+        for (const row of rows) all.push(rowToItem(row));
+        if (rows.length < limit) break;
+        const next: string | null | undefined = page.nextCursor;
+        if (typeof next !== "string" || next === "" || next === cursor) break;
+        cursor = next;
+      }
+      return { rows: collect(all, limit), serverTime };
     },
     async listFiltered(opts) {
       const baseParams = new URLSearchParams();

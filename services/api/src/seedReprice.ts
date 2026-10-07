@@ -43,6 +43,10 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 interface RatesModule {
   fuelPricePerLiter(): number;
   loadedLaborRatePerDay(role: "welder"): number;
+  tarifListrikPerKwh(): number;
+  tarifAirPerM3(): number;
+  SEWA_ALAT: Record<string, { value: number; unit: string; source: string; effective: string }>;
+  TARIF_DOCK: Record<string, { value: number; unit: string; source: string; effective: string }>;
 }
 const rates = (await import(
   pathToFileURL(path.resolve(here, "../../../apps/web/src/utils/rates.ts")).href
@@ -50,6 +54,10 @@ const rates = (await import(
 
 const TARGET_FUEL = rates.fuelPricePerLiter();
 const TARGET_WELDER = rates.loadedLaborRatePerDay("welder");
+const TARGET_KWH = rates.tarifListrikPerKwh();
+const TARGET_AIR = rates.tarifAirPerM3();
+const SEWA = rates.SEWA_ALAT;
+const DOCK = rates.TARIF_DOCK;
 
 /* Nilai placeholder yang diganti. Ditulis eksplisit supaya selalu ada yang
  * bisa ditanyakan kalau ada baris yang ternyata tidak berubah. */
@@ -301,6 +309,131 @@ async function main(): Promise<void> {
 
       changes.push({ table: "drydocks", id: r.id, field: missing.join("+"), from: null, to: data.lengthM });
       if (apply) await write("drydocks", r.id, data, r.branch, r.updated_at ?? null);
+    }
+  }
+
+  /* ---------- equipment: rate sewa + acquisitionCost kosong ---------- */
+  {
+    const rows = await q<Row>("SELECT id, branch, data, updated_at FROM equipment");
+    for (const r of rows) {
+      const data = JSON.parse(r.data) as Record<string, unknown>;
+      const name = String(data.name ?? "");
+      let targetRate: number | null = null;
+      if (/gantry.*50|50t/i.test(name) && /crane|gantry/i.test(name)) targetRate = SEWA.crane50T?.value ?? null;
+      else if (/mobile.*100|100t/i.test(name) && /crane/i.test(name)) targetRate = SEWA.crane100T?.value ?? null;
+      else if (/forklift.*10|10t/i.test(name)) targetRate = SEWA.forklift10T?.value ?? null;
+
+      const rate = n(data.rate);
+      if (targetRate !== null && (rate === null || rate === 0)) {
+        changes.push({ table: "equipment", id: r.id, field: "rate", from: rate, to: targetRate });
+        if (apply) { data.rate = targetRate; await write("equipment", r.id, data, r.branch, r.updated_at ?? null); }
+      }
+      const acq = n(data.acquisitionCost);
+      if (acq === null || acq === 0) {
+        /* acquisitionCost nol = bug seed lama; isi dengan estimasi book value
+           berdasarkan umur pakai × tarif sewa harian × 180 hari (order of
+           magnitude asumsi, bukan riset) - TIDAK ditimpa bila sudah ada. */
+        const life = n(data.usefulLife) ?? 10;
+        const est = targetRate ?? rate ?? 250000;
+        const guess = Math.round(est * 180 * life);
+        if (guess > 0) {
+          changes.push({ table: "equipment", id: r.id, field: "acquisitionCost", from: acq, to: guess });
+          if (apply) { data.acquisitionCost = guess; await write("equipment", r.id, data, r.branch, r.updated_at ?? null); }
+        }
+      }
+    }
+  }
+
+  /* ---------- inventory.cost nol ---------- */
+  {
+    const rows = await q<Row>("SELECT id, branch, data, updated_at FROM inventory");
+    for (const r of rows) {
+      const data = JSON.parse(r.data) as Record<string, unknown>;
+      const cost = n(data.cost);
+      if (cost !== null && cost > 0) continue;
+      const avg = n(data.avgCost);
+      if (avg !== null && avg > 0) {
+        changes.push({ table: "inventory", id: r.id, field: "cost", from: cost, to: avg });
+        if (apply) { data.cost = avg; await write("inventory", r.id, data, r.branch, r.updated_at ?? null); }
+        continue;
+      }
+      /* Fallback: harga jual eceran × 0,7 sebagai cost konservatif. */
+      const eceran = n(data.eceran) || n(data.price);
+      if (eceran !== null && eceran > 0) {
+        const guess = Math.round(eceran * 0.7);
+        changes.push({ table: "inventory", id: r.id, field: "cost", from: cost, to: guess });
+        if (apply) { data.cost = guess; await write("inventory", r.id, data, r.branch, r.updated_at ?? null); }
+      } else {
+        untouched.push(`inventory ${r.id} (${String(data.name ?? r.id)}): cost nol dan tidak ada avgCost/eceran untuk diturunkan`);
+      }
+    }
+  }
+
+  /* ---------- dockSlots.ratePerDay nol ---------- */
+  {
+    const rows = await q<Row>("SELECT id, branch, data, updated_at FROM dockSlots");
+    for (const r of rows) {
+      const data = JSON.parse(r.data) as Record<string, unknown>;
+      const rate = n(data.ratePerDay);
+      if (rate !== null && rate > 0) continue;
+      const dockId = String(data.dockId ?? "");
+      let target = 0;
+      if (/^DD/i.test(dockId)) target = DOCK.graving?.value ?? 0;
+      else if (/^BH/i.test(dockId)) target = DOCK.berth?.value ?? 0;
+      else if (/^SL/i.test(dockId)) target = DOCK.slipway?.value ?? 0;
+      if (target > 0) {
+        changes.push({ table: "dockSlots", id: r.id, field: "ratePerDay", from: rate, to: target });
+        if (apply) { data.ratePerDay = target; await write("dockSlots", r.id, data, r.branch, r.updated_at ?? null); }
+      } else {
+        untouched.push(`dockSlots ${r.id}: ratePerDay nol dan prefix dockId tidak dikenal`);
+      }
+    }
+  }
+
+  /* ---------- settings TARIF_LISTRIK / TARIF_AIR ---------- */
+  {
+    for (const [id, target] of [["SET-TARIFKWH", TARGET_KWH], ["SET-TARIFAIR", TARGET_AIR]] as const) {
+      const rows = await q<Row>("SELECT id, branch, data, updated_at FROM settings WHERE id = ?", [id]);
+      for (const r of rows) {
+        const data = JSON.parse(r.data) as Record<string, unknown>;
+        const cur = n(data.value);
+        if (cur === target) continue;
+        if (cur !== null && cur !== 0 && cur !== 1650 && cur !== 15000) {
+          /* 1650/15000 adalah placeholder seed lama; nilai lain dianggap
+             sudah dikustomisasi user. */
+          if (id === "SET-TARIFKWH" && cur === 1650) { /* lama, ganti */ }
+          else if (id === "SET-TARIFAIR" && cur === 15000 && target === 15000) continue;
+          else { untouched.push(`settings ${id}: nilai ${cur} bukan placeholder, tidak disentuh`); continue; }
+        }
+        changes.push({ table: "settings", id: r.id, field: "value", from: cur, to: target });
+        if (apply) { data.value = target; await write("settings", r.id, data, r.branch, r.updated_at ?? null); }
+      }
+    }
+  }
+
+  /* ---------- purchaseOrders.amount nol (dihitung dari lines) ---------- */
+  {
+    const rows = await q<Row>("SELECT id, branch, data, updated_at FROM purchaseOrders");
+    for (const r of rows) {
+      const data = JSON.parse(r.data) as Record<string, unknown>;
+      const amt = n(data.amount);
+      if (amt !== null && amt > 0) continue;
+      const lines = Array.isArray(data.lines) ? (data.lines as Record<string, unknown>[]) : [];
+      const sum = lines.reduce((s, l) => s + (n(l.qty) ?? 0) * (n(l.price) ?? 0), 0);
+      if (sum > 0) {
+        changes.push({ table: "purchaseOrders", id: r.id, field: "amount", from: amt, to: sum });
+        if (apply) { data.amount = sum; await write("purchaseOrders", r.id, data, r.branch, r.updated_at ?? null); }
+      } else {
+        const qty = n(data.qty) ?? 0;
+        const unit = n(data.unitPrice) ?? 0;
+        if (qty > 0 && unit > 0) {
+          const guess = Math.round(qty * unit);
+          changes.push({ table: "purchaseOrders", id: r.id, field: "amount", from: amt, to: guess });
+          if (apply) { data.amount = guess; await write("purchaseOrders", r.id, data, r.branch, r.updated_at ?? null); }
+        } else {
+          untouched.push(`purchaseOrders ${r.id}: amount nol dan lines/unitPrice tidak bisa dihitung`);
+        }
+      }
     }
   }
 
