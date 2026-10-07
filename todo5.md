@@ -16,9 +16,9 @@ klarifikasi client.
 
 | Status | Jumlah |
 |---|---|
-| Selesai | 43 |
-| Sebagian | 19 |
-| Belum | 7 |
+| Selesai | 54 |
+| Sebagian | 13 |
+| Belum | 2 |
 | **Total baris tabel** | **69** |
 
 Hitungan di atas dihitung ulang dari baris tabel aktual (bukan angka audit
@@ -48,11 +48,11 @@ status tabel lama tidak pernah diperbarui - kini diselaraskan.
 
 | # | Item | Kenapa |
 |---|---|---|
-| 1 | **C1 sisa: PATCH shallow-merge** | Dua perangkat mengedit baris sama masih last-writer-wins. Semua jalur sync lain (backendMode, loop 401, keyset, livelock) sudah ditutup. |
-| 2 | **B1 + P10/P11: cabang & form proyek** | Filter cabang topbar + select cabang di form masih ada; client minta "rencana lokasi docking" + EntityPicker kapal/klien/PM. `branch` juga kunci RBAC. |
-| 3 | **P3/P4/P5: card & filter Projects** | Card status tanpa label selesai/tertunda, grafik masih di card, FilterPopover belum slide/motion. Revisi 5 Okt eksplisit. |
-| 4 | **D6/D7/D13: dokumen BoQ, CO↔BoQ, PO wajib** | D6 lampiran BoQ belum masuk koleksi documents. D7 approval CO ada tapi nol koneksi BoQ. D13 PO masih referensi opsional, client minta wajib + approval procurement. |
-| 5 | **Deploy VPS + QA browser** | 4 commit sesi lanjutan (`d3ba2c1`, `27a6d40`, `37e3b59` + I2 flyout `19b5e9b`) belum push/deploy; belum teruji 2 device. |
+| 1 | **C1 sisa: PATCH shallow-merge** | Dua perangkat mengedit baris sama masih last-writer-wins. Jalur sync lain sudah ditutup. |
+| 2 | **D6/D7/D13: dokumen BoQ, CO↔BoQ, PO wajib** | D6 lampiran BoQ belum masuk koleksi documents. D7 approval CO ada tapi nol koneksi BoQ. D13 PO masih referensi opsional. |
+| 3 | **C2 + F2 sisa** | Tanpa delta sync / tarikan periodik; Finance agregat belum punya kolom tanggal per baris. |
+| 4 | **A2 Procurement + AN1/AN2 + H1a/H1c + Q2 + E1** | Sisa SEBAGIAN lintas modul (search Procurement, Excel/PDF Analytics, preview HR, sertifikat QC, bypass servis). |
+| 5 | **Deploy VPS + QA browser** | Semua commit sesi ini belum push/deploy; belum teruji 2 device. |
 
 ---
 
@@ -125,10 +125,12 @@ pendek yang tidak mungkin panjang. Procurement belum diaudit per-tab.
 Klaim "semua tabel punya search" **tidak bisa dipertahankan** berdasarkan
 bukti yang ada, tapi celah yang tersisa bukan lagi tabel panjang.
 
-## B1 - Filter cabang di top bar dihapus - **BELUM**
+## B1 - Filter cabang di top bar dihapus - **SELESAI**
 
-`layouts/AppShell.tsx:547-564` masih ada `<select>` cabang di topbar, aktif
-sebagai filter global (`store.tsx:937-941`) dan persisten di localStorage.
+`AppShell.tsx`: `<select>` cabang di topbar dihapus. `branch`/`setBranch`
+tetap hidup untuk scoping RBAC (`inBranch`) + efek sinkron ke `userBranch`.
+Akun terikat cabang hanya menampilkan badge statis nama cabang, bukan
+dropdown filter global.
 
 ## B2 - Format titik pada semua input angka harga - **SELESAI**
 
@@ -192,15 +194,13 @@ dijadwalkan di `finally`.
    server selama masih ada baris lokal yang belum ter-push.
 4. **Tombstone dibuang** saat lewat `TOMBSTONE_CAP_PER_COL = 500`.
 
-## C3 - Export PDF: langsung download, generate dari data bukan tampilan - **SEBAGIAN**
+## C3 - Export PDF: langsung download, generate dari data bukan tampilan - **SELESAI**
 
 **Sudah:** generate server-side total. `routes/pdf.ts` jalankan
-`prepare` → `buildFromModel` → `render`. Filter allowlist. 19 pemanggilan
-PDF, 18 `open = false`. Tidak ada html2canvas.
-
-**Kurang:** `pages/sdm/HR.tsx:282` masih `open = true` + modal `<iframe>`
-untuk surat HR - melanggar "jangan menampilkan preview". Semua export
-lain download.
+`prepare` → `buildFromModel` → `render`. Filter allowlist. Semua pemanggilan
+PDF `open = false` (langsung download), termasuk surat HR yang sebelumnya
+`open = true` + iframe preview (`HR.tsx` useEffect suratPreviewFor).
+Tidak ada html2canvas.
 
 ---
 
@@ -210,18 +210,18 @@ lain download.
 |---|---|---|---|
 | P1 | Notifikasi warning maksimal 3, "perkecil" jadi "tampilkan semua" | **SELESAI** | `AlertBanner.tsx`: label memakai `t.notif.showAll` "Tampilkan semua" saat banner ditutup; `PREVIEW_N` sudah tidak ada (render cap `RENDER_CAP = 200` untuk anti-lag, bukan preview 5). Kunci `showAll` di `i18n/id.ts:125` dipakai banner modul + AppShell. |
 | P2 | Kasih nomor pada kolom | **SELESAI** | `Projects.tsx:345` header `colNo`; index baris dirender di `:378-380` `(pager.page-1)*pager.size + rowIndex + 1`. |
-| P3 | Card total: label selesai dan sedang berjalan; card sedang berjalan: label tertunda | **BELUM** | `Projects.tsx:201` `inProgress` masih `status !== "Selesai"` sehingga ikut menghitung Batal/Terlambat. Card "Sedang Berjalan" hanya delta "{n} terlambat", tanpa breakdown label Selesai/Tertunda. |
-| P4 | Card status diberi gradient, grafik di card dihapus | **BELUM** | Empat `KpiCard` Projects (`:251-254`) masih mengirim `spark`. Gradient tile ikon ada di `ui.tsx`, `.card` putih. |
-| P5 | Filter popup jadi tampil deret dengan animasi slide | **BELUM** | `FilterPopover.tsx:46-49` masih `fixed inset-0` + `absolute left-full`, tanpa `framer-motion`. Dipakai lintas modul. |
-| P6 | Kelola detail dipindahkan ke aksi jadi button "detail" | **SELESAI** | `Projects.tsx:421-429` `RowAction` Eye "Detail" di kolom Aksi; komentar menyatakan pindah dari sel Tahap. |
+| P3 | Card total: label selesai dan sedang berjalan; card sedang berjalan: label tertunda | **SELESAI** | `Projects.tsx`: `doneCount` (Selesai), `inProgress` (bukan Selesai/Batal), `delayed`, `pendingCount` (Tertunda). Card Total hint `prjKpiBreakdown` "Selesai {a} · Berjalan {b}"; card Berjalan delta `prjKpiActiveDelta` "{n} terlambat · {m} tertunda". |
+| P4 | Card status diberi gradient, grafik di card dihapus | **SELESAI** | `KpiCard` prop `panelGradient` (`ui.tsx`): gradient penuh di seluruh card, teks putih, tanpa `spark`. Empat card Projects memakai `panelGradient` + chip navy/amber/teal/violet. |
+| P5 | Filter popup jadi tampil deret dengan animasi slide | **SELESAI** | `FilterPopover.tsx` memakai `framer-motion` `AnimatePresence`: backdrop fade + panel slide dari kiri (`x: -12 → 0`, 160ms). |
+| P6 | Kelola detail dipindahkan ke aksi jadi button "detail" | **SELESAI** | `Projects.tsx:421-429` `RowAction` Eye "Detail" di kolom Aksi. |
 | P7 | Default data menampilkan 25 | **SELESAI** | `Projects.tsx:221` `usePager(list.length, 25)`. |
-| P8 | Progres proyek harus disesuaikan lagi | **SELESAI** (`32d10c6`) | Status "Terlambat" bisa di-override manual. `shouldAutoSetLate` + `shouldClearOverride` di `utils/projectDelay.ts`. Badge "Override" di ProjectDetail. 12 pemeriksaan di `scripts/p8-probe.ts`. |
-| P9 | Proyek terbaru tampil paling atas | **SELESAI** | `Projects.tsx:105` default sort `{ key: "createdAt", dir: "desc" }`. |
-| P10 | Form cabang diganti rencana lokasi docking | **BELUM** | `ProjectAddModal.tsx:213-216` masih `<select>` branch (`branchOptions` hardcode 3 kota). `branch` juga kunci scope RBAC (`inBranch`) - penghapusan = keputusan scoping baru. |
-| P11 | Select untuk kapal, klien, dan PM | **BELUM** | `ProjectAddModal.tsx:180-224` klien/PM masih `<select>` biasa; kapal belum EntityPicker. `EntityPicker` ada di `ui.tsx` tapi belum dipasang di form ini. |
-| P12 | Status dihapus dari form proyek baru | **SELESAI** | `ProjectAddModal.tsx:202-208` komentar "Field status dihapus dari form proyek baru (P12)"; tidak ada select status di form. Default tetap "Dalam Proses"; ganti status di detail. |
-| P13 | Hapus teks "(otomatisnya)" | **SELESAI** | Pencarian `"Terlambat (otomatis"` / `"(otomatis"` di `ProjectDetail.tsx` hasilkan nol. Sisa teks "Terlambat terisi otomatis dari jatuh tempo" adalah hint yang benar (bukan label status). |
-| P14 | Card progres: tambah detail saat terlambat | **SELESAI** | `ProjectDetail.tsx:1055` komentar "Angka keterlambatan di card progres (P14)"; teks keterlambatan + badge override status ada di header/card progres. |
+| P8 | Progres proyek harus disesuaikan lagi | **SELESAI** (`32d10c6`) | Override status Terlambat manual via `statusOverride`. |
+| P9 | Proyek terbaru tampil paling atas | **SELESAI** | Default sort `{ key: "createdAt", dir: "desc" }`. |
+| P10 | Form cabang diganti rencana lokasi docking | **SELESAI** | `ProjectAddModal`: select cabang diganti field `dockingPlan` "Rencana Lokasi Docking". `branch` di-auto-isi dari `defaultBranch` (cabang user / SEMUA → cabang pertama) untuk RBAC. |
+| P11 | Select untuk kapal, klien, dan PM | **SELESAI** | Kapal/klien/PM di `ProjectAddModal` memakai `EntityPicker` (searchable). Kapal+klien `allowCustom`; PM terbatas ke daftar karyawan Manager/Proyek. Tombol "+ Tambah klien" tetap di samping picker. |
+| P12 | Status dihapus dari form proyek baru | **SELESAI** | Tidak ada select status di form; default "Dalam Proses". |
+| P13 | Hapus teks "(otomatisnya)" | **SELESAI** | Nol match `"Terlambat (otomatis"` di ProjectDetail. |
+| P14 | Card progres: tambah detail saat terlambat | **SELESAI** | Teks keterlambatan + badge override di card/header progres ProjectDetail. |
 
 ---
 
@@ -230,9 +230,9 @@ lain download.
 | # | Permintaan | Status | Bukti dan Kekurangan |
 |---|---|---|---|
 | D1 | Ganti "Desain & Class Approval" dengan "Log Penawaran dan Tagihan" | **SELESAI** (`172146e`) | Blok edit 4-stage dihapus. Tabel Log Penawaran & Tagihan menampilkan quotation, contract, dan invoices. Gate Desain→Produksi cek dokumen Sertifikat Kelas yang Disetujui, fallback designStages. |
-| D2 | Milestone menyeluruh, 7 hari jadi 1 bulan, list saja | **SEBAGIAN** | List saja terpenuhi. Masih default H-7 via `ALERT_MILESTONE_DAYS` (`ProjectDetail.tsx:483`), terikat setting alert global. |
-| D3 | Update progress WBS: material ikut inventori, histori, dan foto | **SELESAI** (`68ec10d` + `0a65a8f`) | `saveWbsTask` menulis `photos[]` (array, bukan photoUrl tunggal), `materialUsed`, dan `add("movements")` Pengeluaran. Tabel WBS merender 📷 jumlah foto (`:1214`). |
-| D4 | Gantt mini: detail bulan di bawah indikator | **SEBAGIAN** | Gantt mini ada dengan bar + progress%. Label rentang bulan (`fmtBulan` min→max) ada di header, **tick bulan per kolom di bawah bar belum ada**. |
+| D2 | Milestone menyeluruh, 7 hari jadi 1 bulan, list saja | **SELESAI** | List saja terpenuhi. Jendela milestone di ProjectDetail kini default **30 hari** (`getSetting(..., "ALERT_MILESTONE_DAYS", 30)`), bukan 7. Setting global tetap bisa di-override via settings. |
+| D3 | Update progress WBS: material ikut inventori, histori, dan foto | **SELESAI** (`68ec10d` + `0a65a8f`) | `saveWbsTask` menulis `photos[]`, `materialUsed`, `add("movements")`. Tabel WBS merender 📷 jumlah foto. |
+| D4 | Gantt mini: detail bulan di bawah indikator | **SELESAI** | Tick label bulan (`fmtBulan`) di bawah bar Gantt, sejajar kolom bar (`w-40` task + flex bar), posisi center per bulan dari `ganttRange`. |
 | D5 | **BoQ: satu nomor surat bisa beberapa pekerjaan, hanya total/status/dokumen/aksi, klik untuk detail** | **SELESAI** (`d3ba2c1`) | `BoQItem.suratNo`, seed per SPK. `BoQSection.tsx` tabel grouped + expand detail (ubah qty/harga, revisi, log, hapus Draft, tombol status). Excel blok per surat + subtotal. PDF `laporanProyek` per No Surat + subtotal. Grouping dihitung dari `suratNo` (bukan FK DB induk surat). |
 | D6 | Dokumen BoQ masuk tab Dokumen dan Laporan | **SEBAGIAN** | Lampiran BoQ (`fileUrl`) masih dirender di tab BoQ saja, belum masuk `data.documents`. Duplikasi tampilan di ReportSection vs daftar kartu belum dirapikan. |
 | D7 | Change Order harus lewat approval dulu dan terkoneksi BoQ | **SEBAGIAN** | Rantai approval ada (Diajukan→Disetujui→apply). **Koneksi BoQ nol** - `setCoStatus` tidak membuat/merevisi baris BoQ, "Diterapkan" tidak menyentuh budget/kontrak. |
@@ -258,7 +258,7 @@ lain download.
 | E5 | Card biaya per proyek dengan tombol detail | **SELESAI** (`7006a0a`) | Modal `costDetailFor` "Rincian biaya equipment per proyek" (`Equipment.tsx:2964+`) - equipment dipakai, biaya, jam pakai, downtime dari `utils/projectCost.ts`. |
 | S1 | Kwitansi PDF konten terpotong | **SELESAI** | Kolom tabel + paginasi two-pass. Gate `pdf-probe.ts`. |
 | S2 | Requirement BAST, invoice, dan bukti bayar | **SELESAI** | `invoiceNo`, `bastNo`, `proof.ref` wajib. Catatan: berupa nomor teks, bukan unggah file - kalau client maksud lampiran, itu terpisah. |
-| S3 | Milestone per WO dengan popup modal | **SEBAGIAN** | Milestone **SOW subkontraktor** punya modal kelola (`msSub`, `:1499-1522`). Progres WO memakai checklist milestone WO. **Modal tambah/hapus milestone per WO** (client: "bikin popup modal baru untuk milestone per WO") belum ada - `saveMilestone` masih tulis ke `subcontractors` (SOW), bukan ke baris WO. |
+| S3 | Milestone per WO dengan popup modal | **SELESAI** | Modal **Milestone WO** di `Subcontractor.tsx`: daftar `woMilestonesOf(wo)`, form tambah (judul/bobot/due), hapus, tulis ke `update("workOrders", …, { milestones })`. Tombol "Milestone" di baris WO (saat belum Selesai). Milestone SOW subkontraktor tetap punya modal terpisah. |
 | S3b | Bug yang ditemukan audit | **SELESAI** (`37321db`) | Modal progres WO kini render `woMilestonesOf(woProg)`, sama dengan sumber validasi. |
 | Q1 | Drawing view pakai modal popup | **SELESAI** | Modal preview, bukan expand inline. |
 | Q2 | Sub-tipe dokumen terhubung tab Sertifikat QC | **SEBAGIAN** | `utils/docTypes.ts` jadi sumber untuk form Dokumen/Proyek. Tab Sertifikat QC masih filter `/sertifikat/i` pada `d.type` saja - koneksi satu arah. |
@@ -283,7 +283,7 @@ lain download.
 | L1 | Laporan PDF baru, bukan capture tampilan | **SELESAI** | `Laporan.tsx:383-414` memakai `kind:"laporanProyek"` atau `"laporan"`; dokumen dirakit di `pdf/documents/laporan.ts:147,249`. |
 | DOC2 | Tombol dan kolom pratinjau dihapus | **SELESAI** | Sama dengan DOC1. |
 | PD1 | Proyek: jangan auto-preview setelah upload | **SELESAI** | `ProjectDetail.tsx:1426-1437`, `isOpen` hanya saat `openDocId` cocok. Preview hanya saat ikon mata diklik. |
-| PD2 | Ikon view membuka modal popup dengan download di dalam | **BELUM** | `ProjectDetail.tsx:1468-1487` ikon mata masih expand inline (`:1480-1487`), bukan modal; tombol download justru berdiri di samping ikon (`:1478`). Komentar `:157-161` menyatakan ini sengaja membatalkan permintaan lama. Modal Detail (`:2006-2061`) sudah punya preview dan Unduh, tapi dipicu tombol Detail bukan ikon view. |
+| PD2 | Ikon view membuka modal popup dengan download di dalam | **SELESAI** | Ikon mata di kartu dokumen ProjectDetail membuka **modal Detail** (`docDetail`) yang sudah memuat `DocumentPreviewPanel` + tombol **Unduh** (`DownloadFileButton`) di footer modal. Expand inline `InlineDocPreview`/`openDocId` dihapus dari kartu. |
 | PD3 | Ganti tombol Excel dengan tombol Detail dan modal | **SELESAI** | Tombol Excel per-dokumen hilang; diganti Detail (`:1455-1457`) yang membuka modal `:2006-2080` dengan preview, lampiran, dan riwayat revisi. Excel tetap sebagai aksi kedua di footer modal (`:2014-2022`). |
 
 ---
@@ -398,12 +398,10 @@ lain download.
     [x] Tabel proyek P1/P2/P6/P7/P9/P12/P13/P14 + E2/E5 - sudah ada di kode sejak Gelombang 3, status tabel baru disinkronkan di real check
 
 **Belum dikerjakan (urutan saran):**
-- B1 hapus filter cabang topbar
-- P3/P4/P5 card status + grafik + FilterPopover slide
-- P10/P11 form proyek (rencana lokasi docking + EntityPicker)
-- D4 tick bulan Gantt; D6 dokumen BoQ; D7 CO↔BoQ; D13 hard PO; D14 tim↔SDM
-- S3 modal milestone per WO; PD2 ikon view modal; C3 HR `open=false`
 - C1 sisa PATCH shallow-merge; C2 delta sync / tarikan periodik
+- D6 dokumen BoQ → koleksi documents; D7 CO↔BoQ; D13 hard PO; D14 tim↔SDM
+- F2 tanggal per baris di tabel Finance agregat
+- A2 Procurement per-tab; AN1/AN2 Excel+PDF Analytics; H1a/H1c; Q2; E1 bypass
 - Deploy VPS + QA browser 2 device
 
 ---
@@ -527,7 +525,7 @@ menulis status "Terlambat" tanpa menghormati pilihan user. Solusinya
 field `statusOverride` + `shouldAutoSetLate`/`shouldClearOverride` yang
 menjadi satu sumber untuk Detail dan List.
 
-## Real check + sesi lanjutan (D5, F1, I2, sinkronisasi doc)
+## Real check + sesi lanjutan (D5, F1, I2, sinkronisasi doc, sisa BELUM)
 
 Checklist Gelombang 3/5 menandai banyak item selesai lewat commit
 (`e0c4f2a`, `68ec10d`, …) tetapi **tabel status di bagian 2-6 tidak
@@ -545,11 +543,15 @@ pernah diperbarui**. Real check membaca ulang kode terhadap `todo5.md`:
 - **I2**: klarifikasi ternyata sudah ada di `notes.txt` (revisi 2 Okt
   baris 95, revisi 5 Okt baris 17) - tidak perlu ditanya ke client.
   Diimplementasi: strip status → dropdown kategori.
-- **Hitungan ringkasan** diganti 43/19/7 dari 69 baris tabel aktual;
-  angka audit lama 72/73 sudah tidak konsisten.
+- **Hitungan ringkasan** diganti dari baris tabel aktual; angka audit
+  lama 72/73 sudah tidak konsisten.
 - **§7 dibersihkan**: D1/D8/P8/S2/I2 tidak perlu ditanya lagi; ditambah
   pertanyaan yang benar-benar masih terbuka (D13 hard-block?, S3 modal
   WO, B1/RBAC, PD2).
+
+**Sesi penutup BELUM (setelah real check):** B1, P3, P4, P5, P10, P11,
+PD2, D2, D4, C3, S3 diimplementasi dalam satu batch commit. Kini
+tinggal SEBAGIAN/C1-C2 sisa + deploy + QA.
 
 ---
 

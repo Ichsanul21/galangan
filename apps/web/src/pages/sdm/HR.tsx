@@ -279,7 +279,9 @@ export default function HR() {
     const row = suratPreviewFor;
     if (row === null) return;
     if (!pdfServerReady()) return;
-    void pdfDoc.request({ kind: "suratHr", id: String(row.id ?? ""), locale }, `Surat-${String(row.id ?? "")}.pdf`, true);
+    /* C3: export PDF langsung download (`open = false`), tanpa modal preview.
+       Client: "jangan menampilkan preview, langsung download saja". */
+    void pdfDoc.request({ kind: "suratHr", id: String(row.id ?? ""), locale }, `Surat-${String(row.id ?? "")}.pdf`, false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [suratPreviewFor]);
   const [delEmp, setDelEmp] = useState<StoreItem | null>(null);

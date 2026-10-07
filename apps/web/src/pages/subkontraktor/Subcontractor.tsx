@@ -177,6 +177,11 @@ export default function Subcontractor() {
   // Ubah WO (scope/target) + ubah termin Draf (milestone/amount).
   const [woEdit, setWoEdit] = useState<StoreItem | null>(null);
   const [woEditForm, setWoEditForm] = useState({ scope: "", targetDate: "" });
+  /* S3: modal tambah/hapus milestone PER WO (bukan milestone SOW subkontraktor).
+     Client: "WO gk ada fitur untuk nambahkan milestone... bikin popup modal
+     baru untuk milestone per WO". */
+  const [woMsFor, setWoMsFor] = useState<StoreItem | null>(null);
+  const [woMsForm, setWoMsForm] = useState({ title: "", pct: "", due: "" });
   const [termEdit, setTermEdit] = useState<StoreItem | null>(null);
   const [termEditForm, setTermEditForm] = useState({ milestone: "", amount: "" });
   const [confirmFinish, setConfirmFinish] = useState<{ id: string; v: number; note: string; ms: string[]; milestones?: unknown[] } | null>(null);
@@ -400,6 +405,32 @@ export default function Subcontractor() {
   };
 
   // Ubah WO: scope + target (WO berjalan saja, bukan Selesai).
+  const saveWoMilestone = async () => {
+    if (!woMsFor) return;
+    if (!woMsForm.title.trim()) { toast(locale === "en" ? "Milestone title is required" : "Judul milestone wajib diisi", "info"); return; }
+    const pct = Number(woMsForm.pct);
+    if (!Number.isFinite(pct) || pct <= 0) { toast(locale === "en" ? "Milestone weight must be > 0" : "Bobot milestone harus lebih dari 0", "info"); return; }
+    if (!woMsForm.due) { toast(locale === "en" ? "Milestone due date is required" : "Due date milestone wajib diisi", "info"); return; }
+    const next = [...woMilestonesOf(woMsFor), { title: woMsForm.title.trim(), pct, due: woMsForm.due }];
+    try {
+      await update("workOrders", woMsFor.id, { milestones: next });
+      log("menambah milestone WO", `${woMsFor.id} · ${woMsForm.title.trim()} (${pct}%)`, "Subkontraktor");
+      toast((locale === "en" ? "Milestone added to {n}" : "Milestone ditambahkan ke {n}").replace("{n}", String(woMsFor.id)));
+      setWoMsFor({ ...woMsFor, milestones: next });
+      setWoMsForm({ title: "", pct: "", due: "" });
+    } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); }
+  };
+
+  const removeWoMilestone = async (idx: number) => {
+    if (!woMsFor) return;
+    const next = woMilestonesOf(woMsFor).filter((_, i) => i !== idx);
+    try {
+      await update("workOrders", woMsFor.id, { milestones: next });
+      log("menghapus milestone WO", `${woMsFor.id} · index ${idx + 1}`, "Subkontraktor");
+      setWoMsFor({ ...woMsFor, milestones: next });
+    } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); }
+  };
+
   const openWoEdit = (w: StoreItem) => {
     setWoEdit(w);
     setWoEditForm({ scope: String(w.scope ?? ""), targetDate: String(w.targetDate ?? "") });
@@ -1171,6 +1202,11 @@ const printSpk = async (w: StoreItem): Promise<void> => {
                           {locale === "en" ? "SPK" : "SPK"}
                         </button>
                         {w.status !== "Selesai" && (
+                          <button className="btn-secondary text-xs" aria-label={locale === "en" ? `Milestones for ${w.id}` : `Milestone ${w.id}`} onClick={() => { setWoMsFor(w); setWoMsForm({ title: "", pct: "", due: "" }); }}>
+                            {locale === "en" ? "Milestones" : "Milestone"}
+                          </button>
+                        )}
+                        {w.status !== "Selesai" && (
                           <button className="btn-secondary text-xs" aria-label={S.updateProgAria.replace("{n}", w.id)} onClick={() => { setWoProg(w); setProgMs(doneMsOf(w)); setProgNote(""); setProgPct(String(effProgress(w))); }}>{S.updateBtn}</button>
                         )}
                         {w.status !== "Selesai" && (
@@ -1651,6 +1687,43 @@ const printSpk = async (w: StoreItem): Promise<void> => {
         onCancel={() => setConfirmFinish(null)}
         onConfirm={() => { if (confirmFinish) applyWoProgress(confirmFinish.id, confirmFinish.v, confirmFinish.note, confirmFinish.ms, confirmFinish.milestones); setConfirmFinish(null); setWoProg(null); setProgMs([]); setProgNote(""); setProgPct(""); }}
       />
+
+      {/* S3: modal kelola milestone PER WO (milestone milik work order itu sendiri) */}
+      <Modal open={woMsFor !== null} onClose={() => setWoMsFor(null)}
+        title={locale === "en" ? `WO Milestones - ${woMsFor?.id ?? ""}` : `Milestone WO - ${woMsFor?.id ?? ""}`}
+        subtitle={locale === "en" ? "Milestones owned by this work order (not the subcontractor SOW)." : "Milestone milik work order ini (bukan SOW subkontraktor)."}
+        footer={<>
+          <button className="btn-secondary" onClick={() => setWoMsFor(null)}>{S.cancelBtn}</button>
+          <button className="btn-primary" onClick={() => void saveWoMilestone()}>{locale === "en" ? "Add milestone" : "Tambah milestone"}</button>
+        </>}>
+        <div className="space-y-3">
+          <div className="space-y-2">
+            {(woMsFor ? woMilestonesOf(woMsFor) : []).map((m, idx) => (
+              <div key={`${m.title}-${idx}`} className="flex items-center justify-between gap-2 rounded-lg border border-steel-100 p-2.5 text-sm">
+                <div className="min-w-0">
+                  <p className="font-medium text-navy-900">{m.title}</p>
+                  <p className="text-xs text-steel-500">{m.pct}% · {m.due ? fmtTanggal(m.due) : "-"}</p>
+                </div>
+                <button className="btn-secondary text-xs text-rose-600" onClick={() => void removeWoMilestone(idx)}>{S.deleteBtn}</button>
+              </div>
+            ))}
+            {(!woMsFor || woMilestonesOf(woMsFor).length === 0) && (
+              <p className="text-sm text-steel-400">{locale === "en" ? "No milestones on this WO yet." : "Belum ada milestone di WO ini."}</p>
+            )}
+          </div>
+          <FormGrid>
+            <Field label={locale === "en" ? "Title" : "Judul"}>
+              <input className="input" value={woMsForm.title} onChange={(e) => setWoMsForm({ ...woMsForm, title: e.target.value })} placeholder={locale === "en" ? "e.g. Fabrikasi section" : "cth: Fabrikasi section"} />
+            </Field>
+            <Field label={locale === "en" ? "Weight (%)" : "Bobot (%)"}>
+              <NumInput min={1} className="input" value={woMsForm.pct} onChange={(e) => setWoMsForm({ ...woMsForm, pct: e.target.value })} placeholder="40" />
+            </Field>
+          </FormGrid>
+          <Field label={locale === "en" ? "Due date" : "Tanggal jatuh tempo"}>
+            <input type="date" className="input" value={woMsForm.due} onChange={(e) => setWoMsForm({ ...woMsForm, due: e.target.value })} />
+          </Field>
+        </div>
+      </Modal>
 
       {/* Modal termin */}
       <Modal open={showTerm} onClose={() => setShowTerm(false)} title={S.termTitle} subtitle={S.termSub2}

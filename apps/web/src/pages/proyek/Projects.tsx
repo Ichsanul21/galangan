@@ -26,7 +26,7 @@ import { findUsages } from "../../utils/usages";
 import type { StoreItem, CollectionKey } from "../../data/store";
 import { useT } from "../../i18n/LanguageContext";
 import { n_prj } from "../../i18n/n_prj";
-import { fmtMiliar, sparkProjects, activeProjectTrend, contractValueTrend, avgProgressTrend } from "../../data";
+import { fmtMiliar } from "../../data";
 import { todayISO, fmtTanggal } from "../../utils/format";
 import { getSetting } from "../../utils/settings";
 import { shouldAutoSetLate, shouldClearOverride } from "../../utils/projectDelay";
@@ -83,7 +83,7 @@ const PRJ_COLS: CollectionKey[] = ["activities", "clients", "employees", "projec
 export default function Projects() {
   const { locale } = useT();
   const S = n_prj[locale];
-  const { data, add, update, remove, inBranch, log } = useStore();
+  const { data, add, update, remove, inBranch, log, branch } = useStore();
   const modAlert = useModuleAlert("proyek");
   const flash = useNotifFlash();
   const deepParams = useDeepLinkParams();
@@ -198,8 +198,13 @@ export default function Projects() {
   });
 
   const totalBudget = list.reduce((s, p) => s + Number(p.budget || 0), 0);
-  const inProgress = list.filter((p) => p.status !== "Selesai").length;
+  /* P3: hitung per label status yang diminta client - Selesai, Berjalan
+     (bukan Selesai/Batal), Tertunda, Terlambat. Versi lama `status !== "Selesai"`
+     mencampur Batal dan Terlambat ke dalam "Sedang Berjalan". */
+  const doneCount = list.filter((p) => p.status === "Selesai").length;
   const delayed = list.filter((p) => p.status === "Terlambat").length;
+  const pendingCount = list.filter((p) => p.status === "Tertunda").length;
+  const inProgress = list.filter((p) => p.status !== "Selesai" && p.status !== "Batal").length;
   const avgProgress = list.length ? Math.round(list.reduce((s, p) => s + Number(p.progress || 0), 0) / list.length) : 0;
   /* Pengurutan tanggal lewat `createdAtOf`/`lastTouchedAt`, bukan field mentah:
      `updated_at` milik server adalah ISO penuh sementara `createdAt` bisa
@@ -247,11 +252,42 @@ export default function Projects() {
 
       {modAlert.active && <AlertBannerView items={modAlert.items} onPick={pickNotif} dismiss={modAlert.dismiss} />}
 
+      {/* P3+P4: card status pakai gradient penuh (bukan spark chart), dan
+          card Total + Berjalan punya label breakdown Selesai/Berjalan/Tertunda. */}
       <div className="mb-4 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <KpiCard label={S.prjKpiTotal} value={String(projects.length)} hint={S.prjKpiTotalHint} icon={<Anchor className="h-5 w-5" />} chip="navy" spark={sparkProjects} />
-        <KpiCard label={S.prjKpiActive} value={String(inProgress)} delta={S.prjKpiLate.replace("{n}", String(delayed))} deltaDirection="down" icon={<Clock className="h-5 w-5" />} chip="amber" spark={activeProjectTrend} />
-        <KpiCard label={S.prjKpiContract} value={fmtMiliar(totalBudget)} delta={S.prjKpiContractHint} deltaDirection="up" icon={<Wallet className="h-5 w-5" />} chip="teal" spark={contractValueTrend} />
-        <KpiCard label={S.prjKpiAvg} value={`${avgProgress}%`} delta={S.prjKpiAvgHint} deltaDirection="flat" icon={<TrendingUp className="h-5 w-5" />} chip="violet" spark={avgProgressTrend} />
+        <KpiCard
+          panelGradient
+          chip="navy"
+          label={S.prjKpiTotal}
+          value={String(projects.length)}
+          hint={S.prjKpiBreakdown.replace("{a}", String(doneCount)).replace("{b}", String(inProgress))}
+          icon={<Anchor className="h-5 w-5" />}
+        />
+        <KpiCard
+          panelGradient
+          chip="amber"
+          label={S.prjKpiActive}
+          value={String(inProgress)}
+          delta={S.prjKpiActiveDelta.replace("{n}", String(delayed)).replace("{m}", String(pendingCount))}
+          deltaDirection={delayed + pendingCount > 0 ? "down" : "flat"}
+          icon={<Clock className="h-5 w-5" />}
+        />
+        <KpiCard
+          panelGradient
+          chip="teal"
+          label={S.prjKpiContract}
+          value={fmtMiliar(totalBudget)}
+          hint={S.prjKpiContractHint}
+          icon={<Wallet className="h-5 w-5" />}
+        />
+        <KpiCard
+          panelGradient
+          chip="violet"
+          label={S.prjKpiAvg}
+          value={`${avgProgress}%`}
+          hint={S.prjKpiAvgHint}
+          icon={<TrendingUp className="h-5 w-5" />}
+        />
       </div>
 
       <div className="mb-4 flex flex-wrap items-center gap-3">
@@ -458,6 +494,10 @@ export default function Projects() {
         clients={data.clients}
         employees={data.employees}
         add={add}
+        /* P10: branch RBAC di-auto-isi - user tidak memilih cabang di form.
+           Akun multi-cabang (SEMUA) memakai cabang pertama yang terdaftar;
+           scoping `inBranch` tetap berlaku untuk read/write. */
+        defaultBranch={branch !== "SEMUA" ? branch : String((data.branches ?? [])[0]?.city ?? "Samarinda")}
       />
 
       <ConfirmModal

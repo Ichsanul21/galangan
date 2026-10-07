@@ -158,24 +158,14 @@ export default function ProjectDetail() {
      tidak pernah menunjuk siapa pun. */
   const [docOwner, setDocOwner] = useState("");
   const [lastUploadedId, setLastUploadedId] = useState<string | null>(null);
-  /* Id dokumen yang pratinjaunya sedang dibuka di dalam kartu. Menggantikan
-     `instantPreviewId` + DocumentPreviewModal: dulu mengunggah dokumen membuka
-     pop-up besar yang menutupi daftar, dan menutupnya adalah langkah wajib
-     sebelum bisa lanjut. Sekarang dokumen yang baru diunggah langsung tampil di
-     kartunya, dan ikon mata di baris lain cukup membuka/menutup di tempat. */
-  const [openDocId, setOpenDocId] = useState<string>("");
+  /* PD2: pratinjau dokumen kini lewat modal Detail (docDetail), bukan
+     expand inline `openDocId`. `lastUploadedId` tetap dipakai untuk
+     sorotan "Baru diunggah" di kartu. */
   /* Item 5c revisi 2 Oktober: tombol Excel per dokumen diganti Detail +
      modal. Export Excel untuk SATU dokumen memaksa pengguna mengunduh
      berkas 9 baris untuk hal yang sebenarnya bisa dibaca di layar - dan
-     spreadsheet tidak pernah jadi tempatanoralan riwayat revisi. */
+     spreadsheet tidak pernah jadi tempat riwayat revisi. */
   const [docDetail, setDocDetail] = useState<StoreItem | null>(null);
-  /* `lastUploadedId` juga harus DIBERSIHKAN saat pengguna menutup pratinjau.
-     Kalau tidak, isNew tetap true seumur hidup halaman, isOpen tidak pernah
-     false, dan ikon mata tidak pernah bisa menutup panelnya. */
-  const toggleDocPreview = (id: string): void => {
-    setOpenDocId((cur) => (cur === id ? "" : id));
-    if (openDocId === id) setLastUploadedId((cur) => (cur === id ? null : cur));
-  };
   const [delScope, setDelScope] = useState<number | null>(null);
   /* Risiko, change order, trial, dan BAST dulu hanya punya tambah + ubah -
      tidak ada jalur hapus sama sekali, jadi record yang salah input (BAST
@@ -480,7 +470,7 @@ const docOwnerOptions = useMemo(() => employeeOptions(data.employees), [data.emp
     return { left, width };
   };
 
-  const milestoneDays = getSetting(data, "ALERT_MILESTONE_DAYS", 7);
+  const milestoneDays = getSetting(data, "ALERT_MILESTONE_DAYS", 30);
   const milestonesNear = wbs.filter((w) => {
     const d = monthEndDate(w.end);
     if (!d || Number(w.progress) >= 100) return false;
@@ -1258,6 +1248,38 @@ try {
                       );
                     })}
                   </div>
+                  {/* D4: tick bulan di bawah bar - label per bulan pada posisi
+                      center-nya, sejajar dengan kolom bar (w-40 task + gap). */}
+                  <div className="mt-1 flex items-center gap-2">
+                    <span className="w-40 shrink-0" />
+                    <div className="relative h-4 flex-1">
+                      {(() => {
+                        const ticks: { label: string; leftPct: number }[] = [];
+                        let y = ganttRange.min.y;
+                        let m = ganttRange.min.m;
+                        for (;;) {
+                          const base = ganttRange.min.y * 12 + ganttRange.min.m;
+                          const cur = y * 12 + m;
+                          const leftPct = ((cur - base) / ganttRange.total) * 100;
+                          ticks.push({ label: fmtBulan(`${y}-${String(m).padStart(2, "0")}`), leftPct });
+                          if (y === ganttRange.max.y && m === ganttRange.max.m) break;
+                          m += 1;
+                          if (m > 12) { m = 1; y += 1; }
+                          if (ticks.length > 60) break;
+                        }
+                        return ticks.map((t) => (
+                          <span
+                            key={`${t.label}-${t.leftPct}`}
+                            className="absolute top-0 -translate-x-1/2 whitespace-nowrap text-[9px] text-steel-400"
+                            style={{ left: `${Math.min(98, Math.max(2, t.leftPct + (100 / Math.max(1, ganttRange.total)) / 2))}%` }}
+                          >
+                            {t.label}
+                          </span>
+                        ));
+                      })()}
+                    </div>
+                    <span className="w-9 shrink-0" />
+                  </div>
                 </div>
               )}
               <div className="mt-4 rounded-xl border border-steel-100 p-3">
@@ -1540,17 +1562,9 @@ try {
                   const url = docUrlOf(d);
                   const fname = docBaseName(d, url);
                   const isNew = lastUploadedId === String(d.id);
-                  /* Pratinjau inline, bukan modal: klik ikon mata langsung memuat
-                     dokumen DI DALAM kartu ini.
-
-                     `isOpen` HANYA bergantung pada `openDocId`. Sebelumnya
-                     ikut `isNew`, jadi dokumen yang baru diunggah langsung
-                     memuat dirinya ke dalam kartu tanpa diminta - dan karena
-                     `lastUploadedId` tidak pernah dibersihkan, semua dokumen
-                     yang pernah diunggah pada sesi itu ikut terbuka setiap
-                     kali tabel dirender ulang. `isNew` sekarang hanya
+                  /* PD2: ikon view membuka modal Detail (preview + Unduh di
+                     dalam modal), bukan expand inline di kartu. `isNew` hanya
                      memberi tanda "Baru diunggah" + sorotan tepi. */
-                  const isOpen = url !== "" && openDocId === String(d.id);
                   return (
                   <div key={d.id} className={`doc-card rounded-xl border p-3 text-sm ${isNew ? "border-ocean-400 ring-2 ring-ocean-100" : "border-steel-100"}`} style={{ breakInside: "avoid" }}>
                     <div className="flex items-center justify-between gap-2">
@@ -1579,29 +1593,20 @@ try {
                       {url === "" ? (
                         <p className="text-xs text-steel-400">Belum ada lampiran file.</p>
                       ) : (
-                        <>
-                          <div className="flex flex-wrap items-center gap-1.5">
-                            <button
-                              type="button"
-                              className="rounded-lg p-1.5 text-steel-500 hover:bg-steel-100 hover:text-ocean-600 focus:outline-none focus-visible:ring-2 focus-visible:ring-ocean-400"
-                              title={`Pratinjau: ${String(d.title ?? d.id)}`}
-                              aria-label={`Pratinjau: ${String(d.title ?? d.id)}`}
-                              aria-expanded={isOpen}
-                              onClick={() => toggleDocPreview(String(d.id))}
-                            >
-                              <Eye className="h-4 w-4" />
-                            </button>
-                            <DownloadFileButton url={url} fileName={fname !== "" ? fname : undefined} className="btn-secondary px-2 py-1 text-xs" />
-                          </div>
-                          {isOpen && (
-                            <div className="mt-2">
-                              <InlineDocPreview
-                                url={url}
-                                height={/\.pdf(\?|$)/i.test(url) ? "h-80" : "h-56"}
-                              />
-                            </div>
-                          )}
-                        </>
+                        /* PD2: ikon view membuka MODAL (bukan expand inline).
+                           Download ada di dalam modal + tetap di kartu. */
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          <button
+                            type="button"
+                            className="rounded-lg p-1.5 text-steel-500 hover:bg-steel-100 hover:text-ocean-600 focus:outline-none focus-visible:ring-2 focus-visible:ring-ocean-400"
+                            title={`Pratinjau: ${String(d.title ?? d.id)}`}
+                            aria-label={`Pratinjau: ${String(d.title ?? d.id)}`}
+                            onClick={() => setDocDetail(d)}
+                          >
+                            <Eye className="h-4 w-4" />
+                          </button>
+                          <DownloadFileButton url={url} fileName={fname !== "" ? fname : undefined} className="btn-secondary px-2 py-1 text-xs" />
+                        </div>
                       )}
                     </div>
                   </div>
@@ -2207,10 +2212,16 @@ try {
         subtitle={docDetail ? `${String(docDetail.id)} · ${String(docDetail.type)} · ${String(docDetail.version)}` : undefined}
         footer={<>
           <button className="btn-secondary" onClick={() => setDocDetail(null)}>{S.cancelBtn}</button>
+          {docDetail && docAttachment(docDetail).url !== "" && (
+            <DownloadFileButton
+              url={docAttachment(docDetail).url}
+              fileName={docAttachment(docDetail).fileName || undefined}
+              className="btn-primary"
+            />
+          )}
           {docDetail && (
-            /* Excel tetap ada, tapi sebagai aksi kedua di dalam modal - bukan
-               satu-satunya jalan melihat isi dokumen. */
-            <button className="btn-primary" onClick={() => {
+            /* Excel tetap ada, tapi sebagai aksi ketiga di dalam modal. */
+            <button className="btn-secondary" onClick={() => {
               const d = docDetail;
               void exportExcel(
                 [["Kolom", "Nilai"], ["ID", d.id], ["Judul", d.title], ["Tipe", d.type], ["Proyek", pid], ["Versi", d.version], ["Status", d.status], ["Diperbarui", d.updated], ["Pemilik", d.owner]],
@@ -2439,8 +2450,7 @@ try {
                `lastUploadedId` tetap diisi: itu yang memberi ringkasan "Baru
                diunggah" dan sorotan tepi pada kartu, jadi pengguna tahu
                dokumen mana yang baru, tanpa isinya merebut layar. */
-            setLastUploadedId(String(created.id));
-            setOpenDocId("");
+             setLastUploadedId(String(created.id));
             setTab("Dokumen & Laporan");
           } catch (e) {
             toast(e instanceof Error ? e.message : S.saveFail, "info");

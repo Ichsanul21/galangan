@@ -269,6 +269,7 @@ export function KpiCard({
   hint,
   spark,
   chip = "navy",
+  panelGradient = false,
 }: {
   label: string;
   value: string;
@@ -278,37 +279,38 @@ export function KpiCard({
   hint?: string;
   spark?: { name: string; v: number }[];
   chip?: keyof typeof gradientChip;
+  /** P4: warna gradient penuh di seluruh card (seperti grafik), bukan hanya tile ikon. */
+  panelGradient?: boolean;
 }) {
   const gid = useId().replace(/[^a-zA-Z0-9]/g, "");
   const color = sparkChipColor[chip] ?? "#2e9ad4";
   const showSpark = !!spark && spark.length > 1;
+  const panelCls = panelGradient ? `${gradientChip[chip] ?? gradientChip.navy} text-white` : "";
+  const labelCls = panelGradient ? "text-white/80" : "text-steel-500";
+  const valueCls = panelGradient ? "text-white" : "text-navy-900";
+  const hintCls = panelGradient ? "text-white/70" : "text-steel-400";
+  const deltaCls = panelGradient
+    ? deltaDirection === "up" ? "text-emerald-200" : deltaDirection === "down" ? "text-rose-200" : "text-white/80"
+    : deltaDirection === "up" ? "text-emerald-600" : deltaDirection === "down" ? "text-rose-600" : "text-steel-500";
   return (
-    <Card className="card-hover relative overflow-hidden p-4">
+    <Card className={`card-hover relative overflow-hidden p-4 ${panelCls}`}>
       <div className="flex items-start justify-between">
         <div className="min-w-0 flex-1">
-          <p className="text-xs font-medium text-steel-500 truncate" title={label}>{label}</p>
-          <p className="mt-1 text-[26px] font-bold tracking-tight text-navy-900 break-words" title={value}>{value}</p>
+          <p className={`text-xs font-medium truncate ${labelCls}`} title={label}>{label}</p>
+          <p className={`mt-1 text-[26px] font-bold tracking-tight break-words ${valueCls}`} title={value}>{value}</p>
           {delta ? (
-            <p
-              className={`mt-1 flex items-center gap-1 text-xs font-semibold ${
-                deltaDirection === "up"
-                  ? "text-emerald-600"
-                  : deltaDirection === "down"
-                  ? "text-rose-600"
-                  : "text-steel-500"
-              }`}
-            >
+            <p className={`mt-1 flex items-center gap-1 text-xs font-semibold ${deltaCls}`}>
               {deltaDirection === "up" && <ArrowUpRight className="h-3.5 w-3.5" />}
               {deltaDirection === "down" && <ArrowDownRight className="h-3.5 w-3.5" />}
               {deltaDirection === "flat" && <Minus className="h-3.5 w-3.5" />}
               {delta}
             </p>
           ) : (
-            hint && <p className="mt-1 text-[11px] text-steel-400 truncate">{hint}</p>
+            hint && <p className={`mt-1 text-[11px] truncate ${hintCls}`} title={hint}>{hint}</p>
           )}
         </div>
         {icon && (
-          <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-white shadow-soft ${gradientChip[chip]}`}>
+          <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-white shadow-soft ${panelGradient ? "bg-white/20" : gradientChip[chip]}`}>
             {icon}
           </div>
         )}
