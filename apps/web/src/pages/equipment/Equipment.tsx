@@ -907,6 +907,15 @@ const projectCostRows = useMemo(() => Array.from(projectCostSummaries.entries())
       return;
     }
 
+    /* E1: catatan servis WAJIB saat jalur "Catat Servis" / finish. */
+    if (maintFinishOnSave && !String(form.catatan ?? "").trim()) {
+      toast(
+        locale === "en" ? "Service notes are required to finish this cycle" : "Catatan servis wajib diisi untuk menyelesaikan siklus ini",
+        "info",
+      );
+      return;
+    }
+
     /* Validasi material: item harus dikenal & stok cukup. Divalidasi di sini
        (bukan hanya saat Selesai) supaya planner tahu sooner dan tidak
        discovering kekurangan saat pekerjaan sudah berjalan. */
@@ -1728,8 +1737,11 @@ const projectCostRows = useMemo(() => Array.from(projectCostSummaries.entries())
                           return (
                             <button
                               className="btn-primary text-xs"
-                              onClick={() => void advanceMaintStatus(cycle.raw, "Selesai")}
-                              title={locale === "en" ? "Complete the cycle and deduct material stock" : "Selesaikan siklus dan potong stok material"}
+                              /* E1: SEMUA jalur ke Selesai lewat modal catatan servis.
+                                 Versi lama Register memanggil advanceMaintStatus
+                                 langsung tanpa modal - persis yang dikeluhkan. */
+                              onClick={() => openMaintEdit(cycle.raw, true)}
+                              title={locale === "en" ? "Open service notes modal (required to finish)" : "Buka modal catatan servis (wajib untuk menyelesaikan)"}
                             >
                               <CheckCircle2 className="h-3.5 w-3.5" /> {S.eqComplete}
                             </button>

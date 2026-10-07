@@ -976,6 +976,54 @@ export default function Procurement() {
       await add("movements", {
         item: invItem.name, itemId: invItem.id, type: "Penerimaan", qty, by: recvPo.id, date: todayISO(), tone: "in",
       }, { action: "menerima barang", target: `${invItem.name} × ${qty} (${recvPo.id})`, module: "Procurement" });
+
+      /* D13-A: stok masuk inventory → sparepart project yang mereferensikan PO ini
+         (status Akan, belum GI) dikeluarkan OTOMATIS oleh sistem.
+         Label by = "Oleh sistem · PO {id}" supaya terlihat di mutasi & audit. */
+      const linked = (data.spareparts ?? []).filter((sp) =>
+        String(sp.poRef ?? "") === String(recvPo.id)
+        && String(sp.status ?? "") === "Akan"
+        && !sp.giBy
+        && (!String(sp.projectId ?? "") || String(sp.projectId) === String(recvPo.project ?? "")),
+      );
+      let autoGiCount = 0;
+      for (const sp of linked) {
+        const spQty = Number(sp.qty || 1);
+        if (spQty <= 0) continue;
+        /* Cari inventory dari sparepart (bisa beda dengan item PO restock). */
+        const pn = String(sp.partNumber ?? "").trim();
+        const nm = String(sp.name ?? "").trim();
+        const spInv = (data.inventory ?? []).find((i) =>
+          (pn && (String(i.partNumber ?? "") === pn || String(i.sku ?? "") === pn))
+          || (nm && String(i.name ?? "").toLowerCase() === nm.toLowerCase()),
+        );
+        if (!spInv) continue;
+        const left = Number(spInv.stock || 0);
+        if (left < spQty) continue;
+        const giBy = `Oleh sistem · PO ${recvPo.id}`;
+        await update("inventory", spInv.id, { stock: left - spQty });
+        await add("movements", {
+          item: spInv.name, itemId: spInv.id, type: "Pengeluaran", qty: spQty,
+          by: giBy, date: todayISO(), tone: "out",
+          fromWh: String(spInv.warehouse ?? ""),
+          toWh: String(sp.projectId ?? recvPo.project ?? ""),
+          purpose: String(sp.projectId ?? recvPo.project ?? ""),
+          po: String(recvPo.id),
+        }, { action: "mengeluarkan sparepart (oleh sistem)", target: `${spInv.name} × ${spQty} (${sp.id})`, module: "Sparepart" });
+        await update("spareparts", sp.id, {
+          status: "Sedang",
+          giBy: "sistem",
+          giAt: todayISO(),
+          inventoryItemId: spInv.id,
+        });
+        autoGiCount += 1;
+      }
+      if (autoGiCount > 0) {
+        log("auto-GI sparepart project", `${recvPo.id} → ${autoGiCount} sparepart dikeluarkan oleh sistem`, "Procurement");
+        toast(locale === "en"
+          ? `${autoGiCount} project spare part(s) issued automatically by system (GI)`
+          : `${autoGiCount} sparepart project dikeluarkan otomatis oleh sistem (GI)`);
+      }
     }
     /* Denda: hari telat × % per hari dari nilai PO, dibatasi 5%. */
     const prevDenda = Number(recvPo.dendaRp || 0);

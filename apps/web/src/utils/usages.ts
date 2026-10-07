@@ -74,6 +74,14 @@ export function findUsages(data: StoreShape, collection: string, id: string): st
       push(out, rowsOf(data, "payroll").filter((p) => String(p.employeeId ?? "") === key).length, "Slip Gaji");
       push(out, rowsOf(data, "attendance").filter((a) => String(a.employeeId ?? "") === key).length, "Absensi");
       push(out, rowsOf(data, "leaves").filter((l) => String(l.employeeId ?? "") === key).length, "Cuti");
+      /* D14: keanggotaan tim proyek aktif - hapus karyawan melepasnya
+         diam-diam dari semua project team. */
+      const teamByProject = (data as { teamByProject?: Record<string, unknown> }).teamByProject ?? {};
+      const teamHits = Object.entries(teamByProject).filter(([, ids]) => Array.isArray(ids) && (ids as unknown[]).includes(key));
+      if (teamHits.length > 0) {
+        const names = teamHits.map(([pid]) => String((rowsOf(data, "projects").find((p) => String(p.id) === pid) as { vessel?: unknown } | undefined)?.vessel ?? pid));
+        push(out, teamHits.length, `Tim proyek (${names.slice(0, 3).join(", ")}${teamHits.length > 3 ? "…" : ""})`);
+      }
       break;
     }
     case "inventory": {

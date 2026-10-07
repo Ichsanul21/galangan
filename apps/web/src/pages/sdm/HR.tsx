@@ -270,6 +270,9 @@ export default function HR() {
   const arsipSurat = data.letters;
   const [suratEditId, setSuratEditId] = useState<string | null>(null);
   const [suratPreviewFor, setSuratPreviewFor] = useState<StoreItem | null>(null);
+  /* H1c: preview surat cuti setelah approve HRD - terpisah dari suratHr
+     archive supaya request PDF memakai kind suratCuti, bukan suratHr. */
+  const [cutiPreviewId, setCutiPreviewId] = useState<string | null>(null);
   /* Pratinjau arsip dirender begitu modal dibuka, bukan setelah tombol ditekan:
      tujuannya pratinjau berarti "beri saya lihat suratnya", dan meminta klik
      tambahan sebelum melihat apa pun hanya satu langkah sia-sia. `usePdfDoc`
@@ -284,6 +287,14 @@ export default function HR() {
     void pdfDoc.request({ kind: "suratHr", id: String(row.id ?? ""), locale }, `Surat-${String(row.id ?? "")}.pdf`, false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [suratPreviewFor]);
+
+  /* H1c: preview surat cuti (bukan unduh paksa) - modal memakai pdfDoc.state.url. */
+  useEffect(() => {
+    if (cutiPreviewId === null) return;
+    if (!pdfServerReady()) return;
+    void pdfDoc.request({ kind: "suratCuti", id: cutiPreviewId, locale }, `Surat-Cuti-${cutiPreviewId}.pdf`, false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cutiPreviewId]);
   const [delEmp, setDelEmp] = useState<StoreItem | null>(null);
   const [delSurat, setDelSurat] = useState<StoreItem | null>(null);
   const [lettersMigrated, setLettersMigrated] = useState(false);
@@ -827,6 +838,35 @@ export default function HR() {
       if (synced > 0) log("sinkron cuti ke absensi", `${l.id} → ${synced} baris ${attStatus}`, "SDM");
     } catch {
       /* sinkron best-effort - status cuti sudah tersimpan */
+    }
+    /* H1c: surat persetujuan cuti otomatis saat approve HRD.
+       Preview di modal (tanpa paksa download); Unduh tetap tersedia.
+       Archive letters idempoten via sourceType+sourceId. */
+    try {
+      const already = (data.letters ?? []).some(
+        (r) => String(r.sourceType ?? "") === "cuti" && String(r.sourceId ?? "") === String(l.id),
+      );
+      if (!already) {
+        await add("letters", {
+          employeeId: String(l.employeeId ?? ""),
+          nama: empNameOf(String(l.employeeId ?? "")),
+          jenis: "Persetujuan Cuti",
+          tanggal: todayISO(),
+          isi: `${String(l.type ?? "Cuti")} · ${String(l.from ?? "")} → ${String(l.to ?? "")} · ${String(l.days ?? "")} hari`,
+          sourceType: "cuti",
+          sourceId: String(l.id),
+          approvedBy: user?.name ?? "HRD",
+          approvedAt: todayISO(),
+          status: "Terbit",
+        }, { action: "surat persetujuan cuti terbit otomatis", target: String(l.id), module: "SDM" });
+      }
+      /* Preview modal tanpa paksa download (open=false), tombol Unduh di modal. */
+      if (pdfServerReady()) {
+        void pdfDoc.request({ kind: "suratCuti", id: String(l.id), locale }, `Surat-Cuti-${String(l.id)}.pdf`, false);
+      }
+      setCutiPreviewId(String(l.id));
+    } catch {
+      /* best-effort: approval sudah tersimpan */
     }
     toast(S.tLeaveHrd.replace("{n}", l.id));
     } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); }
@@ -2325,6 +2365,50 @@ const finishTraining = async (t: StoreItem) => {
             ) : null}
           </div>
         )}
+      </Modal>
+
+      {/* H1c: preview surat persetujuan cuti - tanpa paksa download, Unduh tetap ada. */}
+      <Modal
+        open={cutiPreviewId !== null}
+        onClose={() => { setCutiPreviewId(null); pdfDoc.close(); }}
+        title={locale === "en" ? "Leave approval letter" : "Surat persetujuan cuti"}
+        subtitle={cutiPreviewId ?? undefined}
+        footer={<>
+          <button className="btn-secondary" onClick={() => { setCutiPreviewId(null); pdfDoc.close(); }}>{locale === "en" ? "Close" : "Tutup"}</button>
+          {pdfDoc.state.url !== "" && (
+            <button className="btn-primary" onClick={() => pdfDoc.download(`Surat-Cuti-${cutiPreviewId ?? ""}.pdf`)}>
+              <Download className="h-4 w-4" /> {locale === "en" ? "Download PDF" : "Unduh PDF"}
+            </button>
+          )}
+        </>}
+      >
+        <div className="space-y-3">
+          {!pdfServerReady() && (
+            <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+              {locale === "en" ? "Official PDF needs the server - connect the backend first." : "PDF resmi perlu server aktif - hubungkan backend dulu."}
+            </div>
+          )}
+          {pdfServerReady() && pdfDoc.state.busy && (
+            <p className="text-sm text-steel-500">{locale === "en" ? "Preparing PDF..." : "Menyiapkan PDF..."}</p>
+          )}
+          {pdfServerReady() && pdfDoc.state.error !== "" && (
+            <p className="text-sm text-rose-600">{pdfDoc.state.error}</p>
+          )}
+          {pdfDoc.state.url !== "" && (
+            <>
+              <div className="flex flex-wrap items-center gap-2">
+                <button className="btn-secondary" onClick={() => window.open(pdfDoc.state.url, "_blank", "noopener,noreferrer")}>
+                  {locale === "en" ? "Open in new tab" : "Buka di tab baru"}
+                </button>
+              </div>
+              <iframe
+                title={`Surat Cuti ${cutiPreviewId ?? ""}`}
+                src={pdfDoc.state.url}
+                className="h-[36rem] w-full rounded-xl border border-steel-200"
+              />
+            </>
+          )}
+        </div>
       </Modal>
 
       <ConfirmModal

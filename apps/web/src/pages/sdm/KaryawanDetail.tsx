@@ -728,16 +728,15 @@ export default function KaryawanDetail() {
                       <td className="td"><StatusBadge status={String(l.status)} /></td>
                       <td className="td text-steel-600">{String(l.note || "-")}</td>
                       <td className="td">
-                        {String(l.status) === "Disetujui" ? (
-                          <DocumentPreviewCell
-                            doc={l.fileUrl ? {
-                              title: `${String(l.type)} · ${String(l.id)}`,
-                              fileUrl: String(l.fileUrl),
-                            } : null}
-                          />
-                        ) : (
-                          <span className="text-xs text-steel-400">-</span>
-                        )}
+                        {/* H1a: preview lampiran terbuka di SEMUA status
+                            (client: jangan ada terkunci, wajib bisa dipreview).
+                            Delete lock Disetujui tetap dipertahankan - integritas data. */}
+                        <DocumentPreviewCell
+                          doc={l.fileUrl ? {
+                            title: `${String(l.type)} · ${String(l.id)}`,
+                            fileUrl: String(l.fileUrl),
+                          } : null}
+                        />
                       </td>
                       <td className="td">
                         <div className="flex flex-wrap gap-1.5">

@@ -14,6 +14,7 @@ import { useModuleSync } from "../../data/useModuleSync";
 import { inspectionTrend, ncrTrend, incidentTrend, hseTrend } from "../../data";
 import { fmtRupiah, fmtTanggal, todayISO } from "../../utils/format";
 import { sameName } from "../../utils/names";
+import { subTypesOf } from "../../utils/docTypes";
 import { createdAtOf, lastTouchedAt } from "../../utils/timestamps";
 import { getSetting } from "../../utils/settings";
 import { useDeepLinkParams, useDeepLinkTarget } from "../../components/useDeepLink";
@@ -242,10 +243,16 @@ export default function QCSafety() {
   const [drwStatusF, setDrwStatusF] = useState("Semua");
   const [drwKindF, setDrwKindF] = useState("Semua");
   const [certPreview, setCertPreview] = useState<PreviewDoc | null>(null);
+  /* Q2: filter sub-tipe sertifikat dari docTypes (dua arah dengan modul Dokumen). */
+  const [certSubTypeF, setCertSubTypeF] = useState("Semua");
   const projectOfVessel = (vesselName: string): StoreItem | undefined =>
     data.projects.find((p) => sameName(String(p.vessel ?? ""), vesselName));
   const certDocsOfProject = (projectId: string | undefined): StoreItem[] =>
-    !projectId ? [] : (data.documents ?? []).filter((d) => String(d.project ?? "") === projectId && /sertifikat/i.test(String(d.type ?? "")));
+    !projectId ? [] : (data.documents ?? []).filter((d) =>
+      String(d.project ?? "") === projectId
+      && /sertifikat/i.test(String(d.type ?? ""))
+      && (certSubTypeF === "Semua" || String(d.subType ?? "") === certSubTypeF),
+    );
   const [showTransmit, setShowTransmit] = useState(false);
   const [transmitForm, setTransmitForm] = useState({ to: "", date: todayISO(), ids: [] as string[] });
 
@@ -1708,6 +1715,22 @@ export default function QCSafety() {
 
           {tab === "Sertifikat" && (
             <div className="space-y-4">
+              {/* Q2: filter sub-tipe dari docTypes - sama dengan yang ditulis modul Dokumen. */}
+              <div className="flex flex-wrap items-center gap-2">
+                <label className="text-xs font-medium text-steel-600" htmlFor="cert-subtype-f">
+                  {locale === "en" ? "Sub-type" : "Sub-tipe"}
+                </label>
+                <select
+                  id="cert-subtype-f"
+                  className="input w-auto py-1.5 text-sm"
+                  value={certSubTypeF}
+                  onChange={(e) => setCertSubTypeF(e.target.value)}
+                >
+                  <option value="Semua">{locale === "en" ? "All sub-types" : "Semua sub-tipe"}</option>
+                  {subTypesOf("Sertifikat").map((s) => <option key={s} value={s}>{s}</option>)}
+                  <option value="">{locale === "en" ? "No sub-type" : "Tanpa sub-tipe"}</option>
+                </select>
+              </div>
               {certHealthReal.length > 0 && (
                 <Card className="p-5" data-export-hide>
                   <CardHeader
@@ -1824,6 +1847,7 @@ export default function QCSafety() {
                                     <div key={String(d.id)} className="flex items-center justify-between gap-2 rounded-lg bg-white px-2.5 py-1.5 text-sm">
                                       <span className="min-w-0 truncate font-medium text-navy-900" title={String(d.title)}>
                                         {String(d.title)} <span className="font-mono text-[11px] text-steel-400">{String(d.id)}</span>
+                                        {d.subType ? <Badge tone="gray" className="ml-1">{String(d.subType)}</Badge> : null}
                                       </span>
                                       <DocumentPreviewCell doc={{ title: String(d.title ?? d.id), fileUrl: docUrlOf(d), fileName: docFileNameOf(d), subtitle: `${String(d.id)} · Sertifikat proyek` }} />
                                     </div>

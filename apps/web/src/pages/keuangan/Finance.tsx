@@ -1201,18 +1201,25 @@ const { data, add, update, remove, log, branch, inBranch } = useStore();
     const n = manJournals.filter((j) => kasInScope(j) && (String(j.db) === kode || String(j.kr) === kode)).length;
     return { masuk, keluar, count: n };
   };
-  /* Rekap live per rekening (semua kode Kas/Bank yang muncul di jurnal periode ini). */
+  /* Rekap live per rekening (semua kode Kas/Bank yang muncul di jurnal periode ini).
+     F2: `lastTs` = max createdAt/updatedAt jurnal penyusun baris ini -
+     kolom "Sumber terakhir" per baris, bukan hanya catatan global. */
   const kasLiveRows = useMemo(() => {
-    const order = new Map<string, { kode: string; nama: string; masuk: number; keluar: number; count: number }>();
+    const order = new Map<string, { kode: string; nama: string; masuk: number; keluar: number; count: number; lastTs: string }>();
     const nameOf = (kode: string): string =>
       String(coaRows.find((c) => String(c.kode) === kode)?.nama ?? KASBANK_EXCEL.find((r) => r.kode === kode)?.nama ?? kode);
+    const bumpTs = (cur: { lastTs: string }, j: Record<string, unknown>) => {
+      const u = lastTouchedAt(j) ?? createdAtOf(j) ?? "";
+      if (u > cur.lastTs) cur.lastTs = u;
+    };
     for (const j of manJournals) {
       if (!kasInScope(j)) continue;
       for (const kode of [String(j.db ?? ""), String(j.kr ?? "")]) {
         if (!kode || !/^(1-11|1-12)/.test(kode)) continue;
-        const cur = order.get(kode) ?? { kode, nama: nameOf(kode), masuk: 0, keluar: 0, count: 0 };
+        const cur = order.get(kode) ?? { kode, nama: nameOf(kode), masuk: 0, keluar: 0, count: 0, lastTs: "" };
         if (String(j.db) === kode) { cur.masuk += num(j.amount); cur.count += 1; }
         if (String(j.kr) === kode) { cur.keluar += num(j.amount); cur.count += 1; }
+        bumpTs(cur, j as unknown as Record<string, unknown>);
         order.set(kode, cur);
       }
     }
@@ -2416,7 +2423,7 @@ const { data, add, update, remove, log, branch, inBranch } = useStore();
      transaksi SEJAK AWAL, bukan hanya periode yang difilter. Yang
      period-scoped tetap kolom "mutasi periode ini". */
   const bbLive = useMemo(() => {
-    const m = new Map<string, { kode: string; nama: string; d: number; k: number; n: number; dAll: number; kAll: number }>();
+    const m = new Map<string, { kode: string; nama: string; d: number; k: number; n: number; dAll: number; kAll: number; lastTs: string }>();
     const nameOf = (kode: string): string => String(coaRows.find((c) => String(c.kode) === kode)?.nama ?? kode);
     for (const j of manJournals) {
       if (j.status === "Void") continue;
@@ -2425,10 +2432,12 @@ const { data, add, update, remove, log, branch, inBranch } = useStore();
       if (tgl > bbAsOf && !inPeriod) continue;
       for (const [kode, side] of [[String(j.db ?? ""), "d"], [String(j.kr ?? ""), "k"]] as const) {
         if (!kode) continue;
-        const cur = m.get(kode) ?? { kode, nama: nameOf(kode), d: 0, k: 0, n: 0, dAll: 0, kAll: 0 };
+        const cur = m.get(kode) ?? { kode, nama: nameOf(kode), d: 0, k: 0, n: 0, dAll: 0, kAll: 0, lastTs: "" };
         if (side === "d") { cur.dAll += num(j.amount); if (inPeriod) cur.d += num(j.amount); }
         else { cur.kAll += num(j.amount); if (inPeriod) cur.k += num(j.amount); }
         if (inPeriod) cur.n += 1;
+        const u = lastTouchedAt(j as unknown as Record<string, unknown>) ?? createdAtOf(j as unknown as Record<string, unknown>) ?? "";
+        if (u > cur.lastTs) cur.lastTs = u;
         m.set(kode, cur);
       }
     }
@@ -3324,10 +3333,25 @@ const { data, add, update, remove, log, branch, inBranch } = useStore();
                 <div className="overflow-x-auto px-1 pb-3">
                   <table className="w-full">
                     <thead className="bg-surface sticky top-0 z-10">
-                      <tr><th className="th">{S.colKode}</th><th className="th">{S.colRekening}</th><th className="th">{S.colMasuk}</th><th className="th">{S.colKeluar}</th><th className="th">{S.kasNetCol}</th><th className="th">{S.kasJCol}</th></tr>
+                      <tr>
+                        <th className="th">{S.colKode}</th>
+                        <th className="th">{S.colRekening}</th>
+                        <th className="th">{S.colMasuk}</th>
+                        <th className="th">{S.colKeluar}</th>
+                        <th className="th">{S.kasNetCol}</th>
+                        <th className="th">{S.kasJCol}</th>
+                        <SortTh label={locale === "en" ? "Last source" : "Sumber terakhir"} sortKey="lastTs" sort={kasSort} onSort={(k) => setKasSort((s) => toggleSort(s, k))} />
+                      </tr>
                     </thead>
                     <tbody className="divide-y divide-steel-100">
-                      {kasLiveRows.filter((r) => rowMatches(r as unknown as Record<string, unknown>, kasQ, ["kode", "nama"])).map((r) => (
+                      {sortRows(
+                        kasLiveRows.filter((r) => rowMatches(r as unknown as Record<string, unknown>, kasQ, ["kode", "nama"])),
+                        kasSort,
+                        (r, k) => k === "nama" ? r.nama : k === "masuk" ? r.masuk : k === "keluar" ? r.keluar
+                          : k === "lastTs" ? (r.lastTs ?? "")
+                          : k === "akhir" ? (r.masuk - r.keluar)
+                          : r.kode,
+                      ).map((r) => (
                         <tr key={r.kode} className="hover:bg-surface">
                           <td className="td font-mono text-xs font-semibold text-navy-900">{r.kode}</td>
                           <td className="td text-xs text-steel-600">{r.nama}</td>
@@ -3335,10 +3359,11 @@ const { data, add, update, remove, log, branch, inBranch } = useStore();
                           <td className="td text-xs text-rose-600">{r.keluar ? fmtRupiah(r.keluar) : "-"}</td>
                           <td className="td text-xs font-semibold">{fmtRupiah(r.masuk - r.keluar)}</td>
                           <td className="td text-xs text-steel-500">{r.count}</td>
+                          <td className="td text-xs text-steel-600">{r.lastTs ? fmtTanggal(r.lastTs) : <span className="text-steel-400">-</span>}</td>
                         </tr>
                       ))}
                       {kasLiveRows.filter((r) => rowMatches(r as unknown as Record<string, unknown>, kasQ, ["kode", "nama"])).length === 0 && (
-                        <tr><td className="td text-xs italic text-steel-400" colSpan={6}>{S.kasEmptyLive}</td></tr>
+                        <tr><td className="td text-xs italic text-steel-400" colSpan={7}>{S.kasEmptyLive}</td></tr>
                       )}
                     </tbody>
                   </table>
@@ -3711,7 +3736,16 @@ const { data, add, update, remove, log, branch, inBranch } = useStore();
                 <div className="overflow-x-auto px-1 pb-3">
                   <table className="w-full">
                     <thead className="bg-surface sticky top-0 z-10">
-                      <tr><th className="th">{S.colKode}</th><th className="th">{S.colNamaAkun}</th><th className="th">{S.bbCumDebit}</th><th className="th">{S.bbCumKredit}</th><th className="th">{S.bbSaldoCol}</th><th className="th" colSpan={2}>{S.bbPeriodCol}</th><th className="th">{S.bbRowsCol}</th></tr>
+                      <tr>
+                        <th className="th">{S.colKode}</th>
+                        <th className="th">{S.colNamaAkun}</th>
+                        <th className="th">{S.bbCumDebit}</th>
+                        <th className="th">{S.bbCumKredit}</th>
+                        <th className="th">{S.bbSaldoCol}</th>
+                        <th className="th" colSpan={2}>{S.bbPeriodCol}</th>
+                        <th className="th">{S.bbRowsCol}</th>
+                        <th className="th">{locale === "en" ? "Last source" : "Sumber terakhir"}</th>
+                      </tr>
                     </thead>
                     <tbody className="divide-y divide-steel-100">
                       {bbLive.filter((r) => rowMatches(r as unknown as Record<string, unknown>, bbQ, ["kode", "nama"])).map((r) => (
@@ -3724,10 +3758,11 @@ const { data, add, update, remove, log, branch, inBranch } = useStore();
                           <td className="td text-xs">{r.d ? fmtRupiah(r.d) : "-"}</td>
                           <td className="td text-xs">{r.k ? fmtRupiah(r.k) : "-"}</td>
                           <td className="td text-xs text-steel-500">{r.n}</td>
+                          <td className="td text-xs text-steel-600">{r.lastTs ? fmtTanggal(r.lastTs) : <span className="text-steel-400">-</span>}</td>
                         </tr>
                       ))}
                       {bbLive.length === 0 && (
-                        <tr><td className="td text-xs italic text-steel-400" colSpan={8}>{S.bbEmptyLive}</td></tr>
+                        <tr><td className="td text-xs italic text-steel-400" colSpan={9}>{S.bbEmptyLive}</td></tr>
                       )}
                     </tbody>
                   </table>
@@ -3740,26 +3775,36 @@ const { data, add, update, remove, log, branch, inBranch } = useStore();
                   <SearchBox value={bbQ} onChange={setBbQ} className="max-w-xs" placeholder={locale === "en" ? "Search vouchers..." : "Cari voucher..."} ariaLabel={locale === "en" ? "Search vouchers" : "Cari voucher buku besar"} />
                 </div>
                 <div className="overflow-x-auto px-1 pb-3">
-                  <table className="w-full">
-                    <thead className="bg-surface sticky top-0 z-10">
-                      <tr><th className="th">Tanggal</th><th className="th">Dokumen</th><th className="th">Uraian</th><th className="th">DB</th><th className="th">KR</th><th className="th">Nominal</th></tr>
-                    </thead>
-                    <tbody className="divide-y divide-steel-100">
-                      {manJournals.filter((j) => matchHist(String(j.date ?? ""), bbHist)).slice(0, 100).map((j) => (
-                        <tr key={String(j.id)} className="hover:bg-surface">
-                          <td className="td font-mono text-xs text-steel-600">{fmtTanggal(String(j.date ?? ""))}</td>
-                          <td className="td font-mono text-xs">{String(j.dokumen ?? "-")}</td>
-                          <td className="td max-w-56 truncate text-xs text-steel-600" title={String(j.uraian ?? "")}>{String(j.uraian ?? "")}</td>
-                          <td className="td font-mono text-xs">{String(j.db ?? "-")}</td>
-                          <td className="td font-mono text-xs">{String(j.kr ?? "-")}</td>
-                          <td className="td text-xs font-semibold">{fmtRupiah(num(j.amount))}</td>
-                        </tr>
-                      ))}
-                      {manJournals.filter((j) => matchHist(String(j.date ?? ""), bbHist)).length === 0 && (
-                        <tr><td className="td text-xs italic text-steel-400" colSpan={6}>{S.bbEmptyLive}</td></tr>
-                      )}
-                    </tbody>
-                  </table>
+                <table className="w-full">
+                  <thead className="bg-surface sticky top-0 z-10">
+                    <tr>
+                      <th className="th">Tanggal</th>
+                      <th className="th">Dokumen</th>
+                      <th className="th">Uraian</th>
+                      <th className="th">DB</th>
+                      <th className="th">KR</th>
+                      <th className="th">Nominal</th>
+                      <th className="th">{S.colCreated}</th>
+                      <th className="th">{S.colUpdated}</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-steel-100">
+                    {manJournals.filter((j) => matchHist(String(j.date ?? ""), bbHist)).slice(0, 100).map((j) => (
+                      <tr key={String(j.id)} className="hover:bg-surface">
+                        <td className="td font-mono text-xs text-steel-600">{fmtTanggal(String(j.date ?? ""))}</td>
+                        <td className="td font-mono text-xs">{String(j.dokumen ?? "-")}</td>
+                        <td className="td max-w-56 truncate text-xs text-steel-600" title={String(j.uraian ?? "")}>{String(j.uraian ?? "")}</td>
+                        <td className="td font-mono text-xs">{String(j.db ?? "-")}</td>
+                        <td className="td font-mono text-xs">{String(j.kr ?? "-")}</td>
+                        <td className="td text-xs font-semibold">{fmtRupiah(num(j.amount))}</td>
+                        <TsCells row={j as unknown as Record<string, unknown>} />
+                      </tr>
+                    ))}
+                    {manJournals.filter((j) => matchHist(String(j.date ?? ""), bbHist)).length === 0 && (
+                      <tr><td className="td text-xs italic text-steel-400" colSpan={8}>{S.bbEmptyLive}</td></tr>
+                    )}
+                  </tbody>
+                </table>
                 </div>
               </Card>
             </div>

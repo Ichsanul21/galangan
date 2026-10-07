@@ -581,6 +581,16 @@ export interface Sparepart {
   technician?: string;
   cost: number;
   notes: string;
+  usedDate?: string;
+  warrantyUntil?: string;
+  /* D13: qty pemakaian + tautan inventory/PO.
+     giBy "sistem" = barang dikeluarkan otomatis oleh sistem
+     (GI saat simpan dengan stok cukup, atau saat PO diterima). */
+  qty?: number;
+  inventoryItemId?: string;
+  poRef?: string;
+  giBy?: "user" | "sistem";
+  giAt?: string;
 }
 
 export const spareparts: Sparepart[] = [

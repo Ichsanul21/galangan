@@ -58,7 +58,7 @@ export const SUB_TYPES: Record<string, string[]> = {
   ],
   Drawing: ["Shop Drawing", "As Built Drawing", "Gauss Drawing", "Drawing Lainnya"],
   Prosedur: ["SOP Produksi", "SOP K3", "SOP Mutu", "SOP Pemeliharaan", "Prosedur Lainnya"],
-  Laporan: ["Laporan Progres", "Laporan Mutu", "Laporan K3", "Laporan Keuangan", "Laporan Lainnya"],
+  Laporan: ["Laporan Progres", "Laporan Mutu", "Laporan K3", "Laporan Keuangan", "BoQ / RAB", "Laporan Lainnya"],
   Kontrak: ["Kontrak Utama", "Kontrak Kerja", "Addendum", "Perubahan Bright", "Kontrak Lainnya"],
   Invoice: ["Invoice Progres", "Invoice Retensi", "Invoice Penutup"],
 };

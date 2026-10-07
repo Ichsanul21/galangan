@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from "react";
-import { useAuth } from "../../auth/auth";
+import { useAuth, canSetTarget } from "../../auth/auth";
 import { useParams, Link } from "react-router-dom";
 import { ArrowLeft, Calendar, MapPin, Plus, Trash2, FileDown, Eye, Pencil } from "lucide-react";
 import {
@@ -303,7 +303,14 @@ if (from === "Desain" && to === "Produksi") {
     }
   };
   const [showCo, setShowCo] = useState(false);
-  const [coForm, setCoForm] = useState({ title: "", impact: "", requestedBy: "", date: "" });
+  /* D7: CO bisa revisi item BoQ yang ada atau menambah item BoQ baru.
+     impact dihitung otomatis dari delta/total item, bukan angka bebas saja. */
+  const [coForm, setCoForm] = useState({
+    title: "", impact: "", requestedBy: "", date: "",
+    boqAction: "none" as "none" | "revise" | "add",
+    boqItemId: "",
+    boqName: "", boqDesc: "", boqQty: "1", boqUnit: "pcs", boqPrice: "", boqSurat: "", boqCategory: "Mechanical",
+  });
   const [docFile, setDocFile] = useState("");
   const [showDelBaseline, setShowDelBaseline] = useState(false);
   const [showBast, setShowBast] = useState(false);
@@ -490,17 +497,65 @@ const docOwnerOptions = useMemo(() => employeeOptions(data.employees), [data.emp
     }
   };
 
+  const coBoqItems = (data.boq ?? []).filter((b) => String(b.projectId ?? "") === pid);
+  const coReviseTarget = coBoqItems.find((b) => String(b.id) === coForm.boqItemId) ?? null;
+  /* Impact otomatis D7: revise = (hargaBaru − hargaLama) × qty; add = qty × harga. */
+  const coAutoImpact = (() => {
+    if (coForm.boqAction === "revise" && coReviseTarget) {
+      const old = Number(coReviseTarget.unitPrice || 0);
+      const next = Number(coForm.boqPrice) || 0;
+      const q = Number(coForm.boqQty) || Number(coReviseTarget.quantity || 1);
+      return Math.round((next - old) * q);
+    }
+    if (coForm.boqAction === "add") {
+      return Math.round((Number(coForm.boqQty) || 0) * (Number(coForm.boqPrice) || 0));
+    }
+    return null;
+  })();
+  const coImpactVal = coAutoImpact !== null ? coAutoImpact : Number(coForm.impact) || 0;
+
   const saveCo = async () => {
     if (!coForm.title.trim()) { toast(S.detToastCoTitle, "info"); return; }
-    if (coForm.impact === "" || !Number.isFinite(Number(coForm.impact))) { toast(S.detToastCoImpact, "info"); return; }
+    if (coForm.boqAction === "revise" && !coForm.boqItemId) {
+      toast(locale === "en" ? "Pick a BoQ item to revise" : "Pilih item BoQ yang akan direvisi", "info"); return;
+    }
+    if (coForm.boqAction === "add" && !coForm.boqName.trim()) {
+      toast(locale === "en" ? "New BoQ item name is required" : "Nama item BoQ baru wajib diisi", "info"); return;
+    }
+    if (coForm.boqAction === "revise" && (!coForm.boqPrice || Number(coForm.boqPrice) <= 0)) {
+      toast(locale === "en" ? "New unit price must be > 0" : "Harga satuan baru harus > 0", "info"); return;
+    }
+    if (coForm.boqAction === "add" && (Number(coForm.boqQty) <= 0 || Number(coForm.boqPrice) <= 0)) {
+      toast(locale === "en" ? "Qty and price must be > 0" : "Qty dan harga harus > 0", "info"); return;
+    }
+    if (!Number.isFinite(coImpactVal)) { toast(S.detToastCoImpact, "info"); return; }
     if (!coForm.requestedBy.trim()) { toast(S.detToastCoBy, "info"); return; }
     try {
       await add("changeOrders", {
-        project: pid, title: coForm.title.trim(), impact: Number(coForm.impact),
+        project: pid, title: coForm.title.trim(), impact: coImpactVal,
         status: "Diajukan", requestedBy: coForm.requestedBy.trim(), date: coForm.date || todayISO(),
+        boqAction: coForm.boqAction,
+        ...(coForm.boqAction === "revise" ? {
+          boqItemId: coForm.boqItemId,
+          boqPayload: {
+            unitPrice: Number(coForm.boqPrice),
+            quantity: Number(coForm.boqQty) || Number(coReviseTarget?.quantity || 1),
+          },
+        } : {}),
+        ...(coForm.boqAction === "add" ? {
+          boqPayload: {
+            name: coForm.boqName.trim(),
+            description: coForm.boqDesc.trim(),
+            quantity: Number(coForm.boqQty),
+            unit: coForm.boqUnit,
+            unitPrice: Number(coForm.boqPrice),
+            category: coForm.boqCategory,
+            suratNo: coForm.boqSurat.trim() || "-",
+          },
+        } : {}),
       }, { action: "mengajukan change order", module: "Proyek" });
       toast(S.detToastCoSent);
-      setCoForm({ title: "", impact: "", requestedBy: "", date: "" });
+      setCoForm({ title: "", impact: "", requestedBy: "", date: "", boqAction: "none", boqItemId: "", boqName: "", boqDesc: "", boqQty: "1", boqUnit: "pcs", boqPrice: "", boqSurat: "", boqCategory: "Mechanical" });
       setShowCo(false);
     } catch (e) {
       toast(e instanceof Error ? e.message : S.saveFail, "info");
@@ -508,8 +563,82 @@ const docOwnerOptions = useMemo(() => employeeOptions(data.employees), [data.emp
   };
 
   const setCoStatus = async (id: string, status: string) => {
+    /* D7: approve/apply CO butuh peran target - sama seperti status BoQ. */
+    if ((status === "Disetujui" || status === "Diterapkan" || status === "Ditolak") && !canSetTarget(session?.role)) {
+      toast(locale === "en" ? "Your role cannot approve/apply change orders" : "Peran Anda tidak bisa menyetujui/menerapkan change order", "info");
+      return;
+    }
+    const co = (data.changeOrders ?? []).find((c) => String(c.id) === id);
+    if (!co) return;
+    if (status === "Diterapkan" && String(co.status ?? "") === "Diterapkan") {
+      toast(locale === "en" ? "Change order already applied" : "Change order sudah pernah diterapkan", "info");
+      return;
+    }
     try {
-      await update("changeOrders", id, { status });
+      const boqAction = String(co.boqAction ?? "none");
+      const payload = (co.boqPayload ?? {}) as Record<string, unknown>;
+      const impact = Number(co.impact ?? 0);
+
+      if (status === "Diterapkan") {
+        /* Revisi item BoQ: boleh Approved/Completed - justru lewat CO + approval. */
+        if (boqAction === "revise" && co.boqItemId) {
+          const item = (data.boq ?? []).find((b) => String(b.id) === String(co.boqItemId));
+          if (item) {
+            const oldPrice = Number(item.unitPrice || 0);
+            const newPrice = Number(payload.unitPrice || 0);
+            const qty = Number(payload.quantity || item.quantity || 1);
+            const hist = Array.isArray(item.priceHistory) ? (item.priceHistory as unknown[]) : [];
+            await update("boq", String(item.id), {
+              unitPrice: newPrice,
+              totalPrice: qty * newPrice,
+              quantity: qty,
+              priceHistory: [...hist, {
+                old: oldPrice, new: newPrice,
+                reason: `CO ${co.id}: ${co.title}`,
+                date: todayISO(), by: "Anda",
+              }],
+              revisedByCo: co.id,
+            });
+            log("merevisi BoQ via change order", `${item.id} · ${fmtRupiah(oldPrice)} → ${fmtRupiah(newPrice)} (${co.id})`, "Proyek");
+          }
+        }
+        if (boqAction === "add" && payload.name) {
+          await add("boq", {
+            projectId: pid,
+            suratNo: String(payload.suratNo || "-"),
+            name: String(payload.name),
+            description: String(payload.description || ""),
+            quantity: Number(payload.quantity || 1),
+            unit: String(payload.unit || "pcs"),
+            unitPrice: Number(payload.unitPrice || 0),
+            totalPrice: Number(payload.quantity || 1) * Number(payload.unitPrice || 0),
+            category: String(payload.category || "Mechanical"),
+            status: "Pending",
+            requestedBy: String(co.requestedBy || "CO"),
+            coRef: co.id,
+          }, { action: "menambah item BoQ via change order", module: "Proyek" });
+          log("menambah BoQ via change order", `${co.id} · ${String(payload.name)}`, "Proyek");
+        }
+        /* Budget & nilai kontrak ikut dampak CO (pola CRM contract→budget). */
+        const budgetNow = Number(project.budget || 0);
+        await update("projects", pid, { budget: budgetNow + impact });
+        const contract = (() => {
+          const qid = String(project.quotationId ?? "");
+          if (qid) return (data.contracts ?? []).find((c) => String(c.id) === qid || String(c.projectId ?? "") === qid) ?? null;
+          return (data.contracts ?? []).find((c) => String(c.projectId ?? "") === pid) ?? null;
+        })();
+        if (contract) {
+          await update("contracts", String(contract.id), { value: Number(contract.value || 0) + impact });
+        }
+        log("sinkron budget dari change order", `${co.id} · impact ${fmtRupiah(impact)} → budget ${fmtRupiah(budgetNow + impact)}`, "Proyek");
+        await update("changeOrders", id, {
+          status,
+          appliedAt: todayISO(),
+          appliedBy: session?.name ?? "Anda",
+        });
+      } else {
+        await update("changeOrders", id, { status });
+      }
       log("mengubah change order", `${id} - ${status}`, "Proyek");
       toast(S.detToastCoStatus.replace("{a}", status.toLowerCase()));
     } catch (e) {
@@ -1540,12 +1669,28 @@ try {
                       <p className="truncate text-sm font-semibold text-navy-900">{e.name}</p>
                       <p className="text-xs text-steel-500">{e.role} · {e.dept}</p>
                     </div>
-                    <button className="rounded p-1 text-rose-400 hover:bg-rose-50" title={S.detRemoveTitle} onClick={async () => { try { await setTeam(pid, teamIds.filter((t) => t !== e.id)); toast(S.detToastRemoved.replace("{a}", e.name), "info"); } catch (err) { toast(err instanceof Error ? err.message : S.saveFail, "info"); } }}>
+                    <button className="rounded p-1 text-rose-400 hover:bg-rose-50" title={S.detRemoveTitle} onClick={async () => { try { await setTeam(pid, teamIds.filter((t) => t !== e.id)); log("mengeluarkan anggota tim", `${pid} · ${e.id} · ${e.name}`, "Proyek"); toast(S.detToastRemoved.replace("{a}", e.name), "info"); } catch (err) { toast(err instanceof Error ? err.message : S.saveFail, "info"); } }}>
                       <Trash2 className="h-4 w-4" />
                     </button>
                   </Card>
                 ))}
                 {team.length === 0 && <p className="text-sm text-steel-400">{S.detNoTeam}</p>}
+                {/* D14: id tim yang employee-nya sudah dihapus dari SDM -
+                    jangan hilang diam-diam, tampilkan sebagai riwayat. */}
+                {(() => {
+                  const dangling = teamIds.filter((id) => !data.employees.some((e) => e.id === id));
+                  if (dangling.length === 0) return null;
+                  return (
+                    <div className="col-span-full rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
+                      <p className="font-semibold">
+                        {locale === "en"
+                          ? `${dangling.length} former member(s) no longer in SDM`
+                          : `${dangling.length} anggota terdahulu sudah tidak ada di SDM`}
+                      </p>
+                      <p className="mt-1 font-mono text-[11px]">{dangling.join(", ")}</p>
+                    </div>
+                  );
+                })()}
               </div>
             </div>
           )}
@@ -1780,7 +1925,14 @@ try {
                     <div key={c.id} className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-steel-100 p-3 text-sm">
                       <div className="min-w-0">
                         <p className="font-medium text-navy-900">{c.title}</p>
-                        <p className="text-xs text-steel-500">{c.id} · {fmtTanggal(c.date)} · {S.detCoRequester}{c.requestedBy} · {S.detCoImpactLbl}<span className={`font-semibold ${Number(c.impact) < 0 ? "text-emerald-600" : "text-navy-900"}`}>{fmtRupiah(Number(c.impact))}</span></p>
+                        <p className="text-xs text-steel-500">{c.id} · {fmtTanggal(c.date)} · {S.detCoRequester}{c.requestedBy} · {S.detCoImpactLbl}<span className={`font-semibold ${Number(c.impact) < 0 ? "text-emerald-600" : "text-navy-900"}`}>{fmtRupiah(Number(c.impact))}</span>
+                          {String(c.boqAction ?? "none") !== "none" && (
+                            <span className="ml-1">
+                              <Badge tone="blue">{String(c.boqAction) === "revise" ? (locale === "en" ? "Revise BoQ" : "Revisi BoQ") : (locale === "en" ? "Add BoQ" : "Tambah BoQ")}</Badge>
+                            </span>
+                          )}
+                          {c.appliedAt ? <span className="ml-1 text-steel-400">· {locale === "en" ? "applied" : "diterapkan"} {fmtTanggal(String(c.appliedAt))}</span> : null}
+                        </p>
                       </div>
                       <div className="flex items-center gap-2">
                         <StatusBadge status={c.status} />
@@ -2165,16 +2317,81 @@ try {
 
       {/* Modal change order */}
       <Modal open={showCo} onClose={() => setShowCo(false)} title={S.detCoModal} subtitle={pid}
-        footer={<><button className="btn-secondary" onClick={() => setShowCo(false)}>{S.cancelBtn}</button><AsyncButton className="btn-primary" onAction={saveCo}>{S.detProposeCo}</AsyncButton></>}>
+        footer={<><button className="btn-secondary" onClick={() => setShowCo(false)}>{S.cancelBtn}</button><AsyncButton className="btn-primary" onAction={saveCo}>{S.saveBtn}</AsyncButton></>}>
         <div className="space-y-3">
           <Field label={S.detCoTitleField}><input className="input" value={coForm.title} onChange={(e) => setCoForm({ ...coForm, title: e.target.value })} placeholder={S.detCoTitlePh} /></Field>
           <FormGrid>
-            <Field label={S.detCoImpactField} hint={S.detCoImpactHint}><NumInput className="input" value={coForm.impact} onChange={(e) => setCoForm({ ...coForm, impact: e.target.value })} placeholder={S.detCoImpactPh} /></Field>
+            <Field label={locale === "en" ? "BoQ action" : "Aksi BoQ"}>
+              <select className="input" value={coForm.boqAction} onChange={(e) => setCoForm({ ...coForm, boqAction: e.target.value as "none" | "revise" | "add" })}>
+                <option value="none">{locale === "en" ? "No BoQ change" : "Tanpa perubahan BoQ"}</option>
+                <option value="revise">{locale === "en" ? "Revise existing BoQ item" : "Revisi item BoQ"}</option>
+                <option value="add">{locale === "en" ? "Add new BoQ item" : "Tambah item BoQ baru"}</option>
+              </select>
+            </Field>
             <Field label={S.dateField}><input type="date" className="input" value={coForm.date} onChange={(e) => setCoForm({ ...coForm, date: e.target.value })} /></Field>
           </FormGrid>
+          {coForm.boqAction === "revise" && (
+            <Field label={locale === "en" ? "BoQ item" : "Item BoQ"}>
+              <select className="input" value={coForm.boqItemId} onChange={(e) => {
+                const item = coBoqItems.find((b) => String(b.id) === e.target.value);
+                setCoForm({
+                  ...coForm,
+                  boqItemId: e.target.value,
+                  boqPrice: item ? String(item.unitPrice ?? "") : "",
+                  boqQty: item ? String(item.quantity ?? 1) : "1",
+                });
+              }}>
+                <option value="">{locale === "en" ? "-- pick item --" : "-- pilih item --"}</option>
+                {coBoqItems.map((b) => <option key={b.id} value={b.id}>{String(b.id)} · {String(b.name)} · {fmtRupiah(Number(b.unitPrice || 0))}</option>)}
+              </select>
+            </Field>
+          )}
+          {coForm.boqAction === "add" && (
+            <>
+              <FormGrid>
+                <Field label={locale === "en" ? "Item name" : "Nama item"}><input className="input" value={coForm.boqName} onChange={(e) => setCoForm({ ...coForm, boqName: e.target.value })} /></Field>
+                <Field label={locale === "en" ? "Letter no" : "No surat"}><input className="input font-mono" value={coForm.boqSurat} onChange={(e) => setCoForm({ ...coForm, boqSurat: e.target.value })} placeholder="SPK/..." /></Field>
+              </FormGrid>
+              <Field label={locale === "en" ? "Description" : "Deskripsi"}><input className="input" value={coForm.boqDesc} onChange={(e) => setCoForm({ ...coForm, boqDesc: e.target.value })} /></Field>
+            </>
+          )}
+          {coForm.boqAction !== "none" && (
+            <FormGrid>
+              <Field label={locale === "en" ? "Qty" : "Qty"}><NumInput min={1} className="input" value={coForm.boqQty} onChange={(e) => setCoForm({ ...coForm, boqQty: e.target.value })} /></Field>
+              <Field label={locale === "en" ? "Unit price" : "Harga satuan"}><NumInput min={0} className="input" value={coForm.boqPrice} onChange={(e) => setCoForm({ ...coForm, boqPrice: e.target.value })} /></Field>
+            </FormGrid>
+          )}
+          {coForm.boqAction === "add" && (
+            <FormGrid>
+              <Field label={locale === "en" ? "Unit" : "Satuan"}>
+                <select className="input" value={coForm.boqUnit} onChange={(e) => setCoForm({ ...coForm, boqUnit: e.target.value })}>
+                  {["pcs", "unit", "set", "ton", "kg", "m", "service", "package"].map((u) => <option key={u}>{u}</option>)}
+                </select>
+              </Field>
+              <Field label={locale === "en" ? "Category" : "Kategori"}>
+                <select className="input" value={coForm.boqCategory} onChange={(e) => setCoForm({ ...coForm, boqCategory: e.target.value })}>
+                  {["Mechanical", "Paint", "Survey", "Fabrikasi", "Electrical", "Piping", "Rigging"].map((c) => <option key={c}>{c}</option>)}
+                </select>
+              </Field>
+            </FormGrid>
+          )}
+          <Field
+            label={S.detCoImpactField}
+            hint={coAutoImpact !== null
+              ? (locale === "en" ? `Auto-calculated from BoQ: ${fmtRupiah(coAutoImpact)}` : `Otomatis dari BoQ: ${fmtRupiah(coAutoImpact)}`)
+              : S.detCoImpactHint}
+          >
+            <NumInput
+              className="input"
+              value={coAutoImpact !== null ? String(coAutoImpact) : coForm.impact}
+              onChange={(e) => setCoForm({ ...coForm, impact: e.target.value })}
+              placeholder={S.detCoImpactPh}
+              readOnly={coAutoImpact !== null}
+            />
+          </Field>
           <Field label={S.detRequester}><input className="input" value={coForm.requestedBy} onChange={(e) => setCoForm({ ...coForm, requestedBy: e.target.value })} placeholder={S.detRequesterPh} /></Field>
         </div>
-</Modal>
+      </Modal>
 
       {/* Modal risiko dihapus (D8): risiko kini dihasilkan otomatis dari WBS
           dan milestone WO. Form input manual tidak diperlukan lagi. */}

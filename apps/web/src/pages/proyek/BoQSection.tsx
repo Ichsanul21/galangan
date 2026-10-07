@@ -11,6 +11,7 @@ import type { SortState } from "../../components/ui";
 import { findUsages } from "../../utils/usages";
 import { Plus, FileDown, Pencil, Trash2, History, ChevronDown, ChevronRight, ScrollText } from "lucide-react";
 import { exportExcel, fmtRupiah } from "../../utils/export";
+import { syncBoqDocsToDocuments } from "../../utils/boqDocsSync";
 import { DocumentPreviewCell, InlineDocPreview, type PreviewDoc } from "../../components/DocumentPreview";
 import { docAttachment, looksLikeUrl } from "../../utils/docAttachment";
 import { SATUAN, STATUS_BOQ_ID } from "../../utils/format";
@@ -308,6 +309,26 @@ if (!form.unitPrice || parseRupiah(form.unitPrice) <= 0) { toast(S.boqToastPrice
     toast(S.boqToastPresetAdd.replace("{a}", item.name));
   };
 
+  /* D6: sinkron lampiran BoQ → koleksi documents (idempoten). */
+  const handleSyncDocs = async () => {
+    try {
+      const res = await syncBoqDocsToDocuments({
+        data,
+        projectId,
+        add: add as never,
+        log: log as never,
+        owner: user?.name ?? "Anda",
+      });
+      if (res.created === 0) {
+        toast(locale === "en" ? "All BoQ attachments already synced" : "Semua lampiran BoQ sudah tersinkron", "info");
+      } else {
+        toast(locale === "en" ? `${res.created} BoQ document(s) synced to Documents` : `${res.created} dokumen BoQ disinkronkan ke Dokumen`);
+      }
+    } catch (e) {
+      toast(e instanceof Error ? e.message : S.saveFail, "info");
+    }
+  };
+
   const handleExport = () => {
     /* Export mengikuti grouping D5: satu blok per nomor surat + subtotal,
        bukan daftar datar. Kolom "No Surat" juga ada di tiap baris item
@@ -328,6 +349,9 @@ if (!form.unitPrice || parseRupiah(form.unitPrice) <= 0) { toast(S.boqToastPrice
         <div className="mb-3 flex items-center justify-between">
           <h3 className="text-sm font-semibold text-navy-900 flex items-center gap-2"><FileDown className="h-4 w-4" /> {S.boqTitle.replace("{n}", String(items.length))}</h3>
           <div className="flex gap-2">
+            <AsyncButton className="btn-secondary text-xs" onAction={handleSyncDocs}>
+              <FileDown className="h-3.5 w-3.5" /> {locale === "en" ? "Sync docs" : "Sinkron Dokumen"}
+            </AsyncButton>
             <AsyncButton className="btn-secondary text-xs" onAction={handleExport}><FileDown className="h-3.5 w-3.5" /> {S.exportExcelBtn}</AsyncButton>
             <button className="btn-primary text-xs" onClick={() => setShowAdd(true)}><Plus className="h-3.5 w-3.5" /> {S.boqAddBtn}</button>
           </div>

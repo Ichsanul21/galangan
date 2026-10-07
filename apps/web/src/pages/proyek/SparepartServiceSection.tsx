@@ -7,12 +7,15 @@ import { Card, StatusBadge, Modal, Field, FormGrid, toast, EmptyState, Badge, Co
 } from "../../components/ui";
 import { Plus, Wrench, Package, Box, RotateCcw, FileDown } from "lucide-react";
 import { exportExcel, fmtRupiah } from "../../utils/export";
+import { fmtJumlah, todayISO } from "../../utils/format";
+import { sameName } from "../../utils/names";
+import type { StoreItem } from "../../data/store";
 import type { ServiceRecord, Sparepart } from "../../data";
 
 export type SparepartServiceView = "3d" | "service" | "sparepart" | "all";
 
 type SvcExt = Omit<ServiceRecord, "status"> & { status: ServiceRecord["status"] | "Batal"; cancelReason?: string };
-type SpExt = Sparepart & { usedDate?: string; warrantyUntil?: string; poRef?: string };
+type SpExt = Sparepart;
 
 const SVC_FILTER = ["Semua", "Scheduled", "In Progress", "Done", "Batal"] as const;
 const SVC_LABEL: Record<string, string> = {
@@ -39,7 +42,7 @@ export default function SparepartServiceSection({ projectId, vesselId, view = "a
   const [showAdd, setShowAdd] = useState(false);
   const [editSp, setEditSp] = useState<SpExt | null>(null);
   const [delSp, setDelSp] = useState<SpExt | null>(null);
-  const [form, setForm] = useState({ name: "", partNumber: "", category: "Mechanical", status: "Akan" as "Akan" | "Sedang" | "Selesai", cost: "", notes: "", technician: "", usedDate: "", warrantyUntil: "", poRef: "" });
+  const [form, setForm] = useState({ name: "", partNumber: "", category: "Mechanical", status: "Akan" as "Akan" | "Sedang" | "Selesai", cost: "", notes: "", technician: "", usedDate: "", warrantyUntil: "", poRef: "", qty: "1" });
 
   const [showAddSvc, setShowAddSvc] = useState(false);
   const [editSvc, setEditSvc] = useState<SvcExt | null>(null);
@@ -82,6 +85,7 @@ export default function SparepartServiceSection({ projectId, vesselId, view = "a
       usedDate: String(sp.usedDate ?? ""),
       warrantyUntil: String(sp.warrantyUntil ?? ""),
       poRef: String(sp.poRef ?? ""),
+      qty: String(sp.qty ?? 1),
     });
   };
 
@@ -102,7 +106,7 @@ export default function SparepartServiceSection({ projectId, vesselId, view = "a
     });
   };
 
-  const EMPTY_SP = { name: "", partNumber: "", category: "Mechanical", status: "Akan" as "Akan" | "Sedang" | "Selesai", cost: "", notes: "", technician: "", usedDate: "", warrantyUntil: "", poRef: "" };
+  const EMPTY_SP = { name: "", partNumber: "", category: "Mechanical", status: "Akan" as "Akan" | "Sedang" | "Selesai", cost: "", notes: "", technician: "", usedDate: "", warrantyUntil: "", poRef: "", qty: "1" };
   const EMPTY_SVC = { type: "Repair" as ServiceRecord["type"], description: "", date: new Date().toISOString().slice(0, 10), technician: "", cost: "", status: "Scheduled" as ServiceRecord["status"], boqRef: "" };
 
   /* Tombol "Tambah" harus membuka form KOSONG. Versi lama memakai state form
@@ -267,12 +271,69 @@ export default function SparepartServiceSection({ projectId, vesselId, view = "a
     };
   }, [modelSrc, show3d, modelKey, vesselId]);
 
+  /* D13: cocokkan sparepart ke item inventori lewat partNumber dulu, lalu nama. */
+  const matchInventory = (partNumber: string, name: string) => {
+    const inv = data.inventory ?? [];
+    const pn = partNumber.trim();
+    const nm = name.trim();
+    if (pn) {
+      const hit = inv.find((i) => sameName(String(i.partNumber ?? ""), pn) || sameName(String(i.sku ?? ""), pn));
+      if (hit) return hit;
+    }
+    if (nm) {
+      return inv.find((i) => sameName(String(i.name ?? ""), nm)) ?? null;
+    }
+    return null;
+  };
+
+  /** GI (Pengeluaran) oleh sistem: stok− + movement. Dipakai simpan sparepart
+      dan auto-GI saat PO diterima (Procurement). */
+  const issueStockBySystem = async (
+    inv: StoreItem,
+    qty: number,
+    by: string,
+    purpose: string,
+  ) => {
+    const old = Number(inv.stock || 0);
+    await update("inventory", inv.id, { stock: Math.max(0, old - qty) });
+    await add("movements", {
+      item: String(inv.name ?? ""),
+      itemId: inv.id,
+      type: "Pengeluaran",
+      qty,
+      by,
+      date: todayISO(),
+      tone: "out",
+      fromWh: String(inv.warehouse ?? ""),
+      toWh: purpose,
+      purpose,
+      branch: purpose,
+    }, { action: "mengeluarkan barang (oleh sistem)", target: `${String(inv.name ?? "")} × ${qty}`, module: "Sparepart" });
+  };
+
   const saveSparepart = async () => {
     if (!form.name.trim()) { toast(S.spsToastSpName, "info"); return; }
     /* Halaman Kapal mengirim vesselId tanpa projectId. Versi lama menolak, jadi
        tombol "Tambah" di tab Service/Sparepart kapal SELALU gagal. Cukup salah
        satu konteks (proyek ATAU kapal) untuk menyimpan. */
     if (!projectId && !vesselId) { toast(S.spsToastSpCtx, "info"); return; }
+    const qty = Number(form.qty);
+    if (!Number.isFinite(qty) || qty <= 0) { toast(S.spsToastNeedQty, "info"); return; }
+
+    const inv = matchInventory(form.partNumber, form.name);
+    const invStock = inv ? Number(inv.stock || 0) : 0;
+    const stockOk = !!inv && invStock >= qty;
+
+    /* D13: stok kosong / item tidak ada → PO wajib (pengadaan via Procurement).
+       Stok cukup → auto GI oleh sistem, tanpa PO. */
+    if (!stockOk && projectId) {
+      if (!form.poRef) { toast(S.spsToastNeedPo, "info"); return; }
+      const po = (data.purchaseOrders ?? []).find(
+        (p) => String(p.id) === form.poRef && String(p.project ?? "") === projectId && String(p.status ?? "") === "Disetujui",
+      );
+      if (!po) { toast(S.spsToastBadPo, "info"); return; }
+    }
+
     const payload = {
       name: form.name.trim(),
       partNumber: form.partNumber.trim() || "-",
@@ -283,24 +344,47 @@ export default function SparepartServiceSection({ projectId, vesselId, view = "a
       technician: form.technician.trim() || "-",
       usedDate: form.usedDate || "-",
       warrantyUntil: form.warrantyUntil || "-",
+      qty,
       ...(form.poRef ? { poRef: form.poRef } : {}),
+      ...(inv ? { inventoryItemId: inv.id } : {}),
     };
+
+    /* Edit: jangan GI ulang bila sudah pernah dikeluarkan. */
     if (editSp) {
-      await update("spareparts", editSp.id, payload);
-      log("mengubah sparepart", `${editSp.id} · ${payload.name}`, "Sparepart");
+      const alreadyGi = !!editSp.giBy || !!editSp.giAt;
+      const patch: Record<string, unknown> = { ...payload };
+      if (!alreadyGi && stockOk && inv) {
+        await issueStockBySystem(inv, qty, "Oleh sistem", projectId ?? String(vesselId ?? ""));
+        patch.giBy = "sistem";
+        patch.giAt = todayISO();
+        toast(S.spsAutoGiToast);
+      }
+      await update("spareparts", editSp.id, patch);
+      log("mengubah sparepart", `${editSp.id} · ${payload.name}${patch.giBy === "sistem" ? " · GI oleh sistem" : ""}`, "Sparepart");
       toast(locale === "en" ? "Sparepart updated" : "Sparepart diperbarui");
       setEditSp(null);
       return;
     }
-    await add("spareparts", {
+
+    /* Create baru. */
+    const createdPayload: Record<string, unknown> = {
       ...payload,
-      /* Kosongkan konteks yang tidak dipakai, bukan undefined: filter membandingkan
-         dengan === sehingga undefined tidak pernah sama dengan id kapal. */
       projectId: projectId ?? "",
       vesselId: vesselId ?? "",
-      requestDate: new Date().toISOString().slice(0, 10),
-    }, { action: "menambahkan sparepart", module: "Sparepart" });
-    toast(S.spsToastSpAdd);
+      requestDate: todayISO(),
+    };
+    if (stockOk && inv) {
+      await issueStockBySystem(inv, qty, "Oleh sistem", projectId ?? String(vesselId ?? ""));
+      createdPayload.giBy = "sistem";
+      createdPayload.giAt = todayISO();
+    }
+    const created = await add("spareparts", createdPayload, { action: "menambahkan sparepart", module: "Sparepart" });
+    if (createdPayload.giBy === "sistem") {
+      log("sparepart dikeluarkan oleh sistem", `${created.id} · ${payload.name} × ${qty} (GI)`, "Sparepart");
+      toast(`${S.spsToastSpAdd} · ${S.spsAutoGiToast}`);
+    } else {
+      toast(S.spsToastSpAdd);
+    }
     setShowAdd(false);
     setForm(EMPTY_SP);
   };
@@ -396,6 +480,13 @@ const payload = {
                 <p className="text-xs text-steel-500">
                   {S.spsUsedLbl}{sp.usedDate && sp.usedDate !== "-" ? sp.usedDate : "-"}{S.spsTechLbl}{sp.technician || "-"}{S.spsWarrantyLbl}{sp.warrantyUntil && sp.warrantyUntil !== "-" ? sp.warrantyUntil : "-"}
                 </p>
+                <div className="mt-1 flex flex-wrap gap-1">
+                  <Badge tone={sp.giBy === "sistem" ? "blue" : sp.poRef ? "amber" : "green"}>
+                    {sp.giBy === "sistem" ? S.spsGiSystem : sp.poRef ? S.spsViaPo : S.spsFromStock}
+                  </Badge>
+                  {sp.qty ? <Badge tone="gray">×{sp.qty}</Badge> : null}
+                  {sp.poRef ? <Badge tone="amber">{sp.poRef}</Badge> : null}
+                </div>
               </div>
               <div className="flex shrink-0 items-center gap-2">
                 <div className="text-right">
@@ -518,22 +609,50 @@ const payload = {
             </Field>
           </FormGrid>
           <FormGrid>
+            <Field label={S.spsQty}><NumInput min={1} className="input" value={form.qty} onChange={(e) => setForm({ ...form, qty: e.target.value })} placeholder={S.spsQtyPh} /></Field>
             <Field label={S.spsCost}><NumInput className="input" value={form.cost} onChange={(e) => setForm({ ...form, cost: e.target.value })} /></Field>
+          </FormGrid>
+          {/* D13: preview kecocokan inventori + aturan PO. */}
+          {(() => {
+            const inv = matchInventory(form.partNumber, form.name);
+            const qtyN = Number(form.qty) || 0;
+            const stock = inv ? Number(inv.stock || 0) : 0;
+            const ok = !!inv && stock >= qtyN && qtyN > 0;
+            if (!inv) {
+              return <p className="rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800">{S.spsStockNone}</p>;
+            }
+            if (ok) {
+              return <p className="rounded-lg bg-emerald-50 px-3 py-2 text-xs text-emerald-800">{S.spsStockOk.replace("{n}", fmtJumlah(stock))}</p>;
+            }
+            return <p className="rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800">{S.spsStockShort.replace("{n}", fmtJumlah(stock))}</p>;
+          })()}
+          <FormGrid>
             <Field label={S.spsNotes}><input className="input" value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} placeholder={S.spsNotesPh} /></Field>
+            <Field label={S.spsTech}><input className="input" value={form.technician} onChange={(e) => setForm({ ...form, technician: e.target.value })} placeholder={S.spsTechPh} /></Field>
           </FormGrid>
           <FormGrid>
-            <Field label={S.spsTech}><input className="input" value={form.technician} onChange={(e) => setForm({ ...form, technician: e.target.value })} placeholder={S.spsTechPh} /></Field>
             <Field label={S.spsUsedDate}><input type="date" className="input" value={form.usedDate} onChange={(e) => setForm({ ...form, usedDate: e.target.value })} /></Field>
+            <Field label={S.spsWarranty}><input type="date" className="input" value={form.warrantyUntil} onChange={(e) => setForm({ ...form, warrantyUntil: e.target.value })} /></Field>
           </FormGrid>
-          <Field label={S.spsWarranty}><input type="date" className="input" value={form.warrantyUntil} onChange={(e) => setForm({ ...form, warrantyUntil: e.target.value })} /></Field>
-          {/* D13: referensi opsional ke PO yang sudah Disetujui. */}
+          {/* D13: PO selalu tampil di konteks proyek. Wajib bila stok kosong. */}
           {projectId && (() => {
             const pos = (data.purchaseOrders ?? []).filter((po) => String(po.project ?? "") === projectId && String(po.status ?? "") === "Disetujui");
-            if (pos.length === 0) return null;
+            const inv = matchInventory(form.partNumber, form.name);
+            const qtyN = Number(form.qty) || 0;
+            const stockOk = !!inv && Number(inv.stock || 0) >= qtyN && qtyN > 0;
             return (
-              <Field label={S.spsPoRef}>
-                <select className="input" value={form.poRef} onChange={(e) => setForm({ ...form, poRef: e.target.value })}>
-                  <option value="">{locale === "en" ? "-- none --" : "-- tidak ada --"}</option>
+              <Field
+                label={S.spsPoRef}
+                hint={!stockOk ? (pos.length === 0 ? S.sspPoNoneHint : S.spsPoRequired) : undefined}
+              >
+                <select
+                  className="input"
+                  value={form.poRef}
+                  onChange={(e) => setForm({ ...form, poRef: e.target.value })}
+                  required={!stockOk}
+                  disabled={!stockOk && pos.length === 0}
+                >
+                  <option value="">{pos.length === 0 ? (locale === "en" ? "-- no approved PO --" : "-- belum ada PO Disetujui --") : (locale === "en" ? "-- none --" : "-- tidak ada --")}</option>
                   {pos.map((po) => <option key={po.id} value={po.id}>{String(po.id)} - {String(po.item ?? "")}</option>)}
                 </select>
               </Field>

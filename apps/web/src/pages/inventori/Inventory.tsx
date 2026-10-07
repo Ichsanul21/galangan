@@ -1108,6 +1108,16 @@ if (k === "mattype") return matTypeOf(i);
         const oldVal = oldStock * effCost(fresh);
         patch.avgCost = Math.round(((oldVal + qty * price) / (oldStock + qty)) * 100) / 100;
       }
+      /* D13: restock / pengadaan baru WAJIB lewat Procurement + PO.
+         GR manual tanpa PO hanya untuk penyesuaian/opname/retur/transfer. */
+      const purposeLc = `${movePurpose} ${moveRef}`.toLowerCase();
+      const isAdjust = /adjust|opname|penyesuaian|koreksi|retur|return|transfer|saldo/.test(purposeLc);
+      if (!movePo.trim() && !isAdjust) {
+        toast(locale === "en"
+          ? "Goods-in requires a PO reference. Restocking must go through Procurement → PO (or mark purpose as adjustment/stock-opname)."
+          : "Barang masuk wajib punya rujukan PO. Restocking harus lewat Procurement → PO (atau tandai tujuan sebagai penyesuaian/opname).", "info");
+        return;
+      }
     }
     const refBase = moveKind === "in"
       ? [movePo.trim(), moveRef.trim()].filter(Boolean).join(" · ") || "Barang masuk manual · tanpa PO"
