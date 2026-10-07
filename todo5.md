@@ -16,10 +16,14 @@ klarifikasi client.
 
 | Status | Jumlah |
 |---|---|
-| Selesai | 54 |
-| Sebagian | 13 |
-| Belum | 2 |
+| Selesai | 55 |
+| Sebagian | 14 |
+| Belum | 0 |
 | **Total baris tabel** | **69** |
+
+Semua baris **BELUM** sudah ditutup di sesi ini. Yang tersisa hanya
+**SEBAGIAN** (butuh keputusan client / pekerjaan sync yang lebih dalam)
++ deploy + QA browser.
 
 Hitungan di atas dihitung ulang dari baris tabel aktual (bukan angka audit
 awal 72/73 yang sudah tidak konsisten - kemungkinan satu item tercatat dua
