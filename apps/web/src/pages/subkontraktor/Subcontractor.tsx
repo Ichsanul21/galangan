@@ -200,6 +200,9 @@ export default function Subcontractor() {
      nomor itu bukti pembayaran tidak bisa dicocokkan ke invoice mana pun -
      sengketa pembayaran pertama yang muncul justru soal ini. */
   const [proofDocs, setProofDocs] = useState({ invoiceNo: "", bastNo: "" });
+  /* S2: unggah berkas invoice & BAST (client: unggah file, bukan hanya nomor). */
+  const [invoiceFileUrl, setInvoiceFileUrl] = useState("");
+  const [bastFileUrl, setBastFileUrl] = useState("");
   const [withholdingRef, setWithholdingRef] = useState("");
   const [termDirCheck, setTermDirCheck] = useState(false);
   const [termDirName, setTermDirName] = useState("");
@@ -699,6 +702,8 @@ const printSpk = async (w: StoreItem): Promise<void> => {
       proofUrl: proofUrl.trim(),
       invoiceNo: proofDocs.invoiceNo.trim(),
       bastNo: proofDocs.bastNo.trim(),
+      ...(invoiceFileUrl.trim() ? { invoiceFileUrl: invoiceFileUrl.trim() } : {}),
+      ...(bastFileUrl.trim() ? { bastFileUrl: bastFileUrl.trim() } : {}),
       pphAmt, retAmt, penaltyApplied: penalty, withholdingRef: withholdingRef.trim(),
       ...(needsTermDirector(termPay) ? { directorApproved: termDirName.trim() } : {}),
     });
@@ -797,6 +802,8 @@ const printSpk = async (w: StoreItem): Promise<void> => {
     setTermPay(null);
     setWithholdingRef("");
     setProofDocs({ invoiceNo: "", bastNo: "" });
+    setInvoiceFileUrl("");
+    setBastFileUrl("");
     setTermDirCheck(false);
     setTermDirName("");
     } catch {
@@ -1304,6 +1311,17 @@ const printSpk = async (w: StoreItem): Promise<void> => {
                               />
                             </div>
                           )}
+                          {/* S2: pratinjau berkas invoice & BAST bila ada. */}
+                          {String(p.invoiceFileUrl ?? "") !== "" && (
+                            <div className="mt-1">
+                              <DocumentPreviewCell doc={{ title: `${locale === "en" ? "Invoice" : "Invoice"} ${String(p.invoiceNo ?? p.id)}`, fileUrl: String(p.invoiceFileUrl) }} />
+                            </div>
+                          )}
+                          {String(p.bastFileUrl ?? "") !== "" && (
+                            <div className="mt-1">
+                              <DocumentPreviewCell doc={{ title: `${locale === "en" ? "BAST" : "BAST"} ${String(p.bastNo ?? p.id)}`, fileUrl: String(p.bastFileUrl) }} />
+                            </div>
+                          )}
                           {p.status === "Retensi Released" && p.releasedAt && <p className="mt-1 text-xs text-steel-500">{S.baInfo.replace("{a}", String(p.releaseBA)).replace("{b}", fmtTanggal(p.releasedAt))}</p>}
                         </td>
                         <td className="td">
@@ -1796,6 +1814,33 @@ const printSpk = async (w: StoreItem): Promise<void> => {
             </Field>
             <Field label={S.bastNoLabel} hint={S.bastNoHint}>
               <input className="input font-mono" value={proofDocs.bastNo} onChange={(e) => setProofDocs({ ...proofDocs, bastNo: e.target.value })} placeholder={S.bastNoPh} />
+            </Field>
+          </FormGrid>
+          {/* S2: unggah berkas invoice & BAST di samping nomor teks. */}
+          <FormGrid>
+            <Field label={locale === "en" ? "Invoice file" : "Berkas invoice"}>
+              <div className="flex flex-wrap items-center gap-2">
+                <FileUploadButton
+                  label={locale === "en" ? "Upload invoice" : "Unggah invoice"}
+                  accept=".png,.jpg,.jpeg,.pdf"
+                  onUploaded={(u) => setInvoiceFileUrl(u)}
+                />
+                {invoiceFileUrl.trim() !== "" && (
+                  <DocumentPreviewCell doc={{ title: `${locale === "en" ? "Invoice" : "Invoice"} ${proofDocs.invoiceNo || String(termPay?.id ?? "")}`, fileUrl: invoiceFileUrl }} />
+                )}
+              </div>
+            </Field>
+            <Field label={locale === "en" ? "BAST file" : "Berkas BAST"}>
+              <div className="flex flex-wrap items-center gap-2">
+                <FileUploadButton
+                  label={locale === "en" ? "Upload BAST" : "Unggah BAST"}
+                  accept=".png,.jpg,.jpeg,.pdf"
+                  onUploaded={(u) => setBastFileUrl(u)}
+                />
+                {bastFileUrl.trim() !== "" && (
+                  <DocumentPreviewCell doc={{ title: `${locale === "en" ? "BAST" : "BAST"} ${proofDocs.bastNo || String(termPay?.id ?? "")}`, fileUrl: bastFileUrl }} />
+                )}
+              </div>
             </Field>
           </FormGrid>
           <Field

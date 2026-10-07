@@ -114,8 +114,10 @@ export const SPACE = {
 /** Lebar garis dalam mm (bukan pt). jsPDF memakai unit dokumen, jadi mm.
  *  Tipe widened ke number supaya bisa dipakai di mana saja. */
 export const STROKE: Record<string, number> = {
-  hair: 0.15,
-  thin: 0.2,
-  medium: 0.45,
+  /* AN2: hair 0,15mm nyaris tak terlihat di print/cetak ulang - naikkan
+     agar gridline & garis tipis tetap terbaca (client: opacity dibold). */
+  hair: 0.22,
+  thin: 0.28,
+  medium: 0.5,
   heavy: 0.9,
 };

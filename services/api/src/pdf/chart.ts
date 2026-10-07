@@ -503,7 +503,9 @@ function drawHbar(ctx: ChartCtx, spec: HbarSpec): void {
   const fmt = spec.format ?? compactNum;
   let top = ctx.y;
   if (spec.title) top += drawChartTitle(ctx, spec.title, spec.subtitle);
-  const items = [...spec.items].sort((a, b) => b.value - a.value).slice(0, 12);
+  /* AN2: jangan potong diam-diam di 12 - tampilkan sampai 24 bar; sisa
+     tetap di sheet Excel (tidak hilang dari laporan). */
+  const items = [...spec.items].sort((a, b) => b.value - a.value).slice(0, 24);
   if (items.length === 0) {
     txt(ctx, "-", ctx.x, top + 4, ctx.width, { size: TYPE.base, color: COLOR.steel, align: "left" });
     return;

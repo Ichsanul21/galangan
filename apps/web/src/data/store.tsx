@@ -1675,20 +1675,36 @@ type PushOutcome = "ok" | "stale" | "fail" | "auth";
       if (document.hidden) return;
       fireAndForget();
     }, 45000);
+    /* C2: tarikan periodik (pull) - interval push saja tidak menarik data
+       dari device lain. 90 detik saat tab terlihat + catch-up on visibility. */
+    const PULL_COLS: CollectionKey[] = [
+      "projects", "invoices", "payables", "journals", "boq", "purchaseOrders",
+      "inventory", "movements", "employees", "documents", "changeOrders", "spareparts",
+    ];
+    const pullNow = () => {
+      if (backendMode !== "remote") return;
+      if (document.hidden) return;
+      void resyncCollections(PULL_COLS).catch(() => { /* best-effort */ });
+    };
+    const pullTimer = window.setInterval(pullNow, 90000);
     /* Fokus kembali ke tab = sinyal kuat bahwa perangkat ini mungkin baru
        online lagi. Tanpa ini, tulisan yang gagal karena tablet kehilangan
        sinyal baru menunggu 45 detik penuh. */
     const onVisible = () => {
-      if (document.visibilityState === "visible") fireAndForget();
+      if (document.visibilityState === "visible") {
+        fireAndForget();
+        pullNow();
+      }
     };
     document.addEventListener("visibilitychange", onVisible);
     return () => {
       window.clearTimeout(boot);
       window.clearInterval(timer);
+      window.clearInterval(pullTimer);
       window.removeEventListener("online", onOnline);
       document.removeEventListener("visibilitychange", onVisible);
     };
-  }, [backendMode, pushPending]);
+  }, [backendMode, pushPending, resyncCollections]);
 
   const api = useMemo<StoreCtx>(() => {
     const buildActivity = (action: string, target: string, module: string): StoreItem => ({
@@ -1841,7 +1857,23 @@ type PushOutcome = "ok" | "stale" | "fail" | "auth";
                 (r) => r.id === id,
               );
               const base = current?.updated_at;
-              const body = typeof base === "string" && base !== "" ? { ...patch, baseUpdatedAt: base } : patch;
+              /* C1: slim patch - buang field yang nilainya SAMA dengan salinan
+                 lokal. Form yang mengirim objek penuh tidak lagi menimpa field
+                 yang tidak disentuh user (dan yang sudah berubah di device lain
+                 lewat server). Field yang memang diubah tetap terkirim. */
+              const slim: Record<string, unknown> = {};
+              for (const [k, v] of Object.entries(patch as Record<string, unknown>)) {
+                if (k === "baseUpdatedAt") continue;
+                if (k === "updatedAt" || k === "updated_at") { slim[k] = v; continue; }
+                if (current) {
+                  const localVal = (current as unknown as Record<string, unknown>)[k];
+                  try {
+                    if (JSON.stringify(localVal) === JSON.stringify(v)) continue;
+                  } catch { /* value tidak bisa diserialisasi - kirim apa adanya */ }
+                }
+                slim[k] = v;
+              }
+              const body = typeof base === "string" && base !== "" ? { ...slim, baseUpdatedAt: base } : slim;
               const saved = await remoteRepository(col).patch(id, body);
               setData((prev) => ({
                 ...prev,

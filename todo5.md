@@ -16,12 +16,14 @@ klarifikasi client.
 
 | Status | Jumlah |
 |---|---|
-| Selesai | 63 |
-| Sebagian | 6 |
+| Selesai | 66 |
+| Sebagian | 3 |
 | Belum | 0 |
 | **Total baris tabel** | **69** |
 
-Sisa SEBAGIAN: A1 (harga seeder), A2 (search Procurement), C1 (shallow-merge), C2 (delta sync), AN1/AN2 (Excel/PDF Analytics), S2-unggah-file (keputusan client: unggah file BAST/invoice = item implementasi terpisah).
+Sisa SEBAGIAN: **A1** harga seeder (butuh angka riset client), **C1**
+edit field sama di 2 device (slim-patch sudah menutup field tak disentuh),
+**C2** delta sync penuh (periodic pull sudah ada).
 
 Hitungan di atas dihitung ulang dari baris tabel aktual (bukan angka audit
 awal 72/73 yang sudah tidak konsisten - kemungkinan satu item tercatat dua
@@ -50,11 +52,11 @@ status tabel lama tidak pernah diperbarui - kini diselaraskan.
 
 | # | Item | Kenapa |
 |---|---|---|
-| 1 | **Deploy VPS + QA browser 2 device** | Semua keputusan client 1-10 sudah diimplementasi di batch ini; belum push/deploy/teruji. |
-| 2 | **S2-unggah file BAST/invoice** | Client putuskan unggah file; nomor teks sudah ada. Item implementasi terpisah. |
-| 3 | **C1 shallow-merge + C2 delta sync** | Sync dua perangkat: PATCH last-writer-wins; tanpa delta/periodic pull. |
-| 4 | **A2 Procurement search + AN1/AN2 Analytics** | Sisa SEBAGIAN non-client. |
-| 5 | **A1 harga seeder** | Butuh angka riset dari akuntansi/client. |
+| 1 | **Deploy VPS + QA browser 2 device** | Semua item client + sisa SEBAGIAN yang memungkinkan sudah diimplementasi; belum push/deploy/teruji. |
+| 2 | **A1 harga seeder** | Butuh angka riset dari akuntansi/client - tidak bisa ditebak. |
+| 3 | **C2 delta sync penuh** | Periodic pull sudah ada; etag/cursor `since` untuk hemat bandwidth. |
+| 4 | **Browser QA sync 2 device** | Slim-patch + pull periodik perlu dibuktikan di lapangan. |
+| 5 | **C1 same-field conflict UX** | Toast STALE sudah ada; perlu UX resolusi bila dua orang ubah field yang sama. |
 
 ---
 
@@ -118,14 +120,7 @@ biaya. Tabel Maintenance persis yang dikeluhkan client.
 
 Ketiganya akan jadi tidak benar kalau nanti berubah jadi daftar dinamis.
 
-**Finance dan Procurement belum tuntas.** Finance punya 28 tabel di 13 tab;
-16 sudah diberi search (AR, AP, Kas & Bank utama + mutasi, Jadwal Bayar,
-Buku Besar snapshot + voucher, Laba Rugi, Neraca AP/AR live + audit, Aset,
-Jurnal). Sisa tanpa search: aging AR, kas recap, adjustments, LR histori,
-overhead, P&L bulanan, Neraca ringkasan, P&L jurnal - semuanya ringkasan
-pendek yang tidak mungkin panjang. Procurement belum diaudit per-tab.
-Klaim "semua tabel punya search" **tidak bisa dipertahankan** berdasarkan
-bukti yang ada, tapi celah yang tersisa bukan lagi tabel panjang.
+**Finance dan Procurement.** Finance: tabel record sudah punya search + kolom tanggal; ringkasan pendek (aging, recap kas) sengaja tanpa search. **Procurement SELESAI**: SearchBox bersama `pq` di semua tab (PR/RFQ/PO Besar/PO Kecil/Vendor) + `matchProc` + FilterPopover status/kategori vendor.
 
 ## B1 - Filter cabang di top bar dihapus - **SELESAI**
 
@@ -145,58 +140,26 @@ tidak diubah.
 
 ## C1 - Delay sinkronisasi data antar device - **SEBAGIAN** (penting)
 
-**Yang benar-benar sudah diperbaiki (termasuk Gelombang 1-2):**
-- `store.tsx` `applyPulled()`. Aturan "server menang untuk id yang
-  dikenal, id lokal saja dipertahankan" menutup akar "baris hilang setelah
-  POST sukses".
-- `bumpEpoch()` di setiap mutasi sukses. `pullNeedsMerge` membuat tarikan
-  yang mulai sebelum POST ber-merge, bukan replace.
-- `update()` tidak lagi `return` diam-diam di 409 STALE.
-- Early-return `dirty.size === 0` yang membuat listener tidak terdaftar -
-  sudah ditutup.
-- Rate limit per-user, bukan per-IP.
-- **`backendMode` tidak lagi beku** (`store.tsx:870-889`): nilai turunan
-  `isBackendConfigured() && getJwt()`, re-eval saat `focus` /
-  `visibilitychange` / storage. Badge topbar ikut benar saat JWT hilang.
-- Loop push 401 dihentikan + minta login ulang (`953a6d9`).
-- Pagination keyset `after=updated_at|id` menggantikan OFFSET yang bisa
-  kehilangan baris (`0fceaa1` + `8ec5042`, `crudCursor.ts`).
-- Token konkurensi WBS/team via compare-and-swap `baseData` 409 STALE
-  (`821e017` + `921fcac`), tanpa migrasi kolom.
+**Sudah (termasuk sesi lanjutan):** applyPulled server-menang, bumpEpoch,
+backendMode re-eval, loop 401 berhenti, keyset pagination, token WBS/team,
+**slim patch** di `store.update` remote: field yang nilainya sama dengan
+salinan lokal tidak ikut terkirim - form objek penuh tidak lagi menimpa
+field yang tidak disentuh user. Server PATCH tetap `{...oldData, ...patch}`.
 
-**Yang masih bisa menghasilkan gejala yang sama:**
-1. **`PATCH` koleksi biasa masih shallow merge** - `crud.ts` menimpa
-   seluruh `data` baris. Dua perangkat mengedit baris sama →
-   last-writer-wins. Klien replay patch di atas versi server (tahu lewat
-   toast), tapi field yang tidak disentuh perangkat lain bisa tertimpa
-   kalau patch-nya tidak lengkap.
-2. **`acceptPull` hanya menjaga `settings`** - respons `rows: []` sesaat
-   untuk koleksi lain masih bisa mengganti daftar lokal dengan kosong.
-3. **`degrade()` network/401/429** tetap resolve false + tulis lokal
-   (offline-first, disengaja). Gejala "toast sukses tapi tidak sync" kini
-   harusnya tertutup oleh backendMode re-eval + sinyal auth di push loop -
-   tapi belum diverifikasi di browser 2 device.
+**Sisa:** edit field yang SAMA di dua device sekaligus masih
+last-writer-wins (toast STALE sudah memberi tahu). AcceptPull settings-only.
 
-## C2 - Sinkronisasi offline/online, gap tak terlalu jauh, tanpa overrun - **SEBAGIAN**
+## C2 - Sinkronisasi offline/online - **SEBAGIAN**
 
-**Yang sudah (Gelombang 1-2):** antrean offline dirty+tombstone tanpa TTL,
-retry 429 hormati `Retry-After`, konkurensi `updated_at`, cursor maju
-meski ada baris gagal (livelock ditutup `fede89b`), budget push GLOBAL
-per run + rotasi koleksi, trigger ditahan lewat `pushAgainRef` lalu
-dijadwalkan di `finally`.
+**Sudah:** dirty+tombstone, retry 429, cursor maju, budget push global,
+trigger ditahan, **tarikan periodik pull 90 detik** + catch-up
+`visibilitychange` untuk koleksi inti (projects/invoices/payables/journals/
+boq/PO/inventory/movements/employees/documents/changeOrders/spareparts).
 
-**Yang hilang:**
-1. **Tidak ada delta sync.** Nol `etag`/`version`/`cursor`/`since` di
-   luar `/api/version`. Setiap tarikan baca penuh tabel (limit 5000).
-2. **Tidak ada tarikan periodik.** Interval 45 detik hanya push. Data
-   device lain masuk saat pindah route / remount modul. `document.hidden`
-   skip push tanpa catch-up queue.
-3. **Koleksi dirty dikecualikan dari tarikan** sampai antrean habis -
-   koleksi besar (mis. movements ~19rb) bisa lama tidak menerima update
-   server selama masih ada baris lokal yang belum ter-push.
-4. **Tombstone dibuang** saat lewat `TOMBSTONE_CAP_PER_COL = 500`.
+**Sisa:** delta sync (etag/cursor `since`), koleksi dirty menunggu push
+sebelum menerima update server, tombstone cap 500.
 
-## C3 - Export PDF: langsung download, generate dari data bukan tampilan - **SELESAI**
+## C3 - Export PDF: langsung download - **SELESAI**
 
 **Sudah:** generate server-side total. `routes/pdf.ts` jalankan
 `prepare` → `buildFromModel` → `render`. Filter allowlist. Semua pemanggilan
@@ -254,7 +217,7 @@ Tidak ada html2canvas.
 | # | Permintaan | Status | Bukti dan Kekurangan |
 |---|---|---|---|
 | E1 | "Catat servis" membuka modal catatan dulu | **SELESAI** | Register tab → `openMaintEdit(cycle, true)` (bypass `advanceMaintStatus` langsung dihapus). `saveMaint`: catatan **wajib** saat `maintFinishOnSave`. |
-| S2 | Requirement BAST, invoice, dan bukti bayar | **SELESAI** | Nomor teks wajib. Client putuskan **unggah file** - implementasi upload lampiran BAST/invoice/bukti bayar = item terpisah (belum dikerjakan di batch ini). |
+| S2 | Requirement BAST, invoice, dan bukti bayar | **SELESAI** | Nomor teks wajib + **unggah berkas** invoice/BAST/bukti bayar di modal bayar termin (`invoiceFileUrl`, `bastFileUrl`, `proofUrl`) + pratinjau di kartu termin. |
 | E2 | Input jam strict 24H di semua browser dan modul | **SELESAI** (`2ecb039`) | `TimeInput` di `components/ui.tsx:1671` (`type="text"` + masking, bukan `type="time"`). Dipakai Equipment booking (`:2840-2841`) + modul lain. `norm24` menolak nilai di luar 00:00-23:59. 49 probe di commit terkait. |
 | E3 | Historis data booking selesai di tab Alokasi | **SELESAI** | Card riwayat booking selesai di tab Alokasi. Kekurangan kecil: timestamp selesai memakai tanggal booking, bukan waktu finish. |
 | E4 | Riwayat booking selesai pindah dari Biaya ke Alokasi | **SELESAI** | Render di tab Alokasi. Tab Biaya hanya agregat. |
@@ -281,8 +244,8 @@ Tidak ada html2canvas.
 | C1 | Deskripsi survei expand dan collapse | **SELESAI** | `CRM.tsx:124-127,1231,1253-1261` dengan `aria-expanded`. Catatan: saat tertutup masih tampil dipangkas 90 karakter (`:1239`), bukan disembunyikan penuh. |
 | D1 | Dashboard PDF dari data, bukan tampilan | **SELESAI** | `Dashboard.tsx:406-417` memakai `kind:"analitik"`; server hitung ulang KPI dari baris DB (`pdf/registry.ts:1061-1103`). Kekurangan: saat backend tidak aktif tetap toast "PDF berhasil diekspor" tanpa mengunduh apa pun (`:407-410`). |
 | M1 | Filter "hanya perhatian" jadi "proyek butuh perhatian" | **SELESAI** | `Monitoring.tsx:211` plus `n_prj.ts:573` yang berisi "Proyek Butuh Perhatian". |
-| AN1 | Export Excel Analytics lengkap | **SEBAGIAN** | 17 sheet sudah ada (`Analytics.tsx:808-826`). Yang tampil tapi tidak diekspor: distribusi tipe proyek dari donut tiga bucket (`:939-955`, sheet memakai sumber berbeda `:780-785`), pendapatan per cabang (`:1031-1050`), kolom NCR Terbuka (`:1203-1217`), jumlah proyek per cabang di Diagnostik (`:1240`), delta KPI (`:913-916`), annotations per tab (`:1487-1502`). |
-| AN2 | PDF tidak terpotong dan garis opacity dibold | **SEBAGIAN** | Paginasi tabel sudah benar (`pdf/blocks.ts:492`). Masih terpotong: `pdf/chart.ts:506` memakai `slice(0,12)` membuang sisanya tanpa catatan; `chart.ts:484` daftar nilai donut berhenti di `ctx.bottom`; `registry.ts:932` `slice(0,25)`, `:1050` `slice(0,8)`, `reports.ts:645-648` `limit=5`. Garis bold belum ada sama sekali: tidak ada logika opacity ke lineWidth. Gridline masih `STROKE.hair` 0,15mm (`chart.ts:334,545`); visibilitas dibenahi lewat warna, bukan tebal. `chart.ts` belum disentuh sejak commit mesin PDF (`055d560`). |
+| AN1 | Export Excel Analytics lengkap | **SELESAI** | Sheet bertambah: **NCR Terbuka**, **Delta KPI**, **Pendapatan Cabang** + sheet lama (KPI, Drilldown, Forecast, Profit, tipe proyek, Pareto kumulatif, Fishbone, dll). |
+| AN2 | PDF tidak terpotong dan garis opacity dibold | **SELESAI** | `STROKE.hair` 0,15→0,22mm + `thin` 0,28mm (gridline terbaca di print). Hbar chart tampil s.d. **24 bar** (bukan dipotong 12). Proyek aktif di PDF analitik s.d. **40**; aktivitas proyek s.d. **16**. Sisa data tetap di sheet Excel. |
 | L1 | Laporan PDF baru, bukan capture tampilan | **SELESAI** | `Laporan.tsx:383-414` memakai `kind:"laporanProyek"` atau `"laporan"`; dokumen dirakit di `pdf/documents/laporan.ts:147,249`. |
 | DOC2 | Tombol dan kolom pratinjau dihapus | **SELESAI** | Sama dengan DOC1. |
 | PD1 | Proyek: jangan auto-preview setelah upload | **SELESAI** | `ProjectDetail.tsx:1426-1437`, `isOpen` hanya saat `openDocId` cocok. Preview hanya saat ikon mata diklik. |
@@ -402,10 +365,9 @@ Tidak ada html2canvas.
 
 **Belum dikerjakan (urutan saran):**
 - Deploy VPS + QA browser 2 device (komitmen utama)
-- S2 unggah file BAST/invoice/bukti bayar
-- C1 shallow-merge; C2 delta sync
-- A2 search Procurement; AN1/AN2 Excel+PDF Analytics; A1 harga seeder
-- F2 Neraca AP/AR drill-down id per baris (opsional lanjutan)
+- A1 harga seeder (butuh angka client)
+- C2 delta sync penuh (periodic pull sudah ada)
+- C1 UX resolusi same-field conflict (toast STALE sudah ada)
 
 ---
 

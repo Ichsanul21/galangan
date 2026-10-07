@@ -793,6 +793,26 @@ const saveScenario = () => {
         ["Kategori NCR", "Jumlah", "Kumulatif (%)"],
         ...pareto.map((d) => [d.name, d.count, d.kum] as (string | number)[]),
       ];
+      /* AN1: sheet yang tampil di UI tapi dulu tidak ikut export. */
+      const ncrOpenSheet: (string | number)[][] = [
+        ["Proyek", "NCR terbuka"],
+        ...Array.from(openNcrProjects.entries()).map(([pid, n]) => [pid, n] as (string | number)[]),
+      ];
+      const kpiDeltaSheet: (string | number)[][] = [
+        ["KPI", "Nilai"],
+        ["Pendapatan lunas (M Rp)", round1(monthlyReal.reduce((s, d) => s + d.revenue, 0))],
+        ["AP (M Rp)", round1(monthlyReal.reduce((s, d) => s + d.ap, 0))],
+        ["Kas masuk (M Rp)", round1(monthlyReal.reduce((s, d) => s + d.cash, 0))],
+        ["NCR terbuka", openNcr],
+        ["Proyek berisiko", atRisk],
+        ["Stok kritis", lowStock.length],
+        ["Rework (Rp)", reworkCost],
+        ["Proyek tipe", projectTypeDistReal.map((d) => `${d.name}:${d.value}`).join(", ")],
+      ];
+      const pendapatanCabangSheet: (string | number)[][] = [
+        ["Cabang", "Laba (M Rp)", "Jumlah proyek"],
+        ...profitByBranch.map((r) => [r.name, r.profit, r.count] as (string | number)[]),
+      ];
       const pipelineKuartal: (string | number)[][] = [
         ["Kuartal", "Menang", "Pipeline", "Target", "Nilai menang (Rp)", "Nilai pipeline (Rp)"],
         ...projectPipelineReal.map((d) => [
@@ -825,6 +845,9 @@ const saveScenario = () => {
         { name: "Pipeline Kuartal", rows: pipelineKuartal },
         { name: "Variance", rows: varianceSheet },
         { name: "Pareto NCR", rows: paretoSheet },
+        { name: "NCR Terbuka", rows: ncrOpenSheet },
+        { name: "Delta KPI", rows: kpiDeltaSheet },
+        { name: "Pendapatan Cabang", rows: pendapatanCabangSheet },
         { name: "Fishbone", rows: fishboneSheet },
       ], `Laporan-Analytics-${todayISO()}`);
       toast(S.tAnalyticsExported);

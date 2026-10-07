@@ -929,7 +929,7 @@ const laporan: Recipe<CashReportModel> = {
       ?.filter((p) => str(p, "status") !== "Selesai")
       .map((p) => ({ id: str(p, "id"), vessel: str(p, "vessel"), progress: num(p, "progress"), status: str(p, "status") }))
       .sort((a, b) => b.progress - a.progress)
-      .slice(0, 25) ?? [];
+      .slice(0, 40) ?? [];
     const periodMonth = from.slice(0, 7);
     const kpi = [
       {
@@ -1047,7 +1047,7 @@ const laporanProyek: Recipe<ProjectReportModel> = {
       findings: findingsIn(cols, from, to, projectId),
       activity: (cols.activities ?? [])
         .filter((a) => str(a, "target").includes(projectId))
-        .slice(0, 8)
+        .slice(0, 16)
         .map((a) => ({ actor: str(a, "actor"), action: str(a, "action"), target: str(a, "target"), date: str(a, "at", "createdAt", "date") })),
       locale: ctx.locale,
     };
