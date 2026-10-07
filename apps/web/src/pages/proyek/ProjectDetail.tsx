@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from "react";
 import { useAuth, canSetTarget } from "../../auth/auth";
-import { useParams, Link } from "react-router-dom";
+import { useParams, Link, useLocation } from "react-router-dom";
 import { ArrowLeft, Calendar, MapPin, Plus, Trash2, FileDown, Eye, Pencil } from "lucide-react";
 import {
   Card,
@@ -108,6 +108,13 @@ export default function ProjectDetail() {
   const { locale } = useT();
   const S = n_prj[locale];
   const { id } = useParams();
+  /* T6-MON4: kembali ke sumber - Monitoring atau Manajemen Proyek. */
+  const location = useLocation();
+  const fromMonitor = String((location.state as { from?: string } | null)?.from ?? "") === "monitoring";
+  const backTo = fromMonitor ? "/proyek/monitoring" : "/proyek";
+  const backLabel = fromMonitor
+    ? (locale === "en" ? "Back to Monitoring" : "Kembali ke Monitoring")
+    : S.detBack;
   const { data, update, add, remove, wbsFor, setWbs, teamFor, setTeam, log } = useStore();
   /* D3: inventory diakses supaya material WBS bisa terhubung ke stok.
      Saat save WBS task dengan material terpilih, stok berkurang dan
@@ -1093,8 +1100,8 @@ try {
 
   return (
     <div>
-      <Link to="/proyek" className="mb-3 inline-flex items-center gap-1.5 text-sm font-medium text-ocean-600 hover:underline">
-        <ArrowLeft className="h-4 w-4" /> {S.detBack}
+      <Link to={backTo} className="mb-3 inline-flex items-center gap-1.5 text-sm font-medium text-ocean-600 hover:underline">
+        <ArrowLeft className="h-4 w-4" /> {backLabel}
       </Link>
       <PageHeader
         title={project.vessel}

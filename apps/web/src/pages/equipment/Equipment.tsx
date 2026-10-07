@@ -235,7 +235,7 @@ export default function EquipmentPage() {
   const maintenances = data.maintenances;
   const employees = data.employees;
   const projects = data.projects;
-  const [tab, setTab] = useState("Register");
+  const [tab, setTab] = useState("Daftar Equipment");
 
   /* Heatmap hari x jam dari booking nyata. Sumbu jam diambil dari jam
      mulai booking (jam field "08:00-17:00"), jadi heatmap ikut bergerak
@@ -648,8 +648,8 @@ const projectCostRows = useMemo(() => Array.from(projectCostSummaries.entries())
     if (ids.length === 0) return;
     const idx = regSorted.findIndex((e) => ids.includes(String(e.id)));
     if (idx >= 0) {
-      if (tab === "Register") { flashPick(flash, ids, idx, regPager.go, regPager.size); return; }
-      setTab("Register");
+if (tab === "Daftar Equipment") { flashPick(flash, ids, idx, regPager.go, regPager.size); return; }
+    setTab("Daftar Equipment");
       window.setTimeout(() => flashPick(flash, ids, idx, regPager.go, regPager.size), 250);
       return;
     }
@@ -666,7 +666,7 @@ const projectCostRows = useMemo(() => Array.from(projectCostSummaries.entries())
       return String(e.name ?? "");
     });
     const fullIdx = fullSorted.findIndex((e) => ids.includes(String(e.id)));
-    setTab("Register");
+    setTab("Daftar Equipment");
     setEqStatus("Semua");
     setEqCat("Semua");
     window.setTimeout(() => flashPick(flash, ids, fullIdx, regPager.go, regPager.size), 250);
@@ -1617,9 +1617,12 @@ const projectCostRows = useMemo(() => Array.from(projectCostSummaries.entries())
       </div>
 
       <div className="mt-4 card">
-        <Tabs tabs={["Register", "Alokasi / Booking", "Sedang Dipakai", "Maintenance", "Kalibrasi", "Biaya", "Utilisasi"]} active={tab} onChange={setTab} labels={{ Register: S.eqTabRegister, "Alokasi / Booking": S.eqTabBooking, "Sedang Dipakai": S.eqTabInUse, Maintenance: S.eqTabMaint, Kalibrasi: S.eqTabCal, Biaya: S.eqTabCost, Utilisasi: S.eqTabUtil }} />
+        {/* T6-EQ3: hanya daftar equipment. Tab booking/maintenance/kalibrasi/
+            biaya dihapus dari UI (data tetap di store; alur servis lewat
+            aksi/aksi delegasi). */}
+        <Tabs tabs={["Daftar Equipment"]} active={tab} onChange={setTab} labels={{ "Daftar Equipment": locale === "en" ? "Equipment List" : "Daftar Equipment" }} />
         <div className="p-4">
-          {tab === "Register" && (
+          {tab === "Daftar Equipment" && (
             <div>
               <div className="mb-3 flex flex-wrap items-center gap-2">
                 <SearchBox

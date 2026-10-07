@@ -1201,7 +1201,8 @@ export default function QCSafety() {
       </div>
 
       <div className="mt-4 card">
-        <Tabs tabs={["Drawing", "Inspeksi (ITP)", "NCR", "HSE Operasional", "Insiden", "Sertifikat"]} active={tab} onChange={setTab} labels={{ Drawing: S.tabDrawing, "Inspeksi (ITP)": S.tabInsp, NCR: S.tabNcr, "HSE Operasional": S.tabHse, Insiden: S.tabInsiden, Sertifikat: S.tabSertifikat }} />
+        {/* T6-QC1: tab Drawing dihapus dari UI (permintaan notes2). */}
+        <Tabs tabs={["Inspeksi (ITP)", "NCR", "HSE Operasional", "Insiden", "Sertifikat"]} active={tab} onChange={setTab} labels={{ "Inspeksi (ITP)": S.tabInsp, NCR: S.tabNcr, "HSE Operasional": S.tabHse, Insiden: S.tabInsiden, Sertifikat: S.tabSertifikat }} />
         <div className="p-4">
           {tab === "Inspeksi (ITP)" && (
             <div className="space-y-4">

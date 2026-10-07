@@ -39,10 +39,10 @@ import { exportExcel } from "../../utils/export";
 import { cmpJam, fmtJam24, norm24 } from "../../utils/time24";
 import { createdAtOf, lastTouchedAt } from "../../utils/timestamps";
 
-const SHIFTS = ["Pagi", "Siang", "Malam"];
 const STATUS = ["Hadir", "Izin", "Sakit", "Cuti", "Alpa"];
 
-/* Jam masuk acuan per shift untuk hitung telat (bukan hardcoded 08:00). */
+/* Jam masuk acuan per shift untuk hitung telat (bukan hardcoded 08:00).
+   T6-ABS4: UI tidak lagi menampilkan select shift; nilai internal "Pagi". */
 const SHIFT_START: Record<string, string> = {
   Pagi: "08:00",
   Siang: "14:00",
@@ -92,7 +92,7 @@ export default function Absensi() {
 
   /* ---------- catat ---------- */
   const [date, setDate] = useState(todayISO());
-  const [shift, setShift] = useState("Pagi");
+  const [shift] = useState("Pagi");
   const [rows, setRows] = useState<Record<string, CatatRow>>({});
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [dupeCount, setDupeCount] = useState(0);
@@ -478,13 +478,10 @@ export default function Absensi() {
                   {S.dateFieldLabel}
                   <input type="date" className="input w-auto" value={date} onChange={(e) => setDate(e.target.value)} />
                 </label>
-                <label className="flex items-center gap-2 text-sm text-steel-600">
-                  {S.shiftLabel}
-                  <select className="input w-auto" value={shift} onChange={(e) => setShift(e.target.value)}>
-                    {SHIFTS.map((s) => <option key={s}>{s}</option>)}
-                  </select>
-                  <span className="text-xs text-steel-400">Masuk {SHIFT_START[shift] ?? "08:00"} · telat dihitung per shift</span>
-                </label>
+                {/* T6-ABS4: select shift dihapus dari UI (notes2).
+                    Nilai internal tetap "Pagi" agar skema telat/lembur lama
+                    tidak berubah. */}
+                <span className="text-xs text-steel-400">{S.shiftLabel}: Pagi · {SHIFT_START["Pagi"] ?? "08:00"}</span>
                 <select className="input w-auto" value={branch} onChange={(e) => setBranch(e.target.value)} aria-label={S.branchFilterShortAria}>
                   <option value="SEMUA">{S.allBranches}</option>
                   {branchCities.map((c) => <option key={c} value={c}>{c}</option>)}
@@ -603,7 +600,8 @@ export default function Absensi() {
                 <KpiCard label={S.kpiTotalOvertime} value={`${fmtJumlah(Math.round(kpiLembur * 10) / 10)} jam`} hint={S.approvedOnlyPayroll} chip="amber" />
               </div>
 
-              {(trenValid || trenSample) && (
+              {/* T6-ABS6: tren kehadiran dihapus dari UI (notes2). */}
+              {false && (trenValid || trenSample) && (
                 <Card className="mb-4 p-5" data-export-hide>
                   <CardHeader
                     title={locale === "en" ? "Attendance trend (12 months)" : "Tren Kehadiran (12 bulan)"}

@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Plus, HardHat, FileSignature, Star, Receipt, Pencil, Trash2 } from "lucide-react";
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, ReferenceLine } from "recharts";
-import { Card, CardHeader, PageHeader, Badge, KpiCard, Tabs, ProgressBar, Modal, Field, FormGrid, ConfirmModal, SortTh, toggleSort, sortRows, usePager, toast, SearchBox, rowMatches,
+import { Card, PageHeader, Badge, KpiCard, Tabs, ProgressBar, Modal, Field, FormGrid, ConfirmModal, SortTh, toggleSort, sortRows, usePager, toast, SearchBox, rowMatches,
   NumInput, MoneyInput, FlowStrip,
   AsyncButton,
   FileUploadButton,
@@ -127,11 +126,6 @@ function k3Score(k3: unknown): number {
   if (v === "B") return 78;
   if (v === "C") return 65;
   return 60;
-}
-
-function shortSub(name: unknown): string {
-  const s = String(name ?? "");
-  return s.replace(/^(PT|CV)\s+/i, "").split(" ").slice(0, 2).join(" ");
 }
 
 /* Batch koleksi modul Subkontraktor untuk useModuleSync (pengganti resync penuh). */
@@ -472,44 +466,8 @@ export default function Subcontractor() {
     } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); }
   };
 
-  /* Grafik evaluasi dari skor aktual (rating + konversi K3 per subkontraktor).
-     Metric diperjelas: rating = subcontractors.rating (0-100),
-     k3 = k3Score(sub.k3) dari grade A+/A/B+/B/C, plus konteks kontrak/WO/termin. */
-  const evalChart = subcontractors.map((s) => {
-    const activeWo = workOrders.filter((w) => sameName(w.sub, String(s.name ?? "")) && w.status !== "Selesai").length;
-    const lunas = payments.filter((t) => sameName(t.sub, String(s.name ?? "")) && normTerm(String(t.status ?? "")) === "Lunas").length;
-    return {
-      name: shortSub(s.name),
-      full: String(s.name ?? ""),
-      rating: Number(s.rating || 0),
-      k3: k3Score(s.k3),
-      k3Grade: String(s.k3 ?? "-"),
-      contract: Number(s.contract || 0),
-      activeWo,
-      lunas,
-    };
-  });
-
-  const EvalTooltip = ({ active, payload }: { active?: boolean; payload?: { payload?: Record<string, unknown>; value?: number | string; name?: string; color?: string; dataKey?: string }[] }) => {
-    if (!active || !payload || payload.length === 0) return null;
-    const p = (payload[0]?.payload ?? {}) as Record<string, unknown>;
-    return (
-      <div className="max-w-64 rounded-xl border border-steel-200 bg-white/95 px-3 py-2 text-xs shadow-lift">
-        <p className="mb-1 font-bold text-navy-900">{String(p.full ?? "-")}</p>
-        <p className="text-steel-600">Rating aktual: <b className="text-navy-900">{String(p.rating)} </b><span className="text-steel-400">(subcontractors.rating 0–100)</span></p>
-        <p className="text-steel-600">Skor K3: <b className="text-navy-900">{String(p.k3)}</b><span className="text-steel-400"> (grade {String(p.k3Grade)} → A+95/A90/B+82/B78/C65)</span></p>
-        <p className="mt-1 border-t border-steel-100 pt-1 text-steel-500">
-          Kontrak {fmtMiliar(Number(p.contract || 0))} · {String(p.activeWo)} WO aktif · {String(p.lunas)} termin Lunas
-        </p>
-        {payload.map((e, i) => (
-          <p key={i} className="flex items-center gap-1.5 text-steel-600">
-            <span className="h-2 w-2 rounded-full" style={{ background: e.color }} />
-            {e.dataKey === "rating" ? "Rating aktual" : `K3 (grade ${String(p.k3Grade)})`}: <b className="ml-auto text-navy-900">{String(e.value)}</b>
-          </p>
-        ))}
-      </div>
-    );
-  };
+  /* T6-SK1: evaluasi kinerja (evalChart + EvalTooltip) dihapus dari UI.
+     Fungsi tidak lagi dipanggil - sengaja dihapus agar tidak jadi dead code. */
 
   const applyWoProgress = async (id: string, v: number, note: string, doneMs?: string[], milestones?: unknown[]) => {
     try {
@@ -1031,28 +989,13 @@ const printSpk = async (w: StoreItem): Promise<void> => {
       </div>
 
       <div className="mt-4 card">
-        <Tabs tabs={["Subkontraktor", "Work Order", "Termin & Pembayaran", "Timesheet", "Kepatuhan K3"]} active={tab} onChange={setTab} labels={{ Subkontraktor: S.tabSub, "Work Order": S.tabWo, "Termin & Pembayaran": S.tabTermin, Timesheet: S.tabTimesheet, "Kepatuhan K3": S.tabK3 }} />
+        {/* T6-SK9: tab Timesheet dihapus dari UI (data tetap di store).
+            T6-SK1: evaluasi kinerja dihapus dari bawah tab. */}
+        <Tabs tabs={["Subkontraktor", "Work Order", "Termin & Pembayaran", "Kepatuhan K3"]} active={tab} onChange={setTab} labels={{ Subkontraktor: S.tabSub, "Work Order": S.tabWo, "Termin & Pembayaran": S.tabTermin, "Kepatuhan K3": S.tabK3 }} />
         <div className="p-4">
           {tab === "Subkontraktor" && (
             <div className="space-y-4">
-              <Card>
-                <CardHeader title={S.evalTitle} subtitle={`${S.evalSub} · Rating = subcontractors.rating · K3 = konversi grade (A+95/A90/B+82/B78/C65)`} />
-                <div className="h-52 p-4 pt-0 sm:h-60">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <BarChart data={evalChart} margin={{ top: 10, right: 10, left: -15, bottom: 0 }}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="#e9eff4" vertical={false} />
-                      <XAxis dataKey="name" tick={{ fontSize: 10 }} stroke="#8aa2b6" axisLine={false} tickLine={false} interval={0} />
-                      <YAxis domain={[0, 100]} stroke="#8aa2b6" axisLine={false} tickLine={false} />
-                      <Tooltip content={<EvalTooltip />} />
-                      <Legend wrapperStyle={{ fontSize: 12 }} formatter={(v) => v === "rating" ? (locale === "en" ? "Actual rating (0-100)" : "Rating aktual (0-100)") : `K3 (skor konversi grade)`} />
-                      <ReferenceLine y={80} stroke="#ef4444" strokeDasharray="5 5" label={{ value: "Target 80", position: "insideTopRight", fontSize: 10, fill: "#ef4444" }} />
-                      <Bar dataKey="rating" name="rating" fill="#0b3a63" radius={[3, 3, 0, 0]} barSize={16} onClick={(d) => { const pl = (d as unknown as { payload?: { full?: string; rating?: number; k3?: number; k3Grade?: string } }).payload; if (pl?.full) toast(`${pl.full} — rating aktual ${pl.rating} (subcontractors.rating), K3 ${pl.k3} (grade ${pl.k3Grade})`); }} style={{ cursor: "pointer" }} />
-                      <Bar dataKey="k3" name="k3" fill="#f59e0b" radius={[3, 3, 0, 0]} barSize={16} onClick={(d) => { const pl = (d as unknown as { payload?: { full?: string; rating?: number; k3?: number; k3Grade?: string } }).payload; if (pl?.full) toast(`${pl.full} — rating aktual ${pl.rating}, K3 ${pl.k3} (grade ${pl.k3Grade} → A+95/A90/B+82/B78/C65)`); }} style={{ cursor: "pointer" }} />
-                    </BarChart>
-                  </ResponsiveContainer>
-                </div>
-                <p className="px-4 pb-3 text-[11px] text-steel-400">Asal angka: bar navy = `rating` tersimpan per subkontraktor; bar amber = `k3Score(k3)` dari grade K3. Hover untuk kontrak, WO aktif & termin Lunas. Klik bar untuk rincian.</p>
-              </Card>
+              {/* T6-SK1: evaluasi kinerja dihapus dari UI (notes2). */}
               <div className="mb-3 flex flex-wrap items-center gap-2">
                 <SearchBox
                   value={subQ}
@@ -1776,14 +1719,12 @@ const printSpk = async (w: StoreItem): Promise<void> => {
           )}
           <Field label={S.termAmountLabel}><MoneyInput className="input" value={termForm.amount} onChange={(v) => setTermForm({ ...termForm, amount: v })} /></Field>
           <FormGrid>
-            <Field label={S.pphLabel}>
+            <Field label={locale === "en" ? "Tax (%)" : "Pajak (%)"}>
               <select className="input" value={termForm.pphPct} onChange={(e) => setTermForm({ ...termForm, pphPct: e.target.value })}>
-                {/* Sumber tarif dari PPH_SUBKON_OPTIONS. Versi lama menulis
-                    0.5 dan 2 langsung di sini, jadi konstantanya mati dan
-                    kalau tarifnya berubah keduanya bisa berbeda. */}
+                {/* T6-SK8: label "Pajak" (client); nilai tetap pphPct di store. */}
                 {PPH_SUBKON_OPTIONS.map((rate) => (
                   <option key={rate} value={String(rate)}>
-                    {rate}%{rate === 0.5 ? " Final (cth Pak Yusuf)" : " PPh 23"}
+                    {rate}%{rate === 0.5 ? (locale === "en" ? " Final" : " Final") : " PPh 23"}
                   </option>
                 ))}
               </select>

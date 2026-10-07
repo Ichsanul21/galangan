@@ -209,7 +209,7 @@ export default function Monitoring() {
 
       <Card className="mb-4 p-5">
         <h3 className="mb-3 flex items-center gap-2 text-sm font-semibold text-navy-900">
-          <AlertTriangle className="h-4 w-4 text-amber-500" /> {S.monAttTitle.replace("{n}", String(attention.length))}
+          <AlertTriangle className="h-4 w-4 text-rose-600" /> <span className="font-semibold text-rose-700">{S.monAttTitle.replace("{n}", String(attention.length))}</span>
         </h3>
         {attention.length === 0 && <p className="text-sm text-steel-400">{S.monAttEmpty}</p>}
         <div className="grid grid-cols-1 gap-2 lg:grid-cols-2">
@@ -217,6 +217,7 @@ export default function Monitoring() {
             <Link
               key={`${a.group}-${a.title}-${i}`}
               to={`/proyek/${a.pid}`}
+              state={{ from: "monitoring" }}
               className="flex items-center gap-3 rounded-xl border border-steel-100 p-2.5 text-sm transition-colors hover:border-ocean-400 hover:bg-surface"
             >
               <Badge tone={a.group === "NCR Critical" || a.group === "Terlambat" || a.group === "Over-budget" ? "red" : "amber"}>{groupLbl[a.group] ?? a.group}</Badge>
@@ -269,6 +270,7 @@ export default function Monitoring() {
                     <Link
                       key={p.id}
                       to={`/proyek/${p.id}`}
+                      state={{ from: "monitoring" }}
                       className="block rounded-xl border border-steel-200 bg-white p-3 transition-colors hover:border-ocean-400"
                     >
                       <p className="font-mono text-xs text-steel-500">{p.id}</p>

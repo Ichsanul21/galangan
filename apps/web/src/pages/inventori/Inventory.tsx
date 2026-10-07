@@ -14,7 +14,6 @@ import {
   ClipboardCheck,
   ClipboardList,
   Repeat,
-  RefreshCw,
   Barcode,
   BookmarkPlus,
   ListChecks,
@@ -358,7 +357,7 @@ const AGING_BUCKETS = ["0-30 hari", "31-90 hari", "91-180 hari", ">180 hari", "B
 export default function Inventory() {
   const { locale } = useT();
   const S = n_inv[locale];
-  const { data, add, update, remove, log, branch, resync } = useStore();
+  const { data, add, update, remove, log, branch } = useStore();
   /* Batch modul per tab: Inventory butuh 8 koleksi. Tanpa ini halaman ini
      memanggil resync() penuh (50+ koleksi) tiap dibuka lewat tombol refresh
      PageHeader, padahal isinya hanya butuh sebagian. */
@@ -1889,7 +1888,7 @@ if (k === "mattype") return matTypeOf(i);
         icon={<Warehouse className="h-5 w-5" />}
         actions={
           <div className="flex items-center gap-2">
-            <AsyncButton className="btn-secondary" title={locale === "en" ? "Reload data from backend" : "Muat ulang data dari backend"} onAction={async () => { await resync(); toast(locale === "en" ? "Data refreshed" : "Data dimuat ulang"); }}><RefreshCw className="h-4 w-4" /> {locale === "en" ? "Refresh" : "Muat ulang"}</AsyncButton>
+            {/* T6-INV1: tombol "Muat ulang" dihapus - pull periodik C2 + module sync. */}
             <button className="btn-secondary" onClick={openPick}><ListChecks className="h-4 w-4" /> {S.pickTitle}</button>
             <button className="btn-primary-gradient" onClick={() => { setForm(emptyForm); setShowAdd(true); }}><Plus className="h-4 w-4" /> {S.btnNew}</button>
           </div>
@@ -1933,7 +1932,7 @@ if (k === "mattype") return matTypeOf(i);
       </div>
 
       <div className="card">
-        <Tabs tabs={["Katalog", "Stok per Gudang", "BOM", "Pergerakan", "Tonase & Surat Jalan", "Analisis"]} active={tab} onChange={setTab} labels={{ Katalog: S.tabKatalog, "Stok per Gudang": S.tabWh, BOM: S.tabBom, Pergerakan: S.tabMoves, "Tonase & Surat Jalan": S.tabTonase, Analisis: S.tabAnalisis }} />
+        <Tabs tabs={["Katalog", "Stok per Gudang", "BOM", "Pergerakan", "Analisis"]} active={tab} onChange={setTab} labels={{ Katalog: S.tabKatalog, "Stok per Gudang": S.tabWh, BOM: S.tabBom, Pergerakan: S.tabMoves, Analisis: S.tabAnalisis }} />
         <div className="p-4">
           {tab === "Katalog" && (
             <>
@@ -2129,7 +2128,7 @@ if (k === "mattype") return matTypeOf(i);
               <div className="overflow-x-auto">
                 <table className="w-full">
                   <thead className="bg-surface sticky top-0 z-10">
-                    <tr><SortTh label={S.thMaterial} sortKey="material" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.catLbl} sortKey="kategori" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={locale === "en" ? "Type" : "Jenis"} sortKey="mattype" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.thQty} sortKey="qty" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.thVolume} sortKey="volume" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.thTotal} sortKey="total" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.thAbc} sortKey="abc" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.thStatus} sortKey="status" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.thRak} sortKey="rak" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.binLbl} sortKey="bin" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.colCreated} sortKey="createdAt" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.colUpdated} sortKey="updatedAt" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><th className="th">{S.thAksi}</th></tr>
+                    <tr><SortTh label={S.thMaterial} sortKey="material" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.catLbl} sortKey="kategori" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={locale === "en" ? "Type" : "Jenis"} sortKey="mattype" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.thQty} sortKey="qty" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.thVolume} sortKey="volume" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.thTotal} sortKey="total" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.thStatus} sortKey="status" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.thRak} sortKey="rak" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.colCreated} sortKey="createdAt" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.colUpdated} sortKey="updatedAt" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><th className="th">{S.thAksi}</th></tr>
                   </thead>
                   <tbody className="divide-y divide-steel-100">
 {pager.slice(sorted).map((i) => {
@@ -2143,6 +2142,7 @@ if (k === "mattype") return matTypeOf(i);
                        const reserved = reservedQty(i);
                       const conv = convOf(i);
                       const u2 = uom2Of(i);
+                      void warn;
                       return (
                         <tr key={i.id} id={notifRowId(String(i.id))} className={rowHighlightClass({ id: String(i.id), flash, notified: notified.has(String(i.id)), base: "hover:bg-surface" })}>
                           <td className="td">
@@ -2158,21 +2158,14 @@ if (k === "mattype") return matTypeOf(i);
                           </td>
                           <td className="td text-steel-600">{fmtJumlah(Number(i.volume ?? 0))}</td>
                           <td className="td font-semibold text-navy-900">{fmtRupiah(Number(i.stock) * effCost(i))}</td>
-                          <td className="td"><Badge tone={abc[i.id] === "A" ? "red" : abc[i.id] === "B" ? "amber" : "gray"}>{abc[i.id]}</Badge></td>
                           <td className="td">
                             <Badge tone={badge.tone} title={
                               minWh <= 0
                                 ? (locale === "en" ? "No minimum set" : "Minimum stok belum diisi")
                                 : `${fmtJumlah(Number(i.stock))} ${String(i.unit ?? "")} dari minimum ${fmtJumlah(minWh)} ${String(i.unit ?? "")}`
                             }>{locale === "en" ? badge.textEn : badge.text}</Badge>
-                            {warn.level === "critical" && (
-                              <p className="mt-0.5 text-[11px] text-rose-600">
-                                {locale === "en" ? "needs PR now" : "perlu PR sekarang"}
-                              </p>
-                            )}
                           </td>
                           <td className="td text-steel-600 font-mono text-xs truncate" title={rackText(i)}>{rackText(i)}</td>
-                          <td className="td text-steel-600 font-mono text-xs truncate" title={binOf(i) || "-"}>{binOf(i) || "-"}</td>
                           <td className="td text-xs text-steel-600">{createdAtOf(i) !== null ? fmtTanggal(createdAtOf(i)) : <span className="text-steel-400">-</span>}</td>
                           <td className="td text-xs text-steel-600">{lastTouchedAt(i) !== null ? fmtTanggal(lastTouchedAt(i)) : <span className="text-steel-400">-</span>}</td>
                           <td className="td">

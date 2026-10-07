@@ -891,7 +891,9 @@ const exportPdfReport = async () => {
         }
       />
 
-      <Tabs tabs={["Deskriptif", "Diagnostik", "Prediktif", "Preskriptif", "Profitabilitas"]} active={tab} onChange={setTab} labels={{ Deskriptif: S.tabDescriptive, Diagnostik: S.tabDiagnostic, Prediktif: S.tabPredictive, Preskriptif: S.tabPrescriptive, Profitabilitas: S.tabProfitability }} />
+      {/* T6-AN2: tab Prediktif & Preskriptif dihapus dari UI (notes2).
+          Data/sheet Excel tetap bisa diekspor bila diperlukan nanti. */}
+      <Tabs tabs={["Deskriptif", "Diagnostik", "Profitabilitas"]} active={tab} onChange={setTab} labels={{ Deskriptif: S.tabDescriptive, Diagnostik: S.tabDiagnostic, Profitabilitas: S.tabProfitability }} />
 
       {/* ==== KONTROL RENTANG BULAN ====
           Dulu tidak ada kontrol sama sekali: semua grafik rentang-bulan

@@ -406,8 +406,8 @@ export default function Projects() {
                     key={p.id}
                     id={notifRowId(String(p.id))}
                     className={`cursor-pointer transition-colors ${rowHighlightClass({ id: String(p.id), flash, notified: notified.has(String(p.id)), base: "hover:bg-surface" })}`}
-                    onClick={() => navigate(`/proyek/${p.id}`)}
-                    onKeyDown={(e) => { if (e.key === "Enter") navigate(`/proyek/${p.id}`); }}
+                    onClick={() => navigate(`/proyek/${p.id}`, { state: { from: "manajemen" } })}
+                    onKeyDown={(e) => { if (e.key === "Enter") navigate(`/proyek/${p.id}`, { state: { from: "manajemen" } }); }}
                     tabIndex={0}
                     title={S.prjOpenRow.replace("{a}", p.id)}
                   >
@@ -463,7 +463,7 @@ export default function Projects() {
                           tone="neutral"
                           label={S.btnDetail}
                           ariaLabel={`${S.btnDetail} ${p.id}`}
-                          onClick={() => navigate(`/proyek/${p.id}`)}
+                          onClick={() => navigate(`/proyek/${p.id}`, { state: { from: "manajemen" } })}
                         />
                         <RowAction
                           icon={Trash2}

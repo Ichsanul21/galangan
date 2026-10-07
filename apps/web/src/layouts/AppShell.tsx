@@ -451,7 +451,9 @@ export default function AppShell() {
                 <li key={item.to}>
                   <NavLink
                     to={to}
-                    end={item.to === "/proyek" || item.to === "/pengaturan"}
+                    /* T6-MON5: /proyek harus match semua child route
+                       (/proyek/monitoring, /proyek/:id) - jangan `end`. */
+                    end={item.to === "/pengaturan"}
                     title={mini ? item.label : undefined}
                     onClick={() => {
                       setOpen(false);
