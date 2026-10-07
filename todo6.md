@@ -121,11 +121,11 @@ Item baru memakai kode **T6-**. Item lama dirujuk ke todo5.
 
 | ID | Permintaan | Status | Bukti / gap |
 |---|---|---|---|
-| T6-EQ1 | Rename/hidden form (cabang default Samarinda, tahun unit, tahun akuisisi, PJ unit, merk, estimasi utilisasi, umur pakai bulan, keterangan, harga barang; hide tarif+bbm) | **BELUM** | Form masih serial/model/pic/rate/fuelPrice |
-| T6-EQ2 | Tabel disesuaikan form | **BELUM** | |
+| T6-EQ1 | Rename/hidden form (cabang default Samarinda, tahun unit, tahun akuisisi, PJ unit, merk, estimasi utilisasi, umur pakai bulan, keterangan, harga barang; hide tarif+bbm) | **SELESAI** | Label diganti; branch hidden; serial→tahun unit; model→merk; pic→PJ unit; acqYear+notes ditambah; usefulLife form=bulan (store=tahun); tarif+BBM di-hide |
+| T6-EQ2 | Tabel disesuaikan form | **SELESAI** | Kolom: Equipment, Kategori, Merk, PJ unit, Status, Utilisasi, Jam, Harga barang, Dibuat, Diubah, Aksi |
 | T6-EQ3 | Tab **Daftar Equipment** saja; hapus Alokasi/Booking, Sedang Dipakai, Maintenance, Kalibrasi, Biaya, Utilisasi | **SELESAI** | Tabs kini hanya `["Daftar Equipment"]`; body tab lama tidak dirender |
-| T6-EQ4 | Card analisis: Total / Sedang terpakai / Dalam maintenance (kalibrasi+service) | **BELUM** | |
-| T6-EQ5 | Delegasi peminjaman per unit; maintenance di dalam delegasi | **BELUM** | Tidak ada "delegasi" |
+| T6-EQ4 | Card analisis: Total / Sedang terpakai / Dalam maintenance (kalibrasi+service) | **SELESAI** | KPI: Total · Sedang Terpakai · Dalam Maintenance + due soon |
+| T6-EQ5 | Delegasi peminjaman per unit; maintenance di dalam delegasi | **SELESAI** | Tombol Delegasi per baris; modal EntityPicker + catatan; simpan `delegatedTo/delegatedAt/delegationNote`; badge di tabel |
 
 > Catatan: E1–E5 todo5 (logika servis, jam 24H, biaya) **tetap dipakai**; notes2 minta restruktur UI/tab.
 

@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { bucketByMonth, monthAxis, rebindLegacyMonthSeries } from "../../utils/monthAxis";
 import type { ReactNode } from "react";
 import { Link } from "react-router-dom";
-import { Plus, Cpu, Pencil, Trash2, Wrench, AlertTriangle, Gauge, CheckCircle2, Download, Eye, History as HistoryIcon } from "lucide-react";
+import { Plus, Cpu, Pencil, Trash2, Wrench, AlertTriangle, Gauge, CheckCircle2, Download, Eye, History as HistoryIcon, User } from "lucide-react";
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 import { Card, CardHeader, PageHeader, Badge, KpiCard, Tabs, ProgressBar, ChartTooltip, RadialGauge, Modal, Field, FormGrid, EmptyState, ConfirmModal, StatusBadge, toast, SortTh, toggleSort, sortRows, usePager,
   NumInput, MoneyInput, AsyncButton,
@@ -18,7 +18,7 @@ import type { StoreItem, CollectionKey } from "../../data/store";
 import { useModuleSync } from "../../data/useModuleSync";
 import { remoteRepository } from "../../services/repositories";
 import { getJwt, isBackendConfigured } from "../../services/http";
-import { equipmentHours, sparkUtil, equipTotalTrend, maintTrend, serviceDueTrend } from "../../data";
+import { equipmentHours, serviceDueTrend } from "../../data";
 import { fmtTanggal, fmtJumlah, fmtRupiah, parseRupiah, todayISO } from "../../utils/format";
 import { loadedLaborRatePerDay } from "../../utils/rates";
 import { createdAtOf, lastTouchedAt } from "../../utils/timestamps";
@@ -303,7 +303,14 @@ const [utilQ, setUtilQ] = useState("");
      tidak bisa ditelusuri. */
   const [costDetailFor, setCostDetailFor] = useState<string | null>(null);
   const picOptions = useMemo(() => employeeOptions(data.employees), [data.employees]);
-  const [form, setForm] = useState({ name: "", category: "Pengangkat", categoryCustom: "", code: "", serial: "", branch: "Samarinda", model: "", pic: "", util: "50", rate: "", fuelPrice: "0", acquisitionCost: "", usefulLife: "" });
+  /* T6-EQ1: form disesuaikan notes2 - branch hidden (default Samarinda),
+     serial → tahun unit, model → merk, pic → PJ unit, harga barang,
+     umur pakai dalam bulan, keterangan, tahun akuisisi. Tarif+BBM di-hide. */
+  const [form, setForm] = useState({ name: "", category: "Pengangkat", categoryCustom: "", code: "", serial: "", branch: "Samarinda", model: "", pic: "", util: "50", rate: "", fuelPrice: "0", acquisitionCost: "", usefulLife: "", notes: "", acqYear: "" });
+  /* T6-EQ5: delegasi peminjaman per unit. */
+  const [delegasiFor, setDelegasiFor] = useState<StoreItem | null>(null);
+  const [delegasiTo, setDelegasiTo] = useState("");
+  const [delegasiNote, setDelegasiNote] = useState("");
   const [showService, setShowService] = useState(false);
 
 
@@ -698,7 +705,10 @@ if (tab === "Daftar Equipment") { flashPick(flash, ids, idx, regPager.go, regPag
       rate: String(Number(e.rate ?? 0)),
       fuelPrice: String(Number(e.fuelPrice ?? 0)),
       acquisitionCost: String(Number(e.acquisitionCost ?? 0)),
-      usefulLife: String(Number(e.usefulLife ?? 0)),
+      /* usefulLife di store tetap tahun; form menampilkan bulan. */
+      usefulLife: String(Math.round((Number(e.usefulLife ?? 0) || 0) * 12)),
+      notes: String(e.notes ?? ""),
+      acqYear: String(e.acquisitionYear ?? ""),
     });
     setShowAdd(true);
   };
@@ -708,18 +718,20 @@ if (tab === "Daftar Equipment") { flashPick(flash, ids, idx, regPager.go, regPag
     const category = form.category === "Lainnya" ? form.categoryCustom.trim() : form.category;
     if (!form.name.trim()) { toast(locale === "en" ? "Equipment name is required" : "Nama equipment wajib diisi", "info"); return; }
     if (!category) { toast(locale === "en" ? "Custom category is required" : "Kategori kustom wajib diisi", "info"); return; }
-    if (!form.serial.trim()) { toast(locale === "en" ? "Serial number is required" : "Nomor seri wajib diisi", "info"); return; }
+    if (!form.serial.trim()) { toast(locale === "en" ? "Unit year is required" : "Tahun unit wajib diisi", "info"); return; }
     /* Kode equipment = identitas bisnis (dipakai label QR, booking, kontrak
        sewa). Mengubahnya melenceng dari semua rujukan lama, jadi form ubah
        sengaja tidak menyediakan kolom kode sama sekali. */
     const rate = parseRupiah(form.rate || "0");
     const fuelPrice = parseRupiah(form.fuelPrice || "0");
     const acquisitionCost = parseRupiah(form.acquisitionCost || "0");
-    const usefulLife = Number(form.usefulLife || 0);
+    /* Form umur pakai dalam BULAN; store/depreciation memakai TAHUN. */
+    const usefulLifeMonths = Number(form.usefulLife || 0);
+    const usefulLife = usefulLifeMonths > 0 ? Math.round((usefulLifeMonths / 12) * 10) / 10 : 0;
     if (!Number.isFinite(rate) || rate < 0) { toast(S.eqRateMin, "info"); return; }
     if (!Number.isFinite(fuelPrice) || fuelPrice < 0) { toast(S.eqFuelMin, "info"); return; }
     if ((form.acquisitionCost && (!Number.isFinite(acquisitionCost) || acquisitionCost < 0))
-      || (form.usefulLife && (!Number.isFinite(usefulLife) || usefulLife <= 0))) {
+      || (form.usefulLife && (!Number.isFinite(usefulLifeMonths) || usefulLifeMonths <= 0))) {
       toast(S.eqCostLife, "info");
       return;
     }
@@ -735,6 +747,8 @@ if (tab === "Daftar Equipment") { flashPick(flash, ids, idx, regPager.go, regPag
         fuelPrice: Math.round(fuelPrice),
         acquisitionCost: Math.round(acquisitionCost),
         usefulLife,
+        notes: form.notes.trim(),
+        acquisitionYear: form.acqYear.trim() || undefined,
       });
       log("mengubah equipment", `${editingId} - ${form.name.trim()}`, "Equipment");
       toast(locale === "en" ? `Equipment ${form.name.trim()} updated` : `Equipment ${form.name.trim()} diperbarui`);
@@ -772,9 +786,10 @@ if (tab === "Daftar Equipment") { flashPick(flash, ids, idx, regPager.go, regPag
     if (!Number.isFinite(rate) || rate < 0) { toast(S.eqRateMin, "info"); return; }
     const fuelPrice = parseRupiah(form.fuelPrice || "0");
     const acquisitionCost = parseRupiah(form.acquisitionCost || "0");
-    const usefulLife = Number(form.usefulLife || 0);
+    const usefulLifeMonths = Number(form.usefulLife || 0);
+    const usefulLife = usefulLifeMonths > 0 ? Math.round((usefulLifeMonths / 12) * 10) / 10 : 0;
     if (fuelPrice < 0 || !Number.isFinite(fuelPrice)) { toast(S.eqFuelMin, "info"); return; }
-    if ((form.acquisitionCost && (!Number.isFinite(acquisitionCost) || acquisitionCost < 0)) || (form.usefulLife && (!Number.isFinite(usefulLife) || usefulLife <= 0))) {
+    if ((form.acquisitionCost && (!Number.isFinite(acquisitionCost) || acquisitionCost < 0)) || (form.usefulLife && (!Number.isFinite(usefulLifeMonths) || usefulLifeMonths <= 0))) {
       toast(S.eqCostLife, "info");
       return;
     }
@@ -782,10 +797,12 @@ if (tab === "Daftar Equipment") { flashPick(flash, ids, idx, regPager.go, regPag
       name: form.name.trim(), category, code, serial: form.serial.trim(), branch: form.branch,
       status: "Tersedia", util: 0, utilManual: false, nextService: "-", lastHours: 0, model: form.model.trim() || "-",
       pic: form.pic.trim(), rate, fuelPrice, acquisitionCost, usefulLife,
+      notes: form.notes.trim(),
+      acquisitionYear: form.acqYear.trim() || undefined,
     }, { action: "mendaftarkan equipment", module: "Equipment" });
     toast(S.eqAdded.replace("{a}", created.id));
     setShowAdd(false);
-    setForm({ name: "", category: "Pengangkat", categoryCustom: "", code: "", serial: "", branch: "Samarinda", model: "", pic: "", util: "50", rate: "", fuelPrice: "0", acquisitionCost: "", usefulLife: "" });
+    setForm({ name: "", category: "Pengangkat", categoryCustom: "", code: "", serial: "", branch: "Samarinda", model: "", pic: "", util: "50", rate: "", fuelPrice: "0", acquisitionCost: "", usefulLife: "", notes: "", acqYear: "" });
     } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); }
   };
 
@@ -1602,9 +1619,10 @@ if (tab === "Daftar Equipment") { flashPick(flash, ids, idx, regPager.go, regPag
       {modAlert.active && <AlertBannerView items={modAlert.items} onPick={pickNotif} dismiss={modAlert.dismiss} />}
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <KpiCard label={S.eqKpiTotal} value={String(equipment.length)} icon={<Cpu className="h-5 w-5" />} chip="navy" spark={equipTotalTrend} hint={S.eqKpiTotalHint} />
-        <KpiCard label={S.eqKpiAvgUtil} value={`${avgUtil}%`} icon={<Gauge className="h-5 w-5" />} chip="teal" hint={S.eqKpiAvgHint} spark={sparkUtil} />
-        <KpiCard label={S.eqKpiMaint} value={String(maintenance)} delta={S.eqKpiMaintDelta} deltaDirection="down" icon={<Wrench className="h-5 w-5" />} chip="amber" spark={maintTrend} />
+        <KpiCard label={S.eqKpiTotal} value={String(equipment.length)} icon={<Cpu className="h-5 w-5" />} chip="navy" hint={S.eqKpiTotalHint} />
+        {/* T6-EQ4: card analisis = Total / Sedang terpakai / Dalam maintenance. */}
+        <KpiCard label={S.eqKpiUsed ?? "Sedang Terpakai"} value={String(equipment.filter((e) => e.status === "Terpakai").length)} icon={<Gauge className="h-5 w-5" />} chip="teal" hint={S.eqKpiUsedHint} />
+        <KpiCard label={S.eqKpiMaint2 ?? "Dalam Maintenance"} value={String(maintenance)} delta={S.eqKpiMaintDelta} deltaDirection="down" icon={<Wrench className="h-5 w-5" />} chip="amber" hint={S.eqKpiMaint2Hint} />
         <KpiCard
           label={S.eqKpiDue}
           value={String(dueSoon.length)}
@@ -1666,7 +1684,7 @@ if (tab === "Daftar Equipment") { flashPick(flash, ids, idx, regPager.go, regPag
             <div className="overflow-x-auto">
               <table className="w-full">
                 <thead className="sticky top-0 z-10 bg-surface">
-                  <tr><SortTh label={S.thEquipment} sortKey="equipment" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.thCategory} sortKey="kategori" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.thModel} sortKey="model" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.thStatus} sortKey="status" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.thUtil} sortKey="utilisasi" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.thHours} sortKey="jam" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.thRate} sortKey="tarif" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.thBookVal} sortKey="nilaibuku" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.colCreated} sortKey="createdAt" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.colUpdated} sortKey="updatedAt" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><th className="th">{S.thAction}</th></tr>
+                  <tr><SortTh label={S.thEquipment} sortKey="equipment" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.thCategory} sortKey="kategori" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.thModel} sortKey="model" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.eqPicField} sortKey="pic" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.thStatus} sortKey="status" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.thUtil} sortKey="utilisasi" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.thHours} sortKey="jam" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.eqCostField} sortKey="harga" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.colCreated} sortKey="createdAt" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.colUpdated} sortKey="updatedAt" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><th className="th">{S.thAction}</th></tr>
                 </thead>
                 <tbody className="divide-y divide-steel-100">
                   {regPager.slice(regSorted).map((e) => {
@@ -1679,10 +1697,13 @@ if (tab === "Daftar Equipment") { flashPick(flash, ids, idx, regPager.go, regPag
                       </td>
                       <td className="td"><Badge tone="gray">{e.category}</Badge></td>
                       <td className="td text-steel-600">{e.model}</td>
+                      {/* T6-EQ1/EQ2: kolom PJ unit + harga barang; tarif/BBM disembunyikan. */}
+                      <td className="td text-steel-600 truncate" title={String(e.pic ?? "")}>{String(e.pic ?? "-")}</td>
                       <td className="td">
                         <div className="flex flex-wrap gap-1">
                           <Badge tone={statusTone[e.status] ?? "gray"}>{e.status}</Badge>
                           {isMeasuring(e) && expired && <Badge tone="red">{S.eqCalExpired}</Badge>}
+                          {String(e.delegatedTo ?? "") !== "" && <Badge tone="blue" title={String(e.delegationNote ?? "")}>{S.eqDelegasiBadge?.replace("{a}", String(e.delegatedTo)) ?? `→ ${String(e.delegatedTo)}`}</Badge>}
                         </div>
                       </td>
                       <td className="td">
@@ -1694,22 +1715,7 @@ if (tab === "Daftar Equipment") { flashPick(flash, ids, idx, regPager.go, regPag
                         <p className="mt-0.5 text-[11px] text-steel-400">{autoHoursOf(e)} jam ÷ 176 · {utilGrade(dispUtil(e), locale === "en").label}</p>
                       </td>
                       <td className="td text-steel-600 font-mono text-xs">{fmtJumlah(Number(e.lastHours || 0))} jam</td>
-                      <td className="td text-steel-600 text-xs">
-                        {Number(e.rate || 0) > 0 ? fmtRupiah(Number(e.rate)) : "-"}
-                        <span className="block text-steel-400">BBM {fmtRupiah(Number(e.fuelPrice || 0))}/L</span>
-                      </td>
-                      <td className="td text-steel-600 text-xs">
-                        {(() => {
-                          const dep = depreciationOf(e);
-                          if (!dep) return <span className="text-steel-400">-</span>;
-                          return (
-                            <span>
-                              <span className="font-semibold text-navy-900">{fmtRupiah(Math.round(dep.book))}</span>
-                              <span className="block text-steel-400">susut {fmtRupiah(Math.round(dep.annual))}/thn</span>
-                            </span>
-                          );
-                        })()}
-                      </td>
+                      <td className="td text-steel-600 text-xs font-semibold">{fmtRupiah(Number(e.acquisitionCost || 0))}</td>
                       <td className="td text-xs text-steel-600">{createdAtOf(e) !== null ? fmtTanggal(createdAtOf(e)) : <span className="text-steel-400">-</span>}</td>
                       <td className="td text-xs text-steel-600">{lastTouchedAt(e) !== null ? fmtTanggal(lastTouchedAt(e)) : <span className="text-steel-400">-</span>}</td>
                       <td className="td">
@@ -1753,6 +1759,18 @@ if (tab === "Daftar Equipment") { flashPick(flash, ids, idx, regPager.go, regPag
                         {e.status === "Terpakai" && (
                           <span className="text-xs text-steel-500">{S.eqBackToBooking}</span>
                         )}
+                        {/* T6-EQ5: aksi delegasi peminjaman per unit. */}
+                        <RowAction
+                          icon={User}
+                          tone="primary"
+                          label={S.eqDelegasiBtn ?? "Delegasi"}
+                          ariaLabel={`${S.eqDelegasiBtn ?? "Delegasi"} ${String(e.name ?? e.id)}`}
+                          onClick={() => {
+                            setDelegasiFor(e);
+                            setDelegasiTo(String(e.delegatedTo ?? e.pic ?? ""));
+                            setDelegasiNote(String(e.delegationNote ?? ""));
+                          }}
+                        />
                         {/* Ubah/Hapus equipment. Dulu tabel Register tidak punya
                             kolom aksi sama sekali selain lifecycle servis,
                             sehingga equipment yang salah tarif/jangka tidak
@@ -2597,20 +2615,67 @@ if (tab === "Daftar Equipment") { flashPick(flash, ids, idx, regPager.go, regPag
                 <input className="input" value={form.categoryCustom} onChange={(e) => setForm({ ...form, categoryCustom: e.target.value })} placeholder={locale === "en" ? "e.g.: Survey" : "cth: Survei"} />
               </Field>
             )}
-            <Field label={S.eqBranchField}>
-              <select className="input" value={form.branch} onChange={(e) => setForm({ ...form, branch: e.target.value })}>
-                {data.branches.map((b) => <option key={b.id} value={String(b.city)}>{String(b.city)}</option>)}
-              </select>
-            </Field>
+            {/* T6-EQ1: cabang di-hidden, default Samarinda (ditulis saat save). */}
             <Field label={S.eqSerialField} hint={S.eqSerialHint}><input className="input font-mono" value={form.serial} onChange={(e) => setForm({ ...form, serial: e.target.value })} placeholder={S.eqSerialPh} /></Field>
+            <Field label={S.eqAcqYearField}><input className="input font-mono" value={form.acqYear} onChange={(e) => setForm({ ...form, acqYear: e.target.value })} placeholder={S.eqAcqYearPh} /></Field>
             <Field label={S.eqPicField} hint={S.eqPicHint}><EntityPicker value={form.pic} onChange={(v) => setForm({ ...form, pic: v })} options={picOptions} placeholder={S.eqPicPh} ariaLabel={S.eqPicField} emptyText={locale === "en" ? "No matching employee." : "Tidak ada karyawan yang cocok."} allowCustom invalid={form.pic.trim() !== "" && !isKnownEmployee(data.employees, form.pic)} /></Field>
             <Field label={S.thModel}><input className="input" value={form.model} onChange={(e) => setForm({ ...form, model: e.target.value })} /></Field>
             <Field label={S.eqUtilField}><NumInput className="input" value={form.util} onChange={(e) => setForm({ ...form, util: e.target.value })} /></Field>
-            <Field label={S.eqRateField}><MoneyInput className="input" value={form.rate} onChange={(v) => setForm({ ...form, rate: v })} placeholder={S.eqRatePh} /></Field>
-            <Field label={S.eqFuelField}><MoneyInput className="input" value={form.fuelPrice} onChange={(v) => setForm({ ...form, fuelPrice: v })} placeholder={S.eqFuelPh} /></Field>
+            {/* T6-EQ1: tarif pakai + BBM di-hide (bukan dihapus dari store). */}
+            {false && (
+              <>
+                <Field label={S.eqRateField}><MoneyInput className="input" value={form.rate} onChange={(v) => setForm({ ...form, rate: v })} placeholder={S.eqRatePh} /></Field>
+                <Field label={S.eqFuelField}><MoneyInput className="input" value={form.fuelPrice} onChange={(v) => setForm({ ...form, fuelPrice: v })} placeholder={S.eqFuelPh} /></Field>
+              </>
+            )}
             <Field label={S.eqCostField}><MoneyInput className="input" value={form.acquisitionCost} onChange={(v) => setForm({ ...form, acquisitionCost: v })} placeholder={S.eqCostPh} /></Field>
-            <Field label={S.eqLifeField}><NumInput min={0} className="input" value={form.usefulLife} onChange={(e) => setForm({ ...form, usefulLife: e.target.value })} placeholder={S.eqLifePh} /></Field>
+            <Field label={S.eqLifeField} hint={locale === "en" ? "Stored internally as years" : "Disimpan internal dalam tahun"}>
+              <NumInput min={0} className="input" value={form.usefulLife} onChange={(e) => setForm({ ...form, usefulLife: e.target.value })} placeholder={S.eqLifePh} />
+            </Field>
+            <Field label={S.eqNotesField}><input className="input" value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} placeholder={S.eqNotesPh} /></Field>
           </FormGrid>
+        </div>
+      </Modal>
+
+      {/* T6-EQ5: modal delegasi peminjaman equipment. */}
+      <Modal open={delegasiFor !== null} onClose={() => setDelegasiFor(null)}
+        title={(S.eqDelegasiTitle ?? "Delegasi - {a}").replace("{a}", String(delegasiFor?.name ?? ""))}
+        subtitle={String(delegasiFor?.id ?? "")}
+        footer={<>
+          <button className="btn-secondary" onClick={() => setDelegasiFor(null)}>{S.cancelBtn}</button>
+          {String(delegasiFor?.delegatedTo ?? "") !== "" && (
+            <button className="btn-secondary text-rose-600" onClick={async () => {
+              if (!delegasiFor) return;
+              try {
+                await update("equipment", delegasiFor.id, { delegatedTo: undefined, delegatedAt: undefined, delegationNote: undefined });
+                toast((S.eqDelegasiCleared ?? "Delegasi {a} dibersihkan").replace("{a}", String(delegasiFor.name)));
+                setDelegasiFor(null);
+              } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); }
+            }}>{locale === "en" ? "Clear" : "Bersihkan"}</button>
+          )}
+          <AsyncButton className="btn-primary" onAction={async () => {
+            if (!delegasiFor) return;
+            if (!delegasiTo.trim()) { toast(locale === "en" ? "Delegate is required" : "Penerima delegasi wajib diisi", "info"); return; }
+            try {
+              await update("equipment", delegasiFor.id, {
+                delegatedTo: delegasiTo.trim(),
+                delegatedAt: todayISO(),
+                delegationNote: delegasiNote.trim(),
+                pic: delegasiTo.trim(),
+              });
+              log("mendelegasikan equipment", `${delegasiFor.id} → ${delegasiTo.trim()}`, "Equipment");
+              toast((S.eqDelegasiSaved ?? "Delegasi {a} disimpan").replace("{a}", String(delegasiFor.id)));
+              setDelegasiFor(null);
+            } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); }
+          }}>{S.saveBtn}</AsyncButton>
+        </>}>
+        <div className="space-y-3">
+          <Field label={S.eqDelegasiTo ?? "Dipinjam ke"}>
+            <EntityPicker value={delegasiTo} onChange={setDelegasiTo} options={picOptions} placeholder={S.eqPicPh} ariaLabel={S.eqDelegasiTo} emptyText={locale === "en" ? "No matching employee." : "Tidak ada karyawan yang cocok."} allowCustom />
+          </Field>
+          <Field label={S.eqDelegasiNote ?? "Catatan"}>
+            <input className="input" value={delegasiNote} onChange={(e) => setDelegasiNote(e.target.value)} placeholder={S.eqDelegasiNotePh} />
+          </Field>
         </div>
       </Modal>
 
