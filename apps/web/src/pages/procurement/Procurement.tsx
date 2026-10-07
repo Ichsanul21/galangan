@@ -1645,6 +1645,26 @@ const sparkVendors = useMemo(() => {
                 const quotes = (Array.isArray(r.quotes) ? r.quotes : []) as Quote[];
                 const minPrice = quotes.length > 0 ? Math.min(...quotes.map((x) => Number(x.price))) : 0;
                 const minEta = quotes.length > 0 ? quotes.map((x) => x.eta).sort()[0] : "";
+                /* T6-ETC5: track record harga item yang sama dari RFQ/PO lampau. */
+                const itemKey = String(r.item ?? "").trim().toLowerCase();
+                const track: { src: string; price: number; at: string }[] = [];
+                if (itemKey !== "") {
+                  for (const p of purchaseOrders) {
+                    if (String(p.item ?? "").trim().toLowerCase() !== itemKey) continue;
+                    const amt = Number(p.amount || 0);
+                    const qty = Number(p.qty || 1);
+                    if (amt <= 0) continue;
+                    track.push({ src: String(p.id), price: qty > 0 ? Math.round(amt / qty) : amt, at: String(p.eta ?? p.date ?? "") });
+                  }
+                  for (const other of rfqs) {
+                    if (String(other.id) === String(r.id)) continue;
+                    if (String(other.item ?? "").trim().toLowerCase() !== itemKey) continue;
+                    for (const x of (Array.isArray(other.quotes) ? other.quotes : []) as Quote[]) {
+                      track.push({ src: String(other.id), price: Number(x.price || 0), at: String(x.eta ?? "") });
+                    }
+                  }
+                }
+                const trackSorted = [...track].sort((a, b) => String(b.at).localeCompare(String(a.at))).slice(0, 5);
                 return (
                   <Card key={r.id} className="p-5">
                     <div className="flex flex-wrap items-start justify-between gap-2">
@@ -1654,6 +1674,22 @@ const sparkVendors = useMemo(() => {
                       </div>
                       <StatusBadge status={r.status} />
                     </div>
+                    {trackSorted.length > 0 && (
+                      <div className="mt-2 rounded-lg border border-steel-100 bg-surface p-2">
+                        <p className="text-[11px] font-semibold text-navy-900">
+                          {locale === "en" ? "Price track record (same item)" : "Track record harga (item sama)"}
+                        </p>
+                        <ul className="mt-1 space-y-0.5">
+                          {trackSorted.map((t, i) => (
+                            <li key={`${t.src}-${i}`} className="flex justify-between gap-2 text-[11px] text-steel-600">
+                              <span className="font-mono">{t.src}</span>
+                              <span className="font-semibold text-navy-900">{fmtRupiah(t.price)}</span>
+                              <span>{t.at ? fmtTanggal(t.at) : "-"}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
                     {quotes.length === 0
                       ? <div className="mt-2"><EmptyState title={S.emptyQuoteT} subtitle={S.emptyQuoteS} /></div>
                       : (

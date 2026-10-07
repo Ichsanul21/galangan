@@ -9,6 +9,7 @@ import { Plus, Wrench, Package, Box, RotateCcw, FileDown } from "lucide-react";
 import { exportExcel, fmtRupiah } from "../../utils/export";
 import { fmtJumlah, todayISO } from "../../utils/format";
 import { sameName } from "../../utils/names";
+import { EntityPicker } from "../../components/ui";
 import type { StoreItem } from "../../data/store";
 import type { ServiceRecord, Sparepart } from "../../data";
 
@@ -594,7 +595,35 @@ const payload = {
         title={editSp ? (locale === "en" ? `Edit sparepart ${editSp.id}` : `Ubah sparepart ${editSp.id}`) : S.spsSpModal}
         footer={<><button className="btn-secondary" onClick={() => { setShowAdd(false); setEditSp(null); }}>{S.cancelBtn}</button><AsyncButton className="btn-primary" onAction={saveSparepart}>{S.saveBtn}</AsyncButton></>}>
         <div className="space-y-3">
-          <Field label={S.spsSpName}><input className="input" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder={S.spsSpNamePh} /></Field>
+          {/* T6-PRJ1: nama sparepart diambil dari inventori (selectable).
+              Saat dipilih, partNumber/kategori/cost ikut terisi dari item. */}
+          <Field label={S.spsSpName} hint={locale === "en" ? "Pick from inventory — stock shown before save" : "Pilih dari inventori — stok ditampilkan sebelum simpan"}>
+            <EntityPicker
+              value={form.name}
+              onChange={(v) => {
+                const inv = (data.inventory ?? []).find((i) => sameName(String(i.name ?? ""), v) || String(i.id) === v);
+                if (inv) {
+                  setForm({
+                    ...form,
+                    name: String(inv.name ?? ""),
+                    partNumber: String(inv.partNumber ?? inv.sku ?? form.partNumber),
+                    category: form.category,
+                    cost: form.cost || String(inv.cost ?? ""),
+                  });
+                } else {
+                  setForm({ ...form, name: v });
+                }
+              }}
+              options={(data.inventory ?? []).map((i) => ({
+                value: String(i.name ?? i.id),
+                label: String(i.name ?? i.id),
+                hint: `${String(i.sku ?? i.partNumber ?? "")} · stok ${fmtJumlah(Number(i.stock || 0))} ${String(i.unit ?? "")}`,
+              }))}
+              placeholder={S.spsSpNamePh}
+              ariaLabel={S.spsSpName}
+              allowCustom
+            />
+          </Field>
           <Field label={S.spsPartNo}><input className="input" value={form.partNumber} onChange={(e) => setForm({ ...form, partNumber: e.target.value })} /></Field>
           <FormGrid>
             <Field label={S.boqCategory}>

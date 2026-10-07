@@ -61,7 +61,7 @@ Item baru memakai kode **T6-**. Item lama dirujuk ke todo5.
 | T6-ETC2 | Format titik input harga | **REF** | B2 SELESAI |
 | T6-ETC3 | Alur proyek→BOQ→mekanik minta barang (stok/GI vs PO) | **REF** | D13 SELESAI |
 | T6-ETC4 | Procurement multi-vendor: item tak tersedia → vendor lain | **BELUM** | RFQ multi-quote ada; split fulfillment belum |
-| T6-ETC5 | RFQ track record harga | **BELUM** | Nol match di Procurement.tsx |
+| T6-ETC5 | RFQ track record harga | **SELESAI** | Card RFQ menampilkan track record harga item sama dari PO/RFQ lampau (maks 5 terbaru) |
 | T6-ETC6 | RFQ: hapus "sistem tender vendor"; komparasi harga tetap | **SEBAGIAN** | Komparasi quote ada; winner/tender masih ada (`confirmWin`) |
 | T6-ETC7 | Pagination di bawah tabel | **SELESAI (Procurement)** | Audit modul lain opsional |
 
@@ -72,7 +72,7 @@ Item baru memakai kode **T6-**. Item lama dirujuk ke todo5.
 | ID | Permintaan | Status | Bukti / gap |
 |---|---|---|---|
 | T6-P*/D* | Seluruh permintaan proyek di notes2 = notes.txt | **REF** | todo5 69/69 |
-| T6-PRJ1 | Sparepart: nama selectable dari inventori + stok available | **SEBAGIAN** | `SparepartServiceSection.tsx` name masih `<input>`; matchInventory + PO/GI sudah ada |
+| T6-PRJ1 | Sparepart: nama selectable dari inventori + stok available | **SELESAI** | EntityPicker inventory; stok di hint; pick isi name/partNumber/cost |
 | T6-PRJ2 | WBS: assign pengerja internal / subkon eksternal | **BELUM** | Tidak ada "assign" di ProjectDetail WBS |
 | T6-PRJ3 | Dokumen BoQ: perbaiki tampilan berantakan | **SEBAGIAN** | Sinkron D6 ada; duplikasi ReportSection vs kartu dokumen belum dirapikan |
 
@@ -108,12 +108,12 @@ Item baru memakai kode **T6-**. Item lama dirujuk ke todo5.
 |---|---|---|---|
 | T6-INV1 | Hapus tombol "Muat ulang"; auto-fetch | **SELESAI** | Tombol dihapus; C2 pull periodik tetap |
 | T6-INV2 | Katalog: highlight kategori; hapus teks impor, kolom ABC, kolom bin; pindah select ke samping scan; hapus teks detail status | **SELESAI** | Kolom ABC+bin dihapus; teks "perlu PR" dihapus; impor sebaris dgn scan; hint kolom disembunyikan |
-| T6-INV3 | Form material: "eceran"; hapus min stok gudang; konversi muncul saat pilih kategori | **SEBAGIAN** | Preset konversi ada setelah toggle eceran; label "Dijual eceran" + minWh masih |
+| T6-INV3 | Form material: "eceran"; hapus min stok gudang; konversi muncul saat pilih kategori | **SELESAI** | Label "Eceran"; field minWh disembunyikan; form konversi (uom2/konversi/preset) selalu tampil di form material |
 | T6-INV4 | BOM ↔ procurement; terima checklist; masuk procurement/additional; keluar list+checklist; retur tanpa vendor | **SEBAGIAN** | Tab BOM lama; struktur checklist/procurement belum |
-| T6-INV5 | Pergerakan: 2 grafik tren masuk/keluar; kolom Dari/Ke | **SEBAGIAN** | 1 grafik; label "Gudang" masih |
+| T6-INV5 | Pergerakan: 2 grafik tren masuk/keluar; kolom Dari/Ke | **SELESAI** | Dua AreaChart (in/out) + nilai stok; label filter "Dari / Ke" |
 | T6-INV6 | Keluar eceran/pcs + potongan plat + liter/drum/ton | **BELUM** | Butuh spesifikasi bisnis |
 | T6-INV7 | Surat Jalan di-hide | **SELESAI** | Tab "Tonase & Surat Jalan" dihapus dari Tabs |
-| T6-INV8 | Hapus tab Analisis; slow moving + dead stock → Pergerakan | **BELUM** | Tab Analisis masih ada |
+| T6-INV8 | Hapus tab Analisis; slow moving + dead stock → Pergerakan | **SELESAI** | Tab Analisis dihapus; card slow+dead dirender di Pergerakan |
 
 ---
 

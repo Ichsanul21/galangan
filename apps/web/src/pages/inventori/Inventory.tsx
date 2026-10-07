@@ -623,6 +623,37 @@ export default function Inventory() {
     () => (trendYear === "Semua" ? invTrend : invTrend.filter((d) => d.year === Number(trendYear))),
     [invTrend, trendYear],
   );
+  /* T6-INV5: tren barang masuk & keluar per bulan dari movements. */
+  const trendInOut = useMemo(() => {
+    const axis = rebindLegacyMonthSeries(stockTrend, { locale: locale as "id" | "en" })
+      .map((r) => ({ label: r.bln, key: r.key, year: Number(r.key.slice(0, 4)) }));
+    const inn = new Map<string, number>();
+    const out = new Map<string, number>();
+    for (const m of data.movements ?? []) {
+      const key = String(m.date ?? "").slice(0, 7);
+      if (!/^\d{4}-\d{2}$/.test(key)) continue;
+      const val = Number(m.total || 0) || Number(m.qty || 0) * Number(m.priceExcl || 0);
+      const t = String(m.type ?? "");
+      if (t === "Penerimaan") inn.set(key, (inn.get(key) ?? 0) + val);
+      else if (t === "Pengeluaran") out.set(key, (out.get(key) ?? 0) + val);
+    }
+    return axis.map((a) => ({
+      label: a.label,
+      year: a.year,
+      masuk: inn.get(a.key) ?? 0,
+      keluar: out.get(a.key) ?? 0,
+    }));
+  }, [data.movements, locale]);
+  const trendInShown = useMemo(
+    () => (trendYear === "Semua" ? trendInOut : trendInOut.filter((d) => d.year === Number(trendYear)))
+      .map((d) => ({ label: d.label, nilai: Math.round(d.masuk / 1_000_000) })),
+    [trendInOut, trendYear],
+  );
+  const trendOutShown = useMemo(
+    () => (trendYear === "Semua" ? trendInOut : trendInOut.filter((d) => d.year === Number(trendYear)))
+      .map((d) => ({ label: d.label, nilai: Math.round(d.keluar / 1_000_000) })),
+    [trendInOut, trendYear],
+  );
 
 /* Gudang: koleksi `warehouses` (CRUD) + fallback settings.WAREHOUSE_CAP.
      capacityOf() sudah menangani kedua sumber, jadi tab Stok per Gudang tetap
@@ -1932,7 +1963,9 @@ if (k === "mattype") return matTypeOf(i);
       </div>
 
       <div className="card">
-        <Tabs tabs={["Katalog", "Stok per Gudang", "BOM", "Pergerakan", "Analisis"]} active={tab} onChange={setTab} labels={{ Katalog: S.tabKatalog, "Stok per Gudang": S.tabWh, BOM: S.tabBom, Pergerakan: S.tabMoves, Analisis: S.tabAnalisis }} />
+        {/* T6-INV8: tab Analisis dihapus; slow moving + dead stock dipindah
+            ke Pergerakan (lihat render di bawah). */}
+        <Tabs tabs={["Katalog", "Stok per Gudang", "BOM", "Pergerakan"]} active={tab} onChange={setTab} labels={{ Katalog: S.tabKatalog, "Stok per Gudang": S.tabWh, BOM: S.tabBom, Pergerakan: S.tabMoves }} />
         <div className="p-4">
           {tab === "Katalog" && (
             <>
@@ -2482,6 +2515,39 @@ if (k === "mattype") return matTypeOf(i);
 
           {tab === "Pergerakan" && (
             <div className="space-y-4">
+              {/* T6-INV5: dua grafik tren - barang masuk & barang keluar. */}
+              <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+                <Card>
+                  <CardHeader title={locale === "en" ? "Goods-in trend" : "Tren Barang Masuk"} subtitle={locale === "en" ? "Value received per month" : "Nilai penerimaan per bulan"} />
+                  <div className="h-44 p-4 pt-0">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <AreaChart data={trendInShown} margin={{ top: 5, right: 5, left: -15, bottom: 0 }}>
+                        <defs><linearGradient id="invInGrad" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="#0d9488" stopOpacity={0.3} /><stop offset="95%" stopColor="#0d9488" stopOpacity={0} /></linearGradient></defs>
+                        <CartesianGrid strokeDasharray="3 3" stroke="#e9eff4" vertical={false} />
+                        <XAxis dataKey="label" stroke="#8aa2b6" axisLine={false} tickLine={false} tick={{ fontSize: 10 }} />
+                        <YAxis stroke="#8aa2b6" axisLine={false} tickLine={false} />
+                        <Tooltip content={<ChartTooltip formatter={(v) => `Rp ${v} M`} />} />
+                        <Area type="monotone" dataKey="nilai" stroke="#0d9488" strokeWidth={2.5} fill="url(#invInGrad)" />
+                      </AreaChart>
+                    </ResponsiveContainer>
+                  </div>
+                </Card>
+                <Card>
+                  <CardHeader title={locale === "en" ? "Goods-out trend" : "Tren Barang Keluar"} subtitle={locale === "en" ? "Value issued per month" : "Nilai pengeluaran per bulan"} />
+                  <div className="h-44 p-4 pt-0">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <AreaChart data={trendOutShown} margin={{ top: 5, right: 5, left: -15, bottom: 0 }}>
+                        <defs><linearGradient id="invOutGrad" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="#e11d48" stopOpacity={0.3} /><stop offset="95%" stopColor="#e11d48" stopOpacity={0} /></linearGradient></defs>
+                        <CartesianGrid strokeDasharray="3 3" stroke="#e9eff4" vertical={false} />
+                        <XAxis dataKey="label" stroke="#8aa2b6" axisLine={false} tickLine={false} tick={{ fontSize: 10 }} />
+                        <YAxis stroke="#8aa2b6" axisLine={false} tickLine={false} />
+                        <Tooltip content={<ChartTooltip formatter={(v) => `Rp ${v} M`} />} />
+                        <Area type="monotone" dataKey="nilai" stroke="#e11d48" strokeWidth={2.5} fill="url(#invOutGrad)" />
+                      </AreaChart>
+                    </ResponsiveContainer>
+                  </div>
+                </Card>
+              </div>
               <Card>
                 <CardHeader title={S.trendT} subtitle={S.trendS} action={
                   <select className="input w-auto py-1.5 text-xs" value={trendYear} onChange={(e) => setTrendYear(e.target.value)} aria-label={locale === "en" ? "Filter year" : "Filter tahun"}>
@@ -2506,9 +2572,9 @@ if (k === "mattype") return matTypeOf(i);
                 {locale === "en" ? "Goods in = stock received · Goods out = stock issued" : "Barang masuk = stok diterima · Barang keluar = stok dikeluarkan"}
               </p>
               <div className="flex flex-wrap items-center gap-2">
-                <label className="text-xs font-medium text-steel-600" htmlFor="mov-wh">{locale === "en" ? "Warehouse" : "Gudang"}</label>
+                <label className="text-xs font-medium text-steel-600" htmlFor="mov-wh">{locale === "en" ? "From / To" : "Dari / Ke"}</label>
                 <select id="mov-wh" className="input w-auto py-1.5 text-xs" value={movWh} onChange={(e) => setMovWh(e.target.value)}>
-                  <option value="Semua">{locale === "en" ? "All warehouses" : "Semua gudang"}</option>
+                  <option value="Semua">{locale === "en" ? "All" : "Semua"}</option>
                   {warehouses.map((w) => <option key={w} value={w}>{w}</option>)}
                 </select>
               </div>
@@ -2597,6 +2663,55 @@ if (k === "mattype") return matTypeOf(i);
                   </tbody>
                 </table>
                 {movPager.bar}
+              </div>
+              {/* T6-INV8: slow moving + dead stock dipindah dari tab Analisis. */}
+              <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+                <Card className="p-5">
+                  <CardHeader title={S.slowT} subtitle={S.slowS} />
+                  <SearchBox
+                    value={slowQ}
+                    onChange={setSlowQ}
+                    placeholder={S.anSearchPh}
+                    ariaLabel={S.anSearchPh}
+                    className="mt-2"
+                  />
+                  <div className="mt-2 max-h-96 space-y-2 overflow-y-auto pr-1">
+                    {slowShown.length === 0 && <p className="py-4 text-center text-sm text-steel-400">{S.slowEmpty}</p>}
+                    {slowShown.map((i) => (
+                      <div key={i.id} className="flex items-center justify-between gap-3 border-b border-steel-100 py-2 text-sm">
+                        <div className="min-w-0">
+                          <p className="truncate font-medium text-navy-900" title={String(i.name)}>{i.name}</p>
+                          <p className="text-xs text-steel-400">Terakhir keluar {fmtTanggal(lastOutOf(i))}</p>
+                        </div>
+                        <Badge tone="amber">{locale === "en" ? "Slow" : "Lambat"}</Badge>
+                      </div>
+                    ))}
+                  </div>
+                </Card>
+                <Card className="p-5">
+                  <CardHeader title={locale === "en" ? "Dead stock" : "Dead Stock"} subtitle={locale === "en" ? "Items with coded reason badges" : "Item dengan badge alasan berkode"} />
+                  {deadSummary.length > 0 && (
+                    <div className="mt-2 flex flex-wrap gap-1.5">
+                      {deadSummary.map((s) => (
+                        <span key={s.reason.code} className="inline-flex items-center gap-1.5 rounded-full border border-steel-200 bg-steel-50 px-2 py-0.5 text-[11px]">
+                          <Badge tone={deadImpactTone(s.reason.impact)}>{locale === "en" ? s.reason.labelEn : s.reason.label}</Badge>
+                          <span className="font-semibold text-navy-900">{s.count}</span>
+                          <span className="text-steel-400">·</span>
+                          <span className="text-steel-500">{fmtRupiah(s.value)}</span>
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                  <div className="mt-2 max-h-80 space-y-1.5 overflow-y-auto pr-1">
+                    {deadRows.length === 0 && <p className="py-4 text-center text-sm text-steel-400">{locale === "en" ? "No dead stock." : "Tidak ada dead stock."}</p>}
+                    {deadRows.map((r, ri) => (
+                      <div key={`${String(r.item ?? "")}-${ri}`} className="rounded-lg border border-steel-100 px-2.5 py-1.5 text-xs">
+                        <p className="font-medium text-navy-900">{String(r.item ?? "-")}</p>
+                        <p className="text-steel-500">{String(r.reason ?? "-")} · {fmtRupiah(Number(r.value || 0))}</p>
+                      </div>
+                    ))}
+                  </div>
+                </Card>
               </div>
             </div>
           )}
@@ -3090,7 +3205,7 @@ if (k === "mattype") return matTypeOf(i);
                 {[...MAT_TYPES].map((m) => <option key={m} value={m}>{matLabel(m)}</option>)}
               </select>
             </Field>
-            <Field label={locale === "en" ? "Sold retail (conversion)?" : "Dijual eceran (konversi)?"} hint={locale === "en" ? "If yes, fill UOM2 + conversion below" : "Jika ya, isi satuan eceran + konversi di bawah"}>
+            <Field label={locale === "en" ? "Eceran" : "Eceran"} hint={locale === "en" ? "If yes, fill UOM2 + conversion below" : "Jika ya, isi satuan eceran + konversi di bawah"}>
               <select className="input" value={String((form as Record<string, unknown>).eceran ?? "false")} onChange={(e) => setF("eceran", e.target.value === "true")}>
                 <option value="false">Tidak — satuan tunggal</option>
                 <option value="true">Ya — eceran + konversi</option>
@@ -3109,6 +3224,8 @@ if (k === "mattype") return matTypeOf(i);
               <Field label={S.stock0Lbl}><NumInput min={0} className="input" value={form.stock} onChange={(e) => setF("stock", e.target.value)} /></Field>
             )}
             <Field label={S.minLbl}><NumInput min={0} className="input" value={form.minStock} onChange={(e) => setF("minStock", e.target.value)} /></Field>
+            {/* T6-INV3: field "min stok gudang" (minWh) disembunyikan dari form
+                tambah material; minStok global tetap dipakai untuk warning. */}
             <Field label={S.unitLbl}>
               <select className="input" value={form.unit} onChange={(e) => setF("unit", e.target.value)}>
                 {["pcs", "kg", "liter", "meter", "batang", "unit", "roll"].map((u) => <option key={u}>{u}</option>)}
@@ -3156,9 +3273,12 @@ if (k === "mattype") return matTypeOf(i);
                 </button>
               </div>
             </div>
-            <Field label={S.minWhLbl} hint={S.hintMinWh}>
-              <NumInput min={0} className="input" value={form.minWh} onChange={(e) => setF("minWh", e.target.value)} placeholder={S.phMinWh} />
-            </Field>
+            {/* T6-INV3: "min stok gudang" disembunyikan dari form tambah. */}
+            {false && (
+              <Field label={S.minWhLbl} hint={S.hintMinWh}>
+                <NumInput min={0} className="input" value={form.minWh} onChange={(e) => setF("minWh", e.target.value)} placeholder={S.phMinWh} />
+              </Field>
+            )}
             <Field label={S.photoLbl} hint={S.hintPhoto}>
               <div className="flex items-center gap-2">
                 <Camera className="h-4 w-4 shrink-0 text-steel-400" />
