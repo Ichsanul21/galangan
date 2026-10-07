@@ -40,7 +40,8 @@ file utama. D5 (BoQ per nomor surat) SELESAI di sesi lanjutan: skema
 `suratNo`, tabel grouped + expand, export Excel per surat, PDF
 `laporanProyek` per surat + subtotal. F1 (Finance tanggal) SELESAI:
 kolom Dibuat/Diubah di tabel record + tab Riwayat Hapus dari audit log.
-I2 masih butuh klarifikasi client.
+I2 (filter Inventory 2 tingkat) SELESAI: klarifikasi ada di notes.txt,
+strip "perlu perhatian" kini status → dropdown kategori.
 
 Catatan: jumlah status di atas berjumlah 73, bukan 72. Selisih itu sudah ada
 sejak audit awal dan tidak ditutup dengan menebak - penyebabnya sepertinya satu
@@ -343,7 +344,7 @@ download.
 | DK1 | Card mapping slot area dibuat grafikal | **SELESAI** | `Drydock.tsx:702-764`: tile per area, lebar diskalakan per jumlah slot (`:723,:737,:747`), badge jumlah slot (`:742`), terisi (`:751`), kapal berbeda (`:752`), konflik (`:753`). Area tanpa slot tetap digambar (`:718-721`). |
 | DK2 | Peta fasilitas skala panjang (pekerjaan F2) | **SELESAI** (`48368f9`) | `components/FacilityMap.tsx` SVG skala tunggal, pita kapal, outline merah. Keterbatasan yang dulu tercatat - hanya kapal pertama per fasilitas yang digambar lewat `.find()` - sudah ditutup: semua kapal kini digambar satu jalur masing-masing, dan `problems` digabung dari seluruh kapal. Intinya dipindah ke `vesselsForFacility` di `utils/facilityMap.ts` supaya bisa diuji, dengan 8 assertion baru di `scripts/facility-probe.ts`. |
 | I1 | Filter "perlu perhatian" per status, bukan kategori | **SELESAI** | `Inventory.tsx:641` memakai `warnLevelOf(...).level === warnF`; select berlabel "Status" (`:1943-1960`) dengan hitungan live (`:770`); sort pakai `warnRankOf` (`:656`). |
-| I2 | Tombol [jumlah][status] membuka dropdown [jumlah][kategori] | **BELUM** | Nol tombol per-status. Yang ada: dua `<select>` terpisah (`Inventory.tsx:1907-1985`), yaitu Kategori dengan teks breakdown inline (`:1924-1932`), dan Status dengan hitungan (`:1946-1960`), plus chip non-klikabel (`:1970-1983`). Komentar `:1900-1906` menyatakan ini dibalik secara sadar: "baris tombol [jumlah][status] digantikan dropdown kategori". Alasan bisnisnya tidak tercatat. |
+| I2 | Tombol [jumlah][status] membuka dropdown [jumlah][kategori] | **SELESAI** | Client klarifikasi ada di `notes.txt` (revisi 2 & 5 Okt): "filter status perlu perhatian dibuat button berdasarkan status ([jumlah][status]) lalu saat di klik muncul dropdown kategori materialnya". Strip Katalog kini berperingkat STATUS: tombol `[badge][Kritis/Menipis/Berlebih/...]` → flyout berisi kategori di dalam status itu (`[badge][nama kategori]`, urut jumlah). Pilih kategori → `warnF` + `cat` diset sekaligus. Daftar kategori datar dengan campuran badge dihapus. I1 (filter per status) tetap berlaku - I2 adalah drill-down-nya, bukan lawan. |
 | F1 | Semua tabel Finance dapat tanggal plus sort, dan tanggal hapus | **SELESAI** | Kolom Dibuat/Diubah + sort di tabel record: Invoice (sudah ada), Piutang AR, Hutang AP, Jurnal, Aset, Alokasi payroll, Jadwal bayar (dari source invoice/payable), Mutasi Kas. Tab agregat (Kas recap, Buku Besar, Laba Rugi, Neraca) menampilkan catatan sumber terakhir berubah (`latestSrcTs`) karena barisnya dihitung, bukan record. Tab baru **Riwayat Hapus**: daftar hard-delete dari audit log server (`/api/audit?action=delete` per tabel finance) + jejak lokal `activities` dengan aksi "hapus" modul Keuangan. |
 | F2 | Kas Bank, Buku Besar, Neraca, dan Laba Rugi tambah tanggal | **SEBAGIAN** | Keempat punya `HistFilterBar` (mode Semua, Per bulan, Per tanggal, Per tahun di `:156-194`) plus badge as-of (`:3129-3131`, `:3476-3478`, `:3849-3851`, `:3591-3593`). Tapi nol dari keempat punya kolom tanggal per baris di tabel utamanya. Saldo, trial balance, AP AR live, dan LR trial semuanya tanpa tanggal. Klien masih tidak bisa menelusuri satu baris ke tanggal asalnya. |
 
@@ -353,12 +354,12 @@ download.
 
 | # | Item | Kenapa tidak bisa diputuskan sendiri |
 |---|---|---|
-| 1 | **I2** filter Inventory dua tingkat | Permintaan eksplisit yang sebelumnya dibalik. Perlu tahu alasan balikannya sebelum dibalik lagi. |
+| 1 | ~~**I2** filter Inventory dua tingkat~~ | ~~Perlu tahu alasan balikannya~~ Klarifikasi ADA di `notes.txt` revisi 2 & 5 Okt - tidak perlu ditanya lagi. Sudah diimplementasi. |
 | 2 | **D1** hapus "Desain & Class Approval" | Blok itu juga mengunci transisi stage Desain ke Produksi (`ProjectDetail.tsx:257-263`). Perlu tahu apa yang menggantikannya. |
 | 3 | **D8** hapus table risiko | Risk list sudah jadi kartu, tapi matriks 5 kali 5 masih `<table>`. Yang dimaksud yang mana? |
 | 4 | **P8** progres proyek disesuaikan lagi | Target tidak dinyatakan. |
 | 5 | **S2** requirement BAST dan invoice | Sekarang berupa nomor teks wajib, bukan unggah dokumen. |
-| 6 | **I1 versus I2** dua permintaan filter Inventory | I1 (per status) sudah selesai; I2 (tombol plus dropdown) belum dan bertentangan secara UX. |
+| 6 | ~~**I1 versus I2** dua permintaan filter Inventory~~ | Tidak bertentangan: I1 = filter per status; I2 = drill-down status → kategori. Keduanya terpasang. |
 
 ---
 
@@ -427,7 +428,7 @@ download.
     [x] P8 (override status Terlambat) - `32d10c6`
     [x] S2 (BAST/invoice nomor teks) - sudah selesai sebelumnya
     [x] D9 (ganti string) - sudah selesai sebelumnya
-    **Belum:** I2 (filter Inventory dua tingkat, butuh klarifikasi client)
+    [x] I2 (tombol [jumlah][status] → dropdown kategori) - klarifikasi di notes.txt, sesi lanjutan
 
 **Gelombang 5 - kerja skema besar - SEBAGIAN:**
 15. [x] D3 (material WBS terhubung inventori + movements, foto array) - `68ec10d` + `0a65a8f`
@@ -561,9 +562,10 @@ menulis status "Terlambat" tanpa menghormati pilihan user. Solusinya
 field `statusOverride` + `shouldAutoSetLate`/`shouldClearOverride` yang
 menjadi satu sumber untuk Detail dan List.
 
-**Perubahan soal I2:** item ini masih BELUM karena client belum
-memberikan klarifikasi lebih lanjut setelah revisi sebelumnya dibalik
-secara sadar. Perlu tahu alasan balikannya sebelum dibalik lagi.
+**Perubahan soal I2:** klarifikasi client sudah ada di `notes.txt`
+(revisi 2 Okt baris 95, revisi 5 Okt baris 17): tombol per status +
+dropdown kategori di dalamnya. Diimplementasi di sesi lanjutan tanpa
+perlu tanya lagi. I1 dan I2 saling melengkapi, bukan bertentangan.
 
 ---
 
