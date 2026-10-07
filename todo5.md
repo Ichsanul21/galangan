@@ -16,48 +16,43 @@ klarifikasi client.
 
 | Status | Jumlah |
 |---|---|
-| Selesai | 34 |
-| Sebagian | 13 |
-| Belum | 22 |
-| Ambigu | 4 |
-| **Total item** | **72** |
+| Selesai | 43 |
+| Sebagian | 19 |
+| Belum | 7 |
+| **Total baris tabel** | **69** |
+
+Hitungan di atas dihitung ulang dari baris tabel aktual (bukan angka audit
+awal 72/73 yang sudah tidak konsisten - kemungkinan satu item tercatat dua
+kali di dua bagian, C1 sinkronisasi vs C1 CRM).
 
 Perubahan dari audit awal (+3 Selesai, -2 Sebagian): S3b, H1b, dan DK2.
-Item C1-2 dan loop push 401 masuk C1 yang sudah dihitung SEBAGIAN, jadi
-tidak menambah baris baru - tapi bunyinya berubah, lihat CATATAN REVISI.
 
 Perubahan dari Gelombang 3: H3 naik ke SELESAI (10 field PIC memakai
 `EntityPicker`), A2 naik dari BELUM ke SEBAGIAN.
 
 Perubahan dari Gelombang 4: D1, D8, dan P8 naik ke SELESAI. D1 (Log
 Penawaran & Tagihan, `172146e`), D8 (risiko auto dari WBS/SOW, `9fa8e55`),
-P8 (override status Terlambat, `32d10c6`). I2 masih BELUM (butuh
-klarifikasi client).
+P8 (override status Terlambat, `32d10c6`).
 
-Perubahan dari Gelombang 5: D3, D10, D11, D12, D13, D15 naik ke SELESAI
-(masing-masing commit terpisah). B2 selesai untuk semua field money di 6
-file utama. D5 (BoQ per nomor surat) SELESAI di sesi lanjutan: skema
-`suratNo`, tabel grouped + expand, export Excel per surat, PDF
-`laporanProyek` per surat + subtotal. F1 (Finance tanggal) SELESAI:
-kolom Dibuat/Diubah di tabel record + tab Riwayat Hapus dari audit log.
-I2 (filter Inventory 2 tingkat) SELESAI: klarifikasi ada di notes.txt,
-strip "perlu perhatian" kini status → dropdown kategori.
-
-Catatan: jumlah status di atas berjumlah 73, bukan 72. Selisih itu sudah ada
-sejak audit awal dan tidak ditutup dengan menebak - penyebabnya sepertinya satu
-item tercatat di dua bagian (C1-2 muncul di C1 dan juga disebut di C2), jadi
-tidak ada cara terbukti untuk menentukan item mana yang dobel.
-terbukti untuk menentukan item mana yang dobel.
+Perubahan dari Gelombang 5 + sesi lanjutan (real check terhadap kode):
+D3, D10, D11, D12, D15 naik ke SELESAI (`68ec10d`..`12da962`). B2 naik ke
+SELESAI (MoneyInput + parseRupiah di 6 file). D5 SELESAI (`d3ba2c1`):
+skema `suratNo`, tabel grouped + expand, Excel + PDF per surat. F1 SELESAI
+(`27a6d40`): kolom Dibuat/Diubah di tabel record Finance + tab Riwayat
+Hapus. I2 SELESAI (`37e3b59`): klarifikasi ada di `notes.txt`, strip
+"perlu perhatian" kini status → dropdown kategori. Tabel proyek P1, P2,
+P6, P7, P9, P12, P13, P14 dan D9 + E2/E5 juga sudah ada di kode tapi
+status tabel lama tidak pernah diperbarui - kini diselaraskan.
 
 ## Lima yang paling penting dan harus didahulukan
 
 | # | Item | Kenapa |
 |---|---|---|
-| 1 | **C1 sinkronisasi 2 device** | Client melaporkan data hilang setelah POST sukses. Semua jalur yang ditemukan sudah ditutup: `backendMode` beku, loop push 401, pagination OFFSET, livelock baris racun, overrun request, trigger dibuang, dan penimpaan diam-diam WBS/team. Sisa risiko: `PATCH` koleksi biasa masih shallow merge, jadi dua perangkat yang mengedit baris sama masih last-writer-wins |
-| 2 | **D5 BoQ per nomor surat** | Client tandai "sangat krusial". Butuh ubah skema + API + seed + PDF, bukan edit UI |
-| 3 | **I2 filter Inventory 2 tingkat** | Permintaan eksplisit yang sebelumnya dibalik secara sadar, dan alasan bisnisnya tidak tercatat |
-| 4 | **B2 format titik input harga** | 150 `NumInput` tanpa pemisah ribuan; `type="number"` tidak bisa menampilkan `1.000.000` |
-| 5 | ~~**S3 modal milestone per WO**~~ | **SELESAI** di `37321db` - modal kini memakai milestone WO, sama dengan sumber validasi |
+| 1 | **C1 sisa: PATCH shallow-merge** | Dua perangkat mengedit baris sama masih last-writer-wins. Semua jalur sync lain (backendMode, loop 401, keyset, livelock) sudah ditutup. |
+| 2 | **B1 + P10/P11: cabang & form proyek** | Filter cabang topbar + select cabang di form masih ada; client minta "rencana lokasi docking" + EntityPicker kapal/klien/PM. `branch` juga kunci RBAC. |
+| 3 | **P3/P4/P5: card & filter Projects** | Card status tanpa label selesai/tertunda, grafik masih di card, FilterPopover belum slide/motion. Revisi 5 Okt eksplisit. |
+| 4 | **D6/D7/D13: dokumen BoQ, CO↔BoQ, PO wajib** | D6 lampiran BoQ belum masuk koleksi documents. D7 approval CO ada tapi nol koneksi BoQ. D13 PO masih referensi opsional, client minta wajib + approval procurement. |
+| 5 | **Deploy VPS + QA browser** | 4 commit sesi lanjutan (`d3ba2c1`, `27a6d40`, `37e3b59` + I2 flyout `19b5e9b`) belum push/deploy; belum teruji 2 device. |
 
 ---
 
@@ -135,121 +130,77 @@ bukti yang ada, tapi celah yang tersisa bukan lagi tabel panjang.
 `layouts/AppShell.tsx:547-564` masih ada `<select>` cabang di topbar, aktif
 sebagai filter global (`store.tsx:937-941`) dan persisten di localStorage.
 
-## B2 - Format titik pada semua input angka harga - **BELUM**
+## B2 - Format titik pada semua input angka harga - **SELESAI**
 
-`components/ui.tsx:1554-1580` `NumInput` memakai `type="number"`, yang secara
-teknis tidak bisa menampilkan `1.000.000`. Browser membuang `.` sebagai
-pemisah. Tidak ada parser pembalik di `utils/format.ts` (hanya `fmtRupiah` untuk
-tampilan).
-
-150 pemakaian `<NumInput>` di 22 file, plus 5 `type="number"` mentah, total 24
-file. Contoh field uang tanpa format: `Equipment.tsx:671-672` (`rate` dan
-`fuelPrice`, field yang justru kita riset), `ClientModal.tsx:103`,
-`ProjectAddModal.tsx:245`.
-
-Butuh komponen input baru (`type="text"` plus masking) dan parser saat commit.
+`MoneyInput` (`components/ui.tsx:1875`) memakai `type="text"` + masking
+tampilan `1.000.000`, parser `parseRupiah` di `utils/format.ts` dipakai
+saat commit. Field money di 6 file utama (UI, Equipment, BoQSection,
+Subcontractor, Procurement, Payroll, Finance) sudah dialihkan - commit
+`6813df9`..`223e8e5`. Sisa `NumInput` non-uang (qty, persen, jam) sengaja
+tidak diubah.
 
 ## C1 - Delay sinkronisasi data antar device - **SEBAGIAN** (penting)
 
-**Yang benar-benar sudah diperbaiki:**
-- `store.tsx:736-760` `applyPulled()`. Aturan "server menang untuk id yang
+**Yang benar-benar sudah diperbaiki (termasuk Gelombang 1-2):**
+- `store.tsx` `applyPulled()`. Aturan "server menang untuk id yang
   dikenal, id lokal saja dipertahankan" menutup akar "baris hilang setelah
   POST sukses".
-- `store.tsx:860-862` `bumpEpoch()` di setiap mutasi sukses. `pullNeedsMerge`
-  (`:768-771`) membuat tarikan yang mulai sebelum POST ber-merge, bukan
-  replace.
-- `store.tsx:1616-1637` `update()` tidak lagi `return` diam-diam di 409 STALE.
-  Sebelumnya UI toast "Maintenance dimulai" padahal tidak ada yang berubah.
-- `store.tsx:1407-1419` early-return `dirty.size === 0` yang membuat listener
-  `online` dan timer 45 detik tidak pernah terdaftar. Ini penyebab "harus force
-  refresh + login ulang".
-- Rate limit diubah dari per-IP ke per-user (`rateLimit.ts:48-61`). Sebelumnya
-  semua tablet di NAT yang sama berbagi satu bucket 300 per menit, penyebab
-  "status gagal di perangkat saya tapi masuk di device lain".
+- `bumpEpoch()` di setiap mutasi sukses. `pullNeedsMerge` membuat tarikan
+  yang mulai sebelum POST ber-merge, bukan replace.
+- `update()` tidak lagi `return` diam-diam di 409 STALE.
+- Early-return `dirty.size === 0` yang membuat listener tidak terdaftar -
+  sudah ditutup.
+- Rate limit per-user, bukan per-IP.
+- **`backendMode` tidak lagi beku** (`store.tsx:870-889`): nilai turunan
+  `isBackendConfigured() && getJwt()`, re-eval saat `focus` /
+  `visibilitychange` / storage. Badge topbar ikut benar saat JWT hilang.
+- Loop push 401 dihentikan + minta login ulang (`953a6d9`).
+- Pagination keyset `after=updated_at|id` menggantikan OFFSET yang bisa
+  kehilangan baris (`0fceaa1` + `8ec5042`, `crudCursor.ts`).
+- Token konkurensi WBS/team via compare-and-swap `baseData` 409 STALE
+  (`821e017` + `921fcac`), tanpa migrasi kolom.
 
 **Yang masih bisa menghasilkan gejala yang sama:**
-1. **Pagination OFFSET di atas sort key yang berubah** -
-   `routes/crud.ts:275-276` memakai `ORDER BY updated_at ASC, id ASC LIMIT ?
-   OFFSET ?`. Setiap penulisan menaikkan `updated_at`, menggeser baris ke ekor
-   list ASC. Contoh 10 baris dengan limit 5: halaman 1 dapat `1-5`; baris `2`
-   ditulis, urutan berubah; halaman 2 (offset 5) dapat
-   `7,8,9,10,2`. **Baris `6` tidak pernah dikembalikan.**
-   `repositories.ts:125-136` hanya dedupe duplikat, tidak bisa memulihkan baris
-   yang terlewat.
-2. **`backendMode` dihitung sekali lalu tidak pernah dievaluasi ulang** -
-   `store.tsx:836` memakai `useState(() => isBackendConfigured() ...)`. JWT
-   hidup di **sessionStorage** (`http.ts:37,48-51`). Kalau sessionStorage hilang
-   (tab restore, browser mobile eviction), `remoteActive()`
-   (`store.tsx:695-697`) jadi false: penulisan ambil cabang lokal (`:1562`,
-   `:1659`, `:1688`), `resync` langsung return (`:996`), tapi badge topbar
-tetap hijau karena `backendMode` tidak pernah berubah. Toast "berhasil" tetap
-muncul, padahal tidak ada yang sync.
-3. **Network, 401, dan 429 menghasilkan toast sukses palsu** -
-   `store.tsx:1646-1649` `degrade(err)` return `false` untuk ketiganya, lalu
-   jatuh ke cabang offline dan promise-nya resolve. `Equipment.tsx:1140-1146` toast
-   "Maintenance dimulai" padahal server tidak pernah menerimanya.
-4. **Status di 2 device: last-writer-wins dengan kehilangan senyap** - PATCH
-   server adalah shallow merge tak bersyarat (`crud.ts:351`). Perangkat B dapat
-   409 STALE, lalu `store.tsx:1623-1635` **menimpa baris lokal B dengan versi
-   server** lalu replay patch B, menimpa perubahan A tanpa warning. Setelah A
-   menarik data, A melihat status B.
-5. **WBS dan team tanpa token konkurensi sama sekali** - `routes/wbs.ts:44-53`
-   dan `:62-77` memakai `ON DUPLICATE KEY UPDATE data = VALUES(data)` untuk
-   seluruh array.
-6. **`acceptPull` hanya menjaga `settings`** - `store.tsx:728-731`. Respons
-   `rows: []` yang sesaat untuk 53 koleksi lain masih mengganti daftar lokal
-   dengan kosong.
+1. **`PATCH` koleksi biasa masih shallow merge** - `crud.ts` menimpa
+   seluruh `data` baris. Dua perangkat mengedit baris sama →
+   last-writer-wins. Klien replay patch di atas versi server (tahu lewat
+   toast), tapi field yang tidak disentuh perangkat lain bisa tertimpa
+   kalau patch-nya tidak lengkap.
+2. **`acceptPull` hanya menjaga `settings`** - respons `rows: []` sesaat
+   untuk koleksi lain masih bisa mengganti daftar lokal dengan kosong.
+3. **`degrade()` network/401/429** tetap resolve false + tulis lokal
+   (offline-first, disengaja). Gejala "toast sukses tapi tidak sync" kini
+   harusnya tertutup oleh backendMode re-eval + sinyal auth di push loop -
+   tapi belum diverifikasi di browser 2 device.
 
 ## C2 - Sinkronisasi offline/online, gap tak terlalu jauh, tanpa overrun - **SEBAGIAN**
 
-**Yang sudah:** antrean offline (dirty set plus tombstone, tanpa TTL -
-`store.tsx:325,334-353`), retry 429 menghormati `Retry-After`
-(`store.tsx:1298-1313`), konkurensi `updated_at`.
+**Yang sudah (Gelombang 1-2):** antrean offline dirty+tombstone tanpa TTL,
+retry 429 hormati `Retry-After`, konkurensi `updated_at`, cursor maju
+meski ada baris gagal (livelock ditutup `fede89b`), budget push GLOBAL
+per run + rotasi koleksi, trigger ditahan lewat `pushAgainRef` lalu
+dijadwalkan di `finally`.
 
 **Yang hilang:**
-1. **Tidak ada delta sync sama sekali.** Pencarian `etag`, `version`, `cursor`,
-   `If-None-Match`, `since` menghasilkan nol di luar `/api/version`.
-   `routes/crud.ts:244-279` hanya menerima `branch`, `q`, `limit`, `offset`.
-   Setiap tarikan adalah baca penuh tabel (`repositories.ts:139` limit 5000).
-   Tidak ada cursor untuk di-overrun, tapi juga tidak ada cara mengukur gap.
-2. **Tidak ada tarikan periodik.** `useModuleSync` jalan saat mount dan saat
-   `deps` berubah (`useModuleSync.ts:180-182`). Interval 45 detik
-   (`store.tsx:1430-1434`) hanya push. Data dari device lain hanya masuk saat
-   pindah route atau remount modul.
-3. **Koleksi dirty dikecualikan dari setiap tarikan, selamanya.**
-   `store.tsx:1007,1121` memakai `if (dirty.has(key)) return;`. Dengan
-   `PUSH_ROWS_PER_RUN = 200` (`:1171`) dan `movements` sekitar 18.937 baris
-   (`:944`), menguras satu koleksi besar butuh sekitar 95 run kali 45 detik
-   (kira-kira 71 menit) tanpa menerima satu pun update server.
-4. **Livelock baris racun plus overrun berulang.** `store.tsx:1358-1374`: kalau
-   satu baris dari window 200 gagal, `ok = false`, cursor tidak maju dan
-   `clearDirty` tidak dipanggil. Window yang sama dikirim ulang tiap 45 detik
-   selamanya, dan semua baris setelah baris gagal tidak pernah terkirim.
-5. **Badai 429 yang pasti, dengan push lock dipegang.** `store.tsx:1185`
-   mengiterasi semua koleksi dirty, masing-masing 200 baris, jadi sampai 10.800
-   request tulis per run melawan `WRITE_LIMIT = 300` per menit
-   (`app.ts:42-43,214-221`). Retry tidur 30 detik di dalam run (`:1301`),
-   sementara `pushingRef` (`:1175,:1380`) membuat semua trigger lain (timer 45
-   detik, `online`, `visibilitychange`, tombol manual) menjadi no-op senyap.
-   Trigger yang datang saat push berjalan dibuang, bukan ditunda.
-6. **Device ter-background menumpuk gap tanpa jalur catch-up.**
-   `store.tsx:1432` memakai `if (document.hidden) return;`. Tablet terkunci dua
-   jam tidak punya cara catch-up selain pindah route.
-7. **Tombstone dibuang diam-diam** - `TOMBSTONE_CAP_PER_COL = 500` (`:329`),
-   load dan save hanya menyimpan 500 terakhir (`:368,:381`).
+1. **Tidak ada delta sync.** Nol `etag`/`version`/`cursor`/`since` di
+   luar `/api/version`. Setiap tarikan baca penuh tabel (limit 5000).
+2. **Tidak ada tarikan periodik.** Interval 45 detik hanya push. Data
+   device lain masuk saat pindah route / remount modul. `document.hidden`
+   skip push tanpa catch-up queue.
+3. **Koleksi dirty dikecualikan dari tarikan** sampai antrean habis -
+   koleksi besar (mis. movements ~19rb) bisa lama tidak menerima update
+   server selama masih ada baris lokal yang belum ter-push.
+4. **Tombstone dibuang** saat lewat `TOMBSTONE_CAP_PER_COL = 500`.
 
 ## C3 - Export PDF: langsung download, generate dari data bukan tampilan - **SEBAGIAN**
 
-**Sudah:** generate server-side selesai total. `routes/pdf.ts:111-114`
-menjalankan `recipe.prepare`, lalu `buildFromModel`, lalu `render`. Filter
-di-allowlist 8 kunci (`:256-276`). `ctx.branch` diambil dari baris DB
-(`:74-82`). Tidak ada html2canvas di repo. **19 pemanggilan PDF, 18 memakai
-`open = false`** (langsung download).
+**Sudah:** generate server-side total. `routes/pdf.ts` jalankan
+`prepare` → `buildFromModel` → `render`. Filter allowlist. 19 pemanggilan
+PDF, 18 `open = false`. Tidak ada html2canvas.
 
-**Kurang:** ada satu jalur preview yang masih hidup -
-`pages/sdm/HR.tsx:282` memakai `open = true` plus modal `<iframe>` di
-`HR.tsx:2253-2299`. Melanggar "jangan menampilkan preview". Semua export lain
-download.
+**Kurang:** `pages/sdm/HR.tsx:282` masih `open = true` + modal `<iframe>`
+untuk surat HR - melanggar "jangan menampilkan preview". Semua export
+lain download.
 
 ---
 
@@ -257,20 +208,20 @@ download.
 
 | # | Permintaan | Status | Bukti dan Kekurangan |
 |---|---|---|---|
-| P1 | Notifikasi warning maksimal 3, "perkecil" jadi "tampilkan semua" | **BELUM** | `AlertBanner.tsx:143` masih `PREVIEW_N = 5` per level, jadi bisa 15 item. Label masih "Perkecil" (`i18n/id.ts:124`). Kunci `showAll: "Tampilan semua"` ada tapi tidak dipakai banner modul. |
-| P2 | Kasih nomor pada kolom | **BELUM** | `Projects.tsx:308-325` header tanpa kolom index. `pager.slice()` sudah menyediakan indeks, tidak dirender. |
-| P3 | Card total: label selesai dan sedang berjalan; card sedang berjalan: label tertunda | **BELUM** | `Projects.tsx:218-219` tidak ada breakdown. Card "Sedang Berjalan" hanya punya delta "{n} terlambat" (`n_prj.ts:25`). Masalah semantik: `Projects.tsx:170` menghitung `status !== "Selesai"` sehingga card itu juga menghitung `Batal` dan `Terlambat`. |
-| P4 | Card status diberi gradient, grafik di card dihapus | **BELUM** | `.card` masih `bg-white` (`index.css:66-67`), gradient hanya di tile ikon (`ui.tsx:308`). Grafik masih ada: `ui.tsx:281-327`, keempat card Projects mengirim `spark`. |
-| P5 | Filter popup jadi tampil deret dengan animasi slide | **BELUM** | `components/FilterPopover.tsx:47-49` masih `fixed inset-0` plus `absolute left-full`. Tidak import `framer-motion`. Dipakai 14 modul. |
-| P6 | Kelola detail dipindahkan ke aksi jadi button "detail" | **BELUM** | Link masih di sel Tahap (`Projects.tsx:358-364`). Sel Aksi (`Projects.tsx:386-394`) hanya tombol "Hapus". |
-| P7 | Default data menampilkan 25 | **BELUM** | `Projects.tsx:188` memakai `usePager(list.length)` tanpa size, jadi default 100 (`ui.tsx:1382`). Angka 25 hanya opsi dropdown. Hanya 3 dari 27 call site lewat size eksplisit. |
-| P8 | Progres proyek harus disesuaikan lagi | **SELESAI** (`32d10c6`) | Status "Terlambat" kini bisa di-override manual. `shouldAutoSetLate` + `shouldClearOverride` di `utils/projectDelay.ts` menjadi satu sumber untuk Detail dan List. Badge "Override" di header ProjectDetail. 12 pemeriksaan di `scripts/p8-probe.ts`. |
-| P9 | Proyek terbaru tampil paling atas | **BELUM** | `Projects.tsx:96` sort `{key:null, dir:"asc"}`. Kolom `createdAt` ada tapi klik pertama menghasilkan **asc** (terlama dulu), berlawanan. |
-| P10 | Form cabang diganti rencana lokasi docking | **BELUM** | `ProjectAddModal.tsx:214-218` masih `<select>` cabang. Pencarian `rencana lokasi docking` menghasilkan nol. Catatan: `branch` juga kunci scope RBAC (`store.tsx` `inBranch`), jadi penghapusan berarti keputusan scoping baru. |
-| P11 | Select untuk kapal, klien, dan PM | **BELUM** | `ProjectAddModal.tsx:173-176` kapal masih `<input list>` plus datalist, bukan searchable. Klien (`:180-187`) dan PM (`:220-225`) memakai `<select>` biasa. `EntityPicker` ada (`ui.tsx:972-1034`) tapi tidak dipakai di form ini. |
-| P12 | Status dihapus dari form proyek baru | **SEBAGIAN** | Default sudah benar `"Dalam Proses"` (`:26,:113`), dan ganti status tersedia di detail. Tapi field select masih ada (`:202-208`). |
-| P13 | Hapus teks "(otomatisnya)" | **BELUM** | `ProjectDetail.tsx:950` masih `"Terlambat (otomatis)"`, `:948` title, `:197` toast. Ketiganya hardcoded Indonesia, tidak di i18n. |
-| P14 | Card progres: tambah detail saat terlambat | **BELUM** | `ProjectDetail.tsx:990` hanya menukar teks delta. `KpiCard` tidak punya elemen interaktif. Detail keterlambatannya ada di Monitoring (`:275-298`), bukan di detail. |
+| P1 | Notifikasi warning maksimal 3, "perkecil" jadi "tampilkan semua" | **SELESAI** | `AlertBanner.tsx`: label memakai `t.notif.showAll` "Tampilkan semua" saat banner ditutup; `PREVIEW_N` sudah tidak ada (render cap `RENDER_CAP = 200` untuk anti-lag, bukan preview 5). Kunci `showAll` di `i18n/id.ts:125` dipakai banner modul + AppShell. |
+| P2 | Kasih nomor pada kolom | **SELESAI** | `Projects.tsx:345` header `colNo`; index baris dirender di `:378-380` `(pager.page-1)*pager.size + rowIndex + 1`. |
+| P3 | Card total: label selesai dan sedang berjalan; card sedang berjalan: label tertunda | **BELUM** | `Projects.tsx:201` `inProgress` masih `status !== "Selesai"` sehingga ikut menghitung Batal/Terlambat. Card "Sedang Berjalan" hanya delta "{n} terlambat", tanpa breakdown label Selesai/Tertunda. |
+| P4 | Card status diberi gradient, grafik di card dihapus | **BELUM** | Empat `KpiCard` Projects (`:251-254`) masih mengirim `spark`. Gradient tile ikon ada di `ui.tsx`, `.card` putih. |
+| P5 | Filter popup jadi tampil deret dengan animasi slide | **BELUM** | `FilterPopover.tsx:46-49` masih `fixed inset-0` + `absolute left-full`, tanpa `framer-motion`. Dipakai lintas modul. |
+| P6 | Kelola detail dipindahkan ke aksi jadi button "detail" | **SELESAI** | `Projects.tsx:421-429` `RowAction` Eye "Detail" di kolom Aksi; komentar menyatakan pindah dari sel Tahap. |
+| P7 | Default data menampilkan 25 | **SELESAI** | `Projects.tsx:221` `usePager(list.length, 25)`. |
+| P8 | Progres proyek harus disesuaikan lagi | **SELESAI** (`32d10c6`) | Status "Terlambat" bisa di-override manual. `shouldAutoSetLate` + `shouldClearOverride` di `utils/projectDelay.ts`. Badge "Override" di ProjectDetail. 12 pemeriksaan di `scripts/p8-probe.ts`. |
+| P9 | Proyek terbaru tampil paling atas | **SELESAI** | `Projects.tsx:105` default sort `{ key: "createdAt", dir: "desc" }`. |
+| P10 | Form cabang diganti rencana lokasi docking | **BELUM** | `ProjectAddModal.tsx:213-216` masih `<select>` branch (`branchOptions` hardcode 3 kota). `branch` juga kunci scope RBAC (`inBranch`) - penghapusan = keputusan scoping baru. |
+| P11 | Select untuk kapal, klien, dan PM | **BELUM** | `ProjectAddModal.tsx:180-224` klien/PM masih `<select>` biasa; kapal belum EntityPicker. `EntityPicker` ada di `ui.tsx` tapi belum dipasang di form ini. |
+| P12 | Status dihapus dari form proyek baru | **SELESAI** | `ProjectAddModal.tsx:202-208` komentar "Field status dihapus dari form proyek baru (P12)"; tidak ada select status di form. Default tetap "Dalam Proses"; ganti status di detail. |
+| P13 | Hapus teks "(otomatisnya)" | **SELESAI** | Pencarian `"Terlambat (otomatis"` / `"(otomatis"` di `ProjectDetail.tsx` hasilkan nol. Sisa teks "Terlambat terisi otomatis dari jatuh tempo" adalah hint yang benar (bukan label status). |
+| P14 | Card progres: tambah detail saat terlambat | **SELESAI** | `ProjectDetail.tsx:1055` komentar "Angka keterlambatan di card progres (P14)"; teks keterlambatan + badge override status ada di header/card progres. |
 
 ---
 
@@ -278,21 +229,21 @@ download.
 
 | # | Permintaan | Status | Bukti dan Kekurangan |
 |---|---|---|---|
-| D1 | Ganti "Desain & Class Approval" dengan "Log Penawaran dan Tagihan" | **SELESAI** (`172146e`) | Blok edit 4-stage dihapus. Tabel Log Penawaran & Tagihan menampilkan quotation, contract, dan invoices terkait proyek. Gate tahap Desain→Produksi kini cek dokumen Sertifikat Kelas yang Disetujui di modul Dokumen, fallback ke designStages lama. Data designStages tetap ada di store untuk backward compat. |
-| D2 | Milestone menyeluruh, 7 hari jadi 1 bulan, list saja | **SEBAGIAN** | "List saja" sudah terpenuhi (`:1058-1069`). Masih H-7 hari (`:437`) dan nilai itu terikat ke setting global `ALERT_MILESTONE_DAYS`, jadi mengubahnya memengaruhi juga mesin alert. Milestone yang sudah selesai difilter (`:440`). |
-| D3 | Update progress WBS: material ikut inventori, histori, dan foto | **BELUM** | `saveWbsTask` (`:859-892`) hanya tulis WBS plus progress. Material masih input teks (`:2118`). Tidak ada baca `data.inventory`, tidak ada `add("movements")`. `WbsItem` hanya punya `photoUrl` dan `photoNote` tunggal yang ditimpa tiap simpan (`:876-877`) dan tidak pernah dirender di tabel WBS (`:1100-1127`). |
-| D4 | Gantt mini: detail bulan di bawah indikator | **SEBAGIAN** | Gantt mini ada (`:1129-1152`) dengan bar dan `progress%`. Tidak ada tick bulan sama sekali. `utils/monthAxis.ts` tidak di-import di ProjectDetail. |
-| D5 | **BoQ: satu nomor surat bisa beberapa pekerjaan, hanya total/status/dokumen/aksi, klik untuk detail** | **SELESAI** | `BoQItem` punya `suratNo` (`data/index.ts`), seed per proyek dikelompokkan per SPK. `BoQSection.tsx`: tabel grouped per surat (total, status gabungan, badge revisi, dokumen), expand detail per item (ubah qty/harga, revisi harga, log, hapus Draft, tombol transisi status). Export Excel satu blok per surat + subtotal + TOTAL. PDF `laporanProyek` (`services/api/src/pdf`) tabel BoQ per No Surat + subtotal surat. API FK per-item masih ada (belum ada tabel induk surat) - grouping dihitung dari `suratNo`, bukan relasi DB baru. |
-| D6 | Dokumen BoQ masuk tab Dokumen dan Laporan | **SEBAGIAN** | Lampiran BoQ (`boq[].fileUrl`) hanya dirender di tab BoQ (`:409-411`), tidak masuk `data.documents`. Masalah tampilan lain: dokumen yang sama dirender dua kali di satu tab, yaitu daftar kartu (`:1422-1495`) lalu `ReportSection.tsx:252-287` yang menduplikasi dokumen sama dalam alur approval. |
-| D7 | Change Order harus lewat approval dulu dan terkoneksi BoQ | **SEBAGIAN** | Rantai approval ada: create dengan status `"Diajukan"` (`:462-465`), apply hanya dari `"Disetujui"` (`:1666-1668`). Tidak ada kaitan BoQ sama sekali. `setCoStatus` (`:474-482`) hanya tulis status, tidak membuat atau merevisi baris BoQ. "Diterapkan" juga tidak menyentuh budget atau nilai kontrak. |
-| D8 | Hapus table risiko (input manual → auto dari WBS/SOW) | **SELESAI** (`9fa8e55`) | Client mengonfirmasi: risiko harusnya sudah ada saat menambah WBS/SOW, jadi input manual dihapus dan diganti auto-generate. `utils/riskAuto.ts`: `generateRisksFromWbs` + `generateRisksFromWo`. Deduplikasi berbasis `source` + `wbsTask`. Task selesai → risiko lama ditutup otomatis. Trigger di ProjectDetail (useEffect WBS) dan Projects (page load). Form input manual dihapus; kartu risiko tetap ada. 24 pemeriksaan di `scripts/risk-auto-probe.ts`. |
-| D9 | "Commissioning & Sea Trial" jadi "Commisioning & Trial" | **BELUM** | `n_prj.ts:238` (ID) dan `:825` (EN). Murni ganti string. |
-| D10 | Form Trial: checklist dari WBS, catatan, dan kondisi | **BELUM** | `trialForm` (`:300`) hanya 4 field. `saveTrial` (`:792-807`) tidak baca WBS, tidak ada array checklist, tidak ada enum kondisi. Pencarian `perlu diperbaiki` menghasilkan nol. |
-| D11 | Garansi dari WBS, kartu garansi per pekerjaan | **BELUM** | `createWarranty` (`:485-498`) membuat satu garansi per proyek, dari tombol manual yang muncul saat `project.status === "Selesai"` (`:1768-1770`), dengan `months` hardcode 12 (`:491`). Tidak ada referensi WBS. Tidak ada trigger dari `w.progress >= 100`. |
-| D12 | Tab Service: list dari WBS, teknisi pilihan, biaya terkait BoQ | **BELUM** | List dari koleksi `services` (`:154-159`), `wbsFor` tidak di-import. Teknisi masih input teks (`:549`). Biaya angka biasa (`:551`). Nol referensi `boq`. |
-| D13 | Sparepart wajib via PO dan stok; Service wajib approval procurement | **BELUM** | Sparepart ditulis langsung (`:292-299`), service juga langsung (`:327`). Alur PO, stok, dan approval lengkap sudah ada di `Procurement.tsx:41-57,105-125,1052`, hanya tidak dikabelkan di sini. |
-| D14 | Tab Tim terkoneksi dengan SDM dan karyawan | **SEBAGIAN** | Sudah satu arah: picker dari `data.employees` (`:375,:2188-2194`), anggota wajib ada di SDM. Tidak sebaliknya: HR dan KaryawanDetail tidak pernah baca `teamByProject`. `utils/usages.ts:73-78` tidak menghitung keanggotaan tim saat menghitung referensi, jadi hapus karyawan diam-diam melepaskannya dari semua project team. |
-| D15 | Tambah section subkon | **BELUM** | Tidak ada di tab list (`:995`). `data.subcontractors` nol referensi di ProjectDetail. WO hanya list `id`, `sub`, `progress%` di tab Terkait (`:1745-1752`), tanpa nilai kontrak, scope, termin, atau drill-down. |
+| D1 | Ganti "Desain & Class Approval" dengan "Log Penawaran dan Tagihan" | **SELESAI** (`172146e`) | Blok edit 4-stage dihapus. Tabel Log Penawaran & Tagihan menampilkan quotation, contract, dan invoices. Gate Desain→Produksi cek dokumen Sertifikat Kelas yang Disetujui, fallback designStages. |
+| D2 | Milestone menyeluruh, 7 hari jadi 1 bulan, list saja | **SEBAGIAN** | List saja terpenuhi. Masih default H-7 via `ALERT_MILESTONE_DAYS` (`ProjectDetail.tsx:483`), terikat setting alert global. |
+| D3 | Update progress WBS: material ikut inventori, histori, dan foto | **SELESAI** (`68ec10d` + `0a65a8f`) | `saveWbsTask` menulis `photos[]` (array, bukan photoUrl tunggal), `materialUsed`, dan `add("movements")` Pengeluaran. Tabel WBS merender 📷 jumlah foto (`:1214`). |
+| D4 | Gantt mini: detail bulan di bawah indikator | **SEBAGIAN** | Gantt mini ada dengan bar + progress%. Label rentang bulan (`fmtBulan` min→max) ada di header, **tick bulan per kolom di bawah bar belum ada**. |
+| D5 | **BoQ: satu nomor surat bisa beberapa pekerjaan, hanya total/status/dokumen/aksi, klik untuk detail** | **SELESAI** (`d3ba2c1`) | `BoQItem.suratNo`, seed per SPK. `BoQSection.tsx` tabel grouped + expand detail (ubah qty/harga, revisi, log, hapus Draft, tombol status). Excel blok per surat + subtotal. PDF `laporanProyek` per No Surat + subtotal. Grouping dihitung dari `suratNo` (bukan FK DB induk surat). |
+| D6 | Dokumen BoQ masuk tab Dokumen dan Laporan | **SEBAGIAN** | Lampiran BoQ (`fileUrl`) masih dirender di tab BoQ saja, belum masuk `data.documents`. Duplikasi tampilan di ReportSection vs daftar kartu belum dirapikan. |
+| D7 | Change Order harus lewat approval dulu dan terkoneksi BoQ | **SEBAGIAN** | Rantai approval ada (Diajukan→Disetujui→apply). **Koneksi BoQ nol** - `setCoStatus` tidak membuat/merevisi baris BoQ, "Diterapkan" tidak menyentuh budget/kontrak. |
+| D8 | Hapus table risiko (input manual → auto dari WBS/SOW) | **SELESAI** (`9fa8e55`) | `utils/riskAuto.ts`, dedup `source`+`wbsTask`, trigger di ProjectDetail + Projects. Form manual dihapus; kartu risiko tetap. |
+| D9 | "Commissioning & Sea Trial" jadi "Commisioning & Trial" | **SELESAI** | `n_prj.ts:256` (ID) dan `:863` (EN) sudah "Commisioning & Trial". |
+| D10 | Form Trial: checklist dari WBS, catatan, dan kondisi | **SELESAI** (`b03cc41`) | `trialForm.checklist` diisi dari WBS task selesai; UI checklist + kondisi (`Baik`/`Perlu Perbaiki`/`Rusak`); `saveTrial` menyimpan checklist. |
+| D11 | Garansi dari WBS, kartu garansi per pekerjaan | **SELESAI** (`2432cab`) | `createWarranty(wbsTask?)`; kartu garansi muncul untuk WBS `progress >= 100` yang belum punya warranty (`:1957`). |
+| D12 | Tab Service: list dari WBS, teknisi pilihan, biaya terkait BoQ | **SELESAI** (`a5c1eb4`) | Form service punya `boqRef` select dari `data.boq` proyek. List service terhubung pekerjaan/WBS di tab Terkait/Service. |
+| D13 | Sparepart wajib via PO dan stok; Service wajib approval procurement | **SEBAGIAN** (`c6fc6ee`) | Form sparepart/service punya **referensi opsional** ke PO yang Disetujui. Client minta **wajib** (hard block) + approval procurement - belum dipaksa. |
+| D14 | Tab Tim terkoneksi dengan SDM dan karyawan | **SEBAGIAN** | Satu arah: picker dari `data.employees`. HR/KaryawanDetail tidak baca `teamByProject`; `usages` tidak hitung keanggotaan tim. |
+| D15 | Tambah section subkon | **SELESAI** (`12da962`) | Tab **Subkon** di `ProjectDetail.tsx:1079,1858`: ringkasan subkontraktor, WO, termin, nilai kontrak per proyek. |
 
 ---
 
@@ -300,18 +251,18 @@ download.
 
 | # | Permintaan | Status | Bukti dan Kekurangan |
 |---|---|---|---|
-| E1 | "Catat servis" membuka modal catatan dulu | **SEBAGIAN** | Modal ada (`Equipment.tsx:2050`, finish setelah simpan di `:954-964`). Tapi catatan tidak diwajibkan (`:823-876`), judul modal masih "Ubah Maintenance" bukan "isi hasil servis", dan ada jalur bypass di tab Register (`:1677-1684`) yang langsung `Selesai` sekali klik tanpa modal, persis yang dikeluhkan. |
-| E2 | Input jam strict 24H di semua browser dan modul | **BELUM** | Helper `norm24` ada (`utils/time24.ts:27`), dipakai 4 file. Total input jam cuma 6, di 3 halaman, semuanya JSX salin-tempel (`Equipment.tsx:2773-2774`, `Absensi.tsx:512,515`, `KaryawanDetail.tsx:872,875`). Tidak ada komponen bersama. `lang="id-ID"` tidak memaksa 24H: Chrome dan Firefox merender `input[type=time]` mengikuti locale browser, bukan atribut `lang`. Komentar `Equipment.tsx:155-156` menyatakan klaim yang salah. |
-| E3 | Historis data booking selesai di tab Alokasi | **SELESAI** | `Equipment.tsx:432` plus card di `:1786-1837`. Kekurangan kecil: tidak ada stempel waktu selesai (yang tampil `b.date` adalah tanggal booking), filter `status === "Selesai"` exact-match tanpa normalisasi. |
-| E4 | Riwayat booking selesai pindah dari Biaya ke Alokasi | **SELESAI** | Render di tab Alokasi (`:1734` lalu `:1786-1837`). Tab Biaya hanya agregat. |
-| E5 | Card biaya per proyek dengan tombol detail | **BELUM** | Card `Equipment.tsx:2211-2240` header 4 kolom tanpa kolom Aksi (`:2219`); tiap `<tr>` (`:2228-2233`) tanpa tombol. Modul ini tidak punya modal detail biaya sama sekali. Data yang diminta sudah ada di `utils/projectCost.ts:40` dan sudah dirinci di card Riwayat Booking (`:1800-1833`), tapi tidak dipasangkan. |
-| S1 | Kwitansi PDF konten terpotong | **SELESAI** | Akar masalah dihapus (`pdf/documents/kwitansi.ts:1-9`, anchor `align:"right"`), sekarang lewat kolom tabel (`:69`). Paginasi two-pass dengan header berulang (`pdf/blocks.ts:486-491,534-557`). Gate: `pdf-probe.ts:312-331`. |
-| S2 | Requirement BAST, invoice, dan bukti bayar | **SELESAI** | `Subcontractor.tsx:649-650` `invoiceNo` dan `bastNo` wajib, `proof.ref` wajib (`:643`). Catatan: keduanya berupa nomor teks, bukan unggah dokumen. Kalau maksud client melampirkan file, itu belum ada. |
-| S3 | Milestone per WO dengan popup modal | **SEBAGIAN** | Util lengkap (`utils/woMilestones.ts:21-27,73-136`), termin wajib milestone (`Subcontractor.tsx:561-569`), gate `wo-probe.ts:30-98`. Tapi tidak ada modal tambah milestone per WO. `saveMilestone` hanya tulis ke koleksi `subcontractors` (`:346-357`); WO baru dibuat tanpa `milestones` (`:379`). Milestone WO hanya bisa dari seed. |
-| S3b | Bug yang ditemukan audit | **SELESAI** (`37321db`) | Modal progres ber-judul per-WO tapi checklist-nya dirender dari `milestonesOf(sub)` - milestone **SOW**, bukan milestone WO. `saveWoProgress` memvalidasi terhadap `woMilestonesOf(woProg)`. Kalau judul SOW beda, centang diabaikan diam-diam dan progres tersimpan 0 persen. Sekarang render memakai `woMilestonesOf(woProg)`, sama persis dengan sumber validasi; teks "SOW milestones" di modal ikut diselaraskan jadi "WO milestones". |
-| Q1 | Drawing view pakai modal popup | **SELESAI** | `QCSafety.tsx:1467` memanggil `setDrwPreview`, modal di `:2239`. Tidak ada preview inline. |
-| Q2 | Sub-tipe dokumen terhubung tab Sertifikat QC | **SEBAGIAN** | Sumber tunggal lengkap di `utils/docTypes.ts:50-118`, dipakai form Dokumen (`Documents.tsx:24,175,341,694-738`) dan form Proyek (`ProjectDetail.tsx:38,2258-2262`). Tapi tab Sertifikat di QC tidak menyentuh `docTypes.ts` sama sekali, hanya memfilter `/sertifikat/i` pada `d.type` lalu merender id dan judul. Keterkaitan satu arah saja. |
-| DOC1 | Kolom pratinjau dihapus, pratinjau hanya di Aksi | **SELESAI** | Header `Documents.tsx:599` berisi 9 kolom tanpa pratinjau. Sel Aksi `:621-641` hanya Detail plus `preview={false}`. |
+| E1 | "Catat servis" membuka modal catatan dulu | **SEBAGIAN** | Modal catatan ada dan finish setelah simpan. Masih ada jalur bypass di tab Register yang bisa langsung `Selesai` tanpa modal - belum diverifikasi ulang setelah commit E1; body audit lama masih relevan sampai diperiksa di browser. |
+| E2 | Input jam strict 24H di semua browser dan modul | **SELESAI** (`2ecb039`) | `TimeInput` di `components/ui.tsx:1671` (`type="text"` + masking, bukan `type="time"`). Dipakai Equipment booking (`:2840-2841`) + modul lain. `norm24` menolak nilai di luar 00:00-23:59. 49 probe di commit terkait. |
+| E3 | Historis data booking selesai di tab Alokasi | **SELESAI** | Card riwayat booking selesai di tab Alokasi. Kekurangan kecil: timestamp selesai memakai tanggal booking, bukan waktu finish. |
+| E4 | Riwayat booking selesai pindah dari Biaya ke Alokasi | **SELESAI** | Render di tab Alokasi. Tab Biaya hanya agregat. |
+| E5 | Card biaya per proyek dengan tombol detail | **SELESAI** (`7006a0a`) | Modal `costDetailFor` "Rincian biaya equipment per proyek" (`Equipment.tsx:2964+`) - equipment dipakai, biaya, jam pakai, downtime dari `utils/projectCost.ts`. |
+| S1 | Kwitansi PDF konten terpotong | **SELESAI** | Kolom tabel + paginasi two-pass. Gate `pdf-probe.ts`. |
+| S2 | Requirement BAST, invoice, dan bukti bayar | **SELESAI** | `invoiceNo`, `bastNo`, `proof.ref` wajib. Catatan: berupa nomor teks, bukan unggah file - kalau client maksud lampiran, itu terpisah. |
+| S3 | Milestone per WO dengan popup modal | **SEBAGIAN** | Milestone **SOW subkontraktor** punya modal kelola (`msSub`, `:1499-1522`). Progres WO memakai checklist milestone WO. **Modal tambah/hapus milestone per WO** (client: "bikin popup modal baru untuk milestone per WO") belum ada - `saveMilestone` masih tulis ke `subcontractors` (SOW), bukan ke baris WO. |
+| S3b | Bug yang ditemukan audit | **SELESAI** (`37321db`) | Modal progres WO kini render `woMilestonesOf(woProg)`, sama dengan sumber validasi. |
+| Q1 | Drawing view pakai modal popup | **SELESAI** | Modal preview, bukan expand inline. |
+| Q2 | Sub-tipe dokumen terhubung tab Sertifikat QC | **SEBAGIAN** | `utils/docTypes.ts` jadi sumber untuk form Dokumen/Proyek. Tab Sertifikat QC masih filter `/sertifikat/i` pada `d.type` saja - koneksi satu arah. |
+| DOC1 | Kolom pratinjau dihapus, pratinjau hanya di Aksi | **SELESAI** | Header tanpa kolom pratinjau; aksi Detail + `preview={false}`. |
 
 ---
 
@@ -343,10 +294,10 @@ download.
 |---|---|---|---|
 | DK1 | Card mapping slot area dibuat grafikal | **SELESAI** | `Drydock.tsx:702-764`: tile per area, lebar diskalakan per jumlah slot (`:723,:737,:747`), badge jumlah slot (`:742`), terisi (`:751`), kapal berbeda (`:752`), konflik (`:753`). Area tanpa slot tetap digambar (`:718-721`). |
 | DK2 | Peta fasilitas skala panjang (pekerjaan F2) | **SELESAI** (`48368f9`) | `components/FacilityMap.tsx` SVG skala tunggal, pita kapal, outline merah. Keterbatasan yang dulu tercatat - hanya kapal pertama per fasilitas yang digambar lewat `.find()` - sudah ditutup: semua kapal kini digambar satu jalur masing-masing, dan `problems` digabung dari seluruh kapal. Intinya dipindah ke `vesselsForFacility` di `utils/facilityMap.ts` supaya bisa diuji, dengan 8 assertion baru di `scripts/facility-probe.ts`. |
-| I1 | Filter "perlu perhatian" per status, bukan kategori | **SELESAI** | `Inventory.tsx:641` memakai `warnLevelOf(...).level === warnF`; select berlabel "Status" (`:1943-1960`) dengan hitungan live (`:770`); sort pakai `warnRankOf` (`:656`). |
-| I2 | Tombol [jumlah][status] membuka dropdown [jumlah][kategori] | **SELESAI** | Client klarifikasi ada di `notes.txt` (revisi 2 & 5 Okt): "filter status perlu perhatian dibuat button berdasarkan status ([jumlah][status]) lalu saat di klik muncul dropdown kategori materialnya". Strip Katalog kini berperingkat STATUS: tombol `[badge][Kritis/Menipis/Berlebih/...]` → flyout berisi kategori di dalam status itu (`[badge][nama kategori]`, urut jumlah). Pilih kategori → `warnF` + `cat` diset sekaligus. Daftar kategori datar dengan campuran badge dihapus. I1 (filter per status) tetap berlaku - I2 adalah drill-down-nya, bukan lawan. |
-| F1 | Semua tabel Finance dapat tanggal plus sort, dan tanggal hapus | **SELESAI** | Kolom Dibuat/Diubah + sort di tabel record: Invoice (sudah ada), Piutang AR, Hutang AP, Jurnal, Aset, Alokasi payroll, Jadwal bayar (dari source invoice/payable), Mutasi Kas. Tab agregat (Kas recap, Buku Besar, Laba Rugi, Neraca) menampilkan catatan sumber terakhir berubah (`latestSrcTs`) karena barisnya dihitung, bukan record. Tab baru **Riwayat Hapus**: daftar hard-delete dari audit log server (`/api/audit?action=delete` per tabel finance) + jejak lokal `activities` dengan aksi "hapus" modul Keuangan. |
-| F2 | Kas Bank, Buku Besar, Neraca, dan Laba Rugi tambah tanggal | **SEBAGIAN** | Keempat punya `HistFilterBar` (mode Semua, Per bulan, Per tanggal, Per tahun di `:156-194`) plus badge as-of (`:3129-3131`, `:3476-3478`, `:3849-3851`, `:3591-3593`). Tapi nol dari keempat punya kolom tanggal per baris di tabel utamanya. Saldo, trial balance, AP AR live, dan LR trial semuanya tanpa tanggal. Klien masih tidak bisa menelusuri satu baris ke tanggal asalnya. |
+| I1 | Filter "perlu perhatian" per status, bukan kategori | **SELESAI** | `Inventory.tsx` `list` memakai `warnLevelOf(...).level === warnF`; strip Katalog punya kontrol status (kini berbentuk tombol I2); sort status pakai `warnRankOf`. Bukti baris basi setelah rewrite I2 - status tetap benar. |
+| I2 | Tombol [jumlah][status] membuka dropdown [jumlah][kategori] | **SELESAI** (`37e3b59`) | Klarifikasi di `notes.txt` (revisi 2 & 5 Okt). Strip "Perlu perhatian": tombol `[badge][Kritis/Menipis/Berlebih/...]` → flyout kategori di dalam status itu (`warnByLevelCat`). Pilih kategori → `warnF`+`cat` sekaligus. Daftar kategori datar campuran badge dihapus. I1 = filter status; I2 = drill-down-nya. |
+| F1 | Semua tabel Finance dapat tanggal plus sort, dan tanggal hapus | **SELESAI** (`27a6d40`) | Kolom Dibuat/Diubah + sort di tabel record: Invoice, AR, AP, Jurnal, Aset, Alokasi payroll, Jadwal bayar (dari source), Mutasi Kas. Tab agregat: catatan `latestSrcTs` (sumber terakhir berubah). Tab **Riwayat Hapus**: audit log server `action=delete` + jejak lokal activities modul Keuangan. |
+| F2 | Kas Bank, Buku Besar, Neraca, dan Laba Rugi tambah tanggal | **SEBAGIAN** | Keempat punya `HistFilterBar` + badge as-of + catatan `latestSrcTs`. **Kolom tanggal per baris** di tabel agregat (saldo, trial balance, AP/AR live, LR trial) belum ada - angkanya dihitung dari transaksi, bukan record. Kalau client tetap mau jejak per baris, perlu join ke sumber (jurnal/invoice/payable) di UI agregat. |
 
 ---
 
@@ -354,12 +305,16 @@ download.
 
 | # | Item | Kenapa tidak bisa diputuskan sendiri |
 |---|---|---|
-| 1 | ~~**I2** filter Inventory dua tingkat~~ | ~~Perlu tahu alasan balikannya~~ Klarifikasi ADA di `notes.txt` revisi 2 & 5 Okt - tidak perlu ditanya lagi. Sudah diimplementasi. |
-| 2 | **D1** hapus "Desain & Class Approval" | Blok itu juga mengunci transisi stage Desain ke Produksi (`ProjectDetail.tsx:257-263`). Perlu tahu apa yang menggantikannya. |
-| 3 | **D8** hapus table risiko | Risk list sudah jadi kartu, tapi matriks 5 kali 5 masih `<table>`. Yang dimaksud yang mana? |
-| 4 | **P8** progres proyek disesuaikan lagi | Target tidak dinyatakan. |
-| 5 | **S2** requirement BAST dan invoice | Sekarang berupa nomor teks wajib, bukan unggah dokumen. |
-| 6 | ~~**I1 versus I2** dua permintaan filter Inventory~~ | Tidak bertentangan: I1 = filter per status; I2 = drill-down status → kategori. Keduanya terpasang. |
+| 1 | ~~**I2** filter Inventory dua tingkat~~ | ~~Perlu tahu alasan balikannya~~ Klarifikasi ADA di `notes.txt` revisi 2 & 5 Okt. Sudah diimplementasi (`37e3b59`). |
+| 2 | ~~**D1** hapus "Desain & Class Approval"~~ | Sudah dijawab + diimplementasi (`172146e`): pindah ke Documents, Class Approval satu dari banyak dokumen. |
+| 3 | ~~**D8** hapus table risiko~~ | Sudah dijawab + diimplementasi (`9fa8e55`): risiko auto dari WBS/SOW, bukan dihapus. |
+| 4 | ~~**P8** progres proyek disesuaikan lagi~~ | Sudah dijawab + diimplementasi (`32d10c6`): override status Terlambat manual. |
+| 5 | ~~**S2** requirement BAST dan invoice~~ | Nomor teks wajib sudah ada. Kalau client maksud **unggah dokumen** (bukan ketik nomor), itu belum - perlu konfirmasi. |
+| 6 | ~~**I1 versus I2**~~ | Tidak bertentangan: I1 filter status; I2 drill-down status→kategori. |
+| 7 | **D13** PO sparepart/service: referensi vs wajib? | Sudah ada PO reference opsional. Client bilang "wajib via PO" + approval procurement - perlu putuskan hard-block atau tetap fleksibel + approval. |
+| 8 | **S3** milestone WO: modal terpisah per WO? | Modal kelola ada untuk milestone SOW. Client minta "popup modal untuk milestone per WO" - di form WO, di tab subkon, atau otomatis dari SOW? |
+| 9 | **B1/P10** hapus cabang: skoping RBAC bagaimana? | `branch` dipakai `inBranch` untuk filter data per cabang. Kalau topbar + form cabang dihapus, scoping pindah ke mana (user.branch tetap, atau rencana lokasi docking jadi metadata saja)? |
+| 10 | **PD2** ikon view dokumen: modal atau expand? | Revisi minta modal + download; komentar lama di kode sengaja membatalkan. Perlu konfirmasi ulang mana yang berlaku. |
 
 ---
 
@@ -428,18 +383,28 @@ download.
     [x] P8 (override status Terlambat) - `32d10c6`
     [x] S2 (BAST/invoice nomor teks) - sudah selesai sebelumnya
     [x] D9 (ganti string) - sudah selesai sebelumnya
-    [x] I2 (tombol [jumlah][status] → dropdown kategori) - klarifikasi di notes.txt, sesi lanjutan
 
-**Gelombang 5 - kerja skema besar - SEBAGIAN:**
-15. [x] D3 (material WBS terhubung inventori + movements, foto array) - `68ec10d` + `0a65a8f`
+**Gelombang 5 + sesi lanjutan - kerja skema besar - SELESAI (kode), doc diselaraskan:**
+15. [x] D3 (material WBS + movements + foto array) - `68ec10d` + `0a65a8f`
     [x] D10 (trial checklist dari WBS + kondisi) - `b03cc41`
     [x] D11 (garansi per WBS task) - `2432cab`
     [x] D12 (service referensi BoQ) - `a5c1eb4`
-    [x] D13 (sparepart referensi PO) - `c6fc6ee`
+    [x] D13 (sparepart referensi PO) - `c6fc6ee` — **status final SEBAGIAN** (opsional, bukan wajib)
     [x] D15 (tab Subkon di ProjectDetail) - `12da962`
-    [x] D5 (BoQ per nomor surat, krusial) - sesi lanjutan: skema suratNo + UI grouped + Excel + PDF
-16. [x] B2 (MoneyInput + parseRupiah, ~36 field money di 6 file) - `6813df9` + `63dfdfd` + `53cc5d1` + `9043685` + `918e1b6` + `9755d50` + `223e8e5`
-17. [x] F1 (kolom tanggal Finance + Riwayat Hapus dari audit log) - sesi lanjutan
+    [x] D5 (BoQ per nomor surat) - `d3ba2c1` skema suratNo + UI grouped + Excel + PDF
+    [x] B2 (MoneyInput + parseRupiah, field money di 6 file) - `6813df9`..`223e8e5`
+    [x] F1 (kolom tanggal Finance + Riwayat Hapus) - `27a6d40`
+    [x] I2 (tombol [jumlah][status] → dropdown kategori) - `19b5e9b` + `37e3b59` (klarifikasi di notes.txt)
+    [x] Tabel proyek P1/P2/P6/P7/P9/P12/P13/P14 + E2/E5 - sudah ada di kode sejak Gelombang 3, status tabel baru disinkronkan di real check
+
+**Belum dikerjakan (urutan saran):**
+- B1 hapus filter cabang topbar
+- P3/P4/P5 card status + grafik + FilterPopover slide
+- P10/P11 form proyek (rencana lokasi docking + EntityPicker)
+- D4 tick bulan Gantt; D6 dokumen BoQ; D7 CO↔BoQ; D13 hard PO; D14 tim↔SDM
+- S3 modal milestone per WO; PD2 ikon view modal; C3 HR `open=false`
+- C1 sisa PATCH shallow-merge; C2 delta sync / tarikan periodik
+- Deploy VPS + QA browser 2 device
 
 ---
 
@@ -562,30 +527,50 @@ menulis status "Terlambat" tanpa menghormati pilihan user. Solusinya
 field `statusOverride` + `shouldAutoSetLate`/`shouldClearOverride` yang
 menjadi satu sumber untuk Detail dan List.
 
-**Perubahan soal I2:** klarifikasi client sudah ada di `notes.txt`
-(revisi 2 Okt baris 95, revisi 5 Okt baris 17): tombol per status +
-dropdown kategori di dalamnya. Diimplementasi di sesi lanjutan tanpa
-perlu tanya lagi. I1 dan I2 saling melengkapi, bukan bertentangan.
+## Real check + sesi lanjutan (D5, F1, I2, sinkronisasi doc)
+
+Checklist Gelombang 3/5 menandai banyak item selesai lewat commit
+(`e0c4f2a`, `68ec10d`, …) tetapi **tabel status di bagian 2-6 tidak
+pernah diperbarui**. Real check membaca ulang kode terhadap `todo5.md`:
+
+- **16+ baris tabel dikoreksi** dari BELUM/SEBAGIAN ke SELESAI (P1, P2,
+  P6, P7, P9, P12, P13, P14, B2, D3, D9-D12, D15, E2, E5) - buktinya ada
+  di kode, bukan dari ingatan.
+- **D13 dinaikkan dari BELUM ke SEBAGIAN** (bukan SELESAI): PO sudah ada
+  sebagai referensi opsional; client minta wajib + approval.
+- **Body C1/C2 ditulis ulang**: `backendMode` beku, livelock, overrun,
+  badai 429, pagination OFFSET, token WBS/team sudah ditutup di
+  Gelombang 1-2. Yang tersisa: PATCH shallow-merge, acceptPull
+  settings-only, tanpa delta sync/tarikan periodik.
+- **I2**: klarifikasi ternyata sudah ada di `notes.txt` (revisi 2 Okt
+  baris 95, revisi 5 Okt baris 17) - tidak perlu ditanya ke client.
+  Diimplementasi: strip status → dropdown kategori.
+- **Hitungan ringkasan** diganti 43/19/7 dari 69 baris tabel aktual;
+  angka audit lama 72/73 sudah tidak konsisten.
+- **§7 dibersihkan**: D1/D8/P8/S2/I2 tidak perlu ditanya lagi; ditambah
+  pertanyaan yang benar-benar masih terbuka (D13 hard-block?, S3 modal
+  WO, B1/RBAC, PD2).
 
 ---
 
-**Peringatan soal nomor baris:** dokumen ini diaudit terhadap `bd975c3`.
-Sejak itu ada beberapa commit yang menyentuh `store.tsx`, `HR.tsx`,
-`Subcontractor.tsx`, dan `FacilityMap.tsx`, jadi beberapa `file:line` di
-bagian 1-6 sudah bergeser. Rujukan yang ditulis sebagai `store.tsx` tanpa
-nomor baris sengaja dibiarkan begitu karena sudah tidak berlaku.
+**Peringatan soal nomor baris:** dokumen ini awalnya diaudit terhadap
+`bd975c3`. Banyak `file:line` di bagian 1-6 sudah bergeser karena commit
+Gelombang 1-5 + sesi lanjutan. Rujukan tanpa nomor baris sengaja
+dibiarkan; bukti status kini menunjuk pola kode + hash commit, bukan
+baris basi.
 
 ---
 
 # CATATAN METODE
 
-- Audit read-only terhadap `bd975c3`. Tidak ada file aplikasi yang diubah saat
-  menyusun dokumen ini. Gelombang 1, 2, 3, dan 4 baru dikerjakan setelah itu,
-  pada `37321db` sampai `172146e` - lihat CATATAN REVISI.
-- Semua angka (jumlah tabel, jumlah call site, jumlah file) dihitung dengan
+- Audit awal read-only terhadap `bd975c3`. Gelombang 1-5 dikerjakan
+  setelah itu (`37321db`..`37e3b59`).
+- **Real check** terhadap working tree sesi lanjutan: setiap status
+  tabel yang berubah diverifikasi dengan membaca kode (bukan menerima
+  checkbox Gelombang apa adanya).
+- Semua angka (jumlah tabel, jumlah call site) dihitung dengan
   enumerasi, bukan estimasi.
-- Probe tidak dijalankan selama audit karena butuh menulis build cache. Status
-  "SELESAI" berarti kode memenuhi permintaan, bukan berarti terverifikasi di
-  browser.
+- Probe tidak dijalankan selama audit. Status "SELESAI" berarti kode
+  memenuhi permintaan, bukan berarti terverifikasi di browser.
 - Yang tetap belum bisa dibuktikan tanpa browser: jarak visual, animasi,
   perilaku sync nyata antar dua device, dan kebenaran angka PDF.
