@@ -5,6 +5,7 @@ import { ApiError, apiFetch, getJwt, isBackendConfigured } from "../services/htt
 import { remoteRepository, lastEtagOf } from "../services/repositories";
 import { stampCreated, stampDerivedCreatedAt, stampUpdated } from "../utils/timestamps";
 import { loadedLaborRatePerDay } from "../utils/rates";
+import { requestFieldConflict } from "../components/ConflictResolver";
 import {
   projects as seedProjects,
   vessels as seedVessels,
@@ -2017,7 +2018,6 @@ type PushOutcome = "ok" | "stale" | "fail" | "auth";
                    jangan diam-diam menimpa - minta user memilih. */
                 const fieldConflicts = diffFieldsAgainstServer(slim, serverData);
                 if (fieldConflicts.length > 0) {
-                  const { requestFieldConflict } = await import("../components/ConflictResolver");
                   const choice = await requestFieldConflict({
                     collection: String(col),
                     rowId: id,
