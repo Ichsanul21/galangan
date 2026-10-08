@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useState } from "react";
 import { bucketByMonth, monthAxis, monthKeyOf, rebindLegacyMonthSeries } from "../../utils/monthAxis";
-import { Plus, ShieldCheck, AlertTriangle, Siren, Award, Send, Eye, Pencil, Trash2 } from "lucide-react";
+import { Plus, ShieldCheck, AlertTriangle, Siren, Award, Send, Eye, Pencil, Trash2, ChevronDown } from "lucide-react";
 import { ComposedChart, Line, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 import { Card, CardHeader, PageHeader, Badge, KpiCard, Tabs, StatusBadge, Donut, ChartTooltip, Modal, Field, FormGrid, ConfirmModal, SortTh, toggleSort, sortRows, usePager, toast,
   NumInput, FlowStrip, FileUploadButton, useBusy, AsyncButton, SearchBox, rowMatches,
   RowAction,
   EntityPicker,
+  EmptyState,
 } from "../../components/ui";
 import type { SortState } from "../../components/ui";
 import { employeeOptions, isKnownEmployee } from "../../utils/employeeOptions";
@@ -156,7 +157,7 @@ export default function QCSafety() {
     return rowMatches(i, inspQ, ["id", "project", "point", "itp", "inspector", "holdType", "nde", "status"]);
   });
   const sortedInsp = useMemo(() => sortRows(inspFiltered, sort, (i, key) =>
-    key === "inspeksi" ? String(i.id ?? "") : key === "proyek" ? String(i.project ?? "") : key === "titik" ? String(i.point ?? "") : key === "itp" ? String(i.itp ?? "") : key === "hold" ? String(i.holdType ?? "") : key === "nde" ? String(i.nde ?? "") : key === "sampel" ? Number(i.sampleSize ?? 0) : key === "inspector" ? String(i.inspector ?? "") : key === "tanggal" ? String(i.date ?? "")     : key === "createdAt" ? createdAtOf(i) ?? ""     : key === "updatedAt" ? lastTouchedAt(i) ?? ""     : String(i.status ?? "")
+    key === "inspeksi" ? String(i.id ?? "") : key === "proyek" ? String(i.project ?? "") : key === "titik" ? String(i.point ?? "") : key === "itp" ? String(i.itp ?? "") : key === "hold" ? String(i.holdType ?? "") : key === "nde" ? String(i.nde ?? "") : key === "sampel" ? Number(i.sampleSize ?? 0) : key === "inspector" ? String(i.inspector ?? "") : key === "tanggal" ? String(i.date ?? "") : key === "skor" ? (inspScorePct(i.questionnaire ?? i.scorePct) ?? -1) : key === "createdAt" ? createdAtOf(i) ?? "" : key === "updatedAt" ? lastTouchedAt(i) ?? "" : String(i.status ?? "")
   ), [inspFiltered, sort]);
   const inspPager = usePager(inspFiltered.length);
   useEffect(() => {
@@ -204,8 +205,28 @@ export default function QCSafety() {
   useDeepLinkTarget(deepParams.tab, deepParams.highlight, setTab, pickNotifIds);
 
   const [showInsp, setShowInsp] = useState(false);
-  const [inspForm, setInspForm] = useState({ project: "", point: "", status: "Terjadwal", date: todayISO(), holdType: "Witness", nde: "Tidak", ndeMethod: "UT", inspector: "", sampleSize: "", defectsAllowed: "0", defectsFound: "0", calTool: "", branch: "" });
+  /* T6-QC2: kuesioner inspeksi - daftar butir + skor per butir (0-5). */
+  const DEFAULT_INSP_Q = [
+    "Dokumen ITP/WPS tersedia & sesuai",
+    "Material bersertifikat & identitas tercatat",
+    "Parameter las sesuai procedure",
+    "Hasil NDE tidak ada reject",
+    "Pengelasan visual bebas retak/porosity",
+    "Dimensi & alignment dalam toleransi",
+    "Protection/coating sesuai spesifikasi",
+    "Housekeeping & K3 area kerja aman",
+  ];
+  const emptyInspQ = () => DEFAULT_INSP_Q.map((q) => ({ q, score: 5 }));
+  const [inspForm, setInspForm] = useState({
+    project: "", point: "", status: "Terjadwal", date: todayISO(), holdType: "Witness", nde: "Tidak", ndeMethod: "UT", inspector: "",
+    sampleSize: "", defectsAllowed: "0", defectsFound: "0", calTool: "", branch: "",
+    subkon: "", pekerja: "",
+    questionnaire: emptyInspQ() as { q: string; score: number }[],
+    /* T6-QC4: detail teknis standar galangan (parameter las, tebal, dll). */
+    weldProc: "", thicknessMm: "", hardness: "", visualNotes: "",
+  });
   const [inspDetail, setInspDetail] = useState<StoreItem | null>(null);
+  const [inspExpand, setInspExpand] = useState<Record<string, boolean>>({});
   /* Ubah/hapus inspeksi: id baris yang sedang diedit, dan target hapus. */
   const [inspEditId, setInspEditId] = useState<string | null>(null);
   const [delInsp, setDelInsp] = useState<StoreItem | null>(null);
@@ -262,6 +283,22 @@ export default function QCSafety() {
   const [showTbm, setShowTbm] = useState(false);
   const [tbmForm, setTbmForm] = useState({ project: "", topic: "", date: todayISO(), attendees: "", pic: "", branch: "" });
   const [ppeForm, setPpeForm] = useState({ project: "", date: todayISO(), employeeId: "", branch: "" });
+  /* T6-QC3: kuesioner HSE ke pekerja - butir + skor + daftar penerima. */
+  const HSE_Q_DEFAULT = [
+    "Apakah saya memahami bahaya pekerjaan hari ini?",
+    "APD lengkap & sesuai (helm, sepatu, sarung tangan, safety belt)?",
+    "Area kerja aman (housekeeping, jalur evakuasi terbebas)?",
+    "Saya tahu tombol darurat / pos P3K terdekat?",
+    "Ada kondisi tidak aman yang perlu dilaporkan hari ini?",
+  ];
+  const [hseForm, setHseForm] = useState({
+    project: "",
+    date: todayISO(),
+    branch: "",
+    topic: "Kuesioner K3 Harian",
+    targets: [] as string[],
+    answers: HSE_Q_DEFAULT.map((q) => ({ q, yes: true })),
+  });
   const [ppeChecked, setPpeChecked] = useState<Record<string, boolean>>({});
   // Safety walk & audit internal persist di store (koleksi walks/auditPlans).
   const walks = useMemo(() => inBranch(data.walks ?? []), [data.walks, inBranch]);
@@ -449,6 +486,29 @@ export default function QCSafety() {
     return <Badge tone="blue">{S.badgeSisaN.replace("{n}", String(left))}</Badge>;
   };
 
+  /* T6-QC2: skor kuesioner = rata-rata butir (0-5) → persen. */
+  const inspScorePct = (items: unknown): number | null => {
+    if (!Array.isArray(items) || items.length === 0) return null;
+    const scores = items.map((x) => Number((x as { score?: unknown }).score ?? 0));
+    const avg = scores.reduce((s, v) => s + v, 0) / scores.length;
+    return Math.round((avg / 5) * 100);
+  };
+
+  const inspScoreTone = (pct: number | null): "green" | "amber" | "red" | "gray" => {
+    if (pct === null) return "gray";
+    if (pct >= 80) return "green";
+    if (pct >= 60) return "amber";
+    return "red";
+  };
+
+  const resetInspForm = () => setInspForm({
+    project: "", point: "", status: "Terjadwal", date: todayISO(), holdType: "Witness", nde: "Tidak", ndeMethod: "UT", inspector: "",
+    sampleSize: "", defectsAllowed: "0", defectsFound: "0", calTool: "", branch: "",
+    subkon: "", pekerja: "",
+    questionnaire: emptyInspQ(),
+    weldProc: "", thicknessMm: "", hardness: "", visualNotes: "",
+  });
+
   const saveInspection = async () => {
     if (!inspForm.project || !inspForm.point.trim()) { toast(S.tInspWajib, "info"); return; }
     if (!inspForm.date) { toast(S.tTglInspWajib, "info"); return; }
@@ -462,6 +522,8 @@ export default function QCSafety() {
       if (!inspForm.calTool) { toast(S.tNdeAlat, "info"); return; }
       if (!validCals.some((c) => c.id === inspForm.calTool)) { toast(S.tAlatInvalid, "info"); return; }
     }
+    const questionnaire = inspForm.questionnaire.map((x) => ({ q: x.q, score: Math.max(0, Math.min(5, Number(x.score) || 0)) }));
+    const scorePct = inspScorePct(questionnaire);
     let finalStatus = inspForm.status;
     let ncrDone = false;
     try {
@@ -489,6 +551,16 @@ export default function QCSafety() {
       inspector: inspForm.inspector,
       sampleSize: sample, defectsAllowed: allowed, defectsFound: found,
       branch: branchOf(inspForm.branch),
+      /* T6-QC2: hierarki proyek → pekerjaan → subkon/pekerja + kuesioner. */
+      subkon: inspForm.subkon.trim(),
+      pekerja: inspForm.pekerja.trim(),
+      questionnaire,
+      scorePct,
+      /* T6-QC4: detail teknis. */
+      weldProc: inspForm.weldProc.trim(),
+      thicknessMm: Number(inspForm.thicknessMm) || 0,
+      hardness: inspForm.hardness.trim(),
+      visualNotes: inspForm.visualNotes.trim(),
     }, { action: "mencatat inspeksi", module: "QC" });
     if (finalStatus === "NCR" && !ncrDone) {
       const proj = data.projects.find((p) => p.id === inspForm.project);
@@ -504,7 +576,7 @@ export default function QCSafety() {
       toast(S.tInspJadwal.replace("{n}", created.id));
     }
     setShowInsp(false);
-    setInspForm({ project: "", point: "", status: "Terjadwal", date: todayISO(), holdType: "Witness", nde: "Tidak", ndeMethod: "UT", inspector: "", sampleSize: "", defectsAllowed: "0", defectsFound: "0", calTool: "", branch: "" });
+    resetInspForm();
     } catch {
       toast(S.tInspGagal, "info");
     }
@@ -515,6 +587,7 @@ export default function QCSafety() {
    saat ubah - nomor ITP sudah tercetak dan jadi rujukan dokumen onsite. */
   const openInspEdit = (i: StoreItem) => {
     setInspEditId(String(i.id));
+    const qRaw = i.questionnaire;
     setInspForm({
       project: String(i.project ?? ""),
       point: String(i.point ?? ""),
@@ -529,6 +602,15 @@ export default function QCSafety() {
       defectsFound: String(i.defectsFound ?? "0"),
       calTool: String(i.calTool ?? ""),
       branch: String(i.branch ?? ""),
+      subkon: String(i.subkon ?? ""),
+      pekerja: String(i.pekerja ?? ""),
+      questionnaire: Array.isArray(qRaw) && qRaw.length > 0
+        ? qRaw.map((x) => ({ q: String((x as { q?: unknown }).q ?? ""), score: Number((x as { score?: unknown }).score ?? 5) }))
+        : emptyInspQ(),
+      weldProc: String(i.weldProc ?? ""),
+      thicknessMm: i.thicknessMm === undefined || i.thicknessMm === null ? "" : String(i.thicknessMm),
+      hardness: String(i.hardness ?? ""),
+      visualNotes: String(i.visualNotes ?? ""),
     });
     setShowInsp(true);
   };
@@ -537,7 +619,7 @@ export default function QCSafety() {
   const closeInspModal = () => {
     setShowInsp(false);
     setInspEditId(null);
-    setInspForm({ project: "", point: "", status: "Terjadwal", date: todayISO(), holdType: "Witness", nde: "Tidak", ndeMethod: "UT", inspector: "", sampleSize: "", defectsAllowed: "0", defectsFound: "0", calTool: "", branch: "" });
+    resetInspForm();
   };
 
   const saveInspEdit = async () => {
@@ -557,7 +639,9 @@ export default function QCSafety() {
     /* Status tidak boleh diubah lewat koreksi: perpindahan Lulus/NCR punya
        efek samping (NCR otomatis saat AQL gagal) yang harus lewat alur
        create, bukan lewat edit. Koreksi hanya untuk data ter-input. */
-    const prev = inspections.find((x) => String(x.id) === inspEditId);
+    const questionnaire = inspForm.questionnaire.map((x) => ({ q: x.q, score: Math.max(0, Math.min(5, Number(x.score) || 0)) }));
+    const scorePct = inspScorePct(questionnaire);
+    const prevStatus = inspections.find((x) => String(x.id) === inspEditId)?.status;
     try {
       await update("inspections", inspEditId, {
         point: inspForm.point.trim(),
@@ -570,7 +654,15 @@ export default function QCSafety() {
         sampleSize: sample,
         defectsAllowed: allowed,
         defectsFound: found,
-        status: String(prev?.status ?? inspForm.status),
+        status: String(prevStatus ?? inspForm.status),
+        subkon: inspForm.subkon.trim(),
+        pekerja: inspForm.pekerja.trim(),
+        questionnaire,
+        scorePct,
+        weldProc: inspForm.weldProc.trim(),
+        thicknessMm: Number(inspForm.thicknessMm) || 0,
+        hardness: inspForm.hardness.trim(),
+        visualNotes: inspForm.visualNotes.trim(),
       });
       log("mengoreksi inspeksi", `${inspEditId} · ${inspForm.point.trim()}`, "QC");
       toast(S.tInspJadwal.replace("{n}", inspEditId));
@@ -1103,6 +1195,48 @@ export default function QCSafety() {
     setShowWalk(true);
   };
 
+  /* T6-QC3: kuesioner HSE disebar ke pekerja - simpan per penerima + skor. */
+  const hseScoreOf = (answers: { yes: boolean }[]): number => {
+    if (answers.length === 0) return 0;
+    return Math.round((answers.filter((a) => a.yes).length / answers.length) * 100);
+  };
+  const saveHseQuestionnaire = async () => {
+    if (!hseForm.project) { toast(S.tInspWajib ?? "Pilih proyek dulu", "info"); return; }
+    if (hseForm.targets.length === 0) { toast(locale === "en" ? "Select at least one worker" : "Pilih minimal satu pekerja", "info"); return; }
+    if (!hseForm.date) { toast(S.tTglInspWajib ?? "Tanggal wajib diisi", "info"); return; }
+    const score = hseScoreOf(hseForm.answers);
+    try {
+      for (const empId of hseForm.targets) {
+        const emp = data.employees.find((e) => e.id === empId);
+        await add("toolbox", {
+          type: "HSE-Kuesioner",
+          topic: hseForm.topic.trim() || "Kuesioner K3",
+          project: hseForm.project,
+          date: hseForm.date,
+          employeeId: empId,
+          employeeName: String(emp?.name ?? empId),
+          answers: hseForm.answers.map((a) => ({ q: a.q, yes: a.yes })),
+          score,
+          pic: String(user?.name ?? "HSE"),
+          attendees: 1,
+          branch: hseForm.branch || branchOf(hseForm.branch),
+        }, { action: "menyebarkan kuesioner HSE", target: `${String(emp?.name ?? empId)} · skor ${score}%`, module: "Safety" });
+      }
+      log("kuesioner HSE", `${hseForm.topic} · ${hseForm.targets.length} pekerja · skor ${score}%`, "Safety");
+      toast(locale === "en"
+        ? `Questionnaire sent to ${hseForm.targets.length} worker(s) · score ${score}%`
+        : `Kuesioner disebar ke ${hseForm.targets.length} pekerja · skor ${score}%`);
+      setHseForm({
+        project: "", date: todayISO(), branch: "",
+        topic: "Kuesioner K3 Harian",
+        targets: [],
+        answers: HSE_Q_DEFAULT.map((q) => ({ q, yes: true })),
+      });
+    } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); }
+  };
+
+  const hseKuesList = toolboxTalks.filter((t) => String(t.type ?? "") === "HSE-Kuesioner");
+
   const walkToNcr = async (w: StoreItem) => {    try {const created = await add("ncr", {
       project: data.projects[0]?.id ?? "-", vessel: data.projects[0]?.vessel ?? "-",
       type: "Umum", status: "Terbuka", severity: "Minor", raised: w.date,
@@ -1236,17 +1370,124 @@ export default function QCSafety() {
                   </span>
                 )}
               </div>
+              {/* T6-QC2: hierarki proyek → pekerjaan inspeksi → subkon/pekerja
+                  → kuesioner + skoring (menggantikan tabel flat tunggal). */}
+              <div className="space-y-3">
+                {(() => {
+                  const byProject = new Map<string, StoreItem[]>();
+                  for (const i of inspFiltered) {
+                    const key = String(i.project ?? "-");
+                    if (!byProject.has(key)) byProject.set(key, []);
+                    byProject.get(key)!.push(i);
+                  }
+                  const projEntries = [...byProject.entries()].sort((a, b) => a[0].localeCompare(b[0]));
+                  if (projEntries.length === 0) {
+                    return <EmptyState title={locale === "en" ? "No inspections" : "Tidak ada inspeksi"} subtitle={locale === "en" ? "Adjust filters or create a new inspection." : "Ubah filter atau buat inspeksi baru."} />;
+                  }
+                  return projEntries.map(([pid, rows]) => {
+                    const proj = data.projects.find((p) => p.id === pid);
+                    const open = inspExpand[pid] !== false;
+                    return (
+                      <Card key={pid} className="overflow-hidden">
+                        <button
+                          type="button"
+                          className="flex w-full items-center justify-between gap-2 px-4 py-3 text-left hover:bg-surface"
+                          onClick={() => setInspExpand((m) => ({ ...m, [pid]: !open }))}
+                          aria-expanded={open}
+                        >
+                          <div className="min-w-0">
+                            <p className="truncate text-sm font-semibold text-navy-900">
+                              {String(proj?.vessel ?? pid)} <span className="font-mono text-xs font-normal text-steel-500">{pid}</span>
+                            </p>
+                            <p className="text-xs text-steel-500">
+                              {rows.length} {locale === "en" ? "inspections" : "inspeksi"}
+                              {rows.some((r) => r.status === "NCR") ? " · " : ""}
+                              {rows.filter((r) => r.status === "NCR").length > 0 ? `${rows.filter((r) => r.status === "NCR").length} NCR` : ""}
+                            </p>
+                          </div>
+                          <div className="flex shrink-0 items-center gap-2">
+                            {(() => {
+                              const pcts = rows.map((r) => inspScorePct(r.questionnaire ?? r.scorePct)).filter((v): v is number => v !== null);
+                              if (pcts.length === 0) return null;
+                              const avg = Math.round(pcts.reduce((s, v) => s + v, 0) / pcts.length);
+                              return <Badge tone={inspScoreTone(avg)}>{locale === "en" ? "Score" : "Skor"} {avg}%</Badge>;
+                            })()}
+                            <ChevronDown className={`h-4 w-4 text-steel-400 transition-transform ${open ? "rotate-180" : ""}`} />
+                          </div>
+                        </button>
+                        {open && (
+                          <div className="divide-y divide-steel-100 border-t border-steel-100">
+                            {rows.map((i) => {
+                              const pct = inspScorePct(i.questionnaire ?? i.scorePct);
+                              const qList = Array.isArray(i.questionnaire) ? (i.questionnaire as { q: string; score: number }[]) : [];
+                              const iqOpen = inspExpand[`i-${i.id}`] === true;
+                              return (
+                                <div key={String(i.id)} className="px-4 py-3">
+                                  <div className="flex flex-wrap items-start justify-between gap-2">
+                                    <div className="min-w-0 flex-1">
+                                      <p className="font-medium text-navy-900">{String(i.point)}</p>
+                                      <p className="text-xs text-steel-500">
+                                        <span className="font-mono">{String(i.id)}</span> · ITP {String(i.itp ?? "-")} · {fmtTanggal(String(i.date))}
+                                        {String(i.subkon ?? "") ? ` · ${String(i.subkon)}` : ""}
+                                        {String(i.pekerja ?? "") ? ` · ${String(i.pekerja)}` : ""}
+                                        {String(i.inspector ?? "") ? ` · ${String(i.inspector)}` : ""}
+                                      </p>
+                                    </div>
+                                    <div className="flex shrink-0 flex-wrap items-center gap-1.5">
+                                      <StatusBadge status={i.status} />
+                                      {pct !== null && <Badge tone={inspScoreTone(pct)}>{pct}%</Badge>}
+                                      <RowAction icon={Eye} tone="neutral" label={S.btnDetail} ariaLabel={`${S.btnDetail} ${String(i.id)}`} onClick={() => setInspDetail(i)} />
+                                      <RowAction icon={Pencil} tone="neutral" label={S.btnEdit} ariaLabel={`${S.btnEdit} ${String(i.id)}`} onClick={() => openInspEdit(i)} />
+                                      <RowAction icon={Trash2} tone="danger" label={S.btnHapus} ariaLabel={`${S.btnHapus} ${String(i.id)}`} onClick={() => setDelInsp(i)} />
+                                      {qList.length > 0 && (
+                                        <button
+                                          type="button"
+                                          className="btn-secondary px-2 py-1 text-xs"
+                                          onClick={() => setInspExpand((m) => ({ ...m, [`i-${i.id}`]: !iqOpen }))}
+                                        >
+                                          {locale === "en" ? "Questionnaire" : "Kuesioner"} ({qList.length})
+                                        </button>
+                                      )}
+                                    </div>
+                                  </div>
+                                  {iqOpen && qList.length > 0 && (
+                                    <ul className="mt-2 space-y-1 rounded-lg bg-steel-50 p-2.5">
+                                      {qList.map((q, qi) => (
+                                        <li key={qi} className="flex items-center justify-between gap-2 text-xs">
+                                          <span className="text-steel-700">{q.q}</span>
+                                          <Badge tone={Number(q.score) >= 4 ? "green" : Number(q.score) >= 3 ? "amber" : "red"}>{q.score}/5</Badge>
+                                        </li>
+                                      ))}
+                                    </ul>
+                                  )}
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </Card>
+                    );
+                  });
+                })()}
+              </div>
+              {/* Tabel detail tetap ada untuk audit/export cepat. */}
               <div className="overflow-x-auto">
                 <table className="w-full">
                   <thead className="bg-surface sticky top-0 z-10">
-                    <tr><SortTh label={S.thInspeksi} sortKey="inspeksi" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.thProyek} sortKey="proyek" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.thTitik} sortKey="titik" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.thItp} sortKey="itp" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.thHold} sortKey="hold" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.thNde} sortKey="nde" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.thSampel} sortKey="sampel" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.thInspector} sortKey="inspector" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.thTanggal} sortKey="tanggal" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.thHasil} sortKey="hasil" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.colCreated} sortKey="createdAt" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.colUpdated} sortKey="updatedAt" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><th className="th">{S.thAksi}</th></tr>
+                    <tr><SortTh label={S.thInspeksi} sortKey="inspeksi" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.thProyek} sortKey="proyek" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.thTitik} sortKey="titik" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.thItp} sortKey="itp" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.thHold} sortKey="hold" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.thNde} sortKey="nde" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.thSampel} sortKey="sampel" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.thInspector} sortKey="inspector" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.thTanggal} sortKey="tanggal" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={locale === "en" ? "Score" : "Skor"} sortKey="skor" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.thHasil} sortKey="hasil" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><th className="th">{S.thAksi}</th></tr>
                   </thead>
                   <tbody className="divide-y divide-steel-100">
-                    {inspPager.slice(sortedInsp).map((i) => (
+                    {inspPager.slice(sortedInsp).map((i) => {
+                      const pct = inspScorePct(i.questionnaire ?? i.scorePct);
+                      return (
                       <tr key={i.id} id={notifRowId(String(i.id))} className={rowHighlightClass({ id: String(i.id), flash, notified: notified.has(String(i.id)), base: "hover:bg-surface" })}>
                         <td className="td font-mono font-medium text-navy-900">{i.id}</td>
                         <td className="td text-steel-600 font-mono text-xs">{i.project}</td>
-                        <td className="td text-steel-600 max-w-[240px] truncate" title={String(i.point)}>{i.point}</td>
+                        <td className="td text-steel-600 max-w-[240px] truncate" title={String(i.point)}>{i.point}
+                          {String(i.subkon ?? "") || String(i.pekerja ?? "") ? (
+                            <p className="text-[11px] text-steel-400">{String(i.subkon ?? "")}{String(i.pekerja ?? "") ? ` · ${String(i.pekerja)}` : ""}</p>
+                          ) : null}
+                        </td>
                         <td className="td text-steel-600 font-mono text-xs">{i.itp}</td>
                         <td className="td"><Badge tone={i.holdType === "Hold" ? "red" : i.holdType === "Witness" ? "amber" : "blue"}>{i.holdType ?? "-"}</Badge></td>
                         <td className="td text-steel-600 text-xs">{i.nde === "Ya" ? `Ya · ${i.ndeMethod ?? "-"}` : "Tidak"}</td>
@@ -1255,23 +1496,18 @@ export default function QCSafety() {
                         </td>
                         <td className="td text-steel-600 text-xs">{i.inspector ?? "-"}</td>
                         <td className="td text-steel-600">{fmtTanggal(i.date)}</td>
+                        <td className="td">{pct !== null ? <Badge tone={inspScoreTone(pct)}>{pct}%</Badge> : <span className="text-xs text-steel-400">-</span>}</td>
                         <td className="td"><StatusBadge status={i.status} /></td>
-                        <td className="td text-xs text-steel-600">{createdAtOf(i) !== null ? fmtTanggal(createdAtOf(i)) : <span className="text-steel-400">-</span>}</td>
-                        <td className="td text-xs text-steel-600">{lastTouchedAt(i) !== null ? fmtTanggal(lastTouchedAt(i)) : <span className="text-steel-400">-</span>}</td>
                         <td className="td">
                           <div className="flex flex-wrap gap-1">
                             <RowAction icon={Eye} tone="neutral" label={S.btnDetail} ariaLabel={`${S.btnDetail} ${String(i.id)}`} onClick={() => setInspDetail(i)} />
-                            {/* Ubah/Hapus: dulu tabel inspeksi hanya punya
-                                tombol Detail, sehingga hasil inspeksi yang
-                                salah (mis. Hold terbalik, sampel terisi
-                                keliru) tidak bisa dikoreksi tanpa hapus
-                                & buat ulang baris + jejaknya. */}
                             <RowAction icon={Pencil} tone="neutral" label={S.btnEdit} ariaLabel={`${S.btnEdit} ${String(i.id)}`} onClick={() => openInspEdit(i)} />
                             <RowAction icon={Trash2} tone="danger" label={S.btnHapus} ariaLabel={`${S.btnHapus} ${String(i.id)}`} onClick={() => setDelInsp(i)} />
                           </div>
                         </td>
                       </tr>
-                    ))}
+                      );
+                    })}
                   </tbody>
                 </table>
                 {inspPager.bar}
@@ -1603,6 +1839,120 @@ export default function QCSafety() {
                 </div>
                 <p className="mt-2 text-xs text-steel-500">{S.ppeLengkap.replace("{a}", String(PPE_ITEMS.filter((i) => ppeChecked[i]).length)).replace("{b}", String(PPE_ITEMS.length))}</p>
                 <AsyncButton className="btn-primary mt-2 text-xs" onAction={savePpeCheck}>{S.btnSimpanPpe}</AsyncButton>
+              </Card>
+
+              {/* T6-QC3: kuesioner HSE ke pekerja. */}
+              <Card className="p-4">
+                <h3 className="text-sm font-semibold text-navy-900">
+                  {locale === "en" ? "HSE questionnaire to workers" : "Kuesioner HSE ke pekerja"}
+                </h3>
+                <p className="mt-1 text-xs text-steel-500">
+                  {locale === "en"
+                    ? "Distribute a short safety questionnaire to selected workers; score is the share of 'yes' answers."
+                    : "Sebar kuesioner keselamatan singkat ke pekerja terpilih; skor = porsi jawaban 'ya'."}
+                </p>
+                <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  <Field label={S.thProyek}>
+                    <select className="input" value={hseForm.project} onChange={(e) => setHseForm({ ...hseForm, project: e.target.value })}>
+                      <option value="">{S.optPilihProyek}</option>
+                      {data.projects.map((p) => <option key={p.id} value={p.id}>{p.id} · {p.vessel}</option>)}
+                    </select>
+                  </Field>
+                  <Field label={S.thTanggal}>
+                    <input type="date" className="input" value={hseForm.date} onChange={(e) => setHseForm({ ...hseForm, date: e.target.value })} />
+                  </Field>
+                  <Field label={locale === "en" ? "Topic" : "Topik"}>
+                    <input className="input" value={hseForm.topic} onChange={(e) => setHseForm({ ...hseForm, topic: e.target.value })} />
+                  </Field>
+                  <Field label={S.fCabang}>
+                    <select className="input" value={hseForm.branch} onChange={(e) => setHseForm({ ...hseForm, branch: e.target.value })}>
+                      <option value="">{S.optIkutGlobal}</option>
+                      {branchCities.map((c) => <option key={c} value={c}>{c}</option>)}
+                    </select>
+                  </Field>
+                </div>
+                <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
+                  {hseForm.answers.map((a, idx) => (
+                    <div key={idx} className="flex items-center gap-2 rounded-lg border border-steel-100 px-3 py-2">
+                      <input
+                        className="input flex-1 py-1 text-xs"
+                        value={a.q}
+                        aria-label={`${locale === "en" ? "Question" : "Pertanyaan"} ${idx + 1}`}
+                        onChange={(e) => setHseForm({
+                          ...hseForm,
+                          answers: hseForm.answers.map((x, i) => (i === idx ? { ...x, q: e.target.value } : x)),
+                        })}
+                      />
+                      <label className="flex shrink-0 items-center gap-1 text-xs text-steel-600">
+                        <input
+                          type="checkbox"
+                          checked={a.yes}
+                          onChange={(e) => setHseForm({
+                            ...hseForm,
+                            answers: hseForm.answers.map((x, i) => (i === idx ? { ...x, yes: e.target.checked } : x)),
+                          })}
+                        />
+                        Ya
+                      </label>
+                    </div>
+                  ))}
+                </div>
+                <button
+                  type="button"
+                  className="btn-secondary mt-2 text-xs"
+                  onClick={() => setHseForm({ ...hseForm, answers: [...hseForm.answers, { q: "", yes: true }] })}
+                >
+                  <Plus className="h-3.5 w-3.5" /> {locale === "en" ? "Add question" : "Tambah pertanyaan"}
+                </button>
+                <Field label={locale === "en" ? "Workers" : "Pekerja"} hint={S.hintPpePer}>
+                  <div className="max-h-40 space-y-1 overflow-y-auto rounded-xl border border-steel-200 p-2">
+                    {data.employees.filter((e) => e.status === "Aktif").map((e) => (
+                      <label key={String(e.id)} className="flex cursor-pointer items-center gap-2 text-sm text-steel-700">
+                        <input
+                          type="checkbox"
+                          checked={hseForm.targets.includes(String(e.id))}
+                          onChange={() => setHseForm((f) => ({
+                            ...f,
+                            targets: f.targets.includes(String(e.id))
+                              ? f.targets.filter((x) => x !== String(e.id))
+                              : [...f.targets, String(e.id)],
+                          }))}
+                        />
+                        {String(e.name)} · {String(e.role ?? e.id)}
+                      </label>
+                    ))}
+                    {data.employees.filter((e) => e.status === "Aktif").length === 0 && (
+                      <p className="text-xs text-steel-400">{S.emptyCabang ?? "Tidak ada karyawan aktif"}</p>
+                    )}
+                  </div>
+                </Field>
+                <p className="mt-2 text-xs text-steel-500">
+                  {locale === "en" ? "Projected score" : "Skor proyeksi"}: <b className="text-navy-900">{hseScoreOf(hseForm.answers)}%</b>
+                  {" · "}{hseForm.targets.length} {locale === "en" ? "worker(s)" : "pekerja"}
+                </p>
+                <AsyncButton className="btn-primary mt-2 text-xs" onAction={saveHseQuestionnaire}>
+                  {locale === "en" ? "Send questionnaire" : "Sebar kuesioner"}
+                </AsyncButton>
+                {hseKuesList.length > 0 && (
+                  <div className="mt-4 border-t border-steel-100 pt-3">
+                    <h4 className="mb-2 text-xs font-semibold uppercase tracking-wide text-steel-500">
+                      {locale === "en" ? "Distributed" : "Sudah disebar"}
+                    </h4>
+                    <div className="max-h-48 space-y-1.5 overflow-y-auto">
+                      {hseKuesList.map((t) => (
+                        <div key={String(t.id)} className="flex items-center justify-between gap-2 rounded-lg border border-steel-100 px-2.5 py-1.5 text-sm">
+                          <div className="min-w-0">
+                            <p className="truncate font-medium text-navy-900">{String(t.employeeName ?? t.employeeId ?? "-")}</p>
+                            <p className="text-xs text-steel-500">
+                              <span className="font-mono">{String(t.id)}</span> · {String(t.topic)} · {fmtTanggal(String(t.date))} · {String(t.project)}
+                            </p>
+                          </div>
+                          <Badge tone={inspScoreTone(Number(t.score ?? 0))}>{Number(t.score ?? 0)}%</Badge>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </Card>
 
               <Card className="p-4">
@@ -1950,6 +2300,90 @@ export default function QCSafety() {
             )}
           </FormGrid>
           <Field label={S.fTitik}><input className="input" value={inspForm.point} onChange={(e) => setInspForm({ ...inspForm, point: e.target.value })} placeholder={S.phWelding} /></Field>
+          {/* T6-QC4: detail teknis inspeksi (parameter las, tebal, hardness, visual). */}
+          <FormGrid>
+            <Field label={locale === "en" ? "Weld procedure" : "Prosedur las (WPS)"}>
+              <input className="input" value={inspForm.weldProc} onChange={(e) => setInspForm({ ...inspForm, weldProc: e.target.value })} placeholder="WPS-xxx / API" />
+            </Field>
+            <Field label={locale === "en" ? "Thickness (mm)" : "Tebal (mm)"}>
+              <NumInput min={0} step={0.5} className="input" value={inspForm.thicknessMm} onChange={(e) => setInspForm({ ...inspForm, thicknessMm: e.target.value })} placeholder="12" />
+            </Field>
+            <Field label={locale === "en" ? "Hardness / NDT result" : "Hardness / hasil NDT"}>
+              <input className="input" value={inspForm.hardness} onChange={(e) => setInspForm({ ...inspForm, hardness: e.target.value })} placeholder="HB / UT pass" />
+            </Field>
+            <Field label={locale === "en" ? "Visual notes" : "Catatan visual"}>
+              <input className="input" value={inspForm.visualNotes} onChange={(e) => setInspForm({ ...inspForm, visualNotes: e.target.value })} placeholder={locale === "en" ? "Porosity, undercut, distortion…" : "Porosity, undercut, distorsi…"} />
+            </Field>
+          </FormGrid>
+          {/* T6-QC2: hierarki - subkon/pekerja yang diinspeksi. */}
+          <FormGrid>
+            <Field label={locale === "en" ? "Subcontractor" : "Subkontraktor"}>
+              <select className="input" value={inspForm.subkon} onChange={(e) => setInspForm({ ...inspForm, subkon: e.target.value })}>
+                <option value="">{locale === "en" ? "— none —" : "— tidak ada —"}</option>
+                {(data.subcontractors ?? []).map((s) => <option key={String(s.id)} value={String(s.name ?? s.id)}>{String(s.name ?? s.id)}</option>)}
+              </select>
+            </Field>
+            <Field label={locale === "en" ? "Worker / inspector subject" : "Pekerja / subjek inspeksi"}>
+              <select className="input" value={inspForm.pekerja} onChange={(e) => setInspForm({ ...inspForm, pekerja: e.target.value })}>
+                <option value="">{locale === "en" ? "— select worker —" : "— pilih pekerja —"}</option>
+                {data.employees.filter((e) => e.status === "Aktif").map((e) => <option key={String(e.id)} value={String(e.name)}>{String(e.name)} · {String(e.role ?? e.id)}</option>)}
+              </select>
+            </Field>
+          </FormGrid>
+          {/* T6-QC2: kuesioner + skoring per butir (0-5). */}
+          <div>
+            <div className="mb-2 flex items-center justify-between">
+              <p className="text-xs font-semibold uppercase tracking-wide text-steel-500">
+                {locale === "en" ? "Inspection questionnaire" : "Kuesioner inspeksi"}
+              </p>
+              <span className="text-xs text-steel-500">
+                {locale === "en" ? "Score" : "Skor"} {inspScorePct(inspForm.questionnaire) ?? 0}%
+              </span>
+            </div>
+            <div className="max-h-56 space-y-1.5 overflow-y-auto rounded-xl border border-steel-200 p-2.5">
+              {inspForm.questionnaire.map((item, idx) => (
+                <div key={idx} className="flex items-center gap-2 rounded-lg bg-white px-2.5 py-1.5">
+                  <input
+                    className="input flex-1 py-1 text-xs"
+                    value={item.q}
+                    onChange={(e) => setInspForm({
+                      ...inspForm,
+                      questionnaire: inspForm.questionnaire.map((x, i) => (i === idx ? { ...x, q: e.target.value } : x)),
+                    })}
+                  />
+                  <select
+                    className="input w-20 py-1 text-xs"
+                    value={String(item.score)}
+                    aria-label={`${locale === "en" ? "Score" : "Skor"} ${idx + 1}`}
+                    onChange={(e) => setInspForm({
+                      ...inspForm,
+                      questionnaire: inspForm.questionnaire.map((x, i) => (i === idx ? { ...x, score: Number(e.target.value) } : x)),
+                    })}
+                  >
+                    {[0, 1, 2, 3, 4, 5].map((n) => <option key={n} value={String(n)}>{n}</option>)}
+                  </select>
+                  <button
+                    type="button"
+                    className="text-xs text-steel-400 hover:text-rose-600"
+                    aria-label={locale === "en" ? "Remove item" : "Hapus butir"}
+                    onClick={() => setInspForm({ ...inspForm, questionnaire: inspForm.questionnaire.filter((_, i) => i !== idx) })}
+                  >
+                    ×
+                  </button>
+                </div>
+              ))}
+              {inspForm.questionnaire.length === 0 && (
+                <p className="text-xs text-steel-400">{locale === "en" ? "No questionnaire items." : "Belum ada butir kuesioner."}</p>
+              )}
+            </div>
+            <button
+              type="button"
+              className="btn-secondary mt-2 text-xs"
+              onClick={() => setInspForm({ ...inspForm, questionnaire: [...inspForm.questionnaire, { q: "", score: 5 }] })}
+            >
+              <Plus className="h-3.5 w-3.5" /> {locale === "en" ? "Add item" : "Tambah butir"}
+            </button>
+          </div>
         </div>
       </Modal>
 

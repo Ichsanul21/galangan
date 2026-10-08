@@ -217,11 +217,47 @@ export default function Analytics() {
   useModuleSync(AN_COLS);
   /* Rentang bulan untuk seluruh grafik. Default 12 bulan. */
   const [monthCount, setMonthCount] = useState<number>(12);
+  /* T6-AN1: date picker bulan-awal & bulan-akhir. Nilai "YYYY-MM".
+     Saat keduanya terisi, monthCount dihitung dari selisihnya dan
+     start key dipakai monthAxis(). Bulan berjalan tetap titik terakhir
+     bila end kosong (kontrak monthAxis). */
+  const [rangeFrom, setRangeFrom] = useState("");
+  const [rangeTo, setRangeTo] = useState("");
+  /* Hitung monthCount + start dari date picker. Dipanggil saat apply. */
+  const applyMonthRange = (from: string, to: string) => {
+    setRangeFrom(from);
+    setRangeTo(to);
+    if (!from && !to) { setMonthCount(12); return; }
+    const fromKey = from || monthKeyOf(todayISO());
+    const toKey = to || monthKeyOf(todayISO());
+    const a = /^(\d{4})-(\d{2})$/.exec(fromKey);
+    const b = /^(\d{4})-(\d{2})$/.exec(toKey);
+    if (!a || !b) return;
+    const ay = Number(a[1]), am = Number(a[2]);
+    const by = Number(b[1]), bm = Number(b[2]);
+    const diff = (by - ay) * 12 + (bm - am);
+    if (diff < 0) { toast(locale === "en" ? "Start month must be before end month" : "Bulan mulai harus sebelum bulan akhir", "info"); return; }
+    setMonthCount(Math.min(36, Math.max(1, diff + 1)));
+  };
   /* Sumbu bulan: bulan + tahun eksplisit, bulan BERJALAN di ujung kanan.
      Dihitung ulang setiap render supaya pergantian bulan saat tab terbuka
      langsung terasa (versi lama memakai useMemo dengan deps [] sehingga
      sumbu beku selama sesi). */
-  const axis = useMemo(() => monthAxis({ months: monthCount, locale }), [monthCount, locale]);
+  const axis = useMemo(() => {
+    /* T6-AN1: bila user memilih date picker, pakai start key dari bulan mulai. */
+    const fromKey = rangeFrom || "";
+    const toKey = rangeTo || "";
+    const a = /^(\d{4})-(\d{2})$/.exec(fromKey);
+    const b = /^(\d{4})-(\d{2})$/.exec(toKey);
+    if (a && b) {
+      const ay = Number(a[1]), am = Number(a[2]);
+      const by = Number(b[1]), bm = Number(b[2]);
+      const diff = (by - ay) * 12 + (bm - am);
+      const n = Math.min(36, Math.max(1, diff + 1));
+      return monthAxis({ months: n, start: `${a[1]}-${a[2]}`, locale });
+    }
+    return monthAxis({ months: monthCount, locale });
+  }, [monthCount, locale, rangeFrom, rangeTo]);
   const axisLabel = fmtMonthRange(axis);
   /* What-if dikendalikan dari Pengaturan (grup Analytics) - otomatis dipakai forecast. */
   const growth = getSetting(data, "WHATIF_GROWTH", 0);
@@ -911,10 +947,10 @@ const exportPdfReport = async () => {
               <button
                 key={n}
                 type="button"
-                onClick={() => setMonthCount(n)}
-                aria-pressed={monthCount === n}
+                onClick={() => { setMonthCount(n); setRangeFrom(""); setRangeTo(""); }}
+                aria-pressed={monthCount === n && !rangeFrom && !rangeTo}
                 className={`px-2.5 py-1 text-xs font-medium transition-colors ${
-                  monthCount === n
+                  monthCount === n && !rangeFrom && !rangeTo
                     ? "bg-navy-900 text-white"
                     : "bg-white text-steel-600 hover:bg-steel-100"
                 }`}
@@ -922,6 +958,30 @@ const exportPdfReport = async () => {
                 {n} {locale === "en" ? "mo" : "bln"}
               </button>
             ))}
+          </div>
+          {/* T6-AN1: date picker bulan awal & akhir. */}
+          <div className="flex flex-wrap items-center gap-1.5">
+            <label className="text-[11px] text-steel-500" htmlFor="an-range-from">{locale === "en" ? "From" : "Dari"}</label>
+            <input
+              id="an-range-from"
+              type="month"
+              className="input w-auto py-1 text-xs"
+              value={rangeFrom}
+              onChange={(e) => applyMonthRange(e.target.value, rangeTo)}
+            />
+            <label className="text-[11px] text-steel-500" htmlFor="an-range-to">{locale === "en" ? "To" : "Ke"}</label>
+            <input
+              id="an-range-to"
+              type="month"
+              className="input w-auto py-1 text-xs"
+              value={rangeTo}
+              onChange={(e) => applyMonthRange(rangeFrom, e.target.value)}
+            />
+            {(rangeFrom || rangeTo) && (
+              <button type="button" className="btn-secondary px-2 py-1 text-[11px]" onClick={() => { setRangeFrom(""); setRangeTo(""); setMonthCount(12); }}>
+                {locale === "en" ? "Reset" : "Reset"}
+              </button>
+            )}
           </div>
           <span className="text-xs text-steel-500">
             {locale === "en" ? "Window" : "Jendela"}: {axisLabel}

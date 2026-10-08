@@ -78,6 +78,15 @@ import { n_inv } from "../../i18n/n_inv";
 import { AlertBannerView, flashPick, notifRowId, useModuleAlert, useNotifFlash } from "../../components/AlertBanner";
 import { useDeepLinkParams, useDeepLinkTarget } from "../../components/useDeepLink";
 import { rowHighlightClass } from "../../components/rowHighlight";
+
+/* T6-INV2: warna badge kategori di Katalog - deterministik per nama
+   kategori supaya kategori yang sama selalu dapat nada yang sama. */
+const CAT_TONES = ["blue", "violet", "teal", "cyan", "navy", "amber", "green"] as const;
+function catTone(category: string): (typeof CAT_TONES)[number] {
+  let h = 0;
+  for (let i = 0; i < category.length; i++) h = (h * 31 + category.charCodeAt(i)) >>> 0;
+  return CAT_TONES[h % CAT_TONES.length];
+}
 import { stockTrend, itemTrend, lowStockTrend, stockValueTrend, warehouseTrend } from "../../data";
 
 const emptyForm = { name: "", category: "Baja", sku: "", warehouse: "Gudang Baja A", rack: "", bin: "", stock: "0", minStock: "0", unit: "pcs", cost: "0", volume: "0", batch: "", uom2: "", konversi: "", minWh: "", photoUrl: "", matType: "habis-pakai", eceran: false as boolean | string };
@@ -375,6 +384,7 @@ export default function Inventory() {
   const movements = data.movements;
   const projects = data.projects;
   const requisitions = data.requisitions;
+  const purchaseOrders = data.purchaseOrders ?? [];
   const modAlert = useModuleAlert("inventori");
   const flash = useNotifFlash();
   const deepParams = useDeepLinkParams();
@@ -391,7 +401,9 @@ export default function Inventory() {
      kategori di dalam level itu (2 tingkat: status dulu, baru kategori). */
   const [warnFilterOpen, setWarnFilterOpen] = useState<WarnLevel | null>(null);
   const [wh, setWh] = useState("Semua");
-  const [abcF, setAbcF] = useState("Semua");
+  /* T6-INV2: filter ABC dihapus dari UI Katalog; state dikunci "Semua"
+     agar logika filter lama (dead Analisis) tetap aman. */
+  const [abcF] = useState("Semua");
   const [matF, setMatF] = useState("Semua");
   const [sort, setSort] = useState<SortState>({ key: null, dir: "asc" });
   const [sort2, setSort2] = useState<SortState>({ key: null, dir: "asc" });
@@ -420,6 +432,10 @@ export default function Inventory() {
   const [labelItem, setLabelItem] = useState<StoreItem | null>(null);
   const [moveTarget, setMoveTarget] = useState<StoreItem | null>(null);
   const [moveKind, setMoveKind] = useState<"in" | "out">("in");
+  /* T6-INV6: kalkulator keluar khusus - potongan plat (P×L×T×pcs → kg)
+     dan konversi liter/drum/ton untuk barang cair/bulk. */
+  const [cutPlat, setCutPlat] = useState({ p: "", l: "", t: "", pcs: "1", on: false });
+  const [bulkConv, setBulkConv] = useState<{ on: boolean; mode: "liter" | "drum" | "ton"; value: string }>({ on: false, mode: "liter", value: "" });
   const [moveQty, setMoveQty] = useState("");
   const [moveRef, setMoveRef] = useState("");
   const [moveBatch, setMoveBatch] = useState("");
@@ -982,15 +998,17 @@ if (k === "mattype") return matTypeOf(i);
     setMoveTarget(it);
     setMoveKind(kind);
     setMoveQty("");
-    setMoveRef("");
-    setMoveBatch("");
-    setMoveUom("base");
-    setMovePrice("");
-    setMovePo("");
-    setMoveSupplier("");
-    setMoveTax("");
+    setMoveUom(isEceran(it) && kind === "out" ? "uom2" : "base");
     setMovePurpose("");
     setMovePic("");
+    setMoveRef("");
+    setMovePrice("");
+    setMoveTax("");
+    setMoveSupplier("");
+    setMovePo("");
+    setMoveBatch("");
+    setCutPlat({ p: "", l: "", t: "", pcs: "1", on: false });
+    setBulkConv({ on: false, mode: "liter", value: "" });
   };
 
   const closeMove = () => {
@@ -1233,6 +1251,71 @@ if (k === "mattype") return matTypeOf(i);
         item: itemName, by: "System BOM", amount: Math.max(0, Math.round(estAmount)), status: "Draft",
       }, { action: "membuat PR Draft (BOM)", target: `${itemName} × ${fmtJumlah(qtyKurang)}`, module: "Inventori" });
       toast(S.prDraftMade.replace("{a}", created.id).replace("{b}", itemName).replace("{n}", fmtJumlah(qtyKurang)));
+    } catch (e) {
+      toast(e instanceof Error ? e.message : S.saveFail, "info");
+    }
+  };
+
+  /* T6-INV4: checklist terima barang dari PR/PO → GR + update stok + status. */
+  const terimaChecklist = async (src: StoreItem, kind: "pr" | "po") => {
+    const itemName = String(src.item ?? src.name ?? "");
+    const inv = inventory.find((i) => sameName(i.name, itemName) || sameName(i.sku, itemName));
+    if (!inv) { toast(locale === "en" ? `Item "${itemName}" not found in catalog` : `Item "${itemName}" belum ada di katalog`, "info"); return; }
+    const qty = Number(src.qty || 1) > 0 ? Number(src.qty) : 1;
+    const price = Number(src.amount || 0) > 0 ? Number(src.amount) / qty : Number(inv.cost || 0);
+    const oldStock = Number(inv.stock);
+    const oldVal = oldStock * effCost(inv);
+    const newStock = oldStock + qty;
+    const patch: Record<string, unknown> = { stock: newStock };
+    if (price > 0) patch.avgCost = Math.round(((oldVal + qty * price) / (newStock || 1)) * 100) / 100;
+    const ref = kind === "po" ? String(src.id) : String(src.id);
+    try {
+      await update("inventory", inv.id, patch);
+      await add("movements", {
+        item: inv.name, itemId: inv.id, type: "Penerimaan", qty,
+        by: `${kind === "po" ? "PO" : "PR"} checklist · ${ref}`,
+        date: todayISO(), tone: "in",
+        toWh: String(inv.warehouse ?? ""),
+        po: kind === "po" ? ref : "",
+        supplier: kind === "po" ? String(src.vendor ?? "") : "",
+        priceExcl: price > 0 ? Math.round(price) : 0,
+        total: price > 0 ? Math.round(qty * price) : 0,
+        purpose: `Checklist terima ${kind === "po" ? "PO" : "PR"}`,
+        branch: moveBranch(`${src.project ?? ""} ${ref}`),
+      }, { action: "checklist terima barang", target: `${inv.name} × ${qty} (${ref})`, module: "Inventori" });
+      if (kind === "pr") await update("requisitions", src.id, { status: "Selesai" });
+      if (kind === "po") {
+        const rec = Number(src.receivedQty || 0) + qty;
+        await update("purchaseOrders", src.id, { receivedQty: rec, status: rec >= Number(src.qty || qty) ? "Diterima" : src.status });
+      }
+      log("checklist terima barang", `${inv.name} × ${qty} via ${ref}`, "Inventori");
+      toast(locale === "en" ? `${inv.name} × ${qty} received (${ref})` : `${inv.name} × ${qty} diterima (${ref})`);
+    } catch (e) {
+      toast(e instanceof Error ? e.message : S.saveFail, "info");
+    }
+  };
+
+  /* T6-INV4: checklist keluar untuk permintaan PR yang disetujui / proyek. */
+  const keluarChecklist = async (src: StoreItem) => {
+    const itemName = String(src.item ?? "");
+    const inv = inventory.find((i) => sameName(i.name, itemName) || sameName(i.sku, itemName));
+    if (!inv) { toast(locale === "en" ? `Item "${itemName}" not in catalog` : `Item "${itemName}" belum ada di katalog`, "info"); return; }
+    const qty = Number(src.qty || 1) > 0 ? Number(src.qty) : 1;
+    if (qty > Number(inv.stock)) { toast(S.stockShort.replace("{n}", fmtJumlah(Number(inv.stock))), "info"); return; }
+    try {
+      await update("inventory", inv.id, { stock: Number(inv.stock) - qty });
+      await add("movements", {
+        item: inv.name, itemId: inv.id, type: "Pengeluaran", qty,
+        by: `Checklist keluar · ${String(src.id)}`,
+        date: todayISO(), tone: "out",
+        fromWh: String(inv.warehouse ?? ""),
+        purpose: `Checklist keluar PR ${String(src.id)}`,
+        pic: String(src.by ?? ""),
+        branch: moveBranch(`${src.project ?? ""} ${String(src.id)}`),
+      }, { action: "checklist keluar barang", target: `${inv.name} × ${qty} (${String(src.id)})`, module: "Inventori" });
+      await update("requisitions", src.id, { status: "Diterima" });
+      log("checklist keluar barang", `${inv.name} × ${qty} untuk ${String(src.id)}`, "Inventori");
+      toast(locale === "en" ? `${inv.name} × ${qty} issued` : `${inv.name} × ${qty} dikeluarkan`);
     } catch (e) {
       toast(e instanceof Error ? e.message : S.saveFail, "info");
     }
@@ -1641,20 +1724,26 @@ if (k === "mattype") return matTypeOf(i);
     const useUom2 = hasUom2(item) && retUom === "uom2";
     const qty = useUom2 ? raw / convOf(item) : raw;
     if (qty > Number(item.stock)) { toast(S.stockShort.replace("{n}", fmtJumlah(Number(item.stock))), "info"); return; }
-    if (!retVendor.trim()) { toast("Vendor retur wajib diisi", "info"); return; }
-    if (!retReason.trim()) { toast("Alasan retur wajib diisi", "info"); return; }
+    /* T6-INV4: vendor TIDAK wajib - retur bisa ke gudang/internal tanpa vendor. */
     const vendorTrim = retVendor.trim();
+    if (!retReason.trim()) { toast("Alasan retur wajib diisi", "info"); return; }
     const qtyNote = useUom2 ? `${fmtJumlah(raw)} ${uom2Of(item)} (${fmtJumlah(qty)} ${item.unit})` : fmtJumlah(qty);
+    const byText = vendorTrim
+      ? `Retur ke ${vendorTrim} - ${retReason.trim()}${useUom2 ? ` · input ${qtyNote}` : ""}`
+      : `Retur - ${retReason.trim()}${useUom2 ? ` · input ${qtyNote}` : ""}`;
     try {
       await update("inventory", item.id, { stock: Number(item.stock) - qty });
       await add("movements", {
         item: item.name, itemId: item.id, type: "Retur", qty,
-        by: `Retur ke ${vendorTrim} - ${retReason.trim()}${useUom2 ? ` · input ${qtyNote}` : ""}`,
+        by: byText,
         date: todayISO(), tone: "out",
-        supplier: vendorTrim, purpose: retReason.trim(),
+        supplier: vendorTrim || "", purpose: retReason.trim(),
         branch: moveBranch(`${vendorTrim} ${retReason}`),
-      }, { action: "meretur barang", target: `${item.name} × ${qtyNote} (${vendorTrim})`, module: "Inventori" });
-      /* Koreksi hutang: cari payable po/item/vendor terkait, kurangi amt proporsional. */
+      }, { action: "meretur barang", target: `${item.name} × ${qtyNote}${vendorTrim ? ` (${vendorTrim})` : ""}`, module: "Inventori" });
+      /* Koreksi hutang: hanya bila ada vendor - retur tanpa vendor tidak
+         mengurangi hutang ke pemasok mana pun. */
+      let corrected = 0;
+      if (vendorTrim) {
       const cands = (data.payables ?? []).filter((a) => {
         const vendorOk = sameName(a.v ?? a.vendor, vendorTrim);
         const itemOk = sameName(a.item, item.name);
@@ -1663,7 +1752,6 @@ if (k === "mattype") return matTypeOf(i);
         return (vendorOk && (itemOk || poOk || !a.item)) || (itemOk && !vendorTrim);
       });
       const unitVal = effCost(item);
-      let corrected = 0;
       for (const a of cands) {
         const amt = Number(a.amt || 0);
         if (amt <= 0) continue;
@@ -1673,10 +1761,11 @@ if (k === "mattype") return matTypeOf(i);
         log("koreksi hutang (retur)", `${a.id} · ${item.name} × ${qtyNote} → -${fmtRupiah(red)} (sisa ${fmtRupiah(amt - red)})`, "Inventori");
         corrected++;
       }
-      log("meretur barang", `${item.name} × ${qtyNote} ke ${vendorTrim}: ${retReason.trim()}`, "Inventori");
+      } /* end if (vendorTrim) */
+      log("meretur barang", `${item.name} × ${qtyNote}${vendorTrim ? ` ke ${vendorTrim}` : ""}: ${retReason.trim()}`, "Inventori");
       toast(corrected > 0
         ? `Retur ${item.name} × ${qtyNote} tersimpan + koreksi ${corrected} hutang`
-        : `Retur ${item.name} × ${qtyNote} tersimpan (tanpa payable terkait)`);
+        : `Retur ${item.name} × ${qtyNote} tersimpan${vendorTrim ? "" : " (tanpa vendor)"}`);
       setShowRetur(false);
       setRetItem(""); setRetQty(""); setRetVendor(""); setRetReason(""); setRetUom("base");
     } catch {
@@ -1970,11 +2059,7 @@ if (k === "mattype") return matTypeOf(i);
           {tab === "Katalog" && (
             <>
               <p className="mb-3 rounded-lg bg-steel-50 px-3 py-2 text-xs text-steel-500">{S.fifoInfo}</p>
-              <p className="mb-3 rounded-lg bg-steel-50 px-3 py-2 text-xs text-steel-500">
-                {locale === "en"
-                  ? "ABC formula: items ranked by stock value (stock × cost); cumulative ≤70% = A, ≤90% = B, rest = C."
-                  : "Rumus ABC: item diurutkan berdasar nilai stok (stok × harga); kumulatif ≤70% = A, ≤90% = B, sisanya = C."}
-              </p>
+              {/* T6-INV2: teks rumus ABC dihapus dari Katalog. */}
               {/* I2: strip "perlu perhatian" berperingkat STATUS.
                   Tombol = [jumlah][status]; klik → dropdown kategori di
                   dalam status itu (jumlah material per kategori + nama).
@@ -2086,21 +2171,16 @@ if (k === "mattype") return matTypeOf(i);
                   className="min-w-52 flex-1 sm:max-w-xs"
                 />
                 <FilterPopover
-                  activeCount={[cat !== "Semua", wh !== "Semua", abcF !== "Semua", matF !== "Semua"].filter(Boolean).length}
-                  initial={{ cat, wh, abc: abcF, mat: matF }}
-                  onReset={() => { setCat("Semua"); setWh("Semua"); setAbcF("Semua"); setMatF("Semua"); }}
-                  onApply={(d) => { setCat(d.cat); setWh(d.wh); setAbcF(d.abc); setMatF(d.mat ?? "Semua"); }}
+                  activeCount={[cat !== "Semua", wh !== "Semua", matF !== "Semua"].filter(Boolean).length}
+                  initial={{ cat, wh, mat: matF }}
+                  onReset={() => { setCat("Semua"); setWh("Semua"); setMatF("Semua"); }}
+                  onApply={(d) => { setCat(d.cat); setWh(d.wh); setMatF(d.mat ?? "Semua"); }}
                 >
                   {(draft, setDraft) => (
                     <div className="space-y-3">
                       <Field label={locale === "en" ? "Warehouse (Semua gudang)" : "Gudang (Semua gudang)"}>
                         <select className="input w-full" value={draft.wh} onChange={(e) => setDraft({ ...draft, wh: e.target.value })} aria-label={S.whAria}>
                           {["Semua", ...warehouses].map((w) => <option key={w} value={w}>{w === "Semua" ? "Semua gudang" : w}</option>)}
-                        </select>
-                      </Field>
-                      <Field label={locale === "en" ? "ABC class (Semua kelas)" : "Kelas ABC (Semua kelas) — A: 70% nilai, B: 20%, C: 10%"}>
-                        <select className="input w-full" value={draft.abc} onChange={(e) => setDraft({ ...draft, abc: e.target.value })} aria-label={S.abcAria}>
-                          {["Semua", "A", "B", "C"].map((a) => <option key={a} value={a}>{a === "Semua" ? "Semua kelas" : `Kelas ${a}`}</option>)}
                         </select>
                       </Field>
                       <Field label={locale === "en" ? "Material type (All types)" : "Jenis material (Semua jenis)"}>
@@ -2126,8 +2206,7 @@ if (k === "mattype") return matTypeOf(i);
                 <button className="btn-secondary" onClick={() => setShowScan(true)} title={S.scanBtnTitle} aria-label={S.scanBtnAria}>
                   <Camera className="h-4 w-4" /> {S.scanBtn}
                 </button>
-              </div>
-              <div className="mb-3 flex flex-wrap items-center gap-2">
+                {/* T6-INV2: select impor dipindah sebaris dengan scan. */}
                 <select className="input w-auto py-1.5 text-xs" value={importMode} onChange={(e) => { setImportMode(e.target.value as "Katalog" | "IN" | "OUT"); setImportReport([]); }} aria-label={S.impModeAria}>
                   <option value="Katalog">{S.impKatalog}</option>
                   <option value="IN">{S.impIn}</option>
@@ -2147,11 +2226,7 @@ if (k === "mattype") return matTypeOf(i);
                   <input type="file" accept=".csv" className="hidden" aria-label={importMode === "Katalog" ? S.impAriaKatalog : importMode === "IN" ? S.impAriaIn : S.impAriaOut}
                     onChange={(e) => { const f = e.target.files?.[0]; if (f) { if (importMode === "IN") handleImportINFile(f); else if (importMode === "OUT") handleImportOUTFile(f); else handleImportFile(f); } e.target.value = ""; }} />
                 </label>
-                <span className="text-xs text-steel-400">
-                  {importMode === "Katalog" && S.hintCols}
-                  {importMode === "IN" && S.hintColsIn}
-                  {importMode === "OUT" && S.hintColsOut}
-                </span>
+                {/* T6-INV2: hint kolom disembunyikan. */}
               </div>
               {importReport.length > 0 && (
                 <div className="mb-3 rounded-lg bg-steel-50 px-3 py-2 text-xs text-steel-600">
@@ -2183,7 +2258,7 @@ if (k === "mattype") return matTypeOf(i);
                             <p className="text-xs text-steel-500 font-mono">{i.sku}</p>
                             {reserved > 0 && <p className="text-xs text-amber-600">Reservasi {fmtJumlah(reserved)} {i.unit}</p>}
                           </td>
-                          <td className="td"><Badge tone="gray">{i.category}</Badge></td>
+                          <td className="td"><Badge tone={catTone(String(i.category ?? ""))}>{i.category}</Badge></td>
                           <td className="td"><Badge tone={matTone(matTypeOf(i))}>{matLabel(matTypeOf(i))}{isEceran(i) ? " · Eceran" : ""}</Badge></td>
                           <td className="td font-semibold text-navy-900">
                             {fmtJumlah(Number(i.stock))} <span className="font-normal text-steel-400">{i.unit}</span>
@@ -2464,7 +2539,7 @@ if (k === "mattype") return matTypeOf(i);
                   <button className="btn-primary w-full justify-center whitespace-nowrap py-5 text-base" title={grGiTip("Penerimaan", locale)} onClick={() => { const first = lowStock[0] ?? inventory[0]; if (first) openMove(first, "in"); }}><ArrowDownToLine className="h-4 w-4" /> {S.btnGr}</button>
                   <button className="btn-secondary w-full justify-center" title={grGiTip("Pengeluaran", locale)} onClick={() => { const first = inventory[0]; if (first) openMove(first, "out"); }}><ArrowUpFromLine className="h-4 w-4" /> {S.btnGi}</button>
                   <button className="btn-secondary w-full justify-center" onClick={() => setShowTransfer(true)}><Repeat className="h-4 w-4" /> {S.btnTransfer}</button>
-                  <button className="btn-secondary w-full justify-center" onClick={() => { setRetItem(""); setRetQty(""); setRetVendor(""); setRetReason(""); setRetUom("base"); setShowRetur(true); }}><ArrowUpFromLine className="h-4 w-4" /> Retur ke Vendor</button>
+                  <button className="btn-secondary w-full justify-center" onClick={() => { setRetItem(""); setRetQty(""); setRetVendor(""); setRetReason(""); setRetUom("base"); setShowRetur(true); }}><ArrowUpFromLine className="h-4 w-4" /> Retur</button>
                   <button className="btn-secondary w-full justify-center" onClick={() => setShowOpname(true)}><ClipboardCheck className="h-4 w-4" /> {S.opnameT}</button>
                 </div>
               </Card>
@@ -2508,6 +2583,76 @@ if (k === "mattype") return matTypeOf(i);
                 </div>
                 </div>
                 {forecastBase.length === 0 && <EmptyState title={S.emptyNoProjT} subtitle={S.emptyNoProjS} />}
+              </Card>
+              {/* T6-INV4: checklist terima (procurement/PO) + keluar (permintaan proyek). */}
+              <Card className="p-5 lg:col-span-3">
+                <CardHeader
+                  title={locale === "en" ? "Procurement checklist" : "Checklist Pengadaan"}
+                  subtitle={locale === "en"
+                    ? "Receive from open PR/PO (adds stock), or issue goods for approved project requests."
+                    : "Terima dari PR/PO terbuka (tambah stok), atau keluar barang untuk permintaan proyek yang disetujui."}
+                />
+                <div className="mt-3 grid grid-cols-1 gap-4 lg:grid-cols-2">
+                  <div>
+                    <h4 className="mb-2 text-xs font-semibold uppercase tracking-wide text-steel-500">
+                      {locale === "en" ? "Inbound · PR / PO" : "Masuk · PR / PO"}
+                    </h4>
+                    <div className="max-h-72 space-y-1.5 overflow-y-auto pr-1">
+                      {(() => {
+                        const openPr = requisitions.filter((r) => ["Draft", "Draf", "Disetujui", "Menunggu Approval", "RFQ", "Diajukan"].includes(String(r.status)));
+                        const openPo = purchaseOrders.filter((p) => !["Selesai", "Dibatalkan", "Diterima"].includes(String(p.status)) && Number(p.receivedQty ?? 0) < Number(p.qty ?? 0));
+                        const rows = [
+                          ...openPr.map((r) => ({ src: r, kind: "pr" as const })),
+                          ...openPo.map((p) => ({ src: p, kind: "po" as const })),
+                        ];
+                        if (rows.length === 0) {
+                          return <p className="text-xs text-steel-400">{locale === "en" ? "No open PR/PO." : "Tidak ada PR/PO terbuka."}</p>;
+                        }
+                        return rows.map(({ src, kind }) => (
+                          <div key={`${kind}-${src.id}`} className="flex items-center justify-between gap-2 rounded-lg border border-steel-100 bg-white px-2.5 py-2 text-sm">
+                            <div className="min-w-0">
+                              <p className="truncate font-medium text-navy-900" title={String(src.item ?? "")}>{String(src.item ?? src.name ?? "-")}</p>
+                              <p className="text-xs text-steel-500">
+                                <span className="font-mono">{String(src.id)}</span> · {kind === "po" ? "PO" : "PR"} · {fmtJumlah(Number(src.qty || 1))} {String(src.unit ?? "")}
+                                {kind === "po" && String(src.vendor ?? "") ? ` · ${String(src.vendor)}` : ""}
+                              </p>
+                            </div>
+                            <button className="btn-primary shrink-0 text-xs" onClick={() => void terimaChecklist(src, kind)}>
+                              {locale === "en" ? "Receive" : "Terima"}
+                            </button>
+                          </div>
+                        ));
+                      })()}
+                    </div>
+                  </div>
+                  <div>
+                    <h4 className="mb-2 text-xs font-semibold uppercase tracking-wide text-steel-500">
+                      {locale === "en" ? "Outbound · Project requests" : "Keluar · Permintaan proyek"}
+                    </h4>
+                    <div className="max-h-72 space-y-1.5 overflow-y-auto pr-1">
+                      {(() => {
+                        const outs = requisitions.filter((r) => String(r.status) === "Disetujui" && Number(r.qty || 0) > 0);
+                        if (outs.length === 0) {
+                          return <p className="text-xs text-steel-400">{locale === "en" ? "No approved requests to issue." : "Tidak ada permintaan disetujui untuk dikeluarkan."}</p>;
+                        }
+                        return outs.map((r) => (
+                          <div key={r.id} className="flex items-center justify-between gap-2 rounded-lg border border-steel-100 bg-white px-2.5 py-2 text-sm">
+                            <div className="min-w-0">
+                              <p className="truncate font-medium text-navy-900" title={String(r.item ?? "")}>{String(r.item ?? "-")}</p>
+                              <p className="text-xs text-steel-500">
+                                <span className="font-mono">{String(r.id)}</span> · {fmtJumlah(Number(r.qty || 1))} {String(r.unit ?? "")}
+                                {String(r.project ?? "") ? ` · ${String(r.project)}` : ""}
+                              </p>
+                            </div>
+                            <button className="btn-secondary shrink-0 text-xs" onClick={() => void keluarChecklist(r)}>
+                              {locale === "en" ? "Issue" : "Keluar"}
+                            </button>
+                          </div>
+                        ));
+                      })()}
+                    </div>
+                  </div>
+                </div>
               </Card>
             </div>
             </div>
@@ -3339,6 +3484,92 @@ if (k === "mattype") return matTypeOf(i);
               </Field>
             )}
           </FormGrid>
+          {/* T6-INV6: potongan plat & konversi bulk untuk barang keluar. */}
+          {moveKind === "out" && (
+            <div className="space-y-2 rounded-xl border border-steel-200 bg-steel-50 p-3">
+              <p className="text-xs font-semibold uppercase tracking-wide text-steel-500">
+                {locale === "en" ? "Issue helpers" : "Bantuan keluar barang"}
+              </p>
+              <label className="flex items-center gap-2 text-sm text-steel-700">
+                <input type="checkbox" checked={cutPlat.on} onChange={(e) => setCutPlat({ ...cutPlat, on: e.target.checked })} />
+                {locale === "en" ? "Plate cut (P×L×T×pcs → kg)" : "Potongan plat (P×L×T×pcs → kg)"}
+              </label>
+              {cutPlat.on && (
+                <FormGrid>
+                  <Field label={locale === "en" ? "P (mm)" : "Panjang P (mm)"}>
+                    <NumInput min={0} className="input" value={cutPlat.p} onChange={(e) => setCutPlat({ ...cutPlat, p: e.target.value })} />
+                  </Field>
+                  <Field label={locale === "en" ? "L (mm)" : "Lebar L (mm)"}>
+                    <NumInput min={0} className="input" value={cutPlat.l} onChange={(e) => setCutPlat({ ...cutPlat, l: e.target.value })} />
+                  </Field>
+                  <Field label={locale === "en" ? "T (mm)" : "Tebal T (mm)"}>
+                    <NumInput min={0} className="input" value={cutPlat.t} onChange={(e) => setCutPlat({ ...cutPlat, t: e.target.value })} />
+                  </Field>
+                  <Field label={locale === "en" ? "Qty (pcs)" : "Jumlah (pcs)"}>
+                    <NumInput min={1} className="input" value={cutPlat.pcs} onChange={(e) => setCutPlat({ ...cutPlat, pcs: e.target.value })} />
+                  </Field>
+                </FormGrid>
+              )}
+              {cutPlat.on && (() => {
+                const kg = sbTonasePlat(Number(cutPlat.p) || 0, Number(cutPlat.l) || 0, Number(cutPlat.t) || 0, Number(cutPlat.pcs) || 1);
+                if (kg <= 0) return null;
+                return (
+                  <div className="flex flex-wrap items-center gap-2">
+                    <p className="text-xs text-steel-600">
+                      {locale === "en" ? "Weight" : "Berat"}: <b className="text-navy-900">{fmtJumlah(kg)} kg</b>
+                      {moveFresh && /kg|ton|kilo/i.test(String(moveFresh.unit ?? "")) ? "" : ` · ${locale === "en" ? "apply as qty (unit stock)" : "terapkan sebagai qty (satuan stok)"}`}
+                    </p>
+                    <button
+                      type="button"
+                      className="btn-secondary text-xs"
+                      onClick={() => setMoveQty(String(kg))}
+                    >
+                      {locale === "en" ? "Use kg" : "Pakai kg"}
+                    </button>
+                  </div>
+                );
+              })()}
+              <label className="flex items-center gap-2 text-sm text-steel-700">
+                <input type="checkbox" checked={bulkConv.on} onChange={(e) => setBulkConv({ ...bulkConv, on: e.target.checked })} />
+                {locale === "en" ? "Bulk conversion (liter / drum / ton)" : "Konversi bulk (liter / drum / ton)"}
+              </label>
+              {bulkConv.on && (
+                <div className="flex flex-wrap items-end gap-2">
+                  <Field label={locale === "en" ? "Unit" : "Satuan"}>
+                    <select className="input w-auto" value={bulkConv.mode} onChange={(e) => setBulkConv({ ...bulkConv, mode: e.target.value as typeof bulkConv.mode })}>
+                      <option value="liter">Liter</option>
+                      <option value="drum">Drum</option>
+                      <option value="ton">Ton</option>
+                    </select>
+                  </Field>
+                  <Field label={locale === "en" ? "Quantity" : "Jumlah"}>
+                    <NumInput min={0} className="input w-32" value={bulkConv.value} onChange={(e) => setBulkConv({ ...bulkConv, value: e.target.value })} />
+                  </Field>
+                  <button
+                    type="button"
+                    className="btn-secondary text-xs"
+                    onClick={() => {
+                      const raw = Number(bulkConv.value) || 0;
+                      if (raw <= 0) return;
+                      /* Preset konversi galangan: drum 200L, ton = 1000 kg / liter (oli). */
+                      const conv = bulkConv.mode === "drum" ? raw * 200 : bulkConv.mode === "ton" ? raw * 1000 : raw;
+                      setMoveQty(String(Math.round(conv * 1000) / 1000));
+                      if (bulkConv.mode !== "liter" && moveFresh && !hasUom2(moveFresh)) {
+                        toast(locale === "en"
+                          ? `Converted ${raw} ${bulkConv.mode} ≈ ${fmtJumlah(conv)} (base unit)`
+                          : `Dikonversi ${raw} ${bulkConv.mode} ≈ ${fmtJumlah(conv)} (satuan utama)`, "info");
+                      }
+                    }}
+                  >
+                    {locale === "en" ? "Convert" : "Konversi"}
+                  </button>
+                  <p className="text-[11px] text-steel-400">
+                    {bulkConv.mode === "drum" ? "1 drum = 200 liter" : bulkConv.mode === "ton" ? "1 ton = 1000 (kg/liter tergantung stok)" : "1 liter = 1 satuan utama bila stok satuan liter"}
+                  </p>
+                </div>
+              )}
+            </div>
+          )}
           {moveFresh && hasUom2(moveFresh) && (
             <Field label={S.refLbl} hint={S.hintRef}>
               <input className="input font-mono" value={moveRef} onChange={(e) => setMoveRef(e.target.value)} />
@@ -3433,8 +3664,8 @@ if (k === "mattype") return matTypeOf(i);
         </div>
       </Modal>
 
-      {/* Modal retur ke vendor */}
-      <Modal open={showRetur} onClose={() => setShowRetur(false)} title="Retur ke Vendor" subtitle="Kurangi stok + movement Retur + koreksi hutang terkait"
+      {/* Modal retur - T6-INV4: vendor opsional (retur internal/tanpa vendor). */}
+      <Modal open={showRetur} onClose={() => setShowRetur(false)} title="Retur" subtitle="Kurangi stok + movement Retur; koreksi hutang hanya jika vendor diisi"
         footer={<><button className="btn-secondary" onClick={() => setShowRetur(false)}>{S.cancelBtn}</button><button className="btn-primary" onClick={saveRetur}>Simpan Retur</button></>}>
         <div className="space-y-3">
           <Field label={S.itemLbl}>
@@ -3447,7 +3678,7 @@ if (k === "mattype") return matTypeOf(i);
             <Field label={S.qtyTrLbl}>
               <NumInput min={1} className="input" value={retQty} onChange={(e) => setRetQty(e.target.value)} />
             </Field>
-            <Field label="Vendor">
+            <Field label="Vendor (opsional)" hint="Kosongkan untuk retur internal / tanpa pemasok">
               <input className="input" value={retVendor} onChange={(e) => setRetVendor(e.target.value)} placeholder="Nama vendor" />
             </Field>
           </FormGrid>

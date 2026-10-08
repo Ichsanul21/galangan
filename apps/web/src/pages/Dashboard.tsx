@@ -479,11 +479,26 @@ const exportSummary = async () => {
     return out;
   }, [data]);
 
+  /* T6-DSH1: filter kategori modul di kartu "Perlu Perhatian".
+     Default "Semua" = tampil semua modul. User bisa memilih satu modul
+     supaya kartu tidak menampilkan 13 modul sekaligus. */
+  const [attnMod, setAttnMod] = useState<ModuleAlertKey | "Semua">("Semua");
+  const attnFiltered = useMemo(
+    () => (attnMod === "Semua" ? attentionItems : attentionItems.filter((x) => x.key === attnMod)),
+    [attentionItems, attnMod],
+  );
+  /* Modul yang punya minimal satu alert - dipakai opsi filter. */
+  const attnModules = useMemo(() => {
+    const set = new Set<ModuleAlertKey>();
+    for (const x of attentionItems) set.add(x.key);
+    return DASH_ALERT_KEYS.filter((k) => set.has(k));
+  }, [attentionItems]);
+
   /* Group per tingkat, cap PER TINGKAT. Cap global dulu disembunyikan semua
-     alert `info` begitu ada 12 `kritis` - padahal yang paling butuh dilihat
-     justru yang kritis itu. */
+      alert `info` begitu ada 12 `kritis` - padahal yang paling butuh dilihat
+      justru yang kritis itu. */
   const attentionGroups = useMemo(() => {
-    const items = attentionItems.map(({ key, item }) => ({ key, item }));
+    const items = attnFiltered.map(({ key, item }) => ({ key, item }));
     return groupByLevel(
       items.map((x) => x.item),
       DASH_ALERT_CAP,
@@ -491,9 +506,9 @@ const exportSummary = async () => {
       ...g,
       entries: items.filter((x) => x.item.level === g.level),
     }));
-  }, [attentionItems]);
+  }, [attnFiltered]);
 
-  const attentionCount = useMemo(() => countByLevel(attentionItems.map((x) => x.item)), [attentionItems]);
+  const attentionCount = useMemo(() => countByLevel(attnFiltered.map((x) => x.item)), [attnFiltered]);
 
   /* Banner "Perlu perhatian" mengirim SATU id. Modul tujuan membuka tab/
      filter yang memuat baris itu lalu kedipkan - tidak perlu tab di URL
@@ -734,7 +749,7 @@ const exportSummary = async () => {
           "Perlu Perhatian" dengan semua baris alert disorot. */}
       <StaggerItem>
         <Card className="p-4">
-          <div className="mb-3 flex items-center gap-2 px-1">
+          <div className="mb-3 flex flex-wrap items-center gap-2 px-1">
             <button
               type="button"
               onClick={goNotifikasi}
@@ -742,15 +757,36 @@ const exportSummary = async () => {
               className="flex cursor-pointer items-center gap-2 rounded-lg px-1 py-0.5 text-left hover:bg-rose-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-rose-400"
             >
               <AlertTriangle className="h-4 w-4 text-rose-500" />
-              <h3 className="text-sm font-semibold text-navy-900 underline-offset-2 hover:underline">{S.needAttention.replace("{n}", String(attentionItems.length))} <span className="text-[11px] font-normal text-steel-400">&rarr; Notifikasi</span></h3>
+              <h3 className="text-sm font-semibold text-navy-900 underline-offset-2 hover:underline">{S.needAttention.replace("{n}", String(attnFiltered.length))} <span className="text-[11px] font-normal text-steel-400">&rarr; Notifikasi</span></h3>
             </button>
             <span className="text-xs text-steel-400">{S.autoThreshold}</span>
-            <button type="button" onClick={goNotifikasi} className="btn-secondary ml-auto px-2 py-1 text-[11px]">{S.seeAll}</button>
+            {/* T6-DSH1: filter kategori modul - jangan langsung tampilkan semua. */}
+            <label className="ml-auto flex items-center gap-1.5 text-[11px] text-steel-500">
+              <span>{S.attnFilterLabel}</span>
+              <select
+                className="input w-auto py-1 text-xs"
+                value={attnMod}
+                onChange={(e) => setAttnMod(e.target.value as ModuleAlertKey | "Semua")}
+                aria-label={S.attnFilterLabel}
+              >
+                <option value="Semua">{S.attnFilterAll} ({attentionItems.length})</option>
+                {attnModules.map((k) => {
+                  const n = attentionItems.filter((x) => x.key === k).length;
+                  return <option key={k} value={k}>{DASH_ALERT_LABEL[k][locale === "en" ? "en" : "id"]} ({n})</option>;
+                })}
+              </select>
+            </label>
+            <button type="button" onClick={goNotifikasi} className="btn-secondary px-2 py-1 text-[11px]">{S.seeAll}</button>
           </div>
           {attentionItems.length === 0 && (
             <p className="px-1 text-sm text-steel-400">{S.allThresholdsSafe}</p>
           )}
-          {attentionItems.length > 0 && (
+          {attentionItems.length > 0 && attnFiltered.length === 0 && (
+            <p className="px-1 text-sm text-steel-400">
+              {locale === "en" ? "No alerts for this module." : "Tidak ada alert untuk modul ini."}
+            </p>
+          )}
+          {attnFiltered.length > 0 && (
             <div className="space-y-4">
               {/* Ringkasan per tingkat tetap tampil walau tiap grup sudah
                   di-cap, jadi pengguna tahu ada yang belum terlihat. */}
@@ -805,7 +841,7 @@ const exportSummary = async () => {
               ))}
             </div>
           )}
-          {attentionItems.length > DASH_ALERT_CAP && (
+          {attnFiltered.length > DASH_ALERT_CAP && (
             <p className="mt-3 px-1 text-xs text-steel-400">
               {locale === "en"
                 ? `Showing up to ${DASH_ALERT_CAP} per level - see all in Notifications.`

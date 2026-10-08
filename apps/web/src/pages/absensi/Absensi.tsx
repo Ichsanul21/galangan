@@ -149,6 +149,86 @@ export default function Absensi() {
     toast(S.tMarkedPresent.replace("{n}", String(activeEmps.length)));
   };
 
+  /* T6-ABS1: isi status hari ini dari record absensi yang sudah ada
+     (mis. hasil alat/fingerprint yang sudah ter-sinkron ke store). */
+  const fillTodayFromRecords = () => {
+    const todayRecs = data.attendance.filter((a) => String(a.date) === date && a.shift === shift);
+    if (todayRecs.length === 0) {
+      toast(locale === "en" ? "No attendance records for this date yet" : "Belum ada record absensi untuk tanggal ini", "info");
+      return;
+    }
+    const next: Record<string, CatatRow> = { ...rows };
+    let filled = 0;
+    for (const a of todayRecs) {
+      const empId = String(a.employeeId);
+      if (!activeEmps.some((e) => e.id === empId)) continue;
+      next[empId] = {
+        status: String(a.status || "Hadir"),
+        checkIn: String(a.checkIn || ""),
+        checkOut: String(a.checkOut || ""),
+        overtime: String(Number(a.overtime || 0)),
+      };
+      filled += 1;
+    }
+    setRows(next);
+    toast(locale === "en"
+      ? `Loaded ${filled} record(s) from ${date}`
+      : `Memuat ${filled} record dari ${date}`);
+  };
+
+  /* T6-ABS1: impor CSV alat absensi (fingerprint).
+     Header yang diterima: NIK/Tanggal/Masuk/Keluar (atau CheckIn/CheckOut),
+     fleksibel urutan kolom. Baris yang NIK-nya tidak dikenal dilewati. */
+  const importFingerprintCsv = async (file: File) => {
+    try {
+      const text = await file.text();
+      const lines = text.split(/\r?\n/).filter((l) => l.trim() !== "");
+      if (lines.length < 2) { toast(locale === "en" ? "CSV is empty" : "CSV kosong", "info"); return; }
+      const header = lines[0].toLowerCase().replace(/"/g, "").split(",").map((h) => h.trim());
+      const col = (...names: string[]): number => {
+        for (const n of names) {
+          const idx = header.findIndex((h) => h === n || h.includes(n));
+          if (idx >= 0) return idx;
+        }
+        return -1;
+      };
+      const iNik = col("nik", "nip", "no", "id");
+      const iDate = col("tanggal", "date", "hari");
+      const iIn = col("masuk", "checkin", "check_in", "in", "jam masuk");
+      const iOut = col("keluar", "checkout", "check_out", "out", "jam keluar");
+      if (iNik < 0) { toast(locale === "en" ? "CSV must have NIK column" : "CSV harus punya kolom NIK", "info"); return; }
+      let filled = 0;
+      for (const line of lines.slice(1)) {
+        const cells = line.replace(/"/g, "").split(",").map((c) => c.trim());
+        const nik = cells[iNik] ?? "";
+        const emp = data.employees.find((e) => String(e.username ?? e.id) === nik || String(e.id) === nik);
+        if (!emp) continue;
+        const recDate = (iDate >= 0 ? cells[iDate] : date) || date;
+        if (recDate !== date && iDate >= 0) continue; // hanya tanggal yang dipilih
+        const cin = iIn >= 0 ? norm24(cells[iIn] ?? "") : "";
+        const cout = iOut >= 0 ? norm24(cells[iOut] ?? "") : "";
+        const status = cin && cout ? "Hadir" : cin ? "Hadir" : "Izin";
+        const r: CatatRow = { status, checkIn: cin, checkOut: cout, overtime: "0" };
+        if (status === "Hadir" && cin && cout) {
+          const m1 = toMinutes(cin);
+          const m2 = toMinutes(cout);
+          if (m1 !== null && m2 !== null) {
+            const worked = (m2 - m1 + (m2 < m1 ? 24 * 60 : 0)) / 60;
+            const autoOt = Math.max(0, Math.round((worked - 8) * 2) / 2);
+            r.overtime = String(Math.min(12, autoOt));
+          }
+        }
+        setRows((prev) => ({ ...prev, [emp.id]: r }));
+        filled += 1;
+      }
+      toast(locale === "en"
+        ? `Imported ${filled} punch(es) from fingerprint CSV`
+        : `Mengimpor ${filled} absen dari CSV fingerprint`);
+    } catch (e) {
+      toast(e instanceof Error ? e.message : (locale === "en" ? "Import failed" : "Impor gagal"), "info");
+    }
+  };
+
   const validateRows = (): boolean => {
     for (const e of activeEmps) {
       const r = rowFor(e.id);
@@ -157,7 +237,8 @@ export default function Absensi() {
         return false;
       }
       const ot = Number(r.overtime || 0);
-      if (r.status === "Hadir" && (Number.isNaN(ot) || ot < 0 || ot > 8)) {
+      /* T6-ABS5 fix: cap manual/auto OT = 12 jam (konsisten dgn NumInput max 12). */
+      if (r.status === "Hadir" && (Number.isNaN(ot) || ot < 0 || ot > 12)) {
         toast(S.tOvertimeRange.replace("{n}", String(e.name)), "info");
         return false;
       }
@@ -219,7 +300,7 @@ export default function Absensi() {
       return;
     }
     const ot = r.status === "Hadir" ? Number(r.overtime || 0) : 0;
-    if (r.status === "Hadir" && (Number.isNaN(ot) || ot < 0 || ot > 8)) {
+    if (r.status === "Hadir" && (Number.isNaN(ot) || ot < 0 || ot > 12)) {
       toast(S.tOvertimeRange.replace("{n}", String(e.name)), "info");
       return;
     }
@@ -510,6 +591,16 @@ export default function Absensi() {
                   <option value="SEMUA">{S.allBranches}</option>
                   {branchCities.map((c) => <option key={c} value={c}>{c}</option>)}
                 </select>
+                {/* T6-ABS1: status hari ini otomatis dari record absensi
+                    (check-in/out yang sudah ada) + impor CSV alat absensi. */}
+                <button className="btn-secondary text-xs" onClick={() => fillTodayFromRecords()}>
+                  {locale === "en" ? "Auto from records" : "Otomatis dari record"}
+                </button>
+                <label className="btn-secondary cursor-pointer text-xs">
+                  <Download className="h-3.5 w-3.5 inline" /> {locale === "en" ? "Import fingerprint CSV" : "Impor CSV fingerprint"}
+                  <input type="file" accept=".csv,text/csv" className="hidden" aria-label={locale === "en" ? "Import fingerprint CSV" : "Impor CSV fingerprint"}
+                    onChange={(e) => { const f = e.target.files?.[0]; if (f) void importFingerprintCsv(f); e.target.value = ""; }} />
+                </label>
               </div>
               {/* Search per tabel (A2). Ketiganya bisa panjang sebanyak jumlah
                   karyawan atau jumlah hari absensi, dan tanpa pencarian

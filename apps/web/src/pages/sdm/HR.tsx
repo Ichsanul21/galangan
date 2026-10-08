@@ -33,7 +33,8 @@ import { useModuleSync } from "../../data/useModuleSync";
 import { findUsages } from "../../utils/usages";
 import type { StoreItem, CollectionKey } from "../../data/store";
 import { activeEmployeeTrend, certifiedTrend, certExpireTrend, employeeTrend } from "../../data";
-import { fmtTanggal, todayISO } from "../../utils/format";
+import { fmtTanggal, fmtRupiah, todayISO } from "../../utils/format";
+import { QRCodeSVG } from "qrcode.react";
 import { createdAtOf, lastTouchedAt } from "../../utils/timestamps";
 import { AlertBannerView, flashPick, notifRowId, useModuleAlert, useNotifFlash } from "../../components/AlertBanner";
 import { useDeepLinkParams, useDeepLinkTarget } from "../../components/useDeepLink";
@@ -51,7 +52,13 @@ const CERT_WINDOW = 90;
 const TIPE_KARYAWAN = ["Tetap", "Kontrak", "Outsourcing", "Training"];
 const JABATAN_OPTIONS = ["Operator", "Fitter", "Welder", "Painter", "Foreman", "Supervisor", "QC Inspector", "HSE Officer", "Admin", "Logistik", "Procurement", "Project Engineer", "Manager Proyek", "Lainnya"];
 const PTKP_STATUS = ["TK/0", "TK/1", "TK/2", "TK/3", "K/0", "K/1", "K/2", "K/3"];
-const SURAT_JENIS = ["SP 1", "SP 2", "SP 3", "Mutasi"];
+/* T6-SDM10: pendidikan selectable + status kawin + jenis kelamin. */
+const PENDIDIKAN_OPTIONS = ["SD", "SMP", "SMA/SMK", "D1", "D2", "D3", "D4", "S1", "S2", "S3", "Lainnya"];
+const KAWIN_OPTIONS = ["Belum Kawin", "Kawin", "Cerai"];
+const JK_OPTIONS = ["Laki-laki", "Perempuan"];
+/* T6-SDM8: surat kontrak baru + perpanjangan kontrak, di samping SP/Mutasi. */
+const SURAT_JENIS = ["SP 1", "SP 2", "SP 3", "Mutasi", "Kontrak Kerja", "Perpanjangan Kontrak"];
+const KONTRAK_JENIS: readonly string[] = ["Kontrak Kerja", "Perpanjangan Kontrak"];
 const IMPORT_HEADERS = ["NIK", "Nama", "Jabatan", "Departemen", "Cabang", "Status", "Tanggal Gabung (YYYY-MM-DD)", "Tipe", "Gaji Pokok", "PTKP Status", "Tanggungan", "Kontrak Berakhir (YYYY-MM-DD)"];
 const DEPT_OPTIONS = ["Direksi", "Proyek", "Produksi", "Quality", "Finance", "Procurement", "Support"];
 const LEAVE_TYPES = ["Tahunan", "Sakit", "Izin", "Melahirkan", "Cuti Besar", "Unpaid"];
@@ -202,6 +209,13 @@ const emptyEmpForm = () => ({
   contractEnd: "",
   ptkpStatus: "TK/0",
   dependents: "0",
+  /* T6-SDM9/10: foto + KTP/ijazah + pendidikan/kawin/jk. */
+  photo: "",
+  ktpUrl: "",
+  ijazahUrl: "",
+  pendidikan: "SMA/SMK",
+  kawin: "Belum Kawin",
+  jk: "Laki-laki",
 });
 
 /* Batch koleksi modul SDM untuk useModuleSync (pengganti resync penuh). */
@@ -261,7 +275,7 @@ export default function HR() {
 
   /* ---------- surat ---------- */
   const [showSurat, setShowSurat] = useState(false);
-  const [suratForm, setSuratForm] = useState({ employeeId: "", jenis: "SP 1", isi: "", tanggal: todayISO(), fileUrl: "", approvedBy: "", approvedAt: "", sourceType: "", sourceId: "" });
+  const [suratForm, setSuratForm] = useState({ employeeId: "", jenis: "SP 1", isi: "", tanggal: todayISO(), fileUrl: "", approvedBy: "", approvedAt: "", sourceType: "", sourceId: "", mulai: "", berakhir: "", gaji: "" });
   /* Arsip surat pindah dari useDraftState("isms.draft.hr.arsipSurat") ke
      koleksi `letters`. Alasan: draft localStorage hilang saat cache browser
      dibersihkan, tidak pernah sampai ke server (user lain tidak pernah
@@ -382,22 +396,36 @@ export default function HR() {
       }),
     [scopedEmployees, dept, q, contractSoonOnly],
   );
-  const sortedEmps = useMemo(() => sortRows(list, sort, (row, k) => {
-    const e = row as StoreItem;
-    switch (k) {
-      case "name": return String(e.name ?? "");
-      case "nik": return empNik(e);
-      case "role": return String(e.role ?? "");
-      case "branch": return String(e.branch ?? "");
-      case "contract": return String(e.contractEnd ?? "");
-      case "saldo": return Number(saldoCuti(String(e.id)));
-      case "status": return String(e.status ?? "");
-      case "createdAt": return createdAtOf(e) ?? "";
-      case "updatedAt": return lastTouchedAt(e) ?? "";
-      default: return "";
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }), [list, sort]);
+  const sortedEmps = useMemo(() => {
+    /* T6-SDM1: "saat data diubah posisinya tetap, jika ditambahkan posisinya
+       di bawah". Store `add()` menempatkan baris baru di AWAL array (prepend),
+       sedangkan `update()` mempertahankan posisi. Tanpa sort (key null),
+       sortRows() mengembalikan array apa adanya → edit tetap di tempat,
+       tapi tambah muncul di ATAS. Urutkan default berdasarkan createdAt
+       ascending supaya karyawan lama di atas dan yang baru di bawah;
+       user masih bisa mengklik header kolom untuk sort lain. */
+    const base = sort.key ? list : [...list].sort((a, b) => {
+      const ca = createdAtOf(a) ?? "";
+      const cb = createdAtOf(b) ?? "";
+      return ca.localeCompare(cb);
+    });
+    return sortRows(base, sort, (row, k) => {
+      const e = row as StoreItem;
+      switch (k) {
+        case "name": return String(e.name ?? "");
+        case "nik": return empNik(e);
+        case "role": return String(e.role ?? "");
+        case "branch": return String(e.branch ?? "");
+        case "contract": return String(e.contractEnd ?? "");
+        case "saldo": return Number(saldoCuti(String(e.id)));
+        case "status": return String(e.status ?? "");
+        case "createdAt": return createdAtOf(e) ?? "";
+        case "updatedAt": return lastTouchedAt(e) ?? "";
+        default: return "";
+      }
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    });
+  }, [list, sort]);
   const empPager = usePager(list.length);
   useEffect(() => {
     empPager.reset();
@@ -517,6 +545,12 @@ export default function HR() {
       contractEnd: String(e.contractEnd ?? ""),
       ptkpStatus: String(e.ptkpStatus ?? "TK/0"),
       dependents: String(e.dependents ?? 0),
+      photo: String(e.photo ?? ""),
+      ktpUrl: String(e.ktpUrl ?? ""),
+      ijazahUrl: String(e.ijazahUrl ?? ""),
+      pendidikan: String(e.pendidikan ?? "SMA/SMK"),
+      kawin: String(e.kawin ?? "Belum Kawin"),
+      jk: String(e.jk ?? "Laki-laki"),
     });
     setShowForm(true);
   };
@@ -600,6 +634,13 @@ export default function HR() {
       contractEnd: form.contractEnd || "",
       ptkpStatus: form.ptkpStatus,
       dependents,
+      /* T6-SDM9/10 */
+      photo: form.photo || undefined,
+      ktpUrl: form.ktpUrl || undefined,
+      ijazahUrl: form.ijazahUrl || undefined,
+      pendidikan: form.pendidikan,
+      kawin: form.kawin,
+      jk: form.jk,
     };
     try {
     if (editingId) {
@@ -1070,10 +1111,17 @@ const finishTraining = async (t: StoreItem) => {
   const suratText = (row: {
     id?: unknown; jenis?: unknown; tanggal?: unknown; isi?: unknown;
     nama?: unknown; nik?: unknown; role?: unknown; dept?: unknown; branch?: unknown;
+    mulai?: unknown; berakhir?: unknown; gaji?: unknown;
   }): string => {
+    const jenis = String(row.jenis ?? "");
+    const isKontrak = KONTRAK_JENIS.includes(jenis);
     const lines = [
-      `SURAT ${String(row.jenis ?? "").toUpperCase()}`,
-      "PT Syukur Bersaudara",
+      `SURAT ${jenis.toUpperCase()}`,
+      /* T6-SDM8: kop lengkap untuk surat kontrak (bukan sekadar nama PT). */
+      SB_KOP.name,
+      SB_KOP.line1,
+      SB_KOP.hq,
+      SB_KOP.addr1,
       "",
       `Nomor: ${String(row.id ?? "-")}`,
       `Tanggal: ${fmtTanggal(String(row.tanggal ?? ""))}`,
@@ -1082,6 +1130,29 @@ const finishTraining = async (t: StoreItem) => {
     ];
     if (row.role || row.dept || row.branch) {
       lines.push(`Jabatan: ${String(row.role ?? "-")} · Departemen: ${String(row.dept ?? "-")} · Cabang: ${String(row.branch ?? "-")}`);
+    }
+    if (isKontrak) {
+      const mulai = String(row.mulai ?? "");
+      const berakhir = String(row.berakhir ?? "");
+      const gaji = Number(row.gaji || 0);
+      lines.push(
+        "",
+        jenis === "Kontrak Kerja"
+          ? "Dengan ini menyatakan bahwa kami menunjuk Saudara/i tersebut di atas sebagai karyawan dengan ketentuan sebagai berikut:"
+          : "Dengan ini kami memberitahukan perpanjangan masa kerja Saudara/i tersebut di atas dengan ketentuan sebagai berikut:",
+        "",
+        `1. Masa kerja : ${mulai ? fmtTanggal(mulai) : "-"} s.d. ${berakhir ? fmtTanggal(berakhir) : "-"}`,
+        `2. Jabatan    : ${String(row.role ?? "-")}`,
+        `3. Tempat kerja: ${String(row.branch ?? "-")} - PT Syukur Bersaudara`,
+        gaji > 0 ? `4. Gaji pokok : ${fmtRupiah(gaji)} / bulan` : "4. Gaji pokok : mengikuti perusahaan",
+        "",
+        "Demikian surat ini dibuat untuk dipergunakan sebagaimana mestinya.",
+        "",
+        `Samarinda, ${fmtTanggal(String(row.tanggal ?? ""))}`,
+        `Penanggung Jawab,`,
+        `H. Syarif Sarapping`,
+      );
+      return lines.join("\n");
     }
     lines.push("", String(row.isi ?? "").trim() || (locale === "en" ? "(Letter body not written yet)" : "(Isi surat belum ditulis)"));
     return lines.join("\n");
@@ -1098,6 +1169,10 @@ const finishTraining = async (t: StoreItem) => {
       role: suratEmp.role,
       dept: suratEmp.dept,
       branch: suratEmp.branch,
+      /* T6-SDM8: data kontrak dari form/karyawan untuk preview surat kontrak. */
+      mulai: suratForm.mulai || String(suratEmp.join ?? ""),
+      berakhir: suratForm.berakhir || String(suratEmp.contractEnd ?? ""),
+      gaji: suratForm.gaji || String(suratEmp.basic ?? ""),
     })
     : "";
 
@@ -1114,6 +1189,9 @@ const finishTraining = async (t: StoreItem) => {
       approvedAt: String(s.approvedAt ?? ""),
       sourceType: String(s.sourceType ?? ""),
       sourceId: String(s.sourceId ?? ""),
+      mulai: String(s.mulai ?? ""),
+      berakhir: String(s.berakhir ?? ""),
+      gaji: String(s.gaji ?? ""),
     });
     setShowSurat(true);
   };
@@ -1176,6 +1254,10 @@ const finishTraining = async (t: StoreItem) => {
       sourceType: suratForm.sourceType,
       sourceId: suratForm.sourceId,
       branch: String(suratEmp.branch ?? branch),
+      /* T6-SDM8: data kontrak ikut tersimpan di record surat. */
+      ...(KONTRAK_JENIS.includes(suratForm.jenis)
+        ? { mulai: suratForm.mulai, berakhir: suratForm.berakhir, gaji: Number(suratForm.gaji || 0) }
+        : {}),
     };
     try {
       if (suratEditId) {
@@ -1195,7 +1277,7 @@ const finishTraining = async (t: StoreItem) => {
         toast(S.tSuratOk.replace("{n}", suratNomor));
       }
       setShowSurat(false);
-      setSuratForm({ employeeId: "", jenis: "SP 1", isi: "", tanggal: todayISO(), fileUrl: "", approvedBy: "", approvedAt: "", sourceType: "", sourceId: "" });
+      setSuratForm({ employeeId: "", jenis: "SP 1", isi: "", tanggal: todayISO(), fileUrl: "", approvedBy: "", approvedAt: "", sourceType: "", sourceId: "", mulai: "", berakhir: "", gaji: "" });
     } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); }
   };
 
@@ -1625,6 +1707,10 @@ const finishTraining = async (t: StoreItem) => {
                         {l.status === "Diajukan" ? (
                           <div className="flex items-center gap-2 whitespace-nowrap">
                             <button className="text-sm font-semibold text-emerald-600 hover:underline" onClick={() => approveSupervisor(l)}>{S.btnSetujuiAtasan}</button>
+                            {/* T6-SDM6: QR pengajuan - dipindai HR untuk verifikasi mandiri karyawan. */}
+                            <span className="inline-block" title={`CUTI:${String(l.id)}:${String(l.employeeId ?? "")}`}>
+                              <QRCodeSVG value={`CUTI:${String(l.id)}:${String(data.employees.find((e) => e.id === l.employeeId)?.username ?? l.employeeId ?? "")}`} size={40} level="L" />
+                            </span>
                             <RowAction icon={Pencil} tone="neutral" label={S.btnEdit} ariaLabel={`${S.btnEdit} ${String(l.id)}`} onClick={() => openLeaveEdit(l)} />
                             <button className="text-sm font-semibold text-rose-600 hover:underline" onClick={() => setRejectTarget(l)}>{S.btnTolak}</button>
                             <RowAction icon={Trash2} tone="danger" label={S.btnHapus} ariaLabel={`${S.btnHapus} ${String(l.id)}`} onClick={() => setDelLeave(l)} />
@@ -1811,7 +1897,7 @@ const finishTraining = async (t: StoreItem) => {
                   <h3 className="text-sm font-semibold text-navy-900">{S.arsipT}</h3>
                   <div className="flex items-center gap-2">
                     <button className="btn-secondary text-xs" onClick={exportArsipSurat}>{S.btnExport}</button>
-                    <button className="btn-primary text-xs" onClick={() => { setSuratEditId(null); setSuratForm({ employeeId: "", jenis: "SP 1", isi: "", tanggal: todayISO(), fileUrl: "", approvedBy: "", approvedAt: "", sourceType: "", sourceId: "" }); setShowSurat(true); }}>{S.btnBuatSurat}</button>
+                    <button className="btn-primary text-xs" onClick={() => { setSuratEditId(null); setSuratForm({ employeeId: "", jenis: "SP 1", isi: "", tanggal: todayISO(), fileUrl: "", approvedBy: "", approvedAt: "", sourceType: "", sourceId: "", mulai: "", berakhir: "", gaji: "" }); setShowSurat(true); }}>{S.btnBuatSurat}</button>
                   </div>
                 </div>
                 <p className="mt-1 text-xs text-steel-500">
@@ -1947,6 +2033,43 @@ const finishTraining = async (t: StoreItem) => {
               <select className="input" value={form.dependents} onChange={(e) => setForm({ ...form, dependents: e.target.value })}>
                 {["0", "1", "2", "3"].map((d) => <option key={d}>{d}</option>)}
               </select>
+            </Field>
+            {/* T6-SDM10: pendidikan selectable, status kawin, jenis kelamin. */}
+            <Field label={locale === "en" ? "Education" : "Pendidikan"}>
+              <select className="input" value={form.pendidikan} onChange={(e) => setForm({ ...form, pendidikan: e.target.value })}>
+                {PENDIDIKAN_OPTIONS.map((p) => <option key={p}>{p}</option>)}
+              </select>
+            </Field>
+            <Field label={locale === "en" ? "Marital status" : "Status kawin"}>
+              <select className="input" value={form.kawin} onChange={(e) => setForm({ ...form, kawin: e.target.value })}>
+                {KAWIN_OPTIONS.map((k) => <option key={k}>{k}</option>)}
+              </select>
+            </Field>
+            <Field label={locale === "en" ? "Gender" : "Jenis kelamin"}>
+              <select className="input" value={form.jk} onChange={(e) => setForm({ ...form, jk: e.target.value })}>
+                {JK_OPTIONS.map((j) => <option key={j}>{j}</option>)}
+              </select>
+            </Field>
+          </FormGrid>
+          {/* T6-SDM9: foto profil + unggah KTP & ijazah. */}
+          <FormGrid>
+            <Field label={locale === "en" ? "Profile photo" : "Foto profil"}>
+              <div className="flex items-center gap-2">
+                {form.photo ? <SecureImg src={form.photo} alt="Foto" name={form.name || "Karyawan"} className="h-10 w-10 rounded-full object-cover" /> : null}
+                <FileUploadButton accept=".png,.jpg,.jpeg" label={locale === "en" ? "Upload photo" : "Unggah foto"} onUploaded={(url) => setForm({ ...form, photo: url })} />
+              </div>
+            </Field>
+            <Field label={locale === "en" ? "KTP" : "KTP"}>
+              <div className="flex items-center gap-2">
+                {form.ktpUrl ? <a className="text-xs font-semibold text-ocean-600 hover:underline" href={form.ktpUrl} target="_blank" rel="noreferrer">KTP ✓</a> : null}
+                <FileUploadButton accept=".png,.jpg,.jpeg,.pdf" label={locale === "en" ? "Upload KTP" : "Unggah KTP"} onUploaded={(url) => setForm({ ...form, ktpUrl: url })} />
+              </div>
+            </Field>
+            <Field label={locale === "en" ? "Diploma" : "Ijazah"}>
+              <div className="flex items-center gap-2">
+                {form.ijazahUrl ? <a className="text-xs font-semibold text-ocean-600 hover:underline" href={form.ijazahUrl} target="_blank" rel="noreferrer">Ijazah ✓</a> : null}
+                <FileUploadButton accept=".png,.jpg,.jpeg,.pdf" label={locale === "en" ? "Upload diploma" : "Unggah ijazah"} onUploaded={(url) => setForm({ ...form, ijazahUrl: url })} />
+              </div>
             </Field>
           </FormGrid>
         </div>
@@ -2238,12 +2361,44 @@ const finishTraining = async (t: StoreItem) => {
               </select>
             </Field>
             <Field label={S.fJenisSurat}>
-              <select className="input" value={suratForm.jenis} onChange={(e) => setSuratForm({ ...suratForm, jenis: e.target.value })}>
+              <select className="input" value={suratForm.jenis} onChange={(e) => {
+                const jenis = e.target.value;
+                const emp = data.employees.find((x) => x.id === suratForm.employeeId);
+                /* T6-SDM8: pilih kontrak → isi otomatis dari data karyawan. */
+                if (KONTRAK_JENIS.includes(jenis) && emp) {
+                  setSuratForm({
+                    ...suratForm,
+                    jenis,
+                    mulai: suratForm.mulai || String(emp.join ?? todayISO()),
+                    berakhir: suratForm.berakhir || String(emp.contractEnd ?? ""),
+                    gaji: suratForm.gaji || String(emp.basic ?? ""),
+                    isi: suratForm.isi || (jenis === "Kontrak Kerja"
+                      ? "Bersama ini kami menunjuk Saudara/i sebagai karyawan PT Syukur Bersaudara sesuai ketentuan yang tercantum pada surat ini."
+                      : "Dengan ini kami memperpanjang masa kerja Saudara/i sebagai karyawan PT Syukur Bersaudara sesuai ketentuan surat ini."),
+                  });
+                } else {
+                  setSuratForm({ ...suratForm, jenis });
+                }
+              }}>
                 {SURAT_JENIS.map((s) => <option key={s}>{s}</option>)}
               </select>
             </Field>
             <Field label={S.thTanggal}><input type="date" className="input" value={suratForm.tanggal} onChange={(e) => setSuratForm({ ...suratForm, tanggal: e.target.value })} /></Field>
           </FormGrid>
+          {/* T6-SDM8: field kontrak (muncul hanya untuk jenis kontrak). */}
+          {KONTRAK_JENIS.includes(suratForm.jenis) && (
+            <FormGrid>
+              <Field label={locale === "en" ? "Start date" : "Mulai kerja"}>
+                <input type="date" className="input" value={suratForm.mulai} onChange={(e) => setSuratForm({ ...suratForm, mulai: e.target.value })} />
+              </Field>
+              <Field label={locale === "en" ? "End date" : "Berakhir"}>
+                <input type="date" className="input" value={suratForm.berakhir} onChange={(e) => setSuratForm({ ...suratForm, berakhir: e.target.value })} />
+              </Field>
+              <Field label={locale === "en" ? "Base salary (Rp)" : "Gaji pokok (Rp)"}>
+                <NumInput min="0" className="input" value={suratForm.gaji} onChange={(e) => setSuratForm({ ...suratForm, gaji: e.target.value })} />
+              </Field>
+            </FormGrid>
+          )}
           <Field label={S.fIsi}><textarea className="input" rows={4} value={suratForm.isi} onChange={(e) => setSuratForm({ ...suratForm, isi: e.target.value })} placeholder={S.phSurat} /></Field>
 <Field label={locale === "en" ? "Scan / attachment (optional)" : "Pindai / Lampiran (opsional)"} hint={locale === "en" ? "PDF or image, shown side-by-side with the text" : "PDF atau gambar, tampil berdampingan dengan teks"}>
             {/* Dulu hanya input URL tanpa tombol Unggah - padahal modul lain

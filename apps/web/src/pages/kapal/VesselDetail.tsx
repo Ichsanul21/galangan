@@ -403,6 +403,69 @@ export default function VesselDetail() {
         <KpiCard label={S.vdKpiEngine} value={v.engineType ? String(v.engineType) : "-"} icon={<Ship className="h-5 w-5" />} />
       </div>
 
+      {/* T6-VSL1: detail teknis kapal - identitas, dimensi, kelas/bendera,
+          pemilik, tahun bangun, mesin, dan ringkasan sertifikat. */}
+      <Card className="mt-4 p-4">
+        <h3 className="mb-3 text-sm font-semibold text-navy-900">
+          {locale === "en" ? "Vessel technical detail" : "Detail teknis kapal"}
+        </h3>
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          <div>
+            <h4 className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-steel-500">
+              {locale === "en" ? "Identity" : "Identitas"}
+            </h4>
+            <dl className="dl-div text-sm">
+              <div className="flex justify-between gap-2"><dt className="text-steel-500">Nama</dt><dd className="font-medium text-navy-900">{String(v.name)}</dd></div>
+              <div className="flex justify-between gap-2"><dt className="text-steel-500">IMO</dt><dd className="font-mono">{String(v.imo ?? "-")}</dd></div>
+              <div className="flex justify-between gap-2"><dt className="text-steel-500">MMSI</dt><dd className="font-mono">{String(v.mmsi ?? "-")}</dd></div>
+              <div className="flex justify-between gap-2"><dt className="text-steel-500">Tipe</dt><dd className="font-medium">{String(v.type ?? "-")}</dd></div>
+              <div className="flex justify-between gap-2"><dt className="text-steel-500">Pemilik</dt><dd className="font-medium">{String(v.owner ?? "-")}</dd></div>
+              <div className="flex justify-between gap-2"><dt className="text-steel-500">Status</dt><dd><Badge tone="blue">{String(v.status ?? "-")}</Badge></dd></div>
+            </dl>
+          </div>
+          <div>
+            <h4 className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-steel-500">
+              {locale === "en" ? "Dimensions & tonnage" : "Dimensi & tonase"}
+            </h4>
+            <dl className="dl-div text-sm">
+              <div className="flex justify-between gap-2"><dt className="text-steel-500">LOA</dt><dd className="font-semibold">{v.loa} m</dd></div>
+              <div className="flex justify-between gap-2"><dt className="text-steel-500">Beam (lebar)</dt><dd className="font-semibold">{v.beam} m</dd></div>
+              <div className="flex justify-between gap-2"><dt className="text-steel-500">Draft</dt><dd className="font-semibold">{v.draft} m</dd></div>
+              <div className="flex justify-between gap-2"><dt className="text-steel-500">Bollard pull</dt><dd className="font-semibold">{v.bollard} T</dd></div>
+              <div className="flex justify-between gap-2"><dt className="text-steel-500">GT / NT</dt><dd className="font-semibold">{v.gt ?? "-"} / {v.nt ?? "-"}</dd></div>
+              <div className="flex justify-between gap-2"><dt className="text-steel-500">BHP</dt><dd className="font-semibold">{v.bhp ? `${v.bhp} HP` : "-"}</dd></div>
+            </dl>
+          </div>
+          <div>
+            <h4 className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-steel-500">
+              {locale === "en" ? "Class & build" : "Kelas & pembangunan"}
+            </h4>
+            <dl className="dl-div text-sm">
+              <div className="flex justify-between gap-2"><dt className="text-steel-500">Kelas (class society)</dt><dd className="font-medium">{String(v.class ?? "-")}</dd></div>
+              <div className="flex justify-between gap-2"><dt className="text-steel-500">Bendera</dt><dd className="font-medium">{String(v.flag ?? "-")}</dd></div>
+              <div className="flex justify-between gap-2"><dt className="text-steel-500">Tahun bangun</dt><dd className="font-semibold">{String(v.built ?? "-")}</dd></div>
+              <div className="flex justify-between gap-2"><dt className="text-steel-500">Mesin</dt><dd className="font-medium">{String(v.engineType ?? "-")}</dd></div>
+              <div className="flex justify-between gap-2"><dt className="text-steel-500">Sertifikat</dt><dd className="font-semibold">{(v.certificates ?? []).length}</dd></div>
+              <div className="flex justify-between gap-2"><dt className="text-steel-500">Riwayat</dt><dd className="font-semibold">{(v.history ?? []).length}</dd></div>
+            </dl>
+          </div>
+        </div>
+        {(v.certificates ?? []).length > 0 && (
+          <div className="mt-4 border-t border-steel-100 pt-3">
+            <h4 className="mb-2 text-xs font-semibold uppercase tracking-wide text-steel-500">
+              {locale === "en" ? "Certificates" : "Sertifikat"}
+            </h4>
+            <div className="flex flex-wrap gap-1.5">
+              {(v.certificates as { name: string; expires?: string; tone?: string }[]).map((c) => (
+                <Badge key={String(c.name)} tone={(c.tone as "green" | "amber" | "red") ?? "gray"}>
+                  {String(c.name)}{c.expires ? ` · ${String(c.expires)}` : ""}
+                </Badge>
+              ))}
+            </div>
+          </div>
+        )}
+      </Card>
+
       {projects.length > 0 && (
         <Card className="mt-5 p-4">
           <h3 className="mb-2 text-sm font-semibold text-navy-900">{S.vdProjects.replace("{n}", String(projects.length))}</h3>

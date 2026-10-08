@@ -7,14 +7,16 @@ import { Send, CheckCircle2, XCircle, FileDown, FileText } from "lucide-react";
 import { exportExcelSheets, fmtRupiah, fmtRentang } from "../../utils/export";
 import { pdfServerReady } from "../../services/pdfClient";
 import { usePdfDoc } from "../../components/usePdfDoc";
-import { STATUS_BOQ_ID, fmtTanggal, todayISO } from "../../utils/format";
+import { fmtTanggal, todayISO } from "../../utils/format";
 import { fmtMiliar } from "../../data";
 
 interface Props {
   projectId: string;
+  /** T6-PRJ3: lompat ke tab tertentu di ProjectDetail (mis. BoQ). */
+  onOpenTab?: (tab: string) => void;
 }
 
-export default function ReportSection({ projectId }: Props) {
+export default function ReportSection({ projectId, onOpenTab }: Props) {
   const busy = useBusy();
   const { locale } = useT();
   const S = n_prj[locale];
@@ -51,7 +53,6 @@ export default function ReportSection({ projectId }: Props) {
   const [showShare, setShowShare] = useState(false);
   const [shareForm, setShareForm] = useState({ docId: "", to: "" });
   const [wbsQ, setWbsQ] = useState("");
-  const [boqQ, setBoqQ] = useState("");
   const [invQ, setInvQ] = useState("");
   const [ncrWoQ, setNcrWoQ] = useState("");
 
@@ -182,18 +183,35 @@ export default function ReportSection({ projectId }: Props) {
           </Card>
           <Card className="p-4">
             <h4 className="mb-2 text-sm font-semibold text-navy-900">{S.repBoqTitle.replace("{n}", String(boq.length))}</h4>
-            <input data-export-hide className="input mb-2" value={boqQ} onChange={(e) => setBoqQ(e.target.value)} placeholder={S.cardSearchPh} aria-label={S.cardSearchPh} />
+            {/* T6-PRJ3: daftar flat BoQ diganti ringkasan - detail grouped
+                (surat + dokumen) ada di tab BoQ, bukan diduplikasi di sini. */}
             {boq.length === 0 ? (
               <p className="text-xs text-steel-400">{S.repNoBoq}</p>
             ) : (
-              <div className="max-h-64 space-y-1.5 overflow-y-auto pr-1">
-                {boq.filter((b) => rowMatches(b, boqQ, ["id", "name", "status", "unit", "spec"])).map((b) => (
-                  <div key={b.id} className="flex items-center justify-between text-sm">
-                    <span className="text-steel-700">{b.name} <span className="text-xs text-steel-400">× {b.quantity} {b.unit}</span></span>
-                    <span className="flex items-center gap-2"><span className="font-mono text-xs">{fmtRupiah(Number(b.totalPrice || 0))}</span><StatusBadge status={b.status} label={STATUS_BOQ_ID[b.status] ?? b.status} /></span>
+              <div className="space-y-2">
+                <p className="text-xs text-steel-500">
+                  {locale === "en" ? "Grouped by surat, with documents" : "Dikelompokkan per surat, lengkap dengan dokumen"} —{" "}
+                  <button type="button" className="font-semibold text-ocean-600 hover:underline" onClick={() => onOpenTab?.("BoQ")}>
+                    {locale === "en" ? "Open BoQ tab" : "Buka tab BoQ"}
+                  </button>
+                </p>
+                <div className="grid grid-cols-2 gap-2 text-sm">
+                  <div className="rounded-lg bg-steel-50 p-2">
+                    <p className="text-[11px] text-steel-500">{locale === "en" ? "Items" : "Item"}</p>
+                    <p className="font-semibold text-navy-900">{boq.length}</p>
                   </div>
-                ))}
-                <p className="pt-1 text-right text-xs font-semibold text-navy-900">{S.repBoqTotal.replace("{a}", fmtRupiah(totalBoq))}</p>
+                  <div className="rounded-lg bg-steel-50 p-2">
+                    <p className="text-[11px] text-steel-500">{locale === "en" ? "Total value" : "Nilai total"}</p>
+                    <p className="font-semibold text-navy-900">{fmtRupiah(totalBoq)}</p>
+                  </div>
+                </div>
+                <div className="flex flex-wrap gap-1.5">
+                  {(["Draft", "Pending", "Approved", "Completed", "Rejected"] as const).map((st) => {
+                    const n = boq.filter((b) => b.status === st).length;
+                    if (n === 0) return null;
+                    return <Badge key={st} tone={st === "Approved" || st === "Completed" ? "green" : st === "Rejected" ? "red" : st === "Pending" ? "amber" : "gray"}>{st}: {n}</Badge>;
+                  })}
+                </div>
               </div>
             )}
           </Card>

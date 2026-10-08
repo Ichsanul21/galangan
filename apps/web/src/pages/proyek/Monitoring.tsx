@@ -1,16 +1,25 @@
 import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
-import { Activity, AlertTriangle, FileDown } from "lucide-react";
+import { Activity, AlertTriangle, FileDown, Pencil } from "lucide-react";
 import {
+  AsyncButton,
   Badge,
   Card,
+  Field,
+  FileUploadButton,
+  FormGrid,
+  Modal,
+  NumInput,
   PageHeader,
   ProgressBar,
+  SecureImg,
   StatusBadge,
   toast,
   SearchBox,
   rowMatches,
 } from "../../components/ui";
+import { useAuth } from "../../auth/auth";
+import { can } from "../../auth/rbac";
 import { useStore } from "../../data/store";
 import type { StoreItem } from "../../data/store";
 import { useT } from "../../i18n/LanguageContext";
@@ -39,15 +48,44 @@ function endInDays(end: string): number | null {
 
 import { delayDaysOf as delayDaysShared, endInDays as endInDaysShared } from "../../utils/projectDelay";
 
+interface MonUpdateForm {
+  progress: string;
+  status: string;
+  actual: string;
+  budget: string;
+  note: string;
+  photoUrl: string;
+  photoNote: string;
+}
+
+const emptyUpdateForm = (): MonUpdateForm => ({
+  progress: "0",
+  status: "",
+  actual: "0",
+  budget: "0",
+  note: "",
+  photoUrl: "",
+  photoNote: "",
+});
+
 export default function Monitoring() {
   const { locale } = useT();
   const S = n_prj[locale];
-  const { data, wbsFor, inBranch } = useStore();
+  const { user } = useAuth();
+  const role = user?.role ?? "";
+  /* T6-MON2: RBAC runtime dari auth/rbac.ts (matrix Peran). */
+  const canView = can(role, "Monitoring", "Lihat");
+  const canExport = can(role, "Monitoring", "Ekspor");
+  const canEdit = canAnyEdit(role);
+  const { data, wbsFor, inBranch, update, log } = useStore();
   const groupLbl: Record<string, string> = { Terlambat: S.attLate, "Over-budget": S.attOver, "NCR Critical": S.attNcr, "CO Diajukan": S.attCo, "Milestone dekat": S.attMile };
   const projects = data.projects;
   const [branchFilter, setBranchFilter] = useState("Semua");
   const [q, setQ] = useState("");
   const [mode, setMode] = useState<"Semua" | "Perhatian">("Semua");
+  /* T6-MON1: modal update proyek + foto dari Monitoring. */
+  const [updFor, setUpdFor] = useState<StoreItem | null>(null);
+  const [updForm, setUpdForm] = useState<MonUpdateForm>(emptyUpdateForm());
   /* Scrollbar horizontal atas + bawah: mirror tersinkron dua arah dengan
      scroll kolom kanban - tetap terjangkau saat daftar kolom panjang. */
   const topScrollRef = useRef<HTMLDivElement | null>(null);
@@ -159,6 +197,7 @@ export default function Monitoring() {
     delayDaysShared(p.end, todayISO(), isLate(p));
 
   const exportRekap = () => {
+    if (!canExport) return;
     const rows: unknown[][] = [
       ["Kode", "Kapal", "Tipe", "Cabang", "Tahap", "Prioritas", "Status", "Progres %", "Budget (Rp)", "Actual (Rp)", "NCR Terbuka", "CO Diajukan"],
       ...filtered.map((p) => [
@@ -170,13 +209,63 @@ export default function Monitoring() {
     void exportExcel(rows, "monitoring-proyek", "Monitoring").then(() => toast(S.monToastExport)).catch(() => toast(S.saveFail, "info"));
   };
 
+  const openUpdate = (p: StoreItem) => {
+    setUpdFor(p);
+    setUpdForm({
+      progress: String(p.progress ?? 0),
+      status: String(p.status ?? ""),
+      actual: String(p.actual ?? 0),
+      budget: String(p.budget ?? 0),
+      note: "",
+      photoUrl: "",
+      photoNote: "",
+    });
+  };
+
+  const saveUpdate = async () => {
+    if (!updFor) return;
+    const pct = Math.max(0, Math.min(100, Number(updForm.progress) || 0));
+    const photos = Array.isArray(updFor.photos) ? (updFor.photos as unknown[]) : [];
+    const photoEntry = updForm.photoUrl
+      ? [...photos, { url: updForm.photoUrl, note: updForm.photoNote.trim(), date: todayISO(), by: user?.name ?? "" }]
+      : photos;
+    const patch: Record<string, unknown> = {
+      progress: pct,
+      actual: Number(updForm.actual) || 0,
+      budget: Number(updForm.budget) || 0,
+      photos: photoEntry,
+    };
+    if (updForm.status && updForm.status !== updFor.status) patch.status = updForm.status;
+    if (updForm.photoUrl) patch.photoUrl = updForm.photoUrl;
+    if (updForm.note.trim()) patch.monNote = updForm.note.trim();
+    if (updForm.photoNote.trim()) patch.photoNote = updForm.photoNote.trim();
+    try {
+      await update("projects", updFor.id, patch);
+      log("memperbarui progres", `${updFor.id} → ${pct}%`, "Monitoring");
+      toast(S.monToastSaved.replace("{a}", String(updFor.id)));
+      setUpdFor(null);
+    } catch (e) {
+      toast(e instanceof Error ? e.message : S.saveFail, "info");
+    }
+  };
+
+  /* Tanpa hak Lihat: tutup halaman (deny-by-default). */
+  if (!canView) {
+    return (
+      <div>
+        <PageHeader title={S.monTitle} subtitle={S.monSubtitle} icon={<Activity className="h-5 w-5" />} />
+        <Card className="p-8 text-center text-sm text-steel-500">{S.monNoAccess}</Card>
+      </div>
+    );
+  }
+
   return (
     <div>
       <PageHeader
         title={S.monTitle}
         subtitle={S.monSubtitle}
         icon={<Activity className="h-5 w-5" />}
-        actions={<button className="btn-secondary" onClick={exportRekap}><FileDown className="h-4 w-4" /> {S.exportExcelBtn}</button>}
+        actions={canExport ? <button className="btn-secondary" onClick={exportRekap}><FileDown className="h-4 w-4" /> {S.exportExcelBtn}</button> : null}
       />
 
       <div className="mb-4 flex flex-wrap items-center gap-3">
@@ -267,14 +356,38 @@ export default function Monitoring() {
                   const pct = Number(p.budget) > 0 ? (Number(p.actual) / Number(p.budget)) * 100 : 0;
                   const delay = delayDaysOf(p);
                   return (
-                    <Link
+                    <div
                       key={p.id}
-                      to={`/proyek/${p.id}`}
-                      state={{ from: "monitoring" }}
-                      className="block rounded-xl border border-steel-200 bg-white p-3 transition-colors hover:border-ocean-400"
+                      className="rounded-xl border border-steel-200 bg-white p-3 transition-colors hover:border-ocean-400"
                     >
-                      <p className="font-mono text-xs text-steel-500">{p.id}</p>
-                      <p className="truncate text-sm font-semibold text-navy-900">{p.vessel}</p>
+                      <div className="flex items-start justify-between gap-1">
+                        <div className="min-w-0 flex-1">
+                          <p className="font-mono text-xs text-steel-500">{p.id}</p>
+                          <p className="truncate text-sm font-semibold text-navy-900">{p.vessel}</p>
+                        </div>
+                        <div className="flex shrink-0 gap-1">
+                          {canEdit && (
+                            <button
+                              type="button"
+                              className="rounded-lg p-1.5 text-ocean-600 transition-colors hover:bg-ocean-50"
+                              title={S.monUpdateBtn}
+                              aria-label={`${S.monUpdateBtn} ${p.id}`}
+                              onClick={() => openUpdate(p)}
+                            >
+                              <Pencil className="h-3.5 w-3.5" />
+                            </button>
+                          )}
+                          <Link
+                            to={`/proyek/${p.id}`}
+                            state={{ from: "monitoring" }}
+                            className="rounded-lg p-1.5 text-steel-500 transition-colors hover:bg-steel-100"
+                            title={S.monDetailBtn}
+                            aria-label={`${S.monDetailBtn} ${p.id}`}
+                          >
+                            <span className="text-xs font-medium">→</span>
+                          </Link>
+                        </div>
+                      </div>
                       <div className="mt-1 flex items-center gap-2">
                         <Badge tone={prioritasTone[canonPrioritas(p.prioritas)] ?? "blue"}>{canonPrioritas(p.prioritas)}</Badge>
                         <StatusBadge status={p.status} />
@@ -291,7 +404,7 @@ export default function Monitoring() {
                       <p className="mt-1.5 text-[11px] text-steel-500">{fmtMiliar(Number(p.actual))} / {fmtMiliar(Number(p.budget))}</p>
                       <ProgressBar value={pct} tone={pct > 100 ? "red" : "ocean"} />
                       <p className="mt-1.5 text-[11px] text-steel-500">{S.monNcrOpen}<span className={`font-semibold ${openNcr(p.id).length > 0 ? "text-rose-600" : "text-steel-500"}`}>{openNcr(p.id).length}{openNcr(p.id).some((n) => n.severity === "Critical") ? S.monCritSuffix : ""}</span></p>
-                    </Link>
+                    </div>
                   );
                 })}
                 {cols.length === 0 && <p className="py-4 text-center text-xs text-steel-400">{S.monEmptyStage}</p>}
@@ -313,6 +426,60 @@ export default function Monitoring() {
       </div>
       )}
       </div>
+
+      {/* T6-MON1: modal update proyek + foto dari Monitoring. */}
+      <Modal
+        open={updFor !== null}
+        onClose={() => setUpdFor(null)}
+        title={S.monUpdateTitle.replace("{a}", String(updFor?.id ?? ""))}
+        subtitle={String(updFor?.vessel ?? "")}
+        footer={
+          <>
+            <button className="btn-secondary" onClick={() => setUpdFor(null)}>Batal</button>
+            <AsyncButton className="btn-primary" onAction={saveUpdate}>{S.saveBtn}</AsyncButton>
+          </>
+        }
+      >
+        <div className="space-y-3">
+          <FormGrid>
+            <Field label={S.monProgField}>
+              <NumInput min={0} max={100} className="input" value={updForm.progress} onChange={(e) => setUpdForm({ ...updForm, progress: e.target.value })} />
+            </Field>
+            <Field label={S.statusLabel}>
+              <select className="input" value={updForm.status} onChange={(e) => setUpdForm({ ...updForm, status: e.target.value })}>
+                <option value="">{String(updFor?.status ?? "")}</option>
+                {["Inquiry", "Quotation", "Kontrak", "Desain", "Produksi", "Trial", "Handover", "Terlambat", "Selesai", "Batal"].map((s) => (
+                  <option key={s} value={s}>{s}</option>
+                ))}
+              </select>
+            </Field>
+          </FormGrid>
+          <FormGrid>
+            <Field label={S.monActualField}>
+              <NumInput min={0} className="input" value={updForm.actual} onChange={(e) => setUpdForm({ ...updForm, actual: e.target.value })} />
+            </Field>
+            <Field label={S.monBudgetField}>
+              <NumInput min={0} className="input" value={updForm.budget} onChange={(e) => setUpdForm({ ...updForm, budget: e.target.value })} />
+            </Field>
+          </FormGrid>
+          <Field label={S.monNoteField}>
+            <input className="input" value={updForm.note} onChange={(e) => setUpdForm({ ...updForm, note: e.target.value })} placeholder={S.monNotePh} />
+          </Field>
+          <Field label={S.monPhotoNote}>
+            <input className="input" value={updForm.photoNote} onChange={(e) => setUpdForm({ ...updForm, photoNote: e.target.value })} placeholder={S.monPhotoNotePh} />
+          </Field>
+          <div className="flex items-center gap-2">
+            <FileUploadButton accept=".png,.jpg,.jpeg" label={S.monPhotoUpload} onUploaded={(url) => setUpdForm((v) => ({ ...v, photoUrl: url }))} />
+            {updForm.photoUrl ? (
+              <SecureImg src={updForm.photoUrl} alt="Foto proyek" name="Monitoring" className="h-14 w-20 rounded-lg border border-steel-200 object-cover" />
+            ) : null}
+          </div>
+        </div>
+      </Modal>
     </div>
   );
+}
+
+function canAnyEdit(role: string): boolean {
+  return can(role, "Monitoring", "Ubah") || can(role, "Monitoring", "Buat");
 }

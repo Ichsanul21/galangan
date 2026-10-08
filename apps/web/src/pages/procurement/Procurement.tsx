@@ -358,8 +358,12 @@ export default function Procurement() {
   const [rfqVendors, setRfqVendors] = useDraftState<string[]>("isms.draft.procurement.rfqVendors", []);
   const [quoteRfq, setQuoteRfq] = useState<StoreItem | null>(null);
   const [quoteForm, setQuoteForm] = useState({ vendor: "", price: "", eta: "" });
-  const [winRfq, setWinRfq] = useState<StoreItem | null>(null);
-  const [winVendor, setWinVendor] = useState("");
+  /* T6-ETC6: "sistem tender vendor" dihapus dari UI (tombol Menangkan +
+     dialog pemenang + badge winner). Komparasi harga (quotes) tetap. */
+  /* T6-ETC4: split fulfillment - alokasi qty per vendor dari quote RFQ →
+     beberapa PO (bukan satu pemenang tunggal). */
+  const [splitRfq, setSplitRfq] = useState<StoreItem | null>(null);
+  const [splitAlloc, setSplitAlloc] = useState<Record<string, string>>({});
 
   /* ---- PR ---- */
   const [showPr, setShowPr] = useState(false);
@@ -442,7 +446,7 @@ export default function Procurement() {
     && (vCatF === "Semua" || venCatOf(String(po.vendor ?? "")) === vCatF));
   const smallShown = smallList.filter((po) => matchProc(po, String(normPo(po.status)), ["id", "item", "vendor", "workshop", "status", "lines"])
     && (vCatF === "Semua" || venCatOf(String(po.vendor ?? "")) === vCatF));
-  const rfqShown = rfqs.filter((r) => matchProc(r, String(r.status), ["id", "item", "prId", "vendors", "quotes", "winner", "status"]));
+  const rfqShown = rfqs.filter((r) => matchProc(r, String(r.status), ["id", "item", "prId", "vendors", "quotes", "status"]));
   const prShown = requisitions.filter((r) => matchProc(r, String(r.status), ["id", "item", "by", "status"]));
   const vendorShown = vendors.filter((v) => matchProc(v, String(v.status ?? "Aktif"), ["name", "cat", "status", "id"]) && (vCatF === "Semua" || String(v.cat ?? "") === vCatF));
 
@@ -742,38 +746,89 @@ export default function Procurement() {
     } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); }
   };
 
-  const confirmWin = async () => {
-    if (!winRfq) return;
-    if (!winVendor) { toast(S.tPilihMenang, "info"); return; }
-    const quotes = (Array.isArray(winRfq.quotes) ? winRfq.quotes : []) as Quote[];
-    const win = quotes.find((x) => sameName(x.vendor, winVendor));
-    if (!win) { toast(S.tMenangNoQuote, "info"); return; }
-    const plafon = cekPlafon(winVendor, win.price);
-    if (plafon && !plafon.ok) { toast(S.tPlafon.replace("{a}", fmtRupiah(plafon.pakai)).replace("{b}", fmtRupiah(plafon.plafon)), "info"); return; }
+  /* T6-ETC6: alur tender/pemenang vendor dihapus - komparasi quote tetap,
+     pembuatan PO lewat tab PO manual. */
+
+  /* T6-ETC4: buat PO split multi-vendor dari quote RFQ. */
+  const openSplit = (r: StoreItem) => {
+    const quotes = (Array.isArray(r.quotes) ? r.quotes : []) as Quote[];
+    const pr = requisitions.find((x) => x.id === r.prId);
+    const totalQty = Number(pr?.qty || 1) > 0 ? Number(pr?.qty) : 1;
+    const alloc: Record<string, string> = {};
+    /* Default: alokasi rata ke semua vendor yang mengirim quote. */
+    const each = String(Math.max(1, Math.floor(totalQty / Math.max(1, quotes.length))));
+    for (const q of quotes) alloc[q.vendor] = each;
+    setSplitAlloc(alloc);
+    setSplitRfq(r);
+  };
+
+  /* T6-PROC: buat PO dari quote termurah pada RFQ (alur cepat RFQ→PO). */
+  const createPoFromCheapest = async (r: StoreItem) => {
+    const quotes = (Array.isArray(r.quotes) ? r.quotes : []) as Quote[];
+    if (quotes.length === 0) { toast(locale === "en" ? "No quotes on this RFQ" : "RFQ belum punya quote", "info"); return; }
+    const cheapest = [...quotes].sort((a, b) => Number(a.price) - Number(b.price))[0];
+    if (!cheapest) return;
+    const pr = requisitions.find((x) => x.id === r.prId);
+    const qty = Number(pr?.qty || 1) > 0 ? Number(pr?.qty) : 1;
+    const amount = Math.round(qty * Number(cheapest.price || 0));
     try {
-      await update("rfqs", winRfq.id, { winner: winVendor, status: "Diputuskan" });
-      const prWin = requisitions.find((r) => r.id === winRfq.prId);
-      const wQty = Number(prWin?.qty || 0) > 0 ? Number(prWin?.qty) : 1;
-      const wUnit = String(prWin?.unit || "pcs");
-      const wProject = String(prWin?.project || "-");
-      const wVessel = String(prWin?.vessel || data.projects.find((p) => p.id === String(prWin?.project || ""))?.vessel || "");
-      const exact = invList.find((i) => String(i.name).toLowerCase() === String(winRfq.item).toLowerCase());
       const created = await add("purchaseOrders", {
-        poType: "Besar", item: winRfq.item, itemId: exact?.id ?? "", vendor: winVendor,
-        req: winRfq.prId, prIds: [winRfq.prId], rfqId: winRfq.id, amount: win.price, qty: wQty,
-        lines: [{ name: winRfq.item, qty: wQty, unit: wUnit, price: wQty > 0 ? Math.round((Number(win.price) / wQty) * 100) / 100 : Number(win.price) }],
-        project: wProject, vessel: wVessel, eta: win.eta, receivedQty: 0, returnedQty: 0,
+        poType: "Besar", item: String(r.item ?? pr?.item ?? ""), itemId: "",
+        vendor: cheapest.vendor, req: String(r.prId ?? ""), prIds: [String(r.prId ?? "")].filter(Boolean),
+        rfqId: String(r.id),
+        amount, qty, lines: [{ name: String(r.item ?? pr?.item ?? ""), qty, unit: String(pr?.unit || "pcs"), price: Number(cheapest.price || 0) }],
+        project: String(pr?.project ?? ""), vessel: String(pr?.vessel ?? ""), eta: String(cheapest.eta ?? ""),
         docNo: sbPoNumber(nextPoSeq()),
-        status: "Draft", date: todayISO(), revisi: "", amendments: [], approvals: [],
-      }, { action: "memenangkan RFQ", target: `${winRfq.id} → ${winVendor}`, module: "Procurement" });
-      const pr = requisitions.find((r) => r.id === winRfq.prId);
-      if (pr) await update("requisitions", pr.id, { status: "Sudah PO" });
-      toast(S.tWinInfo.replace("{n}", winRfq.id).replace("{a}", winVendor).replace("{b}", created.id));
-      setWinRfq(null);
-      setWinVendor("");
-    } catch {
-      toast(S.tWinFail.replace("{n}", winRfq.id), "info");
+        receivedQty: 0, returnedQty: 0, status: "Draft", date: todayISO(), revisi: "", amendments: [], approvals: [],
+      }, { action: "membuat PO dari quote termurah", target: `${String(r.id)} · ${cheapest.vendor}`, module: "Procurement" });
+      await update("rfqs", r.id, { status: "Diputuskan", winnerVendor: cheapest.vendor, winnerPrice: Number(cheapest.price || 0) });
+      log("PO dari RFQ", `${r.id} → ${created.id} · ${cheapest.vendor} · ${qty} unit`, "Procurement");
+      toast(locale === "en"
+        ? `PO ${created.id} created from cheapest quote (${cheapest.vendor})`
+        : `PO ${created.id} dibuat dari quote termurah (${cheapest.vendor})`);
+    } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); }
+  };
+
+  const saveSplitPo = async () => {
+    if (!splitRfq) return;
+    const quotes = (Array.isArray(splitRfq.quotes) ? splitRfq.quotes : []) as Quote[];
+    const pr = requisitions.find((x) => x.id === splitRfq.prId);
+    const item = String(splitRfq.item ?? pr?.item ?? "");
+    const totalQty = Number(pr?.qty || 1) > 0 ? Number(pr?.qty) : 1;
+    const used = quotes.reduce((s, q) => s + Math.max(0, Number(splitAlloc[q.vendor] || 0)), 0);
+    if (used <= 0) { toast(locale === "en" ? "Allocate qty to at least one vendor" : "Alokasikan qty ke minimal satu vendor", "info"); return; }
+    if (used > totalQty) {
+      toast(locale === "en"
+        ? `Allocated ${used} > required ${totalQty}`
+        : `Alokasi ${used} melebihi kebutuhan ${totalQty}`, "info");
+      return;
     }
+    try {
+      let created = 0;
+      for (const q of quotes) {
+        const qty = Math.max(0, Number(splitAlloc[q.vendor] || 0));
+        if (qty <= 0) continue;
+        const amount = Math.round(qty * Number(q.price || 0));
+        await add("purchaseOrders", {
+          poType: "Besar", item, itemId: "",
+          vendor: q.vendor, req: String(splitRfq.prId ?? ""), prIds: [String(splitRfq.prId ?? "")].filter(Boolean),
+          rfqId: String(splitRfq.id),
+          amount, qty, lines: [{ name: item, qty, unit: String(pr?.unit || "pcs"), price: Number(q.price || 0) }],
+          project: String(pr?.project ?? ""), vessel: String(pr?.vessel ?? ""), eta: String(q.eta ?? ""),
+          docNo: sbPoNumber(nextPoSeq()),
+          splitFrom: String(splitRfq.id),
+          receivedQty: 0, returnedQty: 0, status: "Draft", date: todayISO(), revisi: "", amendments: [], approvals: [],
+        }, { action: "membuat PO split multi-vendor", target: `${item} · ${q.vendor} × ${qty}`, module: "Procurement" });
+        created += 1;
+      }
+      await update("rfqs", splitRfq.id, { status: "Evaluasi", splitPoCount: created });
+      log("PO split multi-vendor", `${splitRfq.id} · ${item} · ${created} PO`, "Procurement");
+      toast(locale === "en"
+        ? `${created} PO(s) created from RFQ ${String(splitRfq.id)}`
+        : `${created} PO dibuat dari RFQ ${String(splitRfq.id)}`);
+      setSplitRfq(null);
+      setSplitAlloc({});
+    } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); }
   };
 
   /* ============ KONSOLIDASI ============ */
@@ -1724,14 +1779,20 @@ const sparkVendors = useMemo(() => {
                         <button key={n} className={i === 0 ? "btn-primary text-xs" : "btn-secondary text-xs"} onClick={async () => { try { await update("rfqs", r.id, { status: n }); toast(S.tArrow.replace("{a}", r.id).replace("{b}", n)); } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); } }}>{i === 0 ? `${n} - ${locale === "en" ? "next" : "lanjut"}` : n}</button>
                       ))}
                       <button className="btn-secondary text-xs" onClick={() => { setQuoteRfq(r); setQuoteForm({ vendor: "", price: "", eta: "" }); }}>{S.btnInputQuote}</button>
-                      {r.status === "Evaluasi" && quotes.length > 0 && (
-                        <button className="btn-primary text-xs" onClick={() => {
-                          const cheap = quotes.find((x) => Number(x.price) === minPrice);
-                          setWinRfq(r); setWinVendor(cheap?.vendor ?? "");
-                        }}>{S.btnWin}</button>
+                      {/* T6-ETC4: split fulfillment multi-vendor bila ada quote. */}
+                      {quotes.length > 0 && !rfqLocked(r) && (
+                        <>
+                          <button className="btn-secondary text-xs" onClick={() => void createPoFromCheapest(r)}>
+                            {locale === "en" ? "PO cheapest" : "PO Termurah"}
+                          </button>
+                          <button className="btn-secondary text-xs" onClick={() => openSplit(r)}>
+                            {locale === "en" ? "Split PO" : "PO Split"}
+                          </button>
+                        </>
                       )}
-                      {r.winner && <Badge tone="green">{S.winnerN.replace("{n}", String(r.winner))}</Badge>}
-                        {!rfqLocked(r) ? (
+                      {/* T6-ETC6: tombol "Menangkan" + badge pemenang dihapus.
+                          Komparasi harga tetap; buat PO lewat tab PO manual. */}
+                      {!rfqLocked(r) ? (
                           <button className="btn-secondary text-xs text-rose-600" onClick={() => setDelRfq(r)}>{locale === "en" ? "Delete" : "Hapus"}</button>
                         ) : (
                           <span className="text-xs text-steel-400" title={rfqLocked(r) ?? ""}>{locale === "en" ? "Locked" : "Terkunci"}</span>
@@ -2523,18 +2584,66 @@ const sparkVendors = useMemo(() => {
         </div>
       </Modal>
 
-      {/* Dialog pemenang RFQ - pilihan vendor + konfirmasi */}
-      <Modal open={winRfq !== null} onClose={() => { setWinRfq(null); setWinVendor(""); }} title={S.mWinT.replace("{n}", winRfq?.id ?? "")} subtitle={S.mWinS}
-        footer={<><button className="btn-secondary" onClick={() => { setWinRfq(null); setWinVendor(""); }}>{S.btnBatal}</button><button className="btn-primary" onClick={confirmWin}>{S.btnWinBuat}</button></>}>
-        <Field label={S.vendorMenang}>
-          <select className="input" value={winVendor} onChange={(e) => setWinVendor(e.target.value)}>
-            <option value="">{S.optPilihMenang}</option>
-            {((winRfq?.quotes as Quote[] | undefined) ?? []).map((x) => (
-              <option key={x.vendor} value={x.vendor}>{x.vendor} · {fmtRupiah(Number(x.price))} · ETA {fmtTanggal(x.eta)}</option>
-            ))}
-          </select>
-        </Field>
+      {/* T6-ETC4: modal split fulfillment multi-vendor dari quote RFQ. */}
+      <Modal
+        open={splitRfq !== null}
+        onClose={() => { setSplitRfq(null); setSplitAlloc({}); }}
+        title={locale === "en" ? "Split PO across vendors" : "PO Split multi-vendor"}
+        subtitle={splitRfq ? `${String(splitRfq.id)} · ${String(splitRfq.item ?? "")}` : ""}
+        footer={
+          <>
+            <button className="btn-secondary" onClick={() => { setSplitRfq(null); setSplitAlloc({}); }}>{S.btnBatal}</button>
+            <AsyncButton className="btn-primary" onAction={saveSplitPo}>
+              {locale === "en" ? "Create PO(s)" : "Buat PO"}
+            </AsyncButton>
+          </>
+        }
+      >
+        {splitRfq && (
+          <div className="space-y-3">
+            <p className="text-xs text-steel-500">
+              {locale === "en"
+                ? "Allocate the PR quantity across vendors that submitted quotes. One PO is created per vendor with qty > 0."
+                : "Alokasikan qty PR ke vendor yang mengirim quote. Dibuat satu PO per vendor dengan qty > 0."}
+            </p>
+            {(() => {
+              const quotes = (Array.isArray(splitRfq.quotes) ? splitRfq.quotes : []) as Quote[];
+              const pr = requisitions.find((x) => x.id === splitRfq.prId);
+              const totalQty = Number(pr?.qty || 1) > 0 ? Number(pr?.qty) : 1;
+              const used = quotes.reduce((s, q) => s + Math.max(0, Number(splitAlloc[q.vendor] || 0)), 0);
+              return (
+                <>
+                  <p className="text-sm text-steel-600">
+                    {locale === "en" ? "Required" : "Kebutuhan"}: <b className="text-navy-900">{totalQty}</b> {String(pr?.unit ?? "")}
+                    {" · "}{locale === "en" ? "Allocated" : "Dialokasikan"}: <b className={used > totalQty ? "text-rose-600" : "text-navy-900"}>{used}</b>
+                  </p>
+                  <div className="space-y-2">
+                    {quotes.map((q) => (
+                      <div key={q.vendor} className="flex items-center gap-2 rounded-lg border border-steel-100 px-3 py-2">
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate text-sm font-medium text-navy-900">{q.vendor}</p>
+                          <p className="text-xs text-steel-500">{fmtRupiah(Number(q.price || 0))} · ETA {fmtTanggal(String(q.eta ?? ""))}</p>
+                        </div>
+                        <NumInput
+                          min={0}
+                          className="input w-24 py-1 text-sm"
+                          value={splitAlloc[q.vendor] ?? "0"}
+                          aria-label={`${locale === "en" ? "Qty for" : "Qty untuk"} ${q.vendor}`}
+                          onChange={(e) => setSplitAlloc((m) => ({ ...m, [q.vendor]: e.target.value }))}
+                        />
+                      </div>
+                    ))}
+                    {quotes.length === 0 && <p className="text-xs text-steel-400">{locale === "en" ? "No quotes yet." : "Belum ada quote."}</p>}
+                  </div>
+                </>
+              );
+            })()}
+          </div>
+        )}
       </Modal>
+
+      {/* Dialog pemenang RFQ DIHAPUS (T6-ETC6): "sistem tender vendor" diminta
+          client dihilangkan; komparasi harga tetap di tabel quotes. */}
     </div>
   );
 }

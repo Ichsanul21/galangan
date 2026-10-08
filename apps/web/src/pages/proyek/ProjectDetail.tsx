@@ -63,7 +63,7 @@ const STATUS = ["Sedang Berjalan", "Dalam Proses", "Tertunda", "Batal", "Selesai
 const RISK_LEVEL = ["Rendah", "Sedang", "Tinggi"];
 const STATIONS = ["Cutting", "Bending", "Welding", "Panel", "Block", "Erection", "Alignment", "Launching"];
 
-type WbsExt = WbsItem & { predecessor?: string };
+type WbsExt = WbsItem & { predecessor?: string; assignType?: "Internal" | "Subkon"; assignee?: string };
 interface WbsBaseline { at: string; wbs: WbsExt[]; }
 
 /* Resolusi lampiran memakai utils/docAttachment (satu sumber untuk semua modul).
@@ -179,11 +179,12 @@ export default function ProjectDetail() {
      salah milestone, risk yang dobel) nyangkut permanen di proyek. */
   const [delRec, setDelRec] = useState<{ kind: "risks" | "trials" | "changeOrders" | "bast"; row: StoreItem } | null>(null);
   const [showWbs, setShowWbs] = useState(false);
-  const [wbsForm, setWbsForm] = useState({ task: "", start: "", end: "", weight: "10", progress: "0", predecessor: "" });
+  /* T6-PRJ2: assign pengerja WBS (internal karyawan / subkon eksternal). */
+  const [wbsForm, setWbsForm] = useState({ task: "", start: "", end: "", weight: "10", progress: "0", predecessor: "", assignType: "Internal" as "Internal" | "Subkon", assignee: "" });
   const [showTeam, setShowTeam] = useState(false);
   const [teamPick, setTeamPick] = useState("");
   const [wbsTaskUpdate, setWbsTaskUpdate] = useState<string | null>(null);
-  const [wbsUpdateForm, setWbsUpdateForm] = useState({ hours: "", material: "", status: "Sedang" as "Sedang" | "Selesai", progress: "", predecessor: "", station: "", photoNote: "", photoUrl: "", dft: "" });
+  const [wbsUpdateForm, setWbsUpdateForm] = useState({ hours: "", material: "", status: "Sedang" as "Sedang" | "Selesai", progress: "", predecessor: "", station: "", photoNote: "", photoUrl: "", dft: "", assignType: "Internal" as "Internal" | "Subkon", assignee: "" });
   const [showShare, setShowShare] = useState(false);
   const [shareForm, setShareForm] = useState({ docId: "", to: "" });
   const [statusPending, setStatusPending] = useState<string | null>(null);
@@ -1039,6 +1040,9 @@ const createWarranty = async (wbsTask?: string) => {
         ? {
             ...w, actualHours: hours, materialUsed: wbsUpdateForm.material, status, progress: prog, predecessor: pred || undefined,
             ...(wbsUpdateForm.station ? { station: wbsUpdateForm.station } : { station: undefined }),
+            /* T6-PRJ2: assign pengerja ikut tercatat di update progres. */
+            ...(wbsUpdateForm.assignType ? { assignType: wbsUpdateForm.assignType } : {}),
+            ...(wbsUpdateForm.assignee.trim() ? { assignee: wbsUpdateForm.assignee.trim() } : { assignee: undefined }),
 ...(wbsUpdateForm.photoNote.trim() || wbsUpdateForm.photoUrl.trim()
                 ? { photos: [...(w.photos ?? []), ...(wbsUpdateForm.photoUrl.trim() ? [{ url: wbsUpdateForm.photoUrl.trim(), note: wbsUpdateForm.photoNote.trim(), date: todayISO() }] : [])] }
                 : {}),
@@ -1070,7 +1074,7 @@ try {
         log("mengupdate progres WBS", `${wbsTaskUpdate} → ${prog}% (${status})`, "Proyek");
         toast(S.detToastWbsProg);
       setWbsTaskUpdate(null);
-      setWbsUpdateForm({ hours: "", material: "", status: "Sedang", progress: "", predecessor: "", station: "", photoNote: "", photoUrl: "", dft: "" });
+      setWbsUpdateForm({ hours: "", material: "", status: "Sedang", progress: "", predecessor: "", station: "", photoNote: "", photoUrl: "", dft: "", assignType: "Internal", assignee: "" });
     } catch (e) {
       toast(e instanceof Error ? e.message : S.saveFail, "info");
     }
@@ -1079,20 +1083,27 @@ try {
   const saveWbs = async () => {
     if (!wbsForm.task.trim()) { toast(S.detToastStageName, "info"); return; }
     if (wbs.some((w) => w.task === wbsForm.task.trim())) { toast(S.detToastStageDup, "info"); return; }
+    /* T6-PRJ2 open Q8: assign WBS hanya PM/role target (direktur/manager/developer). */
+    if (!canSetTarget(session?.role)) {
+      toast(locale === "en" ? "Only PM / director can assign WBS workers" : "Hanya PM/direktur yang boleh assign pekerja WBS", "info");
+      return;
+    }
     const weight = Number(wbsForm.weight) || 0;
     if (weight <= 0) { toast(S.detToastWeight, "info"); return; }
     const pred = wbsForm.predecessor || "";
     if (pred && !wbs.some((w) => w.task === pred)) { toast(S.detToastPredUnknown, "info"); return; }
-    const next = [...wbs, { task: wbsForm.task.trim(), start: wbsForm.start || "-", end: wbsForm.end || "-", progress: Number(wbsForm.progress) || 0, weight, ...(pred ? { predecessor: pred } : {}) }];
+    /* T6-PRJ2: assign pengerja disimpan bersama tahapan WBS. */
+    const assignee = wbsForm.assignee.trim();
+    const next = [...wbs, { task: wbsForm.task.trim(), start: wbsForm.start || "-", end: wbsForm.end || "-", progress: Number(wbsForm.progress) || 0, weight, ...(pred ? { predecessor: pred } : {}), assignType: wbsForm.assignType, ...(assignee ? { assignee } : {}) }];
     const totalW = next.reduce((s, w) => s + Number(w.weight || 0), 0);
     if (totalW !== 100) { toast(S.detToastWeightTotal.replace("{n}", String(totalW)), "info"); return; }
     try {
       await setWbs(pid, next);
       await update("projects", pid, { progress: weightedProgress(next) });
-      log("menambah tahapan WBS", `${pid} · ${wbsForm.task.trim()}`, "Proyek");
+      log("menambah tahapan WBS", `${pid} · ${wbsForm.task.trim()}${assignee ? ` · ${wbsForm.assignType}: ${assignee}` : ""}`, "Proyek");
       toast(S.detToastStageAdd);
       setShowWbs(false);
-      setWbsForm({ task: "", start: "", end: "", weight: "10", progress: "0", predecessor: "" });
+      setWbsForm({ task: "", start: "", end: "", weight: "10", progress: "0", predecessor: "", assignType: "Internal", assignee: "" });
     } catch (e) {
       toast(e instanceof Error ? e.message : S.saveFail, "info");
     }
@@ -1328,16 +1339,27 @@ try {
               <div className="overflow-x-auto">
                 <table className="w-full">
                   <thead className="bg-surface">
-                    <tr><SortTh label={S.colStageName} sortKey="task" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.detStart} sortKey="start" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.detEnd} sortKey="end" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.colWeight} sortKey="weight" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.colPred} sortKey="predecessor" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.progLabel} sortKey="progress" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><th className="th">{S.actionTh}</th></tr>
+                    <tr><SortTh label={S.colStageName} sortKey="task" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.detAssignee} sortKey="assignee" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.detStart} sortKey="start" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.detEnd} sortKey="end" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.colWeight} sortKey="weight" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.colPred} sortKey="predecessor" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.progLabel} sortKey="progress" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><th className="th">{S.actionTh}</th></tr>
                   </thead>
                   <tbody className="divide-y divide-steel-100">
                     {sortRows(wbs.filter((w) => rowMatches(w as unknown as Record<string, unknown>, wbsQ, ["task", "station", "dft", "predecessor"])), sort, (w: WbsExt, k) => k === "weight" ? Number(w.weight) : k === "progress" ? Number(w.progress) : String((w as unknown as Record<string, unknown>)[k] ?? "")).map((w) => (
                       <tr key={w.task}>
-<td className="td font-medium text-navy-900">{w.task}
+                          <td className="td font-medium text-navy-900">{w.task}
                             {w.station ? <span className="ml-2 rounded bg-navy-50 px-1.5 py-0.5 text-[11px] font-semibold text-navy-700">{w.station}</span> : null}
                             {w.dft !== undefined && w.dft !== null && String(w.dft) !== "" ? <span className="ml-1 text-[11px] text-steel-400">DFT {w.dft}</span> : null}
                             {/* D3: badge jumlah foto jika ada. */}
                             {w.photos && w.photos.length > 0 && <span className="ml-1 rounded bg-ocean-50 px-1.5 py-0.5 text-[11px] font-semibold text-ocean-700">📷 {w.photos.length}</span>}
+                          </td>
+                          {/* T6-PRJ2: pengerja WBS (internal / subkon). */}
+                          <td className="td">
+                            {w.assignee ? (
+                              <div className="flex flex-col gap-0.5">
+                                <span className="text-xs font-medium text-navy-800">{w.assignee}</span>
+                                <Badge tone={w.assignType === "Subkon" ? "amber" : "blue"}>{w.assignType === "Subkon" ? S.detAssignSubkon : S.detAssignInternal}</Badge>
+                              </div>
+                            ) : (
+                              <span className="text-xs text-steel-400">{S.detNoAssignee}</span>
+                            )}
                           </td>
                          <td className="td font-mono text-xs text-steel-500">{fmtBulan(w.start)}</td>
                          <td className="td font-mono text-xs text-steel-500">{fmtBulan(w.end)}</td>
@@ -1354,7 +1376,7 @@ try {
                               icon={Pencil}
                               tone="neutral"
                               label={`${S.detUpdateBtn} ${w.task}`}
-                              onClick={() => { setWbsTaskUpdate(w.task); setWbsUpdateForm({ hours: String(w.actualHours ?? ""), material: w.materialUsed ?? "", status: w.status === "Selesai" ? "Selesai" : "Sedang", progress: String(w.progress ?? 0), predecessor: w.predecessor ?? "", station: w.station ?? "", photoNote: w.photoNote ?? "", photoUrl: String(w.photoUrl ?? ""), dft: w.dft === undefined || w.dft === null ? "" : String(w.dft) }); }}
+                              onClick={() => { setWbsTaskUpdate(w.task); setWbsUpdateForm({ hours: String(w.actualHours ?? ""), material: w.materialUsed ?? "", status: w.status === "Selesai" ? "Selesai" : "Sedang", progress: String(w.progress ?? 0), predecessor: w.predecessor ?? "", station: w.station ?? "", photoNote: w.photoNote ?? "", photoUrl: String(w.photoUrl ?? ""), dft: w.dft === undefined || w.dft === null ? "" : String(w.dft), assignType: w.assignType ?? "Internal", assignee: w.assignee ?? "" }); }}
                             />
                         </td>
                       </tr>
@@ -2178,7 +2200,7 @@ try {
             </div>
           )}
           {tab === "BoQ" && <BoQSection projectId={pid} />}
-          {tab === "Dokumen & Laporan" && <div className="report-print mt-6" style={{ breakInside: "auto" }}><ReportSection projectId={pid} /></div>}
+          {tab === "Dokumen & Laporan" && <div className="report-print mt-6" style={{ breakInside: "auto" }}><ReportSection projectId={pid} onOpenTab={setTab} /></div>}
           {tab === "3D Viewer" && getSetting(data, "SHOW_3D_PROJECT", 0) === 1 && <SparepartServiceSection projectId={pid} view="3d" />}
           {tab === "Service" && <SparepartServiceSection projectId={pid} view="service" />}
           {tab === "Sparepart" && <SparepartServiceSection projectId={pid} view="sparepart" />}
@@ -2612,6 +2634,23 @@ try {
               {wbs.map((w) => <option key={w.task} value={w.task}>{w.task}</option>)}
             </select>
           </Field>
+          {/* T6-PRJ2: assign pengerja - internal (karyawan) atau subkontraktor. */}
+          <FormGrid>
+            <Field label={S.detAssignType}>
+              <select className="input" value={wbsForm.assignType} onChange={(e) => setWbsForm({ ...wbsForm, assignType: e.target.value as "Internal" | "Subkon", assignee: "" })}>
+                <option value="Internal">{S.detAssignInternal}</option>
+                <option value="Subkon">{S.detAssignSubkon}</option>
+              </select>
+            </Field>
+            <Field label={S.detAssignee}>
+              <select className="input" value={wbsForm.assignee} onChange={(e) => setWbsForm({ ...wbsForm, assignee: e.target.value })}>
+                <option value="">{wbsForm.assignType === "Subkon" ? S.detAssignSubkonPick : S.detAssigneePick}</option>
+                {wbsForm.assignType === "Subkon"
+                  ? data.subcontractors.filter((s) => s.status !== "Blacklist").map((s) => <option key={s.id} value={String(s.name ?? "")}>{String(s.name ?? "")}</option>)
+                  : data.employees.filter((e) => e.status === "Aktif").map((e) => <option key={e.id} value={String(e.name ?? "")}>{String(e.name ?? "")} · {String(e.role ?? "")}</option>)}
+              </select>
+            </Field>
+          </FormGrid>
         </div>
       </Modal>
 

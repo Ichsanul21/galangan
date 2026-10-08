@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { ID_MON as MONTH_ID } from "../../utils/monthAxis";
 import { Plus, Ship, CalendarRange, AlertTriangle, GripVertical, Trash2, Wrench, User, Eye, ArrowLeftRight } from "lucide-react";
-import { Card, CardHeader, PageHeader, SearchBox, Badge, KpiCard, ProgressBar, Modal, Field, FormGrid, ConfirmModal, StatusBadge, toast, SortTh, toggleSort, sortRows, usePager,
+import { Card, CardHeader, PageHeader, SearchBox, Badge, KpiCard, Modal, Field, FormGrid, ConfirmModal, StatusBadge, toast, SortTh, toggleSort, sortRows, usePager,
   NumInput, FlowStrip,
   RowAction, rowMatches,
   EntityPicker,
@@ -340,9 +340,6 @@ export default function Drydock() {
     }
   };
 
-  const dockCostTotal = (dockId: string): number =>
-    dockSlots.filter((s) => s.dockId === dockId).reduce((sum, s) => sum + slotCost(s), 0);
-
   const exportAnnualPlan = () => {
     void exportExcel(
       [["Slot", "Fasilitas", "Kapal", "Mulai", "Selesai", "Hari", "Tarif/Hari (Rp)", "Biaya Dock (Rp)", "Listrik (kWh)", "Air (m³)"],
@@ -352,13 +349,8 @@ export default function Drydock() {
     ).then(() => toast(S.tAnnualExported)).catch(() => toast(S.saveFail, "info"));
   };
 
-  const coverageByDock = drydocks.map((d) => ({
-    dock: d,
-    pct: Math.round((coveredDays(d.id, dockSlots) / DAYS) * 100),
-  }));
   const totalCovered = drydocks.reduce((s, d) => s + coveredDays(d.id, dockSlots), 0);
   const util = drydocks.length ? Math.round((totalCovered / (drydocks.length * DAYS)) * 100) : 0;
-  const busiest = coverageByDock.length ? coverageByDock.reduce((a, b) => (b.pct > a.pct ? b : a)) : null;
 
   const overlap = (dockId: string, from: number, to: number, ignore?: string) =>
     dockSlots.some((o) => o.dockId === dockId && o.id !== ignore && from < o.to && o.from < to);
@@ -731,128 +723,7 @@ export default function Drydock() {
       )}
 
 
-        <Card className="p-5">
-          <h3 className="mb-3 text-sm font-semibold text-navy-900">{S.utilTitle}</h3>
-          <div className="space-y-3">
-            {coverageByDock.map(({ dock, pct }) => (
-              <div key={dock.id}>
-                <div className="mb-1 flex justify-between text-sm">
-                  <span className="text-steel-600">{dock.name}</span>
-                  <span className="font-semibold text-navy-900">{pct}%</span>
-                </div>
-                <ProgressBar value={pct} tone={pct > 80 ? "red" : pct > 60 ? "amber" : "green"} />
-                <p className="mt-1 text-xs text-steel-500">{S.dockCost.replace("{a}", fmtRupiah(dockCostTotal(dock.id)))}</p>
-              </div>
-            ))}
-          </div>
-          <p className="mt-3 text-xs text-steel-400">
-            {busiest ? S.busiestNow.replace("{a}", busiest.dock.name).replace("{b}", String(busiest.pct)) : S.noUtil} {S.utilNote.replace("{n}", String(DAYS))}
-          </p>
-        </Card>
-
-      <div className="mt-5 grid grid-cols-1 gap-5">
-        {/* ==== PETA AREA (GRAFIK) ====
-            Item 6 revisi 2 Oktober. Tabel "Slot per Area" di bawahnya
-            menjawab "slot mana saja", tapi tidak menjawab pertanyaan yang
-            biasa ditanya_admin drydock: area mana yang sudah penuh, berapa
-            kapal yang menumpuk di sana, dan mana yang longgar. Kartu ini
-            menjawabnya lewat(isian per area, bukan baris per slot). */}
-        <Card>
-          <CardHeader
-            title={locale === "en" ? "Area capacity map" : "Peta Kapasitas Area"}
-            subtitle={locale === "en"
-              ? "One block per area, scaled by slot count. Fill = share of slots currently occupied."
-              : "Satu blok per area, discalakan menurut jumlah slot. Isian = porsi slot yang sedang terisi."}
-          />
-          {(() => {
-            const groups = new Map<string, StoreItem[]>();
-            for (const s of filteredSlots) {
-              const key = slotAreaOf(s) || S.noArea;
-              if (!groups.has(key)) groups.set(key, []);
-              groups.get(key)!.push(s);
-            }
-            /* Area tanpa slot pun dihitung, kalau tidak area yang kosong lenyap
-               dari peta - padahal justru itu yang perlu terlihat. */
-            for (const d of drydocks) {
-              const key = String(d.area ?? "").trim() || S.noArea;
-              if (!groups.has(key)) groups.set(key, []);
-            }
-            const entries = [...groups.entries()].sort((a, b) => b[1].length - a[1].length || a[0].localeCompare(b[0]));
-            const maxSlots = Math.max(1, ...entries.map(([, sl]) => sl.length));
-            if (entries.length === 0) {
-              return <p className="px-5 pb-5 text-xs text-steel-400">{S.emptySlots}</p>;
-            }
-            return (
-              <div className="grid grid-cols-1 gap-3 px-5 pb-5 sm:grid-cols-2 xl:grid-cols-3">
-                {entries.map(([area, slots]) => {
-                  const vessels = Array.from(new Set(slots.map((s) => String(s.vessel ?? "-")))).filter((v) => v !== "-");
-                  const occupied = slots.filter((s) => isActiveSlot(s)).length;
-                  const conflicts = slots.filter((s) => conflict.some((c) => c.id === s.id)).length;
-                  const fill = slots.length === 0 ? 0 : Math.round((occupied / slots.length) * 100);
-                  /* Lebar blok diskalakan jumlah slot supaya area besar langsung
-                     terlihat lebih besar - itu poin "grafis"nya; tabel tidak
-                     pernah bisa menunjukkan itu. */
-                  const scale = Math.round((slots.length / maxSlots) * 100);
-                  return (
-                    <div key={area} className="rounded-xl border border-steel-100 bg-surface p-3">
-                      <div className="flex items-baseline justify-between gap-2">
-                        <p className="truncate text-sm font-semibold text-navy-900" title={area}>{area}</p>
-                        <span className="shrink-0 text-xs text-steel-500">{locale === "en" ? `${slots.length} slots` : `${slots.length} slot`}</span>
-                      </div>
-                      <div className="mt-2 h-16 w-full overflow-hidden rounded-lg bg-steel-50 p-1" title={locale === "en" ? `Scale: ${scale}% of the largest area` : `Skala: ${scale}% dari area terbesar`}>
-                        <div
-                          className={`h-full rounded-md ${fill > 80 ? "bg-rose-400" : fill > 50 ? "bg-amber-400" : "bg-ocean-400"}`}
-                          style={{ width: `${Math.max(8, scale)}%` }}
-                        />
-                      </div>
-                      <div className="mt-2 flex flex-wrap items-center gap-1.5 text-[11px]">
-                        <Badge tone={occupied > 0 ? "blue" : "gray"}>{locale === "en" ? `${occupied} occupied` : `${occupied} terisi`}</Badge>
-                        <Badge tone="teal">{locale === "en" ? `${vessels.length} vessels` : `${vessels.length} kapal`}</Badge>
-                        {conflicts > 0 && <Badge tone="red">{locale === "en" ? `${conflicts} conflict` : `${conflicts} bentrok`}</Badge>}
-                      </div>
-                      {vessels.length > 0 && (
-                        <p className="mt-1 truncate text-[11px] text-steel-500" title={vessels.join(", ")}>{vessels.join(" · ")}</p>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            );
-          })()}
-        </Card>
-        <Card>
-          <CardHeader title="Slot per Area" subtitle="Grup Area · Slot · Status · Kapal · Masuk–Keluar (ikut filter bar di bawah)" />
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead className="sticky top-0 z-10 bg-surface">
-                <tr><th className="th">Area</th><th className="th">Slot</th><th className="th">Status</th><th className="th">Kapal</th><th className="th">Masuk–Keluar</th></tr>
-              </thead>
-              <tbody className="divide-y divide-steel-100">
-                {(() => {
-                  const groups = new Map<string, StoreItem[]>();
-                  for (const s of filteredSlots) {
-                    const key = slotAreaOf(s) || S.noArea;
-                    if (!groups.has(key)) groups.set(key, []);
-                    groups.get(key)!.push(s);
-                  }
-                  const entries = [...groups.entries()].sort((a, b) => a[0].localeCompare(b[0]));
-                  if (entries.length === 0) return <tr><td colSpan={5} className="td text-center text-steel-400">{S.emptySlots}</td></tr>;
-                  return entries.flatMap(([area, slots]) =>
-                    slots.map((s, i) => (
-                      <tr key={s.id} className="hover:bg-surface">
-                        {i === 0 ? <td className="td font-semibold text-navy-900" rowSpan={slots.length}>{area}</td> : null}
-                        <td className="td font-mono text-xs text-steel-600">{String(s.id)}</td>
-                        <td className="td"><StatusBadge status={slotStatus(s, data.projects)} /></td>
-                        <td className="td text-steel-600">{String(s.vessel ?? "-")}</td>
-                        <td className="td text-steel-600">{fmtRentang(dayToISO(Number(s.from)), dayToISO(Number(s.to)))}</td>
-                      </tr>
-                    ))
-                  );
-                })()}
-              </tbody>
-            </table>
-          </div>
-        </Card>
+      {/* T6-DD2: panel lama dihapus - Utilisasi, Peta Kapasitas Area, tabel Slot per Area. Mapping slot klik → modal detail + tabel slot utama tetap. */}
         <Card>
           <CardHeader title={S.cardSlots} subtitle={S.cardSlotsSub} action={
             <div className="flex flex-wrap items-center gap-1.5">
@@ -1117,8 +988,6 @@ export default function Drydock() {
           </div>
         </div>
       </Card>
-
-      </div>
 
       {/* T6-DD3: "Rencana docking tahunan" diganti Waiting List Dock. */}
       <Card className="mt-5">

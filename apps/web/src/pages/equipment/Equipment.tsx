@@ -439,7 +439,14 @@ const [utilQ, setUtilQ] = useState("");
     Maintenance: "amber",
   };
 
-  const maintenance = equipment.filter((e) => e.status === "Maintenance").length;
+  /* T6-EQ4 fix: KPI "Dalam Maintenance" = equipment status Maintenance
+     + alat dengan kalibrasi aktif (belum Selesai/Gagal), sesuai hint. */
+  const calActiveEqIds = new Set(
+    calibrations
+      .filter((c) => c.status !== "Selesai" && c.status !== "Gagal")
+      .map((c) => String(c.equipmentId ?? "")),
+  );
+  const maintenance = equipment.filter((e) => e.status === "Maintenance" || calActiveEqIds.has(String(e.id))).length;
   const avgUtil = equipment.length ? Math.round(equipment.reduce((s, e) => s + dispUtil(e), 0) / equipment.length) : 0;
   const dueSoon = equipment.filter((e) => {
     const d = daysUntil(String(e.nextService ?? ""), today);
@@ -641,7 +648,7 @@ const projectCostRows = useMemo(() => Array.from(projectCostSummaries.entries())
   const regSorted = useMemo(() => sortRows(regFiltered, sort, (e, k) => {
     if (k === "utilisasi") return (e.utilManual === true) ? Number(e.util || 0) : autoUtilOf(e);
     if (k === "jam") return Number(e.lastHours || 0);
-    if (k === "tarif") return Number(e.rate || 0);
+    if (k === "harga" || k === "tarif") return Number(e.acquisitionCost || e.rate || 0);
     if (k === "nilaibuku") return Number(depreciationOf(e)?.book ?? -1);
     if (k === "kategori") return String(e.category ?? "");
     if (k === "model") return String(e.model ?? "");
@@ -1703,7 +1710,15 @@ if (tab === "Daftar Equipment") { flashPick(flash, ids, idx, regPager.go, regPag
                         <div className="flex flex-wrap gap-1">
                           <Badge tone={statusTone[e.status] ?? "gray"}>{e.status}</Badge>
                           {isMeasuring(e) && expired && <Badge tone="red">{S.eqCalExpired}</Badge>}
-                          {String(e.delegatedTo ?? "") !== "" && <Badge tone="blue" title={String(e.delegationNote ?? "")}>{S.eqDelegasiBadge?.replace("{a}", String(e.delegatedTo)) ?? `→ ${String(e.delegatedTo)}`}</Badge>}
+                          {String(e.delegatedTo ?? "") !== "" && (
+                            <Badge
+                              tone="blue"
+                              title={`${String(e.delegationNote ?? "")}${String(e.delegatedAt ?? "") ? ` · ${fmtTanggal(String(e.delegatedAt))}` : ""}`}
+                            >
+                              {S.eqDelegasiBadge?.replace("{a}", String(e.delegatedTo)) ?? `→ ${String(e.delegatedTo)}`}
+                              {String(e.delegatedAt ?? "") ? ` · ${fmtTanggal(String(e.delegatedAt))}` : ""}
+                            </Badge>
+                          )}
                         </div>
                       </td>
                       <td className="td">
@@ -2657,11 +2672,12 @@ if (tab === "Daftar Equipment") { flashPick(flash, ids, idx, regPager.go, regPag
             if (!delegasiFor) return;
             if (!delegasiTo.trim()) { toast(locale === "en" ? "Delegate is required" : "Penerima delegasi wajib diisi", "info"); return; }
             try {
+              /* T6-EQ5 fix: jangan timpa `pic` - PJ unit asli tetap tersimpan;
+                 delegasi hanya menambah delegatedTo/delegatedAt/delegationNote. */
               await update("equipment", delegasiFor.id, {
                 delegatedTo: delegasiTo.trim(),
                 delegatedAt: todayISO(),
                 delegationNote: delegasiNote.trim(),
-                pic: delegasiTo.trim(),
               });
               log("mendelegasikan equipment", `${delegasiFor.id} → ${delegasiTo.trim()}`, "Equipment");
               toast((S.eqDelegasiSaved ?? "Delegasi {a} disimpan").replace("{a}", String(delegasiFor.id)));

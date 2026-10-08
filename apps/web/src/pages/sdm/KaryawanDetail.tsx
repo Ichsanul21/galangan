@@ -28,6 +28,7 @@ import type { SortState } from "../../components/ui";
 import { useStore } from "../../data/store";
 import type { StoreItem } from "../../data/store";
 import { DocumentPreviewCell, DocumentPreviewModal, DocumentPreviewPanel } from "../../components/DocumentPreview";
+import { QRCodeSVG } from "qrcode.react";
 import { apiFetch, isBackendConfigured } from "../../services/http";
 import { fmtBulan, fmtRupiah, fmtTanggal, todayISO } from "../../utils/format";
 import { sameName } from "../../utils/names";
@@ -506,6 +507,19 @@ export default function KaryawanDetail() {
             <div className="flex justify-between"><dt className="text-steel-500">{S.dlJoin}</dt><dd className="font-medium">{fmtTanggal(String(emp.join))}</dd></div>
             <div className="flex justify-between"><dt className="text-steel-500">{S.fContractEnd}</dt><dd className="font-medium">{emp.contractEnd ? fmtTanggal(String(emp.contractEnd)) : "-"}</dd></div>
             <div className="flex justify-between"><dt className="text-steel-500">{S.dlPtkp}</dt><dd className="font-medium">{String(emp.ptkpStatus ?? "-")} · {S.tanggunganN.replace("{n}", String(Number(emp.dependents ?? 0)))}</dd></div>
+            {/* T6-SDM9/10: pendidikan, kawin, jk + tautan KTP/ijazah. */}
+            <div className="flex justify-between"><dt className="text-steel-500">{locale === "en" ? "Education" : "Pendidikan"}</dt><dd className="font-medium">{String(emp.pendidikan ?? "-")}</dd></div>
+            <div className="flex justify-between"><dt className="text-steel-500">{locale === "en" ? "Marital" : "Kawin"}</dt><dd className="font-medium">{String(emp.kawin ?? "-")}</dd></div>
+            <div className="flex justify-between"><dt className="text-steel-500">{locale === "en" ? "Gender" : "Jenis kelamin"}</dt><dd className="font-medium">{String(emp.jk ?? "-")}</dd></div>
+            {(String(emp.ktpUrl ?? "") !== "" || String(emp.ijazahUrl ?? "") !== "") && (
+              <div className="flex justify-between gap-2">
+                <dt className="text-steel-500">{locale === "en" ? "Documents" : "Dokumen"}</dt>
+                <dd className="flex flex-wrap justify-end gap-2 font-medium">
+                  {String(emp.ktpUrl ?? "") !== "" && <a className="text-ocean-600 hover:underline" href={String(emp.ktpUrl)} target="_blank" rel="noreferrer">KTP</a>}
+                  {String(emp.ijazahUrl ?? "") !== "" && <a className="text-ocean-600 hover:underline" href={String(emp.ijazahUrl)} target="_blank" rel="noreferrer">Ijazah</a>}
+                </dd>
+              </div>
+            )}
             <div className="flex justify-between"><dt className="text-steel-500">{S.dlBasic}</dt><dd className="font-medium">{fmtRupiah(Number(emp.basic || 0))}</dd></div>
             <div className="flex justify-between"><dt className="text-steel-500">{S.fAllow}</dt><dd className="font-medium">{fmtRupiah(sumAllowances(emp.allowances))}</dd></div>
             <div className="flex justify-between"><dt className="text-steel-500">{S.dlAkun}</dt><dd className="font-medium"><AkunLogin employeeId={String(emp.id)} /></dd></div>
@@ -723,10 +737,18 @@ export default function KaryawanDetail() {
             </div>
           )}
           {tab === "Cuti" && (
-            <div className="overflow-x-auto">
+            <div>
+              {/* T6-SDM6: form mandiri karyawan - akses via NIK login / scan barcode.
+                  QR tiap pengajuan dipakai HR untuk verifikasi scan di meja SDM. */}
+              <p className="mb-3 rounded-lg bg-steel-50 px-3 py-2 text-xs text-steel-500">
+                {locale === "en"
+                  ? "Self-service leave: fill the form below (or scan your ID barcode at HR to open this tab). Each request gets a QR code HR can scan."
+                  : "Cuti mandiri: isi form di bawah (atau pindai barcode ID di SDM untuk membuka tab ini). Setiap pengajuan mendapat kode QR yang bisa dipindai HR."}
+              </p>
+              <div className="overflow-x-auto">
               <table className="w-full">
                 <thead className="bg-surface sticky top-0 z-10">
-                  <tr><SortTh label={S.thId} sortKey="id" sort={sort4} onSort={(k) => setSort4((s) => toggleSort(s, k))} /><SortTh label={S.thTipe} sortKey="type" sort={sort4} onSort={(k) => setSort4((s) => toggleSort(s, k))} /><SortTh label={S.thPeriode} sortKey="period" sort={sort4} onSort={(k) => setSort4((s) => toggleSort(s, k))} /><SortTh label={S.thHari} sortKey="days" sort={sort4} onSort={(k) => setSort4((s) => toggleSort(s, k))} /><SortTh label={S.dlStatus} sortKey="status" sort={sort4} onSort={(k) => setSort4((s) => toggleSort(s, k))} /><SortTh label={S.thCatatan} sortKey="note" sort={sort4} onSort={(k) => setSort4((s) => toggleSort(s, k))} /><SortTh label={locale === "en" ? "Attachment" : "Lampiran"} sortKey="file" sort={sort4} onSort={(k) => setSort4((s) => toggleSort(s, k))} /><th className="th">{locale === "en" ? "Actions" : "Aksi"}</th></tr>
+                  <tr><SortTh label={S.thId} sortKey="id" sort={sort4} onSort={(k) => setSort4((s) => toggleSort(s, k))} /><SortTh label={S.thTipe} sortKey="type" sort={sort4} onSort={(k) => setSort4((s) => toggleSort(s, k))} /><SortTh label={S.thPeriode} sortKey="period" sort={sort4} onSort={(k) => setSort4((s) => toggleSort(s, k))} /><SortTh label={S.thHari} sortKey="days" sort={sort4} onSort={(k) => setSort4((s) => toggleSort(s, k))} /><SortTh label={S.dlStatus} sortKey="status" sort={sort4} onSort={(k) => setSort4((s) => toggleSort(s, k))} /><SortTh label={S.thCatatan} sortKey="note" sort={sort4} onSort={(k) => setSort4((s) => toggleSort(s, k))} /><SortTh label={locale === "en" ? "QR" : "QR"} sortKey="qr" sort={sort4} onSort={(k) => setSort4((s) => toggleSort(s, k))} /><SortTh label={locale === "en" ? "Attachment" : "Lampiran"} sortKey="file" sort={sort4} onSort={(k) => setSort4((s) => toggleSort(s, k))} /><th className="th">{locale === "en" ? "Actions" : "Aksi"}</th></tr>
                 </thead>
                 <tbody className="divide-y divide-steel-100">
                   {sortRows(leaveRows, sort4, (row, k) => {
@@ -738,6 +760,7 @@ export default function KaryawanDetail() {
                       case "days": return Number(l.days ?? 0);
                       case "status": return String(l.status ?? "");
                       case "note": return String(l.note ?? "");
+                      case "qr": return String(l.id ?? "");
                       case "file": return String(l.fileUrl ?? "");
                       default: return "";
                     }
@@ -749,6 +772,17 @@ export default function KaryawanDetail() {
                       <td className="td font-semibold">{S.daysN.replace("{n}", String(Number(l.days || 0)))}</td>
                       <td className="td"><StatusBadge status={String(l.status)} /></td>
                       <td className="td text-steel-600">{String(l.note || "-")}</td>
+                      <td className="td">
+                        {/* T6-SDM6: QR pengajuan cuti - pindai di HR / gerbang. */}
+                        {(() => {
+                          const nik = String(emp?.username ?? emp?.id ?? "");
+                          return (
+                            <div className="flex justify-center" title={`CUTI:${String(l.id)}:${nik}`}>
+                              <QRCodeSVG value={`CUTI:${String(l.id)}:${nik}`} size={48} level="L" />
+                            </div>
+                          );
+                        })()}
+                      </td>
                       <td className="td">
                         {/* H1a: preview lampiran terbuka di SEMUA status
                             (client: jangan ada terkunci, wajib bisa dipreview).
@@ -779,6 +813,7 @@ export default function KaryawanDetail() {
                 </tbody>
               </table>
               {leaveRows.length === 0 && <EmptyState title={S.emptyLeaveT} subtitle={S.emptyLeaveS} />}
+              </div>
             </div>
           )}
         </div>

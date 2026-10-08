@@ -69,6 +69,10 @@ export interface WbsItem {
       untuk backward compatibility dengan data lama. */
   photos?: WbsPhoto[];
   dft?: number;
+  /** T6-PRJ2: pengerja WBS - "Internal" (karyawan) atau "Subkon" (subkontraktor). */
+  assignType?: "Internal" | "Subkon";
+  /** Nama karyawan atau nama subkontraktor (disimpan sebagai nama, bukan id). */
+  assignee?: string;
 }
 
 export interface StoreShape {

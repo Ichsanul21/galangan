@@ -1247,7 +1247,10 @@ const printSpk = async (w: StoreItem): Promise<void> => {
                       <tr key={p.id} id={notifRowId(String(p.id))} className={rowHighlightClass({ id: String(p.id), flash, notified: notified.has(String(p.id)), base: "hover:bg-surface" })}>
                         <td className="td font-mono text-xs text-steel-600 truncate" title={proj}>{proj || "-"}</td>
                         <td className="td text-steel-600 truncate" title={String(p.sub)}>{p.sub}</td>
-                        <td className="td font-mono text-xs text-steel-500">{p.progress}{p.milestone ? <span className="block text-steel-400">{S.msPrefix.replace("{n}", String(p.milestone))}</span> : null}</td>
+                        <td className="td font-mono text-xs text-steel-500">{p.progress}{p.milestone ? <span className="block text-steel-400">{S.msPrefix.replace("{n}", String(p.milestone))}</span> : null}
+                          {/* T6-SK7: tampilkan skema termin bila ada. */}
+                          {String(p.scheme ?? "") !== "" && <span className="block text-[11px] text-steel-400">{S.schemeLabel.replace("{n}", String(p.scheme))}</span>}
+                        </td>
                         <td className="td font-semibold">{fmtMiliar(p.amount)}</td>
                         <td className="td text-steel-600">{fmtRupiah(Number(p.amount || 0) * retOf(p) / 100)} <span className="text-xs text-steel-400">({retOf(p)}%)</span></td>
                         <td className="td font-semibold text-emerald-600">{fmtRupiah(netoOf(p, pphDefault))}</td>

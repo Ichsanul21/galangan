@@ -410,6 +410,18 @@ export default function AppShell() {
     void resync();
   }, [location.pathname, backendMode, resync]);
 
+  /* T6-MON5 fix: /proyek dan /proyek/monitoring adalah sibling, bukan
+     parent-child. NavLink prefix-match membuat keduanya menyala bersamaan
+     di /proyek/monitoring. Match eksklusif: /proyek menyala untuk
+     /proyek dan /proyek/:id saja; /proyek/monitoring hanya untuk dirinya. */
+  const isNavActive = (to: string): boolean => {
+    const path = location.pathname;
+    if (to === "/proyek") return path === "/proyek" || (/^\/proyek\/[^/]+$/.test(path) && !path.startsWith("/proyek/monitoring"));
+    if (to === "/proyek/monitoring") return path.startsWith("/proyek/monitoring");
+    if (to === "/pengaturan") return path === "/pengaturan";
+    return path === to || path.startsWith(`${to}/`);
+  };
+
   const renderSidebar = (mini: boolean) => (
     <div className="flex h-full flex-col bg-navy-900 text-white">
       <div className={`flex items-center gap-2.5 border-b border-white/10 px-5 py-4 ${mini ? "justify-center px-3" : ""}`}>
@@ -447,23 +459,24 @@ export default function AppShell() {
                 // banner modul langsung terbuka.
                 const badge = item.alertKey ? (unreadModuleCount[item.alertKey] ?? 0) : 0;
                 const to = item.alertKey ? `${item.to}?alert=${item.alertKey}` : item.to;
+                /* T6-MON5: match eksklusif - jangan pakai isActive bawaan
+                   NavLink (prefix-match menyalakan /proyek + monitoring). */
+                const active = isNavActive(item.to);
                 return (
                 <li key={item.to}>
                   <NavLink
                     to={to}
-                    /* T6-MON5: /proyek harus match semua child route
-                       (/proyek/monitoring, /proyek/:id) - jangan `end`. */
-                    end={item.to === "/pengaturan"}
+                    end
                     title={mini ? item.label : undefined}
                     onClick={() => {
                       setOpen(false);
                       window.scrollTo({ top: 0 });
                     }}
-                    className={({ isActive }) =>
+                    className={() =>
                       `flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm transition-colors ${mini ? "justify-center" : ""} ${
                         item.child && !mini ? "ml-4 border-l-2 border-white/15 pl-3" : ""
                       }${
-                        isActive
+                        active
                           ? "bg-ocean-500/20 text-white font-semibold"
                           : "text-steel-300 hover:bg-white/5 hover:text-white"
                       }`
