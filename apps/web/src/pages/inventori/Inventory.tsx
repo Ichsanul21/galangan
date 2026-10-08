@@ -93,6 +93,10 @@ const emptyWhForm = { name: "", type: "", capacity: "", lokasi: "", pic: "", akt
 
 /* Jenis material: habis-pakai | retur | service. Eceran = flag terpisah (konversi satuan). */
 const MAT_TYPES = ["habis-pakai", "retur", "service"] as const;
+/* T8-INV1: kategori yang secara alami butuh konversi satuan (eceran/uom2):
+   Baja/Plat → meter, Cat → kaleng, Pipa → batang, Mesin(oli) → liter.
+   Memilih kategori ini menyalakan toggle konversi di form material. */
+const CONV_CATS = ["Baja", "Cat", "Pipa", "Mesin"];
 function isEceran(it: StoreItem): boolean {
   return it.eceran === true || String((it as Record<string, unknown>).eceran ?? "").toLowerCase() === "true";
 }
@@ -421,6 +425,9 @@ export default function Inventory() {
   const [moveUom, setMoveUom] = useState("base");
   const [movePrice, setMovePrice] = useState("");
   const [movePo, setMovePo] = useState("");
+  /* T8-INV2: mode "Barang Masuk Tanpa PO" dari checklist BOM - penerimaan
+     non-procurement yang secara eksplisit dibuka tanpa rujukan PO. */
+  const [moveAllowNoPo, setMoveAllowNoPo] = useState(false);
   // Kolom RawData REPORT WAREHOUSE: supplier, pajak, purpose (U/TK kapal), PIC.
   const [moveSupplier, setMoveSupplier] = useState("");
   const [moveTax, setMoveTax] = useState("");
@@ -819,6 +826,11 @@ if (k === "mattype") return matTypeOf(i);
     : [];
 
   const setF = (k: string, v: string | boolean) => setForm((f) => ({ ...f, [k]: v }));
+  /* T8-INV1: form konversi (uom2 + konversi + preset) hanya muncul saat
+     relevan - toggle "eceran" dinyalakan ATAU kategori terpilih termasuk
+     CONV_CATS (Baja/Cat/Pipa/Mesin). */
+  const isEceranForm = (form as Record<string, unknown>).eceran === true || String((form as Record<string, unknown>).eceran ?? "") === "true";
+  const convOn = isEceranForm || CONV_CATS.includes(form.category);
 
   /* Upload foto ke backend (/api/files); mode lokal tetap pakai URL manual. */
   const onPhotoFile = async (f: File | undefined) => {
@@ -837,9 +849,10 @@ if (k === "mattype") return matTypeOf(i);
     }
   };
 
-  const openMove = (it: StoreItem, kind: "in" | "out") => {
+  const openMove = (it: StoreItem, kind: "in" | "out", opts?: { allowNoPo?: boolean }) => {
     setMoveTarget(it);
     setMoveKind(kind);
+    setMoveAllowNoPo(kind === "in" && opts?.allowNoPo === true);
     setMoveQty("");
     setMoveUom(isEceran(it) && kind === "out" ? "uom2" : "base");
     setMovePurpose("");
@@ -856,6 +869,7 @@ if (k === "mattype") return matTypeOf(i);
 
   const closeMove = () => {
     setMoveTarget(null);
+    setMoveAllowNoPo(false);
     setMoveQty("");
     setMoveRef("");
     setMoveBatch("");
@@ -1000,10 +1014,11 @@ if (k === "mattype") return matTypeOf(i);
         patch.avgCost = Math.round(((oldVal + qty * price) / (oldStock + qty)) * 100) / 100;
       }
       /* D13: restock / pengadaan baru WAJIB lewat Procurement + PO.
-         GR manual tanpa PO hanya untuk penyesuaian/opname/retur/transfer. */
+         GR manual tanpa PO hanya untuk penyesuaian/opname/retur/transfer,
+         atau penerimaan non-procurement yang dibuka via "Barang Masuk Tanpa PO" (T8-INV2). */
       const purposeLc = `${movePurpose} ${moveRef}`.toLowerCase();
       const isAdjust = /adjust|opname|penyesuaian|koreksi|retur|return|transfer|saldo/.test(purposeLc);
-      if (!movePo.trim() && !isAdjust) {
+      if (!movePo.trim() && !isAdjust && !moveAllowNoPo) {
         toast(locale === "en"
           ? "Goods-in requires a PO reference. Restocking must go through Procurement → PO (or mark purpose as adjustment/stock-opname)."
           : "Barang masuk wajib punya rujukan PO. Restocking harus lewat Procurement → PO (atau tandai tujuan sebagai penyesuaian/opname).", "info");
@@ -2418,7 +2433,7 @@ if (k === "mattype") return matTypeOf(i);
                 <div className="mt-3 grid grid-cols-1 gap-4 lg:grid-cols-2">
                   <div>
                     <h4 className="mb-2 text-xs font-semibold uppercase tracking-wide text-steel-500">
-                      {locale === "en" ? "Inbound · PR / PO" : "Masuk · PR / PO"}
+                      {locale === "en" ? "Based on procurement (PR / PO)" : "Berdasarkan procurement (PR / PO)"}
                     </h4>
                     <div className="max-h-72 space-y-1.5 overflow-y-auto pr-1">
                       {(() => {
@@ -2447,10 +2462,21 @@ if (k === "mattype") return matTypeOf(i);
                         ));
                       })()}
                     </div>
+                    {/* T8-INV2: penerimaan non-procurement - buka form Barang Masuk (mode Tanpa PO). */}
+                    <h4 className="mb-2 mt-4 text-xs font-semibold uppercase tracking-wide text-steel-500">
+                      {locale === "en" ? "Additional (no procurement)" : "Additional (tanpa procurement)"}
+                    </h4>
+                    <button
+                      className="btn-secondary w-full justify-center text-xs"
+                      title={grGiTip("Penerimaan", locale)}
+                      onClick={() => { const first = lowStock[0] ?? inventory[0]; if (first) openMove(first, "in", { allowNoPo: true }); }}
+                    >
+                      <ArrowDownToLine className="h-4 w-4" /> {locale === "en" ? "Goods in without PO" : "Barang Masuk Tanpa PO"}
+                    </button>
                   </div>
                   <div>
                     <h4 className="mb-2 text-xs font-semibold uppercase tracking-wide text-steel-500">
-                      {locale === "en" ? "Outbound · Project requests" : "Keluar · Permintaan proyek"}
+                      {locale === "en" ? "Based on project requests" : "Berdasarkan permintaan proyek"}
                     </h4>
                     <div className="max-h-72 space-y-1.5 overflow-y-auto pr-1">
                       {(() => {
@@ -2474,6 +2500,17 @@ if (k === "mattype") return matTypeOf(i);
                         ));
                       })()}
                     </div>
+                    {/* T8-INV2: pengeluaran tambahan - buka form Barang Keluar langsung. */}
+                    <h4 className="mb-2 mt-4 text-xs font-semibold uppercase tracking-wide text-steel-500">
+                      {locale === "en" ? "Additional (new request)" : "Additional (permintaan baru)"}
+                    </h4>
+                    <button
+                      className="btn-secondary w-full justify-center text-xs"
+                      title={grGiTip("Pengeluaran", locale)}
+                      onClick={() => { const first = inventory[0]; if (first) openMove(first, "out"); }}
+                    >
+                      <ArrowUpFromLine className="h-4 w-4" /> {locale === "en" ? "Goods out (new request)" : "Barang Keluar (permintaan baru)"}
+                    </button>
                   </div>
                 </div>
               </Card>
@@ -2699,7 +2736,7 @@ if (k === "mattype") return matTypeOf(i);
             <Field label={S.nameLbl}><input className="input" value={form.name} onChange={(e) => setF("name", e.target.value)} placeholder={S.phName} /></Field>
             <Field label={S.skuLbl}><input className="input font-mono" value={form.sku} onChange={(e) => setF("sku", e.target.value)} placeholder={S.phSku} /></Field>
             <Field label={S.catLbl}>
-              <select className="input" value={form.category} onChange={(e) => setF("category", e.target.value)}>
+              <select className="input" value={form.category} onChange={(e) => { setF("category", e.target.value); if (CONV_CATS.includes(e.target.value)) setF("eceran", true); }}>
                 {["Baja", "Mesin", "Pipa", "Listrik", "Cat", "Fastener", "Rigging", "Perlindungan", "Lainnya"].map((c) => <option key={c}>{c}</option>)}
               </select>
             </Field>
@@ -2708,7 +2745,7 @@ if (k === "mattype") return matTypeOf(i);
                 {[...MAT_TYPES].map((m) => <option key={m} value={m}>{matLabel(m)}</option>)}
               </select>
             </Field>
-            <Field label={locale === "en" ? "Eceran" : "Eceran"} hint={locale === "en" ? "If yes, fill UOM2 + conversion below" : "Jika ya, isi satuan eceran + konversi di bawah"}>
+            <Field label={locale === "en" ? "Needs conversion?" : "Butuh konversi (eceran/uom2)"} hint={locale === "en" ? "If yes, fill UOM2 + conversion below" : "Jika ya, isi satuan eceran + konversi di bawah"}>
               <select className="input" value={String((form as Record<string, unknown>).eceran ?? "false")} onChange={(e) => setF("eceran", e.target.value === "true")}>
                 <option value="false">Tidak — satuan tunggal</option>
                 <option value="true">Ya — eceran + konversi</option>
@@ -2739,43 +2776,47 @@ if (k === "mattype") return matTypeOf(i);
             <Field label={S.batchLbl} hint={form.category === "Mesin" ? S.hintBatchMesin : S.hintBatchOpt}>
               <input className="input font-mono" value={form.batch} onChange={(e) => setF("batch", e.target.value)} placeholder={S.phBatch} />
             </Field>
-            <Field label={S.uom2Lbl} hint={S.hintUom2}>
-              <input className="input" value={form.uom2} onChange={(e) => setF("uom2", e.target.value)} placeholder={S.phUom2} />
-            </Field>
-            <Field label={S.convLbl} hint={S.convHint.replace("{n}", form.unit || S.unitFallback)}>
-              <NumInput min={0} className="input" value={form.konversi} onChange={(e) => setF("konversi", e.target.value)} placeholder={S.phConv} />
-            </Field>
-            <div className="rounded-xl bg-steel-50 p-2.5">
-              <p className="label">{locale === "en" ? "Retail conversion presets" : "Preset konversi eceran"}</p>
-              <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
-                <button
-                  type="button"
-                  className="btn-secondary text-xs"
-                  title={locale === "en" ? "Oil: tons to liters ×1100" : "Oli: Ton ke Liter ×1100"}
-                  onClick={() => { setF("uom2", "liter"); setF("konversi", "1100"); }}
-                >
-                  {locale === "en" ? "Oil: Ton → Liter ×1100" : "Oli: Ton → Liter ×1100"}
-                </button>
-                <span className="flex items-center gap-1 text-xs text-steel-600">
-                  P <input className="input !w-16 !py-1 text-xs" value={platP} onChange={(e) => setPlatP(e.target.value)} aria-label="Panjang (m)" /> × L{" "}
-                  <input className="input !w-16 !py-1 text-xs" value={platL} onChange={(e) => setPlatL(e.target.value)} aria-label="Lebar (m)" />
-                </span>
-                <button
-                  type="button"
-                  className="btn-secondary text-xs"
-                  title={locale === "en" ? "Plate roll to meters via P×L" : "Plat roll ke Meter via P×L"}
-                  onClick={() => {
-                    const p = Number(platP) || 0;
-                    const l = Number(platL) || 0;
-                    if (p <= 0 || l <= 0) { toast(locale === "en" ? "P×L must be positive" : "P×L harus positif", "info"); return; }
-                    setF("uom2", "meter");
-                    setF("konversi", String(Math.round(p * l * 100) / 100));
-                  }}
-                >
-                  {locale === "en" ? "Plate roll → Meter (P×L)" : "Plat roll → Meter (P×L)"}
-                </button>
+            {/* T8-INV1: field konversi hanya muncul saat relevan (kategori
+                CONV_CATS atau toggle "Butuh konversi" menyala). */}
+            {convOn && (<>
+              <Field label={S.uom2Lbl} hint={S.hintUom2}>
+                <input className="input" value={form.uom2} onChange={(e) => setF("uom2", e.target.value)} placeholder={S.phUom2} />
+              </Field>
+              <Field label={S.convLbl} hint={S.convHint.replace("{n}", form.unit || S.unitFallback)}>
+                <NumInput min={0} className="input" value={form.konversi} onChange={(e) => setF("konversi", e.target.value)} placeholder={S.phConv} />
+              </Field>
+              <div className="rounded-xl bg-steel-50 p-2.5">
+                <p className="label">{locale === "en" ? "Retail conversion presets" : "Preset konversi eceran"}</p>
+                <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+                  <button
+                    type="button"
+                    className="btn-secondary text-xs"
+                    title={locale === "en" ? "Oil: tons to liters ×1100" : "Oli: Ton ke Liter ×1100"}
+                    onClick={() => { setF("uom2", "liter"); setF("konversi", "1100"); }}
+                  >
+                    {locale === "en" ? "Oil: Ton → Liter ×1100" : "Oli: Ton → Liter ×1100"}
+                  </button>
+                  <span className="flex items-center gap-1 text-xs text-steel-600">
+                    P <input className="input !w-16 !py-1 text-xs" value={platP} onChange={(e) => setPlatP(e.target.value)} aria-label="Panjang (m)" /> × L{" "}
+                    <input className="input !w-16 !py-1 text-xs" value={platL} onChange={(e) => setPlatL(e.target.value)} aria-label="Lebar (m)" />
+                  </span>
+                  <button
+                    type="button"
+                    className="btn-secondary text-xs"
+                    title={locale === "en" ? "Plate roll to meters via P×L" : "Plat roll ke Meter via P×L"}
+                    onClick={() => {
+                      const p = Number(platP) || 0;
+                      const l = Number(platL) || 0;
+                      if (p <= 0 || l <= 0) { toast(locale === "en" ? "P×L must be positive" : "P×L harus positif", "info"); return; }
+                      setF("uom2", "meter");
+                      setF("konversi", String(Math.round(p * l * 100) / 100));
+                    }}
+                  >
+                    {locale === "en" ? "Plate roll → Meter (P×L)" : "Plat roll → Meter (P×L)"}
+                  </button>
+                </div>
               </div>
-            </div>
+            </>)}
             {/* T6-INV3: "min stok gudang" disembunyikan dari form tambah. */}
             {false && (
               <Field label={S.minWhLbl} hint={S.hintMinWh}>

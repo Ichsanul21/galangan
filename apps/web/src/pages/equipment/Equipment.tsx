@@ -194,6 +194,11 @@ const [eqQ, setEqQ] = useState("");
   const [delegasiFor, setDelegasiFor] = useState<StoreItem | null>(null);
   const [delegasiTo, setDelegasiTo] = useState("");
   const [delegasiNote, setDelegasiNote] = useState("");
+  /* T8-EQ1: maintenance dijadikan bagian dari alur delegasi. Field di bawah
+     bersifat OPSIONAL - kalau section tidak dibuka, delegasi tetap tersimpan
+     tanpa siklus servis. */
+  const [delegasiMaint, setDelegasiMaint] = useState(false);
+  const [delegasiMaintForm, setDelegasiMaintForm] = useState<{ jenis: string; tanggal: string; catatan: string }>({ jenis: MAINT_JENIS[0], tanggal: todayISO(), catatan: "" });
   const [showService, setShowService] = useState(false);
 
 
@@ -1140,6 +1145,10 @@ if (tab === "Daftar Equipment") { flashPick(flash, ids, idx, regPager.go, regPag
                             setDelegasiFor(e);
                             setDelegasiTo(String(e.delegatedTo ?? e.pic ?? ""));
                             setDelegasiNote(String(e.delegationNote ?? ""));
+                            /* T8-EQ1: section servis di modal delegasi selalu
+                               mulai tertutup - user membukanya bila perlu. */
+                            setDelegasiMaint(false);
+                            setDelegasiMaintForm({ jenis: MAINT_JENIS[0], tanggal: todayISO(), catatan: "" });
                           }}
                         />
                         {/* Ubah/Hapus equipment. Dulu tabel Register tidak punya
@@ -1256,6 +1265,12 @@ if (tab === "Daftar Equipment") { flashPick(flash, ids, idx, regPager.go, regPag
           <AsyncButton className="btn-primary" onAction={async () => {
             if (!delegasiFor) return;
             if (!delegasiTo.trim()) { toast(locale === "en" ? "Delegate is required" : "Penerima delegasi wajib diisi", "info"); return; }
+            /* T8-EQ1: section servis terbuka -> tanggal wajib, siklus dibuat
+               bersamaan dengan delegasi. */
+            if (delegasiMaint && !delegasiMaintForm.tanggal) {
+              toast(locale === "en" ? "Service date is required" : "Tanggal servis wajib diisi", "info");
+              return;
+            }
             try {
               /* T6-EQ5 fix: jangan timpa `pic` - PJ unit asli tetap tersimpan;
                  delegasi hanya menambah delegatedTo/delegatedAt/delegationNote. */
@@ -1265,6 +1280,44 @@ if (tab === "Daftar Equipment") { flashPick(flash, ids, idx, regPager.go, regPag
                 delegationNote: delegasiNote.trim(),
               });
               log("mendelegasikan equipment", `${delegasiFor.id} → ${delegasiTo.trim()}`, "Equipment");
+              /* T8-EQ1: opsi servis dari modal delegasi = siklus Terjadwal
+                 yang sama dengan tombol Jadwalkan, hanya tanpa material /
+                 teknisi (bisa dilengkapi lewat modal servis nanti). */
+              if (delegasiMaint) {
+                const hours = Number(delegasiFor.lastHours || 0);
+                await add("maintenances", {
+                  equipmentId: String(delegasiFor.id),
+                  equipmentName: String(delegasiFor.name ?? delegasiFor.id),
+                  equipmentCode: String(delegasiFor.code ?? ""),
+                  tanggal: delegasiMaintForm.tanggal,
+                  jenis: delegasiMaintForm.jenis,
+                  status: "Terjadwal",
+                  teknisiId: "",
+                  teknisi: "",
+                  mulai: delegasiMaintForm.tanggal,
+                  selesai: "",
+                  eta: "",
+                  catatan: delegasiMaintForm.catatan.trim(),
+                  projectId: "",
+                  projectName: "",
+                  hours,
+                  hoursAfter: hours,
+                  materials: [],
+                  materialCost: 0,
+                  downtimeHours: 0,
+                  laborCost: 0,
+                  costTotal: 0,
+                  laborRatePerDay: laborRate(),
+                  branch: String(delegasiFor.branch ?? ""),
+                  createdAt: todayISO(),
+                  createdBy: "Anda",
+                  deducted: false,
+                  history: [
+                    { at: `${todayISO()} ${new Date().toTimeString().slice(0, 5)}`, from: "-", to: "Terjadwal", by: "Anda", note: delegasiMaintForm.catatan.trim() },
+                  ],
+                }, { action: "menjadwalkan maintenance", target: `${delegasiFor.name} - ${fmtTanggal(delegasiMaintForm.tanggal)}`, module: "Equipment" });
+                log("menjadwalkan maintenance", `${delegasiFor.name} - ${fmtTanggal(delegasiMaintForm.tanggal)} (bersama delegasi)`, "Equipment");
+              }
               toast((S.eqDelegasiSaved ?? "Delegasi {a} disimpan").replace("{a}", String(delegasiFor.id)));
               setDelegasiFor(null);
             } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); }
@@ -1277,6 +1330,45 @@ if (tab === "Daftar Equipment") { flashPick(flash, ids, idx, regPager.go, regPag
           <Field label={S.eqDelegasiNote ?? "Catatan"}>
             <input className="input" value={delegasiNote} onChange={(e) => setDelegasiNote(e.target.value)} placeholder={S.eqDelegasiNotePh} />
           </Field>
+          {/* T8-EQ1: maintenance "ikut" pada delegasi - buka section ini bila
+              sekalian mau menjadwalkan servis untuk unit yang sama. */}
+          <div className="border-t border-steel-100 pt-3">
+            <div className="mb-2 flex items-center justify-between">
+              <p className="text-xs font-semibold text-steel-500">
+                {locale === "en" ? "Add service (optional)" : "Tambah Servis (opsional)"}
+              </p>
+              <button
+                type="button"
+                className={delegasiMaint ? "btn-secondary text-xs" : "btn-primary text-xs"}
+                onClick={() => setDelegasiMaint((v) => !v)}
+              >
+                <Wrench className="h-3.5 w-3.5" />
+                {delegasiMaint
+                  ? (locale === "en" ? "Hide service form" : "Sembunyikan form servis")
+                  : (locale === "en" ? "Schedule service" : "Jadwalkan Servis")}
+              </button>
+            </div>
+            {delegasiMaint && (
+              <div className="space-y-3">
+                <Field label={locale === "en" ? "Work type" : "Jenis Pekerjaan"}>
+                  <select className="input" value={delegasiMaintForm.jenis} onChange={(e) => setDelegasiMaintForm({ ...delegasiMaintForm, jenis: e.target.value })}>
+                    {MAINT_JENIS.map((j) => <option key={j} value={j}>{j}</option>)}
+                  </select>
+                </Field>
+                <Field label={locale === "en" ? "Scheduled date" : "Tanggal Jadwal"}>
+                  <input type="date" className="input" value={delegasiMaintForm.tanggal} onChange={(e) => setDelegasiMaintForm({ ...delegasiMaintForm, tanggal: e.target.value })} />
+                </Field>
+                <Field label={S.eqWorkNote}>
+                  <input className="input" value={delegasiMaintForm.catatan} onChange={(e) => setDelegasiMaintForm({ ...delegasiMaintForm, catatan: e.target.value })} placeholder={S.eqWorkNotePh} />
+                </Field>
+                <p className="text-[11px] text-steel-400">
+                  {locale === "en"
+                    ? "The cycle is saved as Scheduled; add materials, technician and project cost later via the service form."
+                    : "Siklus disimpan berstatus Terjadwal; material, teknisi & biaya proyek bisa dilengkapi lewat form servis."}
+                </p>
+              </div>
+            )}
+          </div>
         </div>
       </Modal>
 
