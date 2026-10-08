@@ -1035,15 +1035,19 @@ const createWarranty = async (wbsTask?: string) => {
     const pred = wbsUpdateForm.predecessor || "";
     if (pred && pred !== wbsTaskUpdate && createsCycle(wbs, wbsTaskUpdate, pred)) { toast(S.detToastCycle, "info"); return; }
     const status = prog >= 100 ? "Selesai" : wbsUpdateForm.status === "Selesai" && prog < 100 ? "Sedang" : wbsUpdateForm.status;
+    /* T6-PRJ2: hanya role canSetTarget yang boleh mengubah assign WBS
+       lewat update progres. Non-target mempertahankan nilai lama di `w`. */
+    const canAssign = canSetTarget(session?.role);
+    const assigneeNext = canAssign && wbsUpdateForm.assignee.trim() ? wbsUpdateForm.assignee.trim() : "";
     const updated = wbs.map((w) =>
       w.task === wbsTaskUpdate
         ? {
             ...w, actualHours: hours, materialUsed: wbsUpdateForm.material, status, progress: prog, predecessor: pred || undefined,
             ...(wbsUpdateForm.station ? { station: wbsUpdateForm.station } : { station: undefined }),
-            /* T6-PRJ2: assign pengerja ikut tercatat di update progres. */
-            ...(wbsUpdateForm.assignType ? { assignType: wbsUpdateForm.assignType } : {}),
-            ...(wbsUpdateForm.assignee.trim() ? { assignee: wbsUpdateForm.assignee.trim() } : { assignee: undefined }),
-...(wbsUpdateForm.photoNote.trim() || wbsUpdateForm.photoUrl.trim()
+            /* T6-PRJ2: assign pengerja hanya ditulis bila diizinkan + terisi. */
+            ...(canAssign && wbsUpdateForm.assignType ? { assignType: wbsUpdateForm.assignType } : {}),
+            ...(assigneeNext ? { assignee: assigneeNext } : {}),
+            ...(wbsUpdateForm.photoNote.trim() || wbsUpdateForm.photoUrl.trim()
                 ? { photos: [...(w.photos ?? []), ...(wbsUpdateForm.photoUrl.trim() ? [{ url: wbsUpdateForm.photoUrl.trim(), note: wbsUpdateForm.photoNote.trim(), date: todayISO() }] : [])] }
                 : {}),
               ...(wbsUpdateForm.photoNote.trim() ? { photoNote: wbsUpdateForm.photoNote.trim() } : { photoNote: undefined }),
@@ -2614,6 +2618,26 @@ try {
               {wbs.filter((w) => w.task !== wbsTaskUpdate).map((w) => <option key={w.task} value={w.task}>{w.task}</option>)}
             </select>
           </Field>
+          {/* T6-PRJ2: assign pengerja - hanya PM/direktur/manager/developer
+              yang boleh mengubah. Non-target: nilai lama dipertahankan. */}
+          {canSetTarget(session?.role) && (
+            <FormGrid>
+              <Field label={S.detAssignType}>
+                <select className="input" value={wbsUpdateForm.assignType} onChange={(e) => setWbsUpdateForm({ ...wbsUpdateForm, assignType: e.target.value as "Internal" | "Subkon", assignee: "" })}>
+                  <option value="Internal">{S.detAssignInternal}</option>
+                  <option value="Subkon">{S.detAssignSubkon}</option>
+                </select>
+              </Field>
+              <Field label={S.detAssignee}>
+                <select className="input" value={wbsUpdateForm.assignee} onChange={(e) => setWbsUpdateForm({ ...wbsUpdateForm, assignee: e.target.value })}>
+                  <option value="">{wbsUpdateForm.assignType === "Subkon" ? S.detAssignSubkonPick : S.detAssigneePick}</option>
+                  {wbsUpdateForm.assignType === "Subkon"
+                    ? data.subcontractors.filter((s) => s.status !== "Blacklist").map((s) => <option key={s.id} value={String(s.name ?? "")}>{String(s.name ?? "")}</option>)
+                    : data.employees.filter((e) => e.status === "Aktif").map((e) => <option key={e.id} value={String(e.name ?? "")}>{String(e.name ?? "")} · {String(e.role ?? "")}</option>)}
+                </select>
+              </Field>
+            </FormGrid>
+          )}
         </div>
       </Modal>
 

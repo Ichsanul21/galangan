@@ -64,6 +64,10 @@ export function splitHighlight(highlight: string): string[] {
  * resolve harus membaca state tab terbaru, karena closure-nya dibuat ulang
  * setiap render. runRef dipakai supaya resolve tidak perlu masuk ke dep array
  * (yang bisa membuat efek berjalan ulang saat paginasi berubah).
+ *
+ * `allowedTabs` (opsional) menyaring tab deep-link. Tab yang tidak ada di
+ * daftar diabaikan - mencegah URL `?tab=Tonase & Surat Jalan` (mis.) me-
+ * resurrect branch yang sudah disembunyikan dari UI.
  */
 export function useDeepLinkTarget(
   tab: string,
@@ -71,6 +75,7 @@ export function useDeepLinkTarget(
   setTab: (next: string) => void,
   resolve: (ids: string[]) => void,
   deps: unknown[] = [],
+  allowedTabs?: readonly string[],
 ): void {
   const doneKey = useRef<string>("");
   const resolveRef = useRef(resolve);
@@ -87,7 +92,7 @@ export function useDeepLinkTarget(
     if (doneKey.current === key) return;
     doneKey.current = key;
 
-    if (tab) setTab(tab);
+    if (tab && (!allowedTabs || allowedTabs.includes(tab))) setTab(tab);
     // Tick berikutnya sudah memakai tab baru, jadi resolve melihat state
     // yang benar dan tidak menimpanya kembali.
     const ids = splitHighlight(highlight);

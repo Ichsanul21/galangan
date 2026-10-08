@@ -27,15 +27,26 @@ import {
 import type { SortState } from "../../components/ui";
 import { useStore } from "../../data/store";
 import type { StoreItem } from "../../data/store";
-import { DocumentPreviewCell, DocumentPreviewModal, DocumentPreviewPanel } from "../../components/DocumentPreview";
+import { DocumentPreviewCell, DocumentPreviewModal } from "../../components/DocumentPreview";
 import { QRCodeSVG } from "qrcode.react";
 import { apiFetch, isBackendConfigured } from "../../services/http";
 import { fmtBulan, fmtRupiah, fmtTanggal, todayISO } from "../../utils/format";
 import { sameName } from "../../utils/names";
 import { cmpJam, fmtJam24, norm24 } from "../../utils/time24";
 import { createdAtOf, lastTouchedAt } from "../../utils/timestamps";
+import { getSetting } from "../../utils/settings";
 import { useT } from "../../i18n/LanguageContext";
 import { n_qc } from "../../i18n/n_qc";
+
+/* T6-SDM6: daftar tipe cuti - samakan dengan HR.tsx (LEAVE_TYPES). */
+const LEAVE_TYPES = ["Tahunan", "Sakit", "Izin", "Melahirkan", "Cuti Besar", "Unpaid"];
+
+function calcDays(from: string, to: string): number {
+  const a = new Date(`${from}T00:00:00`).getTime();
+  const b = new Date(`${to}T00:00:00`).getTime();
+  if (Number.isNaN(a) || Number.isNaN(b) || b < a) return 0;
+  return Math.round((b - a) / 86400000) + 1;
+}
 
 /* Akun login yang tertaut ke karyawan ini (baca /api/users, best-effort:
    non-direktur dapat 403 → tampil "-"). */
@@ -146,9 +157,13 @@ export default function KaryawanDetail() {
        ke baris absensi) tapi note + lampiran tetap boleh dikoreksi. */
   const [docEdit, setDocEdit] = useState<StoreItem | null>(null);
   const [attEdit, setAttEdit] = useState<StoreItem | null>(null);
+  /* ABS4/5: shift dihapus (internal selalu "Pagi"); OT maks 12 jam. */
   const [attForm, setAttForm] = useState({ date: "", shift: "Pagi", status: "Hadir", checkIn: "", checkOut: "", overtime: "0" });
   const [leaveEdit, setLeaveEdit] = useState<StoreItem | null>(null);
   const [leaveForm, setLeaveForm] = useState({ type: "", from: "", to: "", days: "", note: "", fileUrl: "" });
+  /* T6-SDM6: form ajukan cuti baru (mandiri) - terpisah dari form edit. */
+  const [showNewLeave, setShowNewLeave] = useState(false);
+  const [newLeave, setNewLeave] = useState({ type: "Tahunan", from: todayISO(), to: todayISO(), note: "", fileUrl: "" });
   const [delRow, setDelRow] = useState<{ kind: "documents" | "attendance" | "leaves"; row: StoreItem } | null>(null);
 
   const emp = useMemo(() => data.employees.find((e) => e.id === id), [data.employees, id]);
@@ -335,7 +350,8 @@ export default function KaryawanDetail() {
     setAttEdit(a);
     setAttForm({
       date: String(a.date ?? todayISO()),
-      shift: String(a.shift ?? "Pagi"),
+      /* ABS4: shift dihapus dari UI - internal selalu Pagi. */
+      shift: "Pagi",
       status: String(a.status ?? "Hadir"),
       checkIn: String(a.checkIn ?? ""),
       checkOut: String(a.checkOut ?? ""),
@@ -351,15 +367,25 @@ export default function KaryawanDetail() {
       toast(locale === "en" ? "Check-in and check-out are required when present" : "Jam masuk dan keluar wajib diisi saat status Hadir", "info");
       return;
     }
-    const ot = hadir ? Number(attForm.overtime || 0) : 0;
-    if (hadir && (Number.isNaN(ot) || ot < 0 || ot > 8)) {
-      toast(locale === "en" ? "Overtime must be between 0 and 8 hours" : "Lembur harus antara 0 dan 8 jam", "info");
+    /* ABS5: OT otomatis dari jam kerja (worked−8), maks 12; bila user
+       mengisi manual tetap divalidasi 0–12 agar konsisten dengan Absensi. */
+    let ot = 0;
+    if (hadir) {
+      const inH = Number(norm24(attForm.checkIn).slice(0, 2)) + Number(norm24(attForm.checkIn).slice(3, 5)) / 60;
+      const outH = Number(norm24(attForm.checkOut).slice(0, 2)) + Number(norm24(attForm.checkOut).slice(3, 5)) / 60;
+      const worked = outH >= inH ? outH - inH : outH + 24 - inH;
+      const autoOt = Math.min(12, Math.max(0, Math.round((worked - 8) * 2) / 2));
+      const manual = Number(attForm.overtime || 0);
+      ot = Number.isFinite(manual) && manual > 0 ? Math.min(12, Math.max(0, manual)) : autoOt;
+    }
+    if (hadir && (Number.isNaN(ot) || ot < 0 || ot > 12)) {
+      toast(locale === "en" ? "Overtime must be between 0 and 12 hours" : "Lembur harus antara 0 dan 12 jam", "info");
       return;
     }
     try {
       await update("attendance", String(attEdit.id), {
         date: attForm.date,
-        shift: attForm.shift,
+        shift: "Pagi",
         status: attForm.status,
         checkIn: hadir ? attForm.checkIn : "",
         checkOut: hadir ? attForm.checkOut : "",
@@ -390,6 +416,57 @@ export default function KaryawanDetail() {
       note: String(l.note ?? ""),
       fileUrl: String(l.fileUrl ?? ""),
     });
+  };
+
+  /* T6-SDM6: ajukan cuti mandiri dari sisi karyawan (status Diajukan).
+     Aturan validasi disamakan dengan saveLeave di HR.tsx. */
+  const newLeaveDays = calcDays(newLeave.from, newLeave.to);
+  const jatahCuti = getSetting(data, "CUTI_JATAH", 12);
+  const leaveUsedTahunan = useMemo(
+    () => data.leaves
+      .filter((l) => l.type === "Tahunan" && l.status === "Disetujui" && String(l.employeeId) === emp.id)
+      .reduce((s, l) => s + Number(l.days || 0), 0),
+    [data.leaves, emp.id],
+  );
+  const saldoCutiEmp = jatahCuti - leaveUsedTahunan;
+
+  const saveNewLeave = async () => {
+    if (newLeaveDays <= 0) { toast(S.tCutiRange, "info"); return; }
+    if (newLeave.type === "Tahunan" && saldoCutiEmp < newLeaveDays) { toast(S.tSaldoKurang, "info"); return; }
+    const overlap = data.leaves.some(
+      (l) =>
+        String(l.employeeId) === emp.id &&
+        String(l.status) !== "Ditolak" &&
+        String(l.from) <= newLeave.to &&
+        newLeave.from <= String(l.to),
+    );
+    if (overlap) { toast(S.tOverlap, "info"); return; }
+    if (!newLeave.note.trim() && (newLeave.type === "Sakit" || newLeave.type === "Unpaid")) {
+      toast(S.tKetSakit, "info");
+      return;
+    }
+    try {
+      const created = await add(
+        "leaves",
+        {
+          employeeId: emp.id,
+          type: newLeave.type,
+          from: newLeave.from,
+          to: newLeave.to,
+          days: newLeaveDays,
+          status: "Diajukan",
+          note: newLeave.note.trim(),
+          ...(newLeave.fileUrl.trim() ? { fileUrl: newLeave.fileUrl.trim() } : {}),
+        },
+        { action: "mengajukan cuti mandiri", module: "SDM" },
+      );
+      log("mengajukan cuti mandiri", `${emp.id} · ${newLeave.type} · ${newLeaveDays} hari`, "SDM");
+      toast(locale === "en"
+        ? `Leave request ${created.id} submitted (${newLeaveDays} day(s))`
+        : `Pengajuan cuti ${created.id} terkirim (${newLeaveDays} hari)`);
+      setShowNewLeave(false);
+      setNewLeave({ type: "Tahunan", from: todayISO(), to: todayISO(), note: "", fileUrl: "" });
+    } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); }
   };
 
   const saveLeaveEdit = async () => {
@@ -740,11 +817,16 @@ export default function KaryawanDetail() {
             <div>
               {/* T6-SDM6: form mandiri karyawan - akses via NIK login / scan barcode.
                   QR tiap pengajuan dipakai HR untuk verifikasi scan di meja SDM. */}
-              <p className="mb-3 rounded-lg bg-steel-50 px-3 py-2 text-xs text-steel-500">
-                {locale === "en"
-                  ? "Self-service leave: fill the form below (or scan your ID barcode at HR to open this tab). Each request gets a QR code HR can scan."
-                  : "Cuti mandiri: isi form di bawah (atau pindai barcode ID di SDM untuk membuka tab ini). Setiap pengajuan mendapat kode QR yang bisa dipindai HR."}
-              </p>
+              <div className="mb-3 flex flex-wrap items-start justify-between gap-3">
+                <p className="max-w-2xl rounded-lg bg-steel-50 px-3 py-2 text-xs text-steel-500">
+                  {locale === "en"
+                    ? "Self-service leave: use the button below (or scan your ID barcode at HR to open this tab). Each request gets a QR code HR can scan."
+                    : "Cuti mandiri: ajukan lewat tombol di bawah (atau pindai barcode ID di SDM untuk membuka tab ini). Setiap pengajuan mendapat kode QR yang bisa dipindai HR."}
+                </p>
+                <button className="btn-primary whitespace-nowrap text-sm" onClick={() => setShowNewLeave(true)}>
+                  {locale === "en" ? "Request leave" : "Ajukan Cuti"}
+                </button>
+              </div>
               <div className="overflow-x-auto">
               <table className="w-full">
                 <thead className="bg-surface sticky top-0 z-10">
@@ -912,13 +994,7 @@ export default function KaryawanDetail() {
         <div className="space-y-3">
           <FormGrid>
             <Field label={S.thTanggal}><input type="date" className="input" value={attForm.date} onChange={(e) => setAttForm({ ...attForm, date: e.target.value })} /></Field>
-            <Field label={S.thShift}>
-              <select className="input" value={attForm.shift} onChange={(e) => setAttForm({ ...attForm, shift: e.target.value })}>
-                <option>Pagi</option>
-                <option>Siang</option>
-                <option>Malam</option>
-              </select>
-            </Field>
+            {/* ABS4: select shift dihapus - internal selalu Pagi. */}
             <Field label={S.dlStatus}>
               <select className="input" value={attForm.status} onChange={(e) => setAttForm({ ...attForm, status: e.target.value })}>
                 <option>Hadir</option>
@@ -928,8 +1004,9 @@ export default function KaryawanDetail() {
                 <option>Cuti</option>
               </select>
             </Field>
-            <Field label={locale === "en" ? "Overtime (hours)" : "Lembur (jam)"}>
-              <input type="number" min={0} max={8} step={0.5} className="input" value={attForm.overtime} onChange={(e) => setAttForm({ ...attForm, overtime: e.target.value })} />
+            <Field label={locale === "en" ? "Overtime (hours)" : "Lembur (jam)"}
+              hint={locale === "en" ? "Auto from check-in/out when present; max 12" : "Otomatis dari jam masuk/keluar bila Hadir; maks 12"}>
+              <input type="number" min={0} max={12} step={0.5} className="input" value={attForm.overtime} onChange={(e) => setAttForm({ ...attForm, overtime: e.target.value })} />
             </Field>
             <Field label={locale === "en" ? "Check in" : "Jam masuk"}>
               <TimeInput value={norm24(attForm.checkIn)} disabled={attForm.status !== "Hadir"} ariaLabel={locale === "en" ? "Check in" : "Jam masuk"} onChange={(v) => setAttForm({ ...attForm, checkIn: v })} />
@@ -966,11 +1043,7 @@ export default function KaryawanDetail() {
               <FormGrid>
                 <Field label={S.thTipe} hint={approved ? (locale === "en" ? "Locked" : "Terkunci") : undefined}>
                   <select className="input" value={leaveForm.type} disabled={approved} onChange={(e) => setLeaveForm({ ...leaveForm, type: e.target.value })}>
-                    <option>Tahunan</option>
-                    <option>Sakit</option>
-                    <option>Izin</option>
-                    <option>Cuti Mellon</option>
-                    <option>Pengantin</option>
+                    {LEAVE_TYPES.map((t) => <option key={t}>{t}</option>)}
                   </select>
                 </Field>
                 <Field label={locale === "en" ? "Days" : "Jumlah hari"} hint={approved ? (locale === "en" ? "Locked" : "Terkunci") : undefined}>
@@ -997,11 +1070,10 @@ export default function KaryawanDetail() {
                   lebih merepotkan. */}
               {leaveForm.fileUrl.trim() !== "" && (
                 <div className="rounded-xl border border-steel-200 bg-steel-50 p-3">
-                  <DocumentPreviewPanel
+                  <DocumentPreviewCell
                     doc={{
-                      title: `${locale === "en" ? "Leave attachment" : "Lampiran cuti"} ${emp?.name ?? ""}`.trim(),
-                      subtitle: leaveForm.note.trim() !== "" ? leaveForm.note.trim() : undefined,
-                      fileUrl: leaveForm.fileUrl.trim(),
+                      title: `${locale === "en" ? "Leave" : "Cuti"} ${String(leaveEdit?.id ?? "")}`,
+                      fileUrl: leaveForm.fileUrl,
                     }}
                   />
                 </div>
@@ -1009,6 +1081,60 @@ export default function KaryawanDetail() {
             </div>
           );
         })()}
+      </Modal>
+
+      {/* T6-SDM6: form ajukan cuti baru (mandiri karyawan). */}
+      <Modal
+        open={showNewLeave}
+        onClose={() => setShowNewLeave(false)}
+        title={S.mLeaveT}
+        subtitle={S.mLeaveS.replace("{n}", String(jatahCuti))}
+        footer={
+          <>
+            <button className="btn-secondary" onClick={() => setShowNewLeave(false)}>{S.btnBatal}</button>
+            <AsyncButton className="btn-primary" onAction={saveNewLeave}>{S.btnSimpanPengajuan}</AsyncButton>
+          </>
+        }
+      >
+        <div className="space-y-3">
+          <FormGrid>
+            <Field label={S.thTipe}>
+              <select className="input" value={newLeave.type} onChange={(e) => setNewLeave({ ...newLeave, type: e.target.value })}>
+                {LEAVE_TYPES.map((t) => <option key={t}>{t}</option>)}
+              </select>
+            </Field>
+            <Field label={locale === "en" ? "Days" : "Jumlah hari"} hint={locale === "en" ? "Auto from range" : "Otomatis dari rentang tanggal"}>
+              <input className="input" value={S.daysN.replace("{n}", String(newLeaveDays))} disabled />
+            </Field>
+            <Field label={S.fDari}>
+              <input type="date" className="input" value={newLeave.from} onChange={(e) => setNewLeave({ ...newLeave, from: e.target.value })} />
+            </Field>
+            <Field label={S.fSampai}>
+              <input type="date" className="input" value={newLeave.to} onChange={(e) => setNewLeave({ ...newLeave, to: e.target.value })} />
+            </Field>
+          </FormGrid>
+          <p className="rounded-lg bg-ocean-50 px-3 py-2 text-xs text-ocean-700">
+            {locale === "en"
+              ? `Annual balance remaining: ${saldoCutiEmp} day(s) · status on submit: Diajukan`
+              : `Sisa saldo cuti tahunan: ${saldoCutiEmp} hari · status saat diajukan: Diajukan`}
+          </p>
+          <Field label={S.fKet} hint={newLeave.type === "Sakit" || newLeave.type === "Unpaid" ? (locale === "en" ? "Required for Sick/Unpaid" : "Wajib untuk Sakit/Unpaid") : undefined}>
+            <input className="input" value={newLeave.note} onChange={(e) => setNewLeave({ ...newLeave, note: e.target.value })} placeholder={locale === "en" ? "Reason" : "Keperluan"} />
+          </Field>
+          <Field label={locale === "en" ? "Attachment URL" : "URL lampiran"}>
+            <div className="flex flex-wrap items-center gap-2">
+              <input className="input flex-1 font-mono" value={newLeave.fileUrl} onChange={(e) => setNewLeave({ ...newLeave, fileUrl: e.target.value })} placeholder="https://…" />
+              <FileUploadButton label={locale === "en" ? "Upload" : "Unggah"} onUploaded={(url) => setNewLeave((f) => ({ ...f, fileUrl: url }))} />
+            </div>
+          </Field>
+          {newLeave.fileUrl.trim() !== "" && (
+            <div className="rounded-xl border border-steel-200 bg-steel-50 p-3">
+              <DocumentPreviewCell
+                doc={{ title: locale === "en" ? "Leave attachment" : "Lampiran cuti", fileUrl: newLeave.fileUrl }}
+              />
+            </div>
+          )}
+        </div>
       </Modal>
 
       {/* ===== Konfirmasi hapus (4 tabel) ===== */}

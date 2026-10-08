@@ -134,7 +134,8 @@ export default function Drydock() {
   const [bookError, setBookError] = useState<string | null>(null);
   const [deleting, setDeleting] = useState<StoreItem | null>(null);
   const [moveTarget, setMoveTarget] = useState<StoreItem | null>(null);
-  const [moveForm, setMoveForm] = useState({ dockId: "DD-1", from: "", to: "", area: "" });
+  /* T6-DD4 (lanjutan): modal geser slot juga pakai tanggal kalender, bukan day-index. */
+  const [moveForm, setMoveForm] = useState({ dockId: "DD-1", from: "", to: "", area: "", fromIso: "", toIso: "" });
   const [moveError, setMoveError] = useState<string | null>(null);
   const [wide, setWide] = useState(false);
   const [statusFilter, setStatusFilter] = useState("Semua");
@@ -587,14 +588,24 @@ export default function Drydock() {
      validasi sama dengan booking baru (abaikan slot sendiri). */
   const openMove = (s: StoreItem) => {
     setMoveTarget(s);
-    setMoveForm({ dockId: String(s.dockId ?? "DD-1"), from: String(s.from ?? ""), to: String(s.to ?? ""), area: String(s.area ?? "") });
+    const from = Number(s.from ?? 0);
+    const to = Number(s.to ?? 0);
+    setMoveForm({
+      dockId: String(s.dockId ?? "DD-1"),
+      from: String(s.from ?? ""),
+      to: String(s.to ?? ""),
+      area: String(s.area ?? ""),
+      fromIso: dayToISO(from),
+      toIso: dayToISO(to),
+    });
     setMoveError(null);
   };
 
   const saveMove = async () => {
     if (!moveTarget) return;
-    const from = Number(moveForm.from);
-    const to = Number(moveForm.to);
+    /* T6-DD4: sumber input = tanggal ISO (seperti booking); from/to turunan. */
+    const from = isoToDay(moveForm.fromIso) ?? Number(moveForm.from);
+    const to = isoToDay(moveForm.toIso) ?? Number(moveForm.to);
     if (!Number.isFinite(from) || !Number.isFinite(to) || to <= from || from < 0 || to > DAYS) {
       setMoveError(S.rangeInvalid.replace("{n}", String(DAYS)));
       return;
@@ -1150,8 +1161,20 @@ export default function Drydock() {
             <input className="input" value={moveForm.area} onChange={(e) => setMoveForm({ ...moveForm, area: e.target.value })} placeholder={S.areaPh} />
           </Field>
           <FormGrid>
-            <Field label={S.lblStartDay.replace("{n}", String(DAYS))}><NumInput min={0} max={DAYS} className="input" value={moveForm.from} onChange={(e) => setMoveForm({ ...moveForm, from: e.target.value })} /></Field>
-            <Field label={S.lblEndDay.replace("{n}", String(DAYS))}><NumInput min={1} max={DAYS} className="input" value={moveForm.to} onChange={(e) => setMoveForm({ ...moveForm, to: e.target.value })} /></Field>
+            <Field label={locale === "en" ? "Start date" : "Tanggal mulai"}>
+              <input type="date" className="input" value={moveForm.fromIso} onChange={(e) => {
+                const iso = e.target.value;
+                const d = isoToDay(iso);
+                setMoveForm({ ...moveForm, fromIso: iso, ...(d !== null ? { from: String(Math.max(0, Math.min(DAYS, d))) } : {}) });
+              }} />
+            </Field>
+            <Field label={locale === "en" ? "End date" : "Tanggal selesai"}>
+              <input type="date" className="input" value={moveForm.toIso} onChange={(e) => {
+                const iso = e.target.value;
+                const d = isoToDay(iso);
+                setMoveForm({ ...moveForm, toIso: iso, ...(d !== null ? { to: String(Math.max(1, Math.min(DAYS, d))) } : {}) });
+              }} />
+            </Field>
           </FormGrid>
           <p className="text-xs text-steel-500">{S.moveHint.replace("{a}", Number(moveForm.to) > Number(moveForm.from) ? S.durationDays.replace("{n}", String(Number(moveForm.to) - Number(moveForm.from))) : "-")}</p>
         </div>

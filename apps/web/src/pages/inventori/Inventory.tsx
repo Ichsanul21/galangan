@@ -775,7 +775,8 @@ if (k === "mattype") return matTypeOf(i);
     flashPick(flash, ids, -1, () => {}, 100);
   };
   const pickNotif = (rowId: string) => pickNotifIds([rowId]);
-  useDeepLinkTarget(deepParams.tab, deepParams.highlight, setTab, pickNotifIds);
+  /* T6-INV: whitelist tab aktif - branch Tonase/Analisis sudah dihapus dari UI. */
+  useDeepLinkTarget(deepParams.tab, deepParams.highlight, setTab, pickNotifIds, [], ["Katalog", "Stok per Gudang", "BOM", "Pergerakan"]);
 
   // Indeks tanggal pergerakan per barang: 1x scan O(movements), lookup O(1).
   // Sebelumnya tiap barang memindai + sort seluruh movements tiap render.

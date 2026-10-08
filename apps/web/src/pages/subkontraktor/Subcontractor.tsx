@@ -256,7 +256,8 @@ export default function Subcontractor() {
     flashPick(flash, ids, -1, () => {}, 100);
   };
   const pickNotif = (rowId: string) => pickNotifIds([rowId]);
-  useDeepLinkTarget(deepParams.tab, deepParams.highlight, setTab, pickNotifIds);
+  /* T6-SK9: whitelist tab aktif - Timesheet sudah dihapus dari UI. */
+  useDeepLinkTarget(deepParams.tab, deepParams.highlight, setTab, pickNotifIds, [], ["Subkontraktor", "Work Order", "Termin & Pembayaran", "Kepatuhan K3"]);
 
   /* Progres WO = jumlah bobot milestone termin yang selesai (sinkron dua arah
      dengan status termin; tanpa milestone → progres tersimpan legacy). */

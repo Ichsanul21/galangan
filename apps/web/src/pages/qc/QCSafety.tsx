@@ -201,8 +201,9 @@ export default function QCSafety() {
   const pickNotif = (rowId: string): void => pickNotifIds([rowId]);
 
   /* Deep-link dari Dashboard (?tab=&highlight=): pindah tab lalu flash baris tujuan.
-     Dijalankan sekali per kombinasi params agar tidak loop. */
-  useDeepLinkTarget(deepParams.tab, deepParams.highlight, setTab, pickNotifIds);
+     Dijalankan sekali per kombinasi params agar tidak loop.
+     T6-QC1: whitelist tab aktif - Drawing sudah dihapus dari UI. */
+  useDeepLinkTarget(deepParams.tab, deepParams.highlight, setTab, pickNotifIds, [], ["Inspeksi (ITP)", "NCR", "HSE Operasional", "Insiden", "Sertifikat"]);
 
   const [showInsp, setShowInsp] = useState(false);
   /* T6-QC2: kuesioner inspeksi - daftar butir + skor per butir (0-5). */

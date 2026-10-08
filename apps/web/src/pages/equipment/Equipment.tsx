@@ -1568,12 +1568,11 @@ if (tab === "Daftar Equipment") { flashPick(flash, ids, idx, regPager.go, regPag
 
   const exportRegister = () => {
     void exportExcel(
-      [["Kode", "Nama", "Kategori", "Harga Perolehan (Rp)", "Umur Ekonomis (thn)", "Penyusutan/Tahun (Rp)", "Nilai Buku (Rp)", "Harga BBM/L (Rp)", "Total BBM (L)", "Biaya BBM (Rp)"],
+      /* T6-EQ1: kolom tarif+BBM di-hide di form → jangan ikut export register. */
+      [["Kode", "Nama", "Kategori", "Harga Perolehan (Rp)", "Umur Ekonomis (thn)", "Penyusutan/Tahun (Rp)", "Nilai Buku (Rp)"],
         ...equipment.map((e) => {
           const dep = depreciationOf(e);
-          const st = statsByEquip(e.name);
-          const fuelCost = st.fuel * Number(e.fuelPrice || 0);
-          return [e.code, e.name, e.category, Number(e.acquisitionCost || 0), Number(e.usefulLife || 0), dep ? Math.round(dep.annual) : 0, dep ? Math.round(dep.book) : 0, Number(e.fuelPrice || 0), st.fuel, Math.round(fuelCost)];
+          return [e.code, e.name, e.category, Number(e.acquisitionCost || 0), Number(e.usefulLife || 0), dep ? Math.round(dep.annual) : 0, dep ? Math.round(dep.book) : 0];
         })],
       `Register-Aset-Equipment-${today}`,
       "Register",

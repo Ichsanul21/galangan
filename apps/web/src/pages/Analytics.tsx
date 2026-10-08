@@ -761,14 +761,7 @@ const saveScenario = () => {
         [`Estimasi NCR (${openNcrProjects.size} proyek)`, Math.round(ncrEstimate)],
         ["Total rework", reworkCost],
       ];
-      /* Sheet Preskriptif = 4 rekomendasi yang tampil di tab Preskriptif. */
-      const rx: (string | number)[][] = [
-        ["Rekomendasi", "Detail", "Tindak lanjut"],
-        [S.allocDrydock, S.allocDrydockDesc, "/drydock"],
-        [S.reorderMaterial, S.reorderDesc.replace("{n}", String(lowStock.length)), "/procurement"],
-        [S.projectPriority, S.projectPriorityDesc.replace("{n}", String(atRisk)), "/proyek"],
-        [S.followUpNcr, S.followUpNcrDesc.replace("{n}", String(openNcr)), "/qc-safety"],
-      ];
+      /* T6-AN2: sheet Preskriptif dihapus dari export - tab UI sudah dihapus. */
       /* Sheet Utilisasi: gabungan equipment (jam operasi + %) + jam booking bila ada. */
       const bookingJamByEquip = new Map<string, string>();
       for (const b of data.bookings ?? []) {
@@ -870,7 +863,6 @@ const saveScenario = () => {
         { name: "Forecast", rows: fc },
         { name: "Skenario", rows: sc },
         { name: "Profit", rows: pf },
-        { name: "Preskriptif", rows: rx },
         { name: "Utilisasi", rows: util },
         { name: "Inventory", rows: inv },
         { name: "Rev Bulanan", rows: revBulanan },
