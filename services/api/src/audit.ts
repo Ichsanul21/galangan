@@ -21,6 +21,115 @@ export function getAuditErrorCount(): number {
   return auditErrorCount;
 }
 
+/* Proyeksi feed aktivitas UI dari jejak audit.
+ *
+ * Standar: SATU penulis untuk jejak audit. Client tidak boleh POST activities
+ * untuk tiap aksi (dual-write = amplifikasi tulis, 409 race saat retry, dan
+ * 429 rate-limit yang memblokir push bisnis). writeAudit sudah jalan di setiap
+ * CRUD server; di sini kita tulang-gabungkan ke tabel `activities` yang memang
+ * dipakai UI (Dashboard/Notifikasi/detail proyek).
+ *
+ * Tabel `activities` sendiri tidak diaudit (hindari rekursi). */
+const MODULE_BY_TABLE: Record<string, string> = {
+  projects: "Proyek",
+  vessels: "Kapal",
+  drydocks: "Drydock",
+  dockSlots: "Drydock",
+  inventory: "Inventori",
+  movements: "Inventori",
+  warehouses: "Inventori",
+  equipment: "Equipment",
+  bookings: "Equipment",
+  maintenances: "Equipment",
+  calibrations: "Equipment",
+  subcontractors: "Subkontraktor",
+  workOrders: "Subkontraktor",
+  termins: "Subkontraktor",
+  employees: "SDM",
+  leaves: "SDM",
+  trainings: "SDM",
+  letters: "SDM",
+  attendance: "Absensi",
+  payroll: "Payroll",
+  invoices: "Keuangan",
+  payables: "Keuangan",
+  journals: "Keuangan",
+  assets: "Keuangan",
+  taxPeriods: "Pajak",
+  ncr: "QC",
+  inspections: "QC",
+  drawings: "QC",
+  incidents: "Safety",
+  toolbox: "Safety",
+  walks: "Safety",
+  purchaseOrders: "Procurement",
+  requisitions: "Procurement",
+  rfqs: "Procurement",
+  vendors: "Procurement",
+  quotations: "CRM",
+  clients: "CRM",
+  contracts: "CRM",
+  requests: "CRM",
+  communications: "CRM",
+  documents: "Dokumen",
+  surveys: "Proyek",
+  boq: "BoQ",
+  services: "Service",
+  spareparts: "Sparepart",
+  changeOrders: "Proyek",
+  risks: "Proyek",
+  trials: "Proyek",
+  warranties: "Proyek",
+  bast: "Proyek",
+};
+
+const ACTION_LABEL: Record<string, string> = {
+  create: "menambah",
+  update: "memperbarui",
+  delete: "menghapus",
+};
+
+const TONE_BY_MODULE: Record<string, string> = {
+  Proyek: "violet",
+  Keuangan: "amber",
+  QC: "teal",
+  Safety: "rose",
+  Procurement: "navy",
+  CRM: "navy",
+  Drydock: "teal",
+  Equipment: "amber",
+  Inventori: "navy",
+  SDM: "violet",
+  Kapal: "teal",
+  Dokumen: "navy",
+  Subkontraktor: "amber",
+  Service: "teal",
+  Sparepart: "amber",
+  BoQ: "navy",
+  Absensi: "violet",
+  Payroll: "amber",
+  Pajak: "navy",
+};
+
+async function projectActivity(input: AuditInput, createdAt: string): Promise<void> {
+  if (input.table === "activities") return;
+  const module = MODULE_BY_TABLE[input.table] ?? "Laporan";
+  const action = ACTION_LABEL[input.action] ?? input.action;
+  const id = `A-${randomUUID().replace(/-/g, "").slice(0, 8).toUpperCase()}`;
+  const data = {
+    id,
+    actor: input.actor,
+    action,
+    target: String(input.rowId ?? ""),
+    module,
+    time: createdAt,
+    tone: TONE_BY_MODULE[module] ?? "navy",
+  };
+  await exec("INSERT INTO activities (id, branch, data, updated_at) VALUES (?, ?, ?, ?)", [
+    id, "", JSON.stringify(data), createdAt,
+  ]);
+}
+
 /** Best-effort: audit failures must never break the main operation. */
 export async function writeAudit(input: AuditInput): Promise<void> {
   try {
@@ -35,6 +144,15 @@ export async function writeAudit(input: AuditInput): Promise<void> {
     /* audit_log missing (pre-002 DB) or write failed — count it, log, keep going */
     auditErrorCount += 1;
     console.error("[audit] write failed:", err);
+    return;
+  }
+  /* Feed aktivitas UI: proyeksi server-side (single writer). Gagal tidak
+     membatalkan operasi bisnis - audit_log tetap sumber kebenaran. */
+  try {
+    await projectActivity(input, new Date().toISOString());
+  } catch (err) {
+    auditErrorCount += 1;
+    console.error("[audit] activity projection failed:", err);
   }
 }
 

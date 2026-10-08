@@ -1392,6 +1392,13 @@ type PushOutcome = "ok" | "stale" | "fail" | "auth";
       const col = cols[(pushColCursorRef.current + ci) % cols.length] as string;
       try {
         if (budget <= 0) break;
+        /* Activities: server adalah penulis (writeAudit → projectActivity).
+           Antrean dirty lama dari client dual-write tidak perlu di-push -
+           cukup bersihkan agar tidak memakan budget rate-limit 300/mnt. */
+        if (col === "activities") {
+          clearDirty(col, sentGen.get(col));
+          continue;
+        }
         if (col === "wbsByProject" || col.startsWith("wbs:")) {
           const entries = Object.entries(dataRef.current.wbsByProject ?? {});
           const targets =
@@ -1884,11 +1891,8 @@ type PushOutcome = "ok" | "stale" | "fail" | "auth";
               activities: entry ? pushEntry(prev, entry) : prev.activities,
             }));
             bumpEpoch(col as string);
-            if (entry) {
-              /* Mirror aktivitas best-effort tanpa rekursi (langsung HTTP, bukan add()).
-                 Gagal → tandai dirty agar pushPending/resync tidak menghilangkannya. */
-              remoteRepository("activities").create(entry).catch(() => markDirty("activities"));
-            }
+            /* Single writer: aktivitas di-proyeksi server dari writeAudit.
+               Client TIDAK POST activities (menghindari 409 race + 429). */
             setBackendError(null);
             return finalItem;
           } catch (err) {
@@ -1906,7 +1910,9 @@ type PushOutcome = "ok" | "stale" | "fail" | "auth";
         const fallbackEntry = activity
           ? buildActivity(activity.action, activity.target ?? full.id, activity.module)
           : null;
-        if (fallbackEntry) markDirty("activities");
+        /* Aktivitas lokal saja - server proyeksi dari writeAudit saat push
+           bisnis berhasil. Jangan markDirty("activities") agar pushPending
+           tidak membakar budget rate-limit untuk log UI. */
         setData((prev) => ({
           ...prev,
           [col]: [full, ...((prev[col] as StoreItem[] | undefined) ?? [])],
@@ -2096,16 +2102,10 @@ type PushOutcome = "ok" | "stale" | "fail" | "auth";
         }));
       },
       log: (action, target, module) => {
+        /* Optimistic UI lokal. Jejak server berasal dari writeAudit CRUD
+           (projectActivity) - tanpa POST activities per aksi. */
         const entry = buildActivity(action, target, module);
         setData((prev) => ({ ...prev, activities: [entry, ...prev.activities].slice(0, ACTIVITIES_CAP) }));
-        if (remoteActive()) {
-          // Best-effort mirror tanpa await - langsung via HTTP (bukan add())
-          // agar tidak terjadi rekursi; gagal → tandai dirty agar tidak ter-wipe resync.
-          remoteRepository("activities").create(entry).catch(() => markDirty("activities"));
-        } else {
-          /* Offline/fallback: tandai dirty agar resync melewati koleksi activities. */
-          markDirty("activities");
-        }
       },
       reset: () => {
         /* Reset ke seed HANYA aman kalau tidak ada antrean offline. Tanpa

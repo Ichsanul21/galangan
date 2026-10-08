@@ -353,8 +353,16 @@ export function registerCrud(app: FastifyInstance, table: string): void {
     if (!parsed.success) return reply.status(400).send(fail("Validation failed", "VALIDATION_ERROR"));
     let id = parsed.data.id;
     if (id) {
-      const dup = await q<Row>(`SELECT id FROM ${table} WHERE id = ?`, [id]);
-      if (dup.length > 0) return reply.status(409).send(fail(`Duplicate id: ${id}`, "CONFLICT"));
+      const dup = await q<Row>(`SELECT id, branch, data, updated_at FROM ${table} WHERE id = ?`, [id]);
+      if (dup.length > 0) {
+        /* Activities = event log dengan id client-generated. Retry after
+           network/429 boleh mengulang POST yang sama - jangan 409.
+           Idempotent: baris yang sudah ada dianggap sukses (200). */
+        if (table === "activities") {
+          return reply.status(200).send(ok(toJson(dup[0] as Row)));
+        }
+        return reply.status(409).send(fail(`Duplicate id: ${id}`, "CONFLICT"));
+      }
     } else {
       for (let attempt = 0; attempt < 5; attempt += 1) {
         const candidate = newId(table);
