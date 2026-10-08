@@ -1993,6 +1993,10 @@ try {
                 </div>
               </div>
 
+              {/* T7-PRJ2: tabel & matriks risiko disembunyikan dari tab
+                  Perubahan & Risiko (notes2). Data `risks` di store tidak
+                  dihapus - hanya render UI yang dihilangkan. */}
+              {false && (
               <div>
                 <div className="mb-2 flex items-center justify-between">
                   <h3 className="text-sm font-semibold text-navy-900">{S.detRiskTitle.replace("{n}", String(riskList.length))}</h3>
@@ -2041,6 +2045,7 @@ try {
                   {riskList.length === 0 && <p className="text-sm text-steel-400">{S.detNoRisk}</p>}
                 </div>
               </div>
+              )}
             </div>
           )}
 

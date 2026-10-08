@@ -686,7 +686,10 @@ if (tab === "Daftar Equipment") { flashPick(flash, ids, idx, regPager.go, regPag
     window.setTimeout(() => flashPick(flash, ids, fullIdx, regPager.go, regPager.size), 250);
   };
   const pickNotif = (rowId: string) => pickNotifIds([rowId]);
-  useDeepLinkTarget(deepParams.tab, deepParams.highlight, setTab, pickNotifIds);
+  /* T7-EQ2: whitelist tab aktif - tab lama (Booking/Maintenance/dst) dihapus
+     dari UI; tanpa whitelist ini URL ?tab=Maintenance masih me-resurrect
+     branch yang sudah mati. */
+  useDeepLinkTarget(deepParams.tab, deepParams.highlight, setTab, pickNotifIds, [], ["Daftar Equipment"]);
   useEffect(() => {
     regPager.reset();
     // eslint-disable-next-line react-hooks/exhaustive-deps

@@ -233,8 +233,11 @@ export default function Subcontractor() {
     return rowMatches(s, subQ, ["name", "services", "contractType", "status", "k3", "id"]);
   });
   const woPager = usePager(workOrders.length);
+  /* T7-SK1: pager tabel termin & pembayaran. */
+  const termPager = usePager(payments.length);
   useEffect(() => {
     woPager.reset();
+    termPager.reset();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tab]);
   const pickNotifIds = (ids: string[]): void => {
@@ -1236,9 +1239,9 @@ const printSpk = async (w: StoreItem): Promise<void> => {
                     <tr><SortTh label={locale === "en" ? "Project" : "Proyek"} sortKey="project" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.sortSub} sortKey="sub" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.sortWoProg} sortKey="wo" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.sortValue} sortKey="nilai" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.sortRetensi} sortKey="retensi" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.sortNeto} sortKey="neto" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.sortStatus} sortKey="status" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><th className="th">{S.actionLabel}</th></tr>
                   </thead>
                   <tbody className="divide-y divide-steel-100">
-                    {sortRows(payments, sort, (p, key) =>
+                    {termPager.slice(sortRows(payments, sort, (p, key) =>
                       key === "createdAt" ? (createdAtOf(p) ?? "") : key === "updatedAt" ? (lastTouchedAt(p) ?? "") : key === "termin" ? String(p.id ?? "") : key === "sub" ? String(p.sub ?? "") : key === "wo" ? String(p.woId ?? p.progress ?? "") : key === "nilai" ? Number(p.amount ?? 0) : key === "pph" ? Number(p.amount ?? 0) * pphOf(p, pphDefault) / 100 : key === "retensi" ? Number(p.amount ?? 0) * retOf(p) / 100 : key === "neto" ? netoOf(p, pphDefault) : key === "tanggal" ? String(p.date ?? "") : String(p.status ?? "")
-                    ).map((p) => {
+                    )).map((p) => {
                       const wo = workOrders.find((w) => w.id === p.woId);
                       const canRelease = normTerm(p.status) === "Lunas" && retOf(p) > 0 && wo?.status === "Selesai";
                       /* T6-SK6: kolom tabel termin disederhanakan.
@@ -1361,6 +1364,7 @@ const printSpk = async (w: StoreItem): Promise<void> => {
                     })}
                   </tbody>
                 </table>
+                {termPager.bar}
               </div>
             </div>
           )}

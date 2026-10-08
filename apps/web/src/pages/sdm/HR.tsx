@@ -1441,9 +1441,14 @@ const finishTraining = async (t: StoreItem) => {
               <Plus className="h-4 w-4" /> {S.btnAjukanCuti}
             </button>
           ) : tab === "Mutasi" ? (
+            /* T7-SDM1: tombol "Catat Mutasi" disembunyikan - mutasi tidak lagi
+               diakses dari UI (tab sudah dihapus + deep-link di-whitelist).
+               Modal & saveMutasi tetap disimpan bila fitur dibuka lagi. */
+            false ? (
             <button className="btn-primary-gradient" onClick={() => setShowMutasi(true)}>
               <Plus className="h-4 w-4" /> {S.btnCatatMutasi}
             </button>
+            ) : null
           ) : tab === "Training" ? (
             <button className="btn-primary-gradient" onClick={() => setShowTraining(true)}>
               <Plus className="h-4 w-4" /> {S.btnJadwalkanTraining}
@@ -1789,7 +1794,9 @@ const finishTraining = async (t: StoreItem) => {
                     </div>
                   ))}
                 </div>
-                <button className="btn-secondary mt-4 text-xs" onClick={() => setShowMutasi(true)}>{S.btnMutasiBaru}</button>
+                {/* T7-SDM1: tombol "Mutasi Baru" disembunyikan; modal & logic
+                    disimpan. Tab Mutasi sudah tidak ada di UI + whitelist. */}
+                {false && <button className="btn-secondary mt-4 text-xs" onClick={() => setShowMutasi(true)}>{S.btnMutasiBaru}</button>}
               </Card>
             </div>
           )}
