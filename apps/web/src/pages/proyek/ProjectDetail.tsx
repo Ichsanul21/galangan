@@ -337,6 +337,7 @@ if (from === "Desain" && to === "Produksi") {
   const [cardBkQ, setCardBkQ] = useState("");
   const [cardMaintQ, setCardMaintQ] = useState("");
   const [breakdownMaintQ, setBreakdownMaintQ] = useState("");
+  const [docListQ, setDocListQ] = useState("");
   const [sort3, setSort3] = useState<SortState>({ key: null, dir: "asc" });
   /* Tabel rincian biaya equipment (card HPP equipment). */
   const [sort4, setSort4] = useState<SortState>({ key: null, dir: "asc" });
@@ -1646,7 +1647,7 @@ try {
                   {/* Rincian per siklus maintenance yang diproyekkan. */}
                   {equipCost.maintenanceRows.length > 0 && (
                     <div className="mt-4 space-y-1.5">
-                      {equipCost.maintenanceRows.map((r) => (
+                    {equipCost.maintenanceRows.filter((r) => rowMatches(r as unknown as Record<string, unknown>, breakdownMaintQ, ["id", "equipmentName", "status"])).map((r) => (
                         <div key={r.id} className="flex flex-wrap items-center justify-between gap-2 border-b border-steel-100 py-1.5 text-sm">
                           <span className="min-w-0 truncate text-navy-900">
                             <span className="font-mono text-xs text-steel-500">{r.id}</span>{" "}
@@ -1737,11 +1738,12 @@ try {
             <div>
               <style>{`@media print { .doc-card, .bast-card, .report-card { break-inside: avoid; page-break-inside: avoid; } table, thead, tbody, tr { break-inside: auto; page-break-inside: auto; } }`}</style>
               <h3 className="mb-2 text-sm font-semibold text-navy-900">{S.detDocTitle}</h3>
-              <div className="mb-3 flex justify-end">
+              <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                <SearchBox value={docListQ} onChange={setDocListQ} className="w-full max-w-xs" placeholder={locale === "en" ? "Search documents..." : "Cari dokumen..."} ariaLabel={locale === "en" ? "Search documents" : "Cari dokumen"} />
                 <button className="btn-secondary text-xs" onClick={() => setShowDoc(true)}><Plus className="h-3.5 w-3.5" /> {S.detAddDoc}</button>
               </div>
               <div className="space-y-2">
-                {docs.map((d) => {
+                {docs.filter((d) => rowMatches(d as unknown as Record<string, unknown>, docListQ, ["title", "id", "type", "status"])).map((d) => {
                   const url = docUrlOf(d);
                   const fname = docBaseName(d, url);
                   const isNew = lastUploadedId === String(d.id);
@@ -1795,7 +1797,7 @@ try {
                   </div>
                   );
                 })}
-                {docs.length === 0 && <p className="text-sm text-steel-400">{S.detNoDocs}</p>}
+                {docs.filter((d) => rowMatches(d as unknown as Record<string, unknown>, docListQ, ["title", "id", "type", "status"])).length === 0 && <p className="text-sm text-steel-400">{S.detNoDocs}</p>}
               </div>
               <div className="mt-6">
                 <div className="mb-2 flex items-center justify-between">

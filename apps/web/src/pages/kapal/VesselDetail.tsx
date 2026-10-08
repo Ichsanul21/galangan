@@ -19,6 +19,8 @@ import {
   AsyncButton,
   ConfirmModal,
   RowAction,
+  SearchBox,
+  rowMatches,
 } from "../../components/ui";
 import type { SortState } from "../../components/ui";
 import SparepartServiceSection from "../proyek/SparepartServiceSection";
@@ -108,6 +110,7 @@ export default function VesselDetail() {
   const [dockForm, setDockForm] = useState({ date: todayISO(), dock: "", scope: "", result: "", nextDue: "" });
   const [editingDock, setEditingDock] = useState<number | null>(null);
   const [planForm, setPlanForm] = useState({ year: String(new Date().getFullYear() + 1), type: "Docking", note: "" });
+  const [planQ, setPlanQ] = useState("");
   const [bunkerForm, setBunkerForm] = useState({ date: todayISO(), jenis: "Solar", qty: "", satuan: "liter" });
   const [crewForm, setCrewForm] = useState({ name: "", role: "" });
   const [insForm, setInsForm] = useState({ polis: "", premi: "", expiry: "" });
@@ -703,13 +706,23 @@ export default function VesselDetail() {
               <Card className="p-5">
                 <h3 className="text-sm font-semibold text-navy-900">{S.vdPlanTitle.replace("{a}", String(baseYear + 1)).replace("{b}", String(baseYear + 5))}</h3>
                 <p className="mt-0.5 text-xs text-steel-500">{S.vdPlanSub}</p>
+                <div className="mt-2 flex justify-end">
+                  <SearchBox value={planQ} onChange={setPlanQ} className="max-w-xs" placeholder={locale === "en" ? "Search plans..." : "Cari rencana..."} ariaLabel={locale === "en" ? "Search vessel plans" : "Cari rencana kapal"} />
+                </div>
                 <div className="mt-3 overflow-x-auto">
                   <table className="w-full">
                     <thead className="sticky top-0 z-10 bg-surface">
                       <tr><SortTh label={S.thYear} sortKey="year" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.thAuto} sortKey="auto" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.thManual} sortKey="manual" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /></tr>
                     </thead>
                     <tbody className="divide-y divide-steel-100">
-                      {sortRows(planYears, sort, (y: number, k) => { if (k === "year") return Number(y); if (k === "auto") return surveys.filter((s) => String(s.date ?? "").slice(0, 4) === String(y)).length + dockHistory.filter((d) => String(d.nextDue ?? "").slice(0, 4) === String(y)).length; if (k === "manual") return plan5.filter((p) => Number(p.year) === Number(y)).length; return Number(y); }).map((y) => {
+                      {sortRows(planYears.filter((y) => rowMatches({
+                        year: String(y),
+                        auto: [
+                          ...surveys.filter((s) => String(s.date ?? "").slice(0, 4) === String(y)).map((s) => `${String(s.type ?? "")} ${String(s.date ?? "")}`),
+                          ...dockHistory.filter((d) => String(d.nextDue ?? "").slice(0, 4) === String(y)).map((d) => `${d.dock} ${d.scope} ${d.result}`),
+                        ].join(" "),
+                        manual: plan5.filter((p) => Number(p.year) === Number(y)).map((p) => `${String(p.type ?? "")} ${String(p.note ?? "")}`).join(" "),
+                      } as unknown as Record<string, unknown>, planQ, ["year", "auto", "manual"])), sort, (y: number, k) => { if (k === "year") return Number(y); if (k === "auto") return surveys.filter((s) => String(s.date ?? "").slice(0, 4) === String(y)).length + dockHistory.filter((d) => String(d.nextDue ?? "").slice(0, 4) === String(y)).length; if (k === "manual") return plan5.filter((p) => Number(p.year) === Number(y)).length; return Number(y); }).map((y) => {
                         const auto: string[] = [
                           ...surveys.filter((s) => String(s.date ?? "").slice(0, 4) === String(y)).map((s) => `${s.type} · ${fmtTanggal(String(s.date))}`),
                           ...dockHistory.filter((d) => String(d.nextDue ?? "").slice(0, 4) === String(y)).map((d) => S.vdNextDueAuto.replace("{a}", fmtTanggal(d.nextDue)).replace("{b}", d.dock)),

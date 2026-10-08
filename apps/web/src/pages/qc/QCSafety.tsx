@@ -133,6 +133,8 @@ export default function QCSafety() {
   const [tab, setTab] = useState("Inspeksi (ITP)");
   const [inspQ, setInspQ] = useState("");
   const [inspStatus, setInspStatus] = useState("Semua");
+  const [ncrQ, setNcrQ] = useState("");
+  const [incQ, setIncQ] = useState("");
   const [sort, setSort] = useState<SortState>({ key: null, dir: "asc" });
   const inspFiltered = inspections.filter((i) => {
     if (inspStatus !== "Semua" && String(i.status ?? "") !== inspStatus) return false;
@@ -238,6 +240,7 @@ export default function QCSafety() {
   const [certPreview, setCertPreview] = useState<PreviewDoc | null>(null);
   /* Q2: filter sub-tipe sertifikat dari docTypes (dua arah dengan modul Dokumen). */
   const [certSubTypeF, setCertSubTypeF] = useState("Semua");
+  const [certQ, setCertQ] = useState("");
   const projectOfVessel = (vesselName: string): StoreItem | undefined =>
     data.projects.find((p) => sameName(String(p.vessel ?? ""), vesselName));
   const certDocsOfProject = (projectId: string | undefined): StoreItem[] =>
@@ -1440,7 +1443,10 @@ export default function QCSafety() {
                 </p>
                 <button className="btn-secondary text-xs" onClick={exportNcr}>{S.btnEksporNcr}</button>
               </div>
-              {ncrList.map((n) => (
+              <div className="mb-2 flex justify-end">
+                <SearchBox value={ncrQ} onChange={setNcrQ} className="max-w-xs" placeholder={locale === "en" ? "Search NCR..." : "Cari NCR..."} ariaLabel={locale === "en" ? "Search NCR" : "Cari NCR"} />
+              </div>
+              {ncrList.filter((n) => rowMatches(n as unknown as Record<string, unknown>, ncrQ, ["id", "issue", "project", "vessel", "type", "severity", "status"])).map((n) => (
                 <Card key={n.id} id={notifRowId(String(n.id))} className={`p-4 ${rowHighlightClass({ id: String(n.id), flash, notified: notified.has(String(n.id)) })}`}>
                   <div className="flex flex-wrap items-start justify-between gap-2">
                     <div>
@@ -1484,7 +1490,7 @@ export default function QCSafety() {
                   </div>
                 </Card>
               ))}
-              {ncrList.length === 0 && <p className="py-6 text-center text-sm text-steel-400">{S.emptyNcr}</p>}
+              {ncrList.filter((n) => rowMatches(n as unknown as Record<string, unknown>, ncrQ, ["id", "issue", "project", "vessel", "type", "severity", "status"])).length === 0 && <p className="py-6 text-center text-sm text-steel-400">{S.emptyNcr}</p>}
             </div>
           )}
 
@@ -1756,11 +1762,12 @@ export default function QCSafety() {
 
           {tab === "Insiden" && (
             <div>
-              <div className="mb-3 flex justify-end">
+              <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                <SearchBox value={incQ} onChange={setIncQ} className="w-full max-w-xs" placeholder={locale === "en" ? "Search incidents..." : "Cari insiden..."} ariaLabel={locale === "en" ? "Search incidents" : "Cari insiden"} />
                 <button className="btn-secondary text-xs" onClick={() => { setShowInc(true); setIncForm((f) => ({ ...f, project: f.project || data.projects[0]?.id || "" })); }}><Plus className="h-3.5 w-3.5" /> {S.btnCatatInsiden}</button>
               </div>
               <div className="space-y-3">
-                {incidents.map((i) => (
+                {incidents.filter((i) => rowMatches(i as unknown as Record<string, unknown>, incQ, ["id", "desc", "type", "project", "location", "severity"])).map((i) => (
                   <Card key={i.id} id={notifRowId(String(i.id))} className={`p-4 ${rowHighlightClass({ id: String(i.id), flash, notified: notified.has(String(i.id)) })}`}>
                     <div className="flex items-start justify-between gap-2">
                       <div>
@@ -1806,6 +1813,7 @@ export default function QCSafety() {
                   {subTypesOf("Sertifikat").map((s) => <option key={s} value={s}>{s}</option>)}
                   <option value="">{locale === "en" ? "No sub-type" : "Tanpa sub-tipe"}</option>
                 </select>
+                <SearchBox value={certQ} onChange={setCertQ} className="w-full max-w-xs" placeholder={locale === "en" ? "Search certificates..." : "Cari sertifikat..."} ariaLabel={locale === "en" ? "Search certificates" : "Cari sertifikat"} />
               </div>
               {certHealthReal.length > 0 && (
                 <Card className="p-5" data-export-hide>
@@ -1872,7 +1880,7 @@ export default function QCSafety() {
                 <div key={v.id}>
                   <h3 className="mb-2 text-sm font-semibold text-navy-900">{v.name}</h3>
                   <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
-{(v.certificates ?? []).map((c: { name: string; expires: string; fileUrl?: string }) => {
+{(v.certificates ?? []).filter((c: { name: string; expires: string; fileUrl?: string }) => rowMatches({ name: String(c.name), vessel: String(v.name) } as unknown as Record<string, unknown>, certQ, ["name", "vessel"])).map((c: { name: string; expires: string; fileUrl?: string }) => {
                       const left = daysUntil(c.expires);
                       const tone = left === null ? "gray" : left < 0 ? "red" : left <= CERT_WINDOW ? "amber" : "green";
                       const url = docUrlOf(c);

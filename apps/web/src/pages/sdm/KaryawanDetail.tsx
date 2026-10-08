@@ -146,6 +146,8 @@ export default function KaryawanDetail() {
   const [sort3, setSort3] = useState<SortState>({ key: null, dir: "asc" });
   const [sort4, setSort4] = useState<SortState>({ key: null, dir: "asc" });
   const [attQ, setAttQ] = useState("");
+  const [payQ, setPayQ] = useState("");
+  const [leaveQ, setLeaveQ] = useState("");
 
   /* ---- Ubah / hapus untuk 3 tabel store-record di halaman ini ----
      Semuanya read-only sebelumnya: dokumen, absensi, cuti. Payroll tetap
@@ -778,12 +780,15 @@ export default function KaryawanDetail() {
           )}
           {tab === "Payroll" && (
             <div className="overflow-x-auto">
+              <div className="mb-2 flex justify-end">
+                <SearchBox value={payQ} onChange={setPayQ} className="max-w-xs" placeholder={locale === "en" ? "Search payroll..." : "Cari payroll..."} ariaLabel={locale === "en" ? "Search payroll" : "Cari payroll"} />
+              </div>
               <table className="w-full">
                 <thead className="bg-surface sticky top-0 z-10">
                   <tr><SortTh label={S.thPeriode} sortKey="period" sort={sort3} onSort={(k) => setSort3((s) => toggleSort(s, k))} /><SortTh label={S.thPokok} sortKey="basic" sort={sort3} onSort={(k) => setSort3((s) => toggleSort(s, k))} /><SortTh label={S.thTunjangan} sortKey="allow" sort={sort3} onSort={(k) => setSort3((s) => toggleSort(s, k))} /><SortTh label={S.thLembur} sortKey="overtime" sort={sort3} onSort={(k) => setSort3((s) => toggleSort(s, k))} /><SortTh label={S.thNet} sortKey="net" sort={sort3} onSort={(k) => setSort3((s) => toggleSort(s, k))} /><SortTh label={S.dlStatus} sortKey="status" sort={sort3} onSort={(k) => setSort3((s) => toggleSort(s, k))} /><SortTh label={S.thDibayar} sortKey="paid" sort={sort3} onSort={(k) => setSort3((s) => toggleSort(s, k))} /></tr>
                 </thead>
                 <tbody className="divide-y divide-steel-100">
-                  {sortRows(payrollRows, sort3, (row, k) => {
+                  {sortRows(payrollRows.filter((p) => rowMatches(p as unknown as Record<string, unknown>, payQ, ["period", "status", "paidAt"])), sort3, (row, k) => {
                     const p = row as StoreItem;
                     switch (k) {
                       case "period": return String(p.period ?? "");
@@ -810,7 +815,7 @@ export default function KaryawanDetail() {
                   ))}
                 </tbody>
               </table>
-              {payrollRows.length === 0 && <EmptyState title={S.emptyPayrollT} subtitle={S.emptyPayrollS} />}
+              {payrollRows.filter((p) => rowMatches(p as unknown as Record<string, unknown>, payQ, ["period", "status", "paidAt"])).length === 0 && <EmptyState title={S.emptyPayrollT} subtitle={S.emptyPayrollS} />}
             </div>
           )}
           {tab === "Cuti" && (
@@ -823,9 +828,12 @@ export default function KaryawanDetail() {
                     ? "Self-service leave: use the button below (or scan your ID barcode at HR to open this tab). Each request gets a QR code HR can scan."
                     : "Cuti mandiri: ajukan lewat tombol di bawah (atau pindai barcode ID di SDM untuk membuka tab ini). Setiap pengajuan mendapat kode QR yang bisa dipindai HR."}
                 </p>
-                <button className="btn-primary whitespace-nowrap text-sm" onClick={() => setShowNewLeave(true)}>
-                  {locale === "en" ? "Request leave" : "Ajukan Cuti"}
-                </button>
+                <div className="flex flex-wrap items-center gap-2">
+                  <SearchBox value={leaveQ} onChange={setLeaveQ} className="max-w-xs" placeholder={locale === "en" ? "Search leave..." : "Cari cuti..."} ariaLabel={locale === "en" ? "Search leave requests" : "Cari pengajuan cuti"} />
+                  <button className="btn-primary whitespace-nowrap text-sm" onClick={() => setShowNewLeave(true)}>
+                    {locale === "en" ? "Request leave" : "Ajukan Cuti"}
+                  </button>
+                </div>
               </div>
               <div className="overflow-x-auto">
               <table className="w-full">
@@ -833,7 +841,7 @@ export default function KaryawanDetail() {
                   <tr><SortTh label={S.thId} sortKey="id" sort={sort4} onSort={(k) => setSort4((s) => toggleSort(s, k))} /><SortTh label={S.thTipe} sortKey="type" sort={sort4} onSort={(k) => setSort4((s) => toggleSort(s, k))} /><SortTh label={S.thPeriode} sortKey="period" sort={sort4} onSort={(k) => setSort4((s) => toggleSort(s, k))} /><SortTh label={S.thHari} sortKey="days" sort={sort4} onSort={(k) => setSort4((s) => toggleSort(s, k))} /><SortTh label={S.dlStatus} sortKey="status" sort={sort4} onSort={(k) => setSort4((s) => toggleSort(s, k))} /><SortTh label={S.thCatatan} sortKey="note" sort={sort4} onSort={(k) => setSort4((s) => toggleSort(s, k))} /><SortTh label={locale === "en" ? "QR" : "QR"} sortKey="qr" sort={sort4} onSort={(k) => setSort4((s) => toggleSort(s, k))} /><SortTh label={locale === "en" ? "Attachment" : "Lampiran"} sortKey="file" sort={sort4} onSort={(k) => setSort4((s) => toggleSort(s, k))} /><th className="th">{locale === "en" ? "Actions" : "Aksi"}</th></tr>
                 </thead>
                 <tbody className="divide-y divide-steel-100">
-                  {sortRows(leaveRows, sort4, (row, k) => {
+                  {sortRows(leaveRows.filter((l) => rowMatches(l as unknown as Record<string, unknown>, leaveQ, ["id", "type", "status", "note"])), sort4, (row, k) => {
                     const l = row as StoreItem;
                     switch (k) {
                       case "id": return String(l.id ?? "");
@@ -894,7 +902,7 @@ export default function KaryawanDetail() {
                   ))}
                 </tbody>
               </table>
-              {leaveRows.length === 0 && <EmptyState title={S.emptyLeaveT} subtitle={S.emptyLeaveS} />}
+              {leaveRows.filter((l) => rowMatches(l as unknown as Record<string, unknown>, leaveQ, ["id", "type", "status", "note"])).length === 0 && <EmptyState title={S.emptyLeaveT} subtitle={S.emptyLeaveS} />}
               </div>
             </div>
           )}

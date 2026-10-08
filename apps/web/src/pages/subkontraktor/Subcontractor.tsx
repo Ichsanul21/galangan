@@ -144,6 +144,9 @@ export default function Subcontractor() {
   const [sort, setSort] = useState<SortState>({ key: null, dir: "asc" });
   const [subQ, setSubQ] = useState("");
   const [subStatus, setSubStatus] = useState("Semua");
+  const [woQ, setWoQ] = useState("");
+  const [termQ, setTermQ] = useState("");
+  const [k3Q, setK3Q] = useState("");
   const modAlert = useModuleAlert("subkontraktor");
   const flash = useNotifFlash();
   const deepParams = useDeepLinkParams();
@@ -224,14 +227,16 @@ export default function Subcontractor() {
     if (subStatus !== "Semua" && normSub(s.status) !== subStatus) return false;
     return rowMatches(s, subQ, ["name", "services", "contractType", "status", "k3", "id"]);
   });
-  const woPager = usePager(workOrders.length);
+  const woFiltered = workOrders.filter((w) => rowMatches(w as unknown as Record<string, unknown>, woQ, ["id", "sub", "project", "scope", "status"]));
+  const woPager = usePager(woFiltered.length);
   /* T7-SK1: pager tabel termin & pembayaran. */
-  const termPager = usePager(payments.length);
+  const termFiltered = payments.filter((p) => rowMatches(p as unknown as Record<string, unknown>, termQ, ["id", "sub", "woId", "milestone", "status"]));
+  const termPager = usePager(termFiltered.length);
   useEffect(() => {
     woPager.reset();
     termPager.reset();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tab]);
+  }, [tab, woQ, termQ, k3Q]);
   const pickNotifIds = (ids: string[]): void => {
     if (ids.length === 0) return;
     const tIdx = payments.findIndex((t) => ids.includes(String(t.id)));
@@ -1035,11 +1040,12 @@ const printSpk = async (w: StoreItem): Promise<void> => {
 
           {tab === "Work Order" && (
             <div>
-              <div className="mb-3 flex justify-end">
+              <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                <SearchBox value={woQ} onChange={setWoQ} className="w-full max-w-xs" placeholder={locale === "en" ? "Search work orders..." : "Cari work order..."} ariaLabel={locale === "en" ? "Search work orders" : "Cari work order"} />
                 <button className="btn-secondary text-xs" onClick={() => setShowWo(true)}><Plus className="h-3.5 w-3.5" /> {S.issueWoBtn}</button>
               </div>
               <div className="space-y-3">
-                {woPager.slice(workOrders).map((w) => (
+                {woPager.slice(woFiltered).map((w) => (
                   <Card key={w.id} className="p-4">
                     <div className="flex flex-wrap items-center justify-between gap-2">
                       <div className="flex min-w-0 items-center gap-3">
@@ -1110,7 +1116,7 @@ const printSpk = async (w: StoreItem): Promise<void> => {
                     </div>
                   </Card>
                 ))}
-                {workOrders.length === 0 && <p className="py-6 text-center text-sm text-steel-400">{S.emptyWo}</p>}
+                {woFiltered.length === 0 && <p className="py-6 text-center text-sm text-steel-400">{S.emptyWo}</p>}
                 {woPager.bar}
               </div>
             </div>
@@ -1130,7 +1136,8 @@ const printSpk = async (w: StoreItem): Promise<void> => {
                   <span className="text-steel-400">Draf → Diajukan → Disetujui → Lunas (+hutang & retensi) → Retensi Released (WO Selesai + BA)</span>
                 </div>
               </div>
-              <div className="mb-3 flex justify-end">
+              <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                <SearchBox value={termQ} onChange={setTermQ} className="w-full max-w-xs" placeholder={locale === "en" ? "Search termin..." : "Cari termin..."} ariaLabel={locale === "en" ? "Search termin" : "Cari termin"} />
                 <button className="btn-secondary text-xs" onClick={() => setShowTerm(true)}><Plus className="h-3.5 w-3.5" /> {S.proposeTerminBtn}</button>
               </div>
               <div className="overflow-x-auto">
@@ -1139,7 +1146,7 @@ const printSpk = async (w: StoreItem): Promise<void> => {
                     <tr><SortTh label={locale === "en" ? "Project" : "Proyek"} sortKey="project" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.sortSub} sortKey="sub" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.sortWoProg} sortKey="wo" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.sortValue} sortKey="nilai" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.sortRetensi} sortKey="retensi" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.sortNeto} sortKey="neto" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.sortStatus} sortKey="status" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><th className="th">{S.actionLabel}</th></tr>
                   </thead>
                   <tbody className="divide-y divide-steel-100">
-                    {termPager.slice(sortRows(payments, sort, (p, key) =>
+                    {termPager.slice(sortRows(termFiltered, sort, (p, key) =>
                       key === "createdAt" ? (createdAtOf(p) ?? "") : key === "updatedAt" ? (lastTouchedAt(p) ?? "") : key === "termin" ? String(p.id ?? "") : key === "sub" ? String(p.sub ?? "") : key === "wo" ? String(p.woId ?? p.progress ?? "") : key === "nilai" ? Number(p.amount ?? 0) : key === "pph" ? Number(p.amount ?? 0) * pphOf(p, pphDefault) / 100 : key === "retensi" ? Number(p.amount ?? 0) * retOf(p) / 100 : key === "neto" ? netoOf(p, pphDefault) : key === "tanggal" ? String(p.date ?? "") : String(p.status ?? "")
                     )).map((p) => {
                       const wo = workOrders.find((w) => w.id === p.woId);
@@ -1276,6 +1283,9 @@ const printSpk = async (w: StoreItem): Promise<void> => {
 
           {tab === "Kepatuhan K3" && (
             <div className="space-y-3">
+              <div className="mb-2 flex justify-end">
+                <SearchBox value={k3Q} onChange={setK3Q} className="max-w-xs" placeholder={locale === "en" ? "Search compliance..." : "Cari kepatuhan..."} ariaLabel={locale === "en" ? "Search K3 compliance" : "Cari kepatuhan K3"} />
+              </div>
               <div className="rounded-xl bg-surface p-2.5">
                 <FlowStrip steps={["Kualifikasi", "Aktif", "Blacklist"]} current={subcontractors.some((s) => normSub(s.status) === "Blacklist") ? "Blacklist" : subcontractors.some((s) => normSub(s.status) === "Aktif") ? "Aktif" : "Kualifikasi"} ariaLabel={locale === "en" ? "Compliance flow" : "Alur kepatuhan"} />
                 <div className="mt-1.5 flex flex-wrap gap-1.5 text-[11px] text-steel-500">
@@ -1285,7 +1295,7 @@ const printSpk = async (w: StoreItem): Promise<void> => {
                   <span>K3: <Badge tone="green">Patuh (A+/A)</Badge> <Badge tone="amber">Cukup (B+/B)</Badge> <Badge tone="red">Perlu Bina (C)</Badge> · insiden proyek WO terkait menurunkan kepatuhan</span>
                 </div>
               </div>
-              {subcontractors.map((s) => {
+              {subcontractors.filter((s) => rowMatches(s as unknown as Record<string, unknown>, k3Q, ["name", "k3", "status"])).map((s) => {
                 const list = incidentsOfSub(s.name);
                 const comp = complianceOf(s.k3);
                 return (

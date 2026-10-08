@@ -91,6 +91,10 @@ export default function CRM() {
   const [sort, setSort] = useState<SortState>({ key: null, dir: "asc" });
   const [klasFilter, setKlasFilter] = useState("Semua");
   const [crmQ, setCrmQ] = useState("");
+  const [quoteQ, setQuoteQ] = useState("");
+  const [reqQ, setReqQ] = useState("");
+  const [commQ, setCommQ] = useState("");
+  const [conQ, setConQ] = useState("");
   const [stageFilter, setStageFilter] = useState("Semua");
   const [oldOnly, setOldOnly] = useState(false);
   const [hoChecks, setHoChecks] = useDraftState<boolean[]>("isms.draft.crm.hoChecks", [false, false, false, false]);
@@ -617,17 +621,19 @@ export default function CRM() {
   const oldLeads = quotations.filter((q) => !isTerminal(String(q.stage)) && (umurHari(String(q.date ?? "")) ?? 0) > 30);
 
   const penawaranList = quotations.filter((q) => {
-    if (!oldOnly) return true;
-    return (umurHari(String(q.date ?? "")) ?? 0) > 30;
+    if (oldOnly && !((umurHari(String(q.date ?? "")) ?? 0) > 30)) return false;
+    return rowMatches(q, quoteQ, ["id", "vessel", "client", "type", "stage", "status"]);
   });
-  const sortedContracts = useMemo(() => sortRows(contracts, sort, (k, key) => {
+  const reqList = requests.filter((r) => rowMatches(r, reqQ, ["id", "vessel", "client", "kind", "status", "scope"]));
+  const commList = communications.filter((m) => rowMatches(m, commQ, ["quotationId", "channel", "summary", "by"]));
+  const sortedContracts = useMemo(() => sortRows(contracts.filter((k) => rowMatches(k, conQ, ["id", "quotationId", "client", "status", "projectId"])), sort, (k, key) => {
     if (key === "createdAt") return createdAtOf(k) ?? "";
     if (key === "updatedAt") return lastTouchedAt(k) ?? "";
     return key === "kontrak" ? String(k.id ?? "") : key === "quotation" ? String(k.quotationId ?? "") : key === "nilai" ? Number(k.value ?? 0) : key === "sign" ? String(k.signedAt ?? "") : String(k.status ?? "");
-  }), [contracts, sort]);
+  }), [contracts, sort, conQ]);
   const quotPager = usePager(penawaranList.length);
-  const reqPager = usePager(requests.length);
-  const contractPager = usePager(contracts.length);
+  const reqPager = usePager(reqList.length);
+  const contractPager = usePager(sortedContracts.length);
   /* Terjemahkan sekumpulan id deep-link menjadi tab + sorotan. Satu id (klik
      banner modul) dan banyak id (klik kartu Dashboard "Kontrak Menang",
      yang mengirim seluruh won / terkonversi) memakai jalur yang sama. */
@@ -675,7 +681,7 @@ export default function CRM() {
     reqPager.reset();
     contractPager.reset();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [oldOnly, tab]);
+  }, [oldOnly, tab, quoteQ, reqQ, commQ, conQ]);
 
   const openConvert = (q: StoreItem) => {
     setHoChecks([false, false, false, false]);
@@ -943,10 +949,13 @@ export default function CRM() {
 
           {tab === "Penawaran" && (
             <div className="space-y-3">
-              <label className="flex items-center gap-2 text-sm text-steel-600">
-                <input type="checkbox" className="h-4 w-4" checked={oldOnly} onChange={(e) => setOldOnly(e.target.checked)} />
-                {(locale === "en" ? S.oldLeadFilter : S.oldLeadFilter.replace(/lead/gi, "prospek")).replace("{n}", String(oldLeads.length))}
-              </label>
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <SearchBox value={quoteQ} onChange={setQuoteQ} className="w-full max-w-xs" placeholder={locale === "en" ? "Search quotations..." : "Cari penawaran..."} ariaLabel={locale === "en" ? "Search quotations" : "Cari penawaran"} />
+                <label className="flex items-center gap-2 text-sm text-steel-600">
+                  <input type="checkbox" className="h-4 w-4" checked={oldOnly} onChange={(e) => setOldOnly(e.target.checked)} />
+                  {(locale === "en" ? S.oldLeadFilter : S.oldLeadFilter.replace(/lead/gi, "prospek")).replace("{n}", String(oldLeads.length))}
+                </label>
+              </div>
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
               {quotPager.slice(penawaranList).map((q) => (
                 <Card key={q.id} id={notifRowId(String(q.id))} className={`p-4 ${rowHighlightClass({ id: String(q.id), flash, notified: notified.has(String(q.id)) })}`}>
@@ -986,11 +995,12 @@ export default function CRM() {
 
           {tab === "Request" && (
             <div className="space-y-3">
-              <div className="flex items-center justify-end">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <SearchBox value={reqQ} onChange={setReqQ} className="w-full max-w-xs" placeholder={locale === "en" ? "Search requests..." : "Cari request..."} ariaLabel={locale === "en" ? "Search requests" : "Cari request"} />
                 <button className="btn-secondary text-xs" onClick={() => setShowReq(true)}><Plus className="h-3.5 w-3.5" /> {S.newRequestBtn}</button>
               </div>
               <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                {reqPager.slice(requests).map((r) => (
+                {reqPager.slice(reqList).map((r) => (
                   <Card key={r.id} id={notifRowId(String(r.id))} className={`p-4 ${rowHighlightClass({ id: String(r.id), flash, notified: notified.has(String(r.id)) })}`}>
                     <div className="flex justify-between gap-2">
                       <div className="min-w-0">
@@ -1016,7 +1026,7 @@ export default function CRM() {
                     </div>
                   </Card>
                 ))}
-                {requests.length === 0 && <EmptyState title={S.emptyReqTitle} subtitle={S.emptyReqSub} />}
+                {reqList.length === 0 && <EmptyState title={S.emptyReqTitle} subtitle={S.emptyReqSub} />}
               </div>
               {reqPager.bar}
             </div>
@@ -1026,11 +1036,14 @@ export default function CRM() {
             <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
               <Card className="p-4 lg:col-span-2">
                 <CardHeader title={S.commLogTitle} subtitle={S.commLogSub} />
-                {communications.length === 0 ? (
+                <div className="mb-2 flex justify-end">
+                  <SearchBox value={commQ} onChange={setCommQ} className="max-w-xs" placeholder={locale === "en" ? "Search communications..." : "Cari komunikasi..."} ariaLabel={locale === "en" ? "Search communications" : "Cari komunikasi"} />
+                </div>
+                {commList.length === 0 ? (
                   <EmptyState title={S.emptyCommTitle} subtitle={S.emptyCommSubClient} />
                 ) : (
                   <div className="space-y-2">
-                    {communications.map((m) => (
+                    {commList.map((m) => (
                       <div key={m.id} className="rounded-xl bg-surface p-3 text-sm">
                         <div className="flex flex-wrap items-center gap-2">
                           <Link to={`/crm/quotation/${m.quotationId}`} className="font-mono text-xs font-bold text-ocean-600">{String(m.quotationId)}</Link>
@@ -1073,6 +1086,9 @@ export default function CRM() {
             <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
               <Card className="p-4 lg:col-span-2">
                 <CardHeader title={S.contractListTitle} subtitle={S.contractListSub} />
+                <div className="mb-2 flex justify-end">
+                  <SearchBox value={conQ} onChange={setConQ} className="max-w-xs" placeholder={locale === "en" ? "Search contracts..." : "Cari kontrak..."} ariaLabel={locale === "en" ? "Search contracts" : "Cari kontrak"} />
+                </div>
                 {contracts.length === 0 ? (
                   <EmptyState title={S.emptyContractTitle} subtitle={S.emptyContractSub} />
                 ) : (

@@ -259,6 +259,7 @@ export default function HR() {
   const [leaveForm, setLeaveForm] = useState({ employeeId: "", type: "Tahunan", from: todayISO(), to: todayISO(), note: "", fileUrl: "" });
   const [rejectTarget, setRejectTarget] = useState<StoreItem | null>(null);
   const [delLeave, setDelLeave] = useState<StoreItem | null>(null);
+  const [cutiQ, setCutiQ] = useState("");
 
   /* ---------- mutasi ---------- */
   const [showMutasi, setShowMutasi] = useState(false);
@@ -272,8 +273,10 @@ export default function HR() {
   const [delTraining, setDelTraining] = useState<StoreItem | null>(null);
   const [certTarget, setCertTarget] = useState<StoreItem | null>(null);
   const [certForm, setCertForm] = useState({ name: "", expires: todayISO(), no: "", issued: "", fileUrl: "" });
+  const [trainQ, setTrainQ] = useState("");
 
   /* ---------- surat ---------- */
+  const [suratQ, setSuratQ] = useState("");
   const [showSurat, setShowSurat] = useState(false);
   const [suratForm, setSuratForm] = useState({ employeeId: "", jenis: "SP 1", isi: "", tanggal: todayISO(), fileUrl: "", approvedBy: "", approvedAt: "", sourceType: "", sourceId: "", mulai: "", berakhir: "", gaji: "" });
   /* Arsip surat pindah dari useDraftState("isms.draft.hr.arsipSurat") ke
@@ -1630,6 +1633,9 @@ const finishTraining = async (t: StoreItem) => {
 
           {tab === "Cuti & Izin" && (
             <div className="overflow-x-auto">
+              <div className="mb-2 flex justify-end">
+                <SearchBox value={cutiQ} onChange={setCutiQ} className="max-w-xs" placeholder={locale === "en" ? "Search leave requests..." : "Cari cuti & izin..."} ariaLabel={locale === "en" ? "Search leave requests" : "Cari cuti & izin"} />
+              </div>
               <table className="w-full">
                 <thead className="bg-surface sticky top-0 z-10">
                   <tr>
@@ -1645,7 +1651,7 @@ const finishTraining = async (t: StoreItem) => {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-steel-100">
-                  {sortRows(data.leaves, sort2, (row, k) => {
+                  {sortRows(data.leaves.filter((l) => rowMatches(l as unknown as Record<string, unknown>, cutiQ, ["id", "employeeId", "status"])), sort2, (row, k) => {
                     const l = row as StoreItem;
                     switch (k) {
                       case "id": return String(l.id ?? "");
@@ -1759,7 +1765,7 @@ const finishTraining = async (t: StoreItem) => {
                   ))}
                 </tbody>
               </table>
-              {data.leaves.length === 0 && <EmptyState title={S.emptyCutiT} subtitle={S.emptyCutiS} />}
+              {data.leaves.filter((l) => rowMatches(l as unknown as Record<string, unknown>, cutiQ, ["id", "employeeId", "status"])).length === 0 && <EmptyState title={S.emptyCutiT} subtitle={S.emptyCutiS} />}
             </div>
           )}
 
@@ -1837,6 +1843,9 @@ const finishTraining = async (t: StoreItem) => {
 
           {tab === "Training" && (
             <div className="overflow-x-auto">
+              <div className="mb-2 flex justify-end">
+                <SearchBox value={trainQ} onChange={setTrainQ} className="max-w-xs" placeholder={locale === "en" ? "Search trainings..." : "Cari training..."} ariaLabel={locale === "en" ? "Search trainings" : "Cari training"} />
+              </div>
               <table className="w-full">
                 <thead className="bg-surface sticky top-0 z-10">
                   <tr>
@@ -1850,7 +1859,7 @@ const finishTraining = async (t: StoreItem) => {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-steel-100">
-                  {sortRows(data.trainings, sort3, (row, k) => {
+                  {sortRows(data.trainings.filter((t) => rowMatches(t as unknown as Record<string, unknown>, trainQ, ["id", "title", "provider", "status"])), sort3, (row, k) => {
                     const t = row as StoreItem;
                     switch (k) {
                       case "id": return String(t.id ?? "");
@@ -1894,7 +1903,7 @@ const finishTraining = async (t: StoreItem) => {
                   })}
                 </tbody>
               </table>
-              {data.trainings.length === 0 && <EmptyState title={S.emptyTrainT} subtitle={S.emptyTrainS} />}
+              {data.trainings.filter((t) => rowMatches(t as unknown as Record<string, unknown>, trainQ, ["id", "title", "provider", "status"])).length === 0 && <EmptyState title={S.emptyTrainT} subtitle={S.emptyTrainS} />}
             </div>
           )}
 
@@ -1913,8 +1922,11 @@ const finishTraining = async (t: StoreItem) => {
                     ? `${arsipSurat.length} letter(s) in the shared archive. Each row can be previewed, edited and deleted.`
                     : `${arsipSurat.length} surat di arsip bersama. Setiap baris bisa dipratinjau, diubah, dan dihapus.`}
                 </p>
+                <div className="mt-2 flex justify-end">
+                  <SearchBox value={suratQ} onChange={setSuratQ} className="max-w-xs" placeholder={locale === "en" ? "Search letters..." : "Cari surat..."} ariaLabel={locale === "en" ? "Search letters" : "Cari surat"} />
+                </div>
                 <div className="mt-3 space-y-2.5">
-                  {arsipSurat.map((s) => (
+                  {arsipSurat.filter((s) => rowMatches(s as unknown as Record<string, unknown>, suratQ, ["id", "jenis", "nama"])).map((s) => (
                     <div key={s.id} className="flex items-start justify-between gap-2 rounded-lg bg-surface p-2.5 text-sm">
                       <div className="min-w-0">
                         <p className="font-medium text-navy-900">{s.jenis} · {s.nama}</p>
@@ -1942,7 +1954,7 @@ const finishTraining = async (t: StoreItem) => {
                       </div>
                     </div>
                   ))}
-                  {arsipSurat.length === 0 && <p className="text-xs text-steel-400">{S.emptyArsip}</p>}
+                  {arsipSurat.filter((s) => rowMatches(s as unknown as Record<string, unknown>, suratQ, ["id", "jenis", "nama"])).length === 0 && <p className="text-xs text-steel-400">{S.emptyArsip}</p>}
                 </div>
               </Card>
               <Card className="p-5">

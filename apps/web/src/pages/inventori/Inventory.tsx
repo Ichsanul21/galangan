@@ -585,18 +585,20 @@ if (k === "mattype") return matTypeOf(i);
   }), [list, sort, abc]);
   const pager = usePager(list.length, 25);
   const [movWh, setMovWh] = useState("Semua");
+  const [movQ, setMovQ] = useState("");
   /* Filter gudang terstruktur: dulu `whFlowOf(m).includes(movWh)` - substring
      pada string gabungan, jadi "Gudang B" ikut mencocokkan "Gudang Baja A",
      dan transfer antar gudang tak bisa dibedakan. movementTouchesWh()
      membandingkan endpoint dari/to satu per satu (longgar kapital/spasi). */
   const movFiltered = useMemo(
-    () => (movWh === "Semua" ? movements : movements.filter((m) => movementTouchesWh(m, movWh))),
-    [movements, movWh],
+    () => (movWh === "Semua" ? movements : movements.filter((m) => movementTouchesWh(m, movWh)))
+      .filter((m) => rowMatches(m as unknown as Record<string, unknown>, movQ, ["id", "item", "ref", "by", "type", "supplier"])),
+    [movements, movWh, movQ],
   );
   const movPager = usePager(movFiltered.length, 25);
   useEffect(() => {
     movPager.reset();
-  }, [movWh]);
+  }, [movWh, movQ]);
   const movSorted = useMemo(() => sortRows(movFiltered, sort3, (m, k) => {
     if (k === "jumlah") return Number(m.qty || 0);
     if (k === "total") return Number(m.total || 0);
@@ -2537,12 +2539,15 @@ if (k === "mattype") return matTypeOf(i);
               <p className="rounded-lg bg-steel-50 px-3 py-2 text-xs text-steel-500" title={locale === "en" ? "Goods in = stock received · Goods out = stock issued" : "Barang masuk = stok diterima · Barang keluar = stok dikeluarkan"}>
                 {locale === "en" ? "Goods in = stock received · Goods out = stock issued" : "Barang masuk = stok diterima · Barang keluar = stok dikeluarkan"}
               </p>
-              <div className="flex flex-wrap items-center gap-2">
-                <label className="text-xs font-medium text-steel-600" htmlFor="mov-wh">{locale === "en" ? "From / To" : "Dari / Ke"}</label>
-                <select id="mov-wh" className="input w-auto py-1.5 text-xs" value={movWh} onChange={(e) => setMovWh(e.target.value)}>
-                  <option value="Semua">{locale === "en" ? "All" : "Semua"}</option>
-                  {warehouses.map((w) => <option key={w} value={w}>{w}</option>)}
-                </select>
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <SearchBox value={movQ} onChange={setMovQ} className="w-full max-w-xs" placeholder={locale === "en" ? "Search movements..." : "Cari pergerakan..."} ariaLabel={locale === "en" ? "Search movements" : "Cari pergerakan"} />
+                <div className="flex items-center gap-2">
+                  <label className="text-xs font-medium text-steel-600" htmlFor="mov-wh">{locale === "en" ? "From / To" : "Dari / Ke"}</label>
+                  <select id="mov-wh" className="input w-auto py-1.5 text-xs" value={movWh} onChange={(e) => setMovWh(e.target.value)}>
+                    <option value="Semua">{locale === "en" ? "All" : "Semua"}</option>
+                    {warehouses.map((w) => <option key={w} value={w}>{w}</option>)}
+                  </select>
+                </div>
               </div>
               <div className="overflow-x-auto">
                 <table className="w-full">

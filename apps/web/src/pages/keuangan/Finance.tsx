@@ -1521,6 +1521,7 @@ const { data, add, update, remove, log, branch, inBranch } = useStore();
      hapus adalah audit_log. */
   const [delHistRows, setDelHistRows] = useState<{ key: string; table: string; row_id: string; deleted_at: string; actor: string; source: "Server" | "Perangkat" }[]>([]);
   const [delHistReady, setDelHistReady] = useState(false);
+  const [delSort, setDelSort] = useState<SortState>({ key: null, dir: "asc" });
   useEffect(() => {
     if (tab !== "Riwayat Hapus" || delHistReady) return;
     let cancelled = false;
@@ -3303,13 +3304,16 @@ const { data, add, update, remove, log, branch, inBranch } = useStore();
                       <SortTh label={S.colKeluar} sortKey="keluar" sort={kasSort} onSort={(k) => setKasSort((s) => toggleSort(s, k))} />
                       <SortTh label={S.colBerjalan} sortKey="berjalan" sort={kasSort} onSort={(k) => setKasSort((s) => toggleSort(s, k))} />
                       <SortTh label={S.colSaldoAkhir} sortKey="akhir" sort={kasSort} onSort={(k) => setKasSort((s) => toggleSort(s, k))} />
+                      <SortTh label={S.colCreated} sortKey="createdAt" sort={kasSort} onSort={(k) => setKasSort((s) => toggleSort(s, k))} />
+                      <SortTh label={S.colUpdated} sortKey="updatedAt" sort={kasSort} onSort={(k) => setKasSort((s) => toggleSort(s, k))} />
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-steel-100">
                     {sortRows(kasRows.filter((r) => rowMatches(r as unknown as Record<string, unknown>, kasQ, ["kode", "nama"])), kasSort, (r, k) =>
                       k === "nama" ? String(r.nama) : k === "awal" ? Number(r.awal) : k === "masuk" ? kasFlow(r.kode).masuk :
                       k === "keluar" ? kasFlow(r.kode).keluar : k === "berjalan" ? (kasSaldo[r.kode] ?? r.awal) :
-                      k === "akhir" ? Number(r.akhir) : String(r.kode)).map((r) => {
+                      k === "akhir" ? Number(r.akhir) :
+                      k === "createdAt" || k === "updatedAt" ? tsSortKey(r as unknown as Record<string, unknown>, k) : String(r.kode)).map((r) => {
                       const { masuk, keluar } = kasFlow(r.kode);
                       return (
                       <tr key={r.kode} className="hover:bg-surface">
@@ -3320,6 +3324,7 @@ const { data, add, update, remove, log, branch, inBranch } = useStore();
                         <td className="td text-xs text-rose-600">{keluar ? fmtRupiah(keluar) : "-"}</td>
                         <td className="td text-xs font-semibold">{fmtRupiah((kasSaldo[r.kode] ?? r.awal))}</td>
                         <td className="td text-xs text-steel-500">{fmtRupiah(r.akhir)}</td>
+                        <TsCells row={r as unknown as Record<string, unknown>} />
                       </tr>
                       );
                     })}
@@ -3341,6 +3346,8 @@ const { data, add, update, remove, log, branch, inBranch } = useStore();
                         <th className="th">{S.kasNetCol}</th>
                         <th className="th">{S.kasJCol}</th>
                         <SortTh label={locale === "en" ? "Last source" : "Sumber terakhir"} sortKey="lastTs" sort={kasSort} onSort={(k) => setKasSort((s) => toggleSort(s, k))} />
+                        <SortTh label={S.colCreated} sortKey="createdAt" sort={kasSort} onSort={(k) => setKasSort((s) => toggleSort(s, k))} />
+                        <SortTh label={S.colUpdated} sortKey="updatedAt" sort={kasSort} onSort={(k) => setKasSort((s) => toggleSort(s, k))} />
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-steel-100">
@@ -3350,6 +3357,7 @@ const { data, add, update, remove, log, branch, inBranch } = useStore();
                         (r, k) => k === "nama" ? r.nama : k === "masuk" ? r.masuk : k === "keluar" ? r.keluar
                           : k === "lastTs" ? (r.lastTs ?? "")
                           : k === "akhir" ? (r.masuk - r.keluar)
+                          : k === "createdAt" || k === "updatedAt" ? tsSortKey(r as unknown as Record<string, unknown>, k)
                           : r.kode,
                       ).map((r) => (
                         <tr key={r.kode} className="hover:bg-surface">
@@ -3360,10 +3368,11 @@ const { data, add, update, remove, log, branch, inBranch } = useStore();
                           <td className="td text-xs font-semibold">{fmtRupiah(r.masuk - r.keluar)}</td>
                           <td className="td text-xs text-steel-500">{r.count}</td>
                           <td className="td text-xs text-steel-600">{r.lastTs ? fmtTanggal(r.lastTs) : <span className="text-steel-400">-</span>}</td>
+                          <TsCells row={r as unknown as Record<string, unknown>} />
                         </tr>
                       ))}
                       {kasLiveRows.filter((r) => rowMatches(r as unknown as Record<string, unknown>, kasQ, ["kode", "nama"])).length === 0 && (
-                        <tr><td className="td text-xs italic text-steel-400" colSpan={7}>{S.kasEmptyLive}</td></tr>
+                        <tr><td className="td text-xs italic text-steel-400" colSpan={9}>{S.kasEmptyLive}</td></tr>
                       )}
                     </tbody>
                   </table>
@@ -3418,7 +3427,7 @@ const { data, add, update, remove, log, branch, inBranch } = useStore();
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-steel-100">
-                      {manJournals.filter((j) => (String(j.sumber) === "Kas" || String(j.sumber) === "Bank") && matchHist(String(j.date ?? ""), kasHist))
+                      {manJournals.filter((j) => (String(j.sumber) === "Kas" || String(j.sumber) === "Bank") && matchHist(String(j.date ?? ""), kasHist) && rowMatches(j as unknown as Record<string, unknown>, kasQ, ["id", "dokumen", "uraian", "db", "kr", "sumber"]))
                         .sort((a, b) => {
                           /* Sort mutasi: default tanggal jurnal; bila user klik
                              Dibuat/Diubah, urutkan dari timestamp rekam. */
@@ -3438,7 +3447,7 @@ const { data, add, update, remove, log, branch, inBranch } = useStore();
                           <TsCells row={j as unknown as Record<string, unknown>} />
                         </tr>
                       ))}
-                      {manJournals.filter((j) => (String(j.sumber) === "Kas" || String(j.sumber) === "Bank") && matchHist(String(j.date ?? ""), kasHist)).length === 0 && (
+                      {manJournals.filter((j) => (String(j.sumber) === "Kas" || String(j.sumber) === "Bank") && matchHist(String(j.date ?? ""), kasHist) && rowMatches(j as unknown as Record<string, unknown>, kasQ, ["id", "dokumen", "uraian", "db", "kr", "sumber"])).length === 0 && (
                         <tr><td className="td text-xs italic text-steel-400" colSpan={8}>{S.kasMutEmpty}</td></tr>
                       )}
                     </tbody>
@@ -3699,6 +3708,8 @@ const { data, add, update, remove, log, branch, inBranch } = useStore();
                       <SortTh label={S.colNamaAkun} sortKey="nama" sort={bbSort} onSort={(k) => setBbSort((s) => toggleSort(s, k))} rowSpan={2} />
                       <SortTh label="D/K" sortKey="dk" sort={bbSort} onSort={(k) => setBbSort((s) => toggleSort(s, k))} rowSpan={2} />
                       <th className="th" colSpan={2}>{S.bbTrial}</th><th className="th" colSpan={2}>{S.bbPL}</th><th className="th" colSpan={2}>{S.bbBalance}</th>
+                      <SortTh label={S.colCreated} sortKey="createdAt" sort={bbSort} onSort={(k) => setBbSort((s) => toggleSort(s, k))} rowSpan={2} />
+                      <SortTh label={S.colUpdated} sortKey="updatedAt" sort={bbSort} onSort={(k) => setBbSort((s) => toggleSort(s, k))} rowSpan={2} />
                     </tr>
                     <tr><th className="th">{S.colDebit}</th><th className="th">{S.colKredit}</th><th className="th">{S.colDebit}</th><th className="th">{S.colKredit}</th><th className="th" colSpan={2}>{S.bbPeriodCol}</th>
                     </tr>
@@ -3706,7 +3717,8 @@ const { data, add, update, remove, log, branch, inBranch } = useStore();
                   </thead>
                   <tbody className="divide-y divide-steel-100">
                     {sortRows(coaRows.filter((c) => String(c.dk) !== "-").filter((c) => rowMatches(c as unknown as Record<string, unknown>, bbQ, ["kode", "nama", "dk"])), bbSort, (c, k) =>
-                      k === "nama" ? String(c.nama) : k === "dk" ? String(c.dk) : String(c.kode)).map((c) => {
+                      k === "nama" ? String(c.nama) : k === "dk" ? String(c.dk) :
+                      k === "createdAt" || k === "updatedAt" ? tsSortKey(c as unknown as Record<string, unknown>, k) : String(c.kode)).map((c) => {
                       const kode = String(c.kode);
                       const isLR = String(c.nrlr) === "LR";
                       const d = nlOf(kode).d;
@@ -3722,6 +3734,7 @@ const { data, add, update, remove, log, branch, inBranch } = useStore();
                         <td className="td text-xs">{isLR && k ? fmtRupiah(k) : "-"}</td>
                         <td className="td text-xs">{!isLR && d ? fmtRupiah(d) : "-"}</td>
                         <td className="td text-xs">{!isLR && k ? fmtRupiah(k) : "-"}</td>
+                        <TsCells row={c as unknown as Record<string, unknown>} />
                       </tr>
                       );
                     })}
@@ -3745,6 +3758,8 @@ const { data, add, update, remove, log, branch, inBranch } = useStore();
                         <th className="th" colSpan={2}>{S.bbPeriodCol}</th>
                         <th className="th">{S.bbRowsCol}</th>
                         <th className="th">{locale === "en" ? "Last source" : "Sumber terakhir"}</th>
+                        <th className="th">{S.colCreated}</th>
+                        <th className="th">{S.colUpdated}</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-steel-100">
@@ -3759,10 +3774,11 @@ const { data, add, update, remove, log, branch, inBranch } = useStore();
                           <td className="td text-xs">{r.k ? fmtRupiah(r.k) : "-"}</td>
                           <td className="td text-xs text-steel-500">{r.n}</td>
                           <td className="td text-xs text-steel-600">{r.lastTs ? fmtTanggal(r.lastTs) : <span className="text-steel-400">-</span>}</td>
+                          <TsCells row={r as unknown as Record<string, unknown>} />
                         </tr>
                       ))}
                       {bbLive.length === 0 && (
-                        <tr><td className="td text-xs italic text-steel-400" colSpan={9}>{S.bbEmptyLive}</td></tr>
+                        <tr><td className="td text-xs italic text-steel-400" colSpan={11}>{S.bbEmptyLive}</td></tr>
                       )}
                     </tbody>
                   </table>
@@ -3778,18 +3794,23 @@ const { data, add, update, remove, log, branch, inBranch } = useStore();
                 <table className="w-full">
                   <thead className="bg-surface sticky top-0 z-10">
                     <tr>
-                      <th className="th">Tanggal</th>
-                      <th className="th">Dokumen</th>
-                      <th className="th">Uraian</th>
-                      <th className="th">DB</th>
-                      <th className="th">KR</th>
-                      <th className="th">Nominal</th>
-                      <th className="th">{S.colCreated}</th>
-                      <th className="th">{S.colUpdated}</th>
+                      <SortTh label="Tanggal" sortKey="tanggal" sort={bbSort} onSort={(k) => setBbSort((s) => toggleSort(s, k))} />
+                      <SortTh label="Dokumen" sortKey="dokumen" sort={bbSort} onSort={(k) => setBbSort((s) => toggleSort(s, k))} />
+                      <SortTh label="Uraian" sortKey="uraian" sort={bbSort} onSort={(k) => setBbSort((s) => toggleSort(s, k))} />
+                      <SortTh label="DB" sortKey="db" sort={bbSort} onSort={(k) => setBbSort((s) => toggleSort(s, k))} />
+                      <SortTh label="KR" sortKey="kr" sort={bbSort} onSort={(k) => setBbSort((s) => toggleSort(s, k))} />
+                      <SortTh label="Nominal" sortKey="nominal" sort={bbSort} onSort={(k) => setBbSort((s) => toggleSort(s, k))} />
+                      <SortTh label={S.colCreated} sortKey="createdAt" sort={bbSort} onSort={(k) => setBbSort((s) => toggleSort(s, k))} />
+                      <SortTh label={S.colUpdated} sortKey="updatedAt" sort={bbSort} onSort={(k) => setBbSort((s) => toggleSort(s, k))} />
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-steel-100">
-                    {manJournals.filter((j) => matchHist(String(j.date ?? ""), bbHist)).slice(0, 100).map((j) => (
+                    {sortRows(manJournals.filter((j) => matchHist(String(j.date ?? ""), bbHist) && rowMatches(j as unknown as Record<string, unknown>, bbQ, ["id", "dokumen", "uraian", "db", "kr", "sumber"])).slice(0, 100), bbSort, (j, k) =>
+                      k === "tanggal" ? String(j.date ?? "") : k === "dokumen" ? String(j.dokumen ?? "") :
+                      k === "uraian" ? String(j.uraian ?? "") : k === "db" ? String(j.db ?? "") :
+                      k === "kr" ? String(j.kr ?? "") : k === "nominal" ? num(j.amount) :
+                      k === "createdAt" || k === "updatedAt" ? tsSortKey(j as unknown as Record<string, unknown>, k) :
+                      String(j.id)).map((j) => (
                       <tr key={String(j.id)} className="hover:bg-surface">
                         <td className="td font-mono text-xs text-steel-600">{fmtTanggal(String(j.date ?? ""))}</td>
                         <td className="td font-mono text-xs">{String(j.dokumen ?? "-")}</td>
@@ -3800,7 +3821,7 @@ const { data, add, update, remove, log, branch, inBranch } = useStore();
                         <TsCells row={j as unknown as Record<string, unknown>} />
                       </tr>
                     ))}
-                    {manJournals.filter((j) => matchHist(String(j.date ?? ""), bbHist)).length === 0 && (
+                    {manJournals.filter((j) => matchHist(String(j.date ?? ""), bbHist) && rowMatches(j as unknown as Record<string, unknown>, bbQ, ["id", "dokumen", "uraian", "db", "kr", "sumber"])).length === 0 && (
                       <tr><td className="td text-xs italic text-steel-400" colSpan={8}>{S.bbEmptyLive}</td></tr>
                     )}
                   </tbody>
@@ -3848,14 +3869,18 @@ const { data, add, update, remove, log, branch, inBranch } = useStore();
                       <SortTh label={S.colNoAkun} sortKey="kode" sort={lrSort} onSort={(k) => setLrSort((s) => toggleSort(s, k))} />
                       <SortTh label={S.colPos} sortKey="pos" sort={lrSort} onSort={(k) => setLrSort((s) => toggleSort(s, k))} />
                       <SortTh label={S.colNilai} sortKey="nilai" sort={lrSort} onSort={(k) => setLrSort((s) => toggleSort(s, k))} />
+                      <SortTh label={S.colCreated} sortKey="createdAt" sort={lrSort} onSort={(k) => setLrSort((s) => toggleSort(s, k))} />
+                      <SortTh label={S.colUpdated} sortKey="updatedAt" sort={lrSort} onSort={(k) => setLrSort((s) => toggleSort(s, k))} />
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-steel-100">
-                    {sortRows(lrRows.rows.filter((r) => rowMatches(r as unknown as Record<string, unknown>, lrQ, ["kode", "pos"])), lrSort, (r, k) => k === "pos" ? String(r.pos) : k === "nilai" ? Number(r.nilai) : String(r.kode)).map((r) => (
+                    {sortRows(lrRows.rows.filter((r) => rowMatches(r as unknown as Record<string, unknown>, lrQ, ["kode", "pos"])), lrSort, (r, k) => k === "pos" ? String(r.pos) : k === "nilai" ? Number(r.nilai) :
+                      k === "createdAt" || k === "updatedAt" ? tsSortKey(r as unknown as Record<string, unknown>, k) : String(r.kode)).map((r) => (
                       <tr key={r.kode} className="hover:bg-surface">
                         <td className="td font-mono text-xs font-semibold text-navy-900">{r.kode}</td>
                         <td className="td text-xs text-steel-600">{r.pos}</td>
                         <td className="td text-xs font-semibold">{fmtRupiah(r.nilai)}</td>
+                        <TsCells row={r as unknown as Record<string, unknown>} />
                       </tr>
                     ))}
                   </tbody>
@@ -3868,7 +3893,7 @@ const { data, add, update, remove, log, branch, inBranch } = useStore();
                 <div className="overflow-x-auto px-1 pb-3">
                   <table className="w-full">
                     <thead className="bg-surface sticky top-0 z-10">
-                      <tr><th className="th">Periode</th><th className="th">Pendapatan</th><th className="th">Beban Proyek</th><th className="th">Gaji</th><th className="th">Laba</th></tr>
+                      <tr><th className="th">Periode</th><th className="th">Pendapatan</th><th className="th">Beban Proyek</th><th className="th">Gaji</th><th className="th">Laba</th><th className="th">{S.colCreated}</th><th className="th">{S.colUpdated}</th></tr>
                     </thead>
                     <tbody className="divide-y divide-steel-100">
                       {plMonthly.filter((p) => matchHistPeriod(p.period, lrHist)).map((p) => (
@@ -3878,10 +3903,11 @@ const { data, add, update, remove, log, branch, inBranch } = useStore();
                           <td className="td text-steel-600">{fmtMiliar(p.costProj)}</td>
                           <td className="td text-steel-600">{fmtMiliar(p.salary)}</td>
                           <td className="td font-semibold text-emerald-600">{fmtMiliar(p.laba)}</td>
+                          <TsCells row={p as unknown as Record<string, unknown>} />
                         </tr>
                       ))}
                       {plMonthly.filter((p) => matchHistPeriod(p.period, lrHist)).length === 0 && (
-                        <tr><td className="td text-xs italic text-steel-400" colSpan={5}>{S.lrEmptyHist}</td></tr>
+                        <tr><td className="td text-xs italic text-steel-400" colSpan={7}>{S.lrEmptyHist}</td></tr>
                       )}
                     </tbody>
                   </table>
@@ -4110,12 +4136,12 @@ const { data, add, update, remove, log, branch, inBranch } = useStore();
                 <div className="overflow-x-auto px-1 pb-3">
                   <table className="w-full">
                     <thead className="bg-surface sticky top-0 z-10">
-                      <tr><th className="th">{S.colNoAkun}</th><th className="th">{S.colPos}</th><th className="th">{S.colNilai}</th></tr>
+                      <tr><th className="th">{S.colNoAkun}</th><th className="th">{S.colPos}</th><th className="th">{S.colNilai}</th><th className="th">{S.colCreated}</th><th className="th">{S.colUpdated}</th></tr>
                     </thead>
                     <tbody className="divide-y divide-steel-100">
-                      <tr className="hover:bg-surface"><td className="td font-mono text-xs font-semibold text-navy-900">3-200</td><td className="td text-xs text-steel-600">{S.reTitle} ({S.auditTag})</td><td className="td text-xs font-semibold">{fmtRupiah(LAPORAN_EXCEL.labaDitahanAwal)}</td></tr>
-                      <tr className="hover:bg-surface"><td className="td font-mono text-xs text-steel-400">live</td><td className="td text-xs text-steel-600">{S.reCurrentRow} {S.nrDocAsOf.replace("{d}", nrAsOf)}</td><td className="td text-xs font-semibold">{fmtRupiah(nrLabaLive)}</td></tr>
-                      <tr className="hover:bg-surface"><td className="td font-mono text-xs text-steel-400">-</td><td className="td text-xs font-bold text-navy-900">{S.reTotalRow} ({S.auditTag})</td><td className="td text-xs font-bold text-navy-900">{fmtRupiah(LAPORAN_EXCEL.labaDitahanAkhir)}</td></tr>
+                      <tr className="hover:bg-surface"><td className="td font-mono text-xs font-semibold text-navy-900">3-200</td><td className="td text-xs text-steel-600">{S.reTitle} ({S.auditTag})</td><td className="td text-xs font-semibold">{fmtRupiah(LAPORAN_EXCEL.labaDitahanAwal)}</td><td className="td text-xs text-steel-400">-</td><td className="td text-xs text-steel-400">-</td></tr>
+                      <tr className="hover:bg-surface"><td className="td font-mono text-xs text-steel-400">live</td><td className="td text-xs text-steel-600">{S.reCurrentRow} {S.nrDocAsOf.replace("{d}", nrAsOf)}</td><td className="td text-xs font-semibold">{fmtRupiah(nrLabaLive)}</td><td className="td text-xs text-steel-400">-</td><td className="td text-xs text-steel-400">-</td></tr>
+                      <tr className="hover:bg-surface"><td className="td font-mono text-xs text-steel-400">-</td><td className="td text-xs font-bold text-navy-900">{S.reTotalRow} ({S.auditTag})</td><td className="td text-xs font-bold text-navy-900">{fmtRupiah(LAPORAN_EXCEL.labaDitahanAkhir)}</td><td className="td text-xs text-steel-400">-</td><td className="td text-xs text-steel-400">-</td></tr>
                     </tbody>
                   </table>
                 </div>
@@ -4134,17 +4160,21 @@ const { data, add, update, remove, log, branch, inBranch } = useStore();
                         <SortTh label={S.colVendor} sortKey="v" sort={nrSort} onSort={(k) => setNrSort((s) => toggleSort(s, k))} />
                         <SortTh label={S.nrDocCol} sortKey="count" sort={nrSort} onSort={(k) => setNrSort((s) => toggleSort(s, k))} />
                         <SortTh label={S.nrOutstandingCol} sortKey="total" sort={nrSort} onSort={(k) => setNrSort((s) => toggleSort(s, k))} />
+                        <SortTh label={S.colCreated} sortKey="createdAt" sort={nrSort} onSort={(k) => setNrSort((s) => toggleSort(s, k))} />
+                        <SortTh label={S.colUpdated} sortKey="updatedAt" sort={nrSort} onSort={(k) => setNrSort((s) => toggleSort(s, k))} />
                       </tr></thead>
                       <tbody className="divide-y divide-steel-100">
-                        {sortRows(hutLive.filter((h) => rowMatches(h as unknown as Record<string, unknown>, nrQ, ["v", "count", "total"])), nrSort, (h, k) => k === "count" ? Number(h.count) : k === "total" ? Number(h.total) : String(h.v)).map((h) => (
+                        {sortRows(hutLive.filter((h) => rowMatches(h as unknown as Record<string, unknown>, nrQ, ["v", "count", "total"])), nrSort, (h, k) => k === "count" ? Number(h.count) : k === "total" ? Number(h.total) :
+                          k === "createdAt" || k === "updatedAt" ? tsSortKey(h as unknown as Record<string, unknown>, k) : String(h.v)).map((h) => (
                           <tr key={h.v} className="hover:bg-surface">
                             <td className="td text-xs font-medium text-navy-900">{h.v}</td>
                             <td className="td text-xs text-steel-600">{h.count} AP</td>
                             <td className="td text-xs font-semibold">{fmtRupiah(h.total)}</td>
+                            <TsCells row={h as unknown as Record<string, unknown>} />
                           </tr>
                         ))}
                         {hutLive.length === 0 && (
-                          <tr><td className="td text-xs italic text-steel-400" colSpan={3}>{S.nrApEmpty.replace("{d}", nrAsOf)}</td></tr>
+                          <tr><td className="td text-xs italic text-steel-400" colSpan={5}>{S.nrApEmpty.replace("{d}", nrAsOf)}</td></tr>
                         )}
                       </tbody>
                     </table>
@@ -4161,17 +4191,21 @@ const { data, add, update, remove, log, branch, inBranch } = useStore();
                         <SortTh label={S.colCustomer} sortKey="c" sort={nrSort} onSort={(k) => setNrSort((s) => toggleSort(s, k))} />
                         <SortTh label={S.nrDocCol} sortKey="count" sort={nrSort} onSort={(k) => setNrSort((s) => toggleSort(s, k))} />
                         <SortTh label={S.nrOutstandingCol} sortKey="total" sort={nrSort} onSort={(k) => setNrSort((s) => toggleSort(s, k))} />
+                        <SortTh label={S.colCreated} sortKey="createdAt" sort={nrSort} onSort={(k) => setNrSort((s) => toggleSort(s, k))} />
+                        <SortTh label={S.colUpdated} sortKey="updatedAt" sort={nrSort} onSort={(k) => setNrSort((s) => toggleSort(s, k))} />
                       </tr></thead>
                       <tbody className="divide-y divide-steel-100">
-                        {sortRows(piuLive.filter((p) => rowMatches(p as unknown as Record<string, unknown>, nrQ, ["c", "count", "total"])), nrSort, (p, k) => k === "count" ? Number(p.count) : k === "total" ? Number(p.total) : String(p.c)).map((p) => (
+                        {sortRows(piuLive.filter((p) => rowMatches(p as unknown as Record<string, unknown>, nrQ, ["c", "count", "total"])), nrSort, (p, k) => k === "count" ? Number(p.count) : k === "total" ? Number(p.total) :
+                          k === "createdAt" || k === "updatedAt" ? tsSortKey(p as unknown as Record<string, unknown>, k) : String(p.c)).map((p) => (
                           <tr key={p.c} className="hover:bg-surface">
                             <td className="td text-xs font-medium text-navy-900">{p.c}</td>
                             <td className="td text-xs text-steel-600">{p.count} INV</td>
                             <td className="td text-xs font-semibold">{fmtRupiah(p.total)}</td>
+                            <TsCells row={p as unknown as Record<string, unknown>} />
                           </tr>
                         ))}
                         {piuLive.length === 0 && (
-                          <tr><td className="td text-xs italic text-steel-400" colSpan={3}>{S.nrArEmpty.replace("{d}", nrAsOf)}</td></tr>
+                          <tr><td className="td text-xs italic text-steel-400" colSpan={5}>{S.nrArEmpty.replace("{d}", nrAsOf)}</td></tr>
                         )}
                       </tbody>
                     </table>
@@ -4189,14 +4223,18 @@ const { data, add, update, remove, log, branch, inBranch } = useStore();
                         <SortTh label={S.colAwal} sortKey="awal" sort={nrSort} onSort={(k) => setNrSort((s) => toggleSort(s, k))} />
                         <SortTh label={S.colAkhir} sortKey="akhir" sort={nrSort} onSort={(k) => setNrSort((s) => toggleSort(s, k))} />
                         <th className="th">PPn</th>
+                        <SortTh label={S.colCreated} sortKey="createdAt" sort={nrSort} onSort={(k) => setNrSort((s) => toggleSort(s, k))} />
+                        <SortTh label={S.colUpdated} sortKey="updatedAt" sort={nrSort} onSort={(k) => setNrSort((s) => toggleSort(s, k))} />
                       </tr></thead>
                       <tbody className="divide-y divide-steel-100">
-                        {sortRows(HUTANG_EXCEL, nrSort, (h, k) => k === "awal" ? Number(h.awal) : k === "akhir" ? Number(h.akhir) : String(h.v)).map((h) => (
+                        {sortRows(HUTANG_EXCEL, nrSort, (h, k) => k === "awal" ? Number(h.awal) : k === "akhir" ? Number(h.akhir) :
+                          k === "createdAt" || k === "updatedAt" ? tsSortKey(h as unknown as Record<string, unknown>, k) : String(h.v)).map((h) => (
                           <tr key={h.v} className="hover:bg-surface">
                             <td className="td text-xs font-medium text-navy-900">{h.v}</td>
                             <td className="td text-xs text-steel-600">{h.awal ? fmtRupiah(h.awal) : "-"}</td>
                             <td className="td text-xs font-semibold">{h.akhir ? fmtRupiah(h.akhir) : "-"}</td>
                             <td className="td text-xs">{h.nonPpn ? <Badge tone="amber">Non-PPn</Badge> : <span className="text-steel-400">PPn</span>}</td>
+                            <TsCells row={h as unknown as Record<string, unknown>} />
                           </tr>
                         ))}
                       </tbody>
@@ -4212,14 +4250,18 @@ const { data, add, update, remove, log, branch, inBranch } = useStore();
                         <SortTh label={S.colAwal} sortKey="awal" sort={nrSort} onSort={(k) => setNrSort((s) => toggleSort(s, k))} />
                         <SortTh label={S.colAkhir} sortKey="akhir" sort={nrSort} onSort={(k) => setNrSort((s) => toggleSort(s, k))} />
                         <th className="th">PPn</th>
+                        <SortTh label={S.colCreated} sortKey="createdAt" sort={nrSort} onSort={(k) => setNrSort((s) => toggleSort(s, k))} />
+                        <SortTh label={S.colUpdated} sortKey="updatedAt" sort={nrSort} onSort={(k) => setNrSort((s) => toggleSort(s, k))} />
                       </tr></thead>
                       <tbody className="divide-y divide-steel-100">
-                        {sortRows(PIUTANG_EXCEL, nrSort, (p, k) => k === "awal" ? Number(p.awal) : k === "akhir" ? Number(p.akhir) : String(p.c)).map((p) => (
+                        {sortRows(PIUTANG_EXCEL, nrSort, (p, k) => k === "awal" ? Number(p.awal) : k === "akhir" ? Number(p.akhir) :
+                          k === "createdAt" || k === "updatedAt" ? tsSortKey(p as unknown as Record<string, unknown>, k) : String(p.c)).map((p) => (
                           <tr key={p.c} className="hover:bg-surface">
                             <td className="td text-xs font-medium text-navy-900">{p.c}</td>
                             <td className="td text-xs text-steel-600">{p.awal ? fmtRupiah(p.awal) : "-"}</td>
                             <td className="td text-xs font-semibold">{p.akhir ? fmtRupiah(p.akhir) : "-"}</td>
                             <td className="td text-xs">{p.nonPpn ? <Badge tone="amber">Non-PPn</Badge> : <span className="text-steel-400">PPn</span>}</td>
+                            <TsCells row={p as unknown as Record<string, unknown>} />
                           </tr>
                         ))}
                       </tbody>
@@ -4338,13 +4380,13 @@ const { data, add, update, remove, log, branch, inBranch } = useStore();
                       <tr>
                         <th className="th">{locale === "en" ? "Table" : "Tabel"}</th>
                         <th className="th">{locale === "en" ? "Row ID" : "ID Baris"}</th>
-                        <th className="th">{S.delHistWhen}</th>
+                        <SortTh label={S.delHistWhen} sortKey="deleted_at" sort={delSort} onSort={(k) => setDelSort((s) => toggleSort(s, k))} />
                         <th className="th">{locale === "en" ? "By" : "Oleh"}</th>
                         <th className="th">{locale === "en" ? "Source" : "Sumber"}</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-steel-100">
-                      {delHistRows.map((r) => (
+                      {sortRows(delHistRows, delSort, (r, k) => k === "deleted_at" ? r.deleted_at : r.key).map((r) => (
                         <tr key={r.key} className="hover:bg-surface">
                           <td className="td font-mono text-xs font-semibold text-navy-900">{r.table}</td>
                           <td className="td font-mono text-xs text-steel-600">{r.row_id}</td>
@@ -4544,18 +4586,23 @@ const { data, add, update, remove, log, branch, inBranch } = useStore();
                             <SortTh label={S.colDebit} sortKey="db" sort={juSort} onSort={(k) => setJuSort((s) => toggleSort(s, k))} />
                             <SortTh label={S.colKredit} sortKey="kr" sort={juSort} onSort={(k) => setJuSort((s) => toggleSort(s, k))} />
                             <SortTh label={S.colNilai} sortKey="amount" sort={juSort} onSort={(k) => setJuSort((s) => toggleSort(s, k))} />
+                            <SortTh label={S.colCreated} sortKey="createdAt" sort={juSort} onSort={(k) => setJuSort((s) => toggleSort(s, k))} />
+                            <SortTh label={S.colUpdated} sortKey="updatedAt" sort={juSort} onSort={(k) => setJuSort((s) => toggleSort(s, k))} />
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-steel-100">
                           {sortRows(journals.filter((j) => rowMatches(j as unknown as Record<string, unknown>, juListQ, ["date", "ref", "desc", "debitAkun", "kreditAkun"])), juSort, (j, k) =>
                             k === "ref" ? String(j.ref) : k === "db" ? String(j.debitAkun) : k === "kr" ? String(j.kreditAkun) :
-                            k === "amount" ? Number(j.amount) : String(j.date)).map((j, idx) => (
+                            k === "amount" ? Number(j.amount) :
+                            k === "createdAt" || k === "updatedAt" ? tsSortKey(j as unknown as Record<string, unknown>, k) :
+                            String(j.date)).map((j, idx) => (
                             <tr key={`${j.ref}-${idx}`} className="hover:bg-surface">
                               <td className="td text-xs text-steel-600">{fmtTanggal(j.date)}</td>
                               <td className="td"><p className="font-mono text-xs font-semibold text-navy-900">{j.ref}</p><p className="max-w-56 truncate text-[11px] text-steel-500" title={j.desc}>{j.desc}</p></td>
                               <td className="td text-xs">{j.debitAkun}</td>
                               <td className="td text-xs">{j.kreditAkun}</td>
                               <td className="td text-xs font-semibold">{fmtRupiah(j.amount)}</td>
+                              <TsCells row={j as unknown as Record<string, unknown>} />
                             </tr>
                           ))}
                         </tbody>
@@ -4591,12 +4638,16 @@ const { data, add, update, remove, log, branch, inBranch } = useStore();
                         <SortTh label={S.colBebanGaji} sortKey="salary" sort={pajakSort} onSort={(k) => setPajakSort((s) => toggleSort(s, k))} />
                         <SortTh label={S.colHapusBuku} sortKey="writeoff" sort={pajakSort} onSort={(k) => setPajakSort((s) => toggleSort(s, k))} />
                         <SortTh label={S.colLaba} sortKey="laba" sort={pajakSort} onSort={(k) => setPajakSort((s) => toggleSort(s, k))} />
+                        <SortTh label={S.colCreated} sortKey="createdAt" sort={pajakSort} onSort={(k) => setPajakSort((s) => toggleSort(s, k))} />
+                        <SortTh label={S.colUpdated} sortKey="updatedAt" sort={pajakSort} onSort={(k) => setPajakSort((s) => toggleSort(s, k))} />
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-steel-100">
                       {sortRows(plMonthly, pajakSort, (p, k) =>
                         k === "revenue" ? Number(p.revenue) : k === "costProj" ? Number(p.costProj) : k === "salary" ? Number(p.salary) :
-                        k === "writeoff" ? Number(p.writeoff) : k === "laba" ? Number(p.laba) : String(p.period)).map((p) => (
+                        k === "writeoff" ? Number(p.writeoff) : k === "laba" ? Number(p.laba) :
+                        k === "createdAt" || k === "updatedAt" ? tsSortKey(p as unknown as Record<string, unknown>, k) :
+                        String(p.period)).map((p) => (
                         <tr key={p.period} className="hover:bg-surface">
                           <td className="td font-medium text-navy-900">{p.period}</td>
                           <td className="td">{fmtRupiah(p.revenue)}</td>
@@ -4604,10 +4655,11 @@ const { data, add, update, remove, log, branch, inBranch } = useStore();
                           <td className="td text-steel-600">{fmtRupiah(p.salary)}</td>
                           <td className="td text-steel-600">{fmtRupiah(p.writeoff)}</td>
                           <td className="td font-semibold text-emerald-600">{fmtRupiah(p.laba)}</td>
+                          <TsCells row={p as unknown as Record<string, unknown>} />
                         </tr>
                       ))}
                       {plMonthly.length === 0 && (
-                        <tr><td className="td text-xs text-steel-400" colSpan={6}>{S.juPlEmpty}</td></tr>
+                        <tr><td className="td text-xs text-steel-400" colSpan={8}>{S.juPlEmpty}</td></tr>
                       )}
                     </tbody>
                   </table>
