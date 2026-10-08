@@ -669,7 +669,8 @@ export default function AppShell() {
                         <p className="border-b border-steel-100 px-4 py-2 text-xs font-bold uppercase tracking-wide text-steel-400">
                           {t.notif.attention} ({alerts.length})
                         </p>
-                        {(bellExpanded ? alerts : alerts.slice(0, 5)).map((al) => (
+                        {/* T8-PRJ6: notifikasi warning maksimal 3 (notes). */}
+                        {(bellExpanded ? alerts : alerts.slice(0, 3)).map((al) => (
                           <Link
                             key={al.id}
                             to={al.to}
@@ -682,7 +683,7 @@ export default function AppShell() {
                             {al.text}
                           </Link>
                         ))}
-                        {alerts.length > 5 && (
+                        {alerts.length > 3 && (
                           <button
                             className="block w-full px-4 py-2 text-center text-[11px] font-semibold text-ocean-600 hover:bg-surface"
                             onClick={() => setBellExpanded((v) => !v)}

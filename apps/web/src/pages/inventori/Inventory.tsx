@@ -444,7 +444,6 @@ export default function Inventory() {
   const [retItem, setRetItem] = useState("");
   const [retQty, setRetQty] = useState("");
   const [retUom, setRetUom] = useState("base");
-  const [retVendor, setRetVendor] = useState("");
   const [retReason, setRetReason] = useState("");
 
   const [reservTarget, setReservTarget] = useState<StoreItem | null>(null);
@@ -1566,13 +1565,11 @@ if (k === "mattype") return matTypeOf(i);
     const useUom2 = hasUom2(item) && retUom === "uom2";
     const qty = useUom2 ? raw / convOf(item) : raw;
     if (qty > Number(item.stock)) { toast(S.stockShort.replace("{n}", fmtJumlah(Number(item.stock))), "info"); return; }
-    /* T6-INV4: vendor TIDAK wajib - retur bisa ke gudang/internal tanpa vendor. */
-    const vendorTrim = retVendor.trim();
+    /* T8-INV3: vendor dihapus dari form retur - simpan tanpa vendor. */
+    const vendorTrim = "";
     if (!retReason.trim()) { toast("Alasan retur wajib diisi", "info"); return; }
     const qtyNote = useUom2 ? `${fmtJumlah(raw)} ${uom2Of(item)} (${fmtJumlah(qty)} ${item.unit})` : fmtJumlah(qty);
-    const byText = vendorTrim
-      ? `Retur ke ${vendorTrim} - ${retReason.trim()}${useUom2 ? ` · input ${qtyNote}` : ""}`
-      : `Retur - ${retReason.trim()}${useUom2 ? ` · input ${qtyNote}` : ""}`;
+    const byText = `Retur - ${retReason.trim()}${useUom2 ? ` · input ${qtyNote}` : ""}`;
     try {
       await update("inventory", item.id, { stock: Number(item.stock) - qty });
       await add("movements", {
@@ -1609,7 +1606,7 @@ if (k === "mattype") return matTypeOf(i);
         ? `Retur ${item.name} × ${qtyNote} tersimpan + koreksi ${corrected} hutang`
         : `Retur ${item.name} × ${qtyNote} tersimpan${vendorTrim ? "" : " (tanpa vendor)"}`);
       setShowRetur(false);
-      setRetItem(""); setRetQty(""); setRetVendor(""); setRetReason(""); setRetUom("base");
+      setRetItem(""); setRetQty(""); setRetReason(""); setRetUom("base");
     } catch {
       toast(S.transferFailed.replace("{n}", item.name), "info");
     }
@@ -2363,7 +2360,7 @@ if (k === "mattype") return matTypeOf(i);
                   <button className="btn-primary w-full justify-center whitespace-nowrap py-5 text-base" title={grGiTip("Penerimaan", locale)} onClick={() => { const first = lowStock[0] ?? inventory[0]; if (first) openMove(first, "in"); }}><ArrowDownToLine className="h-4 w-4" /> {S.btnGr}</button>
                   <button className="btn-secondary w-full justify-center" title={grGiTip("Pengeluaran", locale)} onClick={() => { const first = inventory[0]; if (first) openMove(first, "out"); }}><ArrowUpFromLine className="h-4 w-4" /> {S.btnGi}</button>
                   <button className="btn-secondary w-full justify-center" onClick={() => setShowTransfer(true)}><Repeat className="h-4 w-4" /> {S.btnTransfer}</button>
-                  <button className="btn-secondary w-full justify-center" onClick={() => { setRetItem(""); setRetQty(""); setRetVendor(""); setRetReason(""); setRetUom("base"); setShowRetur(true); }}><ArrowUpFromLine className="h-4 w-4" /> Retur</button>
+                  <button className="btn-secondary w-full justify-center" onClick={() => { setRetItem(""); setRetQty(""); setRetReason(""); setRetUom("base"); setShowRetur(true); }}><ArrowUpFromLine className="h-4 w-4" /> Retur</button>
                   <button className="btn-secondary w-full justify-center" onClick={() => setShowOpname(true)}><ClipboardCheck className="h-4 w-4" /> {S.opnameT}</button>
                 </div>
               </Card>
@@ -2550,7 +2547,7 @@ if (k === "mattype") return matTypeOf(i);
               <div className="overflow-x-auto">
                 <table className="w-full">
                   <thead className="bg-surface sticky top-0 z-10">
-                    <tr><SortTh label={S.thTx} sortKey="transaksi" sort={sort3} onSort={(k) => setSort3((s) => toggleSort(s, k))} /><SortTh label={S.itemLbl} sortKey="item" sort={sort3} onSort={(k) => setSort3((s) => toggleSort(s, k))} /><SortTh label={S.thType} sortKey="tipe" sort={sort3} onSort={(k) => setSort3((s) => toggleSort(s, k))} /><SortTh label={S.jumlahLbl} sortKey="jumlah" sort={sort3} onSort={(k) => setSort3((s) => toggleSort(s, k))} /><SortTh label={locale === "en" ? "From warehouse" : "Dari Gudang"} sortKey="dari" sort={sort3} onSort={(k) => setSort3((s) => toggleSort(s, k))} /><SortTh label={locale === "en" ? "To warehouse" : "Ke Gudang"} sortKey="ke" sort={sort3} onSort={(k) => setSort3((s) => toggleSort(s, k))} /><SortTh label={locale === "en" ? "Detail" : "Detail Transaksi"} sortKey="info" sort={sort3} onSort={(k) => setSort3((s) => toggleSort(s, k))} /><SortTh label={S.thRef} sortKey="referensi" sort={sort3} onSort={(k) => setSort3((s) => toggleSort(s, k))} /><SortTh label={S.thTotalCol} sortKey="total" sort={sort3} onSort={(k) => setSort3((s) => toggleSort(s, k))} /><SortTh label={S.dateLbl} sortKey="tanggal" sort={sort3} onSort={(k) => setSort3((s) => toggleSort(s, k))} /><th className="th">{S.thAksi}</th></tr>
+                    <tr><SortTh label={S.thTx} sortKey="transaksi" sort={sort3} onSort={(k) => setSort3((s) => toggleSort(s, k))} /><SortTh label={S.itemLbl} sortKey="item" sort={sort3} onSort={(k) => setSort3((s) => toggleSort(s, k))} /><SortTh label={S.thType} sortKey="tipe" sort={sort3} onSort={(k) => setSort3((s) => toggleSort(s, k))} /><SortTh label={S.jumlahLbl} sortKey="jumlah" sort={sort3} onSort={(k) => setSort3((s) => toggleSort(s, k))} /><SortTh label={locale === "en" ? "From" : "Dari"} sortKey="dari" sort={sort3} onSort={(k) => setSort3((s) => toggleSort(s, k))} /><SortTh label={locale === "en" ? "To" : "Ke"} sortKey="ke" sort={sort3} onSort={(k) => setSort3((s) => toggleSort(s, k))} /><SortTh label={locale === "en" ? "Detail" : "Detail Transaksi"} sortKey="info" sort={sort3} onSort={(k) => setSort3((s) => toggleSort(s, k))} /><SortTh label={S.thRef} sortKey="referensi" sort={sort3} onSort={(k) => setSort3((s) => toggleSort(s, k))} /><SortTh label={S.thTotalCol} sortKey="total" sort={sort3} onSort={(k) => setSort3((s) => toggleSort(s, k))} /><SortTh label={S.dateLbl} sortKey="tanggal" sort={sort3} onSort={(k) => setSort3((s) => toggleSort(s, k))} /><th className="th">{S.thAksi}</th></tr>
                   </thead>
                   <tbody className="divide-y divide-steel-100">
                     {movPager.slice(movSorted).map((m) => {
@@ -3020,8 +3017,10 @@ if (k === "mattype") return matTypeOf(i);
         </div>
       </Modal>
 
-      {/* Modal retur - T6-INV4: vendor opsional (retur internal/tanpa vendor). */}
-      <Modal open={showRetur} onClose={() => setShowRetur(false)} title="Retur" subtitle="Kurangi stok + movement Retur; koreksi hutang hanya jika vendor diisi"
+      {/* Modal retur - T7/8: vendor DIHAPUS dari form (notes). Retur =
+          pengurangan stok + movement Retur saja; koreksi hutang vendor tidak
+          lagi lewat form ini. */}
+      <Modal open={showRetur} onClose={() => setShowRetur(false)} title="Retur" subtitle="Kurangi stok + catat movement Retur"
         footer={<><button className="btn-secondary" onClick={() => setShowRetur(false)}>{S.cancelBtn}</button><button className="btn-primary" onClick={saveRetur}>Simpan Retur</button></>}>
         <div className="space-y-3">
           <Field label={S.itemLbl}>
@@ -3033,9 +3032,6 @@ if (k === "mattype") return matTypeOf(i);
           <FormGrid>
             <Field label={S.qtyTrLbl}>
               <NumInput min={1} className="input" value={retQty} onChange={(e) => setRetQty(e.target.value)} />
-            </Field>
-            <Field label="Vendor (opsional)" hint="Kosongkan untuk retur internal / tanpa pemasok">
-              <input className="input" value={retVendor} onChange={(e) => setRetVendor(e.target.value)} placeholder="Nama vendor" />
             </Field>
           </FormGrid>
           {(() => {

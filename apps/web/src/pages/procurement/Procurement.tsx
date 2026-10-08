@@ -449,6 +449,7 @@ export default function Procurement() {
   const rfqShown = rfqs.filter((r) => matchProc(r, String(r.status), ["id", "item", "prId", "vendors", "quotes", "status"]));
   const prShown = requisitions.filter((r) => matchProc(r, String(r.status), ["id", "item", "by", "status"]));
   const vendorShown = vendors.filter((v) => matchProc(v, String(v.status ?? "Aktif"), ["name", "cat", "status", "id"]) && (vCatF === "Semua" || String(v.cat ?? "") === vCatF));
+  const vendorPager = usePager(vendorShown.length);
 
   /* Daftar vendor untuk select form (TANPA filter global — filter kategori
      hanya 1 tempat di FilterPopover tabel). Form menampilkan semua vendor
@@ -1928,7 +1929,7 @@ const sparkVendors = useMemo(() => {
                 <button className="btn-secondary text-xs" onClick={() => setShowVendor(true)}><Plus className="h-3.5 w-3.5" /> {S.btnTambahVendor}</button>
               </div>
               <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
-                {vendorShown.map((v) => {
+                {vendorPager.slice(vendorShown).map((v) => {
                   const avg = avgScore(v);
                   const pg = payungOf(v);
                   const isBlack = v.status === "Blacklist";
@@ -1981,6 +1982,7 @@ const sparkVendors = useMemo(() => {
                   );
                 })}
               </div>
+              {vendorPager.bar}
             </div>
           )}
         </div>

@@ -116,7 +116,7 @@ const DASH_ALERT_TONE: Record<ModuleAlertKey, string> = {
 };
 
 /* Batas tampilan: kartu harus tetap ringkas. Sisanya ada di /notifikasi. */
-const DASH_ALERT_CAP = 12;
+const DASH_ALERT_CAP = 3;
 
 const DASH_LEVEL_KEY = {
   kritis: "levelKritis",
