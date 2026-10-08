@@ -219,7 +219,7 @@ Item baru memakai kode **T7-**. Rujukan lama: todo5/todo6.
 | T7-PRJ2 | Sembunyikan/hapus tabel risiko di Perubahan & Risiko | **tinggi** | **W0 SELESAI** ProjectDetail.tsx render `{false && …}` (data risks store tetap) |
 | T7-PRJ3 | Teknisi service → select dari `data.employees` | **tinggi** | **W1 SELESAI** SparepartServiceSection.tsx service + sparepart form teknisi = select karyawan |
 | T7-PRJ4 | Samakan default ALERT_MILESTONE_DAYS (7 vs 30 → pilih 30) | sedang | **W1 SELESAI** ProjectDetail.tsx:389 + Projects.tsx:166 default 30 |
-| T7-DD1 | FacilityMap: area/slot clickable → modal detail | sedang | FacilityMap.tsx, Drydock.tsx |
+| T7-DD1 | FacilityMap: area/slot clickable → modal detail | sedang | **W2 SELESAI** FacilityMap.tsx onFacilityClick/onVesselClick; Drydock.tsx mapFacilityId modal + openMapVessel |
 | T7-EQ1 | Tabel Equipment: tambah kolom nomor seri + tahun unit/akuisisi | sedang | **W1 SELESAI** Equipment.tsx:1696-1708 kolom serial + acqYear + sort |
 | T7-EQ2 | `useDeepLinkTarget` Equipment: whitelist `["Daftar Equipment"]` | **tinggi** | **W0 SELESAI** Equipment.tsx:689 |
 | T7-SK1 | Pager pada tabel termin & pembayaran | rendah | **W0 SELESAI** Subcontractor.tsx:236 termPager + bar setelah tabel |
@@ -255,7 +255,7 @@ Item baru memakai kode **T7-**. Rujukan lama: todo5/todo6.
 |---|---|
 | **W0** | T7-EQ2 deeplink whitelist; T7-SDM1 hide tombol mutasi; T7-SK1 pager termin; T7-PRJ2 hilangkan tabel risiko | **SELESAI** (build lulus) |
 | **W1** | T7-PRJ1 progress rule; T7-PRJ3 teknisi select; T7-PRJ4 default milestone; T7-EQ1 kolom tabel | **SELESAI** (build lulus) |
-| **W2** | T7-DD1 FacilityMap clickable |
+| **W2** | T7-DD1 FacilityMap clickable | **SELESAI** (build lulus) |
 | **W3 (opsional)** | CLEANUP paket 1-8 (dead code removal, build pasti lulus) |
 
 ---

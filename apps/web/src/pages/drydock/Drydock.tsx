@@ -173,6 +173,20 @@ export default function Drydock() {
     setSlotAreaDraft(String(s.area ?? ""));
   };
 
+  /* T7-DD1: klik baris fasilitas di Peta → modal daftar slot fasilitas itu.
+     Klik pita kapal → langsung buka detail slot kapal tersebut. */
+  const [mapFacilityId, setMapFacilityId] = useState<string | null>(null);
+  const mapFacility = drydocks.find((d) => d.id === mapFacilityId) ?? null;
+  const mapFacilitySlots = mapFacilityId
+    ? dockSlots.filter((s) => String(s.dockId) === mapFacilityId)
+    : [];
+  const openMapVessel = (facilityId: string, vesselName: string) => {
+    const hit = dockSlots.find(
+      (s) => String(s.dockId) === facilityId && sameName(s.vessel, vesselName),
+    );
+    if (hit) openSlot(hit);
+  };
+
   /* Area efektif slot: area slot sendiri, fallback ke area fasilitasnya. */
   const dockAreaOf = (dockId: string): string =>
     String(drydocks.find((d) => d.id === dockId)?.area ?? "").trim();
@@ -713,13 +727,18 @@ export default function Drydock() {
       {/* Peta fasilitas: satu skala panjang untuk semua baris, jadi drydock
           120 m terlihat benar-benar lebih panjang dari slipway 80 m. Kapal
           yang tidak muat dapat outline merah plus daftar alasannya - fasilitas
-          tidak diperbesar supaya accommodate. */}
+          tidak diperbesar supaya accommodate.
+          T7-DD1: baris fasilitas & pita kapal clickable → detail slot. */}
       <Card className="mb-4 p-5">
         <h3 className="mb-1 text-sm font-semibold text-navy-900">Peta Fasilitas</h3>
         <p className="mb-3 text-xs text-steel-500">
-          Panjang fasilitas dan kapal digambar pada skala yang sama. Pita merah menandai kapal yang melebihi ukuran fasilitas.
+          Panjang fasilitas dan kapal digambar pada skala yang sama. Pita merah menandai kapal yang melebihi ukuran fasilitas. Klik fasilitas untuk detail slot.
         </p>
-        <FacilityMap {...facilityMapData} />
+        <FacilityMap
+          {...facilityMapData}
+          onFacilityClick={(id) => setMapFacilityId(id)}
+          onVesselClick={openMapVessel}
+        />
       </Card>
 
       {criticalConflicts.length > 0 && (
@@ -1143,6 +1162,42 @@ export default function Drydock() {
               <button className="btn-secondary flex-1 justify-center" onClick={() => { setSelected(null); openMove(sel); }}>{S.btnMoveSlot}</button>
               <button className="btn-danger flex-1 justify-center" onClick={() => { setDeleting(sel); setSelected(null); }}><Trash2 className="h-4 w-4" /> {S.btnDelSlot}</button>
             </div>
+          </div>
+        )}
+      </Modal>
+
+      {/* T7-DD1: modal detail slot dari klik baris fasilitas di Peta. */}
+      <Modal
+        open={mapFacilityId !== null}
+        onClose={() => setMapFacilityId(null)}
+        title={mapFacility?.name ?? "Fasilitas"}
+        subtitle={mapFacility
+          ? `${mapFacility.lengthM} m${mapFacility.depthM === null ? "" : ` × ${mapFacility.widthM} m × ${mapFacility.depthM} m draft`} · ${mapFacilitySlots.length} slot`
+          : ""}
+      >
+        {mapFacilitySlots.length === 0 ? (
+          <p className="text-sm text-steel-400">{S.emptySlots}</p>
+        ) : (
+          <div className="space-y-2">
+            {mapFacilitySlots.map((s) => {
+              const st = slotStatus(s, data.projects);
+              return (
+                <button
+                  key={s.id}
+                  className="block w-full rounded-lg border border-steel-200 px-3 py-2 text-left hover:border-ocean-300 hover:bg-ocean-50/40"
+                  onClick={() => { setMapFacilityId(null); openSlot(s); }}
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-medium text-navy-900">{s.vessel}</p>
+                      <p className="text-xs font-mono text-steel-500">{s.project}{s.dsRef ? ` · DS ${s.dsRef}` : ""}</p>
+                      <p className="text-xs text-steel-400">{fmtRentang(dayToISO(Number(s.from)), dayToISO(Number(s.to)))}</p>
+                    </div>
+                    <StatusBadge status={st} />
+                  </div>
+                </button>
+              );
+            })}
           </div>
         )}
       </Modal>

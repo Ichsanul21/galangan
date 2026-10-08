@@ -81,12 +81,18 @@ export default function FacilityMap({
   docks,
   slotFacilities,
   vesselsByName,
+  onFacilityClick,
+  onVesselClick,
 }: {
   docks: Facility[];
   /** Nama kapal yang sedang occupy tiap fasilitas (id fasilitas -> nama kapal). */
   slotFacilities: Map<string, string[]>;
   /** Dimensi kapal dari master, sudah dinormalisasi jadi name -> dimensi. */
   vesselsByName: Map<string, VesselDim>;
+  /** T7-DD1: klik baris fasilitas → detail slot fasilitas itu. */
+  onFacilityClick?: (facilityId: string) => void;
+  /** T7-DD1: klik pita/kapal → detail slot kapal itu di fasilitas tersebut. */
+  onVesselClick?: (facilityId: string, vesselName: string) => void;
 }) {
   const { rows, scale } = useMemo(
     () => buildRows(docks, vesselsByName, slotFacilities),
@@ -118,7 +124,13 @@ export default function FacilityMap({
           const top = y + (ROW_H - boxH) / 2;
 
           return (
-            <g key={f.id}>
+            <g
+              key={f.id}
+              className={onFacilityClick || onVesselClick ? "cursor-pointer" : undefined}
+              onClick={() => onFacilityClick?.(f.id)}
+              role={onFacilityClick ? "button" : undefined}
+              aria-label={onFacilityClick ? `Detail fasilitas ${f.name}` : undefined}
+            >
               <text x={0} y={y + 12} className="fill-navy-900 text-[11px] font-semibold">
                 {f.name.length > 20 ? `${f.name.slice(0, 19)}…` : f.name}
               </text>
@@ -147,7 +159,17 @@ export default function FacilityMap({
                 const laneTop = top + boxH + 6 + vi * LANE_H;
                 const ribbonW = ribbon.known ? Math.max(3, ribbon.widthPx) : 0;
                 return (
-                  <g key={`${v.name}-${vi}`}>
+                  <g
+                    key={`${v.name}-${vi}`}
+                    className={onVesselClick ? "cursor-pointer" : undefined}
+                    onClick={(e) => {
+                      if (!onVesselClick) return;
+                      e.stopPropagation();
+                      onVesselClick(f.id, v.name);
+                    }}
+                    role={onVesselClick ? "button" : undefined}
+                    aria-label={onVesselClick ? `Detail slot ${v.name} di ${f.name}` : undefined}
+                  >
                     {ribbonW > 0 && (
                       <rect
                         x={PAD_L + 2}
