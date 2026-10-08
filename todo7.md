@@ -215,12 +215,12 @@ Item baru memakai kode **T7-**. Rujukan lama: todo5/todo6.
 
 | ID | Judul | Prioritas | File utama |
 |---|---|---|---|
-| T7-PRJ1 | Aturan progress: Manual (Monitoring) vs WBS-weighted — jangan ditimpa diam-diam. Usulan: WBS auto hanya jika proyek `autoProgress:true` / punya WBS; Monitoring set = override manual sampai reset | **tinggi** | ProjectDetail.tsx:344-384, Monitoring.tsx:225-243 |
+| T7-PRJ1 | Aturan progress: Manual (Monitoring) vs WBS-weighted — jangan ditimpa diam-diam. `progressSource: "manual"` dari Monitoring; auto-WBS hanya bila source `"wbs"` | **tinggi** | **W1 SELESAI** ProjectDetail.tsx:375-391 skip manual; saveWbs* tulis progressSource:"wbs"; Monitoring.tsx:232-236 tulis "manual" |
 | T7-PRJ2 | Sembunyikan/hapus tabel risiko di Perubahan & Risiko | **tinggi** | **W0 SELESAI** ProjectDetail.tsx render `{false && …}` (data risks store tetap) |
-| T7-PRJ3 | Teknisi service → select dari `data.employees` (EntityPicker/select) | **tinggi** | SparepartServiceSection.tsx:714 |
-| T7-PRJ4 | Samakan default ALERT_MILESTONE_DAYS (7 vs 30 → pilih 30) | sedang | ProjectDetail.tsx:389,488; Projects.tsx:166 |
+| T7-PRJ3 | Teknisi service → select dari `data.employees` | **tinggi** | **W1 SELESAI** SparepartServiceSection.tsx service + sparepart form teknisi = select karyawan |
+| T7-PRJ4 | Samakan default ALERT_MILESTONE_DAYS (7 vs 30 → pilih 30) | sedang | **W1 SELESAI** ProjectDetail.tsx:389 + Projects.tsx:166 default 30 |
 | T7-DD1 | FacilityMap: area/slot clickable → modal detail | sedang | FacilityMap.tsx, Drydock.tsx |
-| T7-EQ1 | Tabel Equipment: tambah kolom nomor seri + tahun unit/akuisisi | sedang | Equipment.tsx:1693 |
+| T7-EQ1 | Tabel Equipment: tambah kolom nomor seri + tahun unit/akuisisi | sedang | **W1 SELESAI** Equipment.tsx:1696-1708 kolom serial + acqYear + sort |
 | T7-EQ2 | `useDeepLinkTarget` Equipment: whitelist `["Daftar Equipment"]` | **tinggi** | **W0 SELESAI** Equipment.tsx:689 |
 | T7-SK1 | Pager pada tabel termin & pembayaran | rendah | **W0 SELESAI** Subcontractor.tsx:236 termPager + bar setelah tabel |
 | T7-SDM1 | Sembunyikan tombol "Mutasi Baru" (code & modal disimpan) | sedang | **W0 SELESAI** HR.tsx:1444 & 1797 `{false && …}` |
@@ -254,7 +254,7 @@ Item baru memakai kode **T7-**. Rujukan lama: todo5/todo6.
 | Gelombang | Fokus |
 |---|---|
 | **W0** | T7-EQ2 deeplink whitelist; T7-SDM1 hide tombol mutasi; T7-SK1 pager termin; T7-PRJ2 hilangkan tabel risiko | **SELESAI** (build lulus) |
-| **W1** | T7-PRJ1 progress rule; T7-PRJ3 teknisi select; T7-PRJ4 default milestone; T7-EQ1 kolom tabel |
+| **W1** | T7-PRJ1 progress rule; T7-PRJ3 teknisi select; T7-PRJ4 default milestone; T7-EQ1 kolom tabel | **SELESAI** (build lulus) |
 | **W2** | T7-DD1 FacilityMap clickable |
 | **W3 (opsional)** | CLEANUP paket 1-8 (dead code removal, build pasti lulus) |
 

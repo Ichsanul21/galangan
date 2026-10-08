@@ -231,6 +231,9 @@ export default function Monitoring() {
       : photos;
     const patch: Record<string, unknown> = {
       progress: pct,
+      /* T7-PRJ1: set manual = progres tidak lagi ditimpa auto-WBS di
+         ProjectDetail sampai ada update WBS eksplisit. */
+      progressSource: "manual",
       actual: Number(updForm.actual) || 0,
       budget: Number(updForm.budget) || 0,
       photos: photoEntry,

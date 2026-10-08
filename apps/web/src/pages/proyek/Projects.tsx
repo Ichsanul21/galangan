@@ -163,7 +163,7 @@ export default function Projects() {
   // tempo atau terlambat otomatis menjadi risiko aktif.
   useEffect(() => {
     const today = todayISO();
-    const msDays = getSetting(data, "ALERT_MILESTONE_DAYS", 7);
+    const msDays = getSetting(data, "ALERT_MILESTONE_DAYS", 30);
     for (const p of projects) {
       const hasWbs = Boolean(data.wbsByProject?.[p.id]);
       const wos = (data.workOrders ?? []).filter((w) => w.project === p.id);

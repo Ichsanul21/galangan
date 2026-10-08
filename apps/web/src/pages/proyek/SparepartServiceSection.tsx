@@ -657,7 +657,15 @@ const payload = {
           })()}
           <FormGrid>
             <Field label={S.spsNotes}><input className="input" value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} placeholder={S.spsNotesPh} /></Field>
-            <Field label={S.spsTech}><input className="input" value={form.technician} onChange={(e) => setForm({ ...form, technician: e.target.value })} placeholder={S.spsTechPh} /></Field>
+            <Field label={S.spsTech}>
+              {/* T7-PRJ3: teknisi = pilihan karyawan, bukan free-text. */}
+              <select className="input" value={form.technician} onChange={(e) => setForm({ ...form, technician: e.target.value })}>
+                <option value="">{locale === "en" ? "-- none --" : "-- pilih teknisi --"}</option>
+                {data.employees.map((emp) => (
+                  <option key={String(emp.id)} value={String(emp.name ?? emp.id)}>{String(emp.name ?? emp.id)}{emp.role ? ` · ${String(emp.role)}` : ""}</option>
+                ))}
+              </select>
+            </Field>
           </FormGrid>
           <FormGrid>
             <Field label={S.spsUsedDate}><input type="date" className="input" value={form.usedDate} onChange={(e) => setForm({ ...form, usedDate: e.target.value })} /></Field>
@@ -711,7 +719,15 @@ const payload = {
           <Field label={S.prjScopeDesc}><input className="input" value={svcForm.description} onChange={(e) => setSvcForm({ ...svcForm, description: e.target.value })} placeholder={S.spsSvcDescPh} /></Field>
           <FormGrid>
             <Field label={S.dateField}><input type="date" className="input" value={svcForm.date} onChange={(e) => setSvcForm({ ...svcForm, date: e.target.value })} /></Field>
-            <Field label={S.spsSvcTech}><input className="input" value={svcForm.technician} onChange={(e) => setSvcForm({ ...svcForm, technician: e.target.value })} placeholder={S.spsTechPh} /></Field>
+            <Field label={S.spsSvcTech}>
+              {/* T7-PRJ3: teknisi service = pilihan karyawan, bukan free-text. */}
+              <select className="input" value={svcForm.technician} onChange={(e) => setSvcForm({ ...svcForm, technician: e.target.value })}>
+                <option value="">{locale === "en" ? "-- none --" : "-- pilih teknisi --"}</option>
+                {data.employees.map((emp) => (
+                  <option key={String(emp.id)} value={String(emp.name ?? emp.id)}>{String(emp.name ?? emp.id)}{emp.role ? ` · ${String(emp.role)}` : ""}</option>
+                ))}
+              </select>
+            </Field>
           </FormGrid>
           <Field label={S.spsSvcCost}><NumInput className="input" value={svcForm.cost} onChange={(e) => setSvcForm({ ...svcForm, cost: e.target.value })} /></Field>
           {/* D12: referensi opsional ke item BoQ project ini. */}

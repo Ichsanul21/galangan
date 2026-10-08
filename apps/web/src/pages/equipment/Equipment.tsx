@@ -652,6 +652,8 @@ const projectCostRows = useMemo(() => Array.from(projectCostSummaries.entries())
     if (k === "nilaibuku") return Number(depreciationOf(e)?.book ?? -1);
     if (k === "kategori") return String(e.category ?? "");
     if (k === "model") return String(e.model ?? "");
+    if (k === "serial") return String(e.serial ?? "");
+    if (k === "acqYear") return Number(e.acqYear || 0);
     if (k === "status") return String(e.status ?? "");
     if (k === "createdAt") return createdAtOf(e) ?? "";
     if (k === "updatedAt") return lastTouchedAt(e) ?? "";
@@ -1693,7 +1695,7 @@ if (tab === "Daftar Equipment") { flashPick(flash, ids, idx, regPager.go, regPag
             <div className="overflow-x-auto">
               <table className="w-full">
                 <thead className="sticky top-0 z-10 bg-surface">
-                  <tr><SortTh label={S.thEquipment} sortKey="equipment" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.thCategory} sortKey="kategori" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.thModel} sortKey="model" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.eqPicField} sortKey="pic" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.thStatus} sortKey="status" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.thUtil} sortKey="utilisasi" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.thHours} sortKey="jam" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.eqCostField} sortKey="harga" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.colCreated} sortKey="createdAt" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.colUpdated} sortKey="updatedAt" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><th className="th">{S.thAction}</th></tr>
+                  <tr><SortTh label={S.thEquipment} sortKey="equipment" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.thCategory} sortKey="kategori" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.thModel} sortKey="model" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.eqSerialField} sortKey="serial" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.eqAcqYearField} sortKey="acqYear" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.eqPicField} sortKey="pic" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.thStatus} sortKey="status" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.thUtil} sortKey="utilisasi" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.thHours} sortKey="jam" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.eqCostField} sortKey="harga" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.colCreated} sortKey="createdAt" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.colUpdated} sortKey="updatedAt" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><th className="th">{S.thAction}</th></tr>
                 </thead>
                 <tbody className="divide-y divide-steel-100">
                   {regPager.slice(regSorted).map((e) => {
@@ -1706,6 +1708,9 @@ if (tab === "Daftar Equipment") { flashPick(flash, ids, idx, regPager.go, regPag
                       </td>
                       <td className="td"><Badge tone="gray">{e.category}</Badge></td>
                       <td className="td text-steel-600">{e.model}</td>
+                      {/* T7-EQ1: kolom nomor seri + tahun unit/akuisisi. */}
+                      <td className="td text-xs font-mono text-steel-500">{String(e.serial ?? "-")}</td>
+                      <td className="td text-steel-600">{String(e.acqYear ?? "-")}</td>
                       {/* T6-EQ1/EQ2: kolom PJ unit + harga barang; tarif/BBM disembunyikan. */}
                       <td className="td text-steel-600 truncate" title={String(e.pic ?? "")}>{String(e.pic ?? "-")}</td>
                       <td className="td">

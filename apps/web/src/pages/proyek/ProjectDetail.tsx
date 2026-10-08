@@ -374,19 +374,23 @@ if (from === "Desain" && to === "Produksi") {
 
   useEffect(() => {
     if (!project) return;
+    // T7-PRJ1: progres auto-WBS hanya bila sumber "wbs" (default).
+    // Monitoring menulis progressSource:"manual" - nilai manual TIDAK boleh
+    // ditimpa oleh efek ini sampai ada update WBS eksplisit (saveWbs*).
+    if (String(project.progressSource ?? "wbs") === "manual") return;
     // Hanya proyek dengan WBS nyata (tersimpan) yang progresnya diturunkan
     // otomatis - template fallback tidak boleh menimpa progres seed/manual.
     if (!data.wbsByProject?.[project.id]) return;
     const wbs = wbsFor(project.id);
     const newProgress = weightedProgress(wbs);
     if (newProgress !== project.progress) {
-      update("projects", project.id, { progress: newProgress });
+      update("projects", project.id, { progress: newProgress, progressSource: "wbs" });
     }
     // D8: risiko otomatis dari WBS dan milestone WO.
     // Dipanggil bersamaan dengan update progres karena keduanya membaca
     // data WBS yang sama - satu kali baca, dua kali manfaat.
     const today = todayISO();
-    const msDays = getSetting(data, "ALERT_MILESTONE_DAYS", 7);
+    const msDays = getSetting(data, "ALERT_MILESTONE_DAYS", 30);
     const existingRisks = data.risks.filter((r) => r.project === project.id);
     const wbsResult = generateRisksFromWbs(project.id, wbs, existingRisks, today, msDays);
     const woResult = generateRisksFromWo(project.id, data.workOrders.filter((w) => w.project === project.id), existingRisks, today, msDays);
@@ -1058,7 +1062,8 @@ const createWarranty = async (wbsTask?: string) => {
     );
 try {
         await setWbs(pid, updated);
-        await update("projects", pid, { progress: weightedProgress(updated) });
+        /* T7-PRJ1: update WBS eksplisit = sumber kebenaran progres kembali ke WBS. */
+        await update("projects", pid, { progress: weightedProgress(updated), progressSource: "wbs" });
         /* D3: material terpilih → kurangi stok inventory + catat movement.
            Tanpa pengurangan stok, WBS dan inventory akan divergensi. */
         if (wbsUpdateForm.material) {
@@ -1103,7 +1108,7 @@ try {
     if (totalW !== 100) { toast(S.detToastWeightTotal.replace("{n}", String(totalW)), "info"); return; }
     try {
       await setWbs(pid, next);
-      await update("projects", pid, { progress: weightedProgress(next) });
+      await update("projects", pid, { progress: weightedProgress(next), progressSource: "wbs" });
       log("menambah tahapan WBS", `${pid} · ${wbsForm.task.trim()}${assignee ? ` · ${wbsForm.assignType}: ${assignee}` : ""}`, "Proyek");
       toast(S.detToastStageAdd);
       setShowWbs(false);
