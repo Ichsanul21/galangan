@@ -152,6 +152,7 @@ import {
   drydockLoad,
   insights,
   fmtMiliar,
+  parseIdNumber,
 } from "../data";
 import { useT } from "../i18n/LanguageContext";
 import type { Locale } from "../i18n/types";
@@ -231,7 +232,7 @@ export default function Dashboard() {
   const delayed = branchProjects.filter((p) => p.status === "Terlambat").length;
   const activeContracts = branchProjects
     .filter((p) => p.status !== "Selesai")
-    .reduce((s, p) => s + Number(p.budget || 0), 0);
+    .reduce((s, p) => s + parseIdNumber(p.budget), 0);
   const drydocks = inBranch(data.drydocks);
   const openNcrList = inBranch(data.ncr).filter((n) => n.status !== "Tertutup");
   const openNcr = openNcrList.length;
@@ -315,7 +316,7 @@ Id tidak diteruskan di sini. Kartu ini memakai engine utils/moduleAlerts
     const lv = warnLevelOf(i).level;
     return lv === "critical" || lv === "low";
   });
-  const stockValue = inBranch(data.inventory).reduce((s, i) => s + Number(i.stock || 0) * Number(i.cost || 0), 0);
+  const stockValue = inBranch(data.inventory).reduce((s, i) => s + parseIdNumber(i.stock) * parseIdNumber(i.cost), 0);
   /* Sumbu + angka revenue dari invoice yang SUNGGUHNYA bertanggal.
      withMonthLabels() lama memutar seed revenueSeries supaya bulan berjalan
      jadi titik terakhir, padahal numeriknya tidak berpindah: label

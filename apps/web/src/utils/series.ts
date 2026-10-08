@@ -51,12 +51,12 @@ export function safeText(value: unknown, fallback = "-"): string {
   return s === "" ? fallback : s;
 }
 
-/** Angka aman dari field yang bisa null/"": NaN dan undefined jadi 0.
- *  WAJIB module scope (lihat catatan TDZ di Analytics.tsx). */
-export const numOf = (v: unknown): number => {
-  const n = Number(v);
-  return Number.isFinite(n) ? n : 0;
-};
+import { parseIdNumber } from "./format";
+
+/** Angka aman dari field yang bisa null/"" / string berformat "1.000.000".
+ *  NaN dan undefined jadi 0. String id-ID diparse (bukan Number() telanjang
+ *  yang menghasilkan NaN → tampilan "Rp 0"). */
+export const numOf = (v: unknown): number => parseIdNumber(v);
 
 /** Label singkat dari sebuah nilai, N kata pertama saja. Aman untuk undefined. */
 export function briefOf(value: unknown, words = 2): string {

@@ -11,6 +11,20 @@
 
 import type { StoreItem } from "../data/store";
 import { apiFetch } from "./http";
+import { parseIdNumber } from "../utils/format";
+
+/** Field yang wajib number di store (rupiah/qty/persen). String berformat
+ *  "1.000.000" dari import/seed lama dinormalkan saat masuk - kalau tidak,
+ *  Number() = NaN dan seluruh KPI tampil Rp 0. */
+const NUMERIC_FIELDS = new Set([
+  "amount", "cost", "budget", "stock", "minStock", "unitPrice", "price", "rate",
+  "fuelPrice", "acquisitionCost", "qty", "progress", "weight", "util", "hours",
+  "downtime", "fuelLiters", "grandTotal", "retentionAmt", "pphAmt", "retAmt",
+  "basic", "overtimePay", "deductions", "net", "pph21",
+  "bpjsKes", "bpjsTk", "bpjsKesKar", "bpjsTkKar", "openAwal", "amt", "nilai",
+  "contract", "bgValue", "laborCost", "materialCost", "costTotal",
+  "actual", "realisasi", "value",
+]);
 
 export interface ListFilter {
   q?: string;
@@ -68,7 +82,29 @@ interface BackendRow {
 }
 
 function rowToItem(row: BackendRow): StoreItem {
-  const item: StoreItem = { ...(row.data ?? {}), id: row.id };
+  const raw = (row.data ?? {}) as Record<string, unknown>;
+  const item: StoreItem = { ...raw, id: row.id };
+  /* Normalkan field numerik: server/import bisa menyimpan "1.000.000"
+     sebagai string. Tanpa ini Dashboard/Finance membaca NaN → Rp 0. */
+  for (const k of Object.keys(item)) {
+    if (!NUMERIC_FIELDS.has(k)) continue;
+    const v = (item as Record<string, unknown>)[k];
+    if (typeof v === "string" && v.trim() !== "") {
+      (item as Record<string, unknown>)[k] = parseIdNumber(v);
+    }
+  }
+  /* allowances bisa berupa array of {amount} - parse amount di dalamnya. */
+  const al = (item as { allowances?: unknown }).allowances;
+  if (Array.isArray(al)) {
+    (item as { allowances?: unknown }).allowances = al.map((l) => {
+      if (l && typeof l === "object" && "amount" in (l as Record<string, unknown>)) {
+        const rec = { ...(l as Record<string, unknown>) };
+        if (typeof rec.amount === "string") rec.amount = parseIdNumber(rec.amount);
+        return rec;
+      }
+      return l;
+    });
+  }
   if (row.branch) item.branch = row.branch;
   /* Pertahankan updated_at server sebagai basis optimistic concurrency
      (dipakai store.update sebagai baseUpdatedAt; BE lama mengabaikannya). */

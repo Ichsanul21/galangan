@@ -19,7 +19,7 @@ import { useModuleSync } from "../../data/useModuleSync";
 import { remoteRepository } from "../../services/repositories";
 import { getJwt, isBackendConfigured } from "../../services/http";
 import { equipmentHours, serviceDueTrend } from "../../data";
-import { fmtTanggal, fmtJumlah, fmtRupiah, parseRupiah, todayISO } from "../../utils/format";
+import { fmtTanggal, fmtJumlah, fmtRupiah, parseIdNumber, parseRupiah, todayISO } from "../../utils/format";
 import { loadedLaborRatePerDay } from "../../utils/rates";
 import { createdAtOf, lastTouchedAt } from "../../utils/timestamps";
 import { durasiJam, fmtJam24, jamOf, jamOverlap, norm24, parseJam, toMinutes } from "../../utils/time24";
@@ -709,9 +709,9 @@ if (tab === "Daftar Equipment") { flashPick(flash, ids, idx, regPager.go, regPag
       model: String(e.model ?? ""),
       pic: String(e.pic ?? ""),
       util: String(e.util ?? 0),
-      rate: String(Number(e.rate ?? 0)),
-      fuelPrice: String(Number(e.fuelPrice ?? 0)),
-      acquisitionCost: String(Number(e.acquisitionCost ?? 0)),
+      rate: String(parseIdNumber(e.rate)),
+      fuelPrice: String(parseIdNumber(e.fuelPrice)),
+      acquisitionCost: String(parseIdNumber(e.acquisitionCost)),
       /* usefulLife di store tetap tahun; form menampilkan bulan. */
       usefulLife: String(Math.round((Number(e.usefulLife ?? 0) || 0) * 12)),
       notes: String(e.notes ?? ""),

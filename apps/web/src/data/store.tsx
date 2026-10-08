@@ -772,10 +772,18 @@ const NEVER_EMPTY_COLLECTIONS: ReadonlySet<string> = new Set(["settings"]);
  * menjawab normal, hanya jawabannya tidak boleh dipakai, jadi badge "offline"
  * di topbar akan menyala permanen untuk kondisi yang deterministik.
  */
-function acceptPull(key: CollectionKey, rows: StoreItem[]): boolean {
+function acceptPull(key: CollectionKey, rows: StoreItem[], local?: StoreItem[]): boolean {
   const empty = !Array.isArray(rows) || rows.length === 0;
   if (!empty) return true;
-  return !NEVER_EMPTY_COLLECTIONS.has(key);
+  if (NEVER_EMPTY_COLLECTIONS.has(key)) return false;
+  /* Jangan timpa data lokal NON-KOSONG dengan tarikan server kosong.
+     Server kosong bisa berarti: tabel belum di-seed, transient error, atau
+     sesi login melihat DB yang belum terisi. Kalau local punya baris,
+     pertahankan - user tidak akan melihat "semua nol" sesaat setelah boot
+     hanya karena server balas []. Koleksi yang memang kosong di kedua sisi
+     tetap boleh replace (tidak ada yang hilang). */
+  if (Array.isArray(local) && local.length > 0) return false;
+  return true;
 }
 
 /**
@@ -1114,8 +1122,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         if (dirty.has(key as string)) return;
         try {
           const rows = await remoteRepository(key).list();
-          /* Hasil yang mengosongkan koleksi kode ditolak (lihat acceptPull). */
-          if (acceptPull(key, rows)) pulled[key] = rows;
+          /* Hasil yang mengosongkan koleksi dengan local non-kosong ditolak. */
+          if (acceptPull(key, rows, (dataRef.current as unknown as Record<string, StoreItem[]>)[key as string])) {
+            pulled[key] = rows;
+          }
         } catch {
           /* Koleksi ini tetap memakai cache lokal. Kegagalan sengaja tidak
              diynylagakan ke UI di sini: resync penuh dipanggil saat boot, dan
@@ -1288,12 +1298,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             const etag = lastEtagOf(String(key));
             savePullMark(key as string, { since: maxTs || new Date().toISOString(), ...(etag ? { etag } : {}) });
           }
-          if (!acceptPull(key, rows)) {
-            /* Server membalas kosong untuk koleksi kode: pertahankan yang lokal.
-               Sengaja TIDAK masuk daftar `failed` - "ditolak demi keamanan
-               data" bukan "server tak terjangkau", dan mencampur keduanya
-               membuat badge "offline" di topbar nyala permanen untuk kondisi
-               yang sebenarnya deterministik dan normal. */
+          if (!acceptPull(key, rows, (dataRef.current as unknown as Record<string, StoreItem[]>)[key as string])) {
+            /* Server membalas kosong untuk koleksi kode / local lebih dulu:
+               pertahankan yang lokal. Sengaja TIDAK masuk daftar `failed`. */
             return;
           }
           pulled[key] = rows;

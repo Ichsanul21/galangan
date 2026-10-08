@@ -657,7 +657,7 @@ export const quotations = [
 ];
 
 
-export { fmtRupiah, fmtMiliar, fmtJumlah, fmtPersen, fmtTanggal, fmtBulan, fmtRentang, todayISO, monthISO, SATUAN, STATUS_BOQ_ID, STATUS_SVC_ID } from "../utils/format";
+export { fmtRupiah, fmtMiliar, fmtJumlah, fmtPersen, fmtTanggal, fmtBulan, fmtRentang, parseIdNumber, parseRupiah, todayISO, monthISO, SATUAN, STATUS_BOQ_ID, STATUS_SVC_ID } from "../utils/format";
 
 /* ====== EXTENDED 12-MONTH SERIES ====== */
 
