@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { bucketByMonth, monthAxis, monthKeyOf, rebindLegacyMonthSeries } from "../../utils/monthAxis";
-import { Plus, ShieldCheck, AlertTriangle, Siren, Award, Send, Eye, Pencil, Trash2, ChevronDown } from "lucide-react";
+import { Plus, ShieldCheck, AlertTriangle, Siren, Award, Eye, Pencil, Trash2, ChevronDown } from "lucide-react";
 import { ComposedChart, Line, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 import { Card, CardHeader, PageHeader, Badge, KpiCard, Tabs, StatusBadge, Donut, ChartTooltip, Modal, Field, FormGrid, ConfirmModal, SortTh, toggleSort, sortRows, usePager, toast,
   NumInput, FlowStrip, FileUploadButton, useBusy, AsyncButton, SearchBox, rowMatches,
@@ -22,10 +22,8 @@ import { useDeepLinkParams, useDeepLinkTarget } from "../../components/useDeepLi
 import { AlertBannerView, notifRowId, useModuleAlert, useNotifFlash } from "../../components/AlertBanner";
 import { rowHighlightClass } from "../../components/rowHighlight";
 import { exportExcel } from "../../utils/export";
-import { pdfServerReady } from "../../services/pdfClient";
-import { usePdfDoc } from "../../components/usePdfDoc";
-import { DocumentPreviewCell, DocumentPreviewModal, DocumentPreviewPanel, DownloadFileButton, InlineDocPreview, type PreviewDoc } from "../../components/DocumentPreview";
-import { docAttachment, docFileNameOf, docUrlOf } from "../../utils/docAttachment";
+import { DocumentPreviewCell, DocumentPreviewModal, DocumentPreviewPanel, type PreviewDoc } from "../../components/DocumentPreview";
+import { docFileNameOf, docUrlOf } from "../../utils/docAttachment";
 import { findUsages } from "../../utils/usages";
 import { useAuth, canSetTarget } from "../../auth/auth";
 import { FilterPopover } from "../../components/FilterPopover";
@@ -43,7 +41,6 @@ const ROOT_CAUSES = ["Manusia", "Metode", "Material", "Mesin", "Lingkungan"];
 const NCR_COLORS = ["#f59e0b", "#2e9ad4", "#8b5cf6", "#0d9488", "#f43f5e", "#64748b"];
 const HOLD_TYPES = ["Hold", "Witness", "Review"];
 const NDE_METHODS = ["UT", "RT", "MT", "PT"];
-const DRAW_FLOW = ["Diajukan", "Disetujui", "Distribusi"];
 
 const PPE_ITEMS = [
   "Helm keselamatan",
@@ -100,21 +97,8 @@ function nextItp(inspections: StoreItem[]): string {
   return code;
 }
 
-function nextRev(rev: string): string {
-  const r = String(rev ?? "A").trim().toUpperCase();
-  if (/^[A-Z]$/.test(r)) {
-    if (r === "Z") return "A1";
-    return String.fromCharCode(r.charCodeAt(0) + 1);
-  }
-  const m = /^([A-Z]+)(\d+)$/.exec(r);
-  if (m) return `${m[1]}${Number(m[2]) + 1}`;
-  return `${r}-R1`;
-}
-
-
-
 /* Batch koleksi modul QC & Safety untuk useModuleSync (pengganti resync penuh). */
-const QC_COLS: CollectionKey[] = ["activities", "auditPlans", "bast", "branches", "calibrations", "clients", "drawings", "employees", "equipment", "incidents", "inspections", "journals", "ncr", "projects", "toolbox", "vessels", "walks"];
+const QC_COLS: CollectionKey[] = ["activities", "auditPlans", "bast", "branches", "calibrations", "clients", "employees", "equipment", "incidents", "inspections", "journals", "ncr", "projects", "toolbox", "vessels", "walks"];
 
 export default function QCSafety() {
   const busy = useBusy();
@@ -126,7 +110,6 @@ export default function QCSafety() {
   const picInvalid = (v: string) => v.trim() !== "" && !isKnownEmployee(data.employees, v);
   const modAlert = useModuleAlert("qc");
   const flash = useNotifFlash();
-  const pdfDoc = usePdfDoc();
   // Deep-link dari Dashboard: ?tab=NCR&highlight=NCR-001 → pindah tab + flash baris.
   const deepParams = useDeepLinkParams();
   const notified = useMemo(() => new Set(modAlert.items.map((a) => a.rowId)), [modAlert.items]);
@@ -139,7 +122,6 @@ export default function QCSafety() {
   const incidents = inBranch(data.incidents);
   const inspections = inBranch(data.inspections);
   const vessels = data.vessels;
-  const drawings = inBranch(data.drawings);
   const toolboxTalks = inBranch(data.toolbox);
   // JSA tersimpan sebagai koleksi toolbox bertipe "JSA" (bukan state lokal).
   const jsaList = toolboxTalks.filter((t) => String(t.type ?? "") === "JSA");
@@ -233,10 +215,8 @@ export default function QCSafety() {
   const [delInsp, setDelInsp] = useState<StoreItem | null>(null);
   const [ncrDetail, setNcrDetail] = useState<StoreItem | null>(null);
   const [dueDraft, setDueDraft] = useState("");
-  // Ubah uraian NCR (Terbuka saja) + ubah drawing (title/holder).
+  // Ubah uraian NCR (Terbuka saja).
   const [issueDraft, setIssueDraft] = useState("");
-  const [drwEdit, setDrwEdit] = useState<StoreItem | null>(null);
-  const [drwEditForm, setDrwEditForm] = useState({ title: "", holder: "" });
   const [showNcr, setShowNcr] = useState(false);
   const [ncrForm, setNcrForm] = useState({ project: "", vessel: "", type: "Pengelasan", severity: "Minor", issue: "", due: "", causeCat: "Manusia", causeNote: "", branch: "", penerima: "" });
   const [capaFor, setCapaFor] = useState<StoreItem | null>(null);
@@ -250,20 +230,11 @@ export default function QCSafety() {
   const [showInc, setShowInc] = useState(false);
   const [incForm, setIncForm] = useState({ type: "Near Miss", location: "", desc: "", severity: "Rendah", project: "", branch: "" });
 
-  // Drawing
-  const [showDrw, setShowDrw] = useState(false);
-  const [drwForm, setDrwForm] = useState({ project: "", title: "", holder: "", branch: "", fileUrl: "", kind: "Shop Drawing" });
-  const [expandedDrw, setExpandedDrw] = useState<string | null>(null);
-  /* Pratinjau drawing & sertifikat: MODAL, bukan inline (revisi 2 Oktober).
+  /* Pratinjau sertifikat: MODAL, bukan inline (revisi 2 Oktober).
      Alasan yang sama seperti modul Dokumen: inline membuat daftar tetap
      bisa melebar dan bergeser saat panel muncul, dan untuk dokumen
      certificate yang berkasnya PDF A3 ukurannya tidak muat di kartu 1/3
-     lebar - pengguna harus menggulir ke dalam kolom yang sempit.
-     `expandedDrw` di atas untuk hal lain (riwayat revisi) dan tetap
-     dipisah, supaya membuka riwayat tidak menutup pratinjau. */
-  const [drwPreview, setDrwPreview] = useState<PreviewDoc | null>(null);
-  const [drwStatusF, setDrwStatusF] = useState("Semua");
-  const [drwKindF, setDrwKindF] = useState("Semua");
+     lebar - pengguna harus menggulir ke dalam kolom yang sempit. */
   const [certPreview, setCertPreview] = useState<PreviewDoc | null>(null);
   /* Q2: filter sub-tipe sertifikat dari docTypes (dua arah dengan modul Dokumen). */
   const [certSubTypeF, setCertSubTypeF] = useState("Semua");
@@ -275,8 +246,6 @@ export default function QCSafety() {
       && /sertifikat/i.test(String(d.type ?? ""))
       && (certSubTypeF === "Semua" || String(d.subType ?? "") === certSubTypeF),
     );
-  const [showTransmit, setShowTransmit] = useState(false);
-  const [transmitForm, setTransmitForm] = useState({ to: "", date: todayISO(), ids: [] as string[] });
 
   // HSE Operasional (JSA & PPE tersimpan di koleksi toolbox store; safety walk lokal)
   const [showJsa, setShowJsa] = useState(false);
@@ -313,10 +282,10 @@ export default function QCSafety() {
   const [showAuditPlan, setShowAuditPlan] = useState(false);
   const [auditForm, setAuditForm] = useState({ date: todayISO(), area: "", auditor: "", findings: "0", ncrId: "" });
   const [delAudit, setDelAudit] = useState<StoreItem | null>(null);
-  /* NCR dan drawing punya ubah + alur status, tapi tidak punya hapus sama
-     sekali. Yang sudahfinal (NCR Tertutup / drawing Terbit) sudah jadi
-     catatan mutu bertanda tangan, jadi tidak boleh hilang. */
-  const [delRec, setDelRec] = useState<{ kind: "ncr" | "drawings" | "toolbox" | "walks" | "incidents"; row: StoreItem } | null>(null);
+  /* NCR punya ubah + alur status, tapi tidak punya hapus sama
+      sekali. Yang sudah final (NCR Tertutup) sudah jadi
+      catatan mutu bertanda tangan, jadi tidak boleh hilang. */
+  const [delRec, setDelRec] = useState<{ kind: "ncr" | "toolbox" | "walks" | "incidents"; row: StoreItem } | null>(null);
   /* Toolbox talk, safety walk, dan insiden dulu hanya bisa ditambah. */
   const [tbmEditId, setTbmEditId] = useState<string | null>(null);
   const [walkEditId, setWalkEditId] = useState<string | null>(null);
@@ -908,16 +877,6 @@ export default function QCSafety() {
     } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); }
   };
 
-  // Ubah drawing: title + holder (revisi/status tetap lewat alur).
-  const drwLocked = (d: StoreItem): string | null => {
-    const st = String(d.status ?? "");
-    return st === "Terbit" || st === "Distribusi" || st === "As Built"
-      ? (locale === "en"
-        ? `Drawing ${String(d.id)} is already ${st} - it is an issued revision.`
-        : `Drawing ${String(d.id)} sudah ${st} - itu revisi yang sudah terbit.`)
-      : null;
-  };
-
   const recLocked = (kind: string, row: StoreItem): string | null => {
     if (kind === "ncr") {
       return String(row.status ?? "") === "Tertutup"
@@ -926,7 +885,6 @@ export default function QCSafety() {
           : `NCR ${String(row.id)} sudah Tertutup - di situ ada CAPA diterima dan biaya rework.`)
         : null;
     }
-    if (kind === "drawings") return drwLocked(row);
     /* incidentToNcr() menulis incidentId ke NCR, jadi insiden yang sudah
        ditindaklanjuti tidak boleh dihapus - referensinya akan menggantung. */
     if (kind === "incidents") {
@@ -951,142 +909,6 @@ export default function QCSafety() {
       toast(locale === "en" ? `${String(row.id)} deleted` : `${String(row.id)} dihapus`);
       setDelRec(null);
     } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); }
-  };
-
-  const openDrwEdit = (d: StoreItem) => {
-    setDrwEdit(d);
-    setDrwEditForm({ title: String(d.title ?? ""), holder: String(d.holder ?? "") });
-  };
-
-  const saveDrwEdit = async () => {
-    try {
-    if (!drwEdit) return;
-    if (!drwEditForm.title.trim() || !drwEditForm.holder.trim()) { toast(S.tDrwWajib, "info"); return; }
-    await update("drawings", drwEdit.id, { title: drwEditForm.title.trim(), holder: drwEditForm.holder.trim(), updated: todayISO() });
-    log("mengubah drawing", `${drwEdit.id} · ${drwEditForm.title.trim()} · ${drwEditForm.holder.trim()}`, "QC");
-    toast(S.tDrwDaftar.replace("{n}", drwEdit.id));
-    setDrwEdit(null);
-    } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); }
-  };
-
-  const saveDrawing = async () => {
-    try {
-    if (!drwForm.project || !drwForm.title.trim() || !drwForm.holder.trim()) { toast(S.tDrwWajib, "info"); return; }
-    const created = await add("drawings", {
-      project: drwForm.project, title: drwForm.title.trim(), revision: "A",
-      status: "Diajukan", updated: todayISO(), holder: drwForm.holder.trim(),
-      branch: branchOf(drwForm.branch), kind: drwForm.kind,
-      ...(drwForm.fileUrl.trim() ? { fileUrl: drwForm.fileUrl.trim() } : {}),
-      history: [{ revision: "A", date: todayISO(), holder: drwForm.holder.trim(), status: "Diajukan" }],
-    }, { action: "meregistrasi drawing", module: "QC" });
-    toast(S.tDrwDaftar.replace("{n}", created.id));
-    setShowDrw(false);
-    setDrwForm({ project: "", title: "", holder: "", branch: "", fileUrl: "", kind: "Shop Drawing" });
-    } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); }
-  };
-
-  const reviseDrawing = async (d: StoreItem) => {
-    try {
-    const rev = nextRev(String(d.revision ?? "A"));
-    const history = [...(Array.isArray(d.history) ? d.history : []), { revision: rev, date: todayISO(), holder: String(d.holder ?? ""), status: String(d.status ?? "Diajukan") }];
-    await update("drawings", d.id, { revision: rev, updated: todayISO(), history });
-    log("merevisi drawing", `${d.id} → rev ${rev}`, "QC");
-    toast(S.tDrwNaik.replace("{n}", d.id).replace("{a}", rev));
-    } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); }
-  };
-
-  const stepDrawing = async (d: StoreItem, next: string) => {
-    try {
-    if (next === "Disetujui" && !canSetTarget(user?.role)) {
-      toast(S.tHanyaDir, "info");
-      return;
-    }
-    const history = [...(Array.isArray(d.history) ? d.history : []), { revision: String(d.revision ?? ""), date: todayISO(), holder: String(d.holder ?? ""), status: next }];
-    await update("drawings", d.id, { status: next, updated: todayISO(), history });
-    log("memproses drawing", `${d.id} → ${next}`, "QC");
-    toast(S.tArrow.replace("{a}", d.id).replace("{b}", next));
-    } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); }
-  };
-
-  const toggleTransmitId = (id: string) => {
-    setTransmitForm((f) => ({ ...f, ids: f.ids.includes(id) ? f.ids.filter((x) => x !== id) : [...f.ids, id] }));
-  };
-
-  /** Nomor transmittal berikutnya. Id harus unik: dua transmittal pada hari
-   *  yang sama dengan jumlah drawing sama dulu bisa menabrak. */
-  const nextTransmittalId = (): string => {
-    const stamp = transmitForm.date.replaceAll("-", "");
-    const trDocs = (data.documents ?? []).filter((d) => d.type === "Transmittal");
-    let seq = 1;
-    while (trDocs.some((d) => String(d.id) === `TR-${stamp}-${String(seq).padStart(3, "0")}`)) seq += 1;
-    return `TR-${stamp}-${String(seq).padStart(3, "0")}`;
-  };
-
-  const saveTransmittal = async () => {
-    if (!transmitForm.to.trim()) { toast(S.tTransmitTo, "info"); return; }
-    if (!transmitForm.date) { toast(S.tTransmitDate, "info"); return; }
-    if (transmitForm.ids.length === 0) { toast(S.tTransmitPilih, "info"); return; }
-    try {
-      const rows = transmitForm.ids.map((id) => drawings.find((d) => d.id === id)).filter((d): d is StoreItem => !!d);
-      /* Transmittal DIBERARKAN lebih dulu, baru PDF-nya. Urutan ini yang
-         membuat dokumen bisa dicetak ulang: PDF dirakit server dari baris
-         arsip, jadi kalau PDF dulu, isinya tidak ada di mana pun. */
-      const docId = nextTransmittalId();
-      const no = `TR/${docId.replaceAll("-", "/")}`;
-      const trItems = rows.map((d) => ({
-        code: String(d.id),
-        title: String(d.title ?? "-"),
-        revision: String(d.revision ?? "-"),
-        status: String(d.status ?? "-"),
-      }));
-      await add("documents", {
-        id: docId,
-        title: `Transmittal drawing ke ${transmitForm.to.trim()}`,
-        type: "Transmittal",
-        project: String(rows[0]?.project ?? "-"),
-        vessel: "-",
-        owner: String(user?.name ?? "Anda"),
-        sbRef: no,
-        trDate: transmitForm.date,
-        trTo: transmitForm.to.trim(),
-        trItems,
-        trSender: String(user?.name ?? "H. Syarif Sarapping"),
-        related: rows.map((d) => String(d.id)),
-        version: "v1.0",
-        status: "Terkirim",
-        updated: todayISO(),
-        archived: false,
-        docCopy: "Terkendali",
-        revisions: [{ version: "v1.0", at: todayISO(), by: String(user?.name ?? "Anda"), note: `Transmittal dikirim ke ${transmitForm.to.trim()}` }],
-      }, { action: "mengirim transmittal drawing", target: `${no} · ${rows.length} drawing`, module: "QC" });
-      /* Transmittal ini dikirim ke BKI dan dibaca pihak luar, jadi isinya
-         harus persis seperti di arsip: server merakitnya dari baris yang
-         baru disimpan di atas, bukan dari state form. */
-      if (!pdfServerReady()) {
-        toast(S.saveFail, "info");
-        return;
-      }
-      const done = await pdfDoc.request({ kind: "transmittal", id: docId, locale }, `Transmittal-${transmitForm.date}`, false);
-      if (!done) return;
-      void exportExcel(
-      [["ID", "Proyek", "Judul", "Revisi", "Status", "Holder", "Diperbarui"],
-        ...rows.map((d) => [d.id, d.project, d.title, d.revision, d.status, d.holder, fmtTanggal(String(d.updated))])],
-      `Transmittal-${transmitForm.date}`,
-      "Transmittal",
-    );
-    // Transmittal tercatat: drawing Disetujui → Distribusi.
-    for (const d of rows) {
-      if (String(d.status ?? "") === "Disetujui") {
-        await update("drawings", String(d.id), { status: "Distribusi" });
-      }
-    }
-    log("mengirim transmittal drawing", `${rows.length} drawing → ${transmitForm.to.trim()} · ${fmtTanggal(transmitForm.date)}`, "QC");
-    toast(S.tTransmitOk.replace("{n}", String(rows.length)));
-    setShowTransmit(false);
-    setTransmitForm({ to: "", date: todayISO(), ids: [] });
-    } catch {
-      toast(S.tTransmitGagal, "info");
-    }
   };
 
   const saveJsa = async () => {
@@ -1663,104 +1485,6 @@ export default function QCSafety() {
                 </Card>
               ))}
               {ncrList.length === 0 && <p className="py-6 text-center text-sm text-steel-400">{S.emptyNcr}</p>}
-            </div>
-          )}
-
-          {tab === "Drawing" && (
-            <div className="space-y-3">
-              <div className="flex flex-wrap items-center gap-2">
-                <label className="flex items-center gap-1.5 text-xs text-steel-500">
-                  <span className="whitespace-nowrap">Status:</span>
-                  <select className="input w-auto py-1.5 text-xs" value={drwStatusF} onChange={(e) => setDrwStatusF(e.target.value)}>
-                    {["Semua", "Diajukan", "Disetujui", "Distribusi"].map((s) => <option key={s} value={s}>{s === "Semua" ? "Semua status" : s}</option>)}
-                  </select>
-                </label>
-                <label className="flex items-center gap-1.5 text-xs text-steel-500">
-                  <span className="whitespace-nowrap">Jenis:</span>
-                  <select className="input w-auto py-1.5 text-xs" value={drwKindF} onChange={(e) => setDrwKindF(e.target.value)}>
-                    <option value="Semua">Semua jenis</option>
-                    {["Shop Drawing", "As-Built Drawing", "Class Submission"].map((k) => <option key={k} value={k}>{k}</option>)}
-                  </select>
-                </label>
-                <span className="ml-auto flex flex-wrap gap-2">
-                  <button className="btn-secondary text-xs" onClick={() => setShowTransmit(true)}><Send className="h-3.5 w-3.5" /> {S.btnTransmittal}</button>
-                  <button className="btn-secondary text-xs" onClick={() => setShowDrw(true)}><Plus className="h-3.5 w-3.5" /> {S.btnRegister}</button>
-                </span>
-              </div>
-              {drawings.filter((d) => (drwStatusF === "Semua" || String(d.status) === drwStatusF) && (drwKindF === "Semua" || String(d.kind ?? "Shop Drawing") === drwKindF)).length === 0 && (
-                <p className="rounded-lg bg-steel-50 px-3 py-2 text-xs text-steel-500">Tidak ada drawing pada filter ini.</p>
-              )}
-              {drawings.filter((d) => (drwStatusF === "Semua" || String(d.status) === drwStatusF) && (drwKindF === "Semua" || String(d.kind ?? "Shop Drawing") === drwKindF)).map((d) => (
-                <Card key={d.id} className="p-4">
-                  <div className="flex flex-wrap items-start justify-between gap-2">
-                    <div className="min-w-0">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <p className="font-semibold text-navy-900 font-mono">{d.id}</p>
-                        <Badge tone="navy">{S.revN.replace("{n}", String(d.revision))}</Badge>
-                        <Badge tone="blue">{String(d.kind ?? "Shop Drawing")}</Badge>
-                        <StatusBadge status={String(d.status)} />
-                      </div>
-                      <p className="mt-1 text-sm text-steel-700">{d.title}</p>
-                      <p className="text-xs text-steel-500 mt-0.5">{S.drawingMeta.replace("{a}", String(d.project)).replace("{b}", String(d.holder)).replace("{c}", fmtTanggal(String(d.updated)))}</p>
-                      {(() => {
-                        /* docAttachment dipindai sekali di sini lalu dipakai
-                           ulang di bawah. Semula docUrlOf(d) dipanggil lima kali
-                           untuk satu kartu, masing-masing memindai 9 field. */
-                        const att = docAttachment(d);
-                        if (att.url === "") {
-                          return <p className="mt-1 text-[11px] text-steel-400">Belum ada dokumen — tekan Ubah lalu unggah PDF/gambar.</p>;
-                        }
-                        return (
-                          <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
-                            <button
-                              type="button"
-                              className="inline-flex items-center gap-1.5 rounded-lg px-1.5 py-1 text-xs font-semibold text-steel-500 hover:bg-steel-100 hover:text-ocean-600 focus:outline-none focus-visible:ring-2 focus-visible:ring-ocean-400"
-                              title={`Pratinjau: ${String(d.title)}`}
-                              aria-label={`Pratinjau: ${String(d.title)}`}
-                              onClick={() => setDrwPreview({ title: String(d.title), fileUrl: att.url, fileName: att.fileName, subtitle: `${String(d.id)} · ${String(d.project)} · rev ${String(d.revision ?? "-")}` })}
-                            >
-                              <Eye className="h-4 w-4" aria-hidden /> Pratinjau
-                            </button>
-                            <DownloadFileButton url={att.url} fileName={att.fileName} className="btn-secondary px-2 py-1 text-xs" />
-                          </div>
-                        );
-                      })()}
-                    </div>
-                    <div className="flex flex-wrap items-center gap-2">
-                      <button className="btn-secondary text-xs" onClick={() => setExpandedDrw(expandedDrw === d.id ? null : d.id)}>
-                        {expandedDrw === d.id ? S.btnTutupRiwayat : S.btnRiwayat}
-                      </button>
-                      <button className="btn-secondary text-xs" onClick={() => openDrwEdit(d)}>{S.btnEdit}</button>
-                      <button className="btn-secondary text-xs" onClick={() => reviseDrawing(d)}>{S.revisiKe.replace("{n}", nextRev(String(d.revision ?? "A")))}</button>
-                      {!drwLocked(d) ? (
-                        <button className="btn-secondary text-xs text-rose-600" onClick={() => setDelRec({ kind: "drawings", row: d })}>{locale === "en" ? "Delete" : "Hapus"}</button>
-                      ) : (
-                        <span className="text-xs text-steel-400" title={drwLocked(d) ?? ""}>{locale === "en" ? "Locked" : "Terkunci"}</span>
-                      )}
-                      {DRAW_FLOW[DRAW_FLOW.indexOf(String(d.status)) + 1] && (
-                        <button className="btn-primary text-xs" onClick={() => stepDrawing(d, DRAW_FLOW[DRAW_FLOW.indexOf(String(d.status)) + 1])}>
-                          {S.arrowN.replace("{n}", DRAW_FLOW[DRAW_FLOW.indexOf(String(d.status)) + 1])}
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                  {expandedDrw === d.id && (
-                    <div className="mt-3 border-t border-steel-100 pt-2">
-                      <p className="text-xs font-semibold text-steel-500">{S.riwayatRevisi}</p>
-                      <div className="mt-1 space-y-1">
-                        {(Array.isArray(d.history) ? d.history : []).map((h: { revision: string; date: string; holder: string; status: string }, idx: number) => (
-                          <div key={idx} className="flex flex-wrap items-center justify-between gap-2 text-xs text-steel-600">
-                            <span>{S.histRow.replace("{a}", h.revision).replace("{b}", h.status).replace("{c}", h.holder)}</span>
-                            <span>{fmtTanggal(h.date)}</span>
-                          </div>
-                        ))}
-                        {(!Array.isArray(d.history) || d.history.length === 0) && <p className="text-xs text-steel-400">{S.emptyHistory}</p>}
-                      </div>
-                    </div>
-                  )}
-                </Card>
-              ))}
-              {drawings.length === 0 && <p className="py-6 text-center text-sm text-steel-400">{S.emptyDrawing}</p>}
             </div>
           )}
 
@@ -2659,76 +2383,8 @@ export default function QCSafety() {
         </div>
       </Modal>
 
-      {/* Modal register drawing */}
-      <Modal open={showDrw} onClose={() => setShowDrw(false)} title={S.mDrwT} subtitle={S.mDrwS}
-        footer={<><button className="btn-secondary" onClick={() => setShowDrw(false)}>{S.btnBatal}</button><AsyncButton className="btn-primary" onAction={saveDrawing}>{S.btnDaftarkan}</AsyncButton></>}>
-        <div className="space-y-3">
-          <Field label={S.thProyek}>
-            <select className="input" value={drwForm.project} onChange={(e) => setDrwForm({ ...drwForm, project: e.target.value })}>
-              <option value="">{S.optPilihProyek}</option>
-              {data.projects.map((p) => <option key={p.id} value={p.id}>{p.id} · {p.vessel}</option>)}
-            </select>
-          </Field>
-          <Field label={S.fJudulDrw}><input className="input" value={drwForm.title} onChange={(e) => setDrwForm({ ...drwForm, title: e.target.value })} placeholder={S.phJudulDrw} /></Field>          <Field label="Jenis dokumen" hint="Shop = gambar kerja · As-Built = gambar aktual · Class = untuk approval kelas">
-            <select className="input" value={drwForm.kind} onChange={(e) => setDrwForm({ ...drwForm, kind: e.target.value })}>
-              {["Shop Drawing", "As-Built Drawing", "Class Submission"].map((k) => <option key={k} value={k}>{k}</option>)}
-            </select>
-          </Field>
-          <Field label={S.fHolder}><input className="input" value={drwForm.holder} onChange={(e) => setDrwForm({ ...drwForm, holder: e.target.value })} placeholder={S.phHolder} /></Field>
-          <Field label={locale === "en" ? "Document file URL" : "URL file dokumen"} hint={locale === "en" ? "Optional - drawing / PDF" : "Opsional - gambar / PDF"}>
-            <div className="flex flex-wrap items-center gap-2">
-              <input className="input flex-1 font-mono" value={drwForm.fileUrl} onChange={(e) => setDrwForm({ ...drwForm, fileUrl: e.target.value })} placeholder="https://…" />
-              <FileUploadButton label={locale === "en" ? "Upload" : "Unggah"} onUploaded={(url) => setDrwForm((f) => ({ ...f, fileUrl: url }))} />
-            </div>
-            {drwForm.fileUrl.trim() !== "" && (
-              <InlineDocPreview url={drwForm.fileUrl} height={/\.pdf(\?|$)/i.test(drwForm.fileUrl) ? "h-40" : "h-28"} />
-            )}
-          </Field>
-          <Field label={S.fCabang} hint={S.hintIkutGlobal.replace("{n}", branch)}>
-            <select className="input" value={drwForm.branch} onChange={(e) => setDrwForm({ ...drwForm, branch: e.target.value })}>
-              <option value="">{S.optIkutGlobal}</option>
-              {branchCities.map((c) => <option key={c} value={c}>{c}</option>)}
-            </select>
-          </Field>
-        </div>
-      </Modal>
-
-      {/* Modal ubah drawing (title + holder) */}
-      <Modal open={drwEdit !== null} onClose={() => setDrwEdit(null)} title={drwEdit ? `${S.btnEdit} ${drwEdit.id}` : ""} subtitle={drwEdit ? `${locale === "en" ? "Rev" : "Rev"} ${String(drwEdit.revision)}` : ""}
-        footer={<><button className="btn-secondary" onClick={() => setDrwEdit(null)}>{S.btnBatal}</button><AsyncButton className="btn-primary" onAction={saveDrwEdit}>{S.btnSimpan}</AsyncButton></>}>
-        <div className="space-y-3">
-          <Field label={S.fJudulDrw}><input className="input" value={drwEditForm.title} onChange={(e) => setDrwEditForm({ ...drwEditForm, title: e.target.value })} placeholder={S.phJudulDrw} /></Field>
-          <Field label={S.fHolder}><input className="input" value={drwEditForm.holder} onChange={(e) => setDrwEditForm({ ...drwEditForm, holder: e.target.value })} placeholder={S.phHolder} /></Field>
-        </div>
-      </Modal>
-
-      {/* Modal transmittal */}
-      {/* Pratinjau drawing & sertifikat (revisi 2 Oktober: modal, bukan inline). */}
-      <DocumentPreviewModal doc={drwPreview} onClose={() => setDrwPreview(null)} />
+      {/* Pratinjau sertifikat (revisi 2 Oktober: modal, bukan inline). */}
       <DocumentPreviewModal doc={certPreview} onClose={() => setCertPreview(null)} />
-
-      <Modal open={showTransmit} onClose={() => setShowTransmit(false)} title={S.mTrT} subtitle={S.mTrS}
-        wide footer={<><button className="btn-secondary" onClick={() => setShowTransmit(false)}>{S.btnBatal}</button><AsyncButton className="btn-primary" onAction={saveTransmittal}><Send className="h-4 w-4" /> {S.btnKirimEkspor}</AsyncButton></>}>
-        <div className="space-y-3">
-          <FormGrid>
-            <Field label={S.fKepada}><input className="input" value={transmitForm.to} onChange={(e) => setTransmitForm({ ...transmitForm, to: e.target.value })} placeholder={S.phKepada} /></Field>
-            <Field label={S.thTanggal}><input type="date" className="input" value={transmitForm.date} onChange={(e) => setTransmitForm({ ...transmitForm, date: e.target.value })} /></Field>
-          </FormGrid>
-          <div>
-            <p className="label">{S.lblDaftar.replace("{n}", String(transmitForm.ids.length))}</p>
-            <div className="mt-1 max-h-56 space-y-1 overflow-y-auto">
-              {drawings.map((d) => (
-                <label key={d.id} className="flex items-center gap-2 rounded-lg border border-steel-100 px-3 py-2 text-sm text-steel-700">
-                  <input type="checkbox" checked={transmitForm.ids.includes(d.id)} onChange={() => toggleTransmitId(d.id)} />
-                  <span className="font-mono text-xs text-navy-900">{d.id}</span>
-                  <span className="truncate">{d.title} · Rev {d.revision}</span>
-                </label>
-              ))}
-              {drawings.length === 0 && <p className="text-xs text-steel-400">{S.emptyTransmit}</p>}
-            </div>
-          </div>
-        </div>
-      </Modal>
 
       {/* Modal JSA */}
       <Modal open={showJsa} onClose={() => setShowJsa(false)} title={S.mJsaT} subtitle={S.mJsaS}

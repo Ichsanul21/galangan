@@ -140,10 +140,8 @@ export default function Subcontractor() {
   const payments = data.termins;
   const timesheets = data.timesheets;
   const projectOptions = data.projects;
-  const employeeOptions = data.employees;
   const [tab, setTab] = useState("Subkontraktor");
   const [sort, setSort] = useState<SortState>({ key: null, dir: "asc" });
-  const [sort2, setSort2] = useState<SortState>({ key: null, dir: "asc" });
   const [subQ, setSubQ] = useState("");
   const [subStatus, setSubStatus] = useState("Semua");
   const modAlert = useModuleAlert("subkontraktor");
@@ -210,17 +208,11 @@ export default function Subcontractor() {
   const [rejectTerm, setRejectTerm] = useState<StoreItem | null>(null);
   const [releaseTerm, setReleaseTerm] = useState<StoreItem | null>(null);
   const [releaseForm, setReleaseForm] = useState({ date: todayISO(), ba: "" });
-  const [showTs, setShowTs] = useState(false);
-  const [tsForm, setTsForm] = useState({ wo: "", employee: "", date: todayISO(), hours: "", note: "" });
-  // Ubah / hapus timesheet & termin. Edit hanya boleh saat belum Disetujui.
-  const [tsEditId, setTsEditId] = useState<string | null>(null);
-  const [delTs, setDelTs] = useState<StoreItem | null>(null);
   const [delTerm, setDelTerm] = useState<StoreItem | null>(null);
   /* Subkontraktor & WO belum punya hapus. Keduanya jadi acuan record
      keuangan, jadi hanya boleh dihapus kalau belum ada yang merujuk. */
   const [delSub, setDelSub] = useState<StoreItem | null>(null);
   const [delWo, setDelWo] = useState<StoreItem | null>(null);
-  const [rateForm, setRateForm] = useState({ wo: "", rate: "" });
 
   const runningWo = workOrders.filter((w) => w.status !== "Selesai").length;
   const avgRating = subcontractors.length ? Math.round(subcontractors.reduce((s, x) => s + Number(x.rating || 0), 0) / subcontractors.length) : 0;
@@ -327,8 +319,6 @@ export default function Subcontractor() {
   const globalBranch = branch === "SEMUA" ? "" : branch;
   const branchOfProject = (pid: string): string =>
     String(data.projects.find((p) => p.id === pid)?.branch ?? globalBranch ?? "");
-  const branchOfEmployee = (empId: string): string =>
-    String(data.employees.find((e) => e.id === empId)?.branch ?? globalBranch ?? "");
   // Ambang Director untuk pelunasan termin (pengaturan APPROVE_TERMIN).
   const terminThreshold = getSetting(data, "APPROVE_TERMIN", 2000000);
   // Default PPh subkon bila termin tak menyebut pphPct (pengaturan PPH_SUBKON_DEFAULT).
@@ -927,97 +917,7 @@ const printSpk = async (w: StoreItem): Promise<void> => {
     } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); }
   };
 
-  const saveTimesheet = async () => {
-    try {
-    if (!tsForm.wo || !tsForm.employee || !tsForm.date) { toast(S.tTsFieldsRequired, "info"); return; }
-    const hours = Number(tsForm.hours);
-    if (!Number.isFinite(hours) || hours <= 0) { toast(S.tHoursPositive, "info"); return; }
-    const wo = workOrders.find((w) => w.id === tsForm.wo);
-    const projectId = String(wo?.project ?? "");
-    const rate = Number(wo?.rate || 0);
-    const payload = {
-      woId: tsForm.wo, employeeId: tsForm.employee, date: tsForm.date, hours, note: tsForm.note.trim(),
-      projectId, rate, cost: Math.round(hours * rate),
-      branch: branchOfEmployee(tsForm.employee),
-    };
-    if (tsEditId) {
-      /* Koreksi timesheet: biaya dihitung ULANG dari tarif WO saat ini.
-         Bila tarif berubah setelah pencatatan, angka kost ikut bergerak -
-         itu benar karena termin dihitung dari timesheet × tarif. */
-      const prev = timesheets.find((x) => String(x.id) === tsEditId);
-      if (String(prev?.status ?? "Diajukan") === "Disetujui") {
-        toast(
-          locale === "en"
-            ? `Timesheet ${tsEditId} is already approved - void it in the termin instead.`
-            : `Timesheet ${tsEditId} sudah disetujui - void di termin.`,
-          "info",
-        );
-        return;
-      }
-      await update("timesheets", tsEditId, { ...payload, status: String(prev?.status ?? "Diajukan") });
-      log("mengubah timesheet", `${tsEditId} - ${hours} jam`, "Subkontraktor");
-      toast(locale === "en" ? `Timesheet ${tsEditId} updated` : `Timesheet ${tsEditId} diperbarui`);
-      setTsEditId(null);
-    } else {
-      const created = await add("timesheets", { ...payload, status: "Diajukan" }, { action: "mencatat timesheet", module: "Subkontraktor" });
-      toast(S.tTsLogged.replace("{a}", created.id).replace("{b}", String(hours)));
-    }
-    setShowTs(false);
-    setTsForm({ wo: "", employee: "", date: todayISO(), hours: "", note: "" });
-    } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); }
-  };
-
-  /* ==== UBAH / HAPUS TIMESHEET ==== */
-  const openTsEdit = (t: StoreItem) => {
-    setTsEditId(String(t.id));
-    setTsForm({
-      wo: String(t.woId ?? ""),
-      employee: String(t.employeeId ?? ""),
-      date: String(t.date ?? todayISO()),
-      hours: String(Number(t.hours || 0)),
-      note: String(t.note ?? ""),
-    });
-    setShowTs(true);
-  };
-
-  const confirmDelTs = async () => {
-    if (!delTs) return;
-    if (String(delTs.status ?? "Diajukan") === "Disetujui") {
-      toast(
-        locale === "en"
-          ? `Timesheet ${delTs.id} is approved and already feeds the termin - void the termin instead.`
-          : `Timesheet ${delTs.id} sudah disetujui dan sudah jadi dasar termin - void terminnya.`,
-        "info",
-      );
-      return;
-    }
-    try {
-      await remove("timesheets", String(delTs.id));
-      log("menghapus timesheet", `${delTs.id} - ${String(delTs.hours ?? 0)} jam`, "Subkontraktor");
-      toast(locale === "en" ? `Timesheet ${delTs.id} deleted` : `Timesheet ${delTs.id} dihapus`);
-      setDelTs(null);
-    } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); }
-  };
-
-  const approveTimesheet = async (t: StoreItem) => {
-    try {
-    await update("timesheets", t.id, { status: "Disetujui" });
-    log("menyetujui timesheet", `${t.id} · ${t.hours} jam`, "Subkontraktor");
-    toast(S.tTsApproved.replace("{n}", t.id));
-    } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); }
-  };
-
-  const saveRate = async () => {
-    try {
-    if (!rateForm.wo) { toast(S.tPickWoFirst, "info"); return; }
-    const rate = parseRupiah(rateForm.rate);
-    if (!Number.isFinite(rate) || rate < 0) { toast(S.tRateInvalid, "info"); return; }
-    await update("workOrders", rateForm.wo, { rate });
-    log("menetapkan rate WO", `${rateForm.wo} · ${fmtRupiah(rate)}/jam`, "Subkontraktor");
-    toast(S.tRateSaved.replace("{n}", rateForm.wo));
-    setRateForm({ wo: "", rate: "" });
-    } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); }
-  };
+  /* ==== UBAH / HAPUS WO (dipakai path lain) ==== */
 
   return (
     <div>
@@ -1369,96 +1269,9 @@ const printSpk = async (w: StoreItem): Promise<void> => {
             </div>
           )}
 
-          {tab === "Timesheet" && (
-            <div className="space-y-4">
-              <div className="flex flex-wrap justify-end gap-2">
-                <button className="btn-secondary text-xs" onClick={() => setShowTs(true)}><Plus className="h-3.5 w-3.5" /> {S.logTsBtn}</button>
-              </div>
-              <Card className="p-4">
-                <h3 className="text-sm font-semibold text-navy-900">{S.recapWoTitle}</h3>
-                <div className="mt-2 space-y-2">
-                  {workOrders.map((w) => {
-                    const hours = hoursByWo(w.id);
-                    const sub = subcontractors.find((s) => s.name === w.sub);
-                    const scheme = String(sub?.payScheme ?? "unit");
-                    const rate = Number(w.rate || 0);
-                    const usulan = (scheme === "harian" || scheme === "jam") && rate > 0 ? hours * rate : 0;
-                    return (
-                      <div key={w.id} className="flex flex-wrap items-center justify-between gap-2 border-b border-steel-100 py-2 text-sm">
-                        <div>
-                          <p className="font-mono font-medium text-navy-900">{w.id} <span className="font-sans text-xs text-steel-500">· {w.sub}</span></p>
-                          <p className="text-xs text-steel-500">{S.woHoursScheme.replace("{a}", String(hours)).replace("{b}", scheme)}{rate > 0 ? S.rateAutoSuffix.replace("{n}", fmtRupiah(rate)) : ""}</p>
-                        </div>
-                        {usulan > 0 && <Badge tone="teal">{S.proposeTerminBadge.replace("{n}", fmtRupiah(usulan))}</Badge>}
-                      </div>
-                    );
-                  })}
-                  {workOrders.length === 0 && <p className="text-xs text-steel-400">{S.emptyWo}</p>}
-                </div>
-                <div className="mt-3 flex flex-wrap items-end gap-2 border-t border-steel-100 pt-3">
-                  <Field label={S.woRateLabel}>
-                    <select className="input" value={rateForm.wo} onChange={(e) => setRateForm({ ...rateForm, wo: e.target.value })}>
-                      <option value="">{S.pickWoOpt}</option>
-                      {workOrders.map((w) => <option key={w.id} value={w.id}>{w.id} ({w.sub})</option>)}
-                    </select>
-                  </Field>
-                  <Field label={S.rateLabel}>
-                    <MoneyInput className="input" value={rateForm.rate} onChange={(v) => setRateForm({ ...rateForm, rate: v })} placeholder={S.ratePh} />
-                  </Field>
-                  <button className="btn-secondary text-xs" onClick={saveRate}>{S.saveRateBtn}</button>
-                </div>
-              </Card>
-              <div className="overflow-x-auto">
-                <table className="w-full">
-                  <thead className="bg-surface sticky top-0 z-10">
-                    <tr><SortTh label={S.sortId} sortKey="id" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} /><SortTh label={S.sortWo} sortKey="wo" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} /><SortTh label={S.projectLabel} sortKey="proyek" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} /><SortTh label={S.employeeLabel} sortKey="karyawan" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} /><SortTh label={S.dateLabel} sortKey="tanggal" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} /><SortTh label={S.sortHours} sortKey="jam" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} /><SortTh label={S.sortCost} sortKey="biaya" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} /><SortTh label={S.sortStatus} sortKey="status" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} /><SortTh label={S.sortNote} sortKey="catatan" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} /><th className="th">{S.actionLabel}</th></tr>
-                  </thead>
-                  <tbody className="divide-y divide-steel-100">
-                    {sortRows(timesheets, sort2, (t, key) =>
-                      key === "id" ? String(t.id ?? "") : key === "wo" ? String(t.woId ?? "") : key === "proyek" ? String(t.projectId ?? workOrders.find((w) => w.id === t.woId)?.project ?? "") : key === "karyawan" ? String(t.employeeId ?? "") : key === "tanggal" ? String(t.date ?? "") : key === "jam" ? Number(t.hours ?? 0) : key === "biaya" ? Number(t.cost ?? Number(t.hours || 0) * Number(workOrders.find((w) => w.id === t.woId)?.rate || 0)) : key === "status" ? String(t.status ?? "Diajukan") : String(t.note ?? "")
-                    ).map((t) => (
-                      <tr key={t.id} className="hover:bg-surface">
-                        <td className="td font-mono font-medium text-navy-900">{t.id}</td>
-                        <td className="td font-mono text-xs text-steel-600">{t.woId}</td>
-                        <td className="td font-mono text-xs text-steel-600">{t.projectId ?? workOrders.find((w) => w.id === t.woId)?.project ?? "-"}</td>
-                        <td className="td text-steel-600 text-xs">{t.employeeId}</td>
-                        <td className="td text-steel-600">{fmtTanggal(t.date)}</td>
-                        <td className="td font-semibold">{S.hoursSuffix.replace("{n}", String(t.hours))}</td>
-                        <td className="td text-steel-600">{fmtRupiah(Number(t.cost ?? Number(t.hours || 0) * Number(workOrders.find((w) => w.id === t.woId)?.rate || t.rate || 0)))}</td>
-                        <td className="td"><Badge tone={String(t.status ?? "Diajukan") === "Disetujui" ? "green" : "amber"}>{t.status ?? "Diajukan"}</Badge></td>
-                        <td className="td text-steel-600 text-xs">{t.note ?? "-"}</td>
-                        <td className="td">
-                          <div className="flex flex-wrap gap-1.5">
-                            {String(t.status ?? "Diajukan") !== "Disetujui"
-                              ? <button className="btn-primary text-xs" aria-label={S.approveAria.replace("{n}", t.id)} onClick={() => approveTimesheet(t)}>{S.approveBtn}</button>
-                              : null}
-                            {/* Ubah/Hapus timesheet. Dulu tabelnya hanya punya
-                                Setujui. Timesheet yang jamnya salah ketik (paling
-                                sering - workforce submits by paper) tidak bisa
-                                dikoreksi, dan yang sudah Disetujui sudah jadi
-                                dasar termin, jadi tidak bisa dihapus. */}
-                            {String(t.status ?? "Diajukan") !== "Disetujui" && (
-                              <>
-                                <RowAction icon={Pencil} tone="neutral" label={locale === "en" ? "Edit" : "Ubah"} ariaLabel={`${locale === "en" ? "Edit" : "Ubah"} ${String(t.id)}`} onClick={() => openTsEdit(t)} />
-                                <RowAction icon={Trash2} tone="danger" label={locale === "en" ? "Delete" : "Hapus"} ariaLabel={`${locale === "en" ? "Delete" : "Hapus"} ${String(t.id)}`} onClick={() => setDelTs(t)} />
-                              </>
-                            )}
-                            {String(t.status ?? "Diajukan") === "Disetujui" && (
-                              <span className="text-xs text-steel-400" title={locale === "en"
-                                ? "Already approved - changes would invalidate the termin it feeds."
-                                : "Sudah disetujui - perubahan membatalkan termin yang turun dari timesheet ini."}>
-                                {locale === "en" ? "Locked" : "Terkunci"}
-                              </span>
-                            )}
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
-                    {timesheets.length === 0 && <tr><td colSpan={10} className="td text-center text-steel-400">{S.emptyTs}</td></tr>}
-                  </tbody>
-                </table>
-              </div>
-            </div>
+          {/* T7-CLEAN3: tab Timesheet dihapus dari render (sudah tidak ada di Tabs). */}
+          {false && tab === "Timesheet" && (
+            <div />
           )}
 
           {tab === "Kepatuhan K3" && (
@@ -1919,34 +1732,8 @@ const printSpk = async (w: StoreItem): Promise<void> => {
         </div>
       </Modal>
 
-      {/* Modal timesheet - dipakai untuk catat baru maupun koreksi */}
-      <Modal open={showTs} onClose={() => { setShowTs(false); setTsEditId(null); }} title={tsEditId ? `${locale === "en" ? "Edit" : "Ubah"} ${S.tsTitle}` : S.tsTitle}
-        footer={<><button className="btn-secondary" onClick={() => { setShowTs(false); setTsEditId(null); }}>{S.cancelBtn}</button><button className="btn-primary" onClick={saveTimesheet}>{S.saveBtn}</button></>}>
-        <div className="space-y-3">
-          <FormGrid>
-            <Field label={S.woLabel}>
-              <select className="input" value={tsForm.wo} onChange={(e) => setTsForm({ ...tsForm, wo: e.target.value })}>
-                <option value="">{S.pickWoOpt}</option>
-                {workOrders.filter((w) => w.status !== "Selesai").map((w) => <option key={w.id} value={w.id}>{w.id} - {w.sub}</option>)}
-              </select>
-            </Field>
-            <Field label={S.projectFromWo} hint={(() => { const w = workOrders.find((x) => x.id === tsForm.wo); return w && Number(w.rate || 0) > 0 ? S.rateAutoHint.replace("{n}", fmtRupiah(Number(w.rate))) : S.rateMissingHint; })()}>
-              <p className="input bg-surface text-steel-600" aria-label={S.projectFromWoAria}>
-                {tsForm.wo ? (workOrders.find((x) => x.id === tsForm.wo)?.project ?? "-") : S.pickWoFirstTs}
-              </p>
-            </Field>
-            <Field label={S.employeeLabel}>
-              <select className="input" value={tsForm.employee} onChange={(e) => setTsForm({ ...tsForm, employee: e.target.value })}>
-                <option value="">{S.pickOpt}</option>
-                {employeeOptions.map((e) => <option key={e.id} value={e.id}>{e.name} - {e.role}</option>)}
-              </select>
-            </Field>
-            <Field label={S.dateLabel}><input type="date" className="input" value={tsForm.date} onChange={(e) => setTsForm({ ...tsForm, date: e.target.value })} /></Field>
-            <Field label={S.hoursLabel}><NumInput min={0} step={0.5} className="input" value={tsForm.hours} onChange={(e) => setTsForm({ ...tsForm, hours: e.target.value })} /></Field>
-          </FormGrid>
-          <Field label={S.noteLabel}><input className="input" value={tsForm.note} onChange={(e) => setTsForm({ ...tsForm, note: e.target.value })} placeholder={S.notePhTs} /></Field>
-        </div>
-      </Modal>
+      {/* T7-CLEAN3: modal timesheet + confirm hapus timesheet dihapus
+          (tab Timesheet sudah tidak ada di UI). */}
 
       <ConfirmModal
         open={delSub !== null}
@@ -1980,21 +1767,6 @@ const printSpk = async (w: StoreItem): Promise<void> => {
         confirmDisabled={delWo ? woUsages(delWo).length > 0 : false}
         onCancel={() => setDelWo(null)}
         onConfirm={confirmDelWo}
-      />
-
-      {/* Konfirmasi hapus timesheet */}
-      <ConfirmModal
-        open={delTs !== null}
-        title={delTs ? `${locale === "en" ? "Delete timesheet" : "Hapus timesheet"} ${String(delTs.id)}?` : ""}
-        desc={delTs
-          ? (locale === "en"
-            ? `${String(delTs.hours ?? 0)}h on ${fmtTanggal(delTs.date)} will be removed and the termin estimate recalculated.`
-            : `${String(delTs.hours ?? 0)} jam pada ${fmtTanggal(delTs.date)} akan dihapus dan estimasi termin dihitung ulang.`)
-          : ""}
-        confirmLabel={locale === "en" ? "Delete" : "Hapus"}
-        danger
-        onCancel={() => setDelTs(null)}
-        onConfirm={confirmDelTs}
       />
 
       {/* Konfirmasi hapus termin */}

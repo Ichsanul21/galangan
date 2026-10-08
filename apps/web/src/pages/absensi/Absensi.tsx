@@ -1,12 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
-import { ID_MON } from "../../utils/monthAxis";
 import { CalendarCheck, Download, CircleCheck, Trash2 } from "lucide-react";
-import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 import {
   Badge,
   Card,
-  CardHeader,
-  ChartTooltip,
   ConfirmModal,
   EmptyState,
   Field,
@@ -32,7 +28,6 @@ import { useStore } from "../../data/store";
 import { findUsages } from "../../utils/usages";
 import type { StoreItem } from "../../data/store";
 import { fmtJumlah, fmtTanggal, todayISO } from "../../utils/format";
-import { attendanceSeries } from "../../data";
 import { useT } from "../../i18n/LanguageContext";
 import { n_misc } from "../../i18n/n_misc";
 import { exportExcel } from "../../utils/export";
@@ -440,45 +435,6 @@ export default function Absensi() {
   const kpiLembur = monthRecords.reduce((s, a) => s + Number(a.overtime || 0), 0);
   const kpiPct = monthRecords.length > 0 ? (kpiHadir / monthRecords.length) * 100 : 0;
 
-  /* Tren kehadiran 12 bulan terakhir, dihitung dari baris absensi nyata
-     (bukan data mock). Tingkat = hadir / total catatan pada bulan itu;
-     bulan tanpa catatan sengaja dikosongkan (bukan 0) supaya garis tidak
-     turun menggeqap dan tidak memunculkan titik palsu. Label bulan
-     dihitung dari data, jadi tidak pernah bergeser seperti label hardcode. */
-  const attendanceTrend = useMemo(() => {
-    const now = new Date();
-    const buckets = new Map<string, { hadir: number; total: number }>();
-    for (let i = 11; i >= 0; i -= 1) {
-      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
-      buckets.set(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`, { hadir: 0, total: 0 });
-    }
-    for (const a of data.attendance) {
-      const key = String(a.date ?? "").slice(0, 7);
-      const b = buckets.get(key);
-      if (!b) continue;
-      b.total += 1;
-      if (a.status === "Hadir") b.hadir += 1;
-    }
-    const M = locale === "en" ? ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"]
-                              : ID_MON;
-    return [...buckets.entries()].map(([key, v]) => {
-      const d = new Date(`${key}-01T00:00:00`);
-      return {
-        month: `${M[d.getMonth()]} ${d.getFullYear()}`,
-        tingkat: v.total > 0 ? Math.round((v.hadir / v.total) * 1000) / 10 : null,
-        catatan: v.total,
-      };
-    });
-  }, [data.attendance, locale]);
-  const trenValid = attendanceTrend.some((d) => d.tingkat !== null);
-  /* Fallback ke data contoh HANYA saat belum ada satu pun catatan absensi
-     (mis. instalasi baru / demo). Fallback diberi penanda supaya UI bisa
-     menampilkannya sebagai data contoh - bukan menyamar sebagai angka asli. */
-  const trenSample = !trenValid && attendanceSeries.length > 0;
-  const trenShown = trenValid
-    ? attendanceTrend
-    : attendanceSeries.map((d) => ({ month: String(d.month), tingkat: Number(d.tingkat), catatan: 0 }));
-
   const exportRekap = () => {
     const head = ["Karyawan", "Hadir", "Izin", "Sakit", "Cuti", "Alpa", "Lembur (jam)", "Telat", "Kehadiran %"];
     const body = summary.map((r) => [
@@ -714,59 +670,6 @@ export default function Absensi() {
                 <KpiCard label={S.kpiLateCount} value={fmtJumlah(kpiTelat)} hint={S.lateHint} chip="rose" />
                 <KpiCard label={S.kpiTotalOvertime} value={`${fmtJumlah(Math.round(kpiLembur * 10) / 10)} jam`} hint={S.approvedOnlyPayroll} chip="amber" />
               </div>
-
-              {/* T6-ABS6: tren kehadiran dihapus dari UI (notes2). */}
-              {false && (trenValid || trenSample) && (
-                <Card className="mb-4 p-5" data-export-hide>
-                  <CardHeader
-                    title={locale === "en" ? "Attendance trend (12 months)" : "Tren Kehadiran (12 bulan)"}
-                    subtitle={trenSample
-                      ? (locale === "en"
-                        ? "SAMPLE DATA - no attendance record yet, showing reference figures"
-                        : "DATA CONTOH - belum ada catatan absensi, menampilkan angka referensi")
-                      : (locale === "en"
-                        ? "Attendance rate per month from real attendance records, not hardcoded"
-                        : "Tingkat kehadiran per bulan dari baris absensi nyata, bukan angka hardcode")}
-                  />
-                  <div className="mt-3 h-64">
-                    <ResponsiveContainer width="100%" height="100%">
-                      <AreaChart data={trenShown} margin={{ top: 5, right: 8, left: -18, bottom: 0 }}>
-                        <defs>
-                          <linearGradient id="attGrad" x1="0" y1="0" x2="0" y2="1">
-                            <stop offset="0%" stopColor="#0d9488" stopOpacity={0.35} />
-                            <stop offset="100%" stopColor="#0d9488" stopOpacity={0.02} />
-                          </linearGradient>
-                        </defs>
-                        <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-                        <XAxis dataKey="month" tick={{ fontSize: 11 }} interval="preserveStartEnd" />
-                        <YAxis domain={[0, 100]} tick={{ fontSize: 11 }} unit="%" />
-                        <Tooltip
-                          content={
-                            <ChartTooltip
-                              formatter={(v) => `${fmtJumlah(Number(v ?? 0))}%`}
-                              labelFormatter={(l) => {
-                                const row = trenShown.find((d) => d.month === l);
-                                const n = row?.catatan ?? 0;
-                                return n > 0 ? `${l} · ${fmtJumlah(n)} ${locale === "en" ? "records" : "catatan"}` : l;
-                              }}
-                            />
-                          }
-                        />
-                        <Area
-                          type="monotone"
-                          dataKey="tingkat"
-                          stroke="#0d9488"
-                          strokeWidth={2.5}
-                          fill="url(#attGrad)"
-                          connectNulls
-                          dot={{ r: 3 }}
-                          isAnimationActive
-                        />
-                      </AreaChart>
-                    </ResponsiveContainer>
-                  </div>
-                </Card>
-              )}
 
               <div className="mb-3 flex flex-wrap items-center gap-2">
                 <FilterPopover

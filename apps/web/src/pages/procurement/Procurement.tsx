@@ -692,7 +692,7 @@ export default function Procurement() {
     }
     await add("rfqs", {
       prId: rfqPr.id, item: rfqPr.item, vendors: rfqVendors, quotes: [],
-      status: "Draf", winner: "",
+      status: "Draf",
     }, { action: "membuat RFQ", target: rfqPr.id, module: "Procurement" });
     await update("requisitions", rfqPr.id, { status: "RFQ" });
     toast(S.tRfqCreated.replace("{n}", rfqPr.id));
@@ -781,7 +781,10 @@ export default function Procurement() {
         docNo: sbPoNumber(nextPoSeq()),
         receivedQty: 0, returnedQty: 0, status: "Draft", date: todayISO(), revisi: "", amendments: [], approvals: [],
       }, { action: "membuat PO dari quote termurah", target: `${String(r.id)} · ${cheapest.vendor}`, module: "Procurement" });
-      await update("rfqs", r.id, { status: "Diputuskan", winnerVendor: cheapest.vendor, winnerPrice: Number(cheapest.price || 0) });
+      /* T7-CLEAN7: field winner/winnerVendor/winnerPrice residual dihapus
+         (sistem tender sudah dihapus T6-ETC6). Status "Diputuskan" tetap -
+         dipakai untuk mengunci RFQ dan menampilkan "View PO". */
+      await update("rfqs", r.id, { status: "Diputuskan" });
       log("PO dari RFQ", `${r.id} → ${created.id} · ${cheapest.vendor} · ${qty} unit`, "Procurement");
       toast(locale === "en"
         ? `PO ${created.id} created from cheapest quote (${cheapest.vendor})`

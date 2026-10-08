@@ -47,12 +47,9 @@ import { sameName } from "../../utils/names";
 import { employeeOptions, isKnownEmployee } from "../../utils/employeeOptions";
 import { categoryWarnings, katalogBadge, levelTally, warnLevelOf, warnRankOf, effectiveMinStock, ACTION_LEVELS, type WarnLevel } from "../../utils/inventoryWarn";
 import {
-  DEAD_REASONS,
   deadImpactTone,
-  deadPatch,
   deadStockRows,
   deadSummaryByReason,
-  type DeadReason,
 } from "../../utils/deadStock";
 import {
   WAREHOUSE_TYPES,
@@ -66,12 +63,10 @@ import { useModuleSync } from "../../data/useModuleSync";
 import type { CollectionKey } from "../../data/store";
 import { isBackendConfigured } from "../../services/http";
 import { uploadFile } from "../../services/upload";
-import { fmtJumlah, fmtRupiah, fmtMiliar, fmtPersen, fmtTanggal, todayISO } from "../../utils/format";
+import { fmtJumlah, fmtRupiah, fmtMiliar, fmtTanggal, todayISO } from "../../utils/format";
 import { createdAtOf, lastTouchedAt } from "../../utils/timestamps";
 import { exportExcel } from "../../utils/export";
-import { sbTonasePlat, sbSjNumber, sbTtNumber, maxSeq, parseSjSeq, SB_KOP } from "../../utils/sb";
-import { pdfServerReady } from "../../services/pdfClient";
-import { usePdfDoc } from "../../components/usePdfDoc";
+import { sbTonasePlat } from "../../utils/sb";
 import { FilterPopover } from "../../components/FilterPopover";
 import { useT } from "../../i18n/LanguageContext";
 import { n_inv } from "../../i18n/n_inv";
@@ -118,12 +113,6 @@ function matLabel(t: string): string {
    pemanggil - jadi tidak ada lagi tempat kedua yang bisa berbeda. */
 
 /* Label "Mon YYYY" untuk deret statis, bulan berjalan terakhir. */
-
-/* Nomor DO format RawData: nn/DO-SB/SMD/m/yyyy. */
-const ROMAWII = ["I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X", "XI", "XII"];
-function doNumber(seq: number, date = new Date()): string {
-  return `${String(seq).padStart(2, "0")}/DO-SB/SMD/${ROMAWII[date.getMonth()]}/${date.getFullYear()}`;
-}
 
 /* Kebutuhan BOM TB Samudra Jaya 07 - dicocokkan ke data inventori aktual. */
 const BOM_NEEDS = [
@@ -354,15 +343,6 @@ function daysSince(dateISO: string): number {
   return Math.floor((now - t) / 86400000);
 }
 
-function agingBucket(days: number): string {
-  if (days <= 30) return "0-30 hari";
-  if (days <= 90) return "31-90 hari";
-  if (days <= 180) return "91-180 hari";
-  return ">180 hari";
-}
-
-const AGING_BUCKETS = ["0-30 hari", "31-90 hari", "91-180 hari", ">180 hari", "Belum ada barang masuk"];
-
 export default function Inventory() {
   const { locale } = useT();
   const S = n_inv[locale];
@@ -389,7 +369,6 @@ export default function Inventory() {
   const flash = useNotifFlash();
   const deepParams = useDeepLinkParams();
   const notified = useMemo(() => new Set(modAlert.items.map((a) => a.rowId)), [modAlert.items]);
-  const pdfDoc = usePdfDoc();
   const [tab, setTab] = useState("Katalog");
   const [bomProject, setBomProject] = useState("Semua proyek");
   const [q, setQ] = useState("");
@@ -476,125 +455,6 @@ export default function Inventory() {
   /* Preset plat roll→meter: panjang × lebar (m). */
   const [platP, setPlatP] = useState("6");
   const [platL, setPlatL] = useState("1.5");
-  // Kalkulator tonase plat (RawData PERHITUNGAN + TABLE TONASE): P×L×T×7850.
-  const [tonP, setTonP] = useState("6010");
-  const [tonL, setTonL] = useState("1810");
-  const [tonT, setTonT] = useState("12");
-  const [tonPcs, setTonPcs] = useState("1");
-  // Surat Jalan (form RawData SURAT JALAN 2024).
-  const [sjTo, setSjTo] = useState("");
-  const [sjVehicle, setSjVehicle] = useState("");
-  const [sjPlate, setSjPlate] = useState("");
-  const [sjDriver, setSjDriver] = useState("");
-  const [sjDate, setSjDate] = useState(todayISO());
-  const [sjItems, setSjItems] = useState<{ name: string; qty: string }[]>([{ name: "", qty: "" }]);
-  const [sjReceiver, setSjReceiver] = useState("");
-  const [sjGiver, setSjGiver] = useState("");
-  /* SJ max+1: scan dash ids + sbRef via trailing digits (RawData SJ-SMD-YYYY-nnn). */
-  const nextSjSeq = (): number => {
-    const docs = (data.documents ?? []).filter((d) => d.type === "Surat Jalan");
-    const nums = docs.flatMap((d) => [parseSjSeq(d.sbRef), parseSjSeq(d.id)]);
-    return maxSeq(nums.map(String), /(\d+)$/) + 1;
-  };
-  const sjYearOf = (iso: string): number => Number(String(iso ?? "").slice(0, 4)) || new Date().getFullYear();
-  // Tanda Terima (form RawData TANDA TERIMA: kop SB + penerima/penyerah + link SJ).
-  const [ttDate, setTtDate] = useState(todayISO());
-  const [ttSjId, setTtSjId] = useState("");
-  const [ttItems, setTtItems] = useState<{ name: string; qty: string }[]>([{ name: "", qty: "" }]);
-  const [ttReceiver, setTtReceiver] = useState("");
-  const [ttGiver, setTtGiver] = useState("");
-  const sjDocs = useMemo(
-    () => (data.documents ?? []).filter((d) => d.type === "Surat Jalan"),
-    [data.documents],
-  );
-  /* TT max+1: scan dash ids + sbRef via trailing digits (TT-SMD-YYYY-nnn). */
-  const nextTtSeq = (): number => {
-    const docs = (data.documents ?? []).filter((d) => d.type === "Tanda Terima");
-    const nums = docs.flatMap((d) => [parseSjSeq(d.sbRef), parseSjSeq(d.id)]);
-    return maxSeq(nums.map(String), /(\d+)$/) + 1;
-  };
-  // Delivery Order penuh: nomor nn/DO-SB/SMD/m/yyyy + cetak + link ke Surat Jalan.
-  const [doTo, setDoTo] = useState("");
-  const [doDate, setDoDate] = useState(todayISO());
-  const [doSjId, setDoSjId] = useState("");
-  const [doDriver, setDoDriver] = useState("");
-  const [doItems, setDoItems] = useState<{ name: string; qty: string }[]>([{ name: "", qty: "" }]);
-  /* Ubah DO terbit via update documents (tanpa ubah rumus stok/reservasi). */
-  const [doEdit, setDoEdit] = useState<StoreItem | null>(null);
-  const [doEditForm, setDoEditForm] = useState({ to: "", date: todayISO(), driver: "", sjId: "", items: [{ name: "", qty: "" }] as { name: string; qty: string }[] });
-  /* Batalkan DO = hapus dokumen + kembalikan reservasi yang merujuk DO bila ada. */
-  const [delDo, setDelDo] = useState<StoreItem | null>(null);
-  const doDocs = useMemo(
-    () => (data.documents ?? []).filter((d) => d.type === "Delivery Order"),
-    [data.documents],
-  );
-  /* DO max+1: sbRef gaya PO (leading nn/...) + dash id (trailing nnn). */
-  const nextDoSeq = (): number => {
-    const lead = maxSeq(doDocs.map((d) => String(d.sbRef ?? "")), /^(\d+)\//);
-    const trail = maxSeq(doDocs.map((d) => String(d.id ?? "")), /(\d+)$/);
-    return Math.max(lead, trail) + 1;
-  };
-  /* DO dibuat server dari baris `documents` bertipe "Delivery Order", jadi
-     item dan tujuannya dibaca dari arsip - bukan dari state layar yang bisa
-     sudah berubah. */
-  const printDoPdf = async (d: StoreItem) => {
-    const id = String(d.id);
-    if (!pdfServerReady()) {
-      toast(S.saveFail, "info");
-      return;
-    }
-    const done = await pdfDoc.request({ kind: "deliveryOrder", id, locale }, `DO-${id}`, false);
-    if (done) toast(locale === "en" ? `DO ${id} printed as PDF` : `DO ${id} dicetak sebagai PDF`);
-  };
-
-  const printDo = (d: StoreItem) => {
-    const items = (Array.isArray(d.doItems) ? d.doItems : []) as { name: string; qty: string }[];
-    void exportExcel([
-      [SB_KOP.line1, SB_KOP.name], [SB_KOP.hq, `HP ${SB_KOP.hp}`], [],
-      ["DELIVERY ORDER", `NO: ${String(d.sbRef ?? d.id)}`], ["Tanggal", String(d.doDate ?? d.updated ?? "")],
-      ["Tujuan", String(d.doTo ?? d.vessel ?? "-")], ["Driver", String(d.doDriver ?? "-")],
-      ["Surat Jalan", String(d.doSjRef ?? d.doSjId ?? "-")], [],
-      ["No", "Nama Barang", "Jumlah"], ...items.map((x, i) => [i + 1, String(x.name ?? ""), String(x.qty ?? "")]),
-    ], `DO-${String(d.sbRef ?? d.id).replaceAll("/", "-")}`, "Delivery Order").catch(() => toast(S.saveFail, "info"));
-    toast(locale === "en" ? `DO ${String(d.sbRef ?? d.id)} printed` : `DO ${String(d.sbRef ?? d.id)} dicetak`);
-  };
-
-  const openDoEdit = (d: StoreItem) => {
-    setDoEdit(d);
-    const items = (Array.isArray(d.doItems) ? d.doItems : []) as { name: string; qty: string }[];
-    setDoEditForm({
-      to: String(d.doTo ?? d.vessel ?? ""),
-      date: String(d.doDate ?? d.updated ?? todayISO()),
-      driver: String(d.doDriver ?? ""),
-      sjId: String(d.doSjId ?? ""),
-      items: items.length > 0 ? items.map((x) => ({ name: String(x.name ?? ""), qty: String(x.qty ?? "") })) : [{ name: "", qty: "" }],
-    });
-  };
-
-  const saveDoEdit = async () => {
-    if (!doEdit) return;
-    const items = doEditForm.items.filter((x) => x.name.trim() && x.qty.trim());
-    if (!doEditForm.to.trim() || items.length === 0) { toast(S.sjNeedDest, "info"); return; }
-    const sj = sjDocs.find((d) => String(d.id) === doEditForm.sjId);
-    try {
-      await update("documents", doEdit.id, {
-        doTo: doEditForm.to.trim(),
-        vessel: doEditForm.to.trim(),
-        doDate: doEditForm.date,
-        updated: todayISO(),
-        doDriver: doEditForm.driver.trim(),
-        doSjId: doEditForm.sjId,
-        doSjRef: sj ? String(sj.sbRef || sj.id) : "",
-        doItems: items.map((x) => ({ name: x.name.trim(), qty: x.qty.trim() })),
-        related: doEditForm.sjId ? [doEditForm.sjId] : [],
-      });
-      log("mengubah delivery order", `${String(doEdit.sbRef ?? doEdit.id)} → ${doEditForm.to.trim()}`, "Inventori");
-      toast(locale === "en" ? `DO ${String(doEdit.sbRef ?? doEdit.id)} updated` : `DO ${String(doEdit.sbRef ?? doEdit.id)} diubah`);
-      setDoEdit(null);
-    } catch (e) {
-      toast(e instanceof Error ? e.message : S.saveFail, "info");
-    }
-  };
   const [showPick, setShowPick] = useState(false);
   const [pickProject, setPickProject] = useState("");
   const [pickSel, setPickSel] = useState<string[]>([]);
@@ -801,9 +661,6 @@ if (k === "mattype") return matTypeOf(i);
   const lastOutOf = (it: StoreItem): string | null =>
     moveIdx.out.get(String(it.id)) ?? moveIdx.out.get(String(it.name)) ?? null;
 
-  const lastInOf = (it: StoreItem): string | null =>
-    moveIdx.inn.get(String(it.id)) ?? moveIdx.inn.get(String(it.name)) ?? null;
-
   /* Warning inventory diklasifikasikan per kategori (utils/inventoryWarn).
      Ambang TIDAK seragam: kategori lead-time panjang (baja/pipa) diberi
      buffer lebih lebar, kategori jasa diabaikan karena tak punya stok fisik.
@@ -917,30 +774,14 @@ if (k === "mattype") return matTypeOf(i);
   );
   const deadSummary = useMemo(() => deadSummaryByReason(deadRows), [deadRows]);
 
-  const agingRows = useMemo(() => inventory.map((i) => {
-    const lastIn = lastInOf(i);
-    const age = lastIn ? daysSince(lastIn) : 9999;
-    return { item: i, lastIn, age, bucket: lastIn ? agingBucket(age) : "Belum ada barang masuk" };
-  }), [inventory, moveIdx]);
-
-  // Analisis + BOM + Stok: search PER CARD (bukan global), tanpa potong jumlah.
+  // BOM + Stok: search PER CARD (bukan global), tanpa potong jumlah.
   const [slowQ, setSlowQ] = useState("");
-  const [deadQ, setDeadQ] = useState("");
-  const [agingQ, setAgingQ] = useState("");
   const [gudangQ, setGudangQ] = useState<Record<string, string>>({});
   const [bomNeedQ, setBomNeedQ] = useState("");
   const [bomFcQ, setBomFcQ] = useState("");
   const slowShown = useMemo(
     () => slowItems.filter((i) => rowMatches(i, slowQ, ["id", "name", "sku"])),
     [slowItems, slowQ],
-  );
-  const deadShown = useMemo(
-    () => deadRows.filter((r) => rowMatches(r as unknown as Record<string, unknown>, deadQ, ["item", "reason", "note"])),
-    [deadRows, deadQ],
-  );
-  const agingShown = useMemo(
-    () => agingRows.filter((r) => rowMatches(r, agingQ, ["item", "lastIn"])),
-    [agingRows, agingQ],
   );
   const bomNeedShown = useMemo(
     () => bomRows.filter((b) => rowMatches(b, bomNeedQ, ["key", "unit", "item"])),
@@ -1799,24 +1640,6 @@ if (k === "mattype") return matTypeOf(i);
   };
 
   /* ================= CRUD GUDANG ================= */
-
-  /**
-   * Simpan alasan dead stock sebagai KODE + keterangan terpisah.
-   * Field `deadReason` lama ikut ditulis (isi = label baku) supaya laporan
-   * lama yang masih membacanya tidak kehilangan informasi.
-   */
-  const saveDeadReason = async (item: StoreItem, reason: DeadReason) => {
-    try {
-      await update("inventory", item.id, deadPatch(reason, String(item.deadNote ?? "")));
-      log(
-        "mengubah alasan dead stock",
-        `${item.name} · ${locale === "en" ? reason.labelEn : reason.label}`,
-        "Inventori",
-      );
-    } catch (e) {
-      toast(e instanceof Error ? e.message : S.saveFail, "info");
-    }
-  };
 
   /** Buka form ubah. Gudang tanpa baris `warehouses` tetap bisa diisi
       kapasitasnya - baris baru dibuat dengan nama yang sama. */
@@ -2862,474 +2685,6 @@ if (k === "mattype") return matTypeOf(i);
             </div>
           )}
 
-          {tab === "Tonase & Surat Jalan" && (
-            <>
-            <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-              <Card className="p-5">
-                <CardHeader title={S.tonT} subtitle={S.tonS} />
-                <div className="mt-3 space-y-3">
-                  <FormGrid>
-                    <Field label={S.tonP} hint={S.tonPHint}><NumInput min={0} className="input" value={tonP} onChange={(e) => setTonP(e.target.value)} /></Field>
-                    <Field label={S.tonL} hint={S.tonLHint}><NumInput min={0} className="input" value={tonL} onChange={(e) => setTonL(e.target.value)} /></Field>
-                    <Field label={S.thickLbl}><NumInput min={0} className="input" value={tonT} onChange={(e) => setTonT(e.target.value)} /></Field>
-                    <Field label={S.sheetsLbl}><NumInput min={1} className="input" value={tonPcs} onChange={(e) => setTonPcs(e.target.value)} /></Field>
-                  </FormGrid>
-                  <p className="rounded-lg bg-surface px-3 py-2 text-sm font-semibold text-navy-900">
-                    Berat: {fmtJumlah(sbTonasePlat(Number(tonP) || 0, Number(tonL) || 0, Number(tonT) || 0, Number(tonPcs) || 0))} kg
-                  </p>
-                  <button className="btn-secondary w-full justify-center text-xs" onClick={async () => {
-                    const kg = sbTonasePlat(Number(tonP) || 0, Number(tonL) || 0, Number(tonT) || 0, Number(tonPcs) || 0);
-                    if (kg <= 0) { toast(S.dimsInvalid, "info"); return; }
-                    try {
-                      await add("inventory", {
-                        name: `Plat ${tonT}mm ${tonP}x${tonL}`, category: "Baja", sku: `PLAT-${tonT}-${tonP}X${tonL}-${Date.now().toString(36).toUpperCase()}`,
-                        warehouse: "Gudang Baja A", rack: "", bin: "", stock: Number(tonPcs) || 0, minStock: 0, unit: "lbr",
-                        cost: 0, location: "", volume: kg, batch: "", uom2: "kg", konversi: kg / Math.max(1, Number(tonPcs) || 1),
-                        minStockByWarehouse: {}, photoUrl: "", avgCost: 0, batches: [], reserved: [],
-                      }, { action: "mendaftarkan plat dari kalkulator tonase", module: "Inventori" });
-                      toast(S.plateAdded.replace("{a}", tonT).replace("{b}", String(kg)));
-                    } catch (e) {
-                      toast(e instanceof Error ? e.message : S.saveFail, "info");
-                    }
-                  }}>
-                    {S.btnToCatalog}
-                  </button>
-                </div>
-              </Card>
-              <Card className="p-5">
-                <CardHeader title={S.sjT} subtitle={S.sjS} />
-                <div className="mt-3 space-y-3">
-                  <FormGrid>
-                    <Field label={S.dateLbl}><input type="date" className="input" value={sjDate} onChange={(e) => setSjDate(e.target.value)} /></Field>
-                    <Field label={S.fDest}><input className="input" value={sjTo} onChange={(e) => setSjTo(e.target.value)} placeholder={S.phDest} /></Field>
-                    <Field label={S.vehicleLbl}><input className="input" value={sjVehicle} onChange={(e) => setSjVehicle(e.target.value)} /></Field>
-                    <Field label={S.plateLbl}><input className="input font-mono" value={sjPlate} onChange={(e) => setSjPlate(e.target.value)} /></Field>
-                    <Field label={S.driverLbl}><input className="input" value={sjDriver} onChange={(e) => setSjDriver(e.target.value)} /></Field>
-                    <Field label={S.refNoLbl}><input className="input font-mono" value={sbSjNumber(nextSjSeq(), sjYearOf(sjDate))} readOnly /></Field>
-                  </FormGrid>
-                  {sjItems.map((it, idx) => (
-                    <div key={idx} className="grid grid-cols-12 gap-2">
-                      <input className="input col-span-8" placeholder={S.itemPh.replace("{n}", String(idx + 1))} value={it.name} onChange={(e) => setSjItems((s) => s.map((x, i) => (i === idx ? { ...x, name: e.target.value } : x)))} />
-                      <input className="input col-span-3" placeholder={S.jumlahLbl} value={it.qty} onChange={(e) => setSjItems((s) => s.map((x, i) => (i === idx ? { ...x, qty: e.target.value } : x)))} />
-                      <button className="btn-secondary col-span-1 text-xs" aria-label={S.delSjRow.replace("{n}", String(idx + 1))} onClick={() => setSjItems((s) => s.filter((_, i) => i !== idx))}>×</button>
-                    </div>
-                  ))}
-                  <button className="btn-secondary text-xs" onClick={() => setSjItems((s) => [...s, { name: "", qty: "" }])}>{S.addRow}</button>
-                  <FormGrid>
-                    <Field label={S.receiverLbl}><input className="input" value={sjReceiver} onChange={(e) => setSjReceiver(e.target.value)} /></Field>
-                    <Field label={S.giverLbl}><input className="input" value={sjGiver} onChange={(e) => setSjGiver(e.target.value)} /></Field>
-                  </FormGrid>
-                  <button className="btn-primary w-full justify-center" onClick={async () => {
-                    const items = sjItems.filter((x) => x.name.trim() && x.qty.trim());
-                    if (!sjTo.trim() || items.length === 0) { toast(S.sjNeedDest, "info"); return; }
-                    const seq = nextSjSeq();
-                    const no = sbSjNumber(seq, sjYearOf(sjDate));
-                    try {
-                      await add("documents", {
-                        id: `SJ-SMD-${sjYearOf(sjDate)}-${String(seq).padStart(3, "0")}`,
-                        title: `Surat Jalan ke ${sjTo.trim()}`, type: "Surat Jalan", project: "-", vessel: sjTo.trim(),
-                        owner: sjGiver.trim() || "Anda", sbRef: no, sjDate, sjVehicle: sjVehicle.trim(), sjPlate: sjPlate.trim(),
-                        sjDriver: sjDriver.trim(), sjItems: items, sjReceiver: sjReceiver.trim(), sjGiver: sjGiver.trim(),
-                        version: "v1.0", status: "Berlaku", updated: todayISO(), archived: false, docCopy: "Terkendali",
-                        related: [], revisions: [{ version: "v1.0", at: todayISO(), by: sjGiver.trim() || "Anda", note: "Surat jalan diterbitkan" }],
-                      }, { action: "menerbitkan surat jalan", target: no, module: "Inventori" });
-                      /* PDF resmi dibuat dari baris arsip yang baru disimpan,
-                         supaya berkas yang diarsipkan sama persis dengan isi
-                         dokumen. Excel tetap sebagai pilihan kedua. */
-                      if (!pdfServerReady()) {
-                        toast(S.saveFail, "info");
-                        return;
-                      }
-                      const sjDocId = `SJ-SMD-${sjYearOf(sjDate)}-${String(seq).padStart(3, "0")}`;
-                      const done = await pdfDoc.request({ kind: "suratJalan", id: sjDocId, locale }, `SJ-${no.replaceAll("/", "-")}`, false);
-                      if (!done) return;
-                      void exportExcel([
-                        [SB_KOP.line1, SB_KOP.name], [SB_KOP.hq, `HP ${SB_KOP.hp}`], [],
-                        ["SURAT JALAN", `NO REF: ${no}`], ["Tanggal", sjDate], ["Tujuan", sjTo.trim()],
-                        ["Kendaraan", sjVehicle.trim()], ["No. Polisi", sjPlate.trim()], ["Driver", sjDriver.trim()], [],
-                        ["No", "Nama Barang", "Jumlah"], ...items.map((x, i) => [i + 1, x.name.trim(), x.qty.trim()]), [],
-                        ["Yang Menerima", "Yang Menyerahkan"], [sjReceiver.trim(), sjGiver.trim()],
-                      ], `SJ-${no.replaceAll("/", "-")}`, "Surat Jalan").catch(() => toast(S.saveFail, "info"));
-                      toast(S.sjIssued.replace("{n}", no));
-                      setSjTo(""); setSjVehicle(""); setSjPlate(""); setSjDriver("");
-                      setSjItems([{ name: "", qty: "" }]); setSjReceiver(""); setSjGiver("");
-                    } catch (e) {
-                      toast(e instanceof Error ? e.message : S.saveFail, "info");
-                    }
-                  }}>
-                    {S.issueBtn}
-                  </button>
-                </div>
-              </Card>
-              <Card className="p-5">
-                <CardHeader title={S.ttT} subtitle={S.ttS} />
-                <div className="mt-3 space-y-3">
-                  <FormGrid>
-                    <Field label={S.dateLbl}><input type="date" className="input" value={ttDate} onChange={(e) => setTtDate(e.target.value)} /></Field>
-                    <Field label={S.linkedSjLbl}><select className="input" value={ttSjId} onChange={(e) => setTtSjId(e.target.value)}>
-                      <option value="">{S.noSj}</option>
-                      {sjDocs.map((d) => <option key={String(d.id)} value={String(d.id)}>{String(d.sbRef || d.id)} · {String(d.title)}</option>)}
-                    </select></Field>
-                    <Field label={S.refNoLbl}><input className="input font-mono" value={sbTtNumber(nextTtSeq(), sjYearOf(ttDate))} readOnly /></Field>
-                  </FormGrid>
-                  {ttItems.map((it, idx) => (
-                    <div key={idx} className="grid grid-cols-12 gap-2">
-                      <input className="input col-span-8" placeholder={S.itemPh.replace("{n}", String(idx + 1))} value={it.name} onChange={(e) => setTtItems((s) => s.map((x, i) => (i === idx ? { ...x, name: e.target.value } : x)))} />
-                      <input className="input col-span-3" placeholder={S.jumlahLbl} value={it.qty} onChange={(e) => setTtItems((s) => s.map((x, i) => (i === idx ? { ...x, qty: e.target.value } : x)))} />
-                      <button className="btn-secondary col-span-1 text-xs" aria-label={S.delTtRow.replace("{n}", String(idx + 1))} onClick={() => setTtItems((s) => s.filter((_, i) => i !== idx))}>×</button>
-                    </div>
-                  ))}
-                  <button className="btn-secondary text-xs" onClick={() => setTtItems((s) => [...s, { name: "", qty: "" }])}>{S.addRow}</button>
-                  <FormGrid>
-                    <Field label={S.receiverLbl}><input className="input" value={ttReceiver} onChange={(e) => setTtReceiver(e.target.value)} /></Field>
-                    <Field label={S.giverLbl}><input className="input" value={ttGiver} onChange={(e) => setTtGiver(e.target.value)} /></Field>
-                  </FormGrid>
-                  <button className="btn-primary w-full justify-center" onClick={async () => {
-                    const items = ttItems.filter((x) => x.name.trim() && x.qty.trim());
-                    if (items.length === 0) { toast(S.needOneItem, "info"); return; }
-                    const seq = nextTtSeq();
-                    const no = sbTtNumber(seq, sjYearOf(ttDate));
-                    const sj = sjDocs.find((d) => String(d.id) === ttSjId);
-                    try {
-                      await add("documents", {
-                        id: `TT-SMD-${sjYearOf(ttDate)}-${String(seq).padStart(3, "0")}`,
-                        title: `Tanda Terima ${sj ? `(${String(sj.sbRef || sj.id)})` : ""}`.trim() || "Tanda Terima",
-                        type: "Tanda Terima", project: "-", vessel: "-",
-                        owner: ttGiver.trim() || "Anda", sbRef: no,
-                        ttDate, ttSjId: ttSjId || "", ttItems: items,
-                        ttReceiver: ttReceiver.trim(), ttGiver: ttGiver.trim(),
-                        version: "v1.0", status: "Berlaku", updated: todayISO(), archived: false, docCopy: "Terkendali",
-                        related: ttSjId ? [ttSjId] : [],
-                        revisions: [{ version: "v1.0", at: todayISO(), by: ttGiver.trim() || "Anda", note: "Tanda terima diterbitkan" }],
-                      }, { action: "menerbitkan tanda terima", target: no, module: "Inventori" });
-                      if (!pdfServerReady()) {
-                        toast(S.saveFail, "info");
-                        return;
-                      }
-                      const ttDocId = `TT-SMD-${sjYearOf(ttDate)}-${String(seq).padStart(3, "0")}`;
-                      const done = await pdfDoc.request({ kind: "tandaTerima", id: ttDocId, locale }, `TT-${no.replaceAll("/", "-")}`, false);
-                      if (!done) return;
-                      void exportExcel([
-                        [SB_KOP.line1, SB_KOP.name], [SB_KOP.hq, `HP ${SB_KOP.hp}`], [],
-                        ["TANDA TERIMA", `NO REF: ${no}`], ["Tanggal", ttDate],
-                        ["Surat Jalan", sj ? String(sj.sbRef || sj.id) : "-"], [],
-                        ["No", "Nama Barang", "Jumlah"], ...items.map((x, i) => [i + 1, x.name.trim(), x.qty.trim()]), [],
-                        ["Yang Menerima", "Yang Menyerahkan"], [ttReceiver.trim(), ttGiver.trim()],
-                      ], `TT-${no.replaceAll("/", "-")}`, "Tanda Terima").catch(() => toast(S.saveFail, "info"));
-                      toast(S.ttIssued.replace("{n}", no));
-                      setTtDate(todayISO()); setTtSjId("");
-                      setTtItems([{ name: "", qty: "" }]); setTtReceiver(""); setTtGiver("");
-                    } catch (e) {
-                      toast(e instanceof Error ? e.message : S.saveFail, "info");
-                    }
-                  }}>
-                    {S.issueBtn}
-                  </button>
-                </div>
-              </Card>
-              <Card className="p-5">
-                <CardHeader title={locale === "en" ? "Pick List / Delivery Order" : "Pick List / Delivery Order"} subtitle={locale === "en" ? "Pick = take stock · DO number nn/DO-SB/SMD/m/yyyy · print · link to Surat Jalan" : "Pick = ambil stok · DO nomor nn/DO-SB/SMD/m/yyyy · cetak · taut ke Surat Jalan"} />
-                <div className="mt-3 space-y-3">
-                  <FormGrid>
-                    <Field label={S.dateLbl}><input type="date" className="input" value={doDate} onChange={(e) => setDoDate(e.target.value)} /></Field>
-                    <Field label={S.fDest}><input className="input" value={doTo} onChange={(e) => setDoTo(e.target.value)} placeholder={S.phDest} /></Field>
-                    <Field label={S.driverLbl}><input className="input" value={doDriver} onChange={(e) => setDoDriver(e.target.value)} /></Field>
-                    <Field label={S.linkedSjLbl}><select className="input" value={doSjId} onChange={(e) => setDoSjId(e.target.value)}>
-                      <option value="">{S.noSj}</option>
-                      {sjDocs.map((d) => <option key={String(d.id)} value={String(d.id)}>{String(d.sbRef || d.id)} · {String(d.title)}</option>)}
-                    </select></Field>
-                    <Field label={S.refNoLbl}><input className="input font-mono" value={doNumber(nextDoSeq(), new Date(`${doDate}T00:00:00`))} readOnly /></Field>
-                  </FormGrid>
-                  {doItems.map((it, idx) => (
-                    <div key={idx} className="grid grid-cols-12 gap-2">
-                      <input className="input col-span-8" placeholder={S.itemPh.replace("{n}", String(idx + 1))} value={it.name} onChange={(e) => setDoItems((s) => s.map((x, i) => (i === idx ? { ...x, name: e.target.value } : x)))} />
-                      <input className="input col-span-3" placeholder={S.jumlahLbl} value={it.qty} onChange={(e) => setDoItems((s) => s.map((x, i) => (i === idx ? { ...x, qty: e.target.value } : x)))} />
-                      <button className="btn-secondary col-span-1 text-xs" aria-label={S.delSjRow.replace("{n}", String(idx + 1))} onClick={() => setDoItems((s) => s.filter((_, i) => i !== idx))}>×</button>
-                    </div>
-                  ))}
-                  <button className="btn-secondary text-xs" onClick={() => setDoItems((s) => [...s, { name: "", qty: "" }])}>{S.addRow}</button>
-                  <button className="btn-primary w-full justify-center" onClick={async () => {
-                    const items = doItems.filter((x) => x.name.trim() && x.qty.trim());
-                    if (!doTo.trim() || items.length === 0) { toast(S.sjNeedDest, "info"); return; }
-                    const seq = nextDoSeq();
-                    const no = doNumber(seq, new Date(`${doDate}T00:00:00`));
-                    const sj = sjDocs.find((d) => String(d.id) === doSjId);
-                    try {
-                      await add("documents", {
-                        id: `DO-SMD-${sjYearOf(doDate)}-${String(seq).padStart(3, "0")}`,
-                        title: `Delivery Order ke ${doTo.trim()}`, type: "Delivery Order", project: "-", vessel: doTo.trim(),
-                        owner: "Anda", sbRef: no, doDate, doDriver: doDriver.trim(), doTo: doTo.trim(),
-                        doSjId: doSjId || "", doSjRef: sj ? String(sj.sbRef || sj.id) : "", doItems: items,
-                        version: "v1.0", status: "Berlaku", updated: todayISO(), archived: false, docCopy: "Terkendali",
-                        related: doSjId ? [doSjId] : [],
-                        revisions: [{ version: "v1.0", at: todayISO(), by: "Anda", note: "Delivery order diterbitkan" }],
-                      }, { action: "menerbitkan delivery order", target: no, module: "Inventori" });
-                      toast(locale === "en" ? `DO ${no} issued` : `DO ${no} diterbitkan`);
-                      setDoTo(""); setDoSjId(""); setDoDriver("");
-                      setDoItems([{ name: "", qty: "" }]);
-                    } catch (e) {
-                      toast(e instanceof Error ? e.message : S.saveFail, "info");
-                    }
-                  }}>
-                    {S.issueBtn}
-                  </button>
-                </div>
-              </Card>
-            </div>
-            <Card className="mt-4 p-5">
-              <CardHeader title={locale === "en" ? "Issued DOs" : "DO Terbit"} subtitle={locale === "en" ? "Print + linked delivery note" : "Cetak + Surat Jalan tertaut"} />
-              <div className="mt-2 space-y-2">
-                {doDocs.map((d) => (
-                  <div key={String(d.id)} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-steel-100 px-3 py-2 text-sm">
-                    <div className="min-w-0">
-                      <p className="font-medium text-navy-900">{String(d.title)} <span className="font-mono text-xs text-steel-500">· {String(d.sbRef ?? d.id)}</span></p>
-                      <p className="text-xs text-steel-500">{fmtTanggal(String(d.doDate ?? d.updated ?? ""))} · {String(d.doTo ?? "-")}</p>
-                    </div>
-                    <div className="flex shrink-0 items-center gap-1.5">
-                      {d.doSjId ? (
-                        <Link to="/dokumen" className="btn-secondary text-xs" title={String(d.doSjRef ?? d.doSjId)}>
-                          {locale === "en" ? "Open Surat Jalan" : "Buka Surat Jalan"}
-                        </Link>
-                      ) : null}
-                      <button className="btn-secondary text-xs" onClick={() => printDoPdf(d)}><Printer className="h-3.5 w-3.5" /> {S.printPdfBtn}</button>
-              <button className="btn-secondary text-xs" onClick={() => printDo(d)}>{S.printXlsxBtn}</button>
-                      <button className="btn-secondary text-xs" onClick={() => openDoEdit(d)}>{locale === "en" ? "Edit" : "Ubah"}</button>
-                      <button className="btn-secondary text-xs text-rose-600" onClick={() => setDelDo(d)}>{locale === "en" ? "Cancel DO" : "Batalkan"}</button>
-                    </div>
-                  </div>
-                ))}
-                {doDocs.length === 0 && <p className="text-xs text-steel-400">-</p>}
-              </div>
-            </Card>
-            </>
-          )}
-
-          {tab === "Analisis" && (
-            <div className="space-y-4">
-              {/* ==== KLASIFIKASI WARNING PER KATEGORI ====
-                  Pindah dari Katalog ke sini. Di Katalog hanya ada strip
-                  satu baris; daftar lengkap + alasan ambang per kategori ada
-                  di card ini, supaya alarm tidak lagi sekadar "ada satu item
-                  menipis" tapi "kategori Baja punya 3 kritis & 5 menipis
-                  karena lead time 45 hari". */}
-              <Card className="p-5">
-                <CardHeader
-                  title={locale === "en" ? "Warning by category" : "Warning per Kategori Barang"}
-                  subtitle={
-                    locale === "en"
-                      ? "Thresholds differ per category: long lead-time items warn earlier, service items are excluded (no physical stock)."
-                      : "Ambang berbeda per kategori: barang lead time panjang diperingatan lebih awal, kategori jasa dikecualikan (tanpa stok fisik)."
-                  }
-                />
-                {warnByCat.length === 0 ? (
-                  <p className="mt-3 rounded-lg bg-emerald-50 px-3 py-3 text-center text-sm text-emerald-700">
-                    {locale === "en"
-                      ? "All categories are within their thresholds. No warning."
-                      : "Semua kategori dalam ambang. Tidak ada warning."}
-                  </p>
-                ) : (
-<div className="mt-3 space-y-3">
-                    {warnByCat.map((c) => (
-                      <div key={c.category} className="rounded-xl border border-steel-200 p-3">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <button
-                            type="button"
-                            onClick={() => { setCat(c.category); setTab("Katalog"); }}
-                            className="text-sm font-semibold text-navy-900 hover:underline"
-                          >
-                            {c.category}
-                          </button>
-                          <Badge tone={c.top === "critical" ? "red" : c.top === "low" ? "amber" : c.top === "overstock" ? "blue" : "gray"}>
-                            {locale === "en"
-                              ? `${c.counts.critical} critical / ${c.counts.low} low / ${c.counts.overstock} over`
-                              : `${c.counts.critical} kritis / ${c.counts.low} menipis / ${c.counts.overstock} berlebih`}
-                          </Badge>
-                          <span className="text-[11px] text-steel-400">
-                            {locale === "en"
-                              ? `lead time ${c.leadTimeDays}d · ${c.total} items total`
-                              : `lead time ${c.leadTimeDays} hari · total ${c.total} item`}
-                          </span>
-                        </div>
-                        <div className="mt-2 flex items-center gap-3">
-                          <ProgressBar
-                            value={Math.round((c.counts.critical / Math.max(1, c.total)) * 100)}
-                            tone={c.counts.critical > 0 ? "red" : "amber"}
-                            className="flex-1"
-                          />
-                          <span className="shrink-0 text-[11px] text-steel-500">
-                            {fmtPersen((c.counts.critical / Math.max(1, c.total)) * 100)}
-                          </span>
-                        </div>
-                        {c.urgent.length > 0 && (
-                          <ul className="mt-2 space-y-0.5">
-                            {c.urgent.map((it) => {
-                              const lv = warnLevelOf(it);
-                              return (
-                                <li key={it.id} className="flex items-center justify-between gap-2 text-xs">
-                                  <span className="truncate text-steel-600" title={String(it.name)}>{it.name}</span>
-                                  <span className="flex shrink-0 items-center gap-1.5">
-                                    <Badge tone={lv.tone}>
-                                      {locale === "en" ? lv.labelEn : lv.label}
-                                    </Badge>
-                                    <span className="text-steel-400">
-                                      {fmtJumlah(Number(it.stock))} / {fmtJumlah(effectiveMinStock(it))} {it.unit}
-                                    </span>
-                                  </span>
-                                </li>
-                              );
-                            })}
-                          </ul>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </Card>
-              <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-                <Card className="p-5">
-                  <CardHeader title={S.slowT} subtitle={S.slowS} />
-                  <SearchBox
-                    value={slowQ}
-                    onChange={setSlowQ}
-                    placeholder={S.anSearchPh}
-                    ariaLabel={S.anSearchPh}
-                    className="mt-2"
-                  />
-                  <div className="mt-2 max-h-96 space-y-2 overflow-y-auto pr-1">
-                    {slowShown.length === 0 && <p className="py-4 text-center text-sm text-steel-400">{S.slowEmpty}</p>}
-                    {slowShown.map((i) => (
-                      <div key={i.id} className="flex items-center justify-between gap-3 border-b border-steel-100 py-2 text-sm">
-                        <div className="min-w-0">
-                          <p className="truncate font-medium text-navy-900" title={String(i.name)}>{i.name}</p>
-                          <p className="text-xs text-steel-400">Terakhir keluar {fmtTanggal(lastOutOf(i))}</p>
-                        </div>
-                        <Badge tone="amber">{locale === "en" ? "Slow" : "Lambat"}</Badge>
-                      </div>
-                    ))}
-                  </div>
-                </Card>
-                <Card className="p-5">
-                  <CardHeader
-                    title={locale === "en" ? "Dead stock - reason label" : "Dead Stock - Badge Alasan"}
-                    subtitle={
-                      locale === "en"
-                        ? "Each item carries a coded reason badge with impact level and follow-up hint."
-                        : "Setiap item punya badge alasan berkode + tingkat dampak + saran tindak lanjut."
-                    }
-                  />
-                  {/* Ringkasan per alasan - ini yang membuat alasannya bisa
-                      dihitung ("5 item mati karena Proyek Dibatalkan"), bukan
-                      sekadar teks yang hilang setelah dibaca. */}
-                  {deadSummary.length > 0 && (
-                    <div className="mt-2 flex flex-wrap gap-1.5">
-                      {deadSummary.map((s) => (
-                        <span key={s.reason.code} className="inline-flex items-center gap-1.5 rounded-full border border-steel-200 bg-steel-50 px-2 py-0.5 text-[11px]">
-                          <Badge tone={deadImpactTone(s.reason.impact)}>{locale === "en" ? s.reason.labelEn : s.reason.label}</Badge>
-                          <span className="font-semibold text-navy-900">{s.count}</span>
-                          <span className="text-steel-400">·</span>
-                          <span className="text-steel-500">{fmtRupiah(s.value)}</span>
-                        </span>
-                      ))}
-                    </div>
-                  )}
-                  <SearchBox
-                    value={deadQ}
-                    onChange={setDeadQ}
-                    placeholder={S.anSearchPh}
-                    ariaLabel={S.anSearchPh}
-                    className="mt-3"
-                  />
-                  <div className="mt-2 max-h-96 space-y-2 overflow-y-auto pr-1">
-                    {deadShown.length === 0 && <p className="py-4 text-center text-sm text-steel-400">{S.deadEmpty}</p>}
-                    {deadShown.map((row) => {
-                      const it = row.item;
-                      return (
-                        <div key={it.id} className="flex items-start justify-between gap-3 border-b border-steel-100 py-2 text-sm">
-                          <div className="min-w-0">
-                            <p className="truncate font-medium text-navy-900" title={String(it.name)}>{it.name}</p>
-                            <p className="text-xs text-steel-400">
-                              {locale === "en" ? "Stock" : "Stok"} {fmtJumlah(Number(it.stock))} {it.unit} · {fmtRupiah(row.value)}
-                              {it.warehouse ? ` · ${it.warehouse}` : ""}
-                            </p>
-                            {row.note !== "" && (
-                              <p className="mt-0.5 text-xs italic text-steel-500" title={row.note}>
-                                {locale === "en" ? "Note" : "Ket"}: {row.note}
-                              </p>
-                            )}
-                          </div>
-                          <div className="flex shrink-0 flex-col items-end gap-1">
-                            {/* Badge alasan = classify, bukan teks polos.
-                                `title` memuat saran tindak lanjut supaya alasan
-                                itu punya konsekuensi, bukan sekadar label. */}
-                            <Badge
-                              tone={deadImpactTone(row.reason.impact)}
-                              title={
-                                locale === "en"
-                                  ? `${row.reason.hintEn} (${row.reason.action})`
-                                  : `${row.reason.hint} (${row.reason.action})`
-                              }
-                            >
-                              {locale === "en" ? row.reason.labelEn : row.reason.label}
-                            </Badge>
-                            {!row.manual && (
-                              <Badge tone="gray" title={locale === "en" ? "Reason derived from stock movement; override it if you know better." : "Alasan diturunkan dari mutasi stok. Ubah bila ada informasi lain."}>
-                                {locale === "en" ? "auto" : "otomatis"}
-                              </Badge>
-                            )}
-                            <select
-                              className="input !w-auto !py-1 text-[11px]"
-                              value={row.reason.code}
-                              onChange={(e) => {
-                                const picked = DEAD_REASONS.find((r) => r.code === e.target.value);
-                                if (picked) void saveDeadReason(it, picked);
-                              }}
-                              aria-label={`${locale === "en" ? "Dead stock reason" : "Alasan dead stock"} ${it.name}`}
-                            >
-                              {DEAD_REASONS.map((r) => (
-                                <option key={r.code} value={r.code}>
-                                  {locale === "en" ? r.labelEn : r.label}
-                                </option>
-                              ))}
-                            </select>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </Card>
-              </div>
-              <Card className="p-5">
-                <CardHeader title={S.agingT} subtitle={S.agingS} />
-                <SearchBox
-                  value={agingQ}
-                  onChange={setAgingQ}
-                  placeholder={S.anSearchPh}
-                  ariaLabel={S.anSearchPh}
-                  className="mt-2 max-w-xs"
-                />
-                <div className="mt-3 flex flex-wrap gap-2">
-                  {AGING_BUCKETS.map((b) => (
-                    <span key={b} className="rounded-lg bg-steel-50 px-3 py-1.5 text-xs font-medium text-steel-600">
-                      {b}: <span className="font-bold text-navy-900">{agingRows.filter((r) => r.bucket === b).length}</span> item
-                    </span>
-                  ))}
-                </div>
-                <div className="mt-3 max-h-96 space-y-2 overflow-y-auto pr-1">
-                  {agingShown.map((r) => (
-                    <div key={r.item.id} className="flex items-center justify-between gap-3 border-b border-steel-100 py-2 text-sm">
-                      <div className="min-w-0">
-                        <p className="truncate font-medium text-navy-900" title={String(r.item.name)}>{r.item.name}</p>
-                        <p className="text-xs text-steel-400">
-                          {r.lastIn ? `Barang masuk terakhir ${fmtTanggal(r.lastIn)} · ${r.age} hari lalu` : "Belum pernah ada barang masuk"} · Stok {fmtJumlah(Number(r.item.stock))} {r.item.unit}
-                        </p>
-                      </div>
-                      <Badge tone={r.bucket === "0-30 hari" ? "green" : r.bucket === "31-90 hari" ? "blue" : r.bucket === "91-180 hari" ? "amber" : "red"}>{r.bucket}</Badge>
-                    </div>
-                  ))}
-                </div>
-              </Card>
-            </div>
-          )}
         </div>
       </div>
 
@@ -4034,65 +3389,6 @@ if (k === "mattype") return matTypeOf(i);
         }}
       />
 
-      {/* Modal ubah DO terbit */}
-      <Modal open={doEdit !== null} onClose={() => setDoEdit(null)}
-        title={doEdit ? (locale === "en" ? `Edit DO ${String(doEdit.sbRef ?? doEdit.id)}` : `Ubah DO ${String(doEdit.sbRef ?? doEdit.id)}`) : ""}
-        subtitle={locale === "en" ? "Number stays the same" : "Nomor DO tetap sama"}
-        wide footer={<><button className="btn-secondary" onClick={() => setDoEdit(null)}>{S.cancelBtn}</button><AsyncButton className="btn-primary" onAction={saveDoEdit}>{S.saveBtn}</AsyncButton></>}>
-        <div className="space-y-3">
-          <FormGrid>
-            <Field label={S.dateLbl}><input type="date" className="input" value={doEditForm.date} onChange={(e) => setDoEditForm((f) => ({ ...f, date: e.target.value }))} /></Field>
-            <Field label={S.fDest}><input className="input" value={doEditForm.to} onChange={(e) => setDoEditForm((f) => ({ ...f, to: e.target.value }))} /></Field>
-            <Field label={S.driverLbl}><input className="input" value={doEditForm.driver} onChange={(e) => setDoEditForm((f) => ({ ...f, driver: e.target.value }))} /></Field>
-            <Field label={S.linkedSjLbl}><select className="input" value={doEditForm.sjId} onChange={(e) => setDoEditForm((f) => ({ ...f, sjId: e.target.value }))}>
-              <option value="">{S.noSj}</option>
-              {sjDocs.map((d) => <option key={String(d.id)} value={String(d.id)}>{String(d.sbRef || d.id)} · {String(d.title)}</option>)}
-            </select></Field>
-          </FormGrid>
-          {doEditForm.items.map((it, idx) => (
-            <div key={idx} className="grid grid-cols-12 gap-2">
-              <input className="input col-span-8" placeholder={S.itemPh.replace("{n}", String(idx + 1))} value={it.name} onChange={(e) => setDoEditForm((f) => ({ ...f, items: f.items.map((x, i) => (i === idx ? { ...x, name: e.target.value } : x)) }))} />
-              <input className="input col-span-3" placeholder={S.jumlahLbl} value={it.qty} onChange={(e) => setDoEditForm((f) => ({ ...f, items: f.items.map((x, i) => (i === idx ? { ...x, qty: e.target.value } : x)) }))} />
-              <button className="btn-secondary col-span-1 text-xs" aria-label={S.delSjRow.replace("{n}", String(idx + 1))} onClick={() => setDoEditForm((f) => ({ ...f, items: f.items.filter((_, i) => i !== idx) }))}>×</button>
-            </div>
-          ))}
-          <button className="btn-secondary text-xs" onClick={() => setDoEditForm((f) => ({ ...f, items: [...f.items, { name: "", qty: "" }] }))}>{S.addRow}</button>
-        </div>
-      </Modal>
-
-      <ConfirmModal
-        open={delDo !== null}
-        title={delDo ? (locale === "en" ? `Cancel DO ${String(delDo.sbRef ?? delDo.id)}?` : `Batalkan DO ${String(delDo.sbRef ?? delDo.id)}?`) : ""}
-        desc={delDo ? (locale === "en"
-          ? `DO ${String(delDo.sbRef ?? delDo.id)} (${String(delDo.title ?? "")}) will be cancelled. Linked reservations, if any, will be released back.`
-          : `DO ${String(delDo.sbRef ?? delDo.id)} (${String(delDo.title ?? "")}) akan dibatalkan. Reservasi yang merujuk DO ini, bila ada, akan dikembalikan.`) : ""}
-        confirmLabel={locale === "en" ? "Cancel DO" : "Batalkan DO"}
-        danger
-        onCancel={() => setDelDo(null)}
-        onConfirm={async () => {
-          if (!delDo) return;
-          const doId = String(delDo.id);
-          const doRef = String(delDo.sbRef ?? "");
-          try {
-            /* Kembalikan reservasi yang merujuk DO ini (pembuatan DO tidak
-               menyentuh stok, jadi pembatalan pun tidak menyentuh stok). */
-            let released = 0;
-            for (const it of inventory) {
-              const cur = reservedOf(it);
-              if (!cur.some((r) => r.project === doId || (doRef !== "" && r.project === doRef))) continue;
-              const next = cur.filter((r) => r.project !== doId && (doRef === "" || r.project !== doRef));
-              await update("inventory", it.id, { reserved: next });
-              released += cur.length - next.length;
-            }
-            await remove("documents", doId);
-            log("membatalkan delivery order", `${doRef || doId} · reservasi kembali: ${released}`, "Inventori");
-            toast(locale === "en"
-              ? `DO ${doRef || doId} cancelled${released > 0 ? ` - ${released} reservation(s) released` : " - no linked reservations"}`
-              : `DO ${doRef || doId} dibatalkan${released > 0 ? ` - ${released} reservasi dikembalikan` : " - tanpa reservasi terkait"}`);
-          } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); }
-          setDelDo(null);
-        }}
-      />
     </div>
   );
 }

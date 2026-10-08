@@ -3,9 +3,7 @@ import { Link } from "react-router-dom";
 import {
   Eye,
   TrendingUp,
-  Lightbulb,
   AlertTriangle,
-  CheckCircle2,
   Clock,
   BarChart3,
 } from "lucide-react";
@@ -39,7 +37,6 @@ import {
   sortRows,
   toast,
   AsyncButton,
-  Field,
   SearchBox,
   rowMatches,
 } from "../components/ui";
@@ -61,7 +58,7 @@ import {
   monthSeries,
   rebindLegacyMonthSeries,
 } from "../utils/monthAxis";
-import { briefOf, lastPoint, numOf, prevPoint, safeText } from "../utils/series";
+import { lastPoint, numOf, prevPoint, safeText } from "../utils/series";
 import { useT } from "../i18n/LanguageContext";
 import { n_misc } from "../i18n/n_misc";
 import {
@@ -70,9 +67,6 @@ import {
   sparkMargin,
   sparkProjects,
   ncrTrend,
-  lowStockTrend,
-  slotTrend,
-  activeProjectTrend,
   marginSeries,
   inspectionTrend,
 } from "../data";
@@ -204,14 +198,12 @@ export default function Analytics() {
      sehingga grafiknya terpotong atau tidak muncul sama sekali di PDF. */
   
   const [sort, setSort] = useState<SortState>({ key: null, dir: "asc" });
-  const [sort2, setSort2] = useState<SortState>({ key: null, dir: "asc" });
   const [ncrQ, setNcrQ] = useState("");
   /* Analytics adalah halaman BACA (analysis), bukan editor: `add`/`remove`
    sengaja TIDAK diambil dari store. Perubahan data harus dilakukan di modul
    asalnya (QC, Proyek, Keuangan, Inventory) - halaman ini cuma nololok.
-   `update` dipakai oleh loadScenario() yang menyalin asumsi what-if ke
-   settings, dan `log` untuk jejak aktivitas. */
-  const { data, update, log, branch, inBranch } = useStore();
+   `log` untuk jejak aktivitas (catatan insight). */
+  const { data, log, branch, inBranch } = useStore();
   const pdfDoc = usePdfDoc();
   /* Fetch per-batch modul (pengganti resync penuh). */
   useModuleSync(AN_COLS);
@@ -263,18 +255,9 @@ export default function Analytics() {
   const growth = getSetting(data, "WHATIF_GROWTH", 0);
   const costAdj = getSetting(data, "WHATIF_COST", 0);
   const progAdj = getSetting(data, "WHATIF_PROG", 0);
-  const [scName, setScName] = useState("");
-  /* Asumsi what-if SEDANG DIEDIT (string, karena slider menghasilkan string).
-     Nilai global (growth/costAdj/progAdj dari settings) tetap jadi sumber
-     angka untuk kartu ringkasan; draft ini hanya untuk form scenario. */
-  const [growthDraft, setGrowthDraft] = useState(String(growth));
-  const [costDraft, setCostDraft] = useState(String(costAdj));
-  const [progDraft, setProgDraft] = useState(String(progAdj));
-  /* Nama skenario yang sedang diubah (null = membuat baru). */
-  const [editingScenario, setEditingScenario] = useState<string | null>(null);
-  const [scenarios, setScenarios] = useState<Scenario[]>(() => loadScenarios());
-  const [cmpA, setCmpA] = useState("");
-  const [cmpB, setCmpB] = useState("");
+  /* T7-CLEAN5: state scenario CRUD (scName/draft/cmpA/B) dihapus - tab Prediktif
+     sudah tidak dirender. `scenarios` tetap ada untuk sheet Excel "Skenario". */
+  const [scenarios] = useState<Scenario[]>(() => loadScenarios());
   const [noteInput, setNoteInput] = useState("");
   const [notes, setNotes] = useState<Record<string, string[]>>(() => loadNotes());
 
@@ -424,7 +407,6 @@ export default function Analytics() {
       })),
     ]
     : [];
-  const forecastAnnual = Math.round(ma3 * 12);
 
   const variance = revDisp.map((d) => ({ n: d.bln, v: Math.round((d.revenue - avgRevenue) * 1000) }));
 
@@ -589,85 +571,6 @@ export default function Analytics() {
   const marginLive = avgMargin + marginAdjPts;
 
   const annualFor = (s: Scenario): number => Math.round(ma3 * (1 + s.growth / 100) * (1 + s.progAdj / 100) * 12);
-
-const saveScenario = () => {
-    if (!scName.trim()) { toast(S.tScenarioNameRequired, "info"); return; }
-    const sc: Scenario = {
-      name: scName.trim(),
-      growth: Number(growthDraft) || 0,
-      costAdj: Number(costDraft) || 0,
-      progAdj: Number(progDraft) || 0,
-    };
-    const next = [sc, ...scenarios.filter((s) => s.name !== sc.name)].slice(0, 20);
-    setScenarios(next);
-    try { localStorage.setItem("isms.scenario", JSON.stringify(next)); } catch { /* abaikan */ }
-    log("menyimpan skenario what-if", `${sc.name} (growth ${sc.growth} - biaya ${sc.costAdj} - progres ${sc.progAdj})`, "Analytics");
-    toast(S.tScenarioSaved.replace("{n}", sc.name));
-    setScName("");
-    setEditingScenario(null);
-  };
-
-  const loadScenario = (name: string) => {
-    const sc = scenarios.find((s) => s.name === name);
-    if (!sc) return;
-    const apply = (key: string, val: number) => {
-      const row = (data.settings ?? []).find((s) => String(s.key) === key);
-      if (row) update("settings", String(row.id), { value: val });
-    };
-    apply("WHATIF_GROWTH", sc.growth);
-    apply("WHATIF_COST", sc.costAdj);
-    apply("WHATIF_PROG", sc.progAdj);
-    log("menerapkan skenario what-if", `${name} (g:${sc.growth} c:${sc.costAdj} p:${sc.progAdj})`, "Analytics");
-    toast(S.tScenarioApplied.replace("{n}", name));
-  };
-
-  const delScenario = (name: string) => {
-    const next = scenarios.filter((s) => s.name !== name);
-    setScenarios(next);
-    try { localStorage.setItem("isms.scenario", JSON.stringify(next)); } catch { /* abaikan */ }
-    /* Bila skenario yang dihapus sedang dipakai sebagai pembanding, bersihkan
-       juga select-nya supaya tidak menggantung ke nama yang sudah tidak ada. */
-    if (cmpA === name) setCmpA("");
-    if (cmpB === name) setCmpB("");
-    log("menghapus skenario what-if", name, "Analytics");
-    toast(S.tScenarioDeleted.replace("{n}", name), "info");
-  };
-
-  /* Ubah skenario:Versi lama hanya bisa Apply (menyalin ke settings) dan
-     Delete. Untuk mengubah asumsi (mis. pasar tumbuh 5% -> 8%) user harus
-     hapus lalu buat ulang dengan nama sama - dan karena saveScenario menolak
-     nama duplikat, asumsi lama harus dihapus lebih dulu. */
-  const editScenario = (name: string) => {
-    const s = scenarios.find((x) => x.name === name);
-    if (!s) return;
-    setScName(s.name);
-    setGrowthDraft(String(s.growth));
-    setCostDraft(String(s.costAdj));
-    setProgDraft(String(s.progAdj));
-    setEditingScenario(name);
-    toast(
-      locale === "en"
-        ? `Editing "${name}" - adjust the sliders then save to overwrite`
-        : `Mengubah "${name}" - atur slider lalu simpan untuk menimpa`,
-    );
-  };
-
-  const overwriteScenario = () => {
-    if (!editingScenario) return;
-    const next = scenarios.map((s) => (s.name === editingScenario
-      ? { ...s, growth: Number(growthDraft) || 0, costAdj: Number(costDraft) || 0, progAdj: Number(progDraft) || 0 }
-      : s));
-    setScenarios(next);
-    try { localStorage.setItem("isms.scenario", JSON.stringify(next)); } catch { /* abaikan */ }
-    log("mengubah skenario what-if", editingScenario, "Analytics");
-    toast(
-      locale === "en"
-        ? `Scenario "${editingScenario}" updated`
-        : `Skenario "${editingScenario}" diperbarui`,
-    );
-    setEditingScenario(null);
-    setScName("");
-  };
 
   const saveNote = () => {
     if (!noteInput.trim()) { toast(S.tNoteEmpty, "info"); return; }
@@ -1336,182 +1239,8 @@ const exportPdfReport = async () => {
           </div>
         )}
 
-        {tab === "Prediktif" && (
-          <div className="space-y-5">
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-              <KpiCard label={S.forecastAnnual} value={`Rp ${forecastAnnualAdj.toLocaleString("id-ID")} M`} delta={S.whatifDelta.replace("{n}", `${growth >= 0 ? "+" : ""}${growth}`)} deltaDirection={growth > 0 ? "up" : growth < 0 ? "down" : "flat"} icon={<TrendingUp className="h-5 w-5" />} chip="navy" spark={forecastAdj.map((f) => ({ name: f.name, v: f.forecast ?? 0 }))} />
-              <KpiCard label={S.drydockConflict} value={dockConflict ? S.slotCount.replace("{n}", String(dockConflict)) : S.safeLabel} delta={dockConflict ? S.needFix : S.noOverlap} deltaDirection={dockConflict ? "down" : "up"} icon={<AlertTriangle className="h-5 w-5" />} chip="rose" spark={slotTrend} />
-              <KpiCard label={S.criticalStock} value={S.itemCount.replace("{n}", String(lowStock.length))} delta={lowStock.slice(0, 2).map((i) => briefOf(i.name)).filter(Boolean).join(" · ") || S.allSafe} deltaDirection={lowStock.length ? "down" : "up"} icon={<AlertTriangle className="h-5 w-5" />} chip="amber" spark={lowStockTrend} />
-              <KpiCard label={S.riskyProjects} value={S.riskyCount.replace("{n}", String(atRisk))} delta={S.lateOverBudget} deltaDirection={atRisk ? "down" : "up"} icon={<Clock className="h-5 w-5" />} chip="violet" spark={activeProjectTrend} />
-            </div>
-            <Card>
-              <CardHeader title={S.whatifGrowth} subtitle={S.whatifBaseline.replace("{n}", forecastAnnual.toLocaleString("id-ID"))} action={<Badge tone="violet">{`${growth >= 0 ? "+" : ""}${growth}%`}</Badge>} />
-              <div className="flex flex-col gap-3 p-5 pt-2">
-                <div className="grid grid-cols-1 gap-2 text-sm sm:grid-cols-3">
-                  <div className="rounded-xl bg-surface px-3 py-2"><p className="text-[11px] text-steel-400">{S.marketGrowth}</p><p className="font-bold text-navy-900">{growth}%</p></div>
-                  <div className="rounded-xl bg-surface px-3 py-2"><p className="text-[11px] text-steel-400">{S.costSuppress}</p><p className="font-bold text-navy-900">{costAdj}%</p></div>
-                  <div className="rounded-xl bg-surface px-3 py-2"><p className="text-[11px] text-steel-400">{S.progressShift}</p><p className="font-bold text-navy-900">{progAdj}%</p></div>
-                </div>
-                <div className="flex flex-wrap gap-2">
-                  <Link to="/pengaturan" className="btn-secondary text-xs">{S.changeInSettings}</Link>
-                </div>
-                <p className="text-sm text-steel-600">{S.forecastSimulated.replace("{a}", `Rp ${forecastAnnualAdj.toLocaleString("id-ID")} M`).replace("{b}", marginLive.toLocaleString("id-ID", { maximumFractionDigits: 1 })).replace("{c}", fmtTanggal(todayISO()))}</p>
-                <p className="text-xs text-steel-400">{S.whatifAssumption}</p>
-              </div>
-            </Card>
-            <Card>
-              <CardHeader title={S.savedScenarios} subtitle={S.savedScenariosSub} />
-              <div className="flex flex-wrap gap-2 p-5 pt-2">
-                <input className="input w-48" placeholder={S.scenarioNamePh} value={scName} onChange={(e) => setScName(e.target.value)} />
-                <button className="btn-secondary text-xs" onClick={saveScenario}>{S.saveScenarioBtn}</button>
-                {editingScenario && (
-                  <>
-                    <button className="btn-primary text-xs" onClick={overwriteScenario}>
-                      {locale === "en" ? "Overwrite" : "Timpa"} {editingScenario}
-                    </button>
-                    <button
-                      className="btn-secondary text-xs"
-                      onClick={() => { setEditingScenario(null); setScName(""); }}
-                    >
-                      {locale === "en" ? "Cancel edit" : "Batal ubah"}
-                    </button>
-                  </>
-                )}
-              </div>
-              {/* Slider asumsi. Defaultnya ikut nilai global dari settings
-                  sehingga scenario baru dibuat dari asumsi aktif sekarang,
-                  tapi bisa diubah di sini tanpa menyentuh settings. */}
-              <div className="grid grid-cols-1 gap-3 px-5 text-xs sm:grid-cols-3">
-                <Field label={S.marketGrowth}>
-                  <input
-                    type="range" min={-30} max={50} step={1}
-                    value={growthDraft}
-                    onChange={(e) => setGrowthDraft(e.target.value)}
-                  />
-                  <span className="font-semibold text-navy-900">{growthDraft}%</span>
-                </Field>
-                <Field label={S.costSuppress}>
-                  <input
-                    type="range" min={-30} max={30} step={1}
-                    value={costDraft}
-                    onChange={(e) => setCostDraft(e.target.value)}
-                  />
-                  <span className="font-semibold text-navy-900">{costDraft}%</span>
-                </Field>
-                <Field label={S.progressShift}>
-                  <input
-                    type="range" min={-30} max={30} step={1}
-                    value={progDraft}
-                    onChange={(e) => setProgDraft(e.target.value)}
-                  />
-                  <span className="font-semibold text-navy-900">{progDraft}%</span>
-                </Field>
-              </div>
-              <div className="space-y-1.5 px-5 pb-2 text-sm">
-                {scenarios.map((s) => (
-                  <div key={s.name} className="flex items-center gap-2 rounded-xl bg-surface px-3 py-2">
-                    <span className="font-semibold text-navy-900">{s.name}</span>
-                    {cmpA === s.name && <Badge tone="blue">A</Badge>}
-                    {cmpB === s.name && <Badge tone="blue">B</Badge>}
-                    <span className="text-xs text-steel-500">{S.scenarioMeta.replace("{a}", String(s.growth)).replace("{b}", String(s.costAdj)).replace("{c}", String(s.progAdj)).replace("{n}", annualFor(s).toLocaleString("id-ID"))}</span>
-                    <span className="ml-auto flex gap-1.5">
-                      <button className="btn-secondary px-2 py-1 text-xs" onClick={() => editScenario(s.name)}>
-                        {locale === "en" ? "Edit" : "Ubah"}
-                      </button>
-                      <button className="btn-secondary px-2 py-1 text-xs" onClick={() => loadScenario(s.name)}>{S.applyBtn}</button>
-                      <button className="btn-secondary px-2 py-1 text-xs" onClick={() => delScenario(s.name)}>{S.deleteBtn}</button>
-                    </span>
-                  </div>
-                ))}
-                {scenarios.length === 0 && <p className="text-xs text-steel-400">{S.noScenarios}</p>}
-              </div>
-              {scenarios.length >= 1 && (
-                <div className="space-y-2 px-5 pb-5 text-sm">
-                  <div className="flex flex-wrap gap-2">
-                    <select className="input w-44" value={cmpA} onChange={(e) => setCmpA(e.target.value)}>
-                      <option value="">{S.scenarioA}</option>
-                      {scenarios.map((s) => <option key={s.name} value={s.name}>{s.name}</option>)}
-                    </select>
-                    <select className="input w-44" value={cmpB} onChange={(e) => setCmpB(e.target.value)}>
-                      <option value="">{S.scenarioB}</option>
-                      {scenarios.map((s) => <option key={s.name} value={s.name}>{s.name}</option>)}
-                    </select>
-                  </div>
-                  {cmpA && cmpB && (() => {
-                    const a = scenarios.find((s) => s.name === cmpA);
-                    const b = scenarios.find((s) => s.name === cmpB);
-                    if (!a || !b) return null;
-                    return (
-                      <table className="w-full text-xs">
-                        <thead className="bg-surface"><tr><SortTh label={S.paramLabel} sortKey="param" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} /><SortTh label={a.name} sortKey="a" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} /><SortTh label={b.name} sortKey="b" sort={sort2} onSort={(k) => setSort2((s) => toggleSort(s, k))} /></tr></thead>
-                        <tbody className="divide-y divide-steel-100">
-                          {sortRows(
-                            [
-                              { param: S.paramGrowth, av: Number(a.growth), bv: Number(b.growth), unit: "%" },
-                              { param: S.paramCost, av: Number(a.costAdj), bv: Number(b.costAdj), unit: "%" },
-                              { param: S.paramProgress, av: Number(a.progAdj), bv: Number(b.progAdj), unit: "%" },
-                              { param: S.paramForecastYear, av: annualFor(a), bv: annualFor(b), unit: "Rp" },
-                            ],
-                            sort2,
-                            (r, key) => key === "a" ? Number(r.av) : key === "b" ? Number(r.bv) : String(r.param)
-                          ).map((r) => (
-                            <tr key={r.param}>
-                              <td className={r.param === "Forecast/thn" ? "td font-semibold" : "td"}>{r.param}</td>
-                              <td className={r.param === "Forecast/thn" ? "td font-semibold" : "td"}>{r.unit === "Rp" ? `Rp ${Number(r.av).toLocaleString("id-ID")} M` : `${r.av}%`}</td>
-                              <td className={r.param === "Forecast/thn" ? "td font-semibold" : "td"}>{r.unit === "Rp" ? `Rp ${Number(r.bv).toLocaleString("id-ID")} M` : `${r.bv}%`}</td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    );
-                  })()}
-                </div>
-              )}
-            </Card>
-            <Card>
-              <CardHeader title={S.forecastRevenue} subtitle={`${S.forecastBand} · Bulan berjalan paling kanan`} action={<span className="flex gap-1.5"><Badge tone="blue">{S.aiPrediction}</Badge><button className="btn-secondary px-2 py-1 text-xs" onClick={() => exportChartPNG("chart-forecast", "forecast-pendapatan")}>{S.exportPngBtn}</button></span>} />
-              <div id="chart-forecast" className="h-60 p-4 pt-0 sm:h-72">
-                <ResponsiveContainer width="100%" height="100%">
-                  <ComposedChart data={forecastAdj} margin={{ top: 10, right: 10, left: -15, bottom: 0 }}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#e9eff4" />
-                    <XAxis dataKey="name" stroke="#8aa2b6" axisLine={false} tickLine={false} />
-                    <YAxis stroke="#8aa2b6" axisLine={false} tickLine={false} />
-                    <Tooltip content={<ChartTooltip formatter={(v) => `Rp ${v} M`} />} />
-                    <Legend wrapperStyle={{ fontSize: 12 }} />
-                    <Area type="monotone" dataKey="high" name={S.limitTop} stroke="none" fill="#8cc9e8" fillOpacity={0.35} connectNulls />
-                    <Area type="monotone" dataKey="low" name={S.limitBottom} stroke="none" fill="#ffffff" fillOpacity={0.9} connectNulls />
-                    <Line type="monotone" dataKey="actual" name={S.legendActual} stroke="#dc2626" strokeWidth={2} connectNulls dot={{ r: 4 }} />
-                    <Line type="monotone" dataKey="forecast" name={S.legendForecast} stroke="#2e9ad4" strokeDasharray="6 3" strokeWidth={2} dot={{ r: 4 }} />
-                  </ComposedChart>
-                </ResponsiveContainer>
-              </div>
-            </Card>
-          </div>
-        )}
-
-        {tab === "Preskriptif" && (
-          <div className="space-y-5">
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-              {[
-                { icon: Lightbulb, tone: "bg-navy-50 text-navy-700", title: S.allocDrydock, desc: S.allocDrydockDesc, to: "/drydock", cta: S.openDrydock },
-                { icon: CheckCircle2, tone: "bg-emerald-50 text-emerald-600", title: S.reorderMaterial, desc: S.reorderDesc.replace("{n}", String(lowStock.length)), to: "/procurement", cta: S.openProcurement },
-                { icon: Lightbulb, tone: "bg-amber-50 text-amber-600", title: S.projectPriority, desc: S.projectPriorityDesc.replace("{n}", String(atRisk)), to: "/proyek", cta: S.openProjects },
-                { icon: CheckCircle2, tone: "bg-violet-50 text-violet-700", title: S.followUpNcr, desc: S.followUpNcrDesc.replace("{n}", String(openNcr)), to: "/qc-safety", cta: S.openQc },
-              ].map((r) => (
-                <Card key={r.title} className="card-hover p-5">
-                  <div className="flex items-start gap-3">
-                    <div className={`rounded-lg p-2 ${r.tone}`}><r.icon className="h-5 w-5" /></div>
-                    <div className="flex-1">
-                      <h3 className="text-sm font-semibold text-navy-900">{r.title}</h3>
-                      <p className="mt-1 text-sm text-steel-600">{r.desc}</p>
-                      <Link to={r.to} className="mt-2 inline-flex text-sm font-semibold text-ocean-600 hover:underline">{r.cta} →</Link>
-                    </div>
-                  </div>
-                </Card>
-              ))}
-            </div>
-          </div>
-        )}
+        {/* T7-CLEAN5: tab Prediktif & Preskriptif dihapus dari render
+            (notes2 + T6-AN2). Skenario what-if tetap diekspor lewat Excel. */}
 
         {tab === "Profitabilitas" && (
           <div className="space-y-5">

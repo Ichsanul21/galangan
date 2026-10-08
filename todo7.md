@@ -228,16 +228,16 @@ Item baru memakai kode **T7-**. Rujukan lama: todo5/todo6.
 
 # CLEANUP (opsional, gelombang terpisah)
 
-| ID | Paket | Lokasi |
+| ID | Paket | Status |
 |---|---|---|
-| T7-CLEAN1 | QC Drawing dead branch + CRUD | QCSafety.tsx:972-1090,1669-1765 |
-| T7-CLEAN2 | Equipment 6 tab hantu | Equipment.tsx:1833-2445 |
-| T7-CLEAN3 | Subkon Timesheet ghost | Subcontractor.tsx:1368-1459 |
-| T7-CLEAN4 | Inventory Tonase & SJ ghost | Inventory.tsx:2865-3130 |
-| T7-CLEAN5 | Analytics Prediktif/Preskriptif + memo forecast | Analytics.tsx:417-509,1339-1490 |
-| T7-CLEAN6 | HR Mutasi/OrgChart dead tabs | HR.tsx:1761-1796 |
-| T7-CLEAN7 | RFQ winner* residual fields | Procurement.tsx:695,784 |
-| T7-CLEAN8 | Absensi attendanceTrend memo mati | Absensi.tsx:448-480 |
+| T7-CLEAN1 | QC Drawing dead branch + CRUD | **W3 SELESAI** QCSafety.tsx: tab, modal, saveDrawing/revise/step/transmittal, "drawings" di QC_COLS dihapus |
+| T7-CLEAN2 | Equipment 6 tab hantu | **W3 SELESAI** Equipment.tsx: 6 tab + 21 fungsi + 33 state + 9 modal + 24 memo dihapus (3219→~1500 baris) |
+| T7-CLEAN3 | Subkon Timesheet ghost | **W3 SELESAI** Subcontractor.tsx: tab, modal timesheet, saveTimesheet/approve/edit/del, rate form dihapus; timesheets collection tetap (progress WO) |
+| T7-CLEAN4 | Inventory Tonase & SJ + Analisis ghost | **W3 SELESAI** Inventory.tsx: 2 branch + DO modal + states/helpers (~−647 baris) |
+| T7-CLEAN5 | Analytics Prediktif/Preskriptif + memo forecast | **W3 SELESAI** Analytics.tsx: 2 tab branch + scenario CRUD UI dihapus; forecast/scenarios tetap untuk Excel export |
+| T7-CLEAN6 | HR Mutasi/OrgChart dead tabs | **SKIP** (keputusan user: tombol di-hide, code disimpan) |
+| T7-CLEAN7 | RFQ winner residual fields | **W3 SELESAI** Procurement.tsx: `winner`/`winnerVendor`/`winnerPrice` dihapus dari payload |
+| T7-CLEAN8 | Absensi attendanceTrend memo | **W3 SELESAI** Absensi.tsx: memo + chart block + unused imports dihapus |
 
 ---
 
@@ -256,7 +256,7 @@ Item baru memakai kode **T7-**. Rujukan lama: todo5/todo6.
 | **W0** | T7-EQ2 deeplink whitelist; T7-SDM1 hide tombol mutasi; T7-SK1 pager termin; T7-PRJ2 hilangkan tabel risiko | **SELESAI** (build lulus) |
 | **W1** | T7-PRJ1 progress rule; T7-PRJ3 teknisi select; T7-PRJ4 default milestone; T7-EQ1 kolom tabel | **SELESAI** (build lulus) |
 | **W2** | T7-DD1 FacilityMap clickable | **SELESAI** (build lulus) |
-| **W3 (opsional)** | CLEANUP paket 1-8 (dead code removal, build pasti lulus) |
+| **W3 (opsional)** | CLEANUP paket 1-8 (dead code removal, build pasti lulus) | **SELESAI** (build lulus; CLEAN6 skip per keputusan user) |
 
 ---
 
