@@ -561,6 +561,10 @@ export interface ServiceRecord {
     cost: number;
     /** D12: referensi opsional ke item BoQ project ini. */
     boqRef?: string;
+    /** T8-PRJ5: nama peralatan (equipment) yang dipakai untuk service ini. Opsional. */
+    equipment?: string;
+    /** T8-PRJ3: referensi opsional ke tahap WBS project ini. */
+    wbsTask?: string;
   }
 
 export const services: ServiceRecord[] = [

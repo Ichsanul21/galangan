@@ -33,9 +33,11 @@ interface Props {
   projectId?: string;
   vesselId?: string;
   view?: SparepartServiceView;
+  /** T8-PRJ3: saat dibuat dari konteks WBS, task ini otomatis terpilih. */
+  wbsTask?: string;
 }
 
-export default function SparepartServiceSection({ projectId, vesselId, view = "all" }: Props) {
+export default function SparepartServiceSection({ projectId, vesselId, view = "all", wbsTask }: Props) {
   const { locale } = useT();
   const S = n_prj[locale];
   const { data, add, update, remove, log } = useStore();
@@ -48,7 +50,7 @@ export default function SparepartServiceSection({ projectId, vesselId, view = "a
   const [showAddSvc, setShowAddSvc] = useState(false);
   const [editSvc, setEditSvc] = useState<SvcExt | null>(null);
   const [delSvc, setDelSvc] = useState<SvcExt | null>(null);
-  const [svcForm, setSvcForm] = useState({ type: "Repair" as ServiceRecord["type"], description: "", date: new Date().toISOString().slice(0, 10), technician: "", cost: "", status: "Scheduled" as ServiceRecord["status"], boqRef: "" });
+  const [svcForm, setSvcForm] = useState({ type: "Repair" as ServiceRecord["type"], description: "", date: new Date().toISOString().slice(0, 10), technician: "", cost: "", status: "Scheduled" as ServiceRecord["status"], boqRef: "", equipment: "", wbsTask: "" });
   const [svcStatus, setSvcStatus] = useState<string>("Semua");
   const [svcQ, setSvcQ] = useState("");
   const [cancelFor, setCancelFor] = useState<SvcExt | null>(null);
@@ -104,11 +106,13 @@ export default function SparepartServiceSection({ projectId, vesselId, view = "a
       cost: String(s.cost ?? ""),
       status: (s.status === "Batal" ? "Scheduled" : s.status) as ServiceRecord["status"],
       boqRef: String(s.boqRef ?? ""),
+      equipment: String(s.equipment ?? ""),
+      wbsTask: String(s.wbsTask ?? ""),
     });
   };
 
   const EMPTY_SP = { name: "", partNumber: "", category: "Mechanical", status: "Akan" as "Akan" | "Sedang" | "Selesai", cost: "", notes: "", technician: "", usedDate: "", warrantyUntil: "", poRef: "", qty: "1" };
-  const EMPTY_SVC = { type: "Repair" as ServiceRecord["type"], description: "", date: new Date().toISOString().slice(0, 10), technician: "", cost: "", status: "Scheduled" as ServiceRecord["status"], boqRef: "" };
+  const EMPTY_SVC = { type: "Repair" as ServiceRecord["type"], description: "", date: new Date().toISOString().slice(0, 10), technician: "", cost: "", status: "Scheduled" as ServiceRecord["status"], boqRef: "", equipment: "", wbsTask: "" };
 
   /* Tombol "Tambah" harus membuka form KOSONG. Versi lama memakai state form
      yang sama dengan form edit, jadi data item terakhir ikut terbawa. */
@@ -118,7 +122,7 @@ export default function SparepartServiceSection({ projectId, vesselId, view = "a
     setShowAdd(true);
   };
   const openAddSvc = () => {
-    setSvcForm(EMPTY_SVC);
+    setSvcForm({ ...EMPTY_SVC, ...(wbsTask ? { wbsTask } : {}) });
     setEditSvc(null);
     setShowAddSvc(true);
   };
@@ -168,7 +172,7 @@ export default function SparepartServiceSection({ projectId, vesselId, view = "a
   const svcFiltered = useMemo(() => {
     return svcItems.filter((s) => {
       const matchSt = svcStatus === "Semua" || s.status === svcStatus;
-      const matchQ = rowMatches(s as unknown as Record<string, unknown>, svcQ, ["id", "type", "description", "technician", "status", "date"]);
+      const matchQ = rowMatches(s as unknown as Record<string, unknown>, svcQ, ["id", "type", "description", "technician", "status", "date", "equipment"]);
       return matchSt && matchQ;
     });
   }, [svcItems, svcStatus, svcQ]);
@@ -401,12 +405,21 @@ const payload = {
         technician: svcForm.technician.trim() || "Belum ditentukan",
         cost: Number(svcForm.cost) || 0,
         ...(svcForm.boqRef ? { boqRef: svcForm.boqRef } : {}),
+        ...(svcForm.wbsTask ? { wbsTask: svcForm.wbsTask } : {}),
+        ...(svcForm.equipment ? { equipment: svcForm.equipment.trim() } : {}),
       };
     if (editSvc) {
       /* Bila status awal "Batal", JANGAN ubah status saat edit -
          membatalkan service tak sengaja adalah bug integritas data nyata. */
       const wasCancelled = String(editSvc.status) === "Batal";
-      const patch = wasCancelled ? { ...payload, status: "Batal" as const } : payload;
+      /* equipment & wbsTask selalu ikut patch (termasuk saat dikosongkan) supaya
+         pilihan lama tidak tertinggal di record. */
+      const patch = {
+        ...payload,
+        equipment: svcForm.equipment.trim(),
+        wbsTask: svcForm.wbsTask.trim(),
+        ...(wasCancelled ? { status: "Batal" as const } : {}),
+      };
       await update("services", editSvc.id, patch);
       log("mengubah service", `${editSvc.id} · ${payload.description}`, "Service");
       toast(locale === "en" ? "Service updated" : "Service diperbarui");
@@ -416,7 +429,7 @@ const payload = {
     await add("services", { projectId: projectId ?? "", vesselId: vesselId ?? "", ...payload }, { action: "menambahkan service", module: "Service" });
     toast(S.spsToastSvcAdd);
     setShowAddSvc(false);
-    setSvcForm({ type: "Repair", description: "", date: new Date().toISOString().slice(0, 10), technician: "", cost: "", status: "Scheduled", boqRef: "" });
+    setSvcForm({ type: "Repair", description: "", date: new Date().toISOString().slice(0, 10), technician: "", cost: "", status: "Scheduled", boqRef: "", equipment: "", wbsTask: "" });
   };
 
   const modelCard = show3d ? (
@@ -551,6 +564,11 @@ const payload = {
                   </div>
                 </div>
                 <p className="text-xs text-steel-500">{s.date} · {s.technician} · {fmtRupiah(s.cost)}</p>
+                {s.equipment ? (
+                  <div className="mt-1 flex flex-wrap gap-1">
+                    <Badge tone="blue">🔧 {s.equipment}</Badge>
+                  </div>
+                ) : null}
                 {s.status === "Batal" && s.cancelReason && (
                   <p className="mt-1 text-xs text-rose-600">{S.spsCancelReasonLbl.replace("{a}", s.cancelReason)}</p>
                 )}
@@ -729,16 +747,50 @@ const payload = {
               </select>
             </Field>
           </FormGrid>
-          <Field label={S.spsSvcCost}><NumInput className="input" value={svcForm.cost} onChange={(e) => setSvcForm({ ...svcForm, cost: e.target.value })} /></Field>
-          {/* D12: referensi opsional ke item BoQ project ini. */}
+          <Field label={S.spsSvcEquip} hint={locale === "en" ? "Equipment used for this service" : "Peralatan yang dipakai untuk service ini"}>
+            <select className="input" value={svcForm.equipment} onChange={(e) => setSvcForm({ ...svcForm, equipment: e.target.value })}>
+              <option value="">{S.spsSvcEquipPh}</option>
+              {data.equipment.map((eq) => (
+                <option key={String(eq.id)} value={String(eq.name ?? eq.id)}>{String(eq.name ?? eq.id)}</option>
+              ))}
+            </select>
+          </Field>
+          <Field label={S.spsSvcCost} hint={(() => {
+            if (!projectId || !svcForm.boqRef) return undefined;
+            const b = (data.boq ?? []).find((x) => String(x.id) === svcForm.boqRef && String(x.projectId ?? "") === projectId);
+            if (!b) return undefined;
+            return locale === "en" ? `Cost from BoQ: ${fmtRupiah(Number(b.totalPrice || 0))}` : `Biaya dari BoQ: ${fmtRupiah(Number(b.totalPrice || 0))}`;
+          })()}><NumInput className="input" value={svcForm.cost} onChange={(e) => setSvcForm({ ...svcForm, cost: e.target.value })} /></Field>
+          {/* D12: referensi opsional ke item BoQ project ini. T8-PRJ3: pilih BoQ
+              otomatis isi biaya dari totalPrice item (tetap bisa diubah manual). */}
           {projectId && (() => {
             const boqItems = (data.boq ?? []).filter((b) => String(b.projectId ?? "") === projectId);
             if (boqItems.length === 0) return null;
             return (
               <Field label={S.spsSvcBoqRef}>
-                <select className="input" value={svcForm.boqRef} onChange={(e) => setSvcForm({ ...svcForm, boqRef: e.target.value })}>
+                <select className="input" value={svcForm.boqRef} onChange={(e) => {
+                  const hit = boqItems.find((b) => String(b.id) === e.target.value);
+                  setSvcForm({
+                    ...svcForm,
+                    boqRef: e.target.value,
+                    cost: hit ? String(Number(hit.totalPrice || 0)) : svcForm.cost,
+                  });
+                }}>
                   <option value="">{locale === "en" ? "-- none --" : "-- tidak ada --"}</option>
                   {boqItems.map((b) => <option key={b.id} value={b.id}>{String(b.name ?? b.id)}</option>)}
+                </select>
+              </Field>
+            );
+          })()}
+          {/* T8-PRJ3: link opsional ke tahap WBS project ini. */}
+          {projectId && (() => {
+            const wbsTasks = ((data.wbsByProject ?? {})[projectId] ?? []);
+            if (wbsTasks.length === 0) return null;
+            return (
+              <Field label={locale === "en" ? "WBS task" : "Tahap WBS"}>
+                <select className="input" value={svcForm.wbsTask} onChange={(e) => setSvcForm({ ...svcForm, wbsTask: e.target.value })}>
+                  <option value="">{locale === "en" ? "-- none --" : "-- tidak ada --"}</option>
+                  {wbsTasks.map((w) => <option key={w.task} value={w.task}>{w.task}</option>)}
                 </select>
               </Field>
             );

@@ -546,7 +546,7 @@ const docOwnerOptions = useMemo(() => employeeOptions(data.employees), [data.emp
     try {
       await add("changeOrders", {
         project: pid, title: coForm.title.trim(), impact: coImpactVal,
-        status: "Diajukan", requestedBy: coForm.requestedBy.trim(), date: coForm.date || todayISO(),
+        status: "Diajukan", ownerApproved: false, requestedBy: coForm.requestedBy.trim(), date: coForm.date || todayISO(),
         boqAction: coForm.boqAction,
         ...(coForm.boqAction === "revise" ? {
           boqItemId: coForm.boqItemId,
@@ -585,6 +585,11 @@ const docOwnerOptions = useMemo(() => employeeOptions(data.employees), [data.emp
     if (!co) return;
     if (status === "Diterapkan" && String(co.status ?? "") === "Diterapkan") {
       toast(locale === "en" ? "Change order already applied" : "Change order sudah pernah diterapkan", "info");
+      return;
+    }
+    /* T8-PRJ2: apply butuh approval owner dulu. */
+    if (status === "Diterapkan" && co.ownerApproved !== true) {
+      toast(locale === "en" ? "Waiting for owner approval" : "Menunggu persetujuan owner", "info");
       return;
     }
     try {
@@ -654,6 +659,21 @@ const docOwnerOptions = useMemo(() => employeeOptions(data.employees), [data.emp
       }
       log("mengubah change order", `${id} - ${status}`, "Proyek");
       toast(S.detToastCoStatus.replace("{a}", status.toLowerCase()));
+    } catch (e) {
+      toast(e instanceof Error ? e.message : S.saveFail, "info");
+    }
+  };
+
+  /* T8-PRJ2: approval owner - langkah sebelum CO boleh diterapkan. */
+  const approveCoOwner = async (id: string) => {
+    if (!canSetTarget(session?.role)) {
+      toast(locale === "en" ? "Your role cannot approve change orders" : "Peran Anda tidak bisa menyetujui change order", "info");
+      return;
+    }
+    try {
+      await update("changeOrders", id, { ownerApproved: true, ownerApprovedAt: todayISO() });
+      log("menyetujui change order sebagai owner", id, "Proyek");
+      toast(locale === "en" ? "Change order approved by owner" : "Change order disetujui owner");
     } catch (e) {
       toast(e instanceof Error ? e.message : S.saveFail, "info");
     }
@@ -1352,13 +1372,28 @@ try {
                     <tr><SortTh label={S.colStageName} sortKey="task" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.detAssignee} sortKey="assignee" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.detStart} sortKey="start" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.detEnd} sortKey="end" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.colWeight} sortKey="weight" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.colPred} sortKey="predecessor" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.progLabel} sortKey="progress" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><th className="th">{S.actionTh}</th></tr>
                   </thead>
                   <tbody className="divide-y divide-steel-100">
-                    {sortRows(wbs.filter((w) => rowMatches(w as unknown as Record<string, unknown>, wbsQ, ["task", "station", "dft", "predecessor"])), sort, (w: WbsExt, k) => k === "weight" ? Number(w.weight) : k === "progress" ? Number(w.progress) : String((w as unknown as Record<string, unknown>)[k] ?? "")).map((w) => (
+                    {sortRows(wbs.filter((w) => rowMatches(w as unknown as Record<string, unknown>, wbsQ, ["task", "station", "dft", "predecessor"])), sort, (w: WbsExt, k) => k === "weight" ? Number(w.weight) : k === "progress" ? Number(w.progress) : String((w as unknown as Record<string, unknown>)[k] ?? "")).map((w) => {
+                      const lastPhoto = w.photos && w.photos.length > 0 ? w.photos[w.photos.length - 1] : undefined;
+                      return (
                       <tr key={w.task}>
                           <td className="td font-medium text-navy-900">{w.task}
                             {w.station ? <span className="ml-2 rounded bg-navy-50 px-1.5 py-0.5 text-[11px] font-semibold text-navy-700">{w.station}</span> : null}
                             {w.dft !== undefined && w.dft !== null && String(w.dft) !== "" ? <span className="ml-1 text-[11px] text-steel-400">DFT {w.dft}</span> : null}
-                            {/* D3: badge jumlah foto jika ada. */}
-                            {w.photos && w.photos.length > 0 && <span className="ml-1 rounded bg-ocean-50 px-1.5 py-0.5 text-[11px] font-semibold text-ocean-700">📷 {w.photos.length}</span>}
+                            {/* D3: badge jumlah foto. T8-PRJ1: galeri thumbnail (maks 3) + riwayat singkat perubahan terakhir. */}
+                            {w.photos && w.photos.length > 0 && (
+                              <div className="mt-1.5 flex flex-col gap-1">
+                                <span className="w-fit rounded bg-ocean-50 px-1.5 py-0.5 text-[11px] font-semibold text-ocean-700">📷 {w.photos.length}</span>
+                                <div className="flex flex-wrap items-center gap-1">
+                                  {w.photos.slice(-3).map((p, i) => (
+                                    <SecureImg key={`${p.url}-${i}`} src={p.url} alt={p.note || `Foto ${w.task}`} name={w.task} className="h-9 w-12 rounded-md border border-steel-200 object-cover" />
+                                  ))}
+                                  {w.photos.length > 3 && <span className="text-[11px] text-steel-400">+{w.photos.length - 3} lagi</span>}
+                                </div>
+                                {lastPhoto && (lastPhoto.note || lastPhoto.date) ? (
+                                  <span className="text-[11px] text-steel-500">Terakhir: {lastPhoto.note || "-"} · {fmtTanggal(lastPhoto.date)}</span>
+                                ) : null}
+                              </div>
+                            )}
                           </td>
                           {/* T6-PRJ2: pengerja WBS (internal / subkon). */}
                           <td className="td">
@@ -1390,7 +1425,8 @@ try {
                             />
                         </td>
                       </tr>
-                    ))}
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
@@ -1945,6 +1981,38 @@ try {
                   )}
                 </div>
               </Card>
+
+              {/* T8-PRJ5: service yang mencatat equipment yang dipakai.
+                  Pelengkap booking/maintenance di atas. */}
+              {(() => {
+                const svcWithEquip = (data.services ?? []).filter(
+                  (s) => String(s.projectId ?? "") === String(pid) && String(s.equipment ?? "").trim() !== "",
+                );
+                if (svcWithEquip.length === 0) return null;
+                return (
+                  <Card>
+                    <CardHeader
+                      title={locale === "en" ? "Equipment used in services" : "Equipment yang dipakai di service"}
+                      subtitle={locale === "en"
+                        ? "Which equipment was recorded on each service."
+                        : "Pencatatan peralatan per service."}
+                    />
+                    <div className="p-4">
+                      <div className="space-y-2">
+                        {svcWithEquip.map((s) => (
+                          <div key={String(s.id)} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-steel-100 p-3 text-sm">
+                            <div className="min-w-0">
+                              <p className="font-medium text-navy-900">{String(s.description ?? s.type)}</p>
+                              <p className="text-xs text-steel-500">{String(s.id)} · {String(s.date ?? "")} · {String(s.technician ?? "")}</p>
+                            </div>
+                            <Badge tone="blue">🔧 {String(s.equipment)}</Badge>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </Card>
+                );
+              })()}
             </div>
           )}
 
@@ -1976,6 +2044,12 @@ try {
                       </div>
                       <div className="flex items-center gap-2">
                         <StatusBadge status={c.status} />
+                        {c.ownerApproved === true && (
+                          <Badge tone="green">{locale === "en" ? "Owner Approved" : "Owner Disetujui"}</Badge>
+                        )}
+                        {c.status === "Diajukan" && c.ownerApproved !== true && canSetTarget(session?.role) && (
+                          <button className="btn-secondary text-xs" onClick={() => approveCoOwner(String(c.id))}>{locale === "en" ? "Approve Owner" : "Setujui Owner"}</button>
+                        )}
                         {c.status === "Diajukan" && (
                           <>
                             <button className="btn-secondary text-xs" onClick={() => setCoStatus(c.id, "Disetujui")}>{S.detApproveBtn}</button>
@@ -1983,7 +2057,11 @@ try {
                           </>
                         )}
                         {c.status === "Disetujui" && (
+                          c.ownerApproved === true ? (
                             <button className="btn-secondary text-xs" onClick={() => setCoStatus(c.id, "Diterapkan")}>{S.detApplyBtn}</button>
+                          ) : (
+                            <span className="text-xs text-amber-600">{locale === "en" ? "Waiting for owner approval" : "Menunggu persetujuan owner"}</span>
+                          )
                         )}
                         {c.status !== "Diterapkan" && (
                           <button className="btn-secondary text-xs text-rose-600" onClick={() => setDelRec({ kind: "changeOrders", row: c })}>{locale === "en" ? "Delete" : "Hapus"}</button>
