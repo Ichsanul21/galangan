@@ -234,6 +234,9 @@ export default function HR() {
   const deepParams = useDeepLinkParams();
   const notified = useMemo(() => new Set(modAlert.items.map((a) => a.rowId)), [modAlert.items]);
   const pdfDoc = usePdfDoc();
+  /* T8-SDM1: pratinjau PDF draft surat di form - instance terpisah dari
+     `pdfDoc` (arsip/cuti) supaya request tidak saling menimpa Blob URL. */
+  const composePdf = usePdfDoc();
   /* Fetch per-batch modul (pengganti resync penuh). */
   useModuleSync(HR_COLS);
   const [tab, setTab] = useState("Karyawan");
@@ -1182,6 +1185,7 @@ const finishTraining = async (t: StoreItem) => {
 
   /** Buka form UBAH surat yang sudah tersimpan. */
   const openSuratEdit = (s: StoreItem) => {
+    composePdf.close();
     setSuratEditId(String(s.id));
     setSuratForm({
       employeeId: String(s.employeeId ?? ""),
@@ -1281,6 +1285,9 @@ const finishTraining = async (t: StoreItem) => {
         toast(S.tSuratOk.replace("{n}", suratNomor));
       }
       setShowSurat(false);
+      /* Lepas Blob PDF draft dari memori - modal ditutup, tak ada yang
+         menatap iframe-nya lagi. */
+      composePdf.close();
       setSuratForm({ employeeId: "", jenis: "SP 1", isi: "", tanggal: todayISO(), fileUrl: "", approvedBy: "", approvedAt: "", sourceType: "", sourceId: "", mulai: "", berakhir: "", gaji: "" });
     } catch (e) { toast(e instanceof Error ? e.message : S.saveFail, "info"); }
   };
@@ -2363,7 +2370,7 @@ const finishTraining = async (t: StoreItem) => {
         wide
         footer={
           <>
-            <button className="btn-secondary" onClick={() => { setShowSurat(false); setSuratEditId(null); }}>{S.btnBatal}</button>
+            <button className="btn-secondary" onClick={() => { setShowSurat(false); setSuratEditId(null); composePdf.close(); }}>{S.btnBatal}</button>
             <button className="btn-primary" onClick={saveSurat}>
               {suratEditId ? S.btnSimpan : S.btnArsip}
             </button>
@@ -2445,10 +2452,51 @@ const finishTraining = async (t: StoreItem) => {
             </button>
             <span className="text-[11px] text-steel-400">{suratEditId ? S.hSuratPdf : S.hSuratPdfBelumSimpan}</span>
           </div>
+          {/* T8-SDM1: teks preview tetap ada (draft belum tentu punya baris di
+              DB), ditambah tombol "Pratinjau PDF" yang merakit PDF resmi dari
+              server untuk surat yang SUDAH disimpan - satu-satunya jalur yang
+              hasilnya dijamin sama dengan yang dicetak. */}
           {suratPreview && (
             <div>
-              <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-steel-500">{S.lblPratinjau}</p>
+              <div className="mb-1 flex items-center justify-between gap-2">
+                <p className="text-xs font-semibold uppercase tracking-wide text-steel-500">{S.lblPratinjau}</p>
+                <button
+                  type="button"
+                  className="btn-secondary text-xs"
+                  disabled={!suratEditId || !pdfServerReady() || composePdf.state.busy}
+                  onClick={() => {
+                    if (!suratEditId) { toast(S.hSuratPdfBelumSimpan, "info"); return; }
+                    if (!pdfServerReady()) { toast(S.tPdfServerBelum, "info"); return; }
+                    void composePdf.request({ kind: "suratHr", id: suratEditId, locale }, `Surat-${suratEditId}.pdf`, true);
+                  }}
+                >
+                  {locale === "en" ? "Preview PDF" : "Pratinjau PDF"}
+                </button>
+              </div>
               <pre className="whitespace-pre-wrap rounded-xl bg-surface p-3 text-sm text-navy-900">{suratPreview}</pre>
+              {composePdf.state.busy && (
+                <p className="mt-1 text-xs text-steel-500">{locale === "en" ? "Preparing PDF..." : "Menyiapkan PDF..."}</p>
+              )}
+              {composePdf.state.error !== "" && (
+                <p className="mt-1 text-xs text-rose-600">{composePdf.state.error}</p>
+              )}
+              {composePdf.state.url !== "" && (
+                <div className="mt-2">
+                  <button
+                    type="button"
+                    className="btn-secondary text-xs"
+                    onClick={() => composePdf.download(`Surat-${suratEditId ?? suratNomor}.pdf`)}
+                  >
+                    <Download className="h-3.5 w-3.5" />
+                    {locale === "en" ? "Download PDF" : "Unduh PDF"}
+                  </button>
+                  <iframe
+                    title={locale === "en" ? "Letter PDF preview" : "Pratinjau PDF surat"}
+                    src={composePdf.state.url}
+                    className="mt-2 h-80 w-full rounded-xl border border-steel-200"
+                  />
+                </div>
+              )}
             </div>
           )}
           {/* Preview pindai langsung di form lewat DocumentPreviewPanel
@@ -2478,9 +2526,11 @@ const finishTraining = async (t: StoreItem) => {
           bisa BERBEDA dari factory server, jadi yang tampil di layar bukan
           tentu yang keluar dari printer.
 
-          Preview di form (baris 2204) tetap teks dan itu memang benar:
-          suratnya belum punya baris di DB, jadi factory server tidak punya
-          apa pun untuk dirakit. */}
+          Preview di form (baris 2204) tetap teks - suratnya belum tentu punya
+          baris di DB, jadi factory server tidak punya apa pun untuk dirakit.
+          T8-SDM1 menambahkan tombol "Pratinjau PDF" di form untuk surat yang
+          SUDAH disimpan: server merakit dari baris arsipnya, satu jalur dengan
+          cetak resmi. */}
       <Modal
         open={suratPreviewFor !== null}
         onClose={() => { setSuratPreviewFor(null); pdfDoc.close(); }}

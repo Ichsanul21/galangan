@@ -35,6 +35,7 @@ import {
   PanelLeft,
   Loader2,
   AlertTriangle,
+  WifiOff,
 } from "lucide-react";
 import { useAuth } from "../auth/auth";
 import { useStore } from "../data/store";
@@ -64,6 +65,23 @@ export default function AppShell() {
      sedang berjalan - tak ada jeda tanpa umpan balik saat pindah modul. */
   const moduleSyncing = useModuleSyncing();
   const failedSync = useFailedCollections();
+  /* T8-SYNC1: status online browser - navigator.onLine berubah diam-diam,
+     jadi perlu state + listener supaya chip "Offline" di topbar ikut
+     hidup/mati tanpa reload. */
+  const [browserOnline, setBrowserOnline] = useState(() => (typeof navigator === "undefined" ? true : navigator.onLine));
+  useEffect(() => {
+    const on = () => setBrowserOnline(true);
+    const off = () => setBrowserOnline(false);
+    window.addEventListener("online", on);
+    window.addEventListener("offline", off);
+    return () => {
+      window.removeEventListener("online", on);
+      window.removeEventListener("offline", off);
+    };
+  }, []);
+  /* Offline bila backend tidak terkonfigurasi ATAU browser kehilangan
+     koneksi - keduanya berarti perubahan hanya menumpuk lokal. */
+  const isOffline = !isBackendConfigured() || !browserOnline;
 
   /* Filter cabang global disimpan di localStorage, jadi bisa tertinggal
      nilai yang tidak boleh dipakai akun ini - localStorage bisa diubah
@@ -567,6 +585,32 @@ export default function AppShell() {
               {userBranch !== "SEMUA" && (
                 <span className="rounded-full bg-ocean-50 px-2 py-0.5 text-[10px] font-semibold text-ocean-700" title={t.nav.lockedToBranch.replace("{a}", userBranch)}>
                   {userBranch}
+                </span>
+              )}
+              {/* T8-SYNC1: indikator offline menyempal di dekat brand -
+                  amber "Offline" bila backend mati / browser offline; chip
+                  "Menyinkronkan N" bila ada perubahan lokal belum terkirim;
+                  bersih (tanpa chip) kalau semua sudah sinkron. */}
+              {isOffline && (
+                <span
+                  className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-bold text-amber-700"
+                  role="status"
+                  aria-live="polite"
+                  title={locale === "en" ? "No backend connection - changes are stored locally until connection returns." : "Tidak tersambung ke backend - perubahan disimpan lokal sampai koneksi pulih."}
+                >
+                  <WifiOff className="h-3 w-3" aria-hidden />
+                  {t.session.offline}
+                </span>
+              )}
+              {!isOffline && pendingSync.length > 0 && (
+                <span
+                  className="inline-flex items-center gap-1 rounded-full bg-ocean-50 px-2 py-0.5 text-[10px] font-bold text-ocean-700"
+                  role="status"
+                  aria-live="polite"
+                  title={locale === "en" ? `${pendingSync.length} collection(s) waiting to sync: ${pendingSync.join(", ")}` : `${pendingSync.length} koleksi menunggu sinkron: ${pendingSync.join(", ")}`}
+                >
+                  <Loader2 className="h-3 w-3 animate-spin" aria-hidden />
+                  {locale === "en" ? `Syncing ${pendingSync.length}` : `Menyinkronkan ${pendingSync.length}`}
                 </span>
               )}
             </div>

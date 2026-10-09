@@ -404,6 +404,21 @@ export default function Monitoring() {
                         <ProgressBar value={Number(p.progress || 0)} className="flex-1" tone={p.status === "Terlambat" ? "red" : "navy"} />
                         <span className="text-xs font-medium text-steel-600">{p.progress}%</span>
                       </div>
+                      {/* T8-MON1: strip foto proyek (maks 2 thumb) - foto yang
+                          diunggah lewat modal update sebelumnya tidak pernah
+                          terlihat di kartu, jadi update terasa "hilang". */}
+                      {(() => {
+                        const photos = Array.isArray(p.photos) ? (p.photos as { url?: unknown }[]) : [];
+                        if (photos.length === 0) return null;
+                        return (
+                          <div className="mt-1.5 flex items-center gap-1">
+                            {photos.slice(0, 2).map((ph, i) => (
+                              <SecureImg key={i} src={ph.url} alt={`${String(p.id)} foto ${i + 1}`} name={String(p.vessel)} className="h-10 w-14 rounded object-cover" />
+                            ))}
+                            {photos.length > 2 && <span className="text-[10px] text-steel-400">+{photos.length - 2}</span>}
+                          </div>
+                        );
+                      })()}
                       <p className="mt-1.5 text-[11px] text-steel-500">{fmtMiliar(Number(p.actual))} / {fmtMiliar(Number(p.budget))}</p>
                       <ProgressBar value={pct} tone={pct > 100 ? "red" : "ocean"} />
                       <p className="mt-1.5 text-[11px] text-steel-500">{S.monNcrOpen}<span className={`font-semibold ${openNcr(p.id).length > 0 ? "text-rose-600" : "text-steel-500"}`}>{openNcr(p.id).length}{openNcr(p.id).some((n) => n.severity === "Critical") ? S.monCritSuffix : ""}</span></p>
@@ -471,6 +486,28 @@ export default function Monitoring() {
           <Field label={S.monPhotoNote}>
             <input className="input" value={updForm.photoNote} onChange={(e) => setUpdForm({ ...updForm, photoNote: e.target.value })} placeholder={S.monPhotoNotePh} />
           </Field>
+          {/* T8-MON1: daftar foto yang sudah terunggah - user perlu melihat
+              riwayat foto sebelum menambah yang baru, kalau tidak foto sama
+              diunggah berulang kali karena tidak pernah tampil. */}
+          {(() => {
+            const photos = Array.isArray(updFor?.photos) ? (updFor.photos as { url?: unknown; note?: unknown }[]) : [];
+            if (photos.length === 0) return null;
+            return (
+              <div>
+                <p className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-steel-500">
+                  {locale === "en" ? "Uploaded photos" : "Foto terunggah"}
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  {photos.map((ph, i) => (
+                    <div key={i} className="flex flex-col items-center gap-0.5">
+                      <SecureImg src={ph.url} alt={`Foto ${i + 1}`} name={String(updFor?.vessel ?? "")} className="h-14 w-20 rounded-lg border border-steel-200 object-cover" />
+                      {ph.note ? <span className="max-w-20 truncate text-[10px] text-steel-500">{String(ph.note)}</span> : null}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            );
+          })()}
           <div className="flex items-center gap-2">
             <FileUploadButton accept=".png,.jpg,.jpeg" label={S.monPhotoUpload} onUploaded={(url) => setUpdForm((v) => ({ ...v, photoUrl: url }))} />
             {updForm.photoUrl ? (

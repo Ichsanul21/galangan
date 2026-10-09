@@ -864,6 +864,9 @@ export default function Drydock() {
               groups.get(key)!.push(s);
             }
             const entries = [...groups.entries()].sort((a, b) => a[0].localeCompare(b[0]));
+            /* T8-DD1: skala bar = area dengan slot terbanyak, supaya lebar bar
+               antar-area bisa dibandingkan secara visual. */
+            const maxAreaTotal = Math.max(1, ...entries.map(([, slots]) => slots.length));
             if (entries.length === 0) return (
               <div className="rounded-xl border border-dashed border-steel-300 bg-surface p-6 text-center">
                 <p className="text-sm font-medium text-steel-600">{S.emptySlots}</p>
@@ -893,6 +896,23 @@ export default function Drydock() {
                     <span className="bg-emerald-500" style={{ width: `${slots.length ? (nKeluar / slots.length) * 100 : 0}%` }} />
                   </div>
                 </div>
+                {/* T8-DD1: bar okupansi per area - lebar total sebanding jumlah
+                    slot (skala maxAreaTotal), isi gelap = slot masih terisi
+                    (booking aktif / maintenance, bukan "Selesai"). */}
+                {(() => {
+                  const occupied = slots.length - nKeluar;
+                  return (
+                    <div className="mb-2">
+                      <div className="h-2.5 overflow-hidden rounded-full bg-steel-100" role="img" aria-label={`${occupied}/${slots.length} slot terisi`}>
+                        <div className="flex h-full">
+                          <span className="bg-ocean-500" style={{ width: `${(occupied / maxAreaTotal) * 100}%` }} />
+                          <span className="bg-steel-200" style={{ width: `${((slots.length - occupied) / maxAreaTotal) * 100}%` }} />
+                        </div>
+                      </div>
+                      <p className="mt-0.5 text-[11px] text-steel-500">{occupied}/{slots.length} slot terisi</p>
+                    </div>
+                  );
+                })()}
                 <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-3">
                   {slots.map((s) => {
                     const st = slotStatus(s, data.projects);
