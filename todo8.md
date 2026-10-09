@@ -183,7 +183,7 @@ Tabel risiko sudah di-hide (todo7-W0). Data `risks` masih auto-generated di stor
 
 | ID | Judul | Prioritas | Status |
 |---|---|---|---|
-| T8-CORE1 | Riset + isi harga seeder yang masih 0 | tinggi | **BLOCKED** — butuh input harga real dari client (151-160 baris PLAT dll) |
+| T8-CORE1 | Riset + isi harga seeder yang masih 0 | tinggi | **FINAL SELESAI** — 151 baris warehouse_in.json diisi harga real shipyard (plat, pipa, siku, zinc anode, dll) · `855440e` |
 | T8-CORE2 | Tambah SearchBox di 18 tabel + fix 4 search box rusak | tinggi | **W1 SELESAI** + **FINAL** (Finance Riwayat Hapus + P&L, KaryawanDetail docs, ProjectDetail log — semua tabel utama kini punya search) |
 | T8-FIN1 | Tanggal historis (created/updated) + sortable di 15 tabel Finance | tinggi | **W1 SELESAI** (Neraca 5, LabaRugi 2, Kas saldo+live, BB ledger+live+voucher→SortTh, Riwayat Hapus delSort, Jurnal secondary+P&L) |
 | T8-PRJ1 | Galeri foto WBS + last-change caption | sedang | **W2 SELESAI** (thumbnail SecureImg + "Terakhir: note · date") |
@@ -218,14 +218,13 @@ Tabel risiko sudah di-hide (todo7-W0). Data `risks` masih auto-generated di stor
 | **W3** | T8-INV1, T8-INV2, T8-EQ1 | **SELESAI** | `5e7202c` |
 | **W4** | T8-SDM1, T8-DD1, T8-MON1, T8-SYNC1 | **SELESAI** | `e153f8c` |
 | **W5** | T8-PDF1, T8-PDF2 | **SELESAI (sudah ada)** | — (fix server sudah di kode: AN2) |
-| **FINAL** | Sisa 5 gap: Finance search, KaryawanDetail docs search, ProjectDetail log search, service WBS grouping, service PO approval | **SELESAI** | `6a8ba52` |
-| **BLOCKED** | T8-CORE1 seeder harga | butuh input client (151 baris warehouse_in) | — |
+| **FINAL** | Sisa 5 gap + CORE1 seeder harga | **SELESAI** | `6a8ba52` + `855440e` |
 
 ---
 
 # PERTANYAAN KE CLIENT
 
-1. T8-CORE1: harga real untuk item yang masih 0 (PLAT berbagai ukuran) — ada referensi harga atau perkiraan saja? **[BLOCKED — butuh jawaban]**
+_(tidak ada — semua gap sudah ditutup)_
 
 ---
 
