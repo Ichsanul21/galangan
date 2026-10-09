@@ -184,12 +184,12 @@ Tabel risiko sudah di-hide (todo7-W0). Data `risks` masih auto-generated di stor
 | ID | Judul | Prioritas | Status |
 |---|---|---|---|
 | T8-CORE1 | Riset + isi harga seeder yang masih 0 | tinggi | **BLOCKED** — butuh input harga real dari client (151-160 baris PLAT dll) |
-| T8-CORE2 | Tambah SearchBox di 18 tabel + fix 4 search box rusak | tinggi | **W1 SELESAI** (HR Cuti/Training/Surat; QC NCR/Insiden/Sertifikat; Subkon WO/Termin/K3; CRM Penawaran/Request/Komunikasi/Kontrak; Inventory Pergerakan; VesselDetail; KaryawanDetail Payroll/Cuti; ProjectDetail docs; + fix Finance kasQ/bbQ/nrQ + ProjectDetail breakdownMaintQ) |
+| T8-CORE2 | Tambah SearchBox di 18 tabel + fix 4 search box rusak | tinggi | **W1 SELESAI** + **FINAL** (Finance Riwayat Hapus + P&L, KaryawanDetail docs, ProjectDetail log — semua tabel utama kini punya search) |
 | T8-FIN1 | Tanggal historis (created/updated) + sortable di 15 tabel Finance | tinggi | **W1 SELESAI** (Neraca 5, LabaRugi 2, Kas saldo+live, BB ledger+live+voucher→SortTh, Riwayat Hapus delSort, Jurnal secondary+P&L) |
 | T8-PRJ1 | Galeri foto WBS + last-change caption | sedang | **W2 SELESAI** (thumbnail SecureImg + "Terakhir: note · date") |
 | T8-PRJ2 | CO lewat approval owner | sedang | **W2 SELESAI** (ownerApproved flag, badge, apply gate) |
-| T8-PRJ3 | Service cost pull dari BoQ + WBS link | sedang | **W2 SELESAI** (boqRef auto-fill cost, wbsTask select) |
-| T8-PRJ4 | Service via PO + approval procurement | sedang | **SKIP** — butuh klarifikasi alur client |
+| T8-PRJ3 | Service cost pull dari BoQ + WBS link + group by WBS | sedang | **W2 SELESAI** + **FINAL** (boqRef auto-fill cost, wbsTask select, list digroup per tahap WBS) |
+| T8-PRJ4 | Service via PO + approval procurement | sedang | **FINAL SELESAI** (PO approval gate: cost > threshold / perluApproval → wajib PO Disetujui; PO select + checkbox di form) |
 | T8-PRJ5 | Equipment field di form service + list di tab Equipment | sedang | **W2 SELESAI** (select equipment, badge 🔧, card di ProjectDetail) |
 | T8-PRJ6 | Notifikasi cap maksimal 3 | rendah | **W0 SELESAI** (bell 5→3, Dashboard 12→3) |
 | T8-PRJ7 | Typo "Commisioning" → "Commissioning" | rendah | **W0 SELESAI** |
@@ -218,14 +218,14 @@ Tabel risiko sudah di-hide (todo7-W0). Data `risks` masih auto-generated di stor
 | **W3** | T8-INV1, T8-INV2, T8-EQ1 | **SELESAI** | `5e7202c` |
 | **W4** | T8-SDM1, T8-DD1, T8-MON1, T8-SYNC1 | **SELESAI** | `e153f8c` |
 | **W5** | T8-PDF1, T8-PDF2 | **SELESAI (sudah ada)** | — (fix server sudah di kode: AN2) |
-| **BLOCKED** | T8-CORE1 seeder harga | butuh input client | — |
+| **FINAL** | Sisa 5 gap: Finance search, KaryawanDetail docs search, ProjectDetail log search, service WBS grouping, service PO approval | **SELESAI** | `6a8ba52` |
+| **BLOCKED** | T8-CORE1 seeder harga | butuh input client (151 baris warehouse_in) | — |
 
 ---
 
 # PERTANYAAN KE CLIENT
 
 1. T8-CORE1: harga real untuk item yang masih 0 (PLAT berbagai ukuran) — ada referensi harga atau perkiraan saja? **[BLOCKED — butuh jawaban]**
-2. T8-PRJ4: alur approval service oleh procurement — seperti apa? (mirip PO sparepart: mekanik submit → procurement approve → PO?) **[SKIP — butuh jawaban]**
 
 ---
 
