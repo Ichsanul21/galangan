@@ -181,54 +181,51 @@ Tabel risiko sudah di-hide (todo7-W0). Data `risks` masih auto-generated di stor
 
 # T8 GAP LIST (implementasi)
 
-| ID | Judul | Prioritas | File utama |
+| ID | Judul | Prioritas | Status |
 |---|---|---|---|
-| T8-CORE1 | Riset + isi harga seeder yang masih 0 | tinggi | services/api/seed-data/warehouse_in.json |
-| T8-CORE2 | Tambah SearchBox di ~15 tabel + fix 4 search box rusak | tinggi | HR, QCSafety, Subcontractor, CRM, Inventory, VesselDetail, KaryawanDetail, Finance, ProjectDetail |
-| T8-FIN1 | Tanggal historis (created/updated/deletedAt) + sortable di tabel Finance | tinggi | Finance.tsx |
-| T8-PRJ1 | Galeri foto WBS + histori perubahan per task | sedang | ProjectDetail.tsx |
-| T8-PRJ2 | CO lewat approval owner/klien | sedang | ProjectDetail.tsx |
-| T8-PRJ3 | Service list dari WBS + biaya pull dari BoQ | sedang | SparepartServiceSection.tsx |
-| T8-PRJ4 | Service via PO + approval procurement | sedang | SparepartServiceSection.tsx |
-| T8-PRJ5 | List equipment untuk service (field equipment di form service) | sedang | SparepartServiceSection.tsx |
-| T8-PRJ6 | Notifikasi cap maksimal 3 | rendah | AppShell.tsx, Dashboard.tsx, AlertBanner.tsx |
-| T8-PRJ7 | Typo "Commisioning" → "Commissioning" | rendah | n_prj.ts |
-| T8-MON1 | Tampilkan foto monitoring + monitoring pekerjaan WBS | sedang | Monitoring.tsx |
-| T8-DD1 | Chart mapping slot area (slot/kapal per area) | rendah | Drydock.tsx |
-| T8-INV1 | Form konversi kondisional saat kategori dipilih | sedang | Inventory.tsx |
-| T8-INV2 | Checklist masuk/keluar kategori "additional (tanpa procurement)" | sedang | Inventory.tsx |
-| T8-INV3 | Hapus field vendor di form retur | rendah | Inventory.tsx |
-| T8-INV4 | Label kolom "Dari"/"Ke" | rendah | Inventory.tsx |
-| T8-EQ1 | Maintenance di dalam modal delegasi | sedang | Equipment.tsx |
-| T8-SDM1 | Preview surat compose = PDF | sedang | HR.tsx |
-| T8-PROC1 | Pager Vendor list + tabel komparasi RFQ | rendah | Procurement.tsx |
-| T8-SYNC1 | UX mode offline/online eksplisit | rendah | AppShell.tsx, useModuleSync.ts |
-| T8-PDF1 | Verifikasi/fix Analytics PDF template | sedang | services/api (PDF templates) |
-| T8-PDF2 | Verifikasi/fix kwitansi PDF layout | sedang | services/api (PDF templates) |
+| T8-CORE1 | Riset + isi harga seeder yang masih 0 | tinggi | **BLOCKED** — butuh input harga real dari client (151-160 baris PLAT dll) |
+| T8-CORE2 | Tambah SearchBox di 18 tabel + fix 4 search box rusak | tinggi | **W1 SELESAI** (HR Cuti/Training/Surat; QC NCR/Insiden/Sertifikat; Subkon WO/Termin/K3; CRM Penawaran/Request/Komunikasi/Kontrak; Inventory Pergerakan; VesselDetail; KaryawanDetail Payroll/Cuti; ProjectDetail docs; + fix Finance kasQ/bbQ/nrQ + ProjectDetail breakdownMaintQ) |
+| T8-FIN1 | Tanggal historis (created/updated) + sortable di 15 tabel Finance | tinggi | **W1 SELESAI** (Neraca 5, LabaRugi 2, Kas saldo+live, BB ledger+live+voucher→SortTh, Riwayat Hapus delSort, Jurnal secondary+P&L) |
+| T8-PRJ1 | Galeri foto WBS + last-change caption | sedang | **W2 SELESAI** (thumbnail SecureImg + "Terakhir: note · date") |
+| T8-PRJ2 | CO lewat approval owner | sedang | **W2 SELESAI** (ownerApproved flag, badge, apply gate) |
+| T8-PRJ3 | Service cost pull dari BoQ + WBS link | sedang | **W2 SELESAI** (boqRef auto-fill cost, wbsTask select) |
+| T8-PRJ4 | Service via PO + approval procurement | sedang | **SKIP** — butuh klarifikasi alur client |
+| T8-PRJ5 | Equipment field di form service + list di tab Equipment | sedang | **W2 SELESAI** (select equipment, badge 🔧, card di ProjectDetail) |
+| T8-PRJ6 | Notifikasi cap maksimal 3 | rendah | **W0 SELESAI** (bell 5→3, Dashboard 12→3) |
+| T8-PRJ7 | Typo "Commisioning" → "Commissioning" | rendah | **W0 SELESAI** |
+| T8-MON1 | Tampilkan foto monitoring | sedang | **W4 SELESAI** (photo strip kanban + list di modal) |
+| T8-DD1 | Chart mapping slot area | rendah | **W4 SELESAI** (CSS occupancy bar per area) |
+| T8-INV1 | Form konversi kondisional | sedang | **W3 SELESAI** (CONV_CATS + eceran toggle) |
+| T8-INV2 | Checklist additional (tanpa procurement) | sedang | **W3 SELESAI** (header + button Tanpa PO / Permintaan baru) |
+| T8-INV3 | Hapus field vendor di retur | rendah | **W0 SELESAI** |
+| T8-INV4 | Label kolom "Dari"/"Ke" | rendah | **W0 SELESAI** |
+| T8-EQ1 | Maintenance di dalam modal delegasi | sedang | **W3 SELESAI** (section "Tambah Servis" inline) |
+| T8-SDM1 | Preview surat compose = PDF | sedang | **W4 SELESAI** (tombol "Pratinjau PDF" via composePdf) |
+| T8-PROC1 | Pager Vendor list | rendah | **W0 SELESAI** (vendorPager) |
+| T8-SYNC1 | UX offline/online eksplisit | rendah | **W4 SELESAI** (Offline chip + "Menyinkronkan N" chip) |
+| T8-PDF1 | Analytics PDF: content + garis bold | sedang | **SELESAI (sudah ada di server)** — STROKE.hair 0.22mm (theme.ts:117), chart 24 bar (chart.ts:506) |
+| T8-PDF2 | Kwitansi PDF tidak terpotong | sedang | **SELESAI (sudah ada di server)** — alignment tanpa anchor (kwitansi.ts:1-16) |
 
 ---
 
 # GELOMBANG IMPLEMENTASI
 
-| Gelombang | Fokus |
-|---|---|
-| **W0** | Quick wins: T8-INV4, T8-PRJ7, T8-INV3, T8-PRJ6, T8-PROC1 |
-| **W1** | T8-CORE2 (search semua tabel + fix rusak) + T8-FIN1 (tanggal Finance) |
-| **W2** | T8-PRJ1, T8-PRJ2, T8-PRJ3, T8-PRJ5 (manajemen proyek) |
-| **W3** | T8-INV1, T8-INV2, T8-EQ1 (inventori + equipment) |
-| **W4** | T8-CORE1 (seeder harga), T8-SDM1, T8-DD1, T8-MON1, T8-SYNC1 |
-| **W5** | T8-PDF1, T8-PDF2 (server PDF templates) |
+| Gelombang | Fokus | Status | Commit |
+|---|---|---|---|
+| **W0** | T8-INV4, T8-PRJ7, T8-INV3, T8-PRJ6, T8-PROC1 | **SELESAI** | `8903388` |
+| **W1** | T8-CORE2 + T8-FIN1 | **SELESAI** | `91dd1cd` |
+| **W2** | T8-PRJ1, T8-PRJ2, T8-PRJ3, T8-PRJ5 | **SELESAI** | `a3d43d9` |
+| **W3** | T8-INV1, T8-INV2, T8-EQ1 | **SELESAI** | `5e7202c` |
+| **W4** | T8-SDM1, T8-DD1, T8-MON1, T8-SYNC1 | **SELESAI** | `e153f8c` |
+| **W5** | T8-PDF1, T8-PDF2 | **SELESAI (sudah ada)** | — (fix server sudah di kode: AN2) |
+| **BLOCKED** | T8-CORE1 seeder harga | butuh input client | — |
 
 ---
 
 # PERTANYAAN KE CLIENT
 
-1. T8-CORE1: harga real untuk item yang masih 0 (PLAT berbagai ukuran) — ada referensi harga atau perkiraan saja?
-2. T8-PRJ6: cap notifikasi "maksimal 3" — benar 3, atau 5 (nilai sekarang di bell)?
-3. T8-PRJ4: alur approval service oleh procurement — seperti apa? (mirip PO sparepart: mekanik submit → procurement approve → PO?)
-4. T8-PRJ2: "melewati owner" — owner = klien? atau PM/internal? Perlu approval sebelum CO di-apply?
-5. T8-PRJ7: "commisioning" di notes = maksudnya "Commissioning"? (perbaiki typo?)
-6. T8-SYNC1: UX offline/online yang dimaksud — toggle manual, atau indikator status saja yang lebih jelas?
+1. T8-CORE1: harga real untuk item yang masih 0 (PLAT berbagai ukuran) — ada referensi harga atau perkiraan saja? **[BLOCKED — butuh jawaban]**
+2. T8-PRJ4: alur approval service oleh procurement — seperti apa? (mirip PO sparepart: mekanik submit → procurement approve → PO?) **[SKIP — butuh jawaban]**
 
 ---
 
