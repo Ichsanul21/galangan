@@ -328,6 +328,7 @@ if (from === "Desain" && to === "Produksi") {
   const [sort, setSort] = useState<SortState>({ key: null, dir: "asc" });
   const [sort2, setSort2] = useState<SortState>({ key: null, dir: "asc" });
   const [wbsQ, setWbsQ] = useState("");
+  const [logQ, setLogQ] = useState("");
   /* Tiga tabel lain di halaman ini juga panjang: baseline WBS per tahap dan
      rincian biaya equipment (booking + maintenance). Satu state per tabel
      supaya mengetik di tabel A tidak menyaring tabel B yang kebetulan
@@ -948,6 +949,7 @@ const createWarranty = async (wbsTask?: string) => {
     ...contractsForProject.map((c) => ({ kind: "Kontrak" as const, id: String(c.id), date: String(c.signedAt ?? ""), ref: String(c.id), value: Number(c.value ?? 0), status: String(c.status ?? "Aktif") })),
     ...invoices.map((i) => ({ kind: "Tagihan" as const, id: String(i.id), date: String(i.due ?? i.date ?? ""), ref: String(i.id), value: Number(i.grandTotal ?? i.amount ?? 0), status: String(i.status ?? "Draft") })),
   ].sort((a, b) => String(a.date).localeCompare(String(b.date)));
+  const logRowsFiltered = logRows.filter((row) => rowMatches(row as unknown as Record<string, unknown>, logQ, ["kind", "ref", "status", "value"]));
 
   /* saveDesignStage dihapus (D1): blok edit Desain & Class Approval sudah
      diganti dengan tabel Log Penawaran dan Tagihan. Class Approval kini
@@ -1274,6 +1276,9 @@ try {
                       : <Badge tone="amber">{S.detClassPending.replace("{a}", "Belum")}</Badge>}
                   </div>
                   <p className="mb-2 text-xs text-steel-500">{S.detLogSubtitle}</p>
+                  <div className="mb-2 flex justify-end">
+                    <SearchBox value={logQ} onChange={setLogQ} className="max-w-xs" placeholder={locale === "en" ? "Search log..." : "Cari log..."} ariaLabel={locale === "en" ? "Search quotation and billing log" : "Cari log penawaran dan tagihan"} />
+                  </div>
                   <div className="overflow-x-auto">
                     <table className="w-full">
                       <thead className="bg-surface sticky top-0 z-10">
@@ -1287,10 +1292,10 @@ try {
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-steel-100">
-                        {logRows.length === 0 && (
+                        {logRowsFiltered.length === 0 && (
                           <tr><td colSpan={6} className="td text-center text-steel-400">{S.detLogEmpty}</td></tr>
                         )}
-                        {logRows.map((row, idx) => (
+                        {logRowsFiltered.map((row, idx) => (
                           <tr key={`${row.kind}-${row.id}-${idx}`} className="hover:bg-surface">
                             <td className="td font-mono text-xs text-steel-500">{idx + 1}</td>
                             <td className="td text-xs text-steel-600">{fmtTanggal(row.date)}</td>

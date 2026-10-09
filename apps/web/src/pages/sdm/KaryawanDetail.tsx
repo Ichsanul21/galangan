@@ -148,6 +148,7 @@ export default function KaryawanDetail() {
   const [attQ, setAttQ] = useState("");
   const [payQ, setPayQ] = useState("");
   const [leaveQ, setLeaveQ] = useState("");
+  const [docQ, setDocQ] = useState("");
 
   /* ---- Ubah / hapus untuk 3 tabel store-record di halaman ini ----
      Semuanya read-only sebelumnya: dokumen, absensi, cuti. Payroll tetap
@@ -663,6 +664,7 @@ export default function KaryawanDetail() {
             <h3 className="text-sm font-semibold text-navy-900">{S.dokT.replace("{n}", String(docs.length))}</h3>
             <button className="btn-secondary text-xs" onClick={() => setShowDoc(true)}><Plus className="h-3.5 w-3.5" /> {S.btnTambah}</button>
         </div>
+        <SearchBox value={docQ} onChange={setDocQ} placeholder={S.cardSearchPh} ariaLabel={S.cardSearchPh} className="mt-3 max-w-xs" />
         {docs.length > 0 ? (
           <div className="mt-3 overflow-x-auto">
             <table className="w-full">
@@ -670,7 +672,7 @@ export default function KaryawanDetail() {
                 <tr><SortTh label={S.thId} sortKey="id" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.thJudul} sortKey="title" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.thTipe} sortKey="type" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.dlStatus} sortKey="status" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={S.thUpdated} sortKey="updated" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><SortTh label={locale === "en" ? "File" : "Berkas"} sortKey="file" sort={sort} onSort={(k) => setSort((s) => toggleSort(s, k))} /><th className="th">{locale === "en" ? "Actions" : "Aksi"}</th></tr>
               </thead>
               <tbody className="divide-y divide-steel-100">
-                {sortRows(docs, sort, (row, k) => {
+                {sortRows(docs.filter((d) => rowMatches(d as unknown as Record<string, unknown>, docQ, ["id", "title", "type", "status"])), sort, (row, k) => {
                   const d = row as StoreItem;
                   switch (k) {
                     case "id": return String(d.id ?? "");

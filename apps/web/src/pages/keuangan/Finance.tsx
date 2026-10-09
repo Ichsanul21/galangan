@@ -1522,6 +1522,7 @@ const { data, add, update, remove, log, branch, inBranch } = useStore();
   const [delHistRows, setDelHistRows] = useState<{ key: string; table: string; row_id: string; deleted_at: string; actor: string; source: "Server" | "Perangkat" }[]>([]);
   const [delHistReady, setDelHistReady] = useState(false);
   const [delSort, setDelSort] = useState<SortState>({ key: null, dir: "asc" });
+  const [delQ, setDelQ] = useState("");
   useEffect(() => {
     if (tab !== "Riwayat Hapus" || delHistReady) return;
     let cancelled = false;
@@ -3930,7 +3931,7 @@ const { data, add, update, remove, log, branch, inBranch } = useStore();
                   </select>
                 </Field>
                 <Field label={S.cardSearchPh}>
-                  <input className="input" value={plQ} onChange={(e) => setPlQ(e.target.value)} placeholder={S.cardSearchPh} aria-label={S.cardSearchPh} />
+                  <SearchBox value={plQ} onChange={setPlQ} placeholder={S.cardSearchPh} ariaLabel={S.cardSearchPh} />
                 </Field>
               </div>
               {profitCalc && (
@@ -4374,6 +4375,10 @@ const { data, add, update, remove, log, branch, inBranch } = useStore();
               {delHistRows.length === 0 ? (
                 <EmptyState title={S.delHistEmpty} subtitle={locale === "en" ? "Deletions appear here once audit log records them." : "Penghapusan akan muncul di sini setelah tercatat di audit log."} />
               ) : (
+                <>
+                <div className="mb-2 flex justify-end">
+                  <SearchBox value={delQ} onChange={setDelQ} className="max-w-xs" placeholder={locale === "en" ? "Search deletions..." : "Cari riwayat hapus..."} ariaLabel={locale === "en" ? "Search delete history" : "Cari riwayat hapus"} />
+                </div>
                 <div className="overflow-x-auto">
                   <table className="w-full">
                     <thead className="bg-surface sticky top-0 z-10">
@@ -4386,7 +4391,7 @@ const { data, add, update, remove, log, branch, inBranch } = useStore();
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-steel-100">
-                      {sortRows(delHistRows, delSort, (r, k) => k === "deleted_at" ? r.deleted_at : r.key).map((r) => (
+                      {sortRows(delHistRows.filter((r) => rowMatches(r as unknown as Record<string, unknown>, delQ, ["table", "row_id", "deleted_at", "actor", "source"])), delSort, (r, k) => k === "deleted_at" ? r.deleted_at : r.key).map((r) => (
                         <tr key={r.key} className="hover:bg-surface">
                           <td className="td font-mono text-xs font-semibold text-navy-900">{r.table}</td>
                           <td className="td font-mono text-xs text-steel-600">{r.row_id}</td>
@@ -4398,6 +4403,7 @@ const { data, add, update, remove, log, branch, inBranch } = useStore();
                     </tbody>
                   </table>
                 </div>
+                </>
               )}
             </div>
           )}

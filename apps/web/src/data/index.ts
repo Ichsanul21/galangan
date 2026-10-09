@@ -565,6 +565,8 @@ export interface ServiceRecord {
     equipment?: string;
     /** T8-PRJ3: referensi opsional ke tahap WBS project ini. */
     wbsTask?: string;
+    poRef?: string;
+    perluApproval?: boolean;
   }
 
 export const services: ServiceRecord[] = [

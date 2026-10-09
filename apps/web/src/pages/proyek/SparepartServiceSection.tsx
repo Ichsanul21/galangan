@@ -8,6 +8,7 @@ import { Card, StatusBadge, Modal, Field, FormGrid, toast, EmptyState, Badge, Co
 import { Plus, Wrench, Package, Box, RotateCcw, FileDown } from "lucide-react";
 import { exportExcel, fmtRupiah } from "../../utils/export";
 import { fmtJumlah, todayISO } from "../../utils/format";
+import { getSetting } from "../../utils/settings";
 import { sameName } from "../../utils/names";
 import { EntityPicker } from "../../components/ui";
 import type { StoreItem } from "../../data/store";
@@ -50,7 +51,7 @@ export default function SparepartServiceSection({ projectId, vesselId, view = "a
   const [showAddSvc, setShowAddSvc] = useState(false);
   const [editSvc, setEditSvc] = useState<SvcExt | null>(null);
   const [delSvc, setDelSvc] = useState<SvcExt | null>(null);
-  const [svcForm, setSvcForm] = useState({ type: "Repair" as ServiceRecord["type"], description: "", date: new Date().toISOString().slice(0, 10), technician: "", cost: "", status: "Scheduled" as ServiceRecord["status"], boqRef: "", equipment: "", wbsTask: "" });
+  const [svcForm, setSvcForm] = useState({ type: "Repair" as ServiceRecord["type"], description: "", date: new Date().toISOString().slice(0, 10), technician: "", cost: "", status: "Scheduled" as ServiceRecord["status"], boqRef: "", equipment: "", wbsTask: "", poRef: "", perluApproval: false });
   const [svcStatus, setSvcStatus] = useState<string>("Semua");
   const [svcQ, setSvcQ] = useState("");
   const [cancelFor, setCancelFor] = useState<SvcExt | null>(null);
@@ -108,11 +109,13 @@ export default function SparepartServiceSection({ projectId, vesselId, view = "a
       boqRef: String(s.boqRef ?? ""),
       equipment: String(s.equipment ?? ""),
       wbsTask: String(s.wbsTask ?? ""),
+      poRef: String(s.poRef ?? ""),
+      perluApproval: !!s.perluApproval,
     });
   };
 
   const EMPTY_SP = { name: "", partNumber: "", category: "Mechanical", status: "Akan" as "Akan" | "Sedang" | "Selesai", cost: "", notes: "", technician: "", usedDate: "", warrantyUntil: "", poRef: "", qty: "1" };
-  const EMPTY_SVC = { type: "Repair" as ServiceRecord["type"], description: "", date: new Date().toISOString().slice(0, 10), technician: "", cost: "", status: "Scheduled" as ServiceRecord["status"], boqRef: "", equipment: "", wbsTask: "" };
+  const EMPTY_SVC = { type: "Repair" as ServiceRecord["type"], description: "", date: new Date().toISOString().slice(0, 10), technician: "", cost: "", status: "Scheduled" as ServiceRecord["status"], boqRef: "", equipment: "", wbsTask: "", poRef: "", perluApproval: false };
 
   /* Tombol "Tambah" harus membuka form KOSONG. Versi lama memakai state form
      yang sama dengan form edit, jadi data item terakhir ikut terbawa. */
@@ -177,6 +180,18 @@ export default function SparepartServiceSection({ projectId, vesselId, view = "a
     });
   }, [svcItems, svcStatus, svcQ]);
 
+  const svcGroups = useMemo(() => {
+    const groups: { task: string; items: SvcExt[] }[] = [];
+    const loose: SvcExt[] = [];
+    for (const s of svcFiltered) {
+      const t = String(s.wbsTask ?? "").trim();
+      if (!t) { loose.push(s); continue; }
+      const g = groups.find((x) => x.task === t);
+      if (g) g.items.push(s); else groups.push({ task: t, items: [s] });
+    }
+    return { loose, groups, grouped: groups.length > 0 };
+  }, [svcFiltered]);
+
   const counts = useMemo(() => {
     return {
       Semua: allSpareparts.length,
@@ -188,6 +203,7 @@ export default function SparepartServiceSection({ projectId, vesselId, view = "a
 
   const svcLbl: Record<string, string> = { Semua: S.filterAll, Scheduled: S.svcScheduled, "In Progress": S.svcInProgress, Done: S.svcDoneLbl, Batal: S.svcCancelled };
   const spLbl: Record<string, string> = { Semua: S.filterAll, Akan: S.spAkan, Sedang: S.spSedang, Selesai: S.spSelesai };
+  const svcApproveThreshold = getSetting(data, "APPROVE_SERVICE", 10000000);
 
   const advanceService = async (s: SvcExt, next: SvcExt["status"]) => {
     await update("services", s.id, { status: next });
@@ -397,16 +413,27 @@ export default function SparepartServiceSection({ projectId, vesselId, view = "a
   const saveService = async () => {
     if (!svcForm.description.trim()) { toast(S.spsToastSvcDesc, "info"); return; }
     if (!projectId && !vesselId && !editSvc) { toast(S.spsToastSvcCtx, "info"); return; }
+    const svcCost = Number(svcForm.cost) || 0;
+    const svcNeedsPo = !!projectId && (svcCost > svcApproveThreshold || svcForm.perluApproval);
+    if (svcNeedsPo) {
+      if (!svcForm.poRef) { toast(S.spsToastSvcNeedPo, "info"); return; }
+      const po = (data.purchaseOrders ?? []).find(
+        (p) => String(p.id) === svcForm.poRef && String(p.project ?? "") === projectId && String(p.status ?? "") === "Disetujui",
+      );
+      if (!po) { toast(S.spsToastBadPo, "info"); return; }
+    }
 const payload = {
         date: svcForm.date,
         type: svcForm.type,
         description: svcForm.description.trim(),
         status: svcForm.status,
         technician: svcForm.technician.trim() || "Belum ditentukan",
-        cost: Number(svcForm.cost) || 0,
+        cost: svcCost,
         ...(svcForm.boqRef ? { boqRef: svcForm.boqRef } : {}),
         ...(svcForm.wbsTask ? { wbsTask: svcForm.wbsTask } : {}),
         ...(svcForm.equipment ? { equipment: svcForm.equipment.trim() } : {}),
+        ...(svcForm.poRef ? { poRef: svcForm.poRef } : {}),
+        ...(svcForm.perluApproval ? { perluApproval: true } : {}),
       };
     if (editSvc) {
       /* Bila status awal "Batal", JANGAN ubah status saat edit -
@@ -418,6 +445,8 @@ const payload = {
         ...payload,
         equipment: svcForm.equipment.trim(),
         wbsTask: svcForm.wbsTask.trim(),
+        poRef: svcForm.poRef,
+        perluApproval: svcForm.perluApproval,
         ...(wasCancelled ? { status: "Batal" as const } : {}),
       };
       await update("services", editSvc.id, patch);
@@ -429,7 +458,7 @@ const payload = {
     await add("services", { projectId: projectId ?? "", vesselId: vesselId ?? "", ...payload }, { action: "menambahkan service", module: "Service" });
     toast(S.spsToastSvcAdd);
     setShowAddSvc(false);
-    setSvcForm({ type: "Repair", description: "", date: new Date().toISOString().slice(0, 10), technician: "", cost: "", status: "Scheduled", boqRef: "", equipment: "", wbsTask: "" });
+    setSvcForm({ ...EMPTY_SVC, date: new Date().toISOString().slice(0, 10) });
   };
 
   const modelCard = show3d ? (
@@ -519,6 +548,45 @@ const payload = {
     </Card>
   ) : null;
 
+  const renderSvcRow = (s: SvcExt, i: number, arr: SvcExt[]) => (
+    <div key={s.id} className="relative flex gap-4 pb-6 last:pb-0">
+      <div className="flex flex-col items-center">
+        <span className={`h-3 w-3 rounded-full ${s.status === "Done" ? "bg-teal-500" : s.status === "In Progress" ? "bg-ocean-500" : s.status === "Batal" ? "bg-rose-500" : "bg-steel-300"}`} />
+        {i < arr.length - 1 && <span className="w-px flex-1 bg-steel-200" />}
+      </div>
+      <div className="pb-1 flex-1">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <p className="text-sm font-semibold text-navy-900">{svcTypeLabel(s.type)}: {s.description}</p>
+          <div className="flex items-center gap-1.5">
+            <Badge tone={s.status === "Done" ? "green" : s.status === "In Progress" ? "blue" : s.status === "Batal" ? "red" : "gray"}>{svcLbl[s.status] ?? s.status}</Badge>
+            <button className="btn-secondary px-2 py-1 text-xs" onClick={() => openEditSvc(s)}>{locale === "en" ? "Edit" : "Ubah"}</button>
+            <button className="btn-secondary px-2 py-1 text-xs text-rose-600" onClick={() => setDelSvc(s)}>{locale === "en" ? "Delete" : "Hapus"}</button>
+          </div>
+        </div>
+        <p className="text-xs text-steel-500">{s.date} · {s.technician} · {fmtRupiah(s.cost)}</p>
+        {s.equipment ? (
+          <div className="mt-1 flex flex-wrap gap-1">
+            <Badge tone="blue">🔧 {s.equipment}</Badge>
+          </div>
+        ) : null}
+        {s.status === "Batal" && s.cancelReason && (
+          <p className="mt-1 text-xs text-rose-600">{S.spsCancelReasonLbl.replace("{a}", s.cancelReason)}</p>
+        )}
+        {s.status !== "Done" && s.status !== "Batal" && (
+          <div className="mt-2 flex flex-wrap gap-1.5">
+            {s.status === "Scheduled" && (
+              <button className="rounded bg-ocean-100 px-2 py-0.5 text-xs font-semibold text-ocean-700 hover:bg-ocean-200" onClick={() => advanceService(s, "In Progress")}>{S.spsStartBtn}</button>
+            )}
+            {s.status === "In Progress" && (
+              <button className="rounded bg-teal-100 px-2 py-0.5 text-xs font-semibold text-teal-700 hover:bg-teal-200" onClick={() => advanceService(s, "Done")}>{S.boqComplete}</button>
+            )}
+            <button className="rounded bg-rose-100 px-2 py-0.5 text-xs font-semibold text-rose-700 hover:bg-rose-200" onClick={() => { setCancelFor(s); setCancelReason(""); }}>{S.spsCancelBtn}</button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+
   const serviceCard = showService ? (
     <Card className="p-4">
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
@@ -546,46 +614,24 @@ const payload = {
       </div>
       {svcFiltered.length === 0 ? (
         <EmptyState icon={<Wrench className="h-6 w-6" />} title={S.spsSvcEmpty} subtitle={svcItems.length === 0 ? S.spsSvcEmptyNew : S.spsSvcEmptyFilter.replace("{a}", S.filterAll)} />
-      ) : (
-        <div className="relative space-y-0">
-          {svcFiltered.map((s, i, arr) => (
-            <div key={s.id} className="relative flex gap-4 pb-6 last:pb-0">
-              <div className="flex flex-col items-center">
-                <span className={`h-3 w-3 rounded-full ${s.status === "Done" ? "bg-teal-500" : s.status === "In Progress" ? "bg-ocean-500" : s.status === "Batal" ? "bg-rose-500" : "bg-steel-300"}`} />
-                {i < arr.length - 1 && <span className="w-px flex-1 bg-steel-200" />}
-              </div>
-              <div className="pb-1 flex-1">
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <p className="text-sm font-semibold text-navy-900">{svcTypeLabel(s.type)}: {s.description}</p>
-                  <div className="flex items-center gap-1.5">
-                    <Badge tone={s.status === "Done" ? "green" : s.status === "In Progress" ? "blue" : s.status === "Batal" ? "red" : "gray"}>{svcLbl[s.status] ?? s.status}</Badge>
-                    <button className="btn-secondary px-2 py-1 text-xs" onClick={() => openEditSvc(s)}>{locale === "en" ? "Edit" : "Ubah"}</button>
-                    <button className="btn-secondary px-2 py-1 text-xs text-rose-600" onClick={() => setDelSvc(s)}>{locale === "en" ? "Delete" : "Hapus"}</button>
-                  </div>
-                </div>
-                <p className="text-xs text-steel-500">{s.date} · {s.technician} · {fmtRupiah(s.cost)}</p>
-                {s.equipment ? (
-                  <div className="mt-1 flex flex-wrap gap-1">
-                    <Badge tone="blue">🔧 {s.equipment}</Badge>
-                  </div>
-                ) : null}
-                {s.status === "Batal" && s.cancelReason && (
-                  <p className="mt-1 text-xs text-rose-600">{S.spsCancelReasonLbl.replace("{a}", s.cancelReason)}</p>
-                )}
-                {s.status !== "Done" && s.status !== "Batal" && (
-                  <div className="mt-2 flex flex-wrap gap-1.5">
-                    {s.status === "Scheduled" && (
-                      <button className="rounded bg-ocean-100 px-2 py-0.5 text-xs font-semibold text-ocean-700 hover:bg-ocean-200" onClick={() => advanceService(s, "In Progress")}>{S.spsStartBtn}</button>
-                    )}
-                    {s.status === "In Progress" && (
-                      <button className="rounded bg-teal-100 px-2 py-0.5 text-xs font-semibold text-teal-700 hover:bg-teal-200" onClick={() => advanceService(s, "Done")}>{S.boqComplete}</button>
-                    )}
-                    <button className="rounded bg-rose-100 px-2 py-0.5 text-xs font-semibold text-rose-700 hover:bg-rose-200" onClick={() => { setCancelFor(s); setCancelReason(""); }}>{S.spsCancelBtn}</button>
-                  </div>
-                )}
-              </div>
+      ) : svcGroups.grouped ? (
+        <>
+          {svcGroups.loose.length > 0 && (
+            <div className="mb-4">
+              <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-steel-500">{S.spsSvcWbsNone}</p>
+              <div className="relative space-y-0">{svcGroups.loose.map((s, i, arr) => renderSvcRow(s, i, arr))}</div>
+            </div>
+          )}
+          {svcGroups.groups.map((g) => (
+            <div key={g.task} className="mb-4 last:mb-0">
+              <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-steel-500">{g.task}</p>
+              <div className="relative space-y-0">{g.items.map((s, i, arr) => renderSvcRow(s, i, arr))}</div>
             </div>
           ))}
+        </>
+      ) : (
+        <div className="relative space-y-0">
+          {svcFiltered.map((s, i, arr) => renderSvcRow(s, i, arr))}
         </div>
       )}
     </Card>
@@ -756,10 +802,14 @@ const payload = {
             </select>
           </Field>
           <Field label={S.spsSvcCost} hint={(() => {
-            if (!projectId || !svcForm.boqRef) return undefined;
-            const b = (data.boq ?? []).find((x) => String(x.id) === svcForm.boqRef && String(x.projectId ?? "") === projectId);
-            if (!b) return undefined;
-            return locale === "en" ? `Cost from BoQ: ${fmtRupiah(Number(b.totalPrice || 0))}` : `Biaya dari BoQ: ${fmtRupiah(Number(b.totalPrice || 0))}`;
+            const parts: string[] = [];
+            if (projectId && svcForm.boqRef) {
+              const b = (data.boq ?? []).find((x) => String(x.id) === svcForm.boqRef && String(x.projectId ?? "") === projectId);
+              if (b) parts.push(locale === "en" ? `Cost from BoQ: ${fmtRupiah(Number(b.totalPrice || 0))}` : `Biaya dari BoQ: ${fmtRupiah(Number(b.totalPrice || 0))}`);
+            }
+            const costN = Number(svcForm.cost) || 0;
+            if (costN > svcApproveThreshold) parts.push(S.spsSvcNeedPoHint.replace("{a}", fmtRupiah(svcApproveThreshold)));
+            return parts.join(" · ") || undefined;
           })()}><NumInput className="input" value={svcForm.cost} onChange={(e) => setSvcForm({ ...svcForm, cost: e.target.value })} /></Field>
           {/* D12: referensi opsional ke item BoQ project ini. T8-PRJ3: pilih BoQ
               otomatis isi biaya dari totalPrice item (tetap bisa diubah manual). */}
@@ -793,6 +843,25 @@ const payload = {
                   {wbsTasks.map((w) => <option key={w.task} value={w.task}>{w.task}</option>)}
                 </select>
               </Field>
+            );
+          })()}
+          {projectId && (() => {
+            const pos = (data.purchaseOrders ?? []).filter((po) => String(po.project ?? "") === projectId && String(po.status ?? "") === "Disetujui");
+            const costN = Number(svcForm.cost) || 0;
+            const needPo = costN > svcApproveThreshold || svcForm.perluApproval;
+            return (
+              <>
+                <Field label={S.spsPoRef} hint={needPo ? (pos.length === 0 ? S.sspPoNoneHint : S.spsSvcNeedPoHint.replace("{a}", fmtRupiah(svcApproveThreshold))) : undefined}>
+                  <select className="input" value={svcForm.poRef} onChange={(e) => setSvcForm({ ...svcForm, poRef: e.target.value })} required={needPo}>
+                    <option value="">{pos.length === 0 ? (locale === "en" ? "-- no approved PO --" : "-- belum ada PO Disetujui --") : (locale === "en" ? "-- none --" : "-- tidak ada --")}</option>
+                    {pos.map((po) => <option key={po.id} value={po.id}>{String(po.id)} - {String(po.item ?? "")}</option>)}
+                  </select>
+                </Field>
+                <label className="flex items-center gap-2 text-xs text-steel-600">
+                  <input type="checkbox" checked={svcForm.perluApproval} onChange={(e) => setSvcForm({ ...svcForm, perluApproval: e.target.checked })} />
+                  {S.spsSvcPerluApproval}
+                </label>
+              </>
             );
           })()}
         </div>
